@@ -180,6 +180,11 @@ struct MeloDicerLeftMessage {
     bool  hasExtraClock  = false;
     float extraClockV    = 0.f;
 
+    // CV inputs from expander
+    float semiCv[12]     = {};
+    float octLoCv        = 0.f;
+    float octHiCv        = 0.f;
+
     // Remote control flags (set by expander, consumed by MeloDicer)
     bool  requestDiceR   = false;  // pulse: arm new rhythm seed
     bool  requestDiceM   = false;  // pulse: arm new melody seed

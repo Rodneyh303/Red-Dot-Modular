@@ -254,6 +254,8 @@ void MeloDicerWidget::draw(const DrawArgs& args) {
         const float ox[5]={95,111,127,143,159};
         for(int i=0;i<5;++i) L(ox[i],JY3-PR-2.2f,ol[i]);
         sz(2.3f); c(80,80,80); nvgTextAlign(vg,NVG_ALIGN_LEFT|NVG_ALIGN_MIDDLE);
+        const char* sl[5] = {"RUN", "RST", "SEED", "LEN", "OFF"};
+        const float sx[5] = {88.f, 98.f, 108.f, 118.f, 128.f};
         for(int i=0;i<5;++i) L(sx[i],116.f-PR-1.8f,sl[i]);
     }
 
