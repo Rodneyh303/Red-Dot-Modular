@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="12.5mm" height="12.5mm"
+     viewBox="-6.250 -6.250 12.500 12.500">
+<defs>
+  <radialGradient id="jBody" cx="38%" cy="32%" r="60%">
+    <stop offset="0%"   stop-color="#5a5a5a"/>
+    <stop offset="55%"  stop-color="#282828"/>
+    <stop offset="100%" stop-color="#0a0a0a"/>
+  </radialGradient>
+  <radialGradient id="jHole" cx="50%" cy="50%" r="50%">
+    <stop offset="0%"   stop-color="#080808"/>
+    <stop offset="100%" stop-color="#1c1c1c"/>
+  </radialGradient>
+  <filter id="jShadow">
+    <feDropShadow dx="0" dy="0.5" stdDeviation="0.8"
+                  flood-color="#000" flood-opacity="0.7"/>
+  </filter>
+</defs>
+<circle r="5.250" fill="#0e0e0e" filter="url(#jShadow)"/>
+<polygon points="4.758,1.971 1.971,4.758 -1.971,4.758 -4.758,1.971 -4.758,-1.971 -1.971,-4.758 1.971,-4.758 4.758,-1.971" fill="#181818" stroke="#c8922a" stroke-width="0.8"/>
+<circle r="4.250" fill="url(#jBody)"/>
+<circle r="3.825" fill="none" stroke="#111" stroke-width="0.4" opacity="0.6"/>
+<circle r="3.315" fill="none" stroke="#111" stroke-width="0.4" opacity="0.6"/>
+<circle r="2.805" fill="none" stroke="#111" stroke-width="0.4" opacity="0.6"/>
+<circle r="1.615" fill="url(#jHole)" stroke="#0a0a0a" stroke-width="0.5"/>
+<circle r="0.765" fill="#050505"/>
+<circle cx="-1.190" cy="-1.275" r="0.510" fill="white" opacity="0.09"/>
+<circle r="2.210" fill="none" stroke="#c8922a" stroke-width="0.6" opacity="0.7"/>
+</svg>
