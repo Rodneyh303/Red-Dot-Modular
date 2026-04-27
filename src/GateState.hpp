@@ -151,7 +151,6 @@ struct GateState {
         return gs_clamp(semiPlayRemain[semitone] * 0.25f, 0.f, 1.f);
     }
 
-private:
     void markSemi(int semitone, float dur) {
         if (semitone >= 0 && semitone < 12)
             semiPlayRemain[semitone] = std::max(semiPlayRemain[semitone], dur);

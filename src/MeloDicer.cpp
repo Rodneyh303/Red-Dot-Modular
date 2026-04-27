@@ -23,7 +23,7 @@ using namespace rack;
 Plugin* pluginInstance = nullptr;
 
 void MeloDicer::reseedXoroshiroFromFloat(rack::random::Xoroshiro128Plus& rng, float seedFloat) {
-    pe.seedRngFromFloat(rng, seedFloat);
+    engine.pe.seedRngFromFloat(rng, seedFloat);
 }
 
 MeloDicer::MeloDicer() {
@@ -109,66 +109,21 @@ MeloDicer::MeloDicer() {
     }
 
   void MeloDicer::initialize(){
-
-            // initialize basic edit state
         cv1Mode = 0;
         cv2Mode = 0;
         gate1Assign = 0;
         gate2Assign = 1;
         muteBehavior = 0;
-        // POWER MUTE (5-D): if muteBehavior==3, start muted after power-on/reset
-        // Applied after the rest of initialize() completes (see end of constructor)
-        noteVariationMask = 0b111;
-        ppqnSetting = 4;
-        modeSelect = 0;
         lastModeSelect = -1;
-        cachedLength = 16;
-        cachedOffset = 0;
 
+        engine.reset();
 
-
-        // PatternEngine owns all seed/RNG/mode state — reset it here
-        pe.reset();
-
-        // dice state
-        locked = false;
-        muted = false;
-
-        startStep = 0; endStep = 15;
-        stepIndex = -1;
         bpm = 120.f;
-
-        // Reset centralised clock engine
         clock.reset();
-
-        gs.reset();
         prevExtGate = false;
-
         currentPitchV = 0.f;
-
-        lastSemitone  = -1;
-        lastStepIndex = -1;
-
         melodySeedCached = false;
         rhythmSeedCached = false;
-
-        // semiPlayRemain cleared by gs.reset() above
-
-        //reset and run/gate state
-        resetArmed = false;
-        runGateActive = false;
-
-
-
-        // resetTrigHigh = false;
-        // resetBtnHigh = false;
-
-        // runGateBtnHigh = false;
-        // runGateTrigHigh = false;
-
-    //reseedRng();
-    //updateLights();
-        rebuildSemiCache_();  // populate active semitone list on init
   }
 
     // --- serialization ---
@@ -311,10 +266,10 @@ float MeloDicer::getLegatoParam()     { return clampv<float>(params[LEGATO_PARAM
 float MeloDicer::getRestParam()       { return clampv<float>(params[REST_PARAM].getValue()       + cv2Offsets[3], 0.f, 1.f); }
 
 // --- switch melody/rhythm mode (dice/realtime), caching/restoring state as needed ---    
-void MeloDicer::switchMelodyMode() { pe.switchMelodyMode(stepIndex, lastStepIndex); }
+void MeloDicer::switchMelodyMode() { engine.pe.switchMelodyMode(stepIndex, lastStepIndex); }
 
 // --- switch melody/rhythm mode (dice/realtime), caching/restoring state as needed ---
-void MeloDicer::switchRhythmMode() { pe.switchRhythmMode(stepIndex, lastStepIndex); }
+void MeloDicer::switchRhythmMode() { engine.pe.switchRhythmMode(stepIndex, lastStepIndex); }
 
 
 // pick a semitone (0..11) using weighted random, or -1 if no semitone is selected
@@ -322,7 +277,7 @@ void MeloDicer::switchRhythmMode() { pe.switchRhythmMode(stepIndex, lastStepInde
 // returns -1 if no semitone is selected (all weights zero)
 int MeloDicer::pickSemitoneWeighted() {
     float w[12]; for(int i=0;i<12;++i) w[i]=getSemitoneParam(i);
-    return pe.pickSemitone(w);
+    return engine.pe.pickSemitone(w);
 }
 
 // generate a pitch V in 1V/oct format, return semitone via out parameter
@@ -331,7 +286,7 @@ int MeloDicer::pickSemitoneWeighted() {
 // returns 0V and -1 semitone if no semitone is selected
 // (should be rare, only if all semitone weights are zero)
     float MeloDicer::genPitchV(int& outSemitone) {
-        return pe.genPitch(outSemitone, makePatternInput());
+        return engine.pe.genPitch(outSemitone, makePatternInput());
     }
 
     // apply variation to a base note length index (0..8)
@@ -359,214 +314,13 @@ int MeloDicer::pickSemitoneWeighted() {
     // if no allowed note lengths in range, returns baseIdx unchanged
     // uses rhythm RNG
 
-    int MeloDicer::varyNoteIndex(int baseIdx) { return pe.varyNoteIndex(baseIdx, makePatternInput()); }
-
-// --- trigger a note of given note length index (0..8) ---
-// - nvIdx: index into NOTEVALS[] for length
-// - tie: whether 'tie' was drawn (extend if same pitch / tieAcrossSteps behavior)
-// NOTE: Caller must set currentPitchV and lastSemitone BEFORE calling this.
-//       This helper only manages gateHeld / holdRemain / gatePulse / semiPlayRemain.
-void MeloDicer::triggerNoteLenIdx(int nvIdx, bool tie) {
-    // compute length in seconds for the chosen note value
-    float dur = noteLenSteps_(nvIdx);
-
-    // --- LED duration for the currently active semitone ---
-    int sem = lastSemitone; // caller is responsible for having set this
-    if (sem >= 0 && sem < 12)
-        semiPlayRemain[sem] = std::max(semiPlayRemain[sem], dur);
-
-    if (tie) {
-        // extend note, keep gate high (no retrigger)
-        gateHeld = true;
-        holdRemain += dur;
-    } else {
-        // retrigger: short pulse kicks envelopes, holdRemain controls gate duration
-        gateHeld = false;
-        holdRemain = dur;
-        gatePulse.trigger(1e-3f);   // 1ms retrigger pulse — not dur
-        gateHeld = true;
-    }
-}
-
-
-
-
-
-// Shared helper: handle a note OR a rest for a step
-// - pitchV: 1V/oct pitch value to use for CV when note is played
-// - semitone: 0..11 semitone index (or -1 if none)
-// - nvIdx: index into NOTEVALS[] for length
-// - doRest: true => rest for this step
-// - tie: whether 'tie' was drawn (extend if same pitch / tieAcrossSteps behavior)
-// - legato: when true -> force gate held (LEGATO MAX behaviour)
-// NOTE: This helper updates gateHeld / holdRemain / gatePulse / semiPlayRemain / currentPitchV.
-void MeloDicer::triggerNoteOrRest_(float pitchV, int semitone, int nvIdx, bool doRest, bool tie, bool legato) {
-    // Compute actual duration in seconds for this note length
-    float dur = noteLenSteps_(nvIdx);
-
-    // If legato() is "force gate always on" (e.g. knob max),
-    // behave as sustained: set gateHeld and update pitch
-    if (legato) {
-        // Always hold gate and change pitch (slide) to new pitch
-        currentPitchV = pitchV;
-        gateHeld = true;
-        // show LED duration too (use dur to visualize)
-        if (semitone >= 0 && semitone < 12)
-            semiPlayRemain[semitone] = std::max(semiPlayRemain[semitone], dur);
-        // do not trigger gatePulse (no retrigger)
-        return;
-    }
-
-    // Rest: let current note ring to natural end. Tie always extends (tieAcrossSteps removed).
-    if (doRest) {
-        if (tie && gateHeld)
-            holdRemain += dur;
-        return;
-    }
-
-    // Note case (not a rest)
-    // Update pitch: if first note or not tying to previous pitch, update currentPitchV
-    // We keep the behaviour: pitch changes even if gateHeld (legato/tie decide gate retrigger vs keep)
-    bool sameAsLast = (semitone == lastSemitone);
-
-    // If tie requested and gate is already held:
-    // - If tieAcrossSteps == true: extend holdRemain by dur (no gate retrigger)
-    // - If tieAcrossSteps == false: only tie if the note length aligns with step boundaries;
-    //   that check is done by caller using nvIdx logic (we assume caller computed 'tie' correctly).
-    if (tie && gateHeld) {
-        // If tying to same pitch, don't retrigger; just extend
-        if (sameAsLast) {
-            // keep currentPitchV unchanged (tie between same pitch)
-            holdRemain += dur;
-            // light LED duration for visibility
-            if (semitone >= 0 && semitone < 12)
-                semiPlayRemain[semitone] = std::max(semiPlayRemain[semitone], dur);
-            return;
-        } else {
-            // Different semitone: legato slide — pitch changes, no retrigger
-            currentPitchV = pitchV;
-            holdRemain += dur;
-            if (semitone >= 0 && semitone < 12)
-                semiPlayRemain[semitone] = std::max(semiPlayRemain[semitone], dur);
-            return;
-        }
-    }
-
-    // Normal retrigger (no tie/legato preventing retrigger)
-    currentPitchV = pitchV;
-    // Trigger gatePulse for a short envelope retrigger and set holdRemain to full dur
-    // Use a very short gatePulse to ensure envelope re-triggers (enough for most VCV modules)
-    const float trigPulse = 0.001f;
-    gatePulse.trigger(trigPulse);
-    gateHeld = true;
-    holdRemain = dur;
-
-    // Light semitone ring for duration
-    if (semitone >= 0 && semitone < 12) {
-        semiPlayRemain[semitone] = std::max(semiPlayRemain[semitone], dur);
-    }
-}
-
-// Convenience wrapper to handle rest-only based on nvIdx and tie flag
-// Updates gateHeld and holdRemain accordingly
-// - nvIdx: index into NOTEVALS[] for length
-// - tie: whether 'tie' was drawn (extend if tieAcrossSteps behavior)
-// NOTE: This helper assumes the caller has already handled muting/locking logic
-void MeloDicer::triggerRestLenIdx_(int nvIdx, bool tie) {
-    float dur = noteLenSteps_(nvIdx);
-    if (tie && gateHeld)
-        holdRemain += dur;
-    else { gateHeld = false; holdRemain = 0.f; }
-}
-
-
-
-//=====================================================
-// Compute note length in seconds
-// Duration in clock-steps for a note length index.
-// One step = one 1/16 note = holdRemain unit.
-// A whole note = 16 steps, quarter = 4, eighth = 2, thirty-second = 0.5.
-// BPM-independent: no clock measurement needed.
-float MeloDicer::noteLenSteps_(int nvIdx) {
-    return std::max(0.5f, MeloDicer::NOTEVALS[nvIdx].fraction * 16.f);
-}
-
-
+    int MeloDicer::varyNoteIndex(int baseIdx) { return engine.pe.varyNoteIndex(baseIdx, makePatternInput()); }
 
 // Convert semitone (0..11) to volts (1V/oct)
 // 12 semitones per octave
 float MeloDicer::semitoneToVolts(int semitone) {
     return semitone / 12.f;
 }
-
-//handle a step event: note/rest decision, legato, tie, etc
-// updates gateHeld, holdRemain, gatePulse, currentPitchV
-// - semitone: 0..11 pitch index for note to play
-// - noteLenIdx: index into NOTEVALS[] for length
-// - restProb: probability of rest for this step (0..1)
-// - legatoProb: probability of legato for this step (0..1)
-// - allowTieAcrossSteps: if true, allow tie to extend across steps (if tie drawn)
-// - bpm: current BPM for note length calculation
-// NOTE: This helper assumes the caller has already handled muting/locking logic
-// and that semitone is valid (0..11)
-// It also assumes the caller has handled the logic of whether a tie is requested
-// and whether it is legal (same pitch or tieAcrossSteps).
-// This helper only decides between note/rest/legato and updates the state accordingly.
-// It does NOT handle the logic of whether a tie is legal or not; that is up to the caller.
-// It does NOT handle the logic of whether a tie is requested or not; that is up to the caller.
-// It does NOT handle the logic of whether the step is in the active window; that is up to the caller.
-void MeloDicer::triggerStepEvent_(
-    int semitone,
-    int noteLenIdx,
-    float restProb,
-    float legatoProb,
-    bool allowTieAcrossSteps,
-    float bpm)
-{
-    // Draw rest first; only draw legato if the step is NOT a rest.
-    // This prevents the legato RNG call from shifting when rest prob is high.
-    bool doRest = unitRandomRhythm() < restProb;
-    if (doRest) {
-        // Let current note ring to natural end rather than abruptly cutting gate
-        // (holdRemain counts down on its own — no need to zero it here)
-        return;
-    }
-
-    bool doLegato = unitRandomRhythm() < legatoProb;
-
-    if (doLegato && allowTieAcrossSteps) {
-        // Legato: pitch changes, gate stays high (no retrigger), duration extends
-        currentPitchV = semitoneToVolts(semitone);
-        if (gateHeld) {
-            holdRemain += noteLenSteps_(noteLenIdx);
-        } else {
-            // First note in a legato run — still need to open the gate
-            gatePulse.trigger(1e-3f);
-            holdRemain = noteLenSteps_(noteLenIdx);
-            gateHeld = true;
-        }
-        return;
-    }
-
-    // if (doTie && allowTieAcrossSteps) {
-    //     if (gateHeld) {
-    //         holdRemain += noteLenSec_(noteLenIdx, bpm);
-    //         return;
-    //     }
-    // }
-
-    // Normal note
-    // Retrigger gate
-    gatePulse.trigger(1e-3f);
-    holdRemain = noteLenSteps_(noteLenIdx);
-    gateHeld = true;
-    currentPitchV = semitoneToVolts(semitone);
-}
-
-
-
-
-
 
     // regenerate rhythm pattern (uses rhythmRng) — skipped when locked
     // Build a PatternInput snapshot from current params/CV state
@@ -583,100 +337,30 @@ void MeloDicer::triggerStepEvent_(
         return in;
     }
 
-    void MeloDicer::redrawRhythmPattern() { pe.redrawRhythm(makePatternInput()); }
-    void MeloDicer::redrawMelodyPattern() { pe.redrawMelody(makePatternInput()); }
+    void MeloDicer::redrawRhythmPattern() { engine.pe.redrawRhythm(makePatternInput()); }
+    void  MeloDicer::redrawMelodyPattern() { engine.pe.redrawMelody(makePatternInput()); }
 
-     // quantizer helper (modes C/D) – snap vIn to nearest active semitone, preserving octave
-     //ignore CV/octave transposition, just work in 0..1 range
-     //ignores semitone CV inputs
-    // Quantize vIn to the nearest active semitone, weighted by fader height.
-    // Manual: "The higher a fader is raised, the wider its quantization range."
-    // Implementation: each active semitone has an attraction radius proportional to its fader value.
-    // The input snaps to whichever active semitone has the highest score (value / distance).
-    // Rebuild active semitone cache when faders change.
-    // Called from process() only when a fader value differs from faderCache.
     void MeloDicer::rebuildSemiCache_() {
-        activeSemiCount = 0;
-        for (int s = 0; s < 12; ++s) {
-            float w = clampv<float>(params[SEMI0_PARAM + s].getValue(), 0.f, 1.f);
-            faderCache[s] = w;
-            if (w > 0.f) {
-                activeSemiList[activeSemiCount]   = s;
-                activeSemiWeight[activeSemiCount] = w;
-                ++activeSemiCount;
-            }
-        }
+        float weights[12];
+        for (int i = 0; i < 12; ++i) weights[i] = params[SEMI0_PARAM + i].getValue();
+        engine.rebuildScaleCache(weights);
     }
 
-    float MeloDicer::quantizeToScale(float vIn) {
-        // Fast path: search only active semitones (cached list, typically 5-7).
-        // Searches ±1 octave around the input octave — same logic as before,
-        // just iterating activeSemiCount candidates instead of always 36.
-        int   octave    = (int)std::floor(vIn);
-        float bestScore = -1.f;
-        float bestV     = vIn;
-
-        for (int ai = 0; ai < activeSemiCount; ++ai) {
-            int   s       = activeSemiList[ai];
-            float w       = activeSemiWeight[ai];
-            float radius  = w * (1.f / 12.f);
-            for (int o = octave - 1; o <= octave + 1; ++o) {
-                float cand = o + s / 12.f;
-                float dist = std::fabs(vIn - cand);
-                if (dist <= radius + 1e-4f) {
-                    float score = w / (dist + 1e-4f);
-                    if (score > bestScore) { bestScore = score; bestV = cand; }
-                }
-            }
-        }
-        // Fallback: nearest active semitone in ±1 octave
-        if (bestScore < 0.f) {
-            float minDist = 1e9f;
-            for (int ai = 0; ai < activeSemiCount; ++ai) {
-                int s = activeSemiList[ai];
-                for (int o = octave - 1; o <= octave + 1; ++o) {
-                    float cand = o + s / 12.f;
-                    float dist = std::fabs(vIn - cand);
-                    if (dist < minDist) { minDist = dist; bestV = cand; }
-                }
-            }
-        }
-        return clampv<float>(bestV, 0.f, 5.f);
-    }
-
-    // helper: return true if step idx is in active window (handles wrap if start > end)
-    bool MeloDicer::stepInWindow(int idx) {
-        if (startStep <= endStep) return (idx >= startStep && idx <= endStep);
-        // wrapped window: e.g., start=12, end=3
-        return (idx >= startStep || idx <= endStep);
-    }
+    float MeloDicer::quantizeToScale(float vIn) { return engine.quantize(vIn); }
 
     // handle manual restart: place index so next increment lands on startStep, optionally redraw realtime patterns
     // If there are pending seeds and resetImmediate==true, apply them immediately (for RESET triggered reseed)
     void MeloDicer::handleRestart(bool manual, bool resetImmediate) {
-        // Step position and gate always reset — RESET is a transport control,
-        // not a pattern control, so it fires regardless of lock state.
         stepIndex = (startStep - 1 + 16) % 16;
-        gs.reset();          // clears gate, hold, pitch, pulse, semiPlayRemain
+        engine.gs.reset();          // clears gate, hold, pitch, pulse, semiPlayRemain
         prevExtGate = false;
 
-        // Pattern redraw and seed application only happen when unlocked.
-        // While locked: patterns stay frozen, pending seeds stay queued.
         if (!locked) {
             redrawRhythmPattern();
             redrawMelodyPattern();
 
             if (resetImmediate) {
-                if (rhythmSeedPending) {
-                    rhythmSeedFloat = rhythmSeedPendingFloat;
-                    reseedXoroshiroFromFloat(rhythmRng, rhythmSeedFloat);
-                    rhythmSeedPending = false;
-                }
-                if (melodySeedPending) {
-                    melodySeedFloat = melodySeedPendingFloat;
-                    reseedXoroshiroFromFloat(melodyRng, melodySeedFloat);
-                    melodySeedPending = false;
-                }
+                engine.pe.applyPendingSeedsAndRedraw(makePatternInput());
             }
         }
         resetArmed = false;
@@ -704,7 +388,7 @@ void MeloDicer::triggerStepEvent_(
 // Called at phrase boundary (stepIndex wraps from endStep back to startStep).
 // Seeds are applied FIRST so the subsequent redraw uses the new RNG state.
 void MeloDicer::onPhraseBoundary_() {
-    pe.applyPendingSeedsAndRedraw(makePatternInput());
+    engine.pe.applyPendingSeedsAndRedraw(makePatternInput());
 }
 
 // ---------------- Helper: reset hook -----------------------------------------
@@ -755,27 +439,8 @@ void MeloDicer::onReset() {
 // Returns note length index: NOTE VALUE sets the base, VARIATION randomly biases it.
 // NOTEVALS.allowedPPQN bitmask: 1=PPQN1, 2=PPQN4, 4=PPQN24
 // ppqnSetting raw values: 1, 4, 24 — must be converted to bitmask before use.
-int MeloDicer::getNoteLenIdx_() {
-    int baseIdx = clampv<int>((int)std::round(getNoteValueParam()), 0, 7);
-    // Convert ppqnSetting (1/4/24) to allowedPPQN bitmask (1/2/4)
-    int ppqnMask = (ppqnSetting == 1) ? 1 : (ppqnSetting == 4) ? 2 : 4;
-    baseIdx = computeNoteLengthIdx(baseIdx, ppqnMask);
-    return varyNoteIndex(baseIdx);
-}
-
-// Clamp requestedIdx to the highest NOTEVALS index valid for ppqnMask.
-// ppqnMask: bitmask — 1=PPQN1, 2=PPQN4, 4=PPQN24 (NOT the raw ppqnSetting value).
-int MeloDicer::computeNoteLengthIdx(int requestedIdx, int ppqnMask) {
-    int idx = requestedIdx;
-    if (idx < 0) idx = 0;
-    if (idx > 7) idx = 7;
-
-    // mask check: if note not valid for this ppqn, walk downward
-    while (idx > 0 && !(NOTEVALS[idx].allowedPPQN & ppqnMask)) {
-        idx--;
-    }
-    return idx;
-}
+int MeloDicer::getNoteLenIdx_() { return engine.getNoteLenIdx(getNoteValueParam(), makePatternInput()); }
+int MeloDicer::computeNoteLengthIdx(int requestedIdx, int ppqnMask) { return engine.computeNoteLengthIdx(requestedIdx, ppqnMask); }
 
 
 
@@ -786,13 +451,13 @@ float MeloDicer::quantizePitch(int semitoneIndex, int octaveOffset) {
 
 // ---------------- Helper: update step LEDs -------------------------------
 // activeSemitone: 0..11 for currently playing semitone, or -1 if
-void MeloDicer::updateStepLEDs_(int activeSemitone, float sampleTime)
+void MeloDicer::updateStepLEDs_(float sampleTime)
 {
     // Green channel (ch0) is managed by VCVLightSlider widget automatically.
     // We only drive the red channel (ch1) = "note playing" flash.
     // Always update red — semiPlayRemain decays each step so values always change.
     for (int i = 0; i < 12; i++) {
-        float redLevel = gs.semiLedBrightness(i);
+        float redLevel = engine.gs.semiLedBrightness(i);
         lights[SEMI_LED_START + 2*i + 1].setBrightness(redLevel);
     }
 }
@@ -862,34 +527,10 @@ void MeloDicer::process(const ProcessArgs& args) {
     bool gate1Edge   = false;  // rising edge at GATE1 (Mode B + gate assignments)
     bool quarterEdge = false;  // quarter-note edge consumed by Mode C
 
-    // --- Pattern length & offset knobs: compute active window (1..16 steps, offset 0..15)
-    {
-        // Read knobs (round to integer). Length must be 1..16
-        int length = clampv<int>((int)std::round(params[PATTERN_LENGTH_PARAM].getValue()), 1, 16);
-        int offset = (int)std::round(params[PATTERN_OFFSET_PARAM].getValue()) & 0x0F;
-
-        // CV inputs modulate length and offset (0..10V → full range)
-        if (inputs[LENGTH_INPUT].isConnected()) {
-            float cv = clampv<float>(inputs[LENGTH_INPUT].getVoltage(), 0.f, 10.f);
-            length = clampv<int>((int)std::round(cv / 10.f * 15.f) + 1, 1, 16);
-        }
-        if (inputs[OFFFSET_INPUT].isConnected()) {
-            float cv = clampv<float>(inputs[OFFFSET_INPUT].getVoltage(), 0.f, 10.f);
-            offset = ((int)std::round(cv / 10.f * 15.f)) & 0x0F;
-        }
-
-        // Map knobs to start/end step indices (0..15). End wraps correctly.
-        startStep = offset;
-        endStep = (offset + length - 1) & 0x0F;
-
-
-        // If the current playhead is outside the new window, move it so that the next
-        // increment will land on the window start. This matches handleRestart() behavior.
-        // (If you want immediate jump to the first step, set stepIndex = startStep instead.)
-        if (!stepInWindow(stepIndex)) {
-            stepIndex = (startStep - 1 + 16) % 16;
-        }
-    }
+    engine.updateWindow(
+        params[PATTERN_LENGTH_PARAM].getValue(), inputs[LENGTH_INPUT].getVoltage(), inputs[LENGTH_INPUT].isConnected(),
+        params[PATTERN_OFFSET_PARAM].getValue(), inputs[OFFFSET_INPUT].getVoltage(), inputs[OFFFSET_INPUT].isConnected()
+    );
 
 
     // ── Distribute clock edges to each mode ──────────────────────────────────
@@ -1041,10 +682,9 @@ void MeloDicer::process(const ProcessArgs& args) {
                 outputs[CV_OUTPUT].setVoltage(currentPitchV);
             } break;
         }
-    } else if (modeSelect <= 1) {
-        // In A/B we continuously drive CV out with currentPitchV when no CV1 override
-        outputs[CV_OUTPUT].setVoltage(currentPitchV);
-    }
+} else {
+    outputs[CV_OUTPUT].setVoltage(currentPitchV);
+}
 
     // CV IN 2: 0..5V per manual, ADDED to knob as a temporary offset.
     // We store the offset separately so the knob value is never permanently drifted.
@@ -1064,20 +704,14 @@ void MeloDicer::process(const ProcessArgs& args) {
     // Decay semitone LED timers every sample so LEDs extinguish after the note ends
     // semiPlayRemain decay now handled by gs.tick() on each step edge
 
-    // --- Gate output shaping (Modes A and B only) ---
-    // Modes C and D write GATE_OUTPUT directly inside their own handlers.
-    if (modeSelect <= 1) {
-        // GateState handles hold countdown + semiPlayRemain decay
-        if (stepEdge || gate1Edge) gs.tick();
+    // --- Gate output shaping (All modes) ---
+    if (stepEdge || gate1Edge || quarterEdge) engine.gs.tick();
 
-        // Gate output: gs.process() ticks the pulse and returns raw gate voltage
-        float gateV = gs.process(args.sampleTime);
-        if (muteBehavior == 2) gateV = (gateV > 1.f) ? 0.f : 10.f;
-        if (muted)             gateV = (muteBehavior == 2) ? 10.f : 0.f;
-        outputs[GATE_OUTPUT].setVoltage(gateV);
-    } else {
-        gs.tickPulseOnly(args.sampleTime);  // keep pulse timer consistent in C/D
-    }
+    // Gate output: engine.gs.process() ticks the pulse and returns raw gate voltage
+    float gateV = engine.gs.process(args.sampleTime);
+    if (muteBehavior == 2) gateV = (gateV > 1.f) ? 0.f : 10.f;
+    if (muted)             gateV = (muteBehavior == 2) ? 10.f : 0.f;
+    outputs[GATE_OUTPUT].setVoltage(gateV);
 
 
     // DICE light policy: bright when enabled, also bright when a seed is armed
@@ -1096,171 +730,6 @@ void MeloDicer::process(const ProcessArgs& args) {
     outputs[SEED_OUTPUT].setVoltage(outSeed);
 }
 
-// ---------------- Helper: PPQN-aware step trigger ----------------
-// Returns true if the current stepIndex should trigger a note event,
-// considering the PPQN setting and the pattern offset.
-// stepIndex: current step index (0..15)
-// startStep: start of active window (0..15)
-// offset: PATTERN_OFFSET_PARAM value (0..15)
-// ppqn: current PPQN setting (1, 4, or 24)
-// For PPQN=1, only trigger on main 4 beats relative to startStep + offset
-// For PPQN>1, trigger every tick (caller can use ppqnCounter if needed
-//  to further filter)
-// This matches the original MeloDicer behavior.
-inline bool shouldTriggerStep(int stepIndex, int startStep, int offset, int ppqn) {
-    if (ppqn <= 1) {
-        // Only trigger on main 4 beats relative to startStep + offset
-        int relative = (stepIndex - startStep + offset + 16) % 16;
-        return (relative & 0x03) == 0;
-    }
-    return true; // Higher PPQN triggers every tick (can use ppqnCounter if needed)
-}
-
-// --- Helper: advance the playhead (increment-first, wrap to window) ----
-// If playhead hasn't started (stepIndex == -1), initialize to startStep-1 so that
-// the first increment lands on startStep.
-// After incrementing, if the new stepIndex is outside the active window, wrap to startStep.
-// If the window is very small (e.g. length=1), this ensures we stay within the window.
-// This matches the behavior of handleRestart() and ensures consistent stepping.
-void MeloDicer::advanceStepIndexOnEdge_() {
-    if (stepIndex == -1) stepIndex = (startStep - 1 + 16) % 16;
-    stepIndex = (stepIndex + 1) & 0x0F;
-    if (!stepInWindow(stepIndex)) stepIndex = startStep;
-    for (int s = 0; s < 16 && !stepInWindow(stepIndex); ++s)
-        stepIndex = (stepIndex + 1) & 0x0F;
-}
-
-// --- Helper: compute offsetStep from stepIndex + cachedOffset ---------------
-int MeloDicer::computeOffsetStep_() {
-    if (stepIndex == -1) return 0;
-    // cachedOffset is kept current each sample — avoids redundant getValue()+round()
-    return (stepIndex - startStep + cachedOffset + 16) % 16;
-}
-
-// Thin translator: offsetStep -> semitone + nvIdx + probabilites + tieAcrossSteps + bpm
-// Uses melodySemitone[] array for semitone lookup
-// Uses getNoteLenIdx_() for note length index lookup   
-// Uses params[REST_PARAM] and params[LEGATO_PARAM] for probabilities
-// Uses tieAcrossSteps and bpm from global state
-// Calls shared triggerStepEvent_() helper
-// Assumes caller has handled mute logic (no output, but still advances and updates LEDs)
-// Assumes caller has handled first note logic when starting from reset.
-// Assumes caller has handled step windowing (i.e. does not call if step not in window)
-// Assumes caller has handled mode logic (i.e. only called in Mode A/B)
-// Assumes caller has handled any other global logic (e.g. reset, run gate, etc.)
-// Assumes caller has handled any other global state (e.g. locked, firstNoteB, etc.)
-// Assumes caller has handled any other global parameters (e.g. ppqnSetting, pattern length/offset, etc.)
-// Assumes caller has handled any other global state (e.g. rhythmMode, melodyMode, etc.)
-// Assumes caller has handled any other global parameters (e.g. rhythmMode, melodyMode, etc.)
-// Assumes caller has handled any other global state (e.g. rhythmSeedPending, melodySeedPending, etc.)
-// Assumes caller has handled any other global parameters (e.g. rhythmSeedPending, melodySeedPending, etc.)
-
-void MeloDicer::triggerStepEventForOffsetStep_(int offsetStep) {
-    // ── The secret sauce ──────────────────────────────────────────────────────
-    // MeloDicer works in a fixed 16-step phrase but note durations create
-    // sub-phrases. A quarter note (4 steps) should HOLD across steps 2,3,4 —
-    // not fire a new note decision on each step. This is what makes it feel
-    // like a human playing phrases rather than a step sequencer toggling gates.
-    //
-    // State at entry:
-    //   holdRemain > 1.0  →  we are INSIDE a multi-step note or rest.
-    //                        Only probabilistic extension is allowed — no new
-    //                        attacks, no new rests. This preserves the note body.
-    //   holdRemain ≤ 1.0  →  note/rest has expired (or was a 1/16).
-    //                        Fire the full new note/rest/legato decision.
-    // ─────────────────────────────────────────────────────────────────────────
-
-    int nvIdx        = getNoteLenIdx_();
-    int sem          = melodySemitone[offsetStep];
-    float pitchV     = melodyPitchV[offsetStep];
-    float restProb   = getRestParam();
-    float legatoProb = getLegatoParam();
-    float dur        = noteLenSteps_(nvIdx);
-
-    // ── Max-legato shortcut: gate always on ──────────────────────────────────
-    if (legatoProb >= 0.999f) {
-        currentPitchV = pitchV;
-        lastSemitone  = sem;
-        gateHeld      = true;
-        holdRemain    = dur;
-        if (sem >= 0 && sem < 12)
-            semiPlayRemain[sem] = std::max(semiPlayRemain[sem], dur);
-        return;
-    }
-
-    // ── Mid-note: inside a multi-step note ───────────────────────────────────
-    // holdRemain > 1 means this step is the 2nd, 3rd, 4th... step of a note.
-    // Probabilistically extend via legato; otherwise let it ring naturally.
-    // Rests are also multi-step: holdRemain > 1 with gateHeld=false = held rest.
-    if (holdRemain >= 1.f) {
-        if (gateHeld) {
-            // Mid-note: maybe extend the tie (legato probability reused)
-            if (unitRandomRhythm() < legatoProb) {
-                holdRemain += dur;
-                if (sem >= 0 && sem < 12)
-                    semiPlayRemain[sem] = std::max(semiPlayRemain[sem], holdRemain);
-            }
-            // else: let holdRemain count down — note ends at its nominal boundary
-        } else {
-            // Mid-rest: rest spans multiple steps — just let holdRemain count down.
-            // No extension: rest duration is fixed at the boundary decision.
-            // (Extension via restProb caused infinite lock-in at restProb=1.0)
-        }
-        return;  // never fire new attack or retrigger while mid-note/mid-rest
-    }
-
-    // ── Note boundary: holdRemain ≤ 1 — full new decision ───────────────────
-
-    // Draw rest first (preserves RNG independence between rest and legato draws)
-    bool doRest = unitRandomRhythm() < restProb;
-    if (doRest) {
-        // Begin a new rest spanning `dur` steps.
-        // Gate closes naturally — holdRemain will count down through the rest.
-        // We set holdRemain to dur here so mid-rest logic above fires correctly.
-        gateHeld   = false;
-        holdRemain = dur;
-        return;
-    }
-
-    // Legato: pitch slides, gate extends, no retrigger
-    bool doLegato = unitRandomRhythm() < legatoProb;
-
-    // Tie: same semitone only, gate extends, no pitch change
-    bool doTie = (!doLegato) && (sem == lastSemitone) && gateHeld
-                 && (unitRandomRhythm() < legatoProb);
-
-    if (doLegato) {
-        currentPitchV = pitchV;
-        lastSemitone  = sem;
-        if (gateHeld) {
-            holdRemain += dur;
-        } else {
-            gatePulse.trigger(1e-3f);
-            holdRemain = dur;
-            gateHeld   = true;
-        }
-        if (sem >= 0 && sem < 12)
-            semiPlayRemain[sem] = std::max(semiPlayRemain[sem], dur);
-        return;
-    }
-
-    if (doTie) {
-        holdRemain += dur;
-        if (sem >= 0 && sem < 12)
-            semiPlayRemain[sem] = std::max(semiPlayRemain[sem], dur);
-        return;
-    }
-
-    // Normal note: retrigger gate, set new pitch and duration
-    currentPitchV = pitchV;
-    lastSemitone  = sem;
-    gatePulse.trigger(1e-3f);
-    gateHeld      = true;
-    holdRemain    = dur;
-    if (sem >= 0 && sem < 12)
-        semiPlayRemain[sem] = std::max(semiPlayRemain[sem], dur);
-}
-
 // ---------------- Mode A: internal clock with offset -------------------
 // stepEdge: true on 1/16 tick (internal or CLK input)
 //  Also handles LED updates and semitone LEDs
@@ -1272,13 +741,8 @@ void MeloDicer::handleModeA_(const ProcessArgs& args, bool stepEdge) {
     if (!stepEdge || muted)
         return;
 
-    int prevStep = stepIndex;
+    bool wrappedRestart = engine.advancePlayhead();
 
-    // advance & windowing
-    advanceStepIndexOnEdge_();
-
-    // Detect wrap to startStep (phrase boundary)
-    bool wrappedRestart = (prevStep != -1 && stepIndex == startStep);
     if (wrappedRestart) {
         // Sample new seeds for realtime modes, then let onPhraseBoundary_()
         // apply any pending seeds (Dice-armed or realtime) before redrawing.
@@ -1287,25 +751,15 @@ void MeloDicer::handleModeA_(const ProcessArgs& args, bool stepEdge) {
         onPhraseBoundary_();
     }
 
-    // compute offset and fire the shared step event
-    int offsetStep = computeOffsetStep_();
-    triggerStepEventForOffsetStep_(offsetStep);
+    engine.executeStep(getRestParam(), getLegatoParam(), getNoteLenIdx_());
 
-    // update LEDs
-    //updateStepLEDs_(offsetStep);
-        // ---------------- Step LEDs ----------------
-    if (stepIndex != lastStepIndex) {
-        for (int i = 0; i < 16; ++i) {
-            float baseActive = stepInWindow(i) ? 0.25f : 0.0f;
-            float current = (i == offsetStep) ? 1.f : 0.f;
-            lights[STEP_LIGHTS_START + i].setBrightness(std::max(baseActive, current));
-        }
-        lastStepIndex = stepIndex;
+    for (int i = 0; i < 16; ++i) {
+        lights[STEP_LIGHTS_START + i].setBrightness(engine.getStepLightBrightness(i));
     }
+    lastStepIndex = stepIndex;
 
     // updateStepLEDs_ handles red flash channel; slider widget handles green.
-    updateStepLEDs_(offsetStep, args.sampleTime);
-    lastSemitone = melodySemitone[offsetStep];
+    updateStepLEDs_(args.sampleTime);
 }
 
 // ---------------- Mode B: external gate with offset -------------------
@@ -1320,15 +774,13 @@ void MeloDicer::handleModeB_(const ProcessArgs& args, bool gate1Edge//, bool dic
         return;
 
     bool extGateHigh = inputs[GATE1_INPUT].getVoltage() >= 1.f;
-    int prevStep = stepIndex;
 
    // if (gate1Edge || diceTrig)
         if (gate1Edge)
      {
         // Advance step like Mode A
-        advanceStepIndexOnEdge_();
+        bool wrappedRestart = engine.advancePlayhead();
 
-        bool wrappedRestart = (prevStep != -1 && stepIndex == startStep);
         if (wrappedRestart) {
             // Sample new seeds for realtime modes, then let onPhraseBoundary_()
             // apply any pending seeds (Dice-armed or realtime) before redrawing.
@@ -1337,32 +789,23 @@ void MeloDicer::handleModeB_(const ProcessArgs& args, bool gate1Edge//, bool dic
             onPhraseBoundary_();
         }
 
-        int offsetStep = computeOffsetStep_();
-        triggerStepEventForOffsetStep_(offsetStep);
-        updateStepLEDs_(offsetStep, args.sampleTime);
+        engine.executeStep(getRestParam(), getLegatoParam(), getNoteLenIdx_());
     }
     else if (extGateHigh && !prevExtGate) {
         // If no step has been selected yet, advance to startStep
         if (stepIndex == -1) {
-            stepIndex = (startStep - 1 + 16) % 16;
-            advanceStepIndexOnEdge_();
+            engine.advancePlayhead();
         }
-        int offsetStep = computeOffsetStep_();
-        triggerStepEventForOffsetStep_(offsetStep);
-        updateStepLEDs_(offsetStep, args.sampleTime);
+        engine.executeStep(getRestParam(), getLegatoParam(), getNoteLenIdx_());
     }
 
-    // Visual semitone LEDs
-    int offsetStep = (stepIndex == -1) ? 0 : computeOffsetStep_();
-    int sem = melodySemitone[offsetStep];
-    // for (int i = 0; i < 12; ++i) {
-    //     float prob = clampv<float>(params[SEMI0_PARAM + i].getValue(), 0.f, 1.f);
-    //     bool isLast = (i == sem) && gateHeld;
-    //     lights[SEMI_LED_START + i * 2 + 0].setBrightness(isLast ? 0.f : prob);
-    //     lights[SEMI_LED_START + i * 2 + 1].setBrightness(semiPlayRemain[i]);
-    // }
+    for (int i = 0; i < 16; ++i) {
+        lights[STEP_LIGHTS_START + i].setBrightness(engine.getStepLightBrightness(i));
+    }
+    lastStepIndex = stepIndex;
 
-    lastSemitone = sem;
+    updateStepLEDs_(args.sampleTime);
+
     prevExtGate = extGateHigh;
 }
 
@@ -1376,15 +819,46 @@ void MeloDicer::handleModeB_(const ProcessArgs& args, bool gate1Edge//, bool dic
 // ---------------- Mode C: Quantizer 1 ---------------------------------------
 // quarterEdge: true on one-sample quarter-note pulse from ClockEngine
 // Latches and quantizes CV2 on each quarter-note edge; steps through pattern window.
+// void MeloDicer::handleModeC_(const ProcessArgs& args, bool quarterEdge) {
+//     float inCV = inputs[CV2_INPUT].isConnected() ? clampv<float>(inputs[CV2_INPUT].getVoltage(), 0.f, 5.f) : 0.f;
+//     engine.executeModeC(quarterEdge, inCV);
+
+//     for (int i = 0; i < 16; ++i) {
+//         lights[STEP_LIGHTS_START + i].setBrightness(engine.getStepLightBrightness(i));
+//     }
+//     lastStepIndex = stepIndex;
+//     updateStepLEDs_(args.sampleTime);
+// }
+
+
+// ---------------- Mode D: Quantizer 2 (second lane or alt flavor) -----------
+//  
+// void MeloDicer::handleModeD_(const ProcessArgs& args) {
+//     // Check gate high on GATE2_INPUT
+//     bool gateHigh = inputs[GATE2_INPUT].isConnected() && inputs[GATE2_INPUT].getVoltage() > 1.f;
+//     float inCV = inputs[CV2_INPUT].isConnected() ? clampv<float>(inputs[CV2_INPUT].getVoltage(), 0.f, 5.f) : 0.f;
+    
+//     engine.executeModeD(gateHigh, inCV);
+
+//     for (int i = 0; i < 16; ++i) {
+//         lights[STEP_LIGHTS_START + i].setBrightness(engine.getStepLightBrightness(i));
+//     }
+//     lastStepIndex = stepIndex;
+//     updateStepLEDs_(args.sampleTime);
+// }
+
+// ---------------- Mode C: Quantizer 1 ---------------------------------------
+// quarterEdge: true on one-sample quarter-note pulse from ClockEngine
+// Latches and quantizes CV2 on each quarter-note edge; steps through pattern window.
 void MeloDicer::handleModeC_(const ProcessArgs& args, bool quarterEdge) {
 
     // Step index advances on each quarter-note edge
     if (quarterEdge) {
         stepIndex = (stepIndex + 1) % 16;
-        if (!stepInWindow(stepIndex)) {
+        if (!engine.isStepInWindow(stepIndex)) {
             stepIndex = startStep;
         }
-        for (int s = 0; s < 16 && !stepInWindow(stepIndex); ++s) {
+        for (int s = 0; s < 16 && !engine.isStepInWindow(stepIndex); ++s) {
             stepIndex = (stepIndex + 1) % 16;
         }
     }
@@ -1403,7 +877,7 @@ void MeloDicer::handleModeC_(const ProcessArgs& args, bool quarterEdge) {
 
     // 6. LEDs
     for (int i = 0; i < 16; ++i) {
-        float baseActive = stepInWindow(i) ? 0.25f : 0.0f;
+        float baseActive = engine.isStepInWindow(i) ? 0.25f : 0.0f;
         float current = (i == ((stepIndex + 16) % 16)) ? 1.f : 0.f;
         lights[STEP_LIGHTS_START + i].setBrightness(std::max(baseActive, current));
     }
@@ -1439,7 +913,7 @@ void MeloDicer::handleModeD_(const ProcessArgs& args) {
 
         // 4. Step LEDs
         for (int i = 0; i < 16; ++i) {
-            float baseActive = stepInWindow(i) ? 0.25f : 0.0f;
+            float baseActive = engine.isStepInWindow(i) ? 0.25f : 0.0f;
             lights[STEP_LIGHTS_START + i].setBrightness(baseActive);
         }
 
@@ -1459,11 +933,6 @@ void MeloDicer::handleModeD_(const ProcessArgs& args) {
     }
 }
 
-typedef MeloDicer::NoteVal RDM_NoteVal;
-const RDM_NoteVal MeloDicer::NOTEVALS[8] = {
-    {1.0f, 1|2|4}, {0.5f, 1|2|4}, {0.25f, 1|2|4}, {0.125f, 2|4},
-    {0.0625f, 2|4}, {1.0f/6.0f, 4}, {1.0f/12.0f, 4}, {0.03125f, 4},
-};
 
 Model* modelMeloDicer = createModel<MeloDicer, MeloDicerWidget>("MeloDicer");
 

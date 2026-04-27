@@ -24,6 +24,7 @@
 #include "ClockEngine.hpp"
 #include "PatternEngine.hpp"
 #include "GateState.hpp"
+#include "SequencerEngine.hpp"
 
 #define MAX_UNIT64 18446744073709551615ULL
 
@@ -239,85 +240,73 @@ struct MeloDicer : Module {
     int gate1Assign = 0;
     int gate2Assign = 1;
     int muteBehavior = 0;
-    int noteVariationMask = 0b111;
-    int ppqnSetting = 4;
-    int modeSelect = 0;
     int lastModeSelect = -1;
     bool lightTheme = false;
-    int cachedLength = 16;
-    int cachedOffset = 0;
 
-    PatternEngine pe;
-    GateState gs;
+    SequencerEngine engine;
 
     // Convenience accessors
-    rack::random::Xoroshiro128Plus& rhythmRng = pe.rhythmRng;
-    rack::random::Xoroshiro128Plus& melodyRng = pe.melodyRng;
-    float& holdRemain = gs.holdRemain;
-    bool& gateHeld = gs.gateHeld;
-    float& currentPitchV = gs.currentPitchV;
-    int& lastSemitone = gs.lastSemitone;
-    float (&semiPlayRemain)[12] = gs.semiPlayRemain;
+    rack::random::Xoroshiro128Plus& rhythmRng = engine.pe.rhythmRng;
+    rack::random::Xoroshiro128Plus& melodyRng = engine.pe.melodyRng;
+    float& holdRemain = engine.gs.holdRemain;
+    bool& gateHeld = engine.gs.gateHeld;
+    float& currentPitchV = engine.gs.currentPitchV;
+    int& lastSemitone = engine.gs.lastSemitone;
+    float (&semiPlayRemain)[12] = engine.gs.semiPlayRemain;
 
-    float& rhythmSeedFloat = pe.rhythmSeedFloat;
-    float& melodySeedFloat = pe.melodySeedFloat;
-    bool& rhythmSeedPending = pe.rhythmSeedPending;
-    float& rhythmSeedPendingFloat = pe.rhythmSeedPendingFloat;
-    bool& melodySeedPending = pe.melodySeedPending;
-    float& melodySeedPendingFloat = pe.melodySeedPendingFloat;
+    float& rhythmSeedFloat = engine.pe.rhythmSeedFloat;
+    float& melodySeedFloat = engine.pe.melodySeedFloat;
+    bool& rhythmSeedPending = engine.pe.rhythmSeedPending;
+    float& rhythmSeedPendingFloat = engine.pe.rhythmSeedPendingFloat;
+    bool& melodySeedPending = engine.pe.melodySeedPending;
+    float& melodySeedPendingFloat = engine.pe.melodySeedPendingFloat;
 
-    inline float unitRandomRhythm() { return pe.unitRhythm(); }
-    inline float unitRandomMelody() { return pe.unitMelody(); }
+    inline float unitRandomRhythm() { return engine.pe.unitRhythm(); }
+    inline float unitRandomMelody() { return engine.pe.unitMelody(); }
 
-    bool locked = false;
-    bool muted = false;
-    bool runGateActive = false;
-    bool resetArmed = false;
+    bool& locked = engine.locked;
+    bool& muted = engine.muted;
+    bool& runGateActive = engine.runGateActive;
+    bool& resetArmed = engine.resetArmed;
 
-    int& rhythmMode = pe.rhythmMode;
-    int& melodyMode = pe.melodyMode;
-    int startStep = 0;
-    int endStep = 15;
-    int stepIndex = -1;
+    int& rhythmMode = engine.pe.rhythmMode;
+    int& melodyMode = engine.pe.melodyMode;
+    int& startStep = engine.startStep;
+    int& endStep = engine.endStep;
+    int& stepIndex = engine.stepIndex;
+    int& lastStepIndex = engine.lastStepIndex;
+    int& modeSelect = engine.modeSelect;
+    int& ppqnSetting = engine.ppqnSetting;
+    int& noteVariationMask = engine.noteVariationMask;
+    int& cachedLength = engine.cachedLength;
+    int& cachedOffset = engine.cachedOffset;
     float bpm = 120.f;
 
-    bool (&rhythmPattern)[16] = pe.rhythmPattern;
-    float (&melodyPitchV)[16] = pe.melodyPitchV;
-    int (&melodySemitone)[16] = pe.melodySemitone;
+    bool (&rhythmPattern)[16] = engine.pe.rhythmPattern;
+    float (&melodyPitchV)[16] = engine.pe.melodyPitchV;
+    int (&melodySemitone)[16] = engine.pe.melodySemitone;
 
-    dsp::PulseGenerator& gatePulse = gs.gatePulse;
+    dsp::PulseGenerator& gatePulse = engine.gs.gatePulse;
     bool prevExtGate = false;
 
     dsp::BooleanTrigger diceRTrig, diceMTrig, resetBtn, runGateBtn;
     dsp::SchmittTrigger g1Trig, g2Trig, lockTrig, muteTrig, modeATrig, modeBTrig, modeCTrig, modeDTrig, resetTrig, runGateTrig;
     dsp::PulseGenerator runPulse, clockPulse, resetPulse;
 
-    int lastStepIndex = -1;
+    float& cachedMelodySeedFloat = engine.pe.cachedMelodySeedFloat;
+    float& cachedRhythmSeedFloat = engine.pe.cachedRhythmSeedFloat;
+    bool& melodySeedCached = engine.pe.melodySeedCached;
+    bool& rhythmSeedCached = engine.pe.rhythmSeedCached;
+    int& cachedMelodyStepIndex = engine.pe.cachedMelodyStepIndex;
+    int& cachedMelodyLastStepIndex = engine.pe.cachedMelodyLastStepIndex;
+    float (&cachedMelodyPitchV)[16] = engine.pe.cachedMelodyPitchV;
+    int& cachedRhythmStepIndex = engine.pe.cachedRhythmStepIndex;
+    int& cachedRhythmLastStepIndex = engine.pe.cachedRhythmLastStepIndex;
+    bool (&cachedRhythmPattern)[16] = engine.pe.cachedRhythmPattern;
 
-    float& cachedMelodySeedFloat = pe.cachedMelodySeedFloat;
-    float& cachedRhythmSeedFloat = pe.cachedRhythmSeedFloat;
-    bool& melodySeedCached = pe.melodySeedCached;
-    bool& rhythmSeedCached = pe.rhythmSeedCached;
-    int& cachedMelodyStepIndex = pe.cachedMelodyStepIndex;
-    int& cachedMelodyLastStepIndex = pe.cachedMelodyLastStepIndex;
-    float (&cachedMelodyPitchV)[16] = pe.cachedMelodyPitchV;
-    int& cachedRhythmStepIndex = pe.cachedRhythmStepIndex;
-    int& cachedRhythmLastStepIndex = pe.cachedRhythmLastStepIndex;
-    bool (&cachedRhythmPattern)[16] = pe.cachedRhythmPattern;
-
-    float ledGreenCache[12] = {};
-    float ledRedCache[12] = {};
-    int activeSemiList[12] = {};
-    float activeSemiWeight[12] = {};
-    int activeSemiCount = 0;
-    float faderCache[12] = {};
+    int& activeSemiCount = engine.activeSemiCount;
+    float (&faderCache)[12] = engine.faderCache;
     float cv2Offsets[4] = {0.f, 0.f, 0.f, 0.f};
-
-    struct NoteVal {
-        float fraction;
-        int allowedPPQN;
-    };
-    static const NoteVal NOTEVALS[8];
 
     MeloDicer();
 
@@ -340,34 +329,24 @@ struct MeloDicer : Module {
     int pickSemitoneWeighted();
     float genPitchV(int& outSemitone);
     int varyNoteIndex(int baseIdx);
-    float noteLenSteps_(int nvIdx);
     float semitoneToVolts(int semitone);
     PatternInput makePatternInput();
     void redrawRhythmPattern();
     void redrawMelodyPattern();
     void rebuildSemiCache_();
     float quantizeToScale(float vIn);
-    bool stepInWindow(int idx);
     void handleRestart(bool manual = true, bool resetImmediate = false);
     float sampleSeedFromSource();
     void onPhraseBoundary_();
     void onReset() override;
     int getNoteLenIdx_();
     int computeNoteLengthIdx(int requestedIdx, int ppqnMask);
-    void updateStepLEDs_(int activeSemitone, float sampleTime);
+    void updateStepLEDs_(float sampleTime);
     float quantizePitch(int semitoneIndex, int octaveOffset);
 
     void process(const ProcessArgs& args) override;
 
     void reseedXoroshiroFromFloat(rack::random::Xoroshiro128Plus& rng, float seedFloat);
-    void triggerNoteLenIdx(int nvIdx, bool tie);
-    void triggerNoteOrRest_(float pitchV, int semitone, int nvIdx, bool doRest, bool tie, bool legato);
-    void triggerRestLenIdx_(int nvIdx, bool tie);
-    void triggerStepEvent_(int semitone, int noteLenIdx, float restProb, float legatoProb, bool allowTieAcrossSteps, float bpm);
-
-    void advanceStepIndexOnEdge_();
-    int computeOffsetStep_();
-    void triggerStepEventForOffsetStep_(int offsetStep);
 
     void handleModeA_(const ProcessArgs& args, bool stepEdge);
     void handleModeB_(const ProcessArgs& args, bool gate1Edge);

@@ -146,10 +146,10 @@ struct PatternEngine {
         // spread = 0 at centre, 1 at extremes — controls how much adjacent
         // indices are weighted relative to baseIdx.
         auto allowed = [&](int idx) -> bool {
-            if (idx < 0 || idx >= 9) return false;
+            if (idx < 0 || idx >= 8) return false;
             if (idx == 4) return (in.noteVariationMask & 0b001) != 0;
             if (idx == 6) return (in.noteVariationMask & 0b010) != 0;
-            if (idx == 7 || idx == 8) return (in.noteVariationMask & 0b100) != 0;
+            if (idx == 7) return (in.noteVariationMask & 0b100) != 0;
             return true;
         };
 
@@ -158,9 +158,9 @@ struct PatternEngine {
         if (spread < 1e-4f) return baseIdx;           // exactly 50%: no variation
 
         int lo = std::max(0, baseIdx - 2);
-        int hi = std::min(8, baseIdx + 2);
+        int hi = std::min(7, baseIdx + 2);
         float total = 0.f;
-        float weights[9] = {};
+        float weights[8] = {};
         for (int i = lo; i <= hi; ++i) if (allowed(i)) {
             float dist = float(std::abs(i - baseIdx));
             if (dist == 0.f) {
