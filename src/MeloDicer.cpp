@@ -582,17 +582,14 @@ void MeloDicer::process(const ProcessArgs& args) {
     if (resetBtn.process(params[RESET_BUTTON_PARAM].getValue()))  resetArmed = true;
     lights[RESET_LIGHT].setBrightnessSmooth(resetArmed ? 1.f : 0.f, args.sampleTime);
 
-    if (!runGateActive) {
-        // If not running, discard any reset request and hold outputs quiet
-        resetArmed = false;
-        return;
-    }
-
     // --- RESET input: immediate phrase restart and apply pending seeds ---
-    if (resetArmed)
+    if (resetArmed && runGateActive)
     {
         handleRestart(/*manual=*/true, /*resetImmediate=*/true);
         resetPulse.trigger(1e-3f);  // fire reset output trigger
+    }
+    else if (!runGateActive) {
+        resetArmed = false;
     }
 
     // Drive RESET_TRIGGER_OUTPUT as a 1ms pulse on reset
@@ -651,13 +648,15 @@ void MeloDicer::process(const ProcessArgs& args) {
         }
     }
 
-    // --- Mode dispatch ---
-    switch (modeSelect) {
-        case 0: handleModeA_(args, stepEdge);       break;
-        case 1: handleModeB_(args, gate1Edge);      break;
-        case 2: handleModeC_(args, quarterEdge);    break;
-        case 3: handleModeD_(args);                 break;
-        default: break;
+    // --- Mode dispatch (only if running) ---
+    if (runGateActive) {
+        switch (modeSelect) {
+            case 0: handleModeA_(args, stepEdge);       break;
+            case 1: handleModeB_(args, gate1Edge);      break;
+            case 2: handleModeC_(args, quarterEdge);    break;
+            case 3: handleModeD_(args);                 break;
+            default: break;
+        }
     }
 
 

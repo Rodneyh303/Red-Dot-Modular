@@ -273,15 +273,10 @@ struct SequencerEngine {
      * Advances stepIndex on quarterEdge and quantizes inCV.
      */
     void executeModeC(bool quarterEdge, float inCV) {
+        gs.gateHeld = false; // Mode C is pulse-based; clear any stochastic holds from Mode A/B
         if (quarterEdge) {
             // Step index advances on each quarter-note edge
-            stepIndex = (stepIndex + 1) & 0x0F;
-            if (!isStepInWindow(stepIndex)) {
-                stepIndex = startStep;
-            }
-            for (int s = 0; s < 16 && !isStepInWindow(stepIndex); ++s) {
-                stepIndex = (stepIndex + 1) & 0x0F;
-            }
+            advancePlayhead();
 
             // Latch quantized CV
             gs.currentPitchV = quantize(inCV);
