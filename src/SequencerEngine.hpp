@@ -27,6 +27,7 @@ struct SequencerEngine {
     bool muted = false;
     bool runGateActive = false;
     bool resetArmed = false;
+    bool prevGate1High = false;
 
     int modeSelect = 0;
     int ppqnSetting = 4;
@@ -51,6 +52,7 @@ struct SequencerEngine {
         muted = false;
         runGateActive = false;
         resetArmed = false;
+        prevGate1High = false;
         modeSelect = 0;
         ppqnSetting = 4;
         noteVariationMask = 0b111;
@@ -222,6 +224,48 @@ struct SequencerEngine {
             pe.rhythmSeedPending = true;
         }
         pe.applyPendingSeedsAndRedraw(input);
+    }
+
+    /**
+     * Mode A: Internal clock sequencer.
+     * Advances playhead on stepEdge and executes step logic.
+     * Returns true if playhead wrapped (phrase boundary).
+     */
+    bool executeModeA(bool stepEdge, float restProb, float legatoProb, int nvIdx) {
+        if (!stepEdge || muted) return false;
+
+        bool wrapped = advancePlayhead();
+        executeStep(restProb, legatoProb, nvIdx);
+        return wrapped;
+    }
+
+    /**
+     * Mode B: External gate driven sequencer.
+     * Advances playhead on gate1Edge or on first gate-high if index is -1.
+     * Returns true if playhead wrapped (phrase boundary).
+     */
+    bool executeModeB(bool gate1Edge, bool gate1High, float restProb, float legatoProb, int nvIdx) {
+        if (muted) {
+            prevGate1High = gate1High;
+            return false;
+        }
+        bool wrapped = false;
+        bool triggered = false;
+
+        if (gate1Edge) {
+            wrapped = advancePlayhead();
+            triggered = true;
+        } else if (gate1High && !prevGate1High && stepIndex == -1) {
+            advancePlayhead(); // Advance to startStep
+            triggered = true;
+        }
+
+        if (triggered) {
+            executeStep(restProb, legatoProb, nvIdx);
+        }
+
+        prevGate1High = gate1High;
+        return wrapped;
     }
 
     /**

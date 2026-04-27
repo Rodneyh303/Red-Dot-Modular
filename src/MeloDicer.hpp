@@ -287,7 +287,7 @@ struct MeloDicer : Module {
     int (&melodySemitone)[16] = engine.pe.melodySemitone;
 
     dsp::PulseGenerator& gatePulse = engine.gs.gatePulse;
-    bool prevExtGate = false;
+    bool& prevExtGate = engine.prevGate1High;
 
     dsp::BooleanTrigger diceRTrig, diceMTrig, resetBtn, runGateBtn;
     dsp::SchmittTrigger g1Trig, g2Trig, lockTrig, muteTrig, modeATrig, modeBTrig, modeCTrig, modeDTrig, resetTrig, runGateTrig;

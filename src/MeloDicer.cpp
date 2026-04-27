@@ -738,20 +738,13 @@ void MeloDicer::process(const ProcessArgs& args) {
 //  Also handles first note logic when starting from reset.
 //  Also handles mute logic (no output, but still advances and updates LEDs)
 void MeloDicer::handleModeA_(const ProcessArgs& args, bool stepEdge) {
-    if (!stepEdge || muted)
-        return;
-
-    bool wrappedRestart = engine.advancePlayhead();
-
-    if (wrappedRestart) {
+    if (engine.executeModeA(stepEdge, getRestParam(), getLegatoParam(), getNoteLenIdx_())) {
         // Sample new seeds for realtime modes, then let onPhraseBoundary_()
         // apply any pending seeds (Dice-armed or realtime) before redrawing.
         if (melodyMode == 1) { melodySeedPendingFloat = sampleSeedFromSource(); melodySeedPending = true; }
         if (rhythmMode == 1) { rhythmSeedPendingFloat = sampleSeedFromSource(); rhythmSeedPending = true; }
         onPhraseBoundary_();
     }
-
-    engine.executeStep(getRestParam(), getLegatoParam(), getNoteLenIdx_());
 
     for (int i = 0; i < 16; ++i) {
         lights[STEP_LIGHTS_START + i].setBrightness(engine.getStepLightBrightness(i));
@@ -770,33 +763,11 @@ void MeloDicer::handleModeA_(const ProcessArgs& args, bool stepEdge) {
 //  Also handles first note logic when gate held high continuously.
 void MeloDicer::handleModeB_(const ProcessArgs& args, bool gate1Edge//, bool diceTrig
 ) {
-    if (muted)
-        return;
-
-    bool extGateHigh = inputs[GATE1_INPUT].getVoltage() >= 1.f;
-
-   // if (gate1Edge || diceTrig)
-        if (gate1Edge)
-     {
-        // Advance step like Mode A
-        bool wrappedRestart = engine.advancePlayhead();
-
-        if (wrappedRestart) {
-            // Sample new seeds for realtime modes, then let onPhraseBoundary_()
-            // apply any pending seeds (Dice-armed or realtime) before redrawing.
-            if (melodyMode == 1) { melodySeedPendingFloat = sampleSeedFromSource(); melodySeedPending = true; }
-            if (rhythmMode == 1) { rhythmSeedPendingFloat = sampleSeedFromSource(); rhythmSeedPending = true; }
-            onPhraseBoundary_();
-        }
-
-        engine.executeStep(getRestParam(), getLegatoParam(), getNoteLenIdx_());
-    }
-    else if (extGateHigh && !prevExtGate) {
-        // If no step has been selected yet, advance to startStep
-        if (stepIndex == -1) {
-            engine.advancePlayhead();
-        }
-        engine.executeStep(getRestParam(), getLegatoParam(), getNoteLenIdx_());
+    bool gate1High = inputs[GATE1_INPUT].getVoltage() >= 1.f;
+    if (engine.executeModeB(gate1Edge, gate1High, getRestParam(), getLegatoParam(), getNoteLenIdx_())) {
+        if (melodyMode == 1) { melodySeedPendingFloat = sampleSeedFromSource(); melodySeedPending = true; }
+        if (rhythmMode == 1) { rhythmSeedPendingFloat = sampleSeedFromSource(); rhythmSeedPending = true; }
+        onPhraseBoundary_();
     }
 
     for (int i = 0; i < 16; ++i) {
@@ -805,8 +776,6 @@ void MeloDicer::handleModeB_(const ProcessArgs& args, bool gate1Edge//, bool dic
     lastStepIndex = stepIndex;
 
     updateStepLEDs_(args.sampleTime);
-
-    prevExtGate = extGateHigh;
 }
 
 
