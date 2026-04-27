@@ -21,19 +21,21 @@ void ClockEngine::process(float clockVoltage, bool clkConnected, float internalB
         if (!measured) bpm = clampv(internalBpm, 20.f, 300.f);
 
         if (clkTrig.process(clockVoltage, 0.1f, 2.f)) {
-            if (measured && clockTimeAcc > 0.001f && clockTimeAcc < 5.f) {
-                float derivedBpm = 60.f / (clockTimeAcc * float(std::max(1, ppqn)));
-                bpm = clampv(derivedBpm, 20.f, 300.f);
-            }
-            measured     = true;
-            clockTimeAcc = 0.f;
-
-            ppqnCount = (ppqnCount + 1) % std::max(1, ppqn);
             if (ppqnCount == 0) {
                 sixteenthEdge = true;
-                sixteenthCount = (sixteenthCount + 1) & 3; // mod 4
+                
+                // Stabilize BPM by measuring the full 1/16th note interval instead of a single pulse
+                if (measured && clockTimeAcc > 0.001f && clockTimeAcc < 10.f) {
+                    float derivedBpm = (60.f * 4.f) / clockTimeAcc; // 4 sixteenths per beat
+                    bpm = clampv(derivedBpm, 20.f, 300.f);
+                }
+                measured = true;
+                clockTimeAcc = 0.f;
+
                 if (sixteenthCount == 0) quarterEdge = true;
+                sixteenthCount = (sixteenthCount + 1) & 3; // mod 4
             }
+            ppqnCount = (ppqnCount + 1) % std::max(1, ppqn);
         }
     } else {
         externalActive   = false;
@@ -47,8 +49,8 @@ void ClockEngine::process(float clockVoltage, bool clkConnected, float internalB
         if (timeAcc >= sixteenthSec) {
             timeAcc       -= sixteenthSec;
             sixteenthEdge  = true;
-            sixteenthCount = (sixteenthCount + 1) & 3;
             if (sixteenthCount == 0) quarterEdge = true;
+            sixteenthCount = (sixteenthCount + 1) & 3;
         }
     }
 }
