@@ -224,6 +224,54 @@ struct SequencerEngine {
         pe.applyPendingSeedsAndRedraw(input);
     }
 
+    /**
+     * Mode C: Quarter-note latched quantizer.
+     * Advances stepIndex on quarterEdge and quantizes inCV.
+     */
+    void executeModeC(bool quarterEdge, float inCV) {
+        if (quarterEdge) {
+            // Step index advances on each quarter-note edge
+            stepIndex = (stepIndex + 1) & 0x0F;
+            if (!isStepInWindow(stepIndex)) {
+                stepIndex = startStep;
+            }
+            for (int s = 0; s < 16 && !isStepInWindow(stepIndex); ++s) {
+                stepIndex = (stepIndex + 1) & 0x0F;
+            }
+
+            // Latch quantized CV
+            gs.currentPitchV = quantize(inCV);
+            
+            // Update highlight for semitone LEDs
+            int sem = int(std::round((gs.currentPitchV - std::floor(gs.currentPitchV)) * 12.f)) % 12;
+            gs.lastSemitone = sem;
+            gs.markSemi(sem, 4.0f); // Highlight for roughly 4 steps
+
+            // Trigger gate pulse for output (1ms)
+            gs.gatePulse.trigger(1e-3f);
+        }
+    }
+
+    /**
+     * Mode D: Gate-level continuous quantizer.
+     * Quantizes inCV while gateHigh is true; otherwise clears gate and sets pitch to 0.
+     */
+    void executeModeD(bool gateHigh, float inCV) {
+        gs.gateHeld = gateHigh;
+        if (gateHigh) {
+            // Continuous quantization while gate is held
+            gs.currentPitchV = quantize(inCV);
+            
+            // Update highlight for semitone LEDs
+            int sem = int(std::round((gs.currentPitchV - std::floor(gs.currentPitchV)) * 12.f)) % 12;
+            gs.markSemi(sem, 1.0f); // Fast decay for continuous tracking
+        } else {
+            // Clear state when gate is low
+            gs.currentPitchV = 0.f;
+            gs.gatePulse.reset();
+        }
+    }
+
     float quantize(float vIn) {
         if (activeSemiCount == 0) return pe_clamp(vIn, 0.f, 5.f);
         int octave = (int)std::floor(vIn);

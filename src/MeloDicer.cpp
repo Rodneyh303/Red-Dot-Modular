@@ -819,118 +819,32 @@ void MeloDicer::handleModeB_(const ProcessArgs& args, bool gate1Edge//, bool dic
 // ---------------- Mode C: Quantizer 1 ---------------------------------------
 // quarterEdge: true on one-sample quarter-note pulse from ClockEngine
 // Latches and quantizes CV2 on each quarter-note edge; steps through pattern window.
-// void MeloDicer::handleModeC_(const ProcessArgs& args, bool quarterEdge) {
-//     float inCV = inputs[CV2_INPUT].isConnected() ? clampv<float>(inputs[CV2_INPUT].getVoltage(), 0.f, 5.f) : 0.f;
-//     engine.executeModeC(quarterEdge, inCV);
-
-//     for (int i = 0; i < 16; ++i) {
-//         lights[STEP_LIGHTS_START + i].setBrightness(engine.getStepLightBrightness(i));
-//     }
-//     lastStepIndex = stepIndex;
-//     updateStepLEDs_(args.sampleTime);
-// }
-
-
-// ---------------- Mode D: Quantizer 2 (second lane or alt flavor) -----------
-//  
-// void MeloDicer::handleModeD_(const ProcessArgs& args) {
-//     // Check gate high on GATE2_INPUT
-//     bool gateHigh = inputs[GATE2_INPUT].isConnected() && inputs[GATE2_INPUT].getVoltage() > 1.f;
-//     float inCV = inputs[CV2_INPUT].isConnected() ? clampv<float>(inputs[CV2_INPUT].getVoltage(), 0.f, 5.f) : 0.f;
-    
-//     engine.executeModeD(gateHigh, inCV);
-
-//     for (int i = 0; i < 16; ++i) {
-//         lights[STEP_LIGHTS_START + i].setBrightness(engine.getStepLightBrightness(i));
-//     }
-//     lastStepIndex = stepIndex;
-//     updateStepLEDs_(args.sampleTime);
-// }
-
-// ---------------- Mode C: Quantizer 1 ---------------------------------------
-// quarterEdge: true on one-sample quarter-note pulse from ClockEngine
-// Latches and quantizes CV2 on each quarter-note edge; steps through pattern window.
 void MeloDicer::handleModeC_(const ProcessArgs& args, bool quarterEdge) {
-
-    // Step index advances on each quarter-note edge
-    if (quarterEdge) {
-        stepIndex = (stepIndex + 1) % 16;
-        if (!engine.isStepInWindow(stepIndex)) {
-            stepIndex = startStep;
-        }
-        for (int s = 0; s < 16 && !engine.isStepInWindow(stepIndex); ++s) {
-            stepIndex = (stepIndex + 1) % 16;
-        }
-    }
-
-    // Latch quantized CV from CV2 input on each quarter-note edge
     float inCV = inputs[CV2_INPUT].isConnected() ? clampv<float>(inputs[CV2_INPUT].getVoltage(), 0.f, 5.f) : 0.f;
-    if (quarterEdge) {
-        currentPitchV = quantizeToScale(inCV);
-    }
+    engine.executeModeC(quarterEdge, inCV);
 
-    // Output voltage (holds last quantized value between edges)
-    outputs[CV_OUTPUT].setVoltage(currentPitchV);
-
-    // Gate output: brief pulse on each quarter-note edge
-    outputs[GATE_OUTPUT].setVoltage(quarterEdge ? 10.f : 0.f);
-
-    // 6. LEDs
+    // Update Ring LEDs
     for (int i = 0; i < 16; ++i) {
-        float baseActive = engine.isStepInWindow(i) ? 0.25f : 0.0f;
-        float current = (i == ((stepIndex + 16) % 16)) ? 1.f : 0.f;
-        lights[STEP_LIGHTS_START + i].setBrightness(std::max(baseActive, current));
+        lights[STEP_LIGHTS_START + i].setBrightness(engine.getStepLightBrightness(i));
     }
 
-    // Semitone LEDs (show quantized note)
-    for (int i = 0; i < 12; ++i) {
-        int sem = int(std::round((currentPitchV - std::floor(currentPitchV)) * 12.f)) % 12;
-        float levelB = 0.08f + clampv<float>(params[SEMI0_PARAM + i].getValue(), 0.f, 1.f) * 0.92f;
-        float playB  = (i == sem) ? 1.f : 0.f;
-        int base = SEMI_LED_START + i * 2;
-        lights[base + 0].setBrightnessSmooth(levelB, args.sampleTime);
-        lights[base + 1].setBrightnessSmooth(playB,  args.sampleTime * 4.f);
-    }
+    lastStepIndex = stepIndex;
+    updateStepLEDs_(args.sampleTime);
 }
 
 
 // ---------------- Mode D: Quantizer 2 (second lane or alt flavor) -----------
 //  
 void MeloDicer::handleModeD_(const ProcessArgs& args) {
-    // Check gate high on GATE2_INPUT
     bool gateHigh = inputs[GATE2_INPUT].isConnected() && inputs[GATE2_INPUT].getVoltage() > 1.f;
+    float inCV = inputs[CV2_INPUT].isConnected() ? clampv<float>(inputs[CV2_INPUT].getVoltage(), 0.f, 5.f) : 0.f;
+    
+    engine.executeModeD(gateHigh, inCV);
 
-    if (gateHigh) {
-        // 1. Read CV2 input
-        float inCV = inputs[CV2_INPUT].isConnected() ? clampv<float>(inputs[CV2_INPUT].getVoltage(), 0.f, 5.f) : 0.f;
-        currentPitchV = quantizeToScale(inCV); // quantize according to faders
-
-        // 2. Output voltage
-        outputs[CV_OUTPUT].setVoltage(currentPitchV);
-
-        // 3. Gate output – high as long as gate is held
-        outputs[GATE_OUTPUT].setVoltage(10.f);
-
-        // 4. Step LEDs
-        for (int i = 0; i < 16; ++i) {
-            float baseActive = engine.isStepInWindow(i) ? 0.25f : 0.0f;
-            lights[STEP_LIGHTS_START + i].setBrightness(baseActive);
-        }
-
-        // Semitone LEDs (show quantized note)
-        for (int i = 0; i < 12; ++i) {
-            int sem = int(std::round((currentPitchV - std::floor(currentPitchV)) * 12.f)) % 12;
-            float levelB = 0.08f + clampv<float>(params[SEMI0_PARAM + i].getValue(), 0.f, 1.f) * 0.92f;
-            float playB  = (i == sem) ? 1.f : 0.f;
-            int base = SEMI_LED_START + i * 2;
-            lights[base + 0].setBrightnessSmooth(levelB, args.sampleTime);
-            lights[base + 1].setBrightnessSmooth(playB,  args.sampleTime * 4.f);
-        }
-    } else {
-        // Gate low – output zero
-        outputs[CV_OUTPUT].setVoltage(0.f);
-        outputs[GATE_OUTPUT].setVoltage(0.f);
+    for (int i = 0; i < 16; ++i) {
+        lights[STEP_LIGHTS_START + i].setBrightness(engine.getStepLightBrightness(i));
     }
+    updateStepLEDs_(args.sampleTime);
 }
 
 
