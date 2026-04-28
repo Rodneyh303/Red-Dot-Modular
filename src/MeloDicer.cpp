@@ -522,29 +522,14 @@ void MeloDicer::process(const ProcessArgs& args) {
         if (faderDirty || activeSemiCount == 0) rebuildSemiCache_();
     }
 
-    // --- Edge detection / timing ---
-    bool stepEdge    = false;  // 1/16 edge consumed by Mode A
-    bool gate1Edge   = false;  // rising edge at GATE1 (Mode B + gate assignments)
-    bool quarterEdge = false;  // quarter-note edge consumed by Mode C
-
     engine.updateWindow(
         params[PATTERN_LENGTH_PARAM].getValue(), inputs[LENGTH_INPUT].getVoltage(), inputs[LENGTH_INPUT].isConnected(),
         params[PATTERN_OFFSET_PARAM].getValue(), inputs[OFFFSET_INPUT].getVoltage(), inputs[OFFFSET_INPUT].isConnected()
     );
 
-
-    // ── Distribute clock edges to each mode ──────────────────────────────────
-    // ClockEngine has already processed CLK IN — just read its outputs.
-    if (modeSelect == 0) {
-        stepEdge = clock.sixteenthEdge;   // Mode A: steps on every 1/16
-    }
-    if (modeSelect == 1) {
-        gate1Edge = g1Trig.process(inputs[GATE1_INPUT].getVoltage()); // Mode B: driven by Gate1
-    }
-    if (modeSelect == 2) {
-        quarterEdge = clock.quarterEdge;  // Mode C: latches on quarter note
-    }
-    // Mode D: no clock edge needed — driven entirely by GATE2_INPUT level
+    // Pre-process asynchronous triggers
+    bool gate1Rise = g1Trig.process(inputs[GATE1_INPUT].getVoltage());
+    bool gate2Rise = g2Trig.process(inputs[GATE2_INPUT].getVoltage());
 
     bool runStart = false;
     if (inputs[RUN_GATE_INPUT].isConnected()) 
@@ -596,7 +581,7 @@ void MeloDicer::process(const ProcessArgs& args) {
     outputs[RESET_TRIGGER_OUTPUT].setVoltage(resetPulse.process(args.sampleTime) ? 10.f : 0.f);
 
     // --- Gate input assignments ---
-    if (g1Trig.process(inputs[GATE1_INPUT].getVoltage())) {
+    if (gate1Rise) {
         switch (gate1Assign) {
             case 0: // Toggle Dice R MODE
                 rhythmMode = (1-rhythmMode ); // toggle 0/1
@@ -620,13 +605,12 @@ void MeloDicer::process(const ProcessArgs& args) {
     }
     {
         bool g2High = inputs[GATE2_INPUT].getVoltage() >= 1.f;
-        bool g2Rise = g2Trig.process(inputs[GATE2_INPUT].getVoltage());
         switch (gate2Assign) {
             case 0: // TGL DICE M — toggle on rising edge
-                if (g2Rise) melodyMode = (1 - melodyMode);
+                if (gate2Rise) melodyMode = (1 - melodyMode);
                 break;
             case 1: // Re-dice M — rising edge, only in dice-mode
-                if (g2Rise && melodyMode == 0) {
+                if (gate2Rise && melodyMode == 0) {
                     melodySeedPendingFloat = sampleSeedFromSource();
                     melodySeedPending = true;
                 }
@@ -643,7 +627,7 @@ void MeloDicer::process(const ProcessArgs& args) {
                 }
                 break;
             case 3: // RESTART — rising edge
-                if (g2Rise) handleRestart(/*manual=*/true, /*resetImmediate=*/true);
+                if (gate2Rise) handleRestart(/*manual=*/true, /*resetImmediate=*/true);
                 break;
         }
     }
@@ -651,9 +635,9 @@ void MeloDicer::process(const ProcessArgs& args) {
     // --- Mode dispatch (only if running) ---
     if (runGateActive) {
         switch (modeSelect) {
-            case 0: handleModeA_(args, stepEdge);       break;
-            case 1: handleModeB_(args, gate1Edge);      break;
-            case 2: handleModeC_(args, quarterEdge);    break;
+            case 0: handleModeA_(args);                 break;
+            case 1: handleModeB_(args, gate1Rise);      break;
+            case 2: handleModeC_(args);                 break;
             case 3: handleModeD_(args);                 break;
             default: break;
         }
@@ -700,12 +684,6 @@ void MeloDicer::process(const ProcessArgs& args) {
     }
     
     
-    // Decay semitone LED timers every sample so LEDs extinguish after the note ends
-    // semiPlayRemain decay now handled by gs.tick() on each step edge
-
-    // --- Gate output shaping (All modes) ---
-    if (stepEdge || gate1Edge || quarterEdge) engine.gs.tick();
-
     // Gate output: engine.gs.process() ticks the pulse and returns raw gate voltage
     float gateV = engine.gs.process(args.sampleTime);
     if (muteBehavior == 2) gateV = (gateV > 1.f) ? 0.f : 10.f;
@@ -736,8 +714,8 @@ void MeloDicer::process(const ProcessArgs& args) {
 //  Also handles phrase boundary reseeding and redraw.
 //  Also handles first note logic when starting from reset.
 //  Also handles mute logic (no output, but still advances and updates LEDs)
-void MeloDicer::handleModeA_(const ProcessArgs& args, bool stepEdge) {
-    if (engine.executeModeA(stepEdge, getRestParam(), getLegatoParam(), getNoteLenIdx_())) {
+void MeloDicer::handleModeA_(const ProcessArgs& args) {
+    if (engine.executeModeA(clock, getRestParam(), getLegatoParam(), getNoteLenIdx_())) {
         // Sample new seeds for realtime modes, then let onPhraseBoundary_()
         // apply any pending seeds (Dice-armed or realtime) before redrawing.
         if (melodyMode == 1) { melodySeedPendingFloat = sampleSeedFromSource(); melodySeedPending = true; }
@@ -760,10 +738,9 @@ void MeloDicer::handleModeA_(const ProcessArgs& args, bool stepEdge) {
 // Uses shared triggerStepEvent_() helper.
 //  Also handles phrase boundary reseeding and redraw.
 //  Also handles first note logic when gate held high continuously.
-void MeloDicer::handleModeB_(const ProcessArgs& args, bool gate1Edge//, bool diceTrig
-) {
+void MeloDicer::handleModeB_(const ProcessArgs& args, bool gate1Rise) {
     bool gate1High = inputs[GATE1_INPUT].getVoltage() >= 1.f;
-    if (engine.executeModeB(gate1Edge, gate1High, getRestParam(), getLegatoParam(), getNoteLenIdx_())) {
+    if (engine.executeModeB(gate1Rise, gate1High, getRestParam(), getLegatoParam(), getNoteLenIdx_())) {
         if (melodyMode == 1) { melodySeedPendingFloat = sampleSeedFromSource(); melodySeedPending = true; }
         if (rhythmMode == 1) { rhythmSeedPendingFloat = sampleSeedFromSource(); rhythmSeedPending = true; }
         onPhraseBoundary_();
@@ -787,9 +764,9 @@ void MeloDicer::handleModeB_(const ProcessArgs& args, bool gate1Edge//, bool dic
 // ---------------- Mode C: Quantizer 1 ---------------------------------------
 // quarterEdge: true on one-sample quarter-note pulse from ClockEngine
 // Latches and quantizes CV2 on each quarter-note edge; steps through pattern window.
-void MeloDicer::handleModeC_(const ProcessArgs& args, bool quarterEdge) {
+void MeloDicer::handleModeC_(const ProcessArgs& args) {
     float inCV = inputs[CV2_INPUT].isConnected() ? clampv<float>(inputs[CV2_INPUT].getVoltage(), 0.f, 5.f) : 0.f;
-    engine.executeModeC(quarterEdge, inCV);
+    engine.executeModeC(clock, inCV);
 
     // Update Ring LEDs
     for (int i = 0; i < 16; ++i) {

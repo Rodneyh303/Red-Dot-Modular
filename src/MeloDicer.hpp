@@ -348,9 +348,9 @@ struct MeloDicer : Module {
 
     void reseedXoroshiroFromFloat(rack::random::Xoroshiro128Plus& rng, float seedFloat);
 
-    void handleModeA_(const ProcessArgs& args, bool stepEdge);
-    void handleModeB_(const ProcessArgs& args, bool gate1Edge);
-    void handleModeC_(const ProcessArgs& args, bool quarterEdge);
+    void handleModeA_(const ProcessArgs& args);
+    void handleModeB_(const ProcessArgs& args, bool gate1Rise);
+    void handleModeC_(const ProcessArgs& args);
     void handleModeD_(const ProcessArgs& args);
 };
 

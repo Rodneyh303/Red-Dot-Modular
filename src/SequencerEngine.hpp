@@ -228,12 +228,12 @@ struct SequencerEngine {
 
     /**
      * Mode A: Internal clock sequencer.
-     * Advances playhead on stepEdge and executes step logic.
-     * Returns true if playhead wrapped (phrase boundary).
      */
-    bool executeModeA(bool stepEdge, float restProb, float legatoProb, int nvIdx) {
-        if (!stepEdge || muted) return false;
+    bool executeModeA(const ClockEngine& clock, float restProb, float legatoProb, int nvIdx) {
+        if (!clock.sixteenthEdge || muted) return false;
 
+        // Phase-aligned step tick
+        gs.tick();
         bool wrapped = advancePlayhead();
         executeStep(restProb, legatoProb, nvIdx);
         return wrapped;
@@ -241,10 +241,8 @@ struct SequencerEngine {
 
     /**
      * Mode B: External gate driven sequencer.
-     * Advances playhead on gate1Edge or on first gate-high if index is -1.
-     * Returns true if playhead wrapped (phrase boundary).
      */
-    bool executeModeB(bool gate1Edge, bool gate1High, float restProb, float legatoProb, int nvIdx) {
+    bool executeModeB(bool gate1Rise, bool gate1High, float restProb, float legatoProb, int nvIdx) {
         if (muted) {
             prevGate1High = gate1High;
             return false;
@@ -252,7 +250,7 @@ struct SequencerEngine {
         bool wrapped = false;
         bool triggered = false;
 
-        if (gate1Edge) {
+        if (gate1Rise) {
             wrapped = advancePlayhead();
             triggered = true;
         } else if (gate1High && !prevGate1High && stepIndex == -1) {
@@ -261,6 +259,7 @@ struct SequencerEngine {
         }
 
         if (triggered) {
+            gs.tick();
             executeStep(restProb, legatoProb, nvIdx);
         }
 
@@ -270,11 +269,13 @@ struct SequencerEngine {
 
     /**
      * Mode C: Quarter-note latched quantizer.
-     * Advances stepIndex on quarterEdge and quantizes inCV.
      */
-    void executeModeC(bool quarterEdge, float inCV) {
+    void executeModeC(const ClockEngine& clock, float inCV) {
         gs.gateHeld = false; // Mode C is pulse-based; clear any stochastic holds from Mode A/B
-        if (quarterEdge) {
+        if (clock.quarterEdge) {
+            // Tick gate state on phase-aligned quarter note boundary
+            gs.tick();
+
             // Step index advances on each quarter-note edge
             advancePlayhead();
 
