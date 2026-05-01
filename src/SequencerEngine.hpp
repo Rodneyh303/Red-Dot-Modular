@@ -161,31 +161,34 @@ struct SequencerEngine {
      * Performs the stochastic decision for a single sequencer step.
      * This is the "Secret Sauce" of MeloDicer logic.
      */
-    void executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie) {
+    void executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, const PatternInput& input) {
         float dur = gs_noteSteps(nvIdx);
         int offsetStep = getOffsetStep();
-        int sem = pe.melodySemitone[offsetStep];
-        float pitchV = pe.melodyPitchV[offsetStep];
+        
+        int sem = 0;
+        float pitchV = pe.genPitchLive(sem, input, pe.melodyRandom[offsetStep], pe.octaveRandom[offsetStep]);
 
         if (gs.holdRemain < 1.f) {
             if (legatoProb >= 0.999f) {
                 gs.slideMax(pitchV, sem, nvIdx);
             }
-            else if (r_rest < restProb) {
-                gs.gateHeld = false;
-                gs.holdRemain = dur;
-            }
-            else if (r_legato_tie < legatoProb) {
-                // Connected: Either Tie or Legato
-                if (sem == gs.lastSemitone && gs.gateHeld) {
-                    gs.extendHold(sem, nvIdx);
-                } else {
-                    gs.slideNote(pitchV, sem, nvIdx);
-                }
-            }
             else {
-                // Disconnected: New Note
-                gs.triggerNote(pitchV, sem, nvIdx);
+                if (r_rest < restProb) {
+                    gs.gateHeld = false;
+                    gs.holdRemain = dur;
+                }
+                else if (r_legato_tie < legatoProb) {
+                    // Connected: Either Tie or Legato
+                    if (sem == gs.lastSemitone && gs.gateHeld) {
+                        gs.extendHold(sem, nvIdx);
+                    } else {
+                        gs.slideNote(pitchV, sem, nvIdx);
+                    }
+                }
+                else {
+                    // Disconnected: New Note
+                    gs.triggerNote(pitchV, sem, nvIdx);
+                }
             }
         }
         // Mid-note: randomness already accounted for by r_rest/r_legato_tie.
@@ -213,17 +216,24 @@ struct SequencerEngine {
         if (!clock.sixteenthEdge || muted) return false;
 
         bool wrapped = advancePlayhead();
+        int offsetStep = getOffsetStep();
 
-        // Always consume 3 random values per tick for perfect loop alignment
-        float r_vary = pe.unitRhythm();
-        float r_rest = pe.unitRhythm();
-        float r_legato = pe.unitRhythm();
-
+        // Use pre-generated random values for this specific step.
+        // In Dice mode, these are static. In Realtime mode, pe.redrawRhythm()
+        // refreshes these arrays every loop.
+        float r_vary   = pe.variationRandom[offsetStep];
+        float r_rest   = pe.rhythmRandom[offsetStep];
+        float r_legato = pe.legatoRandom[offsetStep];
+        
+        // Recalculate variation live based on diced random value and current knob
         int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
+
+        // The phrase boundary logic in MeloDicer.cpp calls onPhraseBoundary_
+        // which now correctly gates redraws.
 
         // Phase-aligned step tick
         gs.tick();
-        executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato);
+        executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, input);
         return wrapped;
     }
 
@@ -247,13 +257,15 @@ struct SequencerEngine {
         }
 
         if (triggered) {
-            float r_vary = pe.unitRhythm();
-            float r_rest = pe.unitRhythm();
-            float r_legato = pe.unitRhythm();
+            int offsetStep = getOffsetStep();
+            float r_vary   = pe.variationRandom[offsetStep];
+            float r_rest   = pe.rhythmRandom[offsetStep];
+            float r_legato = pe.legatoRandom[offsetStep];
+            
             int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
 
             gs.tick();
-            executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato);
+            executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, input);
         }
 
         prevGate1High = gate1High;

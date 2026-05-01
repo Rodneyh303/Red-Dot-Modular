@@ -45,12 +45,19 @@ struct PatternInput {
 struct PatternEngine {
 
     // ── Output arrays (read by MeloDicer, never written externally) ───────────
+    float rhythmRandom[16]    = {};
+    float variationRandom[16] = {};
+    float legatoRandom[16]    = {};
+    float melodyRandom[16]    = {};
+    float octaveRandom[16]    = {};
+
+    // Caches for UI/Lights to reflect the current state
     bool  rhythmPattern[16]   = {};
     int   melodySemitone[16]  = {};
     float melodyPitchV[16]    = {};
 
     // ── RNG state ─────────────────────────────────────────────────────────────
-    rack::random::Xoroshiro128Plus rhythmRng, melodyRng;
+    rack::random::Xoroshiro128Plus rhythmRng, melodyRng, stochasticRng;
 
     // ── Seed management ───────────────────────────────────────────────────────
     float rhythmSeedFloat  = 0.f;
@@ -59,6 +66,7 @@ struct PatternEngine {
     bool  melodySeedPending = false;
     float rhythmSeedPendingFloat = 0.f;
     float melodySeedPendingFloat = 0.f;
+    float stochasticSeedFloat = 0.f;
     int   rhythmMode = 0;  // 0=dice, 1=realtime
     int   melodyMode = 0;
 
@@ -80,6 +88,7 @@ struct PatternEngine {
     static inline float rngToFloat(rack::random::Xoroshiro128Plus& rng) {
         return (rng() >> 11) * (1.f / float(1ull << 53));
     }
+    inline float unitStochastic() { return rngToFloat(stochasticRng); }
     inline float unitRhythm() { return rngToFloat(rhythmRng); }
     inline float unitMelody() { return rngToFloat(melodyRng); }
 
@@ -96,22 +105,23 @@ struct PatternEngine {
     }
 
     void reset() {
-        rhythmSeedFloat = melodySeedFloat = 0.f;
+        rhythmSeedFloat = melodySeedFloat = stochasticSeedFloat = 0.f;
         rhythmSeedPending = melodySeedPending = false;
         rhythmMode = melodyMode = 0;
         seedRngFromFloat(rhythmRng, 0.f);
         seedRngFromFloat(melodyRng, 0.f);
+        seedRngFromFloat(stochasticRng, 0.f);
     }
 
     // ── Core generation ───────────────────────────────────────────────────────
 
-    // Pick a semitone (0..11) weighted by fader values. Returns -1 if all zero.
-    int pickSemitone(const float weights[12]) {
+    // Pick a semitone (0..11) weighted by fader values using a provided random value.
+    int pickSemitone(const float weights[12], float r_val) {
         float sum = 0.f;
         for (int i = 0; i < 12; ++i) sum += weights[i];
         if (sum <= 0.f) return -1;
 
-        float r = pe_clamp(unitMelody(), 0.f, 1.f - 1e-7f) * sum;
+        float r = pe_clamp(r_val, 0.f, 1.f - 1e-7f) * sum;
         float acc = 0.f;
         for (int i = 0; i < 12; ++i) {
             if (weights[i] <= 0.f) continue;
@@ -123,16 +133,21 @@ struct PatternEngine {
 
     // Generate a pitch voltage (1V/oct, 0..5V) and return the semitone.
     float genPitch(int& outSemitone, const PatternInput& in) {
-        int sem = pickSemitone(in.semiWeights);
+        return genPitchLive(outSemitone, in, unitMelody(), unitMelody());
+    }
+
+    // Generate a pitch voltage using provided random floats for semitone and octave selection.
+    float genPitchLive(int& outSemitone, const PatternInput& in, float r_semi, float r_oct) {
+        int sem = pickSemitone(in.semiWeights, r_semi);
         outSemitone = (sem < 0) ? 0 : sem;
         if (sem < 0) return 0.f;
 
+        int oL = (int)std::floor(in.octaveLo);
         float lo = in.octaveLo, hi = in.octaveHi;
         if (hi < lo) std::swap(lo, hi);
-        int oL = (int)std::floor(lo);
         int oH = (int)std::floor(hi);
         if (oH < oL) oH = oL;
-        int oct = oL + (int)std::floor(unitMelody() * float(oH - oL + 1));
+        int oct = oL + (int)std::floor(r_oct * float(oH - oL + 1));
 
         float v = float(oct) + (sem + in.transpose) / 12.f;
         return pe_clamp(v, 0.f, 5.f);
@@ -188,41 +203,64 @@ struct PatternEngine {
     // Regenerate rhythm pattern (16 steps of bool: true=active, false=rest)
     void redrawRhythm(const PatternInput& in) {
         if (in.locked) return;
-        for (int i = 0; i < 16; ++i)
-            rhythmPattern[i] = (unitRhythm() >= in.restProb);
+        for (int i = 0; i < 16; ++i) {
+            rhythmRandom[i]    = unitRhythm();
+            variationRandom[i] = unitRhythm();
+            legatoRandom[i]    = unitRhythm();
+            // Update cache for UI
+            rhythmPattern[i] = (rhythmRandom[i] >= in.restProb);
+        }
     }
 
     // Regenerate melody pattern (16 steps of semitone + pitch voltage)
     void redrawMelody(const PatternInput& in) {
         if (in.locked) return;
         for (int i = 0; i < 16; ++i) {
+            melodyRandom[i] = unitMelody();
+            octaveRandom[i] = unitMelody();
+            // Update cache for UI
             int sem = 0;
-            melodyPitchV[i]   = genPitch(sem, in);
+            melodyPitchV[i]   = genPitchLive(sem, in, melodyRandom[i], octaveRandom[i]);
+            melodySemitone[i] = sem;
+        }
+    }
+
+    // Updates the rhythm/melody arrays used for UI and LEDs based on the 
+    // current knob positions and the *existing* random buffers.
+    void refreshVisualCache(const PatternInput& in) {
+        for (int i = 0; i < 16; ++i) {
+            rhythmPattern[i] = (rhythmRandom[i] >= in.restProb);
+            int sem = 0;
+            melodyPitchV[i]   = genPitchLive(sem, in, melodyRandom[i], octaveRandom[i]);
             melodySemitone[i] = sem;
         }
     }
 
     // Apply any pending seeds, then redraw both patterns.
     // Called at phrase boundaries and on reset.
-    //
-    // When locked: seeds stay pending, RNG state is NOT advanced, patterns
-    // are NOT redrawn. The pending seed fires on the next phrase boundary
-    // after unlock — you can pre-arm a new pattern while the current plays.
     void applyPendingSeedsAndRedraw(const PatternInput& in) {
         if (in.locked) return;  // freeze everything: seeds, RNG, patterns
+
+        // Only advance the RNG if a new dice roll is pending or we are in Realtime mode.
+        bool shouldRedrawR = rhythmSeedPending || (rhythmMode == 1);
+        bool shouldRedrawM = melodySeedPending || (melodyMode == 1);
 
         if (rhythmSeedPending) {
             rhythmSeedFloat = rhythmSeedPendingFloat;
             seedRngFromFloat(rhythmRng, rhythmSeedFloat);
             rhythmSeedPending = false;
         }
+        if (shouldRedrawR) redrawRhythm(in);
+
         if (melodySeedPending) {
             melodySeedFloat = melodySeedPendingFloat;
             seedRngFromFloat(melodyRng, melodySeedFloat);
             melodySeedPending = false;
         }
-        redrawRhythm(in);
-        redrawMelody(in);
+        if (shouldRedrawM) redrawMelody(in);
+
+        // Always refresh the cache so the LEDs react to live knob changes in Dice mode
+        if (!shouldRedrawR || !shouldRedrawM) refreshVisualCache(in);
     }
 
     // ── Mode switching (dice ↔ realtime) ──────────────────────────────────────

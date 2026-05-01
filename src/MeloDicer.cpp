@@ -90,6 +90,8 @@ MeloDicer::MeloDicer() {
         rhythmSeedFloat = rack::random::uniform() * 10.f;
         melodySeedFloat = rack::random::uniform() * 10.f;
         reseedXoroshiroFromFloat(rhythmRng, rhythmSeedFloat);
+        stochasticSeedFloat = rack::random::uniform() * 10.f;
+        reseedXoroshiroFromFloat(stochasticRng, stochasticSeedFloat);
         reseedXoroshiroFromFloat(melodyRng, melodySeedFloat);
         rhythmSeedPendingFloat = rhythmSeedFloat;
         melodySeedPendingFloat = melodySeedFloat;
@@ -98,6 +100,11 @@ MeloDicer::MeloDicer() {
         // genPitchV() reads params[] which aren't valid yet, so use safe literals
         for (int i = 0; i < 16; ++i) {
             rhythmPattern[i]  = true;
+            engine.pe.rhythmRandom[i] = 1.0f;
+            engine.pe.variationRandom[i] = 0.5f;
+            engine.pe.legatoRandom[i] = 0.0f;
+            engine.pe.melodyRandom[i] = 0.5f;
+            engine.pe.octaveRandom[i] = 0.5f;
             melodyPitchV[i]   = 0.f;   // C0 = 0V
             melodySemitone[i] = 0;     // semitone C
         }
@@ -121,6 +128,7 @@ MeloDicer::MeloDicer() {
         bpm = 120.f;
         clock.reset();
         prevExtGate = false;
+        reseedXoroshiroFromFloat(stochasticRng, 0.f); // Reset stochastic RNG to deterministic state
         currentPitchV = 0.f;
         melodySeedCached = false;
         rhythmSeedCached = false;
@@ -158,11 +166,31 @@ MeloDicer::MeloDicer() {
         json_object_set_new(root,"rhythmSeedPendingFloat", json_real((float)rhythmSeedPendingFloat));
         json_object_set_new(root,"melodySeedPending", json_boolean(melodySeedPending));
         json_object_set_new(root,"melodySeedPendingFloat", json_real((float)melodySeedPendingFloat));
+        json_object_set_new(root,"stochasticSeedFloat", json_real((float)stochasticSeedFloat));
 
         // serialize rhythmPattern as array of ints 0/1
         json_t* rarr = json_array();
         for (int i = 0; i < 16; ++i) json_array_append_new(rarr, json_integer(rhythmPattern[i] ? 1 : 0));
         json_object_set_new(root,"rhythmPattern", rarr);
+
+        // serialize random buffers for pattern stability
+        json_t* rrarr = json_array();
+        json_t* vrarr = json_array();
+        json_t* lrarr = json_array();
+        json_t* mrarr = json_array();
+        json_t* orarr = json_array();
+        for (int i = 0; i < 16; ++i) {
+            json_array_append_new(rrarr, json_real(engine.pe.rhythmRandom[i]));
+            json_array_append_new(vrarr, json_real(engine.pe.variationRandom[i]));
+            json_array_append_new(lrarr, json_real(engine.pe.legatoRandom[i]));
+            json_array_append_new(mrarr, json_real(engine.pe.melodyRandom[i]));
+            json_array_append_new(orarr, json_real(engine.pe.octaveRandom[i]));
+        }
+        json_object_set_new(root,"rhythmRandom", rrarr);
+        json_object_set_new(root,"variationRandom", vrarr);
+        json_object_set_new(root,"legatoRandom", lrarr);
+        json_object_set_new(root,"melodyRandom", mrarr);
+        json_object_set_new(root,"octaveRandom", orarr);
 
         // serialize melodyPitchV as array of reals
         json_t* marr = json_array();
@@ -197,6 +225,7 @@ MeloDicer::MeloDicer() {
         if (auto j = json_object_get(root,"rhythmSeedPendingFloat")) rhythmSeedPendingFloat = (float)json_real_value(j);
         if (auto j = json_object_get(root,"melodySeedPending")) melodySeedPending = (bool)json_boolean_value(j);
         if (auto j = json_object_get(root,"melodySeedPendingFloat")) melodySeedPendingFloat = (float)json_real_value(j);
+        if (auto j = json_object_get(root,"stochasticSeedFloat")) stochasticSeedFloat = (float)json_real_value(j);
 
         if (auto j = json_object_get(root,"rhythmPattern")) {
             if (json_is_array(j)) {
@@ -206,6 +235,15 @@ MeloDicer::MeloDicer() {
                     if (it) rhythmPattern[i] = (json_integer_value(it) != 0);
                 }
             }
+        }
+        if (auto j = json_object_get(root,"rhythmRandom")) {
+            if (json_is_array(j)) { for (size_t i=0; i<16 && i<json_array_size(j); ++i) engine.pe.rhythmRandom[i] = (float)json_real_value(json_array_get(j,i)); }
+        }
+        if (auto j = json_object_get(root,"variationRandom")) {
+            if (json_is_array(j)) { for (size_t i=0; i<16 && i<json_array_size(j); ++i) engine.pe.variationRandom[i] = (float)json_real_value(json_array_get(j,i)); }
+        }
+        if (auto j = json_object_get(root,"legatoRandom")) {
+            if (json_is_array(j)) { for (size_t i=0; i<16 && i<json_array_size(j); ++i) engine.pe.legatoRandom[i] = (float)json_real_value(json_array_get(j,i)); }
         }
         if (auto j = json_object_get(root,"melodyPitchV")) {
             if (json_is_array(j)) {
@@ -219,6 +257,7 @@ MeloDicer::MeloDicer() {
 
         // Always reseed RNGs from saved seeds so patch restore is deterministic
         reseedXoroshiroFromFloat(rhythmRng, rhythmSeedFloat);
+        reseedXoroshiroFromFloat(stochasticRng, stochasticSeedFloat);
         reseedXoroshiroFromFloat(melodyRng, melodySeedFloat);
     }
 
@@ -279,18 +318,22 @@ void MeloDicer::switchRhythmMode() { engine.pe.switchRhythmMode(stepIndex, lastS
 // uses melody RNG
 // returns -1 if no semitone is selected (all weights zero)
 int MeloDicer::pickSemitoneWeighted() {
-    float w[12]; for(int i=0;i<12;++i) w[i]=getSemitoneParam(i);
-    return engine.pe.pickSemitone(w);
+    float w[12];
+    for(int i=0; i<12; ++i) w[i] = getSemitoneParam(i);
+    int idx = engine.getOffsetStep();
+    return engine.pe.pickSemitone(w, melodyRandom[idx]);
 }
 
-// generate a pitch V in 1V/oct format, return semitone via out parameter
+// generate a pitch V in 1V/oct format, returnh semitone via out parameter
 //applies octave range and transpose
 // uses melody RNG
 // returns 0V and -1 semitone if no semitone is selected
 // (should be rare, only if all semitone weights are zero)
-    float MeloDicer::genPitchV(int& outSemitone) {
-        return engine.pe.genPitch(outSemitone, makePatternInput());
-    }
+float MeloDicer::genPitchV(int& outSemitone) {
+    PatternInput in = makePatternInput();
+    int idx = engine.getOffsetStep();
+    return engine.pe.genPitchLive(outSemitone, in, melodyRandom[idx], octaveRandom[idx]);
+}
     // uses rhythm RNG
     //  biases shorter/longer values depending on VARIATION_PARAM (0..1)
     // 0.5 = no bias, <0.5 = longer notes, >0.5 = shorter notes
@@ -680,10 +723,6 @@ void MeloDicer::process(const ProcessArgs& args) {
 //  Also handles mute logic (no output, but still advances and updates LEDs)
 void MeloDicer::handleModeA_(const ProcessArgs& args) {
     if (engine.executeModeA(clock, getRestParam(), getLegatoParam(), getNoteValueParam(), makePatternInput())) {
-        // Sample new seeds for realtime modes, then let onPhraseBoundary_()
-        // apply any pending seeds (Dice-armed or realtime) before redrawing.
-        if (melodyMode == 1) { melodySeedPendingFloat = sampleSeedFromSource(); melodySeedPending = true; }
-        if (rhythmMode == 1) { rhythmSeedPendingFloat = sampleSeedFromSource(); rhythmSeedPending = true; }
         onPhraseBoundary_();
     }
 
@@ -705,8 +744,6 @@ void MeloDicer::handleModeA_(const ProcessArgs& args) {
 void MeloDicer::handleModeB_(const ProcessArgs& args, bool gate1Rise) {
     bool gate1High = inputs[GATE1_INPUT].getVoltage() >= 1.f;
     if (engine.executeModeB(gate1Rise, gate1High, getRestParam(), getLegatoParam(), getNoteValueParam(), makePatternInput())) {
-        if (melodyMode == 1) { melodySeedPendingFloat = sampleSeedFromSource(); melodySeedPending = true; }
-        if (rhythmMode == 1) { rhythmSeedPendingFloat = sampleSeedFromSource(); rhythmSeedPending = true; }
         onPhraseBoundary_();
     }
 

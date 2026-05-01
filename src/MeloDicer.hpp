@@ -270,6 +270,7 @@ struct MeloDicer : Module {
     // Convenience accessors
     rack::random::Xoroshiro128Plus& rhythmRng = engine.pe.rhythmRng;
     rack::random::Xoroshiro128Plus& melodyRng = engine.pe.melodyRng;
+    rack::random::Xoroshiro128Plus& stochasticRng = engine.pe.stochasticRng;
     float& holdRemain = engine.gs.holdRemain;
     bool& gateHeld = engine.gs.gateHeld;
     float& currentPitchV = engine.gs.currentPitchV;
@@ -282,6 +283,7 @@ struct MeloDicer : Module {
     float& rhythmSeedPendingFloat = engine.pe.rhythmSeedPendingFloat;
     bool& melodySeedPending = engine.pe.melodySeedPending;
     float& melodySeedPendingFloat = engine.pe.melodySeedPendingFloat;
+    float& stochasticSeedFloat = engine.pe.stochasticSeedFloat;
 
     inline float unitRandomRhythm() { return engine.pe.unitRhythm(); }
     inline float unitRandomMelody() { return engine.pe.unitMelody(); }
@@ -307,6 +309,11 @@ struct MeloDicer : Module {
     bool (&rhythmPattern)[16] = engine.pe.rhythmPattern;
     float (&melodyPitchV)[16] = engine.pe.melodyPitchV;
     int (&melodySemitone)[16] = engine.pe.melodySemitone;
+    float (&rhythmRandom)[16] = engine.pe.rhythmRandom;
+    float (&variationRandom)[16] = engine.pe.variationRandom;
+    float (&legatoRandom)[16] = engine.pe.legatoRandom;
+    float (&melodyRandom)[16] = engine.pe.melodyRandom;
+    float (&octaveRandom)[16] = engine.pe.octaveRandom;
 
     dsp::PulseGenerator& gatePulse = engine.gs.gatePulse;
     bool& prevExtGate = engine.prevGate1High;
@@ -349,6 +356,7 @@ struct MeloDicer : Module {
     void switchMelodyMode();
     void switchRhythmMode();
     int pickSemitoneWeighted();
+    inline float unitRandomStochastic() { return engine.pe.unitStochastic(); }
     float genPitchV(int& outSemitone);
     int varyNoteIndex(int baseIdx);
     float semitoneToVolts(int semitone);
