@@ -24,22 +24,22 @@ RDM_KnobSmall::RDM_KnobSmall() {
 RDM_KnobDarkLarge::RDM_KnobDarkLarge() {
     minAngle = -0.83f * M_PI;
     maxAngle =  0.83f * M_PI;
-    setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobLarge.svg")));
+    setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobDark_Large.svg")));
 }
 RDM_KnobDarkMedium::RDM_KnobDarkMedium() {
     minAngle = -0.83f * M_PI;
     maxAngle =  0.83f * M_PI;
-    setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobMedium.svg")));
+    setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobDark_Medium.svg")));
 }
 RDM_KnobCreamLarge::RDM_KnobCreamLarge() {
     minAngle = -0.83f * M_PI;
     maxAngle =  0.83f * M_PI;
-    setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobLarge.svg")));
+    setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobCream_Large.svg")));
 }
 RDM_KnobCreamMedium::RDM_KnobCreamMedium() {
     minAngle = -0.83f * M_PI;
     maxAngle =  0.83f * M_PI;
-    setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobMedium.svg")));
+    setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobCream_Medium.svg")));
 }
 
 bool MeloDicerWidget::getLightTheme() const {
@@ -55,7 +55,7 @@ void MeloDicerWidget::setLightTheme(bool v) {
 MeloDicerWidget::MeloDicerWidget(MeloDicer* module) {
         setModule(module);
         applyTheme();
-        if (box.size.x == 0) box.size = mm2px(Vec(175.26f, 128.5f)); // Fallback if SVG fails
+        if (box.size.x == 0) box.size = mm2px(Vec(W_MM, 128.5f)); // Fallback if SVG fails
 
         for (int i=0; i<12; ++i) {
             float cx=7.5f+i*7.0f;
@@ -66,13 +66,14 @@ MeloDicerWidget::MeloDicerWidget(MeloDicer* module) {
         addParam(createLightParamCentered<VCVLightSlider<RedLight>>(mm2px(Vec(100.f,59.75f)), module, MeloDicer::OCT_LO_PARAM, MeloDicer::OCT_LO_LED));
         addParam(createLightParamCentered<VCVLightSlider<RedLight>>(mm2px(Vec(108.f,59.75f)), module, MeloDicer::OCT_HI_PARAM, MeloDicer::OCT_HI_LED));
 
+        // 16 step lights: Circular ring arrangement near top right
         {
-            const float RCX=138.f,RCY=46.f,RLED=13.25f;
-            for (int i=0;i<16;++i) {
-                float ang=float(i)/16.f*2.f*float(M_PI)-float(M_PI)*0.5f;
-                float lx=RCX+RLED*std::cos(ang),ly=RCY+RLED*std::sin(ang);
-                if (i%4==0) addChild(createLightCentered<SmallLight<RedLight>>(mm2px(Vec(lx,ly)),module,MeloDicer::STEP_LIGHTS_START+i));
-                else        addChild(createLightCentered<SmallLight<GreenLight>>(mm2px(Vec(lx,ly)),module,MeloDicer::STEP_LIGHTS_START+i));
+            const float RCX = 138.f, RCY = 46.f, RLED = 13.25f;
+            for (int i = 0; i < 16; ++i) {
+                float ang = float(i) / 16.f * 2.f * M_PI - M_PI / 2.f;
+                float lx = RCX + RLED * std::cos(ang), ly = RCY + RLED * std::sin(ang);
+                if (i % 4 == 0) addChild(createLightCentered<SmallLight<RedLight>>(mm2px(Vec(lx, ly)), module, MeloDicer::STEP_LIGHTS_START + i));
+                else            addChild(createLightCentered<SmallLight<GreenLight>>(mm2px(Vec(lx, ly)), module, MeloDicer::STEP_LIGHTS_START + i));
             }
         }
 
@@ -122,7 +123,7 @@ void MeloDicerWidget::applyTheme() {
  // Panel
         bool lightTheme = getLightTheme();  // read from module
         auto panelPath = asset::plugin(pluginInstance,
-            lightTheme ? "res/panels/MeloDicer_panel_v2.svg"
+            lightTheme ? "res/panels/MeloDicer_panel_light.svg"
                        : "res/panels/MeloDicer_panel_v2.svg");
         setPanel(createPanel(panelPath));
 
@@ -179,8 +180,17 @@ void MeloDicerWidget::applyTheme() {
     }
 
 void MeloDicerWidget::draw(const DrawArgs& args) {
-        ModuleWidget::draw(args);
         NVGcontext* vg=args.vg;
+
+        // Force a solid opaque background fill (alpha 255) to prevent transparency
+    // Draw solid opaque background to prevent transparency
+    nvgBeginPath(vg);
+    nvgRect(vg, 0, 0, box.size.x, box.size.y);
+    nvgFillColor(vg, getLightTheme() ? nvgRGBA(0xe6, 0xe6, 0xe6, 255) : nvgRGBA(0x23, 0x23, 0x23, 255));
+    nvgFill(vg);
+
+        ModuleWidget::draw(args);
+
         nvgFontFaceId(vg,APP->window->uiFont->handle);
         nvgTextAlign(vg,NVG_ALIGN_CENTER|NVG_ALIGN_MIDDLE);
         const bool lt = getLightTheme();

@@ -11,6 +11,12 @@
       "name": "MeloDicer",
       "description": "VCV plugin inspired by Vermona meloDICER: stochastic melody & rhythm with edit-menu features",
       "tags": ["Sequencer", "Random", "Quantizer"]
+    },
+    {
+      "slug": "MeloDicerExpander",
+      "name": "MeloDicerExpander",
+      "description": "64-step version of MeloDicer with 4 rows of 16 steps each, and additional features",
+      "tags": ["Sequencer", "Random", "Quantizer"]
     }
   ]
 }

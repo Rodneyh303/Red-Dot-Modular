@@ -103,6 +103,28 @@ namespace MeloDicerIds {
         NUM_INPUTS
     };
 
+    enum ExpanderInputIds {
+        // These are for the expander's own config() calls, not for MeloDicer's.
+        // They must be distinct from MeloDicer's InputIds.
+        EXPANDER_SEMI_CV_INPUT_0 = 100,
+        EXPANDER_SEMI_CV_INPUT_1,
+        EXPANDER_SEMI_CV_INPUT_2,
+        EXPANDER_SEMI_CV_INPUT_3,
+        EXPANDER_SEMI_CV_INPUT_4,
+        EXPANDER_SEMI_CV_INPUT_5,
+        EXPANDER_SEMI_CV_INPUT_6,
+        EXPANDER_SEMI_CV_INPUT_7,
+        EXPANDER_SEMI_CV_INPUT_8,
+        EXPANDER_SEMI_CV_INPUT_9,
+        EXPANDER_SEMI_CV_INPUT_10,
+        EXPANDER_SEMI_CV_INPUT_11,
+
+        EXPANDER_OCT_LO_CV_INPUT,
+        EXPANDER_OCT_HI_CV_INPUT,
+
+        NUM_EXPANDER_INPUTS
+    };
+
     enum OutputIds {
         GATE_OUTPUT = 0,
         CV_OUTPUT,

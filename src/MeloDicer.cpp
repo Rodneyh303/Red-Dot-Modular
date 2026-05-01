@@ -228,8 +228,9 @@ MeloDicer::MeloDicer() {
         float v =  params[SEMI0_PARAM + sem].getValue();
         // Add CV from left expander if present
         if (leftExpander.module && leftExpander.module->model == modelMeloDicerExpander) {
-            MeloDicerLeftMessage *msg = (MeloDicerLeftMessage *)leftExpander.consumerMessage;
-            v += msg->semiCv[sem] / 10.f;
+            if(leftExpander.module->inputs[MeloDicerIds::EXPANDER_SEMI_CV_INPUT_0 + sem].isConnected()) {
+                   v += leftExpander.module->inputs[MeloDicerIds::EXPANDER_SEMI_CV_INPUT_0 + sem].getVoltage()/10.0f;
+            }
         }
         v = clampv(v, 0.f, 1.f);
         return v;
@@ -239,8 +240,9 @@ MeloDicer::MeloDicer() {
     float MeloDicer::getOctaveLoParam()  {
         float v = params[OCT_LO_PARAM].getValue();
         if (leftExpander.module && leftExpander.module->model == modelMeloDicerExpander) {
-            MeloDicerLeftMessage *msg = (MeloDicerLeftMessage *)leftExpander.consumerMessage;
-            v += msg->octLoCv / 10.f * 8.f;
+            if(leftExpander.module->inputs[MeloDicerIds::EXPANDER_OCT_LO_CV_INPUT].isConnected()) {
+                v += leftExpander.module->inputs[MeloDicerIds::EXPANDER_OCT_LO_CV_INPUT].getVoltage()/10.0f*8.0f;
+            }
         }
         v = clampv(v, 0.f, 8.f);
         return v;
@@ -250,8 +252,9 @@ MeloDicer::MeloDicer() {
     float MeloDicer::getOctaveHiParam()  {
         float v = params[OCT_HI_PARAM].getValue();
         if (leftExpander.module && leftExpander.module->model == modelMeloDicerExpander) {
-            MeloDicerLeftMessage *msg = (MeloDicerLeftMessage *)leftExpander.consumerMessage;
-            v += msg->octHiCv / 10.f * 8.f;
+            if(leftExpander.module->inputs[MeloDicerIds::EXPANDER_OCT_HI_CV_INPUT].isConnected()) {
+                v += leftExpander.module->inputs[MeloDicerIds::EXPANDER_OCT_HI_CV_INPUT].getVoltage()/10.0f*8.0f;
+            }
         }
         v = clampv(v, 0.f, 8.f);
         return v;
@@ -381,7 +384,6 @@ float MeloDicer::semitoneToVolts(int semitone) {
         return (float)(u * 10.0);
     }
 
-// MeloDicer.cpp — refactor: split process() into handleModeA/B/C/D() with full logic inline
 
 
 // ---------------- Helper: phrase boundary hook -------------------------------
@@ -399,49 +401,11 @@ void MeloDicer::onReset() {
 }
 
 
-// ---------------- Helper: compute note length idx with variation -------------
-// int getNoteLenIdx_() {
-//     int baseIdx = (int) std::round(params[NOTE_VALUE_PARAM].getValue());
-//     baseIdx = clampv<int>(baseIdx, 0, 8);
-//     //if (!diceR) return baseIdx;
-//     return varyNoteIndex(baseIdx);
-// }
-
-// int getNoteLenIdx_() {
-//     int maxIdx = sizeof(NOTEVALS) / sizeof(NOTEVALS[0]);
-
-//     while (true) {
-//         int idx = random::u32() % maxIdx;
-//         const NoteVal& nv = NOTEVALS[idx];
-
-//         int mask = (ppqnSetting == 1 ? 1 : ppqnSetting == 4 ? 2 : 4);
-//         if (nv.allowedPPQN & mask) {
-//             return idx;
-//         }
-//     }
-// }
-
-
-// Compute note length index (0..8) based on VARIATION_PARAM biasing
-// 0.0 = bias to longer notes, 1.0 = bias to shorter notes, 0.5 = no bias
-// without ties, forbid notes longer than 1/4 note  (=index 3)
-// returns index into NOTEVALS[]
-// uses rhythm RNG
-// (this is a replacement for getNoteLenIdx_0 and varyNoteIndex combined)
-// Note: this function does not consider PPQN legality; that is handled elsewhere
-// (e.g. computeNoteLengthIdx)
-// Note: this function does not consider the NOTE_VALUE_PARAM; it only uses VARIATION_PARAM
-// to bias the choice of note length.   This is to match the original MeloDicer behavior    
-// where the NOTE_VALUE_PARAM was not used in Mode A/B.
-// If you want to use NOTE_VALUE_PARAM as a base, you can modify this function accordingly
-// (e.g. call varyNoteIndex with baseIdx from NOTE_VALUE_PARAM).
-
 // Returns note length index: NOTE VALUE sets the base, VARIATION randomly biases it.
 // NOTEVALS.allowedPPQN bitmask: 1=PPQN1, 2=PPQN4, 4=PPQN24
 // ppqnSetting raw values: 1, 4, 24 — must be converted to bitmask before use.
 int MeloDicer::getNoteLenIdx_() { return engine.getNoteLenIdx(getNoteValueParam(), makePatternInput()); }
 int MeloDicer::computeNoteLengthIdx(int requestedIdx, int ppqnMask) { return engine.computeNoteLengthIdx(requestedIdx, ppqnMask); }
-
 
 
 // quantize pitch to semitone index (0..11) and octave offset (integer)
@@ -753,12 +717,6 @@ void MeloDicer::handleModeB_(const ProcessArgs& args, bool gate1Rise) {
 
     updateStepLEDs_(args.sampleTime);
 }
-
-
-// ---------------- Mode A: internal sequencer with offset -------------------
-
-
-
 
 
 // ---------------- Mode C: Quantizer 1 ---------------------------------------
