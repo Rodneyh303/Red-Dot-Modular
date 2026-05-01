@@ -109,23 +109,29 @@ struct GateState {
 
     // Tick: call once per 1/16 step edge. Decrements hold, closes gate if expired.
     void tick() {
-        if (!gateHeld) return;
-        holdRemain -= 1.f;
-        if (holdRemain <= 0.f) {
-            holdRemain = 0.f;
-            gateHeld   = false;
+        if (holdRemain > 0.f) {
+            holdRemain -= 1.f;
+            if (holdRemain <= 0.f) {
+                holdRemain = 0.f;
+                gateHeld   = false;
+            }
         }
+
         // Decay semiPlay timers on each tick
         for (int i = 0; i < 12; ++i) {
-            semiPlayRemain[i] -= 1.f;
-            if (semiPlayRemain[i] < 0.f) semiPlayRemain[i] = 0.f;
+            if (semiPlayRemain[i] > 0.f) {
+                semiPlayRemain[i] -= 1.f;
+                if (semiPlayRemain[i] < 0.f) semiPlayRemain[i] = 0.f;
+            }
         }
     }
 
     // Process: call every sample. Returns raw gate voltage (0 or 10V).
     // muted / invertGate applied by caller so this stays Rack-port-free.
     float process(float sampleTime) {
-        bool active = gatePulse.process(sampleTime) || gateHeld;
+        // To ensure a retrigger when legato is off and note duration matches step interval, 
+        // we dip the gate for 1ms if a new note was triggered (gatePulse is active).
+        bool active = gateHeld && !gatePulse.process(sampleTime);
         return active ? 10.f : 0.f;
     }
 
