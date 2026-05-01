@@ -356,7 +356,7 @@ struct MeloDicer : Module {
     void switchMelodyMode();
     void switchRhythmMode();
     int pickSemitoneWeighted();
-    inline float unitRandomStochastic() { return engine.pe.unitStochastic(); }
+    //inline float unitRandomStochastic() { return engine.pe.unitStochastic(); }
     float genPitchV(int& outSemitone);
     int varyNoteIndex(int baseIdx);
     float semitoneToVolts(int semitone);

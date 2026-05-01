@@ -1,6 +1,7 @@
 #pragma once
 #include "PatternEngine.hpp"
 #include "GateState.hpp"
+#include"ClockEngine.hpp"
 
 struct NoteVal {
     float fraction;
@@ -161,7 +162,7 @@ struct SequencerEngine {
      * Performs the stochastic decision for a single sequencer step.
      * This is the "Secret Sauce" of MeloDicer logic.
      */
-    void executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, const PatternInput& input) {
+    void executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, const PatternInput& input, bool wasHeld) {
         float dur = gs_noteSteps(nvIdx);
         int offsetStep = getOffsetStep();
         
@@ -179,10 +180,10 @@ struct SequencerEngine {
                 }
                 else if (r_legato_tie < legatoProb) {
                     // Connected: Either Tie or Legato
-                    if (sem == gs.lastSemitone && gs.gateHeld) {
+                    if (sem == gs.lastSemitone && wasHeld) {
                         gs.extendHold(sem, nvIdx);
                     } else {
-                        gs.slideNote(pitchV, sem, nvIdx);
+                        gs.slideNote(pitchV, sem, nvIdx, wasHeld);
                     }
                 }
                 else {
@@ -231,9 +232,10 @@ struct SequencerEngine {
         // The phrase boundary logic in MeloDicer.cpp calls onPhraseBoundary_
         // which now correctly gates redraws.
 
+        bool wasHeld = gs.gateHeld;
         // Phase-aligned step tick
         gs.tick();
-        executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, input);
+        executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, input, wasHeld);
         return wrapped;
     }
 
@@ -264,8 +266,9 @@ struct SequencerEngine {
             
             int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
 
+            bool wasHeld = gs.gateHeld;
             gs.tick();
-            executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, input);
+            executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, input, wasHeld);
         }
 
         prevGate1High = gate1High;

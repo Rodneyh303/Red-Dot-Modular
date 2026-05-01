@@ -69,12 +69,13 @@ struct GateState {
 
     // Legato slide: pitch changes, gate stays held (no retrigger), hold extends.
     // If gate was already open: extends. If not: opens it (first note of legato run).
-    void slideNote(float pitchV, int semitone, int nvIdx) {
+    void slideNote(float pitchV, int semitone, int nvIdx, bool wasHeld) {
         float dur = gs_noteSteps(nvIdx);
         currentPitchV = pitchV;
         lastSemitone  = semitone;
-        if (gateHeld) {
+        if (wasHeld) {
             holdRemain += dur;
+            gateHeld = true; // Ensure it stays open if tick() just cleared it
         } else {
             gatePulse.trigger(1e-3f);   // first note of legato run opens gate
             holdRemain = dur;
@@ -96,6 +97,7 @@ struct GateState {
     // Tie (same pitch): extend hold, no pitch or retrigger change.
     void extendHold(int semitone, int nvIdx) {
         holdRemain += gs_noteSteps(nvIdx);
+        gateHeld = true; // Ensure it stays open if tick() just cleared it
         markSemi(semitone, holdRemain);
     }
 

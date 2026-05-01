@@ -88,7 +88,7 @@ struct PatternEngine {
     static inline float rngToFloat(rack::random::Xoroshiro128Plus& rng) {
         return (rng() >> 11) * (1.f / float(1ull << 53));
     }
-    inline float unitStochastic() { return rngToFloat(stochasticRng); }
+    //inline float unitStochastic() { return rngToFloat(stochasticRng); }
     inline float unitRhythm() { return rngToFloat(rhythmRng); }
     inline float unitMelody() { return rngToFloat(melodyRng); }
 
