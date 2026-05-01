@@ -139,7 +139,7 @@ struct PatternEngine {
     }
 
     // Apply variation bias to a note length index.
-    int varyNoteIndex(int baseIdx, const PatternInput& in) {
+    int varyNoteIndex(int baseIdx, const PatternInput& in, float r) {
         // variationAmount=0.5 → zero variation (all weight on baseIdx, no spread).
         // variationAmount → 0 → bias toward longer notes (lower index).
         // variationAmount → 1 → bias toward shorter notes (higher index).
@@ -176,7 +176,8 @@ struct PatternEngine {
             total += weights[i];
         }
         if (total <= 0.f) return baseIdx;
-        float r = unitRhythm() * total, acc = 0.f;
+        r *= total; 
+        float acc = 0.f;
         for (int i = lo; i <= hi; ++i) if (weights[i] > 0.f) {
             acc += weights[i];
             if (r <= acc) return i;

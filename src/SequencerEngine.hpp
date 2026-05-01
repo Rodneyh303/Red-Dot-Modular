@@ -111,11 +111,11 @@ struct SequencerEngine {
         return idx;
     }
 
-    int getNoteLenIdx(float baseNoteParam, const PatternInput& input) {
+    int getNoteLenIdx(float baseNoteParam, const PatternInput& input, float r) {
         int baseIdx = pe_clamp<int>((int)std::round(baseNoteParam), 0, 7);
         int ppqnMask = (ppqnSetting == 1) ? 1 : (ppqnSetting == 4) ? 2 : 4;
         baseIdx = computeNoteLengthIdx(baseIdx, ppqnMask);
-        return pe.varyNoteIndex(baseIdx, input);
+        return pe.varyNoteIndex(baseIdx, input, r);
     }
 
     void rebuildScaleCache(const float weights[12]) {
@@ -161,54 +161,34 @@ struct SequencerEngine {
      * Performs the stochastic decision for a single sequencer step.
      * This is the "Secret Sauce" of MeloDicer logic.
      */
-    void executeStep(float restProb, float legatoProb, int nvIdx) {
+    void executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie) {
         float dur = gs_noteSteps(nvIdx);
         int offsetStep = getOffsetStep();
         int sem = pe.melodySemitone[offsetStep];
         float pitchV = pe.melodyPitchV[offsetStep];
 
-        // --- Max-legato shortcut: gate always on ---
-        if (legatoProb >= 0.999f) {
-            gs.slideMax(pitchV, sem, nvIdx);
-            return;
-        }
-
-        // --- Mid-note: inside a multi-step note or rest ---
-        if (gs.holdRemain >= 1.f) {
-            if (gs.gateHeld) {
-                // Mid-note: maybe extend the tie
-                if (pe.unitRhythm() < legatoProb) {
+        if (gs.holdRemain < 1.f) {
+            if (legatoProb >= 0.999f) {
+                gs.slideMax(pitchV, sem, nvIdx);
+            }
+            else if (r_rest < restProb) {
+                gs.gateHeld = false;
+                gs.holdRemain = dur;
+            }
+            else if (r_legato_tie < legatoProb) {
+                // Connected: Either Tie or Legato
+                if (sem == gs.lastSemitone && gs.gateHeld) {
                     gs.extendHold(sem, nvIdx);
+                } else {
+                    gs.slideNote(pitchV, sem, nvIdx);
                 }
             }
-            return; // Stay inside existing note/rest body
+            else {
+                // Disconnected: New Note
+                gs.triggerNote(pitchV, sem, nvIdx);
+            }
         }
-
-        // --- Note boundary: holdRemain < 1.0 — Fire full new decision ---
-
-        // Draw rest first
-        if (pe.unitRhythm() < restProb) {
-            gs.gateHeld = false;
-            gs.holdRemain = dur;
-            return;
-        }
-
-        // Legato: pitch slides, gate extends, no retrigger
-        bool doLegato = pe.unitRhythm() < legatoProb;
-        if (doLegato) {
-            gs.slideNote(pitchV, sem, nvIdx);
-            return;
-        }
-
-        // Tie: same semitone only, gate extends, no pitch change
-        bool doTie = (sem == gs.lastSemitone) && gs.gateHeld && (pe.unitRhythm() < legatoProb);
-        if (doTie) {
-            gs.extendHold(sem, nvIdx);
-            return;
-        }
-
-        // Normal note: retrigger gate, set new pitch and duration
-        gs.triggerNote(pitchV, sem, nvIdx);
+        // Mid-note: randomness already accounted for by r_rest/r_legato_tie.
     }
 
     /**
@@ -229,20 +209,28 @@ struct SequencerEngine {
     /**
      * Mode A: Internal clock sequencer.
      */
-    bool executeModeA(const ClockEngine& clock, float restProb, float legatoProb, int nvIdx) {
+    bool executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input) {
         if (!clock.sixteenthEdge || muted) return false;
+
+        bool wrapped = advancePlayhead();
+
+        // Always consume 3 random values per tick for perfect loop alignment
+        float r_vary = pe.unitRhythm();
+        float r_rest = pe.unitRhythm();
+        float r_legato = pe.unitRhythm();
+
+        int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
 
         // Phase-aligned step tick
         gs.tick();
-        bool wrapped = advancePlayhead();
-        executeStep(restProb, legatoProb, nvIdx);
+        executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato);
         return wrapped;
     }
 
     /**
      * Mode B: External gate driven sequencer.
      */
-    bool executeModeB(bool gate1Rise, bool gate1High, float restProb, float legatoProb, int nvIdx) {
+    bool executeModeB(bool gate1Rise, bool gate1High, float restProb, float legatoProb, float noteVal, const PatternInput& input) {
         if (muted) {
             prevGate1High = gate1High;
             return false;
@@ -259,8 +247,13 @@ struct SequencerEngine {
         }
 
         if (triggered) {
+            float r_vary = pe.unitRhythm();
+            float r_rest = pe.unitRhythm();
+            float r_legato = pe.unitRhythm();
+            int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
+
             gs.tick();
-            executeStep(restProb, legatoProb, nvIdx);
+            executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato);
         }
 
         prevGate1High = gate1High;

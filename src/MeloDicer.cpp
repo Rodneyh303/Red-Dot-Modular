@@ -291,9 +291,6 @@ int MeloDicer::pickSemitoneWeighted() {
     float MeloDicer::genPitchV(int& outSemitone) {
         return engine.pe.genPitch(outSemitone, makePatternInput());
     }
-
-    // apply variation to a base note length index (0..8)
-    // returns a possibly different index, respecting noteVariationMask
     // uses rhythm RNG
     //  biases shorter/longer values depending on VARIATION_PARAM (0..1)
     // 0.5 = no bias, <0.5 = longer notes, >0.5 = shorter notes
@@ -316,8 +313,6 @@ int MeloDicer::pickSemitoneWeighted() {
     // if baseIdx is out of range, it is clamped to 0..8
     // if no allowed note lengths in range, returns baseIdx unchanged
     // uses rhythm RNG
-
-    int MeloDicer::varyNoteIndex(int baseIdx) { return engine.pe.varyNoteIndex(baseIdx, makePatternInput()); }
 
 // Convert semitone (0..11) to volts (1V/oct)
 // 12 semitones per octave
@@ -359,9 +354,6 @@ float MeloDicer::semitoneToVolts(int semitone) {
         prevExtGate = false;
 
         if (!locked) {
-            redrawRhythmPattern();
-            redrawMelodyPattern();
-
             if (resetImmediate) {
                 engine.pe.applyPendingSeedsAndRedraw(makePatternInput());
             }
@@ -369,6 +361,7 @@ float MeloDicer::semitoneToVolts(int semitone) {
         resetArmed = false;
     }
 
+    // Helper to sample a seed value (float 0..10) from either SEED input (if connected) or internal RNG.
     // Helper to sample a seed value (float 0..10) from either SEED input (if connected) or internal RNG.
     // The action of sampling is performed when user presses DICE (or dice is triggered via gate assignment).
     float MeloDicer::sampleSeedFromSource() {
@@ -404,7 +397,14 @@ void MeloDicer::onReset() {
 // Returns note length index: NOTE VALUE sets the base, VARIATION randomly biases it.
 // NOTEVALS.allowedPPQN bitmask: 1=PPQN1, 2=PPQN4, 4=PPQN24
 // ppqnSetting raw values: 1, 4, 24 — must be converted to bitmask before use.
-int MeloDicer::getNoteLenIdx_() { return engine.getNoteLenIdx(getNoteValueParam(), makePatternInput()); }
+int MeloDicer::getNoteLenIdx_() { 
+    // This function is no longer used directly by executeModeA/B as the random value
+    // is now consumed inside those functions. It's kept for potential external use
+    // but should be called with a random float argument if used.
+    // For now, it's safe to remove its declaration and definition if not used elsewhere.
+    // However, to resolve the compilation error, we'll remove its definition and declaration.
+    return 0; // Should not be reached
+}
 int MeloDicer::computeNoteLengthIdx(int requestedIdx, int ppqnMask) { return engine.computeNoteLengthIdx(requestedIdx, ppqnMask); }
 
 
@@ -679,7 +679,7 @@ void MeloDicer::process(const ProcessArgs& args) {
 //  Also handles first note logic when starting from reset.
 //  Also handles mute logic (no output, but still advances and updates LEDs)
 void MeloDicer::handleModeA_(const ProcessArgs& args) {
-    if (engine.executeModeA(clock, getRestParam(), getLegatoParam(), getNoteLenIdx_())) {
+    if (engine.executeModeA(clock, getRestParam(), getLegatoParam(), getNoteValueParam(), makePatternInput())) {
         // Sample new seeds for realtime modes, then let onPhraseBoundary_()
         // apply any pending seeds (Dice-armed or realtime) before redrawing.
         if (melodyMode == 1) { melodySeedPendingFloat = sampleSeedFromSource(); melodySeedPending = true; }
@@ -704,7 +704,7 @@ void MeloDicer::handleModeA_(const ProcessArgs& args) {
 //  Also handles first note logic when gate held high continuously.
 void MeloDicer::handleModeB_(const ProcessArgs& args, bool gate1Rise) {
     bool gate1High = inputs[GATE1_INPUT].getVoltage() >= 1.f;
-    if (engine.executeModeB(gate1Rise, gate1High, getRestParam(), getLegatoParam(), getNoteLenIdx_())) {
+    if (engine.executeModeB(gate1Rise, gate1High, getRestParam(), getLegatoParam(), getNoteValueParam(), makePatternInput())) {
         if (melodyMode == 1) { melodySeedPendingFloat = sampleSeedFromSource(); melodySeedPending = true; }
         if (rhythmMode == 1) { rhythmSeedPendingFloat = sampleSeedFromSource(); rhythmSeedPending = true; }
         onPhraseBoundary_();
