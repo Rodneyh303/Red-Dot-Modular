@@ -133,9 +133,13 @@ struct SequencerEngine {
     }
 
     float getStepLightBrightness(int lightIdx) const {
-        float baseActive = isStepInWindow(lightIdx) ? 0.25f : 0.0f;
+        // Differentiate notes and rests visually: Notes are brighter (0.35), Rests are dim (0.07)
+        bool isNote = pe.rhythmPattern[lightIdx];
+        float baseActive = isStepInWindow(lightIdx) ? (isNote ? 0.35f : 0.07f) : 0.0f;
+
         int currentStep = (modeSelect == 2) ? stepIndex : getOffsetStep();
-        float current = (modeSelect < 3 && lightIdx == currentStep) ? 1.f : 0.f;
+        float current = (modeSelect < 3 && lightIdx == currentStep) ? 1.0f : 0.0f;
+
         return std::max(baseActive, current);
     }
 

@@ -124,7 +124,7 @@ void MeloDicerWidget::applyTheme() {
         bool lightTheme = getLightTheme();  // read from module
         auto panelPath = asset::plugin(pluginInstance,
             lightTheme ? "res/panels/MeloDicer_panel_light.svg"
-                       : "res/panels/MeloDicer_panel_v2.svg");
+                       : "res/panels/MeloDicer_panel_v5.svg");
         setPanel(createPanel(panelPath));
 
         // Remove any existing knob params at the 7 top knob positions
@@ -169,7 +169,7 @@ void MeloDicerWidget::applyTheme() {
             addParam(createParamCentered<RDM_KnobSmall>     (mm2px(Vec(156.f,24.f)),mod,MeloDicer::PATTERN_OFFSET_PARAM));
         } else {
             // Dark theme: Use cream/light knobs
-            addParam(createParamCentered<RDM_KnobCreamLarge> (mm2px(Vec(14.f,24.f)),mod,MeloDicer::NOTE_VALUE_PARAM));
+            addParam(createParamCentered<RDM_KnobCreamMedium> (mm2px(Vec(14.f,24.f)),mod,MeloDicer::NOTE_VALUE_PARAM));
             addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(37.f,24.f)),mod,MeloDicer::VARIATION_PARAM));
             addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(60.f,24.f)),mod,MeloDicer::LEGATO_PARAM));
             addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(83.f,24.f)),mod,MeloDicer::REST_PARAM));

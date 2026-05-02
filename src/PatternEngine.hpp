@@ -172,30 +172,43 @@ struct PatternEngine {
         float spread = 2.f * std::fabs(var - 0.5f);  // 0 at 50%, 1 at extremes
         if (spread < 1e-4f) return baseIdx;           // exactly 50%: no variation
 
-        int lo = std::max(0, baseIdx - 2);
-        int hi = std::min(7, baseIdx + 2);
-        float total = 0.f;
         float weights[8] = {};
-        for (int i = lo; i <= hi; ++i) if (allowed(i)) {
-            float dist = float(std::abs(i - baseIdx));
-            if (dist == 0.f) {
-                weights[i] = 1.f;  // base index always has weight 1
+        float total = 0.f;
+
+        for (int i = 0; i < 8; ++i) {
+            if (!allowed(i)) continue;
+
+            if (i == baseIdx) {
+                // The original note's weight drops as variation increases.
+                // At 100% (spread = 1.0), the base note weight is 0.
+                weights[i] = 1.0f - spread;
             } else {
-                // Adjacent positions get weight proportional to spread
-                // Directional bias: shorter (i>base) when var>0.5, longer when var<0.5
-                float w = spread / (1.f + dist);
-                if (i > baseIdx && var > 0.5f) w *= 1.f + spread;   // boost shorter
-                if (i < baseIdx && var < 0.5f) w *= 1.f + spread;   // boost longer
-                weights[i] = w;
+                bool isShorter = (i > baseIdx);
+                bool isLonger  = (i < baseIdx);
+
+                // Strict Directional Filtering:
+                // If variation is > 50%, we exclude longer notes entirely.
+                // If variation is < 50%, we exclude shorter notes entirely.
+                if (var > 0.5f && isLonger) weights[i] = 0.f;
+                else if (var < 0.5f && isShorter) weights[i] = 0.f;
+                else {
+                    // Weight varies by distance, but is enabled by 'spread'
+                    float dist = (float)std::abs(i - baseIdx);
+                    weights[i] = spread / dist;
+                }
             }
             total += weights[i];
         }
+
         if (total <= 0.f) return baseIdx;
-        r *= total; 
+        
         float acc = 0.f;
-        for (int i = lo; i <= hi; ++i) if (weights[i] > 0.f) {
-            acc += weights[i];
-            if (r <= acc) return i;
+        r *= total;
+        for (int i = 0; i < 8; ++i) {
+            if (weights[i] > 0.f) {
+                acc += weights[i];
+                if (r <= acc) return i;
+            }
         }
         return baseIdx;
     }

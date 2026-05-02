@@ -529,6 +529,9 @@ void MeloDicer::process(const ProcessArgs& args) {
         if (faderDirty || activeSemiCount == 0) rebuildSemiCache_();
     }
 
+    // Refresh visual cache so LEDs react instantly to knob changes in Dice mode
+    engine.pe.refreshVisualCache(makePatternInput());
+
     engine.updateWindow(
         params[PATTERN_LENGTH_PARAM].getValue(), inputs[LENGTH_INPUT].getVoltage(), inputs[LENGTH_INPUT].isConnected(),
         params[PATTERN_OFFSET_PARAM].getValue(), inputs[OFFFSET_INPUT].getVoltage(), inputs[OFFFSET_INPUT].isConnected()
