@@ -110,18 +110,54 @@ MeloDicer::MeloDicer() {
         }
 
         initialize();
-
-        // Apply POWER MUTE: if the loaded/default muteBehavior is 3 (PWR MUTE), start muted
-        if (muteBehavior == 3) muted = true;
     }
+
+  void MeloDicer::updateScaleMask() {
+        activeScaleMask = 0;
+        if (lastSelectedScale >= 0 && lastSelectedScale < (int)BITWIG_SCALES.size()) {
+            for (int interval : BITWIG_SCALES[lastSelectedScale].intervals) {
+                activeScaleMask |= (1 << ((scaleRoot + interval) % 12));
+            }
+        } else {
+            activeScaleMask = 0xFFF;
+        }
+
+        for (int i = 0; i < 12; i++) {
+            bool inScale = (activeScaleMask & (1 << i));
+            ParamQuantity* pq = getParamQuantity(SEMI0_PARAM + i);
+            
+            if (pq) {
+                if (lockScaleNotes) {
+                    if (!inScale) {
+                        // Strictly enforce zero for out-of-scale notes
+                        params[SEMI0_PARAM + i].setValue(0.f);
+                        pq->minValue = 0.f;
+                        pq->maxValue = 0.f;
+                    } else {
+                        pq->minValue = 0.f;
+                        pq->maxValue = 1.f;
+                    }
+                } else {
+                    // Unlock faders, allow range 0..1, do not change value
+                    pq->minValue = 0.f;
+                    pq->maxValue = 1.f;
+                }
+            }
+        }
+  }
 
   void MeloDicer::initialize(){
         cv1Mode = 0;
         cv2Mode = 0;
         gate1Assign = 0;
         gate2Assign = 1;
-        muteBehavior = 0;
+        invertMuteLogic = false;
+        restartOnUnmute = false;
         lastModeSelect = -1;
+        scaleRoot = 0;
+        lastSelectedScale = -1;
+        lockScaleNotes = false;
+        updateScaleMask();
 
         engine.reset();
 
@@ -141,11 +177,15 @@ MeloDicer::MeloDicer() {
         json_object_set_new(root,"cv2Mode", json_integer(cv2Mode));
         json_object_set_new(root,"gate1Assign", json_integer(gate1Assign));
         json_object_set_new(root,"gate2Assign", json_integer(gate2Assign));
-        json_object_set_new(root,"muteBehavior", json_integer(muteBehavior));
+        json_object_set_new(root,"invertMuteLogic", json_boolean(invertMuteLogic));
+        json_object_set_new(root,"restartOnUnmute", json_boolean(restartOnUnmute));
         json_object_set_new(root,"noteVariationMask", json_integer(noteVariationMask));
         json_object_set_new(root,"ppqnSetting", json_integer(ppqnSetting));
         json_object_set_new(root,"modeSelect", json_integer(modeSelect));
         json_object_set_new(root,"lightTheme", json_boolean(lightTheme));
+        json_object_set_new(root,"scaleRoot", json_integer(scaleRoot));
+        json_object_set_new(root,"lastSelectedScale", json_integer(lastSelectedScale));
+        json_object_set_new(root,"lockScaleNotes", json_boolean(lockScaleNotes));
 
         json_object_set_new(root,"locked", json_boolean(locked));
         json_object_set_new(root,"muted", json_boolean(muted));
@@ -205,11 +245,15 @@ MeloDicer::MeloDicer() {
         if (auto j = json_object_get(root,"cv2Mode")) cv2Mode = (int)json_integer_value(j);
         if (auto j = json_object_get(root,"gate1Assign")) gate1Assign = (int)json_integer_value(j);
         if (auto j = json_object_get(root,"gate2Assign")) gate2Assign = (int)json_integer_value(j);
-        if (auto j = json_object_get(root,"muteBehavior")) muteBehavior = (int)json_integer_value(j);
+        if (auto j = json_object_get(root,"invertMuteLogic")) invertMuteLogic = (bool)json_boolean_value(j);
+        if (auto j = json_object_get(root,"restartOnUnmute")) restartOnUnmute = (bool)json_boolean_value(j);
         if (auto j = json_object_get(root,"noteVariationMask")) noteVariationMask = (int)json_integer_value(j);
         if (auto j = json_object_get(root,"ppqnSetting")) ppqnSetting = (int)json_integer_value(j);
         if (auto j = json_object_get(root,"modeSelect")) modeSelect = (int)json_integer_value(j);
         if (auto j = json_object_get(root,"lightTheme")) lightTheme = (bool)json_boolean_value(j);
+        if (auto j = json_object_get(root,"scaleRoot")) scaleRoot = (int)json_integer_value(j);
+        if (auto j = json_object_get(root,"lastSelectedScale")) lastSelectedScale = (int)json_integer_value(j);
+        if (auto j = json_object_get(root,"lockScaleNotes")) lockScaleNotes = (bool)json_boolean_value(j);
         if (auto j = json_object_get(root,"locked")) locked = (bool)json_boolean_value(j);
         if (auto j = json_object_get(root,"muted")) muted = (bool)json_boolean_value(j);
 
@@ -259,16 +303,21 @@ MeloDicer::MeloDicer() {
         reseedXoroshiroFromFloat(rhythmRng, rhythmSeedFloat);
         reseedXoroshiroFromFloat(stochasticRng, stochasticSeedFloat);
         reseedXoroshiroFromFloat(melodyRng, melodySeedFloat);
+        updateScaleMask();
     }
 
 //return semitone parameter value with CV input added (if connected)
     float MeloDicer::getSemitoneParam(int sem)  {
         if (sem < 0 || sem > 11) return 0.f;
+        // Enforce lock: if note is not in scale mask, probability is zero regardless of CV
+        if (lockScaleNotes && !(activeScaleMask & (1 << sem))) return 0.f;
+
         float v =  params[SEMI0_PARAM + sem].getValue();
         // Add CV from left expander if present
         if (leftExpander.module && leftExpander.module->model == modelMeloDicerExpander) {
             if(leftExpander.module->inputs[MeloDicerIds::EXPANDER_SEMI_CV_INPUT_0 + sem].isConnected()) {
-                   v += leftExpander.module->inputs[MeloDicerIds::EXPANDER_SEMI_CV_INPUT_0 + sem].getVoltage()/10.0f;
+                   float att = leftExpander.module->params[MeloDicerIds::EXPANDER_SEMI_ATTENUVERTER_0 + sem].getValue();
+                   v += (leftExpander.module->inputs[MeloDicerIds::EXPANDER_SEMI_CV_INPUT_0 + sem].getVoltage() * att) / 10.0f;
             }
         }
         v = clampv(v, 0.f, 1.f);
@@ -280,7 +329,8 @@ MeloDicer::MeloDicer() {
         float v = params[OCT_LO_PARAM].getValue();
         if (leftExpander.module && leftExpander.module->model == modelMeloDicerExpander) {
             if(leftExpander.module->inputs[MeloDicerIds::EXPANDER_OCT_LO_CV_INPUT].isConnected()) {
-                v += leftExpander.module->inputs[MeloDicerIds::EXPANDER_OCT_LO_CV_INPUT].getVoltage()/10.0f*8.0f;
+                float att = leftExpander.module->params[MeloDicerIds::EXPANDER_OCT_LO_ATTENUVERTER].getValue();
+                v += (leftExpander.module->inputs[MeloDicerIds::EXPANDER_OCT_LO_CV_INPUT].getVoltage() * att) / 10.0f * 8.0f;
             }
         }
         v = clampv(v, 0.f, 8.f);
@@ -292,7 +342,8 @@ MeloDicer::MeloDicer() {
         float v = params[OCT_HI_PARAM].getValue();
         if (leftExpander.module && leftExpander.module->model == modelMeloDicerExpander) {
             if(leftExpander.module->inputs[MeloDicerIds::EXPANDER_OCT_HI_CV_INPUT].isConnected()) {
-                v += leftExpander.module->inputs[MeloDicerIds::EXPANDER_OCT_HI_CV_INPUT].getVoltage()/10.0f*8.0f;
+                float att = leftExpander.module->params[MeloDicerIds::EXPANDER_OCT_HI_ATTENUVERTER].getValue();
+                v += (leftExpander.module->inputs[MeloDicerIds::EXPANDER_OCT_HI_CV_INPUT].getVoltage() * att) / 10.0f * 8.0f;
             }
         }
         v = clampv(v, 0.f, 8.f);
@@ -491,7 +542,13 @@ void MeloDicer::process(const ProcessArgs& args) {
         melodySeedPending = true;
     }
     if (lockTrig.process(params[LOCK_PARAM].getValue()))     locked = !locked;
-    if (muteTrig.process(params[MUTE_PARAM].getValue()))     muted  = !muted;
+    if (muteTrig.process(params[MUTE_PARAM].getValue())) {
+        muted = !muted;
+        // Respect "Restart on unmute" when using the UI button
+        if (!muted && restartOnUnmute) {
+            handleRestart(/*manual=*/true, /*resetImmediate=*/true);
+        }
+    }
 
     if (modeATrig.process(params[MODE_A_PARAM].getValue())) modeSelect = 0;
     if (modeBTrig.process(params[MODE_B_PARAM].getValue())) modeSelect = 1;
@@ -522,9 +579,14 @@ void MeloDicer::process(const ProcessArgs& args) {
     // O(12) compares per sample — far cheaper than the quantiser search.
     {
         bool faderDirty = false;
-        for (int i = 0; i < 12 && !faderDirty; ++i) {
+        for (int i = 0; i < 12; ++i) {
+            // Enforce scale lock: force non-scale sliders to zero position
+            if (lockScaleNotes && !(activeScaleMask & (1 << i))) {
+                params[SEMI0_PARAM + i].setValue(0.f);
+            }
+
             float w = clampv<float>(params[SEMI0_PARAM + i].getValue(), 0.f, 1.f);
-            if (std::fabs(w - faderCache[i]) > 1e-5f) faderDirty = true;
+            if (!faderDirty && std::fabs(w - faderCache[i]) > 1e-5f) faderDirty = true;
         }
         if (faderDirty || activeSemiCount == 0) rebuildSemiCache_();
     }
@@ -626,12 +688,11 @@ void MeloDicer::process(const ProcessArgs& args) {
                 }
                 break;
             case 2: // MUTE — manual: positive edge=activate, negative edge=deactivate
-                // With INV GATE (muteBehavior==2): invert the polarity
                 {
-                    bool shouldMute = (muteBehavior == 2) ? !g2High : g2High;
+                    bool shouldMute = invertMuteLogic ? !g2High : g2High;
                     if (shouldMute != muted) {
                         muted = shouldMute;
-                        if (!muted && muteBehavior == 1)
+                        if (!muted && restartOnUnmute)
                             handleRestart(/*manual=*/true, /*resetImmediate=*/true);
                     }
                 }
@@ -696,8 +757,7 @@ void MeloDicer::process(const ProcessArgs& args) {
     
     // Gate output: engine.gs.process() ticks the pulse and returns raw gate voltage
     float gateV = engine.gs.process(args.sampleTime);
-    if (muteBehavior == 2) gateV = (gateV > 1.f) ? 0.f : 10.f;
-    if (muted)             gateV = (muteBehavior == 2) ? 10.f : 0.f;
+    if (muted)             gateV = 0.f;
     outputs[GATE_OUTPUT].setVoltage(gateV);
 
 

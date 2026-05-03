@@ -2,8 +2,27 @@
 #include <algorithm>
 #include "MeloDicerWidget.hpp"
 #include "MeloDicer.hpp"
+#include "Scales.hpp"
 
 using namespace rack;
+
+// ── Custom Slider for Scale Locking ──────────────────────────────────────────
+template <typename TLightBase = RedLight>
+struct MeloDicerLightSlider : VCVLightSlider<TLightBase> {
+    void draw(const widget::Widget::DrawArgs& args) override {
+        auto* m = dynamic_cast<MeloDicer*>(this->module);
+        bool dimmed = false;
+        if (m) {
+            if (this->paramId >= MeloDicer::SEMI0_PARAM && this->paramId < MeloDicer::SEMI0_PARAM + 12) {
+                int sem = this->paramId - MeloDicer::SEMI0_PARAM;
+                if (!(m->activeScaleMask & (1 << sem))) dimmed = true;
+            }
+        }
+        if (dimmed) nvgGlobalAlpha(args.vg, 0.4f);
+        VCVLightSlider<TLightBase>::draw(args);
+        if (dimmed) nvgGlobalAlpha(args.vg, 1.0f);
+    }
+};
 
 // ── Simple Befaco-inspired knobs ─────────────────────────────────────────────
 RDM_KnobLarge::RDM_KnobLarge() {
@@ -59,7 +78,7 @@ MeloDicerWidget::MeloDicerWidget(MeloDicer* module) {
 
         for (int i=0; i<12; ++i) {
             float cx=7.5f+i*7.0f;
-            addParam(createLightParamCentered<VCVLightSlider<GreenRedLight>>(
+            addParam(createLightParamCentered<MeloDicerLightSlider<GreenRedLight>>(
                 mm2px(Vec(cx,59.75f)), module, MeloDicer::SEMI0_PARAM+i, MeloDicer::SEMI_LED_START+2*i));
         }
 
@@ -68,7 +87,7 @@ MeloDicerWidget::MeloDicerWidget(MeloDicer* module) {
 
         // 16 step lights: Circular ring arrangement near top right
         {
-            const float RCX = 138.f, RCY = 46.f, RLED = 13.25f;
+            const float RCX = 138.f, RCY = 66.f, RLED = 13.25f;
             for (int i = 0; i < 16; ++i) {
                 float ang = float(i) / 16.f * 2.f * M_PI - M_PI / 2.f;
                 float lx = RCX + RLED * std::cos(ang), ly = RCY + RLED * std::sin(ang);
@@ -79,44 +98,53 @@ MeloDicerWidget::MeloDicerWidget(MeloDicer* module) {
 
         {
             const float MX=168.f,LX=W_MM-5.f;
-            const float ys[4]={20.f,33.f,46.f,59.f};
+            const float ys[4]={46.f,59.f,72.f,85.f};
             const int par[4]={MeloDicer::MODE_A_PARAM,MeloDicer::MODE_B_PARAM,MeloDicer::MODE_C_PARAM,MeloDicer::MODE_D_PARAM};
             const int lit[4]={MeloDicer::MODE_A_LIGHT,MeloDicer::MODE_B_LIGHT,MeloDicer::MODE_C_LIGHT,MeloDicer::MODE_D_LIGHT};
             for (int i=0;i<4;++i) {
                 addParam(createParamCentered<TL1105>(mm2px(Vec(MX,ys[i])),module,par[i]));
-                addChild(createLightCentered<MediumLight<YellowLight>>(mm2px(Vec(LX,ys[i])),module,lit[i]));
+                addChild(createLightCentered<MediumLight<YellowLight>>(mm2px(Vec(LX,ys[i]+7.f)),module,lit[i]));
             }
         }
 
-        addParam(createParamCentered<TL1105>(mm2px(Vec( 14.f,92.f)),module,MeloDicer::DICE_R_PARAM));
-        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec( 14.f,98.f)),module,MeloDicer::RHYTHM_DICE_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec( 30.f,92.f)),module,MeloDicer::DICE_M_PARAM));
-        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec( 30.f,98.f)),module,MeloDicer::MELODY_DICE_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec( 46.f,92.f)),module,MeloDicer::LOCK_PARAM));
-        addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec( 46.f,98.f)),module,MeloDicer::LOCK_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec( 62.f,92.f)),module,MeloDicer::MUTE_PARAM));
-        addChild(createLightCentered<MediumLight<RedLight>>(  mm2px(Vec( 62.f,98.f)),module,MeloDicer::MUTE_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec( 78.f,92.f)),module,MeloDicer::RESET_BUTTON_PARAM));
-        addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec( 78.f,98.f)),module,MeloDicer::RESET_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec( 94.f,92.f)),module,MeloDicer::RUN_GATE_PARAM));
-        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec( 94.f,98.f)),module,MeloDicer::RUN_GATE_LIGHT));
+        const float JY=96.f, JYL=102.f,JX=100.f, JP=12.0f;
+        addParam(createParamCentered<TL1105>(mm2px(Vec( JX,JY)),module,MeloDicer::DICE_R_PARAM));
+        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec( JX,JYL)),module,MeloDicer::RHYTHM_DICE_LIGHT));
+        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+JP,JY)),module,MeloDicer::DICE_M_PARAM));
+        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec( JX+JP,JYL)),module,MeloDicer::MELODY_DICE_LIGHT));
+        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+2*JP,JY)),module,MeloDicer::LOCK_PARAM));
+        addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec( JX+2*JP,JYL)),module,MeloDicer::LOCK_LIGHT));
+        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+3*JP,JY)),module,MeloDicer::MUTE_PARAM));
+        addChild(createLightCentered<MediumLight<RedLight>>(  mm2px(Vec( JX+3*JP,JYL)),module,MeloDicer::MUTE_LIGHT));
+        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+4*JP,JY)),module,MeloDicer::RESET_BUTTON_PARAM));
+        addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec( JX+4*JP,JYL)),module,MeloDicer::RESET_LIGHT));
+        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+5*JP,JY)),module,MeloDicer::RUN_GATE_PARAM));
+        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec( JX+5*JP,JYL)),module,MeloDicer::RUN_GATE_LIGHT));
 
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 88.f,116.f)),module,MeloDicer::RUN_GATE_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 98.f,116.f)),module,MeloDicer::RESET_TRIGGER_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(108.f,116.f)),module,MeloDicer::SEED_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(118.f,116.f)),module,MeloDicer::LENGTH_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(128.f,116.f)),module,MeloDicer::OFFFSET_INPUT));
+        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 88.f,112.f)),module,MeloDicer::RUN_GATE_INPUT));
+        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 98.f,112.f)),module,MeloDicer::RESET_TRIGGER_INPUT));
+        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec(108.f,112.f)),module,MeloDicer::SEED_INPUT));
+        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec(118.f,11.f)),module,MeloDicer::LENGTH_INPUT));
+        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec(128.f,112.f)),module,MeloDicer::OFFFSET_INPUT));
 
-        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 14.f,124.5f)),module,MeloDicer::CLK_INPUT));
-        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 30.f,124.5f)),module,MeloDicer::GATE1_INPUT));
-        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 46.f,124.5f)),module,MeloDicer::GATE2_INPUT));
-        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 62.f,124.5f)),module,MeloDicer::CV1_INPUT));
-        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 78.f,124.5f)),module,MeloDicer::CV2_INPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec( 95.f,124.5f)),module,MeloDicer::SEED_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(111.f,124.5f)),module,MeloDicer::RUN_GATE_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(127.f,124.5f)),module,MeloDicer::RESET_TRIGGER_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(143.f,124.5f)),module,MeloDicer::GATE_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(159.f,124.5f)),module,MeloDicer::CV_OUTPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 14.f,105.f)),module,MeloDicer::RUN_GATE_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 30.f,105.f)),module,MeloDicer::RESET_TRIGGER_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 46.f,105.f)),module,MeloDicer::SEED_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(62.f,105.f)),module,MeloDicer::LENGTH_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 78.f,105.f)),module,MeloDicer::OFFFSET_INPUT));
+
+        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 14.f,120.5f)),module,MeloDicer::CLK_INPUT));
+        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 30.f,120.5f)),module,MeloDicer::GATE1_INPUT));
+        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 46.f,120.5f)),module,MeloDicer::GATE2_INPUT));
+        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 62.f,120.5f)),module,MeloDicer::CV1_INPUT));
+        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 78.f,120.5f)),module,MeloDicer::CV2_INPUT));
+
+
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec( 95.f,120.5f)),module,MeloDicer::SEED_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(111.f,120.5f)),module,MeloDicer::RUN_GATE_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(127.f,120.5f)),module,MeloDicer::RESET_TRIGGER_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(143.f,120.5f)),module,MeloDicer::GATE_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(159.f,120.5f)),module,MeloDicer::CV_OUTPUT));
     }
 
 void MeloDicerWidget::applyTheme() {
@@ -124,7 +152,7 @@ void MeloDicerWidget::applyTheme() {
         bool lightTheme = getLightTheme();  // read from module
         auto panelPath = asset::plugin(pluginInstance,
             lightTheme ? "res/panels/MeloDicer_panel_light.svg"
-                       : "res/panels/MeloDicer_panel_v5.svg");
+                       : "res/panels/MeloDicer_panel_v6.svg");
         setPanel(createPanel(panelPath));
 
         // Remove any existing knob params at the 7 top knob positions
@@ -243,7 +271,7 @@ void MeloDicerWidget::draw(const DrawArgs& args) {
         sz(3.2f); c(170,170,170); L(110,37.5f,"BPM"); L(133,37.5f,"LEN"); L(156,37.5f,"OFFSET");
 
         sz(2.5f); c(80,80,80); nvgTextAlign(vg,NVG_ALIGN_LEFT|NVG_ALIGN_MIDDLE);
-        nvgText(vg,mm2px(4.5f),mm2px(43.f),"SEMITONE PROBABILITY",nullptr); nvgText(vg,mm2px(94.f),mm2px(43.f),"OCT",nullptr);
+        //nvgText(vg,mm2px(4.5f),mm2px(43.f),"SEMITONE PROBABILITY",nullptr); nvgText(vg,mm2px(94.f),mm2px(43.f),"OCT",nullptr);
         nvgTextAlign(vg,NVG_ALIGN_CENTER|NVG_ALIGN_MIDDLE);
 
         sz(3.0f); const char* sn[12]={"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
@@ -251,22 +279,28 @@ void MeloDicerWidget::draw(const DrawArgs& args) {
         sz(2.7f); c(85,85,85); const char* nums[12]={"1","2","3","4","5","6","7","8","9","10","11","12"};
         for (int i=0;i<12;++i) L(7.5f+i*7.f,SL_TOP+SLH+6.f,nums[i]);
         sz(2.9f); c(38,166,154); L(100,43.f,"LO"); L(108,43.f,"HI");
-        sz(4.0f); c(210,210,210); L(168,20.f,"A"); L(168,33.f,"B"); L(168,46.f,"C"); L(168,59.f,"D");
+        sz(4.0f); c(210,210,210); L(168,46.f,"A"); L(168,59.f,"B"); L(168,72.f,"C"); L(168,85.f,"D");
 
-        sz(2.9f); c(200,60,60);  L(14,103.f,"DICE R"); L(30,103.f,"DICE M");
-        c(190,190,190); L(46,103.f,"LOCK"); L(62,103.f,"MUTE"); L(78,103.f,"RESET"); L(94,103.f,"RUN");
-        L(120,103.f,"RESET"); L(142,103.f,"RUN");
+        const float JY=109.f,JX=100.f, JP=12.0f;
+        sz(2.9f); c(200,60,60);  L(JX,JY,"DICE R"); L(JX+JP,JY,"DICE M");
+        c(190,190,190); L(JX+2*JP,JY,"LOCK"); L(JX+3*JP,JY,"MUTE"); L(JX+4*JP,JY,"RESET"); L(JX+5*JP,JY,"RUN");
+        //L(JX+2*JP,JY,"RESET"); L(JX+5*JP,JY,"RUN");
 
-        const float JY3=124.5f,PR=7.7f/2.f; sz(3.0f); c(195,195,195);
+        const float JY3=120.5f,PR=7.7f/2.f; sz(3.0f); c(195,195,195);
         const char* il[5]={"CLK","G1","G2","CV1","CV2"}; const float ix[5]={14,30,46,62,78};
         for(int i=0;i<5;++i) L(ix[i],JY3-PR-2.2f,il[i]);
+        const char* sl[5] = {"RUN", "RST", "SEED", "LEN", "OFF"};
+        //const float sx[5] = {88.f, 98.f, 108.f, 118.f, 128.f};
+        for(int i=0;i<5;++i) L(ix[i],102.f-PR-1.8f,sl[i]);
+
+
         sz(2.7f); c(180,180,180); const char* ol[5]={"SEED","RUN","RST","GATE","CV"};
         const float ox[5]={95,111,127,143,159};
         for(int i=0;i<5;++i) L(ox[i],JY3-PR-2.2f,ol[i]);
         sz(2.3f); c(80,80,80); nvgTextAlign(vg,NVG_ALIGN_LEFT|NVG_ALIGN_MIDDLE);
-        const char* sl[5] = {"RUN", "RST", "SEED", "LEN", "OFF"};
-        const float sx[5] = {88.f, 98.f, 108.f, 118.f, 128.f};
-        for(int i=0;i<5;++i) L(sx[i],116.f-PR-1.8f,sl[i]);
+        // const char* sl[5] = {"RUN", "RST", "SEED", "LEN", "OFF"};
+        // const float sx[5] = {88.f, 98.f, 108.f, 118.f, 128.f};
+        // for(int i=0;i<5;++i) L(sx[i],116.f-PR-1.8f,sl[i]);
     }
 
 void MeloDicerWidget::appendContextMenu(ui::Menu* menu) {
@@ -285,45 +319,116 @@ void MeloDicerWidget::appendContextMenu(ui::Menu* menu) {
             void onAction(const event::Action&) override { if (module && target) *target = value; }
             void step() override { rightText = (target && *target == value) ? "✔" : ""; ui::MenuItem::step(); }
         };
-        { auto* l = new ui::MenuLabel; l->text = "Mode"; menu->addChild(l);
-          const char* n[] = {"A: Sequencer","B: Seq + Gate","C: Quantizer 1","D: Quantizer 2"};
-          for (int v=0;v<4;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->modeSelect;it->value=v;menu->addChild(it);} }
-        { auto* l = new ui::MenuLabel; l->text = "CV IN 1"; menu->addChild(l);
-          const char* n[] = {"Add Seq","Transpose Seq","Mod Range LO","Mod Range HI"};
-          for (int v=0;v<4;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->cv1Mode;it->value=v;menu->addChild(it);} }
-        { auto* l = new ui::MenuLabel; l->text = "CV IN 2"; menu->addChild(l);
-          const char* n[] = {"Note value","Variation","Legato","Rest"};
-          for (int v=0;v<4;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->cv2Mode;it->value=v;menu->addChild(it);} }
-        { auto* l = new ui::MenuLabel; l->text = "Gate 1 Assignment"; menu->addChild(l);
-          const char* n1[] = {"Toggle Dice R","Re-dice R","Re-dice M","Restart"};
-          for (int v=0;v<4;++v){auto* it=createMenuItem<IntItem>(n1[v]);it->module=m;it->target=&m->gate1Assign;it->value=v;menu->addChild(it);}
-          auto* l2 = new ui::MenuLabel; l2->text = "Gate 2 Assignment"; menu->addChild(l2);
-          const char* n2[] = {"Toggle Dice M","Re-dice M","Mute","Restart"};
-          for (int v=0;v<4;++v){auto* it=createMenuItem<IntItem>(n2[v]);it->module=m;it->target=&m->gate2Assign;it->value=v;menu->addChild(it);} }
-        { auto* l = new ui::MenuLabel; l->text = "Mute Behavior"; menu->addChild(l);
-          const char* n[] = {"No restart","Restart on unmute","Invert gate (INV GATE)","Start muted (Power Mute)"};
-          for (int v=0;v<4;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->muteBehavior;it->value=v;menu->addChild(it);} }
-        { auto* l = new ui::MenuLabel; l->text = "Note Variation"; menu->addChild(l);
-          struct MaskItem : ui::MenuItem { MeloDicer* module=nullptr; int bit=0;
-            void onAction(const event::Action&) override { if(module) module->noteVariationMask ^= (1<<bit); }
-            void step() override { rightText=(module&&(module->noteVariationMask&(1<<bit)))?"✔":""; ui::MenuItem::step(); } };
-          auto add=[&](const char* t,int b){auto* it=createMenuItem<MaskItem>(t);it->module=m;it->bit=b;menu->addChild(it);};
-          add("Allow 1/8T",0); add("Allow 1/16T",1); add("Allow 1/32 & 1/32T",2); }
-        { auto* l = new ui::MenuLabel; l->text = "PPQN"; menu->addChild(l);
-          struct PItem : ui::MenuItem { MeloDicer* module=nullptr; int value=4;
-            void onAction(const event::Action&) override { if(module) module->ppqnSetting=value; }
-            void step() override { if(module) rightText=(module->ppqnSetting==value)?"✔":""; ui::MenuItem::step(); } };
-          for (int v : {1,4,24}){auto* it=createMenuItem<PItem>(string::f("%d",v).c_str());it->module=m;it->value=v;menu->addChild(it);} }
-        { auto* l = new ui::MenuLabel; l->text = "Rhythm Mode"; menu->addChild(l);
-          struct RMI : ui::MenuItem { MeloDicer* module=nullptr; int value=0;
-            void onAction(const event::Action&) override { if(module) module->switchRhythmMode(); }
-            void step() override { if(module) rightText=(module->rhythmMode==value)?"✔":""; ui::MenuItem::step(); } };
-          auto* it0=createMenuItem<RMI>("Dice (static)"); it0->module=m; it0->value=0; menu->addChild(it0);
-          auto* it1=createMenuItem<RMI>("Realtime");      it1->module=m; it1->value=1; menu->addChild(it1);
-          auto* l2 = new ui::MenuLabel; l2->text = "Melody Mode"; menu->addChild(l2);
-          struct MMI : ui::MenuItem { MeloDicer* module=nullptr; int value=0;
-            void onAction(const event::Action&) override { if(module) module->switchMelodyMode(); }
-            void step() override { if(module) rightText=(module->melodyMode==value)?"✔":""; ui::MenuItem::step(); } };
-          auto* it2=createMenuItem<MMI>("Dice (static)"); it2->module=m; it2->value=0; menu->addChild(it2);
-          auto* it3=createMenuItem<MMI>("Realtime");      it3->module=m; it3->value=1; menu->addChild(it3); }
+
+        menu->addChild(createSubmenuItem("Sequencer Modes", "", [=](ui::Menu* sub) {
+            { auto* l = new ui::MenuLabel; l->text = "Operating Mode"; sub->addChild(l);
+              const char* n[] = {"A: Sequencer","B: Seq + Gate","C: Quantizer 1","D: Quantizer 2"};
+              for (int v=0;v<4;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->modeSelect;it->value=v;sub->addChild(it);} }
+
+            sub->addChild(new ui::MenuSeparator);
+
+            struct RMI : ui::MenuItem { MeloDicer* module=nullptr; int value=0;
+              void onAction(const event::Action&) override { if(module) module->switchRhythmMode(); }
+              void step() override { if(module) rightText=(module->rhythmMode==value)?"✔":""; ui::MenuItem::step(); } };
+            { auto* l = new ui::MenuLabel; l->text = "Rhythm Mode"; sub->addChild(l);
+              auto* it0=createMenuItem<RMI>("Dice (static)"); it0->module=m; it0->value=0; sub->addChild(it0);
+              auto* it1=createMenuItem<RMI>("Realtime");      it1->module=m; it1->value=1; sub->addChild(it1); }
+
+            sub->addChild(new ui::MenuSeparator);
+
+            struct MMI : ui::MenuItem { MeloDicer* module=nullptr; int value=0;
+              void onAction(const event::Action&) override { if(module) module->switchMelodyMode(); }
+              void step() override { if(module) rightText=(module->melodyMode==value)?"✔":""; ui::MenuItem::step(); } };
+            { auto* l = new ui::MenuLabel; l->text = "Melody Mode"; sub->addChild(l);
+              auto* it2=createMenuItem<MMI>("Dice (static)"); it2->module=m; it2->value=0; sub->addChild(it2);
+              auto* it3=createMenuItem<MMI>("Realtime");      it3->module=m; it3->value=1; sub->addChild(it3); }
+
+            sub->addChild(new ui::MenuSeparator);
+
+            { 
+                auto* l = new ui::MenuLabel; l->text = "Mute Behavior"; sub->addChild(l);
+                sub->addChild(createBoolPtrMenuItem("Restart on unmute", "", &m->restartOnUnmute));
+                sub->addChild(createBoolPtrMenuItem("Inverted Mute logic (GATE 2)", "", &m->invertMuteLogic));
+            }
+        }));
+
+        menu->addChild(createSubmenuItem("CV Assign", "", [=](ui::Menu* sub) {
+            { auto* l = new ui::MenuLabel; l->text = "CV IN 1"; sub->addChild(l);
+              const char* n[] = {"Add Seq","Transpose Seq","Mod Range LO","Mod Range HI"};
+              for (int v=0;v<4;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->cv1Mode;it->value=v;sub->addChild(it);} }
+            sub->addChild(new ui::MenuSeparator);
+            { auto* l = new ui::MenuLabel; l->text = "CV IN 2"; sub->addChild(l);
+              const char* n[] = {"Note value","Variation","Legato","Rest"};
+              for (int v=0;v<4;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->cv2Mode;it->value=v;sub->addChild(it);} }
+        }));
+
+        menu->addChild(createSubmenuItem("Gate Assign", "", [=](ui::Menu* sub) {
+            { auto* l = new ui::MenuLabel; l->text = "Gate 1 Assignment"; sub->addChild(l);
+              const char* n1[] = {"Toggle Dice R","Re-dice R","Re-dice M","Restart"};
+              for (int v=0;v<4;++v){auto* it=createMenuItem<IntItem>(n1[v]);it->module=m;it->target=&m->gate1Assign;it->value=v;sub->addChild(it);} }
+            sub->addChild(new ui::MenuSeparator);
+            { auto* l = new ui::MenuLabel; l->text = "Gate 2 Assignment"; sub->addChild(l);
+              const char* n2[] = {"Toggle Dice M","Re-dice M","Mute","Restart"};
+              for (int v=0;v<4;++v){auto* it=createMenuItem<IntItem>(n2[v]);it->module=m;it->target=&m->gate2Assign;it->value=v;sub->addChild(it);} }
+        }));
+
+        menu->addChild(createSubmenuItem("Scales", "", [=](ui::Menu* sub) {
+            sub->addChild(createBoolMenuItem("Lock Scale Notes", "",
+                [=]() { return m->lockScaleNotes; },
+                [=](bool v) { m->lockScaleNotes = v; m->updateScaleMask(); }
+            ));
+            sub->addChild(new ui::MenuSeparator);
+
+            sub->addChild(createSubmenuItem("Root Note", "Set the scale root", [=](ui::Menu* rootMenu) {
+                const char* noteNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+                for (int i = 0; i < 12; i++) {
+                    struct RootItem : ui::MenuItem {
+                        MeloDicer* module; int value;
+                        void onAction(const event::Action&) override { 
+                            module->scaleRoot = value; 
+                            module->updateScaleMask();
+                        }
+                        void step() override { rightText = (module->scaleRoot == value) ? "✔" : ""; ui::MenuItem::step(); }
+                    };
+                    auto* it = createMenuItem<RootItem>(noteNames[i]);
+                    it->module = m; it->value = i;
+                    rootMenu->addChild(it);
+                }
+            }));
+
+            sub->addChild(createSubmenuItem("Scale Type", "Choose scale", [=](ui::Menu* typeMenu) {
+                int scaleIdx = 0;
+                for (const auto& scale : BITWIG_SCALES) {
+                    struct ScaleItem : ui::MenuItem {
+                        MeloDicer* module; ScaleType scale; int index;
+                        void onAction(const event::Action&) override {
+                            module->lastSelectedScale = index;
+                            module->updateScaleMask();
+                        }
+                        void step() override {
+                            rightText = (module && module->lastSelectedScale == index) ? "✔" : "";
+                            ui::MenuItem::step();
+                        }
+                    };
+                    auto* it = createMenuItem<ScaleItem>(scale.name);
+                    it->module = m; it->scale = scale; it->index = scaleIdx++;
+                    typeMenu->addChild(it);
+                }
+            }));
+        }));
+
+        menu->addChild(createSubmenuItem("Note Division and Clock", "", [=](ui::Menu* sub) {
+            { auto* l = new ui::MenuLabel; l->text = "Note Variation"; sub->addChild(l);
+              struct MaskItem : ui::MenuItem { MeloDicer* module=nullptr; int bit=0;
+                void onAction(const event::Action&) override { if(module) module->noteVariationMask ^= (1<<bit); }
+                void step() override { rightText=(module&&(module->noteVariationMask&(1<<bit)))?"✔":""; ui::MenuItem::step(); } };
+              auto add=[&](const char* t,int b){auto* it=createMenuItem<MaskItem>(t);it->module=m;it->bit=b;sub->addChild(it);};
+              add("Allow 1/8T",0); add("Allow 1/16T",1); add("Allow 1/32 & 1/32T",2); }
+            sub->addChild(new ui::MenuSeparator);
+            { auto* l = new ui::MenuLabel; l->text = "PPQN"; sub->addChild(l);
+              struct PItem : ui::MenuItem { MeloDicer* module=nullptr; int value=4;
+                void onAction(const event::Action&) override { if(module) module->ppqnSetting=value; }
+                void step() override { if(module) rightText=(module->ppqnSetting==value)?"✔":""; ui::MenuItem::step(); } };
+              for (int v : {1,4,24}){auto* it=createMenuItem<PItem>(string::f("%d",v).c_str());it->module=m;it->value=v;sub->addChild(it);} }
+        }));
     }

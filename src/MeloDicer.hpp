@@ -25,6 +25,7 @@
 #include "PatternEngine.hpp"
 #include "GateState.hpp"
 #include "SequencerEngine.hpp"
+#include "Scales.hpp"
 
 #define MAX_UNIT64 18446744073709551615ULL
 
@@ -123,6 +124,13 @@ namespace MeloDicerIds {
         EXPANDER_OCT_HI_CV_INPUT,
 
         NUM_EXPANDER_INPUTS
+    };
+
+    enum ExpanderParamIds {
+        EXPANDER_SEMI_ATTENUVERTER_0 = 0,
+        EXPANDER_OCT_LO_ATTENUVERTER = 12,
+        EXPANDER_OCT_HI_ATTENUVERTER = 13,
+        NUM_EXPANDER_PARAMS
     };
 
     enum OutputIds {
@@ -261,8 +269,13 @@ struct MeloDicer : Module {
     int cv2Mode = 0;
     int gate1Assign = 0;
     int gate2Assign = 1;
-    int muteBehavior = 0;
+    bool invertMuteLogic = false;
+    bool restartOnUnmute = false;
     int lastModeSelect = -1;
+    int scaleRoot = 0; 
+    int lastSelectedScale = -1;
+    bool lockScaleNotes = false;
+    uint16_t activeScaleMask = 0xFFF;
     bool lightTheme = false;
 
     SequencerEngine engine;
@@ -340,6 +353,7 @@ struct MeloDicer : Module {
     MeloDicer();
 
     void initialize();
+    void updateScaleMask();
 
     json_t* dataToJson() override;
     void dataFromJson(json_t* root) override;
