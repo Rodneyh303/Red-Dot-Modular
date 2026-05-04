@@ -555,14 +555,12 @@ void MeloDicer::process(const ProcessArgs& args) {
     bool gate1Rise = g1Trig.process(inputs[GATE1_INPUT].getVoltage());
     bool gate2Rise = g2Trig.process(inputs[GATE2_INPUT].getVoltage());
 
-    bool runStart = false;
     if (inputs[RUN_GATE_INPUT].isConnected()) 
     {
       bool runGateTrigHigh=runGateTrig.process(inputs[RUN_GATE_INPUT].getVoltage(), 0.1f, 2.f);
       bool runGateBtnHigh = runGateBtn.process(params[RUN_GATE_PARAM].getValue());
       if (runGateTrigHigh || runGateBtnHigh){
         runGateActive = !runGateActive;
-        runStart = runGateActive;
         runPulse.trigger(1e-3f);
       }
     }
@@ -571,7 +569,6 @@ void MeloDicer::process(const ProcessArgs& args) {
       if(runGateBtn.process(params[RUN_GATE_PARAM].getValue()))
       {
         runGateActive = !runGateActive;
-        runStart = runGateActive;
         runPulse.trigger(1e-3f);
       }
     };
