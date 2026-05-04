@@ -438,7 +438,7 @@ float MeloDicer::semitoneToVolts(int semitone) {
 
     void MeloDicer::rebuildSemiCache_() {
         float weights[12];
-        for (int i = 0; i < 12; ++i) weights[i] = params[SEMI0_PARAM + i].getValue();
+        for (int i = 0; i < 12; ++i) weights[i] = getSemitoneParam(i);
         engine.rebuildScaleCache(weights);
     }
 
@@ -757,7 +757,7 @@ void MeloDicer::process(const ProcessArgs& args) {
                     if (params[SEMI0_PARAM + i].getValue() != 0.f)
                         params[SEMI0_PARAM + i].setValue(0.f);
                 }
-                float w = clampv<float>(params[SEMI0_PARAM + i].getValue(), 0.f, 1.f);
+                float w = getSemitoneParam(i);
                 if (!faderDirty && std::fabs(w - faderCache[i]) > 1e-5f) faderDirty = true;
             }
             if (faderDirty || activeSemiCount == 0) rebuildSemiCache_();
