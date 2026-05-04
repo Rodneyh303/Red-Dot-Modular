@@ -42,9 +42,13 @@ void ClockEngine::process(float clockVoltage, bool clkConnected, float internalB
         measured         = false;
         clockTimeAcc     = 0.f;
         ppqnCount        = 0;
-        bpm              = clampv(internalBpm, 20.f, 300.f);
 
-        float sixteenthSec = (4.f * 60.f / bpm) / 16.f;
+        float nextBpm = clampv(internalBpm, 20.f, 300.f);
+        if (std::abs(nextBpm - bpm) > 0.001f) {
+            bpm = nextBpm;
+            sixteenthSec = 15.f / bpm;
+        }
+
         timeAcc += sampleTime;
         if (timeAcc >= sixteenthSec) {
             timeAcc       -= sixteenthSec;

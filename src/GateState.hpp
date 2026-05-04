@@ -131,10 +131,12 @@ struct GateState {
     // Process: call every sample. Returns raw gate voltage (0 or 10V).
     // muted / invertGate applied by caller so this stays Rack-port-free.
     float process(float sampleTime) {
-        // To ensure a retrigger when legato is off and note duration matches step interval, 
-        // we dip the gate for 1ms if a new note was triggered (gatePulse is active).
-        bool active = gateHeld && !gatePulse.process(sampleTime);
-        return active ? 10.f : 0.f;
+        if (!gateHeld) {
+            gatePulse.process(sampleTime);
+            return 0.f;
+        }
+        // Dip the gate for 1ms if a new note was triggered
+        return gatePulse.process(sampleTime) ? 0.f : 10.f;
     }
 
     // Tick gatePulse only (when not in Modes A/B — keeps timer consistent).

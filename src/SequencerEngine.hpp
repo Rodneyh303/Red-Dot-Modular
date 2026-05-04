@@ -23,6 +23,7 @@ struct SequencerEngine {
     int endStep = 15;
     int cachedLength = 16;
     int cachedOffset = 0;
+    uint16_t windowMask = 0xFFFF;
 
     bool locked = false;
     bool muted = false;
@@ -40,6 +41,10 @@ struct SequencerEngine {
     int activeSemiCount = 0;
     float faderCache[12] = {};
 
+    // Quantizer memoization
+    float lastQuantIn = -100.f;
+    float lastQuantOut = 0.f;
+
     void reset() {
         pe.reset();
         gs.reset();
@@ -49,6 +54,7 @@ struct SequencerEngine {
         endStep = 15;
         cachedLength = 16;
         cachedOffset = 0;
+        windowMask = 0xFFFF;
         locked = false;
         muted = false;
         runGateActive = false;
@@ -59,11 +65,12 @@ struct SequencerEngine {
         noteVariationMask = 0b111;
         activeSemiCount = 0;
         for (int i = 0; i < 12; ++i) faderCache[i] = -1.f;
+        lastQuantIn = -100.f;
+        lastQuantOut = 0.f;
     }
 
     bool isStepInWindow(int idx) const {
-        if (startStep <= endStep) return (idx >= startStep && idx <= endStep);
-        return (idx >= startStep || idx <= endStep);
+        return (windowMask & (1 << (idx & 0x0F))) != 0;
     }
 
     void setWindow(int length, int offset) {
@@ -71,6 +78,12 @@ struct SequencerEngine {
         cachedOffset = offset;
         startStep = offset;
         endStep = (offset + length - 1) & 0x0F;
+
+        uint16_t mask = 0;
+        for (int i = 0; i < length; ++i) {
+            mask |= (1 << ((offset + i) & 0x0F));
+        }
+        windowMask = mask;
 
         if (stepIndex != -1 && !isStepInWindow(stepIndex)) {
             stepIndex = (startStep - 1 + 16) % 16;
@@ -325,8 +338,12 @@ struct SequencerEngine {
     }
 
     float quantize(float vIn) {
+        if (std::abs(vIn - lastQuantIn) < 1e-6f) return lastQuantOut;
+        lastQuantIn = vIn;
+
         if (activeSemiCount == 0) return pe_clamp(vIn, 0.f, 5.f);
-        int octave = (int)std::floor(vIn);
+        // Faster cast for positive voltages
+        int octave = (int)vIn; 
         float bestScore = -1.f;
         float bestV = vIn;
 
@@ -354,6 +371,7 @@ struct SequencerEngine {
                 }
             }
         }
-        return pe_clamp<float>(bestV, 0.f, 5.f);
+        lastQuantOut = pe_clamp<float>(bestV, 0.f, 5.f);
+        return lastQuantOut;
     }
 };

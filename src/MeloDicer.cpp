@@ -319,12 +319,11 @@ MeloDicer::MeloDicer() {
 
         float v =  params[SEMI0_PARAM + sem].getValue();
         // Add CV from cached expander if present
-        if (cachedExpander) {
-            if(cachedExpander->inputs[MeloDicerIds::EXPANDER_SEMI_CV_INPUT_0 + sem].isConnected()) {
-                   float att = cachedExpander->params[MeloDicerIds::EXPANDER_SEMI_ATTENUVERTER_0 + sem].getValue();
-                   v += (cachedExpander->inputs[MeloDicerIds::EXPANDER_SEMI_CV_INPUT_0 + sem].getVoltage() * att) / 10.0f;
-            }
-        }
+    if (cachedExpander && cachedExpander->inputs[MeloDicerIds::EXPANDER_SEMI_CV_INPUT_0 + sem].isConnected()) {
+        float att = cachedExpander->params[MeloDicerIds::EXPANDER_SEMI_ATTENUVERTER_0 + sem].getValue();
+        v += (cachedExpander->inputs[MeloDicerIds::EXPANDER_SEMI_CV_INPUT_0 + sem].getVoltage() * att) / 10.0f;
+    }
+
         v = clampv(v, 0.f, 1.f);
         return v;
     }
@@ -751,6 +750,11 @@ void MeloDicer::process(const ProcessArgs& args) {
             lastModeSelect = modeSelect;
         }
 
+        // --- Ring LEDs (Steps) ---
+        for (int i = 0; i < 16; ++i) {
+            lights[STEP_LIGHTS_START + i].setBrightness(engine.getStepLightBrightness(i));
+        }
+
         // ── Semitone fader cache ──
         {
             bool faderDirty = false;
@@ -849,10 +853,6 @@ void MeloDicer::handleModeD_(const ProcessArgs& args) {
     float inCV = inputs[CV2_INPUT].isConnected() ? clampv<float>(inputs[CV2_INPUT].getVoltage(), 0.f, 5.f) : 0.f;
     
     engine.executeModeD(gateHigh, inCV);
-
-    for (int i = 0; i < 16; ++i) {
-        lights[STEP_LIGHTS_START + i].setBrightness(engine.getStepLightBrightness(i));
-    }
 }
 
 

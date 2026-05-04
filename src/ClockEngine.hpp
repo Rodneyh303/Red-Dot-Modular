@@ -9,6 +9,7 @@ struct ClockEngine {
 
     // ── External clock period measurement ──────────────────────────────────
     float clockTimeAcc   = 0.f;   // seconds since last CLK pulse
+    float sixteenthSec   = 0.125f; // cached internal clock interval
     bool  measured       = false; // true after first period has been observed
     bool  externalActive = false; // true when CLK IN is connected and producing pulses
 
