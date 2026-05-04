@@ -13,6 +13,8 @@
 #include <cstdint>
 #include <cassert>
 #include <cstring>
+
+#include "MeloDicerExpander.hpp"
 #include "MeloDicerWidget.hpp"
 #include "MeloDicer.hpp"
 #include "PatternEngine.hpp"
@@ -96,6 +98,8 @@ MeloDicer::MeloDicer() {
         rhythmSeedPendingFloat = rhythmSeedFloat;
         melodySeedPendingFloat = melodySeedFloat;
 
+        lightDivider.setDivision(512); // Throttle lights and visual cache to ~90Hz at 48kHz
+
         // Default patterns: all gates on, CV at 0V (C0), semitone 0
         // genPitchV() reads params[] which aren't valid yet, so use safe literals
         for (int i = 0; i < 16; ++i) {
@@ -167,6 +171,7 @@ MeloDicer::MeloDicer() {
         reseedXoroshiroFromFloat(stochasticRng, 0.f); // Reset stochastic RNG to deterministic state
         currentPitchV = 0.f;
         melodySeedCached = false;
+        cachedExpander = nullptr; // Initialize cached expander
         rhythmSeedCached = false;
   }
 
@@ -313,11 +318,11 @@ MeloDicer::MeloDicer() {
         if (lockScaleNotes && !(activeScaleMask & (1 << sem))) return 0.f;
 
         float v =  params[SEMI0_PARAM + sem].getValue();
-        // Add CV from left expander if present
-        if (leftExpander.module && leftExpander.module->model == modelMeloDicerExpander) {
-            if(leftExpander.module->inputs[MeloDicerIds::EXPANDER_SEMI_CV_INPUT_0 + sem].isConnected()) {
-                   float att = leftExpander.module->params[MeloDicerIds::EXPANDER_SEMI_ATTENUVERTER_0 + sem].getValue();
-                   v += (leftExpander.module->inputs[MeloDicerIds::EXPANDER_SEMI_CV_INPUT_0 + sem].getVoltage() * att) / 10.0f;
+        // Add CV from cached expander if present
+        if (cachedExpander) {
+            if(cachedExpander->inputs[MeloDicerIds::EXPANDER_SEMI_CV_INPUT_0 + sem].isConnected()) {
+                   float att = cachedExpander->params[MeloDicerIds::EXPANDER_SEMI_ATTENUVERTER_0 + sem].getValue();
+                   v += (cachedExpander->inputs[MeloDicerIds::EXPANDER_SEMI_CV_INPUT_0 + sem].getVoltage() * att) / 10.0f;
             }
         }
         v = clampv(v, 0.f, 1.f);
@@ -327,10 +332,10 @@ MeloDicer::MeloDicer() {
     //return octave parameter value with CV input added (if connected)
     float MeloDicer::getOctaveLoParam()  {
         float v = params[OCT_LO_PARAM].getValue();
-        if (leftExpander.module && leftExpander.module->model == modelMeloDicerExpander) {
-            if(leftExpander.module->inputs[MeloDicerIds::EXPANDER_OCT_LO_CV_INPUT].isConnected()) {
-                float att = leftExpander.module->params[MeloDicerIds::EXPANDER_OCT_LO_ATTENUVERTER].getValue();
-                v += (leftExpander.module->inputs[MeloDicerIds::EXPANDER_OCT_LO_CV_INPUT].getVoltage() * att) / 10.0f * 8.0f;
+        if (cachedExpander) {
+            if(cachedExpander->inputs[MeloDicerIds::EXPANDER_OCT_LO_CV_INPUT].isConnected()) {
+                float att = cachedExpander->params[MeloDicerIds::EXPANDER_OCT_LO_ATTENUVERTER].getValue();
+                v += (cachedExpander->inputs[MeloDicerIds::EXPANDER_OCT_LO_CV_INPUT].getVoltage() * att) / 10.0f * 8.0f;
             }
         }
         v = clampv(v, 0.f, 8.f);
@@ -340,10 +345,10 @@ MeloDicer::MeloDicer() {
     //return octave parameter value with CV input added (if connected)
     float MeloDicer::getOctaveHiParam()  {
         float v = params[OCT_HI_PARAM].getValue();
-        if (leftExpander.module && leftExpander.module->model == modelMeloDicerExpander) {
-            if(leftExpander.module->inputs[MeloDicerIds::EXPANDER_OCT_HI_CV_INPUT].isConnected()) {
-                float att = leftExpander.module->params[MeloDicerIds::EXPANDER_OCT_HI_ATTENUVERTER].getValue();
-                v += (leftExpander.module->inputs[MeloDicerIds::EXPANDER_OCT_HI_CV_INPUT].getVoltage() * att) / 10.0f * 8.0f;
+        if (cachedExpander) {
+            if(cachedExpander->inputs[MeloDicerIds::EXPANDER_OCT_HI_CV_INPUT].isConnected()) {
+                float att = cachedExpander->params[MeloDicerIds::EXPANDER_OCT_HI_ATTENUVERTER].getValue();
+                v += (cachedExpander->inputs[MeloDicerIds::EXPANDER_OCT_HI_CV_INPUT].getVoltage() * att) / 10.0f * 8.0f;
             }
         }
         v = clampv(v, 0.f, 8.f);
@@ -480,6 +485,15 @@ void MeloDicer::onPhraseBoundary_() {
     engine.pe.applyPendingSeedsAndRedraw(makePatternInput());
 }
 
+// ---------------- Helper: expander change hook -------------------------------
+void MeloDicer::onExpanderChange(const ExpanderChangeEvent& e) {
+    // Cache the expander module pointer for direct access in process()
+    if (leftExpander.module && leftExpander.module->model == modelMeloDicerExpander) {
+        cachedExpander = dynamic_cast<MeloDicerExpander*>(leftExpander.module);
+    } else {
+        cachedExpander = nullptr;
+    }
+}
 // ---------------- Helper: reset hook -----------------------------------------
 void MeloDicer::onReset() {
     Module::onReset();
@@ -582,7 +596,8 @@ void MeloDicer::process(const ProcessArgs& args) {
         for (int i = 0; i < 12; ++i) {
             // Enforce scale lock: force non-scale sliders to zero position
             if (lockScaleNotes && !(activeScaleMask & (1 << i))) {
-                params[SEMI0_PARAM + i].setValue(0.f);
+                if (params[SEMI0_PARAM + i].getValue() != 0.f)
+                    params[SEMI0_PARAM + i].setValue(0.f);
             }
 
             float w = clampv<float>(params[SEMI0_PARAM + i].getValue(), 0.f, 1.f);
@@ -590,9 +605,6 @@ void MeloDicer::process(const ProcessArgs& args) {
         }
         if (faderDirty || activeSemiCount == 0) rebuildSemiCache_();
     }
-
-    // Refresh visual cache so LEDs react instantly to knob changes in Dice mode
-    engine.pe.refreshVisualCache(makePatternInput());
 
     engine.updateWindow(
         params[PATTERN_LENGTH_PARAM].getValue(), inputs[LENGTH_INPUT].getVoltage(), inputs[LENGTH_INPUT].isConnected(),
@@ -775,6 +787,14 @@ void MeloDicer::process(const ProcessArgs& args) {
     float outSeed = rhythmSeedPending ? rhythmSeedPendingFloat : rhythmSeedFloat;
     outSeed = clampv<float>(outSeed, 0.f, 10.f);
     outputs[SEED_OUTPUT].setVoltage(outSeed);
+
+    // ── Throttle UI and Light processing ──
+    if (lightDivider.process()) {
+        // Refresh visual cache so LEDs react to knob changes (at ~90Hz instead of 44kHz)
+        engine.pe.refreshVisualCache(makePatternInput());
+        // updateStepLEDs_ handles red flash channel
+        updateStepLEDs_(args.sampleTime * 512.f);
+    }
 }
 
 // ---------------- Mode A: internal clock with offset -------------------
@@ -793,9 +813,6 @@ void MeloDicer::handleModeA_(const ProcessArgs& args) {
         lights[STEP_LIGHTS_START + i].setBrightness(engine.getStepLightBrightness(i));
     }
     lastStepIndex = stepIndex;
-
-    // updateStepLEDs_ handles red flash channel; slider widget handles green.
-    updateStepLEDs_(args.sampleTime);
 }
 
 // ---------------- Mode B: external gate with offset -------------------

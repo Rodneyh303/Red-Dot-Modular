@@ -32,7 +32,7 @@
 using namespace rack;
 
 extern Plugin* pluginInstance;
-
+struct MeloDicerExpander;
 // Minimal clamp helper for C++11 (no std::clamp)
 template <typename T>
 static inline T clampv(T v, T lo, T hi) {
@@ -277,6 +277,8 @@ struct MeloDicer : Module {
     bool lockScaleNotes = false;
     uint16_t activeScaleMask = 0xFFF;
     bool lightTheme = false;
+    MeloDicerExpander* cachedExpander = nullptr; // Cache expander pointer for performance
+    dsp::ClockDivider lightDivider;
 
     SequencerEngine engine;
 
@@ -384,6 +386,7 @@ struct MeloDicer : Module {
     void onPhraseBoundary_();
     void onReset() override;
     int getNoteLenIdx_();
+    void onExpanderChange(const ExpanderChangeEvent& e) override; // Declare override
     int computeNoteLengthIdx(int requestedIdx, int ppqnMask);
     void updateStepLEDs_(float sampleTime);
     float quantizePitch(int semitoneIndex, int octaveOffset);
