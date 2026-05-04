@@ -351,6 +351,8 @@ struct MeloDicer : Module {
     int& activeSemiCount = engine.activeSemiCount;
     float (&faderCache)[12] = engine.faderCache;
     float cv2Offsets[4] = {0.f, 0.f, 0.f, 0.f};
+    float lastCv1V = -100.f;
+    float lastCv1Off = 0.f;
 
     MeloDicer();
 

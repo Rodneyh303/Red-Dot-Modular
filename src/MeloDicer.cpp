@@ -575,21 +575,11 @@ void MeloDicer::process(const ProcessArgs& args) {
         runPulse.trigger(1e-3f);
       }
     };
-   // bool runGate = runPulse.process(args.sampleTime);
-    if(runStart) {
-    //   newBar = true;
-    //   newPhrase = true;
-      //resetArmed = true;
-    }
-   // lights[RUN_GATE_LIGHT].setBrightnessSmooth(runGateActive ? 1.f : LIGHT_OFF, args.sampleTime);
-    lights[RUN_GATE_LIGHT].setBrightness(runGateActive? 1.f : 0.f);
-    outputs[RUN_GATE_OUTPUT].setVoltage(runGateActive ? 10.f : 0.f);
 
     //if(schmittTrigger(resetTrigHigh,inputs[RESET_TRIGGER_INPUT].getVoltage()) && trigGenerator.remaining <= 0) resetArmed = true;
     //if(buttonTrigger(resetBtnHigh,params[RESET_BUTTON_PARAM].getValue()) && trigGenerator.remaining <= 0) resetArmed = true;
     if (resetTrig.process(inputs[RESET_TRIGGER_INPUT].getVoltage(),0.1f, 2.f))  resetArmed = true;
     if (resetBtn.process(params[RESET_BUTTON_PARAM].getValue()))  resetArmed = true;
-    lights[RESET_LIGHT].setBrightnessSmooth(resetArmed ? 1.f : 0.f, args.sampleTime);
 
     // --- RESET input: immediate phrase restart and apply pending seeds ---
     if (resetArmed && runGateActive)
@@ -673,9 +663,12 @@ void MeloDicer::process(const ProcessArgs& args) {
         float v = inputs[CV1_INPUT].getVoltage();
         switch (cv1Mode) {
             case 0: outputs[CV_OUTPUT].setVoltage(currentPitchV + v); break;            // Add Seq
-            case 1: {                                                                     // Transpose quantized
-                float off = std::round(v * 12.f) / 12.f;
-                outputs[CV_OUTPUT].setVoltage(currentPitchV + off);
+            case 1: {                                                                   // Transpose quantized
+                if (std::abs(v - lastCv1V) > 1e-5f) {
+                    lastCv1V = v;
+                    lastCv1Off = std::round(v * 12.f) * (1.f / 12.f);
+                }
+                outputs[CV_OUTPUT].setVoltage(currentPitchV + lastCv1Off);
             } break;
             case 2: {                                                                     // Mod LO
                 float lo = clampv<float>(params[OCT_LO_PARAM].getValue() + v * 0.25f, 0.f, 8.f);
@@ -710,13 +703,17 @@ void MeloDicer::process(const ProcessArgs& args) {
     lights[LOCK_LIGHT].setBrightness(locked ? 1.f : 0.f);
     lights[MUTE_LIGHT].setBrightness(muted ? 1.f : 0.f);
 
-    // Seed monitor out (prefers armed value if present)
-    float outSeed = rhythmSeedPending ? rhythmSeedPendingFloat : rhythmSeedFloat;
-    outSeed = clampv<float>(outSeed, 0.f, 10.f);
-    outputs[SEED_OUTPUT].setVoltage(outSeed);
-
     // ── Throttle UI and Light processing ──
     if (lightDivider.process()) {
+        // Throttled Visuals/Outputs
+        lights[RUN_GATE_LIGHT].setBrightness(runGateActive ? 1.f : 0.f);
+        lights[RESET_LIGHT].setBrightnessSmooth(resetArmed ? 1.f : 0.f, args.sampleTime * 512.f);
+        outputs[RUN_GATE_OUTPUT].setVoltage(runGateActive ? 10.f : 0.f);
+
+        // Seed monitor out (prefers armed value if present)
+        float outSeed = rhythmSeedPending ? rhythmSeedPendingFloat : rhythmSeedFloat;
+        outputs[SEED_OUTPUT].setVoltage(clampv<float>(outSeed, 0.f, 10.f));
+
         // --- UI button toggles ---
         if (diceRTrig.process(params[DICE_R_PARAM].getValue())) {
             rhythmMode = 0;
@@ -801,14 +798,12 @@ void MeloDicer::process(const ProcessArgs& args) {
 //  Also handles first note logic when starting from reset.
 //  Also handles mute logic (no output, but still advances and updates LEDs)
 void MeloDicer::handleModeA_(const ProcessArgs& args) {
-    if (engine.executeModeA(clock, getRestParam(), getLegatoParam(), getNoteValueParam(), makePatternInput())) {
-        onPhraseBoundary_();
+    if (clock.sixteenthEdge && !muted) {
+        if (engine.executeModeA(clock, getRestParam(), getLegatoParam(), getNoteValueParam(), makePatternInput())) {
+            onPhraseBoundary_();
+        }
+        lastStepIndex = stepIndex;
     }
-
-    for (int i = 0; i < 16; ++i) {
-        lights[STEP_LIGHTS_START + i].setBrightness(engine.getStepLightBrightness(i));
-    }
-    lastStepIndex = stepIndex;
 }
 
 // ---------------- Mode B: external gate with offset -------------------
@@ -819,14 +814,12 @@ void MeloDicer::handleModeA_(const ProcessArgs& args) {
 //  Also handles first note logic when gate held high continuously.
 void MeloDicer::handleModeB_(const ProcessArgs& args, bool gate1Rise) {
     bool gate1High = inputs[GATE1_INPUT].getVoltage() >= 1.f;
-    if (engine.executeModeB(gate1Rise, gate1High, getRestParam(), getLegatoParam(), getNoteValueParam(), makePatternInput())) {
-        onPhraseBoundary_();
+    if (!muted && (gate1Rise || (gate1High && stepIndex == -1))) {
+        if (engine.executeModeB(gate1Rise, gate1High, getRestParam(), getLegatoParam(), getNoteValueParam(), makePatternInput())) {
+            onPhraseBoundary_();
+        }
+        lastStepIndex = stepIndex;
     }
-
-    for (int i = 0; i < 16; ++i) {
-        lights[STEP_LIGHTS_START + i].setBrightness(engine.getStepLightBrightness(i));
-    }
-    lastStepIndex = stepIndex;
 }
 
 
@@ -834,15 +827,11 @@ void MeloDicer::handleModeB_(const ProcessArgs& args, bool gate1Rise) {
 // quarterEdge: true on one-sample quarter-note pulse from ClockEngine
 // Latches and quantizes CV2 on each quarter-note edge; steps through pattern window.
 void MeloDicer::handleModeC_(const ProcessArgs& args) {
-    float inCV = inputs[CV2_INPUT].isConnected() ? clampv<float>(inputs[CV2_INPUT].getVoltage(), 0.f, 5.f) : 0.f;
-    engine.executeModeC(clock, inCV);
-
-    // Update Ring LEDs
-    for (int i = 0; i < 16; ++i) {
-        lights[STEP_LIGHTS_START + i].setBrightness(engine.getStepLightBrightness(i));
+    if (clock.quarterEdge) {
+        float inCV = inputs[CV2_INPUT].isConnected() ? clampv<float>(inputs[CV2_INPUT].getVoltage(), 0.f, 5.f) : 0.f;
+        engine.executeModeC(clock, inCV);
+        lastStepIndex = stepIndex;
     }
-
-    lastStepIndex = stepIndex;
 }
 
 
