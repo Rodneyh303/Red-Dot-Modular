@@ -541,43 +541,6 @@ void MeloDicer::updateStepLEDs_(float sampleTime)
 // Full logic for all modes inline here
 // Calls helper functions as needed
 void MeloDicer::process(const ProcessArgs& args) {
-    // --- UI button toggles ---
-    // Dice button: pressing generates new random values regardless of current mode
-    // (manual: "With each press, meloDICER generates new random values")
-    // It also switches you back INTO dice-mode if you were in realtime-mode.
-    if (diceRTrig.process(params[DICE_R_PARAM].getValue())) {
-        rhythmMode = 0; // enter dice-mode
-        rhythmSeedPendingFloat = sampleSeedFromSource();
-        rhythmSeedPending = true;
-    }
-    if (diceMTrig.process(params[DICE_M_PARAM].getValue())) {
-        melodyMode = 0; // enter dice-mode
-        melodySeedPendingFloat = sampleSeedFromSource();
-        melodySeedPending = true;
-    }
-    if (lockTrig.process(params[LOCK_PARAM].getValue()))     locked = !locked;
-    if (muteTrig.process(params[MUTE_PARAM].getValue())) {
-        muted = !muted;
-        // Respect "Restart on unmute" when using the UI button
-        if (!muted && restartOnUnmute) {
-            handleRestart(/*manual=*/true, /*resetImmediate=*/true);
-        }
-    }
-
-    if (modeATrig.process(params[MODE_A_PARAM].getValue())) modeSelect = 0;
-    if (modeBTrig.process(params[MODE_B_PARAM].getValue())) modeSelect = 1;
-    if (modeCTrig.process(params[MODE_C_PARAM].getValue())) modeSelect = 2;
-    if (modeDTrig.process(params[MODE_D_PARAM].getValue())) modeSelect = 3;
-
-    // Mode lamps: only write when modeSelect changes (~never per sample)
-    if (modeSelect != lastModeSelect) {
-        lights[MODE_A_LIGHT].setBrightness(modeSelect == 0 ? 1.f : 0.f);
-        lights[MODE_B_LIGHT].setBrightness(modeSelect == 1 ? 1.f : 0.f);
-        lights[MODE_C_LIGHT].setBrightness(modeSelect == 2 ? 1.f : 0.f);
-        lights[MODE_D_LIGHT].setBrightness(modeSelect == 3 ? 1.f : 0.f);
-        lastModeSelect = modeSelect;
-    }
-
     // ── Centralised clock tick (processes CLK IN once, before all mode handlers) ──
     // Derives bpm from external clock period or BPM knob, emits sixteenthEdge + quarterEdge.
     clock.process(
@@ -588,28 +551,6 @@ void MeloDicer::process(const ProcessArgs& args) {
         args.sampleTime
     );
     bpm = clock.bpm;  // keep module-level bpm in sync for note duration calculations
-
-    // ── Semitone fader cache: rebuild active list when any fader changes ──
-    // O(12) compares per sample — far cheaper than the quantiser search.
-    {
-        bool faderDirty = false;
-        for (int i = 0; i < 12; ++i) {
-            // Enforce scale lock: force non-scale sliders to zero position
-            if (lockScaleNotes && !(activeScaleMask & (1 << i))) {
-                if (params[SEMI0_PARAM + i].getValue() != 0.f)
-                    params[SEMI0_PARAM + i].setValue(0.f);
-            }
-
-            float w = clampv<float>(params[SEMI0_PARAM + i].getValue(), 0.f, 1.f);
-            if (!faderDirty && std::fabs(w - faderCache[i]) > 1e-5f) faderDirty = true;
-        }
-        if (faderDirty || activeSemiCount == 0) rebuildSemiCache_();
-    }
-
-    engine.updateWindow(
-        params[PATTERN_LENGTH_PARAM].getValue(), inputs[LENGTH_INPUT].getVoltage(), inputs[LENGTH_INPUT].isConnected(),
-        params[PATTERN_OFFSET_PARAM].getValue(), inputs[OFFFSET_INPUT].getVoltage(), inputs[OFFFSET_INPUT].isConnected()
-    );
 
     // Pre-process asynchronous triggers
     bool gate1Rise = g1Trig.process(inputs[GATE1_INPUT].getVoltage());
@@ -752,19 +693,6 @@ void MeloDicer::process(const ProcessArgs& args) {
     outputs[CV_OUTPUT].setVoltage(currentPitchV);
 }
 
-    // CV IN 2: 0..5V per manual, ADDED to knob as a temporary offset.
-    // We store the offset separately so the knob value is never permanently drifted.
-    // cv2Offsets[] is consumed at point-of-use (getCV2NoteValue etc).
-    for (int i = 0; i < 4; ++i) cv2Offsets[i] = 0.f;  // clear each sample
-    if (inputs[CV2_INPUT].isConnected()) {
-        float v    = clampv<float>(inputs[CV2_INPUT].getVoltage(), 0.f, 5.f);
-        float norm = v / 5.f; // 0..1
-        // Only one mode active at a time; set that offset slot
-        if (cv2Mode == 0) cv2Offsets[0] = norm * 8.f;   // NOTE_VALUE range 0..8
-        if (cv2Mode == 1) cv2Offsets[1] = norm;           // VARIATION  range 0..1
-        if (cv2Mode == 2) cv2Offsets[2] = norm;           // LEGATO     range 0..1
-        if (cv2Mode == 3) cv2Offsets[3] = norm;           // REST       range 0..1
-    }
     
     
     // Gate output: engine.gs.process() ticks the pulse and returns raw gate voltage
@@ -790,6 +718,70 @@ void MeloDicer::process(const ProcessArgs& args) {
 
     // ── Throttle UI and Light processing ──
     if (lightDivider.process()) {
+        // --- UI button toggles ---
+        if (diceRTrig.process(params[DICE_R_PARAM].getValue())) {
+            rhythmMode = 0;
+            rhythmSeedPendingFloat = sampleSeedFromSource();
+            rhythmSeedPending = true;
+        }
+        if (diceMTrig.process(params[DICE_M_PARAM].getValue())) {
+            melodyMode = 0;
+            melodySeedPendingFloat = sampleSeedFromSource();
+            melodySeedPending = true;
+        }
+        if (lockTrig.process(params[LOCK_PARAM].getValue()))     locked = !locked;
+        if (muteTrig.process(params[MUTE_PARAM].getValue())) {
+            muted = !muted;
+            if (!muted && restartOnUnmute) {
+                handleRestart(/*manual=*/true, /*resetImmediate=*/true);
+            }
+        }
+
+        if (modeATrig.process(params[MODE_A_PARAM].getValue())) modeSelect = 0;
+        if (modeBTrig.process(params[MODE_B_PARAM].getValue())) modeSelect = 1;
+        if (modeCTrig.process(params[MODE_C_PARAM].getValue())) modeSelect = 2;
+        if (modeDTrig.process(params[MODE_D_PARAM].getValue())) modeSelect = 3;
+
+        // Mode lamps
+        if (modeSelect != lastModeSelect) {
+            lights[MODE_A_LIGHT].setBrightness(modeSelect == 0 ? 1.f : 0.f);
+            lights[MODE_B_LIGHT].setBrightness(modeSelect == 1 ? 1.f : 0.f);
+            lights[MODE_C_LIGHT].setBrightness(modeSelect == 2 ? 1.f : 0.f);
+            lights[MODE_D_LIGHT].setBrightness(modeSelect == 3 ? 1.f : 0.f);
+            lastModeSelect = modeSelect;
+        }
+
+        // ── Semitone fader cache ──
+        {
+            bool faderDirty = false;
+            for (int i = 0; i < 12; ++i) {
+                if (lockScaleNotes && !(activeScaleMask & (1 << i))) {
+                    if (params[SEMI0_PARAM + i].getValue() != 0.f)
+                        params[SEMI0_PARAM + i].setValue(0.f);
+                }
+                float w = clampv<float>(params[SEMI0_PARAM + i].getValue(), 0.f, 1.f);
+                if (!faderDirty && std::fabs(w - faderCache[i]) > 1e-5f) faderDirty = true;
+            }
+            if (faderDirty || activeSemiCount == 0) rebuildSemiCache_();
+        }
+
+        // ── Window Update ──
+        engine.updateWindow(
+            params[PATTERN_LENGTH_PARAM].getValue(), inputs[LENGTH_INPUT].getVoltage(), inputs[LENGTH_INPUT].isConnected(),
+            params[PATTERN_OFFSET_PARAM].getValue(), inputs[OFFFSET_INPUT].getVoltage(), inputs[OFFFSET_INPUT].isConnected()
+        );
+
+        // ── CV IN 2 Offsets ──
+        for (int i = 0; i < 4; ++i) cv2Offsets[i] = 0.f;
+        if (inputs[CV2_INPUT].isConnected()) {
+            float v    = clampv<float>(inputs[CV2_INPUT].getVoltage(), 0.f, 5.f);
+            float norm = v / 5.f; 
+            if (cv2Mode == 0) cv2Offsets[0] = norm * 8.f;
+            if (cv2Mode == 1) cv2Offsets[1] = norm;
+            if (cv2Mode == 2) cv2Offsets[2] = norm;
+            if (cv2Mode == 3) cv2Offsets[3] = norm;
+        }
+
         // Refresh visual cache so LEDs react to knob changes (at ~90Hz instead of 44kHz)
         engine.pe.refreshVisualCache(makePatternInput());
         // updateStepLEDs_ handles red flash channel
@@ -831,8 +823,6 @@ void MeloDicer::handleModeB_(const ProcessArgs& args, bool gate1Rise) {
         lights[STEP_LIGHTS_START + i].setBrightness(engine.getStepLightBrightness(i));
     }
     lastStepIndex = stepIndex;
-
-    updateStepLEDs_(args.sampleTime);
 }
 
 
@@ -849,7 +839,6 @@ void MeloDicer::handleModeC_(const ProcessArgs& args) {
     }
 
     lastStepIndex = stepIndex;
-    updateStepLEDs_(args.sampleTime);
 }
 
 
@@ -864,7 +853,6 @@ void MeloDicer::handleModeD_(const ProcessArgs& args) {
     for (int i = 0; i < 16; ++i) {
         lights[STEP_LIGHTS_START + i].setBrightness(engine.getStepLightBrightness(i));
     }
-    updateStepLEDs_(args.sampleTime);
 }
 
 
