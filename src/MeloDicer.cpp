@@ -61,10 +61,7 @@ MeloDicer::MeloDicer() {
         configButton(DICE_M_PARAM, "Dice melody");
         configButton(LOCK_PARAM,   "Lock");
         configButton(MUTE_PARAM,   "Mute");
-        configButton(MODE_A_PARAM,        "Mode A (Sequencer)");
-        configButton(MODE_B_PARAM,        "Mode B (Seq+Gate)");
-        configButton(MODE_C_PARAM,        "Mode C (Quantizer 1)");
-        configButton(MODE_D_PARAM,        "Mode D (Quantizer 2)");
+        configButton(MODE_PARAM,   "Mode (Cycle A-B-C-D)");
         configButton(RESET_BUTTON_PARAM,  "Reset");
         configButton(RUN_GATE_PARAM,      "Run/Stop");
 
@@ -730,10 +727,9 @@ void MeloDicer::process(const ProcessArgs& args) {
             }
         }
 
-        if (modeATrig.process(params[MODE_A_PARAM].getValue())) modeSelect = 0;
-        if (modeBTrig.process(params[MODE_B_PARAM].getValue())) modeSelect = 1;
-        if (modeCTrig.process(params[MODE_C_PARAM].getValue())) modeSelect = 2;
-        if (modeDTrig.process(params[MODE_D_PARAM].getValue())) modeSelect = 3;
+        if (modeTrig.process(params[MODE_PARAM].getValue())) {
+            modeSelect = (modeSelect + 1) % 4;
+        }
 
         // Mode lamps
         if (modeSelect != lastModeSelect) {

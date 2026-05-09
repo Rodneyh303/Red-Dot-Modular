@@ -24,9 +24,9 @@ struct MeloDicerWidget : ModuleWidget {
     void draw(const DrawArgs& args) override;
     void appendContextMenu(ui::Menu* menu) override;
 
-    static constexpr float W_MM = 172.72f;
-    static constexpr float SL_TOP = 45.f;
-    static constexpr float SLH = 29.5f;
+    static constexpr float W_MM = 172.72f; // widht of module in mm, used for centering text and other elements`
+    static constexpr float SL_TOP = 45.f; //top of slider
+    static constexpr float SLH = 29.5f; //slider hieght, used for label positioning
 };
 
 extern Model* modelMeloDicer;

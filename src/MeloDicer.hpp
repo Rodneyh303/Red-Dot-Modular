@@ -70,10 +70,7 @@ namespace MeloDicerIds {
         LOCK_PARAM,
         MUTE_PARAM,
 
-        MODE_A_PARAM,
-        MODE_B_PARAM,
-        MODE_C_PARAM,
-        MODE_D_PARAM,
+        MODE_PARAM,
 
         RESET_BUTTON_PARAM,
         RUN_GATE_PARAM,
@@ -234,7 +231,7 @@ struct MeloDicer : Module {
         SEMI6_PARAM, SEMI7_PARAM, SEMI8_PARAM, SEMI9_PARAM, SEMI10_PARAM, SEMI11_PARAM,
         OCT_LO_PARAM, OCT_HI_PARAM, BPM_PARAM,
         DICE_R_PARAM, DICE_M_PARAM, LOCK_PARAM, MUTE_PARAM,
-        MODE_A_PARAM, MODE_B_PARAM, MODE_C_PARAM, MODE_D_PARAM,
+        MODE_PARAM,
         RESET_BUTTON_PARAM, RUN_GATE_PARAM,
         NUM_PARAMS
     };
@@ -333,8 +330,8 @@ struct MeloDicer : Module {
     dsp::PulseGenerator& gatePulse = engine.gs.gatePulse;
     bool& prevExtGate = engine.prevGate1High;
 
-    dsp::BooleanTrigger diceRTrig, diceMTrig, resetBtn, runGateBtn;
-    dsp::SchmittTrigger g1Trig, g2Trig, lockTrig, muteTrig, modeATrig, modeBTrig, modeCTrig, modeDTrig, resetTrig, runGateTrig;
+    dsp::BooleanTrigger diceRTrig, diceMTrig, resetBtn, runGateBtn, modeTrig;
+    dsp::SchmittTrigger g1Trig, g2Trig, lockTrig, muteTrig, resetTrig, runGateTrig;
     dsp::PulseGenerator runPulse, clockPulse, resetPulse;
 
     float& cachedMelodySeedFloat = engine.pe.cachedMelodySeedFloat;

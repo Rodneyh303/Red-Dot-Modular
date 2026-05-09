@@ -97,13 +97,12 @@ MeloDicerWidget::MeloDicerWidget(MeloDicer* module) {
         }
 
         {
-            const float MX=168.f,LX=W_MM-5.f;
-            const float ys[4]={46.f,59.f,72.f,85.f};
-            const int par[4]={MeloDicer::MODE_A_PARAM,MeloDicer::MODE_B_PARAM,MeloDicer::MODE_C_PARAM,MeloDicer::MODE_D_PARAM};
-            const int lit[4]={MeloDicer::MODE_A_LIGHT,MeloDicer::MODE_B_LIGHT,MeloDicer::MODE_C_LIGHT,MeloDicer::MODE_D_LIGHT};
-            for (int i=0;i<4;++i) {
-                addParam(createParamCentered<TL1105>(mm2px(Vec(MX,ys[i])),module,par[i]));
-                addChild(createLightCentered<MediumLight<YellowLight>>(mm2px(Vec(LX,ys[i]+7.f)),module,lit[i]));
+            const float MX = 168.f, LX = 163.f, Y_START = 54.f, v_spacing = 6.5f;
+            // Add a single physical button for cycling modes
+            addParam(createParamCentered<TL1105>(mm2px(Vec(MX, 44.f)), module, MeloDicer::MODE_PARAM));
+            for (int i = 0; i < 4; ++i) {
+                // Place 4 lights vertically starting below the MODE button
+                addChild(createLightCentered<MediumLight<YellowLight>>(mm2px(Vec(LX, Y_START + i * v_spacing)), module, MeloDicer::MODE_A_LIGHT + i));
             }
         }
 
@@ -222,7 +221,7 @@ void MeloDicerWidget::draw(const DrawArgs& args) {
         nvgFontFaceId(vg,APP->window->uiFont->handle);
         nvgTextAlign(vg,NVG_ALIGN_CENTER|NVG_ALIGN_MIDDLE);
         const bool lt = getLightTheme();
-        auto c=[&](int r,int g,int b,int a=255){
+        auto fillNvgColour=[&](int r,int g,int b,int a=255){
             if (lt) {
                 auto inv=[](int v){ return std::max(0, 220-v); };
                 bool isGrey = (std::abs(r-g)<20 && std::abs(g-b)<20);
@@ -231,11 +230,11 @@ void MeloDicerWidget::draw(const DrawArgs& args) {
             }
             nvgFillColor(vg,nvgRGBA(r,g,b,a));
         };
-        auto L=[&](float x,float y,const char* t){ nvgText(vg,mm2px(x),mm2px(y),t,nullptr); };
-        auto sz=[&](float mm){ nvgFontSize(vg,mm2px(mm)); };
+        auto writeNvgText=[&](float x,float y,const char* t){ nvgText(vg,mm2px(x),mm2px(y),t,nullptr); };
+        auto setNvgFontSize=[&](float mm){ nvgFontSize(vg,mm2px(mm)); };
 
-        sz(4.2f); c(200,200,200); L(W_MM/2.f,5.5f,"Red Dot Modular  -  MeloDicer");
-        sz(3.4f); c(200,200,200); L(14,37.5f,"NOTE VALUE"); L(37,37.5f,"VARIATION"); L(60,37.5f,"LEGATO"); L(83,37.5f,"REST");
+        setNvgFontSize(4.2f); fillNvgColour(200,200,200); writeNvgText(W_MM/2.f,5.5f,"Red Dot Modular  -  MeloDicer");
+        setNvgFontSize(3.4f); fillNvgColour(200,200,200); writeNvgText(14,37.5f,"NOTE VALUE"); writeNvgText(37,37.5f,"VARIATION"); writeNvgText(60,37.5f,"LEGATO"); writeNvgText(83,37.5f,"REST");
 
         auto arcLabel = [&](float cx_mm, float cy_mm, float r_mm, float angle_deg, const char* text, int ri=160, int gi=160, int bi=160) {
             float a  = angle_deg * float(M_PI) / 180.f;
@@ -256,7 +255,7 @@ void MeloDicerWidget::draw(const DrawArgs& args) {
             nvgRestore(vg);
         };
 
-        sz(2.5f);
+        setNvgFontSize(2.5f);
         {
             const char* noteLabels[8] = {"1/2","1/4","1/4T","1/8","1/8T","1/16","1/32T","1/32"};
             for (int i=0;i<8;++i) {
@@ -264,40 +263,48 @@ void MeloDicerWidget::draw(const DrawArgs& args) {
                 arcLabel(14.f, 26.f, 12.5f, deg, noteLabels[i], 150,150,135);
             }
         }
-        sz(2.8f);
+        setNvgFontSize(2.8f);
         arcLabel(37.f, 26.f, 12.5f, -225.f, "LONGER",  130,130,120); arcLabel(37.f, 26.f, 12.5f,  +45.f, "SHORTER", 130,130,120);
         arcLabel(60.f, 26.f, 12.0f, -225.f, "0%",   130,130,120); arcLabel(60.f, 26.f, 12.0f,  +45.f, "100%", 130,130,120);
         arcLabel(83.f, 26.f, 12.0f, -225.f, "0%",   130,130,120); arcLabel(83.f, 26.f, 12.0f,  +45.f, "100%", 130,130,120);
-        sz(3.2f); c(170,170,170); L(110,37.5f,"BPM"); L(133,37.5f,"LEN"); L(156,37.5f,"OFFSET");
+        setNvgFontSize(3.2f); fillNvgColour(170,170,170); writeNvgText(110,37.5f,"BPM"); writeNvgText(133,37.5f,"LEN"); writeNvgText(156,37.5f,"OFFSET");
 
-        sz(2.5f); c(80,80,80); nvgTextAlign(vg,NVG_ALIGN_LEFT|NVG_ALIGN_MIDDLE);
+        setNvgFontSize(2.5f); fillNvgColour(80,80,80); nvgTextAlign(vg,NVG_ALIGN_LEFT|NVG_ALIGN_MIDDLE);
         //nvgText(vg,mm2px(4.5f),mm2px(43.f),"SEMITONE PROBABILITY",nullptr); nvgText(vg,mm2px(94.f),mm2px(43.f),"OCT",nullptr);
         nvgTextAlign(vg,NVG_ALIGN_CENTER|NVG_ALIGN_MIDDLE);
 
-        sz(3.0f); const char* sn[12]={"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
-        for (int i=0;i<12;++i){ c(200,200,200); L(7.5f+i*7.f,43.f,sn[i]); }
-        sz(2.7f); c(85,85,85); const char* nums[12]={"1","2","3","4","5","6","7","8","9","10","11","12"};
-        for (int i=0;i<12;++i) L(7.5f+i*7.f,SL_TOP+SLH+6.f,nums[i]);
-        sz(2.9f); c(38,166,154); L(100,43.f,"LO"); L(108,43.f,"HI");
-        sz(4.0f); c(210,210,210); L(168,46.f,"A"); L(168,59.f,"B"); L(168,72.f,"C"); L(168,85.f,"D");
+        setNvgFontSize(3.0f); const char* sn[12]={"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
+        for (int i=0;i<12;++i){ fillNvgColour(200,200,200); writeNvgText(7.5f+i*7.f,43.f,sn[i]); }
+        setNvgFontSize(2.7f); fillNvgColour(85,85,85); const char* nums[12]={"1","2","3","4","5","6","7","8","9","10","11","12"};
+        for (int i=0;i<12;++i) writeNvgText(7.5f+i*7.f,SL_TOP+SLH+6.f,nums[i]);
+        setNvgFontSize(2.9f); fillNvgColour(38,166,154); writeNvgText(100,43.f,"LO"); writeNvgText(108,43.f,"HI");
+
+        // Mode Section: Label on top, Button below (at 34), then vertical A-D stack
+        setNvgFontSize(3.2f); fillNvgColour(210,210,210); writeNvgText(168.f, 30.f, "MODE");
+        setNvgFontSize(3.8f); 
+        const float TX = 168.f, Y_START_VAL = 54.f, v_spacing_val = 6.5f;
+        writeNvgText(TX, Y_START_VAL, "A"); 
+        writeNvgText(TX, Y_START_VAL + v_spacing_val, "B"); 
+        writeNvgText(TX, Y_START_VAL + 2 * v_spacing_val, "C"); 
+        writeNvgText(TX, Y_START_VAL + 3 * v_spacing_val, "D");
 
         const float JY=109.f,JX=100.f, JP=12.0f;
-        sz(2.9f); c(200,60,60);  L(JX,JY,"DICE R"); L(JX+JP,JY,"DICE M");
-        c(190,190,190); L(JX+2*JP,JY,"LOCK"); L(JX+3*JP,JY,"MUTE"); L(JX+4*JP,JY,"RESET"); L(JX+5*JP,JY,"RUN");
+        setNvgFontSize(2.9f); fillNvgColour(200,60,60);  writeNvgText(JX,JY,"DICE R"); writeNvgText(JX+JP,JY,"DICE M");
+        fillNvgColour(190,190,190); writeNvgText(JX+2*JP,JY,"LOCK"); writeNvgText(JX+3*JP,JY,"MUTE"); writeNvgText(JX+4*JP,JY,"RESET"); writeNvgText(JX+5*JP,JY,"RUN");
         //L(JX+2*JP,JY,"RESET"); L(JX+5*JP,JY,"RUN");
 
-        const float JY3=120.5f,PR=7.7f/2.f; sz(3.0f); c(195,195,195);
+        const float JY3=120.5f,PR=7.7f/2.f; setNvgFontSize(3.0f); fillNvgColour(195,195,195);
         const char* il[5]={"CLK","G1","G2","CV1","CV2"}; const float ix[5]={14,30,46,62,78};
-        for(int i=0;i<5;++i) L(ix[i],JY3-PR-2.2f,il[i]);
+        for(int i=0;i<5;++i) writeNvgText(ix[i],JY3-PR-2.2f,il[i]);
         const char* sl[5] = {"RUN", "RST", "SEED", "LEN", "OFF"};
         //const float sx[5] = {88.f, 98.f, 108.f, 118.f, 128.f};
-        for(int i=0;i<5;++i) L(ix[i],102.f-PR-1.8f,sl[i]);
+        for(int i=0;i<5;++i) writeNvgText(ix[i],102.f-PR-1.8f,sl[i]);
 
 
-        sz(2.7f); c(180,180,180); const char* ol[5]={"SEED","RUN","RST","GATE","CV"};
+        setNvgFontSize(2.7f); fillNvgColour(180,180,180); const char* ol[5]={"SEED","RUN","RST","GATE","CV"};
         const float ox[5]={95,111,127,143,159};
-        for(int i=0;i<5;++i) L(ox[i],JY3-PR-2.2f,ol[i]);
-        sz(2.3f); c(80,80,80); nvgTextAlign(vg,NVG_ALIGN_LEFT|NVG_ALIGN_MIDDLE);
+        for(int i=0;i<5;++i) writeNvgText(ox[i],JY3-PR-2.2f,ol[i]);
+        setNvgFontSize(2.3f); fillNvgColour(80,80,80); nvgTextAlign(vg,NVG_ALIGN_LEFT|NVG_ALIGN_MIDDLE);
         // const char* sl[5] = {"RUN", "RST", "SEED", "LEN", "OFF"};
         // const float sx[5] = {88.f, 98.f, 108.f, 118.f, 128.f};
         // for(int i=0;i<5;++i) L(sx[i],116.f-PR-1.8f,sl[i]);
