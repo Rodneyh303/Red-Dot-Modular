@@ -89,7 +89,7 @@ namespace MeloDicerIds {
         RESET_TRIGGER_INPUT,
         SEED_INPUT,
         LENGTH_INPUT,
-        OFFFSET_INPUT,        // note: matches the typo in MeloDicer.cpp
+        OFFSET_INPUT,       
 
         SEMI_CV_INPUT_0,  SEMI_CV_INPUT_1,  SEMI_CV_INPUT_2,  SEMI_CV_INPUT_3,
         SEMI_CV_INPUT_4,  SEMI_CV_INPUT_5,  SEMI_CV_INPUT_6,  SEMI_CV_INPUT_7,
@@ -238,7 +238,7 @@ struct MeloDicer : Module {
 
     enum InputIds {
         CLK_INPUT, GATE1_INPUT, GATE2_INPUT, CV1_INPUT, CV2_INPUT,
-        RUN_GATE_INPUT, RESET_TRIGGER_INPUT, SEED_INPUT, LENGTH_INPUT, OFFFSET_INPUT,
+        RUN_GATE_INPUT, RESET_TRIGGER_INPUT, SEED_INPUT, LENGTH_INPUT, OFFSET_INPUT,
         SEMI_CV_INPUT_0, SEMI_CV_INPUT_1, SEMI_CV_INPUT_2, SEMI_CV_INPUT_3,
         SEMI_CV_INPUT_4, SEMI_CV_INPUT_5, SEMI_CV_INPUT_6, SEMI_CV_INPUT_7,
         SEMI_CV_INPUT_8, SEMI_CV_INPUT_9, SEMI_CV_INPUT_10, SEMI_CV_INPUT_11,
@@ -378,6 +378,17 @@ struct MeloDicer : Module {
     PatternInput makePatternInput();
     void redrawRhythmPattern();
     void redrawMelodyPattern();
+
+    void rotateRhythmPattern(int steps);
+    void rotateMelodyPattern(int steps);
+    void rotateRhythm(int steps);
+    void rotateMelody(int steps);
+    void rotateVariation(int steps);
+    void rotateLegato(int steps);
+    void rotateOctave(int steps);
+    void rotatePattern(bool isMelody, int steps);
+    void rotatePattern(int steps);
+
     void rebuildSemiCache_();
     float quantizeToScale(float vIn);
     void handleRestart(bool manual = true, bool resetImmediate = false);

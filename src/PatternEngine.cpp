@@ -230,3 +230,33 @@ void PatternEngine::switchRhythmMode(int& stepIndex, int& lastStepIndex) {
     }
     rhythmMode = next;
 }
+
+void PatternEngine::rotateRhythm(int steps) {
+    steps = ((steps % 16) + 16) % 16;
+    if (steps == 0) return;
+    std::rotate(std::begin(rhythmRandom), std::begin(rhythmRandom) + (16 - steps), std::end(rhythmRandom));
+}
+
+void PatternEngine::rotateVariation(int steps) {
+    steps = ((steps % 16) + 16) % 16;
+    if (steps == 0) return;
+    std::rotate(std::begin(variationRandom), std::begin(variationRandom) + (16 - steps), std::end(variationRandom));
+}
+
+void PatternEngine::rotateLegato(int steps) {
+    steps = ((steps % 16) + 16) % 16;
+    if (steps == 0) return;
+    std::rotate(std::begin(legatoRandom), std::begin(legatoRandom) + (16 - steps), std::end(legatoRandom));
+}
+
+void PatternEngine::rotateMelody(int steps) {
+    steps = ((steps % 16) + 16) % 16;
+    if (steps == 0) return;
+    std::rotate(std::begin(melodyRandom), std::begin(melodyRandom) + (16 - steps), std::end(melodyRandom));
+}
+
+void PatternEngine::rotateOctave(int steps) {
+    steps = ((steps % 16) + 16) % 16;
+    if (steps == 0) return;
+    std::rotate(std::begin(octaveRandom), std::begin(octaveRandom) + (16 - steps), std::end(octaveRandom));
+}

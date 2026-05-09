@@ -130,4 +130,11 @@ struct PatternEngine {
 
     void switchMelodyMode(int& stepIndex, int& lastStepIndex);
     void switchRhythmMode(int& stepIndex, int& lastStepIndex);
+
+    // Circularly shifts the internal random buffers
+    void rotateRhythm(int steps);     // Gates and Rests
+    void rotateVariation(int steps);  // Note length biasing
+    void rotateLegato(int steps);     // Legato and Tie probability
+    void rotateMelody(int steps);     // Pitch selection
+    void rotateOctave(int steps);     // Octave selection
 };

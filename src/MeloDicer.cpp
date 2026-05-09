@@ -76,7 +76,7 @@ MeloDicer::MeloDicer() {
         configInput(RESET_TRIGGER_INPUT, "Reset (phrase restart)");
         configInput(SEED_INPUT,   "Seed CV (0..10V)");
         configInput(LENGTH_INPUT, "Pattern Length CV (0..10V)");
-        configInput(OFFFSET_INPUT,"Pattern Offset CV (0..10V)");
+        configInput(OFFSET_INPUT, "Pattern Offset CV (0..10V)");
         configInput(RUN_GATE_INPUT, "Run/Stop Gate");
 
         configOutput(GATE_OUTPUT,           "Gate");
@@ -433,6 +433,42 @@ float MeloDicer::semitoneToVolts(int semitone) {
     void MeloDicer::redrawRhythmPattern() { engine.pe.redrawRhythm(makePatternInput()); }
     void  MeloDicer::redrawMelodyPattern() { engine.pe.redrawMelody(makePatternInput()); }
 
+    void MeloDicer::rotateRhythm(int steps) {
+        engine.pe.rotateRhythm(steps);
+        engine.pe.refreshVisualCache(makePatternInput());
+    }
+
+    void MeloDicer::rotateRhythmPattern(int steps) {
+        engine.pe.rotateRhythm(steps);
+        engine.pe.rotateVariation(steps);
+        engine.pe.rotateLegato(steps);
+        engine.pe.refreshVisualCache(makePatternInput());
+    }
+    void MeloDicer::rotateVariation(int steps) {
+        engine.pe.rotateVariation(steps);
+        engine.pe.refreshVisualCache(makePatternInput());
+    }
+
+    void MeloDicer::rotateLegato(int steps) {
+        engine.pe.rotateLegato(steps);
+        engine.pe.refreshVisualCache(makePatternInput());
+    }
+
+    void MeloDicer::rotateMelody(int steps) {
+        engine.pe.rotateMelody(steps);
+        engine.pe.refreshVisualCache(makePatternInput());
+    }
+
+    void MeloDicer::rotateMelodyPattern(int steps) {
+        engine.pe.rotateMelody(steps);
+        engine.pe.rotateOctave(steps);
+        engine.pe.refreshVisualCache(makePatternInput());
+    }
+    void MeloDicer::rotateOctave(int steps) {
+        engine.pe.rotateOctave(steps);
+        engine.pe.refreshVisualCache(makePatternInput());
+    }
+
     void MeloDicer::rebuildSemiCache_() {
         float weights[12];
         for (int i = 0; i < 12; ++i) weights[i] = getSemitoneParam(i);
@@ -762,7 +798,7 @@ void MeloDicer::process(const ProcessArgs& args) {
         // ── Window Update ──
         engine.updateWindow(
             params[PATTERN_LENGTH_PARAM].getValue(), inputs[LENGTH_INPUT].getVoltage(), inputs[LENGTH_INPUT].isConnected(),
-            params[PATTERN_OFFSET_PARAM].getValue(), inputs[OFFFSET_INPUT].getVoltage(), inputs[OFFFSET_INPUT].isConnected()
+            params[PATTERN_OFFSET_PARAM].getValue(), inputs[OFFSET_INPUT].getVoltage(), inputs[OFFSET_INPUT].isConnected()
         );
 
         // ── CV IN 2 Offsets ──
