@@ -380,6 +380,10 @@ void MeloDicerWidget::appendContextMenu(ui::Menu* menu) {
             sub->addChild(createMenuItem("Rotate EVERYTHING (+1)", "", [=]() { 
                 m->rotateRhythmPattern(1); m->rotateMelodyPattern(1);
             }));
+            sub->addChild(new ui::MenuSeparator);
+            sub->addChild(createMenuItem("Scramble Rhythm DNA", "", [=]() { m->scrambleRhythmRotation(); }));
+            sub->addChild(createMenuItem("Scramble Melody DNA", "", [=]() { m->scrambleMelodyRotation(); }));
+            sub->addChild(createMenuItem("Scramble ALL DNA (Remix)", "DNA Remix", [=]() { m->scrambleDnaRotation(); }));
         }));
 
         menu->addChild(createSubmenuItem("CV Assign", "", [=](ui::Menu* sub) {

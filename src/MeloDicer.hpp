@@ -386,8 +386,10 @@ struct MeloDicer : Module {
     void rotateVariation(int steps);
     void rotateLegato(int steps);
     void rotateOctave(int steps);
-    void rotatePattern(bool isMelody, int steps);
     void rotatePattern(int steps);
+    void scrambleDnaRotation();
+    void scrambleRhythmRotation();
+    void scrambleMelodyRotation();
 
     void rebuildSemiCache_();
     float quantizeToScale(float vIn);

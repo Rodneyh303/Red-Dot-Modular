@@ -873,6 +873,23 @@ void MeloDicer::handleModeD_(const ProcessArgs& args) {
     engine.executeModeD(gateHigh, inCV);
 }
 
+void MeloDicer::scrambleRhythmRotation() {
+    engine.pe.rotateRhythm(rack::random::u32() % 16);
+    engine.pe.rotateVariation(rack::random::u32() % 16);
+    engine.pe.rotateLegato(rack::random::u32() % 16);
+    engine.pe.refreshVisualCache(makePatternInput());
+}
+
+void MeloDicer::scrambleMelodyRotation() {
+    engine.pe.rotateMelody(rack::random::u32() % 16);
+    engine.pe.rotateOctave(rack::random::u32() % 16);
+    engine.pe.refreshVisualCache(makePatternInput());
+}
+
+void MeloDicer::scrambleDnaRotation() {
+    scrambleRhythmRotation();
+    scrambleMelodyRotation();
+}
 
 Model* modelMeloDicer = createModel<MeloDicer, MeloDicerWidget>("MeloDicer");
 
