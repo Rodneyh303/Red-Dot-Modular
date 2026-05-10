@@ -7,6 +7,8 @@ const NoteVal NOTEVALS[8] = {
     {0.0625f, 2|4}, {1.0f/6.0f, 4}, {1.0f/12.0f, 4}, {0.03125f, 4},
 };
 
+static const int DNA_LCM = 720720; // LCM of 1..16 ensures drift continuity
+
 void SequencerEngine::reset() {
     pe.reset();
     gs.reset();
@@ -58,7 +60,7 @@ void SequencerEngine::setWindow(int length, int offset) {
 
 bool SequencerEngine::advancePlayhead() {
     int prevStep = stepIndex;
-    totalStepsElapsed++;
+    totalStepsElapsed = (totalStepsElapsed + 1) % DNA_LCM;
     if (stepIndex == -1) stepIndex = (startStep - 1 + 16) % 16;
     stepIndex = (stepIndex + 1) & 0x0F;
     if (!isStepInWindow(stepIndex)) stepIndex = startStep;
