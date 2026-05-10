@@ -136,13 +136,9 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
 }
 
 int SequencerEngine::getOffsetStep() const {
-    if (stepIndex == -1) return 0;
-    int safeDnaLen = std::max(1, dnaLength);
-    // Calculate relative position within the pattern (0..15)
-    int timelineIdx = (stepIndex - startStep + 16) % 16;
-    // Apply DNA-level Windowing: wraps timeline around dnaLength and shifts by dnaOffset
-    // This allows for polymetric "spinning" of the random data source.
-    return (timelineIdx % safeDnaLen + dnaOffset) % 16;
+    // Legacy support for global pattern engine visual lookups.
+    // It now uses the Melody strand as the anchor for visualization.
+    return getMelodyStep();
 }
 
 bool SequencerEngine::shouldTriggerStep(int ppqn) const {

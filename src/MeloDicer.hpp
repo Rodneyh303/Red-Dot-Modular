@@ -76,12 +76,12 @@ namespace MeloDicerIds {
         DNA_RESET_ALL_PARAM,
         DNA_RESET_R_PARAM,
         DNA_RESET_M_PARAM,
+        DNA_RESET_V_PARAM, // Moved here to keep SEMI range contiguous
+        DNA_RESET_L_PARAM,
+        DNA_RESET_O_PARAM,
 
         SEMI0_PARAM,  SEMI1_PARAM,  SEMI2_PARAM,  SEMI3_PARAM,
         SEMI4_PARAM,  SEMI5_PARAM,  SEMI6_PARAM,  SEMI7_PARAM,
-        DNA_RESET_V_PARAM, // New: Reset Variation
-        DNA_RESET_L_PARAM, // New: Reset Legato
-        DNA_RESET_O_PARAM, // New: Reset Octave
         SEMI8_PARAM,  SEMI9_PARAM,  SEMI10_PARAM, SEMI11_PARAM,
 
         OCT_LO_PARAM,
@@ -283,6 +283,7 @@ struct MeloDicer : Module {
     MeloDicerExpander* cachedExpander = nullptr; // Cache expander pointer for performance
     MeloDicerDNAExpander* cachedDnaExpander = nullptr;
     dsp::ClockDivider lightDivider;
+    dsp::ClockDivider controlDivider; // For DNA modulation at "Control Rate"
 
     SequencerEngine engine;
 
@@ -311,13 +312,6 @@ struct MeloDicer : Module {
     bool& muted = engine.muted;
     bool& runGateActive = engine.runGateActive;
     bool& resetArmed = engine.resetArmed;
-
-    // Internal counters for gate-driven rotation
-    int dnaRRotCounter = 0;
-    int dnaVRotCounter = 0;
-    int dnaLRotCounter = 0;
-    int dnaMRotCounter = 0;
-    int dnaORotCounter = 0;
 
     int& rhythmMode = engine.pe.rhythmMode;
     int& melodyMode = engine.pe.melodyMode;

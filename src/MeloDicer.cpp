@@ -130,6 +130,7 @@ MeloDicer::MeloDicer() {
         melodySeedPendingFloat = melodySeedFloat;
 
         lightDivider.setDivision(512); // Throttle lights and visual cache to ~90Hz at 48kHz
+        controlDivider.setDivision(32); // Control rate (~3kHz at 48k)
 
         // Default patterns: all gates on, CV at 0V (C0), semitone 0
         // genPitchV() reads params[] which aren't valid yet, so use safe literals
@@ -839,9 +840,14 @@ void MeloDicer::process(const ProcessArgs& args) {
             if (faderDirty || activeSemiCount == 0) rebuildSemiCache_();
         }
 
+        // Refresh visual cache so LEDs react to knob changes (at ~90Hz instead of 44kHz)
+        engine.pe.refreshVisualCache(makePatternInput());
+        // updateStepLEDs_ handles red flash channel
+        updateStepLEDs_(args.sampleTime * 512.f);
+    }
 
-
-        // ── DNA Expander Processing ──
+    // ── Control-Rate DNA and Window Updates (Optimized CPU) ──
+    if (controlDivider.process()) {
         if (cachedDnaExpander) {
             auto processStrand = [&](int pLen, int iLen, int pOff, int iOff, int pRot, int& tLen, int& tOff, int& tRot) {
                 float lCV = cachedDnaExpander->inputs[iLen].getNormalVoltage(0.f) * 1.6f;
@@ -853,18 +859,16 @@ void MeloDicer::process(const ProcessArgs& args) {
 
             using namespace MeloDicerIds;
             processStrand(DNA_R_LEN_PARAM, DNA_R_LEN_INPUT, DNA_R_OFF_PARAM, DNA_R_OFF_INPUT, DNA_R_ROT_PARAM, 
-                          engine.rhythmLen, engine.rhythmOff, engine.rhythmRot);
+                            engine.rhythmLen, engine.rhythmOff, engine.rhythmRot);
             processStrand(DNA_V_LEN_PARAM, DNA_V_LEN_INPUT, DNA_V_OFF_PARAM, DNA_V_OFF_INPUT, DNA_V_ROT_PARAM, 
-                          engine.variationLen, engine.variationOff, engine.variationRot);
+                            engine.variationLen, engine.variationOff, engine.variationRot);
             processStrand(DNA_L_LEN_PARAM, DNA_L_LEN_INPUT, DNA_L_OFF_PARAM, DNA_L_OFF_INPUT, DNA_L_ROT_PARAM, 
-                          engine.legatoLen, engine.legatoOff, engine.legatoRot);
+                            engine.legatoLen, engine.legatoOff, engine.legatoRot);
             processStrand(DNA_M_LEN_PARAM, DNA_M_LEN_INPUT, DNA_M_OFF_PARAM, DNA_M_OFF_INPUT, DNA_M_ROT_PARAM, 
-                          engine.melodyLen, engine.melodyOff, engine.melodyRot);
+                            engine.melodyLen, engine.melodyOff, engine.melodyRot);
             processStrand(DNA_O_LEN_PARAM, DNA_O_LEN_INPUT, DNA_O_OFF_PARAM, DNA_O_OFF_INPUT, DNA_O_ROT_PARAM, 
-                          engine.octaveLen, engine.octaveOff, engine.octaveRot);
+                            engine.octaveLen, engine.octaveOff, engine.octaveRot);
 
-            // Action Buttons
-            // Use the BooleanTrigger for params (buttons) and SchmittTrigger for inputs (gates)
             #define DNA_ACT_PARAM(p, func) if (p##Trig.process(cachedDnaExpander->params[MeloDicerIds::p].getValue())) func();
             #define DNA_ACT_INPUT(i, func) if (i##Trig.process(cachedDnaExpander->inputs[MeloDicerIds::i].getVoltage())) func();
             
@@ -894,21 +898,16 @@ void MeloDicer::process(const ProcessArgs& args) {
             DNA_ACT_PARAM(DNA_RESET_O_PARAM, resetOctaveRotation);
             DNA_ACT_INPUT(DNA_RESET_O_INPUT, resetOctaveRotation);
         } else {
-            // Fallback defaults if expander is disconnected
             engine.rhythmLen = engine.variationLen = engine.legatoLen = engine.melodyLen = engine.octaveLen = 16;
             engine.rhythmOff = engine.variationOff = engine.legatoOff = engine.melodyOff = engine.octaveOff = 0;
             engine.rhythmRot = engine.variationRot = engine.legatoRot = engine.melodyRot = engine.octaveRot = 0;
         }
 
-
-
-        // ── Main Sequence Window Update ──
         engine.updateWindow(
             params[PATTERN_LENGTH_PARAM].getValue(), inputs[LENGTH_INPUT].getVoltage(), inputs[LENGTH_INPUT].isConnected(),
             params[PATTERN_OFFSET_PARAM].getValue(), inputs[OFFSET_INPUT].getVoltage(), inputs[OFFSET_INPUT].isConnected()
         );
 
-        // ── CV IN 2 Offsets ──
         for (int i = 0; i < 4; ++i) cv2Offsets[i] = 0.f;
         if (inputs[CV2_INPUT].isConnected()) {
             float v    = clampv<float>(inputs[CV2_INPUT].getVoltage(), 0.f, 5.f);
@@ -918,11 +917,6 @@ void MeloDicer::process(const ProcessArgs& args) {
             if (cv2Mode == 2) cv2Offsets[2] = norm;
             if (cv2Mode == 3) cv2Offsets[3] = norm;
         }
-
-        // Refresh visual cache so LEDs react to knob changes (at ~90Hz instead of 44kHz)
-        engine.pe.refreshVisualCache(makePatternInput());
-        // updateStepLEDs_ handles red flash channel
-        updateStepLEDs_(args.sampleTime * 512.f);
     }
 }
 
