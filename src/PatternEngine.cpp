@@ -127,6 +127,12 @@ void PatternEngine::redrawRhythm(const PatternInput& in) {
         rhythmRandom[i]    = unitRhythm();
         variationRandom[i] = unitRhythm();
         legatoRandom[i]    = unitRhythm();
+
+        // Cache the original draw
+        rhythmSource[i]    = rhythmRandom[i];
+        variationSource[i] = variationRandom[i];
+        legatoSource[i]    = legatoRandom[i];
+
         // Update cache for UI
         rhythmPattern[i] = (rhythmRandom[i] >= in.restProb);
     }
@@ -138,6 +144,11 @@ void PatternEngine::redrawMelody(const PatternInput& in) {
     for (int i = 0; i < 16; ++i) {
         melodyRandom[i] = unitMelody();
         octaveRandom[i] = unitMelody();
+
+        // Cache the original draw
+        melodySource[i] = melodyRandom[i];
+        octaveSource[i] = octaveRandom[i];
+
         // Update cache for UI
         int sem = 0;
         melodyPitchV[i]   = genPitchLive(sem, in, melodyRandom[i], octaveRandom[i]);
@@ -260,3 +271,14 @@ void PatternEngine::rotateOctave(int steps) {
     if (steps == 0) return;
     std::rotate(std::begin(octaveRandom), std::begin(octaveRandom) + (16 - steps), std::end(octaveRandom));
 }
+
+void PatternEngine::resetDnaRotation() {
+    for (int i = 0; i < 16; ++i) {
+        rhythmRandom[i]    = rhythmSource[i];
+        variationRandom[i] = variationSource[i];
+        legatoRandom[i]    = legatoSource[i];
+        melodyRandom[i]    = melodySource[i];
+        octaveRandom[i]    = octaveSource[i];
+    }
+}
+

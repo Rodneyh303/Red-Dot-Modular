@@ -33,6 +33,7 @@ using namespace rack;
 
 extern Plugin* pluginInstance;
 struct MeloDicerExpander;
+struct MeloDicerDNAExpander;
 // Minimal clamp helper for C++11 (no std::clamp)
 template <typename T>
 static inline T clampv(T v, T lo, T hi) {
@@ -57,8 +58,30 @@ namespace MeloDicerIds {
         PATTERN_LENGTH_PARAM,
         PATTERN_OFFSET_PARAM,
 
+        // DNA Strand Windows (Grouped for easy looping: Len, Off, Rot)
+        DNA_R_LEN_PARAM, DNA_R_OFF_PARAM, DNA_R_ROT_PARAM,
+        DNA_V_LEN_PARAM, DNA_V_OFF_PARAM, DNA_V_ROT_PARAM,
+        DNA_L_LEN_PARAM, DNA_L_OFF_PARAM, DNA_L_ROT_PARAM,
+        DNA_M_LEN_PARAM, DNA_M_OFF_PARAM, DNA_M_ROT_PARAM,
+        DNA_O_LEN_PARAM, DNA_O_OFF_PARAM, DNA_O_ROT_PARAM,
+
+        // DNA Buttons (6 Buttons)
+        DNA_SCRAMBLE_ALL_PARAM,
+        DNA_SCRAMBLE_R_PARAM,
+        DNA_SCRAMBLE_M_PARAM,
+        DNA_SCRAMBLE_V_PARAM, // Added for completeness
+        DNA_SCRAMBLE_L_PARAM,
+        DNA_SCRAMBLE_O_PARAM,
+
+        DNA_RESET_ALL_PARAM,
+        DNA_RESET_R_PARAM,
+        DNA_RESET_M_PARAM,
+
         SEMI0_PARAM,  SEMI1_PARAM,  SEMI2_PARAM,  SEMI3_PARAM,
         SEMI4_PARAM,  SEMI5_PARAM,  SEMI6_PARAM,  SEMI7_PARAM,
+        DNA_RESET_V_PARAM, // New: Reset Variation
+        DNA_RESET_L_PARAM, // New: Reset Legato
+        DNA_RESET_O_PARAM, // New: Reset Octave
         SEMI8_PARAM,  SEMI9_PARAM,  SEMI10_PARAM, SEMI11_PARAM,
 
         OCT_LO_PARAM,
@@ -89,14 +112,33 @@ namespace MeloDicerIds {
         RESET_TRIGGER_INPUT,
         SEED_INPUT,
         LENGTH_INPUT,
-        OFFSET_INPUT,       
+        OFFSET_INPUT,        // note: matches the typo in MeloDicer.cpp
 
         SEMI_CV_INPUT_0,  SEMI_CV_INPUT_1,  SEMI_CV_INPUT_2,  SEMI_CV_INPUT_3,
         SEMI_CV_INPUT_4,  SEMI_CV_INPUT_5,  SEMI_CV_INPUT_6,  SEMI_CV_INPUT_7,
         SEMI_CV_INPUT_8,  SEMI_CV_INPUT_9,  SEMI_CV_INPUT_10, SEMI_CV_INPUT_11,
 
-        OCT_LO_CV_INPUT,
-        OCT_HI_CV_INPUT,
+        // DNA CV Modulation (10 Inputs)
+        DNA_R_LEN_INPUT, DNA_R_OFF_INPUT,
+        DNA_V_LEN_INPUT, DNA_V_OFF_INPUT,
+        DNA_L_LEN_INPUT, DNA_L_OFF_INPUT,
+        DNA_M_LEN_INPUT, DNA_M_OFF_INPUT,
+        DNA_O_LEN_INPUT, DNA_O_OFF_INPUT,
+
+        // DNA Gate Triggers (6 Inputs)
+        // Corrected to include all scramble/reset inputs
+        DNA_SCRAMBLE_ALL_INPUT,
+        DNA_SCRAMBLE_R_INPUT,
+        DNA_SCRAMBLE_M_INPUT,
+        DNA_SCRAMBLE_V_INPUT,
+        DNA_SCRAMBLE_L_INPUT,
+        DNA_SCRAMBLE_O_INPUT,
+        DNA_RESET_ALL_INPUT,
+        DNA_RESET_R_INPUT,
+        DNA_RESET_M_INPUT,
+        DNA_RESET_V_INPUT,
+        DNA_RESET_L_INPUT,
+        DNA_RESET_O_INPUT,
 
         NUM_INPUTS
     };
@@ -224,42 +266,6 @@ struct MeloDicerLeftMessage {
 
 // ------------------------------- Module --------------------------------------
 struct MeloDicer : Module {
-    enum ParamIds {
-        NOTE_VALUE_PARAM, VARIATION_PARAM, LEGATO_PARAM, REST_PARAM,
-        TRANSPOSE_PARAM, PATTERN_LENGTH_PARAM, PATTERN_OFFSET_PARAM,
-        SEMI0_PARAM, SEMI1_PARAM, SEMI2_PARAM, SEMI3_PARAM, SEMI4_PARAM, SEMI5_PARAM,
-        SEMI6_PARAM, SEMI7_PARAM, SEMI8_PARAM, SEMI9_PARAM, SEMI10_PARAM, SEMI11_PARAM,
-        OCT_LO_PARAM, OCT_HI_PARAM, BPM_PARAM,
-        DICE_R_PARAM, DICE_M_PARAM, LOCK_PARAM, MUTE_PARAM,
-        MODE_PARAM,
-        RESET_BUTTON_PARAM, RUN_GATE_PARAM,
-        NUM_PARAMS
-    };
-
-    enum InputIds {
-        CLK_INPUT, GATE1_INPUT, GATE2_INPUT, CV1_INPUT, CV2_INPUT,
-        RUN_GATE_INPUT, RESET_TRIGGER_INPUT, SEED_INPUT, LENGTH_INPUT, OFFSET_INPUT,
-        SEMI_CV_INPUT_0, SEMI_CV_INPUT_1, SEMI_CV_INPUT_2, SEMI_CV_INPUT_3,
-        SEMI_CV_INPUT_4, SEMI_CV_INPUT_5, SEMI_CV_INPUT_6, SEMI_CV_INPUT_7,
-        SEMI_CV_INPUT_8, SEMI_CV_INPUT_9, SEMI_CV_INPUT_10, SEMI_CV_INPUT_11,
-        OCT_LO_CV_INPUT, OCT_HI_CV_INPUT,
-        NUM_INPUTS
-    };
-
-    enum OutputIds {
-        GATE_OUTPUT, CV_OUTPUT, SEED_OUTPUT, RESET_TRIGGER_OUTPUT, RUN_GATE_OUTPUT,
-        NUM_OUTPUTS
-    };
-
-    enum LightIds {
-        STEP_LIGHTS_START, STEP_LIGHTS_END = STEP_LIGHTS_START + 16,
-        RHYTHM_DICE_LIGHT, MELODY_DICE_LIGHT, LOCK_LIGHT, MUTE_LIGHT,
-        MODE_A_LIGHT, MODE_B_LIGHT, MODE_C_LIGHT, MODE_D_LIGHT,
-        SEMI_LED_START, SEMI_LED_END = SEMI_LED_START + 24,
-        OCT_LO_LED, OCT_HI_LED, RESET_LIGHT, RUN_GATE_LIGHT,
-        NUM_LIGHTS
-    };
-
     ClockEngine clock;
 
     int cv1Mode = 0;
@@ -275,6 +281,7 @@ struct MeloDicer : Module {
     uint16_t activeScaleMask = 0xFFF;
     bool lightTheme = false;
     MeloDicerExpander* cachedExpander = nullptr; // Cache expander pointer for performance
+    MeloDicerDNAExpander* cachedDnaExpander = nullptr;
     dsp::ClockDivider lightDivider;
 
     SequencerEngine engine;
@@ -305,6 +312,13 @@ struct MeloDicer : Module {
     bool& runGateActive = engine.runGateActive;
     bool& resetArmed = engine.resetArmed;
 
+    // Internal counters for gate-driven rotation
+    int dnaRRotCounter = 0;
+    int dnaVRotCounter = 0;
+    int dnaLRotCounter = 0;
+    int dnaMRotCounter = 0;
+    int dnaORotCounter = 0;
+
     int& rhythmMode = engine.pe.rhythmMode;
     int& melodyMode = engine.pe.melodyMode;
     int& startStep = engine.startStep;
@@ -331,6 +345,16 @@ struct MeloDicer : Module {
     bool& prevExtGate = engine.prevGate1High;
 
     dsp::BooleanTrigger diceRTrig, diceMTrig, resetBtn, runGateBtn, modeTrig;
+    // DNA Action Triggers (SchmittTriggers for gate inputs)
+    dsp::SchmittTrigger DNA_SCRAMBLE_ALL_INPUTTrig, DNA_SCRAMBLE_R_INPUTTrig, DNA_SCRAMBLE_M_INPUTTrig, DNA_SCRAMBLE_V_INPUTTrig, DNA_SCRAMBLE_L_INPUTTrig, DNA_SCRAMBLE_O_INPUTTrig;
+    dsp::SchmittTrigger DNA_RESET_ALL_INPUTTrig, DNA_RESET_R_INPUTTrig, DNA_RESET_M_INPUTTrig, DNA_RESET_V_INPUTTrig, DNA_RESET_L_INPUTTrig, DNA_RESET_O_INPUTTrig;
+
+    // BooleanTriggers for momentary buttons (params)
+    dsp::BooleanTrigger DNA_SCRAMBLE_ALL_PARAMTrig, DNA_SCRAMBLE_R_PARAMTrig, DNA_SCRAMBLE_M_PARAMTrig, DNA_SCRAMBLE_V_PARAMTrig, DNA_SCRAMBLE_L_PARAMTrig, DNA_SCRAMBLE_O_PARAMTrig;
+    dsp::BooleanTrigger DNA_RESET_ALL_PARAMTrig, DNA_RESET_R_PARAMTrig, DNA_RESET_M_PARAMTrig, DNA_RESET_V_PARAMTrig, DNA_RESET_L_PARAMTrig, DNA_RESET_O_PARAMTrig;
+    // SchmittTriggers for rotation knobs to detect "snap" logic if needed, 
+    // though we use them as continuous offsets now.
+    
     dsp::SchmittTrigger g1Trig, g2Trig, lockTrig, muteTrig, resetTrig, runGateTrig;
     dsp::PulseGenerator runPulse, clockPulse, resetPulse;
 
@@ -386,10 +410,28 @@ struct MeloDicer : Module {
     void rotateVariation(int steps);
     void rotateLegato(int steps);
     void rotateOctave(int steps);
+    void rotatePattern(bool isMelody, int steps);
     void rotatePattern(int steps);
-    void scrambleDnaRotation();
+
     void scrambleRhythmRotation();
     void scrambleMelodyRotation();
+    void scrambleRhythm();
+    void scrambleVariationRotation(); // New
+    void scrambleLegatoRotation();    // New
+    void scrambleOctaveRotation();    // New
+    void scrambleMelody();
+    void scramblePattern();
+    void scrambleDnaRotation();
+    void resetRhythmRotation();
+    void resetMelodyRotation();
+    void resetPattern();
+    void resetDnaRotation();
+    void resetVariationRotation();    // New
+    void resetLegatoRotation();       // New
+    void resetOctaveRotation();       // New
+    void resetRhythm();
+    void resetMelody();
+    void resetAll();
 
     void rebuildSemiCache_();
     float quantizeToScale(float vIn);
@@ -415,3 +457,4 @@ struct MeloDicer : Module {
 
 extern Model* modelMeloDicer;
 extern Model* modelMeloDicerExpander;
+extern Model* modelMeloDicerDNAExpander;

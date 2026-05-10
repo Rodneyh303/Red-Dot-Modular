@@ -16,6 +16,9 @@ void SequencerEngine::reset() {
     endStep = 15;
     cachedLength = 16;
     cachedOffset = 0;
+    rhythmLen = variationLen = legatoLen = melodyLen = octaveLen = 16;
+    rhythmOff = variationOff = legatoOff = melodyOff = octaveOff = 0;
+    rhythmRot = variationRot = legatoRot = melodyRot = octaveRot = 0;
     windowMask = 0xFFFF;
     locked = false;
     muted = false;
@@ -108,26 +111,37 @@ void SequencerEngine::rebuildScaleCache(const float weights[12]) {
 }
 
 float SequencerEngine::getStepLightBrightness(int lightIdx) const {
-    // Differentiate notes and rests visually: Notes are brighter (0.35), Rests are dim (0.07)
-    bool isNote = pe.rhythmPattern[lightIdx];
-    float baseActive = isStepInWindow(lightIdx) ? (isNote ? 0.35f : 0.07f) : 0.0f;
+    bool inWindow = isStepInWindow(lightIdx);
+    float baseActive = 0.0f;
+    
+    if (inWindow) {
+        // Calculate which DNA index this physical LED represents for the Rhythm strand
+        int dnaIdx = getStrandIdx(lightIdx, startStep, cachedOffset, rhythmLen, rhythmOff, rhythmRot);
+        bool isNote = pe.rhythmPattern[dnaIdx];
+        baseActive = isNote ? 0.35f : 0.07f;
+    }
 
-    int currentStep = (modeSelect == 2) ? stepIndex : getOffsetStep();
-    float current = (modeSelect < 3 && lightIdx == currentStep) ? 1.0f : 0.0f;
+    // The moving playhead should always follow the global timeline index
+    float current = (modeSelect < 3 && lightIdx == stepIndex) ? 1.0f : 0.0f;
 
     return std::max(baseActive, current);
 }
 
 int SequencerEngine::getOffsetStep() const {
     if (stepIndex == -1) return 0;
-    return (stepIndex - startStep + cachedOffset + 16) % 16;
+    int safeDnaLen = std::max(1, dnaLength);
+    // Calculate relative position within the pattern (0..15)
+    int timelineIdx = (stepIndex - startStep + 16) % 16;
+    // Apply DNA-level Windowing: wraps timeline around dnaLength and shifts by dnaOffset
+    // This allows for polymetric "spinning" of the random data source.
+    return (timelineIdx % safeDnaLen + dnaOffset) % 16;
 }
 
 bool SequencerEngine::shouldTriggerStep(int ppqn) const {
     if (stepIndex == -1) return false;
     if (ppqn <= 1) {
         // Only trigger on main 4 beats relative to startStep + offset
-        int relative = (stepIndex - startStep + cachedOffset + 16) % 16;
+        int relative = (stepIndex - startStep + 16) % 16;
         return (relative & 0x03) == 0;
     }
     return true; 
@@ -135,10 +149,9 @@ bool SequencerEngine::shouldTriggerStep(int ppqn) const {
 
 void SequencerEngine::executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, const PatternInput& input, bool wasHeld) {
     float dur = gs_noteSteps(nvIdx);
-    int offsetStep = getOffsetStep();
     
     int sem = 0;
-    float pitchV = pe.genPitchLive(sem, input, pe.melodyRandom[offsetStep], pe.octaveRandom[offsetStep]);
+    float pitchV = pe.genPitchLive(sem, input, pe.melodyRandom[getMelodyStep()], pe.octaveRandom[getOctaveStep()]);
 
     if (gs.holdRemain < 1.f) {
         if (legatoProb >= 0.999f) {
@@ -182,10 +195,9 @@ bool SequencerEngine::executeModeA(const ClockEngine& clock, float restProb, flo
     if (!clock.sixteenthEdge || muted) return false;
 
     bool wrapped = advancePlayhead();
-    int offsetStep = getOffsetStep();
-    float r_vary   = pe.variationRandom[offsetStep];
-    float r_rest   = pe.rhythmRandom[offsetStep];
-    float r_legato = pe.legatoRandom[offsetStep];
+    float r_vary   = pe.variationRandom[getVariationStep()];
+    float r_rest   = pe.rhythmRandom[getRhythmStep()];
+    float r_legato = pe.legatoRandom[getLegatoStep()];
     
     int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
 
@@ -212,10 +224,9 @@ bool SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float restPro
     }
 
     if (triggered) {
-        int offsetStep = getOffsetStep();
-        float r_vary   = pe.variationRandom[offsetStep];
-        float r_rest   = pe.rhythmRandom[offsetStep];
-        float r_legato = pe.legatoRandom[offsetStep];
+        float r_vary   = pe.variationRandom[getVariationStep()];
+        float r_rest   = pe.rhythmRandom[getRhythmStep()];
+        float r_legato = pe.legatoRandom[getLegatoStep()];
         
         int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
 
@@ -289,3 +300,22 @@ float SequencerEngine::quantize(float vIn) {
     lastQuantOut = pe_clamp<float>(bestV, 0.f, 5.f);
     return lastQuantOut;
 }
+
+
+// Shared base index calculation with strand-specific phase and windowing
+int SequencerEngine::getStrandIdx(int stepIndex, int startStep, int cachedOffset, int len, int off, int mutation) const
+{
+    if (stepIndex == -1) return 0;
+    int safeLen = std::max(1, len);
+    // timelineIdx is the relative position within the pattern phrase (0..15)
+    int timelineIdx = (stepIndex - startStep + 16) % 16;
+    // 1. (timelineIdx + mutation) % len  => Rotate the start position within the loop
+    // 2. ... + off                       => Slide the entire loop window across the buffer
+    return ((timelineIdx + mutation) % safeLen + off) % 16;
+}
+
+int SequencerEngine::getRhythmStep() const    { return getStrandIdx(stepIndex, startStep, cachedOffset, rhythmLen, rhythmOff, rhythmRot); }
+int SequencerEngine::getVariationStep() const { return getStrandIdx(stepIndex, startStep, cachedOffset, variationLen, variationOff, variationRot); }
+int SequencerEngine::getLegatoStep() const    { return getStrandIdx(stepIndex, startStep, cachedOffset, legatoLen, legatoOff, legatoRot); }
+int SequencerEngine::getMelodyStep() const    { return getStrandIdx(stepIndex, startStep, cachedOffset, melodyLen, melodyOff, melodyRot); }
+int SequencerEngine::getOctaveStep() const    { return getStrandIdx(stepIndex, startStep, cachedOffset, octaveLen, octaveOff, octaveRot); }

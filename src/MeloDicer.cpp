@@ -14,6 +14,7 @@
 #include <cassert>
 #include <cstring>
 
+#include "MeloDicerDNAExpander.hpp"
 #include "MeloDicerExpander.hpp"
 #include "MeloDicerWidget.hpp"
 #include "MeloDicer.hpp"
@@ -21,6 +22,7 @@
 #include "GateState.hpp"
 
 using namespace rack;
+using namespace MeloDicerIds;
 
 Plugin* pluginInstance = nullptr;
 
@@ -29,8 +31,7 @@ void MeloDicer::reseedXoroshiroFromFloat(rack::random::Xoroshiro128Plus& rng, fl
 }
 
 MeloDicer::MeloDicer() {
-
-
+        using namespace MeloDicerIds;
         config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
 
         // Main controls
@@ -41,8 +42,26 @@ MeloDicer::MeloDicer() {
         configParam(REST_PARAM,        0.f, 1.f, 0.10f, "Rest probability");
         configParam(TRANSPOSE_PARAM,  -12.f, 12.f, 0.f, "Transpose (semitones)");
         //Pattern ring controls
-        configParam(PATTERN_LENGTH_PARAM, 1.f, 16.f, 16.f, "Pattern length (steps)");
+        // Main window controls (Always present)
+        configParam(PATTERN_LENGTH_PARAM, 1.f, 16.f, 16.f, "Pattern length");
         configParam(PATTERN_OFFSET_PARAM, 0.f, 15.f, 0.f, "Pattern offset");
+
+        // DNA Action Buttons (Main module only configures these if no expander)
+        // If an expander is present, these are configured on the expander.
+        // We configure them here as a fallback for standalone operation.
+        configButton(DNA_SCRAMBLE_ALL_PARAM, "Scramble ALL DNA");
+        configButton(DNA_SCRAMBLE_R_PARAM,   "Scramble Rhythm");
+        configButton(DNA_SCRAMBLE_V_PARAM,   "Scramble Variation");
+        configButton(DNA_SCRAMBLE_L_PARAM,   "Scramble Legato");
+        configButton(DNA_SCRAMBLE_M_PARAM,   "Scramble Melody");
+        configButton(DNA_SCRAMBLE_O_PARAM,   "Scramble Octave");
+
+        configButton(DNA_RESET_ALL_PARAM,    "Reset ALL DNA");
+        configButton(DNA_RESET_R_PARAM,      "Reset Rhythm");
+        configButton(DNA_RESET_V_PARAM,      "Reset Variation");
+        configButton(DNA_RESET_L_PARAM,      "Reset Legato");
+        configButton(DNA_RESET_M_PARAM,      "Reset Melody");
+        configButton(DNA_RESET_O_PARAM,      "Reset Octave");
 
         // 12 semitone sliders – default to major scale C (C,D,E,F,G,A,B)
         for (int i = 0; i < 12; ++i) {
@@ -78,6 +97,21 @@ MeloDicer::MeloDicer() {
         configInput(LENGTH_INPUT, "Pattern Length CV (0..10V)");
         configInput(OFFSET_INPUT, "Pattern Offset CV (0..10V)");
         configInput(RUN_GATE_INPUT, "Run/Stop Gate");
+
+        // DNA Gate Inputs (Main module only configures these if no expander)
+        configInput(DNA_SCRAMBLE_ALL_INPUT, "Scramble ALL DNA Gate");
+        configInput(DNA_SCRAMBLE_R_INPUT,   "Scramble Rhythm Gate");
+        configInput(DNA_SCRAMBLE_V_INPUT,   "Scramble Variation Gate");
+        configInput(DNA_SCRAMBLE_L_INPUT,   "Scramble Legato Gate");
+        configInput(DNA_SCRAMBLE_M_INPUT,   "Scramble Melody Gate");
+        configInput(DNA_SCRAMBLE_O_INPUT,   "Scramble Octave Gate");
+
+        configInput(DNA_RESET_ALL_INPUT,    "Reset ALL DNA Gate");
+        configInput(DNA_RESET_R_INPUT,      "Reset Rhythm Gate");
+        configInput(DNA_RESET_V_INPUT,      "Reset Variation Gate");
+        configInput(DNA_RESET_L_INPUT,      "Reset Legato Gate");
+        configInput(DNA_RESET_M_INPUT,      "Reset Melody Gate");
+        configInput(DNA_RESET_O_INPUT,      "Reset Octave Gate");
 
         configOutput(GATE_OUTPUT,           "Gate");
         configOutput(CV_OUTPUT,             "1V/Oct");
@@ -197,6 +231,8 @@ MeloDicer::MeloDicer() {
         json_object_set_new(root,"melodyMode", json_integer(melodyMode));
         json_object_set_new(root,"startStep", json_integer(startStep));
         json_object_set_new(root,"endStep", json_integer(endStep));
+        json_object_set_new(root,"dnaLength", json_integer(engine.dnaLength));
+        json_object_set_new(root,"dnaOffset", json_integer(engine.dnaOffset));
 
         // store seed floats and parts
         json_object_set_new(root,"rhythmSeedFloat", json_real((float)rhythmSeedFloat));
@@ -263,6 +299,8 @@ MeloDicer::MeloDicer() {
         if (auto j = json_object_get(root,"melodyMode")) melodyMode = (int)json_integer_value(j);
         if (auto j = json_object_get(root,"startStep")) startStep = (int)json_integer_value(j);
         if (auto j = json_object_get(root,"endStep")) endStep = (int)json_integer_value(j);
+        if (auto j = json_object_get(root,"dnaLength")) engine.dnaLength = (int)json_integer_value(j);
+        if (auto j = json_object_get(root,"dnaOffset")) engine.dnaOffset = (int)json_integer_value(j);
 
         if (auto j = json_object_get(root,"rhythmSeedFloat")) rhythmSeedFloat = (float)json_real_value(j);
         if (auto j = json_object_get(root,"melodySeedFloat")) melodySeedFloat = (float)json_real_value(j);
@@ -372,7 +410,7 @@ void MeloDicer::switchRhythmMode() { engine.pe.switchRhythmMode(stepIndex, lastS
 int MeloDicer::pickSemitoneWeighted() {
     float w[12];
     for(int i=0; i<12; ++i) w[i] = getSemitoneParam(i);
-    int idx = engine.getOffsetStep();
+    int idx = engine.getMelodyStep();
     return engine.pe.pickSemitone(w, melodyRandom[idx]);
 }
 
@@ -383,8 +421,7 @@ int MeloDicer::pickSemitoneWeighted() {
 // (should be rare, only if all semitone weights are zero)
 float MeloDicer::genPitchV(int& outSemitone) {
     PatternInput in = makePatternInput();
-    int idx = engine.getOffsetStep();
-    return engine.pe.genPitchLive(outSemitone, in, melodyRandom[idx], octaveRandom[idx]);
+    return engine.pe.genPitchLive(outSemitone, in, melodyRandom[engine.getMelodyStep()], octaveRandom[engine.getOctaveStep()]);
 }
     // uses rhythm RNG
     //  biases shorter/longer values depending on VARIATION_PARAM (0..1)
@@ -519,13 +556,19 @@ void MeloDicer::onPhraseBoundary_() {
 
 // ---------------- Helper: expander change hook -------------------------------
 void MeloDicer::onExpanderChange(const ExpanderChangeEvent& e) {
-    // Cache the expander module pointer for direct access in process()
     if (leftExpander.module && leftExpander.module->model == modelMeloDicerExpander) {
         cachedExpander = dynamic_cast<MeloDicerExpander*>(leftExpander.module);
     } else {
         cachedExpander = nullptr;
     }
+
+    if (rightExpander.module && rightExpander.module->model == modelMeloDicerDNAExpander) {
+        cachedDnaExpander = dynamic_cast<MeloDicerDNAExpander*>(rightExpander.module);
+    } else {
+        cachedDnaExpander = nullptr;
+    }
 }
+
 // ---------------- Helper: reset hook -----------------------------------------
 void MeloDicer::onReset() {
     Module::onReset();
@@ -795,7 +838,70 @@ void MeloDicer::process(const ProcessArgs& args) {
             if (faderDirty || activeSemiCount == 0) rebuildSemiCache_();
         }
 
-        // ── Window Update ──
+
+
+        // ── DNA Expander Processing ──
+        if (cachedDnaExpander) {
+            auto processStrand = [&](int pLen, int iLen, int pOff, int iOff, int pRot, int& tLen, int& tOff, int& tRot) {
+                float lCV = cachedDnaExpander->inputs[iLen].getNormalVoltage(0.f) * 1.6f;
+                float oCV = cachedDnaExpander->inputs[iOff].getNormalVoltage(0.f) * 1.5f;
+                tLen = clampv<int>(std::round(cachedDnaExpander->params[pLen].getValue() + lCV), 1, 16);
+                tOff = (int)std::round(cachedDnaExpander->params[pOff].getValue() + oCV) % 16;
+                tRot = (int)std::round(cachedDnaExpander->params[pRot].getValue()) % 16;
+            };
+
+            using namespace MeloDicerIds;
+            processStrand(DNA_R_LEN_PARAM, DNA_R_LEN_INPUT, DNA_R_OFF_PARAM, DNA_R_OFF_INPUT, DNA_R_ROT_PARAM, 
+                          engine.rhythmLen, engine.rhythmOff, engine.rhythmRot);
+            processStrand(DNA_V_LEN_PARAM, DNA_V_LEN_INPUT, DNA_V_OFF_PARAM, DNA_V_OFF_INPUT, DNA_V_ROT_PARAM, 
+                          engine.variationLen, engine.variationOff, engine.variationRot);
+            processStrand(DNA_L_LEN_PARAM, DNA_L_LEN_INPUT, DNA_L_OFF_PARAM, DNA_L_OFF_INPUT, DNA_L_ROT_PARAM, 
+                          engine.legatoLen, engine.legatoOff, engine.legatoRot);
+            processStrand(DNA_M_LEN_PARAM, DNA_M_LEN_INPUT, DNA_M_OFF_PARAM, DNA_M_OFF_INPUT, DNA_M_ROT_PARAM, 
+                          engine.melodyLen, engine.melodyOff, engine.melodyRot);
+            processStrand(DNA_O_LEN_PARAM, DNA_O_LEN_INPUT, DNA_O_OFF_PARAM, DNA_O_OFF_INPUT, DNA_O_ROT_PARAM, 
+                          engine.octaveLen, engine.octaveOff, engine.octaveRot);
+
+            // Action Buttons
+            // Use the BooleanTrigger for params (buttons) and SchmittTrigger for inputs (gates)
+            #define DNA_ACT_PARAM(p, func) if (p##Trig.process(cachedDnaExpander->params[MeloDicerIds::p].getValue())) func();
+            #define DNA_ACT_INPUT(i, func) if (i##Trig.process(cachedDnaExpander->inputs[MeloDicerIds::i].getVoltage())) func();
+            
+            DNA_ACT_PARAM(DNA_SCRAMBLE_ALL_PARAM, scrambleDnaRotation);
+            DNA_ACT_INPUT(DNA_SCRAMBLE_ALL_INPUT, scrambleDnaRotation);
+            DNA_ACT_PARAM(DNA_SCRAMBLE_R_PARAM, scrambleRhythmRotation);
+            DNA_ACT_INPUT(DNA_SCRAMBLE_R_INPUT, scrambleRhythmRotation);
+            DNA_ACT_PARAM(DNA_SCRAMBLE_V_PARAM, scrambleVariationRotation);
+            DNA_ACT_INPUT(DNA_SCRAMBLE_V_INPUT, scrambleVariationRotation);
+            DNA_ACT_PARAM(DNA_SCRAMBLE_L_PARAM, scrambleLegatoRotation);
+            DNA_ACT_INPUT(DNA_SCRAMBLE_L_INPUT, scrambleLegatoRotation);
+            DNA_ACT_PARAM(DNA_SCRAMBLE_M_PARAM, scrambleMelodyRotation);
+            DNA_ACT_INPUT(DNA_SCRAMBLE_M_INPUT, scrambleMelodyRotation);
+            DNA_ACT_PARAM(DNA_SCRAMBLE_O_PARAM, scrambleOctaveRotation);
+            DNA_ACT_INPUT(DNA_SCRAMBLE_O_INPUT, scrambleOctaveRotation);
+
+            DNA_ACT_PARAM(DNA_RESET_ALL_PARAM, resetDnaRotation);
+            DNA_ACT_INPUT(DNA_RESET_ALL_INPUT, resetDnaRotation);
+            DNA_ACT_PARAM(DNA_RESET_R_PARAM, resetRhythmRotation);
+            DNA_ACT_INPUT(DNA_RESET_R_INPUT, resetRhythmRotation);
+            DNA_ACT_PARAM(DNA_RESET_V_PARAM, resetVariationRotation);
+            DNA_ACT_INPUT(DNA_RESET_V_INPUT, resetVariationRotation);
+            DNA_ACT_PARAM(DNA_RESET_L_PARAM, resetLegatoRotation);
+            DNA_ACT_INPUT(DNA_RESET_L_INPUT, resetLegatoRotation);
+            DNA_ACT_PARAM(DNA_RESET_M_PARAM, resetMelodyRotation);
+            DNA_ACT_INPUT(DNA_RESET_M_INPUT, resetMelodyRotation);
+            DNA_ACT_PARAM(DNA_RESET_O_PARAM, resetOctaveRotation);
+            DNA_ACT_INPUT(DNA_RESET_O_INPUT, resetOctaveRotation);
+        } else {
+            // Fallback defaults if expander is disconnected
+            engine.rhythmLen = engine.variationLen = engine.legatoLen = engine.melodyLen = engine.octaveLen = 16;
+            engine.rhythmOff = engine.variationOff = engine.legatoOff = engine.melodyOff = engine.octaveOff = 0;
+            engine.rhythmRot = engine.variationRot = engine.legatoRot = engine.melodyRot = engine.octaveRot = 0;
+        }
+
+
+
+        // ── Main Sequence Window Update ──
         engine.updateWindow(
             params[PATTERN_LENGTH_PARAM].getValue(), inputs[LENGTH_INPUT].getVoltage(), inputs[LENGTH_INPUT].isConnected(),
             params[PATTERN_OFFSET_PARAM].getValue(), inputs[OFFSET_INPUT].getVoltage(), inputs[OFFSET_INPUT].isConnected()
@@ -886,10 +992,63 @@ void MeloDicer::scrambleMelodyRotation() {
     engine.pe.refreshVisualCache(makePatternInput());
 }
 
+void MeloDicer::scrambleVariationRotation() {
+    engine.pe.rotateVariation(rack::random::u32() % 16);
+    engine.pe.refreshVisualCache(makePatternInput());
+}
+
+void MeloDicer::scrambleLegatoRotation() {
+    engine.pe.rotateLegato(rack::random::u32() % 16);
+    engine.pe.refreshVisualCache(makePatternInput());
+}
+
+void MeloDicer::scrambleOctaveRotation() {
+    engine.pe.rotateOctave(rack::random::u32() % 16);
+    engine.pe.refreshVisualCache(makePatternInput());
+}
+
 void MeloDicer::scrambleDnaRotation() {
     scrambleRhythmRotation();
     scrambleMelodyRotation();
 }
+
+void MeloDicer::resetRhythmRotation() {
+    for (int i = 0; i < 16; ++i) {
+        engine.pe.rhythmRandom[i]    = engine.pe.rhythmSource[i];
+        engine.pe.variationRandom[i] = engine.pe.variationSource[i];
+        engine.pe.legatoRandom[i]    = engine.pe.legatoSource[i];
+    }
+    engine.pe.refreshVisualCache(makePatternInput());
+}
+
+void MeloDicer::resetMelodyRotation() {
+    for (int i = 0; i < 16; ++i) {
+        engine.pe.melodyRandom[i] = engine.pe.melodySource[i];
+        engine.pe.octaveRandom[i] = engine.pe.octaveSource[i];
+    }
+    engine.pe.refreshVisualCache(makePatternInput());
+}
+
+void MeloDicer::resetVariationRotation() {
+    for (int i = 0; i < 16; ++i) engine.pe.variationRandom[i] = engine.pe.variationSource[i];
+    engine.pe.refreshVisualCache(makePatternInput());
+}
+
+void MeloDicer::resetLegatoRotation() {
+    for (int i = 0; i < 16; ++i) engine.pe.legatoRandom[i] = engine.pe.legatoSource[i];
+    engine.pe.refreshVisualCache(makePatternInput());
+}
+
+void MeloDicer::resetOctaveRotation() {
+    for (int i = 0; i < 16; ++i) engine.pe.octaveRandom[i] = engine.pe.octaveSource[i];
+    engine.pe.refreshVisualCache(makePatternInput());
+}
+
+void MeloDicer::resetDnaRotation() {
+    engine.pe.resetDnaRotation(); // This helper handles all 5 strands
+    engine.pe.refreshVisualCache(makePatternInput());
+}
+
 
 Model* modelMeloDicer = createModel<MeloDicer, MeloDicerWidget>("MeloDicer");
 
@@ -897,4 +1056,5 @@ void init(rack::Plugin* p) {
 	pluginInstance = p;
 	p->addModel(modelMeloDicer);
 	p->addModel(modelMeloDicerExpander);
+	p->addModel(modelMeloDicerDNAExpander);
 }

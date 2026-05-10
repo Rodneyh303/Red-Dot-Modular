@@ -38,6 +38,8 @@ struct PatternInput {
     float octaveHi         = 5.f;
     float transpose        = 0.f;
     int   noteVariationMask= 0b111;
+    int   dnaLength        = 16;
+    int   dnaOffset        = 0;
     bool  locked           = false;
 };
 
@@ -50,6 +52,13 @@ struct PatternEngine {
     float legatoRandom[16]    = {};
     float melodyRandom[16]    = {};
     float octaveRandom[16]    = {};
+
+    // ── Source DNA Cache (Original draws before rotation/scramble) ───────────
+    float rhythmSource[16]    = {};
+    float variationSource[16] = {};
+    float legatoSource[16]    = {};
+    float melodySource[16]    = {};
+    float octaveSource[16]    = {};
 
     // Caches for UI/Lights to reflect the current state
     bool  rhythmPattern[16]   = {};
@@ -137,4 +146,6 @@ struct PatternEngine {
     void rotateLegato(int steps);     // Legato and Tie probability
     void rotateMelody(int steps);     // Pitch selection
     void rotateOctave(int steps);     // Octave selection
+
+    void resetDnaRotation();          // Restore from Source Cache
 };

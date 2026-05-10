@@ -5,7 +5,7 @@
 #include "Scales.hpp"
 
 using namespace rack;
-
+using namespace MeloDicerIds;
 // ── Custom Slider for Scale Locking ──────────────────────────────────────────
 template <typename TLightBase = RedLight>
 struct MeloDicerLightSlider : VCVLightSlider<TLightBase> {
@@ -13,8 +13,8 @@ struct MeloDicerLightSlider : VCVLightSlider<TLightBase> {
         auto* m = dynamic_cast<MeloDicer*>(this->module);
         bool dimmed = false;
         if (m) {
-            if (this->paramId >= MeloDicer::SEMI0_PARAM && this->paramId < MeloDicer::SEMI0_PARAM + 12) {
-                int sem = this->paramId - MeloDicer::SEMI0_PARAM;
+            if (this->paramId >= MeloDicerIds::SEMI0_PARAM && this->paramId < MeloDicerIds::SEMI0_PARAM + 12) {
+                int sem = this->paramId - MeloDicerIds::SEMI0_PARAM;
                 if (!(m->activeScaleMask & (1 << sem))) dimmed = true;
             }
         }
@@ -79,11 +79,11 @@ MeloDicerWidget::MeloDicerWidget(MeloDicer* module) {
         for (int i=0; i<12; ++i) {
             float cx=7.5f+i*7.0f;
             addParam(createLightParamCentered<MeloDicerLightSlider<GreenRedLight>>(
-                mm2px(Vec(cx,59.75f)), module, MeloDicer::SEMI0_PARAM+i, MeloDicer::SEMI_LED_START+2*i));
+                mm2px(Vec(cx,59.75f)), module, SEMI0_PARAM+i, SEMI_LED_START+2*i));
         }
 
-        addParam(createLightParamCentered<VCVLightSlider<RedLight>>(mm2px(Vec(100.f,59.75f)), module, MeloDicer::OCT_LO_PARAM, MeloDicer::OCT_LO_LED));
-        addParam(createLightParamCentered<VCVLightSlider<RedLight>>(mm2px(Vec(108.f,59.75f)), module, MeloDicer::OCT_HI_PARAM, MeloDicer::OCT_HI_LED));
+        addParam(createLightParamCentered<VCVLightSlider<RedLight>>(mm2px(Vec(100.f,59.75f)), module, MeloDicerIds::OCT_LO_PARAM, MeloDicerIds::OCT_LO_LED));
+        addParam(createLightParamCentered<VCVLightSlider<RedLight>>(mm2px(Vec(108.f,59.75f)), module, MeloDicerIds::OCT_HI_PARAM, MeloDicerIds::OCT_HI_LED));
 
         // 16 step lights: Circular ring arrangement near top right
         {
@@ -91,59 +91,59 @@ MeloDicerWidget::MeloDicerWidget(MeloDicer* module) {
             for (int i = 0; i < 16; ++i) {
                 float ang = float(i) / 16.f * 2.f * M_PI - M_PI / 2.f;
                 float lx = RCX + RLED * std::cos(ang), ly = RCY + RLED * std::sin(ang);
-                if (i % 4 == 0) addChild(createLightCentered<SmallLight<RedLight>>(mm2px(Vec(lx, ly)), module, MeloDicer::STEP_LIGHTS_START + i));
-                else            addChild(createLightCentered<SmallLight<GreenLight>>(mm2px(Vec(lx, ly)), module, MeloDicer::STEP_LIGHTS_START + i));
+                if (i % 4 == 0) addChild(createLightCentered<SmallLight<RedLight>>(mm2px(Vec(lx, ly)), module, MeloDicerIds::STEP_LIGHTS_START + i));
+                else            addChild(createLightCentered<SmallLight<GreenLight>>(mm2px(Vec(lx, ly)), module, MeloDicerIds::STEP_LIGHTS_START + i));
             }
         }
 
         {
             const float MX = 168.f, LX = 163.f, Y_START = 54.f, v_spacing = 6.5f;
             // Add a single physical button for cycling modes
-            addParam(createParamCentered<TL1105>(mm2px(Vec(MX, 44.f)), module, MeloDicer::MODE_PARAM));
+            addParam(createParamCentered<TL1105>(mm2px(Vec(MX, 44.f)), module, MeloDicerIds::MODE_PARAM));
             for (int i = 0; i < 4; ++i) {
                 // Place 4 lights vertically starting below the MODE button
-                addChild(createLightCentered<MediumLight<YellowLight>>(mm2px(Vec(LX, Y_START + i * v_spacing)), module, MeloDicer::MODE_A_LIGHT + i));
+                addChild(createLightCentered<MediumLight<YellowLight>>(mm2px(Vec(LX, Y_START + i * v_spacing)), module, MeloDicerIds::MODE_A_LIGHT + i));
             }
         }
 
         const float JY=96.f, JYL=102.f,JX=100.f, JP=12.0f;
-        addParam(createParamCentered<TL1105>(mm2px(Vec( JX,JY)),module,MeloDicer::DICE_R_PARAM));
-        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec( JX,JYL)),module,MeloDicer::RHYTHM_DICE_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+JP,JY)),module,MeloDicer::DICE_M_PARAM));
-        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec( JX+JP,JYL)),module,MeloDicer::MELODY_DICE_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+2*JP,JY)),module,MeloDicer::LOCK_PARAM));
-        addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec( JX+2*JP,JYL)),module,MeloDicer::LOCK_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+3*JP,JY)),module,MeloDicer::MUTE_PARAM));
-        addChild(createLightCentered<MediumLight<RedLight>>(  mm2px(Vec( JX+3*JP,JYL)),module,MeloDicer::MUTE_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+4*JP,JY)),module,MeloDicer::RESET_BUTTON_PARAM));
-        addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec( JX+4*JP,JYL)),module,MeloDicer::RESET_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+5*JP,JY)),module,MeloDicer::RUN_GATE_PARAM));
-        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec( JX+5*JP,JYL)),module,MeloDicer::RUN_GATE_LIGHT));
+        addParam(createParamCentered<TL1105>(mm2px(Vec( JX,JY)),module,MeloDicerIds::DICE_R_PARAM));
+        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec( JX,JYL)),module,MeloDicerIds::RHYTHM_DICE_LIGHT));
+        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+JP,JY)),module,MeloDicerIds::DICE_M_PARAM));
+        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec( JX+JP,JYL)),module,MeloDicerIds::MELODY_DICE_LIGHT));
+        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+2*JP,JY)),module,MeloDicerIds::LOCK_PARAM));
+        addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec( JX+2*JP,JYL)),module,MeloDicerIds::LOCK_LIGHT));
+        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+3*JP,JY)),module,MeloDicerIds::MUTE_PARAM));
+        addChild(createLightCentered<MediumLight<RedLight>>(  mm2px(Vec( JX+3*JP,JYL)),module,MeloDicerIds::MUTE_LIGHT));
+        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+4*JP,JY)),module,MeloDicerIds::RESET_BUTTON_PARAM));
+        addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec( JX+4*JP,JYL)),module,MeloDicerIds::RESET_LIGHT));
+        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+5*JP,JY)),module,MeloDicerIds::RUN_GATE_PARAM));
+        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec( JX+5*JP,JYL)),module,MeloDicerIds::RUN_GATE_LIGHT));
 
-        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 88.f,112.f)),module,MeloDicer::RUN_GATE_INPUT));
-        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 98.f,112.f)),module,MeloDicer::RESET_TRIGGER_INPUT));
-        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec(108.f,112.f)),module,MeloDicer::SEED_INPUT));
-        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec(118.f,11.f)),module,MeloDicer::LENGTH_INPUT));
-        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec(128.f,112.f)),module,MeloDicer::OFFFSET_INPUT));
+        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 88.f,112.f)),module,MeloDicerIds::RUN_GATE_INPUT));
+        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 98.f,112.f)),module,MeloDicerIds::RESET_TRIGGER_INPUT));
+        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec(108.f,112.f)),module,MeloDicerIds::SEED_INPUT));
+        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec(118.f,11.f)),module,MeloDicerIds::LENGTH_INPUT));
+        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec(128.f,112.f)),module,MeloDicerIds::OFFFSET_INPUT));
 
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 14.f,105.f)),module,MeloDicer::RUN_GATE_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 30.f,105.f)),module,MeloDicer::RESET_TRIGGER_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 46.f,105.f)),module,MeloDicer::SEED_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(62.f,105.f)),module,MeloDicer::LENGTH_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 78.f,105.f)),module,MeloDicer::OFFSET_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 14.f,105.f)),module,MeloDicerIds::RUN_GATE_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 30.f,105.f)),module,MeloDicerIds::RESET_TRIGGER_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 46.f,105.f)),module,MeloDicerIds::SEED_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(62.f,105.f)),module,MeloDicerIds::LENGTH_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 78.f,105.f)),module,MeloDicerIds::OFFSET_INPUT));
 
-        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 14.f,120.5f)),module,MeloDicer::CLK_INPUT));
-        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 30.f,120.5f)),module,MeloDicer::GATE1_INPUT));
-        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 46.f,120.5f)),module,MeloDicer::GATE2_INPUT));
-        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 62.f,120.5f)),module,MeloDicer::CV1_INPUT));
-        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 78.f,120.5f)),module,MeloDicer::CV2_INPUT));
+        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 14.f,120.5f)),module,MeloDicerIds::CLK_INPUT));
+        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 30.f,120.5f)),module,MeloDicerIds::GATE1_INPUT));
+        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 46.f,120.5f)),module,MeloDicerIds::GATE2_INPUT));
+        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 62.f,120.5f)),module,MeloDicerIds::CV1_INPUT));
+        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 78.f,120.5f)),module,MeloDicerIds::CV2_INPUT));
 
 
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec( 95.f,120.5f)),module,MeloDicer::SEED_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(111.f,120.5f)),module,MeloDicer::RUN_GATE_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(127.f,120.5f)),module,MeloDicer::RESET_TRIGGER_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(143.f,120.5f)),module,MeloDicer::GATE_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(159.f,120.5f)),module,MeloDicer::CV_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec( 95.f,120.5f)),module,MeloDicerIds::SEED_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(111.f,120.5f)),module,MeloDicerIds::RUN_GATE_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(127.f,120.5f)),module,MeloDicerIds::RESET_TRIGGER_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(143.f,120.5f)),module,MeloDicerIds::GATE_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(159.f,120.5f)),module,MeloDicerIds::CV_OUTPUT));
     }
 
 void MeloDicerWidget::applyTheme() {
@@ -171,13 +171,13 @@ void MeloDicerWidget::applyTheme() {
         //     }
         // };
         // Remove the 7 top knobs (they get re-added below with correct type)
-        for (int pid : {(int)MeloDicer::NOTE_VALUE_PARAM,
-                        (int)MeloDicer::VARIATION_PARAM,
-                        (int)MeloDicer::LEGATO_PARAM,
-                        (int)MeloDicer::REST_PARAM,
-                        (int)MeloDicer::BPM_PARAM,
-                        (int)MeloDicer::PATTERN_LENGTH_PARAM,
-                        (int)MeloDicer::PATTERN_OFFSET_PARAM}) {
+        for (int pid : {(int)MeloDicerIds::NOTE_VALUE_PARAM,
+                        (int)MeloDicerIds::VARIATION_PARAM,
+                        (int)MeloDicerIds::LEGATO_PARAM,
+                        (int)MeloDicerIds::REST_PARAM,
+                        (int)MeloDicerIds::BPM_PARAM,
+                        (int)MeloDicerIds::PATTERN_LENGTH_PARAM,
+                        (int)MeloDicerIds::PATTERN_OFFSET_PARAM}) {
             ParamWidget* pw = getParam(pid);
             if (pw) {
                 removeChild(pw);
@@ -187,22 +187,22 @@ void MeloDicerWidget::applyTheme() {
 
         if (lightTheme) {
             // Light theme: Use dark knobs
-            addParam(createParamCentered<RDM_KnobDarkLarge> (mm2px(Vec(14.f,24.f)),mod,MeloDicer::NOTE_VALUE_PARAM));
-            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(37.f,24.f)),mod,MeloDicer::VARIATION_PARAM));
-            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(60.f,24.f)),mod,MeloDicer::LEGATO_PARAM));
-            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(83.f,24.f)),mod,MeloDicer::REST_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>     (mm2px(Vec(110.f,24.f)),mod,MeloDicer::BPM_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>     (mm2px(Vec(133.f,24.f)),mod,MeloDicer::PATTERN_LENGTH_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>     (mm2px(Vec(156.f,24.f)),mod,MeloDicer::PATTERN_OFFSET_PARAM));
+            addParam(createParamCentered<RDM_KnobDarkLarge> (mm2px(Vec(14.f,24.f)),mod,MeloDicerIds::NOTE_VALUE_PARAM));
+            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(37.f,24.f)),mod,MeloDicerIds::VARIATION_PARAM));
+            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(60.f,24.f)),mod,MeloDicerIds::LEGATO_PARAM));
+            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(83.f,24.f)),mod,MeloDicerIds::REST_PARAM));
+            addParam(createParamCentered<RDM_KnobSmall>     (mm2px(Vec(110.f,24.f)),mod,MeloDicerIds::BPM_PARAM));
+            addParam(createParamCentered<RDM_KnobSmall>     (mm2px(Vec(133.f,24.f)),mod,MeloDicerIds::PATTERN_LENGTH_PARAM));
+            addParam(createParamCentered<RDM_KnobSmall>     (mm2px(Vec(156.f,24.f)),mod,MeloDicerIds::PATTERN_OFFSET_PARAM));
         } else {
             // Dark theme: Use cream/light knobs
-            addParam(createParamCentered<RDM_KnobCreamMedium> (mm2px(Vec(14.f,24.f)),mod,MeloDicer::NOTE_VALUE_PARAM));
-            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(37.f,24.f)),mod,MeloDicer::VARIATION_PARAM));
-            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(60.f,24.f)),mod,MeloDicer::LEGATO_PARAM));
-            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(83.f,24.f)),mod,MeloDicer::REST_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>      (mm2px(Vec(110.f,24.f)),mod,MeloDicer::BPM_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>      (mm2px(Vec(133.f,24.f)),mod,MeloDicer::PATTERN_LENGTH_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>      (mm2px(Vec(156.f,24.f)),mod,MeloDicer::PATTERN_OFFSET_PARAM));
+            addParam(createParamCentered<RDM_KnobCreamMedium> (mm2px(Vec(14.f,24.f)),mod,MeloDicerIds::NOTE_VALUE_PARAM));
+            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(37.f,24.f)),mod,MeloDicerIds::VARIATION_PARAM));
+            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(60.f,24.f)),mod,MeloDicerIds::LEGATO_PARAM));
+            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(83.f,24.f)),mod,MeloDicerIds::REST_PARAM));
+            addParam(createParamCentered<RDM_KnobSmall>      (mm2px(Vec(110.f,24.f)),mod,MeloDicerIds::BPM_PARAM));
+            addParam(createParamCentered<RDM_KnobSmall>      (mm2px(Vec(133.f,24.f)),mod,MeloDicerIds::PATTERN_LENGTH_PARAM));
+            addParam(createParamCentered<RDM_KnobSmall>      (mm2px(Vec(156.f,24.f)),mod,MeloDicerIds::PATTERN_OFFSET_PARAM));
         }
     }
 
@@ -384,6 +384,8 @@ void MeloDicerWidget::appendContextMenu(ui::Menu* menu) {
             sub->addChild(createMenuItem("Scramble Rhythm DNA", "", [=]() { m->scrambleRhythmRotation(); }));
             sub->addChild(createMenuItem("Scramble Melody DNA", "", [=]() { m->scrambleMelodyRotation(); }));
             sub->addChild(createMenuItem("Scramble ALL DNA (Remix)", "DNA Remix", [=]() { m->scrambleDnaRotation(); }));
+            sub->addChild(new ui::MenuSeparator);
+            sub->addChild(createMenuItem("Reset DNA Alignment", "Original Draw", [=]() { m->resetDnaRotation(); }));
         }));
 
         menu->addChild(createSubmenuItem("CV Assign", "", [=](ui::Menu* sub) {

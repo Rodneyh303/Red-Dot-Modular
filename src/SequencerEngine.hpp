@@ -20,6 +20,25 @@ struct SequencerEngine {
     int endStep = 15;
     int cachedLength = 16;
     int cachedOffset = 0;
+
+    // Strand-specific Windowing (Length 1..16, Offset 0..15)
+    int rhythmLen = 16;
+    int rhythmOff = 0;
+    int variationLen = 16;
+    int variationOff = 0;
+    int legatoLen = 16;
+    int legatoOff = 0;
+    int melodyLen = 16;
+    int melodyOff = 0;
+    int octaveLen = 16;
+    int octaveOff = 0;
+
+    // Discrete mutation offsets (mutation from scramble/context menu)
+    int rhythmRot = 0, variationRot = 0, legatoRot = 0, melodyRot = 0, octaveRot = 0;
+
+    int dnaLength = 16; // Legacy/Global fallback
+    int dnaOffset = 0;
+
     uint16_t windowMask = 0xFFFF;
 
     bool locked = false;
@@ -52,6 +71,17 @@ struct SequencerEngine {
     void rebuildScaleCache(const float weights[12]);
     float getStepLightBrightness(int lightIdx) const;
     int getOffsetStep() const;
+    int getStrandIdx(int stepIndex, int startStep, int cachedOffset, int len, int off, int mutation) const;
+
+
+
+    // Independent lookup indices for each "DNA strand"
+    int getRhythmStep() const;
+    int getVariationStep() const;
+    int getLegatoStep() const;
+    int getMelodyStep() const;
+    int getOctaveStep() const;
+
     bool shouldTriggerStep(int ppqn) const;
     void executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, const PatternInput& input, bool wasHeld);
     void handlePhraseBoundary(PatternInput input, bool isMelodyRealtime, bool isRhythmRealtime);

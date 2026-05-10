@@ -17,6 +17,12 @@
       "name": "MeloDicerExpander",
       "description": "64-step version of MeloDicer with 4 rows of 16 steps each, and additional features",
       "tags": ["Sequencer", "Random", "Quantizer"]
+    },
+    {
+      "slug": "MeloDicerDNAExpander",
+      "name": "MeloDicerDNAExpander",
+      "description": "64-step version of MeloDicer with 4 rows of 16 steps each, and additional features",
+      "tags": ["Sequencer", "Random", "Quantizer"]
     }
   ]
 }
