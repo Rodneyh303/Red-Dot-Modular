@@ -433,6 +433,7 @@ struct MeloDicer : Module {
     float sampleSeedFromSource();
     void onPhraseBoundary_();
     void onReset() override;
+    void onSampleRateChange(const SampleRateChangeEvent& e) override;
     int getNoteLenIdx_();
     void onExpanderChange(const ExpanderChangeEvent& e) override; // Declare override
     int computeNoteLengthIdx(int requestedIdx, int ppqnMask);

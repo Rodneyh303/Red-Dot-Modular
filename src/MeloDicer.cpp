@@ -30,6 +30,11 @@ void MeloDicer::reseedXoroshiroFromFloat(rack::random::Xoroshiro128Plus& rng, fl
     engine.pe.seedRngFromFloat(rng, seedFloat);
 }
 
+void MeloDicer::onSampleRateChange(const SampleRateChangeEvent& e) {
+    lightDivider.setDivision(std::max(1, (int)std::round(e.sampleRate / 90.f)));
+    controlDivider.setDivision(std::max(1, (int)std::round(e.sampleRate / 1500.f)));
+}
+
 MeloDicer::MeloDicer() {
         using namespace MeloDicerIds;
         config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
@@ -129,8 +134,8 @@ MeloDicer::MeloDicer() {
         rhythmSeedPendingFloat = rhythmSeedFloat;
         melodySeedPendingFloat = melodySeedFloat;
 
-        lightDivider.setDivision(512); // Throttle lights and visual cache to ~90Hz at 48kHz
-        controlDivider.setDivision(32); // Control rate (~3kHz at 48k)
+        // Initialize dividers based on current engine sample rate
+        //onSampleRateChange({APP->engine->getSampleRate(), APP->engine->getSampleRate()});
 
         // Default patterns: all gates on, CV at 0V (C0), semitone 0
         // genPitchV() reads params[] which aren't valid yet, so use safe literals
@@ -898,9 +903,12 @@ void MeloDicer::process(const ProcessArgs& args) {
             DNA_ACT_PARAM(DNA_RESET_O_PARAM, resetOctaveRotation);
             DNA_ACT_INPUT(DNA_RESET_O_INPUT, resetOctaveRotation);
         } else {
-            engine.rhythmLen = engine.variationLen = engine.legatoLen = engine.melodyLen = engine.octaveLen = 16;
-            engine.rhythmOff = engine.variationOff = engine.legatoOff = engine.melodyOff = engine.octaveOff = 0;
-            engine.rhythmRot = engine.variationRot = engine.legatoRot = engine.melodyRot = engine.octaveRot = 0;
+            // Fallback defaults if expander is disconnected (only set once to save CPU)
+            if (engine.rhythmLen != 16) {
+                engine.rhythmLen = engine.variationLen = engine.legatoLen = engine.melodyLen = engine.octaveLen = 16;
+                engine.rhythmOff = engine.variationOff = engine.legatoOff = engine.melodyOff = engine.octaveOff = 0;
+                engine.rhythmRot = engine.variationRot = engine.legatoRot = engine.melodyRot = engine.octaveRot = 0;
+            }
         }
 
         engine.updateWindow(
