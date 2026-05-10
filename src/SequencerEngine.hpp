@@ -20,6 +20,7 @@ struct SequencerEngine {
     int endStep = 15;
     int cachedLength = 16;
     int cachedOffset = 0;
+    int totalStepsElapsed = 0; // Running counter for drifting polymetric DNA alignment
 
     // Strand-specific Windowing (Length 1..16, Offset 0..15)
     int rhythmLen = 16;
@@ -71,8 +72,7 @@ struct SequencerEngine {
     void rebuildScaleCache(const float weights[12]);
     float getStepLightBrightness(int lightIdx) const;
     int getOffsetStep() const;
-    int getStrandIdx(int stepIndex, int startStep, int cachedOffset, int len, int off, int mutation) const;
-
+    int getStrandIdx(int tickCount, int len, int off, int mutation) const;
 
 
     // Independent lookup indices for each "DNA strand"

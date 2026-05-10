@@ -518,6 +518,7 @@ float MeloDicer::semitoneToVolts(int semitone) {
     // If there are pending seeds and resetImmediate==true, apply them immediately (for RESET triggered reseed)
     void MeloDicer::handleRestart(bool manual, bool resetImmediate) {
         stepIndex = (startStep - 1 + 16) % 16;
+        engine.totalStepsElapsed = 0; // Hard reset DNA alignment to phrase start
         engine.gs.reset();          // clears gate, hold, pitch, pulse, semiPlayRemain
         prevExtGate = false;
 

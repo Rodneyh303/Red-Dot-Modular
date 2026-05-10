@@ -16,6 +16,7 @@ void SequencerEngine::reset() {
     endStep = 15;
     cachedLength = 16;
     cachedOffset = 0;
+    totalStepsElapsed = 0;
     rhythmLen = variationLen = legatoLen = melodyLen = octaveLen = 16;
     rhythmOff = variationOff = legatoOff = melodyOff = octaveOff = 0;
     rhythmRot = variationRot = legatoRot = melodyRot = octaveRot = 0;
@@ -57,6 +58,7 @@ void SequencerEngine::setWindow(int length, int offset) {
 
 bool SequencerEngine::advancePlayhead() {
     int prevStep = stepIndex;
+    totalStepsElapsed++;
     if (stepIndex == -1) stepIndex = (startStep - 1 + 16) % 16;
     stepIndex = (stepIndex + 1) & 0x0F;
     if (!isStepInWindow(stepIndex)) stepIndex = startStep;
@@ -115,8 +117,12 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
     float baseActive = 0.0f;
     
     if (inWindow) {
-        // Calculate which DNA index this physical LED represents for the Rhythm strand
-        int dnaIdx = getStrandIdx(lightIdx, startStep, cachedOffset, rhythmLen, rhythmOff, rhythmRot);
+        // Calculate distance from current playhead to map physical LED to drifting DNA content
+        int relCurrent = (stepIndex - startStep + 16) % 16;
+        int relLight = (lightIdx - startStep + 16) % 16;
+        int tickForLight = totalStepsElapsed - relCurrent + relLight;
+
+        int dnaIdx = getStrandIdx(tickForLight, rhythmLen, rhythmOff, rhythmRot);
         bool isNote = pe.rhythmPattern[dnaIdx];
         baseActive = isNote ? 0.35f : 0.07f;
     }
@@ -300,22 +306,19 @@ float SequencerEngine::quantize(float vIn) {
     lastQuantOut = pe_clamp<float>(bestV, 0.f, 5.f);
     return lastQuantOut;
 }
-
-
 // Shared base index calculation with strand-specific phase and windowing
-int SequencerEngine::getStrandIdx(int stepIndex, int startStep, int cachedOffset, int len, int off, int mutation) const
+int SequencerEngine::getStrandIdx(int tickCount, int len, int off, int mutation) const
 {
-    if (stepIndex == -1) return 0;
     int safeLen = std::max(1, len);
-    // timelineIdx is the relative position within the pattern phrase (0..15)
-    int timelineIdx = (stepIndex - startStep + 16) % 16;
-    // 1. (timelineIdx + mutation) % len  => Rotate the start position within the loop
-    // 2. ... + off                       => Slide the entire loop window across the buffer
-    return ((timelineIdx + mutation) % safeLen + off) % 16;
+    // 1. (tickCount + mutation) % len  => Drift inside the DNA loop
+    // Wrap properly for negative ticks (used by LED distance logic)
+    int timelineIdx = ((tickCount + mutation) % safeLen + safeLen) % safeLen;
+    // 2. ... + off                     => Slide the entire DNA window across the source buffer
+    return (timelineIdx + off) % 16;
 }
 
-int SequencerEngine::getRhythmStep() const    { return getStrandIdx(stepIndex, startStep, cachedOffset, rhythmLen, rhythmOff, rhythmRot); }
-int SequencerEngine::getVariationStep() const { return getStrandIdx(stepIndex, startStep, cachedOffset, variationLen, variationOff, variationRot); }
-int SequencerEngine::getLegatoStep() const    { return getStrandIdx(stepIndex, startStep, cachedOffset, legatoLen, legatoOff, legatoRot); }
-int SequencerEngine::getMelodyStep() const    { return getStrandIdx(stepIndex, startStep, cachedOffset, melodyLen, melodyOff, melodyRot); }
-int SequencerEngine::getOctaveStep() const    { return getStrandIdx(stepIndex, startStep, cachedOffset, octaveLen, octaveOff, octaveRot); }
+int SequencerEngine::getRhythmStep() const    { return getStrandIdx(totalStepsElapsed, rhythmLen, rhythmOff, rhythmRot); }
+int SequencerEngine::getVariationStep() const { return getStrandIdx(totalStepsElapsed, variationLen, variationOff, variationRot); }
+int SequencerEngine::getLegatoStep() const    { return getStrandIdx(totalStepsElapsed, legatoLen, legatoOff, legatoRot); }
+int SequencerEngine::getMelodyStep() const    { return getStrandIdx(totalStepsElapsed, melodyLen, melodyOff, melodyRot); }
+int SequencerEngine::getOctaveStep() const    { return getStrandIdx(totalStepsElapsed, octaveLen, octaveOff, octaveRot); }
