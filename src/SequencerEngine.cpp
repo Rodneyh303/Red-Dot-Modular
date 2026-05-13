@@ -11,7 +11,8 @@ static const int DNA_LCM = 720720; // LCM of 1..16 ensures drift continuity
 
 void SequencerEngine::reset() {
     pe.reset();
-    gs.reset();
+    for (int i = 0; i < 8; i++) gs[i].reset(); // Reset all 8 GateState instances
+
     stepIndex = -1;
     lastStepIndex = -1;
     startStep = 0;
@@ -195,23 +196,34 @@ void SequencerEngine::handlePhraseBoundary(PatternInput input, bool isMelodyReal
     pe.applyPendingSeedsAndRedraw(input);
 }
 
-bool SequencerEngine::executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input) {
+bool SequencerEngine::executeModeA(const ClockEngine& clock, const float restProbs[8], float legatoProb, float noteVal, const PatternInput& input, int numVoices) {
     if (!clock.sixteenthEdge || muted) return false;
+
+    int poolSize = calculatePitchPoolSize(input);
+    int activeVoices = std::min(numVoices, poolSize);
+    if (activeVoices < 1) {
+        for (int i = 0; i < 8; i++) gs[i].reset();
+        advancePlayhead();
+        return false;
+    }
 
     bool wrapped = advancePlayhead();
     float r_vary   = pe.variationRandom[getVariationStep()];
     float r_rest   = pe.rhythmRandom[getRhythmStep()];
     float r_legato = pe.legatoRandom[getLegatoStep()];
-    
     int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
 
-    bool wasHeld = gs.gateHeld;
-    gs.tick();
-    executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, input, wasHeld);
+    for (int v = 0; v < 8; v++) {
+        bool wasHeld = gs[v].gateHeld; // Capture before tick
+        gs[v].tick(); // Tick all voices regardless of activeVoices
+        if (v < activeVoices) { // Only execute step for active voices
+            executeStep(v, restProbs[v], legatoProb, nvIdx, r_rest, r_legato, input, wasHeld);
+        }
+    }
     return wrapped;
 }
 
-bool SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float restProb, float legatoProb, float noteVal, const PatternInput& input) {
+bool SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, const float restProbs[8], float legatoProb, float noteVal, const PatternInput& input, int numVoices) {
     if (muted) {
         prevGate1High = gate1High;
         return false;
@@ -227,16 +239,22 @@ bool SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float restPro
         triggered = true;
     }
 
+    int poolSize = calculatePitchPoolSize(input);
+    int activeVoices = std::min(numVoices, poolSize);
+
     if (triggered) {
         float r_vary   = pe.variationRandom[getVariationStep()];
         float r_rest   = pe.rhythmRandom[getRhythmStep()];
         float r_legato = pe.legatoRandom[getLegatoStep()];
         
         int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
-
-        bool wasHeld = gs.gateHeld;
-        gs.tick();
-        executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, input, wasHeld);
+        for (int v = 0; v < 8; v++) {
+            bool wasHeld = gs[v].gateHeld;
+            gs[v].tick();
+            if (v < activeVoices) {
+                executeStep(v, restProbs[v], legatoProb, nvIdx, r_rest, r_legato, input, wasHeld);
+            }
+        }
     }
 
     prevGate1High = gate1High;

@@ -33,6 +33,7 @@ using namespace rack;
 
 extern Plugin* pluginInstance;
 struct MeloDicerExpander;
+struct MeloDicerPolyVoiceExpander; // Forward declaration for the new expander
 struct MeloDicerDNAExpander;
 // Minimal clamp helper for C++11 (no std::clamp)
 template <typename T>
@@ -98,6 +99,15 @@ namespace MeloDicerIds {
         RESET_BUTTON_PARAM,
         RUN_GATE_PARAM,
 
+        // Poly Voice Expander Params (7 Knobs)
+        POLY_REST_PARAM_1,
+        POLY_REST_PARAM_2,
+        POLY_REST_PARAM_3,
+        POLY_REST_PARAM_4,
+        POLY_REST_PARAM_5,
+        POLY_REST_PARAM_6,
+        POLY_REST_PARAM_7,
+
         NUM_PARAMS
     };
 
@@ -139,6 +149,9 @@ namespace MeloDicerIds {
         DNA_RESET_V_INPUT,
         DNA_RESET_L_INPUT,
         DNA_RESET_O_INPUT,
+
+        // Poly Voice Expander Inputs
+        POLY_REST_CV_INPUT,
 
         NUM_INPUTS
     };
@@ -281,6 +294,7 @@ struct MeloDicer : Module {
     uint16_t activeScaleMask = 0xFFF;
     bool lightTheme = false;
     MeloDicerExpander* cachedExpander = nullptr; // Cache expander pointer for performance
+    MeloDicerPolyVoiceExpander* cachedPolyVoiceExpander = nullptr;
     MeloDicerDNAExpander* cachedDnaExpander = nullptr;
     dsp::ClockDivider lightDivider;
     dsp::ClockDivider controlDivider; // For DNA modulation at "Control Rate"
@@ -292,10 +306,10 @@ struct MeloDicer : Module {
     rack::random::Xoroshiro128Plus& melodyRng = engine.pe.melodyRng;
     rack::random::Xoroshiro128Plus& stochasticRng = engine.pe.stochasticRng;
     float& holdRemain = engine.gs.holdRemain;
-    bool& gateHeld = engine.gs.gateHeld;
-    float& currentPitchV = engine.gs.currentPitchV;
-    int& lastSemitone = engine.gs.lastSemitone;
-    float (&semiPlayRemain)[12] = engine.gs.semiPlayRemain;
+    bool& gateHeld = engine.gs[0].gateHeld;
+    float& currentPitchV = engine.gs[0].currentPitchV;
+    int& lastSemitone = engine.gs[0].lastSemitone;
+    float (&semiPlayRemain)[12] = engine.gs[0].semiPlayRemain;
 
     float& rhythmSeedFloat = engine.pe.rhythmSeedFloat;
     float& melodySeedFloat = engine.pe.melodySeedFloat;
@@ -335,7 +349,7 @@ struct MeloDicer : Module {
     float (&melodyRandom)[16] = engine.pe.melodyRandom;
     float (&octaveRandom)[16] = engine.pe.octaveRandom;
 
-    dsp::PulseGenerator& gatePulse = engine.gs.gatePulse;
+    dsp::PulseGenerator& gatePulse = engine.gs[0].gatePulse;
     bool& prevExtGate = engine.prevGate1High;
 
     dsp::BooleanTrigger diceRTrig, diceMTrig, resetBtn, runGateBtn, modeTrig;
@@ -382,6 +396,7 @@ struct MeloDicer : Module {
     float getOctaveHiParam();
 
     float getNoteValueParam();
+    float getRestParam(int voice);
     float getVariationParam();
     float getLegatoParam();
     float getRestParam();
@@ -453,3 +468,4 @@ struct MeloDicer : Module {
 extern Model* modelMeloDicer;
 extern Model* modelMeloDicerExpander;
 extern Model* modelMeloDicerDNAExpander;
+extern Model* modelMeloDicerPolyVoiceExpander; // Declare new expander model

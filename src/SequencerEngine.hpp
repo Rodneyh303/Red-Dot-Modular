@@ -12,7 +12,7 @@ extern const NoteVal NOTEVALS[8];
 
 struct SequencerEngine {
     PatternEngine pe;
-    GateState gs;
+    GateState gs[8]; // Array of GateState for polyphony
 
     int stepIndex = -1;
     int lastStepIndex = -1;
@@ -74,6 +74,7 @@ struct SequencerEngine {
     int getOffsetStep() const;
     int getStrandIdx(int tickCount, int len, int off, int mutation) const;
 
+    int calculatePitchPoolSize(const PatternInput& input) const;
 
     // Independent lookup indices for each "DNA strand"
     int getRhythmStep() const;
@@ -83,10 +84,10 @@ struct SequencerEngine {
     int getOctaveStep() const;
 
     bool shouldTriggerStep(int ppqn) const;
-    void executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, const PatternInput& input, bool wasHeld);
+    void executeStep(int voice, float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, const PatternInput& input, bool wasHeld); // Added voice parameter
     void handlePhraseBoundary(PatternInput input, bool isMelodyRealtime, bool isRhythmRealtime);
-    bool executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input);
-    bool executeModeB(bool gate1Rise, bool gate1High, float restProb, float legatoProb, float noteVal, const PatternInput& input);
+    bool executeModeA(const ClockEngine& clock, const float restProbs[8], float legatoProb, float noteVal, const PatternInput& input, int numVoices); // Added restProbs and numVoices
+    bool executeModeB(bool gate1Rise, bool gate1High, const float restProbs[8], float legatoProb, float noteVal, const PatternInput& input, int numVoices); // Added restProbs and numVoices
     void executeModeC(const ClockEngine& clock, float inCV);
     void executeModeD(bool gateHigh, float inCV);
     float quantize(float vIn);

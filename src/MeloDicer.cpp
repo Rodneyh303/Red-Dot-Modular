@@ -16,6 +16,7 @@
 
 #include "MeloDicerDNAExpander.hpp"
 #include "MeloDicerExpander.hpp"
+#include "MeloDicerPolyVoiceExpander.hpp"
 #include "MeloDicerWidget.hpp"
 #include "MeloDicer.hpp"
 #include "PatternEngine.hpp"
@@ -89,6 +90,15 @@ MeloDicer::MeloDicer() {
         configButton(RESET_BUTTON_PARAM,  "Reset");
         configButton(RUN_GATE_PARAM,      "Run/Stop");
 
+        // Poly Voice Expander Params (7 Knobs)
+        configParam(POLY_REST_PARAM_1, 0.f, 1.f, 0.1f, "Voice 2 Rest Probability");
+        configParam(POLY_REST_PARAM_2, 0.f, 1.f, 0.1f, "Voice 3 Rest Probability");
+        configParam(POLY_REST_PARAM_3, 0.f, 1.f, 0.1f, "Voice 4 Rest Probability");
+        configParam(POLY_REST_PARAM_4, 0.f, 1.f, 0.1f, "Voice 5 Rest Probability");
+        configParam(POLY_REST_PARAM_5, 0.f, 1.f, 0.1f, "Voice 6 Rest Probability");
+        configParam(POLY_REST_PARAM_6, 0.f, 1.f, 0.1f, "Voice 7 Rest Probability");
+        configParam(POLY_REST_PARAM_7, 0.f, 1.f, 0.1f, "Voice 8 Rest Probability");
+
         // I/O
         configInput(CLK_INPUT,   "Clock");
         configInput(GATE1_INPUT, "Gate In 1");
@@ -118,6 +128,9 @@ MeloDicer::MeloDicer() {
         configInput(DNA_RESET_M_INPUT,      "Reset Melody Gate");
         configInput(DNA_RESET_O_INPUT,      "Reset Octave Gate");
 
+        // Poly Voice Expander Inputs
+        configInput(POLY_REST_CV_INPUT, "Poly Rest CV");
+
         configOutput(GATE_OUTPUT,           "Gate");
         configOutput(CV_OUTPUT,             "1V/Oct");
         configOutput(SEED_OUTPUT,           "Seed Voltage Out (0..10V)");
@@ -135,10 +148,27 @@ MeloDicer::MeloDicer() {
         melodySeedPendingFloat = melodySeedFloat;
 
         // Initialize dividers based on current engine sample rate
-        //onSampleRateChange({APP->engine->getSampleRate(), APP->engine->getSampleRate()});
+        onSampleRateChange({APP->engine->getSampleRate(), APP->engine->getSampleRate()});
+        // Initialize dividers based on current engine sample rate.
+        // This must be called AFTER lightDivider and controlDivider are constructed.
+        // The hardcoded setDivision calls were overriding the initial sample rate detection.
+        lightDivider.setDivision(std::max(1, (int)std::round(APP->engine->getSampleRate() / 90.f)));
+        controlDivider.setDivision(std::max(1, (int)std::round(APP->engine->getSampleRate() / 1500.f)));
 
         // Default patterns: all gates on, CV at 0V (C0), semitone 0
         // genPitchV() reads params[] which aren't valid yet, so use safe literals
+        // Initialize all GateState instances for polyphony
+        for (int i = 0; i < 8; ++i) {
+            engine.gs[i].reset();
+        }
+
+        // Initialize cached expander pointers to null
+        cachedExpander = nullptr;
+        cachedPolyVoiceExpander = nullptr;
+        cachedDnaExpander = nullptr;
+
+        // Call onSampleRateChange to ensure dividers are set correctly initially
+        onSampleRateChange({APP->engine->getSampleRate(), APP->engine->getSampleRate()});
         for (int i = 0; i < 16; ++i) {
             rhythmPattern[i]  = true;
             engine.pe.rhythmRandom[i] = 1.0f;
@@ -187,6 +217,28 @@ MeloDicer::MeloDicer() {
         }
   }
 
+float MeloDicer::getRestParam(int voice) {
+    // Voice 0 is the main module's rest parameter
+    if (voice == 0) return getRestParam(); 
+
+    // For other voices, check the expander
+    if (cachedPolyVoiceExpander) {
+        // Adjust index for 0-based array (POLY_REST_PARAM_1 is for voice 2, so voice - 1)
+        float v = cachedPolyVoiceExpander->params[MeloDicerIds::POLY_REST_PARAM_1 + voice - 1].getValue();
+        if (cachedPolyVoiceExpander->inputs[MeloDicerIds::POLY_REST_CV_INPUT].isConnected()) {
+             // Polyphonic CV for rest parameters
+             v += cachedPolyVoiceExpander->inputs[MeloDicerIds::POLY_REST_CV_INPUT].getPolyVoltage(voice) / 10.0f;
+        }
+        return clampv(v, 0.f, 1.f);
+    }
+    return 1.0f; // If no expander, extra voices always rest
+}
+
+void MeloDicer::onSampleRateChange(const SampleRateChangeEvent& e) {
+	lightDivider.setDivision(std::max(1, (int)std::round(e.sampleRate / 90.f)));
+	controlDivider.setDivision(std::max(1, (int)std::round(e.sampleRate / 1500.f)));
+}
+
   void MeloDicer::initialize(){
         cv1Mode = 0;
         cv2Mode = 0;
@@ -201,7 +253,13 @@ MeloDicer::MeloDicer() {
         updateScaleMask();
 
         engine.reset();
+        // Reset all GateState instances for polyphony
+        for (int i = 0; i < 8; ++i) {
+            engine.gs[i].reset();
+        }
 
+        // Initialize cached expander pointers to null
+        cachedPolyVoiceExpander = nullptr;
         bpm = 120.f;
         clock.reset();
         prevExtGate = false;
@@ -526,6 +584,9 @@ float MeloDicer::semitoneToVolts(int semitone) {
         stepIndex = (startStep - 1 + 16) % 16;
         engine.totalStepsElapsed = 0; // Sync polymeters to "Beat 1" on hard reset
         engine.gs.reset();          // clears gate, hold, pitch, pulse, semiPlayRemain
+        for (int i = 0; i < 8; ++i) { // Reset all GateState instances for polyphony
+            engine.gs[i].reset();
+        }
         prevExtGate = false;
 
         if (!locked) {
@@ -574,6 +635,13 @@ void MeloDicer::onExpanderChange(const ExpanderChangeEvent& e) {
     } else {
         cachedDnaExpander = nullptr;
     }
+
+    // Cache PolyVoiceExpander pointer
+    if (rightExpander.module && rightExpander.module->model == modelMeloDicerPolyVoiceExpander) {
+        cachedPolyVoiceExpander = dynamic_cast<MeloDicerPolyVoiceExpander*>(rightExpander.module);
+    } else {
+        cachedPolyVoiceExpander = nullptr;
+    }
 }
 
 // ---------------- Helper: reset hook -----------------------------------------
@@ -606,6 +674,7 @@ float MeloDicer::quantizePitch(int semitoneIndex, int octaveOffset) {
 // ---------------- Helper: update step LEDs -------------------------------
 // activeSemitone: 0..11 for currently playing semitone, or -1 if
 void MeloDicer::updateStepLEDs_(float sampleTime)
+{ // Always update LEDs for the first voice
 {
     // Green channel (ch0) is managed by VCVLightSlider widget automatically.
     // We only drive the red channel (ch1) = "note playing" flash.
@@ -935,9 +1004,9 @@ void MeloDicer::process(const ProcessArgs& args) {
 //  Also handles phrase boundary reseeding and redraw.
 //  Also handles first note logic when starting from reset.
 //  Also handles mute logic (no output, but still advances and updates LEDs)
-void MeloDicer::handleModeA_(const ProcessArgs& args) {
+void MeloDicer::handleModeA_(const ProcessArgs& args, const float restProbs[8], int numVoices) {
     if (clock.sixteenthEdge && !muted) {
-        if (engine.executeModeA(clock, getRestParam(), getLegatoParam(), getNoteValueParam(), makePatternInput())) {
+        if (engine.executeModeA(clock, restProbs, getLegatoParam(), getNoteValueParam(), makePatternInput(), numVoices)) {
             onPhraseBoundary_();
         }
         lastStepIndex = stepIndex;
@@ -950,10 +1019,10 @@ void MeloDicer::handleModeA_(const ProcessArgs& args) {
 // Uses shared triggerStepEvent_() helper.
 //  Also handles phrase boundary reseeding and redraw.
 //  Also handles first note logic when gate held high continuously.
-void MeloDicer::handleModeB_(const ProcessArgs& args, bool gate1Rise) {
+void MeloDicer::handleModeB_(const ProcessArgs& args, bool gate1Rise, const float restProbs[8], int numVoices) {
     bool gate1High = inputs[GATE1_INPUT].getVoltage() >= 1.f;
     if (!muted && (gate1Rise || (gate1High && stepIndex == -1))) {
-        if (engine.executeModeB(gate1Rise, gate1High, getRestParam(), getLegatoParam(), getNoteValueParam(), makePatternInput())) {
+        if (engine.executeModeB(gate1Rise, gate1High, restProbs, getLegatoParam(), getNoteValueParam(), makePatternInput(), numVoices)) {
             onPhraseBoundary_();
         }
         lastStepIndex = stepIndex;
@@ -967,7 +1036,7 @@ void MeloDicer::handleModeB_(const ProcessArgs& args, bool gate1Rise) {
 void MeloDicer::handleModeC_(const ProcessArgs& args) {
     if (clock.quarterEdge) {
         float inCV = inputs[CV2_INPUT].isConnected() ? clampv<float>(inputs[CV2_INPUT].getVoltage(), 0.f, 5.f) : 0.f;
-        engine.executeModeC(clock, inCV);
+        engine.executeModeC(clock, inCV); // Mode C still operates on gs[0]
         lastStepIndex = stepIndex;
     }
 }
@@ -979,7 +1048,7 @@ void MeloDicer::handleModeD_(const ProcessArgs& args) {
     bool gateHigh = inputs[GATE2_INPUT].isConnected() && inputs[GATE2_INPUT].getVoltage() > 1.f;
     float inCV = inputs[CV2_INPUT].isConnected() ? clampv<float>(inputs[CV2_INPUT].getVoltage(), 0.f, 5.f) : 0.f;
     
-    engine.executeModeD(gateHigh, inCV);
+    engine.executeModeD(gateHigh, inCV); // Mode D still operates on gs[0]
 }
 
 void MeloDicer::scrambleRhythmRotation() {
