@@ -3,6 +3,7 @@
 #include "MeloDicer.hpp"
 
 using namespace rack;
+using namespace MeloDicerIds;
 
 struct MeloDicerPolyVoiceExpander : Module {
     MeloDicerPolyVoiceExpander() {

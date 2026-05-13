@@ -3,8 +3,8 @@
 #include "MeloDicerPolyVoiceExpander.hpp"
 
 using namespace rack;
+using namespace MeloDicerIds;
 
-Model* modelMeloDicerPolyVoiceExpander = createModel<MeloDicerPolyVoiceExpander, MeloDicerPolyVoiceExpanderWidget>("MeloDicerPolyVoiceExpander");
 
 struct MeloDicerPolyVoiceExpanderWidget : ModuleWidget {
     MeloDicerPolyVoiceExpanderWidget(MeloDicerPolyVoiceExpander* module) {
@@ -39,3 +39,5 @@ struct MeloDicerPolyVoiceExpanderWidget : ModuleWidget {
         nvgText(args.vg, mm2px(15.0f), mm2px(15.0f), "POLY RESTS", nullptr);
     }
 };
+
+Model* modelMeloDicerPolyVoiceExpander = createModel<MeloDicerPolyVoiceExpander, MeloDicerPolyVoiceExpanderWidget>("MeloDicerPolyVoiceExpander");
