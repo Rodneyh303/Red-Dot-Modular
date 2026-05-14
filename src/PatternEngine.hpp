@@ -52,6 +52,11 @@ struct PatternEngine {
     float legatoRandom[16]    = {};
     float melodyRandom[16]    = {};
     float octaveRandom[16]    = {};
+    
+    // Poly strands: 7 voices, each with Rhythm, Melody, and Octave draws
+    float polyRhythmRandom[7][16] = {};
+    float polyMelodyRandom[7][16] = {};
+    float polyOctaveRandom[7][16] = {};
 
     // ── Source DNA Cache (Original draws before rotation/scramble) ───────────
     float rhythmSource[16]    = {};
@@ -59,6 +64,9 @@ struct PatternEngine {
     float legatoSource[16]    = {};
     float melodySource[16]    = {};
     float octaveSource[16]    = {};
+    float polyRhythmSource[7][16] = {};
+    float polyMelodySource[7][16] = {};
+    float polyOctaveSource[7][16] = {};
 
     // Caches for UI/Lights to reflect the current state
     bool  rhythmPattern[16]   = {};
@@ -66,7 +74,7 @@ struct PatternEngine {
     float melodyPitchV[16]    = {};
 
     // ── RNG state ─────────────────────────────────────────────────────────────
-    rack::random::Xoroshiro128Plus rhythmRng, melodyRng, stochasticRng;
+    rack::random::Xoroshiro128Plus rhythmRng, melodyRng;
 
     // ── Seed management ───────────────────────────────────────────────────────
     float rhythmSeedFloat  = 0.f;
@@ -75,7 +83,6 @@ struct PatternEngine {
     bool  melodySeedPending = false;
     float rhythmSeedPendingFloat = 0.f;
     float melodySeedPendingFloat = 0.f;
-    float stochasticSeedFloat = 0.f;
     int   rhythmMode = 0;  // 0=dice, 1=realtime
     int   melodyMode = 0;
 

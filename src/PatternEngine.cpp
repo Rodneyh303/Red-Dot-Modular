@@ -12,12 +12,11 @@ void PatternEngine::seedRngFromFloat(rack::random::Xoroshiro128Plus& rng, float 
 }
 
 void PatternEngine::reset() {
-    rhythmSeedFloat = melodySeedFloat = stochasticSeedFloat = 0.f;
+    rhythmSeedFloat = melodySeedFloat = 0.f;
     rhythmSeedPending = melodySeedPending = false;
     rhythmMode = melodyMode = 0;
     seedRngFromFloat(rhythmRng, 0.f);
     seedRngFromFloat(melodyRng, 0.f);
-    seedRngFromFloat(stochasticRng, 0.f);
 }
 
 // ── Core generation ───────────────────────────────────────────────────────
@@ -132,6 +131,11 @@ void PatternEngine::redrawRhythm(const PatternInput& in) {
         rhythmSource[i]    = rhythmRandom[i];
         variationSource[i] = variationRandom[i];
         legatoSource[i]    = legatoRandom[i];
+        
+        for (int v = 0; v < 7; v++) {
+            polyRhythmRandom[v][i] = unitRhythm();
+            polyRhythmSource[v][i] = polyRhythmRandom[v][i];
+        }
 
         // Update cache for UI
         rhythmPattern[i] = (rhythmRandom[i] >= in.restProb);
@@ -148,6 +152,13 @@ void PatternEngine::redrawMelody(const PatternInput& in) {
         // Cache the original draw
         melodySource[i] = melodyRandom[i];
         octaveSource[i] = octaveRandom[i];
+        
+        for (int v = 0; v < 7; v++) {
+            polyMelodyRandom[v][i] = unitMelody();
+            polyOctaveRandom[v][i] = unitMelody();
+            polyMelodySource[v][i] = polyMelodyRandom[v][i];
+            polyOctaveSource[v][i] = polyOctaveRandom[v][i];
+        }
 
         // Update cache for UI
         int sem = 0;
@@ -280,5 +291,11 @@ void PatternEngine::resetDnaRotation() {
         melodyRandom[i]    = melodySource[i];
         octaveRandom[i]    = octaveSource[i];
     }
+    for (int v = 0; v < 7; v++) {
+        for (int i = 0; i < 16; i++) {
+            polyRhythmRandom[v][i] = polyRhythmSource[v][i];
+            polyMelodyRandom[v][i] = polyMelodySource[v][i];
+            polyOctaveRandom[v][i] = polyOctaveSource[v][i];
+        }
+    }
 }
-

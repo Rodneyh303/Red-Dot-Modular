@@ -129,8 +129,8 @@ MeloDicer::MeloDicer() {
         rhythmSeedFloat = rack::random::uniform() * 10.f;
         melodySeedFloat = rack::random::uniform() * 10.f;
         reseedXoroshiroFromFloat(rhythmRng, rhythmSeedFloat);
-        stochasticSeedFloat = rack::random::uniform() * 10.f;
-        reseedXoroshiroFromFloat(stochasticRng, stochasticSeedFloat);
+        //stochasticSeedFloat = rack::random::uniform() * 10.f;
+        //reseedXoroshiroFromFloat(stochasticRng, stochasticSeedFloat);
         reseedXoroshiroFromFloat(melodyRng, melodySeedFloat);
         rhythmSeedPendingFloat = rhythmSeedFloat;
         melodySeedPendingFloat = melodySeedFloat;
@@ -206,7 +206,7 @@ MeloDicer::MeloDicer() {
         bpm = 120.f;
         clock.reset();
         prevExtGate = false;
-        reseedXoroshiroFromFloat(stochasticRng, 0.f); // Reset stochastic RNG to deterministic state
+        //reseedXoroshiroFromFloat(stochasticRng, 0.f); // Reset stochastic RNG to deterministic state
         currentPitchV = 0.f;
         melodySeedCached = false;
         cachedExpander = nullptr; // Initialize cached expander
@@ -251,7 +251,7 @@ MeloDicer::MeloDicer() {
         json_object_set_new(root,"rhythmSeedPendingFloat", json_real((float)rhythmSeedPendingFloat));
         json_object_set_new(root,"melodySeedPending", json_boolean(melodySeedPending));
         json_object_set_new(root,"melodySeedPendingFloat", json_real((float)melodySeedPendingFloat));
-        json_object_set_new(root,"stochasticSeedFloat", json_real((float)stochasticSeedFloat));
+        //json_object_set_new(root,"stochasticSeedFloat", json_real((float)stochasticSeedFloat));
         json_object_set_new(root,"numPolyVoices", json_integer(engine.numPolyVoices));
 
         // serialize rhythmPattern as array of ints 0/1
@@ -277,6 +277,21 @@ MeloDicer::MeloDicer() {
         json_object_set_new(root,"legatoRandom", lrarr);
         json_object_set_new(root,"melodyRandom", mrarr);
         json_object_set_new(root,"octaveRandom", orarr);
+
+        // serialize poly random buffers for identity stability
+        json_t* prarr = json_array();
+        json_t* pmarr = json_array();
+        json_t* poarr = json_array();
+        for (int v = 0; v < 7; v++) {
+            for (int i = 0; i < 16; i++) {
+                json_array_append_new(prarr, json_real(engine.pe.polyRhythmRandom[v][i]));
+                json_array_append_new(pmarr, json_real(engine.pe.polyMelodyRandom[v][i]));
+                json_array_append_new(poarr, json_real(engine.pe.polyOctaveRandom[v][i]));
+            }
+        }
+        json_object_set_new(root, "polyRhythmRandom", prarr);
+        json_object_set_new(root, "polyMelodyRandom", pmarr);
+        json_object_set_new(root, "polyOctaveRandom", poarr);
 
         // serialize melodyPitchV as array of reals
         json_t* marr = json_array();
@@ -317,7 +332,6 @@ MeloDicer::MeloDicer() {
         if (auto j = json_object_get(root,"rhythmSeedPendingFloat")) rhythmSeedPendingFloat = (float)json_real_value(j);
         if (auto j = json_object_get(root,"melodySeedPending")) melodySeedPending = (bool)json_boolean_value(j);
         if (auto j = json_object_get(root,"melodySeedPendingFloat")) melodySeedPendingFloat = (float)json_real_value(j);
-        if (auto j = json_object_get(root,"stochasticSeedFloat")) stochasticSeedFloat = (float)json_real_value(j);
         if (auto j = json_object_get(root,"numPolyVoices")) engine.numPolyVoices = pe_clamp((int)json_integer_value(j), 0, 7);
 
         if (auto j = json_object_get(root,"rhythmPattern")) {
@@ -350,7 +364,6 @@ MeloDicer::MeloDicer() {
 
         // Always reseed RNGs from saved seeds so patch restore is deterministic
         reseedXoroshiroFromFloat(rhythmRng, rhythmSeedFloat);
-        reseedXoroshiroFromFloat(stochasticRng, stochasticSeedFloat);
         reseedXoroshiroFromFloat(melodyRng, melodySeedFloat);
         updateScaleMask();
     }
@@ -415,6 +428,13 @@ float MeloDicer::getPolyRestParam(int voiceIdx) {
     if (cachedPolyVoiceExpander)
         return clampv<float>(cachedPolyVoiceExpander->params[MeloDicerIds::POLY_REST_PARAM_1 + voiceIdx].getValue(), 0.f, 1.f);
     return 0.1f;
+    float v = 0.1f;
+    if (cachedPolyVoiceExpander) {
+        v = cachedPolyVoiceExpander->params[MeloDicerIds::POLY_REST_PARAM_1 + voiceIdx].getValue();
+        // Add Poly Rest CV: 10V = 100% additional rest probability
+        v += cachedPolyVoiceExpander->inputs[MeloDicerIds::POLY_REST_CV_INPUT].getNormalVoltage(0.f) / 10.0f;
+    }
+    return clampv<float>(v, 0.f, 1.f);
 }
 
 // --- switch melody/rhythm mode (dice/realtime), caching/restoring state as needed ---    
@@ -573,6 +593,8 @@ float MeloDicer::semitoneToVolts(int semitone) {
 // Seeds are applied FIRST so the subsequent redraw uses the new RNG state.
 void MeloDicer::onPhraseBoundary_() {
     engine.pe.applyPendingSeedsAndRedraw(makePatternInput());
+    // Reseed the stochastic RNG so that polyphonic patterns remain stable across cycles.
+   // reseedXoroshiroFromFloat(stochasticRng, stochasticSeedFloat);
 }
 
 // ---------------- Helper: expander change hook -------------------------------
@@ -971,6 +993,16 @@ void MeloDicer::process(const ProcessArgs& args) {
                 engine.rhythmRot = engine.variationRot = engine.legatoRot = engine.melodyRot = engine.octaveRot = 0;
             }
         }
+
+        if (cachedPolyVoiceExpander) {
+            engine.polyLen = clampv<int>((int)std::round(cachedPolyVoiceExpander->params[POLY_DNA_LEN_PARAM].getValue()), 1, 16);
+            engine.polyOff = (int)std::round(cachedPolyVoiceExpander->params[POLY_DNA_OFF_PARAM].getValue()) % 16;
+            engine.polyRot = (int)std::round(cachedPolyVoiceExpander->params[POLY_DNA_ROT_PARAM].getValue()) % 16;
+        } else {
+            engine.polyLen = 16;
+            engine.polyOff = engine.polyRot = 0;
+        }
+
 
         engine.updateWindow(
             params[PATTERN_LENGTH_PARAM].getValue(), inputs[LENGTH_INPUT].getVoltage(), inputs[LENGTH_INPUT].isConnected(),

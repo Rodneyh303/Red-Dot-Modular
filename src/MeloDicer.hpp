@@ -108,6 +108,11 @@ namespace MeloDicerIds {
         POLY_REST_PARAM_6,
         POLY_REST_PARAM_7,
 
+        // Poly DNA Window Controls
+        POLY_DNA_LEN_PARAM,
+        POLY_DNA_OFF_PARAM,
+        POLY_DNA_ROT_PARAM,
+
         NUM_PARAMS
     };
 
@@ -304,7 +309,7 @@ struct MeloDicer : Module {
     // Convenience accessors
     rack::random::Xoroshiro128Plus& rhythmRng = engine.pe.rhythmRng;
     rack::random::Xoroshiro128Plus& melodyRng = engine.pe.melodyRng;
-    rack::random::Xoroshiro128Plus& stochasticRng = engine.pe.stochasticRng;
+    //rack::random::Xoroshiro128Plus& stochasticRng = engine.pe.stochasticRng;
     float& holdRemain = engine.gs.holdRemain;
     bool& gateHeld = engine.gs.gateHeld;
     float& currentPitchV = engine.gs.currentPitchV;
@@ -317,7 +322,7 @@ struct MeloDicer : Module {
     float& rhythmSeedPendingFloat = engine.pe.rhythmSeedPendingFloat;
     bool& melodySeedPending = engine.pe.melodySeedPending;
     float& melodySeedPendingFloat = engine.pe.melodySeedPendingFloat;
-    float& stochasticSeedFloat = engine.pe.stochasticSeedFloat;
+    //float& stochasticSeedFloat = engine.pe.stochasticSeedFloat;
 
     inline float unitRandomRhythm() { return engine.pe.unitRhythm(); }
     inline float unitRandomMelody() { return engine.pe.unitMelody(); }

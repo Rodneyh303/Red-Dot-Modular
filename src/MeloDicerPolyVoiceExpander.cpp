@@ -6,9 +6,9 @@ using namespace rack;
 using namespace MeloDicerIds;
 using namespace PolyVoiceExpanderIds;
 
-
 struct MeloDicerPolyVoiceExpanderWidget : ModuleWidget {
-    MeloDicerPolyVoiceExpanderWidget(MeloDicerPolyVoiceExpander* module) {
+    MeloDicerPolyVoiceExpanderWidget(MeloDicerPolyVoiceExpander* module) 
+    {
         setModule(module);
         setPanel(APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/MeloDicer_PolyVoiceExpander.svg")));
 
@@ -42,7 +42,12 @@ struct MeloDicerPolyVoiceExpanderWidget : ModuleWidget {
         addInput(createInputCentered<PJ301MPort>(
             mm2px(Vec(knobX, startY + 7 * spacingY + 5.0f)),
             module, MeloDicerIds::POLY_REST_CV_INPUT));
-    }
+
+        // Poly DNA Controls
+        float dnaX = knobX + 32.0f;
+        addParam(createParamCentered<Trimpot>(mm2px(Vec(dnaX, 25.0f)), module, MeloDicerIds::POLY_DNA_LEN_PARAM));
+        addParam(createParamCentered<Trimpot>(mm2px(Vec(dnaX, 37.0f)), module, MeloDicerIds::POLY_DNA_OFF_PARAM));
+        addParam(createParamCentered<Trimpot>(mm2px(Vec(dnaX, 49.0f)), module, MeloDicerIds::POLY_DNA_ROT_PARAM));
     }
 
     void draw(const DrawArgs& args) override {
@@ -52,6 +57,7 @@ struct MeloDicerPolyVoiceExpanderWidget : ModuleWidget {
         nvgFillColor(args.vg, nvgRGBA(0xdd, 0xdd, 0xdd, 0xff));
         nvgFontSize(args.vg, mm2px(3.0f)); // Adjust font size for better fit
         nvgText(args.vg, mm2px(15.0f), mm2px(15.0f), "POLY RESTS", nullptr);
+        nvgText(args.vg, mm2px(42.0f), mm2px(15.0f), "POLY DNA", nullptr);
     }
 };
 

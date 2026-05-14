@@ -29,13 +29,21 @@ namespace PolyVoiceExpanderIds {
 
 struct MeloDicerPolyVoiceExpander : Module {
     MeloDicerPolyVoiceExpander() {
-        config(7, 1, PolyVoiceExpanderIds::NUM_OUTPUTS, 0);
+        // Sizing to NUM_PARAMS and NUM_INPUTS is required because the expander
+        // uses IDs from the main MeloDicerIds namespace, which exceed the 
+        // local count of controls on this specific panel.
+        config(MeloDicerIds::NUM_PARAMS, MeloDicerIds::NUM_INPUTS, PolyVoiceExpanderIds::NUM_OUTPUTS, 0);
 
         for (int i = 0; i < 7; i++) {
             configParam(MeloDicerIds::POLY_REST_PARAM_1 + i, 0.f, 1.f, 0.1f,
                         "Voice " + std::to_string(i + 2) + " Rest Probability");
         }
         configInput(MeloDicerIds::POLY_REST_CV_INPUT, "Poly Rest CV");
+
+        // Poly DNA Controls: Setting 1-16 range prevents the 50% rounding jump
+        configParam(MeloDicerIds::POLY_DNA_LEN_PARAM, 1.f, 16.f, 16.f, "Poly DNA Length");
+        configParam(MeloDicerIds::POLY_DNA_OFF_PARAM, 0.f, 15.f, 0.f, "Poly DNA Offset");
+        configParam(MeloDicerIds::POLY_DNA_ROT_PARAM, 0.f, 15.f, 0.f, "Poly DNA Rotation");
 
         for (int i = 0; i < 7; i++) {
             configOutput(PolyVoiceExpanderIds::POLY_GATE_OUT_1 + i,

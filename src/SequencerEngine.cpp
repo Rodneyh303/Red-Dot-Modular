@@ -25,6 +25,8 @@ void SequencerEngine::reset() {
     rhythmLen = variationLen = legatoLen = melodyLen = octaveLen = 16;
     rhythmOff = variationOff = legatoOff = melodyOff = octaveOff = 0;
     rhythmRot = variationRot = legatoRot = melodyRot = octaveRot = 0;
+    polyLen = 16;
+    polyOff = polyRot = 0;
     windowMask = 0xFFFF;
     locked = false;
     muted = false;
@@ -289,7 +291,9 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input) 
             return;  // mono is still mid-note; poly just ticked, nothing more to do
 
         case MonoDecision::Rest:
-            return;  // mono rested — poly may not initiate a new note
+            v.gs.gateHeld = false;
+            v.gs.holdRemain = gs_noteSteps(lastStepResult.nvIdx);
+            return;
 
         case MonoDecision::Tie:
             // Mono extended its hold on the same pitch.
@@ -305,15 +309,16 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input) 
             break;  // fall through to independent note draw
     }
 
-    // Independent rest roll using the shared stochasticRng.
-    float r_rest = pe.rngToFloat(pe.stochasticRng);
+    // Access pre-generated DNA index for poly voices
+    int polyIdx = getStrandIdx(totalStepsElapsed, polyLen, polyOff, polyRot);
+
+    float r_rest = pe.polyRhythmRandom[voiceIdx][polyIdx];
     if (r_rest < v.restProb) return;
 
-    // Independent pitch draw — same scale/octave parameters as mono.
     int   sem    = 0;
     float pitchV = pe.genPitchLive(sem, input,
-                                    pe.rngToFloat(pe.stochasticRng),
-                                    pe.rngToFloat(pe.stochasticRng));
+                                    pe.polyMelodyRandom[voiceIdx][polyIdx],
+                                    pe.polyOctaveRandom[voiceIdx][polyIdx]);
 
     if (lastStepResult.decision == MonoDecision::NewNote) {
         v.gs.triggerNote(pitchV, sem, lastStepResult.nvIdx);
