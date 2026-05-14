@@ -382,6 +382,11 @@ struct MeloDicer : Module {
     float cv2Offsets[4] = {0.f, 0.f, 0.f, 0.f};
     float lastCv1V = -100.f;
     float lastCv1Off = 0.f;
+    // Transient octave offsets from CV1 modes 2 and 3.
+    // Applied in getOctaveLoParam()/getOctaveHiParam() and cleared when CV1 is disconnected.
+    // These are never written to params so they leave no persistent state.
+    float cv1LoOffset = 0.f;
+    float cv1HiOffset = 0.f;
 
     MeloDicer();
 
@@ -396,10 +401,10 @@ struct MeloDicer : Module {
     float getOctaveHiParam();
 
     float getNoteValueParam();
-    float getRestParam(int voice);
     float getVariationParam();
     float getLegatoParam();
     float getRestParam();
+    float getPolyRestParam(int voiceIdx); // voiceIdx 0-6 maps to voices 2-8
 
     void switchMelodyMode();
     void switchRhythmMode();

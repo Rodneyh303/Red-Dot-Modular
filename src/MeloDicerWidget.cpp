@@ -327,6 +327,23 @@ void MeloDicerWidget::appendContextMenu(ui::Menu* menu) {
             void step() override { rightText = (target && *target == value) ? "✔" : ""; ui::MenuItem::step(); }
         };
 
+        menu->addChild(createSubmenuItem("Poly Voices", "", [=](ui::Menu* sub) {
+            sub->addChild(new ui::MenuLabel);
+            auto* l = new ui::MenuLabel; l->text = "Active Voices (1 = mono only)"; sub->addChild(l);
+            const char* labels[] = {"1 (mono)", "2", "3", "4", "5", "6", "7", "8"};
+            for (int v = 0; v <= 7; ++v) {
+                auto* it = createMenuItem<IntItem>(labels[v]);
+                it->module = m;
+                it->target = &m->engine.numPolyVoices;
+                it->value  = v;
+                sub->addChild(it);
+            }
+            sub->addChild(new ui::MenuSeparator);
+            auto* note = new ui::MenuLabel;
+            note->text = "Requires PolyVoice expander for outputs";
+            sub->addChild(note);
+        }));
+
         menu->addChild(createSubmenuItem("Sequencer Modes", "", [=](ui::Menu* sub) {
             { auto* l = new ui::MenuLabel; l->text = "Operating Mode"; sub->addChild(l);
               const char* n[] = {"A: Sequencer","B: Seq + Gate","C: Quantizer 1","D: Quantizer 2"};

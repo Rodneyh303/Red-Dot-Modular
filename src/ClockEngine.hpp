@@ -1,6 +1,15 @@
 #pragma once
 #include <rack.hpp>
 
+// ── Minimal clamp helper — lives here so ClockEngine.cpp does not need
+//    to include MeloDicer.hpp (which would create a circular dependency).
+template <typename T>
+static inline T clkClamp(T v, T lo, T hi) {
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+}
+
 struct ClockEngine {
     rack::dsp::SchmittTrigger clkTrig;
 

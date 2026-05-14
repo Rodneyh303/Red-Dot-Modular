@@ -4,6 +4,7 @@
 
 using namespace rack;
 using namespace MeloDicerIds;
+using namespace PolyVoiceExpanderIds;
 
 
 struct MeloDicerPolyVoiceExpanderWidget : ModuleWidget {
@@ -17,17 +18,31 @@ struct MeloDicerPolyVoiceExpanderWidget : ModuleWidget {
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
-        // 7 Rest knobs for additional voices
-        float knobX = 15.0f;
-        float startY = 25.0f;
+        // 7 Rest knobs for additional voices (left column)
+        float knobX   = 10.0f;
+        float outGateX =  22.0f;
+        float outCvX   =  32.0f;
+        float startY  = 25.0f;
         float spacingY = 12.0f;
 
         for (int i = 0; i < 7; i++) {
-            addParam(createParamCentered<Trimpot>(mm2px(Vec(knobX, startY + i * spacingY)), module, MeloDicerIds::POLY_REST_PARAM_1 + i));
+            float y = startY + i * spacingY;
+            // Rest probability knob
+            addParam(createParamCentered<Trimpot>(
+                mm2px(Vec(knobX, y)), module, MeloDicerIds::POLY_REST_PARAM_1 + i));
+            // Gate output
+            addOutput(createOutputCentered<PJ301MPort>(
+                mm2px(Vec(outGateX, y)), module, POLY_GATE_OUT_1 + i));
+            // CV (pitch) output
+            addOutput(createOutputCentered<PJ301MPort>(
+                mm2px(Vec(outCvX, y)), module, POLY_CV_OUT_1 + i));
         }
 
-        // Poly Rest CV Input
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(knobX, startY + 7 * spacingY + 5.0f)), module, MeloDicerIds::POLY_REST_CV_INPUT));
+        // Poly Rest CV Input (below the knobs)
+        addInput(createInputCentered<PJ301MPort>(
+            mm2px(Vec(knobX, startY + 7 * spacingY + 5.0f)),
+            module, MeloDicerIds::POLY_REST_CV_INPUT));
+    }
     }
 
     void draw(const DrawArgs& args) override {

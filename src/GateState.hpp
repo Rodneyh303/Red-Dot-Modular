@@ -34,7 +34,7 @@ static inline T gs_clamp(T v, T lo, T hi){ return v<lo?lo:(v>hi?hi:v); }
 
 // ── Note length helper: fraction of a whole note × 16 steps ──────────────────
 // Matches MeloDicer::NOTEVALS fractions exactly.
-extern const float GS_NOTE_FRACS[9];
+extern const float GS_NOTE_FRACS[8];
 extern float gs_noteSteps(int nvIdx);
 
 // ── GateState ─────────────────────────────────────────────────────────────────

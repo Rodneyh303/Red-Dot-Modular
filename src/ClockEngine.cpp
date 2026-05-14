@@ -1,5 +1,4 @@
 #include "ClockEngine.hpp"
-#include "MeloDicer.hpp"
 
 void ClockEngine::reset() {
     clkTrig.reset();
@@ -18,16 +17,16 @@ void ClockEngine::process(float clockVoltage, bool clkConnected, float internalB
     if (clkConnected) {
         externalActive = true;
         timeAcc = 0.f;
-        if (!measured) bpm = clampv(internalBpm, 20.f, 300.f);
+        if (!measured) bpm = clkClamp(internalBpm, 20.f, 300.f);
 
         if (clkTrig.process(clockVoltage, 0.1f, 2.f)) {
             if (ppqnCount == 0) {
                 sixteenthEdge = true;
-                
+
                 // Stabilize BPM by measuring the full 1/16th note interval instead of a single pulse
                 if (measured && clockTimeAcc > 0.001f && clockTimeAcc < 10.f) {
                     float derivedBpm = (60.f * 4.f) / clockTimeAcc; // 4 sixteenths per beat
-                    bpm = clampv(derivedBpm, 20.f, 300.f);
+                    bpm = clkClamp(derivedBpm, 20.f, 300.f);
                 }
                 measured = true;
                 clockTimeAcc = 0.f;
@@ -43,7 +42,7 @@ void ClockEngine::process(float clockVoltage, bool clkConnected, float internalB
         clockTimeAcc     = 0.f;
         ppqnCount        = 0;
 
-        float nextBpm = clampv(internalBpm, 20.f, 300.f);
+        float nextBpm = clkClamp(internalBpm, 20.f, 300.f);
         if (std::abs(nextBpm - bpm) > 0.001f) {
             bpm = nextBpm;
             sixteenthSec = 15.f / bpm;

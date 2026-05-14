@@ -16,6 +16,7 @@
 
 #include "MeloDicerDNAExpander.hpp"
 #include "MeloDicerExpander.hpp"
+#include "MeloDicerPolyVoiceExpander.hpp"
 #include "MeloDicerWidget.hpp"
 #include "MeloDicer.hpp"
 #include "PatternEngine.hpp"
@@ -41,7 +42,7 @@ MeloDicer::MeloDicer() {
 
         // Main controls
         configSwitch(NOTE_VALUE_PARAM, 0.f, 7.f, 2.f, "Note value",
-            {"1/2", "1/4", "1/4T", "1/8", "1/8T", "1/16", "1/32T", "1/32"});
+            {"1/2", "1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32"});
         configParam(VARIATION_PARAM,   0.f, 1.f, 0.5f, "Variation (longer–shorter)");
         configParam(LEGATO_PARAM,      0.f, 1.f, 0.10f, "Legato probability");
         configParam(REST_PARAM,        0.f, 1.f, 0.10f, "Rest probability");
@@ -251,6 +252,7 @@ MeloDicer::MeloDicer() {
         json_object_set_new(root,"melodySeedPending", json_boolean(melodySeedPending));
         json_object_set_new(root,"melodySeedPendingFloat", json_real((float)melodySeedPendingFloat));
         json_object_set_new(root,"stochasticSeedFloat", json_real((float)stochasticSeedFloat));
+        json_object_set_new(root,"numPolyVoices", json_integer(engine.numPolyVoices));
 
         // serialize rhythmPattern as array of ints 0/1
         json_t* rarr = json_array();
@@ -316,6 +318,7 @@ MeloDicer::MeloDicer() {
         if (auto j = json_object_get(root,"melodySeedPending")) melodySeedPending = (bool)json_boolean_value(j);
         if (auto j = json_object_get(root,"melodySeedPendingFloat")) melodySeedPendingFloat = (float)json_real_value(j);
         if (auto j = json_object_get(root,"stochasticSeedFloat")) stochasticSeedFloat = (float)json_real_value(j);
+        if (auto j = json_object_get(root,"numPolyVoices")) engine.numPolyVoices = pe_clamp((int)json_integer_value(j), 0, 7);
 
         if (auto j = json_object_get(root,"rhythmPattern")) {
             if (json_is_array(j)) {
@@ -378,6 +381,7 @@ MeloDicer::MeloDicer() {
                 v += (cachedExpander->inputs[MeloDicerIds::EXPANDER_OCT_LO_CV_INPUT].getVoltage() * att) / 10.0f * 8.0f;
             }
         }
+        v += cv1LoOffset;   // transient CV1 mode-2 offset — never persisted to param
         v = clampv(v, 0.f, 8.f);
         return v;
     }
@@ -391,6 +395,7 @@ MeloDicer::MeloDicer() {
                 v += (cachedExpander->inputs[MeloDicerIds::EXPANDER_OCT_HI_CV_INPUT].getVoltage() * att) / 10.0f * 8.0f;
             }
         }
+        v += cv1HiOffset;   // transient CV1 mode-3 offset — never persisted to param
         v = clampv(v, 0.f, 8.f);
         return v;
     }
@@ -402,6 +407,15 @@ float MeloDicer::getNoteValueParam()  { return clampv<float>(params[NOTE_VALUE_P
 float MeloDicer::getVariationParam()  { return clampv<float>(params[VARIATION_PARAM].getValue()  + cv2Offsets[1], 0.f, 1.f); }
 float MeloDicer::getLegatoParam()     { return clampv<float>(params[LEGATO_PARAM].getValue()     + cv2Offsets[2], 0.f, 1.f); }
 float MeloDicer::getRestParam()       { return clampv<float>(params[REST_PARAM].getValue()       + cv2Offsets[3], 0.f, 1.f); }
+
+// Returns rest probability for poly voice voiceIdx (0 = voice 2, ..., 6 = voice 8).
+// Reads from expander knob if the expander is connected, otherwise falls back to 0.1.
+float MeloDicer::getPolyRestParam(int voiceIdx) {
+    if (voiceIdx < 0 || voiceIdx > 6) return 0.1f;
+    if (cachedPolyVoiceExpander)
+        return clampv<float>(cachedPolyVoiceExpander->params[MeloDicerIds::POLY_REST_PARAM_1 + voiceIdx].getValue(), 0.f, 1.f);
+    return 0.1f;
+}
 
 // --- switch melody/rhythm mode (dice/realtime), caching/restoring state as needed ---    
 void MeloDicer::switchMelodyMode() { engine.pe.switchMelodyMode(stepIndex, lastStepIndex); }
@@ -562,17 +576,39 @@ void MeloDicer::onPhraseBoundary_() {
 }
 
 // ---------------- Helper: expander change hook -------------------------------
+//
+// Expander topology:
+//   [ScaleExpander] — [MeloDicer] — [DNAExpander] — [PolyVoiceExpander]
+//
+// The left expander is always the scale/CV expander.
+// The right side is a chain: MeloDicer checks its immediate right for DNA or
+// PolyVoice.  If DNA is present, PolyVoice is expected to the right of DNA
+// and is reached by walking one step further.  If no DNA is present,
+// PolyVoice may attach directly to MeloDicer's right.
 void MeloDicer::onExpanderChange(const ExpanderChangeEvent& e) {
+    // Left — scale/CV expander
     if (leftExpander.module && leftExpander.module->model == modelMeloDicerExpander) {
         cachedExpander = dynamic_cast<MeloDicerExpander*>(leftExpander.module);
     } else {
         cachedExpander = nullptr;
     }
 
-    if (rightExpander.module && rightExpander.module->model == modelMeloDicerDNAExpander) {
-        cachedDnaExpander = dynamic_cast<MeloDicerDNAExpander*>(rightExpander.module);
-    } else {
-        cachedDnaExpander = nullptr;
+    // Right — DNA expander sits immediately right of MeloDicer
+    cachedDnaExpander = nullptr;
+    cachedPolyVoiceExpander = nullptr;
+
+    if (rightExpander.module) {
+        if (rightExpander.module->model == modelMeloDicerDNAExpander) {
+            cachedDnaExpander = dynamic_cast<MeloDicerDNAExpander*>(rightExpander.module);
+            // PolyVoice expander chains to the right of DNA
+            Module* dnaRight = rightExpander.module->rightExpander.module;
+            if (dnaRight && dnaRight->model == modelMeloDicerPolyVoiceExpander) {
+                cachedPolyVoiceExpander = dynamic_cast<MeloDicerPolyVoiceExpander*>(dnaRight);
+            }
+        } else if (rightExpander.module->model == modelMeloDicerPolyVoiceExpander) {
+            // PolyVoice attached directly when no DNA expander is present
+            cachedPolyVoiceExpander = dynamic_cast<MeloDicerPolyVoiceExpander*>(rightExpander.module);
+        }
     }
 }
 
@@ -750,20 +786,20 @@ void MeloDicer::process(const ProcessArgs& args) {
                 }
                 outputs[CV_OUTPUT].setVoltage(currentPitchV + lastCv1Off);
             } break;
-            case 2: {                                                                     // Mod LO
-                float lo = clampv<float>(params[OCT_LO_PARAM].getValue() + v * 0.25f, 0.f, 8.f);
-                params[OCT_LO_PARAM].setValue(lo);
+            case 2: {                                                                    // Mod LO (transient offset — never writes to param)
+                cv1LoOffset = clampv<float>(v * 0.25f, -8.f, 8.f);
                 outputs[CV_OUTPUT].setVoltage(currentPitchV);
             } break;
-            case 3: {                                                                     // Mod HI
-                float hi = clampv<float>(params[OCT_HI_PARAM].getValue() + v * 0.25f, 0.f, 8.f);
-                params[OCT_HI_PARAM].setValue(hi);
+            case 3: {                                                                    // Mod HI (transient offset — never writes to param)
+                cv1HiOffset = clampv<float>(v * 0.25f, -8.f, 8.f);
                 outputs[CV_OUTPUT].setVoltage(currentPitchV);
             } break;
         }
-} else {
-    outputs[CV_OUTPUT].setVoltage(currentPitchV);
-}
+    } else {
+        cv1LoOffset = 0.f;
+        cv1HiOffset = 0.f;
+        outputs[CV_OUTPUT].setVoltage(currentPitchV);
+    }
 
     
     
@@ -771,6 +807,23 @@ void MeloDicer::process(const ProcessArgs& args) {
     float gateV = engine.gs.process(args.sampleTime);
     if (muted)             gateV = 0.f;
     outputs[GATE_OUTPUT].setVoltage(gateV);
+
+    // Poly voice gate and CV outputs — written every sample so pulse timing is accurate.
+    // MeloDicer writes directly into the expander's output ports.
+    if (cachedPolyVoiceExpander && engine.numPolyVoices > 0) {
+        using namespace PolyVoiceExpanderIds;
+        for (int i = 0; i < engine.numPolyVoices; ++i) {
+            float vg = engine.voices[i].gs.process(args.sampleTime);
+            if (muted) vg = 0.f;
+            cachedPolyVoiceExpander->outputs[POLY_GATE_OUT_1 + i].setVoltage(vg);
+            cachedPolyVoiceExpander->outputs[POLY_CV_OUT_1 + i].setVoltage(engine.voices[i].gs.currentPitchV);
+        }
+        // Zero unused voice outputs so they don't emit stale voltages.
+        for (int i = engine.numPolyVoices; i < 7; ++i) {
+            cachedPolyVoiceExpander->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
+            cachedPolyVoiceExpander->outputs[POLY_CV_OUT_1 + i].setVoltage(0.f);
+        }
+    }
 
 
     // DICE light policy: bright when enabled, also bright when a seed is armed
@@ -790,8 +843,13 @@ void MeloDicer::process(const ProcessArgs& args) {
         lights[RESET_LIGHT].setBrightnessSmooth(resetArmed ? 1.f : 0.f, args.sampleTime * 512.f);
         outputs[RUN_GATE_OUTPUT].setVoltage(runGateActive ? 10.f : 0.f);
 
-        // Seed monitor out (prefers armed value if present)
-        float outSeed = rhythmSeedPending ? rhythmSeedPendingFloat : rhythmSeedFloat;
+        // Seed monitor out — outputs the most recently armed or committed seed.
+        // Prefers a pending (armed) value if present; reflects both rhythm and
+        // melody seeds so the output is useful regardless of which DICE is active.
+        // Rhythm and melody seeds share the same output (last-armed wins).
+        float outSeed = rhythmSeedFloat;
+        if (rhythmSeedPending)  outSeed = rhythmSeedPendingFloat;
+        if (melodySeedPending)  outSeed = melodySeedPendingFloat;   // melody armed overrides rhythm
         outputs[SEED_OUTPUT].setVoltage(clampv<float>(outSeed, 0.f, 10.f));
 
         // --- UI button toggles ---
@@ -857,9 +915,12 @@ void MeloDicer::process(const ProcessArgs& args) {
             auto processStrand = [&](int pLen, int iLen, int pOff, int iOff, int pRot, int& tLen, int& tOff, int& tRot) {
                 float lCV = cachedDnaExpander->inputs[iLen].getNormalVoltage(0.f) * 1.6f;
                 float oCV = cachedDnaExpander->inputs[iOff].getNormalVoltage(0.f) * 1.5f;
-                tLen = clampv<int>(std::round(cachedDnaExpander->params[pLen].getValue() + lCV), 1, 16);
-                tOff = (int)std::round(cachedDnaExpander->params[pOff].getValue() + oCV) % 16;
-                tRot = (int)std::round(cachedDnaExpander->params[pRot].getValue()) % 16;
+                tLen = clampv<int>((int)std::round(cachedDnaExpander->params[pLen].getValue() + lCV), 1, 16);
+                // Use positive-safe modulo: C++ % can return negative for negative operands.
+                int rawOff = (int)std::round(cachedDnaExpander->params[pOff].getValue() + oCV);
+                tOff = ((rawOff % 16) + 16) % 16;
+                int rawRot = (int)std::round(cachedDnaExpander->params[pRot].getValue());
+                tRot = ((rawRot % 16) + 16) % 16;
             };
 
             using namespace MeloDicerIds;
@@ -937,8 +998,12 @@ void MeloDicer::process(const ProcessArgs& args) {
 //  Also handles mute logic (no output, but still advances and updates LEDs)
 void MeloDicer::handleModeA_(const ProcessArgs& args) {
     if (clock.sixteenthEdge && !muted) {
-        if (engine.executeModeA(clock, getRestParam(), getLegatoParam(), getNoteValueParam(), makePatternInput())) {
-            onPhraseBoundary_();
+        StepResult result = engine.executeModeA(clock, getRestParam(), getLegatoParam(), getNoteValueParam(), makePatternInput());
+        if (result.wrapped) onPhraseBoundary_();
+        if (result.stepped && engine.numPolyVoices > 0) {
+            for (int i = 0; i < engine.numPolyVoices; ++i)
+                engine.voices[i].restProb = getPolyRestParam(i);
+            engine.executePolyVoices(makePatternInput());
         }
         lastStepIndex = stepIndex;
     }
@@ -953,8 +1018,12 @@ void MeloDicer::handleModeA_(const ProcessArgs& args) {
 void MeloDicer::handleModeB_(const ProcessArgs& args, bool gate1Rise) {
     bool gate1High = inputs[GATE1_INPUT].getVoltage() >= 1.f;
     if (!muted && (gate1Rise || (gate1High && stepIndex == -1))) {
-        if (engine.executeModeB(gate1Rise, gate1High, getRestParam(), getLegatoParam(), getNoteValueParam(), makePatternInput())) {
-            onPhraseBoundary_();
+        StepResult result = engine.executeModeB(gate1Rise, gate1High, getRestParam(), getLegatoParam(), getNoteValueParam(), makePatternInput());
+        if (result.wrapped) onPhraseBoundary_();
+        if (result.stepped && engine.numPolyVoices > 0) {
+            for (int i = 0; i < engine.numPolyVoices; ++i)
+                engine.voices[i].restProb = getPolyRestParam(i);
+            engine.executePolyVoices(makePatternInput());
         }
         lastStepIndex = stepIndex;
     }
@@ -1060,4 +1129,5 @@ void init(rack::Plugin* p) {
 	p->addModel(modelMeloDicer);
 	p->addModel(modelMeloDicerExpander);
 	p->addModel(modelMeloDicerDNAExpander);
+	p->addModel(modelMeloDicerPolyVoiceExpander);
 }

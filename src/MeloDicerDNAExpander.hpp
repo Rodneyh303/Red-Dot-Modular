@@ -4,14 +4,39 @@
 
 using namespace rack;
 
+// The DNA expander only uses a subset of MeloDicerIds — the DNA strand
+// params/inputs and action buttons.  We allocate exactly that range so we
+// don't waste memory on the full MeloDicer param/input set.
+//
+// Layout helpers: MeloDicer reads this expander's params[]/inputs[] directly
+// using MeloDicerIds enum values.  We therefore allocate exactly
+// (NUM_PARAMS - DNA_R_LEN_PARAM) params and (NUM_INPUTS - DNA_R_LEN_INPUT)
+// inputs, and bias every index by subtracting the start offset so that
+// params[DNA_R_LEN_PARAM - DNA_PARAM_OFFSET] corresponds to the correct slot.
+//
+// To keep it simple and safe for now we size to the full MeloDicerIds ranges
+// but use a named constant so the intent is obvious and can be tightened later.
+
 struct MeloDicerDNAExpander : Module {
+    // Number of params/inputs in the DNA expander's own namespace.
+    // Sized from DNA_R_LEN_PARAM .. NUM_PARAMS and DNA_R_LEN_INPUT .. NUM_INPUTS.
+    static constexpr int DNA_NUM_PARAMS = MeloDicerIds::NUM_PARAMS  - MeloDicerIds::DNA_R_LEN_PARAM;
+    static constexpr int DNA_NUM_INPUTS = MeloDicerIds::NUM_INPUTS  - MeloDicerIds::DNA_R_LEN_INPUT;
+
     MeloDicerDNAExpander() {
+        // Allocate only the DNA-relevant range, not all of MeloDicerIds.
+        // MeloDicer accesses params[id] and inputs[id] via the cached pointer;
+        // it always uses full MeloDicerIds values, so we offset by the base.
+        // For safety during this transition we still size to NUM_PARAMS/NUM_INPUTS
+        // to guarantee no out-of-bounds access if a call site forgets the offset.
+        // TODO: once all call sites are updated to subtract DNA_R_LEN_PARAM /
+        //       DNA_R_LEN_INPUT, replace with config(DNA_NUM_PARAMS, DNA_NUM_INPUTS, 0, 0).
         config(MeloDicerIds::NUM_PARAMS, MeloDicerIds::NUM_INPUTS, 0, 0);
 
         auto configS = [&](int pLen, int pOff, int pRot, const char* name) {
             configParam(pLen, 1.f, 16.f, 16.f, name + std::string(" Length"));
-            configParam(pOff, 0.f, 15.f, 0.f, name + std::string(" Offset"));
-            configParam(pRot, 0.f, 15.f, 0.f, name + std::string(" Rotation (Non-destructive)"));
+            configParam(pOff, 0.f, 15.f,  0.f, name + std::string(" Offset"));
+            configParam(pRot, 0.f, 15.f,  0.f, name + std::string(" Rotation (Non-destructive)"));
         };
 
         configS(MeloDicerIds::DNA_R_LEN_PARAM, MeloDicerIds::DNA_R_OFF_PARAM, MeloDicerIds::DNA_R_ROT_PARAM, "Rhythm");
@@ -20,7 +45,7 @@ struct MeloDicerDNAExpander : Module {
         configS(MeloDicerIds::DNA_M_LEN_PARAM, MeloDicerIds::DNA_M_OFF_PARAM, MeloDicerIds::DNA_M_ROT_PARAM, "Melody");
         configS(MeloDicerIds::DNA_O_LEN_PARAM, MeloDicerIds::DNA_O_OFF_PARAM, MeloDicerIds::DNA_O_ROT_PARAM, "Octave");
 
-        // DNA Action Buttons (Scramble)
+        // Scramble buttons
         configButton(MeloDicerIds::DNA_SCRAMBLE_ALL_PARAM, "Scramble ALL");
         configButton(MeloDicerIds::DNA_SCRAMBLE_R_PARAM,   "Scramble Rhythm");
         configButton(MeloDicerIds::DNA_SCRAMBLE_V_PARAM,   "Scramble Variation");
@@ -28,18 +53,35 @@ struct MeloDicerDNAExpander : Module {
         configButton(MeloDicerIds::DNA_SCRAMBLE_M_PARAM,   "Scramble Melody");
         configButton(MeloDicerIds::DNA_SCRAMBLE_O_PARAM,   "Scramble Octave");
 
-        // DNA Action Buttons (Reset)
-        configButton(MeloDicerIds::DNA_RESET_ALL_PARAM,    "Reset ALL");
-        configButton(MeloDicerIds::DNA_RESET_R_PARAM,      "Reset Rhythm");
-        configButton(MeloDicerIds::DNA_RESET_V_PARAM,      "Reset Variation");
-        configButton(MeloDicerIds::DNA_RESET_L_PARAM,      "Reset Legato");
-        configButton(MeloDicerIds::DNA_RESET_M_PARAM,      "Reset Melody");
-        configButton(MeloDicerIds::DNA_RESET_O_PARAM,      "Reset Octave");
+        // Reset buttons
+        configButton(MeloDicerIds::DNA_RESET_ALL_PARAM, "Reset ALL");
+        configButton(MeloDicerIds::DNA_RESET_R_PARAM,   "Reset Rhythm");
+        configButton(MeloDicerIds::DNA_RESET_V_PARAM,   "Reset Variation");
+        configButton(MeloDicerIds::DNA_RESET_L_PARAM,   "Reset Legato");
+        configButton(MeloDicerIds::DNA_RESET_M_PARAM,   "Reset Melody");
+        configButton(MeloDicerIds::DNA_RESET_O_PARAM,   "Reset Octave");
 
-        // Note: The DNA Gate Inputs are defined in MeloDicer.hpp and read by the main module.
-        // The expander module itself does not need to configInput() for them,
-        // but the expander widget will add InputPort widgets that refer to these IDs.
-        // This is consistent with how the main module reads expander inputs.
+        // CV inputs for Length and Offset per strand
+        using namespace MeloDicerIds;
+        configInput(DNA_R_LEN_INPUT, "Rhythm Length CV");    configInput(DNA_R_OFF_INPUT, "Rhythm Offset CV");
+        configInput(DNA_V_LEN_INPUT, "Variation Length CV"); configInput(DNA_V_OFF_INPUT, "Variation Offset CV");
+        configInput(DNA_L_LEN_INPUT, "Legato Length CV");    configInput(DNA_L_OFF_INPUT, "Legato Offset CV");
+        configInput(DNA_M_LEN_INPUT, "Melody Length CV");    configInput(DNA_M_OFF_INPUT, "Melody Offset CV");
+        configInput(DNA_O_LEN_INPUT, "Octave Length CV");    configInput(DNA_O_OFF_INPUT, "Octave Offset CV");
+
+        // Gate inputs for scramble / reset actions
+        configInput(DNA_SCRAMBLE_ALL_INPUT, "Scramble ALL Gate");
+        configInput(DNA_SCRAMBLE_R_INPUT,   "Scramble Rhythm Gate");
+        configInput(DNA_SCRAMBLE_M_INPUT,   "Scramble Melody Gate");
+        configInput(DNA_SCRAMBLE_V_INPUT,   "Scramble Variation Gate");
+        configInput(DNA_SCRAMBLE_L_INPUT,   "Scramble Legato Gate");
+        configInput(DNA_SCRAMBLE_O_INPUT,   "Scramble Octave Gate");
+        configInput(DNA_RESET_ALL_INPUT,    "Reset ALL Gate");
+        configInput(DNA_RESET_R_INPUT,      "Reset Rhythm Gate");
+        configInput(DNA_RESET_M_INPUT,      "Reset Melody Gate");
+        configInput(DNA_RESET_V_INPUT,      "Reset Variation Gate");
+        configInput(DNA_RESET_L_INPUT,      "Reset Legato Gate");
+        configInput(DNA_RESET_O_INPUT,      "Reset Octave Gate");
     }
 
     void process(const ProcessArgs& args) override {}

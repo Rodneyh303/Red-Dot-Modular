@@ -12,6 +12,9 @@ static const int DNA_LCM = 720720; // LCM of 1..16 ensures drift continuity
 void SequencerEngine::reset() {
     pe.reset();
     gs.reset();
+    for (int i = 0; i < 7; ++i) voices[i].gs.reset();
+    // restProb values are NOT reset — the caller re-applies them from expander knobs.
+    lastStepResult = StepResult{};
     stepIndex = -1;
     lastStepIndex = -1;
     startStep = 0;
@@ -151,36 +154,48 @@ bool SequencerEngine::shouldTriggerStep(int ppqn) const {
     return true; 
 }
 
-void SequencerEngine::executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, const PatternInput& input, bool wasHeld) {
-    float dur = gs_noteSteps(nvIdx);
-    
-    int sem = 0;
-    float pitchV = pe.genPitchLive(sem, input, pe.melodyRandom[getMelodyStep()], pe.octaveRandom[getOctaveStep()]);
+StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, const PatternInput& input, bool wasHeld) {
+    StepResult result;
+    result.nvIdx = nvIdx;
 
-    if (gs.holdRemain < 1.f) {
-        if (legatoProb >= 0.999f) {
-            gs.slideMax(pitchV, sem, nvIdx);
-        }
-        else {
-            if (r_rest < restProb) {
-                gs.gateHeld = false;
-                gs.holdRemain = dur;
-            }
-            else if (r_legato_tie < legatoProb) {
-                // Connected: Either Tie or Legato
-                if (sem == gs.lastSemitone && wasHeld) {
-                    gs.extendHold(sem, nvIdx);
-                } else {
-                    gs.slideNote(pitchV, sem, nvIdx, wasHeld);
-                }
-            }
-            else {
-                // Disconnected: New Note
-                gs.triggerNote(pitchV, sem, nvIdx);
-            }
+    // Mid-note: previous note's hold is still counting down.
+    // Poly voices seeing MidNote will tick their own holds and return.
+    if (gs.holdRemain >= 1.f) {
+        result.decision = MonoDecision::MidNote;
+        lastStepResult = result;
+        return result;
+    }
+
+    int   sem    = 0;
+    float pitchV = pe.genPitchLive(sem, input,
+                                    pe.melodyRandom[getMelodyStep()],
+                                    pe.octaveRandom[getOctaveStep()]);
+
+    if (legatoProb >= 0.999f) {
+        gs.slideMax(pitchV, sem, nvIdx);
+        result.decision = MonoDecision::LegatoMax;
+    }
+    else if (r_rest < restProb) {
+        gs.gateHeld   = false;
+        gs.holdRemain = gs_noteSteps(nvIdx);
+        result.decision = MonoDecision::Rest;
+    }
+    else if (r_legato_tie < legatoProb) {
+        if (sem == gs.lastSemitone && wasHeld) {
+            gs.extendHold(sem, nvIdx);
+            result.decision = MonoDecision::Tie;
+        } else {
+            gs.slideNote(pitchV, sem, nvIdx, wasHeld);
+            result.decision = MonoDecision::Legato;
         }
     }
-    // Mid-note: randomness already accounted for by r_rest/r_legato_tie.
+    else {
+        gs.triggerNote(pitchV, sem, nvIdx);
+        result.decision = MonoDecision::NewNote;
+    }
+
+    lastStepResult = result;
+    return result;
 }
 
 void SequencerEngine::handlePhraseBoundary(PatternInput input, bool isMelodyRealtime, bool isRhythmRealtime) {
@@ -195,8 +210,9 @@ void SequencerEngine::handlePhraseBoundary(PatternInput input, bool isMelodyReal
     pe.applyPendingSeedsAndRedraw(input);
 }
 
-bool SequencerEngine::executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input) {
-    if (!clock.sixteenthEdge || muted) return false;
+StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input) {
+    StepResult result;
+    if (!clock.sixteenthEdge || muted) return result;
 
     bool wrapped = advancePlayhead();
     float r_vary   = pe.variationRandom[getVariationStep()];
@@ -207,14 +223,17 @@ bool SequencerEngine::executeModeA(const ClockEngine& clock, float restProb, flo
 
     bool wasHeld = gs.gateHeld;
     gs.tick();
-    executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, input, wasHeld);
-    return wrapped;
+    result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, input, wasHeld);
+    result.stepped = true;
+    result.wrapped = wrapped;
+    return result;
 }
 
-bool SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float restProb, float legatoProb, float noteVal, const PatternInput& input) {
+StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float restProb, float legatoProb, float noteVal, const PatternInput& input) {
+    StepResult result;
     if (muted) {
         prevGate1High = gate1High;
-        return false;
+        return result;
     }
     bool wrapped = false;
     bool triggered = false;
@@ -223,7 +242,7 @@ bool SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float restPro
         wrapped = advancePlayhead();
         triggered = true;
     } else if (gate1High && !prevGate1High && stepIndex == -1) {
-        advancePlayhead(); // Advance to startStep
+        advancePlayhead();
         triggered = true;
     }
 
@@ -236,11 +255,82 @@ bool SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float restPro
 
         bool wasHeld = gs.gateHeld;
         gs.tick();
-        executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, input, wasHeld);
+        result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, input, wasHeld);
+        result.stepped = true;
+        result.wrapped = wrapped;
     }
 
     prevGate1High = gate1High;
-    return wrapped;
+    return result;
+}
+
+// ── Poly voice execution ──────────────────────────────────────────────────────
+//
+// Rules (see design doc):
+//   MidNote  — mono note still in progress; poly ticks its hold and returns.
+//   Rest     — mono rested; poly cannot initiate a new note this step.
+//   Tie      — mono held the same pitch; poly voices that are sounding extend
+//              their own hold.  Voices already at rest remain silent.
+//   Legato / LegatoMax / NewNote — mono played something new; each poly voice
+//              independently rolls its own rest probability then draws its
+//              own pitch using stochasticRng.  Gate type (retrigger vs slide)
+//              follows mono's decision.  Within the legato zone a poly-internal
+//              tie still emerges naturally when the voice's random pitch
+//              matches its own previous semitone.
+
+void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input) {
+    PolyVoice& v = voices[voiceIdx];
+    bool wasHeld = v.gs.gateHeld;
+    v.gs.tick();   // always tick — held notes decay through mono rests naturally
+
+    switch (lastStepResult.decision) {
+
+        case MonoDecision::MidNote:
+            return;  // mono is still mid-note; poly just ticked, nothing more to do
+
+        case MonoDecision::Rest:
+            return;  // mono rested — poly may not initiate a new note
+
+        case MonoDecision::Tie:
+            // Mono extended its hold on the same pitch.
+            // Poly voices that are currently sounding extend their own holds.
+            // Voices already silent stay silent — don't resurrect a resting voice.
+            if (wasHeld)
+                v.gs.extendHold(v.gs.lastSemitone, lastStepResult.nvIdx);
+            return;
+
+        case MonoDecision::Legato:
+        case MonoDecision::LegatoMax:
+        case MonoDecision::NewNote:
+            break;  // fall through to independent note draw
+    }
+
+    // Independent rest roll using the shared stochasticRng.
+    float r_rest = pe.rngToFloat(pe.stochasticRng);
+    if (r_rest < v.restProb) return;
+
+    // Independent pitch draw — same scale/octave parameters as mono.
+    int   sem    = 0;
+    float pitchV = pe.genPitchLive(sem, input,
+                                    pe.rngToFloat(pe.stochasticRng),
+                                    pe.rngToFloat(pe.stochasticRng));
+
+    if (lastStepResult.decision == MonoDecision::NewNote) {
+        v.gs.triggerNote(pitchV, sem, lastStepResult.nvIdx);
+    } else {
+        // Legato zone — no retrigger.
+        // Poly-internal tie: if this voice's random pitch matches its previous
+        // semitone while its gate is held, extend rather than slide.
+        if (sem == v.gs.lastSemitone && wasHeld)
+            v.gs.extendHold(sem, lastStepResult.nvIdx);
+        else
+            v.gs.slideNote(pitchV, sem, lastStepResult.nvIdx, wasHeld);
+    }
+}
+
+void SequencerEngine::executePolyVoices(const PatternInput& input) {
+    for (int i = 0; i < numPolyVoices; ++i)
+        executePolyVoice(i, input);
 }
 
 void SequencerEngine::executeModeC(const ClockEngine& clock, float inCV) {
