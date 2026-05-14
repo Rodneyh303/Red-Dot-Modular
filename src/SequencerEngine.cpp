@@ -25,8 +25,11 @@ void SequencerEngine::reset() {
     rhythmLen = variationLen = legatoLen = melodyLen = octaveLen = 16;
     rhythmOff = variationOff = legatoOff = melodyOff = octaveOff = 0;
     rhythmRot = variationRot = legatoRot = melodyRot = octaveRot = 0;
-    polyLen = 16;
-    polyOff = polyRot = 0;
+    for (int i = 0; i < 7; i++) {
+        polyLen[i] = 16;
+        polyOff[i] = 0;
+        polyRot[i] = 0;
+    }
     windowMask = 0xFFFF;
     locked = false;
     muted = false;
@@ -309,8 +312,8 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input) 
             break;  // fall through to independent note draw
     }
 
-    // Access pre-generated DNA index for poly voices
-    int polyIdx = getStrandIdx(totalStepsElapsed, polyLen, polyOff, polyRot);
+    // Access pre-generated DNA index for specific poly voice
+    int polyIdx = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx], polyOff[voiceIdx], polyRot[voiceIdx]);
 
     float r_rest = pe.polyRhythmRandom[voiceIdx][polyIdx];
     if (r_rest < v.restProb) return;

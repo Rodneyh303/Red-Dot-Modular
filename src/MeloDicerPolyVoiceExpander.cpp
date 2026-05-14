@@ -22,6 +22,9 @@ struct MeloDicerPolyVoiceExpanderWidget : ModuleWidget {
         float knobX   = 10.0f;
         float outGateX =  22.0f;
         float outCvX   =  32.0f;
+        float dnaLenX  =  42.0f;
+        float dnaOffX  =  52.0f;
+        float dnaRotX  =  62.0f;
         float startY  = 25.0f;
         float spacingY = 12.0f;
 
@@ -36,18 +39,17 @@ struct MeloDicerPolyVoiceExpanderWidget : ModuleWidget {
             // CV (pitch) output
             addOutput(createOutputCentered<PJ301MPort>(
                 mm2px(Vec(outCvX, y)), module, POLY_CV_OUT_1 + i));
+            
+            // Individual Poly DNA Controls
+            addParam(createParamCentered<Trimpot>(mm2px(Vec(dnaLenX, y)), module, MeloDicerIds::POLY_DNA_VOICE_1_LEN + i * 3));
+            addParam(createParamCentered<Trimpot>(mm2px(Vec(dnaOffX, y)), module, MeloDicerIds::POLY_DNA_VOICE_1_OFF + i * 3));
+            addParam(createParamCentered<Trimpot>(mm2px(Vec(dnaRotX, y)), module, MeloDicerIds::POLY_DNA_VOICE_1_ROT + i * 3));
         }
 
         // Poly Rest CV Input (below the knobs)
         addInput(createInputCentered<PJ301MPort>(
             mm2px(Vec(knobX, startY + 7 * spacingY + 5.0f)),
             module, MeloDicerIds::POLY_REST_CV_INPUT));
-
-        // Poly DNA Controls
-        float dnaX = knobX + 32.0f;
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(dnaX, 25.0f)), module, MeloDicerIds::POLY_DNA_LEN_PARAM));
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(dnaX, 37.0f)), module, MeloDicerIds::POLY_DNA_OFF_PARAM));
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(dnaX, 49.0f)), module, MeloDicerIds::POLY_DNA_ROT_PARAM));
     }
 
     void draw(const DrawArgs& args) override {
@@ -57,7 +59,10 @@ struct MeloDicerPolyVoiceExpanderWidget : ModuleWidget {
         nvgFillColor(args.vg, nvgRGBA(0xdd, 0xdd, 0xdd, 0xff));
         nvgFontSize(args.vg, mm2px(3.0f)); // Adjust font size for better fit
         nvgText(args.vg, mm2px(15.0f), mm2px(15.0f), "POLY RESTS", nullptr);
-        nvgText(args.vg, mm2px(42.0f), mm2px(15.0f), "POLY DNA", nullptr);
+        nvgText(args.vg, mm2px(42.0f), mm2px(15.0f), "LEN", nullptr);
+        nvgText(args.vg, mm2px(52.0f), mm2px(15.0f), "OFF", nullptr);
+        nvgText(args.vg, mm2px(62.0f), mm2px(15.0f), "ROT", nullptr);
+        nvgText(args.vg, mm2px(52.0f), mm2px(10.0f), "POLY DNA", nullptr);
     }
 };
 

@@ -108,10 +108,28 @@ namespace MeloDicerIds {
         POLY_REST_PARAM_6,
         POLY_REST_PARAM_7,
 
-        // Poly DNA Window Controls
-        POLY_DNA_LEN_PARAM,
-        POLY_DNA_OFF_PARAM,
-        POLY_DNA_ROT_PARAM,
+        // Poly DNA Window Controls (7 voices x 3 params = 21)
+        POLY_DNA_VOICE_1_LEN,
+        POLY_DNA_VOICE_1_OFF,
+        POLY_DNA_VOICE_1_ROT,
+        POLY_DNA_VOICE_2_LEN,
+        POLY_DNA_VOICE_2_OFF,
+        POLY_DNA_VOICE_2_ROT,
+        POLY_DNA_VOICE_3_LEN,
+        POLY_DNA_VOICE_3_OFF,
+        POLY_DNA_VOICE_3_ROT,
+        POLY_DNA_VOICE_4_LEN,
+        POLY_DNA_VOICE_4_OFF,
+        POLY_DNA_VOICE_4_ROT,
+        POLY_DNA_VOICE_5_LEN,
+        POLY_DNA_VOICE_5_OFF,
+        POLY_DNA_VOICE_5_ROT,
+        POLY_DNA_VOICE_6_LEN,
+        POLY_DNA_VOICE_6_OFF,
+        POLY_DNA_VOICE_6_ROT,
+        POLY_DNA_VOICE_7_LEN,
+        POLY_DNA_VOICE_7_OFF,
+        POLY_DNA_VOICE_7_ROT,
 
         NUM_PARAMS
     };

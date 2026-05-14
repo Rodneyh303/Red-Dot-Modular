@@ -148,7 +148,7 @@ MeloDicer::MeloDicer() {
             engine.pe.melodyRandom[i] = 0.5f;
             engine.pe.octaveRandom[i] = 0.5f;
             for (int v = 0; v < 7; v++) {
-                engine.pe.polyRhythmRandom[v][i] = 1.0f; // Default to no rest
+                engine.pe.polyRhythmRandom[v][i] = (float)rack::random::uniform(); // Seed with random for immediate DNA feedback
                 engine.pe.polyMelodyRandom[v][i] = 0.5f;
                 engine.pe.polyOctaveRandom[v][i] = 0.5f;
             }

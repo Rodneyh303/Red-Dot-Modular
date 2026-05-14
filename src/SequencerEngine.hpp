@@ -73,9 +73,9 @@ struct SequencerEngine {
     int melodyOff = 0;
     int octaveLen = 16;
     int octaveOff = 0;
-    int polyLen = 16;
-    int polyOff = 0;
-    int polyRot = 0;
+    int polyLen[7];
+    int polyOff[7];
+    int polyRot[7];
 
     // Discrete mutation offsets (mutation from scramble/context menu)
     int rhythmRot = 0, variationRot = 0, legatoRot = 0, melodyRot = 0, octaveRot = 0;

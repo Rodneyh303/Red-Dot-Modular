@@ -40,10 +40,13 @@ struct MeloDicerPolyVoiceExpander : Module {
         }
         configInput(MeloDicerIds::POLY_REST_CV_INPUT, "Poly Rest CV");
 
-        // Poly DNA Controls: Setting 1-16 range prevents the 50% rounding jump
-        configParam(MeloDicerIds::POLY_DNA_LEN_PARAM, 1.f, 16.f, 16.f, "Poly DNA Length");
-        configParam(MeloDicerIds::POLY_DNA_OFF_PARAM, 0.f, 15.f, 0.f, "Poly DNA Offset");
-        configParam(MeloDicerIds::POLY_DNA_ROT_PARAM, 0.f, 15.f, 0.f, "Poly DNA Rotation");
+        // Individual Poly DNA Controls for 7 voices
+        for (int i = 0; i < 7; i++) {
+            std::string voiceLabel = "Voice " + std::to_string(i + 2);
+            configParam(MeloDicerIds::POLY_DNA_VOICE_1_LEN + i * 3, 1.f, 16.f, 16.f, voiceLabel + " DNA Length");
+            configParam(MeloDicerIds::POLY_DNA_VOICE_1_OFF + i * 3, 0.f, 15.f, 0.f, voiceLabel + " DNA Offset");
+            configParam(MeloDicerIds::POLY_DNA_VOICE_1_ROT + i * 3, 0.f, 15.f, 0.f, voiceLabel + " DNA Rotation");
+        }
 
         for (int i = 0; i < 7; i++) {
             configOutput(PolyVoiceExpanderIds::POLY_GATE_OUT_1 + i,
