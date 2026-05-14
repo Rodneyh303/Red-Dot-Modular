@@ -1071,6 +1071,21 @@ void MeloDicer::process(const ProcessArgs& args) {
             }
         }
 
+        if (cachedPolyVoiceExpander) {
+            for (int i = 0; i < 7; i++) {
+                engine.polyLen[i] = clampv<int>((int)std::round(cachedPolyVoiceExpander->params[POLY_DNA_VOICE_1_LEN + i * 3].getValue()), 1, 16);
+                int rawOff = (int)std::round(cachedPolyVoiceExpander->params[POLY_DNA_VOICE_1_OFF + i * 3].getValue());
+                engine.polyOff[i] = ((rawOff % 16) + 16) % 16;
+                int rawRot = (int)std::round(cachedPolyVoiceExpander->params[POLY_DNA_VOICE_1_ROT + i * 3].getValue());
+                engine.polyRot[i] = ((rawRot % 16) + 16) % 16;
+            }
+        } else {
+            for (int i = 0; i < 7; i++) {
+                engine.polyLen[i] = 16;
+                engine.polyOff[i] = engine.polyRot[i] = 0;
+            }
+        }
+
         engine.updateWindow(
             params[PATTERN_LENGTH_PARAM].getValue(), inputs[LENGTH_INPUT].getVoltage(), inputs[LENGTH_INPUT].isConnected(),
             params[PATTERN_OFFSET_PARAM].getValue(), inputs[OFFSET_INPUT].getVoltage(), inputs[OFFSET_INPUT].isConnected()
