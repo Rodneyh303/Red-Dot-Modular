@@ -147,6 +147,11 @@ MeloDicer::MeloDicer() {
             engine.pe.legatoRandom[i] = 0.0f;
             engine.pe.melodyRandom[i] = 0.5f;
             engine.pe.octaveRandom[i] = 0.5f;
+            for (int v = 0; v < 7; v++) {
+                engine.pe.polyRhythmRandom[v][i] = 1.0f; // Default to no rest
+                engine.pe.polyMelodyRandom[v][i] = 0.5f;
+                engine.pe.polyOctaveRandom[v][i] = 0.5f;
+            }
             melodyPitchV[i]   = 0.f;   // C0 = 0V
             melodySemitone[i] = 0;     // semitone C
         }
@@ -206,7 +211,6 @@ MeloDicer::MeloDicer() {
         bpm = 120.f;
         clock.reset();
         prevExtGate = false;
-        //reseedXoroshiroFromFloat(stochasticRng, 0.f); // Reset stochastic RNG to deterministic state
         currentPitchV = 0.f;
         melodySeedCached = false;
         cachedExpander = nullptr; // Initialize cached expander
@@ -251,7 +255,6 @@ MeloDicer::MeloDicer() {
         json_object_set_new(root,"rhythmSeedPendingFloat", json_real((float)rhythmSeedPendingFloat));
         json_object_set_new(root,"melodySeedPending", json_boolean(melodySeedPending));
         json_object_set_new(root,"melodySeedPendingFloat", json_real((float)melodySeedPendingFloat));
-        //json_object_set_new(root,"stochasticSeedFloat", json_real((float)stochasticSeedFloat));
         json_object_set_new(root,"numPolyVoices", json_integer(engine.numPolyVoices));
 
         // serialize rhythmPattern as array of ints 0/1
@@ -277,6 +280,21 @@ MeloDicer::MeloDicer() {
         json_object_set_new(root,"legatoRandom", lrarr);
         json_object_set_new(root,"melodyRandom", mrarr);
         json_object_set_new(root,"octaveRandom", orarr);
+
+        // // serialize poly random buffers for identity stability
+        // json_t* prarr = json_array();
+        // json_t* pmarr = json_array();
+        // json_t* poarr = json_array();
+        // for (int v = 0; v < 7; v++) {
+        //     for (int i = 0; i < 16; i++) {
+        //         json_array_append_new(prarr, json_real(engine.pe.polyRhythmRandom[v][i]));
+        //         json_array_append_new(pmarr, json_real(engine.pe.polyMelodyRandom[v][i]));
+        //         json_array_append_new(poarr, json_real(engine.pe.polyOctaveRandom[v][i]));
+        //     }
+        // }
+        // json_object_set_new(root, "polyRhythmRandom", prarr);
+        // json_object_set_new(root, "polyMelodyRandom", pmarr);
+        // json_object_set_new(root, "polyOctaveRandom", poarr);
 
         // serialize poly random buffers for identity stability
         json_t* prarr = json_array();
@@ -352,6 +370,69 @@ MeloDicer::MeloDicer() {
         if (auto j = json_object_get(root,"legatoRandom")) {
             if (json_is_array(j)) { for (size_t i=0; i<16 && i<json_array_size(j); ++i) engine.pe.legatoRandom[i] = (float)json_real_value(json_array_get(j,i)); }
         }
+
+        if (auto j = json_object_get(root, "polyRhythmRandom")) {
+            if (json_is_array(j)) {
+                for (int v = 0; v < 7; v++) {
+                    for (int i = 0; i < 16; i++) {
+                        engine.pe.polyRhythmRandom[v][i] = (float)json_real_value(json_array_get(j, v * 16 + i));
+                        engine.pe.polyRhythmSource[v][i] = engine.pe.polyRhythmRandom[v][i];
+                    }
+                }
+            }
+        }
+        if (auto j = json_object_get(root, "polyMelodyRandom")) {
+            if (json_is_array(j)) {
+                for (int v = 0; v < 7; v++) {
+                    for (int i = 0; i < 16; i++) {
+                        engine.pe.polyMelodyRandom[v][i] = (float)json_real_value(json_array_get(j, v * 16 + i));
+                        engine.pe.polyMelodySource[v][i] = engine.pe.polyMelodyRandom[v][i];
+                    }
+                }
+            }
+        }
+        if (auto j = json_object_get(root, "polyOctaveRandom")) {
+            if (json_is_array(j)) {
+                for (int v = 0; v < 7; v++) {
+                    for (int i = 0; i < 16; i++) {
+                        engine.pe.polyOctaveRandom[v][i] = (float)json_real_value(json_array_get(j, v * 16 + i));
+                        engine.pe.polyOctaveSource[v][i] = engine.pe.polyOctaveRandom[v][i];
+                    }
+                }
+            }
+        }
+
+        if (auto j = json_object_get(root, "polyRhythmRandom")) {
+            if (json_is_array(j)) {
+                for (int v = 0; v < 7; v++) {
+                    for (int i = 0; i < 16; i++) {
+                        engine.pe.polyRhythmRandom[v][i] = (float)json_real_value(json_array_get(j, v * 16 + i));
+                        engine.pe.polyRhythmSource[v][i] = engine.pe.polyRhythmRandom[v][i]; // Copy to source
+                    }
+                }
+            }
+        }
+        if (auto j = json_object_get(root, "polyMelodyRandom")) {
+            if (json_is_array(j)) {
+                for (int v = 0; v < 7; v++) {
+                    for (int i = 0; i < 16; i++) {
+                        engine.pe.polyMelodyRandom[v][i] = (float)json_real_value(json_array_get(j, v * 16 + i));
+                        engine.pe.polyMelodySource[v][i] = engine.pe.polyMelodyRandom[v][i]; // Copy to source
+                    }
+                }
+            }
+        }
+        if (auto j = json_object_get(root, "polyOctaveRandom")) {
+            if (json_is_array(j)) {
+                for (int v = 0; v < 7; v++) {
+                    for (int i = 0; i < 16; i++) {
+                        engine.pe.polyOctaveRandom[v][i] = (float)json_real_value(json_array_get(j, v * 16 + i));
+                        engine.pe.polyOctaveSource[v][i] = engine.pe.polyOctaveRandom[v][i]; // Copy to source
+                    }
+                }
+            }
+        }
+
         if (auto j = json_object_get(root,"melodyPitchV")) {
             if (json_is_array(j)) {
                 size_t n = json_array_size(j);
@@ -425,9 +506,6 @@ float MeloDicer::getRestParam()       { return clampv<float>(params[REST_PARAM].
 // Reads from expander knob if the expander is connected, otherwise falls back to 0.1.
 float MeloDicer::getPolyRestParam(int voiceIdx) {
     if (voiceIdx < 0 || voiceIdx > 6) return 0.1f;
-    if (cachedPolyVoiceExpander)
-        return clampv<float>(cachedPolyVoiceExpander->params[MeloDicerIds::POLY_REST_PARAM_1 + voiceIdx].getValue(), 0.f, 1.f);
-    return 0.1f;
     float v = 0.1f;
     if (cachedPolyVoiceExpander) {
         v = cachedPolyVoiceExpander->params[MeloDicerIds::POLY_REST_PARAM_1 + voiceIdx].getValue();
@@ -592,9 +670,8 @@ float MeloDicer::semitoneToVolts(int semitone) {
 // Called at phrase boundary (stepIndex wraps from endStep back to startStep).
 // Seeds are applied FIRST so the subsequent redraw uses the new RNG state.
 void MeloDicer::onPhraseBoundary_() {
-    engine.pe.applyPendingSeedsAndRedraw(makePatternInput());
-    // Reseed the stochastic RNG so that polyphonic patterns remain stable across cycles.
-   // reseedXoroshiroFromFloat(stochasticRng, stochasticSeedFloat);
+    engine.pe.applyPendingSeedsAndRedraw(makePatternInput()); // This will also redraw poly patterns
+    // No longer need to reseed stochasticRng as it's been replaced by DNA strands.
 }
 
 // ---------------- Helper: expander change hook -------------------------------
@@ -993,16 +1070,6 @@ void MeloDicer::process(const ProcessArgs& args) {
                 engine.rhythmRot = engine.variationRot = engine.legatoRot = engine.melodyRot = engine.octaveRot = 0;
             }
         }
-
-        if (cachedPolyVoiceExpander) {
-            engine.polyLen = clampv<int>((int)std::round(cachedPolyVoiceExpander->params[POLY_DNA_LEN_PARAM].getValue()), 1, 16);
-            engine.polyOff = (int)std::round(cachedPolyVoiceExpander->params[POLY_DNA_OFF_PARAM].getValue()) % 16;
-            engine.polyRot = (int)std::round(cachedPolyVoiceExpander->params[POLY_DNA_ROT_PARAM].getValue()) % 16;
-        } else {
-            engine.polyLen = 16;
-            engine.polyOff = engine.polyRot = 0;
-        }
-
 
         engine.updateWindow(
             params[PATTERN_LENGTH_PARAM].getValue(), inputs[LENGTH_INPUT].getVoltage(), inputs[LENGTH_INPUT].isConnected(),

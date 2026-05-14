@@ -35,7 +35,7 @@ struct StepResult {
 // probability; everything else (nvIdx, legatoProb, scale) is shared from mono.
 struct PolyVoice {
     GateState gs;
-    float restProb = 0.1f;
+    float restProb = 0.0f;
 };
 
 // ── SequencerEngine ────────────────────────────────────────────────────────────
