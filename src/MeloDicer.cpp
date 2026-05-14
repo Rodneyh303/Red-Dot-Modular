@@ -1070,7 +1070,6 @@ void MeloDicer::process(const ProcessArgs& args) {
                 engine.rhythmRot = engine.variationRot = engine.legatoRot = engine.melodyRot = engine.octaveRot = 0;
             }
         }
-
         if (cachedPolyVoiceExpander) {
             for (int i = 0; i < 7; i++) {
                 engine.polyLen[i] = clampv<int>((int)std::round(cachedPolyVoiceExpander->params[POLY_DNA_VOICE_1_LEN + i * 3].getValue()), 1, 16);
