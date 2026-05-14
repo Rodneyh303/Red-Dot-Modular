@@ -257,7 +257,7 @@ void MeloDicerWidget::draw(const DrawArgs& args) {
 
         setNvgFontSize(2.5f);
         {
-            const char* noteLabels[8] = {"1/2","1/4","1/4T","1/8","1/8T","1/16","1/32T","1/32"};
+            const char* noteLabels[8] = {"1/2","1/4","1/4T","1/8","1/8T","1/16","1/16T","1/32"};
             for (int i=0;i<8;++i) {
                 float deg = -225.f + i * (270.f/7.f);
                 arcLabel(14.f, 26.f, 12.5f, deg, noteLabels[i], 150,150,135);

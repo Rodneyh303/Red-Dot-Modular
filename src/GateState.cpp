@@ -3,8 +3,8 @@
 #include <algorithm>
 
 // ── Note length helper: fraction of a whole note × 16 steps ──────────────────
-const float GS_NOTE_FRACS[9] = {
-    0.5f, 0.25f, 1.f/6.f, 0.125f, 1.f/12.f, 0.0625f, 1.f/24.f, 0.03125f, 1.f/48.f
+const float GS_NOTE_FRACS[8] = {
+    0.5f, 0.25f, 1.f/6.f, 0.125f, 1.f/12.f, 0.0625f, 1.f/24.f, 0.03125f
 };
 
 float gs_noteSteps(int nvIdx) {
