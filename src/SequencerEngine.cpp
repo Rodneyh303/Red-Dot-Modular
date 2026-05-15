@@ -181,8 +181,9 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
         result.decision = MonoDecision::LegatoMax;
     }
     else if (r_rest < restProb) {
-        gs.gateHeld   = false;
-        gs.holdRemain = gs_noteSteps(nvIdx);
+        gs.gateHeld = false;
+        // holdRemain reset is unnecessary — gateHeld=false already closes gate in process().
+        // The holdRemain value is ignored when gateHeld=false.
         result.decision = MonoDecision::Rest;
     }
     else if (r_legato_tie < legatoProb) {
@@ -228,6 +229,12 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
 
     bool wasHeld = gs.gateHeld;
     gs.tick();
+    
+    // Tick poly voices at the same time as mono so gates expire in lockstep.
+    // This ensures poly trailing edges align with mono and don't trail.
+    for (int i = 0; i < numPolyVoices; ++i)
+        voices[i].gs.tick();
+    
     result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, input, wasHeld);
     result.stepped = true;
     result.wrapped = wrapped;
@@ -260,6 +267,11 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
 
         bool wasHeld = gs.gateHeld;
         gs.tick();
+        
+        // Tick poly voices at the same time as mono so gates expire in lockstep.
+        for (int i = 0; i < numPolyVoices; ++i)
+            voices[i].gs.tick();
+        
         result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, input, wasHeld);
         result.stepped = true;
         result.wrapped = wrapped;
@@ -286,16 +298,17 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
 void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input) {
     PolyVoice& v = voices[voiceIdx];
     bool wasHeld = v.gs.gateHeld;
-    v.gs.tick();   // always tick — held notes decay through mono rests naturally
+    // v.gs.tick() is NO LONGER called here — poly voices tick in executeModeA/B
+    // at the same time as mono, ensuring gates expire in lockstep.
 
     switch (lastStepResult.decision) {
 
         case MonoDecision::MidNote:
-            return;  // mono is still mid-note; poly just ticked, nothing more to do
+            return;  // mono is still mid-note; poly continues naturally
 
         case MonoDecision::Rest:
-            v.gs.gateHeld = false;
-            v.gs.holdRemain = gs_noteSteps(lastStepResult.nvIdx);
+            // Mono rested — poly cannot initiate a new note.
+            // Already-held notes continue to decay naturally from their shared tick().
             return;
 
         case MonoDecision::Tie:
