@@ -295,16 +295,17 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
 void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input) {
     PolyVoice& v = voices[voiceIdx];
     bool wasHeld = v.gs.gateHeld;
-    v.gs.tick();   // always tick — held notes decay through mono rests naturally
+    // v.gs.tick() is NO LONGER called here — poly voices tick in executeModeA/B
+    // at the same time as mono, ensuring gates expire in lockstep.
 
     switch (lastStepResult.decision) {
 
         case MonoDecision::MidNote:
-            return;  // mono is still mid-note; poly just ticked, nothing more to do
+            return;  // mono is still mid-note; poly continues naturally
 
         case MonoDecision::Rest:
-            v.gs.gateHeld = false;
-            v.gs.holdRemain = gs_noteSteps(lastStepResult.nvIdx);
+            // Mono rested — poly cannot initiate a new note.
+            // Already-held notes continue to decay naturally from their shared tick().
             return;
 
         case MonoDecision::Tie:
