@@ -14,6 +14,7 @@ void SequencerEngine::reset() {
     gs.reset();
     for (int i = 0; i < 7; ++i) voices[i].gs.reset();
     // restProb values are NOT reset — the caller re-applies them from expander knobs.
+    for (int i = 0; i < 7; i++) wasHeldPolyPrev[i] = false;
     lastStepResult = StepResult{};
     stepIndex = -1;
     lastStepIndex = -1;
@@ -243,6 +244,7 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
     hadMonoTail = (wasHeldMono && prevHold > 0.0001f && prevHold < 0.999f);
 
     for (int i = 0; i < numPolyVoices; ++i) {
+        wasHeldPolyPrev[i] = voices[i].gs.gateHeld;
         float ph = voices[i].gs.holdRemain;
         voices[i].gs.tick();
         hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
@@ -284,6 +286,7 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
         hadMonoTail = (wasHeldMono && prevHold > 0.0001f && prevHold < 0.999f);
 
         for (int i = 0; i < numPolyVoices; ++i) {
+            wasHeldPolyPrev[i] = voices[i].gs.gateHeld;
             float ph = voices[i].gs.holdRemain;
             voices[i].gs.tick();
             hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
@@ -370,7 +373,11 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
 
 void SequencerEngine::executePolyVoices(const PatternInput& input) {
     for (int i = 0; i < numPolyVoices; ++i) {
-        bool wasHeldPoly = voices[i].gs.gateHeld || hadPolyTail[i];
+        // Use the state from BEFORE the tick to decide if we were active.
+        // This ensures that if a note ended exactly at the boundary, 
+        // we still consider it "active" for slaving to a continuing mono gate.
+        // hadPolyTail is kept for safety with fractional start/ends.
+        bool wasHeldPoly = wasHeldPolyPrev[i] || hadPolyTail[i];
         executePolyVoice(i, input, wasHeldPoly, hadPolyTail[i]);
     }
 }

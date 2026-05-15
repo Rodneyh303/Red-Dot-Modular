@@ -65,6 +65,7 @@ struct SequencerEngine {
     bool hadMonoTail = false;
     bool wasHeldMono = false; // Capture mono state before tick() for start-detection
     bool hadPolyTail[7] = {};
+    bool wasHeldPolyPrev[7] = {}; // Capture poly state before tick()
 
     // Strand-specific Windowing (Length 1..16, Offset 0..15)
     int rhythmLen = 16;
