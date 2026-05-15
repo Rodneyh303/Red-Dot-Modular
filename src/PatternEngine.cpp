@@ -126,11 +126,13 @@ void PatternEngine::redrawRhythm(const PatternInput& in) {
         rhythmRandom[i]    = unitRhythm();
         variationRandom[i] = unitRhythm();
         legatoRandom[i]    = unitRhythm();
+        accentRandom[i]    = unitRhythm();  // New: accent strand random
 
         // Cache the original draw
         rhythmSource[i]    = rhythmRandom[i];
         variationSource[i] = variationRandom[i];
         legatoSource[i]    = legatoRandom[i];
+        accentSource[i]    = accentRandom[i];
         
         for (int v = 0; v < 7; v++) {
             polyRhythmRandom[v][i] = unitRhythm();
@@ -271,6 +273,12 @@ void PatternEngine::rotateLegato(int steps) {
     std::rotate(std::begin(legatoRandom), std::begin(legatoRandom) + (16 - steps), std::end(legatoRandom));
 }
 
+void PatternEngine::rotateAccent(int steps) {  // New: rotate accent strand
+    steps = ((steps % 16) + 16) % 16;
+    if (steps == 0) return;
+    std::rotate(std::begin(accentRandom), std::begin(accentRandom) + (16 - steps), std::end(accentRandom));
+}
+
 void PatternEngine::rotateMelody(int steps) {
     steps = ((steps % 16) + 16) % 16;
     if (steps == 0) return;
@@ -288,6 +296,7 @@ void PatternEngine::resetDnaRotation() {
         rhythmRandom[i]    = rhythmSource[i];
         variationRandom[i] = variationSource[i];
         legatoRandom[i]    = legatoSource[i];
+        accentRandom[i]    = accentSource[i];
         melodyRandom[i]    = melodySource[i];
         octaveRandom[i]    = octaveSource[i];
     }

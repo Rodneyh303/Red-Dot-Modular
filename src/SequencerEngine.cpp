@@ -159,7 +159,7 @@ bool SequencerEngine::shouldTriggerStep(int ppqn) const {
     return true; 
 }
 
-StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, const PatternInput& input, bool wasHeld) {
+StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float accentProb, const PatternInput& input, bool wasHeld) {
     StepResult result;
     result.nvIdx = nvIdx;
 
@@ -182,7 +182,7 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     }
     else if (r_rest < restProb) {
         gs.gateHeld   = false;
-        gs.holdRemain = gs_noteSteps(nvIdx);
+        // holdRemain reset is unnecessary — gateHeld=false already closes gate in process().
         result.decision = MonoDecision::Rest;
     }
     else if (r_legato_tie < legatoProb) {
@@ -197,6 +197,13 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     else {
         gs.triggerNote(pitchV, sem, nvIdx);
         result.decision = MonoDecision::NewNote;
+    }
+
+    // Determine if this note is accented (only on NewNote, Legato, LegatoMax — not on Rest or Tie)
+    if (result.decision != MonoDecision::Rest && result.decision != MonoDecision::Tie && result.decision != MonoDecision::MidNote) {
+        result.accented = (r_accent < accentProb);
+    } else {
+        result.accented = false;
     }
 
     lastStepResult = result;
@@ -223,12 +230,13 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
     float r_vary   = pe.variationRandom[getVariationStep()];
     float r_rest   = pe.rhythmRandom[getRhythmStep()];
     float r_legato = pe.legatoRandom[getLegatoStep()];
+    float r_accent = pe.accentRandom[getAccentStep()];  // New: accent strand value
     
     int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
 
     bool wasHeld = gs.gateHeld;
     gs.tick();
-    result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, input, wasHeld);
+    result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent, accentProb, input, wasHeld);
     result.stepped = true;
     result.wrapped = wrapped;
     return result;
@@ -255,12 +263,13 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
         float r_vary   = pe.variationRandom[getVariationStep()];
         float r_rest   = pe.rhythmRandom[getRhythmStep()];
         float r_legato = pe.legatoRandom[getLegatoStep()];
+        float r_accent = pe.accentRandom[getAccentStep()];  // New: accent strand value
         
         int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
 
         bool wasHeld = gs.gateHeld;
         gs.tick();
-        result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, input, wasHeld);
+        result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent, accentProb, input, wasHeld);
         result.stepped = true;
         result.wrapped = wrapped;
     }
@@ -416,5 +425,6 @@ int SequencerEngine::getStrandIdx(int tickCount, int len, int off, int mutation)
 int SequencerEngine::getRhythmStep() const    { return getStrandIdx(totalStepsElapsed, rhythmLen, rhythmOff, rhythmRot); }
 int SequencerEngine::getVariationStep() const { return getStrandIdx(totalStepsElapsed, variationLen, variationOff, variationRot); }
 int SequencerEngine::getLegatoStep() const    { return getStrandIdx(totalStepsElapsed, legatoLen, legatoOff, legatoRot); }
+int SequencerEngine::getAccentStep() const    { return getStrandIdx(totalStepsElapsed, accentLen, accentOff, accentRot); }
 int SequencerEngine::getMelodyStep() const    { return getStrandIdx(totalStepsElapsed, melodyLen, melodyOff, melodyRot); }
 int SequencerEngine::getOctaveStep() const    { return getStrandIdx(totalStepsElapsed, octaveLen, octaveOff, octaveRot); }
