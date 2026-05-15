@@ -159,7 +159,7 @@ bool SequencerEngine::shouldTriggerStep(int ppqn) const {
     return true; 
 }
 
-StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, const PatternInput& input, bool wasHeld) {
+StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, const PatternInput& input, bool wasHeld, bool hadTail) {
     StepResult result;
     result.nvIdx = nvIdx;
 
@@ -175,16 +175,26 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     float pitchV = pe.genPitchLive(sem, input,
                                     pe.melodyRandom[getMelodyStep()],
                                     pe.octaveRandom[getOctaveStep()]);
+    
+    // Structural Rest Roll:
+    // canRest is true only if the previous note finished exactly on a step edge 
+    // or was already silent. Fractional tails (e.g. triplets) block the rest roll
+    // to ensure rhythmic alignment.
+    bool canRest = (gs.holdRemain <= 0.0001f && !hadTail);
 
     if (legatoProb >= 0.999f) {
         gs.slideMax(pitchV, sem, nvIdx);
         result.decision = MonoDecision::LegatoMax;
     }
     else if (r_rest < restProb) {
-        gs.gateHeld = false;
-        // holdRemain reset is unnecessary — gateHeld=false already closes gate in process().
-        // The holdRemain value is ignored when gateHeld=false.
-        result.decision = MonoDecision::Rest;
+        if (canRest) {
+            gs.gateHeld = false;
+            result.decision = MonoDecision::Rest;
+        } else {
+            // Precedence: note tail takes priority over pattern structural rest.
+            gs.gateHeld = true; // Re-activate gate to allow the fractional tail to finish
+            result.decision = MonoDecision::MidNote;
+        }
     }
     else if (r_legato_tie < legatoProb) {
         if (sem == gs.lastSemitone && wasHeld) {
@@ -227,15 +237,18 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
     
     int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
 
-    bool wasHeld = gs.gateHeld;
+    float prevHold = gs.holdRemain;
+    wasHeldMono = gs.gateHeld;
     gs.tick();
-    
-    // Tick poly voices at the same time as mono so gates expire in lockstep.
-    // This ensures poly trailing edges align with mono and don't trail.
-    for (int i = 0; i < numPolyVoices; ++i)
+    hadMonoTail = (wasHeldMono && prevHold > 0.0001f && prevHold < 0.999f);
+
+    for (int i = 0; i < numPolyVoices; ++i) {
+        float ph = voices[i].gs.holdRemain;
         voices[i].gs.tick();
+        hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
+    }
     
-    result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, input, wasHeld);
+    result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, input, wasHeldMono, hadMonoTail);
     result.stepped = true;
     result.wrapped = wrapped;
     return result;
@@ -265,14 +278,18 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
         
         int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
 
-        bool wasHeld = gs.gateHeld;
+        float prevHold = gs.holdRemain;
+        wasHeldMono = gs.gateHeld;
         gs.tick();
-        
-        // Tick poly voices at the same time as mono so gates expire in lockstep.
-        for (int i = 0; i < numPolyVoices; ++i)
+        hadMonoTail = (wasHeldMono && prevHold > 0.0001f && prevHold < 0.999f);
+
+        for (int i = 0; i < numPolyVoices; ++i) {
+            float ph = voices[i].gs.holdRemain;
             voices[i].gs.tick();
+            hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
+        }
         
-        result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, input, wasHeld);
+        result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, input, wasHeldMono, hadMonoTail);
         result.stepped = true;
         result.wrapped = wrapped;
     }
@@ -295,63 +312,67 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
 //              tie still emerges naturally when the voice's random pitch
 //              matches its own previous semitone.
 
-void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input) {
+void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, bool wasHeldPoly, bool hadPolyTail) {
     PolyVoice& v = voices[voiceIdx];
-    bool wasHeld = v.gs.gateHeld;
-    // v.gs.tick() is NO LONGER called here — poly voices tick in executeModeA/B
-    // at the same time as mono, ensuring gates expire in lockstep.
 
-    switch (lastStepResult.decision) {
+    // Start Detection: A new note/retrigger happens on NewNote, or on 
+    // Legato shifts from a dead state (low gate and no tail).
+    bool monoGateStart = (lastStepResult.decision == MonoDecision::NewNote) || 
+                         ((lastStepResult.decision == MonoDecision::Legato || lastStepResult.decision == MonoDecision::LegatoMax) && !wasHeldMono && !hadMonoTail);
 
-        case MonoDecision::MidNote:
-            return;  // mono is still mid-note; poly continues naturally
-
-        case MonoDecision::Rest:
-            // Mono rested — poly cannot initiate a new note.
-            // Already-held notes continue to decay naturally from their shared tick().
+    if (monoGateStart) {
+        // This is the decision point for this entire mono gate.
+        int polyIdx = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx], polyOff[voiceIdx], polyRot[voiceIdx]);
+        float r_rest = pe.polyRhythmRandom[voiceIdx][polyIdx];
+        
+        if (r_rest < v.restProb) {
+            // Decide to Rest: Stick with it until mono gate drops.
+            if (v.gs.holdRemain > 0.0001f) v.gs.gateHeld = true; // allow previous note tail to finish
+            else v.gs.gateHeld = false;
             return;
-
-        case MonoDecision::Tie:
-            // Mono extended its hold on the same pitch.
-            // Poly voices that are currently sounding extend their own holds.
-            // Voices already silent stay silent — don't resurrect a resting voice.
-            if (wasHeld)
-                v.gs.extendHold(v.gs.lastSemitone, lastStepResult.nvIdx);
-            return;
-
-        case MonoDecision::Legato:
-        case MonoDecision::LegatoMax:
-        case MonoDecision::NewNote:
-            break;  // fall through to independent note draw
+        }
+        
+        // Decide to Play: Draw pitch and follow mono's triggering behavior.
+        int sem = 0;
+        float pitchV = pe.genPitchLive(sem, input, pe.polyMelodyRandom[voiceIdx][polyIdx], pe.polyOctaveRandom[voiceIdx][polyIdx]);
+        if (lastStepResult.decision == MonoDecision::NewNote)
+            v.gs.triggerNote(pitchV, sem, lastStepResult.nvIdx);
+        else
+            v.gs.slideNote(pitchV, sem, lastStepResult.nvIdx, wasHeldPoly);
+        return;
     }
 
-    // Access pre-generated DNA index for specific poly voice
-    int polyIdx = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx], polyOff[voiceIdx], polyRot[voiceIdx]);
-
-    float r_rest = pe.polyRhythmRandom[voiceIdx][polyIdx];
-    if (r_rest < v.restProb) return;
-
-    int   sem    = 0;
-    float pitchV = pe.genPitchLive(sem, input,
-                                    pe.polyMelodyRandom[voiceIdx][polyIdx],
-                                    pe.polyOctaveRandom[voiceIdx][polyIdx]);
-
-    if (lastStepResult.decision == MonoDecision::NewNote) {
-        v.gs.triggerNote(pitchV, sem, lastStepResult.nvIdx);
+    // If mono is Sustaining or Resting, poly must stick to its current role.
+    if (lastStepResult.decision == MonoDecision::Rest) {
+        v.gs.gateHeld = false;
     } else {
-        // Legato zone — no retrigger.
-        // Poly-internal tie: if this voice's random pitch matches its previous
-        // semitone while its gate is held, extend rather than slide.
-        if (sem == v.gs.lastSemitone && wasHeld)
-            v.gs.extendHold(sem, lastStepResult.nvIdx);
-        else
-            v.gs.slideNote(pitchV, sem, lastStepResult.nvIdx, wasHeld);
+        // Mono is Sustaining (MidNote, Tie, or shifted Legato shift).
+        // Poly follows mono gate presence strictly IF it was already active ("in").
+        if (gs.gateHeld && wasHeldPoly) {
+            if (lastStepResult.decision == MonoDecision::Tie) {
+                v.gs.extendHold(v.gs.lastSemitone, lastStepResult.nvIdx);
+            } else if (lastStepResult.decision == MonoDecision::Legato || lastStepResult.decision == MonoDecision::LegatoMax) {
+                // Shift pitch if mono shifted, but don't re-trigger.
+                int polyIdx = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx], polyOff[voiceIdx], polyRot[voiceIdx]);
+                int sem = 0;
+                float pitchV = pe.genPitchLive(sem, input, pe.polyMelodyRandom[voiceIdx][polyIdx], pe.polyOctaveRandom[voiceIdx][polyIdx]);
+                v.gs.slideNote(pitchV, sem, lastStepResult.nvIdx, wasHeldPoly);
+            } else {
+                // MidNote sustain: poly gate follows mono.
+                v.gs.gateHeld = true;
+            }
+        } else {
+            // Mono gate is low OR poly chose to rest for this current high cycle.
+            v.gs.gateHeld = false;
+        }
     }
 }
 
 void SequencerEngine::executePolyVoices(const PatternInput& input) {
-    for (int i = 0; i < numPolyVoices; ++i)
-        executePolyVoice(i, input);
+    for (int i = 0; i < numPolyVoices; ++i) {
+        bool wasHeldPoly = voices[i].gs.gateHeld || hadPolyTail[i];
+        executePolyVoice(i, input, wasHeldPoly, hadPolyTail[i]);
+    }
 }
 
 void SequencerEngine::executeModeC(const ClockEngine& clock, float inCV) {

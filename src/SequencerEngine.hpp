@@ -62,6 +62,10 @@ struct SequencerEngine {
     int cachedOffset = 0;
     int totalStepsElapsed = 0; // Running counter for drifting polymetric DNA alignment
 
+    bool hadMonoTail = false;
+    bool wasHeldMono = false; // Capture mono state before tick() for start-detection
+    bool hadPolyTail[7] = {};
+
     // Strand-specific Windowing (Length 1..16, Offset 0..15)
     int rhythmLen = 16;
     int rhythmOff = 0;
@@ -126,7 +130,7 @@ struct SequencerEngine {
     int getOctaveStep() const;
 
     bool shouldTriggerStep(int ppqn) const;
-    StepResult executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, const PatternInput& input, bool wasHeld);
+    StepResult executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, const PatternInput& input, bool wasHeld, bool hadTail);
     void handlePhraseBoundary(PatternInput input, bool isMelodyRealtime, bool isRhythmRealtime);
     StepResult executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input);
     StepResult executeModeB(bool gate1Rise, bool gate1High, float restProb, float legatoProb, float noteVal, const PatternInput& input);
@@ -137,6 +141,6 @@ struct SequencerEngine {
     // ── Poly voice execution ──────────────────────────────────────────────────
     // Call executePolyVoices() after any stepped executeModeA/B call.
     // voices[i].restProb must be set by the caller before invoking.
-    void executePolyVoice(int voiceIdx, const PatternInput& input);
+    void executePolyVoice(int voiceIdx, const PatternInput& input, bool wasHeld, bool hadTail);
     void executePolyVoices(const PatternInput& input);
 };
