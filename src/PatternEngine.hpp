@@ -50,6 +50,7 @@ struct PatternEngine {
     float rhythmRandom[16]    = {};
     float variationRandom[16] = {};
     float legatoRandom[16]    = {};
+    float accentRandom[16]    = {};  // New: accent strand probabilities
     float melodyRandom[16]    = {};
     float octaveRandom[16]    = {};
     
@@ -62,6 +63,7 @@ struct PatternEngine {
     float rhythmSource[16]    = {};
     float variationSource[16] = {};
     float legatoSource[16]    = {};
+    float accentSource[16]    = {};  // New: cache for accent before scramble
     float melodySource[16]    = {};
     float octaveSource[16]    = {};
     float polyRhythmSource[7][16] = {};
@@ -151,6 +153,7 @@ struct PatternEngine {
     void rotateRhythm(int steps);     // Gates and Rests
     void rotateVariation(int steps);  // Note length biasing
     void rotateLegato(int steps);     // Legato and Tie probability
+    void rotateAccent(int steps);     // Accent gate probability (NEW)
     void rotateMelody(int steps);     // Pitch selection
     void rotateOctave(int steps);     // Octave selection
 
