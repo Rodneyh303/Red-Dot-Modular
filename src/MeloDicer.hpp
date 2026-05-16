@@ -24,6 +24,7 @@
 #include "ClockEngine.hpp"
 #include "PatternEngine.hpp"
 #include "MeloDicerDNAManager.hpp"
+#include "MeloDicerParameterManager.hpp"
 #include "GateState.hpp"
 #include "SequencerEngine.hpp"
 #include "Scales.hpp"
@@ -339,6 +340,7 @@ struct MeloDicer : Module {
 
     SequencerEngine engine;
     DNAStrandManager dnaManager{engine.pe};
+    std::unique_ptr<ParameterManager> paramManager;  // Initialized in constructor
 
     // Convenience accessors
     rack::random::Xoroshiro128Plus& rhythmRng = engine.pe.rhythmRng;
@@ -439,16 +441,17 @@ struct MeloDicer : Module {
     json_t* dataToJson() override;
     void dataFromJson(json_t* root) override;
 
-    float getSemitoneParam(int sem);
-    float getOctaveLoParam();
-    float getOctaveHiParam();
-
-    float getNoteValueParam();
-    float getVariationParam();
-    float getLegatoParam();
-    float getRestParam();
-    float getAccentParam();  // New
-    float getPolyRestParam(int voiceIdx); // voiceIdx 0-6 maps to voices 2-8
+    float getSemitoneParam(int sem);  // DEPRECATED: use paramManager->getSemitone()
+    
+    // All other parameter getters now delegated to paramManager:
+    // - getNoteValueParam()       → paramManager->getNoteValue()
+    // - getVariationParam()       → paramManager->getVariation()
+    // - getLegatoParam()          → paramManager->getLegato()
+    // - getRestParam()            → paramManager->getRest()
+    // - getAccentParam()          → paramManager->getAccent()
+    // - getOctaveLoParam()        → paramManager->getOctaveLo()
+    // - getOctaveHiParam()        → paramManager->getOctaveHi()
+    // - getPolyRestParam(int)     → paramManager->getPolyRest(int)
 
     void switchMelodyMode();
     void switchRhythmMode();

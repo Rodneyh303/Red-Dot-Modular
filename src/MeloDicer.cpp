@@ -202,6 +202,9 @@ void MeloDicer::updateExpanderPointers() {
 
     scan(leftExpander.module, true);
     scan(rightExpander.module, false);
+    
+    // Initialize parameter manager with main module and expander pointers
+    paramManager = std::make_unique<ParameterManager>(this, &cachedExpander, &cachedPolyVoiceExpander);
 }
 
   void MeloDicer::updateScaleMask() {
@@ -555,53 +558,23 @@ void MeloDicer::updateExpanderPointers() {
     }
 
     //return octave parameter value with CV input added (if connected)
-    float MeloDicer::getOctaveLoParam()  {
-        float v = params[OCT_LO_PARAM].getValue();
-        if (cachedExpander) {
-            if(cachedExpander->inputs[MeloDicerIds::EXPANDER_OCT_LO_CV_INPUT].isConnected()) {
-                float att = cachedExpander->params[MeloDicerIds::EXPANDER_OCT_LO_ATTENUVERTER].getValue();
-                v += (cachedExpander->inputs[MeloDicerIds::EXPANDER_OCT_LO_CV_INPUT].getVoltage() * att) / 10.0f * 8.0f;
-            }
-        }
-        v += cv1LoOffset;   // transient CV1 mode-2 offset — never persisted to param
-        v = clampv(v, 0.f, 8.f);
-        return v;
-    }
+    // Now delegated to ParameterManager - see wrapper functions below
 
-    //return octave parameter value with CV input added (if connected)
-    float MeloDicer::getOctaveHiParam()  {
-        float v = params[OCT_HI_PARAM].getValue();
-        if (cachedExpander) {
-            if(cachedExpander->inputs[MeloDicerIds::EXPANDER_OCT_HI_CV_INPUT].isConnected()) {
-                float att = cachedExpander->params[MeloDicerIds::EXPANDER_OCT_HI_ATTENUVERTER].getValue();
-                v += (cachedExpander->inputs[MeloDicerIds::EXPANDER_OCT_HI_CV_INPUT].getVoltage() * att) / 10.0f * 8.0f;
-            }
-        }
-        v += cv1HiOffset;   // transient CV1 mode-3 offset — never persisted to param
-        v = clampv(v, 0.f, 8.f);
-        return v;
-    }
+// ── Parameter getters (delegated to ParameterManager) ──────────────────────
+// These wrapper functions maintain backward compatibility while delegating
+// to the centralized ParameterManager.
 
-// ── CV2-aware parameter readers ──────────────────────────────────────────────
-// These return the knob value + any active CV2 offset, clamped to the valid range.
-// Call these instead of params[X].getValue() wherever the CV2 offset should apply.
-float MeloDicer::getNoteValueParam()  { return clampv<float>(params[NOTE_VALUE_PARAM].getValue() + cv2Offsets[0], 0.f, 8.f); }
-float MeloDicer::getVariationParam()  { return clampv<float>(params[VARIATION_PARAM].getValue()  + cv2Offsets[1], 0.f, 1.f); }
-float MeloDicer::getLegatoParam()     { return clampv<float>(params[LEGATO_PARAM].getValue()     + cv2Offsets[2], 0.f, 1.f); }
-float MeloDicer::getRestParam()       { return clampv<float>(params[REST_PARAM].getValue()       + cv2Offsets[3], 0.f, 1.f); }
-float MeloDicer::getAccentParam()     { return clampv<float>(params[ACCENT_KNOB].getValue()      + (inputs[ACCENT_CV_INPUT].getVoltage() * 0.1f), 0.f, 1.f); }
+float MeloDicer::getNoteValueParam()  { return paramManager ? paramManager->getNoteValue() : params[NOTE_VALUE_PARAM].getValue(); }
+float MeloDicer::getVariationParam()  { return paramManager ? paramManager->getVariation() : 0.5f; }
+float MeloDicer::getLegatoParam()     { return paramManager ? paramManager->getLegato() : 0.1f; }
+float MeloDicer::getRestParam()       { return paramManager ? paramManager->getRest() : 0.1f; }
+float MeloDicer::getAccentParam()     { return paramManager ? paramManager->getAccent() : 0.25f; }
 
-// Returns rest probability for poly voice voiceIdx (0 = voice 2, ..., 6 = voice 8).
-// Reads from expander knob if the expander is connected, otherwise falls back to 0.1.
+float MeloDicer::getOctaveLoParam()   { return paramManager ? paramManager->getOctaveLo() : 2.f; }
+float MeloDicer::getOctaveHiParam()   { return paramManager ? paramManager->getOctaveHi() : 5.f; }
+
 float MeloDicer::getPolyRestParam(int voiceIdx) {
-    if (voiceIdx < 0 || voiceIdx > 6) return 0.1f;
-    float v = 0.1f;
-    if (cachedPolyVoiceExpander) {
-        v = cachedPolyVoiceExpander->params[MeloDicerIds::POLY_REST_PARAM_1 + voiceIdx].getValue();
-        // Add Poly Rest CV: 10V = 100% additional rest probability
-        v += cachedPolyVoiceExpander->inputs[MeloDicerIds::POLY_REST_CV_INPUT].getNormalVoltage(0.f) / 10.0f;
-    }
-    return clampv<float>(v, 0.f, 1.f);
+    return paramManager ? paramManager->getPolyRest(voiceIdx) : 0.1f;
 }
 
 // --- switch melody/rhythm mode (dice/realtime), caching/restoring state as needed ---    
