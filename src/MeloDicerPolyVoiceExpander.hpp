@@ -23,6 +23,13 @@ namespace PolyVoiceExpanderIds {
         POLY_CV_OUT_5,
         POLY_CV_OUT_6,
         POLY_CV_OUT_7,
+        POLY_ACCENT_OUT_1,     // New: accent gate per voice
+        POLY_ACCENT_OUT_2,
+        POLY_ACCENT_OUT_3,
+        POLY_ACCENT_OUT_4,
+        POLY_ACCENT_OUT_5,
+        POLY_ACCENT_OUT_6,
+        POLY_ACCENT_OUT_7,
         NUM_OUTPUTS
     };
 }
@@ -53,6 +60,8 @@ struct MeloDicerPolyVoiceExpander : Module {
                          "Voice " + std::to_string(i + 2) + " Gate");
             configOutput(PolyVoiceExpanderIds::POLY_CV_OUT_1 + i,
                          "Voice " + std::to_string(i + 2) + " CV (Pitch)");
+            configOutput(PolyVoiceExpanderIds::POLY_ACCENT_OUT_1 + i,
+                         "Voice " + std::to_string(i + 2) + " Accent Gate");
         }
     }
 

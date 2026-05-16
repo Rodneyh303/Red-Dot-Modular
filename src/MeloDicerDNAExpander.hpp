@@ -42,6 +42,7 @@ struct MeloDicerDNAExpander : Module {
         configS(MeloDicerIds::DNA_R_LEN_PARAM, MeloDicerIds::DNA_R_OFF_PARAM, MeloDicerIds::DNA_R_ROT_PARAM, "Rhythm");
         configS(MeloDicerIds::DNA_V_LEN_PARAM, MeloDicerIds::DNA_V_OFF_PARAM, MeloDicerIds::DNA_V_ROT_PARAM, "Variation");
         configS(MeloDicerIds::DNA_L_LEN_PARAM, MeloDicerIds::DNA_L_OFF_PARAM, MeloDicerIds::DNA_L_ROT_PARAM, "Legato");
+        configS(MeloDicerIds::DNA_A_LEN_PARAM, MeloDicerIds::DNA_A_OFF_PARAM, MeloDicerIds::DNA_A_ROT_PARAM, "Accent");  // New
         configS(MeloDicerIds::DNA_M_LEN_PARAM, MeloDicerIds::DNA_M_OFF_PARAM, MeloDicerIds::DNA_M_ROT_PARAM, "Melody");
         configS(MeloDicerIds::DNA_O_LEN_PARAM, MeloDicerIds::DNA_O_OFF_PARAM, MeloDicerIds::DNA_O_ROT_PARAM, "Octave");
 
@@ -50,6 +51,7 @@ struct MeloDicerDNAExpander : Module {
         configButton(MeloDicerIds::DNA_SCRAMBLE_R_PARAM,   "Scramble Rhythm");
         configButton(MeloDicerIds::DNA_SCRAMBLE_V_PARAM,   "Scramble Variation");
         configButton(MeloDicerIds::DNA_SCRAMBLE_L_PARAM,   "Scramble Legato");
+        configButton(MeloDicerIds::DNA_SCRAMBLE_A_PARAM,   "Scramble Accent");  // New
         configButton(MeloDicerIds::DNA_SCRAMBLE_M_PARAM,   "Scramble Melody");
         configButton(MeloDicerIds::DNA_SCRAMBLE_O_PARAM,   "Scramble Octave");
 
@@ -58,6 +60,7 @@ struct MeloDicerDNAExpander : Module {
         configButton(MeloDicerIds::DNA_RESET_R_PARAM,   "Reset Rhythm");
         configButton(MeloDicerIds::DNA_RESET_V_PARAM,   "Reset Variation");
         configButton(MeloDicerIds::DNA_RESET_L_PARAM,   "Reset Legato");
+        configButton(MeloDicerIds::DNA_RESET_A_PARAM,   "Reset Accent");  // New
         configButton(MeloDicerIds::DNA_RESET_M_PARAM,   "Reset Melody");
         configButton(MeloDicerIds::DNA_RESET_O_PARAM,   "Reset Octave");
 
@@ -66,6 +69,7 @@ struct MeloDicerDNAExpander : Module {
         configInput(DNA_R_LEN_INPUT, "Rhythm Length CV");    configInput(DNA_R_OFF_INPUT, "Rhythm Offset CV");
         configInput(DNA_V_LEN_INPUT, "Variation Length CV"); configInput(DNA_V_OFF_INPUT, "Variation Offset CV");
         configInput(DNA_L_LEN_INPUT, "Legato Length CV");    configInput(DNA_L_OFF_INPUT, "Legato Offset CV");
+        configInput(DNA_A_LEN_INPUT, "Accent Length CV");    configInput(DNA_A_OFF_INPUT, "Accent Offset CV");  // New
         configInput(DNA_M_LEN_INPUT, "Melody Length CV");    configInput(DNA_M_OFF_INPUT, "Melody Offset CV");
         configInput(DNA_O_LEN_INPUT, "Octave Length CV");    configInput(DNA_O_OFF_INPUT, "Octave Offset CV");
 
@@ -75,12 +79,14 @@ struct MeloDicerDNAExpander : Module {
         configInput(DNA_SCRAMBLE_M_INPUT,   "Scramble Melody Gate");
         configInput(DNA_SCRAMBLE_V_INPUT,   "Scramble Variation Gate");
         configInput(DNA_SCRAMBLE_L_INPUT,   "Scramble Legato Gate");
+        configInput(DNA_SCRAMBLE_A_INPUT,   "Scramble Accent Gate");  // New
         configInput(DNA_SCRAMBLE_O_INPUT,   "Scramble Octave Gate");
         configInput(DNA_RESET_ALL_INPUT,    "Reset ALL Gate");
         configInput(DNA_RESET_R_INPUT,      "Reset Rhythm Gate");
         configInput(DNA_RESET_M_INPUT,      "Reset Melody Gate");
         configInput(DNA_RESET_V_INPUT,      "Reset Variation Gate");
         configInput(DNA_RESET_L_INPUT,      "Reset Legato Gate");
+        configInput(DNA_RESET_A_INPUT,      "Reset Accent Gate");  // New
         configInput(DNA_RESET_O_INPUT,      "Reset Octave Gate");
     }
 

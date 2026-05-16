@@ -46,6 +46,7 @@ MeloDicer::MeloDicer() {
         configParam(VARIATION_PARAM,   0.f, 1.f, 0.5f, "Variation (longer–shorter)");
         configParam(LEGATO_PARAM,      0.f, 1.f, 0.10f, "Legato probability");
         configParam(REST_PARAM,        0.f, 1.f, 0.10f, "Rest probability");
+        configParam(ACCENT_KNOB,       0.f, 1.f, 0.25f, "Accent gate probability");  // New
         configParam(TRANSPOSE_PARAM,  -12.f, 12.f, 0.f, "Transpose (semitones)");
         //Pattern ring controls
         // Main window controls (Always present)
@@ -96,6 +97,7 @@ MeloDicer::MeloDicer() {
         configInput(GATE2_INPUT, "Gate In 2");
         configInput(CV1_INPUT,   "CV In 1");
         configInput(CV2_INPUT,   "CV In 2");
+        configInput(ACCENT_CV_INPUT, "Accent Probability CV");  // New
 
         // --- RNG/SEED ADDITION: new inputs
         configInput(RESET_TRIGGER_INPUT, "Reset (phrase restart)");
@@ -109,6 +111,7 @@ MeloDicer::MeloDicer() {
         configInput(DNA_SCRAMBLE_R_INPUT,   "Scramble Rhythm Gate");
         configInput(DNA_SCRAMBLE_V_INPUT,   "Scramble Variation Gate");
         configInput(DNA_SCRAMBLE_L_INPUT,   "Scramble Legato Gate");
+        configInput(DNA_SCRAMBLE_A_INPUT,   "Scramble Accent Gate");  // New
         configInput(DNA_SCRAMBLE_M_INPUT,   "Scramble Melody Gate");
         configInput(DNA_SCRAMBLE_O_INPUT,   "Scramble Octave Gate");
 
@@ -116,6 +119,7 @@ MeloDicer::MeloDicer() {
         configInput(DNA_RESET_R_INPUT,      "Reset Rhythm Gate");
         configInput(DNA_RESET_V_INPUT,      "Reset Variation Gate");
         configInput(DNA_RESET_L_INPUT,      "Reset Legato Gate");
+        configInput(DNA_RESET_A_INPUT,      "Reset Accent Gate");  // New
         configInput(DNA_RESET_M_INPUT,      "Reset Melody Gate");
         configInput(DNA_RESET_O_INPUT,      "Reset Octave Gate");
 
@@ -124,6 +128,9 @@ MeloDicer::MeloDicer() {
         configOutput(SEED_OUTPUT,           "Seed Voltage Out (0..10V)");
         configOutput(RESET_TRIGGER_OUTPUT,  "Reset Trigger Out");
         configOutput(RUN_GATE_OUTPUT,       "Run Gate Out");
+        configOutput(TIE_OUTPUT,            "Tie Gate (high on Tie)");          // New
+        configOutput(LEGATO_OUTPUT,         "Legato Gate (high on Legato/Max)"); // New
+        configOutput(ACCENT_OUTPUT,         "Accent Gate (high when accented)");  // New
 
         // Seed RNGs with a random value — safe to call here (uses rack::random, not inputs[])
         rhythmSeedFloat = rack::random::uniform() * 10.f;
@@ -501,6 +508,7 @@ float MeloDicer::getNoteValueParam()  { return clampv<float>(params[NOTE_VALUE_P
 float MeloDicer::getVariationParam()  { return clampv<float>(params[VARIATION_PARAM].getValue()  + cv2Offsets[1], 0.f, 1.f); }
 float MeloDicer::getLegatoParam()     { return clampv<float>(params[LEGATO_PARAM].getValue()     + cv2Offsets[2], 0.f, 1.f); }
 float MeloDicer::getRestParam()       { return clampv<float>(params[REST_PARAM].getValue()       + cv2Offsets[3], 0.f, 1.f); }
+float MeloDicer::getAccentParam()     { return clampv<float>(params[ACCENT_KNOB].getValue()      + (inputs[ACCENT_CV_INPUT].getVoltage() * 0.1f), 0.f, 1.f); }
 
 // Returns rest probability for poly voice voiceIdx (0 = voice 2, ..., 6 = voice 8).
 // Reads from expander knob if the expander is connected, otherwise falls back to 0.1.
@@ -906,6 +914,22 @@ void MeloDicer::process(const ProcessArgs& args) {
     float gateV = engine.gs.process(args.sampleTime);
     if (muted)             gateV = 0.f;
     outputs[GATE_OUTPUT].setVoltage(gateV);
+    
+    // Derived gate outputs based on mono note decision
+    float tieGateV = (engine.lastStepResult.decision == MonoDecision::Tie) ? 10.f : 0.f;
+    float legatoGateV = (engine.lastStepResult.decision == MonoDecision::Legato || 
+                         engine.lastStepResult.decision == MonoDecision::LegatoMax) ? 10.f : 0.f;
+    float accentGateV = (engine.lastStepResult.accented && gateV > 5.f) ? 10.f : 0.f;
+    
+    if (muted) {
+        tieGateV = 0.f;
+        legatoGateV = 0.f;
+        accentGateV = 0.f;
+    }
+    
+    outputs[TIE_OUTPUT].setVoltage(tieGateV);
+    outputs[LEGATO_OUTPUT].setVoltage(legatoGateV);
+    outputs[ACCENT_OUTPUT].setVoltage(accentGateV);
 
     // Poly voice gate and CV outputs — written every sample so pulse timing is accurate.
     // MeloDicer writes directly into the expander's output ports.
@@ -916,11 +940,17 @@ void MeloDicer::process(const ProcessArgs& args) {
             if (muted) vg = 0.f;
             cachedPolyVoiceExpander->outputs[POLY_GATE_OUT_1 + i].setVoltage(vg);
             cachedPolyVoiceExpander->outputs[POLY_CV_OUT_1 + i].setVoltage(engine.voices[i].gs.currentPitchV);
+            
+            // Poly accent: fires when mono is accented AND poly voice is sounding
+            float polyAccent = (engine.lastStepResult.accented && vg > 5.f) ? 10.f : 0.f;
+            if (muted) polyAccent = 0.f;
+            cachedPolyVoiceExpander->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(polyAccent);
         }
         // Zero unused voice outputs so they don't emit stale voltages.
         for (int i = engine.numPolyVoices; i < 7; ++i) {
             cachedPolyVoiceExpander->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
             cachedPolyVoiceExpander->outputs[POLY_CV_OUT_1 + i].setVoltage(0.f);
+            cachedPolyVoiceExpander->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
         }
     }
 
@@ -1111,6 +1141,7 @@ void MeloDicer::process(const ProcessArgs& args) {
 //  Also handles mute logic (no output, but still advances and updates LEDs)
 void MeloDicer::handleModeA_(const ProcessArgs& args) {
     if (clock.sixteenthEdge && !muted) {
+        engine.accentProb = getAccentParam();  // Update accent probability from knob + CV
         StepResult result = engine.executeModeA(clock, getRestParam(), getLegatoParam(), getNoteValueParam(), makePatternInput());
         if (result.wrapped) onPhraseBoundary_();
         if (result.stepped && engine.numPolyVoices > 0) {
@@ -1131,6 +1162,7 @@ void MeloDicer::handleModeA_(const ProcessArgs& args) {
 void MeloDicer::handleModeB_(const ProcessArgs& args, bool gate1Rise) {
     bool gate1High = inputs[GATE1_INPUT].getVoltage() >= 1.f;
     if (!muted && (gate1Rise || (gate1High && stepIndex == -1))) {
+        engine.accentProb = getAccentParam();  // Update accent probability from knob + CV
         StepResult result = engine.executeModeB(gate1Rise, gate1High, getRestParam(), getLegatoParam(), getNoteValueParam(), makePatternInput());
         if (result.wrapped) onPhraseBoundary_();
         if (result.stepped && engine.numPolyVoices > 0) {

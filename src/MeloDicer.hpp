@@ -55,6 +55,7 @@ namespace MeloDicerIds {
         VARIATION_PARAM,
         LEGATO_PARAM,
         REST_PARAM,
+        ACCENT_KNOB,         // New: accent gate probability (0..1)
         TRANSPOSE_PARAM,
         PATTERN_LENGTH_PARAM,
         PATTERN_OFFSET_PARAM,
@@ -63,6 +64,7 @@ namespace MeloDicerIds {
         DNA_R_LEN_PARAM, DNA_R_OFF_PARAM, DNA_R_ROT_PARAM,
         DNA_V_LEN_PARAM, DNA_V_OFF_PARAM, DNA_V_ROT_PARAM,
         DNA_L_LEN_PARAM, DNA_L_OFF_PARAM, DNA_L_ROT_PARAM,
+        DNA_A_LEN_PARAM, DNA_A_OFF_PARAM, DNA_A_ROT_PARAM,  // New: accent strand
         DNA_M_LEN_PARAM, DNA_M_OFF_PARAM, DNA_M_ROT_PARAM,
         DNA_O_LEN_PARAM, DNA_O_OFF_PARAM, DNA_O_ROT_PARAM,
 
@@ -72,6 +74,7 @@ namespace MeloDicerIds {
         DNA_SCRAMBLE_M_PARAM,
         DNA_SCRAMBLE_V_PARAM, // Added for completeness
         DNA_SCRAMBLE_L_PARAM,
+        DNA_SCRAMBLE_A_PARAM,  // New: scramble accent strand
         DNA_SCRAMBLE_O_PARAM,
 
         DNA_RESET_ALL_PARAM,
@@ -79,6 +82,7 @@ namespace MeloDicerIds {
         DNA_RESET_M_PARAM,
         DNA_RESET_V_PARAM, // Moved here to keep SEMI range contiguous
         DNA_RESET_L_PARAM,
+        DNA_RESET_A_PARAM,  // New: reset accent strand
         DNA_RESET_O_PARAM,
 
         SEMI0_PARAM,  SEMI1_PARAM,  SEMI2_PARAM,  SEMI3_PARAM,
@@ -140,6 +144,7 @@ namespace MeloDicerIds {
         GATE2_INPUT,
         CV1_INPUT,
         CV2_INPUT,
+        ACCENT_CV_INPUT,      // New: accent probability CV modulation
 
         RUN_GATE_INPUT,
         RESET_TRIGGER_INPUT,
@@ -155,6 +160,7 @@ namespace MeloDicerIds {
         DNA_R_LEN_INPUT, DNA_R_OFF_INPUT,
         DNA_V_LEN_INPUT, DNA_V_OFF_INPUT,
         DNA_L_LEN_INPUT, DNA_L_OFF_INPUT,
+        DNA_A_LEN_INPUT, DNA_A_OFF_INPUT,  // New: accent strand CV
         DNA_M_LEN_INPUT, DNA_M_OFF_INPUT,
         DNA_O_LEN_INPUT, DNA_O_OFF_INPUT,
 
@@ -165,12 +171,14 @@ namespace MeloDicerIds {
         DNA_SCRAMBLE_M_INPUT,
         DNA_SCRAMBLE_V_INPUT,
         DNA_SCRAMBLE_L_INPUT,
+        DNA_SCRAMBLE_A_INPUT,  // New: scramble accent strand
         DNA_SCRAMBLE_O_INPUT,
         DNA_RESET_ALL_INPUT,
         DNA_RESET_R_INPUT,
         DNA_RESET_M_INPUT,
         DNA_RESET_V_INPUT,
         DNA_RESET_L_INPUT,
+        DNA_RESET_A_INPUT,  // New: reset accent strand
         DNA_RESET_O_INPUT,
 
         // Poly Voice Expander Inputs
@@ -214,7 +222,10 @@ namespace MeloDicerIds {
         SEED_OUTPUT,
         RESET_TRIGGER_OUTPUT,
         RUN_GATE_OUTPUT,
-
+        TIE_OUTPUT,          // New: high on Tie decision
+        LEGATO_OUTPUT,       // New: high on Legato/LegatoMax (not on Rest, Tie)
+        ACCENT_OUTPUT,       // New: high on accented notes
+        
         NUM_OUTPUTS
     };
 
@@ -427,6 +438,7 @@ struct MeloDicer : Module {
     float getVariationParam();
     float getLegatoParam();
     float getRestParam();
+    float getAccentParam();  // New
     float getPolyRestParam(int voiceIdx); // voiceIdx 0-6 maps to voices 2-8
 
     void switchMelodyMode();
