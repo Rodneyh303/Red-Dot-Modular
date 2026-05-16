@@ -25,6 +25,7 @@
 #include "PatternEngine.hpp"
 #include "MeloDicerDNAManager.hpp"
 #include "MeloDicerParameterManager.hpp"
+#include "MeloDicerModeController.hpp"
 #include "GateState.hpp"
 #include "SequencerEngine.hpp"
 #include "Scales.hpp"
@@ -341,6 +342,7 @@ struct MeloDicer : Module {
     SequencerEngine engine;
     DNAStrandManager dnaManager{engine.pe};
     std::unique_ptr<ParameterManager> paramManager;  // Initialized in constructor
+    std::unique_ptr<ModeController> modeController;  // Initialized in constructor
 
     // Convenience accessors
     rack::random::Xoroshiro128Plus& rhythmRng = engine.pe.rhythmRng;
@@ -491,10 +493,11 @@ struct MeloDicer : Module {
 
     void reseedXoroshiroFromFloat(rack::random::Xoroshiro128Plus& rng, float seedFloat);
 
-    void handleModeA_(const ProcessArgs& args);
-    void handleModeB_(const ProcessArgs& args, bool gate1Rise);
-    void handleModeC_(const ProcessArgs& args);
-    void handleModeD_(const ProcessArgs& args);
+    // Mode handlers now delegated to ModeController:
+    // - executeModeA()  → modeController->executeModeA()
+    // - executeModeB()  → modeController->executeModeB()
+    // - executeModeC()  → modeController->executeModeC()
+    // - executeModeD()  → modeController->executeModeD()
 };
 
 extern Model* modelMeloDicer;

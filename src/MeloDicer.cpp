@@ -205,6 +205,9 @@ void MeloDicer::updateExpanderPointers() {
     
     // Initialize parameter manager with main module and expander pointers
     paramManager = std::make_unique<ParameterManager>(this, &cachedExpander, &cachedPolyVoiceExpander);
+    
+    // Initialize mode controller with engine, clock, and parameter manager
+    modeController = std::make_unique<ModeController>(engine, clock, *paramManager);
 }
 
   void MeloDicer::updateScaleMask() {
@@ -900,13 +903,27 @@ void MeloDicer::process(const ProcessArgs& args) {
     }
 
     // --- Mode dispatch (only if running) ---
-    if (runGateActive) {
-        switch (modeSelect) {
-            case 0: handleModeA_(args);                 break;
-            case 1: handleModeB_(args, gate1Rise);      break;
-            case 2: handleModeC_(args);                 break;
-            case 3: handleModeD_(args);                 break;
-            default: break;
+    if (runGateActive && modeController) {
+        // Prepare CV2 input
+        float cv2Voltage = inputs[CV2_INPUT].isConnected() ? 
+                          clampv<float>(inputs[CV2_INPUT].getVoltage(), 0.f, 5.f) : 0.f;
+        
+        // Callback for phrase boundary events
+        auto onPhraseBoundary = [this]() { onPhraseBoundary_(); };
+        
+        // Get gate states
+        bool gate1High = inputs[GATE1_INPUT].getVoltage() >= 1.f;
+        bool gate2High = inputs[GATE2_INPUT].isConnected() && inputs[GATE2_INPUT].getVoltage() > 1.f;
+        
+        // Execute mode and set poly voices if needed
+        if (modeController->executeMode(modeSelect, args, gate1Rise, gate1High, gate2High, cv2Voltage, onPhraseBoundary)) {
+            // Mode took a step; update poly voices if present
+            if (engine.numPolyVoices > 0) {
+                for (int i = 0; i < engine.numPolyVoices; ++i) {
+                    engine.voices[i].restProb = paramManager->getPolyRest(i);
+                }
+                engine.executePolyVoices(makePatternInput());
+            }
         }
     }
 
@@ -1178,70 +1195,6 @@ void MeloDicer::process(const ProcessArgs& args) {
             if (cv2Mode == 3) cv2Offsets[3] = norm;
         }
     }
-}
-
-// ---------------- Mode A: internal clock with offset -------------------
-// stepEdge: true on 1/16 tick (internal or CLK input)
-//  Also handles LED updates and semitone LEDs
-// Uses shared triggerStepEvent_() helper.
-//  Also handles phrase boundary reseeding and redraw.
-//  Also handles first note logic when starting from reset.
-//  Also handles mute logic (no output, but still advances and updates LEDs)
-void MeloDicer::handleModeA_(const ProcessArgs& args) {
-    if (clock.sixteenthEdge && !muted) {
-        engine.accentProb = getAccentParam();  // Update accent probability from knob + CV
-        StepResult result = engine.executeModeA(clock, getRestParam(), getLegatoParam(), getNoteValueParam(), makePatternInput());
-        if (result.wrapped) onPhraseBoundary_();
-        if (result.stepped && engine.numPolyVoices > 0) {
-            for (int i = 0; i < engine.numPolyVoices; ++i)
-                engine.voices[i].restProb = getPolyRestParam(i);
-            engine.executePolyVoices(makePatternInput());
-        }
-        lastStepIndex = stepIndex;
-    }
-}
-
-// ---------------- Mode B: external gate with offset -------------------
-// gate1Edge: true on rising edge of GATE1 input
-//  Also handles LED updates and semitone LEDs  
-// Uses shared triggerStepEvent_() helper.
-//  Also handles phrase boundary reseeding and redraw.
-//  Also handles first note logic when gate held high continuously.
-void MeloDicer::handleModeB_(const ProcessArgs& args, bool gate1Rise) {
-    bool gate1High = inputs[GATE1_INPUT].getVoltage() >= 1.f;
-    if (!muted && (gate1Rise || (gate1High && stepIndex == -1))) {
-        engine.accentProb = getAccentParam();  // Update accent probability from knob + CV
-        StepResult result = engine.executeModeB(gate1Rise, gate1High, getRestParam(), getLegatoParam(), getNoteValueParam(), makePatternInput());
-        if (result.wrapped) onPhraseBoundary_();
-        if (result.stepped && engine.numPolyVoices > 0) {
-            for (int i = 0; i < engine.numPolyVoices; ++i)
-                engine.voices[i].restProb = getPolyRestParam(i);
-            engine.executePolyVoices(makePatternInput());
-        }
-        lastStepIndex = stepIndex;
-    }
-}
-
-
-// ---------------- Mode C: Quantizer 1 ---------------------------------------
-// quarterEdge: true on one-sample quarter-note pulse from ClockEngine
-// Latches and quantizes CV2 on each quarter-note edge; steps through pattern window.
-void MeloDicer::handleModeC_(const ProcessArgs& args) {
-    if (clock.quarterEdge) {
-        float inCV = inputs[CV2_INPUT].isConnected() ? clampv<float>(inputs[CV2_INPUT].getVoltage(), 0.f, 5.f) : 0.f;
-        engine.executeModeC(clock, inCV);
-        lastStepIndex = stepIndex;
-    }
-}
-
-
-// ---------------- Mode D: Quantizer 2 (second lane or alt flavor) -----------
-//  
-void MeloDicer::handleModeD_(const ProcessArgs& args) {
-    bool gateHigh = inputs[GATE2_INPUT].isConnected() && inputs[GATE2_INPUT].getVoltage() > 1.f;
-    float inCV = inputs[CV2_INPUT].isConnected() ? clampv<float>(inputs[CV2_INPUT].getVoltage(), 0.f, 5.f) : 0.f;
-    
-    engine.executeModeD(gateHigh, inCV);
 }
 
 
