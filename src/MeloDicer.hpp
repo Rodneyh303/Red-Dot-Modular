@@ -23,6 +23,7 @@
 #include <cstring>
 #include "ClockEngine.hpp"
 #include "PatternEngine.hpp"
+#include "MeloDicerDNAManager.hpp"
 #include "GateState.hpp"
 #include "SequencerEngine.hpp"
 #include "Scales.hpp"
@@ -337,6 +338,7 @@ struct MeloDicer : Module {
     dsp::ClockDivider controlDivider; // For DNA modulation at "Control Rate"
 
     SequencerEngine engine;
+    DNAStrandManager dnaManager{engine.pe};
 
     // Convenience accessors
     rack::random::Xoroshiro128Plus& rhythmRng = engine.pe.rhythmRng;
@@ -468,28 +470,6 @@ struct MeloDicer : Module {
     void rotateOctave(int steps);
     void rotatePattern(bool isMelody, int steps);
     void rotatePattern(int steps);
-
-    void scrambleRhythmRotation();
-    void scrambleMelodyRotation();
-    void scrambleRhythm();
-    void scrambleVariationRotation(); // New
-    void scrambleLegatoRotation();    // New
-    void scrambleAccentRotation();    // New (accent strand)
-    void scrambleOctaveRotation();    // New
-    void scrambleMelody();
-    void scramblePattern();
-    void scrambleDnaRotation();
-    void resetRhythmRotation();
-    void resetMelodyRotation();
-    void resetPattern();
-    void resetDnaRotation();
-    void resetVariationRotation();    // New
-    void resetLegatoRotation();       // New
-    void resetAccentRotation();       // New (accent strand)
-    void resetOctaveRotation();       // New
-    void resetRhythm();
-    void resetMelody();
-    void resetAll();
 
     void rebuildSemiCache_();
     float quantizeToScale(float vIn);
