@@ -55,7 +55,7 @@ float PatternEngine::genPitchLive(int& outSemitone, const PatternInput& in, floa
     if (oH < oL) oH = oL;
     int oct = oL + (int)std::floor(r_oct * float(oH - oL + 1));
 
-    float v = float(oct) + (sem + in.transpose) / 12.f;
+    float v = float(oct) -4.f + (sem + in.transpose) / 12.f;
     return pe_clamp(v, 0.f, 5.f);
 }
 

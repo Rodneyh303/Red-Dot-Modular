@@ -251,7 +251,10 @@ namespace MeloDicerIds {
         OCT_LO_LED,
         OCT_HI_LED,
 
-        RESET_LIGHT,
+        SCALE_EXPANDER_LIGHT,
+        DNA_EXPANDER_LIGHT = SCALE_EXPANDER_LIGHT + 2,
+        POLY_EXPANDER_LIGHT = DNA_EXPANDER_LIGHT + 2,
+        RESET_LIGHT = POLY_EXPANDER_LIGHT + 2,
         RUN_GATE_LIGHT,
 
         NUM_LIGHTS
@@ -353,6 +356,9 @@ struct MeloDicer : Module {
     float& melodySeedPendingFloat = engine.pe.melodySeedPendingFloat;
     //float& stochasticSeedFloat = engine.pe.stochasticSeedFloat;
 
+    int scaleExpanderCount = 0;
+    int dnaExpanderCount = 0;
+    int polyExpanderCount = 0;
     inline float unitRandomRhythm() { return engine.pe.unitRhythm(); }
     inline float unitRandomMelody() { return engine.pe.unitMelody(); }
 
@@ -388,12 +394,12 @@ struct MeloDicer : Module {
 
     dsp::BooleanTrigger diceRTrig, diceMTrig, resetBtn, runGateBtn, modeTrig;
     // DNA Action Triggers (SchmittTriggers for gate inputs)
-    dsp::SchmittTrigger DNA_SCRAMBLE_ALL_INPUTTrig, DNA_SCRAMBLE_R_INPUTTrig, DNA_SCRAMBLE_M_INPUTTrig, DNA_SCRAMBLE_V_INPUTTrig, DNA_SCRAMBLE_L_INPUTTrig, DNA_SCRAMBLE_O_INPUTTrig;
-    dsp::SchmittTrigger DNA_RESET_ALL_INPUTTrig, DNA_RESET_R_INPUTTrig, DNA_RESET_M_INPUTTrig, DNA_RESET_V_INPUTTrig, DNA_RESET_L_INPUTTrig, DNA_RESET_O_INPUTTrig;
+    dsp::SchmittTrigger DNA_SCRAMBLE_ALL_INPUTTrig, DNA_SCRAMBLE_R_INPUTTrig, DNA_SCRAMBLE_M_INPUTTrig, DNA_SCRAMBLE_V_INPUTTrig, DNA_SCRAMBLE_L_INPUTTrig, DNA_SCRAMBLE_A_INPUTTrig, DNA_SCRAMBLE_O_INPUTTrig;
+    dsp::SchmittTrigger DNA_RESET_ALL_INPUTTrig, DNA_RESET_R_INPUTTrig, DNA_RESET_M_INPUTTrig, DNA_RESET_V_INPUTTrig, DNA_RESET_L_INPUTTrig, DNA_RESET_A_INPUTTrig, DNA_RESET_O_INPUTTrig;
 
     // BooleanTriggers for momentary buttons (params)
-    dsp::BooleanTrigger DNA_SCRAMBLE_ALL_PARAMTrig, DNA_SCRAMBLE_R_PARAMTrig, DNA_SCRAMBLE_M_PARAMTrig, DNA_SCRAMBLE_V_PARAMTrig, DNA_SCRAMBLE_L_PARAMTrig, DNA_SCRAMBLE_O_PARAMTrig;
-    dsp::BooleanTrigger DNA_RESET_ALL_PARAMTrig, DNA_RESET_R_PARAMTrig, DNA_RESET_M_PARAMTrig, DNA_RESET_V_PARAMTrig, DNA_RESET_L_PARAMTrig, DNA_RESET_O_PARAMTrig;
+    dsp::BooleanTrigger DNA_SCRAMBLE_ALL_PARAMTrig, DNA_SCRAMBLE_R_PARAMTrig, DNA_SCRAMBLE_M_PARAMTrig, DNA_SCRAMBLE_V_PARAMTrig, DNA_SCRAMBLE_L_PARAMTrig, DNA_SCRAMBLE_A_PARAMTrig, DNA_SCRAMBLE_O_PARAMTrig;
+    dsp::BooleanTrigger DNA_RESET_ALL_PARAMTrig, DNA_RESET_R_PARAMTrig, DNA_RESET_M_PARAMTrig, DNA_RESET_V_PARAMTrig, DNA_RESET_L_PARAMTrig, DNA_RESET_A_PARAMTrig, DNA_RESET_O_PARAMTrig;
     // SchmittTriggers for rotation knobs to detect "snap" logic if needed, 
     // though we use them as continuous offsets now.
     
@@ -424,6 +430,7 @@ struct MeloDicer : Module {
 
     MeloDicer();
 
+    void updateExpanderPointers();
     void initialize();
     void updateScaleMask();
 

@@ -144,6 +144,11 @@ MeloDicerWidget::MeloDicerWidget(MeloDicer* module) {
         addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(127.f,120.5f)),module,MeloDicerIds::RESET_TRIGGER_OUTPUT));
         addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(143.f,120.5f)),module,MeloDicerIds::GATE_OUTPUT));
         addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(159.f,120.5f)),module,MeloDicerIds::CV_OUTPUT));
+
+        // Add warning lights for multiple expanders (placed near top-left)
+        addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(EXP_LIGHT_X, EXP_LIGHT_Y)), module, MeloDicerIds::SCALE_EXPANDER_LIGHT));
+        addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(EXP_LIGHT_X + EXP_LIGHT_S, EXP_LIGHT_Y)), module, MeloDicerIds::DNA_EXPANDER_LIGHT));
+        addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(EXP_LIGHT_X + 2 * EXP_LIGHT_S, EXP_LIGHT_Y)), module, MeloDicerIds::POLY_EXPANDER_LIGHT));
     }
 
 void MeloDicerWidget::applyTheme() {
@@ -285,6 +290,13 @@ void MeloDicerWidget::draw(const DrawArgs& args) {
         const float TX = 168.f, Y_START_VAL = 54.f, v_spacing_val = 6.5f;
         writeNvgText(TX, Y_START_VAL, "A"); 
         writeNvgText(TX, Y_START_VAL + v_spacing_val, "B"); 
+
+        // Add labels for the new warning lights
+        setNvgFontSize(2.0f); fillNvgColour(200, 200, 200);
+        const float warningLabelY = EXP_LIGHT_Y + 3.0f; // Below the lights
+        writeNvgText(EXP_LIGHT_X, warningLabelY, "S"); // Scale Expander
+        writeNvgText(EXP_LIGHT_X + EXP_LIGHT_S, warningLabelY, "D"); // DNA Expander
+        writeNvgText(EXP_LIGHT_X + 2 * EXP_LIGHT_S, warningLabelY, "P"); // PolyVoice Expander
         writeNvgText(TX, Y_START_VAL + 2 * v_spacing_val, "C"); 
         writeNvgText(TX, Y_START_VAL + 3 * v_spacing_val, "D");
 

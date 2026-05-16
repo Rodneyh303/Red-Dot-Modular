@@ -27,6 +27,10 @@ struct MeloDicerWidget : ModuleWidget {
     static constexpr float W_MM = 172.72f; // widht of module in mm, used for centering text and other elements`
     static constexpr float SL_TOP = 45.f; //top of slider
     static constexpr float SLH = 29.5f; //slider hieght, used for label positioning
+
+    static constexpr float EXP_LIGHT_X = 4.f;
+    static constexpr float EXP_LIGHT_Y = 4.f;
+    static constexpr float EXP_LIGHT_S = 5.f;
 };
 
 extern Model* modelMeloDicer;

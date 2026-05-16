@@ -33,3 +33,44 @@ static const std::vector<ScaleType> BITWIG_SCALES = {
     {"Pelog", {0, 1, 3, 7, 8}},
     {"Spanish", {0, 1, 4, 5, 7, 8, 10}}
 };
+
+struct ScaleHelper {
+    static uint16_t calculateMask(int root, int scaleIdx) {
+        if (scaleIdx < 0 || scaleIdx >= (int)BITWIG_SCALES.size()) return 0xFFF;
+        uint16_t mask = 0;
+        for (int interval : BITWIG_SCALES[scaleIdx].intervals) {
+            mask |= (1 << ((root + interval) % 12));
+        }
+        return mask;
+    }
+
+    static void redistributeWeights(uint16_t mask, float* weights) {
+        float redistributed[12] = {0.0f};
+        for (int i = 0; i < 12; i++) {
+            if (mask & (1 << i)) {
+                redistributed[i] += weights[i];
+            } else if (weights[i] > 0.0001f) {
+                float val = weights[i];
+                int distUp = 13, distDown = 13;
+                for (int d = 1; d <= 6; d++) {
+                    if (mask & (1 << ((i + d) % 12))) { distUp = d; break; }
+                }
+                for (int d = 1; d <= 6; d++) {
+                    if (mask & (1 << ((i - d + 12) % 12))) { distDown = d; break; }
+                }
+
+                if (distUp < distDown) {
+                    redistributed[(i + distUp) % 12] += val;
+                } else if (distDown < distUp) {
+                    redistributed[(i - distDown + 12) % 12] += val;
+                } else if (distUp <= 6) {
+                    redistributed[(i + distUp) % 12] += val * 0.5f;
+                    redistributed[(i - distDown + 12) % 12] += val * 0.5f;
+                }
+            }
+        }
+        for (int i = 0; i < 12; i++) {
+            weights[i] = redistributed[i];
+        }
+    }
+};

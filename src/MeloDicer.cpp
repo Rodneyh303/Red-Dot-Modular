@@ -166,33 +166,113 @@ MeloDicer::MeloDicer() {
         initialize();
     }
 
+void MeloDicer::updateExpanderPointers() {
+    cachedExpander = nullptr;
+    cachedDnaExpander = nullptr;
+    cachedPolyVoiceExpander = nullptr;
+
+    scaleExpanderCount = 0;
+    dnaExpanderCount = 0;
+    polyExpanderCount = 0;
+
+    // Walk expander chains in both directions to find any connected Melodicer expanders
+    auto scan = [&](Module* start, bool left) {
+        Module* curr = start;
+        int depth = 0;
+        while (curr && depth < 8) { // 8 is a safe depth limit for Rack chains
+            if (curr->model == modelMeloDicerExpander) {
+                if (!cachedExpander) cachedExpander = dynamic_cast<MeloDicerExpander*>(curr);
+                scaleExpanderCount++;
+            }
+            else if (curr->model == modelMeloDicerDNAExpander) {
+                if (!cachedDnaExpander) cachedDnaExpander = dynamic_cast<MeloDicerDNAExpander*>(curr);
+                dnaExpanderCount++;
+            }
+            else if (curr->model == modelMeloDicerPolyVoiceExpander) {
+                if (!cachedPolyVoiceExpander) cachedPolyVoiceExpander = dynamic_cast<MeloDicerPolyVoiceExpander*>(curr);
+                polyExpanderCount++;
+            }
+            else {
+                break; // Stop if we hit a module that isn't part of this system
+            }
+            curr = left ? curr->leftExpander.module : curr->rightExpander.module;
+            depth++;
+        }
+    };
+
+    scan(leftExpander.module, true);
+    scan(rightExpander.module, false);
+}
+
   void MeloDicer::updateScaleMask() {
-        activeScaleMask = 0;
+        uint16_t newMask = 0;
         if (lastSelectedScale >= 0 && lastSelectedScale < (int)BITWIG_SCALES.size()) {
             for (int interval : BITWIG_SCALES[lastSelectedScale].intervals) {
-                activeScaleMask |= (1 << ((scaleRoot + interval) % 12));
+                newMask |= (1 << ((scaleRoot + interval) % 12));
             }
         } else {
-            activeScaleMask = 0xFFF;
+            newMask = 0xFFF;
         }
 
-        for (int i = 0; i < 12; i++) {
-            bool inScale = (activeScaleMask & (1 << i));
-            ParamQuantity* pq = getParamQuantity(SEMI0_PARAM + i);
-            
-            if (pq) {
-                if (lockScaleNotes) {
+        if (lockScaleNotes) {
+            // Capture current fader weights before redistribution
+            float currentWeights[12];
+            for (int i = 0; i < 12; i++) {
+                currentWeights[i] = params[SEMI0_PARAM + i].getValue();
+            }
+
+            // Redistribute weight from out-of-scale notes to the nearest in-scale notes
+            float redistributedWeights[12];
+            for (int i = 0; i < 12; i++) redistributedWeights[i] = 0.0f;
+
+            for (int i = 0; i < 12; i++) {
+                if (newMask & (1 << i)) {
+                    // Already in scale, keep the weight
+                    redistributedWeights[i] += currentWeights[i];
+                } else if (currentWeights[i] > 0.0001f) {
+                    float val = currentWeights[i];
+                    // Search for nearest neighbors in the circular 12-semitone space
+                    int distUp = 13, distDown = 13;
+                    for (int d = 1; d <= 6; d++) {
+                        if (newMask & (1 << ((i + d) % 12))) { distUp = d; break; }
+                    }
+                    for (int d = 1; d <= 6; d++) {
+                        if (newMask & (1 << ((i - d + 12) % 12))) { distDown = d; break; }
+                    }
+
+                    if (distUp < distDown) {
+                        redistributedWeights[(i + distUp) % 12] += val;
+                    } else if (distDown < distUp) {
+                        redistributedWeights[(i - distDown + 12) % 12] += val;
+                    } else if (distUp <= 6) {
+                        // Equidistant neighbors (e.g. C# moving to C and D)
+                        redistributedWeights[(i + distUp) % 12] += val * 0.5f;
+                        redistributedWeights[(i - distDown + 12) % 12] += val * 0.5f;
+                    }
+                }
+            }
+
+            // Apply the redistributed values and lock the faders
+            for (int i = 0; i < 12; i++) {
+                bool inScale = (newMask & (1 << i));
+                ParamQuantity* pq = getParamQuantity(SEMI0_PARAM + i);
+                if (pq) {
                     if (!inScale) {
-                        // Strictly enforce zero for out-of-scale notes
                         params[SEMI0_PARAM + i].setValue(0.f);
                         pq->minValue = 0.f;
                         pq->maxValue = 0.f;
                     } else {
+                        params[SEMI0_PARAM + i].setValue(clampv(redistributedWeights[i], 0.f, 1.f));
                         pq->minValue = 0.f;
                         pq->maxValue = 1.f;
                     }
-                } else {
-                    // Unlock faders, allow range 0..1, do not change value
+                }
+            }
+        } else {
+            // Unlock logic: allow faders to move freely within 0..1 range
+            for (int i = 0; i < 12; i++) {
+                ParamQuantity* pq = getParamQuantity(SEMI0_PARAM + i);
+                if (pq) {
                     pq->minValue = 0.f;
                     pq->maxValue = 1.f;
                 }
@@ -222,6 +302,7 @@ MeloDicer::MeloDicer() {
         melodySeedCached = false;
         cachedExpander = nullptr; // Initialize cached expander
         rhythmSeedCached = false;
+        updateExpanderPointers();
   }
 
     // --- serialization ---
@@ -693,30 +774,7 @@ void MeloDicer::onPhraseBoundary_() {
 // and is reached by walking one step further.  If no DNA is present,
 // PolyVoice may attach directly to MeloDicer's right.
 void MeloDicer::onExpanderChange(const ExpanderChangeEvent& e) {
-    // Left — scale/CV expander
-    if (leftExpander.module && leftExpander.module->model == modelMeloDicerExpander) {
-        cachedExpander = dynamic_cast<MeloDicerExpander*>(leftExpander.module);
-    } else {
-        cachedExpander = nullptr;
-    }
-
-    // Right — DNA expander sits immediately right of MeloDicer
-    cachedDnaExpander = nullptr;
-    cachedPolyVoiceExpander = nullptr;
-
-    if (rightExpander.module) {
-        if (rightExpander.module->model == modelMeloDicerDNAExpander) {
-            cachedDnaExpander = dynamic_cast<MeloDicerDNAExpander*>(rightExpander.module);
-            // PolyVoice expander chains to the right of DNA
-            Module* dnaRight = rightExpander.module->rightExpander.module;
-            if (dnaRight && dnaRight->model == modelMeloDicerPolyVoiceExpander) {
-                cachedPolyVoiceExpander = dynamic_cast<MeloDicerPolyVoiceExpander*>(dnaRight);
-            }
-        } else if (rightExpander.module->model == modelMeloDicerPolyVoiceExpander) {
-            // PolyVoice attached directly when no DNA expander is present
-            cachedPolyVoiceExpander = dynamic_cast<MeloDicerPolyVoiceExpander*>(rightExpander.module);
-        }
-    }
+    updateExpanderPointers();
 }
 
 // ---------------- Helper: reset hook -----------------------------------------
@@ -963,6 +1021,16 @@ void MeloDicer::process(const ProcessArgs& args) {
     lights[RHYTHM_DICE_LIGHT].setBrightness(rhythmSeedPending ? 1.f : 0.1f);
     lights[MELODY_DICE_LIGHT].setBrightness(melodySeedPending ? 1.f : 0.1f);
     lights[LOCK_LIGHT].setBrightness(locked ? 1.f : 0.f);
+
+    // Expander indicators: Green for valid connection, Red for warning (multiple)
+    auto setExpLight = [&](int lightId, int count) {
+        lights[lightId + 0].setBrightness(count == 1 ? 1.f : 0.f); // Green channel
+        lights[lightId + 1].setBrightness(count > 1 ? 1.f : 0.f);  // Red channel
+    };
+    setExpLight(SCALE_EXPANDER_LIGHT, scaleExpanderCount);
+    setExpLight(DNA_EXPANDER_LIGHT, dnaExpanderCount);
+    setExpLight(POLY_EXPANDER_LIGHT, polyExpanderCount);
+
     lights[MUTE_LIGHT].setBrightness(muted ? 1.f : 0.f);
 
     // ── Throttle UI and Light processing ──
@@ -1040,6 +1108,7 @@ void MeloDicer::process(const ProcessArgs& args) {
 
     // ── Control-Rate DNA and Window Updates (Optimized CPU) ──
     if (controlDivider.process()) {
+        updateExpanderPointers();
         if (cachedDnaExpander) {
             auto processStrand = [&](int pLen, int iLen, int pOff, int iOff, int pRot, int& tLen, int& tOff, int& tRot) {
                 float lCV = cachedDnaExpander->inputs[iLen].getNormalVoltage(0.f) * 1.6f;

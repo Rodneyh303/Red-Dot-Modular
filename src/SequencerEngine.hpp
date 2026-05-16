@@ -144,6 +144,15 @@ struct SequencerEngine {
     void executeModeD(bool gateHigh, float inCV);
     float quantize(float vIn);
 
+    // High-level DNA Actions
+    void scrambleRhythmStrands();
+    void scrambleMelodyStrands();
+    void scrambleAllStrands();
+    void resetRhythmStrands();
+    void resetMelodyStrands();
+    void resetAllStrands();
+    void syncVisuals(const PatternInput& in);
+
     // ── Poly voice execution ──────────────────────────────────────────────────
     // Call executePolyVoices() after any stepped executeModeA/B call.
     // voices[i].restProb must be set by the caller before invoking.
