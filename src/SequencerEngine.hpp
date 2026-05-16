@@ -131,6 +131,7 @@ struct SequencerEngine {
     int getRhythmStep() const;
     int getVariationStep() const;
     int getLegatoStep() const;
+    int getAccentStep() const;  // NEW: accent strand DNA index
     int getMelodyStep() const;
     int getOctaveStep() const;
 
