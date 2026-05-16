@@ -29,6 +29,7 @@ struct StepResult {
     int  nvIdx   = 0;       // note-length index used this step
     bool stepped = false;   // true if a step edge actually fired this sample
     bool wrapped = false;   // true if the phrase boundary wrapped
+    bool accented = false;  // true if this step is accented (NEW)
 };
 
 // One additional voice beyond mono.  Owns its own GateState and rest
@@ -74,6 +75,8 @@ struct SequencerEngine {
     int variationOff = 0;
     int legatoLen = 16;
     int legatoOff = 0;
+    int accentLen = 16;     // NEW: accent strand length (DNA)
+    int accentOff = 0;      // NEW: accent strand offset (DNA)
     int melodyLen = 16;
     int melodyOff = 0;
     int octaveLen = 16;
@@ -83,7 +86,7 @@ struct SequencerEngine {
     int polyRot[7];
 
     // Discrete mutation offsets (mutation from scramble/context menu)
-    int rhythmRot = 0, variationRot = 0, legatoRot = 0, melodyRot = 0, octaveRot = 0;
+    int rhythmRot = 0, variationRot = 0, legatoRot = 0, accentRot = 0, melodyRot = 0, octaveRot = 0;
 
     int dnaLength = 16; // Legacy/Global fallback
     int dnaOffset = 0;
@@ -99,6 +102,7 @@ struct SequencerEngine {
     int modeSelect = 0;
     int ppqnSetting = 4;
     int noteVariationMask = 0b111;
+    float accentProb = 0.25f;  // Probability of accent on each note (0..1) (NEW)
 
     // Quantizer cache
     int activeSemiList[12] = {};
