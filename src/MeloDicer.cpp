@@ -1059,6 +1059,8 @@ void MeloDicer::process(const ProcessArgs& args) {
                             engine.variationLen, engine.variationOff, engine.variationRot);
             processStrand(DNA_L_LEN_PARAM, DNA_L_LEN_INPUT, DNA_L_OFF_PARAM, DNA_L_OFF_INPUT, DNA_L_ROT_PARAM, 
                             engine.legatoLen, engine.legatoOff, engine.legatoRot);
+            processStrand(DNA_A_LEN_PARAM, DNA_A_LEN_INPUT, DNA_A_OFF_PARAM, DNA_A_OFF_INPUT, DNA_A_ROT_PARAM, 
+                            engine.accentLen, engine.accentOff, engine.accentRot);
             processStrand(DNA_M_LEN_PARAM, DNA_M_LEN_INPUT, DNA_M_OFF_PARAM, DNA_M_OFF_INPUT, DNA_M_ROT_PARAM, 
                             engine.melodyLen, engine.melodyOff, engine.melodyRot);
             processStrand(DNA_O_LEN_PARAM, DNA_O_LEN_INPUT, DNA_O_OFF_PARAM, DNA_O_OFF_INPUT, DNA_O_ROT_PARAM, 
@@ -1075,6 +1077,8 @@ void MeloDicer::process(const ProcessArgs& args) {
             DNA_ACT_INPUT(DNA_SCRAMBLE_V_INPUT, scrambleVariationRotation);
             DNA_ACT_PARAM(DNA_SCRAMBLE_L_PARAM, scrambleLegatoRotation);
             DNA_ACT_INPUT(DNA_SCRAMBLE_L_INPUT, scrambleLegatoRotation);
+            DNA_ACT_PARAM(DNA_SCRAMBLE_A_PARAM, scrambleAccentRotation);
+            DNA_ACT_INPUT(DNA_SCRAMBLE_A_INPUT, scrambleAccentRotation);
             DNA_ACT_PARAM(DNA_SCRAMBLE_M_PARAM, scrambleMelodyRotation);
             DNA_ACT_INPUT(DNA_SCRAMBLE_M_INPUT, scrambleMelodyRotation);
             DNA_ACT_PARAM(DNA_SCRAMBLE_O_PARAM, scrambleOctaveRotation);
@@ -1088,6 +1092,8 @@ void MeloDicer::process(const ProcessArgs& args) {
             DNA_ACT_INPUT(DNA_RESET_V_INPUT, resetVariationRotation);
             DNA_ACT_PARAM(DNA_RESET_L_PARAM, resetLegatoRotation);
             DNA_ACT_INPUT(DNA_RESET_L_INPUT, resetLegatoRotation);
+            DNA_ACT_PARAM(DNA_RESET_A_PARAM, resetAccentRotation);
+            DNA_ACT_INPUT(DNA_RESET_A_INPUT, resetAccentRotation);
             DNA_ACT_PARAM(DNA_RESET_M_PARAM, resetMelodyRotation);
             DNA_ACT_INPUT(DNA_RESET_M_INPUT, resetMelodyRotation);
             DNA_ACT_PARAM(DNA_RESET_O_PARAM, resetOctaveRotation);
@@ -1095,9 +1101,9 @@ void MeloDicer::process(const ProcessArgs& args) {
         } else {
             // Fallback defaults if expander is disconnected (only set once to save CPU)
             if (engine.rhythmLen != 16) {
-                engine.rhythmLen = engine.variationLen = engine.legatoLen = engine.melodyLen = engine.octaveLen = 16;
-                engine.rhythmOff = engine.variationOff = engine.legatoOff = engine.melodyOff = engine.octaveOff = 0;
-                engine.rhythmRot = engine.variationRot = engine.legatoRot = engine.melodyRot = engine.octaveRot = 0;
+                engine.rhythmLen = engine.variationLen = engine.legatoLen = engine.accentLen = engine.melodyLen = engine.octaveLen = 16;
+                engine.rhythmOff = engine.variationOff = engine.legatoOff = engine.accentOff = engine.melodyOff = engine.octaveOff = 0;
+                engine.rhythmRot = engine.variationRot = engine.legatoRot = engine.accentRot = engine.melodyRot = engine.octaveRot = 0;
             }
         }
         if (cachedPolyVoiceExpander) {
@@ -1253,6 +1259,16 @@ void MeloDicer::resetVariationRotation() {
 
 void MeloDicer::resetLegatoRotation() {
     for (int i = 0; i < 16; ++i) engine.pe.legatoRandom[i] = engine.pe.legatoSource[i];
+    engine.pe.refreshVisualCache(makePatternInput());
+}
+
+void MeloDicer::scrambleAccentRotation() {
+    engine.pe.rotateAccent(rack::random::u32() % 16);
+    engine.pe.refreshVisualCache(makePatternInput());
+}
+
+void MeloDicer::resetAccentRotation() {
+    for (int i = 0; i < 16; ++i) engine.pe.accentRandom[i] = engine.pe.accentSource[i];
     engine.pe.refreshVisualCache(makePatternInput());
 }
 

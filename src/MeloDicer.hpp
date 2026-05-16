@@ -467,6 +467,7 @@ struct MeloDicer : Module {
     void scrambleRhythm();
     void scrambleVariationRotation(); // New
     void scrambleLegatoRotation();    // New
+    void scrambleAccentRotation();    // New (accent strand)
     void scrambleOctaveRotation();    // New
     void scrambleMelody();
     void scramblePattern();
@@ -477,6 +478,7 @@ struct MeloDicer : Module {
     void resetDnaRotation();
     void resetVariationRotation();    // New
     void resetLegatoRotation();       // New
+    void resetAccentRotation();       // New (accent strand)
     void resetOctaveRotation();       // New
     void resetRhythm();
     void resetMelody();
