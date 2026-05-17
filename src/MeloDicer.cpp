@@ -175,6 +175,8 @@ MeloDicer::MeloDicer() {
     }
 
 void MeloDicer::updateExpanderPointers() {
+    // CRITICAL: Clear all cached pointers FIRST before rescanning
+    // This prevents use-after-free crashes when expanders are disconnected
     cachedExpander = nullptr;
     cachedDnaExpander = nullptr;
     cachedPolyVoiceExpander = nullptr;
@@ -184,6 +186,9 @@ void MeloDicer::updateExpanderPointers() {
     polyExpanderCount = 0;
 
     // Walk expander chains in both directions to find any connected Melodicer expanders
+    // Note: This will skip over unknown modules (e.g., blank panels) and continue
+    // walking, allowing Melodicer expanders to be found even if other modules
+    // are placed between them.
     auto scan = [&](Module* start, bool left) {
         Module* curr = start;
         int depth = 0;
@@ -200,9 +205,9 @@ void MeloDicer::updateExpanderPointers() {
                 if (!cachedPolyVoiceExpander) cachedPolyVoiceExpander = dynamic_cast<MeloDicerPolyVoiceExpander*>(curr);
                 polyExpanderCount++;
             }
-            else {
-                break; // Stop if we hit a module that isn't part of this system
-            }
+            // Note: We don't break on unknown modules - we continue walking
+            // This allows finding Melodicer expanders even if other modules are placed between them
+            
             curr = left ? curr->leftExpander.module : curr->rightExpander.module;
             depth++;
         }
@@ -210,7 +215,6 @@ void MeloDicer::updateExpanderPointers() {
 
     scan(leftExpander.module, true);
     scan(rightExpander.module, false);
-}
 
   void MeloDicer::updateScaleMask() {
         activeScaleMask = ScaleHelper::calculateMask(scaleRoot, lastSelectedScale);
