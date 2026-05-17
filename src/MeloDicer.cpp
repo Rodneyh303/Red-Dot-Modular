@@ -913,7 +913,12 @@ void MeloDicer::process(const ProcessArgs& args) {
             // Get semitone flash brightness values
             std::vector<float> semiLedBrightness(12);
             for (int i = 0; i < 12; ++i) {
-                semiLedBrightness[i] = engine.gs.semiLedBrightness(i);
+                float b = engine.gs.semiLedBrightness(i);
+                // Aggregate brightness from all active poly voices
+                for (int v = 0; v < engine.numPolyVoices; ++v) {
+                    b = std::max(b, engine.voices[v].gs.semiLedBrightness(i));
+                }
+                semiLedBrightness[i] = b;
             }
             
             // Update both via UIManager
