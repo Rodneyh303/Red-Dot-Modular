@@ -4,7 +4,7 @@
 using namespace rack;
 
 // ──── Helper: Gate High Detection ───────────────────────────────────────────
-
+// All about gates  - does it belong with Gatestate or ModeController instead? It's mostly used for timing-related gate processing, so TimingController seems reasonable for now. Can refactor later if needed.
 bool TimingController::gateHigh_(float v, float threshold) {
     return v >= threshold;
 }

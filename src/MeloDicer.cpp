@@ -407,12 +407,19 @@ int MeloDicer::computeNoteLengthIdx(int requestedIdx, int ppqnMask) { return eng
 // Full logic for all modes inline here
 // Calls helper functions as needed
 void MeloDicer::process(const ProcessArgs& args) {
-    // --- Audio-rate Input Fetching (Optimized: read once) ---
+    // --- Audio-rate Input Fetching (Consolidated) ---
     float clkV = inputs[CLK_INPUT].getVoltage();
     float gate1V = inputs[GATE1_INPUT].getVoltage();
     float gate2V = inputs[GATE2_INPUT].getVoltage();
     float runGateV = inputs[RUN_GATE_INPUT].getVoltage();
     float resetGateV = inputs[RESET_TRIGGER_INPUT].getVoltage();
+    float cv1V = inputs[CV1_INPUT].getVoltage();
+    float cv2V = inputs[CV2_INPUT].getVoltage();
+
+    // Logic References (Eliminate pointer indirection in hot path)
+    TimingController& tc = *timingController;
+    ModeController& mc = *modeController;
+    CVRouter& cvr = *cvRouter;
 
     // ── Centralised clock tick (processes CLK IN once, before all mode handlers) ──
     // Derives bpm from external clock period or BPM knob, emits sixteenthEdge + quarterEdge.
@@ -425,129 +432,104 @@ void MeloDicer::process(const ProcessArgs& args) {
     );
     bpm = clock.bpm;  // keep module-level bpm in sync for note duration calculations
 
-    // ── Run/Reset Gate Processing (via TimingController) ──
-    if (timingController) {
-        // Process run gate
-        runGateActive = timingController->processRunGate(
-            runGateActive,
-            runGateV,
-            cachedRunBtn
-        );
-        
-        // Process reset gate
-        timingController->processResetGate(
-            resetGateV,
-            cachedResetBtn
-        );
-        
-        resetArmed = timingController->isResetArmed();
-    }
+    // ── Run/Reset Gate Processing ──
+    runGateActive = tc.processRunGate(
+        runGateActive,
+        runGateV,
+        cachedRunBtn
+    );
     
-    // Drive RESET_TRIGGER_OUTPUT as a 1ms pulse on reset
-    if (timingController) {
-        outputs[RESET_TRIGGER_OUTPUT].setVoltage(
-            timingController->getResetPulseOutput(args.sampleTime)
-        );
-    }
+    tc.processResetGate(
+        resetGateV,
+        cachedResetBtn
+    );
+    
+    resetArmed = tc.isResetArmed();
+    outputs[RESET_TRIGGER_OUTPUT].setVoltage(tc.getResetPulseOutput(args.sampleTime));
     
     // ── Handle Reset Trigger ──
     if (resetArmed && runGateActive) {
         handleRestart(/*manual=*/true, /*resetImmediate=*/true);
-        if (timingController) timingController->clearReset();
-    } else if (!runGateActive && timingController) {
-        timingController->clearReset();
+        tc.clearReset();
+    } else if (!runGateActive) {
+        tc.clearReset();
     }
 
     // ── Gate Edge Detection ──
-    auto gateEdges = timingController ? timingController->processGateEdges(
-        gate1V,
-        gate2V
-    ) : TimingController::GateEdges{false, false};
+    auto gateEdges = tc.processGateEdges(gate1V, gate2V);
     
     bool gate1Rise = gateEdges.gate1Rise;
-    bool gate2Rise = gateEdges.gate2Rise;
 
     // ── Gate Assignment Handling ──
-    if (timingController) {
-        // Gate 1 assignments
-        timingController->handleGate1Assignment(gate1Assign, gate1Rise);
-        
-        // Gate 2 assignments
-        timingController->handleGate2Assignment(gate2Assign, gate2Rise, timingController->getGate2High(), invertMuteLogic);
-    }
+    tc.handleGate1Assignment(gate1Assign, gate1Rise);
+    tc.handleGate2Assignment(gate2Assign, gateEdges.gate2Rise, tc.getGate2High(), invertMuteLogic);
 
     // --- Mode dispatch (only if running) ---
-    if (runGateActive && modeController) {
-        // Prepare CV2 input
-        float cv2Voltage = 0.f;
-        // Only fetch CV2 at audio rate if in Quantizer modes (C/D)
-        if (modeSelect >= 2) cv2Voltage = inputs[CV2_INPUT].getVoltage();
-
+    if (runGateActive) {
+        // Optimization: Only execute mode logic if a relevant trigger/state is active.
+        // This avoids calling executeMode and its internal switch every sample for Modes A, B, C.
         bool gate1High = gate1V >= 1.0f;
-        bool gate2High = timingController ? timingController->getGate2High() : false;
-        
-        if (modeController->executeMode(modeSelect, gate1Rise, gate1High, gate2High, cv2Voltage)) {
-            // Mode took a step; update poly voices if present
-            if (engine.numPolyVoices > 0) {
+        bool shouldExecute = (modeSelect == 3); // Mode D is continuous
+        if (!shouldExecute) {
+            if (modeSelect == 0) shouldExecute = clock.sixteenthEdge;
+            else if (modeSelect == 1) shouldExecute = gate1Rise || (gate1High && engine.stepIndex == -1);
+            else if (modeSelect == 2) shouldExecute = clock.quarterEdge;
+        }
+
+        if (shouldExecute) {
+            float cv2ToUse = (modeSelect >= 2) ? cv2V : 0.f;
+            if (mc.executeMode(modeSelect, gate1Rise, gate1High, tc.getGate2High(), cv2ToUse)) {
+                // Mode took a step; update poly voices if expander is present
+                if (engine.numPolyVoices > 0 && expanderManager.cachedPolyVoiceExpander) {
                 for (int i = 0; i < engine.numPolyVoices; ++i) {
                     engine.voices[i].restProb = cachedPolyRest[i];
                 }
-                engine.executePolyVoices(modeController->currentPatternInput);
+                    engine.executePolyVoices(mc.currentPatternInput);
+                }
             }
         }
     }
 
     // --- CV Routing (via CVRouter) ---
     float cvOutVoltage = currentPitchV;
-    // Modes 0 & 1 (Add/Transpose) must be audio-rate for modulation quality.
-    // Modes 2 & 3 (Range Mod) are throttled below in controlDivider.
     if (cachedCv1Connected && (cv1Mode == 0 || cv1Mode == 1)) {
-        cvOutVoltage = cvRouter->processCV1Input(
+        cvOutVoltage = cvr.processCV1Input(
                 cv1Mode,
-                inputs[CV1_INPUT].getVoltage(),
+                cv1V,
                 currentPitchV,
                 true);
     }
     outputs[CV_OUTPUT].setVoltage(cvOutVoltage);
 
-    // --- Output Generation (via OutputGenerator) ---
-    if (outputGenerator) {
-        // Process main gate
-        float gateV = engine.gs.process(args.sampleTime);
-        outputGenerator->setGateOutput(outputs[GATE_OUTPUT], gateV, muted);
-        
-        // Tie gate (MonoDecision::Tie feedback)
-        bool isTie = (engine.lastStepResult.decision == MonoDecision::Tie);
-        outputGenerator->setTieGateOutput(outputs[TIE_OUTPUT], isTie && !muted);
-        
-        // Legato gate (MonoDecision::Legato or LegatoMax)
-        bool isLegato = (engine.lastStepResult.decision == MonoDecision::Legato || 
-                         engine.lastStepResult.decision == MonoDecision::LegatoMax);
-        outputs[LEGATO_OUTPUT].setVoltage(isLegato && !muted ? 10.f : 0.f);
-        
-        // Accent gate (accented AND gate high)
-        bool isAccented = engine.lastStepResult.accented && gateV > 5.f;
-        outputGenerator->setAccentGateOutput(outputs[ACCENT_OUTPUT], isAccented && !muted);
-        
-        // Poly voice outputs
-        if (expanderManager.cachedPolyVoiceExpander && engine.numPolyVoices > 0) {
-            using namespace PolyVoiceExpanderIds;
-            bool isAccented = engine.lastStepResult.accented;
-            auto* polyExp = expanderManager.cachedPolyVoiceExpander;
-            
-            for (int i = 0; i < engine.numPolyVoices; ++i) {
-                if (muted) {
-                    polyExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
-                    polyExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
-                    continue;
-                }
-
-                float vg = engine.voices[i].gs.process(args.sampleTime);
-                polyExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(vg);
-                polyExp->outputs[POLY_CV_OUT_1 + i].setVoltage(engine.voices[i].gs.currentPitchV);
-                float polyAccent = (isAccented && vg > 5.f) ? 10.f : 0.f;
-                polyExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(polyAccent);
+    // --- Output Generation (Inlined logic to minimize cross-translation unit calls) ---
+    float gateV = (runGateActive) ? engine.gs.process(args.sampleTime) : 0.f;
+    outputs[GATE_OUTPUT].setVoltage(muted ? 0.f : gateV);
+    
+    bool isTie = (engine.lastStepResult.decision == MonoDecision::Tie);
+    outputs[TIE_OUTPUT].setVoltage((isTie && !muted) ? 10.f : 0.f);
+    
+    bool isLegato = (engine.lastStepResult.decision == MonoDecision::Legato || 
+                        engine.lastStepResult.decision == MonoDecision::LegatoMax);
+    outputs[LEGATO_OUTPUT].setVoltage((isLegato && !muted) ? 10.f : 0.f);
+    
+    bool engineAccented = engine.lastStepResult.accented;
+    outputs[ACCENT_OUTPUT].setVoltage((engineAccented && gateV > 5.f && !muted) ? 10.f : 0.f);
+    
+    // Poly voice outputs (Guard: only if expander present)
+    auto* polyExp = expanderManager.cachedPolyVoiceExpander;
+    if (polyExp && engine.numPolyVoices > 0) {
+        using namespace PolyVoiceExpanderIds;
+        for (int i = 0; i < engine.numPolyVoices; ++i) {
+            if (muted) {
+                polyExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
+                polyExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
+                continue;
             }
+            float vg = engine.voices[i].gs.process(args.sampleTime);
+            polyExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(vg);
+            polyExp->outputs[POLY_CV_OUT_1 + i].setVoltage(engine.voices[i].gs.currentPitchV);
+            float polyAccent = (engineAccented && vg > 5.f) ? 10.f : 0.f;
+            polyExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(polyAccent);
         }
     }
 
