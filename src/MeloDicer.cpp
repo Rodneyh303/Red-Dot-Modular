@@ -794,45 +794,51 @@ void MeloDicer::process(const ProcessArgs& args) {
     bool gate1Rise = gateEdges.gate1Rise;
     bool gate2Rise = gateEdges.gate2Rise;
 
-    // ── Gate Assignment Handling (via TimingController) ──
+    // --- Gate Assignment Handling (via TimingController) ---
+    // Note: No lambda callbacks to reduce hot-path overhead
+    // TimingController now updates state directly via method return values
     if (timingController) {
-        // Gate 1 assignments
-        timingController->handleGate1Assignment(
-            gate1Assign,
-            gate1Rise,
-            [this](int toggle) { rhythmMode = 1 - rhythmMode; },  // Toggle rhythm mode
-            [this]() {  // Reseed rhythm
-                rhythmSeedPendingFloat = sampleSeedFromSource();
-                rhythmSeedPending = true;
-            },
-            [this]() {  // Reseed melody
-                melodySeedPendingFloat = sampleSeedFromSource();
-                melodySeedPending = true;
-            },
-            [this]() { handleRestart(/*manual=*/true, /*resetImmediate=*/true); }  // Restart
-        );
+        auto gate1Action = timingController->handleGate1Assignment(gate1Assign, gate1Rise);
+        switch (gate1Action.action) {
+            case TimingController::Gate1Action::ToggleRhythm:
+                rhythmMode = 1 - rhythmMode;
+                break;
+            case TimingController::Gate1Action::ReseedRhythm:
+                engine.pe.setPendingRhythmSeed(sampleSeedFromSource());
+                break;
+            case TimingController::Gate1Action::ReseedMelody:
+                engine.pe.setPendingMelodySeed(sampleSeedFromSource());
+                break;
+            case TimingController::Gate1Action::Restart:
+                handleRestart(/*manual=*/true, /*resetImmediate=*/true);
+                break;
+            default:
+                break;
+        }
         
         // Gate 2 assignments
-        timingController->handleGate2Assignment(
-            gate2Assign,
-            gate2Rise,
-            timingController->getGate2High(),
-            invertMuteLogic,
-            [this](int toggle) { melodyMode = 1 - melodyMode; },  // Toggle melody mode
-            [this]() {  // Reseed melody
-                melodySeedPendingFloat = sampleSeedFromSource();
-                melodySeedPending = true;
-            },
-            [this](bool shouldMute) {  // Set mute
-                if (shouldMute != muted) {
-                    muted = shouldMute;
+        auto gate2Action = timingController->handleGate2Assignment(gate2Assign, gate2Rise, invertMuteLogic);
+        switch (gate2Action.action) {
+            case TimingController::Gate2Action::ToggleMelody:
+                melodyMode = 1 - melodyMode;
+                break;
+            case TimingController::Gate2Action::ReseedMelody:
+                engine.pe.setPendingMelodySeed(sampleSeedFromSource());
+                break;
+            case TimingController::Gate2Action::SetMute:
+                if (gate2Action.shouldMute != muted) {
+                    muted = gate2Action.shouldMute;
                     if (!muted && restartOnUnmute) {
                         handleRestart(/*manual=*/true, /*resetImmediate=*/true);
                     }
                 }
-            },
-            [this]() { handleRestart(/*manual=*/true, /*resetImmediate=*/true); }  // Restart
-        );
+                break;
+            case TimingController::Gate2Action::Restart:
+                handleRestart(/*manual=*/true, /*resetImmediate=*/true);
+                break;
+            default:
+                break;
+        }
     }
 
     // --- Mode dispatch (only if running) ---

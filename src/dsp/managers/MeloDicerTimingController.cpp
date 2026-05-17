@@ -66,73 +66,71 @@ TimingController::GateEdges TimingController::processGateEdges(float gate1V, flo
 
 // ──── Gate1 Assignment Handling ─────────────────────────────────────────────
 
-void TimingController::handleGate1Assignment(
+TimingController::Gate1Result TimingController::handleGate1Assignment(
     int gate1Assign,
-    bool gate1Rise,
-    const std::function<void(int)>& onRhythmModeToggle,
-    const std::function<void()>& onRhythmReseed,
-    const std::function<void()>& onMelodyReseed,
-    const std::function<void()>& onRestart) {
+    bool gate1Rise) {
     
-    if (!gate1Rise) return;
+    Gate1Result result;
+    
+    if (!gate1Rise) return result;
     
     switch (gate1Assign) {
         case 0: // Toggle Dice R MODE
-            if (onRhythmModeToggle) onRhythmModeToggle(1); // toggle: 0 <-> 1
+            result.action = Gate1Action::ToggleRhythm;
             break;
             
-        case 1: // Re-dice R (arm) — only if in dice-mode
-            if (onRhythmReseed) onRhythmReseed();
+        case 1: // Re-dice R (arm)
+            result.action = Gate1Action::ReseedRhythm;
             break;
             
-        case 2: // Re-dice M (arm) — only if in dice-mode
-            if (onMelodyReseed) onMelodyReseed();
+        case 2: // Re-dice M (arm)
+            result.action = Gate1Action::ReseedMelody;
             break;
             
         case 3: // Restart now
-            if (onRestart) onRestart();
+            result.action = Gate1Action::Restart;
             break;
     }
+    
+    return result;
 }
 
 // ──── Gate2 Assignment Handling ─────────────────────────────────────────────
 
-void TimingController::handleGate2Assignment(
+TimingController::Gate2Result TimingController::handleGate2Assignment(
     int gate2Assign,
     bool gate2Rise,
-    bool gate2High,
-    bool invertMuteLogic,
-    const std::function<void(int)>& onMelodyModeToggle,
-    const std::function<void()>& onMelodyReseed,
-    const std::function<void(bool)>& onMuteChange,
-    const std::function<void()>& onRestart) {
+    bool invertMuteLogic) {
+    
+    Gate2Result result;
     
     switch (gate2Assign) {
         case 0: // Toggle Dice M — on rising edge
-            if (gate2Rise && onMelodyModeToggle) {
-                onMelodyModeToggle(1); // toggle
+            if (gate2Rise) {
+                result.action = Gate2Action::ToggleMelody;
             }
             break;
             
-        case 1: // Re-dice M — rising edge, only in dice-mode
-            if (gate2Rise && onMelodyReseed) {
-                onMelodyReseed();
+        case 1: // Re-dice M — rising edge
+            if (gate2Rise) {
+                result.action = Gate2Action::ReseedMelody;
             }
             break;
             
         case 2: // MUTE — level-based
             {
-                bool shouldMute = invertMuteLogic ? !gate2High : gate2High;
-                if (onMuteChange) {
-                    onMuteChange(shouldMute);
-                }
+                bool shouldMute = invertMuteLogic ? !lastGate2High : lastGate2High;
+                result.action = Gate2Action::SetMute;
+                result.shouldMute = shouldMute;
             }
             break;
             
         case 3: // RESTART — rising edge
-            if (gate2Rise && onRestart) {
-                onRestart();
+            if (gate2Rise) {
+                result.action = Gate2Action::Restart;
             }
             break;
     }
+    
+    return result;
 }

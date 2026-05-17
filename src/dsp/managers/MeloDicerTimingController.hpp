@@ -46,24 +46,40 @@ public:
     
     // ──── Gate Assignment Processing ────────────────────────────────────────
     
-    /// Handle Gate1 rising edge based on gate1Assign mode
-    /// Callback signature for actions: void action(const ActionContext& ctx)
-    void handleGate1Assignment(int gate1Assign,
-                               bool gate1Rise,
-                               const std::function<void(int)>& onRhythmModeToggle,
-                               const std::function<void()>& onRhythmReseed,
-                               const std::function<void()>& onMelodyReseed,
-                               const std::function<void()>& onRestart);
+    /// Gate1 actions that can be triggered
+    enum class Gate1Action {
+        None,
+        ToggleRhythm,
+        ReseedRhythm,
+        ReseedMelody,
+        Restart
+    };
     
-    /// Handle Gate2 state based on gate2Assign mode
-    void handleGate2Assignment(int gate2Assign,
-                               bool gate2Rise,
-                               bool gate2High,
-                               bool invertMuteLogic,
-                               const std::function<void(int)>& onMelodyModeToggle,
-                               const std::function<void()>& onMelodyReseed,
-                               const std::function<void(bool)>& onMuteChange,
-                               const std::function<void()>& onRestart);
+    /// Gate2 actions that can be triggered
+    enum class Gate2Action {
+        None,
+        ToggleMelody,
+        ReseedMelody,
+        SetMute,
+        Restart
+    };
+    
+    /// Result of Gate1 processing
+    struct Gate1Result {
+        Gate1Action action = Gate1Action::None;
+    };
+    
+    /// Result of Gate2 processing
+    struct Gate2Result {
+        Gate2Action action = Gate2Action::None;
+        bool shouldMute = false;
+    };
+    
+    /// Handle Gate1 rising edge based on gate1Assign mode (returns action to take)
+    Gate1Result handleGate1Assignment(int gate1Assign, bool gate1Rise);
+    
+    /// Handle Gate2 state based on gate2Assign mode (returns action to take)
+    Gate2Result handleGate2Assignment(int gate2Assign, bool gate2Rise, bool invertMuteLogic);
     
     // ──── Edge Detection ────────────────────────────────────────────────────
     
