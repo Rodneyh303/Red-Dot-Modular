@@ -45,32 +45,71 @@ struct ScaleHelper {
     }
 
     static void redistributeWeights(uint16_t mask, float* weights) {
-        float redistributed[12] = {0.0f};
+        float original_weights[12];
         for (int i = 0; i < 12; i++) {
-            if (mask & (1 << i)) {
-                redistributed[i] += weights[i];
-            } else if (weights[i] > 0.0001f) {
-                float val = weights[i];
-                int distUp = 13, distDown = 13;
-                for (int d = 1; d <= 6; d++) {
-                    if (mask & (1 << ((i + d) % 12))) { distUp = d; break; }
-                }
-                for (int d = 1; d <= 6; d++) {
-                    if (mask & (1 << ((i - d + 12) % 12))) { distDown = d; break; }
-                }
+            original_weights[i] = weights[i];
+            weights[i] = 0.0f; // Clear current weights, we'll rebuild them
+        }
 
-                if (distUp < distDown) {
-                    redistributed[(i + distUp) % 12] += val;
-                } else if (distDown < distUp) {
-                    redistributed[(i - distDown + 12) % 12] += val;
-                } else if (distUp <= 6) {
-                    redistributed[(i + distUp) % 12] += val * 0.5f;
-                    redistributed[(i - distDown + 12) % 12] += val * 0.5f;
-                }
+        // Pass 1: Place original in-scale non-zero faders
+        for (int i = 0; i < 12; i++) {
+            if ((mask & (1 << i)) && original_weights[i] > 0.0001f) {
+                weights[i] = original_weights[i];
             }
         }
+
+        // Pass 2: Nudge out-of-scale non-zero faders to the nearest available in-scale slot.
         for (int i = 0; i < 12; i++) {
-            weights[i] = redistributed[i];
+            if (!(mask & (1 << i)) && original_weights[i] > 0.0001f) {
+                float val = original_weights[i];
+
+                int nearest_in_scale_note = -1;
+                int dist_up = 13, dist_down = 13;
+                int target_up = -1, target_down = -1;
+
+                // Find nearest in-scale note "up"
+                for (int d = 1; d <= 6; d++) {
+                    int current_up = (i + d) % 12;
+                    if (mask & (1 << current_up)) {
+                        dist_up = d;
+                        target_up = current_up;
+                        break;
+                    }
+                }
+                // Find nearest in-scale note "down"
+                for (int d = 1; d <= 6; d++) {
+                    int current_down = (i - d + 12) % 12;
+                    if (mask & (1 << current_down)) {
+                        dist_down = d;
+                        target_down = current_down;
+                        break;
+                    }
+                }
+
+                // Determine the single nearest target
+                if (target_up == -1 && target_down == -1) {
+                    // No in-scale notes found, value is effectively lost.
+                    continue;
+                } else if (target_up == -1) {
+                    nearest_in_scale_note = target_down;
+                } else if (target_down == -1) {
+                    nearest_in_scale_note = target_up;
+                } else if (dist_up < dist_down) {
+                    nearest_in_scale_note = target_up;
+                } else if (dist_down < dist_up) {
+                    nearest_in_scale_note = target_down;
+                } else { // Equidistant, prefer higher index (up)
+                    nearest_in_scale_note = target_up;
+                }
+
+                if (nearest_in_scale_note != -1) {
+                    // If the target slot is currently empty (0.0f), move the fader there.
+                    // Otherwise, the nudged fader's value is discarded to preserve existing heights.
+                    if (weights[nearest_in_scale_note] < 0.0001f) { // Check if slot is effectively empty
+                        weights[nearest_in_scale_note] = val;
+                    }
+                }
+            }
         }
     }
 };
