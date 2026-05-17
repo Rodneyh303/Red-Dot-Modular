@@ -5,6 +5,8 @@
 #include "../engines/ClockEngine.hpp"
 #include "MeloDicerParameterManager.hpp"
 
+struct MeloDicer; // Forward declaration
+
 /**
  * ModeController
  * 
@@ -25,13 +27,12 @@
  */
 class ModeController {
 public:
-    // Callback function type for phrase boundary events
-    using PhraseCallback = std::function<void()>;
-    
-    ModeController(SequencerEngine& engine,
+    ModeController(MeloDicer* mainModule,
+                   SequencerEngine& engine,
                    const ClockEngine& clock,
                    ParameterManager& paramManager)
-        : engine(engine),
+        : mainModule(mainModule),
+          engine(engine),
           clock(clock),
           paramManager(paramManager),
           lastStepIndex(-1) {}
@@ -41,27 +42,24 @@ public:
     /// Execute Mode A: Clock-driven sequencing
     /// Triggers on clock sixteenth edges
     /// Returns true if a new step was taken
-    bool executeModeA(PhraseCallback onPhraseBoundary);
+    bool executeModeA();
     
     /// Execute Mode B: Gate-driven sequencing
     /// Triggers on GATE1 rising edge or continuous hold
     /// Returns true if a new step was taken
     bool executeModeB(bool gate1Rise,
-                      bool gate1High,
-                      PhraseCallback onPhraseBoundary);
+                      bool gate1High);
     
     /// Execute Mode C: Quantizer mode 1 (CV2 latch on quarter notes)
     /// Triggers on clock quarter-note edges
     /// Returns true if a new step was taken
-    bool executeModeC(float cv2Voltage,
-                      PhraseCallback onPhraseBoundary);
+    bool executeModeC(float cv2Voltage);
     
     /// Execute Mode D: Quantizer mode 2 (GATE2 driven)
     /// Triggers based on GATE2 state and CV2 voltage
     /// Returns true if a new step was taken
     bool executeModeD(bool gate2High,
-                      float cv2Voltage,
-                      PhraseCallback onPhraseBoundary);
+                      float cv2Voltage);
     
     // ──── High-Level Dispatcher ──────────────────────────────────────────────
     
@@ -69,10 +67,14 @@ public:
     /// Returns true if a new step was taken
     bool executeMode(int modeId,
                      bool gate1Rise,
-                     bool gate1High,
+                     bool gate1High, // Pass gate1High to mode B
                      bool gate2High,
-                     float cv2Voltage,
-                     PhraseCallback onPhraseBoundary);
+                     float cv2Voltage);
+
+    /// Update the internal PatternInput snapshot from current parameters
+    void updatePatternInput();
+
+    PatternInput currentPatternInput; // Cached PatternInput
     
     // ──── State Accessors ────────────────────────────────────────────────────
     
@@ -83,6 +85,7 @@ public:
     void updateLastStepIndex() { lastStepIndex = engine.stepIndex; }
     
 private:
+    MeloDicer* mainModule;
     SequencerEngine& engine;
     const ClockEngine& clock;
     ParameterManager& paramManager;
@@ -95,7 +98,7 @@ private:
     PatternInput assemblePatternInput_();
 
     /// Common post-execution logic: handle phrase boundaries and poly voices
-    void postExecute_(const StepResult& result, PhraseCallback onPhraseBoundary);
+    void postExecute_(const StepResult& result);
     
     /// Set poly voice rest probabilities from parameter manager
     void updatePolyVoiceRest_();

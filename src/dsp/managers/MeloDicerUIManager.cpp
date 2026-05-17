@@ -89,27 +89,27 @@ void UIManager::updateModeLights(int currentMode, int& lastMode) {
 
 // ──── Step Ring Lights ──────────────────────────────────────────────────────
 
-void UIManager::updateStepLights(const std::vector<float>& stepBrightness) {
+void UIManager::updateStepLights(const float* stepBrightness, int count) {
     if (!mainModule) return;
     auto& lights = mainModule->lights;
     using namespace MeloDicerIds;
     
     // Update 16 step ring lights
-    for (int i = 0; i < 16 && i < (int)stepBrightness.size(); ++i) {
+    for (int i = 0; i < 16 && i < count; ++i) {
         lights[STEP_LIGHTS_START + i].setBrightness(stepBrightness[i]);
     }
 }
 
 // ──── Semitone LED Brightness ───────────────────────────────────────────────
 
-void UIManager::updateSemitoneFlashLights(const std::vector<float>& semiLedBrightness) {
+void UIManager::updateSemitoneFlashLights(const float* semiLedBrightness, int count) {
     if (!mainModule) return;
     auto& lights = mainModule->lights;
     using namespace MeloDicerIds;
     
     // Update red channel (ch1) for each semitone
     // Green channel (ch0) is handled by the VCVLightSlider widget automatically
-    for (int i = 0; i < 12 && i < (int)semiLedBrightness.size(); ++i) {
+    for (int i = 0; i < 12 && i < count; ++i) {
         lights[SEMI_LED_START + 2*i + 1].setBrightness(semiLedBrightness[i]);
     }
 }
@@ -168,8 +168,8 @@ void UIManager::updateAllLights(bool rhythmSeedPending,
                                  int polyCount,
                                  int currentMode,
                                  int& lastMode,
-                                 const std::vector<float>& stepBrightness,
-                                 const std::vector<float>& semiLedBrightness,
+                         const float* stepBrightness, int stepCount,
+                         const float* semiLedBrightness, int semiCount,
                                  float sampleTime) {
     // Update all status lights
     updateDiceLights(rhythmSeedPending, melodySeedPending);
@@ -185,8 +185,8 @@ void UIManager::updateAllLights(bool rhythmSeedPending,
     updateModeLights(currentMode, lastMode);
     
     // Update step ring
-    updateStepLights(stepBrightness);
+    updateStepLights(stepBrightness, stepCount);
     
     // Update semitone flash feedback
-    updateSemitoneFlashLights(semiLedBrightness);
+    updateSemitoneFlashLights(semiLedBrightness, semiCount);
 }

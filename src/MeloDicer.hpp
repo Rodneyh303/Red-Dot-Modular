@@ -341,14 +341,14 @@ struct MeloDicer : Module {
     dsp::ClockDivider controlDivider; // For DNA modulation at "Control Rate"
 
     SequencerEngine engine;
-    DNAStrandManager dnaManager{engine};
-    std::unique_ptr<ParameterManager> paramManager;  // Initialized in constructor
-    std::unique_ptr<ScaleManager> scaleManager;      // Initialized in constructor
-    std::unique_ptr<ModeController> modeController;  // Initialized in constructor
-    std::unique_ptr<UIManager> uiManager;  // Initialized in constructor
-    std::unique_ptr<TimingController> timingController;  // Initialized in constructor
-    std::unique_ptr<CVRouter> cvRouter;  // Initialized in constructor
-    std::unique_ptr<OutputGenerator> outputGenerator;  // Initialized in constructor
+    DNAStrandManager dnaManager{engine}; // Always valid
+    std::unique_ptr<ParameterManager> paramManager;
+    std::unique_ptr<ScaleManager> scaleManager;
+    std::unique_ptr<ModeController> modeController; // Corrected name
+    std::unique_ptr<UIManager> uiManager;
+    std::unique_ptr<TimingController> timingController;
+    std::unique_ptr<CVRouter> cvRouter;
+    std::unique_ptr<OutputGenerator> outputGenerator;
 
     // Convenience accessors
     rack::random::Xoroshiro128Plus& rhythmRng = engine.pe.rhythmRng;
@@ -454,7 +454,6 @@ struct MeloDicer : Module {
     float genPitchV(int& outSemitone);
     int varyNoteIndex(int baseIdx);
     float semitoneToVolts(int semitone);
-    PatternInput makePatternInput();
     void redrawRhythmPattern();
     void redrawMelodyPattern();
 

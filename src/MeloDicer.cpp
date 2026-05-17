@@ -145,7 +145,7 @@ MeloDicer::MeloDicer() {
         // Initialize managers
         scaleManager = std::unique_ptr<ScaleManager>(new ScaleManager(this));
         paramManager = std::unique_ptr<ParameterManager>(new ParameterManager(this, &expanderManager.cachedScaleExpander, &expanderManager.cachedPolyVoiceExpander));
-        modeController = std::unique_ptr<ModeController>(new ModeController(engine, clock, *paramManager));
+        modeController = std::unique_ptr<ModeController>(new ModeController(this, engine, clock, *paramManager));
         uiManager = std::unique_ptr<UIManager>(new UIManager(this, lightDivider));
         timingController = std::unique_ptr<TimingController>(new TimingController(this));
         cvRouter = std::unique_ptr<CVRouter>(new CVRouter());
@@ -214,9 +214,8 @@ void MeloDicer::updateExpanderPointers() {
     // Finalize state
     reseedXoroshiroFromFloat(engine.pe.rhythmRng, rhythmSeedFloat);
     reseedXoroshiroFromFloat(engine.pe.melodyRng, melodySeedFloat);
-    if (scaleManager) {
-        scaleManager->updateScaleMask();
-    }
+    // scaleManager is guaranteed to be valid after construction
+    scaleManager->updateScaleMask();
     }
 
 //return semitone parameter value with CV input added (if connected)
@@ -231,17 +230,17 @@ void MeloDicer::updateExpanderPointers() {
 // These wrapper functions maintain backward compatibility while delegating
 // to the centralized ParameterManager.
 
-float MeloDicer::getNoteValueParam()  { return paramManager ? paramManager->getNoteValue() : params[NOTE_VALUE_PARAM].getValue(); }
-float MeloDicer::getVariationParam()  { return paramManager ? paramManager->getVariation() : 0.5f; }
-float MeloDicer::getLegatoParam()     { return paramManager ? paramManager->getLegato() : 0.1f; }
-float MeloDicer::getRestParam()       { return paramManager ? paramManager->getRest() : 0.1f; }
-float MeloDicer::getAccentParam()     { return paramManager ? paramManager->getAccent() : 0.25f; }
+float MeloDicer::getNoteValueParam()  { return paramManager->getNoteValue(); }
+float MeloDicer::getVariationParam()  { return paramManager->getVariation(); }
+float MeloDicer::getLegatoParam()     { return paramManager->getLegato(); }
+float MeloDicer::getRestParam()       { return paramManager->getRest(); }
+float MeloDicer::getAccentParam()     { return paramManager->getAccent(); }
 
-float MeloDicer::getOctaveLoParam()   { return paramManager ? paramManager->getOctaveLo() : 2.f; }
-float MeloDicer::getOctaveHiParam()   { return paramManager ? paramManager->getOctaveHi() : 5.f; }
+float MeloDicer::getOctaveLoParam()   { return paramManager->getOctaveLo(); }
+float MeloDicer::getOctaveHiParam()   { return paramManager->getOctaveHi(); }
 
 float MeloDicer::getPolyRestParam(int voiceIdx) {
-    return paramManager ? paramManager->getPolyRest(voiceIdx) : 0.1f;
+    return paramManager->getPolyRest(voiceIdx);
 }
 
 // --- switch melody/rhythm mode (dice/realtime), caching/restoring state as needed ---    
@@ -267,8 +266,7 @@ int MeloDicer::pickSemitoneWeighted() {
 // returns 0V and -1 semitone if no semitone is selected
 // (should be rare, only if all semitone weights are zero)
 float MeloDicer::genPitchV(int& outSemitone) {
-    PatternInput in = makePatternInput();
-    return engine.pe.genPitchLive(outSemitone, in, melodyRandom[engine.getMelodyStep()], octaveRandom[engine.getOctaveStep()]);
+    return engine.pe.genPitchLive(outSemitone, modeController->currentPatternInput, melodyRandom[engine.getMelodyStep()], octaveRandom[engine.getOctaveStep()]);
 }
 
     // allowed note lengths depend on noteVariationMask - note we defined NoteLength enum and allowednoteLengths function
@@ -279,7 +277,6 @@ float MeloDicer::genPitchV(int& outSemitone) {
     //      mask=0b000 allows only 1/4, 1/2, 1, 2, 4
     //      mask=0b111 allows all note lengths
 
-
 // Convert semitone (0..11) to volts (1V/oct)
 // 12 semitones per octave
 float MeloDicer::semitoneToVolts(int semitone) {
@@ -288,60 +285,50 @@ float MeloDicer::semitoneToVolts(int semitone) {
 
     // regenerate rhythm pattern (uses rhythmRng) — skipped when locked
     // Build a PatternInput snapshot from current params/CV state
-    PatternInput MeloDicer::makePatternInput() {
-        PatternInput in;
-        for (int i=0;i<12;++i) in.semiWeights[i]=getSemitoneParam(i);
-        in.restProb          = getRestParam();
-        in.variationAmount   = getVariationParam();
-        in.octaveLo          = getOctaveLoParam();
-        in.octaveHi          = getOctaveHiParam();
-        in.transpose         = params[TRANSPOSE_PARAM].getValue();
-        in.noteVariationMask = noteVariationMask;
-        in.locked            = locked;
-        return in;
-    }
+    // This method is no longer needed as PatternInput is cached in ModeController
+    // PatternInput MeloDicer::makePatternInput() { ... }
 
-    void MeloDicer::redrawRhythmPattern() { engine.pe.redrawRhythm(makePatternInput()); }
-    void  MeloDicer::redrawMelodyPattern() { engine.pe.redrawMelody(makePatternInput()); }
+    void MeloDicer::redrawRhythmPattern() { engine.pe.redrawRhythm(modeController->currentPatternInput); }
+    void  MeloDicer::redrawMelodyPattern() { engine.pe.redrawMelody(modeController->currentPatternInput); }
 
     void MeloDicer::rotateRhythm(int steps) {
         engine.pe.rotateRhythm(steps);
-        engine.pe.refreshPatternCache(makePatternInput());
+        engine.pe.refreshPatternCache(modeController->currentPatternInput);
     }
 
     void MeloDicer::rotateRhythmPattern(int steps) {
         engine.pe.rotateRhythmPattern(steps);
-        engine.pe.refreshPatternCache(makePatternInput());
+        engine.pe.refreshPatternCache(modeController->currentPatternInput);
     }
     
     void MeloDicer::rotateVariation(int steps) {
         engine.pe.rotateVariation(steps);
-        engine.pe.refreshPatternCache(makePatternInput());
+        engine.pe.refreshPatternCache(modeController->currentPatternInput);
     }
 
     void MeloDicer::rotateLegato(int steps) {
         engine.pe.rotateLegato(steps);
-        engine.pe.refreshPatternCache(makePatternInput());
+        engine.pe.refreshPatternCache(modeController->currentPatternInput);
     }
 
     void MeloDicer::rotateMelody(int steps) {
         engine.pe.rotateMelody(steps);
-        engine.pe.refreshPatternCache(makePatternInput());
+        engine.pe.refreshPatternCache(modeController->currentPatternInput);
     }
 
     void MeloDicer::rotateMelodyPattern(int steps) {
         engine.pe.rotateMelodyPattern(steps);
-        engine.pe.refreshPatternCache(makePatternInput());
+        engine.pe.refreshPatternCache(modeController->currentPatternInput);
     }
     
     void MeloDicer::rotateOctave(int steps) {
         engine.pe.rotateOctave(steps);
-        engine.pe.refreshPatternCache(makePatternInput());
+        engine.pe.refreshPatternCache(modeController->currentPatternInput);
     }
 
     void MeloDicer::rebuildSemiCache_() {
         float weights[12];
-        for (int i = 0; i < 12; ++i) weights[i] = (scaleManager && paramManager) ? scaleManager->getSemitoneWeight(i, *paramManager) : 0.f;
+        for (int i = 0; i < 12; ++i) weights[i] = scaleManager->getSemitoneWeight(i, *paramManager);
         engine.rebuildScaleCache(weights);
     }
 
@@ -357,7 +344,7 @@ float MeloDicer::semitoneToVolts(int semitone) {
 
         if (!locked) {
             if (resetImmediate) {
-                engine.pe.applyPendingSeedsAndRedraw(makePatternInput());
+                engine.pe.applyPendingSeedsAndRedraw(modeController->currentPatternInput);
             }
         }
         resetArmed = false;
@@ -385,7 +372,7 @@ float MeloDicer::semitoneToVolts(int semitone) {
 // Called at phrase boundary (stepIndex wraps from endStep back to startStep).
 // Seeds are applied FIRST so the subsequent redraw uses the new RNG state.
 void MeloDicer::onPhraseBoundary_() {
-    engine.pe.onPhraseBoundary(makePatternInput());
+    engine.pe.onPhraseBoundary(modeController->currentPatternInput);
 }
 
 // ---------------- Helper: expander change hook -------------------------------
@@ -476,62 +463,27 @@ void MeloDicer::process(const ProcessArgs& args) {
     // ── Gate Assignment Handling (via TimingController) ──
     if (timingController) {
         // Gate 1 assignments
-        timingController->handleGate1Assignment(
-            gate1Assign,
-            gate1Rise,
-            [this](int toggle) { rhythmMode = 1 - rhythmMode; },  // Toggle rhythm mode
-            [this]() {  // Reseed rhythm
-                engine.pe.setPendingRhythmSeed(sampleSeedFromSource());
-            },
-            [this]() {  // Reseed melody
-                engine.pe.setPendingMelodySeed(sampleSeedFromSource());
-            },
-            [this]() { handleRestart(/*manual=*/true, /*resetImmediate=*/true); }  // Restart
-        );
+        timingController->handleGate1Assignment(gate1Assign, gate1Rise);
         
         // Gate 2 assignments
-        timingController->handleGate2Assignment(
-            gate2Assign,
-            gate2Rise,
-            timingController->getGate2High(),
-            invertMuteLogic,
-            [this](int toggle) { melodyMode = 1 - melodyMode; },  // Toggle melody mode
-            [this]() {  // Reseed melody
-                engine.pe.setPendingMelodySeed(sampleSeedFromSource());
-            },
-            [this](bool shouldMute) {  // Set mute
-                if (shouldMute != muted) {
-                    muted = shouldMute;
-                    if (!muted && restartOnUnmute) {
-                        handleRestart(/*manual=*/true, /*resetImmediate=*/true);
-                    }
-                }
-            },
-            [this]() { handleRestart(/*manual=*/true, /*resetImmediate=*/true); }  // Restart
-        );
+        timingController->handleGate2Assignment(gate2Assign, gate2Rise, timingController->getGate2High(), invertMuteLogic);
     }
 
     // --- Mode dispatch (only if running) ---
     if (runGateActive && modeController) {
         // Prepare CV2 input
-        float cv2Voltage = inputs[CV2_INPUT].isConnected() ? 
-                          clampv<float>(inputs[CV2_INPUT].getVoltage(), 0.f, 5.f) : 0.f;
-        
-        // Callback for phrase boundary events
-        auto onPhraseBoundary = [this]() { onPhraseBoundary_(); };
-        
-        // Get gate states
-        bool gate1High = inputs[GATE1_INPUT].getVoltage() >= 1.f;
-        bool gate2High = inputs[GATE2_INPUT].isConnected() && inputs[GATE2_INPUT].getVoltage() > 1.f;
+        float cv2Voltage = inputs[CV2_INPUT].getNormalVoltage(0.f);
+        bool gate1High = inputs[GATE1_INPUT].getVoltage() >= 1.0f;
+        bool gate2High = timingController ? timingController->getGate2High() : false;
         
         // Execute mode and set poly voices if needed
-        if (modeController->executeMode(modeSelect, gate1Rise, gate1High, gate2High, cv2Voltage, onPhraseBoundary)) {
+        if (modeController->executeMode(modeSelect, gate1Rise, gate1High, gate2High, cv2Voltage)) {
             // Mode took a step; update poly voices if present
             if (engine.numPolyVoices > 0) {
                 for (int i = 0; i < engine.numPolyVoices; ++i) {
                     engine.voices[i].restProb = paramManager->getPolyRest(i);
                 }
-                engine.executePolyVoices(makePatternInput());
+                engine.executePolyVoices(modeController->currentPatternInput);
             }
         }
     }
@@ -540,21 +492,19 @@ void MeloDicer::process(const ProcessArgs& args) {
 
     // --- CV Routing (via CVRouter) ---
     float cvOutVoltage = currentPitchV;
-    if (cvRouter) {
-        cvOutVoltage = cvRouter->processCV1Input(
+    cvOutVoltage = cvRouter->processCV1Input(
             cv1Mode,
             inputs[CV1_INPUT].getVoltage(),
             currentPitchV,
             inputs[CV1_INPUT].isConnected()
         );
-        // Update transient offsets
-        if (inputs[CV1_INPUT].isConnected()) {
-            paramManager->setCv1LoOffset(cvRouter->getLoOffset());
-            paramManager->setCv1HiOffset(cvRouter->getHiOffset());
-        } else {
-            paramManager->setCv1LoOffset(0.f);
-            paramManager->setCv1HiOffset(0.f);
-        }
+    // Update transient offsets
+    if (inputs[CV1_INPUT].isConnected()) {
+        paramManager->setCv1LoOffset(cvRouter->getLoOffset());
+        paramManager->setCv1HiOffset(cvRouter->getHiOffset());
+    } else {
+        paramManager->setCv1LoOffset(0.f);
+        paramManager->setCv1HiOffset(0.f);
     }
     outputs[CV_OUTPUT].setVoltage(cvOutVoltage);
 
@@ -680,8 +630,8 @@ void MeloDicer::process(const ProcessArgs& args) {
             
             // Update both via UIManager
             if (uiManager) {
-                uiManager->updateStepLights(std::vector<float>(stepBrightness, stepBrightness + 16));
-                uiManager->updateSemitoneFlashLights(std::vector<float>(semiLedBrightness, semiLedBrightness + 12));
+                uiManager->updateStepLights(stepBrightness, 16);
+                uiManager->updateSemitoneFlashLights(semiLedBrightness, 12);
             }
         }
 
@@ -703,7 +653,8 @@ void MeloDicer::process(const ProcessArgs& args) {
         }
 
         // Refresh visual cache so LEDs react to knob changes (at ~90Hz instead of 44kHz)
-        engine.pe.refreshVisualCache(makePatternInput());
+        modeController->updatePatternInput();
+        engine.pe.refreshVisualCache(modeController->currentPatternInput);
     }
 
     // ── Control-Rate DNA and Window Updates (Optimized CPU) ──

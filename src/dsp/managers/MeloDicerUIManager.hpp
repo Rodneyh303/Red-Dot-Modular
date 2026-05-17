@@ -57,12 +57,12 @@ public:
     // ──── Step Ring Lights ──────────────────────────────────────────────────
     
     /// Update 16-step ring indicator lights based on step brightness values
-    void updateStepLights(const std::vector<float>& stepBrightness);
+    void updateStepLights(const float* stepBrightness, int count);
     
     // ──── Semitone LED Brightness ───────────────────────────────────────────
     
     /// Update red channel of semitone LEDs (for note-playing flash feedback)
-    void updateSemitoneFlashLights(const std::vector<float>& semiLedBrightness);
+    void updateSemitoneFlashLights(const float* semiLedBrightness, int count);
     
     // ──── Button Trigger Processing ─────────────────────────────────────────
     
@@ -92,8 +92,8 @@ public:
                          int polyCount,
                          int currentMode,
                          int& lastMode,
-                         const std::vector<float>& stepBrightness,
-                         const std::vector<float>& semiLedBrightness,
+                         const float* stepBrightness, int stepCount,
+                         const float* semiLedBrightness, int semiCount,
                          float sampleTime);
 
 private:

@@ -1,4 +1,5 @@
 #include "MeloDicerTimingController.hpp"
+#include "../../MeloDicer.hpp"
 
 using namespace rack;
 
@@ -68,29 +69,25 @@ TimingController::GateEdges TimingController::processGateEdges(float gate1V, flo
 
 void TimingController::handleGate1Assignment(
     int gate1Assign,
-    bool gate1Rise,
-    const std::function<void(int)>& onRhythmModeToggle,
-    const std::function<void()>& onRhythmReseed,
-    const std::function<void()>& onMelodyReseed,
-    const std::function<void()>& onRestart) {
+    bool gate1Rise) {
     
-    if (!gate1Rise) return;
+    if (!gate1Rise || !mainModule) return;
     
     switch (gate1Assign) {
         case 0: // Toggle Dice R MODE
-            if (onRhythmModeToggle) onRhythmModeToggle(1); // toggle: 0 <-> 1
+            mainModule->rhythmMode = 1 - mainModule->rhythmMode;
             break;
             
         case 1: // Re-dice R (arm) — only if in dice-mode
-            if (onRhythmReseed) onRhythmReseed();
+            mainModule->engine.pe.setPendingRhythmSeed(mainModule->sampleSeedFromSource());
             break;
             
         case 2: // Re-dice M (arm) — only if in dice-mode
-            if (onMelodyReseed) onMelodyReseed();
+            mainModule->engine.pe.setPendingMelodySeed(mainModule->sampleSeedFromSource());
             break;
             
         case 3: // Restart now
-            if (onRestart) onRestart();
+            mainModule->handleRestart(true, true);
             break;
     }
 }
@@ -101,37 +98,38 @@ void TimingController::handleGate2Assignment(
     int gate2Assign,
     bool gate2Rise,
     bool gate2High,
-    bool invertMuteLogic,
-    const std::function<void(int)>& onMelodyModeToggle,
-    const std::function<void()>& onMelodyReseed,
-    const std::function<void(bool)>& onMuteChange,
-    const std::function<void()>& onRestart) {
+    bool invertMuteLogic) {
+
+    if (!mainModule) return;
     
     switch (gate2Assign) {
         case 0: // Toggle Dice M — on rising edge
-            if (gate2Rise && onMelodyModeToggle) {
-                onMelodyModeToggle(1); // toggle
+            if (gate2Rise) {
+                mainModule->melodyMode = 1 - mainModule->melodyMode;
             }
             break;
             
         case 1: // Re-dice M — rising edge, only in dice-mode
-            if (gate2Rise && onMelodyReseed) {
-                onMelodyReseed();
+            if (gate2Rise) {
+                mainModule->engine.pe.setPendingMelodySeed(mainModule->sampleSeedFromSource());
             }
             break;
             
         case 2: // MUTE — level-based
             {
                 bool shouldMute = invertMuteLogic ? !gate2High : gate2High;
-                if (onMuteChange) {
-                    onMuteChange(shouldMute);
+                if (shouldMute != mainModule->muted) {
+                    mainModule->muted = shouldMute;
+                    if (!mainModule->muted && mainModule->restartOnUnmute) {
+                        mainModule->handleRestart(true, true);
+                    }
                 }
             }
             break;
             
         case 3: // RESTART — rising edge
-            if (gate2Rise && onRestart) {
-                onRestart();
+            if (gate2Rise) {
+                mainModule->handleRestart(true, true);
             }
             break;
     }

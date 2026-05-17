@@ -2,6 +2,8 @@
 
 #include "rack.hpp"
 
+struct MeloDicer;
+
 /**
  * TimingController
  * 
@@ -20,7 +22,7 @@
  */
 class TimingController {
 public:
-    TimingController(rack::engine::Module* mainModule)
+    TimingController(MeloDicer* mainModule)
         : mainModule(mainModule) {}
     
     // ──── Run Gate Control ──────────────────────────────────────────────────
@@ -49,21 +51,13 @@ public:
     /// Handle Gate1 rising edge based on gate1Assign mode
     /// Callback signature for actions: void action(const ActionContext& ctx)
     void handleGate1Assignment(int gate1Assign,
-                               bool gate1Rise,
-                               const std::function<void(int)>& onRhythmModeToggle,
-                               const std::function<void()>& onRhythmReseed,
-                               const std::function<void()>& onMelodyReseed,
-                               const std::function<void()>& onRestart);
+                               bool gate1Rise);
     
     /// Handle Gate2 state based on gate2Assign mode
     void handleGate2Assignment(int gate2Assign,
                                bool gate2Rise,
                                bool gate2High,
-                               bool invertMuteLogic,
-                               const std::function<void(int)>& onMelodyModeToggle,
-                               const std::function<void()>& onMelodyReseed,
-                               const std::function<void(bool)>& onMuteChange,
-                               const std::function<void()>& onRestart);
+                               bool invertMuteLogic);
     
     // ──── Edge Detection ────────────────────────────────────────────────────
     
@@ -79,7 +73,7 @@ public:
     bool getGate2High() const { return lastGate2High; }
 
 private:
-    rack::engine::Module* mainModule;
+    MeloDicer* mainModule;
     
     // Gate state
     bool resetArmed = false;
