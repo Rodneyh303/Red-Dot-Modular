@@ -213,56 +213,19 @@ void MeloDicer::updateExpanderPointers() {
 }
 
   void MeloDicer::updateScaleMask() {
-        uint16_t newMask = 0;
-        if (lastSelectedScale >= 0 && lastSelectedScale < (int)BITWIG_SCALES.size()) {
-            for (int interval : BITWIG_SCALES[lastSelectedScale].intervals) {
-                newMask |= (1 << ((scaleRoot + interval) % 12));
-            }
-        } else {
-            newMask = 0xFFF;
-        }
+        activeScaleMask = ScaleHelper::calculateMask(scaleRoot, lastSelectedScale);
 
         if (lockScaleNotes) {
-            // Capture current fader weights before redistribution
-            float currentWeights[12];
+            float weights[12];
             for (int i = 0; i < 12; i++) {
-                currentWeights[i] = params[SEMI0_PARAM + i].getValue();
+                weights[i] = params[SEMI0_PARAM + i].getValue();
             }
 
-            // Redistribute weight from out-of-scale notes to the nearest in-scale notes
-            float redistributedWeights[12];
-            for (int i = 0; i < 12; i++) redistributedWeights[i] = 0.0f;
-
-            for (int i = 0; i < 12; i++) {
-                if (newMask & (1 << i)) {
-                    // Already in scale, keep the weight
-                    redistributedWeights[i] += currentWeights[i];
-                } else if (currentWeights[i] > 0.0001f) {
-                    float val = currentWeights[i];
-                    // Search for nearest neighbors in the circular 12-semitone space
-                    int distUp = 13, distDown = 13;
-                    for (int d = 1; d <= 6; d++) {
-                        if (newMask & (1 << ((i + d) % 12))) { distUp = d; break; }
-                    }
-                    for (int d = 1; d <= 6; d++) {
-                        if (newMask & (1 << ((i - d + 12) % 12))) { distDown = d; break; }
-                    }
-
-                    if (distUp < distDown) {
-                        redistributedWeights[(i + distUp) % 12] += val;
-                    } else if (distDown < distUp) {
-                        redistributedWeights[(i - distDown + 12) % 12] += val;
-                    } else if (distUp <= 6) {
-                        // Equidistant neighbors (e.g. C# moving to C and D)
-                        redistributedWeights[(i + distUp) % 12] += val * 0.5f;
-                        redistributedWeights[(i - distDown + 12) % 12] += val * 0.5f;
-                    }
-                }
-            }
+            ScaleHelper::redistributeWeights(activeScaleMask, weights);
 
             // Apply the redistributed values and lock the faders
             for (int i = 0; i < 12; i++) {
-                bool inScale = (newMask & (1 << i));
+                bool inScale = (activeScaleMask & (1 << i));
                 ParamQuantity* pq = getParamQuantity(SEMI0_PARAM + i);
                 if (pq) {
                     if (!inScale) {
@@ -270,7 +233,7 @@ void MeloDicer::updateExpanderPointers() {
                         pq->minValue = 0.f;
                         pq->maxValue = 0.f;
                     } else {
-                        params[SEMI0_PARAM + i].setValue(clampv(redistributedWeights[i], 0.f, 1.f));
+                        params[SEMI0_PARAM + i].setValue(weights[i]);
                         pq->minValue = 0.f;
                         pq->maxValue = 1.f;
                     }
@@ -376,21 +339,6 @@ void MeloDicer::updateExpanderPointers() {
         json_object_set_new(root,"legatoRandom", lrarr);
         json_object_set_new(root,"melodyRandom", mrarr);
         json_object_set_new(root,"octaveRandom", orarr);
-
-        // // serialize poly random buffers for identity stability
-        // json_t* prarr = json_array();
-        // json_t* pmarr = json_array();
-        // json_t* poarr = json_array();
-        // for (int v = 0; v < 7; v++) {
-        //     for (int i = 0; i < 16; i++) {
-        //         json_array_append_new(prarr, json_real(engine.pe.polyRhythmRandom[v][i]));
-        //         json_array_append_new(pmarr, json_real(engine.pe.polyMelodyRandom[v][i]));
-        //         json_array_append_new(poarr, json_real(engine.pe.polyOctaveRandom[v][i]));
-        //     }
-        // }
-        // json_object_set_new(root, "polyRhythmRandom", prarr);
-        // json_object_set_new(root, "polyMelodyRandom", pmarr);
-        // json_object_set_new(root, "polyOctaveRandom", poarr);
 
         // serialize poly random buffers for identity stability
         json_t* prarr = json_array();
@@ -765,14 +713,6 @@ void MeloDicer::onReset() {
 // Returns note length index: NOTE VALUE sets the base, VARIATION randomly biases it.
 // NOTEVALS.allowedPPQN bitmask: 1=PPQN1, 2=PPQN4, 4=PPQN24
 // ppqnSetting raw values: 1, 4, 24 — must be converted to bitmask before use.
-int MeloDicer::getNoteLenIdx_() { 
-    // This function is no longer used directly by executeModeA/B as the random value
-    // is now consumed inside those functions. It's kept for potential external use
-    // but should be called with a random float argument if used.
-    // For now, it's safe to remove its declaration and definition if not used elsewhere.
-    // However, to resolve the compilation error, we'll remove its definition and declaration.
-    return 0; // Should not be reached
-}
 int MeloDicer::computeNoteLengthIdx(int requestedIdx, int ppqnMask) { return engine.computeNoteLengthIdx(requestedIdx, ppqnMask); }
 
 
