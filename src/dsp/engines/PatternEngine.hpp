@@ -156,6 +156,13 @@ struct PatternEngine {
     void rotateAccent(int steps);     // Accent gate probability (NEW)
     void rotateMelody(int steps);     // Pitch selection
     void rotateOctave(int steps);     // Octave selection
+    
+    // Composite operations (call multiple rotates + refresh in one call)
+    void rotateRhythmPattern(int steps);  // Rotate rhythm + variation + legato
+    void rotateMelodyPattern(int steps);  // Rotate melody + octave
+    
+    // Refresh visual cache after pattern changes
+    void refreshPatternCache(const PatternInput& in);
 
     void resetDnaRotation();          // Restore from Source Cache
 };

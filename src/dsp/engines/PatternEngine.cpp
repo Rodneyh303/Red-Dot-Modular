@@ -308,3 +308,20 @@ void PatternEngine::resetDnaRotation() {
         }
     }
 }
+
+// ──── Composite Operations ──────────────────────────────────────────────
+
+void PatternEngine::rotateRhythmPattern(int steps) {
+    rotateRhythm(steps);
+    rotateVariation(steps);
+    rotateLegato(steps);
+}
+
+void PatternEngine::rotateMelodyPattern(int steps) {
+    rotateMelody(steps);
+    rotateOctave(steps);
+}
+
+void PatternEngine::refreshPatternCache(const PatternInput& in) {
+    refreshVisualCache(in);
+}

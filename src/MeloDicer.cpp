@@ -667,38 +667,37 @@ float MeloDicer::semitoneToVolts(int semitone) {
 
     void MeloDicer::rotateRhythm(int steps) {
         engine.pe.rotateRhythm(steps);
-        engine.pe.refreshVisualCache(makePatternInput());
+        engine.pe.refreshPatternCache(makePatternInput());
     }
 
     void MeloDicer::rotateRhythmPattern(int steps) {
-        engine.pe.rotateRhythm(steps);
-        engine.pe.rotateVariation(steps);
-        engine.pe.rotateLegato(steps);
-        engine.pe.refreshVisualCache(makePatternInput());
+        engine.pe.rotateRhythmPattern(steps);
+        engine.pe.refreshPatternCache(makePatternInput());
     }
+    
     void MeloDicer::rotateVariation(int steps) {
         engine.pe.rotateVariation(steps);
-        engine.pe.refreshVisualCache(makePatternInput());
+        engine.pe.refreshPatternCache(makePatternInput());
     }
 
     void MeloDicer::rotateLegato(int steps) {
         engine.pe.rotateLegato(steps);
-        engine.pe.refreshVisualCache(makePatternInput());
+        engine.pe.refreshPatternCache(makePatternInput());
     }
 
     void MeloDicer::rotateMelody(int steps) {
         engine.pe.rotateMelody(steps);
-        engine.pe.refreshVisualCache(makePatternInput());
+        engine.pe.refreshPatternCache(makePatternInput());
     }
 
     void MeloDicer::rotateMelodyPattern(int steps) {
-        engine.pe.rotateMelody(steps);
-        engine.pe.rotateOctave(steps);
-        engine.pe.refreshVisualCache(makePatternInput());
+        engine.pe.rotateMelodyPattern(steps);
+        engine.pe.refreshPatternCache(makePatternInput());
     }
+    
     void MeloDicer::rotateOctave(int steps) {
         engine.pe.rotateOctave(steps);
-        engine.pe.refreshVisualCache(makePatternInput());
+        engine.pe.refreshPatternCache(makePatternInput());
     }
 
     void MeloDicer::rebuildSemiCache_() {
