@@ -208,6 +208,9 @@ void MeloDicer::updateExpanderPointers() {
     
     // Initialize mode controller with engine, clock, and parameter manager
     modeController = std::make_unique<ModeController>(engine, clock, *paramManager);
+    
+    // Initialize UI manager with module and light divider
+    uiManager = std::make_unique<UIManager>(this, lightDivider);
 }
 
   void MeloDicer::updateScaleMask() {
@@ -1003,31 +1006,23 @@ void MeloDicer::process(const ProcessArgs& args) {
     }
 
 
-    // DICE light policy: bright when enabled, also bright when a seed is armed
-    // float rDiceLight = diceR ? 1.f : 0.1f;
-    // float mDiceLight = diceM ? 1.f : 0.1f;
-    // if (rhythmSeedPending) rDiceLight = 1.f;
-    // if (melodySeedPending) mDiceLight = 1.f;
-    lights[RHYTHM_DICE_LIGHT].setBrightness(rhythmSeedPending ? 1.f : 0.1f);
-    lights[MELODY_DICE_LIGHT].setBrightness(melodySeedPending ? 1.f : 0.1f);
-    lights[LOCK_LIGHT].setBrightness(locked ? 1.f : 0.f);
-
-    // Expander indicators: Green for valid connection, Red for warning (multiple)
-    auto setExpLight = [&](int lightId, int count) {
-        lights[lightId + 0].setBrightness(count == 1 ? 1.f : 0.f); // Green channel
-        lights[lightId + 1].setBrightness(count > 1 ? 1.f : 0.f);  // Red channel
-    };
-    setExpLight(SCALE_EXPANDER_LIGHT, scaleExpanderCount);
-    setExpLight(DNA_EXPANDER_LIGHT, dnaExpanderCount);
-    setExpLight(POLY_EXPANDER_LIGHT, polyExpanderCount);
-
-    lights[MUTE_LIGHT].setBrightness(muted ? 1.f : 0.f);
+    // ── Status Light Updates (called every sample) ──
+    if (uiManager) {
+        uiManager->updateDiceLights(rhythmSeedPending, melodySeedPending);
+        uiManager->updateLockLight(locked);
+        uiManager->updateMuteLight(muted);
+        uiManager->updateExpanderLights(scaleExpanderCount, dnaExpanderCount, polyExpanderCount);
+    }
 
     // ── Throttle UI and Light processing ──
     if (lightDivider.process()) {
         // Throttled Visuals/Outputs
-        lights[RUN_GATE_LIGHT].setBrightness(runGateActive ? 1.f : 0.f);
-        lights[RESET_LIGHT].setBrightnessSmooth(resetArmed ? 1.f : 0.f, args.sampleTime * 512.f);
+        // ── UI Light Updates ──
+        if (uiManager) {
+            uiManager->updateRunGateLight(runGateActive);
+            uiManager->updateResetLight(resetArmed, args.sampleTime * 512.f);
+        }
+        
         outputs[RUN_GATE_OUTPUT].setVoltage(runGateActive ? 10.f : 0.f);
 
         // Seed monitor out — outputs the most recently armed or committed seed.
@@ -1039,41 +1034,60 @@ void MeloDicer::process(const ProcessArgs& args) {
         if (melodySeedPending)  outSeed = melodySeedPendingFloat;   // melody armed overrides rhythm
         outputs[SEED_OUTPUT].setVoltage(clampv<float>(outSeed, 0.f, 10.f));
 
-        // --- UI button toggles ---
-        if (diceRTrig.process(params[DICE_R_PARAM].getValue())) {
-            rhythmMode = 0;
-            rhythmSeedPendingFloat = sampleSeedFromSource();
-            rhythmSeedPending = true;
-        }
-        if (diceMTrig.process(params[DICE_M_PARAM].getValue())) {
-            melodyMode = 0;
-            melodySeedPendingFloat = sampleSeedFromSource();
-            melodySeedPending = true;
-        }
-        if (lockTrig.process(params[LOCK_PARAM].getValue()))     locked = !locked;
-        if (muteTrig.process(params[MUTE_PARAM].getValue())) {
-            muted = !muted;
-            if (!muted && restartOnUnmute) {
-                handleRestart(/*manual=*/true, /*resetImmediate=*/true);
+        // ── Button Processing (via UIManager) ──
+        if (uiManager) {
+            bool rhythmTriggered, melodyTriggered;
+            if (uiManager->processDiceButtons(rhythmTriggered, melodyTriggered)) {
+                if (rhythmTriggered) {
+                    rhythmMode = 0;
+                    rhythmSeedPendingFloat = sampleSeedFromSource();
+                    rhythmSeedPending = true;
+                }
+                if (melodyTriggered) {
+                    melodyMode = 0;
+                    melodySeedPendingFloat = sampleSeedFromSource();
+                    melodySeedPending = true;
+                }
             }
+            
+            if (uiManager->processLockButton()) {
+                locked = !locked;
+            }
+            
+            if (uiManager->processMuteButton()) {
+                muted = !muted;
+                if (!muted && restartOnUnmute) {
+                    handleRestart(/*manual=*/true, /*resetImmediate=*/true);
+                }
+            }
+            
+            if (uiManager->processModeButton(modeSelect)) {
+                // Mode was changed by button
+            }
+            
+            // Mode lamps (updated by UIManager)
+            uiManager->updateModeLights(modeSelect, lastModeSelect);
         }
 
-        if (modeTrig.process(params[MODE_PARAM].getValue())) {
-            modeSelect = (modeSelect + 1) % 4;
-        }
-
-        // Mode lamps
-        if (modeSelect != lastModeSelect) {
-            lights[MODE_A_LIGHT].setBrightness(modeSelect == 0 ? 1.f : 0.f);
-            lights[MODE_B_LIGHT].setBrightness(modeSelect == 1 ? 1.f : 0.f);
-            lights[MODE_C_LIGHT].setBrightness(modeSelect == 2 ? 1.f : 0.f);
-            lights[MODE_D_LIGHT].setBrightness(modeSelect == 3 ? 1.f : 0.f);
-            lastModeSelect = modeSelect;
-        }
-
-        // --- Ring LEDs (Steps) ---
-        for (int i = 0; i < 16; ++i) {
-            lights[STEP_LIGHTS_START + i].setBrightness(engine.getStepLightBrightness(i));
+        // --- Ring LEDs (Steps) and Semitone LEDs ---
+        {
+            // Get step brightness values
+            std::vector<float> stepBrightness(16);
+            for (int i = 0; i < 16; ++i) {
+                stepBrightness[i] = engine.getStepLightBrightness(i);
+            }
+            
+            // Get semitone flash brightness values
+            std::vector<float> semiLedBrightness(12);
+            for (int i = 0; i < 12; ++i) {
+                semiLedBrightness[i] = engine.gs.semiLedBrightness(i);
+            }
+            
+            // Update both via UIManager
+            if (uiManager) {
+                uiManager->updateStepLights(stepBrightness);
+                uiManager->updateSemitoneFlashLights(semiLedBrightness);
+            }
         }
 
         // ── Semitone fader cache ──
@@ -1092,8 +1106,6 @@ void MeloDicer::process(const ProcessArgs& args) {
 
         // Refresh visual cache so LEDs react to knob changes (at ~90Hz instead of 44kHz)
         engine.pe.refreshVisualCache(makePatternInput());
-        // updateStepLEDs_ handles red flash channel
-        updateStepLEDs_(args.sampleTime * 512.f);
     }
 
     // ── Control-Rate DNA and Window Updates (Optimized CPU) ──

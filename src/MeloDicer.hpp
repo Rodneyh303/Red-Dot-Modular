@@ -26,6 +26,7 @@
 #include "MeloDicerDNAManager.hpp"
 #include "MeloDicerParameterManager.hpp"
 #include "MeloDicerModeController.hpp"
+#include "MeloDicerUIManager.hpp"
 #include "GateState.hpp"
 #include "SequencerEngine.hpp"
 #include "Scales.hpp"
@@ -343,6 +344,7 @@ struct MeloDicer : Module {
     DNAStrandManager dnaManager{engine.pe};
     std::unique_ptr<ParameterManager> paramManager;  // Initialized in constructor
     std::unique_ptr<ModeController> modeController;  // Initialized in constructor
+    std::unique_ptr<UIManager> uiManager;  // Initialized in constructor
 
     // Convenience accessors
     rack::random::Xoroshiro128Plus& rhythmRng = engine.pe.rhythmRng;
@@ -486,7 +488,8 @@ struct MeloDicer : Module {
     int getNoteLenIdx_();
     void onExpanderChange(const ExpanderChangeEvent& e) override; // Declare override
     int computeNoteLengthIdx(int requestedIdx, int ppqnMask);
-    void updateStepLEDs_(float sampleTime);
+    // UI/LED updates now delegated to UIManager:
+    // - updateStepLEDs_()  → uiManager->updateSemitoneFlashLights()
     float quantizePitch(int semitoneIndex, int octaveOffset);
 
     void process(const ProcessArgs& args) override;
