@@ -211,6 +211,15 @@ void MeloDicer::updateExpanderPointers() {
     
     // Initialize UI manager with module and light divider
     uiManager = std::make_unique<UIManager>(this, lightDivider);
+    
+    // Initialize timing controller with main module
+    timingController = std::make_unique<TimingController>(this);
+    
+    // Initialize CV router
+    cvRouter = std::make_unique<CVRouter>();
+    
+    // Initialize output generator
+    outputGenerator = std::make_unique<OutputGenerator>();
 }
 
   void MeloDicer::updateScaleMask() {
@@ -814,95 +823,87 @@ void MeloDicer::process(const ProcessArgs& args) {
     );
     bpm = clock.bpm;  // keep module-level bpm in sync for note duration calculations
 
-    // Pre-process asynchronous triggers
-    bool gate1Rise = g1Trig.process(inputs[GATE1_INPUT].getVoltage());
-    bool gate2Rise = g2Trig.process(inputs[GATE2_INPUT].getVoltage());
-
-    if (inputs[RUN_GATE_INPUT].isConnected()) 
-    {
-      bool runGateTrigHigh=runGateTrig.process(inputs[RUN_GATE_INPUT].getVoltage(), 0.1f, 2.f);
-      bool runGateBtnHigh = runGateBtn.process(params[RUN_GATE_PARAM].getValue());
-      if (runGateTrigHigh || runGateBtnHigh){
-        runGateActive = !runGateActive;
-        runPulse.trigger(1e-3f);
-      }
+    // ── Run/Reset Gate Processing (via TimingController) ──
+    if (timingController) {
+        // Process run gate
+        runGateActive = timingController->processRunGate(
+            runGateActive,
+            inputs[RUN_GATE_INPUT].getVoltage(),
+            params[RUN_GATE_PARAM].getValue()
+        );
+        
+        // Process reset gate
+        timingController->processResetGate(
+            inputs[RESET_TRIGGER_INPUT].getVoltage(),
+            params[RESET_BUTTON_PARAM].getValue()
+        );
+        
+        resetArmed = timingController->isResetArmed();
     }
-    else 
-    {
-      if(runGateBtn.process(params[RUN_GATE_PARAM].getValue()))
-      {
-        runGateActive = !runGateActive;
-        runPulse.trigger(1e-3f);
-      }
-    };
-
-    //if(schmittTrigger(resetTrigHigh,inputs[RESET_TRIGGER_INPUT].getVoltage()) && trigGenerator.remaining <= 0) resetArmed = true;
-    //if(buttonTrigger(resetBtnHigh,params[RESET_BUTTON_PARAM].getValue()) && trigGenerator.remaining <= 0) resetArmed = true;
-    if (resetTrig.process(inputs[RESET_TRIGGER_INPUT].getVoltage(),0.1f, 2.f))  resetArmed = true;
-    if (resetBtn.process(params[RESET_BUTTON_PARAM].getValue()))  resetArmed = true;
-
-    // --- RESET input: immediate phrase restart and apply pending seeds ---
-    if (resetArmed && runGateActive)
-    {
-        handleRestart(/*manual=*/true, /*resetImmediate=*/true);
-        resetPulse.trigger(1e-3f);  // fire reset output trigger
-    }
-    else if (!runGateActive) {
-        resetArmed = false;
-    }
-
+    
     // Drive RESET_TRIGGER_OUTPUT as a 1ms pulse on reset
-    outputs[RESET_TRIGGER_OUTPUT].setVoltage(resetPulse.process(args.sampleTime) ? 10.f : 0.f);
-
-    // --- Gate input assignments ---
-    if (gate1Rise) {
-        switch (gate1Assign) {
-            case 0: // Toggle Dice R MODE
-                rhythmMode = (1-rhythmMode ); // toggle 0/1
-                break;
-            case 1: // Re-dice R (arm) — only if currently in dice-mode (manual: "only works if in dice-mode")
-                if (rhythmMode == 0) {
-                    rhythmSeedPendingFloat = sampleSeedFromSource();
-                    rhythmSeedPending = true;
-                }
-                break;
-            case 2: // Re-dice M (arm) — only if currently in dice-mode
-                if (melodyMode == 0) {
-                    melodySeedPendingFloat = sampleSeedFromSource();
-                    melodySeedPending = true;
-                }
-                break;
-            case 3: // Restart now
-                handleRestart(/*manual=*/true, /*resetImmediate=*/true);
-                break;
-        }
+    if (timingController) {
+        outputs[RESET_TRIGGER_OUTPUT].setVoltage(
+            timingController->getResetPulseOutput(args.sampleTime)
+        );
     }
-    {
-        bool g2High = inputs[GATE2_INPUT].getVoltage() >= 1.f;
-        switch (gate2Assign) {
-            case 0: // TGL DICE M — toggle on rising edge
-                if (gate2Rise) melodyMode = (1 - melodyMode);
-                break;
-            case 1: // Re-dice M — rising edge, only in dice-mode
-                if (gate2Rise && melodyMode == 0) {
-                    melodySeedPendingFloat = sampleSeedFromSource();
-                    melodySeedPending = true;
-                }
-                break;
-            case 2: // MUTE — manual: positive edge=activate, negative edge=deactivate
-                {
-                    bool shouldMute = invertMuteLogic ? !g2High : g2High;
-                    if (shouldMute != muted) {
-                        muted = shouldMute;
-                        if (!muted && restartOnUnmute)
-                            handleRestart(/*manual=*/true, /*resetImmediate=*/true);
+    
+    // ── Handle Reset Trigger ──
+    if (resetArmed && runGateActive) {
+        handleRestart(/*manual=*/true, /*resetImmediate=*/true);
+        if (timingController) timingController->clearReset();
+    } else if (!runGateActive && timingController) {
+        timingController->clearReset();
+    }
+
+    // ── Gate Edge Detection ──
+    auto gateEdges = timingController ? timingController->processGateEdges(
+        inputs[GATE1_INPUT].getVoltage(),
+        inputs[GATE2_INPUT].getVoltage()
+    ) : TimingController::GateEdges{false, false};
+    
+    bool gate1Rise = gateEdges.gate1Rise;
+    bool gate2Rise = gateEdges.gate2Rise;
+
+    // ── Gate Assignment Handling (via TimingController) ──
+    if (timingController) {
+        // Gate 1 assignments
+        timingController->handleGate1Assignment(
+            gate1Assign,
+            gate1Rise,
+            [this](int toggle) { rhythmMode = 1 - rhythmMode; },  // Toggle rhythm mode
+            [this]() {  // Reseed rhythm
+                rhythmSeedPendingFloat = sampleSeedFromSource();
+                rhythmSeedPending = true;
+            },
+            [this]() {  // Reseed melody
+                melodySeedPendingFloat = sampleSeedFromSource();
+                melodySeedPending = true;
+            },
+            [this]() { handleRestart(/*manual=*/true, /*resetImmediate=*/true); }  // Restart
+        );
+        
+        // Gate 2 assignments
+        timingController->handleGate2Assignment(
+            gate2Assign,
+            gate2Rise,
+            timingController->getGate2High(),
+            invertMuteLogic,
+            [this](int toggle) { melodyMode = 1 - melodyMode; },  // Toggle melody mode
+            [this]() {  // Reseed melody
+                melodySeedPendingFloat = sampleSeedFromSource();
+                melodySeedPending = true;
+            },
+            [this](bool shouldMute) {  // Set mute
+                if (shouldMute != muted) {
+                    muted = shouldMute;
+                    if (!muted && restartOnUnmute) {
+                        handleRestart(/*manual=*/true, /*resetImmediate=*/true);
                     }
                 }
-                break;
-            case 3: // RESTART — rising edge
-                if (gate2Rise) handleRestart(/*manual=*/true, /*resetImmediate=*/true);
-                break;
-        }
+            },
+            [this]() { handleRestart(/*manual=*/true, /*resetImmediate=*/true); }  // Restart
+        );
     }
 
     // --- Mode dispatch (only if running) ---
@@ -932,80 +933,67 @@ void MeloDicer::process(const ProcessArgs& args) {
 
 
 
-    // --- CV IN routing (post-mode, keeps behavior from your code) ---
-    if (inputs[CV1_INPUT].isConnected()) {
-        float v = inputs[CV1_INPUT].getVoltage();
-        switch (cv1Mode) {
-            case 0: outputs[CV_OUTPUT].setVoltage(currentPitchV + v); break;            // Add Seq
-            case 1: {                                                                   // Transpose quantized
-                if (std::abs(v - lastCv1V) > 1e-5f) {
-                    lastCv1V = v;
-                    lastCv1Off = std::round(v * 12.f) * (1.f / 12.f);
-                }
-                outputs[CV_OUTPUT].setVoltage(currentPitchV + lastCv1Off);
-            } break;
-            case 2: {                                                                    // Mod LO (transient offset — never writes to param)
-                cv1LoOffset = clampv<float>(v * 0.25f, -8.f, 8.f);
-                outputs[CV_OUTPUT].setVoltage(currentPitchV);
-            } break;
-            case 3: {                                                                    // Mod HI (transient offset — never writes to param)
-                cv1HiOffset = clampv<float>(v * 0.25f, -8.f, 8.f);
-                outputs[CV_OUTPUT].setVoltage(currentPitchV);
-            } break;
-        }
-    } else {
-        cv1LoOffset = 0.f;
-        cv1HiOffset = 0.f;
-        outputs[CV_OUTPUT].setVoltage(currentPitchV);
-    }
-
-    
-    
-    // Gate output: engine.gs.process() ticks the pulse and returns raw gate voltage
-    float gateV = engine.gs.process(args.sampleTime);
-    if (muted)             gateV = 0.f;
-    outputs[GATE_OUTPUT].setVoltage(gateV);
-    
-    // Derived gate outputs based on mono note decision
-    float tieGateV = (engine.lastStepResult.decision == MonoDecision::Tie) ? 10.f : 0.f;
-    float legatoGateV = (engine.lastStepResult.decision == MonoDecision::Legato || 
-                         engine.lastStepResult.decision == MonoDecision::LegatoMax) ? 10.f : 0.f;
-    float accentGateV = (engine.lastStepResult.accented && gateV > 5.f) ? 10.f : 0.f;
-    
-    if (muted) {
-        tieGateV = 0.f;
-        legatoGateV = 0.f;
-        accentGateV = 0.f;
-    }
-    
-    outputs[TIE_OUTPUT].setVoltage(tieGateV);
-    outputs[LEGATO_OUTPUT].setVoltage(legatoGateV);
-    outputs[ACCENT_OUTPUT].setVoltage(accentGateV);
-
-    // Poly voice gate and CV outputs — written every sample so pulse timing is accurate.
-    // MeloDicer writes directly into the expander's output ports.
-    if (cachedPolyVoiceExpander && engine.numPolyVoices > 0) {
-        using namespace PolyVoiceExpanderIds;
-        for (int i = 0; i < engine.numPolyVoices; ++i) {
-            float vg = engine.voices[i].gs.process(args.sampleTime);
-            if (muted) vg = 0.f;
-            cachedPolyVoiceExpander->outputs[POLY_GATE_OUT_1 + i].setVoltage(vg);
-            cachedPolyVoiceExpander->outputs[POLY_CV_OUT_1 + i].setVoltage(engine.voices[i].gs.currentPitchV);
-            
-            // Poly accent: fires when mono is accented AND poly voice is sounding
-            float polyAccent = (engine.lastStepResult.accented && vg > 5.f) ? 10.f : 0.f;
-            if (muted) polyAccent = 0.f;
-            cachedPolyVoiceExpander->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(polyAccent);
-        }
-        // Zero unused voice outputs so they don't emit stale voltages.
-        for (int i = engine.numPolyVoices; i < 7; ++i) {
-            cachedPolyVoiceExpander->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
-            cachedPolyVoiceExpander->outputs[POLY_CV_OUT_1 + i].setVoltage(0.f);
-            cachedPolyVoiceExpander->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
+    // --- CV Routing (via CVRouter) ---
+    float cvOutVoltage = currentPitchV;
+    if (cvRouter) {
+        cvOutVoltage = cvRouter->processCV1Input(
+            cv1Mode,
+            inputs[CV1_INPUT].getVoltage(),
+            currentPitchV,
+            inputs[CV1_INPUT].isConnected()
+        );
+        // Update transient offsets
+        if (inputs[CV1_INPUT].isConnected()) {
+            paramManager->setCv1LoOffset(cvRouter->getLoOffset());
+            paramManager->setCv1HiOffset(cvRouter->getHiOffset());
+        } else {
+            paramManager->setCv1LoOffset(0.f);
+            paramManager->setCv1HiOffset(0.f);
         }
     }
+    outputs[CV_OUTPUT].setVoltage(cvOutVoltage);
 
-
+    // --- Output Generation (via OutputGenerator) ---
+    if (outputGenerator) {
+        // Process main gate
+        float gateV = engine.gs.process(args.sampleTime);
+        outputGenerator->setGateOutput(outputs[GATE_OUTPUT], gateV, muted);
+        
+        // Tie gate (MonoDecision::Tie feedback)
+        bool isTie = (engine.lastStepResult.decision == MonoDecision::Tie);
+        outputGenerator->setTieGateOutput(outputs[TIE_OUTPUT], isTie && !muted);
+        
+        // Legato gate (MonoDecision::Legato or LegatoMax)
+        bool isLegato = (engine.lastStepResult.decision == MonoDecision::Legato || 
+                         engine.lastStepResult.decision == MonoDecision::LegatoMax);
+        outputs[LEGATO_OUTPUT].setVoltage(isLegato && !muted ? 10.f : 0.f);
+        
+        // Accent gate (accented AND gate high)
+        bool isAccented = engine.lastStepResult.accented && gateV > 5.f;
+        outputGenerator->setAccentGateOutput(outputs[ACCENT_OUTPUT], isAccented && !muted);
+        
+        // Poly voice outputs
+        if (cachedPolyVoiceExpander && engine.numPolyVoices > 0) {
+            using namespace PolyVoiceExpanderIds;
+            for (int i = 0; i < engine.numPolyVoices; ++i) {
+                float vg = engine.voices[i].gs.process(args.sampleTime);
+                if (muted) vg = 0.f;
+                cachedPolyVoiceExpander->outputs[POLY_GATE_OUT_1 + i].setVoltage(vg);
+                cachedPolyVoiceExpander->outputs[POLY_CV_OUT_1 + i].setVoltage(engine.voices[i].gs.currentPitchV);
+                
+                // Poly accent: fires when mono is accented AND poly voice is sounding
+                float polyAccent = (engine.lastStepResult.accented && vg > 5.f) ? 10.f : 0.f;
+                if (muted) polyAccent = 0.f;
+                cachedPolyVoiceExpander->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(polyAccent);
+            }
+            // Zero unused voice outputs so they don't emit stale voltages.
+            for (int i = engine.numPolyVoices; i < 7; ++i) {
+                cachedPolyVoiceExpander->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
+                cachedPolyVoiceExpander->outputs[POLY_CV_OUT_1 + i].setVoltage(0.f);
+                cachedPolyVoiceExpander->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
+            }
+        }
+    }
     // ── Status Light Updates (called every sample) ──
     if (uiManager) {
         uiManager->updateDiceLights(rhythmSeedPending, melodySeedPending);
