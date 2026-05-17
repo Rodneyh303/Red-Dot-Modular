@@ -923,19 +923,18 @@ void MeloDicer::process(const ProcessArgs& args) {
             }
         }
     }
-    // ── Status Light Updates (called every sample) ──
-    if (uiManager) {
-        uiManager->updateDiceLights(rhythmSeedPending, melodySeedPending);
-        uiManager->updateLockLight(locked);
-        uiManager->updateMuteLight(muted);
-        uiManager->updateExpanderLights(scaleExpanderCount, dnaExpanderCount, polyExpanderCount);
-    }
 
     // ── Throttle UI and Light processing ──
     if (lightDivider.process()) {
         // Throttled Visuals/Outputs
         // ── UI Light Updates ──
         if (uiManager) {
+            // Move these from audio rate to throttled rate
+            uiManager->updateDiceLights(engine.pe.isRhythmSeedPending(), engine.pe.isMelodySeedPending());
+            uiManager->updateLockLight(locked);
+            uiManager->updateMuteLight(muted);
+            uiManager->updateExpanderLights(scaleExpanderCount, dnaExpanderCount, polyExpanderCount);
+            
             uiManager->updateRunGateLight(runGateActive);
             uiManager->updateResetLight(resetArmed, args.sampleTime * 512.f);
         }
