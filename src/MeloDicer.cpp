@@ -707,6 +707,7 @@ void MeloDicer::onReset() {
     Module::onReset();
     initialize();   // resets all module state to defaults
     clock.reset();  // resets ClockEngine timing
+    polyRestDirty = true;  // Force refresh of poly voice parameters
 }
 
 
@@ -858,8 +859,18 @@ void MeloDicer::process(const ProcessArgs& args) {
         if (modeController->executeMode(modeSelect, gate1Rise, gate1High, gate2High, cv2Voltage, onPhraseBoundary)) {
             // Mode took a step; update poly voices if present
             if (engine.numPolyVoices > 0) {
+                // Refresh poly rest cache if dirty (parameters changed)
+                // or first time (polyRestDirty initialized to true)
+                if (polyRestDirty) {
+                    for (int i = 0; i < 7; ++i) {
+                        polyRestCache[i] = paramManager->getPolyRest(i);
+                    }
+                    polyRestDirty = false;
+                }
+                
+                // Use cached values (no parameter reads unless dirty)
                 for (int i = 0; i < engine.numPolyVoices; ++i) {
-                    engine.voices[i].restProb = paramManager->getPolyRest(i);
+                    engine.voices[i].restProb = polyRestCache[i];
                 }
                 engine.executePolyVoices(makePatternInput());
             }

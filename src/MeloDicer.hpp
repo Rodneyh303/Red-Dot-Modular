@@ -394,6 +394,11 @@ struct MeloDicer : Module {
     int& cachedLength = engine.cachedLength;
     int& cachedOffset = engine.cachedOffset;
     float bpm = 120.f;
+    
+    // ── Performance Optimization: Cache poly voice rest parameters ──
+    // Avoid reading paramManager->getPolyRest() every sample
+    float polyRestCache[7] = {0.f};  // Cache for 7 poly voices
+    bool polyRestDirty = true;       // Force refresh on first sample
 
     bool (&rhythmPattern)[16] = engine.pe.rhythmPattern;
     float (&melodyPitchV)[16] = engine.pe.melodyPitchV;
@@ -489,6 +494,9 @@ struct MeloDicer : Module {
     void handleRestart(bool manual = true, bool resetImmediate = false);
     float sampleSeedFromSource();
     void onPhraseBoundary_();
+    
+    // Performance optimization: mark poly voice cache as needing refresh
+    inline void invalidatePolyRestCache() { polyRestDirty = true; }
     void onReset() override;
     void onSampleRateChange(const SampleRateChangeEvent& e) override;
     int getNoteLenIdx_();
