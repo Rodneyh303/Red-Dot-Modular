@@ -73,4 +73,15 @@ struct ScaleHelper {
             weights[i] = redistributed[i];
         }
     }
+    
+    /// Update the active scale mask based on root and scale selection
+    /// Returns the computed mask (0xFFF = all notes, 0 = custom scale)
+    static uint16_t updateScaleMask(int root, int scaleIdx) {
+        if (scaleIdx < 0 || scaleIdx >= (int)BITWIG_SCALES.size()) return 0xFFF;
+        uint16_t newMask = 0;
+        for (int interval : BITWIG_SCALES[scaleIdx].intervals) {
+            newMask |= (1 << ((root + interval) % 12));
+        }
+        return newMask;
+    }
 };
