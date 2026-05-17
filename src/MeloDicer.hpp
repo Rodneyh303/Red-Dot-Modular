@@ -27,6 +27,9 @@
 #include "MeloDicerParameterManager.hpp"
 #include "MeloDicerModeController.hpp"
 #include "MeloDicerUIManager.hpp"
+#include "MeloDicerTimingController.hpp"
+#include "MeloDicerCVRouter.hpp"
+#include "MeloDicerOutputGenerator.hpp"
 #include "GateState.hpp"
 #include "SequencerEngine.hpp"
 #include "Scales.hpp"
@@ -345,6 +348,9 @@ struct MeloDicer : Module {
     std::unique_ptr<ParameterManager> paramManager;  // Initialized in constructor
     std::unique_ptr<ModeController> modeController;  // Initialized in constructor
     std::unique_ptr<UIManager> uiManager;  // Initialized in constructor
+    std::unique_ptr<TimingController> timingController;  // Initialized in constructor
+    std::unique_ptr<CVRouter> cvRouter;  // Initialized in constructor
+    std::unique_ptr<OutputGenerator> outputGenerator;  // Initialized in constructor
 
     // Convenience accessors
     rack::random::Xoroshiro128Plus& rhythmRng = engine.pe.rhythmRng;
@@ -411,8 +417,8 @@ struct MeloDicer : Module {
     // SchmittTriggers for rotation knobs to detect "snap" logic if needed, 
     // though we use them as continuous offsets now.
     
-    dsp::SchmittTrigger g1Trig, g2Trig, lockTrig, muteTrig, resetTrig, runGateTrig;
-    dsp::PulseGenerator runPulse, clockPulse, resetPulse;
+    dsp::SchmittTrigger modeTrig;  // For mode cycling (now in UIManager, but kept for compatibility)
+    dsp::PulseGenerator clockPulse;  // For clock output
 
     float& cachedMelodySeedFloat = engine.pe.cachedMelodySeedFloat;
     float& cachedRhythmSeedFloat = engine.pe.cachedRhythmSeedFloat;
@@ -428,13 +434,11 @@ struct MeloDicer : Module {
     int& activeSemiCount = engine.activeSemiCount;
     float (&faderCache)[12] = engine.faderCache;
     float cv2Offsets[4] = {0.f, 0.f, 0.f, 0.f};
-    float lastCv1V = -100.f;
-    float lastCv1Off = 0.f;
+    // CV routing state now in CVRouter
     // Transient octave offsets from CV1 modes 2 and 3.
     // Applied in getOctaveLoParam()/getOctaveHiParam() and cleared when CV1 is disconnected.
     // These are never written to params so they leave no persistent state.
-    float cv1LoOffset = 0.f;
-    float cv1HiOffset = 0.f;
+    // CV routing offsets now in CVRouter
 
     MeloDicer();
 
