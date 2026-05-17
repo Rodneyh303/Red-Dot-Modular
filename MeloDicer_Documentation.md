@@ -1,12 +1,10 @@
-# MeloDicer Documentation
+# Monsoon Documentation
 
 ## Overview
 
-**MeloDicer** is a stochastic melodic sequencer for VCV Rack, inspired by the Vermona meloDICER hardware sequencer. It combines rhythm, pitch, octave, and expression probability to generate evolving, expressive melodic sequences with deep parameter control and modulation capabilities.
+**Monsoon** is a stochastic melodic sequencer for VCV Rack, inspired by the Vermona meloDICER hardware sequencer. It combines rhythm, pitch, octave, and expression probability to generate evolving, expressive melodic sequences with deep parameter control and modulation capabilities.
 
-> **Note on Naming**: The current name "MeloDicer" references the Vermona hardware inspiration but may need renaming to avoid IP conflicts. Candidate names being considered include: **Stochasic** (stochastic + melodic), **Aleatory** (music term for controlled randomness), **Sequence Dice**, or **Random Melody Generator**. Suggestions welcome!
-
-The module generates 16-step patterns where each step's rhythm, pitch, octave, legato behavior, rest probability, and accent status are independently controlled by probabilistic DNA strands. Poly voice expansion enables up to 7 additional voices that follow the mono gate while drawing independent pitches.
+The module generates 16-step patterns where each step's rhythm, pitch, octave, legato behavior, rest probability, and accent status are independently controlled by probabilistic DNA strands. Poly voice expansion (via **Straits**) enables up to 7 additional voices that follow the mono gate while drawing independent pitches.
 
 ---
 
@@ -111,9 +109,9 @@ The module generates a 16-step pattern that loops and evolves based on the DNA s
 
 ---
 
-## Modulation Expander (Modulation Input Module)
+## Interchange (Modulation Expander)
 
-The Modulation Expander provides **per-semitone pitch modulation** and **dynamic octave range control**, allowing deep real-time parameter manipulation from external CV sources.
+The Interchange expander provides **per-semitone pitch modulation** and **dynamic octave range control**, allowing deep real-time parameter manipulation from external CV sources.
 
 ### What It Does
 
@@ -121,7 +119,7 @@ This left-side expander adds 14 CV inputs and 14 attenuverters to control:
 - **Semitone Selection** (12 CV channels): Modulate the availability/strength of each note in the scale
 - **Octave Range** (2 CV channels): Dynamically shift the playable octave bounds
 
-### Modulation Expander Controls
+### Interchange Controls
 
 #### Per-Semitone Modulation (12 sets)
 
@@ -158,7 +156,7 @@ This shifts the pitch output for selected notes, creating:
 - Allows shrinking/expanding the octave range dynamically
 - Use to: create filtering effects or performance variations
 
-### Modulation Expander Patching Examples
+### Interchange Patching Examples
 
 **Melodic Sidechain Expression**:
 ```
@@ -194,9 +192,9 @@ Result: Expression pedal intensity controls the likelihood of dominant notes
 
 ---
 
-## DNA Expander (MeloDicerDNAExpander)
+## Sands (DNA Expander)
 
-The DNA Expander provides deep control over the **six independent DNA strands** that drive the sequencer.
+The Sands expander provides deep control over the **six independent DNA strands** that drive the sequencer.
 
 ### What Are DNA Strands?
 
@@ -211,7 +209,7 @@ Each strand is a 16-element array of random probabilities (0–1) that controls 
 
 Each strand can be **windowed** (subset of 16 steps) and **rotated** (shifted) to create polyrhythmic and polymorphic variations.
 
-### DNA Expander Controls
+### Sands Controls
 
 #### Per-Strand Parameters (6 sets, one for each DNA strand)
 
@@ -268,9 +266,9 @@ For each strand (Rhythm, Variation, Legato, Accent, Melody, Octave):
 
 ---
 
-## Poly Voice Expander (MeloDicerPolyVoiceExpander)
+## Straits (Poly Voice Expander)
 
-The Poly Voice Expander adds **7 additional voices** (for 8 total) that follow the mono gate while drawing independent pitches from the melody strand.
+The Straits expander adds **7 additional voices** (for 8 total) that follow the mono gate while drawing independent pitches from the melody strand.
 
 ### Poly Voice Concept
 
@@ -287,7 +285,7 @@ The Poly Voice Expander adds **7 additional voices** (for 8 total) that follow t
 3. **Tie**: Poly voices that are sounding extend their held note; silent voices stay silent
 4. **MidNote**: Poly voices simply tick their hold timers, no new note decisions
 
-### Poly Voice Expander I/O
+### Straits I/O
 
 #### Per-Voice Outputs (7 voices, labeled 2–8)
 
@@ -299,7 +297,7 @@ For each voice (Voice 2 through Voice 8):
 
 #### Voice Rest Probability
 
-Each voice has an independent **Rest Probability Parameter** (set from the DNA Expander or via Rack context menu). This controls whether a given voice plays when the mono decision allows it.
+Each voice has an independent **Rest Probability Parameter** (set from the Sands expander or via Rack context menu). This controls whether a given voice plays when the mono decision allows it.
 
 **Example**: 
 - Mono decides to play a new note
@@ -481,7 +479,7 @@ Mix: (VCA output, regular) + (VCA output, accented)
 ### Polyrhythmic Meditation Pattern
 
 ```
-(Use DNA Expander to set different strand lengths)
+(Use Sands to set different strand lengths)
 Rhythm: Length 3
 Melody: Length 5
 Legato: Length 7
@@ -515,7 +513,7 @@ Listen to the evolving pattern over ~6–7 minutes at 120 BPM
 ### Pattern Not Changing
 
 - If **LOCK** button is lit, pattern changes are disabled (press LOCK to unlock)
-- Try pressing **SCRAMBLE ALL** or **RESET ALL** buttons on DNA Expander
+- Try pressing **SCRAMBLE ALL** or **RESET ALL** buttons on Sands
 - Verify **SEED IN** or DNA inputs aren't being held constant
 
 ### Accents Not Firing
@@ -585,7 +583,7 @@ The VCV version builds on these concepts with:
 
 ## Credits & License
 
-**MeloDicer VCV Module** © 2026  
+**Monsoon VCV Module** © 2026  
 Inspired by Vermona meloDICER hardware sequencer.
 
 For updates, issues, and feature requests, visit: https://github.com/Rodneyh303/Red-Dot-Modular
@@ -600,4 +598,4 @@ For questions, suggestions, or bug reports:
 
 ---
 
-*This documentation reflects the current state of MeloDicer as of v2.1.0. Features and specifications are subject to change.*
+*This documentation reflects the current state of Monsoon as of v2.1.0. Features and specifications are subject to change.*
