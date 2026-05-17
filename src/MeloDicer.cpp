@@ -599,19 +599,18 @@ void MeloDicer::process(const ProcessArgs& args) {
             }
         }
     }
-    // ── Status Light Updates (called every sample) ──
-    if (uiManager) {
-        uiManager->updateDiceLights(engine.pe.isRhythmSeedPending(), engine.pe.isMelodySeedPending());
-        uiManager->updateLockLight(locked);
-        uiManager->updateMuteLight(muted);
-        uiManager->updateExpanderLights(expanderManager.scaleExpanderCount, expanderManager.dnaExpanderCount, expanderManager.polyExpanderCount);
-    }
 
     // ── Throttle UI and Light processing ──
     if (lightDivider.process()) {
         // Throttled Visuals/Outputs
         // ── UI Light Updates ──
         if (uiManager) {
+            // Move these here from per-sample logic
+            uiManager->updateDiceLights(engine.pe.isRhythmSeedPending(), engine.pe.isMelodySeedPending());
+            uiManager->updateLockLight(locked);
+            uiManager->updateMuteLight(muted);
+            uiManager->updateExpanderLights(expanderManager.scaleExpanderCount, expanderManager.dnaExpanderCount, expanderManager.polyExpanderCount);
+
             uiManager->updateRunGateLight(runGateActive);
             uiManager->updateResetLight(resetArmed, args.sampleTime * 512.f);
         }
@@ -663,13 +662,13 @@ void MeloDicer::process(const ProcessArgs& args) {
         // --- Ring LEDs (Steps) and Semitone LEDs ---
         {
             // Get step brightness values
-            std::vector<float> stepBrightness(16);
+            float stepBrightness[16];
             for (int i = 0; i < 16; ++i) {
                 stepBrightness[i] = engine.getStepLightBrightness(i);
             }
             
             // Get semitone flash brightness values
-            std::vector<float> semiLedBrightness(12);
+            float semiLedBrightness[12];
             for (int i = 0; i < 12; ++i) {
                 float b = engine.gs.semiLedBrightness(i);
                 // Aggregate brightness from all active poly voices
@@ -681,8 +680,8 @@ void MeloDicer::process(const ProcessArgs& args) {
             
             // Update both via UIManager
             if (uiManager) {
-                uiManager->updateStepLights(stepBrightness);
-                uiManager->updateSemitoneFlashLights(semiLedBrightness);
+                uiManager->updateStepLights(std::vector<float>(stepBrightness, stepBrightness + 16));
+                uiManager->updateSemitoneFlashLights(std::vector<float>(semiLedBrightness, semiLedBrightness + 12));
             }
         }
 
@@ -709,7 +708,6 @@ void MeloDicer::process(const ProcessArgs& args) {
 
     // ── Control-Rate DNA and Window Updates (Optimized CPU) ──
     if (controlDivider.process()) {
-        updateExpanderPointers();
         dnaManager.processDNA(expanderManager);
 
         engine.updateWindow(
