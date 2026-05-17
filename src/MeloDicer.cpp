@@ -175,6 +175,8 @@ MeloDicer::MeloDicer() {
     }
 
 void MeloDicer::updateExpanderPointers() {
+    // Clear all cached pointers before rescanning
+    // This prevents stale pointers if expanders are hot-swapped
     cachedExpander = nullptr;
     cachedDnaExpander = nullptr;
     cachedPolyVoiceExpander = nullptr;
@@ -184,10 +186,16 @@ void MeloDicer::updateExpanderPointers() {
     polyExpanderCount = 0;
 
     // Walk expander chains in both directions to find any connected Melodicer expanders
+    // IMPORTANT: Works on both LEFT and RIGHT sides, respects direct adjacency requirement
     auto scan = [&](Module* start, bool left) {
+        // Defensive: handle null start (no expander on this side)
+        if (!start) return;
+        
         Module* curr = start;
         int depth = 0;
         while (curr && depth < 8) { // 8 is a safe depth limit for Rack chains
+            // Try to match against each known expander type
+            // All three expanders can be on either side
             if (curr->model == modelMeloDicerExpander) {
                 if (!cachedExpander) cachedExpander = dynamic_cast<MeloDicerExpander*>(curr);
                 scaleExpanderCount++;
@@ -197,20 +205,26 @@ void MeloDicer::updateExpanderPointers() {
                 dnaExpanderCount++;
             }
             else if (curr->model == modelMeloDicerPolyVoiceExpander) {
+                // This should find Poly expanders on both LEFT and RIGHT sides
                 if (!cachedPolyVoiceExpander) cachedPolyVoiceExpander = dynamic_cast<MeloDicerPolyVoiceExpander*>(curr);
                 polyExpanderCount++;
             }
             else {
-                break; // Stop if we hit a module that isn't part of this system
+                // Stop if we hit a non-Melodicer module (respects Rack direct adjacency requirement)
+                break;
             }
+            
+            // Move to next module in the chain
             curr = left ? curr->leftExpander.module : curr->rightExpander.module;
             depth++;
         }
     };
 
+    // Scan both directions
+    // LEFT: scan through modules to the left
+    // RIGHT: scan through modules to the right
     scan(leftExpander.module, true);
     scan(rightExpander.module, false);
-}
 
   void MeloDicer::updateScaleMask() {
         activeScaleMask = ScaleHelper::calculateMask(scaleRoot, lastSelectedScale);
