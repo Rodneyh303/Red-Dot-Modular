@@ -1,6 +1,6 @@
 #pragma once
 
-#include "PatternEngine.hpp"
+#include "../engines/PatternEngine.hpp"
 
 /**
  * DNAStrandManager

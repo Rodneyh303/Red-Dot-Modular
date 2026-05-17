@@ -1,7 +1,7 @@
 #pragma once
 
 #include "rack.hpp"
-#include "MeloDicer.hpp"  // For param/input IDs
+#include "../../MeloDicer.hpp"  // For param/input IDs
 
 /**
  * ParameterManager

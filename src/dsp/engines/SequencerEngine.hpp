@@ -1,6 +1,6 @@
 #pragma once
 #include "PatternEngine.hpp"
-#include "GateState.hpp"
+#include "../gates/GateState.hpp"
 #include "ClockEngine.hpp"
 
 struct NoteVal {

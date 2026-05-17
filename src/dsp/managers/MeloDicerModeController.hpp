@@ -1,8 +1,8 @@
 #pragma once
 
 #include "rack.hpp"
-#include "SequencerEngine.hpp"
-#include "ClockEngine.hpp"
+#include "../engines/SequencerEngine.hpp"
+#include "../engines/ClockEngine.hpp"
 #include "MeloDicerParameterManager.hpp"
 
 /**
