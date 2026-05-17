@@ -91,6 +91,9 @@ private:
     
     // ──── Helper Methods ────────────────────────────────────────────────────
     
+    /// Assemble a PatternInput snapshot for the engine
+    PatternInput assemblePatternInput_();
+
     /// Common post-execution logic: handle phrase boundaries and poly voices
     void postExecute_(const StepResult& result, PhraseCallback onPhraseBoundary);
     

@@ -13,6 +13,23 @@ void ModeController::updatePolyVoiceRest_() {
     }
 }
 
+PatternInput ModeController::assemblePatternInput_() {
+    PatternInput in;
+    for (int i = 0; i < 12; ++i) {
+        in.semiWeights[i] = paramManager.getSemitone(i);
+    }
+    in.restProb = paramManager.getRest();
+    in.variationAmount = paramManager.getVariation();
+    in.octaveLo = paramManager.getOctaveLo();
+    in.octaveHi = paramManager.getOctaveHi();
+    in.transpose = paramManager.getTranspose();
+    
+    // Get module-level state from the engine reference
+    in.noteVariationMask = engine.noteVariationMask;
+    in.locked = engine.locked;
+    return in;
+}
+
 // ──── Helper: Post-execution logic ──────────────────────────────────────────
 
 void ModeController::postExecute_(const StepResult& result, PhraseCallback onPhraseBoundary) {
@@ -36,13 +53,15 @@ bool ModeController::executeModeA(PhraseCallback onPhraseBoundary) {
         // Fetch current parameters
         engine.accentProb = paramManager.getAccent();
         
+        PatternInput in = assemblePatternInput_();
+
         // Execute the mode
         StepResult result = engine.executeModeA(
             clock,
-            paramManager.getRest(),
+            in.restProb,
             paramManager.getLegato(),
             paramManager.getNoteValue(),
-            PatternInput{/* populated by engine */}
+            in
         );
         
         // Handle post-execution
@@ -63,14 +82,16 @@ bool ModeController::executeModeB(bool gate1Rise,
         // Fetch current parameters
         engine.accentProb = paramManager.getAccent();
         
+        PatternInput in = assemblePatternInput_();
+
         // Execute the mode
         StepResult result = engine.executeModeB(
             gate1Rise,
             gate1High,
-            paramManager.getRest(),
+            in.restProb,
             paramManager.getLegato(),
             paramManager.getNoteValue(),
-            PatternInput{/* populated by engine */}
+            in
         );
         
         // Handle post-execution

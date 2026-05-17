@@ -26,6 +26,7 @@
 #include "dsp/engines/SequencerEngine.hpp"
 #include "dsp/managers/MeloDicerDNAManager.hpp"
 #include "dsp/managers/MeloDicerParameterManager.hpp"
+#include "dsp/managers/MeloDicerExpanderManager.hpp"
 #include "dsp/managers/MeloDicerModeController.hpp"
 #include "dsp/managers/MeloDicerUIManager.hpp"
 #include "dsp/managers/MeloDicerTimingController.hpp"
@@ -338,9 +339,7 @@ struct MeloDicer : Module {
     bool lockScaleNotes = false;
     uint16_t activeScaleMask = 0xFFF;
     bool lightTheme = false;
-    MeloDicerExpander* cachedExpander = nullptr; // Cache expander pointer for performance
-    MeloDicerPolyVoiceExpander* cachedPolyVoiceExpander = nullptr;
-    MeloDicerDNAExpander* cachedDnaExpander = nullptr;
+    MeloDicerExpanderManager expanderManager;
     dsp::ClockDivider lightDivider;
     dsp::ClockDivider controlDivider; // For DNA modulation at "Control Rate"
 
@@ -370,10 +369,6 @@ struct MeloDicer : Module {
     bool& melodySeedPending = engine.pe.melodySeedPending;
     float& melodySeedPendingFloat = engine.pe.melodySeedPendingFloat;
     //float& stochasticSeedFloat = engine.pe.stochasticSeedFloat;
-
-    int scaleExpanderCount = 0;
-    int dnaExpanderCount = 0;
-    int polyExpanderCount = 0;
     inline float unitRandomRhythm() { return engine.pe.unitRhythm(); }
     inline float unitRandomMelody() { return engine.pe.unitMelody(); }
 

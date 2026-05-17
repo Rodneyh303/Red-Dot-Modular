@@ -103,7 +103,6 @@ float ParameterManager::getSemitone(int semIdx) const {
     if (semIdx < 0 || semIdx > 11) return 0.f;
     
     if (!mainModule) return 0.f;
-    auto& params = mainModule->params;
     
     // Get base semitone probability from main knob
     float v = readParam_(SEMI0_PARAM + semIdx, 0.f, 1.f);

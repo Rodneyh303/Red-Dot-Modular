@@ -143,7 +143,7 @@ MeloDicer::MeloDicer() {
         melodySeedPendingFloat = melodySeedFloat;
 
         // Initialize managers
-        paramManager = std::unique_ptr<ParameterManager>(new ParameterManager(this, &cachedExpander, &cachedPolyVoiceExpander));
+        paramManager = std::unique_ptr<ParameterManager>(new ParameterManager(this, &expanderManager.cachedScaleExpander, &expanderManager.cachedPolyVoiceExpander));
         modeController = std::unique_ptr<ModeController>(new ModeController(engine, clock, *paramManager));
         uiManager = std::unique_ptr<UIManager>(new UIManager(this, lightDivider));
         timingController = std::unique_ptr<TimingController>(new TimingController(this));
@@ -157,59 +157,25 @@ MeloDicer::MeloDicer() {
         // genPitchV() reads params[] which aren't valid yet, so use safe literals
         for (int i = 0; i < 16; ++i) {
             rhythmPattern[i]  = true;
-            engine.pe.rhythmRandom[i] = 1.0f;
-            engine.pe.variationRandom[i] = 0.5f;
-            engine.pe.legatoRandom[i] = 0.0f;
-            engine.pe.melodyRandom[i] = 0.5f;
-            engine.pe.octaveRandom[i] = 0.5f;
+            engine.pe.rhythmRandom[i] = 0.; //rack::random::uniform();
+            engine.pe.variationRandom[i] =0.; //rack::random::uniform();
+            engine.pe.legatoRandom[i] = 0.; //rack::random::uniform();
+            engine.pe.melodyRandom[i] = 0.; //rack::random::uniform();
+            engine.pe.octaveRandom[i] = 0.; //rack::random::uniform();
             for (int v = 0; v < 7; v++) {
-                engine.pe.polyRhythmRandom[v][i] = (float)rack::random::uniform(); // Seed with random for immediate DNA feedback
+                engine.pe.polyRhythmRandom[v][i] = 0.; //(float)rack::random::uniform(); // Seed with random for immediate DNA feedback
                 engine.pe.polyMelodyRandom[v][i] = 0.5f;
                 engine.pe.polyOctaveRandom[v][i] = 0.5f;
             }
             melodyPitchV[i]   = 0.f;   // C0 = 0V
-            melodySemitone[i] = 0;     // semitone C
+            melodySemitone[i] = i % 12; // Spread initial semitones so all lights work
         }
 
         initialize();
     }
 
 void MeloDicer::updateExpanderPointers() {
-    cachedExpander = nullptr;
-    cachedDnaExpander = nullptr;
-    cachedPolyVoiceExpander = nullptr;
-
-    scaleExpanderCount = 0;
-    dnaExpanderCount = 0;
-    polyExpanderCount = 0;
-
-    // Walk expander chains in both directions to find any connected Melodicer expanders
-    auto scan = [&](Module* start, bool left) {
-        Module* curr = start;
-        int depth = 0;
-        while (curr && depth < 8) { // 8 is a safe depth limit for Rack chains
-            if (curr->model == modelMeloDicerExpander) {
-                if (!cachedExpander) cachedExpander = dynamic_cast<MeloDicerExpander*>(curr);
-                scaleExpanderCount++;
-            }
-            else if (curr->model == modelMeloDicerDNAExpander) {
-                if (!cachedDnaExpander) cachedDnaExpander = dynamic_cast<MeloDicerDNAExpander*>(curr);
-                dnaExpanderCount++;
-            }
-            else if (curr->model == modelMeloDicerPolyVoiceExpander) {
-                if (!cachedPolyVoiceExpander) cachedPolyVoiceExpander = dynamic_cast<MeloDicerPolyVoiceExpander*>(curr);
-                polyExpanderCount++;
-            }
-            else {
-                break; // Stop if we hit a module that isn't part of this system
-            }
-            curr = left ? curr->leftExpander.module : curr->rightExpander.module;
-            depth++;
-        }
-    };
-
-    scan(leftExpander.module, true);
-    scan(rightExpander.module, false);
+    expanderManager.update(this);
 }
 
   void MeloDicer::updateScaleMask() {
@@ -271,7 +237,6 @@ void MeloDicer::updateExpanderPointers() {
         prevExtGate = false;
         currentPitchV = 0.f;
         melodySeedCached = false;
-        cachedExpander = nullptr; // Initialize cached expander
         rhythmSeedCached = false;
         updateExpanderPointers();
   }
@@ -498,16 +463,7 @@ void MeloDicer::updateExpanderPointers() {
         if (sem < 0 || sem > 11) return 0.f;
         // Enforce lock: if note is not in scale mask, probability is zero regardless of CV
         if (lockScaleNotes && !(activeScaleMask & (1 << sem))) return 0.f;
-
-        float v =  params[SEMI0_PARAM + sem].getValue();
-        // Add CV from cached expander if present
-    if (cachedExpander && cachedExpander->inputs[MeloDicerIds::EXPANDER_SEMI_CV_INPUT_0 + sem].isConnected()) {
-        float att = cachedExpander->params[MeloDicerIds::EXPANDER_SEMI_ATTENUVERTER_0 + sem].getValue();
-        v += (cachedExpander->inputs[MeloDicerIds::EXPANDER_SEMI_CV_INPUT_0 + sem].getVoltage() * att) / 10.0f;
-    }
-
-        v = clampv(v, 0.f, 1.f);
-        return v;
+        return paramManager ? paramManager->getSemitone(sem) : 0.f;
     }
 
     //return octave parameter value with CV input added (if connected)
@@ -556,15 +512,7 @@ float MeloDicer::genPitchV(int& outSemitone) {
     PatternInput in = makePatternInput();
     return engine.pe.genPitchLive(outSemitone, in, melodyRandom[engine.getMelodyStep()], octaveRandom[engine.getOctaveStep()]);
 }
-    // uses rhythm RNG
-    //  biases shorter/longer values depending on VARIATION_PARAM (0..1)
-    // 0.5 = no bias, <0.5 = longer notes, >0.5 = shorter notes
-    // only varies within ±2 indices, and only to allowed note lengths
-    // if no allowed variation, returns baseIdx unchanged
-    // not sure of purpose of randomly picking from allowed set, but keeping it for now
-    // (this is different from original MeloDicer behavior so probably needs removing)
-    // if baseIdx is out of range, it is clamped to 0..8
-    // if no allowed note lengths in range, returns baseIdx unchanged
+
     // allowed note lengths depend on noteVariationMask - note we defined NoteLength enum and allowednoteLengths function
     //so this could be changed to use that
     // (bit0: 1/8T, bit1: 1/16T, bit2: 1/32 & 1/32T)
@@ -572,12 +520,7 @@ float MeloDicer::genPitchV(int& outSemitone) {
     //      mask=0b010 allows 1/16T, 1/4, 1/2, 1, 2, 4
     //      mask=0b000 allows only 1/4, 1/2, 1, 2, 4
     //      mask=0b111 allows all note lengths
-    // if baseIdx is 0 or 8, variation is only towards inside (1 or 7)
-    // if baseIdx is 1 or 7, variation is towards inside (0 or 2) or outside (2 or 6)
-    // etc.// (this is handled by the lo/hi clamping)
-    // if baseIdx is out of range, it is clamped to 0..8
-    // if no allowed note lengths in range, returns baseIdx unchanged
-    // uses rhythm RNG
+
 
 // Convert semitone (0..11) to volts (1V/oct)
 // 12 semitones per octave
@@ -713,27 +656,6 @@ void MeloDicer::onReset() {
 // NOTEVALS.allowedPPQN bitmask: 1=PPQN1, 2=PPQN4, 4=PPQN24
 // ppqnSetting raw values: 1, 4, 24 — must be converted to bitmask before use.
 int MeloDicer::computeNoteLengthIdx(int requestedIdx, int ppqnMask) { return engine.computeNoteLengthIdx(requestedIdx, ppqnMask); }
-
-
-// quantize pitch to semitone index (0..11) and octave offset (integer)
-float MeloDicer::quantizePitch(int semitoneIndex, int octaveOffset) {
-    return octaveOffset + semitoneIndex / 12.f;
-}
-
-// ---------------- Helper: update step LEDs -------------------------------
-// activeSemitone: 0..11 for currently playing semitone, or -1 if
-void MeloDicer::updateStepLEDs_(float sampleTime)
-{
-    // Green channel (ch0) is managed by VCVLightSlider widget automatically.
-    // We only drive the red channel (ch1) = "note playing" flash.
-    // Always update red — semiPlayRemain decays each step so values always change.
-    for (int i = 0; i < 12; i++) {
-        float redLevel = engine.gs.semiLedBrightness(i);
-        lights[SEMI_LED_START + 2*i + 1].setBrightness(redLevel);
-    }
-}
-
-
 
 
 // ---------------- Replacement for process() ---------------------------------
@@ -898,24 +820,24 @@ void MeloDicer::process(const ProcessArgs& args) {
         outputGenerator->setAccentGateOutput(outputs[ACCENT_OUTPUT], isAccented && !muted);
         
         // Poly voice outputs
-        if (cachedPolyVoiceExpander && engine.numPolyVoices > 0) {
+        if (expanderManager.cachedPolyVoiceExpander && engine.numPolyVoices > 0) {
             using namespace PolyVoiceExpanderIds;
             for (int i = 0; i < engine.numPolyVoices; ++i) {
                 float vg = engine.voices[i].gs.process(args.sampleTime);
                 if (muted) vg = 0.f;
-                cachedPolyVoiceExpander->outputs[POLY_GATE_OUT_1 + i].setVoltage(vg);
-                cachedPolyVoiceExpander->outputs[POLY_CV_OUT_1 + i].setVoltage(engine.voices[i].gs.currentPitchV);
+                expanderManager.cachedPolyVoiceExpander->outputs[POLY_GATE_OUT_1 + i].setVoltage(vg);
+                expanderManager.cachedPolyVoiceExpander->outputs[POLY_CV_OUT_1 + i].setVoltage(engine.voices[i].gs.currentPitchV);
                 
                 // Poly accent: fires when mono is accented AND poly voice is sounding
                 float polyAccent = (engine.lastStepResult.accented && vg > 5.f) ? 10.f : 0.f;
                 if (muted) polyAccent = 0.f;
-                cachedPolyVoiceExpander->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(polyAccent);
+                expanderManager.cachedPolyVoiceExpander->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(polyAccent);
             }
             // Zero unused voice outputs so they don't emit stale voltages.
             for (int i = engine.numPolyVoices; i < 7; ++i) {
-                cachedPolyVoiceExpander->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
-                cachedPolyVoiceExpander->outputs[POLY_CV_OUT_1 + i].setVoltage(0.f);
-                cachedPolyVoiceExpander->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
+                expanderManager.cachedPolyVoiceExpander->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
+                expanderManager.cachedPolyVoiceExpander->outputs[POLY_CV_OUT_1 + i].setVoltage(0.f);
+                expanderManager.cachedPolyVoiceExpander->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
             }
         }
     }
@@ -924,7 +846,7 @@ void MeloDicer::process(const ProcessArgs& args) {
         uiManager->updateDiceLights(engine.pe.isRhythmSeedPending(), engine.pe.isMelodySeedPending());
         uiManager->updateLockLight(locked);
         uiManager->updateMuteLight(muted);
-        uiManager->updateExpanderLights(scaleExpanderCount, dnaExpanderCount, polyExpanderCount);
+        uiManager->updateExpanderLights(expanderManager.scaleExpanderCount, expanderManager.dnaExpanderCount, expanderManager.polyExpanderCount);
     }
 
     // ── Throttle UI and Light processing ──
@@ -1010,7 +932,10 @@ void MeloDicer::process(const ProcessArgs& args) {
                         params[SEMI0_PARAM + i].setValue(0.f);
                 }
                 float w = getSemitoneParam(i);
-                if (!faderDirty && std::fabs(w - faderCache[i]) > 1e-5f) faderDirty = true;
+                if (std::fabs(w - faderCache[i]) > 1e-5f) {
+                    faderDirty = true;
+                    faderCache[i] = w; // Update the cache!
+                }
             }
             if (faderDirty || activeSemiCount == 0) rebuildSemiCache_();
         }
@@ -1022,15 +947,15 @@ void MeloDicer::process(const ProcessArgs& args) {
     // ── Control-Rate DNA and Window Updates (Optimized CPU) ──
     if (controlDivider.process()) {
         updateExpanderPointers();
-        if (cachedDnaExpander) {
+        if (expanderManager.cachedDnaExpander) {
             auto processStrand = [&](int pLen, int iLen, int pOff, int iOff, int pRot, int& tLen, int& tOff, int& tRot) {
-                float lCV = cachedDnaExpander->inputs[iLen].getNormalVoltage(0.f) * 1.6f;
-                float oCV = cachedDnaExpander->inputs[iOff].getNormalVoltage(0.f) * 1.5f;
-                tLen = clampv<int>((int)std::round(cachedDnaExpander->params[pLen].getValue() + lCV), 1, 16);
+                float lCV = expanderManager.cachedDnaExpander->inputs[iLen].getNormalVoltage(0.f) * 1.6f;
+                float oCV = expanderManager.cachedDnaExpander->inputs[iOff].getNormalVoltage(0.f) * 1.5f;
+                tLen = clampv<int>((int)std::round(expanderManager.cachedDnaExpander->params[pLen].getValue() + lCV), 1, 16);
                 // Use positive-safe modulo: C++ % can return negative for negative operands.
-                int rawOff = (int)std::round(cachedDnaExpander->params[pOff].getValue() + oCV);
+                int rawOff = (int)std::round(expanderManager.cachedDnaExpander->params[pOff].getValue() + oCV);
                 tOff = ((rawOff % 16) + 16) % 16;
-                int rawRot = (int)std::round(cachedDnaExpander->params[pRot].getValue());
+                int rawRot = (int)std::round(expanderManager.cachedDnaExpander->params[pRot].getValue());
                 tRot = ((rawRot % 16) + 16) % 16;
             };
 
@@ -1048,8 +973,8 @@ void MeloDicer::process(const ProcessArgs& args) {
             processStrand(DNA_O_LEN_PARAM, DNA_O_LEN_INPUT, DNA_O_OFF_PARAM, DNA_O_OFF_INPUT, DNA_O_ROT_PARAM, 
                             engine.octaveLen, engine.octaveOff, engine.octaveRot);
 
-            #define DNA_ACT_PARAM(p, func) if (p##Trig.process(cachedDnaExpander->params[MeloDicerIds::p].getValue())) dnaManager.func()
-            #define DNA_ACT_INPUT(i, func) if (i##Trig.process(cachedDnaExpander->inputs[MeloDicerIds::i].getVoltage())) dnaManager.func()
+            #define DNA_ACT_PARAM(p, func) if (p##Trig.process(expanderManager.cachedDnaExpander->params[MeloDicerIds::p].getValue())) dnaManager.func()
+            #define DNA_ACT_INPUT(i, func) if (i##Trig.process(expanderManager.cachedDnaExpander->inputs[MeloDicerIds::i].getVoltage())) dnaManager.func()
             
             DNA_ACT_PARAM(DNA_SCRAMBLE_ALL_PARAM, scrambleAll);
             DNA_ACT_INPUT(DNA_SCRAMBLE_ALL_INPUT, scrambleAll);
@@ -1088,12 +1013,12 @@ void MeloDicer::process(const ProcessArgs& args) {
                 engine.rhythmRot = engine.variationRot = engine.legatoRot = engine.accentRot = engine.melodyRot = engine.octaveRot = 0;
             }
         }
-        if (cachedPolyVoiceExpander) {
+        if (expanderManager.cachedPolyVoiceExpander) {
             for (int i = 0; i < 7; i++) {
-                engine.polyLen[i] = clampv<int>((int)std::round(cachedPolyVoiceExpander->params[POLY_DNA_VOICE_1_LEN + i * 3].getValue()), 1, 16);
-                int rawOff = (int)std::round(cachedPolyVoiceExpander->params[POLY_DNA_VOICE_1_OFF + i * 3].getValue());
+                engine.polyLen[i] = clampv<int>((int)std::round(expanderManager.cachedPolyVoiceExpander->params[POLY_DNA_VOICE_1_LEN + i * 3].getValue()), 1, 16);
+                int rawOff = (int)std::round(expanderManager.cachedPolyVoiceExpander->params[POLY_DNA_VOICE_1_OFF + i * 3].getValue());
                 engine.polyOff[i] = ((rawOff % 16) + 16) % 16;
-                int rawRot = (int)std::round(cachedPolyVoiceExpander->params[POLY_DNA_VOICE_1_ROT + i * 3].getValue());
+                int rawRot = (int)std::round(expanderManager.cachedPolyVoiceExpander->params[POLY_DNA_VOICE_1_ROT + i * 3].getValue());
                 engine.polyRot[i] = ((rawRot % 16) + 16) % 16;
             }
         } else {
