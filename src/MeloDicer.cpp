@@ -162,6 +162,7 @@ MeloDicer::MeloDicer() {
             engine.pe.legatoRandom[i] = 0.; //rack::random::uniform();
             engine.pe.melodyRandom[i] = 0.; //rack::random::uniform();
             engine.pe.octaveRandom[i] = 0.; //rack::random::uniform();
+            engine.pe.accentRandom[i] = 0.; //rack::random::uniform();  // New
             for (int v = 0; v < 7; v++) {
                 engine.pe.polyRhythmRandom[v][i] = 0.; //(float)rack::random::uniform(); // Seed with random for immediate DNA feedback
                 engine.pe.polyMelodyRandom[v][i] = 0.5f;
@@ -952,86 +953,7 @@ void MeloDicer::process(const ProcessArgs& args) {
     // ── Control-Rate DNA and Window Updates (Optimized CPU) ──
     if (controlDivider.process()) {
         updateExpanderPointers();
-        if (expanderManager.cachedDnaExpander) {
-            auto processStrand = [&](int pLen, int iLen, int pOff, int iOff, int pRot, int& tLen, int& tOff, int& tRot) {
-                float lCV = expanderManager.cachedDnaExpander->inputs[iLen].getNormalVoltage(0.f) * 1.6f;
-                float oCV = expanderManager.cachedDnaExpander->inputs[iOff].getNormalVoltage(0.f) * 1.5f;
-                tLen = clampv<int>((int)std::round(expanderManager.cachedDnaExpander->params[pLen].getValue() + lCV), 1, 16);
-                // Use positive-safe modulo: C++ % can return negative for negative operands.
-                int rawOff = (int)std::round(expanderManager.cachedDnaExpander->params[pOff].getValue() + oCV);
-                tOff = ((rawOff % 16) + 16) % 16;
-                int rawRot = (int)std::round(expanderManager.cachedDnaExpander->params[pRot].getValue());
-                tRot = ((rawRot % 16) + 16) % 16;
-            };
-
-            using namespace MeloDicerIds;
-            processStrand(DNA_R_LEN_PARAM, DNA_R_LEN_INPUT, DNA_R_OFF_PARAM, DNA_R_OFF_INPUT, DNA_R_ROT_PARAM, 
-                            engine.rhythmLen, engine.rhythmOff, engine.rhythmRot);
-            processStrand(DNA_V_LEN_PARAM, DNA_V_LEN_INPUT, DNA_V_OFF_PARAM, DNA_V_OFF_INPUT, DNA_V_ROT_PARAM, 
-                            engine.variationLen, engine.variationOff, engine.variationRot);
-            processStrand(DNA_L_LEN_PARAM, DNA_L_LEN_INPUT, DNA_L_OFF_PARAM, DNA_L_OFF_INPUT, DNA_L_ROT_PARAM, 
-                            engine.legatoLen, engine.legatoOff, engine.legatoRot);
-            processStrand(DNA_A_LEN_PARAM, DNA_A_LEN_INPUT, DNA_A_OFF_PARAM, DNA_A_OFF_INPUT, DNA_A_ROT_PARAM, 
-                            engine.accentLen, engine.accentOff, engine.accentRot);
-            processStrand(DNA_M_LEN_PARAM, DNA_M_LEN_INPUT, DNA_M_OFF_PARAM, DNA_M_OFF_INPUT, DNA_M_ROT_PARAM, 
-                            engine.melodyLen, engine.melodyOff, engine.melodyRot);
-            processStrand(DNA_O_LEN_PARAM, DNA_O_LEN_INPUT, DNA_O_OFF_PARAM, DNA_O_OFF_INPUT, DNA_O_ROT_PARAM, 
-                            engine.octaveLen, engine.octaveOff, engine.octaveRot);
-
-            #define DNA_ACT_PARAM(p, func) if (p##Trig.process(expanderManager.cachedDnaExpander->params[MeloDicerIds::p].getValue())) dnaManager.func()
-            #define DNA_ACT_INPUT(i, func) if (i##Trig.process(expanderManager.cachedDnaExpander->inputs[MeloDicerIds::i].getVoltage())) dnaManager.func()
-            
-            DNA_ACT_PARAM(DNA_SCRAMBLE_ALL_PARAM, scrambleAll);
-            DNA_ACT_INPUT(DNA_SCRAMBLE_ALL_INPUT, scrambleAll);
-            DNA_ACT_PARAM(DNA_SCRAMBLE_R_PARAM, scrambleRhythmGroup);
-            DNA_ACT_INPUT(DNA_SCRAMBLE_R_INPUT, scrambleRhythmGroup);
-            DNA_ACT_PARAM(DNA_SCRAMBLE_V_PARAM, scrambleVariation);
-            DNA_ACT_INPUT(DNA_SCRAMBLE_V_INPUT, scrambleVariation);
-            DNA_ACT_PARAM(DNA_SCRAMBLE_L_PARAM, scrambleLegato);
-            DNA_ACT_INPUT(DNA_SCRAMBLE_L_INPUT, scrambleLegato);
-            DNA_ACT_PARAM(DNA_SCRAMBLE_A_PARAM, scrambleAccent);
-            DNA_ACT_INPUT(DNA_SCRAMBLE_A_INPUT, scrambleAccent);
-            DNA_ACT_PARAM(DNA_SCRAMBLE_M_PARAM, scrambleMelodyGroup);
-            DNA_ACT_INPUT(DNA_SCRAMBLE_M_INPUT, scrambleMelodyGroup);
-            DNA_ACT_PARAM(DNA_SCRAMBLE_O_PARAM, scrambleOctave);
-            DNA_ACT_INPUT(DNA_SCRAMBLE_O_INPUT, scrambleOctave);
-
-            DNA_ACT_PARAM(DNA_RESET_ALL_PARAM, resetAll);
-            DNA_ACT_INPUT(DNA_RESET_ALL_INPUT, resetAll);
-            DNA_ACT_PARAM(DNA_RESET_R_PARAM, resetRhythmGroup);
-            DNA_ACT_INPUT(DNA_RESET_R_INPUT, resetRhythmGroup);
-            DNA_ACT_PARAM(DNA_RESET_V_PARAM, resetVariation);
-            DNA_ACT_INPUT(DNA_RESET_V_INPUT, resetVariation);
-            DNA_ACT_PARAM(DNA_RESET_L_PARAM, resetLegato);
-            DNA_ACT_INPUT(DNA_RESET_L_INPUT, resetLegato);
-            DNA_ACT_PARAM(DNA_RESET_A_PARAM, resetAccent);
-            DNA_ACT_INPUT(DNA_RESET_A_INPUT, resetAccent);
-            DNA_ACT_PARAM(DNA_RESET_M_PARAM, resetMelodyGroup);
-            DNA_ACT_INPUT(DNA_RESET_M_INPUT, resetMelodyGroup);
-            DNA_ACT_PARAM(DNA_RESET_O_PARAM, resetOctave);
-            DNA_ACT_INPUT(DNA_RESET_O_INPUT, resetOctave);
-        } else {
-            // Fallback defaults if expander is disconnected (only set once to save CPU)
-            if (engine.rhythmLen != 16) {
-                engine.rhythmLen = engine.variationLen = engine.legatoLen = engine.accentLen = engine.melodyLen = engine.octaveLen = 16;
-                engine.rhythmOff = engine.variationOff = engine.legatoOff = engine.accentOff = engine.melodyOff = engine.octaveOff = 0;
-                engine.rhythmRot = engine.variationRot = engine.legatoRot = engine.accentRot = engine.melodyRot = engine.octaveRot = 0;
-            }
-        }
-        if (expanderManager.cachedPolyVoiceExpander) {
-            for (int i = 0; i < 7; i++) {
-                engine.polyLen[i] = clampv<int>((int)std::round(expanderManager.cachedPolyVoiceExpander->params[POLY_DNA_VOICE_1_LEN + i * 3].getValue()), 1, 16);
-                int rawOff = (int)std::round(expanderManager.cachedPolyVoiceExpander->params[POLY_DNA_VOICE_1_OFF + i * 3].getValue());
-                engine.polyOff[i] = ((rawOff % 16) + 16) % 16;
-                int rawRot = (int)std::round(expanderManager.cachedPolyVoiceExpander->params[POLY_DNA_VOICE_1_ROT + i * 3].getValue());
-                engine.polyRot[i] = ((rawRot % 16) + 16) % 16;
-            }
-        } else {
-            for (int i = 0; i < 7; i++) {
-                engine.polyLen[i] = 16;
-                engine.polyOff[i] = engine.polyRot[i] = 0;
-            }
-        }
+        dnaManager.processDNA(expanderManager);
 
         engine.updateWindow(
             params[PATTERN_LENGTH_PARAM].getValue(), inputs[LENGTH_INPUT].getVoltage(), inputs[LENGTH_INPUT].isConnected(),

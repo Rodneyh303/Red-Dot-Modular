@@ -344,7 +344,7 @@ struct MeloDicer : Module {
     dsp::ClockDivider controlDivider; // For DNA modulation at "Control Rate"
 
     SequencerEngine engine;
-    DNAStrandManager dnaManager{engine.pe};
+    DNAStrandManager dnaManager{engine};
     std::unique_ptr<ParameterManager> paramManager;  // Initialized in constructor
     std::unique_ptr<ModeController> modeController;  // Initialized in constructor
     std::unique_ptr<UIManager> uiManager;  // Initialized in constructor
@@ -403,14 +403,6 @@ struct MeloDicer : Module {
     bool& prevExtGate = engine.prevGate1High;
 
     dsp::BooleanTrigger diceRTrig, diceMTrig, resetBtn, runGateBtn;
-    // DNA Action Triggers (SchmittTriggers for gate inputs)
-    dsp::SchmittTrigger DNA_SCRAMBLE_ALL_INPUTTrig, DNA_SCRAMBLE_R_INPUTTrig, DNA_SCRAMBLE_M_INPUTTrig, DNA_SCRAMBLE_V_INPUTTrig, DNA_SCRAMBLE_L_INPUTTrig, DNA_SCRAMBLE_A_INPUTTrig, DNA_SCRAMBLE_O_INPUTTrig;
-    dsp::SchmittTrigger DNA_RESET_ALL_INPUTTrig, DNA_RESET_R_INPUTTrig, DNA_RESET_M_INPUTTrig, DNA_RESET_V_INPUTTrig, DNA_RESET_L_INPUTTrig, DNA_RESET_A_INPUTTrig, DNA_RESET_O_INPUTTrig;
-
-    // BooleanTriggers for momentary buttons (params)
-    dsp::BooleanTrigger DNA_SCRAMBLE_ALL_PARAMTrig, DNA_SCRAMBLE_R_PARAMTrig, DNA_SCRAMBLE_M_PARAMTrig, DNA_SCRAMBLE_V_PARAMTrig, DNA_SCRAMBLE_L_PARAMTrig, DNA_SCRAMBLE_A_PARAMTrig, DNA_SCRAMBLE_O_PARAMTrig;
-    dsp::BooleanTrigger DNA_RESET_ALL_PARAMTrig, DNA_RESET_R_PARAMTrig, DNA_RESET_M_PARAMTrig, DNA_RESET_V_PARAMTrig, DNA_RESET_L_PARAMTrig, DNA_RESET_A_PARAMTrig, DNA_RESET_O_PARAMTrig;
-    // SchmittTriggers for rotation knobs to detect "snap" logic if needed, 
     // though we use them as continuous offsets now.
     
     dsp::SchmittTrigger modeTrig;  // For mode cycling (now in UIManager, but kept for compatibility)

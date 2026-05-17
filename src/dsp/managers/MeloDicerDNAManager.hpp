@@ -1,6 +1,9 @@
 #pragma once
 
-#include "../engines/PatternEngine.hpp"
+#include <rack.hpp>
+#include "../engines/SequencerEngine.hpp"
+
+struct MeloDicerExpanderManager;
 
 /**
  * DNAStrandManager
@@ -15,10 +18,14 @@
  */
 class DNAStrandManager {
 public:
-    DNAStrandManager(PatternEngine& patternEngine) 
-        : patternEngine(patternEngine) {}
+    DNAStrandManager(SequencerEngine& engine) 
+        : engine(engine), patternEngine(engine.pe) {}
     
     // ──── Scramble Operations ────────────────────────────────────────────
+
+    /// Main update loop called at control rate
+    void processDNA(const MeloDicerExpanderManager& expanderManager);
+
     // Rotate a single strand by a random amount (0–15 steps)
     // and refresh the visual cache
     
@@ -51,7 +58,20 @@ public:
     void resetAll();                 // Reset all 6 strands
     
 private:
+    SequencerEngine& engine;
     PatternEngine& patternEngine;
+
+    // DNA Action Triggers (Input Gates) - Suffixes match MeloDicerIds (ALL, R, M, etc.)
+    rack::dsp::SchmittTrigger scrambleInputTrig_ALL, scrambleInputTrig_R, scrambleInputTrig_M, 
+                               scrambleInputTrig_V, scrambleInputTrig_L, scrambleInputTrig_A, scrambleInputTrig_O;
+    rack::dsp::SchmittTrigger resetInputTrig_ALL, resetInputTrig_R, resetInputTrig_M, 
+                               resetInputTrig_V, resetInputTrig_L, resetInputTrig_A, resetInputTrig_O;
+
+    // DNA Action Triggers (UI Buttons)
+    rack::dsp::BooleanTrigger scrambleParamTrig_ALL, scrambleParamTrig_R, scrambleParamTrig_M, 
+                               scrambleParamTrig_V, scrambleParamTrig_L, scrambleParamTrig_A, scrambleParamTrig_O;
+    rack::dsp::BooleanTrigger resetParamTrig_ALL, resetParamTrig_R, resetParamTrig_M, 
+                               resetParamTrig_V, resetParamTrig_L, resetParamTrig_A, resetParamTrig_O;
     
     // Helper to refresh visual cache after any strand change
     void refreshVisualCache_();
