@@ -142,8 +142,16 @@ MeloDicer::MeloDicer() {
         rhythmSeedPendingFloat = rhythmSeedFloat;
         melodySeedPendingFloat = melodySeedFloat;
 
-        // Initialize dividers based on current engine sample rate
-        //onSampleRateChange({APP->engine->getSampleRate(), APP->engine->getSampleRate()});
+        // Initialize managers
+        paramManager = std::unique_ptr<ParameterManager>(new ParameterManager(this, &cachedExpander, &cachedPolyVoiceExpander));
+        modeController = std::unique_ptr<ModeController>(new ModeController(engine, clock, *paramManager));
+        uiManager = std::unique_ptr<UIManager>(new UIManager(this, lightDivider));
+        timingController = std::unique_ptr<TimingController>(new TimingController(this));
+        cvRouter = std::unique_ptr<CVRouter>(new CVRouter());
+        outputGenerator = std::unique_ptr<OutputGenerator>(new OutputGenerator());
+
+        // Initialize dividers
+        onSampleRateChange({APP->engine->getSampleRate(), APP->engine->getSampleRate()});
 
         // Default patterns: all gates on, CV at 0V (C0), semitone 0
         // genPitchV() reads params[] which aren't valid yet, so use safe literals
