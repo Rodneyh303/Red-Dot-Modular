@@ -1,0 +1,188 @@
+#include "MeloDicerUIManager.hpp"
+
+using namespace rack;
+
+// ──── Status Light Updates ──────────────────────────────────────────────────
+
+void UIManager::updateDiceLights(bool rhythmSeedPending, bool melodySeedPending) {
+    if (!mainModule) return;
+    auto& lights = mainModule->lights;
+    using namespace MeloDicerIds;
+    
+    lights[RHYTHM_DICE_LIGHT].setBrightness(rhythmSeedPending ? 1.f : 0.1f);
+    lights[MELODY_DICE_LIGHT].setBrightness(melodySeedPending ? 1.f : 0.1f);
+}
+
+void UIManager::updateLockLight(bool locked) {
+    if (!mainModule) return;
+    auto& lights = mainModule->lights;
+    using namespace MeloDicerIds;
+    
+    lights[LOCK_LIGHT].setBrightness(locked ? 1.f : 0.f);
+}
+
+void UIManager::updateMuteLight(bool muted) {
+    if (!mainModule) return;
+    auto& lights = mainModule->lights;
+    using namespace MeloDicerIds;
+    
+    lights[MUTE_LIGHT].setBrightness(muted ? 1.f : 0.f);
+}
+
+void UIManager::updateRunGateLight(bool runGateActive) {
+    if (!mainModule) return;
+    auto& lights = mainModule->lights;
+    using namespace MeloDicerIds;
+    
+    lights[RUN_GATE_LIGHT].setBrightness(runGateActive ? 1.f : 0.f);
+}
+
+void UIManager::updateResetLight(bool resetArmed, float sampleTime) {
+    if (!mainModule) return;
+    auto& lights = mainModule->lights;
+    using namespace MeloDicerIds;
+    
+    lights[RESET_LIGHT].setBrightnessSmooth(resetArmed ? 1.f : 0.f, sampleTime);
+}
+
+// ──── Expander Indicator Lights ─────────────────────────────────────────────
+
+void UIManager::setExpanderLight_(int lightId, int count) {
+    if (!mainModule) return;
+    auto& lights = mainModule->lights;
+    
+    // Green (ch0): on if exactly 1 connected
+    lights[lightId + 0].setBrightness(count == 1 ? 1.f : 0.f);
+    // Red (ch1): on if multiple connected (warning)
+    lights[lightId + 1].setBrightness(count > 1 ? 1.f : 0.f);
+}
+
+void UIManager::updateExpanderLights(int scaleCount, int dnaCount, int polyCount) {
+    if (!mainModule) return;
+    using namespace MeloDicerIds;
+    
+    setExpanderLight_(SCALE_EXPANDER_LIGHT, scaleCount);
+    setExpanderLight_(DNA_EXPANDER_LIGHT, dnaCount);
+    setExpanderLight_(POLY_EXPANDER_LIGHT, polyCount);
+}
+
+// ──── Mode Selector Lights ──────────────────────────────────────────────────
+
+void UIManager::updateModeLights(int currentMode, int& lastMode) {
+    if (!mainModule) return;
+    auto& lights = mainModule->lights;
+    using namespace MeloDicerIds;
+    
+    // Only update if mode changed to avoid redundant updates
+    if (currentMode != lastMode) {
+        lights[MODE_A_LIGHT].setBrightness(currentMode == 0 ? 1.f : 0.f);
+        lights[MODE_B_LIGHT].setBrightness(currentMode == 1 ? 1.f : 0.f);
+        lights[MODE_C_LIGHT].setBrightness(currentMode == 2 ? 1.f : 0.f);
+        lights[MODE_D_LIGHT].setBrightness(currentMode == 3 ? 1.f : 0.f);
+        lastMode = currentMode;
+    }
+}
+
+// ──── Step Ring Lights ──────────────────────────────────────────────────────
+
+void UIManager::updateStepLights(const std::vector<float>& stepBrightness) {
+    if (!mainModule) return;
+    auto& lights = mainModule->lights;
+    using namespace MeloDicerIds;
+    
+    // Update 16 step ring lights
+    for (int i = 0; i < 16 && i < (int)stepBrightness.size(); ++i) {
+        lights[STEP_LIGHTS_START + i].setBrightness(stepBrightness[i]);
+    }
+}
+
+// ──── Semitone LED Brightness ───────────────────────────────────────────────
+
+void UIManager::updateSemitoneFlashLights(const std::vector<float>& semiLedBrightness) {
+    if (!mainModule) return;
+    auto& lights = mainModule->lights;
+    using namespace MeloDicerIds;
+    
+    // Update red channel (ch1) for each semitone
+    // Green channel (ch0) is handled by the VCVLightSlider widget automatically
+    for (int i = 0; i < 12 && i < (int)semiLedBrightness.size(); ++i) {
+        lights[SEMI_LED_START + 2*i + 1].setBrightness(semiLedBrightness[i]);
+    }
+}
+
+// ──── Button Trigger Processing ─────────────────────────────────────────────
+
+bool UIManager::processDiceButtons(bool& rhythmTriggered, bool& melodyTriggered) {
+    if (!mainModule) return false;
+    auto& params = mainModule->params;
+    using namespace MeloDicerIds;
+    
+    rhythmTriggered = diceRTrigger.process(params[DICE_R_PARAM].getValue());
+    melodyTriggered = diceMTrigger.process(params[DICE_M_PARAM].getValue());
+    
+    return rhythmTriggered || melodyTriggered;
+}
+
+bool UIManager::processLockButton() {
+    if (!mainModule) return false;
+    auto& params = mainModule->params;
+    using namespace MeloDicerIds;
+    
+    return lockTrigger.process(params[LOCK_PARAM].getValue());
+}
+
+bool UIManager::processMuteButton() {
+    if (!mainModule) return false;
+    auto& params = mainModule->params;
+    using namespace MeloDicerIds;
+    
+    return muteTrigger.process(params[MUTE_PARAM].getValue());
+}
+
+bool UIManager::processModeButton(int& modeSelect) {
+    if (!mainModule) return false;
+    auto& params = mainModule->params;
+    using namespace MeloDicerIds;
+    
+    if (modeTrigger.process(params[MODE_PARAM].getValue())) {
+        modeSelect = (modeSelect + 1) % 4;
+        return true;
+    }
+    return false;
+}
+
+// ──── Batch Updates ────────────────────────────────────────────────────────
+
+void UIManager::updateAllLights(bool rhythmSeedPending,
+                                 bool melodySeedPending,
+                                 bool locked,
+                                 bool muted,
+                                 bool runGateActive,
+                                 bool resetArmed,
+                                 int scaleCount,
+                                 int dnaCount,
+                                 int polyCount,
+                                 int currentMode,
+                                 int& lastMode,
+                                 const std::vector<float>& stepBrightness,
+                                 const std::vector<float>& semiLedBrightness,
+                                 float sampleTime) {
+    // Update all status lights
+    updateDiceLights(rhythmSeedPending, melodySeedPending);
+    updateLockLight(locked);
+    updateMuteLight(muted);
+    updateRunGateLight(runGateActive);
+    updateResetLight(resetArmed, sampleTime);
+    
+    // Update expander indicators
+    updateExpanderLights(scaleCount, dnaCount, polyCount);
+    
+    // Update mode selector
+    updateModeLights(currentMode, lastMode);
+    
+    // Update step ring
+    updateStepLights(stepBrightness);
+    
+    // Update semitone flash feedback
+    updateSemitoneFlashLights(semiLedBrightness);
+}
