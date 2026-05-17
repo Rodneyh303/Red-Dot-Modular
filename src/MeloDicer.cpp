@@ -407,12 +407,19 @@ int MeloDicer::computeNoteLengthIdx(int requestedIdx, int ppqnMask) { return eng
 // Full logic for all modes inline here
 // Calls helper functions as needed
 void MeloDicer::process(const ProcessArgs& args) {
+    // --- Audio-rate Input Fetching (Optimized: read once) ---
+    float clkV = inputs[CLK_INPUT].getVoltage();
+    float gate1V = inputs[GATE1_INPUT].getVoltage();
+    float gate2V = inputs[GATE2_INPUT].getVoltage();
+    float runGateV = inputs[RUN_GATE_INPUT].getVoltage();
+    float resetGateV = inputs[RESET_TRIGGER_INPUT].getVoltage();
+
     // ── Centralised clock tick (processes CLK IN once, before all mode handlers) ──
     // Derives bpm from external clock period or BPM knob, emits sixteenthEdge + quarterEdge.
     clock.process(
-        inputs[CLK_INPUT].getVoltage(),
-        inputs[CLK_INPUT].isConnected(),
-        params[BPM_PARAM].getValue(),
+        clkV,
+        cachedClkConnected,
+        cachedBpmParam,
         ppqnSetting,
         args.sampleTime
     );
@@ -423,14 +430,14 @@ void MeloDicer::process(const ProcessArgs& args) {
         // Process run gate
         runGateActive = timingController->processRunGate(
             runGateActive,
-            inputs[RUN_GATE_INPUT].getVoltage(),
-            params[RUN_GATE_PARAM].getValue()
+            runGateV,
+            cachedRunBtn
         );
         
         // Process reset gate
         timingController->processResetGate(
-            inputs[RESET_TRIGGER_INPUT].getVoltage(),
-            params[RESET_BUTTON_PARAM].getValue()
+            resetGateV,
+            cachedResetBtn
         );
         
         resetArmed = timingController->isResetArmed();
@@ -453,14 +460,14 @@ void MeloDicer::process(const ProcessArgs& args) {
 
     // ── Gate Edge Detection ──
     auto gateEdges = timingController ? timingController->processGateEdges(
-        inputs[GATE1_INPUT].getVoltage(),
-        inputs[GATE2_INPUT].getVoltage()
+        gate1V,
+        gate2V
     ) : TimingController::GateEdges{false, false};
     
     bool gate1Rise = gateEdges.gate1Rise;
     bool gate2Rise = gateEdges.gate2Rise;
 
-    // ── Gate Assignment Handling (via TimingController) ──
+    // ── Gate Assignment Handling ──
     if (timingController) {
         // Gate 1 assignments
         timingController->handleGate1Assignment(gate1Assign, gate1Rise);
@@ -472,39 +479,34 @@ void MeloDicer::process(const ProcessArgs& args) {
     // --- Mode dispatch (only if running) ---
     if (runGateActive && modeController) {
         // Prepare CV2 input
-        float cv2Voltage = inputs[CV2_INPUT].getNormalVoltage(0.f);
-        bool gate1High = inputs[GATE1_INPUT].getVoltage() >= 1.0f;
+        float cv2Voltage = 0.f;
+        // Only fetch CV2 at audio rate if in Quantizer modes (C/D)
+        if (modeSelect >= 2) cv2Voltage = inputs[CV2_INPUT].getVoltage();
+
+        bool gate1High = gate1V >= 1.0f;
         bool gate2High = timingController ? timingController->getGate2High() : false;
         
-        // Execute mode and set poly voices if needed
         if (modeController->executeMode(modeSelect, gate1Rise, gate1High, gate2High, cv2Voltage)) {
             // Mode took a step; update poly voices if present
             if (engine.numPolyVoices > 0) {
                 for (int i = 0; i < engine.numPolyVoices; ++i) {
-                    engine.voices[i].restProb = paramManager->getPolyRest(i);
+                    engine.voices[i].restProb = cachedPolyRest[i];
                 }
                 engine.executePolyVoices(modeController->currentPatternInput);
             }
         }
     }
 
-
-
     // --- CV Routing (via CVRouter) ---
     float cvOutVoltage = currentPitchV;
-    cvOutVoltage = cvRouter->processCV1Input(
-            cv1Mode,
-            inputs[CV1_INPUT].getVoltage(),
-            currentPitchV,
-            inputs[CV1_INPUT].isConnected()
-        );
-    // Update transient offsets
-    if (inputs[CV1_INPUT].isConnected()) {
-        paramManager->setCv1LoOffset(cvRouter->getLoOffset());
-        paramManager->setCv1HiOffset(cvRouter->getHiOffset());
-    } else {
-        paramManager->setCv1LoOffset(0.f);
-        paramManager->setCv1HiOffset(0.f);
+    // Modes 0 & 1 (Add/Transpose) must be audio-rate for modulation quality.
+    // Modes 2 & 3 (Range Mod) are throttled below in controlDivider.
+    if (cachedCv1Connected && (cv1Mode == 0 || cv1Mode == 1)) {
+        cvOutVoltage = cvRouter->processCV1Input(
+                cv1Mode,
+                inputs[CV1_INPUT].getVoltage(),
+                currentPitchV,
+                true);
     }
     outputs[CV_OUTPUT].setVoltage(cvOutVoltage);
 
@@ -530,22 +532,21 @@ void MeloDicer::process(const ProcessArgs& args) {
         // Poly voice outputs
         if (expanderManager.cachedPolyVoiceExpander && engine.numPolyVoices > 0) {
             using namespace PolyVoiceExpanderIds;
+            bool isAccented = engine.lastStepResult.accented;
+            auto* polyExp = expanderManager.cachedPolyVoiceExpander;
+            
             for (int i = 0; i < engine.numPolyVoices; ++i) {
+                if (muted) {
+                    polyExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
+                    polyExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
+                    continue;
+                }
+
                 float vg = engine.voices[i].gs.process(args.sampleTime);
-                if (muted) vg = 0.f;
-                expanderManager.cachedPolyVoiceExpander->outputs[POLY_GATE_OUT_1 + i].setVoltage(vg);
-                expanderManager.cachedPolyVoiceExpander->outputs[POLY_CV_OUT_1 + i].setVoltage(engine.voices[i].gs.currentPitchV);
-                
-                // Poly accent: fires when mono is accented AND poly voice is sounding
-                float polyAccent = (engine.lastStepResult.accented && vg > 5.f) ? 10.f : 0.f;
-                if (muted) polyAccent = 0.f;
-                expanderManager.cachedPolyVoiceExpander->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(polyAccent);
-            }
-            // Zero unused voice outputs so they don't emit stale voltages.
-            for (int i = engine.numPolyVoices; i < 7; ++i) {
-                expanderManager.cachedPolyVoiceExpander->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
-                expanderManager.cachedPolyVoiceExpander->outputs[POLY_CV_OUT_1 + i].setVoltage(0.f);
-                expanderManager.cachedPolyVoiceExpander->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
+                polyExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(vg);
+                polyExp->outputs[POLY_CV_OUT_1 + i].setVoltage(engine.voices[i].gs.currentPitchV);
+                float polyAccent = (isAccented && vg > 5.f) ? 10.f : 0.f;
+                polyExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(polyAccent);
             }
         }
     }
@@ -661,19 +662,55 @@ void MeloDicer::process(const ProcessArgs& args) {
     if (controlDivider.process()) {
         dnaManager.processDNA(expanderManager);
 
+        // Refresh Audio-Rate Caches (Throttled)
+        cachedBpmParam = params[BPM_PARAM].getValue();
+        cachedClkConnected = inputs[CLK_INPUT].isConnected();
+        cachedCv1Connected = inputs[CV1_INPUT].isConnected();
+        cachedRunBtn = params[RUN_GATE_PARAM].getValue();
+        cachedResetBtn = params[RESET_BUTTON_PARAM].getValue();
+
+        // Cache Poly Rest probabilities
+        for (int i = 0; i < 7; ++i) {
+            cachedPolyRest[i] = paramManager->getPolyRest(i);
+        }
+
+        // Handle Throttled CV1 Logic (Range Modulation)
+        if (cachedCv1Connected) {
+            if (cv1Mode == 2 || cv1Mode == 3) {
+                cvRouter->processCV1Input(cv1Mode, inputs[CV1_INPUT].getVoltage(), 0.f, true);
+            }
+            paramManager->setCv1LoOffset(cvRouter->getLoOffset());
+            paramManager->setCv1HiOffset(cvRouter->getHiOffset());
+        } else {
+            cvRouter->resetOffsets();
+            paramManager->setCv1LoOffset(0.f);
+            paramManager->setCv1HiOffset(0.f);
+        }
+
+        // Zero unused voice outputs so they don't emit stale voltages (Transferred from audio rate)
+        if (expanderManager.cachedPolyVoiceExpander) {
+            using namespace PolyVoiceExpanderIds;
+            for (int i = engine.numPolyVoices; i < 7; ++i) {
+                expanderManager.cachedPolyVoiceExpander->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
+                expanderManager.cachedPolyVoiceExpander->outputs[POLY_CV_OUT_1 + i].setVoltage(0.f);
+                expanderManager.cachedPolyVoiceExpander->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
+            }
+        }
+
         engine.updateWindow(
             params[PATTERN_LENGTH_PARAM].getValue(), inputs[LENGTH_INPUT].getVoltage(), inputs[LENGTH_INPUT].isConnected(),
             params[PATTERN_OFFSET_PARAM].getValue(), inputs[OFFSET_INPUT].getVoltage(), inputs[OFFSET_INPUT].isConnected()
         );
 
-        for (int i = 0; i < 4; ++i) cv2Offsets[i] = 0.f;
+        // Update CV2 modulation offsets (Throttled)
+        paramManager->clearCv2Offsets();
         if (inputs[CV2_INPUT].isConnected()) {
             float v    = clampv<float>(inputs[CV2_INPUT].getVoltage(), 0.f, 5.f);
             float norm = v / 5.f; 
-            if (cv2Mode == 0) cv2Offsets[0] = norm * 8.f;
-            if (cv2Mode == 1) cv2Offsets[1] = norm;
-            if (cv2Mode == 2) cv2Offsets[2] = norm;
-            if (cv2Mode == 3) cv2Offsets[3] = norm;
+            if (cv2Mode == 0) paramManager->setCv2Offset(0, norm * 8.f);
+            if (cv2Mode == 1) paramManager->setCv2Offset(1, norm);
+            if (cv2Mode == 2) paramManager->setCv2Offset(2, norm);
+            if (cv2Mode == 3) paramManager->setCv2Offset(3, norm);
         }
     }
 }

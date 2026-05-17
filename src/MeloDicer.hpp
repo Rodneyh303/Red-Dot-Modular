@@ -419,12 +419,14 @@ struct MeloDicer : Module {
 
     int& activeSemiCount = engine.activeSemiCount;
     float (&faderCache)[12] = engine.faderCache;
-    float cv2Offsets[4] = {0.f, 0.f, 0.f, 0.f};
-    // CV routing state now in CVRouter
-    // Transient octave offsets from CV1 modes 2 and 3.
-    // Applied in getOctaveLoParam()/getOctaveHiParam() and cleared when CV1 is disconnected.
-    // These are never written to params so they leave no persistent state.
-    // CV routing offsets now in CVRouter
+
+    // --- Audio-rate parameter caches (updated in controlDivider) ---
+    float cachedBpmParam = 120.f;
+    bool  cachedClkConnected = false;
+    bool  cachedCv1Connected = false;
+    float cachedRunBtn = 0.f;
+    float cachedResetBtn = 0.f;
+    float cachedPolyRest[7] = {0.f};
 
     MeloDicer();
 
