@@ -424,6 +424,11 @@ struct MeloDicer : Module {
     float cachedBpmParam = 120.f;
     bool  cachedClkConnected = false;
     bool  cachedCv1Connected = false;
+    bool  cachedCv2Connected = false;
+    bool  cachedGate1Connected = false;
+    bool  cachedGate2Connected = false;
+    bool  cachedRunConnected = false;
+    bool  cachedResetConnected = false;
     float cachedRunBtn = 0.f;
     float cachedResetBtn = 0.f;
     float cachedPolyRest[7] = {0.f};

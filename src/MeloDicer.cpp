@@ -407,14 +407,14 @@ int MeloDicer::computeNoteLengthIdx(int requestedIdx, int ppqnMask) { return eng
 // Full logic for all modes inline here
 // Calls helper functions as needed
 void MeloDicer::process(const ProcessArgs& args) {
-    // --- Audio-rate Input Fetching (Consolidated) ---
-    float clkV = inputs[CLK_INPUT].getVoltage();
-    float gate1V = inputs[GATE1_INPUT].getVoltage();
-    float gate2V = inputs[GATE2_INPUT].getVoltage();
-    float runGateV = inputs[RUN_GATE_INPUT].getVoltage();
-    float resetGateV = inputs[RESET_TRIGGER_INPUT].getVoltage();
-    float cv1V = inputs[CV1_INPUT].getVoltage();
-    float cv2V = inputs[CV2_INPUT].getVoltage();
+    // --- Audio-rate Input Fetching (Cached & Guarded) ---
+    float clkV      = cachedClkConnected ? inputs[CLK_INPUT].getVoltage() : 0.f;
+    float gate1V    = cachedGate1Connected ? inputs[GATE1_INPUT].getVoltage() : 0.f;
+    float gate2V    = cachedGate2Connected ? inputs[GATE2_INPUT].getVoltage() : 0.f;
+    float runGateV  = cachedRunConnected ? inputs[RUN_GATE_INPUT].getVoltage() : 0.f;
+    float resetGateV= cachedResetConnected ? inputs[RESET_TRIGGER_INPUT].getVoltage() : 0.f;
+    float cv1V      = cachedCv1Connected ? inputs[CV1_INPUT].getVoltage() : 0.f;
+    float cv2V      = (modeSelect >= 2 && cachedCv2Connected) ? inputs[CV2_INPUT].getVoltage() : 0.f;
 
     // Logic References (Eliminate pointer indirection in hot path)
     TimingController& tc = *timingController;
@@ -492,14 +492,14 @@ void MeloDicer::process(const ProcessArgs& args) {
 
     // --- CV Routing (via CVRouter) ---
     float cvOutVoltage = currentPitchV;
-    if (cachedCv1Connected && (cv1Mode == 0 || cv1Mode == 1)) {
+    if (cachedCv1Connected && cv1V != 0.f && (cv1Mode == 0 || cv1Mode == 1)) {
         cvOutVoltage = cvr.processCV1Input(
                 cv1Mode,
                 cv1V,
                 currentPitchV,
                 true);
     }
-    outputs[CV_OUTPUT].setVoltage(cvOutVoltage);
+    if (outputs[CV_OUTPUT].isConnected()) outputs[CV_OUTPUT].setVoltage(cvOutVoltage);
 
     // --- Output Generation (Inlined logic to minimize cross-translation unit calls) ---
     float gateV = (runGateActive) ? engine.gs.process(args.sampleTime) : 0.f;
@@ -648,6 +648,12 @@ void MeloDicer::process(const ProcessArgs& args) {
         cachedBpmParam = params[BPM_PARAM].getValue();
         cachedClkConnected = inputs[CLK_INPUT].isConnected();
         cachedCv1Connected = inputs[CV1_INPUT].isConnected();
+        cachedCv2Connected = inputs[CV2_INPUT].isConnected();
+        cachedGate1Connected = inputs[GATE1_INPUT].isConnected();
+        cachedGate2Connected = inputs[GATE2_INPUT].isConnected();
+        cachedRunConnected = inputs[RUN_GATE_INPUT].isConnected();
+        cachedResetConnected = inputs[RESET_TRIGGER_INPUT].isConnected();
+
         cachedRunBtn = params[RUN_GATE_PARAM].getValue();
         cachedResetBtn = params[RESET_BUTTON_PARAM].getValue();
 
