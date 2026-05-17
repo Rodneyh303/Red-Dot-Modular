@@ -1,6 +1,6 @@
 #include "MeloDicerOutputGenerator.hpp"
-#include "SequencerEngine.hpp"
-#include "MeloDicer.hpp"
+#include "../engines/SequencerEngine.hpp"
+#include "../../MeloDicer.hpp"
 
 using namespace rack;
 
