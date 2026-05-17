@@ -142,6 +142,31 @@ struct PatternEngine {
     // Apply any pending seeds, then redraw both patterns.
     // Called at phrase boundaries and on reset.
     void applyPendingSeedsAndRedraw(const PatternInput& in);
+    
+    /// Handle phrase boundary: apply pending seeds and redraw patterns
+    /// Called when sequencer wraps from end of phrase back to start
+    void onPhraseBoundary(const PatternInput& in) {
+        applyPendingSeedsAndRedraw(in);
+    }
+    
+    // ── Seed management helpers ──────────────────────────────────────────────
+    /// Arm a rhythm seed to be applied at next phrase boundary
+    void setPendingRhythmSeed(float seedValue) {
+        rhythmSeedPendingFloat = seedValue;
+        rhythmSeedPending = true;
+    }
+    
+    /// Arm a melody seed to be applied at next phrase boundary
+    void setPendingMelodySeed(float seedValue) {
+        melodySeedPendingFloat = seedValue;
+        melodySeedPending = true;
+    }
+    
+    /// Check if rhythm seed is pending
+    bool isRhythmSeedPending() const { return rhythmSeedPending; }
+    
+    /// Check if melody seed is pending
+    bool isMelodySeedPending() const { return melodySeedPending; }
 
     // ── Mode switching (dice ↔ realtime) ──────────────────────────────────────
     // stepIndex / lastStepIndex passed in+out so the engine can cache/restore them.

@@ -158,4 +158,11 @@ struct SequencerEngine {
     // voices[i].restProb must be set by the caller before invoking.
     void executePolyVoice(int voiceIdx, const PatternInput& input, bool wasHeld, bool hadTail);
     void executePolyVoices(const PatternInput& input);
+    
+    // ── Phrase boundary handling ──────────────────────────────────────────────
+    /// Check if the current step result indicates a phrase wrap
+    /// Call PatternEngine::onPhraseBoundary() if this returns true
+    bool isPhraseBoundary(const StepResult& result) const {
+        return result.wrapped;
+    }
 };

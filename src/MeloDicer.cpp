@@ -759,8 +759,7 @@ float MeloDicer::semitoneToVolts(int semitone) {
 // Called at phrase boundary (stepIndex wraps from endStep back to startStep).
 // Seeds are applied FIRST so the subsequent redraw uses the new RNG state.
 void MeloDicer::onPhraseBoundary_() {
-    engine.pe.applyPendingSeedsAndRedraw(makePatternInput()); // This will also redraw poly patterns
-    // No longer need to reseed stochasticRng as it's been replaced by DNA strands.
+    engine.pe.onPhraseBoundary(makePatternInput());
 }
 
 // ---------------- Helper: expander change hook -------------------------------
@@ -883,14 +882,12 @@ void MeloDicer::process(const ProcessArgs& args) {
                 break;
             case 1: // Re-dice R (arm) — only if currently in dice-mode (manual: "only works if in dice-mode")
                 if (rhythmMode == 0) {
-                    rhythmSeedPendingFloat = sampleSeedFromSource();
-                    rhythmSeedPending = true;
+                    engine.pe.setPendingRhythmSeed(sampleSeedFromSource());
                 }
                 break;
             case 2: // Re-dice M (arm) — only if currently in dice-mode
                 if (melodyMode == 0) {
-                    melodySeedPendingFloat = sampleSeedFromSource();
-                    melodySeedPending = true;
+                    engine.pe.setPendingMelodySeed(sampleSeedFromSource());
                 }
                 break;
             case 3: // Restart now
@@ -906,8 +903,7 @@ void MeloDicer::process(const ProcessArgs& args) {
                 break;
             case 1: // Re-dice M — rising edge, only in dice-mode
                 if (gate2Rise && melodyMode == 0) {
-                    melodySeedPendingFloat = sampleSeedFromSource();
-                    melodySeedPending = true;
+                    engine.pe.setPendingMelodySeed(sampleSeedFromSource());
                 }
                 break;
             case 2: // MUTE — manual: positive edge=activate, negative edge=deactivate
@@ -1018,8 +1014,8 @@ void MeloDicer::process(const ProcessArgs& args) {
     // float mDiceLight = diceM ? 1.f : 0.1f;
     // if (rhythmSeedPending) rDiceLight = 1.f;
     // if (melodySeedPending) mDiceLight = 1.f;
-    lights[RHYTHM_DICE_LIGHT].setBrightness(rhythmSeedPending ? 1.f : 0.1f);
-    lights[MELODY_DICE_LIGHT].setBrightness(melodySeedPending ? 1.f : 0.1f);
+    lights[RHYTHM_DICE_LIGHT].setBrightness(engine.pe.isRhythmSeedPending() ? 1.f : 0.1f);
+    lights[MELODY_DICE_LIGHT].setBrightness(engine.pe.isMelodySeedPending() ? 1.f : 0.1f);
     lights[LOCK_LIGHT].setBrightness(locked ? 1.f : 0.f);
 
     // Expander indicators: Green for valid connection, Red for warning (multiple)
@@ -1045,20 +1041,18 @@ void MeloDicer::process(const ProcessArgs& args) {
         // melody seeds so the output is useful regardless of which DICE is active.
         // Rhythm and melody seeds share the same output (last-armed wins).
         float outSeed = rhythmSeedFloat;
-        if (rhythmSeedPending)  outSeed = rhythmSeedPendingFloat;
-        if (melodySeedPending)  outSeed = melodySeedPendingFloat;   // melody armed overrides rhythm
+        if (engine.pe.isRhythmSeedPending())  outSeed = rhythmSeedPendingFloat;
+        if (engine.pe.isMelodySeedPending())  outSeed = melodySeedPendingFloat;   // melody armed overrides rhythm
         outputs[SEED_OUTPUT].setVoltage(clampv<float>(outSeed, 0.f, 10.f));
 
         // --- UI button toggles ---
         if (diceRTrig.process(params[DICE_R_PARAM].getValue())) {
             rhythmMode = 0;
-            rhythmSeedPendingFloat = sampleSeedFromSource();
-            rhythmSeedPending = true;
+            engine.pe.setPendingRhythmSeed(sampleSeedFromSource());
         }
         if (diceMTrig.process(params[DICE_M_PARAM].getValue())) {
             melodyMode = 0;
-            melodySeedPendingFloat = sampleSeedFromSource();
-            melodySeedPending = true;
+            engine.pe.setPendingMelodySeed(sampleSeedFromSource());
         }
         if (lockTrig.process(params[LOCK_PARAM].getValue()))     locked = !locked;
         if (muteTrig.process(params[MUTE_PARAM].getValue())) {
