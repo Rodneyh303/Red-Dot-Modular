@@ -27,6 +27,7 @@
 #include "dsp/managers/MeloDicerDNAManager.hpp"
 #include "dsp/managers/MeloDicerParameterManager.hpp"
 #include "dsp/managers/MeloDicerPersistenceManager.hpp"
+#include "dsp/managers/MeloDicerScaleManager.hpp"
 #include "dsp/managers/MeloDicerExpanderManager.hpp"
 #include "dsp/managers/MeloDicerModeController.hpp"
 #include "dsp/managers/MeloDicerUIManager.hpp"
@@ -35,7 +36,6 @@
 #include "dsp/managers/MeloDicerOutputGenerator.hpp"
 #include "dsp/gates/GateState.hpp"
 #include "dsp/engines/SequencerEngine.hpp"
-#include "Scales.hpp"
 
 #define MAX_UNIT64 18446744073709551615ULL
 
@@ -335,10 +335,6 @@ struct MeloDicer : Module {
     bool invertMuteLogic = false;
     bool restartOnUnmute = false;
     int lastModeSelect = -1;
-    int scaleRoot = 0; 
-    int lastSelectedScale = -1;
-    bool lockScaleNotes = false;
-    uint16_t activeScaleMask = 0xFFF;
     bool lightTheme = false;
     MeloDicerExpanderManager expanderManager;
     dsp::ClockDivider lightDivider;
@@ -347,6 +343,7 @@ struct MeloDicer : Module {
     SequencerEngine engine;
     DNAStrandManager dnaManager{engine};
     std::unique_ptr<ParameterManager> paramManager;  // Initialized in constructor
+    std::unique_ptr<ScaleManager> scaleManager;      // Initialized in constructor
     std::unique_ptr<ModeController> modeController;  // Initialized in constructor
     std::unique_ptr<UIManager> uiManager;  // Initialized in constructor
     std::unique_ptr<TimingController> timingController;  // Initialized in constructor
@@ -433,7 +430,6 @@ struct MeloDicer : Module {
 
     void updateExpanderPointers();
     void initialize();
-    void updateScaleMask();
 
     json_t* dataToJson() override;
     void dataFromJson(json_t* root) override;

@@ -143,6 +143,7 @@ MeloDicer::MeloDicer() {
         melodySeedPendingFloat = melodySeedFloat;
 
         // Initialize managers
+        scaleManager = std::unique_ptr<ScaleManager>(new ScaleManager(this));
         paramManager = std::unique_ptr<ParameterManager>(new ParameterManager(this, &expanderManager.cachedScaleExpander, &expanderManager.cachedPolyVoiceExpander));
         modeController = std::unique_ptr<ModeController>(new ModeController(engine, clock, *paramManager));
         uiManager = std::unique_ptr<UIManager>(new UIManager(this, lightDivider));
@@ -179,45 +180,6 @@ void MeloDicer::updateExpanderPointers() {
     expanderManager.update(this);
 }
 
-  void MeloDicer::updateScaleMask() {
-        activeScaleMask = ScaleHelper::calculateMask(scaleRoot, lastSelectedScale);
-
-        if (lockScaleNotes) {
-            float weights[12];
-            for (int i = 0; i < 12; i++) {
-                weights[i] = params[SEMI0_PARAM + i].getValue();
-            }
-
-            ScaleHelper::redistributeWeights(activeScaleMask, weights);
-
-            // Apply the redistributed values and lock the faders
-            for (int i = 0; i < 12; i++) {
-                bool inScale = (activeScaleMask & (1 << i));
-                ParamQuantity* pq = getParamQuantity(SEMI0_PARAM + i);
-                if (pq) {
-                    if (!inScale) {
-                        params[SEMI0_PARAM + i].setValue(0.f);
-                        pq->minValue = 0.f;
-                        pq->maxValue = 0.f;
-                    } else {
-                        params[SEMI0_PARAM + i].setValue(weights[i]);
-                        pq->minValue = 0.f;
-                        pq->maxValue = 1.f;
-                    }
-                }
-            }
-        } else {
-            // Unlock logic: allow faders to move freely within 0..1 range
-            for (int i = 0; i < 12; i++) {
-                ParamQuantity* pq = getParamQuantity(SEMI0_PARAM + i);
-                if (pq) {
-                    pq->minValue = 0.f;
-                    pq->maxValue = 1.f;
-                }
-            }
-        }
-  }
-
   void MeloDicer::initialize(){
         cv1Mode = 0;
         cv2Mode = 0;
@@ -226,10 +188,10 @@ void MeloDicer::updateExpanderPointers() {
         invertMuteLogic = false;
         restartOnUnmute = false;
         lastModeSelect = -1;
-        scaleRoot = 0;
-        lastSelectedScale = -1;
-        lockScaleNotes = false;
-        updateScaleMask();
+        
+        if (scaleManager) {
+            scaleManager->reset();
+        }
 
         engine.reset();
 
@@ -252,15 +214,14 @@ void MeloDicer::updateExpanderPointers() {
     // Finalize state
     reseedXoroshiroFromFloat(engine.pe.rhythmRng, rhythmSeedFloat);
     reseedXoroshiroFromFloat(engine.pe.melodyRng, melodySeedFloat);
-    updateScaleMask();
+    if (scaleManager) {
+        scaleManager->updateScaleMask();
+    }
     }
 
 //return semitone parameter value with CV input added (if connected)
-    float MeloDicer::getSemitoneParam(int sem)  {
-        if (sem < 0 || sem > 11) return 0.f;
-        // Enforce lock: if note is not in scale mask, probability is zero regardless of CV
-        if (lockScaleNotes && !(activeScaleMask & (1 << sem))) return 0.f;
-        return paramManager ? paramManager->getSemitone(sem) : 0.f;
+    float MeloDicer::getSemitoneParam(int sem) {
+        return (scaleManager && paramManager) ? scaleManager->getSemitoneWeight(sem, *paramManager) : 0.f;
     }
 
     //return octave parameter value with CV input added (if connected)
@@ -380,7 +341,7 @@ float MeloDicer::semitoneToVolts(int semitone) {
 
     void MeloDicer::rebuildSemiCache_() {
         float weights[12];
-        for (int i = 0; i < 12; ++i) weights[i] = getSemitoneParam(i);
+        for (int i = 0; i < 12; ++i) weights[i] = (scaleManager && paramManager) ? scaleManager->getSemitoneWeight(i, *paramManager) : 0.f;
         engine.rebuildScaleCache(weights);
     }
 
@@ -729,7 +690,7 @@ void MeloDicer::process(const ProcessArgs& args) {
         {
             bool faderDirty = false;
             for (int i = 0; i < 12; ++i) {
-                if (lockScaleNotes && !(activeScaleMask & (1 << i))) {
+                if (scaleManager && scaleManager->lockScaleNotes && !(scaleManager->activeScaleMask & (1 << i))) {
                     if (params[SEMI0_PARAM + i].getValue() != 0.f)
                         params[SEMI0_PARAM + i].setValue(0.f);
                 }

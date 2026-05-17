@@ -19,9 +19,13 @@ json_t* PersistenceManager::toJson(MeloDicer* m) {
     json_object_set_new(root, "ppqnSetting", json_integer(m->ppqnSetting));
     json_object_set_new(root, "modeSelect", json_integer(m->modeSelect));
     json_object_set_new(root, "lightTheme", json_boolean(m->lightTheme));
-    json_object_set_new(root, "scaleRoot", json_integer(m->scaleRoot));
-    json_object_set_new(root, "lastSelectedScale", json_integer(m->lastSelectedScale));
-    json_object_set_new(root, "lockScaleNotes", json_boolean(m->lockScaleNotes));
+    
+    if (m->scaleManager) {
+        json_object_set_new(root, "scaleRoot", json_integer(m->scaleManager->scaleRoot));
+        json_object_set_new(root, "lastSelectedScale", json_integer(m->scaleManager->lastSelectedScale));
+        json_object_set_new(root, "lockScaleNotes", json_boolean(m->scaleManager->lockScaleNotes));
+    }
+
     json_object_set_new(root, "locked", json_boolean(m->locked));
     json_object_set_new(root, "muted", json_boolean(m->muted));
 
@@ -106,9 +110,11 @@ void PersistenceManager::fromJson(MeloDicer* m, json_t* root) {
     if (auto j = json_object_get(root, "ppqnSetting")) m->ppqnSetting = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "modeSelect")) m->modeSelect = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "lightTheme")) m->lightTheme = (bool)json_boolean_value(j);
-    if (auto j = json_object_get(root, "scaleRoot")) m->scaleRoot = (int)json_integer_value(j);
-    if (auto j = json_object_get(root, "lastSelectedScale")) m->lastSelectedScale = (int)json_integer_value(j);
-    if (auto j = json_object_get(root, "lockScaleNotes")) m->lockScaleNotes = (bool)json_boolean_value(j);
+    if (m->scaleManager) {
+        if (auto j = json_object_get(root, "scaleRoot")) m->scaleManager->scaleRoot = (int)json_integer_value(j);
+        if (auto j = json_object_get(root, "lastSelectedScale")) m->scaleManager->lastSelectedScale = (int)json_integer_value(j);
+        if (auto j = json_object_get(root, "lockScaleNotes")) m->scaleManager->lockScaleNotes = (bool)json_boolean_value(j);
+    }
     if (auto j = json_object_get(root, "locked")) m->locked = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "muted")) m->muted = (bool)json_boolean_value(j);
 
@@ -175,9 +181,4 @@ void PersistenceManager::fromJson(MeloDicer* m, json_t* root) {
                 m->melodyPitchV[i] = (float)json_real_value(json_array_get(j, i));
         }
     }
-
-    // Finalize state
-    m->reseedXoroshiroFromFloat(m->engine.pe.rhythmRng, m->rhythmSeedFloat);
-    m->reseedXoroshiroFromFloat(m->engine.pe.melodyRng, m->melodySeedFloat);
-    m->updateScaleMask();
 }

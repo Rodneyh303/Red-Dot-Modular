@@ -2,7 +2,7 @@
 #include <algorithm>
 #include "MeloDicerWidget.hpp"
 #include "MeloDicer.hpp"
-#include "Scales.hpp"
+#include "dsp/managers/MeloDicerScaleManager.hpp"
 
 using namespace rack;
 using namespace MeloDicerIds;
@@ -15,7 +15,7 @@ struct MeloDicerLightSlider : VCVLightSlider<TLightBase> {
         if (m) {
             if (this->paramId >= MeloDicerIds::SEMI0_PARAM && this->paramId < MeloDicerIds::SEMI0_PARAM + 12) {
                 int sem = this->paramId - MeloDicerIds::SEMI0_PARAM;
-                if (!(m->activeScaleMask & (1 << sem))) dimmed = true;
+                if (m->scaleManager && !(m->scaleManager->activeScaleMask & (1 << sem))) dimmed = true;
             }
         }
         if (dimmed) nvgGlobalAlpha(args.vg, 0.4f);
@@ -439,8 +439,8 @@ void MeloDicerWidget::appendContextMenu(ui::Menu* menu) {
 
         menu->addChild(createSubmenuItem("Scales", "", [=](ui::Menu* sub) {
             sub->addChild(createBoolMenuItem("Lock Scale Notes", "",
-                [=]() { return m->lockScaleNotes; },
-                [=](bool v) { m->lockScaleNotes = v; m->updateScaleMask(); }
+                [=]() { return m->scaleManager ? m->scaleManager->lockScaleNotes : false; },
+                [=](bool v) { if (m->scaleManager) { m->scaleManager->lockScaleNotes = v; m->scaleManager->updateScaleMask(); } }
             ));
             sub->addChild(new ui::MenuSeparator);
 
@@ -450,10 +450,9 @@ void MeloDicerWidget::appendContextMenu(ui::Menu* menu) {
                     struct RootItem : ui::MenuItem {
                         MeloDicer* module; int value;
                         void onAction(const event::Action&) override { 
-                            module->scaleRoot = value; 
-                            module->updateScaleMask();
+                            if (module->scaleManager) { module->scaleManager->scaleRoot = value; module->scaleManager->updateScaleMask(); }
                         }
-                        void step() override { rightText = (module->scaleRoot == value) ? "✔" : ""; ui::MenuItem::step(); }
+                        void step() override { rightText = (module->scaleManager && module->scaleManager->scaleRoot == value) ? "✔" : ""; ui::MenuItem::step(); }
                     };
                     auto* it = createMenuItem<RootItem>(noteNames[i]);
                     it->module = m; it->value = i;
@@ -463,15 +462,14 @@ void MeloDicerWidget::appendContextMenu(ui::Menu* menu) {
 
             sub->addChild(createSubmenuItem("Scale Type", "Choose scale", [=](ui::Menu* typeMenu) {
                 int scaleIdx = 0;
-                for (const auto& scale : BITWIG_SCALES) {
+                for (const auto& scale : MONSOON_SCALES) {
                     struct ScaleItem : ui::MenuItem {
                         MeloDicer* module; ScaleType scale; int index;
                         void onAction(const event::Action&) override {
-                            module->lastSelectedScale = index;
-                            module->updateScaleMask();
+                            if (module->scaleManager) { module->scaleManager->lastSelectedScale = index; module->scaleManager->updateScaleMask(); }
                         }
                         void step() override {
-                            rightText = (module && module->lastSelectedScale == index) ? "✔" : "";
+                            rightText = (module->scaleManager && module->scaleManager->lastSelectedScale == index) ? "✔" : "";
                             ui::MenuItem::step();
                         }
                     };
