@@ -684,8 +684,7 @@ float MeloDicer::semitoneToVolts(int semitone) {
 // Called at phrase boundary (stepIndex wraps from endStep back to startStep).
 // Seeds are applied FIRST so the subsequent redraw uses the new RNG state.
 void MeloDicer::onPhraseBoundary_() {
-    engine.pe.applyPendingSeedsAndRedraw(makePatternInput()); // This will also redraw poly patterns
-    // No longer need to reseed stochasticRng as it's been replaced by DNA strands.
+    engine.pe.onPhraseBoundary(makePatternInput());
 }
 
 // ---------------- Helper: expander change hook -------------------------------
@@ -802,12 +801,10 @@ void MeloDicer::process(const ProcessArgs& args) {
             gate1Rise,
             [this](int toggle) { rhythmMode = 1 - rhythmMode; },  // Toggle rhythm mode
             [this]() {  // Reseed rhythm
-                rhythmSeedPendingFloat = sampleSeedFromSource();
-                rhythmSeedPending = true;
+                engine.pe.setPendingRhythmSeed(sampleSeedFromSource());
             },
             [this]() {  // Reseed melody
-                melodySeedPendingFloat = sampleSeedFromSource();
-                melodySeedPending = true;
+                engine.pe.setPendingMelodySeed(sampleSeedFromSource());
             },
             [this]() { handleRestart(/*manual=*/true, /*resetImmediate=*/true); }  // Restart
         );
@@ -820,8 +817,7 @@ void MeloDicer::process(const ProcessArgs& args) {
             invertMuteLogic,
             [this](int toggle) { melodyMode = 1 - melodyMode; },  // Toggle melody mode
             [this]() {  // Reseed melody
-                melodySeedPendingFloat = sampleSeedFromSource();
-                melodySeedPending = true;
+                engine.pe.setPendingMelodySeed(sampleSeedFromSource());
             },
             [this](bool shouldMute) {  // Set mute
                 if (shouldMute != muted) {
@@ -925,7 +921,7 @@ void MeloDicer::process(const ProcessArgs& args) {
     }
     // ── Status Light Updates (called every sample) ──
     if (uiManager) {
-        uiManager->updateDiceLights(rhythmSeedPending, melodySeedPending);
+        uiManager->updateDiceLights(engine.pe.isRhythmSeedPending(), engine.pe.isMelodySeedPending());
         uiManager->updateLockLight(locked);
         uiManager->updateMuteLight(muted);
         uiManager->updateExpanderLights(scaleExpanderCount, dnaExpanderCount, polyExpanderCount);
@@ -947,8 +943,8 @@ void MeloDicer::process(const ProcessArgs& args) {
         // melody seeds so the output is useful regardless of which DICE is active.
         // Rhythm and melody seeds share the same output (last-armed wins).
         float outSeed = rhythmSeedFloat;
-        if (rhythmSeedPending)  outSeed = rhythmSeedPendingFloat;
-        if (melodySeedPending)  outSeed = melodySeedPendingFloat;   // melody armed overrides rhythm
+        if (engine.pe.isRhythmSeedPending())  outSeed = rhythmSeedPendingFloat;
+        if (engine.pe.isMelodySeedPending())  outSeed = melodySeedPendingFloat;   // melody armed overrides rhythm
         outputs[SEED_OUTPUT].setVoltage(clampv<float>(outSeed, 0.f, 10.f));
 
         // ── Button Processing (via UIManager) ──
@@ -957,13 +953,11 @@ void MeloDicer::process(const ProcessArgs& args) {
             if (uiManager->processDiceButtons(rhythmTriggered, melodyTriggered)) {
                 if (rhythmTriggered) {
                     rhythmMode = 0;
-                    rhythmSeedPendingFloat = sampleSeedFromSource();
-                    rhythmSeedPending = true;
+                    engine.pe.setPendingRhythmSeed(sampleSeedFromSource());
                 }
                 if (melodyTriggered) {
                     melodyMode = 0;
-                    melodySeedPendingFloat = sampleSeedFromSource();
-                    melodySeedPending = true;
+                    engine.pe.setPendingMelodySeed(sampleSeedFromSource());
                 }
             }
             
