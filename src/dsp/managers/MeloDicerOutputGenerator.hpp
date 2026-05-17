@@ -4,9 +4,6 @@
 
 // Forward declarations
 class SequencerEngine;
-namespace MeloDicerIds {
-    enum OutputIds;
-}
 
 /**
  * OutputGenerator

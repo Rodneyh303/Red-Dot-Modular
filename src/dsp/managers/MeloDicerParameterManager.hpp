@@ -1,7 +1,9 @@
 #pragma once
 
 #include "rack.hpp"
-#include "../../MeloDicer.hpp"  // For param/input IDs
+
+struct MeloDicerExpander;
+struct MeloDicerPolyVoiceExpander;
 
 /**
  * ParameterManager
@@ -19,8 +21,8 @@
 class ParameterManager {
 public:
     ParameterManager(rack::engine::Module* mainModule,
-                     rack::engine::ExpanderHandle* cachedExpander,
-                     rack::engine::ExpanderHandle* cachedPolyVoiceExpander)
+                     MeloDicerExpander** cachedExpander,
+                     MeloDicerPolyVoiceExpander** cachedPolyVoiceExpander)
         : mainModule(mainModule),
           cachedExpander(cachedExpander),
           cachedPolyVoiceExpander(cachedPolyVoiceExpander) {}
@@ -53,11 +55,11 @@ public:
     /// Highest playable octave (0–8) with expander CV and transient CV1 offset
     float getOctaveHi() const;
     
-    /// Set transient octave Lo offset (from CV1 mode 2, not persisted)
-    void setOctaveLoOffset(float offset) { cv1LoOffset = offset; }
+    /// Set transient CV1 Lo offset (from CV1 mode 2, not persisted)
+    void setCv1LoOffset(float offset) { cv1LoOffset = offset; }
     
-    /// Set transient octave Hi offset (from CV1 mode 3, not persisted)
-    void setOctaveHiOffset(float offset) { cv1HiOffset = offset; }
+    /// Set transient CV1 Hi offset (from CV1 mode 3, not persisted)
+    void setCv1HiOffset(float offset) { cv1HiOffset = offset; }
     
     // ──── Semitone Probability Getters ──────────────────────────────────────
     
@@ -90,8 +92,8 @@ public:
 
 private:
     rack::engine::Module* mainModule;
-    rack::engine::ExpanderHandle* cachedExpander;
-    rack::engine::ExpanderHandle* cachedPolyVoiceExpander;
+    MeloDicerExpander** cachedExpander;
+    MeloDicerPolyVoiceExpander** cachedPolyVoiceExpander;
     
     // CV2-aware offsets for note value, variation, legato, rest
     float cv2Offsets[4] = {0.f, 0.f, 0.f, 0.f};

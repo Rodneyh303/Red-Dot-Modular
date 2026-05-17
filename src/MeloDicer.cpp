@@ -19,8 +19,8 @@
 #include "MeloDicerPolyVoiceExpander.hpp"
 #include "MeloDicerWidget.hpp"
 #include "MeloDicer.hpp"
-#include "PatternEngine.hpp"
-#include "GateState.hpp"
+#include "dsp/engines/PatternEngine.hpp"
+#include "dsp/gates/GateState.hpp"
 
 using namespace rack;
 using namespace MeloDicerIds;
@@ -202,24 +202,6 @@ void MeloDicer::updateExpanderPointers() {
 
     scan(leftExpander.module, true);
     scan(rightExpander.module, false);
-    
-    // Initialize parameter manager with main module and expander pointers
-    paramManager = std::make_unique<ParameterManager>(this, &cachedExpander, &cachedPolyVoiceExpander);
-    
-    // Initialize mode controller with engine, clock, and parameter manager
-    modeController = std::make_unique<ModeController>(engine, clock, *paramManager);
-    
-    // Initialize UI manager with module and light divider
-    uiManager = std::make_unique<UIManager>(this, lightDivider);
-    
-    // Initialize timing controller with main module
-    timingController = std::make_unique<TimingController>(this);
-    
-    // Initialize CV router
-    cvRouter = std::make_unique<CVRouter>();
-    
-    // Initialize output generator
-    outputGenerator = std::make_unique<OutputGenerator>();
 }
 
   void MeloDicer::updateScaleMask() {
@@ -919,7 +901,7 @@ void MeloDicer::process(const ProcessArgs& args) {
         bool gate2High = inputs[GATE2_INPUT].isConnected() && inputs[GATE2_INPUT].getVoltage() > 1.f;
         
         // Execute mode and set poly voices if needed
-        if (modeController->executeMode(modeSelect, args, gate1Rise, gate1High, gate2High, cv2Voltage, onPhraseBoundary)) {
+        if (modeController->executeMode(modeSelect, gate1Rise, gate1High, gate2High, cv2Voltage, onPhraseBoundary)) {
             // Mode took a step; update poly voices if present
             if (engine.numPolyVoices > 0) {
                 for (int i = 0; i < engine.numPolyVoices; ++i) {

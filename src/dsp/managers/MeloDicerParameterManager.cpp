@@ -1,6 +1,10 @@
 #include "MeloDicerParameterManager.hpp"
+#include "../../MeloDicer.hpp"
+#include "../../MeloDicerExpander.hpp"
+#include "../../MeloDicerPolyVoiceExpander.hpp"
 
 using namespace rack;
+using namespace MeloDicerIds;
 
 // ──── Helper Methods ────────────────────────────────────────────────────────
 
@@ -65,9 +69,9 @@ float ParameterManager::getOctaveLo() const {
     float v = readParam_(OCT_LO_PARAM, 0.f, 8.f);
     
     // Apply expander CV if connected
-    if (cachedExpander && cachedExpander->inputs[EXPANDER_OCT_LO_CV_INPUT].isConnected()) {
-        float att = cachedExpander->params[EXPANDER_OCT_LO_ATTENUVERTER].getValue();
-        float cv = cachedExpander->inputs[EXPANDER_OCT_LO_CV_INPUT].getVoltage();
+    if (cachedExpander && *cachedExpander && (*cachedExpander)->inputs[EXPANDER_OCT_LO_CV_INPUT].isConnected()) {
+        float att = (*cachedExpander)->params[EXPANDER_OCT_LO_ATTENUVERTER].getValue();
+        float cv = (*cachedExpander)->inputs[EXPANDER_OCT_LO_CV_INPUT].getVoltage();
         v += (cv * att) / 10.0f * 8.0f;
     }
     
@@ -81,9 +85,9 @@ float ParameterManager::getOctaveHi() const {
     float v = readParam_(OCT_HI_PARAM, 0.f, 8.f);
     
     // Apply expander CV if connected
-    if (cachedExpander && cachedExpander->inputs[EXPANDER_OCT_HI_CV_INPUT].isConnected()) {
-        float att = cachedExpander->params[EXPANDER_OCT_HI_ATTENUVERTER].getValue();
-        float cv = cachedExpander->inputs[EXPANDER_OCT_HI_CV_INPUT].getVoltage();
+    if (cachedExpander && *cachedExpander && (*cachedExpander)->inputs[EXPANDER_OCT_HI_CV_INPUT].isConnected()) {
+        float att = (*cachedExpander)->params[EXPANDER_OCT_HI_ATTENUVERTER].getValue();
+        float cv = (*cachedExpander)->inputs[EXPANDER_OCT_HI_CV_INPUT].getVoltage();
         v += (cv * att) / 10.0f * 8.0f;
     }
     
@@ -105,9 +109,9 @@ float ParameterManager::getSemitone(int semIdx) const {
     float v = readParam_(SEMI0_PARAM + semIdx, 0.f, 1.f);
     
     // Apply expander CV if connected
-    if (cachedExpander) {
-        auto& expanderParams = cachedExpander->params;
-        auto& expanderInputs = cachedExpander->inputs;
+    if (cachedExpander && *cachedExpander) {
+        auto& expanderParams = (*cachedExpander)->params;
+        auto& expanderInputs = (*cachedExpander)->inputs;
         
         int cvInputId = EXPANDER_SEMI_CV_INPUT_0 + semIdx;
         int attenuverterId = EXPANDER_SEMI_ATTENUVERTER_0 + semIdx;
@@ -130,9 +134,9 @@ float ParameterManager::getPolyRest(int voiceIdx) const {
     
     float v = 0.1f;  // Default fallback
     
-    if (cachedPolyVoiceExpander) {
-        auto& params = cachedPolyVoiceExpander->params;
-        auto& inputs = cachedPolyVoiceExpander->inputs;
+    if (cachedPolyVoiceExpander && *cachedPolyVoiceExpander) {
+        auto& params = (*cachedPolyVoiceExpander)->params;
+        auto& inputs = (*cachedPolyVoiceExpander)->inputs;
         
         // Get rest probability for this voice
         int paramId = POLY_REST_PARAM_1 + voiceIdx;

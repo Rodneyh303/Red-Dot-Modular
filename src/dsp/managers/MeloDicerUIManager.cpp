@@ -1,6 +1,10 @@
 #include "MeloDicerUIManager.hpp"
+#include "../../MeloDicer.hpp"
+#include "../../MeloDicerExpander.hpp"
+#include "../../MeloDicerPolyVoiceExpander.hpp"
 
 using namespace rack;
+using namespace MeloDicerIds;
 
 // ──── Status Light Updates ──────────────────────────────────────────────────
 

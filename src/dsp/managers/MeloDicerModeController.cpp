@@ -1,4 +1,5 @@
 #include "MeloDicerModeController.hpp"
+#include "../../MeloDicer.hpp"
 
 using namespace rack;
 
@@ -30,8 +31,7 @@ void ModeController::postExecute_(const StepResult& result, PhraseCallback onPhr
 
 // ──── Mode A: Clock-Driven Sequencing ───────────────────────────────────────
 
-bool ModeController::executeModeA(const engine::Module::ProcessArgs& args,
-                                   PhraseCallback onPhraseBoundary) {
+bool ModeController::executeModeA(PhraseCallback onPhraseBoundary) {
     if (clock.sixteenthEdge) {
         // Fetch current parameters
         engine.accentProb = paramManager.getAccent();
@@ -56,8 +56,7 @@ bool ModeController::executeModeA(const engine::Module::ProcessArgs& args,
 
 // ──── Mode B: Gate-Driven Sequencing ────────────────────────────────────────
 
-bool ModeController::executeModeB(const engine::Module::ProcessArgs& args,
-                                   bool gate1Rise,
+bool ModeController::executeModeB(bool gate1Rise,
                                    bool gate1High,
                                    PhraseCallback onPhraseBoundary) {
     if (gate1Rise || (gate1High && engine.stepIndex == -1)) {
@@ -85,15 +84,15 @@ bool ModeController::executeModeB(const engine::Module::ProcessArgs& args,
 
 // ──── Mode C: Quantizer Mode 1 ──────────────────────────────────────────────
 
-bool ModeController::executeModeC(const engine::Module::ProcessArgs& args,
-                                   float cv2Voltage,
+bool ModeController::executeModeC(float cv2Voltage,
                                    PhraseCallback onPhraseBoundary) {
     if (clock.quarterEdge) {
         // Clamp and validate CV2 input
         float inCV = clampv<float>(cv2Voltage, 0.f, 5.f);
         
         // Execute the mode
-        StepResult result = engine.executeModeC(clock, inCV);
+        engine.executeModeC(clock, inCV);
+        const StepResult& result = engine.lastStepResult;
         
         // Handle post-execution (usually minimal for quantizer modes)
         if (result.wrapped && onPhraseBoundary) {
@@ -108,8 +107,7 @@ bool ModeController::executeModeC(const engine::Module::ProcessArgs& args,
 
 // ──── Mode D: Quantizer Mode 2 ──────────────────────────────────────────────
 
-bool ModeController::executeModeD(const engine::Module::ProcessArgs& args,
-                                   bool gate2High,
+bool ModeController::executeModeD(bool gate2High,
                                    float cv2Voltage,
                                    PhraseCallback onPhraseBoundary) {
     // Mode D executes continuously based on gate2 state and CV2 voltage
@@ -119,7 +117,8 @@ bool ModeController::executeModeD(const engine::Module::ProcessArgs& args,
     float inCV = clampv<float>(cv2Voltage, 0.f, 5.f);
     
     // Execute the mode
-    StepResult result = engine.executeModeD(gate2High, inCV);
+    engine.executeModeD(gate2High, inCV);
+    const StepResult& result = engine.lastStepResult;
     
     // Handle post-execution
     if (result.wrapped && onPhraseBoundary) {
@@ -136,17 +135,16 @@ bool ModeController::executeModeD(const engine::Module::ProcessArgs& args,
 // ──── High-Level Dispatcher ─────────────────────────────────────────────────
 
 bool ModeController::executeMode(int modeId,
-                                  const engine::Module::ProcessArgs& args,
                                   bool gate1Rise,
                                   bool gate1High,
                                   bool gate2High,
                                   float cv2Voltage,
                                   PhraseCallback onPhraseBoundary) {
     switch (modeId) {
-        case 0: return executeModeA(args, onPhraseBoundary);
-        case 1: return executeModeB(args, gate1Rise, gate1High, onPhraseBoundary);
-        case 2: return executeModeC(args, cv2Voltage, onPhraseBoundary);
-        case 3: return executeModeD(args, gate2High, cv2Voltage, onPhraseBoundary);
+        case 0: return executeModeA(onPhraseBoundary);
+        case 1: return executeModeB(gate1Rise, gate1High, onPhraseBoundary);
+        case 2: return executeModeC(cv2Voltage, onPhraseBoundary);
+        case 3: return executeModeD(gate2High, cv2Voltage, onPhraseBoundary);
         default: return false;
     }
 }

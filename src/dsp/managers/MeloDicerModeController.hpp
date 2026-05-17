@@ -41,29 +41,25 @@ public:
     /// Execute Mode A: Clock-driven sequencing
     /// Triggers on clock sixteenth edges
     /// Returns true if a new step was taken
-    bool executeMode A(const rack::engine::Module::ProcessArgs& args,
-                       PhraseCallback onPhraseBoundary);
+    bool executeModeA(PhraseCallback onPhraseBoundary);
     
     /// Execute Mode B: Gate-driven sequencing
     /// Triggers on GATE1 rising edge or continuous hold
     /// Returns true if a new step was taken
-    bool executeModeB(const rack::engine::Module::ProcessArgs& args,
-                      bool gate1Rise,
+    bool executeModeB(bool gate1Rise,
                       bool gate1High,
                       PhraseCallback onPhraseBoundary);
     
     /// Execute Mode C: Quantizer mode 1 (CV2 latch on quarter notes)
     /// Triggers on clock quarter-note edges
     /// Returns true if a new step was taken
-    bool executeModeC(const rack::engine::Module::ProcessArgs& args,
-                      float cv2Voltage,
+    bool executeModeC(float cv2Voltage,
                       PhraseCallback onPhraseBoundary);
     
     /// Execute Mode D: Quantizer mode 2 (GATE2 driven)
     /// Triggers based on GATE2 state and CV2 voltage
     /// Returns true if a new step was taken
-    bool executeModeD(const rack::engine::Module::ProcessArgs& args,
-                      bool gate2High,
+    bool executeModeD(bool gate2High,
                       float cv2Voltage,
                       PhraseCallback onPhraseBoundary);
     
@@ -72,7 +68,6 @@ public:
     /// Execute the appropriate mode based on modeId (0–3)
     /// Returns true if a new step was taken
     bool executeMode(int modeId,
-                     const rack::engine::Module::ProcessArgs& args,
                      bool gate1Rise,
                      bool gate1High,
                      bool gate2High,

@@ -1,4 +1,5 @@
 #include "MeloDicerCVRouter.hpp"
+#include "../../MeloDicer.hpp"
 
 using namespace rack;
 

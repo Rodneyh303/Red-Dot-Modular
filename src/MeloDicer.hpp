@@ -31,8 +31,8 @@
 #include "dsp/managers/MeloDicerTimingController.hpp"
 #include "dsp/managers/MeloDicerCVRouter.hpp"
 #include "dsp/managers/MeloDicerOutputGenerator.hpp"
-#include "GateState.hpp"
-#include "SequencerEngine.hpp"
+#include "dsp/gates/GateState.hpp"
+#include "dsp/engines/SequencerEngine.hpp"
 #include "Scales.hpp"
 
 #define MAX_UNIT64 18446744073709551615ULL
@@ -407,7 +407,7 @@ struct MeloDicer : Module {
     dsp::PulseGenerator& gatePulse = engine.gs.gatePulse;
     bool& prevExtGate = engine.prevGate1High;
 
-    dsp::BooleanTrigger diceRTrig, diceMTrig, resetBtn, runGateBtn, modeTrig;
+    dsp::BooleanTrigger diceRTrig, diceMTrig, resetBtn, runGateBtn;
     // DNA Action Triggers (SchmittTriggers for gate inputs)
     dsp::SchmittTrigger DNA_SCRAMBLE_ALL_INPUTTrig, DNA_SCRAMBLE_R_INPUTTrig, DNA_SCRAMBLE_M_INPUTTrig, DNA_SCRAMBLE_V_INPUTTrig, DNA_SCRAMBLE_L_INPUTTrig, DNA_SCRAMBLE_A_INPUTTrig, DNA_SCRAMBLE_O_INPUTTrig;
     dsp::SchmittTrigger DNA_RESET_ALL_INPUTTrig, DNA_RESET_R_INPUTTrig, DNA_RESET_M_INPUTTrig, DNA_RESET_V_INPUTTrig, DNA_RESET_L_INPUTTrig, DNA_RESET_A_INPUTTrig, DNA_RESET_O_INPUTTrig;
@@ -450,17 +450,18 @@ struct MeloDicer : Module {
     json_t* dataToJson() override;
     void dataFromJson(json_t* root) override;
 
-    float getSemitoneParam(int sem);  // DEPRECATED: use paramManager->getSemitone()
-    
+    // Parameter getters
+    float getSemitoneParam(int sem);
+    float getNoteValueParam();
+    float getVariationParam();
+    float getLegatoParam();
+    float getRestParam();
+    float getAccentParam();
+    float getOctaveLoParam();
+    float getOctaveHiParam();
+    float getPolyRestParam(int voiceIdx);
+
     // All other parameter getters now delegated to paramManager:
-    // - getNoteValueParam()       → paramManager->getNoteValue()
-    // - getVariationParam()       → paramManager->getVariation()
-    // - getLegatoParam()          → paramManager->getLegato()
-    // - getRestParam()            → paramManager->getRest()
-    // - getAccentParam()          → paramManager->getAccent()
-    // - getOctaveLoParam()        → paramManager->getOctaveLo()
-    // - getOctaveHiParam()        → paramManager->getOctaveHi()
-    // - getPolyRestParam(int)     → paramManager->getPolyRest(int)
 
     void switchMelodyMode();
     void switchRhythmMode();
@@ -491,10 +492,9 @@ struct MeloDicer : Module {
     void onReset() override;
     void onSampleRateChange(const SampleRateChangeEvent& e) override;
     int getNoteLenIdx_();
-    void onExpanderChange(const ExpanderChangeEvent& e) override; // Declare override
+    void onExpanderChange(const ExpanderChangeEvent& e) override;
     int computeNoteLengthIdx(int requestedIdx, int ppqnMask);
-    // UI/LED updates now delegated to UIManager:
-    // - updateStepLEDs_()  → uiManager->updateSemitoneFlashLights()
+    void updateStepLEDs_(float sampleTime);
     float quantizePitch(int semitoneIndex, int octaveOffset);
 
     void process(const ProcessArgs& args) override;
