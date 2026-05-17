@@ -26,6 +26,7 @@
 #include "dsp/engines/SequencerEngine.hpp"
 #include "dsp/managers/MeloDicerDNAManager.hpp"
 #include "dsp/managers/MeloDicerParameterManager.hpp"
+#include "dsp/managers/MeloDicerPersistenceManager.hpp"
 #include "dsp/managers/MeloDicerExpanderManager.hpp"
 #include "dsp/managers/MeloDicerModeController.hpp"
 #include "dsp/managers/MeloDicerUIManager.hpp"
