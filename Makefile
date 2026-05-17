@@ -3,7 +3,7 @@ RACK_DIR ?= ../..
 FLAGS += -Idep/include
 # Link Time Optimization (LTO) can significantly improve performance 
 # by optimizing across your separate manager/engine files.
-FLAGS += -flto
+FLAGS += -flto -O3
 LDFLAGS += -flto
 
 SOURCES += $(wildcard src/*.cpp)
