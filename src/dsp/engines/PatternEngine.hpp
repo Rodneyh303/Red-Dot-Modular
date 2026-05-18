@@ -55,9 +55,9 @@ struct PatternEngine {
     float octaveRandom[16]    = {};
     
     // Poly strands: 7 voices, each with Rhythm, Melody, and Octave draws
-    float polyRhythmRandom[7][16] = {};
-    float polyMelodyRandom[7][16] = {};
-    float polyOctaveRandom[7][16] = {};
+    float polyRhythmRandom[15][16] = {};
+    float polyMelodyRandom[15][16] = {};
+    float polyOctaveRandom[15][16] = {};
 
     // ── Source DNA Cache (Original draws before rotation/scramble) ───────────
     float rhythmSource[16]    = {};
@@ -66,9 +66,9 @@ struct PatternEngine {
     float accentSource[16]    = {};  // New: cache for accent before scramble
     float melodySource[16]    = {};
     float octaveSource[16]    = {};
-    float polyRhythmSource[7][16] = {};
-    float polyMelodySource[7][16] = {};
-    float polyOctaveSource[7][16] = {};
+    float polyRhythmSource[15][16] = {};
+    float polyMelodySource[15][16] = {};
+    float polyOctaveSource[15][16] = {};
 
     // Caches for UI/Lights to reflect the current state
     bool  rhythmPattern[16]   = {};

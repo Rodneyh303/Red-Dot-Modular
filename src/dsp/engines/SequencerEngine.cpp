@@ -12,9 +12,9 @@ static const int DNA_LCM = 720720; // LCM of 1..16 ensures drift continuity
 void SequencerEngine::reset() {
     pe.reset();
     gs.reset();
-    for (int i = 0; i < 7; ++i) voices[i].gs.reset();
+    for (int i = 0; i < 15; ++i) voices[i].gs.reset();
     // restProb values are NOT reset — the caller re-applies them from expander knobs.
-    for (int i = 0; i < 7; i++) wasHeldPolyPrev[i] = false;
+    for (int i = 0; i < 15; i++) wasHeldPolyPrev[i] = false;
     lastStepResult = StepResult{};
     stepIndex = -1;
     lastStepIndex = -1;
@@ -26,7 +26,7 @@ void SequencerEngine::reset() {
     rhythmLen = variationLen = legatoLen = melodyLen = octaveLen = 16;
     rhythmOff = variationOff = legatoOff = melodyOff = octaveOff = 0;
     rhythmRot = variationRot = legatoRot = melodyRot = octaveRot = 0;
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < 15; i++) {
         polyLen[i] = 16;
         polyOff[i] = 0;
         polyRot[i] = 0;

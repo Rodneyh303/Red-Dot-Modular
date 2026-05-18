@@ -1,7 +1,7 @@
 #include "MeloDicerParameterManager.hpp"
 #include "../../MeloDicer.hpp"
 #include "../../MeloDicerExpander.hpp"
-#include "../../MeloDicerPolyVoiceExpander.hpp"
+#include "../../MeloDicerStraitEastExpander.hpp"
 
 using namespace rack;
 using namespace MeloDicerIds;
@@ -134,9 +134,9 @@ float ParameterManager::getPolyRest(int voiceIdx) const {
     
     float v = 0.1f;  // Default fallback
     
-    if (cachedPolyVoiceExpander && *cachedPolyVoiceExpander) {
-        auto& params = (*cachedPolyVoiceExpander)->params;
-        auto& inputs = (*cachedPolyVoiceExpander)->inputs;
+    if (cachedStraitEastExpander && *cachedStraitEastExpander) {
+        auto& params = (*cachedStraitEastExpander)->params;
+        auto& inputs = (*cachedStraitEastExpander)->inputs;
         
         // Get rest probability for this voice
         int paramId = POLY_REST_PARAM_1 + voiceIdx;

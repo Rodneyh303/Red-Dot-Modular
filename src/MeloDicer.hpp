@@ -41,8 +41,10 @@ using namespace rack;
 
 extern Plugin* pluginInstance;
 struct MeloDicerExpander;
-struct MeloDicerPolyVoiceExpander; // Forward declaration for the new expander
-struct MeloDicerDNAExpander;
+struct MeloDicerStraitEastExpander; // Forward declaration
+struct MeloDicerStraitWestExpander; // Forward declaration (Phase 4)
+struct MeloDicerSandsExpander;
+struct MeloDicerStraitSandsExpander; // Forward declaration (Phase 6)
 // Minimal clamp helper for C++11 (no std::clamp)
 template <typename T>
 static inline T clampv(T v, T lo, T hi) {
@@ -339,8 +341,10 @@ struct MeloDicer : Module {
     uint16_t activeScaleMask = 0xFFF;
     bool lightTheme = false;
     MeloDicerExpander* cachedExpander = nullptr; // Cache expander pointer for performance
-    MeloDicerPolyVoiceExpander* cachedPolyVoiceExpander = nullptr;
-    MeloDicerDNAExpander* cachedDnaExpander = nullptr;
+    MeloDicerStraitEastExpander* cachedStraitEastExpander = nullptr;
+    MeloDicerStraitWestExpander* cachedStraitWestExpander = nullptr;  // NEW (Phase 4)
+    MeloDicerSandsExpander* cachedSandsExpander = nullptr;
+    MeloDicerStraitSandsExpander* cachedStraitSandsExpander = nullptr;  // NEW (Phase 6)
     dsp::ClockDivider lightDivider;
     dsp::ClockDivider controlDivider; // For DNA modulation at "Control Rate"
 
@@ -374,6 +378,8 @@ struct MeloDicer : Module {
     int scaleExpanderCount = 0;
     int dnaExpanderCount = 0;
     int polyExpanderCount = 0;
+    int straitWestExpanderCount = 0;   // NEW (Phase 4)
+    int straitSandsExpanderCount = 0;  // NEW (Phase 6)
     inline float unitRandomRhythm() { return engine.pe.unitRhythm(); }
     inline float unitRandomMelody() { return engine.pe.unitMelody(); }
 
@@ -510,5 +516,7 @@ struct MeloDicer : Module {
 
 extern Model* modelMeloDicer;
 extern Model* modelMeloDicerExpander;
-extern Model* modelMeloDicerDNAExpander;
-extern Model* modelMeloDicerPolyVoiceExpander; // Declare new expander model
+extern Model* modelMeloDicerSandsExpander;
+extern Model* modelMeloDicerStraitEastExpander;
+extern Model* modelMeloDicerStraitWestExpander;  // NEW (Phase 4)
+extern Model* modelMeloDicerStraitSandsExpander; // NEW (Phase 6)
