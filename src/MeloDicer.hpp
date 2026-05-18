@@ -41,8 +41,8 @@ using namespace rack;
 
 extern Plugin* pluginInstance;
 struct MeloDicerExpander;
-struct MeloDicerPolyVoiceExpander; // Forward declaration for the new expander
-struct MeloDicerDNAExpander;
+struct MeloDicerStraitEastExpander; // Forward declaration
+struct MeloDicerSandsExpander;
 // Minimal clamp helper for C++11 (no std::clamp)
 template <typename T>
 static inline T clampv(T v, T lo, T hi) {
@@ -111,7 +111,7 @@ namespace MeloDicerIds {
         RESET_BUTTON_PARAM,
         RUN_GATE_PARAM,
 
-        // Poly Voice Expander Params (7 Knobs)
+        // Straits East Expander Params (7 Knobs)
         POLY_REST_PARAM_1,
         POLY_REST_PARAM_2,
         POLY_REST_PARAM_3,
@@ -189,7 +189,7 @@ namespace MeloDicerIds {
         DNA_RESET_A_INPUT,  // New: reset accent strand
         DNA_RESET_O_INPUT,
 
-        // Poly Voice Expander Inputs
+        // Straits East Expander Inputs
         POLY_REST_CV_INPUT,
 
         NUM_INPUTS
@@ -339,8 +339,8 @@ struct MeloDicer : Module {
     uint16_t activeScaleMask = 0xFFF;
     bool lightTheme = false;
     MeloDicerExpander* cachedExpander = nullptr; // Cache expander pointer for performance
-    MeloDicerPolyVoiceExpander* cachedPolyVoiceExpander = nullptr;
-    MeloDicerDNAExpander* cachedDnaExpander = nullptr;
+    MeloDicerStraitEastExpander* cachedStraitEastExpander = nullptr;
+    MeloDicerSandsExpander* cachedSandsExpander = nullptr;
     dsp::ClockDivider lightDivider;
     dsp::ClockDivider controlDivider; // For DNA modulation at "Control Rate"
 
@@ -510,5 +510,5 @@ struct MeloDicer : Module {
 
 extern Model* modelMeloDicer;
 extern Model* modelMeloDicerExpander;
-extern Model* modelMeloDicerDNAExpander;
-extern Model* modelMeloDicerPolyVoiceExpander; // Declare new expander model
+extern Model* modelMeloDicerSandsExpander;
+extern Model* modelMeloDicerStraitEastExpander; // Declare new expander model

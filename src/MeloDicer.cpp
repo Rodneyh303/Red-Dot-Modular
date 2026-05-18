@@ -14,9 +14,9 @@
 #include <cassert>
 #include <cstring>
 
-#include "MeloDicerDNAExpander.hpp"
+#include "MeloDicerSandsExpander.hpp"
 #include "MeloDicerExpander.hpp"
-#include "MeloDicerPolyVoiceExpander.hpp"
+#include "MeloDicerStraitEastExpander.hpp"
 #include "MeloDicerWidget.hpp"
 #include "MeloDicer.hpp"
 #include "dsp/engines/PatternEngine.hpp"
@@ -143,7 +143,7 @@ MeloDicer::MeloDicer() {
         melodySeedPendingFloat = melodySeedFloat;
 
         // Initialize managers
-        paramManager = std::unique_ptr<ParameterManager>(new ParameterManager(this, &cachedExpander, &cachedPolyVoiceExpander));
+        paramManager = std::unique_ptr<ParameterManager>(new ParameterManager(this, &cachedExpander, &cachedStraitEastExpander));
         modeController = std::unique_ptr<ModeController>(new ModeController(engine, clock, *paramManager));
         uiManager = std::unique_ptr<UIManager>(new UIManager(this, lightDivider));
         timingController = std::unique_ptr<TimingController>(new TimingController(this));
@@ -176,8 +176,8 @@ MeloDicer::MeloDicer() {
 
 void MeloDicer::updateExpanderPointers() {
     cachedExpander = nullptr;
-    cachedDnaExpander = nullptr;
-    cachedPolyVoiceExpander = nullptr;
+    cachedSandsExpander = nullptr;
+    cachedStraitEastExpander = nullptr;
 
     scaleExpanderCount = 0;
     dnaExpanderCount = 0;
@@ -192,12 +192,12 @@ void MeloDicer::updateExpanderPointers() {
                 if (!cachedExpander) cachedExpander = dynamic_cast<MeloDicerExpander*>(curr);
                 scaleExpanderCount++;
             }
-            else if (curr->model == modelMeloDicerDNAExpander) {
-                if (!cachedDnaExpander) cachedDnaExpander = dynamic_cast<MeloDicerDNAExpander*>(curr);
+            else if (curr->model == modelMeloDicerSandsExpander) {
+                if (!cachedSandsExpander) cachedSandsExpander = dynamic_cast<MeloDicerSandsExpander*>(curr);
                 dnaExpanderCount++;
             }
-            else if (curr->model == modelMeloDicerPolyVoiceExpander) {
-                if (!cachedPolyVoiceExpander) cachedPolyVoiceExpander = dynamic_cast<MeloDicerPolyVoiceExpander*>(curr);
+            else if (curr->model == modelMeloDicerStraitEastExpander) {
+                if (!cachedStraitEastExpander) cachedStraitEastExpander = dynamic_cast<MeloDicerStraitEastExpander*>(curr);
                 polyExpanderCount++;
             }
             else {
@@ -394,7 +394,7 @@ void MeloDicer::updateExpanderPointers() {
         if (auto j = json_object_get(root,"rhythmSeedPendingFloat")) rhythmSeedPendingFloat = (float)json_real_value(j);
         if (auto j = json_object_get(root,"melodySeedPending")) melodySeedPending = (bool)json_boolean_value(j);
         if (auto j = json_object_get(root,"melodySeedPendingFloat")) melodySeedPendingFloat = (float)json_real_value(j);
-        if (auto j = json_object_get(root,"numPolyVoices")) engine.numPolyVoices = pe_clamp((int)json_integer_value(j), 0, 7);
+        if (auto j = json_object_get(root,"numPolyVoices")) engine.numPolyVoices = pe_clamp((int)json_integer_value(j), 0, 15);
 
         if (auto j = json_object_get(root,"rhythmPattern")) {
             if (json_is_array(j)) {
@@ -691,7 +691,7 @@ void MeloDicer::onPhraseBoundary_() {
 // ---------------- Helper: expander change hook -------------------------------
 //
 // Expander topology:
-//   [ScaleExpander] — [MeloDicer] — [DNAExpander] — [PolyVoiceExpander]
+//   [ScaleExpander] — [MeloDicer] — [Sands Expander] — [Straits East Expander]
 //
 // The left expander is always the scale/CV expander.
 // The right side is a chain: MeloDicer checks its immediate right for DNA or
@@ -902,24 +902,26 @@ void MeloDicer::process(const ProcessArgs& args) {
         outputGenerator->setAccentGateOutput(outputs[ACCENT_OUTPUT], isAccented && !muted);
         
         // Poly voice outputs
-        if (cachedPolyVoiceExpander && engine.numPolyVoices > 0) {
-            using namespace PolyVoiceExpanderIds;
+        if (cachedStraitEastExpander && engine.numPolyVoices > 0) {
+            using namespace StraitEastExpanderIds;
             for (int i = 0; i < engine.numPolyVoices; ++i) {
                 float vg = engine.voices[i].gs.process(args.sampleTime);
                 if (muted) vg = 0.f;
-                cachedPolyVoiceExpander->outputs[POLY_GATE_OUT_1 + i].setVoltage(vg);
-                cachedPolyVoiceExpander->outputs[POLY_CV_OUT_1 + i].setVoltage(engine.voices[i].gs.currentPitchV);
+                cachedStraitEastExpander->outputs[POLY_GATE_OUT_1 + i].setVoltage(vg);
+                cachedStraitEastExpander->outputs[POLY_CV_OUT_1 + i].setVoltage(engine.voices[i].gs.currentPitchV);
                 
                 // Poly accent: fires when mono is accented AND poly voice is sounding
                 float polyAccent = (engine.lastStepResult.accented && vg > 5.f) ? 10.f : 0.f;
                 if (muted) polyAccent = 0.f;
-                cachedPolyVoiceExpander->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(polyAccent);
+                cachedStraitEastExpander->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(polyAccent);
             }
             // Zero unused voice outputs so they don't emit stale voltages.
+            // TODO (Phase 3): Update this limit when Straits East expander is finalized
+            // Currently limited to 7 for compatibility, will extend to 15 in Phase 4 when Straits West is added
             for (int i = engine.numPolyVoices; i < 7; ++i) {
-                cachedPolyVoiceExpander->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
-                cachedPolyVoiceExpander->outputs[POLY_CV_OUT_1 + i].setVoltage(0.f);
-                cachedPolyVoiceExpander->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
+                cachedStraitEastExpander->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
+                cachedStraitEastExpander->outputs[POLY_CV_OUT_1 + i].setVoltage(0.f);
+                cachedStraitEastExpander->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
             }
         }
     }
@@ -1028,15 +1030,15 @@ void MeloDicer::process(const ProcessArgs& args) {
     // ── Control-Rate DNA and Window Updates (Optimized CPU) ──
     if (controlDivider.process()) {
         updateExpanderPointers();
-        if (cachedDnaExpander) {
+        if (cachedSandsExpander) {
             auto processStrand = [&](int pLen, int iLen, int pOff, int iOff, int pRot, int& tLen, int& tOff, int& tRot) {
-                float lCV = cachedDnaExpander->inputs[iLen].getNormalVoltage(0.f) * 1.6f;
-                float oCV = cachedDnaExpander->inputs[iOff].getNormalVoltage(0.f) * 1.5f;
-                tLen = clampv<int>((int)std::round(cachedDnaExpander->params[pLen].getValue() + lCV), 1, 16);
+                float lCV = cachedSandsExpander->inputs[iLen].getNormalVoltage(0.f) * 1.6f;
+                float oCV = cachedSandsExpander->inputs[iOff].getNormalVoltage(0.f) * 1.5f;
+                tLen = clampv<int>((int)std::round(cachedSandsExpander->params[pLen].getValue() + lCV), 1, 16);
                 // Use positive-safe modulo: C++ % can return negative for negative operands.
-                int rawOff = (int)std::round(cachedDnaExpander->params[pOff].getValue() + oCV);
+                int rawOff = (int)std::round(cachedSandsExpander->params[pOff].getValue() + oCV);
                 tOff = ((rawOff % 16) + 16) % 16;
-                int rawRot = (int)std::round(cachedDnaExpander->params[pRot].getValue());
+                int rawRot = (int)std::round(cachedSandsExpander->params[pRot].getValue());
                 tRot = ((rawRot % 16) + 16) % 16;
             };
 
@@ -1054,8 +1056,8 @@ void MeloDicer::process(const ProcessArgs& args) {
             processStrand(DNA_O_LEN_PARAM, DNA_O_LEN_INPUT, DNA_O_OFF_PARAM, DNA_O_OFF_INPUT, DNA_O_ROT_PARAM, 
                             engine.octaveLen, engine.octaveOff, engine.octaveRot);
 
-            #define DNA_ACT_PARAM(p, func) if (p##Trig.process(cachedDnaExpander->params[MeloDicerIds::p].getValue())) dnaManager.func()
-            #define DNA_ACT_INPUT(i, func) if (i##Trig.process(cachedDnaExpander->inputs[MeloDicerIds::i].getVoltage())) dnaManager.func()
+            #define DNA_ACT_PARAM(p, func) if (p##Trig.process(cachedSandsExpander->params[MeloDicerIds::p].getValue())) dnaManager.func()
+            #define DNA_ACT_INPUT(i, func) if (i##Trig.process(cachedSandsExpander->inputs[MeloDicerIds::i].getVoltage())) dnaManager.func()
             
             DNA_ACT_PARAM(DNA_SCRAMBLE_ALL_PARAM, scrambleAll);
             DNA_ACT_INPUT(DNA_SCRAMBLE_ALL_INPUT, scrambleAll);
@@ -1094,12 +1096,12 @@ void MeloDicer::process(const ProcessArgs& args) {
                 engine.rhythmRot = engine.variationRot = engine.legatoRot = engine.accentRot = engine.melodyRot = engine.octaveRot = 0;
             }
         }
-        if (cachedPolyVoiceExpander) {
+        if (cachedStraitEastExpander) {
             for (int i = 0; i < 7; i++) {
-                engine.polyLen[i] = clampv<int>((int)std::round(cachedPolyVoiceExpander->params[POLY_DNA_VOICE_1_LEN + i * 3].getValue()), 1, 16);
-                int rawOff = (int)std::round(cachedPolyVoiceExpander->params[POLY_DNA_VOICE_1_OFF + i * 3].getValue());
+                engine.polyLen[i] = clampv<int>((int)std::round(cachedStraitEastExpander->params[POLY_DNA_VOICE_1_LEN + i * 3].getValue()), 1, 16);
+                int rawOff = (int)std::round(cachedStraitEastExpander->params[POLY_DNA_VOICE_1_OFF + i * 3].getValue());
                 engine.polyOff[i] = ((rawOff % 16) + 16) % 16;
-                int rawRot = (int)std::round(cachedPolyVoiceExpander->params[POLY_DNA_VOICE_1_ROT + i * 3].getValue());
+                int rawRot = (int)std::round(cachedStraitEastExpander->params[POLY_DNA_VOICE_1_ROT + i * 3].getValue());
                 engine.polyRot[i] = ((rawRot % 16) + 16) % 16;
             }
         } else {
@@ -1133,6 +1135,6 @@ void init(rack::Plugin* p) {
 	pluginInstance = p;
 	p->addModel(modelMeloDicer);
 	p->addModel(modelMeloDicerExpander);
-	p->addModel(modelMeloDicerDNAExpander);
-	p->addModel(modelMeloDicerPolyVoiceExpander);
+	p->addModel(modelMeloDicerSandsExpander);
+	p->addModel(modelMeloDicerStraitEastExpander);
 }

@@ -7,7 +7,7 @@ using namespace MeloDicerIds;
 
 // Output IDs local to the PolyVoice expander.
 // Gates 0-6 = voices 2-8, CVs 7-13 = voices 2-8.
-namespace PolyVoiceExpanderIds {
+namespace StraitEastExpanderIds {
     enum OutputIds {
         POLY_GATE_OUT_1 = 0,
         POLY_GATE_OUT_2,
@@ -34,8 +34,8 @@ namespace PolyVoiceExpanderIds {
     };
 }
 
-struct MeloDicerPolyVoiceExpander : Module {
-    MeloDicerPolyVoiceExpander() {
+struct MeloDicerStraitEastExpander : Module {
+    MeloDicerStraitEastExpander() {
         // Sizing to NUM_PARAMS and NUM_INPUTS is required because the expander
         // uses IDs from the main MeloDicerIds namespace, which exceed the 
         // local count of controls on this specific panel.

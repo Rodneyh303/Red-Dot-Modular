@@ -1,13 +1,13 @@
 #include <rack.hpp>
 #include "MeloDicer.hpp"
-#include "MeloDicerPolyVoiceExpander.hpp"
+#include "MeloDicerStraitEastExpander.hpp"
 
 using namespace rack;
 using namespace MeloDicerIds;
 using namespace PolyVoiceExpanderIds;
 
-struct MeloDicerPolyVoiceExpanderWidget : ModuleWidget {
-    MeloDicerPolyVoiceExpanderWidget(MeloDicerPolyVoiceExpander* module) 
+struct MeloDicerStraitEastExpanderWidget : ModuleWidget {
+    MeloDicerStraitEastExpanderWidget(MeloDicerStraitEastExpander* module) 
     {
         setModule(module);
         setPanel(APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/MeloDicer_PolyVoiceExpander.svg")));
@@ -66,4 +66,4 @@ struct MeloDicerPolyVoiceExpanderWidget : ModuleWidget {
     }
 };
 
-Model* modelMeloDicerPolyVoiceExpander = createModel<MeloDicerPolyVoiceExpander, MeloDicerPolyVoiceExpanderWidget>("MeloDicerPolyVoiceExpander");
+Model* modelMeloDicerStraitEastExpander = createModel<MeloDicerStraitEastExpander, MeloDicerStraitEastExpanderWidget>("MeloDicerStraitEastExpander");

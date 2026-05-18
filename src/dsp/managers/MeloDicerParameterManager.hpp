@@ -3,7 +3,7 @@
 #include "rack.hpp"
 
 struct MeloDicerExpander;
-struct MeloDicerPolyVoiceExpander;
+struct MeloDicerStraitEastExpander;
 
 /**
  * ParameterManager
@@ -22,7 +22,7 @@ class ParameterManager {
 public:
     ParameterManager(rack::engine::Module* mainModule,
                      MeloDicerExpander** cachedExpander,
-                     MeloDicerPolyVoiceExpander** cachedPolyVoiceExpander)
+                     MeloDicerStraitEastExpander** cachedPolyVoiceExpander)
         : mainModule(mainModule),
           cachedExpander(cachedExpander),
           cachedPolyVoiceExpander(cachedPolyVoiceExpander) {}
@@ -93,7 +93,7 @@ public:
 private:
     rack::engine::Module* mainModule;
     MeloDicerExpander** cachedExpander;
-    MeloDicerPolyVoiceExpander** cachedPolyVoiceExpander;
+    MeloDicerStraitEastExpander** cachedPolyVoiceExpander;
     
     // CV2-aware offsets for note value, variation, legato, rest
     float cv2Offsets[4] = {0.f, 0.f, 0.f, 0.f};

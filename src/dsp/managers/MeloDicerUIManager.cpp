@@ -1,7 +1,7 @@
 #include "MeloDicerUIManager.hpp"
 #include "../../MeloDicer.hpp"
 #include "../../MeloDicerExpander.hpp"
-#include "../../MeloDicerPolyVoiceExpander.hpp"
+#include "../../MeloDicerStraitEastExpander.hpp"
 
 using namespace rack;
 using namespace MeloDicerIds;

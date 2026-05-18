@@ -17,13 +17,13 @@ using namespace rack;
 // To keep it simple and safe for now we size to the full MeloDicerIds ranges
 // but use a named constant so the intent is obvious and can be tightened later.
 
-struct MeloDicerDNAExpander : Module {
+struct MeloDicerSandsExpander : Module {
     // Number of params/inputs in the DNA expander's own namespace.
     // Sized from DNA_R_LEN_PARAM .. NUM_PARAMS and DNA_R_LEN_INPUT .. NUM_INPUTS.
     static constexpr int DNA_NUM_PARAMS = MeloDicerIds::NUM_PARAMS  - MeloDicerIds::DNA_R_LEN_PARAM;
     static constexpr int DNA_NUM_INPUTS = MeloDicerIds::NUM_INPUTS  - MeloDicerIds::DNA_R_LEN_INPUT;
 
-    MeloDicerDNAExpander() {
+    MeloDicerSandsExpander() {
         // Allocate only the DNA-relevant range, not all of MeloDicerIds.
         // MeloDicer accesses params[id] and inputs[id] via the cached pointer;
         // it always uses full MeloDicerIds values, so we offset by the base.

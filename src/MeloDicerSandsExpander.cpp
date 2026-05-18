@@ -1,13 +1,13 @@
 #include <rack.hpp>
 #include "MeloDicer.hpp"
-#include "MeloDicerDNAExpander.hpp"
+#include "MeloDicerSandsExpander.hpp"
 
 using namespace rack;
 
 extern Model* modelMeloDicer;
 
-struct MeloDicerDNAExpanderWidget : ModuleWidget {
-    MeloDicerDNAExpanderWidget(MeloDicerDNAExpander* module) {
+struct MeloDicerSandsExpanderWidget : ModuleWidget {
+    MeloDicerSandsExpanderWidget(MeloDicerSandsExpander* module) {
         setModule(module);
         setPanel(APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/MeloDicer_DNAExpander.svg")));
 
@@ -99,4 +99,4 @@ struct MeloDicerDNAExpanderWidget : ModuleWidget {
     }
 };
 
-Model* modelMeloDicerDNAExpander = createModel<MeloDicerDNAExpander, MeloDicerDNAExpanderWidget>("MeloDicerDNAExpander");
+Model* modelMeloDicerSandsExpander = createModel<MeloDicerSandsExpander, MeloDicerSandsExpanderWidget>("MeloDicerSandsExpander");
