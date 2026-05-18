@@ -1,33 +1,33 @@
 {
-  "slug": "MeloDicer",
-  "name": "MeloDicer",
+  "slug": "Monsoon",
+  "name": "Monsoon",
   "version": "2.0.1",
   "license": "proprietary",
   "author": "Rodney Hoskinson",
   "brand": "Red Dot Modular",
   "modules": [
     {
-      "slug": "MeloDicer",
-      "name": "MeloDicer",
+      "slug": "Monsoon",
+      "name": "Monsoon",
       "description": "VCV plugin inspired by Vermona meloDICER: stochastic melody & rhythm with edit-menu features",
       "tags": ["Sequencer", "Random", "Quantizer"]
     },
     {
-      "slug": "MeloDicerExpander",
-      "name": "MeloDicerExpander",
-      "description": "64-step version of MeloDicer with 4 rows of 16 steps each, and additional features",
+      "slug": "MonsoonInterchangeExpander",
+      "name": "MonsoonInterchangeExpander",
+      "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
       "tags": ["Sequencer", "Random", "Quantizer"]
     },
     {
-      "slug": "MeloDicerDNAExpander",
-      "name": "MeloDicerDNAExpander",
-      "description": "64-step version of MeloDicer with 4 rows of 16 steps each, and additional features",
+      "slug": "MonsoonSandsExpander",
+      "name": "MonsoonSandsExpander",
+      "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
       "tags": ["Sequencer", "Random", "Quantizer"]
     },
     {
-      "slug": "MeloDicerPolyVoiceExpander",
-      "name": "MeloDicerPolyVoiceExpander",
-      "description": "64-step version of MeloDicer with 4 rows of 16 steps each, and additional features",
+      "slug": "MonsoonStraitsEastExpander",
+      "name": "MonsoonStraitsEastExpander",
+      "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
       "tags": ["Sequencer", "Random", "Quantizer"]
     }
   ]

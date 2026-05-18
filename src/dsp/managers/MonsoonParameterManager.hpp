@@ -8,14 +8,14 @@ struct MonsoonStraitsEastExpander;
 /**
  * ParameterManager
  * 
- * Encapsulates all parameter reading logic from MeloDicer, centralizing:
+ * Encapsulates all parameter reading logic from Monsoon, centralizing:
  *   1. Knob value retrieval
  *   2. CV input application and attenuverter scaling
  *   3. Expander value fetching (semitone, octave, poly rest)
  *   4. CV offset tracking (cv2Offsets, cv1LoOffset, cv1HiOffset)
  *   5. Clamping and range validation
  * 
- * By centralizing parameter logic, we reduce MeloDicer class complexity and
+ * By centralizing parameter logic, we reduce Monsoon class complexity and
  * make parameter behavior consistent and easier to understand.
  */
 class ParameterManager {

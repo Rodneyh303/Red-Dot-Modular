@@ -11,7 +11,7 @@ extern rack::Model* modelMonsoonSandsExpander;
 extern rack::Model* modelMonsoonStraitsEastExpander;
 
 /**
- * ExpanderManager handles the discovery and caching of MeloDicer expander modules.
+ * ExpanderManager handles the discovery and caching of Monsoon expander modules.
  * It walks the left and right expansion chains to identify connected modules.
  */
 struct MonsoonExpanderManager {

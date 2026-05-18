@@ -4,8 +4,8 @@
 
 using namespace rack;
 
-// Left expander for MeloDicer.
-// MeloDicer reads this module's inputs and params directly via the
+// Left expander for Monsoon.
+// Monsoon reads this module's inputs and params directly via the
 // cachedExpander pointer — no message-passing protocol is used.
 // The messages[2] double-buffer has been removed as it was dead code.
 struct MonsoonInterchangeExpander : Module {

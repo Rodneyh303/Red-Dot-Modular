@@ -65,6 +65,6 @@ struct MonsoonStraitsEastExpander : Module {
         }
     }
 
-    // MeloDicer writes gate and CV outputs directly via the cached pointer.
+    // Monsoon writes gate and CV outputs directly via the cached pointer.
     void process(const ProcessArgs& args) override {}
 };

@@ -8,7 +8,7 @@ using namespace rack;
 // params/inputs and action buttons.  We allocate exactly that range so we
 // don't waste memory on the full MeloDicer param/input set.
 //
-// Layout helpers: MeloDicer reads this expander's params[]/inputs[] directly
+// Layout helpers: Monsoon reads this expander's params[]/inputs[] directly
 // using MonsoonIds enum values.  We therefore allocate exactly
 // (NUM_PARAMS - DNA_R_LEN_PARAM) params and (NUM_INPUTS - DNA_R_LEN_INPUT)
 // inputs, and bias every index by subtracting the start offset so that
@@ -25,7 +25,7 @@ struct MonsoonSandsExpander : Module {
 
     MonsoonSandsExpander() {
         // Allocate only the DNA-relevant range, not all of MonsoonIds.
-        // MeloDicer accesses params[id] and inputs[id] via the cached pointer;
+        // Monsoon accesses params[id] and inputs[id] via the cached pointer;
         // it always uses full MonsoonIds values, so we offset by the base.
         // For safety during this transition we still size to NUM_PARAMS/NUM_INPUTS
         // to guarantee no out-of-bounds access if a call site forgets the offset.

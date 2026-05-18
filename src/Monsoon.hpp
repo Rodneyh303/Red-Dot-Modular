@@ -303,8 +303,8 @@ struct MonsoonRightMessage {
     float melodySeedV  = 0.f;
 };
 
-// Sent leftward each sample — MeloDicer reads this from a left expander
-struct MoonsoonLeftMessage {
+// Sent leftward each sample — Monsoon reads this from a left expander
+struct MonsoonLeftMessage {
     // Extra CV inputs an expander might provide
     bool  hasExtraGate   = false;
     float extraGateV     = 0.f;
@@ -316,7 +316,7 @@ struct MoonsoonLeftMessage {
     float octLoCv        = 0.f;
     float octHiCv        = 0.f;
 
-    // Remote control flags (set by expander, consumed by MeloDicer)
+    // Remote control flags (set by expander, consumed by Monsoon)
     bool  requestDiceR   = false;  // pulse: arm new rhythm seed
     bool  requestDiceM   = false;  // pulse: arm new melody seed
     bool  requestReset   = false;  // pulse: trigger restart
