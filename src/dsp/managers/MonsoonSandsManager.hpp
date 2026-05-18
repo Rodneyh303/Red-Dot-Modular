@@ -3,28 +3,28 @@
 #include <rack.hpp>
 #include "../engines/SequencerEngine.hpp"
 
-struct MeloDicerExpanderManager;
+struct MonsoonExpanderManager;
 
 /**
- * DNAStrandManager
+ * MonsoonSandsManager
  * 
  * Encapsulates all DNA strand scramble and reset operations.
  * This manager abstracts away the repetitive pattern of:
  *   1. Call PatternEngine rotate/reset methods
  *   2. Refresh visual cache
  * 
- * By centralizing this logic, we reduce MeloDicer class bloat and make
+ * By centralizing this logic, we reduce Monsoon class bloat and make
  * DNA strand operations easier to understand and extend.
  */
-class DNAStrandManager {
+class MonsoonSandsManager {
 public:
-    DNAStrandManager(SequencerEngine& engine) 
+    MonsoonSandsManager(SequencerEngine& engine) 
         : engine(engine), patternEngine(engine.pe) {}
     
     // ──── Scramble Operations ────────────────────────────────────────────
 
     /// Main update loop called at control rate
-    void processDNA(const MeloDicerExpanderManager& expanderManager);
+    void processDNA(const MonsoonExpanderManager& expanderManager);
 
     // Rotate a single strand by a random amount (0–15 steps)
     // and refresh the visual cache

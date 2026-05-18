@@ -1,13 +1,13 @@
 #include <rack.hpp>
-#include "MeloDicer.hpp"
-#include "MeloDicerPolyVoiceExpander.hpp"
+#include "Monsoon.hpp"
+#include "MonsoonStraitsEastExpander.hpp"
 
 using namespace rack;
-using namespace MeloDicerIds;
+using namespace MonsoonIds;
 using namespace PolyVoiceExpanderIds;
 
-struct MeloDicerPolyVoiceExpanderWidget : ModuleWidget {
-    MeloDicerPolyVoiceExpanderWidget(MeloDicerPolyVoiceExpander* module) 
+struct MonsoonStraitsEastExpanderWidget : ModuleWidget {
+    MonsoonStraitsEastExpanderWidget(MonsoonStraitsEastExpander* module) 
     {
         setModule(module);
         setPanel(APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/MeloDicer_PolyVoiceExpander.svg")));
@@ -32,7 +32,7 @@ struct MeloDicerPolyVoiceExpanderWidget : ModuleWidget {
             float y = startY + i * spacingY;
             // Rest probability knob
             addParam(createParamCentered<Trimpot>(
-                mm2px(Vec(knobX, y)), module, MeloDicerIds::POLY_REST_PARAM_1 + i));
+                mm2px(Vec(knobX, y)), module, MonsoonIds::POLY_REST_PARAM_1 + i));
             // Gate output
             addOutput(createOutputCentered<PJ301MPort>(
                 mm2px(Vec(outGateX, y)), module, POLY_GATE_OUT_1 + i));
@@ -41,15 +41,15 @@ struct MeloDicerPolyVoiceExpanderWidget : ModuleWidget {
                 mm2px(Vec(outCvX, y)), module, POLY_CV_OUT_1 + i));
             
             // Individual Poly DNA Controls
-            addParam(createParamCentered<Trimpot>(mm2px(Vec(dnaLenX, y)), module, MeloDicerIds::POLY_DNA_VOICE_1_LEN + i * 3));
-            addParam(createParamCentered<Trimpot>(mm2px(Vec(dnaOffX, y)), module, MeloDicerIds::POLY_DNA_VOICE_1_OFF + i * 3));
-            addParam(createParamCentered<Trimpot>(mm2px(Vec(dnaRotX, y)), module, MeloDicerIds::POLY_DNA_VOICE_1_ROT + i * 3));
+            addParam(createParamCentered<Trimpot>(mm2px(Vec(dnaLenX, y)), module, MonsoonIds::POLY_DNA_VOICE_1_LEN + i * 3));
+            addParam(createParamCentered<Trimpot>(mm2px(Vec(dnaOffX, y)), module, MonsoonIds::POLY_DNA_VOICE_1_OFF + i * 3));
+            addParam(createParamCentered<Trimpot>(mm2px(Vec(dnaRotX, y)), module, MonsoonIds::POLY_DNA_VOICE_1_ROT + i * 3));
         }
 
         // Poly Rest CV Input (below the knobs)
         addInput(createInputCentered<PJ301MPort>(
             mm2px(Vec(knobX, startY + 7 * spacingY + 5.0f)),
-            module, MeloDicerIds::POLY_REST_CV_INPUT));
+            module, MonsoonIds::POLY_REST_CV_INPUT));
     }
 
     void draw(const DrawArgs& args) override {
@@ -66,4 +66,4 @@ struct MeloDicerPolyVoiceExpanderWidget : ModuleWidget {
     }
 };
 
-Model* modelMeloDicerPolyVoiceExpander = createModel<MeloDicerPolyVoiceExpander, MeloDicerPolyVoiceExpanderWidget>("MeloDicerPolyVoiceExpander");
+Model* modelMonsoonStraitsEastExpander = createModel<MonsoonStraitsEastExpander, MonsoonStraitsEastExpanderWidget>("MonsoonStraitsEastExpander");

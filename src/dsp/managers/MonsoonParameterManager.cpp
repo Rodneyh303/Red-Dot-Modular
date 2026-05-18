@@ -1,10 +1,10 @@
-#include "MeloDicerParameterManager.hpp"
-#include "../../MeloDicer.hpp"
-#include "../../MeloDicerExpander.hpp"
-#include "../../MeloDicerPolyVoiceExpander.hpp"
+#include "MonsoonParameterManager.hpp"
+#include "../../Monsoon.hpp"
+#include "../../MonsoonInterchangeExpander.hpp"
+#include "../../MonsoonStraitsEastExpander.hpp"
 
 using namespace rack;
-using namespace MeloDicerIds;
+using namespace MonsoonIds;
 
 // ──── Helper Methods ────────────────────────────────────────────────────────
 

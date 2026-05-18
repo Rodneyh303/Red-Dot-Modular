@@ -1,5 +1,5 @@
-// src/MeloDicer.cpp
-// MeloDicer - full implementation with clean Mode A stepping logic
+// src/Monsoon.cpp
+// Monsoon - full implementation with clean Mode A stepping logic
 // C++11 compatible
 //
 // Patched: separate RNGs for melody & rhythm using rack::random::Xoroshiro128Plus,
@@ -14,30 +14,30 @@
 #include <cassert>
 #include <cstring>
 
-#include "MeloDicerDNAExpander.hpp"
-#include "MeloDicerExpander.hpp"
-#include "MeloDicerPolyVoiceExpander.hpp"
-#include "MeloDicerWidget.hpp"
-#include "MeloDicer.hpp"
+#include "MonsoonSandsExpander.hpp"
+#include "MonsoonInterchangeExpander.hpp"
+#include "MonsoonStraitsEastExpander.hpp"
+#include "MonsoonWidget.hpp"
+#include "Monsoon.hpp"
 #include "dsp/engines/PatternEngine.hpp"
 #include "dsp/gates/GateState.hpp"
 
 using namespace rack;
-using namespace MeloDicerIds;
+using namespace MonsoonIds;
 
 Plugin* pluginInstance = nullptr;
 
-void MeloDicer::reseedXoroshiroFromFloat(rack::random::Xoroshiro128Plus& rng, float seedFloat) {
+void Monsoon::reseedXoroshiroFromFloat(rack::random::Xoroshiro128Plus& rng, float seedFloat) {
     engine.pe.seedRngFromFloat(rng, seedFloat);
 }
 
-void MeloDicer::onSampleRateChange(const SampleRateChangeEvent& e) {
+void Monsoon::onSampleRateChange(const SampleRateChangeEvent& e) {
     lightDivider.setDivision(std::max(1, (int)std::round(e.sampleRate / 90.f)));
     controlDivider.setDivision(std::max(1, (int)std::round(e.sampleRate / 1500.f)));
 }
 
-MeloDicer::MeloDicer() {
-        using namespace MeloDicerIds;
+Monsoon::Monsoon() {
+        using namespace MonsoonIds;
         config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
 
         // Main controls
@@ -176,11 +176,11 @@ MeloDicer::MeloDicer() {
         initialize();
     }
 
-void MeloDicer::updateExpanderPointers() {
+void Monsoon::updateExpanderPointers() {
     expanderManager.update(this);
 }
 
-  void MeloDicer::initialize(){
+  void Monsoon::initialize(){
         cv1Mode = 0;
         cv2Mode = 0;
         gate1Assign = 0;
@@ -205,11 +205,11 @@ void MeloDicer::updateExpanderPointers() {
   }
 
     // --- serialization ---
-    json_t* MeloDicer::dataToJson() {
+    json_t* Monsoon::dataToJson() {
         return PersistenceManager::toJson(this);
     }
   
-    void MeloDicer::dataFromJson(json_t* root) {
+    void Monsoon::dataFromJson(json_t* root) {
         PersistenceManager::fromJson(this, root);
     // Finalize state
     reseedXoroshiroFromFloat(engine.pe.rhythmRng, rhythmSeedFloat);
@@ -219,7 +219,7 @@ void MeloDicer::updateExpanderPointers() {
     }
 
 //return semitone parameter value with CV input added (if connected)
-    float MeloDicer::getSemitoneParam(int sem) {
+    float Monsoon::getSemitoneParam(int sem) {
         return (scaleManager && paramManager) ? scaleManager->getSemitoneWeight(sem, *paramManager) : 0.f;
     }
 
@@ -230,30 +230,30 @@ void MeloDicer::updateExpanderPointers() {
 // These wrapper functions maintain backward compatibility while delegating
 // to the centralized ParameterManager.
 
-float MeloDicer::getNoteValueParam()  { return paramManager->getNoteValue(); }
-float MeloDicer::getVariationParam()  { return paramManager->getVariation(); }
-float MeloDicer::getLegatoParam()     { return paramManager->getLegato(); }
-float MeloDicer::getRestParam()       { return paramManager->getRest(); }
-float MeloDicer::getAccentParam()     { return paramManager->getAccent(); }
+float Monsoon::getNoteValueParam()  { return paramManager->getNoteValue(); }
+float Monsoon::getVariationParam()  { return paramManager->getVariation(); }
+float Monsoon::getLegatoParam()     { return paramManager->getLegato(); }
+float Monsoon::getRestParam()       { return paramManager->getRest(); }
+float Monsoon::getAccentParam()     { return paramManager->getAccent(); }
 
-float MeloDicer::getOctaveLoParam()   { return paramManager->getOctaveLo(); }
-float MeloDicer::getOctaveHiParam()   { return paramManager->getOctaveHi(); }
+float Monsoon::getOctaveLoParam()   { return paramManager->getOctaveLo(); }
+float Monsoon::getOctaveHiParam()   { return paramManager->getOctaveHi(); }
 
-float MeloDicer::getPolyRestParam(int voiceIdx) {
+float Monsoon::getPolyRestParam(int voiceIdx) {
     return paramManager->getPolyRest(voiceIdx);
 }
 
 // --- switch melody/rhythm mode (dice/realtime), caching/restoring state as needed ---    
-void MeloDicer::switchMelodyMode() { engine.pe.switchMelodyMode(stepIndex, lastStepIndex); }
+void Monsoon::switchMelodyMode() { engine.pe.switchMelodyMode(stepIndex, lastStepIndex); }
 
 // --- switch melody/rhythm mode (dice/realtime), caching/restoring state as needed ---
-void MeloDicer::switchRhythmMode() { engine.pe.switchRhythmMode(stepIndex, lastStepIndex); }
+void Monsoon::switchRhythmMode() { engine.pe.switchRhythmMode(stepIndex, lastStepIndex); }
 
 
 // pick a semitone (0..11) using weighted random, or -1 if no semitone is selected
 // uses melody RNG
 // returns -1 if no semitone is selected (all weights zero)
-int MeloDicer::pickSemitoneWeighted() {
+int Monsoon::pickSemitoneWeighted() {
     float w[12];
     for(int i=0; i<12; ++i) w[i] = getSemitoneParam(i);
     int idx = engine.getMelodyStep();
@@ -265,7 +265,7 @@ int MeloDicer::pickSemitoneWeighted() {
 // uses melody RNG
 // returns 0V and -1 semitone if no semitone is selected
 // (should be rare, only if all semitone weights are zero)
-float MeloDicer::genPitchV(int& outSemitone) {
+float Monsoon::genPitchV(int& outSemitone) {
     return engine.pe.genPitchLive(outSemitone, modeController->currentPatternInput, melodyRandom[engine.getMelodyStep()], octaveRandom[engine.getOctaveStep()]);
 }
 
@@ -279,64 +279,64 @@ float MeloDicer::genPitchV(int& outSemitone) {
 
 // Convert semitone (0..11) to volts (1V/oct)
 // 12 semitones per octave
-float MeloDicer::semitoneToVolts(int semitone) {
+float Monsoon::semitoneToVolts(int semitone) {
     return semitone / 12.f;
 }
 
     // regenerate rhythm pattern (uses rhythmRng) — skipped when locked
     // Build a PatternInput snapshot from current params/CV state
     // This method is no longer needed as PatternInput is cached in ModeController
-    // PatternInput MeloDicer::makePatternInput() { ... }
+    // PatternInput Monsoon::makePatternInput() { ... }
 
-    void MeloDicer::redrawRhythmPattern() { engine.pe.redrawRhythm(modeController->currentPatternInput); }
-    void  MeloDicer::redrawMelodyPattern() { engine.pe.redrawMelody(modeController->currentPatternInput); }
+    void Monsoon::redrawRhythmPattern() { engine.pe.redrawRhythm(modeController->currentPatternInput); }
+    void  Monsoon::redrawMelodyPattern() { engine.pe.redrawMelody(modeController->currentPatternInput); }
 
-    void MeloDicer::rotateRhythm(int steps) {
+    void Monsoon::rotateRhythm(int steps) {
         engine.pe.rotateRhythm(steps);
         engine.pe.refreshPatternCache(modeController->currentPatternInput);
     }
 
-    void MeloDicer::rotateRhythmPattern(int steps) {
+    void Monsoon::rotateRhythmPattern(int steps) {
         engine.pe.rotateRhythmPattern(steps);
         engine.pe.refreshPatternCache(modeController->currentPatternInput);
     }
     
-    void MeloDicer::rotateVariation(int steps) {
+    void Monsoon::rotateVariation(int steps) {
         engine.pe.rotateVariation(steps);
         engine.pe.refreshPatternCache(modeController->currentPatternInput);
     }
 
-    void MeloDicer::rotateLegato(int steps) {
+    void Monsoon::rotateLegato(int steps) {
         engine.pe.rotateLegato(steps);
         engine.pe.refreshPatternCache(modeController->currentPatternInput);
     }
 
-    void MeloDicer::rotateMelody(int steps) {
+    void Monsoon::rotateMelody(int steps) {
         engine.pe.rotateMelody(steps);
         engine.pe.refreshPatternCache(modeController->currentPatternInput);
     }
 
-    void MeloDicer::rotateMelodyPattern(int steps) {
+    void Monsoon::rotateMelodyPattern(int steps) {
         engine.pe.rotateMelodyPattern(steps);
         engine.pe.refreshPatternCache(modeController->currentPatternInput);
     }
     
-    void MeloDicer::rotateOctave(int steps) {
+    void Monsoon::rotateOctave(int steps) {
         engine.pe.rotateOctave(steps);
         engine.pe.refreshPatternCache(modeController->currentPatternInput);
     }
 
-    void MeloDicer::rebuildSemiCache_() {
+    void Monsoon::rebuildSemiCache_() {
         float weights[12];
         for (int i = 0; i < 12; ++i) weights[i] = scaleManager->getSemitoneWeight(i, *paramManager);
         engine.rebuildScaleCache(weights);
     }
 
-    float MeloDicer::quantizeToScale(float vIn) { return engine.quantize(vIn); }
+    float Monsoon::quantizeToScale(float vIn) { return engine.quantize(vIn); }
 
     // handle manual restart: place index so next increment lands on startStep, optionally redraw realtime patterns
     // If there are pending seeds and resetImmediate==true, apply them immediately (for RESET triggered reseed)
-    void MeloDicer::handleRestart(bool manual, bool resetImmediate) {
+    void Monsoon::handleRestart(bool manual, bool resetImmediate) {
         stepIndex = (startStep - 1 + 16) % 16;
         engine.totalStepsElapsed = 0; // Sync polymeters to "Beat 1" on hard reset
         engine.gs.reset();          // clears gate, hold, pitch, pulse, semiPlayRemain
@@ -353,7 +353,7 @@ float MeloDicer::semitoneToVolts(int semitone) {
     // Helper to sample a seed value (float 0..10) from either SEED input (if connected) or internal RNG.
     // Helper to sample a seed value (float 0..10) from either SEED input (if connected) or internal RNG.
     // The action of sampling is performed when user presses DICE (or dice is triggered via gate assignment).
-    float MeloDicer::sampleSeedFromSource() {
+    float Monsoon::sampleSeedFromSource() {
         // If SEED_INPUT is connected, use it (clamped) as sample-and-hold.
         if (inputs[SEED_INPUT].isConnected()) {
             float v = inputs[SEED_INPUT].getVoltage();
@@ -371,26 +371,26 @@ float MeloDicer::semitoneToVolts(int semitone) {
 // ---------------- Helper: phrase boundary hook -------------------------------
 // Called at phrase boundary (stepIndex wraps from endStep back to startStep).
 // Seeds are applied FIRST so the subsequent redraw uses the new RNG state.
-void MeloDicer::onPhraseBoundary_() {
+void Monsoon::onPhraseBoundary_() {
     engine.pe.onPhraseBoundary(modeController->currentPatternInput);
 }
 
 // ---------------- Helper: expander change hook -------------------------------
 //
 // Expander topology:
-//   [ScaleExpander] — [MeloDicer] — [DNAExpander] — [PolyVoiceExpander]
+//   [ScaleExpander] — [Monsoon] — [DNAExpander] — [PolyVoiceExpander]
 //
 // The left expander is always the scale/CV expander.
-// The right side is a chain: MeloDicer checks its immediate right for DNA or
+// The right side is a chain: Monsoon checks its immediate right for DNA or
 // PolyVoice.  If DNA is present, PolyVoice is expected to the right of DNA
 // and is reached by walking one step further.  If no DNA is present,
-// PolyVoice may attach directly to MeloDicer's right.
-void MeloDicer::onExpanderChange(const ExpanderChangeEvent& e) {
+// PolyVoice may attach directly to Monsoon's right.
+void Monsoon::onExpanderChange(const ExpanderChangeEvent& e) {
     updateExpanderPointers();
 }
 
 // ---------------- Helper: reset hook -----------------------------------------
-void MeloDicer::onReset() {
+void Monsoon::onReset() {
     Module::onReset();
     initialize();   // resets all module state to defaults
     clock.reset();  // resets ClockEngine timing
@@ -400,13 +400,13 @@ void MeloDicer::onReset() {
 // Returns note length index: NOTE VALUE sets the base, VARIATION randomly biases it.
 // NOTEVALS.allowedPPQN bitmask: 1=PPQN1, 2=PPQN4, 4=PPQN24
 // ppqnSetting raw values: 1, 4, 24 — must be converted to bitmask before use.
-int MeloDicer::computeNoteLengthIdx(int requestedIdx, int ppqnMask) { return engine.computeNoteLengthIdx(requestedIdx, ppqnMask); }
+int Monsoon::computeNoteLengthIdx(int requestedIdx, int ppqnMask) { return engine.computeNoteLengthIdx(requestedIdx, ppqnMask); }
 
 
 // ---------------- Replacement for process() ---------------------------------
 // Full logic for all modes inline here
 // Calls helper functions as needed
-void MeloDicer::process(const ProcessArgs& args) {
+void Monsoon::process(const ProcessArgs& args) {
     // --- Audio-rate Input Fetching (Cached & Guarded) ---
     float clkV      = cachedClkConnected ? inputs[CLK_INPUT].getVoltage() : 0.f;
     float gate1V    = cachedGate1Connected ? inputs[GATE1_INPUT].getVoltage() : 0.f;
@@ -704,12 +704,12 @@ void MeloDicer::process(const ProcessArgs& args) {
 }
 
 
-Model* modelMeloDicer = createModel<MeloDicer, MeloDicerWidget>("MeloDicer");
+Model* modelMonsoon = createModel<Monsoon, MonsoonWidget>("Monsoon");
 
 void init(rack::Plugin* p) {
 	pluginInstance = p;
-	p->addModel(modelMeloDicer);
-	p->addModel(modelMeloDicerExpander);
-	p->addModel(modelMeloDicerDNAExpander);
-	p->addModel(modelMeloDicerPolyVoiceExpander);
+	p->addModel(modelMonsoon);
+	p->addModel(modelMonsoonInterchangeExpander);
+	p->addModel(modelMonsoonSandsExpander);
+	p->addModel(modelMonsoonStraitsEastExpander);
 }

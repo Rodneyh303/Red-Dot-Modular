@@ -1,20 +1,20 @@
 #include <rack.hpp>
 #include <algorithm>
-#include "MeloDicerWidget.hpp"
-#include "MeloDicer.hpp"
-#include "dsp/managers/MeloDicerScaleManager.hpp"
+#include "MonsoonWidget.hpp"
+#include "Monsoon.hpp"
+#include "dsp/managers/MonsoonScaleManager.hpp"
 
 using namespace rack;
-using namespace MeloDicerIds;
+using namespace MonsoonIds;
 // ── Custom Slider for Scale Locking ──────────────────────────────────────────
 template <typename TLightBase = RedLight>
-struct MeloDicerLightSlider : VCVLightSlider<TLightBase> {
+struct MonsoonLightSlider : VCVLightSlider<TLightBase> {
     void draw(const widget::Widget::DrawArgs& args) override {
-        auto* m = dynamic_cast<MeloDicer*>(this->module);
+        auto* m = dynamic_cast<Monsoon*>(this->module);
         bool dimmed = false;
         if (m) {
-            if (this->paramId >= MeloDicerIds::SEMI0_PARAM && this->paramId < MeloDicerIds::SEMI0_PARAM + 12) {
-                int sem = this->paramId - MeloDicerIds::SEMI0_PARAM;
+            if (this->paramId >= MonsoonIds::SEMI0_PARAM && this->paramId < MonsoonIds::SEMI0_PARAM + 12) {
+                int sem = this->paramId - MonsoonIds::SEMI0_PARAM;
                 if (m->scaleManager && !(m->scaleManager->activeScaleMask & (1 << sem))) dimmed = true;
             }
         }
@@ -61,29 +61,29 @@ RDM_KnobCreamMedium::RDM_KnobCreamMedium() {
     setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobCream_Medium.svg")));
 }
 
-bool MeloDicerWidget::getLightTheme() const {
-    auto* m = dynamic_cast<const MeloDicer*>(module);
+bool MonsoonWidget::getLightTheme() const {
+    auto* m = dynamic_cast<const Monsoon*>(module);
     return m ? m->lightTheme : false;
 }
 
-void MeloDicerWidget::setLightTheme(bool v) {
-    auto* m = dynamic_cast<MeloDicer*>(module);
+void MonsoonWidget::setLightTheme(bool v) {
+    auto* m = dynamic_cast<Monsoon*>(module);
     if (m) m->lightTheme = v;
 }
 
-MeloDicerWidget::MeloDicerWidget(MeloDicer* module) {
+MonsoonWidget::MonsoonWidget(Monsoon* module) {
         setModule(module);
         applyTheme();
         if (box.size.x == 0) box.size = mm2px(Vec(W_MM, 128.5f)); // Fallback if SVG fails
 
         for (int i=0; i<12; ++i) {
             float cx=7.5f+i*7.0f;
-            addParam(createLightParamCentered<MeloDicerLightSlider<GreenRedLight>>(
+            addParam(createLightParamCentered<MonsoonLightSlider<GreenRedLight>>(
                 mm2px(Vec(cx,59.75f)), module, SEMI0_PARAM+i, SEMI_LED_START+2*i));
         }
 
-        addParam(createLightParamCentered<VCVLightSlider<RedLight>>(mm2px(Vec(100.f,59.75f)), module, MeloDicerIds::OCT_LO_PARAM, MeloDicerIds::OCT_LO_LED));
-        addParam(createLightParamCentered<VCVLightSlider<RedLight>>(mm2px(Vec(108.f,59.75f)), module, MeloDicerIds::OCT_HI_PARAM, MeloDicerIds::OCT_HI_LED));
+        addParam(createLightParamCentered<VCVLightSlider<RedLight>>(mm2px(Vec(100.f,59.75f)), module, MonsoonIds::OCT_LO_PARAM, MonsoonIds::OCT_LO_LED));
+        addParam(createLightParamCentered<VCVLightSlider<RedLight>>(mm2px(Vec(108.f,59.75f)), module, MonsoonIds::OCT_HI_PARAM, MonsoonIds::OCT_HI_LED));
 
         // 16 step lights: Circular ring arrangement near top right
         {
@@ -91,67 +91,67 @@ MeloDicerWidget::MeloDicerWidget(MeloDicer* module) {
             for (int i = 0; i < 16; ++i) {
                 float ang = float(i) / 16.f * 2.f * M_PI - M_PI / 2.f;
                 float lx = RCX + RLED * std::cos(ang), ly = RCY + RLED * std::sin(ang);
-                if (i % 4 == 0) addChild(createLightCentered<SmallLight<RedLight>>(mm2px(Vec(lx, ly)), module, MeloDicerIds::STEP_LIGHTS_START + i));
-                else            addChild(createLightCentered<SmallLight<GreenLight>>(mm2px(Vec(lx, ly)), module, MeloDicerIds::STEP_LIGHTS_START + i));
+                if (i % 4 == 0) addChild(createLightCentered<SmallLight<RedLight>>(mm2px(Vec(lx, ly)), module, MonsoonIds::STEP_LIGHTS_START + i));
+                else            addChild(createLightCentered<SmallLight<GreenLight>>(mm2px(Vec(lx, ly)), module, MonsoonIds::STEP_LIGHTS_START + i));
             }
         }
 
         {
             const float MX = 168.f, LX = 163.f, Y_START = 54.f, v_spacing = 6.5f;
             // Add a single physical button for cycling modes
-            addParam(createParamCentered<TL1105>(mm2px(Vec(MX, 44.f)), module, MeloDicerIds::MODE_PARAM));
+            addParam(createParamCentered<TL1105>(mm2px(Vec(MX, 44.f)), module, MonsoonIds::MODE_PARAM));
             for (int i = 0; i < 4; ++i) {
                 // Place 4 lights vertically starting below the MODE button
-                addChild(createLightCentered<MediumLight<YellowLight>>(mm2px(Vec(LX, Y_START + i * v_spacing)), module, MeloDicerIds::MODE_A_LIGHT + i));
+                addChild(createLightCentered<MediumLight<YellowLight>>(mm2px(Vec(LX, Y_START + i * v_spacing)), module, MonsoonIds::MODE_A_LIGHT + i));
             }
         }
 
         const float JY=96.f, JYL=102.f,JX=100.f, JP=12.0f;
-        addParam(createParamCentered<TL1105>(mm2px(Vec( JX,JY)),module,MeloDicerIds::DICE_R_PARAM));
-        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec( JX,JYL)),module,MeloDicerIds::RHYTHM_DICE_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+JP,JY)),module,MeloDicerIds::DICE_M_PARAM));
-        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec( JX+JP,JYL)),module,MeloDicerIds::MELODY_DICE_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+2*JP,JY)),module,MeloDicerIds::LOCK_PARAM));
-        addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec( JX+2*JP,JYL)),module,MeloDicerIds::LOCK_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+3*JP,JY)),module,MeloDicerIds::MUTE_PARAM));
-        addChild(createLightCentered<MediumLight<RedLight>>(  mm2px(Vec( JX+3*JP,JYL)),module,MeloDicerIds::MUTE_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+4*JP,JY)),module,MeloDicerIds::RESET_BUTTON_PARAM));
-        addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec( JX+4*JP,JYL)),module,MeloDicerIds::RESET_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+5*JP,JY)),module,MeloDicerIds::RUN_GATE_PARAM));
-        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec( JX+5*JP,JYL)),module,MeloDicerIds::RUN_GATE_LIGHT));
+        addParam(createParamCentered<TL1105>(mm2px(Vec( JX,JY)),module,MonsoonIds::DICE_R_PARAM));
+        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec( JX,JYL)),module,MonsoonIds::RHYTHM_DICE_LIGHT));
+        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+JP,JY)),module,MonsoonIds::DICE_M_PARAM));
+        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec( JX+JP,JYL)),module,MonsoonIds::MELODY_DICE_LIGHT));
+        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+2*JP,JY)),module,MonsoonIds::LOCK_PARAM));
+        addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec( JX+2*JP,JYL)),module,MonsoonIds::LOCK_LIGHT));
+        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+3*JP,JY)),module,MonsoonIds::MUTE_PARAM));
+        addChild(createLightCentered<MediumLight<RedLight>>(  mm2px(Vec( JX+3*JP,JYL)),module,MonsoonIds::MUTE_LIGHT));
+        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+4*JP,JY)),module,MonsoonIds::RESET_BUTTON_PARAM));
+        addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec( JX+4*JP,JYL)),module,MonsoonIds::RESET_LIGHT));
+        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+5*JP,JY)),module,MonsoonIds::RUN_GATE_PARAM));
+        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec( JX+5*JP,JYL)),module,MonsoonIds::RUN_GATE_LIGHT));
 
-        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 88.f,112.f)),module,MeloDicerIds::RUN_GATE_INPUT));
-        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 98.f,112.f)),module,MeloDicerIds::RESET_TRIGGER_INPUT));
-        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec(108.f,112.f)),module,MeloDicerIds::SEED_INPUT));
-        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec(118.f,11.f)),module,MeloDicerIds::LENGTH_INPUT));
-        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec(128.f,112.f)),module,MeloDicerIds::OFFFSET_INPUT));
+        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 88.f,112.f)),module,MonsoonIds::RUN_GATE_INPUT));
+        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 98.f,112.f)),module,MonsoonIds::RESET_TRIGGER_INPUT));
+        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec(108.f,112.f)),module,MonsoonIds::SEED_INPUT));
+        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec(118.f,11.f)),module,MonsoonIds::LENGTH_INPUT));
+        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec(128.f,112.f)),module,MonsoonIds::OFFFSET_INPUT));
 
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 14.f,105.f)),module,MeloDicerIds::RUN_GATE_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 30.f,105.f)),module,MeloDicerIds::RESET_TRIGGER_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 46.f,105.f)),module,MeloDicerIds::SEED_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(62.f,105.f)),module,MeloDicerIds::LENGTH_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 78.f,105.f)),module,MeloDicerIds::OFFSET_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 14.f,105.f)),module,MonsoonIds::RUN_GATE_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 30.f,105.f)),module,MonsoonIds::RESET_TRIGGER_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 46.f,105.f)),module,MonsoonIds::SEED_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(62.f,105.f)),module,MonsoonIds::LENGTH_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 78.f,105.f)),module,MonsoonIds::OFFSET_INPUT));
 
-        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 14.f,120.5f)),module,MeloDicerIds::CLK_INPUT));
-        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 30.f,120.5f)),module,MeloDicerIds::GATE1_INPUT));
-        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 46.f,120.5f)),module,MeloDicerIds::GATE2_INPUT));
-        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 62.f,120.5f)),module,MeloDicerIds::CV1_INPUT));
-        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 78.f,120.5f)),module,MeloDicerIds::CV2_INPUT));
+        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 14.f,120.5f)),module,MonsoonIds::CLK_INPUT));
+        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 30.f,120.5f)),module,MonsoonIds::GATE1_INPUT));
+        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 46.f,120.5f)),module,MonsoonIds::GATE2_INPUT));
+        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 62.f,120.5f)),module,MonsoonIds::CV1_INPUT));
+        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 78.f,120.5f)),module,MonsoonIds::CV2_INPUT));
 
 
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec( 95.f,120.5f)),module,MeloDicerIds::SEED_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(111.f,120.5f)),module,MeloDicerIds::RUN_GATE_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(127.f,120.5f)),module,MeloDicerIds::RESET_TRIGGER_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(143.f,120.5f)),module,MeloDicerIds::GATE_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(159.f,120.5f)),module,MeloDicerIds::CV_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec( 95.f,120.5f)),module,MonsoonIds::SEED_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(111.f,120.5f)),module,MonsoonIds::RUN_GATE_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(127.f,120.5f)),module,MonsoonIds::RESET_TRIGGER_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(143.f,120.5f)),module,MonsoonIds::GATE_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(159.f,120.5f)),module,MonsoonIds::CV_OUTPUT));
 
         // Add warning lights for multiple expanders (placed near top-left)
-        addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(EXP_LIGHT_X, EXP_LIGHT_Y)), module, MeloDicerIds::SCALE_EXPANDER_LIGHT));
-        addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(EXP_LIGHT_X + EXP_LIGHT_S, EXP_LIGHT_Y)), module, MeloDicerIds::DNA_EXPANDER_LIGHT));
-        addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(EXP_LIGHT_X + 2 * EXP_LIGHT_S, EXP_LIGHT_Y)), module, MeloDicerIds::POLY_EXPANDER_LIGHT));
+        addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(EXP_LIGHT_X, EXP_LIGHT_Y)), module, MonsoonIds::SCALE_EXPANDER_LIGHT));
+        addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(EXP_LIGHT_X + EXP_LIGHT_S, EXP_LIGHT_Y)), module, MonsoonIds::DNA_EXPANDER_LIGHT));
+        addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(EXP_LIGHT_X + 2 * EXP_LIGHT_S, EXP_LIGHT_Y)), module, MonsoonIds::POLY_EXPANDER_LIGHT));
     }
 
-void MeloDicerWidget::applyTheme() {
+void MonsoonWidget::applyTheme() {
  // Panel
         bool lightTheme = getLightTheme();  // read from module
         auto panelPath = asset::plugin(pluginInstance,
@@ -166,7 +166,7 @@ void MeloDicerWidget::applyTheme() {
         // Since this is called once at construction (no existing widgets yet),
         // we just add fresh. On theme toggle, widgets are rebuilt via
         // removing children with the affected paramIds first.
-        auto* mod = dynamic_cast<MeloDicer*>(module);
+        auto* mod = dynamic_cast<Monsoon*>(module);
         // auto removeKnob = [&](int paramId) {
         //     for (auto it = children.begin(); it != children.end(); ) {
         //         auto* pw = dynamic_cast<ParamWidget*>(*it);
@@ -176,13 +176,13 @@ void MeloDicerWidget::applyTheme() {
         //     }
         // };
         // Remove the 7 top knobs (they get re-added below with correct type)
-        for (int pid : {(int)MeloDicerIds::NOTE_VALUE_PARAM,
-                        (int)MeloDicerIds::VARIATION_PARAM,
-                        (int)MeloDicerIds::LEGATO_PARAM,
-                        (int)MeloDicerIds::REST_PARAM,
-                        (int)MeloDicerIds::BPM_PARAM,
-                        (int)MeloDicerIds::PATTERN_LENGTH_PARAM,
-                        (int)MeloDicerIds::PATTERN_OFFSET_PARAM}) {
+        for (int pid : {(int)MonsoonIds::NOTE_VALUE_PARAM,
+                        (int)MonsoonIds::VARIATION_PARAM,
+                        (int)MonsoonIds::LEGATO_PARAM,
+                        (int)MonsoonIds::REST_PARAM,
+                        (int)MonsoonIds::BPM_PARAM,
+                        (int)MonsoonIds::PATTERN_LENGTH_PARAM,
+                        (int)MonsoonIds::PATTERN_OFFSET_PARAM}) {
             ParamWidget* pw = getParam(pid);
             if (pw) {
                 removeChild(pw);
@@ -192,26 +192,26 @@ void MeloDicerWidget::applyTheme() {
 
         if (lightTheme) {
             // Light theme: Use dark knobs
-            addParam(createParamCentered<RDM_KnobDarkLarge> (mm2px(Vec(14.f,24.f)),mod,MeloDicerIds::NOTE_VALUE_PARAM));
-            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(37.f,24.f)),mod,MeloDicerIds::VARIATION_PARAM));
-            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(60.f,24.f)),mod,MeloDicerIds::LEGATO_PARAM));
-            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(83.f,24.f)),mod,MeloDicerIds::REST_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>     (mm2px(Vec(110.f,24.f)),mod,MeloDicerIds::BPM_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>     (mm2px(Vec(133.f,24.f)),mod,MeloDicerIds::PATTERN_LENGTH_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>     (mm2px(Vec(156.f,24.f)),mod,MeloDicerIds::PATTERN_OFFSET_PARAM));
+            addParam(createParamCentered<RDM_KnobDarkLarge> (mm2px(Vec(14.f,24.f)),mod,MonsoonIds::NOTE_VALUE_PARAM));
+            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(37.f,24.f)),mod,MonsoonIds::VARIATION_PARAM));
+            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(60.f,24.f)),mod,MonsoonIds::LEGATO_PARAM));
+            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(83.f,24.f)),mod,MonsoonIds::REST_PARAM));
+            addParam(createParamCentered<RDM_KnobSmall>     (mm2px(Vec(110.f,24.f)),mod,MonsoonIds::BPM_PARAM));
+            addParam(createParamCentered<RDM_KnobSmall>     (mm2px(Vec(133.f,24.f)),mod,MonsoonIds::PATTERN_LENGTH_PARAM));
+            addParam(createParamCentered<RDM_KnobSmall>     (mm2px(Vec(156.f,24.f)),mod,MonsoonIds::PATTERN_OFFSET_PARAM));
         } else {
             // Dark theme: Use cream/light knobs
-            addParam(createParamCentered<RDM_KnobCreamMedium> (mm2px(Vec(14.f,24.f)),mod,MeloDicerIds::NOTE_VALUE_PARAM));
-            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(37.f,24.f)),mod,MeloDicerIds::VARIATION_PARAM));
-            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(60.f,24.f)),mod,MeloDicerIds::LEGATO_PARAM));
-            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(83.f,24.f)),mod,MeloDicerIds::REST_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>      (mm2px(Vec(110.f,24.f)),mod,MeloDicerIds::BPM_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>      (mm2px(Vec(133.f,24.f)),mod,MeloDicerIds::PATTERN_LENGTH_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>      (mm2px(Vec(156.f,24.f)),mod,MeloDicerIds::PATTERN_OFFSET_PARAM));
+            addParam(createParamCentered<RDM_KnobCreamMedium> (mm2px(Vec(14.f,24.f)),mod,MonsoonIds::NOTE_VALUE_PARAM));
+            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(37.f,24.f)),mod,MonsoonIds::VARIATION_PARAM));
+            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(60.f,24.f)),mod,MonsoonIds::LEGATO_PARAM));
+            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(83.f,24.f)),mod,MonsoonIds::REST_PARAM));
+            addParam(createParamCentered<RDM_KnobSmall>      (mm2px(Vec(110.f,24.f)),mod,MonsoonIds::BPM_PARAM));
+            addParam(createParamCentered<RDM_KnobSmall>      (mm2px(Vec(133.f,24.f)),mod,MonsoonIds::PATTERN_LENGTH_PARAM));
+            addParam(createParamCentered<RDM_KnobSmall>      (mm2px(Vec(156.f,24.f)),mod,MonsoonIds::PATTERN_OFFSET_PARAM));
         }
     }
 
-void MeloDicerWidget::draw(const DrawArgs& args) {
+void MonsoonWidget::draw(const DrawArgs& args) {
         NVGcontext* vg=args.vg;
 
         // Force a solid opaque background fill (alpha 255) to prevent transparency
@@ -238,7 +238,7 @@ void MeloDicerWidget::draw(const DrawArgs& args) {
         auto writeNvgText=[&](float x,float y,const char* t){ nvgText(vg,mm2px(x),mm2px(y),t,nullptr); };
         auto setNvgFontSize=[&](float mm){ nvgFontSize(vg,mm2px(mm)); };
 
-        setNvgFontSize(4.2f); fillNvgColour(200,200,200); writeNvgText(W_MM/2.f,5.5f,"Red Dot Modular  -  MeloDicer");
+        setNvgFontSize(4.2f); fillNvgColour(200,200,200); writeNvgText(W_MM/2.f,5.5f,"Dot Modular  -  Monsoon");
         setNvgFontSize(3.4f); fillNvgColour(200,200,200); writeNvgText(14,37.5f,"NOTE VALUE"); writeNvgText(37,37.5f,"VARIATION"); writeNvgText(60,37.5f,"LEGATO"); writeNvgText(83,37.5f,"REST");
 
         auto arcLabel = [&](float cx_mm, float cy_mm, float r_mm, float angle_deg, const char* text, int ri=160, int gi=160, int bi=160) {
@@ -322,19 +322,19 @@ void MeloDicerWidget::draw(const DrawArgs& args) {
         // for(int i=0;i<5;++i) L(sx[i],116.f-PR-1.8f,sl[i]);
     }
 
-void MeloDicerWidget::appendContextMenu(ui::Menu* menu) {
-        auto* m = dynamic_cast<MeloDicer*>(module);
+void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
+        auto* m = dynamic_cast<Monsoon*>(module);
         if (!m) return;
         menu->addChild(new ui::MenuSeparator);
         struct ThemeItem : ui::MenuItem {
-            MeloDicerWidget* widget = nullptr;
+            MonsoonWidget* widget = nullptr;
             void onAction(const event::Action&) override { widget->setLightTheme(!widget->getLightTheme()); widget->applyTheme(); }
             void step() override { rightText = widget->getLightTheme() ? "Light ✔" : "Dark ✔"; ui::MenuItem::step(); }
         };
         auto* themeItem = createMenuItem<ThemeItem>("Theme"); themeItem->widget = this; menu->addChild(themeItem);
         menu->addChild(new ui::MenuSeparator);
         struct IntItem : ui::MenuItem {
-            MeloDicer* module; int* target; int value;
+            Monsoon* module; int* target; int value;
             void onAction(const event::Action&) override { if (module && target) *target = value; }
             void step() override { rightText = (target && *target == value) ? "✔" : ""; ui::MenuItem::step(); }
         };
@@ -363,7 +363,7 @@ void MeloDicerWidget::appendContextMenu(ui::Menu* menu) {
 
             sub->addChild(new ui::MenuSeparator);
 
-            struct RMI : ui::MenuItem { MeloDicer* module=nullptr; int value=0;
+            struct RMI : ui::MenuItem { Monsoon* module=nullptr; int value=0;
               void onAction(const event::Action&) override { if(module) module->switchRhythmMode(); }
               void step() override { if(module) rightText=(module->rhythmMode==value)?"✔":""; ui::MenuItem::step(); } };
             { auto* l = new ui::MenuLabel; l->text = "Rhythm Mode"; sub->addChild(l);
@@ -372,7 +372,7 @@ void MeloDicerWidget::appendContextMenu(ui::Menu* menu) {
 
             sub->addChild(new ui::MenuSeparator);
 
-            struct MMI : ui::MenuItem { MeloDicer* module=nullptr; int value=0;
+            struct MMI : ui::MenuItem { Monsoon* module=nullptr; int value=0;
               void onAction(const event::Action&) override { if(module) module->switchMelodyMode(); }
               void step() override { if(module) rightText=(module->melodyMode==value)?"✔":""; ui::MenuItem::step(); } };
             { auto* l = new ui::MenuLabel; l->text = "Melody Mode"; sub->addChild(l);
@@ -448,7 +448,7 @@ void MeloDicerWidget::appendContextMenu(ui::Menu* menu) {
                 const char* noteNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
                 for (int i = 0; i < 12; i++) {
                     struct RootItem : ui::MenuItem {
-                        MeloDicer* module; int value;
+                        Monsoon* module; int value;
                         void onAction(const event::Action&) override { 
                             if (module->scaleManager) { module->scaleManager->scaleRoot = value; module->scaleManager->updateScaleMask(); }
                         }
@@ -464,7 +464,7 @@ void MeloDicerWidget::appendContextMenu(ui::Menu* menu) {
                 int scaleIdx = 0;
                 for (const auto& scale : MONSOON_SCALES) {
                     struct ScaleItem : ui::MenuItem {
-                        MeloDicer* module; ScaleType scale; int index;
+                        Monsoon* module; ScaleType scale; int index;
                         void onAction(const event::Action&) override {
                             if (module->scaleManager) { module->scaleManager->lastSelectedScale = index; module->scaleManager->updateScaleMask(); }
                         }
@@ -482,14 +482,14 @@ void MeloDicerWidget::appendContextMenu(ui::Menu* menu) {
 
         menu->addChild(createSubmenuItem("Note Division and Clock", "", [=](ui::Menu* sub) {
             { auto* l = new ui::MenuLabel; l->text = "Note Variation"; sub->addChild(l);
-              struct MaskItem : ui::MenuItem { MeloDicer* module=nullptr; int bit=0;
+              struct MaskItem : ui::MenuItem { Monsoon* module=nullptr; int bit=0;
                 void onAction(const event::Action&) override { if(module) module->noteVariationMask ^= (1<<bit); }
                 void step() override { rightText=(module&&(module->noteVariationMask&(1<<bit)))?"✔":""; ui::MenuItem::step(); } };
               auto add=[&](const char* t,int b){auto* it=createMenuItem<MaskItem>(t);it->module=m;it->bit=b;sub->addChild(it);};
               add("Allow 1/8T",0); add("Allow 1/16T",1); add("Allow 1/32 & 1/32T",2); }
             sub->addChild(new ui::MenuSeparator);
             { auto* l = new ui::MenuLabel; l->text = "PPQN"; sub->addChild(l);
-              struct PItem : ui::MenuItem { MeloDicer* module=nullptr; int value=4;
+              struct PItem : ui::MenuItem { Monsoon* module=nullptr; int value=4;
                 void onAction(const event::Action&) override { if(module) module->ppqnSetting=value; }
                 void step() override { if(module) rightText=(module->ppqnSetting==value)?"✔":""; ui::MenuItem::step(); } };
               for (int v : {1,4,24}){auto* it=createMenuItem<PItem>(string::f("%d",v).c_str());it->module=m;it->value=v;sub->addChild(it);} }

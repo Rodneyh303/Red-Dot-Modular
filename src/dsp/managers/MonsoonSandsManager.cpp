@@ -1,13 +1,13 @@
-#include "MeloDicerDNAManager.hpp"
-#include "../../MeloDicer.hpp"
-#include "MeloDicerExpanderManager.hpp"
-#include "../../MeloDicerDNAExpander.hpp"
-#include "../../MeloDicerPolyVoiceExpander.hpp"
+#include "MonsoonSandsManager.hpp"
+#include "../../Monsoon.hpp"
+#include "MonsoonExpanderManager.hpp"
+#include "../../MonsoonSandsExpander.hpp"
+#include "../../MonsoonStraitsEastExpander.hpp"
 
 using namespace rack;
-using namespace MeloDicerIds;
+using namespace MonsoonIds;
 
-void DNAStrandManager::processDNA(const MeloDicerExpanderManager& expanderManager) {
+void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManager) {
     if (expanderManager.cachedDnaExpander) {
         auto processStrand = [&](int pLen, int iLen, int pOff, int iOff, int pRot, int& tLen, int& tOff, int& tRot) {
             float lCV = expanderManager.cachedDnaExpander->inputs[iLen].getNormalVoltage(0.f) * 1.6f;
@@ -78,55 +78,55 @@ void DNAStrandManager::processDNA(const MeloDicerExpanderManager& expanderManage
 
 // ──── Scramble Operations ────────────────────────────────────────────────
 
-void DNAStrandManager::scrambleRhythm() {
+void MonsoonSandsManager::scrambleRhythm() {
     patternEngine.rotateRhythm(random::u32() % 16);
     patternEngine.rotateVariation(random::u32() % 16);
     patternEngine.rotateLegato(random::u32() % 16);
     refreshVisualCache_();
 }
 
-void DNAStrandManager::scrambleMelody() {
+void MonsoonSandsManager::scrambleMelody() {
     patternEngine.rotateMelody(random::u32() % 16);
     patternEngine.rotateOctave(random::u32() % 16);
     refreshVisualCache_();
 }
 
-void DNAStrandManager::scrambleVariation() {
+void MonsoonSandsManager::scrambleVariation() {
     patternEngine.rotateVariation(random::u32() % 16);
     refreshVisualCache_();
 }
 
-void DNAStrandManager::scrambleAccent() {
+void MonsoonSandsManager::scrambleAccent() {
     patternEngine.rotateAccent(random::u32() % 16);
     refreshVisualCache_();
 }
 
-void DNAStrandManager::scrambleOctave() {
+void MonsoonSandsManager::scrambleOctave() {
     patternEngine.rotateOctave(random::u32() % 16);
     refreshVisualCache_();
 }
 
-void DNAStrandManager::scrambleLegato() {
+void MonsoonSandsManager::scrambleLegato() {
     patternEngine.rotateLegato(random::u32() % 16);
     refreshVisualCache_();
 }
 
-void DNAStrandManager::scrambleRhythmGroup() {
+void MonsoonSandsManager::scrambleRhythmGroup() {
     scrambleRhythm();  // Also scrambles variation + legato
 }
 
-void DNAStrandManager::scrambleMelodyGroup() {
+void MonsoonSandsManager::scrambleMelodyGroup() {
     scrambleMelody();  // Also scrambles octave
 }
 
-void DNAStrandManager::scrambleAll() {
+void MonsoonSandsManager::scrambleAll() {
     scrambleRhythm();
     scrambleMelody();
 }
 
 // ──── Reset Operations ───────────────────────────────────────────────────
 
-void DNAStrandManager::resetRhythm() {
+void MonsoonSandsManager::resetRhythm() {
     for (int i = 0; i < 16; ++i) {
         patternEngine.rhythmRandom[i]    = patternEngine.rhythmSource[i];
         patternEngine.variationRandom[i] = patternEngine.variationSource[i];
@@ -135,7 +135,7 @@ void DNAStrandManager::resetRhythm() {
     refreshVisualCache_();
 }
 
-void DNAStrandManager::resetMelody() {
+void MonsoonSandsManager::resetMelody() {
     for (int i = 0; i < 16; ++i) {
         patternEngine.melodyRandom[i] = patternEngine.melodySource[i];
         patternEngine.octaveRandom[i] = patternEngine.octaveSource[i];
@@ -143,50 +143,50 @@ void DNAStrandManager::resetMelody() {
     refreshVisualCache_();
 }
 
-void DNAStrandManager::resetVariation() {
+void MonsoonSandsManager::resetVariation() {
     for (int i = 0; i < 16; ++i) {
         patternEngine.variationRandom[i] = patternEngine.variationSource[i];
     }
     refreshVisualCache_();
 }
 
-void DNAStrandManager::resetAccent() {
+void MonsoonSandsManager::resetAccent() {
     for (int i = 0; i < 16; ++i) {
         patternEngine.accentRandom[i] = patternEngine.accentSource[i];
     }
     refreshVisualCache_();
 }
 
-void DNAStrandManager::resetOctave() {
+void MonsoonSandsManager::resetOctave() {
     for (int i = 0; i < 16; ++i) {
         patternEngine.octaveRandom[i] = patternEngine.octaveSource[i];
     }
     refreshVisualCache_();
 }
 
-void DNAStrandManager::resetLegato() {
+void MonsoonSandsManager::resetLegato() {
     for (int i = 0; i < 16; ++i) {
         patternEngine.legatoRandom[i] = patternEngine.legatoSource[i];
     }
     refreshVisualCache_();
 }
 
-void DNAStrandManager::resetRhythmGroup() {
+void MonsoonSandsManager::resetRhythmGroup() {
     resetRhythm();  // Also resets variation + legato
 }
 
-void DNAStrandManager::resetMelodyGroup() {
+void MonsoonSandsManager::resetMelodyGroup() {
     resetMelody();  // Also resets octave
 }
 
-void DNAStrandManager::resetAll() {
+void MonsoonSandsManager::resetAll() {
     resetRhythm();
     resetMelody();
 }
 
 // ──── Helper ─────────────────────────────────────────────────────────────
 
-void DNAStrandManager::refreshVisualCache_() {
+void MonsoonSandsManager::refreshVisualCache_() {
     // Minimal PatternInput for cache refresh
     // Only stepIndex matters; rest are unused for visual cache
     PatternInput dummy{};

@@ -1,5 +1,5 @@
-#include "MeloDicerTimingController.hpp"
-#include "../../MeloDicer.hpp"
+#include "MonsoonTimingController.hpp"
+#include "../../Monsoon.hpp"
 
 using namespace rack;
 

@@ -3,9 +3,9 @@
 #include "rack.hpp"
 #include "../engines/SequencerEngine.hpp"
 #include "../engines/ClockEngine.hpp"
-#include "MeloDicerParameterManager.hpp"
+#include "MonsoonParameterManager.hpp"
 
-struct MeloDicer; // Forward declaration
+struct Monsoon; // Forward declaration
 
 /**
  * ModeController
@@ -27,7 +27,7 @@ struct MeloDicer; // Forward declaration
  */
 class ModeController {
 public:
-    ModeController(MeloDicer* mainModule,
+    ModeController(Monsoon* mainModule,
                    SequencerEngine& engine,
                    const ClockEngine& clock,
                    ParameterManager& paramManager)
@@ -85,7 +85,7 @@ public:
     void updateLastStepIndex() { lastStepIndex = engine.stepIndex; }
     
 private:
-    MeloDicer* mainModule;
+    Monsoon* mainModule;
     SequencerEngine& engine;
     const ClockEngine& clock;
     ParameterManager& paramManager;

@@ -4,7 +4,7 @@
 
 using namespace rack;
 
-struct MeloDicer;
+struct Monsoon;
 
 struct RDM_KnobLarge : SvgKnob { RDM_KnobLarge(); };
 struct RDM_KnobMedium : SvgKnob { RDM_KnobMedium(); };
@@ -14,8 +14,8 @@ struct RDM_KnobDarkMedium : SvgKnob { RDM_KnobDarkMedium(); };
 struct RDM_KnobCreamLarge : SvgKnob { RDM_KnobCreamLarge(); };
 struct RDM_KnobCreamMedium : SvgKnob { RDM_KnobCreamMedium(); };
 
-struct MeloDicerWidget : ModuleWidget {
-    MeloDicerWidget(MeloDicer* module);
+struct MonsoonWidget : ModuleWidget {
+    MonsoonWidget(Monsoon* module);
 
     bool getLightTheme() const;
     void setLightTheme(bool v);
@@ -33,4 +33,4 @@ struct MeloDicerWidget : ModuleWidget {
     static constexpr float EXP_LIGHT_S = 5.f;
 };
 
-extern Model* modelMeloDicer;
+extern Model* modelMonsoon;

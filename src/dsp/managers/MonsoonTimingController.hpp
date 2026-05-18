@@ -2,7 +2,7 @@
 
 #include "rack.hpp"
 
-struct MeloDicer;
+struct Monsoon; // Forward declaration
 
 /**
  * TimingController
@@ -22,7 +22,7 @@ struct MeloDicer;
  */
 class TimingController {
 public:
-    TimingController(MeloDicer* mainModule)
+    TimingController(Monsoon* mainModule)
         : mainModule(mainModule) {}
     
     // ──── Run Gate Control ──────────────────────────────────────────────────
@@ -73,7 +73,7 @@ public:
     bool getGate2High() const { return lastGate2High; }
 
 private:
-    MeloDicer* mainModule;
+    Monsoon* mainModule;
     
     // Gate state
     bool resetArmed = false;

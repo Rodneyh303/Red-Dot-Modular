@@ -2,22 +2,22 @@
 #include <rack.hpp>
 
 // Forward declarations
-struct MeloDicerExpander;
-struct MeloDicerDNAExpander;
-struct MeloDicerPolyVoiceExpander;
-
-extern rack::Model* modelMeloDicerExpander;
-extern rack::Model* modelMeloDicerDNAExpander;
-extern rack::Model* modelMeloDicerPolyVoiceExpander;
+struct MonsoonInterchangeExpander;
+struct MonsoonSandsExpander;
+struct MonsoonStraitsEastExpander;
+    
+extern rack::Model* modelMonsoonInterchangeExpander;
+extern rack::Model* modelMonsoonSandsExpander;
+extern rack::Model* modelMonsoonStraitsEastExpander;
 
 /**
  * ExpanderManager handles the discovery and caching of MeloDicer expander modules.
  * It walks the left and right expansion chains to identify connected modules.
  */
-struct MeloDicerExpanderManager {
-    MeloDicerExpander* cachedScaleExpander = nullptr;
-    MeloDicerDNAExpander* cachedDnaExpander = nullptr;
-    MeloDicerPolyVoiceExpander* cachedPolyVoiceExpander = nullptr;
+struct MonsoonExpanderManager {
+    MonsoonInterchangeExpander* cachedScaleExpander = nullptr;
+    MonsoonSandsExpander* cachedDnaExpander = nullptr;
+    MonsoonStraitsEastExpander* cachedPolyVoiceExpander = nullptr;
 
     int scaleExpanderCount = 0;
     int dnaExpanderCount = 0;
@@ -36,15 +36,15 @@ struct MeloDicerExpanderManager {
             rack::Module* curr = start;
             int depth = 0;
             while (curr && depth < 8) {
-                if (curr->model == modelMeloDicerExpander) {
+                if (curr->model == modelMonsoonInterchangeExpander) {
                     // Model check ensures safe cast
-                    if (!cachedScaleExpander) cachedScaleExpander = reinterpret_cast<MeloDicerExpander*>(curr);
+                    if (!cachedScaleExpander) cachedScaleExpander = reinterpret_cast<MonsoonInterchangeExpander*>(curr);
                     scaleExpanderCount++;
-                } else if (curr->model == modelMeloDicerDNAExpander) {
-                    if (!cachedDnaExpander) cachedDnaExpander = reinterpret_cast<MeloDicerDNAExpander*>(curr);
+                } else if (curr->model == modelMonsoonSandsExpander) {
+                    if (!cachedDnaExpander) cachedDnaExpander = reinterpret_cast<MonsoonSandsExpander*>(curr);
                     dnaExpanderCount++;
-                } else if (curr->model == modelMeloDicerPolyVoiceExpander) {
-                    if (!cachedPolyVoiceExpander) cachedPolyVoiceExpander = reinterpret_cast<MeloDicerPolyVoiceExpander*>(curr);
+                } else if (curr->model == modelMonsoonStraitsEastExpander) {
+                    if (!cachedPolyVoiceExpander) cachedPolyVoiceExpander = reinterpret_cast<MonsoonStraitsEastExpander*>(curr);
                     polyExpanderCount++;
                 } else break;
                 curr = left ? curr->leftExpander.module : curr->rightExpander.module;

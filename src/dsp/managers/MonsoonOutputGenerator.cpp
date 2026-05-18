@@ -1,6 +1,6 @@
-#include "MeloDicerOutputGenerator.hpp"
+#include "MonsoonOutputGenerator.hpp"
 #include "../engines/SequencerEngine.hpp"
-#include "../../MeloDicer.hpp"
+#include "../../Monsoon.hpp"
 
 using namespace rack;
 
@@ -16,7 +16,7 @@ void OutputGenerator::generateOutputs(SequencerEngine& engine,
                                        engine::Output* outputs,
                                        float currentPitchV,
                                        bool muted) {
-    using namespace MeloDicerIds;
+    using namespace MonsoonIds;
     
     // Process main gate and apply mute
     float gateV = engine.gs.process(0.f);  // sampleTime not needed for state read

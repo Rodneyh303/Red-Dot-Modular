@@ -1,5 +1,5 @@
-#include "MeloDicerModeController.hpp"
-#include "../../MeloDicer.hpp"
+#include "MonsoonModeController.hpp"
+#include "../../Monsoon.hpp"
 
 using namespace rack;
 

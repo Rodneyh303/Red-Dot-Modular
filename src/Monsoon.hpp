@@ -1,15 +1,15 @@
 #pragma once
 
 /**
- * MeloDicer.hpp
- * Public interface for MeloDicer and its expanders.
+ * Monsoon.hpp
+ * Public interface for Monsoon and its expanders.
  *
  * Include this in:
- *   - plugin.cpp         (for modelMeloDicer)
+ *   - plugin.cpp         (for modelMonsoon)
  *   - any expander .cpp  (for ParamIds, InputIds, OutputIds, LightIds,
  *                          NoteVal, NOTEVALS, ExpanderMessage)
  *
- * MeloDicer.cpp itself also includes this so the enums are defined once.
+ * Monsoon.cpp itself also includes this so the enums are defined once.
  * PatternEngine.hpp and GateState.hpp are separate standalone headers
  * (no Rack dependency) used by the engine unit tests.
  */
@@ -24,16 +24,16 @@
 #include "dsp/engines/ClockEngine.hpp"
 #include "dsp/engines/PatternEngine.hpp"
 #include "dsp/engines/SequencerEngine.hpp"
-#include "dsp/managers/MeloDicerDNAManager.hpp"
-#include "dsp/managers/MeloDicerParameterManager.hpp"
-#include "dsp/managers/MeloDicerPersistenceManager.hpp"
-#include "dsp/managers/MeloDicerScaleManager.hpp"
-#include "dsp/managers/MeloDicerExpanderManager.hpp"
-#include "dsp/managers/MeloDicerModeController.hpp"
-#include "dsp/managers/MeloDicerUIManager.hpp"
-#include "dsp/managers/MeloDicerTimingController.hpp"
-#include "dsp/managers/MeloDicerCVRouter.hpp"
-#include "dsp/managers/MeloDicerOutputGenerator.hpp"
+#include "dsp/managers/MonsoonSandsManager.hpp"
+#include "dsp/managers/MonsoonParameterManager.hpp"
+#include "dsp/managers/MonsoonPersistenceManager.hpp"
+#include "dsp/managers/MonsoonScaleManager.hpp"
+#include "dsp/managers/MonsoonExpanderManager.hpp"
+#include "dsp/managers/MonsoonModeController.hpp"
+#include "dsp/managers/MonsoonUIManager.hpp"
+#include "dsp/managers/MonsoonTimingController.hpp"
+#include "dsp/managers/MonsoonCVRouter.hpp"
+#include "dsp/managers/MonsoonOutputGenerator.hpp"
 #include "dsp/gates/GateState.hpp"
 #include "dsp/engines/SequencerEngine.hpp"
 
@@ -42,9 +42,10 @@
 using namespace rack;
 
 extern Plugin* pluginInstance;
-struct MeloDicerExpander;
-struct MeloDicerPolyVoiceExpander; // Forward declaration for the new expander
-struct MeloDicerDNAExpander;
+struct MonsoonInterchangeExpander;
+struct MonsoonStraitsEastExpander; // Forward declaration for the new expander
+struct MonsoonSandsExpander;
+
 // Minimal clamp helper for C++11 (no std::clamp)
 template <typename T>
 static inline T clampv(T v, T lo, T hi) {
@@ -53,12 +54,12 @@ static inline T clampv(T v, T lo, T hi) {
     return v;
 }
 
-#include "MeloDicerWidget.hpp"
+#include "MonsoonWidget.hpp"
 
 // ── Parameter IDs ─────────────────────────────────────────────────────────────
 // Stable integer values expanders can use to address params[] / inputs[] etc.
-// Keep in sync with the enums inside struct MeloDicer.
-namespace MeloDicerIds {
+// Keep in sync with the enums inside struct Monsoon.
+namespace MonsoonIds {
 
     enum ParamIds {
         NOTE_VALUE_PARAM = 0,
@@ -270,19 +271,19 @@ namespace MeloDicerIds {
         NUM_LIGHTS
     };
 
-} // namespace MeloDicerIds
+} // namespace MonsoonIds
 
 // ── Expander message structs ───────────────────────────────────────────────────
-// Place data here that MeloDicer needs to send to / receive from expanders.
+// Place data here that Monsoon needs to send to / receive from expanders.
 // Rack passes these via Module::leftExpander.producerMessage /
 // Module::rightExpander.producerMessage each process() call.
 //
 // Convention:
-//   Right expander (e.g. extra CV outputs): MeloDicer writes → expander reads
-//   Left expander  (e.g. extra inputs):     expander writes  → MeloDicer reads
+//   Right expander (e.g. extra CV outputs): Monsoon writes → expander reads
+//   Left expander  (e.g. extra inputs):     expander writes  → Monsoon reads
 
 // Sent rightward each sample — expander reads this
-struct MeloDicerRightMessage {
+struct MonsoonRightMessage {
     // Current playback state (useful for display or CV generation expanders)
     float currentPitchV    = 0.f;  // 1V/oct output voltage
     int   currentSemitone  = -1;   // 0..11, -1 = none
@@ -303,7 +304,7 @@ struct MeloDicerRightMessage {
 };
 
 // Sent leftward each sample — MeloDicer reads this from a left expander
-struct MeloDicerLeftMessage {
+struct MoonsoonLeftMessage {
     // Extra CV inputs an expander might provide
     bool  hasExtraGate   = false;
     float extraGateV     = 0.f;
@@ -325,7 +326,7 @@ struct MeloDicerLeftMessage {
 
 
 // ------------------------------- Module --------------------------------------
-struct MeloDicer : Module {
+struct Monsoon : Module {
     ClockEngine clock;
 
     int cv1Mode = 0;
@@ -336,12 +337,12 @@ struct MeloDicer : Module {
     bool restartOnUnmute = false;
     int lastModeSelect = -1;
     bool lightTheme = false;
-    MeloDicerExpanderManager expanderManager;
+    MonsoonExpanderManager expanderManager;
     dsp::ClockDivider lightDivider;
     dsp::ClockDivider controlDivider; // For DNA modulation at "Control Rate"
 
     SequencerEngine engine;
-    DNAStrandManager dnaManager{engine}; // Always valid
+    MonsoonSandsManager dnaManager{engine}; // Always valid
     std::unique_ptr<ParameterManager> paramManager;
     std::unique_ptr<ScaleManager> scaleManager;
     std::unique_ptr<ModeController> modeController; // Corrected name
@@ -433,7 +434,7 @@ struct MeloDicer : Module {
     float cachedResetBtn = 0.f;
     float cachedPolyRest[7] = {0.f};
 
-    MeloDicer();
+    Monsoon();
 
     void updateExpanderPointers();
     void initialize();
@@ -498,7 +499,7 @@ struct MeloDicer : Module {
     // - executeModeD()  → modeController->executeModeD()
 };
 
-extern Model* modelMeloDicer;
-extern Model* modelMeloDicerExpander;
-extern Model* modelMeloDicerDNAExpander;
-extern Model* modelMeloDicerPolyVoiceExpander; // Declare new expander model
+extern Model* modelMonsoon;
+extern Model* modelMonsoonInterchangeExpander;
+extern Model* modelMonsoonSandsExpander;
+extern Model* modelMonsoonStraitsEastExpander; // Declare new expander model

@@ -1,17 +1,17 @@
-#include "MeloDicerUIManager.hpp"
-#include "../../MeloDicer.hpp"
-#include "../../MeloDicerExpander.hpp"
-#include "../../MeloDicerPolyVoiceExpander.hpp"
+#include "MonsoonUIManager.hpp"
+#include "../../Monsoon.hpp"
+#include "../../MonsoonInterchangeExpander.hpp"
+#include "../../MonsoonStraitsEastExpander.hpp"
 
 using namespace rack;
-using namespace MeloDicerIds;
+using namespace MonsoonIds;
 
 // ──── Status Light Updates ──────────────────────────────────────────────────
 
 void UIManager::updateDiceLights(bool rhythmSeedPending, bool melodySeedPending) {
     if (!mainModule) return;
     auto& lights = mainModule->lights;
-    using namespace MeloDicerIds;
+    using namespace MonsoonIds;
     
     lights[RHYTHM_DICE_LIGHT].setBrightness(rhythmSeedPending ? 1.f : 0.1f);
     lights[MELODY_DICE_LIGHT].setBrightness(melodySeedPending ? 1.f : 0.1f);
@@ -20,7 +20,7 @@ void UIManager::updateDiceLights(bool rhythmSeedPending, bool melodySeedPending)
 void UIManager::updateLockLight(bool locked) {
     if (!mainModule) return;
     auto& lights = mainModule->lights;
-    using namespace MeloDicerIds;
+    using namespace MonsoonIds;
     
     lights[LOCK_LIGHT].setBrightness(locked ? 1.f : 0.f);
 }
@@ -28,7 +28,7 @@ void UIManager::updateLockLight(bool locked) {
 void UIManager::updateMuteLight(bool muted) {
     if (!mainModule) return;
     auto& lights = mainModule->lights;
-    using namespace MeloDicerIds;
+    using namespace MonsoonIds;
     
     lights[MUTE_LIGHT].setBrightness(muted ? 1.f : 0.f);
 }
@@ -36,7 +36,7 @@ void UIManager::updateMuteLight(bool muted) {
 void UIManager::updateRunGateLight(bool runGateActive) {
     if (!mainModule) return;
     auto& lights = mainModule->lights;
-    using namespace MeloDicerIds;
+    using namespace MonsoonIds;
     
     lights[RUN_GATE_LIGHT].setBrightness(runGateActive ? 1.f : 0.f);
 }
@@ -44,7 +44,7 @@ void UIManager::updateRunGateLight(bool runGateActive) {
 void UIManager::updateResetLight(bool resetArmed, float sampleTime) {
     if (!mainModule) return;
     auto& lights = mainModule->lights;
-    using namespace MeloDicerIds;
+    using namespace MonsoonIds;
     
     lights[RESET_LIGHT].setBrightnessSmooth(resetArmed ? 1.f : 0.f, sampleTime);
 }
@@ -63,7 +63,7 @@ void UIManager::setExpanderLight_(int lightId, int count) {
 
 void UIManager::updateExpanderLights(int scaleCount, int dnaCount, int polyCount) {
     if (!mainModule) return;
-    using namespace MeloDicerIds;
+    using namespace MonsoonIds;
     
     setExpanderLight_(SCALE_EXPANDER_LIGHT, scaleCount);
     setExpanderLight_(DNA_EXPANDER_LIGHT, dnaCount);
@@ -75,7 +75,7 @@ void UIManager::updateExpanderLights(int scaleCount, int dnaCount, int polyCount
 void UIManager::updateModeLights(int currentMode, int& lastMode) {
     if (!mainModule) return;
     auto& lights = mainModule->lights;
-    using namespace MeloDicerIds;
+    using namespace MonsoonIds;
     
     // Only update if mode changed to avoid redundant updates
     if (currentMode != lastMode) {
@@ -92,7 +92,7 @@ void UIManager::updateModeLights(int currentMode, int& lastMode) {
 void UIManager::updateStepLights(const float* stepBrightness, int count) {
     if (!mainModule) return;
     auto& lights = mainModule->lights;
-    using namespace MeloDicerIds;
+    using namespace MonsoonIds;
     
     // Update 16 step ring lights
     for (int i = 0; i < 16 && i < count; ++i) {
@@ -105,7 +105,7 @@ void UIManager::updateStepLights(const float* stepBrightness, int count) {
 void UIManager::updateSemitoneFlashLights(const float* semiLedBrightness, int count) {
     if (!mainModule) return;
     auto& lights = mainModule->lights;
-    using namespace MeloDicerIds;
+    using namespace MonsoonIds;
     
     // Update red channel (ch1) for each semitone
     // Green channel (ch0) is handled by the VCVLightSlider widget automatically
@@ -119,7 +119,7 @@ void UIManager::updateSemitoneFlashLights(const float* semiLedBrightness, int co
 bool UIManager::processDiceButtons(bool& rhythmTriggered, bool& melodyTriggered) {
     if (!mainModule) return false;
     auto& params = mainModule->params;
-    using namespace MeloDicerIds;
+    using namespace MonsoonIds;
     
     rhythmTriggered = diceRTrigger.process(params[DICE_R_PARAM].getValue());
     melodyTriggered = diceMTrigger.process(params[DICE_M_PARAM].getValue());
@@ -130,7 +130,7 @@ bool UIManager::processDiceButtons(bool& rhythmTriggered, bool& melodyTriggered)
 bool UIManager::processLockButton() {
     if (!mainModule) return false;
     auto& params = mainModule->params;
-    using namespace MeloDicerIds;
+    using namespace MonsoonIds;
     
     return lockTrigger.process(params[LOCK_PARAM].getValue());
 }
@@ -138,7 +138,7 @@ bool UIManager::processLockButton() {
 bool UIManager::processMuteButton() {
     if (!mainModule) return false;
     auto& params = mainModule->params;
-    using namespace MeloDicerIds;
+    using namespace MonsoonIds;
     
     return muteTrigger.process(params[MUTE_PARAM].getValue());
 }
@@ -146,7 +146,7 @@ bool UIManager::processMuteButton() {
 bool UIManager::processModeButton(int& modeSelect) {
     if (!mainModule) return false;
     auto& params = mainModule->params;
-    using namespace MeloDicerIds;
+    using namespace MonsoonIds;
     
     if (modeTrigger.process(params[MODE_PARAM].getValue())) {
         modeSelect = (modeSelect + 1) % 4;

@@ -1,5 +1,5 @@
-#include "MeloDicerCVRouter.hpp"
-#include "../../MeloDicer.hpp"
+#include "MonsoonCVRouter.hpp"
+#include "../../Monsoon.hpp"
 
 using namespace rack;
 

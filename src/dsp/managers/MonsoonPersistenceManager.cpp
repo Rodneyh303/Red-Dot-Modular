@@ -1,9 +1,9 @@
-#include "MeloDicerPersistenceManager.hpp"
-#include "../../MeloDicer.hpp"
+#include "MonsoonPersistenceManager.hpp"
+#include "../../Monsoon.hpp"
 
 using namespace rack;
 
-json_t* PersistenceManager::toJson(MeloDicer* m) {
+json_t* PersistenceManager::toJson(Monsoon* m) {
     if (!m) return nullptr;
 
     json_t* root = json_object();
@@ -96,7 +96,7 @@ json_t* PersistenceManager::toJson(MeloDicer* m) {
     return root;
 }
 
-void PersistenceManager::fromJson(MeloDicer* m, json_t* root) {
+void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     if (!m || !root) return;
 
     // ── Settings and Modes ──

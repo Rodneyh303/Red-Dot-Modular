@@ -1,6 +1,6 @@
-#include "MeloDicerScaleManager.hpp"
-#include "../../MeloDicer.hpp"
-#include "MeloDicerParameterManager.hpp"
+#include "MonsoonScaleManager.hpp"
+#include "../../Monsoon.hpp"
+#include "MonsoonParameterManager.hpp"
 
 using namespace rack;
 
@@ -33,7 +33,7 @@ const std::vector<ScaleType> MONSOON_SCALES = {
 
 void ScaleManager::updateScaleMask() {
     if (!module) return;
-    using namespace MeloDicerIds;
+    using namespace MonsoonIds;
 
     activeScaleMask = calculateMask(scaleRoot, lastSelectedScale);
 

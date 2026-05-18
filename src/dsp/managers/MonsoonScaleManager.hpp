@@ -11,7 +11,7 @@ struct ScaleType {
 
 extern const std::vector<ScaleType> MONSOON_SCALES;
 
-struct MeloDicer;
+struct Monsoon;
 class ParameterManager;
 
 /**
@@ -26,7 +26,7 @@ public:
     bool lockScaleNotes = false;
     uint16_t activeScaleMask = 0xFFF;
 
-    ScaleManager(MeloDicer* module) : module(module) {}
+    ScaleManager(Monsoon* module) : module(module) {}
 
     /// Recalculates the mask and applies fader locks/redistribution if enabled
     void updateScaleMask();
@@ -49,5 +49,5 @@ public:
     static void redistributeWeights(uint16_t mask, float* weights);
 
 private:
-    MeloDicer* module;
+    Monsoon* module;
 };

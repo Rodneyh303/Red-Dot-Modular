@@ -1,12 +1,12 @@
 #include <rack.hpp>
-#include "MeloDicerExpander.hpp"
+#include "MonsoonInterchangeExpander.hpp"
 
 using namespace rack;
 
-extern Model* modelMeloDicer;
+extern Model* modelMonsoon;
 
-struct MeloDicerExpanderWidget : ModuleWidget {
-    MeloDicerExpanderWidget(MeloDicerExpander* module) {
+struct MonsoonInterchangeExpanderWidget : ModuleWidget {
+    MonsoonInterchangeExpanderWidget(MonsoonInterchangeExpander* module) {
         setModule(module);
         setPanel(APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/MeloDicer_Expander3.svg")));
 
@@ -25,18 +25,18 @@ struct MeloDicerExpanderWidget : ModuleWidget {
             float knobX = jackX + 7.5f;
             float rowY = 25.0f + (row * 15.0f);
 
-            addInput(createInputCentered<PJ301MPort>(mm2px(Vec(jackX, rowY)), module, MeloDicerIds::EXPANDER_SEMI_CV_INPUT_0 + i));
-            addParam(createParamCentered<Trimpot>(mm2px(Vec(knobX, rowY)), module, MeloDicerIds::EXPANDER_SEMI_ATTENUVERTER_0 + i));
+            addInput(createInputCentered<PJ301MPort>(mm2px(Vec(jackX, rowY)), module, MonsoonIds::EXPANDER_SEMI_CV_INPUT_0 + i));
+            addParam(createParamCentered<Trimpot>(mm2px(Vec(knobX, rowY)), module, MonsoonIds::EXPANDER_SEMI_ATTENUVERTER_0 + i));
         }
         
         // ── Octave Section (Bottom) ──────────────────────────────────────────
         // Align with the last row of semitone CVs (row 5, which is index 5 for 0-indexed rows)
         float octY = 25.0f + (5 * 15.0f); // This is 100.0f
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(14.0f, octY)), module, MeloDicerIds::EXPANDER_OCT_LO_CV_INPUT)); // OCT LO Jack
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(21.5f, octY)), module, MeloDicerIds::EXPANDER_OCT_LO_ATTENUVERTER)); // OCT LO Knob
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(14.0f, octY)), module, MonsoonIds::EXPANDER_OCT_LO_CV_INPUT)); // OCT LO Jack
+        addParam(createParamCentered<Trimpot>(mm2px(Vec(21.5f, octY)), module, MonsoonIds::EXPANDER_OCT_LO_ATTENUVERTER)); // OCT LO Knob
         
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(34.0f, octY)), module, MeloDicerIds::EXPANDER_OCT_HI_CV_INPUT)); // OCT HI Jack
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(41.5f, octY)), module, MeloDicerIds::EXPANDER_OCT_HI_ATTENUVERTER)); // OCT HI Knob
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(34.0f, octY)), module, MonsoonIds::EXPANDER_OCT_HI_CV_INPUT)); // OCT HI Jack
+        addParam(createParamCentered<Trimpot>(mm2px(Vec(41.5f, octY)), module, MonsoonIds::EXPANDER_OCT_HI_ATTENUVERTER)); // OCT HI Knob
     }
 
     void draw(const DrawArgs& args) override {
@@ -86,4 +86,4 @@ struct MeloDicerExpanderWidget : ModuleWidget {
     }
 };
 
-Model* modelMeloDicerExpander = createModel<MeloDicerExpander, MeloDicerExpanderWidget>("MeloDicerExpander");
+Model* modelMonsoonInterchangeExpander = createModel<MonsoonInterchangeExpander, MonsoonInterchangeExpanderWidget>("MonsoonInterchangeExpander");
