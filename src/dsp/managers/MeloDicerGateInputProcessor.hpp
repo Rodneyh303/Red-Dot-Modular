@@ -3,7 +3,7 @@
 #include "rack.hpp"
 
 /**
- * TimingController
+ * GateInputProcessor
  * 
  * Encapsulates all gate-based timing and control logic.
  * 
@@ -15,12 +15,12 @@
  *   5. Gate2 assignment handling (4 modes)
  *   6. Gate rise/fall edge detection
  * 
- * Design: TimingController manages gate state and triggers; orchestrates how
+ * Design: GateInputProcessor manages gate state and triggers; orchestrates how
  * gates affect sequencer state (mode switching, seeding, mute, restart, etc.).
  */
-class TimingController {
+class GateInputProcessor {
 public:
-    TimingController(rack::engine::Module* mainModule)
+    GateInputProcessor(rack::engine::Module* mainModule)
         : mainModule(mainModule) {}
     
     // ──── Run Gate Control ──────────────────────────────────────────────────

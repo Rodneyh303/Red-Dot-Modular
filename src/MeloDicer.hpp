@@ -28,7 +28,7 @@
 #include "dsp/managers/MeloDicerParameterManager.hpp"
 #include "dsp/managers/MeloDicerModeController.hpp"
 #include "dsp/managers/MeloDicerUIManager.hpp"
-#include "dsp/managers/MeloDicerTimingController.hpp"
+#include "dsp/managers/MeloDicerGateInputProcessor.hpp"
 #include "dsp/managers/MeloDicerCVRouter.hpp"
 #include "dsp/managers/MeloDicerOutputGenerator.hpp"
 #include "dsp/gates/GateState.hpp"
@@ -349,7 +349,7 @@ struct MeloDicer : Module {
     std::unique_ptr<ParameterManager> paramManager;  // Initialized in constructor
     std::unique_ptr<ModeController> modeController;  // Initialized in constructor
     std::unique_ptr<UIManager> uiManager;  // Initialized in constructor
-    std::unique_ptr<TimingController> timingController;  // Initialized in constructor
+    std::unique_ptr<GateInputProcessor> gateInputProcessor;  // Initialized in constructor
     std::unique_ptr<CVRouter> cvRouter;  // Initialized in constructor
     std::unique_ptr<OutputGenerator> outputGenerator;  // Initialized in constructor
 

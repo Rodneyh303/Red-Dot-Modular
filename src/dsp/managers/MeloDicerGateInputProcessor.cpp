@@ -1,16 +1,16 @@
-#include "MeloDicerTimingController.hpp"
+#include "MeloDicerGateInputProcessor.hpp"
 
 using namespace rack;
 
 // ──── Helper: Gate High Detection ───────────────────────────────────────────
 
-bool TimingController::gateHigh_(float v, float threshold) {
+bool GateInputProcessor::gateHigh_(float v, float threshold) {
     return v >= threshold;
 }
 
 // ──── Run Gate Processing ───────────────────────────────────────────────────
 
-bool TimingController::processRunGate(bool currentlyActive,
+bool GateInputProcessor::processRunGate(bool currentlyActive,
                                        float runGateInputV,
                                        float runGateButtonVal) {
     if (!mainModule) return currentlyActive;
@@ -26,13 +26,13 @@ bool TimingController::processRunGate(bool currentlyActive,
     return currentlyActive;
 }
 
-float TimingController::getResetPulseOutput(float sampleTime) {
+float GateInputProcessor::getResetPulseOutput(float sampleTime) {
     return resetPulse.process(sampleTime) ? 10.f : 0.f;
 }
 
 // ──── Reset Gate Processing ────────────────────────────────────────────────
 
-bool TimingController::processResetGate(float resetInputV, float resetButtonVal) {
+bool GateInputProcessor::processResetGate(float resetInputV, float resetButtonVal) {
     if (!mainModule) return false;
     
     bool resetTrigHigh = resetGateTrig.process(resetInputV, 0.1f, 2.f);
@@ -45,13 +45,13 @@ bool TimingController::processResetGate(float resetInputV, float resetButtonVal)
     return false;
 }
 
-void TimingController::clearReset() {
+void GateInputProcessor::clearReset() {
     resetArmed = false;
 }
 
 // ──── Gate Edge Detection ───────────────────────────────────────────────────
 
-TimingController::GateEdges TimingController::processGateEdges(float gate1V, float gate2V) {
+GateInputProcessor::GateEdges GateInputProcessor::processGateEdges(float gate1V, float gate2V) {
     bool gate1Now = gateHigh_(gate1V);
     bool gate2Now = gateHigh_(gate2V);
     
@@ -66,7 +66,7 @@ TimingController::GateEdges TimingController::processGateEdges(float gate1V, flo
 
 // ──── Gate1 Assignment Handling ─────────────────────────────────────────────
 
-void TimingController::handleGate1Assignment(
+void GateInputProcessor::handleGate1Assignment(
     int gate1Assign,
     bool gate1Rise,
     const std::function<void(int)>& onRhythmModeToggle,
@@ -97,7 +97,7 @@ void TimingController::handleGate1Assignment(
 
 // ──── Gate2 Assignment Handling ─────────────────────────────────────────────
 
-void TimingController::handleGate2Assignment(
+void GateInputProcessor::handleGate2Assignment(
     int gate2Assign,
     bool gate2Rise,
     bool gate2High,

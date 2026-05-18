@@ -146,7 +146,7 @@ MeloDicer::MeloDicer() {
         paramManager = std::unique_ptr<ParameterManager>(new ParameterManager(this, &cachedExpander, &cachedPolyVoiceExpander));
         modeController = std::unique_ptr<ModeController>(new ModeController(engine, clock, *paramManager));
         uiManager = std::unique_ptr<UIManager>(new UIManager(this, lightDivider));
-        timingController = std::unique_ptr<TimingController>(new TimingController(this));
+        gateInputProcessor = std::unique_ptr<GateInputProcessor>(new GateInputProcessor(this));
         cvRouter = std::unique_ptr<CVRouter>(new CVRouter());
         outputGenerator = std::unique_ptr<OutputGenerator>(new OutputGenerator());
 
@@ -752,52 +752,52 @@ void MeloDicer::process(const ProcessArgs& args) {
     );
     bpm = clock.bpm;  // keep module-level bpm in sync for note duration calculations
 
-    // ── Run/Reset Gate Processing (via TimingController) ──
-    if (timingController) {
+    // ── Run/Reset Gate Processing (via GateInputProcessor) ──
+    if (gateInputProcessor) {
         // Process run gate
-        runGateActive = timingController->processRunGate(
+        runGateActive = gateInputProcessor->processRunGate(
             runGateActive,
             inputs[RUN_GATE_INPUT].getVoltage(),
             params[RUN_GATE_PARAM].getValue()
         );
         
         // Process reset gate
-        timingController->processResetGate(
+        gateInputProcessor->processResetGate(
             inputs[RESET_TRIGGER_INPUT].getVoltage(),
             params[RESET_BUTTON_PARAM].getValue()
         );
         
-        resetArmed = timingController->isResetArmed();
+        resetArmed = gateInputProcessor->isResetArmed();
     }
     
     // Drive RESET_TRIGGER_OUTPUT as a 1ms pulse on reset
-    if (timingController) {
+    if (gateInputProcessor) {
         outputs[RESET_TRIGGER_OUTPUT].setVoltage(
-            timingController->getResetPulseOutput(args.sampleTime)
+            gateInputProcessor->getResetPulseOutput(args.sampleTime)
         );
     }
     
     // ── Handle Reset Trigger ──
     if (resetArmed && runGateActive) {
         handleRestart(/*manual=*/true, /*resetImmediate=*/true);
-        if (timingController) timingController->clearReset();
+        if (gateInputProcessor) gateInputProcessor->clearReset();
     } else if (!runGateActive && timingController) {
-        timingController->clearReset();
+        gateInputProcessor->clearReset();
     }
 
     // ── Gate Edge Detection ──
-    auto gateEdges = timingController ? timingController->processGateEdges(
+    auto gateEdges = gateInputProcessor ? gateInputProcessor->processGateEdges(
         inputs[GATE1_INPUT].getVoltage(),
         inputs[GATE2_INPUT].getVoltage()
-    ) : TimingController::GateEdges{false, false};
+    ) : GateInputProcessor::GateEdges{false, false};
     
     bool gate1Rise = gateEdges.gate1Rise;
     bool gate2Rise = gateEdges.gate2Rise;
 
-    // ── Gate Assignment Handling (via TimingController) ──
-    if (timingController) {
+    // ── Gate Assignment Handling (via GateInputProcessor) ──
+    if (gateInputProcessor) {
         // Gate 1 assignments
-        timingController->handleGate1Assignment(
+        gateInputProcessor->handleGate1Assignment(
             gate1Assign,
             gate1Rise,
             [this](int toggle) { rhythmMode = 1 - rhythmMode; },  // Toggle rhythm mode
@@ -813,10 +813,10 @@ void MeloDicer::process(const ProcessArgs& args) {
         );
         
         // Gate 2 assignments
-        timingController->handleGate2Assignment(
+        gateInputProcessor->handleGate2Assignment(
             gate2Assign,
             gate2Rise,
-            timingController->getGate2High(),
+            gateInputProcessor->getGate2High(),
             invertMuteLogic,
             [this](int toggle) { melodyMode = 1 - melodyMode; },  // Toggle melody mode
             [this]() {  // Reseed melody
