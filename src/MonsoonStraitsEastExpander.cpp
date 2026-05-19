@@ -33,23 +33,35 @@ struct MonsoonStraitsEastExpanderWidget : ModuleWidget {
             // Rest probability knob
             addParam(createParamCentered<Trimpot>(
                 mm2px(Vec(knobX, y)), module, MonsoonIds::POLY_REST_PARAM_1 + i));
+            // Rest modulation attenuverter
+            addParam(createParamCentered<Trimpot>(
+                mm2px(Vec(knobX + 10.0f, y)), module, MonsoonIds::POLY_REST_MOD_ATT_1 + i));
+            // Rest modulation input
+            addInput(createInputCentered<PJ301MPort>(
+                mm2px(Vec(knobX + 20.0f, y)), module, MonsoonIds::POLY_REST_MOD_CV_INPUT_1 + i));
             // Gate output
             addOutput(createOutputCentered<PJ301MPort>(
                 mm2px(Vec(outGateX, y)), module, POLY_GATE_OUT_1 + i));
             // CV (pitch) output
             addOutput(createOutputCentered<PJ301MPort>(
                 mm2px(Vec(outCvX, y)), module, POLY_CV_OUT_1 + i));
-            
-            // Individual Poly DNA Controls
-            addParam(createParamCentered<Trimpot>(mm2px(Vec(dnaLenX, y)), module, MonsoonIds::POLY_DNA_VOICE_1_LEN + i * 3));
-            addParam(createParamCentered<Trimpot>(mm2px(Vec(dnaOffX, y)), module, MonsoonIds::POLY_DNA_VOICE_1_OFF + i * 3));
-            addParam(createParamCentered<Trimpot>(mm2px(Vec(dnaRotX, y)), module, MonsoonIds::POLY_DNA_VOICE_1_ROT + i * 3));
+            // Accent output
+            addOutput(createOutputCentered<PJ301MPort>(
+                mm2px(Vec(outCvX + 10.0f, y)), module, POLY_ACCENT_OUT_1 + i));
         }
 
-        // Poly Rest CV Input (below the knobs)
+        // Poly Rest CV Input
         addInput(createInputCentered<PJ301MPort>(
             mm2px(Vec(knobX, startY + 7 * spacingY + 5.0f)),
             module, MonsoonIds::POLY_REST_CV_INPUT));
+        
+        // Poly outputs for voices 1-8
+        addOutput(createOutputCentered<PJ301MPort>(
+            mm2px(Vec(outGateX, startY + 7 * spacingY + 5.0f)),
+            module, POLY_GATE_1_8_OUT));
+        addOutput(createOutputCentered<PJ301MPort>(
+            mm2px(Vec(outCvX, startY + 7 * spacingY + 5.0f)),
+            module, POLY_CV_1_8_OUT));
     }
 
     void draw(const DrawArgs& args) override {
@@ -57,12 +69,9 @@ struct MonsoonStraitsEastExpanderWidget : ModuleWidget {
         nvgFontFaceId(args.vg, APP->window->uiFont->handle);
         nvgTextAlign(args.vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
         nvgFillColor(args.vg, nvgRGBA(0xdd, 0xdd, 0xdd, 0xff));
-        nvgFontSize(args.vg, mm2px(3.0f)); // Adjust font size for better fit
-        nvgText(args.vg, mm2px(15.0f), mm2px(15.0f), "POLY RESTS", nullptr);
-        nvgText(args.vg, mm2px(42.0f), mm2px(15.0f), "LEN", nullptr);
-        nvgText(args.vg, mm2px(52.0f), mm2px(15.0f), "OFF", nullptr);
-        nvgText(args.vg, mm2px(62.0f), mm2px(15.0f), "ROT", nullptr);
-        nvgText(args.vg, mm2px(52.0f), mm2px(10.0f), "POLY DNA", nullptr);
+        nvgFontSize(args.vg, mm2px(3.0f));
+        nvgText(args.vg, mm2px(15.0f), mm2px(10.0f), "STRAITS EAST", nullptr);
+        nvgText(args.vg, mm2px(15.0f), mm2px(15.0f), "VOICES 1-8", nullptr);
     }
 };
 

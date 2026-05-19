@@ -122,8 +122,33 @@ namespace MonsoonIds {
         POLY_REST_PARAM_5,
         POLY_REST_PARAM_6,
         POLY_REST_PARAM_7,
+        POLY_REST_PARAM_8,   // NEW (Phase 4): voices 9-16
+        POLY_REST_PARAM_9,
+        POLY_REST_PARAM_10,
+        POLY_REST_PARAM_11,
+        POLY_REST_PARAM_12,
+        POLY_REST_PARAM_13,
+        POLY_REST_PARAM_14,
+        POLY_REST_PARAM_15,
+        
+        // Rest Probability Modulation Attenuverters (15 voices) - NEW
+        POLY_REST_MOD_ATT_1,
+        POLY_REST_MOD_ATT_2,
+        POLY_REST_MOD_ATT_3,
+        POLY_REST_MOD_ATT_4,
+        POLY_REST_MOD_ATT_5,
+        POLY_REST_MOD_ATT_6,
+        POLY_REST_MOD_ATT_7,
+        POLY_REST_MOD_ATT_8,
+        POLY_REST_MOD_ATT_9,
+        POLY_REST_MOD_ATT_10,
+        POLY_REST_MOD_ATT_11,
+        POLY_REST_MOD_ATT_12,
+        POLY_REST_MOD_ATT_13,
+        POLY_REST_MOD_ATT_14,
+        POLY_REST_MOD_ATT_15,
 
-        // Poly DNA Window Controls (7 voices x 3 params = 21)
+        // Poly DNA Window Controls (15 voices x 3 params = 45) - MOVED TO SANDS
         POLY_DNA_VOICE_1_LEN,
         POLY_DNA_VOICE_1_OFF,
         POLY_DNA_VOICE_1_ROT,
@@ -145,6 +170,30 @@ namespace MonsoonIds {
         POLY_DNA_VOICE_7_LEN,
         POLY_DNA_VOICE_7_OFF,
         POLY_DNA_VOICE_7_ROT,
+        POLY_DNA_VOICE_8_LEN,   // NEW (Phase 4): voices 9-16
+        POLY_DNA_VOICE_8_OFF,
+        POLY_DNA_VOICE_8_ROT,
+        POLY_DNA_VOICE_9_LEN,
+        POLY_DNA_VOICE_9_OFF,
+        POLY_DNA_VOICE_9_ROT,
+        POLY_DNA_VOICE_10_LEN,
+        POLY_DNA_VOICE_10_OFF,
+        POLY_DNA_VOICE_10_ROT,
+        POLY_DNA_VOICE_11_LEN,
+        POLY_DNA_VOICE_11_OFF,
+        POLY_DNA_VOICE_11_ROT,
+        POLY_DNA_VOICE_12_LEN,
+        POLY_DNA_VOICE_12_OFF,
+        POLY_DNA_VOICE_12_ROT,
+        POLY_DNA_VOICE_13_LEN,
+        POLY_DNA_VOICE_13_OFF,
+        POLY_DNA_VOICE_13_ROT,
+        POLY_DNA_VOICE_14_LEN,
+        POLY_DNA_VOICE_14_OFF,
+        POLY_DNA_VOICE_14_ROT,
+        POLY_DNA_VOICE_15_LEN,
+        POLY_DNA_VOICE_15_OFF,
+        POLY_DNA_VOICE_15_ROT,
 
         NUM_PARAMS
     };
@@ -194,6 +243,41 @@ namespace MonsoonIds {
 
         // Poly Voice Expander Inputs
         POLY_REST_CV_INPUT,
+        
+        // Poly Rest Probability Modulation (15 voices × 2 = 30 inputs) - NEW
+        POLY_REST_MOD_CV_INPUT_1,
+        POLY_REST_MOD_CV_INPUT_2,
+        POLY_REST_MOD_CV_INPUT_3,
+        POLY_REST_MOD_CV_INPUT_4,
+        POLY_REST_MOD_CV_INPUT_5,
+        POLY_REST_MOD_CV_INPUT_6,
+        POLY_REST_MOD_CV_INPUT_7,
+        POLY_REST_MOD_CV_INPUT_8,
+        POLY_REST_MOD_CV_INPUT_9,
+        POLY_REST_MOD_CV_INPUT_10,
+        POLY_REST_MOD_CV_INPUT_11,
+        POLY_REST_MOD_CV_INPUT_12,
+        POLY_REST_MOD_CV_INPUT_13,
+        POLY_REST_MOD_CV_INPUT_14,
+        POLY_REST_MOD_CV_INPUT_15,
+        
+        // Poly DNA CV Modulation (8 voices × 2 = 16 inputs) - MOVED TO SANDS
+        POLY_DNA_VOICE_8_LEN_INPUT,
+        POLY_DNA_VOICE_8_OFF_INPUT,
+        POLY_DNA_VOICE_9_LEN_INPUT,
+        POLY_DNA_VOICE_9_OFF_INPUT,
+        POLY_DNA_VOICE_10_LEN_INPUT,
+        POLY_DNA_VOICE_10_OFF_INPUT,
+        POLY_DNA_VOICE_11_LEN_INPUT,
+        POLY_DNA_VOICE_11_OFF_INPUT,
+        POLY_DNA_VOICE_12_LEN_INPUT,
+        POLY_DNA_VOICE_12_OFF_INPUT,
+        POLY_DNA_VOICE_13_LEN_INPUT,
+        POLY_DNA_VOICE_13_OFF_INPUT,
+        POLY_DNA_VOICE_14_LEN_INPUT,
+        POLY_DNA_VOICE_14_OFF_INPUT,
+        POLY_DNA_VOICE_15_LEN_INPUT,
+        POLY_DNA_VOICE_15_OFF_INPUT,
 
         NUM_INPUTS
     };
@@ -503,3 +587,5 @@ extern Model* modelMonsoon;
 extern Model* modelMonsoonInterchangeExpander;
 extern Model* modelMonsoonSandsExpander;
 extern Model* modelMonsoonStraitsEastExpander; // Declare new expander model
+extern Model* modelMonsoonStraitWestExpander;  // NEW (Phase 4): voices 9-16
+extern Model* modelMonsoonStraitSandsExpander; // NEW (Phase 6): poly DNA per-voice
