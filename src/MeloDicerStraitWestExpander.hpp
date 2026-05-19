@@ -1,82 +1,94 @@
 #pragma once
 
 #include "rack.hpp"
+#include "MeloDicer.hpp"
+
+using namespace rack;
+using namespace MeloDicerIds;
 
 /**
  * Straits West Expander - Voices 9-16
  * 
- * Extends MeloDicer polyphony from 8 voices (East) to 16 total voices.
- * Provides:
- *   • 8-voice poly outputs for voices 9-16
- *   • 16-voice aggregated outputs (all voices 1-16)
- *   • Voice probability modulation inputs (8 voices)
+ * Extends polyphony from 8 (East) to 16 total voices.
+ * Provides per-voice outputs and DNA control for voices 9-16.
  * 
- * VALIDATION: Only valid if Straits East expander is present
- * If East is not present, all outputs are zeroed and visual warning shown
+ * Uses parent MeloDicer's param/input IDs:
+ * • POLY_REST_PARAM_8-15 (voices 9-16 rest probability)
+ * • POLY_DNA_VOICE_8-15 with LEN/OFF/ROT (DNA controls)
+ * 
+ * NOTE: Parent MeloDicer::process() handles all logic (zero-delay)
  */
 
 namespace StraitWestExpanderIds {
-    // Modulation inputs for voice probability (voices 9-16, 8 inputs)
-    enum Input {
-        VOICE_9_PROB_MOD_IN = 0,
-        VOICE_10_PROB_MOD_IN,
-        VOICE_11_PROB_MOD_IN,
-        VOICE_12_PROB_MOD_IN,
-        VOICE_13_PROB_MOD_IN,
-        VOICE_14_PROB_MOD_IN,
-        VOICE_15_PROB_MOD_IN,
-        VOICE_16_PROB_MOD_IN,
-        NUM_INPUTS
-    };
-
-    // Attenuverters for voice probability (8 attenuverters)
-    enum Param {
-        VOICE_9_PROB_ATT = 0,
-        VOICE_10_PROB_ATT,
-        VOICE_11_PROB_ATT,
-        VOICE_12_PROB_ATT,
-        VOICE_13_PROB_ATT,
-        VOICE_14_PROB_ATT,
-        VOICE_15_PROB_ATT,
-        VOICE_16_PROB_ATT,
-        NUM_PARAMS
-    };
-
-    // Outputs
     enum Output {
-        POLY_GATE_9_16_OUT = 0,      // 8-voice poly gate (voices 9-16)
-        POLY_CV_9_16_OUT,             // 8-voice poly CV (voices 9-16)
-        POLY_GATE_1_16_OUT,           // 16-voice aggregated gate (all voices)
-        POLY_CV_1_16_OUT,             // 16-voice aggregated CV (all voices)
+        // Gate outputs (voices 9-16, 8 voices)
+        POLY_GATE_OUT_9 = 0,
+        POLY_GATE_OUT_10,
+        POLY_GATE_OUT_11,
+        POLY_GATE_OUT_12,
+        POLY_GATE_OUT_13,
+        POLY_GATE_OUT_14,
+        POLY_GATE_OUT_15,
+        POLY_GATE_OUT_16,
+        
+        // CV outputs (voices 9-16)
+        POLY_CV_OUT_9,
+        POLY_CV_OUT_10,
+        POLY_CV_OUT_11,
+        POLY_CV_OUT_12,
+        POLY_CV_OUT_13,
+        POLY_CV_OUT_14,
+        POLY_CV_OUT_15,
+        POLY_CV_OUT_16,
+        
+        // Accent outputs (voices 9-16)
+        POLY_ACCENT_OUT_9,
+        POLY_ACCENT_OUT_10,
+        POLY_ACCENT_OUT_11,
+        POLY_ACCENT_OUT_12,
+        POLY_ACCENT_OUT_13,
+        POLY_ACCENT_OUT_14,
+        POLY_ACCENT_OUT_15,
+        POLY_ACCENT_OUT_16,
+        
         NUM_OUTPUTS
     };
 };
 
 struct MeloDicerStraitWestExpander : Module {
     MeloDicerStraitWestExpander() {
-        config(StraitWestExpanderIds::NUM_PARAMS, StraitWestExpanderIds::NUM_INPUTS, StraitWestExpanderIds::NUM_OUTPUTS);
+        // Size to parent module's param/input counts
+        config(MeloDicerIds::NUM_PARAMS, MeloDicerIds::NUM_INPUTS, StraitWestExpanderIds::NUM_OUTPUTS);
         
-        // Configure attenuverter params for voice probability modulation
+        // Configure rest probability params for voices 9-16
         for (int i = 0; i < 8; i++) {
-            configParam(StraitWestExpanderIds::VOICE_9_PROB_ATT + i, -1.f, 1.f, 0.f, "Voice " + std::to_string(9 + i) + " Prob Attenuation");
+            configParam(POLY_REST_PARAM_8 + i, 0.f, 1.f, 0.1f,
+                       "Voice " + std::to_string(9 + i) + " Rest Probability");
+        }
+        
+        // Configure DNA params for voices 9-16 (8 voices × 3 = 24 params)
+        for (int i = 0; i < 8; i++) {
+            int voice = 9 + i;
+            int paramBase = POLY_DNA_VOICE_8_LEN + i * 3;
+            configParam(paramBase,     1.f, 16.f, 16.f, "Voice " + std::to_string(voice) + " DNA Length");
+            configParam(paramBase + 1, 0.f, 15.f,  0.f, "Voice " + std::to_string(voice) + " DNA Offset");
+            configParam(paramBase + 2, 0.f, 15.f,  0.f, "Voice " + std::to_string(voice) + " DNA Rotation");
+        }
+        
+        // Configure outputs for voices 9-16
+        for (int i = 0; i < 8; i++) {
+            int voice = 9 + i;
+            configOutput(StraitWestExpanderIds::POLY_GATE_OUT_9 + i,
+                        "Voice " + std::to_string(voice) + " Gate");
+            configOutput(StraitWestExpanderIds::POLY_CV_OUT_9 + i,
+                        "Voice " + std::to_string(voice) + " CV");
+            configOutput(StraitWestExpanderIds::POLY_ACCENT_OUT_9 + i,
+                        "Voice " + std::to_string(voice) + " Accent");
         }
     }
 
-    // TODO (Phase 4): Implement process() with:
-    // - Check for Straits East expander presence
-    // - Read probability modulation inputs (voices 9-16)
-    // - Output 8-voice and 16-voice poly signals
-    // - Aggregate voice 1-8 from East with voices 9-16
-
-    void process(const ProcessArgs& args) override {
-        // Placeholder for Phase 4 implementation
-        // Will read from parent MeloDicer via expander pointer
-    }
-
-    bool hasEastExpander() {
-        // TODO: Validate that Straits East expander is connected
-        return true; // Placeholder
-    }
+    // Zero-delay: parent module writes outputs directly
+    void process(const ProcessArgs& args) override {}
 };
 
 struct MeloDicerStraitWestExpanderWidget : ModuleWidget {
@@ -84,10 +96,10 @@ struct MeloDicerStraitWestExpanderWidget : ModuleWidget {
         setModule(module);
         setPanel(createPanel(asset::plugin(pluginInstance, "res/straits_west.svg")));
         
-        // TODO (Phase 4): Add UI elements
-        // - 8 attenuverter knobs for voice probability
-        // - 8 input jacks for modulation
-        // - 4 output jacks (8-voice gate/CV, 16-voice gate/CV)
+        // TODO (UI): Add module controls
+        // - 8 rest probability knobs
+        // - 24 DNA knobs (length, offset, rotation × 8 voices)
+        // - 24 outputs (gate, CV, accent × 8 voices)
     }
 };
 

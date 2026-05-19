@@ -1,131 +1,149 @@
 #pragma once
 
 #include "rack.hpp"
+#include "MeloDicer.hpp"
+
+using namespace rack;
+using namespace MeloDicerIds;
 
 /**
- * Straits Sands Expander - Poly DNA (Voices 2-16)
+ * Straits Sands Expander - Poly DNA Control (Voices 2-16)
  * 
- * Provides DNA (length offset + rotation) modulation for all 15 poly voices (voices 2-16).
- * Each voice has independent:
- *   • Length offset modulation input + attenuverter
- *   • Rotation modulation input + attenuverter
+ * Provides DNA parameter control and fun randomization across all 15 poly voices.
  * 
- * Modulation: Continuous (not quantized)
+ * Uses parent MeloDicer's param/input IDs:
+ * • POLY_DNA_VOICE_1-15: Length, Offset, Rotation controls per voice
+ * • POLY_DNA_VOICE_1-15_LEN/OFF_INPUT: CV modulation inputs
  * 
- * Behavior:
- *   • Works with Straits East (voices 2-8)
- *   • Works with Straits West (voices 9-16)
- *   • Works with both (all 15 voices)
- *   • No effect for voices without corresponding expanders
+ * Local params/inputs (expander-specific):
+ * • Scramble buttons: Randomize length & offset (fun exploration!)
+ * • Reset buttons: Restore defaults
+ * • Gate inputs for external control
+ * 
+ * NOTE: Parent MeloDicer::process() handles all logic (zero-delay)
  */
 
 namespace StraitSandsExpanderIds {
-    // Modulation inputs for DNA parameters (15 voices × 2 params = 30 inputs)
-    enum Input {
-        // Voices 2-8 (Straits East compatible)
-        VOICE_2_LENGTH_MOD_IN = 0,
-        VOICE_2_ROTATION_MOD_IN,
-        VOICE_3_LENGTH_MOD_IN,
-        VOICE_3_ROTATION_MOD_IN,
-        VOICE_4_LENGTH_MOD_IN,
-        VOICE_4_ROTATION_MOD_IN,
-        VOICE_5_LENGTH_MOD_IN,
-        VOICE_5_ROTATION_MOD_IN,
-        VOICE_6_LENGTH_MOD_IN,
-        VOICE_6_ROTATION_MOD_IN,
-        VOICE_7_LENGTH_MOD_IN,
-        VOICE_7_ROTATION_MOD_IN,
-        VOICE_8_LENGTH_MOD_IN,
-        VOICE_8_ROTATION_MOD_IN,
+    enum ParamId {
+        // Scramble buttons: randomize length & offset per voice (16 total)
+        SCRAMBLE_ALL_PARAM = 0,
+        SCRAMBLE_V2_PARAM,
+        SCRAMBLE_V3_PARAM,
+        SCRAMBLE_V4_PARAM,
+        SCRAMBLE_V5_PARAM,
+        SCRAMBLE_V6_PARAM,
+        SCRAMBLE_V7_PARAM,
+        SCRAMBLE_V8_PARAM,
+        SCRAMBLE_V9_PARAM,
+        SCRAMBLE_V10_PARAM,
+        SCRAMBLE_V11_PARAM,
+        SCRAMBLE_V12_PARAM,
+        SCRAMBLE_V13_PARAM,
+        SCRAMBLE_V14_PARAM,
+        SCRAMBLE_V15_PARAM,
+        SCRAMBLE_V16_PARAM,
         
-        // Voices 9-16 (Straits West compatible)
-        VOICE_9_LENGTH_MOD_IN,
-        VOICE_9_ROTATION_MOD_IN,
-        VOICE_10_LENGTH_MOD_IN,
-        VOICE_10_ROTATION_MOD_IN,
-        VOICE_11_LENGTH_MOD_IN,
-        VOICE_11_ROTATION_MOD_IN,
-        VOICE_12_LENGTH_MOD_IN,
-        VOICE_12_ROTATION_MOD_IN,
-        VOICE_13_LENGTH_MOD_IN,
-        VOICE_13_ROTATION_MOD_IN,
-        VOICE_14_LENGTH_MOD_IN,
-        VOICE_14_ROTATION_MOD_IN,
-        VOICE_15_LENGTH_MOD_IN,
-        VOICE_15_ROTATION_MOD_IN,
-        VOICE_16_LENGTH_MOD_IN,
-        VOICE_16_ROTATION_MOD_IN,
-        NUM_INPUTS
-    };
-
-    // Attenuverters for DNA modulation (15 voices × 2 = 30 attenuverters)
-    enum Param {
-        // Voices 2-8
-        VOICE_2_LENGTH_ATT = 0,
-        VOICE_2_ROTATION_ATT,
-        VOICE_3_LENGTH_ATT,
-        VOICE_3_ROTATION_ATT,
-        VOICE_4_LENGTH_ATT,
-        VOICE_4_ROTATION_ATT,
-        VOICE_5_LENGTH_ATT,
-        VOICE_5_ROTATION_ATT,
-        VOICE_6_LENGTH_ATT,
-        VOICE_6_ROTATION_ATT,
-        VOICE_7_LENGTH_ATT,
-        VOICE_7_ROTATION_ATT,
-        VOICE_8_LENGTH_ATT,
-        VOICE_8_ROTATION_ATT,
+        // Reset buttons: restore defaults per voice (16 total)
+        RESET_ALL_PARAM,
+        RESET_V2_PARAM,
+        RESET_V3_PARAM,
+        RESET_V4_PARAM,
+        RESET_V5_PARAM,
+        RESET_V6_PARAM,
+        RESET_V7_PARAM,
+        RESET_V8_PARAM,
+        RESET_V9_PARAM,
+        RESET_V10_PARAM,
+        RESET_V11_PARAM,
+        RESET_V12_PARAM,
+        RESET_V13_PARAM,
+        RESET_V14_PARAM,
+        RESET_V15_PARAM,
+        RESET_V16_PARAM,
         
-        // Voices 9-16
-        VOICE_9_LENGTH_ATT,
-        VOICE_9_ROTATION_ATT,
-        VOICE_10_LENGTH_ATT,
-        VOICE_10_ROTATION_ATT,
-        VOICE_11_LENGTH_ATT,
-        VOICE_11_ROTATION_ATT,
-        VOICE_12_LENGTH_ATT,
-        VOICE_12_ROTATION_ATT,
-        VOICE_13_LENGTH_ATT,
-        VOICE_13_ROTATION_ATT,
-        VOICE_14_LENGTH_ATT,
-        VOICE_14_ROTATION_ATT,
-        VOICE_15_LENGTH_ATT,
-        VOICE_15_ROTATION_ATT,
-        VOICE_16_LENGTH_ATT,
-        VOICE_16_ROTATION_ATT,
         NUM_PARAMS
     };
-
-    // No outputs - modulation only affects internal DNA state
-    enum Output {
-        NUM_OUTPUTS = 0
+    
+    enum InputId {
+        // Gate inputs for scramble actions (16 total)
+        SCRAMBLE_ALL_INPUT = 0,
+        SCRAMBLE_V2_INPUT,
+        SCRAMBLE_V3_INPUT,
+        SCRAMBLE_V4_INPUT,
+        SCRAMBLE_V5_INPUT,
+        SCRAMBLE_V6_INPUT,
+        SCRAMBLE_V7_INPUT,
+        SCRAMBLE_V8_INPUT,
+        SCRAMBLE_V9_INPUT,
+        SCRAMBLE_V10_INPUT,
+        SCRAMBLE_V11_INPUT,
+        SCRAMBLE_V12_INPUT,
+        SCRAMBLE_V13_INPUT,
+        SCRAMBLE_V14_INPUT,
+        SCRAMBLE_V15_INPUT,
+        SCRAMBLE_V16_INPUT,
+        
+        // Gate inputs for reset actions (16 total)
+        RESET_ALL_INPUT,
+        RESET_V2_INPUT,
+        RESET_V3_INPUT,
+        RESET_V4_INPUT,
+        RESET_V5_INPUT,
+        RESET_V6_INPUT,
+        RESET_V7_INPUT,
+        RESET_V8_INPUT,
+        RESET_V9_INPUT,
+        RESET_V10_INPUT,
+        RESET_V11_INPUT,
+        RESET_V12_INPUT,
+        RESET_V13_INPUT,
+        RESET_V14_INPUT,
+        RESET_V15_INPUT,
+        RESET_V16_INPUT,
+        
+        NUM_INPUTS
     };
 };
 
 struct MeloDicerStraitSandsExpander : Module {
     MeloDicerStraitSandsExpander() {
-        config(StraitSandsExpanderIds::NUM_PARAMS, StraitSandsExpanderIds::NUM_INPUTS, StraitSandsExpanderIds::NUM_OUTPUTS);
+        // Config for expander's own button/gate inputs
+        config(StraitSandsExpanderIds::NUM_PARAMS, StraitSandsExpanderIds::NUM_INPUTS, 0);
         
-        // Configure all 30 attenuverter params
+        // Scramble buttons - randomize length and offset for each voice
+        configButton(StraitSandsExpanderIds::SCRAMBLE_ALL_PARAM, "Scramble ALL");
         for (int v = 0; v < 15; v++) {
-            int voice = v + 2;  // Voice 2-16
-            configParam(StraitSandsExpanderIds::VOICE_2_LENGTH_ATT + v*2, -1.f, 1.f, 0.f, 
-                       "Voice " + std::to_string(voice) + " Length Offset Attenuation");
-            configParam(StraitSandsExpanderIds::VOICE_2_ROTATION_ATT + v*2, -1.f, 1.f, 0.f, 
-                       "Voice " + std::to_string(voice) + " Rotation Attenuation");
+            int voice = v + 2;  // Voices 2-16
+            configButton(StraitSandsExpanderIds::SCRAMBLE_V2_PARAM + v,
+                        "Scramble Voice " + std::to_string(voice));
+        }
+        
+        // Reset buttons - restore defaults
+        configButton(StraitSandsExpanderIds::RESET_ALL_PARAM, "Reset ALL");
+        for (int v = 0; v < 15; v++) {
+            int voice = v + 2;
+            configButton(StraitSandsExpanderIds::RESET_V2_PARAM + v,
+                        "Reset Voice " + std::to_string(voice));
+        }
+        
+        // Gate inputs for scramble/reset external control
+        configInput(StraitSandsExpanderIds::SCRAMBLE_ALL_INPUT, "Scramble ALL Gate");
+        for (int v = 0; v < 15; v++) {
+            int voice = v + 2;
+            configInput(StraitSandsExpanderIds::SCRAMBLE_V2_INPUT + v,
+                       "Scramble Voice " + std::to_string(voice) + " Gate");
+        }
+        
+        configInput(StraitSandsExpanderIds::RESET_ALL_INPUT, "Reset ALL Gate");
+        for (int v = 0; v < 15; v++) {
+            int voice = v + 2;
+            configInput(StraitSandsExpanderIds::RESET_V2_INPUT + v,
+                       "Reset Voice " + std::to_string(voice) + " Gate");
         }
     }
 
-    // TODO (Phase 6): Implement process() with:
-    // - Read modulation inputs for all 15 voices
-    // - Apply attenuverter scaling
-    // - Pass modulation to parent MeloDicer's DNA state
-    // - Only affect voices where corresponding East/West expanders are present
-
-    void process(const ProcessArgs& args) override {
-        // Placeholder for Phase 6 implementation
-        // Will communicate DNA modulation to parent MeloDicer
-    }
+    // Zero-delay: parent module handles scramble/reset logic
+    void process(const ProcessArgs& args) override {}
 };
 
 struct MeloDicerStraitSandsExpanderWidget : ModuleWidget {
@@ -133,10 +151,11 @@ struct MeloDicerStraitSandsExpanderWidget : ModuleWidget {
         setModule(module);
         setPanel(createPanel(asset::plugin(pluginInstance, "res/strait_sands.svg")));
         
-        // TODO (Phase 6): Add UI elements
-        // - 30 attenuverter knobs (15 voices × 2 controls)
-        // - 30 input jacks (15 voices × 2 controls)
-        // - Arranged in 2 columns (one per DNA parameter)
+        // TODO (UI): Add DNA control interface
+        // - Displays for current DNA settings: length, offset, rotation (per voice)
+        // - "Scramble ALL" button + 15 individual scramble buttons (fun randomization!)
+        // - "Reset ALL" button + 15 individual reset buttons
+        // - Gate inputs for each scramble/reset (external trigger control)
     }
 };
 

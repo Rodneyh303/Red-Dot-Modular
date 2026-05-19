@@ -121,8 +121,16 @@ namespace MeloDicerIds {
         POLY_REST_PARAM_5,
         POLY_REST_PARAM_6,
         POLY_REST_PARAM_7,
+        POLY_REST_PARAM_8,   // NEW (Phase 4): voices 9-16
+        POLY_REST_PARAM_9,
+        POLY_REST_PARAM_10,
+        POLY_REST_PARAM_11,
+        POLY_REST_PARAM_12,
+        POLY_REST_PARAM_13,
+        POLY_REST_PARAM_14,
+        POLY_REST_PARAM_15,
 
-        // Poly DNA Window Controls (7 voices x 3 params = 21)
+        // Poly DNA Window Controls (15 voices x 3 params = 45)
         POLY_DNA_VOICE_1_LEN,
         POLY_DNA_VOICE_1_OFF,
         POLY_DNA_VOICE_1_ROT,
@@ -144,6 +152,30 @@ namespace MeloDicerIds {
         POLY_DNA_VOICE_7_LEN,
         POLY_DNA_VOICE_7_OFF,
         POLY_DNA_VOICE_7_ROT,
+        POLY_DNA_VOICE_8_LEN,   // NEW (Phase 4): voices 9-16
+        POLY_DNA_VOICE_8_OFF,
+        POLY_DNA_VOICE_8_ROT,
+        POLY_DNA_VOICE_9_LEN,
+        POLY_DNA_VOICE_9_OFF,
+        POLY_DNA_VOICE_9_ROT,
+        POLY_DNA_VOICE_10_LEN,
+        POLY_DNA_VOICE_10_OFF,
+        POLY_DNA_VOICE_10_ROT,
+        POLY_DNA_VOICE_11_LEN,
+        POLY_DNA_VOICE_11_OFF,
+        POLY_DNA_VOICE_11_ROT,
+        POLY_DNA_VOICE_12_LEN,
+        POLY_DNA_VOICE_12_OFF,
+        POLY_DNA_VOICE_12_ROT,
+        POLY_DNA_VOICE_13_LEN,
+        POLY_DNA_VOICE_13_OFF,
+        POLY_DNA_VOICE_13_ROT,
+        POLY_DNA_VOICE_14_LEN,
+        POLY_DNA_VOICE_14_OFF,
+        POLY_DNA_VOICE_14_ROT,
+        POLY_DNA_VOICE_15_LEN,
+        POLY_DNA_VOICE_15_OFF,
+        POLY_DNA_VOICE_15_ROT,
 
         NUM_PARAMS
     };
@@ -193,6 +225,24 @@ namespace MeloDicerIds {
 
         // Poly Voice Expander Inputs
         POLY_REST_CV_INPUT,
+        
+        // Poly DNA CV Modulation (8 voices × 2 = 16 inputs) - NEW (Phase 6)
+        POLY_DNA_VOICE_8_LEN_INPUT,
+        POLY_DNA_VOICE_8_OFF_INPUT,
+        POLY_DNA_VOICE_9_LEN_INPUT,
+        POLY_DNA_VOICE_9_OFF_INPUT,
+        POLY_DNA_VOICE_10_LEN_INPUT,
+        POLY_DNA_VOICE_10_OFF_INPUT,
+        POLY_DNA_VOICE_11_LEN_INPUT,
+        POLY_DNA_VOICE_11_OFF_INPUT,
+        POLY_DNA_VOICE_12_LEN_INPUT,
+        POLY_DNA_VOICE_12_OFF_INPUT,
+        POLY_DNA_VOICE_13_LEN_INPUT,
+        POLY_DNA_VOICE_13_OFF_INPUT,
+        POLY_DNA_VOICE_14_LEN_INPUT,
+        POLY_DNA_VOICE_14_OFF_INPUT,
+        POLY_DNA_VOICE_15_LEN_INPUT,
+        POLY_DNA_VOICE_15_OFF_INPUT,
 
         NUM_INPUTS
     };
