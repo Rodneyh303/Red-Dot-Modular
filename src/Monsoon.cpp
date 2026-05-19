@@ -521,7 +521,21 @@ void Monsoon::process(const ProcessArgs& args) {
     auto* polyExp = expanderManager.cachedPolyVoiceExpander;
     if (polyExp && engine.numPolyVoices > 0) {
         using namespace PolyVoiceExpanderIds;
-        for (int i = 0; i < engine.numPolyVoices; ++i) {
+        
+        // ── Rest Probability Modulation (voices 2-8 on East) ──
+        for (int i = 0; i < 7; i++) {
+            if (inputs[POLY_REST_MOD_CV_INPUT_1 + i].isConnected()) {
+                float modCV = inputs[POLY_REST_MOD_CV_INPUT_1 + i].getVoltage();
+                float attenuverter = params[POLY_REST_MOD_ATT_1 + i].getValue(); // [-1, 1]
+                float modulation = modCV * attenuverter * 0.1f; // Scale CV by attenuverter
+                engine.voices[i].restProb = clamp(cachedPolyRest[i] + modulation, 0.f, 1.f);
+            } else {
+                engine.voices[i].restProb = cachedPolyRest[i];
+            }
+        }
+        
+        // Output individual gates/CVs/accents for voices 2-8
+        for (int i = 0; i < 7; ++i) {
             if (muted) {
                 polyExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
                 polyExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
@@ -532,6 +546,124 @@ void Monsoon::process(const ProcessArgs& args) {
             polyExp->outputs[POLY_CV_OUT_1 + i].setVoltage(engine.voices[i].gs.currentPitchV);
             float polyAccent = (engineAccented && vg > 5.f) ? 10.f : 0.f;
             polyExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(polyAccent);
+        }
+        
+        // Generate poly outputs for voices 1-8
+        float polyGate1_8 = 0.f;
+        float polyCv1_8 = 0.f;
+        if (!muted) {
+            polyGate1_8 = (engine.gs.process(args.sampleTime) > 5.f) ? 10.f : 0.f;
+            polyCv1_8 = currentPitchV;
+        }
+        polyExp->outputs[POLY_GATE_1_8_OUT].setVoltage(polyGate1_8);
+        polyExp->outputs[POLY_CV_1_8_OUT].setVoltage(polyCv1_8);
+    }
+    
+    // ── Straits West Expander (voices 9-16) ──
+    auto* westExp = expanderManager.cachedStraitWestExpander;
+    if (westExp && engine.numPolyVoices > 7) {
+        using namespace StraitWestExpanderIds;
+        
+        // ── Rest Probability Modulation (voices 9-16 on West) ──
+        for (int i = 0; i < 8; i++) {
+            if (inputs[POLY_REST_MOD_CV_INPUT_8 + i].isConnected()) {
+                float modCV = inputs[POLY_REST_MOD_CV_INPUT_8 + i].getVoltage();
+                float attenuverter = params[POLY_REST_MOD_ATT_8 + i].getValue(); // [-1, 1]
+                float modulation = modCV * attenuverter * 0.1f;
+                engine.voices[7 + i].restProb = clamp(cachedPolyRest[7 + i] + modulation, 0.f, 1.f);
+            } else {
+                engine.voices[7 + i].restProb = cachedPolyRest[7 + i];
+            }
+        }
+        
+        // Output individual gates/CVs/accents for voices 9-16
+        for (int i = 0; i < 8; ++i) {
+            if (muted) {
+                westExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
+                westExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
+                continue;
+            }
+            float vg = engine.voices[7 + i].gs.process(args.sampleTime);
+            westExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(vg);
+            westExp->outputs[POLY_CV_OUT_1 + i].setVoltage(engine.voices[7 + i].gs.currentPitchV);
+            float polyAccent = (engineAccented && vg > 5.f) ? 10.f : 0.f;
+            westExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(polyAccent);
+        }
+        
+        // Generate poly outputs for voices 1-16 (complete mix)
+        float polyGate1_16 = 0.f;
+        float polyCv1_16 = 0.f;
+        if (!muted) {
+            // Use primary voice poly gate for 1-16 output
+            polyGate1_16 = (engine.gs.process(args.sampleTime) > 5.f) ? 10.f : 0.f;
+            polyCv1_16 = currentPitchV;
+        }
+        westExp->outputs[POLY_GATE_1_16_OUT].setVoltage(polyGate1_16);
+        westExp->outputs[POLY_CV_1_16_OUT].setVoltage(polyCv1_16);
+    }
+    
+    // ── Straits Sands Expander (DNA control + scramble/reset) ──
+    auto* sandsExp = expanderManager.cachedStraitSandsExpander;
+    if (sandsExp) {
+        using namespace StraitSandsExpanderIds;
+        
+        // Read DNA controls from Sands for all voices 1-15
+        for (int v = 0; v < 15; v++) {
+            int paramBase = POLY_DNA_VOICE_1_LEN + v * 3;
+            float len = params[paramBase].getValue();
+            float off = params[paramBase + 1].getValue();
+            float rot = params[paramBase + 2].getValue();
+            
+            // Apply DNA to pattern engine (voice index 0-14)
+            engine.pe.polyLen[v] = (int)len;
+            engine.pe.polyOff[v] = (int)off;
+            engine.pe.polyRot[v] = (int)rot;
+        }
+        
+        // Handle Scramble triggers (randomize length & offset)
+        bool scrambleAll = params[SCRAMBLE_ALL_PARAM].getValue() > 0.5f ||
+                          inputs[SCRAMBLE_ALL_INPUT].getVoltage() > 1.f;
+        if (scrambleAll) {
+            for (int v = 0; v < 15; v++) {
+                int paramBase = POLY_DNA_VOICE_1_LEN + v * 3;
+                params[paramBase].setValue(random::uniform() * 15.f + 1.f);     // Length: 1-16
+                params[paramBase + 1].setValue(random::uniform() * 15.f);        // Offset: 0-15
+            }
+        } else {
+            // Check individual scramble buttons
+            for (int v = 0; v < 15; v++) {
+                bool scramble = params[SCRAMBLE_VOICE_1 + v].getValue() > 0.5f ||
+                               inputs[SCRAMBLE_VOICE_1_INPUT + v].getVoltage() > 1.f;
+                if (scramble) {
+                    int paramBase = POLY_DNA_VOICE_1_LEN + v * 3;
+                    params[paramBase].setValue(random::uniform() * 15.f + 1.f);
+                    params[paramBase + 1].setValue(random::uniform() * 15.f);
+                }
+            }
+        }
+        
+        // Handle Reset triggers (restore defaults)
+        bool resetAll = params[RESET_ALL_PARAM].getValue() > 0.5f ||
+                       inputs[RESET_ALL_INPUT].getVoltage() > 1.f;
+        if (resetAll) {
+            for (int v = 0; v < 15; v++) {
+                int paramBase = POLY_DNA_VOICE_1_LEN + v * 3;
+                params[paramBase].setValue(16.f);        // Length: 16 (default)
+                params[paramBase + 1].setValue(0.f);     // Offset: 0 (default)
+                params[paramBase + 2].setValue(0.f);     // Rotation: 0 (default)
+            }
+        } else {
+            // Check individual reset buttons
+            for (int v = 0; v < 15; v++) {
+                bool reset = params[RESET_VOICE_1 + v].getValue() > 0.5f ||
+                            inputs[RESET_VOICE_1_INPUT + v].getVoltage() > 1.f;
+                if (reset) {
+                    int paramBase = POLY_DNA_VOICE_1_LEN + v * 3;
+                    params[paramBase].setValue(16.f);
+                    params[paramBase + 1].setValue(0.f);
+                    params[paramBase + 2].setValue(0.f);
+                }
+            }
         }
     }
 
