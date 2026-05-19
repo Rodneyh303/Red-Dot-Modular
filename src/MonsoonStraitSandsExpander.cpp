@@ -31,7 +31,7 @@ struct MonsoonStraitSandsExpanderWidget : ModuleWidget {
         nvgFillColor(args.vg, nvgRGBA(0xdd, 0xdd, 0xdd, 0xff));
         nvgFontSize(args.vg, mm2px(3.0f));
         nvgText(args.vg, mm2px(15.0f), mm2px(10.0f), "STRAITS SANDS", nullptr);
-        nvgText(args.vg, mm2px(15.0f), mm2px(15.0f), "POLY DNA", nullptr);
+        nvgText(args.vg, mm2px(15.0f), mm2px(15.0f), "POLY DNA CONTROL", nullptr);
     }
 };
 
