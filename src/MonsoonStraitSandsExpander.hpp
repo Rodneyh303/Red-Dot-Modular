@@ -106,10 +106,24 @@ struct MonsoonStraitSandsExpander : Module {
         // Configure DNA controls for voices 1-15 (using parent MonsoonIds)
         for (int v = 0; v < 15; v++) {
             std::string voiceLabel = "Voice " + std::to_string(v + 1);
+            
+            // Rhythm DNA (existing)
             int paramBase = POLY_DNA_VOICE_1_LEN + v * 3;
-            configParam(paramBase,     1.f, 16.f, 16.f, voiceLabel + " DNA Length");
-            configParam(paramBase + 1, 0.f, 15.f,  0.f, voiceLabel + " DNA Offset");
-            configParam(paramBase + 2, 0.f, 15.f,  0.f, voiceLabel + " DNA Rotation");
+            configParam(paramBase,     1.f, 16.f, 16.f, voiceLabel + " Rhythm DNA Length");
+            configParam(paramBase + 1, 0.f, 15.f,  0.f, voiceLabel + " Rhythm DNA Offset");
+            configParam(paramBase + 2, 0.f, 15.f,  0.f, voiceLabel + " Rhythm DNA Rotation");
+            
+            // Melody DNA (new)
+            int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
+            configParam(melodyBase,     1.f, 16.f, 16.f, voiceLabel + " Melody DNA Length");
+            configParam(melodyBase + 1, 0.f, 15.f,  0.f, voiceLabel + " Melody DNA Offset");
+            configParam(melodyBase + 2, 0.f, 15.f,  0.f, voiceLabel + " Melody DNA Rotation");
+            
+            // Octave DNA (new)
+            int octaveBase = POLY_OCTAVE_VOICE_1_LEN + v * 3;
+            configParam(octaveBase,     1.f, 16.f, 16.f, voiceLabel + " Octave DNA Length");
+            configParam(octaveBase + 1, 0.f, 15.f,  0.f, voiceLabel + " Octave DNA Offset");
+            configParam(octaveBase + 2, 0.f, 15.f,  0.f, voiceLabel + " Octave DNA Rotation");
         }
         
         // Configure DNA CV modulation inputs for voices 8-15
