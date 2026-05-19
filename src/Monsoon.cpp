@@ -17,6 +17,8 @@
 #include "MonsoonSandsExpander.hpp"
 #include "MonsoonInterchangeExpander.hpp"
 #include "MonsoonStraitsEastExpander.hpp"
+#include "MonsoonStraitWestExpander.hpp"      // NEW (Phase 4)
+#include "MonsoonStraitSandsExpander.hpp"     // NEW (Phase 6)
 #include "MonsoonWidget.hpp"
 #include "Monsoon.hpp"
 #include "dsp/engines/PatternEngine.hpp"
@@ -712,4 +714,6 @@ void init(rack::Plugin* p) {
 	p->addModel(modelMonsoonInterchangeExpander);
 	p->addModel(modelMonsoonSandsExpander);
 	p->addModel(modelMonsoonStraitsEastExpander);
+	p->addModel(modelMonsoonStraitWestExpander);    // NEW (Phase 4)
+	p->addModel(modelMonsoonStraitSandsExpander);   // NEW (Phase 6)
 }
