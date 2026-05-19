@@ -609,25 +609,56 @@ void Monsoon::process(const ProcessArgs& args) {
         
         // Read DNA controls from Sands for all voices 1-15
         for (int v = 0; v < 15; v++) {
-            int paramBase = POLY_DNA_VOICE_1_LEN + v * 3;
-            float len = params[paramBase].getValue();
-            float off = params[paramBase + 1].getValue();
-            float rot = params[paramBase + 2].getValue();
+            // ── Rhythm DNA ──
+            int rhythmBase = POLY_DNA_VOICE_1_LEN + v * 3;
+            float rhythmLen = params[rhythmBase].getValue();
+            float rhythmOff = params[rhythmBase + 1].getValue();
+            float rhythmRot = params[rhythmBase + 2].getValue();
             
-            // Apply DNA to pattern engine (voice index 0-14)
-            engine.pe.polyLen[v] = (int)len;
-            engine.pe.polyOff[v] = (int)off;
-            engine.pe.polyRot[v] = (int)rot;
+            engine.pe.polyLen[v] = (int)rhythmLen;
+            engine.pe.polyOff[v] = (int)rhythmOff;
+            engine.pe.polyRot[v] = (int)rhythmRot;
+            
+            // ── Melody DNA ──
+            int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
+            float melodyLen = params[melodyBase].getValue();
+            float melodyOff = params[melodyBase + 1].getValue();
+            float melodyRot = params[melodyBase + 2].getValue();
+            
+            engine.pe.polyMelodyRandom[v][0] = (int)melodyLen;  // Length stored in [v][0]
+            engine.pe.polyMelodyRandom[v][1] = (int)melodyOff;  // Offset stored in [v][1]
+            engine.pe.polyMelodyRandom[v][2] = (int)melodyRot;  // Rotation stored in [v][2]
+            
+            // ── Octave DNA ──
+            int octaveBase = POLY_OCTAVE_VOICE_1_LEN + v * 3;
+            float octaveLen = params[octaveBase].getValue();
+            float octaveOff = params[octaveBase + 1].getValue();
+            float octaveRot = params[octaveBase + 2].getValue();
+            
+            engine.pe.polyOctaveRandom[v][0] = (int)octaveLen;  // Length stored in [v][0]
+            engine.pe.polyOctaveRandom[v][1] = (int)octaveOff;  // Offset stored in [v][1]
+            engine.pe.polyOctaveRandom[v][2] = (int)octaveRot;  // Rotation stored in [v][2]
         }
         
-        // Handle Scramble triggers (randomize length & offset)
+        // Handle Scramble triggers (randomize length & offset for all DNA types)
         bool scrambleAll = params[SCRAMBLE_ALL_PARAM].getValue() > 0.5f ||
                           inputs[SCRAMBLE_ALL_INPUT].getVoltage() > 1.f;
         if (scrambleAll) {
             for (int v = 0; v < 15; v++) {
-                int paramBase = POLY_DNA_VOICE_1_LEN + v * 3;
-                params[paramBase].setValue(random::uniform() * 15.f + 1.f);     // Length: 1-16
-                params[paramBase + 1].setValue(random::uniform() * 15.f);        // Offset: 0-15
+                // Rhythm
+                int rhythmBase = POLY_DNA_VOICE_1_LEN + v * 3;
+                params[rhythmBase].setValue(random::uniform() * 15.f + 1.f);
+                params[rhythmBase + 1].setValue(random::uniform() * 15.f);
+                
+                // Melody
+                int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
+                params[melodyBase].setValue(random::uniform() * 15.f + 1.f);
+                params[melodyBase + 1].setValue(random::uniform() * 15.f);
+                
+                // Octave
+                int octaveBase = POLY_OCTAVE_VOICE_1_LEN + v * 3;
+                params[octaveBase].setValue(random::uniform() * 15.f + 1.f);
+                params[octaveBase + 1].setValue(random::uniform() * 15.f);
             }
         } else {
             // Check individual scramble buttons
@@ -635,22 +666,46 @@ void Monsoon::process(const ProcessArgs& args) {
                 bool scramble = params[SCRAMBLE_VOICE_1 + v].getValue() > 0.5f ||
                                inputs[SCRAMBLE_VOICE_1_INPUT + v].getVoltage() > 1.f;
                 if (scramble) {
-                    int paramBase = POLY_DNA_VOICE_1_LEN + v * 3;
-                    params[paramBase].setValue(random::uniform() * 15.f + 1.f);
-                    params[paramBase + 1].setValue(random::uniform() * 15.f);
+                    // Rhythm
+                    int rhythmBase = POLY_DNA_VOICE_1_LEN + v * 3;
+                    params[rhythmBase].setValue(random::uniform() * 15.f + 1.f);
+                    params[rhythmBase + 1].setValue(random::uniform() * 15.f);
+                    
+                    // Melody
+                    int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
+                    params[melodyBase].setValue(random::uniform() * 15.f + 1.f);
+                    params[melodyBase + 1].setValue(random::uniform() * 15.f);
+                    
+                    // Octave
+                    int octaveBase = POLY_OCTAVE_VOICE_1_LEN + v * 3;
+                    params[octaveBase].setValue(random::uniform() * 15.f + 1.f);
+                    params[octaveBase + 1].setValue(random::uniform() * 15.f);
                 }
             }
         }
         
-        // Handle Reset triggers (restore defaults)
+        // Handle Reset triggers (restore defaults for all DNA types)
         bool resetAll = params[RESET_ALL_PARAM].getValue() > 0.5f ||
                        inputs[RESET_ALL_INPUT].getVoltage() > 1.f;
         if (resetAll) {
             for (int v = 0; v < 15; v++) {
-                int paramBase = POLY_DNA_VOICE_1_LEN + v * 3;
-                params[paramBase].setValue(16.f);        // Length: 16 (default)
-                params[paramBase + 1].setValue(0.f);     // Offset: 0 (default)
-                params[paramBase + 2].setValue(0.f);     // Rotation: 0 (default)
+                // Rhythm
+                int rhythmBase = POLY_DNA_VOICE_1_LEN + v * 3;
+                params[rhythmBase].setValue(16.f);
+                params[rhythmBase + 1].setValue(0.f);
+                params[rhythmBase + 2].setValue(0.f);
+                
+                // Melody
+                int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
+                params[melodyBase].setValue(16.f);
+                params[melodyBase + 1].setValue(0.f);
+                params[melodyBase + 2].setValue(0.f);
+                
+                // Octave
+                int octaveBase = POLY_OCTAVE_VOICE_1_LEN + v * 3;
+                params[octaveBase].setValue(16.f);
+                params[octaveBase + 1].setValue(0.f);
+                params[octaveBase + 2].setValue(0.f);
             }
         } else {
             // Check individual reset buttons
@@ -658,10 +713,23 @@ void Monsoon::process(const ProcessArgs& args) {
                 bool reset = params[RESET_VOICE_1 + v].getValue() > 0.5f ||
                             inputs[RESET_VOICE_1_INPUT + v].getVoltage() > 1.f;
                 if (reset) {
-                    int paramBase = POLY_DNA_VOICE_1_LEN + v * 3;
-                    params[paramBase].setValue(16.f);
-                    params[paramBase + 1].setValue(0.f);
-                    params[paramBase + 2].setValue(0.f);
+                    // Rhythm
+                    int rhythmBase = POLY_DNA_VOICE_1_LEN + v * 3;
+                    params[rhythmBase].setValue(16.f);
+                    params[rhythmBase + 1].setValue(0.f);
+                    params[rhythmBase + 2].setValue(0.f);
+                    
+                    // Melody
+                    int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
+                    params[melodyBase].setValue(16.f);
+                    params[melodyBase + 1].setValue(0.f);
+                    params[melodyBase + 2].setValue(0.f);
+                    
+                    // Octave
+                    int octaveBase = POLY_OCTAVE_VOICE_1_LEN + v * 3;
+                    params[octaveBase].setValue(16.f);
+                    params[octaveBase + 1].setValue(0.f);
+                    params[octaveBase + 2].setValue(0.f);
                 }
             }
         }
