@@ -22,9 +22,6 @@ struct MonsoonStraitsEastExpanderWidget : ModuleWidget {
         float knobX   = 10.0f;
         float outGateX =  22.0f;
         float outCvX   =  32.0f;
-        float dnaLenX  =  42.0f;
-        float dnaOffX  =  52.0f;
-        float dnaRotX  =  62.0f;
         float startY  = 25.0f;
         float spacingY = 12.0f;
 

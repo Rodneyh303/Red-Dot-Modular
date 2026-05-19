@@ -49,7 +49,7 @@ struct SequencerEngine {
     // voices[0] = voice 2, voices[6] = voice 8.
     // numPolyVoices is set from the context-menu user preference (0 = mono only).
     // It is intentionally NOT cleared by reset() so it survives patch reload.
-    PolyVoice voices[7];
+    PolyVoice voices[15];
     int       numPolyVoices = 0;
 
     // Most recent mono decision — written by executeStep, read by executePolyVoices.
@@ -65,8 +65,8 @@ struct SequencerEngine {
 
     bool hadMonoTail = false;
     bool wasHeldMono = false; // Capture mono state before tick() for start-detection
-    bool hadPolyTail[7] = {};
-    bool wasHeldPolyPrev[7] = {}; // Capture poly state before tick()
+    bool hadPolyTail[15] = {};
+    bool wasHeldPolyPrev[15] = {}; // Capture poly state before tick()
 
     // Strand-specific Windowing (Length 1..16, Offset 0..15)
     int rhythmLen = 16;
@@ -81,9 +81,9 @@ struct SequencerEngine {
     int melodyOff = 0;
     int octaveLen = 16;
     int octaveOff = 0;
-    int polyLen[7];
-    int polyOff[7];
-    int polyRot[7];
+    int polyLen[15];
+    int polyOff[15];
+    int polyRot[15];
 
     // Discrete mutation offsets (mutation from scramble/context menu)
     int rhythmRot = 0, variationRot = 0, legatoRot = 0, accentRot = 0, melodyRot = 0, octaveRot = 0;

@@ -129,7 +129,7 @@ float ParameterManager::getSemitone(int semIdx) const {
 // ──── Poly Voice Rest Probability ───────────────────────────────────────────
 
 float ParameterManager::getPolyRest(int voiceIdx) const {
-    if (voiceIdx < 0 || voiceIdx > 6) return 0.1f;
+    if (voiceIdx < 0 || voiceIdx > 14) return 0.1f;
     
     float v = 0.1f;  // Default fallback
     

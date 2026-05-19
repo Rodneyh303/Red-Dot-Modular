@@ -615,9 +615,9 @@ void Monsoon::process(const ProcessArgs& args) {
             float rhythmOff = params[rhythmBase + 1].getValue();
             float rhythmRot = params[rhythmBase + 2].getValue();
             
-            engine.pe.polyLen[v] = (int)rhythmLen;
-            engine.pe.polyOff[v] = (int)rhythmOff;
-            engine.pe.polyRot[v] = (int)rhythmRot;
+            engine.polyLen[v] = (int)rhythmLen;
+            engine.polyOff[v] = (int)rhythmOff;
+            engine.polyRot[v] = (int)rhythmRot;
             
             // ── Melody DNA ──
             int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
@@ -860,7 +860,7 @@ void Monsoon::process(const ProcessArgs& args) {
         cachedResetBtn = params[RESET_BUTTON_PARAM].getValue();
 
         // Cache Poly Rest probabilities
-        for (int i = 0; i < 7; ++i) {
+        for (int i = 0; i < 15; ++i) {
             cachedPolyRest[i] = paramManager->getPolyRest(i);
         }
 
@@ -880,7 +880,7 @@ void Monsoon::process(const ProcessArgs& args) {
         // Zero unused voice outputs so they don't emit stale voltages (Transferred from audio rate)
         if (expanderManager.cachedPolyVoiceExpander) {
             using namespace PolyVoiceExpanderIds;
-            for (int i = engine.numPolyVoices; i < 7; ++i) {
+            for (int i = std::max(0, engine.numPolyVoices); i < 7; ++i) {
                 expanderManager.cachedPolyVoiceExpander->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
                 expanderManager.cachedPolyVoiceExpander->outputs[POLY_CV_OUT_1 + i].setVoltage(0.f);
                 expanderManager.cachedPolyVoiceExpander->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);

@@ -72,7 +72,7 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_t* prarr = json_array();
     json_t* pmarr = json_array();
     json_t* poarr = json_array();
-    for (int v = 0; v < 7; v++) {
+    for (int v = 0; v < 15; v++) {
         for (int i = 0; i < 16; i++) {
             json_array_append_new(prarr, json_real(m->engine.pe.polyRhythmRandom[v][i]));
             json_array_append_new(pmarr, json_real(m->engine.pe.polyMelodyRandom[v][i]));
@@ -125,7 +125,7 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     if (auto j = json_object_get(root, "endStep")) m->endStep = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "dnaLength")) m->engine.dnaLength = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "dnaOffset")) m->engine.dnaOffset = (int)json_integer_value(j);
-    if (auto j = json_object_get(root, "numPolyVoices")) m->engine.numPolyVoices = pe_clamp((int)json_integer_value(j), 0, 7);
+    if (auto j = json_object_get(root, "numPolyVoices")) m->engine.numPolyVoices = pe_clamp((int)json_integer_value(j), 0, 15);
 
     // ── Seeds ──
     if (auto j = json_object_get(root, "rhythmSeedFloat")) m->rhythmSeedFloat = (float)json_real_value(j);
@@ -152,10 +152,10 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     loadArr("accentRandom", m->engine.pe.accentRandom);
 
     // ── Poly DNA Random Buffers ──
-    auto loadPolyArr = [&](const char* name, float target[7][16], float source[7][16]) {
+    auto loadPolyArr = [&](const char* name, float target[15][16], float source[15][16]) {
         if (auto j = json_object_get(root, name)) {
             if (json_is_array(j)) {
-                for (int v = 0; v < 7; v++) {
+                for (int v = 0; v < 15; v++) {
                     for (int i = 0; i < 16; i++) {
                         target[v][i] = (float)json_real_value(json_array_get(j, v * 16 + i));
                         source[v][i] = target[v][i];

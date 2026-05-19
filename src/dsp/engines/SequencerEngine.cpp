@@ -26,7 +26,7 @@ void SequencerEngine::reset() {
     rhythmLen = variationLen = legatoLen = melodyLen = octaveLen = 16;
     rhythmOff = variationOff = legatoOff = melodyOff = octaveOff = 0;
     rhythmRot = variationRot = legatoRot = melodyRot = octaveRot = 0;
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < 15; i++) {
         polyLen[i] = 16;
         polyOff[i] = 0;
         polyRot[i] = 0;

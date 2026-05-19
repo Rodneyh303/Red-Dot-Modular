@@ -61,7 +61,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
 
     // PolyVoice DNA Windows
     if (expanderManager.cachedPolyVoiceExpander) {
-        for (int i = 0; i < 7; i++) {
+        for (int i = 0; i < 15; i++) {
             engine.polyLen[i] = clampv<int>((int)std::round(expanderManager.cachedPolyVoiceExpander->params[POLY_DNA_VOICE_1_LEN + i * 3].getValue()), 1, 16);
             int rawOff = (int)std::round(expanderManager.cachedPolyVoiceExpander->params[POLY_DNA_VOICE_1_OFF + i * 3].getValue());
             engine.polyOff[i] = ((rawOff % 16) + 16) % 16;
@@ -69,7 +69,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             engine.polyRot[i] = ((rawRot % 16) + 16) % 16;
         }
     } else {
-        for (int i = 0; i < 7; i++) {
+        for (int i = 0; i < 15; i++) {
             engine.polyLen[i] = 16;
             engine.polyOff[i] = engine.polyRot[i] = 0;
         }

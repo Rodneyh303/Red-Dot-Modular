@@ -610,7 +610,7 @@ struct Monsoon : Module {
     bool  cachedResetConnected = false;
     float cachedRunBtn = 0.f;
     float cachedResetBtn = 0.f;
-    float cachedPolyRest[7] = {0.f};
+    float cachedPolyRest[15] = {0.f};
 
     Monsoon();
 

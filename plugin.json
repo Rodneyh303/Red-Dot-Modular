@@ -29,6 +29,18 @@
       "name": "MonsoonStraitsEastExpander",
       "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
       "tags": ["Sequencer", "Random", "Quantizer"]
+    },
+    {
+      "slug": "MonsoonStraitWestExpander",
+      "name": "MonsoonStraitWestExpander",
+      "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
+      "tags": ["Sequencer", "Random", "Quantizer"]
+    },
+    {
+      "slug": "MonsoonStraitSandsExpander",
+      "name": "MonsoonStraitSandsExpander",
+      "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
+      "tags": ["Sequencer", "Random", "Quantizer"]
     }
   ]
 }

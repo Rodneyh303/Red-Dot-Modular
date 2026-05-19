@@ -134,7 +134,7 @@ void PatternEngine::redrawRhythm(const PatternInput& in) {
         legatoSource[i]    = legatoRandom[i];
         accentSource[i]    = accentRandom[i];
         
-        for (int v = 0; v < 7; v++) {
+        for (int v = 0; v < 15; v++) {
             polyRhythmRandom[v][i] = unitRhythm();
             polyRhythmSource[v][i] = polyRhythmRandom[v][i];
         }
@@ -155,7 +155,7 @@ void PatternEngine::redrawMelody(const PatternInput& in) {
         melodySource[i] = melodyRandom[i];
         octaveSource[i] = octaveRandom[i];
         
-        for (int v = 0; v < 7; v++) {
+        for (int v = 0; v < 15; v++) {
             polyMelodyRandom[v][i] = unitMelody();
             polyOctaveRandom[v][i] = unitMelody();
             polyMelodySource[v][i] = polyMelodyRandom[v][i];
@@ -300,7 +300,7 @@ void PatternEngine::resetDnaRotation() {
         melodyRandom[i]    = melodySource[i];
         octaveRandom[i]    = octaveSource[i];
     }
-    for (int v = 0; v < 7; v++) {
+    for (int v = 0; v < 15; v++) {
         for (int i = 0; i < 16; i++) {
             polyRhythmRandom[v][i] = polyRhythmSource[v][i];
             polyMelodyRandom[v][i] = polyMelodySource[v][i];
