@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- 
+  Interchange - Scale/Quantization Modulation Expander
+  Light Theme Panel (120mm width, ~24 HP)
+  
+  Per-voice scale selection and quantization control.
+  Tight grid layout with per-voice controls (pitches 1-8 or 1-16).
+  
+  Controls:
+    • Top: Mode selector, scale selection
+    • Middle: Per-voice scale outputs (8 rows × 3 columns)
+    • Bottom: Global controls and gates
+  
+  Peranakan lattice pattern rendered by C++ (not in SVG)
+  This SVG provides: Background, labels, component guides
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 380">
+  <defs>
+    <linearGradient id="panelEdgeLtInt" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.05" />
+      <stop offset="50%" style="stop-color:#ffffff;stop-opacity:0" />
+      <stop offset="100%" style="stop-color:#ffffff;stop-opacity:0.05" />
+    </linearGradient>
+  </defs>
+  
+  <!-- PANEL BACKGROUND (Light Theme) -->
+  <rect width="120" height="380" fill="#232323"/>
+  
+  <!-- Edge Highlight -->
+  <rect width="120" height="380" fill="url(#panelEdgeLtInt)" opacity="0.8"/>
+  
+  <!-- ============================================================================
+       HEADER / BRANDING
+       ============================================================================ -->
+  
+  <text x="60" y="18" font-size="12" font-weight="bold" font-family="monospace" 
+        text-anchor="middle" fill="#e4e4e7" letter-spacing="1">
+    INTERCHANGE
+  </text>
+  
+  <text x="60" y="29" font-size="7" font-family="monospace" 
+        text-anchor="middle" fill="#888" letter-spacing="0.5">
+    scale modulator
+  </text>
+  
+  <!-- Brand Accent (Red Dot) -->
+  <circle cx="113" cy="12" r="2.5" fill="#dc2626"/>
+  
+  <!-- ============================================================================
+       CONTROLS SECTION
+       ============================================================================ -->
+  
+  <!-- Mode/Scale selector (top) -->
+  <text x="20" y="48" font-size="6" font-family="monospace" text-anchor="middle" 
+        fill="#e4e4e7" font-weight="bold">MODE</text>
+  
+  <rect x="8" y="52" width="24" height="10" rx="1" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  
+  <!-- Scale selector -->
+  <text x="80" y="48" font-size="6" font-family="monospace" text-anchor="middle" 
+        fill="#e4e4e7" font-weight="bold">SCALE</text>
+  
+  <circle cx="80" cy="58" r="5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  
+  <!-- ============================================================================
+       VOICE/SCALE GRID (8 rows × 3 columns)
+       ============================================================================ -->
+  
+  <text x="20" y="85" font-size="6" font-family="monospace" text-anchor="middle" 
+        fill="#e4e4e7" font-weight="bold">VOICES</text>
+  
+  <!-- Voice rows (compact grid) -->
+  <g id="voiceControlRow">
+    <line x1="5" y1="0" x2="115" y2="0" stroke="#444" stroke-width="0.25" opacity="0.4"/>
+    
+    <!-- Voice number -->
+    <text x="12" y="8" font-size="5" font-family="monospace" text-anchor="middle" fill="#888">1</text>
+    
+    <!-- Scale 1, 2, 3 buttons (small switches) -->
+    <rect x="26" y="2" width="4" height="4" rx="0.5" fill="none" stroke="#444" stroke-width="0.3" stroke-dasharray="1.5,1" opacity="0.5"/>
+    <rect x="36" y="2" width="4" height="4" rx="0.5" fill="none" stroke="#444" stroke-width="0.3" stroke-dasharray="1.5,1" opacity="0.5"/>
+    <rect x="46" y="2" width="4" height="4" rx="0.5" fill="none" stroke="#444" stroke-width="0.3" stroke-dasharray="1.5,1" opacity="0.5"/>
+    
+    <!-- Scale selector knob -->
+    <circle cx="68" cy="6" r="3" fill="none" stroke="#444" stroke-width="0.35" stroke-dasharray="2,1" opacity="0.6"/>
+    
+    <!-- Output jack -->
+    <circle cx="90" cy="6" r="3.5" fill="none" stroke="#444" stroke-width="0.35" stroke-dasharray="2,1" opacity="0.6"/>
+    
+    <!-- Light indicator -->
+    <circle cx="105" cy="6" r="2" fill="none" stroke="#444" stroke-width="0.25" stroke-dasharray="1.5,1" opacity="0.5"/>
+  </g>
+  
+  <!-- Voice rows 1-8 (Y spacing = 34 px) -->
+  <g id="row1" transform="translate(0, 92)"><use xlink:href="#voiceControlRow"/></g>
+  <g id="row2" transform="translate(0, 126)"><use xlink:href="#voiceControlRow"/></g>
+  <g id="row3" transform="translate(0, 160)"><use xlink:href="#voiceControlRow"/></g>
+  <g id="row4" transform="translate(0, 194)"><use xlink:href="#voiceControlRow"/></g>
+  <g id="row5" transform="translate(0, 228)"><use xlink:href="#voiceControlRow"/></g>
+  <g id="row6" transform="translate(0, 262)"><use xlink:href="#voiceControlRow"/></g>
+  <g id="row7" transform="translate(0, 296)"><use xlink:href="#voiceControlRow"/></g>
+  
+  <!-- Manual voice labels -->
+  <text x="12" y="145" font-size="5" font-family="monospace" text-anchor="middle" fill="#888">2</text>
+  <text x="12" y="179" font-size="5" font-family="monospace" text-anchor="middle" fill="#888">3</text>
+  <text x="12" y="213" font-size="5" font-family="monospace" text-anchor="middle" fill="#888">4</text>
+  <text x="12" y="247" font-size="5" font-family="monospace" text-anchor="middle" fill="#888">5</text>
+  <text x="12" y="281" font-size="5" font-family="monospace" text-anchor="middle" fill="#888">6</text>
+  <text x="12" y="315" font-size="5" font-family="monospace" text-anchor="middle" fill="#888">7</text>
+  <text x="12" y="349" font-size="5" font-family="monospace" text-anchor="middle" fill="#888">8</text>
+  
+  <!-- ============================================================================
+       MASTER CONTROLS (Bottom)
+       ============================================================================ -->
+  
+  <line x1="5" y1="360" x2="115" y2="360" stroke="#444" stroke-width="0.5" opacity="0.6"/>
+  
+  <!-- Master quantize button -->
+  <rect x="25" y="365" width="6" height="6" rx="0.8" fill="none" stroke="#444" stroke-width="0.35" opacity="0.6"/>
+  <text x="28" y="380" font-size="4" font-family="monospace" text-anchor="middle" fill="#666">quant</text>
+  
+  <!-- Master output -->
+  <circle cx="85" cy="368" r="4" fill="none" stroke="#444" stroke-width="0.35" opacity="0.6"/>
+  <text x="85" y="379" font-size="4" font-family="monospace" text-anchor="middle" fill="#666">out</text>
+  
+  <!-- ============================================================================
+       FOOTER
+       ============================================================================ -->
+  
+  <text x="60" y="378" font-size="4" font-family="monospace" text-anchor="middle" fill="#aaa">red dot</text>
+</svg>

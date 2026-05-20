@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- 
+  StraitsWestSands - Per-Voice DNA Control (East Expander)
+  Light Theme Panel (120mm width, ~24 HP)
+  
+  8-Voice Grid Layout (voices 1-8):
+    • Column 1: Voice # labels
+    • Columns 2-4: Rest DNA (Length/Offset/Rotation knobs)
+    • Columns 5-7: Melody DNA (Length/Offset/Rotation knobs)
+    • Columns 8-10: Octave DNA (Length/Offset/Rotation knobs)
+    • Columns 11-13: Interpolation (Rest/Melody/Octave sliders)
+    • Column 14: Master controls (Scramble, Reset buttons)
+    
+  Total: 8 rows × 13 columns = 104 controls
+  Wide, dense layout inspired by Mind Meld mixers
+  
+  Peranakan lattice pattern rendered by C++ (orthogonal + diagonal + nodes)
+  This SVG provides: Background, voice labels, component guides
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 380">
+  <defs>
+    <linearGradient id="panelEdgeLtEast" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.05" />
+      <stop offset="50%" style="stop-color:#ffffff;stop-opacity:0" />
+      <stop offset="100%" style="stop-color:#ffffff;stop-opacity:0.05" />
+    </linearGradient>
+  </defs>
+  
+  <!-- PANEL BACKGROUND (Light Theme) -->
+  <rect width="120" height="380" fill="#e6e6e6"/>
+  
+  <!-- Edge Highlight -->
+  <rect width="120" height="380" fill="url(#panelEdgeLtEast)" opacity="0.8"/>
+  
+  <!-- ============================================================================
+       HEADER / BRANDING
+       ============================================================================ -->
+  
+  <text x="60" y="18" font-size="11" font-weight="bold" font-family="monospace" 
+        text-anchor="middle" fill="#232323" letter-spacing="1">
+    STRAITS SANDS
+  </text>
+  
+  <text x="60" y="28" font-size="6" font-family="monospace" 
+        text-anchor="middle" fill="#666" letter-spacing="0.5">
+    west | voices 9-16
+  </text>
+  
+  <!-- Brand Accent (Red Dot) -->
+  <circle cx="113" cy="10" r="2" fill="#dc2626"/>
+  
+  <!-- ============================================================================
+       COLUMN HEADERS (Compact)
+       ============================================================================ -->
+  
+  <text x="7" y="42" font-size="5" font-family="monospace" text-anchor="middle" 
+        fill="#232323" font-weight="bold">V</text>
+  
+  <text x="20" y="42" font-size="5" font-family="monospace" text-anchor="middle" 
+        fill="#232323" font-weight="bold">R</text>
+  
+  <text x="40" y="42" font-size="5" font-family="monospace" text-anchor="middle" 
+        fill="#232323" font-weight="bold">M</text>
+  
+  <text x="60" y="42" font-size="5" font-family="monospace" text-anchor="middle" 
+        fill="#232323" font-weight="bold">O</text>
+  
+  <text x="80" y="42" font-size="5" font-family="monospace" text-anchor="middle" 
+        fill="#232323" font-weight="bold">I</text>
+  
+  <text x="105" y="42" font-size="5" font-family="monospace" text-anchor="middle" 
+        fill="#232323" font-weight="bold">Ctl</text>
+  
+  <!-- Sub-headers: DNA components (L/O/R = Length/Offset/Rotation) -->
+  <text x="16" y="49" font-size="4" font-family="monospace" text-anchor="middle" fill="#999">LOr</text>
+  <text x="36" y="49" font-size="4" font-family="monospace" text-anchor="middle" fill="#999">LOr</text>
+  <text x="56" y="49" font-size="4" font-family="monospace" text-anchor="middle" fill="#999">LOr</text>
+  <text x="80" y="49" font-size="4" font-family="monospace" text-anchor="middle" fill="#999">RMO</text>
+  
+  <!-- ============================================================================
+       VOICE ROWS (1-8, more compact)
+       ============================================================================ -->
+  
+  <!-- Voice template (will use transforms) -->
+  <g id="voiceRow">
+    <line x1="2" y1="0" x2="118" y2="0" stroke="#ddd" stroke-width="0.25" opacity="0.5"/>
+    
+    <!-- Voice number -->
+    <text x="7" y="8" font-size="5" font-family="monospace" text-anchor="middle" fill="#666" font-weight="bold">1</text>
+    
+    <!-- Rest DNA (L/O/R) at X=13, 19, 25 -->
+    <circle cx="13" cy="6" r="2.2" fill="none" stroke="#ccc" stroke-width="0.35" stroke-dasharray="1.5,1" opacity="0.6"/>
+    <circle cx="19" cy="6" r="1.8" fill="none" stroke="#ccc" stroke-width="0.3" stroke-dasharray="1.5,1" opacity="0.6"/>
+    <circle cx="25" cy="6" r="1.8" fill="none" stroke="#ccc" stroke-width="0.3" stroke-dasharray="1.5,1" opacity="0.6"/>
+    
+    <!-- Melody DNA (L/O/R) at X=33, 39, 45 -->
+    <circle cx="33" cy="6" r="2.2" fill="none" stroke="#ccc" stroke-width="0.35" stroke-dasharray="1.5,1" opacity="0.6"/>
+    <circle cx="39" cy="6" r="1.8" fill="none" stroke="#ccc" stroke-width="0.3" stroke-dasharray="1.5,1" opacity="0.6"/>
+    <circle cx="45" cy="6" r="1.8" fill="none" stroke="#ccc" stroke-width="0.3" stroke-dasharray="1.5,1" opacity="0.6"/>
+    
+    <!-- Octave DNA (L/O/R) at X=53, 59, 65 -->
+    <circle cx="53" cy="6" r="2.2" fill="none" stroke="#ccc" stroke-width="0.35" stroke-dasharray="1.5,1" opacity="0.6"/>
+    <circle cx="59" cy="6" r="1.8" fill="none" stroke="#ccc" stroke-width="0.3" stroke-dasharray="1.5,1" opacity="0.6"/>
+    <circle cx="65" cy="6" r="1.8" fill="none" stroke="#ccc" stroke-width="0.3" stroke-dasharray="1.5,1" opacity="0.6"/>
+    
+    <!-- Interpolation sliders (vertical) at X=76, 86, 96 -->
+    <rect x="73" y="0" width="6" height="12" fill="none" stroke="#ccc" stroke-width="0.25" stroke-dasharray="1,0.8" opacity="0.5"/>
+    <rect x="83" y="0" width="6" height="12" fill="none" stroke="#ccc" stroke-width="0.25" stroke-dasharray="1,0.8" opacity="0.5"/>
+    <rect x="93" y="0" width="6" height="12" fill="none" stroke="#ccc" stroke-width="0.25" stroke-dasharray="1,0.8" opacity="0.5"/>
+    
+    <!-- Control buttons at X=105, 115 -->
+    <rect x="102" y="1.5" width="4" height="4" rx="0.5" fill="none" stroke="#ccc" stroke-width="0.25" stroke-dasharray="1.5,1" opacity="0.5"/>
+    <rect x="112" y="1.5" width="4" height="4" rx="0.5" fill="none" stroke="#ccc" stroke-width="0.25" stroke-dasharray="1.5,1" opacity="0.5"/>
+  </g>
+  
+  <!-- Voice rows 1-8 (Y spacing = 40 pixels/mm) -->
+  <g id="voice1" transform="translate(0, 55)"><use xlink:href="#voiceRow"/></g>
+  <g id="voice2" transform="translate(0, 95)"><use xlink:href="#voiceRow"/></g>
+  <g id="voice3" transform="translate(0, 135)"><use xlink:href="#voiceRow"/></g>
+  <g id="voice4" transform="translate(0, 175)"><use xlink:href="#voiceRow"/></g>
+  <g id="voice5" transform="translate(0, 215)"><use xlink:href="#voiceRow"/></g>
+  <g id="voice6" transform="translate(0, 255)"><use xlink:href="#voiceRow"/></g>
+  
+  <!-- Manual voice number labels (override template) -->
+  <text x="7" y="103" font-size="5" font-family="monospace" text-anchor="middle" fill="#666" font-weight="bold">2</text>
+  <text x="7" y="143" font-size="5" font-family="monospace" text-anchor="middle" fill="#666" font-weight="bold">3</text>
+  <text x="7" y="183" font-size="5" font-family="monospace" text-anchor="middle" fill="#666" font-weight="bold">4</text>
+  <text x="7" y="223" font-size="5" font-family="monospace" text-anchor="middle" fill="#666" font-weight="bold">5</text>
+  <text x="7" y="263" font-size="5" font-family="monospace" text-anchor="middle" fill="#666" font-weight="bold">6</text>
+  <text x="7" y="303" font-size="5" font-family="monospace" text-anchor="middle" fill="#666" font-weight="bold">7</text>
+  <text x="7" y="343" font-size="5" font-family="monospace" text-anchor="middle" fill="#666" font-weight="bold">8</text>
+  
+  <!-- ============================================================================
+       MASTER CONTROLS (Bottom)
+       ============================================================================ -->
+  
+  <line x1="2" y1="365" x2="118" y2="365" stroke="#ddd" stroke-width="0.5"/>
+  
+  <!-- Master Scramble All -->
+  <rect x="20" y="370" width="6" height="6" rx="0.8" fill="none" stroke="#ccc" stroke-width="0.3" opacity="0.6"/>
+  <text x="23" y="385" font-size="4" font-family="monospace" text-anchor="middle" fill="#999">scr</text>
+  
+  <!-- Master Reset All -->
+  <rect x="95" y="370" width="6" height="6" rx="0.8" fill="none" stroke="#ccc" stroke-width="0.3" opacity="0.6"/>
+  <text x="98" y="385" font-size="4" font-family="monospace" text-anchor="middle" fill="#999">rst</text>
+  
+  <!-- ============================================================================
+       FOOTER
+       ============================================================================ -->
+  
+  <text x="60" y="378" font-size="4" font-family="monospace" text-anchor="middle" fill="#aaa">red dot</text>
+</svg>

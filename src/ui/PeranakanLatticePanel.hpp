@@ -42,7 +42,7 @@ struct PeranakanLatticePanel : app::SvgPanel {
 protected:
     /**
      * Core lattice drawing logic
-     * Separated into protected method for easy override in subclasses
+     * Improved geometric grid with stronger visual presence
      */
     virtual void drawPeranakanLattice(const DrawArgs& args) {
         nvgSave(args.vg);
@@ -51,35 +51,55 @@ protected:
         float height = box.size.y;
         
         // --- DYNAMIC SPACING CALCULATION ---
-        // Ultra-fine scaling: width / 30 gives excellent density
-        // Example: 200px wide module → 6.67px spacing
-        // Example: 120px wide module (Interchange) → 4.0px spacing
-        float spacing = width / 30.0f;
+        // Grid spacing: width / 24 for balanced density
+        float spacing = width / 24.0f;
         
         // --- THEME-DEPENDENT COLORS ---
-        NVGcolor latticeColor;
-        NVGcolor dotColor;
+        NVGcolor primaryColor;
+        NVGcolor secondaryColor;
+        NVGcolor accentColor;
         
         if (themeRef && *themeRef == 0) {
-            // DARK MODE: Cyberpunk Crimson Accents
-            latticeColor = nvgRGBA(0xdc, 0x26, 0x26, 0x24); // #dc2626 @ 14% opacity
-            dotColor     = nvgRGBA(0xdc, 0x26, 0x26, 0x3a); // #dc2626 @ 22% opacity
+            // DARK MODE: Cyberpunk Crimson Accents (stronger presence)
+            primaryColor   = nvgRGBA(0xdc, 0x26, 0x26, 0x28); // #dc2626 @ 16% (main grid)
+            secondaryColor = nvgRGBA(0xdc, 0x26, 0x26, 0x18); // #dc2626 @ 9% (diagonal layer)
+            accentColor    = nvgRGBA(0xdc, 0x26, 0x26, 0x3a); // #dc2626 @ 23% (intersection dots)
         } else {
-            // LIGHT MODE: Minimalist Laboratory Slate Watermark
-            latticeColor = nvgRGBA(0xe4, 0xe4, 0xe7, 0x70); // #e4e4e7 @ 44% opacity
-            dotColor     = nvgRGBA(0xe4, 0xe4, 0xe7, 0x99); // #e4e4e7 @ 60% opacity
+            // LIGHT MODE: Laboratory Slate (watermark quality)
+            primaryColor   = nvgRGBA(0xe4, 0xe4, 0xe7, 0x70); // #e4e4e7 @ 44% (main grid)
+            secondaryColor = nvgRGBA(0xe4, 0xe4, 0xe7, 0x50); // #e4e4e7 @ 31% (diagonal layer)
+            accentColor    = nvgRGBA(0xe4, 0xe4, 0xe7, 0x99); // #e4e4e7 @ 60% (intersection dots)
         }
         
-        // --- STROKE WEIGHT OPTIMIZATION ---
-        // Ultra-thin for high-density display legibility
-        // Scales with panel width for consistent visual weight across sizes
-        nvgStrokeWidth(args.vg, width / 800.0f);
-        nvgStrokeColor(args.vg, latticeColor);
+        // --- LAYER A: PRIMARY ORTHOGONAL GRID (Square lattice) ---
+        // Main structural grid: vertical and horizontal lines
+        // Creates the foundational geometric framework
+        nvgStrokeWidth(args.vg, width / 900.0f);  // Slightly thicker for primary grid
+        nvgStrokeColor(args.vg, primaryColor);
         
-        // --- LAYER A: DIAGONAL DIAMOND LATTICE ---
-        // Forward-leaning (/) and backward-leaning (\) diagonal lines
-        // Creates interleaved diamond pattern across entire panel
-        for (float x = -height; x < width + height; x += spacing * 2.0f) {
+        // Vertical lines
+        for (float x = 0; x <= width; x += spacing) {
+            nvgBeginPath(args.vg);
+            nvgMoveTo(args.vg, x, 0);
+            nvgLineTo(args.vg, x, height);
+            nvgStroke(args.vg);
+        }
+        
+        // Horizontal lines
+        for (float y = 0; y <= height; y += spacing) {
+            nvgBeginPath(args.vg);
+            nvgMoveTo(args.vg, 0, y);
+            nvgLineTo(args.vg, width, y);
+            nvgStroke(args.vg);
+        }
+        
+        // --- LAYER B: SECONDARY DIAGONAL OVERLAY (Rotated 45°) ---
+        // Diamond pattern overlaid on grid for depth and movement
+        // Creates visual interest and peranakan tile aesthetic
+        nvgStrokeWidth(args.vg, width / 1000.0f);  // Thinner for secondary layer
+        nvgStrokeColor(args.vg, secondaryColor);
+        
+        for (float x = -height; x < width + height; x += spacing * 1.5f) {
             // Forward-leaning diagonals (/)
             nvgBeginPath(args.vg);
             nvgMoveTo(args.vg, x, 0);
@@ -93,25 +113,18 @@ protected:
             nvgStroke(args.vg);
         }
         
-        // --- LAYER B: CORE CENTER TACTILE NODES ---
-        // Micro-dots placed at precise lattice intersection centers
-        // Creates visual anchor points and enhances tactile quality
-        nvgFillColor(args.vg, dotColor);
-        float radius = width / 500.0f; // Scale dot size with panel width
+        // --- LAYER C: INTERSECTION NODES ---
+        // Small dots at primary grid intersections for visual anchor points
+        // Creates tactile quality and focuses the eye on key positions
+        nvgFillColor(args.vg, accentColor);
+        float radius = width / 550.0f;  // Small but visible dots
         
-        for (float x = 0; x <= width + spacing; x += spacing) {
+        for (float x = 0; x <= width; x += spacing) {
             for (float y = 0; y <= height; y += spacing) {
-                // Interlaced offset: every alternate row shifts by spacing/2
-                // This places dots at diamond center intersection points
-                int rowCheck = (int)(y / spacing);
-                float offsetX = (rowCheck % 2 == 0) ? 0.0f : spacing / 2.0f;
-                
-                // Boundary check: keep dots within panel bounds
-                if ((x + offsetX) >= 0 && (x + offsetX) <= width) {
-                    nvgBeginPath(args.vg);
-                    nvgCircle(args.vg, x + offsetX, y, radius);
-                    nvgFill(args.vg);
-                }
+                // Draw dot at every grid intersection
+                nvgBeginPath(args.vg);
+                nvgCircle(args.vg, x, y, radius);
+                nvgFill(args.vg);
             }
         }
         
