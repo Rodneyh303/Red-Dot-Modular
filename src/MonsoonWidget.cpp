@@ -144,6 +144,12 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(127.f,120.5f)),module,MonsoonIds::RESET_TRIGGER_OUTPUT));
         addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(143.f,120.5f)),module,MonsoonIds::GATE_OUTPUT));
         addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(159.f,120.5f)),module,MonsoonIds::CV_OUTPUT));
+        
+        // NEW: Legato, Tie, Accent, and combined gates
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(175.f,120.5f)),module,MonsoonIds::LEGATO_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(191.f,120.5f)),module,MonsoonIds::TIE_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(207.f,120.5f)),module,MonsoonIds::ACCENT_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(223.f,120.5f)),module,MonsoonIds::LEGATO_OR_TIE_OUTPUT));
 
         // Add warning lights for multiple expanders (placed near top-left)
         addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(EXP_LIGHT_X, EXP_LIGHT_Y)), module, MonsoonIds::SCALE_EXPANDER_LIGHT));
@@ -196,18 +202,20 @@ void MonsoonWidget::applyTheme() {
             addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(37.f,24.f)),mod,MonsoonIds::VARIATION_PARAM));
             addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(60.f,24.f)),mod,MonsoonIds::LEGATO_PARAM));
             addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(83.f,24.f)),mod,MonsoonIds::REST_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>     (mm2px(Vec(110.f,24.f)),mod,MonsoonIds::BPM_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>     (mm2px(Vec(133.f,24.f)),mod,MonsoonIds::PATTERN_LENGTH_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>     (mm2px(Vec(156.f,24.f)),mod,MonsoonIds::PATTERN_OFFSET_PARAM));
+            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(106.f,24.f)),mod,MonsoonIds::ACCENT_KNOB)); // Accent knob
+            addParam(createParamCentered<RDM_KnobSmall>     (mm2px(Vec(129.f,24.f)),mod,MonsoonIds::BPM_PARAM));
+            addParam(createParamCentered<RDM_KnobSmall>     (mm2px(Vec(152.f,24.f)),mod,MonsoonIds::PATTERN_LENGTH_PARAM));
+            addParam(createParamCentered<RDM_KnobSmall>     (mm2px(Vec(175.f,24.f)),mod,MonsoonIds::PATTERN_OFFSET_PARAM));
         } else {
             // Dark theme: Use cream/light knobs
             addParam(createParamCentered<RDM_KnobCreamMedium> (mm2px(Vec(14.f,24.f)),mod,MonsoonIds::NOTE_VALUE_PARAM));
             addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(37.f,24.f)),mod,MonsoonIds::VARIATION_PARAM));
             addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(60.f,24.f)),mod,MonsoonIds::LEGATO_PARAM));
             addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(83.f,24.f)),mod,MonsoonIds::REST_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>      (mm2px(Vec(110.f,24.f)),mod,MonsoonIds::BPM_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>      (mm2px(Vec(133.f,24.f)),mod,MonsoonIds::PATTERN_LENGTH_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>      (mm2px(Vec(156.f,24.f)),mod,MonsoonIds::PATTERN_OFFSET_PARAM));
+            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(106.f,24.f)),mod,MonsoonIds::ACCENT_KNOB)); // Accent knob
+            addParam(createParamCentered<RDM_KnobSmall>      (mm2px(Vec(129.f,24.f)),mod,MonsoonIds::BPM_PARAM));
+            addParam(createParamCentered<RDM_KnobSmall>      (mm2px(Vec(152.f,24.f)),mod,MonsoonIds::PATTERN_LENGTH_PARAM));
+            addParam(createParamCentered<RDM_KnobSmall>      (mm2px(Vec(175.f,24.f)),mod,MonsoonIds::PATTERN_OFFSET_PARAM));
         }
     }
 

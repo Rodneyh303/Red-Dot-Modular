@@ -133,6 +133,7 @@ Monsoon::Monsoon() {
         configOutput(TIE_OUTPUT,            "Tie Gate (high on Tie)");          // New
         configOutput(LEGATO_OUTPUT,         "Legato Gate (high on Legato/Max)"); // New
         configOutput(ACCENT_OUTPUT,         "Accent Gate (high when accented)");  // New
+        configOutput(LEGATO_OR_TIE_OUTPUT,  "Legato OR Tie Gate (combined)");     // NEW
 
         // Seed RNGs with a random value — safe to call here (uses rack::random, not inputs[])
         rhythmSeedFloat = rack::random::uniform() * 10.f;
@@ -516,6 +517,10 @@ void Monsoon::process(const ProcessArgs& args) {
     
     bool engineAccented = engine.lastStepResult.accented;
     outputs[ACCENT_OUTPUT].setVoltage((engineAccented && gateV > 5.f && !muted) ? 10.f : 0.f);
+    
+    // NEW: Combined Legato OR Tie gate (high on either condition)
+    bool legatoOrTie = isLegato || isTie;
+    outputs[LEGATO_OR_TIE_OUTPUT].setVoltage((legatoOrTie && !muted) ? 10.f : 0.f);
     
     // Poly voice outputs (Guard: only if expander present)
     auto* polyExp = expanderManager.cachedPolyVoiceExpander;
