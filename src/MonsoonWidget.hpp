@@ -22,6 +22,7 @@ struct MonsoonWidget : ModuleWidget {
 
     void applyTheme();
     void draw(const DrawArgs& args) override;
+    void drawPeranakanLattice(const DrawArgs& args);  // NEW: Peranakan lattice overlay
     void appendContextMenu(ui::Menu* menu) override;
 
     static constexpr float W_MM = 172.72f; // widht of module in mm, used for centering text and other elements`

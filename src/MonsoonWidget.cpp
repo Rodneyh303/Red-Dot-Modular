@@ -3,6 +3,7 @@
 #include "MonsoonWidget.hpp"
 #include "Monsoon.hpp"
 #include "dsp/managers/MonsoonScaleManager.hpp"
+#include "ui/PeranakanLatticePanel.hpp"
 
 using namespace rack;
 using namespace MonsoonIds;
@@ -222,6 +223,9 @@ void MonsoonWidget::draw(const DrawArgs& args) {
     nvgFill(vg);
 
         ModuleWidget::draw(args);
+        
+        // ── Draw Peranakan Lattice Overlay ──
+        drawPeranakanLattice(args);
 
         nvgFontFaceId(vg,APP->window->uiFont->handle);
         nvgTextAlign(vg,NVG_ALIGN_CENTER|NVG_ALIGN_MIDDLE);
@@ -321,6 +325,70 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         // const float sx[5] = {88.f, 98.f, 108.f, 118.f, 128.f};
         // for(int i=0;i<5;++i) L(sx[i],116.f-PR-1.8f,sl[i]);
     }
+
+void MonsoonWidget::drawPeranakanLattice(const DrawArgs& args) {
+    // High-density micro peranakan tile-inspired tech lattice texture
+    nvgSave(args.vg);
+    
+    float width = box.size.x;
+    float height = box.size.y;
+    int themeRef = getLightTheme() ? 1 : 0;
+    
+    // Dynamic spacing calculation: width / 28 for large modules
+    float spacing = width / 28.0f;
+    
+    // Theme-dependent colors
+    NVGcolor latticeColor;
+    NVGcolor dotColor;
+    
+    if (themeRef == 0) {
+        // DARK MODE: Cyberpunk Crimson Accents
+        latticeColor = nvgRGBA(0xdc, 0x26, 0x26, 0x28);
+        dotColor     = nvgRGBA(0xdc, 0x26, 0x26, 0x42);
+    } else {
+        // LIGHT MODE: Minimalist Laboratory Slate Watermark
+        latticeColor = nvgRGBA(0xe4, 0xe4, 0xe7, 0x78);
+        dotColor     = nvgRGBA(0xe4, 0xe4, 0xe7, 0xa5);
+    }
+    
+    // Stroke weight optimized for high-density legibility
+    nvgStrokeWidth(args.vg, width / 800.0f);
+    nvgStrokeColor(args.vg, latticeColor);
+    
+    // --- LAYER A: DIAGONAL DIAMOND LATTICE ---
+    for (float x = -height; x < width + height; x += spacing * 2.0f) {
+        // Forward-leaning diagonals (/)
+        nvgBeginPath(args.vg);
+        nvgMoveTo(args.vg, x, 0);
+        nvgLineTo(args.vg, x + height, height);
+        nvgStroke(args.vg);
+        
+        // Backward-leaning diagonals (\)
+        nvgBeginPath(args.vg);
+        nvgMoveTo(args.vg, x, height);
+        nvgLineTo(args.vg, x + height, 0);
+        nvgStroke(args.vg);
+    }
+    
+    // --- LAYER B: CORE CENTER TACTILE NODES ---
+    nvgFillColor(args.vg, dotColor);
+    float radius = width / 500.0f;
+    
+    for (float x = 0; x <= width + spacing; x += spacing) {
+        for (float y = 0; y <= height; y += spacing) {
+            int rowCheck = (int)(y / spacing);
+            float offsetX = (rowCheck % 2 == 0) ? 0.0f : spacing / 2.0f;
+            
+            if ((x + offsetX) >= 0 && (x + offsetX) <= width) {
+                nvgBeginPath(args.vg);
+                nvgCircle(args.vg, x + offsetX, y, radius);
+                nvgFill(args.vg);
+            }
+        }
+    }
+    
+    nvgRestore(args.vg);
+}
 
 void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
         auto* m = dynamic_cast<Monsoon*>(module);
