@@ -18,8 +18,8 @@
 #include "MonsoonInterchangeExpander.hpp"
 #include "MonsoonStraitsEastExpander.hpp"
 #include "MonsoonStraitWestExpander.hpp"      // NEW (Phase 4)
-#include "MonsoonStraitsExpander.hpp"         // NEW (Macro): global DNA controls
-#include "MonsoonStraitSandsExpander.hpp"     // NEW (Deep): per-voice DNA controls
+#include "MonsoonStraitsSands.hpp"            // NEW (Macro): global DNA controls
+#include "MonsoonDeepStraitsSands.hpp"        // NEW (Deep): per-voice DNA controls
 #include "MonsoonWidget.hpp"
 #include "Monsoon.hpp"
 #include "dsp/engines/PatternEngine.hpp"
@@ -606,7 +606,7 @@ void Monsoon::process(const ProcessArgs& args) {
     // ── Straits Sands Expander (DNA control + scramble/reset) ──
     auto* sandsExp = expanderManager.cachedStraitSandsExpander;
     if (sandsExp) {
-        using namespace StraitSandsExpanderIds;
+        using namespace DeepStraitsSandsIds;
         
         // Read DNA controls from Sands for all voices 1-15
         for (int v = 0; v < 15; v++) {
@@ -622,7 +622,22 @@ void Monsoon::process(const ProcessArgs& args) {
             
             // ── Interpolation (Rest): blend between per-voice random and average random ──
             float restInterp = params[POLY_REST_INTERP_1 + v].getValue();
-            engine.voices[v].probabilityModulation = restInterp;  // Store for rest probability processing
+            
+            // Calculate average rest probability across all voices
+            float avgRestProb = 0.f;
+            for (int i = 0; i < 15; i++) {
+                avgRestProb += params[POLY_REST_PARAM_1 + i].getValue();
+            }
+            avgRestProb /= 15.f;
+            
+            // Blend: restInterp = 0.0 → use voice's own probability
+            //        restInterp = 1.0 → use average across all voices
+            //        restInterp = 0.5 → 50/50 blend
+            float voiceRestProb = params[POLY_REST_PARAM_1 + v].getValue();
+            float blendedRestProb = rack::math::lerp(voiceRestProb, avgRestProb, restInterp);
+            
+            // Store blended value for voice to use
+            engine.voices[v].restProb = blendedRestProb;
             
             // ── Melody DNA ──
             int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
@@ -630,15 +645,36 @@ void Monsoon::process(const ProcessArgs& args) {
             float melodyOff = params[melodyBase + 1].getValue();
             float melodyRot = params[melodyBase + 2].getValue();
             
-            engine.pe.polyMelodyRandom[v][0] = (int)melodyLen;
-            engine.pe.polyMelodyRandom[v][1] = (int)melodyOff;
-            engine.pe.polyMelodyRandom[v][2] = (int)melodyRot;
-            
             // ── Interpolation (Melody): blend between per-voice melody and average melody ──
             float melodyInterp = params[POLY_MELODY_INTERP_1 + v].getValue();
-            // TODO: Apply melodyInterp during melody sequence generation (PatternEngine)
-            // This controls blend between voice-specific melody random and collective average
-            (void)melodyInterp;  // Silence unused warning
+            
+            // Calculate average melody random data across all voices
+            // polyMelodyRandom[15][16]: 15 voices × 16 values
+            float avgMelodyRandom[16] = {};
+            for (int i = 0; i < 15; i++) {
+                for (int j = 0; j < 16; j++) {
+                    avgMelodyRandom[j] += engine.pe.polyMelodyRandom[i][j];
+                }
+            }
+            for (int j = 0; j < 16; j++) {
+                avgMelodyRandom[j] /= 15.f;
+            }
+            
+            // Blend voice's melody data with average melody data
+            // interp = 0.0: use voice's own melody sequence (independent)
+            // interp = 1.0: use average melody sequence (synchronized)
+            // interp = 0.5: 50/50 blend
+            for (int j = 0; j < 16; j++) {
+                float voiceVal = engine.pe.polyMelodyRandom[v][j];
+                engine.pe.polyMelodyRandom[v][j] = rack::math::lerp(voiceVal, avgMelodyRandom[j], melodyInterp);
+            }
+            
+            // DNA window (length, offset, rotation) is applied to the blended melody data
+            // Store the window parameters for use during melody generation
+            // (These will be applied by PatternEngine when generating melody notes)
+            engine.pe.polyMelodyRandom[v][0] = melodyLen;   // Store length in source location
+            engine.pe.polyMelodyRandom[v][1] = melodyOff;   // Store offset
+            engine.pe.polyMelodyRandom[v][2] = melodyRot;   // Store rotation
             
             // ── Octave DNA ──
             int octaveBase = POLY_OCTAVE_VOICE_1_LEN + v * 3;
@@ -646,15 +682,30 @@ void Monsoon::process(const ProcessArgs& args) {
             float octaveOff = params[octaveBase + 1].getValue();
             float octaveRot = params[octaveBase + 2].getValue();
             
-            engine.pe.polyOctaveRandom[v][0] = (int)octaveLen;
-            engine.pe.polyOctaveRandom[v][1] = (int)octaveOff;
-            engine.pe.polyOctaveRandom[v][2] = (int)octaveRot;
-            
             // ── Interpolation (Octave): blend between per-voice octave and average octave ──
             float octaveInterp = params[POLY_OCTAVE_INTERP_1 + v].getValue();
-            // TODO: Apply octaveInterp during octave sequence generation (PatternEngine)
-            // This controls blend between voice-specific octave random and collective average
-            (void)octaveInterp;  // Silence unused warning
+            
+            // Calculate average octave random data across all voices
+            float avgOctaveRandom[16] = {};
+            for (int i = 0; i < 15; i++) {
+                for (int j = 0; j < 16; j++) {
+                    avgOctaveRandom[j] += engine.pe.polyOctaveRandom[i][j];
+                }
+            }
+            for (int j = 0; j < 16; j++) {
+                avgOctaveRandom[j] /= 15.f;
+            }
+            
+            // Blend voice's octave data with average octave data
+            for (int j = 0; j < 16; j++) {
+                float voiceVal = engine.pe.polyOctaveRandom[v][j];
+                engine.pe.polyOctaveRandom[v][j] = rack::math::lerp(voiceVal, avgOctaveRandom[j], octaveInterp);
+            }
+            
+            // DNA window (length, offset, rotation) applied to blended octave data
+            engine.pe.polyOctaveRandom[v][0] = octaveLen;
+            engine.pe.polyOctaveRandom[v][1] = octaveOff;
+            engine.pe.polyOctaveRandom[v][2] = octaveRot;
         }
         
         // Handle Scramble triggers (randomize length & offset for all DNA types)
@@ -932,6 +983,6 @@ void init(rack::Plugin* p) {
 	p->addModel(modelMonsoonSandsExpander);
 	p->addModel(modelMonsoonStraitsEastExpander);
 	p->addModel(modelMonsoonStraitWestExpander);    // NEW (Phase 4)
-	p->addModel(modelMonsoonStraitsExpander);       // NEW (Macro): global DNA
-	p->addModel(modelMonsoonStraitSandsExpander);   // NEW (Deep): per-voice DNA
+	p->addModel(modelMonsoonStraitsSands);          // Macro: global DNA
+	p->addModel(modelMonsoonDeepStraitsSands);      // Deep: per-voice DNA
 }
