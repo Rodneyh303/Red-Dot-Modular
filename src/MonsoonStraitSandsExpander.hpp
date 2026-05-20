@@ -134,6 +134,12 @@ struct MonsoonStraitSandsExpander : Module {
             configInput(POLY_DNA_VOICE_8_OFF_INPUT + (v - 7) * 2,
                        voiceLabel + " Offset CV");
         }
+        
+        // Configure interpolation params (blend per-voice vs average random)
+        for (int v = 0; v < 15; v++) {
+            configParam(POLY_VOICE_1_INTERP + v, 0.f, 1.f, 0.f,
+                       "Voice " + std::to_string(v + 1) + " Interp (Per-Voice ↔ Average)");
+        }
 
         // Scramble buttons - randomize length and offset for each voice
         configButton(StraitSandsExpanderIds::SCRAMBLE_ALL_PARAM, "Scramble ALL");
