@@ -10,7 +10,7 @@ struct MonsoonStraitsSandsWidget : ModuleWidget {
     MonsoonStraitsSandsWidget(MonsoonStraitsSands* module) 
     {
         setModule(module);
-        setPanel(APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/MeloDicer_DNAExpander.svg")));
+        setPanel(APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/StraitsSands_panel_dark_10HP.svg")));
 
         // Screws
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
@@ -19,13 +19,13 @@ struct MonsoonStraitsSandsWidget : ModuleWidget {
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
         // ── Compact Layout (3 columns: Rest / Melody / Octave) ──
-        float col1X = 5.0f;    // Rest DNA
-        float col2X = 15.0f;   // Melody DNA
-        float col3X = 25.0f;   // Octave DNA
-        float interpY = 35.0f; // Interpolation row
-        float dnaY = 50.0f;    // DNA controls start
-        float buttonY = 80.0f; // Master buttons
-        float gateY = 95.0f;   // Gate inputs
+        float col1X = 10.0f;    // Rest DNA
+        float col2X = 25.4f;   // Melody DNA (Center of 10HP)
+        float col3X = 40.8f;   // Octave DNA
+        float interpY = 32.0f; // Interpolation row
+        float dnaY = 48.0f;    // DNA controls start
+        float buttonY = 88.0f; // Master buttons
+        float gateY = 108.0f;   // Gate inputs
         
         // ── Labels (drawn in draw()) ──
         
@@ -92,14 +92,14 @@ struct MonsoonStraitsSandsWidget : ModuleWidget {
         
         // Title
         nvgFontSize(args.vg, mm2px(3.0f));
-        nvgText(args.vg, mm2px(15.0f), mm2px(5.0f), "STRAITS SANDS", nullptr);
-        nvgText(args.vg, mm2px(15.0f), mm2px(10.0f), "Macro Global", nullptr);
+        nvgText(args.vg, mm2px(25.4f), mm2px(5.0f), "STRAITS SANDS", nullptr);
+        nvgText(args.vg, mm2px(25.4f), mm2px(10.0f), "Macro Global", nullptr);
         
         // Column headers
         nvgFontSize(args.vg, mm2px(2.0f));
-        nvgText(args.vg, mm2px(5.0f), mm2px(40.0f), "Rest", nullptr);
-        nvgText(args.vg, mm2px(15.0f), mm2px(40.0f), "Melody", nullptr);
-        nvgText(args.vg, mm2px(25.0f), mm2px(40.0f), "Octave", nullptr);
+        nvgText(args.vg, mm2px(10.0f), mm2px(40.0f), "Rest", nullptr);
+        nvgText(args.vg, mm2px(25.4f), mm2px(40.0f), "Melody", nullptr);
+        nvgText(args.vg, mm2px(40.8f), mm2px(40.0f), "Octave", nullptr);
     }
 };
 
