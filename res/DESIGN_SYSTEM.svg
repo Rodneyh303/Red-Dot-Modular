@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- 
+  RED DOT MODULAR SVG ASSET LIBRARY
+  
+  Design System for peranakan tile-inspired tech aesthetic
+  Theme: Cyberpunk minimalism with SI unit precision
+  
+  Color Palette:
+    - Dark Mode:
+      * Background: #232323 (deep charcoal)
+      * Accent Red: #dc2626 (cyberpunk crimson)
+      * Grid: #dc2626 @ 14% (subtle lattice)
+      * Text: #e4e4e7 (light slate)
+      
+    - Light Mode:
+      * Background: #e6e6e6 (laboratory white)
+      * Accent Red: #dc2626 (same cyberpunk crimson)
+      * Grid: #e4e4e7 @ 44% (subtle watermark)
+      * Text: #232323 (dark charcoal)
+  
+  Typography:
+    - Font: System monospace (Courier New fallback)
+    - Sizes: 8px, 10px, 12px, 14px
+    - Weight: Regular
+    - Letter-spacing: +0.5px (technical precision)
+    
+  Spacing Grid:
+    - Base unit: 1mm
+    - Module width steps: 4HP (20.3mm), 8HP (40.6mm), 12HP (60.9mm)
+    - Component grid: 2.5mm
+    - Padding: 2.5mm from edges
+  
+  Module Sizes (in mm, Rack standard):
+    - Monsoon: 172.72mm (~34 HP)
+    - StraitsSands (macro): 60-80mm (~12 HP)
+    - DeepStraitsSands: 200-280mm (~40-55 HP)
+    - Straits East: 60mm (~12 HP)
+    - Strait West: 60mm (~12 HP)
+    - Interchange: 120mm (~24 HP)
+    - Sands (mono): 60mm (~12 HP)
+  
+  Viewbox References (Rack VCV format):
+    - Standard Rack viewbox: 0 0 width height
+    - All paths and objects positioned in MM coordinates
+    - Grid: 1mm = approximately 5.5px in 96dpi display
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 172.72 380">
+
+<!-- ============================================================================
+     ASSET TEMPLATES & DESIGN SPECIFICATIONS
+     
+     This SVG document serves as a design specification library.
+     Individual module panels are split into separate .svg files.
+     ============================================================================ -->
+
+<defs>
+  <!-- Color Definitions -->
+  <color id="darkBg" value="#232323"/>
+  <color id="lightBg" value="#e6e6e6"/>
+  <color id="accentRed" value="#dc2626"/>
+  <color id="lightText" value="#e4e4e7"/>
+  <color id="darkText" value="#232323"/>
+  
+  <!-- Gradient Definitions -->
+  <linearGradient id="bevelGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+    <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.1" />
+    <stop offset="100%" style="stop-color:#000000;stop-opacity:0.1" />
+  </linearGradient>
+  
+  <linearGradient id="knobGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.3" />
+    <stop offset="50%" style="stop-color:#ffffff;stop-opacity:0.1" />
+    <stop offset="100%" style="stop-color:#000000;stop-opacity:0.3" />
+  </linearGradient>
+  
+  <!-- Symbol Definitions -->
+  
+  <!-- Large Knob (RDM_KnobLarge) -->
+  <g id="knobLarge">
+    <!-- Outer ring -->
+    <circle cx="0" cy="0" r="10" fill="#2a2a2a" stroke="#444" stroke-width="0.5"/>
+    <!-- Bevel highlight -->
+    <ellipse cx="0" cy="-8" rx="8" ry="2" fill="#ffffff" opacity="0.15"/>
+    <!-- Indicator line -->
+    <line x1="0" y1="-9" x2="0" y2="-6.5" stroke="#dc2626" stroke-width="0.8" stroke-linecap="round"/>
+    <!-- Inner texture -->
+    <circle cx="0" cy="0" r="9.5" fill="url(#knobGradient)" opacity="0.4"/>
+  </g>
+  
+  <!-- Medium Knob (RDM_KnobMedium) -->
+  <g id="knobMedium">
+    <circle cx="0" cy="0" r="8" fill="#2a2a2a" stroke="#444" stroke-width="0.4"/>
+    <ellipse cx="0" cy="-6.5" rx="6.5" ry="1.5" fill="#ffffff" opacity="0.15"/>
+    <line x1="0" y1="-7.5" x2="0" y2="-5.5" stroke="#dc2626" stroke-width="0.7" stroke-linecap="round"/>
+    <circle cx="0" cy="0" r="7.5" fill="url(#knobGradient)" opacity="0.3"/>
+  </g>
+  
+  <!-- Small Knob (RDM_KnobSmall) -->
+  <g id="knobSmall">
+    <circle cx="0" cy="0" r="6" fill="#2a2a2a" stroke="#444" stroke-width="0.3"/>
+    <ellipse cx="0" cy="-4.8" rx="5" ry="1.2" fill="#ffffff" opacity="0.1"/>
+    <line x1="0" y1="-5.5" x2="0" y2="-4" stroke="#dc2626" stroke-width="0.5" stroke-linecap="round"/>
+    <circle cx="0" cy="0" r="5.5" fill="url(#knobGradient)" opacity="0.2"/>
+  </g>
+  
+  <!-- Toggle Button (2-position) -->
+  <g id="toggleButton">
+    <!-- Bezel -->
+    <rect x="-3.5" y="-3.5" width="7" height="7" rx="0.8" fill="#1a1a1a" stroke="#555" stroke-width="0.5"/>
+    <!-- Face -->
+    <rect x="-3" y="-3" width="6" height="6" rx="0.5" fill="#2a2a2a"/>
+    <!-- Highlight -->
+    <rect x="-3" y="-3" width="6" height="2.5" rx="0.3" fill="#ffffff" opacity="0.08"/>
+  </g>
+  
+  <!-- Push Button -->
+  <g id="pushButton">
+    <circle cx="0" cy="0" r="4" fill="#1a1a1a" stroke="#555" stroke-width="0.5"/>
+    <circle cx="0" cy="0" r="3.5" fill="#2a2a2a"/>
+    <ellipse cx="0" cy="-2.5" rx="2.5" ry="1" fill="#ffffff" opacity="0.1"/>
+  </g>
+  
+  <!-- Port/Jack (PJ301M) -->
+  <g id="portJack">
+    <!-- Outer barrel -->
+    <circle cx="0" cy="0" r="5.5" fill="#1a1a1a" stroke="#333" stroke-width="0.4"/>
+    <!-- Port face -->
+    <circle cx="0" cy="0" r="5" fill="#2a2a2a"/>
+    <!-- Center hole -->
+    <circle cx="0" cy="0" r="2.2" fill="#000" opacity="0.6"/>
+    <!-- Highlight -->
+    <ellipse cx="-1.5" cy="-2" rx="2.5" ry="1.2" fill="#ffffff" opacity="0.1"/>
+  </g>
+  
+  <!-- Light Indicator (Small) -->
+  <g id="lightSmall">
+    <!-- Bezel -->
+    <circle cx="0" cy="0" r="2.5" fill="#1a1a1a" stroke="#333" stroke-width="0.3"/>
+    <!-- Lens -->
+    <circle cx="0" cy="0" r="2" fill="#0a0a0a"/>
+    <!-- Glow when on (not visible in dark SVG, but defined) -->
+    <circle cx="0" cy="0" r="1.8" fill="#dc2626" opacity="0"/>
+  </g>
+  
+  <!-- Light Indicator (Medium) -->
+  <g id="lightMedium">
+    <circle cx="0" cy="0" r="3.5" fill="#1a1a1a" stroke="#333" stroke-width="0.4"/>
+    <circle cx="0" cy="0" r="3" fill="#0a0a0a"/>
+    <circle cx="0" cy="0" r="2.7" fill="#dc2626" opacity="0"/>
+  </g>
+  
+</defs>
+
+<!-- ============================================================================
+     DESIGN NOTES & USAGE GUIDE
+     ============================================================================ -->
+
+<text x="2" y="15" font-size="10" font-family="monospace" fill="#e4e4e7">
+  SVG ASSET LIBRARY - Design System Specifications
+</text>
+
+<text x="2" y="35" font-size="8" font-family="monospace" fill="#e4e4e7">
+  PANEL COMPONENTS:
+  • Backgrounds: Light (#e6e6e6) &amp; Dark (#232323)
+  • Lattice Pattern: Generated by C++ (PeranakanLatticePanel)
+  • Component Markings: Printed labels, guides, legends
+  • Jack/Port Ring Graphics: Light reflection highlights
+</text>
+
+<text x="2" y="75" font-size="8" font-family="monospace" fill="#e4e4e7">
+  KNOB DESIGNS:
+  • Large (10mm): Main parameters (NOTE_VALUE, VARIATION, LEGATO, REST, ACCENT)
+  • Medium (8mm): Secondary controls (LEN, OFF, ROT, INTERP)
+  • Small (6mm): Trim/modulation (BPM, PATTERN_LENGTH, PATTERN_OFFSET)
+  • All: Dark aluminum finish, crimson indicator line, bevel highlight
+</text>
+
+<text x="2" y="120" font-size="8" font-family="monospace" fill="#e4e4e7">
+  BUTTON STYLES:
+  • Toggle: 2-position, bezel design, tactile visual
+  • Push: Momentary, domed face, quick visual feedback
+  • Gate Input: Labeled with gate type (Legato, Tie, Accent, etc.)
+</text>
+
+<text x="2" y="160" font-size="8" font-family="monospace" fill="#e4e4e7">
+  LIGHTS &amp; INDICATORS:
+  • LED size: 2.5-3.5mm diameter
+  • Dark lens with transparent surround
+  • Colors: Red (#dc2626), Green (#22c55e), Yellow (#eab308)
+  • Glow effect rendered by C++ overlay (addLight)
+</text>
+
+<text x="2" y="200" font-size="8" font-family="monospace" fill="#e4e4e7">
+  FILE STRUCTURE:
+  res/panels/
+    • MeloDicer_panel_light.svg (Monsoon, light theme)
+    • MeloDicer_panel_v6.svg (Monsoon, dark theme)
+    • StraitsSands_panel_light.svg (Macro, light)
+    • StraitsSands_panel_dark.svg (Macro, dark)
+    • DeepStraitsSands_panel_light.svg (Deep, light)
+    • DeepStraitsSands_panel_dark.svg (Deep, dark)
+    • [other modules...]
+</text>
+
+<text x="2" y="240" font-size="8" font-family="monospace" fill="#e4e4e7">
+  ASSET CREATION PRIORITY:
+  [1] Monsoon main panel (already exists, refresh with lattice-aware design)
+  [2] StraitsSands macro panels (new)
+  [3] DeepStraitsSands macro panels (new, wide format)
+  [4] Straits East/West panels (update existing)
+  [5] Interchange, Sands panels (update existing)
+</text>
+
+<text x="2" y="280" font-size="8" font-family="monospace" fill="#e4e4e7">
+  TECHNICAL NOTES:
+  • All dimensions in mm (Rack standard)
+  • SVG coordinates: 1mm = ~5.5px (96dpi)
+  • Text antialiasing: Important for legibility at small sizes
+  • Stroke widths: 0.3-0.5mm for visibility without overwhelming
+  • Opacity values: Conservative (avoid muddy overlaps with lattice)
+</text>
+
+<text x="2" y="320" font-size="8" font-family="monospace" fill="#e4e4e7">
+  LIGHT/DARK THEME VARIANTS:
+  • Light: #e6e6e6 background, #232323 text, subtle watermark lattice
+  • Dark: #232323 background, #e4e4e7 text, bold crimson lattice
+  • Both: Same #dc2626 accent red (consistency)
+  • Test on both to ensure readability
+</text>
+
+<text x="2" y="360" font-size="7" font-family="monospace" fill="#888">
+  Design System v1.0 | Red Dot Modular Peranakan Tech Collection
+</text>
+
+</svg>
