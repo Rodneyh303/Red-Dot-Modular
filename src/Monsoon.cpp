@@ -619,15 +619,22 @@ void Monsoon::process(const ProcessArgs& args) {
             engine.polyOff[v] = (int)rhythmOff;
             engine.polyRot[v] = (int)rhythmRot;
             
+            // ── Interpolation: blend between per-voice random and average random ──
+            // interp = 0.0: use per-voice random (default, independent)
+            // interp = 1.0: use average random (synchronized across voices)
+            // interp = 0.5: 50/50 blend
+            float interp = params[POLY_VOICE_1_INTERP + v].getValue();
+            engine.voices[v].probabilityModulation = interp;  // Store for voice processing
+            
             // ── Melody DNA ──
             int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
             float melodyLen = params[melodyBase].getValue();
             float melodyOff = params[melodyBase + 1].getValue();
             float melodyRot = params[melodyBase + 2].getValue();
             
-            engine.pe.polyMelodyRandom[v][0] = (int)melodyLen;  // Length stored in [v][0]
-            engine.pe.polyMelodyRandom[v][1] = (int)melodyOff;  // Offset stored in [v][1]
-            engine.pe.polyMelodyRandom[v][2] = (int)melodyRot;  // Rotation stored in [v][2]
+            engine.pe.polyMelodyRandom[v][0] = (int)melodyLen;
+            engine.pe.polyMelodyRandom[v][1] = (int)melodyOff;
+            engine.pe.polyMelodyRandom[v][2] = (int)melodyRot;
             
             // ── Octave DNA ──
             int octaveBase = POLY_OCTAVE_VOICE_1_LEN + v * 3;
@@ -635,9 +642,9 @@ void Monsoon::process(const ProcessArgs& args) {
             float octaveOff = params[octaveBase + 1].getValue();
             float octaveRot = params[octaveBase + 2].getValue();
             
-            engine.pe.polyOctaveRandom[v][0] = (int)octaveLen;  // Length stored in [v][0]
-            engine.pe.polyOctaveRandom[v][1] = (int)octaveOff;  // Offset stored in [v][1]
-            engine.pe.polyOctaveRandom[v][2] = (int)octaveRot;  // Rotation stored in [v][2]
+            engine.pe.polyOctaveRandom[v][0] = (int)octaveLen;
+            engine.pe.polyOctaveRandom[v][1] = (int)octaveOff;
+            engine.pe.polyOctaveRandom[v][2] = (int)octaveRot;
         }
         
         // Handle Scramble triggers (randomize length & offset for all DNA types)
