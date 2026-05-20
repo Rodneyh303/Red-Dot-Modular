@@ -99,7 +99,7 @@ namespace DeepStraitsSandsIds {
 };
 
 struct MonsoonDeepStraitsSands : Module {
-    MonsoonStraitSandsExpander() {
+    MonsoonDeepStraitsSands() {
         // Size to full parent params/inputs to access DNA controls
         config(MonsoonIds::NUM_PARAMS, MonsoonIds::NUM_INPUTS, 0, 0);
 
@@ -146,29 +146,29 @@ struct MonsoonDeepStraitsSands : Module {
         }
 
         // Scramble buttons - randomize length and offset for each voice
-        configButton(StraitSandsExpanderIds::SCRAMBLE_ALL_PARAM, "Scramble ALL");
+        configButton(DeepStraitsSandsIds::SCRAMBLE_ALL_PARAM, "Scramble ALL");
         for (int v = 0; v < 15; v++) {
-            configButton(StraitSandsExpanderIds::SCRAMBLE_VOICE_1 + v,
+            configButton(DeepStraitsSandsIds::SCRAMBLE_VOICE_1 + v,
                         "Scramble Voice " + std::to_string(v + 1));
         }
         
         // Reset buttons - restore defaults
-        configButton(StraitSandsExpanderIds::RESET_ALL_PARAM, "Reset ALL");
+        configButton(DeepStraitsSandsIds::RESET_ALL_PARAM, "Reset ALL");
         for (int v = 0; v < 15; v++) {
-            configButton(StraitSandsExpanderIds::RESET_VOICE_1 + v,
+            configButton(DeepStraitsSandsIds::RESET_VOICE_1 + v,
                         "Reset Voice " + std::to_string(v + 1));
         }
         
         // Gate inputs for scramble/reset external control
-        configInput(StraitSandsExpanderIds::SCRAMBLE_ALL_INPUT, "Scramble ALL Gate");
+        configInput(DeepStraitsSandsIds::SCRAMBLE_ALL_INPUT, "Scramble ALL Gate");
         for (int v = 0; v < 15; v++) {
-            configInput(StraitSandsExpanderIds::SCRAMBLE_VOICE_1_INPUT + v,
+            configInput(DeepStraitsSandsIds::SCRAMBLE_VOICE_1_INPUT + v,
                        "Scramble Voice " + std::to_string(v + 1) + " Gate");
         }
         
-        configInput(StraitSandsExpanderIds::RESET_ALL_INPUT, "Reset ALL Gate");
+        configInput(DeepStraitsSandsIds::RESET_ALL_INPUT, "Reset ALL Gate");
         for (int v = 0; v < 15; v++) {
-            configInput(StraitSandsExpanderIds::RESET_VOICE_1_INPUT + v,
+            configInput(DeepStraitsSandsIds::RESET_VOICE_1_INPUT + v,
                        "Reset Voice " + std::to_string(v + 1) + " Gate");
         }
     }

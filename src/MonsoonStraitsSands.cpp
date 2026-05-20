@@ -31,7 +31,7 @@ struct MonsoonStraitsSandsWidget : ModuleWidget {
         
         // ── Rest DNA Row ──
         // Length
-        addParam(createParamCentered<Knob25>(
+        addParam(createParamCentered<Trimpot>(
             mm2px(Vec(col1X, dnaY)), module, GLOBAL_REST_DNA_LEN));
         // Offset
         addParam(createParamCentered<Trimpot>(
@@ -40,12 +40,12 @@ struct MonsoonStraitsSandsWidget : ModuleWidget {
         addParam(createParamCentered<Trimpot>(
             mm2px(Vec(col1X, dnaY + 24.0f)), module, GLOBAL_REST_DNA_ROT));
         // Interpolation
-        addParam(createParamCentered<Slider>(
+        addParam(createParamCentered<VCVSlider>(
             mm2px(Vec(col1X, interpY)), module, GLOBAL_REST_INTERP));
         
         // ── Melody DNA Row ──
         // Length
-        addParam(createParamCentered<Knob25>(
+        addParam(createParamCentered<Trimpot>(
             mm2px(Vec(col2X, dnaY)), module, GLOBAL_MELODY_DNA_LEN));
         // Offset
         addParam(createParamCentered<Trimpot>(
@@ -54,12 +54,12 @@ struct MonsoonStraitsSandsWidget : ModuleWidget {
         addParam(createParamCentered<Trimpot>(
             mm2px(Vec(col2X, dnaY + 24.0f)), module, GLOBAL_MELODY_DNA_ROT));
         // Interpolation
-        addParam(createParamCentered<Slider>(
+        addParam(createParamCentered<VCVSlider>(
             mm2px(Vec(col2X, interpY)), module, GLOBAL_MELODY_INTERP));
         
         // ── Octave DNA Row ──
         // Length
-        addParam(createParamCentered<Knob25>(
+        addParam(createParamCentered<Trimpot>(
             mm2px(Vec(col3X, dnaY)), module, GLOBAL_OCTAVE_DNA_LEN));
         // Offset
         addParam(createParamCentered<Trimpot>(
@@ -68,13 +68,13 @@ struct MonsoonStraitsSandsWidget : ModuleWidget {
         addParam(createParamCentered<Trimpot>(
             mm2px(Vec(col3X, dnaY + 24.0f)), module, GLOBAL_OCTAVE_DNA_ROT));
         // Interpolation
-        addParam(createParamCentered<Slider>(
+        addParam(createParamCentered<VCVSlider>(
             mm2px(Vec(col3X, interpY)), module, GLOBAL_OCTAVE_INTERP));
         
         // ── Master Scramble/Reset Buttons ──
-        addParam(createParamCentered<PushButton>(
+        addParam(createParamCentered<TL1105>(
             mm2px(Vec(col1X + 5.0f, buttonY)), module, SCRAMBLE_ALL));
-        addParam(createParamCentered<PushButton>(
+        addParam(createParamCentered<TL1105>(
             mm2px(Vec(col3X - 5.0f, buttonY)), module, RESET_ALL));
         
         // ── Gate Inputs ──

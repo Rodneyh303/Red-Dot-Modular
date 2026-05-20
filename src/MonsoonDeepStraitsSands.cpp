@@ -69,20 +69,20 @@ struct MonsoonDeepStraitsSandsWidget : ModuleWidget {
                 MonsoonIds::POLY_OCTAVE_VOICE_1_ROT + v * 3));
             
             // Scramble + Reset buttons for this voice
-            addParam(createParamCentered<TinyButton>(
+            addParam(createParamCentered<TL1105>(
                 mm2px(Vec(buttonsX, y - 1.5f)), module,
-                StraitSandsExpanderIds::SCRAMBLE_VOICE_1 + v));
-            addParam(createParamCentered<TinyButton>(
+                DeepStraitsSandsIds::SCRAMBLE_VOICE_1 + v));
+            addParam(createParamCentered<TL1105>(
                 mm2px(Vec(buttonsX + knobSpacing, y - 1.5f)), module,
-                StraitSandsExpanderIds::RESET_VOICE_1 + v));
+                DeepStraitsSandsIds::RESET_VOICE_1 + v));
             
             // Gate inputs for scramble/reset
             addInput(createInputCentered<PJ301MPort>(
                 mm2px(Vec(buttonsX + knobSpacing * 2.0f, y)), module,
-                StraitSandsExpanderIds::SCRAMBLE_VOICE_1_INPUT + v));
+                DeepStraitsSandsIds::SCRAMBLE_VOICE_1_INPUT + v));
             addInput(createInputCentered<PJ301MPort>(
                 mm2px(Vec(buttonsX + knobSpacing * 3.0f, y)), module,
-                StraitSandsExpanderIds::RESET_VOICE_1_INPUT + v));
+                DeepStraitsSandsIds::RESET_VOICE_1_INPUT + v));
             
             // Interpolation knobs: Rest, Melody, Octave (separate blending per dimension)
             addParam(createParamCentered<Trimpot>(
@@ -95,20 +95,20 @@ struct MonsoonDeepStraitsSandsWidget : ModuleWidget {
         
         // ── Master Scramble/Reset Controls (bottom row) ──
         float masterY = startY + 15 * rowHeight + 3.0f;
-        addParam(createParamCentered<PushButton>(
+        addParam(createParamCentered<TL1105>(
             mm2px(Vec(restX + knobSpacing, masterY)), module,
-            StraitSandsExpanderIds::SCRAMBLE_ALL_PARAM));
-        addParam(createParamCentered<PushButton>(
+            DeepStraitsSandsIds::SCRAMBLE_ALL_PARAM));
+        addParam(createParamCentered<TL1105>(
             mm2px(Vec(melodyX, masterY)), module,
-            StraitSandsExpanderIds::RESET_ALL_PARAM));
+            DeepStraitsSandsIds::RESET_ALL_PARAM));
         
         // Master gate inputs
         addInput(createInputCentered<PJ301MPort>(
             mm2px(Vec(octaveX, masterY)), module,
-            StraitSandsExpanderIds::SCRAMBLE_ALL_INPUT));
+            DeepStraitsSandsIds::SCRAMBLE_ALL_INPUT));
         addInput(createInputCentered<PJ301MPort>(
             mm2px(Vec(octaveX + knobSpacing, masterY)), module,
-            StraitSandsExpanderIds::RESET_ALL_INPUT));
+            DeepStraitsSandsIds::RESET_ALL_INPUT));
     }
 
     void draw(const DrawArgs& args) override {

@@ -603,14 +603,14 @@ void Monsoon::process(const ProcessArgs& args) {
         westExp->outputs[POLY_CV_1_16_OUT].setVoltage(polyCv1_16);
     }
     
-    // ── Straits Sands Expander (DNA control + scramble/reset) ──
-    auto* sandsExp = expanderManager.cachedStraitSandsExpander;
-    if (sandsExp) {
+    // ── Deep Straits Sands Expander (Per-Voice DNA control + scramble/reset) ──
+    auto* deepSandsExp = expanderManager.cachedDeepStraitsSandsExpander;
+    if (deepSandsExp) {
         using namespace DeepStraitsSandsIds;
         
         // Read DNA controls from Sands for all voices 1-15
         for (int v = 0; v < 15; v++) {
-            // ── Rhythm DNA ──
+            // ── Rhythm DNA (Voices 1-15) ──
             int rhythmBase = POLY_DNA_VOICE_1_LEN + v * 3;
             float rhythmLen = params[rhythmBase].getValue();
             float rhythmOff = params[rhythmBase + 1].getValue();
@@ -634,7 +634,7 @@ void Monsoon::process(const ProcessArgs& args) {
             //        restInterp = 1.0 → use average across all voices
             //        restInterp = 0.5 → 50/50 blend
             float voiceRestProb = params[POLY_REST_PARAM_1 + v].getValue();
-            float blendedRestProb = rack::math::lerp(voiceRestProb, avgRestProb, restInterp);
+            float blendedRestProb = voiceRestProb + restInterp * (avgRestProb - voiceRestProb);
             
             // Store blended value for voice to use
             engine.voices[v].restProb = blendedRestProb;
@@ -666,7 +666,7 @@ void Monsoon::process(const ProcessArgs& args) {
             // interp = 0.5: 50/50 blend
             for (int j = 0; j < 16; j++) {
                 float voiceVal = engine.pe.polyMelodyRandom[v][j];
-                engine.pe.polyMelodyRandom[v][j] = rack::math::lerp(voiceVal, avgMelodyRandom[j], melodyInterp);
+                engine.pe.polyMelodyRandom[v][j] = voiceVal + melodyInterp * (avgMelodyRandom[j] - voiceVal);
             }
             
             // DNA window (length, offset, rotation) is applied to the blended melody data
@@ -699,7 +699,7 @@ void Monsoon::process(const ProcessArgs& args) {
             // Blend voice's octave data with average octave data
             for (int j = 0; j < 16; j++) {
                 float voiceVal = engine.pe.polyOctaveRandom[v][j];
-                engine.pe.polyOctaveRandom[v][j] = rack::math::lerp(voiceVal, avgOctaveRandom[j], octaveInterp);
+                engine.pe.polyOctaveRandom[v][j] = voiceVal + octaveInterp * (avgOctaveRandom[j] - voiceVal);
             }
             
             // DNA window (length, offset, rotation) applied to blended octave data
@@ -812,7 +812,11 @@ void Monsoon::process(const ProcessArgs& args) {
             uiManager->updateDiceLights(engine.pe.isRhythmSeedPending(), engine.pe.isMelodySeedPending());
             uiManager->updateLockLight(locked);
             uiManager->updateMuteLight(muted);
-            uiManager->updateExpanderLights(expanderManager.scaleExpanderCount, expanderManager.dnaExpanderCount, expanderManager.polyExpanderCount);
+            
+            // Aggregate DNA and Poly counts for the status LEDs
+            int totalDnaCount = expanderManager.dnaExpanderCount + expanderManager.straitsSandsExpanderCount + expanderManager.deepStraitsSandsExpanderCount;
+            int totalPolyCount = expanderManager.polyExpanderCount + expanderManager.straitWestExpanderCount;
+            uiManager->updateExpanderLights(expanderManager.scaleExpanderCount, totalDnaCount, totalPolyCount);
 
             uiManager->updateRunGateLight(runGateActive);
             uiManager->updateResetLight(resetArmed, args.sampleTime * 512.f);
