@@ -84,9 +84,13 @@ struct MonsoonStraitSandsExpanderWidget : ModuleWidget {
                 mm2px(Vec(buttonsX + knobSpacing * 3.0f, y)), module,
                 StraitSandsExpanderIds::RESET_VOICE_1_INPUT + v));
             
-            // Interpolation knob: blend per-voice random vs average random
+            // Interpolation knobs: Rest, Melody, Octave (separate blending per dimension)
             addParam(createParamCentered<Trimpot>(
-                mm2px(Vec(interpX, y)), module, MonsoonIds::POLY_VOICE_1_INTERP + v));
+                mm2px(Vec(interpX, y)), module, MonsoonIds::POLY_REST_INTERP_1 + v));
+            addParam(createParamCentered<Trimpot>(
+                mm2px(Vec(interpX + knobSpacing, y)), module, MonsoonIds::POLY_MELODY_INTERP_1 + v));
+            addParam(createParamCentered<Trimpot>(
+                mm2px(Vec(interpX + knobSpacing * 2.0f, y)), module, MonsoonIds::POLY_OCTAVE_INTERP_1 + v));
         }
         
         // ── Master Scramble/Reset Controls (bottom row) ──
