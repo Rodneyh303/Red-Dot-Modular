@@ -16,7 +16,7 @@ using namespace MonsoonIds;
  * Actions: Scramble (randomize length/offset), Reset (restore defaults)
  */
 
-namespace StraitSandsExpanderIds {
+namespace DeepStraitsSandsIds {
     enum ParamId {
         // Scramble buttons: randomize length & offset per voice
         SCRAMBLE_ALL_PARAM = 0,
@@ -98,7 +98,7 @@ namespace StraitSandsExpanderIds {
     };
 };
 
-struct MonsoonStraitSandsExpander : Module {
+struct MonsoonDeepStraitsSands : Module {
     MonsoonStraitSandsExpander() {
         // Size to full parent params/inputs to access DNA controls
         config(MonsoonIds::NUM_PARAMS, MonsoonIds::NUM_INPUTS, 0, 0);

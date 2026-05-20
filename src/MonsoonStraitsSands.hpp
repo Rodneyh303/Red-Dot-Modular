@@ -33,8 +33,8 @@ namespace StraitsSandsIds {
     };
 };
 
-struct MonsoonStraitsExpander : Module {
-    MonsoonStraitsExpander() {
+struct MonsoonStraitsSands : Module {
+    MonsoonStraitsSands() {
         // Size to full parent namespace to access global macro params
         config(MonsoonIds::NUM_PARAMS, MonsoonIds::NUM_INPUTS, 0, 0);
 

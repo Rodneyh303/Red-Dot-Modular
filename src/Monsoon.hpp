@@ -770,5 +770,5 @@ extern Model* modelMonsoonInterchangeExpander;
 extern Model* modelMonsoonSandsExpander;
 extern Model* modelMonsoonStraitsEastExpander; // Declare new expander model
 extern Model* modelMonsoonStraitWestExpander;  // NEW (Phase 4): voices 9-16
-extern Model* modelMonsoonStraitsExpander;     // NEW (Macro): global DNA controls (compact)
-extern Model* modelMonsoonStraitSandsExpander; // NEW (Deep): per-voice DNA controls (detailed)
+extern Model* modelMonsoonStraitsSands;        // NEW (Macro): global DNA controls (compact)
+extern Model* modelMonsoonDeepStraitsSands;    // NEW (Deep): per-voice DNA controls (detailed)

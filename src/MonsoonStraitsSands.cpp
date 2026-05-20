@@ -1,13 +1,13 @@
 #include <rack.hpp>
 #include "Monsoon.hpp"
-#include "MonsoonStraitsExpander.hpp"
+#include "MonsoonStraitsSands.hpp"
 
 using namespace rack;
 using namespace MonsoonIds;
 using namespace StraitsSandsIds;
 
-struct MonsoonStraitsExpanderWidget : ModuleWidget {
-    MonsoonStraitsExpanderWidget(MonsoonStraitsExpander* module) 
+struct MonsoonStraitsSandsWidget : ModuleWidget {
+    MonsoonStraitsSandsWidget(MonsoonStraitsSands* module) 
     {
         setModule(module);
         setPanel(APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/MeloDicer_DNAExpander.svg")));
@@ -103,4 +103,4 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget {
     }
 };
 
-Model* modelMonsoonStraitsExpander = createModel<MonsoonStraitsExpander, MonsoonStraitsExpanderWidget>("MonsoonStraitsExpander");
+Model* modelMonsoonStraitsSands = createModel<MonsoonStraitsSands, MonsoonStraitsSandsWidget>("MonsoonStraitsSands");
