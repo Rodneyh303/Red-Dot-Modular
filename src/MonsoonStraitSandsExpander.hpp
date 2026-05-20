@@ -137,8 +137,12 @@ struct MonsoonStraitSandsExpander : Module {
         
         // Configure interpolation params (blend per-voice vs average random)
         for (int v = 0; v < 15; v++) {
-            configParam(POLY_VOICE_1_INTERP + v, 0.f, 1.f, 0.f,
-                       "Voice " + std::to_string(v + 1) + " Interp (Per-Voice ↔ Average)");
+            configParam(POLY_REST_INTERP_1 + v, 0.f, 1.f, 0.f,
+                       "Voice " + std::to_string(v + 1) + " Rest Interp (Per-Voice ↔ Average)");
+            configParam(POLY_MELODY_INTERP_1 + v, 0.f, 1.f, 0.f,
+                       "Voice " + std::to_string(v + 1) + " Melody Interp (Per-Voice ↔ Average)");
+            configParam(POLY_OCTAVE_INTERP_1 + v, 0.f, 1.f, 0.f,
+                       "Voice " + std::to_string(v + 1) + " Octave Interp (Per-Voice ↔ Average)");
         }
 
         // Scramble buttons - randomize length and offset for each voice

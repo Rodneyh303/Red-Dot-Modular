@@ -305,6 +305,77 @@ namespace MonsoonIds {
         POLY_VOICE_13_INTERP,
         POLY_VOICE_14_INTERP,
         POLY_VOICE_15_INTERP,
+        
+        // Dimension-Specific Interpolation (15 voices × 3 dimensions = 45) - NEW
+        // Each voice has independent blending for Rest, Melody, Octave
+        
+        // Rest Probability Interpolation (15 voices)
+        POLY_REST_INTERP_1,
+        POLY_REST_INTERP_2,
+        POLY_REST_INTERP_3,
+        POLY_REST_INTERP_4,
+        POLY_REST_INTERP_5,
+        POLY_REST_INTERP_6,
+        POLY_REST_INTERP_7,
+        POLY_REST_INTERP_8,
+        POLY_REST_INTERP_9,
+        POLY_REST_INTERP_10,
+        POLY_REST_INTERP_11,
+        POLY_REST_INTERP_12,
+        POLY_REST_INTERP_13,
+        POLY_REST_INTERP_14,
+        POLY_REST_INTERP_15,
+        
+        // Melody (Semitone) Interpolation (15 voices)
+        POLY_MELODY_INTERP_1,
+        POLY_MELODY_INTERP_2,
+        POLY_MELODY_INTERP_3,
+        POLY_MELODY_INTERP_4,
+        POLY_MELODY_INTERP_5,
+        POLY_MELODY_INTERP_6,
+        POLY_MELODY_INTERP_7,
+        POLY_MELODY_INTERP_8,
+        POLY_MELODY_INTERP_9,
+        POLY_MELODY_INTERP_10,
+        POLY_MELODY_INTERP_11,
+        POLY_MELODY_INTERP_12,
+        POLY_MELODY_INTERP_13,
+        POLY_MELODY_INTERP_14,
+        POLY_MELODY_INTERP_15,
+        
+        // Octave Interpolation (15 voices)
+        POLY_OCTAVE_INTERP_1,
+        POLY_OCTAVE_INTERP_2,
+        POLY_OCTAVE_INTERP_3,
+        POLY_OCTAVE_INTERP_4,
+        POLY_OCTAVE_INTERP_5,
+        POLY_OCTAVE_INTERP_6,
+        POLY_OCTAVE_INTERP_7,
+        POLY_OCTAVE_INTERP_8,
+        POLY_OCTAVE_INTERP_9,
+        POLY_OCTAVE_INTERP_10,
+        POLY_OCTAVE_INTERP_11,
+        POLY_OCTAVE_INTERP_12,
+        POLY_OCTAVE_INTERP_13,
+        POLY_OCTAVE_INTERP_14,
+        POLY_OCTAVE_INTERP_15,
+        
+        // Global Macro DNA Controls (for simple Straits Sands) - NEW
+        // Single set of controls for all poly voices
+        GLOBAL_REST_DNA_LEN,
+        GLOBAL_REST_DNA_OFF,
+        GLOBAL_REST_DNA_ROT,
+        GLOBAL_REST_INTERP,
+        
+        GLOBAL_MELODY_DNA_LEN,
+        GLOBAL_MELODY_DNA_OFF,
+        GLOBAL_MELODY_DNA_ROT,
+        GLOBAL_MELODY_INTERP,
+        
+        GLOBAL_OCTAVE_DNA_LEN,
+        GLOBAL_OCTAVE_DNA_OFF,
+        GLOBAL_OCTAVE_DNA_ROT,
+        GLOBAL_OCTAVE_INTERP,
 
         NUM_PARAMS
     };
@@ -699,4 +770,5 @@ extern Model* modelMonsoonInterchangeExpander;
 extern Model* modelMonsoonSandsExpander;
 extern Model* modelMonsoonStraitsEastExpander; // Declare new expander model
 extern Model* modelMonsoonStraitWestExpander;  // NEW (Phase 4): voices 9-16
-extern Model* modelMonsoonStraitSandsExpander; // NEW (Phase 6): poly DNA per-voice
+extern Model* modelMonsoonStraitsExpander;     // NEW (Macro): global DNA controls (compact)
+extern Model* modelMonsoonStraitSandsExpander; // NEW (Deep): per-voice DNA controls (detailed)
