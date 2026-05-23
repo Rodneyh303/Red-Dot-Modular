@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 121.92 380" width="121.92mm" height="380mm">
+  <defs>
+    <!-- ===== PERANAKAN TILE PATTERN ===== -->
+    <!-- 20mm tile: octagon (main) + corners filled pattern -->
+    <!-- Coordinated with knob positions (spacing multiples) -->
+    
+    <pattern id="peranakan" patternUnits="userSpaceOnUse" width="20" height="20" x="0" y="0">
+      <!-- Tile background -->
+      <rect width="20" height="20" fill="#f0f0f0"/>
+      
+      <!-- Main octagon (center, 14mm wide) -->
+      <polygon points="10,3 17,6 17,14 10,17 3,14 3,6" 
+               fill="none" stroke="#ccc" stroke-width="0.4" opacity="0.6"/>
+      
+      <!-- Inner decorative pattern (geometric) -->
+      <circle cx="10" cy="10" r="4" fill="none" stroke="#d0d0d0" stroke-width="0.3" opacity="0.5"/>
+      <circle cx="10" cy="10" r="3" fill="none" stroke="#d0d0d0" stroke-width="0.2" opacity="0.4"/>
+      
+      <!-- Diagonal crossing lines (characteristic peranakan element) -->
+      <line x1="10" y1="2" x2="10" y2="18" stroke="#d5d5d5" stroke-width="0.25" opacity="0.4"/>
+      <line x1="2" y1="10" x2="18" y2="10" stroke="#d5d5d5" stroke-width="0.25" opacity="0.4"/>
+      
+      <!-- Corner accents (small squares at tile corners) -->
+      <rect x="0.5" y="0.5" width="2" height="2" fill="none" stroke="#ddd" stroke-width="0.2" opacity="0.3"/>
+      <rect x="17.5" y="0.5" width="2" height="2" fill="none" stroke="#ddd" stroke-width="0.2" opacity="0.3"/>
+      <rect x="0.5" y="17.5" width="2" height="2" fill="none" stroke="#ddd" stroke-width="0.2" opacity="0.3"/>
+      <rect x="17.5" y="17.5" width="2" height="2" fill="none" stroke="#ddd" stroke-width="0.2" opacity="0.3"/>
+    </pattern>
+    
+    <!-- ===== HORIZONTAL GRAIN (like MeloDicer v6) ===== -->
+    <pattern id="grain" x="0" y="0" width="121.92" height="0.2" patternUnits="userSpaceOnUse">
+      <rect width="121.92" height="0.2" fill="#f0f0f0"/>
+      <rect y="0.100" width="121.92" height="0.050" fill="#d0d0d0" opacity="0.3"/>
+    </pattern>
+    
+    <!-- ===== KNOB GRADIENTS ===== -->
+    <!-- Light theme metallics (for Interchange) -->
+    <radialGradient id="knobMedLight" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" style="stop-color:#f5f5f5;stop-opacity:1"/>
+      <stop offset="25%" style="stop-color:#d8d8d8;stop-opacity:1"/>
+      <stop offset="55%" style="stop-color:#a0a0a0;stop-opacity:1"/>
+      <stop offset="90%" style="stop-color:#606060;stop-opacity:1"/>
+    </radialGradient>
+    
+    <radialGradient id="knobSmLight" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" style="stop-color:#eeeeee;stop-opacity:1"/>
+      <stop offset="30%" style="stop-color:#c0c0c0;stop-opacity:1"/>
+      <stop offset="60%" style="stop-color:#808080;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#404040;stop-opacity:1"/>
+    </radialGradient>
+    
+    <!-- Jack gradient (light theme) -->
+    <radialGradient id="jackLight" cx="40%" cy="35%" r="60%">
+      <stop offset="0%" style="stop-color:#e8e8e8;stop-opacity:1"/>
+      <stop offset="30%" style="stop-color:#c0c0c0;stop-opacity:1"/>
+      <stop offset="70%" style="stop-color:#707070;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#303030;stop-opacity:1"/>
+    </radialGradient>
+    
+    <!-- Button gradient (light theme) -->
+    <radialGradient id="buttonLight" cx="45%" cy="40%" r="55%">
+      <stop offset="0%" style="stop-color:#f8f8f8;stop-opacity:1"/>
+      <stop offset="25%" style="stop-color:#d8d8d8;stop-opacity:1"/>
+      <stop offset="60%" style="stop-color:#808080;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#404040;stop-opacity:1"/>
+    </radialGradient>
+  </defs>
+  
+  <!-- ===== BACKGROUND LAYERS ===== -->
+  <!-- Base color -->
+  <rect width="121.92" height="380" fill="#e6e6e6"/>
+  
+  <!-- Peranakan tile pattern (subtle background) -->
+  <rect width="121.92" height="380" fill="url(#peranakan)" opacity="0.85"/>
+  
+  <!-- Grain overlay (scan lines like v6) -->
+  <rect width="121.92" height="380" fill="url(#grain)"/>
+  
+  <!-- ===== PANEL BORDER ===== -->
+  <rect x="0.5" y="0.5" width="120.92" height="379" fill="none" stroke="#999" stroke-width="0.8"/>
+  
+  <!-- ===== RED LINE ACCENT (LEFT EDGE) ===== -->
+  <rect x="0" y="0" width="2.5" height="380" fill="#dc2626"/>
+  <rect x="0" y="0" width="2.5" height="380" fill="#ff6666" opacity="0.2"/>
+  
+  <!-- ===== HEADER AREA ===== -->
+  <rect x="0" y="0" width="121.92" height="16" fill="#d0d0d0"/>
+  <line x1="2" y1="16" x2="119.92" y2="16" stroke="#999" stroke-width="0.5"/>
+  
+  <!-- RED DOT BRANDING -->
+  <circle cx="10" cy="8" r="3" fill="#cc2222" stroke="#990000" stroke-width="0.2"/>
+  <circle cx="8.5" cy="6.5" r="1" fill="#ff6666" opacity="0.5"/>
+  
+  <!-- TITLE -->
+  <text x="60.96" y="13" font-size="7.5" font-family="monospace" text-anchor="middle" fill="#333" font-weight="bold">INTERCHANGE</text>
+  <text x="60.96" y="25" font-size="4.5" font-family="monospace" text-anchor="middle" fill="#666">modulation</text>
+  
+  <!-- ===== MODE SECTION ===== -->
+  <text x="15" y="45" font-size="5" font-family="monospace" fill="#555" font-weight="bold">mode</text>
+  <rect x="20" y="50" width="25" height="8" rx="1.5" fill="url(#buttonLight)" stroke="#999" stroke-width="0.3"/>
+  <text x="32.5" y="56.5" font-size="3" font-family="monospace" text-anchor="middle" fill="#333">tune</text>
+  
+  <!-- ===== SCALE SELECTOR (Large knob) ===== -->
+  <g transform="translate(80, 60)">
+    <circle cx="0" cy="0" r="7.5" fill="url(#knobMedLight)" stroke="#999" stroke-width="0.3"/>
+    <rect x="-0.6" y="-8.5" width="1.2" height="2.5" rx="0.3" fill="#555" opacity="0.8"/>
+    <circle cx="-2.2" cy="-2.2" r="1.8" fill="#ffffff" opacity="0.2"/>
+  </g>
+  <text x="80" y="77" font-size="4" font-family="monospace" text-anchor="middle" fill="#666" font-weight="bold">scale</text>
+  
+  <!-- ===== VOICE GRID SECTION ===== -->
+  <text x="15" y="105" font-size="5" font-family="monospace" fill="#555" font-weight="bold">voices</text>
+  <line x1="2" y1="110" x2="119.92" y2="110" stroke="#d0d0d0" stroke-width="0.5"/>
+  
+  <!-- ===== VOICE ROWS (8 voices, with peranakan-coordinated knobs) ===== -->
+  <!-- Each voice at Y: 125, 145, 165, 185, 205, 225, 245, 265 (20mm spacing = tile height) -->
+  
+  <!-- VOICE 1 (Y=125) -->
+  <text x="8" y="130" font-size="4" font-family="monospace" fill="#666" font-weight="bold">1</text>
+  
+  <!-- Voice 1: 5 controls (positioned at 20mm intervals = tile grid) -->
+  <g transform="translate(25, 125)">
+    <circle cx="0" cy="0" r="3.5" fill="url(#knobSmLight)" stroke="#999" stroke-width="0.25"/>
+    <rect x="-0.5" y="-4.2" width="1" height="1.6" rx="0.2" fill="#555" opacity="0.8"/>
+  </g>
+  <g transform="translate(45, 125)">
+    <circle cx="0" cy="0" r="3.5" fill="url(#knobSmLight)" stroke="#999" stroke-width="0.25"/>
+    <rect x="-0.5" y="-4.2" width="1" height="1.6" rx="0.2" fill="#555" opacity="0.8"/>
+  </g>
+  <g transform="translate(65, 125)">
+    <circle cx="0" cy="0" r="3.5" fill="url(#knobSmLight)" stroke="#999" stroke-width="0.25"/>
+    <rect x="-0.5" y="-4.2" width="1" height="1.6" rx="0.2" fill="#555" opacity="0.8"/>
+  </g>
+  <g transform="translate(85, 125)">
+    <circle cx="0" cy="0" r="4" fill="url(#knobMedLight)" stroke="#999" stroke-width="0.3"/>
+    <rect x="-0.6" y="-4.8" width="1.2" height="2" rx="0.2" fill="#555" opacity="0.8"/>
+  </g>
+  <g transform="translate(105, 125)">
+    <circle cx="0" cy="0" r="4" fill="url(#knobMedLight)" stroke="#999" stroke-width="0.3"/>
+    <rect x="-0.6" y="-4.8" width="1.2" height="2" rx="0.2" fill="#555" opacity="0.8"/>
+  </g>
+  
+  <!-- VOICE 2 (Y=145) -->
+  <text x="8" y="150" font-size="4" font-family="monospace" fill="#666" font-weight="bold">2</text>
+  <g transform="translate(25, 145)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmLight)" stroke="#999" stroke-width="0.25"/></g>
+  <g transform="translate(45, 145)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmLight)" stroke="#999" stroke-width="0.25"/></g>
+  <g transform="translate(65, 145)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmLight)" stroke="#999" stroke-width="0.25"/></g>
+  <g transform="translate(85, 145)"><circle cx="0" cy="0" r="4" fill="url(#knobMedLight)" stroke="#999" stroke-width="0.3"/></g>
+  <g transform="translate(105, 145)"><circle cx="0" cy="0" r="4" fill="url(#knobMedLight)" stroke="#999" stroke-width="0.3"/></g>
+  
+  <!-- VOICE 3 (Y=165) -->
+  <text x="8" y="170" font-size="4" font-family="monospace" fill="#666" font-weight="bold">3</text>
+  <g transform="translate(25, 165)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmLight)" stroke="#999" stroke-width="0.25"/></g>
+  <g transform="translate(45, 165)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmLight)" stroke="#999" stroke-width="0.25"/></g>
+  <g transform="translate(65, 165)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmLight)" stroke="#999" stroke-width="0.25"/></g>
+  <g transform="translate(85, 165)"><circle cx="0" cy="0" r="4" fill="url(#knobMedLight)" stroke="#999" stroke-width="0.3"/></g>
+  <g transform="translate(105, 165)"><circle cx="0" cy="0" r="4" fill="url(#knobMedLight)" stroke="#999" stroke-width="0.3"/></g>
+  
+  <!-- VOICE 4 (Y=185) -->
+  <text x="8" y="190" font-size="4" font-family="monospace" fill="#666" font-weight="bold">4</text>
+  <g transform="translate(25, 185)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmLight)" stroke="#999" stroke-width="0.25"/></g>
+  <g transform="translate(45, 185)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmLight)" stroke="#999" stroke-width="0.25"/></g>
+  <g transform="translate(65, 185)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmLight)" stroke="#999" stroke-width="0.25"/></g>
+  <g transform="translate(85, 185)"><circle cx="0" cy="0" r="4" fill="url(#knobMedLight)" stroke="#999" stroke-width="0.3"/></g>
+  <g transform="translate(105, 185)"><circle cx="0" cy="0" r="4" fill="url(#knobMedLight)" stroke="#999" stroke-width="0.3"/></g>
+  
+  <!-- VOICE 5 (Y=205) -->
+  <text x="8" y="210" font-size="4" font-family="monospace" fill="#666" font-weight="bold">5</text>
+  <g transform="translate(25, 205)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmLight)" stroke="#999" stroke-width="0.25"/></g>
+  <g transform="translate(45, 205)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmLight)" stroke="#999" stroke-width="0.25"/></g>
+  <g transform="translate(65, 205)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmLight)" stroke="#999" stroke-width="0.25"/></g>
+  <g transform="translate(85, 205)"><circle cx="0" cy="0" r="4" fill="url(#knobMedLight)" stroke="#999" stroke-width="0.3"/></g>
+  <g transform="translate(105, 205)"><circle cx="0" cy="0" r="4" fill="url(#knobMedLight)" stroke="#999" stroke-width="0.3"/></g>
+  
+  <!-- VOICE 6 (Y=225) -->
+  <text x="8" y="230" font-size="4" font-family="monospace" fill="#666" font-weight="bold">6</text>
+  <g transform="translate(25, 225)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmLight)" stroke="#999" stroke-width="0.25"/></g>
+  <g transform="translate(45, 225)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmLight)" stroke="#999" stroke-width="0.25"/></g>
+  <g transform="translate(65, 225)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmLight)" stroke="#999" stroke-width="0.25"/></g>
+  <g transform="translate(85, 225)"><circle cx="0" cy="0" r="4" fill="url(#knobMedLight)" stroke="#999" stroke-width="0.3"/></g>
+  <g transform="translate(105, 225)"><circle cx="0" cy="0" r="4" fill="url(#knobMedLight)" stroke="#999" stroke-width="0.3"/></g>
+  
+  <!-- VOICE 7 (Y=245) -->
+  <text x="8" y="250" font-size="4" font-family="monospace" fill="#666" font-weight="bold">7</text>
+  <g transform="translate(25, 245)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmLight)" stroke="#999" stroke-width="0.25"/></g>
+  <g transform="translate(45, 245)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmLight)" stroke="#999" stroke-width="0.25"/></g>
+  <g transform="translate(65, 245)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmLight)" stroke="#999" stroke-width="0.25"/></g>
+  <g transform="translate(85, 245)"><circle cx="0" cy="0" r="4" fill="url(#knobMedLight)" stroke="#999" stroke-width="0.3"/></g>
+  <g transform="translate(105, 245)"><circle cx="0" cy="0" r="4" fill="url(#knobMedLight)" stroke="#999" stroke-width="0.3"/></g>
+  
+  <!-- VOICE 8 (Y=265) -->
+  <text x="8" y="270" font-size="4" font-family="monospace" fill="#666" font-weight="bold">8</text>
+  <g transform="translate(25, 265)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmLight)" stroke="#999" stroke-width="0.25"/></g>
+  <g transform="translate(45, 265)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmLight)" stroke="#999" stroke-width="0.25"/></g>
+  <g transform="translate(65, 265)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmLight)" stroke="#999" stroke-width="0.25"/></g>
+  <g transform="translate(85, 265)"><circle cx="0" cy="0" r="4" fill="url(#knobMedLight)" stroke="#999" stroke-width="0.3"/></g>
+  <g transform="translate(105, 265)"><circle cx="0" cy="0" r="4" fill="url(#knobMedLight)" stroke="#999" stroke-width="0.3"/></g>
+  
+  <!-- ===== SEPARATOR ===== -->
+  <line x1="2" y1="290" x2="119.92" y2="290" stroke="#ccc" stroke-width="0.5"/>
+  
+  <!-- ===== BOTTOM CONTROLS ===== -->
+  <text x="20" y="310" font-size="5" font-family="monospace" fill="#555" font-weight="bold">options</text>
+  
+  <!-- Quantize toggle -->
+  <rect x="30" y="320" width="18" height="8" rx="1" fill="url(#buttonLight)" stroke="#999" stroke-width="0.3"/>
+  <text x="39" y="333" font-size="3.5" font-family="monospace" text-anchor="middle" fill="#666">quant</text>
+  
+  <!-- Output knob -->
+  <g transform="translate(90, 328)">
+    <circle cx="0" cy="0" r="4" fill="url(#knobMedLight)" stroke="#999" stroke-width="0.3"/>
+    <rect x="-0.6" y="-4.8" width="1.2" height="2" rx="0.2" fill="#555" opacity="0.8"/>
+  </g>
+  <text x="90" y="345" font-size="3.5" font-family="monospace" text-anchor="middle" fill="#666">out</text>
+  
+  <!-- ===== FOOTER ===== -->
+  <text x="60.96" y="378" font-size="3" font-family="monospace" text-anchor="middle" fill="#777">interchange | 24 hp</text>
+  
+</svg>
