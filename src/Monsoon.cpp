@@ -157,25 +157,6 @@ Monsoon::Monsoon() {
         // Initialize dividers
         onSampleRateChange({APP->engine->getSampleRate(), APP->engine->getSampleRate()});
 
-        // Default patterns: all gates on, CV at 0V (C0), semitone 0
-        // genPitchV() reads params[] which aren't valid yet, so use safe literals
-        for (int i = 0; i < 16; ++i) {
-            rhythmPattern[i]  = true;
-            engine.pe.rhythmRandom[i] = 0.; //rack::random::uniform();
-            engine.pe.variationRandom[i] =0.; //rack::random::uniform();
-            engine.pe.legatoRandom[i] = 0.; //rack::random::uniform();
-            engine.pe.melodyRandom[i] = 0.; //rack::random::uniform();
-            engine.pe.octaveRandom[i] = 0.; //rack::random::uniform();
-            engine.pe.accentRandom[i] = 0.; //rack::random::uniform();  // New
-            for (int v = 0; v < 7; v++) {
-                engine.pe.polyRhythmRandom[v][i] = 0.; //(float)rack::random::uniform(); // Seed with random for immediate DNA feedback
-                engine.pe.polyMelodyRandom[v][i] = 0.5f;
-                engine.pe.polyOctaveRandom[v][i] = 0.5f;
-            }
-            melodyPitchV[i]   = 0.f;   // C0 = 0V
-            melodySemitone[i] = i % 12; // Spread initial semitones so all lights work
-        }
-
         initialize();
     }
 
@@ -481,15 +462,7 @@ void Monsoon::process(const ProcessArgs& args) {
 
         if (shouldExecute) {
             float cv2ToUse = (modeSelect >= 2) ? cv2V : 0.f;
-            if (mc.executeMode(modeSelect, gate1Rise, gate1High, tc.getGate2High(), cv2ToUse)) {
-                // Mode took a step; update poly voices if expander is present
-                if (engine.numPolyVoices > 0 && expanderManager.cachedPolyVoiceExpander) {
-                for (int i = 0; i < engine.numPolyVoices; ++i) {
-                    engine.voices[i].restProb = cachedPolyRest[i];
-                }
-                    engine.executePolyVoices(mc.currentPatternInput);
-                }
-            }
+            mc.executeMode(modeSelect, gate1Rise, gate1High, tc.getGate2High(), cv2ToUse);
         }
     }
 
@@ -524,7 +497,8 @@ void Monsoon::process(const ProcessArgs& args) {
         using namespace PolyVoiceExpanderIds;
         
         // ── Rest Probability Modulation (voices 2-8 on East) ──
-        for (int i = 0; i < 7; i++) {
+        // Only modulate voices currently active to save CPU
+        for (int i = 0; i < engine.numPolyVoices && i < 7; i++) {
             if (inputs[POLY_REST_MOD_CV_INPUT_1 + i].isConnected()) {
                 float modCV = inputs[POLY_REST_MOD_CV_INPUT_1 + i].getVoltage();
                 float attenuverter = params[POLY_REST_MOD_ATT_1 + i].getValue(); // [-1, 1]
@@ -536,7 +510,7 @@ void Monsoon::process(const ProcessArgs& args) {
         }
         
         // Output individual gates/CVs/accents for voices 2-8
-        for (int i = 0; i < 7; ++i) {
+        for (int i = 0; i < engine.numPolyVoices && i < 7; ++i) {
             if (muted) {
                 polyExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
                 polyExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
@@ -603,201 +577,236 @@ void Monsoon::process(const ProcessArgs& args) {
         westExp->outputs[POLY_CV_1_16_OUT].setVoltage(polyCv1_16);
     }
     
-    // ── Deep Straits Sands Expander (Per-Voice DNA control + scramble/reset) ──
-    auto* deepSandsExp = expanderManager.cachedDeepStraitsSandsExpander;
-    if (deepSandsExp) {
-        using namespace DeepStraitsSandsIds;
+    // ── Deep Straits Sands Expanders ──
+    auto* deepEast = expanderManager.cachedDeepStraitsSandsEastExpander;
+    auto* deepWest = expanderManager.cachedDeepStraitsSandsWestExpander;
+    auto* straitEast = expanderManager.cachedPolyVoiceExpander;
+    auto* straitWest = expanderManager.cachedStraitWestExpander;
+
+    // East only active if straitEast is present
+    if (deepEast && straitEast) {
+        using namespace DeepStraitsSandsEastIds;
         
-        // Read DNA controls from Sands for all voices 1-15
-        for (int v = 0; v < 15; v++) {
+        for (int v = 0; v < 7; v++) {
             // ── Rhythm DNA (Voices 1-15) ──
             int rhythmBase = POLY_DNA_VOICE_1_LEN + v * 3;
-            float rhythmLen = params[rhythmBase].getValue();
-            float rhythmOff = params[rhythmBase + 1].getValue();
-            float rhythmRot = params[rhythmBase + 2].getValue();
-            
-            engine.polyLen[v] = (int)rhythmLen;
-            engine.polyOff[v] = (int)rhythmOff;
-            engine.polyRot[v] = (int)rhythmRot;
+            engine.polyLen[v] = (int)deepEast->params[rhythmBase].getValue();
+            engine.polyOff[v] = (int)deepEast->params[rhythmBase + 1].getValue();
+            engine.polyRot[v] = (int)deepEast->params[rhythmBase + 2].getValue();
             
             // ── Interpolation (Rest): blend between per-voice random and average random ──
-            float restInterp = params[POLY_REST_INTERP_1 + v].getValue();
+            float restInterp = deepEast->params[POLY_REST_INTERP_1 + v].getValue();
             
-            // Calculate average rest probability across all voices
+            // Calculate average rest probability for East range
             float avgRestProb = 0.f;
-            for (int i = 0; i < 15; i++) {
-                avgRestProb += params[POLY_REST_PARAM_1 + i].getValue();
+            for (int i = 0; i < 7; i++) {
+                avgRestProb += deepEast->params[POLY_REST_PARAM_1 + i].getValue();
             }
-            avgRestProb /= 15.f;
+            avgRestProb /= 7.f;
             
-            // Blend: restInterp = 0.0 → use voice's own probability
-            //        restInterp = 1.0 → use average across all voices
-            //        restInterp = 0.5 → 50/50 blend
-            float voiceRestProb = params[POLY_REST_PARAM_1 + v].getValue();
-            float blendedRestProb = voiceRestProb + restInterp * (avgRestProb - voiceRestProb);
+            float voiceRestProb = deepEast->params[POLY_REST_PARAM_1 + v].getValue();
+            engine.voices[v].restProb = voiceRestProb + restInterp * (avgRestProb - voiceRestProb);
             
-            // Store blended value for voice to use
-            engine.voices[v].restProb = blendedRestProb;
-            
-            // ── Melody DNA ──
             int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
-            float melodyLen = params[melodyBase].getValue();
-            float melodyOff = params[melodyBase + 1].getValue();
-            float melodyRot = params[melodyBase + 2].getValue();
+            float melodyInterp = deepEast->params[POLY_MELODY_INTERP_1 + v].getValue();
             
-            // ── Interpolation (Melody): blend between per-voice melody and average melody ──
-            float melodyInterp = params[POLY_MELODY_INTERP_1 + v].getValue();
-            
-            // Calculate average melody random data across all voices
-            // polyMelodyRandom[15][16]: 15 voices × 16 values
             float avgMelodyRandom[16] = {};
-            for (int i = 0; i < 15; i++) {
+            for (int i = 0; i < 7; i++) {
                 for (int j = 0; j < 16; j++) {
                     avgMelodyRandom[j] += engine.pe.polyMelodyRandom[i][j];
                 }
             }
             for (int j = 0; j < 16; j++) {
-                avgMelodyRandom[j] /= 15.f;
+                avgMelodyRandom[j] /= 7.f;
             }
             
-            // Blend voice's melody data with average melody data
-            // interp = 0.0: use voice's own melody sequence (independent)
-            // interp = 1.0: use average melody sequence (synchronized)
-            // interp = 0.5: 50/50 blend
             for (int j = 0; j < 16; j++) {
                 float voiceVal = engine.pe.polyMelodyRandom[v][j];
                 engine.pe.polyMelodyRandom[v][j] = voiceVal + melodyInterp * (avgMelodyRandom[j] - voiceVal);
             }
             
-            // DNA window (length, offset, rotation) is applied to the blended melody data
-            // Store the window parameters for use during melody generation
-            // (These will be applied by PatternEngine when generating melody notes)
-            engine.pe.polyMelodyRandom[v][0] = melodyLen;   // Store length in source location
-            engine.pe.polyMelodyRandom[v][1] = melodyOff;   // Store offset
-            engine.pe.polyMelodyRandom[v][2] = melodyRot;   // Store rotation
+            engine.pe.polyMelodyRandom[v][0] = deepEast->params[melodyBase].getValue();
+            engine.pe.polyMelodyRandom[v][1] = deepEast->params[melodyBase + 1].getValue();
+            engine.pe.polyMelodyRandom[v][2] = deepEast->params[melodyBase + 2].getValue();
             
-            // ── Octave DNA ──
             int octaveBase = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-            float octaveLen = params[octaveBase].getValue();
-            float octaveOff = params[octaveBase + 1].getValue();
-            float octaveRot = params[octaveBase + 2].getValue();
+            float octaveInterp = deepEast->params[POLY_OCTAVE_INTERP_1 + v].getValue();
             
-            // ── Interpolation (Octave): blend between per-voice octave and average octave ──
-            float octaveInterp = params[POLY_OCTAVE_INTERP_1 + v].getValue();
-            
-            // Calculate average octave random data across all voices
             float avgOctaveRandom[16] = {};
-            for (int i = 0; i < 15; i++) {
+            for (int i = 0; i < 7; i++) {
                 for (int j = 0; j < 16; j++) {
                     avgOctaveRandom[j] += engine.pe.polyOctaveRandom[i][j];
                 }
             }
             for (int j = 0; j < 16; j++) {
-                avgOctaveRandom[j] /= 15.f;
+                avgOctaveRandom[j] /= 7.f;
             }
             
-            // Blend voice's octave data with average octave data
             for (int j = 0; j < 16; j++) {
                 float voiceVal = engine.pe.polyOctaveRandom[v][j];
                 engine.pe.polyOctaveRandom[v][j] = voiceVal + octaveInterp * (avgOctaveRandom[j] - voiceVal);
             }
             
-            // DNA window (length, offset, rotation) applied to blended octave data
-            engine.pe.polyOctaveRandom[v][0] = octaveLen;
-            engine.pe.polyOctaveRandom[v][1] = octaveOff;
-            engine.pe.polyOctaveRandom[v][2] = octaveRot;
+            engine.pe.polyOctaveRandom[v][0] = deepEast->params[octaveBase].getValue();
+            engine.pe.polyOctaveRandom[v][1] = deepEast->params[octaveBase + 1].getValue();
+            engine.pe.polyOctaveRandom[v][2] = deepEast->params[octaveBase + 2].getValue();
         }
         
-        // Handle Scramble triggers (randomize length & offset for all DNA types)
-        bool scrambleAll = params[SCRAMBLE_ALL_PARAM].getValue() > 0.5f ||
-                          inputs[SCRAMBLE_ALL_INPUT].getVoltage() > 1.f;
+        bool scrambleAll = deepEast->params[SCRAMBLE_ALL_PARAM].getValue() > 0.5f ||
+                          deepEast->inputs[SCRAMBLE_ALL_INPUT].getVoltage() > 1.f;
         if (scrambleAll) {
-            for (int v = 0; v < 15; v++) {
-                // Rhythm
-                int rhythmBase = POLY_DNA_VOICE_1_LEN + v * 3;
-                params[rhythmBase].setValue(random::uniform() * 15.f + 1.f);
-                params[rhythmBase + 1].setValue(random::uniform() * 15.f);
-                
-                // Melody
-                int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
-                params[melodyBase].setValue(random::uniform() * 15.f + 1.f);
-                params[melodyBase + 1].setValue(random::uniform() * 15.f);
-                
-                // Octave
-                int octaveBase = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-                params[octaveBase].setValue(random::uniform() * 15.f + 1.f);
-                params[octaveBase + 1].setValue(random::uniform() * 15.f);
+            for (int v = 0; v < 7; v++) {
+                int b = POLY_DNA_VOICE_1_LEN + v * 3;
+                deepEast->params[b].setValue(random::uniform() * 15.f + 1.f);
+                deepEast->params[b+1].setValue(random::uniform() * 15.f);
+                b = POLY_MELODY_VOICE_1_LEN + v * 3;
+                deepEast->params[b].setValue(random::uniform() * 15.f + 1.f);
+                deepEast->params[b+1].setValue(random::uniform() * 15.f);
+                b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
+                deepEast->params[b].setValue(random::uniform() * 15.f + 1.f);
+                deepEast->params[b+1].setValue(random::uniform() * 15.f);
             }
         } else {
-            // Check individual scramble buttons
-            for (int v = 0; v < 15; v++) {
-                bool scramble = params[SCRAMBLE_VOICE_1 + v].getValue() > 0.5f ||
-                               inputs[SCRAMBLE_VOICE_1_INPUT + v].getVoltage() > 1.f;
-                if (scramble) {
-                    // Rhythm
-                    int rhythmBase = POLY_DNA_VOICE_1_LEN + v * 3;
-                    params[rhythmBase].setValue(random::uniform() * 15.f + 1.f);
-                    params[rhythmBase + 1].setValue(random::uniform() * 15.f);
-                    
-                    // Melody
-                    int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
-                    params[melodyBase].setValue(random::uniform() * 15.f + 1.f);
-                    params[melodyBase + 1].setValue(random::uniform() * 15.f);
-                    
-                    // Octave
-                    int octaveBase = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-                    params[octaveBase].setValue(random::uniform() * 15.f + 1.f);
-                    params[octaveBase + 1].setValue(random::uniform() * 15.f);
+            for (int v = 0; v < 7; v++) {
+                if (deepEast->params[SCRAMBLE_VOICE_1 + v].getValue() > 0.5f ||
+                    deepEast->inputs[SCRAMBLE_VOICE_1_INPUT + v].getVoltage() > 1.f) {
+                    int b = POLY_DNA_VOICE_1_LEN + v * 3;
+                    deepEast->params[b].setValue(random::uniform() * 15.f + 1.f);
+                    deepEast->params[b+1].setValue(random::uniform() * 15.f);
+                    b = POLY_MELODY_VOICE_1_LEN + v * 3;
+                    deepEast->params[b].setValue(random::uniform() * 15.f + 1.f);
+                    deepEast->params[b+1].setValue(random::uniform() * 15.f);
+                    b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
+                    deepEast->params[b].setValue(random::uniform() * 15.f + 1.f);
+                    deepEast->params[b+1].setValue(random::uniform() * 15.f);
                 }
             }
         }
         
-        // Handle Reset triggers (restore defaults for all DNA types)
-        bool resetAll = params[RESET_ALL_PARAM].getValue() > 0.5f ||
-                       inputs[RESET_ALL_INPUT].getVoltage() > 1.f;
-        if (resetAll) {
-            for (int v = 0; v < 15; v++) {
-                // Rhythm
-                int rhythmBase = POLY_DNA_VOICE_1_LEN + v * 3;
-                params[rhythmBase].setValue(16.f);
-                params[rhythmBase + 1].setValue(0.f);
-                params[rhythmBase + 2].setValue(0.f);
-                
-                // Melody
-                int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
-                params[melodyBase].setValue(16.f);
-                params[melodyBase + 1].setValue(0.f);
-                params[melodyBase + 2].setValue(0.f);
-                
-                // Octave
-                int octaveBase = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-                params[octaveBase].setValue(16.f);
-                params[octaveBase + 1].setValue(0.f);
-                params[octaveBase + 2].setValue(0.f);
+        bool resetAllE = deepEast->params[RESET_ALL_PARAM].getValue() > 0.5f ||
+                        deepEast->inputs[RESET_ALL_INPUT].getVoltage() > 1.f;
+        if (resetAllE) {
+            for (int v = 0; v < 7; v++) {
+                int b = POLY_DNA_VOICE_1_LEN + v * 3;
+                deepEast->params[b].setValue(16.f); deepEast->params[b+1].setValue(0.f); deepEast->params[b+2].setValue(0.f);
+                b = POLY_MELODY_VOICE_1_LEN + v * 3;
+                deepEast->params[b].setValue(16.f); deepEast->params[b+1].setValue(0.f); deepEast->params[b+2].setValue(0.f);
+                b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
+                deepEast->params[b].setValue(16.f); deepEast->params[b+1].setValue(0.f); deepEast->params[b+2].setValue(0.f);
             }
         } else {
-            // Check individual reset buttons
-            for (int v = 0; v < 15; v++) {
-                bool reset = params[RESET_VOICE_1 + v].getValue() > 0.5f ||
-                            inputs[RESET_VOICE_1_INPUT + v].getVoltage() > 1.f;
-                if (reset) {
-                    // Rhythm
-                    int rhythmBase = POLY_DNA_VOICE_1_LEN + v * 3;
-                    params[rhythmBase].setValue(16.f);
-                    params[rhythmBase + 1].setValue(0.f);
-                    params[rhythmBase + 2].setValue(0.f);
-                    
-                    // Melody
-                    int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
-                    params[melodyBase].setValue(16.f);
-                    params[melodyBase + 1].setValue(0.f);
-                    params[melodyBase + 2].setValue(0.f);
-                    
-                    // Octave
-                    int octaveBase = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-                    params[octaveBase].setValue(16.f);
-                    params[octaveBase + 1].setValue(0.f);
-                    params[octaveBase + 2].setValue(0.f);
+            for (int v = 0; v < 7; v++) {
+                if (deepEast->params[RESET_VOICE_1 + v].getValue() > 0.5f ||
+                    deepEast->inputs[RESET_VOICE_1_INPUT + v].getVoltage() > 1.f) {
+                    int b = POLY_DNA_VOICE_1_LEN + v * 3;
+                    deepEast->params[b].setValue(16.f); deepEast->params[b+1].setValue(0.f); deepEast->params[b+2].setValue(0.f);
+                    b = POLY_MELODY_VOICE_1_LEN + v * 3;
+                    deepEast->params[b].setValue(16.f); deepEast->params[b+1].setValue(0.f); deepEast->params[b+2].setValue(0.f);
+                    b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
+                    deepEast->params[b].setValue(16.f); deepEast->params[b+1].setValue(0.f); deepEast->params[b+2].setValue(0.f);
+                }
+            }
+        }
+    }
+
+    // West only active if straitWest is present
+    if (deepWest && straitWest) {
+        using namespace DeepStraitsSandsWestIds;
+        for (int v = 7; v < 15; v++) {
+            int b = POLY_DNA_VOICE_1_LEN + v * 3;
+            engine.polyLen[v] = (int)deepWest->params[b].getValue();
+            engine.polyOff[v] = (int)deepWest->params[b+1].getValue();
+            engine.polyRot[v] = (int)deepWest->params[b+2].getValue();
+            
+            float restInterp = deepWest->params[POLY_REST_INTERP_1 + v].getValue();
+            float avgRestProb = 0.f;
+            for (int i = 7; i < 15; i++) avgRestProb += deepWest->params[POLY_REST_PARAM_1 + i].getValue();
+            avgRestProb /= 8.f;
+            float voiceRestProb = deepWest->params[POLY_REST_PARAM_1 + v].getValue();
+            engine.voices[v].restProb = voiceRestProb + restInterp * (avgRestProb - voiceRestProb);
+            
+            int mb = POLY_MELODY_VOICE_1_LEN + v * 3;
+            float melodyInterp = deepWest->params[POLY_MELODY_INTERP_1 + v].getValue();
+            float avgMelodyRandom[16] = {};
+            for (int i = 7; i < 15; i++) {
+                for (int j = 0; j < 16; j++) avgMelodyRandom[j] += engine.pe.polyMelodyRandom[i][j];
+            }
+            for (int j = 0; j < 16; j++) avgMelodyRandom[j] /= 8.f;
+            for (int j = 0; j < 16; j++) {
+                float voiceVal = engine.pe.polyMelodyRandom[v][j];
+                engine.pe.polyMelodyRandom[v][j] = voiceVal + melodyInterp * (avgMelodyRandom[j] - voiceVal);
+            }
+            engine.pe.polyMelodyRandom[v][0] = deepWest->params[mb].getValue();
+            engine.pe.polyMelodyRandom[v][1] = deepWest->params[mb+1].getValue();
+            engine.pe.polyMelodyRandom[v][2] = deepWest->params[mb+2].getValue();
+            
+            int ob = POLY_OCTAVE_VOICE_1_LEN + v * 3;
+            float octaveInterp = deepWest->params[POLY_OCTAVE_INTERP_1 + v].getValue();
+            float avgOctaveRandom[16] = {};
+            for (int i = 7; i < 15; i++) {
+                for (int j = 0; j < 16; j++) avgOctaveRandom[j] += engine.pe.polyOctaveRandom[i][j];
+            }
+            for (int j = 0; j < 16; j++) avgOctaveRandom[j] /= 8.f;
+            for (int j = 0; j < 16; j++) {
+                float voiceVal = engine.pe.polyOctaveRandom[v][j];
+                engine.pe.polyOctaveRandom[v][j] = voiceVal + octaveInterp * (avgOctaveRandom[j] - voiceVal);
+            }
+            engine.pe.polyOctaveRandom[v][0] = deepWest->params[ob].getValue();
+            engine.pe.polyOctaveRandom[v][1] = deepWest->params[ob+1].getValue();
+            engine.pe.polyOctaveRandom[v][2] = deepWest->params[ob+2].getValue();
+        }
+        // West Scramble/Reset Logic (Similar to East but for indices 7-14)
+        bool sAll = deepWest->params[SCRAMBLE_ALL_PARAM].getValue() > 0.5f || deepWest->inputs[SCRAMBLE_ALL_INPUT].getVoltage() > 1.f;
+        if (sAll) {
+            for (int v = 7; v < 15; v++) {
+                int b = POLY_DNA_VOICE_1_LEN + v * 3;
+                deepWest->params[b].setValue(random::uniform() * 15.f + 1.f);
+                deepWest->params[b+1].setValue(random::uniform() * 15.f);
+                b = POLY_MELODY_VOICE_1_LEN + v * 3;
+                deepWest->params[b].setValue(random::uniform() * 15.f + 1.f);
+                deepWest->params[b+1].setValue(random::uniform() * 15.f);
+                b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
+                deepWest->params[b].setValue(random::uniform() * 15.f + 1.f);
+                deepWest->params[b+1].setValue(random::uniform() * 15.f);
+            }
+        } else {
+            for (int v = 7; v < 15; v++) {
+                if (deepWest->params[SCRAMBLE_VOICE_8 + (v - 7)].getValue() > 0.5f ||
+                    deepWest->inputs[SCRAMBLE_VOICE_8_INPUT + (v - 7)].getVoltage() > 1.f) {
+                    int b = POLY_DNA_VOICE_1_LEN + v * 3;
+                    deepWest->params[b].setValue(random::uniform() * 15.f + 1.f);
+                    deepWest->params[b+1].setValue(random::uniform() * 15.f);
+                    b = POLY_MELODY_VOICE_1_LEN + v * 3;
+                    deepWest->params[b].setValue(random::uniform() * 15.f + 1.f);
+                    deepWest->params[b+1].setValue(random::uniform() * 15.f);
+                    b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
+                    deepWest->params[b].setValue(random::uniform() * 15.f + 1.f);
+                    deepWest->params[b+1].setValue(random::uniform() * 15.f);
+                }
+            }
+        }
+
+        bool resetAllW = deepWest->params[RESET_ALL_PARAM].getValue() > 0.5f ||
+                         deepWest->inputs[RESET_ALL_INPUT].getVoltage() > 1.f;
+        if (resetAllW) {
+            for (int v = 7; v < 15; v++) {
+                int b = POLY_DNA_VOICE_1_LEN + v * 3;
+                deepWest->params[b].setValue(16.f); deepWest->params[b+1].setValue(0.f); deepWest->params[b+2].setValue(0.f);
+                b = POLY_MELODY_VOICE_1_LEN + v * 3;
+                deepWest->params[b].setValue(16.f); deepWest->params[b+1].setValue(0.f); deepWest->params[b+2].setValue(0.f);
+                b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
+                deepWest->params[b].setValue(16.f); deepWest->params[b+1].setValue(0.f); deepWest->params[b+2].setValue(0.f);
+            }
+        } else {
+            for (int v = 7; v < 15; v++) {
+                if (deepWest->params[RESET_VOICE_8 + (v - 7)].getValue() > 0.5f ||
+                    deepWest->inputs[RESET_VOICE_8_INPUT + (v - 7)].getVoltage() > 1.f) {
+                    int b = POLY_DNA_VOICE_1_LEN + v * 3;
+                    deepWest->params[b].setValue(16.f); deepWest->params[b+1].setValue(0.f); deepWest->params[b+2].setValue(0.f);
+                    b = POLY_MELODY_VOICE_1_LEN + v * 3;
+                    deepWest->params[b].setValue(16.f); deepWest->params[b+1].setValue(0.f); deepWest->params[b+2].setValue(0.f);
+                    b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
+                    deepWest->params[b].setValue(16.f); deepWest->params[b+1].setValue(0.f); deepWest->params[b+2].setValue(0.f);
                 }
             }
         }
@@ -814,7 +823,7 @@ void Monsoon::process(const ProcessArgs& args) {
             uiManager->updateMuteLight(muted);
             
             // Aggregate DNA and Poly counts for the status LEDs
-            int totalDnaCount = expanderManager.dnaExpanderCount + expanderManager.straitsSandsExpanderCount + expanderManager.deepStraitsSandsExpanderCount;
+            int totalDnaCount = expanderManager.dnaExpanderCount + expanderManager.straitsSandsExpanderCount + expanderManager.deepStraitsSandsEastExpanderCount + expanderManager.deepStraitsSandsWestExpanderCount;
             int totalPolyCount = expanderManager.polyExpanderCount + expanderManager.straitWestExpanderCount;
             uiManager->updateExpanderLights(expanderManager.scaleExpanderCount, totalDnaCount, totalPolyCount);
 
@@ -988,5 +997,6 @@ void init(rack::Plugin* p) {
 	p->addModel(modelMonsoonStraitsEastExpander);
 	p->addModel(modelMonsoonStraitWestExpander);    // NEW (Phase 4)
 	p->addModel(modelMonsoonStraitsSands);          // Macro: global DNA
-	p->addModel(modelMonsoonDeepStraitsSands);      // Deep: per-voice DNA
+	p->addModel(modelMonsoonDeepStraitsSandsEast);  // Deep: voices 2-8
+	p->addModel(modelMonsoonDeepStraitsSandsWest);  // Deep: voices 9-16
 }

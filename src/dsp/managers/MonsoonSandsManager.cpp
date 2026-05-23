@@ -58,22 +58,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             engine.rhythmRot = engine.variationRot = engine.legatoRot = engine.accentRot = engine.melodyRot = engine.octaveRot = 0;
         }
     }
-
-    // PolyVoice DNA Windows
-    if (expanderManager.cachedPolyVoiceExpander) {
-        for (int i = 0; i < 15; i++) {
-            engine.polyLen[i] = clampv<int>((int)std::round(expanderManager.cachedPolyVoiceExpander->params[POLY_DNA_VOICE_1_LEN + i * 3].getValue()), 1, 16);
-            int rawOff = (int)std::round(expanderManager.cachedPolyVoiceExpander->params[POLY_DNA_VOICE_1_OFF + i * 3].getValue());
-            engine.polyOff[i] = ((rawOff % 16) + 16) % 16;
-            int rawRot = (int)std::round(expanderManager.cachedPolyVoiceExpander->params[POLY_DNA_VOICE_1_ROT + i * 3].getValue());
-            engine.polyRot[i] = ((rawRot % 16) + 16) % 16;
-        }
-    } else {
-        for (int i = 0; i < 15; i++) {
-            engine.polyLen[i] = 16;
-            engine.polyOff[i] = engine.polyRot[i] = 0;
-        }
-    }
+    // Note: Poly DNA windows (Len/Off/Rot) are now handled exclusively by 
+    // DeepStraitsSands expanders in Monsoon::process to avoid ID collisions.
 }
 
 // ──── Scramble Operations ────────────────────────────────────────────────

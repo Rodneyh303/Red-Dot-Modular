@@ -7,14 +7,16 @@ struct MonsoonSandsExpander;
 struct MonsoonStraitsEastExpander;
 struct MonsoonStraitWestExpander;    // NEW (Phase 4)
 struct MonsoonStraitsSands;          // NEW (Macro)
-struct MonsoonDeepStraitsSands;      // NEW (Deep)
+struct MonsoonDeepStraitsSandsEast;  // NEW (Deep)
+struct MonsoonDeepStraitsSandsWest;  // NEW (Deep)
     
 extern rack::Model* modelMonsoonInterchangeExpander;
 extern rack::Model* modelMonsoonSandsExpander;
 extern rack::Model* modelMonsoonStraitsEastExpander;
 extern rack::Model* modelMonsoonStraitWestExpander;     // NEW (Phase 4)
 extern rack::Model* modelMonsoonStraitsSands;           // NEW (Macro)
-extern rack::Model* modelMonsoonDeepStraitsSands;       // NEW (Deep)
+extern rack::Model* modelMonsoonDeepStraitsSandsEast;   // NEW (Deep)
+extern rack::Model* modelMonsoonDeepStraitsSandsWest;   // NEW (Deep)
 
 /**
  * ExpanderManager handles the discovery and caching of Monsoon expander modules.
@@ -26,14 +28,16 @@ struct MonsoonExpanderManager {
     MonsoonStraitsEastExpander* cachedPolyVoiceExpander = nullptr;
     MonsoonStraitWestExpander* cachedStraitWestExpander = nullptr;     // NEW (Phase 4)
     MonsoonStraitsSands* cachedStraitsSandsExpander = nullptr;         // NEW (Macro)
-    MonsoonDeepStraitsSands* cachedDeepStraitsSandsExpander = nullptr; // NEW (Deep)
+    MonsoonDeepStraitsSandsEast* cachedDeepStraitsSandsEastExpander = nullptr; // NEW (Deep)
+    MonsoonDeepStraitsSandsWest* cachedDeepStraitsSandsWestExpander = nullptr; // NEW (Deep)
 
     int scaleExpanderCount = 0;
     int dnaExpanderCount = 0;
     int polyExpanderCount = 0;
     int straitWestExpanderCount = 0;   // NEW (Phase 4)
     int straitsSandsExpanderCount = 0;  // NEW (Macro)
-    int deepStraitsSandsExpanderCount = 0; // NEW (Deep)
+    int deepStraitsSandsEastExpanderCount = 0; // NEW (Deep)
+    int deepStraitsSandsWestExpanderCount = 0; // NEW (Deep)
 
     void update(rack::Module* module) {
         cachedScaleExpander = nullptr;
@@ -41,14 +45,16 @@ struct MonsoonExpanderManager {
         cachedPolyVoiceExpander = nullptr;
         cachedStraitWestExpander = nullptr;
         cachedStraitsSandsExpander = nullptr;
-        cachedDeepStraitsSandsExpander = nullptr;
+        cachedDeepStraitsSandsEastExpander = nullptr;
+        cachedDeepStraitsSandsWestExpander = nullptr;
 
         scaleExpanderCount = 0;
         dnaExpanderCount = 0;
         polyExpanderCount = 0;
         straitWestExpanderCount = 0;
         straitsSandsExpanderCount = 0;
-        deepStraitsSandsExpanderCount = 0;
+        deepStraitsSandsEastExpanderCount = 0;
+        deepStraitsSandsWestExpanderCount = 0;
 
         auto scan = [&](rack::Module* start, bool left) {
             rack::Module* curr = start;
@@ -70,9 +76,12 @@ struct MonsoonExpanderManager {
                 } else if (curr->model == modelMonsoonStraitsSands) {
                     if (!cachedStraitsSandsExpander) cachedStraitsSandsExpander = reinterpret_cast<MonsoonStraitsSands*>(curr);
                     straitsSandsExpanderCount++;
-                } else if (curr->model == modelMonsoonDeepStraitsSands) {
-                    if (!cachedDeepStraitsSandsExpander) cachedDeepStraitsSandsExpander = reinterpret_cast<MonsoonDeepStraitsSands*>(curr);
-                    deepStraitsSandsExpanderCount++;
+                } else if (curr->model == modelMonsoonDeepStraitsSandsEast) {
+                    if (!cachedDeepStraitsSandsEastExpander) cachedDeepStraitsSandsEastExpander = reinterpret_cast<MonsoonDeepStraitsSandsEast*>(curr);
+                    deepStraitsSandsEastExpanderCount++;
+                } else if (curr->model == modelMonsoonDeepStraitsSandsWest) {
+                    if (!cachedDeepStraitsSandsWestExpander) cachedDeepStraitsSandsWestExpander = reinterpret_cast<MonsoonDeepStraitsSandsWest*>(curr);
+                    deepStraitsSandsWestExpanderCount++;
                 } else break;
                 curr = left ? curr->leftExpander.module : curr->rightExpander.module;
                 depth++;

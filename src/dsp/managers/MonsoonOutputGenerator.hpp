@@ -31,7 +31,8 @@ public:
     void generateOutputs(SequencerEngine& engine,
                          rack::engine::Output* outputs,
                          float currentPitchV,
-                         bool muted);
+                         bool muted,
+                         float sampleTime);
     
     /// Generate gate output specifically
     void setGateOutput(rack::engine::Output& gateOut, float gateV, bool muted);
@@ -47,7 +48,9 @@ public:
     /// Generate poly voice trigger outputs
     void setPolyVoiceOutputs(rack::engine::Output* outputs,
                              SequencerEngine& engine,
-                             int numPolyVoices);
+                             int numPolyVoices,
+                             bool muted,
+                             float sampleTime);
 
 private:
     // Helper: Set individual gate output with mute masking

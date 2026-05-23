@@ -15,12 +15,16 @@ void OutputGenerator::setGateWithMute_(engine::Output& out, float gateV, bool mu
 void OutputGenerator::generateOutputs(SequencerEngine& engine,
                                        engine::Output* outputs,
                                        float currentPitchV,
-                                       bool muted) {
+                                       bool muted,
+                                       float sampleTime) {
     using namespace MonsoonIds;
     
     // Process main gate and apply mute
-    float gateV = engine.gs.process(0.f);  // sampleTime not needed for state read
+    float gateV = engine.gs.process(sampleTime);
     setGateWithMute_(outputs[GATE_OUTPUT], gateV, muted);
+
+    // Set main pitch CV
+    outputs[CV_OUTPUT].setVoltage(currentPitchV);
     
     // Derived outputs based on mono decision
     float tieGateV = (engine.lastStepResult.decision == MonoDecision::Tie) ? 10.f : 0.f;
@@ -47,7 +51,9 @@ void OutputGenerator::setAccentGateOutput(engine::Output& accentGateOut, bool is
 
 void OutputGenerator::setPolyVoiceOutputs(engine::Output* outputs,
                                           SequencerEngine& engine,
-                                          int numPolyVoices) {
+                                          int numPolyVoices,
+                                          bool muted,
+                                          float sampleTime) {
     if (!outputs) return;
     
     // Mono decision for accent gating
@@ -55,21 +61,21 @@ void OutputGenerator::setPolyVoiceOutputs(engine::Output* outputs,
     
     // Output active voices
     for (int i = 0; i < numPolyVoices && i < 7; ++i) {
-        float vg = engine.voices[i].gs.process(0.f);  // sampleTime not needed
+        float vg = engine.voices[i].gs.process(sampleTime);
         
         // Main voice gate
-        outputs[i].setVoltage(vg);
+        setGateWithMute_(outputs[i], vg, muted);
         
         // Poly voice CV (pitch)
         float pv = engine.voices[i].gs.currentPitchV;
         if (i + 7 < 14) {  // Assume CV outputs follow gate outputs
-            outputs[i + 7].setVoltage(pv);
+            outputs[i + 7].setVoltage(muted ? 0.f : pv);
         }
         
         // Poly accent: fires when mono is accented AND this voice is sounding
         float polyAccent = (monoAccented && vg > 5.f) ? 10.f : 0.f;
         if (i + 14 < 21) {  // Assume accent outputs follow CV outputs
-            outputs[i + 14].setVoltage(polyAccent);
+            setGateWithMute_(outputs[i + 14], polyAccent, muted);
         }
     }
     

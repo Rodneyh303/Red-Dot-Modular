@@ -157,8 +157,11 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
             if (json_is_array(j)) {
                 for (int v = 0; v < 15; v++) {
                     for (int i = 0; i < 16; i++) {
-                        target[v][i] = (float)json_real_value(json_array_get(j, v * 16 + i));
-                        source[v][i] = target[v][i];
+                        json_t* val = json_array_get(j, v * 16 + i);
+                        if (val) {
+                            target[v][i] = (float)json_real_value(val);
+                            source[v][i] = target[v][i];
+                        }
                     }
                 }
             }

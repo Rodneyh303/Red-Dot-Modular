@@ -5,6 +5,12 @@
 #include "dsp/managers/MonsoonScaleManager.hpp"
 #include "ui/PeranakanLatticePanel.hpp"
 
+// Define a custom panel that uses PeranakanLatticePanelLarge
+// This will handle drawing the lattice overlay.
+struct MonsoonCustomPanel : PeranakanLatticePanelLarge {
+    MonsoonCustomPanel(int* themeRef) : PeranakanLatticePanelLarge(themeRef) {}
+};
+
 using namespace rack;
 using namespace MonsoonIds;
 // ── Custom Slider for Scale Locking ──────────────────────────────────────────
@@ -83,12 +89,12 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
                 mm2px(Vec(cx,59.75f)), module, SEMI0_PARAM+i, SEMI_LED_START+2*i));
         }
 
-        addParam(createLightParamCentered<VCVLightSlider<RedLight>>(mm2px(Vec(100.f,59.75f)), module, MonsoonIds::OCT_LO_PARAM, MonsoonIds::OCT_LO_LED));
-        addParam(createLightParamCentered<VCVLightSlider<RedLight>>(mm2px(Vec(108.f,59.75f)), module, MonsoonIds::OCT_HI_PARAM, MonsoonIds::OCT_HI_LED));
+        addParam(createLightParamCentered<VCVLightSlider<RedLight>>(mm2px(Vec(130.48f,59.75f)), module, MonsoonIds::OCT_LO_PARAM, MonsoonIds::OCT_LO_LED));
+        addParam(createLightParamCentered<VCVLightSlider<RedLight>>(mm2px(Vec(138.48f,59.75f)), module, MonsoonIds::OCT_HI_PARAM, MonsoonIds::OCT_HI_LED));
 
         // 16 step lights: Circular ring arrangement near top right
         {
-            const float RCX = 138.f, RCY = 66.f, RLED = 13.25f;
+            const float RCX = 168.48f, RCY = 66.f, RLED = 13.25f;
             for (int i = 0; i < 16; ++i) {
                 float ang = float(i) / 16.f * 2.f * M_PI - M_PI / 2.f;
                 float lx = RCX + RLED * std::cos(ang), ly = RCY + RLED * std::sin(ang);
@@ -98,7 +104,7 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         }
 
         {
-            const float MX = 168.f, LX = 163.f, Y_START = 54.f, v_spacing = 6.5f;
+            const float MX = 198.48f, LX = 193.48f, Y_START = 54.f, v_spacing = 6.5f;
             // Add a single physical button for cycling modes
             addParam(createParamCentered<TL1105>(mm2px(Vec(MX, 44.f)), module, MonsoonIds::MODE_PARAM));
             for (int i = 0; i < 4; ++i) {
@@ -107,7 +113,7 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
             }
         }
 
-        const float JY=96.f, JYL=102.f,JX=100.f, JP=12.0f;
+        const float JY=96.f, JYL=102.f,JX=130.48f, JP=12.0f;
         addParam(createParamCentered<TL1105>(mm2px(Vec( JX,JY)),module,MonsoonIds::DICE_R_PARAM));
         addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec( JX,JYL)),module,MonsoonIds::RHYTHM_DICE_LIGHT));
         addParam(createParamCentered<TL1105>(mm2px(Vec( JX+JP,JY)),module,MonsoonIds::DICE_M_PARAM));
@@ -132,6 +138,7 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 46.f,105.f)),module,MonsoonIds::SEED_INPUT));
         addInput(createInputCentered<PJ301MPort>(mm2px(Vec(62.f,105.f)),module,MonsoonIds::LENGTH_INPUT));
         addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 78.f,105.f)),module,MonsoonIds::OFFSET_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(106.f,105.f)),module,MonsoonIds::ACCENT_CV_INPUT));
 
         addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 14.f,120.5f)),module,MonsoonIds::CLK_INPUT));
         addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 30.f,120.5f)),module,MonsoonIds::GATE1_INPUT));
@@ -139,12 +146,12 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 62.f,120.5f)),module,MonsoonIds::CV1_INPUT));
         addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 78.f,120.5f)),module,MonsoonIds::CV2_INPUT));
 
-
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec( 95.f,120.5f)),module,MonsoonIds::SEED_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(111.f,120.5f)),module,MonsoonIds::RUN_GATE_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(127.f,120.5f)),module,MonsoonIds::RESET_TRIGGER_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(143.f,120.5f)),module,MonsoonIds::GATE_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(159.f,120.5f)),module,MonsoonIds::CV_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec( 125.48f,120.5f)),module,MonsoonIds::SEED_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec( 141.48f,120.5f)),module,MonsoonIds::RUN_GATE_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec( 157.48f,120.5f)),module,MonsoonIds::RESET_TRIGGER_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec( 173.48f,120.5f)),module,MonsoonIds::GATE_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec( 189.48f,120.5f)),module,MonsoonIds::CV_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec( 173.48f,105.f)),module,MonsoonIds::ACCENT_OUTPUT));
 
         // Add warning lights for multiple expanders (placed near top-left)
         addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(EXP_LIGHT_X, EXP_LIGHT_Y)), module, MonsoonIds::SCALE_EXPANDER_LIGHT));
@@ -154,13 +161,21 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
 
 void MonsoonWidget::applyTheme() {
  // Panel
-        bool lightTheme = getLightTheme();  // read from module
-        auto panelPath = asset::plugin(pluginInstance,
-            lightTheme ? "res/panels/MeloDicer_panel_light.svg"
-                       : "res/panels/MeloDicer_panel_v6.svg");
-        setPanel(createPanel(panelPath));
+    bool lightTheme = getLightTheme();  // read from module
+    auto panelPath = asset::plugin(pluginInstance,
+        lightTheme ? "res/panels/MeloDicer_panel_light.svg"
+                   : "res/panels/MeloDicer_panel_v6.svg");
 
-        // Remove any existing knob params at the 7 top knob positions
+    auto* m = dynamic_cast<Monsoon*>(module);
+    if (m) {
+        // Create an instance of MonsoonCustomPanel and set its SVG
+        MonsoonCustomPanel* newPanel = new MonsoonCustomPanel(&m->lightTheme);
+        newPanel->setBackground(APP->window->loadSvg(panelPath));
+        setPanel(newPanel); // ModuleWidget::setPanel takes ownership and deletes the old panel
+    } else {
+        setPanel(createPanel(panelPath)); // Fallback to generic SvgPanel if module is null
+    }
+    // Remove any existing knob params at the 7 top knob positions
         // so we can re-add with the correct type.
         // Rack allows re-adding after clearing; easiest is to replace
         // the ParamWidget at the known indices. We use the positions directly.
@@ -181,6 +196,7 @@ void MonsoonWidget::applyTheme() {
                         (int)MonsoonIds::VARIATION_PARAM,
                         (int)MonsoonIds::LEGATO_PARAM,
                         (int)MonsoonIds::REST_PARAM,
+                        (int)MonsoonIds::ACCENT_KNOB,
                         (int)MonsoonIds::BPM_PARAM,
                         (int)MonsoonIds::PATTERN_LENGTH_PARAM,
                         (int)MonsoonIds::PATTERN_OFFSET_PARAM}) {
@@ -197,18 +213,20 @@ void MonsoonWidget::applyTheme() {
             addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(37.f,24.f)),mod,MonsoonIds::VARIATION_PARAM));
             addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(60.f,24.f)),mod,MonsoonIds::LEGATO_PARAM));
             addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(83.f,24.f)),mod,MonsoonIds::REST_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>     (mm2px(Vec(110.f,24.f)),mod,MonsoonIds::BPM_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>     (mm2px(Vec(133.f,24.f)),mod,MonsoonIds::PATTERN_LENGTH_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>     (mm2px(Vec(156.f,24.f)),mod,MonsoonIds::PATTERN_OFFSET_PARAM));
+            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(106.f,24.f)),mod,MonsoonIds::ACCENT_KNOB));
+            addParam(createParamCentered<RDM_KnobSmall>     (mm2px(Vec(140.48f,24.f)),mod,MonsoonIds::BPM_PARAM));
+            addParam(createParamCentered<RDM_KnobSmall>     (mm2px(Vec(163.48f,24.f)),mod,MonsoonIds::PATTERN_LENGTH_PARAM));
+            addParam(createParamCentered<RDM_KnobSmall>     (mm2px(Vec(186.48f,24.f)),mod,MonsoonIds::PATTERN_OFFSET_PARAM));
         } else {
             // Dark theme: Use cream/light knobs
             addParam(createParamCentered<RDM_KnobCreamMedium> (mm2px(Vec(14.f,24.f)),mod,MonsoonIds::NOTE_VALUE_PARAM));
             addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(37.f,24.f)),mod,MonsoonIds::VARIATION_PARAM));
             addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(60.f,24.f)),mod,MonsoonIds::LEGATO_PARAM));
             addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(83.f,24.f)),mod,MonsoonIds::REST_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>      (mm2px(Vec(110.f,24.f)),mod,MonsoonIds::BPM_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>      (mm2px(Vec(133.f,24.f)),mod,MonsoonIds::PATTERN_LENGTH_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>      (mm2px(Vec(156.f,24.f)),mod,MonsoonIds::PATTERN_OFFSET_PARAM));
+            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(106.f,24.f)),mod,MonsoonIds::ACCENT_KNOB));
+            addParam(createParamCentered<RDM_KnobSmall>      (mm2px(Vec(140.48f,24.f)),mod,MonsoonIds::BPM_PARAM));
+            addParam(createParamCentered<RDM_KnobSmall>      (mm2px(Vec(163.48f,24.f)),mod,MonsoonIds::PATTERN_LENGTH_PARAM));
+            addParam(createParamCentered<RDM_KnobSmall>      (mm2px(Vec(186.48f,24.f)),mod,MonsoonIds::PATTERN_OFFSET_PARAM));
         }
     }
 
@@ -222,10 +240,7 @@ void MonsoonWidget::draw(const DrawArgs& args) {
     nvgFillColor(vg, getLightTheme() ? nvgRGBA(0xe6, 0xe6, 0xe6, 255) : nvgRGBA(0x23, 0x23, 0x23, 255));
     nvgFill(vg);
 
-        ModuleWidget::draw(args);
-        
-        // ── Draw Peranakan Lattice Overlay ──
-        drawPeranakanLattice(args);
+    ModuleWidget::draw(args); // This will now call MonsoonCustomPanel::draw, which includes the lattice.
 
         nvgFontFaceId(vg,APP->window->uiFont->handle);
         nvgTextAlign(vg,NVG_ALIGN_CENTER|NVG_ALIGN_MIDDLE);
@@ -243,7 +258,7 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         auto setNvgFontSize=[&](float mm){ nvgFontSize(vg,mm2px(mm)); };
 
         setNvgFontSize(4.2f); fillNvgColour(200,200,200); writeNvgText(W_MM/2.f,5.5f,"Dot Modular  -  Monsoon");
-        setNvgFontSize(3.4f); fillNvgColour(200,200,200); writeNvgText(14,37.5f,"NOTE VALUE"); writeNvgText(37,37.5f,"VARIATION"); writeNvgText(60,37.5f,"LEGATO"); writeNvgText(83,37.5f,"REST");
+        setNvgFontSize(3.4f); fillNvgColour(200,200,200); writeNvgText(14,37.5f,"NOTE VALUE"); writeNvgText(37,37.5f,"VARIATION"); writeNvgText(60,37.5f,"LEGATO"); writeNvgText(83,37.5f,"REST"); writeNvgText(106,37.5f,"ACCENT");
 
         auto arcLabel = [&](float cx_mm, float cy_mm, float r_mm, float angle_deg, const char* text, int ri=160, int gi=160, int bi=160) {
             float a  = angle_deg * float(M_PI) / 180.f;
@@ -276,7 +291,8 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         arcLabel(37.f, 26.f, 12.5f, -225.f, "LONGER",  130,130,120); arcLabel(37.f, 26.f, 12.5f,  +45.f, "SHORTER", 130,130,120);
         arcLabel(60.f, 26.f, 12.0f, -225.f, "0%",   130,130,120); arcLabel(60.f, 26.f, 12.0f,  +45.f, "100%", 130,130,120);
         arcLabel(83.f, 26.f, 12.0f, -225.f, "0%",   130,130,120); arcLabel(83.f, 26.f, 12.0f,  +45.f, "100%", 130,130,120);
-        setNvgFontSize(3.2f); fillNvgColour(170,170,170); writeNvgText(110,37.5f,"BPM"); writeNvgText(133,37.5f,"LEN"); writeNvgText(156,37.5f,"OFFSET");
+        arcLabel(106.f, 26.f, 12.0f, -225.f, "0%",   130,130,120); arcLabel(106.f, 26.f, 12.0f,  +45.f, "100%", 130,130,120);
+        setNvgFontSize(3.2f); fillNvgColour(170,170,170); writeNvgText(140.48f,37.5f,"BPM"); writeNvgText(163.48f,37.5f,"LEN"); writeNvgText(186.48f,37.5f,"OFFSET");
 
         setNvgFontSize(2.5f); fillNvgColour(80,80,80); nvgTextAlign(vg,NVG_ALIGN_LEFT|NVG_ALIGN_MIDDLE);
         //nvgText(vg,mm2px(4.5f),mm2px(43.f),"SEMITONE PROBABILITY",nullptr); nvgText(vg,mm2px(94.f),mm2px(43.f),"OCT",nullptr);
@@ -286,12 +302,12 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         for (int i=0;i<12;++i){ fillNvgColour(200,200,200); writeNvgText(7.5f+i*7.f,43.f,sn[i]); }
         setNvgFontSize(2.7f); fillNvgColour(85,85,85); const char* nums[12]={"1","2","3","4","5","6","7","8","9","10","11","12"};
         for (int i=0;i<12;++i) writeNvgText(7.5f+i*7.f,SL_TOP+SLH+6.f,nums[i]);
-        setNvgFontSize(2.9f); fillNvgColour(38,166,154); writeNvgText(100,43.f,"LO"); writeNvgText(108,43.f,"HI");
+        setNvgFontSize(2.9f); fillNvgColour(38,166,154); writeNvgText(130.48f,43.f,"LO"); writeNvgText(138.48f,43.f,"HI");
 
         // Mode Section: Label on top, Button below (at 34), then vertical A-D stack
-        setNvgFontSize(3.2f); fillNvgColour(210,210,210); writeNvgText(168.f, 30.f, "MODE");
+        setNvgFontSize(3.2f); fillNvgColour(210,210,210); writeNvgText(198.48f, 30.f, "MODE");
         setNvgFontSize(3.8f); 
-        const float TX = 168.f, Y_START_VAL = 54.f, v_spacing_val = 6.5f;
+        const float TX = 198.48f, Y_START_VAL = 54.f, v_spacing_val = 6.5f;
         writeNvgText(TX, Y_START_VAL, "A"); 
         writeNvgText(TX, Y_START_VAL + v_spacing_val, "B"); 
 
@@ -304,91 +320,26 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         writeNvgText(TX, Y_START_VAL + 2 * v_spacing_val, "C"); 
         writeNvgText(TX, Y_START_VAL + 3 * v_spacing_val, "D");
 
-        const float JY=109.f,JX=100.f, JP=12.0f;
+        const float JY=109.f,JX=130.48f, JP=12.0f;
         setNvgFontSize(2.9f); fillNvgColour(200,60,60);  writeNvgText(JX,JY,"DICE R"); writeNvgText(JX+JP,JY,"DICE M");
         fillNvgColour(190,190,190); writeNvgText(JX+2*JP,JY,"LOCK"); writeNvgText(JX+3*JP,JY,"MUTE"); writeNvgText(JX+4*JP,JY,"RESET"); writeNvgText(JX+5*JP,JY,"RUN");
         //L(JX+2*JP,JY,"RESET"); L(JX+5*JP,JY,"RUN");
 
         const float JY3=120.5f,PR=7.7f/2.f; setNvgFontSize(3.0f); fillNvgColour(195,195,195);
-        const char* il[5]={"CLK","G1","G2","CV1","CV2"}; const float ix[5]={14,30,46,62,78};
+        const char* il[5]={"CLK","G1","G2","CV1","CV2"}; const float ix[6]={14,30,46,62,78,106};
         for(int i=0;i<5;++i) writeNvgText(ix[i],JY3-PR-2.2f,il[i]);
-        const char* sl[5] = {"RUN", "RST", "SEED", "LEN", "OFF"};
-        //const float sx[5] = {88.f, 98.f, 108.f, 118.f, 128.f};
-        for(int i=0;i<5;++i) writeNvgText(ix[i],102.f-PR-1.8f,sl[i]);
+        const char* sl[6] = {"RUN", "RST", "SEED", "LEN", "OFF", "ACC"};
+        for(int i=0;i<6;++i) writeNvgText(ix[i],102.f-PR-1.8f,sl[i]);
 
 
         setNvgFontSize(2.7f); fillNvgColour(180,180,180); const char* ol[5]={"SEED","RUN","RST","GATE","CV"};
-        const float ox[5]={95,111,127,143,159};
+        const float ox[5]={125.48f,141.48f,157.48f,173.48f,189.48f};
         for(int i=0;i<5;++i) writeNvgText(ox[i],JY3-PR-2.2f,ol[i]);
         setNvgFontSize(2.3f); fillNvgColour(80,80,80); nvgTextAlign(vg,NVG_ALIGN_LEFT|NVG_ALIGN_MIDDLE);
         // const char* sl[5] = {"RUN", "RST", "SEED", "LEN", "OFF"};
         // const float sx[5] = {88.f, 98.f, 108.f, 118.f, 128.f};
         // for(int i=0;i<5;++i) L(sx[i],116.f-PR-1.8f,sl[i]);
     }
-
-void MonsoonWidget::drawPeranakanLattice(const DrawArgs& args) {
-    // High-density micro peranakan tile-inspired tech lattice texture
-    nvgSave(args.vg);
-    
-    float width = box.size.x;
-    float height = box.size.y;
-    int themeRef = getLightTheme() ? 1 : 0;
-    
-    // Dynamic spacing calculation: width / 28 for large modules
-    float spacing = width / 28.0f;
-    
-    // Theme-dependent colors
-    NVGcolor latticeColor;
-    NVGcolor dotColor;
-    
-    if (themeRef == 0) {
-        // DARK MODE: Cyberpunk Crimson Accents
-        latticeColor = nvgRGBA(0xdc, 0x26, 0x26, 0x28);
-        dotColor     = nvgRGBA(0xdc, 0x26, 0x26, 0x42);
-    } else {
-        // LIGHT MODE: Minimalist Laboratory Slate Watermark
-        latticeColor = nvgRGBA(0xe4, 0xe4, 0xe7, 0x78);
-        dotColor     = nvgRGBA(0xe4, 0xe4, 0xe7, 0xa5);
-    }
-    
-    // Stroke weight optimized for high-density legibility
-    nvgStrokeWidth(args.vg, width / 800.0f);
-    nvgStrokeColor(args.vg, latticeColor);
-    
-    // --- LAYER A: DIAGONAL DIAMOND LATTICE ---
-    for (float x = -height; x < width + height; x += spacing * 2.0f) {
-        // Forward-leaning diagonals (/)
-        nvgBeginPath(args.vg);
-        nvgMoveTo(args.vg, x, 0);
-        nvgLineTo(args.vg, x + height, height);
-        nvgStroke(args.vg);
-        
-        // Backward-leaning diagonals (\)
-        nvgBeginPath(args.vg);
-        nvgMoveTo(args.vg, x, height);
-        nvgLineTo(args.vg, x + height, 0);
-        nvgStroke(args.vg);
-    }
-    
-    // --- LAYER B: CORE CENTER TACTILE NODES ---
-    nvgFillColor(args.vg, dotColor);
-    float radius = width / 500.0f;
-    
-    for (float x = 0; x <= width + spacing; x += spacing) {
-        for (float y = 0; y <= height; y += spacing) {
-            int rowCheck = (int)(y / spacing);
-            float offsetX = (rowCheck % 2 == 0) ? 0.0f : spacing / 2.0f;
-            
-            if ((x + offsetX) >= 0 && (x + offsetX) <= width) {
-                nvgBeginPath(args.vg);
-                nvgCircle(args.vg, x + offsetX, y, radius);
-                nvgFill(args.vg);
-            }
-        }
-    }
-    
-    nvgRestore(args.vg);
-}
 
 void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
         auto* m = dynamic_cast<Monsoon*>(module);

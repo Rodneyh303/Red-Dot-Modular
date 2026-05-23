@@ -37,8 +37,15 @@
       "tags": ["Sequencer", "Random", "Quantizer"]
     },
     {
-      "slug": "MonsoonDeepStraitsSands",
-      "name": "MonsoonDeepStraitsSands",
+      "slug": "MonsoonDeepStraitsSandsEast",
+      "name": "MonsoonDeepStraitsSandsEast",
+      "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
+      "tags": ["Sequencer", "Random", "Quantizer"]
+    }
+    ,
+    {
+      "slug": "MonsoonDeepStraitsSandsWest",
+      "name": "MonsoonDeepStraitsSandsWest",
       "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
       "tags": ["Sequencer", "Random", "Quantizer"]
     }

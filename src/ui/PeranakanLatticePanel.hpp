@@ -144,51 +144,87 @@ protected:
 struct PeranakanLatticePanelLarge : PeranakanLatticePanel {
     using PeranakanLatticePanel::PeranakanLatticePanel;
     
-    void drawPeranakanLattice(const DrawArgs& args) override {
+   /**
+     * Renders an interlocking Octagonal-and-Square Peranakan floor-tile weave
+     * by staggering alternate rows to prevent line merging.
+     */
+    virtual void drawPeranakanLattice(const DrawArgs& args) {
         nvgSave(args.vg);
+        
         float width = box.size.x;
         float height = box.size.y;
         
-        // Slightly coarser for large modules (still high-density)
-        float spacing = width / 28.0f;
+        // --- GEOMETRIC SCALING FOR INTERCHANGE (8HP / 120px) ---
+        // Setting spacing to width / 5.0f yields perfect row scaling
+        float spacing = width / 5.0f; 
+        float radius = spacing * 0.5f;     // Radius of the tile bounding box
+        float chamfer = radius * 0.4142f;  // Perfect geometric proportion for regular octagons
         
-        NVGcolor latticeColor;
-        NVGcolor dotColor;
+        // --- EXACT PALETTE COLORS ---
+        NVGcolor tileWeaveColor;
+        NVGcolor centerDotColor;
         
         if (themeRef && *themeRef == 0) {
-            latticeColor = nvgRGBA(0xdc, 0x26, 0x26, 0x28); // Slightly more opaque
-            dotColor     = nvgRGBA(0xdc, 0x26, 0x26, 0x42);
+            // DARK MODE: Stealthy cyberpunk crimson wireframe
+           // tileWeaveColor = nvgRGBA(0xdc, 0x26, 0x26, 0x09); // #dc2626 @ ~9% opacity
+            //centerDotColor = nvgRGBA(0xdc, 0x26, 0x26, 0x12); // #dc2626 @ ~15% opacity
+
+            tileWeaveColor = nvgRGBA(0x23, 0x23, 0x23, 0x06); // Barely-there watermark
+            centerDotColor     = nvgRGBA(0x23, 0x23, 0x23, 0x0c);
         } else {
-            latticeColor = nvgRGBA(0xe4, 0xe4, 0xe7, 0x78);
-            dotColor     = nvgRGBA(0xe4, 0xe4, 0xe7, 0xa5);
+            // LIGHT MODE: Fine luxury slate watermark
+            tileWeaveColor = nvgRGBA(0xe4, 0xe4, 0xe7, 0x45); // #e4e4e7 @ ~27% opacity
+            centerDotColor = nvgRGBA(0xe4, 0xe4, 0xe7, 0x70); // #e4e4e7 @ ~44% opacity
         }
         
-        nvgStrokeWidth(args.vg, width / 800.0f);
-        nvgStrokeColor(args.vg, latticeColor);
+        nvgStrokeWidth(args.vg, width / 150.0f); // Hairline stroke thickness
+        nvgStrokeColor(args.vg, tileWeaveColor);
         
-        for (float x = -height; x < width + height; x += spacing * 2.0f) {
-            nvgBeginPath(args.vg);
-            nvgMoveTo(args.vg, x, 0);
-            nvgLineTo(args.vg, x + height, height);
-            nvgStroke(args.vg);
-            
-            nvgBeginPath(args.vg);
-            nvgMoveTo(args.vg, x, height);
-            nvgLineTo(args.vg, x + height, 0);
-            nvgStroke(args.vg);
-        }
-        
-        nvgFillColor(args.vg, dotColor);
-        float radius = width / 500.0f;
-        
-        for (float x = 0; x <= width + spacing; x += spacing) {
-            for (float y = 0; y <= height; y += spacing) {
-                int rowCheck = (int)(y / spacing);
-                float offsetX = (rowCheck % 2 == 0) ? 0.0f : spacing / 2.0f;
+        // Calculate grid density based on row steps
+        int colCount = (int)(width / spacing) + 2;
+        int rowCount = (int)(height / (spacing * 0.5f)) + 2;
+
+        // --- LAYER A: INTERLOCKING STAGGERED TILES ---
+        for (int r = -1; r < rowCount; r++) {
+            float cy = r * (spacing * 0.5f);
+            // Stagger horizontal position on every alternate row
+            float shiftX = (r % 2 == 0) ? 0.0f : spacing * 0.5f;
+
+            for (int c = -1; c < colCount; c++) {
+                float cx = c * spacing + shiftX;
+
+                nvgBeginPath(args.vg);
                 
-                if ((x + offsetX) >= 0 && (x + offsetX) <= width) {
+                // Explicitly trace the 8 vertices of the decoupled octagon
+                nvgMoveTo(args.vg, cx + chamfer, cy - radius);
+                nvgLineTo(args.vg, cx + radius,   cy - chamfer);
+                nvgLineTo(args.vg, cx + radius,   cy + chamfer);
+                nvgLineTo(args.vg, cx + chamfer, cy + radius);
+                nvgLineTo(args.vg, cx - chamfer, cy + radius);
+                nvgLineTo(args.vg, cx - radius,   cy + chamfer);
+                nvgLineTo(args.vg, cx - radius,   cy - chamfer);
+                nvgLineTo(args.vg, cx - chamfer, cy - radius);
+                
+                nvgClosePath(args.vg);
+                nvgStroke(args.vg);
+            }
+        }
+        
+        // --- LAYER B: VISUAL NODE ANCHORS ---
+        // Places the fine micro-dots at the precise center of the square voids
+        nvgFillColor(args.vg, centerDotColor);
+        float dotRadius = width / 500.0f; 
+        
+        for (int r = -1; r < rowCount; r++) {
+            float cy = r * (spacing * 0.5f) + (spacing * 0.25f);
+            float shiftX = (r % 2 == 0) ? (spacing * 0.5f) : 0.0f;
+
+            for (int c = -1; c < colCount; c++) {
+                float cx = c * spacing + shiftX;
+                
+                if (cx >= 0 && cx <= width && cy >= 0 && cy <= height) {
                     nvgBeginPath(args.vg);
-                    nvgCircle(args.vg, x + offsetX, y, radius);
+                    nvgCircle(args.vg, cx, cy, dotRadius);
                     nvgFill(args.vg);
                 }
             }
@@ -224,7 +260,7 @@ struct PeranakanLatticePanelCompact : PeranakanLatticePanel {
             dotColor     = nvgRGBA(0xe4, 0xe4, 0xe7, 0x8f);
         }
         
-        nvgStrokeWidth(args.vg, width / 900.0f); // Thinner stroke for compact
+        nvgStrokeWidth(args.vg, width / 150.0f); // Thinner stroke for compact
         nvgStrokeColor(args.vg, latticeColor);
         
         for (float x = -height; x < width + height; x += spacing * 2.0f) {

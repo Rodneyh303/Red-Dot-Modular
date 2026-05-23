@@ -602,7 +602,7 @@ struct Monsoon : Module {
     bool invertMuteLogic = false;
     bool restartOnUnmute = false;
     int lastModeSelect = -1;
-    bool lightTheme = false;
+    int lightTheme = 0; // 0 = Dark, 1 = Light. Using int to match PeranakanLatticePanel expectations.
     MonsoonExpanderManager expanderManager;
     dsp::ClockDivider lightDivider;
     dsp::ClockDivider controlDivider; // For DNA modulation at "Control Rate"
@@ -771,4 +771,5 @@ extern Model* modelMonsoonSandsExpander;
 extern Model* modelMonsoonStraitsEastExpander; // Declare new expander model
 extern Model* modelMonsoonStraitWestExpander;  // NEW (Phase 4): voices 9-16
 extern Model* modelMonsoonStraitsSands;        // NEW (Macro): global DNA controls (compact)
-extern Model* modelMonsoonDeepStraitsSands;    // NEW (Deep): per-voice DNA controls (detailed)
+extern Model* modelMonsoonDeepStraitsSandsEast; // NEW (Deep): per-voice DNA voices 2-8
+extern Model* modelMonsoonDeepStraitsSandsWest; // NEW (Deep): per-voice DNA voices 9-16

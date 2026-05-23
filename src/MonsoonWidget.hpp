@@ -21,11 +21,10 @@ struct MonsoonWidget : ModuleWidget {
     void setLightTheme(bool v);
 
     void applyTheme();
-    void draw(const DrawArgs& args) override;
-    void drawPeranakanLattice(const DrawArgs& args);  // NEW: Peranakan lattice overlay
+    void draw(const DrawArgs& args) override; // Keep draw, but it will no longer call drawPeranakanLattice directly
     void appendContextMenu(ui::Menu* menu) override;
 
-    static constexpr float W_MM = 172.72f; // widht of module in mm, used for centering text and other elements`
+    static constexpr float W_MM = 203.2f; // Updated to 40HP (172.72 + 30.48)
     static constexpr float SL_TOP = 45.f; //top of slider
     static constexpr float SLH = 29.5f; //slider hieght, used for label positioning
 
