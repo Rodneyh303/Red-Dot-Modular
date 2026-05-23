@@ -1,0 +1,248 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 121.92 380" width="121.92mm" height="380mm">
+  <defs>
+    <!-- ===== MATTE/RUBBERY KNOB GRADIENTS ===== -->
+    <!-- Matte = less shiny, more diffuse, darker shadows -->
+    
+    <!-- Large Matte Knob (Scale selector) -->
+    <radialGradient id="knobLargeMatte" cx="40%" cy="40%" r="60%">
+      <stop offset="0%" style="stop-color:#808080;stop-opacity:1"/>
+      <stop offset="40%" style="stop-color:#606060;stop-opacity:1"/>
+      <stop offset="75%" style="stop-color:#3a3a3a;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#1a1a1a;stop-opacity:1"/>
+    </radialGradient>
+    
+    <!-- Medium Matte Knob (Attenuverters) -->
+    <radialGradient id="knobMediumMatte" cx="40%" cy="40%" r="60%">
+      <stop offset="0%" style="stop-color:#707070;stop-opacity:1"/>
+      <stop offset="40%" style="stop-color:#505050;stop-opacity:1"/>
+      <stop offset="70%" style="stop-color:#303030;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#0f0f0f;stop-opacity:1"/>
+    </radialGradient>
+    
+    <!-- Small Matte Knob (Per-voice controls) -->
+    <radialGradient id="knobSmallMatte" cx="40%" cy="40%" r="60%">
+      <stop offset="0%" style="stop-color:#686868;stop-opacity:1"/>
+      <stop offset="35%" style="stop-color:#484848;stop-opacity:1"/>
+      <stop offset="65%" style="stop-color:#282828;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#0a0a0a;stop-opacity:1"/>
+    </radialGradient>
+    
+    <!-- ===== PERANAKAN PATTERN (Integrated into texture) ===== -->
+    <!-- This creates a subtle grid pattern that threads through the design -->
+    <pattern id="peranakan_integrated" patternUnits="userSpaceOnUse" width="20" height="20">
+      <!-- Very subtle octagon grid -->
+      <polygon points="10,3 17,6 17,14 10,17 3,14 3,6" 
+               fill="none" stroke="#333333" stroke-width="0.3" opacity="0.25"/>
+      <!-- Center cross -->
+      <line x1="10" y1="2" x2="10" y2="18" stroke="#333333" stroke-width="0.15" opacity="0.15"/>
+      <line x1="2" y1="10" x2="18" y2="10" stroke="#333333" stroke-width="0.15" opacity="0.15"/>
+    </pattern>
+    
+    <!-- ===== HORIZONTAL GRAIN (MeloDicer v6 style) ===== -->
+    <pattern id="grain" x="0" y="0" width="121.92" height="0.2" patternUnits="userSpaceOnUse">
+      <rect width="121.92" height="0.2" fill="#1a1a1a"/>
+      <rect y="0.100" width="121.92" height="0.050" fill="#2a2a2a" opacity="0.4"/>
+    </pattern>
+    
+    <!-- ===== JACK GRADIENT ===== -->
+    <radialGradient id="jackMatte" cx="40%" cy="40%" r="60%">
+      <stop offset="0%" style="stop-color:#888888;stop-opacity:1"/>
+      <stop offset="35%" style="stop-color:#606060;stop-opacity:1"/>
+      <stop offset="70%" style="stop-color:#404040;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#1a1a1a;stop-opacity:1"/>
+    </radialGradient>
+    
+    <!-- ===== BUTTON GRADIENT ===== -->
+    <radialGradient id="buttonMatte" cx="45%" cy="40%" r="55%">
+      <stop offset="0%" style="stop-color:#707070;stop-opacity:1"/>
+      <stop offset="30%" style="stop-color:#505050;stop-opacity:1"/>
+      <stop offset="65%" style="stop-color:#303030;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#0a0a0a;stop-opacity:1"/>
+    </radialGradient>
+  </defs>
+  
+  <!-- ===== BACKGROUND LAYERS ===== -->
+  <!-- Base dark color -->
+  <rect width="121.92" height="380" fill="#1a1a1a"/>
+  
+  <!-- Peranakan grid pattern (very subtle, integrated) -->
+  <rect width="121.92" height="380" fill="url(#peranakan_integrated)"/>
+  
+  <!-- Grain overlay (scan lines) -->
+  <rect width="121.92" height="380" fill="url(#grain)"/>
+  
+  <!-- ===== PANEL BORDER ===== -->
+  <rect x="0.5" y="0.5" width="120.92" height="379" fill="none" stroke="#0a0a0a" stroke-width="1"/>
+  
+  <!-- ===== RED LINE ACCENT (LEFT) ===== -->
+  <rect x="0" y="0" width="2.5" height="380" fill="#dc2626"/>
+  <rect x="0" y="0" width="2.5" height="380" fill="#ff5555" opacity="0.2"/>
+  
+  <!-- ===== HEADER ===== -->
+  <rect x="0" y="0" width="121.92" height="16" fill="#0f0f0f"/>
+  <line x1="2" y1="16" x2="119.92" y2="16" stroke="#2a2a2a" stroke-width="0.5"/>
+  
+  <!-- RED DOT -->
+  <circle cx="10" cy="8" r="3" fill="#cc2222" stroke="#990000" stroke-width="0.2"/>
+  <circle cx="8.5" cy="6.5" r="1" fill="#ff5555" opacity="0.4"/>
+  
+  <!-- TITLE -->
+  <text x="60.96" y="13" font-size="7.5" font-family="monospace" text-anchor="middle" fill="#e4e4e7" font-weight="bold">INTERCHANGE</text>
+  <text x="60.96" y="25" font-size="4.5" font-family="monospace" text-anchor="middle" fill="#888">modulation</text>
+  
+  <!-- ===== MODE SECTION ===== -->
+  <text x="15" y="45" font-size="5" font-family="monospace" fill="#b8860b" font-weight="bold">mode</text>
+  <rect x="20" y="50" width="25" height="8" rx="1.5" fill="url(#buttonMatte)" stroke="#0a0a0a" stroke-width="0.3"/>
+  <text x="32.5" y="56.5" font-size="3" font-family="monospace" text-anchor="middle" fill="#ddd">tune</text>
+  
+  <!-- ===== SCALE SELECTOR (Large matte knob) ===== -->
+  <g transform="translate(85, 58)">
+    <circle cx="0" cy="0" r="8" fill="url(#knobLargeMatte)" stroke="#0a0a0a" stroke-width="0.3"/>
+    <!-- Matte indicator (less bright) -->
+    <rect x="-0.7" y="-9.2" width="1.4" height="3.2" rx="0.4" fill="#555555" opacity="0.6"/>
+    <!-- Very subtle highlight (matte) -->
+    <circle cx="-2.5" cy="-2.5" r="1.8" fill="#999999" opacity="0.15"/>
+  </g>
+  <text x="85" y="78" font-size="4" font-family="monospace" text-anchor="middle" fill="#666">scale</text>
+  
+  <!-- ===== VOICE GRID SECTION ===== -->
+  <text x="15" y="105" font-size="5" font-family="monospace" fill="#b8860b" font-weight="bold">voices (8)</text>
+  <line x1="2" y1="110" x2="119.92" y2="110" stroke="#2a2a2a" stroke-width="0.5"/>
+  
+  <!-- ===== VOICE ROWS (8 voices, per-voice attenuation) ===== -->
+  <!-- Each voice: Osc1, Osc2, Mod, Transpose (fine), Transpose (coarse) -->
+  <!-- Y spacing: 20mm (matching peranakan grid) -->
+  
+  <!-- Voice 1 (Y=125) -->
+  <text x="5" y="128" font-size="4" font-family="monospace" fill="#cc2222" font-weight="bold">1</text>
+  <g transform="translate(22, 125)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/><rect x="-0.5" y="-4.2" width="1" height="1.6" rx="0.2" fill="#555" opacity="0.5"/></g>
+  <g transform="translate(36, 125)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/><rect x="-0.5" y="-4.2" width="1" height="1.6" rx="0.2" fill="#555" opacity="0.5"/></g>
+  <g transform="translate(50, 125)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/><rect x="-0.5" y="-4.2" width="1" height="1.6" rx="0.2" fill="#555" opacity="0.5"/></g>
+  <g transform="translate(64, 125)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/><rect x="-0.5" y="-4.2" width="1" height="1.6" rx="0.2" fill="#555" opacity="0.5"/></g>
+  <g transform="translate(78, 125)"><circle cx="0" cy="0" r="4" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.28"/><rect x="-0.6" y="-4.8" width="1.2" height="2" rx="0.2" fill="#555" opacity="0.5"/></g>
+  <g transform="translate(100, 125)"><circle cx="0" cy="0" r="4" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.28"/><rect x="-0.6" y="-4.8" width="1.2" height="2" rx="0.2" fill="#555" opacity="0.5"/></g>
+  
+  <!-- Voice 2 (Y=145) -->
+  <text x="5" y="148" font-size="4" font-family="monospace" fill="#cc2222" font-weight="bold">2</text>
+  <g transform="translate(22, 145)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/></g>
+  <g transform="translate(36, 145)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/></g>
+  <g transform="translate(50, 145)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/></g>
+  <g transform="translate(64, 145)"><circle cx="0" cy="0" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/></g>
+  <g transform="translate(78, 145)"><circle cx="0" cy="0" r="4" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.28"/></g>
+  <g transform="translate(100, 145)"><circle cx="0" cy="0" r="4" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.28"/></g>
+  
+  <!-- Voice 3-8: Compact representation (same pattern) -->
+  <!-- Y: 165, 185, 205, 225, 245, 265 -->
+  
+  <!-- Voice 3 (Y=165) -->
+  <text x="5" y="168" font-size="4" font-family="monospace" fill="#cc2222" font-weight="bold">3</text>
+  <circle cx="22" cy="165" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/>
+  <circle cx="36" cy="165" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/>
+  <circle cx="50" cy="165" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/>
+  <circle cx="64" cy="165" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/>
+  <circle cx="78" cy="165" r="4" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.28"/>
+  <circle cx="100" cy="165" r="4" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.28"/>
+  
+  <!-- Voice 4 (Y=185) -->
+  <text x="5" y="188" font-size="4" font-family="monospace" fill="#cc2222" font-weight="bold">4</text>
+  <circle cx="22" cy="185" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/>
+  <circle cx="36" cy="185" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/>
+  <circle cx="50" cy="185" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/>
+  <circle cx="64" cy="185" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/>
+  <circle cx="78" cy="185" r="4" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.28"/>
+  <circle cx="100" cy="185" r="4" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.28"/>
+  
+  <!-- Voice 5 (Y=205) -->
+  <text x="5" y="208" font-size="4" font-family="monospace" fill="#cc2222" font-weight="bold">5</text>
+  <circle cx="22" cy="205" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/>
+  <circle cx="36" cy="205" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/>
+  <circle cx="50" cy="205" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/>
+  <circle cx="64" cy="205" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/>
+  <circle cx="78" cy="205" r="4" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.28"/>
+  <circle cx="100" cy="205" r="4" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.28"/>
+  
+  <!-- Voice 6 (Y=225) -->
+  <text x="5" y="228" font-size="4" font-family="monospace" fill="#cc2222" font-weight="bold">6</text>
+  <circle cx="22" cy="225" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/>
+  <circle cx="36" cy="225" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/>
+  <circle cx="50" cy="225" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/>
+  <circle cx="64" cy="225" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/>
+  <circle cx="78" cy="225" r="4" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.28"/>
+  <circle cx="100" cy="225" r="4" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.28"/>
+  
+  <!-- Voice 7 (Y=245) -->
+  <text x="5" y="248" font-size="4" font-family="monospace" fill="#cc2222" font-weight="bold">7</text>
+  <circle cx="22" cy="245" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/>
+  <circle cx="36" cy="245" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/>
+  <circle cx="50" cy="245" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/>
+  <circle cx="64" cy="245" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/>
+  <circle cx="78" cy="245" r="4" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.28"/>
+  <circle cx="100" cy="245" r="4" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.28"/>
+  
+  <!-- Voice 8 (Y=265) -->
+  <text x="5" y="268" font-size="4" font-family="monospace" fill="#cc2222" font-weight="bold">8</text>
+  <circle cx="22" cy="265" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/>
+  <circle cx="36" cy="265" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/>
+  <circle cx="50" cy="265" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/>
+  <circle cx="64" cy="265" r="3.5" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.25"/>
+  <circle cx="78" cy="265" r="4" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.28"/>
+  <circle cx="100" cy="265" r="4" fill="url(#knobSmallMatte)" stroke="#0a0a0a" stroke-width="0.28"/>
+  
+  <!-- ===== ATTENUVERTERS SECTION (14 inputs: 2 columns of 7) ===== -->
+  <line x1="2" y1="290" x2="119.92" y2="290" stroke="#2a2a2a" stroke-width="0.5"/>
+  
+  <text x="15" y="305" font-size="5" font-family="monospace" fill="#b8860b" font-weight="bold">attenuverters</text>
+  
+  <!-- LEFT COLUMN (Semitone, 7 inputs) -->
+  <!-- Y spacing: 20mm (matching peranakan grid) -->
+  
+  <!-- Atten 1-7 (Semitone) - Left column at X=25 -->
+  <!-- Y: 315, 335, 355, 375... but panel only goes to 380, so: 315, 330, 345 for first 3 -->
+  <!-- Actually better: compact 2-column attenuverter grid -->
+  
+  <!-- TOP ROW: Column headers -->
+  <text x="20" y="310" font-size="4" font-family="monospace" fill="#888" font-weight="bold">sem</text>
+  <text x="65" y="310" font-size="4" font-family="monospace" fill="#888" font-weight="bold">oct</text>
+  
+  <!-- Attenuverter rows (compact, 7 total on each side) -->
+  <!-- Left column (Semitone) - smaller knobs -->
+  <circle cx="20" cy="318" r="2.5" fill="url(#knobMediumMatte)" stroke="#0a0a0a" stroke-width="0.2"/>
+  <circle cx="20" cy="330" r="2.5" fill="url(#knobMediumMatte)" stroke="#0a0a0a" stroke-width="0.2"/>
+  <circle cx="20" cy="342" r="2.5" fill="url(#knobMediumMatte)" stroke="#0a0a0a" stroke-width="0.2"/>
+  <circle cx="20" cy="354" r="2.5" fill="url(#knobMediumMatte)" stroke="#0a0a0a" stroke-width="0.2"/>
+  <circle cx="20" cy="366" r="2.5" fill="url(#knobMediumMatte)" stroke="#0a0a0a" stroke-width="0.2"/>
+  
+  <!-- Right column (Octave) - smaller knobs -->
+  <circle cx="65" cy="318" r="2.5" fill="url(#knobMediumMatte)" stroke="#0a0a0a" stroke-width="0.2"/>
+  <circle cx="65" cy="330" r="2.5" fill="url(#knobMediumMatte)" stroke="#0a0a0a" stroke-width="0.2"/>
+  <circle cx="65" cy="342" r="2.5" fill="url(#knobMediumMatte)" stroke="#0a0a0a" stroke-width="0.2"/>
+  <circle cx="65" cy="354" r="2.5" fill="url(#knobMediumMatte)" stroke="#0a0a0a" stroke-width="0.2"/>
+  <circle cx="65" cy="366" r="2.5" fill="url(#knobMediumMatte)" stroke="#0a0a0a" stroke-width="0.2"/>
+  
+  <!-- BOTTOM: 2 additional larger attenuverters (octave focus) -->
+  <!-- Octave Bottom (Left) -->
+  <circle cx="20" cy="376" r="3" fill="url(#knobMediumMatte)" stroke="#0a0a0a" stroke-width="0.25"/>
+  <text x="20" y="388" font-size="3" font-family="monospace" text-anchor="middle" fill="#888">O</text>
+  
+  <!-- Octave Bottom (Right) -->
+  <circle cx="65" cy="376" r="3" fill="url(#knobMediumMatte)" stroke="#0a0a0a" stroke-width="0.25"/>
+  <text x="65" y="388" font-size="3" font-family="monospace" text-anchor="middle" fill="#888">O</text>
+  
+  <!-- ===== RIGHT SIDE: TRIGGER OUTPUT & QUANTIZE ===== -->
+  <!-- Trigger Jack -->
+  <g transform="translate(105, 318)">
+    <circle cx="0" cy="0" r="3.5" fill="url(#jackMatte)" stroke="#0a0a0a" stroke-width="0.3"/>
+    <circle cx="0" cy="0" r="2.2" fill="#0a0a0a"/>
+    <circle cx="-1" cy="-1" r="0.6" fill="#555" opacity="0.3"/>
+  </g>
+  <text x="105" y="330" font-size="3.5" font-family="monospace" text-anchor="middle" fill="#666">trig</text>
+  
+  <!-- Quantize Button -->
+  <rect x="98" y="345" width="14" height="7" rx="1.2" fill="url(#buttonMatte)" stroke="#0a0a0a" stroke-width="0.25"/>
+  <text x="105" y="351" font-size="3" font-family="monospace" text-anchor="middle" fill="#ddd" font-weight="bold">Q</text>
+  
+  <!-- ===== FOOTER ===== -->
+  <text x="60.96" y="378" font-size="3" font-family="monospace" text-anchor="middle" fill="#555">interchange | 24 hp</text>
+  
+</svg>
