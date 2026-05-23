@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" width="600" height="400">
+  <defs>
+    <!-- ===== GRAIN/TEXTURE FILTERS ===== -->
+    <filter id="grain">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" result="noise" seed="2"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="0.3"/>
+    </filter>
+    
+    <!-- ===== KNOB GRADIENTS ===== -->
+    
+    <!-- Large Knob (19mm) - Metallic Bronze -->
+    <radialGradient id="knobLargeMetallic" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" style="stop-color:#e8d4a8;stop-opacity:1"/>
+      <stop offset="20%" style="stop-color:#c4a57b;stop-opacity:1"/>
+      <stop offset="50%" style="stop-color:#8b6f47;stop-opacity:1"/>
+      <stop offset="85%" style="stop-color:#5a4a2a;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#2d1f0a;stop-opacity:1"/>
+    </radialGradient>
+    
+    <!-- Medium Knob (15mm) - Metallic Bronze -->
+    <radialGradient id="knobMediumMetallic" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" style="stop-color:#e8d4a8;stop-opacity:1"/>
+      <stop offset="25%" style="stop-color:#c4a57b;stop-opacity:1"/>
+      <stop offset="55%" style="stop-color:#8b6f47;stop-opacity:1"/>
+      <stop offset="90%" style="stop-color:#4a3520;stop-opacity:1"/>
+    </radialGradient>
+    
+    <!-- Small Knob (11mm) - Metallic Bronze -->
+    <radialGradient id="knobSmallMetallic" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" style="stop-color:#dcc89f;stop-opacity:1"/>
+      <stop offset="30%" style="stop-color:#b8935e;stop-opacity:1"/>
+      <stop offset="60%" style="stop-color:#7a5c2d;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#3a2410;stop-opacity:1"/>
+    </radialGradient>
+    
+    <!-- ===== JACK GRADIENT ===== -->
+    <radialGradient id="jackMetallic" cx="40%" cy="35%" r="60%">
+      <stop offset="0%" style="stop-color:#d8d8d8;stop-opacity:1"/>
+      <stop offset="30%" style="stop-color:#a8a8a8;stop-opacity:1"/>
+      <stop offset="70%" style="stop-color:#505050;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#1a1a1a;stop-opacity:1"/>
+    </radialGradient>
+    
+    <!-- ===== BUTTON GRADIENT ===== -->
+    <radialGradient id="buttonMetallic" cx="45%" cy="40%" r="55%">
+      <stop offset="0%" style="stop-color:#f0f0f0;stop-opacity:1"/>
+      <stop offset="25%" style="stop-color:#c0c0c0;stop-opacity:1"/>
+      <stop offset="60%" style="stop-color:#606060;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#1a1a1a;stop-opacity:1"/>
+    </radialGradient>
+  </defs>
+  
+  <!-- ===== TITLE ===== -->
+  <text x="300" y="30" font-size="24" font-family="monospace" text-anchor="middle" fill="#333" font-weight="bold">Component Library</text>
+  <text x="300" y="55" font-size="14" font-family="monospace" text-anchor="middle" fill="#666">Red Dot Modular - Metallic Assets</text>
+  
+  <!-- ===== KNOBS ===== -->
+  <g id="knobs">
+    <!-- LARGE KNOB (19mm diameter) -->
+    <g transform="translate(80, 120)">
+      <circle cx="0" cy="0" r="9.5" fill="url(#knobLargeMetallic)"/>
+      <!-- Indicator mark at top -->
+      <rect x="-0.8" y="-10.5" width="1.6" height="3" rx="0.4" fill="#f5f5f5" opacity="0.95"/>
+      <!-- Subtle highlight -->
+      <circle cx="-3" cy="-3" r="2.5" fill="#ffffff" opacity="0.2"/>
+      <!-- Subtle shadow -->
+      <circle cx="3" cy="3" r="2.5" fill="#000000" opacity="0.15"/>
+      <text x="0" y="25" font-size="10" font-family="monospace" text-anchor="middle" fill="#333">LARGE (19mm)</text>
+    </g>
+    
+    <!-- MEDIUM KNOB (15mm diameter) -->
+    <g transform="translate(200, 120)">
+      <circle cx="0" cy="0" r="7.5" fill="url(#knobMediumMetallic)"/>
+      <!-- Indicator mark -->
+      <rect x="-0.6" y="-8.5" width="1.2" height="2.5" rx="0.3" fill="#f5f5f5" opacity="0.95"/>
+      <!-- Highlight -->
+      <circle cx="-2.2" cy="-2.2" r="1.8" fill="#ffffff" opacity="0.2"/>
+      <!-- Shadow -->
+      <circle cx="2.2" cy="2.2" r="1.8" fill="#000000" opacity="0.15"/>
+      <text x="0" y="23" font-size="10" font-family="monospace" text-anchor="middle" fill="#333">MEDIUM (15mm)</text>
+    </g>
+    
+    <!-- SMALL KNOB (11mm diameter) -->
+    <g transform="translate(320, 120)">
+      <circle cx="0" cy="0" r="5.5" fill="url(#knobSmallMetallic)"/>
+      <!-- Indicator mark -->
+      <rect x="-0.4" y="-6.3" width="0.8" height="1.8" rx="0.2" fill="#f5f5f5" opacity="0.95"/>
+      <!-- Highlight -->
+      <circle cx="-1.5" cy="-1.5" r="1.2" fill="#ffffff" opacity="0.2"/>
+      <!-- Shadow -->
+      <circle cx="1.5" cy="1.5" r="1.2" fill="#000000" opacity="0.15"/>
+      <text x="0" y="20" font-size="10" font-family="monospace" text-anchor="middle" fill="#333">SMALL (11mm)</text>
+    </g>
+  </g>
+  
+  <!-- ===== JACKS ===== -->
+  <g id="jacks">
+    <!-- PJ301M JACK (10.5mm diameter) -->
+    <g transform="translate(80, 250)">
+      <!-- Outer rim -->
+      <circle cx="0" cy="0" r="5.25" fill="url(#jackMetallic)" stroke="#0a0a0a" stroke-width="0.3"/>
+      <!-- Inner hole -->
+      <circle cx="0" cy="0" r="3.5" fill="#0a0a0a"/>
+      <!-- Highlight on jack -->
+      <circle cx="-1.5" cy="-1.5" r="1.8" fill="#ffffff" opacity="0.25"/>
+      <text x="0" y="20" font-size="10" font-family="monospace" text-anchor="middle" fill="#333">JACK (10.5mm)</text>
+    </g>
+  </g>
+  
+  <!-- ===== BUTTONS ===== -->
+  <g id="buttons">
+    <!-- PUSH BUTTON (square, beveled) -->
+    <g transform="translate(200, 250)">
+      <rect x="-5" y="-5" width="10" height="10" rx="1.5" fill="url(#buttonMetallic)" stroke="#1a1a1a" stroke-width="0.4"/>
+      <!-- Highlight -->
+      <rect x="-4.5" y="-4.5" width="9" height="4.5" rx="1" fill="#ffffff" opacity="0.15"/>
+      <!-- Pressed state indicator (optional) -->
+      <text x="0" y="20" font-size="10" font-family="monospace" text-anchor="middle" fill="#333">BUTTON (10×10)</text>
+    </g>
+    
+    <!-- SMALL BUTTON (round) -->
+    <g transform="translate(320, 250)">
+      <circle cx="0" cy="0" r="4" fill="url(#buttonMetallic)" stroke="#1a1a1a" stroke-width="0.3"/>
+      <!-- Highlight -->
+      <circle cx="-1.2" cy="-1.2" r="1.8" fill="#ffffff" opacity="0.15"/>
+      <text x="0" y="20" font-size="10" font-family="monospace" text-anchor="middle" fill="#333">BUTTON (4mm)</text>
+    </g>
+  </g>
+  
+  <!-- ===== NOTES ===== -->
+  <g id="notes" transform="translate(0, 320)">
+    <text x="20" y="20" font-size="11" font-family="monospace" fill="#666" font-weight="bold">USAGE NOTES:</text>
+    <text x="20" y="38" font-size="10" font-family="monospace" fill="#555">1. Knobs: Use radialGradient for 3D effect. Indicator line shows rotation.</text>
+    <text x="20" y="52" font-size="10" font-family="monospace" fill="#555">2. Jacks: Double circle (rim + hole) creates depth. Highlight adds realism.</text>
+    <text x="20" y="66" font-size="10" font-family="monospace" fill="#555">3. Apply <filter>grain</filter> to entire panel for texture overlay (see defs).</text>
+  </g>
+</svg>
