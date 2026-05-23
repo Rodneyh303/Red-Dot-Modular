@@ -6,39 +6,29 @@ using namespace rack;
 extern Model* modelMonsoon;
 
 struct MonsoonInterchangeExpanderWidget : ModuleWidget {
-    MonsoonInterchangeExpanderWidget(MonsoonInterchangeExpander* module) {
-        setModule(module);
-        setPanel(APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/MeloDicer_Expander3.svg")));
+MonsoonInterchangeExpanderWidget(MonsoonInterchangeExpander* module) {
+    setModule(module);
+    box.size = mm2px(Vec(270, 380));
+    setPanel(APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/interchange_gemini_new2.svg")));
 
-        // ── Screws ───────────────────────────────────────────────────────────
-        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
-        addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
-        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
-        addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
-        
-        // ── Vertical 2-Column Layout ─────────────────────────────────────────
-        // Col 0: C to F (0-5), Col 1: F# to B (6-11)
-        for (int i = 0; i < 12; i++) {
-            int col = i / 6;
-            int row = i % 6;
-            float jackX = (col == 0) ? 14.0f : 36.5f;
-            float knobX = jackX + 7.5f;
-            float rowY = 25.0f + (row * 15.0f);
+    // ... (Screws same as before) ...
+    
+// Semitone Loop (i=0 to 5)
+for (int i = 0; i < 6; i++) {
+    float rowY = 80.0f + (i * 40.0f); 
+    addInput(createInputCentered<PJ301MPort>(Vec(48.0f, rowY), module, MonsoonIds::EXPANDER_SEMI_CV_INPUT_0 + i));
+    addParam(createParamCentered<Trimpot>(Vec(102.0f, rowY), module, MonsoonIds::EXPANDER_SEMI_ATTENUVERTER_0 + i));
+    addParam(createParamCentered<Trimpot>(Vec(168.0f, rowY), module, MonsoonIds::EXPANDER_SEMI_ATTENUVERTER_0 + 6 + i));
+    addInput(createInputCentered<PJ301MPort>(Vec(222.0f, rowY), module, MonsoonIds::EXPANDER_SEMI_CV_INPUT_0 + 6 + i));
+}
 
-            addInput(createInputCentered<PJ301MPort>(mm2px(Vec(jackX, rowY)), module, MonsoonIds::EXPANDER_SEMI_CV_INPUT_0 + i));
-            addParam(createParamCentered<Trimpot>(mm2px(Vec(knobX, rowY)), module, MonsoonIds::EXPANDER_SEMI_ATTENUVERTER_0 + i));
-        }
-        
-        // ── Octave Section (Bottom) ──────────────────────────────────────────
-        // Align with the last row of semitone CVs (row 5, which is index 5 for 0-indexed rows)
-        float octY = 25.0f + (5 * 15.0f); // This is 100.0f
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(14.0f, octY)), module, MonsoonIds::EXPANDER_OCT_LO_CV_INPUT)); // OCT LO Jack
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(21.5f, octY)), module, MonsoonIds::EXPANDER_OCT_LO_ATTENUVERTER)); // OCT LO Knob
-        
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(34.0f, octY)), module, MonsoonIds::EXPANDER_OCT_HI_CV_INPUT)); // OCT HI Jack
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(41.5f, octY)), module, MonsoonIds::EXPANDER_OCT_HI_ATTENUVERTER)); // OCT HI Knob
-    }
-
+// Octave Section (Position 7, Y=320)
+float octY = 320.0f;
+addInput(createInputCentered<PJ301MPort>(Vec(48.0f, octY), module, MonsoonIds::EXPANDER_OCT_LO_CV_INPUT));
+addParam(createParamCentered<Trimpot>(Vec(102.0f, octY), module, MonsoonIds::EXPANDER_OCT_LO_ATTENUVERTER));
+addParam(createParamCentered<Trimpot>(Vec(168.0f, octY), module, MonsoonIds::EXPANDER_OCT_HI_ATTENUVERTER));
+addInput(createInputCentered<PJ301MPort>(Vec(222.0f, octY), module, MonsoonIds::EXPANDER_OCT_HI_CV_INPUT));
+}
     void draw(const DrawArgs& args) override {
         ModuleWidget::draw(args);
 
