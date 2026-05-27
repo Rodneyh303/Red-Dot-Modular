@@ -13,7 +13,7 @@ namespace redDot {
  * 
  * Concept:
  *   Spread interpolates between original poly voice random draw and a target:
- *   - Target option 1: Average of all poly voices (creates cohesion)
+ *   - Target option 1: Average of active poly voices (creates cohesion)
  *   - Target option 2: Mono voice draw (creates mono-to-poly blending)
  * 
  * Interpolation formula:
@@ -23,6 +23,13 @@ namespace redDot {
  * At spread=0.5:    Halfway between original and target
  * At spread=1.0:    Uses target value completely
  * 
+ * Active Voice Detection:
+ *   For Straits East (7 voices): Uses voices 2-8 (from SequencerEngine)
+ *   For Straits West (8 voices): Uses voices 9-16 (from SequencerEngine)
+ *   Average is calculated from ONLY active/requested voices
+ *   If polyphony=4, average uses only 4 voices
+ *   If polyphony=7, average uses all 7 voices
+ * 
  * Implementation:
  *   - Macro poly: Same spread applied to all voices (global)
  *   - Per-voice poly: Different spread per voice (independent)
@@ -30,6 +37,7 @@ namespace redDot {
  * 
  * Usage:
  *   SpreadManager mgr(patternEngine);
+ *   mgr.setSequencerEngine(sequencerEngine);  // For active voice count
  *   mgr.setInterpolationTarget(AVERAGE_POLY);  // or MONO_DRAW
  *   mgr.setSpread(voiceIdx, lane, 0.5);
  *   float interpolated = mgr.getInterpolatedValue(voiceIdx, lane, step);
@@ -37,21 +45,23 @@ namespace redDot {
 
 struct SpreadManager {
   enum InterpolationTarget {
-    AVERAGE_POLY,    // Average of all poly voices
+    AVERAGE_POLY,    // Average of active poly voices
     MONO_DRAW        // Mono voice draw (for reference)
   };
   
   PatternEngine* patternEngine = nullptr;
+  SequencerEngine* sequencerEngine = nullptr;  // For active voice count
   InterpolationTarget target = AVERAGE_POLY;
   int numVoices = 7;  // 7 for East, 8 for West, 1 for Mono
+  int startVoiceIdx = 0;  // 0 for East (voices 2-8), 8 for West (voices 9-16)
   
   // Spread values: [voice][lane]
   // For macro: all voices use same spread (but we store separately for flexibility)
   // For per-voice: each voice has own spread
   std::array<std::array<float, 3>, 8> spread = {};  // [8 voices][3 lanes]
   
-  SpreadManager(PatternEngine* pe = nullptr, int nVoices = 7)
-    : patternEngine(pe), numVoices(nVoices) {
+  SpreadManager(PatternEngine* pe = nullptr, int nVoices = 7, int startVoice = 0)
+    : patternEngine(pe), numVoices(nVoices), startVoiceIdx(startVoice) {
     // Initialize spreads to 0 (no interpolation)
     for (int v = 0; v < 8; ++v) {
       for (int l = 0; l < 3; ++l) {
@@ -61,6 +71,12 @@ struct SpreadManager {
   }
   
   // ===== CONFIGURATION =====
+  
+  // Set SequencerEngine reference for active voice detection
+  // This allows average calculation to use only currently requested voices
+  void setSequencerEngine(SequencerEngine* se) {
+    sequencerEngine = se;
+  }
   
   void setInterpolationTarget(InterpolationTarget t) {
     target = t;
@@ -115,17 +131,40 @@ struct SpreadManager {
   }
   
   /**
-   * Calculate average of all poly voice draws for a given lane/step.
+   * Calculate average of active poly voice draws for a given lane/step.
    * 
-   * This creates cohesion - all voices pulled toward their collective average.
+   * Uses only the voices actually requested by current polyphony setting.
+   * For Straits East: voices from startVoiceIdx to startVoiceIdx+polyphony-1
+   * For Straits West: voices from startVoiceIdx to startVoiceIdx+polyphony-1
+   * 
+   * Example:
+   *   Straits East with polyphony=4 (voices 2-5)
+   *   Calculates average of polyRhythmRandom[0-3] (voices 2-5)
+   *   
+   *   Straits West with polyphony=6 (voices 9-14)
+   *   Calculates average of polyRhythmRandom[0-5] (voices 9-14)
    */
   float calculateAveragePolyValue(int lane, int step) const {
     if (!patternEngine || step < 0 || step >= 16) return 0.5f;
     
-    float sum = 0.0f;
-    int count = 0;
+    // Determine how many voices are actually active/requested
+    int activeVoiceCount = numVoices;
     
-    for (int v = 0; v < numVoices; ++v) {
+    // If SequencerEngine is available, use its polyphony setting
+    if (sequencerEngine) {
+      // Get active polyphony from SequencerEngine
+      // The SequencerEngine tracks which voices are actually in use
+      activeVoiceCount = getActiveVoiceCount();
+    }
+    
+    // Clamp to not exceed available voices
+    activeVoiceCount = std::min(activeVoiceCount, numVoices);
+    
+    if (activeVoiceCount <= 0) return 0.5f;
+    
+    float sum = 0.0f;
+    
+    for (int v = 0; v < activeVoiceCount; ++v) {
       float val = 0.0f;
       
       switch (lane) {
@@ -141,10 +180,23 @@ struct SpreadManager {
       }
       
       sum += val;
-      count++;
     }
     
-    return (count > 0) ? (sum / count) : 0.5f;
+    return sum / activeVoiceCount;
+  }
+  
+  /**
+   * Get the number of active voices from SequencerEngine.
+   * 
+   * This reflects the actual polyphony setting currently in use.
+   * Only voices within this count are averaged for AVERAGE_POLY target.
+   */
+  int getActiveVoiceCount() const {
+    if (!sequencerEngine) return numVoices;
+    
+    // Access polyphony from SequencerEngine
+    // The SequencerEngine.polyphony field tracks how many voices are active
+    return std::min(sequencerEngine->polyphony, numVoices);
   }
   
   /**

@@ -2,6 +2,7 @@
 #include <rack.hpp>
 #include "../ui/SandsVisualEditorV4.hpp"
 #include "../dsp/engines/PatternEngine.hpp"
+#include "../dsp/engines/SequencerEngine.hpp"
 #include "SpreadManager.hpp"
 
 namespace redDot {
@@ -17,10 +18,13 @@ namespace redDot {
  * 
  * Spread Control (via SpreadManager):
  *   Interpolates between original poly voice draw and:
- *   - Target 1: Average of all poly voices (creates cohesion)
+ *   - Target 1: Average of ACTIVE poly voices (creates cohesion)
  *   - Target 2: Mono voice draw (creates mono-to-poly blending)
  *   
- *   Each voice has independent spread control per lane.
+ *   IMPORTANT: Average uses only actively requested voices!
+ *   If polyphony=4 voices, average is calculated from those 4 voices only.
+ *   If polyphony=7 voices, average uses all 7 voices.
+ *   This requires SequencerEngine reference for polyphony tracking.
  * 
  * Data Storage:
  *   Probabilities: PatternEngine.polyRhythmRandom[voiceIdx][16], etc.
@@ -32,10 +36,10 @@ namespace redDot {
  *   PatternEngine polyRandom uses 0-14 indexing (voices 2-16)
  * 
  * Usage:
- *   PolyVoiceSandsParameterManager mgr(patternEngine, numVoices);
+ *   SequencerEngine* seqEngine = /* from monsoon */;
+ *   PolyVoiceSandsParameterManager mgr(patternEngine, seqEngine, 7, 0);  // East
  *   mgr.setInterpolationTarget(SpreadManager::AVERAGE_POLY);
  *   mgr.setSpread(voiceIdx, lane, spreadValue);
- *   mgr.syncEditorToPatternEngine(voiceIdx, editor->currentState);
  *   mgr.syncPatternEngineToEditor(voiceIdx, editor->currentState);
  *   
  *   // Get spread-adjusted display value
@@ -44,13 +48,23 @@ namespace redDot {
 
 struct PolyVoiceSandsParameterManager {
   PatternEngine* patternEngine = nullptr;
+  SequencerEngine* sequencerEngine = nullptr;  // For active voice count
   int numVoices = 7;  // 7 for East, 8 for West
   
   // Spread manager handles all interpolation
+  // Uses SequencerEngine to determine average from active voices only
   SpreadManager spreadMgr;
   
-  PolyVoiceSandsParameterManager(PatternEngine* pe = nullptr, int nVoices = 7) 
-    : patternEngine(pe), numVoices(nVoices), spreadMgr(pe, nVoices) {}
+  PolyVoiceSandsParameterManager(PatternEngine* pe = nullptr, SequencerEngine* se = nullptr, 
+                                  int nVoices = 7, int startVoice = 0) 
+    : patternEngine(pe), sequencerEngine(se), numVoices(nVoices), 
+      spreadMgr(pe, nVoices, startVoice) {
+    // Set SequencerEngine so SpreadManager can track active voices
+    // This makes AVERAGE_POLY target use only requested polyphony
+    if (se) {
+      spreadMgr.setSequencerEngine(se);
+    }
+  }
   
   // Set spread value for a voice/lane combination
   void setSpread(int voiceIdx, int lane, float value) {
@@ -92,6 +106,7 @@ struct PolyVoiceSandsParameterManager {
   
   // Sync PatternEngine to visual editor for a specific voice
   // Shows interpolated values with spread applied
+  // Average is calculated from only the active/requested voices
   void syncPatternEngineToEditor(int voiceIdx, SandsVisualEditorV4::VoiceState& editorState) {
     if (!patternEngine || voiceIdx < 0 || voiceIdx >= numVoices) return;
     
@@ -115,6 +130,7 @@ struct PolyVoiceSandsParameterManager {
   }
   
   // Get spread-adjusted probability for display (voice-specific)
+  // Average is calculated from only the active voices at this moment
   float getDisplayProbability(int voiceIdx, int lane, int step) const {
     if (voiceIdx < 0 || voiceIdx >= numVoices) return 0.0f;
     if (lane < 0 || lane > 2 || step < 0 || step >= 16) return 0.0f;
