@@ -2,6 +2,7 @@
 #include <rack.hpp>
 #include "../ui/SandsVisualEditorV4.hpp"
 #include "../dsp/engines/PatternEngine.hpp"
+#include "SpreadManager.hpp"
 
 namespace redDot {
 
@@ -13,18 +14,23 @@ namespace redDot {
  * Global poly DNA control: 3 lanes only (REST, MELODY, OCTAVE)
  * All voices share the same probability distribution.
  * 
- * Plus: SPREAD control per lane (0.0-1.0)
- *   Spread interpolates the probability draws, creating variation.
- *   The visual editor can display spread-adjusted probabilities.
+ * Spread Control (via SpreadManager):
+ *   Interpolates between original poly draw and:
+ *   - Target 1: Average of all poly voices
+ *   - Target 2: Mono voice draw (reference)
+ *   
+ *   At spread=0.0: Uses original poly distribution
+ *   At spread=1.0: Uses target (average or mono)
  * 
  * Data Storage:
  *   Probabilities: PatternEngine rhythmRandom/melodyRandom/octaveRandom
- *   Spread: Separate parameters (new, per lane)
+ *   Spread: MacroSpreadManager (same spread applied to all voices)
  * 
  * Usage:
- *   PolySandsParameterManager mgr(patternEngine, monsoonModule);
- *   mgr.syncEditorToPatternEngine(editor->currentState, spreadValues);
- *   mgr.syncPatternEngineToEditor(editor->currentState, spreadValues);
+ *   PolySandsParameterManager mgr(patternEngine, 7);
+ *   mgr.spreadMgr.setInterpolationTarget(SpreadManager::AVERAGE_POLY);
+ *   mgr.spreadMgr.setSpread(lane, spread);
+ *   mgr.syncPatternEngineToEditor(editor->currentState);
  * 
  * Voices affected: All voices 2-16
  */
@@ -33,109 +39,67 @@ struct PolySandsParameterManager {
   PatternEngine* patternEngine = nullptr;
   rack::Module* monsoonModule = nullptr;
   
-  // Spread parameters (per-lane spread control, 0.0-1.0)
-  // These should be added as new parameters to the expander
-  float spreadRest = 0.0f;
-  float spreadMelody = 0.0f;
-  float spreadOctave = 0.0f;
+  // Spread manager handles interpolation
+  MacroSpreadManager spreadMgr;
   
-  PolySandsParameterManager(PatternEngine* pe = nullptr, rack::Module* m = nullptr) 
-    : patternEngine(pe), monsoonModule(m) {}
-  
-  // Apply spread interpolation to a probability value
-  float applySpread(float probability, float spread) const {
-    if (spread <= 0.0f) return probability;
-    
-    // Spread creates variation: pulls toward center (0.5) based on spread amount
-    // At spread=0: no change
-    // At spread=1: full interpolation toward 0.5 (flat distribution)
-    // This creates a "probability smearing" effect
-    float target = 0.5f;
-    return probability + (target - probability) * spread;
-  }
+  PolySandsParameterManager(PatternEngine* pe = nullptr, rack::Module* m = nullptr,
+                             int numVoices = 7)
+    : patternEngine(pe), monsoonModule(m), spreadMgr(pe, numVoices) {}
   
   // Sync visual editor to PatternEngine (editor → DSP)
-  // displayProbs: if true, apply spread to displayed values
-  void syncEditorToPatternEngine(const SandsVisualEditorV4::VoiceState& editorState, 
-                                  bool applySpreadToDisplay = false) {
+  void syncEditorToPatternEngine(const SandsVisualEditorV4::VoiceState& editorState) {
     if (!patternEngine) return;
     
     // Rest lane (global rhythm for all voices)
     for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
-      float prob = editorState.lanes[SandsVisualEditorV4::REST].probabilities[i];
-      if (applySpreadToDisplay) {
-        prob = applySpread(prob, spreadRest);
-      }
-      patternEngine->rhythmRandom[i] = prob;
-      patternEngine->rhythmSource[i] = prob;
+      patternEngine->rhythmRandom[i] = editorState.lanes[SandsVisualEditorV4::REST].probabilities[i];
+      patternEngine->rhythmSource[i] = patternEngine->rhythmRandom[i];
     }
     
     // Melody lane
     for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
-      float prob = editorState.lanes[SandsVisualEditorV4::MELODY].probabilities[i];
-      if (applySpreadToDisplay) {
-        prob = applySpread(prob, spreadMelody);
-      }
-      patternEngine->melodyRandom[i] = prob;
-      patternEngine->melodySource[i] = prob;
+      patternEngine->melodyRandom[i] = editorState.lanes[SandsVisualEditorV4::MELODY].probabilities[i];
+      patternEngine->melodySource[i] = patternEngine->melodyRandom[i];
     }
     
     // Octave lane
     for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
-      float prob = editorState.lanes[SandsVisualEditorV4::OCTAVE].probabilities[i];
-      if (applySpreadToDisplay) {
-        prob = applySpread(prob, spreadOctave);
-      }
-      patternEngine->octaveRandom[i] = prob;
-      patternEngine->octaveSource[i] = prob;
+      patternEngine->octaveRandom[i] = editorState.lanes[SandsVisualEditorV4::OCTAVE].probabilities[i];
+      patternEngine->octaveSource[i] = patternEngine->octaveRandom[i];
     }
   }
   
   // Sync PatternEngine to visual editor (DSP → editor)
+  // Shows interpolated values with spread applied
   void syncPatternEngineToEditor(SandsVisualEditorV4::VoiceState& editorState) {
     if (!patternEngine) return;
     
-    // Rest lane
+    // Rest lane - show interpolated values
     for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
-      editorState.lanes[SandsVisualEditorV4::REST].probabilities[i] = patternEngine->rhythmRandom[i];
+      // Use voice 0 as reference for global display
+      editorState.lanes[SandsVisualEditorV4::REST].probabilities[i] = 
+        spreadMgr.getInterpolatedValue(0, 0, i);
     }
     
     // Melody lane
     for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
-      editorState.lanes[SandsVisualEditorV4::MELODY].probabilities[i] = patternEngine->melodyRandom[i];
+      editorState.lanes[SandsVisualEditorV4::MELODY].probabilities[i] = 
+        spreadMgr.getInterpolatedValue(0, 1, i);
     }
     
     // Octave lane
     for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
-      editorState.lanes[SandsVisualEditorV4::OCTAVE].probabilities[i] = patternEngine->octaveRandom[i];
+      editorState.lanes[SandsVisualEditorV4::OCTAVE].probabilities[i] = 
+        spreadMgr.getInterpolatedValue(0, 2, i);
     }
   }
   
-  // Get spread-adjusted probability for display
+  // Get interpolated probability for display (with spread applied)
   float getDisplayProbability(int lane, int step) const {
-    if (!patternEngine) return 0.0f;
+    if (lane < 0 || lane > 2 || step < 0 || step >= 16) return 0.0f;
     
-    float prob = 0.0f;
-    float spread = 0.0f;
-    
-    switch (lane) {
-      case SandsVisualEditorV4::REST:
-        prob = patternEngine->rhythmRandom[step];
-        spread = spreadRest;
-        break;
-      case SandsVisualEditorV4::MELODY:
-        prob = patternEngine->melodyRandom[step];
-        spread = spreadMelody;
-        break;
-      case SandsVisualEditorV4::OCTAVE:
-        prob = patternEngine->octaveRandom[step];
-        spread = spreadOctave;
-        break;
-      default:
-        return 0.0f;
-    }
-    
-    return applySpread(prob, spread);
+    // For global display, use voice 0 as representative
+    return spreadMgr.getInterpolatedValue(0, lane, step);
   }
 };
 
