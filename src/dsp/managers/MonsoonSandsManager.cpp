@@ -2,54 +2,78 @@
 #include "../../Monsoon.hpp"
 #include "MonsoonExpanderManager.hpp"
 #include "../../MonsoonSandsExpander.hpp"
+#include "../../MonsoonSandsVisualExpander.hpp"
 #include "../../MonsoonStraitsEastExpander.hpp"
 
 using namespace rack;
 using namespace MonsoonIds;
 
 void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManager) {
-    if (expanderManager.cachedDnaExpander) {
-        auto processStrand = [&](int pLen, int iLen, int pOff, int iOff, int pRot, int& tLen, int& tOff, int& tRot) {
-            float lCV = expanderManager.cachedDnaExpander->inputs[iLen].getNormalVoltage(0.f) * 1.6f;
-            float oCV = expanderManager.cachedDnaExpander->inputs[iOff].getNormalVoltage(0.f) * 1.5f;
-            tLen = clampv<int>((int)std::round(expanderManager.cachedDnaExpander->params[pLen].getValue() + lCV), 1, 16);
-            int rawOff = (int)std::round(expanderManager.cachedDnaExpander->params[pOff].getValue() + oCV);
+    // Visual expander takes priority over knob expander when both are present.
+    // Both are zero-delay: Monsoon reads their params directly here on the
+    // audio thread — no message passing, no write-back from the UI thread.
+    const bool hasVisual = (expanderManager.cachedSandsVisualExpander != nullptr);
+    const bool hasKnobs  = (expanderManager.cachedDnaExpander          != nullptr);
+
+    if (hasVisual || hasKnobs) {
+        // Pick the active source for each parameter.
+        // Visual expander owns L/O/R when present; knob expander also
+        // provides CV inputs and action buttons (scramble/reset).
+        auto readStrand = [&](int pLen, int iLen, int pOff, int iOff, int pRot,
+                               int& tLen, int& tOff, int& tRot) {
+            // L/O/R source: visual expander if present, else knob expander
+            rack::Module* lorSrc = hasVisual
+                ? static_cast<rack::Module*>(expanderManager.cachedSandsVisualExpander)
+                : static_cast<rack::Module*>(expanderManager.cachedDnaExpander);
+
+            // CV inputs only available from knob expander
+            float lCV = hasKnobs
+                ? expanderManager.cachedDnaExpander->inputs[iLen].getNormalVoltage(0.f) * 1.6f
+                : 0.f;
+            float oCV = hasKnobs
+                ? expanderManager.cachedDnaExpander->inputs[iOff].getNormalVoltage(0.f) * 1.5f
+                : 0.f;
+
+            tLen = clampv<int>((int)std::round(lorSrc->params[pLen].getValue() + lCV), 1, 16);
+            int rawOff = (int)std::round(lorSrc->params[pOff].getValue() + oCV);
             tOff = ((rawOff % 16) + 16) % 16;
-            int rawRot = (int)std::round(expanderManager.cachedDnaExpander->params[pRot].getValue());
+            int rawRot = (int)std::round(lorSrc->params[pRot].getValue());
             tRot = ((rawRot % 16) + 16) % 16;
         };
 
-        processStrand(DNA_R_LEN_PARAM, DNA_R_LEN_INPUT, DNA_R_OFF_PARAM, DNA_R_OFF_INPUT, DNA_R_ROT_PARAM, 
-                        engine.rhythmLen, engine.rhythmOff, engine.rhythmRot);
-        processStrand(DNA_V_LEN_PARAM, DNA_V_LEN_INPUT, DNA_V_OFF_PARAM, DNA_V_OFF_INPUT, DNA_V_ROT_PARAM, 
-                        engine.variationLen, engine.variationOff, engine.variationRot);
-        processStrand(DNA_L_LEN_PARAM, DNA_L_LEN_INPUT, DNA_L_OFF_PARAM, DNA_L_OFF_INPUT, DNA_L_ROT_PARAM, 
-                        engine.legatoLen, engine.legatoOff, engine.legatoRot);
-        processStrand(DNA_A_LEN_PARAM, DNA_A_LEN_INPUT, DNA_A_OFF_PARAM, DNA_A_OFF_INPUT, DNA_A_ROT_PARAM, 
-                        engine.accentLen, engine.accentOff, engine.accentRot);
-        processStrand(DNA_M_LEN_PARAM, DNA_M_LEN_INPUT, DNA_M_OFF_PARAM, DNA_M_OFF_INPUT, DNA_M_ROT_PARAM, 
-                        engine.melodyLen, engine.melodyOff, engine.melodyRot);
-        processStrand(DNA_O_LEN_PARAM, DNA_O_LEN_INPUT, DNA_O_OFF_PARAM, DNA_O_OFF_INPUT, DNA_O_ROT_PARAM, 
-                        engine.octaveLen, engine.octaveOff, engine.octaveRot);
+        readStrand(DNA_R_LEN_PARAM, DNA_R_LEN_INPUT, DNA_R_OFF_PARAM, DNA_R_OFF_INPUT, DNA_R_ROT_PARAM,
+                   engine.rhythmLen,    engine.rhythmOff,    engine.rhythmRot);
+        readStrand(DNA_V_LEN_PARAM, DNA_V_LEN_INPUT, DNA_V_OFF_PARAM, DNA_V_OFF_INPUT, DNA_V_ROT_PARAM,
+                   engine.variationLen, engine.variationOff, engine.variationRot);
+        readStrand(DNA_L_LEN_PARAM, DNA_L_LEN_INPUT, DNA_L_OFF_PARAM, DNA_L_OFF_INPUT, DNA_L_ROT_PARAM,
+                   engine.legatoLen,    engine.legatoOff,    engine.legatoRot);
+        readStrand(DNA_A_LEN_PARAM, DNA_A_LEN_INPUT, DNA_A_OFF_PARAM, DNA_A_OFF_INPUT, DNA_A_ROT_PARAM,
+                   engine.accentLen,    engine.accentOff,    engine.accentRot);
+        readStrand(DNA_M_LEN_PARAM, DNA_M_LEN_INPUT, DNA_M_OFF_PARAM, DNA_M_OFF_INPUT, DNA_M_ROT_PARAM,
+                   engine.melodyLen,    engine.melodyOff,    engine.melodyRot);
+        readStrand(DNA_O_LEN_PARAM, DNA_O_LEN_INPUT, DNA_O_OFF_PARAM, DNA_O_OFF_INPUT, DNA_O_ROT_PARAM,
+                   engine.octaveLen,    engine.octaveOff,    engine.octaveRot);
 
-        // Action Triggers
-        auto dnaExp = expanderManager.cachedDnaExpander;
-        
-        #define CHECK_DNA_ACT(suffix, func) \
-            if (scrambleParamTrig_##suffix.process(dnaExp->params[DNA_SCRAMBLE_##suffix##_PARAM].getValue())) scramble##func(); \
-            if (scrambleInputTrig_##suffix.process(dnaExp->inputs[DNA_SCRAMBLE_##suffix##_INPUT].getVoltage())) scramble##func(); \
-            if (resetParamTrig_##suffix.process(dnaExp->params[DNA_RESET_##suffix##_PARAM].getValue())) reset##func(); \
-            if (resetInputTrig_##suffix.process(dnaExp->inputs[DNA_RESET_##suffix##_INPUT].getVoltage())) reset##func();
+        // Action buttons (scramble/reset) remain on the knob expander only
+        if (hasKnobs) {
+            auto dnaExp = expanderManager.cachedDnaExpander;
 
-        CHECK_DNA_ACT(ALL, All);
-        CHECK_DNA_ACT(R, RhythmGroup);
-        CHECK_DNA_ACT(M, MelodyGroup);
-        CHECK_DNA_ACT(V, Variation);
-        CHECK_DNA_ACT(L, Legato);
-        CHECK_DNA_ACT(A, Accent);
-        CHECK_DNA_ACT(O, Octave);
-        
-        #undef CHECK_DNA_ACT
+            #define CHECK_DNA_ACT(suffix, func) \
+                if (scrambleParamTrig_##suffix.process(dnaExp->params[DNA_SCRAMBLE_##suffix##_PARAM].getValue())) scramble##func(); \
+                if (scrambleInputTrig_##suffix.process(dnaExp->inputs[DNA_SCRAMBLE_##suffix##_INPUT].getVoltage())) scramble##func(); \
+                if (resetParamTrig_##suffix.process(dnaExp->params[DNA_RESET_##suffix##_PARAM].getValue())) reset##func(); \
+                if (resetInputTrig_##suffix.process(dnaExp->inputs[DNA_RESET_##suffix##_INPUT].getVoltage())) reset##func();
+
+            CHECK_DNA_ACT(ALL, All);
+            CHECK_DNA_ACT(R, RhythmGroup);
+            CHECK_DNA_ACT(M, MelodyGroup);
+            CHECK_DNA_ACT(V, Variation);
+            CHECK_DNA_ACT(L, Legato);
+            CHECK_DNA_ACT(A, Accent);
+            CHECK_DNA_ACT(O, Octave);
+
+            #undef CHECK_DNA_ACT
+        }
     } else {
         // Fallback defaults if expander is disconnected
         if (engine.rhythmLen != 16) {
