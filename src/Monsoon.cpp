@@ -134,9 +134,10 @@ Monsoon::Monsoon() {
         configOutput(SEED_OUTPUT,           "Seed Voltage Out (0..10V)");
         configOutput(RESET_TRIGGER_OUTPUT,  "Reset Trigger Out");
         configOutput(RUN_GATE_OUTPUT,       "Run Gate Out");
-        configOutput(TIE_OUTPUT,            "Tie Gate (high on Tie)");          // New
-        configOutput(LEGATO_OUTPUT,         "Legato Gate (high on Legato/Max)"); // New
-        configOutput(ACCENT_OUTPUT,         "Accent Gate (high when accented)");  // New
+        configOutput(TIE_OUTPUT,            "Tie Gate (high on Tie)");
+        configOutput(LEGATO_OUTPUT,         "Legato Gate (high on Legato/Max)");
+        configOutput(TIE_OR_LEGATO_OUTPUT,  "Tie or Legato Gate (high on either)");
+        configOutput(ACCENT_OUTPUT,         "Accent Gate (high when accented)");
 
         // Seed RNGs with a random value — safe to call here (uses rack::random, not inputs[])
         rhythmSeedFloat = rack::random::uniform() * 10.f;
@@ -490,6 +491,7 @@ void Monsoon::process(const ProcessArgs& args) {
     bool isLegato = (engine.lastStepResult.decision == MonoDecision::Legato || 
                         engine.lastStepResult.decision == MonoDecision::LegatoMax);
     outputs[LEGATO_OUTPUT].setVoltage((isLegato && !muted) ? 10.f : 0.f);
+    outputs[TIE_OR_LEGATO_OUTPUT].setVoltage(((isTie || isLegato) && !muted) ? 10.f : 0.f);
     
     bool engineAccented = engine.lastStepResult.accented;
     outputs[ACCENT_OUTPUT].setVoltage((engineAccented && gateV > 5.f && !muted) ? 10.f : 0.f);
