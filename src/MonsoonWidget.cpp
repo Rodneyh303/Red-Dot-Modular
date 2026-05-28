@@ -127,17 +127,17 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         addParam(createParamCentered<TL1105>(mm2px(Vec(JX+5*JP, JY)), module, MonsoonIds::RUN_GATE_PARAM));
         addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(JX+5*JP, JYL)), module, MonsoonIds::RUN_GATE_LIGHT));
 
-        // ── Inputs: 18mm pitch ────────────────────────────────────────────────
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(10.f, 105.f)), module, MonsoonIds::RUN_GATE_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(28.f, 105.f)), module, MonsoonIds::RESET_TRIGGER_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(46.f, 105.f)), module, MonsoonIds::SEED_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(64.f, 105.f)), module, MonsoonIds::LENGTH_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(82.f, 105.f)), module, MonsoonIds::OFFSET_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(10.f, 120.f)), module, MonsoonIds::CLK_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(28.f, 120.f)), module, MonsoonIds::GATE1_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(46.f, 120.f)), module, MonsoonIds::GATE2_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(64.f, 120.f)), module, MonsoonIds::CV1_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(82.f, 120.f)), module, MonsoonIds::CV2_INPUT));
+        // ── Inputs: 18mm pitch, nudged right to clear edge accent ────────────
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(12.f, 105.f)), module, MonsoonIds::RUN_GATE_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(30.f, 105.f)), module, MonsoonIds::RESET_TRIGGER_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(48.f, 105.f)), module, MonsoonIds::SEED_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(66.f, 105.f)), module, MonsoonIds::LENGTH_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(84.f, 105.f)), module, MonsoonIds::OFFSET_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(12.f, 120.f)), module, MonsoonIds::CLK_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(30.f, 120.f)), module, MonsoonIds::GATE1_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(48.f, 120.f)), module, MonsoonIds::GATE2_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(66.f, 120.f)), module, MonsoonIds::CV1_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(84.f, 120.f)), module, MonsoonIds::CV2_INPUT));
 
         // ── Outputs: 18mm pitch ───────────────────────────────────────────────
         addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(104.f, 105.f)), module, MonsoonIds::GATE_OUTPUT));
@@ -338,9 +338,9 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         // Jack labels
         const float PR=7.7f/2.f;
         setNvgFontSize(2.7f); fillNvgColour(195,195,195);
-        { const char* l[5]={"RUN","RST","SEED","LEN","OFF"}; const float x[5]={10,28,46,64,82};
+        { const char* l[5]={"RUN","RST","SEED","LEN","OFF"}; const float x[5]={12,30,48,66,84};
           for(int i=0;i<5;++i) writeNvgText(x[i],105.f-PR-2.2f,l[i]); }
-        { const char* l[5]={"CLK","G1","G2","CV1","CV2"}; const float x[5]={10,28,46,64,82};
+        { const char* l[5]={"CLK","G1","G2","CV1","CV2"}; const float x[5]={12,30,48,66,84};
           for(int i=0;i<5;++i) writeNvgText(x[i],120.f-PR-2.2f,l[i]); }
         fillNvgColour(180,180,180);
         { const char* l[5]={"GATE","TIE","LEG","T|L","ACC"}; const float x[5]={104,122,140,158,176};
