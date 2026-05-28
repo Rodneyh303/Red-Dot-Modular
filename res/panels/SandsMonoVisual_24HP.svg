@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 121.92 380" width="121.92mm" height="380mm">
+  <!-- BACKGROUND -->
+  <rect width="121.92" height="380" fill="#1a1a1a"/>
+  <rect x="0.5" y="0.5" width="120.92" height="379" fill="none" stroke="#0a0a0a" stroke-width="1"/>
+  <!-- Gold left accent (mono = voice 1) -->
+  <rect x="0" y="0" width="2" height="380" fill="#d4af37"/>
+
+  <!-- HEADER -->
+  <rect x="0" y="0" width="121.92" height="16" fill="#141414"/>
+  <line x1="2" y1="16" x2="119.92" y2="16" stroke="#2a2a2a" stroke-width="0.5"/>
+  <circle cx="12" cy="8" r="3.5" fill="#dc2626"/>
+  <text x="60.96" y="12" font-size="7.5" font-family="monospace" text-anchor="middle" fill="#e4e4e7" font-weight="bold">SANDS VISUAL</text>
+
+  <!-- VISUAL EDITOR ZONE: X=2mm Y=18mm W=117.92mm H=195mm -->
+  <rect x="2" y="18" width="117.92" height="195" rx="1"
+        fill="#0f0f0f" stroke="#2a2a2a" stroke-width="0.5"/>
+  <!-- Lane colour strips (left edge) -->
+  <rect x="2"  y="18"  width="2" height="32" fill="#505050" opacity="0.5"/>
+  <rect x="2"  y="50"  width="2" height="32" fill="#b8860b" opacity="0.5"/>
+  <rect x="2"  y="82"  width="2" height="33" fill="#b8860b" opacity="0.5"/>
+  <rect x="2"  y="115" width="2" height="32" fill="#26a69a" opacity="0.5"/>
+  <rect x="2"  y="147" width="2" height="33" fill="#ff9500" opacity="0.5"/>
+  <rect x="2"  y="180" width="2" height="33" fill="#ff6b6b" opacity="0.5"/>
+  <!-- Lane dividers -->
+  <g stroke="#222" stroke-width="0.3">
+    <line x1="4" y1="50"  x2="119.92" y2="50"/>
+    <line x1="4" y1="82"  x2="119.92" y2="82"/>
+    <line x1="4" y1="115" x2="119.92" y2="115"/>
+    <line x1="4" y1="147" x2="119.92" y2="147"/>
+    <line x1="4" y1="180" x2="119.92" y2="180"/>
+  </g>
+
+  <!-- L/O/R SECTION DIVIDER -->
+  <line x1="2" y1="216" x2="119.92" y2="216" stroke="#2a2a2a" stroke-width="0.5"/>
+
+  <!-- Row labels (L / O / R) -->
+  <text x="3" y="229" font-size="3.5" font-family="monospace" fill="#555" font-weight="bold">L</text>
+  <text x="3" y="252" font-size="3.5" font-family="monospace" fill="#555" font-weight="bold">O</text>
+  <text x="3" y="275" font-size="3.5" font-family="monospace" fill="#555" font-weight="bold">R</text>
+
+  <!-- Column lane headers (X centres: 12 30 48 66 84 102 mm) -->
+  <g font-size="3.5" font-family="monospace" text-anchor="middle">
+    <text x="12"  y="219" fill="#505050" font-weight="bold">RST</text>
+    <text x="30"  y="219" fill="#b8860b" font-weight="bold">MEL</text>
+    <text x="48"  y="219" fill="#b8860b" font-weight="bold">OCT</text>
+    <text x="66"  y="219" fill="#26a69a" font-weight="bold">LEG</text>
+    <text x="84"  y="219" fill="#ff9500" font-weight="bold">ACC</text>
+    <text x="102" y="219" fill="#ff6b6b" font-weight="bold">VAR</text>
+  </g>
+
+  <!-- Knob placeholders: 6 cols × 3 rows (L=225mm O=248mm R=271mm) -->
+  <g fill="none" stroke="#333" stroke-width="0.3" stroke-dasharray="1.5,1" opacity="0.7">
+    <!-- ROW L (Length) -->
+    <circle cx="12"  cy="225" r="4.5"/>
+    <circle cx="30"  cy="225" r="4.5"/>
+    <circle cx="48"  cy="225" r="4.5"/>
+    <circle cx="66"  cy="225" r="4.5"/>
+    <circle cx="84"  cy="225" r="4.5"/>
+    <circle cx="102" cy="225" r="4.5"/>
+    <!-- ROW O (Offset) -->
+    <circle cx="12"  cy="248" r="4.5"/>
+    <circle cx="30"  cy="248" r="4.5"/>
+    <circle cx="48"  cy="248" r="4.5"/>
+    <circle cx="66"  cy="248" r="4.5"/>
+    <circle cx="84"  cy="248" r="4.5"/>
+    <circle cx="102" cy="248" r="4.5"/>
+    <!-- ROW R (Rotation) -->
+    <circle cx="12"  cy="271" r="4.5"/>
+    <circle cx="30"  cy="271" r="4.5"/>
+    <circle cx="48"  cy="271" r="4.5"/>
+    <circle cx="66"  cy="271" r="4.5"/>
+    <circle cx="84"  cy="271" r="4.5"/>
+    <circle cx="102" cy="271" r="4.5"/>
+  </g>
+
+  <!-- Note line -->
+  <line x1="2" y1="285" x2="119.92" y2="285" stroke="#2a2a2a" stroke-width="0.5"/>
+  <text x="60.96" y="292" font-size="3" font-family="monospace" text-anchor="middle" fill="#444">no spread · mono voice 1</text>
+
+  <!-- FOOTER -->
+  <text x="60.96" y="378" font-size="3" font-family="monospace" text-anchor="middle" fill="#444">sands visual | mono | 24 hp</text>
+</svg>
