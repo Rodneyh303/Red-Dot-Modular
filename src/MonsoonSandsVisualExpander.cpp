@@ -14,21 +14,11 @@ using namespace SandsMonoVisualIds;
 extern Model* modelMonsoon;
 extern Model* modelMonsoonSandsExpander;
 
-// Lane → DNA param base (for playhead calculation using our own params)
-// Visual editor order: REST=0 MELODY=1 OCTAVE=2 LEGATO=3 ACCENT=4 VARIATION=5
-static const int dnaLenBase[6] = {
-    DNA_R_LEN_PARAM,   // REST
-    DNA_M_LEN_PARAM,   // MELODY
-    DNA_O_LEN_PARAM,   // OCTAVE
-    DNA_L_LEN_PARAM,   // LEGATO
-    DNA_A_LEN_PARAM,   // ACCENT
-    DNA_V_LEN_PARAM,   // VARIATION
-};
-
 // ── Widget ────────────────────────────────────────────────────────────────────
 struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
-    SandsVisualEditorV4*   visualEditor = nullptr;
-    MonoSandsParameterManager* paramMgr = nullptr;
+    SandsVisualEditorV4*       visualEditor = nullptr;
+    MonoSandsParameterManager* paramMgr     = nullptr;
+    bool                       initialized  = false;
 
     explicit MonsoonSandsVisualExpanderWidget(MonsoonSandsVisualExpander* mod) {
         setModule(mod);
@@ -41,31 +31,18 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2*RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
-        // Visual editor: MONO mode, 6 lanes
-        // Zone: X=2mm, Y=18mm, W=117.92mm, H=195mm
+        // Visual editor: full panel (header to footer), MONO 6 lanes.
+        // Handles ARE the L/O/R controls — no separate knobs needed.
         visualEditor = new SandsVisualEditorV4(SandsVisualEditorV4::MONO);
-        visualEditor->box.pos  = mm2px(Vec(2.f, 18.f));
-        visualEditor->box.size = mm2px(Vec(117.92f, 195.f));
+        visualEditor->box.pos  = mm2px(Vec(2.f, 16.f));
+        visualEditor->box.size = mm2px(Vec(117.92f, 355.f));
         addChild(visualEditor);
-
-        // L/O/R knobs: 6 columns × 3 rows
-        // Col centres (mm): 12 30 48 66 84 102
-        // Row centres (mm): 225=LEN  248=OFF  271=ROT
-        const float colX[6] = { 12.f, 30.f, 48.f, 66.f, 84.f, 102.f };
-        const float rowY[3]  = { 225.f, 248.f, 271.f };
-
-        for (int l = 0; l < 6; ++l) {
-            addParam(createParamCentered<Trimpot>(mm2px(Vec(colX[l], rowY[0])), mod, lenId(l)));
-            addParam(createParamCentered<Trimpot>(mm2px(Vec(colX[l], rowY[1])), mod, offId(l)));
-            addParam(createParamCentered<Trimpot>(mm2px(Vec(colX[l], rowY[2])), mod, rotId(l)));
-        }
 
         paramMgr = new MonoSandsParameterManager();
     }
 
     ~MonsoonSandsVisualExpanderWidget() override { delete paramMgr; }
 
-    // Walk rightExpander chain to find Monsoon
     Monsoon* getMonsoon() {
         return module ? findMonsoon(module->rightExpander.module) : nullptr;
     }
@@ -77,25 +54,42 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         Monsoon* monsoon = getMonsoon();
         if (!monsoon) return;
 
-        // Wire PatternEngine lazily
         PatternEngine* pe = &monsoon->engine.pe;
         if (paramMgr->patternEngine != pe)
             paramMgr->patternEngine = pe;
 
-        // Sync raw PatternEngine draws → editor.
-        // No spread (mono), no write-back. Monsoon reads our params
-        // directly via cachedSandsVisualExpander on the audio thread.
+        // ── One-time initialisation from saved params ─────────────────────
+        // On patch load the module's params are restored from JSON before
+        // step() runs. We copy them into the editor state once so the
+        // handles show the correct saved positions immediately.
+        if (!initialized && module) {
+            for (int l = 0; l < 6; ++l) {
+                visualEditor->currentState.lanes[l].length   = (int)std::round(module->params[lenId(l)].getValue());
+                visualEditor->currentState.lanes[l].offset   = (int)std::round(module->params[offId(l)].getValue());
+                visualEditor->currentState.lanes[l].rotation = (int)std::round(module->params[rotId(l)].getValue());
+            }
+            initialized = true;
+        }
+
+        // ── Editor → params (UI thread writes OUR OWN params) ────────────
+        // The audio thread reads these via cachedSandsVisualExpander.
+        // Writing our own ParamQuantity from the UI thread is thread-safe.
+        for (int l = 0; l < 6; ++l) {
+            const auto& lane = visualEditor->currentState.lanes[l];
+            module->params[lenId(l)].setValue((float)lane.length);
+            module->params[offId(l)].setValue((float)lane.offset);
+            module->params[rotId(l)].setValue((float)lane.rotation);
+        }
+
+        // ── Sync PatternEngine draws → display (no spread for mono) ──────
         paramMgr->syncPatternEngineToEditor(visualEditor->currentState);
 
-        // Per-lane playhead: read our OWN params (we are the source of truth)
-        auto* mod = static_cast<MonsoonSandsVisualExpander*>(module);
+        // ── Per-lane playhead using our own L/O/R ─────────────────────────
         int globalStep = monsoon->engine.stepIndex;
         for (int l = 0; l < 6; ++l) {
+            const auto& lane = visualEditor->currentState.lanes[l];
             visualEditor->setLanePlayStep(l,
-                calcPlayhead(globalStep,
-                             readLenParam   (mod, lenId(l)),
-                             readOffRotParam(mod, offId(l)),
-                             readOffRotParam(mod, rotId(l))));
+                calcPlayhead(globalStep, lane.length, lane.offset, lane.rotation));
         }
     }
 };
