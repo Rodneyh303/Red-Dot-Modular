@@ -1,29 +1,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="270" height="380" viewBox="0 0 270 380">
   <defs>
-    <!-- Grain texture: horizontal scan lines, brushed metal effect -->
+    <!-- Grain: light panel, subtle horizontal scan lines -->
     <pattern id="grain" x="0" y="0" width="270" height="0.5" patternUnits="userSpaceOnUse">
-      <rect width="270" height="0.5" fill="#141416"/>
-      <rect y="0.25" width="270" height="0.12" fill="#2a2a2c" opacity="0.40"/>
+      <rect width="270" height="0.5" fill="#f7f7f7"/>
+      <rect y="0.25" width="270" height="0.12" fill="#cccccc" opacity="0.35"/>
     </pattern>
     <radialGradient id="hexGlow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%"   stop-color="#d4af37" stop-opacity="0.30"/>
-      <stop offset="60%"  stop-color="#d4af37" stop-opacity="0.04"/>
-      <stop offset="100%" stop-color="#d4af37" stop-opacity="0.0"/>
+      <stop offset="0%"   stop-color="#b8860b" stop-opacity="0.22"/>
+      <stop offset="55%"  stop-color="#b8860b" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#b8860b" stop-opacity="0.0"/>
     </radialGradient>
     <radialGradient id="hexGlowCool" cx="50%" cy="50%" r="50%">
-      <stop offset="0%"   stop-color="#26a69a" stop-opacity="0.26"/>
-      <stop offset="60%"  stop-color="#26a69a" stop-opacity="0.03"/>
+      <stop offset="0%"   stop-color="#26a69a" stop-opacity="0.16"/>
+      <stop offset="55%"  stop-color="#26a69a" stop-opacity="0.04"/>
       <stop offset="100%" stop-color="#26a69a" stop-opacity="0.0"/>
     </radialGradient>
   </defs>
 
   <rect width="270" height="380" fill="url(#grain)" />
 
-  <g stroke="#555555" stroke-width="0.6" fill="none" opacity="0.30">
+  <g stroke="#999999" stroke-width="0.6" fill="none" opacity="0.35">
     <path d="M18,0 L18,380 M252,0 L252,380" />
   </g>
 
-  <!-- Hex fills: subtle radial glow inside each outer hex -->
   <g opacity="1.0">
     <polygon points="48,64 66,70 66,90 48,96 30,90 30,70" fill="url(#hexGlowCool)" stroke="none" />
     <polygon points="102,64 120,70 120,90 102,96 84,90 84,70" fill="url(#hexGlow)" stroke="none" />
@@ -55,8 +54,8 @@
     <polygon points="222,304 240,310 240,330 222,336 204,330 204,310" fill="url(#hexGlowCool)" stroke="none" />
   </g>
 
-  <!-- OUTER HEXAGONS - main peranakan structure -->
-  <g stroke="#6a6a6a" stroke-width="0.8" fill="none" opacity="0.55">
+  <!-- OUTER HEXAGONS -->
+  <g stroke="#888888" stroke-width="0.8" fill="none" opacity="0.60">
     <polygon points="48,64 66,70 66,90 48,96 30,90 30,70" />
     <polygon points="102,64 120,70 120,90 102,96 84,90 84,70" />
     <polygon points="168,64 186,70 186,90 168,96 150,90 150,70" />
@@ -87,8 +86,8 @@
     <polygon points="222,304 240,310 240,330 222,336 204,330 204,310" />
   </g>
 
-  <!-- MID HEXAGONS - intermediate ring -->
-  <g stroke="#555555" stroke-width="0.5" fill="none" opacity="0.40">
+  <!-- MID HEXAGONS -->
+  <g stroke="#999999" stroke-width="0.5" fill="none" opacity="0.42">
     <polygon points="48,66 64,72 64,88 48,94 32,88 32,72" />
     <polygon points="102,66 118,72 118,88 102,94 86,88 86,72" />
     <polygon points="168,66 184,72 184,88 168,94 152,88 152,72" />
@@ -120,7 +119,7 @@
   </g>
 
   <!-- INNER HEXAGONS -->
-  <g stroke="#888888" stroke-width="0.5" fill="none" opacity="0.45">
+  <g stroke="#777777" stroke-width="0.5" fill="none" opacity="0.48">
     <polygon points="48,69 60,74 60,86 48,91 36,86 36,74" />
     <polygon points="102,69 114,74 114,86 102,91 90,86 90,74" />
     <polygon points="168,69 180,74 180,86 168,91 156,86 156,74" />
@@ -151,8 +150,8 @@
     <polygon points="222,309 234,314 234,326 222,331 210,326 210,314" />
   </g>
 
-  <!-- SPOKES: inner to outer -->
-  <g stroke="#999999" stroke-width="0.5" fill="none" opacity="0.35">
+  <!-- SPOKES -->
+  <g stroke="#888888" stroke-width="0.5" fill="none" opacity="0.36">
     <path d="M48,69 L48,64 M60,74 L66,70 M60,86 L66,90 M48,91 L48,96 M36,86 L30,90 M36,74 L30,70" />
     <path d="M102,69 L102,64 M114,74 L120,70 M114,86 L120,90 M102,91 L102,96 M90,86 L84,90 M90,74 L84,70" />
     <path d="M168,69 L168,64 M180,74 L186,70 M180,86 L186,90 M168,91 L168,96 M156,86 L150,90 M156,74 L150,70" />
@@ -183,8 +182,8 @@
     <path d="M222,309 L222,304 M234,314 L240,310 M234,326 L240,330 M222,331 L222,336 M210,326 L204,330 M210,314 L204,310" />
   </g>
 
-  <!-- GOLD VERTEX DOTS at inner hex corners -->
-  <g fill="#d4af37" opacity="0.55">
+  <!-- GOLD VERTEX DOTS -->
+  <g fill="#b8860b" opacity="0.60">
     <circle cx="48" cy="69" r="1.5" />
     <circle cx="60" cy="74" r="1.5" />
     <circle cx="60" cy="86" r="1.5" />
@@ -355,8 +354,8 @@
     <circle cx="210" cy="314" r="1.5" />
   </g>
 
-  <!-- HORIZONTAL CONNECTORS: tick lines + diamonds -->
-  <g stroke="#666666" stroke-width="0.5" fill="none" opacity="0.45">
+  <!-- HORIZONTAL CONNECTORS -->
+  <g stroke="#777777" stroke-width="0.5" fill="none" opacity="0.48">
     <line x1="66" y1="77" x2="84" y2="77" />
     <line x1="66" y1="83" x2="84" y2="83" />
     <line x1="66" y1="80" x2="84" y2="80" stroke-width="0.3" opacity="0.5" />
@@ -415,106 +414,106 @@
     <polygon points="195,314 200,320 195,326 190,320" />
   </g>
 
-  <!-- CENTRE RECT CELLS: nested diamond motif (gold) -->
-  <g stroke="#d4af37" stroke-width="0.6" fill="none" opacity="0.50">
+  <!-- CENTRE DIAMOND MOTIF -->
+  <g stroke="#b8860b" stroke-width="0.6" fill="none" opacity="0.52">
     <polygon points="120,80 135,70 150,80 135,90" />
     <polygon points="125,80 135,74 145,80 135,86" />
     <polygon points="131,80 135,76 139,80 135,84" stroke-width="0.4" />
-    <circle cx="135" cy="80" r="1.8" fill="#d4af37" stroke="none" />
-    <circle cx="120" cy="80" r="1.2" fill="#d4af37" stroke="none" />
-    <circle cx="150" cy="80" r="1.2" fill="#d4af37" stroke="none" />
+    <circle cx="135" cy="80" r="1.8" fill="#b8860b" stroke="none" />
+    <circle cx="120" cy="80" r="1.2" fill="#b8860b" stroke="none" />
+    <circle cx="150" cy="80" r="1.2" fill="#b8860b" stroke="none" />
     <polygon points="120,120 135,110 150,120 135,130" />
     <polygon points="125,120 135,114 145,120 135,126" />
     <polygon points="131,120 135,116 139,120 135,124" stroke-width="0.4" />
-    <circle cx="135" cy="120" r="1.8" fill="#d4af37" stroke="none" />
-    <circle cx="120" cy="120" r="1.2" fill="#d4af37" stroke="none" />
-    <circle cx="150" cy="120" r="1.2" fill="#d4af37" stroke="none" />
+    <circle cx="135" cy="120" r="1.8" fill="#b8860b" stroke="none" />
+    <circle cx="120" cy="120" r="1.2" fill="#b8860b" stroke="none" />
+    <circle cx="150" cy="120" r="1.2" fill="#b8860b" stroke="none" />
     <polygon points="120,160 135,150 150,160 135,170" />
     <polygon points="125,160 135,154 145,160 135,166" />
     <polygon points="131,160 135,156 139,160 135,164" stroke-width="0.4" />
-    <circle cx="135" cy="160" r="1.8" fill="#d4af37" stroke="none" />
-    <circle cx="120" cy="160" r="1.2" fill="#d4af37" stroke="none" />
-    <circle cx="150" cy="160" r="1.2" fill="#d4af37" stroke="none" />
+    <circle cx="135" cy="160" r="1.8" fill="#b8860b" stroke="none" />
+    <circle cx="120" cy="160" r="1.2" fill="#b8860b" stroke="none" />
+    <circle cx="150" cy="160" r="1.2" fill="#b8860b" stroke="none" />
     <polygon points="120,200 135,190 150,200 135,210" />
     <polygon points="125,200 135,194 145,200 135,206" />
     <polygon points="131,200 135,196 139,200 135,204" stroke-width="0.4" />
-    <circle cx="135" cy="200" r="1.8" fill="#d4af37" stroke="none" />
-    <circle cx="120" cy="200" r="1.2" fill="#d4af37" stroke="none" />
-    <circle cx="150" cy="200" r="1.2" fill="#d4af37" stroke="none" />
+    <circle cx="135" cy="200" r="1.8" fill="#b8860b" stroke="none" />
+    <circle cx="120" cy="200" r="1.2" fill="#b8860b" stroke="none" />
+    <circle cx="150" cy="200" r="1.2" fill="#b8860b" stroke="none" />
     <polygon points="120,240 135,230 150,240 135,250" />
     <polygon points="125,240 135,234 145,240 135,246" />
     <polygon points="131,240 135,236 139,240 135,244" stroke-width="0.4" />
-    <circle cx="135" cy="240" r="1.8" fill="#d4af37" stroke="none" />
-    <circle cx="120" cy="240" r="1.2" fill="#d4af37" stroke="none" />
-    <circle cx="150" cy="240" r="1.2" fill="#d4af37" stroke="none" />
+    <circle cx="135" cy="240" r="1.8" fill="#b8860b" stroke="none" />
+    <circle cx="120" cy="240" r="1.2" fill="#b8860b" stroke="none" />
+    <circle cx="150" cy="240" r="1.2" fill="#b8860b" stroke="none" />
     <polygon points="120,280 135,270 150,280 135,290" />
     <polygon points="125,280 135,274 145,280 135,286" />
     <polygon points="131,280 135,276 139,280 135,284" stroke-width="0.4" />
-    <circle cx="135" cy="280" r="1.8" fill="#d4af37" stroke="none" />
-    <circle cx="120" cy="280" r="1.2" fill="#d4af37" stroke="none" />
-    <circle cx="150" cy="280" r="1.2" fill="#d4af37" stroke="none" />
+    <circle cx="135" cy="280" r="1.8" fill="#b8860b" stroke="none" />
+    <circle cx="120" cy="280" r="1.2" fill="#b8860b" stroke="none" />
+    <circle cx="150" cy="280" r="1.2" fill="#b8860b" stroke="none" />
     <polygon points="120,320 135,310 150,320 135,330" />
     <polygon points="125,320 135,314 145,320 135,326" />
     <polygon points="131,320 135,316 139,320 135,324" stroke-width="0.4" />
-    <circle cx="135" cy="320" r="1.8" fill="#d4af37" stroke="none" />
-    <circle cx="120" cy="320" r="1.2" fill="#d4af37" stroke="none" />
-    <circle cx="150" cy="320" r="1.2" fill="#d4af37" stroke="none" />
+    <circle cx="135" cy="320" r="1.8" fill="#b8860b" stroke="none" />
+    <circle cx="120" cy="320" r="1.2" fill="#b8860b" stroke="none" />
+    <circle cx="150" cy="320" r="1.2" fill="#b8860b" stroke="none" />
   </g>
 
-  <!-- VERTICAL CONNECTORS: diamonds at gap tick positions -->
-  <g stroke="#777777" stroke-width="0.5" fill="none" opacity="0.45">
+  <!-- VERTICAL CONNECTOR DIAMONDS -->
+  <g stroke="#888888" stroke-width="0.5" fill="none" opacity="0.48">
     <polygon points="48,95 53,100 48,105 43,100" />
-    <circle cx="48" cy="100" r="1.2" fill="#777777" stroke="none" opacity="0.5" />
+    <circle cx="48" cy="100" r="1.2" fill="#9a9288" stroke="none" opacity="0.55" />
     <polygon points="102,95 107,100 102,105 97,100" />
-    <circle cx="102" cy="100" r="1.2" fill="#777777" stroke="none" opacity="0.5" />
+    <circle cx="102" cy="100" r="1.2" fill="#9a9288" stroke="none" opacity="0.55" />
     <polygon points="168,95 173,100 168,105 163,100" />
-    <circle cx="168" cy="100" r="1.2" fill="#777777" stroke="none" opacity="0.5" />
+    <circle cx="168" cy="100" r="1.2" fill="#9a9288" stroke="none" opacity="0.55" />
     <polygon points="222,95 227,100 222,105 217,100" />
-    <circle cx="222" cy="100" r="1.2" fill="#777777" stroke="none" opacity="0.5" />
+    <circle cx="222" cy="100" r="1.2" fill="#9a9288" stroke="none" opacity="0.55" />
     <polygon points="48,135 53,140 48,145 43,140" />
-    <circle cx="48" cy="140" r="1.2" fill="#777777" stroke="none" opacity="0.5" />
+    <circle cx="48" cy="140" r="1.2" fill="#9a9288" stroke="none" opacity="0.55" />
     <polygon points="102,135 107,140 102,145 97,140" />
-    <circle cx="102" cy="140" r="1.2" fill="#777777" stroke="none" opacity="0.5" />
+    <circle cx="102" cy="140" r="1.2" fill="#9a9288" stroke="none" opacity="0.55" />
     <polygon points="168,135 173,140 168,145 163,140" />
-    <circle cx="168" cy="140" r="1.2" fill="#777777" stroke="none" opacity="0.5" />
+    <circle cx="168" cy="140" r="1.2" fill="#9a9288" stroke="none" opacity="0.55" />
     <polygon points="222,135 227,140 222,145 217,140" />
-    <circle cx="222" cy="140" r="1.2" fill="#777777" stroke="none" opacity="0.5" />
+    <circle cx="222" cy="140" r="1.2" fill="#9a9288" stroke="none" opacity="0.55" />
     <polygon points="48,175 53,180 48,185 43,180" />
-    <circle cx="48" cy="180" r="1.2" fill="#777777" stroke="none" opacity="0.5" />
+    <circle cx="48" cy="180" r="1.2" fill="#9a9288" stroke="none" opacity="0.55" />
     <polygon points="102,175 107,180 102,185 97,180" />
-    <circle cx="102" cy="180" r="1.2" fill="#777777" stroke="none" opacity="0.5" />
+    <circle cx="102" cy="180" r="1.2" fill="#9a9288" stroke="none" opacity="0.55" />
     <polygon points="168,175 173,180 168,185 163,180" />
-    <circle cx="168" cy="180" r="1.2" fill="#777777" stroke="none" opacity="0.5" />
+    <circle cx="168" cy="180" r="1.2" fill="#9a9288" stroke="none" opacity="0.55" />
     <polygon points="222,175 227,180 222,185 217,180" />
-    <circle cx="222" cy="180" r="1.2" fill="#777777" stroke="none" opacity="0.5" />
+    <circle cx="222" cy="180" r="1.2" fill="#9a9288" stroke="none" opacity="0.55" />
     <polygon points="48,215 53,220 48,225 43,220" />
-    <circle cx="48" cy="220" r="1.2" fill="#777777" stroke="none" opacity="0.5" />
+    <circle cx="48" cy="220" r="1.2" fill="#9a9288" stroke="none" opacity="0.55" />
     <polygon points="102,215 107,220 102,225 97,220" />
-    <circle cx="102" cy="220" r="1.2" fill="#777777" stroke="none" opacity="0.5" />
+    <circle cx="102" cy="220" r="1.2" fill="#9a9288" stroke="none" opacity="0.55" />
     <polygon points="168,215 173,220 168,225 163,220" />
-    <circle cx="168" cy="220" r="1.2" fill="#777777" stroke="none" opacity="0.5" />
+    <circle cx="168" cy="220" r="1.2" fill="#9a9288" stroke="none" opacity="0.55" />
     <polygon points="222,215 227,220 222,225 217,220" />
-    <circle cx="222" cy="220" r="1.2" fill="#777777" stroke="none" opacity="0.5" />
+    <circle cx="222" cy="220" r="1.2" fill="#9a9288" stroke="none" opacity="0.55" />
     <polygon points="48,255 53,260 48,265 43,260" />
-    <circle cx="48" cy="260" r="1.2" fill="#777777" stroke="none" opacity="0.5" />
+    <circle cx="48" cy="260" r="1.2" fill="#9a9288" stroke="none" opacity="0.55" />
     <polygon points="102,255 107,260 102,265 97,260" />
-    <circle cx="102" cy="260" r="1.2" fill="#777777" stroke="none" opacity="0.5" />
+    <circle cx="102" cy="260" r="1.2" fill="#9a9288" stroke="none" opacity="0.55" />
     <polygon points="168,255 173,260 168,265 163,260" />
-    <circle cx="168" cy="260" r="1.2" fill="#777777" stroke="none" opacity="0.5" />
+    <circle cx="168" cy="260" r="1.2" fill="#9a9288" stroke="none" opacity="0.55" />
     <polygon points="222,255 227,260 222,265 217,260" />
-    <circle cx="222" cy="260" r="1.2" fill="#777777" stroke="none" opacity="0.5" />
+    <circle cx="222" cy="260" r="1.2" fill="#9a9288" stroke="none" opacity="0.55" />
     <polygon points="48,295 53,300 48,305 43,300" />
-    <circle cx="48" cy="300" r="1.2" fill="#777777" stroke="none" opacity="0.5" />
+    <circle cx="48" cy="300" r="1.2" fill="#9a9288" stroke="none" opacity="0.55" />
     <polygon points="102,295 107,300 102,305 97,300" />
-    <circle cx="102" cy="300" r="1.2" fill="#777777" stroke="none" opacity="0.5" />
+    <circle cx="102" cy="300" r="1.2" fill="#9a9288" stroke="none" opacity="0.55" />
     <polygon points="168,295 173,300 168,305 163,300" />
-    <circle cx="168" cy="300" r="1.2" fill="#777777" stroke="none" opacity="0.5" />
+    <circle cx="168" cy="300" r="1.2" fill="#9a9288" stroke="none" opacity="0.55" />
     <polygon points="222,295 227,300 222,305 217,300" />
-    <circle cx="222" cy="300" r="1.2" fill="#777777" stroke="none" opacity="0.5" />
+    <circle cx="222" cy="300" r="1.2" fill="#9a9288" stroke="none" opacity="0.55" />
   </g>
 
   <!-- TEAL EDGE CHAIN -->
-  <g fill="none" stroke="#26a69a" opacity="0.40">
+  <g fill="none" stroke="#26a69a" opacity="0.45">
     <polygon points="18,72 24,80 18,88 12,80" stroke-width="0.6" />
     <circle cx="18" cy="80" r="1.8" fill="#26a69a" stroke="none" />
     <line x1="18" y1="88" x2="18" y2="112" stroke-width="0.4" />
@@ -557,14 +556,12 @@
     <circle cx="252" cy="320" r="1.8" fill="#26a69a" stroke="none" />
   </g>
 
-  <!-- TOP HEADER: title area accent -->
-  <g opacity="0.7">
-    <rect x="0" y="0" width="270" height="55" fill="#141416" />
-    <rect x="0" y="53" width="270" height="0.8" fill="#d4af37" opacity="0.5" />
-  </g>
+  <!-- HEADER BAR -->
+  <rect x="0" y="0" width="270" height="55" fill="#eeeeee" opacity="0.85" />
+  <rect x="0" y="53" width="270" height="0.8" fill="#b8860b" opacity="0.55" />
 
   <g fill="none" stroke-width="1.0">
-    <g stroke="#888888">
+    <g stroke="#666666">
       <circle cx="48" cy="80" r="9.0" /><circle cx="222" cy="80" r="9.0" />
       <circle cx="48" cy="120" r="9.0" /><circle cx="222" cy="120" r="9.0" />
       <circle cx="48" cy="160" r="9.0" /><circle cx="222" cy="160" r="9.0" />
@@ -573,7 +570,7 @@
       <circle cx="48" cy="280" r="9.0" /><circle cx="222" cy="280" r="9.0" />
       <circle cx="48" cy="320" r="9.0" /><circle cx="222" cy="320" r="9.0" />
     </g>
-    <g stroke="#d4af37">
+    <g stroke="#b8860b">
       <circle cx="102" cy="80" r="9.0" /><circle cx="168" cy="80" r="9.0" />
       <circle cx="102" cy="120" r="9.0" /><circle cx="168" cy="120" r="9.0" />
       <circle cx="102" cy="160" r="9.0" /><circle cx="168" cy="160" r="9.0" />
