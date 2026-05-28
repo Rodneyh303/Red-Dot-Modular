@@ -109,10 +109,13 @@ struct SandsVisualEditorV4 : rack::Widget {
   int selectedPreset = 0;
   
   struct DragState {
-    bool isDragging = false;
-    bool isDraggingBar = false;
-    int dragLane = 0;
-    int dragStep = 0;
+    enum Type { NONE, BAR, START, END, ROTATION };
+    Type  type         = NONE;
+    int   dragLane     = 0;
+    int   dragStep     = 0;
+    // backward-compat aliases used elsewhere in the file
+    bool  isDragging     = false;
+    bool  isDraggingBar  = false;
   } dragState;
   
   struct KeyboardState {
@@ -340,62 +343,123 @@ struct SandsVisualEditorV4 : rack::Widget {
   }
   
   void drawStep(NVGcontext* vg, int lane, int step) {
-    rack::Rect rect = layout.getStepRect(lane, step);
-    float prob = currentState.lanes[lane].probabilities[step];
-    float barHeight = prob * rect.size.y;
-    
+    rack::Rect rect  = layout.getStepRect(lane, step);
+    float prob       = currentState.lanes[lane].probabilities[step];
+    float barHeight  = prob * rect.size.y;
+    bool  isInWindow = (step < currentState.lanes[lane].length);
+    float dimAlpha   = isInWindow ? 1.f : 0.22f;
+
+    // Background
     nvgBeginPath(vg);
     nvgRect(vg, rect.pos.x, rect.pos.y, rect.size.x, rect.size.y);
     nvgFillColor(vg, colors.background);
     nvgFill(vg);
-    
+
+    // Probability bar — dimmed if outside window
+    NVGcolor barCol = getLaneColor(lane);
+    barCol.a *= dimAlpha;
     nvgBeginPath(vg);
     nvgRect(vg, rect.pos.x + 1, rect.pos.y + (rect.size.y - barHeight), rect.size.x - 2, barHeight);
-    nvgFillColor(vg, getLaneColor(lane));
+    nvgFillColor(vg, barCol);
     nvgFill(vg);
-    
+
+    // Border — slightly dim outside window
     nvgBeginPath(vg);
     nvgRect(vg, rect.pos.x, rect.pos.y, rect.size.x, rect.size.y);
-    nvgStrokeColor(vg, rack::color::hex("#333333"));
+    nvgStrokeColor(vg, nvgRGBAf(0.2f, 0.2f, 0.2f, dimAlpha));
     nvgStrokeWidth(vg, 0.5f);
     nvgStroke(vg);
   }
   
+  // ── Handle hit testing ──────────────────────────────────────────────────────
+  // Returns START, END, ROTATION, or NONE.
+  // Checked BEFORE bar hit-test so handles have priority.
+  DragState::Type hitTestHandle(int lane, float x, float y) const {
+    if (lane < 0 || lane >= laneCount) return DragState::NONE;
+    const ProbabilityLane& L = currentState.lanes[lane];
+    const float r = layout.handleWidth * 0.7f;  // slightly generous hit radius
+    const float cy = layout.getLaneCenterY(lane);
+
+    // Start handle — drawn at bar `offset`
+    int startBar = L.offset % STEP_COUNT;
+    float sx = layout.getStepCenterX(startBar);
+    if (std::hypot(x - sx, y - cy) <= r) return DragState::START;
+
+    // End handle — drawn at bar `(offset + length - 1) % 16`
+    int endBar = (L.offset + L.length - 1) % STEP_COUNT;
+    float ex = layout.getStepCenterX(endBar);
+    if (std::hypot(x - ex, y - cy) <= r) return DragState::END;
+
+    // Rotation indicator — full step rect at bar `rotation`
+    rack::Rect rr = layout.getStepRect(lane, L.rotation % STEP_COUNT);
+    if (x >= rr.pos.x && x <= rr.pos.x + rr.size.x &&
+        y >= rr.pos.y && y <= rr.pos.y + rr.size.y)
+      return DragState::ROTATION;
+
+    return DragState::NONE;
+  }
+
   void drawHandles(NVGcontext* vg, int lane) {
-    const ProbabilityLane& probLane = currentState.lanes[lane];
-    
-    float leftX = layout.getStepCenterX(0);
-    float rightX = layout.getStepCenterX(probLane.length - 1);
-    float centerY = layout.getLaneCenterY(lane);
-    
+    const ProbabilityLane& L = currentState.lanes[lane];
+    const float cy = layout.getLaneCenterY(lane);
+    const float r  = layout.handleWidth / 2.f;
+
+    int startBar = L.offset % STEP_COUNT;
+    int endBar   = (L.offset + L.length - 1) % STEP_COUNT;
+
+    // Start handle: white circle
     nvgBeginPath(vg);
-    nvgCircle(vg, leftX, centerY, layout.handleWidth / 2.f);
-    nvgFillColor(vg, colors.handle);
+    nvgCircle(vg, layout.getStepCenterX(startBar), cy, r);
+    nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.85f));
     nvgFill(vg);
-    
     nvgBeginPath(vg);
-    nvgCircle(vg, rightX, centerY, layout.handleWidth / 2.f);
-    nvgFillColor(vg, colors.handle);
+    nvgCircle(vg, layout.getStepCenterX(startBar), cy, r);
+    nvgStrokeColor(vg, nvgRGBAf(0.f, 0.f, 0.f, 0.5f));
+    nvgStrokeWidth(vg, 1.f);
+    nvgStroke(vg);
+
+    // End handle: outlined circle (hollow centre so it's distinct from start)
+    nvgBeginPath(vg);
+    nvgCircle(vg, layout.getStepCenterX(endBar), cy, r);
+    nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.35f));
     nvgFill(vg);
+    nvgBeginPath(vg);
+    nvgCircle(vg, layout.getStepCenterX(endBar), cy, r);
+    nvgStrokeColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.85f));
+    nvgStrokeWidth(vg, 1.5f);
+    nvgStroke(vg);
+
+    // Connector line between start and end (wraps if needed)
+    float sx = layout.getStepCenterX(startBar);
+    float ex = layout.getStepCenterX(endBar);
+    nvgBeginPath(vg);
+    if (endBar >= startBar) {
+      nvgMoveTo(vg, sx, cy);
+      nvgLineTo(vg, ex, cy);
+    } else {
+      // Wraps — draw to right edge and from left edge
+      float rightEdge = layout.getStepCenterX(STEP_COUNT - 1) + layout.stepWidth / 2.f;
+      float leftEdge  = layout.getStepCenterX(0) - layout.stepWidth / 2.f;
+      nvgMoveTo(vg, sx, cy); nvgLineTo(vg, rightEdge, cy);
+      nvgMoveTo(vg, leftEdge, cy); nvgLineTo(vg, ex, cy);
+    }
+    nvgStrokeColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.3f));
+    nvgStrokeWidth(vg, 1.f);
+    nvgStroke(vg);
   }
   
   void drawRotationIndicator(NVGcontext* vg, int lane) {
-    const ProbabilityLane& probLane = currentState.lanes[lane];
-    
-    if (probLane.rotation >= 0 && probLane.rotation < probLane.length) {
-      rack::Rect rect = layout.getStepRect(lane, probLane.rotation);
-      
-      nvgBeginPath(vg);
-      nvgRect(vg, rect.pos.x, rect.pos.y, rect.size.x, rect.size.y);
-      nvgFillColor(vg, colors.rotation);
-      nvgFill(vg);
-      
-      nvgBeginPath(vg);
-      nvgRect(vg, rect.pos.x, rect.pos.y, rect.size.x, rect.size.y);
-      nvgStrokeColor(vg, rack::color::hex("#35c7b8"));
-      nvgStrokeWidth(vg, 1.f);
-      nvgStroke(vg);
-    }
+    const ProbabilityLane& L = currentState.lanes[lane];
+    if (L.rotation <= 0) return;  // rotation=0 means no shift, nothing to indicate
+
+    int rotBar = L.rotation % STEP_COUNT;
+    rack::Rect rect = layout.getStepRect(lane, rotBar);
+
+    // Teal left-edge stripe to mark rotation point
+    nvgBeginPath(vg);
+    nvgRect(vg, rect.pos.x, rect.pos.y, 2.f, rect.size.y);
+    nvgFillColor(vg, colors.rotation);
+    nvgFill(vg);
   }
   
   // Draw a per-lane playhead highlight.
@@ -464,26 +528,73 @@ struct SandsVisualEditorV4 : rack::Widget {
     if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT) {
       int lane = getLaneAtY(e.pos.y);
       int step = getStepAtX(e.pos.x);
-      
-      if (lane >= 0 && lane < laneCount && step >= 0 && step < STEP_COUNT) {
-        dragState.isDraggingBar = true;
-        dragState.dragLane = lane;
-        dragState.dragStep = step;
-        dragState.isDragging = true;
-        setBarValue(lane, step, e.pos.y);
-        e.consume(this);
+
+      if (lane >= 0 && lane < laneCount) {
+        // Hit-test handles first — they have priority over bar dragging
+        DragState::Type handleHit = hitTestHandle(lane, e.pos.x, e.pos.y);
+        if (handleHit != DragState::NONE) {
+          dragState.type       = handleHit;
+          dragState.dragLane   = lane;
+          dragState.isDragging = true;
+          dragState.isDraggingBar = false;
+          e.consume(this);
+          return;
+        }
+
+        // Fall through to bar drag
+        if (step >= 0 && step < STEP_COUNT) {
+          dragState.type          = DragState::BAR;
+          dragState.isDraggingBar = true;
+          dragState.isDragging    = true;
+          dragState.dragLane      = lane;
+          dragState.dragStep      = step;
+          setBarValue(lane, step, e.pos.y);
+          e.consume(this);
+        }
       }
     } else if (e.action == GLFW_RELEASE) {
       if (dragState.isDragging) saveToHistory();
-      dragState.isDragging = false;
+      dragState.isDragging    = false;
       dragState.isDraggingBar = false;
+      dragState.type          = DragState::NONE;
     }
   }
   
   void onDragMove(const rack::event::DragMove& e) override {
-    if (!dragState.isDragging || !dragState.isDraggingBar) return;
+    if (!dragState.isDragging) return;
+    int lane = dragState.dragLane;
     int step = getStepAtX(e.pos.x);
-    if (step >= 0 && step < STEP_COUNT) setBarValue(dragState.dragLane, step, e.pos.y);
+    if (step < 0 || step >= STEP_COUNT) return;
+
+    ProbabilityLane& L = currentState.lanes[lane];
+
+    switch (dragState.type) {
+      case DragState::BAR:
+        setBarValue(lane, step, e.pos.y);
+        break;
+
+      case DragState::START:
+        // Drag changes offset. Length stays the same — window slides.
+        L.offset = step;
+        break;
+
+      case DragState::END:
+        // Drag changes length. Offset stays fixed.
+        // length = distance from offset to end step (wrapping OK, min 1, max 16)
+        {
+          int newLen = (step - L.offset + STEP_COUNT) % STEP_COUNT;
+          if (newLen == 0) newLen = STEP_COUNT;  // full wrap = 16 steps
+          L.length = rack::math::clamp(newLen, 1, STEP_COUNT);
+        }
+        break;
+
+      case DragState::ROTATION:
+        // Drag sets rotation directly (0–length-1, clamped)
+        L.rotation = rack::math::clamp(step, 0, STEP_COUNT - 1);
+        break;
+
+      default: break;
+    }
   }
   
   void onKey(const rack::event::Key& e) override {
