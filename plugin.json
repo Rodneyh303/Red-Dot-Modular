@@ -10,52 +10,124 @@
       "slug": "Monsoon",
       "name": "Monsoon",
       "description": "VCV plugin inspired by Vermona meloDICER: stochastic melody & rhythm with edit-menu features",
-      "tags": ["Sequencer", "Random", "Quantizer"]
+      "tags": [
+        "Sequencer",
+        "Random",
+        "Quantizer"
+      ]
     },
     {
       "slug": "MonsoonInterchangeExpander",
       "name": "MonsoonInterchangeExpander",
       "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
-      "tags": ["Sequencer", "Random", "Quantizer"]
+      "tags": [
+        "Sequencer",
+        "Random",
+        "Quantizer"
+      ]
     },
     {
       "slug": "MonsoonSandsExpander",
       "name": "MonsoonSandsExpander",
       "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
-      "tags": ["Sequencer", "Random", "Quantizer"]
+      "tags": [
+        "Sequencer",
+        "Random",
+        "Quantizer"
+      ]
     },
     {
       "slug": "MonsoonStraitsEastExpander",
       "name": "MonsoonStraitsEastExpander",
       "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
-      "tags": ["Sequencer", "Random", "Quantizer"]
+      "tags": [
+        "Sequencer",
+        "Random",
+        "Quantizer"
+      ]
     },
     {
       "slug": "MonsoonStraitWestExpander",
       "name": "MonsoonStraitWestExpander",
       "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
-      "tags": ["Sequencer", "Random", "Quantizer"]
+      "tags": [
+        "Sequencer",
+        "Random",
+        "Quantizer"
+      ]
     },
     {
       "slug": "MonsoonDeepStraitsSandsEast",
       "name": "MonsoonDeepStraitsSandsEast",
       "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
-      "tags": ["Sequencer", "Random", "Quantizer"]
-    }
-    ,
+      "tags": [
+        "Sequencer",
+        "Random",
+        "Quantizer"
+      ]
+    },
     {
       "slug": "MonsoonDeepStraitsSandsWest",
       "name": "MonsoonDeepStraitsSandsWest",
       "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
-      "tags": ["Sequencer", "Random", "Quantizer"]
-    }
-    ,
+      "tags": [
+        "Sequencer",
+        "Random",
+        "Quantizer"
+      ]
+    },
     {
       "slug": "MonsoonStraitsSands",
       "name": "MonsoonStraitsSands",
       "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
-      "tags": ["Sequencer", "Random", "Quantizer"]
+      "tags": [
+        "Sequencer",
+        "Random",
+        "Quantizer"
+      ]
+    },
+    {
+      "slug": "MonsoonSandsVisualExpander",
+      "name": "Sands Visual",
+      "description": "Visual probability editor for Monsoon mono DNA \u2014 6-lane bar editor with draggable start/end/rotation handles",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Visual"
+      ]
+    },
+    {
+      "slug": "StraitsEastSandsVisual",
+      "name": "Straits East Sands Visual",
+      "description": "Visual probability editor for Straits East poly voices 2-8 \u2014 tabbed 3-lane editor with handles and spread interpolation",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Visual",
+        "Polyphonic"
+      ]
+    },
+    {
+      "slug": "StraitsWestSandsVisual",
+      "name": "Straits West Sands Visual",
+      "description": "Visual probability editor for Straits West poly voices 9-16 \u2014 tabbed 3-lane editor with handles and spread interpolation",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Visual",
+        "Polyphonic"
+      ]
+    },
+    {
+      "slug": "StraitsSandsMacroVisual",
+      "name": "Straits Sands Macro Visual",
+      "description": "Global visual probability editor for all poly voices \u2014 single 3-lane editor with global spread and handles",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Visual",
+        "Polyphonic"
+      ]
     }
-    
   ]
 }
