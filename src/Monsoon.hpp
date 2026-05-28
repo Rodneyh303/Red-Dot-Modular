@@ -773,3 +773,8 @@ extern Model* modelMonsoonStraitWestExpander;  // NEW (Phase 4): voices 9-16
 extern Model* modelMonsoonStraitsSands;        // NEW (Macro): global DNA controls (compact)
 extern Model* modelMonsoonDeepStraitsSandsEast; // NEW (Deep): per-voice DNA voices 2-8
 extern Model* modelMonsoonDeepStraitsSandsWest; // NEW (Deep): per-voice DNA voices 9-16
+// Visual editor expanders
+extern Model* modelMonsoonSandsVisualExpander;  // Mono visual DNA editor (voices 1)
+extern Model* modelStraitsEastSandsVisual;      // East visual DNA editor (voices 2-8, tabbed)
+extern Model* modelStraitsWestSandsVisual;      // West visual DNA editor (voices 9-16, tabbed)
+extern Model* modelStraitsSandsMacroVisual;     // Macro visual DNA editor (all voices, global)

@@ -91,11 +91,16 @@ struct TabButtonGroup : rack::Widget {
   std::vector<TabButton*> tabs;
   int selectedIdx = 0;
   
-  float tabWidth = 50.f;
+  float tabWidth  = 50.f;
   float tabHeight = 25.f;
-  float spacing = 2.f;
+  float spacing   =  2.f;
   
-  TabButtonGroup(int numTabs, int startVoiceNumber = 2) {
+  TabButtonGroup(int numTabs, int startVoiceNumber = 2,
+                 float tWidth = 50.f, float tHeight = 25.f, float tSpacing = 2.f) {
+    tabWidth  = tWidth;
+    tabHeight = tHeight;
+    spacing   = tSpacing;
+
     box.size.y = tabHeight;
     box.size.x = numTabs * (tabWidth + spacing) - spacing;
     

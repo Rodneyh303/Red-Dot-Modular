@@ -3,6 +3,8 @@
 #include <array>
 #include <algorithm>
 #include <cmath>
+#include "../dsp/engines/PatternEngine.hpp"
+#include "../dsp/engines/SequencerEngine.hpp"
 
 namespace redDot {
 
@@ -194,9 +196,9 @@ struct SpreadManager {
   int getActiveVoiceCount() const {
     if (!sequencerEngine) return numVoices;
     
-    // Access polyphony from SequencerEngine
-    // The SequencerEngine.polyphony field tracks how many voices are active
-    return std::min(sequencerEngine->polyphony, numVoices);
+    // numPolyVoices tracks how many poly voices are active (0 = mono only)
+    int active = sequencerEngine->numPolyVoices;
+    return (active > 0) ? std::min(active, numVoices) : numVoices;
   }
   
   /**

@@ -999,4 +999,9 @@ void init(rack::Plugin* p) {
 	p->addModel(modelMonsoonStraitsSands);          // Macro: global DNA
 	p->addModel(modelMonsoonDeepStraitsSandsEast);  // Deep: voices 2-8
 	p->addModel(modelMonsoonDeepStraitsSandsWest);  // Deep: voices 9-16
+	// Visual editor expanders
+	p->addModel(modelMonsoonSandsVisualExpander);   // Mono visual DNA editor
+	p->addModel(modelStraitsEastSandsVisual);       // East visual DNA editor (tabbed)
+	p->addModel(modelStraitsWestSandsVisual);       // West visual DNA editor (tabbed)
+	p->addModel(modelStraitsSandsMacroVisual);      // Macro visual DNA editor
 }
