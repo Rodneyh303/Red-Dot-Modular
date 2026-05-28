@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 121.92 380" width="121.92mm" height="380mm">
+  <!-- BACKGROUND -->
+  <rect width="121.92" height="380" fill="#1a1a1a"/>
+  <rect x="0.5" y="0.5" width="120.92" height="379" fill="none" stroke="#0a0a0a" stroke-width="1"/>
+  <!-- Gold left accent (mono = voice 1) -->
+  <rect x="0" y="0" width="2" height="380" fill="#d4af37"/>
+
+  <!-- HEADER -->
+  <rect x="0" y="0" width="121.92" height="16" fill="#141414"/>
+  <line x1="2" y1="16" x2="119.92" y2="16" stroke="#2a2a2a" stroke-width="0.5"/>
+  <circle cx="12" cy="8" r="3.5" fill="#dc2626"/>
+  <text x="60.96" y="12" font-size="7.5" font-family="monospace" text-anchor="middle" fill="#e4e4e7" font-weight="bold">SANDS VISUAL</text>
+  <text x="60.96" y="22" font-size="3.5" font-family="monospace" text-anchor="middle" fill="#555">mono · voice 1 · read-only</text>
+
+  <!-- VISUAL EDITOR ZONE — full height minus header/footer -->
+  <!-- Widget places editor at mm2px(2,16) to mm2px(120,371) -->
+  <rect x="2" y="16" width="117.92" height="355" rx="1"
+        fill="#0f0f0f" stroke="#2a2a2a" stroke-width="0.5"/>
+
+  <!-- Lane colour strips (left edge indicators) -->
+  <rect x="2"  y="16"  width="2" height="59" fill="#505050" opacity="0.6"/>  <!-- REST -->
+  <rect x="2"  y="75"  width="2" height="59" fill="#b8860b" opacity="0.6"/>  <!-- MELODY -->
+  <rect x="2"  y="134" width="2" height="59" fill="#b8860b" opacity="0.6"/>  <!-- OCTAVE -->
+  <rect x="2"  y="193" width="2" height="59" fill="#26a69a" opacity="0.6"/>  <!-- LEGATO -->
+  <rect x="2"  y="252" width="2" height="59" fill="#ff9500" opacity="0.6"/>  <!-- ACCENT -->
+  <rect x="2"  y="311" width="2" height="59" fill="#ff6b6b" opacity="0.6"/>  <!-- VARIATION -->
+
+  <!-- FOOTER -->
+  <text x="60.96" y="378" font-size="3" font-family="monospace" text-anchor="middle" fill="#444">sands visual | mono | 24 hp</text>
+</svg>

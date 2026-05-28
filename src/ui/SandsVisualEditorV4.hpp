@@ -120,8 +120,22 @@ struct SandsVisualEditorV4 : rack::Widget {
     bool showPresetPanel = false;
   } kbState;
   
-  int currentPlayStep = -1;
+  // Per-lane playhead — each lane can be at a different step
+  // due to independent LENGTH / OFFSET / ROTATION per lane.
+  // Set via setLanePlayStep(lane, step) from the widget each frame.
+  // step = -1 means sequencer not running (no indicator drawn).
+  int lanePlayStep[6] = {-1,-1,-1,-1,-1,-1};
   float activeStepAlpha = 0.f;
+
+  // Convenience: set all active lanes to the same global step
+  // (used when L/O/R is not yet available)
+  void setGlobalPlayStep(int step) {
+    for (int l = 0; l < 6; ++l) lanePlayStep[l] = step;
+  }
+
+  void setLanePlayStep(int lane, int step) {
+    if (lane >= 0 && lane < 6) lanePlayStep[lane] = step;
+  }
   
   struct Layout {
     float laneHeight = 30.f;
@@ -287,8 +301,8 @@ struct SandsVisualEditorV4 : rack::Widget {
       drawRotationIndicator(args.vg, lane);
     }
     
-    if (currentPlayStep >= 0) drawActiveStepIndicator(args.vg);
     if (kbState.showPresetPanel) drawPresetPanel(args.vg);
+    drawLanePlayheads(args.vg);
     
     nvgBeginPath(args.vg);
     nvgRect(args.vg, 0, 0, box.size.x, box.size.y);
@@ -384,19 +398,28 @@ struct SandsVisualEditorV4 : rack::Widget {
     }
   }
   
-  void drawActiveStepIndicator(NVGcontext* vg) {
-    float x = layout.getStepCenterX(currentPlayStep);
-    float y1 = layout.topPadding - 5.f;
-    float y2 = layout.getLaneY(laneCount) + layout.laneHeight + 5.f;
-    
-    nvgBeginPath(vg);
-    nvgMoveTo(vg, x, y1);
-    nvgLineTo(vg, x, y2);
-    nvgStrokeColor(vg, colors.active);
-    nvgStrokeWidth(vg, 2.f);
-    nvgGlobalAlpha(vg, activeStepAlpha);
-    nvgStroke(vg);
-    nvgGlobalAlpha(vg, 1.f);
+  // Draw a per-lane playhead highlight.
+  // Each lane uses its own lanePlayStep[l] so LENGTH/OFFSET/ROTATION
+  // differences between lanes are reflected correctly.
+  void drawLanePlayheads(NVGcontext* vg) {
+    for (int l = 0; l < laneCount; ++l) {
+      int step = lanePlayStep[l];
+      if (step < 0 || step >= STEP_COUNT) continue;
+
+      rack::Rect rect = layout.getStepRect(l, step);
+
+      // Bright top-edge tick
+      nvgBeginPath(vg);
+      nvgRect(vg, rect.pos.x + 1, rect.pos.y, rect.size.x - 2, 2.f);
+      nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.85f * activeStepAlpha));
+      nvgFill(vg);
+
+      // Subtle full-column tint
+      nvgBeginPath(vg);
+      nvgRect(vg, rect.pos.x, rect.pos.y, rect.size.x, rect.size.y);
+      nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.12f * activeStepAlpha));
+      nvgFill(vg);
+    }
   }
   
   void drawPresetPanel(NVGcontext* vg) {
@@ -544,11 +567,14 @@ struct SandsVisualEditorV4 : rack::Widget {
   
   void step() override {
     Widget::step();
-    if (currentPlayStep >= 0) {
-      activeStepAlpha = 0.3f + 0.4f * sinf(rack::system::getTime() * 6.f);
-    } else {
-      activeStepAlpha = 0.f;
+    // Alpha pulses when any lane has an active playhead
+    bool anyActive = false;
+    for (int l = 0; l < laneCount; ++l) {
+      if (lanePlayStep[l] >= 0) { anyActive = true; break; }
     }
+    activeStepAlpha = anyActive
+      ? 0.4f + 0.35f * sinf(rack::system::getTime() * 5.f)
+      : 0.f;
   }
 };
 
