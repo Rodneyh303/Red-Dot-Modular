@@ -89,12 +89,12 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
                 mm2px(Vec(cx, 59.75f)), module, SEMI0_PARAM+i, SEMI_LED_START+2*i));
         }
 
-        addParam(createLightParamCentered<VCVLightSlider<RedLight>>(mm2px(Vec(87.f,  59.75f)), module, MonsoonIds::OCT_LO_PARAM, MonsoonIds::OCT_LO_LED));
-        addParam(createLightParamCentered<VCVLightSlider<RedLight>>(mm2px(Vec(95.f,  59.75f)), module, MonsoonIds::OCT_HI_PARAM, MonsoonIds::OCT_HI_LED));
+        addParam(createLightParamCentered<VCVLightSlider<RedLight>>(mm2px(Vec(100.f, 59.75f)), module, MonsoonIds::OCT_LO_PARAM, MonsoonIds::OCT_LO_LED));
+        addParam(createLightParamCentered<VCVLightSlider<RedLight>>(mm2px(Vec(108.f, 59.75f)), module, MonsoonIds::OCT_HI_PARAM, MonsoonIds::OCT_HI_LED));
 
-        // 16 step lights: ring, moved inward cx=111, cy=62
+        // 16 step lights: ring, cx=130, cy=62, r=14 (spaced out, inward from original)
         {
-            const float RCX = 111.f, RCY = 62.f, RLED = 9.5f;
+            const float RCX = 130.f, RCY = 62.f, RLED = 11.5f;
             for (int i = 0; i < 16; ++i) {
                 float ang = float(i) / 16.f * 2.f * M_PI - M_PI / 2.f;
                 float lx = RCX + RLED * std::cos(ang), ly = RCY + RLED * std::sin(ang);
@@ -104,7 +104,7 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         }
 
         {
-            const float MX = 133.f, LX = 128.f, Y_START = 54.f, v_spacing = 6.5f;
+            const float MX = 152.f, LX = 147.f, Y_START = 54.f, v_spacing = 6.5f;
             addParam(createParamCentered<TL1105>(mm2px(Vec(MX, 44.f)), module, MonsoonIds::MODE_PARAM));
             for (int i = 0; i < 4; ++i) {
                 addChild(createLightCentered<MediumLight<YellowLight>>(mm2px(Vec(LX, Y_START + i * v_spacing)), module, MonsoonIds::MODE_A_LIGHT + i));
@@ -302,12 +302,12 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         for (int i=0;i<12;++i){ fillNvgColour(200,200,200); writeNvgText(7.5f+i*6.5f,43.f,sn[i]); }
         setNvgFontSize(2.7f); fillNvgColour(85,85,85); const char* nums[12]={"1","2","3","4","5","6","7","8","9","10","11","12"};
         for (int i=0;i<12;++i) writeNvgText(7.5f+i*6.5f,SL_TOP+SLH+6.f,nums[i]);
-        setNvgFontSize(2.9f); fillNvgColour(38,166,154); writeNvgText(87.f,43.f,"LO"); writeNvgText(95.f,43.f,"HI");
+        setNvgFontSize(2.9f); fillNvgColour(38,166,154); writeNvgText(100.f,43.f,"LO"); writeNvgText(108.f,43.f,"HI");
 
         // Mode Section
-        setNvgFontSize(3.2f); fillNvgColour(210,210,210); writeNvgText(133.f, 30.f, "MODE");
+        setNvgFontSize(3.2f); fillNvgColour(210,210,210); writeNvgText(152.f, 30.f, "MODE");
         setNvgFontSize(3.8f); 
-        const float TX = 128.f, Y_START_VAL = 54.f, v_spacing_val = 6.5f;
+        const float TX = 147.f, Y_START_VAL = 54.f, v_spacing_val = 6.5f;
         writeNvgText(TX, Y_START_VAL, "A"); 
         writeNvgText(TX, Y_START_VAL + v_spacing_val, "B");
 
