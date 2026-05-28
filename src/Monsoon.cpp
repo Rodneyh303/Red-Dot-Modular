@@ -20,6 +20,9 @@
 #include "MonsoonStraitWestExpander.hpp"      // NEW (Phase 4)
 #include "MonsoonStraitsSands.hpp"            // NEW (Macro): global DNA controls
 #include "MonsoonDeepStraitsSands.hpp"        // NEW (Deep): per-voice DNA controls
+#include "StraitsEastSandsVisual.hpp"         // Visual DNA editor (East)
+#include "StraitsWestSandsVisual.hpp"         // Visual DNA editor (West)
+#include "StraitsSandsMacroVisual.hpp"        // Visual DNA editor (Macro)
 #include "MonsoonWidget.hpp"
 #include "Monsoon.hpp"
 #include "dsp/engines/PatternEngine.hpp"
@@ -578,21 +581,28 @@ void Monsoon::process(const ProcessArgs& args) {
     }
     
     // ── Deep Straits Sands Expanders ──
-    auto* deepEast = expanderManager.cachedDeepStraitsSandsEastExpander;
-    auto* deepWest = expanderManager.cachedDeepStraitsSandsWestExpander;
+    auto* deepEast   = expanderManager.cachedDeepStraitsSandsEastExpander;
+    auto* deepWest   = expanderManager.cachedDeepStraitsSandsWestExpander;
     auto* straitEast = expanderManager.cachedPolyVoiceExpander;
     auto* straitWest = expanderManager.cachedStraitWestExpander;
+    // Visual expanders take priority over knob expanders for L/O/R (zero-delay)
+    auto* eastVisual  = expanderManager.cachedEastSandsVisual;
+    auto* westVisual  = expanderManager.cachedWestSandsVisual;
+
+    // East: use visual expander if present, else DeepStraitsSandsEast
+    auto* eastLOR = eastVisual  ? static_cast<rack::Module*>(eastVisual)
+                                : static_cast<rack::Module*>(deepEast);
 
     // East only active if straitEast is present
-    if (deepEast && straitEast) {
+    if (eastLOR && straitEast) {
         using namespace DeepStraitsSandsEastIds;
         
         for (int v = 0; v < 7; v++) {
             // ── Rhythm DNA (Voices 1-15) ──
             int rhythmBase = POLY_DNA_VOICE_1_LEN + v * 3;
-            engine.polyLen[v] = (int)deepEast->params[rhythmBase].getValue();
-            engine.polyOff[v] = (int)deepEast->params[rhythmBase + 1].getValue();
-            engine.polyRot[v] = (int)deepEast->params[rhythmBase + 2].getValue();
+            engine.polyLen[v] = (int)eastLOR->params[rhythmBase].getValue();
+            engine.polyOff[v] = (int)eastLOR->params[rhythmBase + 1].getValue();
+            engine.polyRot[v] = (int)eastLOR->params[rhythmBase + 2].getValue();
             
             // ── Interpolation (Rest): blend between per-voice random and average random ──
             float restInterp = deepEast->params[POLY_REST_INTERP_1 + v].getValue();
@@ -709,14 +719,18 @@ void Monsoon::process(const ProcessArgs& args) {
         }
     }
 
+    // West: use visual expander if present, else DeepStraitsSandsWest
+    auto* westLOR = westVisual  ? static_cast<rack::Module*>(westVisual)
+                                : static_cast<rack::Module*>(deepWest);
+
     // West only active if straitWest is present
-    if (deepWest && straitWest) {
+    if (westLOR && straitWest) {
         using namespace DeepStraitsSandsWestIds;
         for (int v = 7; v < 15; v++) {
             int b = POLY_DNA_VOICE_1_LEN + v * 3;
-            engine.polyLen[v] = (int)deepWest->params[b].getValue();
-            engine.polyOff[v] = (int)deepWest->params[b+1].getValue();
-            engine.polyRot[v] = (int)deepWest->params[b+2].getValue();
+            engine.polyLen[v] = (int)westLOR->params[b].getValue();
+            engine.polyOff[v] = (int)westLOR->params[b+1].getValue();
+            engine.polyRot[v] = (int)westLOR->params[b+2].getValue();
             
             float restInterp = deepWest->params[POLY_REST_INTERP_1 + v].getValue();
             float avgRestProb = 0.f;
@@ -999,4 +1013,9 @@ void init(rack::Plugin* p) {
 	p->addModel(modelMonsoonStraitsSands);          // Macro: global DNA
 	p->addModel(modelMonsoonDeepStraitsSandsEast);  // Deep: voices 2-8
 	p->addModel(modelMonsoonDeepStraitsSandsWest);  // Deep: voices 9-16
+	// Visual editor expanders
+	p->addModel(modelMonsoonSandsVisualExpander);   // Mono visual DNA editor
+	p->addModel(modelStraitsEastSandsVisual);       // East visual DNA editor (tabbed)
+	p->addModel(modelStraitsWestSandsVisual);       // West visual DNA editor (tabbed)
+	p->addModel(modelStraitsSandsMacroVisual);      // Macro visual DNA editor
 }
