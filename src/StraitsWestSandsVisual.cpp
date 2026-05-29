@@ -25,16 +25,6 @@ struct WestInterpItem : MenuItem {
         MenuItem::step();
     }
 };
-struct WestLorVoiceItem : MenuItem {
-    StraitsWestSandsVisual* mod; int v;
-    void onAction(const event::Action&) override { mod->cvLorVoiceMask    ^= (1<<v); }
-    void step() override { rightText=(mod->cvLorVoiceMask    &(1<<v))?"✓":""; MenuItem::step(); }
-};
-struct WestSprVoiceItem : MenuItem {
-    StraitsWestSandsVisual* mod; int v;
-    void onAction(const event::Action&) override { mod->cvSpreadVoiceMask ^= (1<<v); }
-    void step() override { rightText=(mod->cvSpreadVoiceMask &(1<<v))?"✓":""; MenuItem::step(); }
-};
 
 struct StraitsWestSandsVisualWidget : ModuleWidget {
     SandsVisualEditorV4*            visualEditor = nullptr;
@@ -90,17 +80,7 @@ struct StraitsWestSandsVisualWidget : ModuleWidget {
         ii->mod=mod; menu->addChild(ii);
 
         static const char* vn[8]={"V9","V10","V11","V12","V13","V14","V15","V16"};
-        menu->addChild(new MenuSeparator);
-        menu->addChild(createMenuLabel("LOR CV — voice opt-out (via East)"));
-        for (int v=0; v<8; ++v) {
-            auto* vi=createMenuItem<WestLorVoiceItem>(vn[v]);
-            vi->mod=mod; vi->v=v; menu->addChild(vi);
         }
-        menu->addChild(new MenuSeparator);
-        menu->addChild(createMenuLabel("Spread CV — voice opt-out (via East)"));
-        for (int v=0; v<8; ++v) {
-            auto* si=createMenuItem<WestSprVoiceItem>(vn[v]);
-            si->mod=mod; si->v=v; menu->addChild(si);
         }
     }
 

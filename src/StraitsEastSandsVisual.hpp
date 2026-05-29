@@ -77,8 +77,6 @@ namespace StraitsEastVisualIds {
 struct StraitsEastSandsVisual : Module {
     // Context-menu state
     bool  interpUseMono     = false;
-    int   cvLorVoiceMask    = 0b1111111;   // LOR CV voice opt-out (East V2-V8)
-    int   cvSpreadVoiceMask = 0b1111111;   // Spread CV voice opt-out
 
     StraitsEastSandsVisual() {
         using namespace StraitsEastVisualIds;
@@ -140,13 +138,9 @@ struct StraitsEastSandsVisual : Module {
     json_t* dataToJson() override {
         json_t* r = json_object();
         json_object_set_new(r,"interpUseMono",    json_boolean(interpUseMono));
-        json_object_set_new(r,"cvLorVoiceMask",   json_integer(cvLorVoiceMask));
-        json_object_set_new(r,"cvSpreadVoiceMask",json_integer(cvSpreadVoiceMask));
         return r;
     }
     void dataFromJson(json_t* root) override {
         if (auto* j=json_object_get(root,"interpUseMono"))    interpUseMono    =json_boolean_value(j);
-        if (auto* j=json_object_get(root,"cvLorVoiceMask"))   cvLorVoiceMask   =json_integer_value(j);
-        if (auto* j=json_object_get(root,"cvSpreadVoiceMask"))cvSpreadVoiceMask=json_integer_value(j);
     }
 };
