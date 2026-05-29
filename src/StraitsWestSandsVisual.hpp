@@ -7,16 +7,13 @@ using namespace MonsoonIds;
 
 namespace StraitsWestVisualIds {
     enum SpreadParamId {
-        SPREAD_V0_R = 0, SPREAD_V0_M, SPREAD_V0_O,
-        SPREAD_V1_R,     SPREAD_V1_M, SPREAD_V1_O,
-        SPREAD_V2_R,     SPREAD_V2_M, SPREAD_V2_O,
-        SPREAD_V3_R,     SPREAD_V3_M, SPREAD_V3_O,
-        SPREAD_V4_R,     SPREAD_V4_M, SPREAD_V4_O,
-        SPREAD_V5_R,     SPREAD_V5_M, SPREAD_V5_O,
-        SPREAD_V6_R,     SPREAD_V6_M, SPREAD_V6_O,
-        SPREAD_V7_R,     SPREAD_V7_M, SPREAD_V7_O,
+        // Spread trimpots — always show selected voice (0-2)
+        SPREAD_R = 0,
+        SPREAD_M,
+        SPREAD_O,
+        // CV depth attenuverter (3)
         CV_DEPTH_PARAM,
-        NUM_SPREAD_PARAMS  // = 25, safely below POLY_DNA_VOICE_1_LEN (152)
+        NUM_SPREAD_PARAMS  // = 4, safely below POLY_DNA_VOICE_1_LEN (92)
     };
 
     enum InputId {
@@ -26,12 +23,23 @@ namespace StraitsWestVisualIds {
         NUM_INPUTS
     };
 
-    // West voices: localV=0-7 → globalV=7-14
+    // West voices: local v=0..7 → global v=7..14 (voices 9-16)
     inline int lorId(int localV, int lane, int c) {
         int gv = localV + 7;
         if (lane == 0) return POLY_DNA_VOICE_1_LEN    + gv * 3 + c;
         if (lane == 1) return POLY_MELODY_VOICE_1_LEN + gv * 3 + c;
         return              POLY_OCTAVE_VOICE_1_LEN   + gv * 3 + c;
+    }
+
+    // Spread/interp param IDs — Monsoon reads these directly from cached pointer
+    // West uses global voices 7-14 for INTERP params
+    inline int restInterpId  (int localV) { return POLY_REST_INTERP_1   + localV + 7; }
+    inline int melodyInterpId(int localV) { return POLY_MELODY_INTERP_1 + localV + 7; }
+    inline int octaveInterpId(int localV) { return POLY_OCTAVE_INTERP_1 + localV + 7; }
+    inline int interpId(int localV, int lane) {
+        if (lane == 0) return restInterpId(localV);
+        if (lane == 1) return melodyInterpId(localV);
+        return              octaveInterpId(localV);
     }
 }
 
@@ -44,21 +52,19 @@ struct StraitsWestSandsVisual : Module {
         using namespace StraitsWestVisualIds;
         config(MonsoonIds::NUM_PARAMS, NUM_INPUTS, 0, 0);
 
-        static const char* ln[3] = {"REST","MELODY","OCTAVE"};
-        for (int v = 0; v < 8; ++v)
-            for (int l = 0; l < 3; ++l)
-                configParam(SPREAD_V0_R + v*3 + l, 0.f, 1.f, 0.f,
-                    string::f("Voice %d Spread %s", v+9, ln[l]));
-
+        configParam(SPREAD_R, 0.f, 1.f, 0.f, "Spread REST");
+        configParam(SPREAD_M, 0.f, 1.f, 0.f, "Spread MELODY");
+        configParam(SPREAD_O, 0.f, 1.f, 0.f, "Spread OCTAVE");
         configParam(CV_DEPTH_PARAM, -1.f, 1.f, 0.f, "CV Depth");
 
         configInput(CV_LEN_INPUT, "CV Length (poly)");
         configInput(CV_OFF_INPUT, "CV Offset (poly)");
         configInput(CV_ROT_INPUT, "CV Rotation (poly)");
 
-        for (int lv = 0; lv < 8; ++lv) {
-            int gv = lv + 7;
-            std::string vl = "Voice " + std::to_string(lv + 9);
+        // L/O/R params — West uses global voice indices 7-14
+        for (int localV = 0; localV < 8; ++localV) {
+            int gv = localV + 7;
+            std::string vl = "Voice " + std::to_string(localV + 9);
             configParam(POLY_DNA_VOICE_1_LEN    + gv*3,     1.f, 16.f, 16.f, vl + " REST Length");
             configParam(POLY_DNA_VOICE_1_LEN    + gv*3 + 1, 0.f, 15.f,  0.f, vl + " REST Offset");
             configParam(POLY_DNA_VOICE_1_LEN    + gv*3 + 2, 0.f, 15.f,  0.f, vl + " REST Rotation");
@@ -68,6 +74,14 @@ struct StraitsWestSandsVisual : Module {
             configParam(POLY_OCTAVE_VOICE_1_LEN + gv*3,     1.f, 16.f, 16.f, vl + " OCTAVE Length");
             configParam(POLY_OCTAVE_VOICE_1_LEN + gv*3 + 1, 0.f, 15.f,  0.f, vl + " OCTAVE Offset");
             configParam(POLY_OCTAVE_VOICE_1_LEN + gv*3 + 2, 0.f, 15.f,  0.f, vl + " OCTAVE Rotation");
+        }
+
+        // Spread/interp params — West global voices 7-14 → INTERP IDs 249-256 / 264-271 / 279-286
+        for (int localV = 0; localV < 8; ++localV) {
+            std::string vl = "Voice " + std::to_string(localV + 9);
+            configParam(restInterpId(localV),   0.f, 1.f, 0.f, vl + " Spread REST");
+            configParam(melodyInterpId(localV), 0.f, 1.f, 0.f, vl + " Spread MELODY");
+            configParam(octaveInterpId(localV), 0.f, 1.f, 0.f, vl + " Spread OCTAVE");
         }
     }
 

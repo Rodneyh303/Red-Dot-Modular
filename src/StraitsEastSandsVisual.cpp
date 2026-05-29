@@ -81,12 +81,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         visualEditor->box.size = mm2px(Vec(117.92f, 58.f));  // 58mm = to y=82mm
         addChild(visualEditor);
 
-        // ── Spread Trimpots: 3 per row, one row per voice group ──────────────
-        // Show selected voice's spread — 3 compact trimpots at y=86mm
-        // REST x=20  MELODY x=60  OCTAVE x=100
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(20.f,  86.f)), mod, SPREAD_V0_R));
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(60.f,  86.f)), mod, SPREAD_V0_M));
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(100.f, 86.f)), mod, SPREAD_V0_O));
+        // ── Spread Trimpots (y=88mm): show selected voice, remembered per voice ─
+        addParam(createParamCentered<Trimpot>(mm2px(Vec(20.f,  88.f)), mod, SPREAD_R));
+        addParam(createParamCentered<Trimpot>(mm2px(Vec(60.f,  88.f)), mod, SPREAD_M));
+        addParam(createParamCentered<Trimpot>(mm2px(Vec(100.f, 88.f)), mod, SPREAD_O));
 
         // ── CV inputs: 3 poly jacks + 1 depth trimpot ────────────────────────
         // LEN=x18  OFF=x50  ROT=x82  DEPTH=x108   y=106mm
@@ -132,6 +130,23 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         return module ? findMonsoon(module->rightExpander.module) : nullptr;
     }
 
+    // ── Spread helpers ────────────────────────────────────────────────────────
+    // INTERP params are what Monsoon reads directly via cached pointer.
+    // The 3 display trimpots (SPREAD_R/M/O) always show selected voice;
+    // on tab switch we save the outgoing voice and load the incoming one.
+    void saveVoiceSpread(int v) {
+        if (!module) return;
+        module->params[interpId(v, 0)].setValue(module->params[SPREAD_R].getValue());
+        module->params[interpId(v, 1)].setValue(module->params[SPREAD_M].getValue());
+        module->params[interpId(v, 2)].setValue(module->params[SPREAD_O].getValue());
+    }
+    void loadVoiceSpread(int v) {
+        if (!module) return;
+        module->params[SPREAD_R].setValue(module->params[interpId(v, 0)].getValue());
+        module->params[SPREAD_M].setValue(module->params[interpId(v, 1)].getValue());
+        module->params[SPREAD_O].setValue(module->params[interpId(v, 2)].getValue());
+    }
+
     void saveVoiceLOR(int v) {
         if (!module) return;
         for (int l = 0; l < 3; ++l) {
@@ -155,9 +170,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         if (!paramMgr || !visualEditor) return;
         paramMgr->syncEditorToPatternEngine(selectedVoice, visualEditor->currentState);
         saveVoiceLOR(selectedVoice);
+        saveVoiceSpread(selectedVoice);       // ← remember outgoing voice's spread
         selectedVoice = newVoice;
         paramMgr->syncPatternEngineToEditor(selectedVoice, visualEditor->currentState);
         loadVoiceLOR(selectedVoice);
+        loadVoiceSpread(selectedVoice);       // ← recall incoming voice's spread
     }
 
     void step() override {
@@ -178,18 +195,26 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
             paramMgr->spreadMgr.sequencerEngine= se;
         }
 
-        if (!initialized) { loadVoiceLOR(selectedVoice); initialized = true; }
+        if (!initialized) {
+            loadVoiceLOR(selectedVoice);
+            loadVoiceSpread(selectedVoice);   // ← restore spread on patch load
+            initialized = true;
+        }
 
         int newSel = tabGroup->getSelectedTab();
         if (newSel != selectedVoice) onVoiceTabChanged(newSel);
 
-        // Spread — apply selected voice's trimpot row (all voices share same 3 trimpots
-        // showing selected voice, others retain their stored values)
-        for (int l = 0; l < 3; ++l)
-            paramMgr->setSpread(selectedVoice, l,
-                mod->params[SPREAD_V0_R + l].getValue());
+        // ── Write trimpot values to selected voice's INTERP params ────────────
+        // Monsoon reads params[POLY_REST_INTERP_1 + v] etc. directly from
+        // the cached visual expander pointer — zero-delay, audio thread safe.
+        saveVoiceSpread(selectedVoice);
 
-        paramMgr->setInterpolationTarget(
+        // ── Update SpreadManager for editor display ───────────────────────────
+        auto& smgr = paramMgr->spreadMgr;
+        smgr.setSpread(selectedVoice, 0, module->params[SPREAD_R].getValue());
+        smgr.setSpread(selectedVoice, 1, module->params[SPREAD_M].getValue());
+        smgr.setSpread(selectedVoice, 2, module->params[SPREAD_O].getValue());
+        smgr.setInterpolationTarget(
             mod->interpUseMono ? SpreadManager::MONO_DRAW : SpreadManager::AVERAGE_POLY);
 
         // ── Apply poly CV to L/O/R ────────────────────────────────────────────
