@@ -2,7 +2,6 @@
 #include "Monsoon.hpp"
 #include "StraitsWestSandsVisual.hpp"
 #include "StraitsEastSandsVisual.hpp"
-#include "MonsoonExpanderManager.hpp"
 #include "ui/SandsVisualEditorV4.hpp"
 #include "ui/TabButton.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
@@ -13,7 +12,6 @@ using namespace rack;
 using namespace redDot;
 using namespace MonsoonIds;
 using namespace StraitsWestVisualIds;
-using namespace StraitsEastVisualIds;  // for InputId, ATTEN_* enums
 
 extern Plugin* pluginInstance;
 
@@ -33,11 +31,7 @@ struct StraitsWestSandsVisualWidget : ModuleWidget {
     int  selectedVoice = 0;
     bool initialized   = false;
 
-    static constexpr float ED_X  = 54.f;
-    static constexpr float ED_W  = W_MM - ED_X - 4.f;
-    static constexpr float TAB_Y = 8.f;
-    static constexpr float ED_Y  = 18.f;
-    static constexpr float ED_H  = 104.5f;
+    using E = StraitsEastVisualIds;   // alias for layout constants
 
     explicit StraitsWestSandsVisualWidget(StraitsWestSandsVisual* mod) {
         setModule(mod);
@@ -51,19 +45,19 @@ struct StraitsWestSandsVisualWidget : ModuleWidget {
         addChild(createWidget<ScrewSilver>(Vec(box.size.x-2*RACK_GRID_WIDTH,RACK_GRID_HEIGHT-RACK_GRID_WIDTH)));
 
         // Voice tabs (voices 9-16)
-        tabGroup = new TabButtonGroup(8, 9, mm2px(TAB_Y+7.f), mm2px(8.f), mm2px(1.f));
-        tabGroup->box.pos  = mm2px(Vec(ED_X, TAB_Y));
-        tabGroup->box.size.x = mm2px(ED_W);
+        tabGroup = new TabButtonGroup(8, 9, mm2px(E::ED_Y-2.f), mm2px(8.f), mm2px(1.f));
+        tabGroup->box.pos    = mm2px(Vec(E::ED_X, 8.f));
+        tabGroup->box.size.x = mm2px(E::ED_W);
         addChild(tabGroup);
 
-        // Visual editor — same size/position as East
+        // Visual editor — same width/position as East
         visualEditor = new SandsVisualEditorV4(SandsVisualEditorV4::POLY);
-        visualEditor->box.pos  = mm2px(Vec(ED_X, ED_Y));
-        visualEditor->box.size = mm2px(Vec(ED_W, ED_H));
+        visualEditor->box.pos  = mm2px(Vec(E::ED_X, E::ED_Y));
+        visualEditor->box.size = mm2px(Vec(E::ED_W, E::ROW_BOT - E::ED_Y));
         addChild(visualEditor);
 
-        // West has no input jacks — the left section shows
-        // "connected to East" info labels only (drawn by panel SVG)
+        // West has no CV jacks — left section shows "via East" info only
+
         paramMgr = new PolyVoiceSandsParameterManager(nullptr, nullptr, 8, 7);
     }
 
@@ -73,15 +67,10 @@ struct StraitsWestSandsVisualWidget : ModuleWidget {
         ModuleWidget::appendContextMenu(menu);
         auto* mod = dynamic_cast<StraitsWestSandsVisual*>(module);
         if (!mod) return;
-
         menu->addChild(new MenuSeparator);
         menu->addChild(createMenuLabel("Spread interpolation"));
         auto* ii = createMenuItem<WestInterpItem>("Interpolation target");
         ii->mod=mod; menu->addChild(ii);
-
-        static const char* vn[8]={"V9","V10","V11","V12","V13","V14","V15","V16"};
-        }
-        }
     }
 
     void saveVoiceSpread(int lv) {
@@ -129,23 +118,13 @@ struct StraitsWestSandsVisualWidget : ModuleWidget {
         return module ? findMonsoon(module->rightExpander.module) : nullptr;
     }
 
-    // Get cached East visual expander (West's CV source)
-    StraitsEastSandsVisual* getEastVisual() {
-        if (!module) return nullptr;
-        auto* monsoon = getMonsoon();
-        if (!monsoon) return nullptr;
-        return monsoon->expanderManager.cachedEastSandsVisual;
-    }
-
     void step() override {
         ModuleWidget::step();
         if (!module || !paramMgr || !visualEditor) return;
         Monsoon* monsoon = getMonsoon();
         if (!monsoon) return;
 
-        auto* mod  = static_cast<StraitsWestSandsVisual*>(module);
-        // East visual expander provides CV via Monsoon's controlDivider — no direct reference needed here.
-
+        auto* mod = static_cast<StraitsWestSandsVisual*>(module);
         PatternEngine*   pe = &monsoon->engine.pe;
         SequencerEngine* se = &monsoon->engine;
         if (paramMgr->patternEngine != pe) {
@@ -173,21 +152,18 @@ struct StraitsWestSandsVisualWidget : ModuleWidget {
         smgr.setInterpolationTarget(
             mod->interpUseMono ? SpreadManager::MONO_DRAW : SpreadManager::AVERAGE_POLY);
 
-        // ── Apply LOR CV and Spread CV ────────────────────────────────────────
-        // West has no inputs — CV from East's jacks (channels 7-14) applied
-        // at control rate in Monsoon::process() controlDivider block.
+        // CV applied at control rate in Monsoon::process() via East's jacks.
 
         saveVoiceLOR(selectedVoice);
         paramMgr->syncPatternEngineToEditor(selectedVoice, visualEditor->currentState);
 
         int gs = monsoon->engine.stepIndex;
-        for (int l=0; l<3; ++l) {
+        for (int l=0; l<3; ++l)
             visualEditor->setLanePlayStep(l,
                 calcPlayhead(gs,
                     readLenParam   (mod, lorId(selectedVoice,l,0)),
                     readOffRotParam(mod, lorId(selectedVoice,l,1)),
                     readOffRotParam(mod, lorId(selectedVoice,l,2))));
-        }
     }
 };
 
