@@ -45,7 +45,7 @@ struct StraitsWestSandsVisualWidget : ModuleWidget {
         setModule(mod);
         setPanel(APP->window->loadSvg(
             asset::plugin(pluginInstance,
-                "res/panels/StraitsWestSandsVisual_24HP.svg")));
+                "res/panels/StraitsWestSandsVisual_28HP.svg")));
 
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2*RACK_GRID_WIDTH, 0)));
@@ -53,26 +53,31 @@ struct StraitsWestSandsVisualWidget : ModuleWidget {
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2*RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
         // Voice tabs (voices 9-16), starting label = 9
-        tabGroup = new TabButtonGroup(8, 9, mm2px(13.f), mm2px(8.f), mm2px(1.f));
+        tabGroup = new TabButtonGroup(8, 9, mm2px(16.f), mm2px(8.f), mm2px(1.f));
         tabGroup->box.pos = mm2px(Vec(2.f, 14.f));
         addChild(tabGroup);
 
         // Visual editor
         visualEditor = new SandsVisualEditorV4(SandsVisualEditorV4::POLY);
         visualEditor->box.pos  = mm2px(Vec(2.f, 24.f));
-        visualEditor->box.size = mm2px(Vec(117.92f, 58.f));
+        visualEditor->box.size = mm2px(Vec(W_MM - 4.f, 58.f));
         addChild(visualEditor);
 
         // Spread trimpots (y=88mm): selected voice, remembered per voice
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(20.f,  88.f)), mod, SPREAD_R));
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(60.f,  88.f)), mod, SPREAD_M));
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(100.f, 88.f)), mod, SPREAD_O));
+        addParam(createParamCentered<Trimpot>(mm2px(Vec(88.f,  88.f)), mod, SPREAD_R));
+        addParam(createParamCentered<Trimpot>(mm2px(Vec(106.f, 88.f)), mod, SPREAD_M));
+        addParam(createParamCentered<Trimpot>(mm2px(Vec(124.f, 88.f)), mod, SPREAD_O));
 
         // CV inputs (y=108mm): LEN / OFF / ROT poly jacks + depth trimpot
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(18.f,  108.f)), mod, CV_LEN_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(50.f,  108.f)), mod, CV_OFF_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(82.f,  108.f)), mod, CV_ROT_INPUT));
-        addParam(createParamCentered<Trimpot>(   mm2px(Vec(108.f, 108.f)), mod, CV_DEPTH_PARAM));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(16.f, 104.f)), mod, CV_LEN_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(34.f, 104.f)), mod, CV_OFF_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(52.f, 104.f)), mod, CV_ROT_INPUT));
+        addParam(createParamCentered<Trimpot>(   mm2px(Vec(68.f, 104.f)), mod, CV_DEPTH_PARAM));
+
+        // ── Spread CV jacks (y=118mm): REST / MELODY / OCTAVE ────────────────
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(88.f,  118.f)), mod, CV_SPREAD_R_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(106.f, 118.f)), mod, CV_SPREAD_M_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(124.f, 118.f)), mod, CV_SPREAD_O_INPUT));
 
         // West voices 9-16 → local 0-7 → global 7-14
         paramMgr = new PolyVoiceSandsParameterManager(nullptr, nullptr, 8, 7);
@@ -104,6 +109,17 @@ struct StraitsWestSandsVisualWidget : ModuleWidget {
         for (int l = 0; l < 3; ++l) {
             auto* li = createMenuItem<LaneMaskItemW>(ln[l]);
             li->mod = mod; li->laneIdx = l; menu->addChild(li);
+        }
+
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuLabel("Spread CV — voices"));
+        static const char* svn[8] = {"V9","V10","V11","V12","V13","V14","V15","V16"};
+        for (int v = 0; v < 8; ++v) {
+            auto* si = new MenuItem;
+            si->text = svn[v];
+            si->rightText = (mod->cvSpreadVoiceMask & (1<<v)) ? "✓" : "";
+            si->handler = [mod,v]() { mod->cvSpreadVoiceMask ^= (1<<v); };
+            menu->addChild(si);
         }
     }
 
@@ -217,6 +233,21 @@ struct StraitsWestSandsVisualWidget : ModuleWidget {
             applyCV(CV_LEN_INPUT, 0);
             applyCV(CV_OFF_INPUT, 1);
             applyCV(CV_ROT_INPUT, 2);
+        }
+
+        // ── Spread CV (lane-global, per voice) ────────────────────────────────
+        {
+            const int sInputs[3] = {CV_SPREAD_R_INPUT, CV_SPREAD_M_INPUT, CV_SPREAD_O_INPUT};
+            for (int lane = 0; lane < 3; ++lane) {
+                auto& inp = mod->inputs[sInputs[lane]];
+                if (!inp.isConnected()) continue;
+                for (int lv = 0; lv < 8; ++lv) {
+                    if (!(mod->cvSpreadVoiceMask & (1 << lv))) continue;
+                    float cv = inp.getVoltage(lv + 7) / 10.f;
+                    float cur = mod->params[interpId(lv, lane)].getValue();
+                    mod->params[interpId(lv, lane)].setValue(clamp(cur + cv, 0.f, 1.f));
+                }
+            }
         }
 
         saveVoiceLOR(selectedVoice);

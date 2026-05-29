@@ -20,8 +20,14 @@ namespace StraitsWestVisualIds {
         CV_LEN_INPUT = 0,
         CV_OFF_INPUT,
         CV_ROT_INPUT,
+        CV_SPREAD_R_INPUT,
+        CV_SPREAD_M_INPUT,
+        CV_SPREAD_O_INPUT,
         NUM_INPUTS
     };
+
+    // Panel width: 28HP
+    static constexpr float W_MM = 142.24f;
 
     // West voices: local v=0..7 → global v=7..14 (voices 9-16)
     inline int lorId(int localV, int lane, int c) {
@@ -46,7 +52,8 @@ namespace StraitsWestVisualIds {
 struct StraitsWestSandsVisual : Module {
     bool  interpUseMono = false;
     int   cvVoiceMask   = 0b11111111;  // bits 0-7 = voices 0-7 (all on)
-    int   cvLaneMask    = 0b111;
+    int   cvLaneMask        = 0b111;
+    int   cvSpreadVoiceMask = 0b11111111; // bits 0-7 = voices 0-7
 
     StraitsWestSandsVisual() {
         using namespace StraitsWestVisualIds;
@@ -57,9 +64,12 @@ struct StraitsWestSandsVisual : Module {
         configParam(SPREAD_O, 0.f, 1.f, 0.f, "Spread OCTAVE");
         configParam(CV_DEPTH_PARAM, -1.f, 1.f, 0.f, "CV Depth");
 
-        configInput(CV_LEN_INPUT, "CV Length (poly)");
-        configInput(CV_OFF_INPUT, "CV Offset (poly)");
-        configInput(CV_ROT_INPUT, "CV Rotation (poly)");
+        configInput(CV_LEN_INPUT,      "CV Length (poly)");
+        configInput(CV_OFF_INPUT,      "CV Offset (poly)");
+        configInput(CV_ROT_INPUT,      "CV Rotation (poly)");
+        configInput(CV_SPREAD_R_INPUT, "CV Spread REST (poly)");
+        configInput(CV_SPREAD_M_INPUT, "CV Spread MELODY (poly)");
+        configInput(CV_SPREAD_O_INPUT, "CV Spread OCTAVE (poly)");
 
         // L/O/R params — West uses global voice indices 7-14
         for (int localV = 0; localV < 8; ++localV) {
@@ -92,11 +102,13 @@ struct StraitsWestSandsVisual : Module {
         json_object_set_new(root, "interpUseMono", json_boolean(interpUseMono));
         json_object_set_new(root, "cvVoiceMask",   json_integer(cvVoiceMask));
         json_object_set_new(root, "cvLaneMask",    json_integer(cvLaneMask));
+        json_object_set_new(root, "cvSpreadVoiceMask", json_integer(cvSpreadVoiceMask));
         return root;
     }
     void dataFromJson(json_t* root) override {
         if (auto* j = json_object_get(root, "interpUseMono")) interpUseMono = json_boolean_value(j);
         if (auto* j = json_object_get(root, "cvVoiceMask"))   cvVoiceMask   = json_integer_value(j);
         if (auto* j = json_object_get(root, "cvLaneMask"))    cvLaneMask    = json_integer_value(j);
+        if (auto* j = json_object_get(root, "cvSpreadVoiceMask")) cvSpreadVoiceMask = json_integer_value(j);
     }
 };

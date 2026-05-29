@@ -39,7 +39,14 @@ struct VoiceMaskItem : MenuItem {
     }
 };
 
-struct LaneMaskItem : MenuItem {
+struct SpreadVoiceMaskItem : MenuItem {
+    StraitsEastSandsVisual* mod; int voiceIdx;
+    void onAction(const event::Action&) override { mod->cvSpreadVoiceMask ^= (1 << voiceIdx); }
+    void step() override {
+        rightText = (mod->cvSpreadVoiceMask & (1 << voiceIdx)) ? "✓" : "";
+        MenuItem::step();
+    }
+};
     StraitsEastSandsVisual* mod;
     int laneIdx; // 0=REST 1=MELODY 2=OCTAVE
     void onAction(const event::Action&) override {
@@ -63,35 +70,40 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         setModule(mod);
         setPanel(APP->window->loadSvg(
             asset::plugin(pluginInstance,
-                "res/panels/StraitsEastSandsVisual_24HP.svg")));
+                "res/panels/StraitsEastSandsVisual_28HP.svg")));
 
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2*RACK_GRID_WIDTH, 0)));
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2*RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
-        // Voice tabs (voices 2-8)
-        tabGroup = new TabButtonGroup(7, 2, mm2px(14.f), mm2px(8.f), mm2px(1.f));
-        tabGroup->box.pos = mm2px(Vec(4.f, 14.f));
+        // Voice tabs (voices 2-8), y=14mm — wider panel, more tab space
+        tabGroup = new TabButtonGroup(7, 2, mm2px(18.f), mm2px(8.f), mm2px(1.f));
+        tabGroup->box.pos = mm2px(Vec(2.f, 14.f));
         addChild(tabGroup);
 
-        // Visual editor — taller now controls zone is slimmer
+        // Visual editor — fills full width of 28HP panel
         visualEditor = new SandsVisualEditorV4(SandsVisualEditorV4::POLY);
         visualEditor->box.pos  = mm2px(Vec(2.f, 24.f));
-        visualEditor->box.size = mm2px(Vec(117.92f, 58.f));  // 58mm = to y=82mm
+        visualEditor->box.size = mm2px(Vec(W_MM - 4.f, 58.f));
         addChild(visualEditor);
 
-        // ── Spread Trimpots (y=88mm): show selected voice, remembered per voice ─
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(20.f,  88.f)), mod, SPREAD_R));
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(60.f,  88.f)), mod, SPREAD_M));
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(100.f, 88.f)), mod, SPREAD_O));
+        // ── Spread trimpots (y=88mm): aligned above spread CV jacks ──────────
+        // Columns x=88/106/124 match spread CV jack positions below
+        addParam(createParamCentered<Trimpot>(mm2px(Vec(88.f,  88.f)), mod, SPREAD_R));
+        addParam(createParamCentered<Trimpot>(mm2px(Vec(106.f, 88.f)), mod, SPREAD_M));
+        addParam(createParamCentered<Trimpot>(mm2px(Vec(124.f, 88.f)), mod, SPREAD_O));
 
-        // ── CV inputs: 3 poly jacks + 1 depth trimpot ────────────────────────
-        // LEN=x18  OFF=x50  ROT=x82  DEPTH=x108   y=106mm
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(18.f,  106.f)), mod, CV_LEN_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(50.f,  106.f)), mod, CV_OFF_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(82.f,  106.f)), mod, CV_ROT_INPUT));
-        addParam(createParamCentered<Trimpot>(   mm2px(Vec(108.f, 106.f)), mod, CV_DEPTH_PARAM));
+        // ── LOR CV jacks (y=104mm): LEN / OFF / ROT + depth ──────────────────
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(16.f, 104.f)), mod, CV_LEN_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(34.f, 104.f)), mod, CV_OFF_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(52.f, 104.f)), mod, CV_ROT_INPUT));
+        addParam(createParamCentered<Trimpot>(   mm2px(Vec(68.f, 104.f)), mod, CV_DEPTH_PARAM));
+
+        // ── Spread CV jacks (y=118mm): REST / MELODY / OCTAVE ────────────────
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(88.f,  118.f)), mod, CV_SPREAD_R_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(106.f, 118.f)), mod, CV_SPREAD_M_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(124.f, 118.f)), mod, CV_SPREAD_O_INPUT));
 
         paramMgr = new PolyVoiceSandsParameterManager(nullptr, nullptr, 7, 0);
     }
@@ -123,6 +135,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         for (int l = 0; l < 3; ++l) {
             auto* li = createMenuItem<LaneMaskItem>(lnames[l]);
             li->mod = mod; li->laneIdx = l; menu->addChild(li);
+        }
+
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuLabel("Spread CV — voices"));
+        static const char* svnames[7] = {"V2","V3","V4","V5","V6","V7","V8"};
+        for (int v = 0; v < 7; ++v) {
+            auto* si = createMenuItem<SpreadVoiceMaskItem>(svnames[v]);
+            si->mod = mod; si->voiceIdx = v; menu->addChild(si);
         }
     }
 
@@ -243,6 +263,24 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
             applyCV(CV_LEN_INPUT, 0);
             applyCV(CV_OFF_INPUT, 1);
             applyCV(CV_ROT_INPUT, 2);
+        }
+
+        // ── Apply spread CV (lane-global, per voice via poly channel) ─────────
+        // Each lane has its own jack. Channel N → voice N's spread for that lane.
+        // cvSpreadVoiceMask controls which voices participate.
+        {
+            const int spreadInputs[3] = {CV_SPREAD_R_INPUT, CV_SPREAD_M_INPUT, CV_SPREAD_O_INPUT};
+            for (int lane = 0; lane < 3; ++lane) {
+                auto& inp = mod->inputs[spreadInputs[lane]];
+                if (!inp.isConnected()) continue;
+                for (int v = 0; v < 7; ++v) {
+                    if (!(mod->cvSpreadVoiceMask & (1 << v))) continue;
+                    float cv = inp.getVoltage(v) / 10.f;  // 0..1 from 0..10V
+                    float current = mod->params[interpId(v, lane)].getValue();
+                    mod->params[interpId(v, lane)].setValue(
+                        clamp(current + cv, 0.f, 1.f));
+                }
+            }
         }
 
         saveVoiceLOR(selectedVoice);

@@ -20,8 +20,14 @@ namespace StraitsEastVisualIds {
         CV_LEN_INPUT = 0,
         CV_OFF_INPUT,
         CV_ROT_INPUT,
+        CV_SPREAD_R_INPUT,   // poly: modulates spread REST per voice
+        CV_SPREAD_M_INPUT,   // poly: modulates spread MELODY per voice
+        CV_SPREAD_O_INPUT,   // poly: modulates spread OCTAVE per voice
         NUM_INPUTS
     };
+
+    // Panel width: 28HP
+    static constexpr float W_MM = 142.24f;
 
     // L/O/R param IDs (same positions as DeepStraitsSandsEast)
     inline int lorId(int v, int lane, int c) {
@@ -44,9 +50,10 @@ namespace StraitsEastVisualIds {
 
 struct StraitsEastSandsVisual : Module {
     // Context-menu state (serialised)
-    bool  interpUseMono = false;       // false=AVERAGE_POLY, true=MONO_DRAW
-    int   cvVoiceMask   = 0b1111111;   // bits 0-6 = voices 0-6 (all on)
-    int   cvLaneMask    = 0b111;       // bits 0-2 = REST/MELODY/OCTAVE (all on)
+    bool  interpUseMono     = false;    // false=AVERAGE_POLY, true=MONO_DRAW
+    int   cvVoiceMask       = 0b1111111; // LOR CV: bits 0-6
+    int   cvLaneMask        = 0b111;     // LOR CV: lanes 0-2
+    int   cvSpreadVoiceMask = 0b1111111; // spread CV: bits 0-6 (all on = apply to all)
 
     StraitsEastSandsVisual() {
         using namespace StraitsEastVisualIds;
@@ -58,9 +65,12 @@ struct StraitsEastSandsVisual : Module {
         configParam(SPREAD_O, 0.f, 1.f, 0.f, "Spread OCTAVE");
         configParam(CV_DEPTH_PARAM, -1.f, 1.f, 0.f, "CV Depth");
 
-        configInput(CV_LEN_INPUT, "CV Length (poly)");
-        configInput(CV_OFF_INPUT, "CV Offset (poly)");
-        configInput(CV_ROT_INPUT, "CV Rotation (poly)");
+        configInput(CV_LEN_INPUT,      "CV Length (poly)");
+        configInput(CV_OFF_INPUT,      "CV Offset (poly)");
+        configInput(CV_ROT_INPUT,      "CV Rotation (poly)");
+        configInput(CV_SPREAD_R_INPUT, "CV Spread REST (poly)");
+        configInput(CV_SPREAD_M_INPUT, "CV Spread MELODY (poly)");
+        configInput(CV_SPREAD_O_INPUT, "CV Spread OCTAVE (poly)");
 
         // L/O/R params (92+)
         for (int v = 0; v < 7; ++v) {
@@ -91,14 +101,16 @@ struct StraitsEastSandsVisual : Module {
 
     json_t* dataToJson() override {
         json_t* root = json_object();
-        json_object_set_new(root, "interpUseMono", json_boolean(interpUseMono));
-        json_object_set_new(root, "cvVoiceMask",   json_integer(cvVoiceMask));
-        json_object_set_new(root, "cvLaneMask",    json_integer(cvLaneMask));
+        json_object_set_new(root, "interpUseMono",     json_boolean(interpUseMono));
+        json_object_set_new(root, "cvVoiceMask",       json_integer(cvVoiceMask));
+        json_object_set_new(root, "cvLaneMask",        json_integer(cvLaneMask));
+        json_object_set_new(root, "cvSpreadVoiceMask", json_integer(cvSpreadVoiceMask));
         return root;
     }
     void dataFromJson(json_t* root) override {
-        if (auto* j = json_object_get(root, "interpUseMono")) interpUseMono = json_boolean_value(j);
-        if (auto* j = json_object_get(root, "cvVoiceMask"))   cvVoiceMask   = json_integer_value(j);
-        if (auto* j = json_object_get(root, "cvLaneMask"))    cvLaneMask    = json_integer_value(j);
+        if (auto* j = json_object_get(root, "interpUseMono"))     interpUseMono     = json_boolean_value(j);
+        if (auto* j = json_object_get(root, "cvVoiceMask"))       cvVoiceMask       = json_integer_value(j);
+        if (auto* j = json_object_get(root, "cvLaneMask"))        cvLaneMask        = json_integer_value(j);
+        if (auto* j = json_object_get(root, "cvSpreadVoiceMask")) cvSpreadVoiceMask = json_integer_value(j);
     }
 };
