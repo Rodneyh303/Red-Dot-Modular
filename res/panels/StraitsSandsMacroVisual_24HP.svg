@@ -6,7 +6,7 @@
   </defs>
   <rect width="460.8" height="485.67" fill="url(#grain)"/>
   <rect x="0" y="0" width="460.8" height="207.9" fill="url(#skyG)"/>
-  <rect x="0" y="0" width="6.8" height="485.67" fill="#d4af37" opacity="0.85"/>
+  <rect x="0" y="0" width="6.8" height="485.67" fill="#dc2626" opacity="0.85"/>
   <!-- MBS silhouette -->
   <g fill="url(#mbsG)" stroke="none">
     <polygon points="94.3,277.8 147.0,277.8 150.6,485.7 90.7,485.7"/>
@@ -68,8 +68,8 @@
     <path d="M7.6,448.7 L18.7,447.8 L29.8,447.0 L41.0,447.1 L52.1,448.0 L63.3,448.8 L74.4,448.6 L85.6,447.6 L96.7,446.9 L107.8,447.2 L119.0,448.2 L130.1,448.9 L141.3,448.5 L152.4,447.5 L163.5,446.9 L174.7,447.3 L185.8,448.4 L197.0,448.9 L208.1,448.3 L219.3,447.3 L230.4,446.9 L241.5,447.5 L252.7,448.5 L263.8,448.9 L275.0,448.2 L286.1,447.2 L297.3,446.9 L308.4,447.7 L319.5,448.6 L330.7,448.8 L341.8,448.0 L353.0,447.1 L364.1,447.0 L375.2,447.8 L386.4,448.7 L397.5,448.7 L408.7,447.8 L419.8,447.0 L431.0,447.1 L442.1,448.0 L453.2,448.8" fill="none"/>
   </g>
   <rect x="0" y="0" width="460.8" height="52.9" fill="#0e1018" opacity="0.85"/>
-  <text x="230.4" y="22.7" font-size="14.4" font-family="monospace" text-anchor="middle" fill="#e4e4e7" font-weight="bold">SANDS MONO</text>
-  <text x="230.4" y="41.6" font-size="10.6" font-family="monospace" text-anchor="middle" fill="#555">Voice 1 · 6 lanes</text>
-  <line x1="7.6" y1="52.9" x2="453.2" y2="52.9" stroke="#d4af37" stroke-width="0.8" opacity="0.60"/>
+  <text x="230.4" y="22.7" font-size="14.4" font-family="monospace" text-anchor="middle" fill="#e4e4e7" font-weight="bold">SANDS MACRO</text>
+  <text x="230.4" y="41.6" font-size="10.6" font-family="monospace" text-anchor="middle" fill="#555">Global · all voices</text>
+  <line x1="7.6" y1="52.9" x2="453.2" y2="52.9" stroke="#dc2626" stroke-width="0.8" opacity="0.60"/>
   <circle cx="445.7" cy="15.1" r="9.4" fill="#dc2626"/>
 </svg>
