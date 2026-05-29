@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="652.8" height="485.67" viewBox="0 0 652.8 485.67">
+  <defs>
+    <pattern id="g" x="0" y="0" width="652.8" height="2" patternUnits="userSpaceOnUse"><rect width="652.8" height="2" fill="#141416"/><rect y="1" width="652.8" height="0.6" fill="#1e2228" opacity="0.28"/></pattern>
+    <linearGradient id="mbsG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#1e2535" stop-opacity="0.0"/><stop offset="50%" stop-color="#1e2535" stop-opacity="0.55"/><stop offset="100%" stop-color="#1e2535" stop-opacity="0.82"/></linearGradient>
+  </defs>
+  <rect width="652.8" height="485.67" fill="url(#g)"/>
+  <rect x="0" y="0" width="6.8" height="485.67" fill="#d4af37" opacity="0.85"/>
+  <rect x="0" y="0" width="652.8" height="45.4" fill="#0d0f14" opacity="0.92"/>
+  <text x="326.4" y="18.9" font-size="13.2" font-family="monospace" text-anchor="middle" fill="#e4e4e7" font-weight="bold">SANDS MONO  V1</text>
+  <text x="326.4" y="35.9" font-size="9.1" font-family="monospace" text-anchor="middle" fill="#555">6 lanes × LEN/OFF/ROT/SPR CV</text>
+  <line x1="7.6" y1="45.4" x2="645.2" y2="45.4" stroke="#d4af37" stroke-width="0.8" opacity="0.55"/>
+  <text x="22.7" y="51.0" font-size="8.3" font-family="monospace" text-anchor="middle" fill="#d4af37" opacity="0.65">LEN</text>
+  <text x="173.9" y="51.0" font-size="8.3" font-family="monospace" text-anchor="middle" fill="#555" opacity="0.65">ATT</text>
+  <text x="60.5" y="51.0" font-size="8.3" font-family="monospace" text-anchor="middle" fill="#d4af37" opacity="0.65">OFF</text>
+  <text x="207.9" y="51.0" font-size="8.3" font-family="monospace" text-anchor="middle" fill="#555" opacity="0.65">ATT</text>
+  <text x="98.3" y="51.0" font-size="8.3" font-family="monospace" text-anchor="middle" fill="#d4af37" opacity="0.65">ROT</text>
+  <text x="241.9" y="51.0" font-size="8.3" font-family="monospace" text-anchor="middle" fill="#555" opacity="0.65">ATT</text>
+  <text x="136.1" y="51.0" font-size="8.3" font-family="monospace" text-anchor="middle" fill="#d4af37" opacity="0.65">SPR</text>
+  <text x="275.9" y="51.0" font-size="8.3" font-family="monospace" text-anchor="middle" fill="#555" opacity="0.65">ATT</text>
+  <line x1="155.0" y1="52.9" x2="155.0" y2="461.1" stroke="#333" stroke-width="0.4" opacity="0.35" stroke-dasharray="2,4"/>
+  <rect x="6.8" y="79.4" width="3.0" height="15.1" fill="#d4af37" opacity="0.60"/>
+  <rect x="7.6" y="86.9" width="294.8" height="1" fill="#d4af37" opacity="0.08"/>
+  <text x="302.4" y="90.7" font-size="9.8" font-family="monospace" text-anchor="end" fill="#d4af37" opacity="0.70">REST</text>
+  <circle cx="22.7" cy="86.9" r="14.7" fill="none" stroke="#777" stroke-width="0.7" opacity="0.55"/>
+  <circle cx="60.5" cy="86.9" r="14.7" fill="none" stroke="#777" stroke-width="0.7" opacity="0.55"/>
+  <circle cx="98.3" cy="86.9" r="14.7" fill="none" stroke="#777" stroke-width="0.7" opacity="0.55"/>
+  <circle cx="136.1" cy="86.9" r="14.7" fill="none" stroke="#777" stroke-width="0.7" opacity="0.55"/>
+  <circle cx="173.9" cy="86.9" r="11.3" fill="none" stroke="#888" stroke-width="0.6" opacity="0.50"/>
+  <circle cx="207.9" cy="86.9" r="11.3" fill="none" stroke="#888" stroke-width="0.6" opacity="0.50"/>
+  <circle cx="241.9" cy="86.9" r="11.3" fill="none" stroke="#888" stroke-width="0.6" opacity="0.50"/>
+  <circle cx="275.9" cy="86.9" r="11.3" fill="none" stroke="#888" stroke-width="0.6" opacity="0.50"/>
+  <rect x="6.8" y="147.4" width="3.0" height="15.1" fill="#26a69a" opacity="0.60"/>
+  <rect x="7.6" y="155.0" width="294.8" height="1" fill="#26a69a" opacity="0.08"/>
+  <text x="302.4" y="158.7" font-size="9.8" font-family="monospace" text-anchor="end" fill="#26a69a" opacity="0.70">MEL</text>
+  <circle cx="22.7" cy="155.0" r="14.7" fill="none" stroke="#777" stroke-width="0.7" opacity="0.55"/>
+  <circle cx="60.5" cy="155.0" r="14.7" fill="none" stroke="#777" stroke-width="0.7" opacity="0.55"/>
+  <circle cx="98.3" cy="155.0" r="14.7" fill="none" stroke="#777" stroke-width="0.7" opacity="0.55"/>
+  <circle cx="136.1" cy="155.0" r="14.7" fill="none" stroke="#777" stroke-width="0.7" opacity="0.55"/>
+  <circle cx="173.9" cy="155.0" r="11.3" fill="none" stroke="#888" stroke-width="0.6" opacity="0.50"/>
+  <circle cx="207.9" cy="155.0" r="11.3" fill="none" stroke="#888" stroke-width="0.6" opacity="0.50"/>
+  <circle cx="241.9" cy="155.0" r="11.3" fill="none" stroke="#888" stroke-width="0.6" opacity="0.50"/>
+  <circle cx="275.9" cy="155.0" r="11.3" fill="none" stroke="#888" stroke-width="0.6" opacity="0.50"/>
+  <rect x="6.8" y="215.4" width="3.0" height="15.1" fill="#4a90d9" opacity="0.60"/>
+  <rect x="7.6" y="223.0" width="294.8" height="1" fill="#4a90d9" opacity="0.08"/>
+  <text x="302.4" y="226.8" font-size="9.8" font-family="monospace" text-anchor="end" fill="#4a90d9" opacity="0.70">OCT</text>
+  <circle cx="22.7" cy="223.0" r="14.7" fill="none" stroke="#777" stroke-width="0.7" opacity="0.55"/>
+  <circle cx="60.5" cy="223.0" r="14.7" fill="none" stroke="#777" stroke-width="0.7" opacity="0.55"/>
+  <circle cx="98.3" cy="223.0" r="14.7" fill="none" stroke="#777" stroke-width="0.7" opacity="0.55"/>
+  <circle cx="136.1" cy="223.0" r="14.7" fill="none" stroke="#777" stroke-width="0.7" opacity="0.55"/>
+  <circle cx="173.9" cy="223.0" r="11.3" fill="none" stroke="#888" stroke-width="0.6" opacity="0.50"/>
+  <circle cx="207.9" cy="223.0" r="11.3" fill="none" stroke="#888" stroke-width="0.6" opacity="0.50"/>
+  <circle cx="241.9" cy="223.0" r="11.3" fill="none" stroke="#888" stroke-width="0.6" opacity="0.50"/>
+  <circle cx="275.9" cy="223.0" r="11.3" fill="none" stroke="#888" stroke-width="0.6" opacity="0.50"/>
+  <rect x="6.8" y="283.5" width="3.0" height="15.1" fill="#a855f7" opacity="0.60"/>
+  <rect x="7.6" y="291.0" width="294.8" height="1" fill="#a855f7" opacity="0.08"/>
+  <text x="302.4" y="294.8" font-size="9.8" font-family="monospace" text-anchor="end" fill="#a855f7" opacity="0.70">LEG</text>
+  <circle cx="22.7" cy="291.0" r="14.7" fill="none" stroke="#777" stroke-width="0.7" opacity="0.55"/>
+  <circle cx="60.5" cy="291.0" r="14.7" fill="none" stroke="#777" stroke-width="0.7" opacity="0.55"/>
+  <circle cx="98.3" cy="291.0" r="14.7" fill="none" stroke="#777" stroke-width="0.7" opacity="0.55"/>
+  <circle cx="136.1" cy="291.0" r="14.7" fill="none" stroke="#777" stroke-width="0.7" opacity="0.55"/>
+  <circle cx="173.9" cy="291.0" r="11.3" fill="none" stroke="#888" stroke-width="0.6" opacity="0.50"/>
+  <circle cx="207.9" cy="291.0" r="11.3" fill="none" stroke="#888" stroke-width="0.6" opacity="0.50"/>
+  <circle cx="241.9" cy="291.0" r="11.3" fill="none" stroke="#888" stroke-width="0.6" opacity="0.50"/>
+  <circle cx="275.9" cy="291.0" r="11.3" fill="none" stroke="#888" stroke-width="0.6" opacity="0.50"/>
+  <rect x="6.8" y="351.5" width="3.0" height="15.1" fill="#ef4444" opacity="0.60"/>
+  <rect x="7.6" y="359.1" width="294.8" height="1" fill="#ef4444" opacity="0.08"/>
+  <text x="302.4" y="362.8" font-size="9.8" font-family="monospace" text-anchor="end" fill="#ef4444" opacity="0.70">ACC</text>
+  <circle cx="22.7" cy="359.1" r="14.7" fill="none" stroke="#777" stroke-width="0.7" opacity="0.55"/>
+  <circle cx="60.5" cy="359.1" r="14.7" fill="none" stroke="#777" stroke-width="0.7" opacity="0.55"/>
+  <circle cx="98.3" cy="359.1" r="14.7" fill="none" stroke="#777" stroke-width="0.7" opacity="0.55"/>
+  <circle cx="136.1" cy="359.1" r="14.7" fill="none" stroke="#777" stroke-width="0.7" opacity="0.55"/>
+  <circle cx="173.9" cy="359.1" r="11.3" fill="none" stroke="#888" stroke-width="0.6" opacity="0.50"/>
+  <circle cx="207.9" cy="359.1" r="11.3" fill="none" stroke="#888" stroke-width="0.6" opacity="0.50"/>
+  <circle cx="241.9" cy="359.1" r="11.3" fill="none" stroke="#888" stroke-width="0.6" opacity="0.50"/>
+  <circle cx="275.9" cy="359.1" r="11.3" fill="none" stroke="#888" stroke-width="0.6" opacity="0.50"/>
+  <rect x="6.8" y="419.5" width="3.0" height="15.1" fill="#f97316" opacity="0.60"/>
+  <rect x="7.6" y="427.1" width="294.8" height="1" fill="#f97316" opacity="0.08"/>
+  <text x="302.4" y="430.9" font-size="9.8" font-family="monospace" text-anchor="end" fill="#f97316" opacity="0.70">VAR</text>
+  <circle cx="22.7" cy="427.1" r="14.7" fill="none" stroke="#777" stroke-width="0.7" opacity="0.55"/>
+  <circle cx="60.5" cy="427.1" r="14.7" fill="none" stroke="#777" stroke-width="0.7" opacity="0.55"/>
+  <circle cx="98.3" cy="427.1" r="14.7" fill="none" stroke="#777" stroke-width="0.7" opacity="0.55"/>
+  <circle cx="136.1" cy="427.1" r="14.7" fill="none" stroke="#777" stroke-width="0.7" opacity="0.55"/>
+  <circle cx="173.9" cy="427.1" r="11.3" fill="none" stroke="#888" stroke-width="0.6" opacity="0.50"/>
+  <circle cx="207.9" cy="427.1" r="11.3" fill="none" stroke="#888" stroke-width="0.6" opacity="0.50"/>
+  <circle cx="241.9" cy="427.1" r="11.3" fill="none" stroke="#888" stroke-width="0.6" opacity="0.50"/>
+  <circle cx="275.9" cy="427.1" r="11.3" fill="none" stroke="#888" stroke-width="0.6" opacity="0.50"/>
+  <line x1="302.4" y1="45.4" x2="302.4" y2="485.7" stroke="#333" stroke-width="0.6" opacity="0.50"/>
+  <rect x="306.1" y="60.5" width="331.5" height="400.6" fill="#0a0a0c" opacity="0.55" rx="1"/>
+  <g fill="url(#mbsG)" stroke="none">
+    <polygon points="366.5,464.0 409.2,464.0 411.6,481.2 364.2,481.2" />
+    <polygon points="450.6,464.0 493.2,464.0 495.6,481.2 448.2,481.2" />
+    <polygon points="534.6,464.0 577.3,464.0 579.7,481.2 532.2,481.2" />
+    <polygon points="361.2,464.0 582.7,464.0 584.7,462.0 359.2,462.0" />
+  </g>
+  <line x1="390.0" y1="464.0" x2="390.0" y2="460.0" stroke="#dc2626" stroke-width="0.5" opacity="0.35"/>
+  <circle cx="390.0" cy="459.0" r="1.0" fill="#dc2626" opacity="0.35"/>
+  <line x1="461.1" y1="464.0" x2="461.1" y2="460.0" stroke="#dc2626" stroke-width="0.5" opacity="0.35"/>
+  <circle cx="461.1" cy="459.0" r="1.0" fill="#dc2626" opacity="0.35"/>
+  <line x1="534.4" y1="464.0" x2="534.4" y2="460.0" stroke="#dc2626" stroke-width="0.5" opacity="0.35"/>
+  <circle cx="534.4" cy="459.0" r="1.0" fill="#dc2626" opacity="0.35"/>
+  <g fill="none" stroke="#1a3c58">
+    <path d="M0.0,483.2 L16.3,484.7 L32.6,483.2 L49.0,481.7 L65.3,483.3 L81.6,484.7 L97.9,483.2 L114.2,481.7 L130.6,483.3 L146.9,484.7 L163.2,483.1 L179.5,481.8 L195.8,483.4 L212.2,484.7 L228.5,483.1 L244.8,481.8 L261.1,483.4 L277.4,484.7 L293.8,483.1 L310.1,481.8 L326.4,483.4 L342.7,484.7 L359.0,483.0 L375.4,481.8 L391.7,483.5 L408.0,484.7 L424.3,483.0 L440.6,481.8 L457.0,483.5 L473.3,484.7 L489.6,482.9 L505.9,481.8 L522.2,483.6 L538.6,484.7 L554.9,482.9 L571.2,481.8 L587.5,483.6 L603.8,484.7 L620.2,482.9 L636.5,481.8 L652.8,483.6" stroke-width="0.4" opacity="0.3"/>
+  </g>
+  <g stroke="#dc2626" stroke-width="0.9" opacity="0.35">
+    <line x1="6.8" y1="0" x2="6.8" y2="485.67" stroke-dasharray="3,5"/>
+    <line x1="646.0" y1="0" x2="646.0" y2="485.67" stroke-dasharray="3,5"/>
+  </g>
+  <circle cx="637.7" cy="15.1" r="9.4" fill="#dc2626"/>
+</svg>

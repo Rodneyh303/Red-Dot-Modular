@@ -24,19 +24,31 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         setModule(mod);
         setPanel(APP->window->loadSvg(
             asset::plugin(pluginInstance,
-                "res/panels/SandsMonoVisual_24HP.svg")));
+                "res/panels/SandsMonoVisual_34HP.svg")));
 
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2*RACK_GRID_WIDTH, 0)));
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2*RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
-        // Visual editor: full panel (header to footer), MONO 6 lanes.
-        // Handles ARE the L/O/R controls — no separate knobs needed.
+        // ── Visual editor: right section, 6 lanes MONO ────────────────────
         visualEditor = new SandsVisualEditorV4(SandsVisualEditorV4::MONO);
-        visualEditor->box.pos  = mm2px(Vec(2.f, 16.f));
-        visualEditor->box.size = mm2px(Vec(117.92f, 355.f));
+        visualEditor->box.pos  = mm2px(Vec(ED_X, ED_Y));
+        visualEditor->box.size = mm2px(Vec(ED_W, ROW_BOT - ED_Y));
         addChild(visualEditor);
+
+        // ── Left section: 8 cols × 6 rows ────────────────────────────────
+        // Cols 0-3: mono CV jacks (LEN/OFF/ROT/SPR)
+        // Cols 4-7: corresponding attenuverters
+        for (int lane = 0; lane < N_LANES; ++lane) {
+            float y = rowY(lane);
+            for (int p = 0; p < 4; ++p) {
+                addInput(createInputCentered<PJ301MPort>(
+                    mm2px(Vec(JACK_X[p],  y)), mod, cvId(lane, p)));
+                addParam(createParamCentered<Trimpot>(
+                    mm2px(Vec(ATTEN_X[p], y)), mod, attenId(lane, p)));
+            }
+        }
 
         paramMgr = new MonoSandsParameterManager();
     }
@@ -59,9 +71,6 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             paramMgr->patternEngine = pe;
 
         // ── One-time initialisation from saved params ─────────────────────
-        // On patch load the module's params are restored from JSON before
-        // step() runs. We copy them into the editor state once so the
-        // handles show the correct saved positions immediately.
         if (!initialized && module) {
             for (int l = 0; l < 6; ++l) {
                 visualEditor->currentState.lanes[l].length   = (int)std::round(module->params[lenId(l)].getValue());
@@ -72,16 +81,17 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         }
 
         // ── Editor → params (UI thread writes OUR OWN params) ────────────
-        // The audio thread reads these via cachedSandsVisualExpander.
-        // Writing our own ParamQuantity from the UI thread is thread-safe.
         for (int l = 0; l < 6; ++l) {
             const auto& lane = visualEditor->currentState.lanes[l];
             module->params[lenId(l)].setValue((float)lane.length);
             module->params[offId(l)].setValue((float)lane.offset);
             module->params[rotId(l)].setValue((float)lane.rotation);
+            // Spread display trimpot (sprId) written from drag — no separate display
         }
 
-        // ── Sync PatternEngine draws → display (no spread for mono) ──────
+        // CV applied at control rate in Monsoon::process() — base + cv*atten*scale.
+
+        // ── Sync PatternEngine draws → display ─────────────────────────────
         paramMgr->syncPatternEngineToEditor(visualEditor->currentState);
 
         // ── Per-lane playhead using our own L/O/R ─────────────────────────
