@@ -14,7 +14,6 @@ using namespace StraitsEastVisualIds;
 
 extern Plugin* pluginInstance;
 
-// ── Context menu items ─────────────────────────────────────────────────────
 struct EastInterpItem : MenuItem {
     StraitsEastSandsVisual* mod;
     void onAction(const event::Action&) override { mod->interpUseMono = !mod->interpUseMono; }
@@ -24,33 +23,12 @@ struct EastInterpItem : MenuItem {
     }
 };
 
-// ── Widget ─────────────────────────────────────────────────────────────────
 struct StraitsEastSandsVisualWidget : ModuleWidget {
     SandsVisualEditorV4*            visualEditor = nullptr;
     TabButtonGroup*                 tabGroup     = nullptr;
     PolyVoiceSandsParameterManager* paramMgr     = nullptr;
     int  selectedVoice = 0;
     bool initialized   = false;
-
-    // Row y-positions (mm): 9 rows evenly spaced y=14..122.5
-    static constexpr float ROW_TOP = 14.f;
-    static constexpr float ROW_BOT = 122.5f;
-    static float rowY(int r) {
-        return ROW_TOP + (r + 0.5f) * (ROW_BOT - ROW_TOP) / 9.f;
-    }
-
-    // Column x-positions (mm): interchange-style outer=jacks, inner=attens
-    static constexpr float COL_JACK_LOR = 10.f;   // outer left  — LOR jacks
-    static constexpr float COL_ATTEN_LOR = 22.f;  // inner left  — LOR attens
-    static constexpr float COL_ATTEN_SPR = 34.f;  // inner right — Spread attens
-    static constexpr float COL_JACK_SPR  = 46.f;  // outer right — Spread jacks
-
-    // Editor: starts after left section gap
-    static constexpr float ED_X    = 54.f;
-    static constexpr float ED_W    = W_MM - ED_X - 4.f;  // ~124.9mm
-    static constexpr float TAB_Y   = 8.f;
-    static constexpr float ED_Y    = 18.f;
-    static constexpr float ED_H    = ROW_BOT - ED_Y;     // ~104.5mm
 
     explicit StraitsEastSandsVisualWidget(StraitsEastSandsVisual* mod) {
         setModule(mod);
@@ -64,29 +42,24 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         addChild(createWidget<ScrewSilver>(Vec(box.size.x-2*RACK_GRID_WIDTH, RACK_GRID_HEIGHT-RACK_GRID_WIDTH)));
 
         // Voice tabs (voices 2-8)
-        tabGroup = new TabButtonGroup(7, 2, mm2px(TAB_Y+7.f), mm2px(8.f), mm2px(1.f));
-        tabGroup->box.pos = mm2px(Vec(ED_X, TAB_Y));
+        tabGroup = new TabButtonGroup(7, 2, mm2px(ED_Y-2.f), mm2px(8.f), mm2px(1.f));
+        tabGroup->box.pos  = mm2px(Vec(ED_X, 8.f));
         tabGroup->box.size.x = mm2px(ED_W);
         addChild(tabGroup);
 
-        // Visual editor
+        // Visual editor — wider now left section is 2 cols
         visualEditor = new SandsVisualEditorV4(SandsVisualEditorV4::POLY);
         visualEditor->box.pos  = mm2px(Vec(ED_X, ED_Y));
-        visualEditor->box.size = mm2px(Vec(ED_W, ED_H));
+        visualEditor->box.size = mm2px(Vec(ED_W, ROW_BOT - ED_Y));
         addChild(visualEditor);
 
-        // ── 9 LOR jacks (outer left) + 9 LOR attenuverters (inner left) ──────
-        // ── 9 Spread attenuverters (inner right) + 9 Spread jacks (outer right)
-        for (int r = 0; r < 9; ++r) {
+        // 12 rows: jack (outer) + atten (inner)
+        for (int r = 0; r < N_ROWS; ++r) {
             float y = rowY(r);
             addInput(createInputCentered<PJ301MPort>(
-                mm2px(Vec(COL_JACK_LOR,  y)), mod, CV_LOR_0+r));
+                mm2px(Vec(COL_JACK,  y)), mod, CV_0 + r));
             addParam(createParamCentered<Trimpot>(
-                mm2px(Vec(COL_ATTEN_LOR, y)), mod, ATTEN_LOR_0+r));
-            addParam(createParamCentered<Trimpot>(
-                mm2px(Vec(COL_ATTEN_SPR, y)), mod, ATTEN_SPR_0+r));
-            addInput(createInputCentered<PJ301MPort>(
-                mm2px(Vec(COL_JACK_SPR,  y)), mod, CV_SPR_0+r));
+                mm2px(Vec(COL_ATTEN, y)), mod, ATTEN_0 + r));
         }
 
         paramMgr = new PolyVoiceSandsParameterManager(nullptr, nullptr, 7, 0);
@@ -98,18 +71,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         ModuleWidget::appendContextMenu(menu);
         auto* mod = dynamic_cast<StraitsEastSandsVisual*>(module);
         if (!mod) return;
-
         menu->addChild(new MenuSeparator);
         menu->addChild(createMenuLabel("Spread interpolation"));
         auto* ii = createMenuItem<EastInterpItem>("Interpolation target");
         ii->mod = mod; menu->addChild(ii);
-
-        static const char* vn[7]={"V2","V3","V4","V5","V6","V7","V8"};
-        }
-        }
     }
 
-    // ── Spread voice memory ────────────────────────────────────────────────
     void saveVoiceSpread(int v) {
         if (!module) return;
         module->params[restInterpId(v)  ].setValue(module->params[SPREAD_R].getValue());
@@ -122,8 +89,6 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         module->params[SPREAD_M].setValue(module->params[melodyInterpId(v)].getValue());
         module->params[SPREAD_O].setValue(module->params[octaveInterpId(v)].getValue());
     }
-
-    // ── LOR voice memory ───────────────────────────────────────────────────
     void saveVoiceLOR(int v) {
         if (!module || !visualEditor) return;
         for (int l=0; l<3; ++l) {
@@ -142,7 +107,6 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
             lane.rotation = (int)std::round(module->params[lorId(v,l,2)].getValue());
         }
     }
-
     void onVoiceTabChanged(int nv) {
         if (!paramMgr || !visualEditor) return;
         paramMgr->syncEditorToPatternEngine(selectedVoice, visualEditor->currentState);
@@ -183,10 +147,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         int newSel = tabGroup->getSelectedTab();
         if (newSel != selectedVoice) onVoiceTabChanged(newSel);
 
-        // ── Write display trimpots → selected voice INTERP params ─────────────
+        // Write display trimpots → selected voice INTERP params
         saveVoiceSpread(selectedVoice);
 
-        // ── SpreadManager for editor display ──────────────────────────────────
+        // SpreadManager for editor display
         auto& smgr = paramMgr->spreadMgr;
         smgr.setSpread(selectedVoice, 0, mod->params[SPREAD_R].getValue());
         smgr.setSpread(selectedVoice, 1, mod->params[SPREAD_M].getValue());
@@ -194,22 +158,18 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         smgr.setInterpolationTarget(
             mod->interpUseMono ? SpreadManager::MONO_DRAW : SpreadManager::AVERAGE_POLY);
 
-        // ── Apply LOR CV and Spread CV ────────────────────────────────────────
-        // Computed at control rate in Monsoon::process() controlDivider block.
-        // Base + scaled offset pattern: effective = clamp(base + cv*atten*scale, lo, hi)
-        // Params here remain the clean base values — Monsoon applies CV at read site.
+        // CV applied at control rate in Monsoon::process() — base + scaled offset, no mutation here.
 
         saveVoiceLOR(selectedVoice);
         paramMgr->syncPatternEngineToEditor(selectedVoice, visualEditor->currentState);
 
         int gs = monsoon->engine.stepIndex;
-        for (int l=0; l<3; ++l) {
+        for (int l=0; l<3; ++l)
             visualEditor->setLanePlayStep(l,
                 calcPlayhead(gs,
                     readLenParam   (mod, lorId(selectedVoice,l,0)),
                     readOffRotParam(mod, lorId(selectedVoice,l,1)),
                     readOffRotParam(mod, lorId(selectedVoice,l,2))));
-        }
     }
 };
 
