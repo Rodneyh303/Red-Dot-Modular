@@ -205,21 +205,21 @@ void MonsoonWidget::applyTheme() {
         }
 
         if (lightTheme) {
-            addParam(createParamCentered<RDM_KnobDarkLarge> (mm2px(Vec(12.f,22.f)), mod, MonsoonIds::NOTE_VALUE_PARAM));
-            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(38.f,22.f)), mod, MonsoonIds::VARIATION_PARAM));
-            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(64.f,22.f)), mod, MonsoonIds::LEGATO_PARAM));
-            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(90.f,22.f)), mod, MonsoonIds::REST_PARAM));
-            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(116.f,22.f)), mod, MonsoonIds::ACCENT_KNOB));
+            addParam(createParamCentered<RDM_KnobDarkLarge> (mm2px(Vec(16.f,22.f)), mod, MonsoonIds::NOTE_VALUE_PARAM));
+            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(42.f,22.f)), mod, MonsoonIds::VARIATION_PARAM));
+            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(68.f,22.f)), mod, MonsoonIds::LEGATO_PARAM));
+            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(94.f,22.f)), mod, MonsoonIds::REST_PARAM));
+            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(120.f,22.f)), mod, MonsoonIds::ACCENT_KNOB));
             // BPM/LEN/OFFSET below ring
             addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(148.f,58.f)), mod, MonsoonIds::BPM_PARAM));
             addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(163.f,58.f)), mod, MonsoonIds::PATTERN_LENGTH_PARAM));
             addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(178.f,58.f)), mod, MonsoonIds::PATTERN_OFFSET_PARAM));
         } else {
-            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(12.f,22.f)), mod, MonsoonIds::NOTE_VALUE_PARAM));
-            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(38.f,22.f)), mod, MonsoonIds::VARIATION_PARAM));
-            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(64.f,22.f)), mod, MonsoonIds::LEGATO_PARAM));
-            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(90.f,22.f)), mod, MonsoonIds::REST_PARAM));
-            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(116.f,22.f)), mod, MonsoonIds::ACCENT_KNOB));
+            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(16.f,22.f)), mod, MonsoonIds::NOTE_VALUE_PARAM));
+            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(42.f,22.f)), mod, MonsoonIds::VARIATION_PARAM));
+            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(68.f,22.f)), mod, MonsoonIds::LEGATO_PARAM));
+            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(94.f,22.f)), mod, MonsoonIds::REST_PARAM));
+            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(120.f,22.f)), mod, MonsoonIds::ACCENT_KNOB));
             addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(148.f,58.f)), mod, MonsoonIds::BPM_PARAM));
             addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(163.f,58.f)), mod, MonsoonIds::PATTERN_LENGTH_PARAM));
             addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(178.f,58.f)), mod, MonsoonIds::PATTERN_OFFSET_PARAM));
@@ -255,9 +255,9 @@ void MonsoonWidget::draw(const DrawArgs& args) {
 
         setNvgFontSize(4.2f); fillNvgColour(200,200,200); writeNvgText(W_MM/2.f, 5.5f, "Dot Modular  -  Monsoon");
         setNvgFontSize(3.4f); fillNvgColour(200,200,200);
-        writeNvgText(12.f,34.f,"NOTE VALUE"); writeNvgText(38.f,34.f,"VARIATION");
-        writeNvgText(64.f,34.f,"LEGATO");     writeNvgText(90.f,34.f,"REST");
-        writeNvgText(116.f,34.f,"ACCENT");
+        writeNvgText(16.f,34.f,"NOTE VALUE"); writeNvgText(42.f,34.f,"VARIATION");
+        writeNvgText(68.f,34.f,"LEGATO");     writeNvgText(94.f,34.f,"REST");
+        writeNvgText(120.f,34.f,"ACCENT");
 
         auto arcLabel = [&](float cx_mm, float cy_mm, float r_mm, float angle_deg, const char* text, int ri=160, int gi=160, int bi=160) {
             float a=angle_deg*float(M_PI)/180.f, tx=cx_mm+r_mm*std::cos(a), ty=cy_mm+r_mm*std::sin(a);
@@ -269,12 +269,12 @@ void MonsoonWidget::draw(const DrawArgs& args) {
 
         setNvgFontSize(2.5f);
         { const char* n[8]={"1/2","1/4","1/4T","1/8","1/8T","1/16","1/32T","1/32"};
-          for(int i=0;i<8;++i) arcLabel(12.f,22.f,13.5f,-225.f+i*(270.f/7.f),n[i],150,150,135); }
+          for(int i=0;i<8;++i) arcLabel(16.f,22.f,13.5f,-225.f+i*(270.f/7.f),n[i],150,150,135); }
         setNvgFontSize(2.8f);
-        arcLabel(38.f,22.f,13.f,-225.f,"LONGER",130,130,120); arcLabel(38.f,22.f,13.f,45.f,"SHORTER",130,130,120);
-        arcLabel(64.f,22.f,12.f,-225.f,"0%",130,130,120);     arcLabel(64.f,22.f,12.f,45.f,"100%",130,130,120);
-        arcLabel(90.f,22.f,12.f,-225.f,"0%",130,130,120);     arcLabel(90.f,22.f,12.f,45.f,"100%",130,130,120);
-        arcLabel(116.f,22.f,12.f,-225.f,"0%",130,130,120);     arcLabel(116.f,22.f,12.f,45.f,"100%",130,130,120);
+        arcLabel(42.f,22.f,13.f,-225.f,"LONGER",130,130,120); arcLabel(42.f,22.f,13.f,45.f,"SHORTER",130,130,120);
+        arcLabel(68.f,22.f,12.f,-225.f,"0%",130,130,120);     arcLabel(68.f,22.f,12.f,45.f,"100%",130,130,120);
+        arcLabel(94.f,22.f,12.f,-225.f,"0%",130,130,120);     arcLabel(94.f,22.f,12.f,45.f,"100%",130,130,120);
+        arcLabel(120.f,22.f,12.f,-225.f,"0%",130,130,120);     arcLabel(120.f,22.f,12.f,45.f,"100%",130,130,120);
 
         // Seq knob labels (below ring)
         setNvgFontSize(3.2f); fillNvgColour(170,170,170);
