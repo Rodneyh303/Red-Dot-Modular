@@ -1,57 +1,30 @@
 #include <rack.hpp>
 #include "Monsoon.hpp"
-#include "MonsoonDeepStraitsSands.hpp"
 #include "StraitsEastSandsVisual.hpp"
 #include "ui/SandsVisualEditorV4.hpp"
 #include "ui/TabButton.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
 #include "managers/PolyVoiceSandsParameterManager.hpp"
+#include "managers/SpreadManager.hpp"
 
 using namespace rack;
 using namespace redDot;
 using namespace MonsoonIds;
 using namespace StraitsEastVisualIds;
 
-extern Model* modelMonsoon;
-extern Model* modelMonsoonDeepStraitsSandsEast;
+extern Plugin* pluginInstance;
 
-// ── Context menu items ────────────────────────────────────────────────────────
-struct InterpTargetItem : MenuItem {
+// ── Context menu items ─────────────────────────────────────────────────────
+struct EastInterpItem : MenuItem {
     StraitsEastSandsVisual* mod;
-    void onAction(const event::Action&) override {
-        mod->interpUseMono = !mod->interpUseMono;
-    }
+    void onAction(const event::Action&) override { mod->interpUseMono = !mod->interpUseMono; }
     void step() override {
         rightText = mod->interpUseMono ? "Mono Draw ✓" : "Avg Poly ✓";
         MenuItem::step();
     }
 };
 
-struct VoiceMaskItem : MenuItem {
-    StraitsEastSandsVisual* mod;
-    int voiceIdx; // 0-based local index
-    void onAction(const event::Action&) override {
-        mod->cvVoiceMask ^= (1 << voiceIdx);
-    }
-    void step() override {
-        rightText = (mod->cvVoiceMask & (1 << voiceIdx)) ? "✓" : "";
-        MenuItem::step();
-    }
-};
-
-struct LaneMaskItem : MenuItem {
-    StraitsEastSandsVisual* mod;
-    int laneIdx; // 0=REST 1=MELODY 2=OCTAVE
-    void onAction(const event::Action&) override {
-        mod->cvLaneMask ^= (1 << laneIdx);
-    }
-    void step() override {
-        rightText = (mod->cvLaneMask & (1 << laneIdx)) ? "✓" : "";
-        MenuItem::step();
-    }
-};
-
-// ── Widget ────────────────────────────────────────────────────────────────────
+// ── Widget ─────────────────────────────────────────────────────────────────
 struct StraitsEastSandsVisualWidget : ModuleWidget {
     SandsVisualEditorV4*            visualEditor = nullptr;
     TabButtonGroup*                 tabGroup     = nullptr;
@@ -59,181 +32,187 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
     int  selectedVoice = 0;
     bool initialized   = false;
 
+    // Row y-positions (mm): 9 rows evenly spaced y=14..122.5
+    static constexpr float ROW_TOP = 14.f;
+    static constexpr float ROW_BOT = 122.5f;
+    static float rowY(int r) {
+        return ROW_TOP + (r + 0.5f) * (ROW_BOT - ROW_TOP) / 9.f;
+    }
+
+    // Column x-positions (mm): interchange-style outer=jacks, inner=attens
+    static constexpr float COL_JACK_LOR = 10.f;   // outer left  — LOR jacks
+    static constexpr float COL_ATTEN_LOR = 22.f;  // inner left  — LOR attens
+    static constexpr float COL_ATTEN_SPR = 34.f;  // inner right — Spread attens
+    static constexpr float COL_JACK_SPR  = 46.f;  // outer right — Spread jacks
+
+    // Editor: starts after left section gap
+    static constexpr float ED_X    = 54.f;
+    static constexpr float ED_W    = W_MM - ED_X - 4.f;  // ~124.9mm
+    static constexpr float TAB_Y   = 8.f;
+    static constexpr float ED_Y    = 18.f;
+    static constexpr float ED_H    = ROW_BOT - ED_Y;     // ~104.5mm
+
     explicit StraitsEastSandsVisualWidget(StraitsEastSandsVisual* mod) {
         setModule(mod);
         setPanel(APP->window->loadSvg(
             asset::plugin(pluginInstance,
-                "res/panels/StraitsEastSandsVisual_24HP.svg")));
+                "res/panels/StraitsEastSandsVisual_36HP.svg")));
 
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
-        addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2*RACK_GRID_WIDTH, 0)));
-        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
-        addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2*RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+        addChild(createWidget<ScrewSilver>(Vec(box.size.x-2*RACK_GRID_WIDTH, 0)));
+        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT-RACK_GRID_WIDTH)));
+        addChild(createWidget<ScrewSilver>(Vec(box.size.x-2*RACK_GRID_WIDTH, RACK_GRID_HEIGHT-RACK_GRID_WIDTH)));
 
         // Voice tabs (voices 2-8)
-        tabGroup = new TabButtonGroup(7, 2, mm2px(14.f), mm2px(8.f), mm2px(1.f));
-        tabGroup->box.pos = mm2px(Vec(4.f, 14.f));
+        tabGroup = new TabButtonGroup(7, 2, mm2px(TAB_Y+7.f), mm2px(8.f), mm2px(1.f));
+        tabGroup->box.pos = mm2px(Vec(ED_X, TAB_Y));
+        tabGroup->box.size.x = mm2px(ED_W);
         addChild(tabGroup);
 
-        // Visual editor — taller now controls zone is slimmer
+        // Visual editor
         visualEditor = new SandsVisualEditorV4(SandsVisualEditorV4::POLY);
-        visualEditor->box.pos  = mm2px(Vec(2.f, 24.f));
-        visualEditor->box.size = mm2px(Vec(117.92f, 58.f));  // 58mm = to y=82mm
+        visualEditor->box.pos  = mm2px(Vec(ED_X, ED_Y));
+        visualEditor->box.size = mm2px(Vec(ED_W, ED_H));
         addChild(visualEditor);
 
-        // ── Spread Trimpots: 3 per row, one row per voice group ──────────────
-        // Show selected voice's spread — 3 compact trimpots at y=86mm
-        // REST x=20  MELODY x=60  OCTAVE x=100
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(20.f,  86.f)), mod, SPREAD_V0_R));
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(60.f,  86.f)), mod, SPREAD_V0_M));
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(100.f, 86.f)), mod, SPREAD_V0_O));
-
-        // ── CV inputs: 3 poly jacks + 1 depth trimpot ────────────────────────
-        // LEN=x18  OFF=x50  ROT=x82  DEPTH=x108   y=106mm
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(18.f,  106.f)), mod, CV_LEN_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(50.f,  106.f)), mod, CV_OFF_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(82.f,  106.f)), mod, CV_ROT_INPUT));
-        addParam(createParamCentered<Trimpot>(   mm2px(Vec(108.f, 106.f)), mod, CV_DEPTH_PARAM));
+        // ── 9 LOR jacks (outer left) + 9 LOR attenuverters (inner left) ──────
+        // ── 9 Spread attenuverters (inner right) + 9 Spread jacks (outer right)
+        for (int r = 0; r < 9; ++r) {
+            float y = rowY(r);
+            addInput(createInputCentered<PJ301MPort>(
+                mm2px(Vec(COL_JACK_LOR,  y)), mod, CV_LOR_0+r));
+            addParam(createParamCentered<Trimpot>(
+                mm2px(Vec(COL_ATTEN_LOR, y)), mod, ATTEN_LOR_0+r));
+            addParam(createParamCentered<Trimpot>(
+                mm2px(Vec(COL_ATTEN_SPR, y)), mod, ATTEN_SPR_0+r));
+            addInput(createInputCentered<PJ301MPort>(
+                mm2px(Vec(COL_JACK_SPR,  y)), mod, CV_SPR_0+r));
+        }
 
         paramMgr = new PolyVoiceSandsParameterManager(nullptr, nullptr, 7, 0);
     }
 
     ~StraitsEastSandsVisualWidget() override { delete paramMgr; }
 
-    // ── Context menu ──────────────────────────────────────────────────────────
     void appendContextMenu(Menu* menu) override {
         ModuleWidget::appendContextMenu(menu);
         auto* mod = dynamic_cast<StraitsEastSandsVisual*>(module);
         if (!mod) return;
 
         menu->addChild(new MenuSeparator);
-        menu->addChild(createMenuLabel("Spread interpolation target"));
-        auto* ii = createMenuItem<InterpTargetItem>("Interp target");
+        menu->addChild(createMenuLabel("Spread interpolation"));
+        auto* ii = createMenuItem<EastInterpItem>("Interpolation target");
         ii->mod = mod; menu->addChild(ii);
 
-        menu->addChild(new MenuSeparator);
-        menu->addChild(createMenuLabel("CV modulation — voices"));
-        static const char* vnames[7] = {"V2","V3","V4","V5","V6","V7","V8"};
-        for (int v = 0; v < 7; ++v) {
-            auto* vi = createMenuItem<VoiceMaskItem>(vnames[v]);
-            vi->mod = mod; vi->voiceIdx = v; menu->addChild(vi);
+        static const char* vn[7]={"V2","V3","V4","V5","V6","V7","V8"};
         }
+        }
+    }
 
-        menu->addChild(new MenuSeparator);
-        menu->addChild(createMenuLabel("CV modulation — lanes"));
-        static const char* lnames[3] = {"REST","MELODY","OCTAVE"};
-        for (int l = 0; l < 3; ++l) {
-            auto* li = createMenuItem<LaneMaskItem>(lnames[l]);
-            li->mod = mod; li->laneIdx = l; menu->addChild(li);
+    // ── Spread voice memory ────────────────────────────────────────────────
+    void saveVoiceSpread(int v) {
+        if (!module) return;
+        module->params[restInterpId(v)  ].setValue(module->params[SPREAD_R].getValue());
+        module->params[melodyInterpId(v)].setValue(module->params[SPREAD_M].getValue());
+        module->params[octaveInterpId(v)].setValue(module->params[SPREAD_O].getValue());
+    }
+    void loadVoiceSpread(int v) {
+        if (!module) return;
+        module->params[SPREAD_R].setValue(module->params[restInterpId(v)  ].getValue());
+        module->params[SPREAD_M].setValue(module->params[melodyInterpId(v)].getValue());
+        module->params[SPREAD_O].setValue(module->params[octaveInterpId(v)].getValue());
+    }
+
+    // ── LOR voice memory ───────────────────────────────────────────────────
+    void saveVoiceLOR(int v) {
+        if (!module || !visualEditor) return;
+        for (int l=0; l<3; ++l) {
+            const auto& lane = visualEditor->currentState.lanes[l];
+            module->params[lorId(v,l,0)].setValue((float)lane.length);
+            module->params[lorId(v,l,1)].setValue((float)lane.offset);
+            module->params[lorId(v,l,2)].setValue((float)lane.rotation);
         }
+    }
+    void loadVoiceLOR(int v) {
+        if (!module || !visualEditor) return;
+        for (int l=0; l<3; ++l) {
+            auto& lane = visualEditor->currentState.lanes[l];
+            lane.length   = std::max(1,(int)std::round(module->params[lorId(v,l,0)].getValue()));
+            lane.offset   = (int)std::round(module->params[lorId(v,l,1)].getValue());
+            lane.rotation = (int)std::round(module->params[lorId(v,l,2)].getValue());
+        }
+    }
+
+    void onVoiceTabChanged(int nv) {
+        if (!paramMgr || !visualEditor) return;
+        paramMgr->syncEditorToPatternEngine(selectedVoice, visualEditor->currentState);
+        saveVoiceLOR(selectedVoice);
+        saveVoiceSpread(selectedVoice);
+        selectedVoice = nv;
+        paramMgr->syncPatternEngineToEditor(selectedVoice, visualEditor->currentState);
+        loadVoiceLOR(selectedVoice);
+        loadVoiceSpread(selectedVoice);
     }
 
     Monsoon* getMonsoon() {
         return module ? findMonsoon(module->rightExpander.module) : nullptr;
     }
 
-    void saveVoiceLOR(int v) {
-        if (!module) return;
-        for (int l = 0; l < 3; ++l) {
-            const auto& lane = visualEditor->currentState.lanes[l];
-            module->params[lorId(v, l, 0)].setValue((float)lane.length);
-            module->params[lorId(v, l, 1)].setValue((float)lane.offset);
-            module->params[lorId(v, l, 2)].setValue((float)lane.rotation);
-        }
-    }
-    void loadVoiceLOR(int v) {
-        if (!module) return;
-        for (int l = 0; l < 3; ++l) {
-            auto& lane = visualEditor->currentState.lanes[l];
-            lane.length   = std::max(1, (int)std::round(module->params[lorId(v, l, 0)].getValue()));
-            lane.offset   = (int)std::round(module->params[lorId(v, l, 1)].getValue());
-            lane.rotation = (int)std::round(module->params[lorId(v, l, 2)].getValue());
-        }
-    }
-
-    void onVoiceTabChanged(int newVoice) {
-        if (!paramMgr || !visualEditor) return;
-        paramMgr->syncEditorToPatternEngine(selectedVoice, visualEditor->currentState);
-        saveVoiceLOR(selectedVoice);
-        selectedVoice = newVoice;
-        paramMgr->syncPatternEngineToEditor(selectedVoice, visualEditor->currentState);
-        loadVoiceLOR(selectedVoice);
-    }
-
     void step() override {
         ModuleWidget::step();
         if (!module || !paramMgr || !visualEditor) return;
-
         Monsoon* monsoon = getMonsoon();
         if (!monsoon) return;
 
         auto* mod = static_cast<StraitsEastSandsVisual*>(module);
-
         PatternEngine*   pe = &monsoon->engine.pe;
         SequencerEngine* se = &monsoon->engine;
         if (paramMgr->patternEngine != pe) {
-            paramMgr->patternEngine            = pe;
-            paramMgr->sequencerEngine          = se;
-            paramMgr->spreadMgr.patternEngine  = pe;
-            paramMgr->spreadMgr.sequencerEngine= se;
+            paramMgr->patternEngine             = pe;
+            paramMgr->sequencerEngine           = se;
+            paramMgr->spreadMgr.patternEngine   = pe;
+            paramMgr->spreadMgr.sequencerEngine = se;
         }
 
-        if (!initialized) { loadVoiceLOR(selectedVoice); initialized = true; }
+        if (!initialized) {
+            loadVoiceLOR(selectedVoice);
+            loadVoiceSpread(selectedVoice);
+            initialized = true;
+        }
 
         int newSel = tabGroup->getSelectedTab();
         if (newSel != selectedVoice) onVoiceTabChanged(newSel);
 
-        // Spread — apply selected voice's trimpot row (all voices share same 3 trimpots
-        // showing selected voice, others retain their stored values)
-        for (int l = 0; l < 3; ++l)
-            paramMgr->setSpread(selectedVoice, l,
-                mod->params[SPREAD_V0_R + l].getValue());
+        // ── Write display trimpots → selected voice INTERP params ─────────────
+        saveVoiceSpread(selectedVoice);
 
-        paramMgr->setInterpolationTarget(
+        // ── SpreadManager for editor display ──────────────────────────────────
+        auto& smgr = paramMgr->spreadMgr;
+        smgr.setSpread(selectedVoice, 0, mod->params[SPREAD_R].getValue());
+        smgr.setSpread(selectedVoice, 1, mod->params[SPREAD_M].getValue());
+        smgr.setSpread(selectedVoice, 2, mod->params[SPREAD_O].getValue());
+        smgr.setInterpolationTarget(
             mod->interpUseMono ? SpreadManager::MONO_DRAW : SpreadManager::AVERAGE_POLY);
 
-        // ── Apply poly CV to L/O/R ────────────────────────────────────────────
-        // Runs on the UI thread — writes our own params (thread-safe)
-        float depth = mod->params[CV_DEPTH_PARAM].getValue();
-        if (depth != 0.f) {
-            auto applyCV = [&](int inputId, int paramOffset) {
-                auto& inp = mod->inputs[inputId];
-                if (!inp.isConnected()) return;
-                for (int v = 0; v < 7; ++v) {
-                    if (!(mod->cvVoiceMask & (1 << v))) continue;
-                    float cv = inp.getVoltage(v) / 10.f * depth;  // normalise to ±1
-                    for (int l = 0; l < 3; ++l) {
-                        if (!(mod->cvLaneMask & (1 << l))) continue;
-                        int pid = lorId(v, l, paramOffset);
-                        float cur = mod->params[pid].getValue();
-                        float range = (paramOffset == 0) ? 15.f : 15.f; // LEN/OFF/ROT all 0-15 or 1-16
-                        float nudge = cv * range;
-                        if (paramOffset == 0) // LEN: clamp 1-16
-                            mod->params[pid].setValue(clamp(cur + nudge, 1.f, 16.f));
-                        else
-                            mod->params[pid].setValue(clamp(cur + nudge, 0.f, 15.f));
-                    }
-                }
-            };
-            applyCV(CV_LEN_INPUT, 0);
-            applyCV(CV_OFF_INPUT, 1);
-            applyCV(CV_ROT_INPUT, 2);
-        }
+        // ── Apply LOR CV and Spread CV ────────────────────────────────────────
+        // Computed at control rate in Monsoon::process() controlDivider block.
+        // Base + scaled offset pattern: effective = clamp(base + cv*atten*scale, lo, hi)
+        // Params here remain the clean base values — Monsoon applies CV at read site.
 
         saveVoiceLOR(selectedVoice);
         paramMgr->syncPatternEngineToEditor(selectedVoice, visualEditor->currentState);
 
         int gs = monsoon->engine.stepIndex;
-        for (int l = 0; l < 3; ++l) {
+        for (int l=0; l<3; ++l) {
             visualEditor->setLanePlayStep(l,
                 calcPlayhead(gs,
-                    readLenParam   (mod, lorId(selectedVoice, l, 0)),
-                    readOffRotParam(mod, lorId(selectedVoice, l, 1)),
-                    readOffRotParam(mod, lorId(selectedVoice, l, 2))));
+                    readLenParam   (mod, lorId(selectedVoice,l,0)),
+                    readOffRotParam(mod, lorId(selectedVoice,l,1)),
+                    readOffRotParam(mod, lorId(selectedVoice,l,2))));
         }
     }
 };
 
 Model* modelStraitsEastSandsVisual =
-    createModel<StraitsEastSandsVisual, StraitsEastSandsVisualWidget>(
+    createModel<StraitsEastSandsVisual,StraitsEastSandsVisualWidget>(
         "StraitsEastSandsVisual");

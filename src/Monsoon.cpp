@@ -592,22 +592,40 @@ void Monsoon::process(const ProcessArgs& args) {
     auto* westVisual  = expanderManager.cachedWestSandsVisual;
 
     // East: use visual expander if present, else DeepStraitsSandsEast
-    auto* eastLOR = eastVisual  ? static_cast<rack::Module*>(eastVisual)
-                                : static_cast<rack::Module*>(deepEast);
+    auto* eastLOR   = eastVisual ? static_cast<rack::Module*>(eastVisual)
+                                 : static_cast<rack::Module*>(deepEast);
+    // Spread/interp source: same priority — visual expander owns spread when connected
+    auto* eastInterp = eastVisual ? static_cast<rack::Module*>(eastVisual)
+                                  : static_cast<rack::Module*>(deepEast);
 
     // East only active if straitEast is present
     if (eastLOR && straitEast) {
         using namespace DeepStraitsSandsEastIds;
+        using namespace StraitsEastVisualIds;  // CV_LOR_0, ATTEN_LOR_0, CV_SPR_0, ATTEN_SPR_0
         
         for (int v = 0; v < 7; v++) {
-            // ── Rhythm DNA (Voices 1-15) ──
+            // ── Rhythm DNA with CV offset (base + scaled CV, evaluated at control rate) ──
             int rhythmBase = POLY_DNA_VOICE_1_LEN + v * 3;
-            engine.polyLen[v] = (int)eastLOR->params[rhythmBase].getValue();
-            engine.polyOff[v] = (int)eastLOR->params[rhythmBase + 1].getValue();
-            engine.polyRot[v] = (int)eastLOR->params[rhythmBase + 2].getValue();
+            auto applyLorCV = [&](int paramIdx, int row, float lo, float hi) -> int {
+                float base = eastLOR->params[paramIdx].getValue();
+                if (eastVisual && eastVisual->inputs[CV_LOR_0 + row].isConnected()) {
+                    float att = eastVisual->params[ATTEN_LOR_0 + row].getValue();
+                    float cv  = eastVisual->inputs[CV_LOR_0 + row].getVoltage(v) / 10.f;
+                    base = clamp(base + cv * att * (hi - lo), lo, hi);
+                }
+                return (int)base;
+            };
+            engine.polyLen[v] = applyLorCV(rhythmBase,     0, 1.f, 16.f);
+            engine.polyOff[v] = applyLorCV(rhythmBase + 1, 1, 0.f, 15.f);
+            engine.polyRot[v] = applyLorCV(rhythmBase + 2, 2, 0.f, 15.f);
             
-            // ── Interpolation (Rest): blend between per-voice random and average random ──
-            float restInterp = deepEast->params[POLY_REST_INTERP_1 + v].getValue();
+            // ── Interpolation (Rest) with CV offset ──────────────────────────
+            float restInterp = eastInterp->params[POLY_REST_INTERP_1 + v].getValue();
+            if (eastVisual && eastVisual->inputs[CV_SPR_0 + 0].isConnected()) {
+                float att = eastVisual->params[ATTEN_SPR_0 + 0].getValue();
+                float cv  = eastVisual->inputs[CV_SPR_0 + 0].getVoltage(v) / 10.f;
+                restInterp = clamp(restInterp + cv * att, 0.f, 1.f);
+            }
             
             // Calculate average rest probability for East range
             float avgRestProb = 0.f;
@@ -620,7 +638,12 @@ void Monsoon::process(const ProcessArgs& args) {
             engine.voices[v].restProb = voiceRestProb + restInterp * (avgRestProb - voiceRestProb);
             
             int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
-            float melodyInterp = deepEast->params[POLY_MELODY_INTERP_1 + v].getValue();
+            float melodyInterp = eastInterp->params[POLY_MELODY_INTERP_1 + v].getValue();
+            if (eastVisual && eastVisual->inputs[CV_SPR_0 + 3].isConnected()) {
+                float att = eastVisual->params[ATTEN_SPR_0 + 3].getValue();
+                float cv  = eastVisual->inputs[CV_SPR_0 + 3].getVoltage(v) / 10.f;
+                melodyInterp = clamp(melodyInterp + cv * att, 0.f, 1.f);
+            }
             
             float avgMelodyRandom[16] = {};
             for (int i = 0; i < 7; i++) {
@@ -642,7 +665,12 @@ void Monsoon::process(const ProcessArgs& args) {
             engine.pe.polyMelodyRandom[v][2] = deepEast->params[melodyBase + 2].getValue();
             
             int octaveBase = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-            float octaveInterp = deepEast->params[POLY_OCTAVE_INTERP_1 + v].getValue();
+            float octaveInterp = eastInterp->params[POLY_OCTAVE_INTERP_1 + v].getValue();
+            if (eastVisual && eastVisual->inputs[CV_SPR_0 + 6].isConnected()) {
+                float att = eastVisual->params[ATTEN_SPR_0 + 6].getValue();
+                float cv  = eastVisual->inputs[CV_SPR_0 + 6].getVoltage(v) / 10.f;
+                octaveInterp = clamp(octaveInterp + cv * att, 0.f, 1.f);
+            }
             
             float avgOctaveRandom[16] = {};
             for (int i = 0; i < 7; i++) {
@@ -722,19 +750,38 @@ void Monsoon::process(const ProcessArgs& args) {
     }
 
     // West: use visual expander if present, else DeepStraitsSandsWest
-    auto* westLOR = westVisual  ? static_cast<rack::Module*>(westVisual)
-                                : static_cast<rack::Module*>(deepWest);
+    auto* westLOR    = westVisual ? static_cast<rack::Module*>(westVisual)
+                                  : static_cast<rack::Module*>(deepWest);
+    auto* westInterp = westVisual ? static_cast<rack::Module*>(westVisual)
+                                  : static_cast<rack::Module*>(deepWest);
 
     // West only active if straitWest is present
     if (westLOR && straitWest) {
         using namespace DeepStraitsSandsWestIds;
+        using namespace StraitsEastVisualIds;  // West reads from East's jacks
         for (int v = 7; v < 15; v++) {
-            int b = POLY_DNA_VOICE_1_LEN + v * 3;
-            engine.polyLen[v] = (int)westLOR->params[b].getValue();
-            engine.polyOff[v] = (int)westLOR->params[b+1].getValue();
-            engine.polyRot[v] = (int)westLOR->params[b+2].getValue();
+            int lv = v - 7;   // local voice index 0-7
+            int b  = POLY_DNA_VOICE_1_LEN + v * 3;
+            // East visual expander's jacks carry West voices on channels 7-14
+            auto applyLorCVW = [&](int paramIdx, int row, float lo, float hi) -> int {
+                float base = westLOR->params[paramIdx].getValue();
+                if (eastVisual && eastVisual->inputs[CV_LOR_0 + row].isConnected()) {
+                    float att = eastVisual->params[ATTEN_LOR_0 + row].getValue();
+                    float cv  = eastVisual->inputs[CV_LOR_0 + row].getVoltage(lv + 7) / 10.f;
+                    base = clamp(base + cv * att * (hi - lo), lo, hi);
+                }
+                return (int)base;
+            };
+            engine.polyLen[v] = applyLorCVW(b,     0, 1.f, 16.f);
+            engine.polyOff[v] = applyLorCVW(b + 1, 1, 0.f, 15.f);
+            engine.polyRot[v] = applyLorCVW(b + 2, 2, 0.f, 15.f);
             
-            float restInterp = deepWest->params[POLY_REST_INTERP_1 + v].getValue();
+            float restInterp = westInterp->params[POLY_REST_INTERP_1 + v].getValue();
+            if (eastVisual && eastVisual->inputs[CV_SPR_0 + 0].isConnected()) {
+                float att = eastVisual->params[ATTEN_SPR_0 + 0].getValue();
+                float cv  = eastVisual->inputs[CV_SPR_0 + 0].getVoltage(lv + 7) / 10.f;
+                restInterp = clamp(restInterp + cv * att, 0.f, 1.f);
+            }
             float avgRestProb = 0.f;
             for (int i = 7; i < 15; i++) avgRestProb += deepWest->params[POLY_REST_PARAM_1 + i].getValue();
             avgRestProb /= 8.f;
@@ -742,7 +789,12 @@ void Monsoon::process(const ProcessArgs& args) {
             engine.voices[v].restProb = voiceRestProb + restInterp * (avgRestProb - voiceRestProb);
             
             int mb = POLY_MELODY_VOICE_1_LEN + v * 3;
-            float melodyInterp = deepWest->params[POLY_MELODY_INTERP_1 + v].getValue();
+            float melodyInterp = westInterp->params[POLY_MELODY_INTERP_1 + v].getValue();
+            if (eastVisual && eastVisual->inputs[CV_SPR_0 + 3].isConnected()) {
+                float att = eastVisual->params[ATTEN_SPR_0 + 3].getValue();
+                float cv  = eastVisual->inputs[CV_SPR_0 + 3].getVoltage(lv + 7) / 10.f;
+                melodyInterp = clamp(melodyInterp + cv * att, 0.f, 1.f);
+            }
             float avgMelodyRandom[16] = {};
             for (int i = 7; i < 15; i++) {
                 for (int j = 0; j < 16; j++) avgMelodyRandom[j] += engine.pe.polyMelodyRandom[i][j];
@@ -757,7 +809,12 @@ void Monsoon::process(const ProcessArgs& args) {
             engine.pe.polyMelodyRandom[v][2] = deepWest->params[mb+2].getValue();
             
             int ob = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-            float octaveInterp = deepWest->params[POLY_OCTAVE_INTERP_1 + v].getValue();
+            float octaveInterp = westInterp->params[POLY_OCTAVE_INTERP_1 + v].getValue();
+            if (eastVisual && eastVisual->inputs[CV_SPR_0 + 6].isConnected()) {
+                float att = eastVisual->params[ATTEN_SPR_0 + 6].getValue();
+                float cv  = eastVisual->inputs[CV_SPR_0 + 6].getVoltage(lv + 7) / 10.f;
+                octaveInterp = clamp(octaveInterp + cv * att, 0.f, 1.f);
+            }
             float avgOctaveRandom[16] = {};
             for (int i = 7; i < 15; i++) {
                 for (int j = 0; j < 16; j++) avgOctaveRandom[j] += engine.pe.polyOctaveRandom[i][j];
