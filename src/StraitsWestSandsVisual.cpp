@@ -164,7 +164,7 @@ struct StraitsWestSandsVisualWidget : ModuleWidget {
         if (!monsoon) return;
 
         auto* mod  = static_cast<StraitsWestSandsVisual*>(module);
-        auto* east = getEastVisual();   // null if East not connected
+        // East visual expander provides CV via Monsoon's controlDivider — no direct reference needed here.
 
         PatternEngine*   pe = &monsoon->engine.pe;
         SequencerEngine* se = &monsoon->engine;
@@ -193,36 +193,9 @@ struct StraitsWestSandsVisualWidget : ModuleWidget {
         smgr.setInterpolationTarget(
             mod->interpUseMono ? SpreadManager::MONO_DRAW : SpreadManager::AVERAGE_POLY);
 
-        // ── Apply LOR CV via East's jacks (channels 7-14 for West voices) ─────
-        if (east) {
-            for (int row = 0; row < 9; ++row) {
-                auto& inp = east->inputs[CV_LOR_0 + row];
-                if (!inp.isConnected()) continue;
-                // East uses channels 0-6, West uses 7-14 from same cable
-                float atten = east->params[ATTEN_LOR_0 + row].getValue();
-                for (int lv = 0; lv < 8; ++lv) {
-                    if (!(mod->cvLorVoiceMask & (1<<lv))) continue;
-                    float cv  = inp.getVoltage(lv + 7) / 10.f * atten;
-                    int   pid = rowLorId(lv, row);
-                    float lo  = (row%3 == 0) ? 1.f : 0.f;
-                    float hi  = (row%3 == 0) ? 16.f : 15.f;
-                    mod->params[pid].setValue(clamp(mod->params[pid].getValue()+cv*hi, lo, hi));
-                }
-            }
-
-            // ── Apply Spread CV via East's jacks (channels 7-14) ──────────────
-            for (int row = 0; row < 9; ++row) {
-                auto& inp = east->inputs[CV_SPR_0 + row];
-                if (!inp.isConnected()) continue;
-                float atten = east->params[ATTEN_SPR_0 + row].getValue();
-                for (int lv = 0; lv < 8; ++lv) {
-                    if (!(mod->cvSpreadVoiceMask & (1<<lv))) continue;
-                    float cv  = inp.getVoltage(lv + 7) / 10.f * atten;
-                    int   pid = rowInterpId(lv, row);
-                    mod->params[pid].setValue(clamp(mod->params[pid].getValue()+cv, 0.f, 1.f));
-                }
-            }
-        }
+        // ── Apply LOR CV and Spread CV ────────────────────────────────────────
+        // West has no inputs — CV from East's jacks (channels 7-14) applied
+        // at control rate in Monsoon::process() controlDivider block.
 
         saveVoiceLOR(selectedVoice);
         paramMgr->syncPatternEngineToEditor(selectedVoice, visualEditor->currentState);

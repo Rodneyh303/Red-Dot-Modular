@@ -216,33 +216,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         smgr.setInterpolationTarget(
             mod->interpUseMono ? SpreadManager::MONO_DRAW : SpreadManager::AVERAGE_POLY);
 
-        // ── Apply LOR CV (poly, channels 0-6 for East voices 2-8) ─────────────
-        for (int row = 0; row < 9; ++row) {
-            auto& inp = mod->inputs[CV_LOR_0 + row];
-            if (!inp.isConnected()) continue;
-            float atten = mod->params[ATTEN_LOR_0 + row].getValue();
-            for (int v = 0; v < 7; ++v) {
-                if (!(mod->cvLorVoiceMask & (1<<v))) continue;
-                float cv = inp.getVoltage(v) / 10.f * atten;
-                int pid  = rowLorId(v, row);
-                float lo = (row%3 == 0) ? 1.f : 0.f;
-                float hi = (row%3 == 0) ? 16.f : 15.f;
-                mod->params[pid].setValue(clamp(mod->params[pid].getValue()+cv*hi, lo, hi));
-            }
-        }
-
-        // ── Apply Spread CV (poly, channels 0-6, grouped by lane) ────────────
-        for (int row = 0; row < 9; ++row) {
-            auto& inp = mod->inputs[CV_SPR_0 + row];
-            if (!inp.isConnected()) continue;
-            float atten = mod->params[ATTEN_SPR_0 + row].getValue();
-            for (int v = 0; v < 7; ++v) {
-                if (!(mod->cvSpreadVoiceMask & (1<<v))) continue;
-                float cv  = inp.getVoltage(v) / 10.f * atten;
-                int   pid = rowInterpId(v, row);
-                mod->params[pid].setValue(clamp(mod->params[pid].getValue()+cv, 0.f, 1.f));
-            }
-        }
+        // ── Apply LOR CV and Spread CV ────────────────────────────────────────
+        // Computed at control rate in Monsoon::process() controlDivider block.
+        // Base + scaled offset pattern: effective = clamp(base + cv*atten*scale, lo, hi)
+        // Params here remain the clean base values — Monsoon applies CV at read site.
 
         saveVoiceLOR(selectedVoice);
         paramMgr->syncPatternEngineToEditor(selectedVoice, visualEditor->currentState);
