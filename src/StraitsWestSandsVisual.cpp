@@ -15,6 +15,43 @@ using namespace StraitsWestVisualIds;
 extern Model* modelMonsoon;
 extern Model* modelMonsoonDeepStraitsSandsWest;
 
+// ── Context menu items ────────────────────────────────────────────────────────
+struct InterpTargetItem : MenuItem {
+    StraitsWestSandsVisual* mod;
+    void onAction(const event::Action&) override {
+        mod->interpUseMono = !mod->interpUseMono;
+    }
+    void step() override {
+        rightText = mod->interpUseMono ? "Mono Draw ✓" : "Avg Poly ✓";
+        MenuItem::step();
+    }
+};
+
+struct VoiceMaskItem : MenuItem {
+    StraitsWestSandsVisual* mod;
+    int voiceIdx; // 0-based local index
+    void onAction(const event::Action&) override {
+        mod->cvVoiceMask ^= (1 << voiceIdx);
+    }
+    void step() override {
+        rightText = (mod->cvVoiceMask & (1 << voiceIdx)) ? "✓" : "";
+        MenuItem::step();
+    }
+};
+
+struct LaneMaskItem : MenuItem {
+    StraitsWestSandsVisual* mod;
+    int laneIdx; // 0=REST 1=MELODY 2=OCTAVE
+    void onAction(const event::Action&) override {
+        mod->cvLaneMask ^= (1 << laneIdx);
+    }
+    void step() override {
+        rightText = (mod->cvLaneMask & (1 << laneIdx)) ? "✓" : "";
+        MenuItem::step();
+    }
+};
+
+// ── Widget ────────────────────────────────────────────────────────────────────
 struct StraitsWestSandsVisualWidget : ModuleWidget {
     SandsVisualEditorV4*            visualEditor = nullptr;
     TabButtonGroup*                 tabGroup     = nullptr;
@@ -33,46 +70,84 @@ struct StraitsWestSandsVisualWidget : ModuleWidget {
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2*RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
-        tabGroup = new TabButtonGroup(8, 9, mm2px(12.f), mm2px(8.f), mm2px(1.f));
-        tabGroup->box.pos = mm2px(Vec(4.f, 22.f));
+        // Voice tabs (voices 9-16)
+        tabGroup = new TabButtonGroup(8, 2, mm2px(14.f), mm2px(8.f), mm2px(1.f));
+        tabGroup->box.pos = mm2px(Vec(4.f, 14.f));
         addChild(tabGroup);
 
+        // Visual editor — taller now controls zone is slimmer
         visualEditor = new SandsVisualEditorV4(SandsVisualEditorV4::POLY);
-        visualEditor->box.pos  = mm2px(Vec(4.f, 32.f));
-        visualEditor->box.size = mm2px(Vec(114.f, 175.f));
+        visualEditor->box.pos  = mm2px(Vec(2.f, 24.f));
+        visualEditor->box.size = mm2px(Vec(117.92f, 58.f));  // 58mm = to y=82mm
         addChild(visualEditor);
 
-        addParam(createParamCentered<VCVSlider>(mm2px(Vec(20.f,  218.f)), mod, SPREAD_V0_R));
-        addParam(createParamCentered<VCVSlider>(mm2px(Vec(60.f,  218.f)), mod, SPREAD_V0_M));
-        addParam(createParamCentered<VCVSlider>(mm2px(Vec(100.f, 218.f)), mod, SPREAD_V0_O));
-        addParam(createParamCentered<CKSS>(mm2px(Vec(56.f, 246.f)), mod, INTERP_TARGET));
+        // ── Spread Trimpots: 3 per row, one row per voice group ──────────────
+        // Show selected voice's spread — 3 compact trimpots at y=86mm
+        // REST x=20  MELODY x=60  OCTAVE x=100
+        addParam(createParamCentered<Trimpot>(mm2px(Vec(20.f,  86.f)), mod, SPREAD_V0_R));
+        addParam(createParamCentered<Trimpot>(mm2px(Vec(60.f,  86.f)), mod, SPREAD_V0_M));
+        addParam(createParamCentered<Trimpot>(mm2px(Vec(100.f, 86.f)), mod, SPREAD_V0_O));
 
-        // West voices 9-16 → local indices 0-7 → global indices 7-14
+        // ── CV inputs: 3 poly jacks + 1 depth trimpot ────────────────────────
+        // LEN=x18  OFF=x50  ROT=x82  DEPTH=x108   y=106mm
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(18.f,  106.f)), mod, CV_LEN_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(50.f,  106.f)), mod, CV_OFF_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(82.f,  106.f)), mod, CV_ROT_INPUT));
+        addParam(createParamCentered<Trimpot>(   mm2px(Vec(108.f, 106.f)), mod, CV_DEPTH_PARAM));
+
         paramMgr = new PolyVoiceSandsParameterManager(nullptr, nullptr, 8, 7);
     }
 
     ~StraitsWestSandsVisualWidget() override { delete paramMgr; }
 
+    // ── Context menu ──────────────────────────────────────────────────────────
+    void appendContextMenu(Menu* menu) override {
+        ModuleWidget::appendContextMenu(menu);
+        auto* mod = dynamic_cast<StraitsWestSandsVisual*>(module);
+        if (!mod) return;
+
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuLabel("Spread interpolation target"));
+        auto* ii = createMenuItem<InterpTargetItem>("Interp target");
+        ii->mod = mod; menu->addChild(ii);
+
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuLabel("CV modulation — voices"));
+        static const char* vnames[7] = {"V9","V10","V11","V12","V13","V14","V15","V16"};
+        for (int v = 0; v < 8; ++v) {
+            auto* vi = createMenuItem<VoiceMaskItem>(vnames[v]);
+            vi->mod = mod; vi->voiceIdx = v; menu->addChild(vi);
+        }
+
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuLabel("CV modulation — lanes"));
+        static const char* lnames[3] = {"REST","MELODY","OCTAVE"};
+        for (int l = 0; l < 3; ++l) {
+            auto* li = createMenuItem<LaneMaskItem>(lnames[l]);
+            li->mod = mod; li->laneIdx = l; menu->addChild(li);
+        }
+    }
+
     Monsoon* getMonsoon() {
         return module ? findMonsoon(module->rightExpander.module) : nullptr;
     }
 
-    void saveVoiceLOR(int localV) {
+    void saveVoiceLOR(int v) {
         if (!module) return;
         for (int l = 0; l < 3; ++l) {
             const auto& lane = visualEditor->currentState.lanes[l];
-            module->params[lorId(localV, l, 0)].setValue((float)lane.length);
-            module->params[lorId(localV, l, 1)].setValue((float)lane.offset);
-            module->params[lorId(localV, l, 2)].setValue((float)lane.rotation);
+            module->params[lorId(v, l, 0)].setValue((float)lane.length);
+            module->params[lorId(v, l, 1)].setValue((float)lane.offset);
+            module->params[lorId(v, l, 2)].setValue((float)lane.rotation);
         }
     }
-    void loadVoiceLOR(int localV) {
+    void loadVoiceLOR(int v) {
         if (!module) return;
         for (int l = 0; l < 3; ++l) {
             auto& lane = visualEditor->currentState.lanes[l];
-            lane.length   = std::max(1, (int)std::round(module->params[lorId(localV, l, 0)].getValue()));
-            lane.offset   = (int)std::round(module->params[lorId(localV, l, 1)].getValue());
-            lane.rotation = (int)std::round(module->params[lorId(localV, l, 2)].getValue());
+            lane.length   = std::max(1, (int)std::round(module->params[lorId(v, l, 0)].getValue()));
+            lane.offset   = (int)std::round(module->params[lorId(v, l, 1)].getValue());
+            lane.rotation = (int)std::round(module->params[lorId(v, l, 2)].getValue());
         }
     }
 
@@ -92,13 +167,15 @@ struct StraitsWestSandsVisualWidget : ModuleWidget {
         Monsoon* monsoon = getMonsoon();
         if (!monsoon) return;
 
+        auto* mod = static_cast<StraitsWestSandsVisual*>(module);
+
         PatternEngine*   pe = &monsoon->engine.pe;
         SequencerEngine* se = &monsoon->engine;
         if (paramMgr->patternEngine != pe) {
-            paramMgr->patternEngine   = pe;
-            paramMgr->sequencerEngine = se;
-            paramMgr->spreadMgr.patternEngine   = pe;
-            paramMgr->spreadMgr.sequencerEngine = se;
+            paramMgr->patternEngine            = pe;
+            paramMgr->sequencerEngine          = se;
+            paramMgr->spreadMgr.patternEngine  = pe;
+            paramMgr->spreadMgr.sequencerEngine= se;
         }
 
         if (!initialized) { loadVoiceLOR(selectedVoice); initialized = true; }
@@ -106,14 +183,42 @@ struct StraitsWestSandsVisualWidget : ModuleWidget {
         int newSel = tabGroup->getSelectedTab();
         if (newSel != selectedVoice) onVoiceTabChanged(newSel);
 
-        auto* mod = static_cast<StraitsWestSandsVisual*>(module);
-        for (int v = 0; v < 8; ++v)
-            for (int l = 0; l < 3; ++l)
-                paramMgr->setSpread(v, l, mod->params[SPREAD_V0_R + v*3 + l].getValue());
+        // Spread — apply selected voice's trimpot row (all voices share same 3 trimpots
+        // showing selected voice, others retain their stored values)
+        for (int l = 0; l < 3; ++l)
+            paramMgr->setSpread(selectedVoice, l,
+                mod->params[SPREAD_V0_R + l].getValue());
 
-        bool useMono = mod->params[INTERP_TARGET].getValue() > 0.5f;
         paramMgr->setInterpolationTarget(
-            useMono ? SpreadManager::MONO_DRAW : SpreadManager::AVERAGE_POLY);
+            mod->interpUseMono ? SpreadManager::MONO_DRAW : SpreadManager::AVERAGE_POLY);
+
+        // ── Apply poly CV to L/O/R ────────────────────────────────────────────
+        // Runs on the UI thread — writes our own params (thread-safe)
+        float depth = mod->params[CV_DEPTH_PARAM].getValue();
+        if (depth != 0.f) {
+            auto applyCV = [&](int inputId, int paramOffset) {
+                auto& inp = mod->inputs[inputId];
+                if (!inp.isConnected()) return;
+                for (int v = 0; v < 8; ++v) {
+                    if (!(mod->cvVoiceMask & (1 << v))) continue;
+                    float cv = inp.getVoltage(v) / 10.f * depth;  // normalise to ±1
+                    for (int l = 0; l < 3; ++l) {
+                        if (!(mod->cvLaneMask & (1 << l))) continue;
+                        int pid = lorId(v, l, paramOffset);
+                        float cur = mod->params[pid].getValue();
+                        float range = (paramOffset == 0) ? 15.f : 15.f; // LEN/OFF/ROT all 0-15 or 1-16
+                        float nudge = cv * range;
+                        if (paramOffset == 0) // LEN: clamp 1-16
+                            mod->params[pid].setValue(clamp(cur + nudge, 1.f, 16.f));
+                        else
+                            mod->params[pid].setValue(clamp(cur + nudge, 0.f, 15.f));
+                    }
+                }
+            };
+            applyCV(CV_LEN_INPUT, 0);
+            applyCV(CV_OFF_INPUT, 1);
+            applyCV(CV_ROT_INPUT, 2);
+        }
 
         saveVoiceLOR(selectedVoice);
         paramMgr->syncPatternEngineToEditor(selectedVoice, visualEditor->currentState);
@@ -122,7 +227,7 @@ struct StraitsWestSandsVisualWidget : ModuleWidget {
         for (int l = 0; l < 3; ++l) {
             visualEditor->setLanePlayStep(l,
                 calcPlayhead(gs,
-                    readLenParam(mod, lorId(selectedVoice, l, 0)),
+                    readLenParam   (mod, lorId(selectedVoice, l, 0)),
                     readOffRotParam(mod, lorId(selectedVoice, l, 1)),
                     readOffRotParam(mod, lorId(selectedVoice, l, 2))));
         }
