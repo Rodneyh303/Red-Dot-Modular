@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="691.19" height="485.67" viewBox="0 0 691.19 485.67">
+  <defs>
+    <pattern id="g" x="0" y="0" width="691.19" height="2" patternUnits="userSpaceOnUse"><rect width="691.19" height="2" fill="#f7f7f7"/><rect y="1" width="691.19" height="0.6" fill="#cccccc" opacity="0.28"/></pattern>
+    <linearGradient id="mbsG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#b8c0cc" stop-opacity="0.0"/><stop offset="50%" stop-color="#b8c0cc" stop-opacity="0.55"/><stop offset="100%" stop-color="#b8c0cc" stop-opacity="0.82"/></linearGradient>
+  </defs>
+  <rect width="691.19" height="485.67" fill="url(#g)"/>
+  <rect x="0" y="0" width="6.8" height="485.67" fill="#4a90d9" opacity="0.85"/>
+  <rect x="0" y="0" width="691.19" height="49.1" fill="#e8e8e8" opacity="0.92"/>
+  <text x="345.6" y="20.8" font-size="13.6" font-family="monospace" text-anchor="middle" fill="#222" font-weight="bold">SANDS WEST  V9–16</text>
+  <text x="345.6" y="39.7" font-size="9.4" font-family="monospace" text-anchor="middle" fill="#888">CV via East — channels 9-16</text>
+  <line x1="7.6" y1="49.1" x2="683.6" y2="49.1" stroke="#4a90d9" stroke-width="0.8" opacity="0.55"/>
+  <rect x="0" y="52.9" width="196.5" height="136.7" fill="#d4af37" opacity="0.05" rx="1"/>
+  <rect x="0" y="189.6" width="196.5" height="136.7" fill="#26a69a" opacity="0.05" rx="1"/>
+  <rect x="0" y="326.3" width="196.5" height="136.7" fill="#4a90d9" opacity="0.05" rx="1"/>
+  <text x="105.8" y="257.9" font-size="12.1" font-family="monospace" text-anchor="middle" fill="#4a90d9" opacity="0.30" transform="rotate(-90,105.8,257.9)">CH 9–16 via East</text>
+  <rect x="6.8" y="71.9" width="3.0" height="7.6" fill="#d4af37" opacity="0.55"/>
+  <rect x="6.8" y="117.5" width="3.0" height="7.6" fill="#d4af37" opacity="0.55"/>
+  <rect x="6.8" y="163.0" width="3.0" height="7.6" fill="#d4af37" opacity="0.55"/>
+  <rect x="6.8" y="208.6" width="3.0" height="7.6" fill="#26a69a" opacity="0.55"/>
+  <rect x="6.8" y="254.2" width="3.0" height="7.6" fill="#26a69a" opacity="0.55"/>
+  <rect x="6.8" y="299.7" width="3.0" height="7.6" fill="#26a69a" opacity="0.55"/>
+  <rect x="6.8" y="345.3" width="3.0" height="7.6" fill="#4a90d9" opacity="0.55"/>
+  <rect x="6.8" y="390.9" width="3.0" height="7.6" fill="#4a90d9" opacity="0.55"/>
+  <rect x="6.8" y="436.4" width="3.0" height="7.6" fill="#4a90d9" opacity="0.55"/>
+  <line x1="7.6" y1="189.6" x2="192.8" y2="189.6" stroke="#bbb" stroke-width="0.5" opacity="0.45" stroke-dasharray="2,3"/>
+  <line x1="7.6" y1="326.3" x2="192.8" y2="326.3" stroke="#bbb" stroke-width="0.5" opacity="0.45" stroke-dasharray="2,3"/>
+  <line x1="196.5" y1="49.1" x2="196.5" y2="485.7" stroke="#bbb" stroke-width="0.6" opacity="0.50"/>
+  <rect x="204.1" y="68.0" width="472.0" height="395.0" fill="#f0f0f0" opacity="0.55" rx="1"/>
+  <rect x="204.1" y="30.2" width="472.0" height="34.0" fill="#e0e0e0" opacity="0.50" rx="1"/>
+  <text x="233.6" y="47.2" font-size="9.1" font-family="monospace" text-anchor="middle" fill="#4a90d9" opacity="0.70">V9</text>
+  <text x="292.6" y="47.2" font-size="9.1" font-family="monospace" text-anchor="middle" fill="#4a90d9" opacity="0.70">V10</text>
+  <text x="351.6" y="47.2" font-size="9.1" font-family="monospace" text-anchor="middle" fill="#4a90d9" opacity="0.70">V11</text>
+  <text x="410.6" y="47.2" font-size="9.1" font-family="monospace" text-anchor="middle" fill="#4a90d9" opacity="0.70">V12</text>
+  <text x="469.6" y="47.2" font-size="9.1" font-family="monospace" text-anchor="middle" fill="#4a90d9" opacity="0.70">V13</text>
+  <text x="528.6" y="47.2" font-size="9.1" font-family="monospace" text-anchor="middle" fill="#4a90d9" opacity="0.70">V14</text>
+  <text x="587.6" y="47.2" font-size="9.1" font-family="monospace" text-anchor="middle" fill="#4a90d9" opacity="0.70">V15</text>
+  <text x="646.6" y="47.2" font-size="9.1" font-family="monospace" text-anchor="middle" fill="#4a90d9" opacity="0.70">V16</text>
+  <g fill="url(#mbsG)" stroke="none">
+    <polygon points="290.1,464.0 350.8,464.0 354.2,481.2 286.7,481.2" />
+    <polygon points="409.7,464.0 470.5,464.0 473.8,481.2 406.3,481.2" />
+    <polygon points="529.4,464.0 590.1,464.0 593.5,481.2 526.0,481.2" />
+    <polygon points="283.7,464.0 596.5,464.0 598.5,462.0 281.7,462.0" />
+  </g>
+  <line x1="323.5" y1="464.0" x2="323.5" y2="460.0" stroke="#dc2626" stroke-width="0.5" opacity="0.35"/>
+  <circle cx="323.5" cy="459.0" r="1.0" fill="#dc2626" opacity="0.35"/>
+  <line x1="424.7" y1="464.0" x2="424.7" y2="460.0" stroke="#dc2626" stroke-width="0.5" opacity="0.35"/>
+  <circle cx="424.7" cy="459.0" r="1.0" fill="#dc2626" opacity="0.35"/>
+  <line x1="529.0" y1="464.0" x2="529.0" y2="460.0" stroke="#dc2626" stroke-width="0.5" opacity="0.35"/>
+  <circle cx="529.0" cy="459.0" r="1.0" fill="#dc2626" opacity="0.35"/>
+  <g fill="none" stroke="#7aa0b8">
+    <path d="M0.0,483.2 L17.3,484.7 L34.6,483.0 L51.8,481.8 L69.1,483.8 L86.4,484.6 L103.7,482.4 L121.0,482.1 L138.2,484.3 L155.5,484.2 L172.8,482.0 L190.1,482.6 L207.4,484.6 L224.6,483.7 L241.9,481.8 L259.2,483.1 L276.5,484.7 L293.8,483.1 L311.0,481.8 L328.3,483.7 L345.6,484.6 L362.9,482.5 L380.2,482.0 L397.4,484.2 L414.7,484.3 L432.0,482.1 L449.3,482.5 L466.6,484.6 L483.8,483.8 L501.1,481.8 L518.4,483.0 L535.7,484.7 L553.0,483.2 L570.2,481.8 L587.5,483.6 L604.8,484.7 L622.1,482.6 L639.4,482.0 L656.6,484.1 L673.9,484.4 L691.2,482.1" stroke-width="0.4" opacity="0.3"/>
+  </g>
+  <g stroke="#dc2626" stroke-width="0.9" opacity="0.35">
+    <line x1="6.8" y1="0" x2="6.8" y2="485.67" stroke-dasharray="3,5"/>
+    <line x1="684.4" y1="0" x2="684.4" y2="485.67" stroke-dasharray="3,5"/>
+  </g>
+  <circle cx="676.1" cy="15.1" r="9.4" fill="#dc2626"/>
+</svg>
