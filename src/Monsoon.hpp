@@ -499,9 +499,10 @@ namespace MonsoonIds {
         SEED_OUTPUT,
         RESET_TRIGGER_OUTPUT,
         RUN_GATE_OUTPUT,
-        TIE_OUTPUT,          // New: high on Tie decision
-        LEGATO_OUTPUT,       // New: high on Legato/LegatoMax (not on Rest, Tie)
-        ACCENT_OUTPUT,       // New: high on accented notes
+        TIE_OUTPUT,               // High on Tie decision
+        LEGATO_OUTPUT,            // High on Legato/LegatoMax
+        TIE_OR_LEGATO_OUTPUT,     // High on Tie OR Legato (combined)
+        ACCENT_OUTPUT,            // High when accented
         
         NUM_OUTPUTS
     };

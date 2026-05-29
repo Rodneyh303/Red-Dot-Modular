@@ -81,82 +81,79 @@ void MonsoonWidget::setLightTheme(bool v) {
 MonsoonWidget::MonsoonWidget(Monsoon* module) {
         setModule(module);
         applyTheme();
-        if (box.size.x == 0) box.size = mm2px(Vec(W_MM, 128.5f)); // Fallback if SVG fails
+        if (box.size.x == 0) box.size = mm2px(Vec(W_MM, 128.5f));
 
-        for (int i=0; i<12; ++i) {
-            float cx=7.5f+i*7.0f;
+        // ── 12 semitone sliders: 9mm pitch ───────────────────────────────────
+        for (int i = 0; i < 12; ++i)
             addParam(createLightParamCentered<MonsoonLightSlider<GreenRedLight>>(
-                mm2px(Vec(cx,59.75f)), module, SEMI0_PARAM+i, SEMI_LED_START+2*i));
-        }
+                mm2px(Vec(7.5f + i*9.f, 59.75f)), module, SEMI0_PARAM+i, SEMI_LED_START+2*i));
 
-        addParam(createLightParamCentered<VCVLightSlider<RedLight>>(mm2px(Vec(130.48f,59.75f)), module, MonsoonIds::OCT_LO_PARAM, MonsoonIds::OCT_LO_LED));
-        addParam(createLightParamCentered<VCVLightSlider<RedLight>>(mm2px(Vec(138.48f,59.75f)), module, MonsoonIds::OCT_HI_PARAM, MonsoonIds::OCT_HI_LED));
+        // ── OCT sliders ───────────────────────────────────────────────────────
+        addParam(createLightParamCentered<VCVLightSlider<RedLight>>(
+            mm2px(Vec(119.f, 59.75f)), module, MonsoonIds::OCT_LO_PARAM, MonsoonIds::OCT_LO_LED));
+        addParam(createLightParamCentered<VCVLightSlider<RedLight>>(
+            mm2px(Vec(128.f, 59.75f)), module, MonsoonIds::OCT_HI_PARAM, MonsoonIds::OCT_HI_LED));
 
-        // 16 step lights: Circular ring arrangement near top right
+        // ── 16-step light ring: enlarged, cx=162 cy=30 r=18 ──────────────────
         {
-            const float RCX = 168.48f, RCY = 66.f, RLED = 13.25f;
+            const float RCX=162.f, RCY=30.f, RLED=14.f;
             for (int i = 0; i < 16; ++i) {
-                float ang = float(i) / 16.f * 2.f * M_PI - M_PI / 2.f;
-                float lx = RCX + RLED * std::cos(ang), ly = RCY + RLED * std::sin(ang);
-                if (i % 4 == 0) addChild(createLightCentered<SmallLight<RedLight>>(mm2px(Vec(lx, ly)), module, MonsoonIds::STEP_LIGHTS_START + i));
-                else            addChild(createLightCentered<SmallLight<GreenLight>>(mm2px(Vec(lx, ly)), module, MonsoonIds::STEP_LIGHTS_START + i));
+                float ang = float(i)/16.f * 2.f*M_PI - M_PI/2.f;
+                float lx  = RCX + RLED*std::cos(ang);
+                float ly  = RCY + RLED*std::sin(ang);
+                if (i%4==0) addChild(createLightCentered<SmallLight<RedLight>>(  mm2px(Vec(lx,ly)), module, MonsoonIds::STEP_LIGHTS_START+i));
+                else        addChild(createLightCentered<SmallLight<GreenLight>>(mm2px(Vec(lx,ly)), module, MonsoonIds::STEP_LIGHTS_START+i));
             }
         }
 
-        {
-            const float MX = 198.48f, LX = 193.48f, Y_START = 54.f, v_spacing = 6.5f;
-            // Add a single physical button for cycling modes
-            addParam(createParamCentered<TL1105>(mm2px(Vec(MX, 44.f)), module, MonsoonIds::MODE_PARAM));
-            for (int i = 0; i < 4; ++i) {
-                // Place 4 lights vertically starting below the MODE button
-                addChild(createLightCentered<MediumLight<YellowLight>>(mm2px(Vec(LX, Y_START + i * v_spacing)), module, MonsoonIds::MODE_A_LIGHT + i));
-            }
-        }
+        // ── Mode button + lights: far right ──────────────────────────────────
+        addParam(createParamCentered<TL1105>(mm2px(Vec(197.f, 12.f)), module, MonsoonIds::MODE_PARAM));
+        for (int i = 0; i < 4; ++i)
+            addChild(createLightCentered<MediumLight<YellowLight>>(
+                mm2px(Vec(192.f, 34.f + i*8.f)), module, MonsoonIds::MODE_A_LIGHT+i));
 
-        const float JY=96.f, JYL=102.f,JX=130.48f, JP=12.0f;
-        addParam(createParamCentered<TL1105>(mm2px(Vec( JX,JY)),module,MonsoonIds::DICE_R_PARAM));
-        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec( JX,JYL)),module,MonsoonIds::RHYTHM_DICE_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+JP,JY)),module,MonsoonIds::DICE_M_PARAM));
-        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec( JX+JP,JYL)),module,MonsoonIds::MELODY_DICE_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+2*JP,JY)),module,MonsoonIds::LOCK_PARAM));
-        addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec( JX+2*JP,JYL)),module,MonsoonIds::LOCK_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+3*JP,JY)),module,MonsoonIds::MUTE_PARAM));
-        addChild(createLightCentered<MediumLight<RedLight>>(  mm2px(Vec( JX+3*JP,JYL)),module,MonsoonIds::MUTE_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+4*JP,JY)),module,MonsoonIds::RESET_BUTTON_PARAM));
-        addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec( JX+4*JP,JYL)),module,MonsoonIds::RESET_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec( JX+5*JP,JY)),module,MonsoonIds::RUN_GATE_PARAM));
-        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec( JX+5*JP,JYL)),module,MonsoonIds::RUN_GATE_LIGHT));
+        // ── 6 action buttons: y=87, 15mm pitch ───────────────────────────────
+        const float JY=87.f, JYL=93.f, JX=118.f, JP=15.f;
+        addParam(createParamCentered<TL1105>(mm2px(Vec(JX,      JY)), module, MonsoonIds::DICE_R_PARAM));
+        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(JX,      JYL)), module, MonsoonIds::RHYTHM_DICE_LIGHT));
+        addParam(createParamCentered<TL1105>(mm2px(Vec(JX+JP,   JY)), module, MonsoonIds::DICE_M_PARAM));
+        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(JX+JP,   JYL)), module, MonsoonIds::MELODY_DICE_LIGHT));
+        addParam(createParamCentered<TL1105>(mm2px(Vec(JX+2*JP, JY)), module, MonsoonIds::LOCK_PARAM));
+        addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec(JX+2*JP, JYL)), module, MonsoonIds::LOCK_LIGHT));
+        addParam(createParamCentered<TL1105>(mm2px(Vec(JX+3*JP, JY)), module, MonsoonIds::MUTE_PARAM));
+        addChild(createLightCentered<MediumLight<RedLight>>(  mm2px(Vec(JX+3*JP, JYL)), module, MonsoonIds::MUTE_LIGHT));
+        addParam(createParamCentered<TL1105>(mm2px(Vec(JX+4*JP, JY)), module, MonsoonIds::RESET_BUTTON_PARAM));
+        addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec(JX+4*JP, JYL)), module, MonsoonIds::RESET_LIGHT));
+        addParam(createParamCentered<TL1105>(mm2px(Vec(JX+5*JP, JY)), module, MonsoonIds::RUN_GATE_PARAM));
+        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(JX+5*JP, JYL)), module, MonsoonIds::RUN_GATE_LIGHT));
 
-        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 88.f,112.f)),module,MonsoonIds::RUN_GATE_INPUT));
-        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 98.f,112.f)),module,MonsoonIds::RESET_TRIGGER_INPUT));
-        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec(108.f,112.f)),module,MonsoonIds::SEED_INPUT));
-        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec(118.f,11.f)),module,MonsoonIds::LENGTH_INPUT));
-        // addInput(createInputCentered<PJ301MPort>(mm2px(Vec(128.f,112.f)),module,MonsoonIds::OFFFSET_INPUT));
+        // ── Inputs: 18mm pitch, nudged right to clear edge accent ────────────
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(12.f, 105.f)), module, MonsoonIds::RUN_GATE_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(30.f, 105.f)), module, MonsoonIds::RESET_TRIGGER_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(48.f, 105.f)), module, MonsoonIds::SEED_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(66.f, 105.f)), module, MonsoonIds::LENGTH_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(84.f, 105.f)), module, MonsoonIds::OFFSET_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(12.f, 120.f)), module, MonsoonIds::CLK_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(30.f, 120.f)), module, MonsoonIds::GATE1_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(48.f, 120.f)), module, MonsoonIds::GATE2_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(66.f, 120.f)), module, MonsoonIds::CV1_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(84.f, 120.f)), module, MonsoonIds::CV2_INPUT));
 
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 14.f,105.f)),module,MonsoonIds::RUN_GATE_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 30.f,105.f)),module,MonsoonIds::RESET_TRIGGER_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 46.f,105.f)),module,MonsoonIds::SEED_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(62.f,105.f)),module,MonsoonIds::LENGTH_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec( 78.f,105.f)),module,MonsoonIds::OFFSET_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(106.f,105.f)),module,MonsoonIds::ACCENT_CV_INPUT));
+        // ── Outputs: 18mm pitch ───────────────────────────────────────────────
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(104.f, 105.f)), module, MonsoonIds::GATE_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(122.f, 105.f)), module, MonsoonIds::TIE_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(140.f, 105.f)), module, MonsoonIds::LEGATO_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(158.f, 105.f)), module, MonsoonIds::TIE_OR_LEGATO_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(176.f, 105.f)), module, MonsoonIds::ACCENT_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(104.f, 120.f)), module, MonsoonIds::CV_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(122.f, 120.f)), module, MonsoonIds::SEED_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(140.f, 120.f)), module, MonsoonIds::RUN_GATE_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(158.f, 120.f)), module, MonsoonIds::RESET_TRIGGER_OUTPUT));
 
-        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 14.f,120.5f)),module,MonsoonIds::CLK_INPUT));
-        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 30.f,120.5f)),module,MonsoonIds::GATE1_INPUT));
-        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 46.f,120.5f)),module,MonsoonIds::GATE2_INPUT));
-        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 62.f,120.5f)),module,MonsoonIds::CV1_INPUT));
-        addInput(createInputCentered<PJ301MPort>( mm2px(Vec( 78.f,120.5f)),module,MonsoonIds::CV2_INPUT));
-
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec( 125.48f,120.5f)),module,MonsoonIds::SEED_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec( 141.48f,120.5f)),module,MonsoonIds::RUN_GATE_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec( 157.48f,120.5f)),module,MonsoonIds::RESET_TRIGGER_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec( 173.48f,120.5f)),module,MonsoonIds::GATE_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec( 189.48f,120.5f)),module,MonsoonIds::CV_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec( 173.48f,105.f)),module,MonsoonIds::ACCENT_OUTPUT));
-
-        // Add warning lights for multiple expanders (placed near top-left)
-        addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(EXP_LIGHT_X, EXP_LIGHT_Y)), module, MonsoonIds::SCALE_EXPANDER_LIGHT));
-        addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(EXP_LIGHT_X + EXP_LIGHT_S, EXP_LIGHT_Y)), module, MonsoonIds::DNA_EXPANDER_LIGHT));
-        addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(EXP_LIGHT_X + 2 * EXP_LIGHT_S, EXP_LIGHT_Y)), module, MonsoonIds::POLY_EXPANDER_LIGHT));
+        // ── Expander lights ───────────────────────────────────────────────────
+        addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(EXP_LIGHT_X,              EXP_LIGHT_Y)), module, MonsoonIds::SCALE_EXPANDER_LIGHT));
+        addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(EXP_LIGHT_X+EXP_LIGHT_S,  EXP_LIGHT_Y)), module, MonsoonIds::DNA_EXPANDER_LIGHT));
+        addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(EXP_LIGHT_X+2*EXP_LIGHT_S,EXP_LIGHT_Y)), module, MonsoonIds::POLY_EXPANDER_LIGHT));
     }
 
 void MonsoonWidget::applyTheme() {
@@ -208,25 +205,24 @@ void MonsoonWidget::applyTheme() {
         }
 
         if (lightTheme) {
-            // Light theme: Use dark knobs
-            addParam(createParamCentered<RDM_KnobDarkLarge> (mm2px(Vec(14.f,24.f)),mod,MonsoonIds::NOTE_VALUE_PARAM));
-            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(37.f,24.f)),mod,MonsoonIds::VARIATION_PARAM));
-            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(60.f,24.f)),mod,MonsoonIds::LEGATO_PARAM));
-            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(83.f,24.f)),mod,MonsoonIds::REST_PARAM));
-            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(106.f,24.f)),mod,MonsoonIds::ACCENT_KNOB));
-            addParam(createParamCentered<RDM_KnobSmall>     (mm2px(Vec(140.48f,24.f)),mod,MonsoonIds::BPM_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>     (mm2px(Vec(163.48f,24.f)),mod,MonsoonIds::PATTERN_LENGTH_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>     (mm2px(Vec(186.48f,24.f)),mod,MonsoonIds::PATTERN_OFFSET_PARAM));
+            addParam(createParamCentered<RDM_KnobDarkLarge> (mm2px(Vec(16.f,22.f)), mod, MonsoonIds::NOTE_VALUE_PARAM));
+            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(42.f,22.f)), mod, MonsoonIds::VARIATION_PARAM));
+            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(68.f,22.f)), mod, MonsoonIds::LEGATO_PARAM));
+            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(94.f,22.f)), mod, MonsoonIds::REST_PARAM));
+            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(120.f,22.f)), mod, MonsoonIds::ACCENT_KNOB));
+            // BPM/LEN/OFFSET below ring
+            addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(148.f,58.f)), mod, MonsoonIds::BPM_PARAM));
+            addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(163.f,58.f)), mod, MonsoonIds::PATTERN_LENGTH_PARAM));
+            addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(178.f,58.f)), mod, MonsoonIds::PATTERN_OFFSET_PARAM));
         } else {
-            // Dark theme: Use cream/light knobs
-            addParam(createParamCentered<RDM_KnobCreamMedium> (mm2px(Vec(14.f,24.f)),mod,MonsoonIds::NOTE_VALUE_PARAM));
-            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(37.f,24.f)),mod,MonsoonIds::VARIATION_PARAM));
-            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(60.f,24.f)),mod,MonsoonIds::LEGATO_PARAM));
-            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(83.f,24.f)),mod,MonsoonIds::REST_PARAM));
-            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(106.f,24.f)),mod,MonsoonIds::ACCENT_KNOB));
-            addParam(createParamCentered<RDM_KnobSmall>      (mm2px(Vec(140.48f,24.f)),mod,MonsoonIds::BPM_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>      (mm2px(Vec(163.48f,24.f)),mod,MonsoonIds::PATTERN_LENGTH_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>      (mm2px(Vec(186.48f,24.f)),mod,MonsoonIds::PATTERN_OFFSET_PARAM));
+            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(16.f,22.f)), mod, MonsoonIds::NOTE_VALUE_PARAM));
+            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(42.f,22.f)), mod, MonsoonIds::VARIATION_PARAM));
+            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(68.f,22.f)), mod, MonsoonIds::LEGATO_PARAM));
+            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(94.f,22.f)), mod, MonsoonIds::REST_PARAM));
+            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(120.f,22.f)), mod, MonsoonIds::ACCENT_KNOB));
+            addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(148.f,58.f)), mod, MonsoonIds::BPM_PARAM));
+            addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(163.f,58.f)), mod, MonsoonIds::PATTERN_LENGTH_PARAM));
+            addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(178.f,58.f)), mod, MonsoonIds::PATTERN_OFFSET_PARAM));
         }
     }
 
@@ -257,88 +253,100 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         auto writeNvgText=[&](float x,float y,const char* t){ nvgText(vg,mm2px(x),mm2px(y),t,nullptr); };
         auto setNvgFontSize=[&](float mm){ nvgFontSize(vg,mm2px(mm)); };
 
-        setNvgFontSize(4.2f); fillNvgColour(200,200,200); writeNvgText(W_MM/2.f,5.5f,"Dot Modular  -  Monsoon");
-        setNvgFontSize(3.4f); fillNvgColour(200,200,200); writeNvgText(14,37.5f,"NOTE VALUE"); writeNvgText(37,37.5f,"VARIATION"); writeNvgText(60,37.5f,"LEGATO"); writeNvgText(83,37.5f,"REST"); writeNvgText(106,37.5f,"ACCENT");
+        setNvgFontSize(4.2f); fillNvgColour(200,200,200); writeNvgText(W_MM/2.f, 5.5f, "Dot Modular  -  Monsoon");
+        setNvgFontSize(3.4f); fillNvgColour(200,200,200);
+        writeNvgText(16.f,34.f,"NOTE VALUE"); writeNvgText(42.f,34.f,"VARIATION");
+        writeNvgText(68.f,34.f,"LEGATO");     writeNvgText(94.f,34.f,"REST");
+        writeNvgText(120.f,34.f,"ACCENT");
 
         auto arcLabel = [&](float cx_mm, float cy_mm, float r_mm, float angle_deg, const char* text, int ri=160, int gi=160, int bi=160) {
-            float a  = angle_deg * float(M_PI) / 180.f;
-            float tx = cx_mm + r_mm * std::cos(a);
-            float ty = cy_mm + r_mm * std::sin(a);
-            nvgSave(vg);
-            nvgTranslate(vg, mm2px(tx), mm2px(ty));
-            nvgRotate(vg, a + float(M_PI)/2.f);
-            if (lt) {
-                auto inv=[](int v){ return std::max(0, 220-v); };
-                bool isGrey=(std::abs(ri-gi)<20 && std::abs(gi-bi)<20);
-                if(isGrey){ri=inv(ri);gi=inv(gi);bi=inv(bi);}
-                else{ri=ri*7/10;gi=gi*7/10;bi=bi*7/10;}
-            }
-            nvgFillColor(vg, nvgRGBA(ri,gi,bi,200));
-            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-            nvgText(vg, 0, 0, text, nullptr);
-            nvgRestore(vg);
+            float a=angle_deg*float(M_PI)/180.f, tx=cx_mm+r_mm*std::cos(a), ty=cy_mm+r_mm*std::sin(a);
+            nvgSave(vg); nvgTranslate(vg,mm2px(tx),mm2px(ty)); nvgRotate(vg,a+float(M_PI)/2.f);
+            if(lt){auto inv=[](int v){return std::max(0,220-v);}; bool isGrey=(std::abs(ri-gi)<20&&std::abs(gi-bi)<20); if(isGrey){ri=inv(ri);gi=inv(gi);bi=inv(bi);}else{ri=ri*7/10;gi=gi*7/10;bi=bi*7/10;}}
+            nvgFillColor(vg,nvgRGBA(ri,gi,bi,200)); nvgTextAlign(vg,NVG_ALIGN_CENTER|NVG_ALIGN_MIDDLE);
+            nvgText(vg,0,0,text,nullptr); nvgRestore(vg);
         };
 
         setNvgFontSize(2.5f);
-        {
-            const char* noteLabels[8] = {"1/2","1/4","1/4T","1/8","1/8T","1/16","1/32T","1/32"};
-            for (int i=0;i<8;++i) {
-                float deg = -225.f + i * (270.f/7.f);
-                arcLabel(14.f, 26.f, 12.5f, deg, noteLabels[i], 150,150,135);
-            }
-        }
+        { const char* n[8]={"1/2","1/4","1/4T","1/8","1/8T","1/16","1/32T","1/32"};
+          for(int i=0;i<8;++i) arcLabel(16.f,22.f,13.5f,-225.f+i*(270.f/7.f),n[i],150,150,135); }
         setNvgFontSize(2.8f);
-        arcLabel(37.f, 26.f, 12.5f, -225.f, "LONGER",  130,130,120); arcLabel(37.f, 26.f, 12.5f,  +45.f, "SHORTER", 130,130,120);
-        arcLabel(60.f, 26.f, 12.0f, -225.f, "0%",   130,130,120); arcLabel(60.f, 26.f, 12.0f,  +45.f, "100%", 130,130,120);
-        arcLabel(83.f, 26.f, 12.0f, -225.f, "0%",   130,130,120); arcLabel(83.f, 26.f, 12.0f,  +45.f, "100%", 130,130,120);
-        arcLabel(106.f, 26.f, 12.0f, -225.f, "0%",   130,130,120); arcLabel(106.f, 26.f, 12.0f,  +45.f, "100%", 130,130,120);
-        setNvgFontSize(3.2f); fillNvgColour(170,170,170); writeNvgText(140.48f,37.5f,"BPM"); writeNvgText(163.48f,37.5f,"LEN"); writeNvgText(186.48f,37.5f,"OFFSET");
+        arcLabel(42.f,22.f,13.f,-225.f,"LONGER",130,130,120); arcLabel(42.f,22.f,13.f,45.f,"SHORTER",130,130,120);
+        arcLabel(68.f,22.f,12.f,-225.f,"0%",130,130,120);     arcLabel(68.f,22.f,12.f,45.f,"100%",130,130,120);
+        arcLabel(94.f,22.f,12.f,-225.f,"0%",130,130,120);     arcLabel(94.f,22.f,12.f,45.f,"100%",130,130,120);
+        arcLabel(120.f,22.f,12.f,-225.f,"0%",130,130,120);     arcLabel(120.f,22.f,12.f,45.f,"100%",130,130,120);
 
-        setNvgFontSize(2.5f); fillNvgColour(80,80,80); nvgTextAlign(vg,NVG_ALIGN_LEFT|NVG_ALIGN_MIDDLE);
-        //nvgText(vg,mm2px(4.5f),mm2px(43.f),"SEMITONE PROBABILITY",nullptr); nvgText(vg,mm2px(94.f),mm2px(43.f),"OCT",nullptr);
-        nvgTextAlign(vg,NVG_ALIGN_CENTER|NVG_ALIGN_MIDDLE);
+        // Seq knob labels (below ring)
+        setNvgFontSize(3.2f); fillNvgColour(170,170,170);
+        writeNvgText(148.f,70.f,"BPM"); writeNvgText(163.f,70.f,"LEN"); writeNvgText(178.f,70.f,"OFFSET");
 
-        setNvgFontSize(3.0f); const char* sn[12]={"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
-        for (int i=0;i<12;++i){ fillNvgColour(200,200,200); writeNvgText(7.5f+i*7.f,43.f,sn[i]); }
-        setNvgFontSize(2.7f); fillNvgColour(85,85,85); const char* nums[12]={"1","2","3","4","5","6","7","8","9","10","11","12"};
-        for (int i=0;i<12;++i) writeNvgText(7.5f+i*7.f,SL_TOP+SLH+6.f,nums[i]);
-        setNvgFontSize(2.9f); fillNvgColour(38,166,154); writeNvgText(130.48f,43.f,"LO"); writeNvgText(138.48f,43.f,"HI");
+        // Semitone note labels
+        setNvgFontSize(3.0f);
+        const char* sn[12]={"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
+        for(int i=0;i<12;++i){ fillNvgColour(200,200,200); writeNvgText(7.5f+i*9.f,43.f,sn[i]); }
+        setNvgFontSize(2.7f); fillNvgColour(85,85,85);
+        const char* nums[12]={"1","2","3","4","5","6","7","8","9","10","11","12"};
+        for(int i=0;i<12;++i) writeNvgText(7.5f+i*9.f,SL_TOP+SLH+6.f,nums[i]);
+        setNvgFontSize(2.9f); fillNvgColour(38,166,154);
+        writeNvgText(119.f,43.f,"LO"); writeNvgText(128.f,43.f,"HI");
 
-        // Mode Section: Label on top, Button below (at 34), then vertical A-D stack
-        setNvgFontSize(3.2f); fillNvgColour(210,210,210); writeNvgText(198.48f, 30.f, "MODE");
-        setNvgFontSize(3.8f); 
-        const float TX = 198.48f, Y_START_VAL = 54.f, v_spacing_val = 6.5f;
-        writeNvgText(TX, Y_START_VAL, "A"); 
-        writeNvgText(TX, Y_START_VAL + v_spacing_val, "B"); 
+        // ── Slider tick marks: parallel horizontal lines per slider (meloDICER style) ──
+        // 9 tick levels in the slider travel range, alternating long/short
+        // Travel: SL_TOP=45mm to SL_TOP+SLH=74.5mm → 29.5mm / 8 intervals = 3.69mm each
+        {
+            const float SL_BOT = SL_TOP + SLH;
+            const int   N_TICKS = 9;
+            const float tickXs[14] = {7.5f,16.5f,25.5f,34.5f,43.5f,52.5f,61.5f,70.5f,79.5f,88.5f,97.5f,106.5f,119.f,128.f};
+            nvgBeginPath(vg);
+            for (int t = 0; t < N_TICKS; ++t) {
+                float ty   = mm2px(SL_TOP + t*(SL_BOT-SL_TOP)/(N_TICKS-1));
+                bool  major = (t==0 || t==4 || t==8);
+                float hw   = mm2px(major ? 2.2f : 1.4f);
+                for (int i = 0; i < 14; ++i) {
+                    float cx = mm2px(tickXs[i]);
+                    nvgMoveTo(vg, cx - hw, ty);
+                    nvgLineTo(vg, cx + hw, ty);
+                }
+            }
+            nvgStrokeWidth(vg, 0.6f);
+            if (lt) nvgStrokeColor(vg, nvgRGBA(140,140,140,90));
+            else    nvgStrokeColor(vg, nvgRGBA(180,180,180,55));
+            nvgStroke(vg);
+        }
 
-        // Add labels for the new warning lights
-        setNvgFontSize(2.0f); fillNvgColour(200, 200, 200);
-        const float warningLabelY = EXP_LIGHT_Y + 3.0f; // Below the lights
-        writeNvgText(EXP_LIGHT_X, warningLabelY, "S"); // Scale Expander
-        writeNvgText(EXP_LIGHT_X + EXP_LIGHT_S, warningLabelY, "D"); // DNA Expander
-        writeNvgText(EXP_LIGHT_X + 2 * EXP_LIGHT_S, warningLabelY, "P"); // PolyVoice Expander
-        writeNvgText(TX, Y_START_VAL + 2 * v_spacing_val, "C"); 
-        writeNvgText(TX, Y_START_VAL + 3 * v_spacing_val, "D");
+        // Mode
+        setNvgFontSize(3.2f); fillNvgColour(210,210,210); writeNvgText(197.f,5.f,"MODE");
+        setNvgFontSize(3.8f);
+        const float LX=192.f, LY0=34.f, LDY=8.f;
+        writeNvgText(LX,LY0,"A"); writeNvgText(LX,LY0+LDY,"B");
+        writeNvgText(LX,LY0+2*LDY,"C"); writeNvgText(LX,LY0+3*LDY,"D");
 
-        const float JY=109.f,JX=130.48f, JP=12.0f;
-        setNvgFontSize(2.9f); fillNvgColour(200,60,60);  writeNvgText(JX,JY,"DICE R"); writeNvgText(JX+JP,JY,"DICE M");
-        fillNvgColour(190,190,190); writeNvgText(JX+2*JP,JY,"LOCK"); writeNvgText(JX+3*JP,JY,"MUTE"); writeNvgText(JX+4*JP,JY,"RESET"); writeNvgText(JX+5*JP,JY,"RUN");
-        //L(JX+2*JP,JY,"RESET"); L(JX+5*JP,JY,"RUN");
+        // Expander lights
+        setNvgFontSize(2.0f); fillNvgColour(200,200,200);
+        writeNvgText(EXP_LIGHT_X,            EXP_LIGHT_Y+3.f,"S");
+        writeNvgText(EXP_LIGHT_X+EXP_LIGHT_S,EXP_LIGHT_Y+3.f,"D");
+        writeNvgText(EXP_LIGHT_X+2*EXP_LIGHT_S,EXP_LIGHT_Y+3.f,"P");
 
-        const float JY3=120.5f,PR=7.7f/2.f; setNvgFontSize(3.0f); fillNvgColour(195,195,195);
-        const char* il[5]={"CLK","G1","G2","CV1","CV2"}; const float ix[6]={14,30,46,62,78,106};
-        for(int i=0;i<5;++i) writeNvgText(ix[i],JY3-PR-2.2f,il[i]);
-        const char* sl[6] = {"RUN", "RST", "SEED", "LEN", "OFF", "ACC"};
-        for(int i=0;i<6;++i) writeNvgText(ix[i],102.f-PR-1.8f,sl[i]);
+        // Buttons
+        { const float BX=118.f,BP=15.f,BY=87.f;
+          setNvgFontSize(2.7f); fillNvgColour(200,60,60);
+          writeNvgText(BX,BY+6.5f,"DICE R"); writeNvgText(BX+BP,BY+6.5f,"DICE M");
+          fillNvgColour(190,190,190);
+          writeNvgText(BX+2*BP,BY+6.5f,"LOCK"); writeNvgText(BX+3*BP,BY+6.5f,"MUTE");
+          writeNvgText(BX+4*BP,BY+6.5f,"RESET"); writeNvgText(BX+5*BP,BY+6.5f,"RUN"); }
 
-
-        setNvgFontSize(2.7f); fillNvgColour(180,180,180); const char* ol[5]={"SEED","RUN","RST","GATE","CV"};
-        const float ox[5]={125.48f,141.48f,157.48f,173.48f,189.48f};
-        for(int i=0;i<5;++i) writeNvgText(ox[i],JY3-PR-2.2f,ol[i]);
-        setNvgFontSize(2.3f); fillNvgColour(80,80,80); nvgTextAlign(vg,NVG_ALIGN_LEFT|NVG_ALIGN_MIDDLE);
-        // const char* sl[5] = {"RUN", "RST", "SEED", "LEN", "OFF"};
-        // const float sx[5] = {88.f, 98.f, 108.f, 118.f, 128.f};
-        // for(int i=0;i<5;++i) L(sx[i],116.f-PR-1.8f,sl[i]);
+        // Jack labels
+        const float PR=7.7f/2.f;
+        setNvgFontSize(2.7f); fillNvgColour(195,195,195);
+        { const char* l[5]={"RUN","RST","SEED","LEN","OFF"}; const float x[5]={12,30,48,66,84};
+          for(int i=0;i<5;++i) writeNvgText(x[i],105.f-PR-2.2f,l[i]); }
+        { const char* l[5]={"CLK","G1","G2","CV1","CV2"}; const float x[5]={12,30,48,66,84};
+          for(int i=0;i<5;++i) writeNvgText(x[i],120.f-PR-2.2f,l[i]); }
+        fillNvgColour(180,180,180);
+        { const char* l[5]={"GATE","TIE","LEG","T|L","ACC"}; const float x[5]={104,122,140,158,176};
+          for(int i=0;i<5;++i) writeNvgText(x[i],105.f-PR-2.2f,l[i]); }
+        { const char* l[4]={"CV","SEED","RUN","RST"}; const float x[4]={104,122,140,158};
+          for(int i=0;i<4;++i) writeNvgText(x[i],120.f-PR-2.2f,l[i]); }
     }
 
 void MonsoonWidget::appendContextMenu(ui::Menu* menu) {

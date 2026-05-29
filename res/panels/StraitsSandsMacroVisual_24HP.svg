@@ -4,13 +4,13 @@
     <linearGradient id="mbsG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%"   stop-color="#1e2535" stop-opacity="0.0"/><stop offset="45%"  stop-color="#1e2535" stop-opacity="0.55"/><stop offset="100%" stop-color="#1e2535" stop-opacity="0.80"/></linearGradient>
   </defs>
   <rect width="460.8" height="485.67" fill="url(#grain)"/>
-  <rect x="0" y="0" width="6.8" height="485.67" fill="#d4af37" opacity="0.85"/>
+  <rect x="0" y="0" width="6.8" height="485.67" fill="#dc2626" opacity="0.85"/>
   <rect x="0" y="0" width="460.8" height="52.9" fill="#0e1018" opacity="0.90"/>
-  <text x="230.4" y="22.7" font-size="14.4" font-family="monospace" text-anchor="middle" fill="#e4e4e7" font-weight="bold">SANDS MONO</text>
-  <text x="230.4" y="41.6" font-size="10.6" font-family="monospace" text-anchor="middle" fill="#555">Voice 1 · 6 lanes</text>
-  <line x1="7.6" y1="52.9" x2="453.2" y2="52.9" stroke="#d4af37" stroke-width="0.8" opacity="0.60"/>
+  <text x="230.4" y="22.7" font-size="14.4" font-family="monospace" text-anchor="middle" fill="#e4e4e7" font-weight="bold">SANDS MACRO</text>
+  <text x="230.4" y="41.6" font-size="10.6" font-family="monospace" text-anchor="middle" fill="#555">Global · all voices</text>
+  <line x1="7.6" y1="52.9" x2="453.2" y2="52.9" stroke="#dc2626" stroke-width="0.8" opacity="0.60"/>
   <!-- Bottom margin: MBS silhouette -->
-  <line x1="0" y1="466.6" x2="460.8" y2="466.6" stroke="#d4af37" stroke-width="0.6" opacity="0.30"/>
+  <line x1="0" y1="466.6" x2="460.8" y2="466.6" stroke="#dc2626" stroke-width="0.6" opacity="0.30"/>
   <g fill="url(#mbsG)" stroke="none">
     <polygon points="86.6,428.1 152.3,428.1 155.9,464.6 82.9,464.6"/>
     <polygon points="216.0,428.1 281.7,428.1 285.3,464.6 212.3,464.6"/>
