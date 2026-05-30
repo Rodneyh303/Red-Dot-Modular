@@ -5,6 +5,7 @@
 #include "ui/SandsVisualEditorV4.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
 #include "managers/MonoSandsParameterManager.hpp"
+#include "managers/SpreadManager.hpp"
 
 using namespace rack;
 using namespace redDot;
@@ -66,37 +67,43 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         Monsoon* monsoon = getMonsoon();
         if (!monsoon) return;
 
+        auto* mod = static_cast<MonsoonSandsVisualExpander*>(module);
+
         PatternEngine* pe = &monsoon->engine.pe;
         if (paramMgr->patternEngine != pe)
-            paramMgr->patternEngine = pe;
+            paramMgr->setPatternEngine(pe);   // updates both patternEngine + spreadMgr.patternEngine
 
         // ── One-time initialisation from saved params ─────────────────────
-        if (!initialized && module) {
+        if (!initialized) {
             for (int l = 0; l < 6; ++l) {
-                visualEditor->currentState.lanes[l].length   = (int)std::round(module->params[lenId(l)].getValue());
-                visualEditor->currentState.lanes[l].offset   = (int)std::round(module->params[offId(l)].getValue());
-                visualEditor->currentState.lanes[l].rotation = (int)std::round(module->params[rotId(l)].getValue());
+                visualEditor->currentState.lanes[l].length   = (int)std::round(mod->params[lenId(l)].getValue());
+                visualEditor->currentState.lanes[l].offset   = (int)std::round(mod->params[offId(l)].getValue());
+                visualEditor->currentState.lanes[l].rotation = (int)std::round(mod->params[rotId(l)].getValue());
+                mod->spreadEffective[l] = mod->params[sprId(l)].getValue();
             }
             initialized = true;
         }
 
-        // ── Editor → params (UI thread writes OUR OWN params) ────────────
+        // ── Editor → params (UI thread, own params) ───────────────────────
         for (int l = 0; l < 6; ++l) {
             const auto& lane = visualEditor->currentState.lanes[l];
-            module->params[lenId(l)].setValue((float)lane.length);
-            module->params[offId(l)].setValue((float)lane.offset);
-            module->params[rotId(l)].setValue((float)lane.rotation);
-            // Spread display trimpot (sprId) written from drag — no separate display
+            mod->params[lenId(l)].setValue((float)lane.length);
+            mod->params[offId(l)].setValue((float)lane.offset);
+            mod->params[rotId(l)].setValue((float)lane.rotation);
         }
 
-        // CV applied at control rate in Monsoon::process() — base + cv*atten*scale.
-        // Spread (SPR jack, param 3) base lives in sprId(lane) param.
-        // Effective spread = clamp(base + cv*atten, 0, 1) read in processDNA.
+        // ── SpreadManager: feed effective spread (CV-modified at control rate) ──
+        // spreadEffective[] is written by processDNA from sprId base + cv*atten.
+        // No CV connected → spreadEffective[l] == sprId(l) base param (initialised above).
+        for (int l = 0; l < 6; ++l)
+            paramMgr->spreadMgr.setSpread(0, l, mod->spreadEffective[l]);
 
-        // ── Sync PatternEngine draws → display ─────────────────────────────
+        paramMgr->spreadMgr.setInterpolationTarget(SpreadManager::AVERAGE_POLY);
+
+        // ── Sync PatternEngine → display (uses SpreadManager.getInterpolatedValue) ──
         paramMgr->syncPatternEngineToEditor(visualEditor->currentState);
 
-        // ── Per-lane playhead using our own L/O/R ─────────────────────────
+        // ── Per-lane playhead ─────────────────────────────────────────────
         int globalStep = monsoon->engine.stepIndex;
         for (int l = 0; l < 6; ++l) {
             const auto& lane = visualEditor->currentState.lanes[l];

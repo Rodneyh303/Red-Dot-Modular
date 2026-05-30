@@ -66,14 +66,11 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 baseLen = applyMonoCV(baseLen, cvRow, 0, 1.f, 16.f);
                 baseOff = applyMonoCV(baseOff, cvRow, 1, 0.f, 15.f);
                 baseRot = applyMonoCV(baseRot, cvRow, 2, 0.f, 15.f);
-                // Spread CV (param 3): compute effective spread and apply
-                // via SpreadManager if available, else store for display only
-                if (monoVis) {
-                    float baseSpr = monoVis->params[sprId(cvRow)].getValue();
-                    baseSpr = applyMonoCV(baseSpr, cvRow, 3, 0.f, 1.f);
-                    // Store effective back for SpreadManager hookup
-                    monoVis->params[sprId(cvRow)].setValue(baseSpr);
-                }
+                // Spread: compute effective, write to spreadEffective[lane].
+                // Widget reads spreadEffective[] → SpreadManager.setSpread().
+                // No write-back to sprId param — base is always preserved.
+                float baseSpr = monoVis->params[sprId(cvRow)].getValue();
+                monoVis->spreadEffective[cvRow] = applyMonoCV(baseSpr, cvRow, 3, 0.f, 1.f);
             }
 
             tLen = clamp((int)std::round(baseLen), 1, 16);
@@ -84,6 +81,11 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         // Mono cvRow = lane index (0-5), one row per lane, 4 params per row
         // Lane 0=REST(rhythm), 1=VAR(variation), 2=LEG(legato),
         //      3=ACC(accent),   4=MEL(melody),    5=OCT(octave)
+        // Initialise spreadEffective from base params (CV overrides below)
+        if (hasVisual) {
+            for (int l = 0; l < 6; ++l)
+                monoVis->spreadEffective[l] = monoVis->params[sprId(l)].getValue();
+        }
         readStrand(lenId(0),offId(0),rotId(0), DNA_R_LEN_PARAM,DNA_R_LEN_INPUT,DNA_R_OFF_PARAM,DNA_R_OFF_INPUT,DNA_R_ROT_PARAM, 0, engine.rhythmLen,    engine.rhythmOff,    engine.rhythmRot);
         readStrand(lenId(1),offId(1),rotId(1), DNA_V_LEN_PARAM,DNA_V_LEN_INPUT,DNA_V_OFF_PARAM,DNA_V_OFF_INPUT,DNA_V_ROT_PARAM, 1, engine.variationLen, engine.variationOff, engine.variationRot);
         readStrand(lenId(2),offId(2),rotId(2), DNA_L_LEN_PARAM,DNA_L_LEN_INPUT,DNA_L_OFF_PARAM,DNA_L_OFF_INPUT,DNA_L_ROT_PARAM, 2, engine.legatoLen,    engine.legatoOff,    engine.legatoRot);
