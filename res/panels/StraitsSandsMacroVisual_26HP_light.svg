@@ -1,14 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="691.19" height="485.67" viewBox="0 0 691.19 485.67">
+<svg xmlns="http://www.w3.org/2000/svg" width="499.2" height="485.67" viewBox="0 0 499.2 485.67">
   <defs>
-    <pattern id="g" x="0" y="0" width="691.19" height="2" patternUnits="userSpaceOnUse"><rect width="691.19" height="2" fill="#f7f7f7"/><rect y="1" width="691.19" height="0.6" fill="#cccccc" opacity="0.28"/></pattern>
+    <pattern id="g" x="0" y="0" width="499.2" height="2" patternUnits="userSpaceOnUse"><rect width="499.2" height="2" fill="#f7f7f7"/><rect y="1" width="499.2" height="0.6" fill="#cccccc" opacity="0.28"/></pattern>
     <linearGradient id="mbsG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#b8c0cc" stop-opacity="0.0"/><stop offset="50%" stop-color="#b8c0cc" stop-opacity="0.55"/><stop offset="100%" stop-color="#b8c0cc" stop-opacity="0.82"/></linearGradient>
   </defs>
-  <rect width="691.19" height="485.67" fill="url(#g)"/>
-  <rect x="0" y="0" width="6.8" height="485.67" fill="#26a69a" opacity="0.85"/>
-  <rect x="0" y="0" width="691.19" height="45.4" fill="#e8e8e8" opacity="0.92"/>
-  <text x="345.6" y="18.9" font-size="13.2" font-family="monospace" text-anchor="middle" fill="#222" font-weight="bold">SANDS EAST  V2–8</text>
-  <text x="345.6" y="35.9" font-size="9.1" font-family="monospace" text-anchor="middle" fill="#888">2×6 poly CV: REST/MEL/OCT × LEN+OFF / ROT+SPR</text>
-  <line x1="7.6" y1="45.4" x2="683.6" y2="45.4" stroke="#26a69a" stroke-width="0.8" opacity="0.55"/>
+  <rect width="499.2" height="485.67" fill="url(#g)"/>
+  <rect x="0" y="0" width="6.8" height="485.67" fill="#dc2626" opacity="0.85"/>
+  <rect x="0" y="0" width="499.2" height="45.4" fill="#e8e8e8" opacity="0.92"/>
+  <text x="249.6" y="18.9" font-size="13.2" font-family="monospace" text-anchor="middle" fill="#222" font-weight="bold">SANDS MACRO</text>
+  <text x="249.6" y="35.9" font-size="9.1" font-family="monospace" text-anchor="middle" fill="#888">Global · 12 mono CV inputs</text>
+  <line x1="7.6" y1="45.4" x2="491.6" y2="45.4" stroke="#dc2626" stroke-width="0.8" opacity="0.55"/>
   <text x="30.2" y="51.0" font-size="8.3" font-family="monospace" text-anchor="middle" fill="#888" opacity="0.60">J1</text>
   <text x="68.0" y="51.0" font-size="8.3" font-family="monospace" text-anchor="middle" fill="#888" opacity="0.60">J2</text>
   <text x="113.4" y="51.0" font-size="8.3" font-family="monospace" text-anchor="middle" fill="#888" opacity="0.60">A1</text>
@@ -59,33 +59,25 @@
   <text x="170.1" y="423.3" font-size="7.9" font-family="monospace" text-anchor="end" fill="#4a90d9" opacity="0.60">OCT ROT</text>
   <text x="170.1" y="436.5" font-size="7.9" font-family="monospace" text-anchor="end" fill="#4a90d9" opacity="0.50">OCT SPR</text>
   <line x1="170.1" y1="45.4" x2="170.1" y2="485.7" stroke="#bbb" stroke-width="0.6" opacity="0.50"/>
-  <rect x="173.9" y="68.0" width="502.2" height="393.1" fill="#f0f0f0" opacity="0.55" rx="1"/>
-  <rect x="173.9" y="30.2" width="502.2" height="34.0" fill="#e0e0e0" opacity="0.50" rx="1"/>
-  <text x="209.7" y="47.2" font-size="9.1" font-family="monospace" text-anchor="middle" fill="#26a69a" opacity="0.70">V2</text>
-  <text x="281.5" y="47.2" font-size="9.1" font-family="monospace" text-anchor="middle" fill="#26a69a" opacity="0.70">V3</text>
-  <text x="353.2" y="47.2" font-size="9.1" font-family="monospace" text-anchor="middle" fill="#26a69a" opacity="0.70">V4</text>
-  <text x="425.0" y="47.2" font-size="9.1" font-family="monospace" text-anchor="middle" fill="#26a69a" opacity="0.70">V5</text>
-  <text x="496.7" y="47.2" font-size="9.1" font-family="monospace" text-anchor="middle" fill="#26a69a" opacity="0.70">V6</text>
-  <text x="568.5" y="47.2" font-size="9.1" font-family="monospace" text-anchor="middle" fill="#26a69a" opacity="0.70">V7</text>
-  <text x="640.2" y="47.2" font-size="9.1" font-family="monospace" text-anchor="middle" fill="#26a69a" opacity="0.70">V8</text>
+  <rect x="173.9" y="60.5" width="310.2" height="400.6" fill="#f0f0f0" opacity="0.55" rx="1"/>
   <g fill="url(#mbsG)" stroke="none">
-    <polygon points="265.3,464.0 330.0,464.0 333.6,481.2 261.8,481.2" />
-    <polygon points="392.7,464.0 457.3,464.0 460.9,481.2 389.1,481.2" />
-    <polygon points="520.0,464.0 584.6,464.0 588.2,481.2 516.4,481.2" />
-    <polygon points="258.8,464.0 591.2,464.0 593.2,462.0 256.8,462.0" />
+    <polygon points="215.2,464.0 261.3,464.0 263.8,481.2 212.6,481.2" />
+    <polygon points="305.9,464.0 352.0,464.0 354.6,481.2 303.4,481.2" />
+    <polygon points="396.7,464.0 442.7,464.0 445.3,481.2 394.1,481.2" />
+    <polygon points="209.6,464.0 448.3,464.0 450.3,462.0 207.6,462.0" />
   </g>
-  <line x1="300.9" y1="464.0" x2="300.9" y2="460.0" stroke="#dc2626" stroke-width="0.5" opacity="0.35"/>
-  <circle cx="300.9" cy="459.0" r="1.0" fill="#dc2626" opacity="0.35"/>
-  <line x1="408.6" y1="464.0" x2="408.6" y2="460.0" stroke="#dc2626" stroke-width="0.5" opacity="0.35"/>
-  <circle cx="408.6" cy="459.0" r="1.0" fill="#dc2626" opacity="0.35"/>
-  <line x1="519.6" y1="464.0" x2="519.6" y2="460.0" stroke="#dc2626" stroke-width="0.5" opacity="0.35"/>
-  <circle cx="519.6" cy="459.0" r="1.0" fill="#dc2626" opacity="0.35"/>
+  <line x1="240.6" y1="464.0" x2="240.6" y2="460.0" stroke="#dc2626" stroke-width="0.5" opacity="0.35"/>
+  <circle cx="240.6" cy="459.0" r="1.0" fill="#dc2626" opacity="0.35"/>
+  <line x1="317.3" y1="464.0" x2="317.3" y2="460.0" stroke="#dc2626" stroke-width="0.5" opacity="0.35"/>
+  <circle cx="317.3" cy="459.0" r="1.0" fill="#dc2626" opacity="0.35"/>
+  <line x1="396.4" y1="464.0" x2="396.4" y2="460.0" stroke="#dc2626" stroke-width="0.5" opacity="0.35"/>
+  <circle cx="396.4" cy="459.0" r="1.0" fill="#dc2626" opacity="0.35"/>
   <g fill="none" stroke="#7aa0b8">
-    <path d="M0.0,483.2 L17.3,484.7 L34.6,483.0 L51.8,481.8 L69.1,483.8 L86.4,484.6 L103.7,482.4 L121.0,482.1 L138.2,484.3 L155.5,484.2 L172.8,482.0 L190.1,482.6 L207.4,484.6 L224.6,483.7 L241.9,481.8 L259.2,483.1 L276.5,484.7 L293.8,483.1 L311.0,481.8 L328.3,483.7 L345.6,484.6 L362.9,482.5 L380.2,482.0 L397.4,484.2 L414.7,484.3 L432.0,482.1 L449.3,482.5 L466.6,484.6 L483.8,483.8 L501.1,481.8 L518.4,483.0 L535.7,484.7 L553.0,483.2 L570.2,481.8 L587.5,483.6 L604.8,484.7 L622.1,482.6 L639.4,482.0 L656.6,484.1 L673.9,484.4 L691.2,482.1" stroke-width="0.4" opacity="0.3"/>
+    <path d="M0.0,483.2 L12.5,484.6 L25.0,484.2 L37.4,482.6 L49.9,481.8 L62.4,482.9 L74.9,484.5 L87.4,484.5 L99.8,482.9 L112.3,481.8 L124.8,482.5 L137.3,484.2 L149.8,484.7 L162.2,483.3 L174.7,481.9 L187.2,482.2 L199.7,483.9 L212.2,484.7 L224.6,483.7 L237.1,482.0 L249.6,482.0 L262.1,483.5 L274.6,484.7 L287.0,484.0 L299.5,482.3 L312.0,481.8 L324.5,483.2 L337.0,484.6 L349.4,484.3 L361.9,482.6 L374.4,481.8 L386.9,482.8 L399.4,484.4 L411.8,484.5 L424.3,483.0 L436.8,481.8 L449.3,482.5 L461.8,484.2 L474.2,484.7 L486.7,483.4 L499.2,481.9" stroke-width="0.4" opacity="0.3"/>
   </g>
   <g stroke="#dc2626" stroke-width="0.9" opacity="0.35">
     <line x1="6.8" y1="0" x2="6.8" y2="485.67" stroke-dasharray="3,5"/>
-    <line x1="684.4" y1="0" x2="684.4" y2="485.67" stroke-dasharray="3,5"/>
+    <line x1="492.4" y1="0" x2="492.4" y2="485.67" stroke-dasharray="3,5"/>
   </g>
-  <circle cx="676.1" cy="15.1" r="9.4" fill="#dc2626"/>
+  <circle cx="484.1" cy="15.1" r="9.4" fill="#dc2626"/>
 </svg>

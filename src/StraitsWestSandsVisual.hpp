@@ -8,6 +8,8 @@ using namespace MonsoonIds;
 
 namespace StraitsWestVisualIds {
     static constexpr float W_MM = 182.88f;
+    // West uses East's layout constants for editor position
+    using E = StraitsEastVisualIds;
 
     enum SpreadParamId {
         SPREAD_R = 0, SPREAD_M, SPREAD_O,

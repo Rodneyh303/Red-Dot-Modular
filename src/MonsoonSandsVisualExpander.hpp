@@ -57,6 +57,11 @@ namespace SandsMonoVisualIds {
 }
 
 struct MonsoonSandsVisualExpander : Module {
+    // Effective spread per lane — written by processDNA at control rate,
+    // read by widget at UI rate. Same cross-thread pattern as Rack params.
+    // Base spread lives in sprId(lane) params (set by trimpot, never mutated by CV).
+    float spreadEffective[6] = {};
+
     MonsoonSandsVisualExpander() {
         using namespace SandsMonoVisualIds;
         config(NUM_PARAMS, NUM_INPUTS, 0, 0);

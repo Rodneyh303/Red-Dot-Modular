@@ -47,19 +47,22 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         tabGroup->box.size.x = mm2px(ED_W);
         addChild(tabGroup);
 
-        // Visual editor — wider now left section is 2 cols
+        // Visual editor
         visualEditor = new SandsVisualEditorV4(SandsVisualEditorV4::POLY);
         visualEditor->box.pos  = mm2px(Vec(ED_X, ED_Y));
         visualEditor->box.size = mm2px(Vec(ED_W, ROW_BOT - ED_Y));
         addChild(visualEditor);
 
-        // 12 rows: jack (outer) + atten (inner)
+        // ── 4 cols × 6 rows: jack1, jack2, atten1, atten2 ────────────────
+        // Row r: lane=r/2  sub=r%2
+        //   sub=0: LEN(col1) + OFF(col2)
+        //   sub=1: ROT(col1) + SPR(col2)
         for (int r = 0; r < N_ROWS; ++r) {
             float y = rowY(r);
-            addInput(createInputCentered<PJ301MPort>(
-                mm2px(Vec(COL_JACK,  y)), mod, CV_0 + r));
-            addParam(createParamCentered<Trimpot>(
-                mm2px(Vec(COL_ATTEN, y)), mod, ATTEN_0 + r));
+            addInput(createInputCentered<PJ301MPort>(mm2px(Vec(COL_J1, y)), mod, cvId(r,0)));
+            addInput(createInputCentered<PJ301MPort>(mm2px(Vec(COL_J2, y)), mod, cvId(r,1)));
+            addParam(createParamCentered<Trimpot>(   mm2px(Vec(COL_A1, y)), mod, attenId(r,0)));
+            addParam(createParamCentered<Trimpot>(   mm2px(Vec(COL_A2, y)), mod, attenId(r,1)));
         }
 
         paramMgr = new PolyVoiceSandsParameterManager(nullptr, nullptr, 7, 0);
