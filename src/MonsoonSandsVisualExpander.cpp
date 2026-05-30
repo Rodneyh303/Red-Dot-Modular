@@ -90,6 +90,8 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         }
 
         // CV applied at control rate in Monsoon::process() — base + cv*atten*scale.
+        // Spread (SPR jack, param 3) base lives in sprId(lane) param.
+        // Effective spread = clamp(base + cv*atten, 0, 1) read in processDNA.
 
         // ── Sync PatternEngine draws → display ─────────────────────────────
         paramMgr->syncPatternEngineToEditor(visualEditor->currentState);

@@ -66,7 +66,14 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 baseLen = applyMonoCV(baseLen, cvRow, 0, 1.f, 16.f);
                 baseOff = applyMonoCV(baseOff, cvRow, 1, 0.f, 15.f);
                 baseRot = applyMonoCV(baseRot, cvRow, 2, 0.f, 15.f);
-                // param 3=SPR handled separately via SpreadManager
+                // Spread CV (param 3): compute effective spread and apply
+                // via SpreadManager if available, else store for display only
+                if (monoVis) {
+                    float baseSpr = monoVis->params[sprId(cvRow)].getValue();
+                    baseSpr = applyMonoCV(baseSpr, cvRow, 3, 0.f, 1.f);
+                    // Store effective back for SpreadManager hookup
+                    monoVis->params[sprId(cvRow)].setValue(baseSpr);
+                }
             }
 
             tLen = clamp((int)std::round(baseLen), 1, 16);
@@ -118,7 +125,11 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             bLen = applyMacroCV(bLen, lane, 0, 1.f, 16.f);
             bOff = applyMacroCV(bOff, lane, 1, 0.f, 15.f);
             bRot = applyMacroCV(bRot, lane, 2, 0.f, 15.f);
-            // param 3=SPR handled via SpreadManager
+            // Spread CV (param 3): effective value written to SPREAD_REST/MEL/OCT
+            // which the Macro widget reads for SpreadManager.setSpread()
+            float bSpr = macroVis->params[StraitsMacroVisualIds::sprId(lane)].getValue();
+            bSpr = applyMacroCV(bSpr, lane, 3, 0.f, 1.f);
+            macroVis->params[StraitsMacroVisualIds::sprId(lane)].setValue(bSpr);
             return std::make_tuple(
                 clamp((int)std::round(bLen), 1, 16),
                 ((int)std::round(bOff) % 16 + 16) % 16,

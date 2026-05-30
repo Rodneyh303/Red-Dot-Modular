@@ -112,7 +112,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
 
         auto* mod = static_cast<StraitsSandsMacroVisual*>(module);
 
-        // Spread display trimpots → SpreadManager
+        // Spread: processDNA has already applied CV offset to SPREAD_REST/MEL/OCT params.
+        // Read effective values here for SpreadManager display.
         paramMgr->spreadMgr.setSpread(0, mod->params[SPREAD_REST  ].getValue());
         paramMgr->spreadMgr.setSpread(1, mod->params[SPREAD_MELODY].getValue());
         paramMgr->spreadMgr.setSpread(2, mod->params[SPREAD_OCTAVE].getValue());
