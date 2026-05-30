@@ -4,7 +4,7 @@
   "version": "2.0.1",
   "license": "proprietary",
   "author": "Rodney Hoskinson",
-  "brand": "Red Dot Modular",
+  "brand": "dot.modular",
   "modules": [
     {
       "slug": "Monsoon",
