@@ -128,12 +128,12 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(JX+5*JP, JYL)), module, MonsoonIds::RUN_GATE_LIGHT));
 
         // ── Inputs: 18mm pitch, nudged right to clear edge accent ────────────
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(12.f, 105.f)), module, MonsoonIds::RUN_GATE_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(16.f, 105.f)), module, MonsoonIds::RUN_GATE_INPUT));
         addInput(createInputCentered<PJ301MPort>(mm2px(Vec(30.f, 105.f)), module, MonsoonIds::RESET_TRIGGER_INPUT));
         addInput(createInputCentered<PJ301MPort>(mm2px(Vec(48.f, 105.f)), module, MonsoonIds::SEED_INPUT));
         addInput(createInputCentered<PJ301MPort>(mm2px(Vec(66.f, 105.f)), module, MonsoonIds::LENGTH_INPUT));
         addInput(createInputCentered<PJ301MPort>(mm2px(Vec(84.f, 105.f)), module, MonsoonIds::OFFSET_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(12.f, 120.f)), module, MonsoonIds::CLK_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(16.f, 120.f)), module, MonsoonIds::CLK_INPUT));
         addInput(createInputCentered<PJ301MPort>(mm2px(Vec(30.f, 120.f)), module, MonsoonIds::GATE1_INPUT));
         addInput(createInputCentered<PJ301MPort>(mm2px(Vec(48.f, 120.f)), module, MonsoonIds::GATE2_INPUT));
         addInput(createInputCentered<PJ301MPort>(mm2px(Vec(66.f, 120.f)), module, MonsoonIds::CV1_INPUT));
@@ -160,8 +160,8 @@ void MonsoonWidget::applyTheme() {
  // Panel
     bool lightTheme = getLightTheme();  // read from module
     auto panelPath = asset::plugin(pluginInstance,
-        lightTheme ? "res/panels/MeloDicer_panel_light.svg"
-                   : "res/panels/MeloDicer_panel_v6.svg");
+        lightTheme ? "res/panels/Monsoon_panel_light_monsoon.svg"
+                   : "res/panels/Monsoon_panel_dark_monsoon.svg");
 
     auto* m = dynamic_cast<Monsoon*>(module);
     if (m) {
