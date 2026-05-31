@@ -11,7 +11,7 @@ namespace StraitsEastVisualIds {
     static constexpr float W_MM    = 182.88f;   // 36HP
     static constexpr int   N_ROWS  = 6;         // 2 rows per lane × 3 lanes
     static constexpr float ROW_TOP = 14.f;
-    static constexpr float ROW_BOT = 122.f;
+    static constexpr float ROW_BOT = 108.f;
     // 4 columns: jack1, jack2, atten1, atten2
     static constexpr float COL_J1 = 8.f;
     static constexpr float COL_J2 = 18.f;

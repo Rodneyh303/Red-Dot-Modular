@@ -10,7 +10,7 @@ namespace StraitsMacroVisualIds {
     // ── Panel ──────────────────────────────────────────────────────────────
     static constexpr float W_MM    = 132.08f;   // 26HP
     static constexpr float ROW_TOP = 14.f;
-    static constexpr float ROW_BOT = 122.f;
+    static constexpr float ROW_BOT = 108.f;
     static constexpr int   N_ROWS  = 6;
     // 4 columns: j1, j2, a1, a2 — same positions as East/West
     static constexpr float COL_J1 = 8.f;

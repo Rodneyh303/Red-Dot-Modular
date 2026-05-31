@@ -12,7 +12,7 @@ namespace SandsMonoVisualIds {
     static constexpr float ED_W     = W_MM - ED_X - 4.f;  // 87.7mm
     static constexpr float ED_Y     = 16.f;
     static constexpr float ROW_TOP  = 14.f;
-    static constexpr float ROW_BOT  = 122.f;
+    static constexpr float ROW_BOT  = 108.f;
     static constexpr int   N_LANES  = 6;
     // Jack cols: LEN=6, OFF=16, ROT=26, SPR=36
     // Atten cols: LEN=46, OFF=55, ROT=64, SPR=73
