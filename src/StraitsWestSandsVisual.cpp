@@ -45,8 +45,8 @@ struct StraitsWestSandsVisualWidget : ModuleWidget {
         addChild(createWidget<ScrewSilver>(Vec(box.size.x-2*RACK_GRID_WIDTH,RACK_GRID_HEIGHT-RACK_GRID_WIDTH)));
 
         // Voice tabs (voices 9-16)
-        tabGroup = new TabButtonGroup(8, 9, mm2px(E::ED_Y-2.f), mm2px(8.f), mm2px(1.f));
-        tabGroup->box.pos    = mm2px(Vec(E::ED_X, 8.f));
+        tabGroup = new TabButtonGroup(8, 9);
+        tabGroup->box.pos    = mm2px(Vec(E::ED_X, E::ED_Y - 2.f));
         tabGroup->box.size.x = mm2px(E::ED_W);
         addChild(tabGroup);
 

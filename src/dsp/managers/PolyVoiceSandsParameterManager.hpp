@@ -36,7 +36,7 @@ namespace redDot {
  *   PatternEngine polyRandom uses 0-14 indexing (voices 2-16)
  * 
  * Usage:
- *   SequencerEngine* seqEngine = /* from monsoon */;
+ *   SequencerEngine* seqEngine = nullptr; // from monsoon
  *   PolyVoiceSandsParameterManager mgr(patternEngine, seqEngine, 7, 0);  // East
  *   mgr.setInterpolationTarget(SpreadManager::AVERAGE_POLY);
  *   mgr.setSpread(voiceIdx, lane, spreadValue);

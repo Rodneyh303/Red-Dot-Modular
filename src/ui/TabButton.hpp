@@ -25,14 +25,14 @@ struct TabButton : rack::OpaqueWidget {
   bool isSelected = false;
   
   // Colors
-  NVGcolor colorBackground = rack::color::hex("#2c2c2c");      // Dark gray
-  NVGcolor colorSelected = rack::color::hex("#26a69a");         // Teal
-  NVGcolor colorText = rack::color::hex("#ffffff");             // White
-  NVGcolor colorBorder = rack::color::hex("#444444");           // Border
+  NVGcolor colorBackground = nvgRGB(0x2c, 0x2c, 0x2c);      // Dark gray
+  NVGcolor colorSelected = nvgRGB(0x26, 0xa6, 0x9a);         // Teal
+  NVGcolor colorText = nvgRGB(0xff, 0xff, 0xff);             // White
+  NVGcolor colorBorder = nvgRGB(0x44, 0x44, 0x44);           // Border
   
   std::function<void(int)> onPressed;
   
-  void draw(const rack::DrawArgs& args) override {
+  void draw(const widget::Widget::DrawArgs& args) override {
     NVGcontext* vg = args.vg;
     
     // Background
@@ -69,13 +69,13 @@ struct TabButton : rack::OpaqueWidget {
   // Optional: highlight effect on hover
   void onEnter(const rack::event::Enter& e) override {
     if (!isSelected) {
-      colorBackground = rack::color::hex("#3c3c3c");  // Lighter on hover
+      colorBackground = nvgRGB(0x3c, 0x3c, 0x3c);  // Lighter on hover
     }
   }
   
   void onLeave(const rack::event::Leave& e) override {
     if (!isSelected) {
-      colorBackground = rack::color::hex("#2c2c2c");  // Back to normal
+      colorBackground = nvgRGB(0x2c, 0x2c, 0x2c);  // Back to normal
     }
   }
 };
