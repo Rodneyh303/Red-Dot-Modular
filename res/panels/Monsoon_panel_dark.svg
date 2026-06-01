@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- 
+  Monsoon - Main Stochastic Sequencer
+  Dark Theme Panel (172.72mm width, ~34 HP)
+  
+  Identical layout to light theme with dark color scheme.
+  Background: #232323 (deep charcoal)
+  Text: #e4e4e7 (light slate)
+  Accents: #dc2626 (cyberpunk crimson)
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 172.72 380">
+  <defs>
+    <linearGradient id="panelEdgeDkMonsoon" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.03" />
+      <stop offset="50%" style="stop-color:#ffffff;stop-opacity:0" />
+      <stop offset="100%" style="stop-color:#ffffff;stop-opacity:0.03" />
+    </linearGradient>
+  </defs>
+  
+  <!-- PANEL BACKGROUND (Dark Theme) -->
+  <rect width="172.72" height="380" fill="#232323"/>
+  
+  <!-- Edge Highlight -->
+  <rect width="172.72" height="380" fill="url(#panelEdgeDkMonsoon)" opacity="0.8"/>
+  
+  <!-- ============================================================================
+       HEADER / BRANDING
+       ============================================================================ -->
+  
+  <text x="86.36" y="18" font-size="13" font-weight="bold" font-family="monospace" 
+        text-anchor="middle" fill="#e4e4e7" letter-spacing="1">
+    MONSOON
+  </text>
+  
+  <text x="86.36" y="31" font-size="7" font-family="monospace" 
+        text-anchor="middle" fill="#999" letter-spacing="0.5">
+    mono stochastic sequencer
+  </text>
+  
+  <!-- Brand Accent (Red Dot) -->
+  <circle cx="162.72" cy="12" r="2.5" fill="#dc2626"/>
+  
+  <!-- ============================================================================
+       MAIN PARAMETER ROW
+       ============================================================================ -->
+  
+  <text x="20" y="55" font-size="7" font-family="monospace" text-anchor="middle" 
+        fill="#e4e4e7" font-weight="bold">STOCHASTIC</text>
+  
+  <!-- NOTE VALUE -->
+  <circle cx="20" cy="70" r="9" fill="none" stroke="#444" stroke-width="0.5" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="20" y="92" font-size="6" font-family="monospace" text-anchor="middle" fill="#888">note</text>
+  
+  <!-- VARIATION -->
+  <circle cx="47" cy="70" r="9" fill="none" stroke="#444" stroke-width="0.5" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="47" y="92" font-size="6" font-family="monospace" text-anchor="middle" fill="#888">var</text>
+  
+  <!-- LEGATO -->
+  <circle cx="74" cy="70" r="9" fill="none" stroke="#444" stroke-width="0.5" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="74" y="92" font-size="6" font-family="monospace" text-anchor="middle" fill="#888">legato</text>
+  
+  <!-- REST -->
+  <circle cx="101" cy="70" r="8" fill="none" stroke="#444" stroke-width="0.5" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="101" y="92" font-size="6" font-family="monospace" text-anchor="middle" fill="#888">rest</text>
+  
+  <!-- ACCENT -->
+  <circle cx="126" cy="70" r="8" fill="none" stroke="#444" stroke-width="0.5" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="126" y="92" font-size="6" font-family="monospace" text-anchor="middle" fill="#888">accent</text>
+  
+  <!-- TRANSPOSE -->
+  <circle cx="151" cy="70" r="8" fill="none" stroke="#444" stroke-width="0.5" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="151" y="92" font-size="6" font-family="monospace" text-anchor="middle" fill="#888">transpose</text>
+  
+  <!-- ============================================================================
+       SEQUENCER PARAMETERS ROW
+       ============================================================================ -->
+  
+  <text x="20" y="115" font-size="7" font-family="monospace" text-anchor="middle" 
+        fill="#e4e4e7" font-weight="bold">SEQUENCER</text>
+  
+  <!-- BPM -->
+  <circle cx="47" cy="130" r="7" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="47" y="150" font-size="6" font-family="monospace" text-anchor="middle" fill="#888">bpm</text>
+  
+  <!-- PATTERN LENGTH -->
+  <circle cx="74" cy="130" r="7" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="74" y="150" font-size="6" font-family="monospace" text-anchor="middle" fill="#888">len</text>
+  
+  <!-- PATTERN OFFSET -->
+  <circle cx="101" cy="130" r="7" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="101" y="150" font-size="6" font-family="monospace" text-anchor="middle" fill="#888">off</text>
+  
+  <!-- MODE -->
+  <text x="151" y="128" font-size="6" font-family="monospace" text-anchor="middle" fill="#666">mode</text>
+  <rect x="140" y="138" width="22" height="8" rx="1" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  
+  <!-- ============================================================================
+       CONTROL & INPUT SECTION
+       ============================================================================ -->
+  
+  <text x="86.36" y="175" font-size="7" font-family="monospace" text-anchor="middle" 
+        fill="#e4e4e7" font-weight="bold">I/O</text>
+  
+  <!-- CLOCK IN -->
+  <circle cx="20" cy="190" r="4" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="20" y="207" font-size="5" font-family="monospace" text-anchor="middle" fill="#666">clock</text>
+  
+  <!-- RESET IN -->
+  <circle cx="47" cy="190" r="4" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="47" y="207" font-size="5" font-family="monospace" text-anchor="middle" fill="#666">reset</text>
+  
+  <!-- GATE1 IN -->
+  <circle cx="74" cy="190" r="4" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="74" y="207" font-size="5" font-family="monospace" text-anchor="middle" fill="#666">gate1</text>
+  
+  <!-- GATE2 IN -->
+  <circle cx="101" cy="190" r="4" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="101" y="207" font-size="5" font-family="monospace" text-anchor="middle" fill="#666">gate2</text>
+  
+  <!-- CV2 IN -->
+  <circle cx="126" cy="190" r="4" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="126" y="207" font-size="5" font-family="monospace" text-anchor="middle" fill="#666">cv2</text>
+  
+  <!-- ============================================================================
+       OUTPUT SECTION
+       ============================================================================ -->
+  
+  <text x="86.36" y="245" font-size="7" font-family="monospace" text-anchor="middle" 
+        fill="#e4e4e7" font-weight="bold">OUTPUTS</text>
+  
+  <!-- SEED -->
+  <circle cx="20" cy="265" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="20" y="285" font-size="5" font-family="monospace" text-anchor="middle" fill="#666">seed</text>
+  
+  <!-- RUN -->
+  <circle cx="39" cy="265" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="39" y="285" font-size="5" font-family="monospace" text-anchor="middle" fill="#666">run</text>
+  
+  <!-- RESET TRIG -->
+  <circle cx="58" cy="265" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="58" y="285" font-size="5" font-family="monospace" text-anchor="middle" fill="#666">rst</text>
+  
+  <!-- GATE -->
+  <circle cx="77" cy="265" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="77" y="285" font-size="5" font-family="monospace" text-anchor="middle" fill="#666">gate</text>
+  
+  <!-- CV -->
+  <circle cx="96" cy="265" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="96" y="285" font-size="5" font-family="monospace" text-anchor="middle" fill="#666">cv</text>
+  
+  <!-- LEGATO OUT -->
+  <circle cx="115" cy="265" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="115" y="285" font-size="5" font-family="monospace" text-anchor="middle" fill="#666">legato</text>
+  
+  <!-- TIE OUT -->
+  <circle cx="134" cy="265" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="134" y="285" font-size="5" font-family="monospace" text-anchor="middle" fill="#666">tie</text>
+  
+  <!-- ACCENT OUT -->
+  <circle cx="153" cy="265" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="153" y="285" font-size="5" font-family="monospace" text-anchor="middle" fill="#666">accent</text>
+  
+  <!-- LEGATO_OR_TIE OUT -->
+  <circle cx="172.72" cy="265" r="4" fill="none" stroke="#444" stroke-width="0.3" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="172.72" y="282" font-size="4" font-family="monospace" text-anchor="middle" fill="#666">leg|tie</text>
+  
+  <!-- ============================================================================
+       EXPANDER HINTS
+       ============================================================================ -->
+  
+  <line x1="172.72" y1="100" x2="172.72" y2="280" stroke="#444" stroke-width="0.5" stroke-dasharray="3,2" opacity="0.4"/>
+  
+  <text x="172.72" y="320" font-size="4" font-family="monospace" text-anchor="middle" fill="#555">expander</text>
+  
+  <!-- ============================================================================
+       FOOTER
+       ============================================================================ -->
+  
+  <text x="86.36" y="378" font-size="5" font-family="monospace" text-anchor="middle" fill="#555" letter-spacing="1">
+    red dot
+  </text>
+</svg>

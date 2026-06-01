@@ -6,6 +6,7 @@ using namespace rack;
 extern Model* modelMonsoon;
 
 struct MonsoonInterchangeExpanderWidget : ModuleWidget {
+<<<<<<< HEAD
     MonsoonInterchangeExpanderWidget(MonsoonInterchangeExpander* module) {
         setModule(module);
         setPanel(APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/MeloDicer_Expander3.svg")));
@@ -39,6 +40,31 @@ struct MonsoonInterchangeExpanderWidget : ModuleWidget {
         addParam(createParamCentered<Trimpot>(mm2px(Vec(41.5f, octY)), module, MonsoonIds::EXPANDER_OCT_HI_ATTENUVERTER)); // OCT HI Knob
     }
 
+=======
+MonsoonInterchangeExpanderWidget(MonsoonInterchangeExpander* module) {
+    setModule(module);
+    //box.size = mm2px(Vec(270, 380));
+    setPanel(APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/interchange_wide_dark.svg")));
+
+    // ... (Screws same as before) ...
+    
+// Semitone Loop (i=0 to 5)
+for (int i = 0; i < 6; i++) {
+    float rowY = 80.0f + (i * 40.0f); 
+    addInput(createInputCentered<PJ301MPort>(Vec(48.0f, rowY), module, MonsoonIds::EXPANDER_SEMI_CV_INPUT_0 + i));
+    addParam(createParamCentered<Trimpot>(Vec(102.0f, rowY), module, MonsoonIds::EXPANDER_SEMI_ATTENUVERTER_0 + i));
+    addParam(createParamCentered<Trimpot>(Vec(168.0f, rowY), module, MonsoonIds::EXPANDER_SEMI_ATTENUVERTER_0 + 6 + i));
+    addInput(createInputCentered<PJ301MPort>(Vec(222.0f, rowY), module, MonsoonIds::EXPANDER_SEMI_CV_INPUT_0 + 6 + i));
+}
+
+// Octave Section (Position 7, Y=320)
+float octY = 320.0f;
+addInput(createInputCentered<PJ301MPort>(Vec(48.0f, octY), module, MonsoonIds::EXPANDER_OCT_LO_CV_INPUT));
+addParam(createParamCentered<Trimpot>(Vec(102.0f, octY), module, MonsoonIds::EXPANDER_OCT_LO_ATTENUVERTER));
+addParam(createParamCentered<Trimpot>(Vec(168.0f, octY), module, MonsoonIds::EXPANDER_OCT_HI_ATTENUVERTER));
+addInput(createInputCentered<PJ301MPort>(Vec(222.0f, octY), module, MonsoonIds::EXPANDER_OCT_HI_CV_INPUT));
+}
+>>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
     void draw(const DrawArgs& args) override {
         ModuleWidget::draw(args);
 

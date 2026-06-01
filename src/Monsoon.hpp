@@ -288,6 +288,97 @@ namespace MonsoonIds {
         POLY_OCTAVE_VOICE_15_LEN,
         POLY_OCTAVE_VOICE_15_OFF,
         POLY_OCTAVE_VOICE_15_ROT,
+<<<<<<< HEAD
+=======
+        
+        // Interpolation Controls (15 voices) - NEW: blend per-voice vs average random
+        POLY_VOICE_1_INTERP,
+        POLY_VOICE_2_INTERP,
+        POLY_VOICE_3_INTERP,
+        POLY_VOICE_4_INTERP,
+        POLY_VOICE_5_INTERP,
+        POLY_VOICE_6_INTERP,
+        POLY_VOICE_7_INTERP,
+        POLY_VOICE_8_INTERP,
+        POLY_VOICE_9_INTERP,
+        POLY_VOICE_10_INTERP,
+        POLY_VOICE_11_INTERP,
+        POLY_VOICE_12_INTERP,
+        POLY_VOICE_13_INTERP,
+        POLY_VOICE_14_INTERP,
+        POLY_VOICE_15_INTERP,
+        
+        // Dimension-Specific Interpolation (15 voices × 3 dimensions = 45) - NEW
+        // Each voice has independent blending for Rest, Melody, Octave
+        
+        // Rest Probability Interpolation (15 voices)
+        POLY_REST_INTERP_1,
+        POLY_REST_INTERP_2,
+        POLY_REST_INTERP_3,
+        POLY_REST_INTERP_4,
+        POLY_REST_INTERP_5,
+        POLY_REST_INTERP_6,
+        POLY_REST_INTERP_7,
+        POLY_REST_INTERP_8,
+        POLY_REST_INTERP_9,
+        POLY_REST_INTERP_10,
+        POLY_REST_INTERP_11,
+        POLY_REST_INTERP_12,
+        POLY_REST_INTERP_13,
+        POLY_REST_INTERP_14,
+        POLY_REST_INTERP_15,
+        
+        // Melody (Semitone) Interpolation (15 voices)
+        POLY_MELODY_INTERP_1,
+        POLY_MELODY_INTERP_2,
+        POLY_MELODY_INTERP_3,
+        POLY_MELODY_INTERP_4,
+        POLY_MELODY_INTERP_5,
+        POLY_MELODY_INTERP_6,
+        POLY_MELODY_INTERP_7,
+        POLY_MELODY_INTERP_8,
+        POLY_MELODY_INTERP_9,
+        POLY_MELODY_INTERP_10,
+        POLY_MELODY_INTERP_11,
+        POLY_MELODY_INTERP_12,
+        POLY_MELODY_INTERP_13,
+        POLY_MELODY_INTERP_14,
+        POLY_MELODY_INTERP_15,
+        
+        // Octave Interpolation (15 voices)
+        POLY_OCTAVE_INTERP_1,
+        POLY_OCTAVE_INTERP_2,
+        POLY_OCTAVE_INTERP_3,
+        POLY_OCTAVE_INTERP_4,
+        POLY_OCTAVE_INTERP_5,
+        POLY_OCTAVE_INTERP_6,
+        POLY_OCTAVE_INTERP_7,
+        POLY_OCTAVE_INTERP_8,
+        POLY_OCTAVE_INTERP_9,
+        POLY_OCTAVE_INTERP_10,
+        POLY_OCTAVE_INTERP_11,
+        POLY_OCTAVE_INTERP_12,
+        POLY_OCTAVE_INTERP_13,
+        POLY_OCTAVE_INTERP_14,
+        POLY_OCTAVE_INTERP_15,
+        
+        // Global Macro DNA Controls (for simple Straits Sands) - NEW
+        // Single set of controls for all poly voices
+        GLOBAL_REST_DNA_LEN,
+        GLOBAL_REST_DNA_OFF,
+        GLOBAL_REST_DNA_ROT,
+        GLOBAL_REST_INTERP,
+        
+        GLOBAL_MELODY_DNA_LEN,
+        GLOBAL_MELODY_DNA_OFF,
+        GLOBAL_MELODY_DNA_ROT,
+        GLOBAL_MELODY_INTERP,
+        
+        GLOBAL_OCTAVE_DNA_LEN,
+        GLOBAL_OCTAVE_DNA_OFF,
+        GLOBAL_OCTAVE_DNA_ROT,
+        GLOBAL_OCTAVE_INTERP,
+>>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
 
         NUM_PARAMS
     };
@@ -411,9 +502,16 @@ namespace MonsoonIds {
         SEED_OUTPUT,
         RESET_TRIGGER_OUTPUT,
         RUN_GATE_OUTPUT,
+<<<<<<< HEAD
         TIE_OUTPUT,          // New: high on Tie decision
         LEGATO_OUTPUT,       // New: high on Legato/LegatoMax (not on Rest, Tie)
         ACCENT_OUTPUT,       // New: high on accented notes
+=======
+        TIE_OUTPUT,               // High on Tie decision
+        LEGATO_OUTPUT,            // High on Legato/LegatoMax
+        TIE_OR_LEGATO_OUTPUT,     // High on Tie OR Legato (combined)
+        ACCENT_OUTPUT,            // High when accented
+>>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
         
         NUM_OUTPUTS
     };
@@ -514,7 +612,11 @@ struct Monsoon : Module {
     bool invertMuteLogic = false;
     bool restartOnUnmute = false;
     int lastModeSelect = -1;
+<<<<<<< HEAD
     bool lightTheme = false;
+=======
+    int lightTheme = 0; // 0 = Dark, 1 = Light. Using int to match PeranakanLatticePanel expectations.
+>>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
     MonsoonExpanderManager expanderManager;
     dsp::ClockDivider lightDivider;
     dsp::ClockDivider controlDivider; // For DNA modulation at "Control Rate"
@@ -682,4 +784,15 @@ extern Model* modelMonsoonInterchangeExpander;
 extern Model* modelMonsoonSandsExpander;
 extern Model* modelMonsoonStraitsEastExpander; // Declare new expander model
 extern Model* modelMonsoonStraitWestExpander;  // NEW (Phase 4): voices 9-16
+<<<<<<< HEAD
 extern Model* modelMonsoonStraitSandsExpander; // NEW (Phase 6): poly DNA per-voice
+=======
+extern Model* modelMonsoonStraitsSands;        // NEW (Macro): global DNA controls (compact)
+extern Model* modelMonsoonDeepStraitsSandsEast; // NEW (Deep): per-voice DNA voices 2-8
+extern Model* modelMonsoonDeepStraitsSandsWest; // NEW (Deep): per-voice DNA voices 9-16
+// Visual editor expanders
+extern Model* modelMonsoonSandsVisualExpander;  // Mono visual DNA editor (voice 1)
+extern Model* modelStraitsEastSandsVisual;      // East visual DNA editor (voices 2-8)
+extern Model* modelStraitsWestSandsVisual;      // West visual DNA editor (voices 9-16)
+extern Model* modelStraitsSandsMacroVisual;     // Macro visual DNA editor (global)
+>>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8

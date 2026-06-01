@@ -12,11 +12,46 @@ void PatternEngine::seedRngFromFloat(rack::random::Xoroshiro128Plus& rng, float 
 }
 
 void PatternEngine::reset() {
+<<<<<<< HEAD
     rhythmSeedFloat = melodySeedFloat = 0.f;
     rhythmSeedPending = melodySeedPending = false;
     rhythmMode = melodyMode = 0;
     seedRngFromFloat(rhythmRng, 0.f);
     seedRngFromFloat(melodyRng, 0.f);
+=======
+    rhythmSeedPending = melodySeedPending = false;
+    rhythmMode = melodyMode = 0;
+    rhythmSeedCached = melodySeedCached = false;
+
+    // strands must not be all-zero or module is silent until dice/phrase
+    for (int i = 0; i < 16; ++i) {
+        rhythmRandom[i] = 1.0f;     // Mono triggers by default
+        variationRandom[i] = 0.5f;  // No variation bias
+        legatoRandom[i] = 0.0f;     // No legato/ties
+        accentRandom[i] = 1.0f;     // No accents by default (roll < prob)
+        melodyRandom[i] = 0.5f;     // Default to middle of weighted sum
+        octaveRandom[i] = 0.5f;     // Default to middle of octave range
+        
+        for (int v = 0; v < 15; v++) {
+            polyRhythmRandom[v][i] = 1.0f; // Poly voices trigger by default
+            polyMelodyRandom[v][i] = 0.5f;
+            polyOctaveRandom[v][i] = 0.5f;
+            
+            polyRhythmSource[v][i] = 1.0f;
+            polyMelodySource[v][i] = polyMelodyRandom[v][i];
+            polyOctaveSource[v][i] = polyOctaveRandom[v][i];
+        }
+        
+        rhythmSource[i] = rhythmRandom[i];
+        variationSource[i] = variationRandom[i];
+        legatoSource[i] = legatoRandom[i];
+        accentSource[i] = accentRandom[i];
+        melodySource[i] = melodyRandom[i];
+        octaveSource[i] = octaveRandom[i];
+
+        rhythmPattern[i] = true;
+    }
+>>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
 }
 
 // ── Core generation ───────────────────────────────────────────────────────
@@ -25,7 +60,11 @@ void PatternEngine::reset() {
 int PatternEngine::pickSemitone(const float weights[12], float r_val) {
     float sum = 0.f;
     for (int i = 0; i < 12; ++i) sum += weights[i];
+<<<<<<< HEAD
     if (sum <= 0.f) return -1;
+=======
+    if (sum <= 0.0001f) return -1;
+>>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
 
     float r = pe_clamp(r_val, 0.f, 1.f - 1e-7f) * sum;
     float acc = 0.f;
@@ -48,6 +87,7 @@ float PatternEngine::genPitchLive(int& outSemitone, const PatternInput& in, floa
     outSemitone = (sem < 0) ? 0 : sem;
     if (sem < 0) return 0.f;
 
+<<<<<<< HEAD
     int oL = (int)std::floor(in.octaveLo);
     float lo = in.octaveLo, hi = in.octaveHi;
     if (hi < lo) std::swap(lo, hi);
@@ -57,6 +97,19 @@ float PatternEngine::genPitchLive(int& outSemitone, const PatternInput& in, floa
 
     float v = float(oct) -4.f + (sem + in.transpose) / 12.f;
     return pe_clamp(v, 0.f, 5.f);
+=======
+    float lo = in.octaveLo, hi = in.octaveHi;
+    if (hi < lo) std::swap(lo, hi);
+    int oL = (int)std::floor(lo);
+    int oH = (int)std::floor(hi);
+    // Ensure r_oct roll isn't exactly 1.0 to prevent oOB indexing
+    float roll = pe_clamp(r_oct, 0.f, 0.9999f);
+    int oct = oL + (int)std::floor(roll * float(oH - oL + 1));
+
+    float v = float(oct) - 4.f + (sem + in.transpose) / 12.f;
+    // Allow full bipolar range for 1V/oct standard; clamping to 0V clips octaves 0-3
+    return pe_clamp(v, -5.f, 5.f);
+>>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
 }
 
 // Apply variation bias to a note length index.

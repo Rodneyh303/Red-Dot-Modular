@@ -42,8 +42,14 @@ void ModeController::postExecute_(const StepResult& result) {
     // Execute poly voices if step was taken
     if (result.stepped && engine.numPolyVoices > 0) {
         updatePolyVoiceRest_();
+<<<<<<< HEAD
         // Note: makePatternInput() is called by the caller
         // This just updates rest probabilities; executePolyVoices happens in process()
+=======
+
+        // Execute poly voice decision logic for the new step
+        engine.executePolyVoices(currentPatternInput);
+>>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
     }
 }
 
@@ -54,6 +60,7 @@ bool ModeController::executeModeA() {
         // Fetch current parameters
         engine.accentProb = paramManager.getAccent();
         
+<<<<<<< HEAD
         // Execute the mode
         StepResult result = engine.executeModeA(
             clock,
@@ -61,6 +68,18 @@ bool ModeController::executeModeA() {
             paramManager.getLegato(),
             paramManager.getNoteValue(),
             currentPatternInput
+=======
+        // Ensure pattern input is fresh
+        PatternInput in = assemblePatternInput_();
+
+        // Execute the mode
+        StepResult result = engine.executeModeA(
+            clock,
+            in.restProb,
+            paramManager.getLegato(),
+            paramManager.getNoteValue(),
+            in
+>>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
         );
         
         // Handle post-execution

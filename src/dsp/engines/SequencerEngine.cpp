@@ -12,9 +12,15 @@ static const int DNA_LCM = 720720; // LCM of 1..16 ensures drift continuity
 void SequencerEngine::reset() {
     pe.reset();
     gs.reset();
+<<<<<<< HEAD
     for (int i = 0; i < 7; ++i) voices[i].gs.reset();
     // restProb values are NOT reset — the caller re-applies them from expander knobs.
     for (int i = 0; i < 7; i++) wasHeldPolyPrev[i] = false;
+=======
+    for (int i = 0; i < 15; ++i) voices[i].gs.reset();
+    // restProb values are NOT reset — the caller re-applies them from expander knobs.
+    for (int i = 0; i < 15; i++) wasHeldPolyPrev[i] = false;
+>>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
     lastStepResult = StepResult{};
     stepIndex = -1;
     lastStepIndex = -1;
@@ -23,9 +29,15 @@ void SequencerEngine::reset() {
     cachedLength = 16;
     cachedOffset = 0;
     totalStepsElapsed = 0;
+<<<<<<< HEAD
     rhythmLen = variationLen = legatoLen = melodyLen = octaveLen = 16;
     rhythmOff = variationOff = legatoOff = melodyOff = octaveOff = 0;
     rhythmRot = variationRot = legatoRot = melodyRot = octaveRot = 0;
+=======
+    rhythmLen = variationLen = legatoLen = accentLen = melodyLen = octaveLen = 16;
+    rhythmOff = variationOff = legatoOff = accentOff = melodyOff = octaveOff = 0;
+    rhythmRot = variationRot = legatoRot = accentRot = melodyRot = octaveRot = 0;
+>>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
     for (int i = 0; i < 15; i++) {
         polyLen[i] = 16;
         polyOff[i] = 0;
@@ -168,6 +180,10 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     // Poly voices seeing MidNote will tick their own holds and return.
     if (gs.holdRemain >= 1.f) {
         result.decision = MonoDecision::MidNote;
+<<<<<<< HEAD
+=======
+        result.accented = lastStepResult.accented;
+>>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
         lastStepResult = result;
         return result;
     }
@@ -211,11 +227,26 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
         result.decision = MonoDecision::NewNote;
     }
 
+<<<<<<< HEAD
     // Determine if this note is accented (only on NewNote, Legato, LegatoMax — not on Rest, Tie, MidNote)
     if (result.decision != MonoDecision::Rest && result.decision != MonoDecision::Tie && result.decision != MonoDecision::MidNote) {
         result.accented = (r_accent < accentProb);
     } else {
         result.accented = false;
+=======
+    // Determine if this note is accented. 
+    // Decision happens on NewNote, or Legato shifts from a dead state.
+    bool monoStarting = (result.decision == MonoDecision::NewNote) || 
+                        ((result.decision == MonoDecision::Legato || result.decision == MonoDecision::LegatoMax) && !wasHeld && !hadTail);
+
+    if (monoStarting) {
+        result.accented = (r_accent < accentProb);
+    } else if (result.decision == MonoDecision::Rest) {
+        result.accented = false;
+    } else {
+        // Sustain/Inherit: Tie, MidNote, or Legato shift during an existing held note
+        result.accented = lastStepResult.accented;
+>>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
     }
 
     lastStepResult = result;
@@ -363,6 +394,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         if (gs.gateHeld && wasHeldPoly) {
             if (lastStepResult.decision == MonoDecision::Tie) {
                 v.gs.extendHold(v.gs.lastSemitone, lastStepResult.nvIdx);
+<<<<<<< HEAD
             } else if (lastStepResult.decision == MonoDecision::Legato || lastStepResult.decision == MonoDecision::LegatoMax) {
                 // Shift pitch if mono shifted, but don't re-trigger.
                 int polyIdx = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx], polyOff[voiceIdx], polyRot[voiceIdx]);
@@ -372,6 +404,24 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
             } else {
                 // MidNote sustain: poly gate follows mono.
                 v.gs.gateHeld = true;
+=======
+            } else {
+                // Re-draw pitch for glides (Legato) or sustains (MidNote).
+                // This allows the poly melody to move independently even if 
+                // the mono rhythm is static.
+                int polyIdx = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx], polyOff[voiceIdx], polyRot[voiceIdx]);
+                int sem = 0;
+                float pitchV = pe.genPitchLive(sem, input, pe.polyMelodyRandom[voiceIdx][polyIdx], pe.polyOctaveRandom[voiceIdx][polyIdx]);
+                
+                if (lastStepResult.decision == MonoDecision::Legato || lastStepResult.decision == MonoDecision::LegatoMax) {
+                    v.gs.slideNote(pitchV, sem, lastStepResult.nvIdx, wasHeldPoly);
+                } else {
+                    // MidNote sustain: update pitch and keep gate high
+                    v.gs.currentPitchV = pitchV;
+                    v.gs.lastSemitone = sem;
+                    v.gs.gateHeld = true;
+                }
+>>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
             }
         } else {
             // Mono gate is low OR poly chose to rest for this current high cycle.
