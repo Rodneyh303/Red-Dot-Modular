@@ -1,11 +1,78 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="767.99" height="485.67" viewBox="0 0 767.99 485.67">
 <g inkscape:label="artwork" inkscape:groupmode="layer">
 <rect width="767.99" height="485.67" fill="#e8e8ea"/>
-<g fill="#d0d4da" opacity="0.30"><rect x="0" y="483" width="32" height="2"/><rect x="41" y="482" width="25" height="3"/><rect x="73" y="482" width="24" height="3"/><rect x="101" y="484" width="36" height="2"/><rect x="141" y="482" width="36" height="4"/><rect x="182" y="482" width="29" height="4"/><rect x="222" y="483" width="40" height="3"/><rect x="273" y="482" width="24" height="4"/><rect x="303" y="483" width="27" height="2"/><rect x="336" y="483" width="47" height="2"/><rect x="392" y="483" width="42" height="3"/><rect x="442" y="484" width="25" height="2"/><rect x="472" y="483" width="43" height="3"/><rect x="521" y="483" width="40" height="3"/><rect x="568" y="482" width="47" height="4"/><rect x="620" y="482" width="40" height="3"/><rect x="670" y="483" width="45" height="3"/><rect x="726" y="483" width="26" height="3"/><rect x="762" y="482" width="27" height="3"/></g>
+<g opacity="0.16">
+<polygon points="59.0,485.7 77.1,485.7 71.8,272.1 64.2,272.1" fill="#c4c8ce"/>
+<ellipse cx="68.0" cy="272.1" rx="49.1" ry="14.7" fill="#b4bac2"/>
+<line x1="68.0" y1="272.1" x2="14.7" y2="267.9" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="68.0" y1="272.1" x2="20.9" y2="258.9" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="68.0" y1="272.1" x2="32.9" y2="251.6" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="68.0" y1="272.1" x2="49.3" y2="246.8" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="68.0" y1="272.1" x2="68.0" y2="245.1" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="68.0" y1="272.1" x2="86.7" y2="246.8" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="68.0" y1="272.1" x2="103.1" y2="251.6" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="68.0" y1="272.1" x2="115.2" y2="258.9" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="68.0" y1="272.1" x2="121.4" y2="267.9" stroke="#b4bac2" stroke-width="0.7"/>
+<polygon points="198.8,485.7 216.9,485.7 211.7,226.8 204.1,226.8" fill="#c4c8ce"/>
+<ellipse cx="207.9" cy="226.8" rx="60.5" ry="18.1" fill="#b4bac2"/>
+<line x1="207.9" y1="226.8" x2="142.2" y2="221.6" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="207.9" y1="226.8" x2="149.8" y2="210.5" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="207.9" y1="226.8" x2="164.7" y2="201.5" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="207.9" y1="226.8" x2="184.8" y2="195.6" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="207.9" y1="226.8" x2="207.9" y2="193.5" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="207.9" y1="226.8" x2="230.9" y2="195.6" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="207.9" y1="226.8" x2="251.1" y2="201.5" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="207.9" y1="226.8" x2="265.9" y2="210.5" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="207.9" y1="226.8" x2="273.6" y2="221.6" stroke="#b4bac2" stroke-width="0.7"/>
+<polygon points="350.0,485.7 368.1,485.7 362.8,294.8 355.3,294.8" fill="#c4c8ce"/>
+<ellipse cx="359.1" cy="294.8" rx="41.6" ry="12.5" fill="#b4bac2"/>
+<line x1="359.1" y1="294.8" x2="313.9" y2="291.2" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="359.1" y1="294.8" x2="319.1" y2="283.6" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="359.1" y1="294.8" x2="329.4" y2="277.4" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="359.1" y1="294.8" x2="343.2" y2="273.4" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="359.1" y1="294.8" x2="359.1" y2="271.9" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="359.1" y1="294.8" x2="374.9" y2="273.4" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="359.1" y1="294.8" x2="388.8" y2="277.4" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="359.1" y1="294.8" x2="398.9" y2="283.6" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="359.1" y1="294.8" x2="404.2" y2="291.2" stroke="#b4bac2" stroke-width="0.7"/>
+<polygon points="482.3,485.7 500.4,485.7 495.1,241.9 487.6,241.9" fill="#c4c8ce"/>
+<ellipse cx="491.3" cy="241.9" rx="52.9" ry="15.9" fill="#b4bac2"/>
+<line x1="491.3" y1="241.9" x2="433.9" y2="237.3" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="491.3" y1="241.9" x2="440.6" y2="227.7" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="491.3" y1="241.9" x2="453.5" y2="219.8" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="491.3" y1="241.9" x2="471.2" y2="214.6" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="491.3" y1="241.9" x2="491.3" y2="212.8" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="491.3" y1="241.9" x2="511.5" y2="214.6" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="491.3" y1="241.9" x2="529.1" y2="219.8" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="491.3" y1="241.9" x2="542.1" y2="227.7" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="491.3" y1="241.9" x2="548.8" y2="237.3" stroke="#b4bac2" stroke-width="0.7"/>
+<polygon points="614.5,485.7 632.7,485.7 627.4,264.6 619.8,264.6" fill="#c4c8ce"/>
+<ellipse cx="623.6" cy="264.6" rx="45.4" ry="13.6" fill="#b4bac2"/>
+<line x1="623.6" y1="264.6" x2="574.3" y2="260.7" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="623.6" y1="264.6" x2="580.1" y2="252.4" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="623.6" y1="264.6" x2="591.2" y2="245.6" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="623.6" y1="264.6" x2="606.4" y2="241.2" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="623.6" y1="264.6" x2="623.6" y2="239.6" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="623.6" y1="264.6" x2="640.9" y2="241.2" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="623.6" y1="264.6" x2="656.0" y2="245.6" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="623.6" y1="264.6" x2="667.1" y2="252.4" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="623.6" y1="264.6" x2="672.9" y2="260.7" stroke="#b4bac2" stroke-width="0.7"/>
+<polygon points="716.6,485.7 734.7,485.7 729.4,219.2 721.9,219.2" fill="#c4c8ce"/>
+<ellipse cx="725.7" cy="219.2" rx="56.7" ry="17.0" fill="#b4bac2"/>
+<line x1="725.7" y1="219.2" x2="664.1" y2="214.3" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="725.7" y1="219.2" x2="671.2" y2="204.0" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="725.7" y1="219.2" x2="685.2" y2="195.5" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="725.7" y1="219.2" x2="704.1" y2="190.0" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="725.7" y1="219.2" x2="725.7" y2="188.0" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="725.7" y1="219.2" x2="747.2" y2="190.0" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="725.7" y1="219.2" x2="766.2" y2="195.5" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="725.7" y1="219.2" x2="780.1" y2="204.0" stroke="#b4bac2" stroke-width="0.7"/>
+<line x1="725.7" y1="219.2" x2="787.3" y2="214.3" stroke="#b4bac2" stroke-width="0.7"/>
+</g>
 <line x1="0" y1="41.6" x2="767.99" y2="41.6" stroke="#c0202a" stroke-width="1" opacity="0.4"/>
-<line x1="15.1" y1="151.2" x2="752.9" y2="151.2" stroke="#c0c4ca" stroke-width="0.5" opacity="0.5"/>
-<line x1="15.1" y1="294.8" x2="752.9" y2="294.8" stroke="#c0c4ca" stroke-width="0.5" opacity="0.5"/>
-<line x1="15.1" y1="374.2" x2="752.9" y2="374.2" stroke="#c0c4ca" stroke-width="0.5" opacity="0.5"/>
+<line x1="15.1" y1="151.2" x2="752.9" y2="151.2" stroke="#c0c4ca" stroke-width="0.5" opacity="0.4"/>
+<line x1="15.1" y1="294.8" x2="752.9" y2="294.8" stroke="#c0c4ca" stroke-width="0.5" opacity="0.4"/>
+<line x1="15.1" y1="374.2" x2="752.9" y2="374.2" stroke="#c0c4ca" stroke-width="0.5" opacity="0.4"/>
 </g>
 <g inkscape:label="control-graphics" inkscape:groupmode="layer">
 <circle cx="60.5" cy="83.2" r="51.0" fill="#d4d6d9" stroke="#a8aeb6" stroke-width="1.2"/>
@@ -24,8 +91,8 @@
 <text x="559.4" y="262.7" font-family="sans-serif" font-size="9.1" fill="#2a2a2e" text-anchor="middle">BPM</text>
 <text x="616.1" y="262.7" font-family="sans-serif" font-size="9.1" fill="#2a2a2e" text-anchor="middle">LEN</text>
 <text x="672.8" y="262.7" font-family="sans-serif" font-size="9.1" fill="#2a2a2e" text-anchor="middle">OFFSET</text>
-<circle cx="612.3" cy="113.4" r="68.0" fill="none" stroke="#a07808" stroke-width="0.8" opacity="0.55"/>
-<circle cx="612.3" cy="113.4" r="37.8" fill="#d4d6d9" opacity="0.35"/>
+<circle cx="612.3" cy="113.4" r="68.0" fill="none" stroke="#a07808" stroke-width="0.8" opacity="0.6"/>
+<circle cx="612.3" cy="113.4" r="37.8" fill="#d4d6d9" opacity="0.4"/>
 <rect x="22.3" y="170.1" width="12.1" height="111.5" rx="5.3" fill="#d8dade" stroke="#c0c4ca" stroke-width="0.5"/>
 <rect x="56.3" y="170.1" width="12.1" height="111.5" rx="5.3" fill="#d8dade" stroke="#c0c4ca" stroke-width="0.5"/>
 <rect x="90.3" y="170.1" width="12.1" height="111.5" rx="5.3" fill="#d8dade" stroke="#c0c4ca" stroke-width="0.5"/>
@@ -129,8 +196,6 @@
 <circle cx="597.2" cy="453.5" r="14.7" fill="#dadce0" stroke="#9298a0" stroke-width="1"/>
 <circle cx="597.2" cy="453.5" r="6.4" fill="#d8dade"/>
 <text x="597.2" y="478.1" font-family="sans-serif" font-size="7.2" fill="#888d96" text-anchor="middle">RST</text>
-
-
 <circle cx="15.1" cy="15.1" r="3.4" fill="#1a8276" opacity="0.5"/>
 <circle cx="34.0" cy="15.1" r="3.4" fill="#1a8276" opacity="0.5"/>
 <circle cx="52.9" cy="15.1" r="3.4" fill="#1a8276" opacity="0.5"/>
