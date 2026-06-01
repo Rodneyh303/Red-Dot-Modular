@@ -3,13 +3,6 @@
 #include "MonsoonWidget.hpp"
 #include "Monsoon.hpp"
 #include "dsp/managers/MonsoonScaleManager.hpp"
-#include "ui/PeranakanLatticePanel.hpp"
-
-// Define a custom panel that uses PeranakanLatticePanelLarge
-// This will handle drawing the lattice overlay.
-struct MonsoonCustomPanel : PeranakanLatticePanelLarge {
-    MonsoonCustomPanel(int* themeRef) : PeranakanLatticePanelLarge(themeRef) {}
-};
 
 using namespace rack;
 using namespace MonsoonIds;
@@ -163,14 +156,14 @@ void MonsoonWidget::applyTheme() {
         lightTheme ? "res/panels/Monsoon_panel_light_monsoon.svg"
                    : "res/panels/Monsoon_panel_dark_monsoon.svg");
 
-    auto* m = dynamic_cast<Monsoon*>(module);
-    if (m) {
-        // Create an instance of MonsoonCustomPanel and set its SVG
-        MonsoonCustomPanel* newPanel = new MonsoonCustomPanel(&m->lightTheme);
-        newPanel->setBackground(APP->window->loadSvg(panelPath));
-        setPanel(newPanel); // ModuleWidget::setPanel takes ownership and deletes the old panel
+    // Standard SvgPanel for BOTH the browser preview (module==nullptr) and a
+    // placed module. Same code path either way so they render identically.
+    if (panel) {
+        // theme toggle on an existing widget: just swap the background SVG
+        if (auto* sp = dynamic_cast<app::SvgPanel*>(panel))
+            sp->setBackground(APP->window->loadSvg(panelPath));
     } else {
-        setPanel(createPanel(panelPath)); // Fallback to generic SvgPanel if module is null
+        setPanel(createPanel(panelPath));
     }
     // Remove any existing knob params at the 7 top knob positions
         // so we can re-add with the correct type.
@@ -236,7 +229,7 @@ void MonsoonWidget::draw(const DrawArgs& args) {
     nvgFillColor(vg, getLightTheme() ? nvgRGBA(0xe6, 0xe6, 0xe6, 255) : nvgRGBA(0x23, 0x23, 0x23, 255));
     nvgFill(vg);
 
-    ModuleWidget::draw(args); // This will now call MonsoonCustomPanel::draw, which includes the lattice.
+    ModuleWidget::draw(args); // renders the panel SVG + child widgets (knobs/jacks/LEDs)
 
         nvgFontFaceId(vg,APP->window->uiFont->handle);
         nvgTextAlign(vg,NVG_ALIGN_CENTER|NVG_ALIGN_MIDDLE);
