@@ -70,7 +70,7 @@ struct StraitsSandsMacroVisual : Module {
 
     StraitsSandsMacroVisual() {
         using namespace StraitsMacroVisualIds;
-        config(MonsoonIds::NUM_PARAMS, NUM_INPUTS, 0, 0);
+        config(MonsoonIds::NUM_PARAMS, StraitsMacroVisualIds::NUM_INPUTS, 0, 0);
 
         configParam(SPREAD_REST,   0.f,1.f,0.f,"Global Spread REST");
         configParam(SPREAD_MELODY, 0.f,1.f,0.f,"Global Spread MELODY");

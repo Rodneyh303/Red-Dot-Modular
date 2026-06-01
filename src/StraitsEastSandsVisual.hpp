@@ -18,6 +18,7 @@ namespace StraitsEastVisualIds {
     static constexpr float COL_A1 = 30.f;
     static constexpr float COL_A2 = 39.f;
     static constexpr float ED_X   = 46.f;
+    static constexpr float ED_Y   = 18.f;   // editor top (below tab row)
     static constexpr float ED_W   = W_MM - ED_X - 4.f;  // 132.9mm
 
     static inline float rowY(int r) {
@@ -78,7 +79,7 @@ struct StraitsEastSandsVisual : Module {
 
     StraitsEastSandsVisual() {
         using namespace StraitsEastVisualIds;
-        config(MonsoonIds::NUM_PARAMS, NUM_INPUTS, 0, 0);
+        config(MonsoonIds::NUM_PARAMS, StraitsEastVisualIds::NUM_INPUTS, 0, 0);
 
         configParam(SPREAD_R, 0.f,1.f,0.f,"Spread REST");
         configParam(SPREAD_M, 0.f,1.f,0.f,"Spread MELODY");

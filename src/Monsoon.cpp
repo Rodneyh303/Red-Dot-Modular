@@ -642,7 +642,6 @@ void Monsoon::process(const ProcessArgs& args) {
             
             int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
             // MEL LOR: row2col0=LEN, row2col1=OFF, row3col0=ROT; SPR: row3col1
-            int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
             float melodyInterp = eastInterp->params[POLY_MELODY_INTERP_1 + v].getValue();
             engine.pe.polyMelodyRandom[v][0] = (float)applyLorCV(melodyBase,     2, 0, 1.f, 16.f);
             engine.pe.polyMelodyRandom[v][1] = (float)applyLorCV(melodyBase + 1, 2, 1, 0.f, 15.f);
@@ -674,7 +673,6 @@ void Monsoon::process(const ProcessArgs& args) {
             
             int octaveBase = POLY_OCTAVE_VOICE_1_LEN + v * 3;
             // OCT LOR: row4col0=LEN, row4col1=OFF, row5col0=ROT; SPR: row5col1
-            int octaveBase = POLY_OCTAVE_VOICE_1_LEN + v * 3;
             float octaveInterp = eastInterp->params[POLY_OCTAVE_INTERP_1 + v].getValue();
             if (eastVisual && eastVisual->inputs[cvId(5,1)].isConnected()) {
                 float att = eastVisual->params[attenId(5,1)].getValue();
