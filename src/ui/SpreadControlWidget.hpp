@@ -20,10 +20,10 @@ struct SpreadControlWidget : rack::Widget {
   float value = 0.0f;  // 0.0-1.0
   
   struct Style {
-    NVGcolor backgroundColor = rack::color::hex("#141416");
-    NVGcolor trackColor = rack::color::hex("#333333");
-    NVGcolor fillColor = rack::color::hex("#26a69a");
-    NVGcolor handleColor = rack::color::hex("#d4af37");
+    NVGcolor backgroundColor = nvgRGB(0x14, 0x14, 0x16);
+    NVGcolor trackColor = nvgRGB(0x33, 0x33, 0x33);
+    NVGcolor fillColor = nvgRGB(0x26, 0xa6, 0x9a);
+    NVGcolor handleColor = nvgRGB(0xd4, 0xaf, 0x37);
   } style;
   
   std::string label = "Spread";
@@ -40,7 +40,7 @@ struct SpreadControlWidget : rack::Widget {
   
   void setLabel(const std::string& s) { label = s; }
   
-  void draw(const rack::DrawArgs& args) override {
+  void draw(const widget::Widget::DrawArgs& args) override {
     // Background
     nvgBeginPath(args.vg);
     nvgRect(args.vg, 0, 0, box.size.x, box.size.y);
@@ -50,7 +50,7 @@ struct SpreadControlWidget : rack::Widget {
     // Label
     nvgFontSize(args.vg, 9.f);
     nvgTextAlign(args.vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
-    nvgFillColor(args.vg, rack::color::hex("#888888"));
+    nvgFillColor(args.vg, nvgRGB(0x88, 0x88, 0x88));
     nvgText(args.vg, box.size.x / 2.f, 2.f, label.c_str(), nullptr);
     
     // Track
@@ -79,7 +79,7 @@ struct SpreadControlWidget : rack::Widget {
     // Value text
     nvgFontSize(args.vg, 8.f);
     nvgTextAlign(args.vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-    nvgFillColor(args.vg, rack::color::hex("#cccccc"));
+    nvgFillColor(args.vg, nvgRGB(0xcc, 0xcc, 0xcc));
     char buf[16];
     snprintf(buf, sizeof(buf), "%.2f", value);
     nvgText(args.vg, box.size.x / 2.f, box.size.y - 8.f, buf, nullptr);
@@ -87,7 +87,7 @@ struct SpreadControlWidget : rack::Widget {
     // Border
     nvgBeginPath(args.vg);
     nvgRect(args.vg, 0, 0, box.size.x, box.size.y);
-    nvgStrokeColor(args.vg, rack::color::hex("#2a2a2a"));
+    nvgStrokeColor(args.vg, nvgRGB(0x2a, 0x2a, 0x2a));
     nvgStrokeWidth(args.vg, 0.5f);
     nvgStroke(args.vg);
   }

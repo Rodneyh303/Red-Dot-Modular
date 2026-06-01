@@ -6,7 +6,7 @@
 
 namespace redDot {
 
-using namespace rack;  // bring rack types into scope (DrawArgs, color::hex, event::*)
+using namespace rack;  // widget::Widget::DrawArgs, KeyEvent, color::*, event::*
 /**
  * SandsVisualEditorV4 (Corrected)
  * 
@@ -40,17 +40,17 @@ struct SandsVisualEditorV4 : rack::Widget {
   };
   
   struct Colors {
-    NVGcolor rest       = rack::color::hex("#505050");
-    NVGcolor melody     = rack::color::hex("#d4af37");
-    NVGcolor octave     = rack::color::hex("#b8860b");
-    NVGcolor legato     = rack::color::hex("#26a69a");
-    NVGcolor accent     = rack::color::hex("#ff9500");
-    NVGcolor variation  = rack::color::hex("#ff6b6b");
-    NVGcolor rotation   = rack::color::hex("#26a69a");
-    NVGcolor handle     = rack::color::hex("#888888");
-    NVGcolor background = rack::color::hex("#141416");
-    NVGcolor border     = rack::color::hex("#2a2a2a");
-    NVGcolor active     = rack::color::hex("#cc2222");
+    NVGcolor rest       = nvgRGB(0x50, 0x50, 0x50);
+    NVGcolor melody     = nvgRGB(0xd4, 0xaf, 0x37);
+    NVGcolor octave     = nvgRGB(0xb8, 0x86, 0x0b);
+    NVGcolor legato     = nvgRGB(0x26, 0xa6, 0x9a);
+    NVGcolor accent     = nvgRGB(0xff, 0x95, 0x00);
+    NVGcolor variation  = nvgRGB(0xff, 0x6b, 0x6b);
+    NVGcolor rotation   = nvgRGB(0x26, 0xa6, 0x9a);
+    NVGcolor handle     = nvgRGB(0x88, 0x88, 0x88);
+    NVGcolor background = nvgRGB(0x14, 0x14, 0x16);
+    NVGcolor border     = nvgRGB(0x2a, 0x2a, 0x2a);
+    NVGcolor active     = nvgRGB(0xcc, 0x22, 0x22);
   };
   
   // Per-lane probability distribution
@@ -289,7 +289,7 @@ struct SandsVisualEditorV4 : rack::Widget {
     }
   }
   
-  void draw(const rack::DrawArgs& args) override {
+  void draw(const widget::Widget::DrawArgs& args) override {
     nvgBeginPath(args.vg);
     nvgRect(args.vg, 0, 0, box.size.x, box.size.y);
     nvgFillColor(args.vg, colors.background);
@@ -322,7 +322,7 @@ struct SandsVisualEditorV4 : rack::Widget {
     
     nvgFontSize(vg, 9.f);
     nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-    nvgFillColor(vg, rack::color::hex("#888888"));
+    nvgFillColor(vg, nvgRGB(0x88, 0x88, 0x88));
     
     const char* modeStr = (mode == MONO) ? "MONO" : "POLY";
     nvgText(vg, x, y, modeStr, nullptr);
@@ -340,7 +340,7 @@ struct SandsVisualEditorV4 : rack::Widget {
     
     nvgFontSize(vg, 10.f);
     nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
-    nvgFillColor(vg, (lane == kbState.selectedLane) ? getLaneColor(lane) : rack::color::hex("#666666"));
+    nvgFillColor(vg, (lane == kbState.selectedLane) ? getLaneColor(lane) : nvgRGB(0x66, 0x66, 0x66));
     nvgText(vg, layout.padding - 8, y, name, nullptr);
   }
   
@@ -496,12 +496,12 @@ struct SandsVisualEditorV4 : rack::Widget {
     
     nvgBeginPath(vg);
     nvgRect(vg, panelX, panelY, panelW, panelH);
-    nvgFillColor(vg, rack::color::hex("#1a1a1a"));
+    nvgFillColor(vg, nvgRGB(0x1a, 0x1a, 0x1a));
     nvgFill(vg);
     
     nvgFontSize(vg, 11.f);
     nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
-    nvgFillColor(vg, rack::color::hex("#d4af37"));
+    nvgFillColor(vg, nvgRGB(0xd4, 0xaf, 0x37));
     nvgText(vg, panelX + panelW / 2.f, panelY + 5, "PRESET SEEDS", nullptr);
     
     float btnW = 70.f;
@@ -516,12 +516,12 @@ struct SandsVisualEditorV4 : rack::Widget {
       bool isSelected = (p == selectedPreset);
       nvgBeginPath(vg);
       nvgRect(vg, bx, by, btnW, btnH);
-      nvgFillColor(vg, isSelected ? rack::color::hex("#26a69a") : rack::color::hex("#333333"));
+      nvgFillColor(vg, isSelected ? nvgRGB(0x26, 0xa6, 0x9a) : nvgRGB(0x33, 0x33, 0x33));
       nvgFill(vg);
       
       nvgFontSize(vg, 8.f);
       nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-      nvgFillColor(vg, rack::color::hex("#888888"));
+      nvgFillColor(vg, nvgRGB(0x88, 0x88, 0x88));
       nvgText(vg, bx + btnW / 2.f, by + btnH / 2.f, presetBank[p].name, nullptr);
     }
   }
@@ -603,7 +603,7 @@ struct SandsVisualEditorV4 : rack::Widget {
     }
   }
   
-  void onKey(const rack::event::Key& e) override {
+  void onKey(const KeyEvent& e) override {
     if (e.action != GLFW_PRESS) return;
     
     if ((e.mods & RACK_MOD_MASK) == RACK_MOD_CTRL && e.key == GLFW_KEY_Z) {
