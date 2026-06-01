@@ -8,8 +8,10 @@
 
 using namespace rack;
 using namespace MonsoonIds;
-using namespace SandsMonoVisualIds;
-using namespace StraitsMacroVisualIds;
+// NOTE: NOT using namespace SandsMonoVisualIds or StraitsMacroVisualIds
+// to avoid ambiguous cvId/attenId/sprId calls — qualify explicitly below.
+namespace Mono  = SandsMonoVisualIds;
+namespace Macro = StraitsMacroVisualIds;
 
 void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManager) {
     const bool hasVisual = (expanderManager.cachedSandsVisualExpander != nullptr);
@@ -20,31 +22,26 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     auto* macroVis = expanderManager.cachedMacroSandsVisual;
 
     // ── Helper: apply mono CV offset at read site ─────────────────────────
-    // Mono: cvId(lane, param) where param 0=LEN,1=OFF,2=ROT,3=SPR
-    // base + cv * atten * scale, clamped.
     auto applyMonoCV = [&](float base, int lane, int param, float lo, float hi) -> float {
-        if (!monoVis || !monoVis->inputs[cvId(lane, param)].isConnected()) return base;
-        float cv  = monoVis->inputs[cvId(lane, param)].getVoltage() / 10.f;
-        float att = monoVis->params[attenId(lane, param)].getValue();
+        if (!monoVis || !monoVis->inputs[Mono::cvId(lane, param)].isConnected()) return base;
+        float cv  = monoVis->inputs[Mono::cvId(lane, param)].getVoltage() / 10.f;
+        float att = monoVis->params[Mono::attenId(lane, param)].getValue();
         return clamp(base + cv * att * (hi - lo), lo, hi);
     };
 
     // ── Helper: apply macro CV offset at read site ────────────────────────
-    // Macro: StraitsMacroVisualIds::cvId(lane, param), param 0=LEN,1=OFF,2=ROT,3=SPR
     auto applyMacroCV = [&](float base, int lane, int param, float lo, float hi) -> float {
-        if (!macroVis || !macroVis->inputs[StraitsMacroVisualIds::cvId(lane,param)].isConnected()) return base;
-        float cv  = macroVis->inputs[StraitsMacroVisualIds::cvId(lane,param)].getVoltage() / 10.f;
-        float att = macroVis->params[StraitsMacroVisualIds::attenId(lane,param)].getValue();
+        if (!macroVis || !macroVis->inputs[Macro::cvId(lane,param)].isConnected()) return base;
+        float cv  = macroVis->inputs[Macro::cvId(lane,param)].getVoltage() / 10.f;
+        float att = macroVis->params[Macro::attenId(lane,param)].getValue();
         return clamp(base + cv * att * (hi - lo), lo, hi);
     };
 
     if (hasVisual || hasKnobs) {
-        // L/O/R source: visual expander if present (reads SandsMonoVisualIds slots),
-        // else knob expander (reads DNA_* slots). CV applied at read site.
         auto readStrand = [&](
                 int monoLenId, int monoOffId, int monoRotId,
                 int kbLenParam, int kbLenInput, int kbOffParam, int kbOffInput, int kbRotParam,
-                int cvRow,   // row index for Mono CV (0-5), -1 if none
+                int cvRow,
                 int& tLen, int& tOff, int& tRot)
         {
             float baseLen, baseOff, baseRot;
@@ -61,15 +58,11 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 baseRot = kb->params[kbRotParam].getValue();
             }
 
-            // Apply Mono visual CV if connected (cvRow = lane index 0-5)
             if (cvRow >= 0 && hasVisual) {
                 baseLen = applyMonoCV(baseLen, cvRow, 0, 1.f, 16.f);
                 baseOff = applyMonoCV(baseOff, cvRow, 1, 0.f, 15.f);
                 baseRot = applyMonoCV(baseRot, cvRow, 2, 0.f, 15.f);
-                // Spread: compute effective, write to spreadEffective[lane].
-                // Widget reads spreadEffective[] → SpreadManager.setSpread().
-                // No write-back to sprId param — base is always preserved.
-                float baseSpr = monoVis->params[sprId(cvRow)].getValue();
+                float baseSpr = monoVis->params[Mono::sprId(cvRow)].getValue();
                 monoVis->spreadEffective[cvRow] = applyMonoCV(baseSpr, cvRow, 3, 0.f, 1.f);
             }
 
@@ -78,20 +71,16 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             tRot = ((int)std::round(baseRot) % 16 + 16) % 16;
         };
 
-        // Mono cvRow = lane index (0-5), one row per lane, 4 params per row
-        // Lane 0=REST(rhythm), 1=VAR(variation), 2=LEG(legato),
-        //      3=ACC(accent),   4=MEL(melody),    5=OCT(octave)
-        // Initialise spreadEffective from base params (CV overrides below)
         if (hasVisual) {
             for (int l = 0; l < 6; ++l)
-                monoVis->spreadEffective[l] = monoVis->params[sprId(l)].getValue();
+                monoVis->spreadEffective[l] = monoVis->params[Mono::sprId(l)].getValue();
         }
-        readStrand(lenId(0),offId(0),rotId(0), DNA_R_LEN_PARAM,DNA_R_LEN_INPUT,DNA_R_OFF_PARAM,DNA_R_OFF_INPUT,DNA_R_ROT_PARAM, 0, engine.rhythmLen,    engine.rhythmOff,    engine.rhythmRot);
-        readStrand(lenId(1),offId(1),rotId(1), DNA_V_LEN_PARAM,DNA_V_LEN_INPUT,DNA_V_OFF_PARAM,DNA_V_OFF_INPUT,DNA_V_ROT_PARAM, 1, engine.variationLen, engine.variationOff, engine.variationRot);
-        readStrand(lenId(2),offId(2),rotId(2), DNA_L_LEN_PARAM,DNA_L_LEN_INPUT,DNA_L_OFF_PARAM,DNA_L_OFF_INPUT,DNA_L_ROT_PARAM, 2, engine.legatoLen,    engine.legatoOff,    engine.legatoRot);
-        readStrand(lenId(3),offId(3),rotId(3), DNA_A_LEN_PARAM,DNA_A_LEN_INPUT,DNA_A_OFF_PARAM,DNA_A_OFF_INPUT,DNA_A_ROT_PARAM, 3, engine.accentLen,    engine.accentOff,    engine.accentRot);
-        readStrand(lenId(4),offId(4),rotId(4), DNA_M_LEN_PARAM,DNA_M_LEN_INPUT,DNA_M_OFF_PARAM,DNA_M_OFF_INPUT,DNA_M_ROT_PARAM, 4, engine.melodyLen,    engine.melodyOff,    engine.melodyRot);
-        readStrand(lenId(5),offId(5),rotId(5), DNA_O_LEN_PARAM,DNA_O_LEN_INPUT,DNA_O_OFF_PARAM,DNA_O_OFF_INPUT,DNA_O_ROT_PARAM, 5, engine.octaveLen,    engine.octaveOff,    engine.octaveRot);
+        readStrand(Mono::lenId(0),Mono::offId(0),Mono::rotId(0), DNA_R_LEN_PARAM,DNA_R_LEN_INPUT,DNA_R_OFF_PARAM,DNA_R_OFF_INPUT,DNA_R_ROT_PARAM, 0, engine.rhythmLen,    engine.rhythmOff,    engine.rhythmRot);
+        readStrand(Mono::lenId(1),Mono::offId(1),Mono::rotId(1), DNA_V_LEN_PARAM,DNA_V_LEN_INPUT,DNA_V_OFF_PARAM,DNA_V_OFF_INPUT,DNA_V_ROT_PARAM, 1, engine.variationLen, engine.variationOff, engine.variationRot);
+        readStrand(Mono::lenId(2),Mono::offId(2),Mono::rotId(2), DNA_L_LEN_PARAM,DNA_L_LEN_INPUT,DNA_L_OFF_PARAM,DNA_L_OFF_INPUT,DNA_L_ROT_PARAM, 2, engine.legatoLen,    engine.legatoOff,    engine.legatoRot);
+        readStrand(Mono::lenId(3),Mono::offId(3),Mono::rotId(3), DNA_A_LEN_PARAM,DNA_A_LEN_INPUT,DNA_A_OFF_PARAM,DNA_A_OFF_INPUT,DNA_A_ROT_PARAM, 3, engine.accentLen,    engine.accentOff,    engine.accentRot);
+        readStrand(Mono::lenId(4),Mono::offId(4),Mono::rotId(4), DNA_M_LEN_PARAM,DNA_M_LEN_INPUT,DNA_M_OFF_PARAM,DNA_M_OFF_INPUT,DNA_M_ROT_PARAM, 4, engine.melodyLen,    engine.melodyOff,    engine.melodyRot);
+        readStrand(Mono::lenId(5),Mono::offId(5),Mono::rotId(5), DNA_O_LEN_PARAM,DNA_O_LEN_INPUT,DNA_O_OFF_PARAM,DNA_O_OFF_INPUT,DNA_O_ROT_PARAM, 5, engine.octaveLen,    engine.octaveOff,    engine.octaveRot);
 
         if (hasKnobs) {
             auto dnaExp = expanderManager.cachedDnaExpander;
@@ -117,32 +106,25 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     }
 
     // ── Macro global LOR with CV ──────────────────────────────────────────
-    // Applied on top of existing voice patterns when Macro is connected.
-    // Macro row mapping: REST=rows 0-1, MEL=rows 2-3, OCT=rows 4-5
     if (hasMacro) {
-        auto applyGlobal = [&](int lane) {
-            float bLen = macroVis->params[StraitsMacroVisualIds::lorId(lane,0)].getValue();
-            float bOff = macroVis->params[StraitsMacroVisualIds::lorId(lane,1)].getValue();
-            float bRot = macroVis->params[StraitsMacroVisualIds::lorId(lane,2)].getValue();
+        auto applyGlobal = [&](int lane, int& outLen, int& outOff, int& outRot) {
+            float bLen = macroVis->params[Macro::lorId(lane,0)].getValue();
+            float bOff = macroVis->params[Macro::lorId(lane,1)].getValue();
+            float bRot = macroVis->params[Macro::lorId(lane,2)].getValue();
             bLen = applyMacroCV(bLen, lane, 0, 1.f, 16.f);
             bOff = applyMacroCV(bOff, lane, 1, 0.f, 15.f);
             bRot = applyMacroCV(bRot, lane, 2, 0.f, 15.f);
-            // Spread CV (param 3): effective value written to SPREAD_REST/MEL/OCT
-            // which the Macro widget reads for SpreadManager.setSpread()
-            float bSpr = macroVis->params[StraitsMacroVisualIds::sprId(lane)].getValue();
+            float bSpr = macroVis->params[Macro::sprId(lane)].getValue();
             bSpr = applyMacroCV(bSpr, lane, 3, 0.f, 1.f);
-            macroVis->params[StraitsMacroVisualIds::sprId(lane)].setValue(bSpr);
-            return std::make_tuple(
-                clamp((int)std::round(bLen), 1, 16),
-                ((int)std::round(bOff) % 16 + 16) % 16,
-                ((int)std::round(bRot) % 16 + 16) % 16);
+            macroVis->params[Macro::sprId(lane)].setValue(bSpr);
+            outLen = clamp((int)std::round(bLen), 1, 16);
+            outOff = ((int)std::round(bOff) % 16 + 16) % 16;
+            outRot = ((int)std::round(bRot) % 16 + 16) % 16;
         };
-        auto [rLen,rOff,rRot] = applyGlobal(0);
-        engine.rhythmLen = rLen; engine.rhythmOff = rOff; engine.rhythmRot = rRot;
-        auto [mLen,mOff,mRot] = applyGlobal(1);
-        engine.melodyLen = mLen; engine.melodyOff = mOff; engine.melodyRot = mRot;
-        auto [oLen,oOff,oRot] = applyGlobal(2);
-        engine.octaveLen = oLen; engine.octaveOff = oOff; engine.octaveRot = oRot;
+        // C++11: out-params instead of structured bindings
+        applyGlobal(0, engine.rhythmLen, engine.rhythmOff, engine.rhythmRot);
+        applyGlobal(1, engine.melodyLen, engine.melodyOff, engine.melodyRot);
+        applyGlobal(2, engine.octaveLen, engine.octaveOff, engine.octaveRot);
     }
 
     // Note: Poly DNA windows handled in Monsoon::process controlDivider block.
