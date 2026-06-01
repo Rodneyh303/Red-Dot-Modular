@@ -253,7 +253,6 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         auto writeNvgText=[&](float x,float y,const char* t){ nvgText(vg,mm2px(x),mm2px(y),t,nullptr); };
         auto setNvgFontSize=[&](float mm){ nvgFontSize(vg,mm2px(mm)); };
 
-        setNvgFontSize(4.2f); fillNvgColour(200,200,200); writeNvgText(W_MM/2.f, 5.5f, "Dot Modular  -  Monsoon");
         setNvgFontSize(3.4f); fillNvgColour(200,200,200);
         writeNvgText(16.f,34.f,"NOTE VALUE"); writeNvgText(42.f,34.f,"VARIATION");
         writeNvgText(68.f,34.f,"LEGATO");     writeNvgText(94.f,34.f,"REST");
