@@ -1,27 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="767.99" height="485.67" viewBox="0 0 767.99 485.67">
 <g inkscape:label="artwork" inkscape:groupmode="layer">
 <rect width="767.99" height="485.67" fill="#1a1c20"/>
-<g fill="#232831" opacity="0.5">
-<rect x="0" y="476" width="32" height="9"/>
-<rect x="41" y="472" width="25" height="14"/>
-<rect x="73" y="472" width="24" height="13"/>
-<rect x="101" y="477" width="36" height="8"/>
-<rect x="141" y="469" width="36" height="17"/>
-<rect x="182" y="471" width="29" height="15"/>
-<rect x="222" y="474" width="40" height="12"/>
-<rect x="273" y="468" width="24" height="17"/>
-<rect x="303" y="477" width="27" height="9"/>
-<rect x="336" y="476" width="47" height="10"/>
-<rect x="392" y="474" width="42" height="12"/>
-<rect x="442" y="477" width="25" height="8"/>
-<rect x="472" y="473" width="43" height="12"/>
-<rect x="521" y="473" width="40" height="13"/>
-<rect x="568" y="470" width="47" height="15"/>
-<rect x="620" y="472" width="40" height="14"/>
-<rect x="670" y="475" width="45" height="11"/>
-<rect x="726" y="473" width="26" height="12"/>
-<rect x="762" y="473" width="27" height="13"/>
-</g>
+<g fill="#232831" opacity="0.30"><rect x="0" y="483" width="32" height="2"/><rect x="41" y="482" width="25" height="3"/><rect x="73" y="482" width="24" height="3"/><rect x="101" y="484" width="36" height="2"/><rect x="141" y="482" width="36" height="4"/><rect x="182" y="482" width="29" height="4"/><rect x="222" y="483" width="40" height="3"/><rect x="273" y="482" width="24" height="4"/><rect x="303" y="483" width="27" height="2"/><rect x="336" y="483" width="47" height="2"/><rect x="392" y="483" width="42" height="3"/><rect x="442" y="484" width="25" height="2"/><rect x="472" y="483" width="43" height="3"/><rect x="521" y="483" width="40" height="3"/><rect x="568" y="482" width="47" height="4"/><rect x="620" y="482" width="40" height="3"/><rect x="670" y="483" width="45" height="3"/><rect x="726" y="483" width="26" height="3"/><rect x="762" y="482" width="27" height="3"/></g>
 <line x1="0" y1="41.6" x2="767.99" y2="41.6" stroke="#dc2626" stroke-width="1" opacity="0.4"/>
 <line x1="15.1" y1="151.2" x2="752.9" y2="151.2" stroke="#2a2f37" stroke-width="0.5" opacity="0.5"/>
 <line x1="15.1" y1="294.8" x2="752.9" y2="294.8" stroke="#2a2f37" stroke-width="0.5" opacity="0.5"/>
