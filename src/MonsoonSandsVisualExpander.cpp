@@ -4,8 +4,8 @@
 #include "MonsoonSandsVisualExpander.hpp"
 #include "ui/SandsVisualEditorV4.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
-#include "managers/MonoSandsParameterManager.hpp"
-#include "managers/SpreadManager.hpp"
+#include "dsp/managers/MonoSandsParameterManager.hpp"
+#include "dsp/managers/SpreadManager.hpp"
 
 using namespace rack;
 using namespace redDot;

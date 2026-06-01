@@ -4,7 +4,7 @@
 #include "StraitsSandsMacroVisual.hpp"
 #include "ui/SandsVisualEditorV4.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
-#include "managers/PolySandsParameterManager.hpp"
+#include "dsp/managers/PolySandsParameterManager.hpp"
 
 using namespace rack;
 using namespace redDot;

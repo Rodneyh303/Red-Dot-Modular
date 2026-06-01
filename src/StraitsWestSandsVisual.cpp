@@ -5,8 +5,8 @@
 #include "ui/SandsVisualEditorV4.hpp"
 #include "ui/TabButton.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
-#include "managers/PolyVoiceSandsParameterManager.hpp"
-#include "managers/SpreadManager.hpp"
+#include "dsp/managers/PolyVoiceSandsParameterManager.hpp"
+#include "dsp/managers/SpreadManager.hpp"
 
 using namespace rack;
 using namespace redDot;

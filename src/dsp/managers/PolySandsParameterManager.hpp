@@ -1,8 +1,8 @@
 #pragma once
 #include <rack.hpp>
-#include "../ui/SandsVisualEditorV4.hpp"
-#include "../dsp/engines/PatternEngine.hpp"
-#include "../dsp/engines/SequencerEngine.hpp"
+#include "../../ui/SandsVisualEditorV4.hpp"
+#include "../engines/PatternEngine.hpp"
+#include "../engines/SequencerEngine.hpp"
 #include "SpreadManager.hpp"
 
 namespace redDot {
