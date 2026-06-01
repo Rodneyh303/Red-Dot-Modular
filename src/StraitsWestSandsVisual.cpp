@@ -12,6 +12,7 @@ using namespace rack;
 using namespace redDot;
 using namespace MonsoonIds;
 using namespace StraitsWestVisualIds;
+namespace E = StraitsEastVisualIds;   // alias for East layout constants (ED_X, ED_Y, ED_W, ROW_BOT)
 
 extern Plugin* pluginInstance;
 
@@ -30,8 +31,6 @@ struct StraitsWestSandsVisualWidget : ModuleWidget {
     PolyVoiceSandsParameterManager* paramMgr     = nullptr;
     int  selectedVoice = 0;
     bool initialized   = false;
-
-    using E = StraitsEastVisualIds;   // alias for layout constants
 
     explicit StraitsWestSandsVisualWidget(StraitsWestSandsVisual* mod) {
         setModule(mod);
