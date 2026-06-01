@@ -248,8 +248,8 @@
     <line x1="754.77" y1="427.08" x2="766.10" y2="427.08"/>
   </g>
   <g fill="none" stroke="#9a6800" stroke-width="0.9" opacity="0.72">
-    <circle cx="60.47" cy="83.15" r="41.57"/>
-    <circle cx="60.47" cy="83.15" r="28.35" stroke-width="0.5" opacity="0.55"/>
+    <circle cx="60.47" cy="83.15" r="51.02"/>
+    <circle cx="60.47" cy="83.15" r="34.02" stroke-width="0.5" opacity="0.55"/>
     <circle cx="158.74" cy="83.15" r="41.57"/>
     <circle cx="158.74" cy="83.15" r="28.35" stroke-width="0.5" opacity="0.55"/>
     <circle cx="257.01" cy="83.15" r="41.57"/>
@@ -260,12 +260,12 @@
     <circle cx="453.54" cy="83.15" r="28.35" stroke-width="0.5" opacity="0.55"/>
   </g>
   <g fill="none" stroke="#9a9a9a" stroke-width="0.6" opacity="0.50">
-    <circle cx="559.37" cy="219.21" r="22.68"/>
-    <circle cx="559.37" cy="219.21" r="15.12" stroke-width="0.4" opacity="0.55"/>
-    <circle cx="616.06" cy="219.21" r="22.68"/>
-    <circle cx="616.06" cy="219.21" r="15.12" stroke-width="0.4" opacity="0.55"/>
-    <circle cx="672.75" cy="219.21" r="22.68"/>
-    <circle cx="672.75" cy="219.21" r="15.12" stroke-width="0.4" opacity="0.55"/>
+    <circle cx="559.37" cy="219.21" r="30.24"/>
+    <circle cx="559.37" cy="219.21" r="18.9" stroke-width="0.4" opacity="0.55"/>
+    <circle cx="616.06" cy="219.21" r="30.24"/>
+    <circle cx="616.06" cy="219.21" r="18.9" stroke-width="0.4" opacity="0.55"/>
+    <circle cx="672.75" cy="219.21" r="30.24"/>
+    <circle cx="672.75" cy="219.21" r="18.9" stroke-width="0.4" opacity="0.55"/>
   </g>
   <circle cx="612.28" cy="113.39" r="90.71" fill="url(#ringGlow)" stroke="none"/>
   <g stroke="#9a6800" stroke-width="0.9" fill="none" opacity="0.70"><circle cx="612.28" cy="113.39" r="75.59"/><circle cx="612.28" cy="113.39" r="90.71" stroke-width="0.4" opacity="0.40"/></g>
