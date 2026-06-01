@@ -6,7 +6,7 @@
 
 namespace redDot {
 
-using namespace rack;  // widget::Widget::DrawArgs, KeyEvent, color::*, event::*
+using namespace rack;  // widget::Widget::DrawArgs, event::*, math::*
 /**
  * SandsVisualEditorV4 (Corrected)
  * 
@@ -603,50 +603,6 @@ struct SandsVisualEditorV4 : rack::Widget {
     }
   }
   
-  void onKey(const KeyEvent& e) override {
-    if (e.action != GLFW_PRESS) return;
-    
-    if ((e.mods & RACK_MOD_MASK) == RACK_MOD_CTRL && e.key == GLFW_KEY_Z) {
-      undo();
-      e.consume(this);
-      return;
-    }
-    
-    if (e.key >= GLFW_KEY_1 && e.key <= GLFW_KEY_6) {
-      int lane = e.key - GLFW_KEY_1;
-      if (lane < laneCount) {
-        kbState.selectedLane = lane;
-        e.consume(this);
-        return;
-      }
-    }
-    
-    if (e.key == GLFW_KEY_R) {
-      if ((e.mods & RACK_MOD_MASK) == 0) randomizeLane(kbState.selectedLane);
-      else if ((e.mods & RACK_MOD_MASK) == GLFW_MOD_SHIFT) randomizeAll();
-      e.consume(this);
-      return;
-    }
-    
-    if (e.key == GLFW_KEY_P) {
-      kbState.showPresetPanel = !kbState.showPresetPanel;
-      e.consume(this);
-      return;
-    }
-    
-    if (e.key == GLFW_KEY_C && (e.mods & RACK_MOD_MASK) == RACK_MOD_CTRL) {
-      copyLane(kbState.selectedLane);
-      e.consume(this);
-      return;
-    }
-    
-    if (e.key == GLFW_KEY_V) {
-      if ((e.mods & RACK_MOD_MASK) == RACK_MOD_CTRL) pasteLane(kbState.selectedLane);
-      else if ((e.mods & RACK_MOD_MASK) == GLFW_MOD_SHIFT) reverseLane(kbState.selectedLane);
-      e.consume(this);
-      return;
-    }
-  }
   
   NVGcolor getLaneColor(int lane) const {
     switch (lane) {
