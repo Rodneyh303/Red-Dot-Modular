@@ -68,9 +68,6 @@ struct MonsoonSandsVisualExpander : Module {
 
         static const char* names[6] = {"REST","MEL","OCT","LEG","ACC","VAR"};
         static const char* pnames[4] = {"Len","Off","Rot","Spread"};
-        static const float phi[4]    = {16.f, 0.f, 0.f, 0.f};
-        static const float plo[4]    = {1.f,  0.f, 0.f, 0.f};
-        static const float phi2[4]   = {16.f,15.f,15.f, 1.f};
 
         for (int l = 0; l < 6; ++l) {
             configParam(lenId(l), 1.f, 16.f, 16.f,

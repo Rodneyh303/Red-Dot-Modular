@@ -6,6 +6,7 @@
 
 namespace redDot {
 
+using namespace rack;  // bring rack types into scope (DrawArgs, color::hex, event::*)
 /**
  * SandsVisualEditorV4 (Corrected)
  * 
@@ -113,6 +114,7 @@ struct SandsVisualEditorV4 : rack::Widget {
     Type  type         = NONE;
     int   dragLane     = 0;
     int   dragStep     = 0;
+    math::Vec dragPos  = {};  // accumulated absolute position (Rack2: DragMove has delta not pos)
     // backward-compat aliases used elsewhere in the file
     bool  isDragging     = false;
     bool  isDraggingBar  = false;
@@ -537,6 +539,7 @@ struct SandsVisualEditorV4 : rack::Widget {
           dragState.dragLane   = lane;
           dragState.isDragging = true;
           dragState.isDraggingBar = false;
+          dragState.dragPos    = e.pos;   // capture start pos
           e.consume(this);
           return;
         }
@@ -548,6 +551,7 @@ struct SandsVisualEditorV4 : rack::Widget {
           dragState.isDragging    = true;
           dragState.dragLane      = lane;
           dragState.dragStep      = step;
+          dragState.dragPos       = e.pos;   // capture start pos
           setBarValue(lane, step, e.pos.y);
           e.consume(this);
         }
@@ -562,15 +566,17 @@ struct SandsVisualEditorV4 : rack::Widget {
   
   void onDragMove(const rack::event::DragMove& e) override {
     if (!dragState.isDragging) return;
+    // Rack 2: DragMove gives delta, not absolute pos. Accumulate.
+    dragState.dragPos = dragState.dragPos.plus(e.mouseDelta);
     int lane = dragState.dragLane;
-    int step = getStepAtX(e.pos.x);
+    int step = getStepAtX(dragState.dragPos.x);
     if (step < 0 || step >= STEP_COUNT) return;
 
     ProbabilityLane& L = currentState.lanes[lane];
 
     switch (dragState.type) {
       case DragState::BAR:
-        setBarValue(lane, step, e.pos.y);
+        setBarValue(lane, step, dragState.dragPos.y);
         break;
 
       case DragState::START:

@@ -196,7 +196,7 @@ struct SpreadManager {
     
     // Access polyphony from SequencerEngine
     // The SequencerEngine.polyphony field tracks how many voices are active
-    return std::min(sequencerEngine->polyphony, numVoices);
+    return std::min(sequencerEngine->numPolyVoices, numVoices);
   }
   
   /**
