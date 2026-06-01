@@ -31,7 +31,7 @@ namespace redDot {
  *   Spread: MacroSpreadManager (same for all voices)
  * 
  * Usage:
- *   SequencerEngine* seqEngine = /* from monsoon */;
+ *   SequencerEngine* seqEngine = nullptr; // from monsoon
  *   PolySandsParameterManager mgr(patternEngine, seqEngine, monsoonModule);
  *   mgr.spreadMgr.setInterpolationTarget(SpreadManager::AVERAGE_POLY);
  *   mgr.spreadMgr.setSpread(lane, spread);
