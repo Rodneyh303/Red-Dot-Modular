@@ -160,7 +160,7 @@ void MonsoonWidget::applyTheme() {
  // Panel
     bool lightTheme = getLightTheme();  // read from module
     auto panelPath = asset::plugin(pluginInstance,
-        lightTheme ? "res/panels/Monsoon_panel_dark_monsoon.svg"
+        lightTheme ? "res/panels/Monsoon_panel_light_monsoon.svg"
                    : "res/panels/Monsoon_panel_dark_monsoon.svg");
 
     auto* m = dynamic_cast<Monsoon*>(module);
