@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="210mm"
+   height="297mm"
+   viewBox="0 0 210 297"
+   version="1.1"
+   id="svg1367"
+   inkscape:version="1.2.2 (732a01da63, 2022-12-09)"
+   sodipodi:docname="outport.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1369"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="mm"
+     showgrid="false"
+     inkscape:zoom="0.27653847"
+     inkscape:cx="488.17801"
+     inkscape:cy="656.32821"
+     inkscape:window-width="1440"
+     inkscape:window-height="810"
+     inkscape:window-x="61"
+     inkscape:window-y="0"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs1364">
+    <radialGradient
+       id="jgo"
+       cx="109.978"
+       cy="118.54"
+       r="4.526"
+       fx="109.978"
+       fy="118.54"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="matrix(0.78125,0,0,0.78125,-42.067265,3.6714125)">
+      <stop
+         offset="0%"
+         stop-color="#806020"
+         id="stop1405" />
+      <stop
+         offset="50%"
+         stop-color="#402808"
+         id="stop1407" />
+      <stop
+         offset="100%"
+         stop-color="#080400"
+         id="stop1409" />
+    </radialGradient>
+  </defs>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <circle
+       cx="44.651485"
+       cy="97.42141"
+       r="3.515625"
+       fill="#111111"
+       stroke="#0a0a0a"
+       stroke-width="0.3125"
+       id="circle2256" />
+    <circle
+       cx="44.651485"
+       cy="97.42141"
+       r="2.734375"
+       fill="url(#jgo)"
+       stroke="#1a1a1a"
+       stroke-width="0.234375"
+       id="circle2258"
+       style="fill:url(#jgo)" />
+    <circle
+       cx="44.651485"
+       cy="97.42141"
+       r="1.0390625"
+       fill="#050505"
+       id="circle2260"
+       style="stroke-width:0.78125" />
+    <circle
+       cx="44.651485"
+       cy="97.42141"
+       r="1.8593751"
+       fill="none"
+       stroke="#8a6010"
+       stroke-width="0.429688"
+       opacity="0.7"
+       id="circle2262" />
+  </g>
+</svg>

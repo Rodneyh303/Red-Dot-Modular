@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="10.0mm" height="8.0mm"
+     viewBox="-5.000 -4.000 10.000 8.000">
+<defs>
+  <linearGradient id="hnd" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%"   stop-color="#525252"/>
+    <stop offset="50%"  stop-color="#3a3a3a"/>
+    <stop offset="100%" stop-color="#252525"/>
+  </linearGradient>
+  <filter id="hShadow">
+    <feDropShadow dx="0" dy="0.7" stdDeviation="0.9"
+                  flood-color="#000" flood-opacity="0.7"/>
+  </filter>
+</defs>
+<rect x="-5.00" y="-3.40" width="10.0" height="8.0" rx="2" fill="#000" opacity="0.5" filter="url(#hShadow)"/>
+<rect x="-5.00" y="-4.00" width="10.0" height="8.0" rx="2" fill="url(#hnd)" stroke="#484848" stroke-width="0.55"/>
+<rect x="-4.50" y="-3.60" width="9.0" height="1.2" rx="1" fill="white" opacity="0.07"/>
+<line x1="-3.20" y1="-1.20" x2="3.20" y2="-1.20" stroke="#232323" stroke-width="0.5" stroke-linecap="round"/>
+<line x1="-3.20" y1="-0.90" x2="3.20" y2="-0.90" stroke="#555" stroke-width="0.2" stroke-linecap="round" opacity="0.5"/>
+<line x1="-3.20" y1="0.00" x2="3.20" y2="0.00" stroke="#232323" stroke-width="0.5" stroke-linecap="round"/>
+<line x1="-3.20" y1="0.30" x2="3.20" y2="0.30" stroke="#555" stroke-width="0.2" stroke-linecap="round" opacity="0.5"/>
+<line x1="-3.20" y1="1.20" x2="3.20" y2="1.20" stroke="#232323" stroke-width="0.5" stroke-linecap="round"/>
+<line x1="-3.20" y1="1.50" x2="3.20" y2="1.50" stroke="#555" stroke-width="0.2" stroke-linecap="round" opacity="0.5"/>
+<rect x="-5.30" y="-1.4" width="0.6" height="2.8" rx="0.3" fill="#1a1a1a" stroke="#2e2e2e" stroke-width="0.2"/>
+<rect x="4.10" y="-1.4" width="0.6" height="2.8" rx="0.3" fill="#1a1a1a" stroke="#2e2e2e" stroke-width="0.2"/>
+</svg>

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="15.0mm" height="15.0mm"
+     viewBox="-7.500 -7.500 15.000 15.000">
+<defs>
+  <radialGradient id="ledBody" cx="38%" cy="32%" r="62%">
+    <stop offset="0%"   stop-color="white" stop-opacity="0.6"/>
+    <stop offset="40%"  stop-color="#22dd55" stop-opacity="0.9"/>
+    <stop offset="100%" stop-color="#22dd55" stop-opacity="0.7"/>
+  </radialGradient>
+  <radialGradient id="ledGlow" cx="50%" cy="50%" r="50%">
+    <stop offset="0%"   stop-color="#22dd55" stop-opacity="0.5"/>
+    <stop offset="100%" stop-color="#22dd55" stop-opacity="0"/>
+  </radialGradient>
+  <filter id="ledBloom" x="-150%" y="-150%" width="400%" height="400%">
+    <feGaussianBlur stdDeviation="3.60" result="blur"/>
+    <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+  </filter>
+</defs>
+<circle r="9.900" fill="url(#ledGlow)"/>
+<circle r="4.500" fill="#22dd55" opacity="0.4" filter="url(#ledBloom)"/>
+<circle r="4.500" fill="url(#ledBody)"/>
+<circle r="4.500" fill="none" stroke="#22dd55" stroke-width="0.3" opacity="0.5"/>
+<circle cx="-1.260" cy="-1.350" r="1.440" fill="white" opacity="0.45"/>
+<circle cx="-0.900" cy="-0.990" r="0.540" fill="white" opacity="0.7"/>
+</svg>
