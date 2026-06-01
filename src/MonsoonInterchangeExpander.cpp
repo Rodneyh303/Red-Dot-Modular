@@ -8,8 +8,8 @@ extern Model* modelMonsoon;
 struct MonsoonInterchangeExpanderWidget : ModuleWidget {
 MonsoonInterchangeExpanderWidget(MonsoonInterchangeExpander* module) {
     setModule(module);
-    box.size = mm2px(Vec(270, 380));
-    setPanel(APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/interchange_gemini_new2.svg")));
+    //box.size = mm2px(Vec(270, 380));
+    setPanel(APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/interchange_wide_dark.svg")));
 
     // ... (Screws same as before) ...
     
