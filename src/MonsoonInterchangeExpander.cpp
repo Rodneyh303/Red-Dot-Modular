@@ -9,17 +9,17 @@ struct MonsoonInterchangeExpanderWidget : ModuleWidget {
 MonsoonInterchangeExpanderWidget(MonsoonInterchangeExpander* module) {
     setModule(module);
     //box.size = mm2px(Vec(270, 380));
-    setPanel(APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/interchange_wide_dark.svg")));
+    setPanel(APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/interchange_gemini_new2.svg")));
 
     // ... (Screws same as before) ...
     
 // Semitone Loop (i=0 to 5)
 for (int i = 0; i < 6; i++) {
     float rowY = 80.0f + (i * 40.0f); 
-    addInput(createInputCentered<PJ301MPort>(Vec(48.0f, rowY), module, MonsoonIds::EXPANDER_SEMI_CV_INPUT_0 + i));
+    addInput(createInputCentered<DarkPJ301MPort>(Vec(48.0f, rowY), module, MonsoonIds::EXPANDER_SEMI_CV_INPUT_0 + i));
     addParam(createParamCentered<Trimpot>(Vec(102.0f, rowY), module, MonsoonIds::EXPANDER_SEMI_ATTENUVERTER_0 + i));
     addParam(createParamCentered<Trimpot>(Vec(168.0f, rowY), module, MonsoonIds::EXPANDER_SEMI_ATTENUVERTER_0 + 6 + i));
-    addInput(createInputCentered<PJ301MPort>(Vec(222.0f, rowY), module, MonsoonIds::EXPANDER_SEMI_CV_INPUT_0 + 6 + i));
+    addInput(createInputCentered<DarkPJ301MPort>(Vec(222.0f, rowY), module, MonsoonIds::EXPANDER_SEMI_CV_INPUT_0 + 6 + i));
 }
 
 // Octave Section (Position 7, Y=320)
@@ -30,12 +30,18 @@ addParam(createParamCentered<Trimpot>(Vec(168.0f, octY), module, MonsoonIds::EXP
 addInput(createInputCentered<PJ301MPort>(Vec(222.0f, octY), module, MonsoonIds::EXPANDER_OCT_HI_CV_INPUT));
 }
     void draw(const DrawArgs& args) override {
+        // Force a solid opaque background fill to prevent transparency
+        nvgBeginPath(args.vg);
+        nvgRect(args.vg, 0, 0, box.size.x, box.size.y);
+        nvgFillColor(args.vg, nvgRGBA(0x23, 0x23, 0x23, 255)); // Dark background
+        nvgFill(args.vg);
+
         ModuleWidget::draw(args);
 
         // ── Panel Labels ─────────────────────────────────────────────────────
         nvgFontFaceId(args.vg, APP->window->uiFont->handle);
         nvgTextAlign(args.vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-        nvgFillColor(args.vg, nvgRGBA(0x23, 0x23, 0x23, 0xff)); // Dark gray for light panels, adjust as needed
+        nvgFillColor(args.vg, nvgRGBA(0xe6, 0xe6, 0xe6, 0xff)); // Light gray labels for dark background
 
         // Header
         nvgFontSize(args.vg, mm2px(3.5f));
@@ -61,7 +67,7 @@ addInput(createInputCentered<PJ301MPort>(Vec(222.0f, octY), module, MonsoonIds::
 
         // Attenuation guides
         nvgFontSize(args.vg, mm2px(1.8f));
-        nvgFillColor(args.vg, nvgRGBA(0x66, 0x66, 0x66, 0xff));
+        nvgFillColor(args.vg, nvgRGBA(0x99, 0x99, 0x99, 0xff)); // Brighter guides for dark background
         for (float jackX : {8.0f, 28.0f}) {
             float knobX = jackX + 7.5f;
             for (int row = 0; row < 6; row++) {

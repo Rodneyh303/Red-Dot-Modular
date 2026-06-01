@@ -10,7 +10,7 @@ struct MonsoonStraitsEastExpanderWidget : ModuleWidget {
     MonsoonStraitsEastExpanderWidget(MonsoonStraitsEastExpander* module) 
     {
         setModule(module);
-        setPanel(APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/StraitsEast_panel_dark_12HP.svg")));
+        setPanel(APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/interchange_wide_straits_dark.svg")));
 
         // Screws
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
@@ -19,9 +19,9 @@ struct MonsoonStraitsEastExpanderWidget : ModuleWidget {
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
         // ── 12HP Layout (6 columns) ──
-        float col1 = 6.0f;  // Rest Knob
-        float col2 = 16.0f; // Attenuverter
-        float col3 = 26.0f; // Mod Input
+        float col1 = 6.0f;  // Rest Knob to 3
+        float col2 = 16.0f; // Attenuverter to 2
+        float col3 = 26.0f; // Mod Input to 1
         float col4 = 36.0f; // Gate Output
         float col5 = 46.0f; // CV Output
         float col6 = 56.0f; // Accent Output
@@ -33,13 +33,13 @@ struct MonsoonStraitsEastExpanderWidget : ModuleWidget {
             float y = startY + i * spacingY;
             // Rest probability knob
             addParam(createParamCentered<Trimpot>(
-                mm2px(Vec(col1, y)), module, MonsoonIds::POLY_REST_PARAM_1 + i));
+                mm2px(Vec(col3, y)), module, MonsoonIds::POLY_REST_PARAM_1 + i));
             // Rest modulation attenuverter
             addParam(createParamCentered<Trimpot>(
                 mm2px(Vec(col2, y)), module, MonsoonIds::POLY_REST_MOD_ATT_1 + i));
             // Rest modulation input
             addInput(createInputCentered<PJ301MPort>(
-                mm2px(Vec(col3, y)), module, MonsoonIds::POLY_REST_MOD_CV_INPUT_1 + i));
+                mm2px(Vec(col1, y)), module, MonsoonIds::POLY_REST_MOD_CV_INPUT_1 + i));
             // Gate output
             addOutput(createOutputCentered<PJ301MPort>(
                 mm2px(Vec(col4, y)), module, POLY_GATE_OUT_1 + i));

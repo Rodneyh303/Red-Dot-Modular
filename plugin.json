@@ -19,90 +19,92 @@
     {
       "slug": "MonsoonInterchangeExpander",
       "name": "MonsoonInterchangeExpander",
-      "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
+      "description": "Semitone and Octave CV Modulation Expander",
       "tags": [
+        "Expander",
         "Sequencer",
-        "Random",
-        "Quantizer"
+		"Random"
       ]
     },
     {
       "slug": "MonsoonSandsExpander",
       "name": "MonsoonSandsExpander",
-      "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
+      "description": "Monsoon Probability Manipulation, and Modulation Expander",
       "tags": [
+        "Expander",
         "Sequencer",
-        "Random",
-        "Quantizer"
+		"Random"
       ]
     },
     {
       "slug": "MonsoonStraitsEastExpander",
       "name": "MonsoonStraitsEastExpander",
-      "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
+      "description": "Polyphonice Expander and Modulation Expander - Voice 2-8",
       "tags": [
+        "Expander",
         "Sequencer",
-        "Random",
-        "Quantizer"
+		"Random"
       ]
     },
     {
       "slug": "MonsoonStraitWestExpander",
       "name": "MonsoonStraitWestExpander",
-      "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
+      "description": "Polyphonice Expander and Modulation Expander - Voice 9-16",
       "tags": [
+        "Expander",
         "Sequencer",
-        "Random",
-        "Quantizer"
+		"Random"
       ]
     },
     {
       "slug": "MonsoonDeepStraitsSandsEast",
       "name": "MonsoonDeepStraitsSandsEast",
-      "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
+      "description": "Monsoon Poly Probability Manipulation, and Modulation Expander Voice 2-8",
       "tags": [
+        "Expander",
         "Sequencer",
-        "Random",
-        "Quantizer"
+		"Random"
       ]
     },
     {
       "slug": "MonsoonDeepStraitsSandsWest",
       "name": "MonsoonDeepStraitsSandsWest",
-      "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
+      "description": "Monsoon Poly Probability Manipulation, and Modulation Expander Voice 9-16",
       "tags": [
+        "Expander",
         "Sequencer",
-        "Random",
-        "Quantizer"
+		"Random"
       ]
     },
     {
       "slug": "MonsoonStraitsSands",
       "name": "MonsoonStraitsSands",
-      "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
+      "description": "Monsoon Polyphonic Global Macro Probability Manipulation, and Modulation Expander",
       "tags": [
+        "Expander",
         "Sequencer",
-        "Random",
-        "Quantizer"
+		"Random"
       ]
     },
     {
       "slug": "MonsoonSandsVisualExpander",
       "name": "Sands Visual",
-      "description": "Visual probability editor for Monsoon mono DNA \u2014 6-lane bar editor with draggable start/end/rotation handles",
+      "description": "Monsoon Probability Visualisation, Manipulation, and Modulation Expander",
       "tags": [
         "Expander",
         "Sequencer",
+		"Random",
         "Visual"
       ]
     },
     {
       "slug": "StraitsEastSandsVisual",
       "name": "Straits East Sands Visual",
-      "description": "Visual probability editor for Straits East poly voices 2-8 \u2014 tabbed 3-lane editor with handles and spread interpolation",
+      "description": "Monsoon Polyphonic Per Channel Probability Visualisation, Manipulation, and Modulation Expander voice 2-8",
       "tags": [
         "Expander",
         "Sequencer",
+		"Random",
         "Visual",
         "Polyphonic"
       ]
@@ -110,10 +112,11 @@
     {
       "slug": "StraitsWestSandsVisual",
       "name": "Straits West Sands Visual",
-      "description": "Visual probability editor for Straits West poly voices 9-16 \u2014 tabbed 3-lane editor with handles and spread interpolation",
+      "description": "Monsoon Polyphonic Per Channel Probability Visualisation, Manipulation, and Modulation Expander voice 9-16",
       "tags": [
         "Expander",
         "Sequencer",
+		"Random",
         "Visual",
         "Polyphonic"
       ]
@@ -121,10 +124,11 @@
     {
       "slug": "StraitsSandsMacroVisual",
       "name": "Straits Sands Macro Visual",
-      "description": "Global visual probability editor for all poly voices \u2014 single 3-lane editor with global spread and handles",
+      "description": "Monsoon Polyphonic Global Macro Probability Visualisation, Manipulation, and Modulation Expander",
       "tags": [
         "Expander",
         "Sequencer",
+		"Random",
         "Visual",
         "Polyphonic"
       ]

@@ -22,7 +22,7 @@ using namespace rack;  // widget::Widget::DrawArgs, event::*, math::*
  * Length/offset/rotation are just parameters for sequencer indexing.
  */
 
-struct SandsVisualEditorV4 : rack::Widget {
+struct SandsVisualEditorV4 : rack::TransparentWidget {
   static constexpr int STEP_COUNT = 16;  // 16 probability values per lane
   
   enum Mode {
