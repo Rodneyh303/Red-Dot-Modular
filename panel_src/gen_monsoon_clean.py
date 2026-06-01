@@ -1,7 +1,7 @@
 """Clean Monsoon panel + tall Supertree backdrop (Gardens by the Bay).
 Authored from widget component positions. Controls legible; trees behind."""
 import math, random
-S = 3.7795
+S = 75.0 / 25.4  # Rack mm2px: 75 DPI, NOT 96 (was 3.7795 — caused 1.28x panel drift)
 def px(mm): return round(mm*S, 2)
 W_MM, H_MM = 203.2, 128.5
 PW, PH = px(W_MM), px(H_MM)
@@ -71,33 +71,21 @@ def gen(dark):
     def well(x,y,r): A(f'<circle cx="{px(x):.1f}" cy="{px(y):.1f}" r="{px(r):.1f}" fill="{t["knobwell"]}" stroke="{t["knobring"]}" stroke-width="1.2"/>')
     for (x,y) in KNOBS_LG: well(x,y,13.5)
     for (x,y) in KNOBS_MD: well(x,y,11.0)
-    for (x,y),lbl in zip(KNOBS_LG+KNOBS_MD, KNOB_LABELS):
-        A(f'<text x="{px(x):.1f}" y="{px(y+15.5):.1f}" font-family="sans-serif" font-size="{px(2.6):.1f}" fill="{t["ink"]}" text-anchor="middle">{lbl}</text>')
     for (x,y) in KNOBS_SM: well(x,y,8.0)
-    for (x,y),lbl in zip(KNOBS_SM, SM_LABELS):
-        A(f'<text x="{px(x):.1f}" y="{px(y+11.5):.1f}" font-family="sans-serif" font-size="{px(2.4):.1f}" fill="{t["ink"]}" text-anchor="middle">{lbl}</text>')
-    rcx,rcy,rr=RING
-    A(f'<circle cx="{px(rcx):.1f}" cy="{px(rcy):.1f}" r="{px(rr+4):.1f}" fill="none" stroke="{t["gold"]}" stroke-width="0.8" opacity="0.6"/>')
-    A(f'<circle cx="{px(rcx):.1f}" cy="{px(rcy):.1f}" r="{px(rr-4):.1f}" fill="{t["knobwell"]}" opacity="0.4"/>')
+    rcx,rcy,rr=RING  # rr=14 = LED radius
+    # Guide ring just OUTSIDE the LEDs (r+1.5), and a faint hub well inside
+    A(f'<circle cx="{px(rcx):.1f}" cy="{px(rcy):.1f}" r="{px(rr+1.5):.1f}" fill="none" stroke="{t["gold"]}" stroke-width="0.8" opacity="0.6"/>')
+    A(f'<circle cx="{px(rcx):.1f}" cy="{px(rcy):.1f}" r="{px(rr-2.5):.1f}" fill="{t["knobwell"]}" opacity="0.4"/>')
     for (x,_) in SEMI:
         A(f'<rect x="{px(x-1.6):.1f}" y="{px(SL_TOP):.1f}" width="{px(3.2):.1f}" height="{px(SLH):.1f}" rx="{px(1.4):.1f}" fill="{t["slot"]}" stroke="{t["slotline"]}" stroke-width="0.5"/>')
-    for (x,_),lbl in zip(SEMI,SEMI_LABELS):
-        A(f'<text x="{px(x):.1f}" y="{px(SL_TOP-1.5):.1f}" font-family="sans-serif" font-size="{px(2.0):.1f}" fill="{t["dim"]}" text-anchor="middle">{lbl}</text>')
     for (x,_),lbl in zip(OCT,["LO","HI"]):
         A(f'<rect x="{px(x-1.6):.1f}" y="{px(SL_TOP):.1f}" width="{px(3.2):.1f}" height="{px(SLH):.1f}" rx="{px(1.4):.1f}" fill="{t["slot"]}" stroke="{t["accent"]}" stroke-width="0.6" opacity="0.8"/>')
-        A(f'<text x="{px(x):.1f}" y="{px(SL_TOP-1.5):.1f}" font-family="sans-serif" font-size="{px(2.0):.1f}" fill="{t["teal"]}" text-anchor="middle">{lbl}</text>')
     A(f'<circle cx="{px(MODE[0]):.1f}" cy="{px(MODE[1]):.1f}" r="{px(2.4):.1f}" fill="{t["knobwell"]}" stroke="{t["knobring"]}" stroke-width="1"/>')
-    A(f'<text x="{px(MODE[0]):.1f}" y="{px(MODE[1]-4):.1f}" font-family="sans-serif" font-size="{px(2.4):.1f}" fill="{t["ink"]}" text-anchor="middle">MODE</text>')
-    for (x,y),lbl in zip(MODE_LIGHTS,MODE_LABELS):
-        A(f'<text x="{px(x-4):.1f}" y="{px(y+1):.1f}" font-family="sans-serif" font-size="{px(2.6):.1f}" fill="{t["dim"]}" text-anchor="end">{lbl}</text>')
     for (x,y),lbl in zip(ACTIONS,ACTION_LABELS):
         A(f'<circle cx="{px(x):.1f}" cy="{px(y):.1f}" r="{px(2.2):.1f}" fill="{t["knobwell"]}" stroke="{t["knobring"]}" stroke-width="0.9"/>')
-        A(f'<text x="{px(x):.1f}" y="{px(y-4):.1f}" font-family="sans-serif" font-size="{px(1.9):.1f}" fill="{t["dim"]}" text-anchor="middle">{lbl}</text>')
     def jack(x,y,lbl,above):
         A(f'<circle cx="{px(x):.1f}" cy="{px(y):.1f}" r="{px(3.9):.1f}" fill="{t["jackwell"]}" stroke="{t["jackring"]}" stroke-width="1"/>')
         A(f'<circle cx="{px(x):.1f}" cy="{px(y):.1f}" r="{px(1.7):.1f}" fill="{t["slot"]}"/>')
-        ly=y-5.5 if above else y+6.5
-        A(f'<text x="{px(x):.1f}" y="{px(ly):.1f}" font-family="sans-serif" font-size="{px(1.9):.1f}" fill="{t["dim"]}" text-anchor="middle">{lbl}</text>')
     for (x,y),l in zip(IN1,IN1_L): jack(x,y,l,True)
     for (x,y),l in zip(IN2,IN2_L): jack(x,y,l,False)
     for (x,y),l in zip(OUT1,OUT1_L): jack(x,y,l,True)

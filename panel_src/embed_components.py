@@ -4,11 +4,11 @@ does not render in Rack (nanosvg respects display:none) but helper.py can read i
 Positions are in the panel's native coordinate space (px = mm * S)."""
 import re, math, sys
 
-S = 3.7795
+S = 75.0 / 25.4  # Rack mm2px scale (75 DPI)
 
-def emit(panel_path, params, inputs, outputs, lights, mm_units=False):
+def emit(panel_path, params, inputs, outputs, lights, mm_units=False, scale=None):
     with open(panel_path) as f: svg = f.read()
-    mul = 1.0 if mm_units else S
+    mul = 1.0 if mm_units else (scale if scale is not None else S)
     def circles(items, color, r):
         out=[]
         for name,x,y in items:
