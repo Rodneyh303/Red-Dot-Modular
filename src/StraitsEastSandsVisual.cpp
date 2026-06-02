@@ -34,17 +34,18 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         setModule(mod);
         setPanel(APP->window->loadSvg(
             asset::plugin(pluginInstance,
-                "res/panels/StraitsEastSandsVisual_36HP.svg")));
+                "res/panels/StraitsEastSandsVisual_40HP.svg")));
 
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x-2*RACK_GRID_WIDTH, 0)));
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT-RACK_GRID_WIDTH)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x-2*RACK_GRID_WIDTH, RACK_GRID_HEIGHT-RACK_GRID_WIDTH)));
 
-        // Voice tabs (voices 2-8)
-        tabGroup = new TabButtonGroup(7, 2);
-        tabGroup->box.pos    = mm2px(Vec(ED_X, ED_Y - 2.f));
-        tabGroup->box.size.x = mm2px(ED_W);
+        // Voice tabs (voices 2-16, i.e. 15 voices) — two rows to stay legible.
+        // Row band sits just above the editor; uses the editor width.
+        tabGroup = new TabButtonGroup(15, 2, 2,
+                                      mm2px(ED_W), mm2px(10.f));
+        tabGroup->box.pos = mm2px(Vec(ED_X, ED_Y - 12.f));
         addChild(tabGroup);
 
         // Visual editor
@@ -54,9 +55,6 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         addChild(visualEditor);
 
         // ── 4 cols × 6 rows: jack1, jack2, atten1, atten2 ────────────────
-        // Row r: lane=r/2  sub=r%2
-        //   sub=0: LEN(col1) + OFF(col2)
-        //   sub=1: ROT(col1) + SPR(col2)
         for (int r = 0; r < N_ROWS; ++r) {
             float y = rowY(r);
             addInput(createInputCentered<PJ301MPort>(mm2px(Vec(COL_J1, y)), mod, cvId(r,0)));
@@ -65,7 +63,19 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
             addParam(createParamCentered<Trimpot>(   mm2px(Vec(COL_A2, y)), mod, attenId(r,1)));
         }
 
-        paramMgr = new PolyVoiceSandsParameterManager(nullptr, nullptr, 7, 0);
+        // ── Per-lane SPREAD trimpots (selected voice): REST / MELODY / OCTAVE
+        // Placed in a column to the right of the atten columns, one per lane,
+        // vertically centred on each lane's two-row band.
+        {
+            float sx = SPREAD_X;
+            for (int lane = 0; lane < 3; ++lane) {
+                float y = 0.5f * (rowY(lane*2) + rowY(lane*2+1)); // centre of lane band
+                int pid = (lane==0)?SPREAD_R : (lane==1)?SPREAD_M : SPREAD_O;
+                addParam(createParamCentered<Trimpot>(mm2px(Vec(sx, y)), mod, pid));
+            }
+        }
+
+        paramMgr = new PolyVoiceSandsParameterManager(nullptr, nullptr, 15, 0);
     }
 
     ~StraitsEastSandsVisualWidget() override { delete paramMgr; }

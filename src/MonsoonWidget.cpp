@@ -161,13 +161,19 @@ void MonsoonWidget::applyTheme() {
 
     // Standard SvgPanel for BOTH the browser preview (module==nullptr) and a
     // placed module. Same code path either way so they render identically.
-    if (panel) {
+    app::SvgPanel* sp = nullptr;
+    for (widget::Widget* child : children) {
+        sp = dynamic_cast<app::SvgPanel*>(child);
+        if (sp) break;
+    }
+
+    if (sp) {
         // theme toggle on an existing widget: just swap the background SVG
-        if (auto* sp = dynamic_cast<app::SvgPanel*>(panel))
-            sp->setBackground(APP->window->loadSvg(panelPath));
+        sp->setBackground(APP->window->loadSvg(panelPath));
     } else {
         setPanel(createPanel(panelPath));
     }
+
     // Remove any existing knob params at the 7 top knob positions
         // so we can re-add with the correct type.
         // Rack allows re-adding after clearing; easiest is to replace

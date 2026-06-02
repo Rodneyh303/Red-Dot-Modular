@@ -100,19 +100,7 @@
     {
       "slug": "StraitsEastSandsVisual",
       "name": "Straits East Sands Visual",
-      "description": "Monsoon Polyphonic Per Channel Probability Visualisation, Manipulation, and Modulation Expander voice 2-8",
-      "tags": [
-        "Expander",
-        "Sequencer",
-		"Random",
-        "Visual",
-        "Polyphonic"
-      ]
-    },
-    {
-      "slug": "StraitsWestSandsVisual",
-      "name": "Straits West Sands Visual",
-      "description": "Monsoon Polyphonic Per Channel Probability Visualisation, Manipulation, and Modulation Expander voice 9-16",
+      "description": "Monsoon Polyphonic Per Channel Probability Visualisation, Manipulation, and Modulation Expander — all 15 poly voices (V2-V16)",
       "tags": [
         "Expander",
         "Sequencer",
