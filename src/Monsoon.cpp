@@ -598,12 +598,13 @@ void Monsoon::process(const ProcessArgs& args) {
     auto* eastInterp = eastVisual ? static_cast<rack::Module*>(eastVisual)
                                   : static_cast<rack::Module*>(deepEast);
 
-    // East only active if straitEast is present
-    if (eastLOR && straitEast) {
+    // East active if either the visual editor OR the (deprecated) knob poly
+    // expander is present. eastVisual drives all 15 voices when connected.
+    if (eastLOR && (straitEast || eastVisual)) {
         using namespace DeepStraitsSandsEastIds;
         using namespace StraitsEastVisualIds;  // CV_0..CV_11, ATTEN_0..ATTEN_11
         
-        for (int v = 0; v < 7; v++) {
+        for (int v = 0; v < 15; v++) {
             // ── Rhythm DNA with CV offset (base + scaled CV, control rate) ──────
             // Row/col mapping: row r, col c → lane=r/2, param=(r%2)*2+c
             // param: 0=LEN,1=OFF,2=ROT,3=SPR
@@ -630,15 +631,21 @@ void Monsoon::process(const ProcessArgs& args) {
                 restInterp = clamp(restInterp + cv * att, 0.f, 1.f);
             }
             
-            // Calculate average rest probability for East range
-            float avgRestProb = 0.f;
-            for (int i = 0; i < 7; i++) {
-                avgRestProb += deepEast->params[POLY_REST_PARAM_1 + i].getValue();
+            // Calculate average rest probability across all 15 voices.
+            // deepEast holds the per-voice rest-probability params (knob path).
+            // When only the visual editor is present (deepEast null), the rest
+            // probabilities come from the pattern engine via the editor sync, so
+            // skip the knob-based interp blend here.
+            if (deepEast) {
+                float avgRestProb = 0.f;
+                for (int i = 0; i < 15; i++) {
+                    avgRestProb += deepEast->params[POLY_REST_PARAM_1 + i].getValue();
+                }
+                avgRestProb /= 15.f;
+
+                float voiceRestProb = deepEast->params[POLY_REST_PARAM_1 + v].getValue();
+                engine.voices[v].restProb = voiceRestProb + restInterp * (avgRestProb - voiceRestProb);
             }
-            avgRestProb /= 7.f;
-            
-            float voiceRestProb = deepEast->params[POLY_REST_PARAM_1 + v].getValue();
-            engine.voices[v].restProb = voiceRestProb + restInterp * (avgRestProb - voiceRestProb);
             
             int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
             // MEL LOR: row2col0=LEN, row2col1=OFF, row3col0=ROT; SPR: row3col1
@@ -653,13 +660,13 @@ void Monsoon::process(const ProcessArgs& args) {
             }
             
             float avgMelodyRandom[16] = {};
-            for (int i = 0; i < 7; i++) {
+            for (int i = 0; i < 15; i++) {
                 for (int j = 0; j < 16; j++) {
                     avgMelodyRandom[j] += engine.pe.polyMelodyRandom[i][j];
                 }
             }
             for (int j = 0; j < 16; j++) {
-                avgMelodyRandom[j] /= 7.f;
+                avgMelodyRandom[j] /= 15.f;
             }
             
             for (int j = 0; j < 16; j++) {
@@ -667,9 +674,11 @@ void Monsoon::process(const ProcessArgs& args) {
                 engine.pe.polyMelodyRandom[v][j] = voiceVal + melodyInterp * (avgMelodyRandom[j] - voiceVal);
             }
             
-            engine.pe.polyMelodyRandom[v][0] = deepEast->params[melodyBase].getValue();
-            engine.pe.polyMelodyRandom[v][1] = deepEast->params[melodyBase + 1].getValue();
-            engine.pe.polyMelodyRandom[v][2] = deepEast->params[melodyBase + 2].getValue();
+            if (deepEast) {
+                engine.pe.polyMelodyRandom[v][0] = deepEast->params[melodyBase].getValue();
+                engine.pe.polyMelodyRandom[v][1] = deepEast->params[melodyBase + 1].getValue();
+                engine.pe.polyMelodyRandom[v][2] = deepEast->params[melodyBase + 2].getValue();
+            }
             
             int octaveBase = POLY_OCTAVE_VOICE_1_LEN + v * 3;
             // OCT LOR: row4col0=LEN, row4col1=OFF, row5col0=ROT; SPR: row5col1
@@ -681,13 +690,13 @@ void Monsoon::process(const ProcessArgs& args) {
             }
             
             float avgOctaveRandom[16] = {};
-            for (int i = 0; i < 7; i++) {
+            for (int i = 0; i < 15; i++) {
                 for (int j = 0; j < 16; j++) {
                     avgOctaveRandom[j] += engine.pe.polyOctaveRandom[i][j];
                 }
             }
             for (int j = 0; j < 16; j++) {
-                avgOctaveRandom[j] /= 7.f;
+                avgOctaveRandom[j] /= 15.f;
             }
             
             for (int j = 0; j < 16; j++) {
@@ -695,11 +704,16 @@ void Monsoon::process(const ProcessArgs& args) {
                 engine.pe.polyOctaveRandom[v][j] = voiceVal + octaveInterp * (avgOctaveRandom[j] - voiceVal);
             }
             
-            engine.pe.polyOctaveRandom[v][0] = deepEast->params[octaveBase].getValue();
-            engine.pe.polyOctaveRandom[v][1] = deepEast->params[octaveBase + 1].getValue();
-            engine.pe.polyOctaveRandom[v][2] = deepEast->params[octaveBase + 2].getValue();
+            if (deepEast) {
+                engine.pe.polyOctaveRandom[v][0] = deepEast->params[octaveBase].getValue();
+                engine.pe.polyOctaveRandom[v][1] = deepEast->params[octaveBase + 1].getValue();
+                engine.pe.polyOctaveRandom[v][2] = deepEast->params[octaveBase + 2].getValue();
+            }
         }
         
+        // Scramble/Reset is knob-expander (deepEast) logic only — guard against
+        // null deepEast in visual-only mode.
+        if (deepEast) {
         bool scrambleAll = deepEast->params[SCRAMBLE_ALL_PARAM].getValue() > 0.5f ||
                           deepEast->inputs[SCRAMBLE_ALL_INPUT].getVoltage() > 1.f;
         if (scrambleAll) {
@@ -755,6 +769,7 @@ void Monsoon::process(const ProcessArgs& args) {
                 }
             }
         }
+        } // end if (deepEast) scramble/reset guard
     }
 
     // West: use visual expander if present, else DeepStraitsSandsWest
@@ -763,8 +778,13 @@ void Monsoon::process(const ProcessArgs& args) {
     auto* westInterp = westVisual ? static_cast<rack::Module*>(westVisual)
                                   : static_cast<rack::Module*>(deepWest);
 
-    // West only active if straitWest is present
-    if (westLOR && straitWest) {
+    // West visual block RETIRED: East now drives all 15 poly voices directly
+    // (loop above runs v=0..14). The visual West editor is deregistered, so
+    // westVisual is always null. This block is disabled to avoid the deprecated
+    // deepWest knob expander clobbering voices 7-14 that East now owns.
+    // Kept under `false` for now; will be deleted when the knob expanders are
+    // formally removed.
+    if (false && westLOR && straitWest) {
         using namespace DeepStraitsSandsWestIds;
         using namespace StraitsEastVisualIds;  // West reads from East's jacks
         for (int v = 7; v < 15; v++) {
