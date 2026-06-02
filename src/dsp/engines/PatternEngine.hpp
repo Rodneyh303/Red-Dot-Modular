@@ -41,6 +41,10 @@ struct PatternInput {
     int   dnaLength        = 16;
     int   dnaOffset        = 0;
     bool  locked           = false;
+    // Playable dice slew (0..1) per group. Latched at step 0; morphs the
+    // effective pattern between the locked (A) and candidate (B) draws.
+    float rhythmSlew       = 1.f;
+    float melodySlew       = 1.f;
 };
 
 // ── PatternEngine ─────────────────────────────────────────────────────────────
@@ -58,6 +62,26 @@ struct PatternEngine {
     float polyRhythmRandom[15][16] = {};
     float polyMelodyRandom[15][16] = {};
     float polyOctaveRandom[15][16] = {};
+
+    // ── Playable slew: locked (A) + candidate (B) endpoints ───────────────────
+    // The public arrays above are the EFFECTIVE output = A + slew*(B-A).
+    // Reroll promotes B→A and draws a fresh B; the slew knob (latched at step 0)
+    // morphs between the two committed grooves live. SequencerEngine reads the
+    // public arrays unchanged.
+    // Rhythm group: rhythm / variation / legato / accent (+ poly rhythm)
+    float rhythmLockedA[16]={},    rhythmCandB[16]={};
+    float variationLockedA[16]={}, variationCandB[16]={};
+    float legatoLockedA[16]={},    legatoCandB[16]={};
+    float accentLockedA[16]={},    accentCandB[16]={};
+    float polyRhythmLockedA[15][16]={}, polyRhythmCandB[15][16]={};
+    // Melody group: melody / octave (+ poly melody / poly octave)
+    float melodyLockedA[16]={},    melodyCandB[16]={};
+    float octaveLockedA[16]={},    octaveCandB[16]={};
+    float polyMelodyLockedA[15][16]={}, polyMelodyCandB[15][16]={};
+    float polyOctaveLockedA[15][16]={}, polyOctaveCandB[15][16]={};
+    // Latched slew (sampled at step 0), and the last value we recomputed at.
+    float rhythmSlewLatched = 1.f, melodySlewLatched = 1.f;
+    float rhythmSlewApplied =-1.f, melodySlewApplied =-1.f;  // force first recompute
 
     // ── Source DNA Cache (Original draws before rotation/scramble) ───────────
     float rhythmSource[16]    = {};
@@ -87,6 +111,11 @@ struct PatternEngine {
     float melodySeedPendingFloat = 0.f;
     int   rhythmMode = 0;  // 0=dice, 1=realtime
     int   melodyMode = 0;
+
+    // First reroll after construction / new seed draws A=B (full strength,
+    // preserves seed determinism); slew morph applies on subsequent rerolls.
+    bool  rhythmFirstDraw = true;
+    bool  melodyFirstDraw = true;
 
     // ── Mode switch cache ─────────────────────────────────────────────────────
     float cachedMelodySeedFloat  = 0.f;
@@ -142,6 +171,13 @@ struct PatternEngine {
     // Apply any pending seeds, then redraw both patterns.
     // Called at phrase boundaries and on reset.
     void applyPendingSeedsAndRedraw(const PatternInput& in);
+
+    // ── Playable slew ──────────────────────────────────────────────────────────
+    // Latch the live slew (call at step-0 wrap), then recompute effective arrays
+    // if the latched value changed. Cheap; safe to call every step.
+    void latchSlew(float rhythmSlew, float melodySlew);
+    void recomputeEffectiveRhythm();   // public[] = A + rhythmSlewLatched*(B-A)
+    void recomputeEffectiveMelody();   // public[] = A + melodySlewLatched*(B-A)
     
     // ── Seed Management API ────────────────────────────────────────────────────
     /// Arm a rhythm seed to be applied at next phrase boundary

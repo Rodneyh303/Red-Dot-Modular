@@ -44,6 +44,25 @@ void PatternEngine::reset() {
 
         rhythmPattern[i] = true;
     }
+
+    // Playable slew: mirror defaults into A and B so the morph is a no-op until
+    // the first dice, and arm the first-draw guards.
+    for (int i = 0; i < 16; ++i) {
+        rhythmLockedA[i]=rhythmCandB[i]=rhythmRandom[i];
+        variationLockedA[i]=variationCandB[i]=variationRandom[i];
+        legatoLockedA[i]=legatoCandB[i]=legatoRandom[i];
+        accentLockedA[i]=accentCandB[i]=accentRandom[i];
+        melodyLockedA[i]=melodyCandB[i]=melodyRandom[i];
+        octaveLockedA[i]=octaveCandB[i]=octaveRandom[i];
+        for (int v=0;v<15;v++){
+            polyRhythmLockedA[v][i]=polyRhythmCandB[v][i]=polyRhythmRandom[v][i];
+            polyMelodyLockedA[v][i]=polyMelodyCandB[v][i]=polyMelodyRandom[v][i];
+            polyOctaveLockedA[v][i]=polyOctaveCandB[v][i]=polyOctaveRandom[v][i];
+        }
+    }
+    rhythmSlewLatched=melodySlewLatched=1.f;
+    rhythmSlewApplied=melodySlewApplied=1.f;
+    rhythmFirstDraw=melodyFirstDraw=true;
 }
 
 // ── Core generation ───────────────────────────────────────────────────────
@@ -151,51 +170,117 @@ int PatternEngine::varyNoteIndex(int baseIdx, const PatternInput& in, float r) {
 // Regenerate rhythm pattern (16 steps of bool: true=active, false=rest)
 void PatternEngine::redrawRhythm(const PatternInput& in) {
     if (in.locked) return;
+
+    // Promote previous candidate (B) to locked (A), then draw a fresh B.
+    // First draw (or post-seed): A := B := draw, so effective == draw at any slew.
+    const bool first = rhythmFirstDraw;
+    rhythmFirstDraw = false;
+
     for (int i = 0; i < 16; ++i) {
-        rhythmRandom[i]    = unitRhythm();
-        variationRandom[i] = unitRhythm();
-        legatoRandom[i]    = unitRhythm();
-        accentRandom[i]    = unitRhythm();  // New: accent strand random
+        // promote B -> A
+        rhythmLockedA[i]    = rhythmCandB[i];
+        variationLockedA[i] = variationCandB[i];
+        legatoLockedA[i]    = legatoCandB[i];
+        accentLockedA[i]    = accentCandB[i];
+        for (int v = 0; v < 15; v++) polyRhythmLockedA[v][i] = polyRhythmCandB[v][i];
 
-        // Cache the original draw
-        rhythmSource[i]    = rhythmRandom[i];
-        variationSource[i] = variationRandom[i];
-        legatoSource[i]    = legatoRandom[i];
-        accentSource[i]    = accentRandom[i];
-        
-        for (int v = 0; v < 15; v++) {
-            polyRhythmRandom[v][i] = unitRhythm();
-            polyRhythmSource[v][i] = polyRhythmRandom[v][i];
+        // fresh B
+        rhythmCandB[i]    = unitRhythm();
+        variationCandB[i] = unitRhythm();
+        legatoCandB[i]    = unitRhythm();
+        accentCandB[i]    = unitRhythm();
+        for (int v = 0; v < 15; v++) polyRhythmCandB[v][i] = unitRhythm();
+
+        if (first) {  // lock A to the same draw so effective == draw
+            rhythmLockedA[i]    = rhythmCandB[i];
+            variationLockedA[i] = variationCandB[i];
+            legatoLockedA[i]    = legatoCandB[i];
+            accentLockedA[i]    = accentCandB[i];
+            for (int v = 0; v < 15; v++) polyRhythmLockedA[v][i] = polyRhythmCandB[v][i];
         }
-
-        // Update cache for UI
+    }
+    rhythmSlewApplied = -1.f;       // force recompute of effective arrays
+    recomputeEffectiveRhythm();
+    // Cache source (post-blend) + UI pattern
+    for (int i = 0; i < 16; ++i) {
+        rhythmSource[i]=rhythmRandom[i]; variationSource[i]=variationRandom[i];
+        legatoSource[i]=legatoRandom[i]; accentSource[i]=accentRandom[i];
+        for (int v=0;v<15;v++) polyRhythmSource[v][i]=polyRhythmRandom[v][i];
         rhythmPattern[i] = (rhythmRandom[i] >= in.restProb);
     }
+}
+
+// effective[] = A + slew*(B-A), written into the public arrays
+void PatternEngine::recomputeEffectiveRhythm() {
+    const float s = rack::math::clamp(rhythmSlewLatched, 0.f, 1.f);
+    auto bl = [s](float a, float b){ return a + s*(b-a); };
+    for (int i = 0; i < 16; ++i) {
+        rhythmRandom[i]    = bl(rhythmLockedA[i],    rhythmCandB[i]);
+        variationRandom[i] = bl(variationLockedA[i], variationCandB[i]);
+        legatoRandom[i]    = bl(legatoLockedA[i],    legatoCandB[i]);
+        accentRandom[i]    = bl(accentLockedA[i],    accentCandB[i]);
+        for (int v = 0; v < 15; v++)
+            polyRhythmRandom[v][i] = bl(polyRhythmLockedA[v][i], polyRhythmCandB[v][i]);
+    }
+    rhythmSlewApplied = s;
 }
 
 // Regenerate melody pattern (16 steps of semitone + pitch voltage)
 void PatternEngine::redrawMelody(const PatternInput& in) {
     if (in.locked) return;
+    const bool first = melodyFirstDraw;
+    melodyFirstDraw = false;
+
     for (int i = 0; i < 16; ++i) {
-        melodyRandom[i] = unitMelody();
-        octaveRandom[i] = unitMelody();
+        melodyLockedA[i] = melodyCandB[i];
+        octaveLockedA[i] = octaveCandB[i];
+        for (int v=0;v<15;v++){ polyMelodyLockedA[v][i]=polyMelodyCandB[v][i];
+                                polyOctaveLockedA[v][i]=polyOctaveCandB[v][i]; }
 
-        // Cache the original draw
-        melodySource[i] = melodyRandom[i];
-        octaveSource[i] = octaveRandom[i];
-        
-        for (int v = 0; v < 15; v++) {
-            polyMelodyRandom[v][i] = unitMelody();
-            polyOctaveRandom[v][i] = unitMelody();
-            polyMelodySource[v][i] = polyMelodyRandom[v][i];
-            polyOctaveSource[v][i] = polyOctaveRandom[v][i];
+        melodyCandB[i] = unitMelody();
+        octaveCandB[i] = unitMelody();
+        for (int v=0;v<15;v++){ polyMelodyCandB[v][i]=unitMelody();
+                                polyOctaveCandB[v][i]=unitMelody(); }
+
+        if (first) {
+            melodyLockedA[i]=melodyCandB[i]; octaveLockedA[i]=octaveCandB[i];
+            for (int v=0;v<15;v++){ polyMelodyLockedA[v][i]=polyMelodyCandB[v][i];
+                                    polyOctaveLockedA[v][i]=polyOctaveCandB[v][i]; }
         }
-
-        // Update cache for UI
+    }
+    melodySlewApplied = -1.f;
+    recomputeEffectiveMelody();
+    for (int i = 0; i < 16; ++i) {
+        melodySource[i]=melodyRandom[i]; octaveSource[i]=octaveRandom[i];
+        for (int v=0;v<15;v++){ polyMelodySource[v][i]=polyMelodyRandom[v][i];
+                                polyOctaveSource[v][i]=polyOctaveRandom[v][i]; }
         int sem = 0;
         melodyPitchV[i]   = genPitchLive(sem, in, melodyRandom[i], octaveRandom[i]);
         melodySemitone[i] = sem;
     }
+}
+
+void PatternEngine::recomputeEffectiveMelody() {
+    const float s = rack::math::clamp(melodySlewLatched, 0.f, 1.f);
+    auto bl = [s](float a, float b){ return a + s*(b-a); };
+    for (int i = 0; i < 16; ++i) {
+        melodyRandom[i] = bl(melodyLockedA[i], melodyCandB[i]);
+        octaveRandom[i] = bl(octaveLockedA[i], octaveCandB[i]);
+        for (int v = 0; v < 15; v++) {
+            polyMelodyRandom[v][i] = bl(polyMelodyLockedA[v][i], polyMelodyCandB[v][i]);
+            polyOctaveRandom[v][i] = bl(polyOctaveLockedA[v][i], polyOctaveCandB[v][i]);
+        }
+    }
+    melodySlewApplied = s;
+}
+
+void PatternEngine::latchSlew(float rhythmSlew, float melodySlew) {
+    // Sample the live slew (called at step-0 wrap). Recompute effective arrays
+    // only when the latched value actually changes.
+    rhythmSlewLatched = rhythmSlew;
+    melodySlewLatched = melodySlew;
+    if (rhythmSlewLatched != rhythmSlewApplied) recomputeEffectiveRhythm();
+    if (melodySlewLatched != melodySlewApplied) recomputeEffectiveMelody();
 }
 
 // Updates the rhythm/melody arrays used for UI and LEDs based on the 
@@ -222,6 +307,7 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
         rhythmSeedFloat = rhythmSeedPendingFloat;
         seedRngFromFloat(rhythmRng, rhythmSeedFloat);
         rhythmSeedPending = false;
+        rhythmFirstDraw = true;   // new seed → A=B=draw, reproducible at any slew
     }
     if (shouldRedrawR) redrawRhythm(in);
 
@@ -229,6 +315,7 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
         melodySeedFloat = melodySeedPendingFloat;
         seedRngFromFloat(melodyRng, melodySeedFloat);
         melodySeedPending = false;
+        melodyFirstDraw = true;
     }
     if (shouldRedrawM) redrawMelody(in);
 
