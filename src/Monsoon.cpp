@@ -90,9 +90,9 @@ Monsoon::Monsoon() {
 
         // Buttons (momentary)
         configButton(DICE_R_PARAM, "Dice rhythm");
-        configParam(DICE_SLEW_R_PARAM, 0.f, 1.f, 0.f, "Rhythm Dice morph/slew");
+        configParam(DICE_SLEW_R_PARAM, 0.f, 1.f, 1.f, "Rhythm dice slew", "%", 0.f, 100.f);
         configButton(DICE_M_PARAM, "Dice melody");
-        configParam(DICE_SLEW_M_PARAM, 0.f, 1.f, 0.f, "Melody Dice morph/slew");
+        configParam(DICE_SLEW_M_PARAM, 0.f, 1.f, 1.f, "Melody dice slew", "%", 0.f, 100.f);
         configButton(LOCK_PARAM,   "Lock");
         configButton(MUTE_PARAM,   "Mute");
         configButton(MODE_PARAM,   "Mode (Cycle A-B-C-D)");
@@ -650,6 +650,14 @@ void Monsoon::process(const ProcessArgs& args) {
                 float voiceRestProb = deepEast->params[POLY_REST_PARAM_1 + v].getValue();
                 engine.voices[v].restProb = voiceRestProb + restInterp * (avgRestProb - voiceRestProb);
             }
+
+            // Poly rhythm final (Option W): rest "spread" modulates the THRESHOLD
+            // above (engine.voices[v].restProb), so the rhythm DRAW is just the
+            // slewed value copied to final. (sandsActive is set, so slew won't
+            // copy it for us.)
+            for (int j = 0; j < 16; j++) {
+                engine.pe.polyRhythmRandom[v][j] = engine.pe.slewedPolyRhythm[v][j];
+            }
             
             int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
             // MEL LOR: row2col0=LEN, row2col1=OFF, row3col0=ROT; SPR: row3col1
@@ -664,10 +672,12 @@ void Monsoon::process(const ProcessArgs& args) {
                 melodyInterp = clamp(melodyInterp + cv * att, 0.f, 1.f);
             }
             
+            // Spread (Option W): read SLEWED poly draws, converge to average,
+            // write FINAL poly probability.
             float avgMelodyRandom[16] = {};
             for (int i = 0; i < 15; i++) {
                 for (int j = 0; j < 16; j++) {
-                    avgMelodyRandom[j] += engine.pe.polyMelodyRandom[i][j];
+                    avgMelodyRandom[j] += engine.pe.slewedPolyMelody[i][j];
                 }
             }
             for (int j = 0; j < 16; j++) {
@@ -675,7 +685,7 @@ void Monsoon::process(const ProcessArgs& args) {
             }
             
             for (int j = 0; j < 16; j++) {
-                float voiceVal = engine.pe.polyMelodyRandom[v][j];
+                float voiceVal = engine.pe.slewedPolyMelody[v][j];
                 engine.pe.polyMelodyRandom[v][j] = voiceVal + melodyInterp * (avgMelodyRandom[j] - voiceVal);
             }
             
@@ -701,7 +711,7 @@ void Monsoon::process(const ProcessArgs& args) {
             float avgOctaveRandom[16] = {};
             for (int i = 0; i < 15; i++) {
                 for (int j = 0; j < 16; j++) {
-                    avgOctaveRandom[j] += engine.pe.polyOctaveRandom[i][j];
+                    avgOctaveRandom[j] += engine.pe.slewedPolyOctave[i][j];
                 }
             }
             for (int j = 0; j < 16; j++) {
@@ -709,7 +719,7 @@ void Monsoon::process(const ProcessArgs& args) {
             }
             
             for (int j = 0; j < 16; j++) {
-                float voiceVal = engine.pe.polyOctaveRandom[v][j];
+                float voiceVal = engine.pe.slewedPolyOctave[v][j];
                 engine.pe.polyOctaveRandom[v][j] = voiceVal + octaveInterp * (avgOctaveRandom[j] - voiceVal);
             }
             

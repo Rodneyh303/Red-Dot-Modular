@@ -44,26 +44,26 @@ struct MonoSandsParameterManager {
 
     float monoDraw(int lane, int step) const {
         switch (lane) {
-            case 0: return patternEngine->rhythmRandom[step];
-            case 1: return patternEngine->melodyRandom[step];
-            case 2: return patternEngine->octaveRandom[step];
-            case 3: return patternEngine->legatoRandom[step];
-            case 4: return patternEngine->accentRandom[step];
-            case 5: return patternEngine->variationRandom[step];
+            case 0: return patternEngine->slewedRhythm[step];
+            case 1: return patternEngine->slewedMelody[step];
+            case 2: return patternEngine->slewedOctave[step];
+            case 3: return patternEngine->slewedLegato[step];
+            case 4: return patternEngine->slewedAccent[step];
+            case 5: return patternEngine->slewedVariation[step];
             default: return 0.5f;
         }
     }
 
     // Poly average for a spreadable lane (REST/MEL/OCT), INCLUDING the mono
-    // voice itself. Only called for lane < 3.
+    // voice itself. Reads SLEWED poly draws. Only called for lane < 3.
     float polyAverageInclMono(int lane, int step) const {
         int n = 0; float sum = 0.f;
         int active = patternEngine ? 15 : 0;
         for (int v = 0; v < active; ++v) {
             switch (lane) {
-                case 0: sum += patternEngine->polyRhythmRandom[v][step]; break;
-                case 1: sum += patternEngine->polyMelodyRandom[v][step]; break;
-                case 2: sum += patternEngine->polyOctaveRandom[v][step]; break;
+                case 0: sum += patternEngine->slewedPolyRhythm[v][step]; break;
+                case 1: sum += patternEngine->slewedPolyMelody[v][step]; break;
+                case 2: sum += patternEngine->slewedPolyOctave[v][step]; break;
             }
             ++n;
         }
@@ -71,6 +71,37 @@ struct MonoSandsParameterManager {
         return (n > 0) ? sum / n : monoDraw(lane, step);
     }
 
+    // Post-spread value for (lane, step). REST/MEL/OCT get spread; LEG/ACC/VAR
+    // are mono-only → raw slewed draw.
+    float spreadValue(int lane, int step) const {
+        if (lane < SPREAD_LANES) {
+            float original = monoDraw(lane, step);
+            if (target == SpreadManager::MONO_DRAW) return original;
+            float tgt = polyAverageInclMono(lane, step);
+            return original + (tgt - original) * laneSpread[lane];
+        }
+        return monoDraw(lane, step);
+    }
+
+    // Sands owns the spread→final stage (audio thread): write spread(slewedDraw)
+    // into the FINAL mono arrays the sequencer reads, and set sandsActive so slew
+    // does not copy the un-spread draw over the top.
+    void writeFinal() {
+        if (!patternEngine) return;
+        patternEngine->setSandsActive(true);
+        for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
+            patternEngine->rhythmRandom[i]    = spreadValue(0, i);
+            patternEngine->melodyRandom[i]    = spreadValue(1, i);
+            patternEngine->octaveRandom[i]    = spreadValue(2, i);
+            patternEngine->legatoRandom[i]    = spreadValue(3, i);
+            patternEngine->accentRandom[i]    = spreadValue(4, i);
+            patternEngine->variationRandom[i] = spreadValue(5, i);
+        }
+    }
+
+    // MODEL 2 (DORMANT): freehand probability editing. V4 editor is a
+    // transparent widget in Model 1 (handles set L/O/R only). Kept for a
+    // possible future "draw your own probability" direction.
     void syncEditorToPatternEngine(const SandsVisualEditorV4::VoiceState& editorState) {
         if (!patternEngine) return;
         for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
@@ -89,13 +120,9 @@ struct MonoSandsParameterManager {
         }
     }
 
-    // DSP → display.
-    //   REST/MEL/OCT (lanes 0-2): apply spread interpolation.
-    //     MONO_DRAW target → spread no-op (original IS the mono draw).
-    //     AVERAGE_POLY     → interpolate toward poly average incl. mono voice.
-    //   LEG/ACC/VAR (lanes 3-5): mono-only, NO spread — pass raw draw through.
-    //   (Fixes the prior bug where these showed a flat 0.5 because SpreadManager
-    //    only handled 3 lanes and returned its fallback for the rest.)
+    // DSP → display. Editor shows the FINAL probability (post-slew, post-spread),
+    // exactly what the sequencer thresholds. LEG/ACC/VAR show their raw slewed
+    // draw (no spread). LOR handles set the index window separately.
     void syncPatternEngineToEditor(SandsVisualEditorV4::VoiceState& editorState) {
         if (!patternEngine) return;
         static const int laneMap[6] = {
@@ -104,19 +131,7 @@ struct MonoSandsParameterManager {
         };
         for (int l = 0; l < LANE_COUNT; ++l) {
             for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
-                float v;
-                if (l < SPREAD_LANES) {
-                    float original = monoDraw(l, i);
-                    if (target == SpreadManager::MONO_DRAW) {
-                        v = original;  // spread no-op
-                    } else {
-                        float tgt = polyAverageInclMono(l, i);
-                        v = original + (tgt - original) * laneSpread[l];
-                    }
-                } else {
-                    v = monoDraw(l, i);  // mono-only lane: raw, no spread
-                }
-                editorState.lanes[laneMap[l]].probabilities[i] = v;
+                editorState.lanes[laneMap[l]].probabilities[i] = spreadValue(l, i);
             }
         }
     }

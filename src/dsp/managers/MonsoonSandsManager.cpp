@@ -21,6 +21,12 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     auto* monoVis  = expanderManager.cachedSandsVisualExpander;
     auto* macroVis = expanderManager.cachedMacroSandsVisual;
 
+    // Sands final-ownership lifecycle (Option W): default each cycle to whether
+    // any Sands visual stage will own final (Mono, Macro, or East poly). When
+    // none is present this is false and slew copies slewedDraw → final.
+    const bool hasEastVisual = (expanderManager.cachedEastSandsVisual != nullptr);
+    engine.pe.setSandsActive(hasVisual || hasMacro || hasEastVisual);
+
     // ── Helper: apply mono CV offset at read site ─────────────────────────
     auto applyMonoCV = [&](float base, int lane, int param, float lo, float hi) -> float {
         if (!monoVis || !monoVis->inputs[Mono::cvId(lane, param)].isConnected()) return base;
@@ -86,6 +92,29 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             }
             // LEG/ACC/VAR have no spread
             for (int l = 3; l < 6; ++l) monoVis->spreadEffective[l] = 0.f;
+
+            // ── Sands spread→final (Option W, Model 1) ───────────────────────
+            // Mono owns the MONO final arrays: read the SLEWED draw, apply
+            // per-lane spread for REST/MEL/OCT (converge toward the poly-incl-
+            // mono average), pass LEG/ACC/VAR raw, write the FINAL arrays the
+            // sequencer reads. setSandsActive(true) stops slew copying the
+            // un-spread draw over the top.
+            engine.pe.setSandsActive(true);
+            for (int i = 0; i < 16; ++i) {
+                auto avg = [&](float monoVal, const float poly[15][16]) {
+                    float s = monoVal; for (int v = 0; v < 15; ++v) s += poly[v][i];
+                    return s / 16.f;
+                };
+                float rAvg = avg(engine.pe.slewedRhythm[i], engine.pe.slewedPolyRhythm);
+                float mAvg = avg(engine.pe.slewedMelody[i], engine.pe.slewedPolyMelody);
+                float oAvg = avg(engine.pe.slewedOctave[i], engine.pe.slewedPolyOctave);
+                engine.pe.rhythmRandom[i] = engine.pe.slewedRhythm[i] + (rAvg - engine.pe.slewedRhythm[i]) * monoVis->spreadEffective[0];
+                engine.pe.melodyRandom[i] = engine.pe.slewedMelody[i] + (mAvg - engine.pe.slewedMelody[i]) * monoVis->spreadEffective[1];
+                engine.pe.octaveRandom[i] = engine.pe.slewedOctave[i] + (oAvg - engine.pe.slewedOctave[i]) * monoVis->spreadEffective[2];
+                engine.pe.legatoRandom[i]    = engine.pe.slewedLegato[i];     // mono-only, raw
+                engine.pe.accentRandom[i]    = engine.pe.slewedAccent[i];
+                engine.pe.variationRandom[i] = engine.pe.slewedVariation[i];
+            }
         }
         readStrand(Mono::lenId(0),Mono::offId(0),Mono::rotId(0), DNA_R_LEN_PARAM,DNA_R_LEN_INPUT,DNA_R_OFF_PARAM,DNA_R_OFF_INPUT,DNA_R_ROT_PARAM, 0, engine.rhythmLen,    engine.rhythmOff,    engine.rhythmRot);
         readStrand(Mono::lenId(1),Mono::offId(1),Mono::rotId(1), DNA_V_LEN_PARAM,DNA_V_LEN_INPUT,DNA_V_OFF_PARAM,DNA_V_OFF_INPUT,DNA_V_ROT_PARAM, 1, engine.variationLen, engine.variationOff, engine.variationRot);
