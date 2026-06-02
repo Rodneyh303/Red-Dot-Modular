@@ -377,6 +377,11 @@ namespace MonsoonIds {
         GLOBAL_OCTAVE_DNA_ROT,
         GLOBAL_OCTAVE_INTERP,
 
+        // Playable dice slew (0..1): live morph between locked (A) and candidate
+        // (B) draws, latched at the bar boundary. Appended at END (IDs stable).
+        DICE_SLEW_R_PARAM,
+        DICE_SLEW_M_PARAM,
+
         NUM_PARAMS
     };
 

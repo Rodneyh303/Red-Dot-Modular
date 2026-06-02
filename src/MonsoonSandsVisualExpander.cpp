@@ -25,7 +25,7 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         setModule(mod);
         setPanel(APP->window->loadSvg(
             asset::plugin(pluginInstance,
-                "res/panels/SandsMonoVisual_34HP.svg")));
+                "res/panels/SandsMonoVisual_40HP.svg")));
 
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2*RACK_GRID_WIDTH, 0)));
@@ -38,17 +38,28 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         visualEditor->box.size = mm2px(Vec(ED_W, ROW_BOT - ED_Y));
         addChild(visualEditor);
 
-        // ── Left section: 8 cols × 6 rows ────────────────────────────────
-        // Cols 0-3: mono CV jacks (LEN/OFF/ROT/SPR)
-        // Cols 4-7: corresponding attenuverters
+        // ── LOR controls: 3 CV jacks + 3 attens per lane (all 6 lanes) ────
         for (int lane = 0; lane < N_LANES; ++lane) {
             float y = rowY(lane);
-            for (int p = 0; p < 4; ++p) {
+            for (int p = 0; p < 3; ++p) {  // LEN/OFF/ROT
                 addInput(createInputCentered<PJ301MPort>(
                     mm2px(Vec(JACK_X[p],  y)), mod, cvId(lane, p)));
                 addParam(createParamCentered<Trimpot>(
                     mm2px(Vec(ATTEN_X[p], y)), mod, attenId(lane, p)));
             }
+        }
+
+        // ── Spread group: base trimpot + CV jack + atten, REST/MEL/OCT only ─
+        // Aligned to the top 3 lanes (REST, MELODY, OCTAVE). LEG/ACC/VAR are
+        // mono-only — no spread.
+        for (int l = 0; l < N_SPREAD_LANES; ++l) {
+            float y = rowY(l);
+            addParam(createParamCentered<Trimpot>(
+                mm2px(Vec(SPR_BASE_X, y)), mod, sprId(l)));
+            addInput(createInputCentered<PJ301MPort>(
+                mm2px(Vec(SPR_CV_X, y)), mod, sprCvId(l)));
+            addParam(createParamCentered<Trimpot>(
+                mm2px(Vec(SPR_ATTEN_X, y)), mod, sprAttenId(l)));
         }
 
         paramMgr = new MonoSandsParameterManager();
@@ -79,8 +90,9 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
                 visualEditor->currentState.lanes[l].length   = (int)std::round(mod->params[lenId(l)].getValue());
                 visualEditor->currentState.lanes[l].offset   = (int)std::round(mod->params[offId(l)].getValue());
                 visualEditor->currentState.lanes[l].rotation = (int)std::round(mod->params[rotId(l)].getValue());
-                mod->spreadEffective[l] = mod->params[sprId(l)].getValue();
             }
+            for (int l = 0; l < 3; ++l)   // spread: REST/MEL/OCT only
+                mod->spreadEffective[l] = mod->params[sprId(l)].getValue();
             initialized = true;
         }
 
@@ -92,13 +104,13 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             mod->params[rotId(l)].setValue((float)lane.rotation);
         }
 
-        // ── SpreadManager: feed effective spread (CV-modified at control rate) ──
-        // spreadEffective[] is written by processDNA from sprId base + cv*atten.
-        // No CV connected → spreadEffective[l] == sprId(l) base param (initialised above).
-        for (int l = 0; l < 6; ++l)
-            paramMgr->spreadMgr.setSpread(0, l, mod->spreadEffective[l]);
+        // ── Per-lane base spread (REST/MEL/OCT only — the spreadable lanes).
+        // LEG/ACC/VAR are mono-only and have no spread. spreadEffective[] is
+        // written by processDNA from sprId base + cv*atten (per-lane CV mod).
+        for (int l = 0; l < 3; ++l)
+            paramMgr->setLaneSpread(l, mod->spreadEffective[l]);
 
-        paramMgr->spreadMgr.setInterpolationTarget(SpreadManager::AVERAGE_POLY);
+        paramMgr->setInterpolationTarget(SpreadManager::AVERAGE_POLY);
 
         // ── Sync PatternEngine → display (uses SpreadManager.getInterpolatedValue) ──
         paramMgr->syncPatternEngineToEditor(visualEditor->currentState);

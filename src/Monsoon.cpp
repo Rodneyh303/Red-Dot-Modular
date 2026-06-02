@@ -91,6 +91,10 @@ Monsoon::Monsoon() {
         // Buttons (momentary)
         configButton(DICE_R_PARAM, "Dice rhythm");
         configButton(DICE_M_PARAM, "Dice melody");
+        // Playable slew: morph between locked (A) and freshly-drawn (B) groove.
+        // 100% = play the new draw, 0% = stay on the locked groove, latched per bar.
+        configParam(DICE_SLEW_R_PARAM, 0.f, 1.f, 1.f, "Rhythm dice slew", "%", 0.f, 100.f);
+        configParam(DICE_SLEW_M_PARAM, 0.f, 1.f, 1.f, "Melody dice slew", "%", 0.f, 100.f);
         configButton(LOCK_PARAM,   "Lock");
         configButton(MUTE_PARAM,   "Mute");
         configButton(MODE_PARAM,   "Mode (Cycle A-B-C-D)");
@@ -618,9 +622,9 @@ void Monsoon::process(const ProcessArgs& args) {
                 return (int)base;
             };
             // REST LEN=row0col0, OFF=row0col1, ROT=row1col0
-            engine.polyLen[v] = applyLorCV(rhythmBase,     0, 0, 1.f, 16.f);
-            engine.polyOff[v] = applyLorCV(rhythmBase + 1, 0, 1, 0.f, 15.f);
-            engine.polyRot[v] = applyLorCV(rhythmBase + 2, 1, 0, 0.f, 15.f);
+            engine.polyLen[v][SequencerEngine::PL_REST] = applyLorCV(rhythmBase,     0, 0, 1.f, 16.f);
+            engine.polyOff[v][SequencerEngine::PL_REST] = applyLorCV(rhythmBase + 1, 0, 1, 0.f, 15.f);
+            engine.polyRot[v][SequencerEngine::PL_REST] = applyLorCV(rhythmBase + 2, 1, 0, 0.f, 15.f);
 
             // ── Rest spread CV — row1col1 ──────────────────────────────────────
             float restInterp = eastInterp->params[POLY_REST_INTERP_1 + v].getValue();
@@ -641,11 +645,12 @@ void Monsoon::process(const ProcessArgs& args) {
             engine.voices[v].restProb = voiceRestProb + restInterp * (avgRestProb - voiceRestProb);
             
             int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
-            // MEL LOR: row2col0=LEN, row2col1=OFF, row3col0=ROT; SPR: row3col1
+            // MEL LOR (LEN row2col0, OFF row2col1, ROT row3col0) → per-lane LOR
+            // structure (NOT the probability array). SPR interp = row3col1.
             float melodyInterp = eastInterp->params[POLY_MELODY_INTERP_1 + v].getValue();
-            engine.pe.polyMelodyRandom[v][0] = (float)applyLorCV(melodyBase,     2, 0, 1.f, 16.f);
-            engine.pe.polyMelodyRandom[v][1] = (float)applyLorCV(melodyBase + 1, 2, 1, 0.f, 15.f);
-            // (ROT and SPR applied below after interp)
+            engine.polyLen[v][SequencerEngine::PL_MELODY] = applyLorCV(melodyBase,     2, 0, 1.f, 16.f);
+            engine.polyOff[v][SequencerEngine::PL_MELODY] = applyLorCV(melodyBase + 1, 2, 1, 0.f, 15.f);
+            engine.polyRot[v][SequencerEngine::PL_MELODY] = applyLorCV(melodyBase + 2, 3, 0, 0.f, 15.f);
             if (eastVisual && eastVisual->inputs[cvId(3,1)].isConnected()) {
                 float att = eastVisual->params[attenId(3,1)].getValue();
                 float cv  = eastVisual->inputs[cvId(3,1)].getVoltage(v) / 10.f;
@@ -667,13 +672,13 @@ void Monsoon::process(const ProcessArgs& args) {
                 engine.pe.polyMelodyRandom[v][j] = voiceVal + melodyInterp * (avgMelodyRandom[j] - voiceVal);
             }
             
-            engine.pe.polyMelodyRandom[v][0] = deepEast->params[melodyBase].getValue();
-            engine.pe.polyMelodyRandom[v][1] = deepEast->params[melodyBase + 1].getValue();
-            engine.pe.polyMelodyRandom[v][2] = deepEast->params[melodyBase + 2].getValue();
-            
             int octaveBase = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-            // OCT LOR: row4col0=LEN, row4col1=OFF, row5col0=ROT; SPR: row5col1
+            // OCT LOR (LEN row4col0, OFF row4col1, ROT row5col0) → per-lane LOR
+            // structure. SPR interp = row5col1.
             float octaveInterp = eastInterp->params[POLY_OCTAVE_INTERP_1 + v].getValue();
+            engine.polyLen[v][SequencerEngine::PL_OCTAVE] = applyLorCV(octaveBase,     4, 0, 1.f, 16.f);
+            engine.polyOff[v][SequencerEngine::PL_OCTAVE] = applyLorCV(octaveBase + 1, 4, 1, 0.f, 15.f);
+            engine.polyRot[v][SequencerEngine::PL_OCTAVE] = applyLorCV(octaveBase + 2, 5, 0, 0.f, 15.f);
             if (eastVisual && eastVisual->inputs[cvId(5,1)].isConnected()) {
                 float att = eastVisual->params[attenId(5,1)].getValue();
                 float cv  = eastVisual->inputs[cvId(5,1)].getVoltage(v) / 10.f;
@@ -694,10 +699,6 @@ void Monsoon::process(const ProcessArgs& args) {
                 float voiceVal = engine.pe.polyOctaveRandom[v][j];
                 engine.pe.polyOctaveRandom[v][j] = voiceVal + octaveInterp * (avgOctaveRandom[j] - voiceVal);
             }
-            
-            engine.pe.polyOctaveRandom[v][0] = deepEast->params[octaveBase].getValue();
-            engine.pe.polyOctaveRandom[v][1] = deepEast->params[octaveBase + 1].getValue();
-            engine.pe.polyOctaveRandom[v][2] = deepEast->params[octaveBase + 2].getValue();
         }
         
         bool scrambleAll = deepEast->params[SCRAMBLE_ALL_PARAM].getValue() > 0.5f ||
@@ -779,9 +780,9 @@ void Monsoon::process(const ProcessArgs& args) {
                 }
                 return (int)base;
             };
-            engine.polyLen[v] = applyLorCVW(b,     0, 0, 1.f, 16.f);
-            engine.polyOff[v] = applyLorCVW(b + 1, 0, 1, 0.f, 15.f);
-            engine.polyRot[v] = applyLorCVW(b + 2, 1, 0, 0.f, 15.f);
+            engine.polyLen[v][SequencerEngine::PL_REST] = applyLorCVW(b,     0, 0, 1.f, 16.f);
+            engine.polyOff[v][SequencerEngine::PL_REST] = applyLorCVW(b + 1, 0, 1, 0.f, 15.f);
+            engine.polyRot[v][SequencerEngine::PL_REST] = applyLorCVW(b + 2, 1, 0, 0.f, 15.f);
 
             float restInterp = westInterp->params[POLY_REST_INTERP_1 + v].getValue();
             if (eastVisual && eastVisual->inputs[cvId(1,1)].isConnected()) {
@@ -797,6 +798,9 @@ void Monsoon::process(const ProcessArgs& args) {
             
             int mb = POLY_MELODY_VOICE_1_LEN + v * 3;
             float melodyInterp = westInterp->params[POLY_MELODY_INTERP_1 + v].getValue();
+            engine.polyLen[v][SequencerEngine::PL_MELODY] = applyLorCVW(mb,     2, 0, 1.f, 16.f);
+            engine.polyOff[v][SequencerEngine::PL_MELODY] = applyLorCVW(mb + 1, 2, 1, 0.f, 15.f);
+            engine.polyRot[v][SequencerEngine::PL_MELODY] = applyLorCVW(mb + 2, 3, 0, 0.f, 15.f);
             if (eastVisual && eastVisual->inputs[cvId(3,1)].isConnected()) {
                 float att = eastVisual->params[attenId(3,1)].getValue();
                 float cv  = eastVisual->inputs[cvId(3,1)].getVoltage(lv + 7) / 10.f;
@@ -811,12 +815,12 @@ void Monsoon::process(const ProcessArgs& args) {
                 float voiceVal = engine.pe.polyMelodyRandom[v][j];
                 engine.pe.polyMelodyRandom[v][j] = voiceVal + melodyInterp * (avgMelodyRandom[j] - voiceVal);
             }
-            engine.pe.polyMelodyRandom[v][0] = deepWest->params[mb].getValue();
-            engine.pe.polyMelodyRandom[v][1] = deepWest->params[mb+1].getValue();
-            engine.pe.polyMelodyRandom[v][2] = deepWest->params[mb+2].getValue();
             
             int ob = POLY_OCTAVE_VOICE_1_LEN + v * 3;
             float octaveInterp = westInterp->params[POLY_OCTAVE_INTERP_1 + v].getValue();
+            engine.polyLen[v][SequencerEngine::PL_OCTAVE] = applyLorCVW(ob,     4, 0, 1.f, 16.f);
+            engine.polyOff[v][SequencerEngine::PL_OCTAVE] = applyLorCVW(ob + 1, 4, 1, 0.f, 15.f);
+            engine.polyRot[v][SequencerEngine::PL_OCTAVE] = applyLorCVW(ob + 2, 5, 0, 0.f, 15.f);
             if (eastVisual && eastVisual->inputs[cvId(5,1)].isConnected()) {
                 float att = eastVisual->params[attenId(5,1)].getValue();
                 float cv  = eastVisual->inputs[cvId(5,1)].getVoltage(lv + 7) / 10.f;
@@ -831,9 +835,6 @@ void Monsoon::process(const ProcessArgs& args) {
                 float voiceVal = engine.pe.polyOctaveRandom[v][j];
                 engine.pe.polyOctaveRandom[v][j] = voiceVal + octaveInterp * (avgOctaveRandom[j] - voiceVal);
             }
-            engine.pe.polyOctaveRandom[v][0] = deepWest->params[ob].getValue();
-            engine.pe.polyOctaveRandom[v][1] = deepWest->params[ob+1].getValue();
-            engine.pe.polyOctaveRandom[v][2] = deepWest->params[ob+2].getValue();
         }
         // West Scramble/Reset Logic (Similar to East but for indices 7-14)
         bool sAll = deepWest->params[SCRAMBLE_ALL_PARAM].getValue() > 0.5f || deepWest->inputs[SCRAMBLE_ALL_INPUT].getVoltage() > 1.f;

@@ -81,9 +81,14 @@ struct SequencerEngine {
     int melodyOff = 0;
     int octaveLen = 16;
     int octaveOff = 0;
-    int polyLen[15];
-    int polyOff[15];
-    int polyRot[15];
+    // Per-voice-per-lane LOR (length/offset/rotation) — the INDEX into the
+    // 16-step probability vectors, kept SEPARATE from the probabilities.
+    // Lane: 0=REST, 1=MELODY, 2=OCTAVE. East sets all [voice][lane]
+    // independently; Macro sets the same lane LOR for every voice.
+    enum PolyLane { PL_REST = 0, PL_MELODY = 1, PL_OCTAVE = 2, PL_LANES = 3 };
+    int polyLen[15][3];
+    int polyOff[15][3];
+    int polyRot[15][3];
 
     // Discrete mutation offsets (mutation from scramble/context menu)
     int rhythmRot = 0, variationRot = 0, legatoRot = 0, accentRot = 0, melodyRot = 0, octaveRot = 0;

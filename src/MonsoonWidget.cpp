@@ -119,6 +119,9 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec(JX+4*JP, JYL)), module, MonsoonIds::RESET_LIGHT));
         addParam(createParamCentered<TL1105>(mm2px(Vec(JX+5*JP, JY)), module, MonsoonIds::RUN_GATE_PARAM));
         addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(JX+5*JP, JYL)), module, MonsoonIds::RUN_GATE_LIGHT));
+        // Playable slew trimpots above the two dice buttons
+        addParam(createParamCentered<Trimpot>(mm2px(Vec(JX,    JY-7.f)), module, MonsoonIds::DICE_SLEW_R_PARAM));
+        addParam(createParamCentered<Trimpot>(mm2px(Vec(JX+JP, JY-7.f)), module, MonsoonIds::DICE_SLEW_M_PARAM));
 
         // ── Inputs: 18mm pitch, nudged right to clear edge accent ────────────
         addInput(createInputCentered<PJ301MPort>(mm2px(Vec(16.f, 105.f)), module, MonsoonIds::RUN_GATE_INPUT));
