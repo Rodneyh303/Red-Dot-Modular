@@ -91,6 +91,10 @@ Monsoon::Monsoon() {
         // Buttons (momentary)
         configButton(DICE_R_PARAM, "Dice rhythm");
         configButton(DICE_M_PARAM, "Dice melody");
+        // Playable slew: morph between locked (A) and freshly-drawn (B) groove.
+        // 100% = play the new draw, 0% = stay on the locked groove, latched per bar.
+        configParam(DICE_SLEW_R_PARAM, 0.f, 1.f, 1.f, "Rhythm dice slew", "%", 0.f, 100.f);
+        configParam(DICE_SLEW_M_PARAM, 0.f, 1.f, 1.f, "Melody dice slew", "%", 0.f, 100.f);
         configButton(LOCK_PARAM,   "Lock");
         configButton(MUTE_PARAM,   "Mute");
         configButton(MODE_PARAM,   "Mode (Cycle A-B-C-D)");

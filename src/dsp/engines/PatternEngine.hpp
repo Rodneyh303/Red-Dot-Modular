@@ -41,6 +41,10 @@ struct PatternInput {
     int   dnaLength        = 16;
     int   dnaOffset        = 0;
     bool  locked           = false;
+    // Playable dice slew (0..1) per group. Latched at step 0; morphs the
+    // effective pattern between the locked (A) and candidate (B) draws.
+    float rhythmSlew       = 1.f;
+    float melodySlew       = 1.f;
 };
 
 // ── PatternEngine ─────────────────────────────────────────────────────────────
@@ -58,6 +62,39 @@ struct PatternEngine {
     float polyRhythmRandom[15][16] = {};
     float polyMelodyRandom[15][16] = {};
     float polyOctaveRandom[15][16] = {};
+
+    // ── Playable slew: locked (A) + candidate (B) endpoints ───────────────────
+    // The public arrays above are the EFFECTIVE output = A + slew*(B-A).
+    // Reroll promotes B→A and draws a fresh B; the slew knob (latched at step 0)
+    // morphs between the two committed grooves live. SequencerEngine reads the
+    // public arrays unchanged.
+    // Rhythm group: rhythm / variation / legato / accent (+ poly rhythm)
+    float rhythmLockedA[16]={},    rhythmCandB[16]={};
+    float variationLockedA[16]={}, variationCandB[16]={};
+    float legatoLockedA[16]={},    legatoCandB[16]={};
+    float accentLockedA[16]={},    accentCandB[16]={};
+    float polyRhythmLockedA[15][16]={}, polyRhythmCandB[15][16]={};
+    // Melody group: melody / octave (+ poly melody / poly octave)
+    float melodyLockedA[16]={},    melodyCandB[16]={};
+    float octaveLockedA[16]={},    octaveCandB[16]={};
+    float polyMelodyLockedA[15][16]={}, polyMelodyCandB[15][16]={};
+    float polyOctaveLockedA[15][16]={}, polyOctaveCandB[15][16]={};
+    // Latched slew (sampled at step 0), and the last value we recomputed at.
+    float rhythmSlewLatched = 1.f, melodySlewLatched = 1.f;
+    float rhythmSlewApplied =-1.f, melodySlewApplied =-1.f;  // force first recompute
+
+    // ── Slew output buffers (Option W) ────────────────────────────────────────
+    // slew writes the A/B blend here (step-0 latched). The PUBLIC arrays above
+    // (rhythmRandom[] etc.) are the FINAL vectors the sequencer reads:
+    //   no Sands  → final = copy of slewedDraw (done when slew re-latches).
+    //   Sands     → Sands reads slewedDraw, applies spread at control rate, and
+    //               writes the result into the public/final arrays itself.
+    float slewedRhythm[16]={}, slewedVariation[16]={}, slewedLegato[16]={}, slewedAccent[16]={};
+    float slewedMelody[16]={}, slewedOctave[16]={};
+    float slewedPolyRhythm[15][16]={}, slewedPolyMelody[15][16]={}, slewedPolyOctave[15][16]={};
+    // Set true when any Sands visual expander owns the spread→final stage this
+    // cycle. When false, slew copies slewedDraw → final.
+    bool  sandsActive = false;
 
     // ── Source DNA Cache (Original draws before rotation/scramble) ───────────
     float rhythmSource[16]    = {};
@@ -87,6 +124,11 @@ struct PatternEngine {
     float melodySeedPendingFloat = 0.f;
     int   rhythmMode = 0;  // 0=dice, 1=realtime
     int   melodyMode = 0;
+
+    // First reroll after construction / new seed draws A=B (full strength,
+    // preserves seed determinism); slew morph applies on subsequent rerolls.
+    bool  rhythmFirstDraw = true;
+    bool  melodyFirstDraw = true;
 
     // ── Mode switch cache ─────────────────────────────────────────────────────
     float cachedMelodySeedFloat  = 0.f;
@@ -142,6 +184,25 @@ struct PatternEngine {
     // Apply any pending seeds, then redraw both patterns.
     // Called at phrase boundaries and on reset.
     void applyPendingSeedsAndRedraw(const PatternInput& in);
+
+    // ── Playable slew ──────────────────────────────────────────────────────────
+    // Latch the live slew (call at step-0 wrap), then recompute effective arrays
+    // if the latched value changed. Cheap; safe to call every step.
+    void latchSlew(float rhythmSlew, float melodySlew);
+    void recomputeEffectiveRhythm();   // public[] = A + rhythmSlewLatched*(B-A)
+    void recomputeEffectiveMelody();   // public[] = A + melodySlewLatched*(B-A)
+
+    // ── Sands spread-stage contract (Option W) ─────────────────────────────────
+    // A Sands visual expander owns the spread→final stage when present:
+    //   1. call setSandsActive(true) each control cycle it is connected,
+    //   2. read the slewedDraw buffers below as its INPUT (post-slew draw),
+    //   3. apply spread (+ LOR is index-mapping, unchanged) and write the result
+    //      into the public/final arrays (rhythmRandom[] etc.).
+    // When no Sands is connected, leave sandsActive=false and slew copies
+    // slewedDraw → final automatically.
+    void setSandsActive(bool a) { sandsActive = a; }
+    // The slewedDraw buffers (slewedRhythm[], slewedPolyMelody[][], etc.) are
+    // public members above — the Sands stage reads them directly as its input.
     
     // ── Seed Management API ────────────────────────────────────────────────────
     /// Arm a rhythm seed to be applied at next phrase boundary

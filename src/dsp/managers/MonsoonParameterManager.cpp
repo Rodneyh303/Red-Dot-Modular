@@ -63,6 +63,9 @@ float ParameterManager::getTranspose() const {
     return readParam_(TRANSPOSE_PARAM, -12.f, 12.f);
 }
 
+float ParameterManager::getRhythmSlew() const { return readParam_(DICE_SLEW_R_PARAM, 0.f, 1.f); }
+float ParameterManager::getMelodySlew() const { return readParam_(DICE_SLEW_M_PARAM, 0.f, 1.f); }
+
 // ──── Octave Range Getters ──────────────────────────────────────────────────
 
 float ParameterManager::getOctaveLo() const {

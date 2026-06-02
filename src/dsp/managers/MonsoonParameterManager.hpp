@@ -46,6 +46,10 @@ public:
     
     /// Transpose in semitones (-12 to +12)
     float getTranspose() const;
+
+    /// Playable dice slew amounts (0–1)
+    float getRhythmSlew() const;
+    float getMelodySlew() const;
     
     // ──── Octave Range Getters ──────────────────────────────────────────────
     

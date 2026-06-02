@@ -24,6 +24,8 @@ void ModeController::updatePatternInput() {
     currentPatternInput.transpose         = paramManager.getTranspose();
     currentPatternInput.noteVariationMask = engine.noteVariationMask;
     currentPatternInput.locked            = engine.locked;
+    currentPatternInput.rhythmSlew        = paramManager.getRhythmSlew();
+    currentPatternInput.melodySlew        = paramManager.getMelodySlew();
 }
 
 PatternInput ModeController::assemblePatternInput_() {
@@ -37,6 +39,13 @@ void ModeController::postExecute_(const StepResult& result) {
     // Handle phrase boundary
     if (result.wrapped && mainModule) {
         mainModule->onPhraseBoundary_();
+    }
+
+    // Playable slew: latch the live slew at the bar boundary (step-0 wrap) so the
+    // A→B morph is quantised to the cycle and stable within a bar.
+    if (result.wrapped) {
+        engine.pe.latchSlew(currentPatternInput.rhythmSlew,
+                            currentPatternInput.melodySlew);
     }
     
     // Execute poly voices if step was taken
