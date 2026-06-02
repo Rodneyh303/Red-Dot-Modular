@@ -37,6 +37,14 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         return clamp(base + cv * att * (hi - lo), lo, hi);
     };
 
+    // ── Helper: apply mono spread CV (REST/MEL/OCT only, own jack/atten) ──
+    auto applyMonoSprCV = [&](float base, int sprLane) -> float {
+        if (!monoVis || !monoVis->inputs[Mono::sprCvId(sprLane)].isConnected()) return base;
+        float cv  = monoVis->inputs[Mono::sprCvId(sprLane)].getVoltage() / 10.f;
+        float att = monoVis->params[Mono::sprAttenId(sprLane)].getValue();
+        return clamp(base + cv * att, 0.f, 1.f);
+    };
+
     if (hasVisual || hasKnobs) {
         auto readStrand = [&](
                 int monoLenId, int monoOffId, int monoRotId,
@@ -62,8 +70,6 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 baseLen = applyMonoCV(baseLen, cvRow, 0, 1.f, 16.f);
                 baseOff = applyMonoCV(baseOff, cvRow, 1, 0.f, 15.f);
                 baseRot = applyMonoCV(baseRot, cvRow, 2, 0.f, 15.f);
-                float baseSpr = monoVis->params[Mono::sprId(cvRow)].getValue();
-                monoVis->spreadEffective[cvRow] = applyMonoCV(baseSpr, cvRow, 3, 0.f, 1.f);
             }
 
             tLen = clamp((int)std::round(baseLen), 1, 16);
@@ -71,9 +77,15 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             tRot = ((int)std::round(baseRot) % 16 + 16) % 16;
         };
 
+        // Spread (REST/MEL/OCT only): base trimpot + per-lane spread CV.
+        // sprId/sprCvId lane index: 0=REST, 1=MELODY, 2=OCTAVE (editor order).
         if (hasVisual) {
-            for (int l = 0; l < 6; ++l)
-                monoVis->spreadEffective[l] = monoVis->params[Mono::sprId(l)].getValue();
+            for (int l = 0; l < 3; ++l) {
+                float baseSpr = monoVis->params[Mono::sprId(l)].getValue();
+                monoVis->spreadEffective[l] = applyMonoSprCV(baseSpr, l);
+            }
+            // LEG/ACC/VAR have no spread
+            for (int l = 3; l < 6; ++l) monoVis->spreadEffective[l] = 0.f;
         }
         readStrand(Mono::lenId(0),Mono::offId(0),Mono::rotId(0), DNA_R_LEN_PARAM,DNA_R_LEN_INPUT,DNA_R_OFF_PARAM,DNA_R_OFF_INPUT,DNA_R_ROT_PARAM, 0, engine.rhythmLen,    engine.rhythmOff,    engine.rhythmRot);
         readStrand(Mono::lenId(1),Mono::offId(1),Mono::rotId(1), DNA_V_LEN_PARAM,DNA_V_LEN_INPUT,DNA_V_OFF_PARAM,DNA_V_OFF_INPUT,DNA_V_ROT_PARAM, 1, engine.variationLen, engine.variationOff, engine.variationRot);
