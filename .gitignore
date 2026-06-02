@@ -1,1 +1,3 @@
 panel_src/__pycache__/
+panel_src/_*.png
+panel_src/_*.svg
