@@ -105,9 +105,9 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         }
     }
 
-    // ── Macro global LOR with CV ──────────────────────────────────────────
+    // ── Macro global LOR with CV (poly: per-lane, SAME for every voice) ────
     if (hasMacro) {
-        auto applyGlobal = [&](int lane, int& outLen, int& outOff, int& outRot) {
+        auto applyGlobal = [&](int lane, int polyLane) {
             float bLen = macroVis->params[Macro::lorId(lane,0)].getValue();
             float bOff = macroVis->params[Macro::lorId(lane,1)].getValue();
             float bRot = macroVis->params[Macro::lorId(lane,2)].getValue();
@@ -117,14 +117,20 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             float bSpr = macroVis->params[Macro::sprId(lane)].getValue();
             bSpr = applyMacroCV(bSpr, lane, 3, 0.f, 1.f);
             macroVis->params[Macro::sprId(lane)].setValue(bSpr);
-            outLen = clamp((int)std::round(bLen), 1, 16);
-            outOff = ((int)std::round(bOff) % 16 + 16) % 16;
-            outRot = ((int)std::round(bRot) % 16 + 16) % 16;
+            int L = clamp((int)std::round(bLen), 1, 16);
+            int O = ((int)std::round(bOff) % 16 + 16) % 16;
+            int R = ((int)std::round(bRot) % 16 + 16) % 16;
+            // Macro applies the SAME lane LOR to every poly voice.
+            for (int v = 0; v < 15; ++v) {
+                engine.polyLen[v][polyLane] = L;
+                engine.polyOff[v][polyLane] = O;
+                engine.polyRot[v][polyLane] = R;
+            }
         };
-        // C++11: out-params instead of structured bindings
-        applyGlobal(0, engine.rhythmLen, engine.rhythmOff, engine.rhythmRot);
-        applyGlobal(1, engine.melodyLen, engine.melodyOff, engine.melodyRot);
-        applyGlobal(2, engine.octaveLen, engine.octaveOff, engine.octaveRot);
+        // Macro lanes 0=REST, 1=MELODY, 2=OCTAVE → poly lanes PL_REST/MEL/OCT
+        applyGlobal(0, SequencerEngine::PL_REST);
+        applyGlobal(1, SequencerEngine::PL_MELODY);
+        applyGlobal(2, SequencerEngine::PL_OCTAVE);
     }
 
     // Note: Poly DNA windows handled in Monsoon::process controlDivider block.
