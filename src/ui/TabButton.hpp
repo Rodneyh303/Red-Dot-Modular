@@ -117,6 +117,34 @@ struct TabButtonGroup : rack::Widget {
     // Select first tab
     selectTab(0);
   }
+
+  // Multi-row layout: tabs wrap across `numRows`, sized to fill `totalWidthPx`
+  // and `totalHeightPx`. Use for large voice counts (e.g. 15) where a single
+  // row would be too cramped. Build with TabButtonGroup(numTabs, start, rows, w, h).
+  TabButtonGroup(int numTabs, int startVoiceNumber, int numRows,
+                 float totalWidthPx, float totalHeightPx) {
+    if (numRows < 1) numRows = 1;
+    int perRow = (numTabs + numRows - 1) / numRows;   // ceil
+    float tw = (totalWidthPx - spacing * (perRow - 1)) / perRow;
+    float th = (totalHeightPx - spacing * (numRows - 1)) / numRows;
+    tabWidth = tw; tabHeight = th;
+    box.size.x = totalWidthPx;
+    box.size.y = totalHeightPx;
+
+    for (int i = 0; i < numTabs; ++i) {
+      int row = i / perRow;
+      int col = i % perRow;
+      auto tab = new TabButton();
+      tab->voiceIdx = i;
+      tab->label = "V" + std::to_string(startVoiceNumber + i);
+      tab->box.pos  = Vec(col * (tw + spacing), row * (th + spacing));
+      tab->box.size = Vec(tw, th);
+      tab->onPressed = [this](int voiceIdx) { selectTab(voiceIdx); };
+      addChild(tab);
+      tabs.push_back(tab);
+    }
+    selectTab(0);
+  }
   
   void selectTab(int idx) {
     if (idx < 0 || idx >= (int)tabs.size()) return;

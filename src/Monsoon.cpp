@@ -1082,6 +1082,7 @@ void init(rack::Plugin* p) {
 	// Visual editor expanders
 	p->addModel(modelMonsoonSandsVisualExpander);   // Mono visual DNA editor
 	p->addModel(modelStraitsEastSandsVisual);       // East visual DNA editor (tabbed)
-	p->addModel(modelStraitsWestSandsVisual);       // West visual DNA editor (tabbed)
+	// RETIRED: West visual editor merged into East (15-voice). Source kept, not registered.
+	// p->addModel(modelStraitsWestSandsVisual);
 	p->addModel(modelStraitsSandsMacroVisual);      // Macro visual DNA editor
 }

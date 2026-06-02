@@ -8,18 +8,20 @@ using namespace MonsoonIds;
 namespace StraitsEastVisualIds {
 
     // ── Panel ──────────────────────────────────────────────────────────────
-    static constexpr float W_MM    = 182.88f;   // 36HP
+    static constexpr float W_MM    = 203.2f;    // 40HP (was 36HP; +4HP for 15-voice
+                                                 // 2-row tabs + per-lane spread column)
     static constexpr int   N_ROWS  = 6;         // 2 rows per lane × 3 lanes
     static constexpr float ROW_TOP = 14.f;
     static constexpr float ROW_BOT = 108.f;
-    // 4 columns: jack1, jack2, atten1, atten2
+    // 5 columns: jack1, jack2, atten1, atten2, spread (per-lane)
     static constexpr float COL_J1 = 8.f;
     static constexpr float COL_J2 = 18.f;
     static constexpr float COL_A1 = 30.f;
     static constexpr float COL_A2 = 39.f;
-    static constexpr float ED_X   = 46.f;
-    static constexpr float ED_Y   = 18.f;   // editor top (below tab row)
-    static constexpr float ED_W   = W_MM - ED_X - 4.f;  // 132.9mm
+    static constexpr float SPREAD_X = 49.f;      // per-lane spread trimpot column
+    static constexpr float ED_X   = 58.f;        // editor starts after spread column
+    static constexpr float ED_Y   = 18.f;        // editor top (below 2-row tab band)
+    static constexpr float ED_W   = W_MM - ED_X - 4.f;  // ~141.2mm
 
     static inline float rowY(int r) {
         return ROW_TOP + (r + 0.5f) * (ROW_BOT - ROW_TOP) / N_ROWS;
@@ -98,7 +100,7 @@ struct StraitsEastSandsVisual : Module {
                             std::string(rowNames[r][c])+" CV (poly)");
             }
 
-        for (int v=0; v<7; ++v) {
+        for (int v=0; v<15; ++v) {
             std::string vl = "V"+std::to_string(v+2)+" ";
             for (int lane=0; lane<3; ++lane) {
                 for (int c=0; c<3; ++c)
