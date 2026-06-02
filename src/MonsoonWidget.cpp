@@ -3,13 +3,13 @@
 #include "MonsoonWidget.hpp"
 #include "Monsoon.hpp"
 #include "dsp/managers/MonsoonScaleManager.hpp"
-#include "ui/PeranakanLatticePanel.hpp"
+//#include "ui/PeranakanLatticePanel.hpp"
 
 // Define a custom panel that uses PeranakanLatticePanelLarge
 // This will handle drawing the lattice overlay.
-struct MonsoonCustomPanel : PeranakanLatticePanelLarge {
-    MonsoonCustomPanel(int* themeRef) : PeranakanLatticePanelLarge(themeRef) {}
-};
+// struct MonsoonCustomPanel : PeranakanLatticePanelLarge {
+//     MonsoonCustomPanel(int* themeRef) : PeranakanLatticePanelLarge(themeRef) {}
+// };
 
 using namespace rack;
 using namespace MonsoonIds;
@@ -160,16 +160,18 @@ void MonsoonWidget::applyTheme() {
  // Panel
     bool lightTheme = getLightTheme();  // read from module
     auto panelPath = asset::plugin(pluginInstance,
-        lightTheme ? "res/panels/Monsoon_panel_light_monsoon.svg"
+        lightTheme ? "res/panels/Monsoon_panel_dark_monsoon.svg"
                    : "res/panels/Monsoon_panel_dark_monsoon.svg");
 
     auto* m = dynamic_cast<Monsoon*>(module);
     if (m) {
-        // Create an instance of MonsoonCustomPanel and set its SVG
-        MonsoonCustomPanel* newPanel = new MonsoonCustomPanel(&m->lightTheme);
-        newPanel->setBackground(APP->window->loadSvg(panelPath));
-        setPanel(newPanel); // ModuleWidget::setPanel takes ownership and deletes the old panel
-    } else {
+    //     // Create an instance of MonsoonCustomPanel and set its SVG
+    //     // MonsoonCustomPanel* newPanel = new MonsoonCustomPanel(&m->lightTheme);
+    //     // newPanel->setBackground(APP->window->loadSvg(panelPath));
+    //     // setPanel(newPanel); // ModuleWidget::setPanel takes ownership and deletes the old panel
+    //     setPanel(APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/StraitsSands_panel_dark_10HP.svg")));
+
+    // } else {
         setPanel(createPanel(panelPath)); // Fallback to generic SvgPanel if module is null
     }
     // Remove any existing knob params at the 7 top knob positions
@@ -292,26 +294,26 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         // ── Slider tick marks: parallel horizontal lines per slider (meloDICER style) ──
         // 9 tick levels in the slider travel range, alternating long/short
         // Travel: SL_TOP=45mm to SL_TOP+SLH=74.5mm → 29.5mm / 8 intervals = 3.69mm each
-        {
-            const float SL_BOT = SL_TOP + SLH;
-            const int   N_TICKS = 9;
-            const float tickXs[14] = {7.5f,16.5f,25.5f,34.5f,43.5f,52.5f,61.5f,70.5f,79.5f,88.5f,97.5f,106.5f,119.f,128.f};
-            nvgBeginPath(vg);
-            for (int t = 0; t < N_TICKS; ++t) {
-                float ty   = mm2px(SL_TOP + t*(SL_BOT-SL_TOP)/(N_TICKS-1));
-                bool  major = (t==0 || t==4 || t==8);
-                float hw   = mm2px(major ? 2.2f : 1.4f);
-                for (int i = 0; i < 14; ++i) {
-                    float cx = mm2px(tickXs[i]);
-                    nvgMoveTo(vg, cx - hw, ty);
-                    nvgLineTo(vg, cx + hw, ty);
-                }
-            }
-            nvgStrokeWidth(vg, 0.6f);
-            if (lt) nvgStrokeColor(vg, nvgRGBA(140,140,140,90));
-            else    nvgStrokeColor(vg, nvgRGBA(180,180,180,55));
-            nvgStroke(vg);
-        }
+        // {
+        //     const float SL_BOT = SL_TOP + SLH;
+        //     const int   N_TICKS = 9;
+        //     const float tickXs[14] = {7.5f,16.5f,25.5f,34.5f,43.5f,52.5f,61.5f,70.5f,79.5f,88.5f,97.5f,106.5f,119.f,128.f};
+        //     nvgBeginPath(vg);
+        //     for (int t = 0; t < N_TICKS; ++t) {
+        //         float ty   = mm2px(SL_TOP + t*(SL_BOT-SL_TOP)/(N_TICKS-1));
+        //         bool  major = (t==0 || t==4 || t==8);
+        //         float hw   = mm2px(major ? 2.2f : 1.4f);
+        //         for (int i = 0; i < 14; ++i) {
+        //             float cx = mm2px(tickXs[i]);
+        //             nvgMoveTo(vg, cx - hw, ty);
+        //             nvgLineTo(vg, cx + hw, ty);
+        //         }
+        //     }
+        //     nvgStrokeWidth(vg, 0.6f);
+        //     if (lt) nvgStrokeColor(vg, nvgRGBA(140,140,140,90));
+        //     else    nvgStrokeColor(vg, nvgRGBA(180,180,180,55));
+        //     nvgStroke(vg);
+        // }
 
         // Mode
         setNvgFontSize(3.2f); fillNvgColour(210,210,210); writeNvgText(197.f,5.f,"MODE");
