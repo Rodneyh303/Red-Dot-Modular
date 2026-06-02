@@ -63,6 +63,18 @@ void PatternEngine::reset() {
     rhythmSlewLatched=melodySlewLatched=1.f;
     rhythmSlewApplied=melodySlewApplied=1.f;
     rhythmFirstDraw=melodyFirstDraw=true;
+    sandsActive=false;
+    // Mirror defaults into slewedDraw too (final == slewed at reset)
+    for (int i=0;i<16;i++){
+        slewedRhythm[i]=rhythmRandom[i]; slewedVariation[i]=variationRandom[i];
+        slewedLegato[i]=legatoRandom[i]; slewedAccent[i]=accentRandom[i];
+        slewedMelody[i]=melodyRandom[i]; slewedOctave[i]=octaveRandom[i];
+        for (int v=0;v<15;v++){
+            slewedPolyRhythm[v][i]=polyRhythmRandom[v][i];
+            slewedPolyMelody[v][i]=polyMelodyRandom[v][i];
+            slewedPolyOctave[v][i]=polyOctaveRandom[v][i];
+        }
+    }
 }
 
 // ── Core generation ───────────────────────────────────────────────────────
@@ -199,30 +211,60 @@ void PatternEngine::redrawRhythm(const PatternInput& in) {
             for (int v = 0; v < 15; v++) polyRhythmLockedA[v][i] = polyRhythmCandB[v][i];
         }
     }
-    rhythmSlewApplied = -1.f;       // force recompute of effective arrays
+    rhythmSlewApplied = -1.f;       // force recompute of slewedDraw
     recomputeEffectiveRhythm();
-    // Cache source (post-blend) + UI pattern
+    // Cache source from the SLEWED draw (canonical draw; final may be rewritten
+    // by Sands later this cycle). UI pattern previews the no-Sands final.
     for (int i = 0; i < 16; ++i) {
-        rhythmSource[i]=rhythmRandom[i]; variationSource[i]=variationRandom[i];
-        legatoSource[i]=legatoRandom[i]; accentSource[i]=accentRandom[i];
-        for (int v=0;v<15;v++) polyRhythmSource[v][i]=polyRhythmRandom[v][i];
-        rhythmPattern[i] = (rhythmRandom[i] >= in.restProb);
+        rhythmSource[i]=slewedRhythm[i]; variationSource[i]=slewedVariation[i];
+        legatoSource[i]=slewedLegato[i]; accentSource[i]=slewedAccent[i];
+        for (int v=0;v<15;v++) polyRhythmSource[v][i]=slewedPolyRhythm[v][i];
+        rhythmPattern[i] = (slewedRhythm[i] >= in.restProb);
     }
 }
 
-// effective[] = A + slew*(B-A), written into the public arrays
+// slew: slewedDraw[] = A + slew*(B-A). When no Sands owns the spread stage,
+// copy slewedDraw → final (the public arrays the sequencer reads).
 void PatternEngine::recomputeEffectiveRhythm() {
     const float s = rack::math::clamp(rhythmSlewLatched, 0.f, 1.f);
     auto bl = [s](float a, float b){ return a + s*(b-a); };
     for (int i = 0; i < 16; ++i) {
-        rhythmRandom[i]    = bl(rhythmLockedA[i],    rhythmCandB[i]);
-        variationRandom[i] = bl(variationLockedA[i], variationCandB[i]);
-        legatoRandom[i]    = bl(legatoLockedA[i],    legatoCandB[i]);
-        accentRandom[i]    = bl(accentLockedA[i],    accentCandB[i]);
+        slewedRhythm[i]    = bl(rhythmLockedA[i],    rhythmCandB[i]);
+        slewedVariation[i] = bl(variationLockedA[i], variationCandB[i]);
+        slewedLegato[i]    = bl(legatoLockedA[i],    legatoCandB[i]);
+        slewedAccent[i]    = bl(accentLockedA[i],    accentCandB[i]);
         for (int v = 0; v < 15; v++)
-            polyRhythmRandom[v][i] = bl(polyRhythmLockedA[v][i], polyRhythmCandB[v][i]);
+            slewedPolyRhythm[v][i] = bl(polyRhythmLockedA[v][i], polyRhythmCandB[v][i]);
+    }
+    if (!sandsActive) {
+        for (int i = 0; i < 16; ++i) {
+            rhythmRandom[i]=slewedRhythm[i]; variationRandom[i]=slewedVariation[i];
+            legatoRandom[i]=slewedLegato[i]; accentRandom[i]=slewedAccent[i];
+            for (int v=0;v<15;v++) polyRhythmRandom[v][i]=slewedPolyRhythm[v][i];
+        }
     }
     rhythmSlewApplied = s;
+}
+
+void PatternEngine::recomputeEffectiveMelody() {
+    const float s = rack::math::clamp(melodySlewLatched, 0.f, 1.f);
+    auto bl = [s](float a, float b){ return a + s*(b-a); };
+    for (int i = 0; i < 16; ++i) {
+        slewedMelody[i] = bl(melodyLockedA[i], melodyCandB[i]);
+        slewedOctave[i] = bl(octaveLockedA[i], octaveCandB[i]);
+        for (int v = 0; v < 15; v++) {
+            slewedPolyMelody[v][i] = bl(polyMelodyLockedA[v][i], polyMelodyCandB[v][i]);
+            slewedPolyOctave[v][i] = bl(polyOctaveLockedA[v][i], polyOctaveCandB[v][i]);
+        }
+    }
+    if (!sandsActive) {
+        for (int i = 0; i < 16; ++i) {
+            melodyRandom[i]=slewedMelody[i]; octaveRandom[i]=slewedOctave[i];
+            for (int v=0;v<15;v++){ polyMelodyRandom[v][i]=slewedPolyMelody[v][i];
+                                    polyOctaveRandom[v][i]=slewedPolyOctave[v][i]; }
+        }
+    }
+    melodySlewApplied = s;
 }
 
 // Regenerate melody pattern (16 steps of semitone + pitch voltage)
@@ -251,27 +293,13 @@ void PatternEngine::redrawMelody(const PatternInput& in) {
     melodySlewApplied = -1.f;
     recomputeEffectiveMelody();
     for (int i = 0; i < 16; ++i) {
-        melodySource[i]=melodyRandom[i]; octaveSource[i]=octaveRandom[i];
-        for (int v=0;v<15;v++){ polyMelodySource[v][i]=polyMelodyRandom[v][i];
-                                polyOctaveSource[v][i]=polyOctaveRandom[v][i]; }
+        melodySource[i]=slewedMelody[i]; octaveSource[i]=slewedOctave[i];
+        for (int v=0;v<15;v++){ polyMelodySource[v][i]=slewedPolyMelody[v][i];
+                                polyOctaveSource[v][i]=slewedPolyOctave[v][i]; }
         int sem = 0;
-        melodyPitchV[i]   = genPitchLive(sem, in, melodyRandom[i], octaveRandom[i]);
+        melodyPitchV[i]   = genPitchLive(sem, in, slewedMelody[i], slewedOctave[i]);
         melodySemitone[i] = sem;
     }
-}
-
-void PatternEngine::recomputeEffectiveMelody() {
-    const float s = rack::math::clamp(melodySlewLatched, 0.f, 1.f);
-    auto bl = [s](float a, float b){ return a + s*(b-a); };
-    for (int i = 0; i < 16; ++i) {
-        melodyRandom[i] = bl(melodyLockedA[i], melodyCandB[i]);
-        octaveRandom[i] = bl(octaveLockedA[i], octaveCandB[i]);
-        for (int v = 0; v < 15; v++) {
-            polyMelodyRandom[v][i] = bl(polyMelodyLockedA[v][i], polyMelodyCandB[v][i]);
-            polyOctaveRandom[v][i] = bl(polyOctaveLockedA[v][i], polyOctaveCandB[v][i]);
-        }
-    }
-    melodySlewApplied = s;
 }
 
 void PatternEngine::latchSlew(float rhythmSlew, float melodySlew) {
