@@ -143,25 +143,46 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   }
   
   struct Layout {
-    float laneHeight = 30.f;
-    float stepWidth = 30.f;
+    // Layout derives ALL geometry from the owner's box.size so draw() and
+    // hit-testing always use the SAME coordinate space as the actual widget
+    // bounds — no fixed-pixel assumptions, no scale/DPI mismatch.
+    rack::Vec boxSize = rack::Vec(550, 250);  // updated each frame/event from owner
+    int laneCount = 3;
+
+    float topPadding = 18.f;   // space above lanes (label/control row)
+    float botPadding = 8.f;    // space below lanes
+    float padding    = 6.f;    // left/right inset for the step grid
+
+    float laneAreaH() const { return std::max(1.f, boxSize.y - topPadding - botPadding); }
+    float laneHeightF() const { return laneAreaH() / std::max(1, laneCount); }
+    float gridW() const { return std::max(1.f, boxSize.x - 2.f * padding); }
+    float stepWidthF() const { return gridW() / (float)STEP_COUNT; }
+    float handleWidthF() const { return std::min(stepWidthF() * 0.8f, laneHeightF() * 0.5f); }
+
+    // Back-compat accessors used throughout the file:
+    float laneHeight  = 30.f;  // kept as fields for any external refs (unused internally now)
+    float stepWidth   = 30.f;
     float handleWidth = 12.f;
-    float padding = 40.f;
-    float topPadding = 35.f;
-    
-    float getLaneY(int lane) const { return topPadding + lane * laneHeight; }
-    float getStepX(int step) const { return padding + step * stepWidth; }
-    float getStepCenterX(int step) const { return getStepX(step) + stepWidth / 2.f; }
-    float getLaneCenterY(int lane) const { return getLaneY(lane) + laneHeight / 2.f; }
-    
+
+    float getLaneY(int lane) const { return topPadding + lane * laneHeightF(); }
+    float getStepX(int step) const { return padding + step * stepWidthF(); }
+    float getStepCenterX(int step) const { return getStepX(step) + stepWidthF() / 2.f; }
+    float getLaneCenterY(int lane) const { return getLaneY(lane) + laneHeightF() / 2.f; }
+
     rack::Rect getLaneRect(int lane) const {
-      return rack::Rect(0, getLaneY(lane), 550, laneHeight);
+      return rack::Rect(padding, getLaneY(lane), gridW(), laneHeightF());
     }
-    
     rack::Rect getStepRect(int lane, int step) const {
-      return rack::Rect(getStepX(step), getLaneY(lane), stepWidth, laneHeight);
+      return rack::Rect(getStepX(step), getLaneY(lane), stepWidthF(), laneHeightF());
     }
   } layout;
+
+  // Keep layout.boxSize / laneCount in sync with the actual widget before any
+  // draw or pointer-event geometry is computed.
+  void syncLayout() {
+    layout.boxSize  = box.size;
+    layout.laneCount = laneCount;
+  }
   
   SandsVisualEditorV4(Mode m = POLY) : mode(m) {
     setMode(m);
@@ -290,6 +311,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   }
   
   void draw(const widget::Widget::DrawArgs& args) override {
+    syncLayout();
     nvgBeginPath(args.vg);
     nvgRect(args.vg, 0, 0, box.size.x, box.size.y);
     nvgFillColor(args.vg, colors.background);
@@ -374,28 +396,33 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   }
   
   // ── Handle hit testing ──────────────────────────────────────────────────────
-  // Returns START, END, ROTATION, or NONE.
-  // Checked BEFORE bar hit-test so handles have priority.
+  // Zones within a lane (top-to-bottom):
+  //   top ~45%  : START handle (at offset cell) / END handle (at end cell) circles
+  //   bottom ~30%: ROTATION strip — drag anywhere along it to set rotation
+  //   middle    : bar value (probability) drag
+  // Separating rotation into its own strip means it never collides with the
+  // start/end handles and is grabbable even when rotation == 0.
   DragState::Type hitTestHandle(int lane, float x, float y) const {
     if (lane < 0 || lane >= laneCount) return DragState::NONE;
     const ProbabilityLane& L = currentState.lanes[lane];
-    const float r = layout.handleWidth * 0.7f;  // slightly generous hit radius
-    const float cy = layout.getLaneCenterY(lane);
+    const float r = layout.handleWidthF() * 0.8f;  // generous hit radius
+    rack::Rect laneR = layout.getLaneRect(lane);
+    const float handleCy = laneR.pos.y + layout.handleWidthF() * 0.7f;  // handles sit near top
 
-    // Start handle — drawn at bar `offset`
+    // START handle — circle at bar `offset`, near lane top
     int startBar = L.offset % STEP_COUNT;
     float sx = layout.getStepCenterX(startBar);
-    if (std::hypot(x - sx, y - cy) <= r) return DragState::START;
+    if (std::hypot(x - sx, y - handleCy) <= r) return DragState::START;
 
-    // End handle — drawn at bar `(offset + length - 1) % 16`
+    // END handle — circle at bar `(offset + length - 1) % 16`, near lane top
     int endBar = (L.offset + L.length - 1) % STEP_COUNT;
     float ex = layout.getStepCenterX(endBar);
-    if (std::hypot(x - ex, y - cy) <= r) return DragState::END;
+    if (std::hypot(x - ex, y - handleCy) <= r) return DragState::END;
 
-    // Rotation indicator — full step rect at bar `rotation`
-    rack::Rect rr = layout.getStepRect(lane, L.rotation % STEP_COUNT);
-    if (x >= rr.pos.x && x <= rr.pos.x + rr.size.x &&
-        y >= rr.pos.y && y <= rr.pos.y + rr.size.y)
+    // ROTATION strip — bottom ~30% of the lane, full width
+    float rotTop = laneR.pos.y + laneR.size.y * 0.70f;
+    if (y >= rotTop && y <= laneR.pos.y + laneR.size.y &&
+        x >= laneR.pos.x && x <= laneR.pos.x + laneR.size.x)
       return DragState::ROTATION;
 
     return DragState::NONE;
@@ -403,8 +430,9 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
 
   void drawHandles(NVGcontext* vg, int lane) {
     const ProbabilityLane& L = currentState.lanes[lane];
-    const float cy = layout.getLaneCenterY(lane);
-    const float r  = layout.handleWidth / 2.f;
+    rack::Rect laneR = layout.getLaneRect(lane);
+    const float cy = laneR.pos.y + layout.handleWidthF() * 0.7f;  // near lane top
+    const float r  = layout.handleWidthF() / 2.f;
 
     int startBar = L.offset % STEP_COUNT;
     int endBar   = (L.offset + L.length - 1) % STEP_COUNT;
@@ -440,8 +468,8 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       nvgLineTo(vg, ex, cy);
     } else {
       // Wraps — draw to right edge and from left edge
-      float rightEdge = layout.getStepCenterX(STEP_COUNT - 1) + layout.stepWidth / 2.f;
-      float leftEdge  = layout.getStepCenterX(0) - layout.stepWidth / 2.f;
+      float rightEdge = layout.getStepCenterX(STEP_COUNT - 1) + layout.stepWidthF() / 2.f;
+      float leftEdge  = layout.getStepCenterX(0) - layout.stepWidthF() / 2.f;
       nvgMoveTo(vg, sx, cy); nvgLineTo(vg, rightEdge, cy);
       nvgMoveTo(vg, leftEdge, cy); nvgLineTo(vg, ex, cy);
     }
@@ -452,15 +480,24 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   
   void drawRotationIndicator(NVGcontext* vg, int lane) {
     const ProbabilityLane& L = currentState.lanes[lane];
-    if (L.rotation <= 0) return;  // rotation=0 means no shift, nothing to indicate
+    rack::Rect laneR = layout.getLaneRect(lane);
+    float stripTop = laneR.pos.y + laneR.size.y * 0.70f;
+    float stripH   = laneR.size.y * 0.30f;
 
-    int rotBar = L.rotation % STEP_COUNT;
-    rack::Rect rect = layout.getStepRect(lane, rotBar);
-
-    // Teal left-edge stripe to mark rotation point
+    // Faint full-width track so the rotation strip is always discoverable
     nvgBeginPath(vg);
-    nvgRect(vg, rect.pos.x, rect.pos.y, 2.f, rect.size.y);
-    nvgFillColor(vg, colors.rotation);
+    nvgRect(vg, laneR.pos.x, stripTop, laneR.size.x, stripH);
+    NVGcolor track = colors.rotation; track.a = 0.10f;
+    nvgFillColor(vg, track);
+    nvgFill(vg);
+
+    // Rotation marker block at the current rotation step
+    int rotBar = L.rotation % STEP_COUNT;
+    rack::Rect cell = layout.getStepRect(lane, rotBar);
+    nvgBeginPath(vg);
+    nvgRect(vg, cell.pos.x + 1.f, stripTop, cell.size.x - 2.f, stripH);
+    NVGcolor mk = colors.rotation; mk.a = (L.rotation > 0) ? 0.85f : 0.45f;
+    nvgFillColor(vg, mk);
     nvgFill(vg);
   }
   
@@ -474,16 +511,27 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
 
       rack::Rect rect = layout.getStepRect(l, step);
 
+      // Highlight the WHOLE active-step block: lighten the entire cell column
+      // so the current step (where the probability roll happens) is obvious.
+      nvgBeginPath(vg);
+      nvgRect(vg, rect.pos.x, rect.pos.y, rect.size.x, rect.size.y);
+      nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.18f * activeStepAlpha));
+      nvgFill(vg);
+
+      // Re-draw this step's probability bar brighter on top of the highlight
+      float prob = currentState.lanes[l].probabilities[step];
+      float barH = prob * rect.size.y;
+      NVGcolor c = getLaneColor(l);
+      c.a = 0.55f + 0.45f * activeStepAlpha;   // boosted vs the static 1.0 bar
+      nvgBeginPath(vg);
+      nvgRect(vg, rect.pos.x + 1, rect.pos.y + (rect.size.y - barH), rect.size.x - 2, barH);
+      nvgFillColor(vg, c);
+      nvgFill(vg);
+
       // Bright top-edge tick
       nvgBeginPath(vg);
       nvgRect(vg, rect.pos.x + 1, rect.pos.y, rect.size.x - 2, 2.f);
-      nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.85f * activeStepAlpha));
-      nvgFill(vg);
-
-      // Subtle full-column tint
-      nvgBeginPath(vg);
-      nvgRect(vg, rect.pos.x, rect.pos.y, rect.size.x, rect.size.y);
-      nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.12f * activeStepAlpha));
+      nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.9f * activeStepAlpha));
       nvgFill(vg);
     }
   }
@@ -527,6 +575,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   }
   
   void onButton(const rack::event::Button& e) override {
+    syncLayout();
     if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT) {
       int lane = getLaneAtY(e.pos.y);
       int step = getStepAtX(e.pos.x);
@@ -565,6 +614,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   }
   
   void onDragMove(const rack::event::DragMove& e) override {
+    syncLayout();
     if (!dragState.isDragging) return;
     // Rack 2: DragMove gives delta, not absolute pos. Accumulate.
     dragState.dragPos = dragState.dragPos.plus(e.mouseDelta);
@@ -585,18 +635,20 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
         break;
 
       case DragState::END:
-        // Drag changes length. Offset stays fixed.
-        // length = distance from offset to end step (wrapping OK, min 1, max 16)
+        // Drag changes length: end lands on the dragged step.
+        // length = forward distance from offset to step, inclusive.
+        // Dragging left of start shrinks toward 1 (no surprise full-wrap to 16).
         {
-          int newLen = (step - L.offset + STEP_COUNT) % STEP_COUNT;
-          if (newLen == 0) newLen = STEP_COUNT;  // full wrap = 16 steps
+          int fwd = (step - L.offset + STEP_COUNT) % STEP_COUNT;  // 0..15
+          int newLen = fwd + 1;                                   // inclusive → 1..16
           L.length = rack::math::clamp(newLen, 1, STEP_COUNT);
         }
         break;
 
       case DragState::ROTATION:
-        // Drag sets rotation directly (0–length-1, clamped)
-        L.rotation = rack::math::clamp(step, 0, STEP_COUNT - 1);
+        // Rotation strip drag: rotation = step under cursor, 0..length-1.
+        // Clamp to the window length so rotation never exceeds the pattern.
+        L.rotation = rack::math::clamp(step, 0, std::max(0, L.length - 1));
         break;
 
       default: break;
@@ -626,7 +678,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   
   int getStepAtX(float x) const {
     if (x < layout.padding) return -1;
-    int step = (int)((x - layout.padding) / layout.stepWidth);
+    int step = (int)((x - layout.padding) / layout.stepWidthF());
     return (step >= 0 && step < STEP_COUNT) ? step : -1;
   }
   
@@ -646,8 +698,8 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       if (lanePlayStep[l] >= 0) { anyActive = true; break; }
     }
     activeStepAlpha = anyActive
-      ? 0.4f + 0.35f * sinf(rack::system::getTime() * 5.f)
-      : 0.f;
+      ? 0.6f + 0.3f * sinf(rack::system::getTime() * 5.f)
+      : 0.5f;   // baseline so the current-step block stays visible when stopped
   }
 };
 
