@@ -30,9 +30,17 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     // Monsoon.cpp) are no-op unless this holds.
     const bool polyBaseActive = (expanderManager.cachedPolyVoiceExpander != nullptr)
                                 && (engine.numPolyVoices >= 1);
+    // Voice OUTPUT topology bounds the spread ensemble: East base expander
+    // outputs poly voices 2..8 (engine.voices[0..6], i.e. up to 7), West adds
+    // voices 9..15 (up to 8 more). Voices with no output path must NOT be
+    // averaged into spread, or the ensemble converges toward phantom voices.
+    // So the effective poly count exceeds 7 only when West is also present.
+    const bool hasWest = (expanderManager.cachedStraitWestExpander != nullptr);
+    const int  polyOutCap = polyBaseActive ? (hasWest ? 15 : 7) : 0;
+    const int  effPolyVoices = clamp(engine.numPolyVoices, 0, polyOutCap);
     const bool macroActive = hasMacro && polyBaseActive;
     engine.pe.setSandsActive(hasVisual || macroActive || (hasEastVisual && polyBaseActive));
-    engine.pe.numPolyVoicesHint = polyBaseActive ? engine.numPolyVoices : 0;  // gated: display matches audio
+    engine.pe.numPolyVoicesHint = effPolyVoices;  // gated + output-bounded: display matches audio
 
     // ── Helper: apply mono CV offset at read site ─────────────────────────
     auto applyMonoCV = [&](float base, int lane, int param, float lo, float hi) -> float {
@@ -111,10 +119,11 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             engine.pe.setSandsActive(true);
             if (!engine.locked) {
             // Ensemble = mono + active poly voices. Average over (1 + nPoly).
-            // Ensemble poly count: 0 unless the base poly path is active, so
-            // with no base expander (or mono-only) Mono spread degenerates to a
-            // no-op (average == mono draw == itself).
-            const int nPoly = polyBaseActive ? clamp(engine.numPolyVoices, 0, 15) : 0;
+            // Ensemble poly count is bounded by the voice OUTPUT topology
+            // (effPolyVoices): only voices with an actual output path (East ≤7,
+            // +West for 8..15) are averaged. With no base expander it is 0, so
+            // Mono spread degenerates to a no-op (average == mono draw itself).
+            const int nPoly = effPolyVoices;
             const float denom = 1.f + (float)nPoly;
             for (int i = 0; i < 16; ++i) {
                 auto avg = [&](float monoVal, const float poly[15][16]) {
