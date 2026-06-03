@@ -43,7 +43,10 @@ void ModeController::postExecute_(const StepResult& result) {
 
     // Playable slew: latch the live slew at the bar boundary (step-0 wrap) so the
     // A→B morph is quantised to the cycle and stable within a bar.
-    if (result.wrapped) {
+    // When LOCKED, the pattern is frozen — do not re-blend A/B even if the slew
+    // knob moved, so lock freezes the effective output (consistent with redraw
+    // being skipped while locked).
+    if (result.wrapped && !currentPatternInput.locked) {
         engine.pe.latchSlew(currentPatternInput.rhythmSlew,
                             currentPatternInput.melodySlew);
     }

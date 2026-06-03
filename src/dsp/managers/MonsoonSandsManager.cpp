@@ -100,7 +100,10 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // mono average), pass LEG/ACC/VAR raw, write the FINAL arrays the
             // sequencer reads. setSandsActive(true) stops slew copying the
             // un-spread draw over the top.
+            // When LOCKED, leave the final arrays frozen (skip the rewrite) so
+            // lock freezes the audible output — spread CV won't leak through.
             engine.pe.setSandsActive(true);
+            if (!engine.locked) {
             // Ensemble = mono + active poly voices. Average over (1 + nPoly).
             const int nPoly = clamp(engine.numPolyVoices, 0, 15);
             const float denom = 1.f + (float)nPoly;
@@ -120,6 +123,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 engine.pe.accentRandom[i]    = engine.pe.slewedAccent[i];
                 engine.pe.variationRandom[i] = engine.pe.slewedVariation[i];
             }
+            }  // end if(!engine.locked)
         }
         readStrand(Mono::lenId(0),Mono::offId(0),Mono::rotId(0), DNA_R_LEN_PARAM,DNA_R_LEN_INPUT,DNA_R_OFF_PARAM,DNA_R_OFF_INPUT,DNA_R_ROT_PARAM, 0, engine.rhythmLen,    engine.rhythmOff,    engine.rhythmRot);
         readStrand(Mono::lenId(1),Mono::offId(1),Mono::rotId(1), DNA_V_LEN_PARAM,DNA_V_LEN_INPUT,DNA_V_OFF_PARAM,DNA_V_OFF_INPUT,DNA_V_ROT_PARAM, 1, engine.variationLen, engine.variationOff, engine.variationRot);
