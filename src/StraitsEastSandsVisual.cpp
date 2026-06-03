@@ -51,7 +51,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         // Visual editor
         visualEditor = new SandsVisualEditorV4(SandsVisualEditorV4::POLY);
         visualEditor->box.pos  = mm2px(Vec(ED_X, ED_Y));
-        visualEditor->box.size = mm2px(Vec(ED_W, ROW_BOT - ED_Y));
+        visualEditor->box.size = mm2px(Vec(ED_W, ED_H));
         addChild(visualEditor);
 
         // ── 4 cols × 6 rows: jack1, jack2, atten1, atten2 ────────────────

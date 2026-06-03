@@ -13,6 +13,7 @@ def rowY(r): return ROW_TOP + (r+0.5)*(ROW_BOT-ROW_TOP)/N
 COL_J1, COL_J2, COL_A1, COL_A2, SPREAD_X = 8.0, 18.0, 30.0, 39.0, 49.0
 ED_X, ED_Y = 58.0, 18.0
 ED_W = W_MM - ED_X - 4.0
+ED_H = 48.0   # 3 poly lanes × 16mm (matches StraitsEastSandsVisual.hpp ED_H)
 
 def theme(dark):
     if dark: return dict(bg="#1a1d22", ink="#d8dade", dim="#8a9098", teal="#26a69a",
@@ -32,7 +33,7 @@ def gen(dark):
     # 2-row tab band guide (just a recess where the TabButtonGroup sits)
     A(f'<rect x="{px(ED_X):.1f}" y="{px(ED_Y-12):.1f}" width="{px(ED_W):.1f}" height="{px(10):.1f}" rx="{px(1):.1f}" fill="{t["tabband"]}" opacity="0.5"/>')
     # Editor recess
-    A(f'<rect x="{px(ED_X):.1f}" y="{px(ED_Y):.1f}" width="{px(ED_W):.1f}" height="{px(ROW_BOT-ED_Y):.1f}" rx="{px(1.5):.1f}" fill="{t["edrecess"]}" stroke="{t["edborder"]}" stroke-width="1"/>')
+    A(f'<rect x="{px(ED_X):.1f}" y="{px(ED_Y):.1f}" width="{px(ED_W):.1f}" height="{px(ED_H):.1f}" rx="{px(1.5):.1f}" fill="{t["edrecess"]}" stroke="{t["edborder"]}" stroke-width="1"/>')
     A('</g>')
 
     A(f'<g inkscape:label="control-graphics" inkscape:groupmode="layer">')

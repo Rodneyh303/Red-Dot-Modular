@@ -31,13 +31,13 @@ def gen_macro(dark):
     t=theme(dark); L=[]; A=L.append
     W_MM=132.08; ROW_TOP,ROW_BOT,N=14.,108.,6
     def rowY(r): return ROW_TOP+(r+0.5)*(ROW_BOT-ROW_TOP)/N
-    COL_J1,COL_J2,COL_A1,COL_A2=8.,18.,30.,39.
-    ED_X=46.; ED_W=W_MM-ED_X-4.; ED_Y=16.
+    COL_J1,COL_J2,COL_A1,COL_A2=6.,14.,23.,32.
+    ED_X=39.; ED_W=W_MM-ED_X-4.; ED_Y=16.; ED_H=48.
     hdr,PW=header(W_MM); A(hdr)
     A(f'<g inkscape:label="artwork" inkscape:groupmode="layer">')
     A(f'<rect width="{PW}" height="{PH}" fill="{t["bg"]}"/>')
     A(f'<line x1="0" y1="{px(10):.1f}" x2="{PW}" y2="{px(10):.1f}" stroke="{t["accent"]}" stroke-width="1" opacity="0.4"/>')
-    A(f'<rect x="{px(ED_X):.1f}" y="{px(ED_Y):.1f}" width="{px(ED_W):.1f}" height="{px(ROW_BOT-ED_Y):.1f}" rx="{px(1.5):.1f}" fill="{t["edrecess"]}" stroke="{t["edborder"]}" stroke-width="1"/>')
+    A(f'<rect x="{px(ED_X):.1f}" y="{px(ED_Y):.1f}" width="{px(ED_W):.1f}" height="{px(ED_H):.1f}" rx="{px(1.5):.1f}" fill="{t["edrecess"]}" stroke="{t["edborder"]}" stroke-width="1"/>')
     A('</g>')
     A(f'<g inkscape:label="control-graphics" inkscape:groupmode="layer">')
     for r in range(6):
