@@ -600,9 +600,22 @@ void Monsoon::process(const ProcessArgs& args) {
     auto* eastInterp = eastVisual ? static_cast<rack::Module*>(eastVisual)
                                   : static_cast<rack::Module*>(deepEast);
 
-    // East active if either the visual editor OR the (deprecated) knob poly
-    // expander is present. eastVisual drives all 15 voices when connected.
-    if (eastLOR && (straitEast || eastVisual)) {
+    // Poly Sands editors (East visual, and the deprecated knob path) only do
+    // anything when the Straits BASE poly output expander is connected AND the
+    // user has requested at least one poly voice (numPolyVoices >= 1, i.e. more
+    // than the lone mono voice). Without the base expander there is nowhere for
+    // poly voices to come out, so the LOR/spread work would be inert anyway —
+    // this makes that explicit and keeps the editors no-op.
+    const bool polyBaseActive = (straitEast != nullptr) && (engine.numPolyVoices >= 1);
+    // Voice OUTPUT topology bounds the spread ensemble: East outputs up to 7
+    // poly voices; West adds the rest. Voices with no output path are excluded
+    // from the average so spread never converges toward phantom voices.
+    const int  polyOutCap = polyBaseActive ? (straitWest ? 15 : 7) : 0;
+    const int  effPolyVoices = clamp(engine.numPolyVoices, 0, polyOutCap);
+
+    // East active if the East LOR source is present (visual editor or knob
+    // expander) AND the base poly path is active.
+    if (eastLOR && (straitEast || eastVisual) && polyBaseActive) {
         using namespace DeepStraitsSandsEastIds;
         using namespace StraitsEastVisualIds;  // CV_0..CV_11, ATTEN_0..ATTEN_11
         
@@ -645,7 +658,7 @@ void Monsoon::process(const ProcessArgs& args) {
             // Ensemble denominator = 1 (mono) + numPolyVoices.
             // Frozen when LOCKED so lock freezes the effective output.
             if (!engine.locked) {
-            const int nPoly = clamp(engine.numPolyVoices, 0, 15);
+            const int nPoly = effPolyVoices;
             const float denom = 1.f + (float)nPoly;
             float avgRhythmRandom[16] = {};
             for (int j = 0; j < 16; j++) {
@@ -675,7 +688,7 @@ void Monsoon::process(const ProcessArgs& args) {
             // Spread (Option W): read SLEWED poly draws, converge to average,
             // write FINAL poly probability. Ensemble = mono + active poly.
             if (!engine.locked) {
-            const int nPoly = clamp(engine.numPolyVoices, 0, 15);
+            const int nPoly = effPolyVoices;
             const float denom = 1.f + (float)nPoly;
             float avgMelodyRandom[16] = {};
             for (int j = 0; j < 16; j++) {
@@ -709,7 +722,7 @@ void Monsoon::process(const ProcessArgs& args) {
             }
             
             if (!engine.locked) {
-            const int nPoly = clamp(engine.numPolyVoices, 0, 15);
+            const int nPoly = effPolyVoices;
             const float denom = 1.f + (float)nPoly;
             float avgOctaveRandom[16] = {};
             for (int j = 0; j < 16; j++) {
