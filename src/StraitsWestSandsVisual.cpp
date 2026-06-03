@@ -156,7 +156,7 @@ struct StraitsWestSandsVisualWidget : ModuleWidget {
         saveVoiceLOR(selectedVoice);
         paramMgr->syncPatternEngineToEditor(selectedVoice, visualEditor->currentState);
 
-        int gs = monsoon->engine.stepIndex;
+        int gs = monsoon->engine.totalStepsElapsed;  // monotonic, matches getStrandIdx
         for (int l=0; l<3; ++l)
             visualEditor->setLanePlayStep(l,
                 calcPlayhead(gs,

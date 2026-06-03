@@ -115,8 +115,11 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         // ── Sync PatternEngine → display (uses SpreadManager.getInterpolatedValue) ──
         paramMgr->syncPatternEngineToEditor(visualEditor->currentState);
 
-        // ── Per-lane playhead ─────────────────────────────────────────────
-        int globalStep = monsoon->engine.stepIndex;
+        // Per-lane playhead. Use totalStepsElapsed (the monotonic counter the
+        // sequencer feeds to getStrandIdx), NOT stepIndex (which wraps at 16 and
+        // diverges from the DNA loop for polymetric lengths) — that divergence
+        // was the 1-step lag vs the Monsoon ring.
+        int globalStep = monsoon->engine.totalStepsElapsed;
         for (int l = 0; l < 6; ++l) {
             const auto& lane = visualEditor->currentState.lanes[l];
             visualEditor->setLanePlayStep(l,

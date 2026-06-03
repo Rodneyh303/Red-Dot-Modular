@@ -189,13 +189,11 @@ void PatternEngine::redrawRhythm(const PatternInput& in) {
     rhythmFirstDraw = false;
 
     for (int i = 0; i < 16; ++i) {
-        // promote B -> A
-        rhythmLockedA[i]    = rhythmCandB[i];
-        variationLockedA[i] = variationCandB[i];
-        legatoLockedA[i]    = legatoCandB[i];
-        accentLockedA[i]    = accentCandB[i];
-        for (int v = 0; v < 15; v++) polyRhythmLockedA[v][i] = polyRhythmCandB[v][i];
-
+        // A dice roll draws a FRESH candidate B only. It must NOT promote B→A,
+        // because A is the committed pattern that `effective = A + slew*(B-A)`
+        // morphs FROM. Promoting B→A every roll made A advance even at slew=0,
+        // so the effective output changed on every dice roll regardless of slew
+        // (bug). Now: A stays put; only B refreshes; slew rides A↔B.
         // fresh B
         rhythmCandB[i]    = unitRhythm();
         variationCandB[i] = unitRhythm();
@@ -274,11 +272,8 @@ void PatternEngine::redrawMelody(const PatternInput& in) {
     melodyFirstDraw = false;
 
     for (int i = 0; i < 16; ++i) {
-        melodyLockedA[i] = melodyCandB[i];
-        octaveLockedA[i] = octaveCandB[i];
-        for (int v=0;v<15;v++){ polyMelodyLockedA[v][i]=polyMelodyCandB[v][i];
-                                polyOctaveLockedA[v][i]=polyOctaveCandB[v][i]; }
-
+        // Fresh candidate B only — no B→A promotion (see redrawRhythm for why:
+        // promoting made A advance even at slew=0, changing output every roll).
         melodyCandB[i] = unitMelody();
         octaveCandB[i] = unitMelody();
         for (int v=0;v<15;v++){ polyMelodyCandB[v][i]=unitMelody();
@@ -309,6 +304,11 @@ void PatternEngine::latchSlew(float rhythmSlew, float melodySlew) {
     melodySlewLatched = melodySlew;
     if (rhythmSlewLatched != rhythmSlewApplied) recomputeEffectiveRhythm();
     if (melodySlewLatched != melodySlewApplied) recomputeEffectiveMelody();
+    // NOTE: A (committed) is intentionally NOT advanced here. A dice roll draws a
+    // fresh B; slew morphs A↔B. How/whether A should "commit forward" (e.g.
+    // promote effective→A each bar so the groove walks) is a deliberate design
+    // choice left open — see redrawRhythm. Current behaviour: A is the seed/last
+    // committed pattern until a new seed; slew rides between it and the newest dice.
 }
 
 // Updates the rhythm/melody arrays used for UI and LEDs based on the 

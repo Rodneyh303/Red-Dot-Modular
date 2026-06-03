@@ -125,7 +125,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         saveLOR();
         paramMgr->syncPatternEngineToEditor(visualEditor->currentState);
 
-        int gs = monsoon->engine.stepIndex;
+        int gs = monsoon->engine.totalStepsElapsed;  // monotonic, matches getStrandIdx
         for (int l = 0; l < 3; ++l)
             visualEditor->setLanePlayStep(l,
                 calcPlayhead(gs,
