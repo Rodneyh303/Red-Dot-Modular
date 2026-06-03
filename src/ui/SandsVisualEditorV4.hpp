@@ -417,23 +417,59 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     rack::Rect laneR = layout.getLaneRect(lane);
     const float handleCy = laneR.pos.y + layout.handleWidthF() * 0.7f;  // handles sit near top
 
-    // START handle — circle at bar `offset`, near lane top
+    // START handle — bracket "[" at bar `offset`, near lane top
     int startBar = L.offset % STEP_COUNT;
     float sx = layout.getStepCenterX(startBar);
     if (std::hypot(x - sx, y - handleCy) <= r) return DragState::START;
 
-    // END handle — circle at bar `(offset + length - 1) % 16`, near lane top
+    // END handle — bracket "]" at bar `(offset + length - 1) % 16`, near lane top
     int endBar = (L.offset + L.length - 1) % STEP_COUNT;
     float ex = layout.getStepCenterX(endBar);
     if (std::hypot(x - ex, y - handleCy) <= r) return DragState::END;
 
-    // ROTATION strip — bottom ~30% of the lane, full width
+    // ROTATION strip — bottom ~30% of the lane, but only WITHIN the start–end
+    // window (rotation is a phase inside the window, so it's only grabbable
+    // there). The window spans physical bars [offset .. offset+length-1] and may
+    // wrap around the 16-step grid.
     float rotTop = laneR.pos.y + laneR.size.y * 0.70f;
-    if (y >= rotTop && y <= laneR.pos.y + laneR.size.y &&
-        x >= laneR.pos.x && x <= laneR.pos.x + laneR.size.x)
-      return DragState::ROTATION;
+    if (y >= rotTop && y <= laneR.pos.y + laneR.size.y) {
+      int startBar = L.offset % STEP_COUNT;
+      int endBar   = (L.offset + L.length - 1) % STEP_COUNT;
+      float halfStep = layout.stepWidthF() * 0.5f;
+      float sxL = layout.getStepCenterX(startBar) - halfStep;
+      float exR = layout.getStepCenterX(endBar)   + halfStep;
+      bool inWindow;
+      if (endBar >= startBar) {
+        inWindow = (x >= sxL && x <= exR);                 // contiguous
+      } else {
+        // window wraps: [start .. right edge] OR [left edge .. end]
+        float leftEdge  = layout.getStepCenterX(0) - halfStep;
+        float rightEdge = layout.getStepCenterX(STEP_COUNT - 1) + halfStep;
+        inWindow = (x >= sxL && x <= rightEdge) || (x >= leftEdge && x <= exR);
+      }
+      if (inWindow) return DragState::ROTATION;
+    }
 
     return DragState::NONE;
+  }
+
+  // Draw a vertical square bracket. dir=+1 → "[" (opens right, for START),
+  // dir=-1 → "]" (opens left, for END). Centred at (cx, cy), spanning height h.
+  void drawBracket(NVGcontext* vg, float cx, float cy, float h, float tongue,
+                   int dir, NVGcolor col, float w) {
+    float top = cy - h * 0.5f, bot = cy + h * 0.5f;
+    float spineX = cx - dir * (tongue * 0.5f);   // vertical spine offset to one side
+    float tipX   = cx + dir * (tongue * 0.5f);   // tongues reach to the other side
+    nvgBeginPath(vg);
+    nvgMoveTo(vg, tipX, top);
+    nvgLineTo(vg, spineX, top);     // top tongue
+    nvgLineTo(vg, spineX, bot);     // spine
+    nvgLineTo(vg, tipX, bot);       // bottom tongue
+    nvgStrokeColor(vg, col);
+    nvgStrokeWidth(vg, w);
+    nvgLineCap(vg, NVG_ROUND);
+    nvgLineJoin(vg, NVG_ROUND);
+    nvgStroke(vg);
   }
 
   void drawHandles(NVGcontext* vg, int lane) {
@@ -441,41 +477,20 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     rack::Rect laneR = layout.getLaneRect(lane);
     const float cy = laneR.pos.y + layout.handleWidthF() * 0.7f;  // near lane top
     const float r  = layout.handleWidthF() / 2.f;
+    const float brH = r * 2.2f;           // bracket height
+    const float tongue = r * 0.9f;        // bracket tongue length
 
     int startBar = L.offset % STEP_COUNT;
     int endBar   = (L.offset + L.length - 1) % STEP_COUNT;
-
-    // Start handle: white circle
-    nvgBeginPath(vg);
-    nvgCircle(vg, layout.getStepCenterX(startBar), cy, r);
-    nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.85f));
-    nvgFill(vg);
-    nvgBeginPath(vg);
-    nvgCircle(vg, layout.getStepCenterX(startBar), cy, r);
-    nvgStrokeColor(vg, nvgRGBAf(0.f, 0.f, 0.f, 0.5f));
-    nvgStrokeWidth(vg, 1.f);
-    nvgStroke(vg);
-
-    // End handle: outlined circle (hollow centre so it's distinct from start)
-    nvgBeginPath(vg);
-    nvgCircle(vg, layout.getStepCenterX(endBar), cy, r);
-    nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.35f));
-    nvgFill(vg);
-    nvgBeginPath(vg);
-    nvgCircle(vg, layout.getStepCenterX(endBar), cy, r);
-    nvgStrokeColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.85f));
-    nvgStrokeWidth(vg, 1.5f);
-    nvgStroke(vg);
-
-    // Connector line between start and end (wraps if needed)
     float sx = layout.getStepCenterX(startBar);
     float ex = layout.getStepCenterX(endBar);
+
+    // Connector line first (so brackets sit on top).
     nvgBeginPath(vg);
     if (endBar >= startBar) {
       nvgMoveTo(vg, sx, cy);
       nvgLineTo(vg, ex, cy);
     } else {
-      // Wraps — draw to right edge and from left edge
       float rightEdge = layout.getStepCenterX(STEP_COUNT - 1) + layout.stepWidthF() / 2.f;
       float leftEdge  = layout.getStepCenterX(0) - layout.stepWidthF() / 2.f;
       nvgMoveTo(vg, sx, cy); nvgLineTo(vg, rightEdge, cy);
@@ -484,6 +499,10 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     nvgStrokeColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.3f));
     nvgStrokeWidth(vg, 1.f);
     nvgStroke(vg);
+
+    // START: left square bracket "[" (bright). END: right square bracket "]".
+    drawBracket(vg, sx, cy, brH, tongue, +1, nvgRGBAf(1.f, 1.f, 1.f, 0.9f), 2.f);
+    drawBracket(vg, ex, cy, brH, tongue, -1, nvgRGBAf(1.f, 1.f, 1.f, 0.7f), 2.f);
   }
   
   void drawRotationIndicator(NVGcontext* vg, int lane) {
@@ -492,21 +511,56 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     float stripTop = laneR.pos.y + laneR.size.y * 0.70f;
     float stripH   = laneR.size.y * 0.30f;
 
-    // Faint full-width track so the rotation strip is always discoverable
-    nvgBeginPath(vg);
-    nvgRect(vg, laneR.pos.x, stripTop, laneR.size.x, stripH);
+    // Faint track ONLY across the start–end window (matches the grabbable
+    // region in hitTestHandle). Drawn per in-window cell so it wraps correctly.
+    int startBar = L.offset % STEP_COUNT;
+    int lenC = std::max(1, std::min(L.length, STEP_COUNT));
     NVGcolor track = colors.rotation; track.a = 0.10f;
-    nvgFillColor(vg, track);
-    nvgFill(vg);
+    for (int k = 0; k < lenC; ++k) {
+      int bar = (startBar + k) % STEP_COUNT;
+      rack::Rect c = layout.getStepRect(lane, bar);
+      nvgBeginPath(vg);
+      nvgRect(vg, c.pos.x, stripTop, c.size.x, stripH);
+      nvgFillColor(vg, track);
+      nvgFill(vg);
+    }
 
-    // Rotation marker block at the current rotation step
-    int rotBar = L.rotation % STEP_COUNT;
+    // Rotation marker sits WITHIN the start-end window: physical bar =
+    // (offset + rotation) % 16. Rotation is a phase offset inside the window,
+    // so it always lands between the start "[" and end "]".
+    int rotBar = (L.offset + (L.rotation % std::max(1, L.length))) % STEP_COUNT;
     rack::Rect cell = layout.getStepRect(lane, rotBar);
+    float cx = cell.pos.x + cell.size.x * 0.5f;
+    float cyc = stripTop + stripH * 0.5f;
+    float h = stripH * 0.7f;
+    float halfW = (cell.size.x - 2.f) * 0.42f;
+
+    // Distinct from the square start/end brackets: a "phase" marker drawn as a
+    // pair of inward-pointing chevrons ›‹ around the rotation block, plus a thin
+    // baseline highlight of the block. Brighter when rotation > 0.
+    NVGcolor mk = colors.rotation; mk.a = (L.rotation > 0) ? 0.9f : 0.4f;
+
+    // block baseline tint
     nvgBeginPath(vg);
     nvgRect(vg, cell.pos.x + 1.f, stripTop, cell.size.x - 2.f, stripH);
-    NVGcolor mk = colors.rotation; mk.a = (L.rotation > 0) ? 0.85f : 0.45f;
-    nvgFillColor(vg, mk);
+    NVGcolor blockTint = colors.rotation; blockTint.a = (L.rotation > 0) ? 0.30f : 0.15f;
+    nvgFillColor(vg, blockTint);
     nvgFill(vg);
+
+    // left chevron "›" pointing right toward centre
+    nvgBeginPath(vg);
+    nvgMoveTo(vg, cx - halfW - 2.f, cyc - h * 0.5f);
+    nvgLineTo(vg, cx - halfW + 2.f, cyc);
+    nvgLineTo(vg, cx - halfW - 2.f, cyc + h * 0.5f);
+    // right chevron "‹" pointing left toward centre
+    nvgMoveTo(vg, cx + halfW + 2.f, cyc - h * 0.5f);
+    nvgLineTo(vg, cx + halfW - 2.f, cyc);
+    nvgLineTo(vg, cx + halfW + 2.f, cyc + h * 0.5f);
+    nvgStrokeColor(vg, mk);
+    nvgStrokeWidth(vg, 1.8f);
+    nvgLineCap(vg, NVG_ROUND);
+    nvgLineJoin(vg, NVG_ROUND);
+    nvgStroke(vg);
   }
   
   // Draw a per-lane playhead highlight.
@@ -653,11 +707,14 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
         }
         break;
 
-      case DragState::ROTATION:
-        // Rotation strip drag: rotation = step under cursor, 0..length-1.
-        // Clamp to the window length so rotation never exceeds the pattern.
-        L.rotation = rack::math::clamp(step, 0, std::max(0, L.length - 1));
+      case DragState::ROTATION: {
+        // Rotation strip drag: the marker lives WITHIN the window at physical
+        // bar (offset + rotation) % 16. Convert the physical step under the
+        // cursor back to a window-relative rotation in [0, length-1].
+        int rel = ((step - L.offset) % STEP_COUNT + STEP_COUNT) % STEP_COUNT;
+        L.rotation = rack::math::clamp(rel, 0, std::max(0, L.length - 1));
         break;
+      }
 
       default: break;
     }

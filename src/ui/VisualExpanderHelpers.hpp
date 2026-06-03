@@ -19,12 +19,17 @@ inline Monsoon* findMonsoon(rack::Module* startRight, int maxDepth = 8) {
 }
 
 // ── Per-lane playhead ─────────────────────────────────────────────────────────
-// activeBar = ((offset + globalStep + rotation) % length + length) % length
+// Returns the PHYSICAL bar (0..15) the sequencer actually reads after LOR, to
+// match SequencerEngine::getStrandIdx exactly:
+//     timelineIdx = (globalStep + rotation) mod length
+//     physicalBar = (timelineIdx + offset) mod 16
+// so the highlight lands on the real active block, not a window-relative index.
 // Returns -1 if globalStep < 0 (sequencer not running).
 inline int calcPlayhead(int globalStep, int length, int offset, int rotation) {
     if (globalStep < 0) return -1;
     length = std::max(1, std::min(length, 16));
-    return ((offset + globalStep + rotation) % length + length) % length;
+    int timelineIdx = ((globalStep + rotation) % length + length) % length;
+    return (timelineIdx + offset) % 16;
 }
 
 // Read an integer param (rounded) from a module, clamped to [1, 16].
