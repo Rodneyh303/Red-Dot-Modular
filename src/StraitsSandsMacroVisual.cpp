@@ -40,8 +40,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
 
         // Visual editor — right section, 3 lanes (REST/MEL/OCT), global
         visualEditor = new SandsVisualEditorV4(SandsVisualEditorV4::POLY);
-        visualEditor->box.pos  = mm2px(Vec(ED_X, 16.f));
-        visualEditor->box.size = mm2px(Vec(ED_W, ROW_BOT - 16.f));
+        visualEditor->box.pos  = mm2px(Vec(ED_X, ED_Y));
+        visualEditor->box.size = mm2px(Vec(ED_W, ED_H));
         addChild(visualEditor);
 
         // ── Left section: 4 cols × 6 rows ─────────────────────────────────

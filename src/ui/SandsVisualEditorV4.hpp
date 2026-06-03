@@ -195,7 +195,11 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   void setMode(Mode m) {
     mode = m;
     laneCount = (mode == MONO) ? 6 : 3;
-    box.size.y = 35.f + (laneCount * 30.f) + 40.f;
+    // NOTE: box.size is owned by the module that creates this editor (it sets
+    // box.size = mm2px(ED_W, ED_H)). The layout derives lane height from
+    // box.size.y / laneCount, so we must NOT force a hardcoded height here —
+    // doing so previously made poly lanes ~30px tall regardless of the module's
+    // intended (shorter, mono-like) editor height.
   }
   
   void resetState() {

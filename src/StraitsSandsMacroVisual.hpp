@@ -13,12 +13,17 @@ namespace StraitsMacroVisualIds {
     static constexpr float ROW_BOT = 108.f;
     static constexpr int   N_ROWS  = 6;
     // 4 columns: j1, j2, a1, a2 — same positions as East/West
-    static constexpr float COL_J1 = 8.f;
-    static constexpr float COL_J2 = 18.f;
-    static constexpr float COL_A1 = 30.f;
-    static constexpr float COL_A2 = 39.f;
-    static constexpr float ED_X   = 46.f;
-    static constexpr float ED_W   = W_MM - ED_X - 4.f;  // 82.1mm
+    static constexpr float COL_J1 = 6.f;
+    static constexpr float COL_J2 = 14.f;
+    static constexpr float COL_A1 = 23.f;
+    static constexpr float COL_A2 = 32.f;
+    static constexpr float ED_X   = 39.f;
+    static constexpr float ED_W   = W_MM - ED_X - 4.f;  // ~89.1mm (was 82.1)
+    static constexpr float ED_Y   = 16.f;
+    // Editor height sized so the 3 poly lanes are close to the Mono lane height
+    // (~16mm) rather than ~30mm; frees the lower panel for decoration/logos.
+    static constexpr float ED_LANE_H = 16.f;
+    static constexpr float ED_H   = 3.f * ED_LANE_H;    // 48mm
 
     static inline float rowY(int r) {
         return ROW_TOP + (r + 0.5f) * (ROW_BOT - ROW_TOP) / N_ROWS;

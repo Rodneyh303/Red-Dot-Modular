@@ -22,6 +22,10 @@ namespace StraitsEastVisualIds {
     static constexpr float ED_X   = 58.f;        // editor starts after spread column
     static constexpr float ED_Y   = 18.f;        // editor top (below 2-row tab band)
     static constexpr float ED_W   = W_MM - ED_X - 4.f;  // ~141.2mm
+    // Editor height sized so the 3 poly lanes are close to the Mono lane height
+    // (~16mm), not ~30mm. Leaves the lower panel free for decoration / logos.
+    static constexpr float ED_LANE_H = 16.f;
+    static constexpr float ED_H   = 3.f * ED_LANE_H;    // 48mm (3 poly lanes)
 
     static inline float rowY(int r) {
         return ROW_TOP + (r + 0.5f) * (ROW_BOT - ROW_TOP) / N_ROWS;
