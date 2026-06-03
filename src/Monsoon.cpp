@@ -643,7 +643,8 @@ void Monsoon::process(const ProcessArgs& args) {
             // Spread (Option W): converge the SLEWED rhythm DRAW toward the
             // ENSEMBLE average (mono + active poly voices), then write FINAL.
             // Ensemble denominator = 1 (mono) + numPolyVoices.
-            {
+            // Frozen when LOCKED so lock freezes the effective output.
+            if (!engine.locked) {
             const int nPoly = clamp(engine.numPolyVoices, 0, 15);
             const float denom = 1.f + (float)nPoly;
             float avgRhythmRandom[16] = {};
@@ -673,7 +674,7 @@ void Monsoon::process(const ProcessArgs& args) {
             
             // Spread (Option W): read SLEWED poly draws, converge to average,
             // write FINAL poly probability. Ensemble = mono + active poly.
-            {
+            if (!engine.locked) {
             const int nPoly = clamp(engine.numPolyVoices, 0, 15);
             const float denom = 1.f + (float)nPoly;
             float avgMelodyRandom[16] = {};
@@ -707,7 +708,7 @@ void Monsoon::process(const ProcessArgs& args) {
                 octaveInterp = clamp(octaveInterp + cv * att, 0.f, 1.f);
             }
             
-            {
+            if (!engine.locked) {
             const int nPoly = clamp(engine.numPolyVoices, 0, 15);
             const float denom = 1.f + (float)nPoly;
             float avgOctaveRandom[16] = {};
