@@ -177,8 +177,6 @@ void Monsoon::updateExpanderPointers() {
         gate2Assign = 1;
         invertMuteLogic = false;
         restartOnUnmute = false;
-        rhythmSlew = 0.f;
-        melodySlew = 0.f;
         lastModeSelect = -1;
         
         if (scaleManager) {
@@ -635,28 +633,24 @@ void Monsoon::process(const ProcessArgs& args) {
                 restInterp = clamp(restInterp + cv * att, 0.f, 1.f);
             }
             
-            // Calculate average rest probability across all 15 voices.
-            // deepEast holds the per-voice rest-probability params (knob path).
-            // When only the visual editor is present (deepEast null), the rest
-            // probabilities come from the pattern engine via the editor sync, so
-            // skip the knob-based interp blend here.
+            // Threshold (restProb): plain per-voice value — NOT spread-blended.
+            // (Spread applies to the DRAW below; the threshold has its own value
+            // and its own CV modulation, kept independent of spread.)
             if (deepEast) {
-                float avgRestProb = 0.f;
-                for (int i = 0; i < 15; i++) {
-                    avgRestProb += deepEast->params[POLY_REST_PARAM_1 + i].getValue();
-                }
-                avgRestProb /= 15.f;
-
-                float voiceRestProb = deepEast->params[POLY_REST_PARAM_1 + v].getValue();
-                engine.voices[v].restProb = voiceRestProb + restInterp * (avgRestProb - voiceRestProb);
+                engine.voices[v].restProb = deepEast->params[POLY_REST_PARAM_1 + v].getValue();
             }
 
-            // Poly rhythm final (Option W): rest "spread" modulates the THRESHOLD
-            // above (engine.voices[v].restProb), so the rhythm DRAW is just the
-            // slewed value copied to final. (sandsActive is set, so slew won't
-            // copy it for us.)
+            // Rest spread (Option W): restInterp converges the SLEWED rhythm DRAW
+            // toward the poly-rhythm average, then writes the FINAL poly rhythm.
+            // All spread applies to the draw, consistent with melody/octave.
+            float avgRhythmRandom[16] = {};
+            for (int i = 0; i < 15; i++)
+                for (int j = 0; j < 16; j++)
+                    avgRhythmRandom[j] += engine.pe.slewedPolyRhythm[i][j];
+            for (int j = 0; j < 16; j++) avgRhythmRandom[j] /= 15.f;
             for (int j = 0; j < 16; j++) {
-                engine.pe.polyRhythmRandom[v][j] = engine.pe.slewedPolyRhythm[v][j];
+                float voiceVal = engine.pe.slewedPolyRhythm[v][j];
+                engine.pe.polyRhythmRandom[v][j] = voiceVal + restInterp * (avgRhythmRandom[j] - voiceVal);
             }
             
             int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
@@ -828,11 +822,17 @@ void Monsoon::process(const ProcessArgs& args) {
                 float cv  = eastVisual->inputs[cvId(1,1)].getVoltage(lv + 7) / 10.f;
                 restInterp = clamp(restInterp + cv * att, 0.f, 1.f);
             }
-            float avgRestProb = 0.f;
-            for (int i = 7; i < 15; i++) avgRestProb += deepWest->params[POLY_REST_PARAM_1 + i].getValue();
-            avgRestProb /= 8.f;
-            float voiceRestProb = deepWest->params[POLY_REST_PARAM_1 + v].getValue();
-            engine.voices[v].restProb = voiceRestProb + restInterp * (avgRestProb - voiceRestProb);
+            // Threshold: plain per-voice value (NOT spread-blended).
+            engine.voices[v].restProb = deepWest->params[POLY_REST_PARAM_1 + v].getValue();
+            // Rest spread applies to the DRAW (slewed → average → final).
+            float avgRhythmRandomW[16] = {};
+            for (int i = 7; i < 15; i++)
+                for (int j = 0; j < 16; j++) avgRhythmRandomW[j] += engine.pe.slewedPolyRhythm[i][j];
+            for (int j = 0; j < 16; j++) avgRhythmRandomW[j] /= 8.f;
+            for (int j = 0; j < 16; j++) {
+                float voiceVal = engine.pe.slewedPolyRhythm[v][j];
+                engine.pe.polyRhythmRandom[v][j] = voiceVal + restInterp * (avgRhythmRandomW[j] - voiceVal);
+            }
             
             int mb = POLY_MELODY_VOICE_1_LEN + v * 3;
             float melodyInterp = westInterp->params[POLY_MELODY_INTERP_1 + v].getValue();
@@ -1058,10 +1058,6 @@ void Monsoon::process(const ProcessArgs& args) {
 
         cachedRunBtn = params[RUN_GATE_PARAM].getValue();
         cachedResetBtn = params[RESET_BUTTON_PARAM].getValue();
-
-        // Pass Dice morph/slew values to the pattern engine
-        this->rhythmSlew = params[DICE_SLEW_R_PARAM].getValue();
-        this->melodySlew = params[DICE_SLEW_M_PARAM].getValue();
 
         // Cache Poly Rest probabilities
         for (int i = 0; i < 15; ++i) {
