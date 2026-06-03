@@ -98,6 +98,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   Colors colors;
   
   std::deque<VoiceState> undoHistory;
+  bool showUndoDebug = false;   // hide internal undo-count readout by default
   std::deque<VoiceState> redoHistory;
   static constexpr int UNDO_HISTORY_SIZE = 50;
   
@@ -349,8 +350,11 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     const char* modeStr = (mode == MONO) ? "MONO" : "POLY";
     nvgText(vg, x, y, modeStr, nullptr);
     
-    std::string undoText = "U:" + std::to_string(undoHistory.size());
-    nvgText(vg, x + 50, y, undoText.c_str(), nullptr);
+    // Undo-count readout is internal debug state; hidden by default.
+    if (showUndoDebug) {
+        std::string undoText = "U:" + std::to_string(undoHistory.size());
+        nvgText(vg, x + 50, y, undoText.c_str(), nullptr);
+    }
   }
   
   void drawLaneLabel(NVGcontext* vg, int lane) {

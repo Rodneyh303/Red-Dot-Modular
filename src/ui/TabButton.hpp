@@ -23,12 +23,15 @@ struct TabButton : rack::OpaqueWidget {
   std::string label = "V?";
   int voiceIdx = 0;
   bool isSelected = false;
+  bool isDisabled = false;   // greyed out: voice index >= active poly count
   
   // Colors
   NVGcolor colorBackground = nvgRGB(0x2c, 0x2c, 0x2c);      // Dark gray
   NVGcolor colorSelected = nvgRGB(0x26, 0xa6, 0x9a);         // Teal
   NVGcolor colorText = nvgRGB(0xff, 0xff, 0xff);             // White
   NVGcolor colorBorder = nvgRGB(0x44, 0x44, 0x44);           // Border
+  NVGcolor colorDisabled = nvgRGB(0x1a, 0x1a, 0x1a);         // Dim (inactive)
+  NVGcolor colorTextDim  = nvgRGB(0x55, 0x55, 0x55);         // Dim text
   
   std::function<void(int)> onPressed;
   
@@ -36,7 +39,8 @@ struct TabButton : rack::OpaqueWidget {
     NVGcontext* vg = args.vg;
     
     // Background
-    NVGcolor bgColor = isSelected ? colorSelected : colorBackground;
+    NVGcolor bgColor = isDisabled ? colorDisabled
+                                  : (isSelected ? colorSelected : colorBackground);
     nvgBeginPath(vg);
     nvgRect(vg, 0, 0, box.size.x, box.size.y);
     nvgFillColor(vg, bgColor);
@@ -53,7 +57,7 @@ struct TabButton : rack::OpaqueWidget {
     nvgFontSize(vg, 10.f);
     nvgFontFace(vg, "sans-bold");
     nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-    nvgFillColor(vg, colorText);
+    nvgFillColor(vg, isDisabled ? colorTextDim : colorText);
     nvgText(vg, box.size.x / 2.f, box.size.y / 2.f, label.c_str(), nullptr);
   }
   
@@ -148,6 +152,7 @@ struct TabButtonGroup : rack::Widget {
   
   void selectTab(int idx) {
     if (idx < 0 || idx >= (int)tabs.size()) return;
+    if (tabs[idx]->isDisabled) return;   // can't select a greyed-out voice
     
     // Deselect previous
     if (selectedIdx >= 0 && selectedIdx < (int)tabs.size()) {
@@ -161,6 +166,17 @@ struct TabButtonGroup : rack::Widget {
   
   int getSelectedTab() const {
     return selectedIdx;
+  }
+
+  // Grey out tabs for voices beyond the active poly count. Disabled tabs are
+  // dimmed and (in the widget's selection handling) should not be selectable.
+  // activeCount = number of usable voices (e.g. numPolyVoices).
+  void setActiveCount(int activeCount) {
+    for (int i = 0; i < (int)tabs.size(); ++i)
+      tabs[i]->isDisabled = (i >= activeCount);
+    // If the current selection is now disabled, fall back to the last active.
+    if (selectedIdx >= activeCount && activeCount > 0)
+      selectTab(activeCount - 1);
   }
 };
 

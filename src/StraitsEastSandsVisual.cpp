@@ -151,6 +151,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
             paramMgr->spreadMgr.sequencerEngine = se;
         }
 
+        // Grey out voice tabs beyond the active poly count (numPolyVoices).
+        if (tabGroup) tabGroup->setActiveCount(se->numPolyVoices);
+
         if (!initialized) {
             loadVoiceLOR(selectedVoice);
             loadVoiceSpread(selectedVoice);
