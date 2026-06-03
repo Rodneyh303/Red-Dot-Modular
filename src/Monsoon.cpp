@@ -93,6 +93,8 @@ Monsoon::Monsoon() {
         configParam(DICE_SLEW_R_PARAM, 0.f, 1.f, 1.f, "Rhythm dice slew", "%", 0.f, 100.f);
         configButton(DICE_M_PARAM, "Dice melody");
         configParam(DICE_SLEW_M_PARAM, 0.f, 1.f, 1.f, "Melody dice slew", "%", 0.f, 100.f);
+        configButton(DICE_TRIAL_R_PARAM, "Trial rhythm (audition vs fixed A)");
+        configButton(DICE_TRIAL_M_PARAM, "Trial melody (audition vs fixed A)");
         configButton(LOCK_PARAM,   "Lock");
         configButton(MUTE_PARAM,   "Mute");
         configButton(MODE_PARAM,   "Mode (Cycle A-B-C-D)");
@@ -1000,6 +1002,16 @@ void Monsoon::process(const ProcessArgs& args) {
                     if (seedPatched) engine.pe.setPendingMelodySeed(sampleSeedFromSource());
                     else             engine.pe.setPendingMelodyRoll();
                 }
+            }
+
+            // Trial/audition dice: roll a fresh candidate B with A ANCHORED, so
+            // the user auditions against a fixed A (raise slew to move toward the
+            // trial, lower to fall back to A). Pressing the REGULAR dice then
+            // commits the current B→A (main mode) when ready to move on.
+            bool trialR, trialM;
+            if (uiManager->processTrialButtons(trialR, trialM)) {
+                if (trialR) { rhythmMode = 0; engine.pe.setPendingRhythmTrial(); }
+                if (trialM) { melodyMode = 0; engine.pe.setPendingMelodyTrial(); }
             }
             
             if (uiManager->processLockButton()) {

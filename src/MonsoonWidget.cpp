@@ -123,6 +123,13 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         addParam(createParamCentered<Trimpot>(mm2px(Vec(JX,    JY-7.f)), module, MonsoonIds::DICE_SLEW_R_PARAM));
         addParam(createParamCentered<Trimpot>(mm2px(Vec(JX+JP, JY-7.f)), module, MonsoonIds::DICE_SLEW_M_PARAM));
 
+        // Trial/audition dice — directly below the regular rhythm/melody dice.
+        // Tap a trial die to audition a candidate against a fixed A; tap the
+        // regular die above to commit (A walks). Small buttons + green lights.
+        const float TJY = JYL + 6.f;   // just below the dice lights
+        addParam(createParamCentered<TL1105>(mm2px(Vec(JX,    TJY)), module, MonsoonIds::DICE_TRIAL_R_PARAM));
+        addParam(createParamCentered<TL1105>(mm2px(Vec(JX+JP, TJY)), module, MonsoonIds::DICE_TRIAL_M_PARAM));
+
         // ── Inputs: 18mm pitch, nudged right to clear edge accent ────────────
         addInput(createInputCentered<PJ301MPort>(mm2px(Vec(16.f, 105.f)), module, MonsoonIds::RUN_GATE_INPUT));
         addInput(createInputCentered<PJ301MPort>(mm2px(Vec(30.f, 105.f)), module, MonsoonIds::RESET_TRIGGER_INPUT));

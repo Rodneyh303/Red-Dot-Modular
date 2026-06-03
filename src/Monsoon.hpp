@@ -382,6 +382,13 @@ namespace MonsoonIds {
         DICE_SLEW_R_PARAM,
         DICE_SLEW_M_PARAM,
 
+        // Trial/audition dice (rhythm, melody): roll a fresh candidate B with A
+        // ANCHORED (no promote), so the user auditions candidates against a fixed
+        // A. The regular dice (DICE_R/M_PARAM) commits B→A (main mode). Appended
+        // at END so existing param IDs stay stable.
+        DICE_TRIAL_R_PARAM,
+        DICE_TRIAL_M_PARAM,
+
         NUM_PARAMS
     };
 

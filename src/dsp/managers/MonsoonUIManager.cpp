@@ -127,6 +127,17 @@ bool UIManager::processDiceButtons(bool& rhythmTriggered, bool& melodyTriggered)
     return rhythmTriggered || melodyTriggered;
 }
 
+bool UIManager::processTrialButtons(bool& rhythmTriggered, bool& melodyTriggered) {
+    if (!mainModule) return false;
+    auto& params = mainModule->params;
+    using namespace MonsoonIds;
+
+    rhythmTriggered = trialRTrigger.process(params[DICE_TRIAL_R_PARAM].getValue());
+    melodyTriggered = trialMTrigger.process(params[DICE_TRIAL_M_PARAM].getValue());
+
+    return rhythmTriggered || melodyTriggered;
+}
+
 bool UIManager::processLockButton() {
     if (!mainModule) return false;
     auto& params = mainModule->params;
