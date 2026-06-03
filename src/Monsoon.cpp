@@ -984,13 +984,21 @@ void Monsoon::process(const ProcessArgs& args) {
         if (uiManager) {
             bool rhythmTriggered, melodyTriggered;
             if (uiManager->processDiceButtons(rhythmTriggered, melodyTriggered)) {
+                // A dice press normally ROLLS: advance the RNG and redraw (A/B
+                // morph), WITHOUT reseeding. Only when the SEED input is patched
+                // do we sample-and-hold a reproducible seed (reseed) instead —
+                // that is the explicit reproducibility path. Reseeding on every
+                // press (the old behaviour) defeated the slew A/B morph.
+                const bool seedPatched = inputs[SEED_INPUT].isConnected();
                 if (rhythmTriggered) {
                     rhythmMode = 0;
-                    engine.pe.setPendingRhythmSeed(sampleSeedFromSource());
+                    if (seedPatched) engine.pe.setPendingRhythmSeed(sampleSeedFromSource());
+                    else             engine.pe.setPendingRhythmRoll();
                 }
                 if (melodyTriggered) {
                     melodyMode = 0;
-                    engine.pe.setPendingMelodySeed(sampleSeedFromSource());
+                    if (seedPatched) engine.pe.setPendingMelodySeed(sampleSeedFromSource());
+                    else             engine.pe.setPendingMelodyRoll();
                 }
             }
             

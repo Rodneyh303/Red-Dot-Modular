@@ -125,6 +125,12 @@ struct PatternEngine {
     bool  melodySeedPending = false;
     float rhythmSeedPendingFloat = 0.f;
     float melodySeedPendingFloat = 0.f;
+    // Pending ROLL (dice press) — advance the RNG and redraw WITHOUT reseeding.
+    // Distinct from a seed-pending, which reseeds for reproducibility. A dice
+    // press should walk the RNG forward (A/B morph), not reset to a fixed seed
+    // on every press.
+    bool  rhythmRollPending = false;
+    bool  melodyRollPending = false;
     int   rhythmMode = 0;  // 0=dice, 1=realtime
     int   melodyMode = 0;
 
@@ -219,12 +225,19 @@ struct PatternEngine {
         melodySeedPendingFloat = seedValue;
         melodySeedPending = true;
     }
+
+    /// Arm a rhythm ROLL (dice press) — redraw from the advancing RNG at the next
+    /// phrase boundary WITHOUT reseeding. This is the normal dice action.
+    void setPendingRhythmRoll() { rhythmRollPending = true; }
+    /// Arm a melody ROLL (dice press) — redraw without reseeding.
+    void setPendingMelodyRoll() { melodyRollPending = true; }
     
-    /// Check if rhythm seed is pending
-    bool isRhythmSeedPending() const { return rhythmSeedPending; }
-    
-    /// Check if melody seed is pending
-    bool isMelodySeedPending() const { return melodySeedPending; }
+    /// Check if a rhythm dice action (seed OR roll) is pending — drives the
+    /// dice light, which should blink for any armed dice press.
+    bool isRhythmSeedPending() const { return rhythmSeedPending || rhythmRollPending; }
+
+    /// Check if a melody dice action (seed OR roll) is pending.
+    bool isMelodySeedPending() const { return melodySeedPending || melodyRollPending; }
     
     /// Handle phrase boundary: apply pending seeds and redraw patterns
     void onPhraseBoundary(const PatternInput& in) {
