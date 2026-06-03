@@ -90,7 +90,9 @@ Monsoon::Monsoon() {
 
         // Buttons (momentary)
         configButton(DICE_R_PARAM, "Dice rhythm");
+        configParam(DICE_SLEW_R_PARAM, 0.f, 1.f, 0.f, "Rhythm Dice morph/slew");
         configButton(DICE_M_PARAM, "Dice melody");
+        configParam(DICE_SLEW_M_PARAM, 0.f, 1.f, 0.f, "Melody Dice morph/slew");
         configButton(LOCK_PARAM,   "Lock");
         configButton(MUTE_PARAM,   "Mute");
         configButton(MODE_PARAM,   "Mode (Cycle A-B-C-D)");
@@ -175,6 +177,8 @@ void Monsoon::updateExpanderPointers() {
         gate2Assign = 1;
         invertMuteLogic = false;
         restartOnUnmute = false;
+        rhythmSlew = 0.f;
+        melodySlew = 0.f;
         lastModeSelect = -1;
         
         if (scaleManager) {
@@ -1044,6 +1048,10 @@ void Monsoon::process(const ProcessArgs& args) {
 
         cachedRunBtn = params[RUN_GATE_PARAM].getValue();
         cachedResetBtn = params[RESET_BUTTON_PARAM].getValue();
+
+        // Pass Dice morph/slew values to the pattern engine
+        this->rhythmSlew = params[DICE_SLEW_R_PARAM].getValue();
+        this->melodySlew = params[DICE_SLEW_M_PARAM].getValue();
 
         // Cache Poly Rest probabilities
         for (int i = 0; i < 15; ++i) {

@@ -607,6 +607,10 @@ struct Monsoon : Module {
     int gate2Assign = 1;
     bool invertMuteLogic = false;
     bool restartOnUnmute = false;
+
+    float rhythmSlew = 0.f;
+    float melodySlew = 0.f;
+
     int lastModeSelect = -1;
     int lightTheme = 0; // 0 = Dark, 1 = Light. Using int to match PeranakanLatticePanel expectations.
     MonsoonExpanderManager expanderManager;
