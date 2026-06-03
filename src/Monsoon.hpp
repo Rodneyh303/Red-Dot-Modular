@@ -752,6 +752,11 @@ struct Monsoon : Module {
     float quantizeToScale(float vIn);
     void handleRestart(bool manual = true, bool resetImmediate = false);
     float sampleSeedFromSource();
+    // Dice gesture (shared by the panel buttons and gate-assigned re-dice): ROLL
+    // (advance RNG, A/B morph) unless the SEED input is patched, in which case
+    // sample-and-hold a reproducible seed. Keeps all dice triggers consistent.
+    void diceRhythm();
+    void diceMelody();
     void onPhraseBoundary_();
     void onReset() override;
     void onSampleRateChange(const SampleRateChangeEvent& e) override;
