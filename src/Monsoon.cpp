@@ -356,6 +356,21 @@ float Monsoon::semitoneToVolts(int semitone) {
         return (float)(u * 10.0);
     }
 
+    // A dice gesture ROLLS (advance RNG, A/B morph) unless the SEED input is
+    // patched, in which case it samples-and-holds a reproducible seed. Shared by
+    // the panel dice buttons and the gate-assigned "Re-dice" triggers so every
+    // dice trigger behaves identically.
+    void Monsoon::diceRhythm() {
+        rhythmMode = 0;
+        if (inputs[SEED_INPUT].isConnected()) engine.pe.setPendingRhythmSeed(sampleSeedFromSource());
+        else                                  engine.pe.setPendingRhythmRoll();
+    }
+    void Monsoon::diceMelody() {
+        melodyMode = 0;
+        if (inputs[SEED_INPUT].isConnected()) engine.pe.setPendingMelodySeed(sampleSeedFromSource());
+        else                                  engine.pe.setPendingMelodyRoll();
+    }
+
 
 
 // ---------------- Helper: phrase boundary hook -------------------------------
@@ -984,22 +999,11 @@ void Monsoon::process(const ProcessArgs& args) {
         if (uiManager) {
             bool rhythmTriggered, melodyTriggered;
             if (uiManager->processDiceButtons(rhythmTriggered, melodyTriggered)) {
-                // A dice press normally ROLLS: advance the RNG and redraw (A/B
-                // morph), WITHOUT reseeding. Only when the SEED input is patched
-                // do we sample-and-hold a reproducible seed (reseed) instead —
-                // that is the explicit reproducibility path. Reseeding on every
-                // press (the old behaviour) defeated the slew A/B morph.
-                const bool seedPatched = inputs[SEED_INPUT].isConnected();
-                if (rhythmTriggered) {
-                    rhythmMode = 0;
-                    if (seedPatched) engine.pe.setPendingRhythmSeed(sampleSeedFromSource());
-                    else             engine.pe.setPendingRhythmRoll();
-                }
-                if (melodyTriggered) {
-                    melodyMode = 0;
-                    if (seedPatched) engine.pe.setPendingMelodySeed(sampleSeedFromSource());
-                    else             engine.pe.setPendingMelodyRoll();
-                }
+                // A dice press ROLLS (advance RNG, A/B morph) unless SEED is
+                // patched (then reproducible reseed). Shared with gate re-dice
+                // via diceRhythm()/diceMelody().
+                if (rhythmTriggered) diceRhythm();
+                if (melodyTriggered) diceMelody();
             }
             
             if (uiManager->processLockButton()) {
