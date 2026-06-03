@@ -56,19 +56,19 @@ struct MonoSandsParameterManager {
 
     // Poly average for a spreadable lane (REST/MEL/OCT), INCLUDING the mono
     // voice itself. Reads SLEWED poly draws. Only called for lane < 3.
+    // Ensemble = mono + active poly voices (numPolyVoices), matching the audio
+    // path in processDNA so the display equals what plays.
     float polyAverageInclMono(int lane, int step) const {
-        int n = 0; float sum = 0.f;
-        int active = patternEngine ? 15 : 0;
-        for (int v = 0; v < active; ++v) {
+        int nPoly = patternEngine ? rack::math::clamp(patternEngine->numPolyVoicesHint, 0, 15) : 0;
+        float sum = monoDraw(lane, step);   // mono voice
+        for (int v = 0; v < nPoly; ++v) {
             switch (lane) {
                 case 0: sum += patternEngine->slewedPolyRhythm[v][step]; break;
                 case 1: sum += patternEngine->slewedPolyMelody[v][step]; break;
                 case 2: sum += patternEngine->slewedPolyOctave[v][step]; break;
             }
-            ++n;
         }
-        sum += monoDraw(lane, step); ++n;   // include the mono voice
-        return (n > 0) ? sum / n : monoDraw(lane, step);
+        return sum / (float)(1 + nPoly);
     }
 
     // Post-spread value for (lane, step). REST/MEL/OCT get spread; LEG/ACC/VAR

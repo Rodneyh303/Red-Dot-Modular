@@ -26,6 +26,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     // none is present this is false and slew copies slewedDraw → final.
     const bool hasEastVisual = (expanderManager.cachedEastSandsVisual != nullptr);
     engine.pe.setSandsActive(hasVisual || hasMacro || hasEastVisual);
+    engine.pe.numPolyVoicesHint = engine.numPolyVoices;  // for Sands display ensemble
 
     // ── Helper: apply mono CV offset at read site ─────────────────────────
     auto applyMonoCV = [&](float base, int lane, int param, float lo, float hi) -> float {
@@ -100,10 +101,14 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // sequencer reads. setSandsActive(true) stops slew copying the
             // un-spread draw over the top.
             engine.pe.setSandsActive(true);
+            // Ensemble = mono + active poly voices. Average over (1 + nPoly).
+            const int nPoly = clamp(engine.numPolyVoices, 0, 15);
+            const float denom = 1.f + (float)nPoly;
             for (int i = 0; i < 16; ++i) {
                 auto avg = [&](float monoVal, const float poly[15][16]) {
-                    float s = monoVal; for (int v = 0; v < 15; ++v) s += poly[v][i];
-                    return s / 16.f;
+                    float s = monoVal;
+                    for (int v = 0; v < nPoly; ++v) s += poly[v][i];
+                    return s / denom;
                 };
                 float rAvg = avg(engine.pe.slewedRhythm[i], engine.pe.slewedPolyRhythm);
                 float mAvg = avg(engine.pe.slewedMelody[i], engine.pe.slewedPolyMelody);

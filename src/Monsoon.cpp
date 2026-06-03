@@ -640,17 +640,22 @@ void Monsoon::process(const ProcessArgs& args) {
                 engine.voices[v].restProb = deepEast->params[POLY_REST_PARAM_1 + v].getValue();
             }
 
-            // Rest spread (Option W): restInterp converges the SLEWED rhythm DRAW
-            // toward the poly-rhythm average, then writes the FINAL poly rhythm.
-            // All spread applies to the draw, consistent with melody/octave.
+            // Spread (Option W): converge the SLEWED rhythm DRAW toward the
+            // ENSEMBLE average (mono + active poly voices), then write FINAL.
+            // Ensemble denominator = 1 (mono) + numPolyVoices.
+            {
+            const int nPoly = clamp(engine.numPolyVoices, 0, 15);
+            const float denom = 1.f + (float)nPoly;
             float avgRhythmRandom[16] = {};
-            for (int i = 0; i < 15; i++)
-                for (int j = 0; j < 16; j++)
-                    avgRhythmRandom[j] += engine.pe.slewedPolyRhythm[i][j];
-            for (int j = 0; j < 16; j++) avgRhythmRandom[j] /= 15.f;
+            for (int j = 0; j < 16; j++) {
+                float s = engine.pe.slewedRhythm[j];
+                for (int i = 0; i < nPoly; i++) s += engine.pe.slewedPolyRhythm[i][j];
+                avgRhythmRandom[j] = s / denom;
+            }
             for (int j = 0; j < 16; j++) {
                 float voiceVal = engine.pe.slewedPolyRhythm[v][j];
                 engine.pe.polyRhythmRandom[v][j] = voiceVal + restInterp * (avgRhythmRandom[j] - voiceVal);
+            }
             }
             
             int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
@@ -667,20 +672,20 @@ void Monsoon::process(const ProcessArgs& args) {
             }
             
             // Spread (Option W): read SLEWED poly draws, converge to average,
-            // write FINAL poly probability.
+            // write FINAL poly probability. Ensemble = mono + active poly.
+            {
+            const int nPoly = clamp(engine.numPolyVoices, 0, 15);
+            const float denom = 1.f + (float)nPoly;
             float avgMelodyRandom[16] = {};
-            for (int i = 0; i < 15; i++) {
-                for (int j = 0; j < 16; j++) {
-                    avgMelodyRandom[j] += engine.pe.slewedPolyMelody[i][j];
-                }
-            }
             for (int j = 0; j < 16; j++) {
-                avgMelodyRandom[j] /= 15.f;
+                float s = engine.pe.slewedMelody[j];
+                for (int i = 0; i < nPoly; i++) s += engine.pe.slewedPolyMelody[i][j];
+                avgMelodyRandom[j] = s / denom;
             }
-            
             for (int j = 0; j < 16; j++) {
                 float voiceVal = engine.pe.slewedPolyMelody[v][j];
                 engine.pe.polyMelodyRandom[v][j] = voiceVal + melodyInterp * (avgMelodyRandom[j] - voiceVal);
+            }
             }
             
             if (deepEast) {
@@ -702,19 +707,19 @@ void Monsoon::process(const ProcessArgs& args) {
                 octaveInterp = clamp(octaveInterp + cv * att, 0.f, 1.f);
             }
             
+            {
+            const int nPoly = clamp(engine.numPolyVoices, 0, 15);
+            const float denom = 1.f + (float)nPoly;
             float avgOctaveRandom[16] = {};
-            for (int i = 0; i < 15; i++) {
-                for (int j = 0; j < 16; j++) {
-                    avgOctaveRandom[j] += engine.pe.slewedPolyOctave[i][j];
-                }
-            }
             for (int j = 0; j < 16; j++) {
-                avgOctaveRandom[j] /= 15.f;
+                float s = engine.pe.slewedOctave[j];
+                for (int i = 0; i < nPoly; i++) s += engine.pe.slewedPolyOctave[i][j];
+                avgOctaveRandom[j] = s / denom;
             }
-            
             for (int j = 0; j < 16; j++) {
                 float voiceVal = engine.pe.slewedPolyOctave[v][j];
                 engine.pe.polyOctaveRandom[v][j] = voiceVal + octaveInterp * (avgOctaveRandom[j] - voiceVal);
+            }
             }
             
             if (deepEast) {

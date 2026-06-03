@@ -38,3 +38,11 @@ them to (re)generate matching C++ addParam/addInput placement.
 - embed_sands.py         : East/Macro/Mono component lists -> embed
 Regenerate: `python panel_src/embed_monsoon.py` etc.
 Verify in Rack: `python helper.py createmodule <Module> res/panels/<panel>.svg`
+
+## TODO (deferred)
+- Spread output is provably in [0,1) given RNG draws in [0,1) AND all interp/
+  spread amounts clamped to [0,1] (convex combination). If any interp param
+  range is ever widened beyond [0,1] (e.g. an "over-spread" effect), add a
+  defensive clamp(result, 0.f, 1.f) on the spread OUTPUTS in Monsoon.cpp
+  (East/West rest/mel/oct) and MonsoonSandsManager.cpp (mono) — currently
+  omitted as unnecessary.
