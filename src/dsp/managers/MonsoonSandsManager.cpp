@@ -25,8 +25,14 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     // any Sands visual stage will own final (Mono, Macro, or East poly). When
     // none is present this is false and slew copies slewedDraw → final.
     const bool hasEastVisual = (expanderManager.cachedEastSandsVisual != nullptr);
-    engine.pe.setSandsActive(hasVisual || hasMacro || hasEastVisual);
-    engine.pe.numPolyVoicesHint = engine.numPolyVoices;  // for Sands display ensemble
+    // Poly base active = Straits base poly output expander present AND at least
+    // one poly voice requested. The poly Sands editors (Macro here, East in
+    // Monsoon.cpp) are no-op unless this holds.
+    const bool polyBaseActive = (expanderManager.cachedPolyVoiceExpander != nullptr)
+                                && (engine.numPolyVoices >= 1);
+    const bool macroActive = hasMacro && polyBaseActive;
+    engine.pe.setSandsActive(hasVisual || macroActive || (hasEastVisual && polyBaseActive));
+    engine.pe.numPolyVoicesHint = polyBaseActive ? engine.numPolyVoices : 0;  // gated: display matches audio
 
     // ── Helper: apply mono CV offset at read site ─────────────────────────
     auto applyMonoCV = [&](float base, int lane, int param, float lo, float hi) -> float {
@@ -105,7 +111,10 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             engine.pe.setSandsActive(true);
             if (!engine.locked) {
             // Ensemble = mono + active poly voices. Average over (1 + nPoly).
-            const int nPoly = clamp(engine.numPolyVoices, 0, 15);
+            // Ensemble poly count: 0 unless the base poly path is active, so
+            // with no base expander (or mono-only) Mono spread degenerates to a
+            // no-op (average == mono draw == itself).
+            const int nPoly = polyBaseActive ? clamp(engine.numPolyVoices, 0, 15) : 0;
             const float denom = 1.f + (float)nPoly;
             for (int i = 0; i < 16; ++i) {
                 auto avg = [&](float monoVal, const float poly[15][16]) {
@@ -156,7 +165,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     }
 
     // ── Macro global LOR with CV (poly: per-lane, SAME for every voice) ────
-    if (hasMacro) {
+    if (macroActive) {
         auto applyGlobal = [&](int lane, int polyLane) {
             float bLen = macroVis->params[Macro::lorId(lane,0)].getValue();
             float bOff = macroVis->params[Macro::lorId(lane,1)].getValue();

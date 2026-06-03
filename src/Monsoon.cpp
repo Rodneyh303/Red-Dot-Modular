@@ -600,9 +600,17 @@ void Monsoon::process(const ProcessArgs& args) {
     auto* eastInterp = eastVisual ? static_cast<rack::Module*>(eastVisual)
                                   : static_cast<rack::Module*>(deepEast);
 
-    // East active if either the visual editor OR the (deprecated) knob poly
-    // expander is present. eastVisual drives all 15 voices when connected.
-    if (eastLOR && (straitEast || eastVisual)) {
+    // Poly Sands editors (East visual, and the deprecated knob path) only do
+    // anything when the Straits BASE poly output expander is connected AND the
+    // user has requested at least one poly voice (numPolyVoices >= 1, i.e. more
+    // than the lone mono voice). Without the base expander there is nowhere for
+    // poly voices to come out, so the LOR/spread work would be inert anyway —
+    // this makes that explicit and keeps the editors no-op.
+    const bool polyBaseActive = (straitEast != nullptr) && (engine.numPolyVoices >= 1);
+
+    // East active if the East LOR source is present (visual editor or knob
+    // expander) AND the base poly path is active.
+    if (eastLOR && (straitEast || eastVisual) && polyBaseActive) {
         using namespace DeepStraitsSandsEastIds;
         using namespace StraitsEastVisualIds;  // CV_0..CV_11, ATTEN_0..ATTEN_11
         
