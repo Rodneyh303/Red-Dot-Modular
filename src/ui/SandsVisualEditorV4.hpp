@@ -423,11 +423,28 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     float ex = layout.getStepCenterX(endBar);
     if (std::hypot(x - ex, y - handleCy) <= r) return DragState::END;
 
-    // ROTATION strip — bottom ~30% of the lane, full width
+    // ROTATION strip — bottom ~30% of the lane, but only WITHIN the start–end
+    // window (rotation is a phase inside the window, so it's only grabbable
+    // there). The window spans physical bars [offset .. offset+length-1] and may
+    // wrap around the 16-step grid.
     float rotTop = laneR.pos.y + laneR.size.y * 0.70f;
-    if (y >= rotTop && y <= laneR.pos.y + laneR.size.y &&
-        x >= laneR.pos.x && x <= laneR.pos.x + laneR.size.x)
-      return DragState::ROTATION;
+    if (y >= rotTop && y <= laneR.pos.y + laneR.size.y) {
+      int startBar = L.offset % STEP_COUNT;
+      int endBar   = (L.offset + L.length - 1) % STEP_COUNT;
+      float halfStep = layout.stepWidthF() * 0.5f;
+      float sxL = layout.getStepCenterX(startBar) - halfStep;
+      float exR = layout.getStepCenterX(endBar)   + halfStep;
+      bool inWindow;
+      if (endBar >= startBar) {
+        inWindow = (x >= sxL && x <= exR);                 // contiguous
+      } else {
+        // window wraps: [start .. right edge] OR [left edge .. end]
+        float leftEdge  = layout.getStepCenterX(0) - halfStep;
+        float rightEdge = layout.getStepCenterX(STEP_COUNT - 1) + halfStep;
+        inWindow = (x >= sxL && x <= rightEdge) || (x >= leftEdge && x <= exR);
+      }
+      if (inWindow) return DragState::ROTATION;
+    }
 
     return DragState::NONE;
   }
@@ -490,12 +507,19 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     float stripTop = laneR.pos.y + laneR.size.y * 0.70f;
     float stripH   = laneR.size.y * 0.30f;
 
-    // Faint full-width track so the rotation strip is always discoverable/grabbable
-    nvgBeginPath(vg);
-    nvgRect(vg, laneR.pos.x, stripTop, laneR.size.x, stripH);
+    // Faint track ONLY across the start–end window (matches the grabbable
+    // region in hitTestHandle). Drawn per in-window cell so it wraps correctly.
+    int startBar = L.offset % STEP_COUNT;
+    int lenC = std::max(1, std::min(L.length, STEP_COUNT));
     NVGcolor track = colors.rotation; track.a = 0.10f;
-    nvgFillColor(vg, track);
-    nvgFill(vg);
+    for (int k = 0; k < lenC; ++k) {
+      int bar = (startBar + k) % STEP_COUNT;
+      rack::Rect c = layout.getStepRect(lane, bar);
+      nvgBeginPath(vg);
+      nvgRect(vg, c.pos.x, stripTop, c.size.x, stripH);
+      nvgFillColor(vg, track);
+      nvgFill(vg);
+    }
 
     // Rotation marker sits WITHIN the start-end window: physical bar =
     // (offset + rotation) % 16. Rotation is a phase offset inside the window,
