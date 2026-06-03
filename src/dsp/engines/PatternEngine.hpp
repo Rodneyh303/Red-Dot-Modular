@@ -95,6 +95,9 @@ struct PatternEngine {
     // Set true when any Sands visual expander owns the spread→final stage this
     // cycle. When false, slew copies slewedDraw → final.
     bool  sandsActive = false;
+    // Active poly voice count mirrored from SequencerEngine (for Sands display
+    // ensemble sizing — the audio path uses SequencerEngine::numPolyVoices).
+    int   numPolyVoicesHint = 0;
 
     // ── Source DNA Cache (Original draws before rotation/scramble) ───────────
     float rhythmSource[16]    = {};
