@@ -13,6 +13,7 @@ void PatternEngine::seedRngFromFloat(rack::random::Xoroshiro128Plus& rng, float 
 
 void PatternEngine::reset() {
     rhythmSeedPending = melodySeedPending = false;
+    rhythmRollPending = melodyRollPending = false;
     rhythmMode = melodyMode = 0;
     rhythmSeedCached = melodySeedCached = false;
 
@@ -327,9 +328,10 @@ void PatternEngine::refreshVisualCache(const PatternInput& in) {
 void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     if (in.locked) return;  // freeze everything: seeds, RNG, patterns
 
-    // Only advance the RNG if a new dice roll is pending or we are in Realtime mode.
-    bool shouldRedrawR = rhythmSeedPending || (rhythmMode == 1);
-    bool shouldRedrawM = melodySeedPending || (melodyMode == 1);
+    // Redraw if: a seed is pending (reproducible reseed), a ROLL is pending
+    // (dice press — advance RNG, no reseed), or Realtime mode.
+    bool shouldRedrawR = rhythmSeedPending || rhythmRollPending || (rhythmMode == 1);
+    bool shouldRedrawM = melodySeedPending || melodyRollPending || (melodyMode == 1);
 
     if (rhythmSeedPending) {
         rhythmSeedFloat = rhythmSeedPendingFloat;
@@ -337,6 +339,7 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
         rhythmSeedPending = false;
         rhythmFirstDraw = true;   // new seed → A=B=draw, reproducible at any slew
     }
+    rhythmRollPending = false;     // consume the roll (RNG already advances in redraw)
     if (shouldRedrawR) redrawRhythm(in);
 
     if (melodySeedPending) {
@@ -345,6 +348,7 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
         melodySeedPending = false;
         melodyFirstDraw = true;
     }
+    melodyRollPending = false;
     if (shouldRedrawM) redrawMelody(in);
 
     // Always refresh the cache so the LEDs react to live knob changes in Dice mode
