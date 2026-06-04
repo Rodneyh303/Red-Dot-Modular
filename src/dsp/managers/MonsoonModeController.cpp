@@ -26,6 +26,15 @@ void ModeController::updatePatternInput() {
     currentPatternInput.locked            = engine.locked;
     currentPatternInput.rhythmSlew        = paramManager.getRhythmSlew();
     currentPatternInput.melodySlew        = paramManager.getMelodySlew();
+    // PLAYABLE SLEW: apply the live slew every process (control rate), like
+    // spread — not only at the bar boundary. recomputeEffective only does work
+    // when the value actually changes, so this is cheap. This makes moving the
+    // slew knob continuously re-blend A→B (playable), matching spread behaviour.
+    // Lock still freezes it (skip when locked).
+    if (!engine.locked) {
+        engine.pe.latchSlew(currentPatternInput.rhythmSlew,
+                            currentPatternInput.melodySlew);
+    }
     if (mainModule) {
         currentPatternInput.reseedOnRoll    = mainModule->reseedOnRoll;
         const bool sc = mainModule->inputs[MonsoonIds::SEED_INPUT].isConnected();
@@ -47,15 +56,9 @@ void ModeController::postExecute_(const StepResult& result) {
         mainModule->onPhraseBoundary_();
     }
 
-    // Playable slew: latch the live slew at the bar boundary (step-0 wrap) so the
-    // A→B morph is quantised to the cycle and stable within a bar.
-    // When LOCKED, the pattern is frozen — do not re-blend A/B even if the slew
-    // knob moved, so lock freezes the effective output (consistent with redraw
-    // being skipped while locked).
-    if (result.wrapped && !currentPatternInput.locked) {
-        engine.pe.latchSlew(currentPatternInput.rhythmSlew,
-                            currentPatternInput.melodySlew);
-    }
+    // (Playable slew is now latched every process in updatePatternInput(), so the
+    // A→B blend follows the knob continuously like spread — no wrap-gated latch
+    // here. Lock freezes it at the updatePatternInput site.)
     
     // Execute poly voices if step was taken
     if (result.stepped && engine.numPolyVoices > 0) {
