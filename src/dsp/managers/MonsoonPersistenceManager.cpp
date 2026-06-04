@@ -15,6 +15,8 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_object_set_new(root, "gate2Assign", json_integer(m->gate2Assign));
     json_object_set_new(root, "invertMuteLogic", json_boolean(m->invertMuteLogic));
     json_object_set_new(root, "restartOnUnmute", json_boolean(m->restartOnUnmute));
+    json_object_set_new(root, "reseedOnRoll", json_boolean(m->reseedOnRoll));
+    json_object_set_new(root, "reseedOnRestart", json_boolean(m->reseedOnRestart));
     json_object_set_new(root, "noteVariationMask", json_integer(m->noteVariationMask));
     json_object_set_new(root, "ppqnSetting", json_integer(m->ppqnSetting));
     json_object_set_new(root, "modeSelect", json_integer(m->modeSelect));
@@ -133,6 +135,8 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     if (auto j = json_object_get(root, "gate2Assign")) m->gate2Assign = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "invertMuteLogic")) m->invertMuteLogic = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "restartOnUnmute")) m->restartOnUnmute = (bool)json_boolean_value(j);
+    if (auto j = json_object_get(root, "reseedOnRoll")) m->reseedOnRoll = (bool)json_boolean_value(j);
+    if (auto j = json_object_get(root, "reseedOnRestart")) m->reseedOnRestart = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "noteVariationMask")) m->noteVariationMask = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "ppqnSetting")) m->ppqnSetting = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "modeSelect")) m->modeSelect = (int)json_integer_value(j);

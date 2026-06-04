@@ -179,6 +179,8 @@ void Monsoon::updateExpanderPointers() {
         gate2Assign = 1;
         invertMuteLogic = false;
         restartOnUnmute = false;
+        reseedOnRoll = false;
+        reseedOnRestart = false;
         lastModeSelect = -1;
         
         if (scaleManager) {
@@ -335,6 +337,10 @@ float Monsoon::semitoneToVolts(int semitone) {
         prevExtGate = false;
 
         if (!locked) {
+            if (reseedOnRestart) {
+                engine.pe.setPendingRhythmSeed(sampleSeedFromSource());
+                engine.pe.setPendingMelodySeed(sampleSeedFromSource());
+            }
             if (resetImmediate) {
                 engine.pe.applyPendingSeedsAndRedraw(modeController->currentPatternInput);
             }
@@ -358,18 +364,22 @@ float Monsoon::semitoneToVolts(int semitone) {
         return (float)(u * 10.0);
     }
 
-    // A dice gesture ROLLS (advance RNG, A/B morph) unless the SEED input is
-    // patched, in which case it samples-and-holds a reproducible seed. Shared by
-    // the panel dice buttons and the gate-assigned "Re-dice" triggers so every
-    // dice trigger behaves identically.
+    // A MAIN dice gesture ROLLS (advance RNG, A/B morph) unless the SEED input
+    // is patched (reproducible reseed). Shared by the panel dice buttons and the
+    // gate-assigned "Re-dice" triggers. If "Reseed on roll" is set, a main roll
+    // also reseeds from fresh entropy while keeping the morph (reseed-roll path).
+    // TRIAL dice do NOT go through here — they call setPending*Trial directly and
+    // never reseed (auditioning stays in a controlled space against fixed A).
     void Monsoon::diceRhythm() {
         rhythmMode = 0;
         if (inputs[SEED_INPUT].isConnected()) engine.pe.setPendingRhythmSeed(sampleSeedFromSource());
+        else if (reseedOnRoll)                engine.pe.setPendingRhythmReseedRoll(sampleSeedFromSource());
         else                                  engine.pe.setPendingRhythmRoll();
     }
     void Monsoon::diceMelody() {
         melodyMode = 0;
         if (inputs[SEED_INPUT].isConnected()) engine.pe.setPendingMelodySeed(sampleSeedFromSource());
+        else if (reseedOnRoll)                engine.pe.setPendingMelodyReseedRoll(sampleSeedFromSource());
         else                                  engine.pe.setPendingMelodyRoll();
     }
 

@@ -135,6 +135,14 @@ struct PatternEngine {
     bool  melodyRollPending = false;
     bool  rhythmTrialPending = false;
     bool  melodyTrialPending = false;
+    // Pending RESEED-ROLL — like a (main) roll but ALSO reseeds the RNG from a
+    // fresh value, while keeping the A/B morph: promote B→A, reseed, draw fresh
+    // B, no firstDraw. Used by the "Reseed on roll" option. Trial rolls never
+    // use this — auditioning stays in a controlled space (no entropy injection).
+    bool  rhythmReseedRollPending = false;
+    bool  melodyReseedRollPending = false;
+    float rhythmReseedRollFloat = 0.f;
+    float melodyReseedRollFloat = 0.f;
     int   rhythmMode = 0;  // 0=dice, 1=realtime
     int   melodyMode = 0;
 
@@ -241,13 +249,18 @@ struct PatternEngine {
     void setPendingRhythmTrial() { rhythmTrialPending = true; }
     /// Arm a melody TRIAL/audition roll.
     void setPendingMelodyTrial() { melodyTrialPending = true; }
-    
-    /// Check if a rhythm dice action (seed OR roll OR trial) is pending — drives
-    /// the dice light, which should blink for any armed dice press.
-    bool isRhythmSeedPending() const { return rhythmSeedPending || rhythmRollPending || rhythmTrialPending; }
 
-    /// Check if a melody dice action (seed OR roll OR trial) is pending.
-    bool isMelodySeedPending() const { return melodySeedPending || melodyRollPending || melodyTrialPending; }
+    /// Arm a rhythm RESEED-ROLL — reseed from seedValue but keep the A/B morph
+    /// (promote B→A, no firstDraw). For the "Reseed on roll" option (main rolls).
+    void setPendingRhythmReseedRoll(float seedValue) { rhythmReseedRollFloat = seedValue; rhythmReseedRollPending = true; }
+    /// Arm a melody RESEED-ROLL.
+    void setPendingMelodyReseedRoll(float seedValue) { melodyReseedRollFloat = seedValue; melodyReseedRollPending = true; }
+
+    /// Check if a rhythm dice action (seed OR roll OR trial OR reseed-roll) is pending.
+    bool isRhythmSeedPending() const { return rhythmSeedPending || rhythmRollPending || rhythmTrialPending || rhythmReseedRollPending; }
+
+    /// Check if a melody dice action (seed OR roll OR trial OR reseed-roll) is pending.
+    bool isMelodySeedPending() const { return melodySeedPending || melodyRollPending || melodyTrialPending || melodyReseedRollPending; }
     
     /// Handle phrase boundary: apply pending seeds and redraw patterns
     void onPhraseBoundary(const PatternInput& in) {
