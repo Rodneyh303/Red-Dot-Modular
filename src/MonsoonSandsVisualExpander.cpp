@@ -75,7 +75,7 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
     ~MonsoonSandsVisualExpanderWidget() override { delete paramMgr; }
 
     Monsoon* getMonsoon() {
-        return module ? findMonsoon(module->rightExpander.module) : nullptr;
+        return module ? findMonsoonEitherSide(module) : nullptr;
     }
 
     void step() override {

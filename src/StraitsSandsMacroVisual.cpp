@@ -78,7 +78,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
     }
 
     Monsoon* getMonsoon() {
-        return module ? findMonsoon(module->rightExpander.module) : nullptr;
+        return module ? findMonsoonEitherSide(module) : nullptr;
     }
 
     void saveLOR() {
