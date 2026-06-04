@@ -1,15 +1,24 @@
 #include <rack.hpp>
 #include "MonsoonInterchangeExpander.hpp"
+#include "Monsoon.hpp"
+#include "ui/VisualExpanderHelpers.hpp"
 
 using namespace rack;
 
 extern Model* modelMonsoon;
 
 struct MonsoonInterchangeExpanderWidget : ModuleWidget {
+    std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
+    rack::app::SvgPanel* panelWidget = nullptr;
+    int lastThemeLight = -1;
+
 MonsoonInterchangeExpanderWidget(MonsoonInterchangeExpander* module) {
     setModule(module);
     //box.size = mm2px(Vec(270, 380));
-    setPanel(APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/interchange_gemini_new2.svg")));
+    panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/interchange_gemini_new2.svg"));
+    panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/interchange_gemini_light.svg"));
+    panelWidget = createPanel(asset::plugin(pluginInstance, "res/panels/interchange_gemini_new2.svg"));
+    setPanel(panelWidget);
 
     // ... (Screws same as before) ...
     
@@ -29,11 +38,38 @@ addParam(createParamCentered<Trimpot>(Vec(102.0f, octY), module, MonsoonIds::EXP
 addParam(createParamCentered<Trimpot>(Vec(168.0f, octY), module, MonsoonIds::EXPANDER_OCT_HI_ATTENUVERTER));
 addInput(createInputCentered<PJ301MPort>(Vec(222.0f, octY), module, MonsoonIds::EXPANDER_OCT_HI_CV_INPUT));
 }
+    Monsoon* getMonsoon() {
+        if (!module) return nullptr;
+        // Walk right first (Interchange typically sits left of Monsoon), then
+        // left as a fallback so it themes correctly on either side.
+        if (Monsoon* m = redDot::findMonsoon(module->rightExpander.module)) return m;
+        Module* curr = module->leftExpander.module;
+        for (int d = 0; curr && d < 8; ++d) {
+            if (auto* m = dynamic_cast<Monsoon*>(curr)) return m;
+            curr = curr->leftExpander.module;
+        }
+        return nullptr;
+    }
+    bool hostLight() {
+        Monsoon* m = getMonsoon();
+        return m ? m->lightTheme : false;
+    }
+
+    void step() override {
+        ModuleWidget::step();
+        int wantLight = hostLight() ? 1 : 0;
+        if (wantLight != lastThemeLight) {
+            lastThemeLight = wantLight;
+            if (panelWidget) panelWidget->setBackground(wantLight ? panelSvgLight : panelSvgDark);
+        }
+    }
+
     void draw(const DrawArgs& args) override {
-        // Force a solid opaque background fill to prevent transparency
+        const bool light = (lastThemeLight == 1);
+        // Force a solid opaque background fill to prevent transparency.
         nvgBeginPath(args.vg);
         nvgRect(args.vg, 0, 0, box.size.x, box.size.y);
-        nvgFillColor(args.vg, nvgRGBA(0x23, 0x23, 0x23, 255)); // Dark background
+        nvgFillColor(args.vg, light ? nvgRGBA(0xe8, 0xe8, 0xea, 255) : nvgRGBA(0x23, 0x23, 0x23, 255));
         nvgFill(args.vg);
 
         ModuleWidget::draw(args);
@@ -41,7 +77,7 @@ addInput(createInputCentered<PJ301MPort>(Vec(222.0f, octY), module, MonsoonIds::
         // ── Panel Labels ─────────────────────────────────────────────────────
         nvgFontFaceId(args.vg, APP->window->uiFont->handle);
         nvgTextAlign(args.vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-        nvgFillColor(args.vg, nvgRGBA(0xe6, 0xe6, 0xe6, 0xff)); // Light gray labels for dark background
+        nvgFillColor(args.vg, light ? nvgRGBA(0x2a, 0x2a, 0x2e, 0xff) : nvgRGBA(0xe6, 0xe6, 0xe6, 0xff));
 
         // Header
         nvgFontSize(args.vg, mm2px(3.5f));
@@ -67,7 +103,7 @@ addInput(createInputCentered<PJ301MPort>(Vec(222.0f, octY), module, MonsoonIds::
 
         // Attenuation guides
         nvgFontSize(args.vg, mm2px(1.8f));
-        nvgFillColor(args.vg, nvgRGBA(0x99, 0x99, 0x99, 0xff)); // Brighter guides for dark background
+        nvgFillColor(args.vg, light ? nvgRGBA(0x88, 0x8d, 0x96, 0xff) : nvgRGBA(0x99, 0x99, 0x99, 0xff));
         for (float jackX : {8.0f, 28.0f}) {
             float knobX = jackX + 7.5f;
             for (int row = 0; row < 6; row++) {

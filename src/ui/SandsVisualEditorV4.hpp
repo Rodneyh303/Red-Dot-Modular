@@ -48,10 +48,29 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     NVGcolor variation  = nvgRGB(0xff, 0x6b, 0x6b);
     NVGcolor rotation   = nvgRGB(0x26, 0xa6, 0x9a);
     NVGcolor handle     = nvgRGB(0x88, 0x88, 0x88);
-    NVGcolor background = nvgRGB(0x14, 0x14, 0x16);
-    NVGcolor border     = nvgRGB(0x2a, 0x2a, 0x2a);
+    NVGcolor background = nvgRGB(0x10, 0x12, 0x16);  // matches Monsoon "slot" recess (#101216)
+    NVGcolor border     = nvgRGB(0x2a, 0x2f, 0x37);  // matches Monsoon "slotline" (#2a2f37)
     NVGcolor active     = nvgRGB(0xcc, 0x22, 0x22);
   };
+
+  // Theme: swap the recess/border (and handle) to match the host panel theme.
+  // Lane colours stay constant (they read identically on both themes); only the
+  // editor's background well + border + neutral handle change.
+  bool lightTheme = false;
+  void setTheme(bool light) {
+    lightTheme = light;
+    if (light) {
+      colors.background = nvgRGB(0xd8, 0xda, 0xde);  // Monsoon light "slot"
+      colors.border     = nvgRGB(0xc0, 0xc4, 0xca);  // Monsoon light "slotline"
+      colors.handle     = nvgRGB(0x70, 0x76, 0x80);
+      colors.rest       = nvgRGB(0x9a, 0x9a, 0x9a);  // lighten neutral rest for light bg
+    } else {
+      colors.background = nvgRGB(0x10, 0x12, 0x16);
+      colors.border     = nvgRGB(0x2a, 0x2f, 0x37);
+      colors.handle     = nvgRGB(0x88, 0x88, 0x88);
+      colors.rest       = nvgRGB(0x50, 0x50, 0x50);
+    }
+  }
   
   // Per-lane probability distribution
   struct ProbabilityLane {
