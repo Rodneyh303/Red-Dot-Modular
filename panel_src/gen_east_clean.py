@@ -134,13 +134,7 @@ def gen(dark):
     for lane in range(3):
         y=0.5*(rowY(lane*2)+rowY(lane*2+1)); trim(SPREAD_X,y,t["teal"])
     A('</g>')
-    A(f'<g inkscape:label="screws" inkscape:groupmode="layer">')
-    def screw(x,y):
-        A(f'<circle cx="{px(x):.1f}" cy="{px(y):.1f}" r="{px(2.2):.1f}" fill="{t["accent"]}" stroke="{t["bg"]}" stroke-width="0.5"/>')
-        A(f'<line x1="{px(x-1.4):.1f}" y1="{px(y):.1f}" x2="{px(x+1.4):.1f}" y2="{px(y):.1f}" stroke="{t["bg"]}" stroke-width="0.6" opacity="0.7"/>')
-    for sx in (5.0, W_MM-5.0):
-        for sy in (5.0, H_MM-5.0): screw(sx,sy)
-    A('</g>')
+    # (screws are drawn by the C++ RedScrew widget, not the panel SVG)
     A('</svg>')
     return "\n".join(L)
 

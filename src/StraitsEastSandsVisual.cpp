@@ -1,5 +1,6 @@
 #include <rack.hpp>
 #include "Monsoon.hpp"
+#include "ui/RedScrew.hpp"
 #include "StraitsEastSandsVisual.hpp"
 #include "ui/SandsVisualEditorV4.hpp"
 #include "ui/TabButton.hpp"
@@ -45,10 +46,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
                             "res/panels/StraitsEastSandsVisual_40HP.svg"));
         setPanel(panelWidget);
 
-        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
-        addChild(createWidget<ScrewSilver>(Vec(box.size.x-2*RACK_GRID_WIDTH, 0)));
-        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT-RACK_GRID_WIDTH)));
-        addChild(createWidget<ScrewSilver>(Vec(box.size.x-2*RACK_GRID_WIDTH, RACK_GRID_HEIGHT-RACK_GRID_WIDTH)));
+        redDot::addRedScrews(this);
 
         // Voice tabs (voices 2-16, i.e. 15 voices) — two rows to stay legible.
         // Row band sits just above the editor; uses the editor width.

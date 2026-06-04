@@ -1,5 +1,6 @@
 #include <rack.hpp>
 #include "Monsoon.hpp"
+#include "ui/RedScrew.hpp"
 #include "MonsoonStraitsSands.hpp"
 #include "StraitsSandsMacroVisual.hpp"
 #include "ui/SandsVisualEditorV4.hpp"
@@ -40,10 +41,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
                             "res/panels/StraitsSandsMacroVisual_26HP.svg"));
         setPanel(panelWidget);
 
-        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
-        addChild(createWidget<ScrewSilver>(Vec(box.size.x-2*RACK_GRID_WIDTH, 0)));
-        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT-RACK_GRID_WIDTH)));
-        addChild(createWidget<ScrewSilver>(Vec(box.size.x-2*RACK_GRID_WIDTH, RACK_GRID_HEIGHT-RACK_GRID_WIDTH)));
+        redDot::addRedScrews(this);
 
         // Visual editor — right section, 3 lanes (REST/MEL/OCT), global
         visualEditor = new SandsVisualEditorV4(SandsVisualEditorV4::POLY);
