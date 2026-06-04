@@ -14,6 +14,7 @@ void PatternEngine::seedRngFromFloat(rack::random::Xoroshiro128Plus& rng, float 
 void PatternEngine::reset() {
     rhythmSeedPending = melodySeedPending = false;
     rhythmRollPending = melodyRollPending = false;
+    rhythmTrialPending = melodyTrialPending = false;
     rhythmMode = melodyMode = 0;
     rhythmSeedCached = melodySeedCached = false;
 
@@ -181,21 +182,30 @@ int PatternEngine::varyNoteIndex(int baseIdx, const PatternInput& in, float r) {
 }
 
 // Regenerate rhythm pattern (16 steps of bool: true=active, false=rest)
-void PatternEngine::redrawRhythm(const PatternInput& in) {
+void PatternEngine::redrawRhythm(const PatternInput& in, bool promoteToA) {
     if (in.locked) return;
 
-    // Promote previous candidate (B) to locked (A), then draw a fresh B.
+    // Two dice modes (see header). MAIN (promoteToA=true): the current candidate
+    // B is committed into A FIRST, then a fresh B is drawn, and slew blends A↔B
+    // at the roll. A walks forward each roll → groove mutates; low slew = tight
+    // variations near the evolving A, slew=1 = full replace (MeloDicer mode).
+    // TRIAL/AUDITION (promoteToA=false): A is left fixed; only a fresh B is drawn.
+    // Slew still blends at the roll, so the user auditions candidates against the
+    // same anchor A (raise slew to move toward B, lower to fall back to A).
     // First draw (or post-seed): A := B := draw, so effective == draw at any slew.
     const bool first = rhythmFirstDraw;
     rhythmFirstDraw = false;
 
     for (int i = 0; i < 16; ++i) {
-        // promote B -> A
-        rhythmLockedA[i]    = rhythmCandB[i];
-        variationLockedA[i] = variationCandB[i];
-        legatoLockedA[i]    = legatoCandB[i];
-        accentLockedA[i]    = accentCandB[i];
-        for (int v = 0; v < 15; v++) polyRhythmLockedA[v][i] = polyRhythmCandB[v][i];
+        // MAIN mode: promote current B -> A (commit the last candidate) before
+        // drawing the new one. TRIAL mode skips this so A stays anchored.
+        if (promoteToA) {
+            rhythmLockedA[i]    = rhythmCandB[i];
+            variationLockedA[i] = variationCandB[i];
+            legatoLockedA[i]    = legatoCandB[i];
+            accentLockedA[i]    = accentCandB[i];
+            for (int v = 0; v < 15; v++) polyRhythmLockedA[v][i] = polyRhythmCandB[v][i];
+        }
 
         // fresh B
         rhythmCandB[i]    = unitRhythm();
@@ -269,16 +279,19 @@ void PatternEngine::recomputeEffectiveMelody() {
 }
 
 // Regenerate melody pattern (16 steps of semitone + pitch voltage)
-void PatternEngine::redrawMelody(const PatternInput& in) {
+void PatternEngine::redrawMelody(const PatternInput& in, bool promoteToA) {
     if (in.locked) return;
     const bool first = melodyFirstDraw;
     melodyFirstDraw = false;
 
     for (int i = 0; i < 16; ++i) {
-        melodyLockedA[i] = melodyCandB[i];
-        octaveLockedA[i] = octaveCandB[i];
-        for (int v=0;v<15;v++){ polyMelodyLockedA[v][i]=polyMelodyCandB[v][i];
-                                polyOctaveLockedA[v][i]=polyOctaveCandB[v][i]; }
+        // MAIN: commit current B → A before drawing fresh B. TRIAL: A anchored.
+        if (promoteToA) {
+            melodyLockedA[i] = melodyCandB[i];
+            octaveLockedA[i] = octaveCandB[i];
+            for (int v=0;v<15;v++){ polyMelodyLockedA[v][i]=polyMelodyCandB[v][i];
+                                    polyOctaveLockedA[v][i]=polyOctaveCandB[v][i]; }
+        }
 
         melodyCandB[i] = unitMelody();
         octaveCandB[i] = unitMelody();
@@ -329,9 +342,10 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     if (in.locked) return;  // freeze everything: seeds, RNG, patterns
 
     // Redraw if: a seed is pending (reproducible reseed), a ROLL is pending
-    // (dice press — advance RNG, no reseed), or Realtime mode.
-    bool shouldRedrawR = rhythmSeedPending || rhythmRollPending || (rhythmMode == 1);
-    bool shouldRedrawM = melodySeedPending || melodyRollPending || (melodyMode == 1);
+    // (dice press — advance RNG, no reseed), a TRIAL is pending (audition, A
+    // anchored), or Realtime mode.
+    bool shouldRedrawR = rhythmSeedPending || rhythmRollPending || rhythmTrialPending || (rhythmMode == 1);
+    bool shouldRedrawM = melodySeedPending || melodyRollPending || melodyTrialPending || (melodyMode == 1);
 
     if (rhythmSeedPending) {
         rhythmSeedFloat = rhythmSeedPendingFloat;
@@ -339,8 +353,11 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
         rhythmSeedPending = false;
         rhythmFirstDraw = true;   // new seed → A=B=draw, reproducible at any slew
     }
-    rhythmRollPending = false;     // consume the roll (RNG already advances in redraw)
-    if (shouldRedrawR) redrawRhythm(in);
+    // TRIAL: A anchored (promoteToA=false). ROLL/seed/realtime: promote (main).
+    const bool rPromote = !rhythmTrialPending;
+    rhythmRollPending = false;
+    rhythmTrialPending = false;
+    if (shouldRedrawR) redrawRhythm(in, rPromote);
 
     if (melodySeedPending) {
         melodySeedFloat = melodySeedPendingFloat;
@@ -348,8 +365,10 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
         melodySeedPending = false;
         melodyFirstDraw = true;
     }
+    const bool mPromote = !melodyTrialPending;
     melodyRollPending = false;
-    if (shouldRedrawM) redrawMelody(in);
+    melodyTrialPending = false;
+    if (shouldRedrawM) redrawMelody(in, mPromote);
 
     // Always refresh the cache so the LEDs react to live knob changes in Dice mode
     if (!shouldRedrawR || !shouldRedrawM) refreshVisualCache(in);

@@ -128,9 +128,13 @@ struct PatternEngine {
     // Pending ROLL (dice press) — advance the RNG and redraw WITHOUT reseeding.
     // Distinct from a seed-pending, which reseeds for reproducibility. A dice
     // press should walk the RNG forward (A/B morph), not reset to a fixed seed
-    // on every press.
+    // on every press. The TRIAL variants roll with A anchored (promoteToA=false)
+    // so the user auditions candidates against a fixed A; the regular roll
+    // promotes B→A (main mode), so A walks forward.
     bool  rhythmRollPending = false;
     bool  melodyRollPending = false;
+    bool  rhythmTrialPending = false;
+    bool  melodyTrialPending = false;
     int   rhythmMode = 0;  // 0=dice, 1=realtime
     int   melodyMode = 0;
 
@@ -181,10 +185,10 @@ struct PatternEngine {
     int varyNoteIndex(int baseIdx, const PatternInput& in, float r);
 
     // Regenerate rhythm pattern (16 steps of bool: true=active, false=rest)
-    void redrawRhythm(const PatternInput& in);
+    void redrawRhythm(const PatternInput& in, bool promoteToA = true);
 
     // Regenerate melody pattern (16 steps of semitone + pitch voltage)
-    void redrawMelody(const PatternInput& in);
+    void redrawMelody(const PatternInput& in, bool promoteToA = true);
 
     // Updates the rhythm/melody arrays used for UI and LEDs based on the 
     // current knob positions and the *existing* random buffers.
@@ -231,13 +235,19 @@ struct PatternEngine {
     void setPendingRhythmRoll() { rhythmRollPending = true; }
     /// Arm a melody ROLL (dice press) — redraw without reseeding.
     void setPendingMelodyRoll() { melodyRollPending = true; }
-    
-    /// Check if a rhythm dice action (seed OR roll) is pending — drives the
-    /// dice light, which should blink for any armed dice press.
-    bool isRhythmSeedPending() const { return rhythmSeedPending || rhythmRollPending; }
 
-    /// Check if a melody dice action (seed OR roll) is pending.
-    bool isMelodySeedPending() const { return melodySeedPending || melodyRollPending; }
+    /// Arm a rhythm TRIAL/audition roll — like a roll but A stays anchored
+    /// (promoteToA=false): auditions a fresh candidate B against the fixed A.
+    void setPendingRhythmTrial() { rhythmTrialPending = true; }
+    /// Arm a melody TRIAL/audition roll.
+    void setPendingMelodyTrial() { melodyTrialPending = true; }
+    
+    /// Check if a rhythm dice action (seed OR roll OR trial) is pending — drives
+    /// the dice light, which should blink for any armed dice press.
+    bool isRhythmSeedPending() const { return rhythmSeedPending || rhythmRollPending || rhythmTrialPending; }
+
+    /// Check if a melody dice action (seed OR roll OR trial) is pending.
+    bool isMelodySeedPending() const { return melodySeedPending || melodyRollPending || melodyTrialPending; }
     
     /// Handle phrase boundary: apply pending seeds and redraw patterns
     void onPhraseBoundary(const PatternInput& in) {
