@@ -54,17 +54,34 @@ def logo_embed(dark, x_mm, y_mm, target_w_mm):
     return f'<g transform="translate({tx:.2f},{ty:.2f}) scale({scale:.5f})">{body}</g>'
 
 def mbs(x_mm, y_mm, w_mm, h_mm, t, op):
+    # Marina Bay Sands: three slanted trapezoidal towers + connecting skypark
+    # deck, with faint window lines and antenna dots — geometry adapted from the
+    # earlier panel concept, but rendered nanosvg-safe (solid per-shape fills,
+    # no gradient, no group-inherited paint).
     x,y,w,h = px(x_mm),px(y_mm),px(w_mm),px(h_mm)
-    tw=w*0.13; gap=(w-3*tw)/2.0; th=h*0.86; by=y+h
-    fill=t["motif"]
+    fill=t["motif"]; acc=t["accent"]
+    tw=w*0.165; gap=(w-3*tw)/2.0; th=h; by=y+h; lean=tw*0.06
     L=[]; A=L.append
-    # NOTE: nanosvg does NOT inherit fill/opacity from a parent <g> — every shape
-    # must carry its own fill + fill-opacity, or it renders invisibly in VCV.
-    for tx in [x, x+tw+gap, x+2*(tw+gap)]:
-        A(f'<rect x="{tx:.1f}" y="{by-th:.1f}" width="{tw:.1f}" height="{th:.1f}" rx="{tw*0.18:.1f}" fill="{fill}" fill-opacity="{op}"/>')
-    deckY=by-th-h*0.04
-    A(f'<path d="M {x-w*0.02:.1f} {deckY:.1f} L {x+w+w*0.10:.1f} {deckY-h*0.10:.1f} '
-      f'L {x+w+w*0.10:.1f} {deckY-h*0.10+h*0.05:.1f} L {x-w*0.02:.1f} {deckY+h*0.05:.1f} Z" '
+    xs=[x, x+tw+gap, x+2*(tw+gap)]
+    for tx in xs:
+        # trapezoid: slightly wider at base (towers lean), as real MBS
+        x1,x2 = tx+lean, tx+tw-lean      # top
+        x3,x4 = tx+tw, tx                # base
+        A(f'<polygon points="{x1:.1f},{y:.1f} {x2:.1f},{y:.1f} {x3:.1f},{by:.1f} {x4:.1f},{by:.1f}" '
+          f'fill="{fill}" fill-opacity="{op}"/>')
+        # two faint window bands per tower
+        for f_ in (0.36, 0.64):
+            wy=y+th*f_
+            A(f'<line x1="{tx+lean*0.6:.1f}" y1="{wy:.1f}" x2="{tx+tw-lean*0.6:.1f}" y2="{wy:.1f}" '
+              f'stroke="{acc}" stroke-width="0.5" stroke-opacity="{op*0.4:.3f}"/>')
+        # antenna + dot atop each tower
+        cxk=tx+tw*0.5
+        A(f'<line x1="{cxk:.1f}" y1="{y:.1f}" x2="{cxk:.1f}" y2="{y-h*0.10:.1f}" stroke="{acc}" stroke-width="0.6" stroke-opacity="{op*0.6:.3f}"/>')
+        A(f'<circle cx="{cxk:.1f}" cy="{y-h*0.12:.1f}" r="1.1" fill="{acc}" fill-opacity="{op*0.6:.3f}"/>')
+    # skypark deck spanning the three tops (slight lift to the right, MBS-like)
+    dy=y-h*0.06
+    A(f'<polygon points="{x-w*0.02:.1f},{dy:.1f} {x+w+w*0.06:.1f},{dy-h*0.05:.1f} '
+      f'{x+w+w*0.06:.1f},{dy-h*0.05+h*0.06:.1f} {x-w*0.02:.1f},{dy+h*0.06:.1f}" '
       f'fill="{fill}" fill-opacity="{op}"/>')
     return "".join(L)
 
