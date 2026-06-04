@@ -345,8 +345,8 @@ float Monsoon::semitoneToVolts(int semitone) {
                     engine.pe.setPendingRhythmSeed(sampleSeedFromSource());
                     engine.pe.setPendingMelodySeed(sampleSeedFromSource());
                 } else {
-                    engine.pe.setPendingRhythmReseedRoll(sampleSeedFromSource());
-                    engine.pe.setPendingMelodyReseedRoll(sampleSeedFromSource());
+                    engine.pe.setPendingRhythmReseedRoll(0.f, /*full=*/true);
+                    engine.pe.setPendingMelodyReseedRoll(0.f, /*full=*/true);
                 }
             }
             if (resetImmediate) {
@@ -372,23 +372,32 @@ float Monsoon::semitoneToVolts(int semitone) {
         return (float)(u * 10.0);
     }
 
-    // A MAIN dice gesture ROLLS (advance RNG, A/B morph) unless the SEED input
-    // is patched (reproducible reseed). Shared by the panel dice buttons and the
-    // gate-assigned "Re-dice" triggers. If "Reseed on roll" is set, a main roll
-    // also reseeds from fresh entropy while keeping the morph (reseed-roll path).
-    // TRIAL dice do NOT go through here — they call setPending*Trial directly and
-    // never reseed (auditioning stays in a controlled space against fixed A).
+    // A MAIN dice gesture. Whether it RESEEDS is governed solely by the
+    // "Reseed on roll" option — NOT by the SEED cable. The SEED cable only
+    // determines the seed SOURCE when we do reseed (CV if patched, else full
+    // 64-bit internal entropy). Neither source is privileged.
+    //   reseedOnRoll OFF → plain roll (advance stream, no reseed), cable or not.
+    //   reseedOnRoll ON  → reseed-roll (promote B→A, reseed, keep morph), source
+    //                      = CV if patched else internal.
+    // Shared by the panel dice buttons and gate "Re-dice". TRIAL dice never come
+    // here (setPending*Trial directly) and never reseed.
     void Monsoon::diceRhythm() {
         rhythmMode = 0;
-        if (inputs[SEED_INPUT].isConnected()) engine.pe.setPendingRhythmSeed(sampleSeedFromSource());
-        else if (reseedOnRoll)                engine.pe.setPendingRhythmReseedRoll(sampleSeedFromSource());
-        else                                  engine.pe.setPendingRhythmRoll();
+        if (reseedOnRoll) {
+            const bool sc = inputs[SEED_INPUT].isConnected();
+            engine.pe.setPendingRhythmReseedRoll(sc ? sampleSeedFromSource() : 0.f, /*full=*/!sc);
+        } else {
+            engine.pe.setPendingRhythmRoll();
+        }
     }
     void Monsoon::diceMelody() {
         melodyMode = 0;
-        if (inputs[SEED_INPUT].isConnected()) engine.pe.setPendingMelodySeed(sampleSeedFromSource());
-        else if (reseedOnRoll)                engine.pe.setPendingMelodyReseedRoll(sampleSeedFromSource());
-        else                                  engine.pe.setPendingMelodyRoll();
+        if (reseedOnRoll) {
+            const bool sc = inputs[SEED_INPUT].isConnected();
+            engine.pe.setPendingMelodyReseedRoll(sc ? sampleSeedFromSource() : 0.f, /*full=*/!sc);
+        } else {
+            engine.pe.setPendingMelodyRoll();
+        }
     }
 
 

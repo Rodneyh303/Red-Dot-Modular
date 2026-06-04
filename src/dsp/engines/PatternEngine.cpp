@@ -11,11 +11,23 @@ void PatternEngine::seedRngFromFloat(rack::random::Xoroshiro128Plus& rng, float 
     rng.seed(s1, s2);
 }
 
+void PatternEngine::seedRngFull(rack::random::Xoroshiro128Plus& rng) {
+    // Full state-space seed from two independent 64-bit entropy words — used for
+    // internal (no-CV) reseeds so they are not bottlenecked through the 0..10
+    // float that exists only for CV compatibility.
+    uint64_t s1 = rack::random::u64();
+    uint64_t s2 = rack::random::u64();
+    if (s1 == 0 && s2 == 0) s1 = 0x9e3779b97f4a7c15ULL;  // avoid all-zero state
+    rng.seed(s1, s2);
+}
+
 void PatternEngine::reset() {
     rhythmSeedPending = melodySeedPending = false;
     rhythmRollPending = melodyRollPending = false;
     rhythmTrialPending = melodyTrialPending = false;
     rhythmReseedRollPending = melodyReseedRollPending = false;
+    rhythmReseedRollFull = melodyReseedRollFull = false;
+    rhythmABCached = melodyABCached = false;
     rhythmMode = melodyMode = 0;
     rhythmSeedCached = melodySeedCached = false;
 
@@ -355,17 +367,15 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
         rhythmSeedPending = false;
         rhythmFirstDraw = true;   // new seed → A=B=draw, reproducible at any slew
     } else if (rhythmReseedRollPending) {
-        // Reseed the stream WITHOUT firstDraw — redrawRhythm(promote=true) will
-        // commit B→A then draw a fresh B from the reseeded stream, so A≠B and the
-        // slew morph survives. (Main-mode roll with fresh entropy.)
-        rhythmSeedFloat = rhythmReseedRollFloat;
-        seedRngFromFloat(rhythmRng, rhythmSeedFloat);
+        // Reseed WITHOUT firstDraw — redrawRhythm(promote=true) commits B→A then
+        // draws fresh B from the reseeded stream, so A≠B and slew survives.
+        if (rhythmReseedRollFull) seedRngFull(rhythmRng);
+        else { rhythmSeedFloat = rhythmReseedRollFloat; seedRngFromFloat(rhythmRng, rhythmSeedFloat); }
     } else if (in.reseedOnRoll && rhythmMode == 1) {
-        // Realtime mode + reseed-on-roll: reseed each redraw so continuous
-        // realtime stays genuinely random (use SEED CV if present, else entropy).
-        rhythmSeedFloat = in.seedConnected ? in.seedSampleValue
-                                           : (float)(rack::random::uniform() * 10.0);
-        seedRngFromFloat(rhythmRng, rhythmSeedFloat);
+        // Realtime + reseed-on-roll: reseed each redraw. CV if present (low
+        // precision), else full 64-bit internal entropy.
+        if (in.seedConnected) { rhythmSeedFloat = in.seedSampleValue; seedRngFromFloat(rhythmRng, rhythmSeedFloat); }
+        else                  seedRngFull(rhythmRng);
     }
     // TRIAL: A anchored (promoteToA=false) and never reseeds. ROLL/reseed-roll/
     // seed/realtime: promote (main mode), A walks forward.
@@ -381,12 +391,11 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
         melodySeedPending = false;
         melodyFirstDraw = true;
     } else if (melodyReseedRollPending) {
-        melodySeedFloat = melodyReseedRollFloat;
-        seedRngFromFloat(melodyRng, melodySeedFloat);
+        if (melodyReseedRollFull) seedRngFull(melodyRng);
+        else { melodySeedFloat = melodyReseedRollFloat; seedRngFromFloat(melodyRng, melodySeedFloat); }
     } else if (in.reseedOnRoll && melodyMode == 1) {
-        melodySeedFloat = in.seedConnected ? in.seedSampleValue
-                                           : (float)(rack::random::uniform() * 10.0);
-        seedRngFromFloat(melodyRng, melodySeedFloat);
+        if (in.seedConnected) { melodySeedFloat = in.seedSampleValue; seedRngFromFloat(melodyRng, melodySeedFloat); }
+        else                  seedRngFull(melodyRng);
     }
     const bool mPromote = !melodyTrialPending;
     melodyRollPending = false;
@@ -405,21 +414,47 @@ void PatternEngine::switchMelodyMode(int& stepIndex, int& lastStepIndex) {
     int prev = melodyMode;
     int next = 1 - prev;
     if (prev == 0 && next == 1) {
-        // Entering realtime: cache current state
+        // Entering realtime: cache current state (seed + output + A/B buffers)
         cachedMelodySeedFloat = melodySeedPending
             ? melodySeedPendingFloat : melodySeedFloat;
         melodySeedCached = true;
         for (int i = 0; i < 16; ++i) cachedMelodyPitchV[i] = melodyPitchV[i];
         cachedMelodyStepIndex     = stepIndex;
         cachedMelodyLastStepIndex = lastStepIndex;
+        // Lossless A/B snapshot (melody owns melody + octave, mono + poly).
+        for (int i = 0; i < 16; ++i) {
+            cMelodyA[i] = melodyLockedA[i]; cMelodyB[i] = melodyCandB[i];
+            cOctaveA[i] = octaveLockedA[i]; cOctaveB[i] = octaveCandB[i];
+            for (int v = 0; v < 15; ++v) {
+                cPolyMelodyA[v][i] = polyMelodyLockedA[v][i]; cPolyMelodyB[v][i] = polyMelodyCandB[v][i];
+                cPolyOctaveA[v][i] = polyOctaveLockedA[v][i]; cPolyOctaveB[v][i] = polyOctaveCandB[v][i];
+            }
+        }
+        melodyABCached = true;
     } else if (prev == 1 && next == 0 && melodySeedCached) {
-        // Returning to dice: restore cached state
-        melodySeedFloat = cachedMelodySeedFloat;
-        melodySeedPendingFloat = cachedMelodySeedFloat;
-        melodySeedPending = true;
+        // Returning to dice: restore the exact A/B buffers (lossless — preserves
+        // the slew morph position), NOT a reseed-to-A=B approximation.
         for (int i = 0; i < 16; ++i) melodyPitchV[i] = cachedMelodyPitchV[i];
         stepIndex     = cachedMelodyStepIndex;
         lastStepIndex = cachedMelodyLastStepIndex;
+        if (melodyABCached) {
+            for (int i = 0; i < 16; ++i) {
+                melodyLockedA[i] = cMelodyA[i]; melodyCandB[i] = cMelodyB[i];
+                octaveLockedA[i] = cOctaveA[i]; octaveCandB[i] = cOctaveB[i];
+                for (int v = 0; v < 15; ++v) {
+                    polyMelodyLockedA[v][i] = cPolyMelodyA[v][i]; polyMelodyCandB[v][i] = cPolyMelodyB[v][i];
+                    polyOctaveLockedA[v][i] = cPolyOctaveA[v][i]; polyOctaveCandB[v][i] = cPolyOctaveB[v][i];
+                }
+            }
+            // Recompute effective from the restored A/B at the current slew;
+            // do NOT set a pending seed (that would collapse to A=B).
+            recomputeEffectiveMelody();
+        } else {
+            // Fallback (no A/B snapshot): reseed to reproduce the pattern.
+            melodySeedFloat = cachedMelodySeedFloat;
+            melodySeedPendingFloat = cachedMelodySeedFloat;
+            melodySeedPending = true;
+        }
     }
     melodyMode = next;
 }
@@ -434,14 +469,35 @@ void PatternEngine::switchRhythmMode(int& stepIndex, int& lastStepIndex) {
         for (int i = 0; i < 16; ++i) cachedRhythmPattern[i] = rhythmPattern[i];
         cachedRhythmStepIndex     = stepIndex;
         cachedRhythmLastStepIndex = lastStepIndex;
+        // Lossless A/B snapshot (rhythm owns rhythm + variation + legato +
+        // accent, mono; plus poly rhythm).
+        for (int i = 0; i < 16; ++i) {
+            cRhythmA[i]    = rhythmLockedA[i];    cRhythmB[i]    = rhythmCandB[i];
+            cVariationA[i] = variationLockedA[i]; cVariationB[i] = variationCandB[i];
+            cLegatoA[i]    = legatoLockedA[i];    cLegatoB[i]    = legatoCandB[i];
+            cAccentA[i]    = accentLockedA[i];    cAccentB[i]    = accentCandB[i];
+            for (int v = 0; v < 15; ++v) { cPolyRhythmA[v][i] = polyRhythmLockedA[v][i]; cPolyRhythmB[v][i] = polyRhythmCandB[v][i]; }
+        }
+        rhythmABCached = true;
     } else if (prev == 1 && next == 0 && rhythmSeedCached) {
-        // Returning to dice: restore cached state
-        rhythmSeedFloat = cachedRhythmSeedFloat;
-        rhythmSeedPendingFloat = cachedRhythmSeedFloat;
-        rhythmSeedPending = true;
         for (int i = 0; i < 16; ++i) rhythmPattern[i] = cachedRhythmPattern[i];
         stepIndex     = cachedRhythmStepIndex;
         lastStepIndex = cachedRhythmLastStepIndex;
+        if (rhythmABCached) {
+            // Lossless A/B restore — preserves the slew morph position.
+            for (int i = 0; i < 16; ++i) {
+                rhythmLockedA[i]    = cRhythmA[i];    rhythmCandB[i]    = cRhythmB[i];
+                variationLockedA[i] = cVariationA[i]; variationCandB[i] = cVariationB[i];
+                legatoLockedA[i]    = cLegatoA[i];    legatoCandB[i]    = cLegatoB[i];
+                accentLockedA[i]    = cAccentA[i];    accentCandB[i]    = cAccentB[i];
+                for (int v = 0; v < 15; ++v) { polyRhythmLockedA[v][i] = cPolyRhythmA[v][i]; polyRhythmCandB[v][i] = cPolyRhythmB[v][i]; }
+            }
+            recomputeEffectiveRhythm();
+        } else {
+            rhythmSeedFloat = cachedRhythmSeedFloat;
+            rhythmSeedPendingFloat = cachedRhythmSeedFloat;
+            rhythmSeedPending = true;
+        }
     }
     rhythmMode = next;
 }

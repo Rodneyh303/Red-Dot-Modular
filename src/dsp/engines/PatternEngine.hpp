@@ -150,6 +150,12 @@ struct PatternEngine {
     bool  melodyReseedRollPending = false;
     float rhythmReseedRollFloat = 0.f;
     float melodyReseedRollFloat = 0.f;
+    // When true, the reseed-roll uses FULL 64-bit internal entropy (the float is
+    // ignored). When false, it reseeds from the (lower-precision) CV-derived
+    // float. CV seeds are intentionally low-precision (0..10V → seed); internal
+    // reseeds get the full state space.
+    bool  rhythmReseedRollFull = false;
+    bool  melodyReseedRollFull = false;
     int   rhythmMode = 0;  // 0=dice, 1=realtime
     int   melodyMode = 0;
 
@@ -169,6 +175,16 @@ struct PatternEngine {
     int   cachedMelodyLastStepIndex = -1;
     int   cachedRhythmStepIndex  = -1;
     int   cachedRhythmLastStepIndex = -1;
+    // Full A/B buffer snapshot for a LOSSLESS realtime round-trip: entering
+    // realtime caches A and B, returning restores them exactly (preserving the
+    // slew morph position), rather than reseeding to an A=B approximation.
+    bool  rhythmABCached = false, melodyABCached = false;
+    float cRhythmA[16]={}, cRhythmB[16]={}, cVariationA[16]={}, cVariationB[16]={};
+    float cLegatoA[16]={}, cLegatoB[16]={}, cAccentA[16]={}, cAccentB[16]={};
+    float cPolyRhythmA[15][16]={}, cPolyRhythmB[15][16]={};
+    float cMelodyA[16]={}, cMelodyB[16]={}, cOctaveA[16]={}, cOctaveB[16]={};
+    float cPolyMelodyA[15][16]={}, cPolyMelodyB[15][16]={};
+    float cPolyOctaveA[15][16]={}, cPolyOctaveB[15][16]={};
 
     // ── RNG helpers ───────────────────────────────────────────────────────────
     // Convert Xoroshiro128Plus output to float [0,1)
@@ -183,6 +199,9 @@ struct PatternEngine {
     static constexpr uint64_t MAX_U64 = 0xFFFFFFFFFFFFFFFFULL;
 
     void seedRngFromFloat(rack::random::Xoroshiro128Plus& rng, float seedFloat);
+    /// Seed from full 64-bit internal entropy (two u64 words). Used for internal
+    /// reseeds (no CV); gives the full state space rather than the 0..10 float.
+    void seedRngFull(rack::random::Xoroshiro128Plus& rng);
     void reset();
 
     // ── Core generation ───────────────────────────────────────────────────────
@@ -257,11 +276,12 @@ struct PatternEngine {
     /// Arm a melody TRIAL/audition roll.
     void setPendingMelodyTrial() { melodyTrialPending = true; }
 
-    /// Arm a rhythm RESEED-ROLL — reseed from seedValue but keep the A/B morph
-    /// (promote B→A, no firstDraw). For the "Reseed on roll" option (main rolls).
-    void setPendingRhythmReseedRoll(float seedValue) { rhythmReseedRollFloat = seedValue; rhythmReseedRollPending = true; }
+    /// Arm a rhythm RESEED-ROLL — reseed but keep the A/B morph (promote B→A, no
+    /// firstDraw). full=true → full 64-bit internal entropy (float ignored);
+    /// full=false → reseed from the CV-derived float (lower precision).
+    void setPendingRhythmReseedRoll(float seedValue, bool full) { rhythmReseedRollFloat = seedValue; rhythmReseedRollFull = full; rhythmReseedRollPending = true; }
     /// Arm a melody RESEED-ROLL.
-    void setPendingMelodyReseedRoll(float seedValue) { melodyReseedRollFloat = seedValue; melodyReseedRollPending = true; }
+    void setPendingMelodyReseedRoll(float seedValue, bool full) { melodyReseedRollFloat = seedValue; melodyReseedRollFull = full; melodyReseedRollPending = true; }
 
     /// Check if a rhythm dice action (seed OR roll OR trial OR reseed-roll) is pending.
     bool isRhythmSeedPending() const { return rhythmSeedPending || rhythmRollPending || rhythmTrialPending || rhythmReseedRollPending; }
