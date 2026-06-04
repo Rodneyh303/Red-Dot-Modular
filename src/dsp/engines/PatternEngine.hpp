@@ -45,6 +45,13 @@ struct PatternInput {
     // effective pattern between the locked (A) and candidate (B) draws.
     float rhythmSlew       = 1.f;
     float melodySlew       = 1.f;
+    // Reseed policy passed through from the module (context-menu option). When
+    // set, continuous Realtime-mode redraws also reseed each cycle from fresh
+    // entropy (or the SEED CV if seedConnected), so realtime stays genuinely
+    // random rather than walking one deterministic stream.
+    bool  reseedOnRoll     = false;
+    bool  seedConnected    = false;
+    float seedSampleValue  = 0.f;   // current SEED CV (0..10) when seedConnected
 };
 
 // ── PatternEngine ─────────────────────────────────────────────────────────────

@@ -338,8 +338,16 @@ float Monsoon::semitoneToVolts(int semitone) {
 
         if (!locked) {
             if (reseedOnRestart) {
-                engine.pe.setPendingRhythmSeed(sampleSeedFromSource());
-                engine.pe.setPendingMelodySeed(sampleSeedFromSource());
+                // Only use the SEED-CV (reproducible, A=B) path when the SEED
+                // input is actually present. Unpatched → internal entropy via the
+                // morph-preserving reseed-roll path (no A=B collapse).
+                if (inputs[SEED_INPUT].isConnected()) {
+                    engine.pe.setPendingRhythmSeed(sampleSeedFromSource());
+                    engine.pe.setPendingMelodySeed(sampleSeedFromSource());
+                } else {
+                    engine.pe.setPendingRhythmReseedRoll(sampleSeedFromSource());
+                    engine.pe.setPendingMelodyReseedRoll(sampleSeedFromSource());
+                }
             }
             if (resetImmediate) {
                 engine.pe.applyPendingSeedsAndRedraw(modeController->currentPatternInput);
