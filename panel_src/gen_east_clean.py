@@ -56,18 +56,20 @@ def logo_embed(dark, x_mm, y_mm, target_w_mm):
 def mbs(x_mm, y_mm, w_mm, h_mm, t, op):
     x,y,w,h = px(x_mm),px(y_mm),px(w_mm),px(h_mm)
     tw=w*0.13; gap=(w-3*tw)/2.0; th=h*0.86; by=y+h
+    fill=t["motif"]
     L=[]; A=L.append
-    A(f'<g fill="{t["motif"]}" opacity="{op}">')
+    # NOTE: nanosvg does NOT inherit fill/opacity from a parent <g> — every shape
+    # must carry its own fill + fill-opacity, or it renders invisibly in VCV.
     for tx in [x, x+tw+gap, x+2*(tw+gap)]:
-        A(f'<rect x="{tx:.1f}" y="{by-th:.1f}" width="{tw:.1f}" height="{th:.1f}" rx="{tw*0.18:.1f}"/>')
+        A(f'<rect x="{tx:.1f}" y="{by-th:.1f}" width="{tw:.1f}" height="{th:.1f}" rx="{tw*0.18:.1f}" fill="{fill}" fill-opacity="{op}"/>')
     deckY=by-th-h*0.04
     A(f'<path d="M {x-w*0.02:.1f} {deckY:.1f} L {x+w+w*0.10:.1f} {deckY-h*0.10:.1f} '
-      f'L {x+w+w*0.10:.1f} {deckY-h*0.10+h*0.05:.1f} L {x-w*0.02:.1f} {deckY+h*0.05:.1f} Z"/></g>')
+      f'L {x+w+w*0.10:.1f} {deckY-h*0.10+h*0.05:.1f} L {x-w*0.02:.1f} {deckY+h*0.05:.1f} Z" '
+      f'fill="{fill}" fill-opacity="{op}"/>')
     return "".join(L)
 
 def waves(x_mm, y_mm, t, op, rows=3, span_mm=138.0):
-    x0=px(x_mm); L=[]; A=L.append
-    A(f'<g stroke="{t["motifwave"]}" stroke-width="1.5" fill="none" opacity="{op}">')
+    x0=px(x_mm); col=t["motifwave"]; L=[]; A=L.append
     for i in range(rows):
         yb=px(y_mm+i*3.2); amp=px(1.6); seg=px(span_mm)/8.0
         d=f'M {x0:.1f} {yb:.1f} '
@@ -75,8 +77,8 @@ def waves(x_mm, y_mm, t, op, rows=3, span_mm=138.0):
             cx1=x0+seg*k+seg*0.25; cx2=x0+seg*k+seg*0.75; ex=x0+seg*(k+1)
             ud=-amp if k%2==0 else amp
             d+=f'C {cx1:.1f} {yb+ud:.1f} {cx2:.1f} {yb+ud:.1f} {ex:.1f} {yb:.1f} '
-        A(f'<path d="{d}"/>')
-    A('</g>')
+        # inline stroke + opacity per path (nanosvg ignores group-level values)
+        A(f'<path d="{d}" fill="none" stroke="{col}" stroke-width="1.5" stroke-opacity="{op}"/>')
     return "".join(L)
 
 def gen(dark):
@@ -84,8 +86,8 @@ def gen(dark):
     A(f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="{PW}" height="{PH}" viewBox="0 0 {PW} {PH}">')
     A(f'<g inkscape:label="artwork" inkscape:groupmode="layer">')
     A(f'<rect width="{PW}" height="{PH}" fill="{t["bg"]}"/>')
-    A(mbs(118.0, 80.0, 74.0, 28.0, t, op=0.7))
-    A(waves(60.0, 116.0, t, op=0.6, rows=3, span_mm=138.0))
+    A(mbs(116.0, 96.0, 78.0, 18.0, t, op=0.8))
+    A(waves(58.0, 116.0, t, op=0.7, rows=3, span_mm=140.0))
     A(f'<line x1="0" y1="{px(11):.1f}" x2="{PW}" y2="{px(11):.1f}" stroke="{t["accent"]}" stroke-width="1.5" opacity="0.55"/>')
     A(f'<line x1="0" y1="{px(120):.1f}" x2="{PW}" y2="{px(120):.1f}" stroke="{t["groupline"]}" stroke-width="1" opacity="0.7"/>')
     gx,gy=4.0,ROW_TOP-4.0; gw,gh=(SPREAD_X+5.0)-gx,(ROW_BOT+2.0)-(ROW_TOP-4.0)
@@ -100,7 +102,7 @@ def gen(dark):
         A(f'<line x1="{px(ED_X+1):.1f}" y1="{px(ly):.1f}" x2="{px(ED_X+ED_W-1):.1f}" y2="{px(ly):.1f}" stroke="{t["edborder"]}" stroke-width="0.75" opacity="0.7"/>')
     A('</g>')
     A(f'<g inkscape:label="branding" inkscape:groupmode="layer">')
-    A(logo_embed(dark, x_mm=11.0, y_mm=8.0, target_w_mm=42.0))
+    A(logo_embed(dark, x_mm=11.0, y_mm=4.5, target_w_mm=42.0))
     A('</g>')
     A(f'<g inkscape:label="control-graphics" inkscape:groupmode="layer">')
     def jack(x,y):
