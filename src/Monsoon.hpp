@@ -614,6 +614,13 @@ struct Monsoon : Module {
     int gate2Assign = 1;
     bool invertMuteLogic = false;
     bool restartOnUnmute = false;
+    // Reseed policy (entropy housekeeping; context-menu, not panel — reseeding is
+    // not a performance gesture). reseedOnRoll: a MAIN dice roll also reseeds
+    // (fresh entropy / SEED CV) while keeping the A/B morph. TRIAL rolls never
+    // reseed (auditioning stays controlled). reseedOnRestart: a restart reseeds
+    // for a fresh pattern instead of replaying the held one.
+    bool reseedOnRoll    = false;
+    bool reseedOnRestart = false;
 
     int lastModeSelect = -1;
     int lightTheme = 0; // 0 = Dark, 1 = Light. Using int to match PeranakanLatticePanel expectations.

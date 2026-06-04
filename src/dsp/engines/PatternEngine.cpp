@@ -15,6 +15,7 @@ void PatternEngine::reset() {
     rhythmSeedPending = melodySeedPending = false;
     rhythmRollPending = melodyRollPending = false;
     rhythmTrialPending = melodyTrialPending = false;
+    rhythmReseedRollPending = melodyReseedRollPending = false;
     rhythmMode = melodyMode = 0;
     rhythmSeedCached = melodySeedCached = false;
 
@@ -341,22 +342,31 @@ void PatternEngine::refreshVisualCache(const PatternInput& in) {
 void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     if (in.locked) return;  // freeze everything: seeds, RNG, patterns
 
-    // Redraw if: a seed is pending (reproducible reseed), a ROLL is pending
-    // (dice press — advance RNG, no reseed), a TRIAL is pending (audition, A
-    // anchored), or Realtime mode.
-    bool shouldRedrawR = rhythmSeedPending || rhythmRollPending || rhythmTrialPending || (rhythmMode == 1);
-    bool shouldRedrawM = melodySeedPending || melodyRollPending || melodyTrialPending || (melodyMode == 1);
+    // Redraw if: a seed is pending (reproducible reseed, A=B), a ROLL is pending
+    // (advance RNG, no reseed), a TRIAL is pending (audition, A anchored, never
+    // reseeds), a RESEED-ROLL is pending (main roll + fresh entropy, keeps A/B
+    // morph), or Realtime mode.
+    bool shouldRedrawR = rhythmSeedPending || rhythmRollPending || rhythmTrialPending || rhythmReseedRollPending || (rhythmMode == 1);
+    bool shouldRedrawM = melodySeedPending || melodyRollPending || melodyTrialPending || melodyReseedRollPending || (melodyMode == 1);
 
     if (rhythmSeedPending) {
         rhythmSeedFloat = rhythmSeedPendingFloat;
         seedRngFromFloat(rhythmRng, rhythmSeedFloat);
         rhythmSeedPending = false;
         rhythmFirstDraw = true;   // new seed → A=B=draw, reproducible at any slew
+    } else if (rhythmReseedRollPending) {
+        // Reseed the stream WITHOUT firstDraw — redrawRhythm(promote=true) will
+        // commit B→A then draw a fresh B from the reseeded stream, so A≠B and the
+        // slew morph survives. (Main-mode roll with fresh entropy.)
+        rhythmSeedFloat = rhythmReseedRollFloat;
+        seedRngFromFloat(rhythmRng, rhythmSeedFloat);
     }
-    // TRIAL: A anchored (promoteToA=false). ROLL/seed/realtime: promote (main).
+    // TRIAL: A anchored (promoteToA=false) and never reseeds. ROLL/reseed-roll/
+    // seed/realtime: promote (main mode), A walks forward.
     const bool rPromote = !rhythmTrialPending;
     rhythmRollPending = false;
     rhythmTrialPending = false;
+    rhythmReseedRollPending = false;
     if (shouldRedrawR) redrawRhythm(in, rPromote);
 
     if (melodySeedPending) {
@@ -364,10 +374,14 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
         seedRngFromFloat(melodyRng, melodySeedFloat);
         melodySeedPending = false;
         melodyFirstDraw = true;
+    } else if (melodyReseedRollPending) {
+        melodySeedFloat = melodyReseedRollFloat;
+        seedRngFromFloat(melodyRng, melodySeedFloat);
     }
     const bool mPromote = !melodyTrialPending;
     melodyRollPending = false;
     melodyTrialPending = false;
+    melodyReseedRollPending = false;
     if (shouldRedrawM) redrawMelody(in, mPromote);
 
     // Always refresh the cache so the LEDs react to live knob changes in Dice mode
