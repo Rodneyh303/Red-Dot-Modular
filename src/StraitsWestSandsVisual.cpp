@@ -31,12 +31,19 @@ struct StraitsWestSandsVisualWidget : ModuleWidget {
     PolyVoiceSandsParameterManager* paramMgr     = nullptr;
     int  selectedVoice = 0;
     bool initialized   = false;
+    std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
+    rack::app::SvgPanel* panelWidget = nullptr;
+    int lastThemeLight = -1;
 
     explicit StraitsWestSandsVisualWidget(StraitsWestSandsVisual* mod) {
         setModule(mod);
-        setPanel(APP->window->loadSvg(
-            asset::plugin(pluginInstance,
-                "res/panels/StraitsWestSandsVisual_36HP.svg")));
+        panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance,
+                            "res/panels/StraitsWestSandsVisual_36HP.svg"));
+        panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance,
+                            "res/panels/StraitsWestSandsVisual_36HP_light.svg"));
+        panelWidget = createPanel(asset::plugin(pluginInstance,
+                            "res/panels/StraitsWestSandsVisual_36HP.svg"));
+        setPanel(panelWidget);
 
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH,0)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x-2*RACK_GRID_WIDTH,0)));
@@ -122,6 +129,13 @@ struct StraitsWestSandsVisualWidget : ModuleWidget {
         if (!module || !paramMgr || !visualEditor) return;
         Monsoon* monsoon = getMonsoon();
         if (!monsoon) return;
+
+        int wantLight = monsoon->lightTheme ? 1 : 0;
+        if (wantLight != lastThemeLight) {
+            lastThemeLight = wantLight;
+            if (panelWidget) panelWidget->setBackground(wantLight ? panelSvgLight : panelSvgDark);
+            if (visualEditor) visualEditor->setTheme(wantLight != 0);
+        }
 
         auto* mod = static_cast<StraitsWestSandsVisual*>(module);
         PatternEngine*   pe = &monsoon->engine.pe;

@@ -29,12 +29,21 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
     PolyVoiceSandsParameterManager* paramMgr     = nullptr;
     int  selectedVoice = 0;
     bool initialized   = false;
+    // Theme follow-Monsoon: cache both panel SVGs + the panel widget so step()
+    // can swap when the connected host's lightTheme changes.
+    std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
+    rack::app::SvgPanel* panelWidget = nullptr;
+    int lastThemeLight = -1;  // -1 = unset, forces first apply
 
     explicit StraitsEastSandsVisualWidget(StraitsEastSandsVisual* mod) {
         setModule(mod);
-        setPanel(APP->window->loadSvg(
-            asset::plugin(pluginInstance,
-                "res/panels/StraitsEastSandsVisual_40HP.svg")));
+        panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance,
+                            "res/panels/StraitsEastSandsVisual_40HP.svg"));
+        panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance,
+                            "res/panels/StraitsEastSandsVisual_40HP_light.svg"));
+        panelWidget = createPanel(asset::plugin(pluginInstance,
+                            "res/panels/StraitsEastSandsVisual_40HP.svg"));
+        setPanel(panelWidget);
 
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x-2*RACK_GRID_WIDTH, 0)));
@@ -140,6 +149,18 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         if (!module || !paramMgr || !visualEditor) return;
         Monsoon* monsoon = getMonsoon();
         if (!monsoon) return;
+
+        // Follow the connected Monsoon's theme: swap panel SVG + editor colours
+        // when it changes (and on first run). One toggle on Monsoon themes the
+        // whole connected suite.
+        int wantLight = monsoon->lightTheme ? 1 : 0;
+        if (wantLight != lastThemeLight) {
+            lastThemeLight = wantLight;
+            if (panelWidget) {
+                panelWidget->setBackground(wantLight ? panelSvgLight : panelSvgDark);
+            }
+            if (visualEditor) visualEditor->setTheme(wantLight != 0);
+        }
 
         auto* mod = static_cast<StraitsEastSandsVisual*>(module);
         PatternEngine*   pe = &monsoon->engine.pe;

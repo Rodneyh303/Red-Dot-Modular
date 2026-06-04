@@ -20,12 +20,19 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
     SandsVisualEditorV4*       visualEditor = nullptr;
     MonoSandsParameterManager* paramMgr     = nullptr;
     bool                       initialized  = false;
+    std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
+    rack::app::SvgPanel* panelWidget = nullptr;
+    int lastThemeLight = -1;
 
     explicit MonsoonSandsVisualExpanderWidget(MonsoonSandsVisualExpander* mod) {
         setModule(mod);
-        setPanel(APP->window->loadSvg(
-            asset::plugin(pluginInstance,
-                "res/panels/SandsMonoVisual_40HP.svg")));
+        panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance,
+                            "res/panels/SandsMonoVisual_40HP.svg"));
+        panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance,
+                            "res/panels/SandsMonoVisual_40HP_light.svg"));
+        panelWidget = createPanel(asset::plugin(pluginInstance,
+                            "res/panels/SandsMonoVisual_40HP.svg"));
+        setPanel(panelWidget);
 
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2*RACK_GRID_WIDTH, 0)));
@@ -77,6 +84,13 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
 
         Monsoon* monsoon = getMonsoon();
         if (!monsoon) return;
+
+        int wantLight = monsoon->lightTheme ? 1 : 0;
+        if (wantLight != lastThemeLight) {
+            lastThemeLight = wantLight;
+            if (panelWidget) panelWidget->setBackground(wantLight ? panelSvgLight : panelSvgDark);
+            if (visualEditor) visualEditor->setTheme(wantLight != 0);
+        }
 
         auto* mod = static_cast<MonsoonSandsVisualExpander*>(module);
 
