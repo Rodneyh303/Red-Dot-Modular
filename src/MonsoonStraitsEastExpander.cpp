@@ -1,4 +1,5 @@
 #include <rack.hpp>
+#include "ui/OutputAccent.hpp"
 #include "Monsoon.hpp"
 #include "MonsoonStraitsEastExpander.hpp"
 
@@ -30,6 +31,18 @@ struct MonsoonStraitsEastExpanderWidget : ModuleWidget {
         
         float startY  = 50.0f/mm2pxl; // Top margin
         float spacingY = 35.0f/mm2pxl;
+
+        // In/out differentiation: contrasting region behind the 3 output columns
+        // (gate/CV/accent). Added before the ports so it sits behind them. This
+        // expander currently uses a dark-only panel, so the accent is the
+        // dark-panel (lighter) variant.
+        {
+            float ax = outGateX - 6.0f;
+            float aw = (outAccX + 6.0f) - ax;
+            float ay = startY - 6.0f;
+            float ah = (startY + 7*spacingY + 5.0f + 6.0f) - ay;
+            redDot::addOutputAccent(this, ax, ay, aw, ah, []() { return false; });
+        }
 
 
 
