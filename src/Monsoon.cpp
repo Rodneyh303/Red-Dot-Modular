@@ -177,6 +177,8 @@ void Monsoon::updateExpanderPointers() {
         gate2Assign = 1;
         invertMuteLogic = false;
         restartOnUnmute = false;
+        reseedOnRoll = false;
+        reseedOnRestart = false;
         lastModeSelect = -1;
         
         if (scaleManager) {
@@ -333,6 +335,12 @@ float Monsoon::semitoneToVolts(int semitone) {
         prevExtGate = false;
 
         if (!locked) {
+            // Reseed on restart (optional): inject a fresh pattern as part of
+            // the restart, rather than only replaying the held one from the top.
+            if (reseedOnRestart) {
+                engine.pe.setPendingRhythmSeed(sampleSeedFromSource());
+                engine.pe.setPendingMelodySeed(sampleSeedFromSource());
+            }
             if (resetImmediate) {
                 engine.pe.applyPendingSeedsAndRedraw(modeController->currentPatternInput);
             }
@@ -360,14 +368,18 @@ float Monsoon::semitoneToVolts(int semitone) {
     // patched, in which case it samples-and-holds a reproducible seed. Shared by
     // the panel dice buttons and the gate-assigned "Re-dice" triggers so every
     // dice trigger behaves identically.
+    // If reseedOnRoll is set (context menu), a roll ALSO reseeds from fresh
+    // internal entropy — the redraw path promotes B→A first so slew survives.
     void Monsoon::diceRhythm() {
         rhythmMode = 0;
         if (inputs[SEED_INPUT].isConnected()) engine.pe.setPendingRhythmSeed(sampleSeedFromSource());
+        else if (reseedOnRoll)                engine.pe.setPendingRhythmReseedRoll(sampleSeedFromSource());
         else                                  engine.pe.setPendingRhythmRoll();
     }
     void Monsoon::diceMelody() {
         melodyMode = 0;
         if (inputs[SEED_INPUT].isConnected()) engine.pe.setPendingMelodySeed(sampleSeedFromSource());
+        else if (reseedOnRoll)                engine.pe.setPendingMelodyReseedRoll(sampleSeedFromSource());
         else                                  engine.pe.setPendingMelodyRoll();
     }
 

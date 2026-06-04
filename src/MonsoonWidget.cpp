@@ -414,6 +414,14 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
                 sub->addChild(createBoolPtrMenuItem("Restart on unmute", "", &m->restartOnUnmute));
                 sub->addChild(createBoolPtrMenuItem("Inverted Mute logic (GATE 2)", "", &m->invertMuteLogic));
             }
+
+            sub->addChild(new ui::MenuSeparator);
+
+            {
+                auto* l = new ui::MenuLabel; l->text = "Reseed Policy"; sub->addChild(l);
+                sub->addChild(createBoolPtrMenuItem("Reseed on roll", "", &m->reseedOnRoll));
+                sub->addChild(createBoolPtrMenuItem("Reseed on restart", "", &m->reseedOnRestart));
+            }
         }));
 
         menu->addChild(createSubmenuItem("DNA Rotation", "", [=](ui::Menu* sub) {

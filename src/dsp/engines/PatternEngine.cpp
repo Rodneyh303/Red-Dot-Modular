@@ -14,6 +14,7 @@ void PatternEngine::seedRngFromFloat(rack::random::Xoroshiro128Plus& rng, float 
 void PatternEngine::reset() {
     rhythmSeedPending = melodySeedPending = false;
     rhythmRollPending = melodyRollPending = false;
+    rhythmReseedRollPending = melodyReseedRollPending = false;
     rhythmMode = melodyMode = 0;
     rhythmSeedCached = melodySeedCached = false;
 
@@ -328,18 +329,26 @@ void PatternEngine::refreshVisualCache(const PatternInput& in) {
 void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     if (in.locked) return;  // freeze everything: seeds, RNG, patterns
 
-    // Redraw if: a seed is pending (reproducible reseed), a ROLL is pending
-    // (dice press — advance RNG, no reseed), or Realtime mode.
-    bool shouldRedrawR = rhythmSeedPending || rhythmRollPending || (rhythmMode == 1);
-    bool shouldRedrawM = melodySeedPending || melodyRollPending || (melodyMode == 1);
+    // Redraw if: a seed is pending (reproducible reseed → A=B), a ROLL is
+    // pending (advance RNG, no reseed), a RESEED-ROLL is pending (reseed but
+    // keep the A/B morph), or Realtime mode.
+    bool shouldRedrawR = rhythmSeedPending || rhythmRollPending || rhythmReseedRollPending || (rhythmMode == 1);
+    bool shouldRedrawM = melodySeedPending || melodyRollPending || melodyReseedRollPending || (melodyMode == 1);
 
     if (rhythmSeedPending) {
         rhythmSeedFloat = rhythmSeedPendingFloat;
         seedRngFromFloat(rhythmRng, rhythmSeedFloat);
         rhythmSeedPending = false;
         rhythmFirstDraw = true;   // new seed → A=B=draw, reproducible at any slew
+    } else if (rhythmReseedRollPending) {
+        // Reseed the stream but DO NOT set firstDraw — redrawRhythm will promote
+        // B→A then draw a fresh B from the reseeded stream, so A and B differ and
+        // the slew morph survives.
+        rhythmSeedFloat = rhythmReseedRollFloat;
+        seedRngFromFloat(rhythmRng, rhythmSeedFloat);
     }
     rhythmRollPending = false;     // consume the roll (RNG already advances in redraw)
+    rhythmReseedRollPending = false;
     if (shouldRedrawR) redrawRhythm(in);
 
     if (melodySeedPending) {
@@ -347,8 +356,12 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
         seedRngFromFloat(melodyRng, melodySeedFloat);
         melodySeedPending = false;
         melodyFirstDraw = true;
+    } else if (melodyReseedRollPending) {
+        melodySeedFloat = melodyReseedRollFloat;
+        seedRngFromFloat(melodyRng, melodySeedFloat);
     }
     melodyRollPending = false;
+    melodyReseedRollPending = false;
     if (shouldRedrawM) redrawMelody(in);
 
     // Always refresh the cache so the LEDs react to live knob changes in Dice mode

@@ -131,6 +131,14 @@ struct PatternEngine {
     // on every press.
     bool  rhythmRollPending = false;
     bool  melodyRollPending = false;
+    // Pending RESEED-ROLL — reseed the RNG from a fresh value AND keep the A/B
+    // morph: promote B→A first, reseed, draw fresh B, do NOT set firstDraw. Used
+    // by the "Reseed on roll" option so a roll injects entropy without the A=B
+    // collapse that a plain seed-pending causes.
+    bool  rhythmReseedRollPending = false;
+    bool  melodyReseedRollPending = false;
+    float rhythmReseedRollFloat = 0.f;
+    float melodyReseedRollFloat = 0.f;
     int   rhythmMode = 0;  // 0=dice, 1=realtime
     int   melodyMode = 0;
 
@@ -231,13 +239,18 @@ struct PatternEngine {
     void setPendingRhythmRoll() { rhythmRollPending = true; }
     /// Arm a melody ROLL (dice press) — redraw without reseeding.
     void setPendingMelodyRoll() { melodyRollPending = true; }
-    
-    /// Check if a rhythm dice action (seed OR roll) is pending — drives the
-    /// dice light, which should blink for any armed dice press.
-    bool isRhythmSeedPending() const { return rhythmSeedPending || rhythmRollPending; }
 
-    /// Check if a melody dice action (seed OR roll) is pending.
-    bool isMelodySeedPending() const { return melodySeedPending || melodyRollPending; }
+    /// Arm a rhythm RESEED-ROLL — reseed from seedValue but keep the A/B morph
+    /// (promote B→A, no firstDraw). For the "Reseed on roll" option.
+    void setPendingRhythmReseedRoll(float seedValue) { rhythmReseedRollFloat = seedValue; rhythmReseedRollPending = true; }
+    /// Arm a melody RESEED-ROLL.
+    void setPendingMelodyReseedRoll(float seedValue) { melodyReseedRollFloat = seedValue; melodyReseedRollPending = true; }
+
+    /// Check if a rhythm dice action (seed OR roll OR reseed-roll) is pending.
+    bool isRhythmSeedPending() const { return rhythmSeedPending || rhythmRollPending || rhythmReseedRollPending; }
+
+    /// Check if a melody dice action (seed OR roll OR reseed-roll) is pending.
+    bool isMelodySeedPending() const { return melodySeedPending || melodyRollPending || melodyReseedRollPending; }
     
     /// Handle phrase boundary: apply pending seeds and redraw patterns
     void onPhraseBoundary(const PatternInput& in) {
