@@ -360,6 +360,12 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
         // slew morph survives. (Main-mode roll with fresh entropy.)
         rhythmSeedFloat = rhythmReseedRollFloat;
         seedRngFromFloat(rhythmRng, rhythmSeedFloat);
+    } else if (in.reseedOnRoll && rhythmMode == 1) {
+        // Realtime mode + reseed-on-roll: reseed each redraw so continuous
+        // realtime stays genuinely random (use SEED CV if present, else entropy).
+        rhythmSeedFloat = in.seedConnected ? in.seedSampleValue
+                                           : (float)(rack::random::uniform() * 10.0);
+        seedRngFromFloat(rhythmRng, rhythmSeedFloat);
     }
     // TRIAL: A anchored (promoteToA=false) and never reseeds. ROLL/reseed-roll/
     // seed/realtime: promote (main mode), A walks forward.
@@ -376,6 +382,10 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
         melodyFirstDraw = true;
     } else if (melodyReseedRollPending) {
         melodySeedFloat = melodyReseedRollFloat;
+        seedRngFromFloat(melodyRng, melodySeedFloat);
+    } else if (in.reseedOnRoll && melodyMode == 1) {
+        melodySeedFloat = in.seedConnected ? in.seedSampleValue
+                                           : (float)(rack::random::uniform() * 10.0);
         seedRngFromFloat(melodyRng, melodySeedFloat);
     }
     const bool mPromote = !melodyTrialPending;
