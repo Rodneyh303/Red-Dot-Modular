@@ -1,6 +1,7 @@
 #include <rack.hpp>
 #include "MonsoonInterchangeExpander.hpp"
 #include "Monsoon.hpp"
+#include "ui/RedScrew.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
 
 using namespace rack;
@@ -19,6 +20,7 @@ MonsoonInterchangeExpanderWidget(MonsoonInterchangeExpander* module) {
     panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/interchange_gemini_light.svg"));
     panelWidget = createPanel(asset::plugin(pluginInstance, "res/panels/interchange_gemini_new2.svg"));
     setPanel(panelWidget);
+    redDot::addRedScrews(this);
 
     // ... (Screws same as before) ...
     

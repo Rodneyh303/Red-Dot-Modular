@@ -85,4 +85,14 @@
 <circle cx="144.7" cy="272.6" r="9.4" fill="#d4d6d9" stroke="#1a8276" stroke-width="1.25"/>
 <line x1="144.7" y1="272.6" x2="144.7" y2="265.6" stroke="#1a8276" stroke-width="1"/>
 </g>
+<g inkscape:label="screws" inkscape:groupmode="layer">
+<circle cx="14.8" cy="14.8" r="6.5" fill="#c0202a" stroke="#e8e8ea" stroke-width="0.5"/>
+<line x1="10.6" y1="14.8" x2="18.9" y2="14.8" stroke="#e8e8ea" stroke-width="0.6" opacity="0.7"/>
+<circle cx="14.8" cy="364.7" r="6.5" fill="#c0202a" stroke="#e8e8ea" stroke-width="0.5"/>
+<line x1="10.6" y1="364.7" x2="18.9" y2="364.7" stroke="#e8e8ea" stroke-width="0.6" opacity="0.7"/>
+<circle cx="585.2" cy="14.8" r="6.5" fill="#c0202a" stroke="#e8e8ea" stroke-width="0.5"/>
+<line x1="581.1" y1="14.8" x2="589.4" y2="14.8" stroke="#e8e8ea" stroke-width="0.6" opacity="0.7"/>
+<circle cx="585.2" cy="364.7" r="6.5" fill="#c0202a" stroke="#e8e8ea" stroke-width="0.5"/>
+<line x1="581.1" y1="364.7" x2="589.4" y2="364.7" stroke="#e8e8ea" stroke-width="0.6" opacity="0.7"/>
+</g>
 </svg>

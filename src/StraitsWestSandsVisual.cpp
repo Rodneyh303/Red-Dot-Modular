@@ -1,5 +1,6 @@
 #include <rack.hpp>
 #include "Monsoon.hpp"
+#include "ui/RedScrew.hpp"
 #include "StraitsWestSandsVisual.hpp"
 #include "StraitsEastSandsVisual.hpp"
 #include "ui/SandsVisualEditorV4.hpp"
@@ -45,10 +46,7 @@ struct StraitsWestSandsVisualWidget : ModuleWidget {
                             "res/panels/StraitsWestSandsVisual_36HP.svg"));
         setPanel(panelWidget);
 
-        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH,0)));
-        addChild(createWidget<ScrewSilver>(Vec(box.size.x-2*RACK_GRID_WIDTH,0)));
-        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH,RACK_GRID_HEIGHT-RACK_GRID_WIDTH)));
-        addChild(createWidget<ScrewSilver>(Vec(box.size.x-2*RACK_GRID_WIDTH,RACK_GRID_HEIGHT-RACK_GRID_WIDTH)));
+        redDot::addRedScrews(this);
 
         // Voice tabs (voices 9-16)
         tabGroup = new TabButtonGroup(8, 9);

@@ -2,6 +2,7 @@
 #include <algorithm>
 #include "MonsoonWidget.hpp"
 #include "Monsoon.hpp"
+#include "ui/OutputAccent.hpp"
 #include "dsp/managers/MonsoonScaleManager.hpp"
 
 using namespace rack;
@@ -143,6 +144,14 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         addInput(createInputCentered<PJ301MPort>(mm2px(Vec(84.f, 120.f)), module, MonsoonIds::CV2_INPUT));
 
         // ── Outputs: 18mm pitch ───────────────────────────────────────────────
+        // In/out differentiation (Rack standard): a contrasting region behind the
+        // output group. Added before the ports so it sits behind them; follows
+        // the host theme.
+        {
+            Monsoon* mm = dynamic_cast<Monsoon*>(module);
+            redDot::addOutputAccent(this, 96.f, 97.f, 88.f, 31.f,
+                [mm]() { return mm ? mm->lightTheme : false; });
+        }
         addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(104.f, 105.f)), module, MonsoonIds::GATE_OUTPUT));
         addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(122.f, 105.f)), module, MonsoonIds::TIE_OUTPUT));
         addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(140.f, 105.f)), module, MonsoonIds::LEGATO_OUTPUT));
