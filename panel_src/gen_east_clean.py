@@ -20,7 +20,7 @@ def theme(dark):
         bg="#16181c", ink="#d8d8dc", dim="#8a8f98", teal="#26a69a", gold="#c8960c",
         accent="#dc2626", jackwell="#0b0d10", jackring="#4a5058", well="#0f1114",
         wellring="#3a4048", edrecess="#101216", edborder="#2a2f37", tabband="#202833",
-        group="#13151a", groupline="#262b33", motif="#262a32", motifwave="#2c313a")
+        group="#13151a", groupline="#262b33", motif="#2e333c", motifwave="#333944")
     return dict(
         bg="#e8e8ea", ink="#2a2a2e", dim="#888d96", teal="#1a8276", gold="#a07808",
         accent="#c0202a", jackwell="#dadce0", jackring="#9298a0", well="#d4d6d9",
@@ -38,6 +38,20 @@ def dm_mark(cx_mm, cy_mm, r_mm, t):
     A(f'<line x1="{cx:.1f}" y1="{cy-inner:.1f}" x2="{cx:.1f}" y2="{cy+inner:.1f}"/></g>')
     A(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{r*0.26:.1f}" fill="{t["accent"]}"/></g>')
     return "".join(L)
+
+# ── Embed the real dot.modular wordmark (nanosvg-safe logo-{dark,light}.svg) ──
+# The logo is 717x190 in its own coords with a full bg rect + red top-rule we
+# must strip (the panel has its own). We keep only the wordmark body (the <g>
+# groups) and place it via translate+scale into the title strip.
+import re as _re
+def logo_embed(dark, x_mm, y_mm, target_w_mm):
+    path = "res/logo/dot-modular-logo-dark.svg" if dark else "res/logo/dot-modular-logo-light.svg"
+    s = open(path).read()
+    body = s[s.find('<g '):s.rfind('</svg>')]   # drop the two leading bg/accent rects
+    LOGO_W, LOGO_H = 717.0, 190.0
+    scale = px(target_w_mm) / LOGO_W            # uniform scale to target width (px)
+    tx, ty = px(x_mm), px(y_mm)
+    return f'<g transform="translate({tx:.2f},{ty:.2f}) scale({scale:.5f})">{body}</g>'
 
 def mbs(x_mm, y_mm, w_mm, h_mm, t, op):
     x,y,w,h = px(x_mm),px(y_mm),px(w_mm),px(h_mm)
@@ -70,13 +84,13 @@ def gen(dark):
     A(f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="{PW}" height="{PH}" viewBox="0 0 {PW} {PH}">')
     A(f'<g inkscape:label="artwork" inkscape:groupmode="layer">')
     A(f'<rect width="{PW}" height="{PH}" fill="{t["bg"]}"/>')
-    A(mbs(120.0, 92.0, 70.0, 24.0, t, op=0.55))
-    A(waves(60.0, 118.0, t, op=0.55, rows=3, span_mm=138.0))
+    A(mbs(118.0, 80.0, 74.0, 28.0, t, op=0.7))
+    A(waves(60.0, 116.0, t, op=0.6, rows=3, span_mm=138.0))
     A(f'<line x1="0" y1="{px(11):.1f}" x2="{PW}" y2="{px(11):.1f}" stroke="{t["accent"]}" stroke-width="1.5" opacity="0.55"/>')
     A(f'<line x1="0" y1="{px(120):.1f}" x2="{PW}" y2="{px(120):.1f}" stroke="{t["groupline"]}" stroke-width="1" opacity="0.7"/>')
     gx,gy=4.0,ROW_TOP-4.0; gw,gh=(SPREAD_X+5.0)-gx,(ROW_BOT+2.0)-(ROW_TOP-4.0)
     A(f'<rect x="{px(gx):.1f}" y="{px(gy):.1f}" width="{px(gw):.1f}" height="{px(gh):.1f}" rx="{px(2):.1f}" fill="{t["group"]}" stroke="{t["groupline"]}" stroke-width="1"/>')
-    A(f'<rect x="{px(gx):.1f}" y="{px(gy-5):.1f}" width="{px(gw):.1f}" height="{px(5):.1f}" rx="{px(1):.1f}" fill="{t["tabband"]}" opacity="0.6"/>')
+    # (no header tab — the title strip above serves as the section header)
     sepx=0.5*(COL_J2+COL_A1)
     A(f'<line x1="{px(sepx):.1f}" y1="{px(gy+2):.1f}" x2="{px(sepx):.1f}" y2="{px(gy+gh-2):.1f}" stroke="{t["groupline"]}" stroke-width="0.75" opacity="0.6"/>')
     A(f'<rect x="{px(ED_X):.1f}" y="{px(ED_Y-6):.1f}" width="{px(ED_W):.1f}" height="{px(5):.1f}" rx="{px(1):.1f}" fill="{t["tabband"]}" opacity="0.6"/>')
@@ -86,8 +100,7 @@ def gen(dark):
         A(f'<line x1="{px(ED_X+1):.1f}" y1="{px(ly):.1f}" x2="{px(ED_X+ED_W-1):.1f}" y2="{px(ly):.1f}" stroke="{t["edborder"]}" stroke-width="0.75" opacity="0.7"/>')
     A('</g>')
     A(f'<g inkscape:label="branding" inkscape:groupmode="layer">')
-    A(dm_mark(14.0, 6.0, 4.0, t))
-    A(dm_mark(W_MM-8.0, 124.5, 3.0, t))
+    A(logo_embed(dark, x_mm=11.0, y_mm=8.0, target_w_mm=42.0))
     A('</g>')
     A(f'<g inkscape:label="control-graphics" inkscape:groupmode="layer">')
     def jack(x,y):
