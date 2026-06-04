@@ -39,16 +39,7 @@ addParam(createParamCentered<Trimpot>(Vec(168.0f, octY), module, MonsoonIds::EXP
 addInput(createInputCentered<PJ301MPort>(Vec(222.0f, octY), module, MonsoonIds::EXPANDER_OCT_HI_CV_INPUT));
 }
     Monsoon* getMonsoon() {
-        if (!module) return nullptr;
-        // Walk right first (Interchange typically sits left of Monsoon), then
-        // left as a fallback so it themes correctly on either side.
-        if (Monsoon* m = redDot::findMonsoon(module->rightExpander.module)) return m;
-        Module* curr = module->leftExpander.module;
-        for (int d = 0; curr && d < 8; ++d) {
-            if (auto* m = dynamic_cast<Monsoon*>(curr)) return m;
-            curr = curr->leftExpander.module;
-        }
-        return nullptr;
+        return module ? redDot::findMonsoonEitherSide(module) : nullptr;
     }
     bool hostLight() {
         Monsoon* m = getMonsoon();
