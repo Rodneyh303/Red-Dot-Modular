@@ -1,5 +1,14 @@
 """Clean Monsoon panel + tall Supertree backdrop (Gardens by the Bay).
-Authored from widget component positions. Controls legible; trees behind."""
+Authored from widget component positions. Controls legible; trees behind.
+
+WARNING: This is NOT the source of the ACTIVE Monsoon panel. The active panels
+(Monsoon_panel_{dark,light}_monsoon.svg) are the richer 568-element hand-tuned
+artwork; embed_monsoon.py reads those and only swaps the hidden components layer.
+Running this writes to *_GENERATED.svg (a simpler alternative base) so it can
+never clobber the active rich panel. The coordinate tables here are kept in sync
+with the current layout for reference / a possible future regen, but the active
+control framing (dice/slew/mix cluster recess + wells + labels) is drawn at
+RUNTIME in MonsoonWidget::draw(), not baked into the SVG."""
 import math, random
 S = 75.0 / 25.4  # Rack mm2px: 75 DPI, NOT 96 (was 3.7795 — caused 1.28x panel drift)
 def px(mm): return round(mm*S, 2)
@@ -14,12 +23,18 @@ SEMI=[(7.5+i*9.0,59.75) for i in range(12)]
 SEMI_LABELS=["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"]
 OCT=[(119,59.75),(128,59.75)]; SL_TOP,SLH=45.0,29.5
 MODE=(197,12); MODE_LIGHTS=[(192,34+i*8) for i in range(4)]; MODE_LABELS=["A","B","C","D"]
-ACTIONS=[(118+i*15,87) for i in range(6)]
-ACTION_LABELS=["DICE R","DICE M","LOCK","MUTE","RESET","RUN"]
-IN1=[(16,105),(30,105),(48,105),(66,105),(84,105)]; IN1_L=["RUN","RST","SEED","LEN","OFF"]
-IN2=[(16,120),(30,120),(48,120),(66,120),(84,120)]; IN2_L=["CLK","G1","G2","CV1","CV2"]
-OUT1=[(104,105),(122,105),(140,105),(158,105),(176,105)]; OUT1_L=["GATE","TIE","LEG","T|L","ACC"]
-OUT2=[(104,120),(122,120),(140,120),(158,120)]; OUT2_L=["CV","SEED","RUN","RST"]
+# Utility buttons (right of the cluster): lock/mute/reset/run only.
+ACTIONS=[(148,87),(163,87),(178,87),(193,87)]
+ACTION_LABELS=["LOCK","MUTE","RESET","RUN"]
+# Dice/Slew/Mix cluster: R column x=13, M column x=27. Rows SLEW/ROLL/TRIAL/MIX.
+CLUSTER_R=13.0; CLUSTER_M=27.0
+CL_SLEW=79.0; CL_MAIN=86.0; CL_TRIAL=93.0; CL_MIX=100.0
+# Inputs: row1 transport+gates, row2 clock+CV. 6 per row, 17mm pitch from x=15.
+IN1=[(15,105),(32,105),(49,105),(66,105),(83,105),(100,105)]; IN1_L=["RUN","RST","SEED","G1","G2","G3"]
+IN2=[(15,120),(32,120),(49,120),(66,120),(83,120),(100,120)]; IN2_L=["CLK","LEN","OFF","CV1","CV2","CV3"]
+# Outputs: shifted right (114..182, 17mm) to clear the 6th input column.
+OUT1=[(114,105),(131,105),(148,105),(165,105),(182,105)]; OUT1_L=["GATE","TIE","LEG","T|L","ACC"]
+OUT2=[(114,120),(131,120),(148,120),(165,120)]; OUT2_L=["CV","SEED","RUN","RST"]
 EXP=[(4,4),(9,4),(14,4)]
 
 def theme(dark):
@@ -83,6 +98,22 @@ def gen(dark):
     A(f'<circle cx="{px(MODE[0]):.1f}" cy="{px(MODE[1]):.1f}" r="{px(2.4):.1f}" fill="{t["knobwell"]}" stroke="{t["knobring"]}" stroke-width="1"/>')
     for (x,y),lbl in zip(ACTIONS,ACTION_LABELS):
         A(f'<circle cx="{px(x):.1f}" cy="{px(y):.1f}" r="{px(2.2):.1f}" fill="{t["knobwell"]}" stroke="{t["knobring"]}" stroke-width="0.9"/>')
+
+    # ── Dice/Slew/Mix cluster: framed recess binding the R & M control columns ──
+    cl_x0, cl_y0 = 6.0, 74.0
+    cl_w,  cl_h  = 30.0, 30.0
+    A(f'<rect x="{px(cl_x0):.1f}" y="{px(cl_y0):.1f}" width="{px(cl_w):.1f}" height="{px(cl_h):.1f}" '
+      f'rx="{px(2):.1f}" fill="{t["slot"]}" stroke="{t["slotline"]}" stroke-width="1" opacity="0.85"/>')
+    # column tint hints (R teal-ish, M same) and the four control wells per column
+    for cx in (CLUSTER_R, CLUSTER_M):
+        # SLEW trim well (small)
+        A(f'<circle cx="{px(cx):.1f}" cy="{px(CL_SLEW):.1f}" r="{px(3.4):.1f}" fill="{t["knobwell"]}" stroke="{t["knobring"]}" stroke-width="1"/>')
+        # MAIN dice button seat
+        A(f'<rect x="{px(cx-3.0):.1f}" y="{px(CL_MAIN-3.0):.1f}" width="{px(6):.1f}" height="{px(6):.1f}" rx="{px(1.2):.1f}" fill="{t["knobwell"]}" stroke="{t["accent"]}" stroke-width="0.9"/>')
+        # TRIAL dice button seat (gold ring to distinguish from main red)
+        A(f'<rect x="{px(cx-3.0):.1f}" y="{px(CL_TRIAL-3.0):.1f}" width="{px(6):.1f}" height="{px(6):.1f}" rx="{px(1.2):.1f}" fill="{t["knobwell"]}" stroke="{t["gold"]}" stroke-width="0.9"/>')
+        # MIX knob well (small)
+        A(f'<circle cx="{px(cx):.1f}" cy="{px(CL_MIX):.1f}" r="{px(3.6):.1f}" fill="{t["knobwell"]}" stroke="{t["teal"]}" stroke-width="1"/>')
     def jack(x,y,lbl,above):
         A(f'<circle cx="{px(x):.1f}" cy="{px(y):.1f}" r="{px(3.9):.1f}" fill="{t["jackwell"]}" stroke="{t["jackring"]}" stroke-width="1"/>')
         A(f'<circle cx="{px(x):.1f}" cy="{px(y):.1f}" r="{px(1.7):.1f}" fill="{t["slot"]}"/>')
@@ -96,7 +127,7 @@ def gen(dark):
     A('</svg>')
     return "\n".join(L)
 
-for dark,name in [(True,"Monsoon_panel_dark_monsoon.svg"),(False,"Monsoon_panel_light_monsoon.svg")]:
+for dark,name in [(True,"Monsoon_panel_dark_GENERATED.svg"),(False,"Monsoon_panel_light_GENERATED.svg")]:
     svg=gen(dark)
     with open(f"res/panels/{name}","w") as f: f.write(svg)
     print(f"{name}: {len(svg):,} bytes")

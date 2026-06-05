@@ -121,26 +121,26 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         // ── Dice + Slew + Mix cluster (left of the utility buttons) ──────────
         // All four dice are LARGER (VCVButton) than the utility buttons so they
         // stand out. Layout per column (rhythm | melody):
-        //   row A (top):  MAIN dice  (commit, A walks)
-        //   row B:        TRIAL dice (audition vs fixed A)
-        //   plus a SLEW trim and a MIX knob per column in the cluster.
-        const float CX = 6.f;          // cluster origin x (free left/mid strip)
-        const float CP = 11.f;         // column pitch (rhythm vs melody)
-        const float MAINY = 84.f, TRIALY = 92.f, SLEWY = 76.f, MIXY = 100.f;
-        // MAIN dice (big), with dice lights
-        addParam(createParamCentered<VCVButton>(mm2px(Vec(CX,    MAINY)), module, MonsoonIds::DICE_R_PARAM));
-        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(CX+3.2f, MAINY-3.2f)), module, MonsoonIds::RHYTHM_DICE_LIGHT));
-        addParam(createParamCentered<VCVButton>(mm2px(Vec(CX+CP, MAINY)), module, MonsoonIds::DICE_M_PARAM));
-        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(CX+CP+3.2f, MAINY-3.2f)), module, MonsoonIds::MELODY_DICE_LIGHT));
+        //   Dice/Slew/Mix cluster — a tidy framed block, R and M columns.
+        //   Rows top→bottom: SLEW (trim), MAIN dice, TRIAL dice, MIX (knob).
+        //   Labels + recess are drawn in draw() / the panel artwork.
+        const float CXR = 13.f;        // rhythm column x
+        const float CXM = 27.f;        // melody column x (14mm pitch)
+        const float SLEWY = 79.f, MAINY = 86.f, TRIALY = 93.f, MIXY = 100.f;
+        // MAIN dice (big), with dice lights to the upper-right of each
+        addParam(createParamCentered<VCVButton>(mm2px(Vec(CXR, MAINY)), module, MonsoonIds::DICE_R_PARAM));
+        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(CXR+3.4f, MAINY-3.0f)), module, MonsoonIds::RHYTHM_DICE_LIGHT));
+        addParam(createParamCentered<VCVButton>(mm2px(Vec(CXM, MAINY)), module, MonsoonIds::DICE_M_PARAM));
+        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(CXM+3.4f, MAINY-3.0f)), module, MonsoonIds::MELODY_DICE_LIGHT));
         // TRIAL dice (big)
-        addParam(createParamCentered<VCVButton>(mm2px(Vec(CX,    TRIALY)), module, MonsoonIds::DICE_TRIAL_R_PARAM));
-        addParam(createParamCentered<VCVButton>(mm2px(Vec(CX+CP, TRIALY)), module, MonsoonIds::DICE_TRIAL_M_PARAM));
+        addParam(createParamCentered<VCVButton>(mm2px(Vec(CXR, TRIALY)), module, MonsoonIds::DICE_TRIAL_R_PARAM));
+        addParam(createParamCentered<VCVButton>(mm2px(Vec(CXM, TRIALY)), module, MonsoonIds::DICE_TRIAL_M_PARAM));
         // SLEW trims (consumed at roll: limits step size)
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(CX,    SLEWY)), module, MonsoonIds::DICE_SLEW_R_PARAM));
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(CX+CP, SLEWY)), module, MonsoonIds::DICE_SLEW_M_PARAM));
+        addParam(createParamCentered<Trimpot>(mm2px(Vec(CXR, SLEWY)), module, MonsoonIds::DICE_SLEW_R_PARAM));
+        addParam(createParamCentered<Trimpot>(mm2px(Vec(CXM, SLEWY)), module, MonsoonIds::DICE_SLEW_M_PARAM));
         // MIX knobs (live A<->B morph, like spread)
-        addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(CX,    MIXY)), module, MonsoonIds::RHYTHM_MIX_PARAM));
-        addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(CX+CP, MIXY)), module, MonsoonIds::MELODY_MIX_PARAM));
+        addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(CXR, MIXY)), module, MonsoonIds::RHYTHM_MIX_PARAM));
+        addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(CXM, MIXY)), module, MonsoonIds::MELODY_MIX_PARAM));
 
         // ── Inputs: row1 = transport+gates, row2 = clock+CV. 17mm pitch. ─────
         const float IX=15.f, IP=17.f;
@@ -267,6 +267,38 @@ void MonsoonWidget::draw(const DrawArgs& args) {
     nvgFillColor(vg, getLightTheme() ? nvgRGBA(0xe6, 0xe6, 0xe6, 255) : nvgRGBA(0x23, 0x23, 0x23, 255));
     nvgFill(vg);
 
+    // ── Dice/Slew/Mix cluster recess + wells (drawn UNDER the knobs/buttons) ──
+    // Frames the R & M control columns into one group. Geometry matches the
+    // widget: CXR=13, CXM=27; rows SLEW=79, ROLL=86, TRIAL=93, MIX=100.
+    {
+        const bool lt0 = getLightTheme();
+        auto recessFill = lt0 ? nvgRGBA(0xd8,0xda,0xde,220) : nvgRGBA(0x10,0x12,0x16,220);
+        auto recessLine = lt0 ? nvgRGBA(0xc0,0xc4,0xca,255) : nvgRGBA(0x2a,0x2f,0x37,255);
+        auto wellFill   = lt0 ? nvgRGBA(0xd4,0xd6,0xd9,255) : nvgRGBA(0x0f,0x11,0x14,255);
+        auto red  = nvgRGBA(0xdc,0x26,0x26,255), gold = nvgRGBA(0xc8,0x96,0x0c,255), teal = nvgRGBA(0x26,0xa6,0x9a,255);
+        // recess
+        nvgBeginPath(vg);
+        nvgRoundedRect(vg, mm2px(6.f), mm2px(74.f), mm2px(30.f), mm2px(30.f), mm2px(2.f));
+        nvgFillColor(vg, recessFill); nvgFill(vg);
+        nvgStrokeColor(vg, recessLine); nvgStrokeWidth(vg, 1.f); nvgStroke(vg);
+        auto well = [&](float x, float y, float r, NVGcolor ring){
+            nvgBeginPath(vg); nvgCircle(vg, mm2px(x), mm2px(y), mm2px(r));
+            nvgFillColor(vg, wellFill); nvgFill(vg);
+            nvgStrokeColor(vg, ring); nvgStrokeWidth(vg, 1.f); nvgStroke(vg);
+        };
+        auto seat = [&](float x, float y, NVGcolor ring){
+            nvgBeginPath(vg); nvgRoundedRect(vg, mm2px(x-3.f), mm2px(y-3.f), mm2px(6.f), mm2px(6.f), mm2px(1.2f));
+            nvgFillColor(vg, wellFill); nvgFill(vg);
+            nvgStrokeColor(vg, ring); nvgStrokeWidth(vg, 0.9f); nvgStroke(vg);
+        };
+        for (float cx : {13.f, 27.f}) {
+            well(cx, 79.f, 3.4f, recessLine);   // SLEW trim
+            seat(cx, 86.f, red);                // MAIN dice (red)
+            seat(cx, 93.f, gold);               // TRIAL dice (gold)
+            well(cx, 100.f, 3.6f, teal);        // MIX knob (teal)
+        }
+    }
+
     ModuleWidget::draw(args); // renders the panel SVG + child widgets (knobs/jacks/LEDs)
 
         nvgFontFaceId(vg,APP->window->uiFont->handle);
@@ -309,6 +341,20 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         // Seq knob labels (below ring)
         setNvgFontSize(3.2f); fillNvgColour(170,170,170);
         writeNvgText(148.f,70.f,"BPM"); writeNvgText(163.f,70.f,"LEN"); writeNvgText(178.f,70.f,"OFFSET");
+
+        // ── Dice/Slew/Mix cluster labels (R & M columns) ──────────────────────
+        // Column headers + per-row labels. Geometry matches the widget cluster:
+        // CXR=13, CXM=27; rows SLEW=79, MAIN=86, TRIAL=93, MIX=100.
+        setNvgFontSize(3.0f); fillNvgColour(210,210,210);
+        writeNvgText(20.f, 73.5f, "DICE");                 // cluster header
+        setNvgFontSize(2.6f); fillNvgColour(38,166,154);   // teal R/M heads
+        writeNvgText(13.f, 76.0f, "R"); writeNvgText(27.f, 76.0f, "M");
+        // row labels, right of the M column
+        setNvgFontSize(2.5f); fillNvgColour(150,150,140);
+        writeNvgText(37.f, 79.f, "SLEW");
+        writeNvgText(37.f, 86.f, "ROLL");
+        writeNvgText(37.f, 93.f, "TRIAL");
+        writeNvgText(37.f, 100.f, "MIX");
 
         // Semitone note labels
         setNvgFontSize(3.0f);
