@@ -31,20 +31,28 @@ THEMES = {
 def cluster_layer(t):
     o = []
     a = o.append
-    # ── Dice/Slew/Mix cluster recess ──
-    a(f'<rect x="{px(6):.1f}" y="{px(74):.1f}" width="{px(30):.1f}" height="{px(30):.1f}" '
+    # Single control row at y=87. Slots (rx(i)=12+i*16.7):
+    #  0 SLEW_R 1 SLEW_M | 2 DICE_R 3 DICE_M | 4 TRIAL_R 5 TRIAL_M | 6 MIX_R 7 MIX_M
+    #  | 8 LOCK 9 MUTE 10 RESET 11 RUN
+    def rx(i): return 12.0 + i * 16.7
+    # ── Recess binding the slew/dice/trial/mix group (slots 0..7) ──
+    gx0 = rx(0) - 6.0
+    gx1 = rx(7) + 6.0
+    a(f'<rect x="{px(gx0):.1f}" y="{px(81):.1f}" width="{px(gx1-gx0):.1f}" height="{px(12):.1f}" '
       f'rx="{px(2):.1f}" fill="{t["recess"]}" stroke="{t["line"]}" stroke-width="1"/>')
-    for cx in (13.0, 27.0):
-        # SLEW trim well
-        a(f'<circle cx="{px(cx):.1f}" cy="{px(79):.1f}" r="{px(3.4):.1f}" fill="{t["well"]}" stroke="{t["line"]}" stroke-width="1"/>')
-        # MAIN dice seat (red)
-        a(f'<rect x="{px(cx-3):.1f}" y="{px(86-3):.1f}" width="{px(6):.1f}" height="{px(6):.1f}" rx="{px(1.2):.1f}" fill="{t["well"]}" stroke="{t["red"]}" stroke-width="0.9"/>')
-        # TRIAL dice seat (gold)
-        a(f'<rect x="{px(cx-3):.1f}" y="{px(93-3):.1f}" width="{px(6):.1f}" height="{px(6):.1f}" rx="{px(1.2):.1f}" fill="{t["well"]}" stroke="{t["gold"]}" stroke-width="0.9"/>')
-        # MIX knob well (teal)
-        a(f'<circle cx="{px(cx):.1f}" cy="{px(100):.1f}" r="{px(3.6):.1f}" fill="{t["well"]}" stroke="{t["teal"]}" stroke-width="1"/>')
+    # SLEW trim wells (neutral)
+    for i in (0, 1):
+        a(f'<circle cx="{px(rx(i)):.1f}" cy="{px(87):.1f}" r="{px(3.4):.1f}" fill="{t["well"]}" stroke="{t["line"]}" stroke-width="1"/>')
+    # MAIN dice seats (red)
+    for i in (2, 3):
+        a(f'<rect x="{px(rx(i)-3):.1f}" y="{px(87-3):.1f}" width="{px(6):.1f}" height="{px(6):.1f}" rx="{px(1.2):.1f}" fill="{t["well"]}" stroke="{t["red"]}" stroke-width="0.9"/>')
+    # TRIAL dice seats (gold)
+    for i in (4, 5):
+        a(f'<rect x="{px(rx(i)-3):.1f}" y="{px(87-3):.1f}" width="{px(6):.1f}" height="{px(6):.1f}" rx="{px(1.2):.1f}" fill="{t["well"]}" stroke="{t["gold"]}" stroke-width="0.9"/>')
+    # MIX knob wells (teal)
+    for i in (6, 7):
+        a(f'<circle cx="{px(rx(i)):.1f}" cy="{px(87):.1f}" r="{px(3.6):.1f}" fill="{t["well"]}" stroke="{t["teal"]}" stroke-width="1"/>')
     # ── Output group recess (in/out accent), behind the output jacks ──
-    # Outputs occupy x 114..182, y 105 & 120; frame with a margin.
     a(f'<rect x="{px(106):.1f}" y="{px(97):.1f}" width="{px(88):.1f}" height="{px(31):.1f}" '
       f'rx="{px(2.5):.1f}" fill="{t["outaccent"]}" fill-opacity="0.10" '
       f'stroke="{t["outline"]}" stroke-width="1" stroke-opacity="0.6"/>')

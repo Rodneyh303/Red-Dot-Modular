@@ -484,15 +484,15 @@
 </g>
 </g>
 <g inkscape:label="cluster-art" inkscape:groupmode="layer" id="cluster-art">
-<rect x="17.7" y="218.5" width="88.6" height="88.6" rx="5.9" fill="#d8dade" stroke="#c0c4ca" stroke-width="1"/>
-<circle cx="38.4" cy="233.3" r="10.0" fill="#d4d6d9" stroke="#c0c4ca" stroke-width="1"/>
-<rect x="29.5" y="245.1" width="17.7" height="17.7" rx="3.5" fill="#d4d6d9" stroke="#c0202a" stroke-width="0.9"/>
-<rect x="29.5" y="265.8" width="17.7" height="17.7" rx="3.5" fill="#d4d6d9" stroke="#a07808" stroke-width="0.9"/>
-<circle cx="38.4" cy="295.3" r="10.6" fill="#d4d6d9" stroke="#1a8276" stroke-width="1"/>
-<circle cx="79.7" cy="233.3" r="10.0" fill="#d4d6d9" stroke="#c0c4ca" stroke-width="1"/>
-<rect x="70.9" y="245.1" width="17.7" height="17.7" rx="3.5" fill="#d4d6d9" stroke="#c0202a" stroke-width="0.9"/>
-<rect x="70.9" y="265.8" width="17.7" height="17.7" rx="3.5" fill="#d4d6d9" stroke="#a07808" stroke-width="0.9"/>
-<circle cx="79.7" cy="295.3" r="10.6" fill="#d4d6d9" stroke="#1a8276" stroke-width="1"/>
+<rect x="17.7" y="239.2" width="380.6" height="35.4" rx="5.9" fill="#d8dade" stroke="#c0c4ca" stroke-width="1"/>
+<circle cx="35.4" cy="256.9" r="10.0" fill="#d4d6d9" stroke="#c0c4ca" stroke-width="1"/>
+<circle cx="84.7" cy="256.9" r="10.0" fill="#d4d6d9" stroke="#c0c4ca" stroke-width="1"/>
+<rect x="125.2" y="248.0" width="17.7" height="17.7" rx="3.5" fill="#d4d6d9" stroke="#c0202a" stroke-width="0.9"/>
+<rect x="174.5" y="248.0" width="17.7" height="17.7" rx="3.5" fill="#d4d6d9" stroke="#c0202a" stroke-width="0.9"/>
+<rect x="223.8" y="248.0" width="17.7" height="17.7" rx="3.5" fill="#d4d6d9" stroke="#a07808" stroke-width="0.9"/>
+<rect x="273.1" y="248.0" width="17.7" height="17.7" rx="3.5" fill="#d4d6d9" stroke="#a07808" stroke-width="0.9"/>
+<circle cx="331.3" cy="256.9" r="10.6" fill="#d4d6d9" stroke="#1a8276" stroke-width="1"/>
+<circle cx="380.6" cy="256.9" r="10.6" fill="#d4d6d9" stroke="#1a8276" stroke-width="1"/>
 <rect x="313.0" y="286.4" width="259.8" height="91.5" rx="7.4" fill="#202228" fill-opacity="0.10" stroke="#c0c4ca" stroke-width="1" stroke-opacity="0.6"/>
 </g>
 <g inkscape:label="components" inkscape:groupmode="layer" id="components" style="display:none">

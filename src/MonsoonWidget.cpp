@@ -106,41 +106,37 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
             addChild(createLightCentered<MediumLight<YellowLight>>(
                 mm2px(Vec(192.f, 34.f + i*8.f)), module, MonsoonIds::MODE_A_LIGHT+i));
 
-        // ── 6 action buttons: y=87, 15mm pitch ───────────────────────────────
-        const float JY=87.f, JYL=93.f, JX=118.f, JP=15.f;
-        // Utility buttons (lock/mute/reset/run) stay small (TL1105), on the right.
-        addParam(createParamCentered<TL1105>(mm2px(Vec(JX+2*JP, JY)), module, MonsoonIds::LOCK_PARAM));
-        addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec(JX+2*JP, JYL)), module, MonsoonIds::LOCK_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec(JX+3*JP, JY)), module, MonsoonIds::MUTE_PARAM));
-        addChild(createLightCentered<MediumLight<RedLight>>(  mm2px(Vec(JX+3*JP, JYL)), module, MonsoonIds::MUTE_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec(JX+4*JP, JY)), module, MonsoonIds::RESET_BUTTON_PARAM));
-        addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec(JX+4*JP, JYL)), module, MonsoonIds::RESET_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec(JX+5*JP, JY)), module, MonsoonIds::RUN_GATE_PARAM));
-        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(JX+5*JP, JYL)), module, MonsoonIds::RUN_GATE_LIGHT));
-
-        // ── Dice + Slew + Mix cluster (left of the utility buttons) ──────────
-        // All four dice are LARGER (VCVButton) than the utility buttons so they
-        // stand out. Layout per column (rhythm | melody):
-        //   Dice/Slew/Mix cluster — a tidy framed block, R and M columns.
-        //   Rows top→bottom: SLEW (trim), MAIN dice, TRIAL dice, MIX (knob).
-        //   Labels + recess are drawn in draw() / the panel artwork.
-        const float CXR = 13.f;        // rhythm column x
-        const float CXM = 27.f;        // melody column x (14mm pitch)
-        const float SLEWY = 79.f, MAINY = 86.f, TRIALY = 93.f, MIXY = 100.f;
-        // MAIN dice (big), with dice lights to the upper-right of each
-        addParam(createParamCentered<VCVButton>(mm2px(Vec(CXR, MAINY)), module, MonsoonIds::DICE_R_PARAM));
-        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(CXR+3.4f, MAINY-3.0f)), module, MonsoonIds::RHYTHM_DICE_LIGHT));
-        addParam(createParamCentered<VCVButton>(mm2px(Vec(CXM, MAINY)), module, MonsoonIds::DICE_M_PARAM));
-        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(CXM+3.4f, MAINY-3.0f)), module, MonsoonIds::MELODY_DICE_LIGHT));
+        // ── Single control row at y=87: all dice/slew/mix + utility aligned ──
+        // 12 slots across, grouped by type, evenly pitched and aligned with the
+        // jack columns below. Left→right:
+        //   SLEW R, SLEW M | DICE R, DICE M | TRIAL R, TRIAL M | MIX R, MIX M |
+        //   LOCK, MUTE, RESET, RUN
+        const float ROWY = 87.f, ROWYL = 93.f;     // controls / their lights
+        const float RX0 = 12.f, RXP = 16.7f;        // row origin + pitch (12 slots)
+        auto rx = [&](int i){ return RX0 + i * RXP; };
+        // SLEW trims (consumed at roll)
+        addParam(createParamCentered<Trimpot>(mm2px(Vec(rx(0), ROWY)), module, MonsoonIds::DICE_SLEW_R_PARAM));
+        addParam(createParamCentered<Trimpot>(mm2px(Vec(rx(1), ROWY)), module, MonsoonIds::DICE_SLEW_M_PARAM));
+        // MAIN dice (big) + lights
+        addParam(createParamCentered<VCVButton>(mm2px(Vec(rx(2), ROWY)), module, MonsoonIds::DICE_R_PARAM));
+        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(rx(2), ROWYL)), module, MonsoonIds::RHYTHM_DICE_LIGHT));
+        addParam(createParamCentered<VCVButton>(mm2px(Vec(rx(3), ROWY)), module, MonsoonIds::DICE_M_PARAM));
+        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(rx(3), ROWYL)), module, MonsoonIds::MELODY_DICE_LIGHT));
         // TRIAL dice (big)
-        addParam(createParamCentered<VCVButton>(mm2px(Vec(CXR, TRIALY)), module, MonsoonIds::DICE_TRIAL_R_PARAM));
-        addParam(createParamCentered<VCVButton>(mm2px(Vec(CXM, TRIALY)), module, MonsoonIds::DICE_TRIAL_M_PARAM));
-        // SLEW trims (consumed at roll: limits step size)
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(CXR, SLEWY)), module, MonsoonIds::DICE_SLEW_R_PARAM));
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(CXM, SLEWY)), module, MonsoonIds::DICE_SLEW_M_PARAM));
-        // MIX knobs (live A<->B morph, like spread)
-        addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(CXR, MIXY)), module, MonsoonIds::RHYTHM_MIX_PARAM));
-        addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(CXM, MIXY)), module, MonsoonIds::MELODY_MIX_PARAM));
+        addParam(createParamCentered<VCVButton>(mm2px(Vec(rx(4), ROWY)), module, MonsoonIds::DICE_TRIAL_R_PARAM));
+        addParam(createParamCentered<VCVButton>(mm2px(Vec(rx(5), ROWY)), module, MonsoonIds::DICE_TRIAL_M_PARAM));
+        // MIX knobs (live A<->B morph)
+        addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(rx(6), ROWY)), module, MonsoonIds::RHYTHM_MIX_PARAM));
+        addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(rx(7), ROWY)), module, MonsoonIds::MELODY_MIX_PARAM));
+        // Utility buttons (small) + lights
+        addParam(createParamCentered<TL1105>(mm2px(Vec(rx(8),  ROWY)), module, MonsoonIds::LOCK_PARAM));
+        addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec(rx(8),  ROWYL)), module, MonsoonIds::LOCK_LIGHT));
+        addParam(createParamCentered<TL1105>(mm2px(Vec(rx(9),  ROWY)), module, MonsoonIds::MUTE_PARAM));
+        addChild(createLightCentered<MediumLight<RedLight>>(  mm2px(Vec(rx(9),  ROWYL)), module, MonsoonIds::MUTE_LIGHT));
+        addParam(createParamCentered<TL1105>(mm2px(Vec(rx(10), ROWY)), module, MonsoonIds::RESET_BUTTON_PARAM));
+        addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec(rx(10), ROWYL)), module, MonsoonIds::RESET_LIGHT));
+        addParam(createParamCentered<TL1105>(mm2px(Vec(rx(11), ROWY)), module, MonsoonIds::RUN_GATE_PARAM));
+        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(rx(11), ROWYL)), module, MonsoonIds::RUN_GATE_LIGHT));
 
         // ── Inputs: row1 = transport+gates, row2 = clock+CV. 17mm pitch. ─────
         const float IX=15.f, IP=17.f;
@@ -314,19 +310,16 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         setNvgFontSize(3.2f); fillNvgColour(170,170,170);
         writeNvgText(148.f,70.f,"BPM"); writeNvgText(163.f,70.f,"LEN"); writeNvgText(178.f,70.f,"OFFSET");
 
-        // ── Dice/Slew/Mix cluster labels (R & M columns) ──────────────────────
-        // Column headers + per-row labels. Geometry matches the widget cluster:
-        // CXR=13, CXM=27; rows SLEW=79, MAIN=86, TRIAL=93, MIX=100.
-        setNvgFontSize(3.0f); fillNvgColour(210,210,210);
-        writeNvgText(20.f, 73.5f, "DICE");                 // cluster header
-        setNvgFontSize(2.6f); fillNvgColour(38,166,154);   // teal R/M heads
-        writeNvgText(13.f, 76.0f, "R"); writeNvgText(27.f, 76.0f, "M");
-        // row labels, right of the M column
-        setNvgFontSize(2.5f); fillNvgColour(150,150,140);
-        writeNvgText(37.f, 79.f, "SLEW");
-        writeNvgText(37.f, 86.f, "ROLL");
-        writeNvgText(37.f, 93.f, "TRIAL");
-        writeNvgText(37.f, 100.f, "MIX");
+        // ── Control-row labels (single row at y=87; lights/labels above) ──────
+        // Slots: SLEW R/M, DICE R/M, TRIAL R/M, MIX R/M, LOCK, MUTE, RESET, RUN.
+        // rx(i) = 12 + i*16.7. Labels sit just above the row (y≈81).
+        setNvgFontSize(2.4f); fillNvgColour(150,150,140);
+        auto rowLbl=[&](int i,const char* s){ writeNvgText(12.f+i*16.7f, 81.f, s); };
+        rowLbl(0,"SLEW R"); rowLbl(1,"SLEW M");
+        rowLbl(2,"DICE R"); rowLbl(3,"DICE M");
+        rowLbl(4,"TRIAL R"); rowLbl(5,"TRIAL M");
+        rowLbl(6,"MIX R"); rowLbl(7,"MIX M");
+        rowLbl(8,"LOCK"); rowLbl(9,"MUTE"); rowLbl(10,"RESET"); rowLbl(11,"RUN");
 
         // Semitone note labels
         setNvgFontSize(3.0f);
