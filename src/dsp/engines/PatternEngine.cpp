@@ -220,12 +220,29 @@ void PatternEngine::redrawRhythm(const PatternInput& in, bool promoteToA) {
             for (int v = 0; v < 15; v++) polyRhythmLockedA[v][i] = polyRhythmCandB[v][i];
         }
 
-        // fresh B
-        rhythmCandB[i]    = unitRhythm();
-        variationCandB[i] = unitRhythm();
-        legatoCandB[i]    = unitRhythm();
-        accentCandB[i]    = unitRhythm();
-        for (int v = 0; v < 15; v++) polyRhythmCandB[v][i] = unitRhythm();
+        // fresh candidate B. MODEL 2: SLEW is consumed here — instead of storing
+        // a full independent draw, store B = A + slew*(T-A), so slew LIMITS how
+        // far this roll can move B from the current A (low slew = small step). On
+        // MAIN dice A was just promoted to the previous B, so repeated low-slew
+        // rolls give a bounded random walk. On TRIAL dice A is the fixed anchor,
+        // so slew controls audition boldness. The live A<->B morph is MIX, not
+        // slew (see recomputeEffectiveRhythm).
+        const float sl = rack::math::clamp(in.rhythmSlew, 0.f, 1.f);
+        auto step = [&](float a){ return a + sl * (unitRhythm() - a); };
+        if (first) {
+            // No prior A to step from: draw a full independent pattern.
+            rhythmCandB[i]    = unitRhythm();
+            variationCandB[i] = unitRhythm();
+            legatoCandB[i]    = unitRhythm();
+            accentCandB[i]    = unitRhythm();
+            for (int v = 0; v < 15; v++) polyRhythmCandB[v][i] = unitRhythm();
+        } else {
+            rhythmCandB[i]    = step(rhythmLockedA[i]);
+            variationCandB[i] = step(variationLockedA[i]);
+            legatoCandB[i]    = step(legatoLockedA[i]);
+            accentCandB[i]    = step(accentLockedA[i]);
+            for (int v = 0; v < 15; v++) polyRhythmCandB[v][i] = step(polyRhythmLockedA[v][i]);
+        }
 
         if (first) {  // lock A to the same draw so effective == draw
             rhythmLockedA[i]    = rhythmCandB[i];
@@ -250,7 +267,10 @@ void PatternEngine::redrawRhythm(const PatternInput& in, bool promoteToA) {
 // slew: slewedDraw[] = A + slew*(B-A). When no Sands owns the spread stage,
 // copy slewedDraw → final (the public arrays the sequencer reads).
 void PatternEngine::recomputeEffectiveRhythm() {
-    const float s = rack::math::clamp(rhythmSlewLatched, 0.f, 1.f);
+    // Live A<->B morph: effective = A + mix*(B-A). MIX is the continuous, playable
+    // blend (like spread). SLEW is NOT used here — it was already consumed at roll
+    // time to shape B (see redrawRhythm). mix=0 -> committed A; mix=1 -> candidate B.
+    const float s = rack::math::clamp(rhythmMixLatched, 0.f, 1.f);
     auto bl = [s](float a, float b){ return a + s*(b-a); };
     for (int i = 0; i < 16; ++i) {
         slewedRhythm[i]    = bl(rhythmLockedA[i],    rhythmCandB[i]);
@@ -267,11 +287,11 @@ void PatternEngine::recomputeEffectiveRhythm() {
             for (int v=0;v<15;v++) polyRhythmRandom[v][i]=slewedPolyRhythm[v][i];
         }
     }
-    rhythmSlewApplied = s;
+    rhythmMixApplied = s;
 }
 
 void PatternEngine::recomputeEffectiveMelody() {
-    const float s = rack::math::clamp(melodySlewLatched, 0.f, 1.f);
+    const float s = rack::math::clamp(melodyMixLatched, 0.f, 1.f);
     auto bl = [s](float a, float b){ return a + s*(b-a); };
     for (int i = 0; i < 16; ++i) {
         slewedMelody[i] = bl(melodyLockedA[i], melodyCandB[i]);
@@ -288,7 +308,7 @@ void PatternEngine::recomputeEffectiveMelody() {
                                     polyOctaveRandom[v][i]=slewedPolyOctave[v][i]; }
         }
     }
-    melodySlewApplied = s;
+    melodyMixApplied = s;
 }
 
 // Regenerate melody pattern (16 steps of semitone + pitch voltage)
@@ -306,10 +326,20 @@ void PatternEngine::redrawMelody(const PatternInput& in, bool promoteToA) {
                                     polyOctaveLockedA[v][i]=polyOctaveCandB[v][i]; }
         }
 
-        melodyCandB[i] = unitMelody();
-        octaveCandB[i] = unitMelody();
-        for (int v=0;v<15;v++){ polyMelodyCandB[v][i]=unitMelody();
-                                polyOctaveCandB[v][i]=unitMelody(); }
+        // MODEL 2: SLEW consumed here — B = A + slew*(T-A). See redrawRhythm.
+        const float sl = rack::math::clamp(in.melodySlew, 0.f, 1.f);
+        auto step = [&](float a){ return a + sl * (unitMelody() - a); };
+        if (first) {
+            melodyCandB[i] = unitMelody();
+            octaveCandB[i] = unitMelody();
+            for (int v=0;v<15;v++){ polyMelodyCandB[v][i]=unitMelody();
+                                    polyOctaveCandB[v][i]=unitMelody(); }
+        } else {
+            melodyCandB[i] = step(melodyLockedA[i]);
+            octaveCandB[i] = step(octaveLockedA[i]);
+            for (int v=0;v<15;v++){ polyMelodyCandB[v][i]=step(polyMelodyLockedA[v][i]);
+                                    polyOctaveCandB[v][i]=step(polyOctaveLockedA[v][i]); }
+        }
 
         if (first) {
             melodyLockedA[i]=melodyCandB[i]; octaveLockedA[i]=octaveCandB[i];
@@ -329,13 +359,14 @@ void PatternEngine::redrawMelody(const PatternInput& in, bool promoteToA) {
     }
 }
 
-void PatternEngine::latchSlew(float rhythmSlew, float melodySlew) {
-    // Sample the live slew (called at step-0 wrap). Recompute effective arrays
-    // only when the latched value actually changes.
-    rhythmSlewLatched = rhythmSlew;
-    melodySlewLatched = melodySlew;
-    if (rhythmSlewLatched != rhythmSlewApplied) recomputeEffectiveRhythm();
-    if (melodySlewLatched != melodySlewApplied) recomputeEffectiveMelody();
+void PatternEngine::latchMix(float rhythmMix, float melodyMix) {
+    // Sample the live MIX (called at control rate). Recompute the effective A<->B
+    // morph only when it actually changes. This is the playable, continuous blend
+    // (the role spread has); SLEW is separate and consumed at roll time.
+    rhythmMixLatched = rhythmMix;
+    melodyMixLatched = melodyMix;
+    if (rhythmMixLatched != rhythmMixApplied) recomputeEffectiveRhythm();
+    if (melodyMixLatched != melodyMixApplied) recomputeEffectiveMelody();
 }
 
 // Updates the rhythm/melody arrays used for UI and LEDs based on the 

@@ -382,10 +382,16 @@ namespace MonsoonIds {
         DICE_SLEW_R_PARAM,
         DICE_SLEW_M_PARAM,
 
+        // Live A<->B blend ("MIX", Model 1): continuously interpolates committed
+        // pattern A with candidate B, like spread but global. SLEW (above) is
+        // consumed at roll (Model 2, limits the step); MIX is the live morph.
+        // Rhythm/melody independent so one can morph while the other holds.
+        RHYTHM_MIX_PARAM,
+        MELODY_MIX_PARAM,
+
         // Trial/audition dice (rhythm, melody): roll a fresh candidate B with A
         // ANCHORED (no promote), so the user auditions candidates against a fixed
-        // A. The regular dice (DICE_R/M_PARAM) commits B→A (main mode). Appended
-        // at END so existing param IDs stay stable.
+        // A. The regular dice (DICE_R/M_PARAM) commits B→A (main mode).
         DICE_TRIAL_R_PARAM,
         DICE_TRIAL_M_PARAM,
 
@@ -396,8 +402,10 @@ namespace MonsoonIds {
         CLK_INPUT = 0,
         GATE1_INPUT,
         GATE2_INPUT,
+        GATE3_MOD_INPUT,      // assignable gate mod (trial die / reseed toggles)
         CV1_INPUT,
         CV2_INPUT,
+        CV3_MOD_INPUT,        // assignable CV mod (rhythm/melody slew or mix)
         ACCENT_CV_INPUT,      // New: accent probability CV modulation
 
         RUN_GATE_INPUT,
@@ -610,6 +618,16 @@ struct Monsoon : Module {
 
     int cv1Mode = 0;
     int cv2Mode = 0;
+
+    // Assignable mod routing for the main-panel CV3 / GATE3 jacks (persisted).
+    // CV3 adds to the selected continuous target; GATE3 rising edge fires the
+    // selected action. Same target sets are offered (in full, attenuverted) on
+    // the Causeway expander, and the contributions SUM.
+    enum Cv3Target  { CV3_RHYTHM_SLEW=0, CV3_MELODY_SLEW, CV3_RHYTHM_MIX, CV3_MELODY_MIX, CV3_NUM_TARGETS };
+    enum Gate3Target{ G3_TRIAL_RHYTHM=0, G3_TRIAL_MELODY, G3_TOGGLE_RESEED_ROLL, G3_TOGGLE_RESEED_RESTART, G3_NUM_TARGETS };
+    int  cv3Target   = CV3_RHYTHM_SLEW;
+    int  gate3Target = G3_TRIAL_RHYTHM;
+    dsp::SchmittTrigger gate3Trig;   // rising-edge detect for GATE3 actions
     int gate1Assign = 0;
     int gate2Assign = 1;
     bool invertMuteLogic = false;

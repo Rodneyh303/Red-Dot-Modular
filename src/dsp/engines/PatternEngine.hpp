@@ -45,6 +45,10 @@ struct PatternInput {
     // effective pattern between the locked (A) and candidate (B) draws.
     float rhythmSlew       = 1.f;
     float melodySlew       = 1.f;
+    // Live A<->B blend (MIX). Separate from slew: slew is consumed at roll
+    // (shapes B); mix is the live, continuous A<->B morph used for output.
+    float rhythmMix        = 0.f;
+    float melodyMix        = 0.f;
     // Reseed policy passed through from the module (context-menu option). When
     // set, continuous Realtime-mode redraws also reseed each cycle from fresh
     // entropy (or the SEED CV if seedConnected), so realtime stays genuinely
@@ -89,6 +93,10 @@ struct PatternEngine {
     // Latched slew (sampled at step 0), and the last value we recomputed at.
     float rhythmSlewLatched = 1.f, melodySlewLatched = 1.f;
     float rhythmSlewApplied =-1.f, melodySlewApplied =-1.f;  // force first recompute
+    // Live MIX (A<->B blend) latched at control rate; the effective arrays are
+    // recomputed when it changes. This is what drives the continuous morph.
+    float rhythmMixLatched = 0.f, melodyMixLatched = 0.f;
+    float rhythmMixApplied =-1.f, melodyMixApplied =-1.f;
 
     // ── Slew output buffers (Option W) ────────────────────────────────────────
     // slew writes the A/B blend here (step-0 latched). The PUBLIC arrays above
@@ -235,9 +243,9 @@ struct PatternEngine {
     // ── Playable slew ──────────────────────────────────────────────────────────
     // Latch the live slew (call at step-0 wrap), then recompute effective arrays
     // if the latched value changed. Cheap; safe to call every step.
-    void latchSlew(float rhythmSlew, float melodySlew);
-    void recomputeEffectiveRhythm();   // public[] = A + rhythmSlewLatched*(B-A)
-    void recomputeEffectiveMelody();   // public[] = A + melodySlewLatched*(B-A)
+    void latchMix(float rhythmMix, float melodyMix);
+    void recomputeEffectiveRhythm();   // public[] = A + rhythmMixLatched*(B-A)
+    void recomputeEffectiveMelody();   // public[] = A + melodyMixLatched*(B-A)
 
     // ── Sands spread-stage contract (Option W) ─────────────────────────────────
     // A Sands visual expander owns the spread→final stage when present:

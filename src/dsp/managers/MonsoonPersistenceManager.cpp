@@ -15,6 +15,8 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_object_set_new(root, "cv2Mode", json_integer(m->cv2Mode));
     json_object_set_new(root, "gate1Assign", json_integer(m->gate1Assign));
     json_object_set_new(root, "gate2Assign", json_integer(m->gate2Assign));
+    json_object_set_new(root, "cv3Target", json_integer(m->cv3Target));
+    json_object_set_new(root, "gate3Target", json_integer(m->gate3Target));
     json_object_set_new(root, "invertMuteLogic", json_boolean(m->invertMuteLogic));
     json_object_set_new(root, "restartOnUnmute", json_boolean(m->restartOnUnmute));
     json_object_set_new(root, "reseedOnRoll", json_boolean(m->reseedOnRoll));
@@ -147,6 +149,8 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     if (auto j = json_object_get(root, "cv2Mode")) m->cv2Mode = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "gate1Assign")) m->gate1Assign = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "gate2Assign")) m->gate2Assign = (int)json_integer_value(j);
+    if (auto j = json_object_get(root, "cv3Target")) m->cv3Target = (int)json_integer_value(j);
+    if (auto j = json_object_get(root, "gate3Target")) m->gate3Target = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "invertMuteLogic")) m->invertMuteLogic = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "restartOnUnmute")) m->restartOnUnmute = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "reseedOnRoll")) m->reseedOnRoll = (bool)json_boolean_value(j);

@@ -108,10 +108,7 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
 
         // ── 6 action buttons: y=87, 15mm pitch ───────────────────────────────
         const float JY=87.f, JYL=93.f, JX=118.f, JP=15.f;
-        addParam(createParamCentered<TL1105>(mm2px(Vec(JX,      JY)), module, MonsoonIds::DICE_R_PARAM));
-        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(JX,      JYL)), module, MonsoonIds::RHYTHM_DICE_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec(JX+JP,   JY)), module, MonsoonIds::DICE_M_PARAM));
-        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(JX+JP,   JYL)), module, MonsoonIds::MELODY_DICE_LIGHT));
+        // Utility buttons (lock/mute/reset/run) stay small (TL1105), on the right.
         addParam(createParamCentered<TL1105>(mm2px(Vec(JX+2*JP, JY)), module, MonsoonIds::LOCK_PARAM));
         addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec(JX+2*JP, JYL)), module, MonsoonIds::LOCK_LIGHT));
         addParam(createParamCentered<TL1105>(mm2px(Vec(JX+3*JP, JY)), module, MonsoonIds::MUTE_PARAM));
@@ -120,47 +117,63 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec(JX+4*JP, JYL)), module, MonsoonIds::RESET_LIGHT));
         addParam(createParamCentered<TL1105>(mm2px(Vec(JX+5*JP, JY)), module, MonsoonIds::RUN_GATE_PARAM));
         addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(JX+5*JP, JYL)), module, MonsoonIds::RUN_GATE_LIGHT));
-        // Playable slew trimpots above the two dice buttons
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(JX,    JY-7.f)), module, MonsoonIds::DICE_SLEW_R_PARAM));
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(JX+JP, JY-7.f)), module, MonsoonIds::DICE_SLEW_M_PARAM));
 
-        // Trial/audition dice — directly below the regular rhythm/melody dice.
-        // Tap a trial die to audition a candidate against a fixed A; tap the
-        // regular die above to commit (A walks). Small buttons + green lights.
-        const float TJY = JYL + 6.f;   // just below the dice lights
-        addParam(createParamCentered<TL1105>(mm2px(Vec(JX,    TJY)), module, MonsoonIds::DICE_TRIAL_R_PARAM));
-        addParam(createParamCentered<TL1105>(mm2px(Vec(JX+JP, TJY)), module, MonsoonIds::DICE_TRIAL_M_PARAM));
+        // ── Dice + Slew + Mix cluster (left of the utility buttons) ──────────
+        // All four dice are LARGER (VCVButton) than the utility buttons so they
+        // stand out. Layout per column (rhythm | melody):
+        //   row A (top):  MAIN dice  (commit, A walks)
+        //   row B:        TRIAL dice (audition vs fixed A)
+        //   plus a SLEW trim and a MIX knob per column in the cluster.
+        const float CX = 6.f;          // cluster origin x (free left/mid strip)
+        const float CP = 11.f;         // column pitch (rhythm vs melody)
+        const float MAINY = 84.f, TRIALY = 92.f, SLEWY = 76.f, MIXY = 100.f;
+        // MAIN dice (big), with dice lights
+        addParam(createParamCentered<VCVButton>(mm2px(Vec(CX,    MAINY)), module, MonsoonIds::DICE_R_PARAM));
+        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(CX+3.2f, MAINY-3.2f)), module, MonsoonIds::RHYTHM_DICE_LIGHT));
+        addParam(createParamCentered<VCVButton>(mm2px(Vec(CX+CP, MAINY)), module, MonsoonIds::DICE_M_PARAM));
+        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(CX+CP+3.2f, MAINY-3.2f)), module, MonsoonIds::MELODY_DICE_LIGHT));
+        // TRIAL dice (big)
+        addParam(createParamCentered<VCVButton>(mm2px(Vec(CX,    TRIALY)), module, MonsoonIds::DICE_TRIAL_R_PARAM));
+        addParam(createParamCentered<VCVButton>(mm2px(Vec(CX+CP, TRIALY)), module, MonsoonIds::DICE_TRIAL_M_PARAM));
+        // SLEW trims (consumed at roll: limits step size)
+        addParam(createParamCentered<Trimpot>(mm2px(Vec(CX,    SLEWY)), module, MonsoonIds::DICE_SLEW_R_PARAM));
+        addParam(createParamCentered<Trimpot>(mm2px(Vec(CX+CP, SLEWY)), module, MonsoonIds::DICE_SLEW_M_PARAM));
+        // MIX knobs (live A<->B morph, like spread)
+        addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(CX,    MIXY)), module, MonsoonIds::RHYTHM_MIX_PARAM));
+        addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(CX+CP, MIXY)), module, MonsoonIds::MELODY_MIX_PARAM));
 
-        // ── Inputs: 18mm pitch, nudged right to clear edge accent ────────────
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(16.f, 105.f)), module, MonsoonIds::RUN_GATE_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(30.f, 105.f)), module, MonsoonIds::RESET_TRIGGER_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(48.f, 105.f)), module, MonsoonIds::SEED_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(66.f, 105.f)), module, MonsoonIds::LENGTH_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(84.f, 105.f)), module, MonsoonIds::OFFSET_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(16.f, 120.f)), module, MonsoonIds::CLK_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(30.f, 120.f)), module, MonsoonIds::GATE1_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(48.f, 120.f)), module, MonsoonIds::GATE2_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(66.f, 120.f)), module, MonsoonIds::CV1_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(84.f, 120.f)), module, MonsoonIds::CV2_INPUT));
+        // ── Inputs: row1 = transport+gates, row2 = clock+CV. 17mm pitch. ─────
+        const float IX=15.f, IP=17.f;
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(IX,      105.f)), module, MonsoonIds::RUN_GATE_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(IX+1*IP, 105.f)), module, MonsoonIds::RESET_TRIGGER_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(IX+2*IP, 105.f)), module, MonsoonIds::SEED_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(IX+3*IP, 105.f)), module, MonsoonIds::GATE1_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(IX+4*IP, 105.f)), module, MonsoonIds::GATE2_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(IX+5*IP, 105.f)), module, MonsoonIds::GATE3_MOD_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(IX,      120.f)), module, MonsoonIds::CLK_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(IX+1*IP, 120.f)), module, MonsoonIds::LENGTH_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(IX+2*IP, 120.f)), module, MonsoonIds::OFFSET_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(IX+3*IP, 120.f)), module, MonsoonIds::CV1_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(IX+4*IP, 120.f)), module, MonsoonIds::CV2_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(IX+5*IP, 120.f)), module, MonsoonIds::CV3_MOD_INPUT));
 
-        // ── Outputs: 18mm pitch ───────────────────────────────────────────────
-        // In/out differentiation (Rack standard): a contrasting region behind the
-        // output group. Added before the ports so it sits behind them; follows
-        // the host theme.
+        // ── Outputs: shifted right (114→182, 17mm) to clear the 6-wide input
+        //    rows. In/out accent region sits behind the output group. ──────────
         {
             Monsoon* mm = dynamic_cast<Monsoon*>(module);
-            redDot::addOutputAccent(this, 96.f, 97.f, 88.f, 31.f,
+            redDot::addOutputAccent(this, 106.f, 97.f, 88.f, 31.f,
                 [mm]() { return mm ? mm->lightTheme : false; });
         }
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(104.f, 105.f)), module, MonsoonIds::GATE_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(122.f, 105.f)), module, MonsoonIds::TIE_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(140.f, 105.f)), module, MonsoonIds::LEGATO_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(158.f, 105.f)), module, MonsoonIds::TIE_OR_LEGATO_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(176.f, 105.f)), module, MonsoonIds::ACCENT_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(104.f, 120.f)), module, MonsoonIds::CV_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(122.f, 120.f)), module, MonsoonIds::SEED_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(140.f, 120.f)), module, MonsoonIds::RUN_GATE_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(158.f, 120.f)), module, MonsoonIds::RESET_TRIGGER_OUTPUT));
+        const float OX=114.f, OP=17.f;
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(OX,      105.f)), module, MonsoonIds::GATE_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(OX+1*OP, 105.f)), module, MonsoonIds::TIE_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(OX+2*OP, 105.f)), module, MonsoonIds::LEGATO_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(OX+3*OP, 105.f)), module, MonsoonIds::TIE_OR_LEGATO_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(OX+4*OP, 105.f)), module, MonsoonIds::ACCENT_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(OX,      120.f)), module, MonsoonIds::CV_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(OX+1*OP, 120.f)), module, MonsoonIds::SEED_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(OX+2*OP, 120.f)), module, MonsoonIds::RUN_GATE_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(OX+3*OP, 120.f)), module, MonsoonIds::RESET_TRIGGER_OUTPUT));
 
         // ── Expander lights ───────────────────────────────────────────────────
         addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(EXP_LIGHT_X,              EXP_LIGHT_Y)), module, MonsoonIds::SCALE_EXPANDER_LIGHT));
@@ -477,6 +490,10 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
             { auto* l = new ui::MenuLabel; l->text = "CV IN 2"; sub->addChild(l);
               const char* n[] = {"Note value","Variation","Legato","Rest"};
               for (int v=0;v<4;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->cv2Mode;it->value=v;sub->addChild(it);} }
+            sub->addChild(new ui::MenuSeparator);
+            { auto* l = new ui::MenuLabel; l->text = "CV IN 3 (assignable mod)"; sub->addChild(l);
+              const char* n[] = {"Rhythm slew","Melody slew","Rhythm A>B mix","Melody A>B mix"};
+              for (int v=0;v<4;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->cv3Target;it->value=v;sub->addChild(it);} }
         }));
 
         menu->addChild(createSubmenuItem("Gate Assign", "", [=](ui::Menu* sub) {
@@ -487,6 +504,10 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
             { auto* l = new ui::MenuLabel; l->text = "Gate 2 Assignment"; sub->addChild(l);
               const char* n2[] = {"Toggle Dice M","Re-dice M","Mute","Restart"};
               for (int v=0;v<4;++v){auto* it=createMenuItem<IntItem>(n2[v]);it->module=m;it->target=&m->gate2Assign;it->value=v;sub->addChild(it);} }
+            sub->addChild(new ui::MenuSeparator);
+            { auto* l = new ui::MenuLabel; l->text = "Gate 3 (assignable mod)"; sub->addChild(l);
+              const char* n3[] = {"Trial rhythm die","Trial melody die","Toggle reseed-on-roll","Toggle reseed-on-restart"};
+              for (int v=0;v<4;++v){auto* it=createMenuItem<IntItem>(n3[v]);it->module=m;it->target=&m->gate3Target;it->value=v;sub->addChild(it);} }
         }));
 
         menu->addChild(createSubmenuItem("Scales", "", [=](ui::Menu* sub) {

@@ -26,14 +26,27 @@ void ModeController::updatePatternInput() {
     currentPatternInput.locked            = engine.locked;
     currentPatternInput.rhythmSlew        = paramManager.getRhythmSlew();
     currentPatternInput.melodySlew        = paramManager.getMelodySlew();
-    // PLAYABLE SLEW: apply the live slew every process (control rate), like
-    // spread — not only at the bar boundary. recomputeEffective only does work
-    // when the value actually changes, so this is cheap. This makes moving the
-    // slew knob continuously re-blend A→B (playable), matching spread behaviour.
-    // Lock still freezes it (skip when locked).
+    currentPatternInput.rhythmMix         = paramManager.getRhythmMix();
+    currentPatternInput.melodyMix         = paramManager.getMelodyMix();
+    // CV3 assignable mod: add the (normalised 0..1 from 0..10V) CV to the selected
+    // continuous target, summing with the knob. Clamped to [0,1].
+    if (mainModule && mainModule->inputs[MonsoonIds::CV3_MOD_INPUT].isConnected()) {
+        float cv = mainModule->inputs[MonsoonIds::CV3_MOD_INPUT].getVoltage() / 10.f;
+        auto add01 = [](float base, float d){ return rack::math::clamp(base + d, 0.f, 1.f); };
+        switch (mainModule->cv3Target) {
+            case Monsoon::CV3_RHYTHM_SLEW: currentPatternInput.rhythmSlew = add01(currentPatternInput.rhythmSlew, cv); break;
+            case Monsoon::CV3_MELODY_SLEW: currentPatternInput.melodySlew = add01(currentPatternInput.melodySlew, cv); break;
+            case Monsoon::CV3_RHYTHM_MIX:  currentPatternInput.rhythmMix  = add01(currentPatternInput.rhythmMix,  cv); break;
+            case Monsoon::CV3_MELODY_MIX:  currentPatternInput.melodyMix  = add01(currentPatternInput.melodyMix,  cv); break;
+        }
+    }
+    // PLAYABLE LIVE MORPH: apply the live MIX every process (control rate), like
+    // spread — this is the continuous A<->B blend. recomputeEffective only does
+    // work when MIX actually changes, so it is cheap. SLEW is NOT applied here;
+    // it is consumed at roll time (shapes B). Lock freezes the morph.
     if (!engine.locked) {
-        engine.pe.latchSlew(currentPatternInput.rhythmSlew,
-                            currentPatternInput.melodySlew);
+        engine.pe.latchMix(currentPatternInput.rhythmMix,
+                           currentPatternInput.melodyMix);
     }
     if (mainModule) {
         currentPatternInput.reseedOnRoll    = mainModule->reseedOnRoll;

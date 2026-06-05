@@ -50,6 +50,8 @@ public:
     /// Playable dice slew amounts (0–1)
     float getRhythmSlew() const;
     float getMelodySlew() const;
+    float getRhythmMix() const;
+    float getMelodyMix() const;
     
     // ──── Octave Range Getters ──────────────────────────────────────────────
     

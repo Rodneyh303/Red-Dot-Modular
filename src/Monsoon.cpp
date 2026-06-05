@@ -95,6 +95,9 @@ Monsoon::Monsoon() {
         configParam(DICE_SLEW_M_PARAM, 0.f, 1.f, 1.f, "Melody dice slew", "%", 0.f, 100.f);
         configButton(DICE_TRIAL_R_PARAM, "Trial rhythm (audition vs fixed A)");
         configButton(DICE_TRIAL_M_PARAM, "Trial melody (audition vs fixed A)");
+        // Live A<->B blend (MIX): 0 = committed pattern A, 1 = candidate B.
+        configParam(RHYTHM_MIX_PARAM, 0.f, 1.f, 0.f, "Rhythm A>B mix", "%", 0.f, 100.f);
+        configParam(MELODY_MIX_PARAM, 0.f, 1.f, 0.f, "Melody A>B mix", "%", 0.f, 100.f);
         configButton(LOCK_PARAM,   "Lock");
         configButton(MUTE_PARAM,   "Mute");
         configButton(MODE_PARAM,   "Mode (Cycle A-B-C-D)");
@@ -107,6 +110,8 @@ Monsoon::Monsoon() {
         configInput(GATE2_INPUT, "Gate In 2");
         configInput(CV1_INPUT,   "CV In 1");
         configInput(CV2_INPUT,   "CV In 2");
+        configInput(CV3_MOD_INPUT,   "CV3 assignable mod (slew/mix)");
+        configInput(GATE3_MOD_INPUT, "Gate3 assignable mod (trial die / reseed toggles)");
         configInput(ACCENT_CV_INPUT, "Accent Probability CV");  // New
 
         // --- RNG/SEED ADDITION: new inputs
@@ -497,6 +502,19 @@ void Monsoon::process(const ProcessArgs& args) {
     // ── Gate Assignment Handling ──
     tc.handleGate1Assignment(gate1Assign, gate1Rise);
     tc.handleGate2Assignment(gate2Assign, gateEdges.gate2Rise, tc.getGate2High(), invertMuteLogic);
+
+    // ── GATE3 assignable mod (rising edge → selected action) ──
+    // Same edge-action pattern as G1/G2: momentary actions (trial die) or bool
+    // toggles (reseed flags). Sums alongside the panel buttons.
+    if (inputs[GATE3_MOD_INPUT].isConnected()
+        && gate3Trig.process(inputs[GATE3_MOD_INPUT].getVoltage(), 0.1f, 1.f)) {
+        switch (gate3Target) {
+            case G3_TRIAL_RHYTHM:  rhythmMode = 0; engine.pe.setPendingRhythmTrial(); break;
+            case G3_TRIAL_MELODY:  melodyMode = 0; engine.pe.setPendingMelodyTrial(); break;
+            case G3_TOGGLE_RESEED_ROLL:    reseedOnRoll    = !reseedOnRoll;    break;
+            case G3_TOGGLE_RESEED_RESTART: reseedOnRestart = !reseedOnRestart; break;
+        }
+    }
 
     // --- Mode dispatch (only if running) ---
     if (runGateActive) {
