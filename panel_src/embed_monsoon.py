@@ -40,3 +40,9 @@ lights=[*ring,
 for v in ["dark","light"]:
     n = emit(f"res/panels/Monsoon_panel_{v}_monsoon.svg", params, inputs, outputs, lights)
     print(f"Monsoon {v}: {n} components embedded")
+
+# Inject the visible cluster-art layer (recess/wells/output-group). Idempotent.
+import embed_cluster_art
+for v in ["dark","light"]:
+    embed_cluster_art.inject(f"res/panels/Monsoon_panel_{v}_monsoon.svg", v)
+    print(f"Monsoon {v}: cluster-art layer injected")

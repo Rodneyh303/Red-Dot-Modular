@@ -267,37 +267,9 @@ void MonsoonWidget::draw(const DrawArgs& args) {
     nvgFillColor(vg, getLightTheme() ? nvgRGBA(0xe6, 0xe6, 0xe6, 255) : nvgRGBA(0x23, 0x23, 0x23, 255));
     nvgFill(vg);
 
-    // ── Dice/Slew/Mix cluster recess + wells (drawn UNDER the knobs/buttons) ──
-    // Frames the R & M control columns into one group. Geometry matches the
-    // widget: CXR=13, CXM=27; rows SLEW=79, ROLL=86, TRIAL=93, MIX=100.
-    {
-        const bool lt0 = getLightTheme();
-        auto recessFill = lt0 ? nvgRGBA(0xd8,0xda,0xde,220) : nvgRGBA(0x10,0x12,0x16,220);
-        auto recessLine = lt0 ? nvgRGBA(0xc0,0xc4,0xca,255) : nvgRGBA(0x2a,0x2f,0x37,255);
-        auto wellFill   = lt0 ? nvgRGBA(0xd4,0xd6,0xd9,255) : nvgRGBA(0x0f,0x11,0x14,255);
-        auto red  = nvgRGBA(0xdc,0x26,0x26,255), gold = nvgRGBA(0xc8,0x96,0x0c,255), teal = nvgRGBA(0x26,0xa6,0x9a,255);
-        // recess
-        nvgBeginPath(vg);
-        nvgRoundedRect(vg, mm2px(6.f), mm2px(74.f), mm2px(30.f), mm2px(30.f), mm2px(2.f));
-        nvgFillColor(vg, recessFill); nvgFill(vg);
-        nvgStrokeColor(vg, recessLine); nvgStrokeWidth(vg, 1.f); nvgStroke(vg);
-        auto well = [&](float x, float y, float r, NVGcolor ring){
-            nvgBeginPath(vg); nvgCircle(vg, mm2px(x), mm2px(y), mm2px(r));
-            nvgFillColor(vg, wellFill); nvgFill(vg);
-            nvgStrokeColor(vg, ring); nvgStrokeWidth(vg, 1.f); nvgStroke(vg);
-        };
-        auto seat = [&](float x, float y, NVGcolor ring){
-            nvgBeginPath(vg); nvgRoundedRect(vg, mm2px(x-3.f), mm2px(y-3.f), mm2px(6.f), mm2px(6.f), mm2px(1.2f));
-            nvgFillColor(vg, wellFill); nvgFill(vg);
-            nvgStrokeColor(vg, ring); nvgStrokeWidth(vg, 0.9f); nvgStroke(vg);
-        };
-        for (float cx : {13.f, 27.f}) {
-            well(cx, 79.f, 3.4f, recessLine);   // SLEW trim
-            seat(cx, 86.f, red);                // MAIN dice (red)
-            seat(cx, 93.f, gold);               // TRIAL dice (gold)
-            well(cx, 100.f, 3.6f, teal);        // MIX knob (teal)
-        }
-    }
+    // (Cluster recess + wells + output-group accent are now SVG panel art —
+    // see panel_src/embed_cluster_art.py. The widget only draws TEXT labels,
+    // since nanosvg ignores <text>.)
 
     ModuleWidget::draw(args); // renders the panel SVG + child widgets (knobs/jacks/LEDs)
 
