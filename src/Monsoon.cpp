@@ -1162,6 +1162,9 @@ void Monsoon::process(const ProcessArgs& args) {
 
     // ── Control-Rate DNA and Window Updates (Optimized CPU) ──
     if (controlDivider.process()) {
+       updateExpanderPointers();
+
+        // Check for expander changes and update cached pointers
         dnaManager.processDNA(expanderManager);
 
         // Refresh Audio-Rate Caches (Throttled)

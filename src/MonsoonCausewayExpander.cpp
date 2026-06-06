@@ -27,24 +27,24 @@ struct MonsoonCausewayExpanderWidget : ModuleWidget {
         setPanel(panelWidget);
         redDot::addRedScrews(this);
 
-        using M = MonsoonIds;
+       // using M = MonsoonIds;
         // CV section: jack | atten | atten | jack, rows = slew, mix.
         // Row 0 (slew): R jack/att on cols 0/1, M att/jack on cols 2/3.
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(CW_CV_COLS[0], CW_CV_ROWS[0])), module, M::CAUSEWAY_SLEW_R_CV));
-        addParam(createParamCentered<Trimpot>(  mm2px(Vec(CW_CV_COLS[1], CW_CV_ROWS[0])), module, M::CAUSEWAY_SLEW_R_ATT));
-        addParam(createParamCentered<Trimpot>(  mm2px(Vec(CW_CV_COLS[2], CW_CV_ROWS[0])), module, M::CAUSEWAY_SLEW_M_ATT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(CW_CV_COLS[3], CW_CV_ROWS[0])), module, M::CAUSEWAY_SLEW_M_CV));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(CW_CV_COLS[0], CW_CV_ROWS[0])), module, MonsoonIds::CAUSEWAY_SLEW_R_CV));
+        addParam(createParamCentered<Trimpot>(  mm2px(Vec(CW_CV_COLS[1], CW_CV_ROWS[0])), module, MonsoonIds::CAUSEWAY_SLEW_R_ATT));
+        addParam(createParamCentered<Trimpot>(  mm2px(Vec(CW_CV_COLS[2], CW_CV_ROWS[0])), module, MonsoonIds::CAUSEWAY_SLEW_M_ATT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(CW_CV_COLS[3], CW_CV_ROWS[0])), module, MonsoonIds::CAUSEWAY_SLEW_M_CV));
         // Row 1 (mix)
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(CW_CV_COLS[0], CW_CV_ROWS[1])), module, M::CAUSEWAY_MIX_R_CV));
-        addParam(createParamCentered<Trimpot>(  mm2px(Vec(CW_CV_COLS[1], CW_CV_ROWS[1])), module, M::CAUSEWAY_MIX_R_ATT));
-        addParam(createParamCentered<Trimpot>(  mm2px(Vec(CW_CV_COLS[2], CW_CV_ROWS[1])), module, M::CAUSEWAY_MIX_M_ATT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(CW_CV_COLS[3], CW_CV_ROWS[1])), module, M::CAUSEWAY_MIX_M_CV));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(CW_CV_COLS[0], CW_CV_ROWS[1])), module, MonsoonIds::CAUSEWAY_MIX_R_CV));
+        addParam(createParamCentered<Trimpot>(  mm2px(Vec(CW_CV_COLS[1], CW_CV_ROWS[1])), module, MonsoonIds::CAUSEWAY_MIX_R_ATT));
+        addParam(createParamCentered<Trimpot>(  mm2px(Vec(CW_CV_COLS[2], CW_CV_ROWS[1])), module, MonsoonIds::CAUSEWAY_MIX_M_ATT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(CW_CV_COLS[3], CW_CV_ROWS[1])), module, MonsoonIds::CAUSEWAY_MIX_M_CV));
 
         // Gate section: rhythm left (col 0), melody right (col 1); 5 rows.
-        const int gateL[5] = { M::CAUSEWAY_GATE_TRIAL_R, M::CAUSEWAY_GATE_REDICE_R,
-            M::CAUSEWAY_GATE_LIVESRC_R, M::CAUSEWAY_GATE_LIVESTATIC_R, M::CAUSEWAY_GATE_RESEED_ROLL };
-        const int gateR[5] = { M::CAUSEWAY_GATE_TRIAL_M, M::CAUSEWAY_GATE_REDICE_M,
-            M::CAUSEWAY_GATE_LIVESRC_M, M::CAUSEWAY_GATE_LIVESTATIC_M, M::CAUSEWAY_GATE_RESEED_RESTART };
+        const int gateL[5] = { MonsoonIds::CAUSEWAY_GATE_TRIAL_R, MonsoonIds::CAUSEWAY_GATE_REDICE_R,
+            MonsoonIds::CAUSEWAY_GATE_LIVESRC_R, MonsoonIds::CAUSEWAY_GATE_LIVESTATIC_R, MonsoonIds::CAUSEWAY_GATE_RESEED_ROLL };
+        const int gateR[5] = { MonsoonIds::CAUSEWAY_GATE_TRIAL_M, MonsoonIds::CAUSEWAY_GATE_REDICE_M,
+            MonsoonIds::CAUSEWAY_GATE_LIVESRC_M, MonsoonIds::CAUSEWAY_GATE_LIVESTATIC_M, MonsoonIds::CAUSEWAY_GATE_RESEED_RESTART };
         for (int r = 0; r < 5; ++r) {
             addInput(createInputCentered<PJ301MPort>(mm2px(Vec(CW_G_COLS[0], CW_G_ROWS[r])), module, gateL[r]));
             addInput(createInputCentered<PJ301MPort>(mm2px(Vec(CW_G_COLS[1], CW_G_ROWS[r])), module, gateR[r]));
