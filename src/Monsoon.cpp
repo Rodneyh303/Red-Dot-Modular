@@ -13,6 +13,10 @@
 #include <cstdint>
 #include <cassert>
 #include <cstring>
+#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) || defined(_M_IX86)
+  #include <pmmintrin.h>   // _MM_SET_DENORMALS_ZERO_MODE (SSE3)
+  #include <xmmintrin.h>   // _MM_SET_FLUSH_ZERO_MODE (SSE)
+#endif
 
 #include "MonsoonSandsExpander.hpp"
 #include "MonsoonInterchangeExpander.hpp"
@@ -463,6 +467,16 @@ int Monsoon::computeNoteLengthIdx(int requestedIdx, int ppqnMask) { return engin
 // Full logic for all modes inline here
 // Calls helper functions as needed
 void Monsoon::process(const ProcessArgs& args) {
+    // Flush denormals to zero on the audio thread. Decaying float state (pulses,
+    // smoothing, pitch CV) can drift into the denormal range, where FPU ops cost
+    // ~10-100x normal — a classic cause of sudden CPU spikes that scale with the
+    // number of active voices. With -ffast-math and no software flushing, this
+    // guard is the standard Rack-plugin fix and costs nothing in the normal case.
+#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) || defined(_M_IX86)
+    _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
+    _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
+#endif
+
     // --- Audio-rate Input Fetching (Cached & Guarded) ---
     float clkV      = cachedClkConnected ? inputs[CLK_INPUT].getVoltage() : 0.f;
     float gate1V    = cachedGate1Connected ? inputs[GATE1_INPUT].getVoltage() : 0.f;
