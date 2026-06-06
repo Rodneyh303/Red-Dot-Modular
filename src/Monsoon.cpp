@@ -95,6 +95,9 @@ Monsoon::Monsoon() {
         configParam(DICE_SLEW_M_PARAM, 0.f, 1.f, 1.f, "Melody dice slew", "%", 0.f, 100.f);
         configButton(DICE_TRIAL_R_PARAM, "Trial rhythm (audition vs fixed A)");
         configButton(DICE_TRIAL_M_PARAM, "Trial melody (audition vs fixed A)");
+        // Live A<->B blend (MIX): 0 = committed pattern A, 1 = candidate B.
+        configParam(RHYTHM_MIX_PARAM, 0.f, 1.f, 0.f, "Rhythm A>B mix", "%", 0.f, 100.f);
+        configParam(MELODY_MIX_PARAM, 0.f, 1.f, 0.f, "Melody A>B mix", "%", 0.f, 100.f);
         configButton(LOCK_PARAM,   "Lock");
         configButton(MUTE_PARAM,   "Mute");
         configButton(MODE_PARAM,   "Mode (Cycle A-B-C-D)");
@@ -107,6 +110,8 @@ Monsoon::Monsoon() {
         configInput(GATE2_INPUT, "Gate In 2");
         configInput(CV1_INPUT,   "CV In 1");
         configInput(CV2_INPUT,   "CV In 2");
+        configInput(CV3_MOD_INPUT,   "CV3 assignable mod (slew/mix)");
+        configInput(GATE3_MOD_INPUT, "Gate3 assignable mod (trial die / reseed toggles)");
         configInput(ACCENT_CV_INPUT, "Accent Probability CV");  // New
 
         // --- RNG/SEED ADDITION: new inputs
@@ -400,6 +405,23 @@ float Monsoon::semitoneToVolts(int semitone) {
         }
     }
 
+    // Single definition of every die-action. Fired by G3 (menu-routed) and by
+    // Causeway's dedicated gates (and any future source) — DRY.
+    void Monsoon::fireDieAction(int a) {
+        switch (a) {
+            case DA_TRIAL_R:       rhythmMode = 0; engine.pe.setPendingRhythmTrial(); break;
+            case DA_TRIAL_M:       melodyMode = 0; engine.pe.setPendingMelodyTrial(); break;
+            case DA_REDICE_R:      diceRhythm(); break;
+            case DA_REDICE_M:      diceMelody(); break;
+            case DA_LIVESRC_R:     rhythmLiveTrial = !rhythmLiveTrial; break;
+            case DA_LIVESRC_M:     melodyLiveTrial = !melodyLiveTrial; break;
+            case DA_LIVESTATIC_R:  rhythmMode = 1 - rhythmMode; break;
+            case DA_LIVESTATIC_M:  melodyMode = 1 - melodyMode; break;
+            case DA_RESEED_ROLL:   reseedOnRoll    = !reseedOnRoll;    break;
+            case DA_RESEED_RESTART:reseedOnRestart = !reseedOnRestart; break;
+        }
+    }
+
 
 
 // ---------------- Helper: phrase boundary hook -------------------------------
@@ -497,6 +519,32 @@ void Monsoon::process(const ProcessArgs& args) {
     // ── Gate Assignment Handling ──
     tc.handleGate1Assignment(gate1Assign, gate1Rise);
     tc.handleGate2Assignment(gate2Assign, gateEdges.gate2Rise, tc.getGate2High(), invertMuteLogic);
+
+    // ── GATE3 assignable mod (rising edge → selected action) ──
+    // Same edge-action pattern as G1/G2: momentary actions (trial die) or bool
+    // toggles (reseed flags). Sums alongside the panel buttons.
+    if (inputs[GATE3_MOD_INPUT].isConnected()
+        && gate3Trig.process(inputs[GATE3_MOD_INPUT].getVoltage(), 0.1f, 1.f)) {
+        // G3 targets map 1:1 onto the shared DieAction vocabulary.
+        static const int g3map[] = { DA_TRIAL_R, DA_TRIAL_M, DA_RESEED_ROLL,
+            DA_RESEED_RESTART, DA_LIVESRC_R, DA_LIVESRC_M };
+        if (gate3Target >= 0 && gate3Target < (int)(sizeof(g3map)/sizeof(g3map[0])))
+            fireDieAction(g3map[gate3Target]);
+    }
+
+    // ── Causeway expander gates: 10 dedicated die-action gate inputs ──────────
+    // Gate input order (CAUSEWAY_GATE_TRIAL_R..RESEED_RESTART) matches DieAction
+    // order, so gate i fires DieAction i. Edges fire the shared dispatch.
+    if (expanderManager.cachedCausewayExpander) {
+        rack::Module* cw = expanderManager.cachedCausewayExpander;
+        for (int i = 0; i < 10; ++i) {
+            int in = MonsoonIds::CAUSEWAY_GATE_TRIAL_R + i;
+            if (cw->inputs[in].isConnected()
+                && causewayGateTrig[i].process(cw->inputs[in].getVoltage(), 0.1f, 1.f)) {
+                fireDieAction(i);   // DieAction enum order == gate order
+            }
+        }
+    }
 
     // --- Mode dispatch (only if running) ---
     if (runGateActive) {
@@ -1114,6 +1162,9 @@ void Monsoon::process(const ProcessArgs& args) {
 
     // ── Control-Rate DNA and Window Updates (Optimized CPU) ──
     if (controlDivider.process()) {
+       updateExpanderPointers();
+
+        // Check for expander changes and update cached pointers
         dnaManager.processDNA(expanderManager);
 
         // Refresh Audio-Rate Caches (Throttled)
@@ -1182,6 +1233,8 @@ void init(rack::Plugin* p) {
 	pluginInstance = p;
 	p->addModel(modelMonsoon);
 	p->addModel(modelMonsoonInterchangeExpander);
+	p->addModel(modelMonsoonCausewayExpander);
+	p->addModel(modelMonsoonSurgeExpander);
 	p->addModel(modelMonsoonSandsExpander);
 	p->addModel(modelMonsoonStraitsEastExpander);
 	p->addModel(modelMonsoonStraitWestExpander);    // NEW (Phase 4)

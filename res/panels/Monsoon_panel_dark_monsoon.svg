@@ -483,6 +483,18 @@
 
 </g>
 </g>
+<g inkscape:label="cluster-art" inkscape:groupmode="layer" id="cluster-art">
+<rect x="17.7" y="239.2" width="380.6" height="35.4" rx="5.9" fill="#101216" stroke="#2a2f37" stroke-width="1"/>
+<circle cx="35.4" cy="256.9" r="10.0" fill="#0f1114" stroke="#2a2f37" stroke-width="1"/>
+<circle cx="84.7" cy="256.9" r="10.0" fill="#0f1114" stroke="#2a2f37" stroke-width="1"/>
+<rect x="125.2" y="248.0" width="17.7" height="17.7" rx="3.5" fill="#0f1114" stroke="#dc2626" stroke-width="0.9"/>
+<rect x="174.5" y="248.0" width="17.7" height="17.7" rx="3.5" fill="#0f1114" stroke="#dc2626" stroke-width="0.9"/>
+<rect x="223.8" y="248.0" width="17.7" height="17.7" rx="3.5" fill="#0f1114" stroke="#c8960c" stroke-width="0.9"/>
+<rect x="273.1" y="248.0" width="17.7" height="17.7" rx="3.5" fill="#0f1114" stroke="#c8960c" stroke-width="0.9"/>
+<circle cx="331.3" cy="256.9" r="10.6" fill="#0f1114" stroke="#26a69a" stroke-width="1"/>
+<circle cx="380.6" cy="256.9" r="10.6" fill="#0f1114" stroke="#26a69a" stroke-width="1"/>
+<rect x="313.0" y="286.4" width="259.8" height="91.5" rx="7.4" fill="#c8ccd4" fill-opacity="0.10" stroke="#2a2f37" stroke-width="1" stroke-opacity="0.6"/>
+</g>
 <g inkscape:label="components" inkscape:groupmode="layer" id="components" style="display:none">
     <circle id="SEMI0_PARAM" cx="22.146" cy="176.427" r="2.953" style="fill:#ff0000"/>
     <circle id="SEMI1_PARAM" cx="48.720" cy="176.427" r="2.953" style="fill:#ff0000"/>
@@ -499,8 +511,14 @@
     <circle id="OCT_LO_PARAM" cx="351.378" cy="176.427" r="2.953" style="fill:#ff0000"/>
     <circle id="OCT_HI_PARAM" cx="377.953" cy="176.427" r="2.953" style="fill:#ff0000"/>
     <circle id="MODE_PARAM" cx="581.693" cy="35.433" r="2.953" style="fill:#ff0000"/>
-    <circle id="DICE_R_PARAM" cx="348.425" cy="256.890" r="2.953" style="fill:#ff0000"/>
-    <circle id="DICE_M_PARAM" cx="392.717" cy="256.890" r="2.953" style="fill:#ff0000"/>
+    <circle id="DICE_R_PARAM" cx="17.717" cy="248.031" r="2.953" style="fill:#ff0000"/>
+    <circle id="DICE_M_PARAM" cx="50.197" cy="248.031" r="2.953" style="fill:#ff0000"/>
+    <circle id="DICE_TRIAL_R_PARAM" cx="17.717" cy="271.654" r="2.953" style="fill:#ff0000"/>
+    <circle id="DICE_TRIAL_M_PARAM" cx="50.197" cy="271.654" r="2.953" style="fill:#ff0000"/>
+    <circle id="DICE_SLEW_R_PARAM" cx="17.717" cy="224.409" r="2.953" style="fill:#ff0000"/>
+    <circle id="DICE_SLEW_M_PARAM" cx="50.197" cy="224.409" r="2.953" style="fill:#ff0000"/>
+    <circle id="RHYTHM_MIX_PARAM" cx="17.717" cy="295.276" r="2.953" style="fill:#ff0000"/>
+    <circle id="MELODY_MIX_PARAM" cx="50.197" cy="295.276" r="2.953" style="fill:#ff0000"/>
     <circle id="LOCK_PARAM" cx="437.008" cy="256.890" r="2.953" style="fill:#ff0000"/>
     <circle id="MUTE_PARAM" cx="481.299" cy="256.890" r="2.953" style="fill:#ff0000"/>
     <circle id="RESET_BUTTON_PARAM" cx="525.591" cy="256.890" r="2.953" style="fill:#ff0000"/>
@@ -513,25 +531,27 @@
     <circle id="BPM_PARAM" cx="437.008" cy="171.260" r="2.953" style="fill:#ff0000"/>
     <circle id="PATTERN_LENGTH_PARAM" cx="481.299" cy="171.260" r="2.953" style="fill:#ff0000"/>
     <circle id="PATTERN_OFFSET_PARAM" cx="525.591" cy="171.260" r="2.953" style="fill:#ff0000"/>
-    <circle id="RUN_GATE_INPUT" cx="47.244" cy="310.039" r="2.953" style="fill:#00ff00"/>
-    <circle id="RESET_TRIGGER_INPUT" cx="88.583" cy="310.039" r="2.953" style="fill:#00ff00"/>
-    <circle id="SEED_INPUT" cx="141.732" cy="310.039" r="2.953" style="fill:#00ff00"/>
-    <circle id="LENGTH_INPUT" cx="194.882" cy="310.039" r="2.953" style="fill:#00ff00"/>
-    <circle id="OFFSET_INPUT" cx="248.031" cy="310.039" r="2.953" style="fill:#00ff00"/>
-    <circle id="CLK_INPUT" cx="47.244" cy="354.331" r="2.953" style="fill:#00ff00"/>
-    <circle id="GATE1_INPUT" cx="88.583" cy="354.331" r="2.953" style="fill:#00ff00"/>
-    <circle id="GATE2_INPUT" cx="141.732" cy="354.331" r="2.953" style="fill:#00ff00"/>
+    <circle id="RUN_GATE_INPUT" cx="44.291" cy="310.039" r="2.953" style="fill:#00ff00"/>
+    <circle id="RESET_TRIGGER_INPUT" cx="94.488" cy="310.039" r="2.953" style="fill:#00ff00"/>
+    <circle id="SEED_INPUT" cx="144.685" cy="310.039" r="2.953" style="fill:#00ff00"/>
+    <circle id="GATE1_INPUT" cx="194.882" cy="310.039" r="2.953" style="fill:#00ff00"/>
+    <circle id="GATE2_INPUT" cx="245.079" cy="310.039" r="2.953" style="fill:#00ff00"/>
+    <circle id="GATE3_MOD_INPUT" cx="295.276" cy="310.039" r="2.953" style="fill:#00ff00"/>
+    <circle id="CLK_INPUT" cx="44.291" cy="354.331" r="2.953" style="fill:#00ff00"/>
+    <circle id="LENGTH_INPUT" cx="94.488" cy="354.331" r="2.953" style="fill:#00ff00"/>
+    <circle id="OFFSET_INPUT" cx="144.685" cy="354.331" r="2.953" style="fill:#00ff00"/>
     <circle id="CV1_INPUT" cx="194.882" cy="354.331" r="2.953" style="fill:#00ff00"/>
-    <circle id="CV2_INPUT" cx="248.031" cy="354.331" r="2.953" style="fill:#00ff00"/>
-    <circle id="GATE_OUTPUT" cx="307.087" cy="310.039" r="2.953" style="fill:#0000ff"/>
-    <circle id="TIE_OUTPUT" cx="360.236" cy="310.039" r="2.953" style="fill:#0000ff"/>
-    <circle id="LEGATO_OUTPUT" cx="413.386" cy="310.039" r="2.953" style="fill:#0000ff"/>
-    <circle id="TIE_OR_LEGATO_OUTPUT" cx="466.535" cy="310.039" r="2.953" style="fill:#0000ff"/>
-    <circle id="ACCENT_OUTPUT" cx="519.685" cy="310.039" r="2.953" style="fill:#0000ff"/>
-    <circle id="CV_OUTPUT" cx="307.087" cy="354.331" r="2.953" style="fill:#0000ff"/>
-    <circle id="SEED_OUTPUT" cx="360.236" cy="354.331" r="2.953" style="fill:#0000ff"/>
-    <circle id="RUN_GATE_OUTPUT" cx="413.386" cy="354.331" r="2.953" style="fill:#0000ff"/>
-    <circle id="RESET_TRIGGER_OUTPUT" cx="466.535" cy="354.331" r="2.953" style="fill:#0000ff"/>
+    <circle id="CV2_INPUT" cx="245.079" cy="354.331" r="2.953" style="fill:#00ff00"/>
+    <circle id="CV3_MOD_INPUT" cx="295.276" cy="354.331" r="2.953" style="fill:#00ff00"/>
+    <circle id="GATE_OUTPUT" cx="336.614" cy="310.039" r="2.953" style="fill:#0000ff"/>
+    <circle id="TIE_OUTPUT" cx="386.811" cy="310.039" r="2.953" style="fill:#0000ff"/>
+    <circle id="LEGATO_OUTPUT" cx="437.008" cy="310.039" r="2.953" style="fill:#0000ff"/>
+    <circle id="TIE_OR_LEGATO_OUTPUT" cx="487.205" cy="310.039" r="2.953" style="fill:#0000ff"/>
+    <circle id="ACCENT_OUTPUT" cx="537.402" cy="310.039" r="2.953" style="fill:#0000ff"/>
+    <circle id="CV_OUTPUT" cx="336.614" cy="354.331" r="2.953" style="fill:#0000ff"/>
+    <circle id="SEED_OUTPUT" cx="386.811" cy="354.331" r="2.953" style="fill:#0000ff"/>
+    <circle id="RUN_GATE_OUTPUT" cx="437.008" cy="354.331" r="2.953" style="fill:#0000ff"/>
+    <circle id="RESET_TRIGGER_OUTPUT" cx="487.205" cy="354.331" r="2.953" style="fill:#0000ff"/>
     <circle id="STEP_LIGHT_0" cx="478.346" cy="47.244" r="1.772" style="fill:#00ffff"/>
     <circle id="STEP_LIGHT_1" cx="494.166" cy="50.391" r="1.772" style="fill:#00ffff"/>
     <circle id="STEP_LIGHT_2" cx="507.577" cy="59.352" r="1.772" style="fill:#00ffff"/>
@@ -552,8 +572,8 @@
     <circle id="MODE_A_LIGHT_1" cx="566.929" cy="124.016" r="1.772" style="fill:#00ffff"/>
     <circle id="MODE_A_LIGHT_2" cx="566.929" cy="147.638" r="1.772" style="fill:#00ffff"/>
     <circle id="MODE_A_LIGHT_3" cx="566.929" cy="171.260" r="1.772" style="fill:#00ffff"/>
-    <circle id="RHYTHM_DICE_LIGHT" cx="348.425" cy="274.606" r="1.772" style="fill:#00ffff"/>
-    <circle id="MELODY_DICE_LIGHT" cx="392.717" cy="274.606" r="1.772" style="fill:#00ffff"/>
+    <circle id="RHYTHM_DICE_LIGHT" cx="27.165" cy="238.583" r="1.772" style="fill:#00ffff"/>
+    <circle id="MELODY_DICE_LIGHT" cx="59.646" cy="238.583" r="1.772" style="fill:#00ffff"/>
     <circle id="LOCK_LIGHT" cx="437.008" cy="274.606" r="1.772" style="fill:#00ffff"/>
     <circle id="MUTE_LIGHT" cx="481.299" cy="274.606" r="1.772" style="fill:#00ffff"/>
     <circle id="RESET_LIGHT" cx="525.591" cy="274.606" r="1.772" style="fill:#00ffff"/>

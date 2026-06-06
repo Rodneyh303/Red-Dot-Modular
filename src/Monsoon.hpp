@@ -382,10 +382,16 @@ namespace MonsoonIds {
         DICE_SLEW_R_PARAM,
         DICE_SLEW_M_PARAM,
 
+        // Live A<->B blend ("MIX", Model 1): continuously interpolates committed
+        // pattern A with candidate B, like spread but global. SLEW (above) is
+        // consumed at roll (Model 2, limits the step); MIX is the live morph.
+        // Rhythm/melody independent so one can morph while the other holds.
+        RHYTHM_MIX_PARAM,
+        MELODY_MIX_PARAM,
+
         // Trial/audition dice (rhythm, melody): roll a fresh candidate B with A
         // ANCHORED (no promote), so the user auditions candidates against a fixed
-        // A. The regular dice (DICE_R/M_PARAM) commits B→A (main mode). Appended
-        // at END so existing param IDs stay stable.
+        // A. The regular dice (DICE_R/M_PARAM) commits B→A (main mode).
         DICE_TRIAL_R_PARAM,
         DICE_TRIAL_M_PARAM,
 
@@ -396,8 +402,10 @@ namespace MonsoonIds {
         CLK_INPUT = 0,
         GATE1_INPUT,
         GATE2_INPUT,
+        GATE3_MOD_INPUT,      // assignable gate mod (trial die / reseed toggles)
         CV1_INPUT,
         CV2_INPUT,
+        CV3_MOD_INPUT,        // assignable CV mod (rhythm/melody slew or mix)
         ACCENT_CV_INPUT,      // New: accent probability CV modulation
 
         RUN_GATE_INPUT,
@@ -505,6 +513,55 @@ namespace MonsoonIds {
         NUM_EXPANDER_PARAMS
     };
 
+    // ── Causeway expander (dice/draw-generation modulation) ──────────────────
+    // Its own param/input enums (distinct from Interchange's EXPANDER_*). 4 CV
+    // attenuverters (slew R/M, mix R/M) + 10 dedicated die-action gate inputs.
+    enum CausewayParamIds {
+        CAUSEWAY_SLEW_R_ATT = 0,
+        CAUSEWAY_SLEW_M_ATT,
+        CAUSEWAY_MIX_R_ATT,
+        CAUSEWAY_MIX_M_ATT,
+        NUM_CAUSEWAY_PARAMS
+    };
+    enum CausewayInputIds {
+        CAUSEWAY_SLEW_R_CV = 0,
+        CAUSEWAY_SLEW_M_CV,
+        CAUSEWAY_MIX_R_CV,
+        CAUSEWAY_MIX_M_CV,
+        // 10 die-action gates (order = display order on the panel)
+        CAUSEWAY_GATE_TRIAL_R,
+        CAUSEWAY_GATE_TRIAL_M,
+        CAUSEWAY_GATE_REDICE_R,
+        CAUSEWAY_GATE_REDICE_M,
+        CAUSEWAY_GATE_LIVESRC_R,
+        CAUSEWAY_GATE_LIVESRC_M,
+        CAUSEWAY_GATE_LIVESTATIC_R,
+        CAUSEWAY_GATE_LIVESTATIC_M,
+        CAUSEWAY_GATE_RESEED_ROLL,
+        CAUSEWAY_GATE_RESEED_RESTART,
+        NUM_CAUSEWAY_INPUTS
+    };
+
+    // ── Surge expander (the big-5 pattern-knob modulation) ───────────────────
+    // 5 CV + attenuverters summing into NOTE VALUE / VARIATION / LEGATO / REST /
+    // ACCENT. Own port enums (0-based).
+    enum SurgeParamIds {
+        SURGE_NOTEVAL_ATT = 0,
+        SURGE_VARIATION_ATT,
+        SURGE_LEGATO_ATT,
+        SURGE_REST_ATT,
+        SURGE_ACCENT_ATT,
+        NUM_SURGE_PARAMS
+    };
+    enum SurgeInputIds {
+        SURGE_NOTEVAL_CV = 0,
+        SURGE_VARIATION_CV,
+        SURGE_LEGATO_CV,
+        SURGE_REST_CV,
+        SURGE_ACCENT_CV,
+        NUM_SURGE_INPUTS
+    };
+
     enum OutputIds {
         GATE_OUTPUT = 0,
         CV_OUTPUT,
@@ -610,6 +667,36 @@ struct Monsoon : Module {
 
     int cv1Mode = 0;
     int cv2Mode = 0;
+
+    // Assignable mod routing for the main-panel CV3 / GATE3 jacks (persisted).
+    // CV3 adds to the selected continuous target; GATE3 rising edge fires the
+    // selected action. Same target sets are offered (in full, attenuverted) on
+    // the Causeway expander, and the contributions SUM.
+    enum Cv3Target  { CV3_RHYTHM_SLEW=0, CV3_MELODY_SLEW, CV3_RHYTHM_MIX, CV3_MELODY_MIX, CV3_NUM_TARGETS };
+    enum Gate3Target{ G3_TRIAL_RHYTHM=0, G3_TRIAL_MELODY, G3_TOGGLE_RESEED_ROLL, G3_TOGGLE_RESEED_RESTART,
+                      G3_TOGGLE_RHYTHM_LIVESRC, G3_TOGGLE_MELODY_LIVESRC, G3_NUM_TARGETS };
+    int  cv3Target   = CV3_RHYTHM_SLEW;
+    int  gate3Target = G3_TRIAL_RHYTHM;
+    dsp::SchmittTrigger gate3Trig;   // rising-edge detect for GATE3 actions
+    dsp::SchmittTrigger causewayGateTrig[10];  // Causeway's 10 die-action gates
+    // Which dice the LIVE mode drives, per lane: false=main (promote, A walks),
+    // true=trial (anchored A, endless variations on a theme). Persisted.
+    bool rhythmLiveTrial = false;
+    bool melodyLiveTrial = false;
+
+    // ── Shared die-action vocabulary ─────────────────────────────────────────
+    // One definition of "what each die-action does", fired by G3 (menu-routed)
+    // AND by Causeway's dedicated gates (and any future source). DRY: add an
+    // action here and every gate source can use it.
+    enum DieAction {
+        DA_TRIAL_R = 0, DA_TRIAL_M,
+        DA_REDICE_R, DA_REDICE_M,
+        DA_LIVESRC_R, DA_LIVESRC_M,          // toggle live source main<->trial
+        DA_LIVESTATIC_R, DA_LIVESTATIC_M,    // toggle live<->static (rhythmMode)
+        DA_RESEED_ROLL, DA_RESEED_RESTART,
+        DA_NUM
+    };
+    void fireDieAction(int a);   // defined in Monsoon.cpp
     int gate1Assign = 0;
     int gate2Assign = 1;
     bool invertMuteLogic = false;
@@ -793,6 +880,8 @@ struct Monsoon : Module {
 
 extern Model* modelMonsoon;
 extern Model* modelMonsoonInterchangeExpander;
+extern Model* modelMonsoonCausewayExpander;
+extern Model* modelMonsoonSurgeExpander;
 extern Model* modelMonsoonSandsExpander;
 extern Model* modelMonsoonStraitsEastExpander; // Declare new expander model
 extern Model* modelMonsoonStraitWestExpander;  // NEW (Phase 4): voices 9-16

@@ -26,17 +26,56 @@ void ModeController::updatePatternInput() {
     currentPatternInput.locked            = engine.locked;
     currentPatternInput.rhythmSlew        = paramManager.getRhythmSlew();
     currentPatternInput.melodySlew        = paramManager.getMelodySlew();
-    // PLAYABLE SLEW: apply the live slew every process (control rate), like
-    // spread — not only at the bar boundary. recomputeEffective only does work
-    // when the value actually changes, so this is cheap. This makes moving the
-    // slew knob continuously re-blend A→B (playable), matching spread behaviour.
-    // Lock still freezes it (skip when locked).
+    currentPatternInput.rhythmMix         = paramManager.getRhythmMix();
+    currentPatternInput.melodyMix         = paramManager.getMelodyMix();
+    // CV3 assignable mod: add the (normalised 0..1 from 0..10V) CV to the selected
+    // continuous target, summing with the knob. Clamped to [0,1].
+    if (mainModule && mainModule->inputs[MonsoonIds::CV3_MOD_INPUT].isConnected()) {
+        float cv = mainModule->inputs[MonsoonIds::CV3_MOD_INPUT].getVoltage() / 10.f;
+        auto add01 = [](float base, float d){ return rack::math::clamp(base + d, 0.f, 1.f); };
+        switch (mainModule->cv3Target) {
+            case Monsoon::CV3_RHYTHM_SLEW: currentPatternInput.rhythmSlew = add01(currentPatternInput.rhythmSlew, cv); break;
+            case Monsoon::CV3_MELODY_SLEW: currentPatternInput.melodySlew = add01(currentPatternInput.melodySlew, cv); break;
+            case Monsoon::CV3_RHYTHM_MIX:  currentPatternInput.rhythmMix  = add01(currentPatternInput.rhythmMix,  cv); break;
+            case Monsoon::CV3_MELODY_MIX:  currentPatternInput.melodyMix  = add01(currentPatternInput.melodyMix,  cv); break;
+        }
+    }
+    // Causeway expander: 4 CV (×attenuverter) sum into the SAME slew/mix targets
+    // as CV3, alongside the knobs. Bipolar attenuverter, CV normalised 0..10V->0..1.
+    if (mainModule && mainModule->expanderManager.cachedCausewayExpander) {
+        rack::Module* cw = mainModule->expanderManager.cachedCausewayExpander;
+        auto add01 = [](float base, float d){ return rack::math::clamp(base + d, 0.f, 1.f); };
+        auto cvAtt = [&](int in, int att){
+            return (cw->inputs[in].getVoltage() / 10.f) * cw->params[att].getValue();
+        };
+        currentPatternInput.rhythmSlew = add01(currentPatternInput.rhythmSlew, cvAtt(MonsoonIds::CAUSEWAY_SLEW_R_CV, MonsoonIds::CAUSEWAY_SLEW_R_ATT));
+        currentPatternInput.melodySlew = add01(currentPatternInput.melodySlew, cvAtt(MonsoonIds::CAUSEWAY_SLEW_M_CV, MonsoonIds::CAUSEWAY_SLEW_M_ATT));
+        currentPatternInput.rhythmMix  = add01(currentPatternInput.rhythmMix,  cvAtt(MonsoonIds::CAUSEWAY_MIX_R_CV,  MonsoonIds::CAUSEWAY_MIX_R_ATT));
+        currentPatternInput.melodyMix  = add01(currentPatternInput.melodyMix,  cvAtt(MonsoonIds::CAUSEWAY_MIX_M_CV,  MonsoonIds::CAUSEWAY_MIX_M_ATT));
+    }
+    // Surge expander: 5 big-5 CV (x attenuverter) -> offsets the param getters add.
+    // CV normalised 0..10V -> 0..1, scaled bipolar by the attenuverter.
+    paramManager.clearSurgeOffsets();
+    if (mainModule && mainModule->expanderManager.cachedSurgeExpander) {
+        rack::Module* sg = mainModule->expanderManager.cachedSurgeExpander;
+        for (int i = 0; i < 5; ++i) {
+            float cv  = sg->inputs[MonsoonIds::SURGE_NOTEVAL_CV + i].getVoltage() / 10.f;
+            float att = sg->params[MonsoonIds::SURGE_NOTEVAL_ATT + i].getValue();
+            paramManager.setSurgeOffset(i, cv * att);
+        }
+    }
+    // PLAYABLE LIVE MORPH: apply the live MIX every process (control rate), like
+    // spread — this is the continuous A<->B blend. recomputeEffective only does
+    // work when MIX actually changes, so it is cheap. SLEW is NOT applied here;
+    // it is consumed at roll time (shapes B). Lock freezes the morph.
     if (!engine.locked) {
-        engine.pe.latchSlew(currentPatternInput.rhythmSlew,
-                            currentPatternInput.melodySlew);
+        engine.pe.latchMix(currentPatternInput.rhythmMix,
+                           currentPatternInput.melodyMix);
     }
     if (mainModule) {
         currentPatternInput.reseedOnRoll    = mainModule->reseedOnRoll;
+        currentPatternInput.rhythmLiveTrial = mainModule->rhythmLiveTrial;
+        currentPatternInput.melodyLiveTrial = mainModule->melodyLiveTrial;
         const bool sc = mainModule->inputs[MonsoonIds::SEED_INPUT].isConnected();
         currentPatternInput.seedConnected   = sc;
         currentPatternInput.seedSampleValue = sc ? mainModule->sampleSeedFromSource() : 0.f;

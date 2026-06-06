@@ -3,7 +3,7 @@
   "name": "Monsoon",
   "version": "2.0.1",
   "license": "proprietary",
-  "author": "Rodney Hoskinson",
+  "author": "Dr Rodney Hoskinson",
   "brand": "dot.modular",
   "modules": [
     {
@@ -24,6 +24,26 @@
         "Expander",
         "Sequencer",
 		"Random"
+      ]
+    },
+    {
+      "slug": "MonsoonCausewayExpander",
+      "name": "Causeway",
+      "description": "Dice/draw-generation modulation expander (slew/mix CV + die-action gates)",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Random"
+      ]
+    },
+    {
+      "slug": "MonsoonSurgeExpander",
+      "name": "Surge",
+      "description": "Big-5 pattern-knob CV modulation expander (note value, variation, legato, rest, accent)",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Random"
       ]
     },
     {
