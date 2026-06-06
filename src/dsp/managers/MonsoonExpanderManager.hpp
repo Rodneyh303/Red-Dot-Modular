@@ -15,6 +15,7 @@ struct StraitsEastSandsVisual;
 struct StraitsWestSandsVisual;
 struct StraitsSandsMacroVisual;
 
+extern rack::Model* modelMonsoon;
 extern rack::Model* modelMonsoonInterchangeExpander;
 extern rack::Model* modelMonsoonCausewayExpander;
 extern rack::Model* modelMonsoonSurgeExpander;
@@ -36,7 +37,6 @@ extern rack::Model* modelStraitsSandsMacroVisual;
 struct MonsoonExpanderManager {
     MonsoonInterchangeExpander*  cachedScaleExpander              = nullptr;
     rack::Module*                cachedCausewayExpander           = nullptr;
-        cachedSurgeExpander              = nullptr;
     rack::Module*                cachedSurgeExpander              = nullptr;
     MonsoonSandsExpander*        cachedDnaExpander                = nullptr;
     MonsoonSandsVisualExpander*  cachedSandsVisualExpander        = nullptr;
