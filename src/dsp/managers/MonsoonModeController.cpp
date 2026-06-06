@@ -40,6 +40,19 @@ void ModeController::updatePatternInput() {
             case Monsoon::CV3_MELODY_MIX:  currentPatternInput.melodyMix  = add01(currentPatternInput.melodyMix,  cv); break;
         }
     }
+    // Causeway expander: 4 CV (×attenuverter) sum into the SAME slew/mix targets
+    // as CV3, alongside the knobs. Bipolar attenuverter, CV normalised 0..10V->0..1.
+    if (mainModule && mainModule->expanderManager.cachedCausewayExpander) {
+        rack::Module* cw = mainModule->expanderManager.cachedCausewayExpander;
+        auto add01 = [](float base, float d){ return rack::math::clamp(base + d, 0.f, 1.f); };
+        auto cvAtt = [&](int in, int att){
+            return (cw->inputs[in].getVoltage() / 10.f) * cw->params[att].getValue();
+        };
+        currentPatternInput.rhythmSlew = add01(currentPatternInput.rhythmSlew, cvAtt(MonsoonIds::CAUSEWAY_SLEW_R_CV, MonsoonIds::CAUSEWAY_SLEW_R_ATT));
+        currentPatternInput.melodySlew = add01(currentPatternInput.melodySlew, cvAtt(MonsoonIds::CAUSEWAY_SLEW_M_CV, MonsoonIds::CAUSEWAY_SLEW_M_ATT));
+        currentPatternInput.rhythmMix  = add01(currentPatternInput.rhythmMix,  cvAtt(MonsoonIds::CAUSEWAY_MIX_R_CV,  MonsoonIds::CAUSEWAY_MIX_R_ATT));
+        currentPatternInput.melodyMix  = add01(currentPatternInput.melodyMix,  cvAtt(MonsoonIds::CAUSEWAY_MIX_M_CV,  MonsoonIds::CAUSEWAY_MIX_M_ATT));
+    }
     // PLAYABLE LIVE MORPH: apply the live MIX every process (control rate), like
     // spread — this is the continuous A<->B blend. recomputeEffective only does
     // work when MIX actually changes, so it is cheap. SLEW is NOT applied here;

@@ -27,6 +27,16 @@
       ]
     },
     {
+      "slug": "MonsoonCausewayExpander",
+      "name": "Causeway",
+      "description": "Dice/draw-generation modulation expander (slew/mix CV + die-action gates)",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Random"
+      ]
+    },
+    {
       "slug": "MonsoonSandsExpander",
       "name": "MonsoonSandsExpander",
       "description": "Monsoon Probability Manipulation, and Modulation Expander",

@@ -513,6 +513,35 @@ namespace MonsoonIds {
         NUM_EXPANDER_PARAMS
     };
 
+    // ── Causeway expander (dice/draw-generation modulation) ──────────────────
+    // Its own param/input enums (distinct from Interchange's EXPANDER_*). 4 CV
+    // attenuverters (slew R/M, mix R/M) + 10 dedicated die-action gate inputs.
+    enum CausewayParamIds {
+        CAUSEWAY_SLEW_R_ATT = 0,
+        CAUSEWAY_SLEW_M_ATT,
+        CAUSEWAY_MIX_R_ATT,
+        CAUSEWAY_MIX_M_ATT,
+        NUM_CAUSEWAY_PARAMS
+    };
+    enum CausewayInputIds {
+        CAUSEWAY_SLEW_R_CV = 0,
+        CAUSEWAY_SLEW_M_CV,
+        CAUSEWAY_MIX_R_CV,
+        CAUSEWAY_MIX_M_CV,
+        // 10 die-action gates (order = display order on the panel)
+        CAUSEWAY_GATE_TRIAL_R,
+        CAUSEWAY_GATE_TRIAL_M,
+        CAUSEWAY_GATE_REDICE_R,
+        CAUSEWAY_GATE_REDICE_M,
+        CAUSEWAY_GATE_LIVESRC_R,
+        CAUSEWAY_GATE_LIVESRC_M,
+        CAUSEWAY_GATE_LIVESTATIC_R,
+        CAUSEWAY_GATE_LIVESTATIC_M,
+        CAUSEWAY_GATE_RESEED_ROLL,
+        CAUSEWAY_GATE_RESEED_RESTART,
+        NUM_CAUSEWAY_INPUTS
+    };
+
     enum OutputIds {
         GATE_OUTPUT = 0,
         CV_OUTPUT,
@@ -629,10 +658,25 @@ struct Monsoon : Module {
     int  cv3Target   = CV3_RHYTHM_SLEW;
     int  gate3Target = G3_TRIAL_RHYTHM;
     dsp::SchmittTrigger gate3Trig;   // rising-edge detect for GATE3 actions
+    dsp::SchmittTrigger causewayGateTrig[10];  // Causeway's 10 die-action gates
     // Which dice the LIVE mode drives, per lane: false=main (promote, A walks),
     // true=trial (anchored A, endless variations on a theme). Persisted.
     bool rhythmLiveTrial = false;
     bool melodyLiveTrial = false;
+
+    // ── Shared die-action vocabulary ─────────────────────────────────────────
+    // One definition of "what each die-action does", fired by G3 (menu-routed)
+    // AND by Causeway's dedicated gates (and any future source). DRY: add an
+    // action here and every gate source can use it.
+    enum DieAction {
+        DA_TRIAL_R = 0, DA_TRIAL_M,
+        DA_REDICE_R, DA_REDICE_M,
+        DA_LIVESRC_R, DA_LIVESRC_M,          // toggle live source main<->trial
+        DA_LIVESTATIC_R, DA_LIVESTATIC_M,    // toggle live<->static (rhythmMode)
+        DA_RESEED_ROLL, DA_RESEED_RESTART,
+        DA_NUM
+    };
+    void fireDieAction(int a);   // defined in Monsoon.cpp
     int gate1Assign = 0;
     int gate2Assign = 1;
     bool invertMuteLogic = false;
@@ -816,6 +860,7 @@ struct Monsoon : Module {
 
 extern Model* modelMonsoon;
 extern Model* modelMonsoonInterchangeExpander;
+extern Model* modelMonsoonCausewayExpander;
 extern Model* modelMonsoonSandsExpander;
 extern Model* modelMonsoonStraitsEastExpander; // Declare new expander model
 extern Model* modelMonsoonStraitWestExpander;  // NEW (Phase 4): voices 9-16

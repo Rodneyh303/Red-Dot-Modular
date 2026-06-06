@@ -16,6 +16,7 @@ struct StraitsWestSandsVisual;
 struct StraitsSandsMacroVisual;
 
 extern rack::Model* modelMonsoonInterchangeExpander;
+extern rack::Model* modelMonsoonCausewayExpander;
 extern rack::Model* modelMonsoonSandsExpander;
 extern rack::Model* modelMonsoonSandsVisualExpander;
 extern rack::Model* modelMonsoonStraitsEastExpander;
@@ -33,6 +34,7 @@ extern rack::Model* modelStraitsSandsMacroVisual;
  */
 struct MonsoonExpanderManager {
     MonsoonInterchangeExpander*  cachedScaleExpander              = nullptr;
+    rack::Module*                cachedCausewayExpander           = nullptr;
     MonsoonSandsExpander*        cachedDnaExpander                = nullptr;
     MonsoonSandsVisualExpander*  cachedSandsVisualExpander        = nullptr;
     MonsoonStraitsEastExpander*  cachedPolyVoiceExpander          = nullptr;
@@ -59,6 +61,7 @@ struct MonsoonExpanderManager {
 
     void update(rack::Module* module) {
         cachedScaleExpander              = nullptr;
+        cachedCausewayExpander           = nullptr;
         cachedDnaExpander                = nullptr;
         cachedSandsVisualExpander        = nullptr;
         cachedPolyVoiceExpander          = nullptr;
@@ -89,6 +92,8 @@ struct MonsoonExpanderManager {
                 if (curr->model == modelMonsoonInterchangeExpander) {
                     if (!cachedScaleExpander) cachedScaleExpander = reinterpret_cast<MonsoonInterchangeExpander*>(curr);
                     scaleExpanderCount++;
+                } else if (curr->model == modelMonsoonCausewayExpander) {
+                    if (!cachedCausewayExpander) cachedCausewayExpander = curr;
                 } else if (curr->model == modelMonsoonSandsExpander) {
                     if (!cachedDnaExpander) cachedDnaExpander = reinterpret_cast<MonsoonSandsExpander*>(curr);
                     dnaExpanderCount++;

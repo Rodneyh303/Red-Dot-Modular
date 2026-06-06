@@ -405,6 +405,23 @@ float Monsoon::semitoneToVolts(int semitone) {
         }
     }
 
+    // Single definition of every die-action. Fired by G3 (menu-routed) and by
+    // Causeway's dedicated gates (and any future source) — DRY.
+    void Monsoon::fireDieAction(int a) {
+        switch (a) {
+            case DA_TRIAL_R:       rhythmMode = 0; engine.pe.setPendingRhythmTrial(); break;
+            case DA_TRIAL_M:       melodyMode = 0; engine.pe.setPendingMelodyTrial(); break;
+            case DA_REDICE_R:      diceRhythm(); break;
+            case DA_REDICE_M:      diceMelody(); break;
+            case DA_LIVESRC_R:     rhythmLiveTrial = !rhythmLiveTrial; break;
+            case DA_LIVESRC_M:     melodyLiveTrial = !melodyLiveTrial; break;
+            case DA_LIVESTATIC_R:  rhythmMode = 1 - rhythmMode; break;
+            case DA_LIVESTATIC_M:  melodyMode = 1 - melodyMode; break;
+            case DA_RESEED_ROLL:   reseedOnRoll    = !reseedOnRoll;    break;
+            case DA_RESEED_RESTART:reseedOnRestart = !reseedOnRestart; break;
+        }
+    }
+
 
 
 // ---------------- Helper: phrase boundary hook -------------------------------
@@ -508,13 +525,24 @@ void Monsoon::process(const ProcessArgs& args) {
     // toggles (reseed flags). Sums alongside the panel buttons.
     if (inputs[GATE3_MOD_INPUT].isConnected()
         && gate3Trig.process(inputs[GATE3_MOD_INPUT].getVoltage(), 0.1f, 1.f)) {
-        switch (gate3Target) {
-            case G3_TRIAL_RHYTHM:  rhythmMode = 0; engine.pe.setPendingRhythmTrial(); break;
-            case G3_TRIAL_MELODY:  melodyMode = 0; engine.pe.setPendingMelodyTrial(); break;
-            case G3_TOGGLE_RESEED_ROLL:    reseedOnRoll    = !reseedOnRoll;    break;
-            case G3_TOGGLE_RESEED_RESTART: reseedOnRestart = !reseedOnRestart; break;
-            case G3_TOGGLE_RHYTHM_LIVESRC: rhythmLiveTrial = !rhythmLiveTrial; break;
-            case G3_TOGGLE_MELODY_LIVESRC: melodyLiveTrial = !melodyLiveTrial; break;
+        // G3 targets map 1:1 onto the shared DieAction vocabulary.
+        static const int g3map[] = { DA_TRIAL_R, DA_TRIAL_M, DA_RESEED_ROLL,
+            DA_RESEED_RESTART, DA_LIVESRC_R, DA_LIVESRC_M };
+        if (gate3Target >= 0 && gate3Target < (int)(sizeof(g3map)/sizeof(g3map[0])))
+            fireDieAction(g3map[gate3Target]);
+    }
+
+    // ── Causeway expander gates: 10 dedicated die-action gate inputs ──────────
+    // Gate input order (CAUSEWAY_GATE_TRIAL_R..RESEED_RESTART) matches DieAction
+    // order, so gate i fires DieAction i. Edges fire the shared dispatch.
+    if (expanderManager.cachedCausewayExpander) {
+        rack::Module* cw = expanderManager.cachedCausewayExpander;
+        for (int i = 0; i < 10; ++i) {
+            int in = MonsoonIds::CAUSEWAY_GATE_TRIAL_R + i;
+            if (cw->inputs[in].isConnected()
+                && causewayGateTrig[i].process(cw->inputs[in].getVoltage(), 0.1f, 1.f)) {
+                fireDieAction(i);   // DieAction enum order == gate order
+            }
         }
     }
 
@@ -1202,6 +1230,7 @@ void init(rack::Plugin* p) {
 	pluginInstance = p;
 	p->addModel(modelMonsoon);
 	p->addModel(modelMonsoonInterchangeExpander);
+	p->addModel(modelMonsoonCausewayExpander);
 	p->addModel(modelMonsoonSandsExpander);
 	p->addModel(modelMonsoonStraitsEastExpander);
 	p->addModel(modelMonsoonStraitWestExpander);    // NEW (Phase 4)
