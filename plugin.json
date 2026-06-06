@@ -37,6 +37,16 @@
       ]
     },
     {
+      "slug": "MonsoonSurgeExpander",
+      "name": "Surge",
+      "description": "Big-5 pattern-knob CV modulation expander (note value, variation, legato, rest, accent)",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Random"
+      ]
+    },
+    {
       "slug": "MonsoonSandsExpander",
       "name": "MonsoonSandsExpander",
       "description": "Monsoon Probability Manipulation, and Modulation Expander",

@@ -1234,6 +1234,7 @@ void init(rack::Plugin* p) {
 	p->addModel(modelMonsoon);
 	p->addModel(modelMonsoonInterchangeExpander);
 	p->addModel(modelMonsoonCausewayExpander);
+	p->addModel(modelMonsoonSurgeExpander);
 	p->addModel(modelMonsoonSandsExpander);
 	p->addModel(modelMonsoonStraitsEastExpander);
 	p->addModel(modelMonsoonStraitWestExpander);    // NEW (Phase 4)

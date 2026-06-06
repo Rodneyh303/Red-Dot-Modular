@@ -542,6 +542,26 @@ namespace MonsoonIds {
         NUM_CAUSEWAY_INPUTS
     };
 
+    // ── Surge expander (the big-5 pattern-knob modulation) ───────────────────
+    // 5 CV + attenuverters summing into NOTE VALUE / VARIATION / LEGATO / REST /
+    // ACCENT. Own port enums (0-based).
+    enum SurgeParamIds {
+        SURGE_NOTEVAL_ATT = 0,
+        SURGE_VARIATION_ATT,
+        SURGE_LEGATO_ATT,
+        SURGE_REST_ATT,
+        SURGE_ACCENT_ATT,
+        NUM_SURGE_PARAMS
+    };
+    enum SurgeInputIds {
+        SURGE_NOTEVAL_CV = 0,
+        SURGE_VARIATION_CV,
+        SURGE_LEGATO_CV,
+        SURGE_REST_CV,
+        SURGE_ACCENT_CV,
+        NUM_SURGE_INPUTS
+    };
+
     enum OutputIds {
         GATE_OUTPUT = 0,
         CV_OUTPUT,
@@ -861,6 +881,7 @@ struct Monsoon : Module {
 extern Model* modelMonsoon;
 extern Model* modelMonsoonInterchangeExpander;
 extern Model* modelMonsoonCausewayExpander;
+extern Model* modelMonsoonSurgeExpander;
 extern Model* modelMonsoonSandsExpander;
 extern Model* modelMonsoonStraitsEastExpander; // Declare new expander model
 extern Model* modelMonsoonStraitWestExpander;  // NEW (Phase 4): voices 9-16

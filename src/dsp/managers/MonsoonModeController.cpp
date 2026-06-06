@@ -53,6 +53,17 @@ void ModeController::updatePatternInput() {
         currentPatternInput.rhythmMix  = add01(currentPatternInput.rhythmMix,  cvAtt(MonsoonIds::CAUSEWAY_MIX_R_CV,  MonsoonIds::CAUSEWAY_MIX_R_ATT));
         currentPatternInput.melodyMix  = add01(currentPatternInput.melodyMix,  cvAtt(MonsoonIds::CAUSEWAY_MIX_M_CV,  MonsoonIds::CAUSEWAY_MIX_M_ATT));
     }
+    // Surge expander: 5 big-5 CV (x attenuverter) -> offsets the param getters add.
+    // CV normalised 0..10V -> 0..1, scaled bipolar by the attenuverter.
+    paramManager.clearSurgeOffsets();
+    if (mainModule && mainModule->expanderManager.cachedSurgeExpander) {
+        rack::Module* sg = mainModule->expanderManager.cachedSurgeExpander;
+        for (int i = 0; i < 5; ++i) {
+            float cv  = sg->inputs[MonsoonIds::SURGE_NOTEVAL_CV + i].getVoltage() / 10.f;
+            float att = sg->params[MonsoonIds::SURGE_NOTEVAL_ATT + i].getValue();
+            paramManager.setSurgeOffset(i, cv * att);
+        }
+    }
     // PLAYABLE LIVE MORPH: apply the live MIX every process (control rate), like
     // spread — this is the continuous A<->B blend. recomputeEffective only does
     // work when MIX actually changes, so it is cheap. SLEW is NOT applied here;

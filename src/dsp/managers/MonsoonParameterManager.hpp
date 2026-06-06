@@ -96,6 +96,16 @@ public:
         for (int i = 0; i < 4; ++i) cv2Offsets[i] = 0.f;
     }
 
+    // ──── Surge Expander Offset Management ───────────────────────────────────
+    // Big-5 CV (x attenuverter) offsets from the Surge expander, summed into the
+    // matching getters. Index: 0 note value, 1 variation, 2 legato, 3 rest, 4 accent.
+    void setSurgeOffset(int i, float offset) {
+        if (i >= 0 && i < 5) surgeOffsets[i] = offset;
+    }
+    void clearSurgeOffsets() {
+        for (int i = 0; i < 5; ++i) surgeOffsets[i] = 0.f;
+    }
+
 private:
     rack::engine::Module* mainModule;
     MonsoonInterchangeExpander** cachedExpander;
@@ -103,6 +113,8 @@ private:
     
     // CV2-aware offsets for note value, variation, legato, rest
     float cv2Offsets[4] = {0.f, 0.f, 0.f, 0.f};
+    // Surge expander offsets: note value, variation, legato, rest, accent
+    float surgeOffsets[5] = {0.f, 0.f, 0.f, 0.f, 0.f};
     
     // Transient CV1 mode offsets (never persisted)
     float cv1LoOffset = 0.f;
