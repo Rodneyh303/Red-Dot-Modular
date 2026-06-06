@@ -56,6 +56,24 @@ def cluster_layer(t):
     a(f'<rect x="{px(106):.1f}" y="{px(97):.1f}" width="{px(88):.1f}" height="{px(31):.1f}" '
       f'rx="{px(2.5):.1f}" fill="{t["outaccent"]}" fill-opacity="0.10" '
       f'stroke="{t["outline"]}" stroke-width="1" stroke-opacity="0.6"/>')
+
+    # ── Jack-row wells, painted at the WIDGET's actual positions so the panel
+    #    circles sit exactly under the jacks. Inputs: IX=15, IP=17, x6 at y=105/120.
+    #    Outputs: OX=114, OP=17, x5 at y=105/120. (Matches MonsoonWidget.cpp.)
+    # One unified backing strip across the whole jack area, to cover the old
+    # artwork circles that were at the previous (now-moved) jack positions.
+    a(f'<rect x="{px(8):.1f}" y="{px(99):.1f}" width="{px(99):.1f}" height="{px(28):.1f}" '
+      f'rx="{px(2):.1f}" fill="{t["recess"]}" fill-opacity="0.45" stroke="{t["line"]}" stroke-width="0.8" stroke-opacity="0.5"/>')
+    IX, IP = 15.0, 17.0
+    OX, OP = 114.0, 17.0
+    for row_y in (105.0, 120.0):
+        for i in range(6):   # inputs
+            a(f'<circle cx="{px(IX+i*IP):.1f}" cy="{px(row_y):.1f}" r="{px(4.4):.1f}" '
+              f'fill="{t["well"]}" stroke="{t["line"]}" stroke-width="1"/>')
+        for i in range(5):   # outputs (within the output recess)
+            a(f'<circle cx="{px(OX+i*OP):.1f}" cy="{px(row_y):.1f}" r="{px(4.4):.1f}" '
+              f'fill="{t["well"]}" stroke="{t["outline"]}" stroke-width="1"/>')
+
     return ("<g inkscape:label=\"cluster-art\" inkscape:groupmode=\"layer\" id=\"cluster-art\">\n"
             + "\n".join(o) + "\n</g>")
 
