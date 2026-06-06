@@ -2,16 +2,24 @@
 #include "ui/OutputAccent.hpp"
 #include "Monsoon.hpp"
 #include "MonsoonStraitsEastExpander.hpp"
+#include "ui/VisualExpanderHelpers.hpp"
 
 using namespace rack;
 using namespace MonsoonIds;
 using namespace PolyVoiceExpanderIds;
 
 struct MonsoonStraitsEastExpanderWidget : ModuleWidget {
+    std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
+    rack::app::SvgPanel* panelWidget = nullptr;
+    int lastThemeLight = -1;
+
     MonsoonStraitsEastExpanderWidget(MonsoonStraitsEastExpander* module) 
     {
         setModule(module);
-        setPanel(APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/interchange_wide_straits_dark.svg")));
+        panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/interchange_wide_straits_dark.svg"));
+        panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/interchange_wide_straits_light.svg"));
+        panelWidget = createPanel(asset::plugin(pluginInstance, "res/panels/interchange_wide_straits_dark.svg"));
+        setPanel(panelWidget);
 
         // Screws
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
@@ -80,6 +88,17 @@ struct MonsoonStraitsEastExpanderWidget : ModuleWidget {
         addOutput(createOutputCentered<PJ301MPort>(
             mm2px(Vec(outCvX, startY + 7 * spacingY + 5.0f)),
             module, POLY_CV_1_8_OUT));
+    }
+
+    void step() override {
+        ModuleWidget::step();
+        if (!module) return;
+        Monsoon* m = redDot::findMonsoonEitherSide(module);
+        int wantLight = (m && m->lightTheme) ? 1 : 0;
+        if (wantLight != lastThemeLight) {
+            lastThemeLight = wantLight;
+            if (panelWidget) panelWidget->setBackground(wantLight ? panelSvgLight : panelSvgDark);
+        }
     }
 
     void draw(const DrawArgs& args) override {

@@ -2,6 +2,7 @@
 #include "MonsoonSurgeExpander.hpp"
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
+#include "ui/VisualExpanderHelpers.hpp"
 
 using namespace rack;
 
@@ -11,9 +12,16 @@ static const float SG_JACK_X   = 14.0f;
 static const float SG_ATT_X    = 30.0f;
 
 struct MonsoonSurgeExpanderWidget : ModuleWidget {
+    std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
+    rack::app::SvgPanel* panelWidget = nullptr;
+    int lastThemeLight = -1;
+
     MonsoonSurgeExpanderWidget(MonsoonSurgeExpander* module) {
         setModule(module);
-        setPanel(createPanel(asset::plugin(pluginInstance, "res/panels/Surge_panel_dark.svg")));
+        panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/Surge_panel_dark.svg"));
+        panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/Surge_panel_light.svg"));
+        panelWidget = createPanel(asset::plugin(pluginInstance, "res/panels/Surge_panel_dark.svg"));
+        setPanel(panelWidget);
         redDot::addRedScrews(this);
 
         const int cvId[5]  = { MonsoonIds::SURGE_NOTEVAL_CV, MonsoonIds::SURGE_VARIATION_CV,
@@ -23,6 +31,17 @@ struct MonsoonSurgeExpanderWidget : ModuleWidget {
         for (int r = 0; r < 5; ++r) {
             addInput(createInputCentered<PJ301MPort>(mm2px(Vec(SG_JACK_X, SG_ROWS[r])), module, cvId[r]));
             addParam(createParamCentered<Trimpot>(   mm2px(Vec(SG_ATT_X,  SG_ROWS[r])), module, attId[r]));
+        }
+    }
+
+    void step() override {
+        ModuleWidget::step();
+        if (!module) return;
+        Monsoon* m = redDot::findMonsoonEitherSide(module);
+        int wantLight = (m && m->lightTheme) ? 1 : 0;
+        if (wantLight != lastThemeLight) {
+            lastThemeLight = wantLight;
+            if (panelWidget) panelWidget->setBackground(wantLight ? panelSvgLight : panelSvgDark);
         }
     }
 

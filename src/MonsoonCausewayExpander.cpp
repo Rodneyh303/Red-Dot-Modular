@@ -2,6 +2,7 @@
 #include "MonsoonCausewayExpander.hpp"
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
+#include "ui/VisualExpanderHelpers.hpp"
 
 using namespace rack;
 
@@ -48,6 +49,17 @@ struct MonsoonCausewayExpanderWidget : ModuleWidget {
         for (int r = 0; r < 5; ++r) {
             addInput(createInputCentered<PJ301MPort>(mm2px(Vec(CW_G_COLS[0], CW_G_ROWS[r])), module, gateL[r]));
             addInput(createInputCentered<PJ301MPort>(mm2px(Vec(CW_G_COLS[1], CW_G_ROWS[r])), module, gateR[r]));
+        }
+    }
+
+    void step() override {
+        ModuleWidget::step();
+        if (!module) return;
+        Monsoon* m = redDot::findMonsoonEitherSide(module);
+        int wantLight = (m && m->lightTheme) ? 1 : 0;
+        if (wantLight != lastThemeLight) {
+            lastThemeLight = wantLight;
+            if (panelWidget) panelWidget->setBackground(wantLight ? panelSvgLight : panelSvgDark);
         }
     }
 
