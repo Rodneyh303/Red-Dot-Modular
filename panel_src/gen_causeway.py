@@ -49,6 +49,26 @@ def header(t):
                  f'<line x1="{cx-2.7}" y1="{cy}" x2="{cx+2.7}" y2="{cy}" stroke="{t["screwln"]}" stroke-width="1.2"/>')
     return o
 
+def sectioning(t):
+    # Rhythm (left) / Melody (right) visual split. Faint tinted column backings
+    # spanning the control area, plus a centre divider. Causeway places rhythm
+    # controls in the left column of each pair, melody in the right.
+    o = []
+    a = o.append
+    y0, y1 = 30.0, 120.0
+    h = y1 - y0
+    mid = W_MM / 2.0
+    # left (rhythm) tint
+    a(f'<rect x="{px(2):.1f}" y="{px(y0):.1f}" width="{px(mid-3):.1f}" height="{px(h):.1f}" '
+      f'rx="{px(2):.1f}" fill="{t["red"]}" fill-opacity="0.05"/>')
+    # right (melody) tint
+    a(f'<rect x="{px(mid+1):.1f}" y="{px(y0):.1f}" width="{px(mid-3):.1f}" height="{px(h):.1f}" '
+      f'rx="{px(2):.1f}" fill="{t["teal"]}" fill-opacity="0.05"/>')
+    # centre divider
+    a(f'<line x1="{px(mid):.1f}" y1="{px(y0):.1f}" x2="{px(mid):.1f}" y2="{px(y1):.1f}" '
+      f'stroke="{t["line"]}" stroke-width="0.8" stroke-opacity="0.5"/>')
+    return o
+
 def wells(t):
     o = []
     a = o.append
@@ -92,7 +112,7 @@ def logo(t, theme_name):
 
 def gen(theme_name):
     t = THEMES[theme_name]
-    body = header(t) + logo(t, theme_name) + wells(t)
+    body = header(t) + sectioning(t) + logo(t, theme_name) + wells(t)
     svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W_PX:.0f} {H_PX:.0f}" '
            f'width="{W_PX:.0f}" height="{H_PX:.0f}">\n' + "\n".join(body) + "\n</svg>")
     return svg
