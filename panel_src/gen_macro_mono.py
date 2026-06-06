@@ -39,7 +39,12 @@ def gen_mono(dark):
     t=theme(dark); W_MM,H_MM=203.2,128.5; PW,PH=px(W_MM),px(H_MM)
     ROW_TOP,ROW_BOT,N=14.,108.,6
     def laneY(l): return ROW_TOP+(l+0.5)*(ROW_BOT-ROW_TOP)/N
-    COL_J=8.; COL_A=18.; TRIP=[30.,40.,50.]
+    # Geometry MUST match MonsoonSandsVisualExpander.hpp:
+    #   JACK_X={6,15,24}  ATTEN_X={34,43,52}  (all 6 lanes)
+    #   spread (lanes 0-2 REST/MEL/OCT): SPR_BASE_X=62, SPR_CV_X=71, SPR_ATTEN_X=80
+    JACK_X=[6.,15.,24.]; ATTEN_X=[34.,43.,52.]
+    SPR_BASE_X,SPR_CV_X,SPR_ATTEN_X=62.,71.,80.
+    N_SPREAD=3
     ED_X=88.; ED_W=W_MM-ED_X-4.; ED_Y=18.; ED_H=ROW_BOT-ED_Y
     L=[]; A=L.append
     A(D.svg_open(PW,PH))
@@ -48,8 +53,10 @@ def gen_mono(dark):
     A(D.mbs(W_MM-72.0, 96.0, 64.0, 18.0, t, op=0.8))
     A(D.waves(ED_X, 116.0, t, op=0.7, rows=3, span_mm=W_MM-ED_X-2))
     A(D.accent_rules(PW,t))
-    gx,gy=4.0,ROW_TOP-4.0; gw,gh=(TRIP[-1]+5.0)-gx,(ROW_BOT+2.0)-(ROW_TOP-4.0)
-    A(D.input_group(gx,gy,gw,gh,t,sep_mm=0.5*(COL_A+TRIP[0])))
+    # Input group box framing the LOR jacks + attenuverters (x 6..52), with a
+    # separator between the jack cluster and the attenuverter cluster.
+    gx,gy=2.0,ROW_TOP-4.0; gw,gh=(ATTEN_X[-1]+6.0)-gx,(ROW_BOT+2.0)-(ROW_TOP-4.0)
+    A(D.input_group(gx,gy,gw,gh,t,sep_mm=0.5*(JACK_X[-1]+ATTEN_X[0])))
     A(D.editor_recess(ED_X,ED_Y,ED_W,ED_H,t,lanes=6))
     A('</g>')
     A('<g inkscape:label="branding" inkscape:groupmode="layer">')
@@ -58,9 +65,13 @@ def gen_mono(dark):
     A('<g inkscape:label="control-graphics" inkscape:groupmode="layer">')
     for lane in range(6):
         y=laneY(lane)
-        A(D.jack(COL_J,y,t)); A(D.trim(COL_A,y,t,t["wellring"]))
-        for p in range(3):
-            A(D.trim(TRIP[p],y,t,t["gold"]))
+        for x in JACK_X:  A(D.jack(x,y,t))
+        for x in ATTEN_X: A(D.trim(x,y,t,t["gold"]))
+    for lane in range(N_SPREAD):
+        y=laneY(lane)
+        A(D.trim(SPR_BASE_X,y,t,t["wellring"]))
+        A(D.jack(SPR_CV_X,y,t))
+        A(D.trim(SPR_ATTEN_X,y,t,t["gold"]))
     A('</g>')
     A('</svg>')
     return "\n".join(L)
