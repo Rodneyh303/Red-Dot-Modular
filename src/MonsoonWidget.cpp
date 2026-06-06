@@ -517,8 +517,15 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
               for (int v=0;v<4;++v){auto* it=createMenuItem<IntItem>(n2[v]);it->module=m;it->target=&m->gate2Assign;it->value=v;sub->addChild(it);} }
             sub->addChild(new ui::MenuSeparator);
             { auto* l = new ui::MenuLabel; l->text = "Gate 3 (assignable mod)"; sub->addChild(l);
-              const char* n3[] = {"Trial rhythm die","Trial melody die","Toggle reseed-on-roll","Toggle reseed-on-restart"};
-              for (int v=0;v<4;++v){auto* it=createMenuItem<IntItem>(n3[v]);it->module=m;it->target=&m->gate3Target;it->value=v;sub->addChild(it);} }
+              const char* n3[] = {"Trial rhythm die","Trial melody die","Toggle reseed-on-roll","Toggle reseed-on-restart",
+                                  "Toggle rhythm live source","Toggle melody live source"};
+              for (int v=0;v<6;++v){auto* it=createMenuItem<IntItem>(n3[v]);it->module=m;it->target=&m->gate3Target;it->value=v;sub->addChild(it);} }
+        }));
+
+        menu->addChild(createSubmenuItem("Live dice source", "", [=](ui::Menu* sub) {
+            { auto* l = new ui::MenuLabel; l->text = "Which dice live mode drives"; sub->addChild(l); }
+            sub->addChild(createBoolPtrMenuItem("Rhythm: trial (else main)", "", &m->rhythmLiveTrial));
+            sub->addChild(createBoolPtrMenuItem("Melody: trial (else main)", "", &m->melodyLiveTrial));
         }));
 
         menu->addChild(createSubmenuItem("Scales", "", [=](ui::Menu* sub) {

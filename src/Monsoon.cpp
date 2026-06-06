@@ -513,6 +513,8 @@ void Monsoon::process(const ProcessArgs& args) {
             case G3_TRIAL_MELODY:  melodyMode = 0; engine.pe.setPendingMelodyTrial(); break;
             case G3_TOGGLE_RESEED_ROLL:    reseedOnRoll    = !reseedOnRoll;    break;
             case G3_TOGGLE_RESEED_RESTART: reseedOnRestart = !reseedOnRestart; break;
+            case G3_TOGGLE_RHYTHM_LIVESRC: rhythmLiveTrial = !rhythmLiveTrial; break;
+            case G3_TOGGLE_MELODY_LIVESRC: melodyLiveTrial = !melodyLiveTrial; break;
         }
     }
 

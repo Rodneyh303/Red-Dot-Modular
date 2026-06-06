@@ -624,10 +624,15 @@ struct Monsoon : Module {
     // selected action. Same target sets are offered (in full, attenuverted) on
     // the Causeway expander, and the contributions SUM.
     enum Cv3Target  { CV3_RHYTHM_SLEW=0, CV3_MELODY_SLEW, CV3_RHYTHM_MIX, CV3_MELODY_MIX, CV3_NUM_TARGETS };
-    enum Gate3Target{ G3_TRIAL_RHYTHM=0, G3_TRIAL_MELODY, G3_TOGGLE_RESEED_ROLL, G3_TOGGLE_RESEED_RESTART, G3_NUM_TARGETS };
+    enum Gate3Target{ G3_TRIAL_RHYTHM=0, G3_TRIAL_MELODY, G3_TOGGLE_RESEED_ROLL, G3_TOGGLE_RESEED_RESTART,
+                      G3_TOGGLE_RHYTHM_LIVESRC, G3_TOGGLE_MELODY_LIVESRC, G3_NUM_TARGETS };
     int  cv3Target   = CV3_RHYTHM_SLEW;
     int  gate3Target = G3_TRIAL_RHYTHM;
     dsp::SchmittTrigger gate3Trig;   // rising-edge detect for GATE3 actions
+    // Which dice the LIVE mode drives, per lane: false=main (promote, A walks),
+    // true=trial (anchored A, endless variations on a theme). Persisted.
+    bool rhythmLiveTrial = false;
+    bool melodyLiveTrial = false;
     int gate1Assign = 0;
     int gate2Assign = 1;
     bool invertMuteLogic = false;

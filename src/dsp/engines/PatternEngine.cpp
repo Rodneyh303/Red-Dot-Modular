@@ -402,15 +402,17 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
         // draws fresh B from the reseeded stream, so A≠B and slew survives.
         if (rhythmReseedRollFull) seedRngFull(rhythmRng);
         else { rhythmSeedFloat = rhythmReseedRollFloat; seedRngFromFloat(rhythmRng, rhythmSeedFloat); }
-    } else if (in.reseedOnRoll && rhythmMode == 1) {
-        // Realtime + reseed-on-roll: reseed each redraw. CV if present (low
-        // precision), else full 64-bit internal entropy.
+    } else if (in.reseedOnRoll && rhythmMode == 1 && !in.rhythmLiveTrial) {
+        // Realtime MAIN + reseed-on-roll: reseed each redraw. (Live TRIAL never
+        // reseeds — it auditions against a fixed A.) CV if present, else full
+        // 64-bit internal entropy.
         if (in.seedConnected) { rhythmSeedFloat = in.seedSampleValue; seedRngFromFloat(rhythmRng, rhythmSeedFloat); }
         else                  seedRngFull(rhythmRng);
     }
-    // TRIAL: A anchored (promoteToA=false) and never reseeds. ROLL/reseed-roll/
-    // seed/realtime: promote (main mode), A walks forward.
-    const bool rPromote = !rhythmTrialPending;
+    // Promote (main, A walks) unless this is a momentary TRIAL roll OR live mode
+    // is sourced from the TRIAL dice (anchored A → variations on a theme).
+    const bool rLiveTrial = (rhythmMode == 1 && in.rhythmLiveTrial);
+    const bool rPromote = !rhythmTrialPending && !rLiveTrial;
     rhythmRollPending = false;
     rhythmTrialPending = false;
     rhythmReseedRollPending = false;
@@ -424,11 +426,13 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     } else if (melodyReseedRollPending) {
         if (melodyReseedRollFull) seedRngFull(melodyRng);
         else { melodySeedFloat = melodyReseedRollFloat; seedRngFromFloat(melodyRng, melodySeedFloat); }
-    } else if (in.reseedOnRoll && melodyMode == 1) {
+    } else if (in.reseedOnRoll && melodyMode == 1 && !in.melodyLiveTrial) {
+        // Realtime MAIN + reseed-on-roll only (live TRIAL never reseeds).
         if (in.seedConnected) { melodySeedFloat = in.seedSampleValue; seedRngFromFloat(melodyRng, melodySeedFloat); }
         else                  seedRngFull(melodyRng);
     }
-    const bool mPromote = !melodyTrialPending;
+    const bool mLiveTrial = (melodyMode == 1 && in.melodyLiveTrial);
+    const bool mPromote = !melodyTrialPending && !mLiveTrial;
     melodyRollPending = false;
     melodyTrialPending = false;
     melodyReseedRollPending = false;

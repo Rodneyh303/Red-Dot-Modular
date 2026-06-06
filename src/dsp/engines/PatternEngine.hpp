@@ -54,6 +54,12 @@ struct PatternInput {
     // entropy (or the SEED CV if seedConnected), so realtime stays genuinely
     // random rather than walking one deterministic stream.
     bool  reseedOnRoll     = false;
+    // Which dice the LIVE mode (rhythmMode/melodyMode==1) drives:
+    // false = MAIN (promote, A walks); true = TRIAL (anchored A, variations on a
+    // theme; never reseeds). Resolves the "two live modes" conflict — live is one
+    // switch, the source is a separate switch, so only one dice is ever live.
+    bool  rhythmLiveTrial  = false;
+    bool  melodyLiveTrial  = false;
     bool  seedConnected    = false;
     float seedSampleValue  = 0.f;   // current SEED CV (0..10) when seedConnected
 };
