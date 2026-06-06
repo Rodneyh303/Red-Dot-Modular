@@ -35,44 +35,47 @@ def cluster_layer(t):
     #  0 SLEW_R 1 SLEW_M | 2 DICE_R 3 DICE_M | 4 TRIAL_R 5 TRIAL_M | 6 MIX_R 7 MIX_M
     #  | 8 LOCK 9 MUTE 10 RESET 11 RUN
     def rx(i): return 12.0 + i * 16.7
-    # ── Recess binding the slew/dice/trial/mix group (slots 0..7) ──
-    gx0 = rx(0) - 6.0
-    gx1 = rx(7) + 6.0
-    a(f'<rect x="{px(gx0):.1f}" y="{px(81):.1f}" width="{px(gx1-gx0):.1f}" height="{px(12):.1f}" '
-      f'rx="{px(2):.1f}" fill="{t["recess"]}" stroke="{t["line"]}" stroke-width="1"/>')
-    # SLEW trim wells (neutral)
-    for i in (0, 1):
-        a(f'<circle cx="{px(rx(i)):.1f}" cy="{px(87):.1f}" r="{px(3.4):.1f}" fill="{t["well"]}" stroke="{t["line"]}" stroke-width="1"/>')
-    # MAIN dice seats (red)
-    for i in (2, 3):
-        a(f'<rect x="{px(rx(i)-3):.1f}" y="{px(87-3):.1f}" width="{px(6):.1f}" height="{px(6):.1f}" rx="{px(1.2):.1f}" fill="{t["well"]}" stroke="{t["red"]}" stroke-width="0.9"/>')
-    # TRIAL dice seats (gold)
-    for i in (4, 5):
-        a(f'<rect x="{px(rx(i)-3):.1f}" y="{px(87-3):.1f}" width="{px(6):.1f}" height="{px(6):.1f}" rx="{px(1.2):.1f}" fill="{t["well"]}" stroke="{t["gold"]}" stroke-width="0.9"/>')
-    # MIX knob wells (teal)
-    for i in (6, 7):
-        a(f'<circle cx="{px(rx(i)):.1f}" cy="{px(87):.1f}" r="{px(3.6):.1f}" fill="{t["well"]}" stroke="{t["teal"]}" stroke-width="1"/>')
-    # ── Output group recess (in/out accent), behind the output jacks ──
-    a(f'<rect x="{px(106):.1f}" y="{px(97):.1f}" width="{px(88):.1f}" height="{px(31):.1f}" '
-      f'rx="{px(2.5):.1f}" fill="{t["outaccent"]}" fill-opacity="0.10" '
-      f'stroke="{t["outline"]}" stroke-width="1" stroke-opacity="0.6"/>')
-
-    # ── Jack-row wells, painted at the WIDGET's actual positions so the panel
-    #    circles sit exactly under the jacks. Inputs: IX=15, IP=17, x6 at y=105/120.
-    #    Outputs: OX=114, OP=17, x5 at y=105/120. (Matches MonsoonWidget.cpp.)
-    # One unified backing strip across the whole jack area, to cover the old
-    # artwork circles that were at the previous (now-moved) jack positions.
-    a(f'<rect x="{px(8):.1f}" y="{px(99):.1f}" width="{px(99):.1f}" height="{px(28):.1f}" '
-      f'rx="{px(2):.1f}" fill="{t["recess"]}" fill-opacity="0.45" stroke="{t["line"]}" stroke-width="0.8" stroke-opacity="0.5"/>')
     IX, IP = 15.0, 17.0
     OX, OP = 114.0, 17.0
-    for row_y in (105.0, 120.0):
-        for i in range(6):   # inputs
-            a(f'<circle cx="{px(IX+i*IP):.1f}" cy="{px(row_y):.1f}" r="{px(4.4):.1f}" '
-              f'fill="{t["well"]}" stroke="{t["line"]}" stroke-width="1"/>')
-        for i in range(5):   # outputs (within the output recess)
-            a(f'<circle cx="{px(OX+i*OP):.1f}" cy="{px(row_y):.1f}" r="{px(4.4):.1f}" '
-              f'fill="{t["well"]}" stroke="{t["outline"]}" stroke-width="1"/>')
+
+    # ── Lower-panel group boxes are drawn fairly opaque to suppress the old
+    #    hand-authored circles beneath, while the supertrees still read in the
+    #    gaps between groups (matching the original aesthetic). No full-width
+    #    cover-all rect — that would bury the Gardens-by-the-Bay motif.
+
+    # ── Control row recess (slots 0..7: slew/dice/trial/mix) ──
+    gx0, gx1 = rx(0) - 6.0, rx(7) + 6.0
+    a(f'<rect x="{px(gx0):.1f}" y="{px(81):.1f}" width="{px(gx1-gx0):.1f}" height="{px(12):.1f}" '
+      f'rx="{px(2):.1f}" fill="{t["recess"]}" stroke="{t["line"]}" stroke-width="1"/>')
+    for i in (0, 1):   # SLEW trims (neutral)
+        a(f'<circle cx="{px(rx(i)):.1f}" cy="{px(87):.1f}" r="{px(3.4):.1f}" fill="{t["well"]}" stroke="{t["line"]}" stroke-width="1"/>')
+    for i in (2, 3):   # MAIN dice seats (red)
+        a(f'<rect x="{px(rx(i)-3):.1f}" y="{px(87-3):.1f}" width="{px(6):.1f}" height="{px(6):.1f}" rx="{px(1.2):.1f}" fill="{t["well"]}" stroke="{t["red"]}" stroke-width="0.9"/>')
+    for i in (4, 5):   # TRIAL dice seats (gold)
+        a(f'<rect x="{px(rx(i)-3):.1f}" y="{px(87-3):.1f}" width="{px(6):.1f}" height="{px(6):.1f}" rx="{px(1.2):.1f}" fill="{t["well"]}" stroke="{t["gold"]}" stroke-width="0.9"/>')
+    for i in (6, 7):   # MIX knob wells (teal)
+        a(f'<circle cx="{px(rx(i)):.1f}" cy="{px(87):.1f}" r="{px(3.6):.1f}" fill="{t["well"]}" stroke="{t["teal"]}" stroke-width="1"/>')
+    # Utility button wells (slots 8..11: LOCK/MUTE/RESET/RUN) — small, no recess
+    for i in (8, 9, 10, 11):
+        a(f'<circle cx="{px(rx(i)):.1f}" cy="{px(87):.1f}" r="{px(2.6):.1f}" fill="{t["well"]}" stroke="{t["line"]}" stroke-width="0.9"/>')
+
+    # ── Input group recess (left) + output group recess (right) ──
+    # Fairly opaque so the old artwork circles beneath don't show through.
+    a(f'<rect x="{px(IX-7):.1f}" y="{px(99):.1f}" width="{px((IX+5*IP)-(IX-7)+7):.1f}" height="{px(27):.1f}" '
+      f'rx="{px(2.5):.1f}" fill="{t["recess"]}" fill-opacity="0.92" stroke="{t["line"]}" stroke-width="1"/>')
+    a(f'<rect x="{px(OX-7):.1f}" y="{px(99):.1f}" width="{px((OX+4*OP)-(OX-7)+7):.1f}" height="{px(27):.1f}" '
+      f'rx="{px(2.5):.1f}" fill="{t["recess"]}" fill-opacity="0.86" stroke="{t["outline"]}" stroke-width="1"/>')
+
+    # ── Jack-row wells at the WIDGET's exact positions ──
+    # Inputs: 6 + 6 at IX=15/IP=17, y=105/120. Outputs: 5 (top) + 4 (bottom) at OX=114/OP=17.
+    for i in range(6):   # input row 1 (y105)
+        a(f'<circle cx="{px(IX+i*IP):.1f}" cy="{px(105):.1f}" r="{px(4.4):.1f}" fill="{t["well"]}" stroke="{t["line"]}" stroke-width="1"/>')
+    for i in range(6):   # input row 2 (y120)
+        a(f'<circle cx="{px(IX+i*IP):.1f}" cy="{px(120):.1f}" r="{px(4.4):.1f}" fill="{t["well"]}" stroke="{t["line"]}" stroke-width="1"/>')
+    for i in range(5):   # output row 1 (y105) — 5 jacks
+        a(f'<circle cx="{px(OX+i*OP):.1f}" cy="{px(105):.1f}" r="{px(4.4):.1f}" fill="{t["well"]}" stroke="{t["outline"]}" stroke-width="1"/>')
+    for i in range(4):   # output row 2 (y120) — 4 jacks
+        a(f'<circle cx="{px(OX+i*OP):.1f}" cy="{px(120):.1f}" r="{px(4.4):.1f}" fill="{t["well"]}" stroke="{t["outline"]}" stroke-width="1"/>')
 
     return ("<g inkscape:label=\"cluster-art\" inkscape:groupmode=\"layer\" id=\"cluster-art\">\n"
             + "\n".join(o) + "\n</g>")
