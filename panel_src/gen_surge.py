@@ -34,9 +34,7 @@ def header(t):
          f'<rect x="0" y="0" width="{W_PX}" height="14.5" fill="{t["rail"]}"/>',
          f'<rect x="0" y="366" width="{W_PX}" height="14.5" fill="{t["rail"]}"/>',
          f'<rect x="0" y="0" width="{W_PX}" height="2" fill="{t["stripe"]}"/>']
-    for cx, cy in [(7.5,14.5),(7.5,365.5),(112.5,14.5),(112.5,365.5)]:
-        o.append(f'<circle cx="{cx}" cy="{cy}" r="4.5" fill="{t["screw"]}" stroke="{t["screwln"]}" stroke-width="0.8"/>'
-                 f'<line x1="{cx-2.7}" y1="{cy}" x2="{cx+2.7}" y2="{cy}" stroke="{t["screwln"]}" stroke-width="1.2"/>')
+    # Screws drawn in C++ (ui/RedScrew.hpp), not painted here.
     return o
 
 def logo(theme_name):
