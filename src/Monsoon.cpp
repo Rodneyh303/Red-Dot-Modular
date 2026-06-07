@@ -481,6 +481,7 @@ void Monsoon::process(const ProcessArgs& args) {
     float clkV      = cachedClkConnected ? inputs[CLK_INPUT].getVoltage() : 0.f;
     float gate1V    = cachedGate1Connected ? inputs[GATE1_INPUT].getVoltage() : 0.f;
     float gate2V    = cachedGate2Connected ? inputs[GATE2_INPUT].getVoltage() : 0.f;
+    float gate3V    = cachedGate3Connected ? inputs[GATE3_MOD_INPUT].getVoltage() : 0.f;
     float runGateV  = cachedRunConnected ? inputs[RUN_GATE_INPUT].getVoltage() : 0.f;
     float resetGateV= cachedResetConnected ? inputs[RESET_TRIGGER_INPUT].getVoltage() : 0.f;
     float cv1V      = cachedCv1Connected ? inputs[CV1_INPUT].getVoltage() : 0.f;
@@ -530,35 +531,18 @@ void Monsoon::process(const ProcessArgs& args) {
     
     bool gate1Rise = gateEdges.gate1Rise;
 
+    // ── Gate 3 Assignment Handling (Audio Rate for Consistency) ──
+    if (cachedGate3Connected && gate3Trig.process(gate3V, 0.1f, 1.f)) {
+        static const int g3map[] = { DA_TRIAL_R, DA_TRIAL_M, DA_RESEED_ROLL,
+            DA_RESEED_RESTART, DA_LIVESRC_R, DA_LIVESRC_M };
+        if (gate3Target >= 0 && gate3Target < (int)(sizeof(g3map)/sizeof(g3map[0]))) {
+            fireDieAction(g3map[gate3Target]);
+        }
+    }
+
     // ── Gate Assignment Handling ──
     tc.handleGate1Assignment(gate1Assign, gate1Rise);
     tc.handleGate2Assignment(gate2Assign, gateEdges.gate2Rise, tc.getGate2High(), invertMuteLogic);
-
-    // ── GATE3 assignable mod (rising edge → selected action) ──
-    // Same edge-action pattern as G1/G2: momentary actions (trial die) or bool
-    // toggles (reseed flags). Sums alongside the panel buttons.
-    if (inputs[GATE3_MOD_INPUT].isConnected()
-        && gate3Trig.process(inputs[GATE3_MOD_INPUT].getVoltage(), 0.1f, 1.f)) {
-        // G3 targets map 1:1 onto the shared DieAction vocabulary.
-        static const int g3map[] = { DA_TRIAL_R, DA_TRIAL_M, DA_RESEED_ROLL,
-            DA_RESEED_RESTART, DA_LIVESRC_R, DA_LIVESRC_M };
-        if (gate3Target >= 0 && gate3Target < (int)(sizeof(g3map)/sizeof(g3map[0])))
-            fireDieAction(g3map[gate3Target]);
-    }
-
-    // ── Causeway expander gates: 10 dedicated die-action gate inputs ──────────
-    // Gate input order (CAUSEWAY_GATE_TRIAL_R..RESEED_RESTART) matches DieAction
-    // order, so gate i fires DieAction i. Edges fire the shared dispatch.
-    if (expanderManager.cachedCausewayExpander) {
-        rack::Module* cw = expanderManager.cachedCausewayExpander;
-        for (int i = 0; i < 10; ++i) {
-            int in = MonsoonIds::CAUSEWAY_GATE_TRIAL_R + i;
-            if (cw->inputs[in].isConnected()
-                && causewayGateTrig[i].process(cw->inputs[in].getVoltage(), 0.1f, 1.f)) {
-                fireDieAction(i);   // DieAction enum order == gate order
-            }
-        }
-    }
 
     // --- Mode dispatch (only if running) ---
     if (runGateActive) {
@@ -590,41 +574,30 @@ void Monsoon::process(const ProcessArgs& args) {
     if (outputs[CV_OUTPUT].isConnected()) outputs[CV_OUTPUT].setVoltage(cvOutVoltage);
 
     // --- Output Generation (Inlined logic to minimize cross-translation unit calls) ---
-    float gateV = (runGateActive) ? engine.gs.process(args.sampleTime) : 0.f;
+    float gateV = (runGateActive) ? engine.gs.process(args.sampleTime) : 0.f; // Primary voice gate
     outputs[GATE_OUTPUT].setVoltage(muted ? 0.f : gateV);
     
+    bool effectiveMuted = muted || !runGateActive;
+    bool accentActive = engine.lastStepResult.accented && !effectiveMuted;
+    
     bool isTie = (engine.lastStepResult.decision == MonoDecision::Tie);
-    outputs[TIE_OUTPUT].setVoltage((isTie && !muted) ? 10.f : 0.f);
+    outputs[TIE_OUTPUT].setVoltage((isTie && !effectiveMuted) ? 10.f : 0.f);
     
     bool isLegato = (engine.lastStepResult.decision == MonoDecision::Legato || 
                         engine.lastStepResult.decision == MonoDecision::LegatoMax);
-    outputs[LEGATO_OUTPUT].setVoltage((isLegato && !muted) ? 10.f : 0.f);
-    outputs[TIE_OR_LEGATO_OUTPUT].setVoltage(((isTie || isLegato) && !muted) ? 10.f : 0.f);
+    outputs[LEGATO_OUTPUT].setVoltage((isLegato && !effectiveMuted) ? 10.f : 0.f);
+    outputs[TIE_OR_LEGATO_OUTPUT].setVoltage(((isTie || isLegato) && !effectiveMuted) ? 10.f : 0.f);
     
-    bool engineAccented = engine.lastStepResult.accented;
-    outputs[ACCENT_OUTPUT].setVoltage((engineAccented && gateV > 5.f && !muted) ? 10.f : 0.f);
+    outputs[ACCENT_OUTPUT].setVoltage((accentActive && gateV > 5.f) ? 10.f : 0.f);
     
     // Poly voice outputs (Guard: only if expander present)
     auto* polyExp = expanderManager.cachedPolyVoiceExpander;
     if (polyExp && engine.numPolyVoices > 0) {
         using namespace PolyVoiceExpanderIds;
         
-        // ── Rest Probability Modulation (voices 2-8 on East) ──
-        // Only modulate voices currently active to save CPU
-        for (int i = 0; i < engine.numPolyVoices && i < 7; i++) {
-            if (inputs[POLY_REST_MOD_CV_INPUT_1 + i].isConnected()) {
-                float modCV = inputs[POLY_REST_MOD_CV_INPUT_1 + i].getVoltage();
-                float attenuverter = params[POLY_REST_MOD_ATT_1 + i].getValue(); // [-1, 1]
-                float modulation = modCV * attenuverter * 0.1f; // Scale CV by attenuverter
-                engine.voices[i].restProb = clamp(cachedPolyRest[i] + modulation, 0.f, 1.f);
-            } else {
-                engine.voices[i].restProb = cachedPolyRest[i];
-            }
-        }
-        
         // Output individual gates/CVs/accents for voices 2-8
-        for (int i = 0; i < engine.numPolyVoices && i < 7; ++i) {
-            if (muted) {
+        for (int i = 0; i < (int)engine.numPolyVoices && i < 7; ++i) {
+            if (effectiveMuted) {
                 polyExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
                 polyExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
                 continue;
@@ -632,15 +605,15 @@ void Monsoon::process(const ProcessArgs& args) {
             float vg = engine.voices[i].gs.process(args.sampleTime);
             polyExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(vg);
             polyExp->outputs[POLY_CV_OUT_1 + i].setVoltage(engine.voices[i].gs.currentPitchV);
-            float polyAccent = (engineAccented && vg > 5.f) ? 10.f : 0.f;
+            float polyAccent = (accentActive && vg > 5.f) ? 10.f : 0.f;
             polyExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(polyAccent);
         }
         
         // Generate poly outputs for voices 1-8
         float polyGate1_8 = 0.f;
         float polyCv1_8 = 0.f;
-        if (!muted) {
-            polyGate1_8 = (engine.gs.process(args.sampleTime) > 5.f) ? 10.f : 0.f;
+        if (!effectiveMuted) {
+            polyGate1_8 = (gateV > 5.f) ? 10.f : 0.f;
             polyCv1_8 = currentPitchV;
         }
         polyExp->outputs[POLY_GATE_1_8_OUT].setVoltage(polyGate1_8);
@@ -652,21 +625,9 @@ void Monsoon::process(const ProcessArgs& args) {
     if (westExp && engine.numPolyVoices > 7) {
         using namespace StraitWestExpanderIds;
         
-        // ── Rest Probability Modulation (voices 9-16 on West) ──
-        for (int i = 0; i < 8; i++) {
-            if (inputs[POLY_REST_MOD_CV_INPUT_8 + i].isConnected()) {
-                float modCV = inputs[POLY_REST_MOD_CV_INPUT_8 + i].getVoltage();
-                float attenuverter = params[POLY_REST_MOD_ATT_8 + i].getValue(); // [-1, 1]
-                float modulation = modCV * attenuverter * 0.1f;
-                engine.voices[7 + i].restProb = clamp(cachedPolyRest[7 + i] + modulation, 0.f, 1.f);
-            } else {
-                engine.voices[7 + i].restProb = cachedPolyRest[7 + i];
-            }
-        }
-        
         // Output individual gates/CVs/accents for voices 9-16
         for (int i = 0; i < 8; ++i) {
-            if (muted) {
+            if (effectiveMuted) {
                 westExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
                 westExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
                 continue;
@@ -674,387 +635,23 @@ void Monsoon::process(const ProcessArgs& args) {
             float vg = engine.voices[7 + i].gs.process(args.sampleTime);
             westExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(vg);
             westExp->outputs[POLY_CV_OUT_1 + i].setVoltage(engine.voices[7 + i].gs.currentPitchV);
-            float polyAccent = (engineAccented && vg > 5.f) ? 10.f : 0.f;
+            float polyAccent = (accentActive && vg > 5.f) ? 10.f : 0.f;
             westExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(polyAccent);
         }
         
         // Generate poly outputs for voices 1-16 (complete mix)
         float polyGate1_16 = 0.f;
         float polyCv1_16 = 0.f;
-        if (!muted) {
+        if (!effectiveMuted) {
             // Use primary voice poly gate for 1-16 output
-            polyGate1_16 = (engine.gs.process(args.sampleTime) > 5.f) ? 10.f : 0.f;
+            polyGate1_16 = (gateV > 5.f) ? 10.f : 0.f;
             polyCv1_16 = currentPitchV;
         }
         westExp->outputs[POLY_GATE_1_16_OUT].setVoltage(polyGate1_16);
         westExp->outputs[POLY_CV_1_16_OUT].setVoltage(polyCv1_16);
     }
     
-    // ── Deep Straits Sands Expanders ──
-    auto* deepEast   = expanderManager.cachedDeepStraitsSandsEastExpander;
-    auto* deepWest   = expanderManager.cachedDeepStraitsSandsWestExpander;
-    auto* straitEast = expanderManager.cachedPolyVoiceExpander;
-    auto* straitWest = expanderManager.cachedStraitWestExpander;
-    // Visual expanders take priority over knob expanders for L/O/R (zero-delay)
-    auto* eastVisual  = expanderManager.cachedEastSandsVisual;
-    auto* westVisual  = expanderManager.cachedWestSandsVisual;
-
-    // East: use visual expander if present, else DeepStraitsSandsEast
-    auto* eastLOR   = eastVisual ? static_cast<rack::Module*>(eastVisual)
-                                 : static_cast<rack::Module*>(deepEast);
-    // Spread/interp source: same priority — visual expander owns spread when connected
-    auto* eastInterp = eastVisual ? static_cast<rack::Module*>(eastVisual)
-                                  : static_cast<rack::Module*>(deepEast);
-
-    // Poly Sands editors (East visual, and the deprecated knob path) only do
-    // anything when the Straits BASE poly output expander is connected AND the
-    // user has requested at least one poly voice (numPolyVoices >= 1, i.e. more
-    // than the lone mono voice). Without the base expander there is nowhere for
-    // poly voices to come out, so the LOR/spread work would be inert anyway —
-    // this makes that explicit and keeps the editors no-op.
-    const bool polyBaseActive = (straitEast != nullptr) && (engine.numPolyVoices >= 1);
-    // Voice OUTPUT topology bounds the spread ensemble: East outputs up to 7
-    // poly voices; West adds the rest. Voices with no output path are excluded
-    // from the average so spread never converges toward phantom voices.
-    const int  polyOutCap = polyBaseActive ? (straitWest ? 15 : 7) : 0;
-    const int  effPolyVoices = clamp(engine.numPolyVoices, 0, polyOutCap);
-
-    // East active if the East LOR source is present (visual editor or knob
-    // expander) AND the base poly path is active.
-    if (eastLOR && (straitEast || eastVisual) && polyBaseActive) {
-        using namespace DeepStraitsSandsEastIds;
-        using namespace StraitsEastVisualIds;  // CV_0..CV_11, ATTEN_0..ATTEN_11
-        
-        for (int v = 0; v < 15; v++) {
-            // ── Rhythm DNA with CV offset (base + scaled CV, control rate) ──────
-            // Row/col mapping: row r, col c → lane=r/2, param=(r%2)*2+c
-            // param: 0=LEN,1=OFF,2=ROT,3=SPR
-            int rhythmBase = POLY_DNA_VOICE_1_LEN + v * 3;
-            auto applyLorCV = [&](int paramIdx, int r, int c, float lo, float hi) -> int {
-                float base = eastLOR->params[paramIdx].getValue();
-                if (eastVisual && eastVisual->inputs[cvId(r,c)].isConnected()) {
-                    float att = eastVisual->params[attenId(r,c)].getValue();
-                    float cv  = eastVisual->inputs[cvId(r,c)].getVoltage(v) / 10.f;
-                    base = clamp(base + cv * att * (hi - lo), lo, hi);
-                }
-                return (int)base;
-            };
-            // REST LEN=row0col0, OFF=row0col1, ROT=row1col0
-            engine.polyLen[v][0] = applyLorCV(rhythmBase,     0, 0, 1.f, 16.f);
-            engine.polyOff[v][0] = applyLorCV(rhythmBase + 1, 0, 1, 0.f, 15.f);
-            engine.polyRot[v][0] = applyLorCV(rhythmBase + 2, 1, 0, 0.f, 15.f);
-
-            // ── Rest spread CV — row1col1 ──────────────────────────────────────
-            float restInterp = eastInterp->params[POLY_REST_INTERP_1 + v].getValue();
-            if (eastVisual && eastVisual->inputs[cvId(1,1)].isConnected()) {
-                float att = eastVisual->params[attenId(1,1)].getValue();
-                float cv  = eastVisual->inputs[cvId(1,1)].getVoltage(v) / 10.f;
-                restInterp = clamp(restInterp + cv * att, 0.f, 1.f);
-            }
-            
-            // Threshold (restProb): plain per-voice value — NOT spread-blended.
-            // (Spread applies to the DRAW below; the threshold has its own value
-            // and its own CV modulation, kept independent of spread.)
-            if (deepEast) {
-                engine.voices[v].restProb = deepEast->params[POLY_REST_PARAM_1 + v].getValue();
-            }
-
-            // Spread (Option W): converge the SLEWED rhythm DRAW toward the
-            // ENSEMBLE average (mono + active poly voices), then write FINAL.
-            // Ensemble denominator = 1 (mono) + numPolyVoices.
-            // Frozen when LOCKED so lock freezes the effective output.
-            if (!engine.locked) {
-            const int nPoly = effPolyVoices;
-            const float denom = 1.f + (float)nPoly;
-            float avgRhythmRandom[16] = {};
-            for (int j = 0; j < 16; j++) {
-                float s = engine.pe.slewedRhythm[j];
-                for (int i = 0; i < nPoly; i++) s += engine.pe.slewedPolyRhythm[i][j];
-                avgRhythmRandom[j] = s / denom;
-            }
-            for (int j = 0; j < 16; j++) {
-                float voiceVal = engine.pe.slewedPolyRhythm[v][j];
-                engine.pe.polyRhythmRandom[v][j] = voiceVal + restInterp * (avgRhythmRandom[j] - voiceVal);
-            }
-            }
-            
-            int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
-            // MEL LOR: row2col0=LEN, row2col1=OFF, row3col0=ROT; SPR: row3col1
-            float melodyInterp = eastInterp->params[POLY_MELODY_INTERP_1 + v].getValue();
-            engine.polyLen[v][1] = applyLorCV(melodyBase,     2, 0, 1.f, 16.f);
-            engine.polyOff[v][1] = applyLorCV(melodyBase + 1, 2, 1, 0.f, 15.f);
-            engine.polyRot[v][1] = applyLorCV(melodyBase + 2, 3, 0, 0.f, 15.f);
-            // (SPR applied below after interp)
-            if (eastVisual && eastVisual->inputs[cvId(3,1)].isConnected()) {
-                float att = eastVisual->params[attenId(3,1)].getValue();
-                float cv  = eastVisual->inputs[cvId(3,1)].getVoltage(v) / 10.f;
-                melodyInterp = clamp(melodyInterp + cv * att, 0.f, 1.f);
-            }
-            
-            // Spread (Option W): read SLEWED poly draws, converge to average,
-            // write FINAL poly probability. Ensemble = mono + active poly.
-            if (!engine.locked) {
-            const int nPoly = effPolyVoices;
-            const float denom = 1.f + (float)nPoly;
-            float avgMelodyRandom[16] = {};
-            for (int j = 0; j < 16; j++) {
-                float s = engine.pe.slewedMelody[j];
-                for (int i = 0; i < nPoly; i++) s += engine.pe.slewedPolyMelody[i][j];
-                avgMelodyRandom[j] = s / denom;
-            }
-            for (int j = 0; j < 16; j++) {
-                float voiceVal = engine.pe.slewedPolyMelody[v][j];
-                engine.pe.polyMelodyRandom[v][j] = voiceVal + melodyInterp * (avgMelodyRandom[j] - voiceVal);
-            }
-            }
-            
-            if (deepEast) {
-                engine.polyLen[v][1] = (int)deepEast->params[melodyBase].getValue();
-                engine.polyOff[v][1] = (int)deepEast->params[melodyBase + 1].getValue();
-                engine.polyRot[v][1] = (int)deepEast->params[melodyBase + 2].getValue();
-            }
-            
-            int octaveBase = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-            // OCT LOR: row4col0=LEN, row4col1=OFF, row5col0=ROT; SPR: row5col1
-            engine.polyLen[v][2] = applyLorCV(octaveBase,     4, 0, 1.f, 16.f);
-            engine.polyOff[v][2] = applyLorCV(octaveBase + 1, 4, 1, 0.f, 15.f);
-            engine.polyRot[v][2] = applyLorCV(octaveBase + 2, 5, 0, 0.f, 15.f);
-
-            float octaveInterp = eastInterp->params[POLY_OCTAVE_INTERP_1 + v].getValue();
-            if (eastVisual && eastVisual->inputs[cvId(5,1)].isConnected()) {
-                float att = eastVisual->params[attenId(5,1)].getValue();
-                float cv  = eastVisual->inputs[cvId(5,1)].getVoltage(v) / 10.f;
-                octaveInterp = clamp(octaveInterp + cv * att, 0.f, 1.f);
-            }
-            
-            if (!engine.locked) {
-            const int nPoly = effPolyVoices;
-            const float denom = 1.f + (float)nPoly;
-            float avgOctaveRandom[16] = {};
-            for (int j = 0; j < 16; j++) {
-                float s = engine.pe.slewedOctave[j];
-                for (int i = 0; i < nPoly; i++) s += engine.pe.slewedPolyOctave[i][j];
-                avgOctaveRandom[j] = s / denom;
-            }
-            for (int j = 0; j < 16; j++) {
-                float voiceVal = engine.pe.slewedPolyOctave[v][j];
-                engine.pe.polyOctaveRandom[v][j] = voiceVal + octaveInterp * (avgOctaveRandom[j] - voiceVal);
-            }
-            }
-            
-            if (deepEast) {
-                engine.polyLen[v][2] = (int)deepEast->params[octaveBase].getValue();
-                engine.polyOff[v][2] = (int)deepEast->params[octaveBase + 1].getValue();
-                engine.polyRot[v][2] = (int)deepEast->params[octaveBase + 2].getValue();
-            }
-        }
-        
-        // Scramble/Reset is knob-expander (deepEast) logic only — guard against
-        // null deepEast in visual-only mode.
-        if (deepEast) {
-        bool scrambleAll = deepEast->params[SCRAMBLE_ALL_PARAM].getValue() > 0.5f ||
-                          deepEast->inputs[SCRAMBLE_ALL_INPUT].getVoltage() > 1.f;
-        if (scrambleAll) {
-            for (int v = 0; v < 7; v++) {
-                int b = POLY_DNA_VOICE_1_LEN + v * 3;
-                deepEast->params[b].setValue(random::uniform() * 15.f + 1.f);
-                deepEast->params[b+1].setValue(random::uniform() * 15.f);
-                b = POLY_MELODY_VOICE_1_LEN + v * 3;
-                deepEast->params[b].setValue(random::uniform() * 15.f + 1.f);
-                deepEast->params[b+1].setValue(random::uniform() * 15.f);
-                b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-                deepEast->params[b].setValue(random::uniform() * 15.f + 1.f);
-                deepEast->params[b+1].setValue(random::uniform() * 15.f);
-            }
-        } else {
-            for (int v = 0; v < 7; v++) {
-                if (deepEast->params[SCRAMBLE_VOICE_1 + v].getValue() > 0.5f ||
-                    deepEast->inputs[SCRAMBLE_VOICE_1_INPUT + v].getVoltage() > 1.f) {
-                    int b = POLY_DNA_VOICE_1_LEN + v * 3;
-                    deepEast->params[b].setValue(random::uniform() * 15.f + 1.f);
-                    deepEast->params[b+1].setValue(random::uniform() * 15.f);
-                    b = POLY_MELODY_VOICE_1_LEN + v * 3;
-                    deepEast->params[b].setValue(random::uniform() * 15.f + 1.f);
-                    deepEast->params[b+1].setValue(random::uniform() * 15.f);
-                    b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-                    deepEast->params[b].setValue(random::uniform() * 15.f + 1.f);
-                    deepEast->params[b+1].setValue(random::uniform() * 15.f);
-                }
-            }
-        }
-        
-        bool resetAllE = deepEast->params[RESET_ALL_PARAM].getValue() > 0.5f ||
-                        deepEast->inputs[RESET_ALL_INPUT].getVoltage() > 1.f;
-        if (resetAllE) {
-            for (int v = 0; v < 7; v++) {
-                int b = POLY_DNA_VOICE_1_LEN + v * 3;
-                deepEast->params[b].setValue(16.f); deepEast->params[b+1].setValue(0.f); deepEast->params[b+2].setValue(0.f);
-                b = POLY_MELODY_VOICE_1_LEN + v * 3;
-                deepEast->params[b].setValue(16.f); deepEast->params[b+1].setValue(0.f); deepEast->params[b+2].setValue(0.f);
-                b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-                deepEast->params[b].setValue(16.f); deepEast->params[b+1].setValue(0.f); deepEast->params[b+2].setValue(0.f);
-            }
-        } else {
-            for (int v = 0; v < 7; v++) {
-                if (deepEast->params[RESET_VOICE_1 + v].getValue() > 0.5f ||
-                    deepEast->inputs[RESET_VOICE_1_INPUT + v].getVoltage() > 1.f) {
-                    int b = POLY_DNA_VOICE_1_LEN + v * 3;
-                    deepEast->params[b].setValue(16.f); deepEast->params[b+1].setValue(0.f); deepEast->params[b+2].setValue(0.f);
-                    b = POLY_MELODY_VOICE_1_LEN + v * 3;
-                    deepEast->params[b].setValue(16.f); deepEast->params[b+1].setValue(0.f); deepEast->params[b+2].setValue(0.f);
-                    b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-                    deepEast->params[b].setValue(16.f); deepEast->params[b+1].setValue(0.f); deepEast->params[b+2].setValue(0.f);
-                }
-            }
-        }
-        } // end if (deepEast) scramble/reset guard
-    }
-
-    // West: use visual expander if present, else DeepStraitsSandsWest
-    auto* westLOR    = westVisual ? static_cast<rack::Module*>(westVisual)
-                                  : static_cast<rack::Module*>(deepWest);
-    auto* westInterp = westVisual ? static_cast<rack::Module*>(westVisual)
-                                  : static_cast<rack::Module*>(deepWest);
-
-    // West visual block RETIRED: East now drives all 15 poly voices directly
-    // (loop above runs v=0..14). The visual West editor is deregistered, so
-    // westVisual is always null. This block is disabled to avoid the deprecated
-    // deepWest knob expander clobbering voices 7-14 that East now owns.
-    // Kept under `false` for now; will be deleted when the knob expanders are
-    // formally removed.
-    if (false && westLOR && straitWest) {
-        using namespace DeepStraitsSandsWestIds;
-        using namespace StraitsEastVisualIds;  // West reads from East's jacks
-        for (int v = 7; v < 15; v++) {
-            int lv = v - 7;
-            int b  = POLY_DNA_VOICE_1_LEN + v * 3;
-            auto applyLorCVW = [&](int paramIdx, int r, int c, float lo, float hi) -> int {
-                float base = westLOR->params[paramIdx].getValue();
-                if (eastVisual && eastVisual->inputs[cvId(r,c)].isConnected()) {
-                    float att = eastVisual->params[attenId(r,c)].getValue();
-                    float cv  = eastVisual->inputs[cvId(r,c)].getVoltage(lv + 7) / 10.f;
-                    base = clamp(base + cv * att * (hi - lo), lo, hi);
-                }
-                return (int)base;
-            };
-            engine.polyLen[v][0] = applyLorCVW(b,     0, 0, 1.f, 16.f);
-            engine.polyOff[v][0] = applyLorCVW(b + 1, 0, 1, 0.f, 15.f);
-            engine.polyRot[v][0] = applyLorCVW(b + 2, 1, 0, 0.f, 15.f);
-
-            float restInterp = westInterp->params[POLY_REST_INTERP_1 + v].getValue();
-            if (eastVisual && eastVisual->inputs[cvId(1,1)].isConnected()) {
-                float att = eastVisual->params[attenId(1,1)].getValue();
-                float cv  = eastVisual->inputs[cvId(1,1)].getVoltage(lv + 7) / 10.f;
-                restInterp = clamp(restInterp + cv * att, 0.f, 1.f);
-            }
-            // Threshold: plain per-voice value (NOT spread-blended).
-            engine.voices[v].restProb = deepWest->params[POLY_REST_PARAM_1 + v].getValue();
-            // Rest spread applies to the DRAW (slewed → average → final).
-            float avgRhythmRandomW[16] = {};
-            for (int i = 7; i < 15; i++)
-                for (int j = 0; j < 16; j++) avgRhythmRandomW[j] += engine.pe.slewedPolyRhythm[i][j];
-            for (int j = 0; j < 16; j++) avgRhythmRandomW[j] /= 8.f;
-            for (int j = 0; j < 16; j++) {
-                float voiceVal = engine.pe.slewedPolyRhythm[v][j];
-                engine.pe.polyRhythmRandom[v][j] = voiceVal + restInterp * (avgRhythmRandomW[j] - voiceVal);
-            }
-            
-            int mb = POLY_MELODY_VOICE_1_LEN + v * 3;
-            float melodyInterp = westInterp->params[POLY_MELODY_INTERP_1 + v].getValue();
-            if (eastVisual && eastVisual->inputs[cvId(3,1)].isConnected()) {
-                float att = eastVisual->params[attenId(3,1)].getValue();
-                float cv  = eastVisual->inputs[cvId(3,1)].getVoltage(lv + 7) / 10.f;
-                melodyInterp = clamp(melodyInterp + cv * att, 0.f, 1.f);
-            }
-            float avgMelodyRandom[16] = {};
-            for (int i = 7; i < 15; i++) {
-                for (int j = 0; j < 16; j++) avgMelodyRandom[j] += engine.pe.polyMelodyRandom[i][j];
-            }
-            for (int j = 0; j < 16; j++) avgMelodyRandom[j] /= 8.f;
-            for (int j = 0; j < 16; j++) {
-                float voiceVal = engine.pe.polyMelodyRandom[v][j];
-                engine.pe.polyMelodyRandom[v][j] = voiceVal + melodyInterp * (avgMelodyRandom[j] - voiceVal);
-            }
-            engine.polyLen[v][1] = (int)deepWest->params[mb].getValue();
-            engine.polyOff[v][1] = (int)deepWest->params[mb+1].getValue();
-            engine.polyRot[v][1] = (int)deepWest->params[mb+2].getValue();
-            
-            int ob = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-            float octaveInterp = westInterp->params[POLY_OCTAVE_INTERP_1 + v].getValue();
-            if (eastVisual && eastVisual->inputs[cvId(5,1)].isConnected()) {
-                float att = eastVisual->params[attenId(5,1)].getValue();
-                float cv  = eastVisual->inputs[cvId(5,1)].getVoltage(lv + 7) / 10.f;
-                octaveInterp = clamp(octaveInterp + cv * att, 0.f, 1.f);
-            }
-            float avgOctaveRandom[16] = {};
-            for (int i = 7; i < 15; i++) {
-                for (int j = 0; j < 16; j++) avgOctaveRandom[j] += engine.pe.polyOctaveRandom[i][j];
-            }
-            for (int j = 0; j < 16; j++) avgOctaveRandom[j] /= 8.f;
-            for (int j = 0; j < 16; j++) {
-                float voiceVal = engine.pe.polyOctaveRandom[v][j];
-                engine.pe.polyOctaveRandom[v][j] = voiceVal + octaveInterp * (avgOctaveRandom[j] - voiceVal);
-            }
-            engine.polyLen[v][2] = (int)deepWest->params[ob].getValue();
-            engine.polyOff[v][2] = (int)deepWest->params[ob+1].getValue();
-            engine.polyRot[v][2] = (int)deepWest->params[ob+2].getValue();
-        }
-        // West Scramble/Reset Logic (Similar to East but for indices 7-14)
-        bool sAll = deepWest->params[SCRAMBLE_ALL_PARAM].getValue() > 0.5f || deepWest->inputs[SCRAMBLE_ALL_INPUT].getVoltage() > 1.f;
-        if (sAll) {
-            for (int v = 7; v < 15; v++) {
-                int b = POLY_DNA_VOICE_1_LEN + v * 3;
-                deepWest->params[b].setValue(random::uniform() * 15.f + 1.f);
-                deepWest->params[b+1].setValue(random::uniform() * 15.f);
-                b = POLY_MELODY_VOICE_1_LEN + v * 3;
-                deepWest->params[b].setValue(random::uniform() * 15.f + 1.f);
-                deepWest->params[b+1].setValue(random::uniform() * 15.f);
-                b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-                deepWest->params[b].setValue(random::uniform() * 15.f + 1.f);
-                deepWest->params[b+1].setValue(random::uniform() * 15.f);
-            }
-        } else {
-            for (int v = 7; v < 15; v++) {
-                if (deepWest->params[SCRAMBLE_VOICE_8 + (v - 7)].getValue() > 0.5f ||
-                    deepWest->inputs[SCRAMBLE_VOICE_8_INPUT + (v - 7)].getVoltage() > 1.f) {
-                    int b = POLY_DNA_VOICE_1_LEN + v * 3;
-                    deepWest->params[b].setValue(random::uniform() * 15.f + 1.f);
-                    deepWest->params[b+1].setValue(random::uniform() * 15.f);
-                    b = POLY_MELODY_VOICE_1_LEN + v * 3;
-                    deepWest->params[b].setValue(random::uniform() * 15.f + 1.f);
-                    deepWest->params[b+1].setValue(random::uniform() * 15.f);
-                    b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-                    deepWest->params[b].setValue(random::uniform() * 15.f + 1.f);
-                    deepWest->params[b+1].setValue(random::uniform() * 15.f);
-                }
-            }
-        }
-
-        bool resetAllW = deepWest->params[RESET_ALL_PARAM].getValue() > 0.5f ||
-                         deepWest->inputs[RESET_ALL_INPUT].getVoltage() > 1.f;
-        if (resetAllW) {
-            for (int v = 7; v < 15; v++) {
-                int b = POLY_DNA_VOICE_1_LEN + v * 3;
-                deepWest->params[b].setValue(16.f); deepWest->params[b+1].setValue(0.f); deepWest->params[b+2].setValue(0.f);
-                b = POLY_MELODY_VOICE_1_LEN + v * 3;
-                deepWest->params[b].setValue(16.f); deepWest->params[b+1].setValue(0.f); deepWest->params[b+2].setValue(0.f);
-                b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-                deepWest->params[b].setValue(16.f); deepWest->params[b+1].setValue(0.f); deepWest->params[b+2].setValue(0.f);
-            }
-        } else {
-            for (int v = 7; v < 15; v++) {
-                if (deepWest->params[RESET_VOICE_8 + (v - 7)].getValue() > 0.5f ||
-                    deepWest->inputs[RESET_VOICE_8_INPUT + (v - 7)].getVoltage() > 1.f) {
-                    int b = POLY_DNA_VOICE_1_LEN + v * 3;
-                    deepWest->params[b].setValue(16.f); deepWest->params[b+1].setValue(0.f); deepWest->params[b+2].setValue(0.f);
-                    b = POLY_MELODY_VOICE_1_LEN + v * 3;
-                    deepWest->params[b].setValue(16.f); deepWest->params[b+1].setValue(0.f); deepWest->params[b+2].setValue(0.f);
-                    b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-                    deepWest->params[b].setValue(16.f); deepWest->params[b+1].setValue(0.f); deepWest->params[b+2].setValue(0.f);
-                }
-            }
-        }
-    }
+   
 
     // ── Throttle UI and Light processing ──
     if (lightDivider.process()) {
@@ -1169,23 +766,363 @@ void Monsoon::process(const ProcessArgs& args) {
             if (faderDirty || activeSemiCount == 0) rebuildSemiCache_();
         }
 
-        // Refresh visual cache so LEDs react to knob changes (at ~90Hz instead of 44kHz)
-        modeController->updatePatternInput();
         engine.pe.refreshVisualCache(modeController->currentPatternInput);
     }
 
     // ── Control-Rate DNA and Window Updates (Optimized CPU) ──
     if (controlDivider.process()) {
-       updateExpanderPointers();
+        updateExpanderPointers();
+
+        if (expanderManager.cachedCausewayExpander) {
+            rack::Module* cw = expanderManager.cachedCausewayExpander;
+            for (int i = 0; i < 10; ++i) {
+                int in = MonsoonIds::CAUSEWAY_GATE_TRIAL_R + i;
+                if (cw->inputs[in].isConnected()
+                    && causewayGateTrig[i].process(cw->inputs[in].getVoltage(), 0.1f, 1.f)) {
+                    fireDieAction(i);
+                }
+            }
+        }
+
+        // Refresh Sequencer Parameters (Throttled sampling of all knobs/CV)
+        modeController->updatePatternInput();
+        engine.accentProb = paramManager->getAccent();
 
         // Check for expander changes and update cached pointers
         dnaManager.processDNA(expanderManager);
+
+        // ── Deep Straits Sands Expanders (Control Rate) ──
+        auto* deepEast   = expanderManager.cachedDeepStraitsSandsEastExpander;
+        auto* deepWest   = expanderManager.cachedDeepStraitsSandsWestExpander;
+        auto* straitEast = expanderManager.cachedPolyVoiceExpander;
+        auto* straitWest = expanderManager.cachedStraitWestExpander;
+        auto* eastVisual  = expanderManager.cachedEastSandsVisual;
+        auto* westVisual  = expanderManager.cachedWestSandsVisual;
+
+        auto* eastLOR   = eastVisual ? static_cast<rack::Module*>(eastVisual)
+                                     : static_cast<rack::Module*>(deepEast);
+        auto* eastInterp = eastVisual ? static_cast<rack::Module*>(eastVisual)
+                                      : static_cast<rack::Module*>(deepEast);
+
+        const bool polyBaseActive = (straitEast != nullptr) && (engine.numPolyVoices >= 1);
+        const int  polyOutCap = polyBaseActive ? (straitWest ? 15 : 7) : 0;
+        const int  effPolyVoices = clamp(engine.numPolyVoices, 0, polyOutCap);
+
+        if (eastLOR && (straitEast || eastVisual) && polyBaseActive) {
+            using namespace DeepStraitsSandsEastIds;
+            using namespace StraitsEastVisualIds;
+            
+            for (int v = 0; v < 15; v++) {
+                int rhythmBase = POLY_DNA_VOICE_1_LEN + v * 3;
+                
+                auto applyLorCV = [&](int paramIdx, int r, int c, float lo, float hi)-> int {
+                    float base = eastLOR->params[paramIdx].getValue();
+                    if (eastVisual && eastVisual->inputs[cvId(r,c)].isConnected()) {
+                        float att = eastVisual->params[attenId(r,c)].getValue();
+                        float cv  = eastVisual->inputs[cvId(r,c)].getVoltage(v) / 10.f;
+                        base = clamp(base + cv * att * (hi - lo), lo, hi);
+                    }
+                    return (int)base;
+                };
+                engine.polyLen[v][0] = applyLorCV(rhythmBase,     0, 0, 1.f, 16.f);
+                engine.polyOff[v][0] = applyLorCV(rhythmBase + 1, 0, 1, 0.f, 15.f);
+                engine.polyRot[v][0] = applyLorCV(rhythmBase + 2, 1, 0, 0.f, 15.f);
+
+                float restInterp = eastInterp->params[POLY_REST_INTERP_1 + v].getValue();
+                if (eastVisual && eastVisual->inputs[cvId(1,1)].isConnected()) {
+                    float att = eastVisual->params[attenId(1,1)].getValue();
+                    float cv  = eastVisual->inputs[cvId(1,1)].getVoltage(v) / 10.f;
+                    restInterp = clamp(restInterp + cv * att, 0.f, 1.f);
+                }
+                
+                if (deepEast) {
+                    engine.voices[v].restProb = deepEast->params[POLY_REST_PARAM_1 + v].getValue();
+                }
+
+                if (!engine.locked) {
+                    const int nPoly = effPolyVoices;
+                    const float denom = 1.f + (float)nPoly;
+                    float avgRhythmRandom[16] = {};
+                    for (int j = 0; j < 16; j++) {
+                        float s = engine.pe.slewedRhythm[j];
+                        for (int i = 0; i < nPoly; i++) s += engine.pe.slewedPolyRhythm[i][j];
+                        avgRhythmRandom[j] = s / denom;
+                    }
+                    for (int j = 0; j < 16; j++) {
+                        float voiceVal = engine.pe.slewedPolyRhythm[v][j];
+                        engine.pe.polyRhythmRandom[v][j] = voiceVal + restInterp * (avgRhythmRandom[j] - voiceVal);
+                    }
+                }
+                
+                int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
+                float melodyInterp = eastInterp->params[POLY_MELODY_INTERP_1 + v].getValue();
+                engine.polyLen[v][1] = applyLorCV(melodyBase,     2, 0, 1.f, 16.f);
+                engine.polyOff[v][1] = applyLorCV(melodyBase + 1, 2, 1, 0.f, 15.f);
+                engine.polyRot[v][1] = applyLorCV(melodyBase + 2, 3, 0, 0.f, 15.f);
+                if (eastVisual && eastVisual->inputs[cvId(3,1)].isConnected()) {
+                    float att = eastVisual->params[attenId(3,1)].getValue();
+                    float cv  = eastVisual->inputs[cvId(3,1)].getVoltage(v) / 10.f;
+                    melodyInterp = clamp(melodyInterp + cv * att, 0.f, 1.f);
+                }
+                
+                if (!engine.locked) {
+                    const int nPoly = effPolyVoices;
+                    const float denom = 1.f + (float)nPoly;
+                    float avgMelodyRandom[16] = {};
+                    for (int j = 0; j < 16; j++) {
+                        float s = engine.pe.slewedMelody[j];
+                        for (int i = 0; i < nPoly; i++) s += engine.pe.slewedPolyMelody[i][j];
+                        avgMelodyRandom[j] = s / denom;
+                    }
+                    for (int j = 0; j < 16; j++) {
+                        float voiceVal = engine.pe.slewedPolyMelody[v][j];
+                        engine.pe.polyMelodyRandom[v][j] = voiceVal + melodyInterp * (avgMelodyRandom[j] - voiceVal);
+                    }
+                }
+                
+                if (deepEast) {
+                    engine.polyLen[v][1] = (int)deepEast->params[melodyBase].getValue();
+                    engine.polyOff[v][1] = (int)deepEast->params[melodyBase + 1].getValue();
+                    engine.polyRot[v][1] = (int)deepEast->params[melodyBase + 2].getValue();
+                }
+                
+                int octaveBase = POLY_OCTAVE_VOICE_1_LEN + v * 3;
+                engine.polyLen[v][2] = applyLorCV(octaveBase,     4, 0, 1.f, 16.f);
+                engine.polyOff[v][2] = applyLorCV(octaveBase + 1, 4, 1, 0.f, 15.f);
+                engine.polyRot[v][2] = applyLorCV(octaveBase + 2, 5, 0, 0.f, 15.f);
+
+                float octaveInterp = eastInterp->params[POLY_OCTAVE_INTERP_1 + v].getValue();
+                if (eastVisual && eastVisual->inputs[cvId(5,1)].isConnected()) {
+                    float att = eastVisual->params[attenId(5,1)].getValue();
+                    float cv  = eastVisual->inputs[cvId(5,1)].getVoltage(v) / 10.f;
+                    octaveInterp = clamp(octaveInterp + cv * att, 0.f, 1.f);
+                }
+                
+                if (!engine.locked) {
+                    const int nPoly = effPolyVoices;
+                    const float denom = 1.f + (float)nPoly;
+                    float avgOctaveRandom[16] = {};
+                    for (int j = 0; j < 16; j++) {
+                        float s = engine.pe.slewedOctave[j];
+                        for (int i = 0; i < nPoly; i++) s += engine.pe.slewedPolyOctave[i][j];
+                        avgOctaveRandom[j] = s / denom;
+                    }
+                    for (int j = 0; j < 16; j++) {
+                        float voiceVal = engine.pe.slewedPolyOctave[v][j];
+                        engine.pe.polyOctaveRandom[v][j] = voiceVal + octaveInterp * (avgOctaveRandom[j] - voiceVal);
+                    }
+                }
+                
+                if (deepEast) {
+                    engine.polyLen[v][2] = (int)deepEast->params[octaveBase].getValue();
+                    engine.polyOff[v][2] = (int)deepEast->params[octaveBase + 1].getValue();
+                    engine.polyRot[v][2] = (int)deepEast->params[octaveBase + 2].getValue();
+                }
+            }
+            
+            if (deepEast) {
+                bool scrambleAll = deepEast->params[SCRAMBLE_ALL_PARAM].getValue() > 0.5f ||
+                                  deepEast->inputs[SCRAMBLE_ALL_INPUT].getVoltage() > 1.f;
+                if (scrambleAll) {
+                    for (int v = 0; v < 7; v++) {
+                        int b = POLY_DNA_VOICE_1_LEN + v * 3;
+                        deepEast->params[b].setValue(random::uniform() * 15.f + 1.f);
+                        deepEast->params[b+1].setValue(random::uniform() * 15.f);
+                        b = POLY_MELODY_VOICE_1_LEN + v * 3;
+                        deepEast->params[b].setValue(random::uniform() * 15.f + 1.f);
+                        deepEast->params[b+1].setValue(random::uniform() * 15.f);
+                        b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
+                        deepEast->params[b].setValue(random::uniform() * 15.f + 1.f);
+                        deepEast->params[b+1].setValue(random::uniform() * 15.f);
+                    }
+                } else {
+                    for (int v = 0; v < 7; v++) {
+                        if (deepEast->params[SCRAMBLE_VOICE_1 + v].getValue() > 0.5f ||
+                            deepEast->inputs[SCRAMBLE_VOICE_1_INPUT + v].getVoltage() > 1.f) {
+                            int b = POLY_DNA_VOICE_1_LEN + v * 3;
+                            deepEast->params[b].setValue(random::uniform() * 15.f + 1.f);
+                            deepEast->params[b+1].setValue(random::uniform() * 15.f);
+                            b = POLY_MELODY_VOICE_1_LEN + v * 3;
+                            deepEast->params[b].setValue(random::uniform() * 15.f + 1.f);
+                            deepEast->params[b+1].setValue(random::uniform() * 15.f);
+                            b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
+                            deepEast->params[b].setValue(random::uniform() * 15.f + 1.f);
+                            deepEast->params[b+1].setValue(random::uniform() * 15.f);
+                        }
+                    }
+                }
+                
+                bool resetAllE = deepEast->params[RESET_ALL_PARAM].getValue() > 0.5f ||
+                                deepEast->inputs[RESET_ALL_INPUT].getVoltage() > 1.f;
+                if (resetAllE) {
+                    for (int v = 0; v < 7; v++) {
+                        int b = POLY_DNA_VOICE_1_LEN + v * 3;
+                        deepEast->params[b].setValue(16.f); deepEast->params[b+1].setValue(0.f); deepEast->params[b+2].setValue(0.f);
+                        b = POLY_MELODY_VOICE_1_LEN + v * 3;
+                        deepEast->params[b].setValue(16.f); deepEast->params[b+1].setValue(0.f); deepEast->params[b+2].setValue(0.f);
+                        b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
+                        deepEast->params[b].setValue(16.f); deepEast->params[b+1].setValue(0.f); deepEast->params[b+2].setValue(0.f);
+                    }
+                } else {
+                    for (int v = 0; v < 7; v++) {
+                        if (deepEast->params[RESET_VOICE_1 + v].getValue() > 0.5f ||
+                            deepEast->inputs[RESET_VOICE_1_INPUT + v].getVoltage() > 1.f) {
+                            int b = POLY_DNA_VOICE_1_LEN + v * 3;
+                            deepEast->params[b].setValue(16.f); deepEast->params[b+1].setValue(0.f); deepEast->params[b+2].setValue(0.f);
+                            b = POLY_MELODY_VOICE_1_LEN + v * 3;
+                            deepEast->params[b].setValue(16.f); deepEast->params[b+1].setValue(0.f); deepEast->params[b+2].setValue(0.f);
+                            b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
+                            deepEast->params[b].setValue(16.f); deepEast->params[b+1].setValue(0.f); deepEast->params[b+2].setValue(0.f);
+                        }
+                    }
+                }
+            }
+        }
+
+        auto* westLOR    = westVisual ? static_cast<rack::Module*>(westVisual)
+                                      : static_cast<rack::Module*>(deepWest);
+        auto* westInterp = westVisual ? static_cast<rack::Module*>(westVisual)
+                                      : static_cast<rack::Module*>(deepWest);
+
+        if (false && westLOR && straitWest) {
+            // ... (retired West logic block kept as is, now running at control rate)
+            using namespace DeepStraitsSandsWestIds;
+            using namespace StraitsEastVisualIds;
+            for (int v = 7; v < 15; v++) {
+                int lv = v - 7;
+                int b  = POLY_DNA_VOICE_1_LEN + v * 3;
+                auto applyLorCVW = [&](int paramIdx, int r, int c, float lo, float hi) -> int {
+                    float base = westLOR->params[paramIdx].getValue();
+                    if (eastVisual && eastVisual->inputs[cvId(r,c)].isConnected()) {
+                        float att = eastVisual->params[attenId(r,c)].getValue();
+                        float cv  = eastVisual->inputs[cvId(r,c)].getVoltage(lv + 7) / 10.f;
+                        base = clamp(base + cv * att * (hi - lo), lo, hi);
+                    }
+                    return (int)base;
+                };
+                engine.polyLen[v][0] = applyLorCVW(b,     0, 0, 1.f, 16.f);
+                engine.polyOff[v][0] = applyLorCVW(b + 1, 0, 1, 0.f, 15.f);
+                engine.polyRot[v][0] = applyLorCVW(b + 2, 1, 0, 0.f, 15.f);
+
+                float restInterp = westInterp->params[POLY_REST_INTERP_1 + v].getValue();
+                if (eastVisual && eastVisual->inputs[cvId(1,1)].isConnected()) {
+                    float att = eastVisual->params[attenId(1,1)].getValue();
+                    float cv  = eastVisual->inputs[cvId(1,1)].getVoltage(lv + 7) / 10.f;
+                    restInterp = clamp(restInterp + cv * att, 0.f, 1.f);
+                }
+                engine.voices[v].restProb = deepWest->params[POLY_REST_PARAM_1 + v].getValue();
+                float avgRhythmRandomW[16] = {};
+                for (int i = 7; i < 15; i++)
+                    for (int j = 0; j < 16; j++) avgRhythmRandomW[j] += engine.pe.slewedPolyRhythm[i][j];
+                for (int j = 0; j < 16; j++) avgRhythmRandomW[j] /= 8.f;
+                for (int j = 0; j < 16; j++) {
+                    float voiceVal = engine.pe.slewedPolyRhythm[v][j];
+                    engine.pe.polyRhythmRandom[v][j] = voiceVal + restInterp * (avgRhythmRandomW[j] - voiceVal);
+                }
+                
+                int mb = POLY_MELODY_VOICE_1_LEN + v * 3;
+                float melodyInterp = westInterp->params[POLY_MELODY_INTERP_1 + v].getValue();
+                if (eastVisual && eastVisual->inputs[cvId(3,1)].isConnected()) {
+                    float att = eastVisual->params[attenId(3,1)].getValue();
+                    float cv  = eastVisual->inputs[cvId(3,1)].getVoltage(lv + 7) / 10.f;
+                    melodyInterp = clamp(melodyInterp + cv * att, 0.f, 1.f);
+                }
+                float avgMelodyRandom[16] = {};
+                for (int i = 7; i < 15; i++) {
+                    for (int j = 0; j < 16; j++) avgMelodyRandom[j] += engine.pe.polyMelodyRandom[i][j];
+                }
+                for (int j = 0; j < 16; j++) avgMelodyRandom[j] /= 8.f;
+                for (int j = 0; j < 16; j++) {
+                    float voiceVal = engine.pe.polyMelodyRandom[v][j];
+                    engine.pe.polyMelodyRandom[v][j] = voiceVal + melodyInterp * (avgMelodyRandom[j] - voiceVal);
+                }
+                engine.polyLen[v][1] = (int)deepWest->params[mb].getValue();
+                engine.polyOff[v][1] = (int)deepWest->params[mb+1].getValue();
+                engine.polyRot[v][1] = (int)deepWest->params[mb+2].getValue();
+                
+                int ob = POLY_OCTAVE_VOICE_1_LEN + v * 3;
+                float octaveInterp = westInterp->params[POLY_OCTAVE_INTERP_1 + v].getValue();
+                if (eastVisual && eastVisual->inputs[cvId(5,1)].isConnected()) {
+                    float att = eastVisual->params[attenId(5,1)].getValue();
+                    float cv  = eastVisual->inputs[cvId(5,1)].getVoltage(lv + 7) / 10.f;
+                    octaveInterp = clamp(octaveInterp + cv * att, 0.f, 1.f);
+                }
+                float avgOctaveRandom[16] = {};
+                for (int i = 7; i < 15; i++) {
+                    for (int j = 0; j < 16; j++) avgOctaveRandom[j] += engine.pe.polyOctaveRandom[i][j];
+                }
+                for (int j = 0; j < 16; j++) avgOctaveRandom[j] /= 8.f;
+                for (int j = 0; j < 16; j++) {
+                    float voiceVal = engine.pe.polyOctaveRandom[v][j];
+                    engine.pe.polyOctaveRandom[v][j] = voiceVal + octaveInterp * (avgOctaveRandom[j] - voiceVal);
+                }
+                engine.polyLen[v][2] = (int)deepWest->params[ob].getValue();
+                engine.polyOff[v][2] = (int)deepWest->params[ob+1].getValue();
+                engine.polyRot[v][2] = (int)deepWest->params[ob+2].getValue();
+            }
+            bool sAll = deepWest->params[SCRAMBLE_ALL_PARAM].getValue() > 0.5f || deepWest->inputs[SCRAMBLE_ALL_INPUT].getVoltage() > 1.f;
+            if (sAll) {
+                for (int v = 7; v < 15; v++) {
+                    int b = POLY_DNA_VOICE_1_LEN + v * 3;
+                    deepWest->params[b].setValue(random::uniform() * 15.f + 1.f);
+                    deepWest->params[b+1].setValue(random::uniform() * 15.f);
+                    b = POLY_MELODY_VOICE_1_LEN + v * 3;
+                    deepWest->params[b].setValue(random::uniform() * 15.f + 1.f);
+                    deepWest->params[b+1].setValue(random::uniform() * 15.f);
+                    b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
+                    deepWest->params[b].setValue(random::uniform() * 15.f + 1.f);
+                    deepWest->params[b+1].setValue(random::uniform() * 15.f);
+                }
+            } else {
+                for (int v = 7; v < 15; v++) {
+                    if (deepWest->params[SCRAMBLE_VOICE_8 + (v - 7)].getValue() > 0.5f ||
+                        deepWest->inputs[SCRAMBLE_VOICE_8_INPUT + (v - 7)].getVoltage() > 1.f) {
+                        int b = POLY_DNA_VOICE_1_LEN + v * 3;
+                        deepWest->params[b].setValue(random::uniform() * 15.f + 1.f);
+                        deepWest->params[b+1].setValue(random::uniform() * 15.f);
+                        b = POLY_MELODY_VOICE_1_LEN + v * 3;
+                        deepWest->params[b].setValue(random::uniform() * 15.f + 1.f);
+                        deepWest->params[b+1].setValue(random::uniform() * 15.f);
+                        b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
+                        deepWest->params[b].setValue(random::uniform() * 15.f + 1.f);
+                        deepWest->params[b+1].setValue(random::uniform() * 15.f);
+                    }
+                }
+            }
+
+            bool resetAllW = deepWest->params[RESET_ALL_PARAM].getValue() > 0.5f ||
+                             deepWest->inputs[RESET_ALL_INPUT].getVoltage() > 1.f;
+            if (resetAllW) {
+                for (int v = 7; v < 15; v++) {
+                    int b = POLY_DNA_VOICE_1_LEN + v * 3;
+                    deepWest->params[b].setValue(16.f); deepWest->params[b+1].setValue(0.f); deepWest->params[b+2].setValue(0.f);
+                    b = POLY_MELODY_VOICE_1_LEN + v * 3;
+                    deepWest->params[b].setValue(16.f); deepWest->params[b+1].setValue(0.f); deepWest->params[b+2].setValue(0.f);
+                    b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
+                    deepWest->params[b].setValue(16.f); deepWest->params[b+1].setValue(0.f); deepWest->params[b+2].setValue(0.f);
+                }
+            } else {
+                for (int v = 7; v < 15; v++) {
+                    if (deepWest->params[RESET_VOICE_8 + (v - 7)].getValue() > 0.5f ||
+                        deepWest->inputs[RESET_VOICE_8_INPUT + (v - 7)].getVoltage() > 1.f) {
+                        int b = POLY_DNA_VOICE_1_LEN + v * 3;
+                        deepWest->params[b].setValue(16.f); deepWest->params[b+1].setValue(0.f); deepWest->params[b+2].setValue(0.f);
+                        b = POLY_MELODY_VOICE_1_LEN + v * 3;
+                        deepWest->params[b].setValue(16.f); deepWest->params[b+1].setValue(0.f); deepWest->params[b+2].setValue(0.f);
+                        b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
+                        deepWest->params[b].setValue(16.f); deepWest->params[b+1].setValue(0.f); deepWest->params[b+2].setValue(0.f);
+                    }
+                }
+            }
+        }
 
         // Refresh Audio-Rate Caches (Throttled)
         cachedBpmParam = params[BPM_PARAM].getValue();
         cachedClkConnected = inputs[CLK_INPUT].isConnected();
         cachedCv1Connected = inputs[CV1_INPUT].isConnected();
         cachedCv2Connected = inputs[CV2_INPUT].isConnected();
+        cachedCv3Connected = inputs[CV3_MOD_INPUT].isConnected();
+        cachedGate3Connected = inputs[GATE3_MOD_INPUT].isConnected();
         cachedGate1Connected = inputs[GATE1_INPUT].isConnected();
         cachedGate2Connected = inputs[GATE2_INPUT].isConnected();
         cachedRunConnected = inputs[RUN_GATE_INPUT].isConnected();
@@ -1194,9 +1131,27 @@ void Monsoon::process(const ProcessArgs& args) {
         cachedRunBtn = params[RUN_GATE_PARAM].getValue();
         cachedResetBtn = params[RESET_BUTTON_PARAM].getValue();
 
-        // Cache Poly Rest probabilities
+        // ── Throttled Poly Rest Logic ──
         for (int i = 0; i < 15; ++i) {
-            cachedPolyRest[i] = paramManager->getPolyRest(i);
+            float base = paramManager->getPolyRest(i);
+            cachedPolyRest[i] = base;
+            
+            float modulation = 0.f;
+            if (i < 7) { // East voices
+                if (inputs[POLY_REST_MOD_CV_INPUT_1 + i].isConnected()) {
+                    modulation = inputs[POLY_REST_MOD_CV_INPUT_1 + i].getVoltage() * 
+                                 params[POLY_REST_MOD_ATT_1 + i].getValue() * 0.1f;
+                }
+            } else { // West voices
+                int wi = i - 7;
+                if (inputs[POLY_REST_MOD_CV_INPUT_8 + wi].isConnected()) {
+                    modulation = inputs[POLY_REST_MOD_CV_INPUT_8 + wi].getVoltage() * 
+                                 params[POLY_REST_MOD_ATT_8 + wi].getValue() * 0.1f;
+                }
+            }
+            // ParameterManager::getPolyRest includes the global Rest knob + global CV.
+            // Here we add the per-voice modulation on top.
+            engine.voices[i].restProb = clamp(base + modulation, 0.f, 1.f);
         }
 
         // Handle Throttled CV1 Logic (Range Modulation)
@@ -1229,6 +1184,7 @@ void Monsoon::process(const ProcessArgs& args) {
 
         // Update CV2 modulation offsets (Throttled)
         paramManager->clearCv2Offsets();
+        paramManager->clearCv3Offsets();
         if (inputs[CV2_INPUT].isConnected()) {
             float v    = clampv<float>(inputs[CV2_INPUT].getVoltage(), 0.f, 5.f);
             float norm = v / 5.f; 
@@ -1236,6 +1192,32 @@ void Monsoon::process(const ProcessArgs& args) {
             if (cv2Mode == 1) paramManager->setCv2Offset(1, norm);
             if (cv2Mode == 2) paramManager->setCv2Offset(2, norm);
             if (cv2Mode == 3) paramManager->setCv2Offset(3, norm);
+        }
+
+        // ── Assignable CV3 & Causeway Modulation (Throttled) ──
+        float cv3Mods[4] = {0.f, 0.f, 0.f, 0.f};
+        
+        // 1. Main Panel CV3 (Unipolar offset to selected target)
+        if (cachedCv3Connected) {
+            float v = inputs[CV3_MOD_INPUT].getVoltage();
+            cv3Mods[cv3Target] = clampv<float>(v, 0.f, 5.f) / 5.f;
+        }
+
+        // 2. Causeway Expander (Summing bipolar attenuverted CVs)
+        if (expanderManager.cachedCausewayExpander) {
+            rack::Module* cw = expanderManager.cachedCausewayExpander;
+            for (int i = 0; i < 4; ++i) {
+                if (cw->inputs[CAUSEWAY_SLEW_R_CV + i].isConnected()) {
+                    float v = cw->inputs[CAUSEWAY_SLEW_R_CV + i].getVoltage();
+                    float att = cw->params[CAUSEWAY_SLEW_R_ATT + i].getValue();
+                    cv3Mods[i] += (v / 5.f) * att;
+                }
+            }
+        }
+
+        // Apply final summed offsets to ParameterManager
+        for (int i = 0; i < 4; ++i) {
+            paramManager->setCv3Offset(i, clampv<float>(cv3Mods[i], -1.f, 1.f));
         }
     }
 }

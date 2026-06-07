@@ -96,6 +96,20 @@ public:
         for (int i = 0; i < 4; ++i) cv2Offsets[i] = 0.f;
     }
 
+    // ──── CV3 Offset Management ──────────────────────────────────────────────
+
+    /// Set CV3 offset (0=R Slew, 1=M Slew, 2=R Mix, 3=M Mix)
+    void setCv3Offset(int paramIdx, float offset) {
+        if (paramIdx >= 0 && paramIdx < 4) {
+            cv3Offsets[paramIdx] = offset;
+        }
+    }
+
+    /// Clear all CV3 offsets
+    void clearCv3Offsets() {
+        for (int i = 0; i < 4; ++i) cv3Offsets[i] = 0.f;
+    }
+
     // ──── Surge Expander Offset Management ───────────────────────────────────
     // Big-5 CV (x attenuverter) offsets from the Surge expander, summed into the
     // matching getters. Index: 0 note value, 1 variation, 2 legato, 3 rest, 4 accent.
@@ -113,6 +127,8 @@ private:
     
     // CV2-aware offsets for note value, variation, legato, rest
     float cv2Offsets[4] = {0.f, 0.f, 0.f, 0.f};
+    // CV3 offsets for rhythm slew, melody slew, rhythm mix, melody mix
+    float cv3Offsets[4] = {0.f, 0.f, 0.f, 0.f};
     // Surge expander offsets: note value, variation, legato, rest, accent
     float surgeOffsets[5] = {0.f, 0.f, 0.f, 0.f, 0.f};
     

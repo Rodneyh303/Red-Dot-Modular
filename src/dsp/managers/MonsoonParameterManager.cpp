@@ -63,10 +63,10 @@ float ParameterManager::getTranspose() const {
     return readParam_(TRANSPOSE_PARAM, -12.f, 12.f);
 }
 
-float ParameterManager::getRhythmSlew() const { return readParam_(DICE_SLEW_R_PARAM, 0.f, 1.f); }
-float ParameterManager::getMelodySlew() const { return readParam_(DICE_SLEW_M_PARAM, 0.f, 1.f); }
-float ParameterManager::getRhythmMix() const { return readParam_(RHYTHM_MIX_PARAM, 0.f, 1.f); }
-float ParameterManager::getMelodyMix() const { return readParam_(MELODY_MIX_PARAM, 0.f, 1.f); }
+float ParameterManager::getRhythmSlew() const { return clampv(readParam_(DICE_SLEW_R_PARAM, 0.f, 1.f) + cv3Offsets[0], 0.f, 1.f); }
+float ParameterManager::getMelodySlew() const { return clampv(readParam_(DICE_SLEW_M_PARAM, 0.f, 1.f) + cv3Offsets[1], 0.f, 1.f); }
+float ParameterManager::getRhythmMix() const { return clampv(readParam_(RHYTHM_MIX_PARAM, 0.f, 1.f) + cv3Offsets[2], 0.f, 1.f); }
+float ParameterManager::getMelodyMix() const { return clampv(readParam_(MELODY_MIX_PARAM, 0.f, 1.f) + cv3Offsets[3], 0.f, 1.f); }
 
 // ──── Octave Range Getters ──────────────────────────────────────────────────
 

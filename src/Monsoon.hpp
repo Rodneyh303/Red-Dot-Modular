@@ -800,8 +800,10 @@ struct Monsoon : Module {
     bool  cachedClkConnected = false;
     bool  cachedCv1Connected = false;
     bool  cachedCv2Connected = false;
+    bool  cachedCv3Connected = false;
     bool  cachedGate1Connected = false;
     bool  cachedGate2Connected = false;
+    bool  cachedGate3Connected = false;
     bool  cachedRunConnected = false;
     bool  cachedResetConnected = false;
     float cachedRunBtn = 0.f;
