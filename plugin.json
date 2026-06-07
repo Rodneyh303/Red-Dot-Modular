@@ -47,16 +47,6 @@
       ]
     },
     {
-      "slug": "MonsoonSandsExpander",
-      "name": "MonsoonSandsExpander",
-      "description": "Monsoon Probability Manipulation, and Modulation Expander",
-      "tags": [
-        "Expander",
-        "Sequencer",
-		"Random"
-      ]
-    },
-    {
       "slug": "MonsoonStraitsEastExpander",
       "name": "MonsoonStraitsEastExpander",
       "description": "Polyphonice Expander and Modulation Expander - Voice 2-8",
@@ -70,36 +60,6 @@
       "slug": "MonsoonStraitWestExpander",
       "name": "MonsoonStraitWestExpander",
       "description": "Polyphonice Expander and Modulation Expander - Voice 9-16",
-      "tags": [
-        "Expander",
-        "Sequencer",
-		"Random"
-      ]
-    },
-    {
-      "slug": "MonsoonDeepStraitsSandsEast",
-      "name": "MonsoonDeepStraitsSandsEast",
-      "description": "Monsoon Poly Probability Manipulation, and Modulation Expander Voice 2-8",
-      "tags": [
-        "Expander",
-        "Sequencer",
-		"Random"
-      ]
-    },
-    {
-      "slug": "MonsoonDeepStraitsSandsWest",
-      "name": "MonsoonDeepStraitsSandsWest",
-      "description": "Monsoon Poly Probability Manipulation, and Modulation Expander Voice 9-16",
-      "tags": [
-        "Expander",
-        "Sequencer",
-		"Random"
-      ]
-    },
-    {
-      "slug": "MonsoonStraitsSands",
-      "name": "MonsoonStraitsSands",
-      "description": "Monsoon Polyphonic Global Macro Probability Manipulation, and Modulation Expander",
       "tags": [
         "Expander",
         "Sequencer",

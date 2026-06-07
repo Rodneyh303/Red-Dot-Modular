@@ -2,6 +2,9 @@
 #include <rack.hpp>
 
 // Forward declarations
+class SequencerEngine;
+
+// Forward declarations
 struct MonsoonInterchangeExpander;
 struct MonsoonSandsExpander;
 struct MonsoonSandsVisualExpander;       // Mono visual DNA editor
@@ -161,5 +164,7 @@ struct MonsoonExpanderManager {
             && cachedDeepStraitsSandsEastExpander && cachedDeepStraitsSandsWestExpander
             && cachedEastSandsVisual && cachedWestSandsVisual && cachedMacroSandsVisual;
     }
-};
 
+    /// Synchronizes data between the engine and specific expanders (Deep Straits, Visual Editors, etc.)
+    void sync(SequencerEngine& engine);
+};
