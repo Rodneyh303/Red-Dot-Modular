@@ -186,6 +186,10 @@ void Monsoon::updateExpanderPointers() {
         cv2Mode = 0;
         gate1Assign = 0;
         gate2Assign = 1;
+        cv3Target = CV3_RHYTHM_SLEW;
+        gate3Target = G3_TRIAL_RHYTHM;
+        rhythmLiveTrial = false;
+        melodyLiveTrial = false;
         invertMuteLogic = false;
         restartOnUnmute = false;
         reseedOnRoll = false;

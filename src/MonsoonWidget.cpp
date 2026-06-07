@@ -464,34 +464,34 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
             }
         }));
 
-        menu->addChild(createSubmenuItem("DNA Rotation", "", [=](ui::Menu* sub) {
-            auto addRot = [=](ui::Menu* m, const char* label, std::function<void(int)> func) {
-                m->addChild(createSubmenuItem(label, "", [=](ui::Menu* s) {
-                    s->addChild(createMenuItem("Rotate Forward (+1)", "", [=]() { func(1); }));
-                    s->addChild(createMenuItem("Rotate Backward (-1)", "", [=]() { func(-1); }));
-                }));
-            };
+        // menu->addChild(createSubmenuItem("DNA Rotation", "", [=](ui::Menu* sub) {
+        //     auto addRot = [=](ui::Menu* m, const char* label, std::function<void(int)> func) {
+        //         m->addChild(createSubmenuItem(label, "", [=](ui::Menu* s) {
+        //             s->addChild(createMenuItem("Rotate Forward (+1)", "", [=]() { func(1); }));
+        //             s->addChild(createMenuItem("Rotate Backward (-1)", "", [=]() { func(-1); }));
+        //         }));
+        //     };
 
-            addRot(sub, "Rhythm (Gates/Rests)", [=](int s) { m->rotateRhythm(s); }); // Individual
-            addRot(sub, "Variation (Lengths)", [=](int s) { m->rotateVariation(s); });
-            addRot(sub, "Legato/Tie", [=](int s) { m->rotateLegato(s); });
-            sub->addChild(new ui::MenuSeparator);
-            addRot(sub, "Melody (Pitch)", [=](int s) { m->rotateMelody(s); }); // Individual
-            addRot(sub, "Octave", [=](int s) { m->rotateOctave(s); });
-            sub->addChild(new ui::MenuSeparator);
-            addRot(sub, "Rotate Rhythm Pattern", [=](int s) { m->rotateRhythmPattern(s); }); // Combined
-            addRot(sub, "Rotate Melody Pattern", [=](int s) { m->rotateMelodyPattern(s); }); // Combined
-            sub->addChild(new ui::MenuSeparator);
-            sub->addChild(createMenuItem("Rotate EVERYTHING (+1)", "", [=]() { 
-                m->rotateRhythmPattern(1); m->rotateMelodyPattern(1);
-            }));
-            sub->addChild(new ui::MenuSeparator);
-            sub->addChild(createMenuItem("Scramble Rhythm DNA", "", [=]() { m->dnaManager.scrambleRhythmGroup(); }));
-            sub->addChild(createMenuItem("Scramble Melody DNA", "", [=]() { m->dnaManager.scrambleMelodyGroup(); }));
-            sub->addChild(createMenuItem("Scramble ALL DNA (Remix)", "DNA Remix", [=]() { m->dnaManager.scrambleAll(); }));
-            sub->addChild(new ui::MenuSeparator);
-            sub->addChild(createMenuItem("Reset DNA Alignment", "Original Draw", [=]() { m->dnaManager.resetAll(); }));
-        }));
+        //     addRot(sub, "Rhythm (Gates/Rests)", [=](int s) { m->rotateRhythm(s); }); // Individual
+        //     addRot(sub, "Variation (Lengths)", [=](int s) { m->rotateVariation(s); });
+        //     addRot(sub, "Legato/Tie", [=](int s) { m->rotateLegato(s); });
+        //     sub->addChild(new ui::MenuSeparator);
+        //     addRot(sub, "Melody (Pitch)", [=](int s) { m->rotateMelody(s); }); // Individual
+        //     addRot(sub, "Octave", [=](int s) { m->rotateOctave(s); });
+        //     sub->addChild(new ui::MenuSeparator);
+        //     addRot(sub, "Rotate Rhythm Pattern", [=](int s) { m->rotateRhythmPattern(s); }); // Combined
+        //     addRot(sub, "Rotate Melody Pattern", [=](int s) { m->rotateMelodyPattern(s); }); // Combined
+        //     sub->addChild(new ui::MenuSeparator);
+        //     sub->addChild(createMenuItem("Rotate EVERYTHING (+1)", "", [=]() { 
+        //         m->rotateRhythmPattern(1); m->rotateMelodyPattern(1);
+        //     }));
+        //     sub->addChild(new ui::MenuSeparator);
+        //     sub->addChild(createMenuItem("Scramble Rhythm DNA", "", [=]() { m->dnaManager.scrambleRhythmGroup(); }));
+        //     sub->addChild(createMenuItem("Scramble Melody DNA", "", [=]() { m->dnaManager.scrambleMelodyGroup(); }));
+        //     sub->addChild(createMenuItem("Scramble ALL DNA (Remix)", "DNA Remix", [=]() { m->dnaManager.scrambleAll(); }));
+        //     sub->addChild(new ui::MenuSeparator);
+        //     sub->addChild(createMenuItem("Reset DNA Alignment", "Original Draw", [=]() { m->dnaManager.resetAll(); }));
+        // }));
 
         menu->addChild(createSubmenuItem("CV Assign", "", [=](ui::Menu* sub) {
             { auto* l = new ui::MenuLabel; l->text = "CV IN 1"; sub->addChild(l);
