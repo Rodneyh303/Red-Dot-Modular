@@ -440,8 +440,12 @@ void Monsoon::process(const ProcessArgs& args) {
     }
 
     // ── Gate Assignment Handling ──
-    tc.handleGate1Assignment(gate1Assign, input.gate1Rise);
-    tc.handleGate2Assignment(gate2Assign, input.gate2Rise, tc.getGate2High(), invertMuteLogic);
+    if (modeSelect != 1) { // Mode B uses Gate 1 for input driving
+        tc.handleGate1Assignment(gate1Assign, input.gate1Rise);
+    }
+    if (modeSelect != 3) { // Mode D uses Gate 2 for input driving
+        tc.handleGate2Assignment(gate2Assign, input.gate2Rise, tc.getGate2High(), invertMuteLogic);
+    }
 
     // --- Mode dispatch (only if running) ---
     if (runGateActive) {
@@ -692,7 +696,8 @@ void Monsoon::process(const ProcessArgs& args) {
 
         // Update CV2 modulation offsets (Throttled)
         paramManager->clearCv2Offsets();
-        if (inputs[CV2_INPUT].isConnected()) {
+        // Mode C and D use CV2 as the pitch input to be quantized
+        if (modeSelect < 2 && inputs[CV2_INPUT].isConnected()) {
             float v    = clampv<float>(inputs[CV2_INPUT].getVoltage(), 0.f, 5.f);
             float norm = v / 5.f; 
             if (cv2Mode == 0) paramManager->setCv2Offset(0, norm * 8.f);
