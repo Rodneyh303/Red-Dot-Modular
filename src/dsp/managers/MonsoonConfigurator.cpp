@@ -8,12 +8,12 @@ void MonsoonConfigurator::setup(Monsoon* m) {
     m->config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
 
     // Main controls
-    m->configSwitch(NOTE_VALUE_PARAM, 0.f, 7.f, 2.f, "Note value",
+    m->configSwitch(NOTE_VALUE_PARAM, 0.f, 7.f, 4.f, "Note value",
         {"1/1", "1/2", "1/4", "1/4T", "1/8", "1/8T", "1/16", "1/32"});
     m->configParam(VARIATION_PARAM,   0.f, 1.f, 0.5f, "Variation (longer–shorter)");
-    m->configParam(LEGATO_PARAM,      0.f, 1.f, 0.10f, "Legato probability");
-    m->configParam(REST_PARAM,        0.f, 1.f, 0.10f, "Rest probability");
-    m->configParam(ACCENT_KNOB,       0.f, 1.f, 0.25f, "Accent gate probability");
+    m->configParam(LEGATO_PARAM,      0.f, 1.f, 0.00f, "Legato probability");
+    m->configParam(REST_PARAM,        0.f, 1.f, 0.00f, "Rest probability");
+    m->configParam(ACCENT_KNOB,       0.f, 1.f, 0.00f, "Accent gate probability");
     m->configParam(TRANSPOSE_PARAM,  -12.f, 12.f, 0.f, "Transpose (semitones)");
     
     // Main window controls (Always present)
@@ -46,15 +46,19 @@ void MonsoonConfigurator::setup(Monsoon* m) {
     m->configParam(OCT_HI_PARAM, 0.f, 8.f, 5.f, "Highest octave");
     m->configParam(BPM_PARAM, 20.f, 300.f, 120.f, "BPM (internal clock)");
 
-    // Buttons (momentary)
+    // Buttons (momentary) and dice slew/mix params
     m->configButton(DICE_R_PARAM, "Dice rhythm");
+    //slew defaults to 100% for rhythm, common case and aligns with meloDicer which does not have slew.
     m->configParam(DICE_SLEW_R_PARAM, 0.f, 1.f, 1.f, "Rhythm dice slew", "%", 0.f, 100.f);
     m->configButton(DICE_M_PARAM, "Dice melody");
+    //slew defaults to 100% for melody, common case and aligns with meloDicer which does not have slew.
     m->configParam(DICE_SLEW_M_PARAM, 0.f, 1.f, 1.f, "Melody dice slew", "%", 0.f, 100.f);
     m->configButton(DICE_TRIAL_R_PARAM, "Trial rhythm (audition vs fixed A)");
     m->configButton(DICE_TRIAL_M_PARAM, "Trial melody (audition vs fixed A)");
-    m->configParam(RHYTHM_MIX_PARAM, 0.f, 1.f, 0.f, "Rhythm A>B mix", "%", 0.f, 100.f);
-    m->configParam(MELODY_MIX_PARAM, 0.f, 1.f, 0.f, "Melody A>B mix", "%", 0.f, 100.f);
+    //mix defaults to 100% B, so that dice+trial defaults to auditioning a new pattern rather than blending with the existing one.
+    //mix of 100% mirrors MeloDicer which does not have mix.
+    m->configParam(RHYTHM_MIX_PARAM, 0.f, 1.f, 1.f, "Rhythm A>B mix", "%", 0.f, 100.f);
+    m->configParam(MELODY_MIX_PARAM, 0.f, 1.f, 1.f, "Melody A>B mix", "%", 0.f, 100.f);
     m->configButton(LOCK_PARAM,   "Lock");
     m->configButton(MUTE_PARAM,   "Mute");
     m->configButton(MODE_PARAM,   "Mode (Cycle A-B-C-D)");

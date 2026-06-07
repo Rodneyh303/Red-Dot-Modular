@@ -63,18 +63,24 @@ void PatternEngine::reset() {
     // Playable slew: mirror defaults into A and B so the morph is a no-op until
     // the first dice, and arm the first-draw guards.
     for (int i = 0; i < 16; ++i) {
-        rhythmLockedA[i]=rhythmCandB[i]=rhythmRandom[i];
-        variationLockedA[i]=variationCandB[i]=variationRandom[i];
-        legatoLockedA[i]=legatoCandB[i]=legatoRandom[i];
-        accentLockedA[i]=accentCandB[i]=accentRandom[i];
-        melodyLockedA[i]=melodyCandB[i]=melodyRandom[i];
-        octaveLockedA[i]=octaveCandB[i]=octaveRandom[i];
+        rhythmLockedA[i] = variationLockedA[i] = legatoLockedA[i] = 0.f;
+        accentLockedA[i] = melodyLockedA[i] = octaveLockedA[i] = 0.f;
+
+        rhythmCandB[i] = rhythmRandom[i];
+        variationCandB[i] = variationRandom[i];
+        legatoCandB[i] = legatoRandom[i];
+        accentCandB[i] = accentRandom[i];
+        melodyCandB[i] = melodyRandom[i];
+        octaveCandB[i] = octaveRandom[i];
+
         for (int v=0;v<15;v++){
-            polyRhythmLockedA[v][i]=polyRhythmCandB[v][i]=polyRhythmRandom[v][i];
-            polyMelodyLockedA[v][i]=polyMelodyCandB[v][i]=polyMelodyRandom[v][i];
-            polyOctaveLockedA[v][i]=polyOctaveCandB[v][i]=polyOctaveRandom[v][i];
+            polyRhythmLockedA[v][i] = polyMelodyLockedA[v][i] = polyOctaveLockedA[v][i] = 0.f;
+            polyRhythmCandB[v][i] = polyRhythmRandom[v][i];
+            polyMelodyCandB[v][i] = polyMelodyRandom[v][i];
+            polyOctaveCandB[v][i] = polyOctaveRandom[v][i];
         }
     }
+
     rhythmSlewLatched=melodySlewLatched=1.f;
     rhythmSlewApplied=melodySlewApplied=1.f;
     rhythmFirstDraw=melodyFirstDraw=true;
@@ -246,14 +252,6 @@ void PatternEngine::redrawRhythm(const PatternInput& in, bool promoteToA) {
             accentCandB[i]    = step(accentLockedA[i]);
             for (int v = 0; v < 15; v++) polyRhythmCandB[v][i] = step(polyRhythmLockedA[v][i]);
         }
-
-        if (first) {  // lock A to the same draw so effective == draw
-            rhythmLockedA[i]    = rhythmCandB[i];
-            variationLockedA[i] = variationCandB[i];
-            legatoLockedA[i]    = legatoCandB[i];
-            accentLockedA[i]    = accentCandB[i];
-            for (int v = 0; v < 15; v++) polyRhythmLockedA[v][i] = polyRhythmCandB[v][i];
-        }
     }
     rhythmSlewApplied = -1.f;       // force recompute of slewedDraw
     recomputeEffectiveRhythm();
@@ -342,12 +340,6 @@ void PatternEngine::redrawMelody(const PatternInput& in, bool promoteToA) {
             octaveCandB[i] = step(octaveLockedA[i]);
             for (int v=0;v<15;v++){ polyMelodyCandB[v][i]=step(polyMelodyLockedA[v][i]);
                                     polyOctaveCandB[v][i]=step(polyOctaveLockedA[v][i]); }
-        }
-
-        if (first) {
-            melodyLockedA[i]=melodyCandB[i]; octaveLockedA[i]=octaveCandB[i];
-            for (int v=0;v<15;v++){ polyMelodyLockedA[v][i]=polyMelodyCandB[v][i];
-                                    polyOctaveLockedA[v][i]=polyOctaveCandB[v][i]; }
         }
     }
     melodySlewApplied = -1.f;
