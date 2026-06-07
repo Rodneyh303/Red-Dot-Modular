@@ -375,15 +375,16 @@ void Monsoon::process(const ProcessArgs& args) {
     _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
 #endif
 
-    // --- Audio-rate Input Fetching (Cached & Guarded) ---
-    float clkV      = cachedClkConnected ? inputs[CLK_INPUT].getVoltage() : 0.f;
-    float gate1V    = cachedGate1Connected ? inputs[GATE1_INPUT].getVoltage() : 0.f;
-    float gate2V    = cachedGate2Connected ? inputs[GATE2_INPUT].getVoltage() : 0.f;
-    float gate3V    = cachedGate3Connected ? inputs[GATE3_MOD_INPUT].getVoltage() : 0.f;
-    float runGateV  = cachedRunConnected ? inputs[RUN_GATE_INPUT].getVoltage() : 0.f;
-    float resetGateV= cachedResetConnected ? inputs[RESET_TRIGGER_INPUT].getVoltage() : 0.f;
-    float cv1V      = cachedCv1Connected ? inputs[CV1_INPUT].getVoltage() : 0.f;
-    float cv2V      = (modeSelect >= 2 && cachedCv2Connected) ? inputs[CV2_INPUT].getVoltage() : 0.f;
+    // --- Audio-rate Input Fetching ---
+    InputState input;
+    input.clk   = cachedClkConnected ? inputs[CLK_INPUT].getVoltage() : 0.f;
+    input.gate1 = cachedGate1Connected ? inputs[GATE1_INPUT].getVoltage() : 0.f;
+    input.gate2 = cachedGate2Connected ? inputs[GATE2_INPUT].getVoltage() : 0.f;
+    input.gate3 = cachedGate3Connected ? inputs[GATE3_MOD_INPUT].getVoltage() : 0.f;
+    input.run   = cachedRunConnected ? inputs[RUN_GATE_INPUT].getVoltage() : 0.f;
+    input.reset = cachedResetConnected ? inputs[RESET_TRIGGER_INPUT].getVoltage() : 0.f;
+    input.cv1   = cachedCv1Connected ? inputs[CV1_INPUT].getVoltage() : 0.f;
+    input.cv2   = (modeSelect >= 2 && cachedCv2Connected) ? inputs[CV2_INPUT].getVoltage() : 0.f;
 
     // Logic References (Eliminate pointer indirection in hot path)
     TimingController& tc = *timingController;
@@ -393,7 +394,7 @@ void Monsoon::process(const ProcessArgs& args) {
     // ── Centralised clock tick (processes CLK IN once, before all mode handlers) ──
     // Derives bpm from external clock period or BPM knob, emits sixteenthEdge + quarterEdge.
     clock.process(
-        clkV,
+        input.clk,
         cachedClkConnected,
         cachedBpmParam,
         ppqnSetting,
@@ -404,12 +405,12 @@ void Monsoon::process(const ProcessArgs& args) {
     // ── Run/Reset Gate Processing ──
     runGateActive = tc.processRunGate(
         runGateActive,
-        runGateV,
+        input.run,
         cachedRunBtn
     );
     
     tc.processResetGate(
-        resetGateV,
+        input.reset,
         cachedResetBtn
     );
     
@@ -425,12 +426,12 @@ void Monsoon::process(const ProcessArgs& args) {
     }
 
     // ── Gate Edge Detection ──
-    auto gateEdges = tc.processGateEdges(gate1V, gate2V);
-    
-    bool gate1Rise = gateEdges.gate1Rise;
+    auto gateEdges = tc.processGateEdges(input.gate1, input.gate2);
+    input.gate1Rise = gateEdges.gate1Rise;
+    input.gate2Rise = gateEdges.gate2Rise;
 
     // ── Gate 3 Assignment Handling (Audio Rate for Consistency) ──
-    if (cachedGate3Connected && gate3Trig.process(gate3V, 0.1f, 1.f)) {
+    if (cachedGate3Connected && gate3Trig.process(input.gate3, 0.1f, 1.f)) {
         static const int g3map[] = { DA_TRIAL_R, DA_TRIAL_M, DA_RESEED_ROLL,
             DA_RESEED_RESTART, DA_LIVESRC_R, DA_LIVESRC_M };
         if (gate3Target >= 0 && gate3Target < (int)(sizeof(g3map)/sizeof(g3map[0]))) {
@@ -439,115 +440,39 @@ void Monsoon::process(const ProcessArgs& args) {
     }
 
     // ── Gate Assignment Handling ──
-    tc.handleGate1Assignment(gate1Assign, gate1Rise);
-    tc.handleGate2Assignment(gate2Assign, gateEdges.gate2Rise, tc.getGate2High(), invertMuteLogic);
+    tc.handleGate1Assignment(gate1Assign, input.gate1Rise);
+    tc.handleGate2Assignment(gate2Assign, input.gate2Rise, tc.getGate2High(), invertMuteLogic);
 
     // --- Mode dispatch (only if running) ---
     if (runGateActive) {
         // Optimization: Only execute mode logic if a relevant trigger/state is active.
         // This avoids calling executeMode and its internal switch every sample for Modes A, B, C.
-        bool gate1High = gate1V >= 1.0f;
+        bool gate1High = input.gate1 >= 1.0f;
         bool shouldExecute = (modeSelect == 3); // Mode D is continuous
         if (!shouldExecute) {
             if (modeSelect == 0) shouldExecute = clock.sixteenthEdge;
-            else if (modeSelect == 1) shouldExecute = gate1Rise || (gate1High && engine.stepIndex == -1);
+            else if (modeSelect == 1) shouldExecute = input.gate1Rise || (gate1High && engine.stepIndex == -1);
             else if (modeSelect == 2) shouldExecute = clock.quarterEdge;
         }
 
         if (shouldExecute) {
-            float cv2ToUse = (modeSelect >= 2) ? cv2V : 0.f;
-            mc.executeMode(modeSelect, gate1Rise, gate1High, tc.getGate2High(), cv2ToUse);
+            mc.executeMode(modeSelect, input, tc.getGate2High());
         }
     }
 
     // --- CV Routing (via CVRouter) ---
     float cvOutVoltage = currentPitchV;
-    if (cachedCv1Connected && cv1V != 0.f && (cv1Mode == 0 || cv1Mode == 1)) {
+    if (cachedCv1Connected && input.cv1 != 0.f && (cv1Mode == 0 || cv1Mode == 1)) {
         cvOutVoltage = cvr.processCV1Input(
                 cv1Mode,
-                cv1V,
+                input.cv1,
                 currentPitchV,
                 true);
     }
     if (outputs[CV_OUTPUT].isConnected()) outputs[CV_OUTPUT].setVoltage(cvOutVoltage);
 
-    // --- Output Generation (Inlined logic to minimize cross-translation unit calls) ---
-    float gateV = (runGateActive) ? engine.gs.process(args.sampleTime) : 0.f; // Primary voice gate
-    outputs[GATE_OUTPUT].setVoltage(muted ? 0.f : gateV);
-    
-    bool effectiveMuted = muted || !runGateActive;
-    
-    bool isTie = (engine.lastStepResult.decision == MonoDecision::Tie);
-    outputs[TIE_OUTPUT].setVoltage((isTie && !effectiveMuted) ? 10.f : 0.f);
-    
-    bool isLegato = (engine.lastStepResult.decision == MonoDecision::Legato || 
-                        engine.lastStepResult.decision == MonoDecision::LegatoMax);
-    outputs[LEGATO_OUTPUT].setVoltage((isLegato && !effectiveMuted) ? 10.f : 0.f);
-    outputs[TIE_OR_LEGATO_OUTPUT].setVoltage(((isTie || isLegato) && !effectiveMuted) ? 10.f : 0.f);
-    
-    bool shouldAccent = engine.lastStepResult.accented && gateV > 5.f && !effectiveMuted;
-    outputs[ACCENT_OUTPUT].setVoltage(shouldAccent ? 10.f : 0.f);
-    
-    // Poly voice outputs (Guard: only if expander present)
-    auto* polyExp = expanderManager.cachedPolyVoiceExpander;
-    if (polyExp && engine.numPolyVoices > 0) {
-        using namespace PolyVoiceExpanderIds;
-        
-        // Output individual gates/CVs/accents for voices 2-8
-        for (int i = 0; i < (int)engine.numPolyVoices && i < 7; ++i) {
-            if (muted) {
-                polyExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
-                polyExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
-                continue;
-            }
-            float vg = engine.voices[i].gs.process(args.sampleTime);
-            polyExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(vg);
-            polyExp->outputs[POLY_CV_OUT_1 + i].setVoltage(engine.voices[i].gs.currentPitchV);
-            float polyAccent = (engine.lastStepResult.accented && vg > 5.f) ? 10.f : 0.f;
-            polyExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(polyAccent);
-        }
-        
-        // Generate poly outputs for voices 1-8
-        float polyGate1_8 = 0.f;
-        float polyCv1_8 = 0.f;
-        if (!effectiveMuted) {
-            polyGate1_8 = (gateV > 5.f) ? 10.f : 0.f; // Reuse cached gateV
-            polyCv1_8 = currentPitchV;
-        }
-        polyExp->outputs[POLY_GATE_1_8_OUT].setVoltage(polyGate1_8);
-        polyExp->outputs[POLY_CV_1_8_OUT].setVoltage(polyCv1_8);
-    }
-    
-    // ── Straits West Expander (voices 9-16) ──
-    auto* westExp = expanderManager.cachedStraitWestExpander;
-    if (westExp && engine.numPolyVoices > 7) {
-        using namespace StraitWestExpanderIds;
-        
-        // Output individual gates/CVs/accents for voices 9-16
-        for (int i = 0; i < 8; ++i) {
-            if (muted) {
-                westExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
-                westExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
-                continue;
-            }
-            float vg = engine.voices[7 + i].gs.process(args.sampleTime);
-            westExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(vg);
-            westExp->outputs[POLY_CV_OUT_1 + i].setVoltage(engine.voices[7 + i].gs.currentPitchV);
-            float polyAccent = (engine.lastStepResult.accented && vg > 5.f) ? 10.f : 0.f;
-            westExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(polyAccent);
-        }
-        
-        // Generate poly outputs for voices 1-16 (complete mix)
-        float polyGate1_16 = 0.f;
-        float polyCv1_16 = 0.f;
-        if (!effectiveMuted) {
-            // Use primary voice poly gate for 1-16 output
-            polyGate1_16 = (gateV > 5.f) ? 10.f : 0.f; // Reuse cached gateV
-            polyCv1_16 = currentPitchV;
-        }
-        westExp->outputs[POLY_GATE_1_16_OUT].setVoltage(polyGate1_16);
-        westExp->outputs[POLY_CV_1_16_OUT].setVoltage(polyCv1_16);
-    }
+    // --- Output Generation (Delegated to OutputGenerator) ---
+    outputGenerator->drive(engine, outputs.data(), expanderManager, args.sampleTime);
     
     // // Poly Sands editors (East visual, and the deprecated knob path) only do
     // // anything when the Straits BASE poly output expander is connected AND the

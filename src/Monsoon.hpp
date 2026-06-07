@@ -56,6 +56,15 @@ static inline T clampv(T v, T lo, T hi) {
 
 #include "MonsoonWidget.hpp"
 
+/**
+ * InputState captures all audio-rate input signals in a single struct.
+ */
+struct InputState {
+    float clk, gate1, gate2, gate3;
+    float run, reset, cv1, cv2;
+    bool  gate1Rise, gate2Rise;
+};
+
 // ── Parameter IDs ─────────────────────────────────────────────────────────────
 // Stable integer values expanders can use to address params[] / inputs[] etc.
 // Keep in sync with the enums inside struct Monsoon.

@@ -4,6 +4,7 @@
 
 // Forward declarations
 class SequencerEngine;
+struct MonsoonExpanderManager;
 
 /**
  * OutputGenerator
@@ -27,6 +28,12 @@ public:
     
     // ──── Main Output Generation ────────────────────────────────────────────
     
+    /// Orchestrate all output generation, including polyphonic expanders
+    void drive(SequencerEngine& engine,
+               rack::engine::Output* outputs,
+               const MonsoonExpanderManager& expanderManager,
+               float sampleTime);
+
     /// Generate all outputs based on sequencer state
     void generateOutputs(SequencerEngine& engine,
                          rack::engine::Output* outputs,

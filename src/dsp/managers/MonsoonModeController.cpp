@@ -186,15 +186,14 @@ bool ModeController::executeModeD(bool gate2High,
 // ──── High-Level Dispatcher ─────────────────────────────────────────────────
 
 bool ModeController::executeMode(int modeId,
-                                  bool gate1Rise,
-                                  bool gate1High,
-                                  bool gate2High,
-                                  float cv2Voltage) {
+                                  const InputState& input,
+                                  bool gate2High) {
+    bool gate1High = input.gate1 >= 1.0f;
     switch (modeId) {
         case 0: return executeModeA();
-        case 1: return executeModeB(gate1Rise, gate1High);
-        case 2: return executeModeC(cv2Voltage);
-        case 3: return executeModeD(gate2High, cv2Voltage);
+        case 1: return executeModeB(input.gate1Rise, gate1High);
+        case 2: return executeModeC(input.cv2);
+        case 3: return executeModeD(gate2High, input.cv2);
         default: return false;
     }
 }
