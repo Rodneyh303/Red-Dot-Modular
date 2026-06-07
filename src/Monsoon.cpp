@@ -921,12 +921,12 @@ void init(rack::Plugin* p) {
 	p->addModel(modelMonsoonInterchangeExpander);
 	p->addModel(modelMonsoonCausewayExpander);
 	p->addModel(modelMonsoonSurgeExpander);
-	p->addModel(modelMonsoonSandsExpander);
+	//p->addModel(modelMonsoonSandsExpander);
 	p->addModel(modelMonsoonStraitsEastExpander);
 	p->addModel(modelMonsoonStraitWestExpander);    // NEW (Phase 4)
-	p->addModel(modelMonsoonStraitsSands);          // Macro: global DNA
-	p->addModel(modelMonsoonDeepStraitsSandsEast);  // Deep: voices 2-8
-	p->addModel(modelMonsoonDeepStraitsSandsWest);  // Deep: voices 9-16
+	//p->addModel(modelMonsoonStraitsSands);          // Macro: global DNA
+	//p->addModel(modelMonsoonDeepStraitsSandsEast);  // Deep: voices 2-8
+	//p->addModel(modelMonsoonDeepStraitsSandsWest);  // Deep: voices 9-16
 	// Visual editor expanders
 	p->addModel(modelMonsoonSandsVisualExpander);   // Mono visual DNA editor
 	p->addModel(modelStraitsEastSandsVisual);       // East visual DNA editor (tabbed)
