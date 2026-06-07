@@ -2,10 +2,16 @@
 #include <cmath>
 #include <algorithm>
 
+//{"1/1","1/2","1/4","1/4T","1/8","1/8T","1/16","1/32"};
+//Fractional note values corresponding to the 8 possible note length settings, and the PPQN settings that allow them.
+//The sequencer uses the allowedPPQN bitmask to find the closest valid note length
+// if the user selects an unsupported one (e.g. 1/4T with PPQN=4).
 const NoteVal NOTEVALS[8] = {
-    {1.0f, 1|2|4}, {0.5f, 1|2|4}, {0.25f, 1|2|4}, {0.125f, 2|4},
-    {0.0625f, 2|4}, {1.0f/6.0f, 4}, {1.0f/12.0f, 4}, {0.03125f, 4},
+    {1.0f, 1|2|4}, {0.5f, 1|2|4}, {0.25f, 1|2|4}, {1.0f/6.0f, 4},
+    {0.125f, 2|4}, {1.0f/12.0f, 4}, {0.0625f, 2|4}, {0.03125f, 4},
 };
+
+
 
 static const int DNA_LCM = 720720; // LCM of 1..16 ensures drift continuity
 

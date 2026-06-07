@@ -9,7 +9,7 @@ void MonsoonConfigurator::setup(Monsoon* m) {
 
     // Main controls
     m->configSwitch(NOTE_VALUE_PARAM, 0.f, 7.f, 2.f, "Note value",
-        {"1/2", "1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32"});
+        {"1/1", "1/2", "1/4", "1/4T", "1/8", "1/8T", "1/16", "1/32"});
     m->configParam(VARIATION_PARAM,   0.f, 1.f, 0.5f, "Variation (longer–shorter)");
     m->configParam(LEGATO_PARAM,      0.f, 1.f, 0.10f, "Legato probability");
     m->configParam(REST_PARAM,        0.f, 1.f, 0.10f, "Rest probability");

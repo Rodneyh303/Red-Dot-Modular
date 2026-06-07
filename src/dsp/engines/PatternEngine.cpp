@@ -141,11 +141,14 @@ int PatternEngine::varyNoteIndex(int baseIdx, const PatternInput& in, float r) {
     // variationAmount → 1 → bias toward shorter notes (higher index).
     // spread = 0 at centre, 1 at extremes — controls how much adjacent
     // indices are weighted relative to baseIdx.
+    // Bit 0 toggles 1/4T (Index 3).
+    // Bit 1 toggles 1/8T (Index 5).
+    // Bit 2 toggles 1/32 (Index 7).
     auto allowed = [&](int idx) -> bool {
         if (idx < 0 || idx >= 8) return false;
-        if (idx == 4) return (in.noteVariationMask & 0b001) != 0;
-        if (idx == 6) return (in.noteVariationMask & 0b010) != 0;
-        if (idx == 7) return (in.noteVariationMask & 0b100) != 0;
+        if (idx == 3) return (in.noteVariationMask & 0b001) != 0; // 1/4T
+        if (idx == 5) return (in.noteVariationMask & 0b010) != 0; // 1/8T
+        if (idx == 7) return (in.noteVariationMask & 0b100) != 0; // 1/32
         return true;
     };
 

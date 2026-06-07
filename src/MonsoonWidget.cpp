@@ -298,7 +298,7 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         };
 
         setNvgFontSize(2.5f);
-        { const char* n[8]={"1/2","1/4","1/4T","1/8","1/8T","1/16","1/32T","1/32"};
+        { const char* n[8]={"1/1","1/2","1/4","1/4T","1/8","1/8T","1/16","1/32"};
           for(int i=0;i<8;++i) arcLabel(16.f,22.f,13.5f,-225.f+i*(270.f/7.f),n[i],150,150,135); }
         setNvgFontSize(2.8f);
         arcLabel(42.f,22.f,13.f,-225.f,"LONGER",130,130,120); arcLabel(42.f,22.f,13.f,45.f,"SHORTER",130,130,120);
@@ -577,7 +577,7 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
                 void onAction(const event::Action&) override { if(module) module->noteVariationMask ^= (1<<bit); }
                 void step() override { rightText=(module&&(module->noteVariationMask&(1<<bit)))?"✔":""; ui::MenuItem::step(); } };
               auto add=[&](const char* t,int b){auto* it=createMenuItem<MaskItem>(t);it->module=m;it->bit=b;sub->addChild(it);};
-              add("Allow 1/8T",0); add("Allow 1/16T",1); add("Allow 1/32 & 1/32T",2); }
+              add("Allow 1/4T",0); add("Allow 1/8T",1); add("Allow 1/32",2); }
             sub->addChild(new ui::MenuSeparator);
             { auto* l = new ui::MenuLabel; l->text = "PPQN"; sub->addChild(l);
               struct PItem : ui::MenuItem { Monsoon* module=nullptr; int value=4;
