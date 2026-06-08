@@ -387,7 +387,7 @@ void Monsoon::process(const ProcessArgs& args) {
     input.cv2   = (modeSelect >= 2 && cachedCv2Connected) ? inputs[CV2_INPUT].getVoltage() : 0.f;
 
     // Logic References (Eliminate pointer indirection in hot path)
-    TimingController& tc = *timingController; // Corrected: Use reference
+    TimingController& tc = *timingController;
     ModeController& mc = *modeController;
     CVRouter& cvr = *cvRouter;
 
@@ -463,14 +463,6 @@ void Monsoon::process(const ProcessArgs& args) {
             mc.executeMode(modeSelect, input, tc.getGate2High());
         }
 
-        // ── Mode B Gate Slaving ──
-        // In Mode B (Seq + Gate), the gate duration must follow the external Gate 1 input.
-        // This nullifies the impact of internal Note Length/Variation parameters.
-        // if (modeSelect == 1) {
-        //     bool gate1High = input.gate1 >= 1.0f;
-        //     // Sustain the gate only if the sequencer didn't decide to play a Rest
-        //     engine.gs.gateHeld = gate1High && (engine.lastStepResult.decision != MonoDecision::Rest);
-        // }
     }
 
     // --- CV Routing (via CVRouter) ---
@@ -487,6 +479,21 @@ void Monsoon::process(const ProcessArgs& args) {
 
     // --- Output Generation (Delegated to OutputGenerator) ---
     outputGenerator->drive(engine, outputs.data(), expanderManager, args.sampleTime);
+
+    // ── Mode B Gate Slaving (with smoothing) ──
+    // In Mode B (Seq + Gate), the gate duration must follow the external Gate 1 input.
+    // This nullifies the impact of internal Note Length/Variation parameters.
+    // if (modeSelect == 1) {
+    //     // Only override if the sequencer decided to play a note (not a rest).
+    //     // If it's a rest, the gate should be off regardless of Gate 1.
+    //     if (engine.lastStepResult.decision != MonoDecision::Rest) { // Use the smoothed state of Gate 1 from g1Trig.
+    //         // This prevents clicks from raw voltage changes.
+    //         outputs[GATE_OUTPUT].setVoltage(engine.g1Trig.isHigh() ? 10.f : 0.f);
+    //     } else {
+    //         // If it's a rest, ensure the gate is off.
+    //         outputs[GATE_OUTPUT].setVoltage(0.f);
+    //     }
+    // }
     
     // // Poly Sands editors (East visual, and the deprecated knob path) only do
     // // anything when the Straits BASE poly output expander is connected AND the
