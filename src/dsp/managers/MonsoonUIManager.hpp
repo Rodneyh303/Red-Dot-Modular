@@ -68,6 +68,7 @@ public:
     
     /// Process dice button triggers and return if any triggered
     bool processDiceButtons(bool& rhythmTriggered, bool& melodyTriggered);
+    bool processTrialButtons(bool& rhythmTriggered, bool& melodyTriggered);
     
     /// Process lock button trigger
     bool processLockButton();
@@ -103,6 +104,8 @@ private:
     // Button trigger state
     rack::dsp::SchmittTrigger diceRTrigger;
     rack::dsp::SchmittTrigger diceMTrigger;
+    rack::dsp::SchmittTrigger trialRTrigger;
+    rack::dsp::SchmittTrigger trialMTrigger;
     rack::dsp::SchmittTrigger lockTrigger;
     rack::dsp::SchmittTrigger muteTrigger;
     rack::dsp::SchmittTrigger modeTrigger;

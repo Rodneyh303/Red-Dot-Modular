@@ -1,6 +1,9 @@
 #include "MonsoonOutputGenerator.hpp"
 #include "../engines/SequencerEngine.hpp"
 #include "../../Monsoon.hpp"
+#include "MonsoonExpanderManager.hpp"
+#include "../../MonsoonStraitsEastExpander.hpp"
+#include "../../MonsoonStraitWestExpander.hpp"
 
 using namespace rack;
 
@@ -11,6 +14,64 @@ void OutputGenerator::setGateWithMute_(engine::Output& out, float gateV, bool mu
 }
 
 // ──── Main Output Generation ────────────────────────────────────────────────
+
+void OutputGenerator::drive(SequencerEngine& engine,
+                             rack::engine::Output* outputs,
+                             const MonsoonExpanderManager& expanderManager,
+                             float sampleTime) {
+    using namespace MonsoonIds;
+    
+    // 1. Primary Mono Outputs
+    float currentPitchV = engine.gs.currentPitchV;
+    bool effectiveMuted = engine.muted || !engine.runGateActive;
+    
+    generateOutputs(engine, outputs, currentPitchV, effectiveMuted, sampleTime);
+
+    // Cache gate state for summary outputs
+    float gateV = outputs[GATE_OUTPUT].getVoltage();
+    bool accentActive = engine.lastStepResult.accented && !effectiveMuted;
+
+    // 2. Straits East Expander (Voices 2-8)
+    auto* polyExp = expanderManager.cachedPolyVoiceExpander;
+    if (polyExp && engine.numPolyVoices > 0) {
+        using namespace PolyVoiceExpanderIds;
+        for (int i = 0; i < (int)engine.numPolyVoices && i < 7; ++i) {
+            if (effectiveMuted) {
+                polyExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
+                polyExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
+                continue;
+            }
+            float vg = engine.voices[i].gs.process(sampleTime);
+            polyExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(vg);
+            polyExp->outputs[POLY_CV_OUT_1 + i].setVoltage(engine.voices[i].gs.currentPitchV);
+            polyExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage((accentActive && vg > 5.f) ? 10.f : 0.f);
+        }
+        // Summary outputs for 1-8
+        polyExp->outputs[POLY_GATE_1_8_OUT].setVoltage((gateV > 5.f && !effectiveMuted) ? 10.f : 0.f);
+        polyExp->outputs[POLY_CV_1_8_OUT].setVoltage(effectiveMuted ? 0.f : currentPitchV);
+    }
+
+    // 3. Straits West Expander (Voices 9-16)
+    auto* westExp = expanderManager.cachedStraitWestExpander;
+    if (westExp && engine.numPolyVoices > 7) {
+        using namespace StraitWestExpanderIds;
+        for (int i = 0; i < 8; ++i) {
+            int vIdx = 7 + i;
+            if (effectiveMuted || vIdx >= (int)engine.numPolyVoices) {
+                westExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
+                westExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
+                continue;
+            }
+            float vg = engine.voices[vIdx].gs.process(sampleTime);
+            westExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(vg);
+            westExp->outputs[POLY_CV_OUT_1 + i].setVoltage(engine.voices[vIdx].gs.currentPitchV);
+            westExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage((accentActive && vg > 5.f) ? 10.f : 0.f);
+        }
+        // Summary outputs for 1-16
+        westExp->outputs[POLY_GATE_1_16_OUT].setVoltage((gateV > 5.f && !effectiveMuted) ? 10.f : 0.f);
+        westExp->outputs[POLY_CV_1_16_OUT].setVoltage(effectiveMuted ? 0.f : currentPitchV);
+    }
+}
 
 void OutputGenerator::generateOutputs(SequencerEngine& engine,
                                        engine::Output* outputs,
@@ -28,7 +89,7 @@ void OutputGenerator::generateOutputs(SequencerEngine& engine,
     using namespace MonsoonIds;
     
     // Process main gate and apply mute
-    float gateV = engine.gs.process(sampleTime);
+    float gateV = engine.runGateActive ? engine.gs.process(sampleTime) : 0.f;
     setGateWithMute_(outputs[GATE_OUTPUT], gateV, muted);
 
     // Set main pitch CV
@@ -40,9 +101,11 @@ void OutputGenerator::generateOutputs(SequencerEngine& engine,
     float legatoGateV = (engine.lastStepResult.decision == MonoDecision::Legato || 
                          engine.lastStepResult.decision == MonoDecision::LegatoMax) ? 10.f : 0.f;
     float accentGateV = (engine.lastStepResult.accented && gateV > 5.f) ? 10.f : 0.f;
+    float tieOrLegatoV = (tieGateV > 5.f || legatoGateV > 5.f) ? 10.f : 0.f;
     
     setGateWithMute_(outputs[TIE_OUTPUT], tieGateV, muted);
     setGateWithMute_(outputs[LEGATO_OUTPUT], legatoGateV, muted);
+    setGateWithMute_(outputs[TIE_OR_LEGATO_OUTPUT], tieOrLegatoV, muted);
     setGateWithMute_(outputs[ACCENT_OUTPUT], accentGateV, muted);
 }
 

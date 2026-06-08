@@ -1,5 +1,6 @@
 #include <rack.hpp>
 #include "Monsoon.hpp"
+#include "ui/RedScrew.hpp"
 #include "MonsoonStraitsSands.hpp"
 #include "StraitsSandsMacroVisual.hpp"
 #include "ui/SandsVisualEditorV4.hpp"
@@ -26,22 +27,26 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
     SandsVisualEditorV4*       visualEditor = nullptr;
     PolySandsParameterManager* paramMgr     = nullptr;
     bool                       initialized  = false;
+    std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
+    rack::app::SvgPanel* panelWidget = nullptr;
+    int lastThemeLight = -1;
 
     explicit StraitsSandsMacroVisualWidget(StraitsSandsMacroVisual* mod) {
         setModule(mod);
-        setPanel(APP->window->loadSvg(
-            asset::plugin(pluginInstance,
-                "res/panels/StraitsSandsMacroVisual_26HP.svg")));
+        panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance,
+                            "res/panels/StraitsSandsMacroVisual_26HP.svg"));
+        panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance,
+                            "res/panels/StraitsSandsMacroVisual_26HP_light.svg"));
+        panelWidget = createPanel(asset::plugin(pluginInstance,
+                            "res/panels/StraitsSandsMacroVisual_26HP.svg"));
+        setPanel(panelWidget);
 
-        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
-        addChild(createWidget<ScrewSilver>(Vec(box.size.x-2*RACK_GRID_WIDTH, 0)));
-        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT-RACK_GRID_WIDTH)));
-        addChild(createWidget<ScrewSilver>(Vec(box.size.x-2*RACK_GRID_WIDTH, RACK_GRID_HEIGHT-RACK_GRID_WIDTH)));
+        redDot::addRedScrews(this);
 
         // Visual editor — right section, 3 lanes (REST/MEL/OCT), global
         visualEditor = new SandsVisualEditorV4(SandsVisualEditorV4::POLY);
-        visualEditor->box.pos  = mm2px(Vec(ED_X, 16.f));
-        visualEditor->box.size = mm2px(Vec(ED_W, ROW_BOT - 16.f));
+        visualEditor->box.pos  = mm2px(Vec(ED_X, ED_Y));
+        visualEditor->box.size = mm2px(Vec(ED_W, ED_H));
         addChild(visualEditor);
 
         // ── Left section: 4 cols × 6 rows ─────────────────────────────────
@@ -71,7 +76,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
     }
 
     Monsoon* getMonsoon() {
-        return module ? findMonsoon(module->rightExpander.module) : nullptr;
+        return module ? findMonsoonEitherSide(module) : nullptr;
     }
 
     void saveLOR() {
@@ -98,6 +103,13 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         if (!module || !paramMgr || !visualEditor) return;
         Monsoon* monsoon = getMonsoon();
         if (!monsoon) return;
+
+        int wantLight = monsoon->lightTheme ? 1 : 0;
+        if (wantLight != lastThemeLight) {
+            lastThemeLight = wantLight;
+            if (panelWidget) panelWidget->setBackground(wantLight ? panelSvgLight : panelSvgDark);
+            if (visualEditor) visualEditor->setTheme(wantLight != 0);
+        }
 
         PatternEngine*   pe = &monsoon->engine.pe;
         SequencerEngine* se = &monsoon->engine;

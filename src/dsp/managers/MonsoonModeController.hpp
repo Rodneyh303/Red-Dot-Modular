@@ -6,6 +6,7 @@
 #include "MonsoonParameterManager.hpp"
 
 struct Monsoon; // Forward declaration
+struct InputState; // Forward declaration
 
 /**
  * ModeController
@@ -66,10 +67,8 @@ public:
     /// Execute the appropriate mode based on modeId (0–3)
     /// Returns true if a new step was taken
     bool executeMode(int modeId,
-                     bool gate1Rise,
-                     bool gate1High, // Pass gate1High to mode B
-                     bool gate2High,
-                     float cv2Voltage);
+                     const InputState& input,
+                     bool gate2High);
 
     /// Update the internal PatternInput snapshot from current parameters
     void updatePatternInput();

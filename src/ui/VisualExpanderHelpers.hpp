@@ -18,13 +18,38 @@ inline Monsoon* findMonsoon(rack::Module* startRight, int maxDepth = 8) {
     return nullptr;
 }
 
+// ── Chain-walk: find Monsoon on EITHER side ──────────────────────────────────
+// Walks right first, then left, hopping any intermediate modules (e.g. an
+// Interchange placed between a Sands editor and Monsoon). Use this from visual
+// expanders so they bind to the host regardless of which side they sit on and
+// regardless of what sits between them and Monsoon.
+inline Monsoon* findMonsoonEitherSide(rack::Module* self, int maxDepth = 8) {
+    if (!self) return nullptr;
+    Module* curr = self->rightExpander.module;
+    for (int d = 0; curr && d < maxDepth; ++d) {
+        if (auto* m = dynamic_cast<Monsoon*>(curr)) return m;
+        curr = curr->rightExpander.module;
+    }
+    curr = self->leftExpander.module;
+    for (int d = 0; curr && d < maxDepth; ++d) {
+        if (auto* m = dynamic_cast<Monsoon*>(curr)) return m;
+        curr = curr->leftExpander.module;
+    }
+    return nullptr;
+}
+
 // ── Per-lane playhead ─────────────────────────────────────────────────────────
-// activeBar = ((offset + globalStep + rotation) % length + length) % length
+// Returns the PHYSICAL bar (0..15) the sequencer actually reads after LOR, to
+// match SequencerEngine::getStrandIdx exactly:
+//     timelineIdx = (globalStep + rotation) mod length
+//     physicalBar = (timelineIdx + offset) mod 16
+// so the highlight lands on the real active block, not a window-relative index.
 // Returns -1 if globalStep < 0 (sequencer not running).
 inline int calcPlayhead(int globalStep, int length, int offset, int rotation) {
     if (globalStep < 0) return -1;
     length = std::max(1, std::min(length, 16));
-    return ((offset + globalStep + rotation) % length + length) % length;
+    int timelineIdx = ((globalStep + rotation) % length + length) % length;
+    return (timelineIdx + offset) % 16;
 }
 
 // Read an integer param (rounded) from a module, clamped to [1, 16].

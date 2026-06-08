@@ -29,39 +29,44 @@ float ParameterManager::readInput_(int inputId) const {
 
 float ParameterManager::getNoteValue() const {
     float v = readParam_(NOTE_VALUE_PARAM, 0.f, 8.f);
-    v = clampv(v + cv2Offsets[0], 0.f, 8.f);
+    v = clampv(v + cv2Offsets[0] + surgeOffsets[0]*8.f, 0.f, 8.f);
     return v;
 }
 
 float ParameterManager::getVariation() const {
     float v = readParam_(VARIATION_PARAM, 0.f, 1.f);
-    v = clampv(v + cv2Offsets[1], 0.f, 1.f);
+    v = clampv(v + cv2Offsets[1] + surgeOffsets[1], 0.f, 1.f);
     return v;
 }
 
 float ParameterManager::getLegato() const {
     float v = readParam_(LEGATO_PARAM, 0.f, 1.f);
-    v = clampv(v + cv2Offsets[2], 0.f, 1.f);
+    v = clampv(v + cv2Offsets[2] + surgeOffsets[2], 0.f, 1.f);
     return v;
 }
 
 float ParameterManager::getRest() const {
     float v = readParam_(REST_PARAM, 0.f, 1.f);
-    v = clampv(v + cv2Offsets[3], 0.f, 1.f);
+    v = clampv(v + cv2Offsets[3] + surgeOffsets[3], 0.f, 1.f);
     return v;
 }
 
 float ParameterManager::getAccent() const {
     float v = readParam_(ACCENT_KNOB, 0.f, 1.f);
     // Direct CV input: 0–10V = 0–100%
-    float cv = readInput_(ACCENT_CV_INPUT);
-    v += cv * 0.1f;
+    float cv = readInput_(ACCENT_CV_INPUT); // CV input is 0-10V, scale to 0-1
+    v += cv * 0.1f + surgeOffsets[4] + cv2Offsets[4]; // Add CV2 offset for Accent
     return clampv(v, 0.f, 1.f);
 }
 
 float ParameterManager::getTranspose() const {
     return readParam_(TRANSPOSE_PARAM, -12.f, 12.f);
 }
+
+float ParameterManager::getRhythmSlew() const { return clampv(readParam_(DICE_SLEW_R_PARAM, 0.f, 1.f) + cv3Offsets[0], 0.f, 1.f); }
+float ParameterManager::getMelodySlew() const { return clampv(readParam_(DICE_SLEW_M_PARAM, 0.f, 1.f) + cv3Offsets[1], 0.f, 1.f); }
+float ParameterManager::getRhythmMix() const { return clampv(readParam_(RHYTHM_MIX_PARAM, 0.f, 1.f) + cv3Offsets[2], 0.f, 1.f); }
+float ParameterManager::getMelodyMix() const { return clampv(readParam_(MELODY_MIX_PARAM, 0.f, 1.f) + cv3Offsets[3], 0.f, 1.f); }
 
 // ──── Octave Range Getters ──────────────────────────────────────────────────
 

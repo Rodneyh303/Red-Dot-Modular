@@ -24,6 +24,37 @@ void ModeController::updatePatternInput() {
     currentPatternInput.transpose         = paramManager.getTranspose();
     currentPatternInput.noteVariationMask = engine.noteVariationMask;
     currentPatternInput.locked            = engine.locked;
+    currentPatternInput.rhythmSlew        = paramManager.getRhythmSlew();
+    currentPatternInput.melodySlew        = paramManager.getMelodySlew();
+    currentPatternInput.rhythmMix         = paramManager.getRhythmMix();
+    currentPatternInput.melodyMix         = paramManager.getMelodyMix();
+    // Surge expander: 5 big-5 CV (x attenuverter) -> offsets the param getters add.
+    // CV normalised 0..10V -> 0..1, scaled bipolar by the attenuverter.
+    paramManager.clearSurgeOffsets();
+    if (mainModule && mainModule->expanderManager.cachedSurgeExpander) {
+        rack::Module* sg = mainModule->expanderManager.cachedSurgeExpander;
+        for (int i = 0; i < 5; ++i) {
+            float cv  = sg->inputs[MonsoonIds::SURGE_NOTEVAL_CV + i].getVoltage() / 10.f;
+            float att = sg->params[MonsoonIds::SURGE_NOTEVAL_ATT + i].getValue();
+            paramManager.setSurgeOffset(i, cv * att);
+        }
+    }
+    // PLAYABLE LIVE MORPH: apply the live MIX every process (control rate), like
+    // spread — this is the continuous A<->B blend. recomputeEffective only does
+    // work when MIX actually changes, so it is cheap. SLEW is NOT applied here;
+    // it is consumed at roll time (shapes B). Lock freezes the morph.
+    if (!engine.locked) {
+        engine.pe.latchMix(currentPatternInput.rhythmMix,
+                           currentPatternInput.melodyMix);
+    }
+    if (mainModule) {
+        currentPatternInput.reseedOnRoll    = mainModule->reseedOnRoll;
+        currentPatternInput.rhythmLiveTrial = mainModule->rhythmLiveTrial;
+        currentPatternInput.melodyLiveTrial = mainModule->melodyLiveTrial;
+        const bool sc = mainModule->inputs[MonsoonIds::SEED_INPUT].isConnected();
+        currentPatternInput.seedConnected   = sc;
+        currentPatternInput.seedSampleValue = sc ? mainModule->sampleSeedFromSource() : 0.f;
+    }
 }
 
 PatternInput ModeController::assemblePatternInput_() {
@@ -38,6 +69,10 @@ void ModeController::postExecute_(const StepResult& result) {
     if (result.wrapped && mainModule) {
         mainModule->onPhraseBoundary_();
     }
+
+    // (Playable slew is now latched every process in updatePatternInput(), so the
+    // A→B blend follows the knob continuously like spread — no wrap-gated latch
+    // here. Lock freezes it at the updatePatternInput site.)
     
     // Execute poly voices if step was taken
     if (result.stepped && engine.numPolyVoices > 0) {
@@ -96,19 +131,23 @@ bool ModeController::executeModeA() {
 bool ModeController::executeModeB(bool gate1Rise,
                                    bool gate1High) {
     if (gate1Rise || (gate1High && engine.stepIndex == -1)) {
-        // Fetch current parameters
-        engine.accentProb = paramManager.getAccent();
-        
-        PatternInput in = assemblePatternInput_();
+        // In Mode B, variation and note length should have no impact on the gate.
+        // Only legato, rest, and accent apply.
+        // Create a local copy of PatternInput and override relevant values for Mode B.
+        PatternInput modeBPatternInput = currentPatternInput; // Start with current settings
+        modeBPatternInput.noteVariationMask = 0b111; // Allow all note lengths (e.g., 1/1 to 1/32T)
+        modeBPatternInput.variationAmount = 0.5f;    // No bias for longer/shorter notes
 
         // Execute the mode
         StepResult result = engine.executeModeB(
             gate1Rise,
             gate1High,
-            in.restProb,
+            modeBPatternInput.restProb, // Rest still applies
             paramManager.getLegato(),
-            paramManager.getNoteValue(),
-            in
+            // Note value (which influences note length) should have no impact.
+            // Pass a neutral value (e.g., 2.f for 1/4 note, a common default).
+            2.f,
+            modeBPatternInput // Pass the modified PatternInput
         );
         
         // Handle post-execution
@@ -171,15 +210,14 @@ bool ModeController::executeModeD(bool gate2High,
 // ──── High-Level Dispatcher ─────────────────────────────────────────────────
 
 bool ModeController::executeMode(int modeId,
-                                  bool gate1Rise,
-                                  bool gate1High,
-                                  bool gate2High,
-                                  float cv2Voltage) {
+                                  const InputState& input,
+                                  bool gate2High) {
+    bool gate1High = input.gate1 >= 1.0f;
     switch (modeId) {
         case 0: return executeModeA();
-        case 1: return executeModeB(gate1Rise, gate1High);
-        case 2: return executeModeC(cv2Voltage);
-        case 3: return executeModeD(gate2High, cv2Voltage);
+        case 1: return executeModeB(input.gate1Rise, gate1High);
+        case 2: return executeModeC(input.cv2);
+        case 3: return executeModeD(gate2High, input.cv2);
         default: return false;
     }
 }

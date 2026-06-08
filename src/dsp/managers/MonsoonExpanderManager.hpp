@@ -1,85 +1,8 @@
-<<<<<<< HEAD
 #pragma once
 #include <rack.hpp>
 
 // Forward declarations
-struct MonsoonInterchangeExpander;
-struct MonsoonSandsExpander;
-struct MonsoonStraitsEastExpander;
-struct MonsoonStraitWestExpander;    // NEW (Phase 4)
-struct MonsoonStraitSandsExpander;   // NEW (Phase 6)
-    
-extern rack::Model* modelMonsoonInterchangeExpander;
-extern rack::Model* modelMonsoonSandsExpander;
-extern rack::Model* modelMonsoonStraitsEastExpander;
-extern rack::Model* modelMonsoonStraitWestExpander;     // NEW (Phase 4)
-extern rack::Model* modelMonsoonStraitSandsExpander;    // NEW (Phase 6)
-
-/**
- * ExpanderManager handles the discovery and caching of Monsoon expander modules.
- * It walks the left and right expansion chains to identify connected modules.
- */
-struct MonsoonExpanderManager {
-    MonsoonInterchangeExpander* cachedScaleExpander = nullptr;
-    MonsoonSandsExpander* cachedDnaExpander = nullptr;
-    MonsoonStraitsEastExpander* cachedPolyVoiceExpander = nullptr;
-    MonsoonStraitWestExpander* cachedStraitWestExpander = nullptr;     // NEW (Phase 4)
-    MonsoonStraitSandsExpander* cachedStraitSandsExpander = nullptr;   // NEW (Phase 6)
-
-    int scaleExpanderCount = 0;
-    int dnaExpanderCount = 0;
-    int polyExpanderCount = 0;
-    int straitWestExpanderCount = 0;   // NEW (Phase 4)
-    int straitSandsExpanderCount = 0;  // NEW (Phase 6)
-
-    void update(rack::Module* module) {
-        cachedScaleExpander = nullptr;
-        cachedDnaExpander = nullptr;
-        cachedPolyVoiceExpander = nullptr;
-        cachedStraitWestExpander = nullptr;
-        cachedStraitSandsExpander = nullptr;
-
-        scaleExpanderCount = 0;
-        dnaExpanderCount = 0;
-        polyExpanderCount = 0;
-        straitWestExpanderCount = 0;
-        straitSandsExpanderCount = 0;
-
-        auto scan = [&](rack::Module* start, bool left) {
-            rack::Module* curr = start;
-            int depth = 0;
-            while (curr && depth < 8) {
-                if (curr->model == modelMonsoonInterchangeExpander) {
-                    // Model check ensures safe cast
-                    if (!cachedScaleExpander) cachedScaleExpander = reinterpret_cast<MonsoonInterchangeExpander*>(curr);
-                    scaleExpanderCount++;
-                } else if (curr->model == modelMonsoonSandsExpander) {
-                    if (!cachedDnaExpander) cachedDnaExpander = reinterpret_cast<MonsoonSandsExpander*>(curr);
-                    dnaExpanderCount++;
-                } else if (curr->model == modelMonsoonStraitsEastExpander) {
-                    if (!cachedPolyVoiceExpander) cachedPolyVoiceExpander = reinterpret_cast<MonsoonStraitsEastExpander*>(curr);
-                    polyExpanderCount++;
-                } else if (curr->model == modelMonsoonStraitWestExpander) {
-                    if (!cachedStraitWestExpander) cachedStraitWestExpander = reinterpret_cast<MonsoonStraitWestExpander*>(curr);
-                    straitWestExpanderCount++;
-                } else if (curr->model == modelMonsoonStraitSandsExpander) {
-                    if (!cachedStraitSandsExpander) cachedStraitSandsExpander = reinterpret_cast<MonsoonStraitSandsExpander*>(curr);
-                    straitSandsExpanderCount++;
-                } else break;
-                curr = left ? curr->leftExpander.module : curr->rightExpander.module;
-                depth++;
-            }
-        };
-
-        if (module) {
-            scan(module->leftExpander.module, true);
-            scan(module->rightExpander.module, false);
-        }
-    }
-};
-=======
-#pragma once
-#include <rack.hpp>
+class SequencerEngine;
 
 // Forward declarations
 struct MonsoonInterchangeExpander;
@@ -95,7 +18,10 @@ struct StraitsEastSandsVisual;
 struct StraitsWestSandsVisual;
 struct StraitsSandsMacroVisual;
 
+extern rack::Model* modelMonsoon;
 extern rack::Model* modelMonsoonInterchangeExpander;
+extern rack::Model* modelMonsoonCausewayExpander;
+extern rack::Model* modelMonsoonSurgeExpander;
 extern rack::Model* modelMonsoonSandsExpander;
 extern rack::Model* modelMonsoonSandsVisualExpander;
 extern rack::Model* modelMonsoonStraitsEastExpander;
@@ -113,6 +39,8 @@ extern rack::Model* modelStraitsSandsMacroVisual;
  */
 struct MonsoonExpanderManager {
     MonsoonInterchangeExpander*  cachedScaleExpander              = nullptr;
+    rack::Module*                cachedCausewayExpander           = nullptr;
+    rack::Module*                cachedSurgeExpander              = nullptr;
     MonsoonSandsExpander*        cachedDnaExpander                = nullptr;
     MonsoonSandsVisualExpander*  cachedSandsVisualExpander        = nullptr;
     MonsoonStraitsEastExpander*  cachedPolyVoiceExpander          = nullptr;
@@ -139,6 +67,8 @@ struct MonsoonExpanderManager {
 
     void update(rack::Module* module) {
         cachedScaleExpander              = nullptr;
+        cachedCausewayExpander           = nullptr;
+        cachedSurgeExpander              = nullptr;
         cachedDnaExpander                = nullptr;
         cachedSandsVisualExpander        = nullptr;
         cachedPolyVoiceExpander          = nullptr;
@@ -166,9 +96,19 @@ struct MonsoonExpanderManager {
             rack::Module* curr = start;
             int depth = 0;
             while (curr && depth < 8) {
+                // Rule 3: a Monsoon is NOT an expander of another Monsoon. Treat
+                // it (and anything unrecognised) as foreign and stop this side.
+                if (curr->model == modelMonsoon) break;
+
+                // Rule 2: at most one pointer per type — only record into an
+                // empty slot. (Counts kept for diagnostics.)
                 if (curr->model == modelMonsoonInterchangeExpander) {
                     if (!cachedScaleExpander) cachedScaleExpander = reinterpret_cast<MonsoonInterchangeExpander*>(curr);
                     scaleExpanderCount++;
+                } else if (curr->model == modelMonsoonCausewayExpander) {
+                    if (!cachedCausewayExpander) cachedCausewayExpander = curr;
+                } else if (curr->model == modelMonsoonSurgeExpander) {
+                    if (!cachedSurgeExpander) cachedSurgeExpander = curr;
                 } else if (curr->model == modelMonsoonSandsExpander) {
                     if (!cachedDnaExpander) cachedDnaExpander = reinterpret_cast<MonsoonSandsExpander*>(curr);
                     dnaExpanderCount++;
@@ -199,7 +139,11 @@ struct MonsoonExpanderManager {
                 } else if (curr->model == modelStraitsSandsMacroVisual) {
                     if (!cachedMacroSandsVisual) cachedMacroSandsVisual = reinterpret_cast<StraitsSandsMacroVisual*>(curr);
                     macroSandsVisualCount++;
-                } else break;
+                } else break;   // Rule 1: stop at first foreign module.
+
+                // Rule 2 (early-out): once every type has a pointer, stop scanning.
+                if (allTypesFound()) break;
+
                 curr = left ? curr->leftExpander.module : curr->rightExpander.module;
                 depth++;
             }
@@ -207,9 +151,20 @@ struct MonsoonExpanderManager {
 
         if (module) {
             scan(module->leftExpander.module, true);
-            scan(module->rightExpander.module, false);
+            if (!allTypesFound())
+                scan(module->rightExpander.module, false);
         }
     }
-};
 
->>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
+    // True once one pointer of every expander type has been cached.
+    bool allTypesFound() const {
+        return cachedScaleExpander && cachedCausewayExpander && cachedSurgeExpander
+            && cachedDnaExpander && cachedSandsVisualExpander && cachedPolyVoiceExpander
+            && cachedStraitWestExpander && cachedStraitsSandsExpander
+            && cachedDeepStraitsSandsEastExpander && cachedDeepStraitsSandsWestExpander
+            && cachedEastSandsVisual && cachedWestSandsVisual && cachedMacroSandsVisual;
+    }
+
+    /// Synchronizes data between the engine and specific expanders (Deep Straits, Visual Editors, etc.)
+    void sync(SequencerEngine& engine);
+};

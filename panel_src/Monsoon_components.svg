@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+     width="203.2mm" height="128.5mm" viewBox="0 0 203.2 128.5">
+  <g inkscape:groupmode="layer" inkscape:label="panel" id="panel"
+     style="display:inline">
+    <rect width="203.2" height="128.5" fill="#232326"/>
+  </g>
+  <g inkscape:groupmode="layer" inkscape:label="components" id="components"
+     style="display:inline">
+    <!-- params (red) -->
+    <circle id="SEMI0_PARAM" cx="7.500" cy="59.750" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <circle id="SEMI1_PARAM" cx="16.500" cy="59.750" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <circle id="SEMI2_PARAM" cx="25.500" cy="59.750" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <circle id="SEMI3_PARAM" cx="34.500" cy="59.750" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <circle id="SEMI4_PARAM" cx="43.500" cy="59.750" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <circle id="SEMI5_PARAM" cx="52.500" cy="59.750" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <circle id="SEMI6_PARAM" cx="61.500" cy="59.750" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <circle id="SEMI7_PARAM" cx="70.500" cy="59.750" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <circle id="SEMI8_PARAM" cx="79.500" cy="59.750" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <circle id="SEMI9_PARAM" cx="88.500" cy="59.750" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <circle id="SEMI10_PARAM" cx="97.500" cy="59.750" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <circle id="SEMI11_PARAM" cx="106.500" cy="59.750" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <circle id="OCT_LO_PARAM" cx="119.000" cy="59.750" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <circle id="OCT_HI_PARAM" cx="128.000" cy="59.750" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <circle id="MODE_PARAM" cx="197.000" cy="12.000" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <circle id="DICE_R_PARAM" cx="118.000" cy="87.000" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <circle id="DICE_M_PARAM" cx="133.000" cy="87.000" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <circle id="LOCK_PARAM" cx="148.000" cy="87.000" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <circle id="MUTE_PARAM" cx="163.000" cy="87.000" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <circle id="RESET_BUTTON_PARAM" cx="178.000" cy="87.000" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <circle id="RUN_GATE_PARAM" cx="193.000" cy="87.000" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <circle id="NOTE_VALUE_PARAM" cx="16.000" cy="22.000" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <circle id="VARIATION_PARAM" cx="42.000" cy="22.000" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <circle id="LEGATO_PARAM" cx="68.000" cy="22.000" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <circle id="REST_PARAM" cx="94.000" cy="22.000" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <circle id="ACCENT_KNOB" cx="120.000" cy="22.000" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <circle id="BPM_PARAM" cx="148.000" cy="58.000" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <circle id="PATTERN_LENGTH_PARAM" cx="163.000" cy="58.000" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <circle id="PATTERN_OFFSET_PARAM" cx="178.000" cy="58.000" r="1.0" style="fill:#ff0000;stroke:none"/>
+    <!-- inputs (green) -->
+    <circle id="RUN_GATE_INPUT" cx="16.000" cy="105.000" r="1.0" style="fill:#00ff00;stroke:none"/>
+    <circle id="RESET_TRIGGER_INPUT" cx="30.000" cy="105.000" r="1.0" style="fill:#00ff00;stroke:none"/>
+    <circle id="SEED_INPUT" cx="48.000" cy="105.000" r="1.0" style="fill:#00ff00;stroke:none"/>
+    <circle id="LENGTH_INPUT" cx="66.000" cy="105.000" r="1.0" style="fill:#00ff00;stroke:none"/>
+    <circle id="OFFSET_INPUT" cx="84.000" cy="105.000" r="1.0" style="fill:#00ff00;stroke:none"/>
+    <circle id="CLK_INPUT" cx="16.000" cy="120.000" r="1.0" style="fill:#00ff00;stroke:none"/>
+    <circle id="GATE1_INPUT" cx="30.000" cy="120.000" r="1.0" style="fill:#00ff00;stroke:none"/>
+    <circle id="GATE2_INPUT" cx="48.000" cy="120.000" r="1.0" style="fill:#00ff00;stroke:none"/>
+    <circle id="CV1_INPUT" cx="66.000" cy="120.000" r="1.0" style="fill:#00ff00;stroke:none"/>
+    <circle id="CV2_INPUT" cx="84.000" cy="120.000" r="1.0" style="fill:#00ff00;stroke:none"/>
+    <!-- outputs (blue) -->
+    <circle id="GATE_OUTPUT" cx="104.000" cy="105.000" r="1.0" style="fill:#0000ff;stroke:none"/>
+    <circle id="TIE_OUTPUT" cx="122.000" cy="105.000" r="1.0" style="fill:#0000ff;stroke:none"/>
+    <circle id="LEGATO_OUTPUT" cx="140.000" cy="105.000" r="1.0" style="fill:#0000ff;stroke:none"/>
+    <circle id="TIE_OR_LEGATO_OUTPUT" cx="158.000" cy="105.000" r="1.0" style="fill:#0000ff;stroke:none"/>
+    <circle id="ACCENT_OUTPUT" cx="176.000" cy="105.000" r="1.0" style="fill:#0000ff;stroke:none"/>
+    <circle id="CV_OUTPUT" cx="104.000" cy="120.000" r="1.0" style="fill:#0000ff;stroke:none"/>
+    <circle id="SEED_OUTPUT" cx="122.000" cy="120.000" r="1.0" style="fill:#0000ff;stroke:none"/>
+    <circle id="RUN_GATE_OUTPUT" cx="140.000" cy="120.000" r="1.0" style="fill:#0000ff;stroke:none"/>
+    <circle id="RESET_TRIGGER_OUTPUT" cx="158.000" cy="120.000" r="1.0" style="fill:#0000ff;stroke:none"/>
+    <!-- lights (cyan) -->
+    <circle id="STEP_LIGHT_0" cx="162.000" cy="16.000" r="0.6" style="fill:#00ffff;stroke:none"/>
+    <circle id="STEP_LIGHT_1" cx="167.358" cy="17.066" r="0.6" style="fill:#00ffff;stroke:none"/>
+    <circle id="STEP_LIGHT_2" cx="171.899" cy="20.101" r="0.6" style="fill:#00ffff;stroke:none"/>
+    <circle id="STEP_LIGHT_3" cx="174.934" cy="24.642" r="0.6" style="fill:#00ffff;stroke:none"/>
+    <circle id="STEP_LIGHT_4" cx="176.000" cy="30.000" r="0.6" style="fill:#00ffff;stroke:none"/>
+    <circle id="STEP_LIGHT_5" cx="174.934" cy="35.358" r="0.6" style="fill:#00ffff;stroke:none"/>
+    <circle id="STEP_LIGHT_6" cx="171.899" cy="39.899" r="0.6" style="fill:#00ffff;stroke:none"/>
+    <circle id="STEP_LIGHT_7" cx="167.358" cy="42.934" r="0.6" style="fill:#00ffff;stroke:none"/>
+    <circle id="STEP_LIGHT_8" cx="162.000" cy="44.000" r="0.6" style="fill:#00ffff;stroke:none"/>
+    <circle id="STEP_LIGHT_9" cx="156.642" cy="42.934" r="0.6" style="fill:#00ffff;stroke:none"/>
+    <circle id="STEP_LIGHT_10" cx="152.101" cy="39.899" r="0.6" style="fill:#00ffff;stroke:none"/>
+    <circle id="STEP_LIGHT_11" cx="149.066" cy="35.358" r="0.6" style="fill:#00ffff;stroke:none"/>
+    <circle id="STEP_LIGHT_12" cx="148.000" cy="30.000" r="0.6" style="fill:#00ffff;stroke:none"/>
+    <circle id="STEP_LIGHT_13" cx="149.066" cy="24.642" r="0.6" style="fill:#00ffff;stroke:none"/>
+    <circle id="STEP_LIGHT_14" cx="152.101" cy="20.101" r="0.6" style="fill:#00ffff;stroke:none"/>
+    <circle id="STEP_LIGHT_15" cx="156.642" cy="17.066" r="0.6" style="fill:#00ffff;stroke:none"/>
+    <circle id="MODE_A_LIGHT_0" cx="192.000" cy="34.000" r="0.6" style="fill:#00ffff;stroke:none"/>
+    <circle id="MODE_A_LIGHT_1" cx="192.000" cy="42.000" r="0.6" style="fill:#00ffff;stroke:none"/>
+    <circle id="MODE_A_LIGHT_2" cx="192.000" cy="50.000" r="0.6" style="fill:#00ffff;stroke:none"/>
+    <circle id="MODE_A_LIGHT_3" cx="192.000" cy="58.000" r="0.6" style="fill:#00ffff;stroke:none"/>
+    <circle id="RHYTHM_DICE_LIGHT" cx="118.000" cy="93.000" r="0.6" style="fill:#00ffff;stroke:none"/>
+    <circle id="MELODY_DICE_LIGHT" cx="133.000" cy="93.000" r="0.6" style="fill:#00ffff;stroke:none"/>
+    <circle id="LOCK_LIGHT" cx="148.000" cy="93.000" r="0.6" style="fill:#00ffff;stroke:none"/>
+    <circle id="MUTE_LIGHT" cx="163.000" cy="93.000" r="0.6" style="fill:#00ffff;stroke:none"/>
+    <circle id="RESET_LIGHT" cx="178.000" cy="93.000" r="0.6" style="fill:#00ffff;stroke:none"/>
+    <circle id="RUN_GATE_LIGHT" cx="193.000" cy="93.000" r="0.6" style="fill:#00ffff;stroke:none"/>
+    <circle id="SCALE_EXPANDER_LIGHT" cx="4.000" cy="4.000" r="0.6" style="fill:#00ffff;stroke:none"/>
+    <circle id="DNA_EXPANDER_LIGHT" cx="9.000" cy="4.000" r="0.6" style="fill:#00ffff;stroke:none"/>
+    <circle id="POLY_EXPANDER_LIGHT" cx="14.000" cy="4.000" r="0.6" style="fill:#00ffff;stroke:none"/>
+  </g>
+</svg>

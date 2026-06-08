@@ -1,47 +1,27 @@
-# dot.modular — logo assets
+# dot.modular — logo assets (nanosvg-safe)
 
-All SVGs are self-contained: fonts outlined to paths (Barlow Black), solid
-fills, no gradients/blur, no web-font dependency. They render identically in
-browsers, VCV Rack (NanoSVG), and panel-fabrication tools.
+Self-contained SVGs: fonts outlined to paths (Barlow Black), solid fills,
+NO masks, NO gradients, NO filters/blur, no web-font dependency.
+Render identically in VCV Rack (nanosvg), browsers, and panel-fab tools.
+
+The signal-trace channel through the wordmark is drawn as a background-
+coloured stroke over the letters (then the red trace on top) — visually
+identical to the previous version but mask-free for nanosvg.
 
 ## Files
-
-### Wordmark
-- dot-modular-logo-dark.svg      Primary horizontal lockup (dark)
-- dot-modular-logo-light.svg     Primary horizontal lockup (light)
-
-### Compact (stacked, narrow panels / thumbnails)
-- dot-modular-compact-dark.svg
-- dot-modular-compact-light.svg
-
-### Mark (scope-o only)
-- dot-modular-mark-dark-tile.svg     on dark rounded tile
-- dot-modular-mark-dark-clear.svg    transparent
-- dot-modular-mark-light-tile.svg    on light rounded tile
-- dot-modular-mark-light-clear.svg   transparent
-
-### Favicon (64px)
-- dot-modular-favicon-dark.svg
-- dot-modular-favicon-light.svg
-
-### Identity reference
-- dot-modular-identity-system.svg    full spec sheet (colour, type, scale)
-
-### VCV Rack panels (1HP=15px, 3U=380px)
-- dot-modular-panel-template-8hp.svg   annotated layout template
-- dot-modular-panel-{4,6,8,12,20}hp-{dark,light}.svg
-  (<=8HP compact lockup, >=12HP horizontal lockup)
+Wordmark:   dot-modular-logo-{dark,light}.svg
+Compact:    dot-modular-compact-{dark,light}.svg
+Mark:       dot-modular-mark-{dark,light}-{tile,clear}.svg
+Favicon:    dot-modular-favicon-{dark,light}.svg   (64px)
+Reference:  dot-modular-identity-system.svg
+VCV panels: dot-modular-panel-template-8hp.svg
+            dot-modular-panel-{4,6,8,12,20}hp-{dark,light}.svg
+            (<=8HP compact lockup, >=12HP horizontal lockup; 1HP=15px, 3U=380px)
 
 ## Colours
-- Singapore red  #d4001a   primary
-- Phosphor       #ff2a1a   scope trace (screen only)
-- Grat brighter  #a83020   scope graticule
-- Off-white      #f0ede8   dark-theme ink / light-theme bg
-- Panel black    #070707   dark-theme bg
+Singapore red #d4001a · Phosphor #ff2a1a · Grat #a83020 ·
+Off-white #f0ede8 · Panel black #070707
 
 ## Type
-- Barlow Black (display / wordmark) — outlined in these files
-- Share Tech Mono (technical labels)
-
-Lissajous figures are public domain. The composed scope-o mark and these
-lockups are dot.modular brand assets.
+Barlow Black (display, outlined) · Share Tech Mono (labels)
+Lissajous figures are public domain; the composed scope-o mark is a brand asset.

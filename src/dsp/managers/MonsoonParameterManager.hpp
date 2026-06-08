@@ -46,6 +46,12 @@ public:
     
     /// Transpose in semitones (-12 to +12)
     float getTranspose() const;
+
+    /// Playable dice slew amounts (0–1)
+    float getRhythmSlew() const;
+    float getMelodySlew() const;
+    float getRhythmMix() const;
+    float getMelodyMix() const;
     
     // ──── Octave Range Getters ──────────────────────────────────────────────
     
@@ -75,14 +81,14 @@ public:
     
     // ──── CV2 Offset Management ──────────────────────────────────────────────
     
-    /// Set CV2 offset for a parameter (0 = note value, 1 = variation, 2 = legato, 3 = rest)
-    void setCv2Offset(int paramIdx, float offset) {
-        if (paramIdx >= 0 && paramIdx < 4) {
+    /// Set CV2 offset for a parameter (0 = note value, 1 = variation, 2 = legato, 3 = rest, 4 = accent)
+    void setCv2Offset(int paramIdx, float offset) { // Now supports 5 parameters (0-4)
+        if (paramIdx >= 0 && paramIdx < 5) {
             cv2Offsets[paramIdx] = offset;
         }
     }
     
-    /// Get all CV2 offsets (for debugging/persistence)
+    /// Get all CV2 offsets (for debugging/persistence) - now 5 elements
     const float* getCv2Offsets() const { return cv2Offsets; }
     
     /// Clear all CV2 offsets
@@ -90,13 +96,45 @@ public:
         for (int i = 0; i < 4; ++i) cv2Offsets[i] = 0.f;
     }
 
+    // ──── CV3 Offset Management ──────────────────────────────────────────────
+
+    /// Set CV3 offset (0=R Slew, 1=M Slew, 2=R Mix, 3=M Mix)
+    void setCv3Offset(int paramIdx, float offset) {
+        if (paramIdx >= 0 && paramIdx < 4) {
+            cv3Offsets[paramIdx] = offset;
+        }
+    }
+
+    /// Clear all CV3 offsets
+    void clearCv3Offsets() {
+        for (int i = 0; i < 4; ++i) cv3Offsets[i] = 0.f;
+    }
+
+    // ──── Surge Expander Offset Management ───────────────────────────────────
+    // Big-5 CV (x attenuverter) offsets from the Surge expander, summed into the
+    // matching getters. Index: 0 note value, 1 variation, 2 legato, 3 rest, 4 accent.
+    void setSurgeOffset(int i, float offset) {
+        if (i >= 0 && i < 5) surgeOffsets[i] = offset;
+    }
+    void clearSurgeOffsets() {
+        for (int i = 0; i < 5; ++i) surgeOffsets[i] = 0.f;
+    }
+
+    // CV1 BPM Offset
+    float cv1BpmOffset = 0.f;
+    void clearCv1BpmOffset() { cv1BpmOffset = 0.f; }
+
 private:
     rack::engine::Module* mainModule;
     MonsoonInterchangeExpander** cachedExpander;
     MonsoonStraitsEastExpander** cachedPolyVoiceExpander;
     
-    // CV2-aware offsets for note value, variation, legato, rest
-    float cv2Offsets[4] = {0.f, 0.f, 0.f, 0.f};
+    // CV2-aware offsets for note value, variation, legato, rest, accent
+    float cv2Offsets[5] = {0.f, 0.f, 0.f, 0.f, 0.f}; // Increased size for Accent
+    // CV3 offsets for rhythm slew, melody slew, rhythm mix, melody mix
+    float cv3Offsets[4] = {0.f, 0.f, 0.f, 0.f};
+    // Surge expander offsets: note value, variation, legato, rest, accent
+    float surgeOffsets[5] = {0.f, 0.f, 0.f, 0.f, 0.f};
     
     // Transient CV1 mode offsets (never persisted)
     float cv1LoOffset = 0.f;

@@ -3,149 +3,88 @@
   "name": "Monsoon",
   "version": "2.0.1",
   "license": "proprietary",
-  "author": "Rodney Hoskinson",
-<<<<<<< HEAD
-  "brand": "Red Dot Modular",
-=======
+  "author": "Dr Rodney Hoskinson",
   "brand": "dot.modular",
->>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
   "modules": [
     {
       "slug": "Monsoon",
       "name": "Monsoon",
       "description": "VCV plugin inspired by Vermona meloDICER: stochastic melody & rhythm with edit-menu features",
-<<<<<<< HEAD
-      "tags": ["Sequencer", "Random", "Quantizer"]
-=======
       "tags": [
         "Sequencer",
         "Random",
         "Quantizer"
       ]
->>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
     },
     {
       "slug": "MonsoonInterchangeExpander",
       "name": "MonsoonInterchangeExpander",
-      "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
-<<<<<<< HEAD
-      "tags": ["Sequencer", "Random", "Quantizer"]
-=======
+      "description": "Semitone and Octave CV Modulation Expander",
       "tags": [
+        "Expander",
         "Sequencer",
-        "Random",
-        "Quantizer"
+		"Random"
       ]
->>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
     },
     {
-      "slug": "MonsoonSandsExpander",
-      "name": "MonsoonSandsExpander",
-      "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
-<<<<<<< HEAD
-      "tags": ["Sequencer", "Random", "Quantizer"]
-=======
+      "slug": "MonsoonCausewayExpander",
+      "name": "Causeway",
+      "description": "Dice/draw-generation modulation expander (slew/mix CV + die-action gates)",
       "tags": [
+        "Expander",
         "Sequencer",
-        "Random",
-        "Quantizer"
+        "Random"
       ]
->>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
+    },
+    {
+      "slug": "MonsoonSurgeExpander",
+      "name": "Surge",
+      "description": "Big-5 pattern-knob CV modulation expander (note value, variation, legato, rest, accent)",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Random"
+      ]
     },
     {
       "slug": "MonsoonStraitsEastExpander",
       "name": "MonsoonStraitsEastExpander",
-      "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
-<<<<<<< HEAD
-      "tags": ["Sequencer", "Random", "Quantizer"]
-=======
+      "description": "Polyphonice Expander and Modulation Expander - Voice 2-8",
       "tags": [
+        "Expander",
         "Sequencer",
-        "Random",
-        "Quantizer"
+		"Random"
       ]
->>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
     },
     {
       "slug": "MonsoonStraitWestExpander",
       "name": "MonsoonStraitWestExpander",
-      "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
-<<<<<<< HEAD
-      "tags": ["Sequencer", "Random", "Quantizer"]
-    },
-    {
-      "slug": "MonsoonStraitSandsExpander",
-      "name": "MonsoonStraitSandsExpander",
-      "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
-      "tags": ["Sequencer", "Random", "Quantizer"]
-    }
-  ]
-}
-=======
+      "description": "Polyphonice Expander and Modulation Expander - Voice 9-16",
       "tags": [
+        "Expander",
         "Sequencer",
-        "Random",
-        "Quantizer"
-      ]
-    },
-    {
-      "slug": "MonsoonDeepStraitsSandsEast",
-      "name": "MonsoonDeepStraitsSandsEast",
-      "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
-      "tags": [
-        "Sequencer",
-        "Random",
-        "Quantizer"
-      ]
-    },
-    {
-      "slug": "MonsoonDeepStraitsSandsWest",
-      "name": "MonsoonDeepStraitsSandsWest",
-      "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
-      "tags": [
-        "Sequencer",
-        "Random",
-        "Quantizer"
-      ]
-    },
-    {
-      "slug": "MonsoonStraitsSands",
-      "name": "MonsoonStraitsSands",
-      "description": "64-step version of Monsoon with 4 rows of 16 steps each, and additional features",
-      "tags": [
-        "Sequencer",
-        "Random",
-        "Quantizer"
+		"Random"
       ]
     },
     {
       "slug": "MonsoonSandsVisualExpander",
       "name": "Sands Visual",
-      "description": "Visual probability editor for Monsoon mono DNA \u2014 6-lane bar editor with draggable start/end/rotation handles",
+      "description": "Monsoon Probability Visualisation, Manipulation, and Modulation Expander",
       "tags": [
         "Expander",
         "Sequencer",
+		"Random",
         "Visual"
       ]
     },
     {
       "slug": "StraitsEastSandsVisual",
       "name": "Straits East Sands Visual",
-      "description": "Visual probability editor for Straits East poly voices 2-8 \u2014 tabbed 3-lane editor with handles and spread interpolation",
+      "description": "Monsoon Polyphonic Per Channel Probability Visualisation, Manipulation, and Modulation Expander — all 15 poly voices (V2-V16)",
       "tags": [
         "Expander",
         "Sequencer",
-        "Visual",
-        "Polyphonic"
-      ]
-    },
-    {
-      "slug": "StraitsWestSandsVisual",
-      "name": "Straits West Sands Visual",
-      "description": "Visual probability editor for Straits West poly voices 9-16 \u2014 tabbed 3-lane editor with handles and spread interpolation",
-      "tags": [
-        "Expander",
-        "Sequencer",
+		"Random",
         "Visual",
         "Polyphonic"
       ]
@@ -153,14 +92,14 @@
     {
       "slug": "StraitsSandsMacroVisual",
       "name": "Straits Sands Macro Visual",
-      "description": "Global visual probability editor for all poly voices \u2014 single 3-lane editor with global spread and handles",
+      "description": "Monsoon Polyphonic Global Macro Probability Visualisation, Manipulation, and Modulation Expander",
       "tags": [
         "Expander",
         "Sequencer",
+		"Random",
         "Visual",
         "Polyphonic"
       ]
     }
   ]
 }
->>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8

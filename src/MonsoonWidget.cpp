@@ -500,14 +500,8 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
 #include <algorithm>
 #include "MonsoonWidget.hpp"
 #include "Monsoon.hpp"
+#include "ui/OutputAccent.hpp"
 #include "dsp/managers/MonsoonScaleManager.hpp"
-#include "ui/PeranakanLatticePanel.hpp"
-
-// Define a custom panel that uses PeranakanLatticePanelLarge
-// This will handle drawing the lattice overlay.
-struct MonsoonCustomPanel : PeranakanLatticePanelLarge {
-    MonsoonCustomPanel(int* themeRef) : PeranakanLatticePanelLarge(themeRef) {}
-};
 
 using namespace rack;
 using namespace MonsoonIds;
@@ -610,43 +604,70 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
             addChild(createLightCentered<MediumLight<YellowLight>>(
                 mm2px(Vec(192.f, 34.f + i*8.f)), module, MonsoonIds::MODE_A_LIGHT+i));
 
-        // ── 6 action buttons: y=87, 15mm pitch ───────────────────────────────
-        const float JY=87.f, JYL=93.f, JX=118.f, JP=15.f;
-        addParam(createParamCentered<TL1105>(mm2px(Vec(JX,      JY)), module, MonsoonIds::DICE_R_PARAM));
-        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(JX,      JYL)), module, MonsoonIds::RHYTHM_DICE_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec(JX+JP,   JY)), module, MonsoonIds::DICE_M_PARAM));
-        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(JX+JP,   JYL)), module, MonsoonIds::MELODY_DICE_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec(JX+2*JP, JY)), module, MonsoonIds::LOCK_PARAM));
-        addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec(JX+2*JP, JYL)), module, MonsoonIds::LOCK_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec(JX+3*JP, JY)), module, MonsoonIds::MUTE_PARAM));
-        addChild(createLightCentered<MediumLight<RedLight>>(  mm2px(Vec(JX+3*JP, JYL)), module, MonsoonIds::MUTE_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec(JX+4*JP, JY)), module, MonsoonIds::RESET_BUTTON_PARAM));
-        addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec(JX+4*JP, JYL)), module, MonsoonIds::RESET_LIGHT));
-        addParam(createParamCentered<TL1105>(mm2px(Vec(JX+5*JP, JY)), module, MonsoonIds::RUN_GATE_PARAM));
-        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(JX+5*JP, JYL)), module, MonsoonIds::RUN_GATE_LIGHT));
+        // ── Single control row at y=87: all dice/slew/mix + utility aligned ──
+        // 12 slots across, grouped by type, evenly pitched and aligned with the
+        // jack columns below. Left→right:
+        //   SLEW R, SLEW M | DICE R, DICE M | TRIAL R, TRIAL M | MIX R, MIX M |
+        //   LOCK, MUTE, RESET, RUN
+        const float ROWY = 87.f, ROWYL = 93.f;     // controls / their lights
+        const float RX0 = 12.f, RXP = 16.7f;        // row origin + pitch (12 slots)
+        auto rx = [&](int i){ return RX0 + i * RXP; };
+        // SLEW trims (consumed at roll)
+        addParam(createParamCentered<Trimpot>(mm2px(Vec(rx(0), ROWY)), module, MonsoonIds::DICE_SLEW_R_PARAM));
+        addParam(createParamCentered<Trimpot>(mm2px(Vec(rx(1), ROWY)), module, MonsoonIds::DICE_SLEW_M_PARAM));
+        // MAIN dice (big) + lights
+        addParam(createParamCentered<VCVButton>(mm2px(Vec(rx(2), ROWY)), module, MonsoonIds::DICE_R_PARAM));
+        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(rx(2), ROWYL)), module, MonsoonIds::RHYTHM_DICE_LIGHT));
+        addParam(createParamCentered<VCVButton>(mm2px(Vec(rx(3), ROWY)), module, MonsoonIds::DICE_M_PARAM));
+        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(rx(3), ROWYL)), module, MonsoonIds::MELODY_DICE_LIGHT));
+        // TRIAL dice (big)
+        addParam(createParamCentered<VCVButton>(mm2px(Vec(rx(4), ROWY)), module, MonsoonIds::DICE_TRIAL_R_PARAM));
+        addParam(createParamCentered<VCVButton>(mm2px(Vec(rx(5), ROWY)), module, MonsoonIds::DICE_TRIAL_M_PARAM));
+        // MIX knobs (live A<->B morph)
+        addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(rx(6), ROWY)), module, MonsoonIds::RHYTHM_MIX_PARAM));
+        addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(rx(7), ROWY)), module, MonsoonIds::MELODY_MIX_PARAM));
+        // Utility buttons (small) + lights
+        addParam(createParamCentered<TL1105>(mm2px(Vec(rx(8),  ROWY)), module, MonsoonIds::LOCK_PARAM));
+        addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec(rx(8),  ROWYL)), module, MonsoonIds::LOCK_LIGHT));
+        addParam(createParamCentered<TL1105>(mm2px(Vec(rx(9),  ROWY)), module, MonsoonIds::MUTE_PARAM));
+        addChild(createLightCentered<MediumLight<RedLight>>(  mm2px(Vec(rx(9),  ROWYL)), module, MonsoonIds::MUTE_LIGHT));
+        addParam(createParamCentered<TL1105>(mm2px(Vec(rx(10), ROWY)), module, MonsoonIds::RESET_BUTTON_PARAM));
+        addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec(rx(10), ROWYL)), module, MonsoonIds::RESET_LIGHT));
+        addParam(createParamCentered<TL1105>(mm2px(Vec(rx(11), ROWY)), module, MonsoonIds::RUN_GATE_PARAM));
+        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(rx(11), ROWYL)), module, MonsoonIds::RUN_GATE_LIGHT));
 
-        // ── Inputs: 18mm pitch, nudged right to clear edge accent ────────────
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(16.f, 105.f)), module, MonsoonIds::RUN_GATE_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(30.f, 105.f)), module, MonsoonIds::RESET_TRIGGER_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(48.f, 105.f)), module, MonsoonIds::SEED_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(66.f, 105.f)), module, MonsoonIds::LENGTH_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(84.f, 105.f)), module, MonsoonIds::OFFSET_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(16.f, 120.f)), module, MonsoonIds::CLK_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(30.f, 120.f)), module, MonsoonIds::GATE1_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(48.f, 120.f)), module, MonsoonIds::GATE2_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(66.f, 120.f)), module, MonsoonIds::CV1_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(84.f, 120.f)), module, MonsoonIds::CV2_INPUT));
+        // ── Inputs: row1 = transport+gates, row2 = clock+CV. 17mm pitch. ─────
+        const float IX=15.f, IP=17.f;
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(IX,      105.f)), module, MonsoonIds::RUN_GATE_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(IX+1*IP, 105.f)), module, MonsoonIds::RESET_TRIGGER_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(IX+2*IP, 105.f)), module, MonsoonIds::SEED_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(IX+3*IP, 105.f)), module, MonsoonIds::GATE1_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(IX+4*IP, 105.f)), module, MonsoonIds::GATE2_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(IX+5*IP, 105.f)), module, MonsoonIds::GATE3_MOD_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(IX,      120.f)), module, MonsoonIds::CLK_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(IX+1*IP, 120.f)), module, MonsoonIds::LENGTH_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(IX+2*IP, 120.f)), module, MonsoonIds::OFFSET_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(IX+3*IP, 120.f)), module, MonsoonIds::CV1_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(IX+4*IP, 120.f)), module, MonsoonIds::CV2_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(IX+5*IP, 120.f)), module, MonsoonIds::CV3_MOD_INPUT));
 
-        // ── Outputs: 18mm pitch ───────────────────────────────────────────────
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(104.f, 105.f)), module, MonsoonIds::GATE_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(122.f, 105.f)), module, MonsoonIds::TIE_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(140.f, 105.f)), module, MonsoonIds::LEGATO_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(158.f, 105.f)), module, MonsoonIds::TIE_OR_LEGATO_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(176.f, 105.f)), module, MonsoonIds::ACCENT_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(104.f, 120.f)), module, MonsoonIds::CV_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(122.f, 120.f)), module, MonsoonIds::SEED_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(140.f, 120.f)), module, MonsoonIds::RUN_GATE_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(158.f, 120.f)), module, MonsoonIds::RESET_TRIGGER_OUTPUT));
+        // ── Outputs: shifted right (114→182, 17mm) to clear the 6-wide input
+        //    rows. In/out accent region sits behind the output group. ──────────
+        {
+            Monsoon* mm = dynamic_cast<Monsoon*>(module);
+            redDot::addOutputAccent(this, 106.f, 97.f, 88.f, 31.f,
+                [mm]() { return mm ? mm->lightTheme : false; });
+        }
+        const float OX=114.f, OP=17.f;
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(OX,      105.f)), module, MonsoonIds::GATE_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(OX+1*OP, 105.f)), module, MonsoonIds::TIE_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(OX+2*OP, 105.f)), module, MonsoonIds::LEGATO_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(OX+3*OP, 105.f)), module, MonsoonIds::TIE_OR_LEGATO_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(OX+4*OP, 105.f)), module, MonsoonIds::ACCENT_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(OX,      120.f)), module, MonsoonIds::CV_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(OX+1*OP, 120.f)), module, MonsoonIds::SEED_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(OX+2*OP, 120.f)), module, MonsoonIds::RUN_GATE_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(OX+3*OP, 120.f)), module, MonsoonIds::RESET_TRIGGER_OUTPUT));
 
         // ── Expander lights ───────────────────────────────────────────────────
         addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(EXP_LIGHT_X,              EXP_LIGHT_Y)), module, MonsoonIds::SCALE_EXPANDER_LIGHT));
@@ -661,15 +682,21 @@ void MonsoonWidget::applyTheme() {
         lightTheme ? "res/panels/Monsoon_panel_light_monsoon.svg"
                    : "res/panels/Monsoon_panel_dark_monsoon.svg");
 
-    auto* m = dynamic_cast<Monsoon*>(module);
-    if (m) {
-        // Create an instance of MonsoonCustomPanel and set its SVG
-        MonsoonCustomPanel* newPanel = new MonsoonCustomPanel(&m->lightTheme);
-        newPanel->setBackground(APP->window->loadSvg(panelPath));
-        setPanel(newPanel); // ModuleWidget::setPanel takes ownership and deletes the old panel
-    } else {
-        setPanel(createPanel(panelPath)); // Fallback to generic SvgPanel if module is null
+    // Standard SvgPanel for BOTH the browser preview (module==nullptr) and a
+    // placed module. Same code path either way so they render identically.
+    app::SvgPanel* sp = nullptr;
+    for (widget::Widget* child : children) {
+        sp = dynamic_cast<app::SvgPanel*>(child);
+        if (sp) break;
     }
+
+    if (sp) {
+        // theme toggle on an existing widget: just swap the background SVG
+        sp->setBackground(APP->window->loadSvg(panelPath));
+    } else {
+        setPanel(createPanel(panelPath));
+    }
+
     // Remove any existing knob params at the 7 top knob positions
         // so we can re-add with the correct type.
         // Rack allows re-adding after clearing; easiest is to replace
@@ -734,7 +761,11 @@ void MonsoonWidget::draw(const DrawArgs& args) {
     nvgFillColor(vg, getLightTheme() ? nvgRGBA(0xe6, 0xe6, 0xe6, 255) : nvgRGBA(0x23, 0x23, 0x23, 255));
     nvgFill(vg);
 
-    ModuleWidget::draw(args); // This will now call MonsoonCustomPanel::draw, which includes the lattice.
+    // (Cluster recess + wells + output-group accent are now SVG panel art —
+    // see panel_src/embed_cluster_art.py. The widget only draws TEXT labels,
+    // since nanosvg ignores <text>.)
+
+    ModuleWidget::draw(args); // renders the panel SVG + child widgets (knobs/jacks/LEDs)
 
         nvgFontFaceId(vg,APP->window->uiFont->handle);
         nvgTextAlign(vg,NVG_ALIGN_CENTER|NVG_ALIGN_MIDDLE);
@@ -765,7 +796,7 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         };
 
         setNvgFontSize(2.5f);
-        { const char* n[8]={"1/2","1/4","1/4T","1/8","1/8T","1/16","1/32T","1/32"};
+        { const char* n[8]={"1/1","1/2","1/4","1/4T","1/8","1/8T","1/16","1/32"};
           for(int i=0;i<8;++i) arcLabel(16.f,22.f,13.5f,-225.f+i*(270.f/7.f),n[i],150,150,135); }
         setNvgFontSize(2.8f);
         arcLabel(42.f,22.f,13.f,-225.f,"LONGER",130,130,120); arcLabel(42.f,22.f,13.f,45.f,"SHORTER",130,130,120);
@@ -776,6 +807,17 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         // Seq knob labels (below ring)
         setNvgFontSize(3.2f); fillNvgColour(170,170,170);
         writeNvgText(148.f,70.f,"BPM"); writeNvgText(163.f,70.f,"LEN"); writeNvgText(178.f,70.f,"OFFSET");
+
+        // ── Control-row labels (single row at y=87; lights/labels above) ──────
+        // Slots: SLEW R/M, DICE R/M, TRIAL R/M, MIX R/M, LOCK, MUTE, RESET, RUN.
+        // rx(i) = 12 + i*16.7. Labels sit just above the row (y≈81).
+        setNvgFontSize(2.4f); fillNvgColour(150,150,140);
+        auto rowLbl=[&](int i,const char* s){ writeNvgText(12.f+i*16.7f, 81.f, s); };
+        rowLbl(0,"SLEW R"); rowLbl(1,"SLEW M");
+        rowLbl(2,"DICE R"); rowLbl(3,"DICE M");
+        rowLbl(4,"TRIAL R"); rowLbl(5,"TRIAL M");
+        rowLbl(6,"MIX R"); rowLbl(7,"MIX M");
+        rowLbl(8,"LOCK"); rowLbl(9,"MUTE"); rowLbl(10,"RESET"); rowLbl(11,"RUN");
 
         // Semitone note labels
         setNvgFontSize(3.0f);
@@ -866,8 +908,8 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
         menu->addChild(createSubmenuItem("Poly Voices", "", [=](ui::Menu* sub) {
             sub->addChild(new ui::MenuLabel);
             auto* l = new ui::MenuLabel; l->text = "Active Voices (1 = mono only)"; sub->addChild(l);
-            const char* labels[] = {"1 (mono)", "2", "3", "4", "5", "6", "7", "8"};
-            for (int v = 0; v <= 7; ++v) {
+            const char* labels[] = {"1 (mono)", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16"};
+            for (int v = 0; v <= 15; ++v) {
                 auto* it = createMenuItem<IntItem>(labels[v]);
                 it->module = m;
                 it->target = &m->engine.numPolyVoices;
@@ -876,7 +918,7 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
             }
             sub->addChild(new ui::MenuSeparator);
             auto* note = new ui::MenuLabel;
-            note->text = "Requires PolyVoice expander for outputs";
+            note->text = "Requires PolyVoice expander(s) for outputs";
             sub->addChild(note);
         }));
 
@@ -910,45 +952,65 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
                 sub->addChild(createBoolPtrMenuItem("Restart on unmute", "", &m->restartOnUnmute));
                 sub->addChild(createBoolPtrMenuItem("Inverted Mute logic (GATE 2)", "", &m->invertMuteLogic));
             }
+
+            sub->addChild(new ui::MenuSeparator);
+
+            {
+                auto* l = new ui::MenuLabel; l->text = "Reseed Policy"; sub->addChild(l);
+                sub->addChild(createBoolPtrMenuItem("Reseed on roll (main dice)", "", &m->reseedOnRoll));
+                sub->addChild(createBoolPtrMenuItem("Reseed on restart", "", &m->reseedOnRestart));
+            }
+
+            sub->addChild(new ui::MenuSeparator);
+            {
+                auto* l = new ui::MenuLabel; l->text = "Which dice live mode drives"; sub->addChild(l); 
+                sub->addChild(createBoolPtrMenuItem("Rhythm: trial (else main)", "", &m->rhythmLiveTrial));
+                sub->addChild(createBoolPtrMenuItem("Melody: trial (else main)", "", &m->melodyLiveTrial));
+            }
+
         }));
 
-        menu->addChild(createSubmenuItem("DNA Rotation", "", [=](ui::Menu* sub) {
-            auto addRot = [=](ui::Menu* m, const char* label, std::function<void(int)> func) {
-                m->addChild(createSubmenuItem(label, "", [=](ui::Menu* s) {
-                    s->addChild(createMenuItem("Rotate Forward (+1)", "", [=]() { func(1); }));
-                    s->addChild(createMenuItem("Rotate Backward (-1)", "", [=]() { func(-1); }));
-                }));
-            };
+        // menu->addChild(createSubmenuItem("DNA Rotation", "", [=](ui::Menu* sub) {
+        //     auto addRot = [=](ui::Menu* m, const char* label, std::function<void(int)> func) {
+        //         m->addChild(createSubmenuItem(label, "", [=](ui::Menu* s) {
+        //             s->addChild(createMenuItem("Rotate Forward (+1)", "", [=]() { func(1); }));
+        //             s->addChild(createMenuItem("Rotate Backward (-1)", "", [=]() { func(-1); }));
+        //         }));
+        //     };
 
-            addRot(sub, "Rhythm (Gates/Rests)", [=](int s) { m->rotateRhythm(s); }); // Individual
-            addRot(sub, "Variation (Lengths)", [=](int s) { m->rotateVariation(s); });
-            addRot(sub, "Legato/Tie", [=](int s) { m->rotateLegato(s); });
-            sub->addChild(new ui::MenuSeparator);
-            addRot(sub, "Melody (Pitch)", [=](int s) { m->rotateMelody(s); }); // Individual
-            addRot(sub, "Octave", [=](int s) { m->rotateOctave(s); });
-            sub->addChild(new ui::MenuSeparator);
-            addRot(sub, "Rotate Rhythm Pattern", [=](int s) { m->rotateRhythmPattern(s); }); // Combined
-            addRot(sub, "Rotate Melody Pattern", [=](int s) { m->rotateMelodyPattern(s); }); // Combined
-            sub->addChild(new ui::MenuSeparator);
-            sub->addChild(createMenuItem("Rotate EVERYTHING (+1)", "", [=]() { 
-                m->rotateRhythmPattern(1); m->rotateMelodyPattern(1);
-            }));
-            sub->addChild(new ui::MenuSeparator);
-            sub->addChild(createMenuItem("Scramble Rhythm DNA", "", [=]() { m->dnaManager.scrambleRhythmGroup(); }));
-            sub->addChild(createMenuItem("Scramble Melody DNA", "", [=]() { m->dnaManager.scrambleMelodyGroup(); }));
-            sub->addChild(createMenuItem("Scramble ALL DNA (Remix)", "DNA Remix", [=]() { m->dnaManager.scrambleAll(); }));
-            sub->addChild(new ui::MenuSeparator);
-            sub->addChild(createMenuItem("Reset DNA Alignment", "Original Draw", [=]() { m->dnaManager.resetAll(); }));
-        }));
+        //     addRot(sub, "Rhythm (Gates/Rests)", [=](int s) { m->rotateRhythm(s); }); // Individual
+        //     addRot(sub, "Variation (Lengths)", [=](int s) { m->rotateVariation(s); });
+        //     addRot(sub, "Legato/Tie", [=](int s) { m->rotateLegato(s); });
+        //     sub->addChild(new ui::MenuSeparator);
+        //     addRot(sub, "Melody (Pitch)", [=](int s) { m->rotateMelody(s); }); // Individual
+        //     addRot(sub, "Octave", [=](int s) { m->rotateOctave(s); });
+        //     sub->addChild(new ui::MenuSeparator);
+        //     addRot(sub, "Rotate Rhythm Pattern", [=](int s) { m->rotateRhythmPattern(s); }); // Combined
+        //     addRot(sub, "Rotate Melody Pattern", [=](int s) { m->rotateMelodyPattern(s); }); // Combined
+        //     sub->addChild(new ui::MenuSeparator);
+        //     sub->addChild(createMenuItem("Rotate EVERYTHING (+1)", "", [=]() { 
+        //         m->rotateRhythmPattern(1); m->rotateMelodyPattern(1);
+        //     }));
+        //     sub->addChild(new ui::MenuSeparator);
+        //     sub->addChild(createMenuItem("Scramble Rhythm DNA", "", [=]() { m->dnaManager.scrambleRhythmGroup(); }));
+        //     sub->addChild(createMenuItem("Scramble Melody DNA", "", [=]() { m->dnaManager.scrambleMelodyGroup(); }));
+        //     sub->addChild(createMenuItem("Scramble ALL DNA (Remix)", "DNA Remix", [=]() { m->dnaManager.scrambleAll(); }));
+        //     sub->addChild(new ui::MenuSeparator);
+        //     sub->addChild(createMenuItem("Reset DNA Alignment", "Original Draw", [=]() { m->dnaManager.resetAll(); }));
+        // }));
 
         menu->addChild(createSubmenuItem("CV Assign", "", [=](ui::Menu* sub) {
             { auto* l = new ui::MenuLabel; l->text = "CV IN 1"; sub->addChild(l);
-              const char* n[] = {"Add Seq","Transpose Seq","Mod Range LO","Mod Range HI"};
-              for (int v=0;v<4;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->cv1Mode;it->value=v;sub->addChild(it);} }
+              const char* n[] = {"Add Seq","Transpose Seq","Mod Range LO","Mod Range HI","BPM Mod"}; // Added BPM Mod
+              for (int v=0;v<5;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->cv1Mode;it->value=v;sub->addChild(it);} }
             sub->addChild(new ui::MenuSeparator);
             { auto* l = new ui::MenuLabel; l->text = "CV IN 2"; sub->addChild(l);
-              const char* n[] = {"Note value","Variation","Legato","Rest"};
-              for (int v=0;v<4;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->cv2Mode;it->value=v;sub->addChild(it);} }
+              const char* n[] = {"Note value","Variation","Legato","Rest","Accent"}; // Added Accent
+              for (int v=0;v<5;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->cv2Mode;it->value=v;sub->addChild(it);} }
+            sub->addChild(new ui::MenuSeparator);
+            { auto* l = new ui::MenuLabel; l->text = "CV IN 3 (assignable mod)"; sub->addChild(l);
+              const char* n[] = {"Rhythm slew","Melody slew","Rhythm A>B mix","Melody A>B mix"};
+              for (int v=0;v<4;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->cv3Target;it->value=v;sub->addChild(it);} }
         }));
 
         menu->addChild(createSubmenuItem("Gate Assign", "", [=](ui::Menu* sub) {
@@ -959,6 +1021,11 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
             { auto* l = new ui::MenuLabel; l->text = "Gate 2 Assignment"; sub->addChild(l);
               const char* n2[] = {"Toggle Dice M","Re-dice M","Mute","Restart"};
               for (int v=0;v<4;++v){auto* it=createMenuItem<IntItem>(n2[v]);it->module=m;it->target=&m->gate2Assign;it->value=v;sub->addChild(it);} }
+            sub->addChild(new ui::MenuSeparator);
+            { auto* l = new ui::MenuLabel; l->text = "Gate 3 (assignable mod)"; sub->addChild(l);
+              const char* n3[] = {"Trial rhythm die","Trial melody die","Toggle reseed-on-roll","Toggle reseed-on-restart",
+                                  "Toggle rhythm live source","Toggle melody live source"};
+              for (int v=0;v<6;++v){auto* it=createMenuItem<IntItem>(n3[v]);it->module=m;it->target=&m->gate3Target;it->value=v;sub->addChild(it);} }
         }));
 
         menu->addChild(createSubmenuItem("Scales", "", [=](ui::Menu* sub) {
@@ -1010,7 +1077,7 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
                 void onAction(const event::Action&) override { if(module) module->noteVariationMask ^= (1<<bit); }
                 void step() override { rightText=(module&&(module->noteVariationMask&(1<<bit)))?"✔":""; ui::MenuItem::step(); } };
               auto add=[&](const char* t,int b){auto* it=createMenuItem<MaskItem>(t);it->module=m;it->bit=b;sub->addChild(it);};
-              add("Allow 1/8T",0); add("Allow 1/16T",1); add("Allow 1/32 & 1/32T",2); }
+              add("Allow 1/4T",0); add("Allow 1/8T",1); add("Allow 1/32",2); }
             sub->addChild(new ui::MenuSeparator);
             { auto* l = new ui::MenuLabel; l->text = "PPQN"; sub->addChild(l);
               struct PItem : ui::MenuItem { Monsoon* module=nullptr; int value=4;

@@ -8,18 +8,24 @@ using namespace MonsoonIds;
 namespace StraitsEastVisualIds {
 
     // ── Panel ──────────────────────────────────────────────────────────────
-    static constexpr float W_MM    = 182.88f;   // 36HP
+    static constexpr float W_MM    = 203.2f;    // 40HP (was 36HP; +4HP for 15-voice
+                                                 // 2-row tabs + per-lane spread column)
     static constexpr int   N_ROWS  = 6;         // 2 rows per lane × 3 lanes
     static constexpr float ROW_TOP = 14.f;
     static constexpr float ROW_BOT = 108.f;
-    // 4 columns: jack1, jack2, atten1, atten2
+    // 5 columns: jack1, jack2, atten1, atten2, spread (per-lane)
     static constexpr float COL_J1 = 8.f;
     static constexpr float COL_J2 = 18.f;
     static constexpr float COL_A1 = 30.f;
     static constexpr float COL_A2 = 39.f;
-    static constexpr float ED_X   = 46.f;
-    static constexpr float ED_Y   = 18.f;   // editor top (below tab row)
-    static constexpr float ED_W   = W_MM - ED_X - 4.f;  // 132.9mm
+    static constexpr float SPREAD_X = 49.f;      // per-lane spread trimpot column
+    static constexpr float ED_X   = 58.f;        // editor starts after spread column
+    static constexpr float ED_Y   = 18.f;        // editor top (below 2-row tab band)
+    static constexpr float ED_W   = W_MM - ED_X - 4.f;  // ~141.2mm
+    // Editor height sized so the 3 poly lanes are close to the Mono lane height
+    // (~16mm), not ~30mm. Leaves the lower panel free for decoration / logos.
+    static constexpr float ED_LANE_H = 16.f;
+    static constexpr float ED_H   = 3.f * ED_LANE_H;    // 48mm (3 poly lanes)
 
     static inline float rowY(int r) {
         return ROW_TOP + (r + 0.5f) * (ROW_BOT - ROW_TOP) / N_ROWS;
@@ -81,9 +87,9 @@ struct StraitsEastSandsVisual : Module {
         using namespace StraitsEastVisualIds;
         config(MonsoonIds::NUM_PARAMS, StraitsEastVisualIds::NUM_INPUTS, 0, 0);
 
-        configParam(SPREAD_R, 0.f,1.f,0.f,"Spread REST");
-        configParam(SPREAD_M, 0.f,1.f,0.f,"Spread MELODY");
-        configParam(SPREAD_O, 0.f,1.f,0.f,"Spread OCTAVE");
+        configParam(SPREAD_R, -1.f,1.f,0.f,"Spread REST");
+        configParam(SPREAD_M, -1.f,1.f,0.f,"Spread MELODY");
+        configParam(SPREAD_O, -1.f,1.f,0.f,"Spread OCTAVE");
 
         static const char* rowNames[6][2] = {
             {"REST Len","REST Off"}, {"REST Rot","REST Spr"},
@@ -98,7 +104,7 @@ struct StraitsEastSandsVisual : Module {
                             std::string(rowNames[r][c])+" CV (poly)");
             }
 
-        for (int v=0; v<7; ++v) {
+        for (int v=0; v<15; ++v) {
             std::string vl = "V"+std::to_string(v+2)+" ";
             for (int lane=0; lane<3; ++lane) {
                 for (int c=0; c<3; ++c)

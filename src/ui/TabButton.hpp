@@ -23,12 +23,15 @@ struct TabButton : rack::OpaqueWidget {
   std::string label = "V?";
   int voiceIdx = 0;
   bool isSelected = false;
+  bool isDisabled = false;   // greyed out: voice index >= active poly count
   
   // Colors
   NVGcolor colorBackground = nvgRGB(0x2c, 0x2c, 0x2c);      // Dark gray
   NVGcolor colorSelected = nvgRGB(0x26, 0xa6, 0x9a);         // Teal
   NVGcolor colorText = nvgRGB(0xff, 0xff, 0xff);             // White
   NVGcolor colorBorder = nvgRGB(0x44, 0x44, 0x44);           // Border
+  NVGcolor colorDisabled = nvgRGB(0x1a, 0x1a, 0x1a);         // Dim (inactive)
+  NVGcolor colorTextDim  = nvgRGB(0x55, 0x55, 0x55);         // Dim text
   
   std::function<void(int)> onPressed;
   
@@ -36,7 +39,8 @@ struct TabButton : rack::OpaqueWidget {
     NVGcontext* vg = args.vg;
     
     // Background
-    NVGcolor bgColor = isSelected ? colorSelected : colorBackground;
+    NVGcolor bgColor = isDisabled ? colorDisabled
+                                  : (isSelected ? colorSelected : colorBackground);
     nvgBeginPath(vg);
     nvgRect(vg, 0, 0, box.size.x, box.size.y);
     nvgFillColor(vg, bgColor);
@@ -53,7 +57,7 @@ struct TabButton : rack::OpaqueWidget {
     nvgFontSize(vg, 10.f);
     nvgFontFace(vg, "sans-bold");
     nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-    nvgFillColor(vg, colorText);
+    nvgFillColor(vg, isDisabled ? colorTextDim : colorText);
     nvgText(vg, box.size.x / 2.f, box.size.y / 2.f, label.c_str(), nullptr);
   }
   
@@ -117,9 +121,38 @@ struct TabButtonGroup : rack::Widget {
     // Select first tab
     selectTab(0);
   }
+
+  // Multi-row layout: tabs wrap across `numRows`, sized to fill `totalWidthPx`
+  // and `totalHeightPx`. Use for large voice counts (e.g. 15) where a single
+  // row would be too cramped. Build with TabButtonGroup(numTabs, start, rows, w, h).
+  TabButtonGroup(int numTabs, int startVoiceNumber, int numRows,
+                 float totalWidthPx, float totalHeightPx) {
+    if (numRows < 1) numRows = 1;
+    int perRow = (numTabs + numRows - 1) / numRows;   // ceil
+    float tw = (totalWidthPx - spacing * (perRow - 1)) / perRow;
+    float th = (totalHeightPx - spacing * (numRows - 1)) / numRows;
+    tabWidth = tw; tabHeight = th;
+    box.size.x = totalWidthPx;
+    box.size.y = totalHeightPx;
+
+    for (int i = 0; i < numTabs; ++i) {
+      int row = i / perRow;
+      int col = i % perRow;
+      auto tab = new TabButton();
+      tab->voiceIdx = i;
+      tab->label = "V" + std::to_string(startVoiceNumber + i);
+      tab->box.pos  = Vec(col * (tw + spacing), row * (th + spacing));
+      tab->box.size = Vec(tw, th);
+      tab->onPressed = [this](int voiceIdx) { selectTab(voiceIdx); };
+      addChild(tab);
+      tabs.push_back(tab);
+    }
+    selectTab(0);
+  }
   
   void selectTab(int idx) {
     if (idx < 0 || idx >= (int)tabs.size()) return;
+    if (tabs[idx]->isDisabled) return;   // can't select a greyed-out voice
     
     // Deselect previous
     if (selectedIdx >= 0 && selectedIdx < (int)tabs.size()) {
@@ -133,6 +166,17 @@ struct TabButtonGroup : rack::Widget {
   
   int getSelectedTab() const {
     return selectedIdx;
+  }
+
+  // Grey out tabs for voices beyond the active poly count. Disabled tabs are
+  // dimmed and (in the widget's selection handling) should not be selectable.
+  // activeCount = number of usable voices (e.g. numPolyVoices).
+  void setActiveCount(int activeCount) {
+    for (int i = 0; i < (int)tabs.size(); ++i)
+      tabs[i]->isDisabled = (i >= activeCount);
+    // If the current selection is now disabled, fall back to the last active.
+    if (selectedIdx >= activeCount && activeCount > 0)
+      selectTab(activeCount - 1);
   }
 };
 

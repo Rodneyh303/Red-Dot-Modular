@@ -2,10 +2,16 @@
 #include <cmath>
 #include <algorithm>
 
+//{"1/1","1/2","1/4","1/4T","1/8","1/8T","1/16","1/32"};
+//Fractional note values corresponding to the 8 possible note length settings, and the PPQN settings that allow them.
+//The sequencer uses the allowedPPQN bitmask to find the closest valid note length
+// if the user selects an unsupported one (e.g. 1/4T with PPQN=4).
 const NoteVal NOTEVALS[8] = {
-    {1.0f, 1|2|4}, {0.5f, 1|2|4}, {0.25f, 1|2|4}, {0.125f, 2|4},
-    {0.0625f, 2|4}, {1.0f/6.0f, 4}, {1.0f/12.0f, 4}, {0.03125f, 4},
+    {1.0f, 1|2|4}, {0.5f, 1|2|4}, {0.25f, 1|2|4}, {1.0f/6.0f, 4},
+    {0.125f, 2|4}, {1.0f/12.0f, 4}, {0.0625f, 2|4}, {0.03125f, 4},
 };
+
+
 
 static const int DNA_LCM = 720720; // LCM of 1..16 ensures drift continuity
 
@@ -39,9 +45,11 @@ void SequencerEngine::reset() {
     rhythmRot = variationRot = legatoRot = accentRot = melodyRot = octaveRot = 0;
 >>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
     for (int i = 0; i < 15; i++) {
-        polyLen[i] = 16;
-        polyOff[i] = 0;
-        polyRot[i] = 0;
+        for (int l = 0; l < 3; ++l) {
+            polyLen[i][l] = 16;
+            polyOff[i][l] = 0;
+            polyRot[i][l] = 0;
+        }
     }
     windowMask = 0xFFFF;
     locked = false;
@@ -365,8 +373,11 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
 
     if (monoGateStart) {
         // This is the decision point for this entire mono gate.
-        int polyIdx = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx], polyOff[voiceIdx], polyRot[voiceIdx]);
-        float r_rest = pe.polyRhythmRandom[voiceIdx][polyIdx];
+        // Each strand indexes with ITS OWN lane LOR (rest/melody/octave).
+        int restIdx = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx][PL_REST],   polyOff[voiceIdx][PL_REST],   polyRot[voiceIdx][PL_REST]);
+        int melIdx  = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx][PL_MELODY], polyOff[voiceIdx][PL_MELODY], polyRot[voiceIdx][PL_MELODY]);
+        int octIdx  = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx][PL_OCTAVE], polyOff[voiceIdx][PL_OCTAVE], polyRot[voiceIdx][PL_OCTAVE]);
+        float r_rest = pe.polyRhythmRandom[voiceIdx][restIdx];
         
         if (r_rest < v.restProb) {
             // Decide to Rest: Stick with it until mono gate drops.
@@ -377,7 +388,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         
         // Decide to Play: Draw pitch and follow mono's triggering behavior.
         int sem = 0;
-        float pitchV = pe.genPitchLive(sem, input, pe.polyMelodyRandom[voiceIdx][polyIdx], pe.polyOctaveRandom[voiceIdx][polyIdx]);
+        float pitchV = pe.genPitchLive(sem, input, pe.polyMelodyRandom[voiceIdx][melIdx], pe.polyOctaveRandom[voiceIdx][octIdx]);
         if (lastStepResult.decision == MonoDecision::NewNote)
             v.gs.triggerNote(pitchV, sem, lastStepResult.nvIdx);
         else
@@ -408,10 +419,11 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
             } else {
                 // Re-draw pitch for glides (Legato) or sustains (MidNote).
                 // This allows the poly melody to move independently even if 
-                // the mono rhythm is static.
-                int polyIdx = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx], polyOff[voiceIdx], polyRot[voiceIdx]);
+                // the mono rhythm is static. Melody/octave use their own lane LOR.
+                int melIdx = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx][PL_MELODY], polyOff[voiceIdx][PL_MELODY], polyRot[voiceIdx][PL_MELODY]);
+                int octIdx = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx][PL_OCTAVE], polyOff[voiceIdx][PL_OCTAVE], polyRot[voiceIdx][PL_OCTAVE]);
                 int sem = 0;
-                float pitchV = pe.genPitchLive(sem, input, pe.polyMelodyRandom[voiceIdx][polyIdx], pe.polyOctaveRandom[voiceIdx][polyIdx]);
+                float pitchV = pe.genPitchLive(sem, input, pe.polyMelodyRandom[voiceIdx][melIdx], pe.polyOctaveRandom[voiceIdx][octIdx]);
                 
                 if (lastStepResult.decision == MonoDecision::Legato || lastStepResult.decision == MonoDecision::LegatoMax) {
                     v.gs.slideNote(pitchV, sem, lastStepResult.nvIdx, wasHeldPoly);

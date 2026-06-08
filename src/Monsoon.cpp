@@ -13,22 +13,23 @@
 #include <cstdint>
 #include <cassert>
 #include <cstring>
+#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) || defined(_M_IX86)
+  #include <pmmintrin.h>   // _MM_SET_DENORMALS_ZERO_MODE (SSE3)
+  #include <xmmintrin.h>   // _MM_SET_FLUSH_ZERO_MODE (SSE)
+#endif
 
 #include "MonsoonSandsExpander.hpp"
 #include "MonsoonInterchangeExpander.hpp"
 #include "MonsoonStraitsEastExpander.hpp"
 #include "MonsoonStraitWestExpander.hpp"      // NEW (Phase 4)
-<<<<<<< HEAD
-#include "MonsoonStraitSandsExpander.hpp"     // NEW (Phase 6)
-=======
 #include "MonsoonStraitsSands.hpp"            // NEW (Macro): global DNA controls
 #include "MonsoonDeepStraitsSands.hpp"        // NEW (Deep): per-voice DNA controls
 #include "StraitsEastSandsVisual.hpp"         // Visual DNA editor (East)
 #include "StraitsWestSandsVisual.hpp"         // Visual DNA editor (West)
 #include "StraitsSandsMacroVisual.hpp"        // Visual DNA editor (Macro)
->>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
 #include "MonsoonWidget.hpp"
 #include "Monsoon.hpp"
+#include "dsp/managers/MonsoonConfigurator.hpp"
 #include "dsp/engines/PatternEngine.hpp"
 #include "dsp/gates/GateState.hpp"
 
@@ -47,107 +48,7 @@ void Monsoon::onSampleRateChange(const SampleRateChangeEvent& e) {
 }
 
 Monsoon::Monsoon() {
-        using namespace MonsoonIds;
-        config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
-
-        // Main controls
-        configSwitch(NOTE_VALUE_PARAM, 0.f, 7.f, 2.f, "Note value",
-            {"1/2", "1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32"});
-        configParam(VARIATION_PARAM,   0.f, 1.f, 0.5f, "Variation (longer–shorter)");
-        configParam(LEGATO_PARAM,      0.f, 1.f, 0.10f, "Legato probability");
-        configParam(REST_PARAM,        0.f, 1.f, 0.10f, "Rest probability");
-        configParam(ACCENT_KNOB,       0.f, 1.f, 0.25f, "Accent gate probability");  // New
-        configParam(TRANSPOSE_PARAM,  -12.f, 12.f, 0.f, "Transpose (semitones)");
-        //Pattern ring controls
-        // Main window controls (Always present)
-        configParam(PATTERN_LENGTH_PARAM, 1.f, 16.f, 16.f, "Pattern length");
-        configParam(PATTERN_OFFSET_PARAM, 0.f, 15.f, 0.f, "Pattern offset");
-
-        // DNA Action Buttons (Main module only configures these if no expander)
-        // If an expander is present, these are configured on the expander.
-        // We configure them here as a fallback for standalone operation.
-        configButton(DNA_SCRAMBLE_ALL_PARAM, "Scramble ALL DNA");
-        configButton(DNA_SCRAMBLE_R_PARAM,   "Scramble Rhythm");
-        configButton(DNA_SCRAMBLE_V_PARAM,   "Scramble Variation");
-        configButton(DNA_SCRAMBLE_L_PARAM,   "Scramble Legato");
-        configButton(DNA_SCRAMBLE_M_PARAM,   "Scramble Melody");
-        configButton(DNA_SCRAMBLE_O_PARAM,   "Scramble Octave");
-
-        configButton(DNA_RESET_ALL_PARAM,    "Reset ALL DNA");
-        configButton(DNA_RESET_R_PARAM,      "Reset Rhythm");
-        configButton(DNA_RESET_V_PARAM,      "Reset Variation");
-        configButton(DNA_RESET_L_PARAM,      "Reset Legato");
-        configButton(DNA_RESET_M_PARAM,      "Reset Melody");
-        configButton(DNA_RESET_O_PARAM,      "Reset Octave");
-
-        // 12 semitone sliders – default to major scale C (C,D,E,F,G,A,B)
-        for (int i = 0; i < 12; ++i) {
-            float def = 0.f;
-            if (i == 0 || i == 2 || i == 4 || i == 5 || i == 7 || i == 9 || i == 11) def = 1.f;
-            configParam(SEMI0_PARAM + i, 0.f, 1.f, def, "Semitone weight");
-        }
-
-        configParam(OCT_LO_PARAM, 0.f, 8.f, 2.f, "Lowest octave");
-        configParam(OCT_HI_PARAM, 0.f, 8.f, 5.f, "Highest octave");
-
-        configParam(BPM_PARAM, 20.f, 300.f, 120.f, "BPM (internal clock)");
-
-        // Buttons (momentary)
-        configButton(DICE_R_PARAM, "Dice rhythm");
-        configButton(DICE_M_PARAM, "Dice melody");
-        configButton(LOCK_PARAM,   "Lock");
-        configButton(MUTE_PARAM,   "Mute");
-        configButton(MODE_PARAM,   "Mode (Cycle A-B-C-D)");
-        configButton(RESET_BUTTON_PARAM,  "Reset");
-        configButton(RUN_GATE_PARAM,      "Run/Stop");
-
-        // I/O
-        configInput(CLK_INPUT,   "Clock");
-        configInput(GATE1_INPUT, "Gate In 1");
-        configInput(GATE2_INPUT, "Gate In 2");
-        configInput(CV1_INPUT,   "CV In 1");
-        configInput(CV2_INPUT,   "CV In 2");
-        configInput(ACCENT_CV_INPUT, "Accent Probability CV");  // New
-
-        // --- RNG/SEED ADDITION: new inputs
-        configInput(RESET_TRIGGER_INPUT, "Reset (phrase restart)");
-        configInput(SEED_INPUT,   "Seed CV (0..10V)");
-        configInput(LENGTH_INPUT, "Pattern Length CV (0..10V)");
-        configInput(OFFSET_INPUT, "Pattern Offset CV (0..10V)");
-        configInput(RUN_GATE_INPUT, "Run/Stop Gate");
-
-        // DNA Gate Inputs (Main module only configures these if no expander)
-        configInput(DNA_SCRAMBLE_ALL_INPUT, "Scramble ALL DNA Gate");
-        configInput(DNA_SCRAMBLE_R_INPUT,   "Scramble Rhythm Gate");
-        configInput(DNA_SCRAMBLE_V_INPUT,   "Scramble Variation Gate");
-        configInput(DNA_SCRAMBLE_L_INPUT,   "Scramble Legato Gate");
-        configInput(DNA_SCRAMBLE_A_INPUT,   "Scramble Accent Gate");  // New
-        configInput(DNA_SCRAMBLE_M_INPUT,   "Scramble Melody Gate");
-        configInput(DNA_SCRAMBLE_O_INPUT,   "Scramble Octave Gate");
-
-        configInput(DNA_RESET_ALL_INPUT,    "Reset ALL DNA Gate");
-        configInput(DNA_RESET_R_INPUT,      "Reset Rhythm Gate");
-        configInput(DNA_RESET_V_INPUT,      "Reset Variation Gate");
-        configInput(DNA_RESET_L_INPUT,      "Reset Legato Gate");
-        configInput(DNA_RESET_A_INPUT,      "Reset Accent Gate");  // New
-        configInput(DNA_RESET_M_INPUT,      "Reset Melody Gate");
-        configInput(DNA_RESET_O_INPUT,      "Reset Octave Gate");
-
-        configOutput(GATE_OUTPUT,           "Gate");
-        configOutput(CV_OUTPUT,             "1V/Oct");
-        configOutput(SEED_OUTPUT,           "Seed Voltage Out (0..10V)");
-        configOutput(RESET_TRIGGER_OUTPUT,  "Reset Trigger Out");
-        configOutput(RUN_GATE_OUTPUT,       "Run Gate Out");
-<<<<<<< HEAD
-        configOutput(TIE_OUTPUT,            "Tie Gate (high on Tie)");          // New
-        configOutput(LEGATO_OUTPUT,         "Legato Gate (high on Legato/Max)"); // New
-        configOutput(ACCENT_OUTPUT,         "Accent Gate (high when accented)");  // New
-=======
-        configOutput(TIE_OUTPUT,            "Tie Gate (high on Tie)");
-        configOutput(LEGATO_OUTPUT,         "Legato Gate (high on Legato/Max)");
-        configOutput(TIE_OR_LEGATO_OUTPUT,  "Tie or Legato Gate (high on either)");
-        configOutput(ACCENT_OUTPUT,         "Accent Gate (high when accented)");
->>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
+        MonsoonConfigurator::setup(this);
 
         // Seed RNGs with a random value — safe to call here (uses rack::random, not inputs[])
         rhythmSeedFloat = rack::random::uniform() * 10.f;
@@ -171,28 +72,6 @@ Monsoon::Monsoon() {
         // Initialize dividers
         onSampleRateChange({APP->engine->getSampleRate(), APP->engine->getSampleRate()});
 
-<<<<<<< HEAD
-        // Default patterns: all gates on, CV at 0V (C0), semitone 0
-        // genPitchV() reads params[] which aren't valid yet, so use safe literals
-        for (int i = 0; i < 16; ++i) {
-            rhythmPattern[i]  = true;
-            engine.pe.rhythmRandom[i] = 0.; //rack::random::uniform();
-            engine.pe.variationRandom[i] =0.; //rack::random::uniform();
-            engine.pe.legatoRandom[i] = 0.; //rack::random::uniform();
-            engine.pe.melodyRandom[i] = 0.; //rack::random::uniform();
-            engine.pe.octaveRandom[i] = 0.; //rack::random::uniform();
-            engine.pe.accentRandom[i] = 0.; //rack::random::uniform();  // New
-            for (int v = 0; v < 7; v++) {
-                engine.pe.polyRhythmRandom[v][i] = 0.; //(float)rack::random::uniform(); // Seed with random for immediate DNA feedback
-                engine.pe.polyMelodyRandom[v][i] = 0.5f;
-                engine.pe.polyOctaveRandom[v][i] = 0.5f;
-            }
-            melodyPitchV[i]   = 0.f;   // C0 = 0V
-            melodySemitone[i] = i % 12; // Spread initial semitones so all lights work
-        }
-
-=======
->>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
         initialize();
     }
 
@@ -207,6 +86,8 @@ void Monsoon::updateExpanderPointers() {
         gate2Assign = 1;
         invertMuteLogic = false;
         restartOnUnmute = false;
+        reseedOnRoll = false;
+        reseedOnRestart = false;
         lastModeSelect = -1;
         
         if (scaleManager) {
@@ -363,6 +244,18 @@ float Monsoon::semitoneToVolts(int semitone) {
         prevExtGate = false;
 
         if (!locked) {
+            if (reseedOnRestart) {
+                // Only use the SEED-CV (reproducible, A=B) path when the SEED
+                // input is actually present. Unpatched → internal entropy via the
+                // morph-preserving reseed-roll path (no A=B collapse).
+                if (inputs[SEED_INPUT].isConnected()) {
+                    engine.pe.setPendingRhythmSeed(sampleSeedFromSource());
+                    engine.pe.setPendingMelodySeed(sampleSeedFromSource());
+                } else {
+                    engine.pe.setPendingRhythmReseedRoll(0.f, /*full=*/true);
+                    engine.pe.setPendingMelodyReseedRoll(0.f, /*full=*/true);
+                }
+            }
             if (resetImmediate) {
                 engine.pe.applyPendingSeedsAndRedraw(modeController->currentPatternInput);
             }
@@ -384,6 +277,51 @@ float Monsoon::semitoneToVolts(int semitone) {
         float u = rack::random::uniform(); //  default internal RNG
         // scale to 0..10
         return (float)(u * 10.0);
+    }
+
+    // A MAIN dice gesture. Whether it RESEEDS is governed solely by the
+    // "Reseed on roll" option — NOT by the SEED cable. The SEED cable only
+    // determines the seed SOURCE when we do reseed (CV if patched, else full
+    // 64-bit internal entropy). Neither source is privileged.
+    //   reseedOnRoll OFF → plain roll (advance stream, no reseed), cable or not.
+    //   reseedOnRoll ON  → reseed-roll (promote B→A, reseed, keep morph), source
+    //                      = CV if patched else internal.
+    // Shared by the panel dice buttons and gate "Re-dice". TRIAL dice never come
+    // here (setPending*Trial directly) and never reseed.
+    void Monsoon::diceRhythm() {
+        rhythmMode = 0;
+        if (reseedOnRoll) {
+            const bool sc = inputs[SEED_INPUT].isConnected();
+            engine.pe.setPendingRhythmReseedRoll(sc ? sampleSeedFromSource() : 0.f, /*full=*/!sc);
+        } else {
+            engine.pe.setPendingRhythmRoll();
+        }
+    }
+    void Monsoon::diceMelody() {
+        melodyMode = 0;
+        if (reseedOnRoll) {
+            const bool sc = inputs[SEED_INPUT].isConnected();
+            engine.pe.setPendingMelodyReseedRoll(sc ? sampleSeedFromSource() : 0.f, /*full=*/!sc);
+        } else {
+            engine.pe.setPendingMelodyRoll();
+        }
+    }
+
+    // Single definition of every die-action. Fired by G3 (menu-routed) and by
+    // Causeway's dedicated gates (and any future source) — DRY.
+    void Monsoon::fireDieAction(int a) {
+        switch (a) {
+            case DA_TRIAL_R:       rhythmMode = 0; engine.pe.setPendingRhythmTrial(); break;
+            case DA_TRIAL_M:       melodyMode = 0; engine.pe.setPendingMelodyTrial(); break;
+            case DA_REDICE_R:      diceRhythm(); break;
+            case DA_REDICE_M:      diceMelody(); break;
+            case DA_LIVESRC_R:     rhythmLiveTrial = !rhythmLiveTrial; break;
+            case DA_LIVESRC_M:     melodyLiveTrial = !melodyLiveTrial; break;
+            case DA_LIVESTATIC_R:  rhythmMode = 1 - rhythmMode; break;
+            case DA_LIVESTATIC_M:  melodyMode = 1 - melodyMode; break;
+            case DA_RESEED_ROLL:   reseedOnRoll    = !reseedOnRoll;    break;
+            case DA_RESEED_RESTART:reseedOnRestart = !reseedOnRestart; break;
+        }
     }
 
 
@@ -427,14 +365,26 @@ int Monsoon::computeNoteLengthIdx(int requestedIdx, int ppqnMask) { return engin
 // Full logic for all modes inline here
 // Calls helper functions as needed
 void Monsoon::process(const ProcessArgs& args) {
-    // --- Audio-rate Input Fetching (Cached & Guarded) ---
-    float clkV      = cachedClkConnected ? inputs[CLK_INPUT].getVoltage() : 0.f;
-    float gate1V    = cachedGate1Connected ? inputs[GATE1_INPUT].getVoltage() : 0.f;
-    float gate2V    = cachedGate2Connected ? inputs[GATE2_INPUT].getVoltage() : 0.f;
-    float runGateV  = cachedRunConnected ? inputs[RUN_GATE_INPUT].getVoltage() : 0.f;
-    float resetGateV= cachedResetConnected ? inputs[RESET_TRIGGER_INPUT].getVoltage() : 0.f;
-    float cv1V      = cachedCv1Connected ? inputs[CV1_INPUT].getVoltage() : 0.f;
-    float cv2V      = (modeSelect >= 2 && cachedCv2Connected) ? inputs[CV2_INPUT].getVoltage() : 0.f;
+    // Flush denormals to zero on the audio thread. Decaying float state (pulses,
+    // smoothing, pitch CV) can drift into the denormal range, where FPU ops cost
+    // ~10-100x normal — a classic cause of sudden CPU spikes that scale with the
+    // number of active voices. With -ffast-math and no software flushing, this
+    // guard is the standard Rack-plugin fix and costs nothing in the normal case.
+#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) || defined(_M_IX86)
+    _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
+    _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
+#endif
+
+    // --- Audio-rate Input Fetching ---
+    InputState input;
+    input.clk   = cachedClkConnected ? inputs[CLK_INPUT].getVoltage() : 0.f;
+    input.gate1 = cachedGate1Connected ? inputs[GATE1_INPUT].getVoltage() : 0.f;
+    input.gate2 = cachedGate2Connected ? inputs[GATE2_INPUT].getVoltage() : 0.f;
+    input.gate3 = cachedGate3Connected ? inputs[GATE3_MOD_INPUT].getVoltage() : 0.f;
+    input.run   = cachedRunConnected ? inputs[RUN_GATE_INPUT].getVoltage() : 0.f;
+    input.reset = cachedResetConnected ? inputs[RESET_TRIGGER_INPUT].getVoltage() : 0.f;
+    input.cv1   = cachedCv1Connected ? inputs[CV1_INPUT].getVoltage() : 0.f;
+    input.cv2   = (modeSelect >= 2 && cachedCv2Connected) ? inputs[CV2_INPUT].getVoltage() : 0.f;
 
     // Logic References (Eliminate pointer indirection in hot path)
     TimingController& tc = *timingController;
@@ -444,7 +394,7 @@ void Monsoon::process(const ProcessArgs& args) {
     // ── Centralised clock tick (processes CLK IN once, before all mode handlers) ──
     // Derives bpm from external clock period or BPM knob, emits sixteenthEdge + quarterEdge.
     clock.process(
-        clkV,
+        input.clk,
         cachedClkConnected,
         cachedBpmParam,
         ppqnSetting,
@@ -455,12 +405,12 @@ void Monsoon::process(const ProcessArgs& args) {
     // ── Run/Reset Gate Processing ──
     runGateActive = tc.processRunGate(
         runGateActive,
-        runGateV,
+        input.run,
         cachedRunBtn
     );
     
     tc.processResetGate(
-        resetGateV,
+        input.reset,
         cachedResetBtn
     );
     
@@ -476,606 +426,83 @@ void Monsoon::process(const ProcessArgs& args) {
     }
 
     // ── Gate Edge Detection ──
-    auto gateEdges = tc.processGateEdges(gate1V, gate2V);
-    
-    bool gate1Rise = gateEdges.gate1Rise;
+    auto gateEdges = tc.processGateEdges(input.gate1, input.gate2);
+    input.gate1Rise = gateEdges.gate1Rise;
+    input.gate2Rise = gateEdges.gate2Rise;
+
+    // ── Gate 3 Assignment Handling (Audio Rate for Consistency) ──
+    if (cachedGate3Connected && gate3Trig.process(input.gate3, 0.1f, 1.f)) {
+        static const int g3map[] = { DA_TRIAL_R, DA_TRIAL_M, DA_RESEED_ROLL,
+            DA_RESEED_RESTART, DA_LIVESRC_R, DA_LIVESRC_M };
+        if (gate3Target >= 0 && gate3Target < (int)(sizeof(g3map)/sizeof(g3map[0]))) {
+            fireDieAction(g3map[gate3Target]);
+        }
+    }
 
     // ── Gate Assignment Handling ──
-    tc.handleGate1Assignment(gate1Assign, gate1Rise);
-    tc.handleGate2Assignment(gate2Assign, gateEdges.gate2Rise, tc.getGate2High(), invertMuteLogic);
+    if (modeSelect != 1) { // Mode B uses Gate 1 for input driving
+        tc.handleGate1Assignment(gate1Assign, input.gate1Rise);
+    }
+    if (modeSelect != 3) { // Mode D uses Gate 2 for input driving
+        tc.handleGate2Assignment(gate2Assign, input.gate2Rise, tc.getGate2High(), invertMuteLogic);
+    }
 
     // --- Mode dispatch (only if running) ---
     if (runGateActive) {
         // Optimization: Only execute mode logic if a relevant trigger/state is active.
         // This avoids calling executeMode and its internal switch every sample for Modes A, B, C.
-        bool gate1High = gate1V >= 1.0f;
+        bool gate1High = input.gate1 >= 1.0f;
         bool shouldExecute = (modeSelect == 3); // Mode D is continuous
         if (!shouldExecute) {
             if (modeSelect == 0) shouldExecute = clock.sixteenthEdge;
-            else if (modeSelect == 1) shouldExecute = gate1Rise || (gate1High && engine.stepIndex == -1);
+            else if (modeSelect == 1) shouldExecute = input.gate1Rise || (gate1High && engine.stepIndex == -1);
             else if (modeSelect == 2) shouldExecute = clock.quarterEdge;
         }
 
         if (shouldExecute) {
-            float cv2ToUse = (modeSelect >= 2) ? cv2V : 0.f;
-<<<<<<< HEAD
-            if (mc.executeMode(modeSelect, gate1Rise, gate1High, tc.getGate2High(), cv2ToUse)) {
-                // Mode took a step; update poly voices if expander is present
-                if (engine.numPolyVoices > 0 && expanderManager.cachedPolyVoiceExpander) {
-                for (int i = 0; i < engine.numPolyVoices; ++i) {
-                    engine.voices[i].restProb = cachedPolyRest[i];
-                }
-                    engine.executePolyVoices(mc.currentPatternInput);
-                }
-            }
-=======
-            mc.executeMode(modeSelect, gate1Rise, gate1High, tc.getGate2High(), cv2ToUse);
->>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
+            mc.executeMode(modeSelect, input, tc.getGate2High());
         }
+
     }
 
     // --- CV Routing (via CVRouter) ---
     float cvOutVoltage = currentPitchV;
-    if (cachedCv1Connected && cv1V != 0.f && (cv1Mode == 0 || cv1Mode == 1)) {
-        cvOutVoltage = cvr.processCV1Input(
-                cv1Mode,
-                cv1V,
-                currentPitchV,
-                true);
+    if (cachedCv1Connected && input.cv1 != 0.f && (cv1Mode == 0 || cv1Mode == 1)) {
+        cvOutVoltage = cvr.processCV1Input(cv1Mode, input.cv1, *paramManager, currentPitchV, true);
+    } else if (cachedCv1Connected && cv1Mode == 4) { // BPM Mod
+        // For BPM Mod, CVRouter updates paramManager->cv1BpmOffset, no direct cvOutVoltage change
+        cvr.processCV1Input(cv1Mode, input.cv1, *paramManager, currentPitchV, true);
+    } else {
+        paramManager->clearCv1BpmOffset(); // Clear BPM offset if CV1 is not connected or not in BPM mode
     }
     if (outputs[CV_OUTPUT].isConnected()) outputs[CV_OUTPUT].setVoltage(cvOutVoltage);
 
-    // --- Output Generation (Inlined logic to minimize cross-translation unit calls) ---
-    float gateV = (runGateActive) ? engine.gs.process(args.sampleTime) : 0.f;
-    outputs[GATE_OUTPUT].setVoltage(muted ? 0.f : gateV);
+    // --- Output Generation (Delegated to OutputGenerator) ---
+    outputGenerator->drive(engine, outputs.data(), expanderManager, args.sampleTime);
+
+    // ── Mode B Gate Slaving (with smoothing) ──
+    // In Mode B (Seq + Gate), the gate duration must follow the external Gate 1 input.
+    // This nullifies the impact of internal Note Length/Variation parameters.
+    // if (modeSelect == 1) {
+    //     // Only override if the sequencer decided to play a note (not a rest).
+    //     // If it's a rest, the gate should be off regardless of Gate 1.
+    //     if (engine.lastStepResult.decision != MonoDecision::Rest) { // Use the smoothed state of Gate 1 from g1Trig.
+    //         // This prevents clicks from raw voltage changes.
+    //         outputs[GATE_OUTPUT].setVoltage(engine.g1Trig.isHigh() ? 10.f : 0.f);
+    //     } else {
+    //         // If it's a rest, ensure the gate is off.
+    //         outputs[GATE_OUTPUT].setVoltage(0.f);
+    //     }
+    // }
     
-    bool isTie = (engine.lastStepResult.decision == MonoDecision::Tie);
-    outputs[TIE_OUTPUT].setVoltage((isTie && !muted) ? 10.f : 0.f);
-    
-    bool isLegato = (engine.lastStepResult.decision == MonoDecision::Legato || 
-                        engine.lastStepResult.decision == MonoDecision::LegatoMax);
-    outputs[LEGATO_OUTPUT].setVoltage((isLegato && !muted) ? 10.f : 0.f);
-<<<<<<< HEAD
-=======
-    outputs[TIE_OR_LEGATO_OUTPUT].setVoltage(((isTie || isLegato) && !muted) ? 10.f : 0.f);
->>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
-    
-    bool engineAccented = engine.lastStepResult.accented;
-    outputs[ACCENT_OUTPUT].setVoltage((engineAccented && gateV > 5.f && !muted) ? 10.f : 0.f);
-    
-    // Poly voice outputs (Guard: only if expander present)
-    auto* polyExp = expanderManager.cachedPolyVoiceExpander;
-    if (polyExp && engine.numPolyVoices > 0) {
-        using namespace PolyVoiceExpanderIds;
-        
-        // ── Rest Probability Modulation (voices 2-8 on East) ──
-<<<<<<< HEAD
-        for (int i = 0; i < 7; i++) {
-=======
-        // Only modulate voices currently active to save CPU
-        for (int i = 0; i < engine.numPolyVoices && i < 7; i++) {
->>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
-            if (inputs[POLY_REST_MOD_CV_INPUT_1 + i].isConnected()) {
-                float modCV = inputs[POLY_REST_MOD_CV_INPUT_1 + i].getVoltage();
-                float attenuverter = params[POLY_REST_MOD_ATT_1 + i].getValue(); // [-1, 1]
-                float modulation = modCV * attenuverter * 0.1f; // Scale CV by attenuverter
-                engine.voices[i].restProb = clamp(cachedPolyRest[i] + modulation, 0.f, 1.f);
-            } else {
-                engine.voices[i].restProb = cachedPolyRest[i];
-            }
-        }
-        
-        // Output individual gates/CVs/accents for voices 2-8
-<<<<<<< HEAD
-        for (int i = 0; i < 7; ++i) {
-=======
-        for (int i = 0; i < engine.numPolyVoices && i < 7; ++i) {
->>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
-            if (muted) {
-                polyExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
-                polyExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
-                continue;
-            }
-            float vg = engine.voices[i].gs.process(args.sampleTime);
-            polyExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(vg);
-            polyExp->outputs[POLY_CV_OUT_1 + i].setVoltage(engine.voices[i].gs.currentPitchV);
-            float polyAccent = (engineAccented && vg > 5.f) ? 10.f : 0.f;
-            polyExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(polyAccent);
-        }
-        
-        // Generate poly outputs for voices 1-8
-        float polyGate1_8 = 0.f;
-        float polyCv1_8 = 0.f;
-        if (!muted) {
-            polyGate1_8 = (engine.gs.process(args.sampleTime) > 5.f) ? 10.f : 0.f;
-            polyCv1_8 = currentPitchV;
-        }
-        polyExp->outputs[POLY_GATE_1_8_OUT].setVoltage(polyGate1_8);
-        polyExp->outputs[POLY_CV_1_8_OUT].setVoltage(polyCv1_8);
-    }
-    
-    // ── Straits West Expander (voices 9-16) ──
-    auto* westExp = expanderManager.cachedStraitWestExpander;
-    if (westExp && engine.numPolyVoices > 7) {
-        using namespace StraitWestExpanderIds;
-        
-        // ── Rest Probability Modulation (voices 9-16 on West) ──
-        for (int i = 0; i < 8; i++) {
-            if (inputs[POLY_REST_MOD_CV_INPUT_8 + i].isConnected()) {
-                float modCV = inputs[POLY_REST_MOD_CV_INPUT_8 + i].getVoltage();
-                float attenuverter = params[POLY_REST_MOD_ATT_8 + i].getValue(); // [-1, 1]
-                float modulation = modCV * attenuverter * 0.1f;
-                engine.voices[7 + i].restProb = clamp(cachedPolyRest[7 + i] + modulation, 0.f, 1.f);
-            } else {
-                engine.voices[7 + i].restProb = cachedPolyRest[7 + i];
-            }
-        }
-        
-        // Output individual gates/CVs/accents for voices 9-16
-        for (int i = 0; i < 8; ++i) {
-            if (muted) {
-                westExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
-                westExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
-                continue;
-            }
-            float vg = engine.voices[7 + i].gs.process(args.sampleTime);
-            westExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(vg);
-            westExp->outputs[POLY_CV_OUT_1 + i].setVoltage(engine.voices[7 + i].gs.currentPitchV);
-            float polyAccent = (engineAccented && vg > 5.f) ? 10.f : 0.f;
-            westExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(polyAccent);
-        }
-        
-        // Generate poly outputs for voices 1-16 (complete mix)
-        float polyGate1_16 = 0.f;
-        float polyCv1_16 = 0.f;
-        if (!muted) {
-            // Use primary voice poly gate for 1-16 output
-            polyGate1_16 = (engine.gs.process(args.sampleTime) > 5.f) ? 10.f : 0.f;
-            polyCv1_16 = currentPitchV;
-        }
-        westExp->outputs[POLY_GATE_1_16_OUT].setVoltage(polyGate1_16);
-        westExp->outputs[POLY_CV_1_16_OUT].setVoltage(polyCv1_16);
-    }
-    
-<<<<<<< HEAD
-    // ── Straits Sands Expander (DNA control + scramble/reset) ──
-    auto* sandsExp = expanderManager.cachedStraitSandsExpander;
-    if (sandsExp) {
-        using namespace StraitSandsExpanderIds;
-        
-        // Read DNA controls from Sands for all voices 1-15
-        for (int v = 0; v < 15; v++) {
-            // ── Rhythm DNA ──
-            int rhythmBase = POLY_DNA_VOICE_1_LEN + v * 3;
-            float rhythmLen = params[rhythmBase].getValue();
-            float rhythmOff = params[rhythmBase + 1].getValue();
-            float rhythmRot = params[rhythmBase + 2].getValue();
-            
-            engine.polyLen[v] = (int)rhythmLen;
-            engine.polyOff[v] = (int)rhythmOff;
-            engine.polyRot[v] = (int)rhythmRot;
-            
-            // ── Melody DNA ──
-            int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
-            float melodyLen = params[melodyBase].getValue();
-            float melodyOff = params[melodyBase + 1].getValue();
-            float melodyRot = params[melodyBase + 2].getValue();
-            
-            engine.pe.polyMelodyRandom[v][0] = (int)melodyLen;  // Length stored in [v][0]
-            engine.pe.polyMelodyRandom[v][1] = (int)melodyOff;  // Offset stored in [v][1]
-            engine.pe.polyMelodyRandom[v][2] = (int)melodyRot;  // Rotation stored in [v][2]
-            
-            // ── Octave DNA ──
-            int octaveBase = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-            float octaveLen = params[octaveBase].getValue();
-            float octaveOff = params[octaveBase + 1].getValue();
-            float octaveRot = params[octaveBase + 2].getValue();
-            
-            engine.pe.polyOctaveRandom[v][0] = (int)octaveLen;  // Length stored in [v][0]
-            engine.pe.polyOctaveRandom[v][1] = (int)octaveOff;  // Offset stored in [v][1]
-            engine.pe.polyOctaveRandom[v][2] = (int)octaveRot;  // Rotation stored in [v][2]
-        }
-        
-        // Handle Scramble triggers (randomize length & offset for all DNA types)
-        bool scrambleAll = params[SCRAMBLE_ALL_PARAM].getValue() > 0.5f ||
-                          inputs[SCRAMBLE_ALL_INPUT].getVoltage() > 1.f;
-        if (scrambleAll) {
-            for (int v = 0; v < 15; v++) {
-                // Rhythm
-                int rhythmBase = POLY_DNA_VOICE_1_LEN + v * 3;
-                params[rhythmBase].setValue(random::uniform() * 15.f + 1.f);
-                params[rhythmBase + 1].setValue(random::uniform() * 15.f);
-                
-                // Melody
-                int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
-                params[melodyBase].setValue(random::uniform() * 15.f + 1.f);
-                params[melodyBase + 1].setValue(random::uniform() * 15.f);
-                
-                // Octave
-                int octaveBase = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-                params[octaveBase].setValue(random::uniform() * 15.f + 1.f);
-                params[octaveBase + 1].setValue(random::uniform() * 15.f);
-            }
-        } else {
-            // Check individual scramble buttons
-            for (int v = 0; v < 15; v++) {
-                bool scramble = params[SCRAMBLE_VOICE_1 + v].getValue() > 0.5f ||
-                               inputs[SCRAMBLE_VOICE_1_INPUT + v].getVoltage() > 1.f;
-                if (scramble) {
-                    // Rhythm
-                    int rhythmBase = POLY_DNA_VOICE_1_LEN + v * 3;
-                    params[rhythmBase].setValue(random::uniform() * 15.f + 1.f);
-                    params[rhythmBase + 1].setValue(random::uniform() * 15.f);
-                    
-                    // Melody
-                    int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
-                    params[melodyBase].setValue(random::uniform() * 15.f + 1.f);
-                    params[melodyBase + 1].setValue(random::uniform() * 15.f);
-                    
-                    // Octave
-                    int octaveBase = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-                    params[octaveBase].setValue(random::uniform() * 15.f + 1.f);
-                    params[octaveBase + 1].setValue(random::uniform() * 15.f);
-=======
-    // ── Deep Straits Sands Expanders ──
-    auto* deepEast   = expanderManager.cachedDeepStraitsSandsEastExpander;
-    auto* deepWest   = expanderManager.cachedDeepStraitsSandsWestExpander;
-    auto* straitEast = expanderManager.cachedPolyVoiceExpander;
-    auto* straitWest = expanderManager.cachedStraitWestExpander;
-    // Visual expanders take priority over knob expanders for L/O/R (zero-delay)
-    auto* eastVisual  = expanderManager.cachedEastSandsVisual;
-    auto* westVisual  = expanderManager.cachedWestSandsVisual;
+    // // Poly Sands editors (East visual, and the deprecated knob path) only do
+    // // anything when the Straits BASE poly output expander is connected AND the
+    // // user has requested at least one poly voice (numPolyVoices >= 1, i.e. more
+    // // than the lone mono voice). Without the base expander there is nowhere for
+    // // poly voices to come out, so the LOR/spread work would be inert anyway —
+    // // this makes that explicit and keeps the editors no-op.
 
-    // East: use visual expander if present, else DeepStraitsSandsEast
-    auto* eastLOR   = eastVisual ? static_cast<rack::Module*>(eastVisual)
-                                 : static_cast<rack::Module*>(deepEast);
-    // Spread/interp source: same priority — visual expander owns spread when connected
-    auto* eastInterp = eastVisual ? static_cast<rack::Module*>(eastVisual)
-                                  : static_cast<rack::Module*>(deepEast);
 
-    // East only active if straitEast is present
-    if (eastLOR && straitEast) {
-        using namespace DeepStraitsSandsEastIds;
-        using namespace StraitsEastVisualIds;  // CV_0..CV_11, ATTEN_0..ATTEN_11
-        
-        for (int v = 0; v < 7; v++) {
-            // ── Rhythm DNA with CV offset (base + scaled CV, control rate) ──────
-            // Row/col mapping: row r, col c → lane=r/2, param=(r%2)*2+c
-            // param: 0=LEN,1=OFF,2=ROT,3=SPR
-            int rhythmBase = POLY_DNA_VOICE_1_LEN + v * 3;
-            auto applyLorCV = [&](int paramIdx, int r, int c, float lo, float hi) -> int {
-                float base = eastLOR->params[paramIdx].getValue();
-                if (eastVisual && eastVisual->inputs[cvId(r,c)].isConnected()) {
-                    float att = eastVisual->params[attenId(r,c)].getValue();
-                    float cv  = eastVisual->inputs[cvId(r,c)].getVoltage(v) / 10.f;
-                    base = clamp(base + cv * att * (hi - lo), lo, hi);
-                }
-                return (int)base;
-            };
-            // REST LEN=row0col0, OFF=row0col1, ROT=row1col0
-            engine.polyLen[v] = applyLorCV(rhythmBase,     0, 0, 1.f, 16.f);
-            engine.polyOff[v] = applyLorCV(rhythmBase + 1, 0, 1, 0.f, 15.f);
-            engine.polyRot[v] = applyLorCV(rhythmBase + 2, 1, 0, 0.f, 15.f);
-
-            // ── Rest spread CV — row1col1 ──────────────────────────────────────
-            float restInterp = eastInterp->params[POLY_REST_INTERP_1 + v].getValue();
-            if (eastVisual && eastVisual->inputs[cvId(1,1)].isConnected()) {
-                float att = eastVisual->params[attenId(1,1)].getValue();
-                float cv  = eastVisual->inputs[cvId(1,1)].getVoltage(v) / 10.f;
-                restInterp = clamp(restInterp + cv * att, 0.f, 1.f);
-            }
-            
-            // Calculate average rest probability for East range
-            float avgRestProb = 0.f;
-            for (int i = 0; i < 7; i++) {
-                avgRestProb += deepEast->params[POLY_REST_PARAM_1 + i].getValue();
-            }
-            avgRestProb /= 7.f;
-            
-            float voiceRestProb = deepEast->params[POLY_REST_PARAM_1 + v].getValue();
-            engine.voices[v].restProb = voiceRestProb + restInterp * (avgRestProb - voiceRestProb);
-            
-            int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
-            // MEL LOR: row2col0=LEN, row2col1=OFF, row3col0=ROT; SPR: row3col1
-            float melodyInterp = eastInterp->params[POLY_MELODY_INTERP_1 + v].getValue();
-            engine.pe.polyMelodyRandom[v][0] = (float)applyLorCV(melodyBase,     2, 0, 1.f, 16.f);
-            engine.pe.polyMelodyRandom[v][1] = (float)applyLorCV(melodyBase + 1, 2, 1, 0.f, 15.f);
-            // (ROT and SPR applied below after interp)
-            if (eastVisual && eastVisual->inputs[cvId(3,1)].isConnected()) {
-                float att = eastVisual->params[attenId(3,1)].getValue();
-                float cv  = eastVisual->inputs[cvId(3,1)].getVoltage(v) / 10.f;
-                melodyInterp = clamp(melodyInterp + cv * att, 0.f, 1.f);
-            }
-            
-            float avgMelodyRandom[16] = {};
-            for (int i = 0; i < 7; i++) {
-                for (int j = 0; j < 16; j++) {
-                    avgMelodyRandom[j] += engine.pe.polyMelodyRandom[i][j];
-                }
-            }
-            for (int j = 0; j < 16; j++) {
-                avgMelodyRandom[j] /= 7.f;
-            }
-            
-            for (int j = 0; j < 16; j++) {
-                float voiceVal = engine.pe.polyMelodyRandom[v][j];
-                engine.pe.polyMelodyRandom[v][j] = voiceVal + melodyInterp * (avgMelodyRandom[j] - voiceVal);
-            }
-            
-            engine.pe.polyMelodyRandom[v][0] = deepEast->params[melodyBase].getValue();
-            engine.pe.polyMelodyRandom[v][1] = deepEast->params[melodyBase + 1].getValue();
-            engine.pe.polyMelodyRandom[v][2] = deepEast->params[melodyBase + 2].getValue();
-            
-            int octaveBase = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-            // OCT LOR: row4col0=LEN, row4col1=OFF, row5col0=ROT; SPR: row5col1
-            float octaveInterp = eastInterp->params[POLY_OCTAVE_INTERP_1 + v].getValue();
-            if (eastVisual && eastVisual->inputs[cvId(5,1)].isConnected()) {
-                float att = eastVisual->params[attenId(5,1)].getValue();
-                float cv  = eastVisual->inputs[cvId(5,1)].getVoltage(v) / 10.f;
-                octaveInterp = clamp(octaveInterp + cv * att, 0.f, 1.f);
-            }
-            
-            float avgOctaveRandom[16] = {};
-            for (int i = 0; i < 7; i++) {
-                for (int j = 0; j < 16; j++) {
-                    avgOctaveRandom[j] += engine.pe.polyOctaveRandom[i][j];
-                }
-            }
-            for (int j = 0; j < 16; j++) {
-                avgOctaveRandom[j] /= 7.f;
-            }
-            
-            for (int j = 0; j < 16; j++) {
-                float voiceVal = engine.pe.polyOctaveRandom[v][j];
-                engine.pe.polyOctaveRandom[v][j] = voiceVal + octaveInterp * (avgOctaveRandom[j] - voiceVal);
-            }
-            
-            engine.pe.polyOctaveRandom[v][0] = deepEast->params[octaveBase].getValue();
-            engine.pe.polyOctaveRandom[v][1] = deepEast->params[octaveBase + 1].getValue();
-            engine.pe.polyOctaveRandom[v][2] = deepEast->params[octaveBase + 2].getValue();
-        }
-        
-        bool scrambleAll = deepEast->params[SCRAMBLE_ALL_PARAM].getValue() > 0.5f ||
-                          deepEast->inputs[SCRAMBLE_ALL_INPUT].getVoltage() > 1.f;
-        if (scrambleAll) {
-            for (int v = 0; v < 7; v++) {
-                int b = POLY_DNA_VOICE_1_LEN + v * 3;
-                deepEast->params[b].setValue(random::uniform() * 15.f + 1.f);
-                deepEast->params[b+1].setValue(random::uniform() * 15.f);
-                b = POLY_MELODY_VOICE_1_LEN + v * 3;
-                deepEast->params[b].setValue(random::uniform() * 15.f + 1.f);
-                deepEast->params[b+1].setValue(random::uniform() * 15.f);
-                b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-                deepEast->params[b].setValue(random::uniform() * 15.f + 1.f);
-                deepEast->params[b+1].setValue(random::uniform() * 15.f);
-            }
-        } else {
-            for (int v = 0; v < 7; v++) {
-                if (deepEast->params[SCRAMBLE_VOICE_1 + v].getValue() > 0.5f ||
-                    deepEast->inputs[SCRAMBLE_VOICE_1_INPUT + v].getVoltage() > 1.f) {
-                    int b = POLY_DNA_VOICE_1_LEN + v * 3;
-                    deepEast->params[b].setValue(random::uniform() * 15.f + 1.f);
-                    deepEast->params[b+1].setValue(random::uniform() * 15.f);
-                    b = POLY_MELODY_VOICE_1_LEN + v * 3;
-                    deepEast->params[b].setValue(random::uniform() * 15.f + 1.f);
-                    deepEast->params[b+1].setValue(random::uniform() * 15.f);
-                    b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-                    deepEast->params[b].setValue(random::uniform() * 15.f + 1.f);
-                    deepEast->params[b+1].setValue(random::uniform() * 15.f);
->>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
-                }
-            }
-        }
-        
-<<<<<<< HEAD
-        // Handle Reset triggers (restore defaults for all DNA types)
-        bool resetAll = params[RESET_ALL_PARAM].getValue() > 0.5f ||
-                       inputs[RESET_ALL_INPUT].getVoltage() > 1.f;
-        if (resetAll) {
-            for (int v = 0; v < 15; v++) {
-                // Rhythm
-                int rhythmBase = POLY_DNA_VOICE_1_LEN + v * 3;
-                params[rhythmBase].setValue(16.f);
-                params[rhythmBase + 1].setValue(0.f);
-                params[rhythmBase + 2].setValue(0.f);
-                
-                // Melody
-                int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
-                params[melodyBase].setValue(16.f);
-                params[melodyBase + 1].setValue(0.f);
-                params[melodyBase + 2].setValue(0.f);
-                
-                // Octave
-                int octaveBase = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-                params[octaveBase].setValue(16.f);
-                params[octaveBase + 1].setValue(0.f);
-                params[octaveBase + 2].setValue(0.f);
-            }
-        } else {
-            // Check individual reset buttons
-            for (int v = 0; v < 15; v++) {
-                bool reset = params[RESET_VOICE_1 + v].getValue() > 0.5f ||
-                            inputs[RESET_VOICE_1_INPUT + v].getVoltage() > 1.f;
-                if (reset) {
-                    // Rhythm
-                    int rhythmBase = POLY_DNA_VOICE_1_LEN + v * 3;
-                    params[rhythmBase].setValue(16.f);
-                    params[rhythmBase + 1].setValue(0.f);
-                    params[rhythmBase + 2].setValue(0.f);
-                    
-                    // Melody
-                    int melodyBase = POLY_MELODY_VOICE_1_LEN + v * 3;
-                    params[melodyBase].setValue(16.f);
-                    params[melodyBase + 1].setValue(0.f);
-                    params[melodyBase + 2].setValue(0.f);
-                    
-                    // Octave
-                    int octaveBase = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-                    params[octaveBase].setValue(16.f);
-                    params[octaveBase + 1].setValue(0.f);
-                    params[octaveBase + 2].setValue(0.f);
-=======
-        bool resetAllE = deepEast->params[RESET_ALL_PARAM].getValue() > 0.5f ||
-                        deepEast->inputs[RESET_ALL_INPUT].getVoltage() > 1.f;
-        if (resetAllE) {
-            for (int v = 0; v < 7; v++) {
-                int b = POLY_DNA_VOICE_1_LEN + v * 3;
-                deepEast->params[b].setValue(16.f); deepEast->params[b+1].setValue(0.f); deepEast->params[b+2].setValue(0.f);
-                b = POLY_MELODY_VOICE_1_LEN + v * 3;
-                deepEast->params[b].setValue(16.f); deepEast->params[b+1].setValue(0.f); deepEast->params[b+2].setValue(0.f);
-                b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-                deepEast->params[b].setValue(16.f); deepEast->params[b+1].setValue(0.f); deepEast->params[b+2].setValue(0.f);
-            }
-        } else {
-            for (int v = 0; v < 7; v++) {
-                if (deepEast->params[RESET_VOICE_1 + v].getValue() > 0.5f ||
-                    deepEast->inputs[RESET_VOICE_1_INPUT + v].getVoltage() > 1.f) {
-                    int b = POLY_DNA_VOICE_1_LEN + v * 3;
-                    deepEast->params[b].setValue(16.f); deepEast->params[b+1].setValue(0.f); deepEast->params[b+2].setValue(0.f);
-                    b = POLY_MELODY_VOICE_1_LEN + v * 3;
-                    deepEast->params[b].setValue(16.f); deepEast->params[b+1].setValue(0.f); deepEast->params[b+2].setValue(0.f);
-                    b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-                    deepEast->params[b].setValue(16.f); deepEast->params[b+1].setValue(0.f); deepEast->params[b+2].setValue(0.f);
-                }
-            }
-        }
-    }
-
-    // West: use visual expander if present, else DeepStraitsSandsWest
-    auto* westLOR    = westVisual ? static_cast<rack::Module*>(westVisual)
-                                  : static_cast<rack::Module*>(deepWest);
-    auto* westInterp = westVisual ? static_cast<rack::Module*>(westVisual)
-                                  : static_cast<rack::Module*>(deepWest);
-
-    // West only active if straitWest is present
-    if (westLOR && straitWest) {
-        using namespace DeepStraitsSandsWestIds;
-        using namespace StraitsEastVisualIds;  // West reads from East's jacks
-        for (int v = 7; v < 15; v++) {
-            int lv = v - 7;
-            int b  = POLY_DNA_VOICE_1_LEN + v * 3;
-            auto applyLorCVW = [&](int paramIdx, int r, int c, float lo, float hi) -> int {
-                float base = westLOR->params[paramIdx].getValue();
-                if (eastVisual && eastVisual->inputs[cvId(r,c)].isConnected()) {
-                    float att = eastVisual->params[attenId(r,c)].getValue();
-                    float cv  = eastVisual->inputs[cvId(r,c)].getVoltage(lv + 7) / 10.f;
-                    base = clamp(base + cv * att * (hi - lo), lo, hi);
-                }
-                return (int)base;
-            };
-            engine.polyLen[v] = applyLorCVW(b,     0, 0, 1.f, 16.f);
-            engine.polyOff[v] = applyLorCVW(b + 1, 0, 1, 0.f, 15.f);
-            engine.polyRot[v] = applyLorCVW(b + 2, 1, 0, 0.f, 15.f);
-
-            float restInterp = westInterp->params[POLY_REST_INTERP_1 + v].getValue();
-            if (eastVisual && eastVisual->inputs[cvId(1,1)].isConnected()) {
-                float att = eastVisual->params[attenId(1,1)].getValue();
-                float cv  = eastVisual->inputs[cvId(1,1)].getVoltage(lv + 7) / 10.f;
-                restInterp = clamp(restInterp + cv * att, 0.f, 1.f);
-            }
-            float avgRestProb = 0.f;
-            for (int i = 7; i < 15; i++) avgRestProb += deepWest->params[POLY_REST_PARAM_1 + i].getValue();
-            avgRestProb /= 8.f;
-            float voiceRestProb = deepWest->params[POLY_REST_PARAM_1 + v].getValue();
-            engine.voices[v].restProb = voiceRestProb + restInterp * (avgRestProb - voiceRestProb);
-            
-            int mb = POLY_MELODY_VOICE_1_LEN + v * 3;
-            float melodyInterp = westInterp->params[POLY_MELODY_INTERP_1 + v].getValue();
-            if (eastVisual && eastVisual->inputs[cvId(3,1)].isConnected()) {
-                float att = eastVisual->params[attenId(3,1)].getValue();
-                float cv  = eastVisual->inputs[cvId(3,1)].getVoltage(lv + 7) / 10.f;
-                melodyInterp = clamp(melodyInterp + cv * att, 0.f, 1.f);
-            }
-            float avgMelodyRandom[16] = {};
-            for (int i = 7; i < 15; i++) {
-                for (int j = 0; j < 16; j++) avgMelodyRandom[j] += engine.pe.polyMelodyRandom[i][j];
-            }
-            for (int j = 0; j < 16; j++) avgMelodyRandom[j] /= 8.f;
-            for (int j = 0; j < 16; j++) {
-                float voiceVal = engine.pe.polyMelodyRandom[v][j];
-                engine.pe.polyMelodyRandom[v][j] = voiceVal + melodyInterp * (avgMelodyRandom[j] - voiceVal);
-            }
-            engine.pe.polyMelodyRandom[v][0] = deepWest->params[mb].getValue();
-            engine.pe.polyMelodyRandom[v][1] = deepWest->params[mb+1].getValue();
-            engine.pe.polyMelodyRandom[v][2] = deepWest->params[mb+2].getValue();
-            
-            int ob = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-            float octaveInterp = westInterp->params[POLY_OCTAVE_INTERP_1 + v].getValue();
-            if (eastVisual && eastVisual->inputs[cvId(5,1)].isConnected()) {
-                float att = eastVisual->params[attenId(5,1)].getValue();
-                float cv  = eastVisual->inputs[cvId(5,1)].getVoltage(lv + 7) / 10.f;
-                octaveInterp = clamp(octaveInterp + cv * att, 0.f, 1.f);
-            }
-            float avgOctaveRandom[16] = {};
-            for (int i = 7; i < 15; i++) {
-                for (int j = 0; j < 16; j++) avgOctaveRandom[j] += engine.pe.polyOctaveRandom[i][j];
-            }
-            for (int j = 0; j < 16; j++) avgOctaveRandom[j] /= 8.f;
-            for (int j = 0; j < 16; j++) {
-                float voiceVal = engine.pe.polyOctaveRandom[v][j];
-                engine.pe.polyOctaveRandom[v][j] = voiceVal + octaveInterp * (avgOctaveRandom[j] - voiceVal);
-            }
-            engine.pe.polyOctaveRandom[v][0] = deepWest->params[ob].getValue();
-            engine.pe.polyOctaveRandom[v][1] = deepWest->params[ob+1].getValue();
-            engine.pe.polyOctaveRandom[v][2] = deepWest->params[ob+2].getValue();
-        }
-        // West Scramble/Reset Logic (Similar to East but for indices 7-14)
-        bool sAll = deepWest->params[SCRAMBLE_ALL_PARAM].getValue() > 0.5f || deepWest->inputs[SCRAMBLE_ALL_INPUT].getVoltage() > 1.f;
-        if (sAll) {
-            for (int v = 7; v < 15; v++) {
-                int b = POLY_DNA_VOICE_1_LEN + v * 3;
-                deepWest->params[b].setValue(random::uniform() * 15.f + 1.f);
-                deepWest->params[b+1].setValue(random::uniform() * 15.f);
-                b = POLY_MELODY_VOICE_1_LEN + v * 3;
-                deepWest->params[b].setValue(random::uniform() * 15.f + 1.f);
-                deepWest->params[b+1].setValue(random::uniform() * 15.f);
-                b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-                deepWest->params[b].setValue(random::uniform() * 15.f + 1.f);
-                deepWest->params[b+1].setValue(random::uniform() * 15.f);
-            }
-        } else {
-            for (int v = 7; v < 15; v++) {
-                if (deepWest->params[SCRAMBLE_VOICE_8 + (v - 7)].getValue() > 0.5f ||
-                    deepWest->inputs[SCRAMBLE_VOICE_8_INPUT + (v - 7)].getVoltage() > 1.f) {
-                    int b = POLY_DNA_VOICE_1_LEN + v * 3;
-                    deepWest->params[b].setValue(random::uniform() * 15.f + 1.f);
-                    deepWest->params[b+1].setValue(random::uniform() * 15.f);
-                    b = POLY_MELODY_VOICE_1_LEN + v * 3;
-                    deepWest->params[b].setValue(random::uniform() * 15.f + 1.f);
-                    deepWest->params[b+1].setValue(random::uniform() * 15.f);
-                    b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-                    deepWest->params[b].setValue(random::uniform() * 15.f + 1.f);
-                    deepWest->params[b+1].setValue(random::uniform() * 15.f);
-                }
-            }
-        }
-
-        bool resetAllW = deepWest->params[RESET_ALL_PARAM].getValue() > 0.5f ||
-                         deepWest->inputs[RESET_ALL_INPUT].getVoltage() > 1.f;
-        if (resetAllW) {
-            for (int v = 7; v < 15; v++) {
-                int b = POLY_DNA_VOICE_1_LEN + v * 3;
-                deepWest->params[b].setValue(16.f); deepWest->params[b+1].setValue(0.f); deepWest->params[b+2].setValue(0.f);
-                b = POLY_MELODY_VOICE_1_LEN + v * 3;
-                deepWest->params[b].setValue(16.f); deepWest->params[b+1].setValue(0.f); deepWest->params[b+2].setValue(0.f);
-                b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-                deepWest->params[b].setValue(16.f); deepWest->params[b+1].setValue(0.f); deepWest->params[b+2].setValue(0.f);
-            }
-        } else {
-            for (int v = 7; v < 15; v++) {
-                if (deepWest->params[RESET_VOICE_8 + (v - 7)].getValue() > 0.5f ||
-                    deepWest->inputs[RESET_VOICE_8_INPUT + (v - 7)].getVoltage() > 1.f) {
-                    int b = POLY_DNA_VOICE_1_LEN + v * 3;
-                    deepWest->params[b].setValue(16.f); deepWest->params[b+1].setValue(0.f); deepWest->params[b+2].setValue(0.f);
-                    b = POLY_MELODY_VOICE_1_LEN + v * 3;
-                    deepWest->params[b].setValue(16.f); deepWest->params[b+1].setValue(0.f); deepWest->params[b+2].setValue(0.f);
-                    b = POLY_OCTAVE_VOICE_1_LEN + v * 3;
-                    deepWest->params[b].setValue(16.f); deepWest->params[b+1].setValue(0.f); deepWest->params[b+2].setValue(0.f);
->>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
-                }
-            }
-        }
-    }
 
     // ── Throttle UI and Light processing ──
     if (lightDivider.process()) {
@@ -1086,15 +513,11 @@ void Monsoon::process(const ProcessArgs& args) {
             uiManager->updateDiceLights(engine.pe.isRhythmSeedPending(), engine.pe.isMelodySeedPending());
             uiManager->updateLockLight(locked);
             uiManager->updateMuteLight(muted);
-<<<<<<< HEAD
-            uiManager->updateExpanderLights(expanderManager.scaleExpanderCount, expanderManager.dnaExpanderCount, expanderManager.polyExpanderCount);
-=======
             
             // Aggregate DNA and Poly counts for the status LEDs
             int totalDnaCount = expanderManager.dnaExpanderCount + expanderManager.straitsSandsExpanderCount + expanderManager.deepStraitsSandsEastExpanderCount + expanderManager.deepStraitsSandsWestExpanderCount;
             int totalPolyCount = expanderManager.polyExpanderCount + expanderManager.straitWestExpanderCount;
             uiManager->updateExpanderLights(expanderManager.scaleExpanderCount, totalDnaCount, totalPolyCount);
->>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
 
             uiManager->updateRunGateLight(runGateActive);
             uiManager->updateResetLight(resetArmed, args.sampleTime * 512.f);
@@ -1115,14 +538,21 @@ void Monsoon::process(const ProcessArgs& args) {
         if (uiManager) {
             bool rhythmTriggered, melodyTriggered;
             if (uiManager->processDiceButtons(rhythmTriggered, melodyTriggered)) {
-                if (rhythmTriggered) {
-                    rhythmMode = 0;
-                    engine.pe.setPendingRhythmSeed(sampleSeedFromSource());
-                }
-                if (melodyTriggered) {
-                    melodyMode = 0;
-                    engine.pe.setPendingMelodySeed(sampleSeedFromSource());
-                }
+                // A dice press ROLLS (advance RNG, A/B morph) unless SEED is
+                // patched (then reproducible reseed). Shared with gate re-dice
+                // via diceRhythm()/diceMelody().
+                if (rhythmTriggered) diceRhythm();
+                if (melodyTriggered) diceMelody();
+            }
+
+            // Trial/audition dice: roll a fresh candidate B with A ANCHORED, so
+            // the user auditions against a fixed A (raise slew to move toward the
+            // trial, lower to fall back to A). Pressing the REGULAR dice then
+            // commits the current B→A (main mode) when ready to move on.
+            bool trialR, trialM;
+            if (uiManager->processTrialButtons(trialR, trialM)) {
+                if (trialR) { rhythmMode = 0; engine.pe.setPendingRhythmTrial(); }
+                if (trialM) { melodyMode = 0; engine.pe.setPendingMelodyTrial(); }
             }
             
             if (uiManager->processLockButton()) {
@@ -1187,20 +617,45 @@ void Monsoon::process(const ProcessArgs& args) {
             if (faderDirty || activeSemiCount == 0) rebuildSemiCache_();
         }
 
-        // Refresh visual cache so LEDs react to knob changes (at ~90Hz instead of 44kHz)
-        modeController->updatePatternInput();
         engine.pe.refreshVisualCache(modeController->currentPatternInput);
     }
 
     // ── Control-Rate DNA and Window Updates (Optimized CPU) ──
     if (controlDivider.process()) {
+        updateExpanderPointers();
+
+        if (expanderManager.cachedCausewayExpander) {
+            rack::Module* cw = expanderManager.cachedCausewayExpander;
+            for (int i = 0; i < 10; ++i) {
+                int in = MonsoonIds::CAUSEWAY_GATE_TRIAL_R + i;
+                if (cw->inputs[in].isConnected()
+                    && causewayGateTrig[i].process(cw->inputs[in].getVoltage(), 0.1f, 1.f)) {
+                    fireDieAction(i);
+                }
+            }
+        }
+
+        // Refresh Sequencer Parameters (Throttled sampling of all knobs/CV)
+        modeController->updatePatternInput();
+        engine.accentProb = paramManager->getAccent();
+
+        // Check for expander changes and update cached pointers
         dnaManager.processDNA(expanderManager);
 
+        // ── Deep Straits Sands Expanders (Control Rate Orchestration) ──
+        expanderManager.sync(engine);
+        
         // Refresh Audio-Rate Caches (Throttled)
         cachedBpmParam = params[BPM_PARAM].getValue();
         cachedClkConnected = inputs[CLK_INPUT].isConnected();
+        // Apply BPM CV modulation if CV1 is in BPM mode
+        cachedBpmParam += paramManager->cv1BpmOffset;
+        cachedBpmParam = clampv(cachedBpmParam, 20.f, 300.f); // Clamp to valid BPM range
+
         cachedCv1Connected = inputs[CV1_INPUT].isConnected();
         cachedCv2Connected = inputs[CV2_INPUT].isConnected();
+        cachedCv3Connected = inputs[CV3_MOD_INPUT].isConnected();
+        cachedGate3Connected = inputs[GATE3_MOD_INPUT].isConnected();
         cachedGate1Connected = inputs[GATE1_INPUT].isConnected();
         cachedGate2Connected = inputs[GATE2_INPUT].isConnected();
         cachedRunConnected = inputs[RUN_GATE_INPUT].isConnected();
@@ -1209,15 +664,33 @@ void Monsoon::process(const ProcessArgs& args) {
         cachedRunBtn = params[RUN_GATE_PARAM].getValue();
         cachedResetBtn = params[RESET_BUTTON_PARAM].getValue();
 
-        // Cache Poly Rest probabilities
+        // ── Throttled Poly Rest Logic ──
         for (int i = 0; i < 15; ++i) {
-            cachedPolyRest[i] = paramManager->getPolyRest(i);
+            float base = paramManager->getPolyRest(i);
+            cachedPolyRest[i] = base;
+            
+            float modulation = 0.f;
+            if (i < 7) { // East voices
+                if (inputs[POLY_REST_MOD_CV_INPUT_1 + i].isConnected()) {
+                    modulation = inputs[POLY_REST_MOD_CV_INPUT_1 + i].getVoltage() * 
+                                 params[POLY_REST_MOD_ATT_1 + i].getValue() * 0.1f;
+                }
+            } else { // West voices
+                int wi = i - 7;
+                if (inputs[POLY_REST_MOD_CV_INPUT_8 + wi].isConnected()) {
+                    modulation = inputs[POLY_REST_MOD_CV_INPUT_8 + wi].getVoltage() * 
+                                 params[POLY_REST_MOD_ATT_8 + wi].getValue() * 0.1f;
+                }
+            }
+            // ParameterManager::getPolyRest includes the global Rest knob + global CV.
+            // Here we add the per-voice modulation on top.
+            engine.voices[i].restProb = clamp(base + modulation, 0.f, 1.f);
         }
 
         // Handle Throttled CV1 Logic (Range Modulation)
         if (cachedCv1Connected) {
             if (cv1Mode == 2 || cv1Mode == 3) {
-                cvRouter->processCV1Input(cv1Mode, inputs[CV1_INPUT].getVoltage(), 0.f, true);
+                cvRouter->processCV1Input(cv1Mode, inputs[CV1_INPUT].getVoltage(), *paramManager, 0.f, true);
             }
             paramManager->setCv1LoOffset(cvRouter->getLoOffset());
             paramManager->setCv1HiOffset(cvRouter->getHiOffset());
@@ -1244,13 +717,41 @@ void Monsoon::process(const ProcessArgs& args) {
 
         // Update CV2 modulation offsets (Throttled)
         paramManager->clearCv2Offsets();
-        if (inputs[CV2_INPUT].isConnected()) {
+        // Mode C and D use CV2 as the pitch input to be quantized
+        if (modeSelect < 2 && inputs[CV2_INPUT].isConnected()) { // CV2 is used for quantization in modes C and D
             float v    = clampv<float>(inputs[CV2_INPUT].getVoltage(), 0.f, 5.f);
             float norm = v / 5.f; 
             if (cv2Mode == 0) paramManager->setCv2Offset(0, norm * 8.f);
             if (cv2Mode == 1) paramManager->setCv2Offset(1, norm);
             if (cv2Mode == 2) paramManager->setCv2Offset(2, norm);
             if (cv2Mode == 3) paramManager->setCv2Offset(3, norm);
+            if (cv2Mode == 4) paramManager->setCv2Offset(4, norm); // New: Accent modulation
+        }
+
+        // ── Assignable CV3 & Causeway Modulation (Throttled) ──
+        float cv3Mods[4] = {0.f, 0.f, 0.f, 0.f};
+        
+        // 1. Main Panel CV3 (Unipolar offset to selected target)
+        if (cachedCv3Connected) {
+            float v = inputs[CV3_MOD_INPUT].getVoltage();
+            cv3Mods[cv3Target] = clampv<float>(v, 0.f, 5.f) / 5.f;
+        }
+
+        // 2. Causeway Expander (Summing bipolar attenuverted CVs)
+        if (expanderManager.cachedCausewayExpander) {
+            rack::Module* cw = expanderManager.cachedCausewayExpander;
+            for (int i = 0; i < 4; ++i) {
+                if (cw->inputs[CAUSEWAY_SLEW_R_CV + i].isConnected()) {
+                    float v = cw->inputs[CAUSEWAY_SLEW_R_CV + i].getVoltage();
+                    float att = cw->params[CAUSEWAY_SLEW_R_ATT + i].getValue();
+                    cv3Mods[i] += (v / 5.f) * att;
+                }
+            }
+        }
+
+        // Apply final summed offsets to ParameterManager
+        for (int i = 0; i < 4; ++i) {
+            paramManager->setCv3Offset(i, clampv<float>(cv3Mods[i], -1.f, 1.f));
         }
     }
 }
@@ -1262,19 +763,18 @@ void init(rack::Plugin* p) {
 	pluginInstance = p;
 	p->addModel(modelMonsoon);
 	p->addModel(modelMonsoonInterchangeExpander);
-	p->addModel(modelMonsoonSandsExpander);
+	p->addModel(modelMonsoonCausewayExpander);
+	p->addModel(modelMonsoonSurgeExpander);
+	//p->addModel(modelMonsoonSandsExpander);
 	p->addModel(modelMonsoonStraitsEastExpander);
 	p->addModel(modelMonsoonStraitWestExpander);    // NEW (Phase 4)
-<<<<<<< HEAD
-	p->addModel(modelMonsoonStraitSandsExpander);   // NEW (Phase 6)
-=======
-	p->addModel(modelMonsoonStraitsSands);          // Macro: global DNA
-	p->addModel(modelMonsoonDeepStraitsSandsEast);  // Deep: voices 2-8
-	p->addModel(modelMonsoonDeepStraitsSandsWest);  // Deep: voices 9-16
+	//p->addModel(modelMonsoonStraitsSands);          // Macro: global DNA
+	//p->addModel(modelMonsoonDeepStraitsSandsEast);  // Deep: voices 2-8
+	//p->addModel(modelMonsoonDeepStraitsSandsWest);  // Deep: voices 9-16
 	// Visual editor expanders
 	p->addModel(modelMonsoonSandsVisualExpander);   // Mono visual DNA editor
 	p->addModel(modelStraitsEastSandsVisual);       // East visual DNA editor (tabbed)
-	p->addModel(modelStraitsWestSandsVisual);       // West visual DNA editor (tabbed)
+	// RETIRED: West visual editor merged into East (15-voice). Source kept, not registered.
+	// p->addModel(modelStraitsWestSandsVisual);
 	p->addModel(modelStraitsSandsMacroVisual);      // Macro visual DNA editor
->>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
 }

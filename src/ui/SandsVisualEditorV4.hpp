@@ -22,7 +22,7 @@ using namespace rack;  // widget::Widget::DrawArgs, event::*, math::*
  * Length/offset/rotation are just parameters for sequencer indexing.
  */
 
-struct SandsVisualEditorV4 : rack::Widget {
+struct SandsVisualEditorV4 : rack::TransparentWidget {
   static constexpr int STEP_COUNT = 16;  // 16 probability values per lane
   
   enum Mode {
@@ -48,10 +48,29 @@ struct SandsVisualEditorV4 : rack::Widget {
     NVGcolor variation  = nvgRGB(0xff, 0x6b, 0x6b);
     NVGcolor rotation   = nvgRGB(0x26, 0xa6, 0x9a);
     NVGcolor handle     = nvgRGB(0x88, 0x88, 0x88);
-    NVGcolor background = nvgRGB(0x14, 0x14, 0x16);
-    NVGcolor border     = nvgRGB(0x2a, 0x2a, 0x2a);
+    NVGcolor background = nvgRGB(0x10, 0x12, 0x16);  // matches Monsoon "slot" recess (#101216)
+    NVGcolor border     = nvgRGB(0x2a, 0x2f, 0x37);  // matches Monsoon "slotline" (#2a2f37)
     NVGcolor active     = nvgRGB(0xcc, 0x22, 0x22);
   };
+
+  // Theme: swap the recess/border (and handle) to match the host panel theme.
+  // Lane colours stay constant (they read identically on both themes); only the
+  // editor's background well + border + neutral handle change.
+  bool lightTheme = false;
+  void setTheme(bool light) {
+    lightTheme = light;
+    if (light) {
+      colors.background = nvgRGB(0xd8, 0xda, 0xde);  // Monsoon light "slot"
+      colors.border     = nvgRGB(0xc0, 0xc4, 0xca);  // Monsoon light "slotline"
+      colors.handle     = nvgRGB(0x70, 0x76, 0x80);
+      colors.rest       = nvgRGB(0x9a, 0x9a, 0x9a);  // lighten neutral rest for light bg
+    } else {
+      colors.background = nvgRGB(0x10, 0x12, 0x16);
+      colors.border     = nvgRGB(0x2a, 0x2f, 0x37);
+      colors.handle     = nvgRGB(0x88, 0x88, 0x88);
+      colors.rest       = nvgRGB(0x50, 0x50, 0x50);
+    }
+  }
   
   // Per-lane probability distribution
   struct ProbabilityLane {
@@ -98,6 +117,7 @@ struct SandsVisualEditorV4 : rack::Widget {
   Colors colors;
   
   std::deque<VoiceState> undoHistory;
+  bool showUndoDebug = false;   // hide internal undo-count readout by default
   std::deque<VoiceState> redoHistory;
   static constexpr int UNDO_HISTORY_SIZE = 50;
   
@@ -143,25 +163,46 @@ struct SandsVisualEditorV4 : rack::Widget {
   }
   
   struct Layout {
-    float laneHeight = 30.f;
-    float stepWidth = 30.f;
+    // Layout derives ALL geometry from the owner's box.size so draw() and
+    // hit-testing always use the SAME coordinate space as the actual widget
+    // bounds — no fixed-pixel assumptions, no scale/DPI mismatch.
+    rack::Vec boxSize = rack::Vec(550, 250);  // updated each frame/event from owner
+    int laneCount = 3;
+
+    float topPadding = 18.f;   // space above lanes (label/control row)
+    float botPadding = 8.f;    // space below lanes
+    float padding    = 6.f;    // left/right inset for the step grid
+
+    float laneAreaH() const { return std::max(1.f, boxSize.y - topPadding - botPadding); }
+    float laneHeightF() const { return laneAreaH() / std::max(1, laneCount); }
+    float gridW() const { return std::max(1.f, boxSize.x - 2.f * padding); }
+    float stepWidthF() const { return gridW() / (float)STEP_COUNT; }
+    float handleWidthF() const { return std::min(stepWidthF() * 0.8f, laneHeightF() * 0.5f); }
+
+    // Back-compat accessors used throughout the file:
+    float laneHeight  = 30.f;  // kept as fields for any external refs (unused internally now)
+    float stepWidth   = 30.f;
     float handleWidth = 12.f;
-    float padding = 40.f;
-    float topPadding = 35.f;
-    
-    float getLaneY(int lane) const { return topPadding + lane * laneHeight; }
-    float getStepX(int step) const { return padding + step * stepWidth; }
-    float getStepCenterX(int step) const { return getStepX(step) + stepWidth / 2.f; }
-    float getLaneCenterY(int lane) const { return getLaneY(lane) + laneHeight / 2.f; }
-    
+
+    float getLaneY(int lane) const { return topPadding + lane * laneHeightF(); }
+    float getStepX(int step) const { return padding + step * stepWidthF(); }
+    float getStepCenterX(int step) const { return getStepX(step) + stepWidthF() / 2.f; }
+    float getLaneCenterY(int lane) const { return getLaneY(lane) + laneHeightF() / 2.f; }
+
     rack::Rect getLaneRect(int lane) const {
-      return rack::Rect(0, getLaneY(lane), 550, laneHeight);
+      return rack::Rect(padding, getLaneY(lane), gridW(), laneHeightF());
     }
-    
     rack::Rect getStepRect(int lane, int step) const {
-      return rack::Rect(getStepX(step), getLaneY(lane), stepWidth, laneHeight);
+      return rack::Rect(getStepX(step), getLaneY(lane), stepWidthF(), laneHeightF());
     }
   } layout;
+
+  // Keep layout.boxSize / laneCount in sync with the actual widget before any
+  // draw or pointer-event geometry is computed.
+  void syncLayout() {
+    layout.boxSize  = box.size;
+    layout.laneCount = laneCount;
+  }
   
   SandsVisualEditorV4(Mode m = POLY) : mode(m) {
     setMode(m);
@@ -173,7 +214,11 @@ struct SandsVisualEditorV4 : rack::Widget {
   void setMode(Mode m) {
     mode = m;
     laneCount = (mode == MONO) ? 6 : 3;
-    box.size.y = 35.f + (laneCount * 30.f) + 40.f;
+    // NOTE: box.size is owned by the module that creates this editor (it sets
+    // box.size = mm2px(ED_W, ED_H)). The layout derives lane height from
+    // box.size.y / laneCount, so we must NOT force a hardcoded height here —
+    // doing so previously made poly lanes ~30px tall regardless of the module's
+    // intended (shorter, mono-like) editor height.
   }
   
   void resetState() {
@@ -290,6 +335,7 @@ struct SandsVisualEditorV4 : rack::Widget {
   }
   
   void draw(const widget::Widget::DrawArgs& args) override {
+    syncLayout();
     nvgBeginPath(args.vg);
     nvgRect(args.vg, 0, 0, box.size.x, box.size.y);
     nvgFillColor(args.vg, colors.background);
@@ -327,8 +373,11 @@ struct SandsVisualEditorV4 : rack::Widget {
     const char* modeStr = (mode == MONO) ? "MONO" : "POLY";
     nvgText(vg, x, y, modeStr, nullptr);
     
-    std::string undoText = "U:" + std::to_string(undoHistory.size());
-    nvgText(vg, x + 50, y, undoText.c_str(), nullptr);
+    // Undo-count readout is internal debug state; hidden by default.
+    if (showUndoDebug) {
+        std::string undoText = "U:" + std::to_string(undoHistory.size());
+        nvgText(vg, x + 50, y, undoText.c_str(), nullptr);
+    }
   }
   
   void drawLaneLabel(NVGcontext* vg, int lane) {
@@ -374,94 +423,163 @@ struct SandsVisualEditorV4 : rack::Widget {
   }
   
   // ── Handle hit testing ──────────────────────────────────────────────────────
-  // Returns START, END, ROTATION, or NONE.
-  // Checked BEFORE bar hit-test so handles have priority.
+  // Zones within a lane (top-to-bottom):
+  //   top ~45%  : START handle (at offset cell) / END handle (at end cell) circles
+  //   bottom ~30%: ROTATION strip — drag anywhere along it to set rotation
+  //   middle    : bar value (probability) drag
+  // Separating rotation into its own strip means it never collides with the
+  // start/end handles and is grabbable even when rotation == 0.
   DragState::Type hitTestHandle(int lane, float x, float y) const {
     if (lane < 0 || lane >= laneCount) return DragState::NONE;
     const ProbabilityLane& L = currentState.lanes[lane];
-    const float r = layout.handleWidth * 0.7f;  // slightly generous hit radius
-    const float cy = layout.getLaneCenterY(lane);
+    const float r = layout.handleWidthF() * 0.8f;  // generous hit radius
+    rack::Rect laneR = layout.getLaneRect(lane);
+    const float handleCy = laneR.pos.y + layout.handleWidthF() * 0.7f;  // handles sit near top
 
-    // Start handle — drawn at bar `offset`
+    // START handle — bracket "[" at bar `offset`, near lane top
     int startBar = L.offset % STEP_COUNT;
     float sx = layout.getStepCenterX(startBar);
-    if (std::hypot(x - sx, y - cy) <= r) return DragState::START;
+    if (std::hypot(x - sx, y - handleCy) <= r) return DragState::START;
 
-    // End handle — drawn at bar `(offset + length - 1) % 16`
+    // END handle — bracket "]" at bar `(offset + length - 1) % 16`, near lane top
     int endBar = (L.offset + L.length - 1) % STEP_COUNT;
     float ex = layout.getStepCenterX(endBar);
-    if (std::hypot(x - ex, y - cy) <= r) return DragState::END;
+    if (std::hypot(x - ex, y - handleCy) <= r) return DragState::END;
 
-    // Rotation indicator — full step rect at bar `rotation`
-    rack::Rect rr = layout.getStepRect(lane, L.rotation % STEP_COUNT);
-    if (x >= rr.pos.x && x <= rr.pos.x + rr.size.x &&
-        y >= rr.pos.y && y <= rr.pos.y + rr.size.y)
-      return DragState::ROTATION;
+    // ROTATION strip — bottom ~30% of the lane, but only WITHIN the start–end
+    // window (rotation is a phase inside the window, so it's only grabbable
+    // there). The window spans physical bars [offset .. offset+length-1] and may
+    // wrap around the 16-step grid.
+    float rotTop = laneR.pos.y + laneR.size.y * 0.70f;
+    if (y >= rotTop && y <= laneR.pos.y + laneR.size.y) {
+      int startBar = L.offset % STEP_COUNT;
+      int endBar   = (L.offset + L.length - 1) % STEP_COUNT;
+      float halfStep = layout.stepWidthF() * 0.5f;
+      float sxL = layout.getStepCenterX(startBar) - halfStep;
+      float exR = layout.getStepCenterX(endBar)   + halfStep;
+      bool inWindow;
+      if (endBar >= startBar) {
+        inWindow = (x >= sxL && x <= exR);                 // contiguous
+      } else {
+        // window wraps: [start .. right edge] OR [left edge .. end]
+        float leftEdge  = layout.getStepCenterX(0) - halfStep;
+        float rightEdge = layout.getStepCenterX(STEP_COUNT - 1) + halfStep;
+        inWindow = (x >= sxL && x <= rightEdge) || (x >= leftEdge && x <= exR);
+      }
+      if (inWindow) return DragState::ROTATION;
+    }
 
     return DragState::NONE;
   }
 
+  // Draw a vertical square bracket. dir=+1 → "[" (opens right, for START),
+  // dir=-1 → "]" (opens left, for END). Centred at (cx, cy), spanning height h.
+  void drawBracket(NVGcontext* vg, float cx, float cy, float h, float tongue,
+                   int dir, NVGcolor col, float w) {
+    float top = cy - h * 0.5f, bot = cy + h * 0.5f;
+    float spineX = cx - dir * (tongue * 0.5f);   // vertical spine offset to one side
+    float tipX   = cx + dir * (tongue * 0.5f);   // tongues reach to the other side
+    nvgBeginPath(vg);
+    nvgMoveTo(vg, tipX, top);
+    nvgLineTo(vg, spineX, top);     // top tongue
+    nvgLineTo(vg, spineX, bot);     // spine
+    nvgLineTo(vg, tipX, bot);       // bottom tongue
+    nvgStrokeColor(vg, col);
+    nvgStrokeWidth(vg, w);
+    nvgLineCap(vg, NVG_ROUND);
+    nvgLineJoin(vg, NVG_ROUND);
+    nvgStroke(vg);
+  }
+
   void drawHandles(NVGcontext* vg, int lane) {
     const ProbabilityLane& L = currentState.lanes[lane];
-    const float cy = layout.getLaneCenterY(lane);
-    const float r  = layout.handleWidth / 2.f;
+    rack::Rect laneR = layout.getLaneRect(lane);
+    const float cy = laneR.pos.y + layout.handleWidthF() * 0.7f;  // near lane top
+    const float r  = layout.handleWidthF() / 2.f;
+    const float brH = r * 2.2f;           // bracket height
+    const float tongue = r * 0.9f;        // bracket tongue length
 
     int startBar = L.offset % STEP_COUNT;
     int endBar   = (L.offset + L.length - 1) % STEP_COUNT;
-
-    // Start handle: white circle
-    nvgBeginPath(vg);
-    nvgCircle(vg, layout.getStepCenterX(startBar), cy, r);
-    nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.85f));
-    nvgFill(vg);
-    nvgBeginPath(vg);
-    nvgCircle(vg, layout.getStepCenterX(startBar), cy, r);
-    nvgStrokeColor(vg, nvgRGBAf(0.f, 0.f, 0.f, 0.5f));
-    nvgStrokeWidth(vg, 1.f);
-    nvgStroke(vg);
-
-    // End handle: outlined circle (hollow centre so it's distinct from start)
-    nvgBeginPath(vg);
-    nvgCircle(vg, layout.getStepCenterX(endBar), cy, r);
-    nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.35f));
-    nvgFill(vg);
-    nvgBeginPath(vg);
-    nvgCircle(vg, layout.getStepCenterX(endBar), cy, r);
-    nvgStrokeColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.85f));
-    nvgStrokeWidth(vg, 1.5f);
-    nvgStroke(vg);
-
-    // Connector line between start and end (wraps if needed)
     float sx = layout.getStepCenterX(startBar);
     float ex = layout.getStepCenterX(endBar);
+
+    // Connector line first (so brackets sit on top).
     nvgBeginPath(vg);
     if (endBar >= startBar) {
       nvgMoveTo(vg, sx, cy);
       nvgLineTo(vg, ex, cy);
     } else {
-      // Wraps — draw to right edge and from left edge
-      float rightEdge = layout.getStepCenterX(STEP_COUNT - 1) + layout.stepWidth / 2.f;
-      float leftEdge  = layout.getStepCenterX(0) - layout.stepWidth / 2.f;
+      float rightEdge = layout.getStepCenterX(STEP_COUNT - 1) + layout.stepWidthF() / 2.f;
+      float leftEdge  = layout.getStepCenterX(0) - layout.stepWidthF() / 2.f;
       nvgMoveTo(vg, sx, cy); nvgLineTo(vg, rightEdge, cy);
       nvgMoveTo(vg, leftEdge, cy); nvgLineTo(vg, ex, cy);
     }
     nvgStrokeColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.3f));
     nvgStrokeWidth(vg, 1.f);
     nvgStroke(vg);
+
+    // START: left square bracket "[" (bright). END: right square bracket "]".
+    drawBracket(vg, sx, cy, brH, tongue, +1, nvgRGBAf(1.f, 1.f, 1.f, 0.9f), 2.f);
+    drawBracket(vg, ex, cy, brH, tongue, -1, nvgRGBAf(1.f, 1.f, 1.f, 0.7f), 2.f);
   }
   
   void drawRotationIndicator(NVGcontext* vg, int lane) {
     const ProbabilityLane& L = currentState.lanes[lane];
-    if (L.rotation <= 0) return;  // rotation=0 means no shift, nothing to indicate
+    rack::Rect laneR = layout.getLaneRect(lane);
+    float stripTop = laneR.pos.y + laneR.size.y * 0.70f;
+    float stripH   = laneR.size.y * 0.30f;
 
-    int rotBar = L.rotation % STEP_COUNT;
-    rack::Rect rect = layout.getStepRect(lane, rotBar);
+    // Faint track ONLY across the start–end window (matches the grabbable
+    // region in hitTestHandle). Drawn per in-window cell so it wraps correctly.
+    int startBar = L.offset % STEP_COUNT;
+    int lenC = std::max(1, std::min(L.length, STEP_COUNT));
+    NVGcolor track = colors.rotation; track.a = 0.10f;
+    for (int k = 0; k < lenC; ++k) {
+      int bar = (startBar + k) % STEP_COUNT;
+      rack::Rect c = layout.getStepRect(lane, bar);
+      nvgBeginPath(vg);
+      nvgRect(vg, c.pos.x, stripTop, c.size.x, stripH);
+      nvgFillColor(vg, track);
+      nvgFill(vg);
+    }
 
-    // Teal left-edge stripe to mark rotation point
+    // Rotation marker sits WITHIN the start-end window: physical bar =
+    // (offset + rotation) % 16. Rotation is a phase offset inside the window,
+    // so it always lands between the start "[" and end "]".
+    int rotBar = (L.offset + (L.rotation % std::max(1, L.length))) % STEP_COUNT;
+    rack::Rect cell = layout.getStepRect(lane, rotBar);
+    float cx = cell.pos.x + cell.size.x * 0.5f;
+    float cyc = stripTop + stripH * 0.5f;
+    float h = stripH * 0.7f;
+    float halfW = (cell.size.x - 2.f) * 0.42f;
+
+    // Distinct from the square start/end brackets: a "phase" marker drawn as a
+    // pair of inward-pointing chevrons ›‹ around the rotation block, plus a thin
+    // baseline highlight of the block. Brighter when rotation > 0.
+    NVGcolor mk = colors.rotation; mk.a = (L.rotation > 0) ? 0.9f : 0.4f;
+
+    // block baseline tint
     nvgBeginPath(vg);
-    nvgRect(vg, rect.pos.x, rect.pos.y, 2.f, rect.size.y);
-    nvgFillColor(vg, colors.rotation);
+    nvgRect(vg, cell.pos.x + 1.f, stripTop, cell.size.x - 2.f, stripH);
+    NVGcolor blockTint = colors.rotation; blockTint.a = (L.rotation > 0) ? 0.30f : 0.15f;
+    nvgFillColor(vg, blockTint);
     nvgFill(vg);
+
+    // left chevron "›" pointing right toward centre
+    nvgBeginPath(vg);
+    nvgMoveTo(vg, cx - halfW - 2.f, cyc - h * 0.5f);
+    nvgLineTo(vg, cx - halfW + 2.f, cyc);
+    nvgLineTo(vg, cx - halfW - 2.f, cyc + h * 0.5f);
+    // right chevron "‹" pointing left toward centre
+    nvgMoveTo(vg, cx + halfW + 2.f, cyc - h * 0.5f);
+    nvgLineTo(vg, cx + halfW - 2.f, cyc);
+    nvgLineTo(vg, cx + halfW + 2.f, cyc + h * 0.5f);
+    nvgStrokeColor(vg, mk);
+    nvgStrokeWidth(vg, 1.8f);
+    nvgLineCap(vg, NVG_ROUND);
+    nvgLineJoin(vg, NVG_ROUND);
+    nvgStroke(vg);
   }
   
   // Draw a per-lane playhead highlight.
@@ -474,16 +592,27 @@ struct SandsVisualEditorV4 : rack::Widget {
 
       rack::Rect rect = layout.getStepRect(l, step);
 
+      // Highlight the WHOLE active-step block: lighten the entire cell column
+      // so the current step (where the probability roll happens) is obvious.
+      nvgBeginPath(vg);
+      nvgRect(vg, rect.pos.x, rect.pos.y, rect.size.x, rect.size.y);
+      nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.18f * activeStepAlpha));
+      nvgFill(vg);
+
+      // Re-draw this step's probability bar brighter on top of the highlight
+      float prob = currentState.lanes[l].probabilities[step];
+      float barH = prob * rect.size.y;
+      NVGcolor c = getLaneColor(l);
+      c.a = 0.55f + 0.45f * activeStepAlpha;   // boosted vs the static 1.0 bar
+      nvgBeginPath(vg);
+      nvgRect(vg, rect.pos.x + 1, rect.pos.y + (rect.size.y - barH), rect.size.x - 2, barH);
+      nvgFillColor(vg, c);
+      nvgFill(vg);
+
       // Bright top-edge tick
       nvgBeginPath(vg);
       nvgRect(vg, rect.pos.x + 1, rect.pos.y, rect.size.x - 2, 2.f);
-      nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.85f * activeStepAlpha));
-      nvgFill(vg);
-
-      // Subtle full-column tint
-      nvgBeginPath(vg);
-      nvgRect(vg, rect.pos.x, rect.pos.y, rect.size.x, rect.size.y);
-      nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.12f * activeStepAlpha));
+      nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.9f * activeStepAlpha));
       nvgFill(vg);
     }
   }
@@ -527,6 +656,7 @@ struct SandsVisualEditorV4 : rack::Widget {
   }
   
   void onButton(const rack::event::Button& e) override {
+    syncLayout();
     if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT) {
       int lane = getLaneAtY(e.pos.y);
       int step = getStepAtX(e.pos.x);
@@ -565,6 +695,7 @@ struct SandsVisualEditorV4 : rack::Widget {
   }
   
   void onDragMove(const rack::event::DragMove& e) override {
+    syncLayout();
     if (!dragState.isDragging) return;
     // Rack 2: DragMove gives delta, not absolute pos. Accumulate.
     dragState.dragPos = dragState.dragPos.plus(e.mouseDelta);
@@ -585,19 +716,24 @@ struct SandsVisualEditorV4 : rack::Widget {
         break;
 
       case DragState::END:
-        // Drag changes length. Offset stays fixed.
-        // length = distance from offset to end step (wrapping OK, min 1, max 16)
+        // Drag changes length: end lands on the dragged step.
+        // length = forward distance from offset to step, inclusive.
+        // Dragging left of start shrinks toward 1 (no surprise full-wrap to 16).
         {
-          int newLen = (step - L.offset + STEP_COUNT) % STEP_COUNT;
-          if (newLen == 0) newLen = STEP_COUNT;  // full wrap = 16 steps
+          int fwd = (step - L.offset + STEP_COUNT) % STEP_COUNT;  // 0..15
+          int newLen = fwd + 1;                                   // inclusive → 1..16
           L.length = rack::math::clamp(newLen, 1, STEP_COUNT);
         }
         break;
 
-      case DragState::ROTATION:
-        // Drag sets rotation directly (0–length-1, clamped)
-        L.rotation = rack::math::clamp(step, 0, STEP_COUNT - 1);
+      case DragState::ROTATION: {
+        // Rotation strip drag: the marker lives WITHIN the window at physical
+        // bar (offset + rotation) % 16. Convert the physical step under the
+        // cursor back to a window-relative rotation in [0, length-1].
+        int rel = ((step - L.offset) % STEP_COUNT + STEP_COUNT) % STEP_COUNT;
+        L.rotation = rack::math::clamp(rel, 0, std::max(0, L.length - 1));
         break;
+      }
 
       default: break;
     }
@@ -626,7 +762,7 @@ struct SandsVisualEditorV4 : rack::Widget {
   
   int getStepAtX(float x) const {
     if (x < layout.padding) return -1;
-    int step = (int)((x - layout.padding) / layout.stepWidth);
+    int step = (int)((x - layout.padding) / layout.stepWidthF());
     return (step >= 0 && step < STEP_COUNT) ? step : -1;
   }
   
@@ -646,8 +782,8 @@ struct SandsVisualEditorV4 : rack::Widget {
       if (lanePlayStep[l] >= 0) { anyActive = true; break; }
     }
     activeStepAlpha = anyActive
-      ? 0.4f + 0.35f * sinf(rack::system::getTime() * 5.f)
-      : 0.f;
+      ? 0.6f + 0.3f * sinf(rack::system::getTime() * 5.f)
+      : 0.5f;   // baseline so the current-step block stays visible when stopped
   }
 };
 

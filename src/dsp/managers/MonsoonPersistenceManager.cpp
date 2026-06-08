@@ -1,5 +1,7 @@
 #include "MonsoonPersistenceManager.hpp"
 #include "../../Monsoon.hpp"
+#include <cstdio>
+#include <cstdlib>
 
 using namespace rack;
 
@@ -13,8 +15,14 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_object_set_new(root, "cv2Mode", json_integer(m->cv2Mode));
     json_object_set_new(root, "gate1Assign", json_integer(m->gate1Assign));
     json_object_set_new(root, "gate2Assign", json_integer(m->gate2Assign));
+    json_object_set_new(root, "cv3Target", json_integer(m->cv3Target));
+    json_object_set_new(root, "gate3Target", json_integer(m->gate3Target));
+    json_object_set_new(root, "rhythmLiveTrial", json_boolean(m->rhythmLiveTrial));
+    json_object_set_new(root, "melodyLiveTrial", json_boolean(m->melodyLiveTrial));
     json_object_set_new(root, "invertMuteLogic", json_boolean(m->invertMuteLogic));
     json_object_set_new(root, "restartOnUnmute", json_boolean(m->restartOnUnmute));
+    json_object_set_new(root, "reseedOnRoll", json_boolean(m->reseedOnRoll));
+    json_object_set_new(root, "reseedOnRestart", json_boolean(m->reseedOnRestart));
     json_object_set_new(root, "noteVariationMask", json_integer(m->noteVariationMask));
     json_object_set_new(root, "ppqnSetting", json_integer(m->ppqnSetting));
     json_object_set_new(root, "modeSelect", json_integer(m->modeSelect));
@@ -83,6 +91,45 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_object_set_new(root, "polyMelodyRandom", pmarr);
     json_object_set_new(root, "polyOctaveRandom", poarr);
 
+    // ── Playable slew: locked (A) + candidate (B) endpoints + latched slew ──
+    {
+        auto saveArr = [&](const char* key, const float* a){
+            json_t* j=json_array();
+            for (int i=0;i<16;i++) json_array_append_new(j, json_real(a[i]));
+            json_object_set_new(root, key, j);
+        };
+        auto savePoly = [&](const char* key, const float a[15][16]){
+            json_t* j=json_array();
+            for (int v=0;v<15;v++) for (int i=0;i<16;i++) json_array_append_new(j, json_real(a[v][i]));
+            json_object_set_new(root, key, j);
+        };
+        saveArr("slA_rhythm", m->engine.pe.rhythmLockedA);   saveArr("slB_rhythm", m->engine.pe.rhythmCandB);
+        saveArr("slA_variation", m->engine.pe.variationLockedA); saveArr("slB_variation", m->engine.pe.variationCandB);
+        saveArr("slA_legato", m->engine.pe.legatoLockedA);   saveArr("slB_legato", m->engine.pe.legatoCandB);
+        saveArr("slA_accent", m->engine.pe.accentLockedA);   saveArr("slB_accent", m->engine.pe.accentCandB);
+        saveArr("slA_melody", m->engine.pe.melodyLockedA);   saveArr("slB_melody", m->engine.pe.melodyCandB);
+        saveArr("slA_octave", m->engine.pe.octaveLockedA);   saveArr("slB_octave", m->engine.pe.octaveCandB);
+        savePoly("slA_polyRhythm", m->engine.pe.polyRhythmLockedA); savePoly("slB_polyRhythm", m->engine.pe.polyRhythmCandB);
+        savePoly("slA_polyMelody", m->engine.pe.polyMelodyLockedA); savePoly("slB_polyMelody", m->engine.pe.polyMelodyCandB);
+        savePoly("slA_polyOctave", m->engine.pe.polyOctaveLockedA); savePoly("slB_polyOctave", m->engine.pe.polyOctaveCandB);
+        json_object_set_new(root, "slLatchedR", json_real(m->engine.pe.rhythmSlewLatched));
+        json_object_set_new(root, "slLatchedM", json_real(m->engine.pe.melodySlewLatched));
+        json_object_set_new(root, "slFirstR", json_boolean(m->engine.pe.rhythmFirstDraw));
+        json_object_set_new(root, "slFirstM", json_boolean(m->engine.pe.melodyFirstDraw));
+        // RNG stream state (Xoroshiro128+ has two uint64 words). Saved as strings
+        // to preserve full 64-bit precision (JSON reals can't). Restoring this
+        // makes reload truly lossless: the NEXT roll continues the same stream it
+        // would have, not a fresh one.
+        auto saveU64 = [&](const char* key, uint64_t v){
+            char buf[32]; snprintf(buf, sizeof(buf), "%llu", (unsigned long long)v);
+            json_object_set_new(root, key, json_string(buf));
+        };
+        saveU64("rngR0", m->engine.pe.rhythmRng.state[0]);
+        saveU64("rngR1", m->engine.pe.rhythmRng.state[1]);
+        saveU64("rngM0", m->engine.pe.melodyRng.state[0]);
+        saveU64("rngM1", m->engine.pe.melodyRng.state[1]);
+    }
+
     // ── Rhythm and Pitch Arrays ──
     json_t* rarr = json_array();
     json_t* marr = json_array();
@@ -104,8 +151,14 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     if (auto j = json_object_get(root, "cv2Mode")) m->cv2Mode = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "gate1Assign")) m->gate1Assign = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "gate2Assign")) m->gate2Assign = (int)json_integer_value(j);
+    if (auto j = json_object_get(root, "cv3Target")) m->cv3Target = (int)json_integer_value(j);
+    if (auto j = json_object_get(root, "gate3Target")) m->gate3Target = (int)json_integer_value(j);
+    if (auto j = json_object_get(root, "rhythmLiveTrial")) m->rhythmLiveTrial = json_boolean_value(j);
+    if (auto j = json_object_get(root, "melodyLiveTrial")) m->melodyLiveTrial = json_boolean_value(j);
     if (auto j = json_object_get(root, "invertMuteLogic")) m->invertMuteLogic = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "restartOnUnmute")) m->restartOnUnmute = (bool)json_boolean_value(j);
+    if (auto j = json_object_get(root, "reseedOnRoll")) m->reseedOnRoll = (bool)json_boolean_value(j);
+    if (auto j = json_object_get(root, "reseedOnRestart")) m->reseedOnRestart = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "noteVariationMask")) m->noteVariationMask = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "ppqnSetting")) m->ppqnSetting = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "modeSelect")) m->modeSelect = (int)json_integer_value(j);
@@ -175,6 +228,70 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     loadPolyArr("polyRhythmRandom", m->engine.pe.polyRhythmRandom, m->engine.pe.polyRhythmSource);
     loadPolyArr("polyMelodyRandom", m->engine.pe.polyMelodyRandom, m->engine.pe.polyMelodySource);
     loadPolyArr("polyOctaveRandom", m->engine.pe.polyOctaveRandom, m->engine.pe.polyOctaveSource);
+
+    // ── Playable slew: restore A/B endpoints + latched slew, recompute effective ─
+    {
+        bool hasSlew = json_object_get(root, "slA_rhythm") != nullptr;
+        auto loadA = [&](const char* name, float* t){
+            if (auto j=json_object_get(root,name)) if (json_is_array(j))
+                for (size_t i=0;i<16 && i<json_array_size(j);++i) t[i]=(float)json_real_value(json_array_get(j,i));
+        };
+        auto loadP = [&](const char* name, float t[15][16]){
+            if (auto j=json_object_get(root,name)) if (json_is_array(j))
+                for (int v=0;v<15;v++) for (int i=0;i<16;i++){ json_t* val=json_array_get(j,v*16+i); if(val) t[v][i]=(float)json_real_value(val); }
+        };
+        if (hasSlew) {
+            loadA("slA_rhythm",m->engine.pe.rhythmLockedA);     loadA("slB_rhythm",m->engine.pe.rhythmCandB);
+            loadA("slA_variation",m->engine.pe.variationLockedA);loadA("slB_variation",m->engine.pe.variationCandB);
+            loadA("slA_legato",m->engine.pe.legatoLockedA);     loadA("slB_legato",m->engine.pe.legatoCandB);
+            loadA("slA_accent",m->engine.pe.accentLockedA);     loadA("slB_accent",m->engine.pe.accentCandB);
+            loadA("slA_melody",m->engine.pe.melodyLockedA);     loadA("slB_melody",m->engine.pe.melodyCandB);
+            loadA("slA_octave",m->engine.pe.octaveLockedA);     loadA("slB_octave",m->engine.pe.octaveCandB);
+            loadP("slA_polyRhythm",m->engine.pe.polyRhythmLockedA); loadP("slB_polyRhythm",m->engine.pe.polyRhythmCandB);
+            loadP("slA_polyMelody",m->engine.pe.polyMelodyLockedA); loadP("slB_polyMelody",m->engine.pe.polyMelodyCandB);
+            loadP("slA_polyOctave",m->engine.pe.polyOctaveLockedA); loadP("slB_polyOctave",m->engine.pe.polyOctaveCandB);
+            if (auto j=json_object_get(root,"slLatchedR")) m->engine.pe.rhythmSlewLatched=(float)json_real_value(j);
+            if (auto j=json_object_get(root,"slLatchedM")) m->engine.pe.melodySlewLatched=(float)json_real_value(j);
+            m->engine.pe.rhythmFirstDraw = false; m->engine.pe.melodyFirstDraw = false;
+            if (auto j=json_object_get(root,"slFirstR")) m->engine.pe.rhythmFirstDraw=(bool)json_boolean_value(j);
+            if (auto j=json_object_get(root,"slFirstM")) m->engine.pe.melodyFirstDraw=(bool)json_boolean_value(j);
+            m->engine.pe.rhythmSlewApplied = -1.f; m->engine.pe.melodySlewApplied = -1.f;
+            m->engine.pe.recomputeEffectiveRhythm();
+            m->engine.pe.recomputeEffectiveMelody();
+            // Restore RNG stream state (full 64-bit, saved as strings). Only if
+            // present and non-degenerate; an all-zero state would freeze the RNG.
+            auto loadU64 = [&](const char* key, uint64_t& out)->bool{
+                if (auto j = json_object_get(root, key)) {
+                    if (json_is_string(j)) { out = strtoull(json_string_value(j), nullptr, 10); return true; }
+                }
+                return false;
+            };
+            uint64_t r0=0,r1=0,m0=0,m1=0;
+            bool haveR = loadU64("rngR0", r0) & loadU64("rngR1", r1);
+            bool haveM = loadU64("rngM0", m0) & loadU64("rngM1", m1);
+            if (haveR && !(r0==0 && r1==0)) { m->engine.pe.rhythmRng.state[0]=r0; m->engine.pe.rhythmRng.state[1]=r1; }
+            if (haveM && !(m0==0 && m1==0)) { m->engine.pe.melodyRng.state[0]=m0; m->engine.pe.melodyRng.state[1]=m1; }
+        } else {
+            // Old patch: no A/B saved. Seed both endpoints from the loaded
+            // effective arrays so the groove is preserved and slew is a no-op
+            // until the next reroll. Latched slew defaults to 1 (full).
+            auto seed=[&](float* a,float* b,const float* eff){ for(int i=0;i<16;i++){a[i]=eff[i];b[i]=eff[i];} };
+            seed(m->engine.pe.rhythmLockedA,m->engine.pe.rhythmCandB,m->engine.pe.rhythmRandom);
+            seed(m->engine.pe.variationLockedA,m->engine.pe.variationCandB,m->engine.pe.variationRandom);
+            seed(m->engine.pe.legatoLockedA,m->engine.pe.legatoCandB,m->engine.pe.legatoRandom);
+            seed(m->engine.pe.accentLockedA,m->engine.pe.accentCandB,m->engine.pe.accentRandom);
+            seed(m->engine.pe.melodyLockedA,m->engine.pe.melodyCandB,m->engine.pe.melodyRandom);
+            seed(m->engine.pe.octaveLockedA,m->engine.pe.octaveCandB,m->engine.pe.octaveRandom);
+            for(int v=0;v<15;v++){
+                for(int i=0;i<16;i++){
+                    m->engine.pe.polyRhythmLockedA[v][i]=m->engine.pe.polyRhythmCandB[v][i]=m->engine.pe.polyRhythmRandom[v][i];
+                    m->engine.pe.polyMelodyLockedA[v][i]=m->engine.pe.polyMelodyCandB[v][i]=m->engine.pe.polyMelodyRandom[v][i];
+                    m->engine.pe.polyOctaveLockedA[v][i]=m->engine.pe.polyOctaveCandB[v][i]=m->engine.pe.polyOctaveRandom[v][i];
+                }
+            }
+            m->engine.pe.rhythmFirstDraw = false; m->engine.pe.melodyFirstDraw = false;
+        }
+    }
 
     // ── Rhythm and Pitch Arrays ──
     if (auto j = json_object_get(root, "rhythmPattern")) {

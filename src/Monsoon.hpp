@@ -56,6 +56,15 @@ static inline T clampv(T v, T lo, T hi) {
 
 #include "MonsoonWidget.hpp"
 
+/**
+ * InputState captures all audio-rate input signals in a single struct.
+ */
+struct InputState {
+    float clk, gate1, gate2, gate3;
+    float run, reset, cv1, cv2;
+    bool  gate1Rise, gate2Rise;
+};
+
 // ── Parameter IDs ─────────────────────────────────────────────────────────────
 // Stable integer values expanders can use to address params[] / inputs[] etc.
 // Keep in sync with the enums inside struct Monsoon.
@@ -380,6 +389,24 @@ namespace MonsoonIds {
         GLOBAL_OCTAVE_INTERP,
 >>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
 
+        // Playable dice slew (0..1): live morph between locked (A) and candidate
+        // (B) draws, latched at the bar boundary. Appended at END (IDs stable).
+        DICE_SLEW_R_PARAM,
+        DICE_SLEW_M_PARAM,
+
+        // Live A<->B blend ("MIX", Model 1): continuously interpolates committed
+        // pattern A with candidate B, like spread but global. SLEW (above) is
+        // consumed at roll (Model 2, limits the step); MIX is the live morph.
+        // Rhythm/melody independent so one can morph while the other holds.
+        RHYTHM_MIX_PARAM,
+        MELODY_MIX_PARAM,
+
+        // Trial/audition dice (rhythm, melody): roll a fresh candidate B with A
+        // ANCHORED (no promote), so the user auditions candidates against a fixed
+        // A. The regular dice (DICE_R/M_PARAM) commits B→A (main mode).
+        DICE_TRIAL_R_PARAM,
+        DICE_TRIAL_M_PARAM,
+
         NUM_PARAMS
     };
 
@@ -387,15 +414,17 @@ namespace MonsoonIds {
         CLK_INPUT = 0,
         GATE1_INPUT,
         GATE2_INPUT,
+        GATE3_MOD_INPUT,      // assignable gate mod (trial die / reseed toggles)
         CV1_INPUT,
         CV2_INPUT,
+        CV3_MOD_INPUT,        // assignable CV mod (rhythm/melody slew or mix)
         ACCENT_CV_INPUT,      // New: accent probability CV modulation
 
         RUN_GATE_INPUT,
         RESET_TRIGGER_INPUT,
         SEED_INPUT,
         LENGTH_INPUT,
-        OFFSET_INPUT,        // note: matches the typo in MeloDicer.cpp
+        OFFSET_INPUT,
 
         SEMI_CV_INPUT_0,  SEMI_CV_INPUT_1,  SEMI_CV_INPUT_2,  SEMI_CV_INPUT_3,
         SEMI_CV_INPUT_4,  SEMI_CV_INPUT_5,  SEMI_CV_INPUT_6,  SEMI_CV_INPUT_7,
@@ -494,6 +523,55 @@ namespace MonsoonIds {
         EXPANDER_OCT_LO_ATTENUVERTER = 12,
         EXPANDER_OCT_HI_ATTENUVERTER = 13,
         NUM_EXPANDER_PARAMS
+    };
+
+    // ── Causeway expander (dice/draw-generation modulation) ──────────────────
+    // Its own param/input enums (distinct from Interchange's EXPANDER_*). 4 CV
+    // attenuverters (slew R/M, mix R/M) + 10 dedicated die-action gate inputs.
+    enum CausewayParamIds {
+        CAUSEWAY_SLEW_R_ATT = 0,
+        CAUSEWAY_SLEW_M_ATT,
+        CAUSEWAY_MIX_R_ATT,
+        CAUSEWAY_MIX_M_ATT,
+        NUM_CAUSEWAY_PARAMS
+    };
+    enum CausewayInputIds {
+        CAUSEWAY_SLEW_R_CV = 0,
+        CAUSEWAY_SLEW_M_CV,
+        CAUSEWAY_MIX_R_CV,
+        CAUSEWAY_MIX_M_CV,
+        // 10 die-action gates (order = display order on the panel)
+        CAUSEWAY_GATE_TRIAL_R,
+        CAUSEWAY_GATE_TRIAL_M,
+        CAUSEWAY_GATE_REDICE_R,
+        CAUSEWAY_GATE_REDICE_M,
+        CAUSEWAY_GATE_LIVESRC_R,
+        CAUSEWAY_GATE_LIVESRC_M,
+        CAUSEWAY_GATE_LIVESTATIC_R,
+        CAUSEWAY_GATE_LIVESTATIC_M,
+        CAUSEWAY_GATE_RESEED_ROLL,
+        CAUSEWAY_GATE_RESEED_RESTART,
+        NUM_CAUSEWAY_INPUTS
+    };
+
+    // ── Surge expander (the big-5 pattern-knob modulation) ───────────────────
+    // 5 CV + attenuverters summing into NOTE VALUE / VARIATION / LEGATO / REST /
+    // ACCENT. Own port enums (0-based).
+    enum SurgeParamIds {
+        SURGE_NOTEVAL_ATT = 0,
+        SURGE_VARIATION_ATT,
+        SURGE_LEGATO_ATT,
+        SURGE_REST_ATT,
+        SURGE_ACCENT_ATT,
+        NUM_SURGE_PARAMS
+    };
+    enum SurgeInputIds {
+        SURGE_NOTEVAL_CV = 0,
+        SURGE_VARIATION_CV,
+        SURGE_LEGATO_CV,
+        SURGE_REST_CV,
+        SURGE_ACCENT_CV,
+        NUM_SURGE_INPUTS
     };
 
     enum OutputIds {
@@ -607,10 +685,48 @@ struct Monsoon : Module {
 
     int cv1Mode = 0;
     int cv2Mode = 0;
+
+    // Assignable mod routing for the main-panel CV3 / GATE3 jacks (persisted).
+    // CV3 adds to the selected continuous target; GATE3 rising edge fires the
+    // selected action. Same target sets are offered (in full, attenuverted) on
+    // the Causeway expander, and the contributions SUM.
+    enum Cv3Target  { CV3_RHYTHM_SLEW=0, CV3_MELODY_SLEW, CV3_RHYTHM_MIX, CV3_MELODY_MIX, CV3_NUM_TARGETS };
+    enum Gate3Target{ G3_TRIAL_RHYTHM=0, G3_TRIAL_MELODY, G3_TOGGLE_RESEED_ROLL, G3_TOGGLE_RESEED_RESTART,
+                      G3_TOGGLE_RHYTHM_LIVESRC, G3_TOGGLE_MELODY_LIVESRC, G3_NUM_TARGETS };
+    int  cv3Target   = CV3_RHYTHM_SLEW;
+    int  gate3Target = G3_TRIAL_RHYTHM;
+    dsp::SchmittTrigger gate3Trig;   // rising-edge detect for GATE3 actions
+    dsp::SchmittTrigger causewayGateTrig[10];  // Causeway's 10 die-action gates
+    // Which dice the LIVE mode drives, per lane: false=main (promote, A walks),
+    // true=trial (anchored A, endless variations on a theme). Persisted.
+    bool rhythmLiveTrial = false;
+    bool melodyLiveTrial = false;
+
+    // ── Shared die-action vocabulary ─────────────────────────────────────────
+    // One definition of "what each die-action does", fired by G3 (menu-routed)
+    // AND by Causeway's dedicated gates (and any future source). DRY: add an
+    // action here and every gate source can use it.
+    enum DieAction {
+        DA_TRIAL_R = 0, DA_TRIAL_M,
+        DA_REDICE_R, DA_REDICE_M,
+        DA_LIVESRC_R, DA_LIVESRC_M,          // toggle live source main<->trial
+        DA_LIVESTATIC_R, DA_LIVESTATIC_M,    // toggle live<->static (rhythmMode)
+        DA_RESEED_ROLL, DA_RESEED_RESTART,
+        DA_NUM
+    };
+    void fireDieAction(int a);   // defined in Monsoon.cpp
     int gate1Assign = 0;
     int gate2Assign = 1;
     bool invertMuteLogic = false;
     bool restartOnUnmute = false;
+    // Reseed policy (entropy housekeeping; context-menu, not panel — reseeding is
+    // not a performance gesture). reseedOnRoll: a MAIN dice roll also reseeds
+    // (fresh entropy / SEED CV) while keeping the A/B morph. TRIAL rolls never
+    // reseed (auditioning stays controlled). reseedOnRestart: a restart reseeds
+    // for a fresh pattern instead of replaying the held one.
+    bool reseedOnRoll    = false;
+    bool reseedOnRestart = false;
+
     int lastModeSelect = -1;
 <<<<<<< HEAD
     bool lightTheme = false;
@@ -706,8 +822,10 @@ struct Monsoon : Module {
     bool  cachedClkConnected = false;
     bool  cachedCv1Connected = false;
     bool  cachedCv2Connected = false;
+    bool  cachedCv3Connected = false;
     bool  cachedGate1Connected = false;
     bool  cachedGate2Connected = false;
+    bool  cachedGate3Connected = false;
     bool  cachedRunConnected = false;
     bool  cachedResetConnected = false;
     float cachedRunBtn = 0.f;
@@ -759,6 +877,11 @@ struct Monsoon : Module {
     float quantizeToScale(float vIn);
     void handleRestart(bool manual = true, bool resetImmediate = false);
     float sampleSeedFromSource();
+    // Dice gesture (shared by the panel buttons and gate-assigned re-dice): ROLL
+    // (advance RNG, A/B morph) unless the SEED input is patched, in which case
+    // sample-and-hold a reproducible seed. Keeps all dice triggers consistent.
+    void diceRhythm();
+    void diceMelody();
     void onPhraseBoundary_();
     void onReset() override;
     void onSampleRateChange(const SampleRateChangeEvent& e) override;
@@ -781,6 +904,8 @@ struct Monsoon : Module {
 
 extern Model* modelMonsoon;
 extern Model* modelMonsoonInterchangeExpander;
+extern Model* modelMonsoonCausewayExpander;
+extern Model* modelMonsoonSurgeExpander;
 extern Model* modelMonsoonSandsExpander;
 extern Model* modelMonsoonStraitsEastExpander; // Declare new expander model
 extern Model* modelMonsoonStraitWestExpander;  // NEW (Phase 4): voices 9-16

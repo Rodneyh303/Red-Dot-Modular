@@ -1,4 +1,5 @@
 #include "MonsoonCVRouter.hpp"
+#include "MonsoonParameterManager.hpp" // Include for ParameterManager
 #include "../../Monsoon.hpp"
 
 using namespace rack;
@@ -13,7 +14,7 @@ float CVRouter::quantizeCV1_(float v) {
 // ──── CV1 Input Processing ──────────────────────────────────────────────────
 
 float CVRouter::processCV1Input(int cv1Mode,
-                                 float cv1InputVoltage,
+                                 float cv1InputVoltage, ParameterManager& paramManager,
                                  float baseOutputVoltage,
                                  bool cv1Connected) {
     if (!cv1Connected) {
@@ -49,6 +50,13 @@ float CVRouter::processCV1Input(int cv1Mode,
             return baseOutputVoltage;
         }
         
+        case 4: // BPM Mod
+        {
+            // Scale CV to affect BPM meaningfully (e.g., 1V = 10 BPM)
+            paramManager.cv1BpmOffset = clampv<float>(v * 10.f, -100.f, 100.f); // Max +/-100 BPM offset
+            return baseOutputVoltage; // No direct output voltage change
+        }
+
         default:
             return baseOutputVoltage;
     }

@@ -79,11 +79,11 @@ void TimingController::handleGate1Assignment(
             break;
             
         case 1: // Re-dice R (arm) — only if in dice-mode
-            mainModule->engine.pe.setPendingRhythmSeed(mainModule->sampleSeedFromSource());
+            mainModule->diceRhythm();
             break;
             
         case 2: // Re-dice M (arm) — only if in dice-mode
-            mainModule->engine.pe.setPendingMelodySeed(mainModule->sampleSeedFromSource());
+            mainModule->diceMelody();
             break;
             
         case 3: // Restart now
@@ -111,7 +111,7 @@ void TimingController::handleGate2Assignment(
             
         case 1: // Re-dice M — rising edge, only in dice-mode
             if (gate2Rise) {
-                mainModule->engine.pe.setPendingMelodySeed(mainModule->sampleSeedFromSource());
+                mainModule->diceMelody();
             }
             break;
             
