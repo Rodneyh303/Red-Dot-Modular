@@ -94,15 +94,15 @@ struct SpreadManager {
   
   void setSpread(int voiceIdx, int lane, float value) {
     if (voiceIdx >= 0 && voiceIdx < numVoices && lane >= 0 && lane < 3) {
-      spread[voiceIdx][lane] = rack::math::clamp(value, 0.0f, 1.0f);
+      spread[voiceIdx][lane] = rack::math::clamp(value, -1.0f, 1.0f);
     }
   }
   
   float getSpread(int voiceIdx, int lane) const {
     if (voiceIdx >= 0 && voiceIdx < numVoices && lane >= 0 && lane < 3) {
       return spread[voiceIdx][lane];
-    }
-    return 0.0f;
+    } // Default to 0.0f if out of bounds, meaning no spread
+    return 0.0f; 
   }
   
   // Set macro spread (same for all voices)
@@ -259,11 +259,18 @@ struct SpreadManager {
    * 
    * At spread=0.0:  interpolated = original
    * At spread=1.0:  interpolated = target
+   * At spread=-1.0: interpolated = (1 - target)
    */
   float interpolate(float original, float targetValue, float spreadAmount) const {
-    if (spreadAmount <= 0.0f) return original;
-    spreadAmount = rack::math::clamp(spreadAmount, 0.0f, 1.0f);
-    return original + (targetValue - original) * spreadAmount;
+    float result;
+    if (spreadAmount == 0.0f) result = original;
+    if (spreadAmount > 0.0f) {
+      result = original + (targetValue - original) * spreadAmount;
+    } else { // spreadAmount < 0.0f
+      // Interpolate towards (1 - targetValue)
+      result = original + ((1.0f - targetValue) - original) * std::abs(spreadAmount);
+    }
+    return rack::math::clamp(result, 0.0f, 1.0f);
   }
   
   /**
@@ -385,7 +392,7 @@ struct MacroSpreadManager : public SpreadManager {
   // Override: set spread applies to all voices
   void setSpread(int lane, float value) {
     if (lane >= 0 && lane < 3) {
-      float clamped = rack::math::clamp(value, 0.0f, 1.0f);
+      float clamped = rack::math::clamp(value, -1.0f, 1.0f);
       for (int v = 0; v < numVoices; ++v) {
         SpreadManager::setSpread(v, lane, clamped);
       }

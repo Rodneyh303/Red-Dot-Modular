@@ -54,8 +54,8 @@ float ParameterManager::getRest() const {
 float ParameterManager::getAccent() const {
     float v = readParam_(ACCENT_KNOB, 0.f, 1.f);
     // Direct CV input: 0–10V = 0–100%
-    float cv = readInput_(ACCENT_CV_INPUT);
-    v += cv * 0.1f + surgeOffsets[4];
+    float cv = readInput_(ACCENT_CV_INPUT); // CV input is 0-10V, scale to 0-1
+    v += cv * 0.1f + surgeOffsets[4] + cv2Offsets[4]; // Add CV2 offset for Accent
     return clampv(v, 0.f, 1.f);
 }
 

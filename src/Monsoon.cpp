@@ -387,7 +387,7 @@ void Monsoon::process(const ProcessArgs& args) {
     input.cv2   = (modeSelect >= 2 && cachedCv2Connected) ? inputs[CV2_INPUT].getVoltage() : 0.f;
 
     // Logic References (Eliminate pointer indirection in hot path)
-    TimingController& tc = *timingController;
+    TimingController& tc = *timingController; // Corrected: Use reference
     ModeController& mc = *modeController;
     CVRouter& cvr = *cvRouter;
 
@@ -467,11 +467,12 @@ void Monsoon::process(const ProcessArgs& args) {
     // --- CV Routing (via CVRouter) ---
     float cvOutVoltage = currentPitchV;
     if (cachedCv1Connected && input.cv1 != 0.f && (cv1Mode == 0 || cv1Mode == 1)) {
-        cvOutVoltage = cvr.processCV1Input(
-                cv1Mode,
-                input.cv1,
-                currentPitchV,
-                true);
+        cvOutVoltage = cvr.processCV1Input(cv1Mode, input.cv1, *paramManager, currentPitchV, true);
+    } else if (cachedCv1Connected && cv1Mode == 4) { // BPM Mod
+        // For BPM Mod, CVRouter updates paramManager->cv1BpmOffset, no direct cvOutVoltage change
+        cvr.processCV1Input(cv1Mode, input.cv1, *paramManager, currentPitchV, true);
+    } else {
+        paramManager->clearCv1BpmOffset(); // Clear BPM offset if CV1 is not connected or not in BPM mode
     }
     if (outputs[CV_OUTPUT].isConnected()) outputs[CV_OUTPUT].setVoltage(cvOutVoltage);
 
@@ -631,6 +632,10 @@ void Monsoon::process(const ProcessArgs& args) {
         // Refresh Audio-Rate Caches (Throttled)
         cachedBpmParam = params[BPM_PARAM].getValue();
         cachedClkConnected = inputs[CLK_INPUT].isConnected();
+        // Apply BPM CV modulation if CV1 is in BPM mode
+        cachedBpmParam += paramManager->cv1BpmOffset;
+        cachedBpmParam = clampv(cachedBpmParam, 20.f, 300.f); // Clamp to valid BPM range
+
         cachedCv1Connected = inputs[CV1_INPUT].isConnected();
         cachedCv2Connected = inputs[CV2_INPUT].isConnected();
         cachedCv3Connected = inputs[CV3_MOD_INPUT].isConnected();
@@ -669,7 +674,7 @@ void Monsoon::process(const ProcessArgs& args) {
         // Handle Throttled CV1 Logic (Range Modulation)
         if (cachedCv1Connected) {
             if (cv1Mode == 2 || cv1Mode == 3) {
-                cvRouter->processCV1Input(cv1Mode, inputs[CV1_INPUT].getVoltage(), 0.f, true);
+                cvRouter->processCV1Input(cv1Mode, inputs[CV1_INPUT].getVoltage(), *paramManager, 0.f, true);
             }
             paramManager->setCv1LoOffset(cvRouter->getLoOffset());
             paramManager->setCv1HiOffset(cvRouter->getHiOffset());
@@ -697,13 +702,14 @@ void Monsoon::process(const ProcessArgs& args) {
         // Update CV2 modulation offsets (Throttled)
         paramManager->clearCv2Offsets();
         // Mode C and D use CV2 as the pitch input to be quantized
-        if (modeSelect < 2 && inputs[CV2_INPUT].isConnected()) {
+        if (modeSelect < 2 && inputs[CV2_INPUT].isConnected()) { // CV2 is used for quantization in modes C and D
             float v    = clampv<float>(inputs[CV2_INPUT].getVoltage(), 0.f, 5.f);
             float norm = v / 5.f; 
             if (cv2Mode == 0) paramManager->setCv2Offset(0, norm * 8.f);
             if (cv2Mode == 1) paramManager->setCv2Offset(1, norm);
             if (cv2Mode == 2) paramManager->setCv2Offset(2, norm);
             if (cv2Mode == 3) paramManager->setCv2Offset(3, norm);
+            if (cv2Mode == 4) paramManager->setCv2Offset(4, norm); // New: Accent modulation
         }
 
         // ── Assignable CV3 & Causeway Modulation (Throttled) ──

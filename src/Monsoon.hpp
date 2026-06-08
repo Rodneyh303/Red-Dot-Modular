@@ -421,7 +421,7 @@ namespace MonsoonIds {
         RESET_TRIGGER_INPUT,
         SEED_INPUT,
         LENGTH_INPUT,
-        OFFSET_INPUT,        // note: matches the typo in MeloDicer.cpp
+        OFFSET_INPUT,
 
         SEMI_CV_INPUT_0,  SEMI_CV_INPUT_1,  SEMI_CV_INPUT_2,  SEMI_CV_INPUT_3,
         SEMI_CV_INPUT_4,  SEMI_CV_INPUT_5,  SEMI_CV_INPUT_6,  SEMI_CV_INPUT_7,

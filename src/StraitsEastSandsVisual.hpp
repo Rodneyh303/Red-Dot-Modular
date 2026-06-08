@@ -87,9 +87,9 @@ struct StraitsEastSandsVisual : Module {
         using namespace StraitsEastVisualIds;
         config(MonsoonIds::NUM_PARAMS, StraitsEastVisualIds::NUM_INPUTS, 0, 0);
 
-        configParam(SPREAD_R, 0.f,1.f,0.f,"Spread REST");
-        configParam(SPREAD_M, 0.f,1.f,0.f,"Spread MELODY");
-        configParam(SPREAD_O, 0.f,1.f,0.f,"Spread OCTAVE");
+        configParam(SPREAD_R, -1.f,1.f,0.f,"Spread REST");
+        configParam(SPREAD_M, -1.f,1.f,0.f,"Spread MELODY");
+        configParam(SPREAD_O, -1.f,1.f,0.f,"Spread OCTAVE");
 
         static const char* rowNames[6][2] = {
             {"REST Len","REST Off"}, {"REST Rot","REST Spr"},

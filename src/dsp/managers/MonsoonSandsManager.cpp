@@ -66,6 +66,16 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         return clamp(base + cv * att, 0.f, 1.f);
     };
 
+    // Helper for bipolar spread interpolation with clamping
+    auto interpolateAndClamp = [&](float original, float targetValue, float spreadAmount) -> float {
+        float result;
+        if (spreadAmount == 0.0f) result = original;
+        else if (spreadAmount > 0.0f) result = original + (targetValue - original) * spreadAmount;
+        else result = original + ((1.0f - targetValue) - original) * std::abs(spreadAmount);
+        
+        return rack::math::clamp(result, 0.0f, 1.0f);
+    };
+
     if (hasVisual || hasKnobs) {
         auto readStrand = [&](
                 int monoLenId, int monoOffId, int monoRotId,
@@ -131,12 +141,12 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                     for (int v = 0; v < nPoly; ++v) s += poly[v][i];
                     return s / denom;
                 };
-                float rAvg = avg(engine.pe.slewedRhythm[i], engine.pe.slewedPolyRhythm);
-                float mAvg = avg(engine.pe.slewedMelody[i], engine.pe.slewedPolyMelody);
-                float oAvg = avg(engine.pe.slewedOctave[i], engine.pe.slewedPolyOctave);
-                engine.pe.rhythmRandom[i] = engine.pe.slewedRhythm[i] + (rAvg - engine.pe.slewedRhythm[i]) * monoVis->spreadEffective[0];
-                engine.pe.melodyRandom[i] = engine.pe.slewedMelody[i] + (mAvg - engine.pe.slewedMelody[i]) * monoVis->spreadEffective[1];
-                engine.pe.octaveRandom[i] = engine.pe.slewedOctave[i] + (oAvg - engine.pe.slewedOctave[i]) * monoVis->spreadEffective[2];
+                float rAvg = avg(engine.pe.slewedRhythm[i], engine.pe.slewedPolyRhythm); // Target for rhythm
+                float mAvg = avg(engine.pe.slewedMelody[i], engine.pe.slewedPolyMelody); // Target for melody
+                float oAvg = avg(engine.pe.slewedOctave[i], engine.pe.slewedPolyOctave); // Target for octave
+                engine.pe.rhythmRandom[i] = interpolateAndClamp(engine.pe.slewedRhythm[i], rAvg, monoVis->spreadEffective[0]);
+                engine.pe.melodyRandom[i] = interpolateAndClamp(engine.pe.slewedMelody[i], mAvg, monoVis->spreadEffective[1]);
+                engine.pe.octaveRandom[i] = interpolateAndClamp(engine.pe.slewedOctave[i], oAvg, monoVis->spreadEffective[2]);
                 engine.pe.legatoRandom[i]    = engine.pe.slewedLegato[i];     // mono-only, raw
                 engine.pe.accentRandom[i]    = engine.pe.slewedAccent[i];
                 engine.pe.variationRandom[i] = engine.pe.slewedVariation[i];

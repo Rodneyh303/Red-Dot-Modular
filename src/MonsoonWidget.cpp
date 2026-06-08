@@ -503,12 +503,12 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
 
         menu->addChild(createSubmenuItem("CV Assign", "", [=](ui::Menu* sub) {
             { auto* l = new ui::MenuLabel; l->text = "CV IN 1"; sub->addChild(l);
-              const char* n[] = {"Add Seq","Transpose Seq","Mod Range LO","Mod Range HI"};
-              for (int v=0;v<4;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->cv1Mode;it->value=v;sub->addChild(it);} }
+              const char* n[] = {"Add Seq","Transpose Seq","Mod Range LO","Mod Range HI","BPM Mod"}; // Added BPM Mod
+              for (int v=0;v<5;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->cv1Mode;it->value=v;sub->addChild(it);} }
             sub->addChild(new ui::MenuSeparator);
             { auto* l = new ui::MenuLabel; l->text = "CV IN 2"; sub->addChild(l);
-              const char* n[] = {"Note value","Variation","Legato","Rest"};
-              for (int v=0;v<4;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->cv2Mode;it->value=v;sub->addChild(it);} }
+              const char* n[] = {"Note value","Variation","Legato","Rest","Accent"}; // Added Accent
+              for (int v=0;v<5;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->cv2Mode;it->value=v;sub->addChild(it);} }
             sub->addChild(new ui::MenuSeparator);
             { auto* l = new ui::MenuLabel; l->text = "CV IN 3 (assignable mod)"; sub->addChild(l);
               const char* n[] = {"Rhythm slew","Melody slew","Rhythm A>B mix","Melody A>B mix"};

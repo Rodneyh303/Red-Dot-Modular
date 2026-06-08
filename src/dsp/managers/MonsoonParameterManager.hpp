@@ -81,14 +81,14 @@ public:
     
     // ──── CV2 Offset Management ──────────────────────────────────────────────
     
-    /// Set CV2 offset for a parameter (0 = note value, 1 = variation, 2 = legato, 3 = rest)
-    void setCv2Offset(int paramIdx, float offset) {
-        if (paramIdx >= 0 && paramIdx < 4) {
+    /// Set CV2 offset for a parameter (0 = note value, 1 = variation, 2 = legato, 3 = rest, 4 = accent)
+    void setCv2Offset(int paramIdx, float offset) { // Now supports 5 parameters (0-4)
+        if (paramIdx >= 0 && paramIdx < 5) {
             cv2Offsets[paramIdx] = offset;
         }
     }
     
-    /// Get all CV2 offsets (for debugging/persistence)
+    /// Get all CV2 offsets (for debugging/persistence) - now 5 elements
     const float* getCv2Offsets() const { return cv2Offsets; }
     
     /// Clear all CV2 offsets
@@ -120,13 +120,17 @@ public:
         for (int i = 0; i < 5; ++i) surgeOffsets[i] = 0.f;
     }
 
+    // CV1 BPM Offset
+    float cv1BpmOffset = 0.f;
+    void clearCv1BpmOffset() { cv1BpmOffset = 0.f; }
+
 private:
     rack::engine::Module* mainModule;
     MonsoonInterchangeExpander** cachedExpander;
     MonsoonStraitsEastExpander** cachedPolyVoiceExpander;
     
-    // CV2-aware offsets for note value, variation, legato, rest
-    float cv2Offsets[4] = {0.f, 0.f, 0.f, 0.f};
+    // CV2-aware offsets for note value, variation, legato, rest, accent
+    float cv2Offsets[5] = {0.f, 0.f, 0.f, 0.f, 0.f}; // Increased size for Accent
     // CV3 offsets for rhythm slew, melody slew, rhythm mix, melody mix
     float cv3Offsets[4] = {0.f, 0.f, 0.f, 0.f};
     // Surge expander offsets: note value, variation, legato, rest, accent

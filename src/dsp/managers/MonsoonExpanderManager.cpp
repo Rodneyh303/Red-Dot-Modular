@@ -23,6 +23,15 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
     const int  polyOutCap = polyBaseActive ? (straitWest ? 15 : 7) : 0;
     const int  effPolyVoices = math::clamp(engine.numPolyVoices, 0, polyOutCap);
 
+    // Helper for bipolar spread interpolation with clamping
+    auto interpolateAndClamp = [&](float original, float targetValue, float spreadAmount) -> float {
+        float result;
+        if (spreadAmount == 0.0f) result = original;
+        else if (spreadAmount > 0.0f) result = original + (targetValue - original) * spreadAmount;
+        else result = original + ((1.0f - targetValue) - original) * std::abs(spreadAmount);
+        return rack::math::clamp(result, 0.0f, 1.0f);
+    };
+
     if (eastLOR && (straitEast || eastVisual) && polyBaseActive) {
         using namespace DeepStraitsSandsEastIds;
         using namespace StraitsEastVisualIds;
@@ -65,7 +74,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
                 }
                 for (int j = 0; j < 16; j++) {
                     float voiceVal = engine.pe.slewedPolyRhythm[v][j];
-                    engine.pe.polyRhythmRandom[v][j] = voiceVal + restInterp * (avgRhythmRandom[j] - voiceVal);
+                    engine.pe.polyRhythmRandom[v][j] = interpolateAndClamp(voiceVal, avgRhythmRandom[j], restInterp);
                 }
             }
             
@@ -91,7 +100,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
                 }
                 for (int j = 0; j < 16; j++) {
                     float voiceVal = engine.pe.slewedPolyMelody[v][j];
-                    engine.pe.polyMelodyRandom[v][j] = voiceVal + melodyInterp * (avgMelodyRandom[j] - voiceVal);
+                    engine.pe.polyMelodyRandom[v][j] = interpolateAndClamp(voiceVal, avgMelodyRandom[j], melodyInterp);
                 }
             }
             
@@ -124,7 +133,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
                 }
                 for (int j = 0; j < 16; j++) {
                     float voiceVal = engine.pe.slewedPolyOctave[v][j];
-                    engine.pe.polyOctaveRandom[v][j] = voiceVal + octaveInterp * (avgOctaveRandom[j] - voiceVal);
+                    engine.pe.polyOctaveRandom[v][j] = interpolateAndClamp(voiceVal, avgOctaveRandom[j], octaveInterp);
                 }
             }
             

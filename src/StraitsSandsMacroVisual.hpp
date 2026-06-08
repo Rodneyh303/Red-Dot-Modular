@@ -78,8 +78,8 @@ struct StraitsSandsMacroVisual : Module {
         config(MonsoonIds::NUM_PARAMS, StraitsMacroVisualIds::NUM_INPUTS, 0, 0);
 
         configParam(SPREAD_REST,   0.f,1.f,0.f,"Global Spread REST");
-        configParam(SPREAD_MELODY, 0.f,1.f,0.f,"Global Spread MELODY");
-        configParam(SPREAD_OCTAVE, 0.f,1.f,0.f,"Global Spread OCTAVE");
+        configParam(SPREAD_MELODY, -1.f,1.f,0.f,"Global Spread MELODY");
+        configParam(SPREAD_OCTAVE, -1.f,1.f,0.f,"Global Spread OCTAVE");
 
         static const char* rowNames[6][2] = {
             {"REST Len","REST Off"}, {"REST Rot","REST Spr"},

@@ -33,7 +33,7 @@ struct MonoSandsParameterManager {
     // lane: 0=REST, 1=MELODY, 2=OCTAVE only (others ignored — mono-only lanes)
     void setLaneSpread(int lane, float value) {
         if (lane >= 0 && lane < SPREAD_LANES)
-            laneSpread[lane] = rack::math::clamp(value, 0.f, 1.f);
+            laneSpread[lane] = rack::math::clamp(value, -1.f, 1.f);
     }
     void setInterpolationTarget(SpreadManager::InterpolationTarget t) {
         target = t;
@@ -77,8 +77,14 @@ struct MonoSandsParameterManager {
         if (lane < SPREAD_LANES) {
             float original = monoDraw(lane, step);
             if (target == SpreadManager::MONO_DRAW) return original;
-            float tgt = polyAverageInclMono(lane, step);
-            return original + (tgt - original) * laneSpread[lane];
+            float targetValue = polyAverageInclMono(lane, step);
+            float spreadAmount = laneSpread[lane];
+            float result;
+            if (spreadAmount == 0.0f) result = original;
+            else if (spreadAmount > 0.0f) result = original + (targetValue - original) * spreadAmount;
+            else result = original + ((1.0f - targetValue) - original) * std::abs(spreadAmount);
+            
+            return rack::math::clamp(result, 0.0f, 1.0f);
         }
         return monoDraw(lane, step);
     }

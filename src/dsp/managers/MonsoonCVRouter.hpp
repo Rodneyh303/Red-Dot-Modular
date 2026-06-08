@@ -2,6 +2,8 @@
 
 #include "rack.hpp"
 
+class ParameterManager;
+
 /**
  * CVRouter
  * 
@@ -23,8 +25,7 @@ public:
     // ──── CV1 Input Processing ──────────────────────────────────────────────
     
     /// Process CV1 input and return output voltage based on current mode
-    float processCV1Input(int cv1Mode,
-                          float cv1InputVoltage,
+    float processCV1Input(int cv1Mode, float cv1InputVoltage, ParameterManager& paramManager,
                           float baseOutputVoltage,
                           bool cv1Connected);
     

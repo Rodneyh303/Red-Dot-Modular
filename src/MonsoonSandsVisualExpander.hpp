@@ -96,7 +96,7 @@ struct MonsoonSandsVisualExpander : Module {
         }
         // Spread group: REST/MEL/OCT only (mono-only lanes have no spread)
         for (int l = 0; l < N_SPREAD_LANES; ++l) {
-            configParam(sprId(l), 0.f, 1.f, 0.f, std::string(names[l])+" Spread");
+            configParam(sprId(l), -1.f, 1.f, 0.f, std::string(names[l])+" Spread");
             configParam(sprAttenId(l), -1.f, 1.f, 1.f, std::string(names[l])+" Spread depth");
             configInput(sprCvId(l), std::string(names[l])+" Spread CV");
         }
