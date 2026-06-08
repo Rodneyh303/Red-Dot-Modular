@@ -116,14 +116,23 @@ bool ModeController::executeModeA() {
 bool ModeController::executeModeB(bool gate1Rise,
                                    bool gate1High) {
     if (gate1Rise || (gate1High && engine.stepIndex == -1)) {
+        // In Mode B, variation and note length should have no impact on the gate.
+        // Only legato, rest, and accent apply.
+        // Create a local copy of PatternInput and override relevant values for Mode B.
+        PatternInput modeBPatternInput = currentPatternInput; // Start with current settings
+        modeBPatternInput.noteVariationMask = 0b111; // Allow all note lengths (e.g., 1/1 to 1/32T)
+        modeBPatternInput.variationAmount = 0.5f;    // No bias for longer/shorter notes
+
         // Execute the mode
         StepResult result = engine.executeModeB(
             gate1Rise,
             gate1High,
-            currentPatternInput.restProb,
+            modeBPatternInput.restProb, // Rest still applies
             paramManager.getLegato(),
-            paramManager.getNoteValue(),
-            currentPatternInput
+            // Note value (which influences note length) should have no impact.
+            // Pass a neutral value (e.g., 2.f for 1/4 note, a common default).
+            2.f,
+            modeBPatternInput // Pass the modified PatternInput
         );
         
         // Handle post-execution

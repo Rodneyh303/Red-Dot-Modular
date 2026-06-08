@@ -462,6 +462,15 @@ void Monsoon::process(const ProcessArgs& args) {
         if (shouldExecute) {
             mc.executeMode(modeSelect, input, tc.getGate2High());
         }
+
+        // ── Mode B Gate Slaving ──
+        // In Mode B (Seq + Gate), the gate duration must follow the external Gate 1 input.
+        // This nullifies the impact of internal Note Length/Variation parameters.
+        // if (modeSelect == 1) {
+        //     bool gate1High = input.gate1 >= 1.0f;
+        //     // Sustain the gate only if the sequencer didn't decide to play a Rest
+        //     engine.gs.gateHeld = gate1High && (engine.lastStepResult.decision != MonoDecision::Rest);
+        // }
     }
 
     // --- CV Routing (via CVRouter) ---
