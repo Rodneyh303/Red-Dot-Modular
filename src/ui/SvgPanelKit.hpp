@@ -115,24 +115,24 @@ struct ShapeQuery : virtual KitAccess<T> {
 
 // ── Feature mixin: binding (incl. VARIADIC multi-id binds) ───────────────────
 template <class T>
-struct Bind : virtual KitAccess<T>, virtual ShapeQuery<T> {
+struct Bind : virtual KitAccess<T> {
     using KitAccess<T>::state; using KitAccess<T>::mw; using KitAccess<T>::centerOf;
-    using ShapeQuery<T>::findNamed;
 
     template <class W> void bindParam(const std::string& n, int id) {
-        if (auto* s = findNamed(n)) {
+        // Access findNamed through the derived class T, which inherits ShapeQuery
+        if (auto* s = this->self()->findNamed(n)) {
             auto* w = createParamCentered<W>(centerOf(s), mw()->module, id);
             mw()->addParam(w); state().bound[s->id] = w;
         } else WARN("[SvgKit] param shape not found: %s", n.c_str());
     }
     template <class W> void bindInput(const std::string& n, int id) {
-        if (auto* s = findNamed(n)) {
+        if (auto* s = this->self()->findNamed(n)) {
             auto* w = createInputCentered<W>(centerOf(s), mw()->module, id);
             mw()->addInput(w); state().bound[s->id] = w;
         } else WARN("[SvgKit] input shape not found: %s", n.c_str());
     }
     template <class W> void bindOutput(const std::string& n, int id) {
-        if (auto* s = findNamed(n)) {
+        if (auto* s = this->self()->findNamed(n)) {
             auto* w = createOutputCentered<W>(centerOf(s), mw()->module, id);
             mw()->addOutput(w); state().bound[s->id] = w;
         } else WARN("[SvgKit] output shape not found: %s", n.c_str());
@@ -159,9 +159,8 @@ struct Bind : virtual KitAccess<T>, virtual ShapeQuery<T> {
 
 // ── Feature mixin: dev-mode live reload + context menu ───────────────────────
 template <class T>
-struct Reload : virtual KitAccess<T>, virtual ShapeQuery<T> {
+struct Reload : virtual KitAccess<T> {
     using KitAccess<T>::state; using KitAccess<T>::centerOf;
-    using ShapeQuery<T>::forEachShape;
 
     void setDevMode(bool v) { state().devMode = v; }
     void setDirty() { auto& st = state(); if (st.panel && st.panel->fb) st.panel->fb->dirty = true; }
@@ -190,9 +189,9 @@ struct Reload : virtual KitAccess<T>, virtual ShapeQuery<T> {
         if (st.svgFile.empty() || !st.panel || !st.panel->svg) return;
         NSVGimage* repl = nsvgParseFromFile(st.svgFile.c_str(), "px", SVG_DPI);
         if (!repl) { WARN("[SvgKit] cannot parse %s", st.svgFile.c_str()); return; }
-        if (st.panel->svg->handle) nsvgDelete(st.panel->svg->handle);
+        if (st.panel->svg->handle) nsvgDelete(st.panel->svg->handle); 
         st.panel->svg->handle = repl;
-        forEachShape([&](NSVGshape* s){
+        this->self()->forEachShape([&](NSVGshape* s){
             auto it = st.bound.find(s->id);
             if (it != st.bound.end())
                 it->second->box.pos = centerOf(s).minus(it->second->box.size.div(2));
@@ -205,6 +204,25 @@ struct Reload : virtual KitAccess<T>, virtual ShapeQuery<T> {
 template <class T, template <class> class... Features>
 struct Compose : Features<T>... {
     SvgKitState kit_;   // shared state the KitAccess<T>::state() reaches via T::kit_
+
+    // Bring methods from feature mixins into Compose's scope to resolve ambiguities
+    // and allow direct access from derived classes.
+    using ShapeQuery<T>::loadPanel;
+    using ShapeQuery<T>::forEachShape;
+    using ShapeQuery<T>::findNamed;
+    using ShapeQuery<T>::forEachMatched;
+
+    using Bind<T>::bindParam;
+    using Bind<T>::bindInput;
+    using Bind<T>::bindOutput;
+    using Bind<T>::bindInputs;
+    using Bind<T>::bindParams;
+
+    using Reload<T>::setDevMode;
+    using Reload<T>::setDirty;
+    using Reload<T>::appendKitMenu;
+    using Reload<T>::kitStep;
+    using Reload<T>::reload;
 };
 
 }  // namespace dotModular
