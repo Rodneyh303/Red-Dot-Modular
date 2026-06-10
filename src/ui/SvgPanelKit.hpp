@@ -37,6 +37,7 @@
 // Design/interface derived from dustinlacewell/vcv-svghelper (MIT); see the MIT
 // attribution block in src/ui/SvgHelper.hpp. This file restructures that feature
 // set as composable mixins rather than copying it.
+#pragma once
 
 #include <sys/stat.h>
 #include <map>
@@ -60,37 +61,31 @@ struct SvgKitState {
     struct stat prevStat = {};
 };
 
-// CRTP access helpers: each mixin is templated on the final widget type T and
-// reaches the shared state + the ModuleWidget through T.
+// CRTP access helpers: Holds common utilities. Inherited non-virtually via Compose.
 template <class T>
 struct KitAccess {
-    virtual ~KitAccess() = default;   // make polymorphic so dynamic_cast (below) works
-    // NOTE: KitAccess is a VIRTUAL base of the feature mixins (to dedupe it when
-    // several are composed). You cannot static_cast DOWN from a virtual base, so
-    // self()/mw() must use dynamic_cast (ModuleWidget is polymorphic, so RTTI is
-    // available). This is a real cost the variadic/virtual-inheritance design
-    // imposes that the flat CRTP SvgHelper avoids.
-    T*            self()  { return dynamic_cast<T*>(this); }
-    ModuleWidget* mw()    { return dynamic_cast<ModuleWidget*>(this); }
-    SvgKitState&  state() { return dynamic_cast<T*>(this)->kit_; }
+    T* self()  { return static_cast<T*>(this); }
+    ModuleWidget* mw()    { return static_cast<ModuleWidget*>(self()); }
+    SvgKitState&  state() { return self()->kit_; }
+    
     Vec centerOf(NSVGshape* s) {
         const float* b = s->bounds;
-        return Vec((b[0]+b[2])/2.f, (b[1]+b[3])/2.f);
+        // Restored the missing array indices here:
+        return Vec((b[0] + b[2]) / 2.f, (b[1] + b[3]) / 2.f);
     }
 };
-
 // ── Feature mixin: panel load + shape queries ────────────────────────────────
 template <class T>
-struct ShapeQuery : virtual KitAccess<T> {
-    using KitAccess<T>::state; using KitAccess<T>::mw;
+struct ShapeQuery { 
+    T* self() { return static_cast<T*>(this); }
 
     void loadPanel(const std::string& file) {
-        auto& st = state();
+        auto& st = this->self()->state(); 
         st.svgFile = file;
-        if (!st.panel) { st.panel = createPanel(file); mw()->setPanel(st.panel); }
+        if (!st.panel) { st.panel = createPanel(file); this->self()->mw()->setPanel(st.panel); } 
     }
     void forEachShape(const std::function<void(NSVGshape*)>& cb) {
-        auto& st = state();
+        auto& st = this->self()->state();
         if (!st.panel || !st.panel->svg || !st.panel->svg->handle) return;
         for (NSVGshape* s = st.panel->svg->handle->shapes; s; s = s->next) cb(s);
     }
@@ -115,40 +110,34 @@ struct ShapeQuery : virtual KitAccess<T> {
 
 // ── Feature mixin: binding (incl. VARIADIC multi-id binds) ───────────────────
 template <class T>
-struct Bind : virtual KitAccess<T> {
-    using KitAccess<T>::state; using KitAccess<T>::mw; using KitAccess<T>::centerOf;
+struct Bind {
+    T* self() { return static_cast<T*>(this); }
 
     template <class W> void bindParam(const std::string& n, int id) {
-        // Access findNamed through the derived class T, which inherits ShapeQuery
-        if (auto* s = this->self()->findNamed(n)) {
-            auto* w = createParamCentered<W>(centerOf(s), mw()->module, id);
-            mw()->addParam(w); state().bound[s->id] = w;
+        if (auto* s = this->self()->findNamed(n)) { 
+            auto* w = createParamCentered<W>(this->self()->centerOf(s), this->self()->mw()->module, id); 
+            this->self()->mw()->addParam(w); this->self()->state().bound[s->id] = w; 
         } else WARN("[SvgKit] param shape not found: %s", n.c_str());
     }
     template <class W> void bindInput(const std::string& n, int id) {
-        if (auto* s = this->self()->findNamed(n)) {
-            auto* w = createInputCentered<W>(centerOf(s), mw()->module, id);
-            mw()->addInput(w); state().bound[s->id] = w;
+        if (auto* s = this->self()->findNamed(n)) { 
+            auto* w = createInputCentered<W>(this->self()->centerOf(s), this->self()->mw()->module, id); 
+            this->self()->mw()->addInput(w); this->self()->state().bound[s->id] = w; 
         } else WARN("[SvgKit] input shape not found: %s", n.c_str());
     }
     template <class W> void bindOutput(const std::string& n, int id) {
-        if (auto* s = this->self()->findNamed(n)) {
-            auto* w = createOutputCentered<W>(centerOf(s), mw()->module, id);
-            mw()->addOutput(w); state().bound[s->id] = w;
+        if (auto* s = this->self()->findNamed(n)) { 
+            auto* w = createOutputCentered<W>(this->self()->centerOf(s), this->self()->mw()->module, id); 
+            this->self()->mw()->addOutput(w); this->self()->state().bound[s->id] = w; 
         } else WARN("[SvgKit] output shape not found: %s", n.c_str());
     }
 
-    // VARIADIC: bind a whole row of inputs of one widget type in one call,
-    // pairing shape-name prefix+index with consecutive enum ids.
-    //   bindInputs<PJ301MPort>("input_", {RUN_INPUT, RST_INPUT, SEED_INPUT});
     template <class W>
     void bindInputs(const std::string& prefix, std::initializer_list<int> ids) {
         int i = 0;
         for (int id : ids) bindInput<W>(prefix + std::to_string(i++), id);
     }
-    // VARIADIC pack form: bindParams<Trimpot>("atten_", a,b,c,...) binds
-    // atten_0..atten_N to the given ids. C++11-compatible pack expansion
-    // (Rack builds -std=c++11, so no C++17 fold expressions).
+    
     template <class W, class... Ids>
     void bindParams(const std::string& prefix, Ids... ids) {
         int i = 0;
@@ -159,22 +148,22 @@ struct Bind : virtual KitAccess<T> {
 
 // ── Feature mixin: dev-mode live reload + context menu ───────────────────────
 template <class T>
-struct Reload : virtual KitAccess<T> {
-    using KitAccess<T>::state; using KitAccess<T>::centerOf;
+struct Reload {
+    T* self() { return static_cast<T*>(this); }
 
-    void setDevMode(bool v) { state().devMode = v; }
-    void setDirty() { auto& st = state(); if (st.panel && st.panel->fb) st.panel->fb->dirty = true; }
+    void setDevMode(bool v) { this->self()->state().devMode = v; }
+    void setDirty() { auto& st = this->self()->state(); if (st.panel && st.panel->fb) st.panel->fb->dirty = true; }
 
-    void appendKitMenu(Menu* menu) {
-        auto& st = state();
+    void appendKitMenu(Menu* menu) { 
+        auto& st = this->self()->state(); 
         if (!st.devMode || st.svgFile.empty()) return;
         menu->addChild(new MenuSeparator);
         menu->addChild(createMenuItem("Reload panel", "", [this](){ reload(); }));
         menu->addChild(createBoolPtrMenuItem("Poll SVG for reload", "", &st.pollMode));
     }
     void kitStep() {
-        auto& st = state();
-        if (!st.pollMode || st.svgFile.empty()) return;
+        auto& st = this->self()->state(); 
+        if (!this->self()->state().pollMode || this->self()->state().svgFile.empty()) return;
         double now = system::getTime();
         if (now - st.prevPoll < 1.0) return;
         st.prevPoll = now;
@@ -185,16 +174,16 @@ struct Reload : virtual KitAccess<T> {
         }
     }
     void reload() {
-        auto& st = state();
+        auto& st = this->self()->state();
         if (st.svgFile.empty() || !st.panel || !st.panel->svg) return;
         NSVGimage* repl = nsvgParseFromFile(st.svgFile.c_str(), "px", SVG_DPI);
         if (!repl) { WARN("[SvgKit] cannot parse %s", st.svgFile.c_str()); return; }
         if (st.panel->svg->handle) nsvgDelete(st.panel->svg->handle); 
         st.panel->svg->handle = repl;
-        this->self()->forEachShape([&](NSVGshape* s){
-            auto it = st.bound.find(s->id);
+        this->self()->forEachShape([&](NSVGshape* s){ 
+            auto it = this->self()->state().bound.find(s->id);
             if (it != st.bound.end())
-                it->second->box.pos = centerOf(s).minus(it->second->box.size.div(2));
+                it->second->box.pos = this->self()->centerOf(s).minus(it->second->box.size.div(2)); 
         });
         setDirty();
     }
@@ -202,11 +191,9 @@ struct Reload : virtual KitAccess<T> {
 
 // ── The variadic composer: pulls in the chosen feature mixins + owns state ───
 template <class T, template <class> class... Features>
-struct Compose : Features<T>... {
-    SvgKitState kit_;   // shared state the KitAccess<T>::state() reaches via T::kit_
+struct Compose : Features<T>..., KitAccess<T> { // Added KitAccess<T> directly here non-virtually
+    SvgKitState kit_;   
 
-    // Bring methods from feature mixins into Compose's scope to resolve ambiguities
-    // and allow direct access from derived classes.
     using ShapeQuery<T>::loadPanel;
     using ShapeQuery<T>::forEachShape;
     using ShapeQuery<T>::findNamed;
