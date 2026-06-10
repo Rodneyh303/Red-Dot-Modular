@@ -1,12 +1,40 @@
 #pragma once
-// dotModular::SvgHelper — a small CRTP mixin that binds widgets to named shapes
-// in the module's panel SVG, with optional dev-mode live-reload (poll the file
-// mtime, re-parse, reposition bound widgets). Lets the panel SVG own control
-// POSITIONS (authored by our data-driven generator, or dragged in Inkscape),
-// while the widget owns logic and id arithmetic.
+// dotModular::SvgHelper — a CRTP mixin that binds widgets to named shapes in the
+// module's panel SVG, with optional dev-mode live-reload (poll the file mtime,
+// re-parse, reposition bound widgets). Lets the panel SVG own control POSITIONS
+// (authored by our data-driven generator, or dragged in Inkscape), while the
+// widget owns logic and id arithmetic.
 //
-// In-house implementation (no external dependency), modelled on the feature set
-// of dustinlacewell/vcv-svghelper (MIT). Namespaced dotModular for branding.
+// ---------------------------------------------------------------------------
+// ATTRIBUTION
+// This is a reimplementation whose design and interface are derived from
+// vcv-svghelper by Dustin Lacewell (https://github.com/dustinlacewell/vcv-svghelper),
+// which is MIT-licensed. The original copyright/licence is reproduced below as
+// required by the MIT terms. This file is a narrower, namespaced
+// reimplementation (single-file reload, dotModular naming) rather than a verbatim
+// copy, but it owes its structure to that work and is credited accordingly.
+//
+//   MIT License
+//   Copyright (c) Dustin Lacewell
+//
+//   Permission is hereby granted, free of charge, to any person obtaining a copy
+//   of this software and associated documentation files (the "Software"), to deal
+//   in the Software without restriction, including without limitation the rights
+//   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+//   copies of the Software, and to permit persons to whom the Software is
+//   furnished to do so, subject to the following conditions:
+//
+//   The above copyright notice and this permission notice shall be included in all
+//   copies or substantial portions of the Software.
+//
+//   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+//   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+//   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+//   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+//   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+//   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+//   SOFTWARE.
+// ---------------------------------------------------------------------------
 //
 // Usage:
 //   struct MyWidget : ModuleWidget, dotModular::SvgHelper<MyWidget> {
