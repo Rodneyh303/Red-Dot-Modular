@@ -108,7 +108,7 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
 
         // ── Single control row at y=87: all dice/slew/mix + utility aligned ──
         // ── EXPERIMENT: bottom 3 rows bound by NAME from the panel SVG ───────
-        // Discrete controls (control row + jack rows) bind by name via SvgHelper.
+        // Discrete controls bind by name via the variadic Compose<> SvgPanelKit.
         // The control-row LIGHTS stay C++-computed (a cheap formula row at ROWYL),
         // same principle as the step ring — wrong job for name-binding.
         const float ROWYL = 93.f;
@@ -192,7 +192,7 @@ void MonsoonWidget::applyTheme() {
         // theme toggle on an existing widget: just swap the background SVG
         sp->setBackground(APP->window->loadSvg(panelPath));
     } else {
-        // First load: route through SvgHelper so its panel pointer is set and
+        // First load: route through Compose loadPanel so the panel pointer is set and
         // bindParam() can resolve named shapes. (Experiment.)
         loadPanel(panelPath);
     }
@@ -256,7 +256,7 @@ void MonsoonWidget::applyTheme() {
 
 void MonsoonWidget::step() {
     ModuleWidget::step();
-    dotModular::SvgHelper<MonsoonWidget>::step();  // dev poll-reload (no-op unless enabled)
+    kitStep();  // variadic Compose: dev poll-reload
 }
 
 void MonsoonWidget::draw(const DrawArgs& args) {
@@ -293,7 +293,7 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         // Label anchored to a named SVG shape (so labels track their controls).
         auto labelAt = [&](const char* shapeId, float dy_mm, const char* txt){
             if (NSVGshape* s = findNamed(shapeId)) {
-                Vec c = center(s);
+                Vec c = centerOf(s);
                 nvgText(vg, c.x, c.y + mm2px(dy_mm), txt, nullptr);
             }
         };
@@ -430,7 +430,7 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
         auto* m = dynamic_cast<Monsoon*>(module);
         if (!m) return;
         setDevMode(true);
-        dotModular::SvgHelper<MonsoonWidget>::appendContextMenu(menu);
+        appendKitMenu(menu);
         menu->addChild(new ui::MenuSeparator);
         struct ThemeItem : ui::MenuItem {
             MonsoonWidget* widget = nullptr;

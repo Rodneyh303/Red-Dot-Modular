@@ -194,6 +194,7 @@ template <class T, template <class> class... Features>
 struct Compose : Features<T>..., KitAccess<T> { // Added KitAccess<T> directly here non-virtually
     SvgKitState kit_;   
 
+    using KitAccess<T>::centerOf;
     using ShapeQuery<T>::loadPanel;
     using ShapeQuery<T>::forEachShape;
     using ShapeQuery<T>::findNamed;
