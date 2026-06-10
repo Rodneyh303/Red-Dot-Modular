@@ -17,6 +17,7 @@ namespace StraitsMacroVisualIds {
     static constexpr float COL_J2 = 14.f;
     static constexpr float COL_A1 = 23.f;
     static constexpr float COL_A2 = 32.f;
+    static constexpr float SPREAD_X = 35.5f;   // per-lane spread trimpot column (mirrors East)
     static constexpr float ED_X   = 39.f;
     static constexpr float ED_W   = W_MM - ED_X - 4.f;  // ~89.1mm (was 82.1)
     static constexpr float ED_Y   = 16.f;
