@@ -196,7 +196,9 @@ void MonsoonWidget::applyTheme() {
         // theme toggle on an existing widget: just swap the background SVG
         sp->setBackground(APP->window->loadSvg(panelPath));
     } else {
-        setPanel(createPanel(panelPath));
+        // First load: route through SvgHelper so its panel pointer is set and
+        // bindParam() can resolve named shapes. (Experiment.)
+        loadPanel(panelPath);
     }
 
     // Remove any existing knob params at the 7 top knob positions
@@ -231,27 +233,35 @@ void MonsoonWidget::applyTheme() {
             }
         }
 
+        // EXPERIMENT: bind the 8 discrete top knobs by NAME from the panel SVG
+        // (positions come from named shapes param_*; only the knob graphic varies
+        // by theme). Ring + sliders stay C++-computed elsewhere. The named shapes
+        // live in res/panels/Monsoon_panel_*_monsoon.svg (components layer).
         if (lightTheme) {
-            addParam(createParamCentered<RDM_KnobDarkLarge> (mm2px(Vec(16.f,22.f)), mod, MonsoonIds::NOTE_VALUE_PARAM));
-            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(42.f,22.f)), mod, MonsoonIds::VARIATION_PARAM));
-            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(68.f,22.f)), mod, MonsoonIds::LEGATO_PARAM));
-            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(94.f,22.f)), mod, MonsoonIds::REST_PARAM));
-            addParam(createParamCentered<RDM_KnobDarkMedium>(mm2px(Vec(120.f,22.f)), mod, MonsoonIds::ACCENT_KNOB));
-            // BPM/LEN/OFFSET below ring
-            addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(148.f,58.f)), mod, MonsoonIds::BPM_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(163.f,58.f)), mod, MonsoonIds::PATTERN_LENGTH_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(178.f,58.f)), mod, MonsoonIds::PATTERN_OFFSET_PARAM));
+            bindParam<RDM_KnobDarkLarge> ("param_NOTE_VALUE_PARAM",     MonsoonIds::NOTE_VALUE_PARAM);
+            bindParam<RDM_KnobDarkMedium>("param_VARIATION_PARAM",      MonsoonIds::VARIATION_PARAM);
+            bindParam<RDM_KnobDarkMedium>("param_LEGATO_PARAM",         MonsoonIds::LEGATO_PARAM);
+            bindParam<RDM_KnobDarkMedium>("param_REST_PARAM",           MonsoonIds::REST_PARAM);
+            bindParam<RDM_KnobDarkMedium>("param_ACCENT_KNOB",          MonsoonIds::ACCENT_KNOB);
+            bindParam<RDM_KnobSmall>     ("param_BPM_PARAM",            MonsoonIds::BPM_PARAM);
+            bindParam<RDM_KnobSmall>     ("param_PATTERN_LENGTH_PARAM", MonsoonIds::PATTERN_LENGTH_PARAM);
+            bindParam<RDM_KnobSmall>     ("param_PATTERN_OFFSET_PARAM", MonsoonIds::PATTERN_OFFSET_PARAM);
         } else {
-            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(16.f,22.f)), mod, MonsoonIds::NOTE_VALUE_PARAM));
-            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(42.f,22.f)), mod, MonsoonIds::VARIATION_PARAM));
-            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(68.f,22.f)), mod, MonsoonIds::LEGATO_PARAM));
-            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(94.f,22.f)), mod, MonsoonIds::REST_PARAM));
-            addParam(createParamCentered<RDM_KnobCreamMedium>(mm2px(Vec(120.f,22.f)), mod, MonsoonIds::ACCENT_KNOB));
-            addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(148.f,58.f)), mod, MonsoonIds::BPM_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(163.f,58.f)), mod, MonsoonIds::PATTERN_LENGTH_PARAM));
-            addParam(createParamCentered<RDM_KnobSmall>(mm2px(Vec(178.f,58.f)), mod, MonsoonIds::PATTERN_OFFSET_PARAM));
+            bindParam<RDM_KnobCreamMedium>("param_NOTE_VALUE_PARAM",     MonsoonIds::NOTE_VALUE_PARAM);
+            bindParam<RDM_KnobCreamMedium>("param_VARIATION_PARAM",      MonsoonIds::VARIATION_PARAM);
+            bindParam<RDM_KnobCreamMedium>("param_LEGATO_PARAM",         MonsoonIds::LEGATO_PARAM);
+            bindParam<RDM_KnobCreamMedium>("param_REST_PARAM",           MonsoonIds::REST_PARAM);
+            bindParam<RDM_KnobCreamMedium>("param_ACCENT_KNOB",          MonsoonIds::ACCENT_KNOB);
+            bindParam<RDM_KnobSmall>      ("param_BPM_PARAM",            MonsoonIds::BPM_PARAM);
+            bindParam<RDM_KnobSmall>      ("param_PATTERN_LENGTH_PARAM", MonsoonIds::PATTERN_LENGTH_PARAM);
+            bindParam<RDM_KnobSmall>      ("param_PATTERN_OFFSET_PARAM", MonsoonIds::PATTERN_OFFSET_PARAM);
         }
     }
+
+void MonsoonWidget::step() {
+    ModuleWidget::step();
+    dotModular::SvgHelper<MonsoonWidget>::step();  // dev poll-reload (no-op unless enabled)
+}
 
 void MonsoonWidget::draw(const DrawArgs& args) {
         NVGcontext* vg=args.vg;
@@ -393,6 +403,8 @@ void MonsoonWidget::draw(const DrawArgs& args) {
 void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
         auto* m = dynamic_cast<Monsoon*>(module);
         if (!m) return;
+        setDevMode(true);
+        dotModular::SvgHelper<MonsoonWidget>::appendContextMenu(menu);
         menu->addChild(new ui::MenuSeparator);
         struct ThemeItem : ui::MenuItem {
             MonsoonWidget* widget = nullptr;
