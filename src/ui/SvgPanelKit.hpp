@@ -64,9 +64,15 @@ struct SvgKitState {
 // reaches the shared state + the ModuleWidget through T.
 template <class T>
 struct KitAccess {
-    T*            self()  { return static_cast<T*>(this); }
-    ModuleWidget* mw()    { return static_cast<ModuleWidget*>(static_cast<T*>(this)); }
-    SvgKitState&  state() { return static_cast<T*>(this)->kit_; }
+    virtual ~KitAccess() = default;   // make polymorphic so dynamic_cast (below) works
+    // NOTE: KitAccess is a VIRTUAL base of the feature mixins (to dedupe it when
+    // several are composed). You cannot static_cast DOWN from a virtual base, so
+    // self()/mw() must use dynamic_cast (ModuleWidget is polymorphic, so RTTI is
+    // available). This is a real cost the variadic/virtual-inheritance design
+    // imposes that the flat CRTP SvgHelper avoids.
+    T*            self()  { return dynamic_cast<T*>(this); }
+    ModuleWidget* mw()    { return dynamic_cast<ModuleWidget*>(this); }
+    SvgKitState&  state() { return dynamic_cast<T*>(this)->kit_; }
     Vec centerOf(NSVGshape* s) {
         const float* b = s->bounds;
         return Vec((b[0]+b[2])/2.f, (b[1]+b[3])/2.f);
