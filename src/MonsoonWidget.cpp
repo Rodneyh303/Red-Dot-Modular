@@ -290,10 +290,20 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         auto writeNvgText=[&](float x,float y,const char* t){ nvgText(vg,mm2px(x),mm2px(y),t,nullptr); };
         auto setNvgFontSize=[&](float mm){ nvgFontSize(vg,mm2px(mm)); };
 
+        // Label anchored to a named SVG shape (so labels track their controls).
+        auto labelAt = [&](const char* shapeId, float dy_mm, const char* txt){
+            if (NSVGshape* s = findNamed(shapeId)) {
+                Vec c = center(s);
+                nvgText(vg, c.x, c.y + mm2px(dy_mm), txt, nullptr);
+            }
+        };
+
         setNvgFontSize(3.4f); fillNvgColour(200,200,200);
-        writeNvgText(16.f,34.f,"NOTE VALUE"); writeNvgText(42.f,34.f,"VARIATION");
-        writeNvgText(68.f,34.f,"LEGATO");     writeNvgText(94.f,34.f,"REST");
-        writeNvgText(120.f,34.f,"ACCENT");
+        labelAt("param_NOTE_VALUE_PARAM", 12.f, "NOTE VALUE");
+        labelAt("param_VARIATION_PARAM",  12.f, "VARIATION");
+        labelAt("param_LEGATO_PARAM",     12.f, "LEGATO");
+        labelAt("param_REST_PARAM",       12.f, "REST");
+        labelAt("param_ACCENT_KNOB",      12.f, "ACCENT");
 
         auto arcLabel = [&](float cx_mm, float cy_mm, float r_mm, float angle_deg, const char* text, int ri=160, int gi=160, int bi=160) {
             float a=angle_deg*float(M_PI)/180.f, tx=cx_mm+r_mm*std::cos(a), ty=cy_mm+r_mm*std::sin(a);
@@ -314,7 +324,7 @@ void MonsoonWidget::draw(const DrawArgs& args) {
 
         // Seq knob labels (below ring)
         setNvgFontSize(3.2f); fillNvgColour(170,170,170);
-        writeNvgText(148.f,70.f,"BPM"); writeNvgText(163.f,70.f,"LEN"); writeNvgText(178.f,70.f,"OFFSET");
+        labelAt("param_BPM_PARAM", 12.f, "BPM"); labelAt("param_PATTERN_LENGTH_PARAM", 12.f, "LEN"); labelAt("param_PATTERN_OFFSET_PARAM", 12.f, "OFFSET");
 
         // ── Control-row labels (single row at y=87; lights/labels above) ──────
         // Slots: SLEW R/M, DICE R/M, TRIAL R/M, MIX R/M, LOCK, MUTE, RESET, RUN.
@@ -374,26 +384,46 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         writeNvgText(EXP_LIGHT_X+EXP_LIGHT_S,EXP_LIGHT_Y+3.f,"D");
         writeNvgText(EXP_LIGHT_X+2*EXP_LIGHT_S,EXP_LIGHT_Y+3.f,"P");
 
-        // Buttons
-        { const float BX=118.f,BP=15.f,BY=87.f;
-          setNvgFontSize(2.7f); fillNvgColour(200,60,60);
-          writeNvgText(BX,BY+6.5f,"DICE R"); writeNvgText(BX+BP,BY+6.5f,"DICE M");
-          fillNvgColour(190,190,190);
-          writeNvgText(BX+2*BP,BY+6.5f,"LOCK"); writeNvgText(BX+3*BP,BY+6.5f,"MUTE");
-          writeNvgText(BX+4*BP,BY+6.5f,"RESET"); writeNvgText(BX+5*BP,BY+6.5f,"RUN"); }
+        // ── Labels derived from the SAME named SVG shapes the controls bind to,
+        //    so they can never fall behind a control reorg again. (labelAt is
+        //    defined above.) ───────────────────────────────────────────────────
 
-        // Jack labels
-        const float PR=7.7f/2.f;
+        // Control-row button labels (below each control)
+        setNvgFontSize(2.7f); fillNvgColour(200,60,60);
+        labelAt("param_DICE_R_PARAM", 6.5f, "DICE R");
+        labelAt("param_DICE_M_PARAM", 6.5f, "DICE M");
+        fillNvgColour(190,190,190);
+        labelAt("param_LOCK_PARAM",         6.5f, "LOCK");
+        labelAt("param_MUTE_PARAM",         6.5f, "MUTE");
+        labelAt("param_RESET_BUTTON_PARAM", 6.5f, "RESET");
+        labelAt("param_RUN_GATE_PARAM",     6.5f, "RUN");
+
+        // Jack labels (above each jack) — names now MATCH the reorganised jacks
+        // (incl. the added GATE3 / CV3), because they read the same shapes.
+        const float PR = 7.7f/2.f, JLBL = -(PR + 2.2f);
         setNvgFontSize(2.7f); fillNvgColour(195,195,195);
-        { const char* l[5]={"RUN","RST","SEED","LEN","OFF"}; const float x[5]={12,30,48,66,84};
-          for(int i=0;i<5;++i) writeNvgText(x[i],105.f-PR-2.2f,l[i]); }
-        { const char* l[5]={"CLK","G1","G2","CV1","CV2"}; const float x[5]={12,30,48,66,84};
-          for(int i=0;i<5;++i) writeNvgText(x[i],120.f-PR-2.2f,l[i]); }
+        labelAt("input_RUN_GATE_INPUT",      JLBL, "RUN");
+        labelAt("input_RESET_TRIGGER_INPUT", JLBL, "RST");
+        labelAt("input_SEED_INPUT",          JLBL, "SEED");
+        labelAt("input_GATE1_INPUT",         JLBL, "G1");
+        labelAt("input_GATE2_INPUT",         JLBL, "G2");
+        labelAt("input_GATE3_MOD_INPUT",     JLBL, "G3");
+        labelAt("input_CLK_INPUT",           JLBL, "CLK");
+        labelAt("input_LENGTH_INPUT",        JLBL, "LEN");
+        labelAt("input_OFFSET_INPUT",        JLBL, "OFF");
+        labelAt("input_CV1_INPUT",           JLBL, "CV1");
+        labelAt("input_CV2_INPUT",           JLBL, "CV2");
+        labelAt("input_CV3_MOD_INPUT",       JLBL, "CV3");
         fillNvgColour(180,180,180);
-        { const char* l[5]={"GATE","TIE","LEG","T|L","ACC"}; const float x[5]={104,122,140,158,176};
-          for(int i=0;i<5;++i) writeNvgText(x[i],105.f-PR-2.2f,l[i]); }
-        { const char* l[4]={"CV","SEED","RUN","RST"}; const float x[4]={104,122,140,158};
-          for(int i=0;i<4;++i) writeNvgText(x[i],120.f-PR-2.2f,l[i]); }
+        labelAt("output_GATE_OUTPUT",          JLBL, "GATE");
+        labelAt("output_TIE_OUTPUT",           JLBL, "TIE");
+        labelAt("output_LEGATO_OUTPUT",        JLBL, "LEG");
+        labelAt("output_TIE_OR_LEGATO_OUTPUT", JLBL, "T|L");
+        labelAt("output_ACCENT_OUTPUT",        JLBL, "ACC");
+        labelAt("output_CV_OUTPUT",            JLBL, "CV");
+        labelAt("output_SEED_OUTPUT",          JLBL, "SEED");
+        labelAt("output_RUN_GATE_OUTPUT",      JLBL, "RUN");
+        labelAt("output_RESET_TRIGGER_OUTPUT", JLBL, "RST");
     }
 
 void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
