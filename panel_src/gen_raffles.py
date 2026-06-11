@@ -35,8 +35,8 @@ def ticket_fan(t, cx_mm, pivot_mm):
     perforation line + a couple of number 'ticks'."""
     o = ['<g>']
     cx = mm(cx_mm); py = mm(pivot_mm)
-    tw, th = mm(7.5), mm(20)          # ticket size
-    angles = [-46, -31, -16, 0, 16, 31, 46]   # 7 tickets (lucky seven draws)
+    tw, th = mm(8.5), mm(15)          # ticket size: wider + SHORTER (fits tight header)
+    angles = [-54, -36, -18, 0, 18, 36, 54]   # 7 tickets, wider spread
     for i, a in enumerate(angles):
         rad = math.radians(a)
         # rotate the ticket rectangle about the pivot; build its 4 corners
@@ -90,12 +90,16 @@ def panel(theme):
     o.append(f'<rect width="{W}" height="{H}" fill="{t["bg"]}"/>')
     o.append(f'<rect x="0" y="0" width="{W}" height="3" fill="{t["red"]}"/>')
     o.append(f'<rect x="0" y="{H-3}" width="{W}" height="3" fill="{t["red"]}"/>')
+    # ── branding band: logo mark (red dot) left + module-name space ("RAFFLES"
+    #    drawn by the widget at runtime) + underline. ──
+    o.append(f'<circle cx="{mm(6):.1f}" cy="{mm(9):.1f}" r="{mm(2.4):.1f}" fill="{t["red"]}"/>')
+    o.append(f'<line x1="{mm(2):.1f}" y1="{mm(15):.1f}" x2="{mm(W/S-2):.1f}" y2="{mm(15):.1f}" stroke="{t["line"]}" stroke-width="0.8" stroke-opacity="0.6"/>')
     # R/L faint section tints (rhythm left, melody right), below the header
     o.append(f'<rect x="{mm(2):.1f}" y="{mm(36):.1f}" width="{mm(28):.1f}" height="{mm(84):.1f}" fill="{t["tintR"]}" fill-opacity="0.05"/>')
     o.append(f'<rect x="{mm(30.5):.1f}" y="{mm(36):.1f}" width="{mm(28):.1f}" height="{mm(84):.1f}" fill="{t["tintM"]}" fill-opacity="0.05"/>')
     o.append(f'<line x1="{mm(30.48):.1f}" y1="{mm(36):.1f}" x2="{mm(30.48):.1f}" y2="{mm(120):.1f}" stroke="{t["line"]}" stroke-width="0.8" stroke-opacity="0.5"/>')
-    # header motif: fanning raffle tickets
-    o += ticket_fan(t, cx_mm=W/2/S, pivot_mm=8.0)
+    # header motif: fanning raffle tickets — pivot below the branding band
+    o += ticket_fan(t, cx_mm=W/2/S, pivot_mm=17.0)
 
     # control wells (from CW geometry): CV cols {9,21,39,51} rows {38,50};
     # gate cols {16,44} rows {66,78,90,102,114}

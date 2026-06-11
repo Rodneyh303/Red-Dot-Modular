@@ -32,7 +32,7 @@ def pinisi(t, cx_mm, top_mm):
     bottom of the header band. All coords in mm, converted at emit."""
     o = ['<g>']
     cx = mm(cx_mm)
-    hullY = mm(top_mm + 34)        # waterline
+    hullY = mm(top_mm + 28)        # waterline (compact so it clears the controls)
     # ── hull: a long shallow curved crescent (dhow-like) ──
     hw = mm(17)                    # half hull width
     o.append(f'<path d="M {cx-hw:.1f} {hullY:.1f} '
@@ -100,9 +100,14 @@ def panel(theme):
     o.append(f'<rect width="{W}" height="{H}" fill="{t["bg"]}"/>')
     o.append(f'<rect x="0" y="0" width="{W}" height="3" fill="{t["red"]}"/>')
     o.append(f'<rect x="0" y="{H-3}" width="{W}" height="3" fill="{t["red"]}"/>')
-    # header motif: pinisi over waves
-    o += waves(t, 46.0)
-    o += pinisi(t, cx_mm=W/2/S, top_mm=8.0)
+    # ── branding band (logo mark left + module-name space) at the very top ──
+    #    The module name "JUNCTION" is drawn by the widget at runtime (nvgText);
+    #    here we reserve the band + a subtle underline. Logo mark = red dot + DM hint.
+    o.append(f'<circle cx="{mm(6):.1f}" cy="{mm(10):.1f}" r="{mm(2.4):.1f}" fill="{t["red"]}"/>')
+    o.append(f'<line x1="{mm(2):.1f}" y1="{mm(17):.1f}" x2="{mm(W/S-2):.1f}" y2="{mm(17):.1f}" stroke="{t["line"]}" stroke-width="0.8" stroke-opacity="0.6"/>')
+    # header motif: pinisi over waves — below branding band, sized to clear y=60 controls
+    o += waves(t, 47.0)
+    o += pinisi(t, cx_mm=W/2/S, top_mm=20.0)
     # control wells (5 CV @ x14 + 5 atten @ x30), y 60..116
     ROWS=[60.,74.,88.,102.,116.]; JACK_X=14.; ATT_X=30.
     o.append('<g id="components">')
