@@ -101,42 +101,64 @@ def force_bg(text, fill, dims):
     return pat.sub(rf'\g<1>{fill}\g<2>', text, count=1)
 
 
-def flatten_esplanade(text):
-    """The Esplanade twin-dome graphic uses full A65,65 half-circles with spike
-    polygons tracing them, so the domes balloon ~65px above the body (y=245) and
-    read as disjoint from the flat base. The real Esplanade domes are wide and
-    LOW. Flatten by compressing every y above the y=245 baseline toward it by
-    factor k (so a 65px-tall dome becomes ~28px), for the dome arcs + spikes.
-    Points at/below 245 (the body, base steps) are untouched, so top meets sides.
+def clean_esplanade(text):
+    """Replace the original messy twin-dome graphic (two A65,65 half-circle domes
+    with their spike groups, echo groups, arc outlines AND the spire on top) with
+    two clean LOW flat domes + even spikes + a central spire, drawn once. Matches
+    the dot.modular mockup. Operates on the panel TEXT (output only) — the real
+    source panel is never mutated.
     """
-    import re as _re
-    BASE = 245.0
-    k = 28.0 / 65.0   # new dome height / old
+    import math, re as _re
+    lines = text.split("\n")
+    # span: from the first dome <g fill="url(#silG)"> that precedes an A65,65 arc,
+    # through the second dome's arc-outline path AND the spire line+circle after it.
+    start = end = None
+    for i, ln in enumerate(lines):
+        if start is None and 'A65.0,65.0' in ln:
+            j = i
+            while j > 0 and '<g fill="url(#silG)"' not in lines[j]:
+                j -= 1
+            start = j
+        if 'A65.0,65.0' in ln:
+            end = i
+    # include the spire (line + circle) immediately after the last arc outline
+    k = end + 1
+    while k < len(lines) and ('<line' in lines[k] or '<circle' in lines[k]) \
+          and ('x1="335"' in lines[k] or 'cx="335"' in lines[k]):
+        end = k; k += 1
+    if start is None:
+        return text  # nothing to do
 
-    # 1) the two dome fill arcs: A65.0,65.0 -> A65.0,28.0 (flatter ellipse)
-    text = text.replace("A65.0,65.0", "A65.0,28.0")
-
-    # 2) spike polygons: compress y for any 'x,y' pair whose y is in the dome
-    #    band (218..244.9) and x in the esplanade span (175..405).
-    def fix_pt(m):
-        x = float(m.group(1)); y = float(m.group(2))
-        if 175.0 <= x <= 405.0 and 200.0 <= y < BASE:
-            y = BASE - (BASE - y) * k
-        return f"{x:.1f},{y:.1f}"
-    # points="x,y x,y x,y"
-    def fix_polygon(m):
-        pts = m.group(1)
-        pts = _re.sub(r'(\d+\.?\d*),(\d+\.?\d*)', fix_pt, pts)
-        return f'points="{pts}"'
-    text = _re.sub(r'points="([^"]*)"', fix_polygon, text)
-    return text
+    BASE_Y = 245.0; DOME_H = 22.0; SPIKE_H = 7.0; N = 17
+    def dome(cx, hw):
+        o = ['  <g fill="url(#silG)" stroke="none">',
+             f'    <path d="M {cx-hw:.1f},{BASE_Y:.1f} A {hw:.1f},{DOME_H:.1f} 0 0,1 {cx+hw:.1f},{BASE_Y:.1f} Z"/>',
+             '  </g>',
+             '  <g fill="#181e28" stroke="none" opacity="0.85">']
+        for i in range(N + 1):
+            a = math.pi * (1.0 - i / N)
+            bx = cx + hw * math.cos(a); by = BASE_Y - DOME_H * math.sin(a)
+            nx = math.cos(a) / hw; ny = -math.sin(a) / DOME_H
+            nl = math.hypot(nx, ny) or 1.0; nx, ny = nx/nl, ny/nl
+            tx, ty = bx + nx*SPIKE_H, by + ny*SPIKE_H
+            wx, wy = -ny*1.7, nx*1.7
+            o.append(f'    <polygon points="{bx-wx:.1f},{by-wy:.1f} {tx:.1f},{ty:.1f} {bx+wx:.1f},{by+wy:.1f}"/>')
+        o.append('  </g>')
+        # central spire + finial
+        o.append(f'  <line x1="{cx:.1f}" y1="{BASE_Y-DOME_H:.1f}" x2="{cx:.1f}" y2="{BASE_Y-DOME_H-9:.1f}" stroke="#dc2626" stroke-width="0.7" opacity="0.5"/>')
+        o.append(f'  <circle cx="{cx:.1f}" cy="{BASE_Y-DOME_H-10:.1f}" r="1.6" fill="#dc2626" opacity="0.5"/>')
+        # rim accent
+        o.append(f'  <path d="M {cx-hw:.1f},{BASE_Y:.1f} A {hw:.1f},{DOME_H:.1f} 0 0,1 {cx+hw:.1f},{BASE_Y:.1f}" fill="none" stroke="#dc2626" stroke-width="0.8" opacity="0.45"/>')
+        return "\n".join(o)
+    block = "\n".join([dome(252.5, 67.5), dome(337.5, 67.5)])
+    out = lines[:start] + [block] + lines[end+1:]
+    return "\n".join(out)
 
 
 def process(src, out_dark, out_light, dmap, lmap, dbg, lbg, dims):
     s = open(src).read()
-    # Straits carries the Esplanade graphic — flatten its domes first.
     if "straits" in out_dark:
-        s = flatten_esplanade(s)
+        s = clean_esplanade(s)   # replace messy domes with clean flat domes
     dark = force_bg(remap(s, dmap), dbg, dims)
     light = force_bg(remap(s, lmap), lbg, dims)
     open(out_dark, "w").write(dark)
@@ -194,6 +216,11 @@ def process_monsoon():
             out = "res/panels/Monsoon_peranakan_light.svg"
 
         body = body.replace("@@COMPONENTS@@", comp)  # reattach untouched
+        # Remove the STALE jack-well circle generation: r=14.74 wells at cy≈396/453
+        # are an old layout left in the source; the real jacks are the r=13.0 wells
+        # at cy=310/354 (y=105/120mm). The stale ones overlap + sit off-panel.
+        import re as _re2
+        body = _re2.sub(r'<circle cx="[0-9.]+" cy="(396|453)\.\d+" r="14\.7[0-9]*"[^/]*/>\s*', '', body)
         open(out, "w").write(body)
         print(f"  {src} -> {out.split('/')[-1]} (components layer preserved)")
 
