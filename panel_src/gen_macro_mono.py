@@ -16,8 +16,8 @@ def gen_macro(dark, W_MM=132.08):
     A(D.svg_open(PW,PH))
     A('<g inkscape:label="artwork" inkscape:groupmode="layer">')
     A(D.bg_rect(PW,PH,t))
-    A(D.mbs(W_MM-58.0, 96.0, 52.0, 18.0, t, op=0.8))
-    A(D.waves(ED_X, 116.0, t, op=0.7, rows=3, span_mm=W_MM-ED_X-2))
+    A(D.mbs(W_MM-60.0, 110.0, 50.0, 14.0, t, op=0.85))
+    A(D.waves(ED_X, 112.0, t, op=0.6, rows=3, span_mm=W_MM-ED_X-2))
     A(D.accent_rules(PW,t))
     gx,gy=4.0,ROW_TOP-4.0; gw,gh=(COL_A2+5.0)-gx,(ROW_BOT+2.0)-(ROW_TOP-4.0)
     A(D.input_group(gx,gy,gw,gh,t,sep_mm=0.5*(COL_J2+COL_A1)))
@@ -50,8 +50,8 @@ def gen_mono(dark):
     A(D.svg_open(PW,PH))
     A('<g inkscape:label="artwork" inkscape:groupmode="layer">')
     A(D.bg_rect(PW,PH,t))
-    A(D.mbs(W_MM-72.0, 96.0, 64.0, 18.0, t, op=0.8))
-    A(D.waves(ED_X, 116.0, t, op=0.7, rows=3, span_mm=W_MM-ED_X-2))
+    A(D.mbs(W_MM-72.0, 110.0, 60.0, 14.0, t, op=0.85))
+    A(D.waves(ED_X, 112.0, t, op=0.6, rows=3, span_mm=W_MM-ED_X-2))
     A(D.accent_rules(PW,t))
     # Input group box framing the LOR jacks + attenuverters (x 6..52), with a
     # separator between the jack cluster and the attenuverter cluster.
