@@ -130,80 +130,78 @@ def clean_esplanade(text, shell="#5a5e66", accent="#dc2626", grid_op=0.9):
     if start is None or end is None:
         return text
 
-    BASE_Y = 245.0          # eaves baseline (centre); outer edges sweep up above it
-    HW     = 78.0           # dome half-width (solo dome, wider to fill the region)
-    DOME_H = 26.0           # shell height at centre
-    EAVE_UP = 7.0           # how far the outer lower edge rises above BASE_Y
-
-    # Geometry per the reference: a domed top over a STRAIGHT bottom edge that
-    # slopes UP from left (low) to right (high). Taller overall (bottom-to-top).
-    # Each dome's bottom-left sits low, bottom-right sits high.
-    BOT_L = 6.0     # bottom edge height above BASE_Y at the LOW (left) end
-    BOT_R = 20.0    # ... at the HIGH (right) end  (=> straight slope up)
-    TOP_RISE = 64.0 # tall dome
-
-    def bot_y(cx, u):  # straight bottom edge, u in -1..1 (left..right)
-        h = BOT_L + (BOT_R - BOT_L) * (u + 1) / 2.0
-        return BASE_Y - h
-    def top_y(cx, u):  # domed top: bottom-edge level minus a parabolic rise
-        be = bot_y(cx, u)
-        return be - TOP_RISE * (1 - u*u)
-
-    def shell_path(cx):
-        lx, rx = cx-HW, cx+HW
-        bl, br = bot_y(cx, -1), bot_y(cx, 1)     # straight bottom edge endpoints
-        # top: smooth dome from bottom-left up over apex down to bottom-right
-        apex_y = top_y(cx, 0)
-        return (f'M {lx:.1f},{bl:.1f} '
-                f'Q {cx:.1f},{apex_y-4:.1f} {rx:.1f},{br:.1f} '   # domed top (curve)
-                f'L {lx:.1f},{bl:.1f} Z')                          # STRAIGHT bottom edge
+    # ── Reference-style Esplanade: woven diagrid shell ──────────────────────
+    # Reference space is ~108..1270 wide, 86..490 tall (from the user's render).
+    # Map it into the panel's esplanade region: centre ~x=295, baseline ~y=250,
+    # occupying roughly x 210..375, y 150..255.
+    import math
+    # target region
+    TGT_CX, TGT_BASE = 295.0, 248.0
+    TGT_HALFW = 82.0           # half-width in panel px
+    # reference geometry
+    R_LX, R_RX = 108.0, 1270.0
+    R_BL, R_BR = 490.0, 452.0  # bottom edge endpoints (straight, slopes up)
+    # cubic Bezier top: P0(108,490) P1(130,86) P2(1150,108) P3(1270,452)
+    def rbez(t):
+        mt=1-t
+        x=mt**3*108+3*mt*mt*t*130+3*mt*t*t*1150+t**3*1270
+        y=mt**3*490+3*mt*mt*t*86 +3*mt*t*t*108 +t**3*452
+        return x,y
+    def rbot(t):  # straight bottom edge
+        return R_LX+t*(R_RX-R_LX), R_BL+t*(R_BR-R_BL)
+    # scale ref -> panel
+    rW = R_RX-R_LX
+    sc = (2*TGT_HALFW)/rW
+    rY0 = 452.0                # reference baseline (right end) ~ where panel baseline sits
+    def MX(x): return TGT_CX - TGT_HALFW + (x-R_LX)*sc
+    def MY(y): return TGT_BASE + (y-rY0)*sc
 
     def dome(cx):
-        lx, rx = cx-HW, cx+HW
-        o = []
-        # filled shell base
-        o.append(f'  <path d="{shell_path(cx)}" fill="#101216" fill-opacity="0.5" stroke="none"/>')
-        # conforming diagrid: M ribs from straight bottom edge up to the domed top
-        M = 12
-        cols = []
-        for i in range(M+1):
-            u = -1 + 2*i/M
-            x = cx + HW*u
-            cols.append((x, bot_y(cx, u), top_y(cx, u)))
-        o.append(f'  <g stroke="{shell}" stroke-width="0.5" fill="none" opacity="{grid_op}">')
-        for (x, by, ty) in cols:                              # vertical ribs
-            o.append(f'    <line x1="{x:.1f}" y1="{by:.1f}" x2="{x:.1f}" y2="{ty:.1f}"/>')
-        K = 4
-        for kf in range(K+1):                                  # horizontal courses
-            f = kf/float(K)
-            pts = [f"{x:.1f},{(ty + (by-ty)*f):.1f}" for (x, by, ty) in cols]
+        o=[]
+        # filled backing
+        topd="M %.1f,%.1f C %.1f,%.1f %.1f,%.1f %.1f,%.1f"%(
+            MX(108),MY(490), MX(130),MY(86), MX(1150),MY(108), MX(1270),MY(452))
+        roof=topd+" L %.1f,%.1f Z"%(MX(108),MY(490))
+        o.append(f'  <path d="{roof}" fill="#101216" fill-opacity="0.45" stroke="none"/>')
+        # woven diagrid family A: courses bowing across (bottom->top at fractions)
+        o.append(f'  <g stroke="{shell}" stroke-width="0.45" fill="none" opacity="{grid_op}">')
+        NC=13
+        for i in range(1,NC+1):
+            f=i/(NC+1.0); pts=[]
+            for s in range(0,33):
+                t=s/32.0; bx,by=rbot(t); tx,ty=rbez(t)
+                x=bx+(tx-bx)*f; y=by+(ty-by)*f
+                pts.append(f"{MX(x):.1f},{MY(y):.1f}")
             o.append(f'    <polyline points="{" ".join(pts)}"/>')
         o.append('  </g>')
-        o.append(f'  <g stroke="{shell}" stroke-width="0.45" fill="none" opacity="{grid_op*0.7}">')
-        for i in range(M):                                     # diagonal cross-bracing
-            x0, by0, ty0 = cols[i]; x1, by1, ty1 = cols[i+1]
-            o.append(f'    <line x1="{x0:.1f}" y1="{by0:.1f}" x2="{x1:.1f}" y2="{ty1:.1f}"/>')
-            o.append(f'    <line x1="{x0:.1f}" y1="{ty0:.1f}" x2="{x1:.1f}" y2="{by1:.1f}"/>')
+        # family B: convergent diagonals -> focal point (the woven look)
+        o.append(f'  <g stroke="{shell}" stroke-width="0.4" fill="none" opacity="{grid_op*0.75}">')
+        fxR,fyR=660.0,200.0
+        ND=18
+        for i in range(ND+1):
+            t=i/float(ND); bx,by=rbot(t)
+            fx=bx+(fxR-bx)*0.6; fy=by+(fyR-by)*0.6
+            o.append(f'    <line x1="{MX(bx):.1f}" y1="{MY(by):.1f}" x2="{MX(fx):.1f}" y2="{MY(fy):.1f}"/>')
+        for i in range(ND+1):
+            t=i/float(ND); tx,ty=rbez(t)
+            fx=tx+(fxR-tx)*0.4; fy=ty+(fyR-ty)*0.4
+            o.append(f'    <line x1="{MX(tx):.1f}" y1="{MY(ty):.1f}" x2="{MX(fx):.1f}" y2="{MY(fy):.1f}"/>')
         o.append('  </g>')
-        # ── support struts: stand on a flat base (BASE_Y), PROGRESSIVELY TALLER
-        #    toward the high (right) side, meeting the sloped bottom edge. ──
-        o.append(f'  <g stroke="{accent}" stroke-width="1.1" fill="none" opacity="0.8">')
-        n_str = 5
-        for i in range(n_str):
-            u = -0.8 + 1.6*i/(n_str-1)
-            sx = cx + HW*u
-            top = bot_y(cx, u)          # meets the sloped bottom edge (higher on right)
-            base = BASE_Y + 2           # common flat footing
-            joint = top + 5             # Y joint just below the edge
-            o.append(f'    <line x1="{sx:.1f}" y1="{base:.1f}" x2="{sx:.1f}" y2="{joint:.1f}"/>')      # stem (taller on right)
-            o.append(f'    <line x1="{sx:.1f}" y1="{joint:.1f}" x2="{sx-5:.1f}" y2="{top:.1f}"/>')     # Y left arm
-            o.append(f'    <line x1="{sx:.1f}" y1="{joint:.1f}" x2="{sx+5:.1f}" y2="{top:.1f}"/>')     # Y right arm
+        # crisp roof outline
+        o.append(f'  <path d="{topd}" fill="none" stroke="{accent}" stroke-width="0.9" opacity="0.7"/>')
+        o.append(f'  <line x1="{MX(108):.1f}" y1="{MY(490):.1f}" x2="{MX(1270):.1f}" y2="{MY(452):.1f}" stroke="{accent}" stroke-width="0.8" opacity="0.7"/>')
+        # support columns: progressively taller toward the right, with caps
+        o.append(f'  <g stroke="{accent}" stroke-width="0.8" fill="none" opacity="0.7">')
+        cols_t=[0.10,0.27,0.44,0.61,0.78,0.93]
+        for k,t in enumerate(cols_t):
+            bx,by=rbot(t); x=MX(bx); top=MY(by)
+            footy=TGT_BASE+12+k*1.5             # ground roughly flat, slight taper
+            o.append(f'    <line x1="{x:.1f}" y1="{footy:.1f}" x2="{x:.1f}" y2="{top:.1f}"/>')
+            o.append(f'    <line x1="{x-3:.1f}" y1="{top:.1f}" x2="{x+3:.1f}" y2="{top:.1f}"/>')  # cap
         o.append('  </g>')
-        # crisp outline
-        o.append(f'  <path d="{shell_path(cx)}" fill="none" stroke="{accent}" stroke-width="0.9" opacity="0.6"/>')
         return "\n".join(o)
 
-    block = dome(295.0)   # single Esplanade shell, centred in the motif region
+    block = dome(295.0)   # single woven Esplanade shell, reference style
     out = lines[:start] + [block] + lines[end+1:]
     return "\n".join(out)
 
