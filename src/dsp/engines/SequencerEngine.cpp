@@ -193,7 +193,7 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     bool canRest = (gs.holdRemain <= 0.0001f && !hadTail);
 
     if (legatoProb >= 0.999f) {
-        gs.slideMax(pitchV, sem, nvIdx, curSixteenthSec);
+        gs.slideMax(pitchV, sem, nvIdx);
         result.decision = MonoDecision::LegatoMax;
     }
     else if (r_rest < restProb) {
@@ -208,15 +208,15 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     }
     else if (r_legato_tie < legatoProb) {
         if (sem == gs.lastSemitone && wasHeld) {
-            gs.extendHold(sem, nvIdx, curSixteenthSec);
+            gs.extendHold(sem, nvIdx);
             result.decision = MonoDecision::Tie;
         } else {
-            gs.slideNote(pitchV, sem, nvIdx, wasHeld, curSixteenthSec);
+            gs.slideNote(pitchV, sem, nvIdx, wasHeld);
             result.decision = MonoDecision::Legato;
         }
     }
     else {
-        gs.triggerNote(pitchV, sem, nvIdx, curSixteenthSec);
+        gs.triggerNote(pitchV, sem, nvIdx);
         result.decision = MonoDecision::NewNote;
     }
 
@@ -251,7 +251,6 @@ void SequencerEngine::handlePhraseBoundary(PatternInput input, bool isMelodyReal
 }
 
 StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input) {
-    curSixteenthSec = clock.sixteenthSec;
     StepResult result;
     if (!clock.sixteenthEdge || muted) return result;
 
@@ -265,13 +264,13 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
 
     float prevHold = gs.holdRemain;
     wasHeldMono = gs.gateHeld;
-    gs.tick();
+    gs.tick(clock.sixteenthSec);
     hadMonoTail = (wasHeldMono && prevHold > 0.0001f && prevHold < 0.999f);
 
     for (int i = 0; i < numPolyVoices; ++i) {
         wasHeldPolyPrev[i] = voices[i].gs.gateHeld;
         float ph = voices[i].gs.holdRemain;
-        voices[i].gs.tick();
+        voices[i].gs.tick(clock.sixteenthSec);
         hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
     }
     
@@ -368,9 +367,9 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         int sem = 0;
         float pitchV = pe.genPitchLive(sem, input, pe.polyMelodyRandom[voiceIdx][melIdx], pe.polyOctaveRandom[voiceIdx][octIdx]);
         if (lastStepResult.decision == MonoDecision::NewNote)
-            v.gs.triggerNote(pitchV, sem, lastStepResult.nvIdx, curSixteenthSec);
+            v.gs.triggerNote(pitchV, sem, lastStepResult.nvIdx);
         else
-            v.gs.slideNote(pitchV, sem, lastStepResult.nvIdx, wasHeldPoly, curSixteenthSec);
+            v.gs.slideNote(pitchV, sem, lastStepResult.nvIdx, wasHeldPoly);
         return;
     }
 
@@ -382,7 +381,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         // Poly follows mono gate presence strictly IF it was already active ("in").
         if (gs.gateHeld && wasHeldPoly) {
             if (lastStepResult.decision == MonoDecision::Tie) {
-                v.gs.extendHold(v.gs.lastSemitone, lastStepResult.nvIdx, curSixteenthSec);
+                v.gs.extendHold(v.gs.lastSemitone, lastStepResult.nvIdx);
             } else {
                 // Re-draw pitch for glides (Legato) or sustains (MidNote).
                 // This allows the poly melody to move independently even if 
@@ -393,7 +392,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                 float pitchV = pe.genPitchLive(sem, input, pe.polyMelodyRandom[voiceIdx][melIdx], pe.polyOctaveRandom[voiceIdx][octIdx]);
                 
                 if (lastStepResult.decision == MonoDecision::Legato || lastStepResult.decision == MonoDecision::LegatoMax) {
-                    v.gs.slideNote(pitchV, sem, lastStepResult.nvIdx, wasHeldPoly, curSixteenthSec);
+                    v.gs.slideNote(pitchV, sem, lastStepResult.nvIdx, wasHeldPoly);
                 } else {
                     // MidNote sustain: update pitch and keep gate high
                     v.gs.currentPitchV = pitchV;
@@ -420,10 +419,9 @@ void SequencerEngine::executePolyVoices(const PatternInput& input) {
 }
 
 void SequencerEngine::executeModeC(const ClockEngine& clock, float inCV) {
-    curSixteenthSec = clock.sixteenthSec;
     gs.gateHeld = false;
     if (clock.quarterEdge) {
-        gs.tick();
+        gs.tick(clock.sixteenthSec);
         advancePlayhead();
         gs.currentPitchV = quantize(inCV);
         int sem = int(std::round((gs.currentPitchV - std::floor(gs.currentPitchV)) * 12.f)) % 12;

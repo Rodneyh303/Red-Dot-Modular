@@ -37,12 +37,13 @@ static const char* LABELS[8] = {"1/1","1/2","1/4","1/4T","1/8","1/8T","1/16","1/
 static float gs_noteSteps(int i){ return (i<0||i>7)?1.f:GS_NOTE_FRACS[i]*16.f; }
 
 struct GS {
-    // Mirrors the fixed GateState: holdRemain (whole-step, decision logic) +
-    // gateSecRemain (precise per-sample gate length).
-    float holdRemain=0.f, gateSecRemain=-1.f; bool gateHeld=false;
-    void setGateSeconds(float durSteps,float s){ gateSecRemain=(s>0.f)?durSteps*s:-1.f; }
-    void trigger(int nv,float s){ gateHeld=true; float d=gs_noteSteps(nv); holdRemain=d; setGateSeconds(d,s); }
-    void tick(){ if(holdRemain>0.f){ holdRemain-=1.f; if(holdRemain<=0.f){ holdRemain=0.f; if(gateSecRemain<0.f) gateHeld=false; } } }
+    // Mirrors fixed GateState: holdRemain (whole-step, decisions) + gateSecRemain
+    // (precise gate length). curStepSec stashed by tick(), read by armGate().
+    float holdRemain=0.f, gateSecRemain=-1.f, curStepSec=0.f; bool gateHeld=false;
+    void armGate(float durSteps){ gateSecRemain=(curStepSec>0.f)?durSteps*curStepSec:-1.f; }
+    void trigger(int nv){ gateHeld=true; float d=gs_noteSteps(nv); holdRemain=d; armGate(d); }
+    void tick(float s){ if(s>0.f) curStepSec=s;
+        if(holdRemain>0.f){ holdRemain-=1.f; if(holdRemain<=0.f){ holdRemain=0.f; if(gateSecRemain<0.f) gateHeld=false; } } }
     bool process(float dt){
         if(gateSecRemain>=0.f){ gateSecRemain-=dt; if(gateSecRemain<=0.f){ gateSecRemain=-1.f; gateHeld=false; } }
         return gateHeld;
@@ -50,13 +51,15 @@ struct GS {
 };
 
 static float gateSteps(int nv,float stepSec,float SR=48000.f){
-    float dt=1.f/SR; GS g; g.trigger(nv,stepSec);
+    float dt=1.f/SR; GS g;
+    g.tick(stepSec);      // engine ticks before trigger in the same step -> sets curStepSec
+    g.trigger(nv);
     float high=0.f,t=0.f,nextEdge=stepSec;
     long maxN=(long)(40*stepSec*SR);
     for(long n=0;n<maxN;n++){
         if(g.process(dt)) high+=dt;
         t+=dt;
-        if(t>=nextEdge-1e-9f){ g.tick(); nextEdge+=stepSec; }
+        if(t>=nextEdge-1e-9f){ g.tick(stepSec); nextEdge+=stepSec; }
         if(!g.gateHeld && g.gateSecRemain<0.f && g.holdRemain<=0.f) break;
     }
     return high/stepSec;

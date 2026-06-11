@@ -47,6 +47,10 @@ struct GateState {
     // triplets). >=0 when governing the gate; counted down per-sample in
     // process(). Independent of holdRemain so existing decision logic is intact.
     float  gateSecRemain   = -1.f;
+    // Current 1/16-step length in seconds, refreshed by tick(); used to convert
+    // a note's step-duration into a precise gate-open time. Avoids threading the
+    // value through every note method.
+    float  curStepSec      = 0.f;
     float  currentPitchV   = 0.f;   // 1V/oct output
     int    lastSemitone    = -1;    // for tie detection
     float  semiPlayRemain[12] = {}; // per-semitone flash timers (steps)
@@ -55,22 +59,20 @@ struct GateState {
 
     // ── Core operations ───────────────────────────────────────────────────────
     // Play a new note: retrigger gate, set pitch and duration.
-    // sixteenthSec = current 1/16-step length (s); enables exact sub-step gate
-    // lengths. Pass 0 in externally-gated modes for whole-step behaviour.
-    void setGateSeconds(float durSteps, float sixteenthSec);
-    void triggerNote(float pitchV, int semitone, int nvIdx, float sixteenthSec = 0.f);
+    void armGate(float durSteps);   // arm precise gate countdown (uses curStepSec)
+    void triggerNote(float pitchV, int semitone, int nvIdx);
     // Legato slide: pitch changes, gate stays held (no retrigger), hold extends.
     // If gate was already open: extends. If not: opens it (first note of legato run).
-    void slideNote(float pitchV, int semitone, int nvIdx, bool wasHeld, float sixteenthSec = 0.f);
+    void slideNote(float pitchV, int semitone, int nvIdx, bool wasHeld);
     // Legato max (knob fully right): gate always held, holdRemain = exact dur.
-    void slideMax(float pitchV, int semitone, int nvIdx, float sixteenthSec = 0.f);
+    void slideMax(float pitchV, int semitone, int nvIdx);
     // Tie (same pitch): extend hold, no pitch or retrigger change.
-    void extendHold(int semitone, int nvIdx, float sixteenthSec = 0.f);
+    void extendHold(int semitone, int nvIdx);
     // Rest: optionally extend hold (tie-across-steps), otherwise do nothing
     // (let the current note ring to its natural end — holdRemain decays itself).
     void rest(bool tieExtend, int nvIdx);
     // Tick: call once per 1/16 step edge. Decrements hold, closes gate if expired.
-    void tick();
+    void tick(float sixteenthSec = 0.f);
     // Process: call every sample. Returns raw gate voltage (0 or 10V).
     // muted / invertGate applied by caller so this stays Rack-port-free.
     float process(float sampleTime);
