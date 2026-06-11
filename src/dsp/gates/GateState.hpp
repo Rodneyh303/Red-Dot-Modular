@@ -41,31 +41,23 @@ extern float gs_noteSteps(int nvIdx);
 struct GateState {
 
     // ── State ─────────────────────────────────────────────────────────────────
-    float  holdRemain      = 0.f;   // steps remaining (step-clock units)
+    float  holdRemain      = 0.f;   // whole-step hold counter (engine decisions)
     bool   gateHeld        = false;
+    // Precise gate-open time in seconds for exact sub-step note lengths (1/32,
+    // triplets). >=0 when governing the gate; counted down per-sample in
+    // process(). Independent of holdRemain so existing decision logic is intact.
+    float  gateSecRemain   = -1.f;
     float  currentPitchV   = 0.f;   // 1V/oct output
     int    lastSemitone    = -1;    // for tie detection
     float  semiPlayRemain[12] = {}; // per-semitone flash timers (steps)
 
-    // Fractional final-step gate close. A note's duration in 1/16-steps may be
-    // fractional (1/32 = 0.5, 1/8T = 1.333, 1/4T = 2.667). We split it into whole
-    // steps (closed by tick() as before) + a fractional remainder rendered as a
-    // sub-step gate close:
-    //   pendingFrac — fractional step remainder (0..1), armed into fracGateSec
-    //                 when the last whole step completes (or at trigger if the
-    //                 whole note is shorter than one step).
-    //   fracGateSec — remaining OPEN time of the final partial step, in seconds,
-    //                 counted down per-sample in process(); <0 means inactive.
-    float  pendingFrac     = 0.f;
-    float  fracGateSec     = -1.f;
-
     rack::dsp::PulseGenerator gatePulse;  // 1ms retrigger for envelopes
 
     // ── Core operations ───────────────────────────────────────────────────────
-    // sixteenthSec = current 1/16-step duration in seconds; enables sub-step
-    // (1/32, triplet) gate closes. Pass 0 in externally-gated modes.
-    void setDuration(float durSteps, float sixteenthSec);
     // Play a new note: retrigger gate, set pitch and duration.
+    // sixteenthSec = current 1/16-step length (s); enables exact sub-step gate
+    // lengths. Pass 0 in externally-gated modes for whole-step behaviour.
+    void setGateSeconds(float durSteps, float sixteenthSec);
     void triggerNote(float pitchV, int semitone, int nvIdx, float sixteenthSec = 0.f);
     // Legato slide: pitch changes, gate stays held (no retrigger), hold extends.
     // If gate was already open: extends. If not: opens it (first note of legato run).
@@ -77,11 +69,8 @@ struct GateState {
     // Rest: optionally extend hold (tie-across-steps), otherwise do nothing
     // (let the current note ring to its natural end — holdRemain decays itself).
     void rest(bool tieExtend, int nvIdx);
-    // Tick: call once per 1/16 step edge. Decrements hold, closes gate if
-    // expired. sixteenthSec = current step duration in seconds; used to arm the
-    // fractional-final-step gate close (sub-step note lengths). Pass 0 to keep
-    // the old whole-step behaviour.
-    void tick(float sixteenthSec = 0.f);
+    // Tick: call once per 1/16 step edge. Decrements hold, closes gate if expired.
+    void tick();
     // Process: call every sample. Returns raw gate voltage (0 or 10V).
     // muted / invertGate applied by caller so this stays Rack-port-free.
     float process(float sampleTime);

@@ -27,6 +27,7 @@ void ClockEngine::process(float clockVoltage, bool clkConnected, float internalB
                 if (measured && clockTimeAcc > 0.001f && clockTimeAcc < 10.f) {
                     float derivedBpm = (60.f * 4.f) / clockTimeAcc; // 4 sixteenths per beat
                     bpm = clkClamp(derivedBpm, 20.f, 300.f);
+                    sixteenthSec = 15.f / bpm;   // keep step length current under external clock (sub-step gate timing)
                     sixteenthSec = 15.f / bpm;   // keep step duration current for
                                                  // fractional sub-step gate closes
                 }

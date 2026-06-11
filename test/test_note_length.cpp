@@ -37,35 +37,27 @@ static const char* LABELS[8] = {"1/1","1/2","1/4","1/4T","1/8","1/8T","1/16","1/
 static float gs_noteSteps(int i){ return (i<0||i>7)?1.f:GS_NOTE_FRACS[i]*16.f; }
 
 struct GS {
-    float holdRemain=0.f, pendingFrac=0.f, fracGateSec=-1.f; bool gateHeld=false;
-    void setDuration(float dur,float s){
-        float whole=std::floor(dur+1e-6f), frac=dur-whole;
-        if(s<=0.f){ holdRemain=std::max(1.f,std::round(dur)); pendingFrac=0.f; fracGateSec=-1.f; return; }
-        if(whole<1.f){ holdRemain=0.f; pendingFrac=0.f; fracGateSec=std::max(frac,0.f)*s; }
-        else { holdRemain=whole; pendingFrac=(frac>1e-6f)?frac:0.f; fracGateSec=-1.f; }
-    }
-    void trigger(int nv,float s){ gateHeld=true; setDuration(gs_noteSteps(nv),s); }
-    void tick(float s){
-        if(holdRemain>0.f){ holdRemain-=1.f;
-            if(holdRemain<=0.f){ holdRemain=0.f;
-                if(pendingFrac>1e-6f&&s>0.f){ fracGateSec=pendingFrac*s; pendingFrac=0.f; }
-                else if(fracGateSec<0.f) gateHeld=false; } }
-    }
+    // Mirrors the fixed GateState: holdRemain (whole-step, decision logic) +
+    // gateSecRemain (precise per-sample gate length).
+    float holdRemain=0.f, gateSecRemain=-1.f; bool gateHeld=false;
+    void setGateSeconds(float durSteps,float s){ gateSecRemain=(s>0.f)?durSteps*s:-1.f; }
+    void trigger(int nv,float s){ gateHeld=true; float d=gs_noteSteps(nv); holdRemain=d; setGateSeconds(d,s); }
+    void tick(){ if(holdRemain>0.f){ holdRemain-=1.f; if(holdRemain<=0.f){ holdRemain=0.f; if(gateSecRemain<0.f) gateHeld=false; } } }
     bool process(float dt){
-        if(fracGateSec>=0.f){ fracGateSec-=dt; if(fracGateSec<=0.f){ fracGateSec=-1.f; gateHeld=false; } }
+        if(gateSecRemain>=0.f){ gateSecRemain-=dt; if(gateSecRemain<=0.f){ gateSecRemain=-1.f; gateHeld=false; } }
         return gateHeld;
     }
 };
 
 static float gateSteps(int nv,float stepSec,float SR=48000.f){
     float dt=1.f/SR; GS g; g.trigger(nv,stepSec);
-    float high=0.f, t=0.f, nextEdge=stepSec;
+    float high=0.f,t=0.f,nextEdge=stepSec;
     long maxN=(long)(40*stepSec*SR);
     for(long n=0;n<maxN;n++){
         if(g.process(dt)) high+=dt;
         t+=dt;
-        if(t>=nextEdge-1e-9f){ g.tick(stepSec); nextEdge+=stepSec; }
-        if(!g.gateHeld && g.holdRemain<=0.f && g.fracGateSec<0.f) break;
+        if(t>=nextEdge-1e-9f){ g.tick(); nextEdge+=stepSec; }
+        if(!g.gateHeld && g.gateSecRemain<0.f && g.holdRemain<=0.f) break;
     }
     return high/stepSec;
 }

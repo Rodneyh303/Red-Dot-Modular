@@ -265,13 +265,13 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
 
     float prevHold = gs.holdRemain;
     wasHeldMono = gs.gateHeld;
-    gs.tick(clock.sixteenthSec);
+    gs.tick();
     hadMonoTail = (wasHeldMono && prevHold > 0.0001f && prevHold < 0.999f);
 
     for (int i = 0; i < numPolyVoices; ++i) {
         wasHeldPolyPrev[i] = voices[i].gs.gateHeld;
         float ph = voices[i].gs.holdRemain;
-        voices[i].gs.tick(clock.sixteenthSec);
+        voices[i].gs.tick();
         hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
     }
     
@@ -423,7 +423,7 @@ void SequencerEngine::executeModeC(const ClockEngine& clock, float inCV) {
     curSixteenthSec = clock.sixteenthSec;
     gs.gateHeld = false;
     if (clock.quarterEdge) {
-        gs.tick(clock.sixteenthSec);
+        gs.tick();
         advancePlayhead();
         gs.currentPitchV = quantize(inCV);
         int sem = int(std::round((gs.currentPitchV - std::floor(gs.currentPitchV)) * 12.f)) % 12;

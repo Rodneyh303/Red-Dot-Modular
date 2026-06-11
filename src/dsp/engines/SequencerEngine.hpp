@@ -42,7 +42,7 @@ struct PolyVoice {
 // ── SequencerEngine ────────────────────────────────────────────────────────────
 
 struct SequencerEngine {
-    float curSixteenthSec = 0.f;   // current 1/16-step duration (s); enables sub-step gate closes
+    float curSixteenthSec = 0.f;   // current 1/16-step length (s) for sub-step gate timing
     PatternEngine pe;
     GateState gs;
 
