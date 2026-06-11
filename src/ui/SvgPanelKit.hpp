@@ -94,6 +94,18 @@ struct ShapeQuery {
         forEachShape([&](NSVGshape* s){ if (!r && name == s->id) r = s; });
         return r;
     }
+    std::vector<NSVGshape*> findPrefixed(const std::string& prefix) {
+        std::vector<NSVGshape*> r;
+        forEachShape([&](NSVGshape* s){
+            if (std::string(s->id).rfind(prefix, 0) == 0) r.push_back(s);
+        });
+        return r;
+    }
+    void forEachPrefixed(const std::string& prefix,
+                         const std::function<void(unsigned, NSVGshape*)>& cb) {
+        auto v = findPrefixed(prefix);
+        for (unsigned i = 0; i < v.size(); ++i) cb(i, v[i]);
+    }
     void forEachMatched(const std::string& pat,
                         const std::function<void(std::vector<std::string>, NSVGshape*)>& cb) {
         std::regex re(pat);
@@ -130,6 +142,24 @@ struct Bind {
             auto* w = createOutputCentered<W>(this->self()->centerOf(s), this->self()->mw()->module, id); 
             this->self()->mw()->addOutput(w); this->self()->state().bound[s->id] = w; 
         } else WARN("[SvgKit] output shape not found: %s", n.c_str());
+    }
+    template <class W> void bindLight(const std::string& n, int id) {
+        if (auto* s = this->self()->findNamed(n)) {
+            auto* w = createLightCentered<W>(this->self()->centerOf(s), this->self()->mw()->module, id);
+            this->self()->mw()->addChild(w); this->self()->state().bound[s->id] = w;
+        } else WARN("[SvgKit] light shape not found: %s", n.c_str());
+    }
+    // Bind an arbitrary Widget (e.g. a custom Sands lane display) to a named
+    // shape's centre. W must be default-constructible and have box.size set in
+    // its ctor (createWidget centres it on the shape).
+    template <class W> W* bindChild(const std::string& n) {
+        if (auto* s = this->self()->findNamed(n)) {
+            auto* w = createWidgetCentered<W>(this->self()->centerOf(s));
+            this->self()->mw()->addChild(w); this->self()->state().bound[s->id] = w;
+            return w;
+        }
+        WARN("[SvgKit] child shape not found: %s", n.c_str());
+        return nullptr;
     }
 
     template <class W>
@@ -199,11 +229,15 @@ struct Compose : Features<T>..., KitAccess<T> { // Added KitAccess<T> directly h
     using ShapeQuery<T>::loadPanel;
     using ShapeQuery<T>::forEachShape;
     using ShapeQuery<T>::findNamed;
+    using ShapeQuery<T>::findPrefixed;
+    using ShapeQuery<T>::forEachPrefixed;
     using ShapeQuery<T>::forEachMatched;
 
     using Bind<T>::bindParam;
     using Bind<T>::bindInput;
     using Bind<T>::bindOutput;
+    using Bind<T>::bindLight;
+    using Bind<T>::bindChild;
     using Bind<T>::bindInputs;
     using Bind<T>::bindParams;
 
