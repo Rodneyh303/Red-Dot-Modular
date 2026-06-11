@@ -141,8 +141,9 @@ struct Bind {
     template <class W, class... Ids>
     void bindParams(const std::string& prefix, Ids... ids) {
         int i = 0;
-        using expander = int[];
-        (void)expander{0, ((void)bindParam<W>(prefix + std::to_string(i++), ids), 0)...};
+        // C++17 fold expression over the comma operator (was a C++11 init-list
+        // trick before the plugin moved to -std=c++17).
+        (bindParam<W>(prefix + std::to_string(i++), ids), ...);
     }
 };
 
