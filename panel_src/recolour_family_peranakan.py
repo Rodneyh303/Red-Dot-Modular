@@ -101,56 +101,103 @@ def force_bg(text, fill, dims):
     return pat.sub(rf'\g<1>{fill}\g<2>', text, count=1)
 
 
-def clean_esplanade(text):
-    """Replace the original messy twin-dome graphic (two A65,65 half-circle domes
-    with their spike groups, echo groups, arc outlines AND the spire on top) with
-    two clean LOW flat domes + even spikes + a central spire, drawn once. Matches
-    the dot.modular mockup. Operates on the panel TEXT (output only) — the real
-    source panel is never mutated.
+def clean_esplanade(text, shell="#5a5e66", accent="#dc2626", grid_op=0.9):
+    """Replace the ENTIRE original Esplanade structure (building body + base steps
+    + windows + both messy domes + spikes + spire) with two clean Esplanade
+    'durian' shells in the style of the reference render:
+      - a criss-cross (diagrid) grid over each dome shell,
+      - Y-shaped support struts beneath,
+      - the lower roof edge sweeping UP at the outer sides (upturned eaves),
+      - NO building structure underneath.
+    `shell` colours the grid; pass a grey or red to get the two variants.
+    Operates on panel TEXT (output only) — source panel never mutated.
     """
     import math, re as _re
     lines = text.split("\n")
-    # span: from the first dome <g fill="url(#silG)"> that precedes an A65,65 arc,
-    # through the second dome's arc-outline path AND the spire line+circle after it.
+    # Span: from the FIRST <g fill="url(#silG)"> (the building body group) through
+    # the spire after the last dome arc-outline. That covers body+steps+windows
+    # +both domes+spikes+outlines+spire.
     start = end = None
     for i, ln in enumerate(lines):
-        if start is None and 'A65.0,65.0' in ln:
-            j = i
-            while j > 0 and '<g fill="url(#silG)"' not in lines[j]:
-                j -= 1
-            start = j
+        if start is None and '<g fill="url(#silG)"' in ln:
+            start = i
         if 'A65.0,65.0' in ln:
             end = i
-    # include the spire (line + circle) immediately after the last arc outline
-    k = end + 1
+    k = (end or 0) + 1
     while k < len(lines) and ('<line' in lines[k] or '<circle' in lines[k]) \
           and ('x1="335"' in lines[k] or 'cx="335"' in lines[k]):
         end = k; k += 1
-    if start is None:
-        return text  # nothing to do
+    if start is None or end is None:
+        return text
 
-    BASE_Y = 245.0; DOME_H = 22.0; SPIKE_H = 7.0; N = 17
-    def dome(cx, hw):
-        o = ['  <g fill="url(#silG)" stroke="none">',
-             f'    <path d="M {cx-hw:.1f},{BASE_Y:.1f} A {hw:.1f},{DOME_H:.1f} 0 0,1 {cx+hw:.1f},{BASE_Y:.1f} Z"/>',
-             '  </g>',
-             '  <g fill="#181e28" stroke="none" opacity="0.85">']
-        for i in range(N + 1):
-            a = math.pi * (1.0 - i / N)
-            bx = cx + hw * math.cos(a); by = BASE_Y - DOME_H * math.sin(a)
-            nx = math.cos(a) / hw; ny = -math.sin(a) / DOME_H
-            nl = math.hypot(nx, ny) or 1.0; nx, ny = nx/nl, ny/nl
-            tx, ty = bx + nx*SPIKE_H, by + ny*SPIKE_H
-            wx, wy = -ny*1.7, nx*1.7
-            o.append(f'    <polygon points="{bx-wx:.1f},{by-wy:.1f} {tx:.1f},{ty:.1f} {bx+wx:.1f},{by+wy:.1f}"/>')
+    BASE_Y = 245.0          # eaves baseline (centre); outer edges sweep up above it
+    HW     = 66.0           # dome half-width
+    DOME_H = 26.0           # shell height at centre
+    EAVE_UP = 7.0           # how far the outer lower edge rises above BASE_Y
+
+    def shell_path(cx):
+        """Outline: upswept lower edge (left), over the top, down to upswept right."""
+        lx, rx = cx-HW, cx+HW
+        ly = BASE_Y - EAVE_UP          # outer edges sit HIGHER (swept up)
+        topy = BASE_Y - DOME_H
+        # left eave -> apex -> right eave, with a gentle lower edge dipping to centre
+        return (f'M {lx:.1f},{ly:.1f} '
+                f'Q {cx:.1f},{topy-2:.1f} {rx:.1f},{ly:.1f} '         # the roof curve (top)
+                f'Q {cx:.1f},{BASE_Y+3:.1f} {lx:.1f},{ly:.1f} Z')     # lower edge dips at centre
+
+    def dome(cx):
+        lx, rx = cx-HW, cx+HW
+        o = []
+        def shell_y(u):  # u in -1..1 ; parabolic apex, upswept at edges
+            return BASE_Y - EAVE_UP - (DOME_H-EAVE_UP) * (1 - u*u)
+        def edge_y(u):   # the lower (eave) edge: dips slightly to centre
+            return BASE_Y - EAVE_UP + (EAVE_UP+3) * (1 - u*u)
+        # filled shell base
+        o.append(f'  <path d="{shell_path(cx)}" fill="#101216" fill-opacity="0.5" stroke="none"/>')
+        # build a conforming lattice: sample M ribs across u, each rib a vertical
+        # chord from edge to shell-top; then K horizontal courses between them.
+        M = 12
+        cols = []
+        for i in range(M+1):
+            u = -1 + 2*i/M
+            x = cx + HW*u
+            cols.append((x, edge_y(u), shell_y(u)))
+        o.append(f'  <g stroke="{shell}" stroke-width="0.5" fill="none" opacity="{grid_op}">')
+        # vertical ribs
+        for (x, ey, ty) in cols:
+            o.append(f'    <line x1="{x:.1f}" y1="{ey:.1f}" x2="{x:.1f}" y2="{ty:.1f}"/>')
+        # horizontal courses (interpolate each rib at fraction f from top to edge)
+        K = 4
+        for kf in range(K+1):
+            f = kf/float(K)
+            pts = []
+            for (x, ey, ty) in cols:
+                y = ty + (ey-ty)*f
+                pts.append(f"{x:.1f},{y:.1f}")
+            o.append(f'    <polyline points="{" ".join(pts)}"/>')
         o.append('  </g>')
-        # central spire + finial
-        o.append(f'  <line x1="{cx:.1f}" y1="{BASE_Y-DOME_H:.1f}" x2="{cx:.1f}" y2="{BASE_Y-DOME_H-9:.1f}" stroke="#dc2626" stroke-width="0.7" opacity="0.5"/>')
-        o.append(f'  <circle cx="{cx:.1f}" cy="{BASE_Y-DOME_H-10:.1f}" r="1.6" fill="#dc2626" opacity="0.5"/>')
-        # rim accent
-        o.append(f'  <path d="M {cx-hw:.1f},{BASE_Y:.1f} A {hw:.1f},{DOME_H:.1f} 0 0,1 {cx+hw:.1f},{BASE_Y:.1f}" fill="none" stroke="#dc2626" stroke-width="0.8" opacity="0.45"/>')
+        # diagonal lattice (the criss-cross) — connect rib i top-ish to rib i+1 bottom-ish, both directions
+        o.append(f'  <g stroke="{shell}" stroke-width="0.45" fill="none" opacity="{grid_op*0.7}">')
+        for i in range(M):
+            x0, ey0, ty0 = cols[i]; x1, ey1, ty1 = cols[i+1]
+            # forward diagonal
+            o.append(f'    <line x1="{x0:.1f}" y1="{ey0:.1f}" x2="{x1:.1f}" y2="{ty1:.1f}"/>')
+            # back diagonal
+            o.append(f'    <line x1="{x0:.1f}" y1="{ty0:.1f}" x2="{x1:.1f}" y2="{ey1:.1f}"/>')
+        o.append('  </g>')
+        # ── Y-shaped support struts beneath the shell ──
+        o.append(f'  <g stroke="{accent}" stroke-width="1.1" fill="none" opacity="0.75">')
+        for sx in (cx-HW*0.45, cx+HW*0.45):
+            footy = BASE_Y + 17; joint = BASE_Y + 5
+            o.append(f'    <line x1="{sx:.1f}" y1="{footy:.1f}" x2="{sx:.1f}" y2="{joint:.1f}"/>')
+            o.append(f'    <line x1="{sx:.1f}" y1="{joint:.1f}" x2="{sx-8:.1f}" y2="{BASE_Y-1:.1f}"/>')
+            o.append(f'    <line x1="{sx:.1f}" y1="{joint:.1f}" x2="{sx+8:.1f}" y2="{BASE_Y-1:.1f}"/>')
+        o.append('  </g>')
+        # crisp shell outline (upswept eaves)
+        o.append(f'  <path d="{shell_path(cx)}" fill="none" stroke="{accent}" stroke-width="0.9" opacity="0.6"/>')
         return "\n".join(o)
-    block = "\n".join([dome(252.5, 67.5), dome(337.5, 67.5)])
+
+    block = "\n".join([dome(252.5), dome(337.5)])
     out = lines[:start] + [block] + lines[end+1:]
     return "\n".join(out)
 
@@ -158,7 +205,17 @@ def clean_esplanade(text):
 def process(src, out_dark, out_light, dmap, lmap, dbg, lbg, dims):
     s = open(src).read()
     if "straits" in out_dark:
-        s = clean_esplanade(s)   # replace messy domes with clean flat domes
+        # Two Esplanade treatments: grey (architectural) + red (hero). Emit both
+        # dark variants so they can be compared; light uses the grey shell.
+        grey = clean_esplanade(s, shell="#7a7e86", accent="#9a9fa8", grid_op=0.95)
+        red  = clean_esplanade(s, shell="#d4001a", accent="#dc2626", grid_op=0.95)
+        open(out_dark.replace(".svg", "_grey.svg"), "w").write(force_bg(remap(grey, dmap), dbg, dims))
+        open(out_dark.replace(".svg", "_red.svg"),  "w").write(force_bg(remap(red,  dmap), dbg, dims))
+        # default dark = red (hero); light = grey shell
+        open(out_dark, "w").write(force_bg(remap(red, dmap), dbg, dims))
+        open(out_light, "w").write(force_bg(remap(grey, lmap), lbg, dims))
+        print(f"  {src} -> {out_dark.split('/')[-1]} (+_grey/_red), {out_light.split('/')[-1]}")
+        return
     dark = force_bg(remap(s, dmap), dbg, dims)
     light = force_bg(remap(s, lmap), lbg, dims)
     open(out_dark, "w").write(dark)
