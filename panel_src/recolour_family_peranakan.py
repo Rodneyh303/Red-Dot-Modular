@@ -135,65 +135,71 @@ def clean_esplanade(text, shell="#5a5e66", accent="#dc2626", grid_op=0.9):
     DOME_H = 26.0           # shell height at centre
     EAVE_UP = 7.0           # how far the outer lower edge rises above BASE_Y
 
+    # Geometry per the reference: a domed top over a STRAIGHT bottom edge that
+    # slopes UP from left (low) to right (high). Taller overall (bottom-to-top).
+    # Each dome's bottom-left sits low, bottom-right sits high.
+    BOT_L = 6.0     # bottom edge height above BASE_Y at the LOW (left) end
+    BOT_R = 20.0    # ... at the HIGH (right) end  (=> straight slope up)
+    TOP_RISE = 30.0 # how far the domed top rises above the bottom edge midpoint
+
+    def bot_y(cx, u):  # straight bottom edge, u in -1..1 (left..right)
+        h = BOT_L + (BOT_R - BOT_L) * (u + 1) / 2.0
+        return BASE_Y - h
+    def top_y(cx, u):  # domed top: bottom-edge level minus a parabolic rise
+        be = bot_y(cx, u)
+        return be - TOP_RISE * (1 - u*u)
+
     def shell_path(cx):
-        """Outline: upswept lower edge (left), over the top, down to upswept right."""
         lx, rx = cx-HW, cx+HW
-        ly = BASE_Y - EAVE_UP          # outer edges sit HIGHER (swept up)
-        topy = BASE_Y - DOME_H
-        # left eave -> apex -> right eave, with a gentle lower edge dipping to centre
-        return (f'M {lx:.1f},{ly:.1f} '
-                f'Q {cx:.1f},{topy-2:.1f} {rx:.1f},{ly:.1f} '         # the roof curve (top)
-                f'Q {cx:.1f},{BASE_Y+3:.1f} {lx:.1f},{ly:.1f} Z')     # lower edge dips at centre
+        bl, br = bot_y(cx, -1), bot_y(cx, 1)     # straight bottom edge endpoints
+        # top: smooth dome from bottom-left up over apex down to bottom-right
+        apex_y = top_y(cx, 0)
+        return (f'M {lx:.1f},{bl:.1f} '
+                f'Q {cx:.1f},{apex_y-4:.1f} {rx:.1f},{br:.1f} '   # domed top (curve)
+                f'L {lx:.1f},{bl:.1f} Z')                          # STRAIGHT bottom edge
 
     def dome(cx):
         lx, rx = cx-HW, cx+HW
         o = []
-        def shell_y(u):  # u in -1..1 ; parabolic apex, upswept at edges
-            return BASE_Y - EAVE_UP - (DOME_H-EAVE_UP) * (1 - u*u)
-        def edge_y(u):   # the lower (eave) edge: dips slightly to centre
-            return BASE_Y - EAVE_UP + (EAVE_UP+3) * (1 - u*u)
         # filled shell base
         o.append(f'  <path d="{shell_path(cx)}" fill="#101216" fill-opacity="0.5" stroke="none"/>')
-        # build a conforming lattice: sample M ribs across u, each rib a vertical
-        # chord from edge to shell-top; then K horizontal courses between them.
+        # conforming diagrid: M ribs from straight bottom edge up to the domed top
         M = 12
         cols = []
         for i in range(M+1):
             u = -1 + 2*i/M
             x = cx + HW*u
-            cols.append((x, edge_y(u), shell_y(u)))
+            cols.append((x, bot_y(cx, u), top_y(cx, u)))
         o.append(f'  <g stroke="{shell}" stroke-width="0.5" fill="none" opacity="{grid_op}">')
-        # vertical ribs
-        for (x, ey, ty) in cols:
-            o.append(f'    <line x1="{x:.1f}" y1="{ey:.1f}" x2="{x:.1f}" y2="{ty:.1f}"/>')
-        # horizontal courses (interpolate each rib at fraction f from top to edge)
+        for (x, by, ty) in cols:                              # vertical ribs
+            o.append(f'    <line x1="{x:.1f}" y1="{by:.1f}" x2="{x:.1f}" y2="{ty:.1f}"/>')
         K = 4
-        for kf in range(K+1):
+        for kf in range(K+1):                                  # horizontal courses
             f = kf/float(K)
-            pts = []
-            for (x, ey, ty) in cols:
-                y = ty + (ey-ty)*f
-                pts.append(f"{x:.1f},{y:.1f}")
+            pts = [f"{x:.1f},{(ty + (by-ty)*f):.1f}" for (x, by, ty) in cols]
             o.append(f'    <polyline points="{" ".join(pts)}"/>')
         o.append('  </g>')
-        # diagonal lattice (the criss-cross) — connect rib i top-ish to rib i+1 bottom-ish, both directions
         o.append(f'  <g stroke="{shell}" stroke-width="0.45" fill="none" opacity="{grid_op*0.7}">')
-        for i in range(M):
-            x0, ey0, ty0 = cols[i]; x1, ey1, ty1 = cols[i+1]
-            # forward diagonal
-            o.append(f'    <line x1="{x0:.1f}" y1="{ey0:.1f}" x2="{x1:.1f}" y2="{ty1:.1f}"/>')
-            # back diagonal
-            o.append(f'    <line x1="{x0:.1f}" y1="{ty0:.1f}" x2="{x1:.1f}" y2="{ey1:.1f}"/>')
+        for i in range(M):                                     # diagonal cross-bracing
+            x0, by0, ty0 = cols[i]; x1, by1, ty1 = cols[i+1]
+            o.append(f'    <line x1="{x0:.1f}" y1="{by0:.1f}" x2="{x1:.1f}" y2="{ty1:.1f}"/>')
+            o.append(f'    <line x1="{x0:.1f}" y1="{ty0:.1f}" x2="{x1:.1f}" y2="{by1:.1f}"/>')
         o.append('  </g>')
-        # ── Y-shaped support struts beneath the shell ──
-        o.append(f'  <g stroke="{accent}" stroke-width="1.1" fill="none" opacity="0.75">')
-        for sx in (cx-HW*0.45, cx+HW*0.45):
-            footy = BASE_Y + 17; joint = BASE_Y + 5
-            o.append(f'    <line x1="{sx:.1f}" y1="{footy:.1f}" x2="{sx:.1f}" y2="{joint:.1f}"/>')
-            o.append(f'    <line x1="{sx:.1f}" y1="{joint:.1f}" x2="{sx-8:.1f}" y2="{BASE_Y-1:.1f}"/>')
-            o.append(f'    <line x1="{sx:.1f}" y1="{joint:.1f}" x2="{sx+8:.1f}" y2="{BASE_Y-1:.1f}"/>')
+        # ── support struts: stand on a flat base (BASE_Y), PROGRESSIVELY TALLER
+        #    toward the high (right) side, meeting the sloped bottom edge. ──
+        o.append(f'  <g stroke="{accent}" stroke-width="1.1" fill="none" opacity="0.8">')
+        n_str = 5
+        for i in range(n_str):
+            u = -0.8 + 1.6*i/(n_str-1)
+            sx = cx + HW*u
+            top = bot_y(cx, u)          # meets the sloped bottom edge (higher on right)
+            base = BASE_Y + 2           # common flat footing
+            joint = top + 5             # Y joint just below the edge
+            o.append(f'    <line x1="{sx:.1f}" y1="{base:.1f}" x2="{sx:.1f}" y2="{joint:.1f}"/>')      # stem (taller on right)
+            o.append(f'    <line x1="{sx:.1f}" y1="{joint:.1f}" x2="{sx-5:.1f}" y2="{top:.1f}"/>')     # Y left arm
+            o.append(f'    <line x1="{sx:.1f}" y1="{joint:.1f}" x2="{sx+5:.1f}" y2="{top:.1f}"/>')     # Y right arm
         o.append('  </g>')
-        # crisp shell outline (upswept eaves)
+        # crisp outline
         o.append(f'  <path d="{shell_path(cx)}" fill="none" stroke="{accent}" stroke-width="0.9" opacity="0.6"/>')
         return "\n".join(o)
 
