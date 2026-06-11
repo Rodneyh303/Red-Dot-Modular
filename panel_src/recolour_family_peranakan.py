@@ -131,7 +131,7 @@ def clean_esplanade(text, shell="#5a5e66", accent="#dc2626", grid_op=0.9):
         return text
 
     BASE_Y = 245.0          # eaves baseline (centre); outer edges sweep up above it
-    HW     = 66.0           # dome half-width
+    HW     = 58.0           # dome half-width (a touch narrower => rounder)
     DOME_H = 26.0           # shell height at centre
     EAVE_UP = 7.0           # how far the outer lower edge rises above BASE_Y
 
@@ -140,7 +140,7 @@ def clean_esplanade(text, shell="#5a5e66", accent="#dc2626", grid_op=0.9):
     # Each dome's bottom-left sits low, bottom-right sits high.
     BOT_L = 6.0     # bottom edge height above BASE_Y at the LOW (left) end
     BOT_R = 20.0    # ... at the HIGH (right) end  (=> straight slope up)
-    TOP_RISE = 30.0 # how far the domed top rises above the bottom edge midpoint
+    TOP_RISE = 56.0 # how far the domed top rises above the bottom edge midpoint (tall dome)
 
     def bot_y(cx, u):  # straight bottom edge, u in -1..1 (left..right)
         h = BOT_L + (BOT_R - BOT_L) * (u + 1) / 2.0
