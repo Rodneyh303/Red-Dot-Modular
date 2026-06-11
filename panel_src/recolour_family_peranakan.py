@@ -26,7 +26,7 @@ import re, sys
 RED     = "#d4001a"
 GOLD_D  = "#c8960c"   # gold on dark
 GOLD_L  = "#b07d00"   # gold on light
-BLACK   = "#080808"
+BLACK   = "#18181a"   # matt black (was glossy #080808)
 LGREY   = "#dcdcdc"   # light background
 
 # ── Per-family colour maps ────────────────────────────────────────────────
@@ -101,8 +101,42 @@ def force_bg(text, fill, dims):
     return pat.sub(rf'\g<1>{fill}\g<2>', text, count=1)
 
 
+def flatten_esplanade(text):
+    """The Esplanade twin-dome graphic uses full A65,65 half-circles with spike
+    polygons tracing them, so the domes balloon ~65px above the body (y=245) and
+    read as disjoint from the flat base. The real Esplanade domes are wide and
+    LOW. Flatten by compressing every y above the y=245 baseline toward it by
+    factor k (so a 65px-tall dome becomes ~28px), for the dome arcs + spikes.
+    Points at/below 245 (the body, base steps) are untouched, so top meets sides.
+    """
+    import re as _re
+    BASE = 245.0
+    k = 28.0 / 65.0   # new dome height / old
+
+    # 1) the two dome fill arcs: A65.0,65.0 -> A65.0,28.0 (flatter ellipse)
+    text = text.replace("A65.0,65.0", "A65.0,28.0")
+
+    # 2) spike polygons: compress y for any 'x,y' pair whose y is in the dome
+    #    band (218..244.9) and x in the esplanade span (175..405).
+    def fix_pt(m):
+        x = float(m.group(1)); y = float(m.group(2))
+        if 175.0 <= x <= 405.0 and 200.0 <= y < BASE:
+            y = BASE - (BASE - y) * k
+        return f"{x:.1f},{y:.1f}"
+    # points="x,y x,y x,y"
+    def fix_polygon(m):
+        pts = m.group(1)
+        pts = _re.sub(r'(\d+\.?\d*),(\d+\.?\d*)', fix_pt, pts)
+        return f'points="{pts}"'
+    text = _re.sub(r'points="([^"]*)"', fix_polygon, text)
+    return text
+
+
 def process(src, out_dark, out_light, dmap, lmap, dbg, lbg, dims):
     s = open(src).read()
+    # Straits carries the Esplanade graphic — flatten its domes first.
+    if "straits" in out_dark:
+        s = flatten_esplanade(s)
     dark = force_bg(remap(s, dmap), dbg, dims)
     light = force_bg(remap(s, lmap), lbg, dims)
     open(out_dark, "w").write(dark)
@@ -133,12 +167,24 @@ def process_monsoon():
         body = s.replace(comp, "@@COMPONENTS@@") if comp else s
 
         if outsuf == "dark":
-            # force grain bg -> solid black
-            body = body.replace('fill="url(#grain)"', 'fill="#080808"')
+            # force grain bg -> matt black (not pure/glossy black)
+            body = body.replace('fill="url(#grain)"', 'fill="#18181a"')
+            # The bottom-3-row group recesses were nearly opaque (0.86/0.92),
+            # totally burying the supertree artwork. Drop them to a light wash so
+            # the supertrees read through, and lean on the per-jack wells +
+            # recess OUTLINE for control definition.
+            body = body.replace('fill-opacity="0.92"', 'fill-opacity="0.28"')
+            body = body.replace('fill-opacity="0.86"', 'fill-opacity="0.24"')
+            # The supertrees use treeGrad (#18202a) — a dark blue-grey silhouette
+            # that vanishes against matt black. Recolour its stops to faint red so
+            # the Gardens-by-the-Bay supertrees read as a subtle on-brand silhouette.
+            body = body.replace('stop-color="#18202a"', 'stop-color="#d4001a"')
             out = "res/panels/Monsoon_peranakan_dark.svg"
         else:
             # light: grain -> light grey, dark fills -> light, keep red supertrees
             body = body.replace('fill="url(#grain)"', 'fill="#dcdcdc"')
+            body = body.replace('fill-opacity="0.92"', 'fill-opacity="0.30"')
+            body = body.replace('fill-opacity="0.86"', 'fill-opacity="0.26"')
             for a, b in {
                 "#0f1114": "#cfc8bc", "#101216": "#cfc8bc", "#0d0d0d": "#d4cdc0",
                 "#111214": "#dcdcdc", "#1a2535": "#b8b0a2", "#1e2530": "#c0b8aa",

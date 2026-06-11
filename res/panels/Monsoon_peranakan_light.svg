@@ -497,8 +497,8 @@
 <circle cx="479.2" cy="256.9" r="7.7" fill="#d4d6d9" stroke="#c0c4ca" stroke-width="0.9"/>
 <circle cx="528.5" cy="256.9" r="7.7" fill="#d4d6d9" stroke="#c0c4ca" stroke-width="0.9"/>
 <circle cx="577.9" cy="256.9" r="7.7" fill="#d4d6d9" stroke="#c0c4ca" stroke-width="0.9"/>
-<rect x="23.6" y="292.3" width="292.3" height="79.7" rx="7.4" fill="#d8dade" fill-opacity="0.92" stroke="#c0c4ca" stroke-width="1"/>
-<rect x="315.9" y="292.3" width="242.1" height="79.7" rx="7.4" fill="#d8dade" fill-opacity="0.86" stroke="#c0c4ca" stroke-width="1"/>
+<rect x="23.6" y="292.3" width="292.3" height="79.7" rx="7.4" fill="#d8dade" fill-opacity="0.30" stroke="#c0c4ca" stroke-width="1"/>
+<rect x="315.9" y="292.3" width="242.1" height="79.7" rx="7.4" fill="#d8dade" fill-opacity="0.26" stroke="#c0c4ca" stroke-width="1"/>
 <circle cx="44.3" cy="310.0" r="13.0" fill="#d4d6d9" stroke="#c0c4ca" stroke-width="1"/>
 <circle cx="94.5" cy="310.0" r="13.0" fill="#d4d6d9" stroke="#c0c4ca" stroke-width="1"/>
 <circle cx="144.7" cy="310.0" r="13.0" fill="#d4d6d9" stroke="#c0c4ca" stroke-width="1"/>

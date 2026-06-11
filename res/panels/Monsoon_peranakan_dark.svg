@@ -3,11 +3,11 @@
     <pattern id="grain" x="0" y="0" width="767.99" height="0.5" patternUnits="userSpaceOnUse"><rect width="767.99" height="0.5" fill="#111214"/><rect y="0.25" width="767.99" height="0.12" fill="#1e2228" opacity="0.40"/></pattern>
     <radialGradient id="ringGlow" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#26a69a" stop-opacity="0.22"/><stop offset="70%" stop-color="#26a69a" stop-opacity="0.04"/><stop offset="100%" stop-color="#26a69a" stop-opacity="0.0"/></radialGradient>
     <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0e1420" stop-opacity="1.0"/><stop offset="100%" stop-color="#111214" stop-opacity="0.0"/></linearGradient>
-    <linearGradient id="treeGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#18202a" stop-opacity="0.0"/><stop offset="60%" stop-color="#18202a" stop-opacity="0.70"/><stop offset="100%" stop-color="#18202a" stop-opacity="0.90"/></linearGradient>
+    <linearGradient id="treeGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#d4001a" stop-opacity="0.0"/><stop offset="60%" stop-color="#d4001a" stop-opacity="0.70"/><stop offset="100%" stop-color="#d4001a" stop-opacity="0.90"/></linearGradient>
   </defs>
 <g transform="scale(0.78125)">
   
-  <rect width="767.99" height="485.67" fill="#080808"/>
+  <rect width="767.99" height="485.67" fill="#18181a"/>
   <rect x="0" y="0" width="767.99" height="151.18" fill="url(#skyGrad)"/>
   <g stroke="#1a2535" stroke-width="0.5" opacity="0.55">
     <line x1="-44.77" y1="44.52" x2="10.98" y2="441.15" stroke-dasharray="3.5,3.6"/>
@@ -497,8 +497,8 @@
 <circle cx="479.2" cy="256.9" r="7.7" fill="#0f1114" stroke="#2a2f37" stroke-width="0.9"/>
 <circle cx="528.5" cy="256.9" r="7.7" fill="#0f1114" stroke="#2a2f37" stroke-width="0.9"/>
 <circle cx="577.9" cy="256.9" r="7.7" fill="#0f1114" stroke="#2a2f37" stroke-width="0.9"/>
-<rect x="23.6" y="292.3" width="292.3" height="79.7" rx="7.4" fill="#101216" fill-opacity="0.92" stroke="#2a2f37" stroke-width="1"/>
-<rect x="315.9" y="292.3" width="242.1" height="79.7" rx="7.4" fill="#101216" fill-opacity="0.86" stroke="#2a2f37" stroke-width="1"/>
+<rect x="23.6" y="292.3" width="292.3" height="79.7" rx="7.4" fill="#101216" fill-opacity="0.28" stroke="#2a2f37" stroke-width="1"/>
+<rect x="315.9" y="292.3" width="242.1" height="79.7" rx="7.4" fill="#101216" fill-opacity="0.24" stroke="#2a2f37" stroke-width="1"/>
 <circle cx="44.3" cy="310.0" r="13.0" fill="#0f1114" stroke="#2a2f37" stroke-width="1"/>
 <circle cx="94.5" cy="310.0" r="13.0" fill="#0f1114" stroke="#2a2f37" stroke-width="1"/>
 <circle cx="144.7" cy="310.0" r="13.0" fill="#0f1114" stroke="#2a2f37" stroke-width="1"/>

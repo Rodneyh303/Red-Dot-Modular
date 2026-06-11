@@ -18,9 +18,9 @@ S = 75/25.4
 def mm(v): return v*S
 
 THEMES = {
-    "dark":  dict(bg="#0a0a0a", red="#d4001a", redsoft="#dc2626", gold="#c8960c",
-                  ticket="#d4001a", ticketln="#0a0a0a", line="#2a2a2a",
-                  well="#0f1114", wellring="#3a3a3a", tintR="#d4001a", tintM="#d4001a",
+    "dark":  dict(bg="#18181a", red="#d4001a", redsoft="#dc2626", gold="#c8960c",
+                  ticket="#d4001a", ticketln="#18181a", line="#3a3a3e",
+                  well="#0f1012", wellring="#46464c", tintR="#d4001a", tintM="#d4001a",
                   text="#f0f0f0"),
     "light": dict(bg="#dcdcdc", red="#d4001a", redsoft="#c0001a", gold="#b07d00",
                   ticket="#d4001a", ticketln="#dcdcdc", line="#bcbcbc",
@@ -94,10 +94,16 @@ def panel(theme):
     #    drawn by the widget at runtime) + underline. ──
     o.append(f'<circle cx="{mm(6):.1f}" cy="{mm(9):.1f}" r="{mm(2.4):.1f}" fill="{t["red"]}"/>')
     o.append(f'<line x1="{mm(2):.1f}" y1="{mm(15):.1f}" x2="{mm(W/S-2):.1f}" y2="{mm(15):.1f}" stroke="{t["line"]}" stroke-width="0.8" stroke-opacity="0.6"/>')
-    # R/L faint section tints (rhythm left, melody right), below the header
-    o.append(f'<rect x="{mm(2):.1f}" y="{mm(36):.1f}" width="{mm(28):.1f}" height="{mm(84):.1f}" fill="{t["tintR"]}" fill-opacity="0.05"/>')
-    o.append(f'<rect x="{mm(30.5):.1f}" y="{mm(36):.1f}" width="{mm(28):.1f}" height="{mm(84):.1f}" fill="{t["tintM"]}" fill-opacity="0.05"/>')
-    o.append(f'<line x1="{mm(30.48):.1f}" y1="{mm(36):.1f}" x2="{mm(30.48):.1f}" y2="{mm(120):.1f}" stroke="{t["line"]}" stroke-width="0.8" stroke-opacity="0.5"/>')
+    # R/L sides separated by OUTLINED recess boxes (no fill) — a grey highlight
+    # outline reads cleaner than a red wash. Rhythm left / melody right.
+    rx0, ry, rw, rh = mm(3), mm(34), mm(26), mm(88)
+    o.append(f'<rect x="{rx0:.1f}" y="{ry:.1f}" width="{rw:.1f}" height="{rh:.1f}" rx="{mm(2):.1f}" '
+             f'fill="none" stroke="{t["line"]}" stroke-width="1.0" stroke-opacity="0.8"/>')
+    o.append(f'<rect x="{mm(31):.1f}" y="{ry:.1f}" width="{rw:.1f}" height="{rh:.1f}" rx="{mm(2):.1f}" '
+             f'fill="none" stroke="{t["line"]}" stroke-width="1.0" stroke-opacity="0.8"/>')
+    # tiny red tab on each box top-centre as a subtle R/M side cue (not a fill)
+    o.append(f'<rect x="{rx0+rw/2-mm(3):.1f}" y="{ry-mm(0.6):.1f}" width="{mm(6):.1f}" height="{mm(1.2):.1f}" fill="{t["red"]}" opacity="0.7"/>')
+    o.append(f'<rect x="{mm(31)+rw/2-mm(3):.1f}" y="{ry-mm(0.6):.1f}" width="{mm(6):.1f}" height="{mm(1.2):.1f}" fill="{t["redsoft"]}" opacity="0.7"/>')
     # header motif: fanning raffle tickets — pivot below the branding band
     o += ticket_fan(t, cx_mm=W/2/S, pivot_mm=17.0)
 

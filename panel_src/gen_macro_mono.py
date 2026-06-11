@@ -6,8 +6,8 @@ sys.path.insert(0, os.path.dirname(__file__))
 import dotmod_design as D
 from dotmod_design import px, theme
 
-def gen_macro(dark):
-    t=theme(dark); W_MM,H_MM=132.08,128.5; PW,PH=px(W_MM),px(H_MM)
+def gen_macro(dark, W_MM=132.08):
+    t=theme(dark); H_MM=128.5; PW,PH=px(W_MM),px(H_MM)
     ROW_TOP,ROW_BOT,N=14.,108.,6
     def rowY(r): return ROW_TOP+(r+0.5)*(ROW_BOT-ROW_TOP)/N
     COL_J1,COL_J2,COL_A1,COL_A2=6.,14.,23.,32.
@@ -81,3 +81,11 @@ for fn,base in [(gen_macro,"StraitsSandsMacroVisual_26HP"),(gen_mono,"SandsMonoV
         svg=fn(dark); name=f"{base}{suf}.svg"
         with open(f"res/panels/{name}","w") as f: f.write(svg)
         print(f"{name}: {len(svg):,} bytes")
+
+# Enlarged macro matching the East visual's width (40HP / 203.2mm), so the macro
+# editor gets the same generous footprint as East — they share controls and only
+# differ global-vs-per-channel.
+for dark,suf in [(True,""),(False,"_light")]:
+    svg=gen_macro(dark, W_MM=203.2); name=f"StraitsSandsMacroVisual_40HP{suf}.svg"
+    with open(f"res/panels/{name}","w") as f: f.write(svg)
+    print(f"{name}: {len(svg):,} bytes (wide, East-sized)")

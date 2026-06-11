@@ -4,9 +4,10 @@
 <rect x="0" y="377" width="180" height="3" fill="#d4001a"/>
 <circle cx="17.7" cy="26.6" r="7.1" fill="#d4001a"/>
 <line x1="5.9" y1="44.3" x2="174.1" y2="44.3" stroke="#bcbcbc" stroke-width="0.8" stroke-opacity="0.6"/>
-<rect x="5.9" y="106.3" width="82.7" height="248.0" fill="#d4001a" fill-opacity="0.05"/>
-<rect x="90.1" y="106.3" width="82.7" height="248.0" fill="#d4001a" fill-opacity="0.05"/>
-<line x1="90.0" y1="106.3" x2="90.0" y2="354.3" stroke="#bcbcbc" stroke-width="0.8" stroke-opacity="0.5"/>
+<rect x="8.9" y="100.4" width="76.8" height="259.8" rx="5.9" fill="none" stroke="#bcbcbc" stroke-width="1.0" stroke-opacity="0.8"/>
+<rect x="91.5" y="100.4" width="76.8" height="259.8" rx="5.9" fill="none" stroke="#bcbcbc" stroke-width="1.0" stroke-opacity="0.8"/>
+<rect x="38.4" y="98.6" width="17.7" height="3.5" fill="#d4001a" opacity="0.7"/>
+<rect x="121.1" y="98.6" width="17.7" height="3.5" fill="#c0001a" opacity="0.7"/>
 <g>
 <path d="M 89.8 65.6 L 104.5 45.3 L 140.4 71.3 L 125.6 91.6 Z" fill="#d4001a" fill-opacity="0.87" stroke="#dcdcdc" stroke-width="0.8"/>
 <line x1="102.8" y1="72.8" x2="115.4" y2="55.4" stroke="#dcdcdc" stroke-width="0.7" stroke-dasharray="1.5,1.5"/>

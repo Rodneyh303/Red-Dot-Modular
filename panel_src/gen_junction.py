@@ -18,7 +18,7 @@ S = 75 / 25.4              # px per mm
 def mm(v): return v * S
 
 THEMES = {
-    "dark":  dict(bg="#0a0a0a", red="#d4001a", redsoft="#dc2626", gold="#c8960c",
+    "dark":  dict(bg="#18181a", red="#d4001a", redsoft="#dc2626", gold="#c8960c",
                   hull="#d4001a", sail="#dc2626", wave="#8a1414", line="#2a2a2a",
                   well="#0f1114", wellring="#3a3a3a", text="#f0f0f0"),
     "light": dict(bg="#dcdcdc", red="#d4001a", redsoft="#c0001a", gold="#b07d00",
