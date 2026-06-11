@@ -1,4 +1,12 @@
 #pragma once
+
+/*
+// Inspried by dustinlacewell/vcv-svghelper
+// vcv-svghelper by Dustin Lacewell (https://github.com/dustinlacewell/vcv-svghelper),
+*/
+
+
+
 // dotModular::SvgPanelKit — a VARIADIC-TEMPLATE, composable alternative to the
 // CRTP SvgHelper. Same job (bind widgets to named SVG shapes, optional dev
 // live-reload), but the feature set is assembled from independent mixin pieces
