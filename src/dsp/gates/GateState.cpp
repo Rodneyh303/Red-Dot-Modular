@@ -19,60 +19,95 @@
 // Index 7 is the last valid entry.  The array has exactly 8 entries.
 // (A ninth 1/48 entry was removed; it was unreachable and mis-labelled.)
 //
+// Fraction of a WHOLE note per dial position. MUST match NOTEVALS[] in
+// SequencerEngine.cpp and the dial labels in MonsoonConfigurator.cpp:
+//   idx 0..7 = 1/1, 1/2, 1/4, 1/4T, 1/8, 1/8T, 1/16, 1/32
+// (Previously this table was shifted one slot — 1/4 played as 1/4T, and
+//  1/8/1/8T/1/16/1/32 all collapsed to a single 1/16 step on the gate.)
 const float GS_NOTE_FRACS[8] = {
-    0.5f, 0.25f, 1.f/6.f, 0.125f, 1.f/12.f, 0.0625f, 1.f/24.f, 0.03125f
+    1.0f, 0.5f, 0.25f, 1.f/6.f, 0.125f, 1.f/12.f, 0.0625f, 0.03125f
 };
 
 float gs_noteSteps(int nvIdx) {
     if (nvIdx < 0 || nvIdx > 7) return 1.f;
-    return std::max(0.5f, GS_NOTE_FRACS[nvIdx] * 16.f);
+    // No whole-step floor: sub-step lengths (1/32 = 0.5 steps, 1/16T = 0.667,
+    // 1/8T = 1.333) are rendered as fractional gate closes by tick()/process().
+    return GS_NOTE_FRACS[nvIdx] * 16.f;
 }
 
 // ── Core operations ───────────────────────────────────────────────────────────
 
+// Helper: set holdRemain (whole steps) + pendingFrac (sub-step remainder) from a
+// possibly-fractional step duration. sixteenthSec>0 enables sub-step rendering;
+// if 0 (e.g. externally-gated modes) we fall back to ceiling-to-whole-step.
+void GateState::setDuration(float durSteps, float sixteenthSec) {
+    float whole = std::floor(durSteps + 1e-6f);
+    float frac  = durSteps - whole;
+    if (sixteenthSec <= 0.f) {            // no sub-step timing available
+        holdRemain  = std::max(1.f, std::round(durSteps));
+        pendingFrac = 0.f;
+        fracGateSec = -1.f;
+        return;
+    }
+    if (whole < 1.f) {                    // note shorter than one step
+        holdRemain  = 0.f;
+        pendingFrac = 0.f;
+        fracGateSec = std::max(frac, 0.f) * sixteenthSec;  // open sub-step now
+    } else {
+        holdRemain  = whole;
+        pendingFrac = (frac > 1e-6f) ? frac : 0.f;
+        fracGateSec = -1.f;
+    }
+}
+
 // Play a new note: retrigger gate, set pitch and duration.
-void GateState::triggerNote(float pitchV, int semitone, int nvIdx) {
+void GateState::triggerNote(float pitchV, int semitone, int nvIdx, float sixteenthSec) {
     float dur = gs_noteSteps(nvIdx);
     currentPitchV = pitchV;
     lastSemitone  = semitone;
     gatePulse.trigger(1e-3f);
     gateHeld   = true;
-    holdRemain = dur;
+    setDuration(dur, sixteenthSec);
     markSemi(semitone, dur);
 }
 
 // Legato slide: pitch changes, gate stays held (no retrigger), hold extends.
 // If gate was already open: extends.  If not: opens it (first note of legato run).
-void GateState::slideNote(float pitchV, int semitone, int nvIdx, bool wasHeld) {
+void GateState::slideNote(float pitchV, int semitone, int nvIdx, bool wasHeld, float sixteenthSec) {
     float dur = gs_noteSteps(nvIdx);
     currentPitchV = pitchV;
     lastSemitone  = semitone;
     if (wasHeld) {
-        holdRemain += dur;
+        // Extending an open gate: re-fold any pending fractional remainder into
+        // the running length, then re-split. Keeps legato runs gapless while
+        // still ending the final note on its true sub-step boundary.
+        float running = holdRemain + pendingFrac + dur;
+        setDuration(running, sixteenthSec);
         gateHeld = true;   // ensure stays open if tick() just cleared it
     } else {
         gatePulse.trigger(1e-3f);   // first note of legato run opens gate
-        holdRemain = dur;
-        gateHeld   = true;
+        gateHeld = true;
+        setDuration(dur, sixteenthSec);
     }
     markSemi(semitone, dur);
 }
 
 // Legato max (knob fully right): gate always held, holdRemain = exact dur.
-void GateState::slideMax(float pitchV, int semitone, int nvIdx) {
+void GateState::slideMax(float pitchV, int semitone, int nvIdx, float sixteenthSec) {
     float dur = gs_noteSteps(nvIdx);
     currentPitchV = pitchV;
     lastSemitone  = semitone;
     gateHeld   = true;
-    holdRemain = dur;
+    setDuration(dur, sixteenthSec);
     markSemi(semitone, dur);
 }
 
 // Tie (same pitch): extend hold, no pitch or retrigger change.
-void GateState::extendHold(int semitone, int nvIdx) {
-    holdRemain += gs_noteSteps(nvIdx);
+void GateState::extendHold(int semitone, int nvIdx, float sixteenthSec) {
+    float running = holdRemain + pendingFrac + gs_noteSteps(nvIdx);
+    setDuration(running, sixteenthSec);
     gateHeld = true;   // ensure stays open if tick() just cleared it
-    markSemi(semitone, holdRemain);
+    markSemi(semitone, running);
 }
 
 // Rest: optionally extend hold (tie-across-steps), otherwise do nothing
@@ -84,12 +119,20 @@ void GateState::rest(bool tieExtend, int nvIdx) {
 }
 
 // Tick: call once per 1/16 step edge.  Decrements hold, closes gate if expired.
-void GateState::tick() {
+// sixteenthSec is the current step duration (for arming the fractional tail).
+void GateState::tick(float sixteenthSec) {
     if (holdRemain > 0.f) {
         holdRemain -= 1.f;
         if (holdRemain <= 0.f) {
             holdRemain = 0.f;
-            gateHeld   = false;
+            // Last whole step done. If there's a sub-step remainder, arm it so
+            // the gate stays open a fraction of THIS step then drops mid-step.
+            if (pendingFrac > 1e-6f && sixteenthSec > 0.f) {
+                fracGateSec = pendingFrac * sixteenthSec;
+                pendingFrac = 0.f;
+            } else if (fracGateSec < 0.f) {
+                gateHeld = false;            // clean whole-step close (unchanged)
+            }
         }
     }
 
@@ -105,6 +148,15 @@ void GateState::tick() {
 // Process: call every sample.  Returns raw gate voltage (0 or 10V).
 // muted / invertGate applied by caller so this stays Rack-port-free.
 float GateState::process(float sampleTime) {
+    // Fractional final-step close: if armed, hold the gate for the sub-step
+    // duration then drop it mid-step (1/32, triplet tails).
+    if (fracGateSec >= 0.f) {
+        fracGateSec -= sampleTime;
+        if (fracGateSec <= 0.f) {
+            fracGateSec = -1.f;
+            gateHeld    = false;
+        }
+    }
     if (!gateHeld) {
         gatePulse.process(sampleTime);
         return 0.f;
@@ -122,6 +174,8 @@ void GateState::tickPulseOnly(float sampleTime) {
 void GateState::reset() {
     holdRemain    = 0.f;
     gateHeld      = false;
+    fracGateSec   = -1.f;
+    pendingFrac   = 0.f;
     currentPitchV = 0.f;
     lastSemitone  = -1;
     gatePulse.reset();
