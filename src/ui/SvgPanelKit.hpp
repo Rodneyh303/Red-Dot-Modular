@@ -222,30 +222,17 @@ struct Reload {
 
 // ── The variadic composer: pulls in the chosen feature mixins + owns state ───
 template <class T, template <class> class... Features>
-struct Compose : Features<T>..., KitAccess<T> { // Added KitAccess<T> directly here non-virtually
-    SvgKitState kit_;   
+struct Compose : Features<T>..., KitAccess<T> { // KitAccess<T> is a single non-virtual base
+    SvgKitState kit_;
 
-    using KitAccess<T>::centerOf;
-    using ShapeQuery<T>::loadPanel;
-    using ShapeQuery<T>::forEachShape;
-    using ShapeQuery<T>::findNamed;
-    using ShapeQuery<T>::findPrefixed;
-    using ShapeQuery<T>::forEachPrefixed;
-    using ShapeQuery<T>::forEachMatched;
-
-    using Bind<T>::bindParam;
-    using Bind<T>::bindInput;
-    using Bind<T>::bindOutput;
-    using Bind<T>::bindLight;
-    using Bind<T>::bindChild;
-    using Bind<T>::bindInputs;
-    using Bind<T>::bindParams;
-
-    using Reload<T>::setDevMode;
-    using Reload<T>::setDirty;
-    using Reload<T>::appendKitMenu;
-    using Reload<T>::kitStep;
-    using Reload<T>::reload;
+    // No per-method using-block: each kit method (bindParam, loadPanel, bindLight,
+    // forEachMatched, kitStep, ...) is defined in exactly ONE feature mixin, so an
+    // unqualified call from the widget resolves by ordinary base-class lookup.
+    // This is what makes the variadic opt-in real: composing a SUBSET (e.g.
+    // Compose<W, ShapeQuery, Bind> without Reload) still compiles — there is no
+    // hard-coded reference to a mixin that might be absent. (The internal self()
+    // each mixin declares is only ever used as this->self() inside that mixin, so
+    // its duplication across mixins never causes ambiguity at a call site.)
 };
 
 }  // namespace dotModular
