@@ -1,6 +1,7 @@
 #pragma once
 
 #include <rack.hpp>
+#include "ui/SvgPanelKit.hpp"
 
 using namespace rack;
 
@@ -14,7 +15,7 @@ struct RDM_KnobDarkMedium : SvgKnob { RDM_KnobDarkMedium(); };
 struct RDM_KnobCreamLarge : SvgKnob { RDM_KnobCreamLarge(); };
 struct RDM_KnobCreamMedium : SvgKnob { RDM_KnobCreamMedium(); };
 
-struct MonsoonWidget : ModuleWidget {
+struct MonsoonWidget : ModuleWidget, dotModular::Compose<MonsoonWidget, dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
     MonsoonWidget(Monsoon* module);
 
     bool getLightTheme() const;
@@ -23,6 +24,7 @@ struct MonsoonWidget : ModuleWidget {
     void applyTheme();
     void draw(const DrawArgs& args) override; // Keep draw, but it will no longer call drawPeranakanLattice directly
     void appendContextMenu(ui::Menu* menu) override;
+    void step() override;  // forwards to kitStep() for dev live-reload
 
     static constexpr float W_MM = 203.2f; // Updated to 40HP (172.72 + 30.48)
     static constexpr float SL_TOP = 45.f; //top of slider

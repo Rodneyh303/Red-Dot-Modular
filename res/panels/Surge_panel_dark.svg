@@ -32,4 +32,16 @@
 <circle cx="88.6" cy="301.2" r="9.4" fill="#0f1114" stroke="#6a6e76" stroke-width="1"/>
 <circle cx="41.3" cy="342.5" r="11.8" fill="#0f1114" stroke="#26a69a" stroke-width="1"/>
 <circle cx="88.6" cy="342.5" r="9.4" fill="#0f1114" stroke="#6a6e76" stroke-width="1"/>
+<g id="components">
+<circle id="input_SURGE_NOTEVAL_CV" cx="41.34" cy="177.17" r="3" fill="none" stroke="none"/>
+<circle id="param_SURGE_NOTEVAL_ATT" cx="88.58" cy="177.17" r="3" fill="none" stroke="none"/>
+<circle id="input_SURGE_VARIATION_CV" cx="41.34" cy="218.50" r="3" fill="none" stroke="none"/>
+<circle id="param_SURGE_VARIATION_ATT" cx="88.58" cy="218.50" r="3" fill="none" stroke="none"/>
+<circle id="input_SURGE_LEGATO_CV" cx="41.34" cy="259.84" r="3" fill="none" stroke="none"/>
+<circle id="param_SURGE_LEGATO_ATT" cx="88.58" cy="259.84" r="3" fill="none" stroke="none"/>
+<circle id="input_SURGE_REST_CV" cx="41.34" cy="301.18" r="3" fill="none" stroke="none"/>
+<circle id="param_SURGE_REST_ATT" cx="88.58" cy="301.18" r="3" fill="none" stroke="none"/>
+<circle id="input_SURGE_ACCENT_CV" cx="41.34" cy="342.52" r="3" fill="none" stroke="none"/>
+<circle id="param_SURGE_ACCENT_ATT" cx="88.58" cy="342.52" r="3" fill="none" stroke="none"/>
+</g>
 </svg>
