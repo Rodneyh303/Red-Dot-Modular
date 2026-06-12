@@ -2,13 +2,7 @@
 #include "PatternEngine.hpp"
 #include "../gates/GateState.hpp"
 #include "ClockEngine.hpp"
-
-struct NoteVal {
-    float fraction;
-    int allowedPPQN;
-};
-
-extern const NoteVal NOTEVALS[8];
+#include "../NoteValues.hpp"
 
 // ── Poly voice architecture ────────────────────────────────────────────────────
 

@@ -2,30 +2,22 @@
 #include <cmath>
 #include <algorithm>
 
-// ── Note length fracs: fraction of a whole note × 16 steps ───────────────────
-//
-// Index mapping (matches NOTEVALS[8] in SequencerEngine and the NOTE_VALUE_PARAM
-// labels "1/2, 1/4, 1/4T, 1/8, 1/8T, 1/16, 1/16T, 1/32"):
-//
-//  idx 0  0.5      → 8 steps   (half note)
-//  idx 1  0.25     → 4 steps   (quarter note)
-//  idx 2  1/6      → 2.667     (quarter-note triplet)
-//  idx 3  0.125    → 2 steps   (eighth note)
-//  idx 4  1/12     → 1.333     (eighth-note triplet)
-//  idx 5  0.0625   → 1 step    (sixteenth note)
-//  idx 6  1/24     → 0.667     (sixteenth-note triplet)   ← label was wrongly "1/32T"
-//  idx 7  0.03125  → 0.5 steps (thirty-second note, minimum floor)
-//
-// Index 7 is the last valid entry.  The array has exactly 8 entries.
-// (A ninth 1/48 entry was removed; it was unreachable and mis-labelled.)
-//
-const float GS_NOTE_FRACS[8] = {
-    0.5f, 0.25f, 1.f/6.f, 0.125f, 1.f/12.f, 0.0625f, 1.f/24.f, 0.03125f
-};
-
+// ── Note length helper ───────────────────────────────────────────────────────
+// The note-value table now lives in dsp/NoteValues.hpp (single source of truth,
+// shared with SequencerEngine's PPQN gating and the dial labels). gs_noteSteps
+// is a thin wrapper over noteValueSteps() so existing call sites are unchanged.
 float gs_noteSteps(int nvIdx) {
-    if (nvIdx < 0 || nvIdx > 7) return 1.f;
-    return std::max(0.5f, GS_NOTE_FRACS[nvIdx] * 16.f);
+    return noteValueSteps(nvIdx);
+}
+
+// Arm the precise per-sample gate countdown from a duration in 1/16-steps, using
+// the step length stashed by tick() (curStepSec). Governs the gate VOLTAGE only;
+// holdRemain (whole-step counter) is untouched so the engine's tick-based
+// decision logic — MidNote (holdRemain>=1), hadTail/canRest (fractional
+// prevHold) — is unchanged. curStepSec<=0 (externally-gated modes, before any
+// tick) disables sub-step timing and the gate falls back to whole-step close.
+void GateState::armGate(float durSteps) {
+    gateSecRemain = (curStepSec > 0.f) ? durSteps * curStepSec : -1.f;
 }
 
 // ── Core operations ───────────────────────────────────────────────────────────
@@ -38,6 +30,7 @@ void GateState::triggerNote(float pitchV, int semitone, int nvIdx) {
     gatePulse.trigger(1e-3f);
     gateHeld   = true;
     holdRemain = dur;
+    armGate(dur);   // precise gate length (sub-step aware)
     markSemi(semitone, dur);
 }
 
@@ -50,10 +43,13 @@ void GateState::slideNote(float pitchV, int semitone, int nvIdx, bool wasHeld) {
     if (wasHeld) {
         holdRemain += dur;
         gateHeld = true;   // ensure stays open if tick() just cleared it
+        if (gateSecRemain >= 0.f && curStepSec > 0.f) gateSecRemain += dur * curStepSec;  // extend
+        else armGate(holdRemain);
     } else {
         gatePulse.trigger(1e-3f);   // first note of legato run opens gate
         holdRemain = dur;
         gateHeld   = true;
+        armGate(dur);
     }
     markSemi(semitone, dur);
 }
@@ -65,13 +61,17 @@ void GateState::slideMax(float pitchV, int semitone, int nvIdx) {
     lastSemitone  = semitone;
     gateHeld   = true;
     holdRemain = dur;
+    armGate(dur);
     markSemi(semitone, dur);
 }
 
 // Tie (same pitch): extend hold, no pitch or retrigger change.
 void GateState::extendHold(int semitone, int nvIdx) {
-    holdRemain += gs_noteSteps(nvIdx);
+    float add = gs_noteSteps(nvIdx);
+    holdRemain += add;
     gateHeld = true;   // ensure stays open if tick() just cleared it
+    if (gateSecRemain >= 0.f && curStepSec > 0.f) gateSecRemain += add * curStepSec;
+    else armGate(holdRemain);
     markSemi(semitone, holdRemain);
 }
 
@@ -83,13 +83,17 @@ void GateState::rest(bool tieExtend, int nvIdx) {
     // Otherwise: no-op — holdRemain counts down, gate drops cleanly
 }
 
-// Tick: call once per 1/16 step edge.  Decrements hold, closes gate if expired.
-void GateState::tick() {
+// Tick: call once per 1/16 step edge.  Decrements the whole-step hold counter
+// (used by the engine's decision logic). When gateSecRemain is governing the
+// gate (>=0), the actual gate close is handled per-sample in process() for exact
+// sub-step timing, so tick() does NOT force gateHeld=false here.
+void GateState::tick(float sixteenthSec) {
+    if (sixteenthSec > 0.f) curStepSec = sixteenthSec;   // for sub-step gate timing
     if (holdRemain > 0.f) {
         holdRemain -= 1.f;
         if (holdRemain <= 0.f) {
             holdRemain = 0.f;
-            gateHeld   = false;
+            if (gateSecRemain < 0.f) gateHeld = false;  // no precise timer: close at edge
         }
     }
 
@@ -105,6 +109,15 @@ void GateState::tick() {
 // Process: call every sample.  Returns raw gate voltage (0 or 10V).
 // muted / invertGate applied by caller so this stays Rack-port-free.
 float GateState::process(float sampleTime) {
+    // Precise gate length: when armed (>=0), the gate-open time is counted in
+    // seconds so sub-step lengths (1/32, triplets) close exactly, mid-step.
+    if (gateSecRemain >= 0.f) {
+        gateSecRemain -= sampleTime;
+        if (gateSecRemain <= 0.f) {
+            gateSecRemain = -1.f;
+            gateHeld      = false;
+        }
+    }
     if (!gateHeld) {
         gatePulse.process(sampleTime);
         return 0.f;
@@ -122,6 +135,8 @@ void GateState::tickPulseOnly(float sampleTime) {
 void GateState::reset() {
     holdRemain    = 0.f;
     gateHeld      = false;
+    gateSecRemain = -1.f;
+    curStepSec    = 0.f;
     currentPitchV = 0.f;
     lastSemitone  = -1;
     gatePulse.reset();

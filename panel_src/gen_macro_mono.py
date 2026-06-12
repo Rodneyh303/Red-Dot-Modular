@@ -6,8 +6,8 @@ sys.path.insert(0, os.path.dirname(__file__))
 import dotmod_design as D
 from dotmod_design import px, theme
 
-def gen_macro(dark):
-    t=theme(dark); W_MM,H_MM=132.08,128.5; PW,PH=px(W_MM),px(H_MM)
+def gen_macro(dark, W_MM=132.08):
+    t=theme(dark); H_MM=128.5; PW,PH=px(W_MM),px(H_MM)
     ROW_TOP,ROW_BOT,N=14.,108.,6
     def rowY(r): return ROW_TOP+(r+0.5)*(ROW_BOT-ROW_TOP)/N
     COL_J1,COL_J2,COL_A1,COL_A2=6.,14.,23.,32.
@@ -16,8 +16,8 @@ def gen_macro(dark):
     A(D.svg_open(PW,PH))
     A('<g inkscape:label="artwork" inkscape:groupmode="layer">')
     A(D.bg_rect(PW,PH,t))
-    A(D.mbs(W_MM-58.0, 96.0, 52.0, 18.0, t, op=0.8))
-    A(D.waves(ED_X, 116.0, t, op=0.7, rows=3, span_mm=W_MM-ED_X-2))
+    A(D.mbs(W_MM-60.0, 110.0, 50.0, 14.0, t, op=0.85))
+    A(D.waves(ED_X, 112.0, t, op=0.6, rows=3, span_mm=W_MM-ED_X-2))
     A(D.accent_rules(PW,t))
     gx,gy=4.0,ROW_TOP-4.0; gw,gh=(COL_A2+5.0)-gx,(ROW_BOT+2.0)-(ROW_TOP-4.0)
     A(D.input_group(gx,gy,gw,gh,t,sep_mm=0.5*(COL_J2+COL_A1)))
@@ -50,8 +50,8 @@ def gen_mono(dark):
     A(D.svg_open(PW,PH))
     A('<g inkscape:label="artwork" inkscape:groupmode="layer">')
     A(D.bg_rect(PW,PH,t))
-    A(D.mbs(W_MM-72.0, 96.0, 64.0, 18.0, t, op=0.8))
-    A(D.waves(ED_X, 116.0, t, op=0.7, rows=3, span_mm=W_MM-ED_X-2))
+    A(D.mbs(W_MM-72.0, 110.0, 60.0, 14.0, t, op=0.85))
+    A(D.waves(ED_X, 112.0, t, op=0.6, rows=3, span_mm=W_MM-ED_X-2))
     A(D.accent_rules(PW,t))
     # Input group box framing the LOR jacks + attenuverters (x 6..52), with a
     # separator between the jack cluster and the attenuverter cluster.
@@ -81,3 +81,11 @@ for fn,base in [(gen_macro,"StraitsSandsMacroVisual_26HP"),(gen_mono,"SandsMonoV
         svg=fn(dark); name=f"{base}{suf}.svg"
         with open(f"res/panels/{name}","w") as f: f.write(svg)
         print(f"{name}: {len(svg):,} bytes")
+
+# Enlarged macro matching the East visual's width (40HP / 203.2mm), so the macro
+# editor gets the same generous footprint as East — they share controls and only
+# differ global-vs-per-channel.
+for dark,suf in [(True,""),(False,"_light")]:
+    svg=gen_macro(dark, W_MM=203.2); name=f"StraitsSandsMacroVisual_40HP{suf}.svg"
+    with open(f"res/panels/{name}","w") as f: f.write(svg)
+    print(f"{name}: {len(svg):,} bytes (wide, East-sized)")

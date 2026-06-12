@@ -81,7 +81,7 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         if (!module || !paramMgr || !visualEditor) return;
 
         Monsoon* monsoon = getMonsoon();
-        if (!monsoon) return;
+        if (!monsoon) { if (visualEditor) visualEditor->clearPlaySteps(); return; }
 
         int wantLight = monsoon->lightTheme ? 1 : 0;
         if (wantLight != lastThemeLight) {

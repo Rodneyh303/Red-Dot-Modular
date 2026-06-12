@@ -29,25 +29,51 @@ def logo_embed(dark, x_mm, y_mm, target_w_mm, repo_root="."):
     scale = px(target_w_mm) / 717.0
     return f'<g transform="translate({px(x_mm):.2f},{px(y_mm):.2f}) scale({scale:.5f})">{body}</g>'
 
-# ── Marina Bay Sands silhouette (trapezoidal towers + skypark) — nanosvg-safe ─
+# ── Marina Bay Sands silhouette — leaning tuning-fork legs + lifted skypark ───
+# nanosvg-safe (polygons + lines, no clip/gradient/mask). Same signature as before
+# so both call sites (faint watermark op~0.15 and crisp identity mark op~0.85) get
+# the upgraded geometry. Geometry mirrors the user reference: three tower units,
+# each a pair of legs that splay apart toward the base (the real building's piers),
+# topped by the SkyPark boat deck with a lifted prow at the left.
 def mbs(x_mm, y_mm, w_mm, h_mm, t, op):
     x,y,w,h = px(x_mm),px(y_mm),px(w_mm),px(h_mm)
     fill=t["motif"]; acc=t["accent"]
-    tw=w*0.165; gap=(w-3*tw)/2.0; th=h; by=y+h; lean=tw*0.06
+    by   = y + h                      # base (waterline) y
+    unit = w/3.0                      # width per tower unit
+    legw = unit*0.16                  # leg thickness at top
+    splay= unit*0.16                  # how far each leg foot spreads from centre
     out=[]
-    xs=[x, x+tw+gap, x+2*(tw+gap)]
-    for tx in xs:
-        x1,x2 = tx+lean, tx+tw-lean
-        x3,x4 = tx+tw, tx
-        out.append(f'<polygon points="{x1:.1f},{y:.1f} {x2:.1f},{y:.1f} {x3:.1f},{by:.1f} {x4:.1f},{by:.1f}" fill="{fill}" fill-opacity="{op}"/>')
-        for f_ in (0.36, 0.64):
-            wy=y+th*f_
-            out.append(f'<line x1="{tx+lean*0.6:.1f}" y1="{wy:.1f}" x2="{tx+tw-lean*0.6:.1f}" y2="{wy:.1f}" stroke="{acc}" stroke-width="0.5" stroke-opacity="{op*0.4:.3f}"/>')
-        cxk=tx+tw*0.5
-        out.append(f'<line x1="{cxk:.1f}" y1="{y:.1f}" x2="{cxk:.1f}" y2="{y-h*0.10:.1f}" stroke="{acc}" stroke-width="0.6" stroke-opacity="{op*0.6:.3f}"/>')
-        out.append(f'<circle cx="{cxk:.1f}" cy="{y-h*0.12:.1f}" r="1.1" fill="{acc}" fill-opacity="{op*0.6:.3f}"/>')
-    dy=y-h*0.06
-    out.append(f'<polygon points="{x-w*0.02:.1f},{dy:.1f} {x+w+w*0.06:.1f},{dy-h*0.05:.1f} {x+w+w*0.06:.1f},{dy-h*0.05+h*0.06:.1f} {x-w*0.02:.1f},{dy+h*0.06:.1f}" fill="{fill}" fill-opacity="{op}"/>')
+    for u in range(3):
+        ux = x + u*unit + unit*0.5    # tower centre x
+        # left leg: near-vertical at top, foot kicks outward (down-left)
+        ltx1, ltx2 = ux-legw*1.4, ux-legw*0.4          # top edge
+        lbx1, lbx2 = ux-splay-legw*1.0, ux-splay        # foot edge (spread left)
+        out.append(f'<polygon points="{ltx1:.1f},{y:.1f} {ltx2:.1f},{y:.1f} '
+                   f'{lbx2:.1f},{by:.1f} {lbx1:.1f},{by:.1f}" '
+                   f'fill="{fill}" fill-opacity="{op}"/>')
+        # right leg: mirror
+        rtx1, rtx2 = ux+legw*0.4, ux+legw*1.4
+        rbx1, rbx2 = ux+splay, ux+splay+legw*1.0
+        out.append(f'<polygon points="{rtx1:.1f},{y:.1f} {rtx2:.1f},{y:.1f} '
+                   f'{rbx2:.1f},{by:.1f} {rbx1:.1f},{by:.1f}" '
+                   f'fill="{fill}" fill-opacity="{op}"/>')
+        # floor-grid lines (drop first at tiny scale; cheap detail when large)
+        for f_ in (0.30, 0.50, 0.70):
+            wy=y+h*f_
+            out.append(f'<line x1="{ux-splay*f_-legw:.1f}" y1="{wy:.1f}" '
+                       f'x2="{ux+splay*f_+legw:.1f}" y2="{wy:.1f}" '
+                       f'stroke="{acc}" stroke-width="0.4" stroke-opacity="{op*0.35:.3f}"/>')
+    # SkyPark boat deck spanning all three units, with a lifted prow on the left
+    dy   = y - h*0.10                 # deck sits just above the legs
+    dth  = h*0.075                    # deck thickness
+    prow = w*0.04                     # how much the left tip lifts
+    lx, rx = x - w*0.03, x + w + w*0.03
+    out.append(f'<polygon points="{lx:.1f},{dy-prow:.1f} {rx:.1f},{dy:.1f} '
+               f'{rx:.1f},{dy+dth:.1f} {lx:.1f},{dy-prow+dth:.1f}" '
+               f'fill="{fill}" fill-opacity="{op}"/>')
+    # bright rim along the top edge of the deck (reads as the SkyPark edge)
+    out.append(f'<line x1="{lx:.1f}" y1="{dy-prow:.1f} " x2="{rx:.1f}" y2="{dy:.1f}" '
+               f'stroke="{acc}" stroke-width="0.7" stroke-opacity="{op*0.6:.3f}"/>')
     return "".join(out)
 
 # ── Straits waves (sine bands) — nanosvg-safe per-path stroke ─────────────────
@@ -76,9 +102,16 @@ def input_group(gx, gy, gw, gh, t, sep_mm=None):
         out.append(f'<line x1="{px(sep_mm):.1f}" y1="{px(gy+2):.1f}" x2="{px(sep_mm):.1f}" y2="{px(gy+gh-2):.1f}" stroke="{t["groupline"]}" stroke-width="0.75" stroke-opacity="0.6"/>')
     return "".join(out)
 
-def editor_recess(ED_X, ED_Y, ED_W, ED_H, t, lanes=3):
+def editor_recess(ED_X, ED_Y, ED_W, ED_H, t, lanes=3, watermark=False):
     out=[f'<rect x="{px(ED_X):.1f}" y="{px(ED_Y-6):.1f}" width="{px(ED_W):.1f}" height="{px(5):.1f}" rx="{px(1):.1f}" fill="{t["tabband"]}" fill-opacity="0.6"/>',
          f'<rect x="{px(ED_X):.1f}" y="{px(ED_Y):.1f}" width="{px(ED_W):.1f}" height="{px(ED_H):.1f}" rx="{px(1.5):.1f}" fill="{t["edrecess"]}" stroke="{t["edborder"]}" stroke-width="1"/>']
+    # NOTE: the MBS watermark is OFF by default. The live 16-step dynamic visual
+    # draws across the full recess, and a building silhouette behind those busy
+    # animated lanes reads as visual mud. The crisp MBS identity mark on the water
+    # band (drawn separately, outside the recess) carries the Marina Bay identity.
+    # Pass watermark=True only for a still/empty editor mockup.
+    if watermark:
+        out.append(mbs(ED_X+ED_W*0.28, ED_Y+ED_H-5.0, ED_W*0.46, ED_H*0.62, t, op=0.15))
     for k in range(1,lanes):
         ly=ED_Y+k*(ED_H/float(lanes))
         out.append(f'<line x1="{px(ED_X+1):.1f}" y1="{px(ly):.1f}" x2="{px(ED_X+ED_W-1):.1f}" y2="{px(ly):.1f}" stroke="{t["edborder"]}" stroke-width="0.75" stroke-opacity="0.7"/>')

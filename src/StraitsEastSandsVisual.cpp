@@ -146,7 +146,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         ModuleWidget::step();
         if (!module || !paramMgr || !visualEditor) return;
         Monsoon* monsoon = getMonsoon();
-        if (!monsoon) return;
+        if (!monsoon) { if (visualEditor) visualEditor->clearPlaySteps(); return; }
 
         // Follow the connected Monsoon's theme: swap panel SVG + editor colours
         // when it changes (and on first run). One toggle on Monsoon themes the

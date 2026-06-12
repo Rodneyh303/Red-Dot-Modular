@@ -103,20 +103,32 @@ def gen(dark):
     A(f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="{PW}" height="{PH}" viewBox="0 0 {PW} {PH}">')
     A(f'<g inkscape:label="artwork" inkscape:groupmode="layer">')
     A(f'<rect width="{PW}" height="{PH}" fill="{t["bg"]}"/>')
-    A(mbs(116.0, 96.0, 78.0, 18.0, t, op=0.8))
-    A(waves(58.0, 116.0, t, op=0.7, rows=3, span_mm=140.0))
+    # red accent rule under the branding strip + footer rule
     A(f'<line x1="0" y1="{px(11):.1f}" x2="{PW}" y2="{px(11):.1f}" stroke="{t["accent"]}" stroke-width="1.5" opacity="0.55"/>')
     A(f'<line x1="0" y1="{px(120):.1f}" x2="{PW}" y2="{px(120):.1f}" stroke="{t["groupline"]}" stroke-width="1" opacity="0.7"/>')
-    gx,gy=4.0,ROW_TOP-4.0; gw,gh=(SPREAD_X+5.0)-gx,(ROW_BOT+2.0)-(ROW_TOP-4.0)
-    A(f'<rect x="{px(gx):.1f}" y="{px(gy):.1f}" width="{px(gw):.1f}" height="{px(gh):.1f}" rx="{px(2):.1f}" fill="{t["group"]}" stroke="{t["groupline"]}" stroke-width="1"/>')
-    # (no header tab — the title strip above serves as the section header)
-    sepx=0.5*(COL_J2+COL_A1)
-    A(f'<line x1="{px(sepx):.1f}" y1="{px(gy+2):.1f}" x2="{px(sepx):.1f}" y2="{px(gy+gh-2):.1f}" stroke="{t["groupline"]}" stroke-width="0.75" opacity="0.6"/>')
+
+    # ── editor recess: a framed "display window", with a large faint Marina Bay
+    #    Sands watermark INSIDE it so the empty state reads as Marina Bay, not a
+    #    void (the live editor widget draws on top). ──
     A(f'<rect x="{px(ED_X):.1f}" y="{px(ED_Y-6):.1f}" width="{px(ED_W):.1f}" height="{px(5):.1f}" rx="{px(1):.1f}" fill="{t["tabband"]}" opacity="0.6"/>')
     A(f'<rect x="{px(ED_X):.1f}" y="{px(ED_Y):.1f}" width="{px(ED_W):.1f}" height="{px(ED_H):.1f}" rx="{px(1.5):.1f}" fill="{t["edrecess"]}" stroke="{t["edborder"]}" stroke-width="1"/>')
+    # MBS watermark centred in the editor, large + faint (reads as Marina Bay)
+    A(mbs(ED_X+ED_W*0.28, ED_Y+ED_H-5.0, ED_W*0.46, ED_H*0.68, t, op=0.16))
     for k in range(1,3):
         ly=ED_Y+k*(ED_H/3.0)
         A(f'<line x1="{px(ED_X+1):.1f}" y1="{px(ly):.1f}" x2="{px(ED_X+ED_W-1):.1f}" y2="{px(ly):.1f}" stroke="{t["edborder"]}" stroke-width="0.75" opacity="0.7"/>')
+
+    # ── below the editor + footer: Marina Bay water (waves) as an integrated
+    #    base band spanning the full control-to-edge width ──
+    A(waves(ED_X, 112.0, t, op=0.6, rows=3, span_mm=ED_W))
+    # a crisp MBS as the identity mark, sat on the water, lower-right
+    A(mbs(W_MM-66.0, 111.0, 52.0, 14.0, t, op=0.85))
+
+    # ── control group recess (left) ──
+    gx,gy=4.0,ROW_TOP-4.0; gw,gh=(SPREAD_X+5.0)-gx,(ROW_BOT+2.0)-(ROW_TOP-4.0)
+    A(f'<rect x="{px(gx):.1f}" y="{px(gy):.1f}" width="{px(gw):.1f}" height="{px(gh):.1f}" rx="{px(2):.1f}" fill="{t["group"]}" stroke="{t["groupline"]}" stroke-width="1"/>')
+    sepx=0.5*(COL_J2+COL_A1)
+    A(f'<line x1="{px(sepx):.1f}" y1="{px(gy+2):.1f}" x2="{px(sepx):.1f}" y2="{px(gy+gh-2):.1f}" stroke="{t["groupline"]}" stroke-width="0.75" opacity="0.6"/>')
     A('</g>')
     A(f'<g inkscape:label="branding" inkscape:groupmode="layer">')
     A(logo_embed(dark, x_mm=11.0, y_mm=4.5, target_w_mm=42.0))
@@ -134,7 +146,6 @@ def gen(dark):
     for lane in range(3):
         y=0.5*(rowY(lane*2)+rowY(lane*2+1)); trim(SPREAD_X,y,t["teal"])
     A('</g>')
-    # (screws are drawn by the C++ RedScrew widget, not the panel SVG)
     A('</svg>')
     return "\n".join(L)
 
