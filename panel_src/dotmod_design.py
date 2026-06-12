@@ -102,11 +102,14 @@ def input_group(gx, gy, gw, gh, t, sep_mm=None):
         out.append(f'<line x1="{px(sep_mm):.1f}" y1="{px(gy+2):.1f}" x2="{px(sep_mm):.1f}" y2="{px(gy+gh-2):.1f}" stroke="{t["groupline"]}" stroke-width="0.75" stroke-opacity="0.6"/>')
     return "".join(out)
 
-def editor_recess(ED_X, ED_Y, ED_W, ED_H, t, lanes=3, watermark=True):
+def editor_recess(ED_X, ED_Y, ED_W, ED_H, t, lanes=3, watermark=False):
     out=[f'<rect x="{px(ED_X):.1f}" y="{px(ED_Y-6):.1f}" width="{px(ED_W):.1f}" height="{px(5):.1f}" rx="{px(1):.1f}" fill="{t["tabband"]}" fill-opacity="0.6"/>',
          f'<rect x="{px(ED_X):.1f}" y="{px(ED_Y):.1f}" width="{px(ED_W):.1f}" height="{px(ED_H):.1f}" rx="{px(1.5):.1f}" fill="{t["edrecess"]}" stroke="{t["edborder"]}" stroke-width="1"/>']
-    # faint Marina Bay Sands watermark inside the recess, so the empty editor
-    # state reads as Marina Bay rather than a void (live widget draws over it).
+    # NOTE: the MBS watermark is OFF by default. The live 16-step dynamic visual
+    # draws across the full recess, and a building silhouette behind those busy
+    # animated lanes reads as visual mud. The crisp MBS identity mark on the water
+    # band (drawn separately, outside the recess) carries the Marina Bay identity.
+    # Pass watermark=True only for a still/empty editor mockup.
     if watermark:
         out.append(mbs(ED_X+ED_W*0.28, ED_Y+ED_H-5.0, ED_W*0.46, ED_H*0.62, t, op=0.15))
     for k in range(1,lanes):
