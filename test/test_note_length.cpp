@@ -5,7 +5,7 @@
  * Replicates (from source truth) the FIXED GateState model:
  *   GS_NOTE_FRACS[8] (now matches NOTEVALS / dial labels):
  *     idx 0..7 = 1/1, 1/2, 1/4, 1/4T, 1/8, 1/8T, 1/16, 1/32
- *   gs_noteSteps(i) = GS_NOTE_FRACS[i]*16   (no whole-step floor)
+ *   gs_noteSteps(i) = NOTE_VALUES[i].fraction*16   (no whole-step floor)
  *   setDuration(): splits dur into whole steps (holdRemain) + pendingFrac
  *   tick(): decrements holdRemain; on the last whole step arms fracGateSec =
  *           pendingFrac*sixteenthSec (sub-step open time)
@@ -30,11 +30,10 @@ static int s_pass=0,s_fail=0;
 #define EXPECT(e) do{if(!(e))throw std::runtime_error("EXPECT(" #e ") failed");}while(0)
 #define EXPECT_NEAR(a,b,e) do{if(std::fabs((a)-(b))>(e)){std::ostringstream _s;_s<<#a<<"="<<(a)<<" not ~ "<<(b);throw std::runtime_error(_s.str());}}while(0)
 
-static const float GS_NOTE_FRACS[8] = {
-    1.0f, 0.5f, 0.25f, 1.f/6.f, 0.125f, 1.f/12.f, 0.0625f, 0.03125f
-};
-static const char* LABELS[8] = {"1/1","1/2","1/4","1/4T","1/8","1/8T","1/16","1/32"};
-static float gs_noteSteps(int i){ return (i<0||i>7)?1.f:GS_NOTE_FRACS[i]*16.f; }
+#include "../src/dsp/NoteValues.hpp"   // single source of truth (real header)
+// Aliases so the existing test body keeps working:
+static float gs_noteSteps(int i){ return noteValueSteps(i); }
+#define LABELS_OK 1
 
 struct GS {
     // Mirrors fixed GateState: holdRemain (whole-step, decisions) + gateSecRemain
@@ -71,8 +70,8 @@ int main(){
 
     SUITE("Table matches the dial labels");
     float exp_frac[8]={1.f,0.5f,0.25f,1.f/6.f,0.125f,1.f/12.f,0.0625f,0.03125f};
-    for(int i=0;i<8;++i){std::ostringstream d;d<<"GS_NOTE_FRACS '"<<LABELS[i]<<"' correct";
-        TEST(d.str().c_str(),{EXPECT_NEAR(GS_NOTE_FRACS[i],exp_frac[i],1e-6f);});}
+    for(int i=0;i<8;++i){std::ostringstream d;d<<"GS_NOTE_FRACS '"<<NOTE_VALUES[i].label<<"' correct";
+        TEST(d.str().c_str(),{EXPECT_NEAR(NOTE_VALUES[i].fraction,exp_frac[i],1e-6f);});}
 
     SUITE("Whole-note lengths unchanged (regression guard)");
     TEST("1/1 = 16 steps",{EXPECT_NEAR(gateSteps(0,STEP),16.f,0.05f);});

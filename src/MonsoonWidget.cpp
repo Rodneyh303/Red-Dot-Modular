@@ -298,8 +298,7 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         };
 
         setNvgFontSize(2.5f);
-        { const char* n[8]={"1/1","1/2","1/4","1/4T","1/8","1/8T","1/16","1/32"};
-          for(int i=0;i<8;++i) arcLabel(16.f,22.f,13.5f,-225.f+i*(270.f/7.f),n[i],150,150,135); }
+        { for(int i=0;i<NUM_NOTE_VALUES;++i) arcLabel(16.f,22.f,13.5f,-225.f+i*(270.f/(NUM_NOTE_VALUES-1)),NOTE_VALUES[i].label,150,150,135); }
         setNvgFontSize(2.8f);
         arcLabel(42.f,22.f,13.f,-225.f,"LONGER",130,130,120); arcLabel(42.f,22.f,13.f,45.f,"SHORTER",130,130,120);
         arcLabel(68.f,22.f,12.f,-225.f,"0%",130,130,120);     arcLabel(68.f,22.f,12.f,45.f,"100%",130,130,120);

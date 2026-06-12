@@ -27,14 +27,14 @@
 #include <rack.hpp>
 #include <cmath>
 #include <algorithm>
+#include "../NoteValues.hpp"
 
 
 template<typename T>
 static inline T gs_clamp(T v, T lo, T hi){ return v<lo?lo:(v>hi?hi:v); }
 
-// ── Note length helper: fraction of a whole note × 16 steps ──────────────────
-// Matches MeloDicer::NOTEVALS fractions exactly.
-extern const float GS_NOTE_FRACS[8];
+// ── Note length helper ───────────────────────────────────────────────────────
+// Note-value data lives in dsp/NoteValues.hpp. gs_noteSteps wraps noteValueSteps.
 extern float gs_noteSteps(int nvIdx);
 
 // ── GateState ─────────────────────────────────────────────────────────────────

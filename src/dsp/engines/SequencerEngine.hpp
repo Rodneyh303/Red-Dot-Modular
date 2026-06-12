@@ -2,13 +2,7 @@
 #include "PatternEngine.hpp"
 #include "../gates/GateState.hpp"
 #include "ClockEngine.hpp"
-
-struct NoteVal {
-    float fraction;
-    int allowedPPQN;
-};
-
-extern const NoteVal NOTEVALS[8];
+#include "../NoteValues.hpp"
 
 // ── Poly voice architecture ────────────────────────────────────────────────────
 
@@ -42,7 +36,6 @@ struct PolyVoice {
 // ── SequencerEngine ────────────────────────────────────────────────────────────
 
 struct SequencerEngine {
-    float curSixteenthSec = 0.f;   // current 1/16-step length (s) for sub-step gate timing
     PatternEngine pe;
     GateState gs;
 

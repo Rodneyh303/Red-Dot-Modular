@@ -7,9 +7,12 @@ using namespace MonsoonIds;
 void MonsoonConfigurator::setup(Monsoon* m) {
     m->config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
 
-    // Main controls
-    m->configSwitch(NOTE_VALUE_PARAM, 0.f, 7.f, 4.f, "Note value",
-        {"1/1", "1/2", "1/4", "1/4T", "1/8", "1/8T", "1/16", "1/32"});
+    // Main controls — labels come from the single source of truth in NoteValues.hpp
+    std::vector<std::string> noteValueLabels;
+    for (int i = 0; i < NUM_NOTE_VALUES; ++i)
+        noteValueLabels.push_back(NOTE_VALUES[i].label);
+    m->configSwitch(NOTE_VALUE_PARAM, 0.f, (float)(NUM_NOTE_VALUES - 1), 4.f,
+        "Note value", noteValueLabels);
     m->configParam(VARIATION_PARAM,   0.f, 1.f, 0.5f, "Variation (longer–shorter)");
     m->configParam(LEGATO_PARAM,      0.f, 1.f, 0.00f, "Legato probability");
     m->configParam(REST_PARAM,        0.f, 1.f, 0.00f, "Rest probability");
