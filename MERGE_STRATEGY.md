@@ -93,22 +93,48 @@ with no change.
    it keep peranakan's `NOTE_VALUES[i].label` loop for the arc labels. ~1 file,
    ~20 lines, mechanical.
 
-## Per-panel producer assignment (initial)
+## Per-panel producer assignment
 
-| Panel | Producer | Rationale |
+Note the pending renames (art done, code held): **Causeway → Raffles**
+(raffle-tickets motif), **Surge → Junction** (Bugis pinisi motif). "Causeway"/
+"Surge" as names become obsolete.
+
+| Panel (post-rename) | Producer | Rationale |
 |---|---|---|
 | Monsoon | hand | art + knobs co-designed (the interweaving you praised) |
 | Interchange family (Straits E/W, Macro) | hand | Esplanade/MBS art interwoven with controls |
-| Causeway | JSON | regular grid; layout is data |
-| Surge | JSON | regular grid |
-| Raffles, Junction | JSON | simple, broadly OK as-is |
+| Raffles (was Causeway) | JSON-or-hand | regular grid; layout is data, but kit-bind it |
+| Junction (was Surge) | JSON-or-hand | regular grid; kit-bind it |
 
-A panel can switch columns later with zero C++ change.
+A panel can switch producer columns later with zero C++ change (binding is by
+shape id either way).
+
+## Post-merge: "all active panels → kit" branch
+
+Do this AFTER the three-way merge, on one dedicated branch, because it pairs with
+the renames — converting then renaming the same widget is doing it twice.
+
+Sequence per panel: **rename + kit-convert in the SAME pass.**
+- Surge→Junction: rename slug + plugin.json model + `SURGE_*`→`JUNCTION_*` enums,
+  AND convert the widget to kit-bind. Head start: variadic's `SurgeKitTest.cpp`
+  already kit-binds the 5 CV + 5 att controls by name — promote it to the real
+  widget under the Junction name.
+- Causeway→Raffles: rename slug + plugin.json + `CAUSEWAY_*`→`RAFFLES_*` enums,
+  AND convert to kit. Recipe ready: see the parked WIP commit on
+  `feat/causeway-on-kit` (`3e975b1`) — a working kit-bound Causeway widget
+  (18 controls bound, labels via `centerOfNamed()`, no header). Re-apply it under
+  the Raffles name + enum prefix rather than merging it as-is (its module is the
+  pre-rename one).
+
+Why not do it now: the parked Causeway-on-kit widget binds the pre-rename module;
+landing it before the rename means rewiring twice. Park the recipe, do it once
+post-merge.
 
 ## Net effect on the codebase
 
-- One binding mechanism (kit) instead of two (kit + header reads).
-- One position source per panel (the SVG).
-- JSON kept where it pays (grid panels), dropped where it fought you (designed
-  panels).
-- The generated header — the latent drift risk — is gone.
+- One binding mechanism (kit) as the default; `.gen.hpp`/code-driven path KEPT as
+  an opt-in for panels where programmatic placement is the better fit.
+- One position source per panel (never both the SVG ids and a header at once).
+- JSON kept where it pays; live-editable SVG binding the default for the rest.
+- `centerOfNamed()` added to the kit so kit-bound widgets read label positions
+  from the same shapes as their controls (no parallel label coords).
