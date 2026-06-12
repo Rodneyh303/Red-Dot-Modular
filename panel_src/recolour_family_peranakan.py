@@ -130,78 +130,95 @@ def clean_esplanade(text, shell="#5a5e66", accent="#dc2626", grid_op=0.9):
     if start is None or end is None:
         return text
 
-    # ── Reference-style Esplanade: woven diagrid shell ──────────────────────
-    # Reference space is ~108..1270 wide, 86..490 tall (from the user's render).
-    # Map it into the panel's esplanade region: centre ~x=295, baseline ~y=250,
-    # occupying roughly x 210..375, y 150..255.
+    # ── Reference-style Esplanade: two-family lattice + truss understructure ──
+    # Maps the detailed reference (1000×450 space) into the panel esplanade region.
+    # Down-scaled for ~165px panel width: arc families thinned (ref had 40+ ellipses
+    # → ~12 here) and NO clipPath (NanoSVG-safe; the families are bounded by t-range
+    # instead). The truss + hanging spikes are kept — they read best at small scale.
     import math
-    # target region
-    TGT_CX, TGT_BASE = 295.0, 248.0
-    TGT_HALFW = 82.0           # half-width in panel px
-    # reference geometry
-    R_LX, R_RX = 108.0, 1270.0
-    R_BL, R_BR = 490.0, 452.0  # bottom edge endpoints (straight, slopes up)
-    # cubic Bezier top: P0(108,490) P1(130,86) P2(1150,108) P3(1270,452)
-    def rbez(t):
+    TGT_CX, TGT_BASE = 295.0, 250.0
+    TGT_HALFW = 84.0
+    # Reference shell space (from the detailed render): roof cubic
+    #   M 38,338 C 50,150 350,50 910,282  ; ground ~360 ; right structure ~282..360
+    R_LX, R_RX = 38.0, 910.0
+    R_BL, R_BR = 338.0, 282.0           # roof endpoints (also ~ the spring line)
+    def rbez(t):                        # roof top edge (cubic Bezier)
         mt=1-t
-        x=mt**3*108+3*mt*mt*t*130+3*mt*t*t*1150+t**3*1270
-        y=mt**3*490+3*mt*mt*t*86 +3*mt*t*t*108 +t**3*452
+        x=mt**3*38 + 3*mt*mt*t*50  + 3*mt*t*t*350  + t**3*910
+        y=mt**3*338+ 3*mt*mt*t*150 + 3*mt*t*t*50   + t**3*282
         return x,y
-    def rbot(t):  # straight bottom edge
+    def rspring(t):                     # lower spring line (gentle, slopes up R)
         return R_LX+t*(R_RX-R_LX), R_BL+t*(R_BR-R_BL)
-    # scale ref -> panel
     rW = R_RX-R_LX
     sc = (2*TGT_HALFW)/rW
-    rY0 = 452.0                # reference baseline (right end) ~ where panel baseline sits
+    rY0 = R_BR
     def MX(x): return TGT_CX - TGT_HALFW + (x-R_LX)*sc
     def MY(y): return TGT_BASE + (y-rY0)*sc
 
     def dome(cx):
         o=[]
-        # filled backing
-        topd="M %.1f,%.1f C %.1f,%.1f %.1f,%.1f %.1f,%.1f"%(
-            MX(108),MY(490), MX(130),MY(86), MX(1150),MY(108), MX(1270),MY(452))
-        roof=topd+" L %.1f,%.1f Z"%(MX(108),MY(490))
+        # filled shell backing (no clip; just the roof->spring closed area)
+        topd=("M %.1f,%.1f C %.1f,%.1f %.1f,%.1f %.1f,%.1f"%(
+              MX(38),MY(338), MX(50),MY(150), MX(350),MY(50), MX(910),MY(282)))
+        roof=topd+" L %.1f,%.1f Z"%(MX(38),MY(338))
         o.append(f'  <path d="{roof}" fill="#101216" fill-opacity="0.45" stroke="none"/>')
-        # woven diagrid family A: courses bowing across (bottom->top at fractions)
-        o.append(f'  <g stroke="{shell}" stroke-width="0.45" fill="none" opacity="{grid_op}">')
-        NC=13
-        for i in range(1,NC+1):
-            f=i/(NC+1.0); pts=[]
-            for s in range(0,33):
-                t=s/32.0; bx,by=rbot(t); tx,ty=rbez(t)
+
+        # Family A — bowed "courses": interpolate roof<->spring at fractions f.
+        o.append(f'  <g stroke="{shell}" stroke-width="0.4" fill="none" opacity="{grid_op}">')
+        NA=9
+        for i in range(1, NA+1):
+            f=i/(NA+1.0); pts=[]
+            for s in range(0,29):
+                t=s/28.0; bx,by=rspring(t); tx,ty=rbez(t)
                 x=bx+(tx-bx)*f; y=by+(ty-by)*f
                 pts.append(f"{MX(x):.1f},{MY(y):.1f}")
             o.append(f'    <polyline points="{" ".join(pts)}"/>')
         o.append('  </g>')
-        # family B: convergent diagonals -> focal point (the woven look)
-        o.append(f'  <g stroke="{shell}" stroke-width="0.4" fill="none" opacity="{grid_op*0.75}">')
-        fxR,fyR=660.0,200.0
-        ND=18
-        for i in range(ND+1):
-            t=i/float(ND); bx,by=rbot(t)
-            fx=bx+(fxR-bx)*0.6; fy=by+(fyR-by)*0.6
-            o.append(f'    <line x1="{MX(bx):.1f}" y1="{MY(by):.1f}" x2="{MX(fx):.1f}" y2="{MY(fy):.1f}"/>')
-        for i in range(ND+1):
-            t=i/float(ND); tx,ty=rbez(t)
-            fx=tx+(fxR-tx)*0.4; fy=ty+(fyR-ty)*0.4
-            o.append(f'    <line x1="{MX(tx):.1f}" y1="{MY(ty):.1f}" x2="{MX(fx):.1f}" y2="{MY(fy):.1f}"/>')
+
+        # Family B — splayed arcs fanning from a low-left origin (the ellipse set
+        # in the reference: all arcs share a low-left centre, getting more vertical
+        # toward the right). Foot marches L->R; apex tracks the roof slightly ahead;
+        # bow lift eases off to the right so arcs hug the shell instead of overshoot.
+        o.append(f'  <g stroke="{shell}" stroke-width="0.35" fill="none" opacity="{grid_op*0.8}">')
+        NB=12
+        for i in range(NB+1):
+            tt=i/float(NB)
+            fx,fy=rspring(tt)
+            at=min(1.0, tt*0.78+0.04)              # apex sits a touch ahead of foot
+            ax,ay=rbez(at)
+            lift=22.0*(1.0-tt*0.7)                  # less lift on the right
+            mx,my=fx*0.45+ax*0.55, min(fy,ay)-lift  # control biased toward apex
+            o.append(f'    <path d="M {MX(fx):.1f},{MY(fy):.1f} '
+                     f'Q {MX(mx):.1f},{MY(my):.1f} {MX(ax):.1f},{MY(ay):.1f}"/>')
         o.append('  </g>')
+
         # crisp roof outline
-        o.append(f'  <path d="{topd}" fill="none" stroke="{accent}" stroke-width="0.9" opacity="0.7"/>')
-        o.append(f'  <line x1="{MX(108):.1f}" y1="{MY(490):.1f}" x2="{MX(1270):.1f}" y2="{MY(452):.1f}" stroke="{accent}" stroke-width="0.8" opacity="0.7"/>')
-        # support columns: progressively taller toward the right, with caps
-        o.append(f'  <g stroke="{accent}" stroke-width="0.8" fill="none" opacity="0.7">')
-        cols_t=[0.10,0.27,0.44,0.61,0.78,0.93]
-        for k,t in enumerate(cols_t):
-            bx,by=rbot(t); x=MX(bx); top=MY(by)
-            footy=TGT_BASE+12+k*1.5             # ground roughly flat, slight taper
-            o.append(f'    <line x1="{x:.1f}" y1="{footy:.1f}" x2="{x:.1f}" y2="{top:.1f}"/>')
-            o.append(f'    <line x1="{x-3:.1f}" y1="{top:.1f}" x2="{x+3:.1f}" y2="{top:.1f}"/>')  # cap
+        o.append(f'  <path d="{topd}" fill="none" stroke="{accent}" stroke-width="0.9" opacity="0.75"/>')
+
+        # ── Truss understructure: zigzag chord + hanging vertical spikes ──────
+        o.append(f'  <g stroke="{accent}" stroke-width="0.6" fill="none" opacity="0.7">')
+        # top chord (just under the spring) and bottom chord (ground), sloping up R
+        gx0,gy0 = MX(20), TGT_BASE+30
+        gx1,gy1 = MX(760), TGT_BASE+14
+        o.append(f'    <line x1="{gx0:.1f}" y1="{gy0:.1f}" x2="{gx1:.1f}" y2="{gy1:.1f}"/>')      # bottom chord
+        sx0,sy0 = MX(20), MY(338)+4
+        sx1,sy1 = MX(760), MY(290)+6
+        o.append(f'    <line x1="{sx0:.1f}" y1="{sy0:.1f}" x2="{sx1:.1f}" y2="{sy1:.1f}"/>')      # top chord
+        # zigzag web between the chords + hanging spikes at the lower nodes
+        NT=6
+        for k in range(NT+1):
+            tt=k/float(NT)
+            tx=sx0+(sx1-sx0)*tt; ty=sy0+(sy1-sy0)*tt          # top chord node
+            bx=gx0+(gx1-gx0)*tt; by=gy0+(gy1-gy0)*tt          # bottom chord node
+            o.append(f'    <line x1="{tx:.1f}" y1="{ty:.1f}" x2="{bx:.1f}" y2="{by:.1f}"/>')  # vertical post
+            if k < NT:                                          # diagonal web
+                nb=k+1; bx2=gx0+(gx1-gx0)*(nb/float(NT)); by2=gy0+(gy1-gy0)*(nb/float(NT))
+                o.append(f'    <line x1="{tx:.1f}" y1="{ty:.1f}" x2="{bx2:.1f}" y2="{by2:.1f}"/>')
+            o.append(f'    <line x1="{bx:.1f}" y1="{by:.1f}" x2="{bx:.1f}" y2="{by+6:.1f}"/>')  # hanging spike
         o.append('  </g>')
         return "\n".join(o)
 
-    block = dome(295.0)   # single woven Esplanade shell, reference style
+    block = dome(295.0)   # single detailed Esplanade shell, reference style
     out = lines[:start] + [block] + lines[end+1:]
     return "\n".join(out)
 
