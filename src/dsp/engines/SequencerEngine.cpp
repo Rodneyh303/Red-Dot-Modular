@@ -169,7 +169,15 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
 
     // Mid-note: previous note's hold is still counting down.
     // Poly voices seeing MidNote will tick their own holds and return.
-    if (gs.holdRemain >= 1.f) {
+    //
+    // The guard must also stay in MidNote while a fractional sub-step tail is
+    // still sounding: a triplet (1/4T = 2.667 steps, 1/8T = 1.333) leaves
+    // holdRemain < 1 on its final partial step while the precise gate timer
+    // (gateSecRemain) is still open. Without the gateSecRemain check, that last
+    // step fired a NEW note and cut the triplet to a whole-step length — 1/4T
+    // played as 1/8, 1/8T as 1/16. (1/32 = 0.5 steps closes within its own step
+    // before any edge, so it was unaffected — matching the observed scope.)
+    if (gs.holdRemain >= 1.f || gs.gateSecRemain > 0.f) {
         result.decision = MonoDecision::MidNote;
         result.accented = lastStepResult.accented;
         lastStepResult = result;
