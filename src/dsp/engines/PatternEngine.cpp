@@ -166,7 +166,13 @@ int PatternEngine::varyNoteIndex(int baseIdx, const PatternInput& in, float r) {
     float total = 0.f;
 
     for (int i = 0; i < 8; ++i) {
-        if (!allowed(i)) continue;
+        // The base index is the user's explicit note-value choice — always honour
+        // it, even when the variation mask would exclude that triplet/1/32. The
+        // mask only restricts where *variation* may wander, not the chosen note
+        // itself. (Without this, selecting 1/4T with triplets unmasked dropped the
+        // base weight to zero and the note played as an adjacent straight value —
+        // e.g. 1/4T rendered as 1/8.)
+        if (i != baseIdx && !allowed(i)) continue;
 
         if (i == baseIdx) {
             // The original note's weight drops as variation increases.
