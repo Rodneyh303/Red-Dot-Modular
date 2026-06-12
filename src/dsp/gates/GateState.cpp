@@ -17,7 +17,17 @@ float gs_noteSteps(int nvIdx) {
 // prevHold) — is unchanged. curStepSec<=0 (externally-gated modes, before any
 // tick) disables sub-step timing and the gate falls back to whole-step close.
 void GateState::armGate(float durSteps) {
-    gateSecRemain = (curStepSec > 0.f) ? durSteps * curStepSec : -1.f;
+    // Only the FRACTIONAL part of a duration needs the precise per-sample timer.
+    // Whole-step lengths (1/1, 1/2, 1/4, 1/8, 1/16 = 16,8,4,2,1 steps) are closed
+    // by the step-edge mechanism in tick()/holdRemain — seamless, and with no
+    // sample-level race against the clock edge. Arming the seconds timer for them
+    // made the gate close a hair before the edge (float drift), terminating
+    // whole-step notes early. So: arm gateSecRemain ONLY when there is a sub-step
+    // tail (triplets 2.667/1.333, 1/32 = 0.5); otherwise leave it disarmed (-1)
+    // and let the edge close the gate.
+    float frac = durSteps - std::floor(durSteps);
+    bool  hasSubStepTail = (frac > 1e-4f && frac < 0.9999f);
+    gateSecRemain = (hasSubStepTail && curStepSec > 0.f) ? durSteps * curStepSec : -1.f;
 }
 
 // ── Core operations ───────────────────────────────────────────────────────────
