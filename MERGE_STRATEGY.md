@@ -18,14 +18,29 @@ File-overlap (the entire conflict surface):
 
 ## The core decision
 
-**The kit is the single binding layer. The JSON pipeline is demoted to an
-SVG-producer. The generated C++ layout header is dropped.**
+**Kit-from-SVG is the DEFAULT binding path. The JSON pipeline + generated
+`.gen.hpp` is KEPT as an opt-in alternative — not deleted.**
 
-Why: the pipeline currently derives **two** position sources from one JSON —
-the SVG (`input_/param_` shape ids) *and* `CausewayLayout.gen.hpp` constants.
-The kit only needs the SVG. Keeping both is the same two-sources-of-truth trap as
-the old `NOTEVALS` / `GS_NOTE_FRACS` duplication: edit the JSON, regenerate one,
-and the other silently drifts.
+Two legitimate authoring paths, picked per panel:
+
+- **Kit-from-SVG (default).** The widget binds to named shapes in the panel SVG.
+  Positions live in the SVG → you can **live-edit** them (move a knob in the SVG,
+  reload, done) and there is **no second source to drift**. This is the big win
+  for complex/designed panels where art and controls are co-designed.
+
+- **Code-driven (`.gen.hpp`, opt-in).** JSON → SVG *and* a `constexpr` layout
+  header; the widget reads positions from the header. Genuinely better when you
+  want layout **as code**: programmatic placement, diffable numeric coords,
+  generating many regular panels from data. Kept available for those cases.
+
+The thing we DON'T want is a panel using BOTH at once — that's the
+`NOTEVALS`/`GS_NOTE_FRACS` two-sources-of-truth trap (edit the JSON, regenerate
+one, the other drifts). So the rule is **per-panel, pick one**:
+- kit-bound panel → its SVG is the only position source (don't also read a header)
+- code-driven panel → the `.gen.hpp` is the source (the SVG is generated to match)
+
+The `.gen.hpp` generator stays in the tree; it's just not forced onto kit-bound
+panels.
 
 Proven-compatible: hand-authored Monsoon emits `param_NOTE_VALUE_PARAM`;
 pipeline-generated Causeway emits `param_CAUSEWAY_SLEW_R_ATT` /
@@ -60,15 +75,16 @@ with no change.
    (both branches added the kit ids to it) — take the variadic version (it has the
    binding ids).
 
-3. **Convert Causeway from header to kit** (the SSOT-collapsing step). In
-   `MonsoonCausewayExpander.cpp`:
+3. **Convert Causeway to the kit (default path), keep the generator available.**
+   In `MonsoonCausewayExpander.cpp`:
    - `addInput(createInputCentered<PJ301MPort>(L(CausewayLayout::CAUSEWAY_SLEW_R_CV), module, …))`
      becomes
    - `bindInput<PJ301MPort>("input_CAUSEWAY_SLEW_R_CV", MonsoonIds::CAUSEWAY_SLEW_R_CV);`
-   Drop `#include "gen/CausewayLayout.gen.hpp"`, delete `src/gen/CausewayLayout.gen.hpp`,
-   and remove the header-emit step from `gen_layout.py` (keep the SVG-emit step).
-   The labels block likewise binds via `findPrefixed("lbl_")` instead of
-   `LBL_*` constants.
+   - Drop the `#include "gen/CausewayLayout.gen.hpp"` from this widget and bind
+     labels via `findPrefixed("lbl_")`.
+   - **Keep** `src/gen/CausewayLayout.gen.hpp` and the header-emit in
+     `gen_layout.py` — they remain available for code-driven panels. Causeway just
+     no longer *consumes* the header (its SVG is now the single source).
 
 4. **`experiment/interchange-peranakan` → master.** The big art/engine branch.
    Only conflict is `MonsoonWidget.cpp` (peranakan edited the arc labels to read

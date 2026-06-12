@@ -3,17 +3,15 @@
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
+#include "gen/CausewayLayout.gen.hpp"
 
 using namespace rack;
 
 extern Model* modelMonsoon;
 
-// Geometry MUST match panel_src/gen_causeway.py. File-scope to avoid C++11
-// constexpr-static-member ODR linkage issues.
-static const float CW_CV_COLS[4] = {9.0f, 21.0f, 39.0f, 51.0f};
-static const float CW_CV_ROWS[2] = {38.0f, 50.0f};
-static const float CW_G_COLS[2]  = {16.0f, 44.0f};
-static const float CW_G_ROWS[5]  = {66.0f, 78.0f, 90.0f, 102.0f, 114.0f};
+// Control positions now come from the generated header (single source of truth:
+// panel_src/layouts/causeway.json). Wrap each constexpr mm coord with mm2px here.
+static inline Vec L(const CausewayLayout::P& p) { return mm2px(Vec(p.x, p.y)); }
 
 struct MonsoonCausewayExpanderWidget : ModuleWidget {
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
@@ -31,24 +29,31 @@ struct MonsoonCausewayExpanderWidget : ModuleWidget {
        // using M = MonsoonIds;
         // CV section: jack | atten | atten | jack, rows = slew, mix.
         // Row 0 (slew): R jack/att on cols 0/1, M att/jack on cols 2/3.
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(CW_CV_COLS[0], CW_CV_ROWS[0])), module, MonsoonIds::CAUSEWAY_SLEW_R_CV));
-        addParam(createParamCentered<Trimpot>(  mm2px(Vec(CW_CV_COLS[1], CW_CV_ROWS[0])), module, MonsoonIds::CAUSEWAY_SLEW_R_ATT));
-        addParam(createParamCentered<Trimpot>(  mm2px(Vec(CW_CV_COLS[2], CW_CV_ROWS[0])), module, MonsoonIds::CAUSEWAY_SLEW_M_ATT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(CW_CV_COLS[3], CW_CV_ROWS[0])), module, MonsoonIds::CAUSEWAY_SLEW_M_CV));
+        addInput(createInputCentered<PJ301MPort>(L(CausewayLayout::CAUSEWAY_SLEW_R_CV),  module, MonsoonIds::CAUSEWAY_SLEW_R_CV));
+        addParam(createParamCentered<Trimpot>(  L(CausewayLayout::CAUSEWAY_SLEW_R_ATT), module, MonsoonIds::CAUSEWAY_SLEW_R_ATT));
+        addParam(createParamCentered<Trimpot>(  L(CausewayLayout::CAUSEWAY_SLEW_M_ATT), module, MonsoonIds::CAUSEWAY_SLEW_M_ATT));
+        addInput(createInputCentered<PJ301MPort>(L(CausewayLayout::CAUSEWAY_SLEW_M_CV),  module, MonsoonIds::CAUSEWAY_SLEW_M_CV));
         // Row 1 (mix)
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(CW_CV_COLS[0], CW_CV_ROWS[1])), module, MonsoonIds::CAUSEWAY_MIX_R_CV));
-        addParam(createParamCentered<Trimpot>(  mm2px(Vec(CW_CV_COLS[1], CW_CV_ROWS[1])), module, MonsoonIds::CAUSEWAY_MIX_R_ATT));
-        addParam(createParamCentered<Trimpot>(  mm2px(Vec(CW_CV_COLS[2], CW_CV_ROWS[1])), module, MonsoonIds::CAUSEWAY_MIX_M_ATT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(CW_CV_COLS[3], CW_CV_ROWS[1])), module, MonsoonIds::CAUSEWAY_MIX_M_CV));
+        addInput(createInputCentered<PJ301MPort>(L(CausewayLayout::CAUSEWAY_MIX_R_CV),  module, MonsoonIds::CAUSEWAY_MIX_R_CV));
+        addParam(createParamCentered<Trimpot>(  L(CausewayLayout::CAUSEWAY_MIX_R_ATT), module, MonsoonIds::CAUSEWAY_MIX_R_ATT));
+        addParam(createParamCentered<Trimpot>(  L(CausewayLayout::CAUSEWAY_MIX_M_ATT), module, MonsoonIds::CAUSEWAY_MIX_M_ATT));
+        addInput(createInputCentered<PJ301MPort>(L(CausewayLayout::CAUSEWAY_MIX_M_CV),  module, MonsoonIds::CAUSEWAY_MIX_M_CV));
 
-        // Gate section: rhythm left (col 0), melody right (col 1); 5 rows.
+        // Gate section: rhythm left, melody right; 5 rows. Positions from header.
+        const CausewayLayout::P gpos[5][2] = {
+            { CausewayLayout::CAUSEWAY_GATE_TRIAL_R,      CausewayLayout::CAUSEWAY_GATE_TRIAL_M },
+            { CausewayLayout::CAUSEWAY_GATE_REDICE_R,     CausewayLayout::CAUSEWAY_GATE_REDICE_M },
+            { CausewayLayout::CAUSEWAY_GATE_LIVESRC_R,    CausewayLayout::CAUSEWAY_GATE_LIVESRC_M },
+            { CausewayLayout::CAUSEWAY_GATE_LIVESTATIC_R, CausewayLayout::CAUSEWAY_GATE_LIVESTATIC_M },
+            { CausewayLayout::CAUSEWAY_GATE_RESEED_ROLL,  CausewayLayout::CAUSEWAY_GATE_RESEED_RESTART },
+        };
         const int gateL[5] = { MonsoonIds::CAUSEWAY_GATE_TRIAL_R, MonsoonIds::CAUSEWAY_GATE_REDICE_R,
             MonsoonIds::CAUSEWAY_GATE_LIVESRC_R, MonsoonIds::CAUSEWAY_GATE_LIVESTATIC_R, MonsoonIds::CAUSEWAY_GATE_RESEED_ROLL };
         const int gateR[5] = { MonsoonIds::CAUSEWAY_GATE_TRIAL_M, MonsoonIds::CAUSEWAY_GATE_REDICE_M,
             MonsoonIds::CAUSEWAY_GATE_LIVESRC_M, MonsoonIds::CAUSEWAY_GATE_LIVESTATIC_M, MonsoonIds::CAUSEWAY_GATE_RESEED_RESTART };
         for (int r = 0; r < 5; ++r) {
-            addInput(createInputCentered<PJ301MPort>(mm2px(Vec(CW_G_COLS[0], CW_G_ROWS[r])), module, gateL[r]));
-            addInput(createInputCentered<PJ301MPort>(mm2px(Vec(CW_G_COLS[1], CW_G_ROWS[r])), module, gateR[r]));
+            addInput(createInputCentered<PJ301MPort>(L(gpos[r][0]), module, gateL[r]));
+            addInput(createInputCentered<PJ301MPort>(L(gpos[r][1]), module, gateR[r]));
         }
     }
 
@@ -77,13 +82,19 @@ struct MonsoonCausewayExpanderWidget : ModuleWidget {
         };
         // Section headers
         T(30.f, 30.f, 9.f, "CAUSEWAY");
-        // CV row labels (left of each pair)
-        T((CW_CV_COLS[1]+CW_CV_COLS[2])/2.f, CW_CV_ROWS[0]-6.f, 7.f, "SLEW");
-        T((CW_CV_COLS[1]+CW_CV_COLS[2])/2.f, CW_CV_ROWS[1]-6.f, 7.f, "MIX");
-        T(CW_CV_COLS[0], CW_CV_ROWS[0]+6.f, 6.f, "R"); T(CW_CV_COLS[3], CW_CV_ROWS[0]+6.f, 6.f, "M");
-        // Gate row labels (between the two columns)
+        // CV row labels — derived from the generated control coords.
+        const float cvMid = (CausewayLayout::CAUSEWAY_SLEW_R_ATT.x + CausewayLayout::CAUSEWAY_SLEW_M_ATT.x) / 2.f;
+        T(cvMid, CausewayLayout::CAUSEWAY_SLEW_R_CV.y - 6.f, 7.f, "SLEW");
+        T(cvMid, CausewayLayout::CAUSEWAY_MIX_R_CV.y - 6.f, 7.f, "MIX");
+        T(CausewayLayout::CAUSEWAY_SLEW_R_CV.x, CausewayLayout::CAUSEWAY_SLEW_R_CV.y + 6.f, 6.f, "R");
+        T(CausewayLayout::CAUSEWAY_SLEW_M_CV.x, CausewayLayout::CAUSEWAY_SLEW_M_CV.y + 6.f, 6.f, "M");
+        // Gate row labels (centred between the two gate columns)
         const char* gl[5] = {"TRIAL","REDICE","LIVE SRC","LIVE/STAT","RESEED"};
-        for (int r = 0; r < 5; ++r) T(30.f, CW_G_ROWS[r], 6.f, gl[r]);
+        const float gateY[5] = {
+            CausewayLayout::CAUSEWAY_GATE_TRIAL_R.y, CausewayLayout::CAUSEWAY_GATE_REDICE_R.y,
+            CausewayLayout::CAUSEWAY_GATE_LIVESRC_R.y, CausewayLayout::CAUSEWAY_GATE_LIVESTATIC_R.y,
+            CausewayLayout::CAUSEWAY_GATE_RESEED_ROLL.y };
+        for (int r = 0; r < 5; ++r) T(30.f, gateY[r], 6.f, gl[r]);
     }
 };
 
