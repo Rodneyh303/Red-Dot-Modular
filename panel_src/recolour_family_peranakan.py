@@ -101,7 +101,8 @@ def force_bg(text, fill, dims):
     return pat.sub(rf'\g<1>{fill}\g<2>', text, count=1)
 
 
-def clean_esplanade(text, shell="#5a5e66", accent="#dc2626", grid_op=0.9):
+def clean_esplanade(text, shell="#5a5e66", accent="#dc2626", grid_op=0.9,
+                    grid_style="fan"):
     """Replace the ENTIRE original Esplanade structure (building body + base steps
     + windows + both messy domes + spikes + spire) with two clean Esplanade
     'durian' shells in the style of the reference render:
@@ -175,22 +176,53 @@ def clean_esplanade(text, shell="#5a5e66", accent="#dc2626", grid_op=0.9):
             o.append(f'    <polyline points="{" ".join(pts)}"/>')
         o.append('  </g>')
 
-        # Family B — splayed arcs fanning from a low-left origin (the ellipse set
-        # in the reference: all arcs share a low-left centre, getting more vertical
-        # toward the right). Foot marches L->R; apex tracks the roof slightly ahead;
-        # bow lift eases off to the right so arcs hug the shell instead of overshoot.
-        o.append(f'  <g stroke="{shell}" stroke-width="0.35" fill="none" opacity="{grid_op*0.8}">')
-        NB=12
-        for i in range(NB+1):
-            tt=i/float(NB)
-            fx,fy=rspring(tt)
-            at=min(1.0, tt*0.78+0.04)              # apex sits a touch ahead of foot
-            ax,ay=rbez(at)
-            lift=22.0*(1.0-tt*0.7)                  # less lift on the right
-            mx,my=fx*0.45+ax*0.55, min(fy,ay)-lift  # control biased toward apex
-            o.append(f'    <path d="M {MX(fx):.1f},{MY(fy):.1f} '
-                     f'Q {MX(mx):.1f},{MY(my):.1f} {MX(ax):.1f},{MY(ay):.1f}"/>')
-        o.append('  </g>')
+        # Family B — interior grid. Two styles:
+        #   "fan"          : splayed arcs fanning from a low-left origin (ref 2).
+        #   "perspective"  : convergent floor-grid receding to a vanishing point
+        #                    (ref 1's signature recession) grafted onto ref 2's
+        #                    accurate shell — the hybrid alternative.
+        if grid_style == "perspective":
+            # A perspective "floor" inside the shell: longitudinal lines converge
+            # toward a vanishing point set OUTSIDE the right tip (so they recede
+            # without collapsing to a visible knot); transverse arcs bow across,
+            # spaced tighter toward the VP (foreshortening).
+            vpx, vpy = 1060.0, 268.0                 # VP beyond the right tip (ref space)
+            o.append(f'  <g stroke="{shell}" stroke-width="0.32" fill="none" opacity="{grid_op*0.8}">')
+            # longitudinal lines: spread along the lower spring -> partway to VP,
+            # stopping short of it so the right side stays open, not a dense point.
+            NL=10
+            for i in range(NL+1):
+                tt=i/float(NL)
+                fx,fy=rspring(tt*0.9+0.03)
+                ex=fx+(vpx-fx)*0.82; ey=fy+(vpy-fy)*0.82   # stop short of the VP
+                o.append(f'    <line x1="{MX(fx):.1f}" y1="{MY(fy):.1f}" '
+                         f'x2="{MX(ex):.1f}" y2="{MY(ey):.1f}"/>')
+            # transverse courses: bow across, depth eased for foreshortening
+            NT2=6
+            for j in range(1, NT2+1):
+                d=(j/float(NT2+1))**1.4
+                pts=[]
+                for s in range(0,25):
+                    t=s/24.0
+                    fx,fy=rspring(t*0.9+0.03)
+                    x=fx+(vpx-fx)*d*0.82; y=fy+(vpy-fy)*d*0.82
+                    pts.append(f"{MX(x):.1f},{MY(y):.1f}")
+                o.append(f'    <polyline points="{" ".join(pts)}"/>')
+            o.append('  </g>')
+        else:
+            # splayed arcs fanning from a low-left origin (ref 2 default).
+            o.append(f'  <g stroke="{shell}" stroke-width="0.35" fill="none" opacity="{grid_op*0.8}">')
+            NB=12
+            for i in range(NB+1):
+                tt=i/float(NB)
+                fx,fy=rspring(tt)
+                at=min(1.0, tt*0.78+0.04)              # apex sits a touch ahead of foot
+                ax,ay=rbez(at)
+                lift=22.0*(1.0-tt*0.7)                  # less lift on the right
+                mx,my=fx*0.45+ax*0.55, min(fy,ay)-lift  # control biased toward apex
+                o.append(f'    <path d="M {MX(fx):.1f},{MY(fy):.1f} '
+                         f'Q {MX(mx):.1f},{MY(my):.1f} {MX(ax):.1f},{MY(ay):.1f}"/>')
+            o.append('  </g>')
 
         # crisp roof outline
         o.append(f'  <path d="{topd}" fill="none" stroke="{accent}" stroke-width="0.9" opacity="0.75"/>')
@@ -226,16 +258,20 @@ def clean_esplanade(text, shell="#5a5e66", accent="#dc2626", grid_op=0.9):
 def process(src, out_dark, out_light, dmap, lmap, dbg, lbg, dims):
     s = open(src).read()
     if "straits" in out_dark:
-        # Two Esplanade treatments: grey (architectural) + red (hero). Emit both
-        # dark variants so they can be compared; light uses the grey shell.
-        grey = clean_esplanade(s, shell="#7a7e86", accent="#9a9fa8", grid_op=0.95)
-        red  = clean_esplanade(s, shell="#d4001a", accent="#dc2626", grid_op=0.95)
-        open(out_dark.replace(".svg", "_grey.svg"), "w").write(force_bg(remap(grey, dmap), dbg, dims))
-        open(out_dark.replace(".svg", "_red.svg"),  "w").write(force_bg(remap(red,  dmap), dbg, dims))
+        # Two Esplanade treatments: grey (architectural) + red (hero). Plus a
+        # third "perspective" alternative (ref-2 shell + ref-1 convergent floor
+        # grid). Emit all so they can be compared; defaults unchanged.
+        grey  = clean_esplanade(s, shell="#7a7e86", accent="#9a9fa8", grid_op=0.95)
+        red   = clean_esplanade(s, shell="#d4001a", accent="#dc2626", grid_op=0.95)
+        persp = clean_esplanade(s, shell="#d4001a", accent="#dc2626", grid_op=0.95,
+                                grid_style="perspective")
+        open(out_dark.replace(".svg", "_grey.svg"),  "w").write(force_bg(remap(grey,  dmap), dbg, dims))
+        open(out_dark.replace(".svg", "_red.svg"),   "w").write(force_bg(remap(red,   dmap), dbg, dims))
+        open(out_dark.replace(".svg", "_persp.svg"), "w").write(force_bg(remap(persp, dmap), dbg, dims))
         # default dark = red (hero); light = grey shell
         open(out_dark, "w").write(force_bg(remap(red, dmap), dbg, dims))
         open(out_light, "w").write(force_bg(remap(grey, lmap), lbg, dims))
-        print(f"  {src} -> {out_dark.split('/')[-1]} (+_grey/_red), {out_light.split('/')[-1]}")
+        print(f"  {src} -> {out_dark.split('/')[-1]} (+_grey/_red/_persp), {out_light.split('/')[-1]}")
         return
     dark = force_bg(remap(s, dmap), dbg, dims)
     light = force_bg(remap(s, lmap), lbg, dims)
