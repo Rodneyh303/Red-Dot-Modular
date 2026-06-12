@@ -91,6 +91,25 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
         probabilities[step] = rack::math::clamp(value, 0.f, 1.f);
       }
     }
+
+    // ── Single source of truth for "which physical bars are in the window" ──
+    // The window spans physical bars [offset .. offset+length-1] % 16 and may
+    // wrap. drawStep (cell shading), the range band, and hit-testing all use
+    // these so they can never disagree (the old drawStep used `step < length`,
+    // ignoring offset, which desynced the shading from the band).
+    int startBar() const { return ((offset % STEP_COUNT) + STEP_COUNT) % STEP_COUNT; }
+    int endBar()   const { return (startBar() + std::max(1, std::min(length, STEP_COUNT)) - 1) % STEP_COUNT; }
+    bool barInWindow(int bar) const {
+      int s = startBar(), e = endBar();
+      bar = ((bar % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
+      return (e >= s) ? (bar >= s && bar <= e)        // contiguous
+                      : (bar >= s || bar <= e);       // wrapped
+    }
+    // window-relative index of a physical bar (0 = start cell), or -1 if outside
+    int windowIndexOf(int bar) const {
+      if (!barInWindow(bar)) return -1;
+      return (((bar - startBar()) % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
+    }
   };
   
   struct VoiceState {
@@ -404,10 +423,12 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   }
   
   void drawStep(NVGcontext* vg, int lane, int step) {
+    const ProbabilityLane& L = currentState.lanes[lane];
     rack::Rect rect  = layout.getStepRect(lane, step);
-    float prob       = currentState.lanes[lane].probabilities[step];
+    float prob       = L.probabilities[step];
     float barHeight  = prob * rect.size.y;
-    bool  isInWindow = (step < currentState.lanes[lane].length);
+    // Offset-aware + wrap-correct (shared helper, matches the band & hit-test).
+    bool  isInWindow = L.barInWindow(step);
     float dimAlpha   = isInWindow ? 1.f : 0.22f;
 
     // Background
@@ -415,6 +436,16 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     nvgRect(vg, rect.pos.x, rect.pos.y, rect.size.x, rect.size.y);
     nvgFillColor(vg, colors.background);
     nvgFill(vg);
+
+    // In-window cells get a faint tint behind the bar so the active RANGE reads
+    // as a continuous block (the primary visual indicator now that brackets are
+    // gone — the lit run *is* the offset→length window).
+    if (isInWindow) {
+      nvgBeginPath(vg);
+      nvgRect(vg, rect.pos.x, rect.pos.y, rect.size.x, rect.size.y);
+      nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.05f));
+      nvgFill(vg);
+    }
 
     // Probability bar — dimmed if outside window
     NVGcolor barCol = getLaneColor(lane);
@@ -430,6 +461,25 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     nvgStrokeColor(vg, nvgRGBAf(0.2f, 0.2f, 0.2f, dimAlpha));
     nvgStrokeWidth(vg, 0.5f);
     nvgStroke(vg);
+
+    // ── Range markers on the cell itself (replaces the [ ] brackets) ──────────
+    // Start cell: a bright bar down the LEFT edge (the offset marker — "range
+    // begins here"). End cell: a matching bar down the RIGHT edge. These ride on
+    // the cells, so even a 1-wide window shows both edges on the same cell
+    // unambiguously (the old brackets collided and got stuck in that case).
+    NVGcolor edge = getLaneColor(lane); edge.a = 0.95f;
+    if (step == L.startBar()) {
+      nvgBeginPath(vg);
+      nvgRect(vg, rect.pos.x, rect.pos.y, 2.5f, rect.size.y);
+      nvgFillColor(vg, edge);
+      nvgFill(vg);
+    }
+    if (step == L.endBar()) {
+      nvgBeginPath(vg);
+      nvgRect(vg, rect.pos.x + rect.size.x - 2.5f, rect.pos.y, 2.5f, rect.size.y);
+      nvgFillColor(vg, edge);
+      nvgFill(vg);
+    }
   }
   
   // ── Handle hit testing ──────────────────────────────────────────────────────
@@ -456,13 +506,22 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       return (px >= sxL && px <= rightEdge) || (px >= leftEdge && px <= exR);
     };
 
-    // TOP band (~top 16% of the lane): grab the whole window to MOVE it. Clicking
-    // anywhere in the highlighted range starts a window slide — no tiny bracket
-    // handles to hit, and the old 1-wide-wrap collision can't happen. Outside the
-    // range in the top band falls through (so you can still drag bars there).
+    // TOP band (~top 16% of the lane): the window control strip.
+    //   • left edge of the START cell   → drag to set OFFSET  (resize from front)
+    //   • right edge of the END cell     → drag to set LENGTH (resize from back)
+    //   • anywhere else in the range     → MOVE the whole window
+    // The edges are quarter-cell zones that ride ON the cells, so even a 1-wide
+    // window exposes a distinct left-quarter (start) and right-quarter (end) on
+    // the same cell — the old floating brackets collided there and got stuck.
     float bandBot = laneR.pos.y + laneR.size.y * 0.16f;
-    if (y >= laneR.pos.y && y <= bandBot && inWindowX(x))
-      return DragState::WINDOW;
+    if (y >= laneR.pos.y && y <= bandBot && inWindowX(x)) {
+      float edgeW = layout.stepWidthF() * 0.30f;
+      rack::Rect cs = layout.getStepRect(lane, L.startBar());
+      rack::Rect ce = layout.getStepRect(lane, L.endBar());
+      if (x <= cs.pos.x + edgeW)                       return DragState::START; // front edge
+      if (x >= ce.pos.x + ce.size.x - edgeW)           return DragState::END;   // back edge
+      return DragState::WINDOW;                                                 // body → move
+    }
 
     // BOTTOM ~30%: ROTATION strip, but only within the start–end window.
     float rotTop = laneR.pos.y + laneR.size.y * 0.70f;
@@ -472,38 +531,25 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     return DragState::NONE;
   }
 
-  // Window-range band: a translucent fill across the in-window cells (offset ..
-  // offset+length-1), with brighter edge ticks at the first/last cell. Replaces
-  // the old draggable "[" "]" brackets — those collided on a 1-wide wrapped
-  // window (start==end on the same cell, so the end handle was unreachable). The
-  // range is now shown as a region and grabbed anywhere within (see hitTest/drag).
+  // Top "move strip": a thin band along the lane top across the in-window cells.
+  // It's the grab-to-move affordance (drag it to slide the whole window). The
+  // range extent itself is now shown by the per-cell shading + the start/end edge
+  // bars drawn in drawStep, so this strip only needs to read as "grab here".
   void drawHandles(NVGcontext* vg, int lane) {
     const ProbabilityLane& L = currentState.lanes[lane];
     rack::Rect laneR = layout.getLaneRect(lane);
-    int startBar = L.offset % STEP_COUNT;
-    int lenC = std::max(1, std::min(L.length, STEP_COUNT));
     float bandTop = laneR.pos.y;
-    float bandH   = laneR.size.y * 0.16f;        // thin band along the lane top
-
-    // translucent fill per in-window cell (wraps correctly cell-by-cell)
-    NVGcolor band = nvgRGBAf(1.f, 1.f, 1.f, 0.10f);
+    float bandH   = laneR.size.y * 0.16f;
+    int lenC = std::max(1, std::min(L.length, STEP_COUNT));
+    NVGcolor band = nvgRGBAf(1.f, 1.f, 1.f, 0.12f);
     for (int k = 0; k < lenC; ++k) {
-      int bar = (startBar + k) % STEP_COUNT;
+      int bar = (L.startBar() + k) % STEP_COUNT;
       rack::Rect c = layout.getStepRect(lane, bar);
       nvgBeginPath(vg);
       nvgRect(vg, c.pos.x, bandTop, c.size.x, bandH);
       nvgFillColor(vg, band);
       nvgFill(vg);
     }
-    // bright edge ticks at the first and last in-window cell so the extent reads
-    int endBar = (L.offset + L.length - 1) % STEP_COUNT;
-    rack::Rect cs = layout.getStepRect(lane, startBar);
-    rack::Rect ce = layout.getStepRect(lane, endBar);
-    nvgBeginPath(vg);
-    nvgRect(vg, cs.pos.x, bandTop, 2.f, bandH);                       // start edge
-    nvgRect(vg, ce.pos.x + ce.size.x - 2.f, bandTop, 2.f, bandH);     // end edge
-    nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.85f));
-    nvgFill(vg);
   }
   
   void drawRotationIndicator(NVGcontext* vg, int lane) {
@@ -704,6 +750,28 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
         int deltaSteps = step - dragState.grabStep;
         int newOff = ((dragState.grabOffset + deltaSteps) % STEP_COUNT + STEP_COUNT) % STEP_COUNT;
         L.offset = newOff;
+        break;
+      }
+
+      case DragState::START: {
+        // Resize from the FRONT: the dragged step becomes the new start, the END
+        // bar stays put, length adjusts. Keeps the back edge anchored (intuitive
+        // when you grab the front edge). Wrap-safe via mod arithmetic.
+        int endBar = L.endBar();
+        int newLen = ((endBar - step) % STEP_COUNT + STEP_COUNT) % STEP_COUNT + 1; // 1..16
+        L.offset  = ((step % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
+        L.length  = rack::math::clamp(newLen, 1, STEP_COUNT);
+        L.rotation = rack::math::clamp(L.rotation, 0, std::max(0, L.length - 1));
+        break;
+      }
+
+      case DragState::END: {
+        // Resize from the BACK: the dragged step becomes the new end, START stays
+        // put, length = inclusive forward distance start→step. Dragging back past
+        // the start clamps to 1 (no surprise full-wrap to 16).
+        int fwd = ((step - L.startBar()) % STEP_COUNT + STEP_COUNT) % STEP_COUNT; // 0..15
+        L.length = rack::math::clamp(fwd + 1, 1, STEP_COUNT);
+        L.rotation = rack::math::clamp(L.rotation, 0, std::max(0, L.length - 1));
         break;
       }
 
