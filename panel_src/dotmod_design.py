@@ -125,6 +125,18 @@ def editor_recess(ED_X, ED_Y, ED_W, ED_H, t, lanes=3, watermark=False):
         out.append(f'<line x1="{px(ED_X+1):.1f}" y1="{px(ly):.1f}" x2="{px(ED_X+ED_W-1):.1f}" y2="{px(ly):.1f}" stroke="{t["edborder"]}" stroke-width="0.75" stroke-opacity="0.7"/>')
     return "".join(out)
 
+def kit_shape(kind, idx, x_mm, y_mm):
+    """Emit a named, near-invisible marker circle the SvgPanelKit can bind to.
+    `kind` is one of 'param'|'input'|'output'|'light'; `idx` is the control's
+    absolute param/input/output/light INDEX (the source of truth the widget binds
+    by). The kit reads the shape's bounds centre, so a tiny transparent circle at
+    the control's centre is all that's needed. id form: '{kind}_{idx}', e.g.
+    'input_0', 'param_3'. A future widget binds e.g. bindParam("param_3", id).
+    These go in a dedicated 'components' layer and never affect the visible art."""
+    return (f'<circle id="{kind}_{idx}" cx="{px(x_mm):.2f}" cy="{px(y_mm):.2f}" '
+            f'r="0.5" fill="none" stroke="none"/>')
+
+
 def jack(x_mm, y_mm, t):
     return (f'<circle cx="{px(x_mm):.1f}" cy="{px(y_mm):.1f}" r="{px(3.9):.1f}" fill="{t["jackwell"]}" stroke="{t["jackring"]}" stroke-width="1"/>'
             f'<circle cx="{px(x_mm):.1f}" cy="{px(y_mm):.1f}" r="{px(1.7):.1f}" fill="{t["edrecess"]}"/>')

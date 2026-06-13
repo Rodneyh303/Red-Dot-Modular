@@ -53,4 +53,33 @@
 <circle cx="144.7" cy="180.1" r="9.4" fill="#0f1114" stroke="#3a4048" stroke-width="1.25"/><line x1="144.7" y1="180.1" x2="144.7" y2="173.0" stroke="#3a4048" stroke-width="1"/>
 <circle cx="144.7" cy="272.6" r="9.4" fill="#0f1114" stroke="#3a4048" stroke-width="1.25"/><line x1="144.7" y1="272.6" x2="144.7" y2="265.6" stroke="#3a4048" stroke-width="1"/>
 </g>
+<g inkscape:label="components" inkscape:groupmode="layer">
+<circle id="input_0" cx="23.62" cy="64.47" r="0.5" fill="none" stroke="none"/>
+<circle id="input_1" cx="53.15" cy="64.47" r="0.5" fill="none" stroke="none"/>
+<circle id="param_3" cx="88.58" cy="64.47" r="0.5" fill="none" stroke="none"/>
+<circle id="param_4" cx="115.16" cy="64.47" r="0.5" fill="none" stroke="none"/>
+<circle id="input_2" cx="23.62" cy="110.73" r="0.5" fill="none" stroke="none"/>
+<circle id="input_3" cx="53.15" cy="110.73" r="0.5" fill="none" stroke="none"/>
+<circle id="param_5" cx="88.58" cy="110.73" r="0.5" fill="none" stroke="none"/>
+<circle id="param_6" cx="115.16" cy="110.73" r="0.5" fill="none" stroke="none"/>
+<circle id="input_4" cx="23.62" cy="156.99" r="0.5" fill="none" stroke="none"/>
+<circle id="input_5" cx="53.15" cy="156.99" r="0.5" fill="none" stroke="none"/>
+<circle id="param_7" cx="88.58" cy="156.99" r="0.5" fill="none" stroke="none"/>
+<circle id="param_8" cx="115.16" cy="156.99" r="0.5" fill="none" stroke="none"/>
+<circle id="input_6" cx="23.62" cy="203.25" r="0.5" fill="none" stroke="none"/>
+<circle id="input_7" cx="53.15" cy="203.25" r="0.5" fill="none" stroke="none"/>
+<circle id="param_9" cx="88.58" cy="203.25" r="0.5" fill="none" stroke="none"/>
+<circle id="param_10" cx="115.16" cy="203.25" r="0.5" fill="none" stroke="none"/>
+<circle id="input_8" cx="23.62" cy="249.51" r="0.5" fill="none" stroke="none"/>
+<circle id="input_9" cx="53.15" cy="249.51" r="0.5" fill="none" stroke="none"/>
+<circle id="param_11" cx="88.58" cy="249.51" r="0.5" fill="none" stroke="none"/>
+<circle id="param_12" cx="115.16" cy="249.51" r="0.5" fill="none" stroke="none"/>
+<circle id="input_10" cx="23.62" cy="295.77" r="0.5" fill="none" stroke="none"/>
+<circle id="input_11" cx="53.15" cy="295.77" r="0.5" fill="none" stroke="none"/>
+<circle id="param_13" cx="88.58" cy="295.77" r="0.5" fill="none" stroke="none"/>
+<circle id="param_14" cx="115.16" cy="295.77" r="0.5" fill="none" stroke="none"/>
+<circle id="param_0" cx="144.69" cy="87.60" r="0.5" fill="none" stroke="none"/>
+<circle id="param_1" cx="144.69" cy="180.12" r="0.5" fill="none" stroke="none"/>
+<circle id="param_2" cx="144.69" cy="272.64" r="0.5" fill="none" stroke="none"/>
+</g>
 </svg>
