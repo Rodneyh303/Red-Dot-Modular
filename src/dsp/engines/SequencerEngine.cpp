@@ -164,6 +164,29 @@ bool SequencerEngine::shouldTriggerStep(int ppqn) const {
 }
 
 StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float accentProb, const PatternInput& input, bool wasHeld, bool hadTail) {
+    // ── Fractional notes (1/4T=2.667, 1/8T=1.333, 1/32=0.5 steps) & legato/tie ──
+    // These notes end MID-STEP (closed by the gateSecRemain seconds-timer), not on
+    // a 1/16 grid edge. Legato/tie decisions only happen AT an edge and require the
+    // previous note to still be sounding (wasHeld). That gives three rules, all
+    // verified to hold with the current engine — they are by-design, not bugs:
+    //
+    //  1. A fractional note CANNOT be the FIRST/source note of a legato or tie.
+    //     It has already closed before the next edge, so wasHeld is false there and
+    //     the legato/tie branch is unreachable — the next step starts fresh. This
+    //     is musically correct: a sub-step note leaves a real gap, which is not
+    //     legato. (Design choice "A": accepted, not patched.)
+    //
+    //  2. A fractional note CAN be the LAST/destination note of a legato or tie.
+    //     The gate is already open from the held source note; extendHold()/
+    //     slideNote() add the fractional length and re-arm gateSecRemain on the
+    //     summed hold, so the gate rides open to the exact sub-step end.
+    //     e.g. 1/8→1/4T = 4.667 steps, 1/4→1/8T = 5.333, 1/8→1/32 = 2.5 (exact).
+    //
+    //  3. A fractional note CANNOT be a MIDDLE note of a 3-note tie. To be a middle
+    //     note it would have to be both a destination (rule 2, OK) AND a source
+    //     (rule 1, impossible). After it closes mid-step, the third note finds
+    //     wasHeld=false at its edge and retriggers as a NewNote — the tie chain
+    //     breaks cleanly at the fractional note, with no false reopened gate.
     StepResult result;
     result.nvIdx = nvIdx;
 
