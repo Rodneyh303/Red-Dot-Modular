@@ -3,6 +3,9 @@
 /*
 // Inspried by dustinlacewell/vcv-svghelper
 // vcv-svghelper by Dustin Lacewell (https://github.com/dustinlacewell/vcv-svghelper),
+This variadic composition approach is a architecturally different 
+compared to standard CRTP mixins, allowing for clean feature opt-ins and variadic binding.
+
 */
 
 
