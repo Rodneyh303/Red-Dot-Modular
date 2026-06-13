@@ -198,13 +198,23 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         saveVoiceLOR(selectedVoice);
         paramMgr->syncPatternEngineToEditor(selectedVoice, visualEditor->currentState);
 
+        // Surface the engine's CV-APPLIED L/O/R to the editor's display window so
+        // the highlighted range + offset/rotation markers visually track L/O/R CV
+        // modulation. processDNA has already written these for selectedVoice into
+        // engine.polyLen/Off/Rot[voice][lane] (lane 0/1/2 = REST/MEL/OCT). When no
+        // CV is patched these equal the edit values, so the window is unchanged.
+        // Editing/drag still acts on the edit values (editStartBar/editEndBar), so
+        // this is display-only and non-destructive.
         int gs = monsoon->engine.stepIndex;
-        for (int l=0; l<3; ++l)
-            visualEditor->setLanePlayStep(l,
-                calcPlayhead(gs,
-                    readLenParam   (mod, lorId(selectedVoice,l,0)),
-                    readOffRotParam(mod, lorId(selectedVoice,l,1)),
-                    readOffRotParam(mod, lorId(selectedVoice,l,2))));
+        auto& eng = monsoon->engine;
+        const int vi = selectedVoice;
+        for (int l=0; l<3; ++l) {
+            int cvLen = eng.polyLen[vi][l];
+            int cvOff = eng.polyOff[vi][l];
+            int cvRot = eng.polyRot[vi][l];
+            visualEditor->currentState.lanes[l].setDisplayLOR(cvLen, cvOff, cvRot);
+            visualEditor->setLanePlayStep(l, calcPlayhead(gs, cvLen, cvOff, cvRot));
+        }
     }
 };
 

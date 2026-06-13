@@ -148,13 +148,19 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         saveLOR();
         paramMgr->syncPatternEngineToEditor(visualEditor->currentState);
 
+        // Surface the engine's CV-APPLIED global L/O/R to the display window so the
+        // highlighted range + offset/rotation markers track L/O/R CV. Macro applies
+        // the SAME lane L/O/R to every poly voice (processDNA applyGlobal), so voice
+        // 0 is representative. Display-only; editing uses the edit values.
         int gs = monsoon->engine.stepIndex;
-        for (int l = 0; l < 3; ++l)
-            visualEditor->setLanePlayStep(l,
-                calcPlayhead(gs,
-                    readLenParam   (mod, lorId(l,0)),
-                    readOffRotParam(mod, lorId(l,1)),
-                    readOffRotParam(mod, lorId(l,2))));
+        auto& eng = monsoon->engine;
+        for (int l = 0; l < 3; ++l) {
+            int cvLen = eng.polyLen[0][l];
+            int cvOff = eng.polyOff[0][l];
+            int cvRot = eng.polyRot[0][l];
+            visualEditor->currentState.lanes[l].setDisplayLOR(cvLen, cvOff, cvRot);
+            visualEditor->setLanePlayStep(l, calcPlayhead(gs, cvLen, cvOff, cvRot));
+        }
     }
 };
 
