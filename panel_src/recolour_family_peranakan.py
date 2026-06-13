@@ -94,6 +94,31 @@ def remap(text, mapping):
     return text
 
 
+def flatten_gradients(text):
+    """Strip NanoSVG-unsafe <linearGradient>/<radialGradient> defs and replace every
+    fill/stroke="url(#id)" with the gradient's representative SOLID colour (its last
+    stop, i.e. the dominant/base tone). Pre-existing skyG/silG/waveG in the source
+    straits panel are near-solid two-stop gradients, so a flat fill is visually
+    equivalent and renders reliably in Rack's NanoSVG."""
+    import re as _r
+    # map gradient id -> representative colour (last stop-color)
+    colours = {}
+    for m in _r.finditer(r'<(?:linear|radial)Gradient[^>]*id="([^"]+)".*?</(?:linear|radial)Gradient>', text, _r.S):
+        stops = _r.findall(r'stop-color="([^"]*)"', m.group(0))
+        if stops:
+            colours[m.group(1)] = stops[-1]
+    # replace url(#id) references
+    def sub_url(mm):
+        gid = mm.group(1)
+        return colours.get(gid, "#181818")
+    text = _r.sub(r'url\(#([^)]+)\)', sub_url, text)
+    # drop the gradient defs
+    text = _r.sub(r'<(?:linear|radial)Gradient[^>]*>.*?</(?:linear|radial)Gradient>', '', text, flags=_r.S)
+    # drop a now-empty <defs></defs> if present
+    text = _r.sub(r'<defs>\s*</defs>', '', text)
+    return text
+
+
 def force_bg(text, fill, dims):
     w, h = dims
     # match the main full-panel background rect (first big rect)
@@ -102,7 +127,7 @@ def force_bg(text, fill, dims):
 
 
 def clean_esplanade(text, shell="#5a5e66", accent="#dc2626", grid_op=0.9,
-                    grid_style="fan"):
+                    grid_style="fan", _bg="#18181a"):
     """Replace the ENTIRE original Esplanade structure (building body + base steps
     + windows + both messy domes + spikes + spire) with two clean Esplanade
     'durian' shells in the style of the reference render:
@@ -136,121 +161,80 @@ def clean_esplanade(text, shell="#5a5e66", accent="#dc2626", grid_op=0.9,
     # Down-scaled for ~165px panel width: arc families thinned (ref had 40+ ellipses
     # → ~12 here) and NO clipPath (NanoSVG-safe; the families are bounded by t-range
     # instead). The truss + hanging spikes are kept — they read best at small scale.
-    import math
-    TGT_CX, TGT_BASE = 295.0, 250.0
-    TGT_HALFW = 84.0
-    # Reference shell space (from the detailed render): roof cubic
-    #   M 38,338 C 50,150 350,50 910,282  ; ground ~360 ; right structure ~282..360
-    R_LX, R_RX = 38.0, 910.0
-    R_BL, R_BR = 338.0, 282.0           # roof endpoints (also ~ the spring line)
-    def rbez(t):                        # roof top edge (cubic Bezier)
-        mt=1-t
-        x=mt**3*38 + 3*mt*mt*t*50  + 3*mt*t*t*350  + t**3*910
-        y=mt**3*338+ 3*mt*mt*t*150 + 3*mt*t*t*50   + t**3*282
-        return x,y
-    def rspring(t):                     # lower spring line (gentle, slopes up R)
-        return R_LX+t*(R_RX-R_LX), R_BL+t*(R_BR-R_BL)
-    rW = R_RX-R_LX
-    sc = (2*TGT_HALFW)/rW
-    rY0 = R_BR
-    def MX(x): return TGT_CX - TGT_HALFW + (x-R_LX)*sc
-    def MY(y): return TGT_BASE + (y-rY0)*sc
+    import math, re as _re2
+    # ── Esplanade durian-dome (perspective view) — replaces the prior fan/persp
+    #    variants. Maps the 1000x450 reference dome into the panel esplanade region
+    #    via MX/MY. NanoSVG-safe: the dome silhouette is cut by SOLID (nonzero) bg
+    #    cover shapes (a sampled-curve top polygon + baseline/side rects) instead of
+    #    a clipPath; the roof-outline stroke is solid (no gradient); no filter.
+    #    `shell` = lattice colour, `accent` = roof-outline + truss colour, `bg` =
+    #    the panel background (so the cover shapes are invisible). ──
+    TGT_CX, TGT_BASE, TGT_HALFW = 295.0, 250.0, 84.0
+    R_LX, R_RX, R_BASE = 35.0, 965.0, 343.0
+    rW = R_RX - R_LX
+    sc = (2 * TGT_HALFW) / rW
+    def MX(x): return TGT_CX - TGT_HALFW + (x - R_LX) * sc
+    def MY(y): return TGT_BASE + (y - R_BASE) * sc
 
-    def dome(cx):
-        o=[]
-        # filled shell backing (no clip; just the roof->spring closed area)
-        topd=("M %.1f,%.1f C %.1f,%.1f %.1f,%.1f %.1f,%.1f"%(
-              MX(38),MY(338), MX(50),MY(150), MX(350),MY(50), MX(910),MY(282)))
-        roof=topd+" L %.1f,%.1f Z"%(MX(38),MY(338))
-        o.append(f'  <path d="{roof}" fill="#101216" fill-opacity="0.45" stroke="none"/>')
+    def _cbez(p0, p1, p2, p3, n=24):
+        out = []
+        for i in range(n + 1):
+            t = i / n; mt = 1 - t
+            out.append((mt**3*p0[0] + 3*mt*mt*t*p1[0] + 3*mt*t*t*p2[0] + t**3*p3[0],
+                        mt**3*p0[1] + 3*mt*mt*t*p1[1] + 3*mt*t*t*p2[1] + t**3*p3[1]))
+        return out
 
-        # Family A — bowed "courses": interpolate roof<->spring at fractions f.
-        o.append(f'  <g stroke="{shell}" stroke-width="0.4" fill="none" opacity="{grid_op}">')
-        NA=9
-        for i in range(1, NA+1):
-            f=i/(NA+1.0); pts=[]
-            for s in range(0,29):
-                t=s/28.0; bx,by=rspring(t); tx,ty=rbez(t)
-                x=bx+(tx-bx)*f; y=by+(ty-by)*f
-                pts.append(f"{MX(x):.1f},{MY(y):.1f}")
-            o.append(f'    <polyline points="{" ".join(pts)}"/>')
+    def _roof_pts():
+        a = _cbez((35,340),(40,120),(240,45),(500,42))
+        b = _cbez((500,42),(720,45),(900,125),(965,250))
+        return a + b[1:]
+
+    def dome(bg="#18181a"):
+        o = []
+        # horizontal bands (8)
+        bands = ["M35 340 Q420 240 965 250","M40 300 Q420 205 950 225",
+                 "M45 265 Q415 175 925 200","M55 230 Q410 145 890 178",
+                 "M70 195 Q400 115 845 155","M90 160 Q380 88 790 138",
+                 "M120 130 Q350 68 720 125","M155 102 Q320 52 650 118"]
+        def mq(d):
+            n = _re2.findall(r'-?\d+\.?\d*', d); x0,y0,cx,cy,x1,y1 = map(float, n)
+            return f"M{MX(x0):.1f} {MY(y0):.1f} Q{MX(cx):.1f} {MY(cy):.1f} {MX(x1):.1f} {MY(y1):.1f}"
+        o.append(f'  <g fill="none" stroke="{shell}" stroke-width="0.4" opacity="{grid_op*0.55:.2f}" stroke-linecap="round">')
+        for b in bands: o.append(f'    <path d="{mq(b)}"/>')
         o.append('  </g>')
-
-        # Family B — interior grid. Two styles:
-        #   "fan"          : splayed arcs fanning from a low-left origin (ref 2).
-        #   "perspective"  : convergent floor-grid receding to a vanishing point
-        #                    (ref 1's signature recession) grafted onto ref 2's
-        #                    accurate shell — the hybrid alternative.
-        if grid_style == "perspective":
-            # A perspective "floor" inside the shell: longitudinal lines converge
-            # toward a vanishing point set OUTSIDE the right tip (so they recede
-            # without collapsing to a visible knot); transverse arcs bow across,
-            # spaced tighter toward the VP (foreshortening).
-            vpx, vpy = 1060.0, 268.0                 # VP beyond the right tip (ref space)
-            o.append(f'  <g stroke="{shell}" stroke-width="0.32" fill="none" opacity="{grid_op*0.8}">')
-            # longitudinal lines: spread along the lower spring -> partway to VP,
-            # stopping short of it so the right side stays open, not a dense point.
-            NL=10
-            for i in range(NL+1):
-                tt=i/float(NL)
-                fx,fy=rspring(tt*0.9+0.03)
-                ex=fx+(vpx-fx)*0.82; ey=fy+(vpy-fy)*0.82   # stop short of the VP
-                o.append(f'    <line x1="{MX(fx):.1f}" y1="{MY(fy):.1f}" '
-                         f'x2="{MX(ex):.1f}" y2="{MY(ey):.1f}"/>')
-            # transverse courses: bow across, depth eased for foreshortening
-            NT2=6
-            for j in range(1, NT2+1):
-                d=(j/float(NT2+1))**1.4
-                pts=[]
-                for s in range(0,25):
-                    t=s/24.0
-                    fx,fy=rspring(t*0.9+0.03)
-                    x=fx+(vpx-fx)*d*0.82; y=fy+(vpy-fy)*d*0.82
-                    pts.append(f"{MX(x):.1f},{MY(y):.1f}")
-                o.append(f'    <polyline points="{" ".join(pts)}"/>')
-            o.append('  </g>')
-        else:
-            # splayed arcs fanning from a low-left origin (ref 2 default).
-            o.append(f'  <g stroke="{shell}" stroke-width="0.35" fill="none" opacity="{grid_op*0.8}">')
-            NB=12
-            for i in range(NB+1):
-                tt=i/float(NB)
-                fx,fy=rspring(tt)
-                at=min(1.0, tt*0.78+0.04)              # apex sits a touch ahead of foot
-                ax,ay=rbez(at)
-                lift=22.0*(1.0-tt*0.7)                  # less lift on the right
-                mx,my=fx*0.45+ax*0.55, min(fy,ay)-lift  # control biased toward apex
-                o.append(f'    <path d="M {MX(fx):.1f},{MY(fy):.1f} '
-                         f'Q {MX(mx):.1f},{MY(my):.1f} {MX(ax):.1f},{MY(ay):.1f}"/>')
-            o.append('  </g>')
-
-        # crisp roof outline
-        o.append(f'  <path d="{topd}" fill="none" stroke="{accent}" stroke-width="0.9" opacity="0.75"/>')
-
-        # ── Truss understructure: zigzag chord + hanging vertical spikes ──────
-        o.append(f'  <g stroke="{accent}" stroke-width="0.6" fill="none" opacity="0.7">')
-        # top chord (just under the spring) and bottom chord (ground), sloping up R
-        gx0,gy0 = MX(20), TGT_BASE+30
-        gx1,gy1 = MX(760), TGT_BASE+14
-        o.append(f'    <line x1="{gx0:.1f}" y1="{gy0:.1f}" x2="{gx1:.1f}" y2="{gy1:.1f}"/>')      # bottom chord
-        sx0,sy0 = MX(20), MY(338)+4
-        sx1,sy1 = MX(760), MY(290)+6
-        o.append(f'    <line x1="{sx0:.1f}" y1="{sy0:.1f}" x2="{sx1:.1f}" y2="{sy1:.1f}"/>')      # top chord
-        # zigzag web between the chords + hanging spikes at the lower nodes
-        NT=6
-        for k in range(NT+1):
-            tt=k/float(NT)
-            tx=sx0+(sx1-sx0)*tt; ty=sy0+(sy1-sy0)*tt          # top chord node
-            bx=gx0+(gx1-gx0)*tt; by=gy0+(gy1-gy0)*tt          # bottom chord node
-            o.append(f'    <line x1="{tx:.1f}" y1="{ty:.1f}" x2="{bx:.1f}" y2="{by:.1f}"/>')  # vertical post
-            if k < NT:                                          # diagonal web
-                nb=k+1; bx2=gx0+(gx1-gx0)*(nb/float(NT)); by2=gy0+(gy1-gy0)*(nb/float(NT))
-                o.append(f'    <line x1="{tx:.1f}" y1="{ty:.1f}" x2="{bx2:.1f}" y2="{by2:.1f}"/>')
-            o.append(f'    <line x1="{bx:.1f}" y1="{by:.1f}" x2="{bx:.1f}" y2="{by+6:.1f}"/>')  # hanging spike
+        # perspective ribs (ellipses), wider on the front-left, compressed right
+        ribs = [(-40,140),(0,145),(40,150),(80,155),(120,160),(160,165),(200,170),
+                (240,175),(280,180),(320,185),(360,190),(420,180),(470,170),(520,160),
+                (570,150),(620,140),(670,130),(720,120),(770,110),(820,100),(870,90),(920,80),(960,70)]
+        o.append(f'  <g fill="none" stroke="{shell}" stroke-width="0.45" opacity="{grid_op*0.65:.2f}">')
+        for cx, rx in ribs:
+            o.append(f'    <ellipse cx="{MX(cx):.1f}" cy="{MY(380):.1f}" rx="{rx*sc:.1f}" ry="{370*sc:.1f}"/>')
         o.append('  </g>')
+        # SOLID bg cover (NanoSVG-safe clip): top polygon bounded by the sampled
+        # roof curve + baseline/side rects. Everything outside the shell -> bg.
+        cp = _roof_pts()
+        top = [f"{MX(-300):.1f},{MY(-300):.1f}"] + \
+              [f"{MX(x):.1f},{MY(y):.1f}" for x, y in cp] + \
+              [f"{MX(1300):.1f},{MY(-300):.1f}"]
+        o.append(f'  <polygon points="{" ".join(top)}" fill="{bg}"/>')
+        o.append(f'  <polygon points="{MX(-300):.1f},{MY(343):.1f} {MX(1300):.1f},{MY(343):.1f} {MX(1300):.1f},{MY(900):.1f} {MX(-300):.1f},{MY(900):.1f}" fill="{bg}"/>')
+        o.append(f'  <polygon points="{MX(-300):.1f},{MY(-300):.1f} {MX(35):.1f},{MY(-300):.1f} {MX(35):.1f},{MY(343):.1f} {MX(-300):.1f},{MY(343):.1f}" fill="{bg}"/>')
+        o.append(f'  <polygon points="{MX(965):.1f},{MY(-300):.1f} {MX(1300):.1f},{MY(-300):.1f} {MX(1300):.1f},{MY(343):.1f} {MX(965):.1f},{MY(343):.1f}" fill="{bg}"/>')
+        # roof outline (solid stroke; gradient flattened)
+        roof = (f"M{MX(35):.1f} {MY(340):.1f} C{MX(40):.1f} {MY(120):.1f} {MX(240):.1f} {MY(45):.1f} {MX(500):.1f} {MY(42):.1f} "
+                f"C{MX(720):.1f} {MY(45):.1f} {MX(900):.1f} {MY(125):.1f} {MX(965):.1f} {MY(250):.1f}")
+        o.append(f'  <path d="{roof}" fill="none" stroke="{accent}" stroke-width="1.0" opacity="0.9" stroke-linecap="round"/>')
+        # upper beam + front truss (zigzag chord + posts)
+        o.append(f'  <path d="M{MX(18):.1f} {MY(342):.1f} L{MX(840):.1f} {MY(285):.1f}" stroke="{accent}" stroke-width="1.3" fill="none" opacity="0.72" stroke-linecap="round"/>')
+        tp = [(40,403),(75,404),(130,340),(195,395),(250,392),(325,330),(395,385),
+              (455,382),(540,318),(615,374),(675,370),(760,285)]
+        pts = " ".join(f"{MX(x):.1f},{MY(y):.1f}" for x, y in tp)
+        o.append(f'  <polyline points="{pts}" stroke="{accent}" stroke-width="1.1" fill="none" opacity="0.72" stroke-linejoin="round" stroke-linecap="round"/>')
+        for x, y0, y1 in [(130,340,398),(325,330,388),(540,318,380)]:
+            o.append(f'  <line x1="{MX(x):.1f}" y1="{MY(y0):.1f}" x2="{MX(x):.1f}" y2="{MY(y1):.1f}" stroke="{accent}" stroke-width="1.1" opacity="0.72"/>')
         return "\n".join(o)
 
-    block = dome(295.0)   # single detailed Esplanade shell, reference style
+    block = dome(_bg)   # perspective durian-dome; _bg passed by caller for the cover
     out = lines[:start] + [block] + lines[end+1:]
     return "\n".join(out)
 
@@ -258,20 +242,17 @@ def clean_esplanade(text, shell="#5a5e66", accent="#dc2626", grid_op=0.9,
 def process(src, out_dark, out_light, dmap, lmap, dbg, lbg, dims):
     s = open(src).read()
     if "straits" in out_dark:
-        # Two Esplanade treatments: grey (architectural) + red (hero). Plus a
-        # third "perspective" alternative (ref-2 shell + ref-1 convergent floor
-        # grid). Emit all so they can be compared; defaults unchanged.
-        grey  = clean_esplanade(s, shell="#7a7e86", accent="#9a9fa8", grid_op=0.95)
-        red   = clean_esplanade(s, shell="#d4001a", accent="#dc2626", grid_op=0.95)
-        persp = clean_esplanade(s, shell="#d4001a", accent="#dc2626", grid_op=0.95,
-                                grid_style="perspective")
-        open(out_dark.replace(".svg", "_grey.svg"),  "w").write(force_bg(remap(grey,  dmap), dbg, dims))
-        open(out_dark.replace(".svg", "_red.svg"),   "w").write(force_bg(remap(red,   dmap), dbg, dims))
-        open(out_dark.replace(".svg", "_persp.svg"), "w").write(force_bg(remap(persp, dmap), dbg, dims))
-        # default dark = red (hero); light = grey shell
-        open(out_dark, "w").write(force_bg(remap(red, dmap), dbg, dims))
-        open(out_light, "w").write(force_bg(remap(grey, lmap), lbg, dims))
-        print(f"  {src} -> {out_dark.split('/')[-1]} (+_grey/_red/_persp), {out_light.split('/')[-1]}")
+        # New Esplanade durian-dome (perspective). Theme accent per the design call:
+        #   DARK  = grey lattice + GREY accent (muted, architectural)
+        #   LIGHT = grey lattice + RED  accent (Singapore-red hero)
+        # _bg is passed so the dome's NanoSVG-safe cover shapes match each panel bg.
+        dark_dome  = clean_esplanade(s, shell="#7a7e86", accent="#9a9fa8",
+                                     grid_op=0.95, _bg=dbg)
+        light_dome = clean_esplanade(s, shell="#6a6e76", accent="#d4001a",
+                                     grid_op=0.95, _bg=lbg)
+        open(out_dark,  "w").write(flatten_gradients(force_bg(remap(dark_dome,  dmap), dbg, dims)))
+        open(out_light, "w").write(flatten_gradients(force_bg(remap(light_dome, lmap), lbg, dims)))
+        print(f"  {src} -> {out_dark.split('/')[-1]} (grey accent), {out_light.split('/')[-1]} (red accent)")
         return
     dark = force_bg(remap(s, dmap), dbg, dims)
     light = force_bg(remap(s, lmap), lbg, dims)
