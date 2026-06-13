@@ -524,6 +524,7 @@
 <g inkscape:label="components" inkscape:groupmode="layer" id="components">
 <circle id="param_NOTE_VALUE_PARAM" cx="47.24" cy="64.96" r="3" fill="none" stroke="none"/>
 <circle id="param_VARIATION_PARAM" cx="124.02" cy="64.96" r="3" fill="none" stroke="none"/>
+  <circle id="param_MODE_PARAM" cx="581.69" cy="35.43" r="3" fill="none" stroke="none"/>
 <circle id="param_LEGATO_PARAM" cx="200.79" cy="64.96" r="3" fill="none" stroke="none"/>
 <circle id="param_REST_PARAM" cx="277.56" cy="64.96" r="3" fill="none" stroke="none"/>
 <circle id="param_ACCENT_KNOB" cx="354.33" cy="64.96" r="3" fill="none" stroke="none"/>
