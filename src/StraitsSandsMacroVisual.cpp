@@ -34,11 +34,11 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
     explicit StraitsSandsMacroVisualWidget(StraitsSandsMacroVisual* mod) {
         setModule(mod);
         panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance,
-                            "res/panels/StraitsSandsMacroVisual_26HP.svg"));
+                            "res/panels/StraitsSandsMacroVisual_40HP.svg"));
         panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance,
-                            "res/panels/StraitsSandsMacroVisual_26HP_light.svg"));
+                            "res/panels/StraitsSandsMacroVisual_40HP_light.svg"));
         panelWidget = createPanel(asset::plugin(pluginInstance,
-                            "res/panels/StraitsSandsMacroVisual_26HP.svg"));
+                            "res/panels/StraitsSandsMacroVisual_40HP.svg"));
         setPanel(panelWidget);
 
         redDot::addRedScrews(this);
@@ -58,6 +58,17 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
             addInput(createInputCentered<PJ301MPort>(mm2px(Vec(COL_J2, y)), mod, cvId(r,1)));
             addParam(createParamCentered<Trimpot>(   mm2px(Vec(COL_A1, y)), mod, attenId(r,0)));
             addParam(createParamCentered<Trimpot>(   mm2px(Vec(COL_A2, y)), mod, attenId(r,1)));
+        }
+
+        // ── Per-lane global SPREAD trimpots (REST / MELODY / OCTAVE) ─────────
+        // Mirrors the East visual: one trimpot per lane, vertically centred on
+        // each lane's two-row band, in a column between the attenuverters and
+        // the visual editor. The module already has these params (SPREAD_REST/
+        // MELODY/OCTAVE); they were just never placed on the panel.
+        for (int lane = 0; lane < 3; ++lane) {
+            float y = 0.5f * (rowY(lane*2) + rowY(lane*2+1));  // centre of lane band
+            int pid = (lane==0) ? SPREAD_REST : (lane==1) ? SPREAD_MELODY : SPREAD_OCTAVE;
+            addParam(createParamCentered<Trimpot>(mm2px(Vec(SPREAD_X, y)), mod, pid));
         }
 
         paramMgr = new PolySandsParameterManager(nullptr, nullptr, nullptr, 7);
