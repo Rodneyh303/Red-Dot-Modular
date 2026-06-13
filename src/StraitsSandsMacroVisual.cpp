@@ -34,11 +34,11 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
     explicit StraitsSandsMacroVisualWidget(StraitsSandsMacroVisual* mod) {
         setModule(mod);
         panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance,
-                            "res/panels/StraitsSandsMacroVisual_26HP.svg"));
+                            "res/panels/StraitsSandsMacroVisual_40HP.svg"));
         panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance,
-                            "res/panels/StraitsSandsMacroVisual_26HP_light.svg"));
+                            "res/panels/StraitsSandsMacroVisual_40HP_light.svg"));
         panelWidget = createPanel(asset::plugin(pluginInstance,
-                            "res/panels/StraitsSandsMacroVisual_26HP.svg"));
+                            "res/panels/StraitsSandsMacroVisual_40HP.svg"));
         setPanel(panelWidget);
 
         redDot::addRedScrews(this);

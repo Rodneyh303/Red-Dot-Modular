@@ -1,4 +1,12 @@
 #pragma once
+// ============================================================================
+// DEPRECATED — StraitsWestSandsVisual is retired.
+//
+// The West visual editor was merged into the East visual (now 15-voice), which
+// supersedes it. The Macro visual (40HP, global spread) covers the same job at
+// global granularity. This module is NOT registered in plugin (see Monsoon.cpp).
+// Source kept for reference only; do not wire new work to it. Use East or Macro.
+// ============================================================================
 #include <rack.hpp>
 #include "Monsoon.hpp"
 #include "StraitsEastSandsVisual.hpp"
