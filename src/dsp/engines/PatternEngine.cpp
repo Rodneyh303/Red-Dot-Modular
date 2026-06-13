@@ -142,68 +142,60 @@ float PatternEngine::genPitchLive(int& outSemitone, const PatternInput& in, floa
 
 // Apply variation bias to a note length index.
 int PatternEngine::varyNoteIndex(int baseIdx, const PatternInput& in, float r) {
-    // variationAmount=0.5 → zero variation (all weight on baseIdx, no spread).
-    // variationAmount → 0 → bias toward longer notes (lower index).
-    // variationAmount → 1 → bias toward shorter notes (higher index).
-    // spread = 0 at centre, 1 at extremes — controls how much adjacent
-    // indices are weighted relative to baseIdx.
-    // Bit 0 toggles 1/4T (Index 3).
-    // Bit 1 toggles 1/8T (Index 5).
-    // Bit 2 toggles 1/32 (Index 7).
+    // Weights are evenly distributed over a window that expands from the base 
+    // index toward the shorter (var > 0.5) or longer (var < 0.5) extremes. 
+    // At 50% variation, only the base note is played. At extremes, weight 
+    // is shared uniformly across the reachable range.
+
     auto allowed = [&](int idx) -> bool {
         if (idx < 0 || idx >= 8) return false;
         if (idx == 3) return (in.noteVariationMask & 0b001) != 0; // 1/4T
         if (idx == 5) return (in.noteVariationMask & 0b010) != 0; // 1/8T
-        if (idx == 7) return (in.noteVariationMask & 0b100) != 0; // 1/32
+        if (idx == 7) return (in.noteVariationMask & 0b100) != 0; // 1/32 & 1/32T
         return true;
     };
 
-    float var    = in.variationAmount;
-    float spread = 2.f * std::fabs(var - 0.5f);  // 0 at 50%, 1 at extremes
-    if (spread < 1e-4f) return baseIdx;           // exactly 50%: no variation
+    float var = in.variationAmount;
+    if (std::fabs(var - 0.5f) < 1e-4f) return baseIdx;
 
+    float spread = 2.f * std::fabs(var - 0.5f); // 0..1
+    int direction = (var < 0.5f) ? -1 : 1;
+    int targetExtreme = (direction == -1) ? 0 : 7;
+    float maxDist = (float)std::abs(targetExtreme - baseIdx);
+    
+    if (maxDist < 0.5f) return baseIdx; 
+
+    float reach = spread * maxDist;
     float weights[8] = {};
     float total = 0.f;
 
     for (int i = 0; i < 8; ++i) {
-        // The base index is the user's explicit note-value choice — always honour
-        // it, even when the variation mask would exclude that triplet/1/32. The
-        // mask only restricts where *variation* may wander, not the chosen note
-        // itself. (Without this, selecting 1/4T with triplets unmasked dropped the
-        // base weight to zero and the note played as an adjacent straight value —
-        // e.g. 1/4T rendered as 1/8.)
-        if (i != baseIdx && !allowed(i)) continue;
-
+        int dist = direction * (i - baseIdx);
+        if (dist < 0) continue; // Only consider chosen direction
+        
         if (i == baseIdx) {
-            // The original note's weight drops as variation increases.
-            // At 100% (spread = 1.0), the base note weight is 0.
-            weights[i] = 1.0f - spread;
+            weights[i] = 1.0f; // Base note always active
         } else {
-            bool isShorter = (i > baseIdx);
-            bool isLonger  = (i < baseIdx);
+            if (!allowed(i)) continue;
 
-            // Strict Directional Filtering:
-            // If variation is > 50%, we exclude longer notes entirely.
-            // If variation is < 50%, we exclude shorter notes entirely.
-            if (var > 0.5f && isLonger) weights[i] = 0.f;
-            else if (var < 0.5f && isShorter) weights[i] = 0.f;
-            else {
-                // Weight varies by distance, but is enabled by 'spread'
-                float dist = (float)std::abs(i - baseIdx);
-                weights[i] = spread / dist;
+            float fDist = (float)dist;
+            if (fDist <= reach) {
+                weights[i] = 1.0f;
+            } else if (fDist < reach + 1.0f) {
+                weights[i] = reach - (fDist - 1.0f); // partial weight for the leading edge
             }
         }
         total += weights[i];
     }
-
-    if (total <= 0.f) return baseIdx;
+    
+    if (total <= 1e-6f) return baseIdx;
     
     float acc = 0.f;
-    r *= total;
+    float roll = r * total;
     for (int i = 0; i < 8; ++i) {
         if (weights[i] > 0.f) {
             acc += weights[i];
-            if (r <= acc) return i;
+            if (roll <= acc) return i;
         }
     }
     return baseIdx;

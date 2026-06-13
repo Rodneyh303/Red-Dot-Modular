@@ -210,11 +210,11 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
         }
     }
     else if (r_legato_tie < legatoProb) {
-        if (sem == gs.lastSemitone && wasHeld) {
+        if (sem == gs.lastSemitone && (wasHeld || hadTail)) {
             gs.extendHold(sem, nvIdx);
             result.decision = MonoDecision::Tie;
         } else {
-            gs.slideNote(pitchV, sem, nvIdx, wasHeld);
+            gs.slideNote(pitchV, sem, nvIdx, wasHeld || hadTail);
             result.decision = MonoDecision::Legato;
         }
     }
@@ -266,12 +266,12 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
     int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
 
     float prevHold = gs.holdRemain;
-    wasHeldMono = gs.gateHeld;
+    wasHeldMono = gs.gateHeld || (prevHold > 0.0001f);
     gs.tick(clock.sixteenthSec);
-    hadMonoTail = (wasHeldMono && prevHold > 0.0001f && prevHold < 0.999f);
+    hadMonoTail = (prevHold > 0.0001f && prevHold < 0.999f);
 
     for (int i = 0; i < numPolyVoices; ++i) {
-        wasHeldPolyPrev[i] = voices[i].gs.gateHeld;
+        wasHeldPolyPrev[i] = voices[i].gs.gateHeld || (voices[i].gs.holdRemain > 0.0001f);
         float ph = voices[i].gs.holdRemain;
         voices[i].gs.tick(clock.sixteenthSec);
         hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
@@ -309,12 +309,12 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
         int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
 
         float prevHold = gs.holdRemain;
-        wasHeldMono = gs.gateHeld;
+        wasHeldMono = gs.gateHeld || (prevHold > 0.0001f);
         gs.tick();
-        hadMonoTail = (wasHeldMono && prevHold > 0.0001f && prevHold < 0.999f);
+        hadMonoTail = (prevHold > 0.0001f && prevHold < 0.999f);
 
         for (int i = 0; i < numPolyVoices; ++i) {
-            wasHeldPolyPrev[i] = voices[i].gs.gateHeld;
+            wasHeldPolyPrev[i] = voices[i].gs.gateHeld || (voices[i].gs.holdRemain > 0.0001f);
             float ph = voices[i].gs.holdRemain;
             voices[i].gs.tick();
             hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
