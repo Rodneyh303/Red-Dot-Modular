@@ -40,6 +40,21 @@ def gen_macro(dark, W_MM=203.2):
         y=0.5*(rowY(lane*2)+rowY(lane*2+1))
         A(D.trim(SPREAD_X,y,t,t["wellring"]))
     A('</g>')
+    # ── SvgPanelKit component layer: named markers at every control centre, so a
+    #    widget can bind by id later. Indices mirror StraitsSandsMacroVisual.hpp:
+    #    cvId(r,c)=CV_START(0)+r*2+c (inputs), attenId(r,c)=ATTEN_START(3)+r*2+c
+    #    (params), SPREAD_REST/MEL/OCT = 0/1/2 (params). ──
+    A('<g inkscape:label="components" inkscape:groupmode="layer">')
+    for r in range(6):
+        y=rowY(r)
+        A(D.kit_shape("input", 0+r*2+0, COL_J1, y))   # cvId(r,0)
+        A(D.kit_shape("input", 0+r*2+1, COL_J2, y))   # cvId(r,1)
+        A(D.kit_shape("param", 3+r*2+0, COL_A1, y))   # attenId(r,0)
+        A(D.kit_shape("param", 3+r*2+1, COL_A2, y))   # attenId(r,1)
+    for lane in range(3):
+        y=0.5*(rowY(lane*2)+rowY(lane*2+1))
+        A(D.kit_shape("param", lane, SPREAD_X, y))    # SPREAD_REST/MELODY/OCTAVE = 0/1/2
+    A('</g>')
     A('</svg>')
     return "\n".join(L)
 
@@ -80,6 +95,24 @@ def gen_mono(dark):
         A(D.trim(SPR_BASE_X,y,t,t["wellring"]))
         A(D.jack(SPR_CV_X,y,t))
         A(D.trim(SPR_ATTEN_X,y,t,t["gold"]))
+    A('</g>')
+    # ── SvgPanelKit component layer. Indices mirror MonsoonSandsVisualExpander.hpp:
+    #    CV jacks   cvId(lane,p)   = CV_START(0)  + lane*3 + p   inputs 0..17
+    #    attens     attenId(lane,p)= ATTEN_START(21)+ lane*3 + p  params 21..38
+    #    spread base SPR_REST/MEL/OCT = params 18..20
+    #    spread CV   SPR_CV_START(18) + l         = inputs 18..20
+    #    spread atten SPR_ATTEN_START(39) + l     = params 39..41
+    #    (LEN/OFF/ROT params 0-17 have no physical knob — editor-driven — so no marker.) ──
+    A('<g inkscape:label="components" inkscape:groupmode="layer">')
+    for lane in range(6):
+        y=laneY(lane)
+        for p,x in enumerate(JACK_X):  A(D.kit_shape("input", 0+lane*3+p, x, y))
+        for p,x in enumerate(ATTEN_X): A(D.kit_shape("param", 21+lane*3+p, x, y))
+    for lane in range(N_SPREAD):
+        y=laneY(lane)
+        A(D.kit_shape("param", 18+lane, SPR_BASE_X, y))   # SPR_REST/MEL/OCT
+        A(D.kit_shape("input", 18+lane, SPR_CV_X, y))     # SPR_CV
+        A(D.kit_shape("param", 39+lane, SPR_ATTEN_X, y))  # SPR_ATTEN
     A('</g>')
     A('</svg>')
     return "\n".join(L)

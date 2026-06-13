@@ -152,6 +152,21 @@ def gen(dark):
     for lane in range(3):
         y=0.5*(rowY(lane*2)+rowY(lane*2+1)); trim(SPREAD_X,y,t["teal"])
     A('</g>')
+    # ── SvgPanelKit component layer. Indices mirror StraitsEastSandsVisual.hpp:
+    #    cvId(r,c)=CV_START(0)+r*2+c  inputs 0..11;
+    #    attenId(r,c)=ATTEN_START(3)+r*2+c  params 3..14;
+    #    SPREAD_R/M/O = params 0/1/2. ──
+    def kit_shape(kind, idx, x, y):
+        A(f'<circle id="{kind}_{idx}" cx="{px(x):.2f}" cy="{px(y):.2f}" r="0.5" fill="none" stroke="none"/>')
+    A('<g inkscape:label="components" inkscape:groupmode="layer">')
+    for r in range(6):
+        y=rowY(r)
+        kit_shape("input", 0+r*2+0, COL_J1, y); kit_shape("input", 0+r*2+1, COL_J2, y)
+        kit_shape("param", 3+r*2+0, COL_A1, y); kit_shape("param", 3+r*2+1, COL_A2, y)
+    for lane in range(3):
+        y=0.5*(rowY(lane*2)+rowY(lane*2+1))
+        kit_shape("param", lane, SPREAD_X, y)   # SPREAD_R/M/O = 0/1/2
+    A('</g>')
     A('</svg>')
     return "\n".join(L)
 
