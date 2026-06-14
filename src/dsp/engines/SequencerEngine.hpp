@@ -3,6 +3,7 @@
 #include "../gates/GateState.hpp"
 #include "ClockEngine.hpp"
 #include "../NoteValues.hpp"
+#include "../LaneMapping.hpp"
 
 // ── Poly voice architecture ────────────────────────────────────────────────────
 
@@ -86,6 +87,44 @@ struct SequencerEngine {
 
     // Discrete mutation offsets (mutation from scramble/context menu)
     int rhythmRot = 0, variationRot = 0, legatoRot = 0, accentRot = 0, melodyRot = 0, octaveRot = 0;
+
+    // Indexable strand accessors keyed by dotModular::EngineStrand order
+    // (0 rhythm, 1 variation, 2 legato, 3 accent, 4 melody, 5 octave). These let
+    // callers go editor-lane → strand (via MONO_LANE_TO_STRAND) → value without
+    // hardcoding the permutation. Single source of truth for strand indexing.
+    int strandLen(int strand) const {
+        switch (strand) {
+            case dotModular::STRAND_RHYTHM:    return rhythmLen;
+            case dotModular::STRAND_VARIATION: return variationLen;
+            case dotModular::STRAND_LEGATO:    return legatoLen;
+            case dotModular::STRAND_ACCENT:    return accentLen;
+            case dotModular::STRAND_MELODY:    return melodyLen;
+            case dotModular::STRAND_OCTAVE:    return octaveLen;
+            default: return 16;
+        }
+    }
+    int strandOff(int strand) const {
+        switch (strand) {
+            case dotModular::STRAND_RHYTHM:    return rhythmOff;
+            case dotModular::STRAND_VARIATION: return variationOff;
+            case dotModular::STRAND_LEGATO:    return legatoOff;
+            case dotModular::STRAND_ACCENT:    return accentOff;
+            case dotModular::STRAND_MELODY:    return melodyOff;
+            case dotModular::STRAND_OCTAVE:    return octaveOff;
+            default: return 0;
+        }
+    }
+    int strandRot(int strand) const {
+        switch (strand) {
+            case dotModular::STRAND_RHYTHM:    return rhythmRot;
+            case dotModular::STRAND_VARIATION: return variationRot;
+            case dotModular::STRAND_LEGATO:    return legatoRot;
+            case dotModular::STRAND_ACCENT:    return accentRot;
+            case dotModular::STRAND_MELODY:    return melodyRot;
+            case dotModular::STRAND_OCTAVE:    return octaveRot;
+            default: return 0;
+        }
+    }
 
     int dnaLength = 16; // Legacy/Global fallback
     int dnaOffset = 0;

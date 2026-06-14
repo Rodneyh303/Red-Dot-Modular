@@ -158,6 +158,11 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             }
             }  // end if(!engine.locked)
         //}
+        // NOTE: this editor-lane → engine-strand order is the AUTHORITY mirrored
+        // by dotModular::MONO_LANE_TO_STRAND (dsp/LaneMapping.hpp). If you reorder
+        // these calls, update that map too — the visual display indexes through it.
+        // lane 0 REST→rhythm, 1 MELODY→variation, 2 OCTAVE→legato, 3 LEGATO→accent,
+        // 4 ACCENT→melody, 5 VARIATION→octave.
         readStrand(Mono::lenId(0),Mono::offId(0),Mono::rotId(0), DNA_R_LEN_PARAM,DNA_R_LEN_INPUT,DNA_R_OFF_PARAM,DNA_R_OFF_INPUT,DNA_R_ROT_PARAM, 0, engine.rhythmLen,    engine.rhythmOff,    engine.rhythmRot);
         readStrand(Mono::lenId(1),Mono::offId(1),Mono::rotId(1), DNA_V_LEN_PARAM,DNA_V_LEN_INPUT,DNA_V_OFF_PARAM,DNA_V_OFF_INPUT,DNA_V_ROT_PARAM, 1, engine.variationLen, engine.variationOff, engine.variationRot);
         readStrand(Mono::lenId(2),Mono::offId(2),Mono::rotId(2), DNA_L_LEN_PARAM,DNA_L_LEN_INPUT,DNA_L_OFF_PARAM,DNA_L_OFF_INPUT,DNA_L_ROT_PARAM, 2, engine.legatoLen,    engine.legatoOff,    engine.legatoRot);
