@@ -78,38 +78,26 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
 
     if (hasVisual) 
     {
-        auto readStrand = [&](
-                int monoLenId, int monoOffId, int monoRotId,
-                int kbLenParam, int kbLenInput, int kbOffParam, int kbOffInput, int kbRotParam,
-                int cvRow,
-                int& tLen, int& tOff, int& tRot)
-        {
-            float baseLen, baseOff, baseRot;
-            //if (hasVisual) 
-            //{
-                baseLen = monoVis->params[monoLenId].getValue();
-                baseOff = monoVis->params[monoOffId].getValue();
-                baseRot = monoVis->params[monoRotId].getValue();
-            //} 
-            
-            // else {
-            //     auto* kb = expanderManager.cachedDnaExpander;
-            //     baseLen = kb->params[kbLenParam].getValue()
-            //             + kb->inputs[kbLenInput].getNormalVoltage(0.f) * 1.6f;
-            //     baseOff = kb->params[kbOffParam].getValue()
-            //             + kb->inputs[kbOffInput].getNormalVoltage(0.f) * 1.5f;
-            //     baseRot = kb->params[kbRotParam].getValue();
-            // }
+        // readStrand: read a mono strand's base L/O/R from the visual params,
+        // apply mono CV, and write the clamped result to the engine strand for
+        // editor lane `l`. The editor-lane → engine-strand permutation lives in
+        // dotModular::MONO_LANE_TO_STRAND (dsp/LaneMapping.hpp) — the single
+        // source of truth — so this is driven by a loop rather than a hand-
+        // ordered call list that could drift. (DNA-expander base path is retired;
+        // base always comes from the visual params. cvRow == editor lane.)
+        auto readStrand = [&](int l) {
+            int strand = dotModular::MONO_LANE_TO_STRAND[l];
+            float baseLen = monoVis->params[Mono::lenId(l)].getValue();
+            float baseOff = monoVis->params[Mono::offId(l)].getValue();
+            float baseRot = monoVis->params[Mono::rotId(l)].getValue();
 
-            if (cvRow >= 0) {
-                baseLen = applyMonoCV(baseLen, cvRow, 0, 1.f, 16.f);
-                baseOff = applyMonoCV(baseOff, cvRow, 1, 0.f, 15.f);
-                baseRot = applyMonoCV(baseRot, cvRow, 2, 0.f, 15.f);
-            }
+            baseLen = applyMonoCV(baseLen, l, 0, 1.f, 16.f);
+            baseOff = applyMonoCV(baseOff, l, 1, 0.f, 15.f);
+            baseRot = applyMonoCV(baseRot, l, 2, 0.f, 15.f);
 
-            tLen = clamp((int)std::round(baseLen), 1, 16);
-            tOff = ((int)std::round(baseOff) % 16 + 16) % 16;
-            tRot = ((int)std::round(baseRot) % 16 + 16) % 16;
+            engine.strandLenRef(strand) = clamp((int)std::round(baseLen), 1, 16);
+            engine.strandOffRef(strand) = ((int)std::round(baseOff) % 16 + 16) % 16;
+            engine.strandRotRef(strand) = ((int)std::round(baseRot) % 16 + 16) % 16;
         };
 
         // Spread (REST/MEL/OCT only): base trimpot + per-lane spread CV.
@@ -158,17 +146,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             }
             }  // end if(!engine.locked)
         //}
-        // NOTE: this editor-lane → engine-strand order is the AUTHORITY mirrored
-        // by dotModular::MONO_LANE_TO_STRAND (dsp/LaneMapping.hpp). If you reorder
-        // these calls, update that map too — the visual display indexes through it.
-        // lane 0 REST→rhythm, 1 MELODY→variation, 2 OCTAVE→legato, 3 LEGATO→accent,
-        // 4 ACCENT→melody, 5 VARIATION→octave.
-        readStrand(Mono::lenId(0),Mono::offId(0),Mono::rotId(0), DNA_R_LEN_PARAM,DNA_R_LEN_INPUT,DNA_R_OFF_PARAM,DNA_R_OFF_INPUT,DNA_R_ROT_PARAM, 0, engine.rhythmLen,    engine.rhythmOff,    engine.rhythmRot);
-        readStrand(Mono::lenId(1),Mono::offId(1),Mono::rotId(1), DNA_V_LEN_PARAM,DNA_V_LEN_INPUT,DNA_V_OFF_PARAM,DNA_V_OFF_INPUT,DNA_V_ROT_PARAM, 1, engine.variationLen, engine.variationOff, engine.variationRot);
-        readStrand(Mono::lenId(2),Mono::offId(2),Mono::rotId(2), DNA_L_LEN_PARAM,DNA_L_LEN_INPUT,DNA_L_OFF_PARAM,DNA_L_OFF_INPUT,DNA_L_ROT_PARAM, 2, engine.legatoLen,    engine.legatoOff,    engine.legatoRot);
-        readStrand(Mono::lenId(3),Mono::offId(3),Mono::rotId(3), DNA_A_LEN_PARAM,DNA_A_LEN_INPUT,DNA_A_OFF_PARAM,DNA_A_OFF_INPUT,DNA_A_ROT_PARAM, 3, engine.accentLen,    engine.accentOff,    engine.accentRot);
-        readStrand(Mono::lenId(4),Mono::offId(4),Mono::rotId(4), DNA_M_LEN_PARAM,DNA_M_LEN_INPUT,DNA_M_OFF_PARAM,DNA_M_OFF_INPUT,DNA_M_ROT_PARAM, 4, engine.melodyLen,    engine.melodyOff,    engine.melodyRot);
-        readStrand(Mono::lenId(5),Mono::offId(5),Mono::rotId(5), DNA_O_LEN_PARAM,DNA_O_LEN_INPUT,DNA_O_OFF_PARAM,DNA_O_OFF_INPUT,DNA_O_ROT_PARAM, 5, engine.octaveLen,    engine.octaveOff,    engine.octaveRot);
+        // Drive all 6 mono strands via the single-source-of-truth lane map.
+        for (int l = 0; l < 6; ++l) readStrand(l);
 
     } else {
         if (engine.rhythmLen != 16) {
