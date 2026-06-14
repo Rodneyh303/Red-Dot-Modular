@@ -161,6 +161,17 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         }
 
         auto* mod = static_cast<StraitsEastSandsVisual*>(module);
+
+        // INERT until the Straits East CV expander is attached: it defines the
+        // poly voice count, so without it there are no poly lanes to show. Show
+        // the hint and skip all data work (no frozen bars).
+        if (monsoon->expanderManager.cachedPolyVoiceExpander == nullptr) {
+            visualEditor->inert = true;
+            visualEditor->inertMessage = "Attach Straits East expander";
+            visualEditor->clearPlaySteps();
+            return;
+        }
+        visualEditor->inert = false;
         PatternEngine*   pe = &monsoon->engine.pe;
         SequencerEngine* se = &monsoon->engine;
         if (paramMgr->patternEngine != pe) {
@@ -198,13 +209,21 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         saveVoiceLOR(selectedVoice);
         paramMgr->syncPatternEngineToEditor(selectedVoice, visualEditor->currentState);
 
+        // Surface the engine's CV-APPLIED L/O/R to the display window so the
+        // highlighted range + offset/rotation markers track L/O/R CV modulation.
+        // engine.polyLen/Off/Rot[voice][lane] (lane 0/1/2 = REST/MEL/OCT) hold the
+        // post-CV values. With no CV these equal the edit values. Editing/drag use
+        // the EDIT values, so this is display-only.
         int gs = monsoon->engine.stepIndex;
-        for (int l=0; l<3; ++l)
-            visualEditor->setLanePlayStep(l,
-                calcPlayhead(gs,
-                    readLenParam   (mod, lorId(selectedVoice,l,0)),
-                    readOffRotParam(mod, lorId(selectedVoice,l,1)),
-                    readOffRotParam(mod, lorId(selectedVoice,l,2))));
+        auto& eng = monsoon->engine;
+        const int vi = selectedVoice;
+        for (int l=0; l<3; ++l) {
+            int cvLen = eng.polyLen[vi][l];
+            int cvOff = eng.polyOff[vi][l];
+            int cvRot = eng.polyRot[vi][l];
+            visualEditor->currentState.lanes[l].setDisplayLOR(cvLen, cvOff, cvRot);
+            visualEditor->setLanePlayStep(l, calcPlayhead(gs, cvLen, cvOff, cvRot));
+        }
     }
 };
 

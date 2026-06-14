@@ -124,6 +124,18 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
 
         PatternEngine*   pe = &monsoon->engine.pe;
         SequencerEngine* se = &monsoon->engine;
+
+        // INERT until the Straits East CV expander is attached (defines poly voice
+        // count; without it there are no poly lanes to show). Show the hint, skip
+        // all data work.
+        if (monsoon->expanderManager.cachedPolyVoiceExpander == nullptr) {
+            visualEditor->inert = true;
+            visualEditor->inertMessage = "Attach Straits East expander";
+            visualEditor->clearPlaySteps();
+            return;
+        }
+        visualEditor->inert = false;
+
         if (paramMgr->patternEngine != pe) {
             paramMgr->patternEngine             = pe;
             paramMgr->sequencerEngine           = se;
@@ -148,13 +160,17 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         saveLOR();
         paramMgr->syncPatternEngineToEditor(visualEditor->currentState);
 
+        // Surface CV-APPLIED global L/O/R to the display window (Macro applies the
+        // same lane L/O/R to every voice — voice 0 is representative). Display-only.
         int gs = monsoon->engine.stepIndex;
-        for (int l = 0; l < 3; ++l)
-            visualEditor->setLanePlayStep(l,
-                calcPlayhead(gs,
-                    readLenParam   (mod, lorId(l,0)),
-                    readOffRotParam(mod, lorId(l,1)),
-                    readOffRotParam(mod, lorId(l,2))));
+        auto& eng = monsoon->engine;
+        for (int l = 0; l < 3; ++l) {
+            int cvLen = eng.polyLen[0][l];
+            int cvOff = eng.polyOff[0][l];
+            int cvRot = eng.polyRot[0][l];
+            visualEditor->currentState.lanes[l].setDisplayLOR(cvLen, cvOff, cvRot);
+            visualEditor->setLanePlayStep(l, calcPlayhead(gs, cvLen, cvOff, cvRot));
+        }
     }
 };
 

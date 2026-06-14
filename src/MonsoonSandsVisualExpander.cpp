@@ -127,12 +127,30 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         // ── Sync PatternEngine → display (uses SpreadManager.getInterpolatedValue) ──
         paramMgr->syncPatternEngineToEditor(visualEditor->currentState);
 
-        // ── Per-lane playhead ─────────────────────────────────────────────
+        // ── Per-lane playhead + CV-applied display window ─────────────────
+        // The editor lanes' EDIT L/O/R are the user's canvas values (written to
+        // params above). For DISPLAY, surface the engine's CV-APPLIED effective
+        // L/O/R so the highlighted window + offset/rotation markers track LOR CV
+        // modulation. processDNA writes these per-lane into engine.{strand}Len/Off/
+        // Rot. Editor lane order = REST,MEL,OCT,LEG,ACC,VAR. Display-only: editing
+        // still uses the edit values (editStartBar/editEndBar). With no CV the
+        // effective values equal the params, so the window is unchanged.
+        // Editor lane index → engine strand follows the readStrand() mapping in
+        // MonsoonSandsManager (NOT the naive name order): lane 0..5 =
+        // rhythm, variation, legato, accent, melody, octave. Must stay in sync
+        // with readStrand() or the displayed window maps to the wrong lane.
+        auto& eng = monsoon->engine;
+        const int effLen[6] = { eng.rhythmLen, eng.variationLen, eng.legatoLen,
+                                eng.accentLen, eng.melodyLen,    eng.octaveLen };
+        const int effOff[6] = { eng.rhythmOff, eng.variationOff, eng.legatoOff,
+                                eng.accentOff, eng.melodyOff,    eng.octaveOff };
+        const int effRot[6] = { eng.rhythmRot, eng.variationRot, eng.legatoRot,
+                                eng.accentRot, eng.melodyRot,    eng.octaveRot };
         int globalStep = monsoon->engine.stepIndex;
         for (int l = 0; l < 6; ++l) {
-            const auto& lane = visualEditor->currentState.lanes[l];
+            visualEditor->currentState.lanes[l].setDisplayLOR(effLen[l], effOff[l], effRot[l]);
             visualEditor->setLanePlayStep(l,
-                calcPlayhead(globalStep, lane.length, lane.offset, lane.rotation));
+                calcPlayhead(globalStep, effLen[l], effOff[l], effRot[l]));
         }
     }
 };
