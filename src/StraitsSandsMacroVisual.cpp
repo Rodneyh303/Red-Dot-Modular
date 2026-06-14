@@ -149,9 +149,9 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
 
         // Spread: processDNA has already applied CV offset to SPREAD_REST/MEL/OCT params.
         // Read effective values here for SpreadManager display.
-        paramMgr->spreadMgr.setSpread(0, mod->params[SPREAD_REST  ].getValue());
-        paramMgr->spreadMgr.setSpread(1, mod->params[SPREAD_MELODY].getValue());
-        paramMgr->spreadMgr.setSpread(2, mod->params[SPREAD_OCTAVE].getValue());
+        paramMgr->spreadMgr.setSpread(0, mod->spreadEffective[0]);
+        paramMgr->spreadMgr.setSpread(1, mod->spreadEffective[1]);
+        paramMgr->spreadMgr.setSpread(2, mod->spreadEffective[2]);
         paramMgr->spreadMgr.setInterpolationTarget(
             mod->interpUseMono ? SpreadManager::MONO_DRAW : SpreadManager::AVERAGE_POLY);
 
