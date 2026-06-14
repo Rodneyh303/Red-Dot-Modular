@@ -51,6 +51,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     NVGcolor background = nvgRGB(0x10, 0x12, 0x16);  // matches Monsoon "slot" recess (#101216)
     NVGcolor border     = nvgRGB(0x2a, 0x2f, 0x37);  // matches Monsoon "slotline" (#2a2f37)
     NVGcolor active     = nvgRGB(0xcc, 0x22, 0x22);
+    NVGcolor inactiveText = nvgRGB(0x6a, 0x6e, 0x76);  // dim hint text for inert state
   };
 
   // Theme: swap the recess/border (and handle) to match the host panel theme.
@@ -75,11 +76,26 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // Per-lane probability distribution
   struct ProbabilityLane {
     std::array<float, STEP_COUNT> probabilities;  // 16 values
-    int length = STEP_COUNT;    // How many steps active
-    int offset = 0;             // Window start
-    int rotation = 0;           // Rotation within window
-    
-    // Get effective probability at sequencer step
+    int length = STEP_COUNT;    // How many steps active  (EDIT value)
+    int offset = 0;             // Window start            (EDIT value)
+    int rotation = 0;           // Rotation within window  (EDIT value)
+
+    // Display-only L/O/R: what the user SEES. With no CV these equal the edit
+    // values; when L/O/R CV is patched, the owning module overwrites them each
+    // frame with the engine's CV-applied values via setDisplayLOR(), so the
+    // window + markers track modulation. Editing/drag use the EDIT values
+    // (editStartBar/editEndBar), so display is non-destructive.
+    int dispLength   = STEP_COUNT;
+    int dispOffset   = 0;
+    int dispRotation = 0;
+    void setDisplayLOR(int len, int off, int rot) {
+      dispLength   = std::max(1, std::min(len, STEP_COUNT));
+      dispOffset   = ((off % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
+      dispRotation = ((rot % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
+    }
+    void syncDisplayToEdit() { setDisplayLOR(length, offset, rotation); }
+
+    // Get effective probability at sequencer step (EDIT values — playback index)
     float getEffectiveProb(int step) const {
       if (step < 0 || step >= length) return 0.f;
       int idx = (offset + step + rotation) % STEP_COUNT;
@@ -93,12 +109,10 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     }
 
     // ── Single source of truth for "which physical bars are in the window" ──
-    // The window spans physical bars [offset .. offset+length-1] % 16 and may
-    // wrap. drawStep (cell shading), the range band, and hit-testing all use
-    // these so they can never disagree (the old drawStep used `step < length`,
-    // ignoring offset, which desynced the shading from the band).
-    int startBar() const { return ((offset % STEP_COUNT) + STEP_COUNT) % STEP_COUNT; }
-    int endBar()   const { return (startBar() + std::max(1, std::min(length, STEP_COUNT)) - 1) % STEP_COUNT; }
+    // Reads the DISPLAY L/O/R so the visible window reflects CV modulation; with
+    // no CV these equal the edit values (kept in sync via syncDisplayToEdit()).
+    int startBar() const { return ((dispOffset % STEP_COUNT) + STEP_COUNT) % STEP_COUNT; }
+    int endBar()   const { return (startBar() + std::max(1, std::min(dispLength, STEP_COUNT)) - 1) % STEP_COUNT; }
     bool barInWindow(int bar) const {
       int s = startBar(), e = endBar();
       bar = ((bar % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
@@ -110,6 +124,10 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       if (!barInWindow(bar)) return -1;
       return (((bar - startBar()) % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
     }
+    // EDIT-value window edges — for hit-testing and drag resize, which must act on
+    // the user's actual (un-modulated) window, not the CV-display window.
+    int editStartBar() const { return ((offset % STEP_COUNT) + STEP_COUNT) % STEP_COUNT; }
+    int editEndBar()   const { return (editStartBar() + std::max(1, std::min(length, STEP_COUNT)) - 1) % STEP_COUNT; }
   };
   
   struct VoiceState {
@@ -130,6 +148,12 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   
   Mode mode = POLY;
   int laneCount = 3;
+
+  // INERT: when true the editor shows only a hint (set by the poly visuals when
+  // the Straits East CV expander is absent — without it there's no poly voice
+  // count, so no lanes to draw). Mono never sets this.
+  bool inert = false;
+  const char* inertMessage = nullptr;
   
   VoiceState currentState;
   VoiceState clipboard;
@@ -258,6 +282,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       currentState.lanes[l].length = STEP_COUNT;
       currentState.lanes[l].offset = 0;
       currentState.lanes[l].rotation = 0;
+      currentState.lanes[l].syncDisplayToEdit();
     }
   }
   
@@ -369,7 +394,26 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     nvgRect(args.vg, 0, 0, box.size.x, box.size.y);
     nvgFillColor(args.vg, colors.background);
     nvgFill(args.vg);
-    
+
+    // INERT state: the poly visuals (East/Macro) have no data to show until the
+    // Straits East CV expander is attached (it defines the poly voice count, so
+    // there are no poly lanes to draw without it). Rather than display frozen
+    // bars that look broken, show nothing but a clear hint. The owning module
+    // sets `inert` each frame from cachedPolyVoiceExpander == nullptr.
+    if (inert) {
+      const char* msg = inertMessage ? inertMessage : "Attach Straits East";
+      nvgFontSize(args.vg, 13.f);
+      nvgFillColor(args.vg, colors.inactiveText);
+      nvgTextAlign(args.vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+      nvgText(args.vg, box.size.x * 0.5f, box.size.y * 0.5f, msg, nullptr);
+      nvgBeginPath(args.vg);
+      nvgRect(args.vg, 0, 0, box.size.x, box.size.y);
+      nvgStrokeColor(args.vg, colors.border);
+      nvgStrokeWidth(args.vg, 1.f);
+      nvgStroke(args.vg);
+      return;
+    }
+
     drawControlBar(args.vg);
     
     for (int lane = 0; lane < laneCount; ++lane) {
@@ -516,8 +560,8 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     float bandBot = laneR.pos.y + laneR.size.y * 0.16f;
     if (y >= laneR.pos.y && y <= bandBot && inWindowX(x)) {
       float edgeW = layout.stepWidthF() * 0.30f;
-      rack::Rect cs = layout.getStepRect(lane, L.startBar());
-      rack::Rect ce = layout.getStepRect(lane, L.endBar());
+      rack::Rect cs = layout.getStepRect(lane, L.editStartBar());
+      rack::Rect ce = layout.getStepRect(lane, L.editEndBar());
       if (x <= cs.pos.x + edgeW)                       return DragState::START; // front edge
       if (x >= ce.pos.x + ce.size.x - edgeW)           return DragState::END;   // back edge
       return DragState::WINDOW;                                                 // body → move
@@ -685,6 +729,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   
   void onButton(const rack::event::Button& e) override {
     syncLayout();
+    if (inert) return;   // no interaction until poly source (Straits East) is attached
     if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT) {
       int lane = getLaneAtY(e.pos.y);
       int step = getStepAtX(e.pos.x);
@@ -757,7 +802,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
         // Resize from the FRONT: the dragged step becomes the new start, the END
         // bar stays put, length adjusts. Keeps the back edge anchored (intuitive
         // when you grab the front edge). Wrap-safe via mod arithmetic.
-        int endBar = L.endBar();
+        int endBar = L.editEndBar();
         int newLen = ((endBar - step) % STEP_COUNT + STEP_COUNT) % STEP_COUNT + 1; // 1..16
         L.offset  = ((step % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
         L.length  = rack::math::clamp(newLen, 1, STEP_COUNT);
@@ -769,7 +814,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
         // Resize from the BACK: the dragged step becomes the new end, START stays
         // put, length = inclusive forward distance start→step. Dragging back past
         // the start clamps to 1 (no surprise full-wrap to 16).
-        int fwd = ((step - L.startBar()) % STEP_COUNT + STEP_COUNT) % STEP_COUNT; // 0..15
+        int fwd = ((step - L.editStartBar()) % STEP_COUNT + STEP_COUNT) % STEP_COUNT; // 0..15
         L.length = rack::math::clamp(fwd + 1, 1, STEP_COUNT);
         L.rotation = rack::math::clamp(L.rotation, 0, std::max(0, L.length - 1));
         break;
@@ -786,6 +831,10 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
 
       default: break;
     }
+    // Reflect the dragged edit values in the display immediately so the window
+    // follows the hand; next process frame re-applies any CV on top.
+    if (dragState.isDragging && dragState.dragLane >= 0 && dragState.dragLane < laneCount)
+      currentState.lanes[dragState.dragLane].syncDisplayToEdit();
   }
   
   
