@@ -204,7 +204,7 @@ void MonsoonWidget::applyTheme() {
         // Since this is called once at construction (no existing widgets yet),
         // we just add fresh. On theme toggle, widgets are rebuilt via
         // removing children with the affected paramIds first.
-        auto* mod = dynamic_cast<Monsoon*>(module);
+        //auto* mod = dynamic_cast<Monsoon*>(module);
         // auto removeKnob = [&](int paramId) {
         //     for (auto it = children.begin(); it != children.end(); ) {
         //         auto* pw = dynamic_cast<ParamWidget*>(*it);
