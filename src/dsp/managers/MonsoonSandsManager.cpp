@@ -1,7 +1,7 @@
 #include "MonsoonSandsManager.hpp"
 #include "../../Monsoon.hpp"
 #include "../../MonsoonSandsVisualExpander.hpp"
-#include "../../MonsoonSandsExpander.hpp"
+//#include "../../MonsoonSandsExpander.hpp"
 #include "../../StraitsSandsMacroVisual.hpp"
 #include "MonsoonExpanderManager.hpp"
 #include "../../MonsoonStraitsEastExpander.hpp"
@@ -15,7 +15,7 @@ namespace Macro = StraitsMacroVisualIds;
 
 void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManager) {
     const bool hasVisual = (expanderManager.cachedSandsVisualExpander != nullptr);
-    const bool hasKnobs  = (expanderManager.cachedDnaExpander          != nullptr);
+    //const bool hasKnobs  = (expanderManager.cachedDnaExpander          != nullptr);
     const bool hasMacro  = (expanderManager.cachedMacroSandsVisual     != nullptr);
 
     auto* monoVis  = expanderManager.cachedSandsVisualExpander;
@@ -76,7 +76,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         return rack::math::clamp(result, 0.0f, 1.0f);
     };
 
-    if (hasVisual || hasKnobs) {
+    if (hasVisual) 
+    {
         auto readStrand = [&](
                 int monoLenId, int monoOffId, int monoRotId,
                 int kbLenParam, int kbLenInput, int kbOffParam, int kbOffInput, int kbRotParam,
@@ -84,20 +85,23 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 int& tLen, int& tOff, int& tRot)
         {
             float baseLen, baseOff, baseRot;
-            if (hasVisual) {
+            //if (hasVisual) 
+            //{
                 baseLen = monoVis->params[monoLenId].getValue();
                 baseOff = monoVis->params[monoOffId].getValue();
                 baseRot = monoVis->params[monoRotId].getValue();
-            } else {
-                auto* kb = expanderManager.cachedDnaExpander;
-                baseLen = kb->params[kbLenParam].getValue()
-                        + kb->inputs[kbLenInput].getNormalVoltage(0.f) * 1.6f;
-                baseOff = kb->params[kbOffParam].getValue()
-                        + kb->inputs[kbOffInput].getNormalVoltage(0.f) * 1.5f;
-                baseRot = kb->params[kbRotParam].getValue();
-            }
+            //} 
+            
+            // else {
+            //     auto* kb = expanderManager.cachedDnaExpander;
+            //     baseLen = kb->params[kbLenParam].getValue()
+            //             + kb->inputs[kbLenInput].getNormalVoltage(0.f) * 1.6f;
+            //     baseOff = kb->params[kbOffParam].getValue()
+            //             + kb->inputs[kbOffInput].getNormalVoltage(0.f) * 1.5f;
+            //     baseRot = kb->params[kbRotParam].getValue();
+            // }
 
-            if (cvRow >= 0 && hasVisual) {
+            if (cvRow >= 0) {
                 baseLen = applyMonoCV(baseLen, cvRow, 0, 1.f, 16.f);
                 baseOff = applyMonoCV(baseOff, cvRow, 1, 0.f, 15.f);
                 baseRot = applyMonoCV(baseRot, cvRow, 2, 0.f, 15.f);
@@ -110,7 +114,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
 
         // Spread (REST/MEL/OCT only): base trimpot + per-lane spread CV.
         // sprId/sprCvId lane index: 0=REST, 1=MELODY, 2=OCTAVE (editor order).
-        if (hasVisual) {
+       // if (hasVisual) 
+       // {
             for (int l = 0; l < 3; ++l) {
                 float baseSpr = monoVis->params[Mono::sprId(l)].getValue();
                 monoVis->spreadEffective[l] = applyMonoSprCV(baseSpr, l);
@@ -152,7 +157,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 engine.pe.variationRandom[i] = engine.pe.slewedVariation[i];
             }
             }  // end if(!engine.locked)
-        }
+        //}
         readStrand(Mono::lenId(0),Mono::offId(0),Mono::rotId(0), DNA_R_LEN_PARAM,DNA_R_LEN_INPUT,DNA_R_OFF_PARAM,DNA_R_OFF_INPUT,DNA_R_ROT_PARAM, 0, engine.rhythmLen,    engine.rhythmOff,    engine.rhythmRot);
         readStrand(Mono::lenId(1),Mono::offId(1),Mono::rotId(1), DNA_V_LEN_PARAM,DNA_V_LEN_INPUT,DNA_V_OFF_PARAM,DNA_V_OFF_INPUT,DNA_V_ROT_PARAM, 1, engine.variationLen, engine.variationOff, engine.variationRot);
         readStrand(Mono::lenId(2),Mono::offId(2),Mono::rotId(2), DNA_L_LEN_PARAM,DNA_L_LEN_INPUT,DNA_L_OFF_PARAM,DNA_L_OFF_INPUT,DNA_L_ROT_PARAM, 2, engine.legatoLen,    engine.legatoOff,    engine.legatoRot);
@@ -160,18 +165,6 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         readStrand(Mono::lenId(4),Mono::offId(4),Mono::rotId(4), DNA_M_LEN_PARAM,DNA_M_LEN_INPUT,DNA_M_OFF_PARAM,DNA_M_OFF_INPUT,DNA_M_ROT_PARAM, 4, engine.melodyLen,    engine.melodyOff,    engine.melodyRot);
         readStrand(Mono::lenId(5),Mono::offId(5),Mono::rotId(5), DNA_O_LEN_PARAM,DNA_O_LEN_INPUT,DNA_O_OFF_PARAM,DNA_O_OFF_INPUT,DNA_O_ROT_PARAM, 5, engine.octaveLen,    engine.octaveOff,    engine.octaveRot);
 
-        if (hasKnobs) {
-            auto dnaExp = expanderManager.cachedDnaExpander;
-            #define CHECK_DNA_ACT(suffix, func) \
-                if (scrambleParamTrig_##suffix.process(dnaExp->params[DNA_SCRAMBLE_##suffix##_PARAM].getValue())) scramble##func(); \
-                if (scrambleInputTrig_##suffix.process(dnaExp->inputs[DNA_SCRAMBLE_##suffix##_INPUT].getVoltage())) scramble##func(); \
-                if (resetParamTrig_##suffix.process(dnaExp->params[DNA_RESET_##suffix##_PARAM].getValue())) reset##func(); \
-                if (resetInputTrig_##suffix.process(dnaExp->inputs[DNA_RESET_##suffix##_INPUT].getVoltage())) reset##func();
-            CHECK_DNA_ACT(ALL, All); CHECK_DNA_ACT(R, RhythmGroup);
-            CHECK_DNA_ACT(M, MelodyGroup); CHECK_DNA_ACT(V, Variation);
-            CHECK_DNA_ACT(L, Legato); CHECK_DNA_ACT(A, Accent); CHECK_DNA_ACT(O, Octave);
-            #undef CHECK_DNA_ACT
-        }
     } else {
         if (engine.rhythmLen != 16) {
             engine.rhythmLen = engine.variationLen = engine.legatoLen =

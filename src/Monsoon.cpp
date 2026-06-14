@@ -18,14 +18,14 @@
   #include <xmmintrin.h>   // _MM_SET_FLUSH_ZERO_MODE (SSE)
 #endif
 
-#include "MonsoonSandsExpander.hpp"
+//#include "MonsoonSandsExpander.hpp"
 #include "MonsoonInterchangeExpander.hpp"
 #include "MonsoonStraitsEastExpander.hpp"
 #include "MonsoonStraitWestExpander.hpp"      // NEW (Phase 4)
-#include "MonsoonStraitsSands.hpp"            // NEW (Macro): global DNA controls
-#include "MonsoonDeepStraitsSands.hpp"        // NEW (Deep): per-voice DNA controls
+//#include "MonsoonStraitsSands.hpp"            // NEW (Macro): global DNA controls
+//#include "MonsoonDeepStraitsSands.hpp"        // NEW (Deep): per-voice DNA controls
 #include "StraitsEastSandsVisual.hpp"         // Visual DNA editor (East)
-#include "StraitsWestSandsVisual.hpp"         // Visual DNA editor (West)
+//#include "StraitsWestSandsVisual.hpp"         // Visual DNA editor (West)
 #include "StraitsSandsMacroVisual.hpp"        // Visual DNA editor (Macro)
 #include "MonsoonWidget.hpp"
 #include "Monsoon.hpp"
