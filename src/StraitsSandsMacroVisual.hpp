@@ -72,6 +72,18 @@ namespace StraitsMacroVisualIds {
     inline float targetHi(int param) {
         return param == 0 ? 16.f : param < 3 ? 15.f : 1.f;
     }
+
+    // CV jack / attenuverter index for (lane, param) where param 0=LEN 1=OFF
+    // 2=ROT 3=SPR. The 12 jacks are laid out 2 rows per lane:
+    //   row lane*2+0 : col0=LEN col1=OFF
+    //   row lane*2+1 : col0=ROT col1=SPR
+    // so row = lane*2 + (param>=2), col = param&1. (The old code used
+    // cvId(lane,param) directly, which mis-indexed ROT/SPR onto other lanes'
+    // jacks — the macro spread/LOR CV routing bug.)
+    inline int macroJackRow(int lane, int param) { return lane * 2 + (param >= 2 ? 1 : 0); }
+    inline int macroJackCol(int param)           { return param & 1; }
+    inline int macroCvId   (int lane, int param) { return cvId   (macroJackRow(lane, param), macroJackCol(param)); }
+    inline int macroAttenId(int lane, int param) { return attenId(macroJackRow(lane, param), macroJackCol(param)); }
 }
 
 struct StraitsSandsMacroVisual : Module {
@@ -111,6 +123,12 @@ struct StraitsSandsMacroVisual : Module {
     }
 
     void process(const ProcessArgs&) override {}
+
+    // CV-applied global spread per lane (0=REST,1=MEL,2=OCT). processDNA writes
+    // these from base + spread CV; the display reads them so spread CV is visible
+    // WITHOUT moving the base knob (the old code wrote the modulated value back to
+    // the SPREAD_* param, which dragged the knob — fixed).
+    float spreadEffective[3] = {0.f, 0.f, 0.f};
 
     json_t* dataToJson() override {
         json_t* r = json_object();

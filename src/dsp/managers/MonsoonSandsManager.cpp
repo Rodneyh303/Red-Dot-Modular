@@ -52,9 +52,9 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
 
     // ── Helper: apply macro CV offset at read site ────────────────────────
     auto applyMacroCV = [&](float base, int lane, int param, float lo, float hi) -> float {
-        if (!macroVis || !macroVis->inputs[Macro::cvId(lane,param)].isConnected()) return base;
-        float cv  = macroVis->inputs[Macro::cvId(lane,param)].getVoltage() / 10.f;
-        float att = macroVis->params[Macro::attenId(lane,param)].getValue();
+        if (!macroVis || !macroVis->inputs[Macro::macroCvId(lane,param)].isConnected()) return base;
+        float cv  = macroVis->inputs[Macro::macroCvId(lane,param)].getVoltage() / 10.f;
+        float att = macroVis->params[Macro::macroAttenId(lane,param)].getValue();
         return clamp(base + cv * att * (hi - lo), lo, hi);
     };
 
@@ -171,7 +171,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             bRot = applyMacroCV(bRot, lane, 2, 0.f, 15.f);
             float bSpr = macroVis->params[Macro::sprId(lane)].getValue();
             bSpr = applyMacroCV(bSpr, lane, 3, 0.f, 1.f);
-            macroVis->params[Macro::sprId(lane)].setValue(bSpr);
+            macroVis->spreadEffective[lane] = bSpr;   // display reads this; base knob untouched
             int L = clamp((int)std::round(bLen), 1, 16);
             int O = ((int)std::round(bOff) % 16 + 16) % 16;
             int R = ((int)std::round(bRot) % 16 + 16) % 16;
