@@ -128,7 +128,10 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         // INERT until the Straits East CV expander is attached (defines poly voice
         // count; without it there are no poly lanes to show). Show the hint, skip
         // all data work.
-        if (monsoon->expanderManager.cachedPolyVoiceExpander == nullptr) {
+        // INERT unless poly data exists (expander + >=1 poly voice; matches the
+        // engine's polyBaseActive). See the East visual note re: >=1 vs >=2.
+        if (monsoon->expanderManager.cachedPolyVoiceExpander == nullptr
+            || monsoon->engine.numPolyVoices < 1) {
             visualEditor->inert = true;
             visualEditor->inertMessage = "Attach Straits East expander";
             visualEditor->clearPlaySteps();

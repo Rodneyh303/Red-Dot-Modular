@@ -33,7 +33,20 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
     if (eastLOR && (straitEast || eastVisual) && polyBaseActive) {
        // using namespace DeepStraitsSandsEastIds;
         using namespace StraitsEastVisualIds;
-        
+
+        // ── Base ownership (Macro vs East) ────────────────────────────────
+        // When the Macro visual is also attached it owns the global poly L/O/R
+        // base by default (processDNA::applyGlobal already wrote engine.polyLen
+        // for every voice just before this sync). East runs LAST, so to honour
+        // "default owner = Macro" we must NOT clobber those values here. Until
+        // the per-(lane,voice) owner switch exists, the interim rule is simply:
+        //   Macro present  → Macro owns base, East leaves polyLen as written.
+        //   Macro absent   → East owns base, East writes polyLen as before.
+        // NOTE: this gates ONLY the polyLen/Off/Rot base writes. East's per-voice
+        // interp/spread computation (polyRhythmRandom etc.) below is unaffected —
+        // East always drives the per-voice spread regardless of base ownership.
+        const bool macroOwnsBase = (cachedMacroSandsVisual != nullptr);
+
         for (int v = 0; v < 15; v++) {
             int rhythmBase = MonsoonIds::POLY_DNA_VOICE_1_LEN + v * 3;
             
@@ -46,9 +59,11 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
                 }
                 return (int)base;
             };
-            engine.polyLen[v][0] = applyLorCV(rhythmBase,     0, 0, 1.f, 16.f);
-            engine.polyOff[v][0] = applyLorCV(rhythmBase + 1, 0, 1, 0.f, 15.f);
-            engine.polyRot[v][0] = applyLorCV(rhythmBase + 2, 1, 0, 0.f, 15.f);
+            if (!macroOwnsBase) {
+                engine.polyLen[v][0] = applyLorCV(rhythmBase,     0, 0, 1.f, 16.f);
+                engine.polyOff[v][0] = applyLorCV(rhythmBase + 1, 0, 1, 0.f, 15.f);
+                engine.polyRot[v][0] = applyLorCV(rhythmBase + 2, 1, 0, 0.f, 15.f);
+            }
 
             float restInterp = eastInterp->params[MonsoonIds::POLY_REST_INTERP_1 + v].getValue();
             if (eastVisual && eastVisual->inputs[cvId(1,1)].isConnected()) {
@@ -78,9 +93,11 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
             
             int melodyBase = MonsoonIds::POLY_MELODY_VOICE_1_LEN + v * 3;
             float melodyInterp = eastInterp->params[MonsoonIds::POLY_MELODY_INTERP_1 + v].getValue();
-            engine.polyLen[v][1] = applyLorCV(melodyBase,     2, 0, 1.f, 16.f);
-            engine.polyOff[v][1] = applyLorCV(melodyBase + 1, 2, 1, 0.f, 15.f);
-            engine.polyRot[v][1] = applyLorCV(melodyBase + 2, 3, 0, 0.f, 15.f);
+            if (!macroOwnsBase) {
+                engine.polyLen[v][1] = applyLorCV(melodyBase,     2, 0, 1.f, 16.f);
+                engine.polyOff[v][1] = applyLorCV(melodyBase + 1, 2, 1, 0.f, 15.f);
+                engine.polyRot[v][1] = applyLorCV(melodyBase + 2, 3, 0, 0.f, 15.f);
+            }
             if (eastVisual && eastVisual->inputs[cvId(3,1)].isConnected()) {
                 float att = eastVisual->params[attenId(3,1)].getValue();
                 float cv  = eastVisual->inputs[cvId(3,1)].getVoltage(v) / 10.f;
@@ -109,9 +126,11 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
             // }
             
             int octaveBase = MonsoonIds::POLY_OCTAVE_VOICE_1_LEN + v * 3;
-            engine.polyLen[v][2] = applyLorCV(octaveBase,     4, 0, 1.f, 16.f);
-            engine.polyOff[v][2] = applyLorCV(octaveBase + 1, 4, 1, 0.f, 15.f);
-            engine.polyRot[v][2] = applyLorCV(octaveBase + 2, 5, 0, 0.f, 15.f);
+            if (!macroOwnsBase) {
+                engine.polyLen[v][2] = applyLorCV(octaveBase,     4, 0, 1.f, 16.f);
+                engine.polyOff[v][2] = applyLorCV(octaveBase + 1, 4, 1, 0.f, 15.f);
+                engine.polyRot[v][2] = applyLorCV(octaveBase + 2, 5, 0, 0.f, 15.f);
+            }
 
             float octaveInterp = eastInterp->params[MonsoonIds::POLY_OCTAVE_INTERP_1 + v].getValue();
             if (eastVisual && eastVisual->inputs[cvId(5,1)].isConnected()) {
