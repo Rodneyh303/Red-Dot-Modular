@@ -165,7 +165,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         // INERT until the Straits East CV expander is attached: it defines the
         // poly voice count, so without it there are no poly lanes to show. Show
         // the hint and skip all data work (no frozen bars).
-        if (monsoon->expanderManager.cachedPolyVoiceExpander == nullptr) {
+        // INERT unless poly data actually exists: needs the Straits East CV
+        // expander AND at least one poly voice (matches engine polyBaseActive =
+        // cachedPolyVoiceExpander && numPolyVoices>=1). Without that there are no
+        // poly lanes to show. (If you later want a lone single voice to also read
+        // as inert because spread is degenerate, change >=1 to >=2 here and in
+        // the Macro visual — left at >=1 to match the engine's poly gate.)
+        if (monsoon->expanderManager.cachedPolyVoiceExpander == nullptr
+            || monsoon->engine.numPolyVoices < 1) {
             visualEditor->inert = true;
             visualEditor->inertMessage = "Attach Straits East expander";
             visualEditor->clearPlaySteps();
