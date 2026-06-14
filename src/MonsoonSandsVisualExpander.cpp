@@ -1,7 +1,7 @@
 #include <rack.hpp>
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
-#include "MonsoonSandsExpander.hpp"
+//#include "MonsoonSandsExpander.hpp"
 #include "MonsoonSandsVisualExpander.hpp"
 #include "ui/SandsVisualEditorV4.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
