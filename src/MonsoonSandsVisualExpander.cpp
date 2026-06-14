@@ -135,13 +135,17 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         // Rot. Editor lane order = REST,MEL,OCT,LEG,ACC,VAR. Display-only: editing
         // still uses the edit values (editStartBar/editEndBar). With no CV the
         // effective values equal the params, so the window is unchanged.
+        // Editor lane index → engine strand follows the readStrand() mapping in
+        // MonsoonSandsManager (NOT the naive name order): lane 0..5 =
+        // rhythm, variation, legato, accent, melody, octave. Must stay in sync
+        // with readStrand() or the displayed window maps to the wrong lane.
         auto& eng = monsoon->engine;
-        const int effLen[6] = { eng.rhythmLen, eng.melodyLen, eng.octaveLen,
-                                eng.legatoLen, eng.accentLen, eng.variationLen };
-        const int effOff[6] = { eng.rhythmOff, eng.melodyOff, eng.octaveOff,
-                                eng.legatoOff, eng.accentOff, eng.variationOff };
-        const int effRot[6] = { eng.rhythmRot, eng.melodyRot, eng.octaveRot,
-                                eng.legatoRot, eng.accentRot, eng.variationRot };
+        const int effLen[6] = { eng.rhythmLen, eng.variationLen, eng.legatoLen,
+                                eng.accentLen, eng.melodyLen,    eng.octaveLen };
+        const int effOff[6] = { eng.rhythmOff, eng.variationOff, eng.legatoOff,
+                                eng.accentOff, eng.melodyOff,    eng.octaveOff };
+        const int effRot[6] = { eng.rhythmRot, eng.variationRot, eng.legatoRot,
+                                eng.accentRot, eng.melodyRot,    eng.octaveRot };
         int globalStep = monsoon->engine.stepIndex;
         for (int l = 0; l < 6; ++l) {
             visualEditor->currentState.lanes[l].setDisplayLOR(effLen[l], effOff[l], effRot[l]);

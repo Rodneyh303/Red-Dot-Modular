@@ -602,10 +602,10 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     float stripTop = laneR.pos.y + laneR.size.y * 0.70f;
     float stripH   = laneR.size.y * 0.30f;
 
-    // Faint track ONLY across the start–end window (matches the grabbable
-    // region in hitTestHandle). Drawn per in-window cell so it wraps correctly.
-    int startBar = L.offset % STEP_COUNT;
-    int lenC = std::max(1, std::min(L.length, STEP_COUNT));
+    // Faint track ONLY across the start–end window. Uses the DISPLAY window so it
+    // tracks CV modulation in step with the window band (which uses startBar()).
+    int startBar = L.dispOffset % STEP_COUNT;
+    int lenC = std::max(1, std::min(L.dispLength, STEP_COUNT));
     NVGcolor track = colors.rotation; track.a = 0.10f;
     for (int k = 0; k < lenC; ++k) {
       int bar = (startBar + k) % STEP_COUNT;
@@ -617,9 +617,9 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     }
 
     // Rotation marker sits WITHIN the start-end window: physical bar =
-    // (offset + rotation) % 16. Rotation is a phase offset inside the window,
-    // so it always lands between the start "[" and end "]".
-    int rotBar = (L.offset + (L.rotation % std::max(1, L.length))) % STEP_COUNT;
+    // (dispOffset + dispRotation) % 16. Uses DISPLAY values so the chevron moves
+    // with the modulated window.
+    int rotBar = (L.dispOffset + (L.dispRotation % std::max(1, L.dispLength))) % STEP_COUNT;
     rack::Rect cell = layout.getStepRect(lane, rotBar);
     float cx = cell.pos.x + cell.size.x * 0.5f;
     float cyc = stripTop + stripH * 0.5f;
