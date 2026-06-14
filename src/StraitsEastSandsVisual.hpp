@@ -78,6 +78,13 @@ namespace StraitsEastVisualIds {
     }
     inline float targetLo(int param) { return (param == 0) ? 1.f : 0.f; }
     inline float targetHi(int param) { return (param == 0) ? 16.f : (param < 3) ? 15.f : 1.f; }
+
+    // Macro/East base owner per (voice, lane): MonsoonIds::MACRO_OWN_START + v*3 + lane.
+    // 0 = Macro owns (default), 1 = East owns.
+    inline int ownerId(int v, int lane) { return MonsoonIds::MACRO_OWN_START + v*3 + lane; }
+    // Macro-CV blend send per (voice, lane, item) item 0=LEN 1=OFF 2=ROT 3=SPR:
+    //   MonsoonIds::MACRO_SEND_START + (v*3 + lane)*4 + item. Default unity.
+    inline int sendId(int v, int lane, int item) { return MonsoonIds::MACRO_SEND_START + (v*3 + lane)*4 + item; }
 }
 
 struct StraitsEastSandsVisual : Module {
@@ -114,6 +121,16 @@ struct StraitsEastSandsVisual : Module {
             configParam(restInterpId(v),   0.f,1.f,0.f,vl+"Spread REST");
             configParam(melodyInterpId(v), 0.f,1.f,0.f,vl+"Spread MEL");
             configParam(octaveInterpId(v), 0.f,1.f,0.f,vl+"Spread OCT");
+
+            // Base owner (0=Macro default, 1=East) + Macro-CV blend sends (unity
+            // default) per lane. Switch/snap so owner reads as discrete 0/1.
+            for (int lane=0; lane<3; ++lane) {
+                configSwitch(ownerId(v,lane), 0.f,1.f,0.f,
+                             vl+"L"+std::to_string(lane)+" base owner", {"Macro","East"});
+                for (int item=0; item<4; ++item)
+                    configParam(sendId(v,lane,item), -1.f,1.f,1.f,
+                                vl+"L"+std::to_string(lane)+" Macro send "+std::to_string(item));
+            }
         }
     }
 
