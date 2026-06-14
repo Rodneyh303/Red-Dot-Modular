@@ -77,6 +77,29 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
                 return (int)math::clamp(base + blend, lo, hi);
             };
 
+            // Spread (item 3) counterpart of combineLOR. owner picks East's own
+            // per-voice interp vs Macro's global spread base; the Macro spread
+            // CV-delta blends in via send item 3. Clamped bipolar [-1,1] because
+            // interpolateAndClamp treats negative spread as inverting the target
+            // (see the spread-sign fix). eastInterpVal already includes East's own
+            // spread CV. NOTE: East's per-voice interp params are 0..1 while the
+            // display trimpots + Macro spread are -1..1 — a pre-existing range
+            // inconsistency, flagged separately; we clamp the COMBINED value to
+            // [-1,1] so Macro ownership/blend can still reach negative spread.
+            auto combineSpread = [&](int lane, float eastInterpVal)-> float {
+                const bool ownerEast = eastLOR->params[
+                    StraitsEastVisualIds::ownerId(v, lane)].getValue() > 0.5f;
+                float base = ownerEast ? eastInterpVal
+                                       : (macroPresent ? macroVis->macroBase[lane][3] : eastInterpVal);
+                float blend = 0.f;
+                if (macroPresent) {
+                    float send = eastLOR->params[
+                        StraitsEastVisualIds::sendId(v, lane, 3)].getValue();
+                    blend = macroVis->macroCVDelta[lane][3] * send;
+                }
+                return math::clamp(base + blend, -1.f, 1.f);
+            };
+
             // REST lane (0): owner+blend equation. r/c are East CV jack coords.
             engine.polyLen[v][0] = combineLOR(0, 0, rhythmBase,     0, 0, 1.f, 16.f);
             engine.polyOff[v][0] = combineLOR(0, 1, rhythmBase + 1, 0, 1, 0.f, 15.f);
@@ -88,6 +111,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
                 float cv  = eastVisual->inputs[cvId(1,1)].getVoltage(v) / 10.f;
                 restInterp = math::clamp(restInterp + cv * att, 0.f, 1.f);
             }
+            restInterp = combineSpread(0, restInterp);   // owner + Macro-CV blend (spread)
             
             // if (deepEast) {
             //     engine.voices[v].restProb = deepEast->params[MonsoonIds::POLY_REST_PARAM_1 + v].getValue();
@@ -118,6 +142,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
                 float cv  = eastVisual->inputs[cvId(3,1)].getVoltage(v) / 10.f;
                 melodyInterp = math::clamp(melodyInterp + cv * att, 0.f, 1.f);
             }
+            melodyInterp = combineSpread(1, melodyInterp);   // owner + Macro-CV blend (spread)
             
             if (!engine.locked) {
                 const int nPoly = effPolyVoices;
@@ -151,6 +176,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
                 float cv  = eastVisual->inputs[cvId(5,1)].getVoltage(v) / 10.f;
                 octaveInterp = math::clamp(octaveInterp + cv * att, 0.f, 1.f);
             }
+            octaveInterp = combineSpread(2, octaveInterp);   // owner + Macro-CV blend (spread)
             
             if (!engine.locked) {
                 const int nPoly = effPolyVoices;
