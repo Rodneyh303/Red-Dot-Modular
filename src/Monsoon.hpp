@@ -419,7 +419,18 @@ namespace MonsoonIds {
         MACRO_SEND_START = MACRO_OWN_END,
         MACRO_SEND_END = MACRO_SEND_START + 180,
 
-        NUM_PARAMS = MACRO_SEND_END
+        // Display-proxy params for the East visual's SELECTED-VOICE owner/send
+        // controls. Physical knobs/buttons bind to these fixed ids; the widget
+        // copies them to/from the per-voice MACRO_OWN/SEND params on voice switch
+        // (same pattern as SPREAD_R/M/O ↔ the per-voice interp params).
+        //   owner disp:  MACRO_OWN_DISP_START + lane            (3: lanes 0-2)
+        //   send  disp:  MACRO_SEND_DISP_START + lane*4 + item  (12: 3 lanes×4)
+        MACRO_OWN_DISP_START = MACRO_SEND_END,
+        MACRO_OWN_DISP_END = MACRO_OWN_DISP_START + 3,
+        MACRO_SEND_DISP_START = MACRO_OWN_DISP_END,
+        MACRO_SEND_DISP_END = MACRO_SEND_DISP_START + 12,
+
+        NUM_PARAMS = MACRO_SEND_DISP_END
     };
 
     enum InputIds {

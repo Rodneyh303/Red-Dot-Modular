@@ -85,6 +85,33 @@
 <line x1="144.7" y1="180.1" x2="144.7" y2="173.0" stroke="#26a69a" stroke-width="1"/>
 <circle cx="144.7" cy="272.6" r="9.4" fill="#0f1114" stroke="#26a69a" stroke-width="1.25"/>
 <line x1="144.7" y1="272.6" x2="144.7" y2="265.6" stroke="#26a69a" stroke-width="1"/>
+<circle cx="158.0" cy="76.8" r="7.1" fill="#101216" stroke="#dc2626" stroke-width="1.1"/>
+<circle cx="158.0" cy="124.0" r="7.1" fill="#101216" stroke="#dc2626" stroke-width="1.1"/>
+<circle cx="158.0" cy="171.3" r="7.1" fill="#101216" stroke="#dc2626" stroke-width="1.1"/>
+<circle cx="188.6" cy="236.2" r="9.4" fill="#0f1114" stroke="#c8960c" stroke-width="1.25"/>
+<line x1="188.6" y1="236.2" x2="188.6" y2="229.1" stroke="#c8960c" stroke-width="1"/>
+<circle cx="223.4" cy="236.2" r="9.4" fill="#0f1114" stroke="#c8960c" stroke-width="1.25"/>
+<line x1="223.4" y1="236.2" x2="223.4" y2="229.1" stroke="#c8960c" stroke-width="1"/>
+<circle cx="258.1" cy="236.2" r="9.4" fill="#0f1114" stroke="#c8960c" stroke-width="1.25"/>
+<line x1="258.1" y1="236.2" x2="258.1" y2="229.1" stroke="#c8960c" stroke-width="1"/>
+<circle cx="292.9" cy="236.2" r="9.4" fill="#0f1114" stroke="#c8960c" stroke-width="1.25"/>
+<line x1="292.9" y1="236.2" x2="292.9" y2="229.1" stroke="#c8960c" stroke-width="1"/>
+<circle cx="327.6" cy="236.2" r="9.4" fill="#0f1114" stroke="#c8960c" stroke-width="1.25"/>
+<line x1="327.6" y1="236.2" x2="327.6" y2="229.1" stroke="#c8960c" stroke-width="1"/>
+<circle cx="362.4" cy="236.2" r="9.4" fill="#0f1114" stroke="#c8960c" stroke-width="1.25"/>
+<line x1="362.4" y1="236.2" x2="362.4" y2="229.1" stroke="#c8960c" stroke-width="1"/>
+<circle cx="397.1" cy="236.2" r="9.4" fill="#0f1114" stroke="#c8960c" stroke-width="1.25"/>
+<line x1="397.1" y1="236.2" x2="397.1" y2="229.1" stroke="#c8960c" stroke-width="1"/>
+<circle cx="431.8" cy="236.2" r="9.4" fill="#0f1114" stroke="#c8960c" stroke-width="1.25"/>
+<line x1="431.8" y1="236.2" x2="431.8" y2="229.1" stroke="#c8960c" stroke-width="1"/>
+<circle cx="466.6" cy="236.2" r="9.4" fill="#0f1114" stroke="#c8960c" stroke-width="1.25"/>
+<line x1="466.6" y1="236.2" x2="466.6" y2="229.1" stroke="#c8960c" stroke-width="1"/>
+<circle cx="501.3" cy="236.2" r="9.4" fill="#0f1114" stroke="#c8960c" stroke-width="1.25"/>
+<line x1="501.3" y1="236.2" x2="501.3" y2="229.1" stroke="#c8960c" stroke-width="1"/>
+<circle cx="536.1" cy="236.2" r="9.4" fill="#0f1114" stroke="#c8960c" stroke-width="1.25"/>
+<line x1="536.1" y1="236.2" x2="536.1" y2="229.1" stroke="#c8960c" stroke-width="1"/>
+<circle cx="570.8" cy="236.2" r="9.4" fill="#0f1114" stroke="#c8960c" stroke-width="1.25"/>
+<line x1="570.8" y1="236.2" x2="570.8" y2="229.1" stroke="#c8960c" stroke-width="1"/>
 </g>
 <g inkscape:label="components" inkscape:groupmode="layer">
 <circle id="input_0" cx="23.62" cy="64.47" r="0.5" fill="none" stroke="none"/>
@@ -114,5 +141,20 @@
 <circle id="param_0" cx="144.69" cy="87.60" r="0.5" fill="none" stroke="none"/>
 <circle id="param_1" cx="144.69" cy="180.12" r="0.5" fill="none" stroke="none"/>
 <circle id="param_2" cx="144.69" cy="272.64" r="0.5" fill="none" stroke="none"/>
+<circle id="param_owner_0" cx="157.97" cy="76.77" r="0.5" fill="none" stroke="none"/>
+<circle id="param_send_0_0" cx="188.63" cy="236.22" r="0.5" fill="none" stroke="none"/>
+<circle id="param_send_0_1" cx="223.38" cy="236.22" r="0.5" fill="none" stroke="none"/>
+<circle id="param_send_0_2" cx="258.12" cy="236.22" r="0.5" fill="none" stroke="none"/>
+<circle id="param_send_0_3" cx="292.86" cy="236.22" r="0.5" fill="none" stroke="none"/>
+<circle id="param_owner_1" cx="157.97" cy="124.02" r="0.5" fill="none" stroke="none"/>
+<circle id="param_send_1_0" cx="327.61" cy="236.22" r="0.5" fill="none" stroke="none"/>
+<circle id="param_send_1_1" cx="362.35" cy="236.22" r="0.5" fill="none" stroke="none"/>
+<circle id="param_send_1_2" cx="397.10" cy="236.22" r="0.5" fill="none" stroke="none"/>
+<circle id="param_send_1_3" cx="431.84" cy="236.22" r="0.5" fill="none" stroke="none"/>
+<circle id="param_owner_2" cx="157.97" cy="171.26" r="0.5" fill="none" stroke="none"/>
+<circle id="param_send_2_0" cx="466.58" cy="236.22" r="0.5" fill="none" stroke="none"/>
+<circle id="param_send_2_1" cx="501.33" cy="236.22" r="0.5" fill="none" stroke="none"/>
+<circle id="param_send_2_2" cx="536.07" cy="236.22" r="0.5" fill="none" stroke="none"/>
+<circle id="param_send_2_3" cx="570.82" cy="236.22" r="0.5" fill="none" stroke="none"/>
 </g>
 </svg>

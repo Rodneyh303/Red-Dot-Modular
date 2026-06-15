@@ -5,6 +5,7 @@
 #include "ui/SandsVisualEditorV4.hpp"
 #include "ui/TabButton.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
+#include "ui/SvgPanelKit.hpp"
 #include "dsp/managers/PolyVoiceSandsParameterManager.hpp"
 #include "dsp/managers/SpreadManager.hpp"
 
@@ -24,16 +25,18 @@ struct EastInterpItem : MenuItem {
     }
 };
 
-struct StraitsEastSandsVisualWidget : ModuleWidget {
+struct StraitsEastSandsVisualWidget : ModuleWidget,
+    dotModular::Compose<StraitsEastSandsVisualWidget,
+                        dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
     SandsVisualEditorV4*            visualEditor = nullptr;
     TabButtonGroup*                 tabGroup     = nullptr;
     PolyVoiceSandsParameterManager* paramMgr     = nullptr;
+    std::vector<rack::Widget*> blendControls;   // owner/send controls; greyed when no Macro
     int  selectedVoice = 0;
     bool initialized   = false;
     // Theme follow-Monsoon: cache both panel SVGs + the panel widget so step()
     // can swap when the connected host's lightTheme changes.
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
-    rack::app::SvgPanel* panelWidget = nullptr;
     int lastThemeLight = -1;  // -1 = unset, forces first apply
 
     explicit StraitsEastSandsVisualWidget(StraitsEastSandsVisual* mod) {
@@ -42,9 +45,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
                             "res/panels/StraitsEastSandsVisual_40HP.svg"));
         panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance,
                             "res/panels/StraitsEastSandsVisual_40HP_light.svg"));
-        panelWidget = createPanel(asset::plugin(pluginInstance,
+        loadPanel(asset::plugin(pluginInstance,
                             "res/panels/StraitsEastSandsVisual_40HP.svg"));
-        setPanel(panelWidget);
 
         redDot::addRedScrews(this);
 
@@ -61,25 +63,34 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         visualEditor->box.size = mm2px(Vec(ED_W, ED_H));
         addChild(visualEditor);
 
-        // ── 4 cols × 6 rows: jack1, jack2, atten1, atten2 ────────────────
+        // ── Controls bound by id from the SVG kit (#components in
+        //    gen_east_clean.py). Marker index == enum value:
+        //      input_<n>  n = cvId(r,c)   = 0 + r*2 + c   (CV jacks, 0..11)
+        //      param_<n>  n = attenId(r,c)= 3 + r*2 + c   (attenuverters, 3..14)
+        //      param_<n>  n = SPREAD_R/M/O = 0/1/2         (selected-voice spread)
         for (int r = 0; r < N_ROWS; ++r) {
-            float y = rowY(r);
-            addInput(createInputCentered<PJ301MPort>(mm2px(Vec(COL_J1, y)), mod, cvId(r,0)));
-            addInput(createInputCentered<PJ301MPort>(mm2px(Vec(COL_J2, y)), mod, cvId(r,1)));
-            addParam(createParamCentered<Trimpot>(   mm2px(Vec(COL_A1, y)), mod, attenId(r,0)));
-            addParam(createParamCentered<Trimpot>(   mm2px(Vec(COL_A2, y)), mod, attenId(r,1)));
+            bindInput<PJ301MPort>("input_" + std::to_string(cvId(r,0)), cvId(r,0));
+            bindInput<PJ301MPort>("input_" + std::to_string(cvId(r,1)), cvId(r,1));
+            bindParam<Trimpot>   ("param_" + std::to_string(attenId(r,0)), attenId(r,0));
+            bindParam<Trimpot>   ("param_" + std::to_string(attenId(r,1)), attenId(r,1));
         }
+        bindParam<Trimpot>("param_" + std::to_string((int)SPREAD_R), SPREAD_R);
+        bindParam<Trimpot>("param_" + std::to_string((int)SPREAD_M), SPREAD_M);
+        bindParam<Trimpot>("param_" + std::to_string((int)SPREAD_O), SPREAD_O);
 
-        // ── Per-lane SPREAD trimpots (selected voice): REST / MELODY / OCTAVE
-        // Placed in a column to the right of the atten columns, one per lane,
-        // vertically centred on each lane's two-row band.
-        {
-            float sx = SPREAD_X;
-            for (int lane = 0; lane < 3; ++lane) {
-                float y = 0.5f * (rowY(lane*2) + rowY(lane*2+1)); // centre of lane band
-                int pid = (lane==0)?SPREAD_R : (lane==1)?SPREAD_M : SPREAD_O;
-                addParam(createParamCentered<Trimpot>(mm2px(Vec(sx, y)), mod, pid));
-            }
+        // Macro/East blend controls (bound to the display proxies; copied to/from
+        // the per-voice MACRO params on voice switch + each frame). Owner = a
+        // latching on/off button (off=Macro owns base, on=East owns). Sends =
+        // attenuverter trimpots. Captured so step() can grey/hide them when no
+        // Macro visual is attached (they have no effect then — the equation's
+        // macro terms are zero — so this is feedback, not function).
+        for (int lane = 0; lane < 3; ++lane) {
+            bindParam<VCVLatch>("param_owner_" + std::to_string(lane), ownerDispId(lane),
+                std::function<void(VCVLatch*)>([this](VCVLatch* w){ blendControls.push_back(w); }));
+            for (int item = 0; item < 4; ++item)
+                bindParam<Trimpot>("param_send_" + std::to_string(lane) + "_" + std::to_string(item),
+                    sendDispId(lane, item),
+                    std::function<void(Trimpot*)>([this](Trimpot* w){ blendControls.push_back(w); }));
         }
 
         paramMgr = new PolyVoiceSandsParameterManager(nullptr, nullptr, 15, 0);
@@ -109,6 +120,23 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         module->params[SPREAD_M].setValue(module->params[melodyInterpId(v)].getValue());
         module->params[SPREAD_O].setValue(module->params[octaveInterpId(v)].getValue());
     }
+    // Owner/send display proxies ↔ per-voice MACRO_OWN/SEND params.
+    void saveVoiceMacro(int v) {
+        if (!module) return;
+        for (int lane=0; lane<3; ++lane) {
+            module->params[ownerId(v,lane)].setValue(module->params[ownerDispId(lane)].getValue());
+            for (int item=0; item<4; ++item)
+                module->params[sendId(v,lane,item)].setValue(module->params[sendDispId(lane,item)].getValue());
+        }
+    }
+    void loadVoiceMacro(int v) {
+        if (!module) return;
+        for (int lane=0; lane<3; ++lane) {
+            module->params[ownerDispId(lane)].setValue(module->params[ownerId(v,lane)].getValue());
+            for (int item=0; item<4; ++item)
+                module->params[sendDispId(lane,item)].setValue(module->params[sendId(v,lane,item)].getValue());
+        }
+    }
     void saveVoiceLOR(int v) {
         if (!module || !visualEditor) return;
         for (int l=0; l<3; ++l) {
@@ -132,10 +160,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         paramMgr->syncEditorToPatternEngine(selectedVoice, visualEditor->currentState);
         saveVoiceLOR(selectedVoice);
         saveVoiceSpread(selectedVoice);
+        saveVoiceMacro(selectedVoice);
         selectedVoice = nv;
         paramMgr->syncPatternEngineToEditor(selectedVoice, visualEditor->currentState);
         loadVoiceLOR(selectedVoice);
         loadVoiceSpread(selectedVoice);
+        loadVoiceMacro(selectedVoice);
     }
 
     Monsoon* getMonsoon() {
@@ -144,6 +174,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
 
     void step() override {
         ModuleWidget::step();
+        kitStep();
         if (!module || !paramMgr || !visualEditor) return;
         Monsoon* monsoon = getMonsoon();
         if (!monsoon) { if (visualEditor) visualEditor->clearPlaySteps(); return; }
@@ -154,11 +185,20 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         int wantLight = monsoon->lightTheme ? 1 : 0;
         if (wantLight != lastThemeLight) {
             lastThemeLight = wantLight;
-            if (panelWidget) {
-                panelWidget->setBackground(wantLight ? panelSvgLight : panelSvgDark);
+            for (Widget* child : children) {
+                if (auto* sp = dynamic_cast<app::SvgPanel*>(child)) {
+                    sp->setBackground(wantLight ? panelSvgLight : panelSvgDark);
+                    break;
+                }
             }
             if (visualEditor) visualEditor->setTheme(wantLight != 0);
         }
+
+        // Macro/East blend controls only do anything with a Macro visual attached
+        // (the equation's macro terms are zero otherwise). Hide them when absent
+        // so the panel doesn't imply controls that have no effect.
+        bool macroPresent = (monsoon->expanderManager.cachedMacroSandsVisual != nullptr);
+        for (Widget* w : blendControls) if (w) w->visible = macroPresent;
 
         auto* mod = static_cast<StraitsEastSandsVisual*>(module);
 
@@ -202,6 +242,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
 
         // Write display trimpots → selected voice INTERP params
         saveVoiceSpread(selectedVoice);
+        // Write owner/send display proxies → selected voice's per-voice MACRO
+        // params each frame, so the blend equation sees edits immediately (not
+        // only on voice switch).
+        saveVoiceMacro(selectedVoice);
 
         // SpreadManager for editor display
         auto& smgr = paramMgr->spreadMgr;
