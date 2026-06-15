@@ -48,12 +48,6 @@
 <circle cx="234.0" cy="260.0" r="9.0" fill="#dadce0" stroke="#9298a0" stroke-width="1.2"/>
 <circle cx="288.0" cy="260.0" r="9.0" fill="#dadce0" stroke="#9298a0" stroke-width="1.2"/>
 <circle cx="342.0" cy="260.0" r="9.0" fill="#dadce0" stroke="#9298a0" stroke-width="1.2"/>
-<circle cx="48.0" cy="295.0" r="8.0" fill="#d4d6d9" stroke="#a8aeb6" stroke-width="1.2"/>
-<circle cx="102.0" cy="295.0" r="8.0" fill="#d4d6d9" stroke="#a8aeb6" stroke-width="1.2"/>
-<circle cx="168.0" cy="295.0" r="9.0" fill="#dadce0" stroke="#9298a0" stroke-width="1.2"/>
-<circle cx="234.0" cy="295.0" r="9.0" fill="#dadce0" stroke="#9298a0" stroke-width="1.2"/>
-<circle cx="288.0" cy="295.0" r="9.0" fill="#dadce0" stroke="#9298a0" stroke-width="1.2"/>
-<circle cx="342.0" cy="295.0" r="9.0" fill="#dadce0" stroke="#9298a0" stroke-width="1.2"/>
 <circle cx="168.0" cy="300.0" r="9.0" fill="#dadce0" stroke="#9298a0" stroke-width="1.2"/>
 <circle cx="234.0" cy="300.0" r="9.0" fill="#dadce0" stroke="#9298a0" stroke-width="1.2"/>
 <circle cx="288.0" cy="300.0" r="9.0" fill="#dadce0" stroke="#9298a0" stroke-width="1.2"/>
@@ -101,12 +95,6 @@
 <circle id="output_gate_6" cx="234.00" cy="260.00" r="0.5" fill="none" stroke="none"/>
 <circle id="output_cv_6" cx="288.00" cy="260.00" r="0.5" fill="none" stroke="none"/>
 <circle id="output_acc_6" cx="342.00" cy="260.00" r="0.5" fill="none" stroke="none"/>
-<circle id="param_knob_7" cx="48.00" cy="295.00" r="0.5" fill="none" stroke="none"/>
-<circle id="param_att_7" cx="102.00" cy="295.00" r="0.5" fill="none" stroke="none"/>
-<circle id="input_modcv_7" cx="168.00" cy="295.00" r="0.5" fill="none" stroke="none"/>
-<circle id="output_gate_7" cx="234.00" cy="295.00" r="0.5" fill="none" stroke="none"/>
-<circle id="output_cv_7" cx="288.00" cy="295.00" r="0.5" fill="none" stroke="none"/>
-<circle id="output_acc_7" cx="342.00" cy="295.00" r="0.5" fill="none" stroke="none"/>
 <circle id="input_global_modcv" cx="168.00" cy="300.00" r="0.5" fill="none" stroke="none"/>
 <circle id="output_global_gate" cx="234.00" cy="300.00" r="0.5" fill="none" stroke="none"/>
 <circle id="output_global_cv" cx="288.00" cy="300.00" r="0.5" fill="none" stroke="none"/>

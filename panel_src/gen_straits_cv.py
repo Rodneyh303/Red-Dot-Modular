@@ -30,8 +30,10 @@ MM2PX = 2.9528
 COL = dict(knob=48.0, att=102.0, modIn=168.0, gateOut=234.0, cvOut=288.0, accOut=342.0)
 START_Y = 50.0
 SPACING_Y = 35.0
-N_VOICES = 8                       # rows per panel (East 1-8, West 9-16)
-GLOBAL_Y = START_Y + 7 * SPACING_Y + 5.0   # the lone global row beneath the 8
+# East adds voices 2-8 (7 rows; voice 1 is Monsoon's own mono voice). West adds
+# voices 9-16 (8 rows). The global utility row sits one spacing below the last.
+N_ROWS = dict(east=7, west=8)
+def global_y(side): return START_Y + N_ROWS[side] * SPACING_Y + 5.0
 
 # ── absolute param/input/output indices (MonsoonIds order) ────────────────────
 # These mirror exactly what the East/West widgets bind. The kit markers carry the
@@ -121,7 +123,9 @@ def gen(side, dark, variant="plain"):
 
     # ── visible control art (wells/rings) ─────────────────────────────────────
     A('<g>')
-    for i in range(N_VOICES):
+    nrows = N_ROWS[side]
+    gy = global_y(side)
+    for i in range(nrows):
         y = START_Y + i * SPACING_Y
         A(trimwell(COL["knob"], y, t))
         A(trimwell(COL["att"], y, t))
@@ -131,20 +135,20 @@ def gen(side, dark, variant="plain"):
         A(jackwell(COL["accOut"], y, t))
     # global row
     if side == "east":
-        A(jackwell(COL["modIn"], GLOBAL_Y, t))
-        A(jackwell(COL["gateOut"], GLOBAL_Y, t))
-        A(jackwell(COL["cvOut"], GLOBAL_Y, t))
+        A(jackwell(COL["modIn"], gy, t))
+        A(jackwell(COL["gateOut"], gy, t))
+        A(jackwell(COL["cvOut"], gy, t))
     else:
-        A(jackwell(COL["knob"], GLOBAL_Y, t))
-        A(jackwell(COL["gateOut"], GLOBAL_Y, t))
-        A(jackwell(COL["cvOut"], GLOBAL_Y, t))
+        A(jackwell(COL["knob"], gy, t))
+        A(jackwell(COL["gateOut"], gy, t))
+        A(jackwell(COL["cvOut"], gy, t))
     A('</g>')
 
     # ── SVG-kit component layer (bind anchors; near-invisible) ────────────────
     # label scheme: param_knob_<row>, param_att_<row>, input_modcv_<row>,
     # output_gate_<row>, output_cv_<row>, output_acc_<row>; plus the global row.
     A('<g id="components">')
-    for i in range(N_VOICES):
+    for i in range(nrows):
         y = START_Y + i * SPACING_Y
         A(kit_marker("param", f"knob_{i}", COL["knob"], y))
         A(kit_marker("param", f"att_{i}",  COL["att"], y))
@@ -153,13 +157,13 @@ def gen(side, dark, variant="plain"):
         A(kit_marker("output", f"cv_{i}",   COL["cvOut"], y))
         A(kit_marker("output", f"acc_{i}",  COL["accOut"], y))
     if side == "east":
-        A(kit_marker("input",  "global_modcv", COL["modIn"], GLOBAL_Y))
-        A(kit_marker("output", "global_gate",  COL["gateOut"], GLOBAL_Y))
-        A(kit_marker("output", "global_cv",    COL["cvOut"], GLOBAL_Y))
+        A(kit_marker("input",  "global_modcv", COL["modIn"], gy))
+        A(kit_marker("output", "global_gate",  COL["gateOut"], gy))
+        A(kit_marker("output", "global_cv",    COL["cvOut"], gy))
     else:
-        A(kit_marker("input",  "global_cv_in", COL["knob"], GLOBAL_Y))
-        A(kit_marker("output", "global_gate",  COL["gateOut"], GLOBAL_Y))
-        A(kit_marker("output", "global_cv",    COL["cvOut"], GLOBAL_Y))
+        A(kit_marker("input",  "global_cv_in", COL["knob"], gy))
+        A(kit_marker("output", "global_gate",  COL["gateOut"], gy))
+        A(kit_marker("output", "global_cv",    COL["cvOut"], gy))
     A('</g>')
 
     A('</svg>')
