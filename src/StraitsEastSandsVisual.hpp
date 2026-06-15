@@ -123,7 +123,7 @@ struct StraitsEastSandsVisual : Module {
         };
         for (int r=0; r<6; ++r)
             for (int c=0; c<2; ++c) {
-                configParam(attenId(r,c), -1.f,1.f,1.f,
+                configParam(attenId(r,c), -1.f,1.f,0.f,
                             std::string(rowNames[r][c])+" depth");
                 configInput(cvId(r,c),
                             std::string(rowNames[r][c])+" CV (poly)");

@@ -88,7 +88,7 @@ struct MonsoonSandsVisualExpander : Module {
             configParam(offId(l), 0.f, 15.f,  0.f, std::string(names[l])+" Offset");
             configParam(rotId(l), 0.f, 15.f,  0.f, std::string(names[l])+" Rotation");
             for (int p = 0; p < 3; ++p) {  // LEN/OFF/ROT
-                configParam(attenId(l, p), -1.f, 1.f, 1.f,
+                configParam(attenId(l, p), -1.f, 1.f, 0.f,
                             std::string(names[l])+" "+lnames[p]+" depth");
                 configInput(cvId(l, p),
                             std::string(names[l])+" "+lnames[p]+" CV");
@@ -97,7 +97,7 @@ struct MonsoonSandsVisualExpander : Module {
         // Spread group: REST/MEL/OCT only (mono-only lanes have no spread)
         for (int l = 0; l < N_SPREAD_LANES; ++l) {
             configParam(sprId(l), -1.f, 1.f, 0.f, std::string(names[l])+" Spread");
-            configParam(sprAttenId(l), -1.f, 1.f, 1.f, std::string(names[l])+" Spread depth");
+            configParam(sprAttenId(l), -1.f, 1.f, 0.f, std::string(names[l])+" Spread depth");
             configInput(sprCvId(l), std::string(names[l])+" Spread CV");
         }
     }
