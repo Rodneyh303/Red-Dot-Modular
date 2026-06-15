@@ -1,3 +1,12 @@
+// ============================================================================
+// DEPRECATED / ARCHIVED — NOT COMPILED.
+// This is the SandsVisualEditorV4 as it was BEFORE per-cell probability editing
+// was removed. It retains the DragState::BAR path (drag a step's bar up/down to
+// set that step's probability directly). Per-cell editing was never part of the
+// dot.modular plan; the live editor manipulates only the window (length/offset/
+// rotation) + LOR/spread modulation. Kept here purely for possible reuse in a
+// different project. Do NOT include this from compiled code.
+// ============================================================================
 #pragma once
 #include <rack.hpp>
 #include <array>
@@ -173,13 +182,16 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   int selectedPreset = 0;
   
   struct DragState {
-    enum Type { NONE, START, END, ROTATION, WINDOW };
+    enum Type { NONE, BAR, START, END, ROTATION, WINDOW };
     Type  type         = NONE;
     int   dragLane     = 0;
+    int   dragStep     = 0;
     math::Vec dragPos  = {};  // accumulated absolute position (Rack2: DragMove has delta not pos)
     int   grabStep     = 0;   // step under cursor at press (for relative WINDOW move)
     int   grabOffset   = 0;   // lane.offset at press (window slides relative to this)
+    // backward-compat aliases used elsewhere in the file
     bool  isDragging     = false;
+    bool  isDraggingBar  = false;
   } dragState;
   
   struct KeyboardState {
@@ -547,37 +559,25 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       return (px >= sxL && px <= rightEdge) || (px >= leftEdge && px <= exR);
     };
 
-    // With per-cell editing removed, the whole lane is free for window control,
-    // so the grab zones are generous (the old scheme crammed everything into the
-    // top 16% with 30%-cell edges, which was nearly impossible to hit).
-    //   TOP ~65% of the lane = window strip:
-    //     • START zone: a full-cell-wide (min ~4mm) band at the window's front
-    //     • END   zone: same at the window's back
-    //     • MOVE:  everything between them
-    //   BOTTOM ~35% = ROTATION (within the window span).
-    // For a 1-wide window START/END share the cell, split left-half/right-half.
-    float bandBot = laneR.pos.y + laneR.size.y * 0.65f;
+    // TOP band (~top 16% of the lane): the window control strip.
+    //   • left edge of the START cell   → drag to set OFFSET  (resize from front)
+    //   • right edge of the END cell     → drag to set LENGTH (resize from back)
+    //   • anywhere else in the range     → MOVE the whole window
+    // The edges are quarter-cell zones that ride ON the cells, so even a 1-wide
+    // window exposes a distinct left-quarter (start) and right-quarter (end) on
+    // the same cell — the old floating brackets collided there and got stuck.
+    float bandBot = laneR.pos.y + laneR.size.y * 0.16f;
     if (y >= laneR.pos.y && y <= bandBot && inWindowX(x)) {
+      float edgeW = layout.stepWidthF() * 0.30f;
       rack::Rect cs = layout.getStepRect(lane, L.editStartBar());
       rack::Rect ce = layout.getStepRect(lane, L.editEndBar());
-      // Generous edge width: a whole cell, but at least ~4mm so it stays
-      // grabbable even when many steps squeeze the cells thin.
-      float minEdge = mm2px(4.f);
-      float edgeW = std::max(layout.stepWidthF(), minEdge);
-      float startZoneR = cs.pos.x + edgeW;                 // START spans [cell start .. +edgeW]
-      float endZoneL   = ce.pos.x + ce.size.x - edgeW;     // END spans [cell end -edgeW .. cell end]
-      // 1-wide window (same cell): split the cell in half instead of overlapping.
-      if (L.editStartBar() == L.editEndBar()) {
-        float mid = cs.pos.x + cs.size.x * 0.5f;
-        return (x <= mid) ? DragState::START : DragState::END;
-      }
-      if (x <= startZoneR) return DragState::START; // front → set OFFSET
-      if (x >= endZoneL)   return DragState::END;   // back  → set LENGTH
-      return DragState::WINDOW;                     // body  → MOVE whole window
+      if (x <= cs.pos.x + edgeW)                       return DragState::START; // front edge
+      if (x >= ce.pos.x + ce.size.x - edgeW)           return DragState::END;   // back edge
+      return DragState::WINDOW;                                                 // body → move
     }
 
-    // BOTTOM ~35%: ROTATION strip, within the start–end window.
-    float rotTop = laneR.pos.y + laneR.size.y * 0.65f;
+    // BOTTOM ~30%: ROTATION strip, but only within the start–end window.
+    float rotTop = laneR.pos.y + laneR.size.y * 0.70f;
     if (y >= rotTop && y <= laneR.pos.y + laneR.size.y && inWindowX(x))
       return DragState::ROTATION;
 
@@ -750,6 +750,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
           dragState.type       = handleHit;
           dragState.dragLane   = lane;
           dragState.isDragging = true;
+          dragState.isDraggingBar = false;
           dragState.dragPos    = e.pos;   // capture start pos
           // For a WINDOW move, remember where the grab started so the window
           // slides relative to the cursor (grab the middle, the whole range
@@ -760,15 +761,22 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
           return;
         }
 
-        // Per-cell probability editing was removed (never part of the plan): the
-        // editor manipulates only the window (length/offset/rotation) via the
-        // handles above. A click that isn't on a handle does nothing here, so we
-        // don't steal it from the window gestures. (Archived editor with per-cell
-        // editing: src/deprecated/SandsVisualEditorV4_with_percell_editing.hpp.)
+        // Fall through to bar drag
+        if (step >= 0 && step < STEP_COUNT) {
+          dragState.type          = DragState::BAR;
+          dragState.isDraggingBar = true;
+          dragState.isDragging    = true;
+          dragState.dragLane      = lane;
+          dragState.dragStep      = step;
+          dragState.dragPos       = e.pos;   // capture start pos
+          setBarValue(lane, step, e.pos.y);
+          e.consume(this);
+        }
       }
     } else if (e.action == GLFW_RELEASE) {
       if (dragState.isDragging) saveToHistory();
       dragState.isDragging    = false;
+      dragState.isDraggingBar = false;
       dragState.type          = DragState::NONE;
     }
   }
@@ -785,6 +793,10 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     ProbabilityLane& L = currentState.lanes[lane];
 
     switch (dragState.type) {
+      case DragState::BAR:
+        setBarValue(lane, step, dragState.dragPos.y);
+        break;
+
       case DragState::WINDOW: {
         // Move the whole window: slide offset by how far the cursor has moved in
         // steps since the grab. Length and rotation are preserved. Offset wraps
@@ -859,6 +871,14 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     if (x < layout.padding) return -1;
     int step = (int)((x - layout.padding) / layout.stepWidthF());
     return (step >= 0 && step < STEP_COUNT) ? step : -1;
+  }
+  
+  void setBarValue(int lane, int step, float mouseY) {
+    rack::Rect rect = layout.getStepRect(lane, step);
+    float relY = mouseY - rect.pos.y;
+    float value = 1.f - (relY / rect.size.y);
+    value = rack::math::clamp(value, 0.f, 1.f);
+    currentState.lanes[lane].setProbability(step, value);
   }
   
   void step() override {
