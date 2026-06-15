@@ -71,16 +71,18 @@ def ticket_fan(t, cx_mm, pivot_mm):
     return o
 
 
-def jack_well(t, x_mm, y_mm, ring=None):
+def jack_well(t, x_mm, y_mm, ring=None, cid=None):
     x,y = mm(x_mm), mm(y_mm)
     r = ring or t["red"]
-    return (f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{mm(3.6):.1f}" fill="{t["well"]}" stroke="{t["wellring"]}" stroke-width="1.2"/>'
+    idattr = f' id="{cid}"' if cid else ''
+    return (f'<circle{idattr} cx="{x:.1f}" cy="{y:.1f}" r="{mm(3.6):.1f}" fill="{t["well"]}" stroke="{t["wellring"]}" stroke-width="1.2"/>'
             f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{mm(2.0):.1f}" fill="none" stroke="{r}" stroke-width="0.7" opacity="0.5"/>')
 
 
-def trim_well(t, x_mm, y_mm):
+def trim_well(t, x_mm, y_mm, cid=None):
     x,y = mm(x_mm), mm(y_mm)
-    return (f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{mm(3.0):.1f}" fill="{t["well"]}" stroke="{t["gold"]}" stroke-width="1.3"/>'
+    idattr = f' id="{cid}"' if cid else ''
+    return (f'<circle{idattr} cx="{x:.1f}" cy="{y:.1f}" r="{mm(3.0):.1f}" fill="{t["well"]}" stroke="{t["gold"]}" stroke-width="1.3"/>'
             f'<line x1="{x:.1f}" y1="{y-mm(0.9):.1f}" x2="{x:.1f}" y2="{y-mm(2.4):.1f}" stroke="{t["red"]}" stroke-width="1.2" stroke-linecap="round"/>')
 
 
@@ -107,19 +109,19 @@ def panel(theme):
     # header motif: fanning raffle tickets — pivot below the branding band
     o += ticket_fan(t, cx_mm=W/2/S, pivot_mm=17.0)
 
-    # control wells (from CW geometry): CV cols {9,21,39,51} rows {38,50};
-    # gate cols {16,44} rows {66,78,90,102,114}
-    CV_COLS=[9.,21.,39.,51.]; CV_ROWS=[38.,50.]
-    G_COLS=[16.,44.]; G_ROWS=[66.,78.,90.,102.,114.]
+    # control wells with KIT ID markers, driven by the SAME source of truth as
+    # the module (panel_src/layouts/causeway.json). Each control's id becomes the
+    # SVG marker id "<kind>_<CONTROL_ID>" so the widget binds by name via the kit.
+    import json, os
+    _here = os.path.dirname(os.path.abspath(__file__))
+    controls = json.load(open(os.path.join(_here, "layouts", "causeway.json")))["controls"]
     o.append('<g id="components">')
-    for ry in CV_ROWS:
-        o.append(jack_well(t, CV_COLS[0], ry))
-        o.append(trim_well(t, CV_COLS[1], ry))
-        o.append(trim_well(t, CV_COLS[2], ry))
-        o.append(jack_well(t, CV_COLS[3], ry))
-    for ry in G_ROWS:
-        o.append(jack_well(t, G_COLS[0], ry))
-        o.append(jack_well(t, G_COLS[1], ry))
+    for c in controls:
+        cid = f'{c["kind"]}_{c["id"]}'           # e.g. param_CAUSEWAY_SLEW_R_ATT
+        if c["kind"] == "param":
+            o.append(trim_well(t, c["x_mm"], c["y_mm"], cid=cid))
+        else:
+            o.append(jack_well(t, c["x_mm"], c["y_mm"], cid=cid))
     o.append('</g>')
     o.append('</svg>')
     return "\n".join(o)

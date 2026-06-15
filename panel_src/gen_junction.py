@@ -82,15 +82,17 @@ def waves(t, y0_mm, n=3):
     return o
 
 
-def jack_well(t, x_mm, y_mm):
+def jack_well(t, x_mm, y_mm, cid=None):
     x,y = mm(x_mm), mm(y_mm)
-    return (f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{mm(3.6):.1f}" fill="{t["well"]}" stroke="{t["wellring"]}" stroke-width="1.2"/>'
+    idattr = f' id="{cid}"' if cid else ''
+    return (f'<circle{idattr} cx="{x:.1f}" cy="{y:.1f}" r="{mm(3.6):.1f}" fill="{t["well"]}" stroke="{t["wellring"]}" stroke-width="1.2"/>'
             f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{mm(2.0):.1f}" fill="none" stroke="{t["red"]}" stroke-width="0.7" opacity="0.5"/>')
 
 
-def trim_well(t, x_mm, y_mm):
+def trim_well(t, x_mm, y_mm, cid=None):
     x,y = mm(x_mm), mm(y_mm)
-    return (f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{mm(3.2):.1f}" fill="{t["well"]}" stroke="{t["gold"]}" stroke-width="1.4"/>'
+    idattr = f' id="{cid}"' if cid else ''
+    return (f'<circle{idattr} cx="{x:.1f}" cy="{y:.1f}" r="{mm(3.2):.1f}" fill="{t["well"]}" stroke="{t["gold"]}" stroke-width="1.4"/>'
             f'<line x1="{x:.1f}" y1="{y-mm(1):.1f}" x2="{x:.1f}" y2="{y-mm(2.6):.1f}" stroke="{t["red"]}" stroke-width="1.3" stroke-linecap="round"/>')
 
 
@@ -108,12 +110,15 @@ def panel(theme):
     # header motif: pinisi over waves — below branding band, sized to clear y=60 controls
     o += waves(t, 47.0)
     o += pinisi(t, cx_mm=W/2/S, top_mm=20.0)
-    # control wells (5 CV @ x14 + 5 atten @ x30), y 60..116
+    # control wells with KIT ID markers, matching the Surge module's controls
+    # (same geometry). Row order = NOTEVAL, VARIATION, LEGATO, REST, ACCENT;
+    # per row: input=<NAME>_CV jack, param=<NAME>_ATT trim.
     ROWS=[60.,74.,88.,102.,116.]; JACK_X=14.; ATT_X=30.
+    NAMES=["NOTEVAL","VARIATION","LEGATO","REST","ACCENT"]
     o.append('<g id="components">')
-    for y in ROWS:
-        o.append(jack_well(t, JACK_X, y))
-        o.append(trim_well(t, ATT_X, y))
+    for i, y in enumerate(ROWS):
+        o.append(jack_well(t, JACK_X, y, cid=f"input_SURGE_{NAMES[i]}_CV"))
+        o.append(trim_well(t, ATT_X, y,  cid=f"param_SURGE_{NAMES[i]}_ATT"))
     o.append('</g>')
     o.append('</svg>')
     return "\n".join(o)
