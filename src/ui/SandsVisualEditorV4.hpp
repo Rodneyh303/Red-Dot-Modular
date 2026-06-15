@@ -24,7 +24,7 @@ using namespace rack;  // widget::Widget::DrawArgs, event::*, math::*
  */
 
 struct SandsVisualEditorV4 : rack::TransparentWidget {
-  static constexpr int STEP_COUNT = 16;  // 16 probability values per lane
+ inline static constexpr int STEP_COUNT = 16;  // 16 probability values per lane
   
   enum Mode {
     MONO,

@@ -3,6 +3,7 @@
 //#include "../../MonsoonDeepStraitsSands.hpp"
 #include "../../StraitsEastSandsVisual.hpp"
 //#include "../../StraitsWestSandsVisual.hpp"
+#include "../../StraitsSandsMacroVisual.hpp"
 
 using namespace rack;
 
