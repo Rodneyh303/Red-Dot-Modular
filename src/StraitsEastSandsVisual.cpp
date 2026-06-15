@@ -31,6 +31,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     SandsVisualEditorV4*            visualEditor = nullptr;
     TabButtonGroup*                 tabGroup     = nullptr;
     PolyVoiceSandsParameterManager* paramMgr     = nullptr;
+    std::vector<rack::Widget*> blendControls;   // owner/send controls; greyed when no Macro
     int  selectedVoice = 0;
     bool initialized   = false;
     // Theme follow-Monsoon: cache both panel SVGs + the panel widget so step()
@@ -77,6 +78,21 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         bindParam<Trimpot>("param_" + std::to_string((int)SPREAD_M), SPREAD_M);
         bindParam<Trimpot>("param_" + std::to_string((int)SPREAD_O), SPREAD_O);
 
+        // Macro/East blend controls (bound to the display proxies; copied to/from
+        // the per-voice MACRO params on voice switch + each frame). Owner = a
+        // latching on/off button (off=Macro owns base, on=East owns). Sends =
+        // attenuverter trimpots. Captured so step() can grey/hide them when no
+        // Macro visual is attached (they have no effect then — the equation's
+        // macro terms are zero — so this is feedback, not function).
+        for (int lane = 0; lane < 3; ++lane) {
+            bindParam<VCVLatch>("param_owner_" + std::to_string(lane), ownerDispId(lane),
+                std::function<void(VCVLatch*)>([this](VCVLatch* w){ blendControls.push_back(w); }));
+            for (int item = 0; item < 4; ++item)
+                bindParam<Trimpot>("param_send_" + std::to_string(lane) + "_" + std::to_string(item),
+                    sendDispId(lane, item),
+                    std::function<void(Trimpot*)>([this](Trimpot* w){ blendControls.push_back(w); }));
+        }
+
         paramMgr = new PolyVoiceSandsParameterManager(nullptr, nullptr, 15, 0);
     }
 
@@ -104,6 +120,23 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         module->params[SPREAD_M].setValue(module->params[melodyInterpId(v)].getValue());
         module->params[SPREAD_O].setValue(module->params[octaveInterpId(v)].getValue());
     }
+    // Owner/send display proxies ↔ per-voice MACRO_OWN/SEND params.
+    void saveVoiceMacro(int v) {
+        if (!module) return;
+        for (int lane=0; lane<3; ++lane) {
+            module->params[ownerId(v,lane)].setValue(module->params[ownerDispId(lane)].getValue());
+            for (int item=0; item<4; ++item)
+                module->params[sendId(v,lane,item)].setValue(module->params[sendDispId(lane,item)].getValue());
+        }
+    }
+    void loadVoiceMacro(int v) {
+        if (!module) return;
+        for (int lane=0; lane<3; ++lane) {
+            module->params[ownerDispId(lane)].setValue(module->params[ownerId(v,lane)].getValue());
+            for (int item=0; item<4; ++item)
+                module->params[sendDispId(lane,item)].setValue(module->params[sendId(v,lane,item)].getValue());
+        }
+    }
     void saveVoiceLOR(int v) {
         if (!module || !visualEditor) return;
         for (int l=0; l<3; ++l) {
@@ -127,10 +160,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         paramMgr->syncEditorToPatternEngine(selectedVoice, visualEditor->currentState);
         saveVoiceLOR(selectedVoice);
         saveVoiceSpread(selectedVoice);
+        saveVoiceMacro(selectedVoice);
         selectedVoice = nv;
         paramMgr->syncPatternEngineToEditor(selectedVoice, visualEditor->currentState);
         loadVoiceLOR(selectedVoice);
         loadVoiceSpread(selectedVoice);
+        loadVoiceMacro(selectedVoice);
     }
 
     Monsoon* getMonsoon() {
@@ -158,6 +193,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             }
             if (visualEditor) visualEditor->setTheme(wantLight != 0);
         }
+
+        // Macro/East blend controls only do anything with a Macro visual attached
+        // (the equation's macro terms are zero otherwise). Hide them when absent
+        // so the panel doesn't imply controls that have no effect.
+        bool macroPresent = (monsoon->expanderManager.cachedMacroSandsVisual != nullptr);
+        for (Widget* w : blendControls) if (w) w->visible = macroPresent;
 
         auto* mod = static_cast<StraitsEastSandsVisual*>(module);
 
@@ -201,6 +242,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
 
         // Write display trimpots → selected voice INTERP params
         saveVoiceSpread(selectedVoice);
+        // Write owner/send display proxies → selected voice's per-voice MACRO
+        // params each frame, so the blend equation sees edits immediately (not
+        // only on voice switch).
+        saveVoiceMacro(selectedVoice);
 
         // SpreadManager for editor display
         auto& smgr = paramMgr->spreadMgr;

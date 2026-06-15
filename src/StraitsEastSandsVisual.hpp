@@ -85,6 +85,10 @@ namespace StraitsEastVisualIds {
     // Macro-CV blend send per (voice, lane, item) item 0=LEN 1=OFF 2=ROT 3=SPR:
     //   MonsoonIds::MACRO_SEND_START + (v*3 + lane)*4 + item. Default unity.
     inline int sendId(int v, int lane, int item) { return MonsoonIds::MACRO_SEND_START + (v*3 + lane)*4 + item; }
+    // Display proxies (selected-voice view; copied to/from the per-voice params
+    // on voice switch). ownerDispId(lane) 0-2; sendDispId(lane,item) 0-11.
+    inline int ownerDispId(int lane)           { return MonsoonIds::MACRO_OWN_DISP_START + lane; }
+    inline int sendDispId(int lane, int item)  { return MonsoonIds::MACRO_SEND_DISP_START + lane*4 + item; }
 }
 
 struct StraitsEastSandsVisual : Module {
@@ -97,6 +101,20 @@ struct StraitsEastSandsVisual : Module {
         configParam(SPREAD_R, -1.f,1.f,0.f,"Spread REST");
         configParam(SPREAD_M, -1.f,1.f,0.f,"Spread MELODY");
         configParam(SPREAD_O, -1.f,1.f,0.f,"Spread OCTAVE");
+
+        // Display proxies for the selected-voice owner/send controls (copied
+        // to/from the per-voice MACRO_OWN/SEND params on voice switch). Owner is
+        // an on/off switch (off=Macro owns base, on=East owns). Sends -1..1
+        // default unity (Macro CV reaches the voice; turn down to localise).
+        const char* laneNm[3] = {"REST","MEL","OCT"};
+        const char* itemNm[4] = {"Len","Off","Rot","Spr"};
+        for (int lane=0; lane<3; ++lane) {
+            configSwitch(ownerDispId(lane), 0.f,1.f,0.f,
+                         std::string(laneNm[lane])+" base owner", {"Macro","East"});
+            for (int item=0; item<4; ++item)
+                configParam(sendDispId(lane,item), -1.f,1.f,1.f,
+                            std::string(laneNm[lane])+" Macro send "+itemNm[item]);
+        }
 
         static const char* rowNames[6][2] = {
             {"REST Len","REST Off"}, {"REST Rot","REST Spr"},
