@@ -1,5 +1,6 @@
 #pragma once
 #include <rack.hpp>
+#include <GLFW/glfw3.h>   // glfwSetCursor / glfwCreateStandardCursor (cursor cues)
 #include <array>
 #include <deque>
 #include <cstring>
@@ -186,6 +187,21 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // is over (reuses DragState::Type). draw() highlights the hovered zone.
   int hoverLane = -1;
   DragState::Type hoverZone = DragState::NONE;
+
+  // Cursor cues. API (confirmed): glfwSetCursor(APP->window->win, cursor) with
+  // cursor from glfwCreateStandardCursor(...). Cached (created once) to avoid
+  // per-frame allocation; destroyed in the dtor; reset to nullptr on leave so the
+  // cursor never sticks outside the editor.
+  GLFWcursor* curResize = nullptr;   // START/END edges → horizontal resize
+  GLFWcursor* curHand   = nullptr;   // WINDOW body / ROTATION → hand (movable)
+  void applyCursor(DragState::Type z) {
+    if (!curResize) curResize = glfwCreateStandardCursor(GLFW_HRESIZE_CURSOR);
+    if (!curHand)   curHand   = glfwCreateStandardCursor(GLFW_HAND_CURSOR);
+    GLFWcursor* c = nullptr;
+    if (z == DragState::START || z == DragState::END)            c = curResize;
+    else if (z == DragState::WINDOW || z == DragState::ROTATION) c = curHand;
+    glfwSetCursor(APP->window->win, c);   // nullptr → default arrow
+  }
   
   struct KeyboardState {
     int selectedLane = 0;
@@ -264,6 +280,11 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     box.size = rack::Vec(550, 250);
     resetState();
     initializePresets();
+  }
+
+  ~SandsVisualEditorV4() {
+    if (curResize) glfwDestroyCursor(curResize);
+    if (curHand)   glfwDestroyCursor(curHand);
   }
   
   void setMode(Mode m) {
@@ -796,6 +817,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
                         ? hitTestHandle(lane, e.pos.x, e.pos.y) : DragState::NONE;
     hoverLane = (z == DragState::NONE) ? -1 : lane;
     hoverZone = z;
+    applyCursor(z);
     e.consume(this);
   }
 
@@ -803,6 +825,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     Widget::onLeave(e);
     hoverLane = -1;
     hoverZone = DragState::NONE;
+    glfwSetCursor(APP->window->win, nullptr);   // CRITICAL: reset or it sticks globally
   }
 
   void onButton(const rack::event::Button& e) override {
