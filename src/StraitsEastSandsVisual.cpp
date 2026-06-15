@@ -5,6 +5,7 @@
 #include "ui/SandsVisualEditorV4.hpp"
 #include "ui/TabButton.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
+#include "ui/SvgPanelKit.hpp"
 #include "dsp/managers/PolyVoiceSandsParameterManager.hpp"
 #include "dsp/managers/SpreadManager.hpp"
 
@@ -24,7 +25,9 @@ struct EastInterpItem : MenuItem {
     }
 };
 
-struct StraitsEastSandsVisualWidget : ModuleWidget {
+struct StraitsEastSandsVisualWidget : ModuleWidget,
+    dotModular::Compose<StraitsEastSandsVisualWidget,
+                        dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
     SandsVisualEditorV4*            visualEditor = nullptr;
     TabButtonGroup*                 tabGroup     = nullptr;
     PolyVoiceSandsParameterManager* paramMgr     = nullptr;
@@ -33,7 +36,6 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
     // Theme follow-Monsoon: cache both panel SVGs + the panel widget so step()
     // can swap when the connected host's lightTheme changes.
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
-    rack::app::SvgPanel* panelWidget = nullptr;
     int lastThemeLight = -1;  // -1 = unset, forces first apply
 
     explicit StraitsEastSandsVisualWidget(StraitsEastSandsVisual* mod) {
@@ -42,9 +44,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
                             "res/panels/StraitsEastSandsVisual_40HP.svg"));
         panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance,
                             "res/panels/StraitsEastSandsVisual_40HP_light.svg"));
-        panelWidget = createPanel(asset::plugin(pluginInstance,
+        loadPanel(asset::plugin(pluginInstance,
                             "res/panels/StraitsEastSandsVisual_40HP.svg"));
-        setPanel(panelWidget);
 
         redDot::addRedScrews(this);
 
@@ -61,26 +62,20 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         visualEditor->box.size = mm2px(Vec(ED_W, ED_H));
         addChild(visualEditor);
 
-        // ── 4 cols × 6 rows: jack1, jack2, atten1, atten2 ────────────────
+        // ── Controls bound by id from the SVG kit (#components in
+        //    gen_east_clean.py). Marker index == enum value:
+        //      input_<n>  n = cvId(r,c)   = 0 + r*2 + c   (CV jacks, 0..11)
+        //      param_<n>  n = attenId(r,c)= 3 + r*2 + c   (attenuverters, 3..14)
+        //      param_<n>  n = SPREAD_R/M/O = 0/1/2         (selected-voice spread)
         for (int r = 0; r < N_ROWS; ++r) {
-            float y = rowY(r);
-            addInput(createInputCentered<PJ301MPort>(mm2px(Vec(COL_J1, y)), mod, cvId(r,0)));
-            addInput(createInputCentered<PJ301MPort>(mm2px(Vec(COL_J2, y)), mod, cvId(r,1)));
-            addParam(createParamCentered<Trimpot>(   mm2px(Vec(COL_A1, y)), mod, attenId(r,0)));
-            addParam(createParamCentered<Trimpot>(   mm2px(Vec(COL_A2, y)), mod, attenId(r,1)));
+            bindInput<PJ301MPort>("input_" + std::to_string(cvId(r,0)), cvId(r,0));
+            bindInput<PJ301MPort>("input_" + std::to_string(cvId(r,1)), cvId(r,1));
+            bindParam<Trimpot>   ("param_" + std::to_string(attenId(r,0)), attenId(r,0));
+            bindParam<Trimpot>   ("param_" + std::to_string(attenId(r,1)), attenId(r,1));
         }
-
-        // ── Per-lane SPREAD trimpots (selected voice): REST / MELODY / OCTAVE
-        // Placed in a column to the right of the atten columns, one per lane,
-        // vertically centred on each lane's two-row band.
-        {
-            float sx = SPREAD_X;
-            for (int lane = 0; lane < 3; ++lane) {
-                float y = 0.5f * (rowY(lane*2) + rowY(lane*2+1)); // centre of lane band
-                int pid = (lane==0)?SPREAD_R : (lane==1)?SPREAD_M : SPREAD_O;
-                addParam(createParamCentered<Trimpot>(mm2px(Vec(sx, y)), mod, pid));
-            }
-        }
+        bindParam<Trimpot>("param_" + std::to_string((int)SPREAD_R), SPREAD_R);
+        bindParam<Trimpot>("param_" + std::to_string((int)SPREAD_M), SPREAD_M);
+        bindParam<Trimpot>("param_" + std::to_string((int)SPREAD_O), SPREAD_O);
 
         paramMgr = new PolyVoiceSandsParameterManager(nullptr, nullptr, 15, 0);
     }
@@ -144,6 +139,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
 
     void step() override {
         ModuleWidget::step();
+        kitStep();
         if (!module || !paramMgr || !visualEditor) return;
         Monsoon* monsoon = getMonsoon();
         if (!monsoon) { if (visualEditor) visualEditor->clearPlaySteps(); return; }
@@ -154,8 +150,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         int wantLight = monsoon->lightTheme ? 1 : 0;
         if (wantLight != lastThemeLight) {
             lastThemeLight = wantLight;
-            if (panelWidget) {
-                panelWidget->setBackground(wantLight ? panelSvgLight : panelSvgDark);
+            for (Widget* child : children) {
+                if (auto* sp = dynamic_cast<app::SvgPanel*>(child)) {
+                    sp->setBackground(wantLight ? panelSvgLight : panelSvgDark);
+                    break;
+                }
             }
             if (visualEditor) visualEditor->setTheme(wantLight != 0);
         }
