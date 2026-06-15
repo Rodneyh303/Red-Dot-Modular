@@ -57,13 +57,26 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         float att = macroVis->params[Macro::macroAttenId(lane,param)].getValue();
         return clamp(base + cv * att * (hi - lo), lo, hi);
     };
+    // Macro SPREAD CV: bipolar, unit-scaled (cv*att over ±1) to match Mono's
+    // applyMonoSprCV. NOT routed through applyMacroCV because that scales by
+    // (hi-lo), which for a ±1 range would double the CV. param index 3 = SPR.
+    auto applyMacroSprCV = [&](float base, int lane) -> float {
+        if (!macroVis || !macroVis->inputs[Macro::macroCvId(lane,3)].isConnected()) return base;
+        float cv  = macroVis->inputs[Macro::macroCvId(lane,3)].getVoltage() / 10.f;
+        float att = macroVis->params[Macro::macroAttenId(lane,3)].getValue();
+        return clamp(base + cv * att, -1.f, 1.f);
+    };
 
     // ── Helper: apply mono spread CV (REST/MEL/OCT only, own jack/atten) ──
     auto applyMonoSprCV = [&](float base, int sprLane) -> float {
         if (!monoVis || !monoVis->inputs[Mono::sprCvId(sprLane)].isConnected()) return base;
         float cv  = monoVis->inputs[Mono::sprCvId(sprLane)].getVoltage() / 10.f;
         float att = monoVis->params[Mono::sprAttenId(sprLane)].getValue();
-        return clamp(base + cv * att, 0.f, 1.f);
+        // Spread is BIPOLAR (param range -1..1; negative inverts the interp
+        // target). Clamp to [-1,1], not [0,1] — the old [0,1] clamp floored any
+        // negative spread to 0, so negative modulation only worked when the base
+        // happened to be positive ([C]).
+        return clamp(base + cv * att, -1.f, 1.f);
     };
 
     // Helper for bipolar spread interpolation with clamping
@@ -170,7 +183,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             bOff = applyMacroCV(bOff, lane, 1, 0.f, 15.f);
             bRot = applyMacroCV(bRot, lane, 2, 0.f, 15.f);
             float bSpr = macroVis->params[Macro::sprId(lane)].getValue();
-            bSpr = applyMacroCV(bSpr, lane, 3, 0.f, 1.f);
+            bSpr = applyMacroSprCV(bSpr, lane);   // bipolar, unit-scaled (see [C])
             macroVis->spreadEffective[lane] = bSpr;   // display reads this; base knob untouched
             int L = clamp((int)std::round(bLen), 1, 16);
             int O = ((int)std::round(bOff) % 16 + 16) % 16;

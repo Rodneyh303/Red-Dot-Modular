@@ -93,7 +93,7 @@ struct StraitsSandsMacroVisual : Module {
         using namespace StraitsMacroVisualIds;
         config(MonsoonIds::NUM_PARAMS, StraitsMacroVisualIds::NUM_INPUTS, 0, 0);
 
-        configParam(SPREAD_REST,   0.f,1.f,0.f,"Global Spread REST");
+        configParam(SPREAD_REST,   -1.f,1.f,0.f,"Global Spread REST");   // bipolar, matches MEL/OCT (was 0..1 — inconsistent)
         configParam(SPREAD_MELODY, -1.f,1.f,0.f,"Global Spread MELODY");
         configParam(SPREAD_OCTAVE, -1.f,1.f,0.f,"Global Spread OCTAVE");
 
