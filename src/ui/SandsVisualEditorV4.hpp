@@ -181,6 +181,11 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     int   grabOffset   = 0;   // lane.offset at press (window slides relative to this)
     bool  isDragging     = false;
   } dragState;
+
+  // Hover tracking for discoverability: which lane + which window zone the cursor
+  // is over (reuses DragState::Type). draw() highlights the hovered zone.
+  int hoverLane = -1;
+  DragState::Type hoverZone = DragState::NONE;
   
   struct KeyboardState {
     int selectedLane = 0;
@@ -592,16 +597,62 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     const ProbabilityLane& L = currentState.lanes[lane];
     rack::Rect laneR = layout.getLaneRect(lane);
     float bandTop = laneR.pos.y;
-    float bandH   = laneR.size.y * 0.16f;
+    float bandH   = laneR.size.y * 0.65f;       // matches the hit-zone band
     int lenC = std::max(1, std::min(L.length, STEP_COUNT));
-    NVGcolor band = nvgRGBAf(1.f, 1.f, 1.f, 0.12f);
+
+    // Window body fill across the EDIT range (matches inWindowX / the MOVE hit
+    // zone). Iterate from editStartBar so the fill = the grabbable body.
+    NVGcolor body = nvgRGBAf(1.f, 1.f, 1.f, 0.10f);
     for (int k = 0; k < lenC; ++k) {
-      int bar = (L.startBar() + k) % STEP_COUNT;
+      int bar = (L.editStartBar() + k) % STEP_COUNT;
       rack::Rect c = layout.getStepRect(lane, bar);
       nvgBeginPath(vg);
       nvgRect(vg, c.pos.x, bandTop, c.size.x, bandH);
-      nvgFillColor(vg, band);
+      nvgFillColor(vg, body);
       nvgFill(vg);
+    }
+
+    // START / END edge ribbons — drawn at the actual grab-zone width so the user
+    // can SEE where to grab (was an invisible 30%-cell zone before).
+    // Edge ribbons use the EDIT bars (editStartBar/editEndBar) so the drawn grab
+    // affordance lands exactly where hitTestHandle grabs — even while CV is
+    // modulating the DISPLAYED window (which the probability bars/playhead show).
+    float minEdge = mm2px(4.f);
+    float edgeW = std::max(layout.stepWidthF(), minEdge);
+    rack::Rect cs = layout.getStepRect(lane, L.editStartBar());
+    rack::Rect ce = layout.getStepRect(lane, L.editEndBar());
+    bool oneWide = (L.editStartBar() == L.editEndBar());
+    NVGcolor edge = getLaneColor(lane); edge.a = 0.55f;
+
+    auto fillRect = [&](float x, float w, NVGcolor col) {
+      nvgBeginPath(vg); nvgRect(vg, x, bandTop, w, bandH);
+      nvgFillColor(vg, col); nvgFill(vg);
+    };
+    if (oneWide) {
+      float half = cs.size.x * 0.5f;
+      fillRect(cs.pos.x, half, edge);                 // START = left half
+      fillRect(cs.pos.x + half, half, edge);          // END   = right half
+    } else {
+      fillRect(cs.pos.x, edgeW, edge);                            // START ribbon
+      fillRect(ce.pos.x + ce.size.x - edgeW, edgeW, edge);        // END ribbon
+    }
+
+    // Hover highlight: brighten whichever zone the cursor is in.
+    if (hoverLane == lane && hoverZone != DragState::NONE) {
+      NVGcolor hi = getLaneColor(lane); hi.a = 0.32f;
+      if (hoverZone == DragState::START) {
+        fillRect(cs.pos.x, oneWide ? cs.size.x*0.5f : edgeW, hi);
+      } else if (hoverZone == DragState::END) {
+        if (oneWide) fillRect(cs.pos.x + cs.size.x*0.5f, cs.size.x*0.5f, hi);
+        else         fillRect(ce.pos.x + ce.size.x - edgeW, edgeW, hi);
+      } else if (hoverZone == DragState::WINDOW) {
+        for (int k = 0; k < lenC; ++k) {
+          int bar = (L.editStartBar() + k) % STEP_COUNT;
+          rack::Rect c = layout.getStepRect(lane, bar);
+          fillRect(c.pos.x, c.size.x, hi);
+        }
+      }
+      // ROTATION hover is highlighted by drawRotationIndicator already.
     }
   }
   
@@ -736,6 +787,24 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     }
   }
   
+  void onHover(const rack::event::Hover& e) override {
+    Widget::onHover(e);
+    if (inert) { hoverLane = -1; hoverZone = DragState::NONE; return; }
+    syncLayout();
+    int lane = getLaneAtY(e.pos.y);
+    DragState::Type z = (lane >= 0 && lane < laneCount)
+                        ? hitTestHandle(lane, e.pos.x, e.pos.y) : DragState::NONE;
+    hoverLane = (z == DragState::NONE) ? -1 : lane;
+    hoverZone = z;
+    e.consume(this);
+  }
+
+  void onLeave(const rack::event::Leave& e) override {
+    Widget::onLeave(e);
+    hoverLane = -1;
+    hoverZone = DragState::NONE;
+  }
+
   void onButton(const rack::event::Button& e) override {
     syncLayout();
     if (inert) return;   // no interaction until poly source (Straits East) is attached
