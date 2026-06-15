@@ -556,6 +556,16 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   //   middle    : bar value (probability) drag
   // Separating rotation into its own strip means it never collides with the
   // start/end handles and is grabbable even when rotation == 0.
+  // Shared START/END edge-zone width (px) for a lane's window. Generous (a full
+  // cell, min ~4mm) so it's grabbable, but capped at 1/3 of the window span so a
+  // middle-third MOVE zone ALWAYS exists — even for a 2-cell window. Used by both
+  // hitTestHandle and drawHandles so the drawn ribbons match the grab zones.
+  float windowEdgeW(const ProbabilityLane& L) const {
+    float spanPx = std::max(1, std::min(L.length, STEP_COUNT)) * layout.stepWidthF();
+    float want = std::max(layout.stepWidthF(), mm2px(4.f));
+    return std::min(want, spanPx / 3.f);
+  }
+
   DragState::Type hitTestHandle(int lane, float x, float y) const {
     if (lane < 0 || lane >= laneCount) return DragState::NONE;
     const ProbabilityLane& L = currentState.lanes[lane];
@@ -586,10 +596,8 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     if (y >= laneR.pos.y && y <= bandBot && inWindowX(x)) {
       rack::Rect cs = layout.getStepRect(lane, L.editStartBar());
       rack::Rect ce = layout.getStepRect(lane, L.editEndBar());
-      // Generous edge width: a whole cell, but at least ~4mm so it stays
-      // grabbable even when many steps squeeze the cells thin.
-      float minEdge = mm2px(4.f);
-      float edgeW = std::max(layout.stepWidthF(), minEdge);
+      // Edge width capped to 1/3 of the window so a MOVE middle always remains.
+      float edgeW = windowEdgeW(L);
       float startZoneR = cs.pos.x + edgeW;                 // START spans [cell start .. +edgeW]
       float endZoneL   = ce.pos.x + ce.size.x - edgeW;     // END spans [cell end -edgeW .. cell end]
       // 1-wide window (same cell): split the cell in half instead of overlapping.
@@ -638,8 +646,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     // Edge ribbons use the EDIT bars (editStartBar/editEndBar) so the drawn grab
     // affordance lands exactly where hitTestHandle grabs — even while CV is
     // modulating the DISPLAYED window (which the probability bars/playhead show).
-    float minEdge = mm2px(4.f);
-    float edgeW = std::max(layout.stepWidthF(), minEdge);
+    float edgeW = windowEdgeW(L);
     rack::Rect cs = layout.getStepRect(lane, L.editStartBar());
     rack::Rect ce = layout.getStepRect(lane, L.editEndBar());
     bool oneWide = (L.editStartBar() == L.editEndBar());
