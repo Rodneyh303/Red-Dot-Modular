@@ -3,6 +3,7 @@
 //#include "../../MonsoonDeepStraitsSands.hpp"
 #include "../../StraitsEastSandsVisual.hpp"
 //#include "../../StraitsWestSandsVisual.hpp"
+#include "../../StraitsSandsMacroVisual.hpp"
 
 using namespace rack;
 
@@ -34,36 +35,76 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
        // using namespace DeepStraitsSandsEastIds;
         using namespace StraitsEastVisualIds;
 
-        // ── Base ownership (Macro vs East) ────────────────────────────────
-        // When the Macro visual is also attached it owns the global poly L/O/R
-        // base by default (processDNA::applyGlobal already wrote engine.polyLen
-        // for every voice just before this sync). East runs LAST, so to honour
-        // "default owner = Macro" we must NOT clobber those values here. Until
-        // the per-(lane,voice) owner switch exists, the interim rule is simply:
-        //   Macro present  → Macro owns base, East leaves polyLen as written.
-        //   Macro absent   → East owns base, East writes polyLen as before.
-        // NOTE: this gates ONLY the polyLen/Off/Rot base writes. East's per-voice
-        // interp/spread computation (polyRhythmRandom etc.) below is unaffected —
-        // East always drives the per-voice spread regardless of base ownership.
-        const bool macroOwnsBase = (cachedMacroSandsVisual != nullptr);
+        // ── Base ownership + Macro-CV blend (per voice, per lane, per item) ───
+        // Value equation, applied here (East runs last and owns the final write):
+        //   base  = (owner==East) ? eastBase + eastCV : macroBase
+        //   value = base + macroCVDelta · blendSend          (blend always added)
+        // owner default = Macro; blendSend default = unity. Macro publishes its
+        // per-(lane,item) base + CV-delta split (macroBase/macroCVDelta on the
+        // visual) in processDNA just before this. When Macro is absent the macro
+        // terms are zero and East owns everything (its own base + CV).
+        // item index: 0=LEN 1=OFF 2=ROT 3=SPR. (Spr handled in the interp path.)
+        auto* macroVis = cachedMacroSandsVisual;
+        const bool macroPresent = (macroVis != nullptr);
 
         for (int v = 0; v < 15; v++) {
             int rhythmBase = MonsoonIds::POLY_DNA_VOICE_1_LEN + v * 3;
-            
-            auto applyLorCV = [&](int paramIdx, int r, int c, float lo, float hi)-> int {
+
+            // East's own base+CV for an L/O/R item (paramIdx = East voice param).
+            auto eastLorVal = [&](int paramIdx, int r, int c, float lo, float hi)-> float {
                 float base = eastLOR->params[paramIdx].getValue();
                 if (eastVisual && eastVisual->inputs[cvId(r,c)].isConnected()) {
                     float att = eastVisual->params[attenId(r,c)].getValue();
                     float cv  = eastVisual->inputs[cvId(r,c)].getVoltage(v) / 10.f;
                     base = math::clamp(base + cv * att * (hi - lo), lo, hi);
                 }
-                return (int)base;
+                return base;
             };
-            if (!macroOwnsBase) {
-                engine.polyLen[v][0] = applyLorCV(rhythmBase,     0, 0, 1.f, 16.f);
-                engine.polyOff[v][0] = applyLorCV(rhythmBase + 1, 0, 1, 0.f, 15.f);
-                engine.polyRot[v][0] = applyLorCV(rhythmBase + 2, 1, 0, 0.f, 15.f);
-            }
+            // Full equation for one L/O/R item → final int window value.
+            //   lane: 0/1/2 (REST/MEL/OCT)   item: 0/1/2 (LEN/OFF/ROT)
+            //   r,c: East CV jack row/col     paramIdx: East voice LOR param
+            auto combineLOR = [&](int lane, int item, int paramIdx, int r, int c,
+                                  float lo, float hi)-> int {
+                const bool ownerEast = eastLOR->params[
+                    StraitsEastVisualIds::ownerId(v, lane)].getValue() > 0.5f;
+                float base = ownerEast ? eastLorVal(paramIdx, r, c, lo, hi)
+                                       : (macroPresent ? macroVis->macroBase[lane][item] : eastLorVal(paramIdx, r, c, lo, hi));
+                float blend = 0.f;
+                if (macroPresent) {
+                    float send = eastLOR->params[
+                        StraitsEastVisualIds::sendId(v, lane, item)].getValue();
+                    blend = macroVis->macroCVDelta[lane][item] * send;
+                }
+                return (int)math::clamp(base + blend, lo, hi);
+            };
+
+            // Spread (item 3) counterpart of combineLOR. owner picks East's own
+            // per-voice interp vs Macro's global spread base; the Macro spread
+            // CV-delta blends in via send item 3. Clamped bipolar [-1,1] because
+            // interpolateAndClamp treats negative spread as inverting the target
+            // (see the spread-sign fix). eastInterpVal already includes East's own
+            // spread CV. NOTE: East's per-voice interp params are 0..1 while the
+            // display trimpots + Macro spread are -1..1 — a pre-existing range
+            // inconsistency, flagged separately; we clamp the COMBINED value to
+            // [-1,1] so Macro ownership/blend can still reach negative spread.
+            auto combineSpread = [&](int lane, float eastInterpVal)-> float {
+                const bool ownerEast = eastLOR->params[
+                    StraitsEastVisualIds::ownerId(v, lane)].getValue() > 0.5f;
+                float base = ownerEast ? eastInterpVal
+                                       : (macroPresent ? macroVis->macroBase[lane][3] : eastInterpVal);
+                float blend = 0.f;
+                if (macroPresent) {
+                    float send = eastLOR->params[
+                        StraitsEastVisualIds::sendId(v, lane, 3)].getValue();
+                    blend = macroVis->macroCVDelta[lane][3] * send;
+                }
+                return math::clamp(base + blend, -1.f, 1.f);
+            };
+
+            // REST lane (0): owner+blend equation. r/c are East CV jack coords.
+            engine.polyLen[v][0] = combineLOR(0, 0, rhythmBase,     0, 0, 1.f, 16.f);
+            engine.polyOff[v][0] = combineLOR(0, 1, rhythmBase + 1, 0, 1, 0.f, 15.f);
+            engine.polyRot[v][0] = combineLOR(0, 2, rhythmBase + 2, 1, 0, 0.f, 15.f);
 
             float restInterp = eastInterp->params[MonsoonIds::POLY_REST_INTERP_1 + v].getValue();
             if (eastVisual && eastVisual->inputs[cvId(1,1)].isConnected()) {
@@ -71,6 +112,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
                 float cv  = eastVisual->inputs[cvId(1,1)].getVoltage(v) / 10.f;
                 restInterp = math::clamp(restInterp + cv * att, 0.f, 1.f);
             }
+            restInterp = combineSpread(0, restInterp);   // owner + Macro-CV blend (spread)
             
             // if (deepEast) {
             //     engine.voices[v].restProb = deepEast->params[MonsoonIds::POLY_REST_PARAM_1 + v].getValue();
@@ -93,16 +135,15 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
             
             int melodyBase = MonsoonIds::POLY_MELODY_VOICE_1_LEN + v * 3;
             float melodyInterp = eastInterp->params[MonsoonIds::POLY_MELODY_INTERP_1 + v].getValue();
-            if (!macroOwnsBase) {
-                engine.polyLen[v][1] = applyLorCV(melodyBase,     2, 0, 1.f, 16.f);
-                engine.polyOff[v][1] = applyLorCV(melodyBase + 1, 2, 1, 0.f, 15.f);
-                engine.polyRot[v][1] = applyLorCV(melodyBase + 2, 3, 0, 0.f, 15.f);
-            }
+            engine.polyLen[v][1] = combineLOR(1, 0, melodyBase,     2, 0, 1.f, 16.f);
+            engine.polyOff[v][1] = combineLOR(1, 1, melodyBase + 1, 2, 1, 0.f, 15.f);
+            engine.polyRot[v][1] = combineLOR(1, 2, melodyBase + 2, 3, 0, 0.f, 15.f);
             if (eastVisual && eastVisual->inputs[cvId(3,1)].isConnected()) {
                 float att = eastVisual->params[attenId(3,1)].getValue();
                 float cv  = eastVisual->inputs[cvId(3,1)].getVoltage(v) / 10.f;
                 melodyInterp = math::clamp(melodyInterp + cv * att, 0.f, 1.f);
             }
+            melodyInterp = combineSpread(1, melodyInterp);   // owner + Macro-CV blend (spread)
             
             if (!engine.locked) {
                 const int nPoly = effPolyVoices;
@@ -126,11 +167,9 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
             // }
             
             int octaveBase = MonsoonIds::POLY_OCTAVE_VOICE_1_LEN + v * 3;
-            if (!macroOwnsBase) {
-                engine.polyLen[v][2] = applyLorCV(octaveBase,     4, 0, 1.f, 16.f);
-                engine.polyOff[v][2] = applyLorCV(octaveBase + 1, 4, 1, 0.f, 15.f);
-                engine.polyRot[v][2] = applyLorCV(octaveBase + 2, 5, 0, 0.f, 15.f);
-            }
+            engine.polyLen[v][2] = combineLOR(2, 0, octaveBase,     4, 0, 1.f, 16.f);
+            engine.polyOff[v][2] = combineLOR(2, 1, octaveBase + 1, 4, 1, 0.f, 15.f);
+            engine.polyRot[v][2] = combineLOR(2, 2, octaveBase + 2, 5, 0, 0.f, 15.f);
 
             float octaveInterp = eastInterp->params[MonsoonIds::POLY_OCTAVE_INTERP_1 + v].getValue();
             if (eastVisual && eastVisual->inputs[cvId(5,1)].isConnected()) {
@@ -138,6 +177,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
                 float cv  = eastVisual->inputs[cvId(5,1)].getVoltage(v) / 10.f;
                 octaveInterp = math::clamp(octaveInterp + cv * att, 0.f, 1.f);
             }
+            octaveInterp = combineSpread(2, octaveInterp);   // owner + Macro-CV blend (spread)
             
             if (!engine.locked) {
                 const int nPoly = effPolyVoices;

@@ -23,12 +23,12 @@
       "tags": [
         "Expander",
         "Sequencer",
-		"Random"
+        "Random"
       ]
     },
     {
-      "slug": "MonsoonCausewayExpander",
-      "name": "Causeway",
+      "slug": "Raffles",
+      "name": "Raffles",
       "description": "Dice/draw-generation modulation expander (slew/mix CV + die-action gates)",
       "tags": [
         "Expander",
@@ -37,8 +37,8 @@
       ]
     },
     {
-      "slug": "MonsoonSurgeExpander",
-      "name": "Surge",
+      "slug": "Junction",
+      "name": "Junction",
       "description": "Big-5 pattern-knob CV modulation expander (note value, variation, legato, rest, accent)",
       "tags": [
         "Expander",
@@ -53,7 +53,7 @@
       "tags": [
         "Expander",
         "Sequencer",
-		"Random"
+        "Random"
       ]
     },
     {
@@ -63,7 +63,7 @@
       "tags": [
         "Expander",
         "Sequencer",
-		"Random"
+        "Random"
       ]
     },
     {
@@ -73,7 +73,7 @@
       "tags": [
         "Expander",
         "Sequencer",
-		"Random",
+        "Random",
         "Visual"
       ]
     },
@@ -84,7 +84,7 @@
       "tags": [
         "Expander",
         "Sequencer",
-		"Random",
+        "Random",
         "Visual",
         "Polyphonic"
       ]
@@ -96,7 +96,7 @@
       "tags": [
         "Expander",
         "Sequencer",
-		"Random",
+        "Random",
         "Visual",
         "Polyphonic"
       ]

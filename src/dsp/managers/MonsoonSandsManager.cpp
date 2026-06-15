@@ -57,13 +57,26 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         float att = macroVis->params[Macro::macroAttenId(lane,param)].getValue();
         return clamp(base + cv * att * (hi - lo), lo, hi);
     };
+    // Macro SPREAD CV: bipolar, unit-scaled (cv*att over ±1) to match Mono's
+    // applyMonoSprCV. NOT routed through applyMacroCV because that scales by
+    // (hi-lo), which for a ±1 range would double the CV. param index 3 = SPR.
+    auto applyMacroSprCV = [&](float base, int lane) -> float {
+        if (!macroVis || !macroVis->inputs[Macro::macroCvId(lane,3)].isConnected()) return base;
+        float cv  = macroVis->inputs[Macro::macroCvId(lane,3)].getVoltage() / 10.f;
+        float att = macroVis->params[Macro::macroAttenId(lane,3)].getValue();
+        return clamp(base + cv * att, -1.f, 1.f);
+    };
 
     // ── Helper: apply mono spread CV (REST/MEL/OCT only, own jack/atten) ──
     auto applyMonoSprCV = [&](float base, int sprLane) -> float {
         if (!monoVis || !monoVis->inputs[Mono::sprCvId(sprLane)].isConnected()) return base;
         float cv  = monoVis->inputs[Mono::sprCvId(sprLane)].getVoltage() / 10.f;
         float att = monoVis->params[Mono::sprAttenId(sprLane)].getValue();
-        return clamp(base + cv * att, 0.f, 1.f);
+        // Spread is BIPOLAR (param range -1..1; negative inverts the interp
+        // target). Clamp to [-1,1], not [0,1] — the old [0,1] clamp floored any
+        // negative spread to 0, so negative modulation only worked when the base
+        // happened to be positive ([C]).
+        return clamp(base + cv * att, -1.f, 1.f);
     };
 
     // Helper for bipolar spread interpolation with clamping
@@ -162,30 +175,33 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
 
     // ── Macro global LOR with CV (poly: per-lane, SAME for every voice) ────
     if (macroActive) {
-        auto applyGlobal = [&](int lane, int polyLane) {
-            float bLen = macroVis->params[Macro::lorId(lane,0)].getValue();
-            float bOff = macroVis->params[Macro::lorId(lane,1)].getValue();
-            float bRot = macroVis->params[Macro::lorId(lane,2)].getValue();
-            bLen = applyMacroCV(bLen, lane, 0, 1.f, 16.f);
-            bOff = applyMacroCV(bOff, lane, 1, 0.f, 15.f);
-            bRot = applyMacroCV(bRot, lane, 2, 0.f, 15.f);
-            float bSpr = macroVis->params[Macro::sprId(lane)].getValue();
-            bSpr = applyMacroCV(bSpr, lane, 3, 0.f, 1.f);
-            macroVis->spreadEffective[lane] = bSpr;   // display reads this; base knob untouched
-            int L = clamp((int)std::round(bLen), 1, 16);
-            int O = ((int)std::round(bOff) % 16 + 16) % 16;
-            int R = ((int)std::round(bRot) % 16 + 16) % 16;
-            // Macro applies the SAME lane LOR to every poly voice.
-            for (int v = 0; v < 15; ++v) {
-                engine.polyLen[v][polyLane] = L;
-                engine.polyOff[v][polyLane] = O;
-                engine.polyRot[v][polyLane] = R;
-            }
+        // Macro publishes its per-(lane,item) base + CV-delta split; East's sync
+        // (runs after, always present when macroActive) combines them per voice
+        // via the owner switch + blend send. Macro no longer writes engine.polyLen
+        // directly — East owns the final write so the blend equation is applied in
+        // one place.
+        auto publishGlobal = [&](int lane) {
+            // bases (knob, no CV)
+            float baseLen = macroVis->params[Macro::lorId(lane,0)].getValue();
+            float baseOff = macroVis->params[Macro::lorId(lane,1)].getValue();
+            float baseRot = macroVis->params[Macro::lorId(lane,2)].getValue();
+            float baseSpr = macroVis->params[Macro::sprId(lane)].getValue();
+            // CV-applied
+            float cvLen = applyMacroCV(baseLen, lane, 0, 1.f, 16.f);
+            float cvOff = applyMacroCV(baseOff, lane, 1, 0.f, 15.f);
+            float cvRot = applyMacroCV(baseRot, lane, 2, 0.f, 15.f);
+            float cvSpr = applyMacroSprCV(baseSpr, lane);
+            // publish base + CV-only delta (item 0=LEN 1=OFF 2=ROT 3=SPR)
+            macroVis->macroBase[lane][0] = baseLen;  macroVis->macroCVDelta[lane][0] = cvLen - baseLen;
+            macroVis->macroBase[lane][1] = baseOff;  macroVis->macroCVDelta[lane][1] = cvOff - baseOff;
+            macroVis->macroBase[lane][2] = baseRot;  macroVis->macroCVDelta[lane][2] = cvRot - baseRot;
+            macroVis->macroBase[lane][3] = baseSpr;  macroVis->macroCVDelta[lane][3] = cvSpr - baseSpr;
+            // spread display reads the CV-applied global spread (base+CV, no blend)
+            macroVis->spreadEffective[lane] = cvSpr;
         };
-        // Macro lanes 0=REST, 1=MELODY, 2=OCTAVE → poly lanes PL_REST/MEL/OCT
-        applyGlobal(0, SequencerEngine::PL_REST);
-        applyGlobal(1, SequencerEngine::PL_MELODY);
-        applyGlobal(2, SequencerEngine::PL_OCTAVE);
+        publishGlobal(0);
+        publishGlobal(1);
+        publishGlobal(2);
     }
 
     // Note: Poly DNA windows handled in Monsoon::process controlDivider block.

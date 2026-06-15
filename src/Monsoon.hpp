@@ -404,7 +404,22 @@ namespace MonsoonIds {
         DICE_TRIAL_R_PARAM,
         DICE_TRIAL_M_PARAM,
 
-        NUM_PARAMS
+        // ── Macro/East base-owner + Macro-CV blend sends (per voice, per lane) ──
+        // Appended at END so existing param IDs stay stable (saved patches safe).
+        // Per-(voice,lane) base owner: which expander owns the poly L/O/R base for
+        // voice v, lane L. 0 = Macro (default), 1 = East. 15 voices × 3 lanes = 45.
+        //   index = MACRO_OWN_START + v*3 + lane
+        MACRO_OWN_START,
+        MACRO_OWN_END = MACRO_OWN_START + 45,
+        // Per-(voice,lane,item) Macro-CV blend send: how much of the (already
+        // Macro-attenuated) Macro CV is mixed into this voice/lane/item. item
+        // 0=LEN 1=OFF 2=ROT 3=SPR. 15 × 3 × 4 = 180. Default unity (Macro CV
+        // reaches voices out of the box; turn down to localise).
+        //   index = MACRO_SEND_START + (v*3 + lane)*4 + item
+        MACRO_SEND_START = MACRO_OWN_END,
+        MACRO_SEND_END = MACRO_SEND_START + 180,
+
+        NUM_PARAMS = MACRO_SEND_END
     };
 
     enum InputIds {
