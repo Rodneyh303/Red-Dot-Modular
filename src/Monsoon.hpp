@@ -866,6 +866,9 @@ struct Monsoon : Module {
     float cachedRunBtn = 0.f;
     float cachedResetBtn = 0.f;
     float cachedPolyRest[15] = {0.f};
+    // Final effective per-voice rest (knob + global + per-voice CV mod, clamped).
+    // Read by the East/West expander widgets for the per-voice REST mod-arc.
+    float cachedPolyRestEffective[15] = {0.f};
 
     Monsoon();
 

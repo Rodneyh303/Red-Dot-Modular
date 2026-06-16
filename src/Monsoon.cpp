@@ -703,7 +703,9 @@ void Monsoon::process(const ProcessArgs& args) {
             }
             // ParameterManager::getPolyRest includes the global Rest knob + global CV.
             // Here we add the per-voice modulation on top.
-            engine.voices[i].restProb = clamp(base + modulation, 0.f, 1.f);
+            float eff = clamp(base + modulation, 0.f, 1.f);
+            engine.voices[i].restProb = eff;
+            cachedPolyRestEffective[i] = eff;   // final value (knob+global+per-voice mod) for modviz
         }
 
         // Handle Throttled CV1 Logic (Range Modulation)
