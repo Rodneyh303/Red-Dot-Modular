@@ -110,7 +110,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
             if (eastVisual && eastVisual->inputs[cvId(1,1)].isConnected()) {
                 float att = eastVisual->params[attenId(1,1)].getValue();
                 float cv  = eastVisual->inputs[cvId(1,1)].getVoltage(v) / 10.f;
-                restInterp = math::clamp(restInterp + cv * att, 0.f, 1.f);
+                restInterp = math::clamp(restInterp + cv * att, -1.f, 1.f);
             }
             restInterp = combineSpread(0, restInterp);   // owner + Macro-CV blend (spread)
             
@@ -141,7 +141,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
             if (eastVisual && eastVisual->inputs[cvId(3,1)].isConnected()) {
                 float att = eastVisual->params[attenId(3,1)].getValue();
                 float cv  = eastVisual->inputs[cvId(3,1)].getVoltage(v) / 10.f;
-                melodyInterp = math::clamp(melodyInterp + cv * att, 0.f, 1.f);
+                melodyInterp = math::clamp(melodyInterp + cv * att, -1.f, 1.f);
             }
             melodyInterp = combineSpread(1, melodyInterp);   // owner + Macro-CV blend (spread)
             
@@ -175,7 +175,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
             if (eastVisual && eastVisual->inputs[cvId(5,1)].isConnected()) {
                 float att = eastVisual->params[attenId(5,1)].getValue();
                 float cv  = eastVisual->inputs[cvId(5,1)].getVoltage(v) / 10.f;
-                octaveInterp = math::clamp(octaveInterp + cv * att, 0.f, 1.f);
+                octaveInterp = math::clamp(octaveInterp + cv * att, -1.f, 1.f);
             }
             octaveInterp = combineSpread(2, octaveInterp);   // owner + Macro-CV blend (spread)
             
