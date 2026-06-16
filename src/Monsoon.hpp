@@ -763,7 +763,16 @@ struct Monsoon : Module {
     struct ModViz {
         // Big-5 effective values, normalised 0..1 (NOTE_VALUE is /8).
         float noteValue = 0.f, variation = 0.f, legato = 0.f, rest = 0.f, accent = 0.f;
-        bool  active = false;   // any modulation source present this frame
+        bool  active = false;   // any big-5 modulation source present this frame
+        // Slew + mix effective values, normalised 0..1 (all native 0..1).
+        // Modulated via CV3 (cv3Offsets). activeCv3 gates their arcs.
+        float rhythmSlew = 0.f, melodySlew = 0.f, rhythmMix = 0.f, melodyMix = 0.f;
+        bool  activeCv3 = false;
+        // Pitch sliders: 12 semitone (0..1) + octave lo/hi (normalised /8).
+        // Modulated via the Interchange expander CV (+ CV1 for octaves).
+        float semitone[12] = {0.f};
+        float octaveLo = 0.f, octaveHi = 0.f;
+        bool  activePitch = false;
     } modViz;
     dsp::ClockDivider lightDivider;
     dsp::ClockDivider controlDivider; // For DNA modulation at "Control Rate"
@@ -862,6 +871,9 @@ struct Monsoon : Module {
     float cachedRunBtn = 0.f;
     float cachedResetBtn = 0.f;
     float cachedPolyRest[15] = {0.f};
+    // Final effective per-voice rest (knob + global + per-voice CV mod, clamped).
+    // Read by the East/West expander widgets for the per-voice REST mod-arc.
+    float cachedPolyRestEffective[15] = {0.f};
 
     Monsoon();
 

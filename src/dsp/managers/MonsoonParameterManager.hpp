@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cmath>
 #include "rack.hpp"
 
 struct MonsoonInterchangeExpander;
@@ -56,6 +57,28 @@ public:
     bool  anyBig5Modulated() const {
         for (int i = 0; i < 5; ++i) if (surgeOffsets[i] != 0.f) return true;
         for (int i = 0; i < 4; ++i) if (cv2Offsets[i]   != 0.f) return true;
+        return false;
+    }
+    /// Slew/mix effective values (all native 0..1). True if any CV3 offset active.
+    float getRhythmSlewNorm() const { return getRhythmSlew(); }
+    float getMelodySlewNorm() const { return getMelodySlew(); }
+    float getRhythmMixNorm()  const { return getRhythmMix(); }
+    float getMelodyMixNorm()  const { return getMelodyMix(); }
+    bool  anyCv3Modulated() const {
+        for (int i = 0; i < 4; ++i) if (cv3Offsets[i] != 0.f) return true;
+        return false;
+    }
+    /// Pitch sliders, normalised 0..1 (semitones native 0..1; octaves /8).
+    float getSemitoneNorm(int i) const { return getSemitone(i); }
+    float getOctaveLoNorm() const { return getOctaveLo() / 8.f; }
+    float getOctaveHiNorm() const { return getOctaveHi() / 8.f; }
+    /// True if any pitch slider's effective value differs from its raw param
+    /// (i.e. expander/CV1 is modulating it). Compared with a small epsilon.
+    bool  anyPitchModulated() const {
+        for (int i = 0; i < 12; ++i)
+            if (std::fabs(getSemitone(i) - readParam_(SEMI0_PARAM + i, 0.f, 1.f)) > 1e-4f) return true;
+        if (std::fabs(getOctaveLo() - readParam_(OCT_LO_PARAM, 0.f, 8.f)) > 1e-4f) return true;
+        if (std::fabs(getOctaveHi() - readParam_(OCT_HI_PARAM, 0.f, 8.f)) > 1e-4f) return true;
         return false;
     }
     

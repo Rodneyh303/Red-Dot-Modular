@@ -3,6 +3,7 @@
 #include "MonsoonWidget.hpp"
 #include "Monsoon.hpp"
 #include "ui/OutputAccent.hpp"
+#include "ui/ModArcOverlay.hpp"
 #include "dsp/managers/MonsoonScaleManager.hpp"
 
 using namespace rack;
@@ -72,21 +73,98 @@ void MonsoonWidget::setLightTheme(bool v) {
     if (m) m->lightTheme = v;
 }
 
+// Attach a ModArcOverlay on top of a just-bound knob, wired to read the knob's
+// SET value (its param, normalised) and the module's published MODULATED value
+// (a ModViz field) + the active flag. Decoupled: the overlay only sees floats.
+// MUST be called AFTER the knob is added to the widget (z-order: overlay on top).
+// Queue a mod-arc for a just-bound knob (created in attachModArc's caller). The
+// arc itself is built later in flushModArcs(), AFTER all knobs are added, so it
+// draws on top. field() reads the module's published normalised MODULATED value.
+// Queue a LINEAR (vertical-slider) mod indicator. Same deferred-attach scheme as
+// queueModArc; flushModArcs builds it (mode flag carried via PendingModArc).
+static void queueModArcLinear(MonsoonWidget* mw, Monsoon* module, rack::ParamWidget* slider,
+                              std::function<float(const Monsoon::ModViz&)> field,
+                              std::function<bool(const Monsoon::ModViz&)> active) {
+    if (!slider || !mw || !module) return;
+    MonsoonWidget::PendingModArc p;
+    p.knob = slider;
+    p.linear = true;
+    p.getModNorm = [module, field]()  -> float { return module ? field(module->modViz)  : 0.f; };
+    p.isActive   = [module, active]() -> bool  { return module && active(module->modViz); };
+    mw->pendingModArcs.push_back(p);
+}
+
+static void queueModArc(MonsoonWidget* mw, Monsoon* module, rack::ParamWidget* knob,
+                        std::function<float(const Monsoon::ModViz&)> field,
+                        std::function<bool(const Monsoon::ModViz&)> active) {
+    if (!knob || !mw || !module) return;
+    MonsoonWidget::PendingModArc p;
+    p.knob = knob;
+    p.getModNorm = [module, field]()  -> float { return module ? field(module->modViz)  : 0.f; };
+    p.isActive   = [module, active]() -> bool  { return module && active(module->modViz); };
+    mw->pendingModArcs.push_back(p);
+}
+
+// Build all queued mod-arc overlays as children of the MAIN widget (panel-space
+// coords, like the Sands editor — not framebuffered knob children). Called after
+// the knob bind block so the arcs draw on top of the knobs.
+static void flushModArcs(MonsoonWidget* mw, Monsoon* module) {
+    for (auto& p : mw->pendingModArcs) {
+        if (!p.knob) continue;
+        auto* arc = new redDot::ModArcOverlay();
+        arc->box.pos  = p.knob->box.pos;
+        arc->box.size = p.knob->box.size;
+        if (p.linear) {
+            arc->mode = redDot::ModArcOverlay::LINEAR_V;
+            // Inset the travel a touch so the tick sits within the slider track.
+            arc->travelTopPx = p.knob->box.size.y * 0.10f;
+            arc->travelBotPx = p.knob->box.size.y * 0.10f;
+        } else {
+            arc->radius = std::min(p.knob->box.size.x, p.knob->box.size.y) * 0.5f + mm2px(0.6f);
+        }
+        int pid = p.knob->paramId;
+        arc->getSetNorm = [module, pid]() -> float {
+            if (!module) return 0.f;
+            auto* pq = module->paramQuantities[pid];
+            return pq ? (float)pq->getScaledValue() : 0.f;
+        };
+        arc->getModNorm = p.getModNorm;
+        arc->isActive   = p.isActive;
+        mw->addChild(arc);
+    }
+    mw->pendingModArcs.clear();
+}
+
 MonsoonWidget::MonsoonWidget(Monsoon* module) {
         setModule(module);
         applyTheme();
         if (box.size.x == 0) box.size = mm2px(Vec(W_MM, 128.5f));
 
         // ── 12 semitone sliders: 9mm pitch ───────────────────────────────────
-        for (int i = 0; i < 12; ++i)
-            addParam(createLightParamCentered<MonsoonLightSlider<GreenRedLight>>(
-                mm2px(Vec(7.5f + i*9.f, 59.75f)), module, SEMI0_PARAM+i, SEMI_LED_START+2*i));
+        for (int i = 0; i < 12; ++i) {
+            auto* s = createLightParamCentered<MonsoonLightSlider<GreenRedLight>>(
+                mm2px(Vec(7.5f + i*9.f, 59.75f)), module, SEMI0_PARAM+i, SEMI_LED_START+2*i);
+            addParam(s);
+            queueModArcLinear(this, module, s,
+                [i](const Monsoon::ModViz& m){ return m.semitone[i]; },
+                [](const Monsoon::ModViz& m){ return m.activePitch; });
+        }
 
         // ── OCT sliders ───────────────────────────────────────────────────────
-        addParam(createLightParamCentered<VCVLightSlider<RedLight>>(
-            mm2px(Vec(119.f, 59.75f)), module, MonsoonIds::OCT_LO_PARAM, MonsoonIds::OCT_LO_LED));
-        addParam(createLightParamCentered<VCVLightSlider<RedLight>>(
-            mm2px(Vec(128.f, 59.75f)), module, MonsoonIds::OCT_HI_PARAM, MonsoonIds::OCT_HI_LED));
+        {
+            auto* lo = createLightParamCentered<VCVLightSlider<RedLight>>(
+                mm2px(Vec(119.f, 59.75f)), module, MonsoonIds::OCT_LO_PARAM, MonsoonIds::OCT_LO_LED);
+            addParam(lo);
+            queueModArcLinear(this, module, lo,
+                [](const Monsoon::ModViz& m){ return m.octaveLo; },
+                [](const Monsoon::ModViz& m){ return m.activePitch; });
+            auto* hi = createLightParamCentered<VCVLightSlider<RedLight>>(
+                mm2px(Vec(128.f, 59.75f)), module, MonsoonIds::OCT_HI_PARAM, MonsoonIds::OCT_HI_LED);
+            addParam(hi);
+            queueModArcLinear(this, module, hi,
+                [](const Monsoon::ModViz& m){ return m.octaveHi; },
+                [](const Monsoon::ModViz& m){ return m.activePitch; });
+        }
 
         // ── 16-step light ring: enlarged, cx=162 cy=30 r=18 ──────────────────
         {
@@ -116,14 +194,18 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         auto rx = [&](int i){ return RX0 + i * RXP; };
 
         // Control row params (positions from SVG; widget types preserved)
-        bindParam<Trimpot>  ("param_DICE_SLEW_R_PARAM",   MonsoonIds::DICE_SLEW_R_PARAM);
-        bindParam<Trimpot>  ("param_DICE_SLEW_M_PARAM",   MonsoonIds::DICE_SLEW_M_PARAM);
+        bindParam<Trimpot>  ("param_DICE_SLEW_R_PARAM",   MonsoonIds::DICE_SLEW_R_PARAM,
+            std::function<void(Trimpot*)>([&](Trimpot* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.rhythmSlew;}, [](const Monsoon::ModViz& m){return m.activeCv3;}); }));
+        bindParam<Trimpot>  ("param_DICE_SLEW_M_PARAM",   MonsoonIds::DICE_SLEW_M_PARAM,
+            std::function<void(Trimpot*)>([&](Trimpot* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.melodySlew;}, [](const Monsoon::ModViz& m){return m.activeCv3;}); }));
         bindParam<VCVButton>("param_DICE_R_PARAM",        MonsoonIds::DICE_R_PARAM);
         bindParam<VCVButton>("param_DICE_M_PARAM",        MonsoonIds::DICE_M_PARAM);
         bindParam<VCVButton>("param_DICE_TRIAL_R_PARAM",  MonsoonIds::DICE_TRIAL_R_PARAM);
         bindParam<VCVButton>("param_DICE_TRIAL_M_PARAM",  MonsoonIds::DICE_TRIAL_M_PARAM);
-        bindParam<RDM_KnobSmall>("param_RHYTHM_MIX_PARAM", MonsoonIds::RHYTHM_MIX_PARAM);
-        bindParam<RDM_KnobSmall>("param_MELODY_MIX_PARAM", MonsoonIds::MELODY_MIX_PARAM);
+        bindParam<RDM_KnobSmall>("param_RHYTHM_MIX_PARAM", MonsoonIds::RHYTHM_MIX_PARAM,
+            std::function<void(RDM_KnobSmall*)>([&](RDM_KnobSmall* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.rhythmMix;}, [](const Monsoon::ModViz& m){return m.activeCv3;}); }));
+        bindParam<RDM_KnobSmall>("param_MELODY_MIX_PARAM", MonsoonIds::MELODY_MIX_PARAM,
+            std::function<void(RDM_KnobSmall*)>([&](RDM_KnobSmall* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.melodyMix;}, [](const Monsoon::ModViz& m){return m.activeCv3;}); }));
         bindParam<TL1105>("param_LOCK_PARAM",             MonsoonIds::LOCK_PARAM);
         bindParam<TL1105>("param_MUTE_PARAM",             MonsoonIds::MUTE_PARAM);
         bindParam<TL1105>("param_RESET_BUTTON_PARAM",     MonsoonIds::RESET_BUTTON_PARAM);
@@ -234,24 +316,37 @@ void MonsoonWidget::applyTheme() {
         // by theme). Ring + sliders stay C++-computed elsewhere. The named shapes
         // live in res/panels/Monsoon_panel_*_monsoon.svg (components layer).
         if (lightTheme) {
-            bindParam<RDM_KnobDarkLarge> ("param_NOTE_VALUE_PARAM",     MonsoonIds::NOTE_VALUE_PARAM);
-            bindParam<RDM_KnobDarkMedium>("param_VARIATION_PARAM",      MonsoonIds::VARIATION_PARAM);
-            bindParam<RDM_KnobDarkMedium>("param_LEGATO_PARAM",         MonsoonIds::LEGATO_PARAM);
-            bindParam<RDM_KnobDarkMedium>("param_REST_PARAM",           MonsoonIds::REST_PARAM);
-            bindParam<RDM_KnobDarkMedium>("param_ACCENT_KNOB",          MonsoonIds::ACCENT_KNOB);
+            bindParam<RDM_KnobDarkLarge> ("param_NOTE_VALUE_PARAM",     MonsoonIds::NOTE_VALUE_PARAM,
+                std::function<void(RDM_KnobDarkLarge*)>([&](RDM_KnobDarkLarge* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.noteValue;}, [](const Monsoon::ModViz& m){return m.active;}); }));
+            bindParam<RDM_KnobDarkMedium>("param_VARIATION_PARAM",      MonsoonIds::VARIATION_PARAM,
+                std::function<void(RDM_KnobDarkMedium*)>([&](RDM_KnobDarkMedium* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.variation;}, [](const Monsoon::ModViz& m){return m.active;}); }));
+            bindParam<RDM_KnobDarkMedium>("param_LEGATO_PARAM",         MonsoonIds::LEGATO_PARAM,
+                std::function<void(RDM_KnobDarkMedium*)>([&](RDM_KnobDarkMedium* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.legato;}, [](const Monsoon::ModViz& m){return m.active;}); }));
+            bindParam<RDM_KnobDarkMedium>("param_REST_PARAM",           MonsoonIds::REST_PARAM,
+                std::function<void(RDM_KnobDarkMedium*)>([&](RDM_KnobDarkMedium* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.rest;}, [](const Monsoon::ModViz& m){return m.active;}); }));
+            bindParam<RDM_KnobDarkMedium>("param_ACCENT_KNOB",          MonsoonIds::ACCENT_KNOB,
+                std::function<void(RDM_KnobDarkMedium*)>([&](RDM_KnobDarkMedium* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.accent;}, [](const Monsoon::ModViz& m){return m.active;}); }));
             bindParam<RDM_KnobSmall>     ("param_BPM_PARAM",            MonsoonIds::BPM_PARAM);
             bindParam<RDM_KnobSmall>     ("param_PATTERN_LENGTH_PARAM", MonsoonIds::PATTERN_LENGTH_PARAM);
             bindParam<RDM_KnobSmall>     ("param_PATTERN_OFFSET_PARAM", MonsoonIds::PATTERN_OFFSET_PARAM);
         } else {
-            bindParam<RDM_KnobCreamMedium>("param_NOTE_VALUE_PARAM",     MonsoonIds::NOTE_VALUE_PARAM);
-            bindParam<RDM_KnobCreamMedium>("param_VARIATION_PARAM",      MonsoonIds::VARIATION_PARAM);
-            bindParam<RDM_KnobCreamMedium>("param_LEGATO_PARAM",         MonsoonIds::LEGATO_PARAM);
-            bindParam<RDM_KnobCreamMedium>("param_REST_PARAM",           MonsoonIds::REST_PARAM);
-            bindParam<RDM_KnobCreamMedium>("param_ACCENT_KNOB",          MonsoonIds::ACCENT_KNOB);
+            bindParam<RDM_KnobCreamMedium>("param_NOTE_VALUE_PARAM",     MonsoonIds::NOTE_VALUE_PARAM,
+                std::function<void(RDM_KnobCreamMedium*)>([&](RDM_KnobCreamMedium* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.noteValue;}, [](const Monsoon::ModViz& m){return m.active;}); }));
+            bindParam<RDM_KnobCreamMedium>("param_VARIATION_PARAM",      MonsoonIds::VARIATION_PARAM,
+                std::function<void(RDM_KnobCreamMedium*)>([&](RDM_KnobCreamMedium* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.variation;}, [](const Monsoon::ModViz& m){return m.active;}); }));
+            bindParam<RDM_KnobCreamMedium>("param_LEGATO_PARAM",         MonsoonIds::LEGATO_PARAM,
+                std::function<void(RDM_KnobCreamMedium*)>([&](RDM_KnobCreamMedium* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.legato;}, [](const Monsoon::ModViz& m){return m.active;}); }));
+            bindParam<RDM_KnobCreamMedium>("param_REST_PARAM",           MonsoonIds::REST_PARAM,
+                std::function<void(RDM_KnobCreamMedium*)>([&](RDM_KnobCreamMedium* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.rest;}, [](const Monsoon::ModViz& m){return m.active;}); }));
+            bindParam<RDM_KnobCreamMedium>("param_ACCENT_KNOB",          MonsoonIds::ACCENT_KNOB,
+                std::function<void(RDM_KnobCreamMedium*)>([&](RDM_KnobCreamMedium* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.accent;}, [](const Monsoon::ModViz& m){return m.active;}); }));
             bindParam<RDM_KnobSmall>      ("param_BPM_PARAM",            MonsoonIds::BPM_PARAM);
             bindParam<RDM_KnobSmall>      ("param_PATTERN_LENGTH_PARAM", MonsoonIds::PATTERN_LENGTH_PARAM);
             bindParam<RDM_KnobSmall>      ("param_PATTERN_OFFSET_PARAM", MonsoonIds::PATTERN_OFFSET_PARAM);
         }
+
+        // All big-5 knobs are bound; build their modulation-arc overlays on top.
+        flushModArcs(this, module);
     }
 
 void MonsoonWidget::step() {

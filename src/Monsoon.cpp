@@ -516,6 +516,15 @@ void Monsoon::process(const ProcessArgs& args) {
             modViz.rest      = paramManager->getRestNorm();
             modViz.accent    = paramManager->getAccentNorm();
             modViz.active    = paramManager->anyBig5Modulated();
+            modViz.rhythmSlew = paramManager->getRhythmSlewNorm();
+            modViz.melodySlew = paramManager->getMelodySlewNorm();
+            modViz.rhythmMix  = paramManager->getRhythmMixNorm();
+            modViz.melodyMix  = paramManager->getMelodyMixNorm();
+            modViz.activeCv3  = paramManager->anyCv3Modulated();
+            for (int i = 0; i < 12; ++i) modViz.semitone[i] = paramManager->getSemitoneNorm(i);
+            modViz.octaveLo   = paramManager->getOctaveLoNorm();
+            modViz.octaveHi   = paramManager->getOctaveHiNorm();
+            modViz.activePitch = paramManager->anyPitchModulated();
         }
         // ── UI Light Updates ──
         if (uiManager) {
@@ -694,7 +703,9 @@ void Monsoon::process(const ProcessArgs& args) {
             }
             // ParameterManager::getPolyRest includes the global Rest knob + global CV.
             // Here we add the per-voice modulation on top.
-            engine.voices[i].restProb = clamp(base + modulation, 0.f, 1.f);
+            float eff = clamp(base + modulation, 0.f, 1.f);
+            engine.voices[i].restProb = eff;
+            cachedPolyRestEffective[i] = eff;   // final value (knob+global+per-voice mod) for modviz
         }
 
         // Handle Throttled CV1 Logic (Range Modulation)

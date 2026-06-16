@@ -3,6 +3,7 @@
 #include "MonsoonStraitWestExpander.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/SvgPanelKit.hpp"
+#include "ui/ModArcOverlay.hpp"
 
 using namespace rack;
 using namespace MonsoonIds;
@@ -13,6 +14,42 @@ struct MonsoonStraitWestExpanderWidget : ModuleWidget,
                         dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
     int lastThemeLight = -1;
+
+    // Per-voice REST mod-arc overlays (West voices = engine indices 7..14).
+    std::vector<std::pair<rack::ParamWidget*, int>> pendingRestArcs;
+    void attachRestArc(rack::ParamWidget* knob, int voice) {
+        if (knob) pendingRestArcs.push_back({knob, voice});
+    }
+    void flushRestArcs() {
+        for (auto& pr : pendingRestArcs) {
+            auto* knob = pr.first; int voice = pr.second;
+            if (!knob) continue;
+            auto* arc = new redDot::ModArcOverlay();
+            arc->box.pos  = knob->box.pos;
+            arc->box.size = knob->box.size;
+            arc->radius   = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
+            rack::Module* self = module;
+            int pid = knob->paramId;
+            arc->getSetNorm = [self, pid]() -> float {
+                if (!self) return 0.f;
+                auto* pq = self->paramQuantities[pid];
+                return pq ? (float)pq->getScaledValue() : 0.f;
+            };
+            arc->getModNorm = [self, voice]() -> float {
+                Monsoon* m = redDot::findMonsoonEitherSide(self);
+                return (m && voice >= 0 && voice < 15) ? m->cachedPolyRestEffective[voice] : 0.f;
+            };
+            arc->isActive = [self, voice, pid]() -> bool {
+                Monsoon* m = redDot::findMonsoonEitherSide(self);
+                if (!m || voice < 0 || voice >= 15) return false;
+                float setN = 0.f;
+                if (auto* pq = self->paramQuantities[pid]) setN = (float)pq->getScaledValue();
+                return std::fabs(m->cachedPolyRestEffective[voice] - setN) > 1e-4f;
+            };
+            addChild(arc);
+        }
+        pendingRestArcs.clear();
+    }
     MonsoonStraitWestExpanderWidget(MonsoonStraitWestExpander* module)
     {
         setModule(module);
@@ -32,7 +69,9 @@ struct MonsoonStraitWestExpanderWidget : ModuleWidget,
         // id bases are the *_8 entries (voice 9 = index 8). Labels carry the row.
         for (int i = 0; i < 8; i++) {
             std::string r = std::to_string(i);
-            bindParam <Trimpot>      ("param_knob_"   + r, MonsoonIds::POLY_REST_PARAM_8      + i);
+            int voice = 7 + i;   // West row i → engine poly voice 7+i (POLY_REST_PARAM_8+i)
+            bindParam <Trimpot>      ("param_knob_"   + r, MonsoonIds::POLY_REST_PARAM_8      + i,
+                std::function<void(Trimpot*)>([this, voice](Trimpot* k){ attachRestArc(k, voice); }));
             bindParam <Trimpot>      ("param_att_"    + r, MonsoonIds::POLY_REST_MOD_ATT_8    + i);
             bindInput <DarkPJ301MPort>("input_modcv_" + r, MonsoonIds::POLY_REST_MOD_CV_INPUT_8 + i);
             bindOutput<DarkPJ301MPort>("output_gate_" + r, POLY_GATE_OUT_1   + i);
@@ -43,6 +82,7 @@ struct MonsoonStraitWestExpanderWidget : ModuleWidget,
         bindInput <DarkPJ301MPort>("input_global_cv_in", MonsoonIds::POLY_REST_CV_INPUT);
         bindOutput<PJ301MPort>    ("output_global_gate", POLY_GATE_1_16_OUT);
         bindOutput<PJ301MPort>    ("output_global_cv",   POLY_CV_1_16_OUT);
+        flushRestArcs();
     }
 
     void step() override {

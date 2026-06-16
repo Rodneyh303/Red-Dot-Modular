@@ -17,6 +17,17 @@ struct RDM_KnobCreamMedium : SvgKnob { RDM_KnobCreamMedium(); };
 
 struct MonsoonWidget : ModuleWidget, dotModular::Compose<MonsoonWidget, dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
     MonsoonWidget(Monsoon* module);
+    // Mod-arc overlays are collected during knob binding and attached AFTER all
+    // knobs are added (so they draw on top). Each entry: the knob + a getter for
+    // its normalised MODULATED value + an active flag. Plain std::function so the
+    // header needn't see Monsoon::ModViz (Monsoon is only forward-declared here).
+    struct PendingModArc {
+        rack::ParamWidget* knob = nullptr;
+        bool linear = false;   // false = radial knob arc; true = vertical-slider tick
+        std::function<float()> getModNorm;
+        std::function<bool()>  isActive;
+    };
+    std::vector<PendingModArc> pendingModArcs;
 
     bool getLightTheme() const;
     void setLightTheme(bool v);
