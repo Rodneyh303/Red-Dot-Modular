@@ -1,4 +1,5 @@
 #include "MonsoonExpanderManager.hpp"
+#include "../SpreadInterp.hpp"
 #include "../../Monsoon.hpp"
 //#include "../../MonsoonDeepStraitsSands.hpp"
 #include "../../StraitsEastSandsVisual.hpp"
@@ -7,7 +8,7 @@
 
 using namespace rack;
 
-void MonsoonExpanderManager::sync(SequencerEngine& engine) {
+void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono) {
     //auto* deepEast   = cachedDeepStraitsSandsEastExpander;
     //auto* deepWest   = cachedDeepStraitsSandsWestExpander;
     auto* straitEast = cachedPolyVoiceExpander;
@@ -22,14 +23,9 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
     const int  polyOutCap = polyBaseActive ? (straitWest ? 15 : 7) : 0;
     const int  effPolyVoices = math::clamp(engine.numPolyVoices, 0, polyOutCap);
 
-    // Helper for bipolar spread interpolation with clamping
-    auto interpolateAndClamp = [&](float original, float targetValue, float spreadAmount) -> float {
-        float result;
-        if (spreadAmount == 0.0f) result = original;
-        else if (spreadAmount > 0.0f) result = original + (targetValue - original) * spreadAmount;
-        else result = original + ((1.0f - targetValue) - original) * std::abs(spreadAmount);
-        return rack::math::clamp(result, 0.0f, 1.0f);
-    };
+    // Spread interpolation is now centralised in redDot::SpreadInterp (see
+    // src/dsp/SpreadInterp.hpp) — the single source of truth shared with the
+    // mono/macro path and the visual display.
 
     if (eastLOR && (straitEast || eastVisual) && polyBaseActive) {
        // using namespace DeepStraitsSandsEastIds;
@@ -120,16 +116,11 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
 
             if (!engine.locked) {
                 const int nPoly = effPolyVoices;
-                const float denom = 1.f + (float)nPoly;
-                float avgRhythmRandom[16] = {};
+                const redDot::SpreadInterp::Target mode = spreadInterpMono
+                    ? redDot::SpreadInterp::MONO_DRAW : redDot::SpreadInterp::AVERAGE_POLY;
                 for (int j = 0; j < 16; j++) {
-                    float s = engine.pe.slewedRhythm[j];
-                    for (int i = 0; i < nPoly; i++) s += engine.pe.slewedPolyRhythm[i][j];
-                    avgRhythmRandom[j] = s / denom;
-                }
-                for (int j = 0; j < 16; j++) {
-                    float voiceVal = engine.pe.slewedPolyRhythm[v][j];
-                    engine.pe.polyRhythmRandom[v][j] = interpolateAndClamp(voiceVal, avgRhythmRandom[j], restInterp);
+                    engine.pe.polyRhythmRandom[v][j] = redDot::SpreadInterp::apply(
+                        engine.pe, mode, 0, j, nPoly, engine.pe.slewedPolyRhythm[v][j], restInterp);
                 }
             }
             
@@ -147,16 +138,11 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
             
             if (!engine.locked) {
                 const int nPoly = effPolyVoices;
-                const float denom = 1.f + (float)nPoly;
-                float avgMelodyRandom[16] = {};
+                const redDot::SpreadInterp::Target mode = spreadInterpMono
+                    ? redDot::SpreadInterp::MONO_DRAW : redDot::SpreadInterp::AVERAGE_POLY;
                 for (int j = 0; j < 16; j++) {
-                    float s = engine.pe.slewedMelody[j];
-                    for (int i = 0; i < nPoly; i++) s += engine.pe.slewedPolyMelody[i][j];
-                    avgMelodyRandom[j] = s / denom;
-                }
-                for (int j = 0; j < 16; j++) {
-                    float voiceVal = engine.pe.slewedPolyMelody[v][j];
-                    engine.pe.polyMelodyRandom[v][j] = interpolateAndClamp(voiceVal, avgMelodyRandom[j], melodyInterp);
+                    engine.pe.polyMelodyRandom[v][j] = redDot::SpreadInterp::apply(
+                        engine.pe, mode, 1, j, nPoly, engine.pe.slewedPolyMelody[v][j], melodyInterp);
                 }
             }
             
@@ -181,16 +167,11 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
             
             if (!engine.locked) {
                 const int nPoly = effPolyVoices;
-                const float denom = 1.f + (float)nPoly;
-                float avgOctaveRandom[16] = {};
+                const redDot::SpreadInterp::Target mode = spreadInterpMono
+                    ? redDot::SpreadInterp::MONO_DRAW : redDot::SpreadInterp::AVERAGE_POLY;
                 for (int j = 0; j < 16; j++) {
-                    float s = engine.pe.slewedOctave[j];
-                    for (int i = 0; i < nPoly; i++) s += engine.pe.slewedPolyOctave[i][j];
-                    avgOctaveRandom[j] = s / denom;
-                }
-                for (int j = 0; j < 16; j++) {
-                    float voiceVal = engine.pe.slewedPolyOctave[v][j];
-                    engine.pe.polyOctaveRandom[v][j] = interpolateAndClamp(voiceVal, avgOctaveRandom[j], octaveInterp);
+                    engine.pe.polyOctaveRandom[v][j] = redDot::SpreadInterp::apply(
+                        engine.pe, mode, 2, j, nPoly, engine.pe.slewedPolyOctave[v][j], octaveInterp);
                 }
             }
             

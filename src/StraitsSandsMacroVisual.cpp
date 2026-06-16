@@ -15,14 +15,6 @@ using namespace StraitsMacroVisualIds;
 
 extern Plugin* pluginInstance;
 
-struct MacroInterpItem : MenuItem {
-    StraitsSandsMacroVisual* mod;
-    void onAction(const event::Action&) override { mod->interpUseMono = !mod->interpUseMono; }
-    void step() override {
-        rightText = mod->interpUseMono ? "Mono Draw ✓" : "Avg Poly ✓";
-        MenuItem::step();
-    }
-};
 
 struct StraitsSandsMacroVisualWidget : ModuleWidget {
     SandsVisualEditorV4*       visualEditor = nullptr;
@@ -91,10 +83,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         ModuleWidget::appendContextMenu(menu);
         auto* mod = dynamic_cast<StraitsSandsMacroVisual*>(module);
         if (!mod) return;
-        menu->addChild(new MenuSeparator);
-        menu->addChild(createMenuLabel("Spread interpolation"));
-        auto* ii = createMenuItem<MacroInterpItem>("Interpolation target");
-        ii->mod = mod; menu->addChild(ii);
+        // Spread interpolation target moved to the Monsoon module context menu.
     }
 
     Monsoon* getMonsoon() {
@@ -167,7 +156,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         paramMgr->spreadMgr.setSpread(1, mod->spreadEffective[1]);
         paramMgr->spreadMgr.setSpread(2, mod->spreadEffective[2]);
         paramMgr->spreadMgr.setInterpolationTarget(
-            mod->interpUseMono ? SpreadManager::MONO_DRAW : SpreadManager::AVERAGE_POLY);
+            monsoon->spreadInterpMono ? SpreadManager::MONO_DRAW : SpreadManager::AVERAGE_POLY);
 
         // CV applied at control rate in Monsoon::process() — base + cv*atten*scale.
 

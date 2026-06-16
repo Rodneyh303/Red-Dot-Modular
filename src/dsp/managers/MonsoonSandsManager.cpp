@@ -1,4 +1,5 @@
 #include "MonsoonSandsManager.hpp"
+#include "../SpreadInterp.hpp"
 #include "../../Monsoon.hpp"
 #include "../../MonsoonSandsVisualExpander.hpp"
 //#include "../../MonsoonSandsExpander.hpp"
@@ -13,7 +14,7 @@ using namespace MonsoonIds;
 namespace Mono  = SandsMonoVisualIds;
 namespace Macro = StraitsMacroVisualIds;
 
-void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManager) {
+void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManager, bool spreadInterpMono) {
     const bool hasVisual = (expanderManager.cachedSandsVisualExpander != nullptr);
     //const bool hasKnobs  = (expanderManager.cachedDnaExpander          != nullptr);
     const bool hasMacro  = (expanderManager.cachedMacroSandsVisual     != nullptr);
@@ -79,15 +80,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         return clamp(base + cv * att, -1.f, 1.f);
     };
 
-    // Helper for bipolar spread interpolation with clamping
-    auto interpolateAndClamp = [&](float original, float targetValue, float spreadAmount) -> float {
-        float result;
-        if (spreadAmount == 0.0f) result = original;
-        else if (spreadAmount > 0.0f) result = original + (targetValue - original) * spreadAmount;
-        else result = original + ((1.0f - targetValue) - original) * std::abs(spreadAmount);
-        
-        return rack::math::clamp(result, 0.0f, 1.0f);
-    };
+    // Spread interpolation is now centralised in redDot::SpreadInterp (see
+    // src/dsp/SpreadInterp.hpp) — the single source of truth.
 
     if (hasVisual) 
     {
@@ -140,19 +134,17 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // +West for 8..15) are averaged. With no base expander it is 0, so
             // Mono spread degenerates to a no-op (average == mono draw itself).
             const int nPoly = effPolyVoices;
-            const float denom = 1.f + (float)nPoly;
+            const redDot::SpreadInterp::Target mode = spreadInterpMono
+                ? redDot::SpreadInterp::MONO_DRAW : redDot::SpreadInterp::AVERAGE_POLY;
             for (int i = 0; i < 16; ++i) {
-                auto avg = [&](float monoVal, const float poly[15][16]) {
-                    float s = monoVal;
-                    for (int v = 0; v < nPoly; ++v) s += poly[v][i];
-                    return s / denom;
-                };
-                float rAvg = avg(engine.pe.slewedRhythm[i], engine.pe.slewedPolyRhythm); // Target for rhythm
-                float mAvg = avg(engine.pe.slewedMelody[i], engine.pe.slewedPolyMelody); // Target for melody
-                float oAvg = avg(engine.pe.slewedOctave[i], engine.pe.slewedPolyOctave); // Target for octave
-                engine.pe.rhythmRandom[i] = interpolateAndClamp(engine.pe.slewedRhythm[i], rAvg, monoVis->spreadEffective[0]);
-                engine.pe.melodyRandom[i] = interpolateAndClamp(engine.pe.slewedMelody[i], mAvg, monoVis->spreadEffective[1]);
-                engine.pe.octaveRandom[i] = interpolateAndClamp(engine.pe.slewedOctave[i], oAvg, monoVis->spreadEffective[2]);
+                // Single source of truth: target (mode-aware, mono-inclusive avg)
+                // + bipolar interpolate, over the pre-spread slewed draws.
+                engine.pe.rhythmRandom[i] = redDot::SpreadInterp::apply(
+                    engine.pe, mode, 0, i, nPoly, engine.pe.slewedRhythm[i], monoVis->spreadEffective[0]);
+                engine.pe.melodyRandom[i] = redDot::SpreadInterp::apply(
+                    engine.pe, mode, 1, i, nPoly, engine.pe.slewedMelody[i], monoVis->spreadEffective[1]);
+                engine.pe.octaveRandom[i] = redDot::SpreadInterp::apply(
+                    engine.pe, mode, 2, i, nPoly, engine.pe.slewedOctave[i], monoVis->spreadEffective[2]);
                 engine.pe.legatoRandom[i]    = engine.pe.slewedLegato[i];     // mono-only, raw
                 engine.pe.accentRandom[i]    = engine.pe.slewedAccent[i];
                 engine.pe.variationRandom[i] = engine.pe.slewedVariation[i];

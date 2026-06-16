@@ -16,15 +16,6 @@ using namespace StraitsEastVisualIds;
 
 extern Plugin* pluginInstance;
 
-struct EastInterpItem : MenuItem {
-    StraitsEastSandsVisual* mod;
-    void onAction(const event::Action&) override { mod->interpUseMono = !mod->interpUseMono; }
-    void step() override {
-        rightText = mod->interpUseMono ? "Mono Draw ✓" : "Avg Poly ✓";
-        MenuItem::step();
-    }
-};
-
 struct StraitsEastSandsVisualWidget : ModuleWidget,
     dotModular::Compose<StraitsEastSandsVisualWidget,
                         dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
@@ -102,10 +93,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         ModuleWidget::appendContextMenu(menu);
         auto* mod = dynamic_cast<StraitsEastSandsVisual*>(module);
         if (!mod) return;
-        menu->addChild(new MenuSeparator);
-        menu->addChild(createMenuLabel("Spread interpolation"));
-        auto* ii = createMenuItem<EastInterpItem>("Interpolation target");
-        ii->mod = mod; menu->addChild(ii);
+        // Spread interpolation target moved to the Monsoon module context menu
+        // (single source of truth — was duplicated here and on Macro).
     }
 
     void saveVoiceSpread(int v) {
@@ -253,7 +242,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         smgr.setSpread(selectedVoice, 1, mod->params[SPREAD_M].getValue());
         smgr.setSpread(selectedVoice, 2, mod->params[SPREAD_O].getValue());
         smgr.setInterpolationTarget(
-            mod->interpUseMono ? SpreadManager::MONO_DRAW : SpreadManager::AVERAGE_POLY);
+            monsoon->spreadInterpMono ? SpreadManager::MONO_DRAW : SpreadManager::AVERAGE_POLY);
 
         // CV applied at control rate in Monsoon::process() — base + scaled offset, no mutation here.
 
