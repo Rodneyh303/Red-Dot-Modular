@@ -43,6 +43,21 @@ public:
     
     /// Accent probability (0–1) with direct CV input (0–10V = 0–100%)
     float getAccent() const;
+
+    /// Big-5 effective values NORMALISED to 0..1 (for modulation visualisation).
+    /// These reuse the effective-value getters above; NOTE_VALUE is divided by 8
+    /// so all five share a 0..1 range the widgets can compare to knob position.
+    float getNoteValueNorm() const { return getNoteValue() / 8.f; }
+    float getVariationNorm() const { return getVariation(); }
+    float getLegatoNorm()    const { return getLegato(); }
+    float getRestNorm()      const { return getRest(); }
+    float getAccentNorm()    const { return getAccent(); }
+    /// True if any big-5 modulation source is currently contributing an offset.
+    bool  anyBig5Modulated() const {
+        for (int i = 0; i < 5; ++i) if (surgeOffsets[i] != 0.f) return true;
+        for (int i = 0; i < 4; ++i) if (cv2Offsets[i]   != 0.f) return true;
+        return false;
+    }
     
     /// Transpose in semitones (-12 to +12)
     float getTranspose() const;

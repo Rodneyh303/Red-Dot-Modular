@@ -747,6 +747,19 @@ struct Monsoon : Module {
     int lastModeSelect = -1;
     int lightTheme = 0; // 0 = Dark, 1 = Light. Using int to match PeranakanLatticePanel expectations.
     MonsoonExpanderManager expanderManager;
+
+    // Modulation-visualisation snapshot. Published once per process() from the
+    // ParameterManager effective-value getters; read by the knob/slider widgets
+    // on the UI thread to draw a live "set → modulated" indicator (only when the
+    // control is actually being modulated). Values are NORMALISED 0..1 so a widget
+    // can compare directly to its knob's normalised position. Stale-by-one-frame
+    // is harmless for a visual. Extend this struct as more controls are covered
+    // (slew/mix/bpm/global len-off/pitch/per-voice rest).
+    struct ModViz {
+        // Big-5 effective values, normalised 0..1 (NOTE_VALUE is /8).
+        float noteValue = 0.f, variation = 0.f, legato = 0.f, rest = 0.f, accent = 0.f;
+        bool  active = false;   // any modulation source present this frame
+    } modViz;
     dsp::ClockDivider lightDivider;
     dsp::ClockDivider controlDivider; // For DNA modulation at "Control Rate"
 

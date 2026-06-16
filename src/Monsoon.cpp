@@ -507,6 +507,16 @@ void Monsoon::process(const ProcessArgs& args) {
     // ── Throttle UI and Light processing ──
     if (lightDivider.process()) {
         // Throttled Visuals/Outputs
+        // ── Modulation-viz snapshot (normalised effective big-5 values) ──
+        // Published at UI rate for the knob widgets' live set→modulated arc.
+        if (paramManager) {
+            modViz.noteValue = paramManager->getNoteValueNorm();
+            modViz.variation = paramManager->getVariationNorm();
+            modViz.legato    = paramManager->getLegatoNorm();
+            modViz.rest      = paramManager->getRestNorm();
+            modViz.accent    = paramManager->getAccentNorm();
+            modViz.active    = paramManager->anyBig5Modulated();
+        }
         // ── UI Light Updates ──
         if (uiManager) {
             // Move these here from per-sample logic
