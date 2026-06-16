@@ -94,6 +94,12 @@ namespace StraitsEastVisualIds {
 struct StraitsEastSandsVisual : Module {
     bool interpUseMono = false;
 
+    // Per-voice, per-lane EFFECTIVE spread (interp param + per-voice/lane CV·att,
+    // clamped, after combineSpread) — published by MonsoonExpanderManager each
+    // sync so the East spread trimpot mod-arc can show the viewed voice's value.
+    // lane: 0=REST 1=MELODY 2=OCTAVE. Bipolar-ish 0..1 interp domain.
+    float polySpreadEffective[15][3] = {};
+
     StraitsEastSandsVisual() {
         using namespace StraitsEastVisualIds;
         config(MonsoonIds::NUM_PARAMS, StraitsEastVisualIds::NUM_INPUTS, 0, 0);

@@ -113,6 +113,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
                 restInterp = math::clamp(restInterp + cv * att, 0.f, 1.f);
             }
             restInterp = combineSpread(0, restInterp);   // owner + Macro-CV blend (spread)
+            if (eastVisual) eastVisual->polySpreadEffective[v][0] = restInterp;
             
             // if (deepEast) {
             //     engine.voices[v].restProb = deepEast->params[MonsoonIds::POLY_REST_PARAM_1 + v].getValue();
@@ -144,6 +145,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
                 melodyInterp = math::clamp(melodyInterp + cv * att, 0.f, 1.f);
             }
             melodyInterp = combineSpread(1, melodyInterp);   // owner + Macro-CV blend (spread)
+            if (eastVisual) eastVisual->polySpreadEffective[v][1] = melodyInterp;
             
             if (!engine.locked) {
                 const int nPoly = effPolyVoices;
@@ -178,6 +180,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
                 octaveInterp = math::clamp(octaveInterp + cv * att, 0.f, 1.f);
             }
             octaveInterp = combineSpread(2, octaveInterp);   // owner + Macro-CV blend (spread)
+            if (eastVisual) eastVisual->polySpreadEffective[v][2] = octaveInterp;
             
             if (!engine.locked) {
                 const int nPoly = effPolyVoices;

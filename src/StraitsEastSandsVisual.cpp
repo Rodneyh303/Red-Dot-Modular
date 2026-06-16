@@ -6,6 +6,7 @@
 #include "ui/TabButton.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/SvgPanelKit.hpp"
+#include "ui/ModArcOverlay.hpp"
 #include "dsp/managers/PolyVoiceSandsParameterManager.hpp"
 #include "dsp/managers/SpreadManager.hpp"
 
@@ -33,6 +34,44 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     PolyVoiceSandsParameterManager* paramMgr     = nullptr;
     std::vector<rack::Widget*> blendControls;   // owner/send controls; greyed when no Macro
     int  selectedVoice = 0;
+    // East spread mod-arcs. Compared in the INTERP domain (0..1) to sidestep the
+    // pre-existing display-trimpot bipolar (-1..1) vs interp (0..1) mismatch: set
+    // = the viewed voice's interp param (pre-CV), effective = the published
+    // polySpreadEffective[viewedVoice][lane] (post per-voice/lane CV + combineSpread).
+    std::vector<std::pair<rack::ParamWidget*, int>> pendingSpreadArcs;
+    void flushSpreadArcs() {
+        auto* mod = dynamic_cast<StraitsEastSandsVisual*>(module);
+        for (auto& pr : pendingSpreadArcs) {
+            auto* knob = pr.first; int lane = pr.second;
+            if (!knob) continue;
+            auto* arc = new redDot::ModArcOverlay();
+            arc->box.pos  = knob->box.pos;
+            arc->box.size = knob->box.size;
+            arc->radius   = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
+            auto interpParamId = [this, lane]() -> int {
+                int v = selectedVoice;
+                return (lane==0) ? restInterpId(v) : (lane==1) ? melodyInterpId(v) : octaveInterpId(v);
+            };
+            arc->getSetNorm = [mod, interpParamId]() -> float {
+                if (!mod) return 0.f;
+                return rack::math::clamp(mod->params[interpParamId()].getValue(), 0.f, 1.f);
+            };
+            arc->getModNorm = [mod, this, lane]() -> float {
+                if (!mod) return 0.f;
+                int v = selectedVoice;
+                if (v < 0 || v >= 15) return 0.f;
+                return rack::math::clamp(mod->polySpreadEffective[v][lane], 0.f, 1.f);
+            };
+            arc->isActive = [mod, this, lane, interpParamId]() -> bool {
+                if (!mod) return false;
+                int v = selectedVoice;
+                if (v < 0 || v >= 15) return false;
+                return std::fabs(mod->polySpreadEffective[v][lane] - mod->params[interpParamId()].getValue()) > 1e-4f;
+            };
+            addChild(arc);
+        }
+        pendingSpreadArcs.clear();
+    }
     bool initialized   = false;
     // Theme follow-Monsoon: cache both panel SVGs + the panel widget so step()
     // can swap when the connected host's lightTheme changes.
@@ -74,9 +113,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             bindParam<Trimpot>   ("param_" + std::to_string(attenId(r,0)), attenId(r,0));
             bindParam<Trimpot>   ("param_" + std::to_string(attenId(r,1)), attenId(r,1));
         }
-        bindParam<Trimpot>("param_" + std::to_string((int)SPREAD_R), SPREAD_R);
-        bindParam<Trimpot>("param_" + std::to_string((int)SPREAD_M), SPREAD_M);
-        bindParam<Trimpot>("param_" + std::to_string((int)SPREAD_O), SPREAD_O);
+        bindParam<Trimpot>("param_" + std::to_string((int)SPREAD_R), SPREAD_R,
+            std::function<void(Trimpot*)>([this](Trimpot* k){ pendingSpreadArcs.push_back({k, 0}); }));
+        bindParam<Trimpot>("param_" + std::to_string((int)SPREAD_M), SPREAD_M,
+            std::function<void(Trimpot*)>([this](Trimpot* k){ pendingSpreadArcs.push_back({k, 1}); }));
+        bindParam<Trimpot>("param_" + std::to_string((int)SPREAD_O), SPREAD_O,
+            std::function<void(Trimpot*)>([this](Trimpot* k){ pendingSpreadArcs.push_back({k, 2}); }));
 
         // Macro/East blend controls (bound to the display proxies; copied to/from
         // the per-voice MACRO params on voice switch + each frame). Owner = a
@@ -94,6 +136,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         }
 
         paramMgr = new PolyVoiceSandsParameterManager(nullptr, nullptr, 15, 0);
+        flushSpreadArcs();
     }
 
     ~StraitsEastSandsVisualWidget() override { delete paramMgr; }
