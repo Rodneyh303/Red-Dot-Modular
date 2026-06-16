@@ -23,6 +23,7 @@ struct MonsoonWidget : ModuleWidget, dotModular::Compose<MonsoonWidget, dotModul
     // header needn't see Monsoon::ModViz (Monsoon is only forward-declared here).
     struct PendingModArc {
         rack::ParamWidget* knob = nullptr;
+        bool linear = false;   // false = radial knob arc; true = vertical-slider tick
         std::function<float()> getModNorm;
         std::function<bool()>  isActive;
     };

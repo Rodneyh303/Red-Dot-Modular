@@ -763,6 +763,11 @@ struct Monsoon : Module {
         // Modulated via CV3 (cv3Offsets). activeCv3 gates their arcs.
         float rhythmSlew = 0.f, melodySlew = 0.f, rhythmMix = 0.f, melodyMix = 0.f;
         bool  activeCv3 = false;
+        // Pitch sliders: 12 semitone (0..1) + octave lo/hi (normalised /8).
+        // Modulated via the Interchange expander CV (+ CV1 for octaves).
+        float semitone[12] = {0.f};
+        float octaveLo = 0.f, octaveHi = 0.f;
+        bool  activePitch = false;
     } modViz;
     dsp::ClockDivider lightDivider;
     dsp::ClockDivider controlDivider; // For DNA modulation at "Control Rate"

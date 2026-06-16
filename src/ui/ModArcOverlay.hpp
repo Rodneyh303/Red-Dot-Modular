@@ -30,6 +30,14 @@ struct ModArcOverlay : rack::TransparentWidget {
     NVGcolor color = nvgRGBAf(0.85f, 0.0f, 0.10f, 0.9f);  // dot.modular red
     float minDelta = 0.01f;        // don't draw for imperceptible modulation
 
+    // Mode: radial (knobs) vs linear (vertical sliders).
+    enum Mode { RADIAL, LINEAR_V } mode = RADIAL;
+    // Linear mode: the handle's travel within the box (px from top/bottom edges).
+    // The modulated value v maps to y = top + (1-v)*(bottom-top). Defaults assume
+    // a small symmetric inset; the host can tune to match the slider art.
+    float travelTopPx = 4.f;
+    float travelBotPx = 4.f;
+
     // Knob "value angle" convention: Rack SvgKnob measures rotation with 0 at the
     // top (pointer up). In nvg screen space the top is -PI/2. So a normalised
     // value v maps to a nvg angle of: (-PI/2) + (minAngle + v*(maxAngle-minAngle)).
@@ -46,6 +54,33 @@ struct ModArcOverlay : rack::TransparentWidget {
         float setN = getSetNorm();
         float modN = getModNorm();
         if (std::fabs(modN - setN) < minDelta) return;   // nothing meaningful to show
+
+        if (mode == LINEAR_V) {
+            // Vertical slider: draw a tick at the modulated height + a connecting
+            // stem from the set height, so you see the offset direction/size.
+            float top = travelTopPx;
+            float bot = box.size.y - travelBotPx;
+            auto yFor = [&](float v){ v = rack::math::clamp(v,0.f,1.f); return top + (1.f - v) * (bot - top); };
+            float ySet = yFor(setN);
+            float yMod = yFor(modN);
+            float x0 = box.size.x * 0.18f;
+            float x1 = box.size.x * 0.82f;
+            // Stem from set→mod
+            nvgBeginPath(args.vg);
+            nvgMoveTo(args.vg, box.size.x * 0.5f, ySet);
+            nvgLineTo(args.vg, box.size.x * 0.5f, yMod);
+            nvgStrokeColor(args.vg, color);
+            nvgStrokeWidth(args.vg, 2.0f);
+            nvgLineCap(args.vg, NVG_ROUND);
+            nvgStroke(args.vg);
+            // Tick at modulated height
+            nvgBeginPath(args.vg);
+            nvgMoveTo(args.vg, x0, yMod);
+            nvgLineTo(args.vg, x1, yMod);
+            nvgStrokeWidth(args.vg, 2.0f);
+            nvgStroke(args.vg);
+            return;
+        }
 
         float cx = box.size.x * 0.5f;
         float cy = box.size.y * 0.5f;

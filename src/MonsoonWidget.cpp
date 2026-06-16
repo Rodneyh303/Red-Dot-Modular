@@ -80,6 +80,20 @@ void MonsoonWidget::setLightTheme(bool v) {
 // Queue a mod-arc for a just-bound knob (created in attachModArc's caller). The
 // arc itself is built later in flushModArcs(), AFTER all knobs are added, so it
 // draws on top. field() reads the module's published normalised MODULATED value.
+// Queue a LINEAR (vertical-slider) mod indicator. Same deferred-attach scheme as
+// queueModArc; flushModArcs builds it (mode flag carried via PendingModArc).
+static void queueModArcLinear(MonsoonWidget* mw, Monsoon* module, rack::ParamWidget* slider,
+                              std::function<float(const Monsoon::ModViz&)> field,
+                              std::function<bool(const Monsoon::ModViz&)> active) {
+    if (!slider || !mw || !module) return;
+    MonsoonWidget::PendingModArc p;
+    p.knob = slider;
+    p.linear = true;
+    p.getModNorm = [module, field]()  -> float { return module ? field(module->modViz)  : 0.f; };
+    p.isActive   = [module, active]() -> bool  { return module && active(module->modViz); };
+    mw->pendingModArcs.push_back(p);
+}
+
 static void queueModArc(MonsoonWidget* mw, Monsoon* module, rack::ParamWidget* knob,
                         std::function<float(const Monsoon::ModViz&)> field,
                         std::function<bool(const Monsoon::ModViz&)> active) {
@@ -100,7 +114,14 @@ static void flushModArcs(MonsoonWidget* mw, Monsoon* module) {
         auto* arc = new redDot::ModArcOverlay();
         arc->box.pos  = p.knob->box.pos;
         arc->box.size = p.knob->box.size;
-        arc->radius   = std::min(p.knob->box.size.x, p.knob->box.size.y) * 0.5f + mm2px(0.6f);
+        if (p.linear) {
+            arc->mode = redDot::ModArcOverlay::LINEAR_V;
+            // Inset the travel a touch so the tick sits within the slider track.
+            arc->travelTopPx = p.knob->box.size.y * 0.10f;
+            arc->travelBotPx = p.knob->box.size.y * 0.10f;
+        } else {
+            arc->radius = std::min(p.knob->box.size.x, p.knob->box.size.y) * 0.5f + mm2px(0.6f);
+        }
         int pid = p.knob->paramId;
         arc->getSetNorm = [module, pid]() -> float {
             if (!module) return 0.f;
@@ -120,15 +141,30 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         if (box.size.x == 0) box.size = mm2px(Vec(W_MM, 128.5f));
 
         // ── 12 semitone sliders: 9mm pitch ───────────────────────────────────
-        for (int i = 0; i < 12; ++i)
-            addParam(createLightParamCentered<MonsoonLightSlider<GreenRedLight>>(
-                mm2px(Vec(7.5f + i*9.f, 59.75f)), module, SEMI0_PARAM+i, SEMI_LED_START+2*i));
+        for (int i = 0; i < 12; ++i) {
+            auto* s = createLightParamCentered<MonsoonLightSlider<GreenRedLight>>(
+                mm2px(Vec(7.5f + i*9.f, 59.75f)), module, SEMI0_PARAM+i, SEMI_LED_START+2*i);
+            addParam(s);
+            queueModArcLinear(this, module, s,
+                [i](const Monsoon::ModViz& m){ return m.semitone[i]; },
+                [](const Monsoon::ModViz& m){ return m.activePitch; });
+        }
 
         // ── OCT sliders ───────────────────────────────────────────────────────
-        addParam(createLightParamCentered<VCVLightSlider<RedLight>>(
-            mm2px(Vec(119.f, 59.75f)), module, MonsoonIds::OCT_LO_PARAM, MonsoonIds::OCT_LO_LED));
-        addParam(createLightParamCentered<VCVLightSlider<RedLight>>(
-            mm2px(Vec(128.f, 59.75f)), module, MonsoonIds::OCT_HI_PARAM, MonsoonIds::OCT_HI_LED));
+        {
+            auto* lo = createLightParamCentered<VCVLightSlider<RedLight>>(
+                mm2px(Vec(119.f, 59.75f)), module, MonsoonIds::OCT_LO_PARAM, MonsoonIds::OCT_LO_LED);
+            addParam(lo);
+            queueModArcLinear(this, module, lo,
+                [](const Monsoon::ModViz& m){ return m.octaveLo; },
+                [](const Monsoon::ModViz& m){ return m.activePitch; });
+            auto* hi = createLightParamCentered<VCVLightSlider<RedLight>>(
+                mm2px(Vec(128.f, 59.75f)), module, MonsoonIds::OCT_HI_PARAM, MonsoonIds::OCT_HI_LED);
+            addParam(hi);
+            queueModArcLinear(this, module, hi,
+                [](const Monsoon::ModViz& m){ return m.octaveHi; },
+                [](const Monsoon::ModViz& m){ return m.activePitch; });
+        }
 
         // ── 16-step light ring: enlarged, cx=162 cy=30 r=18 ──────────────────
         {
