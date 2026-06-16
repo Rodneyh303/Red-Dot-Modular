@@ -16,14 +16,36 @@ using namespace StraitsMacroVisualIds;
 
 extern Plugin* pluginInstance;
 
-struct MacroInterpItem : MenuItem {
-    StraitsSandsMacroVisual* mod;
+// struct MacroInterpItem : MenuItem {
+    
 
-    // Spread mod-arcs (bipolar -1..1). Queued during construction, attached after
+   
+//     // void onAction(const event::Action&) override { mod->interpUseMono = !mod->interpUseMono; }
+//     // void step() override {
+//     //     rightText = mod->interpUseMono ? "Mono Draw ✓" : "Avg Poly ✓";
+//     //     MenuItem::step();
+//     // }
+// };
+//StraitsSandsMacroVisual* mod;
+
+ // Spread mod-arcs (bipolar -1..1). Queued during construction, attached after
     // all controls (z-order). Effective spread = mod->spreadEffective[lane] (the
     // CV-modulated value); set = the SPREAD_* param. Both normalised (v+1)/2.
-    std::vector<std::pair<rack::ParamWidget*, int>> pendingSpreadArcs;
+   
+
+struct StraitsSandsMacroVisualWidget : ModuleWidget {
+    SandsVisualEditorV4*       visualEditor = nullptr;
+    PolySandsParameterManager* paramMgr     = nullptr;
+    TabButtonGroup*            tabGroup     = nullptr;
+    int viewVoice = 0;   // which voice's resulting probabilities to DISPLAY (read-only)
+    bool                       initialized  = false;
+    std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
+    rack::app::SvgPanel* panelWidget = nullptr;
+    int lastThemeLight = -1;
+
+ std::vector<std::pair<rack::ParamWidget*, int>> pendingSpreadArcs;
     void flushSpreadArcs() {
+        auto* mod = dynamic_cast<StraitsSandsMacroVisual*>(module);
         for (auto& pr : pendingSpreadArcs) {
             auto* knob = pr.first; int lane = pr.second;
             if (!knob) continue;
@@ -51,22 +73,6 @@ struct MacroInterpItem : MenuItem {
         }
         pendingSpreadArcs.clear();
     }
-    void onAction(const event::Action&) override { mod->interpUseMono = !mod->interpUseMono; }
-    void step() override {
-        rightText = mod->interpUseMono ? "Mono Draw ✓" : "Avg Poly ✓";
-        MenuItem::step();
-    }
-};
-
-struct StraitsSandsMacroVisualWidget : ModuleWidget {
-    SandsVisualEditorV4*       visualEditor = nullptr;
-    PolySandsParameterManager* paramMgr     = nullptr;
-    TabButtonGroup*            tabGroup     = nullptr;
-    int viewVoice = 0;   // which voice's resulting probabilities to DISPLAY (read-only)
-    bool                       initialized  = false;
-    std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
-    rack::app::SvgPanel* panelWidget = nullptr;
-    int lastThemeLight = -1;
 
     explicit StraitsSandsMacroVisualWidget(StraitsSandsMacroVisual* mod) {
         setModule(mod);

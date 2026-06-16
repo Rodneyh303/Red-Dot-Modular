@@ -59,6 +59,14 @@ float ParameterManager::getAccent() const {
     return clampv(v, 0.f, 1.f);
 }
 
+bool ParameterManager::anyPitchModulated() const {
+    for (int i = 0; i < 12; ++i)
+        if (std::fabs(getSemitone(i) - readParam_(SEMI0_PARAM + i, 0.f, 1.f)) > 1e-4f) return true;
+    if (std::fabs(getOctaveLo() - readParam_(OCT_LO_PARAM, 0.f, 8.f)) > 1e-4f) return true;
+    if (std::fabs(getOctaveHi() - readParam_(OCT_HI_PARAM, 0.f, 8.f)) > 1e-4f) return true;
+    return false;
+}
+
 float ParameterManager::getTranspose() const {
     return readParam_(TRANSPOSE_PARAM, -12.f, 12.f);
 }
