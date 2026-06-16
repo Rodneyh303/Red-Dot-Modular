@@ -123,6 +123,8 @@ public:
     
     /// Get all CV2 offsets (for debugging/persistence) - now 5 elements
     const float* getCv2Offsets() const { return cv2Offsets; }
+    const float* getCv3Offsets() const { return cv3Offsets; }
+    const float* getSurgeOffsets() const { return surgeOffsets; }
     
     /// Clear all CV2 offsets
     void clearCv2Offsets() {

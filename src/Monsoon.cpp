@@ -525,6 +525,19 @@ void Monsoon::process(const ProcessArgs& args) {
             modViz.octaveLo   = paramManager->getOctaveLoNorm();
             modViz.octaveHi   = paramManager->getOctaveHiNorm();
             modViz.activePitch = paramManager->anyPitchModulated();
+
+            // TEMP DIAGNOSTIC (modviz CV2/CV3): logs ~1/sec which active flags are
+            // set + the raw offset arrays, to find why CV2/CV3 arcs don't show.
+            // Remove once resolved.
+            static int dbgN = 0;
+            if ((dbgN++ % 90) == 0) {
+                INFO("[modviz] big5active=%d cv3active=%d pitchActive=%d | cv2[0..4]=%.3f %.3f %.3f %.3f %.3f | cv3[0..3]=%.3f %.3f %.3f %.3f | surge[0..4]=%.3f %.3f %.3f %.3f %.3f | cv2Mode=%d cv3Target=%d cv3conn=%d",
+                    (int)modViz.active, (int)modViz.activeCv3, (int)modViz.activePitch,
+                    paramManager->getCv2Offsets()[0], paramManager->getCv2Offsets()[1], paramManager->getCv2Offsets()[2], paramManager->getCv2Offsets()[3], paramManager->getCv2Offsets()[4],
+                    paramManager->getCv3Offsets()[0], paramManager->getCv3Offsets()[1], paramManager->getCv3Offsets()[2], paramManager->getCv3Offsets()[3],
+                    paramManager->getSurgeOffsets()[0], paramManager->getSurgeOffsets()[1], paramManager->getSurgeOffsets()[2], paramManager->getSurgeOffsets()[3], paramManager->getSurgeOffsets()[4],
+                    cv2Mode, cv3Target, (int)cachedCv3Connected);
+            }
         }
         // ── UI Light Updates ──
         if (uiManager) {
