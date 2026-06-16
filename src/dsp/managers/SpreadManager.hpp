@@ -3,6 +3,7 @@
 #include <array>
 #include <algorithm>
 #include <cmath>
+#include "../SpreadInterp.hpp"
 
 namespace redDot {
 
@@ -280,12 +281,23 @@ struct SpreadManager {
    */
   float getInterpolatedValue(int voiceIdx, int lane, int step) const {
     if (!patternEngine) return 0.5f;
-    
-    float original = getOriginalValue(voiceIdx, lane, step);
-    float targetValue = getInterpolationTarget(voiceIdx, lane, step);
-    float spreadAmount = getSpread(voiceIdx, lane);
-    
-    return interpolate(original, targetValue, spreadAmount);
+    // Delegate to the single source of truth so the DISPLAY matches the
+    // sequencer exactly: same pre-spread slewed draws, same mono-inclusive
+    // average / mono-draw target, same bipolar interpolate. (Previously this
+    // averaged the post-spread *Random output and excluded mono — a different
+    // computation from the sequencer.)
+    const int nPoly = std::min(getActiveVoiceCount(), numVoices);
+    const redDot::SpreadInterp::Target m = (target == MONO_DRAW)
+        ? redDot::SpreadInterp::MONO_DRAW : redDot::SpreadInterp::AVERAGE_POLY;
+    // The voice's own pre-spread draw. For a per-voice manager voiceIdx maps to
+    // the poly strand; mono-draw mode uses the mono strand as original only when
+    // this IS the mono context (numVoices==1). Match the sequencer: poly voices
+    // interpolate from their own slewed poly draw.
+    float original = (numVoices <= 1)
+        ? redDot::SpreadInterp::monoSlewed(*patternEngine, lane, step)
+        : redDot::SpreadInterp::polySlewed(*patternEngine, lane, startVoiceIdx + voiceIdx, step);
+    return redDot::SpreadInterp::apply(*patternEngine, m, lane, step, nPoly,
+                                       original, getSpread(voiceIdx, lane));
   }
   
   // ===== BATCH OPERATIONS =====

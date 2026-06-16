@@ -438,6 +438,21 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
         };
         auto* themeItem = createMenuItem<ThemeItem>("Theme"); themeItem->widget = this; menu->addChild(themeItem);
         menu->addChild(new ui::MenuSeparator);
+
+        // Single spread-interpolation target toggle (was per-visual on East/Macro;
+        // now the one authoritative control, here on Monsoon).
+        menu->addChild(createMenuLabel("Spread interpolation target"));
+        struct SpreadTargetItem : ui::MenuItem {
+            Monsoon* module = nullptr;
+            bool valueMono = false;   // this item represents Mono Draw vs Avg Poly
+            void onAction(const event::Action&) override { if (module) module->spreadInterpMono = valueMono; }
+            void step() override { if (module) rightText = (module->spreadInterpMono == valueMono) ? "✔" : ""; ui::MenuItem::step(); }
+        };
+        { auto* avg = createMenuItem<SpreadTargetItem>("Average poly");
+          avg->module = m; avg->valueMono = false; menu->addChild(avg);
+          auto* mono = createMenuItem<SpreadTargetItem>("Mono draw");
+          mono->module = m; mono->valueMono = true; menu->addChild(mono); }
+        menu->addChild(new ui::MenuSeparator);
         struct IntItem : ui::MenuItem {
             Monsoon* module; int* target; int value;
             void onAction(const event::Action&) override { if (module && target) *target = value; }
