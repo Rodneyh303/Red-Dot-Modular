@@ -20,6 +20,7 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_object_set_new(root, "rhythmLiveTrial", json_boolean(m->rhythmLiveTrial));
     json_object_set_new(root, "melodyLiveTrial", json_boolean(m->melodyLiveTrial));
     json_object_set_new(root, "invertMuteLogic", json_boolean(m->invertMuteLogic));
+    json_object_set_new(root, "spreadInterpMono", json_boolean(m->spreadInterpMono));
     json_object_set_new(root, "restartOnUnmute", json_boolean(m->restartOnUnmute));
     json_object_set_new(root, "reseedOnRoll", json_boolean(m->reseedOnRoll));
     json_object_set_new(root, "reseedOnRestart", json_boolean(m->reseedOnRestart));
@@ -156,6 +157,7 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     if (auto j = json_object_get(root, "rhythmLiveTrial")) m->rhythmLiveTrial = json_boolean_value(j);
     if (auto j = json_object_get(root, "melodyLiveTrial")) m->melodyLiveTrial = json_boolean_value(j);
     if (auto j = json_object_get(root, "invertMuteLogic")) m->invertMuteLogic = (bool)json_boolean_value(j);
+    if (auto j = json_object_get(root, "spreadInterpMono")) m->spreadInterpMono = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "restartOnUnmute")) m->restartOnUnmute = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "reseedOnRoll")) m->reseedOnRoll = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "reseedOnRestart")) m->reseedOnRestart = (bool)json_boolean_value(j);

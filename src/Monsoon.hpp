@@ -746,6 +746,11 @@ struct Monsoon : Module {
 
     int lastModeSelect = -1;
     int lightTheme = 0; // 0 = Dark, 1 = Light. Using int to match PeranakanLatticePanel expectations.
+    // Single source of truth for the spread interpolation target mode (context
+    // menu lives on Monsoon). false = Average Poly (mono + active poly average);
+    // true = Mono Draw (target the raw mono draw; mono strand becomes a fixed
+    // anchor). Replaces the old per-visual interpUseMono flags on East/Macro.
+    bool spreadInterpMono = false;
     MonsoonExpanderManager expanderManager;
 
     // Modulation-visualisation snapshot. Published once per process() from the
