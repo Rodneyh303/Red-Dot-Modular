@@ -51,11 +51,11 @@ struct MacroInterpItem : MenuItem {
         }
         pendingSpreadArcs.clear();
     }
-    void onAction(const event::Action&) override { mod->interpUseMono = !mod->interpUseMono; }
-    void step() override {
-        rightText = mod->interpUseMono ? "Mono Draw ✓" : "Avg Poly ✓";
-        MenuItem::step();
-    }
+    // void onAction(const event::Action&) override { mod->interpUseMono = !mod->interpUseMono; }
+    // void step() override {
+    //     rightText = mod->interpUseMono ? "Mono Draw ✓" : "Avg Poly ✓";
+    //     MenuItem::step();
+    // }
 };
 
 struct StraitsSandsMacroVisualWidget : ModuleWidget {
@@ -115,11 +115,11 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
             int pid = (lane==0) ? SPREAD_REST : (lane==1) ? SPREAD_MELODY : SPREAD_OCTAVE;
             auto* sp = createParamCentered<Trimpot>(mm2px(Vec(SPREAD_X, y)), mod, pid);
             addParam(sp);
-            pendingSpreadArcs.push_back({sp, lane});
+           // pendingSpreadArcs.push_back({sp, lane});
         }
 
         paramMgr = new PolySandsParameterManager(nullptr, nullptr, nullptr, 7);
-        flushSpreadArcs();   // attach spread mod-arcs on top of the trimpots
+        //flushSpreadArcs();   // attach spread mod-arcs on top of the trimpots
     }
 
     ~StraitsSandsMacroVisualWidget() override { delete paramMgr; }
