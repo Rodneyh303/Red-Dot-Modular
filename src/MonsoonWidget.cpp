@@ -24,6 +24,37 @@ struct MonsoonLightSlider : VCVLightSlider<TLightBase> {
         if (dimmed) nvgGlobalAlpha(args.vg, 0.4f);
         VCVLightSlider<TLightBase>::draw(args);
         if (dimmed) nvgGlobalAlpha(args.vg, 1.0f);
+
+        // ── EXPERIMENT: superimposed modulated-value light ──────────────────
+        // A second, contrasting-colour light marker at the MODULATED value's
+        // height (the handle light already shows the SET value). Shown only when
+        // pitch modulation is active and the modulated value differs from set.
+        // Modulation amount is floored at 0 visually (slider min is 0, so a
+        // downward push can't render below the track bottom).
+        if (m && m->modViz.activePitch &&
+            this->paramId >= MonsoonIds::SEMI0_PARAM && this->paramId < MonsoonIds::SEMI0_PARAM + 12) {
+            int sem = this->paramId - MonsoonIds::SEMI0_PARAM;
+            float modN = rack::math::clamp(m->modViz.semitone[sem], 0.f, 1.f);  // floored at 0
+            float setN = 0.f;
+            if (auto* pq = m->paramQuantities[this->paramId]) setN = (float)pq->getScaledValue();
+            if (std::fabs(modN - setN) > 0.01f) {
+                // Map value→y within the handle travel (top = max). Inset a touch.
+                float top = this->box.size.y * 0.10f;
+                float bot = this->box.size.y * 0.90f;
+                float y = top + (1.f - modN) * (bot - top);
+                float cx = this->box.size.x * 0.5f;
+                // Glowing dot: a soft outer halo + bright core, in a contrasting
+                // cyan so it reads against the green/red handle light.
+                nvgBeginPath(args.vg);
+                nvgCircle(args.vg, cx, y, 4.2f);
+                nvgFillColor(args.vg, nvgRGBAf(0.1f, 0.8f, 0.95f, 0.30f));   // halo
+                nvgFill(args.vg);
+                nvgBeginPath(args.vg);
+                nvgCircle(args.vg, cx, y, 2.2f);
+                nvgFillColor(args.vg, nvgRGBAf(0.4f, 0.95f, 1.0f, 0.95f));   // core
+                nvgFill(args.vg);
+            }
+        }
     }
 };
 
@@ -142,13 +173,13 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         if (box.size.x == 0) box.size = mm2px(Vec(W_MM, 128.5f));
 
         // ── 12 semitone sliders: 9mm pitch ───────────────────────────────────
+        // EXPERIMENT branch: the semitone modulation is shown by a superimposed
+        // light marker inside MonsoonLightSlider::draw (not the linear tick), so
+        // no queueModArcLinear here — this lets us compare the two approaches.
         for (int i = 0; i < 12; ++i) {
             auto* s = createLightParamCentered<MonsoonLightSlider<GreenRedLight>>(
                 mm2px(Vec(7.5f + i*9.f, 59.75f)), module, SEMI0_PARAM+i, SEMI_LED_START+2*i);
             addParam(s);
-            queueModArcLinear(this, module, s,
-                [i](const Monsoon::ModViz& m){ return m.semitone[i]; },
-                [](const Monsoon::ModViz& m){ return m.activePitch; });
         }
 
         // ── OCT sliders ───────────────────────────────────────────────────────
