@@ -5,6 +5,7 @@
 #include "StraitsSandsMacroVisual.hpp"
 #include "ui/SandsVisualEditorV4.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
+#include "ui/ModArcOverlay.hpp"
 #include "dsp/managers/PolySandsParameterManager.hpp"
 
 using namespace rack;
@@ -16,6 +17,39 @@ extern Plugin* pluginInstance;
 
 struct MacroInterpItem : MenuItem {
     StraitsSandsMacroVisual* mod;
+
+    // Spread mod-arcs (bipolar -1..1). Queued during construction, attached after
+    // all controls (z-order). Effective spread = mod->spreadEffective[lane] (the
+    // CV-modulated value); set = the SPREAD_* param. Both normalised (v+1)/2.
+    std::vector<std::pair<rack::ParamWidget*, int>> pendingSpreadArcs;
+    void flushSpreadArcs() {
+        for (auto& pr : pendingSpreadArcs) {
+            auto* knob = pr.first; int lane = pr.second;
+            if (!knob) continue;
+            auto* arc = new redDot::ModArcOverlay();
+            arc->box.pos  = knob->box.pos;
+            arc->box.size = knob->box.size;
+            arc->radius   = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
+            StraitsSandsMacroVisual* mm = mod;
+            int pid = knob->paramId;
+            arc->getSetNorm = [mm, pid]() -> float {
+                if (!mm) return 0.5f;
+                auto* pq = mm->paramQuantities[pid];
+                return pq ? (float)pq->getScaledValue() : 0.5f;   // bipolar → 0..1
+            };
+            arc->getModNorm = [mm, lane]() -> float {
+                if (!mm || lane < 0 || lane >= 3) return 0.5f;
+                return rack::math::clamp((mm->spreadEffective[lane] + 1.f) * 0.5f, 0.f, 1.f);
+            };
+            arc->isActive = [mm, lane, pid]() -> bool {
+                if (!mm || lane < 0 || lane >= 3) return false;
+                float setV = mm->params[pid].getValue();           // -1..1
+                return std::fabs(mm->spreadEffective[lane] - setV) > 1e-4f;
+            };
+            addChild(arc);
+        }
+        pendingSpreadArcs.clear();
+    }
     void onAction(const event::Action&) override { mod->interpUseMono = !mod->interpUseMono; }
     void step() override {
         rightText = mod->interpUseMono ? "Mono Draw ✓" : "Avg Poly ✓";
@@ -68,10 +102,13 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         for (int lane = 0; lane < 3; ++lane) {
             float y = 0.5f * (rowY(lane*2) + rowY(lane*2+1));  // centre of lane band
             int pid = (lane==0) ? SPREAD_REST : (lane==1) ? SPREAD_MELODY : SPREAD_OCTAVE;
-            addParam(createParamCentered<Trimpot>(mm2px(Vec(SPREAD_X, y)), mod, pid));
+            auto* sp = createParamCentered<Trimpot>(mm2px(Vec(SPREAD_X, y)), mod, pid);
+            addParam(sp);
+            pendingSpreadArcs.push_back({sp, lane});
         }
 
         paramMgr = new PolySandsParameterManager(nullptr, nullptr, nullptr, 7);
+        flushSpreadArcs();   // attach spread mod-arcs on top of the trimpots
     }
 
     ~StraitsSandsMacroVisualWidget() override { delete paramMgr; }
