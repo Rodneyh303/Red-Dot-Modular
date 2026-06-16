@@ -33,11 +33,14 @@ struct MonsoonStraitsEastExpanderWidget : ModuleWidget,
             arc->box.size = knob->box.size;
             arc->radius   = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
             rack::Module* self = module;
-            int pid = knob->paramId;
-            arc->getSetNorm = [self, pid]() -> float {
-                if (!self) return 0.f;
-                auto* pq = self->paramQuantities[pid];
-                return pq ? (float)pq->getScaledValue() : 0.f;
+            // Show the per-voice CV modulation: compare the final effective rest
+            // against the SAME-FRAME base (knob + global CV), both from Monsoon's
+            // throttled poly-rest block. Using the base (not the live knob param)
+            // avoids a one-frame lag artifact that drew a transient arc whenever
+            // the knob was moved.
+            arc->getSetNorm = [self, voice]() -> float {
+                Monsoon* m = redDot::findMonsoonEitherSide(self);
+                return (m && voice >= 0 && voice < 15) ? m->cachedPolyRest[voice] : 0.f;
             };
             arc->getModNorm = [self, voice]() -> float {
                 Monsoon* m = redDot::findMonsoonEitherSide(self);
@@ -46,9 +49,7 @@ struct MonsoonStraitsEastExpanderWidget : ModuleWidget,
             arc->isActive = [self, voice]() -> bool {
                 Monsoon* m = redDot::findMonsoonEitherSide(self);
                 if (!m || voice < 0 || voice >= 15) return false;
-                float setN = 0.f;
-                if (auto* pq = self->paramQuantities[POLY_REST_PARAM_1 + voice]) setN = (float)pq->getScaledValue();
-                return std::fabs(m->cachedPolyRestEffective[voice] - setN) > 1e-4f;
+                return std::fabs(m->cachedPolyRestEffective[voice] - m->cachedPolyRest[voice]) > 1e-4f;
             };
             addChild(arc);
         }

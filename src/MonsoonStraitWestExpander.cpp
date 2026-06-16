@@ -29,22 +29,19 @@ struct MonsoonStraitWestExpanderWidget : ModuleWidget,
             arc->box.size = knob->box.size;
             arc->radius   = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
             rack::Module* self = module;
-            int pid = knob->paramId;
-            arc->getSetNorm = [self, pid]() -> float {
-                if (!self) return 0.f;
-                auto* pq = self->paramQuantities[pid];
-                return pq ? (float)pq->getScaledValue() : 0.f;
+            // Per-voice CV modulation: effective vs same-frame base (lag-free).
+            arc->getSetNorm = [self, voice]() -> float {
+                Monsoon* m = redDot::findMonsoonEitherSide(self);
+                return (m && voice >= 0 && voice < 15) ? m->cachedPolyRest[voice] : 0.f;
             };
             arc->getModNorm = [self, voice]() -> float {
                 Monsoon* m = redDot::findMonsoonEitherSide(self);
                 return (m && voice >= 0 && voice < 15) ? m->cachedPolyRestEffective[voice] : 0.f;
             };
-            arc->isActive = [self, voice, pid]() -> bool {
+            arc->isActive = [self, voice]() -> bool {
                 Monsoon* m = redDot::findMonsoonEitherSide(self);
                 if (!m || voice < 0 || voice >= 15) return false;
-                float setN = 0.f;
-                if (auto* pq = self->paramQuantities[pid]) setN = (float)pq->getScaledValue();
-                return std::fabs(m->cachedPolyRestEffective[voice] - setN) > 1e-4f;
+                return std::fabs(m->cachedPolyRestEffective[voice] - m->cachedPolyRest[voice]) > 1e-4f;
             };
             addChild(arc);
         }
