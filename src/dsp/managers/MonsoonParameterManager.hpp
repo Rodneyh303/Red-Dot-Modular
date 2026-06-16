@@ -58,6 +58,15 @@ public:
         for (int i = 0; i < 4; ++i) if (cv2Offsets[i]   != 0.f) return true;
         return false;
     }
+    /// Slew/mix effective values (all native 0..1). True if any CV3 offset active.
+    float getRhythmSlewNorm() const { return getRhythmSlew(); }
+    float getMelodySlewNorm() const { return getMelodySlew(); }
+    float getRhythmMixNorm()  const { return getRhythmMix(); }
+    float getMelodyMixNorm()  const { return getMelodyMix(); }
+    bool  anyCv3Modulated() const {
+        for (int i = 0; i < 4; ++i) if (cv3Offsets[i] != 0.f) return true;
+        return false;
+    }
     
     /// Transpose in semitones (-12 to +12)
     float getTranspose() const;

@@ -758,7 +758,11 @@ struct Monsoon : Module {
     struct ModViz {
         // Big-5 effective values, normalised 0..1 (NOTE_VALUE is /8).
         float noteValue = 0.f, variation = 0.f, legato = 0.f, rest = 0.f, accent = 0.f;
-        bool  active = false;   // any modulation source present this frame
+        bool  active = false;   // any big-5 modulation source present this frame
+        // Slew + mix effective values, normalised 0..1 (all native 0..1).
+        // Modulated via CV3 (cv3Offsets). activeCv3 gates their arcs.
+        float rhythmSlew = 0.f, melodySlew = 0.f, rhythmMix = 0.f, melodyMix = 0.f;
+        bool  activeCv3 = false;
     } modViz;
     dsp::ClockDivider lightDivider;
     dsp::ClockDivider controlDivider; // For DNA modulation at "Control Rate"

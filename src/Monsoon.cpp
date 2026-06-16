@@ -516,6 +516,11 @@ void Monsoon::process(const ProcessArgs& args) {
             modViz.rest      = paramManager->getRestNorm();
             modViz.accent    = paramManager->getAccentNorm();
             modViz.active    = paramManager->anyBig5Modulated();
+            modViz.rhythmSlew = paramManager->getRhythmSlewNorm();
+            modViz.melodySlew = paramManager->getMelodySlewNorm();
+            modViz.rhythmMix  = paramManager->getRhythmMixNorm();
+            modViz.melodyMix  = paramManager->getMelodyMixNorm();
+            modViz.activeCv3  = paramManager->anyCv3Modulated();
         }
         // ── UI Light Updates ──
         if (uiManager) {
