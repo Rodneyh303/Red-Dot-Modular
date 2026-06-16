@@ -53,11 +53,11 @@ def theme(dark):
         return dict(bg="#16181c", ink="#d8d8dc", dim="#8a8f98", accent="#dc2626",
                     jackwell="#0b0d10", jackring="#4a5058",
                     well="#0f1114", wellring="#3a4048",
-                    group="#13151a", groupline="#262b33", motif="#2e333c")
+                    group="#13151a", groupline="#262b33", motif="#2e333c", motifwave="#333944")
     return dict(bg="#e8e8ea", ink="#2a2a2e", dim="#888d96", accent="#c0202a",
                 jackwell="#dadce0", jackring="#9298a0",
                 well="#d4d6d9", wellring="#a8aeb6",
-                group="#dfe0e3", groupline="#c8ccd2", motif="#d8d9dc")
+                group="#dfe0e3", groupline="#c8ccd2", motif="#d8d9dc", motifwave="#d2d4d8")
 
 def jackwell(x, y, t, r=9.0):
     return (f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{r:.1f}" fill="{t["jackwell"]}" '
@@ -72,27 +72,47 @@ def kit_marker(kind, label, x, y):
     return (f'<circle id="{kind}_{label}" cx="{x:.2f}" cy="{y:.2f}" r="0.5" '
             f'fill="none" stroke="none"/>')
 
-def mbs_motif(t, op=0.5):
-    # Simple Marina Bay Sands dome arc motif, lower-centre. nanosvg-safe arcs via
-    # quadratic-bezier polylines. Kept faint as a background watermark.
-    cx, base, halfw, h = PW * 0.5, 250.0, 70.0, 46.0
-    def qbez(x0, y0, qx, qy, x1, y1, n=22):
-        pts = []
-        for k in range(n + 1):
-            tt = k / n
-            mx = (1-tt)**2*x0 + 2*(1-tt)*tt*qx + tt*tt*x1
-            my = (1-tt)**2*y0 + 2*(1-tt)*tt*qy + tt*tt*y1
-            pts.append(f"{mx:.1f},{my:.1f}")
-        return " ".join(pts)
-    dome = qbez(cx-halfw, base, cx, base-h, cx+halfw, base)
-    L = [f'<g opacity="{op}" stroke="{t["motif"]}" stroke-width="1.2" fill="none">']
-    L.append(f'<polyline points="{dome}"/>')
-    # a few vertical ribs
-    for fx in (0.28, 0.5, 0.72):
-        x = cx - halfw + 2*halfw*fx
-        ytop = base - h * (1 - (2*fx-1)**2) * 0.92
-        L.append(f'<line x1="{x:.1f}" y1="{base:.1f}" x2="{x:.1f}" y2="{ytop:.1f}"/>')
-    L.append('</g>')
+def mbs(x, y, w, h, t, op=0.16):
+    # Rich Esplanade / Marina Bay motif (ported from gen_east_clean so the CV
+    # expander panels match the visual panels). Self-contained reference box
+    # 90..630 x 150..500 mapped into (x,y,w,h). All raw px, nanosvg-safe.
+    fill=t["motif"]; acc=t["accent"]; bright=t["ink"]
+    big=(h>55)
+    RX0,RX1,RY0,RY1 = 90.0,630.0,150.0,500.0
+    def MX(rx): return x+(rx-RX0)/(RX1-RX0)*w
+    def MY(ry): return y+(ry-RY0)/(RY1-RY0)*h
+    L=[]; A=L.append
+    lean=[(210,500,260,400,280,190,295,190,270,400,250,500),
+          (340,500,390,400,410,190,425,190,400,400,380,500),
+          (470,500,520,400,540,190,555,190,530,400,510,500)]
+    for (a1,a2,b1,b2,c1,c2,d1,d2,e1,e2,f1,f2) in lean:
+        A(f'<path d="M {MX(a1):.1f} {MY(a2):.1f} Q {MX(b1):.1f} {MY(b2):.1f} {MX(c1):.1f} {MY(c2):.1f} '
+          f'L {MX(d1):.1f} {MY(d2):.1f} Q {MX(e1):.1f} {MY(e2):.1f} {MX(f1):.1f} {MY(f2):.1f} Z" '
+          f'fill="{fill}" fill-opacity="{op}"/>')
+    for (a1,a2,b1,b2,c1,c2,d1,d2) in [(290,500,305,190,330,190,330,500),(420,500,435,190,460,190,460,500),(550,500,565,190,590,190,590,500)]:
+        A(f'<polygon points="{MX(a1):.1f},{MY(a2):.1f} {MX(b1):.1f},{MY(b2):.1f} {MX(c1):.1f},{MY(c2):.1f} {MX(d1):.1f},{MY(d2):.1f}" fill="{fill}" fill-opacity="{op}"/>')
+    if big:
+        for (sx0,sx1) in [(290,330),(420,460),(550,590)]:
+            for f_ in (0.18,0.34,0.50,0.66,0.82):
+                ry=190+(500-190)*f_
+                A(f'<line x1="{MX(sx0):.1f}" y1="{MY(ry):.1f}" x2="{MX(sx1):.1f}" y2="{MY(ry):.1f}" stroke="{acc}" stroke-width="0.4" stroke-opacity="{op*0.3:.3f}"/>')
+    A(f'<path d="M {MX(90):.1f} {MY(150):.1f} Q {MX(365):.1f} {MY(160):.1f} {MX(630):.1f} {MY(150):.1f} '
+      f'C {MX(640):.1f} {MY(150):.1f} {MX(640):.1f} {MY(190):.1f} {MX(620):.1f} {MY(190):.1f} '
+      f'L {MX(280):.1f} {MY(190):.1f} Q {MX(160):.1f} {MY(190):.1f} {MX(90):.1f} {MY(150):.1f} Z" fill="{fill}" fill-opacity="{op}"/>')
+    A(f'<path d="M {MX(90):.1f} {MY(150):.1f} Q {MX(365):.1f} {MY(160):.1f} {MX(630):.1f} {MY(150):.1f}" fill="none" stroke="{bright}" stroke-width="0.8" stroke-opacity="{op*0.7:.3f}" stroke-linecap="round"/>')
+    return "".join(L)
+
+def waves(x, y, t, op=0.6, rows=3, span=360.0):
+    # Marina Bay water — ported from gen_east_clean, raw px. Faint wave rows.
+    col=t["motifwave"]; L=[]; A=L.append
+    for i in range(rows):
+        yb=y+i*9.4; amp=4.7; seg=span/8.0
+        d=f'M {x:.1f} {yb:.1f} '
+        for k in range(8):
+            cx1=x+seg*k+seg*0.25; cx2=x+seg*k+seg*0.75; ex=x+seg*(k+1)
+            ud=-amp if k%2==0 else amp
+            d+=f'C {cx1:.1f} {yb+ud:.1f} {cx2:.1f} {yb+ud:.1f} {ex:.1f} {yb:.1f} '
+        A(f'<path d="{d}" fill="none" stroke="{col}" stroke-width="1.5" stroke-opacity="{op}"/>')
     return "".join(L)
 
 def gen(side, dark, variant="plain"):
@@ -112,8 +132,10 @@ def gen(side, dark, variant="plain"):
     A(f'<rect x="0" y="0" width="{PW:.0f}" height="4" fill="{t["accent"]}"/>')   # top rule
     A(f'<circle cx="{PW-14:.0f}" cy="14" r="5" fill="{t["accent"]}"/>')          # corner dot
 
-    # background motif
-    A(mbs_motif(t))
+    # background motif: rich Esplanade watermark (lower-centre) + Marina Bay
+    # water (waves) near the footer, matching the visual panels' aesthetic.
+    A(mbs(PW*0.16, 230.0, PW*0.68, 90.0, t, op=0.14))
+    A(waves(15.0, 338.0, t, op=0.5, rows=3, span=PW-30.0))
 
     # title (display text — NOT a control, so text is fine here)
     A(f'<text x="14" y="30" fill="{t["ink"]}" font-family="sans-serif" '
