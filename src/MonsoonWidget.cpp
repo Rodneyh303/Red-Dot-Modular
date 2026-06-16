@@ -254,6 +254,13 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(EXP_LIGHT_X,              EXP_LIGHT_Y)), module, MonsoonIds::SCALE_EXPANDER_LIGHT));
         addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(EXP_LIGHT_X+EXP_LIGHT_S,  EXP_LIGHT_Y)), module, MonsoonIds::DNA_EXPANDER_LIGHT));
         addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(EXP_LIGHT_X+2*EXP_LIGHT_S,EXP_LIGHT_Y)), module, MonsoonIds::POLY_EXPANDER_LIGHT));
+
+        // The big-5 arcs are queued + flushed inside applyTheme() (called above).
+        // The slew/mix arcs (and any slider arcs) are queued in THIS constructor
+        // AFTER that applyTheme() flush, so they need their own flush here or they
+        // never get built. flushModArcs clears the pending list, so this only
+        // builds the as-yet-unflushed (slew/mix/slider) overlays.
+        flushModArcs(this, dynamic_cast<Monsoon*>(module));
     }
 
 void MonsoonWidget::applyTheme() {
