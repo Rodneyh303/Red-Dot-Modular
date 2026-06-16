@@ -4,6 +4,7 @@
 //#include "MonsoonStraitsSands.hpp"
 #include "StraitsSandsMacroVisual.hpp"
 #include "ui/SandsVisualEditorV4.hpp"
+#include "ui/TabButton.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
 #include "dsp/managers/PolySandsParameterManager.hpp"
 
@@ -26,6 +27,8 @@ struct MacroInterpItem : MenuItem {
 struct StraitsSandsMacroVisualWidget : ModuleWidget {
     SandsVisualEditorV4*       visualEditor = nullptr;
     PolySandsParameterManager* paramMgr     = nullptr;
+    TabButtonGroup*            tabGroup     = nullptr;
+    int viewVoice = 0;   // which voice's resulting probabilities to DISPLAY (read-only)
     bool                       initialized  = false;
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
     rack::app::SvgPanel* panelWidget = nullptr;
@@ -44,6 +47,14 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         redDot::addRedScrews(this);
 
         // Visual editor — right section, 3 lanes (REST/MEL/OCT), global
+        // Voice VIEW tabs (voices 2-16). Macro has no per-voice editing — these
+        // let the user flip through voices to SEE each one's resulting (spread/
+        // blend-applied) probabilities. Read-only: changing tab only changes
+        // which voice is displayed, nothing is saved per voice.
+        tabGroup = new TabButtonGroup(15, 2, 2, mm2px(ED_W), mm2px(10.f));
+        tabGroup->box.pos = mm2px(Vec(ED_X, ED_Y - 12.f));
+        addChild(tabGroup);
+
         visualEditor = new SandsVisualEditorV4(SandsVisualEditorV4::POLY);
         visualEditor->box.pos  = mm2px(Vec(ED_X, ED_Y));
         visualEditor->box.size = mm2px(Vec(ED_W, ED_H));
@@ -160,8 +171,15 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
 
         // CV applied at control rate in Monsoon::process() — base + cv*atten*scale.
 
+        // Which voice to DISPLAY (read-only view lens). Clamp to active count.
+        if (tabGroup) {
+            tabGroup->setActiveCount(monsoon->engine.numPolyVoices);
+            viewVoice = std::min(tabGroup->getSelectedTab(),
+                                 std::max(0, monsoon->engine.numPolyVoices - 1));
+        }
+
         saveLOR();
-        paramMgr->syncPatternEngineToEditor(visualEditor->currentState);
+        paramMgr->syncPatternEngineToEditor(visualEditor->currentState, viewVoice);
 
         // Surface CV-APPLIED global L/O/R to the display window (Macro applies the
         // same lane L/O/R to every voice — voice 0 is representative). Display-only.

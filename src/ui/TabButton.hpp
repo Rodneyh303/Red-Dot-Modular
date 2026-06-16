@@ -53,12 +53,19 @@ struct TabButton : rack::OpaqueWidget {
     nvgStrokeWidth(vg, 1.f);
     nvgStroke(vg);
     
-    // Text label
-    nvgFontSize(vg, 10.f);
-    nvgFontFace(vg, "sans-bold");
-    nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-    nvgFillColor(vg, isDisabled ? colorTextDim : colorText);
-    nvgText(vg, box.size.x / 2.f, box.size.y / 2.f, label.c_str(), nullptr);
+    // Text label. Must use a LOADED font handle (nvgFontFaceId), not a face-name
+    // string — "sans-bold" isn't registered with this nvg context, so nvgFontFace
+    // silently rendered nothing (the tab numbers didn't appear).
+    std::shared_ptr<rack::window::Font> font =
+        APP->window->loadFont(rack::asset::system("res/fonts/DejaVuSans-Bold.ttf"));
+    if (!font) font = APP->window->uiFont;
+    if (font) {
+        nvgFontFaceId(vg, font->handle);
+        nvgFontSize(vg, 10.f);
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+        nvgFillColor(vg, isDisabled ? colorTextDim : colorText);
+        nvgText(vg, box.size.x / 2.f, box.size.y / 2.f, label.c_str(), nullptr);
+    }
   }
   
   void onButton(const rack::event::Button& e) override {
