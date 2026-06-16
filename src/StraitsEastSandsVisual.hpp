@@ -136,9 +136,9 @@ struct StraitsEastSandsVisual : Module {
                     configParam(lorId(v,lane,c), 0.f,16.f,
                                 c==0?16.f:0.f, vl+"l"+std::to_string(lane)+"c"+std::to_string(c));
             }
-            configParam(restInterpId(v),   0.f,1.f,0.f,vl+"Spread REST");
-            configParam(melodyInterpId(v), 0.f,1.f,0.f,vl+"Spread MEL");
-            configParam(octaveInterpId(v), 0.f,1.f,0.f,vl+"Spread OCT");
+            configParam(restInterpId(v),   -1.f,1.f,0.f,vl+"Spread REST");
+            configParam(melodyInterpId(v), -1.f,1.f,0.f,vl+"Spread MEL");
+            configParam(octaveInterpId(v), -1.f,1.f,0.f,vl+"Spread OCT");
 
             // Base owner (0=Macro default, 1=East) + Macro-CV blend sends (unity
             // default) per lane. Switch/snap so owner reads as discrete 0/1.
