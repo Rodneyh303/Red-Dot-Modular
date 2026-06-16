@@ -753,8 +753,8 @@ void Monsoon::process(const ProcessArgs& args) {
         paramManager->clearCv2Offsets();
         // Mode C and D use CV2 as the pitch input to be quantized
         if (modeSelect < 2 && inputs[CV2_INPUT].isConnected()) { // CV2 is used for quantization in modes C and D
-            float v    = clampv<float>(inputs[CV2_INPUT].getVoltage(), 0.f, 5.f);
-            float norm = v / 5.f; 
+            float v    = clampv<float>(inputs[CV2_INPUT].getVoltage(), -5.f, 5.f);
+            float norm = v / 5.f;   // now bipolar -1..+1 (was 0..1; rectified the negative half)
             if (cv2Mode == 0) paramManager->setCv2Offset(0, norm * 8.f);
             if (cv2Mode == 1) paramManager->setCv2Offset(1, norm);
             if (cv2Mode == 2) paramManager->setCv2Offset(2, norm);
@@ -765,10 +765,11 @@ void Monsoon::process(const ProcessArgs& args) {
         // ── Assignable CV3 & Causeway Modulation (Throttled) ──
         float cv3Mods[4] = {0.f, 0.f, 0.f, 0.f};
         
-        // 1. Main Panel CV3 (Unipolar offset to selected target)
+        // 1. Main Panel CV3 (bipolar offset to selected target; was unipolar 0..5
+        //    which rectified the negative half — an attenuverter implies bipolar).
         if (cachedCv3Connected) {
             float v = inputs[CV3_MOD_INPUT].getVoltage();
-            cv3Mods[cv3Target] = clampv<float>(v, 0.f, 5.f) / 5.f;
+            cv3Mods[cv3Target] = clampv<float>(v, -5.f, 5.f) / 5.f;
         }
 
         // 2. Causeway Expander (Summing bipolar attenuverted CVs)
