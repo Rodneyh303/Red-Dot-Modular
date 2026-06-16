@@ -165,5 +165,5 @@ struct MonsoonExpanderManager {
     }
 
     /// Synchronizes data between the engine and specific expanders (Deep Straits, Visual Editors, etc.)
-    void sync(SequencerEngine& engine);
+    void sync(SequencerEngine& engine, bool spreadInterpMono = false);
 };

@@ -57,6 +57,7 @@ public:
     bool  anyBig5Modulated() const {
         for (int i = 0; i < 5; ++i) if (surgeOffsets[i] != 0.f) return true;
         for (int i = 0; i < 4; ++i) if (cv2Offsets[i]   != 0.f) return true;
+        for (int i = 0; i < 5; ++i) if (cv2Offsets[i]   != 0.f) return true;
         return false;
     }
     /// Slew/mix effective values (all native 0..1). True if any CV3 offset active.
@@ -74,13 +75,7 @@ public:
     float getOctaveHiNorm() const { return getOctaveHi() / 8.f; }
     /// True if any pitch slider's effective value differs from its raw param
     /// (i.e. expander/CV1 is modulating it). Compared with a small epsilon.
-    bool  anyPitchModulated() const {
-        for (int i = 0; i < 12; ++i)
-            if (std::fabs(getSemitone(i) - readParam_(SEMI0_PARAM + i, 0.f, 1.f)) > 1e-4f) return true;
-        if (std::fabs(getOctaveLo() - readParam_(OCT_LO_PARAM, 0.f, 8.f)) > 1e-4f) return true;
-        if (std::fabs(getOctaveHi() - readParam_(OCT_HI_PARAM, 0.f, 8.f)) > 1e-4f) return true;
-        return false;
-    }
+    bool  anyPitchModulated() const;
     
     /// Transpose in semitones (-12 to +12)
     float getTranspose() const;
@@ -132,6 +127,7 @@ public:
     /// Clear all CV2 offsets
     void clearCv2Offsets() {
         for (int i = 0; i < 4; ++i) cv2Offsets[i] = 0.f;
+        for (int i = 0; i < 5; ++i) cv2Offsets[i] = 0.f;
     }
 
     // ──── CV3 Offset Management ──────────────────────────────────────────────

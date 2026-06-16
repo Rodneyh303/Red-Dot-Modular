@@ -85,25 +85,29 @@ struct PolySandsParameterManager {
   // Sync PatternEngine to visual editor (DSP → editor)
   // Shows interpolated values with spread applied to all voices
   // Average is calculated from only the active/requested voices
-  void syncPatternEngineToEditor(SandsVisualEditorV4::VoiceState& editorState) {
+  // viewVoice selects WHICH voice's resulting (spread-applied) probabilities to
+  // display. Macro has no per-voice editing — this is a read-only viewing lens so
+  // the user can flip through voices and see how spread/blend fans them out.
+  // Defaults to 0 (the old hardcoded representative voice).
+  void syncPatternEngineToEditor(SandsVisualEditorV4::VoiceState& editorState, int viewVoice = 0) {
     if (!patternEngine) return;
-    
-    // Rest lane - show interpolated values (using voice 0 as representative)
+
+    // Rest lane - show interpolated values for the viewed voice
     for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
-      editorState.lanes[SandsVisualEditorV4::REST].probabilities[i] = 
-        spreadMgr.getInterpolatedValue(0, 0, i);
+      editorState.lanes[SandsVisualEditorV4::REST].probabilities[i] =
+        spreadMgr.getInterpolatedValue(viewVoice, 0, i);
     }
-    
+
     // Melody lane
     for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
-      editorState.lanes[SandsVisualEditorV4::MELODY].probabilities[i] = 
-        spreadMgr.getInterpolatedValue(0, 1, i);
+      editorState.lanes[SandsVisualEditorV4::MELODY].probabilities[i] =
+        spreadMgr.getInterpolatedValue(viewVoice, 1, i);
     }
-    
+
     // Octave lane
     for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
-      editorState.lanes[SandsVisualEditorV4::OCTAVE].probabilities[i] = 
-        spreadMgr.getInterpolatedValue(0, 2, i);
+      editorState.lanes[SandsVisualEditorV4::OCTAVE].probabilities[i] =
+        spreadMgr.getInterpolatedValue(viewVoice, 2, i);
     }
   }
   

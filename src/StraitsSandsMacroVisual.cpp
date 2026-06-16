@@ -4,7 +4,9 @@
 //#include "MonsoonStraitsSands.hpp"
 #include "StraitsSandsMacroVisual.hpp"
 #include "ui/SandsVisualEditorV4.hpp"
+#include "ui/TabButton.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
+#include "ui/ModArcOverlay.hpp"
 #include "dsp/managers/PolySandsParameterManager.hpp"
 
 using namespace rack;
@@ -16,16 +18,51 @@ extern Plugin* pluginInstance;
 
 struct MacroInterpItem : MenuItem {
     StraitsSandsMacroVisual* mod;
-    void onAction(const event::Action&) override { mod->interpUseMono = !mod->interpUseMono; }
-    void step() override {
-        rightText = mod->interpUseMono ? "Mono Draw ✓" : "Avg Poly ✓";
-        MenuItem::step();
+
+    // Spread mod-arcs (bipolar -1..1). Queued during construction, attached after
+    // all controls (z-order). Effective spread = mod->spreadEffective[lane] (the
+    // CV-modulated value); set = the SPREAD_* param. Both normalised (v+1)/2.
+    std::vector<std::pair<rack::ParamWidget*, int>> pendingSpreadArcs;
+    void flushSpreadArcs() {
+        for (auto& pr : pendingSpreadArcs) {
+            auto* knob = pr.first; int lane = pr.second;
+            if (!knob) continue;
+            auto* arc = new redDot::ModArcOverlay();
+            arc->box.pos  = knob->box.pos;
+            arc->box.size = knob->box.size;
+            arc->radius   = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
+            StraitsSandsMacroVisual* mm = mod;
+            int pid = knob->paramId;
+            arc->getSetNorm = [mm, pid]() -> float {
+                if (!mm) return 0.5f;
+                auto* pq = mm->paramQuantities[pid];
+                return pq ? (float)pq->getScaledValue() : 0.5f;   // bipolar → 0..1
+            };
+            arc->getModNorm = [mm, lane]() -> float {
+                if (!mm || lane < 0 || lane >= 3) return 0.5f;
+                return rack::math::clamp((mm->spreadEffective[lane] + 1.f) * 0.5f, 0.f, 1.f);
+            };
+            arc->isActive = [mm, lane, pid]() -> bool {
+                if (!mm || lane < 0 || lane >= 3) return false;
+                float setV = mm->params[pid].getValue();           // -1..1
+                return std::fabs(mm->spreadEffective[lane] - setV) > 1e-4f;
+            };
+            addChild(arc);
+        }
+        pendingSpreadArcs.clear();
     }
+    // void onAction(const event::Action&) override { mod->interpUseMono = !mod->interpUseMono; }
+    // void step() override {
+    //     rightText = mod->interpUseMono ? "Mono Draw ✓" : "Avg Poly ✓";
+    //     MenuItem::step();
+    // }
 };
 
 struct StraitsSandsMacroVisualWidget : ModuleWidget {
     SandsVisualEditorV4*       visualEditor = nullptr;
     PolySandsParameterManager* paramMgr     = nullptr;
+    TabButtonGroup*            tabGroup     = nullptr;
+    int viewVoice = 0;   // which voice's resulting probabilities to DISPLAY (read-only)
     bool                       initialized  = false;
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
     rack::app::SvgPanel* panelWidget = nullptr;
@@ -44,6 +81,14 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         redDot::addRedScrews(this);
 
         // Visual editor — right section, 3 lanes (REST/MEL/OCT), global
+        // Voice VIEW tabs (voices 2-16). Macro has no per-voice editing — these
+        // let the user flip through voices to SEE each one's resulting (spread/
+        // blend-applied) probabilities. Read-only: changing tab only changes
+        // which voice is displayed, nothing is saved per voice.
+        tabGroup = new TabButtonGroup(15, 2, 2, mm2px(ED_W), mm2px(10.f));
+        tabGroup->box.pos = mm2px(Vec(ED_X, ED_Y - 12.f));
+        addChild(tabGroup);
+
         visualEditor = new SandsVisualEditorV4(SandsVisualEditorV4::POLY);
         visualEditor->box.pos  = mm2px(Vec(ED_X, ED_Y));
         visualEditor->box.size = mm2px(Vec(ED_W, ED_H));
@@ -68,10 +113,13 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         for (int lane = 0; lane < 3; ++lane) {
             float y = 0.5f * (rowY(lane*2) + rowY(lane*2+1));  // centre of lane band
             int pid = (lane==0) ? SPREAD_REST : (lane==1) ? SPREAD_MELODY : SPREAD_OCTAVE;
-            addParam(createParamCentered<Trimpot>(mm2px(Vec(SPREAD_X, y)), mod, pid));
+            auto* sp = createParamCentered<Trimpot>(mm2px(Vec(SPREAD_X, y)), mod, pid);
+            addParam(sp);
+           // pendingSpreadArcs.push_back({sp, lane});
         }
 
         paramMgr = new PolySandsParameterManager(nullptr, nullptr, nullptr, 7);
+        //flushSpreadArcs();   // attach spread mod-arcs on top of the trimpots
     }
 
     ~StraitsSandsMacroVisualWidget() override { delete paramMgr; }
@@ -80,10 +128,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         ModuleWidget::appendContextMenu(menu);
         auto* mod = dynamic_cast<StraitsSandsMacroVisual*>(module);
         if (!mod) return;
-        menu->addChild(new MenuSeparator);
-        menu->addChild(createMenuLabel("Spread interpolation"));
-        auto* ii = createMenuItem<MacroInterpItem>("Interpolation target");
-        ii->mod = mod; menu->addChild(ii);
+        // Spread interpolation target moved to the Monsoon module context menu.
     }
 
     Monsoon* getMonsoon() {
@@ -156,12 +201,19 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         paramMgr->spreadMgr.setSpread(1, mod->spreadEffective[1]);
         paramMgr->spreadMgr.setSpread(2, mod->spreadEffective[2]);
         paramMgr->spreadMgr.setInterpolationTarget(
-            mod->interpUseMono ? SpreadManager::MONO_DRAW : SpreadManager::AVERAGE_POLY);
+            monsoon->spreadInterpMono ? SpreadManager::MONO_DRAW : SpreadManager::AVERAGE_POLY);
 
         // CV applied at control rate in Monsoon::process() — base + cv*atten*scale.
 
+        // Which voice to DISPLAY (read-only view lens). Clamp to active count.
+        if (tabGroup) {
+            tabGroup->setActiveCount(monsoon->engine.numPolyVoices);
+            viewVoice = std::min(tabGroup->getSelectedTab(),
+                                 std::max(0, monsoon->engine.numPolyVoices - 1));
+        }
+
         saveLOR();
-        paramMgr->syncPatternEngineToEditor(visualEditor->currentState);
+        paramMgr->syncPatternEngineToEditor(visualEditor->currentState, viewVoice);
 
         // Surface CV-APPLIED global L/O/R to the display window (Macro applies the
         // same lane L/O/R to every voice — voice 0 is representative). Display-only.

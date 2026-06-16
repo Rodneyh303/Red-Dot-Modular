@@ -92,7 +92,12 @@ namespace StraitsEastVisualIds {
 }
 
 struct StraitsEastSandsVisual : Module {
-    bool interpUseMono = false;
+
+    // Per-voice, per-lane EFFECTIVE spread (interp param + per-voice/lane CV·att,
+    // clamped, after combineSpread) — published by MonsoonExpanderManager each
+    // sync so the East spread trimpot mod-arc can show the viewed voice's value.
+    // lane: 0=REST 1=MELODY 2=OCTAVE. Bipolar-ish 0..1 interp domain.
+    float polySpreadEffective[15][3] = {};
 
     StraitsEastSandsVisual() {
         using namespace StraitsEastVisualIds;
@@ -136,9 +141,9 @@ struct StraitsEastSandsVisual : Module {
                     configParam(lorId(v,lane,c), 0.f,16.f,
                                 c==0?16.f:0.f, vl+"l"+std::to_string(lane)+"c"+std::to_string(c));
             }
-            configParam(restInterpId(v),   0.f,1.f,0.f,vl+"Spread REST");
-            configParam(melodyInterpId(v), 0.f,1.f,0.f,vl+"Spread MEL");
-            configParam(octaveInterpId(v), 0.f,1.f,0.f,vl+"Spread OCT");
+            configParam(restInterpId(v),   -1.f,1.f,0.f,vl+"Spread REST");
+            configParam(melodyInterpId(v), -1.f,1.f,0.f,vl+"Spread MEL");
+            configParam(octaveInterpId(v), -1.f,1.f,0.f,vl+"Spread OCT");
 
             // Base owner (0=Macro default, 1=East) + Macro-CV blend sends (unity
             // default) per lane. Switch/snap so owner reads as discrete 0/1.
@@ -156,10 +161,9 @@ struct StraitsEastSandsVisual : Module {
 
     json_t* dataToJson() override {
         json_t* r = json_object();
-        json_object_set_new(r,"interpUseMono",json_boolean(interpUseMono));
         return r;
     }
     void dataFromJson(json_t* root) override {
-        if (auto* j=json_object_get(root,"interpUseMono")) interpUseMono=json_boolean_value(j);
+        (void)root;  // interpUseMono moved to Monsoon::spreadInterpMono
     }
 };

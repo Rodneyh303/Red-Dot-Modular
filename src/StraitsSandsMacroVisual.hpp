@@ -87,7 +87,6 @@ namespace StraitsMacroVisualIds {
 }
 
 struct StraitsSandsMacroVisual : Module {
-    bool interpUseMono = false;  // context menu: Avg Poly / Mono Draw
 
     StraitsSandsMacroVisual() {
         using namespace StraitsMacroVisualIds;
@@ -140,10 +139,9 @@ struct StraitsSandsMacroVisual : Module {
 
     json_t* dataToJson() override {
         json_t* r = json_object();
-        json_object_set_new(r,"interpUseMono",json_boolean(interpUseMono));
         return r;
     }
     void dataFromJson(json_t* root) override {
-        if (auto* j=json_object_get(root,"interpUseMono")) interpUseMono=json_boolean_value(j);
+        (void)root;  // interpUseMono moved to Monsoon::spreadInterpMono
     }
 };

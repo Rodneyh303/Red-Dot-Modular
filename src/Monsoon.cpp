@@ -659,10 +659,10 @@ void Monsoon::process(const ProcessArgs& args) {
         engine.accentProb = paramManager->getAccent();
 
         // Check for expander changes and update cached pointers
-        dnaManager.processDNA(expanderManager);
+        dnaManager.processDNA(expanderManager, spreadInterpMono);
 
         // ── Deep Straits Sands Expanders (Control Rate Orchestration) ──
-        expanderManager.sync(engine);
+        expanderManager.sync(engine, spreadInterpMono);
         
         // Refresh Audio-Rate Caches (Throttled)
         cachedBpmParam = params[BPM_PARAM].getValue();

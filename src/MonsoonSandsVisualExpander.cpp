@@ -5,6 +5,7 @@
 #include "MonsoonSandsVisualExpander.hpp"
 #include "ui/SandsVisualEditorV4.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
+#include "ui/ModArcOverlay.hpp"
 #include "dsp/managers/MonoSandsParameterManager.hpp"
 #include "dsp/managers/SpreadManager.hpp"
 
@@ -24,6 +25,37 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
     rack::app::SvgPanel* panelWidget = nullptr;
     int lastThemeLight = -1;
+
+    // Spread mod-arcs (bipolar -1..1), same as Macro: set = SPR param,
+    // effective = mod->spreadEffective[lane] (CV-modulated). Normalised (v+1)/2.
+    std::vector<std::pair<rack::ParamWidget*, int>> pendingSpreadArcs;
+    void flushSpreadArcs(MonsoonSandsVisualExpander* mod) {
+        for (auto& pr : pendingSpreadArcs) {
+            auto* knob = pr.first; int lane = pr.second;
+            if (!knob) continue;
+            auto* arc = new redDot::ModArcOverlay();
+            arc->box.pos  = knob->box.pos;
+            arc->box.size = knob->box.size;
+            arc->radius   = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
+            MonsoonSandsVisualExpander* mm = mod;
+            int pid = knob->paramId;
+            arc->getSetNorm = [mm, pid]() -> float {
+                if (!mm) return 0.5f;
+                auto* pq = mm->paramQuantities[pid];
+                return pq ? (float)pq->getScaledValue() : 0.5f;
+            };
+            arc->getModNorm = [mm, lane]() -> float {
+                if (!mm || lane < 0 || lane >= 6) return 0.5f;
+                return rack::math::clamp((mm->spreadEffective[lane] + 1.f) * 0.5f, 0.f, 1.f);
+            };
+            arc->isActive = [mm, lane, pid]() -> bool {
+                if (!mm || lane < 0 || lane >= 6) return false;
+                return std::fabs(mm->spreadEffective[lane] - mm->params[pid].getValue()) > 1e-4f;
+            };
+            addChild(arc);
+        }
+        pendingSpreadArcs.clear();
+    }
 
     explicit MonsoonSandsVisualExpanderWidget(MonsoonSandsVisualExpander* mod) {
         setModule(mod);
@@ -59,8 +91,9 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         // mono-only — no spread.
         for (int l = 0; l < N_SPREAD_LANES; ++l) {
             float y = rowY(l);
-            addParam(createParamCentered<Trimpot>(
-                mm2px(Vec(SPR_BASE_X, y)), mod, sprId(l)));
+            auto* sp = createParamCentered<Trimpot>(mm2px(Vec(SPR_BASE_X, y)), mod, sprId(l));
+            addParam(sp);
+            pendingSpreadArcs.push_back({sp, l});
             addInput(createInputCentered<PJ301MPort>(
                 mm2px(Vec(SPR_CV_X, y)), mod, sprCvId(l)));
             addParam(createParamCentered<Trimpot>(
@@ -68,6 +101,7 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         }
 
         paramMgr = new MonoSandsParameterManager();
+        flushSpreadArcs(mod);
     }
 
     ~MonsoonSandsVisualExpanderWidget() override { delete paramMgr; }
