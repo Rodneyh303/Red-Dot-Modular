@@ -308,6 +308,69 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             visualEditor->setLanePlayStep(l, calcPlayhead(gs, cvLen, cvOff, cvRot));
         }
     }
+
+    // Labels for the Macro-blend control groups, drawn in NanoVG (the panel SVG
+    // carries no baked text — same convention as the tab labels). Mirrors the
+    // layout in panel_src/gen_east_clean.py: 3 groups (REST/MELODY/OCTAVE) below
+    // the editor, each an owner button + a 2×2 Len/Off/Rot/Spr send grid. Greyed
+    // when no Macro visual is attached (the controls are inert then).
+    void draw(const DrawArgs& args) override {
+        ModuleWidget::draw(args);
+        NVGcontext* vg = args.vg;
+
+        // Layout constants — must match gen_east_clean.py.
+        const float ED_X = 58.0f, ED_W = 203.2f - 58.0f - 4.0f;
+        const float BLEND_TOP = 74.0f, BLEND_H = 30.0f, GAP = 3.0f;
+        const float GROUP_W = ED_W / 3.0f;
+        const char* laneName[3] = { "REST", "MELODY", "OCTAVE" };
+        const char* itemName[4] = { "LEN", "OFF", "ROT", "SPR" };
+
+        bool macroPresent = false;
+        bool isLight = false;
+        if (auto* mon = getMonsoon()) {
+            macroPresent = (mon->expanderManager.cachedMacroSandsVisual != nullptr);
+            isLight = mon->lightTheme;
+        }
+
+        auto font = APP->window->loadFont(rack::asset::system("res/fonts/DejaVuSans-Bold.ttf"));
+        if (!font) font = APP->window->uiFont;
+        if (!font) return;
+        nvgFontFaceId(vg, font->handle);
+
+        // Colours: brand-ish ink, dimmed when no Macro attached.
+        NVGcolor head = macroPresent ? (isLight ? nvgRGB(40,44,52) : nvgRGB(210,214,222))
+                                     : nvgRGBA(140,140,150, 90);
+        NVGcolor item = macroPresent ? (isLight ? nvgRGB(150,120,20) : nvgRGB(190,160,60))
+                                     : nvgRGBA(140,140,150, 70);
+
+        // Section header.
+        nvgFontSize(vg, 8.5f);
+        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM);
+        nvgFillColor(vg, head);
+        nvgText(vg, mm2px(ED_X), mm2px(BLEND_TOP - 3.5f), "MACRO BLEND", nullptr);
+
+        for (int l = 0; l < 3; ++l) {
+            float gx = ED_X + l*GROUP_W + GAP*0.5f;
+            float gw = GROUP_W - GAP;
+            // group name — top of box, right of the owner button
+            nvgFontSize(vg, 8.0f);
+            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+            nvgFillColor(vg, head);
+            nvgText(vg, mm2px(gx + gw*0.62f), mm2px(BLEND_TOP + 3.2f), laneName[l], nullptr);
+            // "OWN" under the owner button
+            nvgFontSize(vg, 5.5f);
+            nvgFillColor(vg, item);
+            nvgText(vg, mm2px(gx + 5.5f), mm2px(BLEND_TOP + 11.0f), "OWN", nullptr);
+            // item labels under each send trim (2×2)
+            float sx0 = gx + gw*0.42f, sxs = gw*0.26f;
+            float sy0 = BLEND_TOP + 8.5f, sys = 12.0f;
+            for (int it = 0; it < 4; ++it) {
+                float cxs = sx0 + (it % 2)*sxs;
+                float cys = sy0 + (it / 2)*sys;
+                nvgText(vg, mm2px(cxs), mm2px(cys + 5.0f), itemName[it], nullptr);
+            }
+        }
+    }
 };
 
 Model* modelStraitsEastSandsVisual =
