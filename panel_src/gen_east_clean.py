@@ -156,25 +156,44 @@ def gen(dark):
     for lane in range(3):
         y=0.5*(rowY(lane*2)+rowY(lane*2+1)); trim(SPREAD_X,y,t["teal"])
 
-    # ── Macro/East blend controls (only meaningful with a Macro visual attached;
-    #    the module greys them out otherwise). Owner on/off button beside each
-    #    lane in the gap between the spread column and the editor; the MACRO CV
-    #    SEND trimpots (4 per lane: Len/Off/Rot/Spr) in the free band below the
-    #    editor, in 3 lane-groups across the editor width. ──
-    OWN_X = 53.5
-    def ownerbtn(x,y):
-        A(f'<circle cx="{px(x):.1f}" cy="{px(y):.1f}" r="{px(2.4):.1f}" fill="{t["edrecess"]}" stroke="{t["accent"]}" stroke-width="1.1"/>')
-    LANE_CY = [ED_Y + (l+0.5)*(ED_H/3.0) for l in range(3)]
+    # ── Macro/East blend controls — 3 labelled groups (REST / MELODY / OCTAVE),
+    #    each a boxed cluster: an owner on/off button (top-left) + a 2×2 grid of
+    #    MACRO CV SEND trimpots (Len/Off/Rot/Spr). Group boxes + a "MACRO BLEND"
+    #    header give the previously-loose row a clear structure. Labels (group
+    #    names + item names) are drawn by the widget in NanoVG (the panel carries
+    #    no baked text), positioned to match these coordinates. Only meaningful
+    #    with a Macro visual attached; the module greys them out otherwise. ──
+    BLEND_TOP = 74.0               # below the editor (ED_Y+ED_H = 66)
+    BLEND_H   = 30.0
+    GROUP_W   = ED_W/3.0
+    GAP       = 3.0
+    # section header rule
+    A(f'<line x1="{px(ED_X):.1f}" y1="{px(BLEND_TOP-3.0):.1f}" x2="{px(ED_X+ED_W):.1f}" y2="{px(BLEND_TOP-3.0):.1f}" stroke="{t["edborder"]}" stroke-width="0.8" opacity="0.7"/>')
+    LANE_NAMES = ["REST","MELODY","OCTAVE"]
+    OWN_XY = []     # owner button centres, per lane
+    SEND_XY = []    # send trim centres, per (lane,item)
     for l in range(3):
-        ownerbtn(OWN_X, LANE_CY[l])
-    # SEND row: 3 lane groups across ED_W, 4 sends each, in the free band.
-    SEND_Y = 80.0
-    GROUP_W = ED_W/3.0
-    def send_x(lane,item):
-        return ED_X + lane*GROUP_W + (item+0.5)*(GROUP_W/4.0)
-    for lane in range(3):
+        gx = ED_X + l*GROUP_W + GAP*0.5
+        gw = GROUP_W - GAP
+        # group box
+        A(f'<rect x="{px(gx):.1f}" y="{px(BLEND_TOP):.1f}" width="{px(gw):.1f}" height="{px(BLEND_H):.1f}" rx="{px(1.2):.1f}" fill="{t["edrecess"]}" stroke="{t["edborder"]}" stroke-width="0.9" opacity="0.9"/>')
+        # owner button: top-left of the box
+        oy = BLEND_TOP + 6.5
+        ox = gx + 5.5
+        A(f'<circle cx="{px(ox):.1f}" cy="{px(oy):.1f}" r="{px(2.4):.1f}" fill="{t["edrecess"]}" stroke="{t["accent"]}" stroke-width="1.1"/>')
+        OWN_XY.append((ox,oy))
+        # 2×2 send grid in the right ~2/3 of the box
+        sx0 = gx + gw*0.42
+        sxs = gw*0.26
+        sy0 = BLEND_TOP + 8.5
+        sys = 12.0
+        lane_sends=[]
         for item in range(4):
-            trim(send_x(lane,item), SEND_Y, t["gold"])
+            cxs = sx0 + (item % 2)*sxs
+            cys = sy0 + (item // 2)*sys
+            trim(cxs, cys, t["gold"])
+            lane_sends.append((cxs,cys))
+        SEND_XY.append(lane_sends)
     A('</g>')
     # ── SvgPanelKit component layer. Indices mirror StraitsEastSandsVisual.hpp:
     #    cvId(r,c)=CV_START(0)+r*2+c  inputs 0..11;
@@ -190,11 +209,14 @@ def gen(dark):
     for lane in range(3):
         y=0.5*(rowY(lane*2)+rowY(lane*2+1))
         kit_shape("param", lane, SPREAD_X, y)   # SPREAD_R/M/O = 0/1/2
-    # Macro/East blend control markers (named labels; bound to display proxies).
+    # Macro/East blend control markers (named; bound to display proxies). Use the
+    # grouped coordinates computed above (OWN_XY, SEND_XY).
     for l in range(3):
-        A(f'<circle id="param_owner_{l}" cx="{px(OWN_X):.2f}" cy="{px(LANE_CY[l]):.2f}" r="0.5" fill="none" stroke="none"/>')
+        ox,oy = OWN_XY[l]
+        A(f'<circle id="param_owner_{l}" cx="{px(ox):.2f}" cy="{px(oy):.2f}" r="0.5" fill="none" stroke="none"/>')
         for item in range(4):
-            A(f'<circle id="param_send_{l}_{item}" cx="{px(send_x(l,item)):.2f}" cy="{px(SEND_Y):.2f}" r="0.5" fill="none" stroke="none"/>')
+            cxs,cys = SEND_XY[l][item]
+            A(f'<circle id="param_send_{l}_{item}" cx="{px(cxs):.2f}" cy="{px(cys):.2f}" r="0.5" fill="none" stroke="none"/>')
     A('</g>')
     A('</svg>')
     return "\n".join(L)
