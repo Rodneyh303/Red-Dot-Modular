@@ -24,6 +24,10 @@ struct MonsoonWidget : ModuleWidget, dotModular::Compose<MonsoonWidget, dotModul
     struct PendingModArc {
         rack::ParamWidget* knob = nullptr;
         bool linear = false;   // false = radial knob arc; true = vertical-slider tick
+        float radiusFrac = 0.5f; // arc radius as a fraction of the knob box half-extent.
+                                 // 0.5 matches knobs whose art fills the box (e.g. Trimpot);
+                                 // smaller for knobs whose visible art is inset within a
+                                 // larger SVG box (e.g. RDM_KnobSmall: art r=4 in r=8 box).
         std::function<float()> getModNorm;
         std::function<bool()>  isActive;
     };
