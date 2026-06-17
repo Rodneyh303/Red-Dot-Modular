@@ -115,11 +115,6 @@ The Monsoon core module provides a flexible internal routing system, allowing fo
 
 #### Main Knobs & Sliders
 
-**Mode Select** (left side, 4-way)
-- **A**: Clock-driven (external clock required; advances on 16th-note edge)
-- **B**: Gate-driven (external gate triggers pattern; useful for synchronized launches)
-- **C**: Reserved for future expansion
-- **D**: Reserved for future expansion
 **Mode Select** (left side, 4-way selector)
 - **A**: **Clock-driven** (external clock required; advances on 16th-note edge).
 - **B**: **Gate-driven** (external gate advances the playhead; useful for irregular rhythms).
@@ -366,7 +361,7 @@ Each strand is a 16-element array of random probabilities (0–1) that controls 
 1. **Rhythm Strand**: Controls when steps rest vs. play
 2. **Variation Strand**: Biases note length selection
 3. **Legato Strand**: Controls legato/tie probability
-4. **Accent Strand**: Controls accent gate probability *(NEW)*
+4. **Accent Strand**: Controls accent gate probability
 5. **Melody Strand**: Selects which semitone to play
 6. **Octave Strand**: Selects which octave to use
 
@@ -511,7 +506,7 @@ For each voice (Voice 2 through Voice 8):
 
 - **Gate Output**: 10V when the voice is sounding, 0V when silent
 - **CV Output**: 1V/octave pitch (independent from other voices)
-- **Accent Output** *(NEW)*: 10V when the voice is accented and sounding, 0V otherwise
+- **Accent Output**: 10V when the voice is accented and sounding, 0V otherwise
 
 #### Voice Rest Probability
 
@@ -558,7 +553,7 @@ In addition, a **Macro-CV send** (per voice, per lane, for Length/Offset/Rotatio
 
 ---
 
-## Accent Gates *(NEW FEATURE)*
+## Accent Gates
 
 Accent gates add dynamic emphasis to your sequences, useful for:
 - Dynamics and expression (send to VCA before final output)
@@ -666,25 +661,6 @@ Result: Accented notes have brighter timbre
 ### Mode C & D: Quantizers
 *   **Mode C**: Quantizes incoming CV to the active weights set on the sliders.
 *   **Mode D**: Continuous live quantization with low latency.
-
----
-- Mono gate timing follows the clock
-- Poly voices tick in sync with mono
-
-### Mode B: Gate-Driven (Gated Step Sequencer)
-
-- **Trigger**: Advances on rising edge of GATE1 IN
-- **Use Case**: Perform manual sequencing or gate-driven patterns
-- **Best For**: Live performance, hand-controlled stepping, integration with other gate sources
-
-**Control**:
-- GATE1 IN controls when steps advance
-- Hold gate high for multiple clock cycles and the step won't change until gate releases
-- Useful for exploring variations slowly
-
-### Mode C & D
-
-Reserved for future expansion.
 
 ---
 
@@ -902,4 +878,4 @@ For questions, suggestions, or bug reports:
 
 ---
 
-*This documentation reflects the current state of Monsoon as of v2.1.0. Features and specifications are subject to change.*
+*This documentation reflects the current state of Monsoon as of v3.1. Features and specifications are subject to change.*
