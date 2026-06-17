@@ -55,6 +55,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             };
             arc->isActive = [mod, this, lane, interpParamId]() -> bool {
                 if (!mod) return false;
+                Monsoon* mon = findMonsoonEitherSide(mod);
+                if (!mon || !mon->modVizEast) return false;
                 int v = selectedVoice;
                 if (v < 0 || v >= 15) return false;
                 return std::fabs(mod->polySpreadEffective[v][lane] - mod->params[interpParamId()].getValue()) > 1e-4f;
@@ -118,8 +120,16 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // Macro visual is attached (they have no effect then — the equation's
         // macro terms are zero — so this is feedback, not function).
         for (int lane = 0; lane < 3; ++lane) {
-            bindParam<VCVLatch>("param_owner_" + std::to_string(lane), ownerDispId(lane),
-                std::function<void(VCVLatch*)>([this](VCVLatch* w){ blendControls.push_back(w); }));
+            bindLightParam<VCVLightLatch<SmallSimpleLight<WhiteLight>>>(
+                "param_owner_" + std::to_string(lane), 
+                ownerDispId(lane), 
+                ownerLightId(lane),
+                [this](VCVLightLatch<SmallSimpleLight<WhiteLight>>* w) { 
+                    w->momentary = false;
+                    w->latch = true;
+                    blendControls.push_back(w); 
+                }
+            );
             for (int item = 0; item < 4; ++item)
                 bindParam<Trimpot>("param_send_" + std::to_string(lane) + "_" + std::to_string(item),
                     sendDispId(lane, item),

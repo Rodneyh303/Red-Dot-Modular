@@ -11,7 +11,11 @@ PW, PH = px(W_MM), px(H_MM)
 ROW_TOP, ROW_BOT, N = 14.0, 108.0, 6
 def rowY(r): return ROW_TOP + (r+0.5)*(ROW_BOT-ROW_TOP)/N
 COL_J1, COL_J2, COL_A1, COL_A2, SPREAD_X = 8.0, 18.0, 30.0, 39.0, 49.0
-ED_X, ED_Y = 58.0, 18.0
+# Extra top margin so the voice tab row isn't crammed against the panel top edge.
+# 0.5 cm = 5 mm. Adjust + rerun the generator (and mirror TAB_TOP_OFFSET_MM in
+# StraitsEastSandsVisualWidget) to taste.
+TAB_TOP_OFFSET_MM = 5.0
+ED_X, ED_Y = 58.0, 18.0 + TAB_TOP_OFFSET_MM
 ED_W = W_MM - ED_X - 4.0
 ED_H = 48.0
 
