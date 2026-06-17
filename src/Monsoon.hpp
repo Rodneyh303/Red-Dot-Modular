@@ -751,6 +751,17 @@ struct Monsoon : Module {
     // true = Mono Draw (target the raw mono draw; mono strand becomes a fixed
     // anchor). Replaces the old per-visual interpUseMono flags on East/Macro.
     bool spreadInterpMono = false;
+
+    // Modulation-visualisation (mod arc) enables, grouped by surface. All default
+    // on; toggled via the Monsoon "Modulation arcs" context submenu. Each arc's
+    // isActive is gated by the relevant flag (read directly here, or via
+    // findMonsoonEitherSide from the expander widgets).
+    bool modVizMonsoonMelody = true;  // the 12 semitone + 2 octave pitch sliders (Interchange)
+    bool modVizMonsoonOther  = true;  // big-5 knobs + slew/mix (Junction/CV2/CV3/Raffles)
+    bool modVizEast          = true;  // Straits East per-voice rest + spread arcs
+    bool modVizWest          = true;  // Straits West per-voice rest arcs
+    bool modVizMacro         = true;  // Macro spread arcs
+    bool modVizMono          = true;  // Mono Sands spread arcs
     MonsoonExpanderManager expanderManager;
 
     // Modulation-visualisation snapshot. Published once per process() from the
