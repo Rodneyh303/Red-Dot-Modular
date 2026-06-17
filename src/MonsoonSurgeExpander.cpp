@@ -2,6 +2,7 @@
 #include "MonsoonSurgeExpander.hpp"
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
+#include "ui/ConnectMark.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/SvgPanelKit.hpp"
 
@@ -17,6 +18,7 @@ struct MonsoonSurgeExpanderWidget : ModuleWidget,
                         dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
     int lastThemeLight = -1;
+    redDot::ConnectMark* connectMark = nullptr;
 
     MonsoonSurgeExpanderWidget(MonsoonSurgeExpander* module) {
         setModule(module);
@@ -38,6 +40,17 @@ struct MonsoonSurgeExpanderWidget : ModuleWidget,
             bindInput<PJ301MPort>(std::string("input_SURGE_") + nm[r] + "_CV",  cvId[r]);
             bindParam<Trimpot>   (std::string("param_SURGE_") + nm[r] + "_ATT", attId[r]);
         }
+
+        // dot.modular connect mark — full brand colour when attached to a Monsoon
+        // core, greyed when not. Placed at the SVG marker id="light_connect"
+        // (repositionable in the generator) via the kit's bindChild.
+        connectMark = bindChild<redDot::ConnectMark>("light_connect",
+            std::function<void(redDot::ConnectMark*)>([this](redDot::ConnectMark* w){
+                w->box.size = mm2px(rack::math::Vec(8.f, 8.f));
+                w->box.pos  = w->box.pos.minus(w->box.size.div(2));  // re-centre after sizing
+                w->connected  = [this]() { return module && redDot::findMonsoonEitherSide(module) != nullptr; };
+                w->lightTheme = [this]() { Monsoon* mm = module ? redDot::findMonsoonEitherSide(module) : nullptr; return mm && mm->lightTheme; };
+            }));
     }
 
     void step() override {

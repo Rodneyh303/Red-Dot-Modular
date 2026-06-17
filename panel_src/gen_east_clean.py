@@ -217,6 +217,7 @@ def gen(dark):
         for item in range(4):
             cxs,cys = SEND_XY[l][item]
             A(f'<circle id="param_send_{l}_{item}" cx="{px(cxs):.2f}" cy="{px(cys):.2f}" r="0.5" fill="none" stroke="none"/>')
+    A(f'<circle id="light_connect" cx="{px(W_MM*0.5):.2f}" cy="{px(124.0):.2f}" r="0.5" fill="none" stroke="none"/>')
     A('</g>')
     A('</svg>')
     return "\n".join(L)

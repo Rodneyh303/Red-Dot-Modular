@@ -296,9 +296,8 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         bindOutput<PJ301MPort>("output_RESET_TRIGGER_OUTPUT", MonsoonIds::RESET_TRIGGER_OUTPUT);
 
         // ── Expander lights ───────────────────────────────────────────────────
-        addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(EXP_LIGHT_X,              EXP_LIGHT_Y)), module, MonsoonIds::SCALE_EXPANDER_LIGHT));
-        addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(EXP_LIGHT_X+EXP_LIGHT_S,  EXP_LIGHT_Y)), module, MonsoonIds::DNA_EXPANDER_LIGHT));
-        addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(EXP_LIGHT_X+2*EXP_LIGHT_S,EXP_LIGHT_Y)), module, MonsoonIds::POLY_EXPANDER_LIGHT));
+        // (Legacy Monsoon-side expander indicator lights removed — each expander
+        // now shows its own dot.modular red-dot "connected" light instead.)
 
         // The big-5 arcs are queued + flushed inside applyTheme() (called above).
         // The slew/mix arcs (and any slider arcs) are queued in THIS constructor
@@ -530,11 +529,7 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         writeNvgText(LX,LY0,"A"); writeNvgText(LX,LY0+LDY,"B");
         writeNvgText(LX,LY0+2*LDY,"C"); writeNvgText(LX,LY0+3*LDY,"D");
 
-        // Expander lights
-        setNvgFontSize(2.0f); fillNvgColour(200,200,200);
-        writeNvgText(EXP_LIGHT_X,            EXP_LIGHT_Y+3.f,"S");
-        writeNvgText(EXP_LIGHT_X+EXP_LIGHT_S,EXP_LIGHT_Y+3.f,"D");
-        writeNvgText(EXP_LIGHT_X+2*EXP_LIGHT_S,EXP_LIGHT_Y+3.f,"P");
+        // (Legacy S/D/P expander-light labels removed along with their lights.)
 
         // ── Labels derived from the SAME named SVG shapes the controls bind to,
         //    so they can never fall behind a control reorg again. (labelAt is
