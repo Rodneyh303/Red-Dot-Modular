@@ -2,7 +2,7 @@
 #include "MonsoonSurgeExpander.hpp"
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
-#include "ui/RedDotLight.hpp"
+#include "ui/ConnectMark.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/SvgPanelKit.hpp"
 
@@ -18,6 +18,7 @@ struct MonsoonSurgeExpanderWidget : ModuleWidget,
                         dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
     int lastThemeLight = -1;
+    redDot::ConnectMark* connectMark = nullptr;
 
     MonsoonSurgeExpanderWidget(MonsoonSurgeExpander* module) {
         setModule(module);
@@ -40,9 +41,17 @@ struct MonsoonSurgeExpanderWidget : ModuleWidget,
             bindParam<Trimpot>   (std::string("param_SURGE_") + nm[r] + "_ATT", attId[r]);
         }
 
-        // dot.modular connect dot — lit when attached to a Monsoon core. Placed at
-        // the SVG marker id="light_connect" so it can be repositioned in the gen.
-        bindLight<redDot::RedDotLight>("light_connect", 0);
+        // dot.modular connect mark — full brand colour when attached to a Monsoon
+        // core, greyed when not. Placed at the SVG marker id="light_connect"
+        // (repositionable in the generator).
+        if (auto* s = findNamed("light_connect")) {
+            connectMark = new redDot::ConnectMark();
+            connectMark->box.size = mm2px(rack::math::Vec(8.f, 8.f));
+            connectMark->box.pos  = centerOf(s).minus(connectMark->box.size.div(2));
+            connectMark->connected  = [this]() { return module && redDot::findMonsoonEitherSide(module) != nullptr; };
+            connectMark->lightTheme = [this]() { Monsoon* mm = module ? redDot::findMonsoonEitherSide(module) : nullptr; return mm && mm->lightTheme; };
+            addChild(connectMark);
+        }
     }
 
     void step() override {
@@ -50,7 +59,6 @@ struct MonsoonSurgeExpanderWidget : ModuleWidget,
         kitStep();
         if (!module) return;
         Monsoon* m = redDot::findMonsoonEitherSide(module);
-        module->lights[0].setBrightness(m ? 1.f : 0.f);   // connect dot
         int wantLight = (m && m->lightTheme) ? 1 : 0;
         if (wantLight != lastThemeLight) {
             lastThemeLight = wantLight;
