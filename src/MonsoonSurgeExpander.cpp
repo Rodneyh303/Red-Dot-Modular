@@ -2,6 +2,7 @@
 #include "MonsoonSurgeExpander.hpp"
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
+#include "ui/RedDotLight.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/SvgPanelKit.hpp"
 
@@ -38,6 +39,10 @@ struct MonsoonSurgeExpanderWidget : ModuleWidget,
             bindInput<PJ301MPort>(std::string("input_SURGE_") + nm[r] + "_CV",  cvId[r]);
             bindParam<Trimpot>   (std::string("param_SURGE_") + nm[r] + "_ATT", attId[r]);
         }
+
+        // dot.modular connect dot — lit when attached to a Monsoon core. Placed at
+        // the SVG marker id="light_connect" so it can be repositioned in the gen.
+        bindLight<redDot::RedDotLight>("light_connect", 0);
     }
 
     void step() override {
@@ -45,6 +50,7 @@ struct MonsoonSurgeExpanderWidget : ModuleWidget,
         kitStep();
         if (!module) return;
         Monsoon* m = redDot::findMonsoonEitherSide(module);
+        module->lights[0].setBrightness(m ? 1.f : 0.f);   // connect dot
         int wantLight = (m && m->lightTheme) ? 1 : 0;
         if (wantLight != lastThemeLight) {
             lastThemeLight = wantLight;

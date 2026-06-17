@@ -9,7 +9,7 @@ using namespace rack;
 // ACCENT by the ParameterManager via the cached pointer.
 struct MonsoonSurgeExpander : Module {
     MonsoonSurgeExpander() {
-        config(MonsoonIds::NUM_SURGE_PARAMS, MonsoonIds::NUM_SURGE_INPUTS, 0, 0);
+        config(MonsoonIds::NUM_SURGE_PARAMS, MonsoonIds::NUM_SURGE_INPUTS, 0, 1); // light 0 = connect dot
         configParam(MonsoonIds::SURGE_NOTEVAL_ATT,   -1.f, 1.f, 0.f, "Note value CV attenuverter");
         configParam(MonsoonIds::SURGE_VARIATION_ATT, -1.f, 1.f, 0.f, "Variation CV attenuverter");
         configParam(MonsoonIds::SURGE_LEGATO_ATT,    -1.f, 1.f, 0.f, "Legato CV attenuverter");
