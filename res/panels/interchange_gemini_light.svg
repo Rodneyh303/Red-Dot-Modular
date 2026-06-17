@@ -580,4 +580,35 @@
       <circle cx="102" cy="320" r="9.0" /><circle cx="168" cy="320" r="9.0" />
     </g>
   </g>
+  <g id="components">
+    <circle id="input_SEMI_CV_0" cx="48.00" cy="80.00" r="0.5" fill="none" stroke="none"/>
+    <circle id="param_SEMI_ATT_0" cx="102.00" cy="80.00" r="0.5" fill="none" stroke="none"/>
+    <circle id="param_SEMI_ATT_6" cx="168.00" cy="80.00" r="0.5" fill="none" stroke="none"/>
+    <circle id="input_SEMI_CV_6" cx="222.00" cy="80.00" r="0.5" fill="none" stroke="none"/>
+    <circle id="input_SEMI_CV_1" cx="48.00" cy="120.00" r="0.5" fill="none" stroke="none"/>
+    <circle id="param_SEMI_ATT_1" cx="102.00" cy="120.00" r="0.5" fill="none" stroke="none"/>
+    <circle id="param_SEMI_ATT_7" cx="168.00" cy="120.00" r="0.5" fill="none" stroke="none"/>
+    <circle id="input_SEMI_CV_7" cx="222.00" cy="120.00" r="0.5" fill="none" stroke="none"/>
+    <circle id="input_SEMI_CV_2" cx="48.00" cy="160.00" r="0.5" fill="none" stroke="none"/>
+    <circle id="param_SEMI_ATT_2" cx="102.00" cy="160.00" r="0.5" fill="none" stroke="none"/>
+    <circle id="param_SEMI_ATT_8" cx="168.00" cy="160.00" r="0.5" fill="none" stroke="none"/>
+    <circle id="input_SEMI_CV_8" cx="222.00" cy="160.00" r="0.5" fill="none" stroke="none"/>
+    <circle id="input_SEMI_CV_3" cx="48.00" cy="200.00" r="0.5" fill="none" stroke="none"/>
+    <circle id="param_SEMI_ATT_3" cx="102.00" cy="200.00" r="0.5" fill="none" stroke="none"/>
+    <circle id="param_SEMI_ATT_9" cx="168.00" cy="200.00" r="0.5" fill="none" stroke="none"/>
+    <circle id="input_SEMI_CV_9" cx="222.00" cy="200.00" r="0.5" fill="none" stroke="none"/>
+    <circle id="input_SEMI_CV_4" cx="48.00" cy="240.00" r="0.5" fill="none" stroke="none"/>
+    <circle id="param_SEMI_ATT_4" cx="102.00" cy="240.00" r="0.5" fill="none" stroke="none"/>
+    <circle id="param_SEMI_ATT_10" cx="168.00" cy="240.00" r="0.5" fill="none" stroke="none"/>
+    <circle id="input_SEMI_CV_10" cx="222.00" cy="240.00" r="0.5" fill="none" stroke="none"/>
+    <circle id="input_SEMI_CV_5" cx="48.00" cy="280.00" r="0.5" fill="none" stroke="none"/>
+    <circle id="param_SEMI_ATT_5" cx="102.00" cy="280.00" r="0.5" fill="none" stroke="none"/>
+    <circle id="param_SEMI_ATT_11" cx="168.00" cy="280.00" r="0.5" fill="none" stroke="none"/>
+    <circle id="input_SEMI_CV_11" cx="222.00" cy="280.00" r="0.5" fill="none" stroke="none"/>
+    <circle id="input_OCT_LO_CV" cx="48.00" cy="320.00" r="0.5" fill="none" stroke="none"/>
+    <circle id="param_OCT_LO_ATT" cx="102.00" cy="320.00" r="0.5" fill="none" stroke="none"/>
+    <circle id="param_OCT_HI_ATT" cx="168.00" cy="320.00" r="0.5" fill="none" stroke="none"/>
+    <circle id="input_OCT_HI_CV" cx="222.00" cy="320.00" r="0.5" fill="none" stroke="none"/>
+    <circle id="light_connect" cx="135.00" cy="360.00" r="0.5" fill="none" stroke="none"/>
+  </g>
 </svg>
