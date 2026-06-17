@@ -20,8 +20,8 @@ struct MonsoonSurgeExpanderWidget : ModuleWidget,
     int lastThemeLight = -1;
     redDot::ConnectMark* connectMark = nullptr;
 
-    MonsoonSurgeExpanderWidget(MonsoonSurgeExpander* module) {
-        setModule(module);
+    MonsoonSurgeExpanderWidget(MonsoonSurgeExpander* mod) {
+        setModule(mod);
         const char* darkPath  = "res/panels/Junction_panel_dark.svg";
         const char* lightPath = "res/panels/Junction_panel_light.svg";
         panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance, darkPath));

@@ -21,8 +21,8 @@ struct MonsoonCausewayExpanderWidget : ModuleWidget,
     redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;
 
-    MonsoonCausewayExpanderWidget(MonsoonCausewayExpander* module) {
-        setModule(module);
+    MonsoonCausewayExpanderWidget(MonsoonCausewayExpander* mod) {
+        setModule(mod);
         const char* darkPath  = "res/panels/Raffles_panel_dark.svg";
         const char* lightPath = "res/panels/Raffles_panel_light.svg";
         panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance, darkPath));

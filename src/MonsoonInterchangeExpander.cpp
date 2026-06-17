@@ -15,8 +15,8 @@ struct MonsoonInterchangeExpanderWidget : ModuleWidget {
     redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;
 
-MonsoonInterchangeExpanderWidget(MonsoonInterchangeExpander* module) {
-    setModule(module);
+MonsoonInterchangeExpanderWidget(MonsoonInterchangeExpander* mod) {
+    setModule(mod);
     //box.size = mm2px(Vec(270, 380));
     panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/interchange_gemini_new2.svg"));
     panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/interchange_gemini_light.svg"));

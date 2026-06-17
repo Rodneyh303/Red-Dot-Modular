@@ -49,9 +49,9 @@ struct MonsoonStraitWestExpanderWidget : ModuleWidget,
         }
         pendingRestArcs.clear();
     }
-    MonsoonStraitWestExpanderWidget(MonsoonStraitWestExpander* module)
+    MonsoonStraitWestExpanderWidget(MonsoonStraitWestExpander* mod)
     {
-        setModule(module);
+        setModule(mod);
         const char* darkPath  = "res/panels/straits_west_peranakan_dark.svg";
         const char* lightPath = "res/panels/straits_west_peranakan_light.svg";
         panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance, darkPath));
