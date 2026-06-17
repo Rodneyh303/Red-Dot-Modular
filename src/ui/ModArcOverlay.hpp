@@ -37,6 +37,11 @@ struct ModArcOverlay : rack::TransparentWidget {
     // a small symmetric inset; the host can tune to match the slider art.
     float travelTopPx = 4.f;
     float travelBotPx = 4.f;
+    // Uniform padding (px) by which this widget's box is inflated beyond the knob
+    // on every side, so the arc stays inside the box (no redraw trails). The knob
+    // itself occupies [pad, box.size - pad]. Radial mode centres on box.size/2
+    // (unaffected by symmetric pad); linear mode must offset by pad.
+    float pad = 0.f;
 
     // Knob "value angle" convention: Rack SvgKnob measures rotation with 0 at the
     // top (pointer up). In nvg screen space the top is -PI/2. So a normalised
@@ -58,13 +63,14 @@ struct ModArcOverlay : rack::TransparentWidget {
         if (mode == LINEAR_V) {
             // Vertical slider: draw a tick at the modulated height + a connecting
             // stem from the set height, so you see the offset direction/size.
-            float top = travelTopPx;
-            float bot = box.size.y - travelBotPx;
+            // The knob/slider occupies [pad, box.size-pad]; map travel within that.
+            float top = pad + travelTopPx;
+            float bot = box.size.y - pad - travelBotPx;
             auto yFor = [&](float v){ v = rack::math::clamp(v,0.f,1.f); return top + (1.f - v) * (bot - top); };
             float ySet = yFor(setN);
             float yMod = yFor(modN);
-            float x0 = box.size.x * 0.18f;
-            float x1 = box.size.x * 0.82f;
+            float x0 = pad + (box.size.x - 2.f*pad) * 0.18f;
+            float x1 = pad + (box.size.x - 2.f*pad) * 0.82f;
             // Stem from set→mod
             nvgBeginPath(args.vg);
             nvgMoveTo(args.vg, box.size.x * 0.5f, ySet);
