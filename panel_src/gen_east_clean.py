@@ -191,6 +191,8 @@ def gen(dark):
         A(f'<circle id="param_owner_{l}" cx="{px(OWN_X):.2f}" cy="{px(LANE_CY[l]):.2f}" r="0.5" fill="none" stroke="none"/>')
         for item in range(4):
             A(f'<circle id="param_send_{l}_{item}" cx="{px(send_x(l,item)):.2f}" cy="{px(SEND_Y):.2f}" r="0.5" fill="none" stroke="none"/>')
+    # dot.modular connect mark anchor (footer-centre; reposition here).
+    A(f'<circle id="light_connect" cx="{px(W_MM*0.5):.2f}" cy="{px(124.0):.2f}" r="0.5" fill="none" stroke="none"/>')
     A('</g>')
     A('</svg>')
     return "\n".join(L)

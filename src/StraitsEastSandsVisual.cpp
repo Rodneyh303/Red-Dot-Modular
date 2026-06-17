@@ -7,6 +7,7 @@
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/SvgPanelKit.hpp"
 #include "ui/ModArcOverlay.hpp"
+#include "ui/ConnectMark.hpp"
 #include "dsp/managers/PolyVoiceSandsParameterManager.hpp"
 #include "dsp/managers/SpreadManager.hpp"
 
@@ -67,6 +68,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     // Theme follow-Monsoon: cache both panel SVGs + the panel widget so step()
     // can swap when the connected host's lightTheme changes.
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
+    redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;  // -1 = unset, forces first apply
 
     explicit StraitsEastSandsVisualWidget(StraitsEastSandsVisual* mod) {
@@ -128,6 +130,15 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
 
         paramMgr = new PolyVoiceSandsParameterManager(nullptr, nullptr, 15, 0);
         flushSpreadArcs();
+
+        // dot.modular connect mark (brand mark; greyed when no Monsoon attached).
+        connectMark = bindChild<redDot::ConnectMark>("light_connect",
+            std::function<void(redDot::ConnectMark*)>([this](redDot::ConnectMark* w){
+                w->box.size = mm2px(rack::math::Vec(8.f, 8.f));
+                w->box.pos  = w->box.pos.minus(w->box.size.div(2));
+                w->connected  = [this]() { return module && redDot::findMonsoonEitherSide(module) != nullptr; };
+                w->lightTheme = [this]() { Monsoon* mm = module ? redDot::findMonsoonEitherSide(module) : nullptr; return mm && mm->lightTheme; };
+            }));
     }
 
     ~StraitsEastSandsVisualWidget() override { delete paramMgr; }

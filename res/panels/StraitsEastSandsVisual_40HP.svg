@@ -156,5 +156,6 @@
 <circle id="param_send_2_1" cx="501.33" cy="236.22" r="0.5" fill="none" stroke="none"/>
 <circle id="param_send_2_2" cx="536.07" cy="236.22" r="0.5" fill="none" stroke="none"/>
 <circle id="param_send_2_3" cx="570.82" cy="236.22" r="0.5" fill="none" stroke="none"/>
+<circle id="light_connect" cx="300.00" cy="366.14" r="0.5" fill="none" stroke="none"/>
 </g>
 </svg>
