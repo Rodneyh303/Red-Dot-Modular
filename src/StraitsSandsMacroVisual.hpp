@@ -23,7 +23,11 @@ namespace StraitsMacroVisualIds {
     static constexpr float SPREAD_X = 49.f;     // per-lane spread trimpot column (matches East)
     static constexpr float ED_X   = 58.f;       // editor starts after the spread column
     static constexpr float ED_W   = W_MM - ED_X - 4.f;  // ~141.2mm (matches East)
-    static constexpr float ED_Y   = 16.f;
+    // Mirror TAB_TOP_OFFSET_MM in gen_macro_mono.py (extra top margin; 0.5cm=5mm).
+    // Base 18 matches the generator's editor recess (was 16 here — a small drift;
+    // aligned now so the widget editor sits exactly on the drawn recess).
+    static constexpr float TAB_TOP_OFFSET_MM = 5.f;
+    static constexpr float ED_Y   = 18.f + TAB_TOP_OFFSET_MM;
     // Editor height sized so the 3 poly lanes are close to the Mono lane height
     // (~16mm) rather than ~30mm; frees the lower panel for decoration/logos.
     static constexpr float ED_LANE_H = 16.f;
