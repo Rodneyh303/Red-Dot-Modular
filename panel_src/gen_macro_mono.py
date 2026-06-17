@@ -15,7 +15,10 @@ def gen_macro(dark, W_MM=203.2):
     def rowY(r): return ROW_TOP+(r+0.5)*(ROW_BOT-ROW_TOP)/N
     COL_J1,COL_J2,COL_A1,COL_A2=8.,18.,30.,39.
     SPREAD_X=49.                      # per-lane global spread trimpot column
-    ED_X=58.; ED_W=W_MM-ED_X-4.; ED_Y=18.; ED_H=48.
+    # Extra top margin so the view-tab row isn't crammed against the panel top
+    # edge. 0.5 cm = 5 mm. Mirror TAB_TOP_OFFSET_MM in StraitsSandsMacroVisualWidget.
+    TAB_TOP_OFFSET_MM = 5.0
+    ED_X=58.; ED_W=W_MM-ED_X-4.; ED_Y=18.+TAB_TOP_OFFSET_MM; ED_H=48.
     L=[]; A=L.append
     A(D.svg_open(PW,PH))
     A('<g inkscape:label="artwork" inkscape:groupmode="layer">')

@@ -20,7 +20,10 @@ namespace StraitsEastVisualIds {
     static constexpr float COL_A2 = 39.f;
     static constexpr float SPREAD_X = 49.f;      // per-lane spread trimpot column
     static constexpr float ED_X   = 58.f;        // editor starts after spread column
-    static constexpr float ED_Y   = 18.f;        // editor top (below 2-row tab band)
+    // Mirror TAB_TOP_OFFSET_MM in panel_src/gen_east_clean.py (extra top margin so
+    // the tab row clears the panel top edge; 0.5cm = 5mm).
+    static constexpr float TAB_TOP_OFFSET_MM = 5.f;
+    static constexpr float ED_Y   = 18.f + TAB_TOP_OFFSET_MM;  // editor top (below 2-row tab band)
     static constexpr float ED_W   = W_MM - ED_X - 4.f;  // ~141.2mm
     // Editor height sized so the 3 poly lanes are close to the Mono lane height
     // (~16mm), not ~30mm. Leaves the lower panel free for decoration / logos.
@@ -89,6 +92,15 @@ namespace StraitsEastVisualIds {
     // on voice switch). ownerDispId(lane) 0-2; sendDispId(lane,item) 0-11.
     inline int ownerDispId(int lane)           { return MonsoonIds::MACRO_OWN_DISP_START + lane; }
     inline int sendDispId(int lane, int item)  { return MonsoonIds::MACRO_SEND_DISP_START + lane*4 + item; }
+
+    // Local lights for this module (East visual has its own light space, separate
+    // from Monsoon's). Owner latch lights — lit when the lane is East-owned.
+    enum LightIds {
+        OWNER_LIGHT_START = 0,          // 3 lights, one per lane (REST/MEL/OCT)
+        OWNER_LIGHT_END = OWNER_LIGHT_START + 3,
+        NUM_LIGHTS = OWNER_LIGHT_END
+    };
+    inline int ownerLightId(int lane) { return OWNER_LIGHT_START + lane; }
 }
 
 struct StraitsEastSandsVisual : Module {
@@ -101,7 +113,7 @@ struct StraitsEastSandsVisual : Module {
 
     StraitsEastSandsVisual() {
         using namespace StraitsEastVisualIds;
-        config(MonsoonIds::NUM_PARAMS, StraitsEastVisualIds::NUM_INPUTS, 0, 0);
+        config(MonsoonIds::NUM_PARAMS, StraitsEastVisualIds::NUM_INPUTS, 0, StraitsEastVisualIds::NUM_LIGHTS);
 
         configParam(SPREAD_R, -1.f,1.f,0.f,"Spread REST");
         configParam(SPREAD_M, -1.f,1.f,0.f,"Spread MELODY");
@@ -157,7 +169,13 @@ struct StraitsEastSandsVisual : Module {
         }
     }
 
-    void process(const ProcessArgs&) override {}
+    void process(const ProcessArgs&) override {
+        // Owner latch lights: lit when the lane's base owner is East (param > 0.5).
+        // The owner-disp param mirrors the currently-selected voice's owner.
+        for (int lane = 0; lane < 3; ++lane)
+            lights[StraitsEastVisualIds::ownerLightId(lane)].setBrightness(
+                params[StraitsEastVisualIds::ownerDispId(lane)].getValue() > 0.5f ? 1.f : 0.f);
+    }
 
     json_t* dataToJson() override {
         json_t* r = json_object();

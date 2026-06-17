@@ -50,7 +50,7 @@ struct MonsoonStraitsEastExpanderWidget : ModuleWidget,
             };
             arc->isActive = [self, voice]() -> bool {
                 Monsoon* m = redDot::findMonsoonEitherSide(self);
-                if (!m || voice < 0 || voice >= 15) return false;
+                if (!m || !m->modVizEast || voice < 0 || voice >= 15) return false;
                 return std::fabs(m->cachedPolyRestEffective[voice] - m->cachedPolyRest[voice]) > 1e-4f;
             };
             addChild(arc);

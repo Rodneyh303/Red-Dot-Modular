@@ -840,7 +840,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     if (inert) return;   // no interaction until poly source (Straits East) is attached
     if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT) {
       int lane = getLaneAtY(e.pos.y);
-      int step = getStepAtX(e.pos.x);
+      //int step = getStepAtX(e.pos.x);
 
       if (lane >= 0 && lane < laneCount) {
         // Hit-test handles first — they have priority over bar dragging

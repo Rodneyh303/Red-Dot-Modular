@@ -68,6 +68,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
             };
             arc->isActive = [mm, lane, pid]() -> bool {
                 if (!mm || lane < 0 || lane >= 3) return false;
+                Monsoon* mon = findMonsoonEitherSide(mm);
+                if (!mon || !mon->modVizMacro) return false;
                 float setV = mm->params[pid].getValue();           // -1..1
                 return std::fabs(mm->spreadEffective[lane] - setV) > 1e-4f;
             };

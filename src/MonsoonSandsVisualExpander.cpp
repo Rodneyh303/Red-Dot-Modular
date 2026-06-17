@@ -52,6 +52,8 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             };
             arc->isActive = [mm, lane, pid]() -> bool {
                 if (!mm || lane < 0 || lane >= 6) return false;
+                Monsoon* mon = findMonsoonEitherSide(mm);
+                if (!mon || !mon->modVizMono) return false;
                 return std::fabs(mm->spreadEffective[lane] - mm->params[pid].getValue()) > 1e-4f;
             };
             addChild(arc);
