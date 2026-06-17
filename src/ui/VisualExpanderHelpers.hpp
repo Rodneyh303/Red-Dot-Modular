@@ -38,6 +38,33 @@ inline Monsoon* findMonsoonEitherSide(rack::Module* self, int maxDepth = 8) {
     return nullptr;
 }
 
+// ── Is `self` the expander the Monsoon actually CLAIMED for its type? ─────────
+// findMonsoonEitherSide returns non-null for EVERY duplicate expander in a chain
+// (they can all see the Monsoon), so it can't drive a per-module "connected"
+// indicator — duplicates would all light up. The MonsoonExpanderManager already
+// claims the first-of-each-type into a cached* pointer; an expander is "really
+// connected" iff it IS that cached pointer. Returns false for duplicates.
+inline bool isClaimedExpander(rack::Module* self, Monsoon* mon) {
+    if (!self || !mon) return false;
+    auto& em = mon->expanderManager;
+    rack::Model* mdl = self->model;
+    if (mdl == modelMonsoonInterchangeExpander)  return (void*)self == (void*)em.cachedScaleExpander;
+    if (mdl == modelMonsoonCausewayExpander)     return (void*)self == (void*)em.cachedCausewayExpander;
+    if (mdl == modelMonsoonSurgeExpander)        return (void*)self == (void*)em.cachedSurgeExpander;
+    if (mdl == modelMonsoonSandsVisualExpander)  return (void*)self == (void*)em.cachedSandsVisualExpander;
+    if (mdl == modelMonsoonStraitsEastExpander)  return (void*)self == (void*)em.cachedPolyVoiceExpander;
+    if (mdl == modelMonsoonStraitWestExpander)   return (void*)self == (void*)em.cachedStraitWestExpander;
+    if (mdl == modelStraitsEastSandsVisual)      return (void*)self == (void*)em.cachedEastSandsVisual;
+    if (mdl == modelStraitsSandsMacroVisual)     return (void*)self == (void*)em.cachedMacroSandsVisual;
+    return false;   // unknown type → not claimed
+}
+
+// Convenience: find Monsoon AND confirm self is the claimed expander of its type.
+inline bool isConnectedAndClaimed(rack::Module* self) {
+    Monsoon* mon = findMonsoonEitherSide(self);
+    return mon && isClaimedExpander(self, mon);
+}
+
 // ── Per-lane playhead ─────────────────────────────────────────────────────────
 // Returns the PHYSICAL bar (0..15) the sequencer actually reads after LOR, to
 // match SequencerEngine::getStrandIdx exactly:

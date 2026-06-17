@@ -48,7 +48,7 @@ struct MonsoonSurgeExpanderWidget : ModuleWidget,
             std::function<void(redDot::ConnectMark*)>([this](redDot::ConnectMark* w){
                 w->box.size = mm2px(rack::math::Vec(8.f, 8.f));
                 w->box.pos  = w->box.pos.minus(w->box.size.div(2));  // re-centre after sizing
-                w->connected  = [this]() { return module && redDot::findMonsoonEitherSide(module) != nullptr; };
+                w->connected  = [this]() { return redDot::isConnectedAndClaimed(module); };
                 w->lightTheme = [this]() { Monsoon* mm = module ? redDot::findMonsoonEitherSide(module) : nullptr; return mm && mm->lightTheme; };
             }));
     }
