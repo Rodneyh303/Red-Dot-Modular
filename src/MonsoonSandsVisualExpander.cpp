@@ -1,6 +1,7 @@
 #include <rack.hpp>
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
+#include "ui/ConnectMark.hpp"
 //#include "MonsoonSandsExpander.hpp"
 #include "MonsoonSandsVisualExpander.hpp"
 #include "ui/SandsVisualEditorV4.hpp"
@@ -24,6 +25,7 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
     bool                       initialized  = false;
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
     rack::app::SvgPanel* panelWidget = nullptr;
+    redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;
 
     // Spread mod-arcs (bipolar -1..1), same as Macro: set = SPR param,
@@ -50,6 +52,8 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             };
             arc->isActive = [mm, lane, pid]() -> bool {
                 if (!mm || lane < 0 || lane >= 6) return false;
+                Monsoon* mon = findMonsoonEitherSide(mm);
+                if (!mon || !mon->modVizMono) return false;
                 return std::fabs(mm->spreadEffective[lane] - mm->params[pid].getValue()) > 1e-4f;
             };
             addChild(arc);
@@ -102,6 +106,17 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
 
         paramMgr = new MonoSandsParameterManager();
         flushSpreadArcs(mod);
+
+        // dot.modular connect mark (brand mark; greyed when no Monsoon attached).
+        {
+            auto* w = new redDot::ConnectMark();
+            w->box.size = mm2px(rack::math::Vec(8.f, 8.f));
+            w->box.pos  = mm2px(rack::math::Vec(W_MM * 0.5f, 124.f)).minus(w->box.size.div(2));
+            w->connected  = [this]() { return module && redDot::findMonsoonEitherSide(module) != nullptr; };
+            w->lightTheme = [this]() { Monsoon* mm = module ? redDot::findMonsoonEitherSide(module) : nullptr; return mm && mm->lightTheme; };
+            connectMark = w;
+            addChild(w);
+        }
     }
 
     ~MonsoonSandsVisualExpanderWidget() override { delete paramMgr; }

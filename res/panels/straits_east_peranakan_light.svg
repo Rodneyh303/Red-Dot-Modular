@@ -99,5 +99,6 @@
 <circle id="input_global_modcv" cx="168.00" cy="300.00" r="0.5" fill="none" stroke="none"/>
 <circle id="output_global_gate" cx="234.00" cy="300.00" r="0.5" fill="none" stroke="none"/>
 <circle id="output_global_cv" cx="288.00" cy="300.00" r="0.5" fill="none" stroke="none"/>
+<circle id="light_connect" cx="195.00" cy="360.00" r="0.5" fill="none" stroke="none"/>
 </g>
 </svg>

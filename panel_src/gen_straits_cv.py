@@ -186,6 +186,8 @@ def gen(side, dark, variant="plain"):
         A(kit_marker("input",  "global_cv_in", COL["knob"], gy))
         A(kit_marker("output", "global_gate",  COL["gateOut"], gy))
         A(kit_marker("output", "global_cv",    COL["cvOut"], gy))
+    # dot.modular connect mark anchor (footer-centre; reposition here).
+    A(kit_marker("light", "connect", PW*0.5, PH-20.0))
     A('</g>')
 
     A('</svg>')

@@ -2,6 +2,7 @@
 #include "MonsoonInterchangeExpander.hpp"
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
+#include "ui/ConnectMark.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
 
 using namespace rack;
@@ -11,10 +12,11 @@ extern Model* modelMonsoon;
 struct MonsoonInterchangeExpanderWidget : ModuleWidget {
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
     rack::app::SvgPanel* panelWidget = nullptr;
+    redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;
 
-MonsoonInterchangeExpanderWidget(MonsoonInterchangeExpander* module) {
-    setModule(module);
+MonsoonInterchangeExpanderWidget(MonsoonInterchangeExpander* mod) {
+    setModule(mod);
     //box.size = mm2px(Vec(270, 380));
     panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/interchange_gemini_new2.svg"));
     panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/interchange_gemini_light.svg"));
@@ -39,6 +41,18 @@ addInput(createInputCentered<PJ301MPort>(Vec(48.0f, octY), module, MonsoonIds::E
 addParam(createParamCentered<Trimpot>(Vec(102.0f, octY), module, MonsoonIds::EXPANDER_OCT_LO_ATTENUVERTER));
 addParam(createParamCentered<Trimpot>(Vec(168.0f, octY), module, MonsoonIds::EXPANDER_OCT_HI_ATTENUVERTER));
 addInput(createInputCentered<PJ301MPort>(Vec(222.0f, octY), module, MonsoonIds::EXPANDER_OCT_HI_CV_INPUT));
+
+    // dot.modular connect mark (brand mark; greyed when no Monsoon attached). This
+    // panel is hand-placed in px (270x380), so position directly; footer-centre.
+    {
+        auto* w = new redDot::ConnectMark();
+        w->box.size = rack::math::Vec(24.f, 24.f);
+        w->box.pos  = rack::math::Vec(135.f, 360.f).minus(w->box.size.div(2));
+        w->connected  = [this]() { return module && redDot::findMonsoonEitherSide(module) != nullptr; };
+        w->lightTheme = [this]() { Monsoon* mm = module ? redDot::findMonsoonEitherSide(module) : nullptr; return mm && mm->lightTheme; };
+        connectMark = w;
+        addChild(w);
+    }
 }
     Monsoon* getMonsoon() {
         return module ? redDot::findMonsoonEitherSide(module) : nullptr;

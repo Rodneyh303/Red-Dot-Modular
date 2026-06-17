@@ -119,6 +119,9 @@ def panel(theme):
     for i, y in enumerate(ROWS):
         o.append(jack_well(t, JACK_X, y, cid=f"input_SURGE_{NAMES[i]}_CV"))
         o.append(trim_well(t, ATT_X, y,  cid=f"param_SURGE_{NAMES[i]}_ATT"))
+    # dot.modular connect light anchor (brand red dot). Position via this marker;
+    # the RedDotLight widget binds to it by id. Footer-centre by default.
+    o.append(f'<circle id="light_connect" cx="{mm(20.0):.1f}" cy="{mm(124.0):.1f}" r="3" fill="none" stroke="none"/>')
     o.append('</g>')
     o.append('</svg>')
     return "\n".join(o)
