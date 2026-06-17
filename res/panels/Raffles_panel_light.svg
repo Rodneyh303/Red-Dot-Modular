@@ -58,5 +58,6 @@
 <circle id="input_CAUSEWAY_GATE_LIVESTATIC_M" cx="129.9" cy="301.2" r="10.6" fill="#e8e2d6" stroke="#c0b8a8" stroke-width="1.2"/><circle cx="129.9" cy="301.2" r="5.9" fill="none" stroke="#d4001a" stroke-width="0.7" opacity="0.5"/>
 <circle id="input_CAUSEWAY_GATE_RESEED_ROLL" cx="47.2" cy="336.6" r="10.6" fill="#e8e2d6" stroke="#c0b8a8" stroke-width="1.2"/><circle cx="47.2" cy="336.6" r="5.9" fill="none" stroke="#d4001a" stroke-width="0.7" opacity="0.5"/>
 <circle id="input_CAUSEWAY_GATE_RESEED_RESTART" cx="129.9" cy="336.6" r="10.6" fill="#e8e2d6" stroke="#c0b8a8" stroke-width="1.2"/><circle cx="129.9" cy="336.6" r="5.9" fill="none" stroke="#d4001a" stroke-width="0.7" opacity="0.5"/>
+<circle id="light_connect" cx="90.0" cy="366.1" r="3" fill="none" stroke="none"/>
 </g>
 </svg>

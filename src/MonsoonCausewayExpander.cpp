@@ -2,6 +2,7 @@
 #include "MonsoonCausewayExpander.hpp"
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
+#include "ui/ConnectMark.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
 #include "gen/CausewayLayout.gen.hpp"
 #include "ui/SvgPanelKit.hpp"
@@ -17,6 +18,7 @@ struct MonsoonCausewayExpanderWidget : ModuleWidget,
     dotModular::Compose<MonsoonCausewayExpanderWidget,
                         dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
+    redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;
 
     MonsoonCausewayExpanderWidget(MonsoonCausewayExpander* module) {
@@ -49,6 +51,15 @@ struct MonsoonCausewayExpanderWidget : ModuleWidget,
         bindInput<PJ301MPort>("input_CAUSEWAY_GATE_LIVESTATIC_M", MonsoonIds::CAUSEWAY_GATE_LIVESTATIC_M);
         bindInput<PJ301MPort>("input_CAUSEWAY_GATE_RESEED_ROLL",    MonsoonIds::CAUSEWAY_GATE_RESEED_ROLL);
         bindInput<PJ301MPort>("input_CAUSEWAY_GATE_RESEED_RESTART", MonsoonIds::CAUSEWAY_GATE_RESEED_RESTART);
+
+        // dot.modular connect mark (brand mark; greyed when no Monsoon attached).
+        connectMark = bindChild<redDot::ConnectMark>("light_connect",
+            std::function<void(redDot::ConnectMark*)>([this](redDot::ConnectMark* w){
+                w->box.size = mm2px(rack::math::Vec(8.f, 8.f));
+                w->box.pos  = w->box.pos.minus(w->box.size.div(2));
+                w->connected  = [this]() { return module && redDot::findMonsoonEitherSide(module) != nullptr; };
+                w->lightTheme = [this]() { Monsoon* mm = module ? redDot::findMonsoonEitherSide(module) : nullptr; return mm && mm->lightTheme; };
+            }));
     }
 
     void step() override {

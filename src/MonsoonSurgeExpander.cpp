@@ -43,15 +43,14 @@ struct MonsoonSurgeExpanderWidget : ModuleWidget,
 
         // dot.modular connect mark — full brand colour when attached to a Monsoon
         // core, greyed when not. Placed at the SVG marker id="light_connect"
-        // (repositionable in the generator).
-        if (auto* s = findNamed("light_connect")) {
-            connectMark = new redDot::ConnectMark();
-            connectMark->box.size = mm2px(rack::math::Vec(8.f, 8.f));
-            connectMark->box.pos  = centerOf(s).minus(connectMark->box.size.div(2));
-            connectMark->connected  = [this]() { return module && redDot::findMonsoonEitherSide(module) != nullptr; };
-            connectMark->lightTheme = [this]() { Monsoon* mm = module ? redDot::findMonsoonEitherSide(module) : nullptr; return mm && mm->lightTheme; };
-            addChild(connectMark);
-        }
+        // (repositionable in the generator) via the kit's bindChild.
+        connectMark = bindChild<redDot::ConnectMark>("light_connect",
+            std::function<void(redDot::ConnectMark*)>([this](redDot::ConnectMark* w){
+                w->box.size = mm2px(rack::math::Vec(8.f, 8.f));
+                w->box.pos  = w->box.pos.minus(w->box.size.div(2));  // re-centre after sizing
+                w->connected  = [this]() { return module && redDot::findMonsoonEitherSide(module) != nullptr; };
+                w->lightTheme = [this]() { Monsoon* mm = module ? redDot::findMonsoonEitherSide(module) : nullptr; return mm && mm->lightTheme; };
+            }));
     }
 
     void step() override {
