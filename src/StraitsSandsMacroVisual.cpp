@@ -236,16 +236,23 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         saveLOR();
         paramMgr->syncPatternEngineToEditor(visualEditor->currentState, viewVoice);
 
-        // Surface CV-APPLIED global L/O/R to the display window (Macro applies the
-        // same lane L/O/R to every voice — voice 0 is representative). Display-only.
+        // Surface Macro's OWN CV-applied L/O/R to the display window. Previously
+        // this read the engine output (eng.polyLen[0] etc.), but when East owns a
+        // lane the engine value is East's, so the Macro panel showed East's LOR —
+        // a category error (the panel should represent the MACRO module's own
+        // state, regardless of who owns the lane downstream). processDNA publishes
+        // Macro's own base + CV-only delta per lane/item (0=LEN 1=OFF 2=ROT), which
+        // is exactly Macro's own CV-applied value independent of ownership.
+        // Display-only. (Lane base rings already come from Macro's own params via
+        // loadLOR; this overlay now matches them.)
         int gs = monsoon->engine.stepIndex;
-        auto& eng = monsoon->engine;
         for (int l = 0; l < 3; ++l) {
-            int cvLen = eng.polyLen[0][l];
-            int cvOff = eng.polyOff[0][l];
-            int cvRot = eng.polyRot[0][l];
-            visualEditor->currentState.lanes[l].setDisplayLOR(cvLen, cvOff, cvRot);
-            visualEditor->setLanePlayStep(l, calcPlayhead(gs, cvLen, cvOff, cvRot));
+            int ownLen = (int)std::lround(mod->macroBase[l][0] + mod->macroCVDelta[l][0]);
+            int ownOff = (int)std::lround(mod->macroBase[l][1] + mod->macroCVDelta[l][1]);
+            int ownRot = (int)std::lround(mod->macroBase[l][2] + mod->macroCVDelta[l][2]);
+            ownLen = std::max(1, ownLen);
+            visualEditor->currentState.lanes[l].setDisplayLOR(ownLen, ownOff, ownRot);
+            visualEditor->setLanePlayStep(l, calcPlayhead(gs, ownLen, ownOff, ownRot));
         }
     }
 };
