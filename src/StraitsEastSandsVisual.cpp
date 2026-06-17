@@ -55,6 +55,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             };
             arc->isActive = [mod, this, lane, interpParamId]() -> bool {
                 if (!mod) return false;
+                Monsoon* mon = findMonsoonEitherSide(mod);
+                if (!mon || !mon->modVizEast) return false;
                 int v = selectedVoice;
                 if (v < 0 || v >= 15) return false;
                 return std::fabs(mod->polySpreadEffective[v][lane] - mod->params[interpParamId()].getValue()) > 1e-4f;

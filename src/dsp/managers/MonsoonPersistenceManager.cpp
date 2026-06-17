@@ -21,6 +21,12 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_object_set_new(root, "melodyLiveTrial", json_boolean(m->melodyLiveTrial));
     json_object_set_new(root, "invertMuteLogic", json_boolean(m->invertMuteLogic));
     json_object_set_new(root, "spreadInterpMono", json_boolean(m->spreadInterpMono));
+    json_object_set_new(root, "modVizMonsoonMelody", json_boolean(m->modVizMonsoonMelody));
+    json_object_set_new(root, "modVizMonsoonOther",  json_boolean(m->modVizMonsoonOther));
+    json_object_set_new(root, "modVizEast",  json_boolean(m->modVizEast));
+    json_object_set_new(root, "modVizWest",  json_boolean(m->modVizWest));
+    json_object_set_new(root, "modVizMacro", json_boolean(m->modVizMacro));
+    json_object_set_new(root, "modVizMono",  json_boolean(m->modVizMono));
     json_object_set_new(root, "restartOnUnmute", json_boolean(m->restartOnUnmute));
     json_object_set_new(root, "reseedOnRoll", json_boolean(m->reseedOnRoll));
     json_object_set_new(root, "reseedOnRestart", json_boolean(m->reseedOnRestart));
@@ -158,6 +164,12 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     if (auto j = json_object_get(root, "melodyLiveTrial")) m->melodyLiveTrial = json_boolean_value(j);
     if (auto j = json_object_get(root, "invertMuteLogic")) m->invertMuteLogic = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "spreadInterpMono")) m->spreadInterpMono = (bool)json_boolean_value(j);
+    if (auto j = json_object_get(root, "modVizMonsoonMelody")) m->modVizMonsoonMelody = (bool)json_boolean_value(j);
+    if (auto j = json_object_get(root, "modVizMonsoonOther"))  m->modVizMonsoonOther  = (bool)json_boolean_value(j);
+    if (auto j = json_object_get(root, "modVizEast"))  m->modVizEast  = (bool)json_boolean_value(j);
+    if (auto j = json_object_get(root, "modVizWest"))  m->modVizWest  = (bool)json_boolean_value(j);
+    if (auto j = json_object_get(root, "modVizMacro")) m->modVizMacro = (bool)json_boolean_value(j);
+    if (auto j = json_object_get(root, "modVizMono"))  m->modVizMono  = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "restartOnUnmute")) m->restartOnUnmute = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "reseedOnRoll")) m->reseedOnRoll = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "reseedOnRestart")) m->reseedOnRestart = (bool)json_boolean_value(j);
