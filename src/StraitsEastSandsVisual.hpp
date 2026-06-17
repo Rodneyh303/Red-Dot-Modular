@@ -92,6 +92,15 @@ namespace StraitsEastVisualIds {
     // on voice switch). ownerDispId(lane) 0-2; sendDispId(lane,item) 0-11.
     inline int ownerDispId(int lane)           { return MonsoonIds::MACRO_OWN_DISP_START + lane; }
     inline int sendDispId(int lane, int item)  { return MonsoonIds::MACRO_SEND_DISP_START + lane*4 + item; }
+
+    // Local lights for this module (East visual has its own light space, separate
+    // from Monsoon's). Owner latch lights — lit when the lane is East-owned.
+    enum LightIds {
+        OWNER_LIGHT_START = 0,          // 3 lights, one per lane (REST/MEL/OCT)
+        OWNER_LIGHT_END = OWNER_LIGHT_START + 3,
+        NUM_LIGHTS = OWNER_LIGHT_END
+    };
+    inline int ownerLightId(int lane) { return OWNER_LIGHT_START + lane; }
 }
 
 struct StraitsEastSandsVisual : Module {
@@ -104,7 +113,7 @@ struct StraitsEastSandsVisual : Module {
 
     StraitsEastSandsVisual() {
         using namespace StraitsEastVisualIds;
-        config(MonsoonIds::NUM_PARAMS, StraitsEastVisualIds::NUM_INPUTS, 0, 0);
+        config(MonsoonIds::NUM_PARAMS, StraitsEastVisualIds::NUM_INPUTS, 0, StraitsEastVisualIds::NUM_LIGHTS);
 
         configParam(SPREAD_R, -1.f,1.f,0.f,"Spread REST");
         configParam(SPREAD_M, -1.f,1.f,0.f,"Spread MELODY");
@@ -160,7 +169,13 @@ struct StraitsEastSandsVisual : Module {
         }
     }
 
-    void process(const ProcessArgs&) override {}
+    void process(const ProcessArgs&) override {
+        // Owner latch lights: lit when the lane's base owner is East (param > 0.5).
+        // The owner-disp param mirrors the currently-selected voice's owner.
+        for (int lane = 0; lane < 3; ++lane)
+            lights[StraitsEastVisualIds::ownerLightId(lane)].setBrightness(
+                params[StraitsEastVisualIds::ownerDispId(lane)].getValue() > 0.5f ? 1.f : 0.f);
+    }
 
     json_t* dataToJson() override {
         json_t* r = json_object();

@@ -120,8 +120,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // Macro visual is attached (they have no effect then — the equation's
         // macro terms are zero — so this is feedback, not function).
         for (int lane = 0; lane < 3; ++lane) {
-            bindParam<VCVLatch>("param_owner_" + std::to_string(lane), ownerDispId(lane),
-                std::function<void(VCVLatch*)>([this](VCVLatch* w){ blendControls.push_back(w); }));
+            bindLightParam<VCVLightLatch>("param_owner_" + std::to_string(lane), ownerDispId(lane), ownerLightId(lane),
+                std::function<void(VCVLightLatch*)>([this](VCVLightLatch* w){ blendControls.push_back(w); }));
             for (int item = 0; item < 4; ++item)
                 bindParam<Trimpot>("param_send_" + std::to_string(lane) + "_" + std::to_string(item),
                     sendDispId(lane, item),
