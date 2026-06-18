@@ -31,12 +31,6 @@ struct MonsoonStraitsEastExpanderWidget : ModuleWidget,
             auto* knob = pr.first; int voice = pr.second;
             if (!knob) continue;
             auto* arc = new redDot::ModArcOverlay();
-            // Pad the overlay box so the arc stays inside it (no redraw trail —
-            // bug #2). Knob occupies [pad, box-pad]; radial centre = box/2.
-            const float arcPad = mm2px(2.2f);
-            arc->box.pos  = knob->box.pos.minus(rack::math::Vec(arcPad, arcPad));
-            arc->box.size = knob->box.size.plus(rack::math::Vec(arcPad*2.f, arcPad*2.f));
-            arc->pad = arcPad;
             arc->radius   = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
             arc->attachOverKnob(knob, mm2px(2.5f));
             rack::Module* self = module;
