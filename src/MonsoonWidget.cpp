@@ -156,6 +156,16 @@ static void flushModArcs(MonsoonWidget* mw, Monsoon* module) {
     for (auto& p : mw->pendingModArcs) {
         if (!p.knob) continue;
         auto* arc = new redDot::ModArcOverlay();
+        // Pad the overlay box beyond the knob so the arc (drawn at radius + stroke
+        // + end-dot, which extends past the knob's own bounds) is fully CONTAINED
+        // in the widget box. Rack clears a widget's dirty region by its box; if we
+        // paint outside the box, stale pixels linger as a "mouse-trail" smear when
+        // the knob is turned (bug #2). Keep the box centred on the knob centre so
+        // draw()'s cx/cy (box.size/2) still align with the knob.
+        const float pad = mm2px(2.2f);   // > radius slack (0.6mm) + 2px stroke + 2px dot
+        arc->box.pos  = p.knob->box.pos.minus(rack::math::Vec(pad, pad));
+        arc->box.size = p.knob->box.size.plus(rack::math::Vec(pad * 2.f, pad * 2.f));
+        arc->pad = pad;
         if (p.linear) {
             arc->mode = redDot::ModArcOverlay::LINEAR_V;
             arc->travelTopPx = p.knob->box.size.y * 0.10f;
