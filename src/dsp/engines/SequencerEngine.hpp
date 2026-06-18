@@ -176,7 +176,7 @@ struct SequencerEngine {
     bool prevGate1High = false;
 
     int modeSelect = 0;
-    int ppqnSetting = 4;
+    int ppqnSetting = 24;  // master PPQN pulse grid (24/48/96)
     int noteVariationMask = 0b111;
     float accentProb = 0.25f;  // Probability of accent on each note (0..1) (NEW)
 
