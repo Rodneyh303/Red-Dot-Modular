@@ -538,6 +538,7 @@ void Monsoon::process(const ProcessArgs& args) {
         modViz.octaveLo   = paramManager->getOctaveLoNorm();
         modViz.octaveHi   = paramManager->getOctaveHiNorm();
         modViz.activePitch = paramManager->anyPitchModulated();
+        for (int i = 0; i < 14; ++i) modViz.pitchLane[i] = paramManager->pitchLaneModulated(i);
     }
 
     // ── Throttle UI and Light processing ──

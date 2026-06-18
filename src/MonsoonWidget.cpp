@@ -31,8 +31,9 @@ struct MonsoonLightSlider : VCVLightSlider<TLightBase> {
         // pitch modulation is active and the modulated value differs from set.
         // Modulation amount is floored at 0 visually (slider min is 0, so a
         // downward push can't render below the track bottom).
-        if (m && m->modVizMonsoonMelody && m->modViz.activePitch &&
-            this->paramId >= MonsoonIds::SEMI0_PARAM && this->paramId < MonsoonIds::SEMI0_PARAM + 12) {
+        if (m && m->modVizMonsoonMelody &&
+            this->paramId >= MonsoonIds::SEMI0_PARAM && this->paramId < MonsoonIds::SEMI0_PARAM + 12 &&
+            m->modViz.pitchLane[this->paramId - MonsoonIds::SEMI0_PARAM]) {
             int sem = this->paramId - MonsoonIds::SEMI0_PARAM;
             float modN = rack::math::clamp(m->modViz.semitone[sem], 0.f, 1.f);  // floored at 0
             float setN = 0.f;
@@ -206,14 +207,14 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
             addParam(lo);
             queueModArcLinear(this, module, lo,
                 [](const Monsoon::ModViz& m){ return m.octaveLo; },
-                [](const Monsoon::ModViz& m){ return m.activePitch; },
+                [](const Monsoon::ModViz& m){ return m.pitchLane[12]; },
                 [](const Monsoon& mm){ return mm.modVizMonsoonMelody; });
             auto* hi = createLightParamCentered<VCVLightSlider<RedLight>>(
                 mm2px(Vec(128.f, 59.75f)), module, MonsoonIds::OCT_HI_PARAM, MonsoonIds::OCT_HI_LED);
             addParam(hi);
             queueModArcLinear(this, module, hi,
                 [](const Monsoon::ModViz& m){ return m.octaveHi; },
-                [](const Monsoon::ModViz& m){ return m.activePitch; },
+                [](const Monsoon::ModViz& m){ return m.pitchLane[13]; },
                 [](const Monsoon& mm){ return mm.modVizMonsoonMelody; });
         }
 
