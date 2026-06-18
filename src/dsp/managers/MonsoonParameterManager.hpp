@@ -48,7 +48,10 @@ public:
     /// Big-5 effective values NORMALISED to 0..1 (for modulation visualisation).
     /// These reuse the effective-value getters above; NOTE_VALUE is divided by 8
     /// so all five share a 0..1 range the widgets can compare to knob position.
-    float getNoteValueNorm() const { return getNoteValue() / 8.f; }
+    // Normalize over the param's ACTUAL range 0..7 (NUM_NOTE_VALUES-1 = 8 values,
+    // indices 0..7) so this matches paramQuantities->getScaledValue() (the mod-arc's
+    // setNorm). Dividing by 8 desynced set vs mod and left a permanent arc.
+    float getNoteValueNorm() const { return getNoteValue() / 7.f; }
     float getVariationNorm() const { return getVariation(); }
     float getLegatoNorm()    const { return getLegato(); }
     float getRestNorm()      const { return getRest(); }
