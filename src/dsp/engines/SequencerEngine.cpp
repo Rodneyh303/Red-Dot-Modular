@@ -41,7 +41,7 @@ void SequencerEngine::reset() {
     resetArmed = false;
     prevGate1High = false;
     modeSelect = 0;
-    ppqnSetting = 4;
+    ppqnSetting = 24;
     noteVariationMask = 0b111;
     activeSemiCount = 0;
     for (int i = 0; i < 12; ++i) faderCache[i] = -1.f;
@@ -108,7 +108,11 @@ int SequencerEngine::computeNoteLengthIdx(int requestedIdx, int ppqnMask) const 
 
 int SequencerEngine::getNoteLenIdx(float baseNoteParam, const PatternInput& input, float r) {
     int baseIdx = pe_clamp<int>((int)std::round(baseNoteParam), 0, 7);
-    int ppqnMask = (ppqnSetting == 1) ? 1 : (ppqnSetting == 4) ? 2 : 4;
+    // PPQN is now always 24/48/96 — all of which resolve every note value to an
+    // integer pulse count (24 already covers 1/32 and all triplets). So every
+    // value is legal; mask = the full-resolution bit (4). (The old 1/4 PPQN
+    // settings, which gated out sub-step values, are gone.)
+    int ppqnMask = 4;
     baseIdx = computeNoteLengthIdx(baseIdx, ppqnMask);
     return pe.varyNoteIndex(baseIdx, input, r);
 }
@@ -200,7 +204,7 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     // step fired a NEW note and cut the triplet to a whole-step length — 1/4T
     // played as 1/8, 1/8T as 1/16. (1/32 = 0.5 steps closes within its own step
     // before any edge, so it was unaffected — matching the observed scope.)
-    if (gs.holdRemain >= 1.f || gs.gateSecRemain > 0.f) {
+    if (gs.holdRemain >= 1.f || gs.gatePulseRemain > 0) {
         result.decision = MonoDecision::MidNote;
         result.accented = lastStepResult.accented;
         lastStepResult = result;
@@ -290,13 +294,13 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
 
     float prevHold = gs.holdRemain;
     wasHeldMono = gs.gateHeld || (prevHold > 0.0001f);
-    gs.tick(clock.sixteenthSec);
+    gs.tick(ClockEngine::pulsesPer16th(ppqnSetting));
     hadMonoTail = (prevHold > 0.0001f && prevHold < 0.999f);
 
     for (int i = 0; i < numPolyVoices; ++i) {
         wasHeldPolyPrev[i] = voices[i].gs.gateHeld || (voices[i].gs.holdRemain > 0.0001f);
         float ph = voices[i].gs.holdRemain;
-        voices[i].gs.tick(clock.sixteenthSec);
+        voices[i].gs.tick(ClockEngine::pulsesPer16th(ppqnSetting));
         hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
     }
     
@@ -447,7 +451,7 @@ void SequencerEngine::executePolyVoices(const PatternInput& input) {
 void SequencerEngine::executeModeC(const ClockEngine& clock, float inCV) {
     gs.gateHeld = false;
     if (clock.quarterEdge) {
-        gs.tick(clock.sixteenthSec);
+        gs.tick(ClockEngine::pulsesPer16th(ppqnSetting));
         advancePlayhead();
         gs.currentPitchV = quantize(inCV);
         int sem = int(std::round((gs.currentPitchV - std::floor(gs.currentPitchV)) * 12.f)) % 12;

@@ -41,16 +41,17 @@ extern float gs_noteSteps(int nvIdx);
 struct GateState {
 
     // ── State ─────────────────────────────────────────────────────────────────
-    float  holdRemain      = 0.f;   // whole-step hold counter (engine decisions)
+    float  holdRemain      = 0.f;   // whole-step hold counter (engine DECISIONS:
+                                    // MidNote/canRest/hadTail). Unchanged: step units.
     bool   gateHeld        = false;
-    // Precise gate-open time in seconds for exact sub-step note lengths (1/32,
-    // triplets). >=0 when governing the gate; counted down per-sample in
-    // process(). Independent of holdRemain so existing decision logic is intact.
-    float  gateSecRemain   = -1.f;
-    // Current 1/16-step length in seconds, refreshed by tick(); used to convert
-    // a note's step-duration into a precise gate-open time. Avoids threading the
-    // value through every note method.
-    float  curStepSec      = 0.f;
+    // Gate-open length counted in PPQN GRID PULSES — the single mechanism that
+    // closes the gate for ALL note lengths (whole, triplet, 1/32 alike: each is
+    // just an integer pulse count = noteSteps * pulsesPer16th). Replaces the old
+    // seconds timer (gateSecRemain) + its whole-vs-fractional special-casing.
+    // >=0 while governing the gate; decremented once per grid pulse in tickPulse().
+    int    gatePulseRemain = -1;
+    int    pulsesPer16th   = 6;     // grid resolution (24/48/96 PPQN → 6/12/24);
+                                    // set by the engine each tick from the clock.
     float  currentPitchV   = 0.f;   // 1V/oct output
     int    lastSemitone    = -1;    // for tie detection
     float  semiPlayRemain[12] = {}; // per-semitone flash timers (steps)
@@ -58,27 +59,24 @@ struct GateState {
     rack::dsp::PulseGenerator gatePulse;  // 1ms retrigger for envelopes
 
     // ── Core operations ───────────────────────────────────────────────────────
-    // Play a new note: retrigger gate, set pitch and duration.
-    void armGate(float durSteps);   // arm precise gate countdown (uses curStepSec)
+    // Arm the gate-close pulse countdown from a duration in 1/16-steps.
+    void armGate(float durSteps);   // gatePulseRemain = round(durSteps * pulsesPer16th)
     void triggerNote(float pitchV, int semitone, int nvIdx);
-    // Legato slide: pitch changes, gate stays held (no retrigger), hold extends.
-    // If gate was already open: extends. If not: opens it (first note of legato run).
     void slideNote(float pitchV, int semitone, int nvIdx, bool wasHeld);
-    // Legato max (knob fully right): gate always held, holdRemain = exact dur.
     void slideMax(float pitchV, int semitone, int nvIdx);
-    // Tie (same pitch): extend hold, no pitch or retrigger change.
     void extendHold(int semitone, int nvIdx);
-    // Rest: optionally extend hold (tie-across-steps), otherwise do nothing
-    // (let the current note ring to its natural end — holdRemain decays itself).
     void rest(bool tieExtend, int nvIdx);
-    // Tick: call once per 1/16 step edge. Decrements hold, closes gate if expired.
-    void tick(float sixteenthSec = 0.f);
-    // Process: call every sample. Returns raw gate voltage (0 or 10V).
-    // muted / invertGate applied by caller so this stays Rack-port-free.
+    // Tick: call once per 1/16 step edge. Decrements the whole-step DECISION
+    // counter (holdRemain) + semi LED timers. Does NOT close the gate (that's
+    // tickPulse on the finer grid). `p16` keeps pulsesPer16th current.
+    void tick(int p16 = 0);
+    // TickPulse: call once per PPQN grid pulse. Decrements gatePulseRemain and
+    // closes the gate when it reaches 0. This is the sole gate-close mechanism.
+    void tickPulse();
+    // Process: call every sample. Returns raw gate voltage (0 or 10V); only the
+    // 1ms retrigger dip lives here now.
     float process(float sampleTime);
-    // Tick gatePulse only (when not in Modes A/B — keeps timer consistent).
     void tickPulseOnly(float sampleTime);
-    // Reset all playback state.
     void reset();
     // ── LED helper ────────────────────────────────────────────────────────────
     // semiPlayRemain normalised to 0..1 for setBrightness (1/4 note = full bright)
