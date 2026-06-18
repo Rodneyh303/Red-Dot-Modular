@@ -37,8 +37,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             auto* knob = pr.first; int lane = pr.second;
             if (!knob) continue;
             auto* arc = new redDot::ModArcOverlay();
-            arc->box.pos  = knob->box.pos;
-            arc->box.size = knob->box.size;
+            arc->attachOverKnob(knob, mm2px(2.5f));
             arc->radius   = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
             auto interpParamId = [this, lane]() -> int {
                 int v = selectedVoice;

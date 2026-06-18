@@ -27,8 +27,7 @@ struct MonsoonStraitWestExpanderWidget : ModuleWidget,
             auto* knob = pr.first; int voice = pr.second;
             if (!knob) continue;
             auto* arc = new redDot::ModArcOverlay();
-            arc->box.pos  = knob->box.pos;
-            arc->box.size = knob->box.size;
+            arc->attachOverKnob(knob, mm2px(2.5f));
             arc->radius   = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
             rack::Module* self = module;
             // Per-voice CV modulation: effective vs same-frame base (lag-free).

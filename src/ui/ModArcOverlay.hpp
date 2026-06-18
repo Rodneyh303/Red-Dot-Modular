@@ -38,6 +38,23 @@ struct ModArcOverlay : rack::TransparentWidget {
     float travelTopPx = 4.f;
     float travelBotPx = 4.f;
 
+    // Position this overlay over `knob`, padded by `padPx` on every side. The pad
+    // matters: the radial arc (and round line caps) can draw a little OUTSIDE the
+    // knob's bounds, and the widget framework only repaints a widget's own box —
+    // so without the pad, stale arc pixels linger as "trails" when the knob is
+    // turned manually. Padding symmetrically keeps the knob centred (box centre ==
+    // knob centre), so the radial draw math (which centres on box/2) is unchanged.
+    // For LINEAR_V, the travel insets are shifted by the pad so the tick still maps
+    // to the slider's real travel.
+    void attachOverKnob(rack::widget::Widget* knob, float padPx) {
+        box.pos  = knob->box.pos.minus(rack::math::Vec(padPx, padPx));
+        box.size = knob->box.size.plus(rack::math::Vec(2*padPx, 2*padPx));
+        if (mode == LINEAR_V) {
+            travelTopPx += padPx;
+            travelBotPx += padPx;
+        }
+    }
+
     // Knob "value angle" convention: Rack SvgKnob measures rotation with 0 at the
     // top (pointer up). In nvg screen space the top is -PI/2. So a normalised
     // value v maps to a nvg angle of: (-PI/2) + (minAngle + v*(maxAngle-minAngle)).
