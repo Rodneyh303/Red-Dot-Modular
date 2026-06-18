@@ -174,7 +174,14 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     if (auto j = json_object_get(root, "reseedOnRoll")) m->reseedOnRoll = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "reseedOnRestart")) m->reseedOnRestart = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "noteVariationMask")) m->noteVariationMask = (int)json_integer_value(j);
-    if (auto j = json_object_get(root, "ppqnSetting")) m->ppqnSetting = (int)json_integer_value(j);
+    if (auto j = json_object_get(root, "ppqnSetting")) {
+        int v = (int)json_integer_value(j);
+        // Migrate legacy values (1/4/24 = old input-divider semantics) onto the
+        // new master grid (24/48/96). Anything below 24 → 24 (the new minimum,
+        // which already resolves every note value).
+        if (v != 24 && v != 48 && v != 96) v = 24;
+        m->ppqnSetting = v;
+    }
     if (auto j = json_object_get(root, "modeSelect")) m->modeSelect = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "lightTheme")) m->lightTheme = (bool)json_boolean_value(j);
     if (m->scaleManager) {
