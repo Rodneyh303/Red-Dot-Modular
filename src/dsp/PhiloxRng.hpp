@@ -90,6 +90,15 @@ inline std::array<uint32_t,2> philoxMakeKey(uint64_t seed) {
 // stream position is packed into ctr[0..1]; ctr[2..3] carry a fixed nonce (0) so
 // the full 128-bit counter space is available if ever needed.
 struct PhiloxRng {
+    // ── Standard C++ UniformRandomBitGenerator interface ───────────────────────
+    // Satisfies the named requirement, so PhiloxRng can be passed to any
+    // <random> distribution (std::uniform_int_distribution, std::shuffle, etc.):
+    //   std::uniform_int_distribution<int> d(0,99);  PhiloxRng g(seed);  d(g);
+    using result_type = uint32_t;
+    static constexpr result_type min() { return 0u; }
+    static constexpr result_type max() { return 0xFFFFFFFFu; }
+    result_type operator()() { return next(); }
+
     std::array<uint32_t,2> key = philoxMakeKey(0xC0FFEEull);
     uint64_t counter = 0;                 // sequential position
     std::array<uint32_t,4> buf{};         // cached block of 4 outputs
