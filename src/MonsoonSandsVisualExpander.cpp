@@ -112,7 +112,7 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             auto* w = new redDot::ConnectMark();
             w->box.size = mm2px(rack::math::Vec(8.f, 8.f));
             w->box.pos  = mm2px(rack::math::Vec(W_MM * 0.5f, 124.f)).minus(w->box.size.div(2));
-            w->connected  = [this]() { return module && redDot::findMonsoonEitherSide(module) != nullptr; };
+            w->connected  = [this]() { return redDot::isConnectedAndClaimed(module); };
             w->lightTheme = [this]() { Monsoon* mm = module ? redDot::findMonsoonEitherSide(module) : nullptr; return mm && mm->lightTheme; };
             connectMark = w;
             addChild(w);
