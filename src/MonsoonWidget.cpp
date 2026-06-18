@@ -31,8 +31,9 @@ struct MonsoonLightSlider : VCVLightSlider<TLightBase> {
         // pitch modulation is active and the modulated value differs from set.
         // Modulation amount is floored at 0 visually (slider min is 0, so a
         // downward push can't render below the track bottom).
-        if (m && m->modVizMonsoonMelody && m->modViz.activePitch &&
-            this->paramId >= MonsoonIds::SEMI0_PARAM && this->paramId < MonsoonIds::SEMI0_PARAM + 12) {
+        if (m && m->modVizMonsoonMelody &&
+            this->paramId >= MonsoonIds::SEMI0_PARAM && this->paramId < MonsoonIds::SEMI0_PARAM + 12 &&
+            m->modViz.pitchLane[this->paramId - MonsoonIds::SEMI0_PARAM]) {
             int sem = this->paramId - MonsoonIds::SEMI0_PARAM;
             float modN = rack::math::clamp(m->modViz.semitone[sem], 0.f, 1.f);  // floored at 0
             float setN = 0.f;
@@ -206,14 +207,14 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
             addParam(lo);
             queueModArcLinear(this, module, lo,
                 [](const Monsoon::ModViz& m){ return m.octaveLo; },
-                [](const Monsoon::ModViz& m){ return m.activePitch; },
+                [](const Monsoon::ModViz& m){ return m.pitchLane[12]; },
                 [](const Monsoon& mm){ return mm.modVizMonsoonMelody; });
             auto* hi = createLightParamCentered<VCVLightSlider<RedLight>>(
                 mm2px(Vec(128.f, 59.75f)), module, MonsoonIds::OCT_HI_PARAM, MonsoonIds::OCT_HI_LED);
             addParam(hi);
             queueModArcLinear(this, module, hi,
                 [](const Monsoon::ModViz& m){ return m.octaveHi; },
-                [](const Monsoon::ModViz& m){ return m.activePitch; },
+                [](const Monsoon::ModViz& m){ return m.pitchLane[13]; },
                 [](const Monsoon& mm){ return mm.modVizMonsoonMelody; });
         }
 
@@ -246,17 +247,17 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
 
         // Control row params (positions from SVG; widget types preserved)
         bindParam<Trimpot>  ("param_DICE_SLEW_R_PARAM",   MonsoonIds::DICE_SLEW_R_PARAM,
-            std::function<void(Trimpot*)>([this, module](Trimpot* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.rhythmSlew;}, [](const Monsoon::ModViz& m){return m.activeCv3;},0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            std::function<void(Trimpot*)>([this, module](Trimpot* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.rhythmSlew;}, [](const Monsoon::ModViz& m){return m.cv3Lane[0];},0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
         bindParam<Trimpot>  ("param_DICE_SLEW_M_PARAM",   MonsoonIds::DICE_SLEW_M_PARAM,
-            std::function<void(Trimpot*)>([this, module](Trimpot* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.melodySlew;}, [](const Monsoon::ModViz& m){return m.activeCv3;}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            std::function<void(Trimpot*)>([this, module](Trimpot* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.melodySlew;}, [](const Monsoon::ModViz& m){return m.cv3Lane[1];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
         bindParam<VCVButton>("param_DICE_R_PARAM",        MonsoonIds::DICE_R_PARAM);
         bindParam<VCVButton>("param_DICE_M_PARAM",        MonsoonIds::DICE_M_PARAM);
         bindParam<VCVButton>("param_DICE_TRIAL_R_PARAM",  MonsoonIds::DICE_TRIAL_R_PARAM);
         bindParam<VCVButton>("param_DICE_TRIAL_M_PARAM",  MonsoonIds::DICE_TRIAL_M_PARAM);
          bindParam<RDM_KnobSmall>("param_RHYTHM_MIX_PARAM", MonsoonIds::RHYTHM_MIX_PARAM,
-            std::function<void(RDM_KnobSmall*)>([this, module](RDM_KnobSmall* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.rhythmMix;}, [](const Monsoon::ModViz& m){return m.activeCv3;}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            std::function<void(RDM_KnobSmall*)>([this, module](RDM_KnobSmall* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.rhythmMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[2];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
         bindParam<RDM_KnobSmall>("param_MELODY_MIX_PARAM", MonsoonIds::MELODY_MIX_PARAM,
-            std::function<void(RDM_KnobSmall*)>([this, module](RDM_KnobSmall* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.melodyMix;}, [](const Monsoon::ModViz& m){return m.activeCv3;}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            std::function<void(RDM_KnobSmall*)>([this, module](RDM_KnobSmall* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.melodyMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[3];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
         bindParam<TL1105>("param_LOCK_PARAM",             MonsoonIds::LOCK_PARAM);
         bindParam<TL1105>("param_MUTE_PARAM",             MonsoonIds::MUTE_PARAM);
         bindParam<TL1105>("param_RESET_BUTTON_PARAM",     MonsoonIds::RESET_BUTTON_PARAM);

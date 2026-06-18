@@ -79,6 +79,14 @@ public:
         for (int i = 0; i < 4; ++i) if (cv3Offsets[i] != 0.f) return true;
         return false;
     }
+    // Per-LANE CV3 test (0=rhythmSlew,1=melodySlew,2=rhythmMix,3=melodyMix). Same
+    // fix as big5LaneModulated: the slew/mix arcs must gate on THEIR OWN lane, else
+    // modulating one (e.g. rhythm slew) marks all four active and they trail when
+    // turned.
+    bool  cv3LaneModulated(int lane) const {
+        if (lane < 0 || lane > 3) return false;
+        return cv3Offsets[lane] != 0.f;
+    }
     /// Pitch sliders, normalised 0..1 (semitones native 0..1; octaves /8).
     float getSemitoneNorm(int i) const { return getSemitone(i); }
     float getOctaveLoNorm() const { return getOctaveLo() / 8.f; }
@@ -86,6 +94,11 @@ public:
     /// True if any pitch slider's effective value differs from its raw param
     /// (i.e. expander/CV1 is modulating it). Compared with a small epsilon.
     bool  anyPitchModulated() const;
+    // Per-LANE pitch modulation test (0..11 = semitones, 12 = octaveLo, 13 = octaveHi).
+    // Same per-lane fix as big5/cv3: each light slider's arc must gate on ITS OWN
+    // lane, else modulating one pitch element marks the whole group active and the
+    // others trail when turned manually. Defined in the .cpp (needs the getters).
+    bool  pitchLaneModulated(int lane) const;
     
     /// Transpose in semitones (-12 to +12)
     float getTranspose() const;
