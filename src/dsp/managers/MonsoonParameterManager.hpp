@@ -59,9 +59,16 @@ public:
     /// True if any big-5 modulation source is currently contributing an offset.
     bool  anyBig5Modulated() const {
         for (int i = 0; i < 5; ++i) if (surgeOffsets[i] != 0.f) return true;
-        for (int i = 0; i < 4; ++i) if (cv2Offsets[i]   != 0.f) return true;
         for (int i = 0; i < 5; ++i) if (cv2Offsets[i]   != 0.f) return true;
         return false;
+    }
+    // Per-LANE modulation test (0=note,1=variation,2=legato,3=rest,4=accent). The
+    // mod-arcs must gate on THEIR OWN lane — using the global anyBig5Modulated()
+    // marked every big-5 arc active whenever ANY lane was modulated, so turning an
+    // unmodulated knob (while another lane was modulated) drew a stray arc/trail.
+    bool  big5LaneModulated(int lane) const {
+        if (lane < 0 || lane > 4) return false;
+        return surgeOffsets[lane] != 0.f || cv2Offsets[lane] != 0.f;
     }
     /// Slew/mix effective values (all native 0..1). True if any CV3 offset active.
     float getRhythmSlewNorm() const { return getRhythmSlew(); }
