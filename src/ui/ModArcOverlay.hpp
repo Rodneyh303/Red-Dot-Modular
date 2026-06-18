@@ -66,6 +66,20 @@ struct ModArcOverlay : rack::TransparentWidget {
 
     void draw(const DrawArgs& args) override {
         if (!getSetNorm || !getModNorm) return;
+
+        // ── TEMP TRAIL PROBE ── logs why/whether the arc draws. Throttled to ~1/sec
+        // per overlay via a frame counter so the log isn't flooded. Remove once the
+        // trail cause is found. Captures: isActive, setN, modN, delta vs minDelta.
+        bool act = !isActive || isActive();
+        float pSet = getSetNorm();
+        float pMod = getModNorm();
+        static int _pn = 0;
+        if ((_pn++ % 200) == 0) {
+            INFO("[modarc] active=%d setN=%.4f modN=%.4f delta=%.4f minDelta=%.4f willDraw=%d",
+                 (int)act, pSet, pMod, std::fabs(pMod - pSet), minDelta,
+                 (int)(act && std::fabs(pMod - pSet) >= minDelta));
+        }
+
         if (isActive && !isActive()) return;
 
         float setN = getSetNorm();
