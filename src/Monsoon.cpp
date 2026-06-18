@@ -449,6 +449,15 @@ void Monsoon::process(const ProcessArgs& args) {
 
     // --- Mode dispatch (only if running) ---
     if (runGateActive) {
+        // Gate-close on the PPQN grid pulse (finer than the 1/16 decision edge):
+        // every grid pulse, decrement each voice's gate-pulse counter and drop the
+        // gate when it expires. Sole gate-close path (replaces the per-sample
+        // seconds timer) — triplets/1/32 close on an exact pulse boundary.
+        if (clock.pulseEdge) {
+            engine.gs.tickPulse();
+            for (int i = 0; i < engine.numPolyVoices; ++i)
+                engine.voices[i].gs.tickPulse();
+        }
         // Optimization: Only execute mode logic if a relevant trigger/state is active.
         // This avoids calling executeMode and its internal switch every sample for Modes A, B, C.
         bool gate1High = input.gate1 >= 1.0f;

@@ -817,6 +817,6 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
               struct PItem : ui::MenuItem { Monsoon* module=nullptr; int value=4;
                 void onAction(const event::Action&) override { if(module) module->ppqnSetting=value; }
                 void step() override { if(module) rightText=(module->ppqnSetting==value)?"✔":""; ui::MenuItem::step(); } };
-              for (int v : {1,4,24}){auto* it=createMenuItem<PItem>(string::f("%d",v).c_str());it->module=m;it->value=v;sub->addChild(it);} }
+              for (int v : {24,48,96}){auto* it=createMenuItem<PItem>(string::f("%d",v).c_str());it->module=m;it->value=v;sub->addChild(it);} }
         }));
     }
