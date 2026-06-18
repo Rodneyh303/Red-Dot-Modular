@@ -28,8 +28,10 @@ float ParameterManager::readInput_(int inputId) const {
 // ──── Core Parameter Getters ────────────────────────────────────────────────
 
 float ParameterManager::getNoteValue() const {
-    float v = readParam_(NOTE_VALUE_PARAM, 0.f, 8.f);
-    v = clampv(v + cv2Offsets[0] + surgeOffsets[0]*8.f, 0.f, 8.f);
+    // Param range is 0..7 (8 note values, indices 0..7) — was mistakenly read/
+    // clamped to 0..8 (an index 8 doesn't exist) with surge scaled by 8.
+    float v = readParam_(NOTE_VALUE_PARAM, 0.f, 7.f);
+    v = clampv(v + cv2Offsets[0] + surgeOffsets[0]*7.f, 0.f, 7.f);
     return v;
 }
 

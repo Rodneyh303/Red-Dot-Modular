@@ -513,42 +513,33 @@ void Monsoon::process(const ProcessArgs& args) {
 
 
 
+    // ── Modulation-viz snapshot (normalised effective big-5 values) ──
+    // Published EVERY sample (not throttled) so the knob mod-arcs' modulated value
+    // tracks the live param with ≤1-sample lag. When this was throttled, a manual
+    // knob turn raced ahead of the snapshot by up to a throttle interval, and the
+    // resulting set-vs-mod delta (≈1/7 per note step ≫ the 0.01 draw threshold)
+    // drew a transient arc each frame that read as a red "trail" — even with no
+    // modulator attached. Cheap (~17 scalar getters/sample).
+    if (paramManager) {
+        modViz.noteValue = paramManager->getNoteValueNorm();
+        modViz.variation = paramManager->getVariationNorm();
+        modViz.legato    = paramManager->getLegatoNorm();
+        modViz.rest      = paramManager->getRestNorm();
+        modViz.accent    = paramManager->getAccentNorm();
+        modViz.active    = paramManager->anyBig5Modulated();
+        modViz.rhythmSlew = paramManager->getRhythmSlewNorm();
+        modViz.melodySlew = paramManager->getMelodySlewNorm();
+        modViz.rhythmMix  = paramManager->getRhythmMixNorm();
+        modViz.melodyMix  = paramManager->getMelodyMixNorm();
+        modViz.activeCv3  = paramManager->anyCv3Modulated();
+        for (int i = 0; i < 12; ++i) modViz.semitone[i] = paramManager->getSemitoneNorm(i);
+        modViz.octaveLo   = paramManager->getOctaveLoNorm();
+        modViz.octaveHi   = paramManager->getOctaveHiNorm();
+        modViz.activePitch = paramManager->anyPitchModulated();
+    }
+
     // ── Throttle UI and Light processing ──
     if (lightDivider.process()) {
-        // Throttled Visuals/Outputs
-        // ── Modulation-viz snapshot (normalised effective big-5 values) ──
-        // Published at UI rate for the knob widgets' live set→modulated arc.
-        if (paramManager) {
-            modViz.noteValue = paramManager->getNoteValueNorm();
-            modViz.variation = paramManager->getVariationNorm();
-            modViz.legato    = paramManager->getLegatoNorm();
-            modViz.rest      = paramManager->getRestNorm();
-            modViz.accent    = paramManager->getAccentNorm();
-            modViz.active    = paramManager->anyBig5Modulated();
-            modViz.rhythmSlew = paramManager->getRhythmSlewNorm();
-            modViz.melodySlew = paramManager->getMelodySlewNorm();
-            modViz.rhythmMix  = paramManager->getRhythmMixNorm();
-            modViz.melodyMix  = paramManager->getMelodyMixNorm();
-            modViz.activeCv3  = paramManager->anyCv3Modulated();
-            for (int i = 0; i < 12; ++i) modViz.semitone[i] = paramManager->getSemitoneNorm(i);
-            modViz.octaveLo   = paramManager->getOctaveLoNorm();
-            modViz.octaveHi   = paramManager->getOctaveHiNorm();
-            modViz.activePitch = paramManager->anyPitchModulated();
-
-            // TEMP DIAGNOSTIC (modviz CV2/CV3): logs ~1/sec which active flags are
-            // set + the raw offset arrays, to find why CV2/CV3 arcs don't show.
-            // Remove once resolved.
-            static int dbgN = 0;
-            if ((dbgN++ % 90) == 0) {
-                INFO("[modviz] big5active=%d cv3active=%d pitchActive=%d | cv2[0..4]=%.3f %.3f %.3f %.3f %.3f | cv3[0..3]=%.3f %.3f %.3f %.3f | surge[0..4]=%.3f %.3f %.3f %.3f %.3f | cv2Mode=%d cv3Target=%d cv3conn=%d",
-                    (int)modViz.active, (int)modViz.activeCv3, (int)modViz.activePitch,
-                    paramManager->getCv2Offsets()[0], paramManager->getCv2Offsets()[1], paramManager->getCv2Offsets()[2], paramManager->getCv2Offsets()[3], paramManager->getCv2Offsets()[4],
-                    paramManager->getCv3Offsets()[0], paramManager->getCv3Offsets()[1], paramManager->getCv3Offsets()[2], paramManager->getCv3Offsets()[3],
-                    paramManager->getSurgeOffsets()[0], paramManager->getSurgeOffsets()[1], paramManager->getSurgeOffsets()[2], paramManager->getSurgeOffsets()[3], paramManager->getSurgeOffsets()[4],
-                    cv2Mode, cv3Target, (int)cachedCv3Connected);
-            }
-        }
-        // ── UI Light Updates ──
         if (uiManager) {
             // Move these here from per-sample logic
             uiManager->updateDiceLights(engine.pe.isRhythmSeedPending(), engine.pe.isMelodySeedPending());
