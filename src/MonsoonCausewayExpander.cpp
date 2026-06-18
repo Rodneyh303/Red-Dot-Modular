@@ -54,7 +54,7 @@ struct MonsoonCausewayExpanderWidget : ModuleWidget,
 
         // dot.modular connect mark (brand mark; greyed when no Monsoon attached).
         if (auto* s = findNamed("light_connect")) {
-            connectMark = redDot::makeConnectMark(module, centerOf(s), mm2px(8.f));
+            connectMark = redDot::makeConnectMark(mod, centerOf(s), mm2px(8.f));
             addChild(connectMark);
         }
     }

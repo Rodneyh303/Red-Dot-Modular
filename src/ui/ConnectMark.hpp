@@ -1,6 +1,6 @@
 #pragma once
 #include <rack.hpp>
-
+#include "VisualExpanderHelpers.hpp"
 // dot.modular connection indicator built from the brand MARK (the little red dot
 // with its Lissajous figure), instead of a plain LED. When the expander is
 // connected to a Monsoon core the mark shows in full brand colour; when not, it
