@@ -79,6 +79,14 @@ public:
         for (int i = 0; i < 4; ++i) if (cv3Offsets[i] != 0.f) return true;
         return false;
     }
+    // Per-LANE CV3 test (0=rhythmSlew,1=melodySlew,2=rhythmMix,3=melodyMix). Same
+    // fix as big5LaneModulated: the slew/mix arcs must gate on THEIR OWN lane, else
+    // modulating one (e.g. rhythm slew) marks all four active and they trail when
+    // turned.
+    bool  cv3LaneModulated(int lane) const {
+        if (lane < 0 || lane > 3) return false;
+        return cv3Offsets[lane] != 0.f;
+    }
     /// Pitch sliders, normalised 0..1 (semitones native 0..1; octaves /8).
     float getSemitoneNorm(int i) const { return getSemitone(i); }
     float getOctaveLoNorm() const { return getOctaveLo() / 8.f; }

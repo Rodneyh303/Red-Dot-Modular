@@ -775,10 +775,6 @@ struct Monsoon : Module {
         // Big-5 effective values, normalised 0..1 (NOTE_VALUE is /8).
         float noteValue = 0.f, variation = 0.f, legato = 0.f, rest = 0.f, accent = 0.f;
         bool  active = false;   // any big-5 modulation source present this frame
-        // Per-lane modulation flags (0=note,1=variation,2=legato,3=rest,4=accent).
-        // Each big-5 arc gates on ITS OWN lane so an unmodulated knob never draws,
-        // even when a different lane is modulated.
-        bool  big5Lane[5] = {false,false,false,false,false};
         // Slew + mix effective values, normalised 0..1 (all native 0..1).
         // Modulated via CV3 (cv3Offsets). activeCv3 gates their arcs.
         float rhythmSlew = 0.f, melodySlew = 0.f, rhythmMix = 0.f, melodyMix = 0.f;
@@ -788,6 +784,13 @@ struct Monsoon : Module {
         float semitone[12] = {0.f};
         float octaveLo = 0.f, octaveHi = 0.f;
         bool  activePitch = false;
+        // Per-lane modulation flags (0=note,1=variation,2=legato,3=rest,4=accent);
+        // and per-lane CV3 flags (0=rhythmSlew,1=melodySlew,2=rhythmMix,3=melodyMix).
+        // Each arc gates on ITS OWN lane so an unmodulated knob never draws even when
+        // a sibling lane is modulated. Kept at struct END to avoid shifting the
+        // offsets of the fields above (ABI hygiene for incremental builds).
+        bool  big5Lane[5] = {false,false,false,false,false};
+        bool  cv3Lane[4]  = {false,false,false,false};
     } modViz;
     dsp::ClockDivider lightDivider;
     dsp::ClockDivider controlDivider; // For DNA modulation at "Control Rate"
