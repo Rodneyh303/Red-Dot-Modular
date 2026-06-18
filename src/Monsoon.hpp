@@ -791,6 +791,8 @@ struct Monsoon : Module {
         // offsets of the fields above (ABI hygiene for incremental builds).
         bool  big5Lane[5] = {false,false,false,false,false};
         bool  cv3Lane[4]  = {false,false,false,false};
+        // Per-lane pitch flags: 0..11 = semitones, 12 = octaveLo, 13 = octaveHi.
+        bool  pitchLane[14] = {false};
     } modViz;
     dsp::ClockDivider lightDivider;
     dsp::ClockDivider controlDivider; // For DNA modulation at "Control Rate"

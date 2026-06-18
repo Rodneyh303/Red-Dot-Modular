@@ -94,6 +94,11 @@ public:
     /// True if any pitch slider's effective value differs from its raw param
     /// (i.e. expander/CV1 is modulating it). Compared with a small epsilon.
     bool  anyPitchModulated() const;
+    // Per-LANE pitch modulation test (0..11 = semitones, 12 = octaveLo, 13 = octaveHi).
+    // Same per-lane fix as big5/cv3: each light slider's arc must gate on ITS OWN
+    // lane, else modulating one pitch element marks the whole group active and the
+    // others trail when turned manually. Defined in the .cpp (needs the getters).
+    bool  pitchLaneModulated(int lane) const;
     
     /// Transpose in semitones (-12 to +12)
     float getTranspose() const;

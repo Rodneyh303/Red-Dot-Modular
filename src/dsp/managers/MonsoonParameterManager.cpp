@@ -69,6 +69,19 @@ bool ParameterManager::anyPitchModulated() const {
     return false;
 }
 
+// Per-lane: 0..11 = semitones, 12 = octaveLo, 13 = octaveHi. Each light slider's
+// arc gates on its OWN lane so an unmodulated slider never draws even when a
+// sibling pitch lane is modulated (the group-trail bug).
+bool ParameterManager::pitchLaneModulated(int lane) const {
+    if (lane >= 0 && lane < 12)
+        return std::fabs(getSemitone(lane) - readParam_(SEMI0_PARAM + lane, 0.f, 1.f)) > 1e-4f;
+    if (lane == 12)
+        return std::fabs(getOctaveLo() - readParam_(OCT_LO_PARAM, 0.f, 8.f)) > 1e-4f;
+    if (lane == 13)
+        return std::fabs(getOctaveHi() - readParam_(OCT_HI_PARAM, 0.f, 8.f)) > 1e-4f;
+    return false;
+}
+
 float ParameterManager::getTranspose() const {
     return readParam_(TRANSPOSE_PARAM, -12.f, 12.f);
 }
