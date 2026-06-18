@@ -404,7 +404,33 @@ namespace MonsoonIds {
         DICE_TRIAL_R_PARAM,
         DICE_TRIAL_M_PARAM,
 
-        NUM_PARAMS
+        // ── Macro/East base-owner + Macro-CV blend sends (per voice, per lane) ──
+        // Appended at END so existing param IDs stay stable (saved patches safe).
+        // Per-(voice,lane) base owner: which expander owns the poly L/O/R base for
+        // voice v, lane L. 0 = Macro (default), 1 = East. 15 voices × 3 lanes = 45.
+        //   index = MACRO_OWN_START + v*3 + lane
+        MACRO_OWN_START,
+        MACRO_OWN_END = MACRO_OWN_START + 45,
+        // Per-(voice,lane,item) Macro-CV blend send: how much of the (already
+        // Macro-attenuated) Macro CV is mixed into this voice/lane/item. item
+        // 0=LEN 1=OFF 2=ROT 3=SPR. 15 × 3 × 4 = 180. Default unity (Macro CV
+        // reaches voices out of the box; turn down to localise).
+        //   index = MACRO_SEND_START + (v*3 + lane)*4 + item
+        MACRO_SEND_START = MACRO_OWN_END,
+        MACRO_SEND_END = MACRO_SEND_START + 180,
+
+        // Display-proxy params for the East visual's SELECTED-VOICE owner/send
+        // controls. Physical knobs/buttons bind to these fixed ids; the widget
+        // copies them to/from the per-voice MACRO_OWN/SEND params on voice switch
+        // (same pattern as SPREAD_R/M/O ↔ the per-voice interp params).
+        //   owner disp:  MACRO_OWN_DISP_START + lane            (3: lanes 0-2)
+        //   send  disp:  MACRO_SEND_DISP_START + lane*4 + item  (12: 3 lanes×4)
+        MACRO_OWN_DISP_START = MACRO_SEND_END,
+        MACRO_OWN_DISP_END = MACRO_OWN_DISP_START + 3,
+        MACRO_SEND_DISP_START = MACRO_OWN_DISP_END,
+        MACRO_SEND_DISP_END = MACRO_SEND_DISP_START + 12,
+
+        NUM_PARAMS = MACRO_SEND_DISP_END
     };
 
     enum InputIds {
@@ -720,7 +746,54 @@ struct Monsoon : Module {
 
     int lastModeSelect = -1;
     int lightTheme = 0; // 0 = Dark, 1 = Light. Using int to match PeranakanLatticePanel expectations.
+    // Single source of truth for the spread interpolation target mode (context
+    // menu lives on Monsoon). false = Average Poly (mono + active poly average);
+    // true = Mono Draw (target the raw mono draw; mono strand becomes a fixed
+    // anchor). Replaces the old per-visual interpUseMono flags on East/Macro.
+    bool spreadInterpMono = false;
+
+    // Modulation-visualisation (mod arc) enables, grouped by surface. All default
+    // on; toggled via the Monsoon "Modulation arcs" context submenu. Each arc's
+    // isActive is gated by the relevant flag (read directly here, or via
+    // findMonsoonEitherSide from the expander widgets).
+    bool modVizMonsoonMelody = true;  // the 12 semitone + 2 octave pitch sliders (Interchange)
+    bool modVizMonsoonOther  = true;  // big-5 knobs + slew/mix (Junction/CV2/CV3/Raffles)
+    bool modVizEast          = true;  // Straits East per-voice rest + spread arcs
+    bool modVizWest          = true;  // Straits West per-voice rest arcs
+    bool modVizMacro         = true;  // Macro spread arcs
+    bool modVizMono          = true;  // Mono Sands spread arcs
     MonsoonExpanderManager expanderManager;
+
+    // Modulation-visualisation snapshot. Published once per process() from the
+    // ParameterManager effective-value getters; read by the knob/slider widgets
+    // on the UI thread to draw a live "set → modulated" indicator (only when the
+    // control is actually being modulated). Values are NORMALISED 0..1 so a widget
+    // can compare directly to its knob's normalised position. Stale-by-one-frame
+    // is harmless for a visual. Extend this struct as more controls are covered
+    // (slew/mix/bpm/global len-off/pitch/per-voice rest).
+    struct ModViz {
+        // Big-5 effective values, normalised 0..1 (NOTE_VALUE is /8).
+        float noteValue = 0.f, variation = 0.f, legato = 0.f, rest = 0.f, accent = 0.f;
+        bool  active = false;   // any big-5 modulation source present this frame
+        // Slew + mix effective values, normalised 0..1 (all native 0..1).
+        // Modulated via CV3 (cv3Offsets). activeCv3 gates their arcs.
+        float rhythmSlew = 0.f, melodySlew = 0.f, rhythmMix = 0.f, melodyMix = 0.f;
+        bool  activeCv3 = false;
+        // Pitch sliders: 12 semitone (0..1) + octave lo/hi (normalised /8).
+        // Modulated via the Interchange expander CV (+ CV1 for octaves).
+        float semitone[12] = {0.f};
+        float octaveLo = 0.f, octaveHi = 0.f;
+        bool  activePitch = false;
+        // Per-lane modulation flags (0=note,1=variation,2=legato,3=rest,4=accent);
+        // and per-lane CV3 flags (0=rhythmSlew,1=melodySlew,2=rhythmMix,3=melodyMix).
+        // Each arc gates on ITS OWN lane so an unmodulated knob never draws even when
+        // a sibling lane is modulated. Kept at struct END to avoid shifting the
+        // offsets of the fields above (ABI hygiene for incremental builds).
+        bool  big5Lane[5] = {false,false,false,false,false};
+        bool  cv3Lane[4]  = {false,false,false,false};
+        // Per-lane pitch flags: 0..11 = semitones, 12 = octaveLo, 13 = octaveHi.
+        bool  pitchLane[14] = {false};
+    } modViz;
     dsp::ClockDivider lightDivider;
     dsp::ClockDivider controlDivider; // For DNA modulation at "Control Rate"
 
@@ -818,6 +891,9 @@ struct Monsoon : Module {
     float cachedRunBtn = 0.f;
     float cachedResetBtn = 0.f;
     float cachedPolyRest[15] = {0.f};
+    // Final effective per-voice rest (knob + global + per-voice CV mod, clamped).
+    // Read by the East/West expander widgets for the per-voice REST mod-arc.
+    float cachedPolyRestEffective[15] = {0.f};
 
     Monsoon();
 
@@ -893,14 +969,14 @@ extern Model* modelMonsoon;
 extern Model* modelMonsoonInterchangeExpander;
 extern Model* modelMonsoonCausewayExpander;
 extern Model* modelMonsoonSurgeExpander;
-extern Model* modelMonsoonSandsExpander;
+//extern Model* modelMonsoonSandsExpander;
 extern Model* modelMonsoonStraitsEastExpander; // Declare new expander model
 extern Model* modelMonsoonStraitWestExpander;  // NEW (Phase 4): voices 9-16
-extern Model* modelMonsoonStraitsSands;        // NEW (Macro): global DNA controls (compact)
-extern Model* modelMonsoonDeepStraitsSandsEast; // NEW (Deep): per-voice DNA voices 2-8
-extern Model* modelMonsoonDeepStraitsSandsWest; // NEW (Deep): per-voice DNA voices 9-16
+//extern Model* modelMonsoonStraitsSands;        // NEW (Macro): global DNA controls (compact)
+//extern Model* modelMonsoonDeepStraitsSandsEast; // NEW (Deep): per-voice DNA voices 2-8
+//extern Model* modelMonsoonDeepStraitsSandsWest; // NEW (Deep): per-voice DNA voices 9-16
 // Visual editor expanders
 extern Model* modelMonsoonSandsVisualExpander;  // Mono visual DNA editor (voice 1)
 extern Model* modelStraitsEastSandsVisual;      // East visual DNA editor (voices 2-8)
-extern Model* modelStraitsWestSandsVisual;      // West visual DNA editor (voices 9-16)
+//extern Model* modelStraitsWestSandsVisual;      // West visual DNA editor (voices 9-16)
 extern Model* modelStraitsSandsMacroVisual;     // Macro visual DNA editor (global)

@@ -5,6 +5,9 @@
 #include "ui/SandsVisualEditorV4.hpp"
 #include "ui/TabButton.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
+#include "ui/SvgPanelKit.hpp"
+#include "ui/ModArcOverlay.hpp"
+#include "ui/ConnectMark.hpp"
 #include "dsp/managers/PolyVoiceSandsParameterManager.hpp"
 #include "dsp/managers/SpreadManager.hpp"
 
@@ -15,25 +18,62 @@ using namespace StraitsEastVisualIds;
 
 extern Plugin* pluginInstance;
 
-struct EastInterpItem : MenuItem {
-    StraitsEastSandsVisual* mod;
-    void onAction(const event::Action&) override { mod->interpUseMono = !mod->interpUseMono; }
-    void step() override {
-        rightText = mod->interpUseMono ? "Mono Draw ✓" : "Avg Poly ✓";
-        MenuItem::step();
-    }
-};
-
-struct StraitsEastSandsVisualWidget : ModuleWidget {
+struct StraitsEastSandsVisualWidget : ModuleWidget,
+    dotModular::Compose<StraitsEastSandsVisualWidget,
+                        dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
     SandsVisualEditorV4*            visualEditor = nullptr;
     TabButtonGroup*                 tabGroup     = nullptr;
     PolyVoiceSandsParameterManager* paramMgr     = nullptr;
+    std::vector<rack::Widget*> blendControls;   // owner/send controls; greyed when no Macro
     int  selectedVoice = 0;
+    // East spread mod-arcs. Compared in the INTERP domain (0..1) to sidestep the
+    // pre-existing display-trimpot bipolar (-1..1) vs interp (0..1) mismatch: set
+    // = the viewed voice's interp param (pre-CV), effective = the published
+    // polySpreadEffective[viewedVoice][lane] (post per-voice/lane CV + combineSpread).
+    std::vector<std::pair<rack::ParamWidget*, int>> pendingSpreadArcs;
+    void flushSpreadArcs() {
+        auto* mod = dynamic_cast<StraitsEastSandsVisual*>(module);
+        for (auto& pr : pendingSpreadArcs) {
+            auto* knob = pr.first; int lane = pr.second;
+            if (!knob) continue;
+            auto* arc = new redDot::ModArcOverlay();
+            arc->radius   = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
+            arc->attachOverKnob(knob, mm2px(2.5f));
+            auto interpParamId = [this, lane]() -> int {
+                int v = selectedVoice;
+                return (lane==0) ? restInterpId(v) : (lane==1) ? melodyInterpId(v) : octaveInterpId(v);
+            };
+            arc->getSetNorm = [mod, interpParamId]() -> float {
+                if (!mod) return 0.5f;
+                // Interp/spread params are bipolar -1..1; map to 0..1 (centre=0.5).
+                // getScaledValue() does this correctly over the param's range.
+                auto* pq = mod->paramQuantities[interpParamId()];
+                return pq ? (float)pq->getScaledValue() : 0.5f;
+            };
+            arc->getModNorm = [mod, this, lane]() -> float {
+                if (!mod) return 0.5f;
+                int v = selectedVoice;
+                if (v < 0 || v >= 15) return 0.5f;
+                // polySpreadEffective is bipolar -1..1 → map to 0..1.
+                return rack::math::clamp((mod->polySpreadEffective[v][lane] + 1.f) * 0.5f, 0.f, 1.f);
+            };
+            arc->isActive = [mod, this, lane, interpParamId]() -> bool {
+                if (!mod) return false;
+                Monsoon* mon = findMonsoonEitherSide(mod);
+                if (!mon || !mon->modVizEast) return false;
+                int v = selectedVoice;
+                if (v < 0 || v >= 15) return false;
+                return std::fabs(mod->polySpreadEffective[v][lane] - mod->params[interpParamId()].getValue()) > 1e-4f;
+            };
+            addChild(arc);
+        }
+        pendingSpreadArcs.clear();
+    }
     bool initialized   = false;
     // Theme follow-Monsoon: cache both panel SVGs + the panel widget so step()
     // can swap when the connected host's lightTheme changes.
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
-    rack::app::SvgPanel* panelWidget = nullptr;
+    redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;  // -1 = unset, forces first apply
 
     explicit StraitsEastSandsVisualWidget(StraitsEastSandsVisual* mod) {
@@ -42,9 +82,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
                             "res/panels/StraitsEastSandsVisual_40HP.svg"));
         panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance,
                             "res/panels/StraitsEastSandsVisual_40HP_light.svg"));
-        panelWidget = createPanel(asset::plugin(pluginInstance,
+        loadPanel(asset::plugin(pluginInstance,
                             "res/panels/StraitsEastSandsVisual_40HP.svg"));
-        setPanel(panelWidget);
 
         redDot::addRedScrews(this);
 
@@ -61,28 +100,55 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         visualEditor->box.size = mm2px(Vec(ED_W, ED_H));
         addChild(visualEditor);
 
-        // ── 4 cols × 6 rows: jack1, jack2, atten1, atten2 ────────────────
+        // ── Controls bound by id from the SVG kit (#components in
+        //    gen_east_clean.py). Marker index == enum value:
+        //      input_<n>  n = cvId(r,c)   = 0 + r*2 + c   (CV jacks, 0..11)
+        //      param_<n>  n = attenId(r,c)= 3 + r*2 + c   (attenuverters, 3..14)
+        //      param_<n>  n = SPREAD_R/M/O = 0/1/2         (selected-voice spread)
         for (int r = 0; r < N_ROWS; ++r) {
-            float y = rowY(r);
-            addInput(createInputCentered<PJ301MPort>(mm2px(Vec(COL_J1, y)), mod, cvId(r,0)));
-            addInput(createInputCentered<PJ301MPort>(mm2px(Vec(COL_J2, y)), mod, cvId(r,1)));
-            addParam(createParamCentered<Trimpot>(   mm2px(Vec(COL_A1, y)), mod, attenId(r,0)));
-            addParam(createParamCentered<Trimpot>(   mm2px(Vec(COL_A2, y)), mod, attenId(r,1)));
+            bindInput<PJ301MPort>("input_" + std::to_string(cvId(r,0)), cvId(r,0));
+            bindInput<PJ301MPort>("input_" + std::to_string(cvId(r,1)), cvId(r,1));
+            bindParam<Trimpot>   ("param_" + std::to_string(attenId(r,0)), attenId(r,0));
+            bindParam<Trimpot>   ("param_" + std::to_string(attenId(r,1)), attenId(r,1));
         }
+        bindParam<Trimpot>("param_" + std::to_string((int)SPREAD_R), SPREAD_R,
+            std::function<void(Trimpot*)>([this](Trimpot* k){ pendingSpreadArcs.push_back({k, 0}); }));
+        bindParam<Trimpot>("param_" + std::to_string((int)SPREAD_M), SPREAD_M,
+            std::function<void(Trimpot*)>([this](Trimpot* k){ pendingSpreadArcs.push_back({k, 1}); }));
+        bindParam<Trimpot>("param_" + std::to_string((int)SPREAD_O), SPREAD_O,
+            std::function<void(Trimpot*)>([this](Trimpot* k){ pendingSpreadArcs.push_back({k, 2}); }));
 
-        // ── Per-lane SPREAD trimpots (selected voice): REST / MELODY / OCTAVE
-        // Placed in a column to the right of the atten columns, one per lane,
-        // vertically centred on each lane's two-row band.
-        {
-            float sx = SPREAD_X;
-            for (int lane = 0; lane < 3; ++lane) {
-                float y = 0.5f * (rowY(lane*2) + rowY(lane*2+1)); // centre of lane band
-                int pid = (lane==0)?SPREAD_R : (lane==1)?SPREAD_M : SPREAD_O;
-                addParam(createParamCentered<Trimpot>(mm2px(Vec(sx, y)), mod, pid));
-            }
+        // Macro/East blend controls (bound to the display proxies; copied to/from
+        // the per-voice MACRO params on voice switch + each frame). Owner = a
+        // latching on/off button (off=Macro owns base, on=East owns). Sends =
+        // attenuverter trimpots. Captured so step() can grey/hide them when no
+        // Macro visual is attached (they have no effect then — the equation's
+        // macro terms are zero — so this is feedback, not function).
+        for (int lane = 0; lane < 3; ++lane) {
+            bindLightParam<VCVLightLatch<SmallSimpleLight<WhiteLight>>>(
+                "param_owner_" + std::to_string(lane), 
+                ownerDispId(lane), 
+                ownerLightId(lane),
+                [this](VCVLightLatch<SmallSimpleLight<WhiteLight>>* w) { 
+                    w->momentary = false;
+                    w->latch = true;
+                    blendControls.push_back(w); 
+                }
+            );
+            for (int item = 0; item < 4; ++item)
+                bindParam<Trimpot>("param_send_" + std::to_string(lane) + "_" + std::to_string(item),
+                    sendDispId(lane, item),
+                    std::function<void(Trimpot*)>([this](Trimpot* w){ blendControls.push_back(w); }));
         }
 
         paramMgr = new PolyVoiceSandsParameterManager(nullptr, nullptr, 15, 0);
+        flushSpreadArcs();
+
+        // dot.modular connect mark (brand mark; greyed when no Monsoon attached).
+        if (auto* s = findNamed("light_connect")) {
+            connectMark = redDot::makeConnectMark(module, centerOf(s), mm2px(8.f));
+            addChild(connectMark);
+        }
     }
 
     ~StraitsEastSandsVisualWidget() override { delete paramMgr; }
@@ -91,10 +157,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         ModuleWidget::appendContextMenu(menu);
         auto* mod = dynamic_cast<StraitsEastSandsVisual*>(module);
         if (!mod) return;
-        menu->addChild(new MenuSeparator);
-        menu->addChild(createMenuLabel("Spread interpolation"));
-        auto* ii = createMenuItem<EastInterpItem>("Interpolation target");
-        ii->mod = mod; menu->addChild(ii);
+        // Spread interpolation target moved to the Monsoon module context menu
+        // (single source of truth — was duplicated here and on Macro).
     }
 
     void saveVoiceSpread(int v) {
@@ -108,6 +172,23 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         module->params[SPREAD_R].setValue(module->params[restInterpId(v)  ].getValue());
         module->params[SPREAD_M].setValue(module->params[melodyInterpId(v)].getValue());
         module->params[SPREAD_O].setValue(module->params[octaveInterpId(v)].getValue());
+    }
+    // Owner/send display proxies ↔ per-voice MACRO_OWN/SEND params.
+    void saveVoiceMacro(int v) {
+        if (!module) return;
+        for (int lane=0; lane<3; ++lane) {
+            module->params[ownerId(v,lane)].setValue(module->params[ownerDispId(lane)].getValue());
+            for (int item=0; item<4; ++item)
+                module->params[sendId(v,lane,item)].setValue(module->params[sendDispId(lane,item)].getValue());
+        }
+    }
+    void loadVoiceMacro(int v) {
+        if (!module) return;
+        for (int lane=0; lane<3; ++lane) {
+            module->params[ownerDispId(lane)].setValue(module->params[ownerId(v,lane)].getValue());
+            for (int item=0; item<4; ++item)
+                module->params[sendDispId(lane,item)].setValue(module->params[sendId(v,lane,item)].getValue());
+        }
     }
     void saveVoiceLOR(int v) {
         if (!module || !visualEditor) return;
@@ -132,10 +213,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         paramMgr->syncEditorToPatternEngine(selectedVoice, visualEditor->currentState);
         saveVoiceLOR(selectedVoice);
         saveVoiceSpread(selectedVoice);
+        saveVoiceMacro(selectedVoice);
         selectedVoice = nv;
         paramMgr->syncPatternEngineToEditor(selectedVoice, visualEditor->currentState);
         loadVoiceLOR(selectedVoice);
         loadVoiceSpread(selectedVoice);
+        loadVoiceMacro(selectedVoice);
     }
 
     Monsoon* getMonsoon() {
@@ -144,9 +227,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
 
     void step() override {
         ModuleWidget::step();
+        kitStep();
         if (!module || !paramMgr || !visualEditor) return;
         Monsoon* monsoon = getMonsoon();
-        if (!monsoon) return;
+        if (!monsoon) { if (visualEditor) visualEditor->clearPlaySteps(); return; }
 
         // Follow the connected Monsoon's theme: swap panel SVG + editor colours
         // when it changes (and on first run). One toggle on Monsoon themes the
@@ -154,13 +238,40 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         int wantLight = monsoon->lightTheme ? 1 : 0;
         if (wantLight != lastThemeLight) {
             lastThemeLight = wantLight;
-            if (panelWidget) {
-                panelWidget->setBackground(wantLight ? panelSvgLight : panelSvgDark);
+            for (Widget* child : children) {
+                if (auto* sp = dynamic_cast<app::SvgPanel*>(child)) {
+                    sp->setBackground(wantLight ? panelSvgLight : panelSvgDark);
+                    break;
+                }
             }
             if (visualEditor) visualEditor->setTheme(wantLight != 0);
         }
 
+        // Macro/East blend controls only do anything with a Macro visual attached
+        // (the equation's macro terms are zero otherwise). Hide them when absent
+        // so the panel doesn't imply controls that have no effect.
+        bool macroPresent = (monsoon->expanderManager.cachedMacroSandsVisual != nullptr);
+        for (Widget* w : blendControls) if (w) w->visible = macroPresent;
+
         auto* mod = static_cast<StraitsEastSandsVisual*>(module);
+
+        // INERT until the Straits East CV expander is attached: it defines the
+        // poly voice count, so without it there are no poly lanes to show. Show
+        // the hint and skip all data work (no frozen bars).
+        // INERT unless poly data actually exists: needs the Straits East CV
+        // expander AND at least one poly voice (matches engine polyBaseActive =
+        // cachedPolyVoiceExpander && numPolyVoices>=1). Without that there are no
+        // poly lanes to show. (If you later want a lone single voice to also read
+        // as inert because spread is degenerate, change >=1 to >=2 here and in
+        // the Macro visual — left at >=1 to match the engine's poly gate.)
+        if (monsoon->expanderManager.cachedPolyVoiceExpander == nullptr
+            || monsoon->engine.numPolyVoices < 1) {
+            visualEditor->inert = true;
+            visualEditor->inertMessage = "Attach Straits East expander";
+            visualEditor->clearPlaySteps();
+            return;
+        }
+        visualEditor->inert = false;
         PatternEngine*   pe = &monsoon->engine.pe;
         SequencerEngine* se = &monsoon->engine;
         if (paramMgr->patternEngine != pe) {
@@ -184,6 +295,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
 
         // Write display trimpots → selected voice INTERP params
         saveVoiceSpread(selectedVoice);
+        // Write owner/send display proxies → selected voice's per-voice MACRO
+        // params each frame, so the blend equation sees edits immediately (not
+        // only on voice switch).
+        saveVoiceMacro(selectedVoice);
 
         // SpreadManager for editor display
         auto& smgr = paramMgr->spreadMgr;
@@ -191,20 +306,91 @@ struct StraitsEastSandsVisualWidget : ModuleWidget {
         smgr.setSpread(selectedVoice, 1, mod->params[SPREAD_M].getValue());
         smgr.setSpread(selectedVoice, 2, mod->params[SPREAD_O].getValue());
         smgr.setInterpolationTarget(
-            mod->interpUseMono ? SpreadManager::MONO_DRAW : SpreadManager::AVERAGE_POLY);
+            monsoon->spreadInterpMono ? SpreadManager::MONO_DRAW : SpreadManager::AVERAGE_POLY);
 
         // CV applied at control rate in Monsoon::process() — base + scaled offset, no mutation here.
 
         saveVoiceLOR(selectedVoice);
         paramMgr->syncPatternEngineToEditor(selectedVoice, visualEditor->currentState);
 
+        // Surface the engine's CV-APPLIED L/O/R to the display window so the
+        // highlighted range + offset/rotation markers track L/O/R CV modulation.
+        // engine.polyLen/Off/Rot[voice][lane] (lane 0/1/2 = REST/MEL/OCT) hold the
+        // post-CV values. With no CV these equal the edit values. Editing/drag use
+        // the EDIT values, so this is display-only.
         int gs = monsoon->engine.stepIndex;
-        for (int l=0; l<3; ++l)
-            visualEditor->setLanePlayStep(l,
-                calcPlayhead(gs,
-                    readLenParam   (mod, lorId(selectedVoice,l,0)),
-                    readOffRotParam(mod, lorId(selectedVoice,l,1)),
-                    readOffRotParam(mod, lorId(selectedVoice,l,2))));
+        auto& eng = monsoon->engine;
+        const int vi = selectedVoice;
+        for (int l=0; l<3; ++l) {
+            int cvLen = eng.polyLen[vi][l];
+            int cvOff = eng.polyOff[vi][l];
+            int cvRot = eng.polyRot[vi][l];
+            visualEditor->currentState.lanes[l].setDisplayLOR(cvLen, cvOff, cvRot);
+            visualEditor->setLanePlayStep(l, calcPlayhead(gs, cvLen, cvOff, cvRot));
+        }
+    }
+
+    // Labels for the Macro-blend control groups, drawn in NanoVG (the panel SVG
+    // carries no baked text — same convention as the tab labels). Mirrors the
+    // layout in panel_src/gen_east_clean.py: 3 groups (REST/MELODY/OCTAVE) below
+    // the editor, each an owner button + a 2×2 Len/Off/Rot/Spr send grid. Greyed
+    // when no Macro visual is attached (the controls are inert then).
+    void draw(const DrawArgs& args) override {
+        ModuleWidget::draw(args);
+        NVGcontext* vg = args.vg;
+
+        // Layout constants — must match gen_east_clean.py.
+        const float ED_X = 58.0f, ED_W = 203.2f - 58.0f - 4.0f;
+        const float BLEND_TOP = 74.0f, BLEND_H = 30.0f, GAP = 3.0f;
+        const float GROUP_W = ED_W / 3.0f;
+        const char* laneName[3] = { "REST", "MELODY", "OCTAVE" };
+        const char* itemName[4] = { "LEN", "OFF", "ROT", "SPR" };
+
+        bool macroPresent = false;
+        bool isLight = false;
+        if (auto* mon = getMonsoon()) {
+            macroPresent = (mon->expanderManager.cachedMacroSandsVisual != nullptr);
+            isLight = mon->lightTheme;
+        }
+
+        auto font = APP->window->loadFont(rack::asset::system("res/fonts/DejaVuSans-Bold.ttf"));
+        if (!font) font = APP->window->uiFont;
+        if (!font) return;
+        nvgFontFaceId(vg, font->handle);
+
+        // Colours: brand-ish ink, dimmed when no Macro attached.
+        NVGcolor head = macroPresent ? (isLight ? nvgRGB(40,44,52) : nvgRGB(210,214,222))
+                                     : nvgRGBA(140,140,150, 90);
+        NVGcolor item = macroPresent ? (isLight ? nvgRGB(150,120,20) : nvgRGB(190,160,60))
+                                     : nvgRGBA(140,140,150, 70);
+
+        // Section header.
+        nvgFontSize(vg, 8.5f);
+        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM);
+        nvgFillColor(vg, head);
+        nvgText(vg, mm2px(ED_X), mm2px(BLEND_TOP - 3.5f), "MACRO BLEND", nullptr);
+
+        for (int l = 0; l < 3; ++l) {
+            float gx = ED_X + l*GROUP_W + GAP*0.5f;
+            float gw = GROUP_W - GAP;
+            // group name — top of box, right of the owner button
+            nvgFontSize(vg, 8.0f);
+            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+            nvgFillColor(vg, head);
+            nvgText(vg, mm2px(gx + gw*0.62f), mm2px(BLEND_TOP + 3.2f), laneName[l], nullptr);
+            // "OWN" under the owner button
+            nvgFontSize(vg, 5.5f);
+            nvgFillColor(vg, item);
+            nvgText(vg, mm2px(gx + 5.5f), mm2px(BLEND_TOP + 11.0f), "OWN", nullptr);
+            // item labels under each send trim (2×2)
+            float sx0 = gx + gw*0.42f, sxs = gw*0.26f;
+            float sy0 = BLEND_TOP + 8.5f, sys = 12.0f;
+            for (int it = 0; it < 4; ++it) {
+                float cxs = sx0 + (it % 2)*sxs;
+                float cys = sy0 + (it / 2)*sys;
+                nvgText(vg, mm2px(cxs), mm2px(cys + 5.0f), itemName[it], nullptr);
+            }
+        }
     }
 };
 

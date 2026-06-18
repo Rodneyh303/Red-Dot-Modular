@@ -1,10 +1,13 @@
 #include <rack.hpp>
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
-#include "MonsoonStraitsSands.hpp"
+#include "ui/ConnectMark.hpp"
+//#include "MonsoonStraitsSands.hpp"
 #include "StraitsSandsMacroVisual.hpp"
 #include "ui/SandsVisualEditorV4.hpp"
+#include "ui/TabButton.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
+#include "ui/ModArcOverlay.hpp"
 #include "dsp/managers/PolySandsParameterManager.hpp"
 
 using namespace rack;
@@ -14,36 +17,87 @@ using namespace StraitsMacroVisualIds;
 
 extern Plugin* pluginInstance;
 
-struct MacroInterpItem : MenuItem {
-    StraitsSandsMacroVisual* mod;
-    void onAction(const event::Action&) override { mod->interpUseMono = !mod->interpUseMono; }
-    void step() override {
-        rightText = mod->interpUseMono ? "Mono Draw ✓" : "Avg Poly ✓";
-        MenuItem::step();
-    }
-};
+// struct MacroInterpItem : MenuItem {
+    
+
+   
+//     // void onAction(const event::Action&) override { mod->interpUseMono = !mod->interpUseMono; }
+//     // void step() override {
+//     //     rightText = mod->interpUseMono ? "Mono Draw ✓" : "Avg Poly ✓";
+//     //     MenuItem::step();
+//     // }
+// };
+//StraitsSandsMacroVisual* mod;
+
+ // Spread mod-arcs (bipolar -1..1). Queued during construction, attached after
+    // all controls (z-order). Effective spread = mod->spreadEffective[lane] (the
+    // CV-modulated value); set = the SPREAD_* param. Both normalised (v+1)/2.
+   
 
 struct StraitsSandsMacroVisualWidget : ModuleWidget {
     SandsVisualEditorV4*       visualEditor = nullptr;
     PolySandsParameterManager* paramMgr     = nullptr;
+    TabButtonGroup*            tabGroup     = nullptr;
+    int viewVoice = 0;   // which voice's resulting probabilities to DISPLAY (read-only)
     bool                       initialized  = false;
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
     rack::app::SvgPanel* panelWidget = nullptr;
+    redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;
+
+ std::vector<std::pair<rack::ParamWidget*, int>> pendingSpreadArcs;
+    void flushSpreadArcs() {
+        auto* mod = dynamic_cast<StraitsSandsMacroVisual*>(module);
+        for (auto& pr : pendingSpreadArcs) {
+            auto* knob = pr.first; int lane = pr.second;
+            if (!knob) continue;
+            auto* arc = new redDot::ModArcOverlay();
+            arc->radius   = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
+            arc->attachOverKnob(knob, mm2px(2.5f));
+            StraitsSandsMacroVisual* mm = mod;
+            int pid = knob->paramId;
+            arc->getSetNorm = [mm, pid]() -> float {
+                if (!mm) return 0.5f;
+                auto* pq = mm->paramQuantities[pid];
+                return pq ? (float)pq->getScaledValue() : 0.5f;   // bipolar → 0..1
+            };
+            arc->getModNorm = [mm, lane]() -> float {
+                if (!mm || lane < 0 || lane >= 3) return 0.5f;
+                return rack::math::clamp((mm->spreadEffective[lane] + 1.f) * 0.5f, 0.f, 1.f);
+            };
+            arc->isActive = [mm, lane, pid]() -> bool {
+                if (!mm || lane < 0 || lane >= 3) return false;
+                Monsoon* mon = findMonsoonEitherSide(mm);
+                if (!mon || !mon->modVizMacro) return false;
+                float setV = mm->params[pid].getValue();           // -1..1
+                return std::fabs(mm->spreadEffective[lane] - setV) > 1e-4f;
+            };
+            addChild(arc);
+        }
+        pendingSpreadArcs.clear();
+    }
 
     explicit StraitsSandsMacroVisualWidget(StraitsSandsMacroVisual* mod) {
         setModule(mod);
         panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance,
-                            "res/panels/StraitsSandsMacroVisual_26HP.svg"));
+                            "res/panels/StraitsSandsMacroVisual_40HP.svg"));
         panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance,
-                            "res/panels/StraitsSandsMacroVisual_26HP_light.svg"));
+                            "res/panels/StraitsSandsMacroVisual_40HP_light.svg"));
         panelWidget = createPanel(asset::plugin(pluginInstance,
-                            "res/panels/StraitsSandsMacroVisual_26HP.svg"));
+                            "res/panels/StraitsSandsMacroVisual_40HP.svg"));
         setPanel(panelWidget);
 
         redDot::addRedScrews(this);
 
         // Visual editor — right section, 3 lanes (REST/MEL/OCT), global
+        // Voice VIEW tabs (voices 2-16). Macro has no per-voice editing — these
+        // let the user flip through voices to SEE each one's resulting (spread/
+        // blend-applied) probabilities. Read-only: changing tab only changes
+        // which voice is displayed, nothing is saved per voice.
+        tabGroup = new TabButtonGroup(15, 2, 2, mm2px(ED_W), mm2px(10.f));
+        tabGroup->box.pos = mm2px(Vec(ED_X, ED_Y - 12.f));
+        addChild(tabGroup);
+
         visualEditor = new SandsVisualEditorV4(SandsVisualEditorV4::POLY);
         visualEditor->box.pos  = mm2px(Vec(ED_X, ED_Y));
         visualEditor->box.size = mm2px(Vec(ED_W, ED_H));
@@ -60,7 +114,27 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
             addParam(createParamCentered<Trimpot>(   mm2px(Vec(COL_A2, y)), mod, attenId(r,1)));
         }
 
+        // ── Per-lane global SPREAD trimpots (REST / MELODY / OCTAVE) ─────────
+        // Mirrors the East visual: one trimpot per lane, vertically centred on
+        // each lane's two-row band, in a column between the attenuverters and
+        // the visual editor. The module already has these params (SPREAD_REST/
+        // MELODY/OCTAVE); they were just never placed on the panel.
+        for (int lane = 0; lane < 3; ++lane) {
+            float y = 0.5f * (rowY(lane*2) + rowY(lane*2+1));  // centre of lane band
+            int pid = (lane==0) ? SPREAD_REST : (lane==1) ? SPREAD_MELODY : SPREAD_OCTAVE;
+            auto* sp = createParamCentered<Trimpot>(mm2px(Vec(SPREAD_X, y)), mod, pid);
+            addParam(sp);
+            pendingSpreadArcs.push_back({sp, lane});
+        }
+
         paramMgr = new PolySandsParameterManager(nullptr, nullptr, nullptr, 7);
+        flushSpreadArcs();   // attach spread mod-arcs on top of the trimpots
+
+        // dot.modular connect mark (brand mark; greyed when no Monsoon attached).
+        {
+            connectMark = redDot::makeConnectMark(module, mm2px(rack::math::Vec(W_MM * 0.5f, 124.f)), mm2px(8.f));
+            addChild(connectMark);
+        }
     }
 
     ~StraitsSandsMacroVisualWidget() override { delete paramMgr; }
@@ -69,10 +143,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         ModuleWidget::appendContextMenu(menu);
         auto* mod = dynamic_cast<StraitsSandsMacroVisual*>(module);
         if (!mod) return;
-        menu->addChild(new MenuSeparator);
-        menu->addChild(createMenuLabel("Spread interpolation"));
-        auto* ii = createMenuItem<MacroInterpItem>("Interpolation target");
-        ii->mod = mod; menu->addChild(ii);
+        // Spread interpolation target moved to the Monsoon module context menu.
     }
 
     Monsoon* getMonsoon() {
@@ -102,7 +173,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         ModuleWidget::step();
         if (!module || !paramMgr || !visualEditor) return;
         Monsoon* monsoon = getMonsoon();
-        if (!monsoon) return;
+        if (!monsoon) { if (visualEditor) visualEditor->clearPlaySteps(); return; }
 
         int wantLight = monsoon->lightTheme ? 1 : 0;
         if (wantLight != lastThemeLight) {
@@ -113,6 +184,21 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
 
         PatternEngine*   pe = &monsoon->engine.pe;
         SequencerEngine* se = &monsoon->engine;
+
+        // INERT until the Straits East CV expander is attached (defines poly voice
+        // count; without it there are no poly lanes to show). Show the hint, skip
+        // all data work.
+        // INERT unless poly data exists (expander + >=1 poly voice; matches the
+        // engine's polyBaseActive). See the East visual note re: >=1 vs >=2.
+        if (monsoon->expanderManager.cachedPolyVoiceExpander == nullptr
+            || monsoon->engine.numPolyVoices < 1) {
+            visualEditor->inert = true;
+            visualEditor->inertMessage = "Attach Straits East expander";
+            visualEditor->clearPlaySteps();
+            return;
+        }
+        visualEditor->inert = false;
+
         if (paramMgr->patternEngine != pe) {
             paramMgr->patternEngine             = pe;
             paramMgr->sequencerEngine           = se;
@@ -126,24 +212,42 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
 
         // Spread: processDNA has already applied CV offset to SPREAD_REST/MEL/OCT params.
         // Read effective values here for SpreadManager display.
-        paramMgr->spreadMgr.setSpread(0, mod->params[SPREAD_REST  ].getValue());
-        paramMgr->spreadMgr.setSpread(1, mod->params[SPREAD_MELODY].getValue());
-        paramMgr->spreadMgr.setSpread(2, mod->params[SPREAD_OCTAVE].getValue());
+        paramMgr->spreadMgr.setSpread(0, mod->spreadEffective[0]);
+        paramMgr->spreadMgr.setSpread(1, mod->spreadEffective[1]);
+        paramMgr->spreadMgr.setSpread(2, mod->spreadEffective[2]);
         paramMgr->spreadMgr.setInterpolationTarget(
-            mod->interpUseMono ? SpreadManager::MONO_DRAW : SpreadManager::AVERAGE_POLY);
+            monsoon->spreadInterpMono ? SpreadManager::MONO_DRAW : SpreadManager::AVERAGE_POLY);
 
         // CV applied at control rate in Monsoon::process() — base + cv*atten*scale.
 
-        saveLOR();
-        paramMgr->syncPatternEngineToEditor(visualEditor->currentState);
+        // Which voice to DISPLAY (read-only view lens). Clamp to active count.
+        if (tabGroup) {
+            tabGroup->setActiveCount(monsoon->engine.numPolyVoices);
+            viewVoice = std::min(tabGroup->getSelectedTab(),
+                                 std::max(0, monsoon->engine.numPolyVoices - 1));
+        }
 
+        saveLOR();
+        paramMgr->syncPatternEngineToEditor(visualEditor->currentState, viewVoice);
+
+        // Surface Macro's OWN CV-applied L/O/R to the display window. Previously
+        // this read the engine output (eng.polyLen[0] etc.), but when East owns a
+        // lane the engine value is East's, so the Macro panel showed East's LOR —
+        // a category error (the panel should represent the MACRO module's own
+        // state, regardless of who owns the lane downstream). processDNA publishes
+        // Macro's own base + CV-only delta per lane/item (0=LEN 1=OFF 2=ROT), which
+        // is exactly Macro's own CV-applied value independent of ownership.
+        // Display-only. (Lane base rings already come from Macro's own params via
+        // loadLOR; this overlay now matches them.)
         int gs = monsoon->engine.stepIndex;
-        for (int l = 0; l < 3; ++l)
-            visualEditor->setLanePlayStep(l,
-                calcPlayhead(gs,
-                    readLenParam   (mod, lorId(l,0)),
-                    readOffRotParam(mod, lorId(l,1)),
-                    readOffRotParam(mod, lorId(l,2))));
+        for (int l = 0; l < 3; ++l) {
+            int ownLen = (int)std::lround(mod->macroBase[l][0] + mod->macroCVDelta[l][0]);
+            int ownOff = (int)std::lround(mod->macroBase[l][1] + mod->macroCVDelta[l][1]);
+            int ownRot = (int)std::lround(mod->macroBase[l][2] + mod->macroCVDelta[l][2]);
+            ownLen = std::max(1, ownLen);
+            visualEditor->currentState.lanes[l].setDisplayLOR(ownLen, ownOff, ownRot);
+            visualEditor->setLanePlayStep(l, calcPlayhead(gs, ownLen, ownOff, ownRot));
+        }
     }
 };
 

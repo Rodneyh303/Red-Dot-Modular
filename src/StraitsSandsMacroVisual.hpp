@@ -8,18 +8,26 @@ using namespace MonsoonIds;
 namespace StraitsMacroVisualIds {
 
     // ── Panel ──────────────────────────────────────────────────────────────
-    static constexpr float W_MM    = 132.08f;   // 26HP
+    // Macro does the same job as the East visual (spread control) but GLOBAL
+    // rather than per-lane, so it shares East's 40HP width and column geometry
+    // for consistency and to give the spread column proper room.
+    static constexpr float W_MM    = 203.2f;    // 40HP (matches East visual)
     static constexpr float ROW_TOP = 14.f;
     static constexpr float ROW_BOT = 108.f;
     static constexpr int   N_ROWS  = 6;
-    // 4 columns: j1, j2, a1, a2 — same positions as East/West
-    static constexpr float COL_J1 = 6.f;
-    static constexpr float COL_J2 = 14.f;
-    static constexpr float COL_A1 = 23.f;
-    static constexpr float COL_A2 = 32.f;
-    static constexpr float ED_X   = 39.f;
-    static constexpr float ED_W   = W_MM - ED_X - 4.f;  // ~89.1mm (was 82.1)
-    static constexpr float ED_Y   = 16.f;
+    // Columns mirror StraitsEastSandsVisual exactly: j1, j2, a1, a2, spread, editor
+    static constexpr float COL_J1 = 8.f;
+    static constexpr float COL_J2 = 18.f;
+    static constexpr float COL_A1 = 30.f;
+    static constexpr float COL_A2 = 39.f;
+    static constexpr float SPREAD_X = 49.f;     // per-lane spread trimpot column (matches East)
+    static constexpr float ED_X   = 58.f;       // editor starts after the spread column
+    static constexpr float ED_W   = W_MM - ED_X - 4.f;  // ~141.2mm (matches East)
+    // Mirror TAB_TOP_OFFSET_MM in gen_macro_mono.py (extra top margin; 0.5cm=5mm).
+    // Base 18 matches the generator's editor recess (was 16 here — a small drift;
+    // aligned now so the widget editor sits exactly on the drawn recess).
+    static constexpr float TAB_TOP_OFFSET_MM = 5.f;
+    static constexpr float ED_Y   = 18.f + TAB_TOP_OFFSET_MM;
     // Editor height sized so the 3 poly lanes are close to the Mono lane height
     // (~16mm) rather than ~30mm; frees the lower panel for decoration/logos.
     static constexpr float ED_LANE_H = 16.f;
@@ -68,16 +76,27 @@ namespace StraitsMacroVisualIds {
     inline float targetHi(int param) {
         return param == 0 ? 16.f : param < 3 ? 15.f : 1.f;
     }
+
+    // CV jack / attenuverter index for (lane, param) where param 0=LEN 1=OFF
+    // 2=ROT 3=SPR. The 12 jacks are laid out 2 rows per lane:
+    //   row lane*2+0 : col0=LEN col1=OFF
+    //   row lane*2+1 : col0=ROT col1=SPR
+    // so row = lane*2 + (param>=2), col = param&1. (The old code used
+    // cvId(lane,param) directly, which mis-indexed ROT/SPR onto other lanes'
+    // jacks — the macro spread/LOR CV routing bug.)
+    inline int macroJackRow(int lane, int param) { return lane * 2 + (param >= 2 ? 1 : 0); }
+    inline int macroJackCol(int param)           { return param & 1; }
+    inline int macroCvId   (int lane, int param) { return cvId   (macroJackRow(lane, param), macroJackCol(param)); }
+    inline int macroAttenId(int lane, int param) { return attenId(macroJackRow(lane, param), macroJackCol(param)); }
 }
 
 struct StraitsSandsMacroVisual : Module {
-    bool interpUseMono = false;  // context menu: Avg Poly / Mono Draw
 
     StraitsSandsMacroVisual() {
         using namespace StraitsMacroVisualIds;
         config(MonsoonIds::NUM_PARAMS, StraitsMacroVisualIds::NUM_INPUTS, 0, 0);
 
-        configParam(SPREAD_REST,   0.f,1.f,0.f,"Global Spread REST");
+        configParam(SPREAD_REST,   -1.f,1.f,0.f,"Global Spread REST");   // bipolar, matches MEL/OCT (was 0..1 — inconsistent)
         configParam(SPREAD_MELODY, -1.f,1.f,0.f,"Global Spread MELODY");
         configParam(SPREAD_OCTAVE, -1.f,1.f,0.f,"Global Spread OCTAVE");
 
@@ -88,7 +107,7 @@ struct StraitsSandsMacroVisual : Module {
         };
         for (int r=0; r<6; ++r)
             for (int c=0; c<2; ++c) {
-                configParam(attenId(r,c), -1.f,1.f,1.f,
+                configParam(attenId(r,c), -1.f,1.f,0.f,
                             std::string(rowNames[r][c])+" depth");
                 configInput(cvId(r,c),
                             std::string(rowNames[r][c])+" CV");
@@ -108,12 +127,25 @@ struct StraitsSandsMacroVisual : Module {
 
     void process(const ProcessArgs&) override {}
 
+    // CV-applied global spread per lane (0=REST,1=MEL,2=OCT). processDNA writes
+    // these from base + spread CV; the display reads them so spread CV is visible
+    // WITHOUT moving the base knob (the old code wrote the modulated value back to
+    // the SPREAD_* param, which dragged the knob — fixed).
+    float spreadEffective[3] = {0.f, 0.f, 0.f};
+
+    // Per (lane, item) split of Macro's global contribution, published by
+    // processDNA::applyGlobal for the Macro/East blend equation. item: 0=LEN
+    // 1=OFF 2=ROT 3=SPR. macroBase = the knob value (no CV); macroCVDelta = the
+    // CV-only contribution (already scaled by Macro's own attenuverter). East's
+    // sync reads these: value = base(owner) + eastCV + macroCVDelta·blendSend.
+    float macroBase[3][4]    = {};
+    float macroCVDelta[3][4] = {};
+
     json_t* dataToJson() override {
         json_t* r = json_object();
-        json_object_set_new(r,"interpUseMono",json_boolean(interpUseMono));
         return r;
     }
     void dataFromJson(json_t* root) override {
-        if (auto* j=json_object_get(root,"interpUseMono")) interpUseMono=json_boolean_value(j);
+        (void)root;  // interpUseMono moved to Monsoon::spreadInterpMono
     }
 };

@@ -3,10 +3,6 @@
 <rect x="0" y="0" width="120.0" height="14.5" fill="#dcd9d2"/>
 <rect x="0" y="366" width="120.0" height="14.5" fill="#dcd9d2"/>
 <rect x="0" y="0" width="120.0" height="2" fill="#d4001a"/>
-<circle cx="7.5" cy="14.5" r="4.5" fill="#bbb" stroke="#888" stroke-width="0.8"/><line x1="4.8" y1="14.5" x2="10.2" y2="14.5" stroke="#888" stroke-width="1.2"/>
-<circle cx="7.5" cy="365.5" r="4.5" fill="#bbb" stroke="#888" stroke-width="0.8"/><line x1="4.8" y1="365.5" x2="10.2" y2="365.5" stroke="#888" stroke-width="1.2"/>
-<circle cx="112.5" cy="14.5" r="4.5" fill="#bbb" stroke="#888" stroke-width="0.8"/><line x1="109.8" y1="14.5" x2="115.2" y2="14.5" stroke="#888" stroke-width="1.2"/>
-<circle cx="112.5" cy="365.5" r="4.5" fill="#bbb" stroke="#888" stroke-width="0.8"/><line x1="109.8" y1="365.5" x2="115.2" y2="365.5" stroke="#888" stroke-width="1.2"/>
 <g transform="translate(10.00,20.0) scale(0.13947)">
 
 

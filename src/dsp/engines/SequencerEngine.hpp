@@ -2,13 +2,8 @@
 #include "PatternEngine.hpp"
 #include "../gates/GateState.hpp"
 #include "ClockEngine.hpp"
-
-struct NoteVal {
-    float fraction;
-    int allowedPPQN;
-};
-
-extern const NoteVal NOTEVALS[8];
+#include "../NoteValues.hpp"
+#include "../LaneMapping.hpp"
 
 // ── Poly voice architecture ────────────────────────────────────────────────────
 
@@ -93,6 +88,82 @@ struct SequencerEngine {
     // Discrete mutation offsets (mutation from scramble/context menu)
     int rhythmRot = 0, variationRot = 0, legatoRot = 0, accentRot = 0, melodyRot = 0, octaveRot = 0;
 
+    // Indexable strand accessors keyed by dotModular::EngineStrand order
+    // (0 rhythm, 1 variation, 2 legato, 3 accent, 4 melody, 5 octave). These let
+    // callers go editor-lane → strand (via MONO_LANE_TO_STRAND) → value without
+    // hardcoding the permutation. Single source of truth for strand indexing.
+    int strandLen(int strand) const {
+        switch (strand) {
+            case dotModular::STRAND_RHYTHM:    return rhythmLen;
+            case dotModular::STRAND_VARIATION: return variationLen;
+            case dotModular::STRAND_LEGATO:    return legatoLen;
+            case dotModular::STRAND_ACCENT:    return accentLen;
+            case dotModular::STRAND_MELODY:    return melodyLen;
+            case dotModular::STRAND_OCTAVE:    return octaveLen;
+            default: return 16;
+        }
+    }
+    int strandOff(int strand) const {
+        switch (strand) {
+            case dotModular::STRAND_RHYTHM:    return rhythmOff;
+            case dotModular::STRAND_VARIATION: return variationOff;
+            case dotModular::STRAND_LEGATO:    return legatoOff;
+            case dotModular::STRAND_ACCENT:    return accentOff;
+            case dotModular::STRAND_MELODY:    return melodyOff;
+            case dotModular::STRAND_OCTAVE:    return octaveOff;
+            default: return 0;
+        }
+    }
+    int strandRot(int strand) const {
+        switch (strand) {
+            case dotModular::STRAND_RHYTHM:    return rhythmRot;
+            case dotModular::STRAND_VARIATION: return variationRot;
+            case dotModular::STRAND_LEGATO:    return legatoRot;
+            case dotModular::STRAND_ACCENT:    return accentRot;
+            case dotModular::STRAND_MELODY:    return melodyRot;
+            case dotModular::STRAND_OCTAVE:    return octaveRot;
+            default: return 0;
+        }
+    }
+
+    // Writable strand references (same EngineStrand keying) so producers can
+    // assign by index too — used by readStrand to write the per-lane result to
+    // the correct strand via MONO_LANE_TO_STRAND, instead of a hand-ordered call
+    // list. rhythmLen is the safe fallback for an out-of-range index.
+    int& strandLenRef(int strand) {
+        switch (strand) {
+            case dotModular::STRAND_VARIATION: return variationLen;
+            case dotModular::STRAND_LEGATO:    return legatoLen;
+            case dotModular::STRAND_ACCENT:    return accentLen;
+            case dotModular::STRAND_MELODY:    return melodyLen;
+            case dotModular::STRAND_OCTAVE:    return octaveLen;
+            case dotModular::STRAND_RHYTHM:
+            default:                           return rhythmLen;
+        }
+    }
+    int& strandOffRef(int strand) {
+        switch (strand) {
+            case dotModular::STRAND_VARIATION: return variationOff;
+            case dotModular::STRAND_LEGATO:    return legatoOff;
+            case dotModular::STRAND_ACCENT:    return accentOff;
+            case dotModular::STRAND_MELODY:    return melodyOff;
+            case dotModular::STRAND_OCTAVE:    return octaveOff;
+            case dotModular::STRAND_RHYTHM:
+            default:                           return rhythmOff;
+        }
+    }
+    int& strandRotRef(int strand) {
+        switch (strand) {
+            case dotModular::STRAND_VARIATION: return variationRot;
+            case dotModular::STRAND_LEGATO:    return legatoRot;
+            case dotModular::STRAND_ACCENT:    return accentRot;
+            case dotModular::STRAND_MELODY:    return melodyRot;
+            case dotModular::STRAND_OCTAVE:    return octaveRot;
+            case dotModular::STRAND_RHYTHM:
+            default:                           return rhythmRot;
+        }
+    }
+
     int dnaLength = 16; // Legacy/Global fallback
     int dnaOffset = 0;
 
@@ -105,7 +176,7 @@ struct SequencerEngine {
     bool prevGate1High = false;
 
     int modeSelect = 0;
-    int ppqnSetting = 4;
+    int ppqnSetting = 24;  // master PPQN pulse grid (24/48/96)
     int noteVariationMask = 0b111;
     float accentProb = 0.25f;  // Probability of accent on each note (0..1) (NEW)
 

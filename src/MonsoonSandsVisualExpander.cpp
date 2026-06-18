@@ -1,10 +1,12 @@
 #include <rack.hpp>
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
-#include "MonsoonSandsExpander.hpp"
+#include "ui/ConnectMark.hpp"
+//#include "MonsoonSandsExpander.hpp"
 #include "MonsoonSandsVisualExpander.hpp"
 #include "ui/SandsVisualEditorV4.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
+#include "ui/ModArcOverlay.hpp"
 #include "dsp/managers/MonoSandsParameterManager.hpp"
 #include "dsp/managers/SpreadManager.hpp"
 
@@ -23,7 +25,40 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
     bool                       initialized  = false;
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
     rack::app::SvgPanel* panelWidget = nullptr;
+    redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;
+
+    // Spread mod-arcs (bipolar -1..1), same as Macro: set = SPR param,
+    // effective = mod->spreadEffective[lane] (CV-modulated). Normalised (v+1)/2.
+    std::vector<std::pair<rack::ParamWidget*, int>> pendingSpreadArcs;
+    void flushSpreadArcs(MonsoonSandsVisualExpander* mod) {
+        for (auto& pr : pendingSpreadArcs) {
+            auto* knob = pr.first; int lane = pr.second;
+            if (!knob) continue;
+            auto* arc = new redDot::ModArcOverlay();
+            arc->radius   = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
+            arc->attachOverKnob(knob, mm2px(2.5f));
+            MonsoonSandsVisualExpander* mm = mod;
+            int pid = knob->paramId;
+            arc->getSetNorm = [mm, pid]() -> float {
+                if (!mm) return 0.5f;
+                auto* pq = mm->paramQuantities[pid];
+                return pq ? (float)pq->getScaledValue() : 0.5f;
+            };
+            arc->getModNorm = [mm, lane]() -> float {
+                if (!mm || lane < 0 || lane >= 6) return 0.5f;
+                return rack::math::clamp((mm->spreadEffective[lane] + 1.f) * 0.5f, 0.f, 1.f);
+            };
+            arc->isActive = [mm, lane, pid]() -> bool {
+                if (!mm || lane < 0 || lane >= 6) return false;
+                Monsoon* mon = findMonsoonEitherSide(mm);
+                if (!mon || !mon->modVizMono) return false;
+                return std::fabs(mm->spreadEffective[lane] - mm->params[pid].getValue()) > 1e-4f;
+            };
+            addChild(arc);
+        }
+        pendingSpreadArcs.clear();
+    }
 
     explicit MonsoonSandsVisualExpanderWidget(MonsoonSandsVisualExpander* mod) {
         setModule(mod);
@@ -59,8 +94,9 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         // mono-only — no spread.
         for (int l = 0; l < N_SPREAD_LANES; ++l) {
             float y = rowY(l);
-            addParam(createParamCentered<Trimpot>(
-                mm2px(Vec(SPR_BASE_X, y)), mod, sprId(l)));
+            auto* sp = createParamCentered<Trimpot>(mm2px(Vec(SPR_BASE_X, y)), mod, sprId(l));
+            addParam(sp);
+            pendingSpreadArcs.push_back({sp, l});
             addInput(createInputCentered<PJ301MPort>(
                 mm2px(Vec(SPR_CV_X, y)), mod, sprCvId(l)));
             addParam(createParamCentered<Trimpot>(
@@ -68,6 +104,13 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         }
 
         paramMgr = new MonoSandsParameterManager();
+        flushSpreadArcs(mod);
+
+        // dot.modular connect mark (brand mark; greyed when no Monsoon attached).
+        {
+            connectMark = redDot::makeConnectMark(module, mm2px(rack::math::Vec(W_MM * 0.5f, 124.f)), mm2px(8.f));
+            addChild(connectMark);
+        }
     }
 
     ~MonsoonSandsVisualExpanderWidget() override { delete paramMgr; }
@@ -81,7 +124,7 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         if (!module || !paramMgr || !visualEditor) return;
 
         Monsoon* monsoon = getMonsoon();
-        if (!monsoon) return;
+        if (!monsoon) { if (visualEditor) visualEditor->clearPlaySteps(); return; }
 
         int wantLight = monsoon->lightTheme ? 1 : 0;
         if (wantLight != lastThemeLight) {
@@ -127,12 +170,31 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         // ── Sync PatternEngine → display (uses SpreadManager.getInterpolatedValue) ──
         paramMgr->syncPatternEngineToEditor(visualEditor->currentState);
 
-        // ── Per-lane playhead ─────────────────────────────────────────────
+        // ── Per-lane playhead + CV-applied display window ─────────────────
+        // The editor lanes' EDIT L/O/R are the user's canvas values (written to
+        // params above). For DISPLAY, surface the engine's CV-APPLIED effective
+        // L/O/R so the highlighted window + offset/rotation markers track LOR CV
+        // modulation. processDNA writes these per-lane into engine.{strand}Len/Off/
+        // Rot. Editor lane order = REST,MEL,OCT,LEG,ACC,VAR. Display-only: editing
+        // still uses the edit values (editStartBar/editEndBar). With no CV the
+        // effective values equal the params, so the window is unchanged.
+        // Editor lane index → engine strand via the single source of truth
+        // (dotModular::MONO_LANE_TO_STRAND in dsp/LaneMapping.hpp) + the engine's
+        // indexable strand accessors. No hardcoded permutation here, so this can
+        // never drift from readStrand() again.
+        auto& eng = monsoon->engine;
+        int effLen[6], effOff[6], effRot[6];
+        for (int l = 0; l < 6; ++l) {
+            int strand = dotModular::MONO_LANE_TO_STRAND[l];
+            effLen[l] = eng.strandLen(strand);
+            effOff[l] = eng.strandOff(strand);
+            effRot[l] = eng.strandRot(strand);
+        }
         int globalStep = monsoon->engine.stepIndex;
         for (int l = 0; l < 6; ++l) {
-            const auto& lane = visualEditor->currentState.lanes[l];
+            visualEditor->currentState.lanes[l].setDisplayLOR(effLen[l], effOff[l], effRot[l]);
             visualEditor->setLanePlayStep(l,
-                calcPlayhead(globalStep, lane.length, lane.offset, lane.rotation));
+                calcPlayhead(globalStep, effLen[l], effOff[l], effRot[l]));
         }
     }
 };

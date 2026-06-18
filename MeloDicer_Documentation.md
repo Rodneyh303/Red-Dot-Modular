@@ -1,27 +1,22 @@
-# Monsoon Module System Documentation (v3.0)
+# Monsoon Module System Documentation (v3.1)
 
 ## Overview
 
-dot.Modular **Monsoon** is a professional stochastic melodic sequencing ecosystem for VCV Rack. It is built around a core generative engine that uses probabilistic "DNA Strands" to create complex, evolving melodies and rhythms. 
-**Monsoon** is a professional stochastic melodic sequencing ecosystem for VCV Rack. It is built around a core generative engine that uses probabilistic "DNA Strands" to create complex, evolving melodies and rhythms. 
+dot.modular **Monsoon** is a professional stochastic melodic sequencing ecosystem for VCV Rack. It is built around a core generative engine that uses probabilistic "DNA Strands" to create complex, evolving melodies and rhythms.
 
 The system is designed as a modular suite of 9 components, allowing you to scale from a simple mono sequencer to a 16-voice polyphonic powerhouse with deep visual editing and extensive CV control.
 
 ### The 9-Module Ecosystem
 1. **Monsoon (Core)**: The generative heart and mono (Voice 1) output.
-2. **Interchange**: Expander for tonal/scale melody-related parameter CV modulation.
-1. **Monsoon (Core)**: The generative heart and Voice 1 output.
-2. **Interchange**: Left-side expander for tonal/scale CV modulation.
-3. **Causeway**: Performance expander for "Dice" actions and pattern morphing.
-4. **Surge**: Pattern modulation expander for primary rhythm-related parameters.
-4. **Surge**: Pattern modulation expander for primary probabilities.
+2. **Interchange**: Left-side expander for tonal/scale melody-related CV modulation.
+3. **Raffles**: Performance expander for "Dice" actions and pattern morphing (formerly "Causeway").
+4. **Junction**: Pattern-modulation expander for the primary probability parameters (formerly "Surge").
 5. **Straits East**: Polyphonic output expander for Voices 2–8.
 6. **Straits West**: Polyphonic output expander for Voices 9–16.
-7. **Sands Visual**: Graphical probability visualizer and manipulator for the primary voice.
-8. **Deep Straits Sands**: Graphical tabbed probability visualizer and manipulator for polyphonic voices.
-7. **Sands Visual**: Graphical DNA editor for the primary voice.
-8. **Deep Straits Sands**: Graphical tabbed DNA editor for polyphonic voices.
-9. **Straits Macro Visual**: Global graphical macro controller for the entire poly-system.
+7. **Sands Visual**: Graphical probability visualizer and manipulator for the primary (mono) voice.
+8. **Straits East Sands Visual**: Graphical tabbed probability visualizer and manipulator for the polyphonic voices.
+9. **Straits Sands Macro Visual**: Global graphical controller for the entire poly-system.
+
 
 ---
 
@@ -30,7 +25,7 @@ The system is designed as a modular suite of 9 components, allowing you to scale
 The Monsoon system uses a high-performance expander architecture designed for flexibility and timing precision:
 
 *   **Any Order**: Unlike many VCV modules, Monsoon expanders can be placed in any order relative to the core module (to the immediate left or right, in any sequence).
-*   **Recognition**: Only one instance of each expander type is recognized by the core module. Adding a second "Surge" or "Causeway," for example, will not provide additional functionality.
+*   **Recognition**: Only one instance of each expander type is recognized by the core module. Adding a second "Junction" or "Raffles," for example, will not provide additional functionality.
 *   **Zero Delay**: All communication between Monsoon and its expanders uses a zero-delay direct memory architecture. There is no sample delay introduced when modulating parameters via an expander.
 *   **Polyphony Requirements**: 
     *   To use more than 1 voice (Voice 1 is the core output), the **Straits East** expander must be present to enable Voices 2–8.
@@ -79,10 +74,9 @@ The module generates a 16-step pattern that loops and evolves based on the DNA s
 
 ---
 
-## Assignable Modulation (Core)
 ## Front Panel Controls & I/O
 
-The Monsoon core module provides a flexible internal routing system, allowing for basic assignable modulation without any expanders connected. For comprehensive, dedicated control, the expander suite (Surge/Causeway/Interchange) is recommended.
+The Monsoon core module provides a flexible internal routing system, allowing for basic assignable modulation without any expanders connected. For comprehensive, dedicated control, the expander suite (Junction/Raffles/Interchange) is recommended.
 ### Main Panel
 
 #### Inputs
@@ -107,9 +101,7 @@ The Monsoon core module provides a flexible internal routing system, allowing fo
 
 ---
 
-## Front Panel Controls & I/O
-
-### Main Panel
+### Main Panel Outputs
 
 #### Outputs
 - **GATE OUT**: Main mono gate (10V when note sounds, 0V when silent)
@@ -123,11 +115,6 @@ The Monsoon core module provides a flexible internal routing system, allowing fo
 
 #### Main Knobs & Sliders
 
-**Mode Select** (left side, 4-way)
-- **A**: Clock-driven (external clock required; advances on 16th-note edge)
-- **B**: Gate-driven (external gate triggers pattern; useful for synchronized launches)
-- **C**: Reserved for future expansion
-- **D**: Reserved for future expansion
 **Mode Select** (left side, 4-way selector)
 - **A**: **Clock-driven** (external clock required; advances on 16th-note edge).
 - **B**: **Gate-driven** (external gate advances the playhead; useful for irregular rhythms).
@@ -196,16 +183,15 @@ Slew adds a time-constant to any change in the probability strands.
 
 ### Mix (A/B Interpolation)
 The generative engine maintains two independent probability buffers, **Pattern A** and **Pattern B**.
-*   **How it works**: The Mix parameter (found on the **Causeway** expander) defines a linear interpolation between these two states. For example, if Pattern A is set to "Mostly Rests" and Pattern B is set to "No Rests," a 50% Mix results in a sequence with medium density.
-*   **How it works**: The Mix parameter (found on the **Causeway** expander or mapped to **CV3**) defines a linear interpolation between these two states. For example, if Pattern A is set to "Mostly Rests" and Pattern B is set to "No Rests," a 50% Mix results in a sequence with medium density.
+*   **How it works**: The Mix parameter (found on the **Raffles** expander or mapped to **CV3**) defines a linear interpolation between these two states. For example, if Pattern A is set to "Mostly Rests" and Pattern B is set to "No Rests," a 50% Mix results in a sequence with medium density.
 *   **Seed Influence**: When the Mix is at either 100% A or 100% B, the engine uses the static DNA strands. At intermediate values, it generates a hybrid probability map.
 *   **Musical Application**: Use Mix to find "sweet spots" between two different random seeds you have rolled and liked.
 
 ---
 
-## Causeway (Action Expander)
+## Raffles (Action Expander)
 
-**Causeway** is the performance hub of the system, focusing on the "Dice" and "Draw" mechanics.
+**Raffles** is the performance hub of the system, focusing on the "Dice" and "Draw" mechanics.
 
 ### Controls
 *   **Morphing Section**: 4 attenuverted CV inputs for Rhythm and Melody **Slew** and **Mix**. 
@@ -228,19 +214,17 @@ The generative engine maintains two independent probability buffers, **Pattern A
 
 Monsoon features a sophisticated modulation summing system for its advanced parameters (**Mix** and **Slew**). 
 *   **Panel CV3**: A unipolar (0-5V) assignable input on the main module.
-*   **Causeway CV**: Bipolar attenuverted inputs on the expander.
-*   **Logic**: The engine sums the Panel CV3 and Causeway inputs. The result is clamped to a range of -1 to +1 relative to the internal parameter state, allowing for complex, multi-layered modulation of the probability evolution.
-*   **Logic**: The engine sums the Panel CV3 and Causeway inputs. The result is clamped to a range of -1 to +1 relative to the internal parameter state, allowing for multi-layered modulation.
+*   **Raffles CV**: Bipolar attenuverted inputs on the expander.
+*   **Logic**: The engine sums the Panel CV3 and Raffles inputs. The result is clamped to a range of -1 to +1 relative to the internal parameter state, allowing for complex, multi-layered modulation of the probability evolution.
 
 ---
 
-## Surge (Pattern CV Expander)
+## Junction (Pattern CV Expander)
 
-**Surge** provides high-density CV modulation for the primary stochastic parameters found on the top row of the Monsoon panel. It is essential for making the sequencer "react" to the rest of your rack.
-**Surge** provides high-density CV modulation for the primary stochastic parameters found on the top row of the Monsoon panel. 
+**Junction** provides high-density CV modulation for the primary stochastic parameters found on the top row of the Monsoon panel. It is essential for making the sequencer "react" to the rest of your rack.
 
 ### Logic & Signal Flow
-Surge inputs are **additive** to the knob positions on the main module.
+Junction inputs are **additive** to the knob positions on the main module.
 *   **Note Value**: Modulates the base note grid (e.g., shifting from 1/8 to 1/16 via CV).
 *   **Variation**: Increases or decreases rhythmic complexity.
 *   **Legato/Rest/Accent**: Standard probability modulation (0V = no change, 10V = 100% probability).
@@ -267,7 +251,7 @@ Right-click the Monsoon module to access advanced configuration:
 *   **Reseed Policies**: 
     *   **Reseed on Roll**: Generate a fresh RNG seed every time the Dice button is pressed.
     *   **Reseed on Restart**: Generate a fresh RNG seed every time the sequence loops or is reset.
-*   **Spread Mode**: (If poly expanders are connected) Choose between **Poly Average** (voices blend toward their average) or **Mono Source** (voices follow the main mono voice).
+*   **Spread interpolation target**: (If poly expanders are connected) Choose between **Average poly** (each voice interpolates toward the average of the mono strand and all active poly voices) and **Mono draw** (voices interpolate toward the mono/Voice 1 draw, which acts as a fixed anchor). This single setting governs both the sound and all the visual editors. See *Spread & Spread Interpolation* for detail.
 
 ---
 
@@ -312,8 +296,6 @@ This shifts the pitch output for selected notes, creating:
 - Sidechain modulation (CV from compressor)
 - Expression control (CV from expression pedal)
 - Polyrhythmic pitch variations
-
-#### Octave Range Modulation (2 channels)
 
 #### Octave Range Modulation (2 channels)
 
@@ -379,7 +361,7 @@ Each strand is a 16-element array of random probabilities (0–1) that controls 
 1. **Rhythm Strand**: Controls when steps rest vs. play
 2. **Variation Strand**: Biases note length selection
 3. **Legato Strand**: Controls legato/tie probability
-4. **Accent Strand**: Controls accent gate probability *(NEW)*
+4. **Accent Strand**: Controls accent gate probability
 5. **Melody Strand**: Selects which semitone to play
 6. **Octave Strand**: Selects which octave to use
 
@@ -442,8 +424,49 @@ For each strand (Rhythm, Variation, Legato, Accent, Melody, Octave):
 
 ---
 
+## Modulation Visualisation (Mod Arcs)
+
+Whenever a control on Monsoon (or its visual expanders) is being modulated by CV, a small **arc** is drawn around that control showing what the modulation is doing in real time. This lets you *see* the effect of an LFO, envelope, or other CV source without having to deduce it from the output.
+
+Each arc shows three things at once:
+- The **knob pointer** (or slider handle) is the **set value** — where you placed the control by hand.
+- The **arc sweep** represents the **modulation amount** — the distance between the set value and the modulated value. A longer arc means more modulation; no arc means none.
+- The **small red dot** at the end of the arc is the **modulated value** — the value the engine is actually using this instant.
+
+So as a bipolar LFO swings, you will see the dot move back and forth around the knob's set position, with the arc growing and shrinking. The arc only appears while modulation is actually present; a static, unmodulated control shows no arc.
+
+Mod arcs appear on:
+- The **primary probability knobs** (Note Value, Variation, Legato, Rest, Accent) when modulated via **Junction** or **CV2**.
+- The **Slew** and **Mix** controls when modulated via **CV3** or **Raffles**.
+- The **pitch and octave sliders** when modulated via **Interchange**.
+- The **per-voice Rest** trimpots on the **Straits East/West** poly output expanders, when modulated by their per-voice Rest CV.
+- The **spread** controls on the Sands visual editors (mono, per-voice, and macro).
+
+> **Note on one-sided arcs:** If a control's set value sits near the very bottom or top of its range, modulation can only push it in one direction before it hits the limit — so the arc may look one-sided. This is the value genuinely clamping at its end stop, not a fault.
+
+---
+
+## Spread & Spread Interpolation
+
+**Spread** controls how strongly each voice's pattern is pulled toward a shared target, letting a set of poly voices converge toward a common feel or diverge from it. Spread is **bipolar**:
+- **Positive spread** pulls a voice's draw *toward* the target.
+- **Negative spread** pushes it *toward the inverse* of the target (away from it).
+- **Zero** leaves the voice's own draw untouched.
+
+This applies on the mono Sands visual, the per-voice (Straits East) editor, and the macro visual — all three use the same definition.
+
+### Interpolation Target (Monsoon context menu)
+
+The **target** that spread pulls toward is chosen on the **Monsoon module's right-click menu**, under **"Spread interpolation target"**. There is a single setting for the whole system:
+
+- **Average poly** *(default)*: each voice interpolates toward the average of all active draws — the mono strand plus every active poly voice, included together. Turning spread up gradually converges the voices toward a shared middle; turning it negative spreads them apart.
+- **Mono draw**: each voice interpolates toward the **mono (Voice 1) draw**. The mono strand becomes a fixed anchor and the poly voices are pulled toward (or away from) it. Because the mono voice is targeting itself, it stays put.
+
+This one menu governs both the sound and every visual display, so what you see on the Sands editors always matches what the sequencer is producing.
+
+---
+
 ## Polyphonic Output (Straits East & West)
-## Straits (Poly Voice Expander)
 
 The **Straits** expanders extend Monsoon from a mono sequencer to a 16-voice polyphonic system.
 The Straits expander adds **7 additional voices** (for 8 total) that follow the mono gate while drawing independent pitches from the melody strand.
@@ -483,7 +506,7 @@ For each voice (Voice 2 through Voice 8):
 
 - **Gate Output**: 10V when the voice is sounding, 0V when silent
 - **CV Output**: 1V/octave pitch (independent from other voices)
-- **Accent Output** *(NEW)*: 10V when the voice is accented and sounding, 0V otherwise
+- **Accent Output**: 10V when the voice is accented and sounding, 0V otherwise
 
 #### Voice Rest Probability
 
@@ -506,7 +529,31 @@ This ensures poly voices sound like independent players following a conductor (m
 
 ---
 
-## Accent Gates *(NEW FEATURE)*
+## The Visual Editors: Sands, Per-Voice & Macro
+
+The Sands visual editors give you a graphical, at-a-glance view of the probability "DNA" and let you edit it directly. There are three, covering different scopes:
+
+### Sands Visual (mono)
+Shows the primary (Voice 1) probability strands. Includes per-lane **spread** trimpots and their CV inputs, each carrying a mod arc when modulated. This is the simplest editor and works with just Monsoon + the mono Sands visual.
+
+### Straits East Sands Visual (per-voice)
+A **tabbed** editor for the polyphonic voices. A row of voice tabs (V2, V3, …) selects which voice you are editing; the editor then shows and edits that voice's strands. Each voice has its own per-(lane) spread controls, and — when a Macro is present — its own blend controls (below).
+
+### Straits Sands Macro Visual (global)
+A global controller for the whole poly system. It also carries **view tabs**, but these are **read-only**: they let you flip through each voice to *see* how the macro settings land on that voice, without changing which voice you are editing. The Macro is where you drive system-wide changes from one place.
+
+### Voice Ownership & Macro Blend
+
+When a Macro is connected, each per-voice parameter can be driven either by the voice's own setting or by the Macro — chosen per (voice, lane) with an **owner** switch on the Straits East editor:
+
+- **Owner = East (voice)**: the voice uses its own local value.
+- **Owner = Macro**: the voice follows the Macro's value for that lane.
+
+In addition, a **Macro-CV send** (per voice, per lane, for Length/Offset/Rotation/Spread) sets how much of the Macro's CV-driven movement is blended into that voice — defaulting to unity (full). This lets you, for example, have most voices follow a Macro sweep while one voice ignores it, or scale how strongly the sweep reaches each voice. The blend controls only appear when a Macro is actually present; without one, the per-voice editor hides them and each voice is simply self-owned.
+
+---
+
+## Accent Gates
 
 Accent gates add dynamic emphasis to your sequences, useful for:
 - Dynamics and expression (send to VCA before final output)
@@ -564,11 +611,11 @@ Result: Accented notes have brighter timbre
 ### 1. The "Living Melody" (Morphing)
 *   **Goal**: Create a melody that evolves between two distinct "themes" automatically.
 *   **Setup**: 
-    1. Set **Causeway Mix** to 0% (Buffer A).
-    2. Roll a melody you like, then press **Redice** on Causeway to commit it to A.
+    1. Set **Raffles Mix** to 0% (Buffer A).
+    2. Roll a melody you like, then press **Redice** on Raffles to commit it to A.
     3. Set **Live Source** to Buffer B.
     4. Roll a completely different melody (different scale, different rhythm) and commit it to B.
-    5. Patch a slow Sine LFO into the **Mix CV** on Causeway.
+    5. Patch a slow Sine LFO into the **Mix CV** on Raffles.
     6. Increase **Slew** to ~50%.
 *   **Result**: The sequencer will slowly morph the probability of notes and rhythms between Theme A and Theme B, creating a constantly changing but familiar musical landscape.
 
@@ -579,7 +626,7 @@ Result: Accented notes have brighter timbre
     2. Patch **Straits East Gates 1-3** to Snare, Hat, and Percussion modules.
     3. Open **Deep Straits Sands** and select Voice 2 (Snare). Paint a high "Rest" probability on steps 5 and 13 to emphasize backbeats.
     4. For Voice 3 (Hats), set a short **DNA Length** of 2 or 3 to create steady or syncopated ticking.
-    5. Patch an envelope into the **Surge "Variation" CV**.
+    5. Patch an envelope into the **Junction "Variation" CV**.
 *   **Result**: A synchronized drum machine where each "player" has their own DNA but follows the same master "Conductor" (Monsoon).
 
 ### 3. Tonal Remapping (Scale Modulation)
@@ -596,7 +643,7 @@ Result: Accented notes have brighter timbre
     1. Connect **Straits East & West** to 16 different oscillators tuned to the same scale.
     2. Use **Straits Macro Visual** to set **Global Spread** to 0% (All voices playing the same thing).
     3. Patch a very slow random voltage (like from Marbles or a slow LFO) into the **Macro Spread CV**.
-    4. Set **Causeway Slew** to 80%.
+    4. Set **Raffles Slew** to 80%.
 *   **Result**: The 16 voices will start in unison and slowly "bloom" into a complex chordal cloud as the spread increases, then slowly drift back together.
 
 ---
@@ -614,25 +661,6 @@ Result: Accented notes have brighter timbre
 ### Mode C & D: Quantizers
 *   **Mode C**: Quantizes incoming CV to the active weights set on the sliders.
 *   **Mode D**: Continuous live quantization with low latency.
-
----
-- Mono gate timing follows the clock
-- Poly voices tick in sync with mono
-
-### Mode B: Gate-Driven (Gated Step Sequencer)
-
-- **Trigger**: Advances on rising edge of GATE1 IN
-- **Use Case**: Perform manual sequencing or gate-driven patterns
-- **Best For**: Live performance, hand-controlled stepping, integration with other gate sources
-
-**Control**:
-- GATE1 IN controls when steps advance
-- Hold gate high for multiple clock cycles and the step won't change until gate releases
-- Useful for exploring variations slowly
-
-### Mode C & D
-
-Reserved for future expansion.
 
 ---
 
@@ -807,7 +835,15 @@ The VCV version builds on these concepts with:
 
 ## Version History
 
-### v2.1.0 (Current)
+### v3.1 (Current)
+- Module renames: **Surge → Junction**, **Causeway → Raffles** (user-facing names).
+- **Modulation visualisation**: live mod arcs on modulated controls (sweep = amount, dot = modulated value) across the primary knobs, slew/mix, pitch/octave sliders, per-voice Rest, and spread controls.
+- **Spread interpolation** centralised to a single definition with one Monsoon menu (**Average poly** / **Mono draw**); the display now always matches the sequencer.
+- **Bipolar spread** throughout, including per-voice (Straits East) spread.
+- **Bipolar CV2 / CV3** inputs (negative voltages now modulate instead of being clamped to zero).
+- Macro blend (owner/send) and voice-tab documentation; Straits East/West CV expander panel artwork restored.
+
+### v2.1.0
 - Added accent gates (mono and poly)
 - Improved rest priority logic (respects fractional note tails)
 - Poly voice state capture for smooth gate handoff
@@ -842,4 +878,4 @@ For questions, suggestions, or bug reports:
 
 ---
 
-*This documentation reflects the current state of Monsoon as of v2.1.0. Features and specifications are subject to change.*
+*This documentation reflects the current state of Monsoon as of v3.1. Features and specifications are subject to change.*

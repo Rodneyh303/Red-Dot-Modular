@@ -9,7 +9,8 @@ namespace redDot {
 
 struct RedScrew : rack::widget::Widget {
     void draw(const DrawArgs& args) override {
-        const float R = 5.0f;                 // ~ standard screw radius
+        // Standard VCV screw render is ~13px diameter; draw centred in our box.
+        const float R = 6.5f;                 // ~13px diameter = VCV-standard size
         float cx = box.size.x * 0.5f, cy = box.size.y * 0.5f;
         NVGcontext* vg = args.vg;
         // soft seat shadow
@@ -46,21 +47,25 @@ struct RedScrew : rack::widget::Widget {
 };
 
 // Add the four corner screws to a module widget. Box size must already be set.
+// Screw CENTRES sit at the Eurorack standard: 7.5mm from the left/right edges,
+// 3.0mm from the top/bottom edges (converted to px at Rack's 75 DPI: 1mm =
+// 75/25.4 = 2.95276 px). The screw is drawn centred in a small box.
 inline void addRedScrews(rack::app::ModuleWidget* mw) {
     using namespace rack;
-    const float SZ = 2.f * RACK_GRID_WIDTH;   // standard screw cell ~ 15.24px wide hole region
-    auto place = [&](float x, float y) {
+    const float MM = 75.f / 25.4f;            // px per mm
+    const float SZ = 14.f;                     // screw box (disc ~13px centred)
+    const float W = mw->box.size.x, H = mw->box.size.y;
+    const float ex = 7.5f * MM, ey = 3.0f * MM;   // centre insets from edges
+    auto place = [&](float cx, float cy) {
         auto* s = new redDot::RedScrew;
         s->box.size = math::Vec(SZ, SZ);
-        s->box.pos  = math::Vec(x, y);
+        s->box.pos  = math::Vec(cx - SZ * 0.5f, cy - SZ * 0.5f);  // box from centre
         mw->addChild(s);
     };
-    float right = mw->box.size.x - 2.f * RACK_GRID_WIDTH;
-    float bot   = RACK_GRID_HEIGHT - RACK_GRID_WIDTH;
-    place(RACK_GRID_WIDTH, 0);
-    place(right, 0);
-    place(RACK_GRID_WIDTH, bot);
-    place(right, bot);
+    place(ex,     ey);        // top-left
+    place(W - ex, ey);        // top-right
+    place(ex,     H - ey);    // bottom-left
+    place(W - ex, H - ey);    // bottom-right
 }
 
 } // namespace redDot

@@ -2,64 +2,77 @@
 #include "MonsoonCausewayExpander.hpp"
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
+#include "ui/ConnectMark.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
+#include "gen/CausewayLayout.gen.hpp"
+#include "ui/SvgPanelKit.hpp"
 
 using namespace rack;
 
 extern Model* modelMonsoon;
 
-// Geometry MUST match panel_src/gen_causeway.py. File-scope to avoid C++11
-// constexpr-static-member ODR linkage issues.
-static const float CW_CV_COLS[4] = {9.0f, 21.0f, 39.0f, 51.0f};
-static const float CW_CV_ROWS[2] = {38.0f, 50.0f};
-static const float CW_G_COLS[2]  = {16.0f, 44.0f};
-static const float CW_G_ROWS[5]  = {66.0f, 78.0f, 90.0f, 102.0f, 114.0f};
-
-struct MonsoonCausewayExpanderWidget : ModuleWidget {
+// Control positions live in the SVG kit (#components markers, generated from the
+// same panel_src/layouts/causeway.json). The CausewayLayout header is still used
+// for the draw() label coordinates.
+struct MonsoonCausewayExpanderWidget : ModuleWidget,
+    dotModular::Compose<MonsoonCausewayExpanderWidget,
+                        dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
-    rack::app::SvgPanel* panelWidget = nullptr;
+    redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;
 
-    MonsoonCausewayExpanderWidget(MonsoonCausewayExpander* module) {
-        setModule(module);
-        panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/Causeway_panel_dark.svg"));
-        panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/Causeway_panel_light.svg"));
-        panelWidget = createPanel(asset::plugin(pluginInstance, "res/panels/Causeway_panel_dark.svg"));
-        setPanel(panelWidget);
+    MonsoonCausewayExpanderWidget(MonsoonCausewayExpander* mod) {
+        setModule(mod);
+        const char* darkPath  = "res/panels/Raffles_panel_dark.svg";
+        const char* lightPath = "res/panels/Raffles_panel_light.svg";
+        panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance, darkPath));
+        panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance, lightPath));
+        loadPanel(asset::plugin(pluginInstance, darkPath));
         redDot::addRedScrews(this);
 
-       // using M = MonsoonIds;
-        // CV section: jack | atten | atten | jack, rows = slew, mix.
-        // Row 0 (slew): R jack/att on cols 0/1, M att/jack on cols 2/3.
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(CW_CV_COLS[0], CW_CV_ROWS[0])), module, MonsoonIds::CAUSEWAY_SLEW_R_CV));
-        addParam(createParamCentered<Trimpot>(  mm2px(Vec(CW_CV_COLS[1], CW_CV_ROWS[0])), module, MonsoonIds::CAUSEWAY_SLEW_R_ATT));
-        addParam(createParamCentered<Trimpot>(  mm2px(Vec(CW_CV_COLS[2], CW_CV_ROWS[0])), module, MonsoonIds::CAUSEWAY_SLEW_M_ATT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(CW_CV_COLS[3], CW_CV_ROWS[0])), module, MonsoonIds::CAUSEWAY_SLEW_M_CV));
-        // Row 1 (mix)
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(CW_CV_COLS[0], CW_CV_ROWS[1])), module, MonsoonIds::CAUSEWAY_MIX_R_CV));
-        addParam(createParamCentered<Trimpot>(  mm2px(Vec(CW_CV_COLS[1], CW_CV_ROWS[1])), module, MonsoonIds::CAUSEWAY_MIX_R_ATT));
-        addParam(createParamCentered<Trimpot>(  mm2px(Vec(CW_CV_COLS[2], CW_CV_ROWS[1])), module, MonsoonIds::CAUSEWAY_MIX_M_ATT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(CW_CV_COLS[3], CW_CV_ROWS[1])), module, MonsoonIds::CAUSEWAY_MIX_M_CV));
+        // All controls bound by id from the kit (#components). Marker ids are
+        // "<kind>_<CONTROL_ID>" emitted by gen_raffles.py from causeway.json.
+        bindInput<PJ301MPort>("input_CAUSEWAY_SLEW_R_CV",  MonsoonIds::CAUSEWAY_SLEW_R_CV);
+        bindParam<Trimpot>   ("param_CAUSEWAY_SLEW_R_ATT", MonsoonIds::CAUSEWAY_SLEW_R_ATT);
+        bindParam<Trimpot>   ("param_CAUSEWAY_SLEW_M_ATT", MonsoonIds::CAUSEWAY_SLEW_M_ATT);
+        bindInput<PJ301MPort>("input_CAUSEWAY_SLEW_M_CV",  MonsoonIds::CAUSEWAY_SLEW_M_CV);
+        bindInput<PJ301MPort>("input_CAUSEWAY_MIX_R_CV",   MonsoonIds::CAUSEWAY_MIX_R_CV);
+        bindParam<Trimpot>   ("param_CAUSEWAY_MIX_R_ATT",  MonsoonIds::CAUSEWAY_MIX_R_ATT);
+        bindParam<Trimpot>   ("param_CAUSEWAY_MIX_M_ATT",  MonsoonIds::CAUSEWAY_MIX_M_ATT);
+        bindInput<PJ301MPort>("input_CAUSEWAY_MIX_M_CV",   MonsoonIds::CAUSEWAY_MIX_M_CV);
 
-        // Gate section: rhythm left (col 0), melody right (col 1); 5 rows.
-        const int gateL[5] = { MonsoonIds::CAUSEWAY_GATE_TRIAL_R, MonsoonIds::CAUSEWAY_GATE_REDICE_R,
-            MonsoonIds::CAUSEWAY_GATE_LIVESRC_R, MonsoonIds::CAUSEWAY_GATE_LIVESTATIC_R, MonsoonIds::CAUSEWAY_GATE_RESEED_ROLL };
-        const int gateR[5] = { MonsoonIds::CAUSEWAY_GATE_TRIAL_M, MonsoonIds::CAUSEWAY_GATE_REDICE_M,
-            MonsoonIds::CAUSEWAY_GATE_LIVESRC_M, MonsoonIds::CAUSEWAY_GATE_LIVESTATIC_M, MonsoonIds::CAUSEWAY_GATE_RESEED_RESTART };
-        for (int r = 0; r < 5; ++r) {
-            addInput(createInputCentered<PJ301MPort>(mm2px(Vec(CW_G_COLS[0], CW_G_ROWS[r])), module, gateL[r]));
-            addInput(createInputCentered<PJ301MPort>(mm2px(Vec(CW_G_COLS[1], CW_G_ROWS[r])), module, gateR[r]));
+        bindInput<PJ301MPort>("input_CAUSEWAY_GATE_TRIAL_R",      MonsoonIds::CAUSEWAY_GATE_TRIAL_R);
+        bindInput<PJ301MPort>("input_CAUSEWAY_GATE_TRIAL_M",      MonsoonIds::CAUSEWAY_GATE_TRIAL_M);
+        bindInput<PJ301MPort>("input_CAUSEWAY_GATE_REDICE_R",     MonsoonIds::CAUSEWAY_GATE_REDICE_R);
+        bindInput<PJ301MPort>("input_CAUSEWAY_GATE_REDICE_M",     MonsoonIds::CAUSEWAY_GATE_REDICE_M);
+        bindInput<PJ301MPort>("input_CAUSEWAY_GATE_LIVESRC_R",    MonsoonIds::CAUSEWAY_GATE_LIVESRC_R);
+        bindInput<PJ301MPort>("input_CAUSEWAY_GATE_LIVESRC_M",    MonsoonIds::CAUSEWAY_GATE_LIVESRC_M);
+        bindInput<PJ301MPort>("input_CAUSEWAY_GATE_LIVESTATIC_R", MonsoonIds::CAUSEWAY_GATE_LIVESTATIC_R);
+        bindInput<PJ301MPort>("input_CAUSEWAY_GATE_LIVESTATIC_M", MonsoonIds::CAUSEWAY_GATE_LIVESTATIC_M);
+        bindInput<PJ301MPort>("input_CAUSEWAY_GATE_RESEED_ROLL",    MonsoonIds::CAUSEWAY_GATE_RESEED_ROLL);
+        bindInput<PJ301MPort>("input_CAUSEWAY_GATE_RESEED_RESTART", MonsoonIds::CAUSEWAY_GATE_RESEED_RESTART);
+
+        // dot.modular connect mark (brand mark; greyed when no Monsoon attached).
+        if (auto* s = findNamed("light_connect")) {
+            connectMark = redDot::makeConnectMark(mod, centerOf(s), mm2px(8.f));
+            addChild(connectMark);
         }
     }
 
     void step() override {
         ModuleWidget::step();
+        kitStep();
         if (!module) return;
         Monsoon* m = redDot::findMonsoonEitherSide(module);
         int wantLight = (m && m->lightTheme) ? 1 : 0;
         if (wantLight != lastThemeLight) {
             lastThemeLight = wantLight;
-            if (panelWidget) panelWidget->setBackground(wantLight ? panelSvgLight : panelSvgDark);
+            for (Widget* child : children) {
+                if (auto* sp = dynamic_cast<app::SvgPanel*>(child)) {
+                    sp->setBackground(wantLight ? panelSvgLight : panelSvgDark);
+                    break;
+                }
+            }
         }
     }
 
@@ -76,16 +89,22 @@ struct MonsoonCausewayExpanderWidget : ModuleWidget {
             nvgFontSize(vg, sz); nvgText(vg, mm2px(xmm), mm2px(ymm), s, nullptr);
         };
         // Section headers
-        T(30.f, 30.f, 9.f, "CAUSEWAY");
-        // CV row labels (left of each pair)
-        T((CW_CV_COLS[1]+CW_CV_COLS[2])/2.f, CW_CV_ROWS[0]-6.f, 7.f, "SLEW");
-        T((CW_CV_COLS[1]+CW_CV_COLS[2])/2.f, CW_CV_ROWS[1]-6.f, 7.f, "MIX");
-        T(CW_CV_COLS[0], CW_CV_ROWS[0]+6.f, 6.f, "R"); T(CW_CV_COLS[3], CW_CV_ROWS[0]+6.f, 6.f, "M");
-        // Gate row labels (between the two columns)
+        T(30.f, 30.f, 9.f, "RAFFLES");
+        // CV row labels — derived from the generated control coords.
+        const float cvMid = (CausewayLayout::CAUSEWAY_SLEW_R_ATT.x + CausewayLayout::CAUSEWAY_SLEW_M_ATT.x) / 2.f;
+        T(cvMid, CausewayLayout::CAUSEWAY_SLEW_R_CV.y - 6.f, 7.f, "SLEW");
+        T(cvMid, CausewayLayout::CAUSEWAY_MIX_R_CV.y - 6.f, 7.f, "MIX");
+        T(CausewayLayout::CAUSEWAY_SLEW_R_CV.x, CausewayLayout::CAUSEWAY_SLEW_R_CV.y + 6.f, 6.f, "R");
+        T(CausewayLayout::CAUSEWAY_SLEW_M_CV.x, CausewayLayout::CAUSEWAY_SLEW_M_CV.y + 6.f, 6.f, "M");
+        // Gate row labels (centred between the two gate columns)
         const char* gl[5] = {"TRIAL","REDICE","LIVE SRC","LIVE/STAT","RESEED"};
-        for (int r = 0; r < 5; ++r) T(30.f, CW_G_ROWS[r], 6.f, gl[r]);
+        const float gateY[5] = {
+            CausewayLayout::CAUSEWAY_GATE_TRIAL_R.y, CausewayLayout::CAUSEWAY_GATE_REDICE_R.y,
+            CausewayLayout::CAUSEWAY_GATE_LIVESRC_R.y, CausewayLayout::CAUSEWAY_GATE_LIVESTATIC_R.y,
+            CausewayLayout::CAUSEWAY_GATE_RESEED_ROLL.y };
+        for (int r = 0; r < 5; ++r) T(30.f, gateY[r], 6.f, gl[r]);
     }
 };
 
 Model* modelMonsoonCausewayExpander =
-    createModel<MonsoonCausewayExpander, MonsoonCausewayExpanderWidget>("MonsoonCausewayExpander");
+    createModel<MonsoonCausewayExpander, MonsoonCausewayExpanderWidget>("Raffles");

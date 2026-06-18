@@ -41,13 +41,13 @@ struct MonsoonExpanderManager {
     MonsoonInterchangeExpander*  cachedScaleExpander              = nullptr;
     rack::Module*                cachedCausewayExpander           = nullptr;
     rack::Module*                cachedSurgeExpander              = nullptr;
-    MonsoonSandsExpander*        cachedDnaExpander                = nullptr;
+    //MonsoonSandsExpander*        cachedDnaExpander                = nullptr;
     MonsoonSandsVisualExpander*  cachedSandsVisualExpander        = nullptr;
     MonsoonStraitsEastExpander*  cachedPolyVoiceExpander          = nullptr;
     MonsoonStraitWestExpander*   cachedStraitWestExpander         = nullptr;
     MonsoonStraitsSands*         cachedStraitsSandsExpander       = nullptr;
-    MonsoonDeepStraitsSandsEast* cachedDeepStraitsSandsEastExpander = nullptr;
-    MonsoonDeepStraitsSandsWest* cachedDeepStraitsSandsWestExpander = nullptr;
+    //MonsoonDeepStraitsSandsEast* cachedDeepStraitsSandsEastExpander = nullptr;
+    //MonsoonDeepStraitsSandsWest* cachedDeepStraitsSandsWestExpander = nullptr;
     // Poly visual DNA editors
     StraitsEastSandsVisual*      cachedEastSandsVisual            = nullptr;
     StraitsWestSandsVisual*      cachedWestSandsVisual            = nullptr;
@@ -69,24 +69,24 @@ struct MonsoonExpanderManager {
         cachedScaleExpander              = nullptr;
         cachedCausewayExpander           = nullptr;
         cachedSurgeExpander              = nullptr;
-        cachedDnaExpander                = nullptr;
+        //cachedDnaExpander                = nullptr;
         cachedSandsVisualExpander        = nullptr;
         cachedPolyVoiceExpander          = nullptr;
         cachedStraitWestExpander         = nullptr;
         cachedStraitsSandsExpander       = nullptr;
-        cachedDeepStraitsSandsEastExpander = nullptr;
-        cachedDeepStraitsSandsWestExpander = nullptr;
+       // cachedDeepStraitsSandsEastExpander = nullptr;
+        //cachedDeepStraitsSandsWestExpander = nullptr;
         cachedEastSandsVisual            = nullptr;
         cachedWestSandsVisual            = nullptr;
         cachedMacroSandsVisual           = nullptr;
 
         scaleExpanderCount              = 0;
-        dnaExpanderCount                = 0;
+        //dnaExpanderCount                = 0;
         sandsVisualExpanderCount        = 0;
         polyExpanderCount               = 0;
         straitWestExpanderCount         = 0;
         straitsSandsExpanderCount       = 0;
-        deepStraitsSandsEastExpanderCount = 0;
+        //deepStraitsSandsEastExpanderCount = 0;
         deepStraitsSandsWestExpanderCount = 0;
         eastSandsVisualCount            = 0;
         westSandsVisualCount            = 0;
@@ -109,9 +109,9 @@ struct MonsoonExpanderManager {
                     if (!cachedCausewayExpander) cachedCausewayExpander = curr;
                 } else if (curr->model == modelMonsoonSurgeExpander) {
                     if (!cachedSurgeExpander) cachedSurgeExpander = curr;
-                } else if (curr->model == modelMonsoonSandsExpander) {
-                    if (!cachedDnaExpander) cachedDnaExpander = reinterpret_cast<MonsoonSandsExpander*>(curr);
-                    dnaExpanderCount++;
+                // } else if (curr->model == modelMonsoonSandsExpander) {
+                //     if (!cachedDnaExpander) cachedDnaExpander = reinterpret_cast<MonsoonSandsExpander*>(curr);
+                //     dnaExpanderCount++;
                 } else if (curr->model == modelMonsoonSandsVisualExpander) {
                     if (!cachedSandsVisualExpander) cachedSandsVisualExpander = reinterpret_cast<MonsoonSandsVisualExpander*>(curr);
                     sandsVisualExpanderCount++;
@@ -121,21 +121,21 @@ struct MonsoonExpanderManager {
                 } else if (curr->model == modelMonsoonStraitWestExpander) {
                     if (!cachedStraitWestExpander) cachedStraitWestExpander = reinterpret_cast<MonsoonStraitWestExpander*>(curr);
                     straitWestExpanderCount++;
-                } else if (curr->model == modelMonsoonStraitsSands) {
-                    if (!cachedStraitsSandsExpander) cachedStraitsSandsExpander = reinterpret_cast<MonsoonStraitsSands*>(curr);
-                    straitsSandsExpanderCount++;
-                } else if (curr->model == modelMonsoonDeepStraitsSandsEast) {
-                    if (!cachedDeepStraitsSandsEastExpander) cachedDeepStraitsSandsEastExpander = reinterpret_cast<MonsoonDeepStraitsSandsEast*>(curr);
-                    deepStraitsSandsEastExpanderCount++;
-                } else if (curr->model == modelMonsoonDeepStraitsSandsWest) {
-                    if (!cachedDeepStraitsSandsWestExpander) cachedDeepStraitsSandsWestExpander = reinterpret_cast<MonsoonDeepStraitsSandsWest*>(curr);
-                    deepStraitsSandsWestExpanderCount++;
+                // } else if (curr->model == modelMonsoonStraitsSands) {
+                //     if (!cachedStraitsSandsExpander) cachedStraitsSandsExpander = reinterpret_cast<MonsoonStraitsSands*>(curr);
+                //     straitsSandsExpanderCount++;
+                // } else if (curr->model == modelMonsoonDeepStraitsSandsEast) {
+                //     if (!cachedDeepStraitsSandsEastExpander) cachedDeepStraitsSandsEastExpander = reinterpret_cast<MonsoonDeepStraitsSandsEast*>(curr);
+                //     deepStraitsSandsEastExpanderCount++;
+                // } else if (curr->model == modelMonsoonDeepStraitsSandsWest) {
+                //     if (!cachedDeepStraitsSandsWestExpander) cachedDeepStraitsSandsWestExpander = reinterpret_cast<MonsoonDeepStraitsSandsWest*>(curr);
+                //     deepStraitsSandsWestExpanderCount++;
                 } else if (curr->model == modelStraitsEastSandsVisual) {
                     if (!cachedEastSandsVisual) cachedEastSandsVisual = reinterpret_cast<StraitsEastSandsVisual*>(curr);
                     eastSandsVisualCount++;
-                } else if (curr->model == modelStraitsWestSandsVisual) {
-                    if (!cachedWestSandsVisual) cachedWestSandsVisual = reinterpret_cast<StraitsWestSandsVisual*>(curr);
-                    westSandsVisualCount++;
+                // } else if (curr->model == modelStraitsWestSandsVisual) {
+                //     if (!cachedWestSandsVisual) cachedWestSandsVisual = reinterpret_cast<StraitsWestSandsVisual*>(curr);
+                //     westSandsVisualCount++;
                 } else if (curr->model == modelStraitsSandsMacroVisual) {
                     if (!cachedMacroSandsVisual) cachedMacroSandsVisual = reinterpret_cast<StraitsSandsMacroVisual*>(curr);
                     macroSandsVisualCount++;
@@ -159,12 +159,11 @@ struct MonsoonExpanderManager {
     // True once one pointer of every expander type has been cached.
     bool allTypesFound() const {
         return cachedScaleExpander && cachedCausewayExpander && cachedSurgeExpander
-            && cachedDnaExpander && cachedSandsVisualExpander && cachedPolyVoiceExpander
+            && cachedSandsVisualExpander && cachedPolyVoiceExpander
             && cachedStraitWestExpander && cachedStraitsSandsExpander
-            && cachedDeepStraitsSandsEastExpander && cachedDeepStraitsSandsWestExpander
             && cachedEastSandsVisual && cachedWestSandsVisual && cachedMacroSandsVisual;
     }
 
     /// Synchronizes data between the engine and specific expanders (Deep Straits, Visual Editors, etc.)
-    void sync(SequencerEngine& engine);
+    void sync(SequencerEngine& engine, bool spreadInterpMono = false);
 };

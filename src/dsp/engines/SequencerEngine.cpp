@@ -2,14 +2,9 @@
 #include <cmath>
 #include <algorithm>
 
-//{"1/1","1/2","1/4","1/4T","1/8","1/8T","1/16","1/32"};
-//Fractional note values corresponding to the 8 possible note length settings, and the PPQN settings that allow them.
-//The sequencer uses the allowedPPQN bitmask to find the closest valid note length
-// if the user selects an unsupported one (e.g. 1/4T with PPQN=4).
-const NoteVal NOTEVALS[8] = {
-    {1.0f, 1|2|4}, {0.5f, 1|2|4}, {0.25f, 1|2|4}, {1.0f/6.0f, 4},
-    {0.125f, 2|4}, {1.0f/12.0f, 4}, {0.0625f, 2|4}, {0.03125f, 4},
-};
+// Note-value data (fraction, allowedPPQN, label) lives in dsp/NoteValues.hpp as
+// the single source of truth. The sequencer uses NOTE_VALUES[i].allowedPPQN to
+// snap an unsupported selection (e.g. 1/4T at PPQN=4) to the nearest valid one.
 
 
 
@@ -46,7 +41,7 @@ void SequencerEngine::reset() {
     resetArmed = false;
     prevGate1High = false;
     modeSelect = 0;
-    ppqnSetting = 4;
+    ppqnSetting = 24;
     noteVariationMask = 0b111;
     activeSemiCount = 0;
     for (int i = 0; i < 12; ++i) faderCache[i] = -1.f;
@@ -105,7 +100,7 @@ void SequencerEngine::updateWindow(float lenParam, float lenCv, bool lenPatched,
 
 int SequencerEngine::computeNoteLengthIdx(int requestedIdx, int ppqnMask) const {
     int idx = pe_clamp(requestedIdx, 0, 7);
-    while (idx > 0 && !(NOTEVALS[idx].allowedPPQN & ppqnMask)) {
+    while (idx > 0 && !(NOTE_VALUES[idx].allowedPPQN & ppqnMask)) {
         idx--;
     }
     return idx;
@@ -113,7 +108,11 @@ int SequencerEngine::computeNoteLengthIdx(int requestedIdx, int ppqnMask) const 
 
 int SequencerEngine::getNoteLenIdx(float baseNoteParam, const PatternInput& input, float r) {
     int baseIdx = pe_clamp<int>((int)std::round(baseNoteParam), 0, 7);
-    int ppqnMask = (ppqnSetting == 1) ? 1 : (ppqnSetting == 4) ? 2 : 4;
+    // PPQN is now always 24/48/96 — all of which resolve every note value to an
+    // integer pulse count (24 already covers 1/32 and all triplets). So every
+    // value is legal; mask = the full-resolution bit (4). (The old 1/4 PPQN
+    // settings, which gated out sub-step values, are gone.)
+    int ppqnMask = 4;
     baseIdx = computeNoteLengthIdx(baseIdx, ppqnMask);
     return pe.varyNoteIndex(baseIdx, input, r);
 }
@@ -169,12 +168,43 @@ bool SequencerEngine::shouldTriggerStep(int ppqn) const {
 }
 
 StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float accentProb, const PatternInput& input, bool wasHeld, bool hadTail) {
+    // ── Fractional notes (1/4T=2.667, 1/8T=1.333, 1/32=0.5 steps) & legato/tie ──
+    // These notes end MID-STEP (closed by the gateSecRemain seconds-timer), not on
+    // a 1/16 grid edge. Legato/tie decisions only happen AT an edge and require the
+    // previous note to still be sounding (wasHeld). That gives three rules, all
+    // verified to hold with the current engine — they are by-design, not bugs:
+    //
+    //  1. A fractional note CANNOT be the FIRST/source note of a legato or tie.
+    //     It has already closed before the next edge, so wasHeld is false there and
+    //     the legato/tie branch is unreachable — the next step starts fresh. This
+    //     is musically correct: a sub-step note leaves a real gap, which is not
+    //     legato. (Design choice "A": accepted, not patched.)
+    //
+    //  2. A fractional note CAN be the LAST/destination note of a legato or tie.
+    //     The gate is already open from the held source note; extendHold()/
+    //     slideNote() add the fractional length and re-arm gateSecRemain on the
+    //     summed hold, so the gate rides open to the exact sub-step end.
+    //     e.g. 1/8→1/4T = 4.667 steps, 1/4→1/8T = 5.333, 1/8→1/32 = 2.5 (exact).
+    //
+    //  3. A fractional note CANNOT be a MIDDLE note of a 3-note tie. To be a middle
+    //     note it would have to be both a destination (rule 2, OK) AND a source
+    //     (rule 1, impossible). After it closes mid-step, the third note finds
+    //     wasHeld=false at its edge and retriggers as a NewNote — the tie chain
+    //     breaks cleanly at the fractional note, with no false reopened gate.
     StepResult result;
     result.nvIdx = nvIdx;
 
     // Mid-note: previous note's hold is still counting down.
     // Poly voices seeing MidNote will tick their own holds and return.
-    if (gs.holdRemain >= 1.f) {
+    //
+    // The guard must also stay in MidNote while a fractional sub-step tail is
+    // still sounding: a triplet (1/4T = 2.667 steps, 1/8T = 1.333) leaves
+    // holdRemain < 1 on its final partial step while the precise gate timer
+    // (gateSecRemain) is still open. Without the gateSecRemain check, that last
+    // step fired a NEW note and cut the triplet to a whole-step length — 1/4T
+    // played as 1/8, 1/8T as 1/16. (1/32 = 0.5 steps closes within its own step
+    // before any edge, so it was unaffected — matching the observed scope.)
+    if (gs.holdRemain >= 1.f || gs.gatePulseRemain > 0) {
         result.decision = MonoDecision::MidNote;
         result.accented = lastStepResult.accented;
         lastStepResult = result;
@@ -207,11 +237,11 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
         }
     }
     else if (r_legato_tie < legatoProb) {
-        if (sem == gs.lastSemitone && wasHeld) {
+        if (sem == gs.lastSemitone && (wasHeld || hadTail)) {
             gs.extendHold(sem, nvIdx);
             result.decision = MonoDecision::Tie;
         } else {
-            gs.slideNote(pitchV, sem, nvIdx, wasHeld);
+            gs.slideNote(pitchV, sem, nvIdx, wasHeld || hadTail);
             result.decision = MonoDecision::Legato;
         }
     }
@@ -263,14 +293,14 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
     int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
 
     float prevHold = gs.holdRemain;
-    wasHeldMono = gs.gateHeld;
-    gs.tick();
-    hadMonoTail = (wasHeldMono && prevHold > 0.0001f && prevHold < 0.999f);
+    wasHeldMono = gs.gateHeld || (prevHold > 0.0001f);
+    gs.tick(ClockEngine::pulsesPer16th(ppqnSetting));
+    hadMonoTail = (prevHold > 0.0001f && prevHold < 0.999f);
 
     for (int i = 0; i < numPolyVoices; ++i) {
-        wasHeldPolyPrev[i] = voices[i].gs.gateHeld;
+        wasHeldPolyPrev[i] = voices[i].gs.gateHeld || (voices[i].gs.holdRemain > 0.0001f);
         float ph = voices[i].gs.holdRemain;
-        voices[i].gs.tick();
+        voices[i].gs.tick(ClockEngine::pulsesPer16th(ppqnSetting));
         hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
     }
     
@@ -306,12 +336,12 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
         int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
 
         float prevHold = gs.holdRemain;
-        wasHeldMono = gs.gateHeld;
+        wasHeldMono = gs.gateHeld || (prevHold > 0.0001f);
         gs.tick();
-        hadMonoTail = (wasHeldMono && prevHold > 0.0001f && prevHold < 0.999f);
+        hadMonoTail = (prevHold > 0.0001f && prevHold < 0.999f);
 
         for (int i = 0; i < numPolyVoices; ++i) {
-            wasHeldPolyPrev[i] = voices[i].gs.gateHeld;
+            wasHeldPolyPrev[i] = voices[i].gs.gateHeld || (voices[i].gs.holdRemain > 0.0001f);
             float ph = voices[i].gs.holdRemain;
             voices[i].gs.tick();
             hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
@@ -421,7 +451,7 @@ void SequencerEngine::executePolyVoices(const PatternInput& input) {
 void SequencerEngine::executeModeC(const ClockEngine& clock, float inCV) {
     gs.gateHeld = false;
     if (clock.quarterEdge) {
-        gs.tick();
+        gs.tick(ClockEngine::pulsesPer16th(ppqnSetting));
         advancePlayhead();
         gs.currentPitchV = quantize(inCV);
         int sem = int(std::round((gs.currentPitchV - std::floor(gs.currentPitchV)) * 12.f)) % 12;

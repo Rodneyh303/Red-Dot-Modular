@@ -18,14 +18,14 @@
   #include <xmmintrin.h>   // _MM_SET_FLUSH_ZERO_MODE (SSE)
 #endif
 
-#include "MonsoonSandsExpander.hpp"
+//#include "MonsoonSandsExpander.hpp"
 #include "MonsoonInterchangeExpander.hpp"
 #include "MonsoonStraitsEastExpander.hpp"
 #include "MonsoonStraitWestExpander.hpp"      // NEW (Phase 4)
-#include "MonsoonStraitsSands.hpp"            // NEW (Macro): global DNA controls
-#include "MonsoonDeepStraitsSands.hpp"        // NEW (Deep): per-voice DNA controls
+//#include "MonsoonStraitsSands.hpp"            // NEW (Macro): global DNA controls
+//#include "MonsoonDeepStraitsSands.hpp"        // NEW (Deep): per-voice DNA controls
 #include "StraitsEastSandsVisual.hpp"         // Visual DNA editor (East)
-#include "StraitsWestSandsVisual.hpp"         // Visual DNA editor (West)
+//#include "StraitsWestSandsVisual.hpp"         // Visual DNA editor (West)
 #include "StraitsSandsMacroVisual.hpp"        // Visual DNA editor (Macro)
 #include "MonsoonWidget.hpp"
 #include "Monsoon.hpp"
@@ -449,6 +449,15 @@ void Monsoon::process(const ProcessArgs& args) {
 
     // --- Mode dispatch (only if running) ---
     if (runGateActive) {
+        // Gate-close on the PPQN grid pulse (finer than the 1/16 decision edge):
+        // every grid pulse, decrement each voice's gate-pulse counter and drop the
+        // gate when it expires. Sole gate-close path (replaces the per-sample
+        // seconds timer) — triplets/1/32 close on an exact pulse boundary.
+        if (clock.pulseEdge) {
+            engine.gs.tickPulse();
+            for (int i = 0; i < engine.numPolyVoices; ++i)
+                engine.voices[i].gs.tickPulse();
+        }
         // Optimization: Only execute mode logic if a relevant trigger/state is active.
         // This avoids calling executeMode and its internal switch every sample for Modes A, B, C.
         bool gate1High = input.gate1 >= 1.0f;
@@ -504,10 +513,36 @@ void Monsoon::process(const ProcessArgs& args) {
 
 
 
+    // ── Modulation-viz snapshot (normalised effective big-5 values) ──
+    // Published EVERY sample (not throttled) so the knob mod-arcs' modulated value
+    // tracks the live param with ≤1-sample lag. When this was throttled, a manual
+    // knob turn raced ahead of the snapshot by up to a throttle interval, and the
+    // resulting set-vs-mod delta (≈1/7 per note step ≫ the 0.01 draw threshold)
+    // drew a transient arc each frame that read as a red "trail" — even with no
+    // modulator attached. Cheap (~17 scalar getters/sample).
+    if (paramManager) {
+        modViz.noteValue = paramManager->getNoteValueNorm();
+        modViz.variation = paramManager->getVariationNorm();
+        modViz.legato    = paramManager->getLegatoNorm();
+        modViz.rest      = paramManager->getRestNorm();
+        modViz.accent    = paramManager->getAccentNorm();
+        modViz.active    = paramManager->anyBig5Modulated();
+        for (int i = 0; i < 5; ++i) modViz.big5Lane[i] = paramManager->big5LaneModulated(i);
+        modViz.rhythmSlew = paramManager->getRhythmSlewNorm();
+        modViz.melodySlew = paramManager->getMelodySlewNorm();
+        modViz.rhythmMix  = paramManager->getRhythmMixNorm();
+        modViz.melodyMix  = paramManager->getMelodyMixNorm();
+        modViz.activeCv3  = paramManager->anyCv3Modulated();
+        for (int i = 0; i < 4; ++i) modViz.cv3Lane[i] = paramManager->cv3LaneModulated(i);
+        for (int i = 0; i < 12; ++i) modViz.semitone[i] = paramManager->getSemitoneNorm(i);
+        modViz.octaveLo   = paramManager->getOctaveLoNorm();
+        modViz.octaveHi   = paramManager->getOctaveHiNorm();
+        modViz.activePitch = paramManager->anyPitchModulated();
+        for (int i = 0; i < 14; ++i) modViz.pitchLane[i] = paramManager->pitchLaneModulated(i);
+    }
+
     // ── Throttle UI and Light processing ──
     if (lightDivider.process()) {
-        // Throttled Visuals/Outputs
-        // ── UI Light Updates ──
         if (uiManager) {
             // Move these here from per-sample logic
             uiManager->updateDiceLights(engine.pe.isRhythmSeedPending(), engine.pe.isMelodySeedPending());
@@ -640,10 +675,10 @@ void Monsoon::process(const ProcessArgs& args) {
         engine.accentProb = paramManager->getAccent();
 
         // Check for expander changes and update cached pointers
-        dnaManager.processDNA(expanderManager);
+        dnaManager.processDNA(expanderManager, spreadInterpMono);
 
         // ── Deep Straits Sands Expanders (Control Rate Orchestration) ──
-        expanderManager.sync(engine);
+        expanderManager.sync(engine, spreadInterpMono);
         
         // Refresh Audio-Rate Caches (Throttled)
         cachedBpmParam = params[BPM_PARAM].getValue();
@@ -684,7 +719,9 @@ void Monsoon::process(const ProcessArgs& args) {
             }
             // ParameterManager::getPolyRest includes the global Rest knob + global CV.
             // Here we add the per-voice modulation on top.
-            engine.voices[i].restProb = clamp(base + modulation, 0.f, 1.f);
+            float eff = clamp(base + modulation, 0.f, 1.f);
+            engine.voices[i].restProb = eff;
+            cachedPolyRestEffective[i] = eff;   // final value (knob+global+per-voice mod) for modviz
         }
 
         // Handle Throttled CV1 Logic (Range Modulation)
@@ -719,8 +756,8 @@ void Monsoon::process(const ProcessArgs& args) {
         paramManager->clearCv2Offsets();
         // Mode C and D use CV2 as the pitch input to be quantized
         if (modeSelect < 2 && inputs[CV2_INPUT].isConnected()) { // CV2 is used for quantization in modes C and D
-            float v    = clampv<float>(inputs[CV2_INPUT].getVoltage(), 0.f, 5.f);
-            float norm = v / 5.f; 
+            float v    = clampv<float>(inputs[CV2_INPUT].getVoltage(), -5.f, 5.f);
+            float norm = v / 5.f;   // now bipolar -1..+1 (was 0..1; rectified the negative half)
             if (cv2Mode == 0) paramManager->setCv2Offset(0, norm * 8.f);
             if (cv2Mode == 1) paramManager->setCv2Offset(1, norm);
             if (cv2Mode == 2) paramManager->setCv2Offset(2, norm);
@@ -731,10 +768,11 @@ void Monsoon::process(const ProcessArgs& args) {
         // ── Assignable CV3 & Causeway Modulation (Throttled) ──
         float cv3Mods[4] = {0.f, 0.f, 0.f, 0.f};
         
-        // 1. Main Panel CV3 (Unipolar offset to selected target)
+        // 1. Main Panel CV3 (bipolar offset to selected target; was unipolar 0..5
+        //    which rectified the negative half — an attenuverter implies bipolar).
         if (cachedCv3Connected) {
             float v = inputs[CV3_MOD_INPUT].getVoltage();
-            cv3Mods[cv3Target] = clampv<float>(v, 0.f, 5.f) / 5.f;
+            cv3Mods[cv3Target] = clampv<float>(v, -5.f, 5.f) / 5.f;
         }
 
         // 2. Causeway Expander (Summing bipolar attenuverted CVs)

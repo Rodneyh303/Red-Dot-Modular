@@ -11,7 +11,11 @@ PW, PH = px(W_MM), px(H_MM)
 ROW_TOP, ROW_BOT, N = 14.0, 108.0, 6
 def rowY(r): return ROW_TOP + (r+0.5)*(ROW_BOT-ROW_TOP)/N
 COL_J1, COL_J2, COL_A1, COL_A2, SPREAD_X = 8.0, 18.0, 30.0, 39.0, 49.0
-ED_X, ED_Y = 58.0, 18.0
+# Extra top margin so the voice tab row isn't crammed against the panel top edge.
+# 0.5 cm = 5 mm. Adjust + rerun the generator (and mirror TAB_TOP_OFFSET_MM in
+# StraitsEastSandsVisualWidget) to taste.
+TAB_TOP_OFFSET_MM = 5.0
+ED_X, ED_Y = 58.0, 18.0 + TAB_TOP_OFFSET_MM
 ED_W = W_MM - ED_X - 4.0
 ED_H = 48.0
 
@@ -54,36 +58,42 @@ def logo_embed(dark, x_mm, y_mm, target_w_mm):
     return f'<g transform="translate({tx:.2f},{ty:.2f}) scale({scale:.5f})">{body}</g>'
 
 def mbs(x_mm, y_mm, w_mm, h_mm, t, op):
-    # Marina Bay Sands: three slanted trapezoidal towers + connecting skypark
-    # deck, with faint window lines and antenna dots — geometry adapted from the
-    # earlier panel concept, but rendered nanosvg-safe (solid per-shape fills,
-    # no gradient, no group-inherited paint).
+    # Marina Bay Sands: three leaning tower-pairs (curved-lean outer + straight
+    # inner leg) carrying the SkyPark boat deck, plus a fountain spray fan. Mapped
+    # from the reference content box (x[90..630], y[150..500]) into the panel box.
+    # nanosvg-safe. Window-grid + fountain only when large (h>55px). Kept in sync
+    # with dotmod_design.mbs (same art).
     x,y,w,h = px(x_mm),px(y_mm),px(w_mm),px(h_mm)
-    fill=t["motif"]; acc=t["accent"]
-    tw=w*0.165; gap=(w-3*tw)/2.0; th=h; by=y+h; lean=tw*0.06
+    fill=t["motif"]; acc=t["accent"]; bright=t["ink"]
+    big=(h>55)
+    RX0,RX1,RY0,RY1 = 90.0,630.0,150.0,500.0
+    def MX(rx): return x+(rx-RX0)/(RX1-RX0)*w
+    def MY(ry): return y+(ry-RY0)/(RY1-RY0)*h
     L=[]; A=L.append
-    xs=[x, x+tw+gap, x+2*(tw+gap)]
-    for tx in xs:
-        # trapezoid: slightly wider at base (towers lean), as real MBS
-        x1,x2 = tx+lean, tx+tw-lean      # top
-        x3,x4 = tx+tw, tx                # base
-        A(f'<polygon points="{x1:.1f},{y:.1f} {x2:.1f},{y:.1f} {x3:.1f},{by:.1f} {x4:.1f},{by:.1f}" '
+    lean=[(210,500,260,400,280,190,295,190,270,400,250,500),
+          (340,500,390,400,410,190,425,190,400,400,380,500),
+          (470,500,520,400,540,190,555,190,530,400,510,500)]
+    for (a1,a2,b1,b2,c1,c2,d1,d2,e1,e2,f1,f2) in lean:
+        A(f'<path d="M {MX(a1):.1f} {MY(a2):.1f} Q {MX(b1):.1f} {MY(b2):.1f} {MX(c1):.1f} {MY(c2):.1f} '
+          f'L {MX(d1):.1f} {MY(d2):.1f} Q {MX(e1):.1f} {MY(e2):.1f} {MX(f1):.1f} {MY(f2):.1f} Z" '
           f'fill="{fill}" fill-opacity="{op}"/>')
-        # two faint window bands per tower
-        for f_ in (0.36, 0.64):
-            wy=y+th*f_
-            A(f'<line x1="{tx+lean*0.6:.1f}" y1="{wy:.1f}" x2="{tx+tw-lean*0.6:.1f}" y2="{wy:.1f}" '
-              f'stroke="{acc}" stroke-width="0.5" stroke-opacity="{op*0.4:.3f}"/>')
-        # antenna + dot atop each tower
-        cxk=tx+tw*0.5
-        A(f'<line x1="{cxk:.1f}" y1="{y:.1f}" x2="{cxk:.1f}" y2="{y-h*0.10:.1f}" stroke="{acc}" stroke-width="0.6" stroke-opacity="{op*0.6:.3f}"/>')
-        A(f'<circle cx="{cxk:.1f}" cy="{y-h*0.12:.1f}" r="1.1" fill="{acc}" fill-opacity="{op*0.6:.3f}"/>')
-    # skypark deck spanning the three tops (slight lift to the right, MBS-like)
-    dy=y-h*0.06
-    A(f'<polygon points="{x-w*0.02:.1f},{dy:.1f} {x+w+w*0.06:.1f},{dy-h*0.05:.1f} '
-      f'{x+w+w*0.06:.1f},{dy-h*0.05+h*0.06:.1f} {x-w*0.02:.1f},{dy+h*0.06:.1f}" '
-      f'fill="{fill}" fill-opacity="{op}"/>')
+    for (a1,a2,b1,b2,c1,c2,d1,d2) in [(290,500,305,190,330,190,330,500),(420,500,435,190,460,190,460,500),(550,500,565,190,590,190,590,500)]:
+        A(f'<polygon points="{MX(a1):.1f},{MY(a2):.1f} {MX(b1):.1f},{MY(b2):.1f} {MX(c1):.1f},{MY(c2):.1f} {MX(d1):.1f},{MY(d2):.1f}" fill="{fill}" fill-opacity="{op}"/>')
+    if big:
+        for (sx0,sx1) in [(290,330),(420,460),(550,590)]:
+            for f_ in (0.18,0.34,0.50,0.66,0.82):
+                ry=190+(500-190)*f_
+                A(f'<line x1="{MX(sx0):.1f}" y1="{MY(ry):.1f}" x2="{MX(sx1):.1f}" y2="{MY(ry):.1f}" stroke="{acc}" stroke-width="0.4" stroke-opacity="{op*0.3:.3f}"/>')
+    A(f'<path d="M {MX(90):.1f} {MY(150):.1f} Q {MX(365):.1f} {MY(160):.1f} {MX(630):.1f} {MY(150):.1f} '
+      f'C {MX(640):.1f} {MY(150):.1f} {MX(640):.1f} {MY(190):.1f} {MX(620):.1f} {MY(190):.1f} '
+      f'L {MX(280):.1f} {MY(190):.1f} Q {MX(160):.1f} {MY(190):.1f} {MX(90):.1f} {MY(150):.1f} Z" fill="{fill}" fill-opacity="{op}"/>')
+    A(f'<path d="M {MX(90):.1f} {MY(150):.1f} Q {MX(365):.1f} {MY(160):.1f} {MX(630):.1f} {MY(150):.1f}" fill="none" stroke="{bright}" stroke-width="0.8" stroke-opacity="{op*0.7:.3f}" stroke-linecap="round"/>')
+    if big:
+        fb=MY(500)
+        for (tx,ty) in [(70,390),(100,360),(140,340),(180,370),(210,400)]:
+            A(f'<line x1="{MX(140):.1f}" y1="{fb:.1f}" x2="{MX(tx):.1f}" y2="{MY(ty):.1f}" stroke="{bright}" stroke-width="0.5" stroke-opacity="{op*0.45:.3f}" stroke-linecap="round"/>')
     return "".join(L)
+
 
 def waves(x_mm, y_mm, t, op, rows=3, span_mm=138.0):
     x0=px(x_mm); col=t["motifwave"]; L=[]; A=L.append
@@ -103,20 +113,32 @@ def gen(dark):
     A(f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="{PW}" height="{PH}" viewBox="0 0 {PW} {PH}">')
     A(f'<g inkscape:label="artwork" inkscape:groupmode="layer">')
     A(f'<rect width="{PW}" height="{PH}" fill="{t["bg"]}"/>')
-    A(mbs(116.0, 96.0, 78.0, 18.0, t, op=0.8))
-    A(waves(58.0, 116.0, t, op=0.7, rows=3, span_mm=140.0))
+    # red accent rule under the branding strip + footer rule
     A(f'<line x1="0" y1="{px(11):.1f}" x2="{PW}" y2="{px(11):.1f}" stroke="{t["accent"]}" stroke-width="1.5" opacity="0.55"/>')
     A(f'<line x1="0" y1="{px(120):.1f}" x2="{PW}" y2="{px(120):.1f}" stroke="{t["groupline"]}" stroke-width="1" opacity="0.7"/>')
-    gx,gy=4.0,ROW_TOP-4.0; gw,gh=(SPREAD_X+5.0)-gx,(ROW_BOT+2.0)-(ROW_TOP-4.0)
-    A(f'<rect x="{px(gx):.1f}" y="{px(gy):.1f}" width="{px(gw):.1f}" height="{px(gh):.1f}" rx="{px(2):.1f}" fill="{t["group"]}" stroke="{t["groupline"]}" stroke-width="1"/>')
-    # (no header tab — the title strip above serves as the section header)
-    sepx=0.5*(COL_J2+COL_A1)
-    A(f'<line x1="{px(sepx):.1f}" y1="{px(gy+2):.1f}" x2="{px(sepx):.1f}" y2="{px(gy+gh-2):.1f}" stroke="{t["groupline"]}" stroke-width="0.75" opacity="0.6"/>')
+
+    # ── editor recess: a framed "display window", with a large faint Marina Bay
+    #    Sands watermark INSIDE it so the empty state reads as Marina Bay, not a
+    #    void (the live editor widget draws on top). ──
     A(f'<rect x="{px(ED_X):.1f}" y="{px(ED_Y-6):.1f}" width="{px(ED_W):.1f}" height="{px(5):.1f}" rx="{px(1):.1f}" fill="{t["tabband"]}" opacity="0.6"/>')
     A(f'<rect x="{px(ED_X):.1f}" y="{px(ED_Y):.1f}" width="{px(ED_W):.1f}" height="{px(ED_H):.1f}" rx="{px(1.5):.1f}" fill="{t["edrecess"]}" stroke="{t["edborder"]}" stroke-width="1"/>')
+    # MBS watermark centred in the editor, large + faint (reads as Marina Bay)
+    A(mbs(ED_X+ED_W*0.28, ED_Y+ED_H-5.0, ED_W*0.46, ED_H*0.68, t, op=0.16))
     for k in range(1,3):
         ly=ED_Y+k*(ED_H/3.0)
         A(f'<line x1="{px(ED_X+1):.1f}" y1="{px(ly):.1f}" x2="{px(ED_X+ED_W-1):.1f}" y2="{px(ly):.1f}" stroke="{t["edborder"]}" stroke-width="0.75" opacity="0.7"/>')
+
+    # ── below the editor + footer: Marina Bay water (waves) as an integrated
+    #    base band spanning the full control-to-edge width ──
+    A(waves(ED_X, 112.0, t, op=0.6, rows=3, span_mm=ED_W))
+    # a crisp MBS as the identity mark, sat on the water, lower-right
+    A(mbs(W_MM-66.0, 111.0, 52.0, 14.0, t, op=0.85))
+
+    # ── control group recess (left) ──
+    gx,gy=4.0,ROW_TOP-4.0; gw,gh=(SPREAD_X+5.0)-gx,(ROW_BOT+2.0)-(ROW_TOP-4.0)
+    A(f'<rect x="{px(gx):.1f}" y="{px(gy):.1f}" width="{px(gw):.1f}" height="{px(gh):.1f}" rx="{px(2):.1f}" fill="{t["group"]}" stroke="{t["groupline"]}" stroke-width="1"/>')
+    sepx=0.5*(COL_J2+COL_A1)
+    A(f'<line x1="{px(sepx):.1f}" y1="{px(gy+2):.1f}" x2="{px(sepx):.1f}" y2="{px(gy+gh-2):.1f}" stroke="{t["groupline"]}" stroke-width="0.75" opacity="0.6"/>')
     A('</g>')
     A(f'<g inkscape:label="branding" inkscape:groupmode="layer">')
     A(logo_embed(dark, x_mm=11.0, y_mm=4.5, target_w_mm=42.0))
@@ -133,8 +155,70 @@ def gen(dark):
         trim(COL_A1,y,t["gold"]); trim(COL_A2,y,t["gold"])
     for lane in range(3):
         y=0.5*(rowY(lane*2)+rowY(lane*2+1)); trim(SPREAD_X,y,t["teal"])
+
+    # ── Macro/East blend controls — 3 labelled groups (REST / MELODY / OCTAVE),
+    #    each a boxed cluster: an owner on/off button (top-left) + a 2×2 grid of
+    #    MACRO CV SEND trimpots (Len/Off/Rot/Spr). Group boxes + a "MACRO BLEND"
+    #    header give the previously-loose row a clear structure. Labels (group
+    #    names + item names) are drawn by the widget in NanoVG (the panel carries
+    #    no baked text), positioned to match these coordinates. Only meaningful
+    #    with a Macro visual attached; the module greys them out otherwise. ──
+    BLEND_TOP = 74.0               # below the editor (ED_Y+ED_H = 66)
+    BLEND_H   = 30.0
+    GROUP_W   = ED_W/3.0
+    GAP       = 3.0
+    # section header rule
+    A(f'<line x1="{px(ED_X):.1f}" y1="{px(BLEND_TOP-3.0):.1f}" x2="{px(ED_X+ED_W):.1f}" y2="{px(BLEND_TOP-3.0):.1f}" stroke="{t["edborder"]}" stroke-width="0.8" opacity="0.7"/>')
+    LANE_NAMES = ["REST","MELODY","OCTAVE"]
+    OWN_XY = []     # owner button centres, per lane
+    SEND_XY = []    # send trim centres, per (lane,item)
+    for l in range(3):
+        gx = ED_X + l*GROUP_W + GAP*0.5
+        gw = GROUP_W - GAP
+        # group box
+        A(f'<rect x="{px(gx):.1f}" y="{px(BLEND_TOP):.1f}" width="{px(gw):.1f}" height="{px(BLEND_H):.1f}" rx="{px(1.2):.1f}" fill="{t["edrecess"]}" stroke="{t["edborder"]}" stroke-width="0.9" opacity="0.9"/>')
+        # owner button: top-left of the box
+        oy = BLEND_TOP + 6.5
+        ox = gx + 5.5
+        A(f'<circle cx="{px(ox):.1f}" cy="{px(oy):.1f}" r="{px(2.4):.1f}" fill="{t["edrecess"]}" stroke="{t["accent"]}" stroke-width="1.1"/>')
+        OWN_XY.append((ox,oy))
+        # 2×2 send grid in the right ~2/3 of the box
+        sx0 = gx + gw*0.42
+        sxs = gw*0.26
+        sy0 = BLEND_TOP + 8.5
+        sys = 12.0
+        lane_sends=[]
+        for item in range(4):
+            cxs = sx0 + (item % 2)*sxs
+            cys = sy0 + (item // 2)*sys
+            trim(cxs, cys, t["gold"])
+            lane_sends.append((cxs,cys))
+        SEND_XY.append(lane_sends)
     A('</g>')
-    # (screws are drawn by the C++ RedScrew widget, not the panel SVG)
+    # ── SvgPanelKit component layer. Indices mirror StraitsEastSandsVisual.hpp:
+    #    cvId(r,c)=CV_START(0)+r*2+c  inputs 0..11;
+    #    attenId(r,c)=ATTEN_START(3)+r*2+c  params 3..14;
+    #    SPREAD_R/M/O = params 0/1/2. ──
+    def kit_shape(kind, idx, x, y):
+        A(f'<circle id="{kind}_{idx}" cx="{px(x):.2f}" cy="{px(y):.2f}" r="0.5" fill="none" stroke="none"/>')
+    A('<g inkscape:label="components" inkscape:groupmode="layer">')
+    for r in range(6):
+        y=rowY(r)
+        kit_shape("input", 0+r*2+0, COL_J1, y); kit_shape("input", 0+r*2+1, COL_J2, y)
+        kit_shape("param", 3+r*2+0, COL_A1, y); kit_shape("param", 3+r*2+1, COL_A2, y)
+    for lane in range(3):
+        y=0.5*(rowY(lane*2)+rowY(lane*2+1))
+        kit_shape("param", lane, SPREAD_X, y)   # SPREAD_R/M/O = 0/1/2
+    # Macro/East blend control markers (named; bound to display proxies). Use the
+    # grouped coordinates computed above (OWN_XY, SEND_XY).
+    for l in range(3):
+        ox,oy = OWN_XY[l]
+        A(f'<circle id="param_owner_{l}" cx="{px(ox):.2f}" cy="{px(oy):.2f}" r="0.5" fill="none" stroke="none"/>')
+        for item in range(4):
+            cxs,cys = SEND_XY[l][item]
+            A(f'<circle id="param_send_{l}_{item}" cx="{px(cxs):.2f}" cy="{px(cys):.2f}" r="0.5" fill="none" stroke="none"/>')
+    A(f'<circle id="light_connect" cx="{px(W_MM*0.5):.2f}" cy="{px(124.0):.2f}" r="0.5" fill="none" stroke="none"/>')
+    A('</g>')
     A('</svg>')
     return "\n".join(L)
 

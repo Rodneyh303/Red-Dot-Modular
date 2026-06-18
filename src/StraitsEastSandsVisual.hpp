@@ -20,7 +20,10 @@ namespace StraitsEastVisualIds {
     static constexpr float COL_A2 = 39.f;
     static constexpr float SPREAD_X = 49.f;      // per-lane spread trimpot column
     static constexpr float ED_X   = 58.f;        // editor starts after spread column
-    static constexpr float ED_Y   = 18.f;        // editor top (below 2-row tab band)
+    // Mirror TAB_TOP_OFFSET_MM in panel_src/gen_east_clean.py (extra top margin so
+    // the tab row clears the panel top edge; 0.5cm = 5mm).
+    static constexpr float TAB_TOP_OFFSET_MM = 5.f;
+    static constexpr float ED_Y   = 18.f + TAB_TOP_OFFSET_MM;  // editor top (below 2-row tab band)
     static constexpr float ED_W   = W_MM - ED_X - 4.f;  // ~141.2mm
     // Editor height sized so the 3 poly lanes are close to the Mono lane height
     // (~16mm), not ~30mm. Leaves the lower panel free for decoration / logos.
@@ -78,18 +81,57 @@ namespace StraitsEastVisualIds {
     }
     inline float targetLo(int param) { return (param == 0) ? 1.f : 0.f; }
     inline float targetHi(int param) { return (param == 0) ? 16.f : (param < 3) ? 15.f : 1.f; }
+
+    // Macro/East base owner per (voice, lane): MonsoonIds::MACRO_OWN_START + v*3 + lane.
+    // 0 = Macro owns (default), 1 = East owns.
+    inline int ownerId(int v, int lane) { return MonsoonIds::MACRO_OWN_START + v*3 + lane; }
+    // Macro-CV blend send per (voice, lane, item) item 0=LEN 1=OFF 2=ROT 3=SPR:
+    //   MonsoonIds::MACRO_SEND_START + (v*3 + lane)*4 + item. Default unity.
+    inline int sendId(int v, int lane, int item) { return MonsoonIds::MACRO_SEND_START + (v*3 + lane)*4 + item; }
+    // Display proxies (selected-voice view; copied to/from the per-voice params
+    // on voice switch). ownerDispId(lane) 0-2; sendDispId(lane,item) 0-11.
+    inline int ownerDispId(int lane)           { return MonsoonIds::MACRO_OWN_DISP_START + lane; }
+    inline int sendDispId(int lane, int item)  { return MonsoonIds::MACRO_SEND_DISP_START + lane*4 + item; }
+
+    // Local lights for this module (East visual has its own light space, separate
+    // from Monsoon's). Owner latch lights — lit when the lane is East-owned.
+    enum LightIds {
+        OWNER_LIGHT_START = 0,          // 3 lights, one per lane (REST/MEL/OCT)
+        OWNER_LIGHT_END = OWNER_LIGHT_START + 3,
+        NUM_LIGHTS = OWNER_LIGHT_END
+    };
+    inline int ownerLightId(int lane) { return OWNER_LIGHT_START + lane; }
 }
 
 struct StraitsEastSandsVisual : Module {
-    bool interpUseMono = false;
+
+    // Per-voice, per-lane EFFECTIVE spread (interp param + per-voice/lane CV·att,
+    // clamped, after combineSpread) — published by MonsoonExpanderManager each
+    // sync so the East spread trimpot mod-arc can show the viewed voice's value.
+    // lane: 0=REST 1=MELODY 2=OCTAVE. Bipolar-ish 0..1 interp domain.
+    float polySpreadEffective[15][3] = {};
 
     StraitsEastSandsVisual() {
         using namespace StraitsEastVisualIds;
-        config(MonsoonIds::NUM_PARAMS, StraitsEastVisualIds::NUM_INPUTS, 0, 0);
+        config(MonsoonIds::NUM_PARAMS, StraitsEastVisualIds::NUM_INPUTS, 0, StraitsEastVisualIds::NUM_LIGHTS);
 
         configParam(SPREAD_R, -1.f,1.f,0.f,"Spread REST");
         configParam(SPREAD_M, -1.f,1.f,0.f,"Spread MELODY");
         configParam(SPREAD_O, -1.f,1.f,0.f,"Spread OCTAVE");
+
+        // Display proxies for the selected-voice owner/send controls (copied
+        // to/from the per-voice MACRO_OWN/SEND params on voice switch). Owner is
+        // an on/off switch (off=Macro owns base, on=East owns). Sends -1..1
+        // default unity (Macro CV reaches the voice; turn down to localise).
+        const char* laneNm[3] = {"REST","MEL","OCT"};
+        const char* itemNm[4] = {"Len","Off","Rot","Spr"};
+        for (int lane=0; lane<3; ++lane) {
+            configSwitch(ownerDispId(lane), 0.f,1.f,0.f,
+                         std::string(laneNm[lane])+" base owner", {"Macro","East"});
+            for (int item=0; item<4; ++item)
+                configParam(sendDispId(lane,item), -1.f,1.f,1.f,
+                            std::string(laneNm[lane])+" Macro send "+itemNm[item]);
+        }
 
         static const char* rowNames[6][2] = {
             {"REST Len","REST Off"}, {"REST Rot","REST Spr"},
@@ -98,7 +140,7 @@ struct StraitsEastSandsVisual : Module {
         };
         for (int r=0; r<6; ++r)
             for (int c=0; c<2; ++c) {
-                configParam(attenId(r,c), -1.f,1.f,1.f,
+                configParam(attenId(r,c), -1.f,1.f,0.f,
                             std::string(rowNames[r][c])+" depth");
                 configInput(cvId(r,c),
                             std::string(rowNames[r][c])+" CV (poly)");
@@ -111,20 +153,35 @@ struct StraitsEastSandsVisual : Module {
                     configParam(lorId(v,lane,c), 0.f,16.f,
                                 c==0?16.f:0.f, vl+"l"+std::to_string(lane)+"c"+std::to_string(c));
             }
-            configParam(restInterpId(v),   0.f,1.f,0.f,vl+"Spread REST");
-            configParam(melodyInterpId(v), 0.f,1.f,0.f,vl+"Spread MEL");
-            configParam(octaveInterpId(v), 0.f,1.f,0.f,vl+"Spread OCT");
+            configParam(restInterpId(v),   -1.f,1.f,0.f,vl+"Spread REST");
+            configParam(melodyInterpId(v), -1.f,1.f,0.f,vl+"Spread MEL");
+            configParam(octaveInterpId(v), -1.f,1.f,0.f,vl+"Spread OCT");
+
+            // Base owner (0=Macro default, 1=East) + Macro-CV blend sends (unity
+            // default) per lane. Switch/snap so owner reads as discrete 0/1.
+            for (int lane=0; lane<3; ++lane) {
+                configSwitch(ownerId(v,lane), 0.f,1.f,0.f,
+                             vl+"L"+std::to_string(lane)+" base owner", {"Macro","East"});
+                for (int item=0; item<4; ++item)
+                    configParam(sendId(v,lane,item), -1.f,1.f,1.f,
+                                vl+"L"+std::to_string(lane)+" Macro send "+std::to_string(item));
+            }
         }
     }
 
-    void process(const ProcessArgs&) override {}
+    void process(const ProcessArgs&) override {
+        // Owner latch lights: lit when the lane's base owner is East (param > 0.5).
+        // The owner-disp param mirrors the currently-selected voice's owner.
+        for (int lane = 0; lane < 3; ++lane)
+            lights[StraitsEastVisualIds::ownerLightId(lane)].setBrightness(
+                params[StraitsEastVisualIds::ownerDispId(lane)].getValue() > 0.5f ? 1.f : 0.f);
+    }
 
     json_t* dataToJson() override {
         json_t* r = json_object();
-        json_object_set_new(r,"interpUseMono",json_boolean(interpUseMono));
         return r;
     }
     void dataFromJson(json_t* root) override {
-        if (auto* j=json_object_get(root,"interpUseMono")) interpUseMono=json_boolean_value(j);
+        (void)root;  // interpUseMono moved to Monsoon::spreadInterpMono
     }
 };
