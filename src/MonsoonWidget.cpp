@@ -168,12 +168,15 @@ static void flushModArcs(MonsoonWidget* mw, Monsoon* module) {
         arc->pad = pad;
         if (p.linear) {
             arc->mode = redDot::ModArcOverlay::LINEAR_V;
-            // Inset the travel a touch so the tick sits within the slider track.
             arc->travelTopPx = p.knob->box.size.y * 0.10f;
             arc->travelBotPx = p.knob->box.size.y * 0.10f;
         } else {
             arc->radius = std::min(p.knob->box.size.x, p.knob->box.size.y) * p.radiusFrac + mm2px(0.6f);
         }
+        // Pad the overlay box so the arc/caps never draw outside it (prevents the
+        // stale "trail" pixels on manual knob turns). Sets box pos/size + LINEAR
+        // travel insets in one place.
+        arc->attachOverKnob(p.knob, mm2px(2.5f));
         int pid = p.knob->paramId;
         arc->getSetNorm = [module, pid]() -> float {
             if (!module) return 0.f;

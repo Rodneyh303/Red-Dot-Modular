@@ -1,6 +1,6 @@
 #pragma once
 #include <rack.hpp>
-
+#include "VisualExpanderHelpers.hpp"
 // dot.modular connection indicator built from the brand MARK (the little red dot
 // with its Lissajous figure), instead of a plain LED. When the expander is
 // connected to a Monsoon core the mark shows in full brand colour; when not, it
@@ -51,5 +51,21 @@ struct ConnectMark : rack::widget::Widget {
         }
     }
 };
+
+// Build a ConnectMark sized to `sizePx` (square) centred on panel coordinate
+// `center`, wired to a module via findMonsoonEitherSide. Explicit, robust
+// placement — avoids the createWidgetCentered-then-resize ordering subtlety that
+// can leave a kit bindChild-placed mark mis-centred. The mark's rendered art is
+// scaled to fill ~85% of the box so a larger box gives a larger mark.
+template <class TModule>
+inline ConnectMark* makeConnectMark(TModule* module, rack::math::Vec center, float sizePx) {
+    auto* w = new ConnectMark();
+    w->box.size = rack::math::Vec(sizePx, sizePx);
+    w->box.pos  = center.minus(w->box.size.div(2));
+    w->markPx   = sizePx * 0.85f;
+    w->connected  = [module]() { return redDot::isConnectedAndClaimed(module); };
+    w->lightTheme = [module]() { Monsoon* mm = module ? redDot::findMonsoonEitherSide(module) : nullptr; return mm && mm->lightTheme; };
+    return w;
+}
 
 } // namespace redDot

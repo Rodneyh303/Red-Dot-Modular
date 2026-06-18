@@ -78,7 +78,7 @@ struct MonsoonSandsVisualExpander : Module {
 
     MonsoonSandsVisualExpander() {
         using namespace SandsMonoVisualIds;
-        config(NUM_PARAMS, NUM_INPUTS, 0, 0);
+        config(SandsMonoVisualIds::NUM_PARAMS, SandsMonoVisualIds::NUM_INPUTS, 0, 0);
 
         static const char* names[6]  = {"REST","MEL","OCT","LEG","ACC","VAR"};
         static const char* lnames[3] = {"Len","Off","Rot"};

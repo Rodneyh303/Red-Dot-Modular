@@ -38,6 +38,7 @@ struct MonsoonStraitsEastExpanderWidget : ModuleWidget,
             arc->box.size = knob->box.size.plus(rack::math::Vec(arcPad*2.f, arcPad*2.f));
             arc->pad = arcPad;
             arc->radius   = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
+            arc->attachOverKnob(knob, mm2px(2.5f));
             rack::Module* self = module;
             // Show the per-voice CV modulation: compare the final effective rest
             // against the SAME-FRAME base (knob + global CV), both from Monsoon's
@@ -100,13 +101,10 @@ struct MonsoonStraitsEastExpanderWidget : ModuleWidget,
         flushRestArcs();   // attach per-voice REST mod-arcs on top of the knobs
 
         // dot.modular connect mark (brand mark; greyed when no Monsoon attached).
-        connectMark = bindChild<redDot::ConnectMark>("light_connect",
-            std::function<void(redDot::ConnectMark*)>([this](redDot::ConnectMark* w){
-                w->box.size = mm2px(rack::math::Vec(8.f, 8.f));
-                w->box.pos  = w->box.pos.minus(w->box.size.div(2));
-                w->connected  = [this]() { return module && redDot::findMonsoonEitherSide(module) != nullptr; };
-                w->lightTheme = [this]() { Monsoon* mm = module ? redDot::findMonsoonEitherSide(module) : nullptr; return mm && mm->lightTheme; };
-            }));
+        if (auto* s = findNamed("light_connect")) {
+            connectMark = redDot::makeConnectMark(module, centerOf(s), mm2px(8.f));
+            addChild(connectMark);
+        }
     }
 
     void step() override {

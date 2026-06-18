@@ -43,6 +43,7 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             arc->box.size = knob->box.size.plus(rack::math::Vec(arcPad*2.f, arcPad*2.f));
             arc->pad = arcPad;
             arc->radius   = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
+            arc->attachOverKnob(knob, mm2px(2.5f));
             MonsoonSandsVisualExpander* mm = mod;
             int pid = knob->paramId;
             arc->getSetNorm = [mm, pid]() -> float {
@@ -113,13 +114,8 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
 
         // dot.modular connect mark (brand mark; greyed when no Monsoon attached).
         {
-            auto* w = new redDot::ConnectMark();
-            w->box.size = mm2px(rack::math::Vec(8.f, 8.f));
-            w->box.pos  = mm2px(rack::math::Vec(W_MM * 0.5f, 124.f)).minus(w->box.size.div(2));
-            w->connected  = [this]() { return module && redDot::findMonsoonEitherSide(module) != nullptr; };
-            w->lightTheme = [this]() { Monsoon* mm = module ? redDot::findMonsoonEitherSide(module) : nullptr; return mm && mm->lightTheme; };
-            connectMark = w;
-            addChild(w);
+            connectMark = redDot::makeConnectMark(module, mm2px(rack::math::Vec(W_MM * 0.5f, 124.f)), mm2px(8.f));
+            addChild(connectMark);
         }
     }
 
