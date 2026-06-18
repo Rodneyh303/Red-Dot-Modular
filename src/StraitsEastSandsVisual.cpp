@@ -50,14 +50,18 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 return (lane==0) ? restInterpId(v) : (lane==1) ? melodyInterpId(v) : octaveInterpId(v);
             };
             arc->getSetNorm = [mod, interpParamId]() -> float {
-                if (!mod) return 0.f;
-                return rack::math::clamp(mod->params[interpParamId()].getValue(), 0.f, 1.f);
+                if (!mod) return 0.5f;
+                // Interp/spread params are bipolar -1..1; map to 0..1 (centre=0.5).
+                // getScaledValue() does this correctly over the param's range.
+                auto* pq = mod->paramQuantities[interpParamId()];
+                return pq ? (float)pq->getScaledValue() : 0.5f;
             };
             arc->getModNorm = [mod, this, lane]() -> float {
-                if (!mod) return 0.f;
+                if (!mod) return 0.5f;
                 int v = selectedVoice;
-                if (v < 0 || v >= 15) return 0.f;
-                return rack::math::clamp(mod->polySpreadEffective[v][lane], 0.f, 1.f);
+                if (v < 0 || v >= 15) return 0.5f;
+                // polySpreadEffective is bipolar -1..1 → map to 0..1.
+                return rack::math::clamp((mod->polySpreadEffective[v][lane] + 1.f) * 0.5f, 0.f, 1.f);
             };
             arc->isActive = [mod, this, lane, interpParamId]() -> bool {
                 if (!mod) return false;
