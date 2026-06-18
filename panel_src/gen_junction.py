@@ -121,7 +121,9 @@ def panel(theme):
         o.append(trim_well(t, ATT_X, y,  cid=f"param_SURGE_{NAMES[i]}_ATT"))
     # dot.modular connect light anchor (brand red dot). Position via this marker;
     # the RedDotLight widget binds to it by id. Footer-centre by default.
-    o.append(f'<circle id="light_connect" cx="{mm(20.0):.1f}" cy="{mm(124.0):.1f}" r="3" fill="none" stroke="none"/>')
+    # dot.modular connect mark anchor. fill-opacity 0 (not fill=none) so nanosvg
+    # reliably keeps this no-paint shape in the parsed list for kit findNamed.
+    o.append(f'<circle id="light_connect" cx="{mm(20.0):.1f}" cy="{mm(124.0):.1f}" r="0.5" fill="#000000" fill-opacity="0"/>')
     o.append('</g>')
     o.append('</svg>')
     return "\n".join(o)
