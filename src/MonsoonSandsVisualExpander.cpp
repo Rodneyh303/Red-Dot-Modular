@@ -109,13 +109,8 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
 
         // dot.modular connect mark (brand mark; greyed when no Monsoon attached).
         {
-            auto* w = new redDot::ConnectMark();
-            w->box.size = mm2px(rack::math::Vec(8.f, 8.f));
-            w->box.pos  = mm2px(rack::math::Vec(W_MM * 0.5f, 124.f)).minus(w->box.size.div(2));
-            w->connected  = [this]() { return redDot::isConnectedAndClaimed(module); };
-            w->lightTheme = [this]() { Monsoon* mm = module ? redDot::findMonsoonEitherSide(module) : nullptr; return mm && mm->lightTheme; };
-            connectMark = w;
-            addChild(w);
+            connectMark = redDot::makeConnectMark(module, mm2px(rack::math::Vec(W_MM * 0.5f, 124.f)), mm2px(8.f));
+            addChild(connectMark);
         }
     }
 

@@ -45,13 +45,8 @@ addInput(createInputCentered<PJ301MPort>(Vec(222.0f, octY), module, MonsoonIds::
     // dot.modular connect mark (brand mark; greyed when no Monsoon attached). This
     // panel is hand-placed in px (270x380), so position directly; footer-centre.
     {
-        auto* w = new redDot::ConnectMark();
-        w->box.size = rack::math::Vec(24.f, 24.f);
-        w->box.pos  = rack::math::Vec(135.f, 360.f).minus(w->box.size.div(2));
-        w->connected  = [this]() { return redDot::isConnectedAndClaimed(module); };
-        w->lightTheme = [this]() { Monsoon* mm = module ? redDot::findMonsoonEitherSide(module) : nullptr; return mm && mm->lightTheme; };
-        connectMark = w;
-        addChild(w);
+        connectMark = redDot::makeConnectMark(module, rack::math::Vec(135.f, 360.f), 24.f);
+        addChild(connectMark);
     }
 }
     Monsoon* getMonsoon() {

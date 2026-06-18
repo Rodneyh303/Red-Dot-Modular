@@ -53,13 +53,10 @@ struct MonsoonCausewayExpanderWidget : ModuleWidget,
         bindInput<PJ301MPort>("input_CAUSEWAY_GATE_RESEED_RESTART", MonsoonIds::CAUSEWAY_GATE_RESEED_RESTART);
 
         // dot.modular connect mark (brand mark; greyed when no Monsoon attached).
-        connectMark = bindChild<redDot::ConnectMark>("light_connect",
-            std::function<void(redDot::ConnectMark*)>([this](redDot::ConnectMark* w){
-                w->box.size = mm2px(rack::math::Vec(8.f, 8.f));
-                w->box.pos  = w->box.pos.minus(w->box.size.div(2));
-                w->connected  = [this]() { return redDot::isConnectedAndClaimed(module); };
-                w->lightTheme = [this]() { Monsoon* mm = module ? redDot::findMonsoonEitherSide(module) : nullptr; return mm && mm->lightTheme; };
-            }));
+        if (auto* s = findNamed("light_connect")) {
+            connectMark = redDot::makeConnectMark(module, centerOf(s), mm2px(8.f));
+            addChild(connectMark);
+        }
     }
 
     void step() override {
