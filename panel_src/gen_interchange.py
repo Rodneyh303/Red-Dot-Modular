@@ -85,19 +85,73 @@ def diamond(cx, cy, t, r=7.0):
             f'fill="none" stroke="{t["gold"]}" stroke-width="0.5" opacity="0.45"/>')
 
 
+def h_connector(xa, xb, y, t):
+    """Horizontal link between two adjacent controls in a row: 3 parallel tick
+    lines + a small grey diamond at the gap midpoint. Reproduces the original's
+    'HORIZONTAL CONNECTORS'. xa<xb are the two control x's; ticks span the gap."""
+    cx = (xa + xb) * 0.5
+    # gap inset ~ leave room around each control well (well r≈7)
+    x0, x1 = xa + 9.0, xb - 9.0
+    return (f'<g stroke="{t["connector"]}" stroke-width="0.5" fill="none" opacity="0.45">'
+            f'<line x1="{x0:.1f}" y1="{y-3:.1f}" x2="{x1:.1f}" y2="{y-3:.1f}"/>'
+            f'<line x1="{x0:.1f}" y1="{y+3:.1f}" x2="{x1:.1f}" y2="{y+3:.1f}"/>'
+            f'<line x1="{x0:.1f}" y1="{y:.1f}" x2="{x1:.1f}" y2="{y:.1f}" stroke-width="0.3" opacity="0.5"/>'
+            f'<polygon points="{cx:.1f},{y-6:.1f} {cx+5:.1f},{y:.1f} {cx:.1f},{y+6:.1f} {cx-5:.1f},{y:.1f}"/>'
+            f'</g>')
+
+
+def v_connector(x, ya, yb, t):
+    """Vertical link between two stacked controls in a column: a grey diamond +
+    centre dot at the gap midpoint. Reproduces 'VERTICAL CONNECTORS'."""
+    cy = (ya + yb) * 0.5
+    return (f'<g stroke="{t["connector"]}" stroke-width="0.5" fill="none" opacity="0.45">'
+            f'<polygon points="{x:.1f},{cy-5:.1f} {x+5:.1f},{cy:.1f} {x:.1f},{cy+5:.1f} {x-5:.1f},{cy:.1f}"/>'
+            f'<circle cx="{x:.1f}" cy="{cy:.1f}" r="1.2" fill="{t["connector"]}" stroke="none" opacity="0.5"/>'
+            f'</g>')
+
+
+def centre_bridge(xa, xb, y, t):
+    """Gold nested-diamond bridge spanning the centre gap (between the two atten
+    columns) at a row height. Reproduces 'CENTRE RECT CELLS'."""
+    cx = (xa + xb) * 0.5
+    half = (xb - xa) * 0.5 - 3.0
+    return (f'<g stroke="{t["gold"]}" stroke-width="0.6" fill="none" opacity="0.5">'
+            f'<polygon points="{xa+3:.1f},{y:.1f} {cx:.1f},{y-10:.1f} {xb-3:.1f},{y:.1f} {cx:.1f},{y+10:.1f}"/>'
+            f'<polygon points="{cx-half*0.6:.1f},{y:.1f} {cx:.1f},{y-6:.1f} {cx+half*0.6:.1f},{y:.1f} {cx:.1f},{y+6:.1f}"/>'
+            f'<polygon points="{cx-4:.1f},{y:.1f} {cx:.1f},{y-4:.1f} {cx+4:.1f},{y:.1f} {cx:.1f},{y+4:.1f}" stroke-width="0.4"/>'
+            f'<circle cx="{cx:.1f}" cy="{y:.1f}" r="1.8" fill="{t["gold"]}" stroke="none"/>'
+            f'<circle cx="{xa+3:.1f}" cy="{y:.1f}" r="1.2" fill="{t["gold"]}" stroke="none"/>'
+            f'<circle cx="{xb-3:.1f}" cy="{y:.1f}" r="1.2" fill="{t["gold"]}" stroke="none"/>'
+            f'</g>')
+
+
 def lattice(t):
-    """Per-control Peranakan hex cells (one centred on every control) + a central
-    diamond chain between the two attenuverter columns + teal edge ticks."""
+    """Per-control Peranakan hex cells, then the linking lattice that makes it an
+    INTERCHANGE: horizontal connectors between adjacent controls in each row,
+    vertical connectors between stacked controls in each column, and a gold
+    centre-bridge spanning the two halves. Plus teal edge ticks."""
     L = []
     A = L.append
     all_rows = SEMI_ROWS_Y + [OCT_Y]
-    # a hex cell on every control position
+
+    # 1. hex cell on every control position
     for y in all_rows:
         for x in COL_X:
             A(hex_cell(x, y, t))
-        # centre diamond between the two atten columns
-        A(diamond((COL_X[1] + COL_X[2]) * 0.5, y, t))
-    # teal edge chain — small ticks down each side, subtler than a big zigzag
+
+    # 2. HORIZONTAL connectors: link col0↔col1 and col2↔col3 within each row
+    #    (the outer CV↔atten pairs), and the gold centre bridge col1↔col2.
+    for y in all_rows:
+        A(h_connector(COL_X[0], COL_X[1], y, t))
+        A(h_connector(COL_X[2], COL_X[3], y, t))
+        A(centre_bridge(COL_X[1], COL_X[2], y, t))
+
+    # 3. VERTICAL connectors: link each column's stacked controls, row→row.
+    for ci, x in enumerate(COL_X):
+        for r in range(len(all_rows) - 1):
+            A(v_connector(x, all_rows[r], all_rows[r + 1], t))
+
+    # 4. teal edge chain down each side
     A(f'<g fill="none" stroke="{t["teal"]}" stroke-width="0.9" opacity="0.4">')
     for ex in (16.0, W - 16.0):
         for yy in range(56, 340, 20):
