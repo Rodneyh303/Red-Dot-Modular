@@ -68,6 +68,20 @@ inline uint64_t squaresMakeKey(uint64_t seed) {
 // so it can act like a conventional sequential RNG (next()/nextFloat()), while
 // also exposing the addressable at(counter) form for reversible/random-access use.
 struct SquaresRng {
+    // ── Standard C++ UniformRandomBitGenerator interface ───────────────────────
+    // Satisfies the named requirement, so SquaresRng works with any <random>
+    // distribution (std::uniform_int_distribution, std::shuffle, etc.):
+    //   std::uniform_int_distribution<int> d(0,99);  SquaresRng g(seed);  d(g);
+    // Native output is 64-bit (squares64), so result_type is uint64_t.
+    // NOTE: drawing THROUGH a std distribution advances the counter by a
+    // variable amount (the distribution decides how many words it needs), so
+    // distribution draws are NOT cleanly position-addressable — use at()/
+    // atUniform()/fillBlock() for the reversible/phase path.
+    using result_type = uint64_t;
+    static constexpr result_type min() { return 0ULL; }
+    static constexpr result_type max() { return ~0ULL; }
+    result_type operator()() { return next(); }
+
     uint64_t key     = squaresMakeKey(0xC0FFEEULL);
     uint64_t counter = 0;
 
