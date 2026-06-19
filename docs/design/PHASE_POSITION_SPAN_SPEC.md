@@ -47,6 +47,58 @@ just SETTING that triple to arbitrary values. Everything below is about deriving
 the audible state (gate open? pitch? accent?) from that triple.
 
 ═══════════════════════════════════════════════════════════════════════════════
+## 1b. Modulation within a draw (A/B mix, spread, slew) — the refinement
+
+"Within a draw the arrays are fixed" is true only of the RAW dice. The EFFECTIVE
+values feeding executeStep are modulated. Confirmed mechanics (PatternEngine):
+
+  - A/B MIX: effective[i] = A[i] + mix*(B[i]-A[i]), where A=*LockedA[] (committed
+    draw) and B=*CandB[] (candidate draw) are BOTH FIXED arrays within a draw. The
+    mix coefficient is LIVE, sampled at control rate (latchMix runs every control
+    tick — NOT phrase-latched, despite the "Latched" name; it just caches the last
+    sampled value and recomputes the blend when it changes).
+  - SPREAD: a continuous transform of the variation value (spread = 2*|var-0.5|,
+    reach = spread*maxDist), driven by a live knob at control rate.
+  - SLEW: already CONSUMED at roll/redraw time to shape B — NOT a live per-pulse
+    transform (recomputeEffective uses mix, not slew). Slew matters only at
+    draw/redraw boundaries, not within-draw traversal.
+
+Honest model:
+    effective[i] = F( fixedArrays[i] , liveCoeffs )
+  fixedArrays = {A[i], B[i], rawDraw[i]}  — position-pure, regenerable from the
+                                            draw-counter via the §6 block allocator.
+  liveCoeffs  = {mix_r, mix_m, spread_lane...} — a SMALL set of live scalars,
+                                            applied identically regardless of position.
+
+This split is BETTER than feared: ALL position-dependence lives in the fixed arrays;
+modulation is just a few live scalars. Two regimes:
+
+  REGIME 1 — continuous play (forward OR reverse, no jump):
+    liveCoeffs stay LIVE — correct and desirable: you hear A/B and spread move as you
+    turn them while phase drives position. Each pulse decides with current coeffs. No
+    freezing. (User mental-model #1: normal fwd/rev with live modulation is fine.)
+
+  REGIME 2 — jump / scrub (discontinuity):
+    No defined coeff trajectory between source and destination ⇒ FREEZE liveCoeffs at
+    the jump instant and integrate forward (§3) with that frozen snapshot. The jump
+    then reproduces EXACTLY what continuous play would have produced had coeffs been
+    constant across the traversed region. (User #3 precompute, #4 freeze, #5 integrate
+    forward — all three are this one rule.)
+
+Note-LENGTH under a jump: variation→note value→span. A note that STARTS during the
+integration uses the frozen variation coeff. Freeze once at jump start, hold for the
+whole integration ⇒ spans self-consistent. A note already SOUNDING when the jump
+arrives (user #2: half-note, jump 3-4 steps) keeps its span — it started pre-jump
+with pre-jump coeffs; the integration only re-decides notes starting at/after the
+jump origin, and the half-note's span (8 steps) simply still covers the destination.
+
+PHRASE-BOUNDARY OPEN QUESTION (deferred — user considering): A and B are committed/
+promoted at redraw (phrase) boundaries (redrawRhythm promoteToA), while mix is live.
+Going BACKWARD across a boundary, do A/B re-commit to the prior phrase's draw? This
+is the modulation analogue of the draw-counter question, NOT yet traced. Resolve
+before building cross-boundary reverse (step 3).
+
+═══════════════════════════════════════════════════════════════════════════════
 ## 2. What decides a note TODAY (ground truth from executeStep)
 
 At a 1/16 edge for step S, with the fixed arrays + carried hold state:
@@ -87,39 +139,53 @@ This replaces the CARRIED countdown (gatePulseRemain) with a POSITION-DERIVED on
 Forward/within-draw reverse can keep the carried countdown (they move 1 pulse at a
 time); JUMPS/SCRUBS need this. Build it once, use it for the jump case.
 
-DERIVE(drawCounter, pulsePos):
+NORMAL PLAY DOES NOT BACKTRACK (correcting an overstatement in an earlier draft).
+In continuous play — forward OR reverse — we are ALREADY at the adjacent pulse one
+tick ago, so we just CARRY two integers:
+    noteStartPulse   — pulse at which the current sounding note/chain began
+    chainEndPulse    — noteStartPulse + Σ spanPulses over the legato/tie chain
+Each tick: pulsePos ±= 1; sounding = (pulsePos < chainEndPulse);
+pulsesRemaining = chainEndPulse - pulsePos. When a new note starts (or the chain
+ends), update the two integers from that step's decision. No walk-back, ever. This
+is just the carried countdown expressed as integers — the integer counters the user
+asked about (#6). Reverse is the same with the sign flipped and the start/span rules
+run leftward.
+
+WALK-BACK IS A JUMP-ONLY FALLBACK. It is needed ONLY when you land at a pulse with no
+carried state because you teleported there (a discontinuous jump/scrub). Then, and
+only then, you must reconstruct (noteStartPulse, chainEndPulse) at the destination:
+
+DERIVE(drawCounter, pulsePos):   // jump/scrub only
   1. step    = pulsePos / P16 ;  subPulse = pulsePos % P16
-  2. Find the OWNING note-start: walk backwards from `step` to the most recent step
-     OS where a note actually STARTED (decision ∈ {NewNote, LegatoMax, or the head
-     of a legato/tie chain}). "Started" means: not MidNote, not Rest. Because the
-     arrays are deterministic, re-evaluate each step's decision from OS..step by
-     replaying the precedence rules forward from the last known clean boundary.
-       - Bound: at most one phrase (16 steps) within a draw. If the chain extends
-         back across the draw boundary (a note/tie held over from draw N-1), walk
-         into regenerateDraw(drawCounter-1) and continue — still bounded, still
-         deterministic (this is the cross-boundary held-note case).
-  3. Accumulate the chain span: starting at OS, sum spanPulses over the chain of
-     legato/tie-linked steps until the chain ends (a step that neither extends nor
-     is MidNote). Call the chain end pulse CE = OS_startPulse + Σ spanPulses.
-  4. SOUNDING? = (pulsePos < CE).  pulsesRemaining = CE - pulsePos.
-     pitch/accent = the chain's current segment values (genPitchLive at the active
-     step; accent from the owning NewNote per existing "accent sticks across
-     MidNote" rule — result.accented = lastStepResult.accented).
-  5. Respect R1–R3 when deciding whether a fractional step extends the chain.
+  2. Find the OWNING note-start: from the jump ORIGIN (where we DO have carried
+     state) integrate FORWARD to the destination (user #5) — this is the cheap path
+     when the jump is short, and it needs no backtrack because the origin state is
+     known. Bounded by jump distance.
+       Alternative when there is no usable origin (e.g. load, or a teleport with no
+       prior state): walk backwards from `step` to the nearest CLEAN BOUNDARY (a
+       Rest, or a NewNote that is not a legato destination — a guaranteed chain
+       start), then replay forward to `step`. Bounded by one phrase (≤16 steps)
+       within a draw; if the chain straddles the draw boundary, continue into
+       regenerateDraw(drawCounter-1) — still bounded, still deterministic.
+       Take whichever is shorter: integrate-forward-from-origin or walk-back-to-
+       clean-boundary.
+  3. Accumulate the chain span from the owning start: sum spanPulses over the
+     legato/tie-linked chain until it ends. chainEndPulse = start + Σ spanPulses.
+  4. SOUNDING? = (pulsePos < chainEndPulse). pulsesRemaining = chainEndPulse-pulsePos.
+     pitch/accent from the chain's active segment (genPitchLive — pure, see §7;
+     accent = owning NewNote's accent per the "sticks across MidNote" rule).
+  5. Respect R1-R3 when deciding whether a fractional step extends the chain.
+  6. Modulation: use the FROZEN liveCoeffs snapshot (§1b Regime 2) throughout.
 
-So the carried gatePulseRemain becomes a DERIVED quantity: pulsesRemaining from
-step 4. Forward play: it decrements naturally (pulsePos++). Jump: recompute via
-DERIVE at the destination. Same number, two ways to get it.
+So the carried gatePulseRemain becomes a DERIVED quantity ONLY at jumps; in normal
+play it is the carried integer pair. Same number, two ways to get it — and the
+expensive way is reached only on discontinuity.
 
-COST: O(chain length), bounded by one phrase (≤16 steps) within a draw, plus one
-extra draw regen if the chain straddles the boundary. NOT O(jump distance). This is
-the whole point — jumps are cheap because spans are re-derivable, not replayed.
-
-WALK-BACK is the one non-O(1) part: to know the chain head you re-evaluate decisions
-from a clean boundary. A "clean boundary" = any step that is a Rest or a NewNote
-that itself isn't a legato destination — i.e. a guaranteed chain start. In practice
-rests/new-notes are frequent, so the walk-back is short; worst case is a fully-tied
-phrase (16 steps). Acceptable.
+COST: normal play O(1) (carry integers). Jump: O(min(jumpDistance, chainLength)),
+chainLength bounded by one phrase (+1 draw regen if the chain straddles a boundary).
+NOT O(jump distance) in the worst case, and often much less. This is the whole point
+— jumps are cheap because state is either carried (play) or re-derivable over a
+bounded window (jump), never replayed from phrase 0.
 
 ═══════════════════════════════════════════════════════════════════════════════
 ## 4. Slew across boundaries (the one genuinely directional piece)
@@ -196,3 +262,86 @@ untouched) — this API is a thin layer over it.
 - Decide LegatoMax (legatoProb>=0.999, forced) behaviour at a chain head reached by
   walk-back — it always slides, so the chain never has a clean NewNote head while
   legatoProb is maxed; the "clean boundary" then is only a Rest. Bound still ≤16.
+
+═══════════════════════════════════════════════════════════════════════════════
+## 8. Forward vs backward, and which PRNG (Squares vs Philox)
+
+### How it works FORWARD (the reference behaviour)
+The draw-counter increments at each phrase boundary. Draw N's lane blocks come from
+base(N, lane) over the PRNG stream. The playhead reads steps 0→15; legato/tie chains
+extend rightward; holds count down. At the boundary, draw-counter++ and the next
+phrase's blocks are generated (or, today, a fresh roll). Modulation is live (§1b
+Regime 1). This is what the engine does now, reframed onto an explicit draw-counter.
+
+### The BACKWARD analog
+Decrement the draw-counter at the boundary; regenerate the PREVIOUS draw's blocks
+from base(N-1, lane). Within the phrase, traverse steps 15→0, applying start/span
+rules leftward. Because base(N-1,·) is a pure function of (N-1, key), the prior
+phrase regenerates IDENTICALLY — no stored history. Eventually decrementing reaches
+the initial draw-counter (0 or 1) and the original deterministic settings, exactly
+as the user envisioned. The counter IS the phrase history, compressed to one integer.
+
+The asymmetry to remember: backward is NOT time-reversed audio. It is the SAME
+generative rules run with the playhead moving leftward — notes still start on
+boundaries, dice still map via the counter. A phrase played backward won't be the
+mirror of the forward audio, and that's correct (and musically interesting).
+
+### Why a counter-based PRNG is REQUIRED for the backward analog
+A conventional sequential PRNG (e.g. Xoroshiro, today's engine) only goes forward:
+to get draw N-1 you'd have to store it, because you can't run the generator
+backward. A COUNTER-BASED PRNG makes draw N a pure function value(base(N,·), key),
+so N-1 is just another evaluation — reverse, jump, and scrub all become "evaluate at
+a different counter," needing zero stored history. This is the entire reason we added
+Squares/Philox: addressability == reversibility == jumpability, all one property.
+
+### Squares vs Philox — the choice
+Both are counter-based, both verified here (KATs + reversibility + uniformity), both
+expose the identical addressable API (at()/atUniform()/fillBlock(), get/setCounter).
+For THIS use either works; the decision is about pedigree and future-proofing, not
+capability.
+
+  SquaresRng
+    + Cheapest: one keyed counter → 64-bit output, ~5 rounds of integer ops.
+    + Native 64-bit value; fewer ops per draw than Philox.
+    + Verified (Widynski KAT, reversibility, chi-sq).
+    - Less ubiquitous; not a standard-library or framework default.
+    - Single 64-bit stream per (counter,key); we slice it by offset.
+
+  PhiloxRng (4x32)  /  Philox4x64Rng
+    + Pedigree: Random123 standard; the algorithm C++26 adds as std::philox_engine;
+      the default counter-based RNG in TensorFlow and NumPy (Generator(Philox)).
+    + Bit-exact verified against BOTH the canonical Random123 KAT AND the C++26/
+      libstdc++ anchors (philox4x32 10000th=1955073260; philox4x64=3409172418970261260).
+      ⇒ a draw stream could be reproduced byte-for-byte in NumPy/TF/std for offline
+      analysis, tooling, or cross-checking — a real practical asset.
+    + 4 words per block (4x32) or 4x64 — natural fit for block-drawing 16-value lanes
+      (4 blocks per lane).
+    + When the build moves to a C++26 toolchain, our class can be swapped for
+      std::philox4x32/4x64 with no behavioural change (we match the standard), or
+      kept for the addressable extensions the standard doesn't expose.
+    - Slightly heavier than Squares (10 rounds, 128-bit counter space). Negligible at
+      our draw volume (~800 floats/regeneration, only at phrase boundaries).
+
+  RECOMMENDATION (matches user lean): use PHILOX. Specifically Philox4x32 unless 64-bit
+  draws are wanted (Philox4x64). Rationale: it is the de-facto standard counter PRNG
+  (C++26 std, TF, NumPy), it's bit-exact reproducible against those references (so a
+  pattern's seed+counter is portable and analysable outside the plugin), and the
+  performance cost is irrelevant here because the PRNG runs only at phrase boundaries,
+  not per sample. Squares stays in the tree as a lighter alternative and a cross-check
+  (two independent verified PRNGs agreeing on reversibility is a nice safety net), but
+  Philox is the one to wire into PatternEngine.
+
+  Width: Philox4x32 is sufficient (draws are uniform floats; 24-bit mantissa from a
+  32-bit word is ample for probability lanes). Choose Philox4x64 only if you later want
+  64-bit-clean doubles or to match a NumPy float64 Philox stream exactly. Either way the
+  block-allocator API (§6) is identical; only result_type/uniform precision differ.
+
+### Open question carried forward (user, when time permits)
+Phrase-boundary A/B commit under reverse (§1b): A/B promote at redraw boundaries while
+mix is live. Decrementing across a boundary — do A/B re-commit to the prior phrase's
+draw, and is that draw itself counter-addressable (so it regenerates), or is the A/B
+promotion a separate stateful step that needs its own counter discipline? Likely the
+cleanest answer is: make A and B BOTH come from the counter stream (A = draw N's
+committed block, B = draw N's candidate block at distinct offsets), so the entire
+A/B/mix state is regenerable from (drawCounter, key) and reverse "just works". To
+confirm against the redrawRhythm/promoteToA logic before step 3.
