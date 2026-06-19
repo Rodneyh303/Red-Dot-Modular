@@ -320,6 +320,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // the EDIT values, so this is display-only.
         int gs = monsoon->engine.stepIndex;
         auto& eng = monsoon->engine;
+        visualEditor->setPlayDir(eng.lastPlayDir);   // direction cue (Mode E reverse)
         const int vi = selectedVoice;
         for (int l=0; l<3; ++l) {
             int cvLen = eng.polyLen[vi][l];

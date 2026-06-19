@@ -51,6 +51,7 @@ struct SequencerEngine {
     StepResult lastStepResult;
 
     int stepIndex = -1;
+    int lastPlayDir = +1;   // +1 forward, -1 reverse (Mode E); for UI direction cues
     int lastStepIndex = -1;
     int startStep = 0;
     int endStep = 15;

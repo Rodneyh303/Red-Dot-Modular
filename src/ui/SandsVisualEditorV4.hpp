@@ -214,6 +214,8 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // step = -1 means sequencer not running (no indicator drawn).
   int lanePlayStep[6] = {-1,-1,-1,-1,-1,-1};
   float activeStepAlpha = 0.f;
+  int playDir = +1;   // +1 forward, -1 reverse (Mode E); for directional playhead cue
+  void setPlayDir(int d) { playDir = (d < 0) ? -1 : +1; }
 
   // Convenience: set all active lanes to the same global step
   // (used when L/O/R is not yet available)
@@ -774,6 +776,18 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       nvgRect(vg, rect.pos.x + 1, rect.pos.y, rect.size.x - 2, 2.f);
       nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.9f * activeStepAlpha));
       nvgFill(vg);
+
+      // Directional leading-edge marker: a bright vertical bar on the side the
+      // playhead is travelling TOWARD (right edge when forward, left when reverse).
+      // Makes forward vs reverse (Mode E) visible at a glance.
+      {
+        float ex = (playDir < 0) ? rect.pos.x + 0.5f
+                                  : rect.pos.x + rect.size.x - 2.5f;
+        nvgBeginPath(vg);
+        nvgRect(vg, ex, rect.pos.y, 2.f, rect.size.y);
+        nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.8f * activeStepAlpha));
+        nvgFill(vg);
+      }
     }
   }
   
