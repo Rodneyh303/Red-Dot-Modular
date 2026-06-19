@@ -45,6 +45,10 @@ public:
     /// Returns true if a new step was taken
     bool executeModeA();
     bool executeModeE();   // Mode E: phase-ramp driven (forward; reverse next branch)
+
+    // Mode E playhead direction, set from the PhaseEngine each block before dispatch.
+    bool phaseReverse = false;
+    void setPhaseReverse(bool rev) { phaseReverse = rev; }
     
     /// Execute Mode B: Gate-driven sequencing
     /// Triggers on GATE1 rising edge or continuous hold

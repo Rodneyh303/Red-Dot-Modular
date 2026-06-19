@@ -409,6 +409,7 @@ void Monsoon::process(const ProcessArgs& args) {
     if (modeSelect == 4) {
         phase.process(input.cv1, cachedCv1Connected, args.sampleTime, ppqnSetting);
         if (cachedCv1Connected) bpm = phase.bpm;   // tempo follows the ramp's velocity
+        modeController->setPhaseReverse(phase.reverse);
     }
 
     // ── Run/Reset Gate Processing ──

@@ -103,7 +103,8 @@ bool ModeController::executeModeE() {
         in.restProb,
         paramManager.getLegato(),
         paramManager.getNoteValue(),
-        in
+        in,
+        phaseReverse ? -1 : +1        // within-draw reverse traversal
     );
     postExecute_(result);
     updateLastStepIndex();

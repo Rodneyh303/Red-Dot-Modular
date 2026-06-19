@@ -70,9 +70,25 @@ void SequencerEngine::setWindow(int length, int offset) {
     }
 }
 
-bool SequencerEngine::advancePlayhead() {
+bool SequencerEngine::advancePlayhead(int dir) {
     int prevStep = stepIndex;
     totalStepsElapsed = (totalStepsElapsed + 1) % DNA_LCM;
+
+    if (dir < 0) {
+        // ── Reverse traversal: mirror of forward, leftward through the window. ──
+        // From the "not started" state, seed just AFTER endStep so the first reverse
+        // step lands on endStep (the symmetric counterpart of forward seeding before
+        // startStep and stepping onto startStep).
+        if (stepIndex == -1) stepIndex = (endStep + 1) & 0x0F;
+        stepIndex = (stepIndex - 1 + 16) & 0x0F;
+        if (!isStepInWindow(stepIndex)) stepIndex = endStep;
+        for (int s = 0; s < 16 && !isStepInWindow(stepIndex); ++s)
+            stepIndex = (stepIndex - 1 + 16) & 0x0F;
+        // Phrase boundary (reverse): wrapped back round to endStep.
+        return (prevStep != -1 && stepIndex == endStep);
+    }
+
+    // ── Forward traversal (unchanged) ──
     if (stepIndex == -1) stepIndex = (startStep - 1 + 16) % 16;
     stepIndex = (stepIndex + 1) & 0x0F;
     if (!isStepInWindow(stepIndex)) stepIndex = startStep;
@@ -280,11 +296,11 @@ void SequencerEngine::handlePhraseBoundary(PatternInput input, bool isMelodyReal
     pe.applyPendingSeedsAndRedraw(input);
 }
 
-StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input) {
+StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input, int dir) {
     StepResult result;
     if (!clock.sixteenthEdge || muted) return result;
 
-    bool wrapped = advancePlayhead();
+    bool wrapped = advancePlayhead(dir);
     float r_vary   = pe.variationRandom[getVariationStep()];
     float r_rest   = pe.rhythmRandom[getRhythmStep()];
     float r_legato = pe.legatoRandom[getLegatoStep()];
