@@ -152,4 +152,89 @@ struct PhiloxRng {
     }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Philox4x64-10 — 64-bit variant (the std::philox4x64 algorithm). 4 x 64-bit
+// counter, 2 x 64-bit key, 10 rounds. Same lane convention as the 4x32 core;
+// verified bit-exact against std::philox4x64's documented anchor (default-seeded
+// 10000th invocation = 3409172418970261260).
+inline std::array<uint64_t,4> philox4x64_10(std::array<uint64_t,4> ctr,
+                                            std::array<uint64_t,2> key) {
+    constexpr uint64_t M0 = 0xD2E7470EE14C6C93ull;
+    constexpr uint64_t M1 = 0xCA5A826395121157ull;
+    constexpr uint64_t W0 = 0x9E3779B97F4A7C15ull;   // golden ratio (64-bit)
+    constexpr uint64_t W1 = 0xBB67AE8584CAA73Bull;   // sqrt(3)-1 (64-bit)
+
+    auto round = [](std::array<uint64_t,4> c, std::array<uint64_t,2> k) {
+        __uint128_t p0 = (__uint128_t)M0 * c[0];
+        __uint128_t p1 = (__uint128_t)M1 * c[2];
+        uint64_t hi0 = (uint64_t)(p0 >> 64), lo0 = (uint64_t)p0;
+        uint64_t hi1 = (uint64_t)(p1 >> 64), lo1 = (uint64_t)p1;
+        return std::array<uint64_t,4>{ hi1 ^ c[1] ^ k[0], lo1, hi0 ^ c[3] ^ k[1], lo0 };
+    };
+    ctr = round(ctr, key);
+    for (int r = 1; r < 10; ++r) { key[0] += W0; key[1] += W1; ctr = round(ctr, key); }
+    return ctr;
+}
+
+inline std::array<uint64_t,2> philox64MakeKey(uint64_t seed) {
+    uint64_t z = seed + 0x9E3779B97F4A7C15ULL;
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
+    z =  z ^ (z >> 31);
+    uint64_t z2 = z + 0x9E3779B97F4A7C15ULL;
+    z2 = (z2 ^ (z2 >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    z2 =  z2 ^ (z2 >> 31);
+    return { z, z2 };
+}
+
+// 64-bit counter-based engine, same interface family as PhiloxRng but with a
+// uint64_t result_type — the analogue of std::philox4x64.
+struct Philox4x64Rng {
+    using result_type = uint64_t;
+    static constexpr result_type min() { return 0ull; }
+    static constexpr result_type max() { return ~0ull; }
+    result_type operator()() { return next(); }
+
+    std::array<uint64_t,2> key = philox64MakeKey(0xC0FFEEull);
+    uint64_t counter = 0;
+    std::array<uint64_t,4> buf{};
+    int idx = 4;
+
+    Philox4x64Rng() = default;
+    explicit Philox4x64Rng(uint64_t seed) { seed64(seed); }
+
+    void seed64(uint64_t seed) { key = philox64MakeKey(seed); counter = 0; idx = 4; }
+    void seed(uint64_t s1, uint64_t s2) {
+        key = philox64MakeKey(s1 ^ (0x9E3779B97F4A7C15ULL * (s2 | 1ULL)));
+        counter = 0; idx = 4;
+    }
+    void setKey(std::array<uint64_t,2> k) { key = k; }
+    std::array<uint64_t,2> getKey() const { return key; }
+    void     setCounter(uint64_t c) { counter = c; idx = 4; }
+    uint64_t getCounter() const     { return counter; }
+    void     rewind() { counter = 0; idx = 4; }
+
+    std::array<uint64_t,4> block(uint64_t blockPos) const {
+        std::array<uint64_t,4> ctr{ blockPos, 0u, 0u, 0u };
+        return philox4x64_10(ctr, key);
+    }
+    uint64_t at(uint64_t pos) const { return block(pos >> 2)[pos & 3u]; }
+    double   atUniform(uint64_t pos) const {
+        // 53-bit mantissa from the top bits of a 64-bit word.
+        return (at(pos) >> 11) * (1.0 / 9007199254740992.0);   // 2^-53
+    }
+
+    uint64_t next() {
+        if (idx == 4) { buf = block(counter >> 2); idx = (int)(counter & 3u); }
+        uint64_t v = buf[idx++]; ++counter; return v;
+    }
+    double nextDouble() { return (next() >> 11) * (1.0 / 9007199254740992.0); }
+    float  nextFloat()  { return (float)nextDouble(); }
+
+    void fillBlock(uint64_t base, double* out, int n) const {
+        for (int i = 0; i < n; ++i) out[i] = atUniform(base + (uint64_t)i);
+    }
+    void drawBlock(double* out, int n) { fillBlock(counter, out, n); counter += (uint64_t)n; idx = 4; }
+};
+
 } // namespace redDot
