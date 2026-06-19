@@ -160,7 +160,7 @@ bool UIManager::processModeButton(int& modeSelect) {
     using namespace MonsoonIds;
     
     if (modeTrigger.process(params[MODE_PARAM].getValue())) {
-        modeSelect = (modeSelect + 1) % 4;
+        modeSelect = (modeSelect + 1) % 5;
         return true;
     }
     return false;

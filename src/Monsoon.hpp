@@ -22,6 +22,7 @@
 #include <cassert>
 #include <cstring>
 #include "dsp/engines/ClockEngine.hpp"
+#include "dsp/engines/PhaseEngine.hpp"
 #include "dsp/engines/PatternEngine.hpp"
 #include "dsp/engines/SequencerEngine.hpp"
 #include "dsp/managers/MonsoonSandsManager.hpp"
@@ -699,6 +700,7 @@ struct MonsoonLeftMessage {
 // ------------------------------- Module --------------------------------------
 struct Monsoon : Module {
     ClockEngine clock;
+    redDot::PhaseEngine phase;   // Mode E: CV1 phase ramp → pulse grid (forward+reverse)
 
     int cv1Mode = 0;
     int cv2Mode = 0;

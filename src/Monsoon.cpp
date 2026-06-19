@@ -402,6 +402,15 @@ void Monsoon::process(const ProcessArgs& args) {
     );
     bpm = clock.bpm;  // keep module-level bpm in sync for note duration calculations
 
+    // ── Mode E: external PHASE ramp on CV1 drives the pulse grid ──
+    // In Mode E, CV1 is EXCLUSIVELY the phase input (it takes over CV1's meaning,
+    // mirroring how Mode B repurposes gate1). The PhaseEngine emits the same
+    // pulseEdge/sixteenthEdge/quarterEdge contract as the clock, plus a reverse flag.
+    if (modeSelect == 4) {
+        phase.process(input.cv1, cachedCv1Connected, args.sampleTime, ppqnSetting);
+        if (cachedCv1Connected) bpm = phase.bpm;   // tempo follows the ramp's velocity
+    }
+
     // ── Run/Reset Gate Processing ──
     runGateActive = tc.processRunGate(
         runGateActive,
@@ -449,11 +458,10 @@ void Monsoon::process(const ProcessArgs& args) {
 
     // --- Mode dispatch (only if running) ---
     if (runGateActive) {
-        // Gate-close on the PPQN grid pulse (finer than the 1/16 decision edge):
-        // every grid pulse, decrement each voice's gate-pulse counter and drop the
-        // gate when it expires. Sole gate-close path (replaces the per-sample
-        // seconds timer) — triplets/1/32 close on an exact pulse boundary.
-        if (clock.pulseEdge) {
+        // Gate-close on the PPQN grid pulse. In Mode E the pulse source is the phase
+        // ramp; otherwise the internal/external clock.
+        bool gridPulse = (modeSelect == 4) ? phase.pulseEdge : clock.pulseEdge;
+        if (gridPulse) {
             engine.gs.tickPulse();
             for (int i = 0; i < engine.numPolyVoices; ++i)
                 engine.voices[i].gs.tickPulse();
@@ -466,6 +474,7 @@ void Monsoon::process(const ProcessArgs& args) {
             if (modeSelect == 0) shouldExecute = clock.sixteenthEdge;
             else if (modeSelect == 1) shouldExecute = input.gate1Rise || (gate1High && engine.stepIndex == -1);
             else if (modeSelect == 2) shouldExecute = clock.quarterEdge;
+            else if (modeSelect == 4) shouldExecute = phase.sixteenthEdge; // Mode E: phase 1/16 grid
         }
 
         if (shouldExecute) {
@@ -475,11 +484,13 @@ void Monsoon::process(const ProcessArgs& args) {
     }
 
     // --- CV Routing (via CVRouter) ---
+    // In Mode E, CV1 is EXCLUSIVELY the phase input (handled above), so its normal
+    // pitch/BPM routing is suppressed — mirrors Mode B fully repurposing gate1.
     float cvOutVoltage = currentPitchV;
-    if (cachedCv1Connected && input.cv1 != 0.f && (cv1Mode == 0 || cv1Mode == 1)) {
+    bool cv1IsPhase = (modeSelect == 4);
+    if (!cv1IsPhase && cachedCv1Connected && input.cv1 != 0.f && (cv1Mode == 0 || cv1Mode == 1)) {
         cvOutVoltage = cvr.processCV1Input(cv1Mode, input.cv1, *paramManager, currentPitchV, true);
-    } else if (cachedCv1Connected && cv1Mode == 4) { // BPM Mod
-        // For BPM Mod, CVRouter updates paramManager->cv1BpmOffset, no direct cvOutVoltage change
+    } else if (!cv1IsPhase && cachedCv1Connected && cv1Mode == 4) { // BPM Mod
         cvr.processCV1Input(cv1Mode, input.cv1, *paramManager, currentPitchV, true);
     } else {
         paramManager->clearCv1BpmOffset(); // Clear BPM offset if CV1 is not connected or not in BPM mode

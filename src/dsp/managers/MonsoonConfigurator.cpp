@@ -64,7 +64,7 @@ void MonsoonConfigurator::setup(Monsoon* m) {
     m->configParam(MELODY_MIX_PARAM, 0.f, 1.f, 1.f, "Melody A>B mix", "%", 0.f, 100.f);
     m->configButton(LOCK_PARAM,   "Lock");
     m->configButton(MUTE_PARAM,   "Mute");
-    m->configButton(MODE_PARAM,   "Mode (Cycle A-B-C-D)");
+    m->configButton(MODE_PARAM,   "Mode (Cycle A-B-C-D-E)");
     m->configButton(RESET_BUTTON_PARAM,  "Reset");
     m->configButton(RUN_GATE_PARAM,      "Run/Stop");
 

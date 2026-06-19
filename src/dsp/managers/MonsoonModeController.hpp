@@ -44,6 +44,7 @@ public:
     /// Triggers on clock sixteenth edges
     /// Returns true if a new step was taken
     bool executeModeA();
+    bool executeModeE();   // Mode E: phase-ramp driven (forward; reverse next branch)
     
     /// Execute Mode B: Gate-driven sequencing
     /// Triggers on GATE1 rising edge or continuous hold
