@@ -158,9 +158,17 @@ only then, you must reconstruct (noteStartPulse, chainEndPulse) at the destinati
 DERIVE(drawCounter, pulsePos):   // jump/scrub only
   1. step    = pulsePos / P16 ;  subPulse = pulsePos % P16
   2. Find the OWNING note-start: from the jump ORIGIN (where we DO have carried
-     state) integrate FORWARD to the destination (user #5) — this is the cheap path
-     when the jump is short, and it needs no backtrack because the origin state is
-     known. Bounded by jump distance.
+     state) integrate FORWARD to the destination (user #5). NOTE this is a full
+     REPLAY of the event chain, not span arithmetic: each crossed step boundary can
+     START a new note, EXTEND a legato/tie chain, or REST. So the destination state
+     is determined by the LAST note-start before the landing — which may be a note
+     that began DURING the jumped-over region, not the note sounding at the origin.
+     e.g. origin half-note ends at step 4; a tied note starts at step 5 running to
+     step 10; a jump landing at step 7 is inside THAT note, not the half-note. Only
+     a per-boundary replay catches it. Mechanically: call executeStep at each crossed
+     boundary with frozen liveCoeffs — the SAME code path as real-time play, just
+     fast-forwarded with no clock wait. No new decision logic. Bounded by jump
+     distance (and see §9 one-phrase cap).
        Alternative when there is no usable origin (e.g. load, or a teleport with no
        prior state): walk backwards from `step` to the nearest CLEAN BOUNDARY (a
        Rest, or a NewNote that is not a legato destination — a guaranteed chain
@@ -345,3 +353,113 @@ cleanest answer is: make A and B BOTH come from the counter stream (A = draw N's
 committed block, B = draw N's candidate block at distinct offsets), so the entire
 A/B/mix state is regenerable from (drawCounter, key) and reverse "just works". To
 confirm against the redrawRhythm/promoteToA logic before step 3.
+
+═══════════════════════════════════════════════════════════════════════════════
+## 8b. Why freezing modulation across a jump is FORCED, not chosen (time-scale separation)
+
+A jump is computed entirely within ONE process() call — it consumes ZERO sample-
+time. Modulation (mix, spread) has exactly ONE value in scope at that instant: the
+current sample's. There is no other modulation value in existence to interpolate
+toward, because the jump's support is a single instant on the sample clock.
+
+So freezing the coefficients is not an approximation we impose — it is forced by
+the jump being instantaneous in sample-time. This holds REGARDLESS of modulation
+rate: even at audio-rate modulation, the jump occupies a single sample instant, so
+the coefficient is constant over its support by construction. Control-rate
+modulation just makes it extra obvious (the coeff is constant over the whole block).
+
+This is the jump-diffusion / regime-switch structure: the CONTINUOUS part
+(modulation) evolves on its own clock, unaffected by the jump; the JUMP part
+(playhead position) is an instantaneous mark applied to a frozen background. The two
+live on different time scales (sample-instant jump vs ≥sample modulation drift), so
+freezing the slow variable across the fast jump is the only consistent
+discretization. Trying to interpolate modulation "across" the jump would invent a
+path that does not physically exist — the spurious-path error one rejects in a jump
+process. (User's PhD domain: regime switches/jumps in stochastic processes — this is
+that argument applied here.)
+
+Consequence: a jump is fully computable in-place within process() — freeze coeffs
+(already constant), replay executeStep over crossed boundaries reading the fixed
+draws, land. No history, no interpolation, no second modulation sample needed. The
+time-scale separation is what makes the jump closed-form within one block.
+
+═══════════════════════════════════════════════════════════════════════════════
+## 9. Jump-size cap: at most one phrase boundary per jump (simplifying invariant)
+
+A single JUMP event may cross AT MOST ONE phrase boundary (land in the current
+phrase or an immediately adjacent one). So the replay integration touches at most
+TWO draws (current + one neighbour) and at most ~one phrase of steps. This bounds
+the worst-case in-block work and the regeneration to a single neighbour draw.
+
+A continuous SCRUB is then a sequence of small jumps across successive process()
+calls, each ≤ one phrase, carrying (noteStartPulse, chainEndPulse, drawCounter)
+between calls. A long scrub is therefore fine — bounded per block, amortized — it is
+only a SINGLE instantaneous teleport of arbitrary distance that is forbidden (it
+would need multi-phrase replay in one block). Draw the line there: no multi-phrase
+replay within one process() call.
+
+═══════════════════════════════════════════════════════════════════════════════
+## 10. Boundary-crossing under jump/scrub: dice-event state, not position (user constraint)
+
+CRITICAL (user): when a jump/scrub crosses a phrase boundary in EITHER direction,
+the rhythm/melody draw used on the far side depends on WHETHER A DICE ROLL HAD BEEN
+SELECTED (or live mode activated) for that boundary — not merely on position.
+
+Ground truth (applyPendingSeedsAndRedraw, MergePPQNWork): a phrase boundary REDRAWS
+only if, at that boundary, one of these held: rhythm/melodySeedPending,
+RollPending, TrialPending, ReseedRollPending, or the lane is in Realtime mode
+(mode==1). Otherwise the phrase REUSES the existing draw (A unchanged). Promote
+(A walks to B) vs audition (A anchored) further depends on trial / live-trial flags.
+
+Therefore the RNG stream advances ONLY on a redraw-firing boundary. The "draw index"
+increments IRREGULARLY — only at boundaries where a roll/reseed/live-mode fired, NOT
+at every phrase. Reuse boundaries do not advance it.
+
+Implication for the counter model (this REFINES §6, doesn't break it):
+  - The DRAW-COUNTER advances on DICE EVENTS, not per phrase. It is still monotonic
+    and well-defined; phrase K's draw = the value of the draw-counter AT phrase K,
+    which equals (number of redraw-firing boundaries up to K).
+  - So to cross a boundary during a jump/scrub we must know, for that boundary,
+    WHETHER it was a redraw boundary:
+      * crossing FORWARD over a boundary that fired a roll → drawCounter += 1,
+        regenerate draw at the new counter.
+      * crossing FORWARD over a REUSE boundary → drawCounter unchanged, same draw.
+      * crossing BACKWARD: the inverse — step the counter DOWN only if the boundary
+        being un-crossed had fired a roll; otherwise leave it.
+  - This requires a per-boundary record of "did a dice event fire here" — a small
+    bitmap / list indexed by phrase boundary (NOT the draws themselves; just one bit
+    per boundary: redrew or reused, plus the kind: seed/roll/reseed/trial/live).
+    This is the ONE piece of genuine history the counter alone cannot reconstruct,
+    because it reflects user dice actions / live-mode toggles over time, which are
+    not a function of position or seed.
+
+Design options for that per-boundary record:
+  A. EVENT LOG (bounded): record, per crossed boundary, {redrew?, kind, counterAfter}.
+     Forward play appends; reverse reads it to know how to step the counter back.
+     Bounded by the scrub range you allow (with the §9 one-phrase cap, you only ever
+     need the current and adjacent boundary's record in a given block).
+  B. SNAPSHOT-AT-BOUNDARY: at each boundary store (drawCounter, dice-mode-flags).
+     Reverse restores from the snapshot. Heavier; equivalent information.
+  RECOMMENDATION: A, minimal — one entry per boundary: did it redraw, what kind, and
+  the resulting drawCounter. With the §9 cap, cross-boundary logic in any block only
+  consults the immediately adjacent boundary's entry, so the live working set is O(1)
+  even though the log grows with phrases played. For a pure deterministic patch (no
+  live dice action — fixed seed, no rolls), the log is trivial (every boundary either
+  always-reuse or always-reseed per mode) and the counter↔phrase map is regular, so
+  reverse needs no log at all — the log only earns its keep when the user has been
+  rolling dice / toggling live mode mid-performance.
+
+  Note this PRESERVES the "reach original settings at counter 0" property: decrement
+  past all the recorded dice events and you arrive back at the initial draw — the log
+  tells you exactly how many counter steps that is.
+
+Open: LIVE mode (mode==1) redraws EVERY boundary (continuous fresh entropy). Under
+reverse that means every boundary was a "roll" — the counter decrements each
+boundary, and regenerating requires the entropy that was used. If live mode used
+seedRngFull (internal 64-bit entropy, not counter-addressable), those draws are NOT
+reproducible by counter alone — they'd need the actual entropy logged, or live mode
+is declared NON-REVERSIBLE past its activation point (freeze/anchor on reverse).
+This is the one mode where reverse may be fundamentally limited; flag for the user's
+phrase-boundary deliberation. Counter-addressable reverse works cleanly for
+seed/roll/reseed modes that draw from the counter stream; live-full-entropy mode is
+the exception.
