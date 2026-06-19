@@ -7,6 +7,7 @@
 #include <sstream>
 #include <cmath>
 #include <vector>
+#include <random>
 #include <array>
 
 using namespace redDot;
@@ -85,6 +86,53 @@ int main(){
     TEST("rewind reproduces sequence", {
         PhiloxRng r(7); float x0=r.nextFloat(),x1=r.nextFloat();
         r.rewind(); EXPECT_EQ(r.nextFloat(),x0); EXPECT_EQ(r.nextFloat(),x1);
+    });
+
+    SUITE("std::philox4x32 / philox4x64 conformance anchors");
+    TEST("philox4x32 default-seeded 10000th invocation == 1955073260", {
+        // std anchor: key={default_seed,0}, counter in X[0..1], outputs in order.
+        auto stdval = [](uint64_t i)->uint32_t {
+            std::array<uint32_t,2> key{20111115u,0u};
+            uint64_t b=i/4; int slot=(int)(i%4);
+            std::array<uint32_t,4> X{(uint32_t)(b&0xffffffff),(uint32_t)(b>>32),0u,0u};
+            return philox4x32_10(X,key)[slot];
+        };
+        EXPECT_EQ(stdval(9999), 1955073260u);
+    });
+    TEST("philox4x64 default-seeded 10000th invocation == 3409172418970261260", {
+        auto stdval = [](uint64_t i)->uint64_t {
+            std::array<uint64_t,2> key{20111115ull,0ull};
+            uint64_t b=i/4; int slot=(int)(i%4);
+            std::array<uint64_t,4> X{b,0ull,0ull,0ull};
+            return philox4x64_10(X,key)[slot];
+        };
+        EXPECT_EQ(stdval(9999), 3409172418970261260ull);
+    });
+
+    SUITE("Philox4x64Rng (64-bit engine)");
+    TEST("addressable + reversible (816-draw)", {
+        Philox4x64Rng r(0xBEEF);
+        std::vector<double> fwd(816), rev(816);
+        for(int i=0;i<816;++i) fwd[i]=r.atUniform(i);
+        for(int i=815;i>=0;--i) rev[i]=r.atUniform(i);
+        for(int i=0;i<816;++i) EXPECT_EQ(fwd[i],rev[i]);
+    });
+    TEST("uniform [0,1) + mean ~0.5", {
+        Philox4x64Rng u(99); double acc=0; int N=300000;
+        for(int i=0;i<N;++i){ double v=u.atUniform(i); EXPECT(v>=0.0&&v<1.0); acc+=v; }
+        EXPECT_NEAR(acc/N, 0.5, 0.01);
+    });
+    TEST("works as std UniformRandomBitGenerator", {
+        Philox4x64Rng g(123);
+        std::uniform_int_distribution<int> d(0,99);
+        int hist[100]={}; for(int i=0;i<100000;++i) hist[d(g)]++;
+        int mn=1000000,mx=0; for(int i=0;i<100;++i){if(hist[i]<mn)mn=hist[i];if(hist[i]>mx)mx=hist[i];}
+        EXPECT(mn>700 && mx<1300);
+    });
+    TEST("setCounter + key persistence round-trip", {
+        Philox4x64Rng a(0xABCD); a.setCounter(500);
+        Philox4x64Rng b; b.setKey(a.getKey()); b.setCounter(500);
+        EXPECT_EQ(a.next(), b.next());
     });
 
     std::cout<<"\n"<<s_pass<<" passed, "<<s_fail<<" failed\n";
