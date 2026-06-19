@@ -193,7 +193,7 @@ struct SequencerEngine {
     void reset();
     bool isStepInWindow(int idx) const;
     void setWindow(int length, int offset);
-    bool advancePlayhead();
+    bool advancePlayhead(int dir = +1);   // dir<0 = reverse traversal (within-draw)
     void updateWindow(float lenParam, float lenCv, bool lenPatched, float offParam, float offCv, bool offPatched);
     int computeNoteLengthIdx(int requestedIdx, int ppqnMask) const;
     int getNoteLenIdx(float baseNoteParam, const PatternInput& input, float r);
@@ -214,7 +214,7 @@ struct SequencerEngine {
     bool shouldTriggerStep(int ppqn) const;
     StepResult executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float accentProb, const PatternInput& input, bool wasHeld, bool hadTail);
     void handlePhraseBoundary(PatternInput input, bool isMelodyRealtime, bool isRhythmRealtime);
-    StepResult executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input);
+    StepResult executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input, int dir = +1);
     StepResult executeModeB(bool gate1Rise, bool gate1High, float restProb, float legatoProb, float noteVal, const PatternInput& input);
     void executeModeC(const ClockEngine& clock, float inCV);
     void executeModeD(bool gateHigh, float inCV);

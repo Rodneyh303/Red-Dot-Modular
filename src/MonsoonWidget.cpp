@@ -653,8 +653,8 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
 
         menu->addChild(createSubmenuItem("Sequencer Modes", "", [=](ui::Menu* sub) {
             { auto* l = new ui::MenuLabel; l->text = "Operating Mode"; sub->addChild(l);
-              const char* n[] = {"A: Sequencer","B: Seq + Gate","C: Quantizer 1","D: Quantizer 2"};
-              for (int v=0;v<4;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->modeSelect;it->value=v;sub->addChild(it);} }
+              const char* n[] = {"A: Sequencer","B: Seq + Gate","C: Quantizer 1","D: Quantizer 2","E: Phase (CV1)"};
+              for (int v=0;v<5;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->modeSelect;it->value=v;sub->addChild(it);} }
 
             sub->addChild(new ui::MenuSeparator);
 
