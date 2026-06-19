@@ -45,6 +45,7 @@ struct PhaseEngine {
     bool  quarterEdge   = false;    // one quarter elapsed
     bool  reverse       = false;    // true if motion this sample was backward
     bool  jumped        = false;    // true if a discontinuity (jump/scrub) was seen
+    int   jumpSixteenths= 0;        // signed # of 1/16 steps to replay on a jump (±)
     long  pulsePos      = 0;        // current absolute pulse index
     float bpm           = 120.f;    // derived from measured phase velocity (for display/fallback)
     float sixteenthSec  = 0.125f;   // derived 1/16 length in seconds (for any seconds consumer)
@@ -54,7 +55,7 @@ struct PhaseEngine {
     void reset() {
         havePrev = false;
         prevPhase = prevContPhase = 0.0; prevPulse = 0; phaseVel = 0.0;
-        pulseEdge = sixteenthEdge = quarterEdge = reverse = jumped = false;
+        pulseEdge = sixteenthEdge = quarterEdge = reverse = jumped = false; jumpSixteenths = 0;
         pulsePos = 0; bpm = 120.f; sixteenthSec = 0.125f;
     }
 
@@ -72,7 +73,7 @@ struct PhaseEngine {
     //    as a discontinuity (jump/scrub), not continuous motion. Step 1 resyncs
     //    without emitting an edge burst.
     void process(float phaseVolt, bool connected, float sampleTime, int ppqnSetting) {
-        pulseEdge = sixteenthEdge = quarterEdge = reverse = jumped = false;
+        pulseEdge = sixteenthEdge = quarterEdge = reverse = jumped = false; jumpSixteenths = 0;
         ppqn = (ppqnSetting > 0 ? ppqnSetting : 24);
         const int p16   = pulsesPer16th(ppqn);
         const long PPB  = (long)p16 * 16;          // pulses per bar (phase 0→1)
@@ -118,12 +119,25 @@ struct PhaseEngine {
         long step = targetPulse - pulsePos;
         long mag  = step < 0 ? -step : step;
 
-        // Discontinuity guard (step 1): a single-sample move of more than a 1/16 is
-        // a jump/scrub, not continuous play. Resync silently (no edge burst) — jump
-        // integration is a later step.
+        // Discontinuity (jump/scrub): a single-sample move of more than one 1/16 is
+        // not continuous play. Per the spec we REPLAY the event chain over the crossed
+        // 1/16 steps with frozen modulation — and because the whole replay happens
+        // inside ONE process() call, modulation is already frozen (re-sampled only
+        // next block), so the freeze is automatic (§8b time-scale separation).
+        //
+        // We DON'T emit the pulse-by-pulse burst here; instead we report jumpSixteenths
+        // (signed count of 1/16 steps to replay) and let the dispatch run the verified
+        // executeModeE path that many times. WITHIN-DRAW SCOPE: the replay is bounded
+        // to the current phrase; a jump that would cross the phrase boundary is clamped
+        // to the boundary (cross-draw regeneration is a later refinement).
         const long JUMP_PULSES = p16;                // > one 1/16 in a sample = jump
         if (mag > JUMP_PULSES) {
-            jumped = true;
+            jumped  = true;
+            reverse = (step < 0);
+            // How many *whole 1/16 steps* the jump spans (the unit the sequencer
+            // replays). Round to nearest 1/16 so we land on a step grid.
+            long sixteenthsMoved = (mag + p16/2) / p16;
+            jumpSixteenths = (int)((step < 0) ? -sixteenthsMoved : sixteenthsMoved);
             pulsePos = targetPulse;
             prevPhase = phase;
             prevPulse = targetPulse;

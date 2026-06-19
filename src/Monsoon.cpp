@@ -482,6 +482,33 @@ void Monsoon::process(const ProcessArgs& args) {
             mc.executeMode(modeSelect, input, tc.getGate2High());
         }
 
+        // ── Mode E jump/scrub: replay the event chain over the jumped 1/16 steps ──
+        // A jump moved the phase by >1 step in one sample. We replay executeModeE for
+        // each crossed 1/16 in the jump direction, reusing the verified real-time path.
+        // Modulation is frozen automatically (whole replay is one process() call).
+        // WITHIN-DRAW: bounded to the current phrase (cap at 16 steps); a jump that
+        // would cross the phrase boundary is clamped — cross-draw regeneration is a
+        // later refinement.
+        if (modeSelect == 4 && phase.jumped && phase.jumpSixteenths != 0) {
+            mc.setPhaseReverse(phase.jumpSixteenths < 0);
+            int steps = phase.jumpSixteenths < 0 ? -phase.jumpSixteenths : phase.jumpSixteenths;
+            if (steps > 16) steps = 16;                 // within-draw cap (one phrase)
+            int p16 = ClockEngine::pulsesPer16th(ppqnSetting);
+            for (int s = 0; s < steps; ++s) {
+                mc.executeMode(4, input, tc.getGate2High());
+                // executeModeA advances holdRemain (step decisions) internally, but the
+                // gate-CLOSE counter (gatePulseRemain) is normally driven by the pulse
+                // burst we skip on a jump. Tick it p16 times per replayed 1/16 so a gate
+                // that should have closed during the jumped region does so, keeping the
+                // post-jump gate state aligned with the landing position.
+                for (int pu = 0; pu < p16; ++pu) {
+                    engine.gs.tickPulse();
+                    for (int i = 0; i < engine.numPolyVoices; ++i)
+                        engine.voices[i].gs.tickPulse();
+                }
+            }
+        }
+
     }
 
     // --- CV Routing (via CVRouter) ---
