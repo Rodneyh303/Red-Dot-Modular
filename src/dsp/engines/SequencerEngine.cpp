@@ -72,6 +72,7 @@ void SequencerEngine::setWindow(int length, int offset) {
 
 bool SequencerEngine::advancePlayhead(int dir) {
     int prevStep = stepIndex;
+    lastPlayDir = (dir < 0) ? -1 : +1;
     totalStepsElapsed = (totalStepsElapsed + 1) % DNA_LCM;
 
     if (dir < 0) {
@@ -161,8 +162,20 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
         baseActive = isNote ? 0.35f : 0.07f;
     }
 
-    // The moving playhead should always follow the global timeline index
-    float current = (modeSelect < 3 && lightIdx == stepIndex) ? 1.0f : 0.0f;
+    // The moving playhead should always follow the global timeline index. Shown for
+    // stepped modes A/B/C (0/1/2) and the phase Mode E (4); Mode D (3) is continuous
+    // (no discrete playhead step).
+    bool steppedMode = (modeSelect == 0 || modeSelect == 1 || modeSelect == 2 || modeSelect == 4);
+    float current = (steppedMode && lightIdx == stepIndex) ? 1.0f : 0.0f;
+
+    // Direction cue (Mode E especially): a one-LED comet trail BEHIND the playhead in
+    // the travel direction, so forward vs reverse is visibly distinct. The trailing
+    // LED is the step the playhead just left: stepIndex - lastPlayDir.
+    if (steppedMode && current < 1.0f) {
+        int trailIdx = ((stepIndex - lastPlayDir) % 16 + 16) % 16;
+        if (lightIdx == trailIdx && isStepInWindow(lightIdx))
+            baseActive = std::max(baseActive, 0.5f);
+    }
 
     return std::max(baseActive, current);
 }

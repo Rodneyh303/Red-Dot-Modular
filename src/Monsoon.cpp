@@ -330,6 +330,12 @@ float Monsoon::semitoneToVolts(int semitone) {
 // Called at phrase boundary (stepIndex wraps from endStep back to startStep).
 // Seeds are applied FIRST so the subsequent redraw uses the new RNG state.
 void Monsoon::onPhraseBoundary_() {
+    // WITHIN-DRAW SCOPE: only redraw at a FORWARD phrase boundary. A REVERSE boundary
+    // crossing would need to regenerate the PREVIOUS draw (cross-draw + counter-PRNG),
+    // which is the deferred refinement — until then, reverse wraps within the current
+    // draw without a forward redraw (which would corrupt the pattern by advancing the
+    // draw the wrong way). Modes A-D always run forward, so they are unaffected.
+    if (engine.lastPlayDir < 0) return;
     engine.pe.onPhraseBoundary(modeController->currentPatternInput);
 }
 
