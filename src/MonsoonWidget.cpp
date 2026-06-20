@@ -59,6 +59,32 @@ struct MonsoonLightSlider : VCVLightSlider<TLightBase> {
     }
 };
 
+// Trial dice button that disables itself (visually dimmed + press swallowed) when its
+// stream is in Reversible mode, where auditioning is blocked. isMelody picks which
+// stream's reversible flag to read.
+struct TrialButton : VCVButton {
+    bool isMelody = false;
+    bool inert() const {
+        auto* m = dynamic_cast<Monsoon*>(this->module);
+        if (!m) return false;
+        return (isMelody ? m->melodyReversibleMode : m->rhythmReversibleMode) != 0;
+    }
+    void onDragStart(const event::DragStart& e) override {
+        if (inert()) return;                 // swallow — no actuation, no value change
+        VCVButton::onDragStart(e);
+    }
+    void onButton(const event::Button& e) override {
+        if (inert()) { e.consume(this); return; }   // block click before it actuates
+        VCVButton::onButton(e);
+    }
+    void draw(const widget::Widget::DrawArgs& args) override {
+        bool dim = inert();
+        if (dim) nvgGlobalAlpha(args.vg, 0.4f);
+        VCVButton::draw(args);
+        if (dim) nvgGlobalAlpha(args.vg, 1.0f);
+    }
+};
+
 // ── Simple Befaco-inspired knobs ─────────────────────────────────────────────
 RDM_KnobLarge::RDM_KnobLarge() {
     minAngle = -0.83f * M_PI;
@@ -252,8 +278,10 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
             std::function<void(Trimpot*)>([this, module](Trimpot* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.melodySlew;}, [](const Monsoon::ModViz& m){return m.cv3Lane[1];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
         bindParam<VCVButton>("param_DICE_R_PARAM",        MonsoonIds::DICE_R_PARAM);
         bindParam<VCVButton>("param_DICE_M_PARAM",        MonsoonIds::DICE_M_PARAM);
-        bindParam<VCVButton>("param_DICE_TRIAL_R_PARAM",  MonsoonIds::DICE_TRIAL_R_PARAM);
-        bindParam<VCVButton>("param_DICE_TRIAL_M_PARAM",  MonsoonIds::DICE_TRIAL_M_PARAM);
+        bindParam<TrialButton>("param_DICE_TRIAL_R_PARAM",  MonsoonIds::DICE_TRIAL_R_PARAM,
+            std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = false; }));
+        bindParam<TrialButton>("param_DICE_TRIAL_M_PARAM",  MonsoonIds::DICE_TRIAL_M_PARAM,
+            std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = true; }));
          bindParam<RDM_KnobSmall>("param_RHYTHM_MIX_PARAM", MonsoonIds::RHYTHM_MIX_PARAM,
             std::function<void(RDM_KnobSmall*)>([this, module](RDM_KnobSmall* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.rhythmMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[2];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
         bindParam<RDM_KnobSmall>("param_MELODY_MIX_PARAM", MonsoonIds::MELODY_MIX_PARAM,
