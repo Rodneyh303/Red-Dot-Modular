@@ -240,6 +240,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         // Display-only. (Lane base rings already come from Macro's own params via
         // loadLOR; this overlay now matches them.)
         int gs = monsoon->engine.stepIndex;
+        visualEditor->setPlayDir(monsoon->engine.lastPlayDir);   // direction cue (Mode E reverse)
         for (int l = 0; l < 3; ++l) {
             int ownLen = (int)std::lround(mod->macroBase[l][0] + mod->macroCVDelta[l][0]);
             int ownOff = (int)std::lround(mod->macroBase[l][1] + mod->macroCVDelta[l][1]);

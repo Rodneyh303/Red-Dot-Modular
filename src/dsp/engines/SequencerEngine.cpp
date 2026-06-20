@@ -73,7 +73,12 @@ void SequencerEngine::setWindow(int length, int offset) {
 bool SequencerEngine::advancePlayhead(int dir) {
     int prevStep = stepIndex;
     lastPlayDir = (dir < 0) ? -1 : +1;
-    totalStepsElapsed = (totalStepsElapsed + 1) % DNA_LCM;
+    // Step the global DNA tick WITH direction: +1 forward, -1 backward. This is what
+    // maps physical positions to drifting DNA content (strand indices) and the ring
+    // lights; counting up in reverse desyncs it from stepIndex and both the strand
+    // drift and the lights go the wrong way (ring lights up all around).
+    if (dir < 0) totalStepsElapsed = (totalStepsElapsed - 1 + DNA_LCM) % DNA_LCM;
+    else         totalStepsElapsed = (totalStepsElapsed + 1) % DNA_LCM;
 
     if (dir < 0) {
         // ── Reverse traversal: mirror of forward, leftward through the window. ──
