@@ -670,6 +670,20 @@ void Monsoon::process(const ProcessArgs& args) {
                 if (trialR) { rhythmMode = 0; engine.pe.setPendingRhythmTrial(); }
                 if (trialM) { melodyMode = 0; engine.pe.setPendingMelodyTrial(); }
             }
+
+            // LastDice: roll stepping the index OPPOSITE to plain dice (previous draw).
+            // Normal-mode only — the setters no-op on reversible streams.
+            bool lastDiceR, lastDiceM;
+            if (uiManager->processLastDiceButtons(lastDiceR, lastDiceM)) {
+                if (lastDiceR) { rhythmMode = 0; engine.pe.setPendingRhythmLastRoll(); }
+                if (lastDiceM) { melodyMode = 0; engine.pe.setPendingMelodyLastRoll(); }
+            }
+            // LastTrial: audition the previous candidate (index −1, A anchored).
+            bool lastTrialR, lastTrialM;
+            if (uiManager->processLastTrialButtons(lastTrialR, lastTrialM)) {
+                if (lastTrialR) { rhythmMode = 0; engine.pe.setPendingRhythmLastTrial(); }
+                if (lastTrialM) { melodyMode = 0; engine.pe.setPendingMelodyLastTrial(); }
+            }
             
             if (uiManager->processLockButton()) {
                 locked = !locked;

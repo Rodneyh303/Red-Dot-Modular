@@ -24,6 +24,7 @@ void PatternEngine::seedRngFull(rack::random::Xoroshiro128Plus& rng) {
 void PatternEngine::reset() {
     rhythmSeedPending = melodySeedPending = false;
     rhythmRollPending = melodyRollPending = false;
+    rhythmPendingLast = melodyPendingLast = false;
     rhythmTrialPending = melodyTrialPending = false;
     rhythmReseedRollPending = melodyReseedRollPending = false;
     rhythmReseedRollFull = melodyReseedRollFull = false;
@@ -431,6 +432,7 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     rhythmTrialPending = false;
     rhythmReseedRollPending = false;
     if (shouldRedrawR) redrawRhythm(in, rPromote);
+    rhythmPendingLast = false;   // one-shot: consumed by this boundary's redraw
 
     if (melodySeedPending) {
         melodySeedFloat = melodySeedPendingFloat;
@@ -452,6 +454,7 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     melodyTrialPending = false;
     melodyReseedRollPending = false;
     if (shouldRedrawM) redrawMelody(in, mPromote);
+    melodyPendingLast = false;   // one-shot: consumed by this boundary's redraw
 
     // Always refresh the cache so the LEDs react to live knob changes in Dice mode
     if (!shouldRedrawR || !shouldRedrawM) refreshVisualCache(in);

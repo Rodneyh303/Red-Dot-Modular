@@ -404,6 +404,13 @@ namespace MonsoonIds {
         // A. The regular dice (DICE_R/M_PARAM) commits B→A (main mode).
         DICE_TRIAL_R_PARAM,
         DICE_TRIAL_M_PARAM,
+        // LastDice / LastTrial: step the draw index opposite to dice/trial (Philox
+        // addressability). Normal-mode only — blocked on reversible streams. Grouped
+        // with their dice/trial siblings.
+        LAST_DICE_R_PARAM,
+        LAST_DICE_M_PARAM,
+        LAST_TRIAL_R_PARAM,
+        LAST_TRIAL_M_PARAM,
 
         // ── Macro/East base-owner + Macro-CV blend sends (per voice, per lane) ──
         // Appended at END so existing param IDs stay stable (saved patches safe).
