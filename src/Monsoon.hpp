@@ -703,6 +703,10 @@ struct Monsoon : Module {
     redDot::PhaseEngine phase;   // Mode E: CV1 phase ramp → pulse grid (forward+reverse)
 
     int cv1Mode = 0;
+    int rhythmReversibleMode = 0;     // 0=Normal, 1=Reversible (per-stream, Mode E)
+    int melodyReversibleMode = 0;
+    int reseedOnModeChange = 1;       // global: reseed (+zero index) on entering reversible
+    int resetIndexOnModeChange = 1;   // global: zero index on entry when NOT reseeding (greyed if reseed on)
     int cv2Mode = 0;
 
     // Assignable mod routing for the main-panel CV3 / GATE3 jacks (persisted).
@@ -948,6 +952,8 @@ struct Monsoon : Module {
     void diceRhythm();
     void diceMelody();
     void onPhraseBoundary_();
+    void applyReversibleModeChange_();
+    bool rhythmReversiblePrev_ = false, melodyReversiblePrev_ = false;
     void onReset() override;
     void onSampleRateChange(const SampleRateChangeEvent& e) override;
     int getNoteLenIdx_();

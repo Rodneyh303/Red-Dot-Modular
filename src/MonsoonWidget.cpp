@@ -633,6 +633,11 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
             void onAction(const event::Action&) override { if (module && target) *target = value; }
             void step() override { rightText = (target && *target == value) ? "✔" : ""; ui::MenuItem::step(); }
         };
+        struct BoolToggle : ui::MenuItem {
+            int* target = nullptr;
+            void onAction(const event::Action&) override { if (target) *target = (*target ? 0 : 1); }
+            void step() override { rightText = (target && *target) ? "✔" : ""; ui::MenuItem::step(); }
+        };
 
         menu->addChild(createSubmenuItem("Poly Voices", "", [=](ui::Menu* sub) {
             sub->addChild(new ui::MenuLabel);
@@ -655,6 +660,23 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
             { auto* l = new ui::MenuLabel; l->text = "Operating Mode"; sub->addChild(l);
               const char* n[] = {"A: Sequencer","B: Seq + Gate","C: Quantizer 1","D: Quantizer 2","E: Phase (CV1)"};
               for (int v=0;v<5;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->modeSelect;it->value=v;sub->addChild(it);} }
+
+            sub->addChild(new ui::MenuSeparator);
+            { auto* l = new ui::MenuLabel; l->text = "Reversible (Mode E phase)"; sub->addChild(l);
+              // Per-stream Normal/Reversible. Reversible = pure dice, signed index,
+              // forward/back; blocks trial + reseed-on-roll for that stream.
+              const char* rm[] = {"Normal","Reversible"};
+              { auto* ll = new ui::MenuLabel; ll->text = "  Rhythm"; sub->addChild(ll); }
+              for (int v=0;v<2;++v){auto* it=createMenuItem<IntItem>(rm[v]);it->module=m;it->target=&m->rhythmReversibleMode;it->value=v;sub->addChild(it);}
+              { auto* ll = new ui::MenuLabel; ll->text = "  Melody"; sub->addChild(ll); }
+              for (int v=0;v<2;++v){auto* it=createMenuItem<IntItem>(rm[v]);it->module=m;it->target=&m->melodyReversibleMode;it->value=v;sub->addChild(it);}
+              sub->addChild(new ui::MenuSeparator);
+              // Global on entering reversible: reseed (+zero index), or just zero index.
+              { auto* it=createMenuItem<BoolToggle>("Reseed on mode change");it->target=&m->reseedOnModeChange;sub->addChild(it); }
+              { auto* it=createMenuItem<BoolToggle>("Reset index on mode change");it->target=&m->resetIndexOnModeChange;
+                it->disabled = (m->reseedOnModeChange != 0);   // greyed when reseed handles it
+                sub->addChild(it); }
+            }
 
             sub->addChild(new ui::MenuSeparator);
 

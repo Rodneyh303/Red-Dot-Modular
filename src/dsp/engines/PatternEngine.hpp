@@ -233,6 +233,28 @@ struct PatternEngine {
     inline void beginMelodyDraw() { melodyCursor = 0; }
     // Step the draw-counter (dir>0 forward, dir<0 reverse). Forward-only for now;
     // the reverse/cross-boundary branch will drive dir<0.
+    // ── Reversible mode (Mode E phase reverse), per stream ──
+    // NORMAL (default): all features (auditions, reseed-on-roll, live trial source);
+    // reverse just keeps rolling forward-style (no backward draw-tracking). REVERSIBLE:
+    // pure stochastic dice — the draw index is a SIGNED counter, +1 on a forward armed
+    // roll, -1 on a reverse armed roll, NO floor/ceiling (Philox is a keyed bijection
+    // over the full signed counter space, so any index is a valid reproducible draw).
+    // Reversible blocks trial arming + trial-as-live-source + reseed-on-roll. The only
+    // state is the current index (rhythmDrawCtr/melodyDrawCtr).
+    bool rhythmReversible = false, melodyReversible = false;
+    bool reverseActive = false;                       // phase direction, set each block
+    void setReverseActive(bool rev) { reverseActive = rev; }
+    void setRhythmReversible(bool r) { rhythmReversible = r; }
+    void setMelodyReversible(bool r) { melodyReversible = r; }
+    bool rhythmAuditionsAllowed() const { return !rhythmReversible; }
+    bool melodyAuditionsAllowed() const { return !melodyReversible; }
+    inline void zeroRhythmIndex() { rhythmDrawCtr = 0; }
+    inline void zeroMelodyIndex() { melodyDrawCtr = 0; }
+    // Draw-step direction for a stream this redraw: reverse only when the stream is
+    // reversible AND the phase is moving backward; otherwise forward.
+    inline int rhythmDrawDir() const { return (reverseActive && rhythmReversible) ? -1 : +1; }
+    inline int melodyDrawDir() const { return (reverseActive && melodyReversible) ? -1 : +1; }
+
     inline void advanceRhythmDraw(int dir) { rhythmDrawCtr += (dir < 0 ? -1 : +1); }
     inline void advanceMelodyDraw(int dir) { melodyDrawCtr += (dir < 0 ? -1 : +1); }
 
@@ -341,9 +363,9 @@ struct PatternEngine {
 
     /// Arm a rhythm TRIAL/audition roll — like a roll but A stays anchored
     /// (promoteToA=false): auditions a fresh candidate B against the fixed A.
-    void setPendingRhythmTrial() { rhythmTrialPending = true; }
+    void setPendingRhythmTrial() { if (rhythmAuditionsAllowed()) rhythmTrialPending = true; }
     /// Arm a melody TRIAL/audition roll.
-    void setPendingMelodyTrial() { melodyTrialPending = true; }
+    void setPendingMelodyTrial() { if (melodyAuditionsAllowed()) melodyTrialPending = true; }
 
     /// Arm a rhythm RESEED-ROLL — reseed but keep the A/B morph (promote B→A, no
     /// firstDraw). full=true → full 64-bit internal entropy (float ignored);
