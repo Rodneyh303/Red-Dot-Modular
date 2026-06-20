@@ -329,13 +329,34 @@ float Monsoon::semitoneToVolts(int semitone) {
 // ---------------- Helper: phrase boundary hook -------------------------------
 // Called at phrase boundary (stepIndex wraps from endStep back to startStep).
 // Seeds are applied FIRST so the subsequent redraw uses the new RNG state.
+void Monsoon::applyReversibleModeChange_() {
+    // Per-stream Normal/Reversible, with entry-transition handling. On ENTERING
+    // reversible for a stream: reseedOnModeChange → reseed that stream's Philox (also
+    // zeroes the index); else if resetIndexOnModeChange → just zero the index (keep
+    // key); else keep both (seamless "reversible from here", nonzero origin allowed).
+    bool rRev = (rhythmReversibleMode != 0);
+    bool mRev = (melodyReversibleMode != 0);
+    if (rRev && !rhythmReversiblePrev_) {
+        if (reseedOnModeChange)          engine.pe.seedRhythmPhilox(rhythmSeedFloat);
+        else if (resetIndexOnModeChange) engine.pe.zeroRhythmIndex();
+    }
+    if (mRev && !melodyReversiblePrev_) {
+        if (reseedOnModeChange)          engine.pe.seedMelodyPhilox(melodySeedFloat);
+        else if (resetIndexOnModeChange) engine.pe.zeroMelodyIndex();
+    }
+    rhythmReversiblePrev_ = rRev;
+    melodyReversiblePrev_ = mRev;
+    engine.pe.setRhythmReversible(rRev);
+    engine.pe.setMelodyReversible(mRev);
+}
+
 void Monsoon::onPhraseBoundary_() {
-    // WITHIN-DRAW SCOPE: only redraw at a FORWARD phrase boundary. A REVERSE boundary
-    // crossing would need to regenerate the PREVIOUS draw (cross-draw + counter-PRNG),
-    // which is the deferred refinement — until then, reverse wraps within the current
-    // draw without a forward redraw (which would corrupt the pattern by advancing the
-    // draw the wrong way). Modes A-D always run forward, so they are unaffected.
-    if (engine.lastPlayDir < 0) return;
+    // Per-stream behavior is handled inside the draw path via rhythmDrawDir()/
+    // melodyDrawDir(): a REVERSIBLE stream under backward phase steps its signed index
+    // -1 (regenerating the previous draw); a NORMAL stream always steps +1 ("keeps
+    // rolling" even in reverse — no backward draw-tracking). So the same redraw path is
+    // correct in both directions; we just drive it every boundary that has a pending
+    // dice action, exactly as forward. Modes A-D always run forward.
     engine.pe.onPhraseBoundary(modeController->currentPatternInput);
 }
 
@@ -416,6 +437,11 @@ void Monsoon::process(const ProcessArgs& args) {
         phase.process(input.cv1, cachedCv1Connected, args.sampleTime, ppqnSetting);
         if (cachedCv1Connected) bpm = phase.bpm;   // tempo follows the ramp's velocity
         modeController->setPhaseReverse(phase.reverse);
+        engine.pe.setReverseActive(phase.reverse);
+        applyReversibleModeChange_();
+    } else {
+        engine.pe.setReverseActive(false);
+        applyReversibleModeChange_();
     }
 
     // ── Run/Reset Gate Processing ──
