@@ -31,6 +31,11 @@ void PatternEngine::reset() {
     rhythmMode = melodyMode = 0;
     rhythmSeedCached = melodySeedCached = false;
 
+    // Initialise the addressable Philox draw engines from the current seed floats
+    // (default 0 → a fixed reproducible starting sequence, counter at 0).
+    seedRhythmPhilox(rhythmSeedFloat);
+    seedMelodyPhilox(melodySeedFloat);
+
     // strands must not be all-zero or module is silent until dice/phrase
     for (int i = 0; i < 16; ++i) {
         rhythmRandom[i] = 1.0f;     // Mono triggers by default
@@ -216,6 +221,16 @@ void PatternEngine::redrawRhythm(const PatternInput& in, bool promoteToA) {
     const bool first = rhythmFirstDraw;
     rhythmFirstDraw = false;
 
+    // Philox addressable draw bookkeeping: a fresh seed (first) draws chunk 0 (the
+    // counter was just reset by seedRhythmPhilox); a roll walks the counter FORWARD
+    // to the next chunk (the A/B morph "walks forward"). Reverse (dir<0) will be
+    // driven by the cross-boundary branch via advanceRhythmDraw(-1). Cursor resets so
+    // the unit() calls map to this draw's chunk base.
+    if (usePhiloxDraws) {
+        if (!first) advanceRhythmDraw(+1);
+        beginRhythmDraw();
+    }
+
     for (int i = 0; i < 16; ++i) {
         // MAIN mode: promote current B -> A (commit the last candidate) before
         // drawing the new one. TRIAL mode skips this so A stays anchored.
@@ -316,6 +331,12 @@ void PatternEngine::redrawMelody(const PatternInput& in, bool promoteToA) {
     const bool first = melodyFirstDraw;
     melodyFirstDraw = false;
 
+    // Philox addressable draw bookkeeping (mirror of redrawRhythm).
+    if (usePhiloxDraws) {
+        if (!first) advanceMelodyDraw(+1);
+        beginMelodyDraw();
+    }
+
     for (int i = 0; i < 16; ++i) {
         // MAIN: commit current B → A before drawing fresh B. TRIAL: A anchored.
         if (promoteToA) {
@@ -388,19 +409,20 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     if (rhythmSeedPending) {
         rhythmSeedFloat = rhythmSeedPendingFloat;
         seedRngFromFloat(rhythmRng, rhythmSeedFloat);
+        seedRhythmPhilox(rhythmSeedFloat);     // mirror seed into Philox (counter→0)
         rhythmSeedPending = false;
         rhythmFirstDraw = true;   // new seed → A=B=draw, reproducible at any slew
     } else if (rhythmReseedRollPending) {
         // Reseed WITHOUT firstDraw — redrawRhythm(promote=true) commits B→A then
         // draws fresh B from the reseeded stream, so A≠B and slew survives.
-        if (rhythmReseedRollFull) seedRngFull(rhythmRng);
-        else { rhythmSeedFloat = rhythmReseedRollFloat; seedRngFromFloat(rhythmRng, rhythmSeedFloat); }
+        if (rhythmReseedRollFull) { seedRngFull(rhythmRng); seedRhythmPhiloxFull(); }
+        else { rhythmSeedFloat = rhythmReseedRollFloat; seedRngFromFloat(rhythmRng, rhythmSeedFloat); seedRhythmPhilox(rhythmSeedFloat); }
     } else if (in.reseedOnRoll && rhythmMode == 1 && !in.rhythmLiveTrial) {
         // Realtime MAIN + reseed-on-roll: reseed each redraw. (Live TRIAL never
         // reseeds — it auditions against a fixed A.) CV if present, else full
         // 64-bit internal entropy.
-        if (in.seedConnected) { rhythmSeedFloat = in.seedSampleValue; seedRngFromFloat(rhythmRng, rhythmSeedFloat); }
-        else                  seedRngFull(rhythmRng);
+        if (in.seedConnected) { rhythmSeedFloat = in.seedSampleValue; seedRngFromFloat(rhythmRng, rhythmSeedFloat); seedRhythmPhilox(rhythmSeedFloat); }
+        else                  { seedRngFull(rhythmRng); seedRhythmPhiloxFull(); }
     }
     // Promote (main, A walks) unless this is a momentary TRIAL roll OR live mode
     // is sourced from the TRIAL dice (anchored A → variations on a theme).
@@ -414,15 +436,16 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     if (melodySeedPending) {
         melodySeedFloat = melodySeedPendingFloat;
         seedRngFromFloat(melodyRng, melodySeedFloat);
+        seedMelodyPhilox(melodySeedFloat);     // mirror seed into Philox (counter→0)
         melodySeedPending = false;
         melodyFirstDraw = true;
     } else if (melodyReseedRollPending) {
-        if (melodyReseedRollFull) seedRngFull(melodyRng);
-        else { melodySeedFloat = melodyReseedRollFloat; seedRngFromFloat(melodyRng, melodySeedFloat); }
+        if (melodyReseedRollFull) { seedRngFull(melodyRng); seedMelodyPhiloxFull(); }
+        else { melodySeedFloat = melodyReseedRollFloat; seedRngFromFloat(melodyRng, melodySeedFloat); seedMelodyPhilox(melodySeedFloat); }
     } else if (in.reseedOnRoll && melodyMode == 1 && !in.melodyLiveTrial) {
         // Realtime MAIN + reseed-on-roll only (live TRIAL never reseeds).
-        if (in.seedConnected) { melodySeedFloat = in.seedSampleValue; seedRngFromFloat(melodyRng, melodySeedFloat); }
-        else                  seedRngFull(melodyRng);
+        if (in.seedConnected) { melodySeedFloat = in.seedSampleValue; seedRngFromFloat(melodyRng, melodySeedFloat); seedMelodyPhilox(melodySeedFloat); }
+        else                  { seedRngFull(melodyRng); seedMelodyPhiloxFull(); }
     }
     const bool mLiveTrial = (melodyMode == 1 && in.melodyLiveTrial);
     const bool mPromote = !melodyTrialPending && !mLiveTrial;
