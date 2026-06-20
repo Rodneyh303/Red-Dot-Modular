@@ -261,6 +261,10 @@ struct PatternEngine {
     bool auditionsAllowed() const {
         return !reverseActive && auditionPolicy == AuditionPolicy::ForwardOnly;
     }
+    // None mode: auditions disabled, A never promoted (stays initial zero), no tape —
+    // pure increment/decrement of the draw-counter. The simplest fully-reversible model;
+    // the only floor is the counter reaching 0 (the initial draw). Mix/slew untouched.
+    bool noneMode() const { return auditionPolicy == AuditionPolicy::None; }
 
     // Reset the intra-draw cursor at the start of a redraw (called by redrawRhythm/
     // redrawMelody before any unit() calls so the draw maps to its chunk base).

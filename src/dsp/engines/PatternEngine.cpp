@@ -228,6 +228,8 @@ int PatternEngine::varyNoteIndex(int baseIdx, const PatternInput& in, float r) {
 // Regenerate rhythm pattern (16 steps of bool: true=active, false=rest)
 void PatternEngine::redrawRhythm(const PatternInput& in, bool promoteToA) {
     if (in.locked) return;
+    // None mode never promotes A (it stays initial zero) and never commits the tape.
+    if (noneMode()) promoteToA = false;
 
     // Two dice modes (see header). MAIN (promoteToA=true): the current candidate
     // B is committed into A FIRST, then a fresh B is drawn, and slew blends A↔B
@@ -364,6 +366,7 @@ void PatternEngine::recomputeEffectiveMelody() {
 // Regenerate melody pattern (16 steps of semitone + pitch voltage)
 void PatternEngine::redrawMelody(const PatternInput& in, bool promoteToA) {
     if (in.locked) return;
+    if (noneMode()) promoteToA = false;
     const bool first = melodyFirstDraw;
     melodyFirstDraw = false;
 
