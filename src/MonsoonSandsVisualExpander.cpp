@@ -191,6 +191,7 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             effRot[l] = eng.strandRot(strand);
         }
         int globalStep = monsoon->engine.stepIndex;
+        visualEditor->setPlayDir(monsoon->engine.lastPlayDir);   // direction cue (Mode E reverse)
         for (int l = 0; l < 6; ++l) {
             visualEditor->currentState.lanes[l].setDisplayLOR(effLen[l], effOff[l], effRot[l]);
             visualEditor->setLanePlayStep(l,
