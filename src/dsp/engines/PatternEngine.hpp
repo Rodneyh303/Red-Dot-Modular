@@ -23,6 +23,7 @@
 #include <cmath>
 #include <cstdint>
 #include <algorithm>
+#include "../PhiloxRng.hpp"
 
 
 template<typename T>
@@ -206,9 +207,63 @@ struct PatternEngine {
     static inline float rngToFloat(rack::random::Xoroshiro128Plus& rng) {
         return (rng() >> 11) * (1.f / float(1ull << 53));
     }
+
+    // ── Counter-addressable Philox draw path (Mode E reverse/jump foundation) ──
+    // Each stream (rhythm, melody) has a Philox4x32 engine keyed by the stream seed,
+    // a DRAW-COUNTER (the phrase index — up on forward redraw, down on reverse), a
+    // fixed CHUNK of stream positions per draw, and an intra-draw CURSOR that the
+    // redraw resets and advances per unit() call. So draw N is the addressable block
+    // [N*CHUNK, N*CHUNK+CHUNK) — pure fn of (counter, key) ⇒ reproducible forward AND
+    // backward without stored history. 32-bit Philox: a 24-bit-mantissa float, exactly
+    // float precision, which is all the probability lanes need.
+    //
+    // CHUNK must exceed the max unit() calls per redraw of a stream. Worst case:
+    //   rhythm  16 * (rhythm+variation+legato+accent=4 mono + 15 poly) = 304
+    //   melody  16 * (melody+octave=2 mono + 15*2 poly)               = 512
+    // 1024 leaves generous headroom and is a clean power of two.
+    static constexpr uint64_t DRAW_CHUNK = 1024;
+    bool      usePhiloxDraws = true;          // false → legacy Xoroshiro (A/B compare)
+    redDot::PhiloxRng rhythmPhilox, melodyPhilox;
+    int64_t   rhythmDrawCtr = 0, melodyDrawCtr = 0;   // signed: can go negative on reverse
+    uint64_t  rhythmCursor  = 0, melodyCursor  = 0;   // intra-draw position, reset per redraw
+
+    // Reset the intra-draw cursor at the start of a redraw (called by redrawRhythm/
+    // redrawMelody before any unit() calls so the draw maps to its chunk base).
+    inline void beginRhythmDraw() { rhythmCursor = 0; }
+    inline void beginMelodyDraw() { melodyCursor = 0; }
+    // Step the draw-counter (dir>0 forward, dir<0 reverse). Forward-only for now;
+    // the reverse/cross-boundary branch will drive dir<0.
+    inline void advanceRhythmDraw(int dir) { rhythmDrawCtr += (dir < 0 ? -1 : +1); }
+    inline void advanceMelodyDraw(int dir) { melodyDrawCtr += (dir < 0 ? -1 : +1); }
+
+    // Seed a stream's Philox from the same 0..10 float (reseed → new key, counter
+    // reset to 0 = sequence restarts) or from full entropy. Mirrors the Xoroshiro
+    // seed sites so seed/reseed events affect both engines identically.
+    inline void seedRhythmPhilox(float seedFloat) {
+        float s = pe_clamp(seedFloat, 0.f, 10.f);
+        uint64_t sd = (uint64_t)((double)s / 10.0 * (double)MAX_U64);
+        rhythmPhilox.seed64(sd); rhythmDrawCtr = 0;
+    }
+    inline void seedMelodyPhilox(float seedFloat) {
+        float s = pe_clamp(seedFloat, 0.f, 10.f);
+        uint64_t sd = (uint64_t)((double)s / 10.0 * (double)MAX_U64);
+        melodyPhilox.seed64(sd); melodyDrawCtr = 0;
+    }
+    inline void seedRhythmPhiloxFull() { rhythmPhilox.seed64(rack::random::u64()); rhythmDrawCtr = 0; }
+    inline void seedMelodyPhiloxFull() { melodyPhilox.seed64(rack::random::u64()); melodyDrawCtr = 0; }
+
+    inline float philoxRhythm() {
+        uint64_t base = (uint64_t)(rhythmDrawCtr) * DRAW_CHUNK + rhythmCursor++;
+        return rhythmPhilox.atUniform(base);
+    }
+    inline float philoxMelody() {
+        uint64_t base = (uint64_t)(melodyDrawCtr) * DRAW_CHUNK + melodyCursor++;
+        return melodyPhilox.atUniform(base);
+    }
+
     //inline float unitStochastic() { return rngToFloat(stochasticRng); }
-    inline float unitRhythm() { return rngToFloat(rhythmRng); }
-    inline float unitMelody() { return rngToFloat(melodyRng); }
+    inline float unitRhythm() { return usePhiloxDraws ? philoxRhythm() : rngToFloat(rhythmRng); }
+    inline float unitMelody() { return usePhiloxDraws ? philoxMelody() : rngToFloat(melodyRng); }
 
     static constexpr uint64_t MAX_U64 = 0xFFFFFFFFFFFFFFFFULL;
 
