@@ -12,6 +12,7 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
 
     // ── Settings and Modes ──
     json_object_set_new(root, "cv1Mode", json_integer(m->cv1Mode));
+    json_object_set_new(root, "auditionPolicyMode", json_integer(m->auditionPolicyMode));
     json_object_set_new(root, "cv2Mode", json_integer(m->cv2Mode));
     json_object_set_new(root, "gate1Assign", json_integer(m->gate1Assign));
     json_object_set_new(root, "gate2Assign", json_integer(m->gate2Assign));
@@ -155,6 +156,7 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
 
     // ── Settings and Modes ──
     if (auto j = json_object_get(root, "cv1Mode")) m->cv1Mode = (int)json_integer_value(j);
+    if (auto j = json_object_get(root, "auditionPolicyMode")) m->auditionPolicyMode = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "cv2Mode")) m->cv2Mode = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "gate1Assign")) m->gate1Assign = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "gate2Assign")) m->gate2Assign = (int)json_integer_value(j);

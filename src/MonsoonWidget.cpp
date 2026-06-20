@@ -656,6 +656,10 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
               const char* n[] = {"A: Sequencer","B: Seq + Gate","C: Quantizer 1","D: Quantizer 2","E: Phase (CV1)"};
               for (int v=0;v<5;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->modeSelect;it->value=v;sub->addChild(it);} }
 
+            { auto* l = new ui::MenuLabel; l->text = "Audition policy (Mode E)"; sub->addChild(l);
+              const char* ap[] = {"Forward only","None"};
+              for (int v=0;v<2;++v){auto* it=createMenuItem<IntItem>(ap[v]);it->module=m;it->target=&m->auditionPolicyMode;it->value=v;sub->addChild(it);} }
+
             sub->addChild(new ui::MenuSeparator);
 
             struct RMI : ui::MenuItem { Monsoon* module=nullptr; int value=0;

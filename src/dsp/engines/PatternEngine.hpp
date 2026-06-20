@@ -23,6 +23,8 @@
 #include <cmath>
 #include <cstdint>
 #include <algorithm>
+#include <vector>
+#include <memory>
 #include "../PhiloxRng.hpp"
 
 
@@ -227,6 +229,39 @@ struct PatternEngine {
     int64_t   rhythmDrawCtr = 0, melodyDrawCtr = 0;   // signed: can go negative on reverse
     uint64_t  rhythmCursor  = 0, melodyCursor  = 0;   // intra-draw position, reset per redraw
 
+    // ── Reverse "tape" model (Mode E phase reverse) ──
+    // Forward play writes a per-roll audition-count tape; reverse is a READ-ONLY walk
+    // back through it (no auditioning in reverse). The committed draw index after roll
+    // R = sum over rolls 0..R of (auditionCount[r] + 1), so the tape lets us
+    // reconstruct the draw-counter going backward. A forward roll while behind the
+    // head TRUNCATES the tape there (tape-machine record-over-rewind). The tape is a
+    // PREALLOCATED power-of-two RING (sliding window): allocated once at construction,
+    // never in process(); oldest entries silently overwritten past capacity. All ops
+    // are O(1) index arithmetic — no audio-thread allocation.
+    enum class AuditionPolicy : uint8_t { ForwardOnly, None };
+    AuditionPolicy auditionPolicy = AuditionPolicy::ForwardOnly;
+    bool reverseActive = false;                       // set from phase direction each block
+
+    static constexpr uint64_t TAPE_CAP  = (1u << 20); // 1,048,576 rolls/stream (2MB each)
+    static constexpr uint64_t TAPE_MASK = TAPE_CAP - 1;
+    static constexpr int      MAX_AUDITIONS_PER_ROLL = 65535;  // uint16_t ceiling; saturate
+    std::unique_ptr<uint16_t[]> rhythmTape, melodyTape;        // [TAPE_CAP], alloc in ctor
+    // head = number of committed rolls written; cur = current roll position; floor =
+    // oldest roll still in the ring (head-CAP). Reverse clamps at max(0,floor).
+    uint64_t rhythmHead = 0, rhythmCur = 0;
+    uint64_t melodyHead = 0, melodyCur = 0;
+    int   rhythmPendingAuditions = 0, melodyPendingAuditions = 0;
+
+    void allocTape() {
+        if (!rhythmTape) rhythmTape.reset(new uint16_t[TAPE_CAP]());
+        if (!melodyTape) melodyTape.reset(new uint16_t[TAPE_CAP]());
+    }
+    void setReverseActive(bool rev) { reverseActive = rev; }
+    void setAuditionPolicy(AuditionPolicy p) { auditionPolicy = p; }
+    bool auditionsAllowed() const {
+        return !reverseActive && auditionPolicy == AuditionPolicy::ForwardOnly;
+    }
+
     // Reset the intra-draw cursor at the start of a redraw (called by redrawRhythm/
     // redrawMelody before any unit() calls so the draw maps to its chunk base).
     inline void beginRhythmDraw() { rhythmCursor = 0; }
@@ -235,6 +270,53 @@ struct PatternEngine {
     // the reverse/cross-boundary branch will drive dir<0.
     inline void advanceRhythmDraw(int dir) { rhythmDrawCtr += (dir < 0 ? -1 : +1); }
     inline void advanceMelodyDraw(int dir) { melodyDrawCtr += (dir < 0 ? -1 : +1); }
+
+    // ── Tape: forward roll commit vs reverse roll, per stream (ring buffer) ──
+    // A committed forward roll consumes (pendingAuditions + 1) draw chunks. Records the
+    // count in the ring; truncates if committing while BEHIND the head (fork). Sliding
+    // window: writing past TAPE_CAP overwrites the oldest slot via the mask.
+    void commitRhythmForwardRoll() {
+        if (rhythmCur < rhythmHead) rhythmHead = rhythmCur;          // behind head → fork
+        rhythmTape[rhythmHead & TAPE_MASK] = (uint16_t)rhythmPendingAuditions;
+        rhythmPendingAuditions = 0;
+        rhythmHead++; rhythmCur = rhythmHead;
+    }
+    void commitMelodyForwardRoll() {
+        if (melodyCur < melodyHead) melodyHead = melodyCur;
+        melodyTape[melodyHead & TAPE_MASK] = (uint16_t)melodyPendingAuditions;
+        melodyPendingAuditions = 0;
+        melodyHead++; melodyCur = melodyHead;
+    }
+    // Oldest roll still reversible (sliding window floor).
+    uint64_t rhythmFloor() const { return rhythmHead > TAPE_CAP ? rhythmHead - TAPE_CAP : 0; }
+    uint64_t melodyFloor() const { return melodyHead > TAPE_CAP ? melodyHead - TAPE_CAP : 0; }
+    // Reverse roll: step back one committed roll, undoing its (auditions+1) chunks.
+    // Returns false at the floor (no more reversible history — caller restores initial).
+    bool reverseRhythmRoll() {
+        if (rhythmCur <= rhythmFloor()) return false;
+        rhythmCur--;
+        uint16_t n = rhythmTape[rhythmCur & TAPE_MASK];
+        rhythmDrawCtr -= (int64_t)n + 1;
+        return true;
+    }
+    bool reverseMelodyRoll() {
+        if (melodyCur <= melodyFloor()) return false;
+        melodyCur--;
+        uint16_t n = melodyTape[melodyCur & TAPE_MASK];
+        melodyDrawCtr -= (int64_t)n + 1;
+        return true;
+    }
+    void resetRhythmTape() {
+        rhythmHead = rhythmCur = 0; rhythmPendingAuditions = 0; rhythmDrawCtr = 0;
+    }
+    void resetMelodyTape() {
+        melodyHead = melodyCur = 0; melodyPendingAuditions = 0; melodyDrawCtr = 0;
+    }
+    void resetTape() { resetRhythmTape(); resetMelodyTape(); }
+    // Terminal reverse state: A = all zeros, B = the nonzero *Random defaults — the
+    // exact pre-first-roll state (shared with reset()). Restored when reverse hits the
+    // floor so bottoming-out lands on the deterministic initial pattern.
+    void restoreInitialAB();
 
     // Seed a stream's Philox from the same 0..10 float (reseed → new key, counter
     // reset to 0 = sequence restarts) or from full entropy. Mirrors the Xoroshiro
@@ -341,9 +423,9 @@ struct PatternEngine {
 
     /// Arm a rhythm TRIAL/audition roll — like a roll but A stays anchored
     /// (promoteToA=false): auditions a fresh candidate B against the fixed A.
-    void setPendingRhythmTrial() { rhythmTrialPending = true; }
+    void setPendingRhythmTrial() { if (auditionsAllowed() && rhythmPendingAuditions < MAX_AUDITIONS_PER_ROLL) { rhythmTrialPending = true; rhythmPendingAuditions++; } }
     /// Arm a melody TRIAL/audition roll.
-    void setPendingMelodyTrial() { melodyTrialPending = true; }
+    void setPendingMelodyTrial() { if (auditionsAllowed() && melodyPendingAuditions < MAX_AUDITIONS_PER_ROLL) { melodyTrialPending = true; melodyPendingAuditions++; } }
 
     /// Arm a rhythm RESEED-ROLL — reseed but keep the A/B morph (promote B→A, no
     /// firstDraw). full=true → full 64-bit internal entropy (float ignored);
@@ -361,6 +443,16 @@ struct PatternEngine {
     /// Handle phrase boundary: apply pending seeds and redraw patterns
     void onPhraseBoundary(const PatternInput& in) {
         applyPendingSeedsAndRedraw(in);
+    }
+    // Reverse phrase-boundary crossing (Mode E): force a reverse redraw of both streams
+    // so the tape steps back one committed roll and the PREVIOUS draw is regenerated
+    // from the counter (or the initial A/B is restored at the floor). reverseActive
+    // must be true (set from phase direction) so redraw* takes the reverse branch.
+    // promote=true here is irrelevant in the reverse branch (no commit on reverse).
+    void reverseBoundaryRedraw(const PatternInput& in) {
+        if (in.locked) return;
+        redrawRhythm(in, /*promoteToA=*/true);
+        redrawMelody(in, /*promoteToA=*/true);
     }
 
     // ── Mode switching (dice ↔ realtime) ──────────────────────────────────────

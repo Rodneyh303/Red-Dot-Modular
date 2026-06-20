@@ -21,7 +21,26 @@ void PatternEngine::seedRngFull(rack::random::Xoroshiro128Plus& rng) {
     rng.seed(s1, s2);
 }
 
+void PatternEngine::restoreInitialAB() {
+    // Terminal reverse state = the exact pre-first-roll state: A (LockedA) all zeros,
+    // B (CandB) the nonzero *Random defaults. Mirrors reset()'s LockedA/CandB fill so
+    // bottoming out reverse lands on the deterministic initial pattern. Recompute the
+    // effective/slewed buffers + source/pattern so the audible output matches.
+    for (int i = 0; i < 16; ++i) {
+        rhythmLockedA[i] = variationLockedA[i] = legatoLockedA[i] = 0.f;
+        accentLockedA[i] = melodyLockedA[i] = octaveLockedA[i] = 0.f;
+        for (int v = 0; v < 15; v++) { polyRhythmLockedA[v][i] = polyMelodyLockedA[v][i] = polyOctaveLockedA[v][i] = 0.f; }
+        rhythmCandB[i]    = 1.0f;   variationCandB[i] = 0.5f;  legatoCandB[i] = 0.0f;
+        accentCandB[i]    = 1.0f;   melodyCandB[i]    = 0.5f;  octaveCandB[i] = 0.5f;
+        for (int v = 0; v < 15; v++) { polyRhythmCandB[v][i] = 1.0f; polyMelodyCandB[v][i] = 0.5f; polyOctaveCandB[v][i] = 0.5f; }
+    }
+    rhythmSlewApplied = -1.f; melodySlewApplied = -1.f;
+    recomputeEffectiveRhythm();
+    recomputeEffectiveMelody();
+}
+
 void PatternEngine::reset() {
+    allocTape();   // one-time ring allocation (idempotent; never reallocates)
     rhythmSeedPending = melodySeedPending = false;
     rhythmRollPending = melodyRollPending = false;
     rhythmTrialPending = melodyTrialPending = false;
@@ -221,15 +240,26 @@ void PatternEngine::redrawRhythm(const PatternInput& in, bool promoteToA) {
     const bool first = rhythmFirstDraw;
     rhythmFirstDraw = false;
 
-    // Philox addressable draw bookkeeping: a fresh seed (first) draws chunk 0 (the
-    // counter was just reset by seedRhythmPhilox); a roll walks the counter FORWARD
-    // to the next chunk (the A/B morph "walks forward"). Reverse (dir<0) will be
-    // driven by the cross-boundary branch via advanceRhythmDraw(-1). Cursor resets so
-    // the unit() calls map to this draw's chunk base.
+    // ── Tape-aware Philox draw bookkeeping ──
+    // first (seed): counter was reset to 0 by seedRhythmPhilox; reset tape, draw chunk
+    //   0, no advance. reverse: step the draw-counter BACK one committed roll via the
+    //   tape; at the floor restore initial A/B (pre-first-roll) and skip the draw.
+    //   forward audition or roll: advance counter +1 and draw fresh B; a promoting roll
+    //   commits the tape entry below.
+    bool restoredInitial = false;
     if (usePhiloxDraws) {
-        if (!first) advanceRhythmDraw(+1);
-        beginRhythmDraw();
+        if (first) {
+            resetRhythmTape();
+            beginRhythmDraw();
+        } else if (reverseActive) {
+            if (reverseRhythmRoll()) beginRhythmDraw();
+            else { restoreInitialAB(); restoredInitial = true; }
+        } else {
+            advanceRhythmDraw(+1);
+            beginRhythmDraw();
+        }
     }
+    if (restoredInitial) return;
 
     for (int i = 0; i < 16; ++i) {
         // MAIN mode: promote current B -> A (commit the last candidate) before
@@ -276,6 +306,12 @@ void PatternEngine::redrawRhythm(const PatternInput& in, bool promoteToA) {
         for (int v=0;v<15;v++) polyRhythmSource[v][i]=slewedPolyRhythm[v][i];
         rhythmPattern[i] = (slewedRhythm[i] >= in.restProb);
     }
+
+    // Commit the tape entry for a promoting FORWARD roll (records the auditions that
+    // preceded it). Auditions (!promoteToA) leave pendingAuditions accumulating;
+    // reverse and seed/first never commit here.
+    if (usePhiloxDraws && promoteToA && !reverseActive && !first)
+        commitRhythmForwardRoll();
 }
 
 // slew: slewedDraw[] = A + slew*(B-A). When no Sands owns the spread stage,
@@ -331,11 +367,21 @@ void PatternEngine::redrawMelody(const PatternInput& in, bool promoteToA) {
     const bool first = melodyFirstDraw;
     melodyFirstDraw = false;
 
-    // Philox addressable draw bookkeeping (mirror of redrawRhythm).
+    // Tape-aware Philox draw bookkeeping (mirror of redrawRhythm).
+    bool restoredInitial = false;
     if (usePhiloxDraws) {
-        if (!first) advanceMelodyDraw(+1);
-        beginMelodyDraw();
+        if (first) {
+            resetMelodyTape();
+            beginMelodyDraw();
+        } else if (reverseActive) {
+            if (reverseMelodyRoll()) beginMelodyDraw();
+            else { restoreInitialAB(); restoredInitial = true; }
+        } else {
+            advanceMelodyDraw(+1);
+            beginMelodyDraw();
+        }
     }
+    if (restoredInitial) return;
 
     for (int i = 0; i < 16; ++i) {
         // MAIN: commit current B → A before drawing fresh B. TRIAL: A anchored.
@@ -371,6 +417,9 @@ void PatternEngine::redrawMelody(const PatternInput& in, bool promoteToA) {
         melodyPitchV[i]   = genPitchLive(sem, in, slewedMelody[i], slewedOctave[i]);
         melodySemitone[i] = sem;
     }
+
+    if (usePhiloxDraws && promoteToA && !reverseActive && !first)
+        commitMelodyForwardRoll();
 }
 
 void PatternEngine::latchMix(float rhythmMix, float melodyMix) {

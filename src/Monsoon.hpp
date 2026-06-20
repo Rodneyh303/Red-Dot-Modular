@@ -703,6 +703,7 @@ struct Monsoon : Module {
     redDot::PhaseEngine phase;   // Mode E: CV1 phase ramp → pulse grid (forward+reverse)
 
     int cv1Mode = 0;
+    int auditionPolicyMode = 0;   // 0=ForwardOnly, 1=None (Mode E reverse tape)
     int cv2Mode = 0;
 
     // Assignable mod routing for the main-panel CV3 / GATE3 jacks (persisted).

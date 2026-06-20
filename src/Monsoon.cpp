@@ -54,9 +54,11 @@ Monsoon::Monsoon() {
         rhythmSeedFloat = rack::random::uniform() * 10.f;
         melodySeedFloat = rack::random::uniform() * 10.f;
         reseedXoroshiroFromFloat(rhythmRng, rhythmSeedFloat);
+        engine.pe.seedRhythmPhilox(rhythmSeedFloat);
         //stochasticSeedFloat = rack::random::uniform() * 10.f;
         //reseedXoroshiroFromFloat(stochasticRng, stochasticSeedFloat);
         reseedXoroshiroFromFloat(melodyRng, melodySeedFloat);
+        engine.pe.seedMelodyPhilox(melodySeedFloat);
         rhythmSeedPendingFloat = rhythmSeedFloat;
         melodySeedPendingFloat = melodySeedFloat;
 
@@ -114,7 +116,9 @@ void Monsoon::updateExpanderPointers() {
         PersistenceManager::fromJson(this, root);
     // Finalize state
     reseedXoroshiroFromFloat(engine.pe.rhythmRng, rhythmSeedFloat);
+    engine.pe.seedRhythmPhilox(rhythmSeedFloat);
     reseedXoroshiroFromFloat(engine.pe.melodyRng, melodySeedFloat);
+    engine.pe.seedMelodyPhilox(melodySeedFloat);
     // scaleManager is guaranteed to be valid after construction
     scaleManager->updateScaleMask();
     }
@@ -330,12 +334,15 @@ float Monsoon::semitoneToVolts(int semitone) {
 // Called at phrase boundary (stepIndex wraps from endStep back to startStep).
 // Seeds are applied FIRST so the subsequent redraw uses the new RNG state.
 void Monsoon::onPhraseBoundary_() {
-    // WITHIN-DRAW SCOPE: only redraw at a FORWARD phrase boundary. A REVERSE boundary
-    // crossing would need to regenerate the PREVIOUS draw (cross-draw + counter-PRNG),
-    // which is the deferred refinement — until then, reverse wraps within the current
-    // draw without a forward redraw (which would corrupt the pattern by advancing the
-    // draw the wrong way). Modes A-D always run forward, so they are unaffected.
-    if (engine.lastPlayDir < 0) return;
+    // FORWARD boundary: normal pending-dice/redraw path. REVERSE boundary (Mode E):
+    // force a reverse redraw so the tape steps back one roll and the previous draw is
+    // regenerated (or initial A/B restored at the floor). The tape (PatternEngine)
+    // makes cross-draw reverse possible; reverseActive is already set from the phase
+    // direction. Modes A-D always run forward.
+    if (engine.lastPlayDir < 0) {
+        engine.pe.reverseBoundaryRedraw(modeController->currentPatternInput);
+        return;
+    }
     engine.pe.onPhraseBoundary(modeController->currentPatternInput);
 }
 
@@ -416,6 +423,12 @@ void Monsoon::process(const ProcessArgs& args) {
         phase.process(input.cv1, cachedCv1Connected, args.sampleTime, ppqnSetting);
         if (cachedCv1Connected) bpm = phase.bpm;   // tempo follows the ramp's velocity
         modeController->setPhaseReverse(phase.reverse);
+        engine.pe.setReverseActive(phase.reverse);  // tape: reverse = read-only walk back
+        engine.pe.setAuditionPolicy(auditionPolicyMode == 1
+            ? PatternEngine::AuditionPolicy::None
+            : PatternEngine::AuditionPolicy::ForwardOnly);
+    } else {
+        engine.pe.setReverseActive(false);          // all other modes always forward
     }
 
     // ── Run/Reset Gate Processing ──
