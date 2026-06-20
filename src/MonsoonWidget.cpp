@@ -708,15 +708,25 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
 
             {
                 auto* l = new ui::MenuLabel; l->text = "Reseed Policy"; sub->addChild(l);
-                sub->addChild(createBoolPtrMenuItem("Reseed on roll (main dice)", "", &m->reseedOnRoll));
+                // Reseed-on-roll is inert when BOTH streams are reversible (reversible
+                // blocks it per stream); grey it then to signal that.
+                auto* ror = createBoolPtrMenuItem("Reseed on roll (main dice)", "", &m->reseedOnRoll);
+                ror->disabled = (m->rhythmReversibleMode != 0 && m->melodyReversibleMode != 0);
+                sub->addChild(ror);
                 sub->addChild(createBoolPtrMenuItem("Reseed on restart", "", &m->reseedOnRestart));
             }
 
             sub->addChild(new ui::MenuSeparator);
             {
-                auto* l = new ui::MenuLabel; l->text = "Which dice live mode drives"; sub->addChild(l); 
-                sub->addChild(createBoolPtrMenuItem("Rhythm: trial (else main)", "", &m->rhythmLiveTrial));
-                sub->addChild(createBoolPtrMenuItem("Melody: trial (else main)", "", &m->melodyLiveTrial));
+                auto* l = new ui::MenuLabel; l->text = "Which dice live mode drives"; sub->addChild(l);
+                // Live "trial as source" is blocked on a reversible stream — grey the
+                // matching per-stream toggle.
+                auto* rt = createBoolPtrMenuItem("Rhythm: trial (else main)", "", &m->rhythmLiveTrial);
+                rt->disabled = (m->rhythmReversibleMode != 0);
+                sub->addChild(rt);
+                auto* mt = createBoolPtrMenuItem("Melody: trial (else main)", "", &m->melodyLiveTrial);
+                mt->disabled = (m->melodyReversibleMode != 0);
+                sub->addChild(mt);
             }
 
         }));
