@@ -522,8 +522,17 @@ void Monsoon::process(const ProcessArgs& args) {
         // would cross the phrase boundary is clamped — cross-draw regeneration is a
         // later refinement.
         if (modeSelect == 4 && phase.jumped && phase.jumpSixteenths != 0) {
-            mc.setPhaseReverse(phase.jumpSixteenths < 0);
-            int steps = phase.jumpSixteenths < 0 ? -phase.jumpSixteenths : phase.jumpSixteenths;
+            bool jumpReverse = (phase.jumpSixteenths < 0);
+            mc.setPhaseReverse(jumpReverse);
+            // Bridge the jump DIRECTION to the draw-index direction: a boundary crossed
+            // mid-jump fires onPhraseBoundary_ (inside executeModeE→postExecute_), which
+            // for a reversible stream steps the index +1/-1 per reverseActive. Set it
+            // from the jump sign for the replay, restore after. Live mode always rolls
+            // at the crossing; armed dice rolls once; unarmed = reuse — all handled by
+            // the existing boundary path. (Cap = 16 steps = at most one boundary.)
+            bool savedReverse = engine.pe.reverseActive;
+            engine.pe.setReverseActive(jumpReverse);
+            int steps = jumpReverse ? -phase.jumpSixteenths : phase.jumpSixteenths;
             if (steps > 16) steps = 16;                 // within-draw cap (one phrase)
             int p16 = ClockEngine::pulsesPer16th(ppqnSetting);
             for (int s = 0; s < steps; ++s) {
@@ -539,6 +548,7 @@ void Monsoon::process(const ProcessArgs& args) {
                         engine.voices[i].gs.tickPulse();
                 }
             }
+            engine.pe.setReverseActive(savedReverse);
         }
 
     }
