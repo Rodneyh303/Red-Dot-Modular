@@ -404,6 +404,13 @@ namespace MonsoonIds {
         // A. The regular dice (DICE_R/M_PARAM) commits B→A (main mode).
         DICE_TRIAL_R_PARAM,
         DICE_TRIAL_M_PARAM,
+        // LastDice / LastTrial: step the draw index opposite to dice/trial (Philox
+        // addressability). Normal-mode only — blocked on reversible streams. Grouped
+        // with their dice/trial siblings.
+        LAST_DICE_R_PARAM,
+        LAST_DICE_M_PARAM,
+        LAST_TRIAL_R_PARAM,
+        LAST_TRIAL_M_PARAM,
 
         // ── Macro/East base-owner + Macro-CV blend sends (per voice, per lane) ──
         // Appended at END so existing param IDs stay stable (saved patches safe).
@@ -575,6 +582,11 @@ namespace MonsoonIds {
         CAUSEWAY_GATE_LIVESTATIC_M,
         CAUSEWAY_GATE_RESEED_ROLL,
         CAUSEWAY_GATE_RESEED_RESTART,
+        // LastDice / LastTrial gates (step draw index opposite to dice/trial).
+        CAUSEWAY_GATE_LASTDICE_R,
+        CAUSEWAY_GATE_LASTDICE_M,
+        CAUSEWAY_GATE_LASTTRIAL_R,
+        CAUSEWAY_GATE_LASTTRIAL_M,
         NUM_CAUSEWAY_INPUTS
     };
 
@@ -719,7 +731,7 @@ struct Monsoon : Module {
     int  cv3Target   = CV3_RHYTHM_SLEW;
     int  gate3Target = G3_TRIAL_RHYTHM;
     dsp::SchmittTrigger gate3Trig;   // rising-edge detect for GATE3 actions
-    dsp::SchmittTrigger causewayGateTrig[10];  // Causeway's 10 die-action gates
+    dsp::SchmittTrigger causewayGateTrig[14];  // Causeway's 14 die-action gates (incl Last*)
     // Which dice the LIVE mode drives, per lane: false=main (promote, A walks),
     // true=trial (anchored A, endless variations on a theme). Persisted.
     bool rhythmLiveTrial = false;
@@ -735,6 +747,8 @@ struct Monsoon : Module {
         DA_LIVESRC_R, DA_LIVESRC_M,          // toggle live source main<->trial
         DA_LIVESTATIC_R, DA_LIVESTATIC_M,    // toggle live<->static (rhythmMode)
         DA_RESEED_ROLL, DA_RESEED_RESTART,
+        DA_LASTDICE_R, DA_LASTDICE_M,        // step index opposite to dice
+        DA_LASTTRIAL_R, DA_LASTTRIAL_M,      // audition previous candidate
         DA_NUM
     };
     void fireDieAction(int a);   // defined in Monsoon.cpp

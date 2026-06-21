@@ -282,6 +282,17 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
             std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = false; }));
         bindParam<TrialButton>("param_DICE_TRIAL_M_PARAM",  MonsoonIds::DICE_TRIAL_M_PARAM,
             std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = true; }));
+        // Last dice / last trial — same TrialButton (dims + inert on reversible streams,
+        // which is correct since Last* is Normal-mode only). These warn-and-skip until
+        // the panel SVG gains param_LAST_* markers (panels phase); harmless until then.
+        bindParam<TrialButton>("param_LAST_DICE_R_PARAM",   MonsoonIds::LAST_DICE_R_PARAM,
+            std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = false; }));
+        bindParam<TrialButton>("param_LAST_DICE_M_PARAM",   MonsoonIds::LAST_DICE_M_PARAM,
+            std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = true; }));
+        bindParam<TrialButton>("param_LAST_TRIAL_R_PARAM",  MonsoonIds::LAST_TRIAL_R_PARAM,
+            std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = false; }));
+        bindParam<TrialButton>("param_LAST_TRIAL_M_PARAM",  MonsoonIds::LAST_TRIAL_M_PARAM,
+            std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = true; }));
          bindParam<RDM_KnobSmall>("param_RHYTHM_MIX_PARAM", MonsoonIds::RHYTHM_MIX_PARAM,
             std::function<void(RDM_KnobSmall*)>([this, module](RDM_KnobSmall* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.rhythmMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[2];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
         bindParam<RDM_KnobSmall>("param_MELODY_MIX_PARAM", MonsoonIds::MELODY_MIX_PARAM,

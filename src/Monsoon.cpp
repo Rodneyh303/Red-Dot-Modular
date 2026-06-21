@@ -321,6 +321,10 @@ float Monsoon::semitoneToVolts(int semitone) {
             case DA_LIVESTATIC_M:  melodyMode = 1 - melodyMode; break;
             case DA_RESEED_ROLL:   reseedOnRoll    = !reseedOnRoll;    break;
             case DA_RESEED_RESTART:reseedOnRestart = !reseedOnRestart; break;
+            case DA_LASTDICE_R:    rhythmMode = 0; engine.pe.setPendingRhythmLastRoll();  break;
+            case DA_LASTDICE_M:    melodyMode = 0; engine.pe.setPendingMelodyLastRoll();  break;
+            case DA_LASTTRIAL_R:   rhythmMode = 0; engine.pe.setPendingRhythmLastTrial(); break;
+            case DA_LASTTRIAL_M:   melodyMode = 0; engine.pe.setPendingMelodyLastTrial(); break;
         }
     }
 
@@ -670,6 +674,20 @@ void Monsoon::process(const ProcessArgs& args) {
                 if (trialR) { rhythmMode = 0; engine.pe.setPendingRhythmTrial(); }
                 if (trialM) { melodyMode = 0; engine.pe.setPendingMelodyTrial(); }
             }
+
+            // LastDice: roll stepping the index OPPOSITE to plain dice (previous draw).
+            // Normal-mode only — the setters no-op on reversible streams.
+            bool lastDiceR, lastDiceM;
+            if (uiManager->processLastDiceButtons(lastDiceR, lastDiceM)) {
+                if (lastDiceR) { rhythmMode = 0; engine.pe.setPendingRhythmLastRoll(); }
+                if (lastDiceM) { melodyMode = 0; engine.pe.setPendingMelodyLastRoll(); }
+            }
+            // LastTrial: audition the previous candidate (index −1, A anchored).
+            bool lastTrialR, lastTrialM;
+            if (uiManager->processLastTrialButtons(lastTrialR, lastTrialM)) {
+                if (lastTrialR) { rhythmMode = 0; engine.pe.setPendingRhythmLastTrial(); }
+                if (lastTrialM) { melodyMode = 0; engine.pe.setPendingMelodyLastTrial(); }
+            }
             
             if (uiManager->processLockButton()) {
                 locked = !locked;
@@ -742,7 +760,7 @@ void Monsoon::process(const ProcessArgs& args) {
 
         if (expanderManager.cachedCausewayExpander) {
             rack::Module* cw = expanderManager.cachedCausewayExpander;
-            for (int i = 0; i < 10; ++i) {
+            for (int i = 0; i < 14; ++i) {
                 int in = MonsoonIds::CAUSEWAY_GATE_TRIAL_R + i;
                 if (cw->inputs[in].isConnected()
                     && causewayGateTrig[i].process(cw->inputs[in].getVoltage(), 0.1f, 1.f)) {

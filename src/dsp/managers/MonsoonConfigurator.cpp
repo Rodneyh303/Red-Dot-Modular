@@ -58,6 +58,10 @@ void MonsoonConfigurator::setup(Monsoon* m) {
     m->configParam(DICE_SLEW_M_PARAM, 0.f, 1.f, 1.f, "Melody dice slew", "%", 0.f, 100.f);
     m->configButton(DICE_TRIAL_R_PARAM, "Trial rhythm (audition vs fixed A)");
     m->configButton(DICE_TRIAL_M_PARAM, "Trial melody (audition vs fixed A)");
+    m->configButton(LAST_DICE_R_PARAM,  "Last dice rhythm (previous draw)");
+    m->configButton(LAST_DICE_M_PARAM,  "Last dice melody (previous draw)");
+    m->configButton(LAST_TRIAL_R_PARAM, "Last trial rhythm (previous candidate)");
+    m->configButton(LAST_TRIAL_M_PARAM, "Last trial melody (previous candidate)");
     //mix defaults to 100% B, so that dice+trial defaults to auditioning a new pattern rather than blending with the existing one.
     //mix of 100% mirrors MeloDicer which does not have mix.
     m->configParam(RHYTHM_MIX_PARAM, 0.f, 1.f, 1.f, "Rhythm A>B mix", "%", 0.f, 100.f);

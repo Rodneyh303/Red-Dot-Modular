@@ -154,6 +154,7 @@ struct PatternEngine {
     // so the user auditions candidates against a fixed A; the regular roll
     // promotes B→A (main mode), so A walks forward.
     bool  rhythmRollPending = false;
+    bool  rhythmPendingLast = false, melodyPendingLast = false; // Last* = invert dice dir this boundary
     bool  melodyRollPending = false;
     bool  rhythmTrialPending = false;
     bool  melodyTrialPending = false;
@@ -252,8 +253,19 @@ struct PatternEngine {
     inline void zeroMelodyIndex() { melodyDrawCtr = 0; }
     // Draw-step direction for a stream this redraw: reverse only when the stream is
     // reversible AND the phase is moving backward; otherwise forward.
-    inline int rhythmDrawDir() const { return (reverseActive && rhythmReversible) ? -1 : +1; }
-    inline int melodyDrawDir() const { return (reverseActive && melodyReversible) ? -1 : +1; }
+    // Draw-step direction this redraw. BASE = what a plain Dice does now: forward,
+    // or backward in Mode E reverse on a reversible stream. LAST-dice/trial INVERTS
+    // that base (forward mode: Last = −1; Mode E reverse: plain dice is already −1, so
+    // Last = +1). So Last* is always "the opposite of dice in the current mode", not an
+    // absolute reverse.
+    inline int rhythmDrawDir() const {
+        int base = (reverseActive && rhythmReversible) ? -1 : +1;
+        return rhythmPendingLast ? -base : base;
+    }
+    inline int melodyDrawDir() const {
+        int base = (reverseActive && melodyReversible) ? -1 : +1;
+        return melodyPendingLast ? -base : base;
+    }
 
     inline void advanceRhythmDraw(int dir) { rhythmDrawCtr += (dir < 0 ? -1 : +1); }
     inline void advanceMelodyDraw(int dir) { melodyDrawCtr += (dir < 0 ? -1 : +1); }
@@ -357,15 +369,28 @@ struct PatternEngine {
 
     /// Arm a rhythm ROLL (dice press) — redraw from the advancing RNG at the next
     /// phrase boundary WITHOUT reseeding. This is the normal dice action.
-    void setPendingRhythmRoll() { rhythmRollPending = true; }
+    void setPendingRhythmRoll() { rhythmRollPending = true; rhythmPendingLast = false; }
     /// Arm a melody ROLL (dice press) — redraw without reseeding.
-    void setPendingMelodyRoll() { melodyRollPending = true; }
+    void setPendingMelodyRoll() { melodyRollPending = true; melodyPendingLast = false; }
+
+    // LAST-DICE: a roll that steps the draw index the OTHER way at the next boundary —
+    // "give me the previous draw." Enabled by Philox addressability. BLOCKED on a
+    // reversible stream: there the index↔phase coupling IS the reproducibility contract,
+    // and a manual index step (independent of phase) would silently void it. So Last* is
+    // a Normal-mode navigation gesture only — same principle that blocks trial/reseed-on
+    // -roll in reversible mode. (rhythmAuditionsAllowed() == !rhythmReversible.)
+    void setPendingRhythmLastRoll()  { if (rhythmAuditionsAllowed()) { rhythmRollPending = true; rhythmPendingLast = true; } }
+    void setPendingMelodyLastRoll()  { if (melodyAuditionsAllowed()) { melodyRollPending = true; melodyPendingLast = true; } }
 
     /// Arm a rhythm TRIAL/audition roll — like a roll but A stays anchored
     /// (promoteToA=false): auditions a fresh candidate B against the fixed A.
-    void setPendingRhythmTrial() { if (rhythmAuditionsAllowed()) rhythmTrialPending = true; }
+    void setPendingRhythmTrial() { if (rhythmAuditionsAllowed()) { rhythmTrialPending = true; rhythmPendingLast = false; } }
     /// Arm a melody TRIAL/audition roll.
-    void setPendingMelodyTrial() { if (melodyAuditionsAllowed()) melodyTrialPending = true; }
+    void setPendingMelodyTrial() { if (melodyAuditionsAllowed()) { melodyTrialPending = true; melodyPendingLast = false; } }
+
+    // LAST-TRIAL: audition the PREVIOUS candidate B (index −1, A still anchored).
+    void setPendingRhythmLastTrial() { if (rhythmAuditionsAllowed()) { rhythmTrialPending = true; rhythmPendingLast = true; } }
+    void setPendingMelodyLastTrial() { if (melodyAuditionsAllowed()) { melodyTrialPending = true; melodyPendingLast = true; } }
 
     /// Arm a rhythm RESEED-ROLL — reseed but keep the A/B morph (promote B→A, no
     /// firstDraw). full=true → full 64-bit internal entropy (float ignored);

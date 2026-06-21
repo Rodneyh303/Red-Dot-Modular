@@ -536,7 +536,7 @@
 <circle id="param_DICE_R_PARAM" cx="134.06" cy="256.89" r="3" fill="none" stroke="none"/>
 <circle id="param_DICE_M_PARAM" cx="183.37" cy="256.89" r="3" fill="none" stroke="none"/>
 <circle id="param_DICE_TRIAL_R_PARAM" cx="232.68" cy="256.89" r="3" fill="none" stroke="none"/>
-<circle id="param_DICE_TRIAL_M_PARAM" cx="281.99" cy="256.89" r="3" fill="none" stroke="none"/>
+<circle id="param_DICE_TRIAL_M_PARAM" cx="281.99" cy="256.89" r="3" fill="none" stroke="none"/><circle id="param_LAST_DICE_R_PARAM" cx="134.06" cy="280.00" r="3" fill="none" stroke="none"/><circle id="param_LAST_DICE_M_PARAM" cx="183.37" cy="280.00" r="3" fill="none" stroke="none"/><circle id="param_LAST_TRIAL_R_PARAM" cx="232.68" cy="280.00" r="3" fill="none" stroke="none"/><circle id="param_LAST_TRIAL_M_PARAM" cx="281.99" cy="280.00" r="3" fill="none" stroke="none"/>
 <circle id="param_RHYTHM_MIX_PARAM" cx="331.30" cy="256.89" r="3" fill="none" stroke="none"/>
 <circle id="param_MELODY_MIX_PARAM" cx="380.61" cy="256.89" r="3" fill="none" stroke="none"/>
 <circle id="param_LOCK_PARAM" cx="429.92" cy="256.89" r="3" fill="none" stroke="none"/>
