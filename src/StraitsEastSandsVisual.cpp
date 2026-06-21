@@ -19,14 +19,34 @@ using namespace StraitsEastVisualIds;
 
 extern Plugin* pluginInstance;
 
+// A Trimpot that dims to partial alpha (still interactive) when its predicate says it's
+// currently inactive — for East's per-lane base-spread / CV-depth / Macro-send knobs,
+// which have no effect while Macro owns the lane but stay editable so the user can
+// pre-configure East's values before claiming. Full alpha once East owns the lane.
+// (Same nvgGlobalAlpha technique as Monsoon's TrialButton.)
+struct DimmableTrimpot : rack::componentlibrary::Trimpot {
+    std::function<bool()> dimWhen;
+    void draw(const DrawArgs& args) override {
+        bool dim = dimWhen && dimWhen();
+        if (dim) nvgGlobalAlpha(args.vg, 0.4f);
+        rack::componentlibrary::Trimpot::draw(args);
+        if (dim) nvgGlobalAlpha(args.vg, 1.0f);
+    }
+    void drawLayer(const DrawArgs& args, int layer) override {
+        bool dim = dimWhen && dimWhen();
+        if (dim) nvgGlobalAlpha(args.vg, 0.4f);
+        rack::componentlibrary::Trimpot::drawLayer(args, layer);
+        if (dim) nvgGlobalAlpha(args.vg, 1.0f);
+    }
+};
+
 struct StraitsEastSandsVisualWidget : ModuleWidget,
     dotModular::Compose<StraitsEastSandsVisualWidget,
                         dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
     SandsVisualEditorV4*            visualEditor = nullptr;
     TabButtonGroup*                 tabGroup     = nullptr;
     PolyVoiceSandsParameterManager* paramMgr     = nullptr;
-    std::vector<rack::Widget*> blendControls;   // owner/send controls; greyed when no Macro
-    std::vector<rack::Widget*> sendControls[3];  // send trims per lane; also greyed when that lane is Macro-owned
+    std::vector<rack::Widget*> blendControls;   // owner/send/base controls; hidden when no Macro
     int  selectedVoice = 0;
     // East spread mod-arcs. Compared in the INTERP domain (0..1) to sidestep the
     // pre-existing display-trimpot bipolar (-1..1) vs interp (0..1) mismatch: set
@@ -128,15 +148,22 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 std::function<void(redDot::GoldPolyPort*)>(themeCfg));
             bindInput<redDot::GoldPolyPort>("input_" + std::to_string(cvId(r,1)), cvId(r,1),
                 std::function<void(redDot::GoldPolyPort*)>(themeCfg));
-            bindParam<Trimpot>   ("param_" + std::to_string(attenDispId(r,0)), attenDispId(r,0));
-            bindParam<Trimpot>   ("param_" + std::to_string(attenDispId(r,1)), attenDispId(r,1));
+            // CV-depth attenuverters dim when their lane (row/2) is Macro-owned.
+            auto laneDim = [this](int lane){ return [this, lane](){
+                return !(module && module->params[StraitsEastVisualIds::ownerDispId(lane)].getValue() > 0.5f); }; };
+            bindParam<DimmableTrimpot>("param_" + std::to_string(attenDispId(r,0)), attenDispId(r,0),
+                std::function<void(DimmableTrimpot*)>([laneDim, r](DimmableTrimpot* w){ w->dimWhen = laneDim(r/2); }));
+            bindParam<DimmableTrimpot>("param_" + std::to_string(attenDispId(r,1)), attenDispId(r,1),
+                std::function<void(DimmableTrimpot*)>([laneDim, r](DimmableTrimpot* w){ w->dimWhen = laneDim(r/2); }));
         }
-        bindParam<Trimpot>("param_" + std::to_string((int)SPREAD_R), SPREAD_R,
-            std::function<void(Trimpot*)>([this](Trimpot* k){ pendingSpreadArcs.push_back({k, 0}); }));
-        bindParam<Trimpot>("param_" + std::to_string((int)SPREAD_M), SPREAD_M,
-            std::function<void(Trimpot*)>([this](Trimpot* k){ pendingSpreadArcs.push_back({k, 1}); }));
-        bindParam<Trimpot>("param_" + std::to_string((int)SPREAD_O), SPREAD_O,
-            std::function<void(Trimpot*)>([this](Trimpot* k){ pendingSpreadArcs.push_back({k, 2}); }));
+        auto laneDimW = [this](int lane){ return [this, lane](){
+            return !(module && module->params[StraitsEastVisualIds::ownerDispId(lane)].getValue() > 0.5f); }; };
+        bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_R), SPREAD_R,
+            std::function<void(DimmableTrimpot*)>([this, laneDimW](DimmableTrimpot* k){ k->dimWhen = laneDimW(0); pendingSpreadArcs.push_back({k, 0}); }));
+        bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_M), SPREAD_M,
+            std::function<void(DimmableTrimpot*)>([this, laneDimW](DimmableTrimpot* k){ k->dimWhen = laneDimW(1); pendingSpreadArcs.push_back({k, 1}); }));
+        bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_O), SPREAD_O,
+            std::function<void(DimmableTrimpot*)>([this, laneDimW](DimmableTrimpot* k){ k->dimWhen = laneDimW(2); pendingSpreadArcs.push_back({k, 2}); }));
 
         // Macro/East blend controls (bound to the display proxies; copied to/from
         // the per-voice MACRO params on voice switch + each frame). Owner = a
@@ -156,10 +183,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 }
             );
             for (int item = 0; item < 4; ++item)
-                bindParam<Trimpot>("param_send_" + std::to_string(lane) + "_" + std::to_string(item),
+                bindParam<DimmableTrimpot>("param_send_" + std::to_string(lane) + "_" + std::to_string(item),
                     sendDispId(lane, item),
-                    std::function<void(Trimpot*)>([this, lane](Trimpot* w){
-                        blendControls.push_back(w); sendControls[lane].push_back(w); }));
+                    std::function<void(DimmableTrimpot*)>([this, lane](DimmableTrimpot* w){
+                        w->dimWhen = [this, lane](){
+                            return !(module && module->params[StraitsEastVisualIds::ownerDispId(lane)].getValue() > 0.5f); };
+                        blendControls.push_back(w); }));
         }
 
         paramMgr = new PolyVoiceSandsParameterManager(nullptr, nullptr, 15, 0);
@@ -275,20 +304,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             if (visualEditor) visualEditor->setTheme(wantLight != 0);
         }
 
-        // Macro/East blend controls only do anything with a Macro visual attached
-        // (the equation's macro terms are zero otherwise). Hide them when absent
-        // so the panel doesn't imply controls that have no effect.
+        // Blend controls (owner + sends + the per-lane base-spread / CV-depth knobs)
+        // are meaningless with no Macro visual attached → hide them. When Macro IS
+        // attached but a lane is Macro-owned, the relevant knobs DIM themselves (live
+        // but faded, so East values can be pre-configured before claiming) via
+        // DimmableTrimpot's per-lane predicate — no per-frame work needed here.
         bool macroPresent = (monsoon->expanderManager.cachedMacroSandsVisual != nullptr);
         for (Widget* w : blendControls) if (w) w->visible = macroPresent;
-        // A lane's Macro-send trims only do anything when EAST owns that lane (when
-        // Macro owns, the lane IS the Macro value — nothing to blend). Grey them per
-        // lane on the selected-voice owner state (the display proxy ownerDispId).
-        if (macroPresent) {
-            for (int lane = 0; lane < 3; ++lane) {
-                bool eastOwns = module->params[StraitsEastVisualIds::ownerDispId(lane)].getValue() > 0.5f;
-                for (Widget* w : sendControls[lane]) if (w) w->visible = eastOwns;
-            }
-        }
 
         auto* mod = static_cast<StraitsEastSandsVisual*>(module);
 
