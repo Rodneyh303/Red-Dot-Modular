@@ -24,7 +24,7 @@
 #include <cstdint>
 #include <algorithm>
 #include "../PhiloxRng.hpp"
-
+#include "../LaneMapping.hpp"
 
 template<typename T>
 static inline T pe_clamp(T v, T lo, T hi){ return v<lo?lo:(v>hi?hi:v); }
@@ -75,7 +75,24 @@ struct PatternEngine {
     float accentRandom[16]    = {};  // New: accent strand probabilities
     float melodyRandom[16]    = {};
     float octaveRandom[16]    = {};
-    
+
+    // Final post-everything (A/B-mix + spread + LOR feed in upstream) probability value
+    // for a given ENGINE STRAND at a given step, 0..1. Strand-keyed (use
+    // dotModular::STRAND_* or MONO_LANE_TO_STRAND[editorLane]) so callers never hardcode
+    // the editor-lane→array permutation. Used by the Sands visual probability CV outs.
+    inline float finalRandomByStrand(int strand, int step) const {
+        step &= 0x0F;
+        switch (strand) {
+            case dotModular::STRAND_RHYTHM:    return rhythmRandom[step];
+            case dotModular::STRAND_VARIATION: return variationRandom[step];
+            case dotModular::STRAND_LEGATO:    return legatoRandom[step];
+            case dotModular::STRAND_ACCENT:    return accentRandom[step];
+            case dotModular::STRAND_MELODY:    return melodyRandom[step];
+            case dotModular::STRAND_OCTAVE:    return octaveRandom[step];
+            default:                           return rhythmRandom[step];
+        }
+    }
+
     // Poly strands: 15 voices, each with Rhythm, Melody, and Octave draws
     float polyRhythmRandom[15][16] = {};
     float polyMelodyRandom[15][16] = {};

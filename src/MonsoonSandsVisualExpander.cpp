@@ -106,6 +106,12 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         paramMgr = new MonoSandsParameterManager();
         flushSpreadArcs(mod);
 
+        // Per-lane probability CV outs — one jack right of each of the 6 lane rows.
+        for (int l = 0; l < N_LANES; ++l) {
+            addOutput(createOutputCentered<PJ301MPort>(
+                mm2px(Vec(PROB_OUT_X, rowY(l))), mod, PROB_OUT_START + l));
+        }
+
         // dot.modular connect mark (brand mark; greyed when no Monsoon attached).
         {
             connectMark = redDot::makeConnectMark(module, mm2px(rack::math::Vec(W_MM * 0.5f, 124.f)), mm2px(8.f));
@@ -199,6 +205,37 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         }
     }
 };
+
+// ── Module process(): emit per-lane probability CV outs (audio rate) ──────────
+void MonsoonSandsVisualExpander::process(const ProcessArgs&) {
+    using namespace SandsMonoVisualIds;
+    Monsoon* monsoon = redDot::findMonsoonEitherSide(this);
+    if (!monsoon) {
+        for (int l = 0; l < 6; ++l) outputs[PROB_OUT_START + l].setVoltage(0.f);
+        return;
+    }
+    auto& eng = monsoon->engine;
+    const int globalStep = eng.stepIndex;
+    const float scaleV = (monsoon->probOutScale == 0) ? 1.f : (monsoon->probOutScale == 1) ? 5.f : 10.f;
+    const bool sh = monsoon->probOutSampleHold;
+    for (int l = 0; l < 6; ++l) {
+        int strand = dotModular::MONO_LANE_TO_STRAND[l];
+        // Lane's post-LOR step — same mapping the visual uses for the playhead.
+        int step = calcPlayhead(globalStep, eng.strandLen(strand),
+                                eng.strandOff(strand), eng.strandRot(strand));
+        float v;
+        if (sh) {
+            if (step != probLastStep[l]) {          // latch at the 16th step edge
+                probHeld[l] = eng.pe.finalRandomByStrand(strand, step);
+                probLastStep[l] = step;
+            }
+            v = probHeld[l];
+        } else {
+            v = eng.pe.finalRandomByStrand(strand, step);   // continuous surface
+        }
+        outputs[PROB_OUT_START + l].setVoltage(rack::math::clamp(v, 0.f, 1.f) * scaleV);
+    }
+}
 
 Model* modelMonsoonSandsVisualExpander =
     createModel<MonsoonSandsVisualExpander, MonsoonSandsVisualExpanderWidget>(
