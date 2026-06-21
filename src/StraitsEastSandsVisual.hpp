@@ -156,7 +156,7 @@ struct StraitsEastSandsVisual : Module {
             configSwitch(ownerDispId(lane), 0.f,1.f,0.f,
                          std::string(laneNm[lane])+" base owner", {"Macro","East"});
             for (int item=0; item<4; ++item)
-                configParam(sendDispId(lane,item), -1.f,1.f,1.f,
+                configParam(sendDispId(lane,item), -1.f,1.f,0.f,
                             std::string(laneNm[lane])+" Macro send "+itemNm[item]);
         }
 
@@ -190,7 +190,7 @@ struct StraitsEastSandsVisual : Module {
                 configSwitch(ownerId(v,lane), 0.f,1.f,0.f,
                              vl+"L"+std::to_string(lane)+" base owner", {"Macro","East"});
                 for (int item=0; item<4; ++item)
-                    configParam(sendId(v,lane,item), -1.f,1.f,1.f,
+                    configParam(sendId(v,lane,item), -1.f,1.f,0.f,
                                 vl+"L"+std::to_string(lane)+" Macro send "+std::to_string(item));
             }
             // Per-voice CV depth for each of the 12 jacks (real store; the panel's

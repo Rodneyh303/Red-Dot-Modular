@@ -26,6 +26,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     TabButtonGroup*                 tabGroup     = nullptr;
     PolyVoiceSandsParameterManager* paramMgr     = nullptr;
     std::vector<rack::Widget*> blendControls;   // owner/send controls; greyed when no Macro
+    std::vector<rack::Widget*> sendControls[3];  // send trims per lane; also greyed when that lane is Macro-owned
     int  selectedVoice = 0;
     // East spread mod-arcs. Compared in the INTERP domain (0..1) to sidestep the
     // pre-existing display-trimpot bipolar (-1..1) vs interp (0..1) mismatch: set
@@ -157,7 +158,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             for (int item = 0; item < 4; ++item)
                 bindParam<Trimpot>("param_send_" + std::to_string(lane) + "_" + std::to_string(item),
                     sendDispId(lane, item),
-                    std::function<void(Trimpot*)>([this](Trimpot* w){ blendControls.push_back(w); }));
+                    std::function<void(Trimpot*)>([this, lane](Trimpot* w){
+                        blendControls.push_back(w); sendControls[lane].push_back(w); }));
         }
 
         paramMgr = new PolyVoiceSandsParameterManager(nullptr, nullptr, 15, 0);
@@ -278,6 +280,15 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // so the panel doesn't imply controls that have no effect.
         bool macroPresent = (monsoon->expanderManager.cachedMacroSandsVisual != nullptr);
         for (Widget* w : blendControls) if (w) w->visible = macroPresent;
+        // A lane's Macro-send trims only do anything when EAST owns that lane (when
+        // Macro owns, the lane IS the Macro value — nothing to blend). Grey them per
+        // lane on the selected-voice owner state (the display proxy ownerDispId).
+        if (macroPresent) {
+            for (int lane = 0; lane < 3; ++lane) {
+                bool eastOwns = module->params[StraitsEastVisualIds::ownerDispId(lane)].getValue() > 0.5f;
+                for (Widget* w : sendControls[lane]) if (w) w->visible = eastOwns;
+            }
+        }
 
         auto* mod = static_cast<StraitsEastSandsVisual*>(module);
 

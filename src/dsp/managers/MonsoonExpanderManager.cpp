@@ -65,8 +65,13 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                     StraitsEastVisualIds::ownerId(v, lane)].getValue() > 0.5f;
                 float base = ownerEast ? eastLorVal(paramIdx, r, c, lo, hi)
                                        : (macroPresent ? macroVis->macroBase[lane][item] : eastLorVal(paramIdx, r, c, lo, hi));
+                // Macro-CV blend: only meaningful when EAST owns the lane (when Macro
+                // owns, the lane already IS the Macro value — nothing to blend). The
+                // send is a PER-VOICE attenuverter on Macro's CV contribution
+                // (macroCVDelta), summed with East's own per-voice poly-CV term that
+                // eastLorVal already folded into base. Default 0 → opt-in.
                 float blend = 0.f;
-                if (macroPresent) {
+                if (macroPresent && ownerEast) {
                     float send = eastLOR->params[
                         StraitsEastVisualIds::sendId(v, lane, item)].getValue();
                     blend = macroVis->macroCVDelta[lane][item] * send;
@@ -89,7 +94,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 float base = ownerEast ? eastInterpVal
                                        : (macroPresent ? macroVis->macroBase[lane][3] : eastInterpVal);
                 float blend = 0.f;
-                if (macroPresent) {
+                if (macroPresent && ownerEast) {
                     float send = eastLOR->params[
                         StraitsEastVisualIds::sendId(v, lane, 3)].getValue();
                     blend = macroVis->macroCVDelta[lane][3] * send;
