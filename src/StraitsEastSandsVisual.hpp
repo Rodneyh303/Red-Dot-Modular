@@ -8,8 +8,9 @@ using namespace MonsoonIds;
 namespace StraitsEastVisualIds {
 
     // ── Panel ──────────────────────────────────────────────────────────────
-    static constexpr float W_MM    = 203.2f;    // 40HP (was 36HP; +4HP for 15-voice
-                                                 // 2-row tabs + per-lane spread column)
+    static constexpr float W_MM    = 213.36f;   // 42HP (was 40HP; +2HP right strip for
+                                                 // the 3 poly probability CV outs)
+    static constexpr float PROB_OUT_X = 207.f;   // poly prob-out jack column (right strip)
     static constexpr int   N_ROWS  = 6;         // 2 rows per lane × 3 lanes
     static constexpr float ROW_TOP = 14.f;
     static constexpr float ROW_BOT = 108.f;
@@ -24,7 +25,7 @@ namespace StraitsEastVisualIds {
     // the tab row clears the panel top edge; 0.5cm = 5mm).
     static constexpr float TAB_TOP_OFFSET_MM = 5.f;
     static constexpr float ED_Y   = 18.f + TAB_TOP_OFFSET_MM;  // editor top (below 2-row tab band)
-    static constexpr float ED_W   = W_MM - ED_X - 4.f;  // ~141.2mm
+    static constexpr float ED_W   = PROB_OUT_X - ED_X - 8.f;  // editor stops left of prob outs
     // Editor height sized so the 3 poly lanes are close to the Mono lane height
     // (~16mm), not ~30mm. Leaves the lower panel free for decoration / logos.
     static constexpr float ED_LANE_H = 16.f;
@@ -101,6 +102,13 @@ namespace StraitsEastVisualIds {
         NUM_LIGHTS = OWNER_LIGHT_END
     };
     inline int ownerLightId(int lane) { return OWNER_LIGHT_START + lane; }
+
+    // Per-lane POLY probability CV outs (REST/MEL/OCT). Each is a poly cable:
+    // channel 1 = master value, channels 2..1+nVoices = the per-voice ensemble.
+    enum OutputId {
+        PROB_OUT_REST = 0, PROB_OUT_MEL, PROB_OUT_OCT,
+        NUM_OUTPUTS
+    };
 }
 
 struct StraitsEastSandsVisual : Module {
@@ -111,9 +119,23 @@ struct StraitsEastSandsVisual : Module {
     // lane: 0=REST 1=MELODY 2=OCTAVE. Bipolar-ish 0..1 interp domain.
     float polySpreadEffective[15][3] = {};
 
+    // Probability CV out config (persisted): scale 0=0..1V,1=0..5V,2=0..10V; S&H vs
+    // continuous. probHeld/probLastStep per (lane, channel) for S&H (ch0=master, 1..15
+    // = voices → index [lane][0..15]).
+    int   probOutScale = 2;
+    bool  probOutSampleHold = true;
+    float probHeld[3][16] = {};
+    int   probLastStep[3][16];
+
     StraitsEastSandsVisual() {
         using namespace StraitsEastVisualIds;
-        config(MonsoonIds::NUM_PARAMS, StraitsEastVisualIds::NUM_INPUTS, 0, StraitsEastVisualIds::NUM_LIGHTS);
+        config(MonsoonIds::NUM_PARAMS, StraitsEastVisualIds::NUM_INPUTS,
+               StraitsEastVisualIds::NUM_OUTPUTS, StraitsEastVisualIds::NUM_LIGHTS);
+        for (auto& a : probLastStep) for (auto& x : a) x = -1;
+        { static const char* ln[3] = {"REST","MEL","OCT"};
+          for (int l = 0; l < 3; ++l)
+            configOutput(StraitsEastVisualIds::PROB_OUT_REST + l,
+                std::string("Probability ") + ln[l] + " (poly: ch1 master, ch2+ voices)"); }
 
         configParam(SPREAD_R, -1.f,1.f,0.f,"Spread REST");
         configParam(SPREAD_M, -1.f,1.f,0.f,"Spread MELODY");
@@ -169,19 +191,16 @@ struct StraitsEastSandsVisual : Module {
         }
     }
 
-    void process(const ProcessArgs&) override {
-        // Owner latch lights: lit when the lane's base owner is East (param > 0.5).
-        // The owner-disp param mirrors the currently-selected voice's owner.
-        for (int lane = 0; lane < 3; ++lane)
-            lights[StraitsEastVisualIds::ownerLightId(lane)].setBrightness(
-                params[StraitsEastVisualIds::ownerDispId(lane)].getValue() > 0.5f ? 1.f : 0.f);
-    }
+    void process(const ProcessArgs&) override;   // defined in .cpp (needs findMonsoonEitherSide)
 
     json_t* dataToJson() override {
         json_t* r = json_object();
+        json_object_set_new(r, "probOutScale", json_integer(probOutScale));
+        json_object_set_new(r, "probOutSampleHold", json_boolean(probOutSampleHold));
         return r;
     }
     void dataFromJson(json_t* root) override {
-        (void)root;  // interpUseMono moved to Monsoon::spreadInterpMono
+        if (auto* j = json_object_get(root, "probOutScale")) probOutScale = (int)json_integer_value(j);
+        if (auto* j = json_object_get(root, "probOutSampleHold")) probOutSampleHold = json_boolean_value(j);
     }
 };

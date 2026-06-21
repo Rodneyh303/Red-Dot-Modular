@@ -100,6 +100,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         visualEditor->box.size = mm2px(Vec(ED_W, ED_H));
         addChild(visualEditor);
 
+        // 3 poly probability CV outs, one per lane row (aligned to editor lane centers).
+        for (int l = 0; l < 3; ++l) {
+            float y = ED_Y + (l + 0.5f) * ED_LANE_H;
+            addOutput(createOutputCentered<PJ301MPort>(
+                mm2px(Vec(PROB_OUT_X, y)), module, StraitsEastVisualIds::PROB_OUT_REST + l));
+        }
+
         // ── Controls bound by id from the SVG kit (#components in
         //    gen_east_clean.py). Marker index == enum value:
         //      input_<n>  n = cvId(r,c)   = 0 + r*2 + c   (CV jacks, 0..11)
@@ -157,8 +164,16 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         ModuleWidget::appendContextMenu(menu);
         auto* mod = dynamic_cast<StraitsEastSandsVisual*>(module);
         if (!mod) return;
-        // Spread interpolation target moved to the Monsoon module context menu
-        // (single source of truth — was duplicated here and on Macro).
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuLabel("Probability CV outs (poly)"));
+        menu->addChild(createIndexSubmenuItem("Output range",
+            {"0-1 V", "0-5 V", "0-10 V"},
+            [mod]() { return mod->probOutScale; },
+            [mod](int i) { mod->probOutScale = i; }));
+        menu->addChild(createIndexSubmenuItem("Output mode",
+            {"Continuous", "Sample & hold (per step)"},
+            [mod]() { return mod->probOutSampleHold ? 1 : 0; },
+            [mod](int i) { mod->probOutSampleHold = (i == 1); }));
     }
 
     void saveVoiceSpread(int v) {
@@ -394,6 +409,39 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         }
     }
 };
+
+// ── Module process(): light latches + 3 poly probability CV outs (audio rate) ──
+void StraitsEastSandsVisual::process(const ProcessArgs&) {
+    using namespace StraitsEastVisualIds;
+    for (int lane = 0; lane < 3; ++lane)
+        lights[ownerLightId(lane)].setBrightness(
+            params[ownerDispId(lane)].getValue() > 0.5f ? 1.f : 0.f);
+
+    Monsoon* mon = redDot::findMonsoonEitherSide(this);
+    const float scaleV = (probOutScale == 0) ? 1.f : (probOutScale == 1) ? 5.f : 10.f;
+    if (!mon) {
+        for (int l = 0; l < 3; ++l) { outputs[PROB_OUT_REST + l].setChannels(1);
+                                      outputs[PROB_OUT_REST + l].setVoltage(0.f); }
+        return;
+    }
+    auto& eng = mon->engine;
+    const int nCh = 1 + eng.numPolyVoices;             // ch1 master + voices (2..1+nV)
+    for (int l = 0; l < 3; ++l) {
+        auto& out = outputs[PROB_OUT_REST + l];
+        out.setChannels(nCh);
+        for (int ch = 0; ch < nCh; ++ch) {
+            int step; float raw;
+            if (ch == 0) { step = eng.masterLaneStep(l);     raw = eng.masterLaneProbability(l); }
+            else         { step = eng.polyLaneStep(l, ch-1); raw = eng.polyLaneProbability(l, ch-1); }
+            float v;
+            if (probOutSampleHold) {
+                if (step != probLastStep[l][ch]) { probHeld[l][ch] = raw; probLastStep[l][ch] = step; }
+                v = probHeld[l][ch];
+            } else v = raw;
+            out.setVoltage(rack::math::clamp(v, 0.f, 1.f) * scaleV, ch);
+        }
+    }
+}
 
 Model* modelStraitsEastSandsVisual =
     createModel<StraitsEastSandsVisual,StraitsEastSandsVisualWidget>(
