@@ -24,7 +24,7 @@
 #include <cstdint>
 #include <algorithm>
 #include "../PhiloxRng.hpp"
-
+#include "../LaneMapping.hpp"
 
 template<typename T>
 static inline T pe_clamp(T v, T lo, T hi){ return v<lo?lo:(v>hi?hi:v); }
