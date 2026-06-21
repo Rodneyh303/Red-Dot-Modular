@@ -273,14 +273,21 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
     auto& eng = mon->engine;
     const int nV = eng.numPolyVoices;
     const int nCh = 1 + nV;
+    const int gs = eng.stepIndex;
     for (int l = 0; l < 3; ++l) {
         auto& out = outputs[PROB_OUT_REST + l];
         out.setChannels(nCh < 1 ? 1 : nCh);
         out.setVoltage(0.f, 0);              // ch1 reserved (future mono tab)
+        // Macro's OWN global LOR step for this lane (from macroBase+CVDelta — identical
+        // to Macro's editor playhead, independent of East/ownership). Same step for
+        // every voice (Macro's view is global); each voice contributes its own draw.
+        int ownLen = std::max(1, (int)std::lround(macroBase[l][0] + macroCVDelta[l][0]));
+        int ownOff = (int)std::lround(macroBase[l][1] + macroCVDelta[l][1]);
+        int ownRot = (int)std::lround(macroBase[l][2] + macroCVDelta[l][2]);
+        int step = calcPlayhead(gs, ownLen, ownOff, ownRot) & 0x0F;
         for (int v = 0; v < nV; ++v) {
             int ch = v + 1;
-            int step = eng.polyLaneStep(l, v);
-            float raw = eng.polyLaneProbability(l, v);
+            float raw = eng.polyLaneProbabilityAtStep(l, v, step);
             float val;
             if (sh) {
                 if (step != probLastStep[l][ch]) { probHeld[l][ch] = raw; probLastStep[l][ch] = step; }

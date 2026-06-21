@@ -219,6 +219,21 @@ struct SequencerEngine {
             default:        return 0.f;
         }
     }
+    // Per-voice draw value for a poly lane at an EXPLICIT step (caller supplies the
+    // step from its own LOR view). Used by Macro's prob-out, which samples each voice's
+    // draw at MACRO's own global LOR step — independent of East/ownership. East instead
+    // uses polyLaneProbability (resolved per-voice step). 0..1.
+    inline float polyLaneProbabilityAtStep(int polyLane, int voice, int step) const {
+        if (voice < 0 || voice >= 15 || polyLane < 0 || polyLane > 2) return 0.f;
+        step &= 0x0F;
+        switch (polyLane) {
+            case PL_REST:   return pe.polyRhythmRandom[voice][step];
+            case PL_MELODY: return pe.polyMelodyRandom[voice][step];
+            case PL_OCTAVE: return pe.polyOctaveRandom[voice][step];
+            default:        return 0.f;
+        }
+    }
+
     // Step indices (for S&H edge detection) matching the probability accessors above.
     inline int polyLaneStep(int polyLane, int voice) const {
         if (voice < 0 || voice >= 15 || polyLane < 0 || polyLane > 2) return -1;
