@@ -351,10 +351,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         ModuleWidget::draw(args);
         NVGcontext* vg = args.vg;
 
-        // Layout constants — must match gen_east_clean.py.
-        const float ED_X = 58.0f, ED_W = 203.2f - 58.0f - 4.0f;
-        const float BLEND_TOP = 74.0f, BLEND_H = 30.0f, GAP = 3.0f;
+        // Layout constants — MUST MATCH gen_east_clean.py (blend groups).
+        const float ED_X = 58.0f, PROB_OUT_X = 207.0f, ED_W = PROB_OUT_X - ED_X - 8.0f;
+        const float BLEND_TOP = 72.0f, GAP = 3.5f;
         const float GROUP_W = ED_W / 3.0f;
+        const float OWN_DY = 10.5f, SEND_Y0 = 20.5f, SEND_DY = 9.0f, SEND_DX = 7.0f;
         const char* laneName[3] = { "REST", "MELODY", "OCTAVE" };
         const char* itemName[4] = { "LEN", "OFF", "ROT", "SPR" };
 
@@ -370,14 +371,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         if (!font) return;
         nvgFontFaceId(vg, font->handle);
 
-        // Colours: brand-ish ink, dimmed when no Macro attached.
         NVGcolor head = macroPresent ? (isLight ? nvgRGB(40,44,52) : nvgRGB(210,214,222))
                                      : nvgRGBA(140,140,150, 90);
         NVGcolor item = macroPresent ? (isLight ? nvgRGB(150,120,20) : nvgRGB(190,160,60))
                                      : nvgRGBA(140,140,150, 70);
 
-        // Section header.
-        nvgFontSize(vg, 8.5f);
+        // Section header (left-aligned, above the group row).
+        nvgFontSize(vg, 8.0f);
         nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM);
         nvgFillColor(vg, head);
         nvgText(vg, mm2px(ED_X), mm2px(BLEND_TOP - 3.5f), "MACRO BLEND", nullptr);
@@ -385,22 +385,21 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         for (int l = 0; l < 3; ++l) {
             float gx = ED_X + l*GROUP_W + GAP*0.5f;
             float gw = GROUP_W - GAP;
-            // group name — top of box, right of the owner button
-            nvgFontSize(vg, 8.0f);
+            float gcx = gx + gw*0.5f;
+            // lane-name header — centred at top of the box
+            nvgFontSize(vg, 7.0f);
             nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
             nvgFillColor(vg, head);
-            nvgText(vg, mm2px(gx + gw*0.62f), mm2px(BLEND_TOP + 3.2f), laneName[l], nullptr);
-            // "OWN" under the owner button
-            nvgFontSize(vg, 5.5f);
+            nvgText(vg, mm2px(gcx), mm2px(BLEND_TOP + 4.0f), laneName[l], nullptr);
+            // "OWN" under the owner latch
+            nvgFontSize(vg, 5.0f);
             nvgFillColor(vg, item);
-            nvgText(vg, mm2px(gx + 5.5f), mm2px(BLEND_TOP + 11.0f), "OWN", nullptr);
-            // item labels under each send trim (2×2)
-            float sx0 = gx + gw*0.42f, sxs = gw*0.26f;
-            float sy0 = BLEND_TOP + 8.5f, sys = 12.0f;
+            nvgText(vg, mm2px(gcx), mm2px(BLEND_TOP + OWN_DY + 3.7f), "OWN", nullptr);
+            // send item labels under each trim (2×2): cols gcx∓SEND_DX, rows SEND_Y0(+DY)
             for (int it = 0; it < 4; ++it) {
-                float cxs = sx0 + (it % 2)*sxs;
-                float cys = sy0 + (it / 2)*sys;
-                nvgText(vg, mm2px(cxs), mm2px(cys + 5.0f), itemName[it], nullptr);
+                float cxs = gcx + ((it % 2)==0 ? -SEND_DX : SEND_DX);
+                float cys = BLEND_TOP + SEND_Y0 + (it / 2)*SEND_DY;
+                nvgText(vg, mm2px(cxs), mm2px(cys + 4.4f), itemName[it], nullptr);
             }
         }
     }
