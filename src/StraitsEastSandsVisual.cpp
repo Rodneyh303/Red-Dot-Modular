@@ -40,13 +40,37 @@ struct DimmableTrimpot : rack::componentlibrary::Trimpot {
     }
 };
 
+struct StraitsEastSandsVisualWidget;  // fwd
+
+// Owner claim latch that dims + swallows input when inert (no Macro attached — there's
+// nothing to claim ownership FROM, it's all East). Predicate set by the widget.
+struct DimmableLatch : rack::componentlibrary::VCVLightLatch<rack::componentlibrary::SmallSimpleLight<rack::componentlibrary::WhiteLight>> {
+    std::function<bool()> inertWhen;
+    bool inert() const { return inertWhen && inertWhen(); }
+    void onButton(const event::Button& e) override {
+        if (inert()) { e.consume(this); return; }
+        VCVLightLatch::onButton(e);
+    }
+    void onDragStart(const event::DragStart& e) override {
+        if (inert()) return;
+        VCVLightLatch::onDragStart(e);
+    }
+    void draw(const DrawArgs& args) override {
+        bool dim = inert();
+        if (dim) nvgGlobalAlpha(args.vg, 0.4f);
+        VCVLightLatch::draw(args);
+        if (dim) nvgGlobalAlpha(args.vg, 1.0f);
+    }
+};
+
 struct StraitsEastSandsVisualWidget : ModuleWidget,
     dotModular::Compose<StraitsEastSandsVisualWidget,
                         dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
     SandsVisualEditorV4*            visualEditor = nullptr;
     TabButtonGroup*                 tabGroup     = nullptr;
     PolyVoiceSandsParameterManager* paramMgr     = nullptr;
-    std::vector<rack::Widget*> blendControls;   // owner/send/base controls; hidden when no Macro
+    // (blend controls now dim/disable themselves via DimmableTrimpot/DimmableLatch
+    //  predicates — no central visibility list needed.)
     int  selectedVoice = 0;
     // East spread mod-arcs. Compared in the INTERP domain (0..1) to sidestep the
     // pre-existing display-trimpot bipolar (-1..1) vs interp (0..1) mismatch: set
@@ -148,47 +172,44 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 std::function<void(redDot::GoldPolyPort*)>(themeCfg));
             bindInput<redDot::GoldPolyPort>("input_" + std::to_string(cvId(r,1)), cvId(r,1),
                 std::function<void(redDot::GoldPolyPort*)>(themeCfg));
-            // CV-depth attenuverters dim when their lane (row/2) is Macro-owned.
-            auto laneDim = [this](int lane){ return [this, lane](){
-                return !(module && module->params[StraitsEastVisualIds::ownerDispId(lane)].getValue() > 0.5f); }; };
+            // CV-depth attenuverters are East's OWN control (scale East's poly CV in) —
+            // fully usable solo. They dim only when Macro is present AND owns the lane
+            // (then East's base, incl this CV, is bypassed for the Macro value).
             bindParam<DimmableTrimpot>("param_" + std::to_string(attenDispId(r,0)), attenDispId(r,0),
-                std::function<void(DimmableTrimpot*)>([laneDim, r](DimmableTrimpot* w){ w->dimWhen = laneDim(r/2); }));
+                std::function<void(DimmableTrimpot*)>([this, r](DimmableTrimpot* w){ w->dimWhen = [this, r](){ return laneOwnedByMacro(r/2); }; }));
             bindParam<DimmableTrimpot>("param_" + std::to_string(attenDispId(r,1)), attenDispId(r,1),
-                std::function<void(DimmableTrimpot*)>([laneDim, r](DimmableTrimpot* w){ w->dimWhen = laneDim(r/2); }));
+                std::function<void(DimmableTrimpot*)>([this, r](DimmableTrimpot* w){ w->dimWhen = [this, r](){ return laneOwnedByMacro(r/2); }; }));
         }
-        auto laneDimW = [this](int lane){ return [this, lane](){
-            return !(module && module->params[StraitsEastVisualIds::ownerDispId(lane)].getValue() > 0.5f); }; };
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_R), SPREAD_R,
-            std::function<void(DimmableTrimpot*)>([this, laneDimW](DimmableTrimpot* k){ k->dimWhen = laneDimW(0); pendingSpreadArcs.push_back({k, 0}); }));
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(0); }; pendingSpreadArcs.push_back({k, 0}); }));
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_M), SPREAD_M,
-            std::function<void(DimmableTrimpot*)>([this, laneDimW](DimmableTrimpot* k){ k->dimWhen = laneDimW(1); pendingSpreadArcs.push_back({k, 1}); }));
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(1); }; pendingSpreadArcs.push_back({k, 1}); }));
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_O), SPREAD_O,
-            std::function<void(DimmableTrimpot*)>([this, laneDimW](DimmableTrimpot* k){ k->dimWhen = laneDimW(2); pendingSpreadArcs.push_back({k, 2}); }));
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(2); }; pendingSpreadArcs.push_back({k, 2}); }));
 
         // Macro/East blend controls (bound to the display proxies; copied to/from
         // the per-voice MACRO params on voice switch + each frame). Owner = a
-        // latching on/off button (off=Macro owns base, on=East owns). Sends =
-        // attenuverter trimpots. Captured so step() can grey/hide them when no
-        // Macro visual is attached (they have no effect then — the equation's
-        // macro terms are zero — so this is feedback, not function).
+        // latching on/off button (off=Macro owns base, on=East owns). With NO Macro
+        // attached, ownership is meaningless (it's all East) — the owner button is
+        // inert + dimmed and the sends are dimmed. With Macro attached, sends dim per
+        // lane when Macro owns it. (Base-spread / CV-depth are East's own controls and
+        // stay live solo — see laneOwnedByMacro above.)
         for (int lane = 0; lane < 3; ++lane) {
-            bindLightParam<VCVLightLatch<SmallSimpleLight<WhiteLight>>>(
-                "param_owner_" + std::to_string(lane), 
-                ownerDispId(lane), 
+            bindLightParam<DimmableLatch>(
+                "param_owner_" + std::to_string(lane),
+                ownerDispId(lane),
                 ownerLightId(lane),
-                [this](VCVLightLatch<SmallSimpleLight<WhiteLight>>* w) { 
+                [this](DimmableLatch* w) {
                     w->momentary = false;
                     w->latch = true;
-                    blendControls.push_back(w); 
+                    w->inertWhen = [this](){ return !macroAttached(); };
                 }
             );
             for (int item = 0; item < 4; ++item)
                 bindParam<DimmableTrimpot>("param_send_" + std::to_string(lane) + "_" + std::to_string(item),
                     sendDispId(lane, item),
                     std::function<void(DimmableTrimpot*)>([this, lane](DimmableTrimpot* w){
-                        w->dimWhen = [this, lane](){
-                            return !(module && module->params[StraitsEastVisualIds::ownerDispId(lane)].getValue() > 0.5f); };
-                        blendControls.push_back(w); }));
+                        w->dimWhen = [this, lane](){ return laneInert(lane); }; }));
         }
 
         paramMgr = new PolyVoiceSandsParameterManager(nullptr, nullptr, 15, 0);
@@ -281,6 +302,24 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     Monsoon* getMonsoon() {
         return module ? findMonsoonEitherSide(module) : nullptr;
     }
+    // Macro visual attached on the chain?
+    bool macroAttached() {
+        Monsoon* m = getMonsoon();
+        return m && m->expanderManager.cachedMacroSandsVisual != nullptr;
+    }
+    // A lane's blend controls (base-spread / CV-depth / send) are inert when there's no
+    // Macro at all (nothing to relate to — it's all East), OR when Macro owns the lane
+    // (the lane IS the Macro value). Dimmed-but-editable in both cases.
+    bool laneInert(int lane) {
+        if (!macroAttached()) return true;
+        return !(module && module->params[StraitsEastVisualIds::ownerDispId(lane)].getValue() > 0.5f);
+    }
+    // For East's OWN controls (base-spread, CV-depth): inert only when Macro is present
+    // AND owns the lane (East base bypassed). Fully usable solo.
+    bool laneOwnedByMacro(int lane) {
+        if (!macroAttached()) return false;
+        return !(module && module->params[StraitsEastVisualIds::ownerDispId(lane)].getValue() > 0.5f);
+    }
 
     void step() override {
         ModuleWidget::step();
@@ -304,13 +343,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             if (visualEditor) visualEditor->setTheme(wantLight != 0);
         }
 
-        // Blend controls (owner + sends + the per-lane base-spread / CV-depth knobs)
-        // are meaningless with no Macro visual attached → hide them. When Macro IS
-        // attached but a lane is Macro-owned, the relevant knobs DIM themselves (live
-        // but faded, so East values can be pre-configured before claiming) via
-        // DimmableTrimpot's per-lane predicate — no per-frame work needed here.
-        bool macroPresent = (monsoon->expanderManager.cachedMacroSandsVisual != nullptr);
-        for (Widget* w : blendControls) if (w) w->visible = macroPresent;
+        // Blend controls dim themselves (self-contained, via DimmableTrimpot/
+        // DimmableLatch predicates): the owner button + Macro-sends go dim+inert with
+        // no Macro attached or (sends) when Macro owns the lane; base-spread / CV-depth
+        // dim only when Macro owns the lane (they're East's own, live solo). No
+        // per-frame visibility work needed here.
 
         auto* mod = static_cast<StraitsEastSandsVisual*>(module);
 
