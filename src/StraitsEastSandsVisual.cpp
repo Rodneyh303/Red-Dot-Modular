@@ -2,6 +2,7 @@
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
 #include "StraitsEastSandsVisual.hpp"
+#include "StraitsSandsMacroVisual.hpp"  // complete type + StraitsMacroVisualIds for the spread-arc Macro-CV gate
 #include "ui/SandsVisualEditorV4.hpp"
 #include "ui/TabButton.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
@@ -118,10 +119,17 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 static const int sprCvRow[3] = { 1, 3, 5 };   // REST/MEL/OCT spread CV at cvId(row,1)
                 bool cvConnected = mod->inputs[cvId(sprCvRow[lane], 1)].isConnected();
                 bool macroBlend = false;
-                if (mon->expanderManager.cachedMacroSandsVisual) {
+                if (auto* macroVis = mon->expanderManager.cachedMacroSandsVisual) {
+                    // The Macro blend only DYNAMICALLY modulates spread when Macro's own
+                    // spread CV jack is connected (else macroCVDelta[lane][3] is 0 — a
+                    // static, zero contribution). Gating on send≠0 alone left the arc
+                    // "active" with a static blend, so a manual spread turn raced the
+                    // live param vs the control-rate effective → red flash. Require:
+                    // East owns the lane, send is non-zero, AND Macro spread CV is live.
                     bool eastOwns = mod->params[ownerId(v, lane)].getValue() > 0.5f;
                     float send = mod->params[sendId(v, lane, 3)].getValue();
-                    macroBlend = eastOwns && std::fabs(send) > 1e-4f;
+                    bool macroSprCv = macroVis->inputs[StraitsMacroVisualIds::macroCvId(lane, 3)].isConnected();
+                    macroBlend = eastOwns && std::fabs(send) > 1e-4f && macroSprCv;
                 }
                 return cvConnected || macroBlend;
             };
