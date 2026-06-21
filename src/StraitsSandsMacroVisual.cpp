@@ -2,6 +2,7 @@
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
 #include "ui/ConnectMark.hpp"
+#include "ui/GoldPolyPort.hpp"
 //#include "MonsoonStraitsSands.hpp"
 #include "StraitsSandsMacroVisual.hpp"
 #include "ui/SandsVisualEditorV4.hpp"
@@ -106,8 +107,12 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         // 3 poly probability CV outs, one per lane (aligned to editor lane centers).
         for (int l = 0; l < 3; ++l) {
             float y = ED_Y + (l + 0.5f) * ED_LANE_H;
-            addOutput(createOutputCentered<PJ301MPort>(
-                mm2px(Vec(PROB_OUT_X, y)), module, StraitsMacroVisualIds::PROB_OUT_REST + l));
+            auto* p = createOutputCentered<redDot::GoldPolyPort>(
+                mm2px(Vec(PROB_OUT_X, y)), module, StraitsMacroVisualIds::PROB_OUT_REST + l);
+            Module* mod = module;
+            p->lightTheme = [mod]() { Monsoon* m = mod ? redDot::findMonsoonEitherSide(mod) : nullptr;
+                                      return m && m->lightTheme; };
+            addOutput(p);
         }
 
         // ── Left section: 4 cols × 6 rows ─────────────────────────────────
