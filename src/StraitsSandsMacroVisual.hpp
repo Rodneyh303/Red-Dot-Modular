@@ -11,7 +11,8 @@ namespace StraitsMacroVisualIds {
     // Macro does the same job as the East visual (spread control) but GLOBAL
     // rather than per-lane, so it shares East's 40HP width and column geometry
     // for consistency and to give the spread column proper room.
-    static constexpr float W_MM    = 203.2f;    // 40HP (matches East visual)
+    static constexpr float W_MM    = 213.36f;   // 42HP (was 40HP; +2HP for 3 poly prob outs)
+    static constexpr float PROB_OUT_X = 207.f;  // poly prob-out jack column (right strip)
     static constexpr float ROW_TOP = 14.f;
     static constexpr float ROW_BOT = 108.f;
     static constexpr int   N_ROWS  = 6;
@@ -22,7 +23,7 @@ namespace StraitsMacroVisualIds {
     static constexpr float COL_A2 = 39.f;
     static constexpr float SPREAD_X = 49.f;     // per-lane spread trimpot column (matches East)
     static constexpr float ED_X   = 58.f;       // editor starts after the spread column
-    static constexpr float ED_W   = W_MM - ED_X - 4.f;  // ~141.2mm (matches East)
+    static constexpr float ED_W   = PROB_OUT_X - ED_X - 8.f;  // editor stops left of prob outs
     // Mirror TAB_TOP_OFFSET_MM in gen_macro_mono.py (extra top margin; 0.5cm=5mm).
     // Base 18 matches the generator's editor recess (was 16 here — a small drift;
     // aligned now so the widget editor sits exactly on the drawn recess).
@@ -53,6 +54,14 @@ namespace StraitsMacroVisualIds {
         NUM_INPUTS = CV_START + 12   // 6 rows × 2 cols
     };
     static inline int cvId(int r, int c) { return CV_START + r*2 + c; }
+
+    // ── Output IDs ────────────────────────────────────────────────────────
+    // 3 poly probability CV outs (REST/MEL/OCT): ch1 reserved (future mono tab),
+    // ch2..1+nVoices = per-voice ensemble.
+    enum OutputId {
+        PROB_OUT_REST = 0, PROB_OUT_MEL, PROB_OUT_OCT,
+        NUM_OUTPUTS
+    };
 
     // ── Row mapping (same as East/West) ───────────────────────────────────
     // Row r: lane=r/2, sub=r%2
@@ -94,7 +103,13 @@ struct StraitsSandsMacroVisual : Module {
 
     StraitsSandsMacroVisual() {
         using namespace StraitsMacroVisualIds;
-        config(MonsoonIds::NUM_PARAMS, StraitsMacroVisualIds::NUM_INPUTS, 0, 0);
+        config(MonsoonIds::NUM_PARAMS, StraitsMacroVisualIds::NUM_INPUTS,
+               StraitsMacroVisualIds::NUM_OUTPUTS, 0);
+        for (auto& a : probLastStep) for (auto& x : a) x = -1;
+        { static const char* ln[3] = {"REST","MEL","OCT"};
+          for (int l = 0; l < 3; ++l)
+            configOutput(StraitsMacroVisualIds::PROB_OUT_REST + l,
+                std::string("Probability ") + ln[l] + " (poly: ch2+ voices)"); }
 
         configParam(SPREAD_REST,   -1.f,1.f,0.f,"Global Spread REST");   // bipolar, matches MEL/OCT (was 0..1 — inconsistent)
         configParam(SPREAD_MELODY, -1.f,1.f,0.f,"Global Spread MELODY");
@@ -125,7 +140,11 @@ struct StraitsSandsMacroVisual : Module {
         configParam(GLOBAL_OCTAVE_DNA_ROT, 0.f,15.f, 0.f,"Global OCTAVE Rotation");
     }
 
-    void process(const ProcessArgs&) override {}
+    void process(const ProcessArgs&) override;   // defined in .cpp (needs findMonsoonEitherSide)
+
+    // S&H latch state for the poly prob outs: [lane][channel] (ch0 reserved, 1..15 voices).
+    float probHeld[3][16] = {};
+    int   probLastStep[3][16];
 
     // CV-applied global spread per lane (0=REST,1=MEL,2=OCT). processDNA writes
     // these from base + spread CV; the display reads them so spread CV is visible

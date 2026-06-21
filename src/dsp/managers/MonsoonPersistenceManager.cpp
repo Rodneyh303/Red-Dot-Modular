@@ -15,6 +15,8 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_object_set_new(root, "rhythmReversibleMode", json_integer(m->rhythmReversibleMode));
     json_object_set_new(root, "melodyReversibleMode", json_integer(m->melodyReversibleMode));
     json_object_set_new(root, "reseedOnModeChange", json_integer(m->reseedOnModeChange));
+    json_object_set_new(root, "probOutScale", json_integer(m->probOutScale));
+    json_object_set_new(root, "probOutSampleHold", json_boolean(m->probOutSampleHold));
     json_object_set_new(root, "resetIndexOnModeChange", json_integer(m->resetIndexOnModeChange));
     json_object_set_new(root, "cv2Mode", json_integer(m->cv2Mode));
     json_object_set_new(root, "gate1Assign", json_integer(m->gate1Assign));
@@ -162,6 +164,8 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     if (auto j = json_object_get(root, "rhythmReversibleMode")) m->rhythmReversibleMode = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "melodyReversibleMode")) m->melodyReversibleMode = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "reseedOnModeChange")) m->reseedOnModeChange = (int)json_integer_value(j);
+    if (auto j = json_object_get(root, "probOutScale")) m->probOutScale = (int)json_integer_value(j);
+    if (auto j = json_object_get(root, "probOutSampleHold")) m->probOutSampleHold = json_boolean_value(j);
     if (auto j = json_object_get(root, "resetIndexOnModeChange")) m->resetIndexOnModeChange = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "cv2Mode")) m->cv2Mode = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "gate1Assign")) m->gate1Assign = (int)json_integer_value(j);

@@ -89,8 +89,6 @@ struct MonsoonSandsVisualExpander : Module {
     // Probability CV out config (persisted): scale 0=0..1V, 1=0..5V, 2=0..10V;
     // sampleHold true = latch the value at each 16th step start (the decision value),
     // false = continuous (the live modulated surface within the bar).
-    int  probOutScale = 2;          // default 0..10V
-    bool probOutSampleHold = true;  // default S&H (the value the playhead compared)
     float probHeld[6] = {};         // latched per-lane value for S&H mode
     int   probLastStep[6] = {-1,-1,-1,-1,-1,-1};  // last step latched per lane
 
@@ -127,12 +125,7 @@ struct MonsoonSandsVisualExpander : Module {
 
     json_t* dataToJson() override {
         json_t* root = json_object();
-        json_object_set_new(root, "probOutScale", json_integer(probOutScale));
-        json_object_set_new(root, "probOutSampleHold", json_boolean(probOutSampleHold));
         return root;
     }
-    void dataFromJson(json_t* root) override {
-        if (auto* j = json_object_get(root, "probOutScale")) probOutScale = (int)json_integer_value(j);
-        if (auto* j = json_object_get(root, "probOutSampleHold")) probOutSampleHold = json_boolean_value(j);
-    }
+    void dataFromJson(json_t* root) override { (void)root; }
 };

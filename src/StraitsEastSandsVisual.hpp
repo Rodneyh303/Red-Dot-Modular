@@ -122,8 +122,6 @@ struct StraitsEastSandsVisual : Module {
     // Probability CV out config (persisted): scale 0=0..1V,1=0..5V,2=0..10V; S&H vs
     // continuous. probHeld/probLastStep per (lane, channel) for S&H (ch0=master, 1..15
     // = voices → index [lane][0..15]).
-    int   probOutScale = 2;
-    bool  probOutSampleHold = true;
     float probHeld[3][16] = {};
     int   probLastStep[3][16];
 
@@ -195,12 +193,8 @@ struct StraitsEastSandsVisual : Module {
 
     json_t* dataToJson() override {
         json_t* r = json_object();
-        json_object_set_new(r, "probOutScale", json_integer(probOutScale));
-        json_object_set_new(r, "probOutSampleHold", json_boolean(probOutSampleHold));
         return r;
     }
     void dataFromJson(json_t* root) override {
-        if (auto* j = json_object_get(root, "probOutScale")) probOutScale = (int)json_integer_value(j);
-        if (auto* j = json_object_get(root, "probOutSampleHold")) probOutSampleHold = json_boolean_value(j);
     }
 };

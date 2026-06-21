@@ -103,6 +103,13 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         visualEditor->box.size = mm2px(Vec(ED_W, ED_H));
         addChild(visualEditor);
 
+        // 3 poly probability CV outs, one per lane (aligned to editor lane centers).
+        for (int l = 0; l < 3; ++l) {
+            float y = ED_Y + (l + 0.5f) * ED_LANE_H;
+            addOutput(createOutputCentered<PJ301MPort>(
+                mm2px(Vec(PROB_OUT_X, y)), module, StraitsMacroVisualIds::PROB_OUT_REST + l));
+        }
+
         // ── Left section: 4 cols × 6 rows ─────────────────────────────────
         // j1, j2 = mono CV jacks   a1, a2 = attenuverters
         // Row r, col c:  lane=r/2, param=(r%2)*2+c
@@ -251,6 +258,38 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         }
     }
 };
+
+// ── Module process(): 3 poly probability CV outs (ch1 reserved, voices ch2+) ──
+void StraitsSandsMacroVisual::process(const ProcessArgs&) {
+    using namespace StraitsMacroVisualIds;
+    Monsoon* mon = redDot::findMonsoonEitherSide(this);
+    if (!mon) {
+        for (int l = 0; l < 3; ++l) { outputs[PROB_OUT_REST + l].setChannels(1);
+                                      outputs[PROB_OUT_REST + l].setVoltage(0.f); }
+        return;
+    }
+    const float scaleV = (mon->probOutScale == 0) ? 1.f : (mon->probOutScale == 1) ? 5.f : 10.f;
+    const bool sh = mon->probOutSampleHold;
+    auto& eng = mon->engine;
+    const int nV = eng.numPolyVoices;
+    const int nCh = 1 + nV;
+    for (int l = 0; l < 3; ++l) {
+        auto& out = outputs[PROB_OUT_REST + l];
+        out.setChannels(nCh < 1 ? 1 : nCh);
+        out.setVoltage(0.f, 0);              // ch1 reserved (future mono tab)
+        for (int v = 0; v < nV; ++v) {
+            int ch = v + 1;
+            int step = eng.polyLaneStep(l, v);
+            float raw = eng.polyLaneProbability(l, v);
+            float val;
+            if (sh) {
+                if (step != probLastStep[l][ch]) { probHeld[l][ch] = raw; probLastStep[l][ch] = step; }
+                val = probHeld[l][ch];
+            } else val = raw;
+            out.setVoltage(rack::math::clamp(val, 0.f, 1.f) * scaleV, ch);
+        }
+    }
+}
 
 Model* modelStraitsSandsMacroVisual =
     createModel<StraitsSandsMacroVisual, StraitsSandsMacroVisualWidget>(

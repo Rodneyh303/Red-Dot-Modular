@@ -125,21 +125,6 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         return module ? findMonsoonEitherSide(module) : nullptr;
     }
 
-    void appendContextMenu(Menu* menu) override {
-        auto* m = dynamic_cast<MonsoonSandsVisualExpander*>(module);
-        if (!m) return;
-        menu->addChild(new MenuSeparator);
-        menu->addChild(createMenuLabel("Probability CV outs"));
-        menu->addChild(createIndexSubmenuItem("Output range",
-            {"0-1 V", "0-5 V", "0-10 V"},
-            [m]() { return m->probOutScale; },
-            [m](int i) { m->probOutScale = i; }));
-        menu->addChild(createIndexSubmenuItem("Output mode",
-            {"Continuous", "Sample & hold (per step)"},
-            [m]() { return m->probOutSampleHold ? 1 : 0; },
-            [m](int i) { m->probOutSampleHold = (i == 1); }));
-    }
-
     void step() override {
         ModuleWidget::step();
         if (!module || !paramMgr || !visualEditor) return;
@@ -231,14 +216,15 @@ void MonsoonSandsVisualExpander::process(const ProcessArgs&) {
     }
     auto& eng = monsoon->engine;
     const int globalStep = eng.stepIndex;
-    const float scaleV = (probOutScale == 0) ? 1.f : (probOutScale == 1) ? 5.f : 10.f;
+    const float scaleV = (monsoon->probOutScale == 0) ? 1.f : (monsoon->probOutScale == 1) ? 5.f : 10.f;
+    const bool sh = monsoon->probOutSampleHold;
     for (int l = 0; l < 6; ++l) {
         int strand = dotModular::MONO_LANE_TO_STRAND[l];
         // Lane's post-LOR step — same mapping the visual uses for the playhead.
         int step = calcPlayhead(globalStep, eng.strandLen(strand),
                                 eng.strandOff(strand), eng.strandRot(strand));
         float v;
-        if (probOutSampleHold) {
+        if (sh) {
             if (step != probLastStep[l]) {          // latch at the 16th step edge
                 probHeld[l] = eng.pe.finalRandomByStrand(strand, step);
                 probLastStep[l] = step;

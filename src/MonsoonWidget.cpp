@@ -828,6 +828,18 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
               for (int v=0;v<6;++v){auto* it=createMenuItem<IntItem>(n3[v]);it->module=m;it->target=&m->gate3Target;it->value=v;sub->addChild(it);} }
         }));
 
+        menu->addChild(createSubmenuItem("Probability outs", "", [=](ui::Menu* sub) {
+            sub->addChild(createMenuLabel("Sands visual expander CV outs"));
+            sub->addChild(createIndexSubmenuItem("Output range",
+                {"0-1 V", "0-5 V", "0-10 V"},
+                [=]() { return m->probOutScale; },
+                [=](int i) { m->probOutScale = i; }));
+            sub->addChild(createIndexSubmenuItem("Output mode",
+                {"Continuous", "Sample & hold (per step)"},
+                [=]() { return m->probOutSampleHold ? 1 : 0; },
+                [=](int i) { m->probOutSampleHold = (i == 1); }));
+        }));
+
         menu->addChild(createSubmenuItem("Scales", "", [=](ui::Menu* sub) {
             sub->addChild(createBoolMenuItem("Lock Scale Notes", "",
                 [=]() { return m->scaleManager ? m->scaleManager->lockScaleNotes : false; },

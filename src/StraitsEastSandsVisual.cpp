@@ -164,16 +164,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         ModuleWidget::appendContextMenu(menu);
         auto* mod = dynamic_cast<StraitsEastSandsVisual*>(module);
         if (!mod) return;
-        menu->addChild(new MenuSeparator);
-        menu->addChild(createMenuLabel("Probability CV outs (poly)"));
-        menu->addChild(createIndexSubmenuItem("Output range",
-            {"0-1 V", "0-5 V", "0-10 V"},
-            [mod]() { return mod->probOutScale; },
-            [mod](int i) { mod->probOutScale = i; }));
-        menu->addChild(createIndexSubmenuItem("Output mode",
-            {"Continuous", "Sample & hold (per step)"},
-            [mod]() { return mod->probOutSampleHold ? 1 : 0; },
-            [mod](int i) { mod->probOutSampleHold = (i == 1); }));
+        // Probability-out config lives on Monsoon (single source of truth).
     }
 
     void saveVoiceSpread(int v) {
@@ -418,27 +409,32 @@ void StraitsEastSandsVisual::process(const ProcessArgs&) {
             params[ownerDispId(lane)].getValue() > 0.5f ? 1.f : 0.f);
 
     Monsoon* mon = redDot::findMonsoonEitherSide(this);
-    const float scaleV = (probOutScale == 0) ? 1.f : (probOutScale == 1) ? 5.f : 10.f;
     if (!mon) {
         for (int l = 0; l < 3; ++l) { outputs[PROB_OUT_REST + l].setChannels(1);
                                       outputs[PROB_OUT_REST + l].setVoltage(0.f); }
         return;
     }
+    const float scaleV = (mon->probOutScale == 0) ? 1.f : (mon->probOutScale == 1) ? 5.f : 10.f;
+    const bool sh = mon->probOutSampleHold;
     auto& eng = mon->engine;
-    const int nCh = 1 + eng.numPolyVoices;             // ch1 master + voices (2..1+nV)
+    const int nV = eng.numPolyVoices;                  // 0..15
+    const int nCh = 1 + nV;                            // ch1 reserved + voices on 2..1+nV
     for (int l = 0; l < 3; ++l) {
         auto& out = outputs[PROB_OUT_REST + l];
-        out.setChannels(nCh);
-        for (int ch = 0; ch < nCh; ++ch) {
-            int step; float raw;
-            if (ch == 0) { step = eng.masterLaneStep(l);     raw = eng.masterLaneProbability(l); }
-            else         { step = eng.polyLaneStep(l, ch-1); raw = eng.polyLaneProbability(l, ch-1); }
-            float v;
-            if (probOutSampleHold) {
+        out.setChannels(nCh < 1 ? 1 : nCh);
+        // Channel 1 (index 0) RESERVED for the future mono-tab display data — 0V now.
+        // Per-voice ensemble on channels 2.. (indices 1..nV).
+        out.setVoltage(0.f, 0);
+        for (int v = 0; v < nV; ++v) {
+            int ch = v + 1;
+            int step = eng.polyLaneStep(l, v);
+            float raw = eng.polyLaneProbability(l, v);
+            float val;
+            if (sh) {
                 if (step != probLastStep[l][ch]) { probHeld[l][ch] = raw; probLastStep[l][ch] = step; }
-                v = probHeld[l][ch];
-            } else v = raw;
-            out.setVoltage(rack::math::clamp(v, 0.f, 1.f) * scaleV, ch);
+                val = probHeld[l][ch];
+            } else val = raw;
+            out.setVoltage(rack::math::clamp(val, 0.f, 1.f) * scaleV, ch);
         }
     }
 }

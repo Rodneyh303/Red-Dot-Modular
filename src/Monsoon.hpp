@@ -719,6 +719,10 @@ struct Monsoon : Module {
     int melodyReversibleMode = 0;
     int reseedOnModeChange = 1;       // global: reseed (+zero index) on entering reversible
     int resetIndexOnModeChange = 1;   // global: zero index on entry when NOT reseeding (greyed if reseed on)
+    // Global probability-CV-out config (read by the Sands visual expanders; they have
+    // no menus of their own). Scale 0=0..1V,1=0..5V,2=0..10V; S&H vs continuous.
+    int  probOutScale = 2;
+    bool probOutSampleHold = true;
     int cv2Mode = 0;
 
     // Assignable mod routing for the main-panel CV3 / GATE3 jacks (persisted).
