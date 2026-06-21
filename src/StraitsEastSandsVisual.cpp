@@ -109,7 +109,21 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 if (!mon || !mon->modVizEast) return false;
                 int v = selectedVoice;
                 if (v < 0 || v >= 15) return false;
-                return std::fabs(mod->polySpreadEffective[v][lane] - mod->params[interpParamId()].getValue()) > 1e-4f;
+                // Gate on a REAL modulation source (not a transient set-vs-effective
+                // delta, which races during a manual knob turn — the control-rate
+                // polySpreadEffective lags the live param for a frame and drew a red
+                // residue arc; same desync class as the Monsoon big-5 fix). The spread
+                // is genuinely modulated when its per-lane spread CV jack is connected,
+                // or when Macro is blending into an East-owned lane.
+                static const int sprCvRow[3] = { 1, 3, 5 };   // REST/MEL/OCT spread CV at cvId(row,1)
+                bool cvConnected = mod->inputs[cvId(sprCvRow[lane], 1)].isConnected();
+                bool macroBlend = false;
+                if (mon->expanderManager.cachedMacroSandsVisual) {
+                    bool eastOwns = mod->params[ownerId(v, lane)].getValue() > 0.5f;
+                    float send = mod->params[sendId(v, lane, 3)].getValue();
+                    macroBlend = eastOwns && std::fabs(send) > 1e-4f;
+                }
+                return cvConnected || macroBlend;
             };
             addChild(arc);
         }

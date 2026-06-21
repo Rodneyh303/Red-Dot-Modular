@@ -53,7 +53,12 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
                 if (!mm || lane < 0 || lane >= 6) return false;
                 Monsoon* mon = findMonsoonEitherSide(mm);
                 if (!mon || !mon->modVizMono) return false;
-                return std::fabs(mm->spreadEffective[lane] - mm->params[pid].getValue()) > 1e-4f;
+                // Only REST/MEL/OCT (0-2) have spread; gate on the spread CV jack being
+                // connected — NOT a set-vs-effective delta, which races during a manual
+                // knob turn (control-rate spreadEffective lags the live param → red
+                // residue arc; same desync as the Monsoon big-5 fix).
+                if (lane >= 3) return false;
+                return mm->inputs[sprCvId(lane)].isConnected();
             };
             addChild(arc);
         }

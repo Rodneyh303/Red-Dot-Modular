@@ -70,8 +70,11 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
                 if (!mm || lane < 0 || lane >= 3) return false;
                 Monsoon* mon = findMonsoonEitherSide(mm);
                 if (!mon || !mon->modVizMacro) return false;
-                float setV = mm->params[pid].getValue();           // -1..1
-                return std::fabs(mm->spreadEffective[lane] - setV) > 1e-4f;
+                // Gate on the spread CV jack actually being connected — NOT a
+                // set-vs-effective delta, which races during a manual knob turn
+                // (control-rate spreadEffective lags the live param → red residue arc;
+                // same desync as the Monsoon big-5 fix).
+                return mm->inputs[macroCvId(lane, 3)].isConnected();
             };
             addChild(arc);
         }
