@@ -7,10 +7,11 @@ using namespace rack;
 namespace SandsMonoVisualIds {
 
     // ── Panel ────────────────────────────────────────────────────────────
-    static constexpr float W_MM     = 203.2f;   // 40HP (was 34HP; +space for a
-                                                 // dedicated spread-base column)
+    static constexpr float W_MM     = 213.36f;  // 42HP (was 40HP; +2HP right strip for
+                                                 // the per-lane probability CV out column)
     static constexpr float ED_X     = 88.f;
-    static constexpr float ED_W     = W_MM - ED_X - 4.f;  // ~111.2mm
+    static constexpr float PROB_OUT_X = 207.f;   // output jack column (new right strip)
+    static constexpr float ED_W     = PROB_OUT_X - ED_X - 8.f;  // editor stops left of the outs
     static constexpr float ED_Y     = 16.f;
     static constexpr float ROW_TOP  = 14.f;
     static constexpr float ROW_BOT  = 108.f;
@@ -56,6 +57,15 @@ namespace SandsMonoVisualIds {
         NUM_INPUTS = SPR_CV_START + 3
     };
 
+    // ── Output IDs ────────────────────────────────────────────────────────
+    enum OutputId {
+        // Per-lane probability CV out (editor lane order REST/MEL/OCT/LEG/ACC/VAR):
+        // the final post-everything (A/B mix + spread + LOR) probability the playhead
+        // goes over at the current step for that lane. S&H or continuous (menu).
+        PROB_OUT_START = 0,                 // 0 .. 5
+        NUM_OUTPUTS = PROB_OUT_START + 6
+    };
+
     // ── Helpers ───────────────────────────────────────────────────────────
     inline int lenId(int l) { return LEN_REST + l * 3; }
     inline int offId(int l) { return LEN_REST + l * 3 + 1; }
@@ -76,9 +86,21 @@ struct MonsoonSandsVisualExpander : Module {
     // Base spread lives in sprId(lane) params (set by trimpot, never mutated by CV).
     float spreadEffective[6] = {};
 
+    // Probability CV out config (persisted): scale 0=0..1V, 1=0..5V, 2=0..10V;
+    // sampleHold true = latch the value at each 16th step start (the decision value),
+    // false = continuous (the live modulated surface within the bar).
+    int  probOutScale = 2;          // default 0..10V
+    bool probOutSampleHold = true;  // default S&H (the value the playhead compared)
+    float probHeld[6] = {};         // latched per-lane value for S&H mode
+    int   probLastStep[6] = {-1,-1,-1,-1,-1,-1};  // last step latched per lane
+
     MonsoonSandsVisualExpander() {
         using namespace SandsMonoVisualIds;
-        config(SandsMonoVisualIds::NUM_PARAMS, SandsMonoVisualIds::NUM_INPUTS, 0, 0);
+        config(SandsMonoVisualIds::NUM_PARAMS, SandsMonoVisualIds::NUM_INPUTS,
+               SandsMonoVisualIds::NUM_OUTPUTS, 0);
+        for (int l = 0; l < 6; ++l)
+            configOutput(PROB_OUT_START + l, std::string("Probability ") +
+                (const char*[]){"REST","MEL","OCT","LEG","ACC","VAR"}[l]);
 
         static const char* names[6]  = {"REST","MEL","OCT","LEG","ACC","VAR"};
         static const char* lnames[3] = {"Len","Off","Rot"};
@@ -101,5 +123,16 @@ struct MonsoonSandsVisualExpander : Module {
             configInput(sprCvId(l), std::string(names[l])+" Spread CV");
         }
     }
-    void process(const ProcessArgs&) override {}
+    void process(const ProcessArgs&) override;   // defined in .cpp (needs calcPlayhead)
+
+    json_t* dataToJson() override {
+        json_t* root = json_object();
+        json_object_set_new(root, "probOutScale", json_integer(probOutScale));
+        json_object_set_new(root, "probOutSampleHold", json_boolean(probOutSampleHold));
+        return root;
+    }
+    void dataFromJson(json_t* root) override {
+        if (auto* j = json_object_get(root, "probOutScale")) probOutScale = (int)json_integer_value(j);
+        if (auto* j = json_object_get(root, "probOutSampleHold")) probOutSampleHold = json_boolean_value(j);
+    }
 };

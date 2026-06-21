@@ -106,6 +106,12 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         paramMgr = new MonoSandsParameterManager();
         flushSpreadArcs(mod);
 
+        // Per-lane probability CV outs — one jack right of each of the 6 lane rows.
+        for (int l = 0; l < N_LANES; ++l) {
+            addOutput(createOutputCentered<PJ301MPort>(
+                mm2px(Vec(PROB_OUT_X, rowY(l))), mod, PROB_OUT_START + l));
+        }
+
         // dot.modular connect mark (brand mark; greyed when no Monsoon attached).
         {
             connectMark = redDot::makeConnectMark(module, mm2px(rack::math::Vec(W_MM * 0.5f, 124.f)), mm2px(8.f));
@@ -117,6 +123,21 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
 
     Monsoon* getMonsoon() {
         return module ? findMonsoonEitherSide(module) : nullptr;
+    }
+
+    void appendContextMenu(Menu* menu) override {
+        auto* m = dynamic_cast<MonsoonSandsVisualExpander*>(module);
+        if (!m) return;
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuLabel("Probability CV outs"));
+        menu->addChild(createIndexSubmenuItem("Output range",
+            {"0-1 V", "0-5 V", "0-10 V"},
+            [m]() { return m->probOutScale; },
+            [m](int i) { m->probOutScale = i; }));
+        menu->addChild(createIndexSubmenuItem("Output mode",
+            {"Continuous", "Sample & hold (per step)"},
+            [m]() { return m->probOutSampleHold ? 1 : 0; },
+            [m](int i) { m->probOutSampleHold = (i == 1); }));
     }
 
     void step() override {
@@ -199,6 +220,36 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         }
     }
 };
+
+// ── Module process(): emit per-lane probability CV outs (audio rate) ──────────
+void MonsoonSandsVisualExpander::process(const ProcessArgs&) {
+    using namespace SandsMonoVisualIds;
+    Monsoon* monsoon = redDot::findMonsoonEitherSide(this);
+    if (!monsoon) {
+        for (int l = 0; l < 6; ++l) outputs[PROB_OUT_START + l].setVoltage(0.f);
+        return;
+    }
+    auto& eng = monsoon->engine;
+    const int globalStep = eng.stepIndex;
+    const float scaleV = (probOutScale == 0) ? 1.f : (probOutScale == 1) ? 5.f : 10.f;
+    for (int l = 0; l < 6; ++l) {
+        int strand = dotModular::MONO_LANE_TO_STRAND[l];
+        // Lane's post-LOR step — same mapping the visual uses for the playhead.
+        int step = calcPlayhead(globalStep, eng.strandLen(strand),
+                                eng.strandOff(strand), eng.strandRot(strand));
+        float v;
+        if (probOutSampleHold) {
+            if (step != probLastStep[l]) {          // latch at the 16th step edge
+                probHeld[l] = eng.pe.finalRandomByStrand(strand, step);
+                probLastStep[l] = step;
+            }
+            v = probHeld[l];
+        } else {
+            v = eng.pe.finalRandomByStrand(strand, step);   // continuous surface
+        }
+        outputs[PROB_OUT_START + l].setVoltage(rack::math::clamp(v, 0.f, 1.f) * scaleV);
+    }
+}
 
 Model* modelMonsoonSandsVisualExpander =
     createModel<MonsoonSandsVisualExpander, MonsoonSandsVisualExpanderWidget>(
