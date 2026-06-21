@@ -48,11 +48,18 @@ namespace StraitsEastVisualIds {
     enum SpreadParamId {
         // 3 display trimpots for selected voice's spread (0-2)
         SPREAD_R = 0, SPREAD_M, SPREAD_O,
-        // 12 attenuverters — row r, col c → ATTEN_START + r*2 + c (3-14)
+        // 12 attenuverter DISPLAY proxies — row r, col c → ATTEN_START + r*2 + c
+        // (3-14). These are the selected-voice view; the real depth is stored
+        // per-voice in MonsoonIds::MACRO_ATTEN_START (see attenId below).
         ATTEN_START,
         NUM_SPREAD_PARAMS = ATTEN_START + 12  // = 15
     };
-    static inline int attenId(int r, int col) { return ATTEN_START + r*2 + col; }
+    // Selected-voice display proxy (physical knob binds here).
+    static inline int attenDispId(int r, int col) { return ATTEN_START + r*2 + col; }
+    // Per-voice CV depth (the real store): voice v, jack (r,c).
+    static inline int attenId(int v, int r, int col) {
+        return MonsoonIds::MACRO_ATTEN_START + v*12 + (r*2 + col);
+    }
 
     // ── Input IDs ─────────────────────────────────────────────────────────
     enum InputId {
@@ -160,10 +167,10 @@ struct StraitsEastSandsVisual : Module {
         };
         for (int r=0; r<6; ++r)
             for (int c=0; c<2; ++c) {
-                configParam(attenId(r,c), -1.f,1.f,0.f,
-                            std::string(rowNames[r][c])+" depth");
+                configParam(attenDispId(r,c), -1.f,1.f,0.f,
+                            std::string(rowNames[r][c])+" depth (selected voice)");
                 configInput(cvId(r,c),
-                            std::string(rowNames[r][c])+" CV (poly)");
+                            std::string(rowNames[r][c])+" CV (poly, per-voice depth)");
             }
 
         for (int v=0; v<15; ++v) {
@@ -186,6 +193,12 @@ struct StraitsEastSandsVisual : Module {
                     configParam(sendId(v,lane,item), -1.f,1.f,1.f,
                                 vl+"L"+std::to_string(lane)+" Macro send "+std::to_string(item));
             }
+            // Per-voice CV depth for each of the 12 jacks (real store; the panel's
+            // 12 attenuverters are display proxies copied here on voice switch).
+            for (int r=0; r<6; ++r)
+                for (int c=0; c<2; ++c)
+                    configParam(attenId(v,r,c), -1.f,1.f,0.f,
+                                vl+"depth r"+std::to_string(r)+"c"+std::to_string(c));
         }
     }
 

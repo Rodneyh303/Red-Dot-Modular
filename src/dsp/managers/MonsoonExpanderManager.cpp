@@ -50,7 +50,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
             auto eastLorVal = [&](int paramIdx, int r, int c, float lo, float hi)-> float {
                 float base = eastLOR->params[paramIdx].getValue();
                 if (eastVisual && eastVisual->inputs[cvId(r,c)].isConnected()) {
-                    float att = eastVisual->params[attenId(r,c)].getValue();
+                    float att = eastLOR->params[attenId(v,r,c)].getValue();   // PER-VOICE depth
                     float cv  = eastVisual->inputs[cvId(r,c)].getVoltage(v) / 10.f;
                     base = math::clamp(base + cv * att * (hi - lo), lo, hi);
                 }
@@ -104,7 +104,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
 
             float restInterp = eastInterp->params[MonsoonIds::POLY_REST_INTERP_1 + v].getValue();
             if (eastVisual && eastVisual->inputs[cvId(1,1)].isConnected()) {
-                float att = eastVisual->params[attenId(1,1)].getValue();
+                float att = eastLOR->params[attenId(v,1,1)].getValue();   // PER-VOICE depth
                 float cv  = eastVisual->inputs[cvId(1,1)].getVoltage(v) / 10.f;
                 restInterp = math::clamp(restInterp + cv * att, -1.f, 1.f);
             }
@@ -131,7 +131,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
             engine.polyOff[v][1] = combineLOR(1, 1, melodyBase + 1, 2, 1, 0.f, 15.f);
             engine.polyRot[v][1] = combineLOR(1, 2, melodyBase + 2, 3, 0, 0.f, 15.f);
             if (eastVisual && eastVisual->inputs[cvId(3,1)].isConnected()) {
-                float att = eastVisual->params[attenId(3,1)].getValue();
+                float att = eastLOR->params[attenId(v,3,1)].getValue();   // PER-VOICE depth
                 float cv  = eastVisual->inputs[cvId(3,1)].getVoltage(v) / 10.f;
                 melodyInterp = math::clamp(melodyInterp + cv * att, -1.f, 1.f);
             }
@@ -161,7 +161,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
 
             float octaveInterp = eastInterp->params[MonsoonIds::POLY_OCTAVE_INTERP_1 + v].getValue();
             if (eastVisual && eastVisual->inputs[cvId(5,1)].isConnected()) {
-                float att = eastVisual->params[attenId(5,1)].getValue();
+                float att = eastLOR->params[attenId(v,5,1)].getValue();   // PER-VOICE depth
                 float cv  = eastVisual->inputs[cvId(5,1)].getVoltage(v) / 10.f;
                 octaveInterp = math::clamp(octaveInterp + cv * att, -1.f, 1.f);
             }

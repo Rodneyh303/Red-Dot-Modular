@@ -118,10 +118,17 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         //      param_<n>  n = attenId(r,c)= 3 + r*2 + c   (attenuverters, 3..14)
         //      param_<n>  n = SPREAD_R/M/O = 0/1/2         (selected-voice spread)
         for (int r = 0; r < N_ROWS; ++r) {
-            bindInput<PJ301MPort>("input_" + std::to_string(cvId(r,0)), cvId(r,0));
-            bindInput<PJ301MPort>("input_" + std::to_string(cvId(r,1)), cvId(r,1));
-            bindParam<Trimpot>   ("param_" + std::to_string(attenId(r,0)), attenId(r,0));
-            bindParam<Trimpot>   ("param_" + std::to_string(attenId(r,1)), attenId(r,1));
+            Module* mod = module;
+            auto themeCfg = [mod](redDot::GoldPolyPort* p) {
+                p->lightTheme = [mod]() { Monsoon* m = mod ? redDot::findMonsoonEitherSide(mod) : nullptr;
+                                          return m && m->lightTheme; };
+            };
+            bindInput<redDot::GoldPolyPort>("input_" + std::to_string(cvId(r,0)), cvId(r,0),
+                std::function<void(redDot::GoldPolyPort*)>(themeCfg));
+            bindInput<redDot::GoldPolyPort>("input_" + std::to_string(cvId(r,1)), cvId(r,1),
+                std::function<void(redDot::GoldPolyPort*)>(themeCfg));
+            bindParam<Trimpot>   ("param_" + std::to_string(attenDispId(r,0)), attenDispId(r,0));
+            bindParam<Trimpot>   ("param_" + std::to_string(attenDispId(r,1)), attenDispId(r,1));
         }
         bindParam<Trimpot>("param_" + std::to_string((int)SPREAD_R), SPREAD_R,
             std::function<void(Trimpot*)>([this](Trimpot* k){ pendingSpreadArcs.push_back({k, 0}); }));
@@ -192,6 +199,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             for (int item=0; item<4; ++item)
                 module->params[sendId(v,lane,item)].setValue(module->params[sendDispId(lane,item)].getValue());
         }
+        // CV-depth attenuverters: display proxy → this voice's per-voice store.
+        for (int r=0; r<6; ++r)
+            for (int c=0; c<2; ++c)
+                module->params[attenId(v,r,c)].setValue(module->params[attenDispId(r,c)].getValue());
     }
     void loadVoiceMacro(int v) {
         if (!module) return;
@@ -200,6 +211,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             for (int item=0; item<4; ++item)
                 module->params[sendDispId(lane,item)].setValue(module->params[sendId(v,lane,item)].getValue());
         }
+        // CV-depth attenuverters: this voice's per-voice store → display proxy.
+        for (int r=0; r<6; ++r)
+            for (int c=0; c<2; ++c)
+                module->params[attenDispId(r,c)].setValue(module->params[attenId(v,r,c)].getValue());
     }
     void saveVoiceLOR(int v) {
         if (!module || !visualEditor) return;
