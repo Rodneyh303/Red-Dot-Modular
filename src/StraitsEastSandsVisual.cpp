@@ -482,11 +482,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
 
         // Layout constants — MUST MATCH gen_east_clean.py (blend groups).
         const float ED_X = 58.0f, PROB_OUT_X = 207.0f, ED_W = PROB_OUT_X - ED_X - 8.0f;
-        const float BLEND_TOP = 72.0f, GAP = 3.5f;
+        const float BLEND_TOP = 74.0f, GAP = 3.5f;
         const float GROUP_W = ED_W / 3.0f;
-        const float OWN_DY = 10.5f, SEND_Y0 = 20.5f, SEND_DY = 9.0f, SEND_DX = 7.0f;
+        const float OWN_DY = 13.0f;
         const char* laneName[3] = { "REST", "MELODY", "OCTAVE" };
-        const char* itemName[4] = { "LEN", "OFF", "ROT", "SPR" };
 
         bool macroPresent = false;
         bool isLight = false;
@@ -509,7 +508,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         nvgFontSize(vg, 8.0f);
         nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM);
         nvgFillColor(vg, head);
-        nvgText(vg, mm2px(ED_X), mm2px(BLEND_TOP - 3.5f), "MACRO BLEND", nullptr);
+        nvgText(vg, mm2px(ED_X), mm2px(BLEND_TOP - 3.5f), "BASE", nullptr);
 
         for (int l = 0; l < 3; ++l) {
             float gx = ED_X + l*GROUP_W + GAP*0.5f;
@@ -520,16 +519,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
             nvgFillColor(vg, head);
             nvgText(vg, mm2px(gcx), mm2px(BLEND_TOP + 4.0f), laneName[l], nullptr);
-            // "BASE" under the opt-in latch (inherit Macro base vs local East)
+            // "BASE" under the opt-in latch (inherit Macro base / local East)
             nvgFontSize(vg, 5.0f);
             nvgFillColor(vg, item);
             nvgText(vg, mm2px(gcx), mm2px(BLEND_TOP + OWN_DY + 3.7f), "BASE", nullptr);
-            // send item labels under each trim (2×2): cols gcx∓SEND_DX, rows SEND_Y0(+DY)
-            for (int it = 0; it < 4; ++it) {
-                float cxs = gcx + ((it % 2)==0 ? -SEND_DX : SEND_DX);
-                float cys = BLEND_TOP + SEND_Y0 + (it / 2)*SEND_DY;
-                nvgText(vg, mm2px(cxs), mm2px(cys + 4.4f), itemName[it], nullptr);
-            }
         }
     }
 };
