@@ -338,6 +338,29 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
     void draw(const DrawArgs& args) override {
         ModuleWidget::draw(args);
         NVGcontext* vg = args.vg;
+
+        // V1 / mono tab: Macro's global-base CV-depth attenuverters don't reach voice 1
+        // (mono provides the base). The knob widgets hide themselves (visible=false), but
+        // the panel bakes their gold rings — mask the two attenuverter columns with the
+        // panel background so V1 reads clean.
+        {
+            auto* mon = getMonsoon();
+            bool isLight = mon && mon->lightTheme;
+            bool monoTab = mon && (viewVoice == 0) &&
+                           (mon->expanderManager.cachedSandsVisualExpander != nullptr);
+            if (monoTab) {
+                NVGcolor bg = isLight ? nvgRGB(0xe8,0xe8,0xea) : nvgRGB(0x16,0x18,0x1c);
+                float x0 = mm2px(COL_A1) - mm2px(4.f);
+                float x1 = mm2px(COL_A2) + mm2px(4.f);
+                float y0 = mm2px(rowY(0)) - mm2px(4.f);
+                float y1 = mm2px(rowY(N_ROWS - 1)) + mm2px(4.f);
+                nvgBeginPath(vg);
+                nvgRect(vg, x0, y0, x1 - x0, y1 - y0);
+                nvgFillColor(vg, bg);
+                nvgFill(vg);
+            }
+        }
+
         const float BLEND_TOP=72.f, SEND_Y0=12.f, SEND_DY=11.f, SEND_DX=7.f, BGAP=3.5f;
         const float GROUP_W = ED_W/3.f;
         const char* laneName[3] = { "REST", "MELODY", "OCTAVE" };

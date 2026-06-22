@@ -58,16 +58,19 @@ struct StraitsEastSandsVisualWidget;  // fwd
 // nothing to claim ownership FROM, it's all East). Predicate set by the widget.
 struct DimmableLatch : rack::componentlibrary::VCVLightLatch<rack::componentlibrary::SmallSimpleLight<rack::componentlibrary::WhiteLight>> {
     std::function<bool()> inertWhen;
+    std::function<bool()> hideWhen;   // fully hidden (not drawn, no input) — e.g. mono tab
     bool inert() const { return inertWhen && inertWhen(); }
+    bool hidden() const { return hideWhen && hideWhen(); }
     void onButton(const event::Button& e) override {
-        if (inert()) { e.consume(this); return; }
+        if (hidden() || inert()) { e.consume(this); return; }
         VCVLightLatch::onButton(e);
     }
     void onDragStart(const event::DragStart& e) override {
-        if (inert()) return;
+        if (hidden() || inert()) return;
         VCVLightLatch::onDragStart(e);
     }
     void draw(const DrawArgs& args) override {
+        if (hidden()) return;            // V1/mono tab: nothing to opt into — don't show
         bool dim = inert();
         if (dim) nvgGlobalAlpha(args.vg, 0.4f);
         VCVLightLatch::draw(args);
@@ -209,10 +212,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // CV-depth attenuverters are East's OWN control (scale East's poly CV in) —
             // fully usable solo. They dim only when Macro is present AND owns the lane
             // (then East's base, incl this CV, is bypassed for the Macro value).
-            bindParam<DimmableTrimpot>("param_" + std::to_string(attenDispId(r,0)), attenDispId(r,0),
-                std::function<void(DimmableTrimpot*)>([this, r](DimmableTrimpot* w){ w->dimWhen = [this, r](){ return laneOwnedByMacro(r/2); }; }));
-            bindParam<DimmableTrimpot>("param_" + std::to_string(attenDispId(r,1)), attenDispId(r,1),
-                std::function<void(DimmableTrimpot*)>([this, r](DimmableTrimpot* w){ w->dimWhen = [this, r](){ return laneOwnedByMacro(r/2); }; }));
+            // East's per-lane CV-depth attenuverters are ALWAYS live — East's own CV
+            // modulation applies regardless of who owns the lane base (Macro ownership
+            // only affects the BASE value, not East's local CV depth). No dimming.
+            bindParam<DimmableTrimpot>("param_" + std::to_string(attenDispId(r,0)), attenDispId(r,0));
+            bindParam<DimmableTrimpot>("param_" + std::to_string(attenDispId(r,1)), attenDispId(r,1));
         }
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_R), SPREAD_R,
             std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(0) || tab1MonoMirror(); }; k->lockWhen = [this](){ return laneOwnedByMacro(0) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 0}); }));
@@ -236,7 +240,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 [this](DimmableLatch* w) {
                     w->momentary = false;
                     w->latch = true;
-                    w->inertWhen = [this](){ return !macroAttached() || tab1MonoMirror(); };
+                    w->inertWhen = [this](){ return !macroAttached(); };
+                    w->hideWhen  = [this](){ return tab1MonoMirror(); };   // V1: nothing to opt into
                 }
             );
             // (Macro mix-in send trims relocated to Macro's panel under the control
@@ -527,6 +532,20 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                                      : nvgRGBA(140,140,150, 90);
         NVGcolor item = macroPresent ? (isLight ? nvgRGB(150,120,20) : nvgRGB(190,160,60))
                                      : nvgRGBA(140,140,150, 70);
+
+        // V1 / mono tab: the per-lane BASE opt-in band is meaningless (mono owns the base,
+        // nothing to opt into). The latch widgets hide themselves (hideWhen), but the panel
+        // bakes the group boxes, header rule and latch rings — mask the whole band with the
+        // panel background and skip the BASE labels so V1 reads clean.
+        if (tab1MonoMirror()) {
+            NVGcolor bg = isLight ? nvgRGB(0xe8,0xe8,0xea) : nvgRGB(0x16,0x18,0x1c);
+            nvgBeginPath(vg);
+            nvgRect(vg, mm2px(ED_X) - 2.f, mm2px(BLEND_TOP - 6.f),
+                        mm2px(ED_W) + 4.f, mm2px(22.f + 8.f));
+            nvgFillColor(vg, bg);
+            nvgFill(vg);
+            return;   // no BASE labels on V1
+        }
 
         // Section header (left-aligned, above the group row).
         nvgFontSize(vg, 8.0f);
