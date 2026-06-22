@@ -45,12 +45,6 @@ struct MonsoonCausewayExpanderWidget : ModuleWidget,
         bindInput<PJ301MPort>("input_CAUSEWAY_GATE_TRIAL_M",      MonsoonIds::CAUSEWAY_GATE_TRIAL_M);
         bindInput<PJ301MPort>("input_CAUSEWAY_GATE_REDICE_R",     MonsoonIds::CAUSEWAY_GATE_REDICE_R);
         bindInput<PJ301MPort>("input_CAUSEWAY_GATE_REDICE_M",     MonsoonIds::CAUSEWAY_GATE_REDICE_M);
-        // NOTE (paired-gates layout): the panel now carries 4 Last-gate markers beside
-        // their forward counterparts — input_CAUSEWAY_GATE_LASTTRIAL_{R,M} (TRIAL row,
-        // centre-ward) and _LASTDICE_{R,M} (REDICE row). Their bindInput calls + the
-        // MonsoonIds::CAUSEWAY_GATE_LAST{TRIAL,DICE}_{R,M} enums + the engine gate loop
-        // live on the last-dice engine work (feat/last-dice-trial). When that integrates,
-        // add the four binds here; until then the markers warn-and-skip harmlessly.
         bindInput<PJ301MPort>("input_CAUSEWAY_GATE_LIVESRC_R",    MonsoonIds::CAUSEWAY_GATE_LIVESRC_R);
         bindInput<PJ301MPort>("input_CAUSEWAY_GATE_LIVESRC_M",    MonsoonIds::CAUSEWAY_GATE_LIVESRC_M);
         bindInput<PJ301MPort>("input_CAUSEWAY_GATE_LIVESTATIC_R", MonsoonIds::CAUSEWAY_GATE_LIVESTATIC_R);
@@ -113,12 +107,13 @@ struct MonsoonCausewayExpanderWidget : ModuleWidget,
             CausewayLayout::CAUSEWAY_GATE_LIVESRC_R.y, CausewayLayout::CAUSEWAY_GATE_LIVESTATIC_R.y,
             CausewayLayout::CAUSEWAY_GATE_RESEED_ROLL.y };
         for (int r = 0; r < 5; ++r) T(30.f, gateY[r], 6.f, gl[r]);
-        // Last* row (4 columns): compact labels above each port.
-        const float lastY = CausewayLayout::CAUSEWAY_GATE_LASTDICE_R.y;
-        T(CausewayLayout::CAUSEWAY_GATE_LASTDICE_R.x,  lastY - 5.f, 4.0f, "LDcR");
-        T(CausewayLayout::CAUSEWAY_GATE_LASTDICE_M.x,  lastY - 5.f, 4.0f, "LDcM");
-        T(CausewayLayout::CAUSEWAY_GATE_LASTTRIAL_R.x, lastY - 5.f, 4.0f, "LTrR");
-        T(CausewayLayout::CAUSEWAY_GATE_LASTTRIAL_M.x, lastY - 5.f, 4.0f, "LTrM");
+        // Paired Last-gates: LastTrial sits beside TRIAL (y=66), LastDice beside REDICE
+        // (y=78), centre-ward of each channel. Tiny "L" cue above each so the rewind
+        // partner is distinguishable from the forward gate it pairs with.
+        T(CausewayLayout::CAUSEWAY_GATE_LASTTRIAL_R.x, CausewayLayout::CAUSEWAY_GATE_LASTTRIAL_R.y - 6.f, 4.0f, "L");
+        T(CausewayLayout::CAUSEWAY_GATE_LASTTRIAL_M.x, CausewayLayout::CAUSEWAY_GATE_LASTTRIAL_M.y - 6.f, 4.0f, "L");
+        T(CausewayLayout::CAUSEWAY_GATE_LASTDICE_R.x,  CausewayLayout::CAUSEWAY_GATE_LASTDICE_R.y  - 6.f, 4.0f, "L");
+        T(CausewayLayout::CAUSEWAY_GATE_LASTDICE_M.x,  CausewayLayout::CAUSEWAY_GATE_LASTDICE_M.y  - 6.f, 4.0f, "L");
     }
 };
 
