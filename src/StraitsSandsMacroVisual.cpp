@@ -2,6 +2,7 @@
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
 #include "ui/ConnectMark.hpp"
+#include "ui/GoldPolyPort.hpp"
 //#include "MonsoonStraitsSands.hpp"
 #include "StraitsSandsMacroVisual.hpp"
 #include "ui/SandsVisualEditorV4.hpp"
@@ -69,8 +70,11 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
                 if (!mm || lane < 0 || lane >= 3) return false;
                 Monsoon* mon = findMonsoonEitherSide(mm);
                 if (!mon || !mon->modVizMacro) return false;
-                float setV = mm->params[pid].getValue();           // -1..1
-                return std::fabs(mm->spreadEffective[lane] - setV) > 1e-4f;
+                // Gate on the spread CV jack actually being connected — NOT a
+                // set-vs-effective delta, which races during a manual knob turn
+                // (control-rate spreadEffective lags the live param → red residue arc;
+                // same desync as the Monsoon big-5 fix).
+                return mm->inputs[macroCvId(lane, 3)].isConnected();
             };
             addChild(arc);
         }
@@ -106,8 +110,12 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         // 3 poly probability CV outs, one per lane (aligned to editor lane centers).
         for (int l = 0; l < 3; ++l) {
             float y = ED_Y + (l + 0.5f) * ED_LANE_H;
-            addOutput(createOutputCentered<PJ301MPort>(
-                mm2px(Vec(PROB_OUT_X, y)), module, StraitsMacroVisualIds::PROB_OUT_REST + l));
+            auto* p = createOutputCentered<redDot::GoldPolyPort>(
+                mm2px(Vec(PROB_OUT_X, y)), module, StraitsMacroVisualIds::PROB_OUT_REST + l);
+            Module* mod = module;
+            p->lightTheme = [mod]() { Monsoon* m = mod ? redDot::findMonsoonEitherSide(mod) : nullptr;
+                                      return m && m->lightTheme; };
+            addOutput(p);
         }
 
         // ── Left section: 4 cols × 6 rows ─────────────────────────────────
@@ -273,14 +281,21 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
     auto& eng = mon->engine;
     const int nV = eng.numPolyVoices;
     const int nCh = 1 + nV;
+    const int gs = eng.stepIndex;
     for (int l = 0; l < 3; ++l) {
         auto& out = outputs[PROB_OUT_REST + l];
         out.setChannels(nCh < 1 ? 1 : nCh);
         out.setVoltage(0.f, 0);              // ch1 reserved (future mono tab)
+        // Macro's OWN global LOR step for this lane (from macroBase+CVDelta — identical
+        // to Macro's editor playhead, independent of East/ownership). Same step for
+        // every voice (Macro's view is global); each voice contributes its own draw.
+        int ownLen = std::max(1, (int)std::lround(macroBase[l][0] + macroCVDelta[l][0]));
+        int ownOff = (int)std::lround(macroBase[l][1] + macroCVDelta[l][1]);
+        int ownRot = (int)std::lround(macroBase[l][2] + macroCVDelta[l][2]);
+        int step = calcPlayhead(gs, ownLen, ownOff, ownRot) & 0x0F;
         for (int v = 0; v < nV; ++v) {
             int ch = v + 1;
-            int step = eng.polyLaneStep(l, v);
-            float raw = eng.polyLaneProbability(l, v);
+            float raw = eng.polyLaneProbabilityAtStep(l, v, step);
             float val;
             if (sh) {
                 if (step != probLastStep[l][ch]) { probHeld[l][ch] = raw; probLastStep[l][ch] = step; }

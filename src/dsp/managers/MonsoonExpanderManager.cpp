@@ -50,7 +50,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
             auto eastLorVal = [&](int paramIdx, int r, int c, float lo, float hi)-> float {
                 float base = eastLOR->params[paramIdx].getValue();
                 if (eastVisual && eastVisual->inputs[cvId(r,c)].isConnected()) {
-                    float att = eastVisual->params[attenId(r,c)].getValue();
+                    float att = eastLOR->params[attenId(v,r,c)].getValue();   // PER-VOICE depth
                     float cv  = eastVisual->inputs[cvId(r,c)].getVoltage(v) / 10.f;
                     base = math::clamp(base + cv * att * (hi - lo), lo, hi);
                 }
@@ -65,8 +65,13 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                     StraitsEastVisualIds::ownerId(v, lane)].getValue() > 0.5f;
                 float base = ownerEast ? eastLorVal(paramIdx, r, c, lo, hi)
                                        : (macroPresent ? macroVis->macroBase[lane][item] : eastLorVal(paramIdx, r, c, lo, hi));
+                // Macro-CV blend: only meaningful when EAST owns the lane (when Macro
+                // owns, the lane already IS the Macro value — nothing to blend). The
+                // send is a PER-VOICE attenuverter on Macro's CV contribution
+                // (macroCVDelta), summed with East's own per-voice poly-CV term that
+                // eastLorVal already folded into base. Default 0 → opt-in.
                 float blend = 0.f;
-                if (macroPresent) {
+                if (macroPresent && ownerEast) {
                     float send = eastLOR->params[
                         StraitsEastVisualIds::sendId(v, lane, item)].getValue();
                     blend = macroVis->macroCVDelta[lane][item] * send;
@@ -89,7 +94,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 float base = ownerEast ? eastInterpVal
                                        : (macroPresent ? macroVis->macroBase[lane][3] : eastInterpVal);
                 float blend = 0.f;
-                if (macroPresent) {
+                if (macroPresent && ownerEast) {
                     float send = eastLOR->params[
                         StraitsEastVisualIds::sendId(v, lane, 3)].getValue();
                     blend = macroVis->macroCVDelta[lane][3] * send;
@@ -104,7 +109,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
 
             float restInterp = eastInterp->params[MonsoonIds::POLY_REST_INTERP_1 + v].getValue();
             if (eastVisual && eastVisual->inputs[cvId(1,1)].isConnected()) {
-                float att = eastVisual->params[attenId(1,1)].getValue();
+                float att = eastLOR->params[attenId(v,1,1)].getValue();   // PER-VOICE depth
                 float cv  = eastVisual->inputs[cvId(1,1)].getVoltage(v) / 10.f;
                 restInterp = math::clamp(restInterp + cv * att, -1.f, 1.f);
             }
@@ -131,7 +136,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
             engine.polyOff[v][1] = combineLOR(1, 1, melodyBase + 1, 2, 1, 0.f, 15.f);
             engine.polyRot[v][1] = combineLOR(1, 2, melodyBase + 2, 3, 0, 0.f, 15.f);
             if (eastVisual && eastVisual->inputs[cvId(3,1)].isConnected()) {
-                float att = eastVisual->params[attenId(3,1)].getValue();
+                float att = eastLOR->params[attenId(v,3,1)].getValue();   // PER-VOICE depth
                 float cv  = eastVisual->inputs[cvId(3,1)].getVoltage(v) / 10.f;
                 melodyInterp = math::clamp(melodyInterp + cv * att, -1.f, 1.f);
             }
@@ -161,7 +166,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
 
             float octaveInterp = eastInterp->params[MonsoonIds::POLY_OCTAVE_INTERP_1 + v].getValue();
             if (eastVisual && eastVisual->inputs[cvId(5,1)].isConnected()) {
-                float att = eastVisual->params[attenId(5,1)].getValue();
+                float att = eastLOR->params[attenId(v,5,1)].getValue();   // PER-VOICE depth
                 float cv  = eastVisual->inputs[cvId(5,1)].getVoltage(v) / 10.f;
                 octaveInterp = math::clamp(octaveInterp + cv * att, -1.f, 1.f);
             }

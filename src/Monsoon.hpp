@@ -438,7 +438,18 @@ namespace MonsoonIds {
         MACRO_SEND_DISP_START = MACRO_OWN_DISP_END,
         MACRO_SEND_DISP_END = MACRO_SEND_DISP_START + 12,
 
-        NUM_PARAMS = MACRO_SEND_DISP_END
+        // Per-(voice, jack) CV-depth attenuverter for East's poly CV inputs. The
+        // poly cable is a convenience (one cable, 16 channels) but each voice is an
+        // independent mod target: this gives each voice its OWN depth for each of the
+        // 12 CV jacks, so the same incoming CV can bite harder on one voice than
+        // another. 15 voices × 12 jacks = 180. The East panel's 12 physical
+        // attenuverters are display proxies (ATTEN_START) copied to/from the selected
+        // voice's slice here on voice switch — same pattern as owner/send.
+        //   index = MACRO_ATTEN_START + v*12 + (r*2 + c)
+        MACRO_ATTEN_START = MACRO_SEND_DISP_END,
+        MACRO_ATTEN_END = MACRO_ATTEN_START + 180,
+
+        NUM_PARAMS = MACRO_ATTEN_END
     };
 
     enum InputIds {

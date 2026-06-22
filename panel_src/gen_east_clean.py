@@ -5,7 +5,7 @@ red corner screws. nanosvg-safe (no masks/gradients/text-for-controls)."""
 import math
 S = 75.0/25.4
 def px(mm): return round(mm*S, 2)
-W_MM, H_MM = 203.2, 128.5
+W_MM, H_MM = 213.36, 128.5  # 42HP (40 + 2HP right strip for poly prob-out jacks)
 PW, PH = px(W_MM), px(H_MM)
 
 ROW_TOP, ROW_BOT, N = 14.0, 108.0, 6
@@ -16,7 +16,8 @@ COL_J1, COL_J2, COL_A1, COL_A2, SPREAD_X = 8.0, 18.0, 30.0, 39.0, 49.0
 # StraitsEastSandsVisualWidget) to taste.
 TAB_TOP_OFFSET_MM = 5.0
 ED_X, ED_Y = 58.0, 18.0 + TAB_TOP_OFFSET_MM
-ED_W = W_MM - ED_X - 4.0
+PROB_OUT_X = 207.0  # right-strip jack column (matches hpp)
+ED_W = PROB_OUT_X - ED_X - 8.0  # editor stops left of the prob-out jacks (matches hpp)
 ED_H = 48.0
 
 def theme(dark):
@@ -157,42 +158,51 @@ def gen(dark):
         y=0.5*(rowY(lane*2)+rowY(lane*2+1)); trim(SPREAD_X,y,t["teal"])
 
     # ── Macro/East blend controls — 3 labelled groups (REST / MELODY / OCTAVE),
-    #    each a boxed cluster: an owner on/off button (top-left) + a 2×2 grid of
-    #    MACRO CV SEND trimpots (Len/Off/Rot/Spr). Group boxes + a "MACRO BLEND"
-    #    header give the previously-loose row a clear structure. Labels (group
-    #    names + item names) are drawn by the widget in NanoVG (the panel carries
-    #    no baked text), positioned to match these coordinates. Only meaningful
-    #    with a Macro visual attached; the module greys them out otherwise. ──
-    BLEND_TOP = 74.0               # below the editor (ED_Y+ED_H = 66)
-    BLEND_H   = 30.0
+    #    each a demarked box stacked as: lane-name header → owner latch (OWN) →
+    #    a 2×2 MACRO-SEND trim grid (LEN OFF / ROT SPR), every control centred under
+    #    its label. Labels are drawn by the widget in NanoVG (panel carries no baked
+    #    text) using the IDENTICAL constants below — keep the two in lockstep. Only
+    #    meaningful with a Macro visual attached; greyed otherwise.
+    #
+    #    SHARED LAYOUT CONSTANTS (mirror exactly in StraitsEastSandsVisual::draw):
+    #      editor ends at ED_Y+ED_H=71; bottom art (waves/MBS) starts ~111 — so the
+    #      blend band must live in y≈72..108 (36mm). Stack: header → owner → 2×2.
+    #      BLEND_TOP=72  BLEND_H=36  GAP=3.5
+    #      header baseline  = BLEND_TOP+4.0
+    #      owner centre y   = BLEND_TOP+10.5    ("OWN" label at +14.2)
+    #      send row0 y = BLEND_TOP+20.5  row1 y = +29.5  (labels at +4.4; col x = gcx∓7)
+    BLEND_TOP = 72.0
+    BLEND_H   = 36.0
+    GAP       = 3.5
     GROUP_W   = ED_W/3.0
-    GAP       = 3.0
-    # section header rule
-    A(f'<line x1="{px(ED_X):.1f}" y1="{px(BLEND_TOP-3.0):.1f}" x2="{px(ED_X+ED_W):.1f}" y2="{px(BLEND_TOP-3.0):.1f}" stroke="{t["edborder"]}" stroke-width="0.8" opacity="0.7"/>')
+    OWN_DY    = 10.5
+    SEND_Y0   = 20.5
+    SEND_DY   = 9.0
+    SEND_DX   = 7.0
+    # "MACRO BLEND" section header rule (full width, above the groups)
+    A(f'<line x1="{px(ED_X):.1f}" y1="{px(BLEND_TOP-3.0):.1f}" x2="{px(ED_X+ED_W):.1f}" y2="{px(BLEND_TOP-3.0):.1f}" stroke="{t["accent"]}" stroke-width="1.0" opacity="0.6"/>')
     LANE_NAMES = ["REST","MELODY","OCTAVE"]
     OWN_XY = []     # owner button centres, per lane
-    SEND_XY = []    # send trim centres, per (lane,item)
+    SEND_XY = []    # send trim centres, per (lane,item)  item 0=LEN 1=OFF 2=ROT 3=SPR
     for l in range(3):
         gx = ED_X + l*GROUP_W + GAP*0.5
         gw = GROUP_W - GAP
-        # group box
-        A(f'<rect x="{px(gx):.1f}" y="{px(BLEND_TOP):.1f}" width="{px(gw):.1f}" height="{px(BLEND_H):.1f}" rx="{px(1.2):.1f}" fill="{t["edrecess"]}" stroke="{t["edborder"]}" stroke-width="0.9" opacity="0.9"/>')
-        # owner button: top-left of the box
-        oy = BLEND_TOP + 6.5
-        ox = gx + 5.5
-        A(f'<circle cx="{px(ox):.1f}" cy="{px(oy):.1f}" r="{px(2.4):.1f}" fill="{t["edrecess"]}" stroke="{t["accent"]}" stroke-width="1.1"/>')
-        OWN_XY.append((ox,oy))
-        # 2×2 send grid in the right ~2/3 of the box
-        sx0 = gx + gw*0.42
-        sxs = gw*0.26
-        sy0 = BLEND_TOP + 8.5
-        sys = 12.0
-        lane_sends=[]
+        gcx = gx + gw*0.5
+        # demarked group box
+        A(f'<rect x="{px(gx):.1f}" y="{px(BLEND_TOP):.1f}" width="{px(gw):.1f}" height="{px(BLEND_H):.1f}" rx="{px(1.4):.1f}" fill="{t["edrecess"]}" stroke="{t["edborder"]}" stroke-width="0.9" opacity="0.92"/>')
+        # header divider under the lane name
+        A(f'<line x1="{px(gx+2):.1f}" y1="{px(BLEND_TOP+7.5):.1f}" x2="{px(gx+gw-2):.1f}" y2="{px(BLEND_TOP+7.5):.1f}" stroke="{t["edborder"]}" stroke-width="0.6" opacity="0.6"/>')
+        # owner latch — centred under the header
+        ox, oy = gcx, BLEND_TOP + OWN_DY
+        A(f'<circle cx="{px(ox):.1f}" cy="{px(oy):.1f}" r="{px(2.6):.1f}" fill="{t["edrecess"]}" stroke="{t["accent"]}" stroke-width="1.2"/>')
+        OWN_XY.append((ox, oy))
+        # 2×2 send grid, centred: cols at gcx∓SEND_DX, rows at SEND_Y0 (+SEND_DY)
+        lane_sends = []
         for item in range(4):
-            cxs = sx0 + (item % 2)*sxs
-            cys = sy0 + (item // 2)*sys
+            cxs = gcx + (-SEND_DX if (item % 2)==0 else SEND_DX)
+            cys = BLEND_TOP + SEND_Y0 + (item // 2)*SEND_DY
             trim(cxs, cys, t["gold"])
-            lane_sends.append((cxs,cys))
+            lane_sends.append((cxs, cys))
         SEND_XY.append(lane_sends)
     A('</g>')
     # ── SvgPanelKit component layer. Indices mirror StraitsEastSandsVisual.hpp:

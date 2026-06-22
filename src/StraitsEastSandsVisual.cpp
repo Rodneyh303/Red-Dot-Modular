@@ -2,12 +2,14 @@
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
 #include "StraitsEastSandsVisual.hpp"
+#include "StraitsSandsMacroVisual.hpp"  // complete type + StraitsMacroVisualIds for the spread-arc Macro-CV gate
 #include "ui/SandsVisualEditorV4.hpp"
 #include "ui/TabButton.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/SvgPanelKit.hpp"
 #include "ui/ModArcOverlay.hpp"
 #include "ui/ConnectMark.hpp"
+#include "ui/GoldPolyPort.hpp"
 #include "dsp/managers/PolyVoiceSandsParameterManager.hpp"
 #include "dsp/managers/SpreadManager.hpp"
 
@@ -18,13 +20,58 @@ using namespace StraitsEastVisualIds;
 
 extern Plugin* pluginInstance;
 
+// A Trimpot that dims to partial alpha (still interactive) when its predicate says it's
+// currently inactive — for East's per-lane base-spread / CV-depth / Macro-send knobs,
+// which have no effect while Macro owns the lane but stay editable so the user can
+// pre-configure East's values before claiming. Full alpha once East owns the lane.
+// (Same nvgGlobalAlpha technique as Monsoon's TrialButton.)
+struct DimmableTrimpot : rack::componentlibrary::Trimpot {
+    std::function<bool()> dimWhen;
+    void draw(const DrawArgs& args) override {
+        bool dim = dimWhen && dimWhen();
+        if (dim) nvgGlobalAlpha(args.vg, 0.4f);
+        rack::componentlibrary::Trimpot::draw(args);
+        if (dim) nvgGlobalAlpha(args.vg, 1.0f);
+    }
+    void drawLayer(const DrawArgs& args, int layer) override {
+        bool dim = dimWhen && dimWhen();
+        if (dim) nvgGlobalAlpha(args.vg, 0.4f);
+        rack::componentlibrary::Trimpot::drawLayer(args, layer);
+        if (dim) nvgGlobalAlpha(args.vg, 1.0f);
+    }
+};
+
+struct StraitsEastSandsVisualWidget;  // fwd
+
+// Owner claim latch that dims + swallows input when inert (no Macro attached — there's
+// nothing to claim ownership FROM, it's all East). Predicate set by the widget.
+struct DimmableLatch : rack::componentlibrary::VCVLightLatch<rack::componentlibrary::SmallSimpleLight<rack::componentlibrary::WhiteLight>> {
+    std::function<bool()> inertWhen;
+    bool inert() const { return inertWhen && inertWhen(); }
+    void onButton(const event::Button& e) override {
+        if (inert()) { e.consume(this); return; }
+        VCVLightLatch::onButton(e);
+    }
+    void onDragStart(const event::DragStart& e) override {
+        if (inert()) return;
+        VCVLightLatch::onDragStart(e);
+    }
+    void draw(const DrawArgs& args) override {
+        bool dim = inert();
+        if (dim) nvgGlobalAlpha(args.vg, 0.4f);
+        VCVLightLatch::draw(args);
+        if (dim) nvgGlobalAlpha(args.vg, 1.0f);
+    }
+};
+
 struct StraitsEastSandsVisualWidget : ModuleWidget,
     dotModular::Compose<StraitsEastSandsVisualWidget,
                         dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
     SandsVisualEditorV4*            visualEditor = nullptr;
     TabButtonGroup*                 tabGroup     = nullptr;
     PolyVoiceSandsParameterManager* paramMgr     = nullptr;
-    std::vector<rack::Widget*> blendControls;   // owner/send controls; greyed when no Macro
+    // (blend controls now dim/disable themselves via DimmableTrimpot/DimmableLatch
+    //  predicates — no central visibility list needed.)
     int  selectedVoice = 0;
     // East spread mod-arcs. Compared in the INTERP domain (0..1) to sidestep the
     // pre-existing display-trimpot bipolar (-1..1) vs interp (0..1) mismatch: set
@@ -63,7 +110,28 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 if (!mon || !mon->modVizEast) return false;
                 int v = selectedVoice;
                 if (v < 0 || v >= 15) return false;
-                return std::fabs(mod->polySpreadEffective[v][lane] - mod->params[interpParamId()].getValue()) > 1e-4f;
+                // Gate on a REAL modulation source (not a transient set-vs-effective
+                // delta, which races during a manual knob turn — the control-rate
+                // polySpreadEffective lags the live param for a frame and drew a red
+                // residue arc; same desync class as the Monsoon big-5 fix). The spread
+                // is genuinely modulated when its per-lane spread CV jack is connected,
+                // or when Macro is blending into an East-owned lane.
+                static const int sprCvRow[3] = { 1, 3, 5 };   // REST/MEL/OCT spread CV at cvId(row,1)
+                bool cvConnected = mod->inputs[cvId(sprCvRow[lane], 1)].isConnected();
+                bool macroBlend = false;
+                if (auto* macroVis = mon->expanderManager.cachedMacroSandsVisual) {
+                    // The Macro blend only DYNAMICALLY modulates spread when Macro's own
+                    // spread CV jack is connected (else macroCVDelta[lane][3] is 0 — a
+                    // static, zero contribution). Gating on send≠0 alone left the arc
+                    // "active" with a static blend, so a manual spread turn raced the
+                    // live param vs the control-rate effective → red flash. Require:
+                    // East owns the lane, send is non-zero, AND Macro spread CV is live.
+                    bool eastOwns = mod->params[ownerId(v, lane)].getValue() > 0.5f;
+                    float send = mod->params[sendId(v, lane, 3)].getValue();
+                    bool macroSprCv = macroVis->inputs[StraitsMacroVisualIds::macroCvId(lane, 3)].isConnected();
+                    macroBlend = eastOwns && std::fabs(send) > 1e-4f && macroSprCv;
+                }
+                return cvConnected || macroBlend;
             };
             addChild(arc);
         }
@@ -103,8 +171,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // 3 poly probability CV outs, one per lane row (aligned to editor lane centers).
         for (int l = 0; l < 3; ++l) {
             float y = ED_Y + (l + 0.5f) * ED_LANE_H;
-            addOutput(createOutputCentered<PJ301MPort>(
-                mm2px(Vec(PROB_OUT_X, y)), module, StraitsEastVisualIds::PROB_OUT_REST + l));
+            auto* p = createOutputCentered<redDot::GoldPolyPort>(
+                mm2px(Vec(PROB_OUT_X, y)), module, StraitsEastVisualIds::PROB_OUT_REST + l);
+            Module* mod = module;
+            p->lightTheme = [mod]() { Monsoon* m = mod ? redDot::findMonsoonEitherSide(mod) : nullptr;
+                                      return m && m->lightTheme; };
+            addOutput(p);
         }
 
         // ── Controls bound by id from the SVG kit (#components in
@@ -113,39 +185,53 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         //      param_<n>  n = attenId(r,c)= 3 + r*2 + c   (attenuverters, 3..14)
         //      param_<n>  n = SPREAD_R/M/O = 0/1/2         (selected-voice spread)
         for (int r = 0; r < N_ROWS; ++r) {
-            bindInput<PJ301MPort>("input_" + std::to_string(cvId(r,0)), cvId(r,0));
-            bindInput<PJ301MPort>("input_" + std::to_string(cvId(r,1)), cvId(r,1));
-            bindParam<Trimpot>   ("param_" + std::to_string(attenId(r,0)), attenId(r,0));
-            bindParam<Trimpot>   ("param_" + std::to_string(attenId(r,1)), attenId(r,1));
+            Module* mod = module;
+            auto themeCfg = [mod](redDot::GoldPolyPort* p) {
+                p->lightTheme = [mod]() { Monsoon* m = mod ? redDot::findMonsoonEitherSide(mod) : nullptr;
+                                          return m && m->lightTheme; };
+            };
+            bindInput<redDot::GoldPolyPort>("input_" + std::to_string(cvId(r,0)), cvId(r,0),
+                std::function<void(redDot::GoldPolyPort*)>(themeCfg));
+            bindInput<redDot::GoldPolyPort>("input_" + std::to_string(cvId(r,1)), cvId(r,1),
+                std::function<void(redDot::GoldPolyPort*)>(themeCfg));
+            // CV-depth attenuverters are East's OWN control (scale East's poly CV in) —
+            // fully usable solo. They dim only when Macro is present AND owns the lane
+            // (then East's base, incl this CV, is bypassed for the Macro value).
+            bindParam<DimmableTrimpot>("param_" + std::to_string(attenDispId(r,0)), attenDispId(r,0),
+                std::function<void(DimmableTrimpot*)>([this, r](DimmableTrimpot* w){ w->dimWhen = [this, r](){ return laneOwnedByMacro(r/2); }; }));
+            bindParam<DimmableTrimpot>("param_" + std::to_string(attenDispId(r,1)), attenDispId(r,1),
+                std::function<void(DimmableTrimpot*)>([this, r](DimmableTrimpot* w){ w->dimWhen = [this, r](){ return laneOwnedByMacro(r/2); }; }));
         }
-        bindParam<Trimpot>("param_" + std::to_string((int)SPREAD_R), SPREAD_R,
-            std::function<void(Trimpot*)>([this](Trimpot* k){ pendingSpreadArcs.push_back({k, 0}); }));
-        bindParam<Trimpot>("param_" + std::to_string((int)SPREAD_M), SPREAD_M,
-            std::function<void(Trimpot*)>([this](Trimpot* k){ pendingSpreadArcs.push_back({k, 1}); }));
-        bindParam<Trimpot>("param_" + std::to_string((int)SPREAD_O), SPREAD_O,
-            std::function<void(Trimpot*)>([this](Trimpot* k){ pendingSpreadArcs.push_back({k, 2}); }));
+        bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_R), SPREAD_R,
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(0); }; pendingSpreadArcs.push_back({k, 0}); }));
+        bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_M), SPREAD_M,
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(1); }; pendingSpreadArcs.push_back({k, 1}); }));
+        bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_O), SPREAD_O,
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(2); }; pendingSpreadArcs.push_back({k, 2}); }));
 
         // Macro/East blend controls (bound to the display proxies; copied to/from
         // the per-voice MACRO params on voice switch + each frame). Owner = a
-        // latching on/off button (off=Macro owns base, on=East owns). Sends =
-        // attenuverter trimpots. Captured so step() can grey/hide them when no
-        // Macro visual is attached (they have no effect then — the equation's
-        // macro terms are zero — so this is feedback, not function).
+        // latching on/off button (off=Macro owns base, on=East owns). With NO Macro
+        // attached, ownership is meaningless (it's all East) — the owner button is
+        // inert + dimmed and the sends are dimmed. With Macro attached, sends dim per
+        // lane when Macro owns it. (Base-spread / CV-depth are East's own controls and
+        // stay live solo — see laneOwnedByMacro above.)
         for (int lane = 0; lane < 3; ++lane) {
-            bindLightParam<VCVLightLatch<SmallSimpleLight<WhiteLight>>>(
-                "param_owner_" + std::to_string(lane), 
-                ownerDispId(lane), 
+            bindLightParam<DimmableLatch>(
+                "param_owner_" + std::to_string(lane),
+                ownerDispId(lane),
                 ownerLightId(lane),
-                [this](VCVLightLatch<SmallSimpleLight<WhiteLight>>* w) { 
+                [this](DimmableLatch* w) {
                     w->momentary = false;
                     w->latch = true;
-                    blendControls.push_back(w); 
+                    w->inertWhen = [this](){ return !macroAttached(); };
                 }
             );
             for (int item = 0; item < 4; ++item)
-                bindParam<Trimpot>("param_send_" + std::to_string(lane) + "_" + std::to_string(item),
+                bindParam<DimmableTrimpot>("param_send_" + std::to_string(lane) + "_" + std::to_string(item),
                     sendDispId(lane, item),
-                    std::function<void(Trimpot*)>([this](Trimpot* w){ blendControls.push_back(w); }));
+                    std::function<void(DimmableTrimpot*)>([this, lane](DimmableTrimpot* w){
+                        w->dimWhen = [this, lane](){ return laneInert(lane); }; }));
         }
 
         paramMgr = new PolyVoiceSandsParameterManager(nullptr, nullptr, 15, 0);
@@ -187,6 +273,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             for (int item=0; item<4; ++item)
                 module->params[sendId(v,lane,item)].setValue(module->params[sendDispId(lane,item)].getValue());
         }
+        // CV-depth attenuverters: display proxy → this voice's per-voice store.
+        for (int r=0; r<6; ++r)
+            for (int c=0; c<2; ++c)
+                module->params[attenId(v,r,c)].setValue(module->params[attenDispId(r,c)].getValue());
     }
     void loadVoiceMacro(int v) {
         if (!module) return;
@@ -195,6 +285,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             for (int item=0; item<4; ++item)
                 module->params[sendDispId(lane,item)].setValue(module->params[sendId(v,lane,item)].getValue());
         }
+        // CV-depth attenuverters: this voice's per-voice store → display proxy.
+        for (int r=0; r<6; ++r)
+            for (int c=0; c<2; ++c)
+                module->params[attenDispId(r,c)].setValue(module->params[attenId(v,r,c)].getValue());
     }
     void saveVoiceLOR(int v) {
         if (!module || !visualEditor) return;
@@ -230,6 +324,24 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     Monsoon* getMonsoon() {
         return module ? findMonsoonEitherSide(module) : nullptr;
     }
+    // Macro visual attached on the chain?
+    bool macroAttached() {
+        Monsoon* m = getMonsoon();
+        return m && m->expanderManager.cachedMacroSandsVisual != nullptr;
+    }
+    // A lane's blend controls (base-spread / CV-depth / send) are inert when there's no
+    // Macro at all (nothing to relate to — it's all East), OR when Macro owns the lane
+    // (the lane IS the Macro value). Dimmed-but-editable in both cases.
+    bool laneInert(int lane) {
+        if (!macroAttached()) return true;
+        return !(module && module->params[StraitsEastVisualIds::ownerDispId(lane)].getValue() > 0.5f);
+    }
+    // For East's OWN controls (base-spread, CV-depth): inert only when Macro is present
+    // AND owns the lane (East base bypassed). Fully usable solo.
+    bool laneOwnedByMacro(int lane) {
+        if (!macroAttached()) return false;
+        return !(module && module->params[StraitsEastVisualIds::ownerDispId(lane)].getValue() > 0.5f);
+    }
 
     void step() override {
         ModuleWidget::step();
@@ -253,11 +365,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             if (visualEditor) visualEditor->setTheme(wantLight != 0);
         }
 
-        // Macro/East blend controls only do anything with a Macro visual attached
-        // (the equation's macro terms are zero otherwise). Hide them when absent
-        // so the panel doesn't imply controls that have no effect.
-        bool macroPresent = (monsoon->expanderManager.cachedMacroSandsVisual != nullptr);
-        for (Widget* w : blendControls) if (w) w->visible = macroPresent;
+        // Blend controls dim themselves (self-contained, via DimmableTrimpot/
+        // DimmableLatch predicates): the owner button + Macro-sends go dim+inert with
+        // no Macro attached or (sends) when Macro owns the lane; base-spread / CV-depth
+        // dim only when Macro owns the lane (they're East's own, live solo). No
+        // per-frame visibility work needed here.
 
         auto* mod = static_cast<StraitsEastSandsVisual*>(module);
 
@@ -346,10 +458,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         ModuleWidget::draw(args);
         NVGcontext* vg = args.vg;
 
-        // Layout constants — must match gen_east_clean.py.
-        const float ED_X = 58.0f, ED_W = 203.2f - 58.0f - 4.0f;
-        const float BLEND_TOP = 74.0f, BLEND_H = 30.0f, GAP = 3.0f;
+        // Layout constants — MUST MATCH gen_east_clean.py (blend groups).
+        const float ED_X = 58.0f, PROB_OUT_X = 207.0f, ED_W = PROB_OUT_X - ED_X - 8.0f;
+        const float BLEND_TOP = 72.0f, GAP = 3.5f;
         const float GROUP_W = ED_W / 3.0f;
+        const float OWN_DY = 10.5f, SEND_Y0 = 20.5f, SEND_DY = 9.0f, SEND_DX = 7.0f;
         const char* laneName[3] = { "REST", "MELODY", "OCTAVE" };
         const char* itemName[4] = { "LEN", "OFF", "ROT", "SPR" };
 
@@ -365,14 +478,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         if (!font) return;
         nvgFontFaceId(vg, font->handle);
 
-        // Colours: brand-ish ink, dimmed when no Macro attached.
         NVGcolor head = macroPresent ? (isLight ? nvgRGB(40,44,52) : nvgRGB(210,214,222))
                                      : nvgRGBA(140,140,150, 90);
         NVGcolor item = macroPresent ? (isLight ? nvgRGB(150,120,20) : nvgRGB(190,160,60))
                                      : nvgRGBA(140,140,150, 70);
 
-        // Section header.
-        nvgFontSize(vg, 8.5f);
+        // Section header (left-aligned, above the group row).
+        nvgFontSize(vg, 8.0f);
         nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM);
         nvgFillColor(vg, head);
         nvgText(vg, mm2px(ED_X), mm2px(BLEND_TOP - 3.5f), "MACRO BLEND", nullptr);
@@ -380,22 +492,21 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         for (int l = 0; l < 3; ++l) {
             float gx = ED_X + l*GROUP_W + GAP*0.5f;
             float gw = GROUP_W - GAP;
-            // group name — top of box, right of the owner button
-            nvgFontSize(vg, 8.0f);
+            float gcx = gx + gw*0.5f;
+            // lane-name header — centred at top of the box
+            nvgFontSize(vg, 7.0f);
             nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
             nvgFillColor(vg, head);
-            nvgText(vg, mm2px(gx + gw*0.62f), mm2px(BLEND_TOP + 3.2f), laneName[l], nullptr);
-            // "OWN" under the owner button
-            nvgFontSize(vg, 5.5f);
+            nvgText(vg, mm2px(gcx), mm2px(BLEND_TOP + 4.0f), laneName[l], nullptr);
+            // "OWN" under the owner latch
+            nvgFontSize(vg, 5.0f);
             nvgFillColor(vg, item);
-            nvgText(vg, mm2px(gx + 5.5f), mm2px(BLEND_TOP + 11.0f), "OWN", nullptr);
-            // item labels under each send trim (2×2)
-            float sx0 = gx + gw*0.42f, sxs = gw*0.26f;
-            float sy0 = BLEND_TOP + 8.5f, sys = 12.0f;
+            nvgText(vg, mm2px(gcx), mm2px(BLEND_TOP + OWN_DY + 3.7f), "OWN", nullptr);
+            // send item labels under each trim (2×2): cols gcx∓SEND_DX, rows SEND_Y0(+DY)
             for (int it = 0; it < 4; ++it) {
-                float cxs = sx0 + (it % 2)*sxs;
-                float cys = sy0 + (it / 2)*sys;
-                nvgText(vg, mm2px(cxs), mm2px(cys + 5.0f), itemName[it], nullptr);
+                float cxs = gcx + ((it % 2)==0 ? -SEND_DX : SEND_DX);
+                float cys = BLEND_TOP + SEND_Y0 + (it / 2)*SEND_DY;
+                nvgText(vg, mm2px(cxs), mm2px(cys + 4.4f), itemName[it], nullptr);
             }
         }
     }
