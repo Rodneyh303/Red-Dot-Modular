@@ -13,6 +13,7 @@ using namespace MonsoonIds;
 // to avoid ambiguous cvId/attenId/sprId calls — qualify explicitly below.
 namespace Mono  = SandsMonoVisualIds;
 namespace Macro = StraitsMacroVisualIds;
+namespace East  = StraitsEastVisualIds;   // for the voice-1 mix-in (interp. Y)
 
 void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManager, bool spreadInterpMono) {
     const bool hasVisual = (expanderManager.cachedSandsVisualExpander != nullptr);
@@ -102,6 +103,36 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             baseOff = applyMonoCV(baseOff, l, 1, 0.f, 15.f);
             baseRot = applyMonoCV(baseRot, l, 2, 0.f, 15.f);
 
+            // INTERPRETATION Y — voice-1 mix-in. The mono master strand is voice 1 of
+            // the ensemble; like every poly voice it can receive the East per-lane CV
+            // and the Macro global-CV mix-in, summed on top of the mono base. We use
+            // VOICE 0's slice of the East/Macro per-voice banks (tab 1 = voice 1 = mono).
+            // Only when the respective module is attached. Lane/item→East(r,c) mirrors
+            // the poly combineLOR mapping. (Base stays mono's — this is modulation only.)
+            auto* eastVis = expanderManager.cachedEastSandsVisual;
+            // East per-lane CV folded onto voice 1 (voice-0 depth × East CV ch0).
+            auto eastMix = [&](float base, int r, int c, float lo, float hi)->float {
+                if (!eastVis || !eastVis->inputs[East::cvId(r,c)].isConnected()) return base;
+                float att = eastVis->params[East::attenId(0, r, c)].getValue();   // voice 0
+                float cv  = eastVis->inputs[East::cvId(r,c)].getVoltage(0) / 10.f; // ch0
+                return math::clamp(base + cv * att * (hi - lo), lo, hi);
+            };
+            // Macro global CV distributed to voice 1 (voice-0 send × macroCVDelta).
+            // NOTE: macroCVDelta is published by the Macro block LATER in this same
+            // processDNA (after the mono strand), so voice 1 reads the PREVIOUS control
+            // block's delta — a one-block (sub-ms, control-rate) lag. Imperceptible for a
+            // modulation value; if it ever matters, hoist the macroActive publishGlobal
+            // block above the hasVisual mono block (it has no dependency on mono).
+            auto macroMix = [&](float base, int item, float lo, float hi)->float {
+                if (!hasMacro || !macroVis) return base;
+                float send = macroVis->params[Macro::sendId(0, l, item)].getValue();   // voice 0
+                return math::clamp(base + macroVis->macroCVDelta[l][item] * send, lo, hi);
+            };
+            // REST/MEL/OCT (l=0/1/2) East (r,c): Len (l*2,0) Off (l*2,1) Rot (l*2+1,0).
+            baseLen = eastMix(baseLen, l*2,   0, 1.f, 16.f);  baseLen = macroMix(baseLen, 0, 1.f, 16.f);
+            baseOff = eastMix(baseOff, l*2,   1, 0.f, 15.f);  baseOff = macroMix(baseOff, 1, 0.f, 15.f);
+            baseRot = eastMix(baseRot, l*2+1, 0, 0.f, 15.f);  baseRot = macroMix(baseRot, 2, 0.f, 15.f);
+
             engine.strandLenRef(strand) = clamp((int)std::round(baseLen), 1, 16);
             engine.strandOffRef(strand) = ((int)std::round(baseOff) % 16 + 16) % 16;
             engine.strandRotRef(strand) = ((int)std::round(baseRot) % 16 + 16) % 16;
@@ -113,7 +144,20 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
        // {
             for (int l = 0; l < 3; ++l) {
                 float baseSpr = monoVis->params[Mono::sprId(l)].getValue();
-                monoVis->spreadEffective[l] = applyMonoSprCV(baseSpr, l);
+                float sp = applyMonoSprCV(baseSpr, l);
+                // INTERP Y — voice-1 spread mix-in (voice 0 slice), bipolar [-1,1].
+                auto* eastVisS = expanderManager.cachedEastSandsVisual;
+                static const int sprRow[3] = { 1, 3, 5 };   // East spread CV at cvId(row,1)
+                if (eastVisS && eastVisS->inputs[East::cvId(sprRow[l],1)].isConnected()) {
+                    float att = eastVisS->params[East::attenId(0, sprRow[l], 1)].getValue();
+                    float cv  = eastVisS->inputs[East::cvId(sprRow[l],1)].getVoltage(0) / 10.f;
+                    sp = rack::math::clamp(sp + cv * att * 2.f, -1.f, 1.f);   // span [-1,1]=2
+                }
+                if (hasMacro && macroVis) {
+                    float send = macroVis->params[Macro::sendId(0, l, 3)].getValue();
+                    sp = rack::math::clamp(sp + macroVis->macroCVDelta[l][3] * send, -1.f, 1.f);
+                }
+                monoVis->spreadEffective[l] = sp;
             }
             // LEG/ACC/VAR have no spread
             for (int l = 3; l < 6; ++l) monoVis->spreadEffective[l] = 0.f;
