@@ -41,6 +41,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
     PolySandsParameterManager* paramMgr     = nullptr;
     TabButtonGroup*            tabGroup     = nullptr;
     int viewVoice = 0;   // which voice's resulting probabilities to DISPLAY (read-only)
+    int lastSendVoice = -1;  // detect view-voice change to sync the mix-in send proxies
     bool                       initialized  = false;
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
     rack::app::SvgPanel* panelWidget = nullptr;
@@ -146,6 +147,23 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
             pendingSpreadArcs.push_back({sp, lane});
         }
 
+        // Macro→voice MIX-IN send 2×2 grids (relocated from East). Coordinates MUST
+        // match panel_src/gen_macro_mono.py: BLEND_TOP=72 SEND_Y0=12 SEND_DY=11 SEND_DX=7,
+        // groups at ED_X + lane*ED_W/3. Bound to the sendDispId display proxies (synced
+        // to/from the per-voice store on view-voice change).
+        {
+            const float BLEND_TOP=72.f, SEND_Y0=12.f, SEND_DY=11.f, SEND_DX=7.f, BGAP=3.5f;
+            const float GROUP_W = ED_W/3.f;
+            for (int lane=0; lane<3; ++lane) {
+                float gx=ED_X+lane*GROUP_W+BGAP*0.5f, gw=GROUP_W-BGAP, gcx=gx+gw*0.5f;
+                for (int item=0; item<4; ++item) {
+                    float cxs=gcx+((item%2)==0?-SEND_DX:SEND_DX);
+                    float cys=BLEND_TOP+SEND_Y0+(item/2)*SEND_DY;
+                    addParam(createParamCentered<Trimpot>(mm2px(Vec(cxs,cys)), mod, sendDispId(lane,item)));
+                }
+            }
+        }
+
         paramMgr = new PolySandsParameterManager(nullptr, nullptr, nullptr, 7);
         flushSpreadArcs();   // attach spread mod-arcs on top of the trimpots
 
@@ -246,6 +264,22 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
                                  std::max(0, monsoon->engine.numPolyVoices - 1));
         }
 
+        // Mix-in send display proxies ↔ per-voice store. On view-voice change, load that
+        // voice's sends into the 12 display proxies; otherwise save the (possibly edited)
+        // proxies back to the current voice each frame so edits take effect immediately.
+        if (viewVoice != lastSendVoice) {
+            for (int lane=0; lane<3; ++lane)
+                for (int item=0; item<4; ++item)
+                    module->params[sendDispId(lane,item)].setValue(
+                        module->params[sendId(viewVoice,lane,item)].getValue());
+            lastSendVoice = viewVoice;
+        } else {
+            for (int lane=0; lane<3; ++lane)
+                for (int item=0; item<4; ++item)
+                    module->params[sendId(viewVoice,lane,item)].setValue(
+                        module->params[sendDispId(lane,item)].getValue());
+        }
+
         saveLOR();
         paramMgr->syncPatternEngineToEditor(visualEditor->currentState, viewVoice);
 
@@ -289,6 +323,51 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
                 ownLen = std::max(1, ownLen);
                 visualEditor->currentState.lanes[l].setDisplayLOR(ownLen, ownOff, ownRot);
                 visualEditor->setLanePlayStep(l, calcPlayhead(gs, ownLen, ownOff, ownRot));
+            }
+        }
+    }
+
+    // Mix-in send group labels (NanoVG; panel carries no baked text). Geometry MUST
+    // match the send grids in gen_macro_mono.py and the widget knob placement above:
+    // BLEND_TOP=72 SEND_Y0=12 SEND_DY=11 SEND_DX=7, groups at ED_X + lane*ED_W/3.
+    void draw(const DrawArgs& args) override {
+        ModuleWidget::draw(args);
+        NVGcontext* vg = args.vg;
+        const float BLEND_TOP=72.f, SEND_Y0=12.f, SEND_DY=11.f, SEND_DX=7.f, BGAP=3.5f;
+        const float GROUP_W = ED_W/3.f;
+        const char* laneName[3] = { "REST", "MELODY", "OCTAVE" };
+        const char* itemName[4] = { "LEN", "OFF", "ROT", "SPR" };
+
+        bool isLight = false;
+        if (auto* mon = getMonsoon()) isLight = mon->lightTheme;
+
+        auto font = APP->window->loadFont(rack::asset::system("res/fonts/DejaVuSans-Bold.ttf"));
+        if (!font) font = APP->window->uiFont;
+        if (!font) return;
+        nvgFontFaceId(vg, font->handle);
+
+        NVGcolor head = isLight ? nvgRGB(40,44,52) : nvgRGB(210,214,222);
+        NVGcolor item = isLight ? nvgRGB(150,120,20) : nvgRGB(190,160,60);
+
+        nvgFontSize(vg, 8.0f);
+        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM);
+        nvgFillColor(vg, head);
+        nvgText(vg, mm2px(ED_X), mm2px(BLEND_TOP - 3.5f), "MIX IN", nullptr);
+
+        for (int l = 0; l < 3; ++l) {
+            float gx = ED_X + l*GROUP_W + BGAP*0.5f;
+            float gw = GROUP_W - BGAP;
+            float gcx = gx + gw*0.5f;
+            nvgFontSize(vg, 7.0f);
+            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+            nvgFillColor(vg, head);
+            nvgText(vg, mm2px(gcx), mm2px(BLEND_TOP + 4.0f), laneName[l], nullptr);
+            nvgFontSize(vg, 5.0f);
+            nvgFillColor(vg, item);
+            for (int it = 0; it < 4; ++it) {
+                float cxs = gcx + ((it % 2)==0 ? -SEND_DX : SEND_DX);
+                float cys = BLEND_TOP + SEND_Y0 + (it / 2)*SEND_DY;
+                nvgText(vg, mm2px(cxs), mm2px(cys + 4.4f), itemName[it], nullptr);
             }
         }
     }

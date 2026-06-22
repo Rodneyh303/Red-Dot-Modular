@@ -165,25 +165,19 @@ def gen(dark):
     #    meaningful with a Macro visual attached; greyed otherwise.
     #
     #    SHARED LAYOUT CONSTANTS (mirror exactly in StraitsEastSandsVisual::draw):
-    #      editor ends at ED_Y+ED_H=71; bottom art (waves/MBS) starts ~111 — so the
-    #      blend band must live in y≈72..108 (36mm). Stack: header → owner → 2×2.
-    #      BLEND_TOP=72  BLEND_H=36  GAP=3.5
-    #      header baseline  = BLEND_TOP+4.0
-    #      owner centre y   = BLEND_TOP+10.5    ("OWN" label at +14.2)
-    #      send row0 y = BLEND_TOP+20.5  row1 y = +29.5  (labels at +4.4; col x = gcx∓7)
-    BLEND_TOP = 72.0
-    BLEND_H   = 36.0
+    #      editor ends at ED_Y+ED_H=71; bottom art starts ~111. Post-inversion the
+    #      Macro mix-in SENDS moved to the Macro panel — East keeps only the per-lane
+    #      BASE opt-in latch (inherit Macro base / local East). So the band is short:
+    #      a header + a centred latch per lane group.  BLEND_TOP=74  BLEND_H=22.
+    BLEND_TOP = 74.0
+    BLEND_H   = 22.0
     GAP       = 3.5
     GROUP_W   = ED_W/3.0
-    OWN_DY    = 10.5
-    SEND_Y0   = 20.5
-    SEND_DY   = 9.0
-    SEND_DX   = 7.0
-    # "MACRO BLEND" section header rule (full width, above the groups)
+    OWN_DY    = 13.0
+    # "BASE" section header rule (full width, above the groups)
     A(f'<line x1="{px(ED_X):.1f}" y1="{px(BLEND_TOP-3.0):.1f}" x2="{px(ED_X+ED_W):.1f}" y2="{px(BLEND_TOP-3.0):.1f}" stroke="{t["accent"]}" stroke-width="1.0" opacity="0.6"/>')
     LANE_NAMES = ["REST","MELODY","OCTAVE"]
-    OWN_XY = []     # owner button centres, per lane
-    SEND_XY = []    # send trim centres, per (lane,item)  item 0=LEN 1=OFF 2=ROT 3=SPR
+    OWN_XY = []     # opt-in (BASE) latch centres, per lane
     for l in range(3):
         gx = ED_X + l*GROUP_W + GAP*0.5
         gw = GROUP_W - GAP
@@ -192,18 +186,10 @@ def gen(dark):
         A(f'<rect x="{px(gx):.1f}" y="{px(BLEND_TOP):.1f}" width="{px(gw):.1f}" height="{px(BLEND_H):.1f}" rx="{px(1.4):.1f}" fill="{t["edrecess"]}" stroke="{t["edborder"]}" stroke-width="0.9" opacity="0.92"/>')
         # header divider under the lane name
         A(f'<line x1="{px(gx+2):.1f}" y1="{px(BLEND_TOP+7.5):.1f}" x2="{px(gx+gw-2):.1f}" y2="{px(BLEND_TOP+7.5):.1f}" stroke="{t["edborder"]}" stroke-width="0.6" opacity="0.6"/>')
-        # owner latch — centred under the header
+        # opt-in (BASE) latch — centred under the header
         ox, oy = gcx, BLEND_TOP + OWN_DY
         A(f'<circle cx="{px(ox):.1f}" cy="{px(oy):.1f}" r="{px(2.6):.1f}" fill="{t["edrecess"]}" stroke="{t["accent"]}" stroke-width="1.2"/>')
         OWN_XY.append((ox, oy))
-        # 2×2 send grid, centred: cols at gcx∓SEND_DX, rows at SEND_Y0 (+SEND_DY)
-        lane_sends = []
-        for item in range(4):
-            cxs = gcx + (-SEND_DX if (item % 2)==0 else SEND_DX)
-            cys = BLEND_TOP + SEND_Y0 + (item // 2)*SEND_DY
-            trim(cxs, cys, t["gold"])
-            lane_sends.append((cxs, cys))
-        SEND_XY.append(lane_sends)
     A('</g>')
     # ── SvgPanelKit component layer. Indices mirror StraitsEastSandsVisual.hpp:
     #    cvId(r,c)=CV_START(0)+r*2+c  inputs 0..11;
@@ -219,14 +205,10 @@ def gen(dark):
     for lane in range(3):
         y=0.5*(rowY(lane*2)+rowY(lane*2+1))
         kit_shape("param", lane, SPREAD_X, y)   # SPREAD_R/M/O = 0/1/2
-    # Macro/East blend control markers (named; bound to display proxies). Use the
-    # grouped coordinates computed above (OWN_XY, SEND_XY).
+    # East opt-in (BASE) latch markers (bound to display proxies). Sends moved to Macro.
     for l in range(3):
         ox,oy = OWN_XY[l]
         A(f'<circle id="param_owner_{l}" cx="{px(ox):.2f}" cy="{px(oy):.2f}" r="0.5" fill="none" stroke="none"/>')
-        for item in range(4):
-            cxs,cys = SEND_XY[l][item]
-            A(f'<circle id="param_send_{l}_{item}" cx="{px(cxs):.2f}" cy="{px(cys):.2f}" r="0.5" fill="none" stroke="none"/>')
     A(f'<circle id="light_connect" cx="{px(W_MM*0.5):.2f}" cy="{px(124.0):.2f}" r="0.5" fill="none" stroke="none"/>')
     A('</g>')
     A('</svg>')
