@@ -493,10 +493,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
             nvgFillColor(vg, head);
             nvgText(vg, mm2px(gcx), mm2px(BLEND_TOP + 4.0f), laneName[l], nullptr);
-            // "OWN" under the owner latch
+            // "BASE" under the opt-in latch (inherit Macro base vs local East)
             nvgFontSize(vg, 5.0f);
             nvgFillColor(vg, item);
-            nvgText(vg, mm2px(gcx), mm2px(BLEND_TOP + OWN_DY + 3.7f), "OWN", nullptr);
+            nvgText(vg, mm2px(gcx), mm2px(BLEND_TOP + OWN_DY + 3.7f), "BASE", nullptr);
             // send item labels under each trim (2×2): cols gcx∓SEND_DX, rows SEND_Y0(+DY)
             for (int it = 0; it < 4; ++it) {
                 float cxs = gcx + ((it % 2)==0 ? -SEND_DX : SEND_DX);
