@@ -45,6 +45,12 @@ struct MonsoonCausewayExpanderWidget : ModuleWidget,
         bindInput<PJ301MPort>("input_CAUSEWAY_GATE_TRIAL_M",      MonsoonIds::CAUSEWAY_GATE_TRIAL_M);
         bindInput<PJ301MPort>("input_CAUSEWAY_GATE_REDICE_R",     MonsoonIds::CAUSEWAY_GATE_REDICE_R);
         bindInput<PJ301MPort>("input_CAUSEWAY_GATE_REDICE_M",     MonsoonIds::CAUSEWAY_GATE_REDICE_M);
+        // NOTE (paired-gates layout): the panel now carries 4 Last-gate markers beside
+        // their forward counterparts — input_CAUSEWAY_GATE_LASTTRIAL_{R,M} (TRIAL row,
+        // centre-ward) and _LASTDICE_{R,M} (REDICE row). Their bindInput calls + the
+        // MonsoonIds::CAUSEWAY_GATE_LAST{TRIAL,DICE}_{R,M} enums + the engine gate loop
+        // live on the last-dice engine work (feat/last-dice-trial). When that integrates,
+        // add the four binds here; until then the markers warn-and-skip harmlessly.
         bindInput<PJ301MPort>("input_CAUSEWAY_GATE_LIVESRC_R",    MonsoonIds::CAUSEWAY_GATE_LIVESRC_R);
         bindInput<PJ301MPort>("input_CAUSEWAY_GATE_LIVESRC_M",    MonsoonIds::CAUSEWAY_GATE_LIVESRC_M);
         bindInput<PJ301MPort>("input_CAUSEWAY_GATE_LIVESTATIC_R", MonsoonIds::CAUSEWAY_GATE_LIVESTATIC_R);
