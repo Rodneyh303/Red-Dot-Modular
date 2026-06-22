@@ -4,6 +4,7 @@
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/SvgPanelKit.hpp"
 #include "ui/ModArcOverlay.hpp"
+#include "ui/ConnectMark.hpp"
 
 using namespace rack;
 using namespace MonsoonIds;
@@ -13,6 +14,7 @@ struct MonsoonStraitWestExpanderWidget : ModuleWidget,
     dotModular::Compose<MonsoonStraitWestExpanderWidget,
                         dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
+    redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;
 
     // Per-voice REST mod-arc overlays (West voices = engine indices 7..14).
@@ -25,9 +27,8 @@ struct MonsoonStraitWestExpanderWidget : ModuleWidget,
             auto* knob = pr.first; int voice = pr.second;
             if (!knob) continue;
             auto* arc = new redDot::ModArcOverlay();
-            arc->box.pos  = knob->box.pos;
-            arc->box.size = knob->box.size;
             arc->radius   = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
+            arc->attachOverKnob(knob, mm2px(2.5f));
             rack::Module* self = module;
             // Per-voice CV modulation: effective vs same-frame base (lag-free).
             arc->getSetNorm = [self, voice]() -> float {
@@ -40,16 +41,16 @@ struct MonsoonStraitWestExpanderWidget : ModuleWidget,
             };
             arc->isActive = [self, voice]() -> bool {
                 Monsoon* m = redDot::findMonsoonEitherSide(self);
-                if (!m || voice < 0 || voice >= 15) return false;
+                if (!m || !m->modVizWest || voice < 0 || voice >= 15) return false;
                 return std::fabs(m->cachedPolyRestEffective[voice] - m->cachedPolyRest[voice]) > 1e-4f;
             };
             addChild(arc);
         }
         pendingRestArcs.clear();
     }
-    MonsoonStraitWestExpanderWidget(MonsoonStraitWestExpander* module)
+    MonsoonStraitWestExpanderWidget(MonsoonStraitWestExpander* mod)
     {
-        setModule(module);
+        setModule(mod);
         const char* darkPath  = "res/panels/straits_west_peranakan_dark.svg";
         const char* lightPath = "res/panels/straits_west_peranakan_light.svg";
         panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance, darkPath));
@@ -80,6 +81,12 @@ struct MonsoonStraitWestExpanderWidget : ModuleWidget,
         bindOutput<PJ301MPort>    ("output_global_gate", POLY_GATE_1_16_OUT);
         bindOutput<PJ301MPort>    ("output_global_cv",   POLY_CV_1_16_OUT);
         flushRestArcs();
+
+        // dot.modular connect mark (brand mark; greyed when no Monsoon attached).
+        if (auto* s = findNamed("light_connect")) {
+            connectMark = redDot::makeConnectMark(module, centerOf(s), mm2px(8.f));
+            addChild(connectMark);
+        }
     }
 
     void step() override {

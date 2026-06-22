@@ -155,6 +155,10 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // count, so no lanes to draw). Mono never sets this.
   bool inert = false;
   const char* inertMessage = nullptr;
+  // readOnly: render data normally but block all editing/drag. Used for East/Macro
+  // tab 1 when Sands Mono is attached — the lane data belongs to Mono and is shown
+  // read-only (edit it on Sands Mono). Unlike `inert`, no hint message, data still drawn.
+  bool readOnly = false;
   
   VoiceState currentState;
   VoiceState clipboard;
@@ -214,6 +218,8 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // step = -1 means sequencer not running (no indicator drawn).
   int lanePlayStep[6] = {-1,-1,-1,-1,-1,-1};
   float activeStepAlpha = 0.f;
+  int playDir = +1;   // +1 forward, -1 reverse (Mode E); for directional playhead cue
+  void setPlayDir(int d) { playDir = (d < 0) ? -1 : +1; }
 
   // Convenience: set all active lanes to the same global step
   // (used when L/O/R is not yet available)
@@ -774,6 +780,18 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       nvgRect(vg, rect.pos.x + 1, rect.pos.y, rect.size.x - 2, 2.f);
       nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.9f * activeStepAlpha));
       nvgFill(vg);
+
+      // Directional leading-edge marker: a bright vertical bar on the side the
+      // playhead is travelling TOWARD (right edge when forward, left when reverse).
+      // Makes forward vs reverse (Mode E) visible at a glance.
+      {
+        float ex = (playDir < 0) ? rect.pos.x + 0.5f
+                                  : rect.pos.x + rect.size.x - 2.5f;
+        nvgBeginPath(vg);
+        nvgRect(vg, ex, rect.pos.y, 2.f, rect.size.y);
+        nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.8f * activeStepAlpha));
+        nvgFill(vg);
+      }
     }
   }
   
@@ -817,7 +835,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   
   void onHover(const rack::event::Hover& e) override {
     Widget::onHover(e);
-    if (inert) { hoverLane = -1; hoverZone = DragState::NONE; return; }
+    if (inert || readOnly) { hoverLane = -1; hoverZone = DragState::NONE; return; }
     syncLayout();
     int lane = getLaneAtY(e.pos.y);
     DragState::Type z = (lane >= 0 && lane < laneCount)
@@ -837,10 +855,10 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
 
   void onButton(const rack::event::Button& e) override {
     syncLayout();
-    if (inert) return;   // no interaction until poly source (Straits East) is attached
+    if (inert || readOnly) return;   // no edit when inert (no poly src) or readOnly (mono owns tab 1)
     if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT) {
       int lane = getLaneAtY(e.pos.y);
-      int step = getStepAtX(e.pos.x);
+      //int step = getStepAtX(e.pos.x);
 
       if (lane >= 0 && lane < laneCount) {
         // Hit-test handles first — they have priority over bar dragging

@@ -38,6 +38,34 @@ inline Monsoon* findMonsoonEitherSide(rack::Module* self, int maxDepth = 8) {
     return nullptr;
 }
 
+// True only if `self` is the expander Monsoon has actually CLAIMED for its type.
+// Monsoon caches the FIRST module of each type in its chain (one pointer per
+// type), so when several expanders of the same type are placed in a row, only one
+// is functionally connected. The connect mark must reflect that — otherwise every
+// duplicate lights up as if connected. Compares `self` against the matching
+// cached pointer by address (the cached slots are stored as the concrete module
+// pointers, so an address compare is valid across the reinterpret_cast).
+inline bool isClaimedExpander(rack::Module* self, Monsoon* mon) {
+    if (!self || !mon) return false;
+    const auto& em = mon->expanderManager;
+    const void* s = static_cast<const void*>(self);
+    return s == (const void*)em.cachedScaleExpander
+        || s == (const void*)em.cachedCausewayExpander
+        || s == (const void*)em.cachedSurgeExpander
+        || s == (const void*)em.cachedSandsVisualExpander
+        || s == (const void*)em.cachedPolyVoiceExpander
+        || s == (const void*)em.cachedStraitWestExpander
+        || s == (const void*)em.cachedEastSandsVisual
+        || s == (const void*)em.cachedMacroSandsVisual;
+}
+
+// Convenience for the connect mark: this expander is "connected" iff a Monsoon is
+// reachable AND it is the claimed one of its type.
+inline bool isConnectedAndClaimed(rack::Module* self) {
+    Monsoon* mon = findMonsoonEitherSide(self);
+    return mon && isClaimedExpander(self, mon);
+}
+
 // ── Per-lane playhead ─────────────────────────────────────────────────────────
 // Returns the PHYSICAL bar (0..15) the sequencer actually reads after LOR, to
 // match SequencerEngine::getStrandIdx exactly:

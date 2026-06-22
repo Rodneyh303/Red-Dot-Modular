@@ -12,6 +12,12 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
 
     // ── Settings and Modes ──
     json_object_set_new(root, "cv1Mode", json_integer(m->cv1Mode));
+    json_object_set_new(root, "rhythmReversibleMode", json_integer(m->rhythmReversibleMode));
+    json_object_set_new(root, "melodyReversibleMode", json_integer(m->melodyReversibleMode));
+    json_object_set_new(root, "reseedOnModeChange", json_integer(m->reseedOnModeChange));
+    json_object_set_new(root, "probOutScale", json_integer(m->probOutScale));
+    json_object_set_new(root, "probOutSampleHold", json_boolean(m->probOutSampleHold));
+    json_object_set_new(root, "resetIndexOnModeChange", json_integer(m->resetIndexOnModeChange));
     json_object_set_new(root, "cv2Mode", json_integer(m->cv2Mode));
     json_object_set_new(root, "gate1Assign", json_integer(m->gate1Assign));
     json_object_set_new(root, "gate2Assign", json_integer(m->gate2Assign));
@@ -21,6 +27,12 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_object_set_new(root, "melodyLiveTrial", json_boolean(m->melodyLiveTrial));
     json_object_set_new(root, "invertMuteLogic", json_boolean(m->invertMuteLogic));
     json_object_set_new(root, "spreadInterpMono", json_boolean(m->spreadInterpMono));
+    json_object_set_new(root, "modVizMonsoonMelody", json_boolean(m->modVizMonsoonMelody));
+    json_object_set_new(root, "modVizMonsoonOther",  json_boolean(m->modVizMonsoonOther));
+    json_object_set_new(root, "modVizEast",  json_boolean(m->modVizEast));
+    json_object_set_new(root, "modVizWest",  json_boolean(m->modVizWest));
+    json_object_set_new(root, "modVizMacro", json_boolean(m->modVizMacro));
+    json_object_set_new(root, "modVizMono",  json_boolean(m->modVizMono));
     json_object_set_new(root, "restartOnUnmute", json_boolean(m->restartOnUnmute));
     json_object_set_new(root, "reseedOnRoll", json_boolean(m->reseedOnRoll));
     json_object_set_new(root, "reseedOnRestart", json_boolean(m->reseedOnRestart));
@@ -149,6 +161,12 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
 
     // ── Settings and Modes ──
     if (auto j = json_object_get(root, "cv1Mode")) m->cv1Mode = (int)json_integer_value(j);
+    if (auto j = json_object_get(root, "rhythmReversibleMode")) m->rhythmReversibleMode = (int)json_integer_value(j);
+    if (auto j = json_object_get(root, "melodyReversibleMode")) m->melodyReversibleMode = (int)json_integer_value(j);
+    if (auto j = json_object_get(root, "reseedOnModeChange")) m->reseedOnModeChange = (int)json_integer_value(j);
+    if (auto j = json_object_get(root, "probOutScale")) m->probOutScale = (int)json_integer_value(j);
+    if (auto j = json_object_get(root, "probOutSampleHold")) m->probOutSampleHold = json_boolean_value(j);
+    if (auto j = json_object_get(root, "resetIndexOnModeChange")) m->resetIndexOnModeChange = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "cv2Mode")) m->cv2Mode = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "gate1Assign")) m->gate1Assign = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "gate2Assign")) m->gate2Assign = (int)json_integer_value(j);
@@ -158,11 +176,24 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     if (auto j = json_object_get(root, "melodyLiveTrial")) m->melodyLiveTrial = json_boolean_value(j);
     if (auto j = json_object_get(root, "invertMuteLogic")) m->invertMuteLogic = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "spreadInterpMono")) m->spreadInterpMono = (bool)json_boolean_value(j);
+    if (auto j = json_object_get(root, "modVizMonsoonMelody")) m->modVizMonsoonMelody = (bool)json_boolean_value(j);
+    if (auto j = json_object_get(root, "modVizMonsoonOther"))  m->modVizMonsoonOther  = (bool)json_boolean_value(j);
+    if (auto j = json_object_get(root, "modVizEast"))  m->modVizEast  = (bool)json_boolean_value(j);
+    if (auto j = json_object_get(root, "modVizWest"))  m->modVizWest  = (bool)json_boolean_value(j);
+    if (auto j = json_object_get(root, "modVizMacro")) m->modVizMacro = (bool)json_boolean_value(j);
+    if (auto j = json_object_get(root, "modVizMono"))  m->modVizMono  = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "restartOnUnmute")) m->restartOnUnmute = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "reseedOnRoll")) m->reseedOnRoll = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "reseedOnRestart")) m->reseedOnRestart = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "noteVariationMask")) m->noteVariationMask = (int)json_integer_value(j);
-    if (auto j = json_object_get(root, "ppqnSetting")) m->ppqnSetting = (int)json_integer_value(j);
+    if (auto j = json_object_get(root, "ppqnSetting")) {
+        int v = (int)json_integer_value(j);
+        // Migrate legacy values (1/4/24 = old input-divider semantics) onto the
+        // new master grid (24/48/96). Anything below 24 → 24 (the new minimum,
+        // which already resolves every note value).
+        if (v != 24 && v != 48 && v != 96) v = 24;
+        m->ppqnSetting = v;
+    }
     if (auto j = json_object_get(root, "modeSelect")) m->modeSelect = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "lightTheme")) m->lightTheme = (bool)json_boolean_value(j);
     if (m->scaleManager) {

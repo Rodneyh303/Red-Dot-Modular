@@ -122,6 +122,8 @@ def panel(theme):
             o.append(trim_well(t, c["x_mm"], c["y_mm"], cid=cid))
         else:
             o.append(jack_well(t, c["x_mm"], c["y_mm"], cid=cid))
+    # dot.modular connect mark anchor (footer-centre; reposition here).
+    o.append(f'<circle id="light_connect" cx="{mm(W/S/2.0):.1f}" cy="{mm(124.0):.1f}" r="0.5" fill="#000000" fill-opacity="0"/>')
     o.append('</g>')
     o.append('</svg>')
     return "\n".join(o)

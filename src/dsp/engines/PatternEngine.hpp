@@ -23,7 +23,8 @@
 #include <cmath>
 #include <cstdint>
 #include <algorithm>
-
+#include "../PhiloxRng.hpp"
+#include "../LaneMapping.hpp"   // dotModular::STRAND_* for finalRandomByStrand
 
 template<typename T>
 static inline T pe_clamp(T v, T lo, T hi){ return v<lo?lo:(v>hi?hi:v); }
@@ -74,7 +75,24 @@ struct PatternEngine {
     float accentRandom[16]    = {};  // New: accent strand probabilities
     float melodyRandom[16]    = {};
     float octaveRandom[16]    = {};
-    
+
+    // Final post-everything (A/B-mix + spread + LOR feed in upstream) probability value
+    // for a given ENGINE STRAND at a given step, 0..1. Strand-keyed (use
+    // dotModular::STRAND_* or MONO_LANE_TO_STRAND[editorLane]) so callers never hardcode
+    // the editor-lane→array permutation. Used by the Sands visual probability CV outs.
+    inline float finalRandomByStrand(int strand, int step) const {
+        step &= 0x0F;
+        switch (strand) {
+            case dotModular::STRAND_RHYTHM:    return rhythmRandom[step];
+            case dotModular::STRAND_VARIATION: return variationRandom[step];
+            case dotModular::STRAND_LEGATO:    return legatoRandom[step];
+            case dotModular::STRAND_ACCENT:    return accentRandom[step];
+            case dotModular::STRAND_MELODY:    return melodyRandom[step];
+            case dotModular::STRAND_OCTAVE:    return octaveRandom[step];
+            default:                           return rhythmRandom[step];
+        }
+    }
+
     // Poly strands: 15 voices, each with Rhythm, Melody, and Octave draws
     float polyRhythmRandom[15][16] = {};
     float polyMelodyRandom[15][16] = {};
@@ -153,6 +171,7 @@ struct PatternEngine {
     // so the user auditions candidates against a fixed A; the regular roll
     // promotes B→A (main mode), so A walks forward.
     bool  rhythmRollPending = false;
+    bool  rhythmPendingLast = false, melodyPendingLast = false; // Last* = invert dice dir this boundary
     bool  melodyRollPending = false;
     bool  rhythmTrialPending = false;
     bool  melodyTrialPending = false;
@@ -206,9 +225,96 @@ struct PatternEngine {
     static inline float rngToFloat(rack::random::Xoroshiro128Plus& rng) {
         return (rng() >> 11) * (1.f / float(1ull << 53));
     }
+
+    // ── Counter-addressable Philox draw path (Mode E reverse/jump foundation) ──
+    // Each stream (rhythm, melody) has a Philox4x32 engine keyed by the stream seed,
+    // a DRAW-COUNTER (the phrase index — up on forward redraw, down on reverse), a
+    // fixed CHUNK of stream positions per draw, and an intra-draw CURSOR that the
+    // redraw resets and advances per unit() call. So draw N is the addressable block
+    // [N*CHUNK, N*CHUNK+CHUNK) — pure fn of (counter, key) ⇒ reproducible forward AND
+    // backward without stored history. 32-bit Philox: a 24-bit-mantissa float, exactly
+    // float precision, which is all the probability lanes need.
+    //
+    // CHUNK must exceed the max unit() calls per redraw of a stream. Worst case:
+    //   rhythm  16 * (rhythm+variation+legato+accent=4 mono + 15 poly) = 304
+    //   melody  16 * (melody+octave=2 mono + 15*2 poly)               = 512
+    // 1024 leaves generous headroom and is a clean power of two.
+    static constexpr uint64_t DRAW_CHUNK = 1024;
+    bool      usePhiloxDraws = true;          // false → legacy Xoroshiro (A/B compare)
+    redDot::PhiloxRng rhythmPhilox, melodyPhilox;
+    int64_t   rhythmDrawCtr = 0, melodyDrawCtr = 0;   // signed: can go negative on reverse
+    uint64_t  rhythmCursor  = 0, melodyCursor  = 0;   // intra-draw position, reset per redraw
+
+    // Reset the intra-draw cursor at the start of a redraw (called by redrawRhythm/
+    // redrawMelody before any unit() calls so the draw maps to its chunk base).
+    inline void beginRhythmDraw() { rhythmCursor = 0; }
+    inline void beginMelodyDraw() { melodyCursor = 0; }
+    // Step the draw-counter (dir>0 forward, dir<0 reverse). Forward-only for now;
+    // the reverse/cross-boundary branch will drive dir<0.
+    // ── Reversible mode (Mode E phase reverse), per stream ──
+    // NORMAL (default): all features (auditions, reseed-on-roll, live trial source);
+    // reverse just keeps rolling forward-style (no backward draw-tracking). REVERSIBLE:
+    // pure stochastic dice — the draw index is a SIGNED counter, +1 on a forward armed
+    // roll, -1 on a reverse armed roll, NO floor/ceiling (Philox is a keyed bijection
+    // over the full signed counter space, so any index is a valid reproducible draw).
+    // Reversible blocks trial arming + trial-as-live-source + reseed-on-roll. The only
+    // state is the current index (rhythmDrawCtr/melodyDrawCtr).
+    bool rhythmReversible = false, melodyReversible = false;
+    bool reverseActive = false;                       // phase direction, set each block
+    void setReverseActive(bool rev) { reverseActive = rev; }
+    void setRhythmReversible(bool r) { rhythmReversible = r; }
+    void setMelodyReversible(bool r) { melodyReversible = r; }
+    bool rhythmAuditionsAllowed() const { return !rhythmReversible; }
+    bool melodyAuditionsAllowed() const { return !melodyReversible; }
+    inline void zeroRhythmIndex() { rhythmDrawCtr = 0; }
+    inline void zeroMelodyIndex() { melodyDrawCtr = 0; }
+    // Draw-step direction for a stream this redraw: reverse only when the stream is
+    // reversible AND the phase is moving backward; otherwise forward.
+    // Draw-step direction this redraw. BASE = what a plain Dice does now: forward,
+    // or backward in Mode E reverse on a reversible stream. LAST-dice/trial INVERTS
+    // that base (forward mode: Last = −1; Mode E reverse: plain dice is already −1, so
+    // Last = +1). So Last* is always "the opposite of dice in the current mode", not an
+    // absolute reverse.
+    inline int rhythmDrawDir() const {
+        int base = (reverseActive && rhythmReversible) ? -1 : +1;
+        return rhythmPendingLast ? -base : base;
+    }
+    inline int melodyDrawDir() const {
+        int base = (reverseActive && melodyReversible) ? -1 : +1;
+        return melodyPendingLast ? -base : base;
+    }
+
+    inline void advanceRhythmDraw(int dir) { rhythmDrawCtr += (dir < 0 ? -1 : +1); }
+    inline void advanceMelodyDraw(int dir) { melodyDrawCtr += (dir < 0 ? -1 : +1); }
+
+    // Seed a stream's Philox from the same 0..10 float (reseed → new key, counter
+    // reset to 0 = sequence restarts) or from full entropy. Mirrors the Xoroshiro
+    // seed sites so seed/reseed events affect both engines identically.
+    inline void seedRhythmPhilox(float seedFloat) {
+        float s = pe_clamp(seedFloat, 0.f, 10.f);
+        uint64_t sd = (uint64_t)((double)s / 10.0 * (double)MAX_U64);
+        rhythmPhilox.seed64(sd); rhythmDrawCtr = 0;
+    }
+    inline void seedMelodyPhilox(float seedFloat) {
+        float s = pe_clamp(seedFloat, 0.f, 10.f);
+        uint64_t sd = (uint64_t)((double)s / 10.0 * (double)MAX_U64);
+        melodyPhilox.seed64(sd); melodyDrawCtr = 0;
+    }
+    inline void seedRhythmPhiloxFull() { rhythmPhilox.seed64(rack::random::u64()); rhythmDrawCtr = 0; }
+    inline void seedMelodyPhiloxFull() { melodyPhilox.seed64(rack::random::u64()); melodyDrawCtr = 0; }
+
+    inline float philoxRhythm() {
+        uint64_t base = (uint64_t)(rhythmDrawCtr) * DRAW_CHUNK + rhythmCursor++;
+        return rhythmPhilox.atUniform(base);
+    }
+    inline float philoxMelody() {
+        uint64_t base = (uint64_t)(melodyDrawCtr) * DRAW_CHUNK + melodyCursor++;
+        return melodyPhilox.atUniform(base);
+    }
+
     //inline float unitStochastic() { return rngToFloat(stochasticRng); }
-    inline float unitRhythm() { return rngToFloat(rhythmRng); }
-    inline float unitMelody() { return rngToFloat(melodyRng); }
+    inline float unitRhythm() { return usePhiloxDraws ? philoxRhythm() : rngToFloat(rhythmRng); }
+    inline float unitMelody() { return usePhiloxDraws ? philoxMelody() : rngToFloat(melodyRng); }
 
     static constexpr uint64_t MAX_U64 = 0xFFFFFFFFFFFFFFFFULL;
 
@@ -280,15 +386,28 @@ struct PatternEngine {
 
     /// Arm a rhythm ROLL (dice press) — redraw from the advancing RNG at the next
     /// phrase boundary WITHOUT reseeding. This is the normal dice action.
-    void setPendingRhythmRoll() { rhythmRollPending = true; }
+    void setPendingRhythmRoll() { rhythmRollPending = true; rhythmPendingLast = false; }
     /// Arm a melody ROLL (dice press) — redraw without reseeding.
-    void setPendingMelodyRoll() { melodyRollPending = true; }
+    void setPendingMelodyRoll() { melodyRollPending = true; melodyPendingLast = false; }
+
+    // LAST-DICE: a roll that steps the draw index the OTHER way at the next boundary —
+    // "give me the previous draw." Enabled by Philox addressability. BLOCKED on a
+    // reversible stream: there the index↔phase coupling IS the reproducibility contract,
+    // and a manual index step (independent of phase) would silently void it. So Last* is
+    // a Normal-mode navigation gesture only — same principle that blocks trial/reseed-on
+    // -roll in reversible mode. (rhythmAuditionsAllowed() == !rhythmReversible.)
+    void setPendingRhythmLastRoll()  { if (rhythmAuditionsAllowed()) { rhythmRollPending = true; rhythmPendingLast = true; } }
+    void setPendingMelodyLastRoll()  { if (melodyAuditionsAllowed()) { melodyRollPending = true; melodyPendingLast = true; } }
 
     /// Arm a rhythm TRIAL/audition roll — like a roll but A stays anchored
     /// (promoteToA=false): auditions a fresh candidate B against the fixed A.
-    void setPendingRhythmTrial() { rhythmTrialPending = true; }
+    void setPendingRhythmTrial() { if (rhythmAuditionsAllowed()) { rhythmTrialPending = true; rhythmPendingLast = false; } }
     /// Arm a melody TRIAL/audition roll.
-    void setPendingMelodyTrial() { melodyTrialPending = true; }
+    void setPendingMelodyTrial() { if (melodyAuditionsAllowed()) { melodyTrialPending = true; melodyPendingLast = false; } }
+
+    // LAST-TRIAL: audition the PREVIOUS candidate B (index −1, A still anchored).
+    void setPendingRhythmLastTrial() { if (rhythmAuditionsAllowed()) { rhythmTrialPending = true; rhythmPendingLast = true; } }
+    void setPendingMelodyLastTrial() { if (melodyAuditionsAllowed()) { melodyTrialPending = true; melodyPendingLast = true; } }
 
     /// Arm a rhythm RESEED-ROLL — reseed but keep the A/B morph (promote B→A, no
     /// firstDraw). full=true → full 64-bit internal entropy (float ignored);

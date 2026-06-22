@@ -2,6 +2,7 @@
 #include "MonsoonCausewayExpander.hpp"
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
+#include "ui/ConnectMark.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
 #include "gen/CausewayLayout.gen.hpp"
 #include "ui/SvgPanelKit.hpp"
@@ -17,10 +18,11 @@ struct MonsoonCausewayExpanderWidget : ModuleWidget,
     dotModular::Compose<MonsoonCausewayExpanderWidget,
                         dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
+    redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;
 
-    MonsoonCausewayExpanderWidget(MonsoonCausewayExpander* module) {
-        setModule(module);
+    MonsoonCausewayExpanderWidget(MonsoonCausewayExpander* mod) {
+        setModule(mod);
         const char* darkPath  = "res/panels/Raffles_panel_dark.svg";
         const char* lightPath = "res/panels/Raffles_panel_light.svg";
         panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance, darkPath));
@@ -55,6 +57,16 @@ struct MonsoonCausewayExpanderWidget : ModuleWidget,
         bindInput<PJ301MPort>("input_CAUSEWAY_GATE_LIVESTATIC_M", MonsoonIds::CAUSEWAY_GATE_LIVESTATIC_M);
         bindInput<PJ301MPort>("input_CAUSEWAY_GATE_RESEED_ROLL",    MonsoonIds::CAUSEWAY_GATE_RESEED_ROLL);
         bindInput<PJ301MPort>("input_CAUSEWAY_GATE_RESEED_RESTART", MonsoonIds::CAUSEWAY_GATE_RESEED_RESTART);
+        bindInput<PJ301MPort>("input_CAUSEWAY_GATE_LASTDICE_R",   MonsoonIds::CAUSEWAY_GATE_LASTDICE_R);
+        bindInput<PJ301MPort>("input_CAUSEWAY_GATE_LASTDICE_M",   MonsoonIds::CAUSEWAY_GATE_LASTDICE_M);
+        bindInput<PJ301MPort>("input_CAUSEWAY_GATE_LASTTRIAL_R",  MonsoonIds::CAUSEWAY_GATE_LASTTRIAL_R);
+        bindInput<PJ301MPort>("input_CAUSEWAY_GATE_LASTTRIAL_M",  MonsoonIds::CAUSEWAY_GATE_LASTTRIAL_M);
+
+        // dot.modular connect mark (brand mark; greyed when no Monsoon attached).
+        if (auto* s = findNamed("light_connect")) {
+            connectMark = redDot::makeConnectMark(mod, centerOf(s), mm2px(8.f));
+            addChild(connectMark);
+        }
     }
 
     void step() override {
@@ -101,6 +113,12 @@ struct MonsoonCausewayExpanderWidget : ModuleWidget,
             CausewayLayout::CAUSEWAY_GATE_LIVESRC_R.y, CausewayLayout::CAUSEWAY_GATE_LIVESTATIC_R.y,
             CausewayLayout::CAUSEWAY_GATE_RESEED_ROLL.y };
         for (int r = 0; r < 5; ++r) T(30.f, gateY[r], 6.f, gl[r]);
+        // Last* row (4 columns): compact labels above each port.
+        const float lastY = CausewayLayout::CAUSEWAY_GATE_LASTDICE_R.y;
+        T(CausewayLayout::CAUSEWAY_GATE_LASTDICE_R.x,  lastY - 5.f, 4.0f, "LDcR");
+        T(CausewayLayout::CAUSEWAY_GATE_LASTDICE_M.x,  lastY - 5.f, 4.0f, "LDcM");
+        T(CausewayLayout::CAUSEWAY_GATE_LASTTRIAL_R.x, lastY - 5.f, 4.0f, "LTrR");
+        T(CausewayLayout::CAUSEWAY_GATE_LASTTRIAL_M.x, lastY - 5.f, 4.0f, "LTrM");
     }
 };
 

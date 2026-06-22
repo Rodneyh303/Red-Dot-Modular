@@ -41,7 +41,7 @@ void SequencerEngine::reset() {
     resetArmed = false;
     prevGate1High = false;
     modeSelect = 0;
-    ppqnSetting = 4;
+    ppqnSetting = 24;
     noteVariationMask = 0b111;
     activeSemiCount = 0;
     for (int i = 0; i < 12; ++i) faderCache[i] = -1.f;
@@ -70,9 +70,31 @@ void SequencerEngine::setWindow(int length, int offset) {
     }
 }
 
-bool SequencerEngine::advancePlayhead() {
+bool SequencerEngine::advancePlayhead(int dir) {
     int prevStep = stepIndex;
-    totalStepsElapsed = (totalStepsElapsed + 1) % DNA_LCM;
+    lastPlayDir = (dir < 0) ? -1 : +1;
+    // Step the global DNA tick WITH direction: +1 forward, -1 backward. This is what
+    // maps physical positions to drifting DNA content (strand indices) and the ring
+    // lights; counting up in reverse desyncs it from stepIndex and both the strand
+    // drift and the lights go the wrong way (ring lights up all around).
+    if (dir < 0) totalStepsElapsed = (totalStepsElapsed - 1 + DNA_LCM) % DNA_LCM;
+    else         totalStepsElapsed = (totalStepsElapsed + 1) % DNA_LCM;
+
+    if (dir < 0) {
+        // ── Reverse traversal: mirror of forward, leftward through the window. ──
+        // From the "not started" state, seed just AFTER endStep so the first reverse
+        // step lands on endStep (the symmetric counterpart of forward seeding before
+        // startStep and stepping onto startStep).
+        if (stepIndex == -1) stepIndex = (endStep + 1) & 0x0F;
+        stepIndex = (stepIndex - 1 + 16) & 0x0F;
+        if (!isStepInWindow(stepIndex)) stepIndex = endStep;
+        for (int s = 0; s < 16 && !isStepInWindow(stepIndex); ++s)
+            stepIndex = (stepIndex - 1 + 16) & 0x0F;
+        // Phrase boundary (reverse): wrapped back round to endStep.
+        return (prevStep != -1 && stepIndex == endStep);
+    }
+
+    // ── Forward traversal (unchanged) ──
     if (stepIndex == -1) stepIndex = (startStep - 1 + 16) % 16;
     stepIndex = (stepIndex + 1) & 0x0F;
     if (!isStepInWindow(stepIndex)) stepIndex = startStep;
@@ -108,7 +130,11 @@ int SequencerEngine::computeNoteLengthIdx(int requestedIdx, int ppqnMask) const 
 
 int SequencerEngine::getNoteLenIdx(float baseNoteParam, const PatternInput& input, float r) {
     int baseIdx = pe_clamp<int>((int)std::round(baseNoteParam), 0, 7);
-    int ppqnMask = (ppqnSetting == 1) ? 1 : (ppqnSetting == 4) ? 2 : 4;
+    // PPQN is now always 24/48/96 — all of which resolve every note value to an
+    // integer pulse count (24 already covers 1/32 and all triplets). So every
+    // value is legal; mask = the full-resolution bit (4). (The old 1/4 PPQN
+    // settings, which gated out sub-step values, are gone.)
+    int ppqnMask = 4;
     baseIdx = computeNoteLengthIdx(baseIdx, ppqnMask);
     return pe.varyNoteIndex(baseIdx, input, r);
 }
@@ -141,8 +167,20 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
         baseActive = isNote ? 0.35f : 0.07f;
     }
 
-    // The moving playhead should always follow the global timeline index
-    float current = (modeSelect < 3 && lightIdx == stepIndex) ? 1.0f : 0.0f;
+    // The moving playhead should always follow the global timeline index. Shown for
+    // stepped modes A/B/C (0/1/2) and the phase Mode E (4); Mode D (3) is continuous
+    // (no discrete playhead step).
+    bool steppedMode = (modeSelect == 0 || modeSelect == 1 || modeSelect == 2 || modeSelect == 4);
+    float current = (steppedMode && lightIdx == stepIndex) ? 1.0f : 0.0f;
+
+    // Direction cue (Mode E especially): a one-LED comet trail BEHIND the playhead in
+    // the travel direction, so forward vs reverse is visibly distinct. The trailing
+    // LED is the step the playhead just left: stepIndex - lastPlayDir.
+    if (steppedMode && current < 1.0f) {
+        int trailIdx = ((stepIndex - lastPlayDir) % 16 + 16) % 16;
+        if (lightIdx == trailIdx && isStepInWindow(lightIdx))
+            baseActive = std::max(baseActive, 0.5f);
+    }
 
     return std::max(baseActive, current);
 }
@@ -200,7 +238,7 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     // step fired a NEW note and cut the triplet to a whole-step length — 1/4T
     // played as 1/8, 1/8T as 1/16. (1/32 = 0.5 steps closes within its own step
     // before any edge, so it was unaffected — matching the observed scope.)
-    if (gs.holdRemain >= 1.f || gs.gateSecRemain > 0.f) {
+    if (gs.holdRemain >= 1.f || gs.gatePulseRemain > 0) {
         result.decision = MonoDecision::MidNote;
         result.accented = lastStepResult.accented;
         lastStepResult = result;
@@ -276,11 +314,11 @@ void SequencerEngine::handlePhraseBoundary(PatternInput input, bool isMelodyReal
     pe.applyPendingSeedsAndRedraw(input);
 }
 
-StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input) {
+StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input, int dir) {
     StepResult result;
     if (!clock.sixteenthEdge || muted) return result;
 
-    bool wrapped = advancePlayhead();
+    bool wrapped = advancePlayhead(dir);
     float r_vary   = pe.variationRandom[getVariationStep()];
     float r_rest   = pe.rhythmRandom[getRhythmStep()];
     float r_legato = pe.legatoRandom[getLegatoStep()];
@@ -290,13 +328,13 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
 
     float prevHold = gs.holdRemain;
     wasHeldMono = gs.gateHeld || (prevHold > 0.0001f);
-    gs.tick(clock.sixteenthSec);
+    gs.tick(ClockEngine::pulsesPer16th(ppqnSetting));
     hadMonoTail = (prevHold > 0.0001f && prevHold < 0.999f);
 
     for (int i = 0; i < numPolyVoices; ++i) {
         wasHeldPolyPrev[i] = voices[i].gs.gateHeld || (voices[i].gs.holdRemain > 0.0001f);
         float ph = voices[i].gs.holdRemain;
-        voices[i].gs.tick(clock.sixteenthSec);
+        voices[i].gs.tick(ClockEngine::pulsesPer16th(ppqnSetting));
         hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
     }
     
@@ -447,7 +485,7 @@ void SequencerEngine::executePolyVoices(const PatternInput& input) {
 void SequencerEngine::executeModeC(const ClockEngine& clock, float inCV) {
     gs.gateHeld = false;
     if (clock.quarterEdge) {
-        gs.tick(clock.sixteenthSec);
+        gs.tick(ClockEngine::pulsesPer16th(ppqnSetting));
         advancePlayhead();
         gs.currentPitchV = quantize(inCV);
         int sem = int(std::round((gs.currentPitchV - std::floor(gs.currentPitchV)) * 12.f)) % 12;

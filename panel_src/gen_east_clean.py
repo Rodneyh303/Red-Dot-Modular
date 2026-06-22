@@ -5,14 +5,19 @@ red corner screws. nanosvg-safe (no masks/gradients/text-for-controls)."""
 import math
 S = 75.0/25.4
 def px(mm): return round(mm*S, 2)
-W_MM, H_MM = 203.2, 128.5
+W_MM, H_MM = 213.36, 128.5  # 42HP (40 + 2HP right strip for poly prob-out jacks)
 PW, PH = px(W_MM), px(H_MM)
 
 ROW_TOP, ROW_BOT, N = 14.0, 108.0, 6
 def rowY(r): return ROW_TOP + (r+0.5)*(ROW_BOT-ROW_TOP)/N
 COL_J1, COL_J2, COL_A1, COL_A2, SPREAD_X = 8.0, 18.0, 30.0, 39.0, 49.0
-ED_X, ED_Y = 58.0, 18.0
-ED_W = W_MM - ED_X - 4.0
+# Extra top margin so the voice tab row isn't crammed against the panel top edge.
+# 0.5 cm = 5 mm. Adjust + rerun the generator (and mirror TAB_TOP_OFFSET_MM in
+# StraitsEastSandsVisualWidget) to taste.
+TAB_TOP_OFFSET_MM = 5.0
+ED_X, ED_Y = 58.0, 18.0 + TAB_TOP_OFFSET_MM
+PROB_OUT_X = 207.0  # right-strip jack column (matches hpp)
+ED_W = PROB_OUT_X - ED_X - 8.0  # editor stops left of the prob-out jacks (matches hpp)
 ED_H = 48.0
 
 def theme(dark):
@@ -152,25 +157,39 @@ def gen(dark):
     for lane in range(3):
         y=0.5*(rowY(lane*2)+rowY(lane*2+1)); trim(SPREAD_X,y,t["teal"])
 
-    # ── Macro/East blend controls (only meaningful with a Macro visual attached;
-    #    the module greys them out otherwise). Owner on/off button beside each
-    #    lane in the gap between the spread column and the editor; the MACRO CV
-    #    SEND trimpots (4 per lane: Len/Off/Rot/Spr) in the free band below the
-    #    editor, in 3 lane-groups across the editor width. ──
-    OWN_X = 53.5
-    def ownerbtn(x,y):
-        A(f'<circle cx="{px(x):.1f}" cy="{px(y):.1f}" r="{px(2.4):.1f}" fill="{t["edrecess"]}" stroke="{t["accent"]}" stroke-width="1.1"/>')
-    LANE_CY = [ED_Y + (l+0.5)*(ED_H/3.0) for l in range(3)]
+    # ── Macro/East blend controls — 3 labelled groups (REST / MELODY / OCTAVE),
+    #    each a demarked box stacked as: lane-name header → owner latch (OWN) →
+    #    a 2×2 MACRO-SEND trim grid (LEN OFF / ROT SPR), every control centred under
+    #    its label. Labels are drawn by the widget in NanoVG (panel carries no baked
+    #    text) using the IDENTICAL constants below — keep the two in lockstep. Only
+    #    meaningful with a Macro visual attached; greyed otherwise.
+    #
+    #    SHARED LAYOUT CONSTANTS (mirror exactly in StraitsEastSandsVisual::draw):
+    #      editor ends at ED_Y+ED_H=71; bottom art starts ~111. Post-inversion the
+    #      Macro mix-in SENDS moved to the Macro panel — East keeps only the per-lane
+    #      BASE opt-in latch (inherit Macro base / local East). So the band is short:
+    #      a header + a centred latch per lane group.  BLEND_TOP=74  BLEND_H=22.
+    BLEND_TOP = 74.0
+    BLEND_H   = 22.0
+    GAP       = 3.5
+    GROUP_W   = ED_W/3.0
+    OWN_DY    = 13.0
+    # "BASE" section header rule (full width, above the groups)
+    A(f'<line x1="{px(ED_X):.1f}" y1="{px(BLEND_TOP-3.0):.1f}" x2="{px(ED_X+ED_W):.1f}" y2="{px(BLEND_TOP-3.0):.1f}" stroke="{t["accent"]}" stroke-width="1.0" opacity="0.6"/>')
+    LANE_NAMES = ["REST","MELODY","OCTAVE"]
+    OWN_XY = []     # opt-in (BASE) latch centres, per lane
     for l in range(3):
-        ownerbtn(OWN_X, LANE_CY[l])
-    # SEND row: 3 lane groups across ED_W, 4 sends each, in the free band.
-    SEND_Y = 80.0
-    GROUP_W = ED_W/3.0
-    def send_x(lane,item):
-        return ED_X + lane*GROUP_W + (item+0.5)*(GROUP_W/4.0)
-    for lane in range(3):
-        for item in range(4):
-            trim(send_x(lane,item), SEND_Y, t["gold"])
+        gx = ED_X + l*GROUP_W + GAP*0.5
+        gw = GROUP_W - GAP
+        gcx = gx + gw*0.5
+        # demarked group box
+        A(f'<rect x="{px(gx):.1f}" y="{px(BLEND_TOP):.1f}" width="{px(gw):.1f}" height="{px(BLEND_H):.1f}" rx="{px(1.4):.1f}" fill="{t["edrecess"]}" stroke="{t["edborder"]}" stroke-width="0.9" opacity="0.92"/>')
+        # header divider under the lane name
+        A(f'<line x1="{px(gx+2):.1f}" y1="{px(BLEND_TOP+7.5):.1f}" x2="{px(gx+gw-2):.1f}" y2="{px(BLEND_TOP+7.5):.1f}" stroke="{t["edborder"]}" stroke-width="0.6" opacity="0.6"/>')
+        # opt-in (BASE) latch — centred under the header
+        ox, oy = gcx, BLEND_TOP + OWN_DY
+        A(f'<circle cx="{px(ox):.1f}" cy="{px(oy):.1f}" r="{px(2.6):.1f}" fill="{t["edrecess"]}" stroke="{t["accent"]}" stroke-width="1.2"/>')
+        OWN_XY.append((ox, oy))
     A('</g>')
     # ── SvgPanelKit component layer. Indices mirror StraitsEastSandsVisual.hpp:
     #    cvId(r,c)=CV_START(0)+r*2+c  inputs 0..11;
@@ -186,11 +205,11 @@ def gen(dark):
     for lane in range(3):
         y=0.5*(rowY(lane*2)+rowY(lane*2+1))
         kit_shape("param", lane, SPREAD_X, y)   # SPREAD_R/M/O = 0/1/2
-    # Macro/East blend control markers (named labels; bound to display proxies).
+    # East opt-in (BASE) latch markers (bound to display proxies). Sends moved to Macro.
     for l in range(3):
-        A(f'<circle id="param_owner_{l}" cx="{px(OWN_X):.2f}" cy="{px(LANE_CY[l]):.2f}" r="0.5" fill="none" stroke="none"/>')
-        for item in range(4):
-            A(f'<circle id="param_send_{l}_{item}" cx="{px(send_x(l,item)):.2f}" cy="{px(SEND_Y):.2f}" r="0.5" fill="none" stroke="none"/>')
+        ox,oy = OWN_XY[l]
+        A(f'<circle id="param_owner_{l}" cx="{px(ox):.2f}" cy="{px(oy):.2f}" r="0.5" fill="none" stroke="none"/>')
+    A(f'<circle id="light_connect" cx="{px(W_MM*0.5):.2f}" cy="{px(124.0):.2f}" r="0.5" fill="none" stroke="none"/>')
     A('</g>')
     A('</svg>')
     return "\n".join(L)

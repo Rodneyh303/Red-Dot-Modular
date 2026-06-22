@@ -22,6 +22,7 @@
 #include <cassert>
 #include <cstring>
 #include "dsp/engines/ClockEngine.hpp"
+#include "dsp/engines/PhaseEngine.hpp"
 #include "dsp/engines/PatternEngine.hpp"
 #include "dsp/engines/SequencerEngine.hpp"
 #include "dsp/managers/MonsoonSandsManager.hpp"
@@ -403,6 +404,13 @@ namespace MonsoonIds {
         // A. The regular dice (DICE_R/M_PARAM) commits B→A (main mode).
         DICE_TRIAL_R_PARAM,
         DICE_TRIAL_M_PARAM,
+        // LastDice / LastTrial: step the draw index opposite to dice/trial (Philox
+        // addressability). Normal-mode only — blocked on reversible streams. Grouped
+        // with their dice/trial siblings.
+        LAST_DICE_R_PARAM,
+        LAST_DICE_M_PARAM,
+        LAST_TRIAL_R_PARAM,
+        LAST_TRIAL_M_PARAM,
 
         // ── Macro/East base-owner + Macro-CV blend sends (per voice, per lane) ──
         // Appended at END so existing param IDs stay stable (saved patches safe).
@@ -430,7 +438,18 @@ namespace MonsoonIds {
         MACRO_SEND_DISP_START = MACRO_OWN_DISP_END,
         MACRO_SEND_DISP_END = MACRO_SEND_DISP_START + 12,
 
-        NUM_PARAMS = MACRO_SEND_DISP_END
+        // Per-(voice, jack) CV-depth attenuverter for East's poly CV inputs. The
+        // poly cable is a convenience (one cable, 16 channels) but each voice is an
+        // independent mod target: this gives each voice its OWN depth for each of the
+        // 12 CV jacks, so the same incoming CV can bite harder on one voice than
+        // another. 15 voices × 12 jacks = 180. The East panel's 12 physical
+        // attenuverters are display proxies (ATTEN_START) copied to/from the selected
+        // voice's slice here on voice switch — same pattern as owner/send.
+        //   index = MACRO_ATTEN_START + v*12 + (r*2 + c)
+        MACRO_ATTEN_START = MACRO_SEND_DISP_END,
+        MACRO_ATTEN_END = MACRO_ATTEN_START + 180,
+
+        NUM_PARAMS = MACRO_ATTEN_END
     };
 
     enum InputIds {
@@ -574,6 +593,11 @@ namespace MonsoonIds {
         CAUSEWAY_GATE_LIVESTATIC_M,
         CAUSEWAY_GATE_RESEED_ROLL,
         CAUSEWAY_GATE_RESEED_RESTART,
+        // LastDice / LastTrial gates (step draw index opposite to dice/trial).
+        CAUSEWAY_GATE_LASTDICE_R,
+        CAUSEWAY_GATE_LASTDICE_M,
+        CAUSEWAY_GATE_LASTTRIAL_R,
+        CAUSEWAY_GATE_LASTTRIAL_M,
         NUM_CAUSEWAY_INPUTS
     };
 
@@ -699,8 +723,17 @@ struct MonsoonLeftMessage {
 // ------------------------------- Module --------------------------------------
 struct Monsoon : Module {
     ClockEngine clock;
+    redDot::PhaseEngine phase;   // Mode E: CV1 phase ramp → pulse grid (forward+reverse)
 
     int cv1Mode = 0;
+    int rhythmReversibleMode = 0;     // 0=Normal, 1=Reversible (per-stream, Mode E)
+    int melodyReversibleMode = 0;
+    int reseedOnModeChange = 1;       // global: reseed (+zero index) on entering reversible
+    int resetIndexOnModeChange = 1;   // global: zero index on entry when NOT reseeding (greyed if reseed on)
+    // Global probability-CV-out config (read by the Sands visual expanders; they have
+    // no menus of their own). Scale 0=0..1V,1=0..5V,2=0..10V; S&H vs continuous.
+    int  probOutScale = 2;
+    bool probOutSampleHold = true;
     int cv2Mode = 0;
 
     // Assignable mod routing for the main-panel CV3 / GATE3 jacks (persisted).
@@ -713,7 +746,7 @@ struct Monsoon : Module {
     int  cv3Target   = CV3_RHYTHM_SLEW;
     int  gate3Target = G3_TRIAL_RHYTHM;
     dsp::SchmittTrigger gate3Trig;   // rising-edge detect for GATE3 actions
-    dsp::SchmittTrigger causewayGateTrig[10];  // Causeway's 10 die-action gates
+    dsp::SchmittTrigger causewayGateTrig[14];  // Causeway's 14 die-action gates (incl Last*)
     // Which dice the LIVE mode drives, per lane: false=main (promote, A walks),
     // true=trial (anchored A, endless variations on a theme). Persisted.
     bool rhythmLiveTrial = false;
@@ -729,6 +762,8 @@ struct Monsoon : Module {
         DA_LIVESRC_R, DA_LIVESRC_M,          // toggle live source main<->trial
         DA_LIVESTATIC_R, DA_LIVESTATIC_M,    // toggle live<->static (rhythmMode)
         DA_RESEED_ROLL, DA_RESEED_RESTART,
+        DA_LASTDICE_R, DA_LASTDICE_M,        // step index opposite to dice
+        DA_LASTTRIAL_R, DA_LASTTRIAL_M,      // audition previous candidate
         DA_NUM
     };
     void fireDieAction(int a);   // defined in Monsoon.cpp
@@ -751,6 +786,17 @@ struct Monsoon : Module {
     // true = Mono Draw (target the raw mono draw; mono strand becomes a fixed
     // anchor). Replaces the old per-visual interpUseMono flags on East/Macro.
     bool spreadInterpMono = false;
+
+    // Modulation-visualisation (mod arc) enables, grouped by surface. All default
+    // on; toggled via the Monsoon "Modulation arcs" context submenu. Each arc's
+    // isActive is gated by the relevant flag (read directly here, or via
+    // findMonsoonEitherSide from the expander widgets).
+    bool modVizMonsoonMelody = true;  // the 12 semitone + 2 octave pitch sliders (Interchange)
+    bool modVizMonsoonOther  = true;  // big-5 knobs + slew/mix (Junction/CV2/CV3/Raffles)
+    bool modVizEast          = true;  // Straits East per-voice rest + spread arcs
+    bool modVizWest          = true;  // Straits West per-voice rest arcs
+    bool modVizMacro         = true;  // Macro spread arcs
+    bool modVizMono          = true;  // Mono Sands spread arcs
     MonsoonExpanderManager expanderManager;
 
     // Modulation-visualisation snapshot. Published once per process() from the
@@ -773,6 +819,15 @@ struct Monsoon : Module {
         float semitone[12] = {0.f};
         float octaveLo = 0.f, octaveHi = 0.f;
         bool  activePitch = false;
+        // Per-lane modulation flags (0=note,1=variation,2=legato,3=rest,4=accent);
+        // and per-lane CV3 flags (0=rhythmSlew,1=melodySlew,2=rhythmMix,3=melodyMix).
+        // Each arc gates on ITS OWN lane so an unmodulated knob never draws even when
+        // a sibling lane is modulated. Kept at struct END to avoid shifting the
+        // offsets of the fields above (ABI hygiene for incremental builds).
+        bool  big5Lane[5] = {false,false,false,false,false};
+        bool  cv3Lane[4]  = {false,false,false,false};
+        // Per-lane pitch flags: 0..11 = semitones, 12 = octaveLo, 13 = octaveHi.
+        bool  pitchLane[14] = {false};
     } modViz;
     dsp::ClockDivider lightDivider;
     dsp::ClockDivider controlDivider; // For DNA modulation at "Control Rate"
@@ -926,6 +981,8 @@ struct Monsoon : Module {
     void diceRhythm();
     void diceMelody();
     void onPhraseBoundary_();
+    void applyReversibleModeChange_();
+    bool rhythmReversiblePrev_ = false, melodyReversiblePrev_ = false;
     void onReset() override;
     void onSampleRateChange(const SampleRateChangeEvent& e) override;
     int getNoteLenIdx_();

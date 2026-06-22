@@ -31,8 +31,9 @@ struct MonsoonLightSlider : VCVLightSlider<TLightBase> {
         // pitch modulation is active and the modulated value differs from set.
         // Modulation amount is floored at 0 visually (slider min is 0, so a
         // downward push can't render below the track bottom).
-        if (m && m->modViz.activePitch &&
-            this->paramId >= MonsoonIds::SEMI0_PARAM && this->paramId < MonsoonIds::SEMI0_PARAM + 12) {
+        if (m && m->modVizMonsoonMelody &&
+            this->paramId >= MonsoonIds::SEMI0_PARAM && this->paramId < MonsoonIds::SEMI0_PARAM + 12 &&
+            m->modViz.pitchLane[this->paramId - MonsoonIds::SEMI0_PARAM]) {
             int sem = this->paramId - MonsoonIds::SEMI0_PARAM;
             float modN = rack::math::clamp(m->modViz.semitone[sem], 0.f, 1.f);  // floored at 0
             float setN = 0.f;
@@ -55,6 +56,32 @@ struct MonsoonLightSlider : VCVLightSlider<TLightBase> {
                 nvgFill(args.vg);
             }
         }
+    }
+};
+
+// Trial dice button that disables itself (visually dimmed + press swallowed) when its
+// stream is in Reversible mode, where auditioning is blocked. isMelody picks which
+// stream's reversible flag to read.
+struct TrialButton : VCVButton {
+    bool isMelody = false;
+    bool inert() const {
+        auto* m = dynamic_cast<Monsoon*>(this->module);
+        if (!m) return false;
+        return (isMelody ? m->melodyReversibleMode : m->rhythmReversibleMode) != 0;
+    }
+    void onDragStart(const event::DragStart& e) override {
+        if (inert()) return;                 // swallow — no actuation, no value change
+        VCVButton::onDragStart(e);
+    }
+    void onButton(const event::Button& e) override {
+        if (inert()) { e.consume(this); return; }   // block click before it actuates
+        VCVButton::onButton(e);
+    }
+    void draw(const widget::Widget::DrawArgs& args) override {
+        bool dim = inert();
+        if (dim) nvgGlobalAlpha(args.vg, 0.4f);
+        VCVButton::draw(args);
+        if (dim) nvgGlobalAlpha(args.vg, 1.0f);
     }
 };
 
@@ -116,24 +143,36 @@ void MonsoonWidget::setLightTheme(bool v) {
 // queueModArc; flushModArcs builds it (mode flag carried via PendingModArc).
 static void queueModArcLinear(MonsoonWidget* mw, Monsoon* module, rack::ParamWidget* slider,
                               std::function<float(const Monsoon::ModViz&)> field,
-                              std::function<bool(const Monsoon::ModViz&)> active) {
+                              std::function<bool(const Monsoon::ModViz&)> active,
+                              std::function<bool(const Monsoon&)> enabled = nullptr) {
     if (!slider || !mw || !module) return;
     MonsoonWidget::PendingModArc p;
     p.knob = slider;
     p.linear = true;
     p.getModNorm = [module, field]()  -> float { return module ? field(module->modViz)  : 0.f; };
-    p.isActive   = [module, active]() -> bool  { return module && active(module->modViz); };
+    p.isActive   = [module, active, enabled]() -> bool  {
+        if (!module) return false;
+        if (enabled && !enabled(*module)) return false;   // modviz toggle (by surface)
+        return active(module->modViz);
+    };
     mw->pendingModArcs.push_back(p);
 }
 
 static void queueModArc(MonsoonWidget* mw, Monsoon* module, rack::ParamWidget* knob,
                         std::function<float(const Monsoon::ModViz&)> field,
-                        std::function<bool(const Monsoon::ModViz&)> active) {
+                        std::function<bool(const Monsoon::ModViz&)> active,
+                        float radiusFrac = 0.5f,
+                        std::function<bool(const Monsoon&)> enabled = nullptr) {
     if (!knob || !mw || !module) return;
     MonsoonWidget::PendingModArc p;
     p.knob = knob;
+    p.radiusFrac = radiusFrac;
     p.getModNorm = [module, field]()  -> float { return module ? field(module->modViz)  : 0.f; };
-    p.isActive   = [module, active]() -> bool  { return module && active(module->modViz); };
+    p.isActive   = [module, active, enabled]() -> bool  {
+        if (!module) return false;
+        if (enabled && !enabled(*module)) return false;   // modviz toggle (by surface)
+        return active(module->modViz);
+    };
     mw->pendingModArcs.push_back(p);
 }
 
@@ -144,16 +183,21 @@ static void flushModArcs(MonsoonWidget* mw, Monsoon* module) {
     for (auto& p : mw->pendingModArcs) {
         if (!p.knob) continue;
         auto* arc = new redDot::ModArcOverlay();
-        arc->box.pos  = p.knob->box.pos;
-        arc->box.size = p.knob->box.size;
+        // attachOverKnob (below) pads the overlay box beyond the knob so the arc
+        // (drawn at radius + stroke + end-dot, past the knob's bounds) stays fully
+        // inside the box — otherwise stale pixels linger as a "mouse-trail" smear
+        // when the knob is turned (bug #2).
         if (p.linear) {
             arc->mode = redDot::ModArcOverlay::LINEAR_V;
-            // Inset the travel a touch so the tick sits within the slider track.
             arc->travelTopPx = p.knob->box.size.y * 0.10f;
             arc->travelBotPx = p.knob->box.size.y * 0.10f;
         } else {
-            arc->radius = std::min(p.knob->box.size.x, p.knob->box.size.y) * 0.5f + mm2px(0.6f);
+            arc->radius = std::min(p.knob->box.size.x, p.knob->box.size.y) * p.radiusFrac + mm2px(0.6f);
         }
+        // Pad the overlay box so the arc/caps never draw outside it (prevents the
+        // stale "trail" pixels on manual knob turns). Sets box pos/size + LINEAR
+        // travel insets in one place.
+        arc->attachOverKnob(p.knob, mm2px(2.5f));
         int pid = p.knob->paramId;
         arc->getSetNorm = [module, pid]() -> float {
             if (!module) return 0.f;
@@ -189,13 +233,15 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
             addParam(lo);
             queueModArcLinear(this, module, lo,
                 [](const Monsoon::ModViz& m){ return m.octaveLo; },
-                [](const Monsoon::ModViz& m){ return m.activePitch; });
+                [](const Monsoon::ModViz& m){ return m.pitchLane[12]; },
+                [](const Monsoon& mm){ return mm.modVizMonsoonMelody; });
             auto* hi = createLightParamCentered<VCVLightSlider<RedLight>>(
                 mm2px(Vec(128.f, 59.75f)), module, MonsoonIds::OCT_HI_PARAM, MonsoonIds::OCT_HI_LED);
             addParam(hi);
             queueModArcLinear(this, module, hi,
                 [](const Monsoon::ModViz& m){ return m.octaveHi; },
-                [](const Monsoon::ModViz& m){ return m.activePitch; });
+                [](const Monsoon::ModViz& m){ return m.pitchLane[13]; },
+                [](const Monsoon& mm){ return mm.modVizMonsoonMelody; });
         }
 
         // ── 16-step light ring: enlarged, cx=162 cy=30 r=18 ──────────────────
@@ -227,17 +273,30 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
 
         // Control row params (positions from SVG; widget types preserved)
         bindParam<Trimpot>  ("param_DICE_SLEW_R_PARAM",   MonsoonIds::DICE_SLEW_R_PARAM,
-            std::function<void(Trimpot*)>([this, module](Trimpot* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.rhythmSlew;}, [](const Monsoon::ModViz& m){return m.activeCv3;}); }));
+            std::function<void(Trimpot*)>([this, module](Trimpot* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.rhythmSlew;}, [](const Monsoon::ModViz& m){return m.cv3Lane[0];},0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
         bindParam<Trimpot>  ("param_DICE_SLEW_M_PARAM",   MonsoonIds::DICE_SLEW_M_PARAM,
-            std::function<void(Trimpot*)>([this, module](Trimpot* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.melodySlew;}, [](const Monsoon::ModViz& m){return m.activeCv3;}); }));
+            std::function<void(Trimpot*)>([this, module](Trimpot* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.melodySlew;}, [](const Monsoon::ModViz& m){return m.cv3Lane[1];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
         bindParam<VCVButton>("param_DICE_R_PARAM",        MonsoonIds::DICE_R_PARAM);
         bindParam<VCVButton>("param_DICE_M_PARAM",        MonsoonIds::DICE_M_PARAM);
-        bindParam<VCVButton>("param_DICE_TRIAL_R_PARAM",  MonsoonIds::DICE_TRIAL_R_PARAM);
-        bindParam<VCVButton>("param_DICE_TRIAL_M_PARAM",  MonsoonIds::DICE_TRIAL_M_PARAM);
-        bindParam<RDM_KnobSmall>("param_RHYTHM_MIX_PARAM", MonsoonIds::RHYTHM_MIX_PARAM,
-            std::function<void(RDM_KnobSmall*)>([this, module](RDM_KnobSmall* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.rhythmMix;}, [](const Monsoon::ModViz& m){return m.activeCv3;}); }));
+        bindParam<TrialButton>("param_DICE_TRIAL_R_PARAM",  MonsoonIds::DICE_TRIAL_R_PARAM,
+            std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = false; }));
+        bindParam<TrialButton>("param_DICE_TRIAL_M_PARAM",  MonsoonIds::DICE_TRIAL_M_PARAM,
+            std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = true; }));
+        // Last dice / last trial — same TrialButton (dims + inert on reversible streams,
+        // which is correct since Last* is Normal-mode only). These warn-and-skip until
+        // the panel SVG gains param_LAST_* markers (panels phase); harmless until then.
+        bindParam<TrialButton>("param_LAST_DICE_R_PARAM",   MonsoonIds::LAST_DICE_R_PARAM,
+            std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = false; }));
+        bindParam<TrialButton>("param_LAST_DICE_M_PARAM",   MonsoonIds::LAST_DICE_M_PARAM,
+            std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = true; }));
+        bindParam<TrialButton>("param_LAST_TRIAL_R_PARAM",  MonsoonIds::LAST_TRIAL_R_PARAM,
+            std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = false; }));
+        bindParam<TrialButton>("param_LAST_TRIAL_M_PARAM",  MonsoonIds::LAST_TRIAL_M_PARAM,
+            std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = true; }));
+         bindParam<RDM_KnobSmall>("param_RHYTHM_MIX_PARAM", MonsoonIds::RHYTHM_MIX_PARAM,
+            std::function<void(RDM_KnobSmall*)>([this, module](RDM_KnobSmall* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.rhythmMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[2];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
         bindParam<RDM_KnobSmall>("param_MELODY_MIX_PARAM", MonsoonIds::MELODY_MIX_PARAM,
-            std::function<void(RDM_KnobSmall*)>([this, module](RDM_KnobSmall* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.melodyMix;}, [](const Monsoon::ModViz& m){return m.activeCv3;}); }));
+            std::function<void(RDM_KnobSmall*)>([this, module](RDM_KnobSmall* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.melodyMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[3];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
         bindParam<TL1105>("param_LOCK_PARAM",             MonsoonIds::LOCK_PARAM);
         bindParam<TL1105>("param_MUTE_PARAM",             MonsoonIds::MUTE_PARAM);
         bindParam<TL1105>("param_RESET_BUTTON_PARAM",     MonsoonIds::RESET_BUTTON_PARAM);
@@ -282,9 +341,8 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         bindOutput<PJ301MPort>("output_RESET_TRIGGER_OUTPUT", MonsoonIds::RESET_TRIGGER_OUTPUT);
 
         // ── Expander lights ───────────────────────────────────────────────────
-        addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(EXP_LIGHT_X,              EXP_LIGHT_Y)), module, MonsoonIds::SCALE_EXPANDER_LIGHT));
-        addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(EXP_LIGHT_X+EXP_LIGHT_S,  EXP_LIGHT_Y)), module, MonsoonIds::DNA_EXPANDER_LIGHT));
-        addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(EXP_LIGHT_X+2*EXP_LIGHT_S,EXP_LIGHT_Y)), module, MonsoonIds::POLY_EXPANDER_LIGHT));
+        // (Legacy Monsoon-side expander indicator lights removed — each expander
+        // now shows its own dot.modular red-dot "connected" light instead.)
 
         // The big-5 arcs are queued + flushed inside applyTheme() (called above).
         // The slew/mix arcs (and any slider arcs) are queued in THIS constructor
@@ -359,30 +417,30 @@ void MonsoonWidget::applyTheme() {
         // live in res/panels/Monsoon_panel_*_monsoon.svg (components layer).
         if (lightTheme) {
             bindParam<RDM_KnobDarkLarge> ("param_NOTE_VALUE_PARAM",     MonsoonIds::NOTE_VALUE_PARAM,
-                std::function<void(RDM_KnobDarkLarge*)>([this, m](RDM_KnobDarkLarge* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.noteValue;}, [](const Monsoon::ModViz& v){return v.active;}); }));
+                std::function<void(RDM_KnobDarkLarge*)>([this, m](RDM_KnobDarkLarge* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.noteValue;}, [](const Monsoon::ModViz& v){return v.big5Lane[0];}, 0.50f,[](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
             bindParam<RDM_KnobDarkMedium>("param_VARIATION_PARAM",      MonsoonIds::VARIATION_PARAM,
-                std::function<void(RDM_KnobDarkMedium*)>([this, m](RDM_KnobDarkMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.variation;}, [](const Monsoon::ModViz& v){return v.active;}); }));
+                std::function<void(RDM_KnobDarkMedium*)>([this, m](RDM_KnobDarkMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.variation;}, [](const Monsoon::ModViz& v){return v.big5Lane[1];},0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
             bindParam<RDM_KnobDarkMedium>("param_LEGATO_PARAM",         MonsoonIds::LEGATO_PARAM,
-                std::function<void(RDM_KnobDarkMedium*)>([this, m](RDM_KnobDarkMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.legato;}, [](const Monsoon::ModViz& v){return v.active;}); }));
+                std::function<void(RDM_KnobDarkMedium*)>([this, m](RDM_KnobDarkMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.legato;}, [](const Monsoon::ModViz& v){return v.big5Lane[2];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
             bindParam<RDM_KnobDarkMedium>("param_REST_PARAM",           MonsoonIds::REST_PARAM,
-                std::function<void(RDM_KnobDarkMedium*)>([this, m](RDM_KnobDarkMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.rest;}, [](const Monsoon::ModViz& v){return v.active;}); }));
+                std::function<void(RDM_KnobDarkMedium*)>([this, m](RDM_KnobDarkMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.rest;}, [](const Monsoon::ModViz& v){return v.big5Lane[3];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
             bindParam<RDM_KnobDarkMedium>("param_ACCENT_KNOB",          MonsoonIds::ACCENT_KNOB,
-                std::function<void(RDM_KnobDarkMedium*)>([this, m](RDM_KnobDarkMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.accent;}, [](const Monsoon::ModViz& v){return v.active;}); }));
+                std::function<void(RDM_KnobDarkMedium*)>([this, m](RDM_KnobDarkMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.accent;}, [](const Monsoon::ModViz& v){return v.big5Lane[4];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
 
             bindParam<RDM_KnobSmall>     ("param_BPM_PARAM",            MonsoonIds::BPM_PARAM);
             bindParam<RDM_KnobSmall>     ("param_PATTERN_LENGTH_PARAM", MonsoonIds::PATTERN_LENGTH_PARAM);
             bindParam<RDM_KnobSmall>     ("param_PATTERN_OFFSET_PARAM", MonsoonIds::PATTERN_OFFSET_PARAM);
         } else {
             bindParam<RDM_KnobCreamLarge>("param_NOTE_VALUE_PARAM",     MonsoonIds::NOTE_VALUE_PARAM,
-                std::function<void(RDM_KnobCreamLarge*)>([this, m](RDM_KnobCreamLarge* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.noteValue;}, [](const Monsoon::ModViz& v){return v.active;}); }));
+                std::function<void(RDM_KnobCreamLarge*)>([this, m](RDM_KnobCreamLarge* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.noteValue;}, [](const Monsoon::ModViz& v){return v.big5Lane[0];},0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
             bindParam<RDM_KnobCreamMedium>("param_VARIATION_PARAM",      MonsoonIds::VARIATION_PARAM,
-                std::function<void(RDM_KnobCreamMedium*)>([this, m](RDM_KnobCreamMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.variation;}, [](const Monsoon::ModViz& v){return v.active;}); }));
+                std::function<void(RDM_KnobCreamMedium*)>([this, m](RDM_KnobCreamMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.variation;}, [](const Monsoon::ModViz& v){return v.big5Lane[1];},0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
             bindParam<RDM_KnobCreamMedium>("param_LEGATO_PARAM",         MonsoonIds::LEGATO_PARAM,
-                std::function<void(RDM_KnobCreamMedium*)>([this, m](RDM_KnobCreamMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.legato;}, [](const Monsoon::ModViz& v){return v.active;}); }));
+                std::function<void(RDM_KnobCreamMedium*)>([this, m](RDM_KnobCreamMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.legato;}, [](const Monsoon::ModViz& v){return v.big5Lane[2];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
             bindParam<RDM_KnobCreamMedium>("param_REST_PARAM",           MonsoonIds::REST_PARAM,
-                std::function<void(RDM_KnobCreamMedium*)>([this, m](RDM_KnobCreamMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.rest;}, [](const Monsoon::ModViz& v){return v.active;}); }));
+                std::function<void(RDM_KnobCreamMedium*)>([this, m](RDM_KnobCreamMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.rest;}, [](const Monsoon::ModViz& v){return v.big5Lane[3];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
             bindParam<RDM_KnobCreamMedium>("param_ACCENT_KNOB",          MonsoonIds::ACCENT_KNOB,
-                std::function<void(RDM_KnobCreamMedium*)>([this, m](RDM_KnobCreamMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.accent;}, [](const Monsoon::ModViz& v){return v.active;}); }));
+                std::function<void(RDM_KnobCreamMedium*)>([this, m](RDM_KnobCreamMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.accent;}, [](const Monsoon::ModViz& v){return v.big5Lane[4];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
 
             bindParam<RDM_KnobSmall>      ("param_BPM_PARAM",            MonsoonIds::BPM_PARAM);
             bindParam<RDM_KnobSmall>      ("param_PATTERN_LENGTH_PARAM", MonsoonIds::PATTERN_LENGTH_PARAM);
@@ -516,11 +574,7 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         writeNvgText(LX,LY0,"A"); writeNvgText(LX,LY0+LDY,"B");
         writeNvgText(LX,LY0+2*LDY,"C"); writeNvgText(LX,LY0+3*LDY,"D");
 
-        // Expander lights
-        setNvgFontSize(2.0f); fillNvgColour(200,200,200);
-        writeNvgText(EXP_LIGHT_X,            EXP_LIGHT_Y+3.f,"S");
-        writeNvgText(EXP_LIGHT_X+EXP_LIGHT_S,EXP_LIGHT_Y+3.f,"D");
-        writeNvgText(EXP_LIGHT_X+2*EXP_LIGHT_S,EXP_LIGHT_Y+3.f,"P");
+        // (Legacy S/D/P expander-light labels removed along with their lights.)
 
         // ── Labels derived from the SAME named SVG shapes the controls bind to,
         //    so they can never fall behind a control reorg again. (labelAt is
@@ -592,10 +646,36 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
           auto* mono = createMenuItem<SpreadTargetItem>("Mono draw");
           mono->module = m; mono->valueMono = true; menu->addChild(mono); }
         menu->addChild(new ui::MenuSeparator);
+
+        // Modulation-arc visibility, by surface. Each flag toggles whether mod arcs
+        // are drawn on that surface (default all on).
+        struct ModVizFlagItem : ui::MenuItem {
+            bool* flag = nullptr;
+            void onAction(const event::Action&) override { if (flag) *flag = !*flag; }
+            void step() override { rightText = (flag && *flag) ? "✔" : ""; ui::MenuItem::step(); }
+        };
+        menu->addChild(createSubmenuItem("Modulation arcs", "", [=](ui::Menu* sm) {
+            auto add = [&](const char* label, bool* f) {
+                auto* it = createMenuItem<ModVizFlagItem>(label); it->flag = f; sm->addChild(it);
+            };
+            add("Monsoon — pitch/octave sliders", &m->modVizMonsoonMelody);
+            add("Monsoon — knobs (probability, slew, mix)", &m->modVizMonsoonOther);
+            sm->addChild(new ui::MenuSeparator);
+            add("Straits East (per-voice)", &m->modVizEast);
+            add("Straits West (per-voice)", &m->modVizWest);
+            add("Sands Macro (spread)", &m->modVizMacro);
+            add("Sands Mono (spread)", &m->modVizMono);
+        }));
+        menu->addChild(new ui::MenuSeparator);
         struct IntItem : ui::MenuItem {
             Monsoon* module; int* target; int value;
             void onAction(const event::Action&) override { if (module && target) *target = value; }
             void step() override { rightText = (target && *target == value) ? "✔" : ""; ui::MenuItem::step(); }
+        };
+        struct BoolToggle : ui::MenuItem {
+            int* target = nullptr;
+            void onAction(const event::Action&) override { if (target) *target = (*target ? 0 : 1); }
+            void step() override { rightText = (target && *target) ? "✔" : ""; ui::MenuItem::step(); }
         };
 
         menu->addChild(createSubmenuItem("Poly Voices", "", [=](ui::Menu* sub) {
@@ -617,8 +697,25 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
 
         menu->addChild(createSubmenuItem("Sequencer Modes", "", [=](ui::Menu* sub) {
             { auto* l = new ui::MenuLabel; l->text = "Operating Mode"; sub->addChild(l);
-              const char* n[] = {"A: Sequencer","B: Seq + Gate","C: Quantizer 1","D: Quantizer 2"};
-              for (int v=0;v<4;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->modeSelect;it->value=v;sub->addChild(it);} }
+              const char* n[] = {"A: Sequencer","B: Seq + Gate","C: Quantizer 1","D: Quantizer 2","E: Phase (CV1)"};
+              for (int v=0;v<5;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->modeSelect;it->value=v;sub->addChild(it);} }
+
+            sub->addChild(new ui::MenuSeparator);
+            { auto* l = new ui::MenuLabel; l->text = "Reversible (Mode E phase)"; sub->addChild(l);
+              // Per-stream Normal/Reversible. Reversible = pure dice, signed index,
+              // forward/back; blocks trial + reseed-on-roll for that stream.
+              const char* rm[] = {"Normal","Reversible"};
+              { auto* ll = new ui::MenuLabel; ll->text = "  Rhythm"; sub->addChild(ll); }
+              for (int v=0;v<2;++v){auto* it=createMenuItem<IntItem>(rm[v]);it->module=m;it->target=&m->rhythmReversibleMode;it->value=v;sub->addChild(it);}
+              { auto* ll = new ui::MenuLabel; ll->text = "  Melody"; sub->addChild(ll); }
+              for (int v=0;v<2;++v){auto* it=createMenuItem<IntItem>(rm[v]);it->module=m;it->target=&m->melodyReversibleMode;it->value=v;sub->addChild(it);}
+              sub->addChild(new ui::MenuSeparator);
+              // Global on entering reversible: reseed (+zero index), or just zero index.
+              { auto* it=createMenuItem<BoolToggle>("Reseed on mode change");it->target=&m->reseedOnModeChange;sub->addChild(it); }
+              { auto* it=createMenuItem<BoolToggle>("Reset index on mode change");it->target=&m->resetIndexOnModeChange;
+                it->disabled = (m->reseedOnModeChange != 0);   // greyed when reseed handles it
+                sub->addChild(it); }
+            }
 
             sub->addChild(new ui::MenuSeparator);
 
@@ -650,15 +747,25 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
 
             {
                 auto* l = new ui::MenuLabel; l->text = "Reseed Policy"; sub->addChild(l);
-                sub->addChild(createBoolPtrMenuItem("Reseed on roll (main dice)", "", &m->reseedOnRoll));
+                // Reseed-on-roll is inert when BOTH streams are reversible (reversible
+                // blocks it per stream); grey it then to signal that.
+                auto* ror = createBoolPtrMenuItem("Reseed on roll (main dice)", "", &m->reseedOnRoll);
+                ror->disabled = (m->rhythmReversibleMode != 0 && m->melodyReversibleMode != 0);
+                sub->addChild(ror);
                 sub->addChild(createBoolPtrMenuItem("Reseed on restart", "", &m->reseedOnRestart));
             }
 
             sub->addChild(new ui::MenuSeparator);
             {
-                auto* l = new ui::MenuLabel; l->text = "Which dice live mode drives"; sub->addChild(l); 
-                sub->addChild(createBoolPtrMenuItem("Rhythm: trial (else main)", "", &m->rhythmLiveTrial));
-                sub->addChild(createBoolPtrMenuItem("Melody: trial (else main)", "", &m->melodyLiveTrial));
+                auto* l = new ui::MenuLabel; l->text = "Which dice live mode drives"; sub->addChild(l);
+                // Live "trial as source" is blocked on a reversible stream — grey the
+                // matching per-stream toggle.
+                auto* rt = createBoolPtrMenuItem("Rhythm: trial (else main)", "", &m->rhythmLiveTrial);
+                rt->disabled = (m->rhythmReversibleMode != 0);
+                sub->addChild(rt);
+                auto* mt = createBoolPtrMenuItem("Melody: trial (else main)", "", &m->melodyLiveTrial);
+                mt->disabled = (m->melodyReversibleMode != 0);
+                sub->addChild(mt);
             }
 
         }));
@@ -721,6 +828,18 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
               for (int v=0;v<6;++v){auto* it=createMenuItem<IntItem>(n3[v]);it->module=m;it->target=&m->gate3Target;it->value=v;sub->addChild(it);} }
         }));
 
+        menu->addChild(createSubmenuItem("Probability outs", "", [=](ui::Menu* sub) {
+            sub->addChild(createMenuLabel("Sands visual expander CV outs"));
+            sub->addChild(createIndexSubmenuItem("Output range",
+                {"0-1 V", "0-5 V", "0-10 V"},
+                [=]() { return m->probOutScale; },
+                [=](int i) { m->probOutScale = i; }));
+            sub->addChild(createIndexSubmenuItem("Output mode",
+                {"Continuous", "Sample & hold (per step)"},
+                [=]() { return m->probOutSampleHold ? 1 : 0; },
+                [=](int i) { m->probOutSampleHold = (i == 1); }));
+        }));
+
         menu->addChild(createSubmenuItem("Scales", "", [=](ui::Menu* sub) {
             sub->addChild(createBoolMenuItem("Lock Scale Notes", "",
                 [=]() { return m->scaleManager ? m->scaleManager->lockScaleNotes : false; },
@@ -776,6 +895,6 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
               struct PItem : ui::MenuItem { Monsoon* module=nullptr; int value=4;
                 void onAction(const event::Action&) override { if(module) module->ppqnSetting=value; }
                 void step() override { if(module) rightText=(module->ppqnSetting==value)?"✔":""; ui::MenuItem::step(); } };
-              for (int v : {1,4,24}){auto* it=createMenuItem<PItem>(string::f("%d",v).c_str());it->module=m;it->value=v;sub->addChild(it);} }
+              for (int v : {24,48,96}){auto* it=createMenuItem<PItem>(string::f("%d",v).c_str());it->module=m;it->value=v;sub->addChild(it);} }
         }));
     }

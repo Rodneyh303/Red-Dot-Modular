@@ -28,8 +28,10 @@ float ParameterManager::readInput_(int inputId) const {
 // ──── Core Parameter Getters ────────────────────────────────────────────────
 
 float ParameterManager::getNoteValue() const {
-    float v = readParam_(NOTE_VALUE_PARAM, 0.f, 8.f);
-    v = clampv(v + cv2Offsets[0] + surgeOffsets[0]*8.f, 0.f, 8.f);
+    // Param range is 0..7 (8 note values, indices 0..7) — was mistakenly read/
+    // clamped to 0..8 (an index 8 doesn't exist) with surge scaled by 8.
+    float v = readParam_(NOTE_VALUE_PARAM, 0.f, 7.f);
+    v = clampv(v + cv2Offsets[0] + surgeOffsets[0]*7.f, 0.f, 7.f);
     return v;
 }
 
@@ -64,6 +66,19 @@ bool ParameterManager::anyPitchModulated() const {
         if (std::fabs(getSemitone(i) - readParam_(SEMI0_PARAM + i, 0.f, 1.f)) > 1e-4f) return true;
     if (std::fabs(getOctaveLo() - readParam_(OCT_LO_PARAM, 0.f, 8.f)) > 1e-4f) return true;
     if (std::fabs(getOctaveHi() - readParam_(OCT_HI_PARAM, 0.f, 8.f)) > 1e-4f) return true;
+    return false;
+}
+
+// Per-lane: 0..11 = semitones, 12 = octaveLo, 13 = octaveHi. Each light slider's
+// arc gates on its OWN lane so an unmodulated slider never draws even when a
+// sibling pitch lane is modulated (the group-trail bug).
+bool ParameterManager::pitchLaneModulated(int lane) const {
+    if (lane >= 0 && lane < 12)
+        return std::fabs(getSemitone(lane) - readParam_(SEMI0_PARAM + lane, 0.f, 1.f)) > 1e-4f;
+    if (lane == 12)
+        return std::fabs(getOctaveLo() - readParam_(OCT_LO_PARAM, 0.f, 8.f)) > 1e-4f;
+    if (lane == 13)
+        return std::fabs(getOctaveHi() - readParam_(OCT_HI_PARAM, 0.f, 8.f)) > 1e-4f;
     return false;
 }
 

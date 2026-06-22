@@ -1,6 +1,7 @@
 #include <rack.hpp>
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
+#include "ui/ConnectMark.hpp"
 //#include "MonsoonSandsExpander.hpp"
 #include "MonsoonSandsVisualExpander.hpp"
 #include "ui/SandsVisualEditorV4.hpp"
@@ -24,6 +25,7 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
     bool                       initialized  = false;
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
     rack::app::SvgPanel* panelWidget = nullptr;
+    redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;
 
     // Spread mod-arcs (bipolar -1..1), same as Macro: set = SPR param,
@@ -34,9 +36,8 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             auto* knob = pr.first; int lane = pr.second;
             if (!knob) continue;
             auto* arc = new redDot::ModArcOverlay();
-            arc->box.pos  = knob->box.pos;
-            arc->box.size = knob->box.size;
             arc->radius   = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
+            arc->attachOverKnob(knob, mm2px(2.5f));
             MonsoonSandsVisualExpander* mm = mod;
             int pid = knob->paramId;
             arc->getSetNorm = [mm, pid]() -> float {
@@ -50,7 +51,14 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             };
             arc->isActive = [mm, lane, pid]() -> bool {
                 if (!mm || lane < 0 || lane >= 6) return false;
-                return std::fabs(mm->spreadEffective[lane] - mm->params[pid].getValue()) > 1e-4f;
+                Monsoon* mon = findMonsoonEitherSide(mm);
+                if (!mon || !mon->modVizMono) return false;
+                // Only REST/MEL/OCT (0-2) have spread; gate on the spread CV jack being
+                // connected — NOT a set-vs-effective delta, which races during a manual
+                // knob turn (control-rate spreadEffective lags the live param → red
+                // residue arc; same desync as the Monsoon big-5 fix).
+                if (lane >= 3) return false;
+                return mm->inputs[sprCvId(lane)].isConnected();
             };
             addChild(arc);
         }
@@ -102,6 +110,18 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
 
         paramMgr = new MonoSandsParameterManager();
         flushSpreadArcs(mod);
+
+        // Per-lane probability CV outs — one jack right of each of the 6 lane rows.
+        for (int l = 0; l < N_LANES; ++l) {
+            addOutput(createOutputCentered<PJ301MPort>(
+                mm2px(Vec(PROB_OUT_X, rowY(l))), mod, PROB_OUT_START + l));
+        }
+
+        // dot.modular connect mark (brand mark; greyed when no Monsoon attached).
+        {
+            connectMark = redDot::makeConnectMark(module, mm2px(rack::math::Vec(W_MM * 0.5f, 124.f)), mm2px(8.f));
+            addChild(connectMark);
+        }
     }
 
     ~MonsoonSandsVisualExpanderWidget() override { delete paramMgr; }
@@ -182,6 +202,7 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             effRot[l] = eng.strandRot(strand);
         }
         int globalStep = monsoon->engine.stepIndex;
+        visualEditor->setPlayDir(monsoon->engine.lastPlayDir);   // direction cue (Mode E reverse)
         for (int l = 0; l < 6; ++l) {
             visualEditor->currentState.lanes[l].setDisplayLOR(effLen[l], effOff[l], effRot[l]);
             visualEditor->setLanePlayStep(l,
@@ -189,6 +210,37 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         }
     }
 };
+
+// ── Module process(): emit per-lane probability CV outs (audio rate) ──────────
+void MonsoonSandsVisualExpander::process(const ProcessArgs&) {
+    using namespace SandsMonoVisualIds;
+    Monsoon* monsoon = redDot::findMonsoonEitherSide(this);
+    if (!monsoon) {
+        for (int l = 0; l < 6; ++l) outputs[PROB_OUT_START + l].setVoltage(0.f);
+        return;
+    }
+    auto& eng = monsoon->engine;
+    const int globalStep = eng.stepIndex;
+    const float scaleV = (monsoon->probOutScale == 0) ? 1.f : (monsoon->probOutScale == 1) ? 5.f : 10.f;
+    const bool sh = monsoon->probOutSampleHold;
+    for (int l = 0; l < 6; ++l) {
+        int strand = dotModular::MONO_LANE_TO_STRAND[l];
+        // Lane's post-LOR step — same mapping the visual uses for the playhead.
+        int step = calcPlayhead(globalStep, eng.strandLen(strand),
+                                eng.strandOff(strand), eng.strandRot(strand));
+        float v;
+        if (sh) {
+            if (step != probLastStep[l]) {          // latch at the 16th step edge
+                probHeld[l] = eng.pe.finalRandomByStrand(strand, step);
+                probLastStep[l] = step;
+            }
+            v = probHeld[l];
+        } else {
+            v = eng.pe.finalRandomByStrand(strand, step);   // continuous surface
+        }
+        outputs[PROB_OUT_START + l].setVoltage(rack::math::clamp(v, 0.f, 1.f) * scaleV);
+    }
+}
 
 Model* modelMonsoonSandsVisualExpander =
     createModel<MonsoonSandsVisualExpander, MonsoonSandsVisualExpanderWidget>(

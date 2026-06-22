@@ -72,6 +72,61 @@ def kit_marker(kind, label, x, y):
     return (f'<circle id="{kind}_{label}" cx="{x:.2f}" cy="{y:.2f}" r="0.5" '
             f'fill="none" stroke="none"/>')
 
+def esplanade(x, y, w, h, t, op=0.16):
+    # The improved Esplanade durian-dome concept (ported from
+    # panel_src/art_refs/esplanade_dome_nanosvg.svg): a perspective faceted dome
+    # shell (longitudinal ribs as ellipse arcs + latitudinal bands as Q-curves +
+    # a faint diamond facet grid), the dome outline, and the truss understructure
+    # + platform. Reference viewBox 0..1000 x 0..450 mapped into (x,y,w,h). The
+    # original's black "sky-frame" mask paths are recoloured to the panel bg so
+    # the rib spill above the dome curve is hidden on any background. nanosvg-safe
+    # (no gradients/masks/clipPath — the curve-following frame does the clipping).
+    RX1, RY1 = 1000.0, 450.0
+    def MX(rx): return x + rx / RX1 * w
+    def MY(ry): return y + ry / RY1 * h
+    def MP(d):
+        # scale a path's numbers — only used for the simple L/Q/C/M dome paths
+        # below where we emit coordinates directly via MX/MY, so not needed.
+        return d
+    fill = t["motif"]; ink = t["ink"]; bg = t["bg"]
+    L = []; A = L.append
+
+    # longitudinal latitude arcs (the dome's horizontal banding)
+    A(f'<g fill="none" stroke="{fill}" stroke-width="1.0" opacity="{op*3:.3f}" stroke-linecap="round">')
+    for (mx0,my0,qx,qy,ex,ey) in [
+        (35,340,420,240,965,250),(40,300,420,205,950,225),(45,265,415,175,925,200),
+        (55,230,410,145,890,178),(70,195,400,115,845,155),(90,160,380,88,790,138),
+        (120,130,350,68,720,125),(155,102,320,52,650,118)]:
+        A(f'<path d="M{MX(mx0):.1f} {MY(my0):.1f} Q{MX(qx):.1f} {MY(qy):.1f} {MX(ex):.1f} {MY(ey):.1f}"/>')
+    A('</g>')
+    # longitudinal ribs (vertical ellipse slices)
+    A(f'<g fill="none" stroke="{fill}" stroke-width="1.4" opacity="{op*3.5:.3f}">')
+    ribs = [(-40,140),(0,145),(40,150),(80,155),(120,160),(160,165),(200,170),(240,175),
+            (280,180),(320,185),(360,190),(420,180),(470,170),(520,160),(570,150),(620,140),
+            (670,130),(720,120),(770,110),(820,100),(870,90),(920,80),(960,70)]
+    for (cx,rx) in ribs:
+        A(f'<ellipse cx="{MX(cx):.1f}" cy="{MY(380):.1f}" rx="{rx/RX1*w:.1f}" ry="{370/RY1*h:.1f}"/>')
+    A('</g>')
+
+    # sky-frame: fill above/outside the dome curve with the panel bg so rib/band
+    # spill is hidden, following the dome curve exactly (replaces #000 in the ref).
+    A(f'<path d="M{MX(0):.1f} {MY(0):.1f} L{MX(1000):.1f} {MY(0):.1f} L{MX(1000):.1f} {MY(250):.1f} '
+      f'C{MX(900):.1f} {MY(125):.1f} {MX(720):.1f} {MY(45):.1f} {MX(500):.1f} {MY(42):.1f} '
+      f'C{MX(240):.1f} {MY(45):.1f} {MX(40):.1f} {MY(120):.1f} {MX(35):.1f} {MY(340):.1f} '
+      f'L{MX(0):.1f} {MY(340):.1f} Z" fill="{bg}"/>')
+    A(f'<path d="M{MX(0):.1f} {MY(343):.1f} L{MX(1000):.1f} {MY(343):.1f} L{MX(1000):.1f} {MY(450):.1f} L{MX(0):.1f} {MY(450):.1f} Z" fill="{bg}"/>')
+    A(f'<path d="M{MX(965):.1f} {MY(250):.1f} L{MX(1000):.1f} {MY(250):.1f} L{MX(1000):.1f} {MY(343):.1f} L{MX(965):.1f} {MY(343):.1f} Z" fill="{bg}"/>')
+
+    # dome outline + truss understructure (the bright metal edges)
+    A(f'<path d="M{MX(35):.1f} {MY(340):.1f} C{MX(40):.1f} {MY(120):.1f} {MX(240):.1f} {MY(45):.1f} {MX(500):.1f} {MY(42):.1f} '
+      f'C{MX(720):.1f} {MY(45):.1f} {MX(900):.1f} {MY(125):.1f} {MX(965):.1f} {MY(250):.1f}" '
+      f'fill="none" stroke="{ink}" stroke-width="2.0" opacity="{op*4:.3f}" stroke-linecap="round"/>')
+    A(f'<polyline points="{MX(40):.1f},{MY(403):.1f} {MX(130):.1f},{MY(340):.1f} {MX(250):.1f},{MY(392):.1f} '
+      f'{MX(395):.1f},{MY(385):.1f} {MX(540):.1f},{MY(318):.1f} {MX(675):.1f},{MY(370):.1f} {MX(760):.1f},{MY(285):.1f}" '
+      f'fill="none" stroke="{ink}" stroke-width="1.5" opacity="{op*3:.3f}" stroke-linejoin="round" stroke-linecap="round"/>')
+    return "".join(L)
+
+
 def mbs(x, y, w, h, t, op=0.16):
     # Rich Esplanade / Marina Bay motif (ported from gen_east_clean so the CV
     # expander panels match the visual panels). Self-contained reference box
@@ -132,9 +187,9 @@ def gen(side, dark, variant="plain"):
     A(f'<rect x="0" y="0" width="{PW:.0f}" height="4" fill="{t["accent"]}"/>')   # top rule
     A(f'<circle cx="{PW-14:.0f}" cy="14" r="5" fill="{t["accent"]}"/>')          # corner dot
 
-    # background motif: rich Esplanade watermark (lower-centre) + Marina Bay
-    # water (waves) near the footer, matching the visual panels' aesthetic.
-    A(mbs(PW*0.16, 230.0, PW*0.68, 90.0, t, op=0.14))
+    # background motif: the improved Esplanade durian-dome watermark (lower-centre)
+    # + Marina Bay water (waves) near the footer, matching the visual aesthetic.
+    A(esplanade(PW*0.10, 232.0, PW*0.80, 92.0, t, op=0.13))
     A(waves(15.0, 338.0, t, op=0.5, rows=3, span=PW-30.0))
 
     # title (display text — NOT a control, so text is fine here)
@@ -186,6 +241,8 @@ def gen(side, dark, variant="plain"):
         A(kit_marker("input",  "global_cv_in", COL["knob"], gy))
         A(kit_marker("output", "global_gate",  COL["gateOut"], gy))
         A(kit_marker("output", "global_cv",    COL["cvOut"], gy))
+    # dot.modular connect mark anchor (footer-centre; reposition here).
+    A(kit_marker("light", "connect", PW*0.5, PH-20.0))
     A('</g>')
 
     A('</svg>')

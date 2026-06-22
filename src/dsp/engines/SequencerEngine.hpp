@@ -51,6 +51,7 @@ struct SequencerEngine {
     StepResult lastStepResult;
 
     int stepIndex = -1;
+    int lastPlayDir = +1;   // +1 forward, -1 reverse (Mode E); for UI direction cues
     int lastStepIndex = -1;
     int startStep = 0;
     int endStep = 15;
@@ -176,7 +177,7 @@ struct SequencerEngine {
     bool prevGate1High = false;
 
     int modeSelect = 0;
-    int ppqnSetting = 4;
+    int ppqnSetting = 24;  // master PPQN pulse grid (24/48/96)
     int noteVariationMask = 0b111;
     float accentProb = 0.25f;  // Probability of accent on each note (0..1) (NEW)
 
@@ -193,7 +194,7 @@ struct SequencerEngine {
     void reset();
     bool isStepInWindow(int idx) const;
     void setWindow(int length, int offset);
-    bool advancePlayhead();
+    bool advancePlayhead(int dir = +1);   // dir<0 = reverse traversal (within-draw)
     void updateWindow(float lenParam, float lenCv, bool lenPatched, float offParam, float offCv, bool offPatched);
     int computeNoteLengthIdx(int requestedIdx, int ppqnMask) const;
     int getNoteLenIdx(float baseNoteParam, const PatternInput& input, float r);
@@ -201,6 +202,57 @@ struct SequencerEngine {
     float getStepLightBrightness(int lightIdx) const;
     int getOffsetStep() const;
     int getStrandIdx(int tickCount, int len, int off, int mutation) const;
+
+    // ── Probability CV-out accessors (Sands East/Macro poly outs) ──────────────
+    // Per-voice final probability (post A/B mix + spread + LOR) for a poly lane
+    // (0=REST→rhythm, 1=MEL→melody, 2=OCT→octave), at that voice's own LOR step.
+    // 0..1. Used to assemble the poly probability cables (channels 2..1+nVoices).
+    inline float polyLaneProbability(int polyLane, int voice) const {
+        if (voice < 0 || voice >= 15 || polyLane < 0 || polyLane > 2) return 0.f;
+        int idx = getStrandIdx(totalStepsElapsed, polyLen[voice][polyLane],
+                               polyOff[voice][polyLane], polyRot[voice][polyLane]);
+        idx &= 0x0F;
+        switch (polyLane) {
+            case PL_REST:   return pe.polyRhythmRandom[voice][idx];
+            case PL_MELODY: return pe.polyMelodyRandom[voice][idx];
+            case PL_OCTAVE: return pe.polyOctaveRandom[voice][idx];
+            default:        return 0.f;
+        }
+    }
+    // Per-voice draw value for a poly lane at an EXPLICIT step (caller supplies the
+    // step from its own LOR view). Used by Macro's prob-out, which samples each voice's
+    // draw at MACRO's own global LOR step — independent of East/ownership. East instead
+    // uses polyLaneProbability (resolved per-voice step). 0..1.
+    inline float polyLaneProbabilityAtStep(int polyLane, int voice, int step) const {
+        if (voice < 0 || voice >= 15 || polyLane < 0 || polyLane > 2) return 0.f;
+        step &= 0x0F;
+        switch (polyLane) {
+            case PL_REST:   return pe.polyRhythmRandom[voice][step];
+            case PL_MELODY: return pe.polyMelodyRandom[voice][step];
+            case PL_OCTAVE: return pe.polyOctaveRandom[voice][step];
+            default:        return 0.f;
+        }
+    }
+
+    // Step indices (for S&H edge detection) matching the probability accessors above.
+    inline int polyLaneStep(int polyLane, int voice) const {
+        if (voice < 0 || voice >= 15 || polyLane < 0 || polyLane > 2) return -1;
+        return getStrandIdx(totalStepsElapsed, polyLen[voice][polyLane],
+                            polyOff[voice][polyLane], polyRot[voice][polyLane]) & 0x0F;
+    }
+    inline int masterLaneStep(int polyLane) const {
+        int strand = (polyLane == PL_REST)   ? dotModular::STRAND_RHYTHM
+                   : (polyLane == PL_MELODY) ? dotModular::STRAND_MELODY
+                                             : dotModular::STRAND_OCTAVE;
+        return getStrandIdx(totalStepsElapsed, strandLen(strand),
+                            strandOff(strand), strandRot(strand)) & 0x0F;
+    }
+    inline float masterLaneProbability(int polyLane) const {
+        int strand = (polyLane == PL_REST)   ? dotModular::STRAND_RHYTHM
+                   : (polyLane == PL_MELODY) ? dotModular::STRAND_MELODY
+                                             : dotModular::STRAND_OCTAVE;
+        return pe.finalRandomByStrand(strand, masterLaneStep(polyLane));
+    }
 
 
     // Independent lookup indices for each "DNA strand"
@@ -214,7 +266,7 @@ struct SequencerEngine {
     bool shouldTriggerStep(int ppqn) const;
     StepResult executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float accentProb, const PatternInput& input, bool wasHeld, bool hadTail);
     void handlePhraseBoundary(PatternInput input, bool isMelodyRealtime, bool isRhythmRealtime);
-    StepResult executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input);
+    StepResult executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input, int dir = +1);
     StepResult executeModeB(bool gate1Rise, bool gate1High, float restProb, float legatoProb, float noteVal, const PatternInput& input);
     void executeModeC(const ClockEngine& clock, float inCV);
     void executeModeD(bool gateHigh, float inCV);

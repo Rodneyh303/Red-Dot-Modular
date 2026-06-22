@@ -321,6 +321,10 @@ float Monsoon::semitoneToVolts(int semitone) {
             case DA_LIVESTATIC_M:  melodyMode = 1 - melodyMode; break;
             case DA_RESEED_ROLL:   reseedOnRoll    = !reseedOnRoll;    break;
             case DA_RESEED_RESTART:reseedOnRestart = !reseedOnRestart; break;
+            case DA_LASTDICE_R:    rhythmMode = 0; engine.pe.setPendingRhythmLastRoll();  break;
+            case DA_LASTDICE_M:    melodyMode = 0; engine.pe.setPendingMelodyLastRoll();  break;
+            case DA_LASTTRIAL_R:   rhythmMode = 0; engine.pe.setPendingRhythmLastTrial(); break;
+            case DA_LASTTRIAL_M:   melodyMode = 0; engine.pe.setPendingMelodyLastTrial(); break;
         }
     }
 
@@ -329,7 +333,34 @@ float Monsoon::semitoneToVolts(int semitone) {
 // ---------------- Helper: phrase boundary hook -------------------------------
 // Called at phrase boundary (stepIndex wraps from endStep back to startStep).
 // Seeds are applied FIRST so the subsequent redraw uses the new RNG state.
+void Monsoon::applyReversibleModeChange_() {
+    // Per-stream Normal/Reversible, with entry-transition handling. On ENTERING
+    // reversible for a stream: reseedOnModeChange → reseed that stream's Philox (also
+    // zeroes the index); else if resetIndexOnModeChange → just zero the index (keep
+    // key); else keep both (seamless "reversible from here", nonzero origin allowed).
+    bool rRev = (rhythmReversibleMode != 0);
+    bool mRev = (melodyReversibleMode != 0);
+    if (rRev && !rhythmReversiblePrev_) {
+        if (reseedOnModeChange)          engine.pe.seedRhythmPhilox(rhythmSeedFloat);
+        else if (resetIndexOnModeChange) engine.pe.zeroRhythmIndex();
+    }
+    if (mRev && !melodyReversiblePrev_) {
+        if (reseedOnModeChange)          engine.pe.seedMelodyPhilox(melodySeedFloat);
+        else if (resetIndexOnModeChange) engine.pe.zeroMelodyIndex();
+    }
+    rhythmReversiblePrev_ = rRev;
+    melodyReversiblePrev_ = mRev;
+    engine.pe.setRhythmReversible(rRev);
+    engine.pe.setMelodyReversible(mRev);
+}
+
 void Monsoon::onPhraseBoundary_() {
+    // Per-stream behavior is handled inside the draw path via rhythmDrawDir()/
+    // melodyDrawDir(): a REVERSIBLE stream under backward phase steps its signed index
+    // -1 (regenerating the previous draw); a NORMAL stream always steps +1 ("keeps
+    // rolling" even in reverse — no backward draw-tracking). So the same redraw path is
+    // correct in both directions; we just drive it every boundary that has a pending
+    // dice action, exactly as forward. Modes A-D always run forward.
     engine.pe.onPhraseBoundary(modeController->currentPatternInput);
 }
 
@@ -402,6 +433,21 @@ void Monsoon::process(const ProcessArgs& args) {
     );
     bpm = clock.bpm;  // keep module-level bpm in sync for note duration calculations
 
+    // ── Mode E: external PHASE ramp on CV1 drives the pulse grid ──
+    // In Mode E, CV1 is EXCLUSIVELY the phase input (it takes over CV1's meaning,
+    // mirroring how Mode B repurposes gate1). The PhaseEngine emits the same
+    // pulseEdge/sixteenthEdge/quarterEdge contract as the clock, plus a reverse flag.
+    if (modeSelect == 4) {
+        phase.process(input.cv1, cachedCv1Connected, args.sampleTime, ppqnSetting);
+        if (cachedCv1Connected) bpm = phase.bpm;   // tempo follows the ramp's velocity
+        modeController->setPhaseReverse(phase.reverse);
+        engine.pe.setReverseActive(phase.reverse);
+        applyReversibleModeChange_();
+    } else {
+        engine.pe.setReverseActive(false);
+        applyReversibleModeChange_();
+    }
+
     // ── Run/Reset Gate Processing ──
     runGateActive = tc.processRunGate(
         runGateActive,
@@ -449,6 +495,14 @@ void Monsoon::process(const ProcessArgs& args) {
 
     // --- Mode dispatch (only if running) ---
     if (runGateActive) {
+        // Gate-close on the PPQN grid pulse. In Mode E the pulse source is the phase
+        // ramp; otherwise the internal/external clock.
+        bool gridPulse = (modeSelect == 4) ? phase.pulseEdge : clock.pulseEdge;
+        if (gridPulse) {
+            engine.gs.tickPulse();
+            for (int i = 0; i < engine.numPolyVoices; ++i)
+                engine.voices[i].gs.tickPulse();
+        }
         // Optimization: Only execute mode logic if a relevant trigger/state is active.
         // This avoids calling executeMode and its internal switch every sample for Modes A, B, C.
         bool gate1High = input.gate1 >= 1.0f;
@@ -457,20 +511,60 @@ void Monsoon::process(const ProcessArgs& args) {
             if (modeSelect == 0) shouldExecute = clock.sixteenthEdge;
             else if (modeSelect == 1) shouldExecute = input.gate1Rise || (gate1High && engine.stepIndex == -1);
             else if (modeSelect == 2) shouldExecute = clock.quarterEdge;
+            else if (modeSelect == 4) shouldExecute = phase.sixteenthEdge; // Mode E: phase 1/16 grid
         }
 
         if (shouldExecute) {
             mc.executeMode(modeSelect, input, tc.getGate2High());
         }
 
+        // ── Mode E jump/scrub: replay the event chain over the jumped 1/16 steps ──
+        // A jump moved the phase by >1 step in one sample. We replay executeModeE for
+        // each crossed 1/16 in the jump direction, reusing the verified real-time path.
+        // Modulation is frozen automatically (whole replay is one process() call).
+        // WITHIN-DRAW: bounded to the current phrase (cap at 16 steps); a jump that
+        // would cross the phrase boundary is clamped — cross-draw regeneration is a
+        // later refinement.
+        if (modeSelect == 4 && phase.jumped && phase.jumpSixteenths != 0) {
+            bool jumpReverse = (phase.jumpSixteenths < 0);
+            mc.setPhaseReverse(jumpReverse);
+            // Bridge the jump DIRECTION to the draw-index direction: a boundary crossed
+            // mid-jump fires onPhraseBoundary_ (inside executeModeE→postExecute_), which
+            // for a reversible stream steps the index +1/-1 per reverseActive. Set it
+            // from the jump sign for the replay, restore after. Live mode always rolls
+            // at the crossing; armed dice rolls once; unarmed = reuse — all handled by
+            // the existing boundary path. (Cap = 16 steps = at most one boundary.)
+            bool savedReverse = engine.pe.reverseActive;
+            engine.pe.setReverseActive(jumpReverse);
+            int steps = jumpReverse ? -phase.jumpSixteenths : phase.jumpSixteenths;
+            if (steps > 16) steps = 16;                 // within-draw cap (one phrase)
+            int p16 = ClockEngine::pulsesPer16th(ppqnSetting);
+            for (int s = 0; s < steps; ++s) {
+                mc.executeMode(4, input, tc.getGate2High());
+                // executeModeA advances holdRemain (step decisions) internally, but the
+                // gate-CLOSE counter (gatePulseRemain) is normally driven by the pulse
+                // burst we skip on a jump. Tick it p16 times per replayed 1/16 so a gate
+                // that should have closed during the jumped region does so, keeping the
+                // post-jump gate state aligned with the landing position.
+                for (int pu = 0; pu < p16; ++pu) {
+                    engine.gs.tickPulse();
+                    for (int i = 0; i < engine.numPolyVoices; ++i)
+                        engine.voices[i].gs.tickPulse();
+                }
+            }
+            engine.pe.setReverseActive(savedReverse);
+        }
+
     }
 
     // --- CV Routing (via CVRouter) ---
+    // In Mode E, CV1 is EXCLUSIVELY the phase input (handled above), so its normal
+    // pitch/BPM routing is suppressed — mirrors Mode B fully repurposing gate1.
     float cvOutVoltage = currentPitchV;
-    if (cachedCv1Connected && input.cv1 != 0.f && (cv1Mode == 0 || cv1Mode == 1)) {
+    bool cv1IsPhase = (modeSelect == 4);
+    if (!cv1IsPhase && cachedCv1Connected && input.cv1 != 0.f && (cv1Mode == 0 || cv1Mode == 1)) {
         cvOutVoltage = cvr.processCV1Input(cv1Mode, input.cv1, *paramManager, currentPitchV, true);
-    } else if (cachedCv1Connected && cv1Mode == 4) { // BPM Mod
-        // For BPM Mod, CVRouter updates paramManager->cv1BpmOffset, no direct cvOutVoltage change
+    } else if (!cv1IsPhase && cachedCv1Connected && cv1Mode == 4) { // BPM Mod
         cvr.processCV1Input(cv1Mode, input.cv1, *paramManager, currentPitchV, true);
     } else {
         paramManager->clearCv1BpmOffset(); // Clear BPM offset if CV1 is not connected or not in BPM mode
@@ -504,42 +598,36 @@ void Monsoon::process(const ProcessArgs& args) {
 
 
 
+    // ── Modulation-viz snapshot (normalised effective big-5 values) ──
+    // Published EVERY sample (not throttled) so the knob mod-arcs' modulated value
+    // tracks the live param with ≤1-sample lag. When this was throttled, a manual
+    // knob turn raced ahead of the snapshot by up to a throttle interval, and the
+    // resulting set-vs-mod delta (≈1/7 per note step ≫ the 0.01 draw threshold)
+    // drew a transient arc each frame that read as a red "trail" — even with no
+    // modulator attached. Cheap (~17 scalar getters/sample).
+    if (paramManager) {
+        modViz.noteValue = paramManager->getNoteValueNorm();
+        modViz.variation = paramManager->getVariationNorm();
+        modViz.legato    = paramManager->getLegatoNorm();
+        modViz.rest      = paramManager->getRestNorm();
+        modViz.accent    = paramManager->getAccentNorm();
+        modViz.active    = paramManager->anyBig5Modulated();
+        for (int i = 0; i < 5; ++i) modViz.big5Lane[i] = paramManager->big5LaneModulated(i);
+        modViz.rhythmSlew = paramManager->getRhythmSlewNorm();
+        modViz.melodySlew = paramManager->getMelodySlewNorm();
+        modViz.rhythmMix  = paramManager->getRhythmMixNorm();
+        modViz.melodyMix  = paramManager->getMelodyMixNorm();
+        modViz.activeCv3  = paramManager->anyCv3Modulated();
+        for (int i = 0; i < 4; ++i) modViz.cv3Lane[i] = paramManager->cv3LaneModulated(i);
+        for (int i = 0; i < 12; ++i) modViz.semitone[i] = paramManager->getSemitoneNorm(i);
+        modViz.octaveLo   = paramManager->getOctaveLoNorm();
+        modViz.octaveHi   = paramManager->getOctaveHiNorm();
+        modViz.activePitch = paramManager->anyPitchModulated();
+        for (int i = 0; i < 14; ++i) modViz.pitchLane[i] = paramManager->pitchLaneModulated(i);
+    }
+
     // ── Throttle UI and Light processing ──
     if (lightDivider.process()) {
-        // Throttled Visuals/Outputs
-        // ── Modulation-viz snapshot (normalised effective big-5 values) ──
-        // Published at UI rate for the knob widgets' live set→modulated arc.
-        if (paramManager) {
-            modViz.noteValue = paramManager->getNoteValueNorm();
-            modViz.variation = paramManager->getVariationNorm();
-            modViz.legato    = paramManager->getLegatoNorm();
-            modViz.rest      = paramManager->getRestNorm();
-            modViz.accent    = paramManager->getAccentNorm();
-            modViz.active    = paramManager->anyBig5Modulated();
-            modViz.rhythmSlew = paramManager->getRhythmSlewNorm();
-            modViz.melodySlew = paramManager->getMelodySlewNorm();
-            modViz.rhythmMix  = paramManager->getRhythmMixNorm();
-            modViz.melodyMix  = paramManager->getMelodyMixNorm();
-            modViz.activeCv3  = paramManager->anyCv3Modulated();
-            for (int i = 0; i < 12; ++i) modViz.semitone[i] = paramManager->getSemitoneNorm(i);
-            modViz.octaveLo   = paramManager->getOctaveLoNorm();
-            modViz.octaveHi   = paramManager->getOctaveHiNorm();
-            modViz.activePitch = paramManager->anyPitchModulated();
-
-            // TEMP DIAGNOSTIC (modviz CV2/CV3): logs ~1/sec which active flags are
-            // set + the raw offset arrays, to find why CV2/CV3 arcs don't show.
-            // Remove once resolved.
-            static int dbgN = 0;
-            if ((dbgN++ % 90) == 0) {
-                INFO("[modviz] big5active=%d cv3active=%d pitchActive=%d | cv2[0..4]=%.3f %.3f %.3f %.3f %.3f | cv3[0..3]=%.3f %.3f %.3f %.3f | surge[0..4]=%.3f %.3f %.3f %.3f %.3f | cv2Mode=%d cv3Target=%d cv3conn=%d",
-                    (int)modViz.active, (int)modViz.activeCv3, (int)modViz.activePitch,
-                    paramManager->getCv2Offsets()[0], paramManager->getCv2Offsets()[1], paramManager->getCv2Offsets()[2], paramManager->getCv2Offsets()[3], paramManager->getCv2Offsets()[4],
-                    paramManager->getCv3Offsets()[0], paramManager->getCv3Offsets()[1], paramManager->getCv3Offsets()[2], paramManager->getCv3Offsets()[3],
-                    paramManager->getSurgeOffsets()[0], paramManager->getSurgeOffsets()[1], paramManager->getSurgeOffsets()[2], paramManager->getSurgeOffsets()[3], paramManager->getSurgeOffsets()[4],
-                    cv2Mode, cv3Target, (int)cachedCv3Connected);
-            }
-        }
-        // ── UI Light Updates ──
         if (uiManager) {
             // Move these here from per-sample logic
             uiManager->updateDiceLights(engine.pe.isRhythmSeedPending(), engine.pe.isMelodySeedPending());
@@ -585,6 +673,20 @@ void Monsoon::process(const ProcessArgs& args) {
             if (uiManager->processTrialButtons(trialR, trialM)) {
                 if (trialR) { rhythmMode = 0; engine.pe.setPendingRhythmTrial(); }
                 if (trialM) { melodyMode = 0; engine.pe.setPendingMelodyTrial(); }
+            }
+
+            // LastDice: roll stepping the index OPPOSITE to plain dice (previous draw).
+            // Normal-mode only — the setters no-op on reversible streams.
+            bool lastDiceR, lastDiceM;
+            if (uiManager->processLastDiceButtons(lastDiceR, lastDiceM)) {
+                if (lastDiceR) { rhythmMode = 0; engine.pe.setPendingRhythmLastRoll(); }
+                if (lastDiceM) { melodyMode = 0; engine.pe.setPendingMelodyLastRoll(); }
+            }
+            // LastTrial: audition the previous candidate (index −1, A anchored).
+            bool lastTrialR, lastTrialM;
+            if (uiManager->processLastTrialButtons(lastTrialR, lastTrialM)) {
+                if (lastTrialR) { rhythmMode = 0; engine.pe.setPendingRhythmLastTrial(); }
+                if (lastTrialM) { melodyMode = 0; engine.pe.setPendingMelodyLastTrial(); }
             }
             
             if (uiManager->processLockButton()) {
@@ -658,7 +760,7 @@ void Monsoon::process(const ProcessArgs& args) {
 
         if (expanderManager.cachedCausewayExpander) {
             rack::Module* cw = expanderManager.cachedCausewayExpander;
-            for (int i = 0; i < 10; ++i) {
+            for (int i = 0; i < 14; ++i) {
                 int in = MonsoonIds::CAUSEWAY_GATE_TRIAL_R + i;
                 if (cw->inputs[in].isConnected()
                     && causewayGateTrig[i].process(cw->inputs[in].getVoltage(), 0.1f, 1.f)) {
