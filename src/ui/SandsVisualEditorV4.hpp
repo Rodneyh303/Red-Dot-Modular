@@ -155,6 +155,10 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // count, so no lanes to draw). Mono never sets this.
   bool inert = false;
   const char* inertMessage = nullptr;
+  // readOnly: render data normally but block all editing/drag. Used for East/Macro
+  // tab 1 when Sands Mono is attached — the lane data belongs to Mono and is shown
+  // read-only (edit it on Sands Mono). Unlike `inert`, no hint message, data still drawn.
+  bool readOnly = false;
   
   VoiceState currentState;
   VoiceState clipboard;
@@ -831,7 +835,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   
   void onHover(const rack::event::Hover& e) override {
     Widget::onHover(e);
-    if (inert) { hoverLane = -1; hoverZone = DragState::NONE; return; }
+    if (inert || readOnly) { hoverLane = -1; hoverZone = DragState::NONE; return; }
     syncLayout();
     int lane = getLaneAtY(e.pos.y);
     DragState::Type z = (lane >= 0 && lane < laneCount)
@@ -851,7 +855,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
 
   void onButton(const rack::event::Button& e) override {
     syncLayout();
-    if (inert) return;   // no interaction until poly source (Straits East) is attached
+    if (inert || readOnly) return;   // no edit when inert (no poly src) or readOnly (mono owns tab 1)
     if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT) {
       int lane = getLaneAtY(e.pos.y);
       //int step = getStepAtX(e.pos.x);

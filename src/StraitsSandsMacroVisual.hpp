@@ -48,6 +48,16 @@ namespace StraitsMacroVisualIds {
     };
     static inline int attenId(int r, int c) { return ATTEN_START + r*2 + c; }
 
+    // ── Per-voice Macro→voice mix-in send (RELOCATED from East under the control
+    //    inversion). Conceptually a MACRO concern: "per voice, how much of Macro's
+    //    global CV modulation reaches that voice." Stored in the shared MonsoonIds
+    //    bank (both Macro and East configure NUM_PARAMS), but now OWNED by Macro —
+    //    Macro configures + binds them, consumption reads them off the Macro module.
+    //    180 = 15 voices × 3 lanes × 4 items (LEN/OFF/ROT/SPR). 12 display proxies
+    //    are the selected-voice view (sendDispId), synced on voice switch.
+    inline int sendId(int v, int lane, int item) { return MonsoonIds::MACRO_SEND_START + (v*3 + lane)*4 + item; }
+    inline int sendDispId(int lane, int item)    { return MonsoonIds::MACRO_SEND_DISP_START + lane*4 + item; }
+
     // ── Input IDs ─────────────────────────────────────────────────────────
     enum InputId {
         CV_START = 0,
@@ -138,6 +148,19 @@ struct StraitsSandsMacroVisual : Module {
         configParam(GLOBAL_OCTAVE_DNA_LEN, 1.f,16.f,16.f,"Global OCTAVE Length");
         configParam(GLOBAL_OCTAVE_DNA_OFF, 0.f,15.f, 0.f,"Global OCTAVE Offset");
         configParam(GLOBAL_OCTAVE_DNA_ROT, 0.f,15.f, 0.f,"Global OCTAVE Rotation");
+
+        // Per-voice Macro→voice mix-in sends (relocated from East). 12 display proxies
+        // (selected-voice view, bound on the panel) + 180 per-voice store. Default 0
+        // = opt-in: Macro global CV reaches a voice only when dialed in for that voice.
+        for (int lane=0; lane<3; ++lane)
+            for (int item=0; item<4; ++item)
+                configParam(sendDispId(lane,item), -1.f,1.f,0.f,
+                            "L"+std::to_string(lane)+" mix-in "+std::to_string(item)+" (selected voice)");
+        for (int v=0; v<15; ++v)
+            for (int lane=0; lane<3; ++lane)
+                for (int item=0; item<4; ++item)
+                    configParam(sendId(v,lane,item), -1.f,1.f,0.f,
+                                "V"+std::to_string(v+1)+" L"+std::to_string(lane)+" mix-in "+std::to_string(item));
     }
 
     void process(const ProcessArgs&) override;   // defined in .cpp (needs findMonsoonEitherSide)

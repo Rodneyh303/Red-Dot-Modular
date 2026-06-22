@@ -93,13 +93,10 @@ namespace StraitsEastVisualIds {
     // Macro/East base owner per (voice, lane): MonsoonIds::MACRO_OWN_START + v*3 + lane.
     // 0 = Macro owns (default), 1 = East owns.
     inline int ownerId(int v, int lane) { return MonsoonIds::MACRO_OWN_START + v*3 + lane; }
-    // Macro-CV blend send per (voice, lane, item) item 0=LEN 1=OFF 2=ROT 3=SPR:
-    //   MonsoonIds::MACRO_SEND_START + (v*3 + lane)*4 + item. Default unity.
-    inline int sendId(int v, int lane, int item) { return MonsoonIds::MACRO_SEND_START + (v*3 + lane)*4 + item; }
-    // Display proxies (selected-voice view; copied to/from the per-voice params
-    // on voice switch). ownerDispId(lane) 0-2; sendDispId(lane,item) 0-11.
+    // (Macro mix-in send helpers relocated to StraitsMacroVisualIds under the control
+    //  inversion — the send is a Macro concern now.)
+    // Owner display proxy (selected-voice view; copied to/from per-voice on switch).
     inline int ownerDispId(int lane)           { return MonsoonIds::MACRO_OWN_DISP_START + lane; }
-    inline int sendDispId(int lane, int item)  { return MonsoonIds::MACRO_SEND_DISP_START + lane*4 + item; }
 
     // Local lights for this module (East visual has its own light space, separate
     // from Monsoon's). Owner latch lights — lit when the lane is East-owned.
@@ -151,13 +148,11 @@ struct StraitsEastSandsVisual : Module {
         // an on/off switch (off=Macro owns base, on=East owns). Sends -1..1
         // default unity (Macro CV reaches the voice; turn down to localise).
         const char* laneNm[3] = {"REST","MEL","OCT"};
-        const char* itemNm[4] = {"Len","Off","Rot","Spr"};
         for (int lane=0; lane<3; ++lane) {
             configSwitch(ownerDispId(lane), 0.f,1.f,0.f,
-                         std::string(laneNm[lane])+" base owner", {"Macro","East"});
-            for (int item=0; item<4; ++item)
-                configParam(sendDispId(lane,item), -1.f,1.f,0.f,
-                            std::string(laneNm[lane])+" Macro send "+itemNm[item]);
+                         std::string(laneNm[lane])+" base: inherit Macro / local East", {"Inherit Macro","Local East"});
+            // (Macro mix-in send display proxies relocated to Macro under the control
+            //  inversion — East no longer configures them.)
         }
 
         static const char* rowNames[6][2] = {
@@ -188,10 +183,9 @@ struct StraitsEastSandsVisual : Module {
             // default) per lane. Switch/snap so owner reads as discrete 0/1.
             for (int lane=0; lane<3; ++lane) {
                 configSwitch(ownerId(v,lane), 0.f,1.f,0.f,
-                             vl+"L"+std::to_string(lane)+" base owner", {"Macro","East"});
-                for (int item=0; item<4; ++item)
-                    configParam(sendId(v,lane,item), -1.f,1.f,0.f,
-                                vl+"L"+std::to_string(lane)+" Macro send "+std::to_string(item));
+                             vl+"L"+std::to_string(lane)+" base: inherit Macro / local East", {"Inherit Macro","Local East"});
+                // (per-voice Macro mix-in sends relocated to Macro — see
+                //  StraitsMacroVisualIds::sendId.)
             }
             // Per-voice CV depth for each of the 12 jacks (real store; the panel's
             // 12 attenuverters are display proxies copied here on voice switch).

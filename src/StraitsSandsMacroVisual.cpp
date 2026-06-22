@@ -5,6 +5,7 @@
 #include "ui/GoldPolyPort.hpp"
 //#include "MonsoonStraitsSands.hpp"
 #include "StraitsSandsMacroVisual.hpp"
+#include "MonsoonSandsVisualExpander.hpp"  // complete mono type + SandsMonoVisualIds for the tab-1 mono mirror
 #include "ui/SandsVisualEditorV4.hpp"
 #include "ui/TabButton.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
@@ -47,6 +48,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
     int lastThemeLight = -1;
 
  std::vector<std::pair<rack::ParamWidget*, int>> pendingSpreadArcs;
+ std::vector<rack::Widget*> leftAttenuverters;  // 12 CV-depth knobs; hidden on tab-1 when mono attached
     void flushSpreadArcs() {
         auto* mod = dynamic_cast<StraitsSandsMacroVisual*>(module);
         for (auto& pr : pendingSpreadArcs) {
@@ -125,8 +127,10 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
             float y = rowY(r);
             addInput(createInputCentered<PJ301MPort>(mm2px(Vec(COL_J1, y)), mod, cvId(r,0)));
             addInput(createInputCentered<PJ301MPort>(mm2px(Vec(COL_J2, y)), mod, cvId(r,1)));
-            addParam(createParamCentered<Trimpot>(   mm2px(Vec(COL_A1, y)), mod, attenId(r,0)));
-            addParam(createParamCentered<Trimpot>(   mm2px(Vec(COL_A2, y)), mod, attenId(r,1)));
+            auto* a1 = createParamCentered<Trimpot>(   mm2px(Vec(COL_A1, y)), mod, attenId(r,0));
+            auto* a2 = createParamCentered<Trimpot>(   mm2px(Vec(COL_A2, y)), mod, attenId(r,1));
+            addParam(a1); addParam(a2);
+            leftAttenuverters.push_back(a1); leftAttenuverters.push_back(a2);
         }
 
         // ── Per-lane global SPREAD trimpots (REST / MELODY / OCTAVE) ─────────
@@ -256,13 +260,36 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         // loadLOR; this overlay now matches them.)
         int gs = monsoon->engine.stepIndex;
         visualEditor->setPlayDir(monsoon->engine.lastPlayDir);   // direction cue (Mode E reverse)
-        for (int l = 0; l < 3; ++l) {
-            int ownLen = (int)std::lround(mod->macroBase[l][0] + mod->macroCVDelta[l][0]);
-            int ownOff = (int)std::lround(mod->macroBase[l][1] + mod->macroCVDelta[l][1]);
-            int ownRot = (int)std::lround(mod->macroBase[l][2] + mod->macroCVDelta[l][2]);
-            ownLen = std::max(1, ownLen);
-            visualEditor->currentState.lanes[l].setDisplayLOR(ownLen, ownOff, ownRot);
-            visualEditor->setLanePlayStep(l, calcPlayhead(gs, ownLen, ownOff, ownRot));
+        // TAB-1 MONO MIRROR: view tab 1 = voice 1 = the mono master strand when Sands
+        // Mono is attached. Show mono's LORS read-only (consistent treatment with the
+        // other voices' display), not Macro's global base. (Macro's left attenuverters
+        // are hidden on tab 1 via gen panel / widget — Macro's global base doesn't reach
+        // voice 1; only the mix-in sends could, under the deferred interp. Y.)
+        auto* monoVis = monsoon->expanderManager.cachedSandsVisualExpander;
+        bool tab1Mono = (viewVoice == 0) && (monoVis != nullptr);
+        visualEditor->readOnly = tab1Mono;   // Macro is already view-only, but mark it explicitly
+        // Macro's global-base CV-depth attenuverters don't reach voice 1 (mono provides
+        // the base) — hide them on tab 1 when mono attached. Only the mix-in sends (below
+        // the lanes) could affect voice 1, and only under the deferred interp. Y.
+        for (rack::Widget* w : leftAttenuverters) if (w) w->visible = !tab1Mono;
+        if (tab1Mono) {
+            for (int l = 0; l < 3; ++l) {
+                int mLen = (int)std::lround(monoVis->params[SandsMonoVisualIds::lenId(l)].getValue());
+                int mOff = (int)std::lround(monoVis->params[SandsMonoVisualIds::offId(l)].getValue());
+                int mRot = (int)std::lround(monoVis->params[SandsMonoVisualIds::rotId(l)].getValue());
+                mLen = std::max(1, mLen);
+                visualEditor->currentState.lanes[l].setDisplayLOR(mLen, mOff, mRot);
+                visualEditor->setLanePlayStep(l, calcPlayhead(gs, mLen, mOff, mRot));
+            }
+        } else {
+            for (int l = 0; l < 3; ++l) {
+                int ownLen = (int)std::lround(mod->macroBase[l][0] + mod->macroCVDelta[l][0]);
+                int ownOff = (int)std::lround(mod->macroBase[l][1] + mod->macroCVDelta[l][1]);
+                int ownRot = (int)std::lround(mod->macroBase[l][2] + mod->macroCVDelta[l][2]);
+                ownLen = std::max(1, ownLen);
+                visualEditor->currentState.lanes[l].setDisplayLOR(ownLen, ownOff, ownRot);
+                visualEditor->setLanePlayStep(l, calcPlayhead(gs, ownLen, ownOff, ownRot));
+            }
         }
     }
 };
