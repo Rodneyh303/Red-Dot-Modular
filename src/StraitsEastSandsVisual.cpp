@@ -127,7 +127,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     // live param vs the control-rate effective → red flash. Require:
                     // East owns the lane, send is non-zero, AND Macro spread CV is live.
                     bool eastOwns = mod->params[ownerId(v, lane)].getValue() > 0.5f;
-                    float send = mod->params[sendId(v, lane, 3)].getValue();
+                    float send = macroVis->params[StraitsMacroVisualIds::sendId(v, lane, 3)].getValue();
                     bool macroSprCv = macroVis->inputs[StraitsMacroVisualIds::macroCvId(lane, 3)].isConnected();
                     macroBlend = eastOwns && std::fabs(send) > 1e-4f && macroSprCv;
                 }
@@ -227,11 +227,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     w->inertWhen = [this](){ return !macroAttached(); };
                 }
             );
-            for (int item = 0; item < 4; ++item)
-                bindParam<DimmableTrimpot>("param_send_" + std::to_string(lane) + "_" + std::to_string(item),
-                    sendDispId(lane, item),
-                    std::function<void(DimmableTrimpot*)>([this, lane](DimmableTrimpot* w){
-                        w->dimWhen = [this, lane](){ return laneInert(lane); }; }));
+            // (Macro mix-in send trims relocated to Macro's panel under the control
+            //  inversion — East's panel no longer binds param_send_* markers.)
         }
 
         paramMgr = new PolyVoiceSandsParameterManager(nullptr, nullptr, 15, 0);
@@ -265,14 +262,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         module->params[SPREAD_M].setValue(module->params[melodyInterpId(v)].getValue());
         module->params[SPREAD_O].setValue(module->params[octaveInterpId(v)].getValue());
     }
-    // Owner/send display proxies ↔ per-voice MACRO_OWN/SEND params.
+    // Owner display proxy ↔ per-voice MACRO_OWN; CV-depth attenuverters disp↔per-voice.
+    // (Macro mix-in send sync relocated to Macro under the control inversion.)
     void saveVoiceMacro(int v) {
         if (!module) return;
-        for (int lane=0; lane<3; ++lane) {
+        for (int lane=0; lane<3; ++lane)
             module->params[ownerId(v,lane)].setValue(module->params[ownerDispId(lane)].getValue());
-            for (int item=0; item<4; ++item)
-                module->params[sendId(v,lane,item)].setValue(module->params[sendDispId(lane,item)].getValue());
-        }
         // CV-depth attenuverters: display proxy → this voice's per-voice store.
         for (int r=0; r<6; ++r)
             for (int c=0; c<2; ++c)
@@ -280,11 +275,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     }
     void loadVoiceMacro(int v) {
         if (!module) return;
-        for (int lane=0; lane<3; ++lane) {
+        for (int lane=0; lane<3; ++lane)
             module->params[ownerDispId(lane)].setValue(module->params[ownerId(v,lane)].getValue());
-            for (int item=0; item<4; ++item)
-                module->params[sendDispId(lane,item)].setValue(module->params[sendId(v,lane,item)].getValue());
-        }
         // CV-depth attenuverters: this voice's per-voice store → display proxy.
         for (int r=0; r<6; ++r)
             for (int c=0; c<2; ++c)
@@ -328,13 +320,6 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     bool macroAttached() {
         Monsoon* m = getMonsoon();
         return m && m->expanderManager.cachedMacroSandsVisual != nullptr;
-    }
-    // A lane's blend controls (base-spread / CV-depth / send) are inert when there's no
-    // Macro at all (nothing to relate to — it's all East), OR when Macro owns the lane
-    // (the lane IS the Macro value). Dimmed-but-editable in both cases.
-    bool laneInert(int lane) {
-        if (!macroAttached()) return true;
-        return !(module && module->params[StraitsEastVisualIds::ownerDispId(lane)].getValue() > 0.5f);
     }
     // For East's OWN controls (base-spread, CV-depth): inert only when Macro is present
     // AND owns the lane (East base bypassed). Fully usable solo.

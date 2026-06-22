@@ -72,8 +72,8 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 // eastLorVal already folded into base. Default 0 → opt-in.
                 float blend = 0.f;
                 if (macroPresent && ownerEast) {
-                    float send = eastLOR->params[
-                        StraitsEastVisualIds::sendId(v, lane, item)].getValue();
+                    float send = macroVis->params[
+                        StraitsMacroVisualIds::sendId(v, lane, item)].getValue();
                     blend = macroVis->macroCVDelta[lane][item] * send;
                 }
                 return (int)math::clamp(base + blend, lo, hi);
@@ -95,8 +95,8 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                                        : (macroPresent ? macroVis->macroBase[lane][3] : eastInterpVal);
                 float blend = 0.f;
                 if (macroPresent && ownerEast) {
-                    float send = eastLOR->params[
-                        StraitsEastVisualIds::sendId(v, lane, 3)].getValue();
+                    float send = macroVis->params[
+                        StraitsMacroVisualIds::sendId(v, lane, 3)].getValue();
                     blend = macroVis->macroCVDelta[lane][3] * send;
                 }
                 return math::clamp(base + blend, -1.f, 1.f);
