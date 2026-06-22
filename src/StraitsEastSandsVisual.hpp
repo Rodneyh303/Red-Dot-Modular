@@ -150,7 +150,7 @@ struct StraitsEastSandsVisual : Module {
         const char* laneNm[3] = {"REST","MEL","OCT"};
         for (int lane=0; lane<3; ++lane) {
             configSwitch(ownerDispId(lane), 0.f,1.f,0.f,
-                         std::string(laneNm[lane])+" base owner", {"Macro","East"});
+                         std::string(laneNm[lane])+" base: inherit Macro / local East", {"Inherit Macro","Local East"});
             // (Macro mix-in send display proxies relocated to Macro under the control
             //  inversion — East no longer configures them.)
         }
@@ -183,7 +183,7 @@ struct StraitsEastSandsVisual : Module {
             // default) per lane. Switch/snap so owner reads as discrete 0/1.
             for (int lane=0; lane<3; ++lane) {
                 configSwitch(ownerId(v,lane), 0.f,1.f,0.f,
-                             vl+"L"+std::to_string(lane)+" base owner", {"Macro","East"});
+                             vl+"L"+std::to_string(lane)+" base: inherit Macro / local East", {"Inherit Macro","Local East"});
                 // (per-voice Macro mix-in sends relocated to Macro — see
                 //  StraitsMacroVisualIds::sendId.)
             }

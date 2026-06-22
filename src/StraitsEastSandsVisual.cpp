@@ -26,15 +26,25 @@ extern Plugin* pluginInstance;
 // pre-configure East's values before claiming. Full alpha once East owns the lane.
 // (Same nvgGlobalAlpha technique as Monsoon's TrialButton.)
 struct DimmableTrimpot : rack::componentlibrary::Trimpot {
-    std::function<bool()> dimWhen;
+    std::function<bool()> dimWhen;    // draw at reduced alpha
+    std::function<bool()> lockWhen;   // swallow input (inoperable) — for inherited/locked state
+    bool locked() const { return lockWhen && lockWhen(); }
+    void onButton(const event::Button& e) override {
+        if (locked()) { e.consume(this); return; }
+        rack::componentlibrary::Trimpot::onButton(e);
+    }
+    void onDragStart(const event::DragStart& e) override {
+        if (locked()) return;
+        rack::componentlibrary::Trimpot::onDragStart(e);
+    }
     void draw(const DrawArgs& args) override {
-        bool dim = dimWhen && dimWhen();
+        bool dim = (dimWhen && dimWhen()) || locked();
         if (dim) nvgGlobalAlpha(args.vg, 0.4f);
         rack::componentlibrary::Trimpot::draw(args);
         if (dim) nvgGlobalAlpha(args.vg, 1.0f);
     }
     void drawLayer(const DrawArgs& args, int layer) override {
-        bool dim = dimWhen && dimWhen();
+        bool dim = (dimWhen && dimWhen()) || locked();
         if (dim) nvgGlobalAlpha(args.vg, 0.4f);
         rack::componentlibrary::Trimpot::drawLayer(args, layer);
         if (dim) nvgGlobalAlpha(args.vg, 1.0f);
@@ -203,11 +213,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 std::function<void(DimmableTrimpot*)>([this, r](DimmableTrimpot* w){ w->dimWhen = [this, r](){ return laneOwnedByMacro(r/2); }; }));
         }
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_R), SPREAD_R,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(0); }; pendingSpreadArcs.push_back({k, 0}); }));
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(0); }; k->lockWhen = [this](){ return laneOwnedByMacro(0); }; pendingSpreadArcs.push_back({k, 0}); }));
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_M), SPREAD_M,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(1); }; pendingSpreadArcs.push_back({k, 1}); }));
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(1); }; k->lockWhen = [this](){ return laneOwnedByMacro(1); }; pendingSpreadArcs.push_back({k, 1}); }));
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_O), SPREAD_O,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(2); }; pendingSpreadArcs.push_back({k, 2}); }));
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(2); }; k->lockWhen = [this](){ return laneOwnedByMacro(2); }; pendingSpreadArcs.push_back({k, 2}); }));
 
         // Macro/East blend controls (bound to the display proxies; copied to/from
         // the per-voice MACRO params on voice switch + each frame). Owner = a
