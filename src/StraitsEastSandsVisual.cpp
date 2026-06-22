@@ -98,7 +98,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             arc->radius   = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
             arc->attachOverKnob(knob, mm2px(2.5f));
             auto interpParamId = [this, lane]() -> int {
-                int v = selectedVoice;
+                int v = polyVoice();
+                if (v < 0) v = 0;   // mono tab: arc is inactive anyway; keep id in range
                 return (lane==0) ? restInterpId(v) : (lane==1) ? melodyInterpId(v) : octaveInterpId(v);
             };
             arc->getSetNorm = [mod, interpParamId]() -> float {
@@ -110,7 +111,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             };
             arc->getModNorm = [mod, this, lane]() -> float {
                 if (!mod) return 0.5f;
-                int v = selectedVoice;
+                int v = polyVoice();   // poly bank index (-1 on mono tab → guarded by v<0 below)
                 if (v < 0 || v >= 15) return 0.5f;
                 // polySpreadEffective is bipolar -1..1 → map to 0..1.
                 return rack::math::clamp((mod->polySpreadEffective[v][lane] + 1.f) * 0.5f, 0.f, 1.f);
@@ -119,7 +120,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 if (!mod) return false;
                 Monsoon* mon = findMonsoonEitherSide(mod);
                 if (!mon || !mon->modVizEast) return false;
-                int v = selectedVoice;
+                int v = polyVoice();   // poly bank index (-1 on mono tab → guarded by v<0 below)
                 if (v < 0 || v >= 15) return false;
                 // Gate on a REAL modulation source (not a transient set-vs-effective
                 // delta, which races during a manual knob turn — the control-rate
@@ -166,9 +167,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
 
         redDot::addRedScrews(this);
 
-        // Voice tabs (voices 2-16, i.e. 15 voices) — two rows to stay legible.
-        // Row band sits just above the editor; uses the editor width.
-        tabGroup = new TabButtonGroup(15, 2, 2,
+        // Voice tabs: V1 = mono master strand (index 0, mirrors Sands Mono), V2..V16 =
+        // the 15 poly voices (indices 1..15 → poly bank slots 0..14). 16 total, two rows.
+        tabGroup = new TabButtonGroup(16, 1, 2,
                                       mm2px(ED_W), mm2px(10.f));
         tabGroup->box.pos = mm2px(Vec(ED_X, ED_Y - 12.f));
         addChild(tabGroup);
@@ -313,15 +314,23 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     }
     void onVoiceTabChanged(int nv) {
         if (!paramMgr || !visualEditor) return;
-        paramMgr->syncEditorToPatternEngine(selectedVoice, visualEditor->currentState);
-        saveVoiceLOR(selectedVoice);
-        saveVoiceSpread(selectedVoice);
-        saveVoiceMacro(selectedVoice);
+        // Save the OUTGOING voice's edits — only if it was a poly tab (mono is display-
+        // only, owned by Sands Mono, so nothing to save back from index 0).
+        if (selectedVoice >= 1) {
+            paramMgr->syncEditorToPatternEngine(polyVoice(), visualEditor->currentState);
+            saveVoiceLOR(polyVoice());
+            saveVoiceSpread(polyVoice());
+            saveVoiceMacro(polyVoice());
+        }
         selectedVoice = nv;
-        paramMgr->syncPatternEngineToEditor(selectedVoice, visualEditor->currentState);
-        loadVoiceLOR(selectedVoice);
-        loadVoiceSpread(selectedVoice);
-        loadVoiceMacro(selectedVoice);
+        // Load the INCOMING voice — poly tabs only; the mono tab's display is driven by
+        // the mono-mirror block in step() (reads Sands Mono directly).
+        if (selectedVoice >= 1) {
+            paramMgr->syncPatternEngineToEditor(polyVoice(), visualEditor->currentState);
+            loadVoiceLOR(polyVoice());
+            loadVoiceSpread(polyVoice());
+            loadVoiceMacro(polyVoice());
+        }
     }
 
     Monsoon* getMonsoon() {
@@ -344,6 +353,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         Monsoon* m = getMonsoon();
         return selectedVoice == 0 && m && m->expanderManager.cachedSandsVisualExpander != nullptr;
     }
+    // Tab index 0 = mono (V1). Tab indices 1..15 = poly voices V2..V16, mapping to the
+    // 15-slot poly banks at index (selectedVoice - 1). Poly-bank I/O is valid ONLY when
+    // selectedVoice >= 1; at index 0 the mono mirror provides the display and no poly
+    // bank slot is touched.
+    bool onMonoTab() const { return selectedVoice == 0; }
+    int  polyVoice() const { return selectedVoice - 1; }   // use only when selectedVoice >= 1
 
     void step() override {
         ModuleWidget::step();
@@ -402,36 +417,45 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         }
 
         // Grey out voice tabs beyond the active poly count (numPolyVoices).
-        if (tabGroup) tabGroup->setActiveCount(se->numPolyVoices);
+        // Active tabs = mono (always, index 0) + the active poly voices. So tab i is
+        // enabled for i <= numPolyVoices (i=0 mono; i=1..numPolyVoices poly).
+        if (tabGroup) tabGroup->setActiveCount(se->numPolyVoices + 1);
 
         if (!initialized) {
-            loadVoiceLOR(selectedVoice);
-            loadVoiceSpread(selectedVoice);
+            if (selectedVoice >= 1) {
+                loadVoiceLOR(polyVoice());
+                loadVoiceSpread(polyVoice());
+            }
             initialized = true;
         }
 
         int newSel = tabGroup->getSelectedTab();
         if (newSel != selectedVoice) onVoiceTabChanged(newSel);
 
-        // Write display trimpots → selected voice INTERP params
-        saveVoiceSpread(selectedVoice);
-        // Write owner/send display proxies → selected voice's per-voice MACRO
-        // params each frame, so the blend equation sees edits immediately (not
-        // only on voice switch).
-        saveVoiceMacro(selectedVoice);
+        // Per-frame write-back of display proxies → the selected voice's params, so edits
+        // take effect immediately. Poly tabs only — the mono tab (index 0) is display-only
+        // (its base lives on Sands Mono); writing it back would corrupt poly slot 0.
+        if (selectedVoice >= 1) {
+            saveVoiceSpread(polyVoice());
+            saveVoiceMacro(polyVoice());
 
-        // SpreadManager for editor display
-        auto& smgr = paramMgr->spreadMgr;
-        smgr.setSpread(selectedVoice, 0, mod->params[SPREAD_R].getValue());
-        smgr.setSpread(selectedVoice, 1, mod->params[SPREAD_M].getValue());
-        smgr.setSpread(selectedVoice, 2, mod->params[SPREAD_O].getValue());
-        smgr.setInterpolationTarget(
-            monsoon->spreadInterpMono ? SpreadManager::MONO_DRAW : SpreadManager::AVERAGE_POLY);
+            auto& smgr = paramMgr->spreadMgr;
+            smgr.setSpread(polyVoice(), 0, mod->params[SPREAD_R].getValue());
+            smgr.setSpread(polyVoice(), 1, mod->params[SPREAD_M].getValue());
+            smgr.setSpread(polyVoice(), 2, mod->params[SPREAD_O].getValue());
+        }
+        {
+            auto& smgr = paramMgr->spreadMgr;
+            smgr.setInterpolationTarget(
+                monsoon->spreadInterpMono ? SpreadManager::MONO_DRAW : SpreadManager::AVERAGE_POLY);
+        }
 
         // CV applied at control rate in Monsoon::process() — base + scaled offset, no mutation here.
 
-        saveVoiceLOR(selectedVoice);
-        paramMgr->syncPatternEngineToEditor(selectedVoice, visualEditor->currentState);
+        if (selectedVoice >= 1) {
+            saveVoiceLOR(polyVoice());
+            paramMgr->syncPatternEngineToEditor(polyVoice(), visualEditor->currentState);
+        }
 
         // Surface the engine's CV-APPLIED L/O/R to the display window so the
         // highlighted range + offset/rotation markers track L/O/R CV modulation.
@@ -441,7 +465,6 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         int gs = monsoon->engine.stepIndex;
         auto& eng = monsoon->engine;
         visualEditor->setPlayDir(eng.lastPlayDir);   // direction cue (Mode E reverse)
-        const int vi = selectedVoice;
         // TAB-1 MONO MIRROR: when Sands Mono is attached, voice 1 / tab 1 follows the
         // mono master strand — its LORS base belongs to Mono, not East. Show mono's
         // values read-only (consistent with the other lanes' display), and lock the
@@ -450,7 +473,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // (Per-voice modulation folding onto voice 1 — interp. Y — is the deferred
         //  follow-up; this stage is the display/lock mirror only.)
         auto* monoVis = monsoon->expanderManager.cachedSandsVisualExpander;
-        bool tab1Mono = (vi == 0) && (monoVis != nullptr);
+        bool tab1Mono = onMonoTab() && (monoVis != nullptr);
         visualEditor->readOnly = tab1Mono;
         if (tab1Mono) {
             for (int l=0; l<3; ++l) {
@@ -460,11 +483,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 visualEditor->currentState.lanes[l].setDisplayLOR(mLen, mOff, mRot);
                 visualEditor->setLanePlayStep(l, calcPlayhead(gs, mLen, mOff, mRot));
             }
-        } else {
+        } else if (selectedVoice >= 1) {
+            const int pv = polyVoice();
             for (int l=0; l<3; ++l) {
-                int cvLen = eng.polyLen[vi][l];
-                int cvOff = eng.polyOff[vi][l];
-                int cvRot = eng.polyRot[vi][l];
+                int cvLen = eng.polyLen[pv][l];
+                int cvOff = eng.polyOff[pv][l];
+                int cvRot = eng.polyRot[pv][l];
                 visualEditor->currentState.lanes[l].setDisplayLOR(cvLen, cvOff, cvRot);
                 visualEditor->setLanePlayStep(l, calcPlayhead(gs, cvLen, cvOff, cvRot));
             }
