@@ -3,6 +3,7 @@
 #include "ui/RedScrew.hpp"
 #include "StraitsEastSandsVisual.hpp"
 #include "StraitsSandsMacroVisual.hpp"  // complete type + StraitsMacroVisualIds for the spread-arc Macro-CV gate
+#include "MonsoonSandsVisualExpander.hpp"  // complete mono type + SandsMonoVisualIds for the tab-1 mono mirror
 #include "ui/SandsVisualEditorV4.hpp"
 #include "ui/TabButton.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
@@ -213,11 +214,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 std::function<void(DimmableTrimpot*)>([this, r](DimmableTrimpot* w){ w->dimWhen = [this, r](){ return laneOwnedByMacro(r/2); }; }));
         }
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_R), SPREAD_R,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(0); }; k->lockWhen = [this](){ return laneOwnedByMacro(0); }; pendingSpreadArcs.push_back({k, 0}); }));
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(0) || tab1MonoMirror(); }; k->lockWhen = [this](){ return laneOwnedByMacro(0) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 0}); }));
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_M), SPREAD_M,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(1); }; k->lockWhen = [this](){ return laneOwnedByMacro(1); }; pendingSpreadArcs.push_back({k, 1}); }));
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(1) || tab1MonoMirror(); }; k->lockWhen = [this](){ return laneOwnedByMacro(1) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 1}); }));
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_O), SPREAD_O,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(2); }; k->lockWhen = [this](){ return laneOwnedByMacro(2); }; pendingSpreadArcs.push_back({k, 2}); }));
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(2) || tab1MonoMirror(); }; k->lockWhen = [this](){ return laneOwnedByMacro(2) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 2}); }));
 
         // Macro/East blend controls (bound to the display proxies; copied to/from
         // the per-voice MACRO params on voice switch + each frame). Owner = a
@@ -234,7 +235,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 [this](DimmableLatch* w) {
                     w->momentary = false;
                     w->latch = true;
-                    w->inertWhen = [this](){ return !macroAttached(); };
+                    w->inertWhen = [this](){ return !macroAttached() || tab1MonoMirror(); };
                 }
             );
             // (Macro mix-in send trims relocated to Macro's panel under the control
@@ -337,6 +338,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         if (!macroAttached()) return false;
         return !(module && module->params[StraitsEastVisualIds::ownerDispId(lane)].getValue() > 0.5f);
     }
+    // Voice 1 / tab 1 with Sands Mono attached: the lane base belongs to Mono — East's
+    // base controls lock + mirror mono (display-only). Independent of Macro.
+    bool tab1MonoMirror() {
+        Monsoon* m = getMonsoon();
+        return selectedVoice == 0 && m && m->expanderManager.cachedSandsVisualExpander != nullptr;
+    }
 
     void step() override {
         ModuleWidget::step();
@@ -435,12 +442,32 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         auto& eng = monsoon->engine;
         visualEditor->setPlayDir(eng.lastPlayDir);   // direction cue (Mode E reverse)
         const int vi = selectedVoice;
-        for (int l=0; l<3; ++l) {
-            int cvLen = eng.polyLen[vi][l];
-            int cvOff = eng.polyOff[vi][l];
-            int cvRot = eng.polyRot[vi][l];
-            visualEditor->currentState.lanes[l].setDisplayLOR(cvLen, cvOff, cvRot);
-            visualEditor->setLanePlayStep(l, calcPlayhead(gs, cvLen, cvOff, cvRot));
+        // TAB-1 MONO MIRROR: when Sands Mono is attached, voice 1 / tab 1 follows the
+        // mono master strand — its LORS base belongs to Mono, not East. Show mono's
+        // values read-only (consistent with the other lanes' display), and lock the
+        // editor so the base can't be edited here (edit it on Sands Mono). The base-
+        // spread knob locks via tab1MonoMirror() (see laneOwnedByMacro/lock predicates).
+        // (Per-voice modulation folding onto voice 1 — interp. Y — is the deferred
+        //  follow-up; this stage is the display/lock mirror only.)
+        auto* monoVis = monsoon->expanderManager.cachedSandsVisualExpander;
+        bool tab1Mono = (vi == 0) && (monoVis != nullptr);
+        visualEditor->readOnly = tab1Mono;
+        if (tab1Mono) {
+            for (int l=0; l<3; ++l) {
+                int mLen = (int)std::round(monoVis->params[SandsMonoVisualIds::lenId(l)].getValue());
+                int mOff = (int)std::round(monoVis->params[SandsMonoVisualIds::offId(l)].getValue());
+                int mRot = (int)std::round(monoVis->params[SandsMonoVisualIds::rotId(l)].getValue());
+                visualEditor->currentState.lanes[l].setDisplayLOR(mLen, mOff, mRot);
+                visualEditor->setLanePlayStep(l, calcPlayhead(gs, mLen, mOff, mRot));
+            }
+        } else {
+            for (int l=0; l<3; ++l) {
+                int cvLen = eng.polyLen[vi][l];
+                int cvOff = eng.polyOff[vi][l];
+                int cvRot = eng.polyRot[vi][l];
+                visualEditor->currentState.lanes[l].setDisplayLOR(cvLen, cvOff, cvRot);
+                visualEditor->setLanePlayStep(l, calcPlayhead(gs, cvLen, cvOff, cvRot));
+            }
         }
     }
 
