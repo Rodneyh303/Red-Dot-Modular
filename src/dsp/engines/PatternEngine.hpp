@@ -155,7 +155,8 @@ struct PatternEngine {
     float melodyPitchV[16]    = {};
 
     // ── RNG state ─────────────────────────────────────────────────────────────
-    rack::random::Xoroshiro128Plus rhythmRng, melodyRng;
+    // (Draws are Philox-only — counter-based, stateless. Seed lives in *SeedFloat
+    //  and the per-strand Philox key; no stream-state members needed.)
 
     // ── Seed management ───────────────────────────────────────────────────────
     float rhythmSeedFloat  = 0.f;
@@ -219,12 +220,7 @@ struct PatternEngine {
     float cPolyMelodyA[15][16]={}, cPolyMelodyB[15][16]={};
     float cPolyOctaveA[15][16]={}, cPolyOctaveB[15][16]={};
 
-    // ── RNG helpers ───────────────────────────────────────────────────────────
-    // Convert Xoroshiro128Plus output to float [0,1)
-    // Works with both the real Rack RNG and our test stub.
-    static inline float rngToFloat(rack::random::Xoroshiro128Plus& rng) {
-        return (rng() >> 11) * (1.f / float(1ull << 53));
-    }
+    // ── Seed management ───────────────────────────────────────────────────────
 
     // ── Counter-addressable Philox draw path (Mode E reverse/jump foundation) ──
     // Each stream (rhythm, melody) has a Philox4x32 engine keyed by the stream seed,
@@ -240,7 +236,7 @@ struct PatternEngine {
     //   melody  16 * (melody+octave=2 mono + 15*2 poly)               = 512
     // 1024 leaves generous headroom and is a clean power of two.
     static constexpr uint64_t DRAW_CHUNK = 1024;
-    bool      usePhiloxDraws = true;          // false → legacy Xoroshiro (A/B compare)
+    // Draws are always Philox (counter-based). The legacy Xoroshiro A/B path is gone.
     redDot::PhiloxRng rhythmPhilox, melodyPhilox;
     int64_t   rhythmDrawCtr = 0, melodyDrawCtr = 0;   // signed: can go negative on reverse
     uint64_t  rhythmCursor  = 0, melodyCursor  = 0;   // intra-draw position, reset per redraw
@@ -288,7 +284,7 @@ struct PatternEngine {
     inline void advanceMelodyDraw(int dir) { melodyDrawCtr += (dir < 0 ? -1 : +1); }
 
     // Seed a stream's Philox from the same 0..10 float (reseed → new key, counter
-    // reset to 0 = sequence restarts) or from full entropy. Mirrors the Xoroshiro
+    // reset to 0 = sequence restarts) or from full entropy.
     // seed sites so seed/reseed events affect both engines identically.
     inline void seedRhythmPhilox(float seedFloat) {
         float s = pe_clamp(seedFloat, 0.f, 10.f);
@@ -312,16 +308,11 @@ struct PatternEngine {
         return melodyPhilox.atUniform(base);
     }
 
-    //inline float unitStochastic() { return rngToFloat(stochasticRng); }
-    inline float unitRhythm() { return usePhiloxDraws ? philoxRhythm() : rngToFloat(rhythmRng); }
-    inline float unitMelody() { return usePhiloxDraws ? philoxMelody() : rngToFloat(melodyRng); }
+    inline float unitRhythm() { return philoxRhythm(); }
+    inline float unitMelody() { return philoxMelody(); }
 
     static constexpr uint64_t MAX_U64 = 0xFFFFFFFFFFFFFFFFULL;
 
-    void seedRngFromFloat(rack::random::Xoroshiro128Plus& rng, float seedFloat);
-    /// Seed from full 64-bit internal entropy (two u64 words). Used for internal
-    /// reseeds (no CV); gives the full state space rather than the 0..10 float.
-    void seedRngFull(rack::random::Xoroshiro128Plus& rng);
     void reset();
 
     // ── Core generation ───────────────────────────────────────────────────────

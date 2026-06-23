@@ -843,9 +843,6 @@ struct Monsoon : Module {
     std::unique_ptr<OutputGenerator> outputGenerator;
 
     // Convenience accessors
-    rack::random::Xoroshiro128Plus& rhythmRng = engine.pe.rhythmRng;
-    rack::random::Xoroshiro128Plus& melodyRng = engine.pe.melodyRng;
-    //rack::random::Xoroshiro128Plus& stochasticRng = engine.pe.stochasticRng;
     float& holdRemain = engine.gs.holdRemain;
     bool& gateHeld = engine.gs.gateHeld;
     float& currentPitchV = engine.gs.currentPitchV;
@@ -992,8 +989,6 @@ struct Monsoon : Module {
     float quantizePitch(int semitoneIndex, int octaveOffset);
 
     void process(const ProcessArgs& args) override;
-
-    void reseedXoroshiroFromFloat(rack::random::Xoroshiro128Plus& rng, float seedFloat);
 
     // Mode handlers now delegated to ModeController:
     // - executeModeA()  → modeController->executeModeA()
