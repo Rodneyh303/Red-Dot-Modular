@@ -423,9 +423,9 @@ namespace MonsoonIds {
         // Macro-attenuated) Macro CV is mixed into this voice/lane/item. item
         // 0=LEN 1=OFF 2=ROT 3=SPR. 15 × 3 × 4 = 180. Default unity (Macro CV
         // reaches voices out of the box; turn down to localise).
-        //   index = MACRO_SEND_START + (v*3 + lane)*4 + item
+        //   index = MACRO_SEND_START + (v*3 + lane)*4 + item   (v = voiceNumber-1, slot0=mono)
         MACRO_SEND_START = MACRO_OWN_END,
-        MACRO_SEND_END = MACRO_SEND_START + 180,
+        MACRO_SEND_END = MACRO_SEND_START + 192,   // 16 voices × 3 lanes × 4 items (was 15)
 
         // Display-proxy params for the East visual's SELECTED-VOICE owner/send
         // controls. Physical knobs/buttons bind to these fixed ids; the widget
@@ -445,9 +445,9 @@ namespace MonsoonIds {
         // another. 15 voices × 12 jacks = 180. The East panel's 12 physical
         // attenuverters are display proxies (ATTEN_START) copied to/from the selected
         // voice's slice here on voice switch — same pattern as owner/send.
-        //   index = MACRO_ATTEN_START + v*12 + (r*2 + c)
+        //   index = MACRO_ATTEN_START + v*12 + (r*2 + c)   (v = voiceNumber-1, slot0=mono)
         MACRO_ATTEN_START = MACRO_SEND_DISP_END,
-        MACRO_ATTEN_END = MACRO_ATTEN_START + 180,
+        MACRO_ATTEN_END = MACRO_ATTEN_START + 192,   // 16 voices × 12 jacks (was 15)
 
         NUM_PARAMS = MACRO_ATTEN_END
     };

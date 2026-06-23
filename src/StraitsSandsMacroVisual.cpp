@@ -272,19 +272,23 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         const bool onMonoTab = dotModular::VoiceResolver::isMono(viewVoiceNum);
         const int  pv = dotModular::VoiceResolver::polyBankIndex(viewVoiceNum);  // -1 on mono
 
-        // Mix-in send display proxies ↔ per-voice store — poly tabs only (the mono tab's
-        // sends would be voice-0's slice, surfaced under interp. Y; not edited here).
-        if (!onMonoTab) {
+        // Mix-in send display proxies ↔ per-voice store, N→N: tab v (0-based) edits voice
+        // slot v (slot 0 = voice 1 / mono, slot 1 = poly voice 2, …). This is uniform across
+        // ALL tabs including mono — the mono tab's sends fold onto voice 1 via Interp Y, which
+        // reads slot 0. (Previously this used pv=polyBankIndex, so the v2 tab wrote slot 0 and
+        // its CV leaked onto mono — the N→N off-by-one.)
+        {
+            const int slot = viewVoice;   // 0..15, voiceNumber-1
             if (viewVoice != lastSendVoice) {
                 for (int lane=0; lane<3; ++lane)
                     for (int item=0; item<4; ++item)
                         module->params[sendDispId(lane,item)].setValue(
-                            module->params[sendId(pv,lane,item)].getValue());
+                            module->params[sendId(slot,lane,item)].getValue());
                 lastSendVoice = viewVoice;
             } else {
                 for (int lane=0; lane<3; ++lane)
                     for (int item=0; item<4; ++item)
-                        module->params[sendId(pv,lane,item)].setValue(
+                        module->params[sendId(slot,lane,item)].setValue(
                             module->params[sendDispId(lane,item)].getValue());
             }
         }
