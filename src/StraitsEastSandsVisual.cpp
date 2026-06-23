@@ -13,7 +13,7 @@
 #include "ui/GoldPolyPort.hpp"
 #include "dsp/managers/PolyVoiceSandsParameterManager.hpp"
 #include "dsp/managers/SpreadManager.hpp"
-#include "dsp/VoiceResolver.hpp"   // uniform 16-voice addressing for prob-out
+#include "dsp/VoiceResolver.hpp"   // uniform 16-voice addressing: prob-out + tab→voice mapping
 
 using namespace rack;
 using namespace redDot;
@@ -353,18 +353,23 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         if (!macroAttached()) return false;
         return !(module && module->params[StraitsEastVisualIds::ownerDispId(lane)].getValue() > 0.5f);
     }
+    // The voice NUMBER (1..16) for the selected tab: tab 0 = V1 (mono), tab v = V(v+1).
+    // All mono/poly identity + bank mapping flows through VoiceResolver so there's one
+    // source of truth (the resolver), not hand-rolled selectedVoice arithmetic scattered
+    // here. The resolver methods are static/constexpr — no engine ref, no per-call cost.
+    int currentVoice() const { return selectedVoice + 1; }
+
     // Voice 1 / tab 1 with Sands Mono attached: the lane base belongs to Mono — East's
     // base controls lock + mirror mono (display-only). Independent of Macro.
     bool tab1MonoMirror() {
         Monsoon* m = getMonsoon();
-        return selectedVoice == 0 && m && m->expanderManager.cachedSandsVisualExpander != nullptr;
+        return onMonoTab() && m && m->expanderManager.cachedSandsVisualExpander != nullptr;
     }
-    // Tab index 0 = mono (V1). Tab indices 1..15 = poly voices V2..V16, mapping to the
-    // 15-slot poly banks at index (selectedVoice - 1). Poly-bank I/O is valid ONLY when
-    // selectedVoice >= 1; at index 0 the mono mirror provides the display and no poly
-    // bank slot is touched.
-    bool onMonoTab() const { return selectedVoice == 0; }
-    int  polyVoice() const { return selectedVoice - 1; }   // use only when selectedVoice >= 1
+    // Mono tab? = the selected voice is the mono master strand (resolver owns this).
+    bool onMonoTab() const { return dotModular::VoiceResolver::isMono(currentVoice()); }
+    // Poly bank index (0..14) for the selected tab; -1 on the mono tab (resolver-mapped,
+    // == the old selectedVoice-1). Use only when !onMonoTab().
+    int  polyVoice() const { return dotModular::VoiceResolver::polyBankIndex(currentVoice()); }
 
     void step() override {
         ModuleWidget::step();
