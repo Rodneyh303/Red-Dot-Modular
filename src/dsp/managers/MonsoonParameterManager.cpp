@@ -156,6 +156,18 @@ float ParameterManager::getSemitone(int semIdx) const {
 
 // ──── Poly Voice Rest Probability ───────────────────────────────────────────
 
+float ParameterManager::getPolyAccent(int voiceIdx) const {
+    // Per-voice accent probability (accent as a poly lane). The per-voice poly-accent
+    // params/CV live on the Straits East/West expanders and are added in a later stage;
+    // until then every poly voice falls back to the global accent (mono accent knob+CV),
+    // so poly accent has a sensible, testable value now and the per-voice hook slots in
+    // here later exactly like getPolyRest does for rest.
+    if (voiceIdx < 0 || voiceIdx > 14) return 0.f;
+    // TODO(accent-poly stage 6): read POLY_ACCENT_PARAM_1+voiceIdx + POLY_ACCENT_CV from
+    // the East/West expanders, mirroring getPolyRest. For now: global accent.
+    return getAccent();
+}
+
 float ParameterManager::getPolyRest(int voiceIdx) const {
     if (voiceIdx < 0 || voiceIdx > 14) return 0.1f;
     

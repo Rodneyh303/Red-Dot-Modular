@@ -421,7 +421,8 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         float r_rest = pe.polyRhythmRandom[voiceIdx][restIdx];
         
         if (r_rest < v.restProb) {
-            // Decide to Rest: Stick with it until mono gate drops.
+            // Decide to Rest: Stick with it until mono gate drops. No accent while resting.
+            v.accented = false;
             if (v.gs.holdRemain > 0.0001f) v.gs.gateHeld = true; // allow previous note tail to finish
             else v.gs.gateHeld = false;
             return;
