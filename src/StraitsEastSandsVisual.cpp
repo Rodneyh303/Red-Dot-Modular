@@ -13,7 +13,7 @@
 #include "ui/GoldPolyPort.hpp"
 #include "dsp/managers/PolyVoiceSandsParameterManager.hpp"
 #include "dsp/managers/SpreadManager.hpp"
-#include "dsp/VoiceResolver.hpp"   // single source of truth for the tab→voice mapping
+#include "dsp/VoiceResolver.hpp"   // single source of truth for the tab→voice mapping and uniform 16-voice addressing for prob-out
 
 using namespace rack;
 using namespace redDot;
@@ -592,18 +592,21 @@ void StraitsEastSandsVisual::process(const ProcessArgs&) {
     const float scaleV = (mon->probOutScale == 0) ? 1.f : (mon->probOutScale == 1) ? 5.f : 10.f;
     const bool sh = mon->probOutSampleHold;
     auto& eng = mon->engine;
-    const int nV = eng.numPolyVoices;                  // 0..15
-    const int nCh = 1 + nV;                            // ch1 reserved + voices on 2..1+nV
+    const int nV = eng.numPolyVoices;                  // 0..15 poly voices
+    const int nCh = 1 + nV;                            // mono on ch1 + poly on ch2..1+nV
+    dotModular::VoiceResolver resolver(eng);
     for (int l = 0; l < 3; ++l) {
         auto& out = outputs[PROB_OUT_REST + l];
         out.setChannels(nCh < 1 ? 1 : nCh);
-        // Channel 1 (index 0) RESERVED for the future mono-tab display data — 0V now.
-        // Per-voice ensemble on channels 2.. (indices 1..nV).
-        out.setVoltage(0.f, 0);
-        for (int v = 0; v < nV; ++v) {
-            int ch = v + 1;
-            int step = eng.polyLaneStep(l, v);
-            float raw = eng.polyLaneProbability(l, v);
+        // Uniform addressing: VCV channel ch (0-based) carries voice number ch+1.
+        //   ch 0 → voice 1 (mono master strand) — previously hardcoded 0V; now its real draw.
+        //   ch v → voice v+1 (poly) for v in 1..nV.
+        // The resolver maps voice 1 → master accessors, voices 2..16 → poly bank (voice-2),
+        // so this single loop replaces the old hand-split (0V stub + per-poly indexing).
+        for (int ch = 0; ch < nCh; ++ch) {
+            const int voice = ch + 1;                  // 1..16
+            int step = resolver.laneStep(voice, l);
+            float raw = resolver.laneProbability(voice, l);
             float val;
             if (sh) {
                 if (step != probLastStep[l][ch]) { probHeld[l][ch] = raw; probLastStep[l][ch] = step; }

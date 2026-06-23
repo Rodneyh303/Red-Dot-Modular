@@ -143,12 +143,47 @@ matters as much as the test harness for this change.
 
 ---
 
+## 5a. Feasibility test result — spread unification: **GO** (2026, explore branch)
+
+The §6 spread-mode-as-parameter question — flagged as the make-or-break C feasibility
+test — was checked on `feat/unified-voice0-explore` and **passes cleanly**. The two
+spread computations are **already the same function**: both the mono path
+(`MonsoonSandsManager` ~L186) and the poly path (`MonsoonExpanderManager` ~L128) call the
+identical `redDot::SpreadInterp::apply(pe, mode, lane, step, nPoly, original, spreadAmount)`.
+
+The only differences are arguments, all already parameterised:
+- **source draw** `original`: mono → `pe.slewedRhythm[step]`; poly → `pe.slewedPolyRhythm[v][step]`.
+- **target mode**: the `SpreadInterp::Target` enum (`AVERAGE_POLY` vs `MONO_DRAW`) is already a
+  per-call parameter — the "ensemble-average vs per-voice" distinction is NOT two algorithms,
+  it's one argument.
+- **output array**: mono → `rhythmRandom[step]`; poly → `polyRhythmRandom[v][step]`.
+
+Implication: C's highest-risk assumption is retired. The spread pipeline is already unified
+behind `SpreadInterp`; voice 0 vs voices 1+ is "same `apply`, per-voice source + mode +
+output", not a fork. This removes the strongest argument for keeping voice 0 separate.
+**C is viable.** What remains genuinely structural (and still must be handled, not waved
+away): the 6-vs-3 lane count, the `MONO_LANE_TO_STRAND` permutation, the base-source
+selector, and the lock anchor (§2). None of those is a hot-path-branch problem; all are
+edge parameterisation.
+
+What did NOT happen on this branch, by design: no rewrite of the note-producing path. C
+still requires the parallel-run bit-exact harness (Stage 2) before any read-path switch —
+the absence of a Rack SDK in the working container means engine equivalence cannot be
+proven here, and the spec's rule stands: unbuilt-and-unverified is not acceptable for the
+note path. This branch is exploration/feasibility only.
+
 ## 6. Open decisions to settle before Stage 1
 
 - **Permutation home:** does the unified array store voice 0 pre-permuted (so the read
   path is uniform), or store straight and permute at the mono read site? Leaning:
   permute at the edge (keep the array uniform), but verify the sequencer's strand reads
   (`getStrandIdx`, `strandLen(strand)`) don't assume the permuted layout elsewhere.
+  *(Explore-branch finding: the sequencer has TWO distinct read sites — master reads
+  `strandLen(strand)` via `MONO_LANE_TO_STRAND` (SequencerEngine ~L247), poly reads
+  `polyLen[voice][polyLane]` straight (~L212). These two sites ARE the seam C unifies. The
+  permutation is consumed only at the master read site, so "permute at the edge" is
+  tractable: voice 0's read applies `MONO_LANE_TO_STRAND`, voices 1+ read straight, both
+  off one array. The permutation does not leak elsewhere.)*
 - **6-vs-3 lanes:** does the unified array allocate 6 lanes for all voices (wasting 3 on
   poly), or 6 for voice 0 and 3 for the rest (ragged)? Leaning: allocate 6 uniformly;
   poly voices simply never populate/read LEG/ACC/VAR. Simpler indexing, trivial memory

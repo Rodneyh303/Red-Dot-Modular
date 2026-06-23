@@ -350,6 +350,61 @@ struct PatternEngine {
     void recomputeEffectiveRhythm();   // public[] = A + rhythmMixLatched*(B-A)
     void recomputeEffectiveMelody();   // public[] = A + melodyMixLatched*(B-A)
 
+    // ── State regeneration (Option 3 reload) ──────────────────────────────────
+    // Reconstruct candidate B from the restored generative state: key (seeded),
+    // drawCtr (restored), committed A (restored), and the latched slew. Replays
+    // EXACTLY the draw that produced the live B — same addressable Philox indices
+    // (drawCtr·DRAW_CHUNK + cursor) and the same per-field call order as
+    // redrawRhythm/redrawMelody's else-branch — WITHOUT advancing the counter
+    // (we reproduce the draw AT drawCtr, which already shaped the current B). A is
+    // irreducible (carries the accumulated slew walk) so it is restored directly,
+    // not regenerated. After this, recomputeEffective* yields the live pattern.
+    inline void regenerateRhythmB() {
+        if (rhythmFirstDraw) { recomputeEffectiveRhythm(); return; }  // never rolled: B==A path
+        beginRhythmDraw();                                            // cursor = 0
+        const float sl = rack::math::clamp(rhythmSlewLatched, 0.f, 1.f);
+        auto step = [&](float a){ return a + sl * (unitRhythm() - a); };
+        for (int i = 0; i < 16; ++i) {
+            rhythmCandB[i]    = step(rhythmLockedA[i]);
+            variationCandB[i] = step(variationLockedA[i]);
+            legatoCandB[i]    = step(legatoLockedA[i]);
+            accentCandB[i]    = step(accentLockedA[i]);
+            for (int v = 0; v < 15; ++v) polyRhythmCandB[v][i] = step(polyRhythmLockedA[v][i]);
+        }
+        rhythmSlewApplied = -1.f;
+        recomputeEffectiveRhythm();
+        // Rebuild the cached SOURCE arrays (read for note output, not just preview) —
+        // mirrors redrawRhythm's tail so playback matches exactly post-reload.
+        for (int i = 0; i < 16; ++i) {
+            rhythmSource[i]=slewedRhythm[i]; variationSource[i]=slewedVariation[i];
+            legatoSource[i]=slewedLegato[i]; accentSource[i]=slewedAccent[i];
+            for (int v=0; v<15; ++v) polyRhythmSource[v][i]=slewedPolyRhythm[v][i];
+        }
+    }
+    inline void regenerateMelodyB() {
+        if (melodyFirstDraw) { recomputeEffectiveMelody(); return; }
+        beginMelodyDraw();
+        const float sl = rack::math::clamp(melodySlewLatched, 0.f, 1.f);
+        auto step = [&](float a){ return a + sl * (unitMelody() - a); };
+        for (int i = 0; i < 16; ++i) {
+            melodyCandB[i] = step(melodyLockedA[i]);
+            octaveCandB[i] = step(octaveLockedA[i]);
+            for (int v = 0; v < 15; ++v) {
+                polyMelodyCandB[v][i] = step(polyMelodyLockedA[v][i]);
+                polyOctaveCandB[v][i] = step(polyOctaveLockedA[v][i]);
+            }
+        }
+        melodySlewApplied = -1.f;
+        recomputeEffectiveMelody();
+        for (int i = 0; i < 16; ++i) {
+            melodySource[i]=slewedMelody[i]; octaveSource[i]=slewedOctave[i];
+            for (int v=0; v<15; ++v) {
+                polyMelodySource[v][i]=slewedPolyMelody[v][i];
+                polyOctaveSource[v][i]=slewedPolyOctave[v][i];
+            }
+        }
+    }
+
     // ── Sands spread-stage contract (Option W) ─────────────────────────────────
     // A Sands visual expander owns the spread→final stage when present:
     //   1. call setSandsActive(true) each control cycle it is connected,
