@@ -101,7 +101,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         // let the user flip through voices to SEE each one's resulting (spread/
         // blend-applied) probabilities. Read-only: changing tab only changes
         // which voice is displayed, nothing is saved per voice.
-        tabGroup = new TabButtonGroup(15, 2, 2, mm2px(ED_W), mm2px(10.f));
+        tabGroup = new TabButtonGroup(16, 1, 2, mm2px(ED_W), mm2px(10.f));   // V1 mono + V2..V16 poly
         tabGroup->box.pos = mm2px(Vec(ED_X, ED_Y - 12.f));
         addChild(tabGroup);
 
@@ -257,31 +257,36 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
 
         // CV applied at control rate in Monsoon::process() — base + cv*atten*scale.
 
-        // Which voice to DISPLAY (read-only view lens). Clamp to active count.
+        // Which voice to DISPLAY (read-only view lens). Tab 0 = mono (V1, always
+        // active); tabs 1..15 = poly voices V2..V16. Active = mono + active poly count.
         if (tabGroup) {
-            tabGroup->setActiveCount(monsoon->engine.numPolyVoices);
+            tabGroup->setActiveCount(monsoon->engine.numPolyVoices + 1);
             viewVoice = std::min(tabGroup->getSelectedTab(),
-                                 std::max(0, monsoon->engine.numPolyVoices - 1));
+                                 monsoon->engine.numPolyVoices);   // 0..numPolyVoices
         }
+        const bool onMonoTab = (viewVoice == 0);
+        const int  pv = viewVoice - 1;   // poly bank index; valid only when viewVoice >= 1
 
-        // Mix-in send display proxies ↔ per-voice store. On view-voice change, load that
-        // voice's sends into the 12 display proxies; otherwise save the (possibly edited)
-        // proxies back to the current voice each frame so edits take effect immediately.
-        if (viewVoice != lastSendVoice) {
-            for (int lane=0; lane<3; ++lane)
-                for (int item=0; item<4; ++item)
-                    module->params[sendDispId(lane,item)].setValue(
-                        module->params[sendId(viewVoice,lane,item)].getValue());
-            lastSendVoice = viewVoice;
-        } else {
-            for (int lane=0; lane<3; ++lane)
-                for (int item=0; item<4; ++item)
-                    module->params[sendId(viewVoice,lane,item)].setValue(
-                        module->params[sendDispId(lane,item)].getValue());
+        // Mix-in send display proxies ↔ per-voice store — poly tabs only (the mono tab's
+        // sends would be voice-0's slice, surfaced under interp. Y; not edited here).
+        if (!onMonoTab) {
+            if (viewVoice != lastSendVoice) {
+                for (int lane=0; lane<3; ++lane)
+                    for (int item=0; item<4; ++item)
+                        module->params[sendDispId(lane,item)].setValue(
+                            module->params[sendId(pv,lane,item)].getValue());
+                lastSendVoice = viewVoice;
+            } else {
+                for (int lane=0; lane<3; ++lane)
+                    for (int item=0; item<4; ++item)
+                        module->params[sendId(pv,lane,item)].setValue(
+                            module->params[sendDispId(lane,item)].getValue());
+            }
         }
 
         saveLOR();
-        paramMgr->syncPatternEngineToEditor(visualEditor->currentState, viewVoice);
+        if (!onMonoTab)
+            paramMgr->syncPatternEngineToEditor(visualEditor->currentState, pv);
 
         // Surface Macro's OWN CV-applied L/O/R to the display window. Previously
         // this read the engine output (eng.polyLen[0] etc.), but when East owns a
@@ -300,7 +305,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         // are hidden on tab 1 via gen panel / widget — Macro's global base doesn't reach
         // voice 1; only the mix-in sends could, under the deferred interp. Y.)
         auto* monoVis = monsoon->expanderManager.cachedSandsVisualExpander;
-        bool tab1Mono = (viewVoice == 0) && (monoVis != nullptr);
+        bool tab1Mono = onMonoTab && (monoVis != nullptr);
         visualEditor->readOnly = tab1Mono;   // Macro is already view-only, but mark it explicitly
         // Macro's global-base CV-depth attenuverters don't reach voice 1 (mono provides
         // the base) — hide them on tab 1 when mono attached. Only the mix-in sends (below
@@ -333,6 +338,29 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
     void draw(const DrawArgs& args) override {
         ModuleWidget::draw(args);
         NVGcontext* vg = args.vg;
+
+        // V1 / mono tab: Macro's global-base CV-depth attenuverters don't reach voice 1
+        // (mono provides the base). The knob widgets hide themselves (visible=false), but
+        // the panel bakes their gold rings — mask the two attenuverter columns with the
+        // panel background so V1 reads clean.
+        {
+            auto* mon = getMonsoon();
+            bool isLight = mon && mon->lightTheme;
+            bool monoTab = mon && (viewVoice == 0) &&
+                           (mon->expanderManager.cachedSandsVisualExpander != nullptr);
+            if (monoTab) {
+                NVGcolor bg = isLight ? nvgRGB(0xe8,0xe8,0xea) : nvgRGB(0x16,0x18,0x1c);
+                float x0 = mm2px(COL_A1) - mm2px(4.f);
+                float x1 = mm2px(COL_A2) + mm2px(4.f);
+                float y0 = mm2px(rowY(0)) - mm2px(4.f);
+                float y1 = mm2px(rowY(N_ROWS - 1)) + mm2px(4.f);
+                nvgBeginPath(vg);
+                nvgRect(vg, x0, y0, x1 - x0, y1 - y0);
+                nvgFillColor(vg, bg);
+                nvgFill(vg);
+            }
+        }
+
         const float BLEND_TOP=72.f, SEND_Y0=12.f, SEND_DY=11.f, SEND_DX=7.f, BGAP=3.5f;
         const float GROUP_W = ED_W/3.f;
         const char* laneName[3] = { "REST", "MELODY", "OCTAVE" };
