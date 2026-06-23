@@ -2,7 +2,7 @@
 // Monsoon - full implementation with clean Mode A stepping logic
 // C++11 compatible
 //
-// Patched: separate RNGs for melody & rhythm using rack::random::Xoroshiro128Plus,
+// Patched: separate Philox streams for melody & rhythm (counter-based, stateless),
 // SEED CV input/output, RESET input, deferred reseed at phrase boundary, JSON serialization,
 // two-part 64-bit seeding, widget ports for RESET/SEED, and preserved behavior.
 
@@ -38,10 +38,6 @@ using namespace MonsoonIds;
 
 Plugin* pluginInstance = nullptr;
 
-void Monsoon::reseedXoroshiroFromFloat(rack::random::Xoroshiro128Plus& rng, float seedFloat) {
-    engine.pe.seedRngFromFloat(rng, seedFloat);
-}
-
 void Monsoon::onSampleRateChange(const SampleRateChangeEvent& e) {
     lightDivider.setDivision(std::max(1, (int)std::round(e.sampleRate / 90.f)));
     controlDivider.setDivision(std::max(1, (int)std::round(e.sampleRate / 1500.f)));
@@ -53,10 +49,8 @@ Monsoon::Monsoon() {
         // Seed RNGs with a random value — safe to call here (uses rack::random, not inputs[])
         rhythmSeedFloat = rack::random::uniform() * 10.f;
         melodySeedFloat = rack::random::uniform() * 10.f;
-        reseedXoroshiroFromFloat(rhythmRng, rhythmSeedFloat);
-        //stochasticSeedFloat = rack::random::uniform() * 10.f;
-        //reseedXoroshiroFromFloat(stochasticRng, stochasticSeedFloat);
-        reseedXoroshiroFromFloat(melodyRng, melodySeedFloat);
+        engine.pe.seedRhythmPhilox(rhythmSeedFloat);
+        engine.pe.seedMelodyPhilox(melodySeedFloat);
         rhythmSeedPendingFloat = rhythmSeedFloat;
         melodySeedPendingFloat = melodySeedFloat;
 
@@ -113,8 +107,8 @@ void Monsoon::updateExpanderPointers() {
     void Monsoon::dataFromJson(json_t* root) {
         PersistenceManager::fromJson(this, root);
     // Finalize state
-    reseedXoroshiroFromFloat(engine.pe.rhythmRng, rhythmSeedFloat);
-    reseedXoroshiroFromFloat(engine.pe.melodyRng, melodySeedFloat);
+    engine.pe.seedRhythmPhilox(rhythmSeedFloat);
+    engine.pe.seedMelodyPhilox(melodySeedFloat);
     // scaleManager is guaranteed to be valid after construction
     scaleManager->updateScaleMask();
     }
@@ -184,7 +178,7 @@ float Monsoon::semitoneToVolts(int semitone) {
     return semitone / 12.f;
 }
 
-    // regenerate rhythm pattern (uses rhythmRng) — skipped when locked
+    // regenerate rhythm pattern (uses Philox rhythm stream) — skipped when locked
     // Build a PatternInput snapshot from current params/CV state
     // This method is no longer needed as PatternInput is cached in ModeController
     // PatternInput Monsoon::makePatternInput() { ... }

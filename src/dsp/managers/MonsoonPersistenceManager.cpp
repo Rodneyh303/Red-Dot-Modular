@@ -129,18 +129,6 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
         json_object_set_new(root, "slLatchedM", json_real(m->engine.pe.melodySlewLatched));
         json_object_set_new(root, "slFirstR", json_boolean(m->engine.pe.rhythmFirstDraw));
         json_object_set_new(root, "slFirstM", json_boolean(m->engine.pe.melodyFirstDraw));
-        // RNG stream state (Xoroshiro128+ has two uint64 words). Saved as strings
-        // to preserve full 64-bit precision (JSON reals can't). Restoring this
-        // makes reload truly lossless: the NEXT roll continues the same stream it
-        // would have, not a fresh one.
-        auto saveU64 = [&](const char* key, uint64_t v){
-            char buf[32]; snprintf(buf, sizeof(buf), "%llu", (unsigned long long)v);
-            json_object_set_new(root, key, json_string(buf));
-        };
-        saveU64("rngR0", m->engine.pe.rhythmRng.state[0]);
-        saveU64("rngR1", m->engine.pe.rhythmRng.state[1]);
-        saveU64("rngM0", m->engine.pe.melodyRng.state[0]);
-        saveU64("rngM1", m->engine.pe.melodyRng.state[1]);
     }
 
     // ── Rhythm and Pitch Arrays ──
@@ -286,19 +274,6 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
             m->engine.pe.rhythmSlewApplied = -1.f; m->engine.pe.melodySlewApplied = -1.f;
             m->engine.pe.recomputeEffectiveRhythm();
             m->engine.pe.recomputeEffectiveMelody();
-            // Restore RNG stream state (full 64-bit, saved as strings). Only if
-            // present and non-degenerate; an all-zero state would freeze the RNG.
-            auto loadU64 = [&](const char* key, uint64_t& out)->bool{
-                if (auto j = json_object_get(root, key)) {
-                    if (json_is_string(j)) { out = strtoull(json_string_value(j), nullptr, 10); return true; }
-                }
-                return false;
-            };
-            uint64_t r0=0,r1=0,m0=0,m1=0;
-            bool haveR = loadU64("rngR0", r0) & loadU64("rngR1", r1);
-            bool haveM = loadU64("rngM0", m0) & loadU64("rngM1", m1);
-            if (haveR && !(r0==0 && r1==0)) { m->engine.pe.rhythmRng.state[0]=r0; m->engine.pe.rhythmRng.state[1]=r1; }
-            if (haveM && !(m0==0 && m1==0)) { m->engine.pe.melodyRng.state[0]=m0; m->engine.pe.melodyRng.state[1]=m1; }
         } else {
             // Old patch: no A/B saved. Seed both endpoints from the loaded
             // effective arrays so the groove is preserved and slew is a no-op

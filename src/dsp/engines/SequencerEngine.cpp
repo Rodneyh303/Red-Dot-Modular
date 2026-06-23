@@ -399,7 +399,7 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
 //              their own hold.  Voices already at rest remain silent.
 //   Legato / LegatoMax / NewNote — mono played something new; each poly voice
 //              independently rolls its own rest probability then draws its
-//              own pitch using stochasticRng.  Gate type (retrigger vs slide)
+//              own pitch (legacy note). Gate type (retrigger vs slide)
 //              follows mono's decision.  Within the legato zone a poly-internal
 //              tie still emerges naturally when the voice's random pitch
 //              matches its own previous semitone.
