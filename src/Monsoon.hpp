@@ -777,6 +777,7 @@ struct Monsoon : Module {
     // reseed (auditioning stays controlled). reseedOnRestart: a restart reseeds
     // for a fresh pattern instead of replaying the held one.
     bool reseedOnRoll    = false;
+    bool pendingRegenB   = false;   // set by load: regenerate candidate B post-seed (Option 3)
     bool reseedOnRestart = false;
 
     int lastModeSelect = -1;

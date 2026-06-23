@@ -11,7 +11,7 @@
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/ModArcOverlay.hpp"
 #include "dsp/managers/PolySandsParameterManager.hpp"
-#include "dsp/VoiceResolver.hpp"   // activeVoiceCount + voice identity
+#include "dsp/VoiceResolver.hpp"   // activeVoiceCount + voice identity, single source of truth for the tab→voice mapping and uniform 16-voice addressing for prob-out
 
 using namespace rack;
 using namespace redDot;
@@ -265,8 +265,12 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
             viewVoice = std::min(tabGroup->getSelectedTab(),
                                  monsoon->engine.numPolyVoices);   // 0..numPolyVoices
         }
-        const bool onMonoTab = (viewVoice == 0);
-        const int  pv = viewVoice - 1;   // poly bank index; valid only when viewVoice >= 1
+        // Voice NUMBER (1..16) for the displayed tab: tab 0 = V1 (mono), tab v = V(v+1).
+        // Mono/poly identity + bank mapping via VoiceResolver — one source of truth, not
+        // local viewVoice arithmetic (static/constexpr, no engine ref).
+        const int  viewVoiceNum = viewVoice + 1;
+        const bool onMonoTab = dotModular::VoiceResolver::isMono(viewVoiceNum);
+        const int  pv = dotModular::VoiceResolver::polyBankIndex(viewVoiceNum);  // -1 on mono
 
         // Mix-in send display proxies ↔ per-voice store — poly tabs only (the mono tab's
         // sends would be voice-0's slice, surfaced under interp. Y; not edited here).
@@ -347,7 +351,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         {
             auto* mon = getMonsoon();
             bool isLight = mon && mon->lightTheme;
-            bool monoTab = mon && (viewVoice == 0) &&
+            bool monoTab = mon && dotModular::VoiceResolver::isMono(viewVoice + 1) &&
                            (mon->expanderManager.cachedSandsVisualExpander != nullptr);
             if (monoTab) {
                 NVGcolor bg = isLight ? nvgRGB(0xe8,0xe8,0xea) : nvgRGB(0x16,0x18,0x1c);
@@ -417,10 +421,10 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
     const int nV = eng.numPolyVoices;
     const int nCh = 1 + nV;
     const int gs = eng.stepIndex;
+    dotModular::VoiceResolver resolver(eng);
     for (int l = 0; l < 3; ++l) {
         auto& out = outputs[PROB_OUT_REST + l];
         out.setChannels(nCh < 1 ? 1 : nCh);
-        out.setVoltage(0.f, 0);              // ch1 reserved (future mono tab)
         // Macro's OWN global LOR step for this lane (from macroBase+CVDelta — identical
         // to Macro's editor playhead, independent of East/ownership). Same step for
         // every voice (Macro's view is global); each voice contributes its own draw.
@@ -428,9 +432,12 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
         int ownOff = (int)std::lround(macroBase[l][1] + macroCVDelta[l][1]);
         int ownRot = (int)std::lround(macroBase[l][2] + macroCVDelta[l][2]);
         int step = calcPlayhead(gs, ownLen, ownOff, ownRot) & 0x0F;
-        for (int v = 0; v < nV; ++v) {
-            int ch = v + 1;
-            float raw = eng.polyLaneProbabilityAtStep(l, v, step);
+        // Uniform addressing: VCV channel ch carries voice ch+1. ch0 → voice 1 (mono;
+        // the resolver ignores the explicit step and returns the master draw) — was a 0V
+        // stub. ch v → voice v+1 (poly), sampled at Macro's global step.
+        for (int ch = 0; ch < nCh; ++ch) {
+            const int voice = ch + 1;                 // 1..16
+            float raw = resolver.laneProbabilityAtStep(voice, l, step);
             float val;
             if (sh) {
                 if (step != probLastStep[l][ch]) { probHeld[l][ch] = raw; probLastStep[l][ch] = step; }
