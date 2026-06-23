@@ -825,10 +825,21 @@ void Monsoon::process(const ProcessArgs& args) {
             float eff = clamp(base + modulation, 0.f, 1.f);
             engine.voices[i].restProb = eff;
             cachedPolyRestEffective[i] = eff;   // final value (knob+global+per-voice mod) for modviz
-            // Accent as a poly lane: per-voice accentProb. The per-voice accent base/CV
-            // (Straits East/West accent column) is a later stage; until then every voice
-            // uses the global accent so poly accent is live and testable now.
-            engine.voices[i].accentProb = paramManager->getPolyAccent(i);
+            // Accent as a poly lane: base (POLY_ACCENT_PARAM + shared CV) from getPolyAccent,
+            // plus per-voice accent CV × attenuverter on top — exactly parallel to rest.
+            float accBase = paramManager->getPolyAccent(i);
+            float accMod = 0.f;
+            if (i < 7) {
+                if (inputs[POLY_ACCENT_MOD_CV_INPUT_1 + i].isConnected())
+                    accMod = inputs[POLY_ACCENT_MOD_CV_INPUT_1 + i].getVoltage() *
+                             params[POLY_ACCENT_MOD_ATT_1 + i].getValue() * 0.1f;
+            } else {
+                int wi = i - 7;
+                if (inputs[POLY_ACCENT_MOD_CV_INPUT_8 + wi].isConnected())
+                    accMod = inputs[POLY_ACCENT_MOD_CV_INPUT_8 + wi].getVoltage() *
+                             params[POLY_ACCENT_MOD_ATT_8 + wi].getValue() * 0.1f;
+            }
+            engine.voices[i].accentProb = clamp(accBase + accMod, 0.f, 1.f);
         }
 
         // Handle Throttled CV1 Logic (Range Modulation)

@@ -23,11 +23,17 @@ Design notes:
 import math
 
 # ── panel + grid geometry (PX @ 75 DPI, matching the widget) ──────────────────
-PW, PH = 390.0, 380.0
+# Accent promoted to a poly lane: 3 new columns (accent probability knob, accent CV in,
+# accent CV attenuverter) added beside the existing per-voice accent OUT. Column spacing
+# tightened from the old generous ~54px to 43px (wells are ~18-20px, so still a clean gap),
+# so all 9 columns fit in 28HP — only +2HP vs the old 26HP 6-column panel.
+PW, PH = 420.0, 380.0   # 28HP (was 26HP/390px); +2HP absorbs the 3 accent columns
 MM2PX = 2.9528
 
-# control column X (px) — from the East/West widgets (knob/att/modIn + 3 outs)
-COL = dict(knob=48.0, att=102.0, modIn=168.0, gateOut=234.0, cvOut=288.0, accOut=342.0)
+# 9 control columns @ 43px. Rest lane: knob/att/modIn. Voice outs: gate/cv. Accent lane:
+# accKnob/accAtt/accModIn grouped just left of the existing accent OUT.
+COL = dict(knob=38.0, att=81.0, modIn=124.0, gateOut=167.0, cvOut=210.0,
+           accKnob=253.0, accAtt=296.0, accModIn=339.0, accOut=382.0)
 START_Y = 50.0
 SPACING_Y = 35.0
 # East adds voices 2-8 (7 rows; voice 1 is Monsoon's own mono voice). West adds
@@ -209,16 +215,21 @@ def gen(side, dark, variant="plain"):
         A(jackwell(COL["modIn"], y, t))
         A(jackwell(COL["gateOut"], y, t))
         A(jackwell(COL["cvOut"], y, t))
+        A(trimwell(COL["accKnob"], y, t))
+        A(trimwell(COL["accAtt"], y, t))
+        A(jackwell(COL["accModIn"], y, t))
         A(jackwell(COL["accOut"], y, t))
     # global row
     if side == "east":
         A(jackwell(COL["modIn"], gy, t))
         A(jackwell(COL["gateOut"], gy, t))
         A(jackwell(COL["cvOut"], gy, t))
+        A(jackwell(COL["accModIn"], gy, t))   # shared accent CV
     else:
         A(jackwell(COL["knob"], gy, t))
         A(jackwell(COL["gateOut"], gy, t))
         A(jackwell(COL["cvOut"], gy, t))
+        A(jackwell(COL["accModIn"], gy, t))   # shared accent CV
     A('</g>')
 
     # ── SVG-kit component layer (bind anchors; near-invisible) ────────────────
@@ -232,15 +243,21 @@ def gen(side, dark, variant="plain"):
         A(kit_marker("input", f"modcv_{i}", COL["modIn"], y))
         A(kit_marker("output", f"gate_{i}", COL["gateOut"], y))
         A(kit_marker("output", f"cv_{i}",   COL["cvOut"], y))
+        A(kit_marker("param",  f"accknob_{i}", COL["accKnob"], y))
+        A(kit_marker("param",  f"accatt_{i}",  COL["accAtt"], y))
+        A(kit_marker("input",  f"accmodcv_{i}", COL["accModIn"], y))
         A(kit_marker("output", f"acc_{i}",  COL["accOut"], y))
     if side == "east":
         A(kit_marker("input",  "global_modcv", COL["modIn"], gy))
         A(kit_marker("output", "global_gate",  COL["gateOut"], gy))
         A(kit_marker("output", "global_cv",    COL["cvOut"], gy))
+        A(kit_marker("input",  "global_acc_cv", COL["accModIn"], gy))
     else:
         A(kit_marker("input",  "global_cv_in", COL["knob"], gy))
         A(kit_marker("output", "global_gate",  COL["gateOut"], gy))
         A(kit_marker("output", "global_cv",    COL["cvOut"], gy))
+        A(kit_marker("input",  "global_acc_cv", COL["accModIn"], gy))
+        A(kit_marker("input",  "global_acc_cv", COL["accModIn"], gy))
     # dot.modular connect mark anchor (footer-centre; reposition here).
     A(kit_marker("light", "connect", PW*0.5, PH-20.0))
     A('</g>')

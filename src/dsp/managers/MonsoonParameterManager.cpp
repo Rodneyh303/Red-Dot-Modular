@@ -157,15 +157,15 @@ float ParameterManager::getSemitone(int semIdx) const {
 // ──── Poly Voice Rest Probability ───────────────────────────────────────────
 
 float ParameterManager::getPolyAccent(int voiceIdx) const {
-    // Per-voice accent probability (accent as a poly lane). The per-voice poly-accent
-    // params/CV live on the Straits East/West expanders and are added in a later stage;
-    // until then every poly voice falls back to the global accent (mono accent knob+CV),
-    // so poly accent has a sensible, testable value now and the per-voice hook slots in
-    // here later exactly like getPolyRest does for rest.
+    // Per-voice accent probability (accent as a poly lane), mirroring getRest/getPolyRest.
+    // The per-voice POLY_ACCENT_PARAM and the shared POLY_ACCENT_CV are mapped into the
+    // host's param/input space (expander params live there), so readParam_/readInput_ reach
+    // them directly — same mechanism getRest uses. Per-voice CV×attenuverter modulation is
+    // added on top in Monsoon's process loop (exactly like rest).
     if (voiceIdx < 0 || voiceIdx > 14) return 0.f;
-    // TODO(accent-poly stage 6): read POLY_ACCENT_PARAM_1+voiceIdx + POLY_ACCENT_CV from
-    // the East/West expanders, mirroring getPolyRest. For now: global accent.
-    return getAccent();
+    float v = readParam_(POLY_ACCENT_PARAM_1 + voiceIdx, 0.f, 1.f);
+    v += readInput_(POLY_ACCENT_CV_INPUT) * 0.1f;     // shared accent CV, 0–10V → 0–1
+    return clampv(v, 0.f, 1.f);
 }
 
 float ParameterManager::getPolyRest(int voiceIdx) const {

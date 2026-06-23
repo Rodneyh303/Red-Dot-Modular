@@ -72,12 +72,17 @@ struct MonsoonStraitWestExpanderWidget : ModuleWidget,
                 std::function<void(Trimpot*)>([this, voice](Trimpot* k){ attachRestArc(k, voice); }));
             bindParam <Trimpot>      ("param_att_"    + r, MonsoonIds::POLY_REST_MOD_ATT_8    + i);
             bindInput <DarkPJ301MPort>("input_modcv_" + r, MonsoonIds::POLY_REST_MOD_CV_INPUT_8 + i);
+            // Accent poly lane (voices 9-16, base +8).
+            bindParam <Trimpot>      ("param_accknob_" + r, MonsoonIds::POLY_ACCENT_PARAM_8       + i);
+            bindParam <Trimpot>      ("param_accatt_"  + r, MonsoonIds::POLY_ACCENT_MOD_ATT_8     + i);
+            bindInput <DarkPJ301MPort>("input_accmodcv_" + r, MonsoonIds::POLY_ACCENT_MOD_CV_INPUT_8 + i);
             bindOutput<DarkPJ301MPort>("output_gate_" + r, POLY_GATE_OUT_1   + i);
             bindOutput<DarkPJ301MPort>("output_cv_"   + r, POLY_CV_OUT_1     + i);
             bindOutput<DarkPJ301MPort>("output_acc_"  + r, POLY_ACCENT_OUT_1 + i);
         }
         // Global utility row (West: CV input sits in the knob column)
         bindInput <DarkPJ301MPort>("input_global_cv_in", MonsoonIds::POLY_REST_CV_INPUT);
+        bindInput <DarkPJ301MPort>("input_global_acc_cv", MonsoonIds::POLY_ACCENT_CV_INPUT);
         bindOutput<PJ301MPort>    ("output_global_gate", POLY_GATE_1_16_OUT);
         bindOutput<PJ301MPort>    ("output_global_cv",   POLY_CV_1_16_OUT);
         flushRestArcs();
