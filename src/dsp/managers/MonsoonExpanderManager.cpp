@@ -1,5 +1,6 @@
 #include "MonsoonExpanderManager.hpp"
 #include "../SpreadInterp.hpp"
+#include "../VoiceResolver.hpp"   // read-only shadow (step 1)
 #include "../../Monsoon.hpp"
 //#include "../../MonsoonDeepStraitsSands.hpp"
 #include "../../StraitsEastSandsVisual.hpp"
