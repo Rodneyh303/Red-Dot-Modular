@@ -140,6 +140,23 @@ namespace MonsoonIds {
         POLY_REST_PARAM_13,
         POLY_REST_PARAM_14,
         POLY_REST_PARAM_15,
+
+        // Accent Probability (15 voices) — accent as a poly lane, parallel to rest - NEW
+        POLY_ACCENT_PARAM_1,
+        POLY_ACCENT_PARAM_2,
+        POLY_ACCENT_PARAM_3,
+        POLY_ACCENT_PARAM_4,
+        POLY_ACCENT_PARAM_5,
+        POLY_ACCENT_PARAM_6,
+        POLY_ACCENT_PARAM_7,
+        POLY_ACCENT_PARAM_8,
+        POLY_ACCENT_PARAM_9,
+        POLY_ACCENT_PARAM_10,
+        POLY_ACCENT_PARAM_11,
+        POLY_ACCENT_PARAM_12,
+        POLY_ACCENT_PARAM_13,
+        POLY_ACCENT_PARAM_14,
+        POLY_ACCENT_PARAM_15,
         
         // Rest Probability Modulation Attenuverters (15 voices) - NEW
         POLY_REST_MOD_ATT_1,
@@ -157,6 +174,23 @@ namespace MonsoonIds {
         POLY_REST_MOD_ATT_13,
         POLY_REST_MOD_ATT_14,
         POLY_REST_MOD_ATT_15,
+
+        // Accent Probability Modulation Attenuverters (15 voices) - NEW
+        POLY_ACCENT_MOD_ATT_1,
+        POLY_ACCENT_MOD_ATT_2,
+        POLY_ACCENT_MOD_ATT_3,
+        POLY_ACCENT_MOD_ATT_4,
+        POLY_ACCENT_MOD_ATT_5,
+        POLY_ACCENT_MOD_ATT_6,
+        POLY_ACCENT_MOD_ATT_7,
+        POLY_ACCENT_MOD_ATT_8,
+        POLY_ACCENT_MOD_ATT_9,
+        POLY_ACCENT_MOD_ATT_10,
+        POLY_ACCENT_MOD_ATT_11,
+        POLY_ACCENT_MOD_ATT_12,
+        POLY_ACCENT_MOD_ATT_13,
+        POLY_ACCENT_MOD_ATT_14,
+        POLY_ACCENT_MOD_ATT_15,
 
         // Poly DNA Window Controls (15 voices x 3 params = 45) - MOVED TO SANDS
         POLY_DNA_VOICE_1_LEN,
@@ -516,6 +550,24 @@ namespace MonsoonIds {
         POLY_REST_MOD_CV_INPUT_13,
         POLY_REST_MOD_CV_INPUT_14,
         POLY_REST_MOD_CV_INPUT_15,
+
+        // Accent Probability CV (shared + 15 per-voice mod) - NEW
+        POLY_ACCENT_CV_INPUT,
+        POLY_ACCENT_MOD_CV_INPUT_1,
+        POLY_ACCENT_MOD_CV_INPUT_2,
+        POLY_ACCENT_MOD_CV_INPUT_3,
+        POLY_ACCENT_MOD_CV_INPUT_4,
+        POLY_ACCENT_MOD_CV_INPUT_5,
+        POLY_ACCENT_MOD_CV_INPUT_6,
+        POLY_ACCENT_MOD_CV_INPUT_7,
+        POLY_ACCENT_MOD_CV_INPUT_8,
+        POLY_ACCENT_MOD_CV_INPUT_9,
+        POLY_ACCENT_MOD_CV_INPUT_10,
+        POLY_ACCENT_MOD_CV_INPUT_11,
+        POLY_ACCENT_MOD_CV_INPUT_12,
+        POLY_ACCENT_MOD_CV_INPUT_13,
+        POLY_ACCENT_MOD_CV_INPUT_14,
+        POLY_ACCENT_MOD_CV_INPUT_15,
         
         // Poly DNA CV Modulation (8 voices × 2 = 16 inputs) - MOVED TO SANDS
         POLY_DNA_VOICE_8_LEN_INPUT,
