@@ -15,20 +15,20 @@ namespace CausewayLayout {
     static constexpr P CAUSEWAY_MIX_R_ATT = { 21.0000f, 50.0000f };
     static constexpr P CAUSEWAY_MIX_M_ATT = { 39.0000f, 50.0000f };
     static constexpr P CAUSEWAY_MIX_M_CV = { 51.0000f, 50.0000f };
-    static constexpr P CAUSEWAY_GATE_TRIAL_R = { 16.0000f, 66.0000f };
-    static constexpr P CAUSEWAY_GATE_TRIAL_M = { 44.0000f, 66.0000f };
-    static constexpr P CAUSEWAY_GATE_REDICE_R = { 16.0000f, 78.0000f };
-    static constexpr P CAUSEWAY_GATE_REDICE_M = { 44.0000f, 78.0000f };
+    static constexpr P CAUSEWAY_GATE_TRIAL_R = { 11.0000f, 66.0000f };
+    static constexpr P CAUSEWAY_GATE_TRIAL_M = { 49.0000f, 66.0000f };
+    static constexpr P CAUSEWAY_GATE_REDICE_R = { 11.0000f, 78.0000f };
+    static constexpr P CAUSEWAY_GATE_REDICE_M = { 49.0000f, 78.0000f };
+    static constexpr P CAUSEWAY_GATE_LASTTRIAL_R = { 22.0000f, 66.0000f };
+    static constexpr P CAUSEWAY_GATE_LASTTRIAL_M = { 38.0000f, 66.0000f };
+    static constexpr P CAUSEWAY_GATE_LASTDICE_R = { 22.0000f, 78.0000f };
+    static constexpr P CAUSEWAY_GATE_LASTDICE_M = { 38.0000f, 78.0000f };
     static constexpr P CAUSEWAY_GATE_LIVESRC_R = { 16.0000f, 90.0000f };
     static constexpr P CAUSEWAY_GATE_LIVESRC_M = { 44.0000f, 90.0000f };
     static constexpr P CAUSEWAY_GATE_LIVESTATIC_R = { 16.0000f, 102.0000f };
     static constexpr P CAUSEWAY_GATE_LIVESTATIC_M = { 44.0000f, 102.0000f };
     static constexpr P CAUSEWAY_GATE_RESEED_ROLL = { 16.0000f, 114.0000f };
     static constexpr P CAUSEWAY_GATE_RESEED_RESTART = { 44.0000f, 114.0000f };
-    static constexpr P CAUSEWAY_GATE_LASTDICE_R = { 10.0000f, 125.0000f };
-    static constexpr P CAUSEWAY_GATE_LASTDICE_M = { 24.0000f, 125.0000f };
-    static constexpr P CAUSEWAY_GATE_LASTTRIAL_R = { 38.0000f, 125.0000f };
-    static constexpr P CAUSEWAY_GATE_LASTTRIAL_M = { 52.0000f, 125.0000f };
     static constexpr P LBL_CAUSEWAY_0 = { 30.0000f, 30.0000f };
     static constexpr P LBL_SLEW_1 = { 30.0000f, 32.0000f };
     static constexpr P LBL_MIX_2 = { 30.0000f, 44.0000f };
@@ -39,7 +39,6 @@ namespace CausewayLayout {
     static constexpr P LBL_LIVE_SRC_7 = { 30.0000f, 90.0000f };
     static constexpr P LBL_LIVE_STAT_8 = { 30.0000f, 102.0000f };
     static constexpr P LBL_RESEED_9 = { 30.0000f, 114.0000f };
-    static constexpr P LBL_LAST_10 = { 31.0000f, 121.0000f };
 }
 
 #endif // CAUSEWAYLAYOUT_GEN_HPP
