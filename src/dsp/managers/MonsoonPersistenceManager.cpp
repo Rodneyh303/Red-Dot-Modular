@@ -116,19 +116,33 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
             for (int v=0;v<15;v++) for (int i=0;i<16;i++) json_array_append_new(j, json_real(a[v][i]));
             json_object_set_new(root, key, j);
         };
-        saveArr("slA_rhythm", m->engine.pe.rhythmLockedA);   saveArr("slB_rhythm", m->engine.pe.rhythmCandB);
-        saveArr("slA_variation", m->engine.pe.variationLockedA); saveArr("slB_variation", m->engine.pe.variationCandB);
-        saveArr("slA_legato", m->engine.pe.legatoLockedA);   saveArr("slB_legato", m->engine.pe.legatoCandB);
-        saveArr("slA_accent", m->engine.pe.accentLockedA);   saveArr("slB_accent", m->engine.pe.accentCandB);
-        saveArr("slA_melody", m->engine.pe.melodyLockedA);   saveArr("slB_melody", m->engine.pe.melodyCandB);
-        saveArr("slA_octave", m->engine.pe.octaveLockedA);   saveArr("slB_octave", m->engine.pe.octaveCandB);
-        savePoly("slA_polyRhythm", m->engine.pe.polyRhythmLockedA); savePoly("slB_polyRhythm", m->engine.pe.polyRhythmCandB);
-        savePoly("slA_polyMelody", m->engine.pe.polyMelodyLockedA); savePoly("slB_polyMelody", m->engine.pe.polyMelodyCandB);
-        savePoly("slA_polyOctave", m->engine.pe.polyOctaveLockedA); savePoly("slB_polyOctave", m->engine.pe.polyOctaveCandB);
+        saveArr("slA_rhythm", m->engine.pe.rhythmLockedA);
+        saveArr("slA_variation", m->engine.pe.variationLockedA);
+        saveArr("slA_legato", m->engine.pe.legatoLockedA);
+        saveArr("slA_accent", m->engine.pe.accentLockedA);
+        saveArr("slA_melody", m->engine.pe.melodyLockedA);
+        saveArr("slA_octave", m->engine.pe.octaveLockedA);
+        savePoly("slA_polyRhythm", m->engine.pe.polyRhythmLockedA);
+        savePoly("slA_polyMelody", m->engine.pe.polyMelodyLockedA);
+        savePoly("slA_polyOctave", m->engine.pe.polyOctaveLockedA);
         json_object_set_new(root, "slLatchedR", json_real(m->engine.pe.rhythmSlewLatched));
         json_object_set_new(root, "slLatchedM", json_real(m->engine.pe.melodySlewLatched));
         json_object_set_new(root, "slFirstR", json_boolean(m->engine.pe.rhythmFirstDraw));
         json_object_set_new(root, "slFirstM", json_boolean(m->engine.pe.melodyFirstDraw));
+        // Philox regeneration state: draw counter (stream position) + A<->B mix. With the
+        // seed key (rhythm/melodySeedFloat), the committed A arrays above, and the latched
+        // slew, this is the MINIMUM complete set to regenerate candidate B exactly on load
+        // (see PatternEngine::regenerate*B). drawCtr is the addressable Philox index; saved
+        // as string to preserve the full signed 64-bit range (can go negative under reverse).
+        {
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%lld", (long long)m->engine.pe.rhythmDrawCtr);
+            json_object_set_new(root, "drawCtrR", json_string(buf));
+            snprintf(buf, sizeof(buf), "%lld", (long long)m->engine.pe.melodyDrawCtr);
+            json_object_set_new(root, "drawCtrM", json_string(buf));
+        }
+        json_object_set_new(root, "mixLatchedR", json_real(m->engine.pe.rhythmMixLatched));
+        json_object_set_new(root, "mixLatchedM", json_real(m->engine.pe.melodyMixLatched));
     }
 
     // ── Rhythm and Pitch Arrays ──
@@ -257,23 +271,29 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
                 for (int v=0;v<15;v++) for (int i=0;i<16;i++){ json_t* val=json_array_get(j,v*16+i); if(val) t[v][i]=(float)json_real_value(val); }
         };
         if (hasSlew) {
-            loadA("slA_rhythm",m->engine.pe.rhythmLockedA);     loadA("slB_rhythm",m->engine.pe.rhythmCandB);
-            loadA("slA_variation",m->engine.pe.variationLockedA);loadA("slB_variation",m->engine.pe.variationCandB);
-            loadA("slA_legato",m->engine.pe.legatoLockedA);     loadA("slB_legato",m->engine.pe.legatoCandB);
-            loadA("slA_accent",m->engine.pe.accentLockedA);     loadA("slB_accent",m->engine.pe.accentCandB);
-            loadA("slA_melody",m->engine.pe.melodyLockedA);     loadA("slB_melody",m->engine.pe.melodyCandB);
-            loadA("slA_octave",m->engine.pe.octaveLockedA);     loadA("slB_octave",m->engine.pe.octaveCandB);
-            loadP("slA_polyRhythm",m->engine.pe.polyRhythmLockedA); loadP("slB_polyRhythm",m->engine.pe.polyRhythmCandB);
-            loadP("slA_polyMelody",m->engine.pe.polyMelodyLockedA); loadP("slB_polyMelody",m->engine.pe.polyMelodyCandB);
-            loadP("slA_polyOctave",m->engine.pe.polyOctaveLockedA); loadP("slB_polyOctave",m->engine.pe.polyOctaveCandB);
+            loadA("slA_rhythm",m->engine.pe.rhythmLockedA);
+            loadA("slA_variation",m->engine.pe.variationLockedA);
+            loadA("slA_legato",m->engine.pe.legatoLockedA);
+            loadA("slA_accent",m->engine.pe.accentLockedA);
+            loadA("slA_melody",m->engine.pe.melodyLockedA);
+            loadA("slA_octave",m->engine.pe.octaveLockedA);
+            loadP("slA_polyRhythm",m->engine.pe.polyRhythmLockedA);
+            loadP("slA_polyMelody",m->engine.pe.polyMelodyLockedA);
+            loadP("slA_polyOctave",m->engine.pe.polyOctaveLockedA);
             if (auto j=json_object_get(root,"slLatchedR")) m->engine.pe.rhythmSlewLatched=(float)json_real_value(j);
             if (auto j=json_object_get(root,"slLatchedM")) m->engine.pe.melodySlewLatched=(float)json_real_value(j);
+            if (auto j=json_object_get(root,"mixLatchedR")) m->engine.pe.rhythmMixLatched=(float)json_real_value(j);
+            if (auto j=json_object_get(root,"mixLatchedM")) m->engine.pe.melodyMixLatched=(float)json_real_value(j);
             m->engine.pe.rhythmFirstDraw = false; m->engine.pe.melodyFirstDraw = false;
             if (auto j=json_object_get(root,"slFirstR")) m->engine.pe.rhythmFirstDraw=(bool)json_boolean_value(j);
             if (auto j=json_object_get(root,"slFirstM")) m->engine.pe.melodyFirstDraw=(bool)json_boolean_value(j);
+            // Restore the Philox draw counter (stream position). B is NOT restored here —
+            // it is REGENERATED in Monsoon::fromJson's finalize, AFTER Philox is seeded
+            // (seeding zeroes the counter, so the finalize re-applies it then regenerates).
+            if (auto j=json_object_get(root,"drawCtrR")) m->engine.pe.rhythmDrawCtr=(int64_t)strtoll(json_string_value(j),nullptr,10);
+            if (auto j=json_object_get(root,"drawCtrM")) m->engine.pe.melodyDrawCtr=(int64_t)strtoll(json_string_value(j),nullptr,10);
             m->engine.pe.rhythmSlewApplied = -1.f; m->engine.pe.melodySlewApplied = -1.f;
-            m->engine.pe.recomputeEffectiveRhythm();
-            m->engine.pe.recomputeEffectiveMelody();
+            m->pendingRegenB = true;   // tell the finalize to regenerate B post-seed
         } else {
             // Old patch: no A/B saved. Seed both endpoints from the loaded
             // effective arrays so the groove is preserved and slew is a no-op
