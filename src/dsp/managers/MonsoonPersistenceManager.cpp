@@ -125,6 +125,7 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
         savePoly("slA_polyRhythm", m->engine.pe.polyRhythmLockedA);
         savePoly("slA_polyMelody", m->engine.pe.polyMelodyLockedA);
         savePoly("slA_polyOctave", m->engine.pe.polyOctaveLockedA);
+        savePoly("slA_polyAccent", m->engine.pe.polyAccentLockedA);  // accent poly lane: irreducible A (B regenerated)
         json_object_set_new(root, "slLatchedR", json_real(m->engine.pe.rhythmSlewLatched));
         json_object_set_new(root, "slLatchedM", json_real(m->engine.pe.melodySlewLatched));
         json_object_set_new(root, "slFirstR", json_boolean(m->engine.pe.rhythmFirstDraw));
@@ -280,6 +281,7 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
             loadP("slA_polyRhythm",m->engine.pe.polyRhythmLockedA);
             loadP("slA_polyMelody",m->engine.pe.polyMelodyLockedA);
             loadP("slA_polyOctave",m->engine.pe.polyOctaveLockedA);
+            loadP("slA_polyAccent",m->engine.pe.polyAccentLockedA);
             if (auto j=json_object_get(root,"slLatchedR")) m->engine.pe.rhythmSlewLatched=(float)json_real_value(j);
             if (auto j=json_object_get(root,"slLatchedM")) m->engine.pe.melodySlewLatched=(float)json_real_value(j);
             if (auto j=json_object_get(root,"mixLatchedR")) m->engine.pe.rhythmMixLatched=(float)json_real_value(j);
