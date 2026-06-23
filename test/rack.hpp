@@ -12,5 +12,26 @@ namespace rack {
     }
     namespace random {
         inline uint64_t u64() { return 0x9E3779B97F4A7C15ull; }  // deterministic for tests
+        inline uint32_t u32() { return 0x9E3779B9u; }            // deterministic for tests
+    }
+    // Minimal deterministic DSP stubs — enough for the engine to CONSTRUCT in unit tests.
+    // Tests that exercise the resolver's read accessors don't drive the clock/gate, so the
+    // behaviour here only needs to be well-defined, not Rack-accurate.
+    namespace dsp {
+        struct SchmittTrigger {
+            bool state = false;
+            void reset() { state = false; }
+            bool process(float in, float lo = 0.1f, float hi = 1.f) {
+                if (state) { if (in <= lo) state = false; return false; }
+                else       { if (in >= hi) { state = true; return true; } return false; }
+            }
+            bool isHigh() const { return state; }
+        };
+        struct PulseGenerator {
+            float remaining = 0.f;
+            void  trigger(float dur = 1e-3f) { if (dur > remaining) remaining = dur; }
+            bool  process(float dt) { if (remaining > 0.f) { remaining -= dt; return true; } return false; }
+            void  reset() { remaining = 0.f; }
+        };
     }
 }

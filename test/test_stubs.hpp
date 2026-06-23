@@ -42,18 +42,8 @@ namespace random {
     }
 } // namespace random
 
-namespace dsp {
-    struct PulseGenerator {
-        float remaining = 0.f;
-        void  reset()              { remaining = 0.f; }
-        void  trigger(float dur)   { if (dur > remaining) remaining = dur; }
-        // Matches Rack behaviour: returns true (and decrements) while remaining > 0
-        bool  process(float dt)    {
-            if (remaining > 0.f) { remaining -= dt; return true; }
-            return false;
-        }
-        bool  isHigh() const       { return remaining > 0.f; }
-    };
-} // namespace dsp
+// NOTE: rack::dsp::PulseGenerator / SchmittTrigger now live in rack.hpp (pulled in
+// transitively by every engine header), so they are no longer defined here to avoid a
+// double-definition.
 
 } // namespace rack

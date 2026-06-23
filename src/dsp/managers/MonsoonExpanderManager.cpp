@@ -1,6 +1,6 @@
 #include "MonsoonExpanderManager.hpp"
 #include "../SpreadInterp.hpp"
-#include "../VoiceResolver.hpp"   // read-only shadow (step 1) — compiled here so the build type-checks it; not yet used
+#include "../VoiceResolver.hpp"   // read-only shadow (step 1)
 #include "../../Monsoon.hpp"
 //#include "../../MonsoonDeepStraitsSands.hpp"
 #include "../../StraitsEastSandsVisual.hpp"
