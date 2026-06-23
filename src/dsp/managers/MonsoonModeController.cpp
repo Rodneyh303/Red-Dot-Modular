@@ -8,7 +8,8 @@ using namespace rack;
 void ModeController::updatePolyVoiceRest_() {
     if (engine.numPolyVoices > 0) {
         for (int i = 0; i < engine.numPolyVoices; ++i) {
-            engine.voices[i].restProb = paramManager.getPolyRest(i);
+            engine.voices[i].restProb   = paramManager.getPolyRest(i);
+            engine.voices[i].accentProb = paramManager.getPolyAccent(i);
         }
     }
 }
