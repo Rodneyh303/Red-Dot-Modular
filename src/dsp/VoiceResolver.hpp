@@ -56,7 +56,7 @@ struct VoiceResolver {
     }
 
     // ── Uniform per-lane reads (the point of the layer) ─────────────────────────
-    // lane: SequencerEngine::PL_REST / PL_MELODY / PL_OCTAVE (0/1/2).
+    // lane: SequencerEngine::PL_REST / PL_MELODY / PL_OCTAVE / PL_ACCENT (0/1/2/3).
     // Dispatches V1 → master strand, V2..V16 → the poly bank. Bit-identical to what
     // callers compute today by hand; this just removes the per-call branching.
 

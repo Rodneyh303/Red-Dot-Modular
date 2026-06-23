@@ -60,6 +60,7 @@ static void seedEngine(SequencerEngine& eng) {
         eng.pe.rhythmRandom[s] = sentinel(1, E::PL_REST,   s);
         eng.pe.melodyRandom[s] = sentinel(1, E::PL_MELODY, s);
         eng.pe.octaveRandom[s] = sentinel(1, E::PL_OCTAVE, s);
+        eng.pe.accentRandom[s] = sentinel(1, E::PL_ACCENT, s);
     }
     // Poly banks (voices 2..16 → bank 0..14).
     for (int v = 0; v < 15; ++v)
@@ -67,19 +68,20 @@ static void seedEngine(SequencerEngine& eng) {
             eng.pe.polyRhythmRandom[v][s] = sentinel(v + 2, E::PL_REST,   s);
             eng.pe.polyMelodyRandom[v][s] = sentinel(v + 2, E::PL_MELODY, s);
             eng.pe.polyOctaveRandom[v][s] = sentinel(v + 2, E::PL_OCTAVE, s);
+            eng.pe.polyAccentRandom[v][s] = sentinel(v + 2, E::PL_ACCENT, s);
             // identity LOR so step index is predictable (= totalStepsElapsed & 0x0F = 0)
             eng.polyLen[v][s % 3] = 16; // harmless; lanes use [v][lane]
         }
     // identity LOR per (voice, lane)
     for (int v = 0; v < 15; ++v)
-        for (int l = 0; l < 3; ++l) { eng.polyLen[v][l] = 16; eng.polyOff[v][l] = 0; eng.polyRot[v][l] = 0; }
+        for (int l = 0; l < 4; ++l) { eng.polyLen[v][l] = 16; eng.polyOff[v][l] = 0; eng.polyRot[v][l] = 0; }
 }
 
 int main() {
     SequencerEngine eng;
     seedEngine(eng);
     VoiceResolver r(eng);
-    const int lanes[3] = { E::PL_REST, E::PL_MELODY, E::PL_OCTAVE };
+    const int lanes[4] = { E::PL_REST, E::PL_MELODY, E::PL_OCTAVE, E::PL_ACCENT };
 
     SUITE("VoiceResolver — metadata dispatch");
     TEST("voice identity + bank index across all 16 voices", {
@@ -107,37 +109,37 @@ int main() {
 
     SUITE("VoiceResolver — laneProbability == direct accessors (bit-exact, all voices/lanes)");
     TEST("V1 laneProbability == masterLaneProbability", {
-        for (int li = 0; li < 3; ++li)
+        for (int li = 0; li < 4; ++li)
             EXPECT_BITEQ(r.laneProbability(1, lanes[li]), eng.masterLaneProbability(lanes[li]));
     });
     TEST("V2..V16 laneProbability == polyLaneProbability(lane, V-2)", {
         for (int v = 2; v <= 16; ++v)
-            for (int li = 0; li < 3; ++li)
+            for (int li = 0; li < 4; ++li)
                 EXPECT_BITEQ(r.laneProbability(v, lanes[li]),
                              eng.polyLaneProbability(lanes[li], v - 2));
     });
 
     SUITE("VoiceResolver — laneStep == direct accessors");
     TEST("V1 laneStep == masterLaneStep", {
-        for (int li = 0; li < 3; ++li)
+        for (int li = 0; li < 4; ++li)
             EXPECT_EQ(r.laneStep(1, lanes[li]), eng.masterLaneStep(lanes[li]));
     });
     TEST("V2..V16 laneStep == polyLaneStep(lane, V-2)", {
         for (int v = 2; v <= 16; ++v)
-            for (int li = 0; li < 3; ++li)
+            for (int li = 0; li < 4; ++li)
                 EXPECT_EQ(r.laneStep(v, lanes[li]), eng.polyLaneStep(lanes[li], v - 2));
     });
 
     SUITE("VoiceResolver — laneProbabilityAtStep == direct accessors (every step)");
     TEST("V2..V16 laneProbabilityAtStep matches at all 16 steps", {
         for (int v = 2; v <= 16; ++v)
-            for (int li = 0; li < 3; ++li)
+            for (int li = 0; li < 4; ++li)
                 for (int s = 0; s < 16; ++s)
                     EXPECT_BITEQ(r.laneProbabilityAtStep(v, lanes[li], s),
                                  eng.polyLaneProbabilityAtStep(lanes[li], v - 2, s));
     });
     TEST("V1 laneProbabilityAtStep == masterLaneProbability (mono ignores explicit step)", {
-        for (int li = 0; li < 3; ++li)
+        for (int li = 0; li < 4; ++li)
             for (int s = 0; s < 16; ++s)
                 EXPECT_BITEQ(r.laneProbabilityAtStep(1, lanes[li], s),
                              eng.masterLaneProbability(lanes[li]));
@@ -146,7 +148,7 @@ int main() {
     SUITE("VoiceResolver — sentinels prove no cross-voice / cross-lane leakage");
     TEST("each poly voice/lane reads its OWN sentinel (no -2 off-by-one, no lane swap)", {
         for (int v = 2; v <= 16; ++v)
-            for (int li = 0; li < 3; ++li) {
+            for (int li = 0; li < 4; ++li) {
                 float got = r.laneProbabilityAtStep(v, lanes[li], 0);
                 float want = sentinel(v, lanes[li], 0);
                 EXPECT_BITEQ(got, want);

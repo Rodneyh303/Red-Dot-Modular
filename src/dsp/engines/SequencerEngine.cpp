@@ -430,6 +430,10 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         // Decide to Play: Draw pitch and follow mono's triggering behavior.
         int sem = 0;
         float pitchV = pe.genPitchLive(sem, input, pe.polyMelodyRandom[voiceIdx][melIdx], pe.polyOctaveRandom[voiceIdx][octIdx]);
+        // Accent as a poly lane (modelled after rest): this voice draws its OWN accent at
+        // its own accent LOR and compares to its own accentProb — not shared from mono.
+        int accIdx = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx][PL_ACCENT], polyOff[voiceIdx][PL_ACCENT], polyRot[voiceIdx][PL_ACCENT]);
+        v.accented = (pe.polyAccentRandom[voiceIdx][accIdx] < v.accentProb);
         if (lastStepResult.decision == MonoDecision::NewNote)
             v.gs.triggerNote(pitchV, sem, lastStepResult.nvIdx);
         else

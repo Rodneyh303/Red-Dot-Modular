@@ -97,6 +97,7 @@ struct PatternEngine {
     float polyRhythmRandom[15][16] = {};
     float polyMelodyRandom[15][16] = {};
     float polyOctaveRandom[15][16] = {};
+    float polyAccentRandom[15][16] = {};   // NEW: poly accent lane (modelled after rest)
 
     // ── Playable slew: locked (A) + candidate (B) endpoints ───────────────────
     // The public arrays above are the EFFECTIVE output = A + slew*(B-A).
@@ -109,6 +110,7 @@ struct PatternEngine {
     float legatoLockedA[16]={},    legatoCandB[16]={};
     float accentLockedA[16]={},    accentCandB[16]={};
     float polyRhythmLockedA[15][16]={}, polyRhythmCandB[15][16]={};
+    float polyAccentLockedA[15][16]={}, polyAccentCandB[15][16]={};
     // Melody group: melody / octave (+ poly melody / poly octave)
     float melodyLockedA[16]={},    melodyCandB[16]={};
     float octaveLockedA[16]={},    octaveCandB[16]={};
@@ -131,6 +133,7 @@ struct PatternEngine {
     float slewedRhythm[16]={}, slewedVariation[16]={}, slewedLegato[16]={}, slewedAccent[16]={};
     float slewedMelody[16]={}, slewedOctave[16]={};
     float slewedPolyRhythm[15][16]={}, slewedPolyMelody[15][16]={}, slewedPolyOctave[15][16]={};
+    float slewedPolyAccent[15][16]={};
     // Set true when any Sands visual expander owns the spread→final stage this
     // cycle. When false, slew copies slewedDraw → final.
     bool  sandsActive = false;
@@ -146,6 +149,7 @@ struct PatternEngine {
     float melodySource[16]    = {};
     float octaveSource[16]    = {};
     float polyRhythmSource[15][16] = {};
+    float polyAccentSource[15][16] = {};
     float polyMelodySource[15][16] = {};
     float polyOctaveSource[15][16] = {};
 
@@ -216,6 +220,7 @@ struct PatternEngine {
     float cRhythmA[16]={}, cRhythmB[16]={}, cVariationA[16]={}, cVariationB[16]={};
     float cLegatoA[16]={}, cLegatoB[16]={}, cAccentA[16]={}, cAccentB[16]={};
     float cPolyRhythmA[15][16]={}, cPolyRhythmB[15][16]={};
+    float cPolyAccentA[15][16]={}, cPolyAccentB[15][16]={};
     float cMelodyA[16]={}, cMelodyB[16]={}, cOctaveA[16]={}, cOctaveB[16]={};
     float cPolyMelodyA[15][16]={}, cPolyMelodyB[15][16]={};
     float cPolyOctaveA[15][16]={}, cPolyOctaveB[15][16]={};
@@ -370,6 +375,7 @@ struct PatternEngine {
             legatoCandB[i]    = step(legatoLockedA[i]);
             accentCandB[i]    = step(accentLockedA[i]);
             for (int v = 0; v < 15; ++v) polyRhythmCandB[v][i] = step(polyRhythmLockedA[v][i]);
+            for (int v = 0; v < 15; ++v) polyAccentCandB[v][i] = step(polyAccentLockedA[v][i]);
         }
         rhythmSlewApplied = -1.f;
         recomputeEffectiveRhythm();
@@ -379,6 +385,7 @@ struct PatternEngine {
             rhythmSource[i]=slewedRhythm[i]; variationSource[i]=slewedVariation[i];
             legatoSource[i]=slewedLegato[i]; accentSource[i]=slewedAccent[i];
             for (int v=0; v<15; ++v) polyRhythmSource[v][i]=slewedPolyRhythm[v][i];
+            for (int v=0; v<15; ++v) polyAccentSource[v][i]=slewedPolyAccent[v][i];
         }
     }
     inline void regenerateMelodyB() {
