@@ -32,20 +32,34 @@ left attenId. i.e. mirror macroMix: depth = the East mix-in send for voice 0, ap
 East CV. (Confirm there is an East mix-in send param analogous to Macro's sendId.)
 
 ## Bug 3 — Sands East lanes show no pattern when control is ceded to Macro
-ROOT CAUSE (likely): the editor's per-step probabilities come from
-`spreadMgr.getInterpolatedValue(voiceIdx, lane, i)` (PolyVoiceSandsParameterManager::
-syncPatternEngineToEditor). When Macro OWNS the lane, the per-voice spreadMgr mirror for that
-voice/lane isn't populated (spread is fed on the East-owned path), so getInterpolatedValue
-returns empty → blank lane. The engine DOES have the pattern (polyRhythmRandom[pv]); the
-display just reads the wrong (unfed) source when ceded.
-FIX (needs verification): when Macro owns the lane, populate the editor probs from the engine
-draw the resolver exposes — VoiceResolver::laneProbabilityAtStep(voice, lane, step) for the
-displayed voice — instead of the un-fed spreadMgr mirror. (Good resolver use: it already
-reads the post-everything engine prob uniformly.)
+STATUS: bugs 1+2 FIXED (N→N re-index, commit b44b292). Bug 3 still open — needs runtime
+confirmation to pin the exact cause; static analysis narrowed it but couldn't settle it.
 
-## Order
-- Bug 2 first (unambiguous, isolated to eastMix).
-- Bug 3 next (display-only; resolver-sourced prob fill when ceded — verify the blank is the
-  spreadMgr mirror, not an `inert`/alpha gate).
-- Bug 1 last (needs the A-vs-B design decision; do not guess — it touches the mono mix-in
-  storage model).
+RULED OUT by code reading:
+- The display IS synced when Macro owns: syncPatternEngineToEditor runs whenever
+  selectedVoice>=1 (East step ~L466), independent of owner.
+- No continuous clobber: syncEditorToPatternEngine (editor→engine write) is only called on tab
+  switch (onVoiceTabChanged ~L328), not per-step.
+- The draw exists: slewedPolyRhythm[v] is regenerated in redrawRhythm from the seed regardless
+  of owner; combineLOR only sets the LOR window, not the draw. So polySlewed has data.
+
+REMAINING CANDIDATES (need the running module to disambiguate):
+  (a) The inert gate (East step ~L415): the visual goes fully inert/blank unless
+      cachedPolyVoiceExpander != nullptr AND numPolyVoices>=1. If the test rig has Macro +
+      Sands-East-visual but NOT the Straits East CV expander attached, the lanes are blank by
+      this gate — which would look like "blank when Macro owns" if Macro is what's attached.
+      → If this is it, the fix is to also treat "Macro attached + owns lanes" as a data-present
+        condition for the inert gate (show the ceded pattern even without the CV expander).
+  (b) getInterpolatedValue reads polySlewed(startVoiceIdx+voiceIdx). For East start=0,
+      voiceIdx=polyVoice() (0-based). If a ceded lane's spread path leaves getSpread()/target
+      degenerate, the interpolate could collapse — but data should still show as the raw draw.
+
+RECOMMENDED FIX (owner-agnostic, resolver-sourced — try if (a) isn't the cause): populate the
+East editor probabilities for a ceded lane from VoiceResolver::laneProbabilityAtStep(voice,
+lane, step) — the post-everything engine probability, exactly what plays and what the prob-out
+display already uses — instead of the spreadMgr interpolate that may be degenerate when Macro
+owns. This is the same resolver path that fixed the prob-out mono channel.
+
+NOT YET IMPLEMENTED: holding for Rodney to confirm which candidate (likely a) matches the
+runtime, so the fix targets the real cause rather than guessing. Bugs 1+2 are independently
+shippable.
