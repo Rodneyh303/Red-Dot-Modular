@@ -430,7 +430,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // Grey out voice tabs beyond the active poly count (numPolyVoices).
         // Active tabs = mono (always, index 0) + the active poly voices. So tab i is
         // enabled for i <= numPolyVoices (i=0 mono; i=1..numPolyVoices poly).
-        if (tabGroup) tabGroup->setActiveCount(se->numPolyVoices + 1);
+        if (tabGroup) tabGroup->setActiveCount(dotModular::VoiceResolver(*se).activeVoiceCount());
 
         if (!initialized) {
             if (selectedVoice >= 1) {

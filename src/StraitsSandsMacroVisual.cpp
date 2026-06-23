@@ -261,7 +261,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         // Which voice to DISPLAY (read-only view lens). Tab 0 = mono (V1, always
         // active); tabs 1..15 = poly voices V2..V16. Active = mono + active poly count.
         if (tabGroup) {
-            tabGroup->setActiveCount(monsoon->engine.numPolyVoices + 1);
+            tabGroup->setActiveCount(dotModular::VoiceResolver(monsoon->engine).activeVoiceCount());
             viewVoice = std::min(tabGroup->getSelectedTab(),
                                  monsoon->engine.numPolyVoices);   // 0..numPolyVoices
         }
