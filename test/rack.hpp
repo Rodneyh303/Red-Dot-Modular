@@ -13,7 +13,6 @@ namespace rack {
     namespace random {
         inline uint64_t u64() { return 0x9E3779B97F4A7C15ull; }  // deterministic for tests
         inline uint32_t u32() { return 0x9E3779B9u; }            // deterministic for tests
-        inline float    uniform() { return 0.5f; }              // deterministic for tests
     }
     // Minimal deterministic DSP stubs — enough for the engine to CONSTRUCT in unit tests.
     // Tests that exercise the resolver's read accessors don't drive the clock/gate, so the
