@@ -31,6 +31,7 @@ void PatternEngine::reset() {
             polyOctaveRandom[v][i] = 0.5f;
             
             polyRhythmSource[v][i] = 1.0f;
+            polyAccentSource[v][i] = 1.0f;
             polyMelodySource[v][i] = polyMelodyRandom[v][i];
             polyOctaveSource[v][i] = polyOctaveRandom[v][i];
         }
@@ -60,7 +61,9 @@ void PatternEngine::reset() {
 
         for (int v=0;v<15;v++){
             polyRhythmLockedA[v][i] = polyMelodyLockedA[v][i] = polyOctaveLockedA[v][i] = 0.f;
+            polyAccentLockedA[v][i] = 0.f;
             polyRhythmCandB[v][i] = polyRhythmRandom[v][i];
+            polyAccentCandB[v][i] = polyAccentRandom[v][i];
             polyMelodyCandB[v][i] = polyMelodyRandom[v][i];
             polyOctaveCandB[v][i] = polyOctaveRandom[v][i];
         }
@@ -217,6 +220,7 @@ void PatternEngine::redrawRhythm(const PatternInput& in, bool promoteToA) {
             legatoLockedA[i]    = legatoCandB[i];
             accentLockedA[i]    = accentCandB[i];
             for (int v = 0; v < 15; v++) polyRhythmLockedA[v][i] = polyRhythmCandB[v][i];
+            for (int v = 0; v < 15; v++) polyAccentLockedA[v][i] = polyAccentCandB[v][i];
         }
 
         // fresh candidate B. MODEL 2: SLEW is consumed here — instead of storing
@@ -235,12 +239,14 @@ void PatternEngine::redrawRhythm(const PatternInput& in, bool promoteToA) {
             legatoCandB[i]    = unitRhythm();
             accentCandB[i]    = unitRhythm();
             for (int v = 0; v < 15; v++) polyRhythmCandB[v][i] = unitRhythm();
+            for (int v = 0; v < 15; v++) polyAccentCandB[v][i] = unitRhythm();
         } else {
             rhythmCandB[i]    = step(rhythmLockedA[i]);
             variationCandB[i] = step(variationLockedA[i]);
             legatoCandB[i]    = step(legatoLockedA[i]);
             accentCandB[i]    = step(accentLockedA[i]);
             for (int v = 0; v < 15; v++) polyRhythmCandB[v][i] = step(polyRhythmLockedA[v][i]);
+            for (int v = 0; v < 15; v++) polyAccentCandB[v][i] = step(polyAccentLockedA[v][i]);
         }
     }
     rhythmSlewApplied = -1.f;       // force recompute of slewedDraw
@@ -251,6 +257,7 @@ void PatternEngine::redrawRhythm(const PatternInput& in, bool promoteToA) {
         rhythmSource[i]=slewedRhythm[i]; variationSource[i]=slewedVariation[i];
         legatoSource[i]=slewedLegato[i]; accentSource[i]=slewedAccent[i];
         for (int v=0;v<15;v++) polyRhythmSource[v][i]=slewedPolyRhythm[v][i];
+        for (int v=0;v<15;v++) polyAccentSource[v][i]=slewedPolyAccent[v][i];
         rhythmPattern[i] = (slewedRhythm[i] >= in.restProb);
     }
 }
@@ -268,8 +275,10 @@ void PatternEngine::recomputeEffectiveRhythm() {
         slewedVariation[i] = bl(variationLockedA[i], variationCandB[i]);
         slewedLegato[i]    = bl(legatoLockedA[i],    legatoCandB[i]);
         slewedAccent[i]    = bl(accentLockedA[i],    accentCandB[i]);
-        for (int v = 0; v < 15; v++)
+        for (int v = 0; v < 15; v++) {
             slewedPolyRhythm[v][i] = bl(polyRhythmLockedA[v][i], polyRhythmCandB[v][i]);
+            slewedPolyAccent[v][i] = bl(polyAccentLockedA[v][i], polyAccentCandB[v][i]);
+        }
     }
     if (!sandsActive) {
         for (int i = 0; i < 16; ++i) {
@@ -503,6 +512,7 @@ void PatternEngine::switchRhythmMode(int& stepIndex, int& lastStepIndex) {
             cLegatoA[i]    = legatoLockedA[i];    cLegatoB[i]    = legatoCandB[i];
             cAccentA[i]    = accentLockedA[i];    cAccentB[i]    = accentCandB[i];
             for (int v = 0; v < 15; ++v) { cPolyRhythmA[v][i] = polyRhythmLockedA[v][i]; cPolyRhythmB[v][i] = polyRhythmCandB[v][i]; }
+            for (int v = 0; v < 15; ++v) { cPolyAccentA[v][i] = polyAccentLockedA[v][i]; cPolyAccentB[v][i] = polyAccentCandB[v][i]; }
         }
         rhythmABCached = true;
     } else if (prev == 1 && next == 0 && rhythmSeedCached) {
@@ -517,6 +527,7 @@ void PatternEngine::switchRhythmMode(int& stepIndex, int& lastStepIndex) {
                 legatoLockedA[i]    = cLegatoA[i];    legatoCandB[i]    = cLegatoB[i];
                 accentLockedA[i]    = cAccentA[i];    accentCandB[i]    = cAccentB[i];
                 for (int v = 0; v < 15; ++v) { polyRhythmLockedA[v][i] = cPolyRhythmA[v][i]; polyRhythmCandB[v][i] = cPolyRhythmB[v][i]; }
+                for (int v = 0; v < 15; ++v) { polyAccentLockedA[v][i] = cPolyAccentA[v][i]; polyAccentCandB[v][i] = cPolyAccentB[v][i]; }
             }
             recomputeEffectiveRhythm();
         } else {
@@ -576,6 +587,7 @@ void PatternEngine::resetDnaRotation() {
     for (int v = 0; v < 15; v++) {
         for (int i = 0; i < 16; i++) {
             polyRhythmRandom[v][i] = polyRhythmSource[v][i];
+            polyAccentRandom[v][i] = polyAccentSource[v][i];
             polyMelodyRandom[v][i] = polyMelodySource[v][i];
             polyOctaveRandom[v][i] = polyOctaveSource[v][i];
         }
