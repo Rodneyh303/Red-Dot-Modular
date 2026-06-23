@@ -11,6 +11,7 @@
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/ModArcOverlay.hpp"
 #include "dsp/managers/PolySandsParameterManager.hpp"
+#include "dsp/VoiceResolver.hpp"   // uniform 16-voice addressing for prob-out
 
 using namespace rack;
 using namespace redDot;
@@ -416,10 +417,10 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
     const int nV = eng.numPolyVoices;
     const int nCh = 1 + nV;
     const int gs = eng.stepIndex;
+    dotModular::VoiceResolver resolver(eng);
     for (int l = 0; l < 3; ++l) {
         auto& out = outputs[PROB_OUT_REST + l];
         out.setChannels(nCh < 1 ? 1 : nCh);
-        out.setVoltage(0.f, 0);              // ch1 reserved (future mono tab)
         // Macro's OWN global LOR step for this lane (from macroBase+CVDelta — identical
         // to Macro's editor playhead, independent of East/ownership). Same step for
         // every voice (Macro's view is global); each voice contributes its own draw.
@@ -427,9 +428,12 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
         int ownOff = (int)std::lround(macroBase[l][1] + macroCVDelta[l][1]);
         int ownRot = (int)std::lround(macroBase[l][2] + macroCVDelta[l][2]);
         int step = calcPlayhead(gs, ownLen, ownOff, ownRot) & 0x0F;
-        for (int v = 0; v < nV; ++v) {
-            int ch = v + 1;
-            float raw = eng.polyLaneProbabilityAtStep(l, v, step);
+        // Uniform addressing: VCV channel ch carries voice ch+1. ch0 → voice 1 (mono;
+        // the resolver ignores the explicit step and returns the master draw) — was a 0V
+        // stub. ch v → voice v+1 (poly), sampled at Macro's global step.
+        for (int ch = 0; ch < nCh; ++ch) {
+            const int voice = ch + 1;                 // 1..16
+            float raw = resolver.laneProbabilityAtStep(voice, l, step);
             float val;
             if (sh) {
                 if (step != probLastStep[l][ch]) { probHeld[l][ch] = raw; probLastStep[l][ch] = step; }
