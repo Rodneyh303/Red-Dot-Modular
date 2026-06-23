@@ -106,9 +106,19 @@ void Monsoon::updateExpanderPointers() {
   
     void Monsoon::dataFromJson(json_t* root) {
         PersistenceManager::fromJson(this, root);
-    // Finalize state
+    // Finalize state. Seeding re-keys Philox and ZEROES the draw counter — so snapshot
+    // the counter the persistence layer restored, seed, then put it back, then regenerate
+    // candidate B at that exact stream position (Option 3: A restored, B regenerated).
+    int64_t savedR = engine.pe.rhythmDrawCtr, savedM = engine.pe.melodyDrawCtr;
     engine.pe.seedRhythmPhilox(rhythmSeedFloat);
     engine.pe.seedMelodyPhilox(melodySeedFloat);
+    if (pendingRegenB) {
+        engine.pe.rhythmDrawCtr = savedR;
+        engine.pe.melodyDrawCtr = savedM;
+        engine.pe.regenerateRhythmB();
+        engine.pe.regenerateMelodyB();
+        pendingRegenB = false;
+    }
     // scaleManager is guaranteed to be valid after construction
     scaleManager->updateScaleMask();
     }
