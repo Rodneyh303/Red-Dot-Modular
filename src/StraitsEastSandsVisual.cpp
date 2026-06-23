@@ -13,7 +13,7 @@
 #include "ui/GoldPolyPort.hpp"
 #include "dsp/managers/PolyVoiceSandsParameterManager.hpp"
 #include "dsp/managers/SpreadManager.hpp"
-#include "dsp/VoiceResolver.hpp"   // single source of truth for the tab→voice mapping and uniform 16-voice addressing for prob-out
+#include "dsp/VoiceResolver.hpp"   //  activeVoiceCount + voice identity, single source of truth for the tab→voice mapping and uniform 16-voice addressing for prob-out
 
 using namespace rack;
 using namespace redDot;
@@ -430,7 +430,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // Grey out voice tabs beyond the active poly count (numPolyVoices).
         // Active tabs = mono (always, index 0) + the active poly voices. So tab i is
         // enabled for i <= numPolyVoices (i=0 mono; i=1..numPolyVoices poly).
-        if (tabGroup) tabGroup->setActiveCount(se->numPolyVoices + 1);
+        if (tabGroup) tabGroup->setActiveCount(dotModular::VoiceResolver(*se).activeVoiceCount());
 
         if (!initialized) {
             if (selectedVoice >= 1) {
