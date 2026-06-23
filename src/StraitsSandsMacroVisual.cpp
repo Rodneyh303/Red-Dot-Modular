@@ -11,7 +11,7 @@
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/ModArcOverlay.hpp"
 #include "dsp/managers/PolySandsParameterManager.hpp"
-#include "dsp/VoiceResolver.hpp"   // uniform 16-voice addressing: prob-out + tab→voice mapping
+#include "dsp/VoiceResolver.hpp"   // activeVoiceCount + voice identity, single source of truth for the tab→voice mapping and uniform 16-voice addressing for prob-out
 
 using namespace rack;
 using namespace redDot;
