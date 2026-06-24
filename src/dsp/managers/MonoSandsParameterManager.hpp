@@ -16,7 +16,12 @@ struct MonoSandsParameterManager {
     // Set by per-lane trimpots, may be CV-modulated.
     // LEGATO/ACCENT/VARIATION are mono-only — they have NO poly counterpart,
     // so spread does not apply to them at all.
-    static constexpr int SPREAD_LANES = 3;   // REST, MELODY, OCTAVE
+    static constexpr int SPREAD_LANES = 6;   // index by editor lane order; eligibility via isSpreadLane
+    // Spreadable lanes: REST(0), MELODY(1), OCTAVE(2) and now ACCENT(4) — the poly-derived
+    // lanes. LEGATO(3) and VARIATION(5) remain mono-only (raw draw, no spread).
+    static constexpr bool isSpreadLane(int lane) {
+        return lane == 0 || lane == 1 || lane == 2 || lane == 4;
+    }
     float laneSpread[SPREAD_LANES] = {};
 
     SpreadManager::InterpolationTarget target = SpreadManager::AVERAGE_POLY;
@@ -54,8 +59,8 @@ struct MonoSandsParameterManager {
         }
     }
 
-    // Poly average for a spreadable lane (REST/MEL/OCT), INCLUDING the mono
-    // voice itself. Reads SLEWED poly draws. Only called for lane < 3.
+    // Poly average for a spreadable lane (REST/MEL/OCT/ACCENT), INCLUDING the mono
+    // voice itself. Reads SLEWED poly draws. Only called for spreadable lanes.
     // Ensemble = mono + active poly voices (numPolyVoices), matching the audio
     // path in processDNA so the display equals what plays.
     float polyAverageInclMono(int lane, int step) const {
@@ -66,6 +71,7 @@ struct MonoSandsParameterManager {
                 case 0: sum += patternEngine->slewedPolyRhythm[v][step]; break;
                 case 1: sum += patternEngine->slewedPolyMelody[v][step]; break;
                 case 2: sum += patternEngine->slewedPolyOctave[v][step]; break;
+                case 4: sum += patternEngine->slewedPolyAccent[v][step]; break;
             }
         }
         return sum / (float)(1 + nPoly);
@@ -74,7 +80,7 @@ struct MonoSandsParameterManager {
     // Post-spread value for (lane, step). REST/MEL/OCT get spread; LEG/ACC/VAR
     // are mono-only → raw slewed draw.
     float spreadValue(int lane, int step) const {
-        if (lane < SPREAD_LANES) {
+        if (isSpreadLane(lane)) {
             float original = monoDraw(lane, step);
             if (target == SpreadManager::MONO_DRAW) return original;
             float targetValue = polyAverageInclMono(lane, step);

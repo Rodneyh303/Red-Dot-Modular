@@ -16,7 +16,10 @@ namespace SandsMonoVisualIds {
     static constexpr float ROW_TOP  = 14.f;
     static constexpr float ROW_BOT  = 108.f;
     static constexpr int   N_LANES  = 6;
-    static constexpr int   N_SPREAD_LANES = 3;  // REST, MELODY, OCTAVE only
+    static constexpr int   N_SPREAD_LANES = 4;  // REST, MELODY, OCTAVE, ACCENT
+    // Spread control index (0..3) → editor lane order (REST/MEL/OCT/LEG/ACC/VAR). Accent is
+    // editor lane 4 (it skips LEGATO at 3, which is mono-only and has no spread).
+    static constexpr int SPREAD_LANE_TO_EDITOR[4] = { 0, 1, 2, 4 };
 
     // Column X positions (mm)
     // LOR CV jacks (all 6 lanes): LEN/OFF/ROT
@@ -41,20 +44,20 @@ namespace SandsMonoVisualIds {
         LEN_LEGATO,   OFF_LEGATO,   ROT_LEGATO,
         LEN_ACCENT,   OFF_ACCENT,   ROT_ACCENT,
         LEN_VARIATION,OFF_VARIATION,ROT_VARIATION,
-        // Spread base trimpots: REST/MEL/OCT only (18-20)
-        SPR_REST, SPR_MELODY, SPR_OCTAVE,
-        // Attenuverters: 18 LOR (6 lanes × 3) + 3 spread (REST/MEL/OCT) = 21
+        // Spread base trimpots: REST/MEL/OCT + ACCENT (now a poly lane) = 4
+        SPR_REST, SPR_MELODY, SPR_OCTAVE, SPR_ACCENT,
+        // Attenuverters: 18 LOR (6 lanes × 3) + 4 spread = 22
         ATTEN_START,                       // 21 .. 38  (18 LOR attens)
-        SPR_ATTEN_START = ATTEN_START + 18, // 39 .. 41  (3 spread attens)
-        NUM_PARAMS = SPR_ATTEN_START + 3
+        SPR_ATTEN_START = ATTEN_START + 18, // 39 .. 42  (4 spread attens)
+        NUM_PARAMS = SPR_ATTEN_START + 4
     };
 
     // ── Input IDs ─────────────────────────────────────────────────────────
     enum InputId {
-        // 18 LOR CV jacks (6 lanes × 3) + 3 spread CV jacks (REST/MEL/OCT) = 21
+        // 18 LOR CV jacks (6 lanes × 3) + 4 spread CV jacks (REST/MEL/OCT/ACCENT) = 22
         CV_START = 0,                       // 0 .. 17
-        SPR_CV_START = CV_START + 18,       // 18 .. 20
-        NUM_INPUTS = SPR_CV_START + 3
+        SPR_CV_START = CV_START + 18,       // 18 .. 21
+        NUM_INPUTS = SPR_CV_START + 4
     };
 
     // ── Output IDs ────────────────────────────────────────────────────────
@@ -114,11 +117,12 @@ struct MonsoonSandsVisualExpander : Module {
                             std::string(names[l])+" "+lnames[p]+" CV");
             }
         }
-        // Spread group: REST/MEL/OCT only (mono-only lanes have no spread)
+        // Spread group: REST/MEL/OCT/ACCENT (the poly-derived lanes; LEG/VAR are mono-only)
         for (int l = 0; l < N_SPREAD_LANES; ++l) {
-            configParam(sprId(l), -1.f, 1.f, 0.f, std::string(names[l])+" Spread");
-            configParam(sprAttenId(l), -1.f, 1.f, 0.f, std::string(names[l])+" Spread depth");
-            configInput(sprCvId(l), std::string(names[l])+" Spread CV");
+            const char* nm = names[SPREAD_LANE_TO_EDITOR[l]];
+            configParam(sprId(l), -1.f, 1.f, 0.f, std::string(nm)+" Spread");
+            configParam(sprAttenId(l), -1.f, 1.f, 0.f, std::string(nm)+" Spread depth");
+            configInput(sprCvId(l), std::string(nm)+" Spread CV");
         }
     }
     void process(const ProcessArgs&) override;   // defined in .cpp (needs calcPlayhead)
