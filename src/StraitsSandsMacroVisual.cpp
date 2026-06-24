@@ -278,7 +278,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         // reads slot 0. (Previously this used pv=polyBankIndex, so the v2 tab wrote slot 0 and
         // its CV leaked onto mono — the N→N off-by-one.)
         {
-            const int slot = viewVoice;   // 0..15, voiceNumber-1
+            const int slot = dotModular::VoiceResolver::voiceSlot(viewVoiceNum);  // V→16-wide slot (slot0=mono)
             if (viewVoice != lastSendVoice) {
                 for (int lane=0; lane<3; ++lane)
                     for (int item=0; item<4; ++item)

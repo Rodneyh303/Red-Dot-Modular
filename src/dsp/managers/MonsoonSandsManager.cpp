@@ -1,4 +1,5 @@
 #include "MonsoonSandsManager.hpp"
+#include "../VoiceResolver.hpp"   // kMonoSlot — the mono mix-in slice
 #include "../SpreadInterp.hpp"
 #include "../../Monsoon.hpp"
 #include "../../MonsoonSandsVisualExpander.hpp"
@@ -115,7 +116,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // East per-lane CV folded onto voice 1 (voice-0 depth × East CV ch0).
             auto eastMix = [&](float base, int r, int c, float lo, float hi)->float {
                 if (!eastVis || !eastVis->inputs[East::cvId(r,c)].isConnected()) return base;
-                float att = eastVis->params[East::attenId(0, r, c)].getValue();   // slot 0 = mono
+                float att = eastVis->params[East::attenId(dotModular::VoiceResolver::kMonoSlot, r, c)].getValue();   // slot 0 = mono
                 float cv  = eastVis->inputs[East::cvId(r,c)].getVoltage(0) / 10.f; // ch0
                 return math::clamp(base + cv * att * (hi - lo), lo, hi);
             };
@@ -127,7 +128,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // block above the hasVisual mono block (it has no dependency on mono).
             auto macroMix = [&](float base, int item, float lo, float hi)->float {
                 if (!hasMacro || !macroVis) return base;
-                float send = macroVis->params[Macro::sendId(0, l, item)].getValue();   // slot 0 = mono
+                float send = macroVis->params[Macro::sendId(dotModular::VoiceResolver::kMonoSlot, l, item)].getValue();   // slot 0 = mono
                 return math::clamp(base + macroVis->macroCVDelta[l][item] * send, lo, hi);
             };
             // REST/MEL/OCT (l=0/1/2) East (r,c): Len (l*2,0) Off (l*2,1) Rot (l*2+1,0).
@@ -151,12 +152,12 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 auto* eastVisS = expanderManager.cachedEastSandsVisual;
                 static const int sprRow[3] = { 1, 3, 5 };   // East spread CV at cvId(row,1)
                 if (eastVisS && eastVisS->inputs[East::cvId(sprRow[l],1)].isConnected()) {
-                    float att = eastVisS->params[East::attenId(0, sprRow[l], 1)].getValue();  // slot 0 = mono
+                    float att = eastVisS->params[East::attenId(dotModular::VoiceResolver::kMonoSlot, sprRow[l], 1)].getValue();  // slot 0 = mono
                     float cv  = eastVisS->inputs[East::cvId(sprRow[l],1)].getVoltage(0) / 10.f;
                     sp = rack::math::clamp(sp + cv * att * 2.f, -1.f, 1.f);   // span [-1,1]=2
                 }
                 if (hasMacro && macroVis) {
-                    float send = macroVis->params[Macro::sendId(0, l, 3)].getValue();
+                    float send = macroVis->params[Macro::sendId(dotModular::VoiceResolver::kMonoSlot, l, 3)].getValue();
                     sp = rack::math::clamp(sp + macroVis->macroCVDelta[l][3] * send, -1.f, 1.f);
                 }
                 monoVis->spreadEffective[l] = sp;

@@ -284,7 +284,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     // (Macro mix-in send sync relocated to Macro under the control inversion.)
     void saveVoiceMacro(int v) {   // v = 0-based poly bank (ownerId is poly-indexed)
         if (!module) return;
-        const int slot = v + 1;    // atten bank is voice-number-indexed (slot0=mono)
+        // atten bank is 16-wide voice-slot indexed; derive via the resolver (poly bank v →
+        // voice v+2 → slot), anchored to the asserted slot/bank invariant.
+        const int slot = dotModular::VoiceResolver::voiceSlot(v + dotModular::VoiceResolver::kFirstPoly);
         for (int lane=0; lane<3; ++lane)
             module->params[ownerId(v,lane)].setValue(module->params[ownerDispId(lane)].getValue());
         // CV-depth attenuverters: display proxy → this voice's per-voice store.
@@ -294,7 +296,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     }
     void loadVoiceMacro(int v) {   // v = 0-based poly bank
         if (!module) return;
-        const int slot = v + 1;    // atten bank is voice-number-indexed (slot0=mono)
+        const int slot = dotModular::VoiceResolver::voiceSlot(v + dotModular::VoiceResolver::kFirstPoly);
         for (int lane=0; lane<3; ++lane)
             module->params[ownerDispId(lane)].setValue(module->params[ownerId(v,lane)].getValue());
         // CV-depth attenuverters: this voice's per-voice store → display proxy.
