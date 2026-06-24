@@ -181,15 +181,15 @@ struct StraitsSandsMacroVisual : Module {
     // these from base + spread CV; the display reads them so spread CV is visible
     // WITHOUT moving the base knob (the old code wrote the modulated value back to
     // the SPREAD_* param, which dragged the knob — fixed).
-    float spreadEffective[3] = {0.f, 0.f, 0.f};
+    float spreadEffective[4] = {0.f, 0.f, 0.f, 0.f};
 
     // Per (lane, item) split of Macro's global contribution, published by
     // processDNA::applyGlobal for the Macro/East blend equation. item: 0=LEN
     // 1=OFF 2=ROT 3=SPR. macroBase = the knob value (no CV); macroCVDelta = the
     // CV-only contribution (already scaled by Macro's own attenuverter). East's
     // sync reads these: value = base(owner) + eastCV + macroCVDelta·blendSend.
-    float macroBase[3][4]    = {};
-    float macroCVDelta[3][4] = {};
+    float macroBase[4][4]    = {};
+    float macroCVDelta[4][4] = {};
 
     json_t* dataToJson() override {
         json_t* r = json_object();
