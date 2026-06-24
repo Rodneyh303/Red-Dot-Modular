@@ -47,7 +47,7 @@ namespace StraitsEastVisualIds {
     // ── Param IDs ─────────────────────────────────────────────────────────
     enum SpreadParamId {
         // 3 display trimpots for selected voice's spread (0-2)
-        SPREAD_R = 0, SPREAD_M, SPREAD_O,
+        SPREAD_R = 0, SPREAD_M, SPREAD_O, SPREAD_A,
         // 12 attenuverter DISPLAY proxies — row r, col c → ATTEN_START + r*2 + c
         // (3-14). These are the selected-voice view; the real depth is stored
         // per-voice in MonsoonIds::MACRO_ATTEN_START (see attenId below).

@@ -47,7 +47,7 @@ namespace StraitsMacroVisualIds {
     // ── Param IDs ─────────────────────────────────────────────────────────
     enum SpreadParamId {
         // Display spread trimpots (0-2)
-        SPREAD_REST = 0, SPREAD_MELODY, SPREAD_OCTAVE,
+        SPREAD_REST = 0, SPREAD_MELODY, SPREAD_OCTAVE, SPREAD_ACCENT,
         // 12 attenuverters: row r, col c → ATTEN_START + r*2 + c (3-14)
         ATTEN_START,
         NUM_SPREAD_PARAMS = ATTEN_START + 12  // = 15
