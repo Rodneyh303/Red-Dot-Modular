@@ -154,14 +154,9 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         // ── One-time initialisation from saved params ─────────────────────
         if (!initialized) {
             for (int l = 0; l < 6; ++l) {
-                // lenId/offId/rotId param bank: first 3 = REST/MEL/OCT (MONO_PARAM_TO_EDITOR);
-                // lanes 3-5 (LEG/ACC/VAR) identity-map since their param bank order matches
-                // the editor's LEG=5/ACC=3/VAR=4 — but lenId only goes to l<3 for LOR params.
-                // For l<3 use MONO_PARAM_TO_EDITOR; for l>=3 the editor lane == l (no LOR params).
-                int el = (l < 3) ? dotModular::MONO_PARAM_TO_EDITOR[l] : l;
-                visualEditor->currentState.lanes[el].length   = (int)std::round(mod->params[lenId(l)].getValue());
-                visualEditor->currentState.lanes[el].offset   = (int)std::round(mod->params[offId(l)].getValue());
-                visualEditor->currentState.lanes[el].rotation = (int)std::round(mod->params[rotId(l)].getValue());
+                visualEditor->currentState.lanes[l].length   = (int)std::round(mod->params[lenId(l)].getValue());
+                visualEditor->currentState.lanes[l].offset   = (int)std::round(mod->params[offId(l)].getValue());
+                visualEditor->currentState.lanes[l].rotation = (int)std::round(mod->params[rotId(l)].getValue());
             }
             for (int l = 0; l < N_SPREAD_LANES; ++l)   // spread: REST/MEL/OCT + ACCENT
                 mod->spreadEffective[SPREAD_LANE_TO_EDITOR[l]] = mod->params[sprId(l)].getValue();
@@ -170,8 +165,7 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
 
         // ── Editor → params (UI thread, own params) ───────────────────────
         for (int l = 0; l < 6; ++l) {
-            int el = (l < 3) ? dotModular::MONO_PARAM_TO_EDITOR[l] : l;
-            const auto& lane = visualEditor->currentState.lanes[el];
+            const auto& lane = visualEditor->currentState.lanes[l];
             mod->params[lenId(l)].setValue((float)lane.length);
             mod->params[offId(l)].setValue((float)lane.offset);
             mod->params[rotId(l)].setValue((float)lane.rotation);

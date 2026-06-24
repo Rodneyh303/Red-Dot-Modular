@@ -340,33 +340,22 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         // the lanes) could affect voice 1, and only under the deferred interp. Y.
         for (rack::Widget* w : leftAttenuverters) if (w) w->visible = !tab1Mono;
         if (tab1Mono) {
-            // Engine lane l=0=REST,1=MEL,2=OCT → editor lane via named constants
-            static const int monoLaneToEditor[3] = {
-                SandsVisualEditorV4::REST, SandsVisualEditorV4::MELODY, SandsVisualEditorV4::OCTAVE
-            };
             for (int l = 0; l < 3; ++l) {
                 int mLen = (int)std::lround(monoVis->params[SandsMonoVisualIds::lenId(l)].getValue());
                 int mOff = (int)std::lround(monoVis->params[SandsMonoVisualIds::offId(l)].getValue());
                 int mRot = (int)std::lround(monoVis->params[SandsMonoVisualIds::rotId(l)].getValue());
                 mLen = std::max(1, mLen);
-                int el = monoLaneToEditor[l];
-                visualEditor->currentState.lanes[el].setDisplayLOR(mLen, mOff, mRot);
-                visualEditor->setLanePlayStep(el, calcPlayhead(gs, mLen, mOff, mRot));
+                visualEditor->currentState.lanes[l].setDisplayLOR(mLen, mOff, mRot);
+                visualEditor->setLanePlayStep(l, calcPlayhead(gs, mLen, mOff, mRot));
             }
         } else {
-            // Engine lane l=0=REST,1=MEL,2=OCT,3=ACC → editor lane via named constants
-            static const int macroLaneToEditor[4] = {
-                SandsVisualEditorV4::REST, SandsVisualEditorV4::MELODY,
-                SandsVisualEditorV4::OCTAVE, SandsVisualEditorV4::ACCENT
-            };
             for (int l = 0; l < 4; ++l) {
                 int ownLen = (int)std::lround(mod->macroBase[l][0] + mod->macroCVDelta[l][0]);
                 int ownOff = (int)std::lround(mod->macroBase[l][1] + mod->macroCVDelta[l][1]);
                 int ownRot = (int)std::lround(mod->macroBase[l][2] + mod->macroCVDelta[l][2]);
                 ownLen = std::max(1, ownLen);
-                int el = macroLaneToEditor[l];
-                visualEditor->currentState.lanes[el].setDisplayLOR(ownLen, ownOff, ownRot);
-                visualEditor->setLanePlayStep(el, calcPlayhead(gs, ownLen, ownOff, ownRot));
+                visualEditor->currentState.lanes[l].setDisplayLOR(ownLen, ownOff, ownRot);
+                visualEditor->setLanePlayStep(l, calcPlayhead(gs, ownLen, ownOff, ownRot));
             }
         }
     }
