@@ -182,6 +182,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         visualEditor = new SandsVisualEditorV4(SandsVisualEditorV4::POLY);
         visualEditor->box.pos  = mm2px(Vec(ED_X, ED_Y));
         visualEditor->box.size = mm2px(Vec(ED_W, ED_H));
+        // Right-click on a lane row opens the ownership context menu.
+        visualEditor->onLaneRightClick = [this](int lane, rack::math::Vec pos) -> bool {
+            if (!macroAttached()) return false;  // no menu when Macro absent
+            if (onMonoTab()) return false;        // ownership is per poly voice, not mono
+            openLaneOwnershipMenu(lane, pos);
+            return true;
+        };
         addChild(visualEditor);
 
         // 4 poly probability CV outs, one per lane row (aligned to editor lane centers).
@@ -372,6 +379,72 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     // Poly bank index (0..14) for the selected tab; -1 on the mono tab (resolver-mapped,
     // == the old selectedVoice-1). Use only when !onMonoTab().
     int  polyVoice() const { return dotModular::VoiceResolver::polyBankIndex(currentVoice()); }
+
+    void openLaneOwnershipMenu(int lane, rack::math::Vec editorLocalPos) {
+        if (!module) return;
+        const int voice = polyVoice();   // current poly bank index (0-based)
+        const bool macroOwns = !( module->params[ownerDispId(lane)].getValue() > 0.5f );
+        static const char* laneNames[4] = { "MELODY", "OCTAVE", "REST", "ACCENT" };
+        const char* ln = (lane >= 0 && lane < 4) ? laneNames[lane] : "?";
+
+        Menu* menu = createMenu();
+        menu->addChild(createMenuLabel(
+            std::string("Lane: ") + ln + "  (V" + std::to_string(voice + 2) + ")"));
+        menu->addChild(new MenuSeparator);
+
+        // Toggle ownership for this voice+lane
+        struct OwnerItem : MenuItem {
+            StraitsEastSandsVisualWidget* widget;
+            int lane, voice;
+            bool setToEast;   // true = set East owns; false = set Macro owns
+            void onAction(const event::Action& e) override {
+                float val = setToEast ? 1.f : 0.f;
+                widget->module->params[widget->ownerDispId(lane)].setValue(val);
+                widget->saveVoiceMacro(voice);  // persist to per-voice bank
+            }
+        };
+
+        auto* eastItem = new OwnerItem;
+        eastItem->text = "East owns this lane";
+        eastItem->rightText = (!macroOwns) ? "✓" : "";
+        eastItem->widget = this; eastItem->lane = lane; eastItem->voice = voice;
+        eastItem->setToEast = true;
+        menu->addChild(eastItem);
+
+        auto* macroItem = new OwnerItem;
+        macroItem->text = "Macro owns this lane";
+        macroItem->rightText = macroOwns ? "✓" : "";
+        macroItem->widget = this; macroItem->lane = lane; macroItem->voice = voice;
+        macroItem->setToEast = false;
+        menu->addChild(macroItem);
+
+        menu->addChild(new MenuSeparator);
+
+        // Set all voices for this lane
+        struct AllVoicesItem : MenuItem {
+            StraitsEastSandsVisualWidget* widget;
+            int lane;
+            bool setToEast;
+            void onAction(const event::Action& e) override {
+                float val = setToEast ? 1.f : 0.f;
+                // Set display proxy and persist to all 15 poly voice slots
+                widget->module->params[widget->ownerDispId(lane)].setValue(val);
+                for (int v = 0; v < 15; ++v) {
+                    widget->module->params[widget->ownerId(v, lane)].setValue(val);
+                }
+            }
+        };
+
+        auto* allEast = new AllVoicesItem;
+        allEast->text = "East owns — all voices";
+        allEast->widget = this; allEast->lane = lane; allEast->setToEast = true;
+        menu->addChild(allEast);
+
+        auto* allMacro = new AllVoicesItem;
+        allMacro->text = "Macro owns — all voices";
+        allMacro->widget = this; allMacro->lane = lane; allMacro->setToEast = false;
+        menu->addChild(allMacro);
+    }
 
     void step() override {
         ModuleWidget::step();
