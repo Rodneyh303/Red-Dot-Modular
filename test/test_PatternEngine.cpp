@@ -45,8 +45,8 @@ static PatternInput singleSemitone(int s, float oct=4.f) {
 }
 static PatternEngine fresh(float rseed=0.f, float mseed=0.f) {
     PatternEngine pe;
-    pe.seedRngFromFloat(pe.rhythmRng, rseed);
-    pe.seedRngFromFloat(pe.melodyRng, mseed);
+    pe.seedRhythmPhilox(rseed);
+    pe.seedMelodyPhilox(mseed);
     return pe;
 }
 
@@ -69,26 +69,27 @@ int main(){
     TEST("Different seeds → different patterns (very likely)", {
         auto p1=fresh(1.f,1.f), p2=fresh(9.f,9.f);
         PatternInput in=allActive();
+        p1.latchMix(1.f,1.f); p2.latchMix(1.f,1.f);  // use B fully on first draw
         p1.redrawMelody(in); p2.redrawMelody(in);
         int diffs=0;
         for(int i=0;i<16;++i) if(p1.melodySemitone[i]!=p2.melodySemitone[i]) ++diffs;
         EXPECT(diffs>2);
     });
 
-    TEST("seedRngFromFloat: different seeds produce different RNG output", {
+    TEST("seedRhythmPhilox: different seeds produce different RNG output", {
         PatternEngine pe;
-        pe.seedRngFromFloat(pe.rhythmRng, 1.f);
+        pe.seedRhythmPhilox(1.f);
         float r0 = pe.unitRhythm();
-        pe.seedRngFromFloat(pe.rhythmRng, 9.f);
+        pe.seedRhythmPhilox(9.f);
         float r10 = pe.unitRhythm();
         EXPECT(std::fabs(r0-r10) > 1e-4f);
     });
 
-    TEST("seedRngFromFloat: same value → same first output", {
+    TEST("seedRhythmPhilox: same value → same first output", {
         PatternEngine pe;
-        pe.seedRngFromFloat(pe.rhythmRng, 5.f);
+        pe.seedRhythmPhilox(5.f); pe.beginRhythmDraw();
         float a = pe.unitRhythm();
-        pe.seedRngFromFloat(pe.rhythmRng, 5.f);
+        pe.seedRhythmPhilox(5.f); pe.beginRhythmDraw();
         float b = pe.unitRhythm();
         EXPECT_NEAR(a, b, 1e-7f);
     });
@@ -108,8 +109,8 @@ int main(){
         p1.rhythmSeedPendingFloat=5.f; p1.rhythmSeedPending=true;
         p1.applyPendingSeedsAndRedraw(allActive());
         // Set seed 5.0 directly on p2 and draw
-        p2.seedRngFromFloat(p2.rhythmRng,5.f);
-        p2.seedRngFromFloat(p2.melodyRng,0.f);
+        p2.seedRhythmPhilox(5.f);
+        p2.seedMelodyPhilox(0.f);
         p2.redrawRhythm(allActive());
         for(int i=0;i<16;++i) EXPECT_EQ(p1.rhythmPattern[i], p2.rhythmPattern[i]);
     });
@@ -121,7 +122,7 @@ int main(){
     TEST("All weights zero → returns -1", {
         auto pe=fresh();
         float w[12]={};
-        EXPECT_EQ(pe.pickSemitone(w), -1);
+        EXPECT_EQ(pe.pickSemitone(w, pe.unitMelody()), -1);
     });
 
     TEST("Single weight → always picks that semitone", {
@@ -129,30 +130,30 @@ int main(){
         float w[12]={};
         for(int target=0;target<12;++target){
             std::fill(w,w+12,0.f); w[target]=1.f;
-            for(int t=0;t<20;++t) EXPECT_EQ(pe.pickSemitone(w), target);
+            for(int t=0;t<20;++t) EXPECT_EQ(pe.pickSemitone(w, pe.unitMelody()), target);
         }
     });
 
     TEST("Result always in 0..11", {
         auto pe=fresh(0.5f);
         float w[12]; std::fill(w,w+12,1.f);
-        for(int t=0;t<100;++t){ int s=pe.pickSemitone(w); EXPECT(s>=0&&s<12); }
+        for(int t=0;t<100;++t){ int s=pe.pickSemitone(w, pe.unitMelody()); EXPECT(s>=0&&s<12); }
     });
 
     TEST("Higher-weight semitone picked more often over many trials", {
         auto pe=fresh(7.f,3.f);
         float w[12]={}; w[0]=0.1f; w[7]=0.9f;
         int cnt[12]={};
-        for(int t=0;t<1000;++t) ++cnt[pe.pickSemitone(w)];
+        for(int t=0;t<1000;++t) ++cnt[pe.pickSemitone(w, pe.unitMelody())];
         EXPECT(cnt[7] > cnt[0]*3);
     });
 
     TEST("rng=0 boundary: does not return index before first weight", {
         // With very first RNG output near 0, should still return valid index
         auto pe=fresh();
-        pe.seedRngFromFloat(pe.melodyRng, 0.f);
+        pe.seedMelodyPhilox(0.f);
         float w[12]={}; w[5]=1.f;
-        int s=pe.pickSemitone(w);
+        int s=pe.pickSemitone(w, pe.unitMelody());
         EXPECT_EQ(s,5);
     });
 
@@ -160,21 +161,21 @@ int main(){
     SUITE("genPitch — Octave Range & Transpose");
     // ─────────────────────────────────────────────────────────────────────────
 
-    TEST("Pitch clamped to 0..5V", {
+    TEST("Pitch clamped to -5..5V (1V/oct, 0V=C4)", {
         auto pe=fresh(1.f,2.f);
         auto in=allActive();
         for(int t=0;t<100;++t){
             int sem; float v=pe.genPitch(sem,in);
-            EXPECT(v>=0.f&&v<=5.f);
+            EXPECT(v>=-5.f&&v<=5.f);
         }
     });
 
-    TEST("Single semitone, single octave: pitch is exactly oct+sem/12", {
+    TEST("Single semitone, single octave: pitch is (oct-4)+sem/12 (1V/oct, 0V=C4)", {
         auto pe=fresh(1.f,2.f);
-        auto in=singleSemitone(7, 4.f);  // G4
+        auto in=singleSemitone(7, 4.f);  // G4 = 0V + 7/12
         for(int t=0;t<10;++t){
             int sem; float v=pe.genPitch(sem,in);
-            EXPECT_NEAR(v, 4.f+7.f/12.f, 1e-5f);
+            EXPECT_NEAR(v, 0.f+7.f/12.f, 1e-5f);
             EXPECT_EQ(sem,7);
         }
     });
@@ -184,7 +185,7 @@ int main(){
         auto in=allActive(); in.octaveLo=3.f; in.octaveHi=4.f;
         for(int t=0;t<100;++t){
             int sem; float v=pe.genPitch(sem,in);
-            EXPECT(v>=3.f && v<=5.f);  // up to 4+11/12≈4.917
+            EXPECT(v>=-1.f && v<=1.f);  // oct 3..4 → (3-4)..(4+11/12-4) = -1..0.917
         }
     });
 
@@ -272,7 +273,7 @@ int main(){
         pe.redrawMelody(in);
         for(int i=0;i<16;++i){
             EXPECT(pe.melodySemitone[i]>=0 && pe.melodySemitone[i]<12);
-            EXPECT(pe.melodyPitchV[i]>=0.f && pe.melodyPitchV[i]<=5.f);
+            EXPECT(pe.melodyPitchV[i]>=-5.f && pe.melodyPitchV[i]<=5.f);
         }
     });
 
@@ -309,7 +310,7 @@ int main(){
         PatternInput in=allActive(); in.variationAmount=0.5f;
         for(int base=0;base<=8;++base)
             for(int t=0;t<20;++t){
-                int r=pe.varyNoteIndex(base,in);
+                int r=pe.varyNoteIndex(base,in, pe.unitRhythm());
                 EXPECT(r>=std::max(0,base-2) && r<=std::min(8,base+2));
             }
     });
@@ -318,7 +319,7 @@ int main(){
         auto pe=fresh(8.f);
         PatternInput in=allActive(); in.variationAmount=1.0f;
         int base=3; float sum=0;
-        for(int t=0;t<200;++t) sum+=float(pe.varyNoteIndex(base,in));
+        for(int t=0;t<200;++t) sum+=float(pe.varyNoteIndex(base,in, pe.unitRhythm()));
         EXPECT(sum/200.f > float(base));
     });
 
@@ -326,7 +327,7 @@ int main(){
         auto pe=fresh(9.f);
         PatternInput in=allActive(); in.variationAmount=0.0f;
         int base=5; float sum=0;
-        for(int t=0;t<200;++t) sum+=float(pe.varyNoteIndex(base,in));
+        for(int t=0;t<200;++t) sum+=float(pe.varyNoteIndex(base,in, pe.unitRhythm()));
         EXPECT(sum/200.f < float(base));
     });
 
@@ -335,7 +336,7 @@ int main(){
         PatternInput in=allActive();
         for(float v:{0.f,0.5f,1.f}) for(int b=0;b<=8;++b){
             in.variationAmount=v;
-            int r=pe.varyNoteIndex(b,in);
+            int r=pe.varyNoteIndex(b,in, pe.unitRhythm());
             EXPECT(r>=0&&r<=8);
         }
     });
@@ -345,7 +346,7 @@ int main(){
         PatternInput in=allActive(); in.noteVariationMask=0;
         // idx 4=1/8T, 6=1/16T, 7=1/32, 8=1/32T all blocked
         for(int t=0;t<50;++t){
-            int r=pe.varyNoteIndex(3,in);
+            int r=pe.varyNoteIndex(3,in, pe.unitRhythm());
             EXPECT(r!=4 && r!=6 && r!=7 && r!=8);
         }
     });
