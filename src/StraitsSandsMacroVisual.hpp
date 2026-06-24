@@ -47,12 +47,12 @@ namespace StraitsMacroVisualIds {
     // ── Param IDs ─────────────────────────────────────────────────────────
     enum SpreadParamId {
         // Display spread trimpots (0-2)
-        SPREAD_REST = 0, SPREAD_MELODY, SPREAD_OCTAVE, SPREAD_ACCENT,
-        // 16 attenuverters: lane l, col c → ATTEN_START + l*4 + c (4-19)
+        SPREAD_REST = 0, SPREAD_MELODY, SPREAD_OCTAVE,
+        // 12 attenuverters: row r, col c → ATTEN_START + r*2 + c (3-14)
         ATTEN_START,
-        NUM_SPREAD_PARAMS = ATTEN_START + 16  // = 20
+        NUM_SPREAD_PARAMS = ATTEN_START + 12  // = 15
     };
-    static inline int attenId(int lane, int c) { return ATTEN_START + lane*4 + c; }
+    static inline int attenId(int r, int c) { return ATTEN_START + r*2 + c; }
 
     // ── Per-voice Macro→voice mix-in send (RELOCATED from East under the control
     //    inversion). Conceptually a MACRO concern: "per voice, how much of Macro's
@@ -115,9 +115,10 @@ namespace StraitsMacroVisualIds {
     // so row = lane*2 + (param>=2), col = param&1. (The old code used
     // cvId(lane,param) directly, which mis-indexed ROT/SPR onto other lanes'
     // jacks — the macro spread/LOR CV routing bug.)
-    // Mono-style: lane == row, col == param (0=LEN, 1=OFF, 2=ROT).
-    inline int macroCvId   (int lane, int param) { return cvId   (lane, param); }
-    inline int macroAttenId(int lane, int param) { return attenId(lane, param); }  // param 0..3 = LEN/OFF/ROT/SPR
+    inline int macroJackRow(int lane, int param) { return lane * 2 + (param >= 2 ? 1 : 0); }
+    inline int macroJackCol(int param)           { return param & 1; }
+    inline int macroCvId   (int lane, int param) { return cvId   (macroJackRow(lane, param), macroJackCol(param)); }
+    inline int macroAttenId(int lane, int param) { return attenId(macroJackRow(lane, param), macroJackCol(param)); }
 }
 
 struct StraitsSandsMacroVisual : Module {
