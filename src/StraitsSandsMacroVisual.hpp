@@ -15,19 +15,13 @@ namespace StraitsMacroVisualIds {
     static constexpr float PROB_OUT_X = 207.f;  // poly prob-out jack column (right strip)
     static constexpr float ROW_TOP = 14.f;
     static constexpr float ROW_BOT = 108.f;
-    static constexpr int   N_ROWS  = 4;         // 1 row per lane (REST/MEL/OCT/ACCENT)
-    // Mono-style: 4 CV jacks (LEN/OFF/ROT/SPR-cv) + 4 attens + 1 spread-base trimpot per lane.
-    // Column layout and ED_X=88 match SandsMonoVisual exactly.
-    static constexpr float COL_J1 = 6.f;    // LEN CV in
-    static constexpr float COL_J2 = 15.f;   // OFF CV in
-    static constexpr float COL_J3 = 24.f;   // ROT CV in
-    static constexpr float COL_J4 = 33.f;   // SPR CV in
-    static constexpr float COL_A1 = 43.f;   // LEN depth
-    static constexpr float COL_A2 = 52.f;   // OFF depth
-    static constexpr float COL_A3 = 61.f;   // ROT depth
-    static constexpr float COL_A4 = 70.f;   // SPR depth
-    static constexpr float SPREAD_X = 80.f; // per-lane spread base trimpot
-    static constexpr float ED_X   = 88.f;   // editor (matches SandsMonoVisual)
+    static constexpr int   N_ROWS  = 6;
+    // Columns mirror StraitsEastSandsVisual exactly: j1, j2, a1, a2, spread, editor
+    static constexpr float COL_J1 = 8.f;
+    static constexpr float COL_J2 = 18.f;
+    static constexpr float COL_A1 = 30.f;
+    static constexpr float COL_A2 = 39.f;
+    static constexpr float SPREAD_X = 49.f;     // per-lane spread trimpot column (matches East)
     static constexpr float ED_X   = 58.f;       // editor starts after the spread column
     static constexpr float ED_W   = PROB_OUT_X - ED_X - 8.f;  // editor stops left of prob outs
     // Mirror TAB_TOP_OFFSET_MM in gen_macro_mono.py (extra top margin; 0.5cm=5mm).
@@ -47,12 +41,12 @@ namespace StraitsMacroVisualIds {
     // ── Param IDs ─────────────────────────────────────────────────────────
     enum SpreadParamId {
         // Display spread trimpots (0-2)
-        SPREAD_REST = 0, SPREAD_MELODY, SPREAD_OCTAVE, SPREAD_ACCENT,
-        // 16 attenuverters: lane l, col c → ATTEN_START + l*4 + c (4-19)
+        SPREAD_REST = 0, SPREAD_MELODY, SPREAD_OCTAVE,
+        // 12 attenuverters: row r, col c → ATTEN_START + r*2 + c (3-14)
         ATTEN_START,
-        NUM_SPREAD_PARAMS = ATTEN_START + 16  // = 20
+        NUM_SPREAD_PARAMS = ATTEN_START + 12  // = 15
     };
-    static inline int attenId(int lane, int c) { return ATTEN_START + lane*4 + c; }
+    static inline int attenId(int r, int c) { return ATTEN_START + r*2 + c; }
 
     // ── Per-voice Macro→voice mix-in send (RELOCATED from East under the control
     //    inversion). Conceptually a MACRO concern: "per voice, how much of Macro's
@@ -65,17 +59,15 @@ namespace StraitsMacroVisualIds {
     // dotModular::VoiceResolver::voiceSlot — NOT a poly bank index. Callers must derive it via
     // voiceSlot(voiceNumber) so the mono slice (slot 0) can't collide with poly V2 (the N→N
     // bug). Bank is 3-lane-strided × 4 items, 16 slots wide.
-    // NOTE: bank is still 3-lane-strided; accent (lane 3) uses POLY_ACCENT_VOICE_* directly
-    //       until the bank resize in Stage 6b.
     inline int sendId(int v, int lane, int item) { return MonsoonIds::MACRO_SEND_START + (v*3 + lane)*4 + item; }
     inline int sendDispId(int lane, int item)    { return MonsoonIds::MACRO_SEND_DISP_START + lane*4 + item; }
 
     // ── Input IDs ─────────────────────────────────────────────────────────
     enum InputId {
         CV_START = 0,
-        NUM_INPUTS = CV_START + 12   // 4 lanes × 3 cols
+        NUM_INPUTS = CV_START + 12   // 6 rows × 2 cols
     };
-    static inline int cvId(int lane, int c) { return CV_START + lane*3 + c; }
+    static inline int cvId(int r, int c) { return CV_START + r*2 + c; }
 
     // ── Output IDs ────────────────────────────────────────────────────────
     // 3 poly probability CV outs (REST/MEL/OCT): ch1 reserved (future mono tab),
@@ -115,9 +107,10 @@ namespace StraitsMacroVisualIds {
     // so row = lane*2 + (param>=2), col = param&1. (The old code used
     // cvId(lane,param) directly, which mis-indexed ROT/SPR onto other lanes'
     // jacks — the macro spread/LOR CV routing bug.)
-    // Mono-style: lane == row, col == param (0=LEN, 1=OFF, 2=ROT).
-    inline int macroCvId   (int lane, int param) { return cvId   (lane, param); }
-    inline int macroAttenId(int lane, int param) { return attenId(lane, param); }  // param 0..3 = LEN/OFF/ROT/SPR
+    inline int macroJackRow(int lane, int param) { return lane * 2 + (param >= 2 ? 1 : 0); }
+    inline int macroJackCol(int param)           { return param & 1; }
+    inline int macroCvId   (int lane, int param) { return cvId   (macroJackRow(lane, param), macroJackCol(param)); }
+    inline int macroAttenId(int lane, int param) { return attenId(macroJackRow(lane, param), macroJackCol(param)); }
 }
 
 struct StraitsSandsMacroVisual : Module {

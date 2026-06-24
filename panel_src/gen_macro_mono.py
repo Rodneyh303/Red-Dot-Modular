@@ -11,16 +11,14 @@ def gen_macro(dark, W_MM=213.36):   # 42HP (40 + 2HP right strip for poly prob-o
     # the same spread job but GLOBAL (3 lanes) rather than per-lane. Must match
     # StraitsSandsMacroVisual.hpp: COL_J1=8 J2=18 A1=30 A2=39 SPREAD_X=49 ED_X=58.
     t=theme(dark); H_MM=128.5; PW,PH=px(W_MM),px(H_MM)
-    ROW_TOP,ROW_BOT,N=14.,108.,4   # 4 lanes, one row each
+    ROW_TOP,ROW_BOT,N=14.,108.,6
     def rowY(r): return ROW_TOP+(r+0.5)*(ROW_BOT-ROW_TOP)/N
-    # 4 CV jacks + 4 attens + spread base — columns match SandsMonoVisual, ED_X=88
-    JACK_X=[6.,15.,24.,33.]            # LEN/OFF/ROT/SPR-cv
-    ATTEN_X=[43.,52.,61.,70.]          # LEN/OFF/ROT/SPR depth
-    SPREAD_X=80.                       # per-lane spread base trimpot
+    COL_J1,COL_J2,COL_A1,COL_A2=8.,18.,30.,39.
+    SPREAD_X=49.                      # per-lane global spread trimpot column
     # Extra top margin so the view-tab row isn't crammed against the panel top
     # edge. 0.5 cm = 5 mm. Mirror TAB_TOP_OFFSET_MM in StraitsSandsMacroVisualWidget.
     TAB_TOP_OFFSET_MM = 5.0
-    ED_X=88.; PROB_OUT_X=207.; ED_W=PROB_OUT_X-ED_X-8.; ED_Y=18.+TAB_TOP_OFFSET_MM; ED_H=48.
+    ED_X=58.; PROB_OUT_X=207.; ED_W=PROB_OUT_X-ED_X-8.; ED_Y=18.+TAB_TOP_OFFSET_MM; ED_H=48.
     L=[]; A=L.append
     A(D.svg_open(PW,PH))
     A('<g inkscape:label="artwork" inkscape:groupmode="layer">')
@@ -28,18 +26,21 @@ def gen_macro(dark, W_MM=213.36):   # 42HP (40 + 2HP right strip for poly prob-o
     A(D.mbs(W_MM-72.0, 110.0, 60.0, 14.0, t, op=0.85))
     A(D.waves(ED_X, 112.0, t, op=0.6, rows=3, span_mm=W_MM-ED_X-2))
     A(D.accent_rules(PW,t))
-    gx,gy=4.0,ROW_TOP-4.0; gw,gh=(SPREAD_X+6.0)-gx,(ROW_BOT+2.0)-(ROW_TOP-4.0)
-    A(D.input_group(gx,gy,gw,gh,t,sep_mm=0.5*(JACK_X[-1]+ATTEN_X[0])))
-    A(D.editor_recess(ED_X,ED_Y,ED_W,ED_H,t,lanes=4))
+    gx,gy=4.0,ROW_TOP-4.0; gw,gh=(SPREAD_X+5.0)-gx,(ROW_BOT+2.0)-(ROW_TOP-4.0)
+    A(D.input_group(gx,gy,gw,gh,t,sep_mm=0.5*(COL_J2+COL_A1)))
+    A(D.editor_recess(ED_X,ED_Y,ED_W,ED_H,t,lanes=3))
     A('</g>')
     A('<g inkscape:label="branding" inkscape:groupmode="layer">')
     A(D.logo_embed(dark, x_mm=11.0, y_mm=4.5, target_w_mm=42.0))
     A('</g>')
     A('<g inkscape:label="control-graphics" inkscape:groupmode="layer">')
-    for lane in range(4):
-        y=rowY(lane)
-        for x in JACK_X:  A(D.jack(x,y,t))
-        for x in ATTEN_X: A(D.trim(x,y,t,t["gold"]))
+    for r in range(6):
+        y=rowY(r)
+        A(D.jack(COL_J1,y,t)); A(D.jack(COL_J2,y,t))
+        A(D.trim(COL_A1,y,t,t["gold"])); A(D.trim(COL_A2,y,t,t["gold"]))
+    # Per-lane global SPREAD trimpots (REST/MEL/OCT), lane-centred, at SPREAD_X.
+    for lane in range(3):
+        y=0.5*(rowY(lane*2)+rowY(lane*2+1))
         A(D.trim(SPREAD_X,y,t,t["wellring"]))
     # ── Macro→voice MIX-IN send groups (relocated from East under the control
     #    inversion). 3 demarked groups (REST/MEL/OCT) below the editor, each a 2×2
@@ -47,11 +48,11 @@ def gen_macro(dark, W_MM=213.36):   # 42HP (40 + 2HP right strip for poly prob-o
     #    this voice." Geometry shared with the widget labels in
     #    StraitsSandsMacroVisual::draw — keep in lockstep:
     #      BLEND_TOP=72 BLEND_H=36 GAP=3.5 SEND_Y0=12 SEND_DY=11 SEND_DX=7
-    BLEND_TOP=72.0; BLEND_H=36.0; BGAP=2.5; GROUP_W=ED_W/4.0  # 4 groups, tighter gap
-    SEND_Y0=12.0; SEND_DY=11.0; SEND_DX=6.0                   # DX 7→6 for narrower groups
+    BLEND_TOP=72.0; BLEND_H=36.0; BGAP=3.5; GROUP_W=ED_W/3.0
+    SEND_Y0=12.0; SEND_DY=11.0; SEND_DX=7.0
     A(f'<line x1="{px(ED_X):.1f}" y1="{px(BLEND_TOP-3.0):.1f}" x2="{px(ED_X+ED_W):.1f}" y2="{px(BLEND_TOP-3.0):.1f}" stroke="{t["accent"]}" stroke-width="1.0" opacity="0.6"/>')
     MIX_XY=[]
-    for l in range(4):
+    for l in range(3):
         gx=ED_X+l*GROUP_W+BGAP*0.5; gw=GROUP_W-BGAP; gcx=gx+gw*0.5
         A(f'<rect x="{px(gx):.1f}" y="{px(BLEND_TOP):.1f}" width="{px(gw):.1f}" height="{px(BLEND_H):.1f}" rx="{px(1.4):.1f}" fill="{t["edrecess"]}" stroke="{t["edborder"]}" stroke-width="0.9" opacity="0.92"/>')
         A(f'<line x1="{px(gx+2):.1f}" y1="{px(BLEND_TOP+7.5):.1f}" x2="{px(gx+gw-2):.1f}" y2="{px(BLEND_TOP+7.5):.1f}" stroke="{t["edborder"]}" stroke-width="0.6" opacity="0.6"/>')
@@ -68,16 +69,17 @@ def gen_macro(dark, W_MM=213.36):   # 42HP (40 + 2HP right strip for poly prob-o
     #    cvId(r,c)=CV_START(0)+r*2+c (inputs), attenId(r,c)=ATTEN_START(3)+r*2+c
     #    (params), SPREAD_REST/MEL/OCT = 0/1/2 (params). ──
     A('<g inkscape:label="components" inkscape:groupmode="layer">')
-    # cvId(lane,col): CV_START + lane*4 + col → inputs 0..15
-    # attenId(lane,col): ATTEN_START(4) + lane*4 + col → params 4..19
-    # SPREAD_REST/MELODY/OCTAVE/ACCENT = 0/1/2/3
-    for lane in range(4):
-        y=rowY(lane)
-        for p,x in enumerate(JACK_X):  A(D.kit_shape("input", 0+lane*4+p, x, y))
-        for p,x in enumerate(ATTEN_X): A(D.kit_shape("param", 4+lane*4+p, x, y))
-        A(D.kit_shape("param", lane, SPREAD_X, y))  # SPREAD_REST/MELODY/OCTAVE/ACCENT
+    for r in range(6):
+        y=rowY(r)
+        A(D.kit_shape("input", 0+r*2+0, COL_J1, y))   # cvId(r,0)
+        A(D.kit_shape("input", 0+r*2+1, COL_J2, y))   # cvId(r,1)
+        A(D.kit_shape("param", 3+r*2+0, COL_A1, y))   # attenId(r,0)
+        A(D.kit_shape("param", 3+r*2+1, COL_A2, y))   # attenId(r,1)
+    for lane in range(3):
+        y=0.5*(rowY(lane*2)+rowY(lane*2+1))
+        A(D.kit_shape("param", lane, SPREAD_X, y))    # SPREAD_REST/MELODY/OCTAVE = 0/1/2
     # Macro→voice mix-in send markers (bound to sendDispId display proxies).
-    for l in range(4):
+    for l in range(3):
         for item in range(4):
             cxs,cys = MIX_XY[l][item]
             A(f'<circle id="param_send_{l}_{item}" cx="{px(cxs):.2f}" cy="{px(cys):.2f}" r="0.5" fill="none" stroke="none"/>')
