@@ -94,6 +94,20 @@ int main() {
             EXPECT_EQ(VoiceResolver::polyBankIndex(v), v - 2);
         }
     });
+    TEST("voiceSlot convention + the slot/bank invariant the send-bank off-by-one violated", {
+        // 16-wide voice-slot indexing: slot 0 = mono (V1), slot k = V(k+1).
+        EXPECT_EQ(VoiceResolver::voiceSlot(1), 0);    // mono is slot 0
+        EXPECT_EQ(VoiceResolver::voiceSlot(2), 1);    // V2 is slot 1, NOT slot 0 (the bug)
+        EXPECT_EQ(VoiceResolver::voiceSlot(16), 15);
+        EXPECT_EQ(VoiceResolver::kVoiceSlots, 16);
+        for (int v = 1; v <= 16; ++v)
+            EXPECT_EQ(VoiceResolver::slotToVoice(VoiceResolver::voiceSlot(v)), v);  // round-trips
+        // The invariant: a poly voice's 16-wide slot is one above its 15-wide poly bank, so a
+        // bank with a mono slice (send/atten) and a poly-only bank stay correctly offset. This
+        // is exactly the relationship the Macro send/atten off-by-one broke (V2 → slot 0).
+        for (int v = 2; v <= 16; ++v)
+            EXPECT_EQ(VoiceResolver::voiceSlot(v), VoiceResolver::polyBankIndex(v) + 1);
+    });
     TEST("baseEditableHere: false for mono, true for poly", {
         EXPECT(!VoiceResolver::baseEditableHere(1));
         for (int v = 2; v <= 16; ++v) EXPECT(VoiceResolver::baseEditableHere(v));
