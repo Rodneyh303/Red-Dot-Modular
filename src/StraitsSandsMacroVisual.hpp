@@ -55,6 +55,10 @@ namespace StraitsMacroVisualIds {
     //    Macro configures + binds them, consumption reads them off the Macro module.
     //    180 = 15 voices × 3 lanes × 4 items (LEN/OFF/ROT/SPR). 12 display proxies
     //    are the selected-voice view (sendDispId), synced on voice switch.
+    // Per-voice mix-in send. v is a VOICE SLOT (0 = mono/V1, k = V(k+1)) per
+    // dotModular::VoiceResolver::voiceSlot — NOT a poly bank index. Callers must derive it via
+    // voiceSlot(voiceNumber) so the mono slice (slot 0) can't collide with poly V2 (the N→N
+    // bug). Bank is 3-lane-strided × 4 items, 16 slots wide.
     inline int sendId(int v, int lane, int item) { return MonsoonIds::MACRO_SEND_START + (v*3 + lane)*4 + item; }
     inline int sendDispId(int lane, int item)    { return MonsoonIds::MACRO_SEND_DISP_START + lane*4 + item; }
 
