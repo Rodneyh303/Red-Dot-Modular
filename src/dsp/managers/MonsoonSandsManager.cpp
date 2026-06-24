@@ -6,6 +6,7 @@
 #include "../../StraitsSandsMacroVisual.hpp"
 #include "MonsoonExpanderManager.hpp"
 #include "../../MonsoonStraitsEastExpander.hpp"
+#include "../../StraitsEastSandsVisual.hpp"
 
 using namespace rack;
 using namespace MonsoonIds;
@@ -106,14 +107,16 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // INTERPRETATION Y — voice-1 mix-in. The mono master strand is voice 1 of
             // the ensemble; like every poly voice it can receive the East per-lane CV
             // and the Macro global-CV mix-in, summed on top of the mono base. We use
-            // VOICE 0's slice of the East/Macro per-voice banks (tab 1 = voice 1 = mono).
+            // SLOT 0 of the East/Macro per-voice banks — which is now voice 1 / mono under
+            // the voice-number (N→N) indexing (slot v = voice v+1). Poly voices read slot v+1,
+            // so they no longer collide with this mono slot.
             // Only when the respective module is attached. Lane/item→East(r,c) mirrors
             // the poly combineLOR mapping. (Base stays mono's — this is modulation only.)
             auto* eastVis = expanderManager.cachedEastSandsVisual;
             // East per-lane CV folded onto voice 1 (voice-0 depth × East CV ch0).
             auto eastMix = [&](float base, int r, int c, float lo, float hi)->float {
                 if (!eastVis || !eastVis->inputs[East::cvId(r,c)].isConnected()) return base;
-                float att = eastVis->params[East::attenId(0, r, c)].getValue();   // voice 0
+                float att = eastVis->params[East::attenId(0, r, c)].getValue();   // slot 0 = mono
                 float cv  = eastVis->inputs[East::cvId(r,c)].getVoltage(0) / 10.f; // ch0
                 return math::clamp(base + cv * att * (hi - lo), lo, hi);
             };
@@ -125,7 +128,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // block above the hasVisual mono block (it has no dependency on mono).
             auto macroMix = [&](float base, int item, float lo, float hi)->float {
                 if (!hasMacro || !macroVis) return base;
-                float send = macroVis->params[Macro::sendId(0, l, item)].getValue();   // voice 0
+                float send = macroVis->params[Macro::sendId(0, l, item)].getValue();   // slot 0 = mono
                 return math::clamp(base + macroVis->macroCVDelta[l][item] * send, lo, hi);
             };
             // REST/MEL/OCT (l=0/1/2) East (r,c): Len (l*2,0) Off (l*2,1) Rot (l*2+1,0).
@@ -149,7 +152,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 auto* eastVisS = expanderManager.cachedEastSandsVisual;
                 static const int sprRow[3] = { 1, 3, 5 };   // East spread CV at cvId(row,1)
                 if (eastVisS && eastVisS->inputs[East::cvId(sprRow[l],1)].isConnected()) {
-                    float att = eastVisS->params[East::attenId(0, sprRow[l], 1)].getValue();
+                    float att = eastVisS->params[East::attenId(0, sprRow[l], 1)].getValue();  // slot 0 = mono
                     float cv  = eastVisS->inputs[East::cvId(sprRow[l],1)].getVoltage(0) / 10.f;
                     sp = rack::math::clamp(sp + cv * att * 2.f, -1.f, 1.f);   // span [-1,1]=2
                 }
@@ -159,8 +162,11 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 }
                 monoVis->spreadEffective[l] = sp;
             }
-            // LEG/ACC/VAR have no spread
-            for (int l = 3; l < 6; ++l) monoVis->spreadEffective[l] = 0.f;
+            // LEG(3) and VAR(5) are mono-only — no spread. ACCENT(4) is now a poly lane
+            // with its own spread (set by the mono Sands spread control / its own CV path),
+            // so it is NOT zeroed here.
+            monoVis->spreadEffective[3] = 0.f;
+            monoVis->spreadEffective[5] = 0.f;
 
             // ── Sands spread→final (Option W, Model 1) ───────────────────────
             // Mono owns the MONO final arrays: read the SLEWED draw, apply

@@ -156,7 +156,7 @@ struct StraitsSandsMacroVisual : Module {
             for (int item=0; item<4; ++item)
                 configParam(sendDispId(lane,item), -1.f,1.f,0.f,
                             "L"+std::to_string(lane)+" mix-in "+std::to_string(item)+" (selected voice)");
-        for (int v=0; v<15; ++v)
+        for (int v=0; v<16; ++v)   // 16 voice slots: 0=mono(V1), 1..15=poly(V2..V16)
             for (int lane=0; lane<3; ++lane)
                 for (int item=0; item<4; ++item)
                     configParam(sendId(v,lane,item), -1.f,1.f,0.f,
