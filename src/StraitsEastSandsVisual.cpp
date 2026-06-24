@@ -322,22 +322,29 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     }
     void onVoiceTabChanged(int nv) {
         if (!paramMgr || !visualEditor) return;
-        // Save the OUTGOING voice's edits — only if it was a poly tab (mono is display-
-        // only, owned by Sands Mono, so nothing to save back from index 0).
+        // Save the OUTGOING voice's edits.
+        // Poly tabs always save. Mono tab saves when it is editable (no Mono attached).
         if (selectedVoice >= 1) {
             paramMgr->syncEditorToPatternEngine(polyVoice(), visualEditor->currentState);
             saveVoiceLOR(polyVoice());
             saveVoiceSpread(polyVoice());
             saveVoiceMacro(polyVoice());
+        } else if (v1Editable()) {
+            // V1 editable (no Mono): save to mono slot (kMonoSlot=0).
+            saveVoiceLOR(0);
+            saveVoiceSpread(0);
         }
         selectedVoice = nv;
-        // Load the INCOMING voice — poly tabs only; the mono tab's display is driven by
-        // the mono-mirror block in step() (reads Sands Mono directly).
+        // Load the INCOMING voice.
         if (selectedVoice >= 1) {
             paramMgr->syncPatternEngineToEditor(polyVoice(), visualEditor->currentState);
             loadVoiceLOR(polyVoice());
             loadVoiceSpread(polyVoice());
             loadVoiceMacro(polyVoice());
+        } else if (v1Editable()) {
+            // V1 editable: load mono slot.
+            loadVoiceLOR(0);
+            loadVoiceSpread(0);
         }
     }
 
@@ -369,6 +376,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     }
     // Mono tab? = the selected voice is the mono master strand (resolver owns this).
     bool onMonoTab() const { return dotModular::VoiceResolver::isMono(currentVoice()); }
+    // V1 editable: on mono tab AND Sands Mono is NOT attached. East acts as the
+    // mono-lane editor for V1 in this case (combinations 3, 7: East without Mono).
+    bool v1Editable() const {
+        Monsoon* m = getMonsoon();
+        return onMonoTab() && !(m && m->expanderManager.cachedSandsVisualExpander != nullptr);
+    }
     // Poly bank index (0..14) for the selected tab; -1 on the mono tab (resolver-mapped,
     // == the old selectedVoice-1). Use only when !onMonoTab().
     int  polyVoice() const { return dotModular::VoiceResolver::polyBankIndex(currentVoice()); }
@@ -506,6 +519,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         //  follow-up; this stage is the display/lock mirror only.)
         auto* monoVis = monsoon->expanderManager.cachedSandsVisualExpander;
         bool tab1Mono = onMonoTab() && (monoVis != nullptr);
+        // readOnly: only when Mono is attached (it owns V1). When V1 is editable
+        // (no Mono), the editor is live and the user edits V1's lanes directly here.
         visualEditor->readOnly = tab1Mono;
         if (tab1Mono) {
             // Engine lane l=0=REST,1=MEL,2=OCT → editor lane via named constants
@@ -519,6 +534,32 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 int el = monoLaneToEditor[l];
                 visualEditor->currentState.lanes[el].setDisplayLOR(mLen, mOff, mRot);
                 visualEditor->setLanePlayStep(el, calcPlayhead(gs, mLen, mOff, mRot));
+            }
+        } else if (v1Editable()) {
+            // V1 editable (no Mono): sync editor edits → engine mono strand params,
+            // then show the engine's current mono effective LOR as display.
+            // Editor writes drive the params; processDNA reads them next tick.
+            if (paramMgr) {
+                // Push editor state into the mono LOR params via the mono slot.
+                for (int l=0; l<3; ++l) {
+                    int el = dotModular::MONO_PARAM_TO_EDITOR[l];
+                    auto& lane = visualEditor->currentState.lanes[el];
+                    module->params[SandsMonoVisualIds::lenId(l)].setValue((float)lane.length);
+                    module->params[SandsMonoVisualIds::offId(l)].setValue((float)lane.offset);
+                    module->params[SandsMonoVisualIds::rotId(l)].setValue((float)lane.rotation);
+                }
+            }
+            // Display: show engine's current effective mono strand LOR.
+            static const int monoStrandToEditor[3] = {
+                SandsVisualEditorV4::REST, SandsVisualEditorV4::MELODY, SandsVisualEditorV4::OCTAVE
+            };
+            for (int l=0; l<3; ++l) {
+                int el = monoStrandToEditor[l];
+                int cvLen = (int)std::round(module->params[SandsMonoVisualIds::lenId(l)].getValue());
+                int cvOff = (int)std::round(module->params[SandsMonoVisualIds::offId(l)].getValue());
+                int cvRot = (int)std::round(module->params[SandsMonoVisualIds::rotId(l)].getValue());
+                visualEditor->currentState.lanes[el].setDisplayLOR(cvLen, cvOff, cvRot);
+                visualEditor->setLanePlayStep(el, calcPlayhead(gs, cvLen, cvOff, cvRot));
             }
         } else if (selectedVoice >= 1) {
             const int pv = polyVoice();

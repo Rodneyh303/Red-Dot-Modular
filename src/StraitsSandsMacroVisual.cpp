@@ -274,6 +274,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         // local viewVoice arithmetic (static/constexpr, no engine ref).
         const int  viewVoiceNum = viewVoice + 1;
         const bool onMonoTab = dotModular::VoiceResolver::isMono(viewVoiceNum);
+        const bool v1Editable = onMonoTab && (monoVis == nullptr);  // edit V1 when no Mono attached
         const int  pv = dotModular::VoiceResolver::polyBankIndex(viewVoiceNum);  // -1 on mono
 
         // Mix-in send display proxies ↔ per-voice store, N→N: tab v (0-based) edits voice
@@ -334,11 +335,16 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         // voice 1; only the mix-in sends could, under the deferred interp. Y.)
         auto* monoVis = monsoon->expanderManager.cachedSandsVisualExpander;
         bool tab1Mono = onMonoTab && (monoVis != nullptr);
+        // When V1 is editable (no Mono), Macro's global LOR knobs act as the V1 base.
+        // The global base params are already wired to the engine for poly; for V1,
+        // processDNA reads them via publishGlobal which writes all mono strands.
         visualEditor->readOnly = tab1Mono;   // Macro is already view-only, but mark it explicitly
         // Macro's global-base CV-depth attenuverters don't reach voice 1 (mono provides
         // the base) — hide them on tab 1 when mono attached. Only the mix-in sends (below
         // the lanes) could affect voice 1, and only under the deferred interp. Y.
-        for (rack::Widget* w : leftAttenuverters) if (w) w->visible = !tab1Mono;
+        // Attens hidden when Mono is attached on V1 (Mono owns the base).
+        // Shown for poly tabs and when V1 is editable without Mono.
+        for (rack::Widget* w : leftAttenuverters) if (w) w->visible = !tab1Mono || v1Editable;
         if (tab1Mono) {
             // Engine lane l=0=REST,1=MEL,2=OCT → editor lane via named constants
             static const int monoLaneToEditor[3] = {
