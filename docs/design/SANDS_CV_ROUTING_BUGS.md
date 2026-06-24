@@ -32,8 +32,9 @@ left attenId. i.e. mirror macroMix: depth = the East mix-in send for voice 0, ap
 East CV. (Confirm there is an East mix-in send param analogous to Macro's sendId.)
 
 ## Bug 3 — Sands East lanes show no pattern when control is ceded to Macro
-STATUS: bugs 1+2 FIXED (N→N re-index, commit b44b292). Bug 3 still open — needs runtime
-confirmation to pin the exact cause; static analysis narrowed it but couldn't settle it.
+STATUS: ALL THREE FIXED. Bugs 1+2 = N→N re-index (b44b292). Bug 3 = resolver-sourced display
+for ceded lanes (this commit). Rodney confirmed: CV expander IS attached (not the inert gate),
+lanes blank only when ceded to Macro — i.e. candidate (b), the degenerate display source.
 
 RULED OUT by code reading:
 - The display IS synced when Macro owns: syncPatternEngineToEditor runs whenever
@@ -60,6 +61,14 @@ lane, step) — the post-everything engine probability, exactly what plays and w
 display already uses — instead of the spreadMgr interpolate that may be degenerate when Macro
 owns. This is the same resolver path that fixed the prob-out mono channel.
 
-NOT YET IMPLEMENTED: holding for Rodney to confirm which candidate (likely a) matches the
-runtime, so the fix targets the real cause rather than guessing. Bugs 1+2 are independently
-shippable.
+IMPLEMENTED: root cause confirmed = the display reads slewedPoly* (PolyVoiceSands/PolySands
+syncPatternEngineToEditor → spreadMgr.getInterpolatedValue), which is NOT populated for a voice
+when Macro owns the lane. The resolver reads polyRhythmRandom — the final output the sequencer
+actually plays, copied every redraw regardless of owner (hence the prob-outs always worked).
+Fix: after the sync, overwrite the display probabilities from
+VoiceResolver::laneProbabilityAtStep(voiceNumber, lane, step):
+  - East: ONLY for laneOwnedByMacro(lane) lanes — East-owned lanes keep the editor's edit
+    values so dragging a probability bar isn't clobbered (the bars are editable in East).
+  - Macro: all displayed lanes (Macro's editor is read-only, always the global/ceded view).
+Another payoff of the resolver: the same uniform post-everything probability that fixed the
+prob-out mono channel now fixes the ceded-lane display.

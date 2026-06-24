@@ -468,6 +468,23 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         if (selectedVoice >= 1) {
             saveVoiceLOR(polyVoice());
             paramMgr->syncPatternEngineToEditor(polyVoice(), visualEditor->currentState);
+            // Bug fix: for a lane CEDED to Macro, the editor's own probabilities aren't the
+            // source of truth (Macro drives it) and the sync above reads slewedPoly* which
+            // isn't populated under Macro ownership → blank lanes. For ceded lanes only,
+            // overwrite the display from the resolver (polyRhythmRandom — the final output the
+            // sequencer plays, populated regardless of owner; the prob-outs use the same).
+            // East-OWNED lanes keep the editor's edit values so dragging a bar isn't clobbered.
+            dotModular::VoiceResolver resolver(monsoon->engine);
+            const int vnum = currentVoice();
+            static const int laneMap[3] = { SandsVisualEditorV4::REST,
+                                            SandsVisualEditorV4::MELODY,
+                                            SandsVisualEditorV4::OCTAVE };
+            for (int lane = 0; lane < 3; ++lane) {
+                if (!laneOwnedByMacro(lane)) continue;   // owned by East → keep editor's values
+                for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
+                    visualEditor->currentState.lanes[laneMap[lane]].probabilities[s] =
+                        resolver.laneProbabilityAtStep(vnum, lane, s);
+            }
         }
 
         // Surface the engine's CV-APPLIED L/O/R to the display window so the

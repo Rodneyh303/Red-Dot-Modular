@@ -296,6 +296,20 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         saveLOR();
         if (!onMonoTab)
             paramMgr->syncPatternEngineToEditor(visualEditor->currentState, pv);
+        // Bug fix (same as East): the sync reads slewedPoly* which isn't populated for a voice
+        // when Macro owns the lane → blank lanes. Macro's editor is read-only (display only),
+        // so overwrite ALL displayed lanes from the resolver (polyRhythmRandom — the final
+        // output the sequencer plays, populated regardless of owner; the prob-outs use it too).
+        if (!onMonoTab) {
+            dotModular::VoiceResolver resolver(monsoon->engine);
+            static const int laneMap[3] = { SandsVisualEditorV4::REST,
+                                            SandsVisualEditorV4::MELODY,
+                                            SandsVisualEditorV4::OCTAVE };
+            for (int lane = 0; lane < 3; ++lane)
+                for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
+                    visualEditor->currentState.lanes[laneMap[lane]].probabilities[s] =
+                        resolver.laneProbabilityAtStep(viewVoiceNum, lane, s);
+        }
 
         // Surface Macro's OWN CV-applied L/O/R to the display window. Previously
         // this read the engine output (eng.polyLen[0] etc.), but when East owns a
