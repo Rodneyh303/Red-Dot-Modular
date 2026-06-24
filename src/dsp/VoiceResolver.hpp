@@ -60,6 +60,9 @@ struct VoiceResolver {
     static constexpr int  kVoiceSlots = kLastVoice;          // 16 (mono + 15 poly)
     static constexpr int  voiceSlot(int v)  { return v - kMonoVoice; }   // V1→0 … V16→15
     static constexpr int  slotToVoice(int s){ return s + kMonoVoice; }   // inverse
+    static constexpr int  kMonoSlot = 0;     // the mono slice: voiceSlot(kMonoVoice). Banks
+                                             // with a mono mix-in read here; the off-by-one
+                                             // was a poly voice wrongly landing on this slot.
 
 
     // Is the per-lane BASE editable on a poly-aware module (East/Macro) for this voice?
@@ -132,6 +135,7 @@ inline void voiceResolverIndexSelfTest_() {
                   "the slot/bank relationship holds across the whole poly range");
     static_assert(VoiceResolver::slotToVoice(VoiceResolver::voiceSlot(9)) == 9, "slot round-trips");
     static_assert(VoiceResolver::kVoiceSlots == 16, "16 voice slots (mono + 15 poly)");
+    static_assert(VoiceResolver::kMonoSlot == VoiceResolver::voiceSlot(VoiceResolver::kMonoVoice), "kMonoSlot is the mono voice slice");
     static_assert(VoiceResolver::isMono(1),               "V1 is mono");
     static_assert(!VoiceResolver::isPoly(1),              "V1 is not poly");
     static_assert(VoiceResolver::isPoly(2) && VoiceResolver::isPoly(16), "V2..V16 poly");
