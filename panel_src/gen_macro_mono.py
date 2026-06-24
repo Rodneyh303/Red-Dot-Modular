@@ -13,9 +13,6 @@ def gen_macro(dark, W_MM=213.36):   # 42HP (40 + 2HP right strip for poly prob-o
     t=theme(dark); H_MM=128.5; PW,PH=px(W_MM),px(H_MM)
     ROW_TOP,ROW_BOT,N=14.,108.,4   # 4 lanes, one row each
     def rowY(r): return ROW_TOP+(r+0.5)*(ROW_BOT-ROW_TOP)/N
-    # Display order: row i → engine lane (MEL/OCT/REST/ACC top-to-bottom)
-    DISPLAY_ORDER=[1,2,0,3]   # row0=MEL(eng1), row1=OCT(eng2), row2=REST(eng0), row3=ACC(eng3)
-    LANE_NAMES_D=["MELODY","OCTAVE","REST","ACCENT"]
     # 4 CV jacks + 4 attens + spread base — columns match SandsMonoVisual, ED_X=88
     JACK_X=[6.,15.,24.,33.]            # LEN/OFF/ROT/SPR-cv
     ATTEN_X=[43.,52.,61.,70.]          # LEN/OFF/ROT/SPR depth
@@ -39,8 +36,8 @@ def gen_macro(dark, W_MM=213.36):   # 42HP (40 + 2HP right strip for poly prob-o
     A(D.logo_embed(dark, x_mm=11.0, y_mm=4.5, target_w_mm=42.0))
     A('</g>')
     A('<g inkscape:label="control-graphics" inkscape:groupmode="layer">')
-    for row in range(4):
-        y=rowY(row)
+    for lane in range(4):
+        y=rowY(lane)
         for x in JACK_X:  A(D.jack(x,y,t))
         for x in ATTEN_X: A(D.trim(x,y,t,t["gold"]))
         A(D.trim(SPREAD_X,y,t,t["wellring"]))
@@ -53,11 +50,9 @@ def gen_macro(dark, W_MM=213.36):   # 42HP (40 + 2HP right strip for poly prob-o
     BLEND_TOP=72.0; BLEND_H=36.0; BGAP=2.5; GROUP_W=ED_W/4.0  # 4 groups, tighter gap
     SEND_Y0=12.0; SEND_DY=11.0; SEND_DX=6.0                   # DX 7→6 for narrower groups
     A(f'<line x1="{px(ED_X):.1f}" y1="{px(BLEND_TOP-3.0):.1f}" x2="{px(ED_X+ED_W):.1f}" y2="{px(BLEND_TOP-3.0):.1f}" stroke="{t["accent"]}" stroke-width="1.0" opacity="0.6"/>')
-    # Blend groups drawn in display order (left-to-right: MEL/OCT/REST/ACC)
-    MIX_XY=[None]*4   # indexed by engine lane
-    for g in range(4):
-        l=DISPLAY_ORDER[g]   # engine lane
-        gx=ED_X+g*GROUP_W+BGAP*0.5; gw=GROUP_W-BGAP; gcx=gx+gw*0.5
+    MIX_XY=[]
+    for l in range(4):
+        gx=ED_X+l*GROUP_W+BGAP*0.5; gw=GROUP_W-BGAP; gcx=gx+gw*0.5
         A(f'<rect x="{px(gx):.1f}" y="{px(BLEND_TOP):.1f}" width="{px(gw):.1f}" height="{px(BLEND_H):.1f}" rx="{px(1.4):.1f}" fill="{t["edrecess"]}" stroke="{t["edborder"]}" stroke-width="0.9" opacity="0.92"/>')
         A(f'<line x1="{px(gx+2):.1f}" y1="{px(BLEND_TOP+7.5):.1f}" x2="{px(gx+gw-2):.1f}" y2="{px(BLEND_TOP+7.5):.1f}" stroke="{t["edborder"]}" stroke-width="0.6" opacity="0.6"/>')
         lane_sends=[]
@@ -66,23 +61,23 @@ def gen_macro(dark, W_MM=213.36):   # 42HP (40 + 2HP right strip for poly prob-o
             cys=BLEND_TOP+SEND_Y0+(item//2)*SEND_DY
             A(D.trim(cxs,cys,t,t["gold"]))
             lane_sends.append((cxs,cys))
-        MIX_XY[l]=lane_sends
+        MIX_XY.append(lane_sends)
     A('</g>')
     # ── SvgPanelKit component layer: named markers at every control centre, so a
     #    widget can bind by id later. Indices mirror StraitsSandsMacroVisual.hpp:
     #    cvId(r,c)=CV_START(0)+r*2+c (inputs), attenId(r,c)=ATTEN_START(3)+r*2+c
     #    (params), SPREAD_REST/MEL/OCT = 0/1/2 (params). ──
     A('<g inkscape:label="components" inkscape:groupmode="layer">')
-    # Components in display order; engine lane from DISPLAY_ORDER.
-    for row in range(4):
-        lane=DISPLAY_ORDER[row]   # engine lane
-        y=rowY(row)
+    # cvId(lane,col): CV_START + lane*4 + col → inputs 0..15
+    # attenId(lane,col): ATTEN_START(4) + lane*4 + col → params 4..19
+    # SPREAD_REST/MELODY/OCTAVE/ACCENT = 0/1/2/3
+    for lane in range(4):
+        y=rowY(lane)
         for p,x in enumerate(JACK_X):  A(D.kit_shape("input", 0+lane*4+p, x, y))
         for p,x in enumerate(ATTEN_X): A(D.kit_shape("param", 4+lane*4+p, x, y))
-        A(D.kit_shape("param", lane, SPREAD_X, y))  # SPREAD engine lane
+        A(D.kit_shape("param", lane, SPREAD_X, y))  # SPREAD_REST/MELODY/OCTAVE/ACCENT
     # Macro→voice mix-in send markers (bound to sendDispId display proxies).
-    for g in range(4):
-        l=DISPLAY_ORDER[g]   # engine lane
+    for l in range(4):
         for item in range(4):
             cxs,cys = MIX_XY[l][item]
             A(f'<circle id="param_send_{l}_{item}" cx="{px(cxs):.2f}" cy="{px(cys):.2f}" r="0.5" fill="none" stroke="none"/>')

@@ -19,7 +19,7 @@ namespace SandsMonoVisualIds {
     static constexpr int   N_SPREAD_LANES = 4;  // REST, MELODY, OCTAVE, ACCENT
     // Spread control index (0..3) → editor lane order (REST/MEL/OCT/LEG/ACC/VAR). Accent is
     // editor lane 4 (it skips LEGATO at 3, which is mono-only and has no spread).
-    static constexpr int SPREAD_LANE_TO_EDITOR[4] = { 2, 0, 1, 3 };  // REST=2, MEL=0, OCT=1, ACC=3
+    static constexpr int SPREAD_LANE_TO_EDITOR[4] = { 0, 1, 2, 4 };
 
     // Column X positions (mm)
     // LOR CV jacks (all 6 lanes): LEN/OFF/ROT
