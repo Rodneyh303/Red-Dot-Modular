@@ -7,7 +7,7 @@
  * Compile: g++ -std=c++17 -I. test_lock_behaviour.cpp -o test_lock && ./test_lock
  */
 
-#include "PatternEngine.hpp"
+#include "../src/dsp/engines/PatternEngine.hpp"
 #include <iostream>
 #include <sstream>
 #include <cstring>

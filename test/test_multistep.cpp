@@ -5,7 +5,7 @@
  *
  * Compile: g++ -std=c++17 -I. test_multistep.cpp -o test_ms && ./test_ms
  */
-#include "GateState.hpp"
+#include "../src/dsp/gates/GateState.hpp"
 #include <iostream>
 #include <sstream>
 #include <cstring>
