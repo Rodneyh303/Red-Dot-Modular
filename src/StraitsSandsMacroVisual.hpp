@@ -73,7 +73,7 @@ namespace StraitsMacroVisualIds {
     // ── Input IDs ─────────────────────────────────────────────────────────
     enum InputId {
         CV_START = 0,
-        NUM_INPUTS = CV_START + 12   // 4 lanes × 3 cols
+        NUM_INPUTS = CV_START + 16   // 4 lanes × 4 cols
     };
     static inline int cvId(int lane, int c) { return CV_START + lane*3 + c; }
 
@@ -127,26 +127,23 @@ struct StraitsSandsMacroVisual : Module {
         config(MonsoonIds::NUM_PARAMS, StraitsMacroVisualIds::NUM_INPUTS,
                StraitsMacroVisualIds::NUM_OUTPUTS, 0);
         for (auto& a : probLastStep) for (auto& x : a) x = -1;
-        { static const char* ln[3] = {"REST","MEL","OCT"};
-          for (int l = 0; l < 3; ++l)
+        { static const char* ln[4] = {"REST","MEL","OCT","ACC"};
+          for (int l = 0; l < 4; ++l)
             configOutput(StraitsMacroVisualIds::PROB_OUT_REST + l,
                 std::string("Probability ") + ln[l] + " (poly: ch2+ voices)"); }
 
-        configParam(SPREAD_REST,   -1.f,1.f,0.f,"Global Spread REST");   // bipolar, matches MEL/OCT (was 0..1 — inconsistent)
+        configParam(SPREAD_REST,   -1.f,1.f,0.f,"Global Spread REST");
         configParam(SPREAD_MELODY, -1.f,1.f,0.f,"Global Spread MELODY");
         configParam(SPREAD_OCTAVE, -1.f,1.f,0.f,"Global Spread OCTAVE");
+        configParam(SPREAD_ACCENT, -1.f,1.f,0.f,"Global Spread ACCENT");
 
-        static const char* rowNames[6][2] = {
-            {"REST Len","REST Off"}, {"REST Rot","REST Spr"},
-            {"MEL Len", "MEL Off"}, {"MEL Rot", "MEL Spr"},
-            {"OCT Len", "OCT Off"}, {"OCT Rot", "OCT Spr"},
-        };
-        for (int r=0; r<6; ++r)
-            for (int c=0; c<2; ++c) {
-                configParam(attenId(r,c), -1.f,1.f,0.f,
-                            std::string(rowNames[r][c])+" depth");
-                configInput(cvId(r,c),
-                            std::string(rowNames[r][c])+" CV");
+        static const char* laneNames[4] = {"REST","MEL","OCT","ACC"};
+        static const char* paramNames[4] = {"Len","Off","Rot","Spr"};
+        for (int lane=0; lane<4; ++lane)
+            for (int c=0; c<4; ++c) {
+                std::string nm = std::string(laneNames[lane])+" "+paramNames[c];
+                configParam(attenId(lane,c), -1.f,1.f,0.f, nm+" depth");
+                configInput(cvId(lane,c), nm+" CV");
             }
 
         // Global L/O/R params
@@ -163,12 +160,12 @@ struct StraitsSandsMacroVisual : Module {
         // Per-voice Macro→voice mix-in sends (relocated from East). 12 display proxies
         // (selected-voice view, bound on the panel) + 180 per-voice store. Default 0
         // = opt-in: Macro global CV reaches a voice only when dialed in for that voice.
-        for (int lane=0; lane<3; ++lane)
+        for (int lane=0; lane<4; ++lane)
             for (int item=0; item<4; ++item)
                 configParam(sendDispId(lane,item), -1.f,1.f,0.f,
                             "L"+std::to_string(lane)+" mix-in "+std::to_string(item)+" (selected voice)");
         for (int v=0; v<16; ++v)   // 16 voice slots: 0=mono(V1), 1..15=poly(V2..V16)
-            for (int lane=0; lane<3; ++lane)
+            for (int lane=0; lane<4; ++lane)
                 for (int item=0; item<4; ++item)
                     configParam(sendId(v,lane,item), -1.f,1.f,0.f,
                                 "V"+std::to_string(v+1)+" L"+std::to_string(lane)+" mix-in "+std::to_string(item));
@@ -177,8 +174,8 @@ struct StraitsSandsMacroVisual : Module {
     void process(const ProcessArgs&) override;   // defined in .cpp (needs findMonsoonEitherSide)
 
     // S&H latch state for the poly prob outs: [lane][channel] (ch0 reserved, 1..15 voices).
-    float probHeld[3][16] = {};
-    int   probLastStep[3][16];
+    float probHeld[4][16] = {};
+    int   probLastStep[4][16];
 
     // CV-applied global spread per lane (0=REST,1=MEL,2=OCT). processDNA writes
     // these from base + spread CV; the display reads them so spread CV is visible

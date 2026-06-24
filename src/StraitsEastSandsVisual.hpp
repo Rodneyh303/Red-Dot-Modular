@@ -126,56 +126,51 @@ struct StraitsEastSandsVisual : Module {
     // clamped, after combineSpread) — published by MonsoonExpanderManager each
     // sync so the East spread trimpot mod-arc can show the viewed voice's value.
     // lane: 0=REST 1=MELODY 2=OCTAVE. Bipolar-ish 0..1 interp domain.
-    float polySpreadEffective[15][3] = {};
+    float polySpreadEffective[15][4] = {};
 
     // Probability CV out config (persisted): scale 0=0..1V,1=0..5V,2=0..10V; S&H vs
     // continuous. probHeld/probLastStep per (lane, channel) for S&H (ch0=master, 1..15
     // = voices → index [lane][0..15]).
-    float probHeld[3][16] = {};
-    int   probLastStep[3][16];
+    float probHeld[4][16] = {};
+    int   probLastStep[4][16];
 
     StraitsEastSandsVisual() {
         using namespace StraitsEastVisualIds;
         config(MonsoonIds::NUM_PARAMS, StraitsEastVisualIds::NUM_INPUTS,
                StraitsEastVisualIds::NUM_OUTPUTS, StraitsEastVisualIds::NUM_LIGHTS);
         for (auto& a : probLastStep) for (auto& x : a) x = -1;
-        { static const char* ln[3] = {"REST","MEL","OCT"};
-          for (int l = 0; l < 3; ++l)
+        { static const char* ln[4] = {"REST","MEL","OCT","ACC"};
+          for (int l = 0; l < 4; ++l)
             configOutput(StraitsEastVisualIds::PROB_OUT_REST + l,
                 std::string("Probability ") + ln[l] + " (poly: ch1 master, ch2+ voices)"); }
 
         configParam(SPREAD_R, -1.f,1.f,0.f,"Spread REST");
         configParam(SPREAD_M, -1.f,1.f,0.f,"Spread MELODY");
         configParam(SPREAD_O, -1.f,1.f,0.f,"Spread OCTAVE");
+        configParam(SPREAD_A, -1.f,1.f,0.f,"Spread ACCENT");
 
         // Display proxies for the selected-voice owner/send controls (copied
         // to/from the per-voice MACRO_OWN/SEND params on voice switch). Owner is
         // an on/off switch (off=Macro owns base, on=East owns). Sends -1..1
         // default unity (Macro CV reaches the voice; turn down to localise).
-        const char* laneNm[3] = {"REST","MEL","OCT"};
-        for (int lane=0; lane<3; ++lane) {
+        const char* laneNm[4] = {"REST","MEL","OCT","ACC"};
+        for (int lane=0; lane<4; ++lane) {
             configSwitch(ownerDispId(lane), 0.f,1.f,0.f,
                          std::string(laneNm[lane])+" base: inherit Macro / local East", {"Inherit Macro","Local East"});
-            // (Macro mix-in send display proxies relocated to Macro under the control
-            //  inversion — East no longer configures them.)
         }
 
-        static const char* rowNames[6][2] = {
-            {"REST Len","REST Off"}, {"REST Rot","REST Spr"},
-            {"MEL Len", "MEL Off"}, {"MEL Rot", "MEL Spr"},
-            {"OCT Len", "OCT Off"}, {"OCT Rot", "OCT Spr"},
-        };
-        for (int r=0; r<6; ++r)
-            for (int c=0; c<2; ++c) {
-                configParam(attenDispId(r,c), -1.f,1.f,0.f,
-                            std::string(rowNames[r][c])+" depth (selected voice)");
-                configInput(cvId(r,c),
-                            std::string(rowNames[r][c])+" CV (poly, per-voice depth)");
+        static const char* laneNames[4] = {"REST","MEL","OCT","ACC"};
+        static const char* paramNames[4] = {"Len","Off","Rot","Spr"};
+        for (int lane=0; lane<4; ++lane)
+            for (int c=0; c<4; ++c) {
+                std::string nm = std::string(laneNames[lane])+" "+paramNames[c];
+                configParam(attenDispId(lane,c), -1.f,1.f,0.f, nm+" depth (selected voice)");
+                configInput(cvId(lane,c), nm+" CV (poly, per-voice depth)");
             }
 
         for (int v=0; v<15; ++v) {   // poly voices 2..16: lorId/owner/interp banks are 15-wide
             std::string vl = "V"+std::to_string(v+2)+" ";
-            for (int lane=0; lane<3; ++lane) {
+            for (int lane=0; lane<4; ++lane) {
                 for (int c=0; c<3; ++c)
                     configParam(lorId(v,lane,c), 0.f,16.f,
                                 c==0?16.f:0.f, vl+"l"+std::to_string(lane)+"c"+std::to_string(c));
@@ -192,11 +187,9 @@ struct StraitsEastSandsVisual : Module {
 
             // Base owner (0=Macro default, 1=East) + Macro-CV blend sends (unity
             // default) per lane. Switch/snap so owner reads as discrete 0/1.
-            for (int lane=0; lane<3; ++lane) {
+            for (int lane=0; lane<4; ++lane) {
                 configSwitch(ownerId(v,lane), 0.f,1.f,0.f,
                              vl+"L"+std::to_string(lane)+" base: inherit Macro / local East", {"Inherit Macro","Local East"});
-                // (per-voice Macro mix-in sends relocated to Macro — see
-                //  StraitsMacroVisualIds::sendId.)
             }
         }
         // Per-voice CV depth for each of the 12 jacks — its own bank is 16-wide now
@@ -205,10 +198,10 @@ struct StraitsEastSandsVisual : Module {
         // the selected voice's slice on voice switch.
         for (int v=0; v<16; ++v) {
             std::string vl = "V"+std::to_string(v+1)+" ";   // slot v = voice v+1
-            for (int r=0; r<6; ++r)
-                for (int c=0; c<2; ++c)
-                    configParam(attenId(v,r,c), -1.f,1.f,0.f,
-                                vl+"depth r"+std::to_string(r)+"c"+std::to_string(c));
+            for (int lane=0; lane<4; ++lane)
+                for (int c=0; c<4; ++c)
+                    configParam(attenId(v,lane,c), -1.f,1.f,0.f,
+                                vl+"depth l"+std::to_string(lane)+"c"+std::to_string(c));
         }
     }
 

@@ -111,8 +111,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         visualEditor->box.size = mm2px(Vec(ED_W, ED_H));
         addChild(visualEditor);
 
-        // 3 poly probability CV outs, one per lane (aligned to editor lane centers).
-        for (int l = 0; l < 3; ++l) {
+        // 4 poly probability CV outs, one per lane (aligned to editor lane centers).
+        for (int l = 0; l < 4; ++l) {
             float y = ED_Y + (l + 0.5f) * ED_LANE_H;
             auto* p = createOutputCentered<redDot::GoldPolyPort>(
                 mm2px(Vec(PROB_OUT_X, y)), module, StraitsMacroVisualIds::PROB_OUT_REST + l);
@@ -122,28 +122,27 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
             addOutput(p);
         }
 
-        // ── Left section: 4 cols × 6 rows ─────────────────────────────────
-        // j1, j2 = mono CV jacks   a1, a2 = attenuverters
-        // Row r, col c:  lane=r/2, param=(r%2)*2+c
+        // ── Left section: 4 lanes × 1 row, 4 jacks + 4 attens + spread per lane ──
+        // Mono-style: lane == row, col 0..3 = LEN/OFF/ROT/SPR
+        static const float JACK_X[4]  = { COL_J1, COL_J2, COL_J3, COL_J4 };
+        static const float ATTEN_X[4] = { COL_A1, COL_A2, COL_A3, COL_A4 };
         for (int r = 0; r < N_ROWS; ++r) {
             float y = rowY(r);
-            addInput(createInputCentered<PJ301MPort>(mm2px(Vec(COL_J1, y)), mod, cvId(r,0)));
-            addInput(createInputCentered<PJ301MPort>(mm2px(Vec(COL_J2, y)), mod, cvId(r,1)));
-            auto* a1 = createParamCentered<Trimpot>(   mm2px(Vec(COL_A1, y)), mod, attenId(r,0));
-            auto* a2 = createParamCentered<Trimpot>(   mm2px(Vec(COL_A2, y)), mod, attenId(r,1));
-            addParam(a1); addParam(a2);
-            leftAttenuverters.push_back(a1); leftAttenuverters.push_back(a2);
+            for (int c = 0; c < 4; ++c)
+                addInput(createInputCentered<PJ301MPort>(mm2px(Vec(JACK_X[c], y)), mod, cvId(r,c)));
+            for (int c = 0; c < 4; ++c) {
+                auto* a = createParamCentered<Trimpot>(mm2px(Vec(ATTEN_X[c], y)), mod, attenId(r,c));
+                addParam(a);
+                leftAttenuverters.push_back(a);
+            }
         }
 
-        // ── Per-lane global SPREAD trimpots (REST / MELODY / OCTAVE) ─────────
-        // Mirrors the East visual: one trimpot per lane, vertically centred on
-        // each lane's two-row band, in a column between the attenuverters and
-        // the visual editor. The module already has these params (SPREAD_REST/
-        // MELODY/OCTAVE); they were just never placed on the panel.
-        for (int lane = 0; lane < 3; ++lane) {
-            float y = 0.5f * (rowY(lane*2) + rowY(lane*2+1));  // centre of lane band
-            int pid = (lane==0) ? SPREAD_REST : (lane==1) ? SPREAD_MELODY : SPREAD_OCTAVE;
-            auto* sp = createParamCentered<Trimpot>(mm2px(Vec(SPREAD_X, y)), mod, pid);
+        // ── Per-lane spread trimpots (REST/MELODY/OCTAVE/ACCENT) ─────────────
+        // Mono-style: one per lane row at SPREAD_X.
+        static const int spreadPid[4] = { SPREAD_REST, SPREAD_MELODY, SPREAD_OCTAVE, SPREAD_ACCENT };
+        for (int lane = 0; lane < 4; ++lane) {
+            float y = rowY(lane);
+            auto* sp = createParamCentered<Trimpot>(mm2px(Vec(SPREAD_X, y)), mod, spreadPid[lane]);
             addParam(sp);
             pendingSpreadArcs.push_back({sp, lane});
         }
@@ -153,9 +152,9 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         // groups at ED_X + lane*ED_W/3. Bound to the sendDispId display proxies (synced
         // to/from the per-voice store on view-voice change).
         {
-            const float BLEND_TOP=72.f, SEND_Y0=12.f, SEND_DY=11.f, SEND_DX=7.f, BGAP=3.5f;
-            const float GROUP_W = ED_W/3.f;
-            for (int lane=0; lane<3; ++lane) {
+            const float BLEND_TOP=72.f, SEND_Y0=12.f, SEND_DY=11.f, SEND_DX=6.f, BGAP=2.5f;
+            const float GROUP_W = ED_W/4.f;
+            for (int lane=0; lane<4; ++lane) {
                 float gx=ED_X+lane*GROUP_W+BGAP*0.5f, gw=GROUP_W-BGAP, gcx=gx+gw*0.5f;
                 for (int item=0; item<4; ++item) {
                     float cxs=gcx+((item%2)==0?-SEND_DX:SEND_DX);
@@ -190,7 +189,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
 
     void saveLOR() {
         if (!module || !visualEditor) return;
-        for (int l = 0; l < 3; ++l) {
+        for (int l = 0; l < 4; ++l) {
             const auto& lane = visualEditor->currentState.lanes[l];
             module->params[lorId(l,0)].setValue((float)lane.length);
             module->params[lorId(l,1)].setValue((float)lane.offset);
@@ -199,7 +198,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
     }
     void loadLOR() {
         if (!module || !visualEditor) return;
-        for (int l = 0; l < 3; ++l) {
+        for (int l = 0; l < 4; ++l) {
             auto& lane = visualEditor->currentState.lanes[l];
             lane.length   = std::max(1,(int)std::round(module->params[lorId(l,0)].getValue()));
             lane.offset   = (int)std::round(module->params[lorId(l,1)].getValue());
@@ -280,13 +279,13 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         {
             const int slot = dotModular::VoiceResolver::voiceSlot(viewVoiceNum);  // V→16-wide slot (slot0=mono)
             if (viewVoice != lastSendVoice) {
-                for (int lane=0; lane<3; ++lane)
+                for (int lane=0; lane<4; ++lane)
                     for (int item=0; item<4; ++item)
                         module->params[sendDispId(lane,item)].setValue(
                             module->params[sendId(slot,lane,item)].getValue());
                 lastSendVoice = viewVoice;
             } else {
-                for (int lane=0; lane<3; ++lane)
+                for (int lane=0; lane<4; ++lane)
                     for (int item=0; item<4; ++item)
                         module->params[sendId(slot,lane,item)].setValue(
                             module->params[sendDispId(lane,item)].getValue());
@@ -305,7 +304,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
             static const int laneMap[3] = { SandsVisualEditorV4::REST,
                                             SandsVisualEditorV4::MELODY,
                                             SandsVisualEditorV4::OCTAVE };
-            for (int lane = 0; lane < 3; ++lane)
+            for (int lane = 0; lane < 4; ++lane)
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
                     visualEditor->currentState.lanes[laneMap[lane]].probabilities[s] =
                         resolver.laneProbabilityAtStep(viewVoiceNum, lane, s);
@@ -335,7 +334,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         // the lanes) could affect voice 1, and only under the deferred interp. Y.
         for (rack::Widget* w : leftAttenuverters) if (w) w->visible = !tab1Mono;
         if (tab1Mono) {
-            for (int l = 0; l < 3; ++l) {
+            for (int l = 0; l < 3; ++l) {  // lenId only goes 0..2 (REST/MEL/OCT)
                 int mLen = (int)std::lround(monoVis->params[SandsMonoVisualIds::lenId(l)].getValue());
                 int mOff = (int)std::lround(monoVis->params[SandsMonoVisualIds::offId(l)].getValue());
                 int mRot = (int)std::lround(monoVis->params[SandsMonoVisualIds::rotId(l)].getValue());
@@ -344,7 +343,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
                 visualEditor->setLanePlayStep(l, calcPlayhead(gs, mLen, mOff, mRot));
             }
         } else {
-            for (int l = 0; l < 3; ++l) {
+            for (int l = 0; l < 4; ++l) {
                 int ownLen = (int)std::lround(mod->macroBase[l][0] + mod->macroCVDelta[l][0]);
                 int ownOff = (int)std::lround(mod->macroBase[l][1] + mod->macroCVDelta[l][1]);
                 int ownRot = (int)std::lround(mod->macroBase[l][2] + mod->macroCVDelta[l][2]);
@@ -384,9 +383,9 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
             }
         }
 
-        const float BLEND_TOP=72.f, SEND_Y0=12.f, SEND_DY=11.f, SEND_DX=7.f, BGAP=3.5f;
-        const float GROUP_W = ED_W/3.f;
-        const char* laneName[3] = { "REST", "MELODY", "OCTAVE" };
+        const float BLEND_TOP=72.f, SEND_Y0=12.f, SEND_DY=11.f, SEND_DX=6.f, BGAP=2.5f;
+        const float GROUP_W = ED_W/4.f;
+        const char* laneName[4] = { "REST", "MELODY", "OCTAVE", "ACCENT" };
         const char* itemName[4] = { "LEN", "OFF", "ROT", "SPR" };
 
         bool isLight = false;
@@ -405,7 +404,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         nvgFillColor(vg, head);
         nvgText(vg, mm2px(ED_X), mm2px(BLEND_TOP - 3.5f), "MIX IN", nullptr);
 
-        for (int l = 0; l < 3; ++l) {
+        for (int l = 0; l < 4; ++l) {
             float gx = ED_X + l*GROUP_W + BGAP*0.5f;
             float gw = GROUP_W - BGAP;
             float gcx = gx + gw*0.5f;
@@ -429,7 +428,7 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
     using namespace StraitsMacroVisualIds;
     Monsoon* mon = redDot::findMonsoonEitherSide(this);
     if (!mon) {
-        for (int l = 0; l < 3; ++l) { outputs[PROB_OUT_REST + l].setChannels(1);
+        for (int l = 0; l < 4; ++l) { outputs[PROB_OUT_REST + l].setChannels(1);
                                       outputs[PROB_OUT_REST + l].setVoltage(0.f); }
         return;
     }
@@ -440,7 +439,7 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
     const int nCh = 1 + nV;
     const int gs = eng.stepIndex;
     dotModular::VoiceResolver resolver(eng);
-    for (int l = 0; l < 3; ++l) {
+    for (int l = 0; l < 4; ++l) {
         auto& out = outputs[PROB_OUT_REST + l];
         out.setChannels(nCh < 1 ? 1 : nCh);
         // Macro's OWN global LOR step for this lane (from macroBase+CVDelta — identical
