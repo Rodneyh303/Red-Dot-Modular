@@ -75,13 +75,13 @@ namespace StraitsMacroVisualIds {
         CV_START = 0,
         NUM_INPUTS = CV_START + 16   // 4 lanes × 4 cols
     };
-    static inline int cvId(int lane, int c) { return CV_START + lane*3 + c; }
+    static inline int cvId(int lane, int c) { return CV_START + lane*4 + c; }
 
     // ── Output IDs ────────────────────────────────────────────────────────
     // 3 poly probability CV outs (REST/MEL/OCT): ch1 reserved (future mono tab),
     // ch2..1+nVoices = per-voice ensemble.
     enum OutputId {
-        PROB_OUT_REST = 0, PROB_OUT_MEL, PROB_OUT_OCT,
+        PROB_OUT_REST = 0, PROB_OUT_MEL, PROB_OUT_OCT, PROB_OUT_ACCENT,
         NUM_OUTPUTS
     };
 
