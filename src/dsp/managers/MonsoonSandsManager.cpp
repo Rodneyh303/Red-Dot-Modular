@@ -7,6 +7,7 @@
 #include "../../StraitsSandsMacroVisual.hpp"
 #include "MonsoonExpanderManager.hpp"
 #include "../../MonsoonStraitsEastExpander.hpp"
+#include "../../StraitsEastSandsVisual.hpp"
 
 using namespace rack;
 using namespace MonsoonIds;
