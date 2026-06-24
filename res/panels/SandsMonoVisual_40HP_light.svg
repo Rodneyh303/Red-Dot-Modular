@@ -70,6 +70,9 @@
 <circle cx="183.1" cy="157.0" r="9.4" fill="#d4d6d9" stroke="#a8aeb6" stroke-width="1.25"/><line x1="183.1" y1="157.0" x2="183.1" y2="149.9" stroke="#a8aeb6" stroke-width="1"/>
 <circle cx="209.7" cy="157.0" r="11.5" fill="#dadce0" stroke="#9298a0" stroke-width="1"/><circle cx="209.7" cy="157.0" r="5.0" fill="#d8dade"/>
 <circle cx="236.2" cy="157.0" r="9.4" fill="#d4d6d9" stroke="#a07808" stroke-width="1.25"/><line x1="236.2" y1="157.0" x2="236.2" y2="149.9" stroke="#a07808" stroke-width="1"/>
+<circle cx="183.1" cy="249.5" r="9.4" fill="#d4d6d9" stroke="#a8aeb6" stroke-width="1.25"/><line x1="183.1" y1="249.5" x2="183.1" y2="242.4" stroke="#a8aeb6" stroke-width="1"/>
+<circle cx="209.7" cy="249.5" r="11.5" fill="#dadce0" stroke="#9298a0" stroke-width="1"/><circle cx="209.7" cy="249.5" r="5.0" fill="#d8dade"/>
+<circle cx="236.2" cy="249.5" r="9.4" fill="#d4d6d9" stroke="#a07808" stroke-width="1.25"/><line x1="236.2" y1="249.5" x2="236.2" y2="242.4" stroke="#a07808" stroke-width="1"/>
 </g>
 <g inkscape:label="components" inkscape:groupmode="layer">
 <circle id="input_0" cx="17.72" cy="64.47" r="0.5" fill="none" stroke="none"/>
@@ -117,5 +120,8 @@
 <circle id="param_20" cx="183.07" cy="156.99" r="0.5" fill="none" stroke="none"/>
 <circle id="input_20" cx="209.65" cy="156.99" r="0.5" fill="none" stroke="none"/>
 <circle id="param_41" cx="236.22" cy="156.99" r="0.5" fill="none" stroke="none"/>
+<circle id="param_21" cx="183.07" cy="249.51" r="0.5" fill="none" stroke="none"/>
+<circle id="input_21" cx="209.65" cy="249.51" r="0.5" fill="none" stroke="none"/>
+<circle id="param_42" cx="236.22" cy="249.51" r="0.5" fill="none" stroke="none"/>
 </g>
 </svg>

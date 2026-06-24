@@ -53,12 +53,12 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
                 if (!mm || lane < 0 || lane >= 6) return false;
                 Monsoon* mon = findMonsoonEitherSide(mm);
                 if (!mon || !mon->modVizMono) return false;
-                // Only REST/MEL/OCT (0-2) have spread; gate on the spread CV jack being
-                // connected — NOT a set-vs-effective delta, which races during a manual
-                // knob turn (control-rate spreadEffective lags the live param → red
-                // residue arc; same desync as the Monsoon big-5 fix).
-                if (lane >= 3) return false;
-                return mm->inputs[sprCvId(lane)].isConnected();
+                // Spreadable lanes: REST/MEL/OCT (0-2) + ACCENT (4). Map the editor lane
+                // back to its spread-control index for the CV-jack lookup. Gate on the
+                // spread CV jack being connected (avoids the set-vs-effective race).
+                int spr = (lane == 4) ? 3 : (lane <= 2 ? lane : -1);
+                if (spr < 0) return false;
+                return mm->inputs[sprCvId(spr)].isConnected();
             };
             addChild(arc);
         }
@@ -94,14 +94,15 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             }
         }
 
-        // ── Spread group: base trimpot + CV jack + atten, REST/MEL/OCT only ─
-        // Aligned to the top 3 lanes (REST, MELODY, OCTAVE). LEG/ACC/VAR are
-        // mono-only — no spread.
+        // ── Spread group: base trimpot + CV jack + atten ──────────────────
+        // REST/MEL/OCT + ACCENT (the poly-derived lanes). Each spread control sits on its
+        // editor-lane row (accent on row 4, skipping LEGATO at 3). LEG/VAR are mono-only.
         for (int l = 0; l < N_SPREAD_LANES; ++l) {
-            float y = rowY(l);
+            int editorLane = SPREAD_LANE_TO_EDITOR[l];
+            float y = rowY(editorLane);
             auto* sp = createParamCentered<Trimpot>(mm2px(Vec(SPR_BASE_X, y)), mod, sprId(l));
             addParam(sp);
-            pendingSpreadArcs.push_back({sp, l});
+            pendingSpreadArcs.push_back({sp, editorLane});
             addInput(createInputCentered<PJ301MPort>(
                 mm2px(Vec(SPR_CV_X, y)), mod, sprCvId(l)));
             addParam(createParamCentered<Trimpot>(
@@ -157,8 +158,8 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
                 visualEditor->currentState.lanes[l].offset   = (int)std::round(mod->params[offId(l)].getValue());
                 visualEditor->currentState.lanes[l].rotation = (int)std::round(mod->params[rotId(l)].getValue());
             }
-            for (int l = 0; l < 3; ++l)   // spread: REST/MEL/OCT only
-                mod->spreadEffective[l] = mod->params[sprId(l)].getValue();
+            for (int l = 0; l < N_SPREAD_LANES; ++l)   // spread: REST/MEL/OCT + ACCENT
+                mod->spreadEffective[SPREAD_LANE_TO_EDITOR[l]] = mod->params[sprId(l)].getValue();
             initialized = true;
         }
 
@@ -173,8 +174,10 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         // ── Per-lane base spread (REST/MEL/OCT only — the spreadable lanes).
         // LEG/ACC/VAR are mono-only and have no spread. spreadEffective[] is
         // written by processDNA from sprId base + cv*atten (per-lane CV mod).
-        for (int l = 0; l < 3; ++l)
-            paramMgr->setLaneSpread(l, mod->spreadEffective[l]);
+        for (int l = 0; l < N_SPREAD_LANES; ++l) {
+            int el = SPREAD_LANE_TO_EDITOR[l];
+            paramMgr->setLaneSpread(el, mod->spreadEffective[el]);
+        }
 
         paramMgr->setInterpolationTarget(SpreadManager::AVERAGE_POLY);
 
