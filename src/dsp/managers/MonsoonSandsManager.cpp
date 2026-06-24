@@ -159,8 +159,11 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 }
                 monoVis->spreadEffective[l] = sp;
             }
-            // LEG/ACC/VAR have no spread
-            for (int l = 3; l < 6; ++l) monoVis->spreadEffective[l] = 0.f;
+            // LEG(3) and VAR(5) are mono-only — no spread. ACCENT(4) is now a poly lane
+            // with its own spread (set by the mono Sands spread control / its own CV path),
+            // so it is NOT zeroed here.
+            monoVis->spreadEffective[3] = 0.f;
+            monoVis->spreadEffective[5] = 0.f;
 
             // ── Sands spread→final (Option W, Model 1) ───────────────────────
             // Mono owns the MONO final arrays: read the SLEWED draw, apply

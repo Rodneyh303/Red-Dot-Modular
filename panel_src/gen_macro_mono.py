@@ -96,7 +96,8 @@ def gen_mono(dark):
     #   spread (lanes 0-2 REST/MEL/OCT): SPR_BASE_X=62, SPR_CV_X=71, SPR_ATTEN_X=80
     JACK_X=[6.,15.,24.]; ATTEN_X=[34.,43.,52.]
     SPR_BASE_X,SPR_CV_X,SPR_ATTEN_X=62.,71.,80.
-    N_SPREAD=3
+    N_SPREAD=4                                  # REST/MEL/OCT + ACCENT (poly lanes)
+    SPR_TO_EDITOR=[0,1,2,4]                      # spread index → editor lane (accent skips LEG)
     ED_X=88.; PROB_OUT_X=207.; ED_W=PROB_OUT_X-ED_X-8.; ED_Y=18.; ED_H=ROW_BOT-ED_Y
     L=[]; A=L.append
     A(D.svg_open(PW,PH))
@@ -119,8 +120,8 @@ def gen_mono(dark):
         y=laneY(lane)
         for x in JACK_X:  A(D.jack(x,y,t))
         for x in ATTEN_X: A(D.trim(x,y,t,t["gold"]))
-    for lane in range(N_SPREAD):
-        y=laneY(lane)
+    for sidx in range(N_SPREAD):
+        y=laneY(SPR_TO_EDITOR[sidx])
         A(D.trim(SPR_BASE_X,y,t,t["wellring"]))
         A(D.jack(SPR_CV_X,y,t))
         A(D.trim(SPR_ATTEN_X,y,t,t["gold"]))
@@ -137,11 +138,11 @@ def gen_mono(dark):
         y=laneY(lane)
         for p,x in enumerate(JACK_X):  A(D.kit_shape("input", 0+lane*3+p, x, y))
         for p,x in enumerate(ATTEN_X): A(D.kit_shape("param", 21+lane*3+p, x, y))
-    for lane in range(N_SPREAD):
-        y=laneY(lane)
-        A(D.kit_shape("param", 18+lane, SPR_BASE_X, y))   # SPR_REST/MEL/OCT
-        A(D.kit_shape("input", 18+lane, SPR_CV_X, y))     # SPR_CV
-        A(D.kit_shape("param", 39+lane, SPR_ATTEN_X, y))  # SPR_ATTEN
+    for sidx in range(N_SPREAD):
+        y=laneY(SPR_TO_EDITOR[sidx])
+        A(D.kit_shape("param", 18+sidx, SPR_BASE_X, y))   # SPR_REST/MEL/OCT/ACCENT (18..21)
+        A(D.kit_shape("input", 18+sidx, SPR_CV_X, y))     # SPR_CV (18..21)
+        A(D.kit_shape("param", 39+sidx, SPR_ATTEN_X, y))  # SPR_ATTEN (39..42)
     A('</g>')
     A('</svg>')
     return "\n".join(L)
