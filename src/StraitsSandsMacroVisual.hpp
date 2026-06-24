@@ -67,7 +67,7 @@ namespace StraitsMacroVisualIds {
     // bug). Bank is 3-lane-strided × 4 items, 16 slots wide.
     // NOTE: bank is still 3-lane-strided; accent (lane 3) uses POLY_ACCENT_VOICE_* directly
     //       until the bank resize in Stage 6b.
-    inline int sendId(int v, int lane, int item) { return MonsoonIds::MACRO_SEND_START + (v*3 + lane)*4 + item; }
+    inline int sendId(int v, int lane, int item) { return MonsoonIds::MACRO_SEND_START + (v*4 + lane)*4 + item; }
     inline int sendDispId(int lane, int item)    { return MonsoonIds::MACRO_SEND_DISP_START + lane*4 + item; }
 
     // ── Input IDs ─────────────────────────────────────────────────────────

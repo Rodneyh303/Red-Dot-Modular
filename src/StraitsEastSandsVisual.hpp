@@ -95,9 +95,9 @@ namespace StraitsEastVisualIds {
     inline float targetLo(int param) { return (param == 0) ? 1.f : 0.f; }
     inline float targetHi(int param) { return (param == 0) ? 16.f : (param < 3) ? 15.f : 1.f; }
 
-    // Macro/East base owner per (voice, lane): MonsoonIds::MACRO_OWN_START + v*3 + lane.
-    // 0 = Macro owns (default), 1 = East owns.
-    inline int ownerId(int v, int lane) { return MonsoonIds::MACRO_OWN_START + v*3 + lane; }
+    // Macro/East base owner per (voice, lane): MonsoonIds::MACRO_OWN_START + v*4 + lane.
+    // 0 = Macro owns (default), 1 = East owns. 4 lanes.
+    inline int ownerId(int v, int lane) { return MonsoonIds::MACRO_OWN_START + v*4 + lane; }
     // (Macro mix-in send helpers relocated to StraitsMacroVisualIds under the control
     //  inversion — the send is a Macro concern now.)
     // Owner display proxy (selected-voice view; copied to/from per-voice on switch).

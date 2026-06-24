@@ -512,27 +512,27 @@ namespace MonsoonIds {
         // Appended at END so existing param IDs stay stable (saved patches safe).
         // Per-(voice,lane) base owner: which expander owns the poly L/O/R base for
         // voice v, lane L. 0 = Macro (default), 1 = East. 15 voices × 3 lanes = 45.
-        //   index = MACRO_OWN_START + v*3 + lane
+        //   index = MACRO_OWN_START + v*4 + lane
         MACRO_OWN_START,
-        MACRO_OWN_END = MACRO_OWN_START + 45,
+        MACRO_OWN_END = MACRO_OWN_START + 64,   // 16 voices × 4 lanes
         // Per-(voice,lane,item) Macro-CV blend send: how much of the (already
         // Macro-attenuated) Macro CV is mixed into this voice/lane/item. item
         // 0=LEN 1=OFF 2=ROT 3=SPR. 15 × 3 × 4 = 180. Default unity (Macro CV
         // reaches voices out of the box; turn down to localise).
-        //   index = MACRO_SEND_START + (v*3 + lane)*4 + item   (v = voiceNumber-1, slot0=mono)
+        //   index = MACRO_SEND_START + (v*4 + lane)*4 + item   (v = voiceNumber-1, slot0=mono)
         MACRO_SEND_START = MACRO_OWN_END,
-        MACRO_SEND_END = MACRO_SEND_START + 192,   // 16 voices × 3 lanes × 4 items (was 15)
+        MACRO_SEND_END = MACRO_SEND_START + 256,   // 16 voices × 4 lanes × 4 items
 
         // Display-proxy params for the East visual's SELECTED-VOICE owner/send
         // controls. Physical knobs/buttons bind to these fixed ids; the widget
         // copies them to/from the per-voice MACRO_OWN/SEND params on voice switch
         // (same pattern as SPREAD_R/M/O ↔ the per-voice interp params).
-        //   owner disp:  MACRO_OWN_DISP_START + lane            (3: lanes 0-2)
-        //   send  disp:  MACRO_SEND_DISP_START + lane*4 + item  (12: 3 lanes×4)
+        //   owner disp:  MACRO_OWN_DISP_START + lane            (4: lanes 0-3)
+        //   send  disp:  MACRO_SEND_DISP_START + lane*4 + item  (16: 4 lanes×4)
         MACRO_OWN_DISP_START = MACRO_SEND_END,
-        MACRO_OWN_DISP_END = MACRO_OWN_DISP_START + 3,
+        MACRO_OWN_DISP_END = MACRO_OWN_DISP_START + 4,
         MACRO_SEND_DISP_START = MACRO_OWN_DISP_END,
-        MACRO_SEND_DISP_END = MACRO_SEND_DISP_START + 12,
+        MACRO_SEND_DISP_END = MACRO_SEND_DISP_START + 16,
 
         // Per-(voice, jack) CV-depth attenuverter for East's poly CV inputs. The
         // poly cable is a convenience (one cable, 16 channels) but each voice is an
@@ -541,9 +541,9 @@ namespace MonsoonIds {
         // another. 15 voices × 12 jacks = 180. The East panel's 12 physical
         // attenuverters are display proxies (ATTEN_START) copied to/from the selected
         // voice's slice here on voice switch — same pattern as owner/send.
-        //   index = MACRO_ATTEN_START + v*12 + (r*2 + c)   (v = voiceNumber-1, slot0=mono)
+        //   index = MACRO_ATTEN_START + v*16 + (lane*4 + c)  (v = voiceNumber-1, slot0=mono)
         MACRO_ATTEN_START = MACRO_SEND_DISP_END,
-        MACRO_ATTEN_END = MACRO_ATTEN_START + 192,   // 16 voices × 12 jacks (was 15)
+        MACRO_ATTEN_END = MACRO_ATTEN_START + 256,   // 16 voices × 16 jacks (4 lanes × 4 cols)
 
         NUM_PARAMS = MACRO_ATTEN_END
     };
