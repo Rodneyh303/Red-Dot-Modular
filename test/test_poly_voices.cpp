@@ -38,12 +38,13 @@ static int s_pass = 0, s_fail = 0;
 // ── Minimal GateState mirror ───────────────────────────────────────────────────
 // Mirrors GateState.cpp exactly for the methods used by executePolyVoice.
 
+// Matches NoteValues.hpp: 0=1/1,1=1/2,2=1/4,3=1/4T,4=1/8,5=1/8T,6=1/16,7=1/32
 static float gs_noteSteps(int nvIdx) {
-    static const float fracs[9] = {
-        0.5f, 0.25f, 1.f/6.f, 0.125f, 1.f/12.f, 0.0625f, 1.f/24.f, 0.03125f, 1.f/48.f
+    static const float fracs[8] = {
+        1.f, 0.5f, 0.25f, 1.f/6.f, 0.125f, 1.f/12.f, 0.0625f, 0.03125f
     };
-    if (nvIdx < 0 || nvIdx > 8) return 1.f;
-    return std::max(0.5f, fracs[nvIdx] * 16.f);
+    if (nvIdx < 0 || nvIdx >= 8) return 1.f;
+    return fracs[nvIdx] * 16.f;
 }
 
 struct VoiceState {
@@ -291,9 +292,9 @@ int main() {
         e.voices[0].gs.holdRemain   = 2.f;   // will tick to 1 before extend
         e.voices[0].gs.lastSemitone = 5;
         e.lastStepResult.decision   = MonoDecision::Tie;
-        e.lastStepResult.nvIdx      = 4;     // sixteenth = 1.0 step
+        e.lastStepResult.nvIdx      = 6;     // sixteenth = 1.0 step
         e.executePolyVoice(0);
-        // After tick: holdRemain=1.  extendHold adds gs_noteSteps(4)=1.0  → 2.0
+        // After tick: holdRemain=1.  extendHold adds gs_noteSteps(6)=1.0  → 2.0
         EXPECT_NEAR(e.voices[0].gs.holdRemain, 2.0f, 1e-4f);
     });
 
@@ -303,7 +304,7 @@ int main() {
         e.voices[0].gs.holdRemain = 1.f;
         e.voices[0].gs.lastSemitone = 5;
         e.lastStepResult.decision   = MonoDecision::Tie;
-        e.lastStepResult.nvIdx      = 4;
+        e.lastStepResult.nvIdx      = 6;
         e.executePolyVoice(0);
         EXPECT(e.voices[0].gs.gateHeld);
     });
@@ -314,7 +315,7 @@ int main() {
         e.voices[0].gs.holdRemain = 2.f;
         e.voices[0].gs.lastSemitone = 5;
         e.lastStepResult.decision   = MonoDecision::Tie;
-        e.lastStepResult.nvIdx      = 4;
+        e.lastStepResult.nvIdx      = 6;
         e.executePolyVoice(0);
         EXPECT(!e.voices[0].gs.gateTriggered);
     });
@@ -323,7 +324,7 @@ int main() {
         PolyEngine e; e.reset(); e.numPolyVoices = 1;
         // voice is silent: gateHeld=false
         e.lastStepResult.decision = MonoDecision::Tie;
-        e.lastStepResult.nvIdx    = 4;
+        e.lastStepResult.nvIdx    = 6;
         e.executePolyVoice(0);
         EXPECT(!e.voices[0].gs.gateHeld);
         EXPECT(!e.voices[0].gs.gateTriggered);
@@ -337,7 +338,7 @@ int main() {
         e.voices[0].gs.lastSemitone = 5;
         e.nextPitchV = 9.9f;  // would change pitch if used
         e.lastStepResult.decision   = MonoDecision::Tie;
-        e.lastStepResult.nvIdx      = 4;
+        e.lastStepResult.nvIdx      = 6;
         e.executePolyVoice(0);
         EXPECT_NEAR(e.voices[0].gs.currentPitchV, 2.5f, 1e-5f);
     });
@@ -348,7 +349,7 @@ int main() {
         e.voices[0].gs.holdRemain = 2.f;
         e.voices[0].gs.lastSemitone = 5;
         e.lastStepResult.decision = MonoDecision::Tie;
-        e.lastStepResult.nvIdx    = 4;  // 1.0 step each
+        e.lastStepResult.nvIdx    = 6;  // 1.0 step each
         e.executePolyVoice(0);  // tick→1, extend→2
         e.executePolyVoice(0);  // tick→1, extend→2
         e.executePolyVoice(0);  // tick→1, extend→2
@@ -365,7 +366,7 @@ int main() {
         e.voices[0].restProb = 0.0f;
         e.setRng(0.0f);  // r_rest=0.0 < restProb=0.0 is FALSE → plays
         e.lastStepResult.decision = MonoDecision::NewNote;
-        e.lastStepResult.nvIdx    = 4;
+        e.lastStepResult.nvIdx    = 6;
         e.nextPitchV = 2.0f; e.nextSem = 7;
         e.executePolyVoice(0);
         EXPECT(e.voices[0].gs.gateHeld);
@@ -379,7 +380,7 @@ int main() {
         e.voices[0].restProb = 1.0f;
         e.setRng(0.0f);  // r_rest=0.0 < 1.0 → rest
         e.lastStepResult.decision = MonoDecision::NewNote;
-        e.lastStepResult.nvIdx    = 4;
+        e.lastStepResult.nvIdx    = 6;
         e.executePolyVoice(0);
         EXPECT(!e.voices[0].gs.gateHeld);
         EXPECT(!e.voices[0].gs.gateTriggered);
@@ -392,7 +393,7 @@ int main() {
         e.voices[0].gs.holdRemain = 2.f;
         e.setRng(0.0f);
         e.lastStepResult.decision = MonoDecision::NewNote;
-        e.lastStepResult.nvIdx    = 4;
+        e.lastStepResult.nvIdx    = 6;
         e.nextPitchV = 1.5f; e.nextSem = 3;
         e.executePolyVoice(0);
         EXPECT(e.voices[0].gs.gateTriggered);
@@ -403,7 +404,7 @@ int main() {
         e.voices[0].restProb = 0.0f;
         e.setRng(0.0f);
         e.lastStepResult.decision = MonoDecision::NewNote;
-        e.lastStepResult.nvIdx    = 3;  // eighth = 2.0 steps
+        e.lastStepResult.nvIdx    = 4;  // eighth = 2.0 steps
         e.nextPitchV = 1.5f; e.nextSem = 5;
         e.executePolyVoice(0);
         EXPECT_NEAR(e.voices[0].gs.holdRemain, 2.0f, 1e-4f);
@@ -418,7 +419,7 @@ int main() {
         e.voices[1].restProb = 0.0f;
         e.setRng(0.0f);
         e.lastStepResult.decision = MonoDecision::NewNote;
-        e.lastStepResult.nvIdx    = 4;
+        e.lastStepResult.nvIdx    = 6;
         e.nextPitchV = 2.0f; e.nextSem = 9;
         e.executePolyVoice(0);
         e.executePolyVoice(1);
@@ -439,7 +440,7 @@ int main() {
         e.voices[0].restProb = 0.0f;
         e.setRng(0.0f);
         e.lastStepResult.decision = MonoDecision::Legato;
-        e.lastStepResult.nvIdx    = 4;
+        e.lastStepResult.nvIdx    = 6;
         e.nextPitchV = 3.0f; e.nextSem = 9;  // different semitone → slide
         e.executePolyVoice(0);
         EXPECT(e.voices[0].gs.gateHeld);
@@ -455,7 +456,7 @@ int main() {
         e.voices[0].restProb = 0.0f;
         e.setRng(0.0f);
         e.lastStepResult.decision = MonoDecision::Legato;
-        e.lastStepResult.nvIdx    = 4;      // 1.0 step
+        e.lastStepResult.nvIdx    = 6;      // 1.0 step
         e.nextPitchV = 3.0f; e.nextSem = 9;
         e.executePolyVoice(0);
         // tick: holdRemain 2→1, then slideNote(wasHeld=true) extends: 1+1=2
@@ -468,7 +469,7 @@ int main() {
         e.voices[0].restProb = 0.0f;
         e.setRng(0.0f);
         e.lastStepResult.decision = MonoDecision::Legato;
-        e.lastStepResult.nvIdx    = 4;
+        e.lastStepResult.nvIdx    = 6;
         e.nextPitchV = 2.5f; e.nextSem = 7;
         e.executePolyVoice(0);
         // slideNote(wasHeld=false) opens gate with pulse
@@ -481,7 +482,7 @@ int main() {
         e.voices[0].restProb = 1.0f;
         e.setRng(0.0f);  // r_rest=0.0 < 1.0 → rest
         e.lastStepResult.decision = MonoDecision::Legato;
-        e.lastStepResult.nvIdx    = 4;
+        e.lastStepResult.nvIdx    = 6;
         e.executePolyVoice(0);
         EXPECT(!e.voices[0].gs.gateHeld);
     });
@@ -494,7 +495,7 @@ int main() {
         e.voices[0].restProb = 0.0f;
         e.setRng(0.0f);
         e.lastStepResult.decision = MonoDecision::LegatoMax;
-        e.lastStepResult.nvIdx    = 4;
+        e.lastStepResult.nvIdx    = 6;
         e.nextPitchV = 3.5f; e.nextSem = 11;
         e.executePolyVoice(0);
         EXPECT(!e.voices[0].gs.gateTriggered);
@@ -514,7 +515,7 @@ int main() {
         e.voices[0].restProb = 0.0f;
         e.setRng(0.0f);
         e.lastStepResult.decision = MonoDecision::Legato;
-        e.lastStepResult.nvIdx    = 4;   // 1.0 step
+        e.lastStepResult.nvIdx    = 6;   // 1.0 step
         e.nextSem = 7;   // SAME as lastSemitone → poly-internal tie
         e.nextPitchV = 2.0f;
         e.executePolyVoice(0);
@@ -531,7 +532,7 @@ int main() {
         e.voices[0].restProb = 0.0f;
         e.setRng(0.0f);
         e.lastStepResult.decision = MonoDecision::Legato;
-        e.lastStepResult.nvIdx    = 4;
+        e.lastStepResult.nvIdx    = 6;
         e.nextSem    = 7;  // same semitone, but wasHeld=false → slide, not tie
         e.nextPitchV = 2.0f;
         e.executePolyVoice(0);
@@ -547,7 +548,7 @@ int main() {
         e.voices[0].restProb = 0.0f;
         e.setRng(0.0f);
         e.lastStepResult.decision = MonoDecision::Legato;
-        e.lastStepResult.nvIdx    = 4;
+        e.lastStepResult.nvIdx    = 6;
         e.nextSem    = 9;   // DIFFERENT → slide
         e.nextPitchV = 3.0f;
         e.executePolyVoice(0);
@@ -563,7 +564,7 @@ int main() {
         PolyEngine e; e.reset();
         e.numPolyVoices = 0;
         e.lastStepResult.decision = MonoDecision::NewNote;
-        e.lastStepResult.nvIdx    = 4;
+        e.lastStepResult.nvIdx    = 6;
         e.setRng(0.0f);
         e.executePolyVoices();
         // No voice should have changed
@@ -579,7 +580,7 @@ int main() {
         e.numPolyVoices = 3;
         for (int i = 0; i < 7; ++i) e.voices[i].restProb = 0.0f;
         e.lastStepResult.decision = MonoDecision::NewNote;
-        e.lastStepResult.nvIdx    = 4;
+        e.lastStepResult.nvIdx    = 6;
         e.setRng(0.0f);
         e.nextPitchV = 1.0f; e.nextSem = 5;
         e.executePolyVoices();
@@ -595,7 +596,7 @@ int main() {
         e.numPolyVoices = 7;
         for (int i = 0; i < 7; ++i) e.voices[i].restProb = 0.0f;
         e.lastStepResult.decision = MonoDecision::NewNote;
-        e.lastStepResult.nvIdx    = 4;
+        e.lastStepResult.nvIdx    = 6;
         e.setRng(0.0f);
         e.nextPitchV = 1.0f; e.nextSem = 5;
         e.executePolyVoices();
@@ -614,7 +615,7 @@ int main() {
         e.voices[1].restProb = 1.0f;  // always rests
         e.setRng(0.0f);  // r_rest=0 → 0<0 is false (v0 plays), 0<1 is true (v1 rests)
         e.lastStepResult.decision = MonoDecision::NewNote;
-        e.lastStepResult.nvIdx    = 4;
+        e.lastStepResult.nvIdx    = 6;
         e.nextPitchV = 1.0f; e.nextSem = 5;
         e.executePolyVoices();
         EXPECT(e.voices[0].gs.gateTriggered);
@@ -625,11 +626,15 @@ int main() {
         PolyEngine e; e.reset(); e.numPolyVoices = 3;
         for (int i = 0; i < 3; ++i) e.voices[i].restProb = 0.5f;
         // Inject: voice0 r_rest=0.4 (plays), voice1 r_rest=0.6 (rests), voice2 r_rest=0.49 (plays)
-        e.rngSeq[0] = 0.4f;  e.rngSeq[1] = 0.0f; e.rngSeq[2] = 0.0f;  // v0: plays
-        e.rngSeq[3] = 0.6f;  e.rngSeq[4] = 0.0f; e.rngSeq[5] = 0.0f;  // v1: rests
-        e.rngSeq[6] = 0.49f; e.rngSeq[7] = 0.0f; e.rngSeq[8] = 0.0f;  // v2: plays
+        // r_rest < restProb → rest; r_rest >= restProb → play
+        // v0 plays: consumes 3 draws (r_rest@0, r_semi@1, r_oct@2)
+        // v1 rests: consumes 1 draw  (r_rest@3 only)
+        // v2 plays: r_rest is at slot 4, then r_semi@5, r_oct@6
+        e.rngSeq[0] = 0.6f;  e.rngSeq[1] = 0.0f; e.rngSeq[2] = 0.0f;  // v0: plays
+        e.rngSeq[3] = 0.4f;                                               // v1: rests
+        e.rngSeq[4] = 0.51f; e.rngSeq[5] = 0.0f; e.rngSeq[6] = 0.0f;  // v2: plays
         e.lastStepResult.decision = MonoDecision::NewNote;
-        e.lastStepResult.nvIdx    = 4;
+        e.lastStepResult.nvIdx    = 6;
         e.nextPitchV = 1.0f; e.nextSem = 5;
         e.executePolyVoices();
         EXPECT( e.voices[0].gs.gateTriggered);
@@ -642,7 +647,7 @@ int main() {
         e.voices[0].restProb = 0.5f;
         e.rngSeq[0] = 0.5f;  // r_rest = 0.5, restProb = 0.5 → NOT less-than → plays
         e.lastStepResult.decision = MonoDecision::NewNote;
-        e.lastStepResult.nvIdx    = 4;
+        e.lastStepResult.nvIdx    = 6;
         e.nextPitchV = 1.0f; e.nextSem = 5;
         e.executePolyVoice(0);
         EXPECT(e.voices[0].gs.gateTriggered);
@@ -671,7 +676,7 @@ int main() {
         e.voices[0].gs.gateHeld = true; e.voices[0].gs.holdRemain = 2.f;
         e.voices[0].gs.lastSemitone = 5;
         e.lastStepResult.decision = MonoDecision::Tie;
-        e.lastStepResult.nvIdx    = 4;
+        e.lastStepResult.nvIdx    = 6;
         e.executePolyVoice(0);
         EXPECT_EQ(e.rngIdx, 0);
     });
@@ -681,7 +686,7 @@ int main() {
         e.voices[0].restProb = 0.0f;
         e.setRng(0.0f);
         e.lastStepResult.decision = MonoDecision::NewNote;
-        e.lastStepResult.nvIdx    = 4;
+        e.lastStepResult.nvIdx    = 6;
         e.nextPitchV = 1.0f; e.nextSem = 5;
         e.executePolyVoice(0);
         EXPECT_EQ(e.rngIdx, 3);
@@ -692,7 +697,7 @@ int main() {
         e.voices[0].restProb = 1.0f;
         e.setRng(0.0f);
         e.lastStepResult.decision = MonoDecision::NewNote;
-        e.lastStepResult.nvIdx    = 4;
+        e.lastStepResult.nvIdx    = 6;
         e.executePolyVoice(0);
         EXPECT_EQ(e.rngIdx, 1);
     });
@@ -706,7 +711,7 @@ int main() {
         e.voices[0].restProb = 0.0f;  // always plays when allowed
         e.setRng(0.0f);
         e.nextPitchV = 1.5f; e.nextSem = 7;
-        e.lastStepResult.nvIdx = 4;  // 1.0 step
+        e.lastStepResult.nvIdx = 6;  // 1.0 step
 
         // Step 1: NewNote → triggers
         e.lastStepResult.decision = MonoDecision::NewNote;
@@ -737,7 +742,7 @@ int main() {
         PolyEngine e; e.reset(); e.numPolyVoices = 1;
         e.voices[0].restProb = 0.0f;
         e.setRng(0.0f);
-        e.lastStepResult.nvIdx = 4;
+        e.lastStepResult.nvIdx = 6;
 
         // Step 1: NewNote opens gate
         e.lastStepResult.decision = MonoDecision::NewNote;
