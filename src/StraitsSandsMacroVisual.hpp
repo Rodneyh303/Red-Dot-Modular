@@ -28,7 +28,7 @@ namespace StraitsMacroVisualIds {
     static constexpr float COL_A4 = 70.f;   // SPR depth
     static constexpr float SPREAD_X = 80.f; // per-lane spread base trimpot
     static constexpr float ED_X   = 88.f;   // editor (matches SandsMonoVisual)
-    static constexpr float ED_X   = 58.f;       // editor starts after the spread column
+    //static constexpr float ED_X   = 58.f;       // editor starts after the spread column
     static constexpr float ED_W   = PROB_OUT_X - ED_X - 8.f;  // editor stops left of prob outs
     // Mirror TAB_TOP_OFFSET_MM in gen_macro_mono.py (extra top margin; 0.5cm=5mm).
     // Base 18 matches the generator's editor recess (was 16 here — a small drift;
