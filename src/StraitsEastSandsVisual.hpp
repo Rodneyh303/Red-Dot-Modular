@@ -168,7 +168,7 @@ struct StraitsEastSandsVisual : Module {
                             std::string(rowNames[r][c])+" CV (poly, per-voice depth)");
             }
 
-        for (int v=0; v<15; ++v) {
+        for (int v=0; v<15; ++v) {   // poly voices 2..16: lorId/owner/interp banks are 15-wide
             std::string vl = "V"+std::to_string(v+2)+" ";
             for (int lane=0; lane<3; ++lane) {
                 for (int c=0; c<3; ++c)
@@ -187,8 +187,13 @@ struct StraitsEastSandsVisual : Module {
                 // (per-voice Macro mix-in sends relocated to Macro — see
                 //  StraitsMacroVisualIds::sendId.)
             }
-            // Per-voice CV depth for each of the 12 jacks (real store; the panel's
-            // 12 attenuverters are display proxies copied here on voice switch).
+        }
+        // Per-voice CV depth for each of the 12 jacks — its own bank is 16-wide now
+        // (slot 0 = voice 1/mono, slot v = voice v+1), so the mono mix-in's depth no longer
+        // aliases poly voice 2's. The panel's 12 attenuverters are display proxies copied to
+        // the selected voice's slice on voice switch.
+        for (int v=0; v<16; ++v) {
+            std::string vl = "V"+std::to_string(v+1)+" ";   // slot v = voice v+1
             for (int r=0; r<6; ++r)
                 for (int c=0; c<2; ++c)
                     configParam(attenId(v,r,c), -1.f,1.f,0.f,

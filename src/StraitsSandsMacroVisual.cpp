@@ -272,19 +272,23 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         const bool onMonoTab = dotModular::VoiceResolver::isMono(viewVoiceNum);
         const int  pv = dotModular::VoiceResolver::polyBankIndex(viewVoiceNum);  // -1 on mono
 
-        // Mix-in send display proxies ↔ per-voice store — poly tabs only (the mono tab's
-        // sends would be voice-0's slice, surfaced under interp. Y; not edited here).
-        if (!onMonoTab) {
+        // Mix-in send display proxies ↔ per-voice store, N→N: tab v (0-based) edits voice
+        // slot v (slot 0 = voice 1 / mono, slot 1 = poly voice 2, …). This is uniform across
+        // ALL tabs including mono — the mono tab's sends fold onto voice 1 via Interp Y, which
+        // reads slot 0. (Previously this used pv=polyBankIndex, so the v2 tab wrote slot 0 and
+        // its CV leaked onto mono — the N→N off-by-one.)
+        {
+            const int slot = viewVoice;   // 0..15, voiceNumber-1
             if (viewVoice != lastSendVoice) {
                 for (int lane=0; lane<3; ++lane)
                     for (int item=0; item<4; ++item)
                         module->params[sendDispId(lane,item)].setValue(
-                            module->params[sendId(pv,lane,item)].getValue());
+                            module->params[sendId(slot,lane,item)].getValue());
                 lastSendVoice = viewVoice;
             } else {
                 for (int lane=0; lane<3; ++lane)
                     for (int item=0; item<4; ++item)
-                        module->params[sendId(pv,lane,item)].setValue(
+                        module->params[sendId(slot,lane,item)].setValue(
                             module->params[sendDispId(lane,item)].getValue());
             }
         }
@@ -292,6 +296,20 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         saveLOR();
         if (!onMonoTab)
             paramMgr->syncPatternEngineToEditor(visualEditor->currentState, pv);
+        // Bug fix (same as East): the sync reads slewedPoly* which isn't populated for a voice
+        // when Macro owns the lane → blank lanes. Macro's editor is read-only (display only),
+        // so overwrite ALL displayed lanes from the resolver (polyRhythmRandom — the final
+        // output the sequencer plays, populated regardless of owner; the prob-outs use it too).
+        if (!onMonoTab) {
+            dotModular::VoiceResolver resolver(monsoon->engine);
+            static const int laneMap[3] = { SandsVisualEditorV4::REST,
+                                            SandsVisualEditorV4::MELODY,
+                                            SandsVisualEditorV4::OCTAVE };
+            for (int lane = 0; lane < 3; ++lane)
+                for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
+                    visualEditor->currentState.lanes[laneMap[lane]].probabilities[s] =
+                        resolver.laneProbabilityAtStep(viewVoiceNum, lane, s);
+        }
 
         // Surface Macro's OWN CV-applied L/O/R to the display window. Previously
         // this read the engine output (eng.polyLen[0] etc.), but when East owns a

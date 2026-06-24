@@ -282,23 +282,25 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     }
     // Owner display proxy ↔ per-voice MACRO_OWN; CV-depth attenuverters disp↔per-voice.
     // (Macro mix-in send sync relocated to Macro under the control inversion.)
-    void saveVoiceMacro(int v) {
+    void saveVoiceMacro(int v) {   // v = 0-based poly bank (ownerId is poly-indexed)
         if (!module) return;
+        const int slot = v + 1;    // atten bank is voice-number-indexed (slot0=mono)
         for (int lane=0; lane<3; ++lane)
             module->params[ownerId(v,lane)].setValue(module->params[ownerDispId(lane)].getValue());
         // CV-depth attenuverters: display proxy → this voice's per-voice store.
         for (int r=0; r<6; ++r)
             for (int c=0; c<2; ++c)
-                module->params[attenId(v,r,c)].setValue(module->params[attenDispId(r,c)].getValue());
+                module->params[attenId(slot,r,c)].setValue(module->params[attenDispId(r,c)].getValue());
     }
-    void loadVoiceMacro(int v) {
+    void loadVoiceMacro(int v) {   // v = 0-based poly bank
         if (!module) return;
+        const int slot = v + 1;    // atten bank is voice-number-indexed (slot0=mono)
         for (int lane=0; lane<3; ++lane)
             module->params[ownerDispId(lane)].setValue(module->params[ownerId(v,lane)].getValue());
         // CV-depth attenuverters: this voice's per-voice store → display proxy.
         for (int r=0; r<6; ++r)
             for (int c=0; c<2; ++c)
-                module->params[attenDispId(r,c)].setValue(module->params[attenId(v,r,c)].getValue());
+                module->params[attenDispId(r,c)].setValue(module->params[attenId(slot,r,c)].getValue());
     }
     void saveVoiceLOR(int v) {
         if (!module || !visualEditor) return;
@@ -466,6 +468,23 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         if (selectedVoice >= 1) {
             saveVoiceLOR(polyVoice());
             paramMgr->syncPatternEngineToEditor(polyVoice(), visualEditor->currentState);
+            // Bug fix: for a lane CEDED to Macro, the editor's own probabilities aren't the
+            // source of truth (Macro drives it) and the sync above reads slewedPoly* which
+            // isn't populated under Macro ownership → blank lanes. For ceded lanes only,
+            // overwrite the display from the resolver (polyRhythmRandom — the final output the
+            // sequencer plays, populated regardless of owner; the prob-outs use the same).
+            // East-OWNED lanes keep the editor's edit values so dragging a bar isn't clobbered.
+            dotModular::VoiceResolver resolver(monsoon->engine);
+            const int vnum = currentVoice();
+            static const int laneMap[3] = { SandsVisualEditorV4::REST,
+                                            SandsVisualEditorV4::MELODY,
+                                            SandsVisualEditorV4::OCTAVE };
+            for (int lane = 0; lane < 3; ++lane) {
+                if (!laneOwnedByMacro(lane)) continue;   // owned by East → keep editor's values
+                for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
+                    visualEditor->currentState.lanes[laneMap[lane]].probabilities[s] =
+                        resolver.laneProbabilityAtStep(vnum, lane, s);
+            }
         }
 
         // Surface the engine's CV-APPLIED L/O/R to the display window so the
