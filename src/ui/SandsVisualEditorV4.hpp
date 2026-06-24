@@ -159,6 +159,9 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // tab 1 when Sands Mono is attached — the lane data belongs to Mono and is shown
   // read-only (edit it on Sands Mono). Unlike `inert`, no hint message, data still drawn.
   bool readOnly = false;
+  // Optional right-click callback: host registers this to open a context menu
+  // when a lane row is right-clicked. Called with (lane, pos); return true to consume.
+  std::function<bool(int lane, rack::math::Vec pos)> onLaneRightClick;
   
   VoiceState currentState;
   VoiceState clipboard;
@@ -882,6 +885,15 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
         // handles above. A click that isn't on a handle does nothing here, so we
         // don't steal it from the window gestures. (Archived editor with per-cell
         // editing: src/deprecated/SandsVisualEditorV4_with_percell_editing.hpp.)
+      }
+    } else if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_RIGHT) {
+      // Right-click: if host registered a lane right-click callback, invoke it.
+      int lane = getLaneAtY(e.pos.y);
+      if (lane >= 0 && lane < laneCount && onLaneRightClick) {
+        if (onLaneRightClick(lane, e.pos)) {
+          e.consume(this);
+          return;
+        }
       }
     } else if (e.action == GLFW_RELEASE) {
       if (dragState.isDragging) saveToHistory();
