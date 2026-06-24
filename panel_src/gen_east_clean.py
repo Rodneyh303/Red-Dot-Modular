@@ -8,14 +8,17 @@ def px(mm): return round(mm*S, 2)
 W_MM, H_MM = 213.36, 128.5  # 42HP (40 + 2HP right strip for poly prob-out jacks)
 PW, PH = px(W_MM), px(H_MM)
 
-ROW_TOP, ROW_BOT, N = 14.0, 108.0, 6
+ROW_TOP, ROW_BOT, N = 14.0, 108.0, 4   # 4 lanes, one row each
 def rowY(r): return ROW_TOP + (r+0.5)*(ROW_BOT-ROW_TOP)/N
-COL_J1, COL_J2, COL_A1, COL_A2, SPREAD_X = 8.0, 18.0, 30.0, 39.0, 49.0
+# 4 CV jacks + 4 attens + spread base — columns match SandsMonoVisual, ED_X=88
+JACK_X  = [6.0, 15.0, 24.0, 33.0]   # LEN/OFF/ROT/SPR-cv
+ATTEN_X = [43.0, 52.0, 61.0, 70.0]  # LEN/OFF/ROT/SPR depth
+SPREAD_X = 80.0                      # spread base trimpot
 # Extra top margin so the voice tab row isn't crammed against the panel top edge.
 # 0.5 cm = 5 mm. Adjust + rerun the generator (and mirror TAB_TOP_OFFSET_MM in
 # StraitsEastSandsVisualWidget) to taste.
 TAB_TOP_OFFSET_MM = 5.0
-ED_X, ED_Y = 58.0, 18.0 + TAB_TOP_OFFSET_MM
+ED_X, ED_Y = 88.0, 18.0 + TAB_TOP_OFFSET_MM
 PROB_OUT_X = 207.0  # right-strip jack column (matches hpp)
 ED_W = PROB_OUT_X - ED_X - 8.0  # editor stops left of the prob-out jacks (matches hpp)
 ED_H = 48.0
@@ -125,8 +128,8 @@ def gen(dark):
     A(f'<rect x="{px(ED_X):.1f}" y="{px(ED_Y):.1f}" width="{px(ED_W):.1f}" height="{px(ED_H):.1f}" rx="{px(1.5):.1f}" fill="{t["edrecess"]}" stroke="{t["edborder"]}" stroke-width="1"/>')
     # MBS watermark centred in the editor, large + faint (reads as Marina Bay)
     A(mbs(ED_X+ED_W*0.28, ED_Y+ED_H-5.0, ED_W*0.46, ED_H*0.68, t, op=0.16))
-    for k in range(1,3):
-        ly=ED_Y+k*(ED_H/3.0)
+    for k in range(1,4):   # 4 lanes → 3 dividers
+        ly=ED_Y+k*(ED_H/4.0)
         A(f'<line x1="{px(ED_X+1):.1f}" y1="{px(ly):.1f}" x2="{px(ED_X+ED_W-1):.1f}" y2="{px(ly):.1f}" stroke="{t["edborder"]}" stroke-width="0.75" opacity="0.7"/>')
 
     # ── below the editor + footer: Marina Bay water (waves) as an integrated
@@ -136,9 +139,9 @@ def gen(dark):
     A(mbs(W_MM-66.0, 111.0, 52.0, 14.0, t, op=0.85))
 
     # ── control group recess (left) ──
-    gx,gy=4.0,ROW_TOP-4.0; gw,gh=(SPREAD_X+5.0)-gx,(ROW_BOT+2.0)-(ROW_TOP-4.0)
+    gx,gy=4.0,ROW_TOP-4.0; gw,gh=(SPREAD_X+6.0)-gx,(ROW_BOT+2.0)-(ROW_TOP-4.0)
     A(f'<rect x="{px(gx):.1f}" y="{px(gy):.1f}" width="{px(gw):.1f}" height="{px(gh):.1f}" rx="{px(2):.1f}" fill="{t["group"]}" stroke="{t["groupline"]}" stroke-width="1"/>')
-    sepx=0.5*(COL_J2+COL_A1)
+    sepx=0.5*(JACK_X[-1]+ATTEN_X[0])  # separator between jack cluster and atten cluster
     A(f'<line x1="{px(sepx):.1f}" y1="{px(gy+2):.1f}" x2="{px(sepx):.1f}" y2="{px(gy+gh-2):.1f}" stroke="{t["groupline"]}" stroke-width="0.75" opacity="0.6"/>')
     A('</g>')
     A(f'<g inkscape:label="branding" inkscape:groupmode="layer">')
@@ -151,11 +154,11 @@ def gen(dark):
     def trim(x,y,col):
         A(f'<circle cx="{px(x):.1f}" cy="{px(y):.1f}" r="{px(3.2):.1f}" fill="{t["well"]}" stroke="{col}" stroke-width="1.25"/>')
         A(f'<line x1="{px(x):.1f}" y1="{px(y):.1f}" x2="{px(x):.1f}" y2="{px(y-2.4):.1f}" stroke="{col}" stroke-width="1"/>')
-    for r in range(6):
-        y=rowY(r); jack(COL_J1,y); jack(COL_J2,y)
-        trim(COL_A1,y,t["gold"]); trim(COL_A2,y,t["gold"])
-    for lane in range(3):
-        y=0.5*(rowY(lane*2)+rowY(lane*2+1)); trim(SPREAD_X,y,t["teal"])
+    for lane in range(4):
+        y=rowY(lane)
+        for x in JACK_X:  jack(x,y)
+        for x in ATTEN_X: trim(x,y,t["gold"])
+        trim(SPREAD_X,y,t["teal"])
 
     # ── Macro/East blend controls — 3 labelled groups (REST / MELODY / OCTAVE),
     #    each a demarked box stacked as: lane-name header → owner latch (OWN) →
@@ -171,14 +174,14 @@ def gen(dark):
     #      a header + a centred latch per lane group.  BLEND_TOP=74  BLEND_H=22.
     BLEND_TOP = 74.0
     BLEND_H   = 22.0
-    GAP       = 3.5
-    GROUP_W   = ED_W/3.0
+    GAP       = 2.5               # tighter gap for 4 groups
+    GROUP_W   = ED_W/4.0
     OWN_DY    = 13.0
     # "BASE" section header rule (full width, above the groups)
     A(f'<line x1="{px(ED_X):.1f}" y1="{px(BLEND_TOP-3.0):.1f}" x2="{px(ED_X+ED_W):.1f}" y2="{px(BLEND_TOP-3.0):.1f}" stroke="{t["accent"]}" stroke-width="1.0" opacity="0.6"/>')
-    LANE_NAMES = ["REST","MELODY","OCTAVE"]
+    LANE_NAMES = ["REST","MELODY","OCTAVE","ACCENT"]
     OWN_XY = []     # opt-in (BASE) latch centres, per lane
-    for l in range(3):
+    for l in range(4):
         gx = ED_X + l*GROUP_W + GAP*0.5
         gw = GROUP_W - GAP
         gcx = gx + gw*0.5
@@ -198,15 +201,16 @@ def gen(dark):
     def kit_shape(kind, idx, x, y):
         A(f'<circle id="{kind}_{idx}" cx="{px(x):.2f}" cy="{px(y):.2f}" r="0.5" fill="none" stroke="none"/>')
     A('<g inkscape:label="components" inkscape:groupmode="layer">')
-    for r in range(6):
-        y=rowY(r)
-        kit_shape("input", 0+r*2+0, COL_J1, y); kit_shape("input", 0+r*2+1, COL_J2, y)
-        kit_shape("param", 3+r*2+0, COL_A1, y); kit_shape("param", 3+r*2+1, COL_A2, y)
-    for lane in range(3):
-        y=0.5*(rowY(lane*2)+rowY(lane*2+1))
-        kit_shape("param", lane, SPREAD_X, y)   # SPREAD_R/M/O = 0/1/2
+    # cvId(lane,col): CV_START + lane*4 + col  → inputs 0..15
+    # attenDispId(lane,col): ATTEN_START(4) + lane*4 + col → params 4..19
+    # SPREAD_R/M/O/A = params 0/1/2/3
+    for lane in range(4):
+        y=rowY(lane)
+        for p,x in enumerate(JACK_X):  kit_shape("input", 0+lane*4+p, x, y)
+        for p,x in enumerate(ATTEN_X): kit_shape("param", 4+lane*4+p, x, y)
+        kit_shape("param", lane, SPREAD_X, y)  # SPREAD_R/M/O/A = 0/1/2/3
     # East opt-in (BASE) latch markers (bound to display proxies). Sends moved to Macro.
-    for l in range(3):
+    for l in range(4):
         ox,oy = OWN_XY[l]
         A(f'<circle id="param_owner_{l}" cx="{px(ox):.2f}" cy="{px(oy):.2f}" r="0.5" fill="none" stroke="none"/>')
     A(f'<circle id="light_connect" cx="{px(W_MM*0.5):.2f}" cy="{px(124.0):.2f}" r="0.5" fill="none" stroke="none"/>')
