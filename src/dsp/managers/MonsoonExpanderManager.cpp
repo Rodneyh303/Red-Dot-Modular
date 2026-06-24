@@ -189,6 +189,30 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 }
             }
             
+            // ACCENT lane (3): per-voice base L/O/R from POLY_ACCENT_VOICE_* (default identity:
+            // LEN 16). NOT yet routed through combineLOR/combineSpread — the owner (ownerId),
+            // Macro send (sendId) and macroBase banks are all v*3-indexed for 3 lanes, so adding
+            // the accent lane there is a bank resize done in the panel/relayout stage (with a
+            // build to verify the re-index). Until then accent uses its OWN base params directly
+            // + a plain spread interp from POLY_ACCENT_INTERP, no Macro blend — functional and
+            // safe, no out-of-bounds into the 3-lane owner/send/macroBase banks.
+            {
+                int accentBase = MonsoonIds::POLY_ACCENT_VOICE_1_LEN + v * 3;
+                engine.polyLen[v][3] = (int)math::clamp(eastLOR->params[accentBase].getValue(),     1.f, 16.f);
+                engine.polyOff[v][3] = (int)math::clamp(eastLOR->params[accentBase + 1].getValue(), 0.f, 15.f);
+                engine.polyRot[v][3] = (int)math::clamp(eastLOR->params[accentBase + 2].getValue(), 0.f, 15.f);
+                float accentInterp = math::clamp(eastInterp->params[MonsoonIds::POLY_ACCENT_INTERP_1 + v].getValue(), -1.f, 1.f);
+                if (!engine.locked) {
+                    const int nPoly = effPolyVoices;
+                    const redDot::SpreadInterp::Target mode = spreadInterpMono
+                        ? redDot::SpreadInterp::MONO_DRAW : redDot::SpreadInterp::AVERAGE_POLY;
+                    for (int j = 0; j < 16; j++) {
+                        engine.pe.polyAccentRandom[v][j] = redDot::SpreadInterp::apply(
+                            engine.pe, mode, 3, j, nPoly, engine.pe.slewedPolyAccent[v][j], accentInterp);
+                    }
+                }
+            }
+
             // if (deepEast) {
             //     engine.polyLen[v][2] = (int)deepEast->params[octaveBase].getValue();
             //     engine.polyOff[v][2] = (int)deepEast->params[octaveBase + 1].getValue();

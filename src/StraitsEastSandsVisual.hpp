@@ -72,14 +72,17 @@ namespace StraitsEastVisualIds {
     inline int lorId(int v, int lane, int c) {
         if (lane == 0) return POLY_DNA_VOICE_1_LEN    + v*3 + c;
         if (lane == 1) return POLY_MELODY_VOICE_1_LEN + v*3 + c;
+        if (lane == 3) return POLY_ACCENT_VOICE_1_LEN + v*3 + c;
         return              POLY_OCTAVE_VOICE_1_LEN   + v*3 + c;
     }
     inline int restInterpId  (int v) { return POLY_REST_INTERP_1   + v; }
     inline int melodyInterpId(int v) { return POLY_MELODY_INTERP_1 + v; }
     inline int octaveInterpId(int v) { return POLY_OCTAVE_INTERP_1 + v; }
+    inline int accentInterpId(int v) { return POLY_ACCENT_INTERP_1 + v; }
     inline int interpId(int v, int lane) {
         if (lane == 0) return restInterpId(v);
         if (lane == 1) return melodyInterpId(v);
+        if (lane == 3) return accentInterpId(v);
         return              octaveInterpId(v);
     }
     // param 0=LEN,1=OFF,2=ROT: lorId; param 3=SPR: interpId
@@ -175,9 +178,15 @@ struct StraitsEastSandsVisual : Module {
                     configParam(lorId(v,lane,c), 0.f,16.f,
                                 c==0?16.f:0.f, vl+"l"+std::to_string(lane)+"c"+std::to_string(c));
             }
+            // Accent LOR (lane 3) — own base params; LEN default 16 (identity window). Panel
+            // controls for these come with the East/Macro 4th-lane relayout; until then they
+            // hold the identity default so poly accent has a valid LOR.
+            for (int c=0; c<3; ++c)
+                configParam(lorId(v,3,c), 0.f,16.f, c==0?16.f:0.f, vl+"l3c"+std::to_string(c));
             configParam(restInterpId(v),   -1.f,1.f,0.f,vl+"Spread REST");
             configParam(melodyInterpId(v), -1.f,1.f,0.f,vl+"Spread MEL");
             configParam(octaveInterpId(v), -1.f,1.f,0.f,vl+"Spread OCT");
+            configParam(accentInterpId(v), -1.f,1.f,0.f,vl+"Spread ACC");
 
             // Base owner (0=Macro default, 1=East) + Macro-CV blend sends (unity
             // default) per lane. Switch/snap so owner reads as discrete 0/1.
