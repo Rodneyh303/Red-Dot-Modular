@@ -31,10 +31,10 @@ namespace StraitsEastVisualIds {
     static constexpr float TAB_TOP_OFFSET_MM = 5.f;
     static constexpr float ED_Y   = 18.f + TAB_TOP_OFFSET_MM;  // editor top (below 2-row tab band)
     static constexpr float ED_W   = PROB_OUT_X - ED_X - 8.f;  // editor stops left of prob outs
-    // Editor height sized so the 3 poly lanes are close to the Mono lane height
-    // (~16mm), not ~30mm. Leaves the lower panel free for decoration / logos.
-    static constexpr float ED_LANE_H = 16.f;
-    static constexpr float ED_H   = 3.f * ED_LANE_H;    // 48mm (3 poly lanes)
+    // Editor holds 4 poly lanes (MEL/OCT/REST/ACCENT); ~12mm each. ED_LANE_H
+    // drives prob-out vertical placement and must match the gen script's ED_H/4.
+    static constexpr float ED_H      = 48.f;
+    static constexpr float ED_LANE_H = ED_H / 4.f;      // 12mm per lane (4 lanes: MEL/OCT/REST/ACCENT)
 
     static inline float rowY(int r) {
         return ROW_TOP + (r + 0.5f) * (ROW_BOT - ROW_TOP) / N_ROWS;
@@ -126,13 +126,13 @@ struct StraitsEastSandsVisual : Module {
     // clamped, after combineSpread) — published by MonsoonExpanderManager each
     // sync so the East spread trimpot mod-arc can show the viewed voice's value.
     // lane: 0=REST 1=MELODY 2=OCTAVE. Bipolar-ish 0..1 interp domain.
-    float polySpreadEffective[15][3] = {};
+    float polySpreadEffective[15][4] = {};   // 4 lanes (REST/MEL/OCT/ACCENT)
 
     // Probability CV out config (persisted): scale 0=0..1V,1=0..5V,2=0..10V; S&H vs
     // continuous. probHeld/probLastStep per (lane, channel) for S&H (ch0=master, 1..15
     // = voices → index [lane][0..15]).
-    float probHeld[3][16] = {};
-    int   probLastStep[3][16];
+    float probHeld[4][16] = {};
+    int   probLastStep[4][16];
 
     StraitsEastSandsVisual() {
         using namespace StraitsEastVisualIds;

@@ -35,10 +35,10 @@ namespace StraitsMacroVisualIds {
     // aligned now so the widget editor sits exactly on the drawn recess).
     static constexpr float TAB_TOP_OFFSET_MM = 5.f;
     static constexpr float ED_Y   = 18.f + TAB_TOP_OFFSET_MM;
-    // Editor height sized so the 3 poly lanes are close to the Mono lane height
-    // (~16mm) rather than ~30mm; frees the lower panel for decoration/logos.
-    static constexpr float ED_LANE_H = 16.f;
-    static constexpr float ED_H   = 3.f * ED_LANE_H;    // 48mm
+    // Editor holds 4 poly lanes (MEL/OCT/REST/ACCENT); ~12mm each. ED_LANE_H
+    // drives prob-out vertical placement and must match the gen script's ED_H/4.
+    static constexpr float ED_H      = 48.f;
+    static constexpr float ED_LANE_H = ED_H / 4.f;      // 12mm per lane (4 lanes)
 
     static inline float rowY(int r) {
         return ROW_TOP + (r + 0.5f) * (ROW_BOT - ROW_TOP) / N_ROWS;
@@ -179,8 +179,8 @@ struct StraitsSandsMacroVisual : Module {
     void process(const ProcessArgs&) override;   // defined in .cpp (needs findMonsoonEitherSide)
 
     // S&H latch state for the poly prob outs: [lane][channel] (ch0 reserved, 1..15 voices).
-    float probHeld[3][16] = {};
-    int   probLastStep[3][16];
+    float probHeld[4][16] = {};
+    int   probLastStep[4][16];
 
     // CV-applied global spread per lane (0=REST,1=MEL,2=OCT). processDNA writes
     // these from base + spread CV; the display reads them so spread CV is visible

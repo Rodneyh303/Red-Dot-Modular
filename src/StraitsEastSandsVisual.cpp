@@ -311,8 +311,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     }
     void saveVoiceLOR(int v) {
         if (!module || !visualEditor) return;
-        for (int l=0; l<4; ++l) {
-            const auto& lane = visualEditor->currentState.lanes[l];
+        // Engine lane (lorId index: 0=REST 1=MEL 2=OCT 3=ACC) → editor lane.
+        static const int engToEd[4] = { SandsVisualEditorV4::REST, SandsVisualEditorV4::MELODY,
+                                        SandsVisualEditorV4::OCTAVE, SandsVisualEditorV4::ACCENT };
+        for (int l=0; l<4; ++l) {   // l = engine lane; read from mapped editor lane
+            const auto& lane = visualEditor->currentState.lanes[engToEd[l]];
             module->params[lorId(v,l,0)].setValue((float)lane.length);
             module->params[lorId(v,l,1)].setValue((float)lane.offset);
             module->params[lorId(v,l,2)].setValue((float)lane.rotation);
@@ -320,8 +323,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     }
     void loadVoiceLOR(int v) {
         if (!module || !visualEditor) return;
-        for (int l=0; l<4; ++l) {
-            auto& lane = visualEditor->currentState.lanes[l];
+        static const int engToEd[4] = { SandsVisualEditorV4::REST, SandsVisualEditorV4::MELODY,
+                                        SandsVisualEditorV4::OCTAVE, SandsVisualEditorV4::ACCENT };
+        for (int l=0; l<4; ++l) {   // l = engine lane; write to mapped editor lane
+            auto& lane = visualEditor->currentState.lanes[engToEd[l]];
             lane.length   = std::max(1,(int)std::round(module->params[lorId(v,l,0)].getValue()));
             lane.offset   = (int)std::round(module->params[lorId(v,l,1)].getValue());
             lane.rotation = (int)std::round(module->params[lorId(v,l,2)].getValue());
@@ -355,7 +360,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         }
     }
 
-    Monsoon* getMonsoon() {
+    Monsoon* getMonsoon() const {
         return module ? findMonsoonEitherSide(module) : nullptr;
     }
     // Macro visual attached on the chain?

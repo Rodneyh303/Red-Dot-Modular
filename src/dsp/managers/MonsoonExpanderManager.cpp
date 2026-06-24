@@ -201,6 +201,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 engine.polyOff[v][3] = (int)math::clamp(eastLOR->params[accentBase + 1].getValue(), 0.f, 15.f);
                 engine.polyRot[v][3] = (int)math::clamp(eastLOR->params[accentBase + 2].getValue(), 0.f, 15.f);
                 float accentInterp = math::clamp(eastInterp->params[MonsoonIds::POLY_ACCENT_INTERP_1 + v].getValue(), -1.f, 1.f);
+                if (eastVisual) eastVisual->polySpreadEffective[v][3] = accentInterp;   // accent spread → editor display
                 if (!engine.locked) {
                     const int nPoly = effPolyVoices;
                     const redDot::SpreadInterp::Target mode = spreadInterpMono

@@ -193,8 +193,11 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
 
     void saveLOR() {
         if (!module || !visualEditor) return;
+        // Engine lane (lorId index: 0=REST 1=MEL 2=OCT 3=ACC) → editor lane.
+        static const int engToEd[4] = { SandsVisualEditorV4::REST, SandsVisualEditorV4::MELODY,
+                                        SandsVisualEditorV4::OCTAVE, SandsVisualEditorV4::ACCENT };
         for (int l = 0; l < 4; ++l) {
-            const auto& lane = visualEditor->currentState.lanes[l];
+            const auto& lane = visualEditor->currentState.lanes[engToEd[l]];
             module->params[lorId(l,0)].setValue((float)lane.length);
             module->params[lorId(l,1)].setValue((float)lane.offset);
             module->params[lorId(l,2)].setValue((float)lane.rotation);
@@ -202,8 +205,10 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
     }
     void loadLOR() {
         if (!module || !visualEditor) return;
+        static const int engToEd[4] = { SandsVisualEditorV4::REST, SandsVisualEditorV4::MELODY,
+                                        SandsVisualEditorV4::OCTAVE, SandsVisualEditorV4::ACCENT };
         for (int l = 0; l < 4; ++l) {
-            auto& lane = visualEditor->currentState.lanes[l];
+            auto& lane = visualEditor->currentState.lanes[engToEd[l]];
             lane.length   = std::max(1,(int)std::round(module->params[lorId(l,0)].getValue()));
             lane.offset   = (int)std::round(module->params[lorId(l,1)].getValue());
             lane.rotation = (int)std::round(module->params[lorId(l,2)].getValue());
