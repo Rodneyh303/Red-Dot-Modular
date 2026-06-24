@@ -11,16 +11,21 @@ namespace StraitsEastVisualIds {
     static constexpr float W_MM    = 213.36f;   // 42HP (was 40HP; +2HP right strip for
                                                  // the 3 poly probability CV outs)
     static constexpr float PROB_OUT_X = 207.f;   // poly prob-out jack column (right strip)
-    static constexpr int   N_ROWS  = 6;         // 2 rows per lane × 3 lanes
+    static constexpr int   N_ROWS  = 4;         // 1 row per lane (REST/MEL/OCT/ACCENT)
     static constexpr float ROW_TOP = 14.f;
     static constexpr float ROW_BOT = 108.f;
-    // 5 columns: jack1, jack2, atten1, atten2, spread (per-lane)
-    static constexpr float COL_J1 = 8.f;
-    static constexpr float COL_J2 = 18.f;
-    static constexpr float COL_A1 = 30.f;
-    static constexpr float COL_A2 = 39.f;
-    static constexpr float SPREAD_X = 49.f;      // per-lane spread trimpot column
-    static constexpr float ED_X   = 58.f;        // editor starts after spread column
+    // Mono-style: 4 CV jacks (LEN/OFF/ROT/SPR-cv) + 4 attens + 1 spread-base trimpot per lane.
+    // Column layout and ED_X=88 match SandsMonoVisual exactly.
+    static constexpr float COL_J1 = 6.f;    // LEN CV in
+    static constexpr float COL_J2 = 15.f;   // OFF CV in
+    static constexpr float COL_J3 = 24.f;   // ROT CV in
+    static constexpr float COL_J4 = 33.f;   // SPR CV in
+    static constexpr float COL_A1 = 43.f;   // LEN depth
+    static constexpr float COL_A2 = 52.f;   // OFF depth
+    static constexpr float COL_A3 = 61.f;   // ROT depth
+    static constexpr float COL_A4 = 70.f;   // SPR depth
+    static constexpr float SPREAD_X = 80.f; // per-lane spread base trimpot
+    static constexpr float ED_X   = 88.f;   // editor (matches SandsMonoVisual)
     // Mirror TAB_TOP_OFFSET_MM in panel_src/gen_east_clean.py (extra top margin so
     // the tab row clears the panel top edge; 0.5cm = 5mm).
     static constexpr float TAB_TOP_OFFSET_MM = 5.f;
@@ -35,38 +40,35 @@ namespace StraitsEastVisualIds {
         return ROW_TOP + (r + 0.5f) * (ROW_BOT - ROW_TOP) / N_ROWS;
     }
 
-    // ── Row → (lane, param) mapping ───────────────────────────────────────
-    // Each row has 2 jacks. Row r: lane = r/2, sub = r%2
-    // sub=0: LEN (col1) + OFF (col2)
-    // sub=1: ROT (col1) + SPR (col2)
-    // col: 0=col1, 1=col2
-    static inline int rowLane(int r)           { return r / 2; }
-    static inline int rowParam(int r, int col) { return (r % 2) * 2 + col; }
+    // ── Row → lane mapping (mono-style: row == lane) ──────────────────────
+    // Each row is one lane. 3 jacks (LEN/OFF/ROT) + 3 attens + 1 spread per row.
+    // col: 0=LEN, 1=OFF, 2=ROT
+    static inline int rowLane(int r)           { return r; }
+    static inline int rowParam(int r, int col) { return col; }
     // param: 0=LEN, 1=OFF, 2=ROT, 3=SPR
 
     // ── Param IDs ─────────────────────────────────────────────────────────
     enum SpreadParamId {
-        // 3 display trimpots for selected voice's spread (0-2)
-        SPREAD_R = 0, SPREAD_M, SPREAD_O,
-        // 12 attenuverter DISPLAY proxies — row r, col c → ATTEN_START + r*2 + c
-        // (3-14). These are the selected-voice view; the real depth is stored
-        // per-voice in MonsoonIds::MACRO_ATTEN_START (see attenId below).
+        // 4 spread display trimpots: REST/MEL/OCT/ACCENT (0-3)
+        SPREAD_R = 0, SPREAD_M, SPREAD_O, SPREAD_A,
+        // 16 attenuverter DISPLAY proxies — lane l, col c → ATTEN_START + l*4 + c
+        // (4-19). Selected-voice view; real depth in MonsoonIds::MACRO_ATTEN_START.
         ATTEN_START,
-        NUM_SPREAD_PARAMS = ATTEN_START + 12  // = 15
+        NUM_SPREAD_PARAMS = ATTEN_START + 16  // = 20
     };
     // Selected-voice display proxy (physical knob binds here).
-    static inline int attenDispId(int r, int col) { return ATTEN_START + r*2 + col; }
-    // Per-voice CV depth (the real store): voice v, jack (r,c).
-    static inline int attenId(int v, int r, int col) {
-        return MonsoonIds::MACRO_ATTEN_START + v*12 + (r*2 + col);
+    static inline int attenDispId(int lane, int col) { return ATTEN_START + lane*4 + col; }
+    // Per-voice CV depth (the real store): voice v, lane l, col c (0=LEN,1=OFF,2=ROT).
+    static inline int attenId(int v, int lane, int col) {
+        return MonsoonIds::MACRO_ATTEN_START + v*16 + (lane*4 + col);
     }
 
     // ── Input IDs ─────────────────────────────────────────────────────────
     enum InputId {
         CV_START = 0,
-        NUM_INPUTS = CV_START + 12   // 6 rows × 2 cols
+        NUM_INPUTS = CV_START + 16   // 4 lanes × 4 cols
     };
-    static inline int cvId(int r, int col) { return CV_START + r*2 + col; }
+    static inline int cvId(int lane, int col) { return CV_START + lane*4 + col; }
 
     // ── LOR / Interp param ID helpers ─────────────────────────────────────
     inline int lorId(int v, int lane, int c) {
@@ -104,8 +106,8 @@ namespace StraitsEastVisualIds {
     // Local lights for this module (East visual has its own light space, separate
     // from Monsoon's). Owner latch lights — lit when the lane is East-owned.
     enum LightIds {
-        OWNER_LIGHT_START = 0,          // 3 lights, one per lane (REST/MEL/OCT)
-        OWNER_LIGHT_END = OWNER_LIGHT_START + 3,
+        OWNER_LIGHT_START = 0,          // 4 lights, one per lane (REST/MEL/OCT/ACCENT)
+        OWNER_LIGHT_END = OWNER_LIGHT_START + 4,
         NUM_LIGHTS = OWNER_LIGHT_END
     };
     inline int ownerLightId(int lane) { return OWNER_LIGHT_START + lane; }
@@ -113,7 +115,7 @@ namespace StraitsEastVisualIds {
     // Per-lane POLY probability CV outs (REST/MEL/OCT). Each is a poly cable:
     // channel 1 = master value, channels 2..1+nVoices = the per-voice ensemble.
     enum OutputId {
-        PROB_OUT_REST = 0, PROB_OUT_MEL, PROB_OUT_OCT,
+        PROB_OUT_REST = 0, PROB_OUT_MEL, PROB_OUT_OCT, PROB_OUT_ACCENT,
         NUM_OUTPUTS
     };
 }
