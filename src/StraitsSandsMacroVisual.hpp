@@ -47,7 +47,7 @@ namespace StraitsMacroVisualIds {
     // ── Param IDs ─────────────────────────────────────────────────────────
     enum SpreadParamId {
         // Display spread trimpots (0-2)
-        SPREAD_REST = 0, SPREAD_MELODY, SPREAD_OCTAVE, SPREAD_ACCENT,  // already added
+        SPREAD_REST = 0, SPREAD_MELODY, SPREAD_OCTAVE, SPREAD_ACCENT,
         // 16 attenuverters: lane l, col c → ATTEN_START + l*4 + c (4-19)
         ATTEN_START,
         NUM_SPREAD_PARAMS = ATTEN_START + 16  // = 20
@@ -67,7 +67,7 @@ namespace StraitsMacroVisualIds {
     // bug). Bank is 3-lane-strided × 4 items, 16 slots wide.
     // NOTE: bank is still 3-lane-strided; accent (lane 3) uses POLY_ACCENT_VOICE_* directly
     //       until the bank resize in Stage 6b.
-    inline int sendId(int v, int lane, int item) { return MonsoonIds::MACRO_SEND_START + (v*4 + lane)*4 + item; }
+    inline int sendId(int v, int lane, int item) { return MonsoonIds::MACRO_SEND_START + (v*3 + lane)*4 + item; }
     inline int sendDispId(int lane, int item)    { return MonsoonIds::MACRO_SEND_DISP_START + lane*4 + item; }
 
     // ── Input IDs ─────────────────────────────────────────────────────────
@@ -94,14 +94,12 @@ namespace StraitsMacroVisualIds {
     inline int lorId(int lane, int c) {
         if (lane == 0) return GLOBAL_REST_DNA_LEN   + c;
         if (lane == 1) return GLOBAL_MELODY_DNA_LEN + c;
-        if (lane == 3) return GLOBAL_ACCENT_DNA_LEN + c;
         return              GLOBAL_OCTAVE_DNA_LEN   + c;
     }
     // Spread: stored in SPREAD_REST/MELODY/OCTAVE display params
     inline int sprId(int lane) {
         if (lane == 0) return SPREAD_REST;
         if (lane == 1) return SPREAD_MELODY;
-        if (lane == 3) return SPREAD_ACCENT;
         return              SPREAD_OCTAVE;
     }
     // param 0=LEN,1=OFF,2=ROT → lorId; param 3=SPR → sprId
@@ -129,23 +127,26 @@ struct StraitsSandsMacroVisual : Module {
         config(MonsoonIds::NUM_PARAMS, StraitsMacroVisualIds::NUM_INPUTS,
                StraitsMacroVisualIds::NUM_OUTPUTS, 0);
         for (auto& a : probLastStep) for (auto& x : a) x = -1;
-        { static const char* ln[4] = {"REST","MEL","OCT","ACC"};
-          for (int l = 0; l < 4; ++l)
+        { static const char* ln[3] = {"REST","MEL","OCT"};
+          for (int l = 0; l < 3; ++l)
             configOutput(StraitsMacroVisualIds::PROB_OUT_REST + l,
                 std::string("Probability ") + ln[l] + " (poly: ch2+ voices)"); }
 
-        configParam(SPREAD_REST,   -1.f,1.f,0.f,"Global Spread REST");
+        configParam(SPREAD_REST,   -1.f,1.f,0.f,"Global Spread REST");   // bipolar, matches MEL/OCT (was 0..1 — inconsistent)
         configParam(SPREAD_MELODY, -1.f,1.f,0.f,"Global Spread MELODY");
         configParam(SPREAD_OCTAVE, -1.f,1.f,0.f,"Global Spread OCTAVE");
-        configParam(SPREAD_ACCENT, -1.f,1.f,0.f,"Global Spread ACCENT");
 
-        static const char* laneNames[4] = {"REST","MEL","OCT","ACC"};
-        static const char* paramNames[4] = {"Len","Off","Rot","Spr"};
-        for (int lane=0; lane<4; ++lane)
-            for (int c=0; c<4; ++c) {
-                std::string nm = std::string(laneNames[lane])+" "+paramNames[c];
-                configParam(attenId(lane,c), -1.f,1.f,0.f, nm+" depth");
-                configInput(cvId(lane,c), nm+" CV");
+        static const char* rowNames[6][2] = {
+            {"REST Len","REST Off"}, {"REST Rot","REST Spr"},
+            {"MEL Len", "MEL Off"}, {"MEL Rot", "MEL Spr"},
+            {"OCT Len", "OCT Off"}, {"OCT Rot", "OCT Spr"},
+        };
+        for (int r=0; r<6; ++r)
+            for (int c=0; c<2; ++c) {
+                configParam(attenId(r,c), -1.f,1.f,0.f,
+                            std::string(rowNames[r][c])+" depth");
+                configInput(cvId(r,c),
+                            std::string(rowNames[r][c])+" CV");
             }
 
         // Global L/O/R params
@@ -158,19 +159,16 @@ struct StraitsSandsMacroVisual : Module {
         configParam(GLOBAL_OCTAVE_DNA_LEN, 1.f,16.f,16.f,"Global OCTAVE Length");
         configParam(GLOBAL_OCTAVE_DNA_OFF, 0.f,15.f, 0.f,"Global OCTAVE Offset");
         configParam(GLOBAL_OCTAVE_DNA_ROT, 0.f,15.f, 0.f,"Global OCTAVE Rotation");
-        configParam(GLOBAL_ACCENT_DNA_LEN, 1.f,16.f,16.f,"Global ACCENT Length");
-        configParam(GLOBAL_ACCENT_DNA_OFF, 0.f,15.f, 0.f,"Global ACCENT Offset");
-        configParam(GLOBAL_ACCENT_DNA_ROT, 0.f,15.f, 0.f,"Global ACCENT Rotation");
 
         // Per-voice Macro→voice mix-in sends (relocated from East). 12 display proxies
         // (selected-voice view, bound on the panel) + 180 per-voice store. Default 0
         // = opt-in: Macro global CV reaches a voice only when dialed in for that voice.
-        for (int lane=0; lane<4; ++lane)
+        for (int lane=0; lane<3; ++lane)
             for (int item=0; item<4; ++item)
                 configParam(sendDispId(lane,item), -1.f,1.f,0.f,
                             "L"+std::to_string(lane)+" mix-in "+std::to_string(item)+" (selected voice)");
         for (int v=0; v<16; ++v)   // 16 voice slots: 0=mono(V1), 1..15=poly(V2..V16)
-            for (int lane=0; lane<4; ++lane)
+            for (int lane=0; lane<3; ++lane)
                 for (int item=0; item<4; ++item)
                     configParam(sendId(v,lane,item), -1.f,1.f,0.f,
                                 "V"+std::to_string(v+1)+" L"+std::to_string(lane)+" mix-in "+std::to_string(item));
@@ -186,15 +184,15 @@ struct StraitsSandsMacroVisual : Module {
     // these from base + spread CV; the display reads them so spread CV is visible
     // WITHOUT moving the base knob (the old code wrote the modulated value back to
     // the SPREAD_* param, which dragged the knob — fixed).
-    float spreadEffective[4] = {0.f, 0.f, 0.f, 0.f};
+    float spreadEffective[3] = {0.f, 0.f, 0.f};
 
     // Per (lane, item) split of Macro's global contribution, published by
     // processDNA::applyGlobal for the Macro/East blend equation. item: 0=LEN
     // 1=OFF 2=ROT 3=SPR. macroBase = the knob value (no CV); macroCVDelta = the
     // CV-only contribution (already scaled by Macro's own attenuverter). East's
     // sync reads these: value = base(owner) + eastCV + macroCVDelta·blendSend.
-    float macroBase[4][4]    = {};
-    float macroCVDelta[4][4] = {};
+    float macroBase[3][4]    = {};
+    float macroCVDelta[3][4] = {};
 
     json_t* dataToJson() override {
         json_t* r = json_object();

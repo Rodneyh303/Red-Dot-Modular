@@ -132,8 +132,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 // residue arc; same desync class as the Monsoon big-5 fix). The spread
                 // is genuinely modulated when its per-lane spread CV jack is connected,
                 // or when Macro is blending into an East-owned lane.
-                // SPR CV jack is col 3 in the lane's own row (mono-style 4+4+1 layout)
-                bool cvConnected = mod->inputs[cvId(lane, 3)].isConnected();
+                static const int sprCvRow[3] = { 1, 3, 5 };   // REST/MEL/OCT spread CV at cvId(row,1)
+                bool cvConnected = mod->inputs[cvId(sprCvRow[lane], 1)].isConnected();
                 bool macroBlend = false;
                 if (auto* macroVis = mon->expanderManager.cachedMacroSandsVisual) {
                     // The Macro blend only DYNAMICALLY modulates spread when Macro's own
@@ -184,8 +184,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         visualEditor->box.size = mm2px(Vec(ED_W, ED_H));
         addChild(visualEditor);
 
-        // 4 poly probability CV outs, one per lane row (aligned to editor lane centers).
-        for (int l = 0; l < 4; ++l) {
+        // 3 poly probability CV outs, one per lane row (aligned to editor lane centers).
+        for (int l = 0; l < 3; ++l) {
             float y = ED_Y + (l + 0.5f) * ED_LANE_H;
             auto* p = createOutputCentered<redDot::GoldPolyPort>(
                 mm2px(Vec(PROB_OUT_X, y)), module, StraitsEastVisualIds::PROB_OUT_REST + l);
@@ -197,21 +197,27 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
 
         // ── Controls bound by id from the SVG kit (#components in
         //    gen_east_clean.py). Marker index == enum value:
-        //      input_<n>  n = cvId(lane,c) = 0 + lane*4 + c  (CV jacks, 0..15, 4 per lane)
-        //      param_<n>  n = attenDispId(lane,c) = 4 + lane*4 + c (attens, 4..19)
-        //      param_<n>  n = SPREAD_R/M/O/A = 0/1/2/3              (spread trimpots)
+        //      input_<n>  n = cvId(r,c)   = 0 + r*2 + c   (CV jacks, 0..11)
+        //      param_<n>  n = attenId(r,c)= 3 + r*2 + c   (attenuverters, 3..14)
+        //      param_<n>  n = SPREAD_R/M/O = 0/1/2         (selected-voice spread)
         for (int r = 0; r < N_ROWS; ++r) {
             Module* mod = module;
             auto themeCfg = [mod](redDot::GoldPolyPort* p) {
                 p->lightTheme = [mod]() { Monsoon* m = mod ? redDot::findMonsoonEitherSide(mod) : nullptr;
                                           return m && m->lightTheme; };
             };
-            for (int c = 0; c < 4; ++c)
-                bindInput<redDot::GoldPolyPort>("input_" + std::to_string(cvId(r,c)), cvId(r,c),
-                    std::function<void(redDot::GoldPolyPort*)>(themeCfg));
-            // CV-depth attenuverters: East's own controls, always live.
-            for (int c = 0; c < 4; ++c)
-                bindParam<DimmableTrimpot>("param_" + std::to_string(attenDispId(r,c)), attenDispId(r,c));
+            bindInput<redDot::GoldPolyPort>("input_" + std::to_string(cvId(r,0)), cvId(r,0),
+                std::function<void(redDot::GoldPolyPort*)>(themeCfg));
+            bindInput<redDot::GoldPolyPort>("input_" + std::to_string(cvId(r,1)), cvId(r,1),
+                std::function<void(redDot::GoldPolyPort*)>(themeCfg));
+            // CV-depth attenuverters are East's OWN control (scale East's poly CV in) —
+            // fully usable solo. They dim only when Macro is present AND owns the lane
+            // (then East's base, incl this CV, is bypassed for the Macro value).
+            // East's per-lane CV-depth attenuverters are ALWAYS live — East's own CV
+            // modulation applies regardless of who owns the lane base (Macro ownership
+            // only affects the BASE value, not East's local CV depth). No dimming.
+            bindParam<DimmableTrimpot>("param_" + std::to_string(attenDispId(r,0)), attenDispId(r,0));
+            bindParam<DimmableTrimpot>("param_" + std::to_string(attenDispId(r,1)), attenDispId(r,1));
         }
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_R), SPREAD_R,
             std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(0) || tab1MonoMirror(); }; k->lockWhen = [this](){ return laneOwnedByMacro(0) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 0}); }));
@@ -219,8 +225,6 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(1) || tab1MonoMirror(); }; k->lockWhen = [this](){ return laneOwnedByMacro(1) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 1}); }));
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_O), SPREAD_O,
             std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(2) || tab1MonoMirror(); }; k->lockWhen = [this](){ return laneOwnedByMacro(2) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 2}); }));
-        bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_A), SPREAD_A,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(3) || tab1MonoMirror(); }; k->lockWhen = [this](){ return laneOwnedByMacro(3) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 3}); }));
 
         // Macro/East blend controls (bound to the display proxies; copied to/from
         // the per-voice MACRO params on voice switch + each frame). Owner = a
@@ -229,7 +233,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // inert + dimmed and the sends are dimmed. With Macro attached, sends dim per
         // lane when Macro owns it. (Base-spread / CV-depth are East's own controls and
         // stay live solo — see laneOwnedByMacro above.)
-        for (int lane = 0; lane < 4; ++lane) {
+        for (int lane = 0; lane < 3; ++lane) {
             bindLightParam<DimmableLatch>(
                 "param_owner_" + std::to_string(lane),
                 ownerDispId(lane),
@@ -269,14 +273,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         module->params[restInterpId(v)  ].setValue(module->params[SPREAD_R].getValue());
         module->params[melodyInterpId(v)].setValue(module->params[SPREAD_M].getValue());
         module->params[octaveInterpId(v)].setValue(module->params[SPREAD_O].getValue());
-        module->params[accentInterpId(v)].setValue(module->params[SPREAD_A].getValue());
     }
     void loadVoiceSpread(int v) {
         if (!module) return;
         module->params[SPREAD_R].setValue(module->params[restInterpId(v)  ].getValue());
         module->params[SPREAD_M].setValue(module->params[melodyInterpId(v)].getValue());
         module->params[SPREAD_O].setValue(module->params[octaveInterpId(v)].getValue());
-        module->params[SPREAD_A].setValue(module->params[accentInterpId(v)].getValue());
     }
     // Owner display proxy ↔ per-voice MACRO_OWN; CV-depth attenuverters disp↔per-voice.
     // (Macro mix-in send sync relocated to Macro under the control inversion.)
@@ -285,26 +287,26 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // atten bank is 16-wide voice-slot indexed; derive via the resolver (poly bank v →
         // voice v+2 → slot), anchored to the asserted slot/bank invariant.
         const int slot = dotModular::VoiceResolver::voiceSlot(v + dotModular::VoiceResolver::kFirstPoly);
-        for (int lane=0; lane<4; ++lane)
+        for (int lane=0; lane<3; ++lane)
             module->params[ownerId(v,lane)].setValue(module->params[ownerDispId(lane)].getValue());
         // CV-depth attenuverters: display proxy → this voice's per-voice store.
-        for (int lane=0; lane<4; ++lane)
-            for (int c=0; c<4; ++c)
-                module->params[attenId(slot,lane,c)].setValue(module->params[attenDispId(lane,c)].getValue());
+        for (int r=0; r<6; ++r)
+            for (int c=0; c<2; ++c)
+                module->params[attenId(slot,r,c)].setValue(module->params[attenDispId(r,c)].getValue());
     }
     void loadVoiceMacro(int v) {   // v = 0-based poly bank
         if (!module) return;
         const int slot = dotModular::VoiceResolver::voiceSlot(v + dotModular::VoiceResolver::kFirstPoly);
-        for (int lane=0; lane<4; ++lane)
+        for (int lane=0; lane<3; ++lane)
             module->params[ownerDispId(lane)].setValue(module->params[ownerId(v,lane)].getValue());
         // CV-depth attenuverters: this voice's per-voice store → display proxy.
-        for (int lane=0; lane<4; ++lane)
-            for (int c=0; c<4; ++c)
-                module->params[attenDispId(lane,c)].setValue(module->params[attenId(slot,lane,c)].getValue());
+        for (int r=0; r<6; ++r)
+            for (int c=0; c<2; ++c)
+                module->params[attenDispId(r,c)].setValue(module->params[attenId(slot,r,c)].getValue());
     }
     void saveVoiceLOR(int v) {
         if (!module || !visualEditor) return;
-        for (int l=0; l<4; ++l) {
+        for (int l=0; l<3; ++l) {
             const auto& lane = visualEditor->currentState.lanes[l];
             module->params[lorId(v,l,0)].setValue((float)lane.length);
             module->params[lorId(v,l,1)].setValue((float)lane.offset);
@@ -313,7 +315,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     }
     void loadVoiceLOR(int v) {
         if (!module || !visualEditor) return;
-        for (int l=0; l<4; ++l) {
+        for (int l=0; l<3; ++l) {
             auto& lane = visualEditor->currentState.lanes[l];
             lane.length   = std::max(1,(int)std::round(module->params[lorId(v,l,0)].getValue()));
             lane.offset   = (int)std::round(module->params[lorId(v,l,1)].getValue());
@@ -456,7 +458,6 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             smgr.setSpread(polyVoice(), 0, mod->params[SPREAD_R].getValue());
             smgr.setSpread(polyVoice(), 1, mod->params[SPREAD_M].getValue());
             smgr.setSpread(polyVoice(), 2, mod->params[SPREAD_O].getValue());
-            smgr.setSpread(polyVoice(), 3, mod->params[SPREAD_A].getValue());
         }
         {
             auto& smgr = paramMgr->spreadMgr;
@@ -477,11 +478,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // East-OWNED lanes keep the editor's edit values so dragging a bar isn't clobbered.
             dotModular::VoiceResolver resolver(monsoon->engine);
             const int vnum = currentVoice();
-            static const int laneMap[4] = { SandsVisualEditorV4::REST,
+            static const int laneMap[3] = { SandsVisualEditorV4::REST,
                                             SandsVisualEditorV4::MELODY,
-                                            SandsVisualEditorV4::OCTAVE,
-                                            SandsVisualEditorV4::ACCENT };
-            for (int lane = 0; lane < 4; ++lane) {
+                                            SandsVisualEditorV4::OCTAVE };
+            for (int lane = 0; lane < 3; ++lane) {
                 if (!laneOwnedByMacro(lane)) continue;   // owned by East → keep editor's values
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
                     visualEditor->currentState.lanes[laneMap[lane]].probabilities[s] =
@@ -517,7 +517,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             }
         } else if (selectedVoice >= 1) {
             const int pv = polyVoice();
-            for (int l=0; l<4; ++l) {
+            for (int l=0; l<3; ++l) {
                 int cvLen = eng.polyLen[pv][l];
                 int cvOff = eng.polyOff[pv][l];
                 int cvRot = eng.polyRot[pv][l];
@@ -537,11 +537,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         NVGcontext* vg = args.vg;
 
         // Layout constants — MUST MATCH gen_east_clean.py (blend groups).
-        const float ED_X = 88.0f, PROB_OUT_X = 207.0f, ED_W = PROB_OUT_X - ED_X - 8.0f;
-        const float BLEND_TOP = 74.0f, GAP = 2.5f;
-        const float GROUP_W = ED_W / 4.0f;
+        const float ED_X = 58.0f, PROB_OUT_X = 207.0f, ED_W = PROB_OUT_X - ED_X - 8.0f;
+        const float BLEND_TOP = 74.0f, GAP = 3.5f;
+        const float GROUP_W = ED_W / 3.0f;
         const float OWN_DY = 13.0f;
-        const char* laneName[4] = { "REST", "MELODY", "OCTAVE", "ACCENT" };
+        const char* laneName[3] = { "REST", "MELODY", "OCTAVE" };
 
         bool macroPresent = false;
         bool isLight = false;
@@ -580,7 +580,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         nvgFillColor(vg, head);
         nvgText(vg, mm2px(ED_X), mm2px(BLEND_TOP - 3.5f), "BASE", nullptr);
 
-        for (int l = 0; l < 4; ++l) {
+        for (int l = 0; l < 3; ++l) {
             float gx = ED_X + l*GROUP_W + GAP*0.5f;
             float gw = GROUP_W - GAP;
             float gcx = gx + gw*0.5f;
@@ -600,13 +600,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
 // ── Module process(): light latches + 3 poly probability CV outs (audio rate) ──
 void StraitsEastSandsVisual::process(const ProcessArgs&) {
     using namespace StraitsEastVisualIds;
-    for (int lane = 0; lane < 4; ++lane)
+    for (int lane = 0; lane < 3; ++lane)
         lights[ownerLightId(lane)].setBrightness(
             params[ownerDispId(lane)].getValue() > 0.5f ? 1.f : 0.f);
 
     Monsoon* mon = redDot::findMonsoonEitherSide(this);
     if (!mon) {
-        for (int l = 0; l < 4; ++l) { outputs[PROB_OUT_REST + l].setChannels(1);
+        for (int l = 0; l < 3; ++l) { outputs[PROB_OUT_REST + l].setChannels(1);
                                       outputs[PROB_OUT_REST + l].setVoltage(0.f); }
         return;
     }
@@ -616,7 +616,7 @@ void StraitsEastSandsVisual::process(const ProcessArgs&) {
     const int nV = eng.numPolyVoices;                  // 0..15 poly voices
     const int nCh = 1 + nV;                            // mono on ch1 + poly on ch2..1+nV
     dotModular::VoiceResolver resolver(eng);
-    for (int l = 0; l < 4; ++l) {
+    for (int l = 0; l < 3; ++l) {
         auto& out = outputs[PROB_OUT_REST + l];
         out.setChannels(nCh < 1 ? 1 : nCh);
         // Uniform addressing: VCV channel ch (0-based) carries voice number ch+1.
