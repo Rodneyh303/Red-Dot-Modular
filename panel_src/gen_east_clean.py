@@ -14,6 +14,11 @@ def rowY(r): return ROW_TOP + (r+0.5)*(ROW_BOT-ROW_TOP)/N
 JACK_X  = [6.0, 15.0, 24.0, 33.0]   # LEN/OFF/ROT/SPR-cv
 ATTEN_X = [43.0, 52.0, 61.0, 70.0]  # LEN/OFF/ROT/SPR depth
 SPREAD_X = 80.0                      # spread base trimpot
+# Display order: row i → engine lane DISPLAY_ORDER[i] (MEL/OCT/REST/ACC top-to-bottom)
+# matches SandsVisualEditorV4 lane order so left jacks align with editor rows.
+DISPLAY_ORDER = [1, 2, 0, 3]   # row0=MEL(eng1), row1=OCT(eng2), row2=REST(eng0), row3=ACC(eng3)
+LANE_NAMES_DISPLAY = ["MELODY","OCTAVE","REST","ACCENT"]
+
 # Extra top margin so the voice tab row isn't crammed against the panel top edge.
 # 0.5 cm = 5 mm. Adjust + rerun the generator (and mirror TAB_TOP_OFFSET_MM in
 # StraitsEastSandsVisualWidget) to taste.
@@ -154,8 +159,8 @@ def gen(dark):
     def trim(x,y,col):
         A(f'<circle cx="{px(x):.1f}" cy="{px(y):.1f}" r="{px(3.2):.1f}" fill="{t["well"]}" stroke="{col}" stroke-width="1.25"/>')
         A(f'<line x1="{px(x):.1f}" y1="{px(y):.1f}" x2="{px(x):.1f}" y2="{px(y-2.4):.1f}" stroke="{col}" stroke-width="1"/>')
-    for lane in range(4):
-        y=rowY(lane)
+    for row in range(4):
+        y=rowY(row)
         for x in JACK_X:  jack(x,y)
         for x in ATTEN_X: trim(x,y,t["gold"])
         trim(SPREAD_X,y,t["teal"])
@@ -179,9 +184,12 @@ def gen(dark):
     OWN_DY    = 13.0
     # "BASE" section header rule (full width, above the groups)
     A(f'<line x1="{px(ED_X):.1f}" y1="{px(BLEND_TOP-3.0):.1f}" x2="{px(ED_X+ED_W):.1f}" y2="{px(BLEND_TOP-3.0):.1f}" stroke="{t["accent"]}" stroke-width="1.0" opacity="0.6"/>')
-    LANE_NAMES = ["REST","MELODY","OCTAVE","ACCENT"]
-    OWN_XY = []     # opt-in (BASE) latch centres, per lane
-    for l in range(4):
+    LANE_NAMES = LANE_NAMES_DISPLAY   # ["MELODY","OCTAVE","REST","ACCENT"]
+    # Groups drawn in DISPLAY_ORDER (left-to-right: MEL/OCT/REST/ACC)
+    # Group position g → engine lane DISPLAY_ORDER[g]
+    OWN_XY = [None]*4  # indexed by engine lane
+    for g in range(4):
+        l = DISPLAY_ORDER[g]   # engine lane for this group position
         gx = ED_X + l*GROUP_W + GAP*0.5
         gw = GROUP_W - GAP
         gcx = gx + gw*0.5
@@ -192,7 +200,7 @@ def gen(dark):
         # opt-in (BASE) latch — centred under the header
         ox, oy = gcx, BLEND_TOP + OWN_DY
         A(f'<circle cx="{px(ox):.1f}" cy="{px(oy):.1f}" r="{px(2.6):.1f}" fill="{t["edrecess"]}" stroke="{t["accent"]}" stroke-width="1.2"/>')
-        OWN_XY.append((ox, oy))
+        OWN_XY[l] = (ox, oy)
     A('</g>')
     # ── SvgPanelKit component layer. Indices mirror StraitsEastSandsVisual.hpp:
     #    cvId(r,c)=CV_START(0)+r*2+c  inputs 0..11;
@@ -201,16 +209,17 @@ def gen(dark):
     def kit_shape(kind, idx, x, y):
         A(f'<circle id="{kind}_{idx}" cx="{px(x):.2f}" cy="{px(y):.2f}" r="0.5" fill="none" stroke="none"/>')
     A('<g inkscape:label="components" inkscape:groupmode="layer">')
-    # cvId(lane,col): CV_START + lane*4 + col  → inputs 0..15
-    # attenDispId(lane,col): ATTEN_START(4) + lane*4 + col → params 4..19
-    # SPREAD_R/M/O/A = params 0/1/2/3
-    for lane in range(4):
-        y=rowY(lane)
+    # Components placed in display order (row→engine lane via DISPLAY_ORDER).
+    # cvId/attenDispId/SPREAD use engine lane index; rowY uses display row.
+    for row in range(4):
+        lane = DISPLAY_ORDER[row]   # engine lane
+        y=rowY(row)
         for p,x in enumerate(JACK_X):  kit_shape("input", 0+lane*4+p, x, y)
         for p,x in enumerate(ATTEN_X): kit_shape("param", 4+lane*4+p, x, y)
-        kit_shape("param", lane, SPREAD_X, y)  # SPREAD_R/M/O/A = 0/1/2/3
-    # East opt-in (BASE) latch markers (bound to display proxies). Sends moved to Macro.
-    for l in range(4):
+        kit_shape("param", lane, SPREAD_X, y)  # SPREAD_R/M/O/A engine lane index
+    # East opt-in (BASE) latch markers — engine lane indexed, at blend group position
+    for g in range(4):
+        l = DISPLAY_ORDER[g]
         ox,oy = OWN_XY[l]
         A(f'<circle id="param_owner_{l}" cx="{px(ox):.2f}" cy="{px(oy):.2f}" r="0.5" fill="none" stroke="none"/>')
     A(f'<circle id="light_connect" cx="{px(W_MM*0.5):.2f}" cy="{px(124.0):.2f}" r="0.5" fill="none" stroke="none"/>')

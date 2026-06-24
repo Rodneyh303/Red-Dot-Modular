@@ -508,21 +508,32 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         bool tab1Mono = onMonoTab() && (monoVis != nullptr);
         visualEditor->readOnly = tab1Mono;
         if (tab1Mono) {
+            // Engine lane l=0=REST,1=MEL,2=OCT → editor lane via named constants
+            static const int monoLaneToEditor[3] = {
+                SandsVisualEditorV4::REST, SandsVisualEditorV4::MELODY, SandsVisualEditorV4::OCTAVE
+            };
             for (int l=0; l<3; ++l) {
                 int mLen = (int)std::round(monoVis->params[SandsMonoVisualIds::lenId(l)].getValue());
                 int mOff = (int)std::round(monoVis->params[SandsMonoVisualIds::offId(l)].getValue());
                 int mRot = (int)std::round(monoVis->params[SandsMonoVisualIds::rotId(l)].getValue());
-                visualEditor->currentState.lanes[l].setDisplayLOR(mLen, mOff, mRot);
-                visualEditor->setLanePlayStep(l, calcPlayhead(gs, mLen, mOff, mRot));
+                int el = monoLaneToEditor[l];
+                visualEditor->currentState.lanes[el].setDisplayLOR(mLen, mOff, mRot);
+                visualEditor->setLanePlayStep(el, calcPlayhead(gs, mLen, mOff, mRot));
             }
         } else if (selectedVoice >= 1) {
             const int pv = polyVoice();
+            // Engine lane l=0=REST,1=MEL,2=OCT,3=ACC → editor lane via named constants
+            static const int polyLaneToEditor[4] = {
+                SandsVisualEditorV4::REST, SandsVisualEditorV4::MELODY,
+                SandsVisualEditorV4::OCTAVE, SandsVisualEditorV4::ACCENT
+            };
             for (int l=0; l<4; ++l) {
                 int cvLen = eng.polyLen[pv][l];
                 int cvOff = eng.polyOff[pv][l];
                 int cvRot = eng.polyRot[pv][l];
-                visualEditor->currentState.lanes[l].setDisplayLOR(cvLen, cvOff, cvRot);
-                visualEditor->setLanePlayStep(l, calcPlayhead(gs, cvLen, cvOff, cvRot));
+                int el = polyLaneToEditor[l];
+                visualEditor->currentState.lanes[el].setDisplayLOR(cvLen, cvOff, cvRot);
+                visualEditor->setLanePlayStep(el, calcPlayhead(gs, cvLen, cvOff, cvRot));
             }
         }
     }
