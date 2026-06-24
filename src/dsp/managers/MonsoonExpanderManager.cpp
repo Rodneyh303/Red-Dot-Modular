@@ -46,11 +46,11 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
 
         for (int v = 0; v < 15; v++) {
             int rhythmBase = MonsoonIds::POLY_DNA_VOICE_1_LEN + v * 3;
-            // Per-voice send/atten banks are now voice-number-indexed (slot 0 = voice 1/mono,
-            // slot 1 = poly voice 2, …). This engine poly index v (0..14) is poly voice v+2,
-            // i.e. voice-number slot v+1. Reading slot v+1 keeps poly voices off slot 0, so
-            // the mono mix-in (which reads slot 0) no longer collides with the v2 tab.
-            const int slot = v + 1;
+            // Per-voice send/atten banks are voice-number-indexed (slot 0 = voice 1/mono, slot
+            // 1 = poly voice 2, …). Engine poly index v (0..14) is poly voice v+2; derive its
+            // 16-wide slot through the resolver so this can't drift from the asserted slot/bank
+            // invariant (slot stays off 0, the mono mix-in's slice).
+            const int slot = dotModular::VoiceResolver::voiceSlot(v + dotModular::VoiceResolver::kFirstPoly);
 
             // East's own base+CV for an L/O/R item (paramIdx = East voice param).
             auto eastLorVal = [&](int paramIdx, int r, int c, float lo, float hi)-> float {
