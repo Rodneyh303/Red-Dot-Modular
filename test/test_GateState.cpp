@@ -36,38 +36,39 @@ int main(){
     // ─────────────────────────────────────────────────────────────────────────
 
     TEST("triggerNote: gate opens", {
-        auto g=fresh(); g.triggerNote(1.f,5,3);
+        auto g=fresh(); g.triggerNote(1.f,5,4);
         EXPECT(g.gateHeld);
     });
     TEST("triggerNote: pitch set correctly", {
-        auto g=fresh(); g.triggerNote(1.5f,5,3);
+        auto g=fresh(); g.triggerNote(1.5f,5,4);
         EXPECT_NEAR(g.currentPitchV, 1.5f, 1e-5f);
     });
     TEST("triggerNote: lastSemitone updated", {
-        auto g=fresh(); g.triggerNote(1.f,7,3);
+        auto g=fresh(); g.triggerNote(1.f,7,4);
         EXPECT_EQ(g.lastSemitone, 7);
     });
     TEST("triggerNote: holdRemain = noteSteps(nvIdx)", {
-        auto g=fresh(); g.triggerNote(1.f,5,3);  // idx 3 = 1/8 = 2 steps
+        auto g=fresh(); g.triggerNote(1.f,5,4);  // idx 4 = 1/8 = 2 steps
         EXPECT_NEAR(g.holdRemain, 2.f, 1e-5f);
     });
-    TEST("triggerNote: gatePulse fired (high immediately)", {
-        auto g=fresh(); g.triggerNote(1.f,5,3);
-        EXPECT_GT(g.process(0.f), 5.f);  // pulse high
+    TEST("triggerNote: gate open after 1ms dip (10V)", {
+        auto g=fresh(); g.triggerNote(1.f,5,4);
+        g.process(0.002f);  // advance past 1ms retrigger dip
+        EXPECT_GT(g.process(0.f), 5.f);  // gate held → 10V
     });
     TEST("triggerNote: semiPlayRemain updated", {
-        auto g=fresh(); g.triggerNote(1.f,5,3);
+        auto g=fresh(); g.triggerNote(1.f,5,4);
         EXPECT_GT(g.semiPlayRemain[5], 0.f);
     });
     TEST("triggerNote: semiPlayRemain for other semitones untouched", {
-        auto g=fresh(); g.triggerNote(1.f,5,3);
+        auto g=fresh(); g.triggerNote(1.f,5,4);
         EXPECT_NEAR(g.semiPlayRemain[4], 0.f, 1e-5f);
         EXPECT_NEAR(g.semiPlayRemain[6], 0.f, 1e-5f);
     });
     TEST("triggerNote twice: holdRemain SET not accumulated", {
         auto g=fresh();
-        g.triggerNote(1.f,5,1);  // 1/4 = 4 steps
-        g.triggerNote(1.f,5,3);  // 1/8 = 2 steps
+        g.triggerNote(1.f,5,2);  // 1/4 = 4 steps
+        g.triggerNote(1.f,5,4);  // 1/8 = 2 steps
         EXPECT_NEAR(g.holdRemain, 2.f, 1e-5f);  // reset to 2, not 4+2
     });
 
@@ -76,32 +77,32 @@ int main(){
     // ─────────────────────────────────────────────────────────────────────────
 
     TEST("slideNote: pitch changes", {
-        auto g=fresh(); g.triggerNote(1.f,5,3);
-        g.slideNote(2.f,7,3);
+        auto g=fresh(); g.triggerNote(1.f,5,4);
+        g.slideNote(2.f,7,4,true);
         EXPECT_NEAR(g.currentPitchV, 2.f, 1e-5f);
     });
     TEST("slideNote while held: holdRemain extended", {
-        auto g=fresh(); g.triggerNote(1.f,5,1);  // 4 steps
+        auto g=fresh(); g.triggerNote(1.f,5,2);  // 4 steps
         float before=g.holdRemain;
-        g.slideNote(2.f,7,3);  // extend by 2
+        g.slideNote(2.f,7,4,true);  // extend by 2
         EXPECT_NEAR(g.holdRemain, before+2.f, 1e-4f);
     });
     TEST("slideNote while held: NO new gatePulse (no retrigger)", {
-        auto g=fresh(); g.triggerNote(1.f,5,3);
+        auto g=fresh(); g.triggerNote(1.f,5,4);
         g.gatePulse.reset();     // clear initial pulse
-        g.slideNote(2.f,7,3);
+        g.slideNote(2.f,7,4,true);
         // gatePulse should NOT have been triggered again
         EXPECT(!g.gatePulse.isHigh());
     });
     TEST("slideNote from cold (gate not held): opens gate with pulse", {
         auto g=fresh();  // gate not held
-        g.slideNote(1.5f,3,3);
+        g.slideNote(1.5f,3,4,false);
         EXPECT(g.gateHeld);
         EXPECT(g.gatePulse.isHigh());  // first note of legato run
     });
     TEST("slideNote from cold: holdRemain SET to dur", {
         auto g=fresh();
-        g.slideNote(1.5f,3,3);
+        g.slideNote(1.5f,3,4,false);
         EXPECT_NEAR(g.holdRemain, 2.f, 1e-4f);
     });
 
@@ -110,20 +111,20 @@ int main(){
     // ─────────────────────────────────────────────────────────────────────────
 
     TEST("slideMax: gate held", {
-        auto g=fresh(); g.slideMax(1.f,5,3);
+        auto g=fresh(); g.slideMax(1.f,5,4);
         EXPECT(g.gateHeld);
     });
     TEST("slideMax: no retrigger pulse", {
-        auto g=fresh(); g.slideMax(1.f,5,3);
+        auto g=fresh(); g.slideMax(1.f,5,4);
         EXPECT(!g.gatePulse.isHigh());
     });
     TEST("slideMax: holdRemain set to exact dur (not extended)", {
-        auto g=fresh(); g.triggerNote(1.f,5,1);  // 4 steps
-        g.slideMax(2.f,7,3);  // 2 steps
+        auto g=fresh(); g.triggerNote(1.f,5,2);  // 4 steps
+        g.slideMax(2.f,7,4);  // 2 steps
         EXPECT_NEAR(g.holdRemain, 2.f, 1e-4f);  // SET not +=
     });
     TEST("slideMax: pitch updated", {
-        auto g=fresh(); g.slideMax(2.5f,9,3);
+        auto g=fresh(); g.slideMax(2.5f,9,4);
         EXPECT_NEAR(g.currentPitchV, 2.5f, 1e-5f);
     });
 
@@ -132,26 +133,26 @@ int main(){
     // ─────────────────────────────────────────────────────────────────────────
 
     TEST("extendHold: holdRemain increases by dur", {
-        auto g=fresh(); g.triggerNote(1.f,5,3);
+        auto g=fresh(); g.triggerNote(1.f,5,4);
         float before=g.holdRemain;
-        g.extendHold(5,3);
+        g.extendHold(5,4);
         EXPECT_NEAR(g.holdRemain, before*2.f, 1e-4f);  // 2+2=4
     });
     TEST("extendHold: pitch unchanged", {
-        auto g=fresh(); g.triggerNote(1.5f,5,3);
-        g.extendHold(5,3);
+        auto g=fresh(); g.triggerNote(1.5f,5,4);
+        g.extendHold(5,4);
         EXPECT_NEAR(g.currentPitchV, 1.5f, 1e-5f);
     });
     TEST("extendHold: no retrigger", {
-        auto g=fresh(); g.triggerNote(1.f,5,3);
+        auto g=fresh(); g.triggerNote(1.f,5,4);
         g.gatePulse.reset();
-        g.extendHold(5,3);
+        g.extendHold(5,4);
         EXPECT(!g.gatePulse.isHigh());
     });
     TEST("extendHold multiple times: accumulates correctly", {
-        auto g=fresh(); g.triggerNote(1.f,5,3);  // 2 steps
-        g.extendHold(5,3);  // +2 = 4
-        g.extendHold(5,3);  // +2 = 6
+        auto g=fresh(); g.triggerNote(1.f,5,4);  // 2 steps
+        g.extendHold(5,4);  // +2 = 4
+        g.extendHold(5,4);  // +2 = 6
         EXPECT_NEAR(g.holdRemain, 6.f, 1e-3f);
     });
 
@@ -160,30 +161,30 @@ int main(){
     // ─────────────────────────────────────────────────────────────────────────
 
     TEST("rest (no tie): holdRemain unchanged", {
-        auto g=fresh(); g.triggerNote(1.f,5,3);
+        auto g=fresh(); g.triggerNote(1.f,5,4);
         float before=g.holdRemain;
-        g.rest(false, 3);
+        g.rest(false, 4);
         EXPECT_NEAR(g.holdRemain, before, 1e-5f);
     });
     TEST("rest (no tie): gate stays held", {
-        auto g=fresh(); g.triggerNote(1.f,5,3);
-        g.rest(false, 3);
+        auto g=fresh(); g.triggerNote(1.f,5,4);
+        g.rest(false, 4);
         EXPECT(g.gateHeld);
     });
     TEST("rest (tie + held): holdRemain extended", {
-        auto g=fresh(); g.triggerNote(1.f,5,3);
+        auto g=fresh(); g.triggerNote(1.f,5,4);
         float before=g.holdRemain;
-        g.rest(true, 3);
+        g.rest(true, 4);
         EXPECT_NEAR(g.holdRemain, before+2.f, 1e-4f);
     });
     TEST("rest (tie + NOT held): holdRemain unchanged (can't extend closed gate)", {
         auto g=fresh();  // gate not held
-        g.rest(true, 3);
+        g.rest(true, 4);
         EXPECT_NEAR(g.holdRemain, 0.f, 1e-5f);
     });
     TEST("rest (tie + held): pitch unchanged", {
-        auto g=fresh(); g.triggerNote(1.5f,5,3);
-        g.rest(true,3);
+        auto g=fresh(); g.triggerNote(1.5f,5,4);
+        g.rest(true,4);
         EXPECT_NEAR(g.currentPitchV, 1.5f, 1e-5f);
     });
 
@@ -192,18 +193,22 @@ int main(){
     // ─────────────────────────────────────────────────────────────────────────
 
     TEST("tick: holdRemain decrements by 1", {
-        auto g=fresh(); g.triggerNote(1.f,5,1);  // 4 steps
+        auto g=fresh(); g.triggerNote(1.f,5,2);  // 4 steps
         g.tick();
         EXPECT_NEAR(g.holdRemain, 3.f, 1e-5f);
     });
-    TEST("tick N times: gate closes when holdRemain hits 0", {
-        auto g=fresh(); g.triggerNote(1.f,5,3);  // 2 steps
+    TEST("tick N times: holdRemain hits 0", {
+        auto g=fresh(); g.triggerNote(1.f,5,4);  // 2 steps
         g.tick(); g.tick();
-        EXPECT(!g.gateHeld);
         EXPECT_NEAR(g.holdRemain, 0.f, 1e-5f);
     });
+    TEST("tickPulse N times: gate closes when gatePulseRemain hits 0", {
+        auto g=fresh(); g.triggerNote(1.f,5,4);  // 2 steps, p16=6 -> 12 pulses
+        for(int i=0;i<12;++i) g.tickPulse();
+        EXPECT(!g.gateHeld);
+    });
     TEST("tick: holdRemain never goes below 0", {
-        auto g=fresh(); g.triggerNote(1.f,5,3);
+        auto g=fresh(); g.triggerNote(1.f,5,4);
         for(int i=0;i<10;++i) g.tick();
         EXPECT(g.holdRemain >= 0.f);
     });
@@ -214,13 +219,13 @@ int main(){
         EXPECT_NEAR(g.holdRemain, 0.f, 1e-5f);
     });
     TEST("tick: semiPlayRemain decays", {
-        auto g=fresh(); g.triggerNote(1.f,5,3);
+        auto g=fresh(); g.triggerNote(1.f,5,4);
         float before=g.semiPlayRemain[5];
         g.tick();
         EXPECT(g.semiPlayRemain[5] < before);
     });
     TEST("tick: semiPlayRemain clamps at 0", {
-        auto g=fresh(); g.triggerNote(1.f,5,3);
+        auto g=fresh(); g.triggerNote(1.f,5,4);
         for(int i=0;i<10;++i) g.tick();
         EXPECT(g.semiPlayRemain[5] >= 0.f);
     });
@@ -230,7 +235,7 @@ int main(){
     // ─────────────────────────────────────────────────────────────────────────
 
     TEST("process: 10V when gate held", {
-        auto g=fresh(); g.triggerNote(1.f,5,3);
+        auto g=fresh(); g.triggerNote(1.f,5,4);
         g.gatePulse.reset();  // clear pulse, leave gateHeld
         EXPECT_NEAR(g.process(1.f/44100.f), 10.f, 1e-5f);
     });
@@ -238,15 +243,15 @@ int main(){
         auto g=fresh();
         EXPECT_NEAR(g.process(1.f/44100.f), 0.f, 1e-5f);
     });
-    TEST("process: 10V during gatePulse even if not held", {
+    TEST("process: 0V during gatePulse if NOT held (pulse-only → no output)", {
         auto g=fresh(); g.gatePulse.trigger(0.001f);
-        EXPECT_NEAR(g.process(0.f), 10.f, 1e-5f);
+        // gateHeld=false: pulse alone does not produce 10V (used only for retrigger dip)
+        EXPECT_NEAR(g.process(0.f), 0.f, 1e-5f);
     });
     TEST("process: after gate expires and pulse gone, returns 0V", {
-        auto g=fresh(); g.triggerNote(1.f,5,3);
-        for(int i=0;i<2;++i) g.tick();         // hold expires
-        g.process(1.f);  // first call still "on" (Rack PulseGenerator returns true while draining)
-        float v=g.process(1.f);  // second call: pulse fully drained
+        auto g=fresh(); g.triggerNote(1.f,5,4);  // 2 steps, p16=6 -> 12 pulses
+        for(int i=0;i<12;++i) g.tickPulse();    // gate closes (gateHeld=false)
+        float v=g.process(1.f);                  // pulse drained, not held
         EXPECT_NEAR(v, 0.f, 1e-5f);
     });
 
@@ -259,16 +264,16 @@ int main(){
         EXPECT_NEAR(g.semiLedBrightness(5), 0.f, 1e-5f);
     });
     TEST("brightness near 1 immediately after 1/4 note", {
-        auto g=fresh(); g.triggerNote(1.f,5,1);  // 1/4=4 steps; 4*0.25=1.0
+        auto g=fresh(); g.triggerNote(1.f,5,2);  // 1/4=4 steps; 4*0.25=1.0
         EXPECT_NEAR(g.semiLedBrightness(5), 1.f, 1e-3f);
     });
     TEST("brightness clamped to 0..1", {
-        auto g=fresh(); g.triggerNote(1.f,5,0);  // 1/2=8 steps; 8*0.25=2.0 → clamped 1
+        auto g=fresh(); g.triggerNote(1.f,5,1);  // 1/2=8 steps; 8*0.25=2.0 → clamped 1
         EXPECT(g.semiLedBrightness(5) <= 1.f);
         EXPECT(g.semiLedBrightness(5) >= 0.f);
     });
     TEST("brightness decays after ticks", {
-        auto g=fresh(); g.triggerNote(1.f,5,1);  // 4 steps
+        auto g=fresh(); g.triggerNote(1.f,5,2);  // 4 steps
         float b0=g.semiLedBrightness(5);
         g.tick(); g.tick();
         EXPECT(g.semiLedBrightness(5) < b0);
@@ -285,27 +290,27 @@ int main(){
     // ─────────────────────────────────────────────────────────────────────────
 
     TEST("reset: gateHeld cleared", {
-        auto g=fresh(); g.triggerNote(1.f,5,3); g.reset();
+        auto g=fresh(); g.triggerNote(1.f,5,4); g.reset();
         EXPECT(!g.gateHeld);
     });
     TEST("reset: holdRemain = 0", {
-        auto g=fresh(); g.triggerNote(1.f,5,3); g.reset();
+        auto g=fresh(); g.triggerNote(1.f,5,4); g.reset();
         EXPECT_NEAR(g.holdRemain, 0.f, 1e-5f);
     });
     TEST("reset: currentPitchV = 0", {
-        auto g=fresh(); g.triggerNote(2.5f,5,3); g.reset();
+        auto g=fresh(); g.triggerNote(2.5f,5,4); g.reset();
         EXPECT_NEAR(g.currentPitchV, 0.f, 1e-5f);
     });
     TEST("reset: lastSemitone = -1", {
-        auto g=fresh(); g.triggerNote(1.f,7,3); g.reset();
+        auto g=fresh(); g.triggerNote(1.f,7,4); g.reset();
         EXPECT_EQ(g.lastSemitone, -1);
     });
     TEST("reset: semiPlayRemain all zero", {
-        auto g=fresh(); g.triggerNote(1.f,5,3); g.reset();
+        auto g=fresh(); g.triggerNote(1.f,5,4); g.reset();
         for(int i=0;i<12;++i) EXPECT_NEAR(g.semiPlayRemain[i], 0.f, 1e-5f);
     });
     TEST("reset: process() returns 0V", {
-        auto g=fresh(); g.triggerNote(1.f,5,3); g.reset();
+        auto g=fresh(); g.triggerNote(1.f,5,4); g.reset();
         EXPECT_NEAR(g.process(1.f), 0.f, 1e-5f);
     });
 
@@ -314,13 +319,13 @@ int main(){
     // ─────────────────────────────────────────────────────────────────────────
 
     TEST("1/4 note = 4 steps", {
-        EXPECT_NEAR(gs_noteSteps(1), 4.f, 1e-5f);
+        EXPECT_NEAR(gs_noteSteps(2), 4.f, 1e-5f);
     });
     TEST("1/8 note = 2 steps", {
-        EXPECT_NEAR(gs_noteSteps(3), 2.f, 1e-5f);
+        EXPECT_NEAR(gs_noteSteps(4), 2.f, 1e-5f);
     });
     TEST("1/2 note = 8 steps", {
-        EXPECT_NEAR(gs_noteSteps(0), 8.f, 1e-5f);
+        EXPECT_NEAR(gs_noteSteps(1), 8.f, 1e-5f);
     });
     TEST("1/32 note = 0.5 steps (minimum)", {
         EXPECT_NEAR(gs_noteSteps(7), 0.5f, 1e-5f);

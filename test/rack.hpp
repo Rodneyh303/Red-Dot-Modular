@@ -31,6 +31,7 @@ namespace rack {
             float remaining = 0.f;
             void  trigger(float dur = 1e-3f) { if (dur > remaining) remaining = dur; }
             bool  process(float dt) { if (remaining > 0.f) { remaining -= dt; return true; } return false; }
+            bool  isHigh() const { return remaining > 0.f; }
             void  reset() { remaining = 0.f; }
         };
     }

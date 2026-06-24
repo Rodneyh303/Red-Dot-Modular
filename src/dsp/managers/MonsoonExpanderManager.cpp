@@ -189,6 +189,29 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 }
             }
             
+            // ACCENT lane (3): per-voice base L/O/R from POLY_ACCENT_VOICE_* (default identity:
+            // LEN 16). Accent uses its OWN base params (POLY_ACCENT_VOICE_*) directly + a
+            // plain spread interp from POLY_ACCENT_INTERP. combineLOR/combineSpread integration
+            // (owner/send/macroBase v*4-lane routing) is the Stage 6b engine wiring — pending
+            // a build to verify. The banks are now sized for 4 lanes (v*4 stride) so no
+            // out-of-bounds; the accent lane just doesn't read from them yet.
+            {
+                int accentBase = MonsoonIds::POLY_ACCENT_VOICE_1_LEN + v * 3;
+                engine.polyLen[v][3] = (int)math::clamp(eastLOR->params[accentBase].getValue(),     1.f, 16.f);
+                engine.polyOff[v][3] = (int)math::clamp(eastLOR->params[accentBase + 1].getValue(), 0.f, 15.f);
+                engine.polyRot[v][3] = (int)math::clamp(eastLOR->params[accentBase + 2].getValue(), 0.f, 15.f);
+                float accentInterp = math::clamp(eastInterp->params[MonsoonIds::POLY_ACCENT_INTERP_1 + v].getValue(), -1.f, 1.f);
+                if (!engine.locked) {
+                    const int nPoly = effPolyVoices;
+                    const redDot::SpreadInterp::Target mode = spreadInterpMono
+                        ? redDot::SpreadInterp::MONO_DRAW : redDot::SpreadInterp::AVERAGE_POLY;
+                    for (int j = 0; j < 16; j++) {
+                        engine.pe.polyAccentRandom[v][j] = redDot::SpreadInterp::apply(
+                            engine.pe, mode, 3, j, nPoly, engine.pe.slewedPolyAccent[v][j], accentInterp);
+                    }
+                }
+            }
+
             // if (deepEast) {
             //     engine.polyLen[v][2] = (int)deepEast->params[octaveBase].getValue();
             //     engine.polyOff[v][2] = (int)deepEast->params[octaveBase + 1].getValue();

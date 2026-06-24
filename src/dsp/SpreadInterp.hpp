@@ -39,6 +39,7 @@ struct SpreadInterp {
         switch (lane) {
             case 0:  return pe.slewedRhythm[step];
             case 1:  return pe.slewedMelody[step];
+            case 3:  return pe.slewedAccent[step];
             default: return pe.slewedOctave[step];
         }
     }
@@ -46,6 +47,7 @@ struct SpreadInterp {
         switch (lane) {
             case 0:  return pe.slewedPolyRhythm[voice][step];
             case 1:  return pe.slewedPolyMelody[voice][step];
+            case 3:  return pe.slewedPolyAccent[voice][step];
             default: return pe.slewedPolyOctave[voice][step];
         }
     }

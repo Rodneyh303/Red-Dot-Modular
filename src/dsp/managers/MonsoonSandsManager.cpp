@@ -245,6 +245,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         publishGlobal(0);
         publishGlobal(1);
         publishGlobal(2);
+        publishGlobal(3);   // accent lane (Stage 6)
     }
 
     // Note: Poly DNA windows handled in Monsoon::process controlDivider block.

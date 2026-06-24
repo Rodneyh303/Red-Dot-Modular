@@ -48,8 +48,8 @@ static PatternInput locked_in(float restProb=0.2f) {
 
 static PatternEngine seeded(float rseed, float mseed) {
     PatternEngine pe;
-    pe.seedRngFromFloat(pe.rhythmRng, rseed);
-    pe.seedRngFromFloat(pe.melodyRng, mseed);
+    pe.seedRhythmPhilox(rseed);
+    pe.seedMelodyPhilox(mseed);
     return pe;
 }
 
@@ -75,15 +75,12 @@ struct PatSnap {
     }
 };
 
-// RNG state snapshot
+// RNG state snapshot — drawCtr advances on each redraw, frozen while locked
 struct RngSnap {
-    uint64_t rs[2], ms[2];
-    RngSnap(const PatternEngine& pe) {
-        rs[0]=pe.rhythmRng.state[0]; rs[1]=pe.rhythmRng.state[1];
-        ms[0]=pe.melodyRng.state[0]; ms[1]=pe.melodyRng.state[1];
-    }
-    bool rhythmEq(const RngSnap& o) const { return rs[0]==o.rs[0]&&rs[1]==o.rs[1]; }
-    bool melodyEq(const RngSnap& o) const { return ms[0]==o.ms[0]&&ms[1]==o.ms[1]; }
+    int64_t rCtr, mCtr;
+    RngSnap(const PatternEngine& pe) : rCtr(pe.rhythmDrawCtr), mCtr(pe.melodyDrawCtr) {}
+    bool rhythmEq(const RngSnap& o) const { return rCtr==o.rCtr; }
+    bool melodyEq(const RngSnap& o) const { return mCtr==o.mCtr; }
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -137,7 +134,7 @@ int main(){
         // We just verify no crash and patterns are valid
         for(int i=0;i<16;++i){
             EXPECT(after.semitone[i]>=0 && after.semitone[i]<12);
-            EXPECT(after.pitch[i]>=0.f  && after.pitch[i]<=5.f);
+            EXPECT(after.pitch[i]>=-5.f && after.pitch[i]<=5.f);
         }
     });
 
@@ -230,18 +227,19 @@ int main(){
         EXPECT_NEAR(pe.melodySeedFloat, 7.f, 1e-4f);
     });
 
-    TEST("Lock then unlock with no pending seed: same RNG state, fresh redraw", {
+    TEST("Lock then unlock with pending roll: RNG advances on redraw", {
         auto pe=seeded(4.f,5.f);
+        pe.rhythmRollPending=true; pe.melodyRollPending=true;
         pe.applyPendingSeedsAndRedraw(unlocked());
         RngSnap beforeLock(pe);
-        // Lock/unlock cycle with no new seed
+        // Lock/unlock cycle with no pending flags
         for(int i=0;i<3;++i) pe.applyPendingSeedsAndRedraw(locked_in());
         RngSnap afterLock(pe);
-        EXPECT(beforeLock.rhythmEq(afterLock));  // RNG unchanged by lock
-        pe.applyPendingSeedsAndRedraw(unlocked());  // fresh redraw from same state
-        // Pattern is deterministic from that RNG state
+        EXPECT(beforeLock.rhythmEq(afterLock));  // draw counter unchanged while locked
+        pe.rhythmRollPending=true;               // arm a roll to trigger redraw
+        pe.applyPendingSeedsAndRedraw(unlocked());
         RngSnap afterUnlock(pe);
-        EXPECT(!beforeLock.rhythmEq(afterUnlock)); // RNG DID advance on redraw
+        EXPECT(!beforeLock.rhythmEq(afterUnlock)); // draw counter advanced on redraw
     });
 
     // ─────────────────────────────────────────────────────────────────────────

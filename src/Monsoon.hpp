@@ -332,6 +332,52 @@ namespace MonsoonIds {
         POLY_OCTAVE_VOICE_15_LEN,
         POLY_OCTAVE_VOICE_15_OFF,
         POLY_OCTAVE_VOICE_15_ROT,
+        // Poly Accent DNA Window Controls (15 voices x 3 params = 45) - accent poly lane
+        POLY_ACCENT_VOICE_1_LEN,
+        POLY_ACCENT_VOICE_1_OFF,
+        POLY_ACCENT_VOICE_1_ROT,
+        POLY_ACCENT_VOICE_2_LEN,
+        POLY_ACCENT_VOICE_2_OFF,
+        POLY_ACCENT_VOICE_2_ROT,
+        POLY_ACCENT_VOICE_3_LEN,
+        POLY_ACCENT_VOICE_3_OFF,
+        POLY_ACCENT_VOICE_3_ROT,
+        POLY_ACCENT_VOICE_4_LEN,
+        POLY_ACCENT_VOICE_4_OFF,
+        POLY_ACCENT_VOICE_4_ROT,
+        POLY_ACCENT_VOICE_5_LEN,
+        POLY_ACCENT_VOICE_5_OFF,
+        POLY_ACCENT_VOICE_5_ROT,
+        POLY_ACCENT_VOICE_6_LEN,
+        POLY_ACCENT_VOICE_6_OFF,
+        POLY_ACCENT_VOICE_6_ROT,
+        POLY_ACCENT_VOICE_7_LEN,
+        POLY_ACCENT_VOICE_7_OFF,
+        POLY_ACCENT_VOICE_7_ROT,
+        POLY_ACCENT_VOICE_8_LEN,
+        POLY_ACCENT_VOICE_8_OFF,
+        POLY_ACCENT_VOICE_8_ROT,
+        POLY_ACCENT_VOICE_9_LEN,
+        POLY_ACCENT_VOICE_9_OFF,
+        POLY_ACCENT_VOICE_9_ROT,
+        POLY_ACCENT_VOICE_10_LEN,
+        POLY_ACCENT_VOICE_10_OFF,
+        POLY_ACCENT_VOICE_10_ROT,
+        POLY_ACCENT_VOICE_11_LEN,
+        POLY_ACCENT_VOICE_11_OFF,
+        POLY_ACCENT_VOICE_11_ROT,
+        POLY_ACCENT_VOICE_12_LEN,
+        POLY_ACCENT_VOICE_12_OFF,
+        POLY_ACCENT_VOICE_12_ROT,
+        POLY_ACCENT_VOICE_13_LEN,
+        POLY_ACCENT_VOICE_13_OFF,
+        POLY_ACCENT_VOICE_13_ROT,
+        POLY_ACCENT_VOICE_14_LEN,
+        POLY_ACCENT_VOICE_14_OFF,
+        POLY_ACCENT_VOICE_14_ROT,
+        POLY_ACCENT_VOICE_15_LEN,
+        POLY_ACCENT_VOICE_15_OFF,
+        POLY_ACCENT_VOICE_15_ROT,
         
         // Interpolation Controls (15 voices) - NEW: blend per-voice vs average random
         POLY_VOICE_1_INTERP,
@@ -403,6 +449,22 @@ namespace MonsoonIds {
         POLY_OCTAVE_INTERP_13,
         POLY_OCTAVE_INTERP_14,
         POLY_OCTAVE_INTERP_15,
+        // Poly Accent spread interp (15 voices) - accent poly lane
+        POLY_ACCENT_INTERP_1,
+        POLY_ACCENT_INTERP_2,
+        POLY_ACCENT_INTERP_3,
+        POLY_ACCENT_INTERP_4,
+        POLY_ACCENT_INTERP_5,
+        POLY_ACCENT_INTERP_6,
+        POLY_ACCENT_INTERP_7,
+        POLY_ACCENT_INTERP_8,
+        POLY_ACCENT_INTERP_9,
+        POLY_ACCENT_INTERP_10,
+        POLY_ACCENT_INTERP_11,
+        POLY_ACCENT_INTERP_12,
+        POLY_ACCENT_INTERP_13,
+        POLY_ACCENT_INTERP_14,
+        POLY_ACCENT_INTERP_15,
         
         // Global Macro DNA Controls (for simple Straits Sands) - NEW
         // Single set of controls for all poly voices
@@ -419,6 +481,10 @@ namespace MonsoonIds {
         GLOBAL_OCTAVE_DNA_LEN,
         GLOBAL_OCTAVE_DNA_OFF,
         GLOBAL_OCTAVE_DNA_ROT,
+        // Macro global accent L/O/R (Stage 6 — panel relayout complete)
+        GLOBAL_ACCENT_DNA_LEN,
+        GLOBAL_ACCENT_DNA_OFF,
+        GLOBAL_ACCENT_DNA_ROT,
         GLOBAL_OCTAVE_INTERP,
 
         // Playable dice slew (0..1): live morph between locked (A) and candidate
@@ -450,27 +516,27 @@ namespace MonsoonIds {
         // Appended at END so existing param IDs stay stable (saved patches safe).
         // Per-(voice,lane) base owner: which expander owns the poly L/O/R base for
         // voice v, lane L. 0 = Macro (default), 1 = East. 15 voices × 3 lanes = 45.
-        //   index = MACRO_OWN_START + v*3 + lane
+        //   index = MACRO_OWN_START + v*4 + lane  (4 lanes: REST/MEL/OCT/ACCENT)
         MACRO_OWN_START,
-        MACRO_OWN_END = MACRO_OWN_START + 45,
+        MACRO_OWN_END = MACRO_OWN_START + 64,
         // Per-(voice,lane,item) Macro-CV blend send: how much of the (already
         // Macro-attenuated) Macro CV is mixed into this voice/lane/item. item
         // 0=LEN 1=OFF 2=ROT 3=SPR. 15 × 3 × 4 = 180. Default unity (Macro CV
         // reaches voices out of the box; turn down to localise).
-        //   index = MACRO_SEND_START + (v*3 + lane)*4 + item   (v = voiceNumber-1, slot0=mono)
+        //   index = MACRO_SEND_START + (v*4 + lane)*4 + item   (v = voiceNumber-1, slot0=mono)
         MACRO_SEND_START = MACRO_OWN_END,
-        MACRO_SEND_END = MACRO_SEND_START + 192,   // 16 voices × 3 lanes × 4 items (was 15)
+        MACRO_SEND_END = MACRO_SEND_START + 256,   // 16 voices × 4 lanes × 4 items
 
         // Display-proxy params for the East visual's SELECTED-VOICE owner/send
         // controls. Physical knobs/buttons bind to these fixed ids; the widget
         // copies them to/from the per-voice MACRO_OWN/SEND params on voice switch
         // (same pattern as SPREAD_R/M/O ↔ the per-voice interp params).
-        //   owner disp:  MACRO_OWN_DISP_START + lane            (3: lanes 0-2)
-        //   send  disp:  MACRO_SEND_DISP_START + lane*4 + item  (12: 3 lanes×4)
+        //   owner disp:  MACRO_OWN_DISP_START + lane            (4: lanes 0-3)
+        //   send  disp:  MACRO_SEND_DISP_START + lane*4 + item  (16: 4 lanes×4)
         MACRO_OWN_DISP_START = MACRO_SEND_END,
-        MACRO_OWN_DISP_END = MACRO_OWN_DISP_START + 3,
+        MACRO_OWN_DISP_END = MACRO_OWN_DISP_START + 4,
         MACRO_SEND_DISP_START = MACRO_OWN_DISP_END,
-        MACRO_SEND_DISP_END = MACRO_SEND_DISP_START + 12,
+        MACRO_SEND_DISP_END = MACRO_SEND_DISP_START + 16,
 
         // Per-(voice, jack) CV-depth attenuverter for East's poly CV inputs. The
         // poly cable is a convenience (one cable, 16 channels) but each voice is an
@@ -479,9 +545,9 @@ namespace MonsoonIds {
         // another. 15 voices × 12 jacks = 180. The East panel's 12 physical
         // attenuverters are display proxies (ATTEN_START) copied to/from the selected
         // voice's slice here on voice switch — same pattern as owner/send.
-        //   index = MACRO_ATTEN_START + v*12 + (r*2 + c)   (v = voiceNumber-1, slot0=mono)
+        //   index = MACRO_ATTEN_START + v*16 + (lane*4 + c)  (v = voiceNumber-1, slot0=mono)
         MACRO_ATTEN_START = MACRO_SEND_DISP_END,
-        MACRO_ATTEN_END = MACRO_ATTEN_START + 192,   // 16 voices × 12 jacks (was 15)
+        MACRO_ATTEN_END = MACRO_ATTEN_START + 256,   // 16 voices × 16 jacks (4 lanes × 4 cols)
 
         NUM_PARAMS = MACRO_ATTEN_END
     };
