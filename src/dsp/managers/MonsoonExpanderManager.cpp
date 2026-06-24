@@ -190,12 +190,11 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
             }
             
             // ACCENT lane (3): per-voice base L/O/R from POLY_ACCENT_VOICE_* (default identity:
-            // LEN 16). NOT yet routed through combineLOR/combineSpread — the owner (ownerId),
-            // Macro send (sendId) and macroBase banks are all v*3-indexed for 3 lanes, so adding
-            // the accent lane there is a bank resize done in the panel/relayout stage (with a
-            // build to verify the re-index). Until then accent uses its OWN base params directly
-            // + a plain spread interp from POLY_ACCENT_INTERP, no Macro blend — functional and
-            // safe, no out-of-bounds into the 3-lane owner/send/macroBase banks.
+            // LEN 16). Accent uses its OWN base params (POLY_ACCENT_VOICE_*) directly + a
+            // plain spread interp from POLY_ACCENT_INTERP. combineLOR/combineSpread integration
+            // (owner/send/macroBase v*4-lane routing) is the Stage 6b engine wiring — pending
+            // a build to verify. The banks are now sized for 4 lanes (v*4 stride) so no
+            // out-of-bounds; the accent lane just doesn't read from them yet.
             {
                 int accentBase = MonsoonIds::POLY_ACCENT_VOICE_1_LEN + v * 3;
                 engine.polyLen[v][3] = (int)math::clamp(eastLOR->params[accentBase].getValue(),     1.f, 16.f);
