@@ -30,8 +30,11 @@ def gen_macro(dark, W_MM=213.36):   # 42HP (40 + 2HP right strip for poly prob-o
     A(D.svg_open(PW,PH))
     A('<g inkscape:label="artwork" inkscape:groupmode="layer">')
     A(D.bg_rect(PW,PH,t))
-    A(D.mbs(W_MM-72.0, 110.0, 60.0, 14.0, t, op=0.85))
-    A(D.waves(ED_X, 112.0, t, op=0.6, rows=3, span_mm=W_MM-ED_X-2))
+    # Identity artwork in the BOTTOM-LEFT corner (vs East's lower-right) so the
+    # two near-identical 42HP panels read apart at a glance. Bottom-left is free
+    # on Macro (send grids live in the right section).
+    A(D.waves(4.0, 112.0, t, op=0.6, rows=3, span_mm=ED_X-8.0))
+    A(D.mbs(6.0, 110.0, 60.0, 14.0, t, op=0.85))
     A(D.accent_rules(PW,t))
     gx,gy=4.0,rowY(0)-ED_LANE_H*0.5-3.0; gw,gh=(SPREAD_X+6.0)-gx,(rowY(N-1)+ED_LANE_H*0.5+3.0)-gy
     A(D.input_group(gx,gy,gw,gh,t,sep_mm=0.5*(JACK_X[-1]+ATTEN_X[0])))
