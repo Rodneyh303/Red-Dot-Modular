@@ -40,8 +40,10 @@ namespace StraitsMacroVisualIds {
     static constexpr float ED_H      = 48.f;
     static constexpr float ED_LANE_H = ED_H / 4.f;      // 12mm per lane (4 lanes)
 
+    // Left-control rows align with the EDITOR lane centres (not the full panel),
+    // so each lane's CV jacks + attens sit beside the visual lane they modulate.
     static inline float rowY(int r) {
-        return ROW_TOP + (r + 0.5f) * (ROW_BOT - ROW_TOP) / N_ROWS;
+        return ED_Y + (r + 0.5f) * ED_LANE_H;
     }
 
     // ── Param IDs ─────────────────────────────────────────────────────────

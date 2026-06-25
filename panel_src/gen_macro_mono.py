@@ -11,8 +11,14 @@ def gen_macro(dark, W_MM=213.36):   # 42HP (40 + 2HP right strip for poly prob-o
     # the same spread job but GLOBAL (3 lanes) rather than per-lane. Must match
     # StraitsSandsMacroVisual.hpp: COL_J1=8 J2=18 A1=30 A2=39 SPREAD_X=49 ED_X=58.
     t=theme(dark); H_MM=128.5; PW,PH=px(W_MM),px(H_MM)
-    ROW_TOP,ROW_BOT,N=14.,108.,4   # 4 lanes, one row each
-    def rowY(r): return ROW_TOP+(r+0.5)*(ROW_BOT-ROW_TOP)/N
+    N=4   # 4 lanes, one row each
+    # Extra top margin so the view-tab row isn't crammed against the panel top
+    # edge. 0.5 cm = 5 mm. Mirror TAB_TOP_OFFSET_MM in StraitsSandsMacroVisualWidget.
+    TAB_TOP_OFFSET_MM = 5.0
+    ED_X=88.; PROB_OUT_X=207.; ED_W=PROB_OUT_X-ED_X-8.; ED_Y=18.+TAB_TOP_OFFSET_MM; ED_H=48.
+    ED_LANE_H=ED_H/N
+    # Left-control rows align with the EDITOR lane centres (must match the hpp's rowY).
+    def rowY(r): return ED_Y+(r+0.5)*ED_LANE_H
     # Display order: row i → engine lane (MEL/OCT/REST/ACC top-to-bottom)
     DISPLAY_ORDER=[1,2,0,3]   # row0=MEL(eng1), row1=OCT(eng2), row2=REST(eng0), row3=ACC(eng3)
     LANE_NAMES_D=["MELODY","OCTAVE","REST","ACCENT"]
@@ -20,10 +26,6 @@ def gen_macro(dark, W_MM=213.36):   # 42HP (40 + 2HP right strip for poly prob-o
     JACK_X=[6.,15.,24.,33.]            # LEN/OFF/ROT/SPR-cv
     ATTEN_X=[43.,52.,61.,70.]          # LEN/OFF/ROT/SPR depth
     SPREAD_X=80.                       # per-lane spread base trimpot
-    # Extra top margin so the view-tab row isn't crammed against the panel top
-    # edge. 0.5 cm = 5 mm. Mirror TAB_TOP_OFFSET_MM in StraitsSandsMacroVisualWidget.
-    TAB_TOP_OFFSET_MM = 5.0
-    ED_X=88.; PROB_OUT_X=207.; ED_W=PROB_OUT_X-ED_X-8.; ED_Y=18.+TAB_TOP_OFFSET_MM; ED_H=48.
     L=[]; A=L.append
     A(D.svg_open(PW,PH))
     A('<g inkscape:label="artwork" inkscape:groupmode="layer">')
@@ -31,7 +33,7 @@ def gen_macro(dark, W_MM=213.36):   # 42HP (40 + 2HP right strip for poly prob-o
     A(D.mbs(W_MM-72.0, 110.0, 60.0, 14.0, t, op=0.85))
     A(D.waves(ED_X, 112.0, t, op=0.6, rows=3, span_mm=W_MM-ED_X-2))
     A(D.accent_rules(PW,t))
-    gx,gy=4.0,ROW_TOP-4.0; gw,gh=(SPREAD_X+6.0)-gx,(ROW_BOT+2.0)-(ROW_TOP-4.0)
+    gx,gy=4.0,rowY(0)-ED_LANE_H*0.5-3.0; gw,gh=(SPREAD_X+6.0)-gx,(rowY(N-1)+ED_LANE_H*0.5+3.0)-gy
     A(D.input_group(gx,gy,gw,gh,t,sep_mm=0.5*(JACK_X[-1]+ATTEN_X[0])))
     A(D.editor_recess(ED_X,ED_Y,ED_W,ED_H,t,lanes=4))
     A('</g>')

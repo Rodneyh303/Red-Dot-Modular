@@ -8,17 +8,7 @@ def px(mm): return round(mm*S, 2)
 W_MM, H_MM = 213.36, 128.5  # 42HP (40 + 2HP right strip for poly prob-out jacks)
 PW, PH = px(W_MM), px(H_MM)
 
-ROW_TOP, ROW_BOT, N = 14.0, 108.0, 4   # 4 lanes, one row each
-def rowY(r): return ROW_TOP + (r+0.5)*(ROW_BOT-ROW_TOP)/N
-# 4 CV jacks + 4 attens + spread base — columns match SandsMonoVisual, ED_X=88
-JACK_X  = [6.0, 15.0, 24.0, 33.0]   # LEN/OFF/ROT/SPR-cv
-ATTEN_X = [43.0, 52.0, 61.0, 70.0]  # LEN/OFF/ROT/SPR depth
-SPREAD_X = 80.0                      # spread base trimpot
-# Display order: row i → engine lane DISPLAY_ORDER[i] (MEL/OCT/REST/ACC top-to-bottom)
-# matches SandsVisualEditorV4 lane order so left jacks align with editor rows.
-DISPLAY_ORDER = [1, 2, 0, 3]   # row0=MEL(eng1), row1=OCT(eng2), row2=REST(eng0), row3=ACC(eng3)
-LANE_NAMES_DISPLAY = ["MELODY","OCTAVE","REST","ACCENT"]
-
+N = 4   # 4 lanes, one row each
 # Extra top margin so the voice tab row isn't crammed against the panel top edge.
 # 0.5 cm = 5 mm. Adjust + rerun the generator (and mirror TAB_TOP_OFFSET_MM in
 # StraitsEastSandsVisualWidget) to taste.
@@ -27,6 +17,18 @@ ED_X, ED_Y = 88.0, 18.0 + TAB_TOP_OFFSET_MM
 PROB_OUT_X = 207.0  # right-strip jack column (matches hpp)
 ED_W = PROB_OUT_X - ED_X - 8.0  # editor stops left of the prob-out jacks (matches hpp)
 ED_H = 48.0
+ED_LANE_H = ED_H / N
+# Left-control rows align with the EDITOR lane centres (must match the hpp's rowY):
+# each lane's CV jacks + attens sit beside the visual lane they modulate.
+def rowY(r): return ED_Y + (r+0.5)*ED_LANE_H
+# 4 CV jacks + 4 attens + spread base — columns match SandsMonoVisual, ED_X=88
+JACK_X  = [6.0, 15.0, 24.0, 33.0]   # LEN/OFF/ROT/SPR-cv
+ATTEN_X = [43.0, 52.0, 61.0, 70.0]  # LEN/OFF/ROT/SPR depth
+SPREAD_X = 80.0                      # spread base trimpot
+# Display order: row i → engine lane DISPLAY_ORDER[i] (MEL/OCT/REST/ACC top-to-bottom)
+# matches SandsVisualEditorV4 lane order so left jacks align with editor rows.
+DISPLAY_ORDER = [1, 2, 0, 3]   # row0=MEL(eng1), row1=OCT(eng2), row2=REST(eng0), row3=ACC(eng3)
+LANE_NAMES_DISPLAY = ["MELODY","OCTAVE","REST","ACCENT"]
 
 def theme(dark):
     if dark: return dict(
@@ -143,8 +145,9 @@ def gen(dark):
     # a crisp MBS as the identity mark, sat on the water, lower-right
     A(mbs(W_MM-66.0, 111.0, 52.0, 14.0, t, op=0.85))
 
-    # ── control group recess (left) ──
-    gx,gy=4.0,ROW_TOP-4.0; gw,gh=(SPREAD_X+6.0)-gx,(ROW_BOT+2.0)-(ROW_TOP-4.0)
+    # ── control group recess (left) — wraps the editor-aligned rows ──
+    gx,gy=4.0,rowY(0)-ED_LANE_H*0.5-3.0
+    gw,gh=(SPREAD_X+6.0)-gx,(rowY(N-1)+ED_LANE_H*0.5+3.0)-gy
     A(f'<rect x="{px(gx):.1f}" y="{px(gy):.1f}" width="{px(gw):.1f}" height="{px(gh):.1f}" rx="{px(2):.1f}" fill="{t["group"]}" stroke="{t["groupline"]}" stroke-width="1"/>')
     sepx=0.5*(JACK_X[-1]+ATTEN_X[0])  # separator between jack cluster and atten cluster
     A(f'<line x1="{px(sepx):.1f}" y1="{px(gy+2):.1f}" x2="{px(sepx):.1f}" y2="{px(gy+gh-2):.1f}" stroke="{t["groupline"]}" stroke-width="0.75" opacity="0.6"/>')
