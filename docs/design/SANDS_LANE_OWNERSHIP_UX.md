@@ -200,3 +200,76 @@ controls is forward-compatible, not throwaway. The "owner lives on the editing
 surface" principle also means the merged module's editor carries ownership
 naturally, and Mono keeps its own V1 owner strip whether or not the poly side
 merges.
+
+## Option C — concrete concept: the owner cell as a "17th step"
+
+Preferred placement: an **owner cell column immediately right of the step grid,
+before the prob-out jacks** — one cell per lane, drawn in the lane's own colour,
+reading as an extra step of the lane. Click the cell to toggle ownership.
+
+### Geometry (East, real numbers)
+- Editor: `ED_X=88`, `ED_W=111`, so the grid right edge is at **199mm**.
+- Prob-out jacks: `PROB_OUT_X=207mm`. → there's already an **8mm gap** between
+  the grid and the jacks.
+- One editor step ≈ `ED_W/16 ≈ 6.9mm`. So a one-step-wide owner cell (~6.9mm)
+  *nearly* fits the existing 8mm gap. Bumping `PROB_OUT_X` right by ~3–4mm (and
+  widening the panel a hair, well within 42HP slack) gives clean breathing room
+  on both sides of the cell.
+- Vertically the cell uses the lane row exactly (`ED_LANE_H`), so it lines up
+  with the lane it controls — no new vertical math.
+
+### Why this placement is good
+- **Collision-free:** it's outside `ED_W`, so the editor's `onButton`
+  grid/handle hit-test (which is bounded by the grid) never sees it. The cell
+  gets its own hit-test.
+- **Reads as part of the lane:** same colour, same row height, sitting at the
+  end of the row — it looks like where the lane "resolves to", which is exactly
+  what ownership means (where this lane's value comes from).
+- **Indicator and control in one:** the cell's appearance *is* the ownership
+  state; clicking it flips it. No separate legend needed.
+
+### Visual treatments for the cell (the rendered mock shows A and B)
+- **A — fill vs outline:** solid lane-colour cell = **global/Macro-owned**
+  (value comes from the shared base); hollow outline in lane colour =
+  **per-voice/East-owned** (this voice's own edit). Cleanest, most glanceable —
+  "filled = filled-in-for-you globally, outline = you draw it."
+- **B — dim + glyph:** cell always present; bright + "G" = global, dim + "V" =
+  per-voice. More explicit but busier; the glyph is redundant if the fill
+  already encodes it.
+- **C — split tab/notch:** the cell rendered as a little tab that visually
+  "connects" to the grid when per-voice (this voice owns the pattern) and
+  detaches/greys when global. Cute but subtle; A communicates faster.
+- **D — left-edge bar variant:** instead of a right-side cell, a colour bar at
+  the lane's left edge that's solid (global) or striped (per-voice). Works, but
+  the right-side cell is more obviously a *button* and doesn't crowd the lane
+  labels.
+
+**Lean: treatment A** (fill = global, outline = per-voice), one cell per lane,
+~one step wide, right of the grid, panel widened a few mm so it sits cleanly
+before the prob-outs. Pair with the **faint lane-background tint** (global-owned
+lanes get a subtle wash) so ownership is legible even peripherally, not only at
+the cell.
+
+### Implementation sketch (kit-friendly, low custom-code)
+Two ways, both avoiding editor-internal mouse code:
+1. **Kit-bound button param per lane** (truest to Option C): the gen script
+   emits an `owner cell` marker per lane at `(grid_right + ~3.5mm, laneCenterY)`;
+   bind a custom momentary/latch `ParamWidget` there (`param_owner_{lane}` →
+   `ownerDispId(lane)` proxy). The widget draws itself in lane colour as
+   fill/outline per its value. Automatable, saves/restores free, no editor
+   changes. The per-voice sync rides the existing `ownerDispId` ↔ per-voice
+   `ownerId` proxy pattern (same as attens/sends on tab change).
+2. **Editor-drawn cell** (if we want it visually inside the editor widget): the
+   editor draws the cell in its `draw()` right of the grid and hit-tests
+   `e.pos.x > gridRight` in `onButton` before the grid logic, calling
+   `onLaneOwnershipToggle(lane)`. More cohesive visually but adds editor mouse
+   code — the thing we've been trying to keep thin.
+
+Sketch 1 is preferred: it keeps the editor a pure data surface and treats
+ownership as just another bound control, consistent with the kit refactor. The
+cell *looks* like part of the lane without the editor having to own it.
+
+Same cell appears on **Mono** (for V1, `ownerId` against Mono's edit vs Macro
+global) and **East** (for V2–V16). Both get the marker + bound widget; Mono's is
+always visible (it's V1's owner), East's is per poly tab.
+
