@@ -119,18 +119,41 @@ reframing; corrected here.)
 
 ### Option 2 — Mono + one poly module ("Poly")
 Fold East and Macro into a single poly expander.
-- **Pro:** kills the inter-*module* coordination entirely — the global CV
-  source (Macro today) and the per-voice editor (East today) live in one
-  module, so there's no cross-module ownership negotiation, no two panels to
-  keep in lockstep. Mono stays as-is.
-- **Pro:** the send grids + ownership latches can collapse into one compact
-  per-lane control set (mode chip + one depth knob), recovering panel space
+- **Pro (the honest one):** kills the two-panel **lockstep maintenance** — lane
+  order, kit binds, geometry no longer have to be kept identical across East and
+  Macro. This coordination is the actual source of the recent churn, so this is
+  a real, concrete win. Mono stays as-is.
+- **Pro:** the send grids + ownership control can collapse into one compact
+  per-lane control set (lane chip + one depth knob), recovering panel space
   (also eases the Macro lower-band pressure from SANDS_PANEL_LAYOUT.md).
-- **Con:** the combined poly panel is busier than East alone (absorbs the
-  global base + sends). One busy panel instead of two interacting ones.
-- **Con:** loses Macro-without-East / East-without-Macro as distinct rigs —
-  but those combinations (4, 7 in SANDS_COMBINATIONS.md) are the hardest to
-  explain, so losing them may be a feature.
+- **Con:** the combined panel is busier than East alone (absorbs the global base
+  + sends). One busy panel instead of two interacting ones.
+- **Con (do NOT undersell this):** you lose **Macro-only** and **East-only** as
+  lightweight drop-in rigs. To get either in a merged module you instantiate the
+  full Poly module and simply don't use half of it — heavier in the rack for
+  what were simple jobs, which cuts against the modular drop-in ethos that makes
+  Mono's standalone simplicity good.
+
+**Correction to an earlier draft:** a previous version justified the merge with
+"combinations 4 and 7 are the hardest to explain, so losing them may be a
+feature." That was wrong on both counts:
+
+- **Combination 4 (Macro only) is one of the *cleanest* configs, not the
+  hardest.** No East ⇒ no ownership, no XOR, no two-editor contention: Macro's
+  global base is the only LOR source and the per-voice sends just vary how much
+  each voice deviates. That's a legitimate, easy-to-explain rig — "16 poly
+  voices sharing a global character, spread per-voice from one place." It is
+  exactly the kind of lightweight standalone module the suite should keep.
+- **Combination 7 (East + Macro, no Mono) is where the genuine complexity
+  lives** (live per-lane-per-voice ownership + conditional blend) — but merging
+  does **not** retire that complexity, it *internalises* it. The "global base vs
+  this voice's own edit" choice is the load-bearing feature that distinguishes
+  broad-strokes from detailed-strokes poly; you can simplify its UI but you
+  cannot delete the concept by merging. So 7 is not an argument *for* merging.
+
+So merging is **not** justified by "dropping confusing combinations." Its only
+honest justification is lockstep-maintenance reduction, weighed against the loss
+of the Macro-only / East-only standalone rigs.
 
 Note: the **PRE/POST send tap** above is independent of this — it applies
 whether the global source and editor are one module or two.
@@ -168,11 +191,24 @@ Two separate simplifications:
 
 So a sensible target:
 - **Mono** — unchanged. The simple 6-lane standalone editor.
-- **One poly story** — either merge East+Macro into a single "Poly" module, or
-  keep them as two but with: Macro = the global CV source, East = the per-voice
-  editor, a clean PRE/POST send tap, and a slimmer per-lane ownership control.
-  The two-module version keeps the modular drop-in feel; the merge removes the
-  cross-module lockstep maintenance. Either is fine *once the concept is clean*.
+- **Concept fixes first (module-count-agnostic):** the PRE/POST send tap and the
+  slimmer per-lane ownership UI. These remove most of the *felt* complexity
+  whether or not the modules merge — so they should happen **before** any
+  merge decision, and may well make the merge feel unnecessary.
+- **Then, the module-count call is a narrow maintenance-vs-modularity trade:**
+  - *Keep two* (Mono + East + Macro): preserves Macro-only and East-only as
+    clean lightweight drop-ins (Macro-only in particular is one of the easiest
+    rigs to explain). Cost: ongoing lockstep upkeep between the two poly panels.
+  - *Merge to one Poly*: removes that lockstep upkeep (the real churn source).
+    Cost: loses those lightweight standalone rigs; the merged panel is busier.
+
+**Lean:** do the concept fixes, keep three modules, and only revisit merging if
+lockstep upkeep is *still* painful afterwards. The kit conversion already
+attacks the upkeep cost from the other side (geometry lives in the gen scripts,
+not duplicated in C++), which weakens the merge's main remaining justification.
+The merge trades away genuinely-useful standalone configs to solve a maintenance
+problem the kit work is already shrinking — so it should be the last resort, not
+the default.
 
 ## Ownership UX (interim, regardless of consolidation)
 
