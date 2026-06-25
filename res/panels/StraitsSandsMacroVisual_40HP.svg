@@ -97,6 +97,7 @@
 <circle id="param_10" cx="180.12" cy="85.63" r="0.5" fill="none" stroke="none"/>
 <circle id="param_11" cx="206.69" cy="85.63" r="0.5" fill="none" stroke="none"/>
 <circle id="param_1" cx="236.22" cy="85.63" r="0.5" fill="none" stroke="none"/>
+<circle id="output_1" cx="611.22" cy="85.63" r="0.5" fill="none" stroke="none"/>
 <circle id="input_8" cx="17.72" cy="121.06" r="0.5" fill="none" stroke="none"/>
 <circle id="input_9" cx="44.29" cy="121.06" r="0.5" fill="none" stroke="none"/>
 <circle id="input_10" cx="70.87" cy="121.06" r="0.5" fill="none" stroke="none"/>
@@ -106,6 +107,7 @@
 <circle id="param_14" cx="180.12" cy="121.06" r="0.5" fill="none" stroke="none"/>
 <circle id="param_15" cx="206.69" cy="121.06" r="0.5" fill="none" stroke="none"/>
 <circle id="param_2" cx="236.22" cy="121.06" r="0.5" fill="none" stroke="none"/>
+<circle id="output_2" cx="611.22" cy="121.06" r="0.5" fill="none" stroke="none"/>
 <circle id="input_0" cx="17.72" cy="156.50" r="0.5" fill="none" stroke="none"/>
 <circle id="input_1" cx="44.29" cy="156.50" r="0.5" fill="none" stroke="none"/>
 <circle id="input_2" cx="70.87" cy="156.50" r="0.5" fill="none" stroke="none"/>
@@ -115,6 +117,7 @@
 <circle id="param_6" cx="180.12" cy="156.50" r="0.5" fill="none" stroke="none"/>
 <circle id="param_7" cx="206.69" cy="156.50" r="0.5" fill="none" stroke="none"/>
 <circle id="param_0" cx="236.22" cy="156.50" r="0.5" fill="none" stroke="none"/>
+<circle id="output_0" cx="611.22" cy="156.50" r="0.5" fill="none" stroke="none"/>
 <circle id="input_12" cx="17.72" cy="191.93" r="0.5" fill="none" stroke="none"/>
 <circle id="input_13" cx="44.29" cy="191.93" r="0.5" fill="none" stroke="none"/>
 <circle id="input_14" cx="70.87" cy="191.93" r="0.5" fill="none" stroke="none"/>
@@ -124,6 +127,7 @@
 <circle id="param_18" cx="180.12" cy="191.93" r="0.5" fill="none" stroke="none"/>
 <circle id="param_19" cx="206.69" cy="191.93" r="0.5" fill="none" stroke="none"/>
 <circle id="param_3" cx="236.22" cy="191.93" r="0.5" fill="none" stroke="none"/>
+<circle id="output_3" cx="611.22" cy="191.93" r="0.5" fill="none" stroke="none"/>
 <circle id="param_send_1_0" cx="283.10" cy="248.03" r="0.5" fill="none" stroke="none"/>
 <circle id="param_send_1_1" cx="318.53" cy="248.03" r="0.5" fill="none" stroke="none"/>
 <circle id="param_send_1_2" cx="283.10" cy="280.51" r="0.5" fill="none" stroke="none"/>

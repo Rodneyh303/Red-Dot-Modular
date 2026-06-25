@@ -82,6 +82,8 @@ def gen_macro(dark, W_MM=213.36):   # 42HP (40 + 2HP right strip for poly prob-o
         for p,x in enumerate(JACK_X):  A(D.kit_shape("input", 0+lane*4+p, x, y))
         for p,x in enumerate(ATTEN_X): A(D.kit_shape("param", 4+lane*4+p, x, y))
         A(D.kit_shape("param", lane, SPREAD_X, y))  # SPREAD engine lane
+        # poly probability CV out — right strip, at this lane's row (engine lane = PROB_OUT_REST+lane)
+        A(D.kit_shape("output", lane, PROB_OUT_X, y))
     # Macro→voice mix-in send markers (bound to sendDispId display proxies).
     for g in range(4):
         l=DISPLAY_ORDER[g]   # engine lane
