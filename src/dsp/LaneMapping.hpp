@@ -87,7 +87,6 @@ constexpr int EDITOR_TO_MONO_PARAM[6] = { 1, 2, 0, 4, 5, 3 };
 //   engine 2 OCTAVE → editor 1
 //   engine 3 ACCENT → editor 3
 constexpr int ENGINE_LANE_TO_EDITOR[4] = { 2, 0, 1, 3 };
-constexpr int EDITOR_TO_MONO_PARAM[6] = { 2, 0, 1, 4, 5, 3 };
 
 // Spread lanes (REST/MEL/OCT/ACCENT) share the poly engine→editor mapping.
 // Alias kept for call-site readability where "spread lane" is the natural term.
