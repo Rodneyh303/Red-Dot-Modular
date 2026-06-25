@@ -273,3 +273,35 @@ Same cell appears on **Mono** (for V1, `ownerId` against Mono's edit vs Macro
 global) and **East** (for V2–V16). Both get the marker + bound widget; Mono's is
 always visible (it's V1's owner), East's is per poly tab.
 
+
+## Option C mocked on the real East panel — enclosure decision
+
+Two in-context mocks (docs/design/img/):
+- `owner_cell_on_east_v1_enclosed.png` — owner column with a hard enclosure box
+  + dashed separator + "OWN" header. Unambiguously a separate control group,
+  but the box reads a bit heavy against the clean editor.
+- `owner_cell_on_east_v2_subtle.png` — faint backing strip (5% white) + one
+  thin separator line + small "SRC" label, PLUS a faint whole-lane-row tint for
+  global-owned lanes. Quieter, more consistent; the row tint (not the cell) does
+  most of the indicating.
+
+**The cell needs a visual break from the grid** (a bare cell reads as a 17th
+playable step). Both mocks add one; the question is how heavy:
+- Minimum viable break: a single separator line + small gap is enough to stop
+  the "17th step" misread, especially with a header label ("SRC"/"OWN").
+- The whole-lane-row tint (v2) is the bigger win for legibility — ownership is
+  readable across the lane, peripherally, with the end cell as the toggle and
+  the row tint as the indicator.
+
+**Lean:** v2's restraint (separator + label + gap, no hard box) + the lane-row
+tint — but make the tint a **faint desaturated version of the lane's own colour
+or a neutral grey**, NOT the blue used in the mock. Blue risks reading as
+"selected/active" rather than "global-owned"; staying in-palette keeps it
+unintrusive and consistent (the stated priorities).
+
+**Spacing:** the column lands at ~199.5mm, prob-outs at 207mm — snug. Nudge
+PROB_OUT_X right ~3–4mm and widen the panel slightly so the owner group has
+clean air on both sides. Well within 42HP slack.
+
+**Header label:** "SRC" (source) or "OWN" — SRC pairs better if the PRE/POST
+tap (also a "source" notion) lands later; OWN is more literal. Minor.
