@@ -108,7 +108,11 @@ def gen_mono(dark):
     SPR_BASE_X,SPR_CV_X,SPR_ATTEN_X=62.,71.,80.
     N_SPREAD=4                                  # REST/MEL/OCT + ACCENT (poly lanes)
     SPR_TO_EDITOR=[0,1,2,4]                      # spread index → editor lane (accent skips LEG)
-    ED_X=88.; PROB_OUT_X=207.; ED_W=PROB_OUT_X-ED_X-8.; ED_Y=18.; ED_H=ROW_BOT-ED_Y
+    ED_X=88.; PROB_OUT_X=207.; ED_W=PROB_OUT_X-ED_X-8.
+    # Editor recess spans the SAME band the left controls (laneY) divide, so the
+    # live editor lanes (zero internal padding, even division) line up with the
+    # left jacks/attens and the painted lanes.
+    ED_Y=ROW_TOP; ED_H=ROW_BOT-ROW_TOP
     L=[]; A=L.append
     A(D.svg_open(PW,PH))
     A('<g inkscape:label="artwork" inkscape:groupmode="layer">')

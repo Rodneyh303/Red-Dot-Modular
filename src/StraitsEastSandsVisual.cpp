@@ -183,6 +183,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         visualEditor = new SandsVisualEditorV4(SandsVisualEditorV4::POLY);
         visualEditor->box.pos  = mm2px(Vec(ED_X, ED_Y));
         visualEditor->box.size = mm2px(Vec(ED_W, ED_H));
+        // Lanes fill the box evenly (no internal padding) so the live lanes line
+        // up with the painted recess lanes and the kit-bound jacks/prob-outs,
+        // which all divide ED_H by laneCount. MONO/POLY label suppressed (would
+        // land on lane 0); lane labels stay (panel doesn't draw them).
+        visualEditor->layout.topPadding = 0.f;
+        visualEditor->layout.botPadding = 0.f;
+        visualEditor->showControlBar    = false;
         // Right-click on a lane row opens the ownership context menu.
         visualEditor->onLaneRightClick = [this](int lane, rack::math::Vec pos) -> bool {
             if (!macroAttached()) return false;  // no menu when Macro absent

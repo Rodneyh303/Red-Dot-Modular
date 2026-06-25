@@ -114,6 +114,11 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         visualEditor = new SandsVisualEditorV4(SandsVisualEditorV4::POLY);
         visualEditor->box.pos  = mm2px(Vec(ED_X, ED_Y));
         visualEditor->box.size = mm2px(Vec(ED_W, ED_H));
+        // Lanes fill the box evenly (no padding) → align with painted lanes +
+        // kit-bound jacks/prob-outs. MONO/POLY label suppressed; lane labels stay.
+        visualEditor->layout.topPadding = 0.f;
+        visualEditor->layout.botPadding = 0.f;
+        visualEditor->showControlBar    = false;
         addChild(visualEditor);
 
         Module* mod_ = module;
