@@ -202,6 +202,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         if (!module || !paramMgr || !visualEditor) return;
         Monsoon* monsoon = getMonsoon();
         if (!monsoon) { if (visualEditor) visualEditor->clearPlaySteps(); return; }
+        auto* monoVis = monsoon->expanderManager.cachedSandsVisualExpander;  // null = no Mono attached
 
         int wantLight = monsoon->lightTheme ? 1 : 0;
         if (wantLight != lastThemeLight) {
@@ -324,7 +325,6 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // other voices' display), not Macro's global base. (Macro's left attenuverters
         // are hidden on tab 1 via gen panel / widget — Macro's global base doesn't reach
         // voice 1; only the mix-in sends could, under the deferred interp. Y.)
-        auto* monoVis = monsoon->expanderManager.cachedSandsVisualExpander;
         bool tab1Mono = onMonoTab && (monoVis != nullptr);
         // When V1 is editable (no Mono), Macro's global LOR knobs act as the V1 base.
         // The global base params are already wired to the engine for poly; for V1,
