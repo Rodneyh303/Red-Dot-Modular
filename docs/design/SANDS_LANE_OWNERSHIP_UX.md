@@ -114,21 +114,89 @@ Tint (2) + chip (1) together = you both *see* and *set* ownership without ever
 touching the data surface. This is the user's "change lane visuals to indicate
 ownership" instinct, made concrete.
 
+## Ownership is a property of the EDITING surface, not of "East"
+
+Reframing from SANDS_ARCHITECTURE_CONSOLIDATION.md: ownership is really
+"**this voice's own per-voice edit** vs **the global base**," not "East vs
+Macro." That changes *where the control must live*:
+
+- **V2–V16** are edited by **East** → the owner control for poly voices belongs
+  with East's editor (gutter chip / owner column).
+- **V1** is edited by **Mono** (when present) → the owner question for V1 is
+  "Mono's edit vs Macro's global base," so **V1's owner control belongs on
+  Mono**, not East.
+
+This surfaces a gap the old framing hid. **Combination 6 (Mono + Macro, no
+East)** currently says "ownership latches not shown (no East)." But there IS a
+real choice there: does V1's lane come from Mono's edit or Macro's global base?
+Today V1 mirrors Mono unconditionally — there's no way to say "let Macro's
+global base drive V1 for these lanes." If the owner control lives only on East,
+this combination can never express it.
+
+**Implication:** the per-lane owner control should exist on **whichever module
+owns the editing surface for the displayed voice** — Mono carries it for V1,
+East carries it for V2–V16. Same control concept, two homes. (This also means
+Mono needs the gutter chip / owner strip too, not just East.)
+
+## Alternative home: Macro's bottom control section
+
+The user's second idea: put **both** the per-lane owner control **and** the
+PRE/POST CV-tap choice in Macro's lower send section, rather than on the editor.
+
+Macro's lower band already has 4 per-lane send groups (`BLEND_TOP=72`, each a
+labelled 2×2 box with a header line at `+7.5`). That band is the natural home
+for Macro-local routing decisions:
+
+- **PRE/POST CV-tap → strongly fits here.** It's a property of Macro's own CV
+  path (does the per-voice send tap before/after the global attenuverter), and
+  it sits literally on top of the sends it governs. A small per-group (per-lane)
+  pre/post switch in each send box's header is the obvious placement. This is
+  the best argument for the bottom section.
+- **Owner control here → workable but weaker.** Ownership is per-voice and
+  per-lane; the send groups are already per-lane and per-(view)voice, so a
+  small owner toggle in each group's header is consistent. BUT: ownership is
+  conceptually about the *editor's* lane (where the value is shown/edited),
+  so putting it on Macro's sends splits "what you edit" (editor) from "who owns
+  it" (Macro bottom) across the panel — the user looks at the East/Mono editor
+  to see the lane but at Macro to change ownership. That's the same
+  look-here-act-there friction the context menu has, just relocated.
+
+**Resolution:** these two controls have different natural homes.
+- **PRE/POST CV-tap → Macro bottom section** (per-lane switch in each send
+  group header). It's Macro-local and belongs by the sends.
+- **Owner control → on the editor surface** (gutter chip / owner strip), on
+  **both Mono and East**, because ownership is about the lane you're looking
+  at and must work when Macro is absent (combinations 5, 2) and when East is
+  absent (combination 6). Putting it on Macro's bottom would break exactly the
+  no-Macro combinations.
+
+A nice consequence: when Macro IS present, its bottom section shows the
+pre/post + send depth (Macro's contribution), while the editor gutter shows
+ownership (whose value wins) — each control sits with the thing it most
+naturally belongs to, and neither depends on Macro being attached.
+
 ## Recommendation
 
-- **Toggle:** Option **A** (gutter chip) if we want it inside the editor with
-  live per-voice context and minimal panel cost; Option **C** (kit-bound owner
-  column) if we prefer real automatable params and zero editor-internal mouse
-  code. Both are collision-free. A is slicker; C is more in-grain with the kit
-  refactor and lower-risk to implement.
-- **Indicator:** do the **lane background tint + gutter mark** regardless of
-  which toggle wins — the visible resting state is most of the felt
-  improvement.
-- Keep the existing right-click menu as a harmless power-user fallback.
+- **Owner toggle:** put it on the **editor surface** so it works regardless of
+  Macro, and on **both Mono (for V1) and East (for V2–V16)** since ownership
+  follows the editing surface. Implementation: Option **C** (kit-bound owner
+  strip aligned to lane rows) is the lower-risk, in-grain choice; Option **A**
+  (gutter chip) is slicker but adds editor-internal hit-testing. Either way the
+  same control appears on both Mono and East.
+- **PRE/POST CV-tap:** put it in **Macro's lower send section**, a per-lane
+  switch in each send group's header — it's Macro-local and belongs by the
+  sends.
+- **Indicator:** do the **lane background tint + gutter mark** on the editor
+  regardless of toggle choice — the visible resting state is most of the felt
+  improvement, and it lives where the user is already looking.
+- Keep the right-click menu as a harmless power-user fallback.
 
 ## Note on the bigger picture
 
-If the PRE/POST send tap and any East/Macro merge land later
-(SANDS_ARCHITECTURE_CONSOLIDATION.md), the gutter chip / owner column is exactly
-the surface that would also carry the per-lane source mode — so building it now
-as a clean per-lane control is forward-compatible, not throwaway.
+If any East/Macro merge lands later (SANDS_ARCHITECTURE_CONSOLIDATION.md), the
+editor owner strip and the Macro-bottom pre/post switch would simply move into
+the one merged poly panel together — building them now as clean per-lane
+controls is forward-compatible, not throwaway. The "owner lives on the editing
+surface" principle also means the merged module's editor carries ownership
+naturally, and Mono keeps its own V1 owner strip whether or not the poly side
+merges.
