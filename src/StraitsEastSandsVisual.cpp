@@ -413,7 +413,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             bool setToEast;   // true = set East owns; false = set Macro owns
             void onAction(const event::Action& e) override {
                 float val = setToEast ? 1.f : 0.f;
-                widget->module->params[widget->ownerDispId(lane)].setValue(val);
+                widget->module->params[StraitsEastVisualIds::ownerDispId(lane)].setValue(val);
                 widget->saveVoiceMacro(voice);  // persist to per-voice bank
             }
         };
@@ -442,9 +442,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             void onAction(const event::Action& e) override {
                 float val = setToEast ? 1.f : 0.f;
                 // Set display proxy and persist to all 15 poly voice slots
-                widget->module->params[widget->ownerDispId(lane)].setValue(val);
+                widget->module->params[StraitsEastVisualIds::ownerDispId(lane)].setValue(val);
                 for (int v = 0; v < 15; ++v) {
-                    widget->module->params[widget->ownerId(v, lane)].setValue(val);
+                    widget->module->params[StraitsEastVisualIds::ownerId(v, lane)].setValue(val);
                 }
             }
         };
