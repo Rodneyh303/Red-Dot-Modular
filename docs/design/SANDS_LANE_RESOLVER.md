@@ -4,7 +4,53 @@ Status: **analysis + recommendation, not yet actioned.** Prompted by the
 multi-day lane-reorder regression, which was entirely *bridge* bugs between
 lane coordinate systems.
 
-## The problem is real and VoiceResolver-shaped
+## FIRST, THE BETTER QUESTION: why are there four orders at all?
+
+Traced each of the four. **Only one is a real requirement; the other three are
+arbitrary historical declaration orders.**
+
+| System | Order | Is the order meaningful? |
+|--------|-------|--------------------------|
+| EDITOR lane | MEL, OCT, REST, ACC, VAR, LEG | **YES** — deliberate product/visual choice (top-to-bottom on the panel). |
+| MONO param bank | REST, MEL, OCT, LEG, ACC, VAR | No — just the order `enum ParamId { LEN_REST=0, … }` happened to be declared. `lenId(l)=LEN_REST+l*3` only needs each lane's 3 params contiguous; the *order* is incidental. |
+| ENGINE strand | RHYTHM, VAR, LEG, ACC, MEL, OCT | No — strands are separate NAMED fields (`rhythmLen`, `melodyRandom[]`…) reached by `switch(strand)`. Nothing indexes them in order; the enum numbering is cosmetic. The sequencer assembles notes by *name*, not by lane index. |
+| POLY engine lane | REST, MEL, OCT, ACC | No — East/Macro `lorId`/`polyLen` declaration order; `PROB_OUT_REST=0` etc. arbitrary. Notably a *different* arbitrary order from the mono bank (REST-first vs strand RHYTHM-first), for no reason. |
+
+Nothing musical or structural depends on the specific numbering of the three
+engine-side orders. They diverged because three enums were declared at three
+times, each picking a convenient order, and permutation tables were then bolted
+on to bridge them. **The domain has one lane order (what the user sees); the
+other three are accidents.**
+
+### Implication: prefer ELIMINATING orders over making them safe to convert
+
+The typed-index shim (below) makes the four orders *safe to convert between*.
+But the stronger fix is to **renumber the enums so all three engine-side orders
+match the editor order** — then there is nothing to convert and no bridge to get
+wrong. The bug class disappears rather than being made type-safe.
+
+- Sands is **pre-release** (param slots free to shift — no patch-compat
+  concern for these modules), so renumbering `ParamId` / poly `lorId` / the
+  `EngineStrand` enum to editor order is permitted.
+- Caveat: the `EngineStrand` enum is also used by the **core Monsoon** module
+  (rhythm/melody/etc are Monsoon's own strands), so renumbering it may ripple
+  beyond Sands — needs a check that Monsoon doesn't assume specific values.
+  The mono PARAM bank and POLY lane orders are Sands-local and safe to renumber.
+
+**Realistic target:** collapse to **two** orders — EDITOR (everything UI/param/
+poly side adopts it) and ENGINE strand (left as-is if Monsoon depends on it,
+bridged by the ONE `MONO_LANE_TO_STRAND` table which is genuinely needed because
+the engine is shared). That removes `MONO_PARAM_TO_EDITOR`, `EDITOR_TO_MONO_
+PARAM`, `ENGINE_LANE_TO_EDITOR`, and the poly/mono bank divergence entirely —
+i.e. removes the three tables that caused every regression this week, keeping
+only the one (editor↔strand) that bridges to shared engine code.
+
+## If we can't fully collapse: the shim is VoiceResolver-shaped
+
+(Original analysis retained below — applies to whatever orders genuinely
+remain after the collapse above.)
+
+
 
 There are **four distinct lane coordinate systems** in the Sands suite:
 
