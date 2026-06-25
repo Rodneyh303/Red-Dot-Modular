@@ -15,9 +15,15 @@
 //        0 rhythm  1 variation  2 legato  3 accent  4 melody  5 octave
 //
 //   • MONO PARAM bank order (SandsMonoVisualIds::lenId(l)):
-//        0 REST  1 MELODY  2 OCTAVE  (first 3 only; LEG/ACC/VAR handled separately)
+//        0 REST  1 MELODY  2 OCTAVE  3 LEGATO  4 ACCENT  5 VARIATION
 //
-// To change the mapping, edit MONO_LANE_TO_STRAND here only.
+//   • POLY ENGINE lane order (East/Macro lorId / engine.polyLen[v][lane] /
+//     macroBase[lane] / VoiceResolver lane arg):
+//        0 REST  1 MELODY  2 OCTAVE  3 ACCENT
+//
+// To change the editor order, edit the tables here only — every consumer
+// (East, Macro, Mono visual expander) routes through these, so there are no
+// hand-rolled per-file lane arrays to keep in sync.
 
 namespace dotModular {
 
@@ -49,12 +55,30 @@ constexpr int MONO_LANE_TO_STRAND[6] = {
     STRAND_LEGATO,      // 5 LEGATO
 };
 
-// Mono param bank index (lenId(l)) → editor lane index.
-// lenId bank: 0=REST 1=MEL 2=OCT (matches old editor order; now needs remapping).
-constexpr int MONO_PARAM_TO_EDITOR[3] = {
-    2,   // param 0 (REST)    → editor lane 2
-    0,   // param 1 (MELODY)  → editor lane 0
-    1,   // param 2 (OCTAVE)  → editor lane 1
+// Mono param bank index (SandsMonoVisualIds::lenId(l)) → editor lane index.
+// Param bank order: 0=REST 1=MELODY 2=OCTAVE 3=LEGATO 4=ACCENT 5=VARIATION.
+// (East/Macro mono mirror only touch indices 0..2 — REST/MEL/OCT — but the
+//  full 6 are defined for the Mono visual expander's own LOR sync.)
+constexpr int MONO_PARAM_TO_EDITOR[6] = {
+    2,   // param 0 (REST)      → editor lane 2
+    0,   // param 1 (MELODY)    → editor lane 0
+    1,   // param 2 (OCTAVE)    → editor lane 1
+    5,   // param 3 (LEGATO)    → editor lane 5
+    3,   // param 4 (ACCENT)    → editor lane 3
+    4,   // param 5 (VARIATION) → editor lane 4
 };
+
+// Poly engine lane index (0=REST 1=MELODY 2=OCTAVE 3=ACCENT — the order used
+// by East/Macro lorId, engine.polyLen[v][lane], macroBase[lane], and the
+// VoiceResolver lane argument) → editor lane index.
+//   engine 0 REST   → editor 2
+//   engine 1 MELODY → editor 0
+//   engine 2 OCTAVE → editor 1
+//   engine 3 ACCENT → editor 3
+constexpr int ENGINE_LANE_TO_EDITOR[4] = { 2, 0, 1, 3 };
+
+// Spread lanes (REST/MEL/OCT/ACCENT) share the poly engine→editor mapping.
+// Alias kept for call-site readability where "spread lane" is the natural term.
+constexpr const int* SPREAD_LANE_TO_EDITOR = ENGINE_LANE_TO_EDITOR;
 
 } // namespace dotModular

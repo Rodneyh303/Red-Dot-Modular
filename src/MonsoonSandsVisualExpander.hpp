@@ -1,6 +1,7 @@
 #pragma once
 #include <rack.hpp>
 #include "Monsoon.hpp"
+#include "dsp/LaneMapping.hpp"   // ENGINE_LANE_TO_EDITOR / MONO_PARAM_TO_EDITOR — single source of truth
 
 using namespace rack;
 
@@ -17,9 +18,10 @@ namespace SandsMonoVisualIds {
     static constexpr float ROW_BOT  = 108.f;
     static constexpr int   N_LANES  = 6;
     static constexpr int   N_SPREAD_LANES = 4;  // REST, MELODY, OCTAVE, ACCENT
-    // Spread control index (0..3) → editor lane order (REST/MEL/OCT/LEG/ACC/VAR). Accent is
-    // editor lane 4 (it skips LEGATO at 3, which is mono-only and has no spread).
-    static constexpr int SPREAD_LANE_TO_EDITOR[4] = { 2, 0, 1, 3 };  // REST=2, MEL=0, OCT=1, ACC=3
+    // Spread control index (0..3 = REST/MEL/OCT/ACCENT) → editor lane.
+    // Shares the poly engine→editor mapping (dsp/LaneMapping.hpp): REST=2, MEL=0,
+    // OCT=1, ACCENT=3. Single source of truth — do not redefine here.
+    static constexpr const int* SPREAD_LANE_TO_EDITOR = dotModular::ENGINE_LANE_TO_EDITOR;
 
     // Column X positions (mm)
     // LOR CV jacks (all 6 lanes): LEN/OFF/ROT

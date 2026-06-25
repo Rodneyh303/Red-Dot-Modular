@@ -12,6 +12,7 @@
 #include "ui/ModArcOverlay.hpp"
 #include "dsp/managers/PolySandsParameterManager.hpp"
 #include "dsp/VoiceResolver.hpp"   // activeVoiceCount + voice identity, single source of truth for the tab→voice mapping and uniform 16-voice addressing for prob-out
+#include "dsp/LaneMapping.hpp"        // ENGINE_LANE_TO_EDITOR / MONO_PARAM_TO_EDITOR — single source of truth for lane order
 
 using namespace rack;
 using namespace redDot;
@@ -193,11 +194,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
 
     void saveLOR() {
         if (!module || !visualEditor) return;
-        // Engine lane (lorId index: 0=REST 1=MEL 2=OCT 3=ACC) → editor lane.
-        static const int engToEd[4] = { SandsVisualEditorV4::REST, SandsVisualEditorV4::MELODY,
-                                        SandsVisualEditorV4::OCTAVE, SandsVisualEditorV4::ACCENT };
-        for (int l = 0; l < 4; ++l) {
-            const auto& lane = visualEditor->currentState.lanes[engToEd[l]];
+        for (int l = 0; l < 4; ++l) {   // l = engine lane (lorId) → editor lane
+            const auto& lane = visualEditor->currentState.lanes[dotModular::ENGINE_LANE_TO_EDITOR[l]];
             module->params[lorId(l,0)].setValue((float)lane.length);
             module->params[lorId(l,1)].setValue((float)lane.offset);
             module->params[lorId(l,2)].setValue((float)lane.rotation);
@@ -205,10 +203,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
     }
     void loadLOR() {
         if (!module || !visualEditor) return;
-        static const int engToEd[4] = { SandsVisualEditorV4::REST, SandsVisualEditorV4::MELODY,
-                                        SandsVisualEditorV4::OCTAVE, SandsVisualEditorV4::ACCENT };
-        for (int l = 0; l < 4; ++l) {
-            auto& lane = visualEditor->currentState.lanes[engToEd[l]];
+        for (int l = 0; l < 4; ++l) {   // l = engine lane (lorId) → editor lane
+            auto& lane = visualEditor->currentState.lanes[dotModular::ENGINE_LANE_TO_EDITOR[l]];
             lane.length   = std::max(1,(int)std::round(module->params[lorId(l,0)].getValue()));
             lane.offset   = (int)std::round(module->params[lorId(l,1)].getValue());
             lane.rotation = (int)std::round(module->params[lorId(l,2)].getValue());
@@ -312,14 +308,12 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         // output the sequencer plays, populated regardless of owner; the prob-outs use it too).
         if (!onMonoTab) {
             dotModular::VoiceResolver resolver(monsoon->engine);
-            static const int laneMap[4] = { SandsVisualEditorV4::REST,
-                                            SandsVisualEditorV4::MELODY,
-                                            SandsVisualEditorV4::OCTAVE,
-                                            SandsVisualEditorV4::ACCENT };
-            for (int lane = 0; lane < 4; ++lane)
+            for (int lane = 0; lane < 4; ++lane) {
+                int el = dotModular::ENGINE_LANE_TO_EDITOR[lane];
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
-                    visualEditor->currentState.lanes[laneMap[lane]].probabilities[s] =
+                    visualEditor->currentState.lanes[el].probabilities[s] =
                         resolver.laneProbabilityAtStep(viewVoiceNum, lane, s);
+            }
         }
 
         // Surface Macro's OWN CV-applied L/O/R to the display window. Previously
@@ -351,31 +345,24 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         // Shown for poly tabs and when V1 is editable without Mono.
         for (rack::Widget* w : leftAttenuverters) if (w) w->visible = !tab1Mono || v1Editable;
         if (tab1Mono) {
-            // Engine lane l=0=REST,1=MEL,2=OCT → editor lane via named constants
-            static const int monoLaneToEditor[3] = {
-                SandsVisualEditorV4::REST, SandsVisualEditorV4::MELODY, SandsVisualEditorV4::OCTAVE
-            };
+            // l = mono param bank (0=REST 1=MEL 2=OCT) → editor lane
             for (int l = 0; l < 3; ++l) {
                 int mLen = (int)std::lround(monoVis->params[SandsMonoVisualIds::lenId(l)].getValue());
                 int mOff = (int)std::lround(monoVis->params[SandsMonoVisualIds::offId(l)].getValue());
                 int mRot = (int)std::lround(monoVis->params[SandsMonoVisualIds::rotId(l)].getValue());
                 mLen = std::max(1, mLen);
-                int el = monoLaneToEditor[l];
+                int el = dotModular::MONO_PARAM_TO_EDITOR[l];
                 visualEditor->currentState.lanes[el].setDisplayLOR(mLen, mOff, mRot);
                 visualEditor->setLanePlayStep(el, calcPlayhead(gs, mLen, mOff, mRot));
             }
         } else {
-            // Engine lane l=0=REST,1=MEL,2=OCT,3=ACC → editor lane via named constants
-            static const int macroLaneToEditor[4] = {
-                SandsVisualEditorV4::REST, SandsVisualEditorV4::MELODY,
-                SandsVisualEditorV4::OCTAVE, SandsVisualEditorV4::ACCENT
-            };
+            // l = engine lane (0=REST 1=MEL 2=OCT 3=ACC) → editor lane
             for (int l = 0; l < 4; ++l) {
                 int ownLen = (int)std::lround(mod->macroBase[l][0] + mod->macroCVDelta[l][0]);
                 int ownOff = (int)std::lround(mod->macroBase[l][1] + mod->macroCVDelta[l][1]);
                 int ownRot = (int)std::lround(mod->macroBase[l][2] + mod->macroCVDelta[l][2]);
                 ownLen = std::max(1, ownLen);
-                int el = macroLaneToEditor[l];
+                int el = dotModular::ENGINE_LANE_TO_EDITOR[l];
                 visualEditor->currentState.lanes[el].setDisplayLOR(ownLen, ownOff, ownRot);
                 visualEditor->setLanePlayStep(el, calcPlayhead(gs, ownLen, ownOff, ownRot));
             }
