@@ -45,10 +45,57 @@ PARAM`, `ENGINE_LANE_TO_EDITOR`, and the poly/mono bank divergence entirely —
 i.e. removes the three tables that caused every regression this week, keeping
 only the one (editor↔strand) that bridges to shared engine code.
 
-## If we can't fully collapse: the shim is VoiceResolver-shaped
+## RESOLVED: it can be ONE order. EngineStrand numbering is free.
 
-(Original analysis retained below — applies to whatever orders genuinely
-remain after the collapse above.)
+Checked every use of `EngineStrand` / `STRAND_*` / `PolyLane` / `PL_*`:
+
+- **All uses are `switch(strand)` selectors mapping the enum to a NAMED field**
+  (`rhythmLen`, `melodyRandom[]`, `polyOctaveRandom[]`…). There is **no**
+  iteration `for strand 0..N`, **no** array index `arr[strand]`, and **no**
+  serialization of strand values to patches. The enum's numeric values are
+  therefore cosmetic — renumber freely as long as each `case LABEL` keeps
+  returning its matching named field.
+- **Core Monsoon does NOT touch strands** — only the engine
+  (PatternEngine/SequencerEngine) and the Sands visual expander reference them,
+  both already in scope for this work. Zero ripple into the core module.
+- The `PolyLane` enum (PL_REST/MEL/OCT/ACCENT) is the same — pure switch
+  selectors; its values are free too.
+
+**Conclusion: collapse to ONE order (editor order) everywhere.** Renumber
+`ParamId` (mono bank), `PolyLane`, and `EngineStrand` to editor order
+(MEL/OCT/REST/ACC/VAR/LEG). Then:
+
+- `MONO_PARAM_TO_EDITOR`, `EDITOR_TO_MONO_PARAM`, `ENGINE_LANE_TO_EDITOR`, the
+  poly/mono bank divergence, and the typed-index shim **all become unnecessary**
+  — there is one numbering, so an `int lane` means the same thing everywhere.
+- The editor-lane → named-strand-field correspondence still lives in the
+  engine's `switch` accessors (because strands are named members, not an array)
+  — but that `switch` becomes the SINGLE place lane identity is resolved, and
+  the compiler checks the switch is exhaustive. `MONO_LANE_TO_STRAND` collapses
+  to "case order matches enum order" rather than a permutation table.
+
+This is strictly better than the typed-index shim: the shim makes wrong
+indexing a *compile error*; renumbering makes wrong indexing *impossible to
+express* because there's only one index space.
+
+### Migration (when build is confirmed stable — NOT before)
+
+1. Renumber `ParamId` so LEN/OFF/ROT and atten/cv banks are laid out in editor
+   order (MEL,OCT,REST,ACC,VAR,LEG). `lenId(l)` etc. then take the editor lane
+   directly; drop the param↔editor tables.
+2. Renumber `PolyLane` (PL_*) to editor order (drop the poly/editor divergence;
+   East/Macro `lorId` already 4-lane). `ENGINE_LANE_TO_EDITOR` becomes identity →
+   delete.
+3. Re-pair the `EngineStrand` switch cases to editor order (or renumber the enum
+   to match and let the switches fall through naturally). Verify each `case`
+   still returns the correct named field — this is the one careful step.
+4. Delete the now-identity permutation tables; keep only the editor↔named-strand
+   switch. Add the round-trip/exhaustiveness sanity check.
+5. Regenerate panels (gen scripts drop their DISPLAY_ORDER / EDITOR_TO_PARAM
+   remaps — markers bind editor-lane index directly).
+
+Each step behaviour-inert and build-verified, VoiceResolver-style.
+
 
 
 
