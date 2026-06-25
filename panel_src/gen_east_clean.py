@@ -146,7 +146,8 @@ def gen(dark):
     A(mbs(W_MM-66.0, 111.0, 52.0, 14.0, t, op=0.85))
 
     # ── control group recess (left) — wraps the editor-aligned rows ──
-    gx,gy=4.0,rowY(0)-ED_LANE_H*0.5-3.0
+    # box left edge clears the leftmost jack (JACK_X[0]=6, r=3.9 → left extent 2.1mm)
+    gx,gy=1.5,rowY(0)-ED_LANE_H*0.5-3.0
     gw,gh=(SPREAD_X+6.0)-gx,(rowY(N-1)+ED_LANE_H*0.5+3.0)-gy
     A(f'<rect x="{px(gx):.1f}" y="{px(gy):.1f}" width="{px(gw):.1f}" height="{px(gh):.1f}" rx="{px(2):.1f}" fill="{t["group"]}" stroke="{t["groupline"]}" stroke-width="1"/>')
     sepx=0.5*(JACK_X[-1]+ATTEN_X[0])  # separator between jack cluster and atten cluster
