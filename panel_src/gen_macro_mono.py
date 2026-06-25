@@ -107,7 +107,7 @@ def gen_mono(dark):
     JACK_X=[6.,15.,24.]; ATTEN_X=[34.,43.,52.]
     SPR_BASE_X,SPR_CV_X,SPR_ATTEN_X=62.,71.,80.
     N_SPREAD=4                                  # REST/MEL/OCT + ACCENT (poly lanes)
-    SPR_TO_EDITOR=[0,1,2,4]                      # spread index → editor lane (accent skips LEG)
+    SPR_TO_EDITOR=[2,0,1,3]                      # spread index (REST/MEL/OCT/ACCENT) → editor lane; matches cpp ENGINE_LANE_TO_EDITOR
     ED_X=88.; PROB_OUT_X=207.; ED_W=PROB_OUT_X-ED_X-8.
     # Editor recess spans the SAME band the left controls (laneY) divide, so the
     # live editor lanes (zero internal padding, even division) line up with the
@@ -148,10 +148,18 @@ def gen_mono(dark):
     #    spread atten SPR_ATTEN_START(39) + l     = params 39..41
     #    (LEN/OFF/ROT params 0-17 have no physical knob — editor-driven — so no marker.) ──
     A('<g inkscape:label="components" inkscape:groupmode="layer">')
-    for lane in range(6):
-        y=laneY(lane)
-        for p,x in enumerate(JACK_X):  A(D.kit_shape("input", 0+lane*3+p, x, y))
-        for p,x in enumerate(ATTEN_X): A(D.kit_shape("param", 21+lane*3+p, x, y))
+    # Physical rows are laid out in EDITOR display order (MELODY/OCTAVE/REST/
+    # ACCENT/VARIATION/LEGATO = editor lanes 0..5), matching the editor lanes +
+    # labels that share these rows. The LOR params are PARAM-BANK indexed
+    # (REST=0,MEL=1,OCT=2,LEG=3,ACC=4,VAR=5), so map editor row → param bank.
+    # This mirrors East/Macro's DISPLAY_ORDER approach and is the inverse of
+    # MONO_PARAM_TO_EDITOR (dsp/LaneMapping.hpp EDITOR_TO_MONO_PARAM).
+    EDITOR_TO_PARAM=[1,2,0,4,5,3]   # editor lane → mono param bank
+    for row in range(6):
+        pb=EDITOR_TO_PARAM[row]     # param-bank lane for this editor row
+        y=laneY(row)
+        for p,x in enumerate(JACK_X):  A(D.kit_shape("input", 0+pb*3+p, x, y))
+        for p,x in enumerate(ATTEN_X): A(D.kit_shape("param", 21+pb*3+p, x, y))
     for sidx in range(N_SPREAD):
         y=laneY(SPR_TO_EDITOR[sidx])
         A(D.kit_shape("param", 18+sidx, SPR_BASE_X, y))   # SPR_REST/MEL/OCT/ACCENT (18..21)
