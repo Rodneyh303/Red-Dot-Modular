@@ -35,34 +35,78 @@ Two things make this hard to reason about:
    resolved via VoiceResolver. Two parallel index schemes = where off-by-ones
    breed (see SANDS_CV_ROUTING_BUGS.md).
 
-## A grand unifying pattern: "raw vs modulated input"
+## A grand unifying pattern: per-voice send taps PRE or POST Macro's global attenuverters
 
-The user's framing — *make the Macro→East/Sands routing flexible by switching
-between raw Macro-in and modulated-in* — is the simplification lever. Reframe
-the two poly modules not as "two editors that fight over ownership" but as
-**one poly editing surface fed by a selectable input stage**:
+The user's framing — *raw vs modulated* — is about the **tap point** of each
+per-voice mix-in send on Macro's own global CV path, NOT about East↔Macro
+ownership. It's a signal-routing choice local to Macro.
+
+### Macro's current global CV path (per lane, per item)
+
+In `MonsoonSandsManager.cpp::publishGlobal` → `applyMacroCV`:
 
 ```
-            ┌─────────────┐
- Macro CV ─▶│  input mode  │
-            │  • RAW       │──▶ poly lane value ──▶ engine
- East edit ▶│  • MODULATED │
-            └─────────────┘
+cvValue      = base + (CVin/10) · globalAtten · (hi−lo)     // base = knob, no CV
+macroCVDelta = cvValue − base = (CVin/10) · globalAtten · (hi−lo)
 ```
 
-- **RAW**: the lane value is Macro's global base directly (current "Macro owns").
-- **MODULATED**: the lane value is East's per-voice edit, with Macro's CV
-  blended in by the per-voice send amount (current "East owns + blend").
+So `macroCVDelta` is the CV contribution **already scaled by Macro's global
+left attenuverter**. Then in `combineLOR` the per-voice send scales it *again*:
 
-This is *exactly* what `combineLOR` already computes — but expressed as a
-**single per-lane input-source switch** instead of an ownership latch whose
-meaning changes the behaviour of a separate send knob. One concept ("where does
-this lane's value come from: raw global, or my per-voice edit modulated by
-global?") replaces the (ownership XOR) × (conditional blend) pair.
+```
+blend = macroCVDelta · perVoiceSend          // = CVin · globalAtten · send
+```
 
-Crucially this also makes the **send knob always meaningful**: in MODULATED
-mode it sets blend depth; in RAW mode the lane simply is the global value (the
-send naturally reads as "100% global"). No dead controls.
+→ The per-voice send currently taps **POST** the global attenuverter: global
+atten and per-voice send **multiply**. Today there is no choice; it's always post.
+
+### The proposed switch: PRE vs POST per send (or per lane)
+
+```
+ Macro CVin ─▶─┬─────────────────────────────▶ (PRE / "raw" tap)
+               │
+            globalAtten (left attenuverter)
+               │
+               └─────────────────────────────▶ (POST / "modulated" tap)
+                                                      │
+                                   per-voice send ◀───┴── tap selected here
+```
+
+- **POST ("modulated", current):** send scales `CVin · globalAtten`. The global
+  attenuverter sets overall depth for the lane; each voice's send is a fraction
+  *of that already-attenuated* signal. Global knob and send compound.
+- **PRE ("raw"):** send scales the **raw** `CVin · (hi−lo)`, bypassing
+  globalAtten. Each voice's send becomes an independent full-range depth on the
+  raw input; the global attenuverter then only affects Macro's *own*
+  displayed / owned-lane value, not what the per-voice sends receive.
+
+### Why PRE is attractive
+
+- **Decouples the two knobs.** Post-mode means turning the global atten down
+  quietly shrinks every voice's send response — a hidden interaction. Pre-mode
+  lets the global atten shape Macro's own lane while each voice's send is its
+  own clean depth on the source CV.
+- **Per-voice sends become real independent depths**, not fractions-of-a-fraction.
+- It's the natural answer to "I want this voice to get the *full* CV regardless
+  of where I've set the global trim."
+
+### Cost
+
+- One bit of state per tap point (or per lane, if we don't need per-item):
+  PRE/POST. Smallest version: a single per-lane (or even per-module) switch.
+- `applyMacroCV` must publish **two** deltas — `rawDelta = (CVin/10)·(hi−lo)`
+  and the existing `attenDelta = rawDelta·globalAtten` — and `combineLOR`
+  picks which to multiply by the send based on the switch. Cheap; the value is
+  already computed, we just stop folding the atten in unconditionally.
+
+### Relationship to ownership
+
+This is **orthogonal** to the East-vs-Macro ownership switch — ownership still
+chooses whether a lane's *base* is East's per-voice edit or Macro's global
+value. PRE/POST only changes what the per-voice **send** modulates on top. They
+compose: e.g. East owns the base, per-voice send blends in the raw (pre-atten)
+Macro CV. (Earlier draft of this doc mis-stated raw/modulated as an ownership
+reframing; corrected here.)
 
 ## The three options
 
@@ -74,22 +118,22 @@ send naturally reads as "100% global"). No dead controls.
   churn). Highest surface area for drift + bugs.
 
 ### Option 2 — Mono + one poly module ("Poly")
-Fold East and Macro into a single poly expander with the raw/modulated input
-switch above.
-- **Pro:** kills the inter-module mixer entirely — the "broad vs detailed"
-  distinction becomes a per-lane *input mode* inside one module, not two
-  modules negotiating ownership. One poly panel to maintain. Mono stays as-is.
-- **Pro:** the send grids and ownership latches collapse into one row of
-  per-lane mode switches + one depth knob per lane. Far less panel real estate
-  (this also resolves the Macro lower-band space pressure from
-  SANDS_PANEL_LAYOUT.md).
-- **Con:** the combined poly panel is busier than East alone (it absorbs
-  Macro's global base + send depth). Needs careful layout. But it's *one*
-  busy panel instead of two interacting ones.
-- **Con:** loses the ability to have Macro-without-East or East-without-Macro
-  as distinct rigs — but those combinations (4, 7 in SANDS_COMBINATIONS.md)
-  are exactly the ones whose semantics are hardest to explain, so losing them
-  may be a feature.
+Fold East and Macro into a single poly expander.
+- **Pro:** kills the inter-*module* coordination entirely — the global CV
+  source (Macro today) and the per-voice editor (East today) live in one
+  module, so there's no cross-module ownership negotiation, no two panels to
+  keep in lockstep. Mono stays as-is.
+- **Pro:** the send grids + ownership latches can collapse into one compact
+  per-lane control set (mode chip + one depth knob), recovering panel space
+  (also eases the Macro lower-band pressure from SANDS_PANEL_LAYOUT.md).
+- **Con:** the combined poly panel is busier than East alone (absorbs the
+  global base + sends). One busy panel instead of two interacting ones.
+- **Con:** loses Macro-without-East / East-without-Macro as distinct rigs —
+  but those combinations (4, 7 in SANDS_COMBINATIONS.md) are the hardest to
+  explain, so losing them may be a feature.
+
+Note: the **PRE/POST send tap** above is independent of this — it applies
+whether the global source and editor are one module or two.
 
 ### Option 1 — single module, paged
 Everything in one module: a **global/settings page**, a **V1 page** that
@@ -114,53 +158,56 @@ semantics to learn. Burying it in a paged mega-module (Option 1) trades away
 its best property. So Option 1's "one module" is attractive for drift-removal
 but works against the thing that makes Mono good.
 
-**The real win is Option 2's *idea* applied regardless of module count:**
-collapse the East↔Macro mixer into a single per-lane **raw/modulated input
-switch with one depth knob**. Whether East and Macro then remain two physical
-modules or merge into one "Poly" module is secondary to fixing the *concept*.
+**The real win is fixing the *concept*, somewhat independently of module count.**
+Two separate simplifications:
+1. **Make the per-voice send tap selectable PRE/POST the global attenuverter**
+   (above) — decouples the global trim from the per-voice send depths, which is
+   the concrete "raw vs modulated" the suite actually needs.
+2. **Reduce the ownership/send UI** to a per-lane mode chip + one depth knob
+   (below), whether or not East and Macro stay separate modules.
 
 So a sensible target:
 - **Mono** — unchanged. The simple 6-lane standalone editor.
 - **One poly story** — either merge East+Macro into a single "Poly" module, or
-  keep them as two but redefine their relationship as input-stage (Macro =
-  global source) → editor (East = per-voice, with a raw/modulated switch per
-  lane). The latter keeps the modular drop-in feel while removing the ownership/
-  send asymmetry.
-
-East and Mono *do* overlap (East is a more flexible per-voice version of the
-same lane model). That overlap is fine as long as the relationship is
-"same lanes, more voices + an input switch," not "two editors contending for
-ownership."
+  keep them as two but with: Macro = the global CV source, East = the per-voice
+  editor, a clean PRE/POST send tap, and a slimmer per-lane ownership control.
+  The two-module version keeps the modular drop-in feel; the merge removes the
+  cross-module lockstep maintenance. Either is fine *once the concept is clean*.
 
 ## Ownership UX (interim, regardless of consolidation)
 
-The context-menu lane-ownership toggle (combination doc question B, now
-implemented as right-click) is **fiddly**. Two improvements, both compatible
-with the raw/modulated reframing:
+The context-menu lane-ownership toggle (East base vs Macro base per lane per
+voice; combination doc question B, now right-click) is **fiddly**. Two
+improvements:
 
 1. **Make ownership a visible lane state, not a hidden menu.** Tint or border
-   the editor lane by its input mode — e.g. RAW lanes drawn with a distinct
-   hue/hatch (driven from global), MODULATED lanes in the normal per-voice
-   colour. The user *sees* which lanes are global vs per-voice without opening
-   anything. (This is the user's "change lane visuals to indicate ownership"
+   the editor lane by its base source — e.g. Macro-owned lanes drawn with a
+   distinct hue/hatch (value comes from global), East-owned lanes in the normal
+   per-voice colour. The user *sees* which lanes are global vs per-voice without
+   opening anything. (The user's "change lane visuals to indicate ownership"
    instinct — endorsed.)
-2. **Click target on the lane itself.** A small mode chip at the left end of
-   each editor lane row (where the lane label sits) toggles raw/modulated on
-   click — one click, on the thing it affects, with the state visible. Keeps
+2. **Click target on the lane itself.** A small chip at the left end of each
+   editor lane row (by the lane label) toggles ownership for the current voice
+   on click — one click, on the thing it affects, state visible. Keep the
    right-click menu as the power-user fallback.
 
-If East+Macro merge (Option 2), this chip *is* the entire ownership/send UI:
-chip = mode, one depth knob = blend. The 2×2 send grids and separate latch
-buttons go away.
+(The PRE/POST send tap is a separate, smaller control — likely a per-lane or
+per-module switch near the global attenuverters, not on the editor lane.)
+
+If East+Macro merge (Option 2), the lane chip + one depth knob per lane *is*
+the entire base-source + send UI; the 2×2 send grids and separate latch buttons
+go away.
 
 ## Open questions to resolve before acting
 
 - Does the per-voice send need to be *per item* (Len/Off/Rot/Spr independently)
-  or is **one blend-depth per lane** enough? The 2×2 grid exists because it's
+  or is **one depth per lane** enough? The 2×2 grid exists because it's
   per-item; if per-lane depth suffices, the UI shrinks 4×.
-- In MODULATED mode, is Macro's contribution additive (current: base + delta)
-  or interpolative (crossfade global↔per-voice)? Interpolation may read more
-  intuitively as a single "global ⟷ per-voice" knob.
+- **PRE/POST granularity:** is the tap switch needed per-item, per-lane, or just
+  one per-module? Coarser = simpler UI. Per-lane is probably the sweet spot.
+- When East owns the base, is Macro's send contribution additive (current:
+  base + delta·send) or interpolative (crossfade East-edit ↔ Macro-CV)?
+  Interpolation may read more intuitively as a single "mine ⟷ global" knob.
 - If merging to one poly module: does V1 (mono) editing belong there too, or
   stay exclusively in Mono? (Ties into SANDS_COMBINATIONS question A.)
 
