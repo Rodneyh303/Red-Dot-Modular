@@ -305,3 +305,45 @@ clean air on both sides. Well within 42HP slack.
 
 **Header label:** "SRC" (source) or "OWN" — SRC pairs better if the PRE/POST
 tap (also a "source" notion) lands later; OWN is more literal. Minor.
+
+## Fine-tuning observations (to action WITH the owner-cell build)
+
+These are coupled to implementing the owner cell, so they should land together
+in one coordinated change, not piecemeal:
+
+1. **East's bottom BASE-latch blocks become redundant.** East currently draws
+   per-lane BASE opt-in latch groups at `BLEND_TOP=74` (markers `param_owner_{l}`,
+   bound by the widget). The owner cell in the editor REPLACES these. When the
+   owner cell is built, move the `param_owner_{l}` binding to the new cell and
+   **delete the bottom latch groups** — they free a ~22mm-tall band under the
+   editor on East. (Do NOT delete the markers before the cell binds them, or
+   the bind goes unbound / the widget loses the param.)
+   - Frees East's lower band → more room if the editor later grows down
+     (SANDS_PANEL_LAYOUT.md option) or for artwork.
+
+2. **Owner-cell enclosure must not overlap the editor widget.** In the v1/v2
+   mocks the enclosure sat snug against the editor's right edge (grid right
+   ≈197mm, enclosure starting ≈199.5mm) and visually kissed the lane widget.
+   When building: give the enclosure a clear gap from `ED_X+ED_W` (the editor
+   widget's box), i.e. start it a few mm clear, and pull the prob-out jacks
+   right to make room — do not let the enclosure stroke touch the editor recess
+   border.
+
+3. **Same observations apply to the other Sands panels.** Macro's bottom is the
+   send grids (those stay — they're the sends, not ownership). Mono has no
+   bottom ownership blocks but DOES need the owner cell for V1 (per the
+   "ownership follows the editing surface" conclusion), so Mono's editor gets
+   the same right-of-grid owner cell treatment.
+
+4. **HP headroom for lane width.** Lanes are currently ~6.9mm/step. If we want
+   nicer lane width (and clean spacing for the owner cell + prob-out gap), we
+   can widen the panel — add HP. This is the natural moment to do it since the
+   owner cell already wants ~3-4mm more on the right. A coordinated spacing pass
+   (add N HP, re-space columns for breathing room, place owner cell, drop East's
+   bottom blocks) is cleaner than nudging single mm values. Decide HP count when
+   building: enough to give the step grid a comfortable width AND fit the owner
+   column + prob-out strip without anything snug.
+
+**Sequencing:** still gated on confirming the Macro kit build first. Then the
+owner-cell build is the coordinated change that also does (1)-(3) and ideally
+(4).
