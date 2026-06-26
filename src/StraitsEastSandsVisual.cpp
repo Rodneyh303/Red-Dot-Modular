@@ -58,6 +58,61 @@ struct StraitsEastSandsVisualWidget;  // fwd
 
 // Owner claim latch that dims + swallows input when inert (no Macro attached — there's
 // nothing to claim ownership FROM, it's all East). Predicate set by the widget.
+// ── OwnerCell ────────────────────────────────────────────────────────────────
+// The per-lane ownership control as a lane-step block (Option C, treatment A):
+// a cell drawn in the lane's own colour, FILLED = global/Macro owns this lane
+// (value comes from the shared base), HOLLOW OUTLINE = East/per-voice owns it
+// (this voice draws its own pattern). Click toggles. It reads as a "17th step" of
+// the lane sitting right of the grid. Bound to ownerDispId(lane) via a marker;
+// sized to fill the SRC cell rect from the panel.
+struct OwnerCell : rack::ParamWidget {
+    int laneEng = 0;                       // ENGINE lane index (for colour + id)
+    NVGcolor laneCol = nvgRGB(0x80,0x80,0x80);
+    std::function<bool()> inertWhen;       // no Macro attached → inert + dimmed
+    std::function<bool()> hideWhen;        // V1 mono-mirror tab → hidden
+    bool inert()  const { return inertWhen && inertWhen(); }
+    bool hidden() const { return hideWhen && hideWhen(); }
+
+    bool eastOwns() const {                // ownerDispId > 0.5 = East owns
+        return getParamQuantity() && getParamQuantity()->getValue() > 0.5f;
+    }
+    void toggle() {
+        if (!getParamQuantity()) return;
+        float v = eastOwns() ? 0.f : 1.f;
+        getParamQuantity()->setValue(v);
+    }
+    void onButton(const event::Button& e) override {
+        if (hidden() || inert()) { if (e.action==GLFW_PRESS) e.consume(this); return; }
+        if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT) {
+            toggle();
+            e.consume(this);
+            return;
+        }
+        ParamWidget::onButton(e);
+    }
+    void draw(const DrawArgs& args) override {
+        if (hidden()) return;
+        const float w = box.size.x, h = box.size.y;
+        const float r = 2.2f;
+        bool dim = inert();
+        float a = dim ? 0.4f : 1.0f;
+        NVGcolor col = laneCol; col.a = a;
+        nvgBeginPath(args.vg);
+        nvgRoundedRect(args.vg, 1.0f, 1.0f, w-2.0f, h-2.0f, r);
+        if (eastOwns()) {
+            // per-voice / East owns → hollow outline (you draw it)
+            nvgStrokeColor(args.vg, col);
+            nvgStrokeWidth(args.vg, 1.4f);
+            nvgStroke(args.vg);
+        } else {
+            // global / Macro owns → solid fill (filled-in-for-you)
+            NVGcolor fillc = laneCol; fillc.a = a * 0.92f;
+            nvgFillColor(args.vg, fillc);
+            nvgFill(args.vg);
+        }
+    }
+};
+
 struct DimmableLatch : rack::componentlibrary::VCVLightLatch<rack::componentlibrary::SmallSimpleLight<rack::componentlibrary::WhiteLight>> {
     std::function<bool()> inertWhen;
     std::function<bool()> hideWhen;   // fully hidden (not drawn, no input) — e.g. mono tab
@@ -244,20 +299,30 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // inert + dimmed and the sends are dimmed. With Macro attached, sends dim per
         // lane when Macro owns it. (Base-spread / CV-depth are East's own controls and
         // stay live solo — see laneOwnedByMacro above.)
+        // Per-lane ownership cell (Option C, treatment A): a lane-step block right
+        // of the editor, drawn in the lane's colour — FILLED = global/Macro owns,
+        // HOLLOW OUTLINE = East/per-voice owns. Click toggles. Inert+dimmed with no
+        // Macro attached; hidden on the V1 mono-mirror tab.
+        static const NVGcolor laneColEng[4] = {   // by ENGINE lane: 0 REST,1 MEL,2 OCT,3 ACC
+            nvgRGB(0x50,0x50,0x50), nvgRGB(0xd4,0xaf,0x37),
+            nvgRGB(0xb8,0x86,0x0b), nvgRGB(0xff,0x95,0x00)
+        };
         for (int lane = 0; lane < 4; ++lane) {
-            bindLightParam<DimmableLatch>(
+            bindParam<OwnerCell>(
                 "param_owner_" + std::to_string(lane),
                 ownerDispId(lane),
-                ownerLightId(lane),
-                [this](DimmableLatch* w) {
-                    w->momentary = false;
-                    w->latch = true;
+                [this, lane](OwnerCell* w) {
+                    w->laneEng = lane;
+                    w->laneCol = laneColEng[lane];
+                    // createParamCentered placed box.pos at the marker centre (size was
+                    // 0); set the cell size then re-centre around that point.
+                    Vec c = w->box.pos;
+                    w->box.size = mm2px(Vec(6.0f, ED_LANE_H * 0.62f));
+                    w->box.pos  = c.minus(w->box.size.div(2.f));
                     w->inertWhen = [this](){ return !macroAttached(); };
-                    w->hideWhen  = [this](){ return tab1MonoMirror(); };   // V1: nothing to opt into
+                    w->hideWhen  = [this](){ return tab1MonoMirror(); };
                 }
             );
-            // (Macro mix-in send trims relocated to Macro's panel under the control
-            //  inversion — East's panel no longer binds param_send_* markers.)
         }
 
         paramMgr = new PolyVoiceSandsParameterManager(nullptr, nullptr, 15, 0);

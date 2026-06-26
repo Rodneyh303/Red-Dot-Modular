@@ -141,9 +141,9 @@ def gen(dark):
         A(f'<line x1="{px(ED_X+1):.1f}" y1="{px(ly):.1f}" x2="{px(ED_X+ED_W-1):.1f}" y2="{px(ly):.1f}" stroke="{t["edborder"]}" stroke-width="0.75" opacity="0.7"/>')
 
     # ── per-lane owner-source block, right of the editor before the prob-outs.
-    #    v2-subtle: faint backing + thin separator + small "SRC" label + one
-    #    outline cell per lane row (the LIVE widget fills/outlines by ownership;
-    #    this placeholder is the visual break so it doesn't read as a 17th step).
+    #    The faint backing + separator + "SRC" label form the container; the LIVE
+    #    OwnerCell widget draws each per-lane cell itself (filled = global/Macro,
+    #    outline in lane colour = East/per-voice), so no static outline cells here.
     _ed_right = ED_X + ED_W
     _lane_ys = [rowY(r) for r in range(N)]
     _ch = ED_LANE_H * 0.62
@@ -154,8 +154,6 @@ def gen(dark):
     A(f'<rect x="{px(OWNER_X-_cw*0.5-_pad):.1f}" y="{px(_by):.1f}" width="{px(_cw+2*_pad):.1f}" height="{px(_bh):.1f}" rx="{px(1.0):.1f}" fill="#ffffff" fill-opacity="0.05"/>')
     A(f'<line x1="{px(_ed_right+1.4):.1f}" y1="{px(_by):.1f}" x2="{px(_ed_right+1.4):.1f}" y2="{px(_by+_bh):.1f}" stroke="{t["edborder"]}" stroke-width="1.2" opacity="0.8"/>')
     A(f'<text x="{px(OWNER_X):.1f}" y="{px(_by-1.4):.1f}" font-family="sans-serif" font-size="{px(2.0):.1f}" fill="{t["edborder"]}" text-anchor="middle">SRC</text>')
-    for _cy in _lane_ys:
-        A(f'<rect x="{px(OWNER_X-_cw*0.5):.1f}" y="{px(_cy-_ch*0.5):.1f}" width="{px(_cw):.1f}" height="{px(_ch):.1f}" rx="{px(0.8):.1f}" fill="none" stroke="{t["edborder"]}" stroke-width="1.0" opacity="0.55"/>')
 
     # ── below the editor + footer: Marina Bay water (waves) as an integrated
     #    base band spanning the full control-to-edge width ──
@@ -202,27 +200,10 @@ def gen(dark):
     BLEND_TOP = 74.0
     BLEND_H   = 22.0
     GAP       = 2.5               # tighter gap for 4 groups
-    GROUP_W   = ED_W/4.0
-    OWN_DY    = 13.0
-    # "BASE" section header rule (full width, above the groups)
-    A(f'<line x1="{px(ED_X):.1f}" y1="{px(BLEND_TOP-3.0):.1f}" x2="{px(ED_X+ED_W):.1f}" y2="{px(BLEND_TOP-3.0):.1f}" stroke="{t["accent"]}" stroke-width="1.0" opacity="0.6"/>')
-    LANE_NAMES = LANE_NAMES_DISPLAY   # ["MELODY","OCTAVE","REST","ACCENT"]
-    # Groups drawn in DISPLAY_ORDER (left-to-right: MEL/OCT/REST/ACC)
-    # Group position g → engine lane DISPLAY_ORDER[g]
-    OWN_XY = [None]*4  # indexed by engine lane
-    for g in range(4):
-        l = DISPLAY_ORDER[g]   # engine lane for this group position
-        gx = ED_X + l*GROUP_W + GAP*0.5
-        gw = GROUP_W - GAP
-        gcx = gx + gw*0.5
-        # demarked group box
-        A(f'<rect x="{px(gx):.1f}" y="{px(BLEND_TOP):.1f}" width="{px(gw):.1f}" height="{px(BLEND_H):.1f}" rx="{px(1.4):.1f}" fill="{t["edrecess"]}" stroke="{t["edborder"]}" stroke-width="0.9" opacity="0.92"/>')
-        # header divider under the lane name
-        A(f'<line x1="{px(gx+2):.1f}" y1="{px(BLEND_TOP+7.5):.1f}" x2="{px(gx+gw-2):.1f}" y2="{px(BLEND_TOP+7.5):.1f}" stroke="{t["edborder"]}" stroke-width="0.6" opacity="0.6"/>')
-        # opt-in (BASE) latch — centred under the header
-        ox, oy = gcx, BLEND_TOP + OWN_DY
-        A(f'<circle cx="{px(ox):.1f}" cy="{px(oy):.1f}" r="{px(2.6):.1f}" fill="{t["edrecess"]}" stroke="{t["accent"]}" stroke-width="1.2"/>')
-        OWN_XY[l] = (ox, oy)
+    # ── (REMOVED) The old below-lanes "BASE" owner section. Ownership now lives in
+    #    the per-lane SRC owner cells right of the editor (param_owner_{lane} bound
+    #    to OwnerCell). The Macro mix-in sends had already moved to the Macro panel,
+    #    so this band held nothing but the old owner latch and is gone entirely.
     A('</g>')
     # ── SvgPanelKit component layer. Indices mirror StraitsEastSandsVisual.hpp:
     #    cvId(r,c)=CV_START(0)+r*2+c  inputs 0..11;
