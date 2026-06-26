@@ -128,22 +128,27 @@ def marina_waves(x, y, w, h, t, op=0.34, rows=None):
 # 3. SKYLINE-PULSE  (the red identity line from the concept)
 # ─────────────────────────────────────────────────────────────────────────────
 def _mbs(MX, MY, base, red, sw, op, A):
-    """Marina Bay Sands (measured from concept): THREE separate tall pillars
-    (~20 UX wide, ~10 UX gaps) joined near the top by a horizontal SkyPark deck
-    slab that the pillars poke slightly above. Pillars run from the deck down to
-    the baseline. Drawn as filled rects so it reads architectural, not as wire."""
-    pillars = [(52, 116), (174, 239), (290, 336)]   # (x0,x1) measured
-    deck_y = 21.0          # SkyPark deck top
-    deck_h = 7.0
-    ptop = 11.0            # pillars poke this high above deck
-    for (px0, px1) in pillars:
-        A(f'<rect x="{MX(px0):.2f}" y="{MY(ptop):.2f}" '
-          f'width="{MX(px1)-MX(px0):.2f}" height="{MY(base)-MY(ptop):.2f}" '
+    """Marina Bay Sands traced from the concept: three SLIGHTLY-TAPERED pillars
+    (a touch wider at the base), a BOAT-shaped SkyPark deck overhanging across
+    their tops, and a small mast. Pillars drawn as 4-point tapered polygons; the
+    deck as a shallow boat (lens) polygon — not blocky rects."""
+    # measured pillar top/base x-edges (UX) and y (deck bottom→base)
+    ptop, pbase = 27.0, base
+    pillars = [(94, 152, 81, 155), (187, 245, 181, 248), (281, 336, 274, 342)]
+    for (tl, tr, bl, br) in pillars:
+        A(f'<polygon points="{MX(tl):.2f},{MY(ptop):.2f} {MX(tr):.2f},{MY(ptop):.2f} '
+          f'{MX(br):.2f},{MY(pbase):.2f} {MX(bl):.2f},{MY(pbase):.2f}" '
           f'fill="{red}" opacity="{op:.3f}"/>')
-    # SkyPark deck slab spanning all three pillars, overhanging the ends
-    A(f'<rect x="{MX(pillars[0][0]-12):.2f}" y="{MY(deck_y):.2f}" '
-      f'width="{MX(pillars[-1][1]+12)-MX(pillars[0][0]-12):.2f}" '
-      f'height="{MY(deck_y+deck_h)-MY(deck_y):.2f}" fill="{red}" opacity="{op:.3f}"/>')
+    # SkyPark boat deck: a shallow lens overhanging both ends, sitting on the tops
+    dl, dr = 45.0, 342.0
+    dtop, dmid, dbot = 17.0, 13.0, 27.0
+    A(f'<path d="M{MX(dl):.2f} {MY(dbot):.2f} '
+      f'Q{MX((dl+dr)/2):.2f} {MY(dmid):.2f} {MX(dr):.2f} {MY(dbot):.2f} '
+      f'Q{MX((dl+dr)/2):.2f} {MY(dtop):.2f} {MX(dl):.2f} {MY(dbot):.2f} Z" '
+      f'fill="{red}" opacity="{op:.3f}"/>')
+    # mast on the deck
+    A(f'<line x1="{MX(116):.2f}" y1="{MY(dtop):.2f}" x2="{MX(116):.2f}" y2="{MY(8):.2f}" '
+      f'stroke="{red}" stroke-width="{sw*0.7:.2f}" stroke-linecap="round" opacity="{op:.3f}"/>')
 
 
 def _supertree(MX, MY, tx, tbase, top, halfw, red, sw, op, A):
@@ -198,54 +203,52 @@ def _wave_to_trunks(MX, MY, base, trees, x_in, x_out, trough_y, red, sw, op, A):
       f'stroke-linecap="round" stroke-linejoin="round" opacity="{op:.3f}"/>')
 
 
-def _lattice_dome(MX, MY, dl, dr, base, apex, ink, sw, op, A):
-    """Esplanade with PERSPECTIVE (measured): broad FLAT apex; the bottom front
-    lip drops LOWER on the right than the left (platform seen at an angle); a
-    lattice diamond grid clipped to the shell. apex/base measured."""
-    cx = (dl + dr) / 2
-    rx = (dr - dl) / 2
-    def top_y(px):
-        nx = (px - cx) / rx                       # -1..1
-        return apex + (base_left - apex) * (abs(nx) ** 1.7) if False else \
-               apex + ( (base) - apex) * (abs(nx) ** 1.7)
-    # measured: left base UY~147, front lip UY~175 (lower). Tilt the base line.
-    base_l, base_r = base - 14.0, base + 14.0     # left higher, right lower (perspective)
-    def baseline_y(px):
-        u = (px - dl) / (dr - dl)                 # 0..1 left→right
-        return base_l + (base_r - base_l) * u
-    def shell_top(px):
-        nx = (px - cx) / rx
-        return apex + (baseline_y(px) - apex) * (abs(nx) ** 1.7)
-    # outline: across flat-ish top then along the tilted front lip back
-    N = 40
-    d = f"M{MX(dl):.2f} {MY(shell_top(dl)):.2f} "
-    for i in range(1, N+1):
-        px = dl + (dr-dl)*i/N
-        d += f"L{MX(px):.2f} {MY(shell_top(px)):.2f} "
-    # front lip (right edge down then back-left along the lip)
-    for i in range(N+1):
-        px = dr - (dr-dl)*i/N
-        d += f"L{MX(px):.2f} {MY(baseline_y(px)):.2f} "
-    d += "Z"
-    A(f'<path d="{d}" fill="none" stroke="{ink}" stroke-width="{sw*0.85:.2f}" '
+def _lattice_dome(MX, MY, base, ink, sw, op):
+    """Esplanade traced from the concept (true 3/4 PERSPECTIVE): the top shell is
+    an asymmetric arch with a broad flat apex; the LEFT springs from a higher
+    platform point, the RIGHT/front lip bows LOWER and extends further — the
+    durian seen at an angle. Outline is the traced point sequence; a lattice
+    diamond grid fills the shell. Returns the SVG string."""
+    L = []; A = L.append
+    # traced TOP outline (UX,UY) and BOTTOM/front-lip (UX,UY) from pixel measurement
+    top = [(710,145),(748,95),(774,74),(800,65),(826,63),(852,65),
+           (877,70),(903,78),(929,101)]
+    bot = [(929,175),(855,175),(806,170),(768,147),(710,145)]   # right→left along lip
+    pathd = "M" + " L".join(f"{MX(x):.2f} {MY(y):.2f}" for x, y in top)
+    pathd += " L" + " L".join(f"{MX(x):.2f} {MY(y):.2f}" for x, y in bot) + " Z"
+    A(f'<path d="{pathd}" fill="none" stroke="{ink}" stroke-width="{sw*0.9:.2f}" '
       f'stroke-linejoin="round" stroke-linecap="round" opacity="{op*0.9:.3f}"/>')
-    # lattice diamonds clipped to shell
+    # build interpolators for the shell interior to clip the lattice
+    def interp(seq, px):
+        for i in range(len(seq)-1):
+            x0,y0 = seq[i]; x1,y1 = seq[i+1]
+            lo,hi = min(x0,x1),max(x0,x1)
+            if lo <= px <= hi and x1 != x0:
+                u=(px-x0)/(x1-x0); return y0+(y1-y0)*u
+        return None
+    botL = sorted(bot)                      # left→right
+    def top_y(px): return interp(top, px)
+    def bot_y(px): return interp(botL, px)
+    xmin, xmax = 712, 928
     def inside(px, py):
-        return shell_top(px) <= py <= baseline_y(px) and dl <= px <= dr
-    step = (dr - dl) / 10.0
+        ty, by = top_y(px), bot_y(px)
+        return ty is not None and by is not None and ty <= py <= by
+    step = (xmax - xmin) / 11.0
+    cx = (xmin + xmax) / 2
     for sign in (+1, -1):
-        for c in range(-11, 12):
-            x_start = cx + c * step
+        for c in range(-12, 13):
+            xs = cx + c * step
             seg = []
-            for k in range(0, 50):
-                px = x_start + sign * k * step * 0.55
-                py = base_r - k * step * 0.55
+            for k in range(0, 60):
+                px = xs + sign * k * step * 0.5
+                py = 178 - k * step * 0.5
                 if inside(px, py): seg.append((px, py))
                 elif seg: break
             if len(seg) >= 2:
                 A(f'<line x1="{MX(seg[0][0]):.2f}" y1="{MY(seg[0][1]):.2f}" '
                   f'x2="{MX(seg[-1][0]):.2f}" y2="{MY(seg[-1][1]):.2f}" stroke="{ink}" '
-                  f'stroke-width="{sw*0.32:.2f}" opacity="{op*0.5:.3f}"/>')
+                  f'stroke-width="{sw*0.3:.2f}" opacity="{op*0.48:.3f}"/>')
+    return "".join(L)
 
 
 def skyline_pulse(x, y, w, h, t, accent=None, op=1.0):
@@ -269,7 +272,7 @@ def skyline_pulse(x, y, w, h, t, accent=None, op=1.0):
     for tx, top, hw in trees:
         _supertree(MX, MY, tx, base, top, hw, red, sw, op, A)
 
-    _lattice_dome(MX, MY, 713.0, 940.0, base, 63.0, ink, sw, op, A)
+    A(_lattice_dome(MX, MY, base, ink, sw, op))
 
     # connector nodes at the ends
     for dx in (150, 960):
