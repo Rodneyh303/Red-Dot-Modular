@@ -104,11 +104,16 @@ def esplanade(x, y, w, h, t, op=0.16):
     s = _re2.sub(r'<svg[^>]*>', '', s); s = s.replace('</svg>', '')
     s = _re2.sub(r'<rect width="1000" height="450" fill="#000"/>', '', s)
     s = _re2.sub(r'<!--.*?-->', '', s, flags=_re2.DOTALL)
-    # recolour: dome structure greys → motif, brightest highlight → ink,
-    # blacks/darks (sky-frame + platform fills + shadow) → panel bg
+    # recolour: dome structure greys → motif, brightest highlight → ink.
     for g in ['#666', '#6c6c6c', '#727272', '#767676', '#777', '#787878']:
         s = s.replace(f'"{g}"', f'"{motif}"')
     s = s.replace('#8a8a8a', ink)
+    # The black sky-frame + bottom + shoulder fills CROP the full-ellipse rib spill —
+    # they must stay at the panel bg colour AND full opacity so they actually mask.
+    # The watermark fade comes from the GROUP opacity below (applied uniformly to the
+    # whole dome), so the crop and the structure fade together and the spill never
+    # re-appears. (Keeping these fills semi-transparent was the bug that left
+    # criss-cross arcs floating outside the dome.)
     for b in ['#000', '#111', '#222', '#474747']:
         s = s.replace(f'"{b}"', f'"{bg}"')
     # flatten group attrs onto children (nanosvg has no inheritance)
@@ -125,10 +130,9 @@ def esplanade(x, y, w, h, t, op=0.16):
     while prev != s:
         prev = s
         s = _re2.sub(r'<g([^>]*)>(((?!<g).)*?)</g>', _flatten, s, flags=_re2.DOTALL)
-    # apply overall structure opacity by wrapping (multiplies with per-shape opacity
-    # in the renderer via group alpha — nanosvg supports group opacity)
+    # Group opacity = the watermark fade (uniform over structure AND the bg crop).
     return (f'<g transform="translate({x:.2f},{y:.2f}) scale({sx:.5f},{sy:.5f})" '
-            f'opacity="{min(1.0, op*3.1):.3f}">{s}</g>')
+            f'opacity="{min(1.0, op):.3f}">{s}</g>')
 
 
 def mbs(x, y, w, h, t, op=0.16):
@@ -214,11 +218,13 @@ def gen(side, dark, variant="plain"):
     A(f'<rect x="0" y="0" width="{PW:.0f}" height="4" fill="{t["accent"]}"/>')   # top rule
     A(f'<circle cx="{PW-14:.0f}" cy="14" r="5" fill="{t["accent"]}"/>')          # corner dot
 
-    # background motif, composed like the reference sheet: the Esplanade dome sits
-    # HIGH-RIGHT, crisp and contained; the Marina Bay waves run LOWER-LEFT (the
-    # straits). Distinct zones — the dome's truss no longer crosses the water.
-    A(esplanade(PW*0.60, 66.0, PW*0.36, 66.0, t, op=0.24))    # upper-right, contained
-    A(waves(15.0, 312.0, t, op=0.40, rows=4, span=PW*0.58))    # lower-left water band
+    # background motif: Esplanade dome HIGH-RIGHT (crisp, contained — its own bg
+    # sky-frame crops the rib spill, faded uniformly by the group opacity). The
+    # Marina Bay waves run down the LEFT side only, the full height of the panel,
+    # like the straits along the western edge. Distinct zones, no overlap.
+    A(esplanade(PW*0.60, 40.0, PW*0.36, 64.0, t, op=0.5))     # upper-right, crisp
+    _wave_rows = int((PH - 70.0) / 9.4)                        # fill full height
+    A(waves(12.0, 56.0, t, op=0.34, rows=_wave_rows, span=PW*0.34))   # left band, top→bottom
 
     # title (display text — NOT a control, so text is fine here)
     A(f'<text x="14" y="30" fill="{t["ink"]}" font-family="sans-serif" '
