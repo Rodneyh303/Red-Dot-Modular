@@ -127,20 +127,121 @@ def marina_waves(x, y, w, h, t, op=0.34, rows=None):
 # ─────────────────────────────────────────────────────────────────────────────
 # 3. SKYLINE-PULSE  (the red identity line from the concept)
 # ─────────────────────────────────────────────────────────────────────────────
+def _mbs(MX, MY, base, red, sw, op, A):
+    """Marina Bay Sands: three SOLID filled rectangular towers + a solid
+    overhanging SkyPark slab across the top (studied from concept)."""
+    deck_top, deck_bot = 44.0, 52.0
+    tower_top = deck_bot
+    tw = 9.0                      # tower width (solid)
+    xs = [88, 116, 144]
+    for tx in xs:                 # solid filled pillars
+        A(f'<rect x="{MX(tx-tw/2):.2f}" y="{MY(tower_top):.2f}" '
+          f'width="{(tw/1000.0)* (MX(1000)-MX(0)):.2f}" height="{MY(base)-MY(tower_top):.2f}" '
+          f'fill="{red}" opacity="{op:.3f}"/>')
+    # SkyPark slab: solid bar overhanging the outer towers
+    sx0, sx1 = xs[0]-tw/2-7, xs[-1]+tw/2+7
+    A(f'<rect x="{MX(sx0):.2f}" y="{MY(deck_top):.2f}" '
+      f'width="{MX(sx1)-MX(sx0):.2f}" height="{MY(deck_bot)-MY(deck_top):.2f}" '
+      f'fill="{red}" opacity="{op:.3f}"/>')
+
+
+def _supertree(MX, MY, tx, tbase, red, sw, op, A):
+    """One Gardens-by-the-Bay supertree: a thin stem flaring into a CONCAVE
+    trumpet/wineglass canopy (curved ribs bowing outward then up)."""
+    top = 22.0
+    stem_top = (tbase + top) * 0.52
+    rim = 30.0                    # canopy half-width at the top
+    # stem
+    A(f'<line x1="{MX(tx):.2f}" y1="{MY(tbase):.2f}" x2="{MX(tx):.2f}" y2="{MY(stem_top):.2f}" '
+      f'stroke="{red}" stroke-width="{sw*0.8:.2f}" stroke-linecap="round" opacity="{op:.3f}"/>')
+    # canopy ribs: concave flare from stem-top out to the rim
+    ribs = 7
+    for r in range(ribs):
+        f = r / (ribs - 1)                 # 0..1
+        ex = tx + (f - 0.5) * 2 * rim
+        ey = top + abs(f - 0.5) * 6        # slight droop at the outer tips
+        # concave: control pt low & near axis → rib hugs stem then flares up/out
+        cx = tx + (f - 0.5) * rim * 0.35
+        cy = stem_top - (stem_top - top) * 0.25
+        A(f'<path d="M{MX(tx):.2f} {MY(stem_top):.2f} Q{MX(cx):.2f} {MY(cy):.2f} '
+          f'{MX(ex):.2f} {MY(ey):.2f}" fill="none" stroke="{red}" '
+          f'stroke-width="{sw*0.5:.2f}" stroke-linecap="round" opacity="{op:.3f}"/>')
+    # canopy rim arc connecting tips (the flared bell mouth)
+    A(f'<path d="M{MX(tx-rim):.2f} {MY(top+6):.2f} Q{MX(tx):.2f} {MY(top-6):.2f} '
+      f'{MX(tx+rim):.2f} {MY(top+6):.2f}" fill="none" stroke="{red}" '
+      f'stroke-width="{sw*0.5:.2f}" stroke-linecap="round" opacity="{op:.3f}"/>')
+
+
+def _lattice_dome(MX, MY, dl, dr, base, dapex, ink, sw, op, A):
+    """Esplanade: a smooth half-dome outline filled with a diagonal LATTICE
+    (diamond geodesic grid), on a flat base — studied from concept."""
+    import math
+    cx = (dl + dr) / 2
+    rx = (dr - dl) / 2
+    ry = base - dapex
+    # outline (half-ellipse)
+    d = f"M{MX(dl):.2f} {MY(base):.2f} "
+    N = 40
+    for i in range(N + 1):
+        ang = math.pi * (i / N)            # 0..pi → left to right over the top
+        ex = cx - rx * math.cos(ang)
+        ey = base - ry * math.sin(ang)
+        d += f"L{MX(ex):.2f} {MY(ey):.2f} "
+    A(f'<path d="{d}" fill="none" stroke="{ink}" stroke-width="{sw*0.9:.2f}" '
+      f'stroke-linejoin="round" stroke-linecap="round" opacity="{op*0.9:.3f}"/>')
+    # base line
+    A(f'<line x1="{MX(dl):.2f}" y1="{MY(base):.2f}" x2="{MX(dr):.2f}" y2="{MY(base):.2f}" '
+      f'stroke="{ink}" stroke-width="{sw*0.7:.2f}" stroke-linecap="round" opacity="{op*0.9:.3f}"/>')
+    # lattice: two families of diagonal lines clipped to the dome interior.
+    # sample points inside; draw short diagonals on a diamond grid.
+    def inside(px, py):
+        nx = (px - cx) / rx
+        ny = (base - py) / ry
+        return nx*nx + ny*ny <= 1.0 and py <= base
+    step = (dr - dl) / 9.0
+    diag = step
+    # NE-SW diagonals
+    for c in range(-9, 10):
+        x0 = dl + c * step
+        pts = []
+        for k in range(0, 12):
+            px = x0 + k * diag * 0.7
+            py = base - k * diag * 0.7
+            if inside(px, py): pts.append((px, py))
+        if len(pts) >= 2:
+            A(f'<line x1="{MX(pts[0][0]):.2f}" y1="{MY(pts[0][1]):.2f}" '
+              f'x2="{MX(pts[-1][0]):.2f}" y2="{MY(pts[-1][1]):.2f}" stroke="{ink}" '
+              f'stroke-width="{sw*0.34:.2f}" opacity="{op*0.55:.3f}"/>')
+    # NW-SE diagonals
+    for c in range(-9, 10):
+        x0 = dl + c * step
+        pts = []
+        for k in range(0, 12):
+            px = x0 + k * diag * 0.7
+            py = base - k * diag * 0.7
+            # mirror by flipping x direction
+            px = x0 - k * diag * 0.7 + (dr - dl)
+            if inside(px, py): pts.append((px, py))
+        # simpler: redo with explicit NW-SE
+    # NW-SE family (explicit)
+    for c in range(-9, 10):
+        x0 = dr - c * step
+        pts = []
+        for k in range(0, 12):
+            px = x0 - k * diag * 0.7
+            py = base - k * diag * 0.7
+            if inside(px, py): pts.append((px, py))
+        if len(pts) >= 2:
+            A(f'<line x1="{MX(pts[0][0]):.2f}" y1="{MY(pts[0][1]):.2f}" '
+              f'x2="{MX(pts[-1][0]):.2f}" y2="{MY(pts[-1][1]):.2f}" stroke="{ink}" '
+              f'stroke-width="{sw*0.34:.2f}" opacity="{op*0.55:.3f}"/>')
+
+
 def skyline_pulse(x, y, w, h, t, accent=None, op=1.0):
-    """The 'Singapore Skyline-Pulse' from the concept sheet, studied closely:
-
-      • MBS: three TAPERED towers under one overhanging sky-deck bar.
-      • Supertrees: each a CLUSTER of thin curved lines radiating from a single
-        base point, splaying up-and-out into a fountain/canopy (concave ribs,
-        wider at top) — NOT a trunk+blob.
-      • The towers/trees sit on a red SINE WAVEFORM (the 'pulse') that undulates
-        2–3 cycles along the baseline and flows into the dome — skyline morphing
-        into signal.
-      • Esplanade dome: a faceted grey half-dome terminus on the right (NOT red).
-      • A thin connector baseline with dot.modular circle-nodes at both ends.
-
-    Left/centre in accent red; dome in ink grey. UX 0..1000, UY 0..200."""
+    """The 'Singapore Skyline-Pulse' — built from a close per-element study:
+       MBS solid towers+slab, trumpet-canopy supertrees rising from a smooth red
+       pulse wave, and a lattice esplanade dome terminus. Left/centre red; dome
+       grey. UX 0..1000, UY 0..200."""
     import math
     UX, UY = 1000.0, 200.0
     MX, MY = _scaler(x, y, w, h, UX, UY)
@@ -150,72 +251,39 @@ def skyline_pulse(x, y, w, h, t, accent=None, op=1.0):
     L = []; A = L.append
     sw = max(1.6, w / 190.0)
 
-    def line(x1, y1, x2, y2, c=red, width=None, o=op):
-        ww = width if width else sw
-        A(f'<line x1="{MX(x1):.2f}" y1="{MY(y1):.2f}" x2="{MX(x2):.2f}" y2="{MY(y2):.2f}" '
-          f'stroke="{c}" stroke-width="{ww:.2f}" stroke-linecap="round" opacity="{o:.3f}"/>')
+    # ── MBS (left) ──
+    _mbs(MX, MY, base, red, sw, op, A)
 
-    def path(d, c=red, width=None, o=op, fill="none"):
-        ww = width if width else sw
-        A(f'<path d="{d}" fill="{fill}" stroke="{c}" stroke-width="{ww:.2f}" '
-          f'stroke-linecap="round" stroke-linejoin="round" opacity="{o:.3f}"/>')
+    # ── pulse wave through the middle; trees rise from its crests ──
+    trough_xs = [300, 366, 432]
+    # smooth sine baseline that the trees sit on (gentle, not sharp V)
+    dwave = f"M{MX(170):.2f} {MY(base):.2f} "
+    wx0, wx1 = 250.0, 500.0
+    for i in range(0, 49):
+        u = i / 48
+        wx = wx0 + (wx1 - wx0) * u
+        wy = base - 14 * math.sin(2 * math.pi * 2.0 * u)
+        dwave += f"L{MX(wx):.2f} {MY(wy):.2f} "
+    dwave += f"L{MX(560):.2f} {MY(base):.2f} "
+    A(f'<path d="{dwave}" fill="none" stroke="{red}" stroke-width="{sw*1.0:.2f}" '
+      f'stroke-linecap="round" stroke-linejoin="round" opacity="{op:.3f}"/>')
 
-    # ── MBS: three tapered towers + overhanging sky-deck (left) ──
-    deck_y = 48.0
-    for bx in (90, 122, 154):
-        topw, botw = 4.0, 7.0
-        path(f"M{MX(bx-botw/2):.2f} {MY(base):.2f} L{MX(bx-topw/2):.2f} {MY(deck_y+3):.2f} "
-             f"L{MX(bx+topw/2):.2f} {MY(deck_y+3):.2f} L{MX(bx+botw/2):.2f} {MY(base):.2f}",
-             fill=red, width=sw*0.4)
-    path(f"M{MX(74):.2f} {MY(deck_y):.2f} L{MX(170):.2f} {MY(deck_y):.2f}", width=sw*1.8)
-
-    # ── the pulse waveform: a flat baseline that, in the MIDDLE, dips into sharp
-    #    V-troughs; the supertrees rise as tall narrow fountains FROM those troughs
-    #    (the trunks ARE the upstroke of the wave — skyline morphing into signal). ──
-    trough_xs = [298, 364, 430]      # three supertrees
-    twidth = 24.0
-    tree_top = 18.0                  # rise higher (taller fountains)
-    dwave = f"M{MX(60):.2f} {MY(base):.2f} L{MX(trough_xs[0]-twidth-12):.2f} {MY(base):.2f} "
-    for i, tx in enumerate(trough_xs):
-        dwave += (f"L{MX(tx-10):.2f} {MY(base+22):.2f} "    # sharper, deeper V trough
-                  f"L{MX(tx):.2f} {MY(base):.2f} ")
-        if i < len(trough_xs) - 1:
-            nx = trough_xs[i+1]
-            dwave += f"L{MX((tx+nx)/2):.2f} {MY(base-12):.2f} "
-    dwave += f"L{MX(trough_xs[-1]+twidth+12):.2f} {MY(base):.2f} L{MX(556):.2f} {MY(base):.2f} "
-    path(dwave, width=sw*1.05)
-
-    # ── supertrees: tall delicate fountains rising from each trough ──
+    # ── supertrees rising from the wave crests ──
     for tx in trough_xs:
-        ribs = 9
-        spread = 20.0
-        for r in range(ribs):
-            f = r / (ribs - 1)
-            ex = tx + (f - 0.5) * 2 * spread
-            ey = tree_top + abs(f - 0.5) * 22     # outer ribs splay down/out
-            cx = tx + (f - 0.5) * spread * 0.3    # ribs hug the trunk low, splay high
-            cy = base - (base - tree_top) * 0.42
-            path(f"M{MX(tx):.2f} {MY(base):.2f} Q{MX(cx):.2f} {MY(cy):.2f} "
-                 f"{MX(ex):.2f} {MY(ey):.2f}", width=sw*0.38)
+        # crest y at this x
+        u = (tx - wx0) / (wx1 - wx0)
+        cy = base - 14 * math.sin(2 * math.pi * 2.0 * u)
+        _supertree(MX, MY, tx, cy, red, sw, op, A)
 
-    # ── esplanade dome terminus (grey, FLAT wide half-dome on baseline) ──
-    dl, dr, dapex = 596.0, 722.0, 78.0
-    cx_dome = (dl + dr) / 2
-    path(f"M{MX(dl):.2f} {MY(base):.2f} "
-         f"C{MX(dl+6):.2f} {MY(dapex+18):.2f} {MX(cx_dome-38):.2f} {MY(dapex):.2f} {MX(cx_dome):.2f} {MY(dapex):.2f} "
-         f"C{MX(cx_dome+38):.2f} {MY(dapex):.2f} {MX(dr-6):.2f} {MY(dapex+18):.2f} {MX(dr):.2f} {MY(base):.2f}",
-         c=ink, width=sw*1.0, o=op*0.9)
-    for u in (0.3, 0.5, 0.7):
-        mx = dl + (dr - dl) * u
-        bow = dapex + 8 + abs(u - 0.5) * 26
-        path(f"M{MX(mx):.2f} {MY(base):.2f} Q{MX(mx):.2f} {MY(bow):.2f} {MX(cx_dome):.2f} {MY(dapex+3):.2f}",
-             c=ink, width=sw*0.38, o=op*0.6)
+    # ── esplanade lattice dome (right, grey) ──
+    _lattice_dome(MX, MY, 600.0, 724.0, base, 70.0, ink, sw, op, A)
 
     # ── connector baseline + dot.modular end nodes ──
-    line(50, base, 730, base, c=ink, width=sw*0.55, o=op*0.5)
-    for dx in (50, 730):
+    A(f'<line x1="{MX(50):.2f}" y1="{MY(base):.2f}" x2="{MX(732):.2f}" y2="{MY(base):.2f}" '
+      f'stroke="{ink}" stroke-width="{sw*0.5:.2f}" stroke-linecap="round" opacity="{op*0.5:.3f}"/>')
+    for dx in (50, 732):
         A(f'<circle cx="{MX(dx):.2f}" cy="{MY(base):.2f}" r="{6.0/UX*w:.2f}" '
-          f'fill="none" stroke="{ink}" stroke-width="{sw*0.55:.2f}" opacity="{op*0.75:.3f}"/>')
+          f'fill="none" stroke="{ink}" stroke-width="{sw*0.5:.2f}" opacity="{op*0.7:.3f}"/>')
     return "".join(L)
 
 
