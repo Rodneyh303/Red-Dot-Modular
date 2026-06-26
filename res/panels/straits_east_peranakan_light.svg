@@ -28,7 +28,7 @@
   
   <path d="M965 250 L1000 250 L1000 343 L965 343 Z" fill="#e8e8ea"/>
   
-  <path d="M35 340 C40 120 240 45 500 42 C720 45 900 125 965 250" fill="none" stroke="#d8d9dc" stroke-width="6" stroke-linecap="round"/>
+  <path d="M0 0 L35 340 C40 120 240 45 500 42 L500 0 Z" fill="#e8e8ea"/><path d="M0 0 L0 450 L35 450 L35 340 C30 250 28 150 35 60 Z" fill="#e8e8ea"/><rect x="0" y="408" width="1000" height="42" fill="#e8e8ea"/><path d="M35 340 C40 120 240 45 500 42 C720 45 900 125 965 250" fill="none" stroke="#d8d9dc" stroke-width="6" stroke-linecap="round"/>
   <path d="M18 342 L840 285" fill="none" stroke="#d8d9dc" stroke-width="10" stroke-linecap="round"/>
   <path d="M35 405 L760 375" fill="none" stroke="#d8d9dc" stroke-width="9" stroke-linecap="round"/>
   

@@ -104,6 +104,21 @@ def esplanade(x, y, w, h, t, op=0.16):
     s = _re2.sub(r'<svg[^>]*>', '', s); s = s.replace('</svg>', '')
     s = _re2.sub(r'<rect width="1000" height="450" fill="#000"/>', '', s)
     s = _re2.sub(r'<!--.*?-->', '', s, flags=_re2.DOTALL)
+    # Extra crop fills to kill the residual spill the asset's own sky-frame misses:
+    #  (A) LEFT skirt — the latitude band arcs curve out past the dome's LEFT
+    #      outline; this path fills everything left of that outline with bg.
+    #  (B) BELOW the struts — the dome skirt + lower ribs hang below the truss
+    #      platform; this rect fills everything under y≈408 with bg.
+    # They use the SAME black (#000) the asset's frame uses, so the later recolour
+    # turns them into bg and the flatten step gives them their own fill. Inserted
+    # right before the dome OUTLINE path so they sit over the structure but under
+    # the bright outline/truss edges (which redraw crisply on top).
+    _left_crop = ('<path d="M0 0 L35 340 C40 120 240 45 500 42 L500 0 Z" fill="#000"/>'
+                  '<path d="M0 0 L0 450 L35 450 L35 340 C30 250 28 150 35 60 Z" fill="#000"/>')
+    _bottom_crop = '<rect x="0" y="408" width="1000" height="42" fill="#000"/>'
+    _inject = _left_crop + _bottom_crop
+    # place just before the dome OUTLINE (the first stroke="#787878" width=6 path)
+    s = _re2.sub(r'(<path d="M35 340 C40 120)', _inject + r'\1', s, count=1)
     # recolour: dome structure greys → motif, brightest highlight → ink.
     for g in ['#666', '#6c6c6c', '#727272', '#767676', '#777', '#787878']:
         s = s.replace(f'"{g}"', f'"{motif}"')
