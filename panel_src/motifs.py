@@ -128,191 +128,156 @@ def marina_waves(x, y, w, h, t, op=0.34, rows=None):
 # 3. SKYLINE-PULSE  (the red identity line from the concept)
 # ─────────────────────────────────────────────────────────────────────────────
 def _mbs(MX, MY, base, red, sw, op, A):
-    """Marina Bay Sands as a SOLID red silhouette (measured from the concept:
-    the three towers + SkyPark slab read as one filled mass ~88px×53px). Three
-    pillars joined by a continuous overhanging deck across the top, drawn as a
-    single filled path so it reads solid, not as separate stumps."""
-    # measured UX block 52..335, top 15, base 126 (mapped). Tower tops meet deck.
-    bx0, bx1 = 60.0, 250.0          # block left/right
-    deck_top = 14.0
-    deck_bot = 30.0
-    tw = (bx1 - bx0)
-    # three pillars
-    pw = 30.0                       # pillar width
-    gaps = [bx0, bx0 + (tw-pw)/2, bx1-pw]   # left, centre, right pillar x-starts
-    # one filled path: deck slab (overhanging) + three pillars hanging below it
-    d = (f"M{MX(bx0-10):.2f} {MY(deck_top):.2f} "
-         f"L{MX(bx1+10):.2f} {MY(deck_top):.2f} "
-         f"L{MX(bx1+10):.2f} {MY(deck_bot):.2f} ")
-    # right pillar down, across to its left edge, up to deck — then notch to next
-    # Simpler & robust: deck as a rect, pillars as rects, all same red (fused look)
-    A(f'<rect x="{MX(bx0-10):.2f}" y="{MY(deck_top):.2f}" '
-      f'width="{MX(bx1+10)-MX(bx0-10):.2f}" height="{MY(deck_bot)-MY(deck_top):.2f}" '
-      f'fill="{red}" opacity="{op:.3f}"/>')
-    for gx in gaps:
-        A(f'<rect x="{MX(gx):.2f}" y="{MY(deck_bot):.2f}" '
-          f'width="{MX(gx+pw)-MX(gx):.2f}" height="{MY(base)-MY(deck_bot):.2f}" '
+    """Marina Bay Sands (measured from concept): THREE separate tall pillars
+    (~20 UX wide, ~10 UX gaps) joined near the top by a horizontal SkyPark deck
+    slab that the pillars poke slightly above. Pillars run from the deck down to
+    the baseline. Drawn as filled rects so it reads architectural, not as wire."""
+    pillars = [(52, 116), (174, 239), (290, 336)]   # (x0,x1) measured
+    deck_y = 21.0          # SkyPark deck top
+    deck_h = 7.0
+    ptop = 11.0            # pillars poke this high above deck
+    for (px0, px1) in pillars:
+        A(f'<rect x="{MX(px0):.2f}" y="{MY(ptop):.2f}" '
+          f'width="{MX(px1)-MX(px0):.2f}" height="{MY(base)-MY(ptop):.2f}" '
           f'fill="{red}" opacity="{op:.3f}"/>')
+    # SkyPark deck slab spanning all three pillars, overhanging the ends
+    A(f'<rect x="{MX(pillars[0][0]-12):.2f}" y="{MY(deck_y):.2f}" '
+      f'width="{MX(pillars[-1][1]+12)-MX(pillars[0][0]-12):.2f}" '
+      f'height="{MY(deck_y+deck_h)-MY(deck_y):.2f}" fill="{red}" opacity="{op:.3f}"/>')
 
 
-def _supertree(MX, MY, tx, tbase, height, rim, ink, red, sw, op, A):
-    """A Gardens-by-the-Bay supertree of a GIVEN height/rim (they differ in the
-    concept). Trunk rises from the wave (tbase) to a canopy; branches splay out
-    AND continue ABOVE the canopy rim (the tips overshoot the bell mouth, as in
-    the concept). Concave ribs."""
-    top = tbase - height
-    stem_top = tbase - height * 0.45
+def _supertree(MX, MY, tx, tbase, top, halfw, red, sw, op, A):
+    """Gardens-by-the-Bay supertree (measured): trunk rises from the wave at
+    tbase; branches splay into a concave canopy AND the central branches
+    OVERSHOOT above the canopy rim (measured: tips reach well above the bell).
+    `top` = highest branch-tip y; `halfw` = canopy half-width."""
+    stem_top = tbase - (tbase - top) * 0.42
     # trunk
     A(f'<line x1="{MX(tx):.2f}" y1="{MY(tbase):.2f}" x2="{MX(tx):.2f}" y2="{MY(stem_top):.2f}" '
-      f'stroke="{red}" stroke-width="{sw*0.9:.2f}" stroke-linecap="round" opacity="{op:.3f}"/>')
+      f'stroke="{red}" stroke-width="{sw*0.95:.2f}" stroke-linecap="round" opacity="{op:.3f}"/>')
+    # rim of the bell (canopy mouth) — sits BELOW the overshooting centre tips
+    rim_y = top + (tbase - top) * 0.26
+    A(f'<path d="M{MX(tx-halfw):.2f} {MY(rim_y):.2f} Q{MX(tx):.2f} {MY(rim_y-(tbase-top)*0.10):.2f} '
+      f'{MX(tx+halfw):.2f} {MY(rim_y):.2f}" fill="none" stroke="{red}" '
+      f'stroke-width="{sw*0.5:.2f}" stroke-linecap="round" opacity="{op:.3f}"/>')
+    # branches: concave ribs from stem_top; centre ribs overshoot ABOVE rim to `top`
     ribs = 7
     for r in range(ribs):
-        f = r / (ribs - 1)                      # 0..1
-        # tips overshoot ABOVE the rim: middle ribs highest, outer ones flare wide
-        tipx = tx + (f - 0.5) * 2 * rim
-        tipy = top - (1 - abs(f - 0.5) * 2) * height * 0.18   # centre tips highest, above rim
-        cx = tx + (f - 0.5) * rim * 0.30        # hug trunk low
-        cy = stem_top - (stem_top - top) * 0.35
+        f = r / (ribs - 1)                       # 0..1
+        centre = 1 - abs(f - 0.5) * 2            # 1 at middle, 0 at edges
+        tipx = tx + (f - 0.5) * 2 * halfw
+        tipy = top + (1 - centre) * (rim_y - top) * 0.9   # centre tips highest (above rim)
+        cx = tx + (f - 0.5) * halfw * 0.28       # hug the trunk low → concave
+        cy = stem_top - (stem_top - rim_y) * 0.4
         A(f'<path d="M{MX(tx):.2f} {MY(stem_top):.2f} Q{MX(cx):.2f} {MY(cy):.2f} '
           f'{MX(tipx):.2f} {MY(tipy):.2f}" fill="none" stroke="{red}" '
           f'stroke-width="{sw*0.5:.2f}" stroke-linecap="round" opacity="{op:.3f}"/>')
-    # canopy rim arc (the bell mouth) sits BELOW the overshooting tips
-    A(f'<path d="M{MX(tx-rim):.2f} {MY(top+height*0.10):.2f} '
-      f'Q{MX(tx):.2f} {MY(top-height*0.04):.2f} {MX(tx+rim):.2f} {MY(top+height*0.10):.2f}" '
-      f'fill="none" stroke="{red}" stroke-width="{sw*0.5:.2f}" stroke-linecap="round" opacity="{op:.3f}"/>')
 
 
-def _wave_through_trees(MX, MY, base, trees, x_in, x_out, red, sw, op, A):
-    """Red pulse wave: bigger amplitude, dips BELOW the baseline between trees and
-    rises to meet each trunk base (the wave and trunks are one continuous line —
-    skyline morphing into signal). `trees` = list of (tx, tbase, ...). Returns the
-    tree bases as points the wave passes through."""
-    import math
-    amp = 30.0          # bigger amplitude (measured: troughs well below baseline)
+def _wave_to_trunks(MX, MY, base, trees, x_in, x_out, trough_y, red, sw, op, A):
+    """Red pulse: weaves with BIG amplitude, dropping into a deep trough BETWEEN
+    each tree and rising to meet each trunk base (wave and trunks are one line —
+    skyline morphing into signal). trough_y measured well below the baseline."""
+    txs = [t[0] for t in trees]
     pts = [(x_in, base)]
-    txs = [tr[0] for tr in trees]
-    # weave: trough before first tree, up to each trunk base, trough between, etc.
     prev = x_in
-    for i, (tx, tbase) in enumerate([(t[0], t[1]) for t in trees]):
-        # trough midway between prev structure and this trunk
-        mid = (prev + tx) / 2
-        pts.append((mid, base + amp))          # dip below baseline
-        pts.append((tx, tbase))                # rise to the trunk base
+    for tx in txs:
+        pts.append(((prev + tx) / 2, trough_y))   # deep trough before the trunk
+        pts.append((tx, base))                     # rise to trunk base
         prev = tx
-    pts.append(((prev + x_out) / 2, base + amp * 0.7))
+    pts.append(((prev + x_out) / 2, trough_y))
     pts.append((x_out, base))
-    # build a smooth-ish polyline (cardinal-style via quadratics between pts)
+    # smooth through points with quadratic midpoint smoothing
     d = f"M{MX(pts[0][0]):.2f} {MY(pts[0][1]):.2f} "
     for i in range(1, len(pts)):
-        x0, y0 = pts[i-1]; x1, y1 = pts[i]
-        mx = (x0 + x1) / 2
-        d += f"Q{MX(x0):.2f} {MY(y0):.2f} {MX(mx):.2f} {MY((y0+y1)/2):.2f} "
-        d += f"Q{MX(x1):.2f} {MY(y1):.2f} {MX(x1):.2f} {MY(y1):.2f} "
-    A(f'<path d="{d}" fill="none" stroke="{red}" stroke-width="{sw*1.0:.2f}" '
+        x0p, y0p = pts[i-1]; x1p, y1p = pts[i]
+        mx = (x0p + x1p) / 2; my = (y0p + y1p) / 2
+        d += f"Q{MX(x0p):.2f} {MY(y0p):.2f} {MX(mx):.2f} {MY(my):.2f} "
+    d += f"L{MX(pts[-1][0]):.2f} {MY(pts[-1][1]):.2f} "
+    A(f'<path d="{d}" fill="none" stroke="{red}" stroke-width="{sw*1.05:.2f}" '
       f'stroke-linecap="round" stroke-linejoin="round" opacity="{op:.3f}"/>')
 
 
-def _lattice_dome(MX, MY, dl, dr, base, dapex, ink, sw, op, A):
-    """Esplanade with PERSPECTIVE (measured: shallow wide dome, apex flat across
-    the middle, and a CURVED bottom lip — the platform seen at a slight downward
-    angle so the front edge bows lower in the centre). Lattice diamond grid
-    inside, clipped to the dome shell."""
-    import math
+def _lattice_dome(MX, MY, dl, dr, base, apex, ink, sw, op, A):
+    """Esplanade with PERSPECTIVE (measured): broad FLAT apex; the bottom front
+    lip drops LOWER on the right than the left (platform seen at an angle); a
+    lattice diamond grid clipped to the shell. apex/base measured."""
     cx = (dl + dr) / 2
     rx = (dr - dl) / 2
-    ry = base - dapex
-    lip = 14.0   # how much the front platform lip bows below the chord (perspective)
-
-    # top shell: flattened arch (apex broad/flat, measured)
     def top_y(px):
-        nx = (px - cx) / rx                  # -1..1
-        # flattened cosine: |nx|^1.6 keeps the apex broad
-        return dapex + ry * (abs(nx) ** 1.6)
-    # bottom lip: a shallow downward arc (perspective ellipse front edge)
-    def bot_y(px):
+        nx = (px - cx) / rx                       # -1..1
+        return apex + (base_left - apex) * (abs(nx) ** 1.7) if False else \
+               apex + ( (base) - apex) * (abs(nx) ** 1.7)
+    # measured: left base UY~147, front lip UY~175 (lower). Tilt the base line.
+    base_l, base_r = base - 14.0, base + 14.0     # left higher, right lower (perspective)
+    def baseline_y(px):
+        u = (px - dl) / (dr - dl)                 # 0..1 left→right
+        return base_l + (base_r - base_l) * u
+    def shell_top(px):
         nx = (px - cx) / rx
-        return base + lip * (1 - nx * nx)    # bows DOWN in the middle
-
-    # outline: across the top, down the right, back along the curved front lip
-    d = f"M{MX(dl):.2f} {MY(top_y(dl)):.2f} "
-    N = 36
-    for i in range(1, N + 1):
-        px = dl + (dr - dl) * i / N
-        d += f"L{MX(px):.2f} {MY(top_y(px)):.2f} "
-    for i in range(N + 1):                   # back along the front lip (right→left)
-        px = dr - (dr - dl) * i / N
-        d += f"L{MX(px):.2f} {MY(bot_y(px)):.2f} "
+        return apex + (baseline_y(px) - apex) * (abs(nx) ** 1.7)
+    # outline: across flat-ish top then along the tilted front lip back
+    N = 40
+    d = f"M{MX(dl):.2f} {MY(shell_top(dl)):.2f} "
+    for i in range(1, N+1):
+        px = dl + (dr-dl)*i/N
+        d += f"L{MX(px):.2f} {MY(shell_top(px)):.2f} "
+    # front lip (right edge down then back-left along the lip)
+    for i in range(N+1):
+        px = dr - (dr-dl)*i/N
+        d += f"L{MX(px):.2f} {MY(baseline_y(px)):.2f} "
     d += "Z"
-    A(f'<path d="{d}" fill="none" stroke="{ink}" stroke-width="{sw*0.9:.2f}" '
+    A(f'<path d="{d}" fill="none" stroke="{ink}" stroke-width="{sw*0.85:.2f}" '
       f'stroke-linejoin="round" stroke-linecap="round" opacity="{op*0.9:.3f}"/>')
-
-    # lattice diamond grid inside the shell (between top_y and bot_y)
+    # lattice diamonds clipped to shell
     def inside(px, py):
-        return top_y(px) <= py <= bot_y(px) and dl <= px <= dr
-    step = (dr - dl) / 11.0
-    # two diagonal families forming diamonds
+        return shell_top(px) <= py <= baseline_y(px) and dl <= px <= dr
+    step = (dr - dl) / 10.0
     for sign in (+1, -1):
-        for c in range(-12, 13):
+        for c in range(-11, 12):
             x_start = cx + c * step
-            pts = []
-            for k in range(0, 60):
-                px = x_start + sign * k * step * 0.5
-                py = base + lip - k * step * 0.5      # rise from the lip upward
-                if inside(px, py):
-                    pts.append((px, py))
-                elif pts:
-                    break
-            if len(pts) >= 2:
-                A(f'<line x1="{MX(pts[0][0]):.2f}" y1="{MY(pts[0][1]):.2f}" '
-                  f'x2="{MX(pts[-1][0]):.2f}" y2="{MY(pts[-1][1]):.2f}" stroke="{ink}" '
+            seg = []
+            for k in range(0, 50):
+                px = x_start + sign * k * step * 0.55
+                py = base_r - k * step * 0.55
+                if inside(px, py): seg.append((px, py))
+                elif seg: break
+            if len(seg) >= 2:
+                A(f'<line x1="{MX(seg[0][0]):.2f}" y1="{MY(seg[0][1]):.2f}" '
+                  f'x2="{MX(seg[-1][0]):.2f}" y2="{MY(seg[-1][1]):.2f}" stroke="{ink}" '
                   f'stroke-width="{sw*0.32:.2f}" opacity="{op*0.5:.3f}"/>')
 
 
 def skyline_pulse(x, y, w, h, t, accent=None, op=1.0):
-    """The 'Singapore Skyline-Pulse' — built from a close per-element study:
-       MBS solid towers+slab, trumpet-canopy supertrees rising from a smooth red
-       pulse wave, and a lattice esplanade dome terminus. Left/centre red; dome
-       grey. UX 0..1000, UY 0..200."""
-    import math
+    """'Singapore Skyline-Pulse', rebuilt from per-element pixel MEASUREMENT of
+    the concept: 3 MBS pillars + SkyPark deck; 3 supertrees of DIFFERENT sizes
+    (centre tallest/widest) whose centre branches overshoot above the canopy rim
+    and whose trunks rise out of a big-amplitude red pulse wave; an esplanade
+    lattice dome with perspective. Red left/centre, grey dome. UX 0..1000."""
     UX, UY = 1000.0, 200.0
     MX, MY = _scaler(x, y, w, h, UX, UY)
-    red = accent or t["accent"]
-    ink = t["ink"]; bg = t["bg"]
-    base = 140.0
+    red = accent or t["accent"]; ink = t["ink"]
+    base = 126.0          # measured baseline
     L = []; A = L.append
     sw = max(1.6, w / 190.0)
 
-    # ── MBS (left) ──
     _mbs(MX, MY, base, red, sw, op, A)
 
-    # ── supertrees of DIFFERENT heights (measured: middle tallest), with the red
-    #    pulse wave weaving below the baseline and rising into each trunk base ──
-    # (tx, height, rim) — middle tree tallest & widest, per the concept
-    trees = [(300, 70.0, 24.0), (372, 118.0, 34.0), (444, 92.0, 28.0)]
-    # the wave passes through each trunk base at the baseline; draw it first
-    _wave_through_trees(MX, MY, base, [(tx, base) for tx, _, _ in trees],
-                        180.0, 556.0, red, sw, op, A)
-    for tx, hgt, rim in trees:
-        _supertree(MX, MY, tx, base, hgt, rim, ink, red, sw, op, A)
+    # trees: (tx, canopy_top, halfwidth) measured — B centre tallest & widest
+    trees = [(455, 65, 30), (542, 6, 46), (639, 65, 26)]
+    _wave_to_trunks(MX, MY, base, trees, 175.0, 700.0, base + 56.0, red, sw, op, A)
+    for tx, top, hw in trees:
+        _supertree(MX, MY, tx, base, top, hw, red, sw, op, A)
 
-    # ── esplanade lattice dome with perspective (right, grey) ──
-    _lattice_dome(MX, MY, 600.0, 730.0, base, 64.0, ink, sw, op, A)
+    _lattice_dome(MX, MY, 713.0, 940.0, base, 63.0, ink, sw, op, A)
 
-    # ── connector baseline + dot.modular end nodes ──
-    A(f'<line x1="{MX(50):.2f}" y1="{MY(base):.2f}" x2="{MX(160):.2f}" y2="{MY(base):.2f}" '
-      f'stroke="{ink}" stroke-width="{sw*0.5:.2f}" stroke-linecap="round" opacity="{op*0.5:.3f}"/>')
-    A(f'<line x1="{MX(560):.2f}" y1="{MY(base):.2f}" x2="{MX(600):.2f}" y2="{MY(base):.2f}" '
-      f'stroke="{ink}" stroke-width="{sw*0.5:.2f}" stroke-linecap="round" opacity="{op*0.5:.3f}"/>')
-    A(f'<line x1="{MX(730):.2f}" y1="{MY(base):.2f}" x2="{MX(770):.2f}" y2="{MY(base):.2f}" '
-      f'stroke="{ink}" stroke-width="{sw*0.5:.2f}" stroke-linecap="round" opacity="{op*0.5:.3f}"/>')
-    for dx in (50, 770):
+    # connector nodes at the ends
+    for dx in (150, 960):
         A(f'<circle cx="{MX(dx):.2f}" cy="{MY(base):.2f}" r="{6.0/UX*w:.2f}" '
-          f'fill="none" stroke="{ink}" stroke-width="{sw*0.5:.2f}" opacity="{op*0.7:.3f}"/>')
+          f'fill="none" stroke="{ink}" stroke-width="{sw*0.5:.2f}" opacity="{op*0.6:.3f}"/>')
     return "".join(L)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# self-test render
 # ─────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     import cairosvg
