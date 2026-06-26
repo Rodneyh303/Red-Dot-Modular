@@ -229,3 +229,18 @@ hand-rolled permutation arrays** (e.g. `laneMap[6]` in
 MonoSandsParameterManager::syncPatternEngineToEditor — currently a correct but
 duplicate STRAND→EDITOR table) with a named `STRAND_TO_EDITOR` constant in
 LaneMapping.hpp, so all four systems' conversions live in exactly one file.
+
+## BUILD-CHECK TODO (needs compile, noted not done)
+
+After the VoiceResolver work, verify the **modulation arcs** still render correctly,
+especially for POLY voices on East/Macro:
+- The spread/CV arcs (pendingSpreadArcs → arc->isActive / getModNorm predicates)
+  read per-voice spread state (e.g. polySpreadEffective[v][lane], spreadEffective[lane]).
+  VoiceResolver changed voice/slot addressing (kMonoSlot, voice v → slot v+1), so the
+  arc predicates that look up per-voice values may be reading the wrong slot.
+- Specifically check: East arc isActive lane>=4 vs >=3 (accent), and that poly-tab
+  arcs reflect the displayed voice, not voice 0.
+- The Mono arc predicate (sprCvId index) was already touched in the regression fix;
+  confirm it still lights only for connected spread CV on the right lanes.
+Cannot verify without a build (live widget + engine state). Flagging for the next
+build session.
