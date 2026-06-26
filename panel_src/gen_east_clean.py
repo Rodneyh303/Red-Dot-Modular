@@ -239,11 +239,14 @@ def gen(dark):
         for p,x in enumerate(JACK_X):  kit_shape("input", 0+lane*4+p, x, y)
         for p,x in enumerate(ATTEN_X): kit_shape("param", 4+lane*4+p, x, y)
         kit_shape("param", lane, SPREAD_X, y)  # SPREAD_R/M/O/A engine lane index
-    # East opt-in (BASE) latch markers — engine lane indexed, at blend group position
-    for g in range(4):
-        l = DISPLAY_ORDER[g]
-        ox,oy = OWN_XY[l]
-        A(f'<circle id="param_owner_{l}" cx="{px(ox):.2f}" cy="{px(oy):.2f}" r="0.5" fill="none" stroke="none"/>')
+    # East opt-in (BASE) owner latches — now positioned ON the SRC owner-source
+    # cells (right of the editor). Each cell IS the per-lane owner button: the
+    # bound DimmableLatch renders/fills here by ownership state. Indexed by ENGINE
+    # lane l, placed at the editor row that displays that lane (DISPLAY_ORDER).
+    for row in range(4):
+        l = DISPLAY_ORDER[row]
+        A(f'<circle id="param_owner_{l}" cx="{px(OWNER_X):.2f}" cy="{px(rowY(row)):.2f}" '
+          f'r="0.5" fill="none" stroke="none"/>')
     A(f'<circle id="light_connect" cx="{px(W_MM*0.5):.2f}" cy="{px(124.0):.2f}" r="0.5" fill="none" stroke="none"/>')
     A('</g>')
     A('</svg>')

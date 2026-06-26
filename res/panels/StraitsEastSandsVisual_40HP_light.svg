@@ -162,10 +162,10 @@
 <circle id="param_18" cx="180.12" cy="191.93" r="0.5" fill="none" stroke="none"/>
 <circle id="param_19" cx="206.69" cy="191.93" r="0.5" fill="none" stroke="none"/>
 <circle id="param_3" cx="236.22" cy="191.93" r="0.5" fill="none" stroke="none"/>
-<circle id="param_owner_1" cx="382.75" cy="256.89" r="0.5" fill="none" stroke="none"/>
-<circle id="param_owner_2" cx="464.69" cy="256.89" r="0.5" fill="none" stroke="none"/>
-<circle id="param_owner_0" cx="300.81" cy="256.89" r="0.5" fill="none" stroke="none"/>
-<circle id="param_owner_3" cx="546.63" cy="256.89" r="0.5" fill="none" stroke="none"/>
+<circle id="param_owner_1" cx="605.31" cy="85.63" r="0.5" fill="none" stroke="none"/>
+<circle id="param_owner_2" cx="605.31" cy="121.06" r="0.5" fill="none" stroke="none"/>
+<circle id="param_owner_0" cx="605.31" cy="156.50" r="0.5" fill="none" stroke="none"/>
+<circle id="param_owner_3" cx="605.31" cy="191.93" r="0.5" fill="none" stroke="none"/>
 <circle id="light_connect" cx="322.50" cy="366.14" r="0.5" fill="none" stroke="none"/>
 </g>
 </svg>
