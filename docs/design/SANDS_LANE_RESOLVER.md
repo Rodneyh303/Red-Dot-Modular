@@ -244,3 +244,30 @@ especially for POLY voices on East/Macro:
   confirm it still lights only for connected spread CV on the right lanes.
 Cannot verify without a build (live widget + engine state). Flagging for the next
 build session.
+
+## STEP 3 OUTCOME: literals→PL_ constants done; PolyLane renumber DEFERRED (by design)
+
+Sub-step 3a (DONE): converted every raw poly-lane literal in
+MonsoonExpanderManager.cpp to `SequencerEngine::PL_*` constants — the
+`polyLen/Off/Rot[v][lane]` writes, the `combineLOR(lane,..)` / `combineSpread(lane,..)`
+calls, and the `SpreadInterp::apply(..,lane,..)` calls now all name the lane, so
+the three parallel index conventions move together and the raw-index hazard that
+bred earlier bugs is gone. Behaviour-inert (same numbers, named).
+
+Sub-step 3b (PolyLane enum renumber → editor order): DEFERRED, deliberately.
+Reassessment during 3a showed the renumber is not worth its risk:
+- The only thing it would buy is making `ENGINE_LANE_TO_EDITOR` (a 4-entry table)
+  the identity. That table has 12 live uses, ALL display-mapping (placing a
+  poly/engine lane's data at the right editor row) — none in the audio path. It
+  is already correct, well-named, and isolated.
+- Renumbering PolyLane would force changes to `SpreadInterp`'s lane→slew-buffer
+  `switch` (its lane arg is really a PatternEngine BUFFER selector — rhythm=0,
+  melody=1, octave=2, accent=3 — that only coincidentally equals PolyLane today),
+  risking a circular include (SpreadInterp includes PatternEngine, not
+  SequencerEngine) and touching every mono+poly SpreadInterp call site.
+- Net: high blast radius to delete one small correct table. Bad trade.
+
+So the collapse's useful, safe core is complete: EngineStrand (step 1) and Mono
+LOR (step 2) are editor-ordered; the poly lane hazard is de-risked by naming
+(3a). `ENGINE_LANE_TO_EDITOR` / `SPREAD_LANE_TO_EDITOR` STAY as the documented
+poly/spread→editor display bridge. They are not identity and that is fine.
