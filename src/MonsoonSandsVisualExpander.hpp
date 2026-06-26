@@ -8,11 +8,11 @@ using namespace rack;
 namespace SandsMonoVisualIds {
 
     // ── Panel ────────────────────────────────────────────────────────────
-    static constexpr float W_MM     = 213.36f;  // 42HP (was 40HP; +2HP right strip for
-                                                 // the per-lane probability CV out column)
+    static constexpr float W_MM     = 218.44f;  // 43HP (42 + 1HP for the per-lane owner-source block)
     static constexpr float ED_X     = 88.f;
-    static constexpr float PROB_OUT_X = 207.f;   // output jack column (new right strip)
-    static constexpr float ED_W     = PROB_OUT_X - ED_X - 8.f;  // editor stops left of the outs
+    static constexpr float ED_W     = 111.f;    // editor width (fixed; no longer tied to PROB_OUT_X)
+    static constexpr float OWNER_X    = 205.f;  // owner cell column (matches East/Macro)
+    static constexpr float PROB_OUT_X = 212.f;  // output jack column (pushed right by the owner block)
     static constexpr float ED_Y     = 16.f;
     static constexpr float ROW_TOP  = 14.f;
     static constexpr float ROW_BOT  = 108.f;

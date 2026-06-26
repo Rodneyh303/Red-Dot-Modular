@@ -11,8 +11,9 @@ namespace StraitsMacroVisualIds {
     // Macro does the same job as the East visual (spread control) but GLOBAL
     // rather than per-lane, so it shares East's 40HP width and column geometry
     // for consistency and to give the spread column proper room.
-    static constexpr float W_MM    = 213.36f;   // 42HP (was 40HP; +2HP for 3 poly prob outs)
-    static constexpr float PROB_OUT_X = 207.f;  // poly prob-out jack column (right strip)
+    static constexpr float W_MM    = 218.44f;   // 43HP (42 + 1HP for the per-lane owner-source block)
+    static constexpr float OWNER_X    = 205.f;  // owner cell column (matches East)
+    static constexpr float PROB_OUT_X = 212.f;  // poly prob-out jack column (pushed right by owner block)
     static constexpr float ROW_TOP = 14.f;
     static constexpr float ROW_BOT = 108.f;
     static constexpr int   N_ROWS  = 4;         // 1 row per lane (REST/MEL/OCT/ACCENT)
@@ -28,8 +29,7 @@ namespace StraitsMacroVisualIds {
     static constexpr float COL_A4 = 70.f;   // SPR depth
     static constexpr float SPREAD_X = 80.f; // per-lane spread base trimpot
     static constexpr float ED_X   = 88.f;   // editor (matches SandsMonoVisual)
-    //static constexpr float ED_X   = 58.f;       // editor starts after the spread column
-    static constexpr float ED_W   = PROB_OUT_X - ED_X - 8.f;  // editor stops left of prob outs
+    static constexpr float ED_W   = 111.f;  // editor width (fixed; no longer tied to PROB_OUT_X)
     // Mirror TAB_TOP_OFFSET_MM in gen_macro_mono.py (extra top margin; 0.5cm=5mm).
     // Base 18 matches the generator's editor recess (was 16 here — a small drift;
     // aligned now so the widget editor sits exactly on the drawn recess).

@@ -5,7 +5,7 @@ red corner screws. nanosvg-safe (no masks/gradients/text-for-controls)."""
 import math
 S = 75.0/25.4
 def px(mm): return round(mm*S, 2)
-W_MM, H_MM = 213.36, 128.5  # 42HP (40 + 2HP right strip for poly prob-out jacks)
+W_MM, H_MM = 218.44, 128.5  # 43HP (42 + 1HP for the per-lane owner-source block)
 PW, PH = px(W_MM), px(H_MM)
 
 N = 4   # 4 lanes, one row each
@@ -14,8 +14,9 @@ N = 4   # 4 lanes, one row each
 # StraitsEastSandsVisualWidget) to taste.
 TAB_TOP_OFFSET_MM = 5.0
 ED_X, ED_Y = 88.0, 18.0 + TAB_TOP_OFFSET_MM
-PROB_OUT_X = 207.0  # right-strip jack column (matches hpp)
-ED_W = PROB_OUT_X - ED_X - 8.0  # editor stops left of the prob-out jacks (matches hpp)
+ED_W = 111.0        # editor width (fixed; no longer tied to PROB_OUT_X — matches hpp)
+OWNER_X = 205.0     # owner-source cell column, right of the editor (matches hpp)
+PROB_OUT_X = 212.0  # right-strip jack column, pushed right by the owner block (matches hpp)
 ED_H = 48.0
 ED_LANE_H = ED_H / N
 # Left-control rows align with the EDITOR lane centres (must match the hpp's rowY):
@@ -138,6 +139,23 @@ def gen(dark):
     for k in range(1,4):   # 4 lanes → 3 dividers
         ly=ED_Y+k*(ED_H/4.0)
         A(f'<line x1="{px(ED_X+1):.1f}" y1="{px(ly):.1f}" x2="{px(ED_X+ED_W-1):.1f}" y2="{px(ly):.1f}" stroke="{t["edborder"]}" stroke-width="0.75" opacity="0.7"/>')
+
+    # ── per-lane owner-source block, right of the editor before the prob-outs.
+    #    v2-subtle: faint backing + thin separator + small "SRC" label + one
+    #    outline cell per lane row (the LIVE widget fills/outlines by ownership;
+    #    this placeholder is the visual break so it doesn't read as a 17th step).
+    _ed_right = ED_X + ED_W
+    _lane_ys = [rowY(r) for r in range(N)]
+    _ch = ED_LANE_H * 0.62
+    _cw = 6.0
+    _pad = 1.6
+    _by = min(_lane_ys) - _ch*0.5 - _pad
+    _bh = (max(_lane_ys)-min(_lane_ys)) + _ch + 2*_pad
+    A(f'<rect x="{px(OWNER_X-_cw*0.5-_pad):.1f}" y="{px(_by):.1f}" width="{px(_cw+2*_pad):.1f}" height="{px(_bh):.1f}" rx="{px(1.0):.1f}" fill="#ffffff" fill-opacity="0.05"/>')
+    A(f'<line x1="{px(_ed_right+1.4):.1f}" y1="{px(_by):.1f}" x2="{px(_ed_right+1.4):.1f}" y2="{px(_by+_bh):.1f}" stroke="{t["edborder"]}" stroke-width="1.2" opacity="0.8"/>')
+    A(f'<text x="{px(OWNER_X):.1f}" y="{px(_by-1.4):.1f}" font-family="sans-serif" font-size="{px(2.0):.1f}" fill="{t["edborder"]}" text-anchor="middle">SRC</text>')
+    for _cy in _lane_ys:
+        A(f'<rect x="{px(OWNER_X-_cw*0.5):.1f}" y="{px(_cy-_ch*0.5):.1f}" width="{px(_cw):.1f}" height="{px(_ch):.1f}" rx="{px(0.8):.1f}" fill="none" stroke="{t["edborder"]}" stroke-width="1.0" opacity="0.55"/>')
 
     # ── below the editor + footer: Marina Bay water (waves) as an integrated
     #    base band spanning the full control-to-edge width ──
