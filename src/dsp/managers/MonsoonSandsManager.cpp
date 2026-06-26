@@ -97,9 +97,13 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         // base always comes from the visual params. cvRow == editor lane.)
         auto readStrand = [&](int l) {
             int strand = dotModular::MONO_LANE_TO_STRAND[l];
-            float baseLen = monoVis->params[Mono::lenId(l)].getValue();
-            float baseOff = monoVis->params[Mono::offId(l)].getValue();
-            float baseRot = monoVis->params[Mono::rotId(l)].getValue();
+            // l is the EDITOR lane (drives MONO_LANE_TO_STRAND); the LOR params are
+            // PARAM-BANK indexed (REST=0,MEL=1,OCT=2,LEG=3,ACC=4,VAR=5), so map
+            // editor lane → param bank for the param reads.
+            int pb = dotModular::EDITOR_TO_MONO_PARAM[l];
+            float baseLen = monoVis->params[Mono::lenId(pb)].getValue();
+            float baseOff = monoVis->params[Mono::offId(pb)].getValue();
+            float baseRot = monoVis->params[Mono::rotId(pb)].getValue();
 
             baseLen = applyMonoCV(baseLen, l, 0, 1.f, 16.f);
             baseOff = applyMonoCV(baseOff, l, 1, 0.f, 15.f);

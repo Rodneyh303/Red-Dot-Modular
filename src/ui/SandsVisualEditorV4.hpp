@@ -169,6 +169,14 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   
   std::deque<VoiceState> undoHistory;
   bool showUndoDebug = false;   // hide internal undo-count readout by default
+  // The Sands expanders zero the editor's internal top/bottom padding so lanes
+  // fill the box evenly and align with the painted lanes + kit-bound jacks. The
+  // MONO/POLY control-bar text is drawn at a fixed top offset and would then land
+  // on lane 0, so it can be suppressed (the panel art can carry POLY/MONO).
+  // Lane labels (MELODY/OCTAVE/…) are NOT suppressible — the panel does not draw
+  // them (see dotmod_design.py: "No <text> for control labels"); the editor is
+  // their only source and they track the lane centres.
+  bool showControlBar = true;
   std::deque<VoiceState> redoHistory;
   static constexpr int UNDO_HISTORY_SIZE = 50;
   
@@ -446,7 +454,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       return;
     }
 
-    drawControlBar(args.vg);
+    if (showControlBar) drawControlBar(args.vg);
     
     for (int lane = 0; lane < laneCount; ++lane) {
       drawLaneLabel(args.vg, lane);

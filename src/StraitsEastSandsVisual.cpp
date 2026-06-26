@@ -183,6 +183,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         visualEditor = new SandsVisualEditorV4(SandsVisualEditorV4::POLY);
         visualEditor->box.pos  = mm2px(Vec(ED_X, ED_Y));
         visualEditor->box.size = mm2px(Vec(ED_W, ED_H));
+        // Lanes fill the box evenly (no internal padding) so the live lanes line
+        // up with the painted recess lanes and the kit-bound jacks/prob-outs,
+        // which all divide ED_H by laneCount. MONO/POLY label suppressed (would
+        // land on lane 0); lane labels stay (panel doesn't draw them).
+        visualEditor->layout.topPadding = 0.f;
+        visualEditor->layout.botPadding = 0.f;
+        visualEditor->showControlBar    = false;
         // Right-click on a lane row opens the ownership context menu.
         visualEditor->onLaneRightClick = [this](int lane, rack::math::Vec pos) -> bool {
             if (!macroAttached()) return false;  // no menu when Macro absent
@@ -413,7 +420,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             bool setToEast;   // true = set East owns; false = set Macro owns
             void onAction(const event::Action& e) override {
                 float val = setToEast ? 1.f : 0.f;
-                widget->module->params[widget->ownerDispId(lane)].setValue(val);
+                widget->module->params[StraitsEastVisualIds::ownerDispId(lane)].setValue(val);
                 widget->saveVoiceMacro(voice);  // persist to per-voice bank
             }
         };
@@ -442,9 +449,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             void onAction(const event::Action& e) override {
                 float val = setToEast ? 1.f : 0.f;
                 // Set display proxy and persist to all 15 poly voice slots
-                widget->module->params[widget->ownerDispId(lane)].setValue(val);
+                widget->module->params[StraitsEastVisualIds::ownerDispId(lane)].setValue(val);
                 for (int v = 0; v < 15; ++v) {
-                    widget->module->params[widget->ownerId(v, lane)].setValue(val);
+                    widget->module->params[StraitsEastVisualIds::ownerId(v, lane)].setValue(val);
                 }
             }
         };

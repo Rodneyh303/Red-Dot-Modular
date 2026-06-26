@@ -30,10 +30,13 @@ def gen_macro(dark, W_MM=213.36):   # 42HP (40 + 2HP right strip for poly prob-o
     A(D.svg_open(PW,PH))
     A('<g inkscape:label="artwork" inkscape:groupmode="layer">')
     A(D.bg_rect(PW,PH,t))
-    A(D.mbs(W_MM-72.0, 110.0, 60.0, 14.0, t, op=0.85))
-    A(D.waves(ED_X, 112.0, t, op=0.6, rows=3, span_mm=W_MM-ED_X-2))
+    # Identity artwork in the BOTTOM-LEFT corner (vs East's lower-right) so the
+    # two near-identical 42HP panels read apart at a glance. Bottom-left is free
+    # on Macro (send grids live in the right section).
+    A(D.waves(4.0, 112.0, t, op=0.6, rows=3, span_mm=ED_X-8.0))
+    A(D.mbs(6.0, 110.0, 60.0, 14.0, t, op=0.85))
     A(D.accent_rules(PW,t))
-    gx,gy=4.0,rowY(0)-ED_LANE_H*0.5-3.0; gw,gh=(SPREAD_X+6.0)-gx,(rowY(N-1)+ED_LANE_H*0.5+3.0)-gy
+    gx,gy=1.5,rowY(0)-ED_LANE_H*0.5-3.0; gw,gh=(SPREAD_X+6.0)-gx,(rowY(N-1)+ED_LANE_H*0.5+3.0)-gy  # gx clears leftmost jack
     A(D.input_group(gx,gy,gw,gh,t,sep_mm=0.5*(JACK_X[-1]+ATTEN_X[0])))
     A(D.editor_recess(ED_X,ED_Y,ED_W,ED_H,t,lanes=4))
     A('</g>')
@@ -82,6 +85,8 @@ def gen_macro(dark, W_MM=213.36):   # 42HP (40 + 2HP right strip for poly prob-o
         for p,x in enumerate(JACK_X):  A(D.kit_shape("input", 0+lane*4+p, x, y))
         for p,x in enumerate(ATTEN_X): A(D.kit_shape("param", 4+lane*4+p, x, y))
         A(D.kit_shape("param", lane, SPREAD_X, y))  # SPREAD engine lane
+        # poly probability CV out — right strip, at this lane's row (engine lane = PROB_OUT_REST+lane)
+        A(D.kit_shape("output", lane, PROB_OUT_X, y))
     # Macro→voice mix-in send markers (bound to sendDispId display proxies).
     for g in range(4):
         l=DISPLAY_ORDER[g]   # engine lane
@@ -102,8 +107,12 @@ def gen_mono(dark):
     JACK_X=[6.,15.,24.]; ATTEN_X=[34.,43.,52.]
     SPR_BASE_X,SPR_CV_X,SPR_ATTEN_X=62.,71.,80.
     N_SPREAD=4                                  # REST/MEL/OCT + ACCENT (poly lanes)
-    SPR_TO_EDITOR=[0,1,2,4]                      # spread index → editor lane (accent skips LEG)
-    ED_X=88.; PROB_OUT_X=207.; ED_W=PROB_OUT_X-ED_X-8.; ED_Y=18.; ED_H=ROW_BOT-ED_Y
+    SPR_TO_EDITOR=[2,0,1,3]                      # spread index (REST/MEL/OCT/ACCENT) → editor lane; matches cpp ENGINE_LANE_TO_EDITOR
+    ED_X=88.; PROB_OUT_X=207.; ED_W=PROB_OUT_X-ED_X-8.
+    # Editor recess spans the SAME band the left controls (laneY) divide, so the
+    # live editor lanes (zero internal padding, even division) line up with the
+    # left jacks/attens and the painted lanes.
+    ED_Y=ROW_TOP; ED_H=ROW_BOT-ROW_TOP
     L=[]; A=L.append
     A(D.svg_open(PW,PH))
     A('<g inkscape:label="artwork" inkscape:groupmode="layer">')
@@ -113,7 +122,7 @@ def gen_mono(dark):
     A(D.accent_rules(PW,t))
     # Input group box framing the LOR jacks + attenuverters (x 6..52), with a
     # separator between the jack cluster and the attenuverter cluster.
-    gx,gy=2.0,ROW_TOP-4.0; gw,gh=(ATTEN_X[-1]+6.0)-gx,(ROW_BOT+2.0)-(ROW_TOP-4.0)
+    gx,gy=1.5,ROW_TOP-4.0; gw,gh=(ATTEN_X[-1]+6.0)-gx,(ROW_BOT+2.0)-(ROW_TOP-4.0)  # gx clears leftmost jack
     A(D.input_group(gx,gy,gw,gh,t,sep_mm=0.5*(JACK_X[-1]+ATTEN_X[0])))
     A(D.editor_recess(ED_X,ED_Y,ED_W,ED_H,t,lanes=6))
     A('</g>')
@@ -139,10 +148,18 @@ def gen_mono(dark):
     #    spread atten SPR_ATTEN_START(39) + l     = params 39..41
     #    (LEN/OFF/ROT params 0-17 have no physical knob — editor-driven — so no marker.) ──
     A('<g inkscape:label="components" inkscape:groupmode="layer">')
-    for lane in range(6):
-        y=laneY(lane)
-        for p,x in enumerate(JACK_X):  A(D.kit_shape("input", 0+lane*3+p, x, y))
-        for p,x in enumerate(ATTEN_X): A(D.kit_shape("param", 21+lane*3+p, x, y))
+    # Physical rows are laid out in EDITOR display order (MELODY/OCTAVE/REST/
+    # ACCENT/VARIATION/LEGATO = editor lanes 0..5), matching the editor lanes +
+    # labels that share these rows. The LOR params are PARAM-BANK indexed
+    # (REST=0,MEL=1,OCT=2,LEG=3,ACC=4,VAR=5), so map editor row → param bank.
+    # This mirrors East/Macro's DISPLAY_ORDER approach and is the inverse of
+    # MONO_PARAM_TO_EDITOR (dsp/LaneMapping.hpp EDITOR_TO_MONO_PARAM).
+    EDITOR_TO_PARAM=[1,2,0,4,5,3]   # editor lane → mono param bank
+    for row in range(6):
+        pb=EDITOR_TO_PARAM[row]     # param-bank lane for this editor row
+        y=laneY(row)
+        for p,x in enumerate(JACK_X):  A(D.kit_shape("input", 0+pb*3+p, x, y))
+        for p,x in enumerate(ATTEN_X): A(D.kit_shape("param", 21+pb*3+p, x, y))
     for sidx in range(N_SPREAD):
         y=laneY(SPR_TO_EDITOR[sidx])
         A(D.kit_shape("param", 18+sidx, SPR_BASE_X, y))   # SPR_REST/MEL/OCT/ACCENT (18..21)

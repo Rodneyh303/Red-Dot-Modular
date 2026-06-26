@@ -79,8 +79,17 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
 
         // ── Visual editor: right section, 6 lanes MONO ────────────────────
         visualEditor = new SandsVisualEditorV4(SandsVisualEditorV4::MONO);
-        visualEditor->box.pos  = mm2px(Vec(ED_X, ED_Y));
-        visualEditor->box.size = mm2px(Vec(ED_W, ROW_BOT - ED_Y));
+        // Editor lane band == the left-control band (ROW_TOP..ROW_BOT) so the live
+        // lanes line up with the left jacks/attens. With zero internal padding the
+        // editor divides this box evenly by laneCount, exactly matching rowY().
+        visualEditor->box.pos  = mm2px(Vec(ED_X, ROW_TOP));
+        visualEditor->box.size = mm2px(Vec(ED_W, ROW_BOT - ROW_TOP));
+        // Lanes fill the box evenly (no padding) so the live 6 lanes align with
+        // the painted lanes + the left jacks/attens (which divide the band evenly).
+        // MONO label suppressed (would land on lane 0); lane labels stay.
+        visualEditor->layout.topPadding = 0.f;
+        visualEditor->layout.botPadding = 0.f;
+        visualEditor->showControlBar    = false;
         addChild(visualEditor);
 
         // ── LOR controls: 3 CV jacks + 3 attens per lane (all 6 lanes) ────

@@ -3,6 +3,7 @@
 #include "ui/RedScrew.hpp"
 #include "ui/ConnectMark.hpp"
 #include "ui/GoldPolyPort.hpp"
+#include "ui/SvgPanelKit.hpp"
 //#include "MonsoonStraitsSands.hpp"
 #include "StraitsSandsMacroVisual.hpp"
 #include "MonsoonSandsVisualExpander.hpp"  // complete mono type + SandsMonoVisualIds for the tab-1 mono mirror
@@ -38,15 +39,18 @@ extern Plugin* pluginInstance;
     // CV-modulated value); set = the SPREAD_* param. Both normalised (v+1)/2.
    
 
-struct StraitsSandsMacroVisualWidget : ModuleWidget {
+struct StraitsSandsMacroVisualWidget : ModuleWidget,
+    dotModular::Compose<StraitsSandsMacroVisualWidget,
+                        dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
     SandsVisualEditorV4*       visualEditor = nullptr;
     PolySandsParameterManager* paramMgr     = nullptr;
     TabButtonGroup*            tabGroup     = nullptr;
     int viewVoice = 0;   // which voice's resulting probabilities to DISPLAY (read-only)
     int lastSendVoice = -1;  // detect view-voice change to sync the mix-in send proxies
     bool                       initialized  = false;
+    // Light/dark panel swap: kit's loadPanel() owns the live SvgPanel; we keep
+    // both backgrounds and swap via the panel child (same pattern as East).
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
-    rack::app::SvgPanel* panelWidget = nullptr;
     redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;
 
@@ -92,17 +96,17 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
                             "res/panels/StraitsSandsMacroVisual_40HP.svg"));
         panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance,
                             "res/panels/StraitsSandsMacroVisual_40HP_light.svg"));
-        panelWidget = createPanel(asset::plugin(pluginInstance,
+        // Kit owns the SvgPanel (created + setPanel'd here); widgets bind to the
+        // named shapes baked into the SVG by panel_src/gen_macro_mono.py, so the
+        // gen script is the single source of widget geometry (no rowY/columns here).
+        loadPanel(asset::plugin(pluginInstance,
                             "res/panels/StraitsSandsMacroVisual_40HP.svg"));
-        setPanel(panelWidget);
 
         redDot::addRedScrews(this);
 
-        // Visual editor — right section, 3 lanes (REST/MEL/OCT), global
-        // Voice VIEW tabs (voices 2-16). Macro has no per-voice editing — these
-        // let the user flip through voices to SEE each one's resulting (spread/
-        // blend-applied) probabilities. Read-only: changing tab only changes
-        // which voice is displayed, nothing is saved per voice.
+        // Visual editor + view tabs are custom widgets (not kit shapes) — placed
+        // manually. Everything else (jacks, attens, spreads, sends, prob-outs)
+        // binds to named SVG shapes so geometry lives only in the gen script.
         tabGroup = new TabButtonGroup(16, 1, 2, mm2px(ED_W), mm2px(10.f));   // V1 mono + V2..V16 poly
         tabGroup->box.pos = mm2px(Vec(ED_X, ED_Y - 12.f));
         addChild(tabGroup);
@@ -110,64 +114,50 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         visualEditor = new SandsVisualEditorV4(SandsVisualEditorV4::POLY);
         visualEditor->box.pos  = mm2px(Vec(ED_X, ED_Y));
         visualEditor->box.size = mm2px(Vec(ED_W, ED_H));
+        // Lanes fill the box evenly (no padding) → align with painted lanes +
+        // kit-bound jacks/prob-outs. MONO/POLY label suppressed; lane labels stay.
+        visualEditor->layout.topPadding = 0.f;
+        visualEditor->layout.botPadding = 0.f;
+        visualEditor->showControlBar    = false;
         addChild(visualEditor);
 
-        // 4 poly probability CV outs, one per lane (aligned to editor lane centers).
-        for (int l = 0; l < 4; ++l) {
-            float y = ED_Y + (l + 0.5f) * ED_LANE_H;
-            auto* p = createOutputCentered<redDot::GoldPolyPort>(
-                mm2px(Vec(PROB_OUT_X, y)), module, StraitsMacroVisualIds::PROB_OUT_REST + l);
-            Module* mod = module;
-            p->lightTheme = [mod]() { Monsoon* m = mod ? redDot::findMonsoonEitherSide(mod) : nullptr;
-                                      return m && m->lightTheme; };
-            addOutput(p);
-        }
+        Module* mod_ = module;
+        auto themeOut = [mod_](redDot::GoldPolyPort* p) {
+            p->lightTheme = [mod_]() { Monsoon* m = mod_ ? redDot::findMonsoonEitherSide(mod_) : nullptr;
+                                       return m && m->lightTheme; };
+        };
 
-        // ── Left section: 4 lanes × 1 row, 4 jacks + 4 attens + spread per lane ──
-        // Mono-style: lane == row, col 0..3 = LEN/OFF/ROT/SPR
-        static const float JACK_X[4]  = { COL_J1, COL_J2, COL_J3, COL_J4 };
-        static const float ATTEN_X[4] = { COL_A1, COL_A2, COL_A3, COL_A4 };
-        for (int r = 0; r < N_ROWS; ++r) {
-            float y = rowY(r);
+        // 4 poly probability CV outs (output_PROB_OUT_REST..+3), aligned to lane rows.
+        for (int l = 0; l < 4; ++l)
+            bindOutput<redDot::GoldPolyPort>(
+                "output_" + std::to_string(StraitsMacroVisualIds::PROB_OUT_REST + l),
+                StraitsMacroVisualIds::PROB_OUT_REST + l,
+                std::function<void(redDot::GoldPolyPort*)>(themeOut));
+
+        // ── Left section: 4 lanes × (4 CV jacks + 4 attens + 1 spread) ──
+        // input_{cvId(lane,c)}  param_{attenId(lane,c)}  param_{SPREAD_REST+lane}
+        for (int lane = 0; lane < 4; ++lane) {
             for (int c = 0; c < 4; ++c)
-                addInput(createInputCentered<PJ301MPort>(mm2px(Vec(JACK_X[c], y)), mod, cvId(r,c)));
-            for (int c = 0; c < 4; ++c) {
-                auto* a = createParamCentered<Trimpot>(mm2px(Vec(ATTEN_X[c], y)), mod, attenId(r,c));
-                addParam(a);
-                leftAttenuverters.push_back(a);
-            }
+                bindInput<PJ301MPort>("input_" + std::to_string(cvId(lane,c)), cvId(lane,c));
+            for (int c = 0; c < 4; ++c)
+                bindParam<Trimpot>("param_" + std::to_string(attenId(lane,c)), attenId(lane,c),
+                    std::function<void(Trimpot*)>([this](Trimpot* a){ leftAttenuverters.push_back(a); }));
         }
 
-        // ── Per-lane global SPREAD trimpots (REST / MELODY / OCTAVE) ─────────
-        // Mirrors the East visual: one trimpot per lane, vertically centred on
-        // each lane's two-row band, in a column between the attenuverters and
-        // the visual editor. The module already has these params (SPREAD_REST/
-        // MELODY/OCTAVE); they were just never placed on the panel.
-        // Spread trimpots: one per lane row (REST/MEL/OCT/ACCENT)
+        // Per-lane global SPREAD trimpots (param_SPREAD_REST..+3 = lanes 0..3).
         static const int spreadPid[4] = { SPREAD_REST, SPREAD_MELODY, SPREAD_OCTAVE, SPREAD_ACCENT };
         for (int lane = 0; lane < 4; ++lane) {
-            float y = rowY(lane);   // mono-style: lane == row
-            auto* sp = createParamCentered<Trimpot>(mm2px(Vec(SPREAD_X, y)), mod, spreadPid[lane]);
-            addParam(sp);
-            pendingSpreadArcs.push_back({sp, lane});
+            int pid = spreadPid[lane];
+            bindParam<Trimpot>("param_" + std::to_string(pid), pid,
+                std::function<void(Trimpot*)>([this, lane](Trimpot* sp){ pendingSpreadArcs.push_back({sp, lane}); }));
         }
 
-        // Macro→voice MIX-IN send 2×2 grids (relocated from East). Coordinates MUST
-        // match panel_src/gen_macro_mono.py: BLEND_TOP=72 SEND_Y0=12 SEND_DY=11 SEND_DX=7,
-        // groups at ED_X + lane*ED_W/3. Bound to the sendDispId display proxies (synced
-        // to/from the per-voice store on view-voice change).
-        {
-            const float BLEND_TOP=72.f, SEND_Y0=12.f, SEND_DY=11.f, SEND_DX=6.f, BGAP=2.5f;
-            const float GROUP_W = ED_W/4.f;
-            for (int lane=0; lane<4; ++lane) {
-                float gx=ED_X+lane*GROUP_W+BGAP*0.5f, gw=GROUP_W-BGAP, gcx=gx+gw*0.5f;
-                for (int item=0; item<4; ++item) {
-                    float cxs=gcx+((item%2)==0?-SEND_DX:SEND_DX);
-                    float cys=BLEND_TOP+SEND_Y0+(item/2)*SEND_DY;
-                    addParam(createParamCentered<Trimpot>(mm2px(Vec(cxs,cys)), mod, sendDispId(lane,item)));
-                }
-            }
-        }
+        // Macro→voice MIX-IN send 2×2 grids — bound to param_send_{lane}_{item}
+        // markers (gen_macro_mono.py), wired to the sendDispId display proxies.
+        for (int lane = 0; lane < 4; ++lane)
+            for (int item = 0; item < 4; ++item)
+                bindParam<Trimpot>("param_send_" + std::to_string(lane) + "_" + std::to_string(item),
+                                   sendDispId(lane, item));
 
         paramMgr = new PolySandsParameterManager(nullptr, nullptr, nullptr, 7);
         flushSpreadArcs();   // attach spread mod-arcs on top of the trimpots
@@ -213,14 +203,22 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
 
     void step() override {
         ModuleWidget::step();
+        kitStep();   // kit: dev-mode live-reload poll (no-op unless enabled)
         if (!module || !paramMgr || !visualEditor) return;
         Monsoon* monsoon = getMonsoon();
         if (!monsoon) { if (visualEditor) visualEditor->clearPlaySteps(); return; }
+        auto* monoVis = monsoon->expanderManager.cachedSandsVisualExpander;  // null = no Mono attached
 
         int wantLight = monsoon->lightTheme ? 1 : 0;
         if (wantLight != lastThemeLight) {
             lastThemeLight = wantLight;
-            if (panelWidget) panelWidget->setBackground(wantLight ? panelSvgLight : panelSvgDark);
+            // Kit's loadPanel() added the SvgPanel as a child; swap its background.
+            for (Widget* child : children) {
+                if (auto* sp = dynamic_cast<app::SvgPanel*>(child)) {
+                    sp->setBackground(wantLight ? panelSvgLight : panelSvgDark);
+                    break;
+                }
+            }
             if (visualEditor) visualEditor->setTheme(wantLight != 0);
         }
 
@@ -332,7 +330,6 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget {
         // other voices' display), not Macro's global base. (Macro's left attenuverters
         // are hidden on tab 1 via gen panel / widget — Macro's global base doesn't reach
         // voice 1; only the mix-in sends could, under the deferred interp. Y.)
-        auto* monoVis = monsoon->expanderManager.cachedSandsVisualExpander;
         bool tab1Mono = onMonoTab && (monoVis != nullptr);
         // When V1 is editable (no Mono), Macro's global LOR knobs act as the V1 base.
         // The global base params are already wired to the engine for poly; for V1,

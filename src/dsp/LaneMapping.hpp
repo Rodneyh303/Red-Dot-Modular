@@ -68,6 +68,17 @@ constexpr int MONO_PARAM_TO_EDITOR[6] = {
     4,   // param 5 (VARIATION) → editor lane 4
 };
 
+// Inverse of MONO_PARAM_TO_EDITOR: editor lane index → mono param bank index
+// (lenId/offId/rotId argument). Use this when a loop is indexed by EDITOR lane
+// (e.g. driven by MONO_LANE_TO_STRAND) but needs to read the matching param.
+//   editor 0 MELODY    → param 1
+//   editor 1 OCTAVE    → param 2
+//   editor 2 REST      → param 0
+//   editor 3 ACCENT    → param 4
+//   editor 4 VARIATION → param 5
+//   editor 5 LEGATO    → param 3
+constexpr int EDITOR_TO_MONO_PARAM[6] = { 1, 2, 0, 4, 5, 3 };
+
 // Poly engine lane index (0=REST 1=MELODY 2=OCTAVE 3=ACCENT — the order used
 // by East/Macro lorId, engine.polyLen[v][lane], macroBase[lane], and the
 // VoiceResolver lane argument) → editor lane index.
