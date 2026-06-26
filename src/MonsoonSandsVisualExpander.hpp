@@ -39,18 +39,23 @@ namespace SandsMonoVisualIds {
 
     // ── Param IDs ─────────────────────────────────────────────────────────
     enum ParamId {
-        // LOR handle params: 6 lanes × 3 (LEN/OFF/ROT) = 18 (0-17)
-        LEN_REST = 0, OFF_REST, ROT_REST,
-        LEN_MELODY,   OFF_MELODY,   ROT_MELODY,
-        LEN_OCTAVE,   OFF_OCTAVE,   ROT_OCTAVE,
-        LEN_LEGATO,   OFF_LEGATO,   ROT_LEGATO,
-        LEN_ACCENT,   OFF_ACCENT,   ROT_ACCENT,
-        LEN_VARIATION,OFF_VARIATION,ROT_VARIATION,
-        // Spread base trimpots: REST/MEL/OCT + ACCENT (now a poly lane) = 4
+        // LOR handle params: 6 lanes × 3 (LEN/OFF/ROT) = 18 (0-17).
+        // EDITOR ORDER (MEL,OCT,REST,ACC,VAR,LEG) — same order the editor shows and
+        // the engine strands use, so lenId(editorLane) reads directly with no remap.
+        LEN_MELODY = 0, OFF_MELODY, ROT_MELODY,
+        LEN_OCTAVE,     OFF_OCTAVE,     ROT_OCTAVE,
+        LEN_REST,       OFF_REST,       ROT_REST,
+        LEN_ACCENT,     OFF_ACCENT,     ROT_ACCENT,
+        LEN_VARIATION,  OFF_VARIATION,  ROT_VARIATION,
+        LEN_LEGATO,     OFF_LEGATO,     ROT_LEGATO,
+        // Spread base trimpots: poly lanes in ENGINE order REST/MEL/OCT/ACCENT — kept
+        // in engine order because the spread path shares SPREAD_LANE_TO_EDITOR with the
+        // poly engine (which is NOT being renumbered in this step). sprId(l) takes a
+        // spread index 0-3, mapped to editor via SPREAD_LANE_TO_EDITOR.
         SPR_REST, SPR_MELODY, SPR_OCTAVE, SPR_ACCENT,
         // Attenuverters: 18 LOR (6 lanes × 3) + 4 spread = 22
-        ATTEN_START,                       // 21 .. 38  (18 LOR attens)
-        SPR_ATTEN_START = ATTEN_START + 18, // 39 .. 42  (4 spread attens)
+        ATTEN_START,                       // 22 .. 39  (18 LOR attens)
+        SPR_ATTEN_START = ATTEN_START + 18, // 40 .. 43  (4 spread attens)
         NUM_PARAMS = SPR_ATTEN_START + 4
     };
 
@@ -72,10 +77,10 @@ namespace SandsMonoVisualIds {
     };
 
     // ── Helpers ───────────────────────────────────────────────────────────
-    inline int lenId(int l) { return LEN_REST + l * 3; }
-    inline int offId(int l) { return LEN_REST + l * 3 + 1; }
-    inline int rotId(int l) { return LEN_REST + l * 3 + 2; }
-    inline int sprId(int l) { return SPR_REST + l; }          // l: 0-2 only
+    inline int lenId(int l) { return LEN_MELODY + l * 3; }     // l = EDITOR lane now
+    inline int offId(int l) { return LEN_MELODY + l * 3 + 1; }
+    inline int rotId(int l) { return LEN_MELODY + l * 3 + 2; }
+    inline int sprId(int l) { return SPR_REST + l; }          // l: 0-3 spread index (engine order)
 
     // LOR atten/CV: lane 0-5, param 0=LEN,1=OFF,2=ROT
     inline int attenId(int lane, int param) { return ATTEN_START + lane*3 + param; }
@@ -103,9 +108,9 @@ struct MonsoonSandsVisualExpander : Module {
                SandsMonoVisualIds::NUM_OUTPUTS, 0);
         for (int l = 0; l < 6; ++l)
             configOutput(PROB_OUT_START + l, std::string("Probability ") +
-                (const char*[]){"REST","MEL","OCT","LEG","ACC","VAR"}[l]);
+                (const char*[]){"MEL","OCT","REST","ACC","VAR","LEG"}[l]);
 
-        static const char* names[6]  = {"REST","MEL","OCT","LEG","ACC","VAR"};
+        static const char* names[6]  = {"MEL","OCT","REST","ACC","VAR","LEG"};
         static const char* lnames[3] = {"Len","Off","Rot"};
 
         for (int l = 0; l < 6; ++l) {
@@ -119,7 +124,8 @@ struct MonsoonSandsVisualExpander : Module {
                             std::string(names[l])+" "+lnames[p]+" CV");
             }
         }
-        // Spread group: REST/MEL/OCT/ACCENT (the poly-derived lanes; LEG/VAR are mono-only)
+        // Spread group: poly lanes (REST/MEL/OCT/ACCENT engine order). sprId stays
+        // engine-ordered, so name via SPREAD_LANE_TO_EDITOR as before.
         for (int l = 0; l < N_SPREAD_LANES; ++l) {
             const char* nm = names[SPREAD_LANE_TO_EDITOR[l]];
             configParam(sprId(l), -1.f, 1.f, 0.f, std::string(nm)+" Spread");

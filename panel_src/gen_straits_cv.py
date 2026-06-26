@@ -107,15 +107,16 @@ def esplanade(x, y, w, h, t, op=0.16):
     # Extra crop fills to kill the residual spill the asset's own sky-frame misses:
     #  (A) LEFT skirt — the latitude band arcs curve out past the dome's LEFT
     #      outline; this path fills everything left of that outline with bg.
-    #  (B) BELOW the struts — the dome skirt + lower ribs hang below the truss
-    #      platform; this rect fills everything under y≈408 with bg.
-    # They use the SAME black (#000) the asset's frame uses, so the later recolour
-    # turns them into bg and the flatten step gives them their own fill. Inserted
-    # right before the dome OUTLINE path so they sit over the structure but under
-    # the bright outline/truss edges (which redraw crisply on top).
+    #  (B) BELOW the dome base — the lowest latitude bands trail down-left BELOW
+    #      where the dome meets its support, reading as meaningless curves. This
+    #      path fills everything below the dome's base line (35,345)→(965,255)
+    #      with bg. Because these crops are injected BEFORE the outline + truss,
+    #      the support structure (outline / deck lines / truss polyline / legs /
+    #      platform) redraws crisply ON TOP and survives the crop.
     _left_crop = ('<path d="M0 0 L35 340 C40 120 240 45 500 42 L500 0 Z" fill="#000"/>'
                   '<path d="M0 0 L0 450 L35 450 L35 340 C30 250 28 150 35 60 Z" fill="#000"/>')
-    _bottom_crop = '<rect x="0" y="408" width="1000" height="42" fill="#000"/>'
+    _bottom_crop = ('<path d="M35 345 L965 255 L1000 255 L1000 450 L0 450 L0 345 Z" '
+                    'fill="#000"/>')
     _inject = _left_crop + _bottom_crop
     # place just before the dome OUTLINE (the first stroke="#787878" width=6 path)
     s = _re2.sub(r'(<path d="M35 340 C40 120)', _inject + r'\1', s, count=1)

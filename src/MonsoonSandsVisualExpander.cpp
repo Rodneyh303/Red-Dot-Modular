@@ -163,21 +163,19 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         // ── One-time initialisation from saved params ─────────────────────
         if (!initialized) {
             for (int l = 0; l < 6; ++l) {
-                // l = mono param bank (0=REST 1=MEL 2=OCT 3=LEG 4=ACC 5=VAR) → editor lane.
-                int el = dotModular::MONO_PARAM_TO_EDITOR[l];
-                visualEditor->currentState.lanes[el].length   = (int)std::round(mod->params[lenId(l)].getValue());
-                visualEditor->currentState.lanes[el].offset   = (int)std::round(mod->params[offId(l)].getValue());
-                visualEditor->currentState.lanes[el].rotation = (int)std::round(mod->params[rotId(l)].getValue());
+                // l = editor lane; Mono LOR params are now editor-ordered → direct.
+                visualEditor->currentState.lanes[l].length   = (int)std::round(mod->params[lenId(l)].getValue());
+                visualEditor->currentState.lanes[l].offset   = (int)std::round(mod->params[offId(l)].getValue());
+                visualEditor->currentState.lanes[l].rotation = (int)std::round(mod->params[rotId(l)].getValue());
             }
-            for (int l = 0; l < N_SPREAD_LANES; ++l)   // spread: REST/MEL/OCT + ACCENT
+            for (int l = 0; l < N_SPREAD_LANES; ++l)   // spread stays engine-ordered
                 mod->spreadEffective[SPREAD_LANE_TO_EDITOR[l]] = mod->params[sprId(l)].getValue();
             initialized = true;
         }
 
         // ── Editor → params (UI thread, own params) ───────────────────────
         for (int l = 0; l < 6; ++l) {
-            int el = dotModular::MONO_PARAM_TO_EDITOR[l];   // mono param bank → editor lane
-            const auto& lane = visualEditor->currentState.lanes[el];
+            const auto& lane = visualEditor->currentState.lanes[l];
             mod->params[lenId(l)].setValue((float)lane.length);
             mod->params[offId(l)].setValue((float)lane.offset);
             mod->params[rotId(l)].setValue((float)lane.rotation);

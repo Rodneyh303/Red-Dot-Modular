@@ -152,21 +152,18 @@ def gen_mono(dark):
     A('<g inkscape:label="components" inkscape:groupmode="layer">')
     # Physical rows are laid out in EDITOR display order (MELODY/OCTAVE/REST/
     # ACCENT/VARIATION/LEGATO = editor lanes 0..5), matching the editor lanes +
-    # labels that share these rows. The LOR params are PARAM-BANK indexed
-    # (REST=0,MEL=1,OCT=2,LEG=3,ACC=4,VAR=5), so map editor row → param bank.
-    # This mirrors East/Macro's DISPLAY_ORDER approach and is the inverse of
-    # MONO_PARAM_TO_EDITOR (dsp/LaneMapping.hpp EDITOR_TO_MONO_PARAM).
-    EDITOR_TO_PARAM=[1,2,0,4,5,3]   # editor lane → mono param bank
+    # labels that share these rows. The LOR params are now EDITOR-ordered
+    # (LEN_MELODY=0, OCT, REST, ACC, VAR, LEG) — same as the display rows — so we
+    # bind each row's jacks/attens at the editor index directly (no remap).
     for row in range(6):
-        pb=EDITOR_TO_PARAM[row]     # param-bank lane for this editor row
         y=laneY(row)
-        for p,x in enumerate(JACK_X):  A(D.kit_shape("input", 0+pb*3+p, x, y))
-        for p,x in enumerate(ATTEN_X): A(D.kit_shape("param", 21+pb*3+p, x, y))
+        for p,x in enumerate(JACK_X):  A(D.kit_shape("input", 0+row*3+p, x, y))
+        for p,x in enumerate(ATTEN_X): A(D.kit_shape("param", 22+row*3+p, x, y))
     for sidx in range(N_SPREAD):
         y=laneY(SPR_TO_EDITOR[sidx])
-        A(D.kit_shape("param", 18+sidx, SPR_BASE_X, y))   # SPR_REST/MEL/OCT/ACCENT (18..21)
+        A(D.kit_shape("param", 18+sidx, SPR_BASE_X, y))   # SPR_REST/MEL/OCT/ACCENT (18..21, engine order)
         A(D.kit_shape("input", 18+sidx, SPR_CV_X, y))     # SPR_CV (18..21)
-        A(D.kit_shape("param", 39+sidx, SPR_ATTEN_X, y))  # SPR_ATTEN (39..42)
+        A(D.kit_shape("param", 40+sidx, SPR_ATTEN_X, y))  # SPR_ATTEN (40..43)
     A('</g>')
     A('</svg>')
     return "\n".join(L)

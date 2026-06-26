@@ -606,7 +606,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 int mLen = (int)std::round(monoVis->params[SandsMonoVisualIds::lenId(l)].getValue());
                 int mOff = (int)std::round(monoVis->params[SandsMonoVisualIds::offId(l)].getValue());
                 int mRot = (int)std::round(monoVis->params[SandsMonoVisualIds::rotId(l)].getValue());
-                int el = dotModular::MONO_PARAM_TO_EDITOR[l];
+                int el = l;  // Mono params now editor-ordered → identity
                 visualEditor->currentState.lanes[el].setDisplayLOR(mLen, mOff, mRot);
                 visualEditor->setLanePlayStep(el, calcPlayhead(gs, mLen, mOff, mRot));
             }
@@ -617,7 +617,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             if (paramMgr) {
                 // Push editor state into the mono LOR params via the mono slot.
                 for (int l=0; l<3; ++l) {
-                    int el = dotModular::MONO_PARAM_TO_EDITOR[l];
+                    int el = l;  // Mono params now editor-ordered → identity
                     auto& lane = visualEditor->currentState.lanes[el];
                     module->params[SandsMonoVisualIds::lenId(l)].setValue((float)lane.length);
                     module->params[SandsMonoVisualIds::offId(l)].setValue((float)lane.offset);
@@ -626,7 +626,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             }
             // Display: show engine's current effective mono strand LOR.
             for (int l=0; l<3; ++l) {
-                int el = dotModular::MONO_PARAM_TO_EDITOR[l];
+                int el = l;  // Mono params now editor-ordered → identity
                 int cvLen = (int)std::round(module->params[SandsMonoVisualIds::lenId(l)].getValue());
                 int cvOff = (int)std::round(module->params[SandsMonoVisualIds::offId(l)].getValue());
                 int cvRot = (int)std::round(module->params[SandsMonoVisualIds::rotId(l)].getValue());

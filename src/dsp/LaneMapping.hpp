@@ -59,29 +59,13 @@ constexpr int MONO_LANE_TO_STRAND[6] = {
     STRAND_LEGATO,      // 5 LEGATO
 };
 
-// Mono param bank index (SandsMonoVisualIds::lenId(l)) → editor lane index.
-// Param bank order: 0=REST 1=MELODY 2=OCTAVE 3=LEGATO 4=ACCENT 5=VARIATION.
-// (East/Macro mono mirror only touch indices 0..2 — REST/MEL/OCT — but the
-//  full 6 are defined for the Mono visual expander's own LOR sync.)
-constexpr int MONO_PARAM_TO_EDITOR[6] = {
-    2,   // param 0 (REST)      → editor lane 2
-    0,   // param 1 (MELODY)    → editor lane 0
-    1,   // param 2 (OCTAVE)    → editor lane 1
-    5,   // param 3 (LEGATO)    → editor lane 5
-    3,   // param 4 (ACCENT)    → editor lane 3
-    4,   // param 5 (VARIATION) → editor lane 4
-};
-
-// Inverse of MONO_PARAM_TO_EDITOR: editor lane index → mono param bank index
-// (lenId/offId/rotId argument). Use this when a loop is indexed by EDITOR lane
-// (e.g. driven by MONO_LANE_TO_STRAND) but needs to read the matching param.
-//   editor 0 MELODY    → param 1
-//   editor 1 OCTAVE    → param 2
-//   editor 2 REST      → param 0
-//   editor 3 ACCENT    → param 4
-//   editor 4 VARIATION → param 5
-//   editor 5 LEGATO    → param 3
-constexpr int EDITOR_TO_MONO_PARAM[6] = { 1, 2, 0, 4, 5, 3 };
+// Mono LOR param bank → editor lane.  COLLAPSED TO IDENTITY: the Mono ParamId
+// LOR bank (lenId/offId/rotId) was renumbered to EDITOR order (MEL,OCT,REST,ACC,
+// VAR,LEG), so the param index now IS the editor lane. These tables have no live
+// callers any more; kept as identity (and documented) so any stragglers are safe.
+// Removable once confirmed nothing references them.
+constexpr int MONO_PARAM_TO_EDITOR[6] = { 0, 1, 2, 3, 4, 5 };
+constexpr int EDITOR_TO_MONO_PARAM[6] = { 0, 1, 2, 3, 4, 5 };
 
 // Poly engine lane index (0=REST 1=MELODY 2=OCTAVE 3=ACCENT — the order used
 // by East/Macro lorId, engine.polyLen[v][lane], macroBase[lane], and the

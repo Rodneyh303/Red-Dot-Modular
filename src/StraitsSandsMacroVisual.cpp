@@ -348,7 +348,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                 int mOff = (int)std::lround(monoVis->params[SandsMonoVisualIds::offId(l)].getValue());
                 int mRot = (int)std::lround(monoVis->params[SandsMonoVisualIds::rotId(l)].getValue());
                 mLen = std::max(1, mLen);
-                int el = dotModular::MONO_PARAM_TO_EDITOR[l];
+                int el = l;  // Mono params now editor-ordered → identity
                 visualEditor->currentState.lanes[el].setDisplayLOR(mLen, mOff, mRot);
                 visualEditor->setLanePlayStep(el, calcPlayhead(gs, mLen, mOff, mRot));
             }
