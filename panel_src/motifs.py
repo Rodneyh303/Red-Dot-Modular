@@ -128,18 +128,27 @@ def marina_waves(x, y, w, h, t, op=0.34, rows=None):
 # 3. SKYLINE-PULSE  (the red identity line from the concept)
 # ─────────────────────────────────────────────────────────────────────────────
 def skyline_pulse(x, y, w, h, t, accent=None, op=1.0):
-    """The 'Singapore Skyline-Pulse': from left to right —
-       MBS three towers + sky-deck, then three supertree fans, then a flat
-       baseline that spikes into an ECG pulse, then the esplanade dome silhouette;
-       all joined by one baseline with dot.modular connector dots at the ends.
-       UX 0..1000, UY 0..200. Drawn in the accent (red)."""
+    """The 'Singapore Skyline-Pulse' from the concept sheet, studied closely:
+
+      • MBS: three TAPERED towers under one overhanging sky-deck bar.
+      • Supertrees: each a CLUSTER of thin curved lines radiating from a single
+        base point, splaying up-and-out into a fountain/canopy (concave ribs,
+        wider at top) — NOT a trunk+blob.
+      • The towers/trees sit on a red SINE WAVEFORM (the 'pulse') that undulates
+        2–3 cycles along the baseline and flows into the dome — skyline morphing
+        into signal.
+      • Esplanade dome: a faceted grey half-dome terminus on the right (NOT red).
+      • A thin connector baseline with dot.modular circle-nodes at both ends.
+
+    Left/centre in accent red; dome in ink grey. UX 0..1000, UY 0..200."""
+    import math
     UX, UY = 1000.0, 200.0
     MX, MY = _scaler(x, y, w, h, UX, UY)
     red = accent or t["accent"]
-    ink = t["ink"]
-    base = 150.0
+    ink = t["ink"]; bg = t["bg"]
+    base = 140.0
     L = []; A = L.append
-    sw = max(2.0, w / 150.0)   # stroke scales with size
+    sw = max(1.6, w / 190.0)
 
     def line(x1, y1, x2, y2, c=red, width=None, o=op):
         ww = width if width else sw
@@ -151,54 +160,62 @@ def skyline_pulse(x, y, w, h, t, accent=None, op=1.0):
         A(f'<path d="{d}" fill="{fill}" stroke="{c}" stroke-width="{ww:.2f}" '
           f'stroke-linecap="round" stroke-linejoin="round" opacity="{o:.3f}"/>')
 
-    # ── MBS three towers + sky deck (left) ──
-    for bx in [70, 120, 170]:
-        line(bx, base, bx, 55)
-    # the boat sky-deck across the tops (slightly angled)
-    path(f"M{MX(55):.2f} {MY(52):.2f} L{MX(150):.2f} {MY(40):.2f} L{MX(185):.2f} {MY(46):.2f}")
+    # ── MBS: three tapered towers + overhanging sky-deck (left) ──
+    deck_y = 48.0
+    for bx in (90, 122, 154):
+        topw, botw = 4.0, 7.0
+        path(f"M{MX(bx-botw/2):.2f} {MY(base):.2f} L{MX(bx-topw/2):.2f} {MY(deck_y+3):.2f} "
+             f"L{MX(bx+topw/2):.2f} {MY(deck_y+3):.2f} L{MX(bx+botw/2):.2f} {MY(base):.2f}",
+             fill=red, width=sw*0.4)
+    path(f"M{MX(74):.2f} {MY(deck_y):.2f} L{MX(170):.2f} {MY(deck_y):.2f}", width=sw*1.8)
 
-    # ── supertree fans (middle-left): three fan/umbrella shapes ──
-    for fx in [250, 320, 390]:
-        # trunk
-        line(fx, base, fx, 76)
-        # fuller fan: more ribs, spreading wider into a canopy
-        for dx in (-42, -28, -14, 0, 14, 28, 42):
-            path(f"M{MX(fx):.2f} {MY(78):.2f} Q{MX(fx+dx*0.45):.2f} {MY(44):.2f} "
-                 f"{MX(fx+dx):.2f} {MY(34):.2f}", width=sw*0.6)
-        # canopy arc connecting the rib tips
-        path(f"M{MX(fx-42):.2f} {MY(34):.2f} Q{MX(fx):.2f} {MY(26):.2f} {MX(fx+42):.2f} {MY(34):.2f}",
-             width=sw*0.55)
+    # ── the pulse waveform: a flat baseline that, in the MIDDLE, dips into sharp
+    #    V-troughs; the supertrees rise as tall narrow fountains FROM those troughs
+    #    (the trunks ARE the upstroke of the wave — skyline morphing into signal). ──
+    trough_xs = [298, 364, 430]      # three supertrees
+    twidth = 24.0
+    tree_top = 18.0                  # rise higher (taller fountains)
+    dwave = f"M{MX(60):.2f} {MY(base):.2f} L{MX(trough_xs[0]-twidth-12):.2f} {MY(base):.2f} "
+    for i, tx in enumerate(trough_xs):
+        dwave += (f"L{MX(tx-10):.2f} {MY(base+22):.2f} "    # sharper, deeper V trough
+                  f"L{MX(tx):.2f} {MY(base):.2f} ")
+        if i < len(trough_xs) - 1:
+            nx = trough_xs[i+1]
+            dwave += f"L{MX((tx+nx)/2):.2f} {MY(base-12):.2f} "
+    dwave += f"L{MX(trough_xs[-1]+twidth+12):.2f} {MY(base):.2f} L{MX(556):.2f} {MY(base):.2f} "
+    path(dwave, width=sw*1.05)
 
-    # ── the pulse: baseline that spikes (ECG) then settles ──
-    # flat lead-in, sharp spike up+down, flat tail into the dome
-    path(f"M{MX(440):.2f} {MY(base):.2f} "
-         f"L{MX(560):.2f} {MY(base):.2f} "
-         f"L{MX(600):.2f} {MY(52):.2f} "
-         f"L{MX(640):.2f} {MY(base):.2f} "
-         f"L{MX(700):.2f} {MY(base):.2f}")
+    # ── supertrees: tall delicate fountains rising from each trough ──
+    for tx in trough_xs:
+        ribs = 9
+        spread = 20.0
+        for r in range(ribs):
+            f = r / (ribs - 1)
+            ex = tx + (f - 0.5) * 2 * spread
+            ey = tree_top + abs(f - 0.5) * 22     # outer ribs splay down/out
+            cx = tx + (f - 0.5) * spread * 0.3    # ribs hug the trunk low, splay high
+            cy = base - (base - tree_top) * 0.42
+            path(f"M{MX(tx):.2f} {MY(base):.2f} Q{MX(cx):.2f} {MY(cy):.2f} "
+                 f"{MX(ex):.2f} {MY(ey):.2f}", width=sw*0.38)
 
-    # ── esplanade dome silhouette (right) ──
-    # half-dome outline (smooth, symmetric-ish durian shell)
-    path(f"M{MX(735):.2f} {MY(base):.2f} "
-         f"C{MX(740):.2f} {MY(74):.2f} {MX(820):.2f} {MY(56):.2f} {MX(875):.2f} {MY(58):.2f} "
-         f"C{MX(925):.2f} {MY(60):.2f} {MX(950):.2f} {MY(105):.2f} {MX(950):.2f} {MY(base):.2f}")
-    # evenly-spaced internal meridian facets
-    for u in (0.25, 0.5, 0.75):
-        mx = 735 + (950 - 735) * u
-        path(f"M{MX(mx):.2f} {MY(base):.2f} Q{MX(mx):.2f} {MY(70):.2f} {MX(842):.2f} {MY(58):.2f}",
-             width=sw*0.55)
-    # one latitudinal band
-    path(f"M{MX(755):.2f} {MY(108):.2f} Q{MX(842):.2f} {MY(86):.2f} {MX(935):.2f} {MY(110):.2f}",
-         width=sw*0.55)
+    # ── esplanade dome terminus (grey, FLAT wide half-dome on baseline) ──
+    dl, dr, dapex = 596.0, 722.0, 78.0
+    cx_dome = (dl + dr) / 2
+    path(f"M{MX(dl):.2f} {MY(base):.2f} "
+         f"C{MX(dl+6):.2f} {MY(dapex+18):.2f} {MX(cx_dome-38):.2f} {MY(dapex):.2f} {MX(cx_dome):.2f} {MY(dapex):.2f} "
+         f"C{MX(cx_dome+38):.2f} {MY(dapex):.2f} {MX(dr-6):.2f} {MY(dapex+18):.2f} {MX(dr):.2f} {MY(base):.2f}",
+         c=ink, width=sw*1.0, o=op*0.9)
+    for u in (0.3, 0.5, 0.7):
+        mx = dl + (dr - dl) * u
+        bow = dapex + 8 + abs(u - 0.5) * 26
+        path(f"M{MX(mx):.2f} {MY(base):.2f} Q{MX(mx):.2f} {MY(bow):.2f} {MX(cx_dome):.2f} {MY(dapex+3):.2f}",
+             c=ink, width=sw*0.38, o=op*0.6)
 
-    # ── unifying baseline + dot.modular connector dots ──
-    line(40, base, 960, base, width=sw*0.7, o=op*0.65)
-    for dx, dr in [(40, 7), (960, 7)]:
-        A(f'<circle cx="{MX(dx):.2f}" cy="{MY(base):.2f}" r="{dr/UX*w:.2f}" '
-          f'fill="{red}" opacity="{op:.3f}"/>')
-        A(f'<circle cx="{MX(dx):.2f}" cy="{MY(base):.2f}" r="{dr*0.45/UX*w:.2f}" '
-          f'fill="{t["bg"]}"/>')
-
+    # ── connector baseline + dot.modular end nodes ──
+    line(50, base, 730, base, c=ink, width=sw*0.55, o=op*0.5)
+    for dx in (50, 730):
+        A(f'<circle cx="{MX(dx):.2f}" cy="{MY(base):.2f}" r="{6.0/UX*w:.2f}" '
+          f'fill="none" stroke="{ink}" stroke-width="{sw*0.55:.2f}" opacity="{op*0.75:.3f}"/>')
     return "".join(L)
 
 
