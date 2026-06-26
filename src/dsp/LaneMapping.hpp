@@ -30,12 +30,16 @@ namespace dotModular {
 // Engine strand index (matches the readStrand() order in MonsoonSandsManager and
 // the slot each engine.<strand>Len/Off/Rot occupies).
 enum EngineStrand {
-    STRAND_RHYTHM    = 0,
-    STRAND_VARIATION = 1,
-    STRAND_LEGATO    = 2,
+    // Renumbered to EDITOR order (MEL/OCT/REST/ACC/VAR/LEG) as part of the
+    // lane-order collapse. The switch(strand) accessors are keyed by NAME, so
+    // their behaviour is unchanged by the renumber; this just makes
+    // MONO_LANE_TO_STRAND the identity (editor lane == strand index).
+    STRAND_MELODY    = 0,
+    STRAND_OCTAVE    = 1,
+    STRAND_RHYTHM    = 2,   // REST
     STRAND_ACCENT    = 3,
-    STRAND_MELODY    = 4,
-    STRAND_OCTAVE    = 5,
+    STRAND_VARIATION = 4,
+    STRAND_LEGATO    = 5,
     NUM_STRANDS      = 6,
 };
 
