@@ -70,6 +70,12 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
                 auto* east = mon->expanderManager.cachedEastSandsVisual;
                 if (east && east->inputs[StraitsEastVisualIds::cvId(sprIdx,3)].isConnected())
                     return true;
+                // Delegated to Macro: show the arc when Macro's spread CV for this lane is
+                // connected (Macro modulation reaches the delegated lane → Mono shows it).
+                auto* macro = mon->expanderManager.cachedMacroSandsVisual;
+                bool delegated = macro && !(mm->params[ownerDispId(dotModular::ENGINE_LANE_TO_EDITOR[sprIdx])].getValue() > 0.5f);
+                if (delegated && macro->inputs[StraitsMacroVisualIds::cvId(sprIdx,3)].isConnected())
+                    return true;
                 return false;
             };
             addChild(arc);
@@ -244,9 +250,9 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             for (int el = 0; el < 4; ++el) {
                 if (!laneDelegated(el)) continue;
                 int eng = dotModular::EDITOR_TO_ENGINE_LANE[el];
-                int mLen = (int)std::round(macroForOwn->macroBase[eng][0] + macroForOwn->macroCVDelta[eng][0]);
-                int mOff = (int)std::round(macroForOwn->macroBase[eng][1] + macroForOwn->macroCVDelta[eng][1]);
-                int mRot = (int)std::round(macroForOwn->macroBase[eng][2] + macroForOwn->macroCVDelta[eng][2]);
+                int mLen = (int)std::round(macroForOwn->macroBase[eng][0] + macroForOwn->macroSendDelta[eng][0]);
+                int mOff = (int)std::round(macroForOwn->macroBase[eng][1] + macroForOwn->macroSendDelta[eng][1]);
+                int mRot = (int)std::round(macroForOwn->macroBase[eng][2] + macroForOwn->macroSendDelta[eng][2]);
                 visualEditor->currentState.lanes[el].setDisplayLOR(std::max(1,mLen), mOff, mRot);
             }
         }

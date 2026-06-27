@@ -114,12 +114,14 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 bool monoOwns = monoVis->params[Mono::ownerDispId(l)].getValue() > 0.5f;
                 if (!monoOwns) {
                     int el = dotModular::EDITOR_TO_ENGINE_LANE[l];   // editor → poly engine lane
-                    // Delegated → track Macro's CV-APPLIED value (base + macroCVDelta), not
-                    // just the static base, so Macro's modulation reaches the delegated Mono
-                    // lane (combo 6/G6). macroCVDelta is Macro's true POST CV delta.
-                    baseLen = macroVis->macroBase[el][0] + macroVis->macroCVDelta[el][0];
-                    baseOff = macroVis->macroBase[el][1] + macroVis->macroCVDelta[el][1];
-                    baseRot = macroVis->macroBase[el][2] + macroVis->macroCVDelta[el][2];
+                    // Delegated → track Macro's base + the TAPPED CV delta (macroSendDelta),
+                    // so the per-lane PRE/POST send tap controls how Macro's modulation
+                    // reaches the delegated lane: PRE (tap=0) = raw CV even when the left
+                    // atten is 0; POST (tap=1) = CV × left atten. (Was macroCVDelta = always
+                    // POST, so the tap did nothing and att=0 killed all modulation here.)
+                    baseLen = macroVis->macroBase[el][0] + macroVis->macroSendDelta[el][0];
+                    baseOff = macroVis->macroBase[el][1] + macroVis->macroSendDelta[el][1];
+                    baseRot = macroVis->macroBase[el][2] + macroVis->macroSendDelta[el][2];
                 }
             }
 
@@ -194,6 +196,16 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // so Mono accent spread did nothing). sprId(3)=accent base; East spread CV
             // jack cvId(3,3); Macro send/delta lane 3.
             for (int l = 0; l < 4; ++l) {
+                // Delegation: if Mono CEDES this poly spread lane to Macro, the spread
+                // tracks Macro's global spread (base + tapped send delta) exclusively —
+                // no Mono base, no Mono/East CV (parallel to the LOR delegation above).
+                bool sprDelegated = hasMacro && macroVis &&
+                                    !(monoVis->params[Mono::ownerDispId(l)].getValue() > 0.5f);
+                if (sprDelegated) {
+                    float sp = rack::math::clamp(macroVis->macroBase[l][3] + macroVis->macroSendDelta[l][3], -1.f, 1.f);
+                    monoVis->spreadEffective[l] = sp;
+                    continue;
+                }
                 float baseSpr = monoVis->params[Mono::sprId(l)].getValue();
                 float sp = applyMonoSprCV(baseSpr, l);
                 // INTERP Y — voice-1 spread mix-in (voice 0 slice), bipolar [-1,1].
