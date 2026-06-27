@@ -5,6 +5,7 @@
 //#include "MonsoonSandsExpander.hpp"
 #include "MonsoonSandsVisualExpander.hpp"
 #include "StraitsSandsMacroVisual.hpp"  // complete type for macroBase (P4 delegated-lane tracking)
+#include "StraitsEastSandsVisual.hpp"   // East type + StraitsEastVisualIds::cvId (Mono spread-arc East-CV gate)
 #include "ui/SandsVisualEditorV4.hpp"
 #include "ui/OwnerCell.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
@@ -60,9 +61,16 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
                 if (!mm || sprIdx < 0 || sprIdx >= 4) return false;
                 Monsoon* mon = findMonsoonEitherSide(mm);
                 if (!mon || !mon->modVizMono) return false;
-                // Gate on this spread lane's CV jack being connected (sprCvId is
-                // spread/engine-indexed, same as sprIdx) — avoids set-vs-effective race.
-                return mm->inputs[sprCvId(sprIdx)].isConnected();
+                // Active when THIS spread lane is being modulated from any source feeding
+                // the mono strand: Mono's own spread CV jack, OR East's V1 spread CV jack
+                // (East adds to V1 spread — its mod must show on Mono's arc too, as the
+                // total). sprCvId is spread/engine-indexed (same as sprIdx); East's V1
+                // spread CV jack is East::cvId(sprIdx,3) read at the mono slot.
+                if (mm->inputs[sprCvId(sprIdx)].isConnected()) return true;
+                auto* east = mon->expanderManager.cachedEastSandsVisual;
+                if (east && east->inputs[StraitsEastVisualIds::cvId(sprIdx,3)].isConnected())
+                    return true;
+                return false;
             };
             addChild(arc);
         }
