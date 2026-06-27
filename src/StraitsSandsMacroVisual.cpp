@@ -273,7 +273,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // local viewVoice arithmetic (static/constexpr, no engine ref).
         const int  viewVoiceNum = viewVoice + 1;
         const bool onMonoTab = dotModular::VoiceResolver::isMono(viewVoiceNum);
-        const bool v1Editable = onMonoTab && (monoVis == nullptr);  // edit V1 when no Mono attached
+        // (v1Editable removed — its only use, hiding Macro attens on V1, was dropped in P1.)
         const int  pv = dotModular::VoiceResolver::polyBankIndex(viewVoiceNum);  // -1 on mono
 
         // Mix-in send display proxies ↔ per-voice store, N→N: tab v (0-based) edits voice

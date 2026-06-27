@@ -42,13 +42,15 @@ struct DimmableTrimpot : rack::componentlibrary::Trimpot {
         rack::componentlibrary::Trimpot::onDragStart(e);
     }
     void draw(const DrawArgs& args) override {
-        bool dim = (dimWhen && dimWhen()) || locked();
+        // Locked no longer forces dim — a locked-but-shown control (e.g. V1 spread
+        // mirroring Mono) must stay readable. Only dimWhen dims (truly unavailable).
+        bool dim = (dimWhen && dimWhen());
         if (dim) nvgGlobalAlpha(args.vg, 0.4f);
         rack::componentlibrary::Trimpot::draw(args);
         if (dim) nvgGlobalAlpha(args.vg, 1.0f);
     }
     void drawLayer(const DrawArgs& args, int layer) override {
-        bool dim = (dimWhen && dimWhen()) || locked();
+        bool dim = (dimWhen && dimWhen());
         if (dim) nvgGlobalAlpha(args.vg, 0.4f);
         rack::componentlibrary::Trimpot::drawLayer(args, layer);
         if (dim) nvgGlobalAlpha(args.vg, 1.0f);
@@ -107,7 +109,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             auto interpParamId = [this, lane]() -> int {
                 int v = polyVoice();
                 if (v < 0) v = 0;   // mono tab: arc is inactive anyway; keep id in range
-                return (lane==0) ? restInterpId(v) : (lane==1) ? melodyInterpId(v) : octaveInterpId(v);
+                return (lane==0) ? restInterpId(v)
+                     : (lane==1) ? melodyInterpId(v)
+                     : (lane==2) ? octaveInterpId(v)
+                     :             accentInterpId(v);   // lane 3 = ACCENT (was falling through to octave)
             };
             arc->getSetNorm = [mod, this, interpParamId, lane]() -> float {
                 if (!mod) return 0.5f;
@@ -609,17 +614,23 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
 
         if (selectedVoice >= 1) {
             saveVoiceLOR(polyVoice());
+            // Per-frame: push the spread knobs (SPREAD_R/M/O/A) into this voice's interp
+            // params so turning a spread knob takes effect LIVE — previously this only
+            // happened on tab change (saveVoiceSpread in onVoiceTabChanged), so a spread
+            // turn (esp. ACCENT) didn't mutate until you switched tabs. Now accent spread
+            // modulates immediately and its mod arc reads a live value.
+            saveVoiceSpread(polyVoice());
             paramMgr->syncPatternEngineToEditor(polyVoice(), visualEditor->currentState);
-            // Bug fix: for a lane CEDED to Macro, the editor's own probabilities aren't the
-            // source of truth (Macro drives it) and the sync above reads slewedPoly* which
-            // isn't populated under Macro ownership → blank lanes. For ceded lanes only,
-            // overwrite the display from the resolver (polyRhythmRandom — the final output the
-            // sequencer plays, populated regardless of owner; the prob-outs use the same).
-            // East-OWNED lanes keep the editor's edit values so dragging a bar isn't clobbered.
+            // The editor's drag only edits the LOR WINDOW (length/offset/rotation), never
+            // individual step probabilities — those are display-only. So show the
+            // SPREAD-APPLIED probabilities (polyRhythmRandom etc., what actually plays)
+            // for EVERY lane, not just Macro-ceded ones. Previously East-owned lanes kept
+            // the raw drawn pattern, so moving spread changed the audio but NOT the
+            // visible bars. Reading the resolver (post-spread) makes spread visible and
+            // also fixes the blank-lane case under Macro ownership.
             dotModular::VoiceResolver resolver(monsoon->engine);
             const int vnum = currentVoice();
             for (int lane = 0; lane < 4; ++lane) {
-                if (!laneOwnedByMacro(lane)) continue;   // owned by East → keep editor's values
                 int el = dotModular::ENGINE_LANE_TO_EDITOR[lane];
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
                     visualEditor->currentState.lanes[el].probabilities[s] =
