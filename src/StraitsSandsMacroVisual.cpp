@@ -335,12 +335,11 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // The global base params are already wired to the engine for poly; for V1,
         // processDNA reads them via publishGlobal which writes all mono strands.
         visualEditor->readOnly = tab1Mono;   // Macro is already view-only, but mark it explicitly
-        // Macro's global-base CV-depth attenuverters don't reach voice 1 (mono provides
-        // the base) — hide them on tab 1 when mono attached. Only the mix-in sends (below
-        // the lanes) could affect voice 1, and only under the deferred interp. Y.
-        // Attens hidden when Mono is attached on V1 (Mono owns the base).
-        // Shown for poly tabs and when V1 is editable without Mono.
-        for (rack::Widget* w : leftAttenuverters) if (w) w->visible = !tab1Mono || v1Editable;
+        // P1 (G1 no-hide): Macro's left attenuverters are ALWAYS visible — they were
+        // previously hidden on the V1 tab when Mono was attached. They stay shown now;
+        // whether Macro displays its own base vs mirrors Mono on V1, and any locking,
+        // is handled by the delegation P-items (P4/P5/P6), not by hiding.
+        for (rack::Widget* w : leftAttenuverters) if (w) w->visible = true;
         if (tab1Mono) {
             // l = mono param bank (0=REST 1=MEL 2=OCT) → editor lane
             for (int l = 0; l < 3; ++l) {
