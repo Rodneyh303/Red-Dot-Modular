@@ -677,6 +677,17 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             module->params[SPREAD_R].setValue(monoVis->params[SandsMonoVisualIds::sprId(0)].getValue());
             module->params[SPREAD_M].setValue(monoVis->params[SandsMonoVisualIds::sprId(1)].getValue());
             module->params[SPREAD_O].setValue(monoVis->params[SandsMonoVisualIds::sprId(2)].getValue());
+            module->params[SPREAD_A].setValue(monoVis->params[SandsMonoVisualIds::sprId(3)].getValue());  // accent (was missing)
+            // CV-DEPTH attenuators on V1: these are East's OWN modulation controls (the
+            // user patches CV into East + sets depth to modulate V1). saveVoiceMacro only
+            // ever writes POLY slots, so the mono slot (kMonoSlot=0) — which the V1 CV
+            // mix-in in readStrand reads — stayed 0, making East V1 CV inaudible/invisible.
+            // Mirror the display-proxy attens into the mono slot every frame so V1 CV has
+            // its depth. (Owner/base stay Mono's; only the CV depth is East's here.)
+            for (int lane=0; lane<4; ++lane)
+                for (int c=0; c<4; ++c)
+                    module->params[attenId(dotModular::VoiceResolver::kMonoSlot, lane, c)]
+                        .setValue(module->params[attenDispId(lane,c)].getValue());
             // Probabilities: show the SPREAD-APPLIED V1 values (what plays) for all 4
             // lanes, so Mono's spread/CV AND East's V1 spread CV (both folded into the
             // engine mono strand by the manager) are visible — matching Mono's display.
