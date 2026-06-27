@@ -357,11 +357,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             saveVoiceLOR(polyVoice());
             saveVoiceSpread(polyVoice());
             saveVoiceMacro(polyVoice());
-        } else if (v1Editable()) {
-            // V1 editable (no Mono): save to mono slot (kMonoSlot=0).
-            saveVoiceLOR(0);
-            saveVoiceSpread(0);
         }
+        // V1-editable: nothing to save here — East writes the engine MONO strands
+        // directly each frame in step() (V1's true home), so there is no per-voice
+        // bank to persist. (The old saveVoiceLOR(0) wrote voice-2's poly bank — wrong.)
         selectedVoice = nv;
         // Load the INCOMING voice.
         if (selectedVoice >= 1) {
@@ -369,11 +368,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             loadVoiceLOR(polyVoice());
             loadVoiceSpread(polyVoice());
             loadVoiceMacro(polyVoice());
-        } else if (v1Editable()) {
-            // V1 editable: load mono slot.
-            loadVoiceLOR(0);
-            loadVoiceSpread(0);
         }
+        // V1-editable: the editor is refreshed from the engine mono strands by the
+        // v1Editable() display branch in step(); no explicit load needed.
     }
 
     Monsoon* getMonsoon() const {
@@ -624,25 +621,25 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 visualEditor->setLanePlayStep(el, calcPlayhead(gs, mLen, mOff, mRot));
             }
         } else if (v1Editable()) {
-            // V1 editable (no Mono): sync editor edits → engine mono strand params,
-            // then show the engine's current mono effective LOR as display.
-            // Editor writes drive the params; processDNA reads them next tick.
-            if (paramMgr) {
-                // Push editor state into the mono LOR params via the mono slot.
-                for (int l=0; l<3; ++l) {
-                    int el = l;  // Mono params now editor-ordered → identity
-                    auto& lane = visualEditor->currentState.lanes[el];
-                    module->params[SandsMonoVisualIds::lenId(l)].setValue((float)lane.length);
-                    module->params[SandsMonoVisualIds::offId(l)].setValue((float)lane.offset);
-                    module->params[SandsMonoVisualIds::rotId(l)].setValue((float)lane.rotation);
-                }
+            // V1 editable (no Mono, combo 3/7-without-Mono): East IS the V1 editor.
+            // Write the editor's lane LOR straight into the engine MONO strands (the
+            // V1 home), via MONO_LANE_TO_STRAND, for all 4 poly lanes (MEL/OCT/REST/
+            // ACC). The manager skips its no-Mono reset when East drives V1 (see
+            // MonsoonSandsManager hasEastV1). VAR/LEG are mono-only — not edited here.
+            //   editor lane el (0=MEL 1=OCT 2=REST 3=ACC) → engine strand.
+            for (int el = 0; el < 4; ++el) {
+                auto& lane = visualEditor->currentState.lanes[el];
+                int strand = dotModular::MONO_LANE_TO_STRAND[el];
+                eng.strandLenRef(strand) = std::max(1, lane.length);
+                eng.strandOffRef(strand) = ((lane.offset % 16) + 16) % 16;
+                eng.strandRotRef(strand) = ((lane.rotation % 16) + 16) % 16;
             }
-            // Display: show engine's current effective mono strand LOR.
-            for (int l=0; l<3; ++l) {
-                int el = l;  // Mono params now editor-ordered → identity
-                int cvLen = (int)std::round(module->params[SandsMonoVisualIds::lenId(l)].getValue());
-                int cvOff = (int)std::round(module->params[SandsMonoVisualIds::offId(l)].getValue());
-                int cvRot = (int)std::round(module->params[SandsMonoVisualIds::rotId(l)].getValue());
+            // Display: reflect the engine's current mono strand LOR back to the editor.
+            for (int el = 0; el < 4; ++el) {
+                int strand = dotModular::MONO_LANE_TO_STRAND[el];
+                int cvLen = eng.strandLenRef(strand);
+                int cvOff = eng.strandOffRef(strand);
+                int cvRot = eng.strandRotRef(strand);
                 visualEditor->currentState.lanes[el].setDisplayLOR(cvLen, cvOff, cvRot);
                 visualEditor->setLanePlayStep(el, calcPlayhead(gs, cvLen, cvOff, cvRot));
             }

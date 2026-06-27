@@ -227,7 +227,13 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         for (int l = 0; l < 6; ++l) readStrand(l);
 
     } else {
-        if (engine.rhythmLen != 16) {
+        // No Mono visual. If East is present and acting as the V1 editor (combo 3:
+        // East, no Mono), East writes the engine mono strands itself (from its V1
+        // editor) — do NOT reset them here, or we'd clobber East's V1 edits every
+        // block. Only reset to defaults when truly nothing drives the mono strand.
+        auto* eastV1 = expanderManager.cachedEastSandsVisual;
+        const bool hasEastV1 = (eastV1 != nullptr) && !hasMacro;  // East owns V1 only when no Macro
+        if (!hasEastV1 && engine.rhythmLen != 16) {
             engine.rhythmLen = engine.variationLen = engine.legatoLen =
             engine.accentLen = engine.melodyLen = engine.octaveLen = 16;
             engine.rhythmOff = engine.variationOff = engine.legatoOff =
