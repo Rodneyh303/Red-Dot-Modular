@@ -261,7 +261,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 [this, lane](OwnerCell* w) {
                     w->laneCol = laneColEng[lane];
                     Vec ctr = w->box.pos.plus(w->box.size.div(2.f));
-                    w->box.size = mm2px(Vec(6.0f, ED_LANE_H * 0.62f));
+                    // Match the editor's lane-step cell: one step wide × ~90% lane tall.
+                    const float stepW = (ED_W - 2.f*6.f) / 16.f;   // editor padding=6, 16 steps
+                    w->box.size = mm2px(Vec(stepW, ED_LANE_H * 0.9f));
                     w->box.pos  = ctr.minus(w->box.size.div(2.f));
                     w->inertWhen = [this](){ return !macroAttached(); };
                     w->hideWhen  = [this](){ return tab1MonoMirror(); };

@@ -126,7 +126,7 @@ def gen_mono(dark):
     gx,gy=1.5,ROW_TOP-4.0; gw,gh=(ATTEN_X[-1]+6.0)-gx,(ROW_BOT+2.0)-(ROW_TOP-4.0)  # gx clears leftmost jack
     A(D.input_group(gx,gy,gw,gh,t,sep_mm=0.5*(JACK_X[-1]+ATTEN_X[0])))
     A(D.editor_recess(ED_X,ED_Y,ED_W,ED_H,t,lanes=6))
-    A(D.owner_block(OWNER_X, [laneY(l) for l in range(4)], ED_X+ED_W, t, cell_w_mm=6.0, draw_cells=False))
+    A(D.owner_block(OWNER_X, [laneY(l) for l in range(4)], ED_X+ED_W, t, cell_w_mm=(ED_W-2*6.0)/16.0, draw_cells=False))
     A('</g>')
     A('<g inkscape:label="branding" inkscape:groupmode="layer">')
     A(D.logo_embed(dark, x_mm=11.0, y_mm=4.5, target_w_mm=42.0))

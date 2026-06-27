@@ -125,16 +125,18 @@ def editor_recess(ED_X, ED_Y, ED_W, ED_H, t, lanes=3, watermark=False):
         out.append(f'<line x1="{px(ED_X+1):.1f}" y1="{px(ly):.1f}" x2="{px(ED_X+ED_W-1):.1f}" y2="{px(ly):.1f}" stroke="{t["edborder"]}" stroke-width="0.75" stroke-opacity="0.7"/>')
     return "".join(out)
 
-def owner_block(owner_x, lane_ys, ed_right_x, t, cell_w_mm=6.0, label="SRC", draw_cells=True):
+def owner_block(owner_x, lane_ys, ed_right_x, t, cell_w_mm=6.0, label="SRC", draw_cells=True, cell_h_frac=0.9):
     """Per-lane owner-source block, drawn right of the editor before the prob-outs.
     v2-subtle: a thin separator from the editor grid, a faint backing strip, a
     small label, and (when draw_cells) one outline cell per lane row. When the
     LIVE OwnerCell widget draws the cells itself, pass draw_cells=False so only the
-    container (backing + separator + label) is baked. lane_ys = lane centre Y."""
+    container (backing + separator + label) is baked. cell_h_frac sets the cell
+    height as a fraction of the lane spacing (match the live widget). lane_ys =
+    lane centre Y."""
     if not lane_ys:
         return ""
     top = min(lane_ys); bot = max(lane_ys)
-    cell_h = ((bot - top) / max(1, len(lane_ys)-1)) * 0.62 if len(lane_ys) > 1 else 8.0
+    cell_h = ((bot - top) / max(1, len(lane_ys)-1)) * cell_h_frac if len(lane_ys) > 1 else 8.0
     pad = 1.6
     bx = owner_x - cell_w_mm*0.5 - pad
     by = top - cell_h*0.5 - pad

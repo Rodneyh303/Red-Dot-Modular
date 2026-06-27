@@ -132,7 +132,10 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             auto* oc = createParamCentered<OwnerCell>(
                 mm2px(Vec(OWNER_X, rowY(l))), mod, ownerDispId(l));
             oc->laneCol = sandsLaneColorEditor(l);
-            oc->box.size = mm2px(Vec(6.0f, (ROW_BOT - ROW_TOP) / N_LANES * 0.62f));
+            // Match the editor's lane-step cell: one step wide × ~90% lane tall.
+            const float stepW   = (ED_W - 2.f*6.f) / 16.f;          // editor padding=6, 16 steps
+            const float monoLaneH = (ROW_BOT - ROW_TOP) / N_LANES;  // 6 lanes
+            oc->box.size = mm2px(Vec(stepW, monoLaneH * 0.9f));
             oc->box.pos  = mm2px(Vec(OWNER_X, rowY(l))).minus(oc->box.size.div(2.f));
             oc->inertWhen = [this]() {
                 auto* mon = getMonsoon();

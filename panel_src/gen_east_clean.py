@@ -146,8 +146,8 @@ def gen(dark):
     #    outline in lane colour = East/per-voice), so no static outline cells here.
     _ed_right = ED_X + ED_W
     _lane_ys = [rowY(r) for r in range(N)]
-    _ch = ED_LANE_H * 0.62
-    _cw = 6.0
+    _ch = ED_LANE_H * 0.9                  # match the live OwnerCell (≈ lane step cell)
+    _cw = (ED_W - 2*6.0) / 16.0            # one editor step wide (padding=6, 16 steps)
     _pad = 1.6
     _by = min(_lane_ys) - _ch*0.5 - _pad
     _bh = (max(_lane_ys)-min(_lane_ys)) + _ch + 2*_pad
