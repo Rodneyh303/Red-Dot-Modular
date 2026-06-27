@@ -73,7 +73,7 @@ struct OwnerCell : rack::ParamWidget {
     bool inert()  const { return inertWhen && inertWhen(); }
     bool hidden() const { return hideWhen && hideWhen(); }
 
-    bool eastOwns() const {                // ownerDispId > 0.5 = East owns
+    bool eastOwns()  {                // ownerDispId > 0.5 = East owns
         return getParamQuantity() && getParamQuantity()->getValue() > 0.5f;
     }
     void toggle() {
