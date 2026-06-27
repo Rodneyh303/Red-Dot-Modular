@@ -42,13 +42,15 @@ struct DimmableTrimpot : rack::componentlibrary::Trimpot {
         rack::componentlibrary::Trimpot::onDragStart(e);
     }
     void draw(const DrawArgs& args) override {
-        bool dim = (dimWhen && dimWhen()) || locked();
+        // Locked no longer forces dim — a locked-but-shown control (e.g. V1 spread
+        // mirroring Mono) must stay readable. Only dimWhen dims (truly unavailable).
+        bool dim = (dimWhen && dimWhen());
         if (dim) nvgGlobalAlpha(args.vg, 0.4f);
         rack::componentlibrary::Trimpot::draw(args);
         if (dim) nvgGlobalAlpha(args.vg, 1.0f);
     }
     void drawLayer(const DrawArgs& args, int layer) override {
-        bool dim = (dimWhen && dimWhen()) || locked();
+        bool dim = (dimWhen && dimWhen());
         if (dim) nvgGlobalAlpha(args.vg, 0.4f);
         rack::componentlibrary::Trimpot::drawLayer(args, layer);
         if (dim) nvgGlobalAlpha(args.vg, 1.0f);
@@ -107,19 +109,45 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             auto interpParamId = [this, lane]() -> int {
                 int v = polyVoice();
                 if (v < 0) v = 0;   // mono tab: arc is inactive anyway; keep id in range
-                return (lane==0) ? restInterpId(v) : (lane==1) ? melodyInterpId(v) : octaveInterpId(v);
+                return (lane==0) ? restInterpId(v)
+                     : (lane==1) ? melodyInterpId(v)
+                     : (lane==2) ? octaveInterpId(v)
+                     :             accentInterpId(v);   // lane 3 = ACCENT (was falling through to octave)
             };
-            arc->getSetNorm = [mod, interpParamId]() -> float {
+            arc->getSetNorm = [mod, this, interpParamId, lane]() -> float {
                 if (!mod) return 0.5f;
-                // Interp/spread params are bipolar -1..1; map to 0..1 (centre=0.5).
-                // getScaledValue() does this correctly over the param's range.
+                if (polyVoice() < 0) {
+                    // V1 (combo 7): SET = East's spread knob, which now mirrors Mono's
+                    // spread. SPREAD_R/M/O/A = lane 0/1/2/3 (engine order).
+                    if (lane < 0 || lane >= 4) return 0.5f;
+                    int pid = (lane==0) ? (int)SPREAD_R : (lane==1) ? (int)SPREAD_M
+                            : (lane==2) ? (int)SPREAD_O : (int)SPREAD_A;
+                    auto* pq = mod->paramQuantities[pid];
+                    return pq ? (float)pq->getScaledValue() : 0.5f;
+                }
                 auto* pq = mod->paramQuantities[interpParamId()];
                 return pq ? (float)pq->getScaledValue() : 0.5f;
             };
             arc->getModNorm = [mod, this, lane]() -> float {
                 if (!mod) return 0.5f;
-                int v = polyVoice();   // poly bank index (-1 on mono tab → guarded by v<0 below)
-                if (v < 0 || v >= 15) return 0.5f;
+                int v = polyVoice();
+                if (v < 0) {
+                    // V1 / mono tab (P6, combo 7): MOD = the spread knob value (Mono's,
+                    // mirrored) + East's own incoming V1 spread CV on this lane. Absolute
+                    // (not a centre deflection) so the arc reads as the total entering
+                    // East. lane = spread index 0=REST,1=MEL,2=OCT,3=ACC; CV jack cvId(lane,3).
+                    if (lane < 0 || lane >= 4) return 0.5f;
+                    int pid = (lane==0) ? (int)SPREAD_R : (lane==1) ? (int)SPREAD_M
+                            : (lane==2) ? (int)SPREAD_O : (int)SPREAD_A;
+                    float base = mod->params[pid].getValue();   // bipolar -1..1 (Mono's spread)
+                    if (mod->inputs[cvId(lane,3)].isConnected()) {
+                        float att = mod->params[attenId(dotModular::VoiceResolver::kMonoSlot, lane, 3)].getValue();
+                        float cv  = mod->inputs[cvId(lane,3)].getVoltage(0) / 10.f;
+                        base = base + cv * att * 2.f;
+                    }
+                    return rack::math::clamp((rack::math::clamp(base,-1.f,1.f) + 1.f) * 0.5f, 0.f, 1.f);
+                }
+                if (v >= 15) return 0.5f;
                 // polySpreadEffective is bipolar -1..1 → map to 0..1.
                 return rack::math::clamp((mod->polySpreadEffective[v][lane] + 1.f) * 0.5f, 0.f, 1.f);
             };
@@ -127,8 +155,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 if (!mod) return false;
                 Monsoon* mon = findMonsoonEitherSide(mod);
                 if (!mon || !mon->modVizEast) return false;
-                int v = polyVoice();   // poly bank index (-1 on mono tab → guarded by v<0 below)
-                if (v < 0 || v >= 15) return false;
+                int v = polyVoice();
+                if (v < 0) {
+                    // V1 / mono tab (P6): active when East's own V1 spread CV jack is
+                    // connected on this lane (the mod East contributes to V1). Incl accent.
+                    if (lane < 0 || lane >= 4) return false;
+                    return mod->inputs[cvId(lane,3)].isConnected();
+                }
+                if (v >= 15) return false;
                 // Gate on a REAL modulation source (not a transient set-vs-effective
                 // delta, which races during a manual knob turn — the control-rate
                 // polySpreadEffective lags the live param for a frame and drew a red
@@ -241,13 +275,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 bindParam<DimmableTrimpot>("param_" + std::to_string(attenDispId(r,c)), attenDispId(r,c));
         }
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_R), SPREAD_R,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(0) || tab1MonoMirror(); }; k->lockWhen = [this](){ return laneOwnedByMacro(0) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 0}); }));
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(0); }; k->lockWhen = [this](){ return laneOwnedByMacro(0) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 0}); }));
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_M), SPREAD_M,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(1) || tab1MonoMirror(); }; k->lockWhen = [this](){ return laneOwnedByMacro(1) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 1}); }));
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(1); }; k->lockWhen = [this](){ return laneOwnedByMacro(1) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 1}); }));
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_O), SPREAD_O,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(2) || tab1MonoMirror(); }; k->lockWhen = [this](){ return laneOwnedByMacro(2) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 2}); }));
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(2); }; k->lockWhen = [this](){ return laneOwnedByMacro(2) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 2}); }));
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_A), SPREAD_A,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(3) || tab1MonoMirror(); }; k->lockWhen = [this](){ return laneOwnedByMacro(3) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 3}); }));
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(3); }; k->lockWhen = [this](){ return laneOwnedByMacro(3) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 3}); }));
 
         // Macro/East blend controls (bound to the display proxies; copied to/from
         // the per-voice MACRO params on voice switch + each frame). Owner = a
@@ -275,7 +309,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     const float stepW = (ED_W - 2.f*6.f) / 16.f;   // editor padding=6, 16 steps
                     w->box.size = mm2px(Vec(stepW, ED_LANE_H * 0.9f));
                     w->box.pos  = ctr.minus(w->box.size.div(2.f));
-                    w->lockWhen = [this](){ return !macroAttached(); };  // condition 2: no Macro → can't delegate
+                    // Owner cell is locked (inoperable) when: no Macro to delegate to
+                    // (condition 2), OR this is the V1/mono tab — East can NEVER delegate
+                    // V1 (G4/P8): Mono owns V1, only Mono's own cell may cede it. On V1 the
+                    // cell still SHOWS the current V1 ownership (filled if Mono delegated to
+                    // Macro, outline otherwise) but can't be toggled here.
+                    w->lockWhen = [this](){ return !macroAttached() || onMonoTab(); };
                     // P1 (G1 no-hide): the owner cell is never hidden — not even on the
                     // V1/mono tab. It stays visible and is *locked* where appropriate
                     // (P2/P8). hideWhen is left unset → always shown.
@@ -582,17 +621,23 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
 
         if (selectedVoice >= 1) {
             saveVoiceLOR(polyVoice());
+            // Per-frame: push the spread knobs (SPREAD_R/M/O/A) into this voice's interp
+            // params so turning a spread knob takes effect LIVE — previously this only
+            // happened on tab change (saveVoiceSpread in onVoiceTabChanged), so a spread
+            // turn (esp. ACCENT) didn't mutate until you switched tabs. Now accent spread
+            // modulates immediately and its mod arc reads a live value.
+            saveVoiceSpread(polyVoice());
             paramMgr->syncPatternEngineToEditor(polyVoice(), visualEditor->currentState);
-            // Bug fix: for a lane CEDED to Macro, the editor's own probabilities aren't the
-            // source of truth (Macro drives it) and the sync above reads slewedPoly* which
-            // isn't populated under Macro ownership → blank lanes. For ceded lanes only,
-            // overwrite the display from the resolver (polyRhythmRandom — the final output the
-            // sequencer plays, populated regardless of owner; the prob-outs use the same).
-            // East-OWNED lanes keep the editor's edit values so dragging a bar isn't clobbered.
+            // The editor's drag only edits the LOR WINDOW (length/offset/rotation), never
+            // individual step probabilities — those are display-only. So show the
+            // SPREAD-APPLIED probabilities (polyRhythmRandom etc., what actually plays)
+            // for EVERY lane, not just Macro-ceded ones. Previously East-owned lanes kept
+            // the raw drawn pattern, so moving spread changed the audio but NOT the
+            // visible bars. Reading the resolver (post-spread) makes spread visible and
+            // also fixes the blank-lane case under Macro ownership.
             dotModular::VoiceResolver resolver(monsoon->engine);
             const int vnum = currentVoice();
             for (int lane = 0; lane < 4; ++lane) {
-                if (!laneOwnedByMacro(lane)) continue;   // owned by East → keep editor's values
                 int el = dotModular::ENGINE_LANE_TO_EDITOR[lane];
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
                     visualEditor->currentState.lanes[el].probabilities[s] =
@@ -621,14 +666,68 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // (no Mono), the editor is live and the user edits V1's lanes directly here.
         visualEditor->readOnly = tab1Mono;
         if (tab1Mono) {
-            // l = mono param bank (0=REST 1=MEL 2=OCT) → editor lane
-            for (int l=0; l<3; ++l) {
-                int mLen = (int)std::round(monoVis->params[SandsMonoVisualIds::lenId(l)].getValue());
-                int mOff = (int)std::round(monoVis->params[SandsMonoVisualIds::offId(l)].getValue());
-                int mRot = (int)std::round(monoVis->params[SandsMonoVisualIds::rotId(l)].getValue());
-                int el = l;  // Mono params now editor-ordered → identity
-                visualEditor->currentState.lanes[el].setDisplayLOR(mLen, mOff, mRot);
-                visualEditor->setLanePlayStep(el, calcPlayhead(gs, mLen, mOff, mRot));
+            // Show Mono's base LOR for all 4 poly lanes (Mono params are editor-ordered:
+            // MEL=0 OCT=1 REST=2 ACC=3 → editor lane == param index). V1 base belongs to
+            // Mono and is inoperable on East (locked by laneLockedFn / readOnly). The mod
+            // arriving at East is shown by the V1 mod arcs (P6), not folded into this base.
+            // Show the V1 LOR for all 4 poly lanes. Read the engine MONO STRAND (which
+            // the manager has already written with Mono's base + East's V1 CV + Macro CV)
+            // so East's V1 LOR display REFLECTS the incoming modulation — matching Mono's
+            // CV-applied display. (Previously read Mono's static base params, so LOR mod
+            // arriving via East showed on Mono but not here.) editor lane → engine strand.
+            for (int l=0; l<4; ++l) {
+                int strand  = dotModular::MONO_LANE_TO_STRAND[l];   // editor lane → engine strand
+                int mLen = monsoon->engine.strandLen(strand);
+                int mOff = monsoon->engine.strandOff(strand);
+                int mRot = monsoon->engine.strandRot(strand);
+                visualEditor->currentState.lanes[l].setDisplayLOR(std::max(1,mLen), mOff, mRot);
+                visualEditor->setLanePlayStep(l, calcPlayhead(gs, std::max(1,mLen), mOff, mRot));
+            }
+            // Spread (combo 7): East's V1 spread knobs FOLLOW Mono's spread (inoperable,
+            // locked). Mono's sprId is engine/spread order (REST=0,MEL=1,OCT=2); East's
+            // SPREAD_R/M/O are also engine order, so copy directly. This makes the knob
+            // track Mono and gives the V1 spread arc a real base to deflect from.
+            module->params[SPREAD_R].setValue(monoVis->params[SandsMonoVisualIds::sprId(0)].getValue());
+            module->params[SPREAD_M].setValue(monoVis->params[SandsMonoVisualIds::sprId(1)].getValue());
+            module->params[SPREAD_O].setValue(monoVis->params[SandsMonoVisualIds::sprId(2)].getValue());
+            module->params[SPREAD_A].setValue(monoVis->params[SandsMonoVisualIds::sprId(3)].getValue());  // accent (was missing)
+            // CV-DEPTH attenuators on V1: these are East's OWN modulation controls (the
+            // user patches CV into East + sets depth to modulate V1). saveVoiceMacro only
+            // ever writes POLY slots, so the mono slot (kMonoSlot=0) — which the V1 CV
+            // mix-in in readStrand reads — stayed 0, making East V1 CV inaudible/invisible.
+            // Mirror the display-proxy attens into the mono slot every frame so V1 CV has
+            // its depth. (Owner/base stay Mono's; only the CV depth is East's here.)
+            for (int lane=0; lane<4; ++lane)
+                for (int c=0; c<4; ++c)
+                    module->params[attenId(dotModular::VoiceResolver::kMonoSlot, lane, c)]
+                        .setValue(module->params[attenDispId(lane,c)].getValue());
+            // P8: East's owner cells on V1 are locked (East can't delegate V1) but should
+            // SHOW the real V1 ownership, which Mono decides. Mirror Mono's owner param
+            // into East's ownerDispId so the cell draws filled/outline correctly. East
+            // ownerDispId is engine-lane indexed; Mono's is editor-lane indexed.
+            for (int eng=0; eng<4; ++eng) {
+                int el = dotModular::ENGINE_LANE_TO_EDITOR[eng];
+                module->params[ownerDispId(eng)].setValue(
+                    monoVis->params[SandsMonoVisualIds::ownerDispId(el)].getValue());
+            }
+            // Probabilities: show the SPREAD-APPLIED V1 values (what plays) for all 4
+            // lanes, so Mono's spread/CV AND East's V1 spread CV (both folded into the
+            // engine mono strand by the manager) are visible — matching Mono's display.
+            // Use finalRandomByStrand PER STEP (the resolver's masterLaneProbability only
+            // returns the current playhead step, which would flatten all 16 bars). Bars
+            // are display-only on V1 (editor readOnly), so overwriting each frame is safe.
+            {
+                // editor lane → engine poly lane → mono strand index.
+                for (int el = 0; el < 4; ++el) {
+                    int engLane = dotModular::EDITOR_TO_ENGINE_LANE[el];   // 0..3 = REST/MEL/OCT/ACC
+                    int strand  = (engLane == 0) ? dotModular::STRAND_RHYTHM
+                                : (engLane == 1) ? dotModular::STRAND_MELODY
+                                : (engLane == 2) ? dotModular::STRAND_OCTAVE
+                                :                  dotModular::STRAND_ACCENT;
+                    for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
+                        visualEditor->currentState.lanes[el].probabilities[s] =
+                            monsoon->engine.pe.finalRandomByStrand(strand, s);
+                }
             }
         } else if (v1Editable()) {
             // V1 editable (no Mono, combo 3/7-without-Mono): East IS the V1 editor.

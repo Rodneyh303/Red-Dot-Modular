@@ -206,6 +206,15 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 engine.polyOff[v][PL::PL_ACCENT] = (int)math::clamp(eastLOR->params[accentBase + 1].getValue(), 0.f, 15.f);
                 engine.polyRot[v][PL::PL_ACCENT] = (int)math::clamp(eastLOR->params[accentBase + 2].getValue(), 0.f, 15.f);
                 float accentInterp = math::clamp(eastInterp->params[MonsoonIds::POLY_ACCENT_INTERP_1 + v].getValue(), -1.f, 1.f);
+                // Accent spread CV (cvId(PL_ACCENT,3)) — was missing, so accent spread
+                // only responded to the manual knob, never to modulation. Mirror the
+                // REST/MEL/OCT path: add CV×atten, then combineSpread (owner + Macro blend).
+                if (eastVisual && eastVisual->inputs[cvId(PL::PL_ACCENT,3)].isConnected()) {
+                    float att = eastLOR->params[attenId(slot, PL::PL_ACCENT, 3)].getValue();   // PER-VOICE depth
+                    float cv  = eastVisual->inputs[cvId(PL::PL_ACCENT,3)].getVoltage(v) / 10.f;
+                    accentInterp = math::clamp(accentInterp + cv * att, -1.f, 1.f);
+                }
+                accentInterp = combineSpread(PL::PL_ACCENT, accentInterp);   // owner + Macro-CV blend (spread)
                 if (eastVisual) eastVisual->polySpreadEffective[v][PL::PL_ACCENT] = accentInterp;   // accent spread → editor display
                 if (!engine.locked) {
                     const int nPoly = effPolyVoices;

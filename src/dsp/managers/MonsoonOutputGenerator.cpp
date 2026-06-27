@@ -30,6 +30,7 @@ void OutputGenerator::drive(SequencerEngine& engine,
     // Cache gate state for summary outputs
     float gateV = outputs[GATE_OUTPUT].getVoltage();
     bool accentActive = engine.lastStepResult.accented && !effectiveMuted;
+    (void)accentActive;
 
     // 2. Straits East Expander (Voices 2-8)
     auto* polyExp = expanderManager.cachedPolyVoiceExpander;

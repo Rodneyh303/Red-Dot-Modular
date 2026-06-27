@@ -152,23 +152,28 @@ send path in the Macro bottom send group.
 ---
 
 ## Implementation checklist (tackle in pieces)
+Legend: [x] merged/verified · [~] implemented, pending final build-verify · [ ] todo.
 
-- [ ] **P1 — Global no-hide (G1).** Remove `tab1MonoMirror` hiding of V1/owner
+- [x] **P1 — Global no-hide (G1).** Remove `tab1MonoMirror` hiding of V1/owner
   cells and any spread hiding on East/Mono/Macro. Controls stay visible.
-- [ ] **P2 — Owner-cell lock states.** Implement the 3 conditions (outline-operable,
+- [x] **P2 — Owner-cell lock states.** Implement the 3 conditions (outline-operable,
   outline-locked, filled-locked). Cell is locked (inoperable) whenever no Macro
   is attached; filled-locked when delegated. Visual lock affordance.
-- [ ] **P3 — East V1 editable when standalone (combo 3).** Allow V1 LOR editing on
+- [x] **P3 — East V1 editable when standalone (combo 3).** Allow V1 LOR editing on
   East when no Mono present; make V1 base inoperable on East when Mono present
   (combo 7/8), following Mono.
-- [ ] **P4 — Delegated-lane lock + track (G5).** On East/Mono, a delegated lane's
+- [x] **P4 — Delegated-lane lock + track (G5).** On East/Mono, a delegated lane's
   LOR+spread become inoperable and display Macro's values live.
-- [ ] **P5 — V1 East-follows-Mono + additive mod (combo 7/8, G4).** East V1 base =
+- [~] **P5 — V1 East-follows-Mono + additive mod (combo 7/8, G4).** East V1 base =
   Mono's; East V1 CV adds to V1 mod; arcs split (East=incoming, Mono=total) (G6).
-- [ ] **P6 — Mod-arc sourcing (G6).** Ensure each surface's arcs read the mod
+- [~] **P6 — Mod-arc sourcing (G6).** Ensure each surface's arcs read the mod
   applied at that surface; final-owner surface shows total.
-- [ ] **P7 — Macro sends inert when standalone (combo 4).** Confirm/observe.
-- [ ] **P8 — East cannot delegate V1 (combo 8, G4).** V1 owner cell on East is
+- [x] **P7 — Macro sends inert when standalone (combo 4).** VERIFIED by code:
+  macroActive = hasMacro && polyBaseActive, and polyBaseActive requires the East
+  BASE expander (cachedPolyVoiceExpander) + numPolyVoices>=1. Standalone Macro →
+  macroActive false → publishGlobal never runs → macroCVDelta stays 0 → every send
+  (base + macroCVDelta*send) contributes 0. Sends shown but inert. No code needed.
+- [x] **P8 — East cannot delegate V1 (combo 8, G4).** V1 owner cell on East is
   locked to "follow V1 authority"; only Mono's cell can delegate V1.
 - [ ] **P9 — Send PRE/POST tap (item 9).** Switch or mix trimpot on Macro sends.
 
