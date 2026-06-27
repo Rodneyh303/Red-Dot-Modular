@@ -30,11 +30,15 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
     int lastThemeLight = -1;
 
     // Spread mod-arcs (bipolar -1..1), same as Macro: set = SPR param,
-    // effective = mod->spreadEffective[lane] (CV-modulated). Normalised (v+1)/2.
+    // effective = mod->spreadEffective[spreadIdx] (CV-modulated). Normalised (v+1)/2.
+    // NOTE: the stored int is the SPREAD index (engine order REST=0,MEL=1,OCT=2,ACC=3),
+    // matching how spreadEffective[] is written and how sprCvId() is indexed — NOT the
+    // editor lane. This is the fix for the spread-arc off-by-one (arc was reading the
+    // engine-indexed array by editor lane).
     std::vector<std::pair<rack::ParamWidget*, int>> pendingSpreadArcs;
     void flushSpreadArcs(MonsoonSandsVisualExpander* mod) {
         for (auto& pr : pendingSpreadArcs) {
-            auto* knob = pr.first; int lane = pr.second;
+            auto* knob = pr.first; int sprIdx = pr.second;
             if (!knob) continue;
             auto* arc = new redDot::ModArcOverlay();
             arc->radius   = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
@@ -46,20 +50,18 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
                 auto* pq = mm->paramQuantities[pid];
                 return pq ? (float)pq->getScaledValue() : 0.5f;
             };
-            arc->getModNorm = [mm, lane]() -> float {
-                if (!mm || lane < 0 || lane >= 6) return 0.5f;
-                return rack::math::clamp((mm->spreadEffective[lane] + 1.f) * 0.5f, 0.f, 1.f);
+            // spreadEffective[] is spread/engine-indexed (REST=0,MEL=1,OCT=2,ACC=3).
+            arc->getModNorm = [mm, sprIdx]() -> float {
+                if (!mm || sprIdx < 0 || sprIdx >= 4) return 0.5f;
+                return rack::math::clamp((mm->spreadEffective[sprIdx] + 1.f) * 0.5f, 0.f, 1.f);
             };
-            arc->isActive = [mm, lane, pid]() -> bool {
-                if (!mm || lane < 0 || lane >= 6) return false;
+            arc->isActive = [mm, sprIdx]() -> bool {
+                if (!mm || sprIdx < 0 || sprIdx >= 4) return false;
                 Monsoon* mon = findMonsoonEitherSide(mm);
                 if (!mon || !mon->modVizMono) return false;
-                // Spreadable lanes: REST/MEL/OCT (0-2) + ACCENT (4). Map the editor lane
-                // back to its spread-control index for the CV-jack lookup. Gate on the
-                // spread CV jack being connected (avoids the set-vs-effective race).
-                int spr = (lane == 4) ? 3 : (lane <= 2 ? lane : -1);
-                if (spr < 0) return false;
-                return mm->inputs[sprCvId(spr)].isConnected();
+                // Gate on this spread lane's CV jack being connected (sprCvId is
+                // spread/engine-indexed, same as sprIdx) — avoids set-vs-effective race.
+                return mm->inputs[sprCvId(sprIdx)].isConnected();
             };
             addChild(arc);
         }
@@ -112,7 +114,10 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             float y = rowY(editorLane);
             auto* sp = createParamCentered<Trimpot>(mm2px(Vec(SPR_BASE_X, y)), mod, sprId(l));
             addParam(sp);
-            pendingSpreadArcs.push_back({sp, editorLane});
+            // Store the SPREAD index l (engine order REST/MEL/OCT/ACC), NOT the editor
+            // lane: spreadEffective[] and sprCvId() are both spread/engine-indexed, so
+            // the arc must look them up by l. (The knob sits on the editor row via y.)
+            pendingSpreadArcs.push_back({sp, l});
             addInput(createInputCentered<PJ301MPort>(
                 mm2px(Vec(SPR_CV_X, y)), mod, sprCvId(l)));
             addParam(createParamCentered<Trimpot>(
@@ -204,12 +209,14 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             mod->params[rotId(l)].setValue((float)lane.rotation);
         }
 
-        // ── Per-lane base spread (REST/MEL/OCT only — the spreadable lanes).
-        // LEG/ACC/VAR are mono-only and have no spread. spreadEffective[] is
-        // written by processDNA from sprId base + cv*atten (per-lane CV mod).
+        // ── Per-lane base spread. spreadEffective[] is SPREAD/engine-indexed
+        // (0=REST,1=MEL,2=OCT,3=ACC). setLaneSpread expects the PatternEngine BUFFER
+        // lane order (REST=0,MEL=1,OCT=2,LEG=3,ACC=4,VAR=5). Map spread idx → buffer
+        // lane explicitly so neither side is read with the wrong convention. (This was
+        // the per-lane analogue of the spread-arc off-by-one.)
+        static const int SPREAD_TO_BUFFER[4] = { 0, 1, 2, 4 };  // REST,MEL,OCT,ACCENT
         for (int l = 0; l < N_SPREAD_LANES; ++l) {
-            int el = SPREAD_LANE_TO_EDITOR[l];
-            paramMgr->setLaneSpread(el, mod->spreadEffective[el]);
+            paramMgr->setLaneSpread(SPREAD_TO_BUFFER[l], mod->spreadEffective[l]);
         }
 
         paramMgr->setInterpolationTarget(SpreadManager::AVERAGE_POLY);

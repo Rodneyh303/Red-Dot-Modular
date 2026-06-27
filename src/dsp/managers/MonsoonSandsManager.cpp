@@ -182,11 +182,13 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 }
                 monoVis->spreadEffective[l] = sp;
             }
-            // LEG(3) and VAR(5) are mono-only — no spread. ACCENT(4) is now a poly lane
-            // with its own spread (set by the mono Sands spread control / its own CV path),
-            // so it is NOT zeroed here.
+            // spreadEffective[] is ENGINE/spread-indexed: 0=REST,1=MEL,2=OCT,3=ACCENT
+            // (this matches the audio reads below and sprId/sprCvId). The loop above
+            // writes REST/MEL/OCT (0..2). ACCENT (index 3) mono spread is not wired to
+            // the audio yet (accentRandom is passed raw below), so its effective value
+            // stays 0 — its mod-arc correctly reads 0 until ACCENT mono spread lands.
+            // Indices 4/5 are unused (LEG/VAR are mono-only and have no spread).
             monoVis->spreadEffective[3] = 0.f;
-            monoVis->spreadEffective[5] = 0.f;
 
             // ── Sands spread→final (Option W, Model 1) ───────────────────────
             // Mono owns the MONO final arrays: read the SLEWED draw, apply
