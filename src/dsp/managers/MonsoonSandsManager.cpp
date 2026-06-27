@@ -282,7 +282,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 if (!macroVis || !macroVis->inputs[Macro::macroCvId(lane,item)].isConnected()) return 0.f;
                 float cv  = macroVis->inputs[Macro::macroCvId(lane,item)].getVoltage() / 10.f;
                 float att = macroVis->params[Macro::macroAttenId(lane,item)].getValue();
-                float tap = macroVis->params[Macro::tapId(lane)].getValue();   // P9: one tap per lane
+                float tap = macroVis->params[Macro::tapIdForItem(lane,item)].getValue();  // P9b: LOR tap (0-2) or spread tap (3)
                 float effAtt = 1.f + (att - 1.f) * tap;
                 return cv * effAtt * (hi - lo);
             };

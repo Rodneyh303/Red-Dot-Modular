@@ -549,12 +549,13 @@ namespace MonsoonIds {
         MACRO_ATTEN_START = MACRO_SEND_DISP_END,
         MACRO_ATTEN_END = MACRO_ATTEN_START + 256,   // 16 voices × 16 jacks (4 lanes × 4 cols)
 
-        // P9: Macro send PRE/POST tap — ONE mix trimpot per LANE (4 total). 0 = PRE
-        // (raw CV, att bypassed), 1 = POST (CV × left atten). Applies to all 4 items
-        // (LEN/OFF/ROT/SPR) of that lane — the pre/post intent is per-lane, not per-item.
-        //   index = MACRO_TAP_START + lane
+        // P9b: Macro send PRE/POST tap — TWO per lane: one for the LOR sends
+        // (LEN/OFF/ROT) and one for the SPREAD send. 0 = PRE (raw CV, att bypassed),
+        // 1 = POST (CV × left atten). Laid out as a 3rd row in each send group.
+        //   LOR tap    index = MACRO_TAP_START + lane*2 + 0
+        //   spread tap index = MACRO_TAP_START + lane*2 + 1
         MACRO_TAP_START = MACRO_ATTEN_END,
-        MACRO_TAP_END = MACRO_TAP_START + 4,
+        MACRO_TAP_END = MACRO_TAP_START + 8,   // 4 lanes × (LOR, spread)
 
         NUM_PARAMS = MACRO_TAP_END
     };

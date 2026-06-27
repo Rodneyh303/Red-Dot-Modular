@@ -122,10 +122,11 @@ namespace StraitsMacroVisualIds {
     // Mono-style: lane == row, col == param (0=LEN, 1=OFF, 2=ROT).
     inline int macroCvId   (int lane, int param) { return cvId   (lane, param); }
     inline int macroAttenId(int lane, int param) { return attenId(lane, param); }  // param 0..3 = LEN/OFF/ROT/SPR
-    // P9: PRE/POST tap mix per LANE — lives in the MonsoonIds tap region (clean,
-    // non-aliasing). 0=PRE (raw CV), 1=POST (CV×left atten). One per lane, applied to
-    // all 4 items of that lane.
-    inline int tapId(int lane) { return MonsoonIds::MACRO_TAP_START + lane; }
+    // P9b: PRE/POST tap mix — TWO per lane (LOR tap covers LEN/OFF/ROT items 0-2,
+    // spread tap covers item 3). MonsoonIds tap region, lane*2 + (0=LOR,1=spread).
+    inline int tapLorId(int lane) { return MonsoonIds::MACRO_TAP_START + lane*2 + 0; }
+    inline int tapSprId(int lane) { return MonsoonIds::MACRO_TAP_START + lane*2 + 1; }
+    inline int tapIdForItem(int lane, int item) { return (item==3) ? tapSprId(lane) : tapLorId(lane); }
 }
 
 struct StraitsSandsMacroVisual : Module {
@@ -148,9 +149,10 @@ struct StraitsSandsMacroVisual : Module {
         static const char* laneNames[4] = {"REST","MEL","OCT","ACC"};
         static const char* paramNames[4] = {"Len","Off","Rot","Spr"};
         for (int lane=0; lane<4; ++lane) {
-            // P9: ONE PRE/POST tap per lane — default 1.0 (POST = send draws attenuated
-            // CV). 0.0 = PRE (send draws raw CV pre-atten). Applies to all 4 items.
-            configParam(tapId(lane), 0.f,1.f,1.f, std::string(laneNames[lane])+" send tap (PRE-POST)");
+            // P9b: TWO PRE/POST taps per lane — LOR (LEN/OFF/ROT) and SPREAD. Default
+            // 1.0 (POST = send draws attenuated CV). 0.0 = PRE (raw CV pre-atten).
+            configParam(tapLorId(lane), 0.f,1.f,1.f, std::string(laneNames[lane])+" LOR send tap (PRE-POST)");
+            configParam(tapSprId(lane), 0.f,1.f,1.f, std::string(laneNames[lane])+" spread send tap (PRE-POST)");
             for (int c=0; c<4; ++c) {
                 std::string nm = std::string(laneNames[lane])+" "+paramNames[c];
                 configParam(attenId(lane,c), -1.f,1.f,0.f, nm+" depth");
