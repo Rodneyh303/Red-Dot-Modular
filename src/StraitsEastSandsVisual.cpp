@@ -192,6 +192,16 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         visualEditor->layout.topPadding = 0.f;
         visualEditor->layout.botPadding = 0.f;
         visualEditor->showControlBar    = false;
+        // P4 (G5): a lane is locked (inoperable, tracks Macro) when it's delegated to
+        // Macro on a poly voice, OR when this is the V1 tab and Mono owns V1 (East
+        // mirrors Mono, inoperable). editorLane → engine lane for the ownership check.
+        visualEditor->laneLockedFn = [this](int editorLane) -> bool {
+            if (tab1MonoMirror()) return true;           // V1 owned by Mono → all lanes locked on East
+            if (onMonoTab()) return false;               // V1 editable (no Mono) → not locked
+            if (editorLane < 0 || editorLane >= 4) return false;
+            int engLane = dotModular::EDITOR_TO_ENGINE_LANE[editorLane];
+            return laneOwnedByMacro(engLane);            // delegated poly lane → locked
+        };
         // Right-click on a lane row opens the ownership context menu.
         visualEditor->onLaneRightClick = [this](int lane, rack::math::Vec pos) -> bool {
             if (!macroAttached()) return false;  // no menu when Macro absent
