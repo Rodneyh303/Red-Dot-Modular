@@ -142,7 +142,7 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             const float monoLaneH = (ROW_BOT - ROW_TOP) / N_LANES;  // 6 lanes
             oc->box.size = mm2px(Vec(stepW, monoLaneH * 0.9f));
             oc->box.pos  = mm2px(Vec(OWNER_X, rowY(l))).minus(oc->box.size.div(2.f));
-            oc->inertWhen = [this]() {
+            oc->lockWhen = [this]() {   // condition 2: no Macro → can't delegate
                 auto* mon = getMonsoon();
                 return !(mon && mon->expanderManager.cachedMacroSandsVisual != nullptr);
             };

@@ -7,20 +7,27 @@
 // treatment A): a cell drawn in the lane's own colour —
 //   FILLED  = global/Macro owns this lane (value comes from the shared base),
 //   OUTLINE = local/per-voice owns it (this surface draws its own pattern).
-// Left-click toggles. It reads as a "17th step" of the lane, sitting right of the
-// grid in the SRC column. Shared by East (per-voice V2–V16) and Mono (V1).
+// Left-click toggles (when not locked). It reads as a "17th step" of the lane,
+// sitting right of the grid in the SRC column. Shared by East (V2–V16) and Mono (V1).
 //
-// Convention: param value > 0.5 == "local owns" (East/Mono draws it) → OUTLINE;
-//             value <= 0.5 == "global/Macro owns" → FILLED. This matches both
-// StraitsEastVisualIds::ownerDispId (1=East owns) and
-// SandsMonoVisualIds::ownerDispId (1=Mono owns).
+// THREE conditions (see SANDS_OWNERSHIP_SPEC.md):
+//   1. outline + operable  — local owns, lane editable, cell toggleable.
+//   2. outline + LOCKED    — no Macro to delegate to; cell can't toggle. A small
+//                            lock glyph distinguishes it from condition 1.
+//   3. filled  (+/- LOCKED)— delegated to Macro; lane tracks Macro & is inoperable.
+//                            The CELL stays toggleable (click to un-delegate) UNLESS
+//                            lockWhen also holds (e.g. East's V1 can never delegate).
+//
+// Convention: param value > 0.5 == "local owns" → OUTLINE; <= 0.5 == "Macro owns"
+// → FILLED. Matches StraitsEastVisualIds::ownerDispId and SandsMonoVisualIds::ownerDispId
+// (1 = local owns).
 struct OwnerCell : rack::ParamWidget {
     NVGcolor laneCol = nvgRGB(0x80, 0x80, 0x80);
-    std::function<bool()> inertWhen;     // e.g. no Macro attached → inert + dimmed
-    std::function<bool()> hideWhen;      // e.g. V1 mono-mirror tab on East → hidden
+    std::function<bool()> lockWhen;      // cell can't be toggled (inoperable) — shows a lock glyph
+    std::function<bool()> hideWhen;      // (P1: unused now; kept for compatibility)
     OwnerCell() { box.size = rack::math::Vec(18.f, 28.f); }  // sane default; reset in config
 
-    bool inert()  const { return inertWhen && inertWhen(); }
+    bool locked() const { return lockWhen && lockWhen(); }
     bool hidden() const { return hideWhen && hideWhen(); }
     bool localOwns() {   // value > 0.5 → local (East/Mono) owns → outline (getParamQuantity is non-const)
         return getParamQuantity() && getParamQuantity()->getValue() > 0.5f;
@@ -30,7 +37,7 @@ struct OwnerCell : rack::ParamWidget {
         getParamQuantity()->setValue(localOwns() ? 0.f : 1.f);
     }
     void onButton(const rack::event::Button& e) override {
-        if (hidden() || inert()) { if (e.action == GLFW_PRESS) e.consume(this); return; }
+        if (hidden() || locked()) { if (e.action == GLFW_PRESS) e.consume(this); return; }
         if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT) {
             toggle();
             e.consume(this);
@@ -41,7 +48,8 @@ struct OwnerCell : rack::ParamWidget {
     void draw(const DrawArgs& args) override {
         if (hidden()) return;
         const float w = box.size.x, h = box.size.y, r = 2.2f;
-        const float a = inert() ? 0.4f : 1.0f;
+        const bool lock = locked();
+        const float a = lock ? 0.45f : 1.0f;   // locked cells dimmed
         NVGcolor col = laneCol; col.a = a;
         nvgBeginPath(args.vg);
         nvgRoundedRect(args.vg, 1.0f, 1.0f, w - 2.0f, h - 2.0f, r);
@@ -54,6 +62,27 @@ struct OwnerCell : rack::ParamWidget {
             nvgFillColor(args.vg, fillc);
             nvgFill(args.vg);
         }
+        if (lock) drawLockGlyph(args, col);
+    }
+    // Tiny padlock glyph centred in the cell, to mark a locked (inoperable) cell.
+    void drawLockGlyph(const DrawArgs& args, NVGcolor base) {
+        const float cx = box.size.x * 0.5f, cy = box.size.y * 0.5f;
+        const float bw = std::min(box.size.x, box.size.y) * 0.30f;   // body width
+        const float bh = bw * 0.78f;                                  // body height
+        const float sh = bh * 0.62f;                                  // shackle height
+        NVGcolor g = localOwns() ? base : nvgRGBA(0x16,0x18,0x1c,(unsigned char)(base.a*255));
+        // shackle (arc)
+        nvgBeginPath(args.vg);
+        nvgArc(args.vg, cx, cy - bh*0.35f, bw*0.32f, M_PI, 2.f*M_PI, NVG_CW);
+        nvgStrokeColor(args.vg, g);
+        nvgStrokeWidth(args.vg, std::max(0.8f, bw*0.16f));
+        nvgStroke(args.vg);
+        // body
+        nvgBeginPath(args.vg);
+        nvgRoundedRect(args.vg, cx - bw*0.5f, cy - bh*0.1f, bw, bh, bw*0.16f);
+        nvgFillColor(args.vg, g);
+        nvgFill(args.vg);
+        (void)sh;
     }
 };
 
