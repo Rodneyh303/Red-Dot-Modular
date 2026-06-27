@@ -76,6 +76,13 @@ constexpr int EDITOR_TO_MONO_PARAM[6] = { 0, 1, 2, 3, 4, 5 };
 //   engine 3 ACCENT → editor 3
 constexpr int ENGINE_LANE_TO_EDITOR[4] = { 2, 0, 1, 3 };
 
+// Inverse: EDITOR poly lane → poly ENGINE lane (for macroBase[lane] indexing).
+//   editor 0 MELODY → engine 1
+//   editor 1 OCTAVE → engine 2
+//   editor 2 REST   → engine 0
+//   editor 3 ACCENT → engine 3
+constexpr int EDITOR_TO_ENGINE_LANE[4] = { 1, 2, 0, 3 };
+
 // Spread lanes (REST/MEL/OCT/ACCENT) share the poly engine→editor mapping.
 // Alias kept for call-site readability where "spread lane" is the natural term.
 constexpr const int* SPREAD_LANE_TO_EDITOR = ENGINE_LANE_TO_EDITOR;

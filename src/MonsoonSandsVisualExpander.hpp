@@ -56,8 +56,15 @@ namespace SandsMonoVisualIds {
         // Attenuverters: 18 LOR (6 lanes × 3) + 4 spread = 22
         ATTEN_START,                       // 22 .. 39  (18 LOR attens)
         SPR_ATTEN_START = ATTEN_START + 18, // 40 .. 43  (4 spread attens)
-        NUM_PARAMS = SPR_ATTEN_START + 4
+        // V1 ownership: per poly lane (MEL/OCT/REST/ACC, EDITOR order), latch
+        // 0 = Macro owns V1's base for this lane (global base), 1 = Mono owns it
+        // (this expander's own LOR edit). LEG/VAR are mono-only → always Mono-owned,
+        // no owner param. Mono is single-voice (V1), so no per-voice bank needed.
+        OWN_DISP_START = SPR_ATTEN_START + 4,   // 44 .. 47
+        NUM_PARAMS = OWN_DISP_START + 4
     };
+    // V1 owner display proxy: poly lane (editor order 0=MEL 1=OCT 2=REST 3=ACC).
+    inline int ownerDispId(int polyLaneEditor) { return OWN_DISP_START + polyLaneEditor; }
 
     // ── Input IDs ─────────────────────────────────────────────────────────
     enum InputId {
@@ -132,6 +139,12 @@ struct MonsoonSandsVisualExpander : Module {
             configParam(sprAttenId(l), -1.f, 1.f, 0.f, std::string(nm)+" Spread depth");
             configInput(sprCvId(l), std::string(nm)+" Spread CV");
         }
+        // V1 ownership switches — poly lanes only (editor lanes 0..3 = MEL/OCT/REST/ACC).
+        // 0 = Macro owns V1's base for this lane; 1 = Mono owns (its own LOR edit).
+        for (int l = 0; l < 4; ++l)
+            configSwitch(ownerDispId(l), 0.f, 1.f, 1.f,
+                         std::string(names[l]) + " V1 owner",
+                         { "Macro (global)", "Mono" });
     }
     void process(const ProcessArgs&) override;   // defined in .cpp (needs calcPlayhead)
 

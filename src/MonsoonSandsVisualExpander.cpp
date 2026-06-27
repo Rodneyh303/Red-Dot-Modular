@@ -5,6 +5,7 @@
 //#include "MonsoonSandsExpander.hpp"
 #include "MonsoonSandsVisualExpander.hpp"
 #include "ui/SandsVisualEditorV4.hpp"
+#include "ui/OwnerCell.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/ModArcOverlay.hpp"
 #include "dsp/managers/MonoSandsParameterManager.hpp"
@@ -120,6 +121,25 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
 
         paramMgr = new MonoSandsParameterManager();
         flushSpreadArcs(mod);
+
+        // ── V1 ownership cells (Option C / treatment A, shared OwnerCell) ──────
+        // One per poly lane (editor rows 0..3 = MEL/OCT/REST/ACC), in the SRC
+        // column right of the editor. FILLED = Macro owns V1's base for this lane,
+        // OUTLINE = Mono owns (its own LOR edit). Click toggles. Inert+dimmed when
+        // no Macro is attached (nothing to cede to). LEG/VAR (rows 4/5) are
+        // mono-only → no owner cell.
+        for (int l = 0; l < 4; ++l) {
+            auto* oc = createParamCentered<OwnerCell>(
+                mm2px(Vec(OWNER_X, rowY(l))), mod, ownerDispId(l));
+            oc->laneCol = sandsLaneColorEditor(l);
+            oc->box.size = mm2px(Vec(6.0f, (ROW_BOT - ROW_TOP) / N_LANES * 0.62f));
+            oc->box.pos  = mm2px(Vec(OWNER_X, rowY(l))).minus(oc->box.size.div(2.f));
+            oc->inertWhen = [this]() {
+                auto* mon = getMonsoon();
+                return !(mon && mon->expanderManager.cachedMacroSandsVisual != nullptr);
+            };
+            addParam(oc);
+        }
 
         // Per-lane probability CV outs — one jack right of each of the 6 lane rows.
         for (int l = 0; l < N_LANES; ++l) {

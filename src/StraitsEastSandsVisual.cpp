@@ -8,6 +8,7 @@
 #include "ui/TabButton.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/SvgPanelKit.hpp"
+#include "ui/OwnerCell.hpp"
 #include "ui/ModArcOverlay.hpp"
 #include "ui/ConnectMark.hpp"
 #include "ui/GoldPolyPort.hpp"
@@ -58,62 +59,7 @@ struct StraitsEastSandsVisualWidget;  // fwd
 
 // Owner claim latch that dims + swallows input when inert (no Macro attached — there's
 // nothing to claim ownership FROM, it's all East). Predicate set by the widget.
-// ── OwnerCell ────────────────────────────────────────────────────────────────
-// The per-lane ownership control as a lane-step block (Option C, treatment A):
-// a cell drawn in the lane's own colour, FILLED = global/Macro owns this lane
-// (value comes from the shared base), HOLLOW OUTLINE = East/per-voice owns it
-// (this voice draws its own pattern). Click toggles. It reads as a "17th step" of
-// the lane sitting right of the grid. Bound to ownerDispId(lane) via a marker;
-// sized to fill the SRC cell rect from the panel.
-struct OwnerCell : rack::ParamWidget {
-    int laneEng = 0;                       // ENGINE lane index (for colour + id)
-    NVGcolor laneCol = nvgRGB(0x80,0x80,0x80);
-    std::function<bool()> inertWhen;       // no Macro attached → inert + dimmed
-    std::function<bool()> hideWhen;        // V1 mono-mirror tab → hidden
-    OwnerCell() { box.size = rack::math::Vec(18.f, 28.f); }  // sane default; reset in config
-    bool inert()  const { return inertWhen && inertWhen(); }
-    bool hidden() const { return hideWhen && hideWhen(); }
-
-    bool eastOwns()  {                // ownerDispId > 0.5 = East owns
-        return getParamQuantity() && getParamQuantity()->getValue() > 0.5f;
-    }
-    void toggle() {
-        if (!getParamQuantity()) return;
-        float v = eastOwns() ? 0.f : 1.f;
-        getParamQuantity()->setValue(v);
-    }
-    void onButton(const event::Button& e) override {
-        if (hidden() || inert()) { if (e.action==GLFW_PRESS) e.consume(this); return; }
-        if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT) {
-            toggle();
-            e.consume(this);
-            return;
-        }
-        ParamWidget::onButton(e);
-    }
-    void draw(const DrawArgs& args) override {
-        if (hidden()) return;
-        const float w = box.size.x, h = box.size.y;
-        const float r = 2.2f;
-        bool dim = inert();
-        float a = dim ? 0.4f : 1.0f;
-        NVGcolor col = laneCol; col.a = a;
-        nvgBeginPath(args.vg);
-        nvgRoundedRect(args.vg, 1.0f, 1.0f, w-2.0f, h-2.0f, r);
-        if (eastOwns()) {
-            // per-voice / East owns → hollow outline (you draw it)
-            nvgStrokeColor(args.vg, col);
-            nvgStrokeWidth(args.vg, 1.4f);
-            nvgStroke(args.vg);
-        } else {
-            // global / Macro owns → solid fill (filled-in-for-you)
-            NVGcolor fillc = laneCol; fillc.a = a * 0.92f;
-            nvgFillColor(args.vg, fillc);
-            nvgFill(args.vg);
-        }
-    }
-};
-
+// (OwnerCell moved to ui/OwnerCell.hpp — shared with Mono.)
 struct DimmableLatch : rack::componentlibrary::VCVLightLatch<rack::componentlibrary::SmallSimpleLight<rack::componentlibrary::WhiteLight>> {
     std::function<bool()> inertWhen;
     std::function<bool()> hideWhen;   // fully hidden (not drawn, no input) — e.g. mono tab
@@ -301,10 +247,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // lane when Macro owns it. (Base-spread / CV-depth are East's own controls and
         // stay live solo — see laneOwnedByMacro above.)
         // Per-lane ownership cell (Option C, treatment A): a lane-step block right
-        // of the editor, drawn in the lane's colour — FILLED = global/Macro owns,
-        // HOLLOW OUTLINE = East/per-voice owns. Click toggles. Inert+dimmed with no
-        // Macro attached; hidden on the V1 mono-mirror tab.
-        static const NVGcolor laneColEng[4] = {   // by ENGINE lane: 0 REST,1 MEL,2 OCT,3 ACC
+        // of the editor — FILLED = global/Macro owns, OUTLINE = East/per-voice owns.
+        // Click toggles. Inert+dimmed with no Macro; hidden on the V1 mono tab.
+        // laneColEng indexed by ENGINE lane: 0 REST,1 MEL,2 OCT,3 ACC.
+        static const NVGcolor laneColEng[4] = {
             nvgRGB(0x50,0x50,0x50), nvgRGB(0xd4,0xaf,0x37),
             nvgRGB(0xb8,0x86,0x0b), nvgRGB(0xff,0x95,0x00)
         };
@@ -313,10 +259,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 "param_owner_" + std::to_string(lane),
                 ownerDispId(lane),
                 [this, lane](OwnerCell* w) {
-                    w->laneEng = lane;
                     w->laneCol = laneColEng[lane];
-                    // Re-centre on the marker: take the current centre (pos+size/2),
-                    // set the cell size, then place pos so that centre is preserved.
                     Vec ctr = w->box.pos.plus(w->box.size.div(2.f));
                     w->box.size = mm2px(Vec(6.0f, ED_LANE_H * 0.62f));
                     w->box.pos  = ctr.minus(w->box.size.div(2.f));

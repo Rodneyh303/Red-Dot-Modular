@@ -104,6 +104,22 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             float baseOff = monoVis->params[Mono::offId(l)].getValue();
             float baseRot = monoVis->params[Mono::rotId(l)].getValue();
 
+            // V1 ownership (poly lanes only: editor 0..3 = MEL/OCT/REST/ACC). When
+            // Mono CEDES a lane (ownerDispId == 0) and Macro is attached, V1's base
+            // comes from Macro's GLOBAL base for that lane instead of Mono's own LOR
+            // edit — mirroring how poly voices switch base by ownerId. LEG/VAR (l>=4)
+            // are mono-only and always Mono-owned. (macroBase is published later in
+            // this same block → one control-block lag, same as the macroMix delta.)
+            if (l < 4 && hasMacro && macroVis) {
+                bool monoOwns = monoVis->params[Mono::ownerDispId(l)].getValue() > 0.5f;
+                if (!monoOwns) {
+                    int el = dotModular::EDITOR_TO_ENGINE_LANE[l];   // editor → poly engine lane
+                    baseLen = macroVis->macroBase[el][0];
+                    baseOff = macroVis->macroBase[el][1];
+                    baseRot = macroVis->macroBase[el][2];
+                }
+            }
+
             baseLen = applyMonoCV(baseLen, l, 0, 1.f, 16.f);
             baseOff = applyMonoCV(baseOff, l, 1, 0.f, 15.f);
             baseRot = applyMonoCV(baseRot, l, 2, 0.f, 15.f);
