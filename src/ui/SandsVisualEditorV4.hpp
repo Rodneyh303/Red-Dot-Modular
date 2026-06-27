@@ -159,6 +159,11 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // tab 1 when Sands Mono is attached — the lane data belongs to Mono and is shown
   // read-only (edit it on Sands Mono). Unlike `inert`, no hint message, data still drawn.
   bool readOnly = false;
+  // Per-lane edit lock (P4 / G5): host returns true for a lane whose values are
+  // owned elsewhere (e.g. delegated to Macro) — that lane is shown but its handles
+  // and bar can't be edited, while other lanes stay editable. editorLane index.
+  std::function<bool(int editorLane)> laneLockedFn;
+  bool laneLocked(int editorLane) const { return laneLockedFn && laneLockedFn(editorLane); }
   // Optional right-click callback: host registers this to open a context menu
   // when a lane row is right-clicked. Called with (lane, pos); return true to consume.
   std::function<bool(int lane, rack::math::Vec pos)> onLaneRightClick;
@@ -849,6 +854,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     if (inert || readOnly) { hoverLane = -1; hoverZone = DragState::NONE; return; }
     syncLayout();
     int lane = getLaneAtY(e.pos.y);
+    if (lane >= 0 && laneLocked(lane)) { hoverLane = -1; hoverZone = DragState::NONE; return; }
     DragState::Type z = (lane >= 0 && lane < laneCount)
                         ? hitTestHandle(lane, e.pos.x, e.pos.y) : DragState::NONE;
     hoverLane = (z == DragState::NONE) ? -1 : lane;
@@ -872,6 +878,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       //int step = getStepAtX(e.pos.x);
 
       if (lane >= 0 && lane < laneCount) {
+        if (laneLocked(lane)) { e.consume(this); return; }  // P4: delegated lane — inoperable
         // Hit-test handles first — they have priority over bar dragging
         DragState::Type handleHit = hitTestHandle(lane, e.pos.x, e.pos.y);
         if (handleHit != DragState::NONE) {

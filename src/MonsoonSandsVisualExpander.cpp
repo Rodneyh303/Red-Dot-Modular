@@ -4,6 +4,7 @@
 #include "ui/ConnectMark.hpp"
 //#include "MonsoonSandsExpander.hpp"
 #include "MonsoonSandsVisualExpander.hpp"
+#include "StraitsSandsMacroVisual.hpp"  // complete type for macroBase (P4 delegated-lane tracking)
 #include "ui/SandsVisualEditorV4.hpp"
 #include "ui/OwnerCell.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
@@ -93,6 +94,16 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         visualEditor->layout.topPadding = 0.f;
         visualEditor->layout.botPadding = 0.f;
         visualEditor->showControlBar    = false;
+        // P4 (G5): a Mono lane delegated to Macro is inoperable and tracks Macro.
+        // Mono owns V1; only the 4 poly lanes (editor 0..3 = MEL/OCT/REST/ACC) are
+        // delegable. ownerDispId is editor-ordered (poly lane). Delegated = value 0.
+        visualEditor->laneLockedFn = [this](int editorLane) -> bool {
+            if (editorLane < 0 || editorLane >= 4) return false;   // VAR/LEG mono-only
+            auto* mon = getMonsoon();
+            bool hasMacro = mon && mon->expanderManager.cachedMacroSandsVisual != nullptr;
+            if (!hasMacro || !module) return false;
+            return !(module->params[ownerDispId(editorLane)].getValue() > 0.5f);  // Macro owns → locked
+        };
         addChild(visualEditor);
 
         // ── LOR controls: 3 CV jacks + 3 attens per lane (all 6 lanes) ────
@@ -201,12 +212,32 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             initialized = true;
         }
 
-        // ── Editor → params (UI thread, own params) ───────────────────────
+        // ── Editor → params (UI thread, own params). Skip delegated lanes: when a
+        //    poly lane is owned by Macro it's inoperable + must TRACK Macro, so we
+        //    don't write Mono's param from the (locked) editor, and below we refresh
+        //    its display from Macro's global base instead. (G5.)
+        Monsoon* monForOwn = getMonsoon();
+        auto* macroForOwn = monForOwn ? monForOwn->expanderManager.cachedMacroSandsVisual : nullptr;
+        auto laneDelegated = [&](int el) -> bool {
+            return macroForOwn && el < 4 && !(mod->params[ownerDispId(el)].getValue() > 0.5f);
+        };
         for (int l = 0; l < 6; ++l) {
+            if (laneDelegated(l)) continue;   // delegated → tracks Macro, don't write Mono param
             const auto& lane = visualEditor->currentState.lanes[l];
             mod->params[lenId(l)].setValue((float)lane.length);
             mod->params[offId(l)].setValue((float)lane.offset);
             mod->params[rotId(l)].setValue((float)lane.rotation);
+        }
+        // Delegated lanes: show Macro's global base (editor → engine lane for macroBase).
+        if (macroForOwn) {
+            for (int el = 0; el < 4; ++el) {
+                if (!laneDelegated(el)) continue;
+                int eng = dotModular::EDITOR_TO_ENGINE_LANE[el];
+                int mLen = (int)std::round(macroForOwn->macroBase[eng][0]);
+                int mOff = (int)std::round(macroForOwn->macroBase[eng][1]);
+                int mRot = (int)std::round(macroForOwn->macroBase[eng][2]);
+                visualEditor->currentState.lanes[el].setDisplayLOR(std::max(1,mLen), mOff, mRot);
+            }
         }
 
         // ── Per-lane base spread. spreadEffective[] is SPREAD/engine-indexed
