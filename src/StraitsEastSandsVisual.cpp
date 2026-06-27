@@ -266,7 +266,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     w->box.size = mm2px(Vec(stepW, ED_LANE_H * 0.9f));
                     w->box.pos  = ctr.minus(w->box.size.div(2.f));
                     w->inertWhen = [this](){ return !macroAttached(); };
-                    w->hideWhen  = [this](){ return tab1MonoMirror(); };
+                    // P1 (G1 no-hide): the owner cell is never hidden — not even on the
+                    // V1/mono tab. It stays visible and is *locked* where appropriate
+                    // (P2/P8). hideWhen is left unset → always shown.
                 }
             );
         }
