@@ -70,6 +70,7 @@ struct OwnerCell : rack::ParamWidget {
     NVGcolor laneCol = nvgRGB(0x80,0x80,0x80);
     std::function<bool()> inertWhen;       // no Macro attached → inert + dimmed
     std::function<bool()> hideWhen;        // V1 mono-mirror tab → hidden
+    OwnerCell() { box.size = rack::math::Vec(18.f, 28.f); }  // sane default; reset in config
     bool inert()  const { return inertWhen && inertWhen(); }
     bool hidden() const { return hideWhen && hideWhen(); }
 
@@ -314,11 +315,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 [this, lane](OwnerCell* w) {
                     w->laneEng = lane;
                     w->laneCol = laneColEng[lane];
-                    // createParamCentered placed box.pos at the marker centre (size was
-                    // 0); set the cell size then re-centre around that point.
-                    Vec c = w->box.pos;
+                    // Re-centre on the marker: take the current centre (pos+size/2),
+                    // set the cell size, then place pos so that centre is preserved.
+                    Vec ctr = w->box.pos.plus(w->box.size.div(2.f));
                     w->box.size = mm2px(Vec(6.0f, ED_LANE_H * 0.62f));
-                    w->box.pos  = c.minus(w->box.size.div(2.f));
+                    w->box.pos  = ctr.minus(w->box.size.div(2.f));
                     w->inertWhen = [this](){ return !macroAttached(); };
                     w->hideWhen  = [this](){ return tab1MonoMirror(); };
                 }
@@ -712,74 +713,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         }
     }
 
-    // Labels for the Macro-blend control groups, drawn in NanoVG (the panel SVG
-    // carries no baked text — same convention as the tab labels). Mirrors the
-    // layout in panel_src/gen_east_clean.py: 3 groups (REST/MELODY/OCTAVE) below
-    // the editor, each an owner button + a 2×2 Len/Off/Rot/Spr send grid. Greyed
-    // when no Macro visual is attached (the controls are inert then).
-    void draw(const DrawArgs& args) override {
-        ModuleWidget::draw(args);
-        NVGcontext* vg = args.vg;
-
-        // Layout constants — MUST MATCH gen_east_clean.py (blend groups).
-        const float ED_X = 88.0f, PROB_OUT_X = 207.0f, ED_W = PROB_OUT_X - ED_X - 8.0f;
-        const float BLEND_TOP = 74.0f, GAP = 2.5f;
-        const float GROUP_W = ED_W / 4.0f;
-        const float OWN_DY = 13.0f;
-        const char* laneName[4] = { "REST", "MELODY", "OCTAVE", "ACCENT" };
-
-        bool macroPresent = false;
-        bool isLight = false;
-        if (auto* mon = getMonsoon()) {
-            macroPresent = (mon->expanderManager.cachedMacroSandsVisual != nullptr);
-            isLight = mon->lightTheme;
-        }
-
-        auto font = APP->window->loadFont(rack::asset::system("res/fonts/DejaVuSans-Bold.ttf"));
-        if (!font) font = APP->window->uiFont;
-        if (!font) return;
-        nvgFontFaceId(vg, font->handle);
-
-        NVGcolor head = macroPresent ? (isLight ? nvgRGB(40,44,52) : nvgRGB(210,214,222))
-                                     : nvgRGBA(140,140,150, 90);
-        NVGcolor item = macroPresent ? (isLight ? nvgRGB(150,120,20) : nvgRGB(190,160,60))
-                                     : nvgRGBA(140,140,150, 70);
-
-        // V1 / mono tab: the per-lane BASE opt-in band is meaningless (mono owns the base,
-        // nothing to opt into). The latch widgets hide themselves (hideWhen), but the panel
-        // bakes the group boxes, header rule and latch rings — mask the whole band with the
-        // panel background and skip the BASE labels so V1 reads clean.
-        if (tab1MonoMirror()) {
-            NVGcolor bg = isLight ? nvgRGB(0xe8,0xe8,0xea) : nvgRGB(0x16,0x18,0x1c);
-            nvgBeginPath(vg);
-            nvgRect(vg, mm2px(ED_X) - 2.f, mm2px(BLEND_TOP - 6.f),
-                        mm2px(ED_W) + 4.f, mm2px(22.f + 8.f));
-            nvgFillColor(vg, bg);
-            nvgFill(vg);
-            return;   // no BASE labels on V1
-        }
-
-        // Section header (left-aligned, above the group row).
-        nvgFontSize(vg, 8.0f);
-        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM);
-        nvgFillColor(vg, head);
-        nvgText(vg, mm2px(ED_X), mm2px(BLEND_TOP - 3.5f), "BASE", nullptr);
-
-        for (int l = 0; l < 4; ++l) {
-            float gx = ED_X + l*GROUP_W + GAP*0.5f;
-            float gw = GROUP_W - GAP;
-            float gcx = gx + gw*0.5f;
-            // lane-name header — centred at top of the box
-            nvgFontSize(vg, 7.0f);
-            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-            nvgFillColor(vg, head);
-            nvgText(vg, mm2px(gcx), mm2px(BLEND_TOP + 4.0f), laneName[l], nullptr);
-            // "BASE" under the opt-in latch (inherit Macro base / local East)
-            nvgFontSize(vg, 5.0f);
-            nvgFillColor(vg, item);
-            nvgText(vg, mm2px(gcx), mm2px(BLEND_TOP + OWN_DY + 3.7f), "BASE", nullptr);
-        }
-    }
+    // (The old BASE blend-group draw() override was removed: per-lane ownership
+    //  now lives in the OwnerCell widgets at the SRC column, which draw themselves.
+    //  There is no below-lanes BASE band any more, so no custom NanoVG painting is
+    //  needed here — ModuleWidget::draw handles the panel + child widgets.)
 };
 
 // ── Module process(): light latches + 3 poly probability CV outs (audio rate) ──
