@@ -307,7 +307,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     const float stepW = (ED_W - 2.f*6.f) / 16.f;   // editor padding=6, 16 steps
                     w->box.size = mm2px(Vec(stepW, ED_LANE_H * 0.9f));
                     w->box.pos  = ctr.minus(w->box.size.div(2.f));
-                    w->lockWhen = [this](){ return !macroAttached(); };  // condition 2: no Macro → can't delegate
+                    // Owner cell is locked (inoperable) when: no Macro to delegate to
+                    // (condition 2), OR this is the V1/mono tab — East can NEVER delegate
+                    // V1 (G4/P8): Mono owns V1, only Mono's own cell may cede it. On V1 the
+                    // cell still SHOWS the current V1 ownership (filled if Mono delegated to
+                    // Macro, outline otherwise) but can't be toggled here.
+                    w->lockWhen = [this](){ return !macroAttached() || onMonoTab(); };
                     // P1 (G1 no-hide): the owner cell is never hidden — not even on the
                     // V1/mono tab. It stays visible and is *locked* where appropriate
                     // (P2/P8). hideWhen is left unset → always shown.
@@ -688,6 +693,15 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 for (int c=0; c<4; ++c)
                     module->params[attenId(dotModular::VoiceResolver::kMonoSlot, lane, c)]
                         .setValue(module->params[attenDispId(lane,c)].getValue());
+            // P8: East's owner cells on V1 are locked (East can't delegate V1) but should
+            // SHOW the real V1 ownership, which Mono decides. Mirror Mono's owner param
+            // into East's ownerDispId so the cell draws filled/outline correctly. East
+            // ownerDispId is engine-lane indexed; Mono's is editor-lane indexed.
+            for (int eng=0; eng<4; ++eng) {
+                int el = dotModular::ENGINE_LANE_TO_EDITOR[eng];
+                module->params[ownerDispId(eng)].setValue(
+                    monoVis->params[SandsMonoVisualIds::ownerDispId(el)].getValue());
+            }
             // Probabilities: show the SPREAD-APPLIED V1 values (what plays) for all 4
             // lanes, so Mono's spread/CV AND East's V1 spread CV (both folded into the
             // engine mono strand by the manager) are visible — matching Mono's display.
