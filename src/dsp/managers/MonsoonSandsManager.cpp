@@ -177,15 +177,17 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         // sprId/sprCvId lane index: 0=REST, 1=MELODY, 2=OCTAVE (editor order).
        // if (hasVisual) 
        // {
-            for (int l = 0; l < 3; ++l) {
+            // REST/MEL/OCT/ACCENT spread (engine/spread lanes 0..3). Accent is now
+            // wired like the others (was previously skipped: loop l<3 + spreadEffective[3]=0,
+            // so Mono accent spread did nothing). sprId(3)=accent base; East spread CV
+            // jack cvId(3,3); Macro send/delta lane 3.
+            for (int l = 0; l < 4; ++l) {
                 float baseSpr = monoVis->params[Mono::sprId(l)].getValue();
                 float sp = applyMonoSprCV(baseSpr, l);
                 // INTERP Y — voice-1 spread mix-in (voice 0 slice), bipolar [-1,1].
-                // l is the spread/engine lane (0=REST,1=MEL,2=OCT). East's spread CV
-                // jack for that lane is cvId(engineLane, 3) (col 3 = SPR) — the gen's
-                // real layout. (Previously this used sprRow={1,3,5} cvId(row,1), the
-                // old 2-rows-per-lane scheme — wrong jacks, same bug class as the LOR
-                // crosstalk.) East CV ADDS to the mono spread (combo 7/8 V1 mod).
+                // l is the spread/engine lane (0=REST,1=MEL,2=OCT,3=ACC). East's spread
+                // CV jack for that lane is cvId(engineLane, 3) (col 3 = SPR). East CV
+                // ADDS to the mono spread (combo 7/8 V1 mod).
                 auto* eastVisS = expanderManager.cachedEastSandsVisual;
                 if (eastVisS && eastVisS->inputs[East::cvId(l,3)].isConnected()) {
                     float att = eastVisS->params[East::attenId(dotModular::VoiceResolver::kMonoSlot, l, 3)].getValue();  // slot 0 = mono
@@ -198,13 +200,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 }
                 monoVis->spreadEffective[l] = sp;
             }
-            // spreadEffective[] is ENGINE/spread-indexed: 0=REST,1=MEL,2=OCT,3=ACCENT
-            // (this matches the audio reads below and sprId/sprCvId). The loop above
-            // writes REST/MEL/OCT (0..2). ACCENT (index 3) mono spread is not wired to
-            // the audio yet (accentRandom is passed raw below), so its effective value
-            // stays 0 — its mod-arc correctly reads 0 until ACCENT mono spread lands.
+            // spreadEffective[] is ENGINE/spread-indexed: 0=REST,1=MEL,2=OCT,3=ACCENT.
             // Indices 4/5 are unused (LEG/VAR are mono-only and have no spread).
-            monoVis->spreadEffective[3] = 0.f;
 
             // ── Sands spread→final (Option W, Model 1) ───────────────────────
             // Mono owns the MONO final arrays: read the SLEWED draw, apply
@@ -234,7 +231,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 engine.pe.octaveRandom[i] = redDot::SpreadInterp::apply(
                     engine.pe, mode, 2, i, nPoly, engine.pe.slewedOctave[i], monoVis->spreadEffective[2]);
                 engine.pe.legatoRandom[i]    = engine.pe.slewedLegato[i];     // mono-only, raw
-                engine.pe.accentRandom[i]    = engine.pe.slewedAccent[i];
+                engine.pe.accentRandom[i] = redDot::SpreadInterp::apply(
+                    engine.pe, mode, 3, i, nPoly, engine.pe.slewedAccent[i], monoVis->spreadEffective[3]);
                 engine.pe.variationRandom[i] = engine.pe.slewedVariation[i];
             }
             }  // end if(!engine.locked)

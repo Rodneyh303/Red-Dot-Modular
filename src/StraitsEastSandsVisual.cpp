@@ -677,6 +677,25 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             module->params[SPREAD_R].setValue(monoVis->params[SandsMonoVisualIds::sprId(0)].getValue());
             module->params[SPREAD_M].setValue(monoVis->params[SandsMonoVisualIds::sprId(1)].getValue());
             module->params[SPREAD_O].setValue(monoVis->params[SandsMonoVisualIds::sprId(2)].getValue());
+            // Probabilities: show the SPREAD-APPLIED V1 values (what plays) for all 4
+            // lanes, so Mono's spread/CV AND East's V1 spread CV (both folded into the
+            // engine mono strand by the manager) are visible — matching Mono's display.
+            // Use finalRandomByStrand PER STEP (the resolver's masterLaneProbability only
+            // returns the current playhead step, which would flatten all 16 bars). Bars
+            // are display-only on V1 (editor readOnly), so overwriting each frame is safe.
+            {
+                // editor lane → engine poly lane → mono strand index.
+                for (int el = 0; el < 4; ++el) {
+                    int engLane = dotModular::EDITOR_TO_ENGINE_LANE[el];   // 0..3 = REST/MEL/OCT/ACC
+                    int strand  = (engLane == 0) ? dotModular::STRAND_RHYTHM
+                                : (engLane == 1) ? dotModular::STRAND_MELODY
+                                : (engLane == 2) ? dotModular::STRAND_OCTAVE
+                                :                  dotModular::STRAND_ACCENT;
+                    for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
+                        visualEditor->currentState.lanes[el].probabilities[s] =
+                            monsoon->engine.pe.finalRandomByStrand(strand, s);
+                }
+            }
         } else if (v1Editable()) {
             // V1 editable (no Mono, combo 3/7-without-Mono): East IS the V1 editor.
             // Write the editor's lane LOR straight into the engine MONO strands (the
