@@ -118,9 +118,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 if (!mod) return 0.5f;
                 if (polyVoice() < 0) {
                     // V1 (combo 7): SET = East's spread knob, which now mirrors Mono's
-                    // spread. SPREAD_R/M/O = lane 0/1/2 (engine order).
-                    if (lane < 0 || lane >= 3) return 0.5f;
-                    int pid = (lane==0) ? (int)SPREAD_R : (lane==1) ? (int)SPREAD_M : (int)SPREAD_O;
+                    // spread. SPREAD_R/M/O/A = lane 0/1/2/3 (engine order).
+                    if (lane < 0 || lane >= 4) return 0.5f;
+                    int pid = (lane==0) ? (int)SPREAD_R : (lane==1) ? (int)SPREAD_M
+                            : (lane==2) ? (int)SPREAD_O : (int)SPREAD_A;
                     auto* pq = mod->paramQuantities[pid];
                     return pq ? (float)pq->getScaledValue() : 0.5f;
                 }
@@ -134,9 +135,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     // V1 / mono tab (P6, combo 7): MOD = the spread knob value (Mono's,
                     // mirrored) + East's own incoming V1 spread CV on this lane. Absolute
                     // (not a centre deflection) so the arc reads as the total entering
-                    // East. lane = spread index 0=REST,1=MEL,2=OCT; East CV jack cvId(lane,3).
-                    if (lane < 0 || lane >= 3) return 0.5f;
-                    int pid = (lane==0) ? (int)SPREAD_R : (lane==1) ? (int)SPREAD_M : (int)SPREAD_O;
+                    // East. lane = spread index 0=REST,1=MEL,2=OCT,3=ACC; CV jack cvId(lane,3).
+                    if (lane < 0 || lane >= 4) return 0.5f;
+                    int pid = (lane==0) ? (int)SPREAD_R : (lane==1) ? (int)SPREAD_M
+                            : (lane==2) ? (int)SPREAD_O : (int)SPREAD_A;
                     float base = mod->params[pid].getValue();   // bipolar -1..1 (Mono's spread)
                     if (mod->inputs[cvId(lane,3)].isConnected()) {
                         float att = mod->params[attenId(dotModular::VoiceResolver::kMonoSlot, lane, 3)].getValue();
@@ -156,8 +158,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 int v = polyVoice();
                 if (v < 0) {
                     // V1 / mono tab (P6): active when East's own V1 spread CV jack is
-                    // connected on this lane (the mod East contributes to V1).
-                    if (lane < 0 || lane >= 3) return false;
+                    // connected on this lane (the mod East contributes to V1). Incl accent.
+                    if (lane < 0 || lane >= 4) return false;
                     return mod->inputs[cvId(lane,3)].isConnected();
                 }
                 if (v >= 15) return false;
@@ -668,10 +670,16 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // MEL=0 OCT=1 REST=2 ACC=3 → editor lane == param index). V1 base belongs to
             // Mono and is inoperable on East (locked by laneLockedFn / readOnly). The mod
             // arriving at East is shown by the V1 mod arcs (P6), not folded into this base.
+            // Show the V1 LOR for all 4 poly lanes. Read the engine MONO STRAND (which
+            // the manager has already written with Mono's base + East's V1 CV + Macro CV)
+            // so East's V1 LOR display REFLECTS the incoming modulation — matching Mono's
+            // CV-applied display. (Previously read Mono's static base params, so LOR mod
+            // arriving via East showed on Mono but not here.) editor lane → engine strand.
             for (int l=0; l<4; ++l) {
-                int mLen = (int)std::round(monoVis->params[SandsMonoVisualIds::lenId(l)].getValue());
-                int mOff = (int)std::round(monoVis->params[SandsMonoVisualIds::offId(l)].getValue());
-                int mRot = (int)std::round(monoVis->params[SandsMonoVisualIds::rotId(l)].getValue());
+                int strand  = dotModular::MONO_LANE_TO_STRAND[l];   // editor lane → engine strand
+                int mLen = monsoon->engine.strandLen(strand);
+                int mOff = monsoon->engine.strandOff(strand);
+                int mRot = monsoon->engine.strandRot(strand);
                 visualEditor->currentState.lanes[l].setDisplayLOR(std::max(1,mLen), mOff, mRot);
                 visualEditor->setLanePlayStep(l, calcPlayhead(gs, std::max(1,mLen), mOff, mRot));
             }
