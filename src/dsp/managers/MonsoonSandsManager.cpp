@@ -114,15 +114,24 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 bool monoOwns = monoVis->params[Mono::ownerDispId(l)].getValue() > 0.5f;
                 if (!monoOwns) {
                     int el = dotModular::EDITOR_TO_ENGINE_LANE[l];   // editor → poly engine lane
-                    baseLen = macroVis->macroBase[el][0];
-                    baseOff = macroVis->macroBase[el][1];
-                    baseRot = macroVis->macroBase[el][2];
+                    // Delegated → track Macro's CV-APPLIED value (base + macroCVDelta), not
+                    // just the static base, so Macro's modulation reaches the delegated Mono
+                    // lane (combo 6/G6). macroCVDelta is Macro's true POST CV delta.
+                    baseLen = macroVis->macroBase[el][0] + macroVis->macroCVDelta[el][0];
+                    baseOff = macroVis->macroBase[el][1] + macroVis->macroCVDelta[el][1];
+                    baseRot = macroVis->macroBase[el][2] + macroVis->macroCVDelta[el][2];
                 }
             }
 
-            baseLen = applyMonoCV(baseLen, l, 0, 1.f, 16.f);
-            baseOff = applyMonoCV(baseOff, l, 1, 0.f, 15.f);
-            baseRot = applyMonoCV(baseRot, l, 2, 0.f, 15.f);
+            // Mono's own CV applies only to lanes Mono OWNS. A delegated lane tracks
+            // Macro exclusively (G5) — Mono's CV must not additionally modulate it.
+            bool monoOwnsLane = !(l < 4 && hasMacro && macroVis
+                                  && !(monoVis->params[Mono::ownerDispId(l)].getValue() > 0.5f));
+            if (monoOwnsLane) {
+                baseLen = applyMonoCV(baseLen, l, 0, 1.f, 16.f);
+                baseOff = applyMonoCV(baseOff, l, 1, 0.f, 15.f);
+                baseRot = applyMonoCV(baseRot, l, 2, 0.f, 15.f);
+            }
 
             // INTERPRETATION Y — voice-1 mix-in. The mono master strand is voice 1 of
             // the ensemble; like every poly voice it can receive the East per-lane CV
@@ -158,7 +167,10 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             };
             // East CV exists only for the 4 poly lanes (MEL/OCT/REST/ACC); VAR/LEG
             // (editor l>=4) are mono-only with no East jack → skip the eastMix there.
-            if (l < 4) {
+            // A DELEGATED lane tracks Macro's value exclusively (set above) — it takes
+            // neither East's CV nor the Macro SEND on top (that would double-count Macro's
+            // modulation, already in the delegated base). Only OWNED lanes receive these.
+            if (l < 4 && monoOwnsLane) {
                 int eng = dotModular::EDITOR_TO_ENGINE_LANE[l];   // editor → engine lane (East CV jack)
                 baseLen = eastMix(baseLen, eng, 0, 1.f, 16.f);
                 baseOff = eastMix(baseOff, eng, 1, 0.f, 15.f);

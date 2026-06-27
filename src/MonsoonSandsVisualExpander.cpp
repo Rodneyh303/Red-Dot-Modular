@@ -236,14 +236,17 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             mod->params[offId(l)].setValue((float)lane.offset);
             mod->params[rotId(l)].setValue((float)lane.rotation);
         }
-        // Delegated lanes: show Macro's global base (editor → engine lane for macroBase).
+        // Delegated lanes: show Macro's CV-APPLIED global value (base + macroCVDelta),
+        // so Macro's modulation is reflected on Mono too (combo 6/G6) — not just the
+        // static base. macroCVDelta is the true POST delta (Macro's own display value);
+        // matches what Macro shows for the same lane. editor → engine lane for macro arrays.
         if (macroForOwn) {
             for (int el = 0; el < 4; ++el) {
                 if (!laneDelegated(el)) continue;
                 int eng = dotModular::EDITOR_TO_ENGINE_LANE[el];
-                int mLen = (int)std::round(macroForOwn->macroBase[eng][0]);
-                int mOff = (int)std::round(macroForOwn->macroBase[eng][1]);
-                int mRot = (int)std::round(macroForOwn->macroBase[eng][2]);
+                int mLen = (int)std::round(macroForOwn->macroBase[eng][0] + macroForOwn->macroCVDelta[eng][0]);
+                int mOff = (int)std::round(macroForOwn->macroBase[eng][1] + macroForOwn->macroCVDelta[eng][1]);
+                int mRot = (int)std::round(macroForOwn->macroBase[eng][2] + macroForOwn->macroCVDelta[eng][2]);
                 visualEditor->currentState.lanes[el].setDisplayLOR(std::max(1,mLen), mOff, mRot);
             }
         }
