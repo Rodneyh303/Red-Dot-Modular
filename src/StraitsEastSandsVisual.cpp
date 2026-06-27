@@ -8,6 +8,7 @@
 #include "ui/TabButton.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/SvgPanelKit.hpp"
+#include "ui/OwnerCell.hpp"
 #include "ui/ModArcOverlay.hpp"
 #include "ui/ConnectMark.hpp"
 #include "ui/GoldPolyPort.hpp"
@@ -58,6 +59,7 @@ struct StraitsEastSandsVisualWidget;  // fwd
 
 // Owner claim latch that dims + swallows input when inert (no Macro attached — there's
 // nothing to claim ownership FROM, it's all East). Predicate set by the widget.
+// (OwnerCell moved to ui/OwnerCell.hpp — shared with Mono.)
 struct DimmableLatch : rack::componentlibrary::VCVLightLatch<rack::componentlibrary::SmallSimpleLight<rack::componentlibrary::WhiteLight>> {
     std::function<bool()> inertWhen;
     std::function<bool()> hideWhen;   // fully hidden (not drawn, no input) — e.g. mono tab
@@ -244,20 +246,29 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // inert + dimmed and the sends are dimmed. With Macro attached, sends dim per
         // lane when Macro owns it. (Base-spread / CV-depth are East's own controls and
         // stay live solo — see laneOwnedByMacro above.)
+        // Per-lane ownership cell (Option C, treatment A): a lane-step block right
+        // of the editor — FILLED = global/Macro owns, OUTLINE = East/per-voice owns.
+        // Click toggles. Inert+dimmed with no Macro; hidden on the V1 mono tab.
+        // laneColEng indexed by ENGINE lane: 0 REST,1 MEL,2 OCT,3 ACC.
+        static const NVGcolor laneColEng[4] = {
+            nvgRGB(0x50,0x50,0x50), nvgRGB(0xd4,0xaf,0x37),
+            nvgRGB(0xb8,0x86,0x0b), nvgRGB(0xff,0x95,0x00)
+        };
         for (int lane = 0; lane < 4; ++lane) {
-            bindLightParam<DimmableLatch>(
+            bindParam<OwnerCell>(
                 "param_owner_" + std::to_string(lane),
                 ownerDispId(lane),
-                ownerLightId(lane),
-                [this](DimmableLatch* w) {
-                    w->momentary = false;
-                    w->latch = true;
+                [this, lane](OwnerCell* w) {
+                    w->laneCol = laneColEng[lane];
+                    Vec ctr = w->box.pos.plus(w->box.size.div(2.f));
+                    // Match the editor's lane-step cell: one step wide × ~90% lane tall.
+                    const float stepW = (ED_W - 2.f*6.f) / 16.f;   // editor padding=6, 16 steps
+                    w->box.size = mm2px(Vec(stepW, ED_LANE_H * 0.9f));
+                    w->box.pos  = ctr.minus(w->box.size.div(2.f));
                     w->inertWhen = [this](){ return !macroAttached(); };
-                    w->hideWhen  = [this](){ return tab1MonoMirror(); };   // V1: nothing to opt into
+                    w->hideWhen  = [this](){ return tab1MonoMirror(); };
                 }
             );
-            // (Macro mix-in send trims relocated to Macro's panel under the control
-            //  inversion — East's panel no longer binds param_send_* markers.)
         }
 
         paramMgr = new PolyVoiceSandsParameterManager(nullptr, nullptr, 15, 0);
@@ -606,7 +617,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 int mLen = (int)std::round(monoVis->params[SandsMonoVisualIds::lenId(l)].getValue());
                 int mOff = (int)std::round(monoVis->params[SandsMonoVisualIds::offId(l)].getValue());
                 int mRot = (int)std::round(monoVis->params[SandsMonoVisualIds::rotId(l)].getValue());
-                int el = dotModular::MONO_PARAM_TO_EDITOR[l];
+                int el = l;  // Mono params now editor-ordered → identity
                 visualEditor->currentState.lanes[el].setDisplayLOR(mLen, mOff, mRot);
                 visualEditor->setLanePlayStep(el, calcPlayhead(gs, mLen, mOff, mRot));
             }
@@ -617,7 +628,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             if (paramMgr) {
                 // Push editor state into the mono LOR params via the mono slot.
                 for (int l=0; l<3; ++l) {
-                    int el = dotModular::MONO_PARAM_TO_EDITOR[l];
+                    int el = l;  // Mono params now editor-ordered → identity
                     auto& lane = visualEditor->currentState.lanes[el];
                     module->params[SandsMonoVisualIds::lenId(l)].setValue((float)lane.length);
                     module->params[SandsMonoVisualIds::offId(l)].setValue((float)lane.offset);
@@ -626,7 +637,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             }
             // Display: show engine's current effective mono strand LOR.
             for (int l=0; l<3; ++l) {
-                int el = dotModular::MONO_PARAM_TO_EDITOR[l];
+                int el = l;  // Mono params now editor-ordered → identity
                 int cvLen = (int)std::round(module->params[SandsMonoVisualIds::lenId(l)].getValue());
                 int cvOff = (int)std::round(module->params[SandsMonoVisualIds::offId(l)].getValue());
                 int cvRot = (int)std::round(module->params[SandsMonoVisualIds::rotId(l)].getValue());
@@ -647,74 +658,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         }
     }
 
-    // Labels for the Macro-blend control groups, drawn in NanoVG (the panel SVG
-    // carries no baked text — same convention as the tab labels). Mirrors the
-    // layout in panel_src/gen_east_clean.py: 3 groups (REST/MELODY/OCTAVE) below
-    // the editor, each an owner button + a 2×2 Len/Off/Rot/Spr send grid. Greyed
-    // when no Macro visual is attached (the controls are inert then).
-    void draw(const DrawArgs& args) override {
-        ModuleWidget::draw(args);
-        NVGcontext* vg = args.vg;
-
-        // Layout constants — MUST MATCH gen_east_clean.py (blend groups).
-        const float ED_X = 88.0f, PROB_OUT_X = 207.0f, ED_W = PROB_OUT_X - ED_X - 8.0f;
-        const float BLEND_TOP = 74.0f, GAP = 2.5f;
-        const float GROUP_W = ED_W / 4.0f;
-        const float OWN_DY = 13.0f;
-        const char* laneName[4] = { "REST", "MELODY", "OCTAVE", "ACCENT" };
-
-        bool macroPresent = false;
-        bool isLight = false;
-        if (auto* mon = getMonsoon()) {
-            macroPresent = (mon->expanderManager.cachedMacroSandsVisual != nullptr);
-            isLight = mon->lightTheme;
-        }
-
-        auto font = APP->window->loadFont(rack::asset::system("res/fonts/DejaVuSans-Bold.ttf"));
-        if (!font) font = APP->window->uiFont;
-        if (!font) return;
-        nvgFontFaceId(vg, font->handle);
-
-        NVGcolor head = macroPresent ? (isLight ? nvgRGB(40,44,52) : nvgRGB(210,214,222))
-                                     : nvgRGBA(140,140,150, 90);
-        NVGcolor item = macroPresent ? (isLight ? nvgRGB(150,120,20) : nvgRGB(190,160,60))
-                                     : nvgRGBA(140,140,150, 70);
-
-        // V1 / mono tab: the per-lane BASE opt-in band is meaningless (mono owns the base,
-        // nothing to opt into). The latch widgets hide themselves (hideWhen), but the panel
-        // bakes the group boxes, header rule and latch rings — mask the whole band with the
-        // panel background and skip the BASE labels so V1 reads clean.
-        if (tab1MonoMirror()) {
-            NVGcolor bg = isLight ? nvgRGB(0xe8,0xe8,0xea) : nvgRGB(0x16,0x18,0x1c);
-            nvgBeginPath(vg);
-            nvgRect(vg, mm2px(ED_X) - 2.f, mm2px(BLEND_TOP - 6.f),
-                        mm2px(ED_W) + 4.f, mm2px(22.f + 8.f));
-            nvgFillColor(vg, bg);
-            nvgFill(vg);
-            return;   // no BASE labels on V1
-        }
-
-        // Section header (left-aligned, above the group row).
-        nvgFontSize(vg, 8.0f);
-        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM);
-        nvgFillColor(vg, head);
-        nvgText(vg, mm2px(ED_X), mm2px(BLEND_TOP - 3.5f), "BASE", nullptr);
-
-        for (int l = 0; l < 4; ++l) {
-            float gx = ED_X + l*GROUP_W + GAP*0.5f;
-            float gw = GROUP_W - GAP;
-            float gcx = gx + gw*0.5f;
-            // lane-name header — centred at top of the box
-            nvgFontSize(vg, 7.0f);
-            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-            nvgFillColor(vg, head);
-            nvgText(vg, mm2px(gcx), mm2px(BLEND_TOP + 4.0f), laneName[l], nullptr);
-            // "BASE" under the opt-in latch (inherit Macro base / local East)
-            nvgFontSize(vg, 5.0f);
-            nvgFillColor(vg, item);
-            nvgText(vg, mm2px(gcx), mm2px(BLEND_TOP + OWN_DY + 3.7f), "BASE", nullptr);
-        }
-    }
+    // (The old BASE blend-group draw() override was removed: per-lane ownership
+    //  now lives in the OwnerCell widgets at the SRC column, which draw themselves.
+    //  There is no below-lanes BASE band any more, so no custom NanoVG painting is
+    //  needed here — ModuleWidget::draw handles the panel + child widgets.)
 };
 
 // ── Module process(): light latches + 3 poly probability CV outs (audio rate) ──

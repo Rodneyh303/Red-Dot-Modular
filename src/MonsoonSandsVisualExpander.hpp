@@ -8,11 +8,11 @@ using namespace rack;
 namespace SandsMonoVisualIds {
 
     // ── Panel ────────────────────────────────────────────────────────────
-    static constexpr float W_MM     = 213.36f;  // 42HP (was 40HP; +2HP right strip for
-                                                 // the per-lane probability CV out column)
+    static constexpr float W_MM     = 218.44f;  // 43HP (42 + 1HP for the per-lane owner-source block)
     static constexpr float ED_X     = 88.f;
-    static constexpr float PROB_OUT_X = 207.f;   // output jack column (new right strip)
-    static constexpr float ED_W     = PROB_OUT_X - ED_X - 8.f;  // editor stops left of the outs
+    static constexpr float ED_W     = 111.f;    // editor width (fixed; no longer tied to PROB_OUT_X)
+    static constexpr float OWNER_X    = 205.f;  // owner cell column (matches East/Macro)
+    static constexpr float PROB_OUT_X = 212.f;  // output jack column (pushed right by the owner block)
     static constexpr float ED_Y     = 16.f;
     static constexpr float ROW_TOP  = 14.f;
     static constexpr float ROW_BOT  = 108.f;
@@ -39,20 +39,32 @@ namespace SandsMonoVisualIds {
 
     // ── Param IDs ─────────────────────────────────────────────────────────
     enum ParamId {
-        // LOR handle params: 6 lanes × 3 (LEN/OFF/ROT) = 18 (0-17)
-        LEN_REST = 0, OFF_REST, ROT_REST,
-        LEN_MELODY,   OFF_MELODY,   ROT_MELODY,
-        LEN_OCTAVE,   OFF_OCTAVE,   ROT_OCTAVE,
-        LEN_LEGATO,   OFF_LEGATO,   ROT_LEGATO,
-        LEN_ACCENT,   OFF_ACCENT,   ROT_ACCENT,
-        LEN_VARIATION,OFF_VARIATION,ROT_VARIATION,
-        // Spread base trimpots: REST/MEL/OCT + ACCENT (now a poly lane) = 4
+        // LOR handle params: 6 lanes × 3 (LEN/OFF/ROT) = 18 (0-17).
+        // EDITOR ORDER (MEL,OCT,REST,ACC,VAR,LEG) — same order the editor shows and
+        // the engine strands use, so lenId(editorLane) reads directly with no remap.
+        LEN_MELODY = 0, OFF_MELODY, ROT_MELODY,
+        LEN_OCTAVE,     OFF_OCTAVE,     ROT_OCTAVE,
+        LEN_REST,       OFF_REST,       ROT_REST,
+        LEN_ACCENT,     OFF_ACCENT,     ROT_ACCENT,
+        LEN_VARIATION,  OFF_VARIATION,  ROT_VARIATION,
+        LEN_LEGATO,     OFF_LEGATO,     ROT_LEGATO,
+        // Spread base trimpots: poly lanes in ENGINE order REST/MEL/OCT/ACCENT — kept
+        // in engine order because the spread path shares SPREAD_LANE_TO_EDITOR with the
+        // poly engine (which is NOT being renumbered in this step). sprId(l) takes a
+        // spread index 0-3, mapped to editor via SPREAD_LANE_TO_EDITOR.
         SPR_REST, SPR_MELODY, SPR_OCTAVE, SPR_ACCENT,
         // Attenuverters: 18 LOR (6 lanes × 3) + 4 spread = 22
-        ATTEN_START,                       // 21 .. 38  (18 LOR attens)
-        SPR_ATTEN_START = ATTEN_START + 18, // 39 .. 42  (4 spread attens)
-        NUM_PARAMS = SPR_ATTEN_START + 4
+        ATTEN_START,                       // 22 .. 39  (18 LOR attens)
+        SPR_ATTEN_START = ATTEN_START + 18, // 40 .. 43  (4 spread attens)
+        // V1 ownership: per poly lane (MEL/OCT/REST/ACC, EDITOR order), latch
+        // 0 = Macro owns V1's base for this lane (global base), 1 = Mono owns it
+        // (this expander's own LOR edit). LEG/VAR are mono-only → always Mono-owned,
+        // no owner param. Mono is single-voice (V1), so no per-voice bank needed.
+        OWN_DISP_START = SPR_ATTEN_START + 4,   // 44 .. 47
+        NUM_PARAMS = OWN_DISP_START + 4
     };
+    // V1 owner display proxy: poly lane (editor order 0=MEL 1=OCT 2=REST 3=ACC).
+    inline int ownerDispId(int polyLaneEditor) { return OWN_DISP_START + polyLaneEditor; }
 
     // ── Input IDs ─────────────────────────────────────────────────────────
     enum InputId {
@@ -72,10 +84,10 @@ namespace SandsMonoVisualIds {
     };
 
     // ── Helpers ───────────────────────────────────────────────────────────
-    inline int lenId(int l) { return LEN_REST + l * 3; }
-    inline int offId(int l) { return LEN_REST + l * 3 + 1; }
-    inline int rotId(int l) { return LEN_REST + l * 3 + 2; }
-    inline int sprId(int l) { return SPR_REST + l; }          // l: 0-2 only
+    inline int lenId(int l) { return LEN_MELODY + l * 3; }     // l = EDITOR lane now
+    inline int offId(int l) { return LEN_MELODY + l * 3 + 1; }
+    inline int rotId(int l) { return LEN_MELODY + l * 3 + 2; }
+    inline int sprId(int l) { return SPR_REST + l; }          // l: 0-3 spread index (engine order)
 
     // LOR atten/CV: lane 0-5, param 0=LEN,1=OFF,2=ROT
     inline int attenId(int lane, int param) { return ATTEN_START + lane*3 + param; }
@@ -103,9 +115,9 @@ struct MonsoonSandsVisualExpander : Module {
                SandsMonoVisualIds::NUM_OUTPUTS, 0);
         for (int l = 0; l < 6; ++l)
             configOutput(PROB_OUT_START + l, std::string("Probability ") +
-                (const char*[]){"REST","MEL","OCT","LEG","ACC","VAR"}[l]);
+                (const char*[]){"MEL","OCT","REST","ACC","VAR","LEG"}[l]);
 
-        static const char* names[6]  = {"REST","MEL","OCT","LEG","ACC","VAR"};
+        static const char* names[6]  = {"MEL","OCT","REST","ACC","VAR","LEG"};
         static const char* lnames[3] = {"Len","Off","Rot"};
 
         for (int l = 0; l < 6; ++l) {
@@ -119,13 +131,20 @@ struct MonsoonSandsVisualExpander : Module {
                             std::string(names[l])+" "+lnames[p]+" CV");
             }
         }
-        // Spread group: REST/MEL/OCT/ACCENT (the poly-derived lanes; LEG/VAR are mono-only)
+        // Spread group: poly lanes (REST/MEL/OCT/ACCENT engine order). sprId stays
+        // engine-ordered, so name via SPREAD_LANE_TO_EDITOR as before.
         for (int l = 0; l < N_SPREAD_LANES; ++l) {
             const char* nm = names[SPREAD_LANE_TO_EDITOR[l]];
             configParam(sprId(l), -1.f, 1.f, 0.f, std::string(nm)+" Spread");
             configParam(sprAttenId(l), -1.f, 1.f, 0.f, std::string(nm)+" Spread depth");
             configInput(sprCvId(l), std::string(nm)+" Spread CV");
         }
+        // V1 ownership switches — poly lanes only (editor lanes 0..3 = MEL/OCT/REST/ACC).
+        // 0 = Macro owns V1's base for this lane; 1 = Mono owns (its own LOR edit).
+        for (int l = 0; l < 4; ++l)
+            configSwitch(ownerDispId(l), 0.f, 1.f, 1.f,
+                         std::string(names[l]) + " V1 owner",
+                         { "Macro (global)", "Mono" });
     }
     void process(const ProcessArgs&) override;   // defined in .cpp (needs calcPlayhead)
 

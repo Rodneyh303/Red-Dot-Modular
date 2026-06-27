@@ -5,6 +5,7 @@
 //#include "MonsoonSandsExpander.hpp"
 #include "MonsoonSandsVisualExpander.hpp"
 #include "ui/SandsVisualEditorV4.hpp"
+#include "ui/OwnerCell.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/ModArcOverlay.hpp"
 #include "dsp/managers/MonoSandsParameterManager.hpp"
@@ -29,11 +30,15 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
     int lastThemeLight = -1;
 
     // Spread mod-arcs (bipolar -1..1), same as Macro: set = SPR param,
-    // effective = mod->spreadEffective[lane] (CV-modulated). Normalised (v+1)/2.
+    // effective = mod->spreadEffective[spreadIdx] (CV-modulated). Normalised (v+1)/2.
+    // NOTE: the stored int is the SPREAD index (engine order REST=0,MEL=1,OCT=2,ACC=3),
+    // matching how spreadEffective[] is written and how sprCvId() is indexed — NOT the
+    // editor lane. This is the fix for the spread-arc off-by-one (arc was reading the
+    // engine-indexed array by editor lane).
     std::vector<std::pair<rack::ParamWidget*, int>> pendingSpreadArcs;
     void flushSpreadArcs(MonsoonSandsVisualExpander* mod) {
         for (auto& pr : pendingSpreadArcs) {
-            auto* knob = pr.first; int lane = pr.second;
+            auto* knob = pr.first; int sprIdx = pr.second;
             if (!knob) continue;
             auto* arc = new redDot::ModArcOverlay();
             arc->radius   = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
@@ -45,20 +50,18 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
                 auto* pq = mm->paramQuantities[pid];
                 return pq ? (float)pq->getScaledValue() : 0.5f;
             };
-            arc->getModNorm = [mm, lane]() -> float {
-                if (!mm || lane < 0 || lane >= 6) return 0.5f;
-                return rack::math::clamp((mm->spreadEffective[lane] + 1.f) * 0.5f, 0.f, 1.f);
+            // spreadEffective[] is spread/engine-indexed (REST=0,MEL=1,OCT=2,ACC=3).
+            arc->getModNorm = [mm, sprIdx]() -> float {
+                if (!mm || sprIdx < 0 || sprIdx >= 4) return 0.5f;
+                return rack::math::clamp((mm->spreadEffective[sprIdx] + 1.f) * 0.5f, 0.f, 1.f);
             };
-            arc->isActive = [mm, lane, pid]() -> bool {
-                if (!mm || lane < 0 || lane >= 6) return false;
+            arc->isActive = [mm, sprIdx]() -> bool {
+                if (!mm || sprIdx < 0 || sprIdx >= 4) return false;
                 Monsoon* mon = findMonsoonEitherSide(mm);
                 if (!mon || !mon->modVizMono) return false;
-                // Spreadable lanes: REST/MEL/OCT (0-2) + ACCENT (4). Map the editor lane
-                // back to its spread-control index for the CV-jack lookup. Gate on the
-                // spread CV jack being connected (avoids the set-vs-effective race).
-                int spr = (lane == 4) ? 3 : (lane <= 2 ? lane : -1);
-                if (spr < 0) return false;
-                return mm->inputs[sprCvId(spr)].isConnected();
+                // Gate on this spread lane's CV jack being connected (sprCvId is
+                // spread/engine-indexed, same as sprIdx) — avoids set-vs-effective race.
+                return mm->inputs[sprCvId(sprIdx)].isConnected();
             };
             addChild(arc);
         }
@@ -111,7 +114,10 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             float y = rowY(editorLane);
             auto* sp = createParamCentered<Trimpot>(mm2px(Vec(SPR_BASE_X, y)), mod, sprId(l));
             addParam(sp);
-            pendingSpreadArcs.push_back({sp, editorLane});
+            // Store the SPREAD index l (engine order REST/MEL/OCT/ACC), NOT the editor
+            // lane: spreadEffective[] and sprCvId() are both spread/engine-indexed, so
+            // the arc must look them up by l. (The knob sits on the editor row via y.)
+            pendingSpreadArcs.push_back({sp, l});
             addInput(createInputCentered<PJ301MPort>(
                 mm2px(Vec(SPR_CV_X, y)), mod, sprCvId(l)));
             addParam(createParamCentered<Trimpot>(
@@ -120,6 +126,28 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
 
         paramMgr = new MonoSandsParameterManager();
         flushSpreadArcs(mod);
+
+        // ── V1 ownership cells (Option C / treatment A, shared OwnerCell) ──────
+        // One per poly lane (editor rows 0..3 = MEL/OCT/REST/ACC), in the SRC
+        // column right of the editor. FILLED = Macro owns V1's base for this lane,
+        // OUTLINE = Mono owns (its own LOR edit). Click toggles. Inert+dimmed when
+        // no Macro is attached (nothing to cede to). LEG/VAR (rows 4/5) are
+        // mono-only → no owner cell.
+        for (int l = 0; l < 4; ++l) {
+            auto* oc = createParamCentered<OwnerCell>(
+                mm2px(Vec(OWNER_X, rowY(l))), mod, ownerDispId(l));
+            oc->laneCol = sandsLaneColorEditor(l);
+            // Match the editor's lane-step cell: one step wide × ~90% lane tall.
+            const float stepW   = (ED_W - 2.f*6.f) / 16.f;          // editor padding=6, 16 steps
+            const float monoLaneH = (ROW_BOT - ROW_TOP) / N_LANES;  // 6 lanes
+            oc->box.size = mm2px(Vec(stepW, monoLaneH * 0.9f));
+            oc->box.pos  = mm2px(Vec(OWNER_X, rowY(l))).minus(oc->box.size.div(2.f));
+            oc->inertWhen = [this]() {
+                auto* mon = getMonsoon();
+                return !(mon && mon->expanderManager.cachedMacroSandsVisual != nullptr);
+            };
+            addParam(oc);
+        }
 
         // Per-lane probability CV outs — one jack right of each of the 6 lane rows.
         for (int l = 0; l < N_LANES; ++l) {
@@ -163,32 +191,32 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         // ── One-time initialisation from saved params ─────────────────────
         if (!initialized) {
             for (int l = 0; l < 6; ++l) {
-                // l = mono param bank (0=REST 1=MEL 2=OCT 3=LEG 4=ACC 5=VAR) → editor lane.
-                int el = dotModular::MONO_PARAM_TO_EDITOR[l];
-                visualEditor->currentState.lanes[el].length   = (int)std::round(mod->params[lenId(l)].getValue());
-                visualEditor->currentState.lanes[el].offset   = (int)std::round(mod->params[offId(l)].getValue());
-                visualEditor->currentState.lanes[el].rotation = (int)std::round(mod->params[rotId(l)].getValue());
+                // l = editor lane; Mono LOR params are now editor-ordered → direct.
+                visualEditor->currentState.lanes[l].length   = (int)std::round(mod->params[lenId(l)].getValue());
+                visualEditor->currentState.lanes[l].offset   = (int)std::round(mod->params[offId(l)].getValue());
+                visualEditor->currentState.lanes[l].rotation = (int)std::round(mod->params[rotId(l)].getValue());
             }
-            for (int l = 0; l < N_SPREAD_LANES; ++l)   // spread: REST/MEL/OCT + ACCENT
+            for (int l = 0; l < N_SPREAD_LANES; ++l)   // spread stays engine-ordered
                 mod->spreadEffective[SPREAD_LANE_TO_EDITOR[l]] = mod->params[sprId(l)].getValue();
             initialized = true;
         }
 
         // ── Editor → params (UI thread, own params) ───────────────────────
         for (int l = 0; l < 6; ++l) {
-            int el = dotModular::MONO_PARAM_TO_EDITOR[l];   // mono param bank → editor lane
-            const auto& lane = visualEditor->currentState.lanes[el];
+            const auto& lane = visualEditor->currentState.lanes[l];
             mod->params[lenId(l)].setValue((float)lane.length);
             mod->params[offId(l)].setValue((float)lane.offset);
             mod->params[rotId(l)].setValue((float)lane.rotation);
         }
 
-        // ── Per-lane base spread (REST/MEL/OCT only — the spreadable lanes).
-        // LEG/ACC/VAR are mono-only and have no spread. spreadEffective[] is
-        // written by processDNA from sprId base + cv*atten (per-lane CV mod).
+        // ── Per-lane base spread. spreadEffective[] is SPREAD/engine-indexed
+        // (0=REST,1=MEL,2=OCT,3=ACC). setLaneSpread expects the PatternEngine BUFFER
+        // lane order (REST=0,MEL=1,OCT=2,LEG=3,ACC=4,VAR=5). Map spread idx → buffer
+        // lane explicitly so neither side is read with the wrong convention. (This was
+        // the per-lane analogue of the spread-arc off-by-one.)
+        static const int SPREAD_TO_BUFFER[4] = { 0, 1, 2, 4 };  // REST,MEL,OCT,ACCENT
         for (int l = 0; l < N_SPREAD_LANES; ++l) {
-            int el = SPREAD_LANE_TO_EDITOR[l];
-            paramMgr->setLaneSpread(el, mod->spreadEffective[el]);
+            paramMgr->setLaneSpread(SPREAD_TO_BUFFER[l], mod->spreadEffective[l]);
         }
 
         paramMgr->setInterpolationTarget(SpreadManager::AVERAGE_POLY);

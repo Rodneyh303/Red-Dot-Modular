@@ -8,9 +8,15 @@ using namespace MonsoonIds;
 namespace StraitsEastVisualIds {
 
     // ── Panel ──────────────────────────────────────────────────────────────
-    static constexpr float W_MM    = 213.36f;   // 42HP (was 40HP; +2HP right strip for
-                                                 // the 3 poly probability CV outs)
-    static constexpr float PROB_OUT_X = 207.f;   // poly prob-out jack column (right strip)
+    static constexpr float W_MM    = 218.44f;   // 43HP (42 + 1HP for the per-lane
+                                                 // owner-source block right of the editor)
+    static constexpr float ED_X   = 88.f;   // editor (matches SandsMonoVisual)
+    static constexpr float ED_W   = 111.f;  // editor width (fixed; no longer tied to PROB_OUT_X)
+    // Owner-source block: per-lane cells just right of the editor, before the
+    // prob-out strip. OWNER_X is the cell-column centre; the block has a faint
+    // separator + backing (drawn in the gen) so it doesn't read as a 17th step.
+    static constexpr float OWNER_X    = 205.f;   // owner cell column (editor right edge = 199)
+    static constexpr float PROB_OUT_X = 212.f;   // poly prob-out jack column (right strip, pushed right by the owner block)
     static constexpr int   N_ROWS  = 4;         // 1 row per lane (REST/MEL/OCT/ACCENT)
     static constexpr float ROW_TOP = 14.f;
     static constexpr float ROW_BOT = 108.f;
@@ -25,12 +31,10 @@ namespace StraitsEastVisualIds {
     static constexpr float COL_A3 = 61.f;   // ROT depth
     static constexpr float COL_A4 = 70.f;   // SPR depth
     static constexpr float SPREAD_X = 80.f; // per-lane spread base trimpot
-    static constexpr float ED_X   = 88.f;   // editor (matches SandsMonoVisual)
     // Mirror TAB_TOP_OFFSET_MM in panel_src/gen_east_clean.py (extra top margin so
     // the tab row clears the panel top edge; 0.5cm = 5mm).
     static constexpr float TAB_TOP_OFFSET_MM = 5.f;
     static constexpr float ED_Y   = 18.f + TAB_TOP_OFFSET_MM;  // editor top (below 2-row tab band)
-    static constexpr float ED_W   = PROB_OUT_X - ED_X - 8.f;  // editor stops left of prob outs
     // Editor holds 4 poly lanes (MEL/OCT/REST/ACCENT); ~12mm each. ED_LANE_H
     // drives prob-out vertical placement and must match the gen script's ED_H/4.
     static constexpr float ED_H      = 48.f;

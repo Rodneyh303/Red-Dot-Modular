@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import dotmod_design as D
 from dotmod_design import px, theme
 
-def gen_macro(dark, W_MM=213.36):   # 42HP (40 + 2HP right strip for poly prob-out jacks)
+def gen_macro(dark, W_MM=218.44):   # 43HP (42 + 1HP for the per-lane owner-source block)
     # Macro mirrors the East visual's 40HP geometry exactly (same columns); it does
     # the same spread job but GLOBAL (3 lanes) rather than per-lane. Must match
     # StraitsSandsMacroVisual.hpp: COL_J1=8 J2=18 A1=30 A2=39 SPREAD_X=49 ED_X=58.
@@ -15,7 +15,7 @@ def gen_macro(dark, W_MM=213.36):   # 42HP (40 + 2HP right strip for poly prob-o
     # Extra top margin so the view-tab row isn't crammed against the panel top
     # edge. 0.5 cm = 5 mm. Mirror TAB_TOP_OFFSET_MM in StraitsSandsMacroVisualWidget.
     TAB_TOP_OFFSET_MM = 5.0
-    ED_X=88.; PROB_OUT_X=207.; ED_W=PROB_OUT_X-ED_X-8.; ED_Y=18.+TAB_TOP_OFFSET_MM; ED_H=48.
+    ED_X=88.; ED_W=111.; OWNER_X=205.; PROB_OUT_X=212.; ED_Y=18.+TAB_TOP_OFFSET_MM; ED_H=48.  # +1HP owner block; ED_W decoupled from PROB_OUT_X
     ED_LANE_H=ED_H/N
     # Left-control rows align with the EDITOR lane centres (must match the hpp's rowY).
     def rowY(r): return ED_Y+(r+0.5)*ED_LANE_H
@@ -39,6 +39,7 @@ def gen_macro(dark, W_MM=213.36):   # 42HP (40 + 2HP right strip for poly prob-o
     gx,gy=1.5,rowY(0)-ED_LANE_H*0.5-3.0; gw,gh=(SPREAD_X+6.0)-gx,(rowY(N-1)+ED_LANE_H*0.5+3.0)-gy  # gx clears leftmost jack
     A(D.input_group(gx,gy,gw,gh,t,sep_mm=0.5*(JACK_X[-1]+ATTEN_X[0])))
     A(D.editor_recess(ED_X,ED_Y,ED_W,ED_H,t,lanes=4))
+    A(D.owner_block(OWNER_X, [rowY(r) for r in range(N)], ED_X+ED_W, t, cell_w_mm=6.0))
     A('</g>')
     A('<g inkscape:label="branding" inkscape:groupmode="layer">')
     A(D.logo_embed(dark, x_mm=11.0, y_mm=4.5, target_w_mm=42.0))
@@ -98,7 +99,7 @@ def gen_macro(dark, W_MM=213.36):   # 42HP (40 + 2HP right strip for poly prob-o
     return "\n".join(L)
 
 def gen_mono(dark):
-    t=theme(dark); W_MM,H_MM=213.36,128.5; PW,PH=px(W_MM),px(H_MM)   # 42HP (+2HP prob-out strip)
+    t=theme(dark); W_MM,H_MM=218.44,128.5; PW,PH=px(W_MM),px(H_MM)   # 43HP (42 + 1HP owner block)
     ROW_TOP,ROW_BOT,N=14.,108.,6
     def laneY(l): return ROW_TOP+(l+0.5)*(ROW_BOT-ROW_TOP)/N
     # Geometry MUST match MonsoonSandsVisualExpander.hpp:
@@ -108,7 +109,7 @@ def gen_mono(dark):
     SPR_BASE_X,SPR_CV_X,SPR_ATTEN_X=62.,71.,80.
     N_SPREAD=4                                  # REST/MEL/OCT + ACCENT (poly lanes)
     SPR_TO_EDITOR=[2,0,1,3]                      # spread index (REST/MEL/OCT/ACCENT) → editor lane; matches cpp ENGINE_LANE_TO_EDITOR
-    ED_X=88.; PROB_OUT_X=207.; ED_W=PROB_OUT_X-ED_X-8.
+    ED_X=88.; ED_W=111.; OWNER_X=205.; PROB_OUT_X=212.  # +1HP owner block; ED_W decoupled from PROB_OUT_X
     # Editor recess spans the SAME band the left controls (laneY) divide, so the
     # live editor lanes (zero internal padding, even division) line up with the
     # left jacks/attens and the painted lanes.
@@ -125,6 +126,7 @@ def gen_mono(dark):
     gx,gy=1.5,ROW_TOP-4.0; gw,gh=(ATTEN_X[-1]+6.0)-gx,(ROW_BOT+2.0)-(ROW_TOP-4.0)  # gx clears leftmost jack
     A(D.input_group(gx,gy,gw,gh,t,sep_mm=0.5*(JACK_X[-1]+ATTEN_X[0])))
     A(D.editor_recess(ED_X,ED_Y,ED_W,ED_H,t,lanes=6))
+    A(D.owner_block(OWNER_X, [laneY(l) for l in range(4)], ED_X+ED_W, t, cell_w_mm=(ED_W-2*6.0)/16.0, draw_cells=False))
     A('</g>')
     A('<g inkscape:label="branding" inkscape:groupmode="layer">')
     A(D.logo_embed(dark, x_mm=11.0, y_mm=4.5, target_w_mm=42.0))
@@ -150,21 +152,18 @@ def gen_mono(dark):
     A('<g inkscape:label="components" inkscape:groupmode="layer">')
     # Physical rows are laid out in EDITOR display order (MELODY/OCTAVE/REST/
     # ACCENT/VARIATION/LEGATO = editor lanes 0..5), matching the editor lanes +
-    # labels that share these rows. The LOR params are PARAM-BANK indexed
-    # (REST=0,MEL=1,OCT=2,LEG=3,ACC=4,VAR=5), so map editor row → param bank.
-    # This mirrors East/Macro's DISPLAY_ORDER approach and is the inverse of
-    # MONO_PARAM_TO_EDITOR (dsp/LaneMapping.hpp EDITOR_TO_MONO_PARAM).
-    EDITOR_TO_PARAM=[1,2,0,4,5,3]   # editor lane → mono param bank
+    # labels that share these rows. The LOR params are now EDITOR-ordered
+    # (LEN_MELODY=0, OCT, REST, ACC, VAR, LEG) — same as the display rows — so we
+    # bind each row's jacks/attens at the editor index directly (no remap).
     for row in range(6):
-        pb=EDITOR_TO_PARAM[row]     # param-bank lane for this editor row
         y=laneY(row)
-        for p,x in enumerate(JACK_X):  A(D.kit_shape("input", 0+pb*3+p, x, y))
-        for p,x in enumerate(ATTEN_X): A(D.kit_shape("param", 21+pb*3+p, x, y))
+        for p,x in enumerate(JACK_X):  A(D.kit_shape("input", 0+row*3+p, x, y))
+        for p,x in enumerate(ATTEN_X): A(D.kit_shape("param", 22+row*3+p, x, y))
     for sidx in range(N_SPREAD):
         y=laneY(SPR_TO_EDITOR[sidx])
-        A(D.kit_shape("param", 18+sidx, SPR_BASE_X, y))   # SPR_REST/MEL/OCT/ACCENT (18..21)
+        A(D.kit_shape("param", 18+sidx, SPR_BASE_X, y))   # SPR_REST/MEL/OCT/ACCENT (18..21, engine order)
         A(D.kit_shape("input", 18+sidx, SPR_CV_X, y))     # SPR_CV (18..21)
-        A(D.kit_shape("param", 39+sidx, SPR_ATTEN_X, y))  # SPR_ATTEN (39..42)
+        A(D.kit_shape("param", 40+sidx, SPR_ATTEN_X, y))  # SPR_ATTEN (40..43)
     A('</g>')
     A('</svg>')
     return "\n".join(L)

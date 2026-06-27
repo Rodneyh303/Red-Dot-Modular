@@ -80,19 +80,46 @@ express* because there's only one index space.
 
 ### Migration (when build is confirmed stable — NOT before)
 
-1. Renumber `ParamId` so LEN/OFF/ROT and atten/cv banks are laid out in editor
-   order (MEL,OCT,REST,ACC,VAR,LEG). `lenId(l)` etc. then take the editor lane
-   directly; drop the param↔editor tables.
-2. Renumber `PolyLane` (PL_*) to editor order (drop the poly/editor divergence;
-   East/Macro `lorId` already 4-lane). `ENGINE_LANE_TO_EDITOR` becomes identity →
-   delete.
-3. Re-pair the `EngineStrand` switch cases to editor order (or renumber the enum
-   to match and let the switches fall through naturally). Verify each `case`
-   still returns the correct named field — this is the one careful step.
-4. Delete the now-identity permutation tables; keep only the editor↔named-strand
+**IMPLEMENTATION NOTE (partial — stopped at the build-gated boundary):**
+Step 1 (EngineStrand) was completed on branch `refactor/lane-order-collapse`
+(commit a1e2dc8) because it is provably behaviour-inert under static analysis:
+all strand access is name-keyed `switch`, and `MONO_LANE_TO_STRAND` is written
+with named constants so it auto-tracked to identity. Safe without a build.
+
+Steps 2-3 were NOT applied, because tracing revealed they cannot be verified
+safe without compiling:
+- **PolyLane renumber is the riskiest.** `MonsoonExpanderManager.cpp` writes
+  `engine.polyLen[v][0..3]` with RAW LITERAL indices that are tangled in the
+  same statements with `combineLOR(n,...)` and `SpreadInterp::apply(...,n,...)`
+  — three parallel raw-index conventions that must move in perfect lockstep.
+  None use `PL_` constants. A silent mismatch reproduces exactly the Mono
+  scramble regression, with no build to catch it. Poly is currently
+  SELF-CONSISTENT internally (REST=0..ACC=3) and touches the outside only via
+  the name-keyed PL_→STRAND switch and the `ENGINE_LANE_TO_EDITOR` table, so
+  leaving it as-is is correct and isolated.
+- **Mono ParamId renumber is cleaner** (all access via lenId/cvId/attenId
+  helpers, no raw literals) but still moves the gen-script bindings + the cpp
+  `MONO_PARAM_TO_EDITOR` loops + drops `EDITOR_TO_PARAM` together; worth doing
+  but best verified with a build.
+
+So the SAFE collapse achieved now: EngineStrand on editor order,
+MONO_LANE_TO_STRAND → identity. Remaining when buildable:
+
+1. **Mono ParamId → editor order.** Renumber the enum so LEN/OFF/ROT + atten/cv
+   banks are laid out MEL,OCT,REST,ACC,VAR,LEG. `lenId(l)` etc. then take the
+   editor lane directly. Drop `MONO_PARAM_TO_EDITOR` / `EDITOR_TO_MONO_PARAM`
+   (both → identity) and the gen `EDITOR_TO_PARAM` remap. All access is
+   helper-mediated, so this is mechanical but wide — build-verify.
+2. **PolyLane → editor order.** FIRST convert every raw literal index in
+   MonsoonExpanderManager (`polyLen[v][N]`, `combineLOR(N,...)`,
+   `SpreadInterp::apply(...,N,...)`) to `PL_*` constants so the renumber tracks
+   automatically — THEN renumber the enum. `ENGINE_LANE_TO_EDITOR` → identity,
+   delete. This is the step that most needs a build between the
+   literal→constant conversion and the renumber.
+3. Delete the now-identity permutation tables; keep only the editor↔named-strand
    switch. Add the round-trip/exhaustiveness sanity check.
-5. Regenerate panels (gen scripts drop their DISPLAY_ORDER / EDITOR_TO_PARAM
-   remaps — markers bind editor-lane index directly).
+4. Regenerate panels (gen scripts drop their DISPLAY_ORDER / EDITOR_TO_PARAM /
+   SPR_TO_EDITOR remaps — markers bind editor-lane index directly).
 
 Each step behaviour-inert and build-verified, VoiceResolver-style.
 
@@ -202,3 +229,45 @@ hand-rolled permutation arrays** (e.g. `laneMap[6]` in
 MonoSandsParameterManager::syncPatternEngineToEditor — currently a correct but
 duplicate STRAND→EDITOR table) with a named `STRAND_TO_EDITOR` constant in
 LaneMapping.hpp, so all four systems' conversions live in exactly one file.
+
+## BUILD-CHECK TODO (needs compile, noted not done)
+
+After the VoiceResolver work, verify the **modulation arcs** still render correctly,
+especially for POLY voices on East/Macro:
+- The spread/CV arcs (pendingSpreadArcs → arc->isActive / getModNorm predicates)
+  read per-voice spread state (e.g. polySpreadEffective[v][lane], spreadEffective[lane]).
+  VoiceResolver changed voice/slot addressing (kMonoSlot, voice v → slot v+1), so the
+  arc predicates that look up per-voice values may be reading the wrong slot.
+- Specifically check: East arc isActive lane>=4 vs >=3 (accent), and that poly-tab
+  arcs reflect the displayed voice, not voice 0.
+- The Mono arc predicate (sprCvId index) was already touched in the regression fix;
+  confirm it still lights only for connected spread CV on the right lanes.
+Cannot verify without a build (live widget + engine state). Flagging for the next
+build session.
+
+## STEP 3 OUTCOME: literals→PL_ constants done; PolyLane renumber DEFERRED (by design)
+
+Sub-step 3a (DONE): converted every raw poly-lane literal in
+MonsoonExpanderManager.cpp to `SequencerEngine::PL_*` constants — the
+`polyLen/Off/Rot[v][lane]` writes, the `combineLOR(lane,..)` / `combineSpread(lane,..)`
+calls, and the `SpreadInterp::apply(..,lane,..)` calls now all name the lane, so
+the three parallel index conventions move together and the raw-index hazard that
+bred earlier bugs is gone. Behaviour-inert (same numbers, named).
+
+Sub-step 3b (PolyLane enum renumber → editor order): DEFERRED, deliberately.
+Reassessment during 3a showed the renumber is not worth its risk:
+- The only thing it would buy is making `ENGINE_LANE_TO_EDITOR` (a 4-entry table)
+  the identity. That table has 12 live uses, ALL display-mapping (placing a
+  poly/engine lane's data at the right editor row) — none in the audio path. It
+  is already correct, well-named, and isolated.
+- Renumbering PolyLane would force changes to `SpreadInterp`'s lane→slew-buffer
+  `switch` (its lane arg is really a PatternEngine BUFFER selector — rhythm=0,
+  melody=1, octave=2, accent=3 — that only coincidentally equals PolyLane today),
+  risking a circular include (SpreadInterp includes PatternEngine, not
+  SequencerEngine) and touching every mono+poly SpreadInterp call site.
+- Net: high blast radius to delete one small correct table. Bad trade.
+
+So the collapse's useful, safe core is complete: EngineStrand (step 1) and Mono
+LOR (step 2) are editor-ordered; the poly lane hazard is de-risked by naming
+(3a). `ENGINE_LANE_TO_EDITOR` / `SPREAD_LANE_TO_EDITOR` STAY as the documented
+poly/spread→editor display bridge. They are not identity and that is fine.

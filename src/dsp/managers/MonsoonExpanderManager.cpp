@@ -10,6 +10,11 @@
 using namespace rack;
 
 void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono) {
+    // Poly-lane constants (engine order REST=0,MEL=1,OCT=2,ACC=3). Named here so
+    // the renumber tracks automatically and the parallel index conventions below
+    // (polyLen[v][lane] / combineLOR(lane,..) / combineSpread(lane,..) /
+    // SpreadInterp::apply(..,lane,..)) all move together.
+    using PL = SequencerEngine;  // PL::PL_REST etc.
     //auto* deepEast   = cachedDeepStraitsSandsEastExpander;
     //auto* deepWest   = cachedDeepStraitsSandsWestExpander;
     auto* straitEast = cachedPolyVoiceExpander;
@@ -109,18 +114,18 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
             };
 
             // REST lane (0): owner+blend equation. r/c are East CV jack coords.
-            engine.polyLen[v][0] = combineLOR(0, 0, rhythmBase,     0, 0, 1.f, 16.f);
-            engine.polyOff[v][0] = combineLOR(0, 1, rhythmBase + 1, 0, 1, 0.f, 15.f);
-            engine.polyRot[v][0] = combineLOR(0, 2, rhythmBase + 2, 1, 0, 0.f, 15.f);
+            engine.polyLen[v][PL::PL_REST] = combineLOR(PL::PL_REST, 0, rhythmBase,     PL::PL_REST, 0, 1.f, 16.f);
+            engine.polyOff[v][PL::PL_REST] = combineLOR(PL::PL_REST, 1, rhythmBase + 1, PL::PL_REST, 1, 0.f, 15.f);
+            engine.polyRot[v][PL::PL_REST] = combineLOR(PL::PL_REST, 2, rhythmBase + 2, PL::PL_REST, 2, 0.f, 15.f);
 
             float restInterp = eastInterp->params[MonsoonIds::POLY_REST_INTERP_1 + v].getValue();
-            if (eastVisual && eastVisual->inputs[cvId(1,1)].isConnected()) {
-                float att = eastLOR->params[attenId(slot,1,1)].getValue();   // PER-VOICE depth
-                float cv  = eastVisual->inputs[cvId(1,1)].getVoltage(v) / 10.f;
+            if (eastVisual && eastVisual->inputs[cvId(PL::PL_REST,3)].isConnected()) {
+                float att = eastLOR->params[attenId(slot,PL::PL_REST,3)].getValue();   // PER-VOICE depth
+                float cv  = eastVisual->inputs[cvId(PL::PL_REST,3)].getVoltage(v) / 10.f;
                 restInterp = math::clamp(restInterp + cv * att, -1.f, 1.f);
             }
-            restInterp = combineSpread(0, restInterp);   // owner + Macro-CV blend (spread)
-            if (eastVisual) eastVisual->polySpreadEffective[v][0] = restInterp;
+            restInterp = combineSpread(PL::PL_REST, restInterp);   // owner + Macro-CV blend (spread)
+            if (eastVisual) eastVisual->polySpreadEffective[v][PL::PL_REST] = restInterp;
             
             // if (deepEast) {
             //     engine.voices[v].restProb = deepEast->params[MonsoonIds::POLY_REST_PARAM_1 + v].getValue();
@@ -132,22 +137,22 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                     ? redDot::SpreadInterp::MONO_DRAW : redDot::SpreadInterp::AVERAGE_POLY;
                 for (int j = 0; j < 16; j++) {
                     engine.pe.polyRhythmRandom[v][j] = redDot::SpreadInterp::apply(
-                        engine.pe, mode, 0, j, nPoly, engine.pe.slewedPolyRhythm[v][j], restInterp);
+                        engine.pe, mode, PL::PL_REST, j, nPoly, engine.pe.slewedPolyRhythm[v][j], restInterp);
                 }
             }
             
             int melodyBase = MonsoonIds::POLY_MELODY_VOICE_1_LEN + v * 3;
             float melodyInterp = eastInterp->params[MonsoonIds::POLY_MELODY_INTERP_1 + v].getValue();
-            engine.polyLen[v][1] = combineLOR(1, 0, melodyBase,     2, 0, 1.f, 16.f);
-            engine.polyOff[v][1] = combineLOR(1, 1, melodyBase + 1, 2, 1, 0.f, 15.f);
-            engine.polyRot[v][1] = combineLOR(1, 2, melodyBase + 2, 3, 0, 0.f, 15.f);
-            if (eastVisual && eastVisual->inputs[cvId(3,1)].isConnected()) {
-                float att = eastLOR->params[attenId(slot,3,1)].getValue();   // PER-VOICE depth
-                float cv  = eastVisual->inputs[cvId(3,1)].getVoltage(v) / 10.f;
+            engine.polyLen[v][PL::PL_MELODY] = combineLOR(PL::PL_MELODY, 0, melodyBase,     PL::PL_MELODY, 0, 1.f, 16.f);
+            engine.polyOff[v][PL::PL_MELODY] = combineLOR(PL::PL_MELODY, 1, melodyBase + 1, PL::PL_MELODY, 1, 0.f, 15.f);
+            engine.polyRot[v][PL::PL_MELODY] = combineLOR(PL::PL_MELODY, 2, melodyBase + 2, PL::PL_MELODY, 2, 0.f, 15.f);
+            if (eastVisual && eastVisual->inputs[cvId(PL::PL_MELODY,3)].isConnected()) {
+                float att = eastLOR->params[attenId(slot,PL::PL_MELODY,3)].getValue();   // PER-VOICE depth
+                float cv  = eastVisual->inputs[cvId(PL::PL_MELODY,3)].getVoltage(v) / 10.f;
                 melodyInterp = math::clamp(melodyInterp + cv * att, -1.f, 1.f);
             }
-            melodyInterp = combineSpread(1, melodyInterp);   // owner + Macro-CV blend (spread)
-            if (eastVisual) eastVisual->polySpreadEffective[v][1] = melodyInterp;
+            melodyInterp = combineSpread(PL::PL_MELODY, melodyInterp);   // owner + Macro-CV blend (spread)
+            if (eastVisual) eastVisual->polySpreadEffective[v][PL::PL_MELODY] = melodyInterp;
             
             if (!engine.locked) {
                 const int nPoly = effPolyVoices;
@@ -155,7 +160,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                     ? redDot::SpreadInterp::MONO_DRAW : redDot::SpreadInterp::AVERAGE_POLY;
                 for (int j = 0; j < 16; j++) {
                     engine.pe.polyMelodyRandom[v][j] = redDot::SpreadInterp::apply(
-                        engine.pe, mode, 1, j, nPoly, engine.pe.slewedPolyMelody[v][j], melodyInterp);
+                        engine.pe, mode, PL::PL_MELODY, j, nPoly, engine.pe.slewedPolyMelody[v][j], melodyInterp);
                 }
             }
             
@@ -166,18 +171,18 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
             // }
             
             int octaveBase = MonsoonIds::POLY_OCTAVE_VOICE_1_LEN + v * 3;
-            engine.polyLen[v][2] = combineLOR(2, 0, octaveBase,     4, 0, 1.f, 16.f);
-            engine.polyOff[v][2] = combineLOR(2, 1, octaveBase + 1, 4, 1, 0.f, 15.f);
-            engine.polyRot[v][2] = combineLOR(2, 2, octaveBase + 2, 5, 0, 0.f, 15.f);
+            engine.polyLen[v][PL::PL_OCTAVE] = combineLOR(PL::PL_OCTAVE, 0, octaveBase,     PL::PL_OCTAVE, 0, 1.f, 16.f);
+            engine.polyOff[v][PL::PL_OCTAVE] = combineLOR(PL::PL_OCTAVE, 1, octaveBase + 1, PL::PL_OCTAVE, 1, 0.f, 15.f);
+            engine.polyRot[v][PL::PL_OCTAVE] = combineLOR(PL::PL_OCTAVE, 2, octaveBase + 2, PL::PL_OCTAVE, 2, 0.f, 15.f);
 
             float octaveInterp = eastInterp->params[MonsoonIds::POLY_OCTAVE_INTERP_1 + v].getValue();
-            if (eastVisual && eastVisual->inputs[cvId(5,1)].isConnected()) {
-                float att = eastLOR->params[attenId(slot,5,1)].getValue();   // PER-VOICE depth
-                float cv  = eastVisual->inputs[cvId(5,1)].getVoltage(v) / 10.f;
+            if (eastVisual && eastVisual->inputs[cvId(PL::PL_OCTAVE,3)].isConnected()) {
+                float att = eastLOR->params[attenId(slot,PL::PL_OCTAVE,3)].getValue();   // PER-VOICE depth
+                float cv  = eastVisual->inputs[cvId(PL::PL_OCTAVE,3)].getVoltage(v) / 10.f;
                 octaveInterp = math::clamp(octaveInterp + cv * att, -1.f, 1.f);
             }
-            octaveInterp = combineSpread(2, octaveInterp);   // owner + Macro-CV blend (spread)
-            if (eastVisual) eastVisual->polySpreadEffective[v][2] = octaveInterp;
+            octaveInterp = combineSpread(PL::PL_OCTAVE, octaveInterp);   // owner + Macro-CV blend (spread)
+            if (eastVisual) eastVisual->polySpreadEffective[v][PL::PL_OCTAVE] = octaveInterp;
             
             if (!engine.locked) {
                 const int nPoly = effPolyVoices;
@@ -185,7 +190,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                     ? redDot::SpreadInterp::MONO_DRAW : redDot::SpreadInterp::AVERAGE_POLY;
                 for (int j = 0; j < 16; j++) {
                     engine.pe.polyOctaveRandom[v][j] = redDot::SpreadInterp::apply(
-                        engine.pe, mode, 2, j, nPoly, engine.pe.slewedPolyOctave[v][j], octaveInterp);
+                        engine.pe, mode, PL::PL_OCTAVE, j, nPoly, engine.pe.slewedPolyOctave[v][j], octaveInterp);
                 }
             }
             
@@ -197,18 +202,18 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
             // out-of-bounds; the accent lane just doesn't read from them yet.
             {
                 int accentBase = MonsoonIds::POLY_ACCENT_VOICE_1_LEN + v * 3;
-                engine.polyLen[v][3] = (int)math::clamp(eastLOR->params[accentBase].getValue(),     1.f, 16.f);
-                engine.polyOff[v][3] = (int)math::clamp(eastLOR->params[accentBase + 1].getValue(), 0.f, 15.f);
-                engine.polyRot[v][3] = (int)math::clamp(eastLOR->params[accentBase + 2].getValue(), 0.f, 15.f);
+                engine.polyLen[v][PL::PL_ACCENT] = (int)math::clamp(eastLOR->params[accentBase].getValue(),     1.f, 16.f);
+                engine.polyOff[v][PL::PL_ACCENT] = (int)math::clamp(eastLOR->params[accentBase + 1].getValue(), 0.f, 15.f);
+                engine.polyRot[v][PL::PL_ACCENT] = (int)math::clamp(eastLOR->params[accentBase + 2].getValue(), 0.f, 15.f);
                 float accentInterp = math::clamp(eastInterp->params[MonsoonIds::POLY_ACCENT_INTERP_1 + v].getValue(), -1.f, 1.f);
-                if (eastVisual) eastVisual->polySpreadEffective[v][3] = accentInterp;   // accent spread → editor display
+                if (eastVisual) eastVisual->polySpreadEffective[v][PL::PL_ACCENT] = accentInterp;   // accent spread → editor display
                 if (!engine.locked) {
                     const int nPoly = effPolyVoices;
                     const redDot::SpreadInterp::Target mode = spreadInterpMono
                         ? redDot::SpreadInterp::MONO_DRAW : redDot::SpreadInterp::AVERAGE_POLY;
                     for (int j = 0; j < 16; j++) {
                         engine.pe.polyAccentRandom[v][j] = redDot::SpreadInterp::apply(
-                            engine.pe, mode, 3, j, nPoly, engine.pe.slewedPolyAccent[v][j], accentInterp);
+                            engine.pe, mode, PL::PL_ACCENT, j, nPoly, engine.pe.slewedPolyAccent[v][j], accentInterp);
                     }
                 }
             }
