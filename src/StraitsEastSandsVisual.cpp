@@ -109,13 +109,16 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 if (v < 0) v = 0;   // mono tab: arc is inactive anyway; keep id in range
                 return (lane==0) ? restInterpId(v) : (lane==1) ? melodyInterpId(v) : octaveInterpId(v);
             };
-            arc->getSetNorm = [mod, this, interpParamId]() -> float {
+            arc->getSetNorm = [mod, this, interpParamId, lane]() -> float {
                 if (!mod) return 0.5f;
-                // V1 / mono tab (P6): the base is Mono's and inoperable on East, so the
-                // arc shows East's contribution as a deflection from CENTRE (0.5) — i.e.
-                // "the mod coming into East", paired with getModNorm's delta-from-centre.
-                if (polyVoice() < 0) return 0.5f;
-                // Interp/spread params are bipolar -1..1; map to 0..1 (centre=0.5).
+                if (polyVoice() < 0) {
+                    // V1 (combo 7): SET = East's spread knob, which now mirrors Mono's
+                    // spread. SPREAD_R/M/O = lane 0/1/2 (engine order).
+                    if (lane < 0 || lane >= 3) return 0.5f;
+                    int pid = (lane==0) ? (int)SPREAD_R : (lane==1) ? (int)SPREAD_M : (int)SPREAD_O;
+                    auto* pq = mod->paramQuantities[pid];
+                    return pq ? (float)pq->getScaledValue() : 0.5f;
+                }
                 auto* pq = mod->paramQuantities[interpParamId()];
                 return pq ? (float)pq->getScaledValue() : 0.5f;
             };
@@ -123,20 +126,19 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 if (!mod) return 0.5f;
                 int v = polyVoice();
                 if (v < 0) {
-                    // V1 / mono tab (P6 / G6): East's V1 arc shows the mod COMING INTO
-                    // EAST — East's own V1 spread CV contribution on this lane, summed
-                    // onto the (Mono-owned) base spread. lane here is the spread index
-                    // 0=REST,1=MEL,2=OCT (== engine lane for spread); East's V1 spread
-                    // CV jack is cvId(lane,3) read at the mono slot. (Mono's own arc
-                    // shows the TOTAL via spreadEffective.)
+                    // V1 / mono tab (P6, combo 7): MOD = the spread knob value (Mono's,
+                    // mirrored) + East's own incoming V1 spread CV on this lane. Absolute
+                    // (not a centre deflection) so the arc reads as the total entering
+                    // East. lane = spread index 0=REST,1=MEL,2=OCT; East CV jack cvId(lane,3).
                     if (lane < 0 || lane >= 3) return 0.5f;
-                    float base = 0.f;  // show the DELTA East adds (centre = no mod)
+                    int pid = (lane==0) ? (int)SPREAD_R : (lane==1) ? (int)SPREAD_M : (int)SPREAD_O;
+                    float base = mod->params[pid].getValue();   // bipolar -1..1 (Mono's spread)
                     if (mod->inputs[cvId(lane,3)].isConnected()) {
                         float att = mod->params[attenId(dotModular::VoiceResolver::kMonoSlot, lane, 3)].getValue();
                         float cv  = mod->inputs[cvId(lane,3)].getVoltage(0) / 10.f;
-                        base = rack::math::clamp(cv * att * 2.f, -1.f, 1.f);
+                        base = base + cv * att * 2.f;
                     }
-                    return rack::math::clamp((base + 1.f) * 0.5f, 0.f, 1.f);
+                    return rack::math::clamp((rack::math::clamp(base,-1.f,1.f) + 1.f) * 0.5f, 0.f, 1.f);
                 }
                 if (v >= 15) return 0.5f;
                 // polySpreadEffective is bipolar -1..1 → map to 0..1.
@@ -266,13 +268,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 bindParam<DimmableTrimpot>("param_" + std::to_string(attenDispId(r,c)), attenDispId(r,c));
         }
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_R), SPREAD_R,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(0) || tab1MonoMirror(); }; k->lockWhen = [this](){ return laneOwnedByMacro(0) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 0}); }));
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(0); }; k->lockWhen = [this](){ return laneOwnedByMacro(0) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 0}); }));
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_M), SPREAD_M,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(1) || tab1MonoMirror(); }; k->lockWhen = [this](){ return laneOwnedByMacro(1) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 1}); }));
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(1); }; k->lockWhen = [this](){ return laneOwnedByMacro(1) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 1}); }));
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_O), SPREAD_O,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(2) || tab1MonoMirror(); }; k->lockWhen = [this](){ return laneOwnedByMacro(2) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 2}); }));
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(2); }; k->lockWhen = [this](){ return laneOwnedByMacro(2) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 2}); }));
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_A), SPREAD_A,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(3) || tab1MonoMirror(); }; k->lockWhen = [this](){ return laneOwnedByMacro(3) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 3}); }));
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(3); }; k->lockWhen = [this](){ return laneOwnedByMacro(3) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 3}); }));
 
         // Macro/East blend controls (bound to the display proxies; copied to/from
         // the per-voice MACRO params on voice switch + each frame). Owner = a
@@ -657,6 +659,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 visualEditor->currentState.lanes[l].setDisplayLOR(std::max(1,mLen), mOff, mRot);
                 visualEditor->setLanePlayStep(l, calcPlayhead(gs, std::max(1,mLen), mOff, mRot));
             }
+            // Spread (combo 7): East's V1 spread knobs FOLLOW Mono's spread (inoperable,
+            // locked). Mono's sprId is engine/spread order (REST=0,MEL=1,OCT=2); East's
+            // SPREAD_R/M/O are also engine order, so copy directly. This makes the knob
+            // track Mono and gives the V1 spread arc a real base to deflect from.
+            module->params[SPREAD_R].setValue(monoVis->params[SandsMonoVisualIds::sprId(0)].getValue());
+            module->params[SPREAD_M].setValue(monoVis->params[SandsMonoVisualIds::sprId(1)].getValue());
+            module->params[SPREAD_O].setValue(monoVis->params[SandsMonoVisualIds::sprId(2)].getValue());
         } else if (v1Editable()) {
             // V1 editable (no Mono, combo 3/7-without-Mono): East IS the V1 editor.
             // Write the editor's lane LOR straight into the engine MONO strands (the
