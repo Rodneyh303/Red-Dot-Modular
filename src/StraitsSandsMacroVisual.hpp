@@ -122,6 +122,9 @@ namespace StraitsMacroVisualIds {
     // Mono-style: lane == row, col == param (0=LEN, 1=OFF, 2=ROT).
     inline int macroCvId   (int lane, int param) { return cvId   (lane, param); }
     inline int macroAttenId(int lane, int param) { return attenId(lane, param); }  // param 0..3 = LEN/OFF/ROT/SPR
+    // P9: PRE/POST tap mix per (lane,item) — lives in the MonsoonIds tap region (clean,
+    // non-aliasing). 0=PRE (raw CV), 1=POST (CV×left atten). One per left attenuverter.
+    inline int tapId(int lane, int item) { return MonsoonIds::MACRO_TAP_START + lane*4 + item; }
 }
 
 struct StraitsSandsMacroVisual : Module {
@@ -148,6 +151,9 @@ struct StraitsSandsMacroVisual : Module {
                 std::string nm = std::string(laneNames[lane])+" "+paramNames[c];
                 configParam(attenId(lane,c), -1.f,1.f,0.f, nm+" depth");
                 configInput(cvId(lane,c), nm+" CV");
+                // P9: PRE/POST tap mix — default 1.0 (POST = current behaviour: send
+                // draws the attenuated CV). 0.0 = PRE (send draws the raw CV pre-atten).
+                configParam(tapId(lane,c), 0.f,1.f,1.f, nm+" send tap (PRE\u2194POST)");
             }
 
         // Global L/O/R params
@@ -197,6 +203,10 @@ struct StraitsSandsMacroVisual : Module {
     // sync reads these: value = base(owner) + eastCV + macroCVDelta·blendSend.
     float macroBase[4][4]    = {};
     float macroCVDelta[4][4] = {};
+    // P9: the send PRE/POST tap applies ONLY to what the sends distribute, not to
+    // Macro's own LOR/spread display (which always uses the true POST macroCVDelta).
+    // macroSendDelta = the tapped CV delta the East/Mono send mix-ins read.
+    float macroSendDelta[4][4] = {};
 
     json_t* dataToJson() override {
         json_t* r = json_object();

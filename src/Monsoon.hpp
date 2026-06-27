@@ -549,7 +549,14 @@ namespace MonsoonIds {
         MACRO_ATTEN_START = MACRO_SEND_DISP_END,
         MACRO_ATTEN_END = MACRO_ATTEN_START + 256,   // 16 voices × 16 jacks (4 lanes × 4 cols)
 
-        NUM_PARAMS = MACRO_ATTEN_END
+        // P9: Macro send PRE/POST tap — one mix trimpot per (lane,item), 16 total,
+        // pairing 1:1 with the left attenuverters. 0 = PRE (raw CV, att bypassed),
+        // 1 = POST (CV × left atten). Blends the CV delta the sends distribute.
+        //   index = MACRO_TAP_START + lane*4 + item   (4 lanes × 4 items)
+        MACRO_TAP_START = MACRO_ATTEN_END,
+        MACRO_TAP_END = MACRO_TAP_START + 16,
+
+        NUM_PARAMS = MACRO_TAP_END
     };
 
     enum InputIds {

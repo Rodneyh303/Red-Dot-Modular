@@ -26,6 +26,7 @@ def gen_macro(dark, W_MM=218.44):   # 43HP (42 + 1HP for the per-lane owner-sour
     JACK_X=[6.,15.,24.,33.]            # LEN/OFF/ROT/SPR-cv
     ATTEN_X=[43.,52.,61.,70.]          # LEN/OFF/ROT/SPR depth
     SPREAD_X=80.                       # per-lane spread base trimpot
+    TAP_DY=4.2                         # P9: send PRE/POST tap trimpot, below each atten
     L=[]; A=L.append
     A(D.svg_open(PW,PH))
     A('<g inkscape:label="artwork" inkscape:groupmode="layer">')
@@ -50,6 +51,9 @@ def gen_macro(dark, W_MM=218.44):   # 43HP (42 + 1HP for the per-lane owner-sour
         for x in JACK_X:  A(D.jack(x,y,t))
         for x in ATTEN_X: A(D.trim(x,y,t,t["gold"]))
         A(D.trim(SPREAD_X,y,t,t["wellring"]))
+        # P9: small PRE/POST tap trims below each atten (teal-ish accent, smaller).
+        for x in ATTEN_X:
+            A(f'<circle cx="{px(x):.1f}" cy="{px(y+TAP_DY):.1f}" r="{px(2.0):.1f}" fill="{t["well"]}" stroke="{t["wellring"]}" stroke-width="0.9"/>')
     # ── Macro→voice MIX-IN send groups (relocated from East under the control
     #    inversion). 3 demarked groups (REST/MEL/OCT) below the editor, each a 2×2
     #    Len/Off/Rot/Spr send grid. "per voice, how much of Macro's global CV reaches
@@ -86,6 +90,11 @@ def gen_macro(dark, W_MM=218.44):   # 43HP (42 + 1HP for the per-lane owner-sour
         for p,x in enumerate(JACK_X):  A(D.kit_shape("input", 0+lane*4+p, x, y))
         for p,x in enumerate(ATTEN_X): A(D.kit_shape("param", 4+lane*4+p, x, y))
         A(D.kit_shape("param", lane, SPREAD_X, y))  # SPREAD engine lane
+        # P9: PRE/POST send tap — a small trimpot just below each left atten. Named
+        # marker (param_tap_{lane}_{item}) bound to tapId(lane,item) in the widget, so
+        # the gen doesn't hardcode the enum value (same approach as param_send_*).
+        for p,x in enumerate(ATTEN_X):
+            A(f'<circle id="param_tap_{lane}_{p}" cx="{px(x):.2f}" cy="{px(y+TAP_DY):.2f}" r="0.5" fill="none" stroke="none"/>')
         # poly probability CV out — right strip, at this lane's row (engine lane = PROB_OUT_REST+lane)
         A(D.kit_shape("output", lane, PROB_OUT_X, y))
     # Macro→voice mix-in send markers (bound to sendDispId display proxies).

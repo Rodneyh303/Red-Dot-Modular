@@ -85,7 +85,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 if (macroPresent && ownerEast) {
                     float send = macroVis->params[
                         StraitsMacroVisualIds::sendId(slot, lane, item)].getValue();
-                    blend = macroVis->macroCVDelta[lane][item] * send;
+                    blend = macroVis->macroSendDelta[lane][item] * send;  // P9: tapped send delta
                 }
                 return (int)math::clamp(base + blend, lo, hi);
             };
@@ -108,7 +108,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 if (macroPresent && ownerEast) {
                     float send = macroVis->params[
                         StraitsMacroVisualIds::sendId(slot, lane, 3)].getValue();
-                    blend = macroVis->macroCVDelta[lane][3] * send;
+                    blend = macroVis->macroSendDelta[lane][3] * send;  // P9: tapped send delta
                 }
                 return math::clamp(base + blend, -1.f, 1.f);
             };

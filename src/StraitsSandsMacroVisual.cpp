@@ -142,6 +142,10 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             for (int c = 0; c < 4; ++c)
                 bindParam<Trimpot>("param_" + std::to_string(attenId(lane,c)), attenId(lane,c),
                     std::function<void(Trimpot*)>([this](Trimpot* a){ leftAttenuverters.push_back(a); }));
+            // P9: PRE/POST send tap trimpots — named markers param_tap_{lane}_{item}.
+            for (int c = 0; c < 4; ++c)
+                bindParam<Trimpot>("param_tap_" + std::to_string(lane) + "_" + std::to_string(c),
+                                   tapId(lane,c));
         }
 
         // Per-lane global SPREAD trimpots (param_SPREAD_REST..+3 = lanes 0..3).

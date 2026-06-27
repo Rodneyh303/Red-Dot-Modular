@@ -154,7 +154,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             auto macroMix = [&](float base, int engLane, int item, float lo, float hi)->float {
                 if (!hasMacro || !macroVis) return base;
                 float send = macroVis->params[Macro::sendId(dotModular::VoiceResolver::kMonoSlot, engLane, item)].getValue();   // slot 0 = mono
-                return math::clamp(base + macroVis->macroCVDelta[engLane][item] * send, lo, hi);
+                return math::clamp(base + macroVis->macroSendDelta[engLane][item] * send, lo, hi);  // P9: tapped send delta
             };
             // East CV exists only for the 4 poly lanes (MEL/OCT/REST/ACC); VAR/LEG
             // (editor l>=4) are mono-only with no East jack → skip the eastMix there.
@@ -196,7 +196,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 }
                 if (hasMacro && macroVis) {
                     float send = macroVis->params[Macro::sendId(dotModular::VoiceResolver::kMonoSlot, l, 3)].getValue();
-                    sp = rack::math::clamp(sp + macroVis->macroCVDelta[l][3] * send, -1.f, 1.f);
+                    sp = rack::math::clamp(sp + macroVis->macroSendDelta[l][3] * send, -1.f, 1.f);  // P9: tapped
                 }
                 monoVis->spreadEffective[l] = sp;
             }
@@ -270,16 +270,28 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             float baseOff = macroVis->params[Macro::lorId(lane,1)].getValue();
             float baseRot = macroVis->params[Macro::lorId(lane,2)].getValue();
             float baseSpr = macroVis->params[Macro::sprId(lane)].getValue();
-            // CV-applied
+            // CV-applied (Macro's OWN value — true POST, drives Macro's own display).
             float cvLen = applyMacroCV(baseLen, lane, 0, 1.f, 16.f);
             float cvOff = applyMacroCV(baseOff, lane, 1, 0.f, 15.f);
             float cvRot = applyMacroCV(baseRot, lane, 2, 0.f, 15.f);
             float cvSpr = applyMacroSprCV(baseSpr, lane);
-            // publish base + CV-only delta (item 0=LEN 1=OFF 2=ROT 3=SPR)
-            macroVis->macroBase[lane][0] = baseLen;  macroVis->macroCVDelta[lane][0] = cvLen - baseLen;
-            macroVis->macroBase[lane][1] = baseOff;  macroVis->macroCVDelta[lane][1] = cvOff - baseOff;
-            macroVis->macroBase[lane][2] = baseRot;  macroVis->macroCVDelta[lane][2] = cvRot - baseRot;
-            macroVis->macroBase[lane][3] = baseSpr;  macroVis->macroCVDelta[lane][3] = cvSpr - baseSpr;
+            // P9 send-tap: the delta the SENDS distribute can be tapped PRE or POST the
+            // left attenuverter. POST(tap=1)=cv*att (== the true delta); PRE(tap=0)=raw cv.
+            // effective atten = lerp(1, att, tap) = 1 + (att-1)*tap.
+            auto tappedDelta = [&](int item, float lo, float hi) -> float {
+                if (!macroVis || !macroVis->inputs[Macro::macroCvId(lane,item)].isConnected()) return 0.f;
+                float cv  = macroVis->inputs[Macro::macroCvId(lane,item)].getVoltage() / 10.f;
+                float att = macroVis->params[Macro::macroAttenId(lane,item)].getValue();
+                float tap = macroVis->params[Macro::tapId(lane,item)].getValue();
+                float effAtt = 1.f + (att - 1.f) * tap;
+                return cv * effAtt * (hi - lo);
+            };
+            // macroCVDelta = true POST delta (Macro's own display). macroSendDelta =
+            // tapped delta (what the sends carry). item 0=LEN 1=OFF 2=ROT 3=SPR.
+            macroVis->macroBase[lane][0] = baseLen;  macroVis->macroCVDelta[lane][0] = cvLen - baseLen;  macroVis->macroSendDelta[lane][0] = tappedDelta(0, 1.f, 16.f);
+            macroVis->macroBase[lane][1] = baseOff;  macroVis->macroCVDelta[lane][1] = cvOff - baseOff;  macroVis->macroSendDelta[lane][1] = tappedDelta(1, 0.f, 15.f);
+            macroVis->macroBase[lane][2] = baseRot;  macroVis->macroCVDelta[lane][2] = cvRot - baseRot;  macroVis->macroSendDelta[lane][2] = tappedDelta(2, 0.f, 15.f);
+            macroVis->macroBase[lane][3] = baseSpr;  macroVis->macroCVDelta[lane][3] = cvSpr - baseSpr;  macroVis->macroSendDelta[lane][3] = tappedDelta(3, -1.f, 1.f);
             // spread display reads the CV-applied global spread (base+CV, no blend)
             macroVis->spreadEffective[lane] = cvSpr;
         };
