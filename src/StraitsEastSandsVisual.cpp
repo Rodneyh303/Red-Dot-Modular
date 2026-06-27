@@ -109,17 +109,36 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 if (v < 0) v = 0;   // mono tab: arc is inactive anyway; keep id in range
                 return (lane==0) ? restInterpId(v) : (lane==1) ? melodyInterpId(v) : octaveInterpId(v);
             };
-            arc->getSetNorm = [mod, interpParamId]() -> float {
+            arc->getSetNorm = [mod, this, interpParamId]() -> float {
                 if (!mod) return 0.5f;
+                // V1 / mono tab (P6): the base is Mono's and inoperable on East, so the
+                // arc shows East's contribution as a deflection from CENTRE (0.5) — i.e.
+                // "the mod coming into East", paired with getModNorm's delta-from-centre.
+                if (polyVoice() < 0) return 0.5f;
                 // Interp/spread params are bipolar -1..1; map to 0..1 (centre=0.5).
-                // getScaledValue() does this correctly over the param's range.
                 auto* pq = mod->paramQuantities[interpParamId()];
                 return pq ? (float)pq->getScaledValue() : 0.5f;
             };
             arc->getModNorm = [mod, this, lane]() -> float {
                 if (!mod) return 0.5f;
-                int v = polyVoice();   // poly bank index (-1 on mono tab → guarded by v<0 below)
-                if (v < 0 || v >= 15) return 0.5f;
+                int v = polyVoice();
+                if (v < 0) {
+                    // V1 / mono tab (P6 / G6): East's V1 arc shows the mod COMING INTO
+                    // EAST — East's own V1 spread CV contribution on this lane, summed
+                    // onto the (Mono-owned) base spread. lane here is the spread index
+                    // 0=REST,1=MEL,2=OCT (== engine lane for spread); East's V1 spread
+                    // CV jack is cvId(lane,3) read at the mono slot. (Mono's own arc
+                    // shows the TOTAL via spreadEffective.)
+                    if (lane < 0 || lane >= 3) return 0.5f;
+                    float base = 0.f;  // show the DELTA East adds (centre = no mod)
+                    if (mod->inputs[cvId(lane,3)].isConnected()) {
+                        float att = mod->params[attenId(dotModular::VoiceResolver::kMonoSlot, lane, 3)].getValue();
+                        float cv  = mod->inputs[cvId(lane,3)].getVoltage(0) / 10.f;
+                        base = rack::math::clamp(cv * att * 2.f, -1.f, 1.f);
+                    }
+                    return rack::math::clamp((base + 1.f) * 0.5f, 0.f, 1.f);
+                }
+                if (v >= 15) return 0.5f;
                 // polySpreadEffective is bipolar -1..1 → map to 0..1.
                 return rack::math::clamp((mod->polySpreadEffective[v][lane] + 1.f) * 0.5f, 0.f, 1.f);
             };
@@ -127,8 +146,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 if (!mod) return false;
                 Monsoon* mon = findMonsoonEitherSide(mod);
                 if (!mon || !mon->modVizEast) return false;
-                int v = polyVoice();   // poly bank index (-1 on mono tab → guarded by v<0 below)
-                if (v < 0 || v >= 15) return false;
+                int v = polyVoice();
+                if (v < 0) {
+                    // V1 / mono tab (P6): active when East's own V1 spread CV jack is
+                    // connected on this lane (the mod East contributes to V1).
+                    if (lane < 0 || lane >= 3) return false;
+                    return mod->inputs[cvId(lane,3)].isConnected();
+                }
+                if (v >= 15) return false;
                 // Gate on a REAL modulation source (not a transient set-vs-effective
                 // delta, which races during a manual knob turn — the control-rate
                 // polySpreadEffective lags the live param for a frame and drew a red
@@ -621,14 +646,16 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // (no Mono), the editor is live and the user edits V1's lanes directly here.
         visualEditor->readOnly = tab1Mono;
         if (tab1Mono) {
-            // l = mono param bank (0=REST 1=MEL 2=OCT) → editor lane
-            for (int l=0; l<3; ++l) {
+            // Show Mono's base LOR for all 4 poly lanes (Mono params are editor-ordered:
+            // MEL=0 OCT=1 REST=2 ACC=3 → editor lane == param index). V1 base belongs to
+            // Mono and is inoperable on East (locked by laneLockedFn / readOnly). The mod
+            // arriving at East is shown by the V1 mod arcs (P6), not folded into this base.
+            for (int l=0; l<4; ++l) {
                 int mLen = (int)std::round(monoVis->params[SandsMonoVisualIds::lenId(l)].getValue());
                 int mOff = (int)std::round(monoVis->params[SandsMonoVisualIds::offId(l)].getValue());
                 int mRot = (int)std::round(monoVis->params[SandsMonoVisualIds::rotId(l)].getValue());
-                int el = l;  // Mono params now editor-ordered → identity
-                visualEditor->currentState.lanes[el].setDisplayLOR(mLen, mOff, mRot);
-                visualEditor->setLanePlayStep(el, calcPlayhead(gs, mLen, mOff, mRot));
+                visualEditor->currentState.lanes[l].setDisplayLOR(std::max(1,mLen), mOff, mRot);
+                visualEditor->setLanePlayStep(l, calcPlayhead(gs, std::max(1,mLen), mOff, mRot));
             }
         } else if (v1Editable()) {
             // V1 editable (no Mono, combo 3/7-without-Mono): East IS the V1 editor.

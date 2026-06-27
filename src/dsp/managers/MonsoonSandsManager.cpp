@@ -134,27 +134,39 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // the poly combineLOR mapping. (Base stays mono's — this is modulation only.)
             auto* eastVis = expanderManager.cachedEastSandsVisual;
             // East per-lane CV folded onto voice 1 (voice-0 depth × East CV ch0).
-            auto eastMix = [&](float base, int r, int c, float lo, float hi)->float {
-                if (!eastVis || !eastVis->inputs[East::cvId(r,c)].isConnected()) return base;
-                float att = eastVis->params[East::attenId(dotModular::VoiceResolver::kMonoSlot, r, c)].getValue();   // slot 0 = mono
-                float cv  = eastVis->inputs[East::cvId(r,c)].getVoltage(0) / 10.f; // ch0
+            // ADDITIVE: East CV is summed on top of Mono's base (base stays Mono's;
+            // this is V1 modulation only — combo 7/8 "East CV into V1 adds to V1 mod").
+            // (engLane, item) addresses East's CV jack exactly as the gen binds it
+            // (cvId(engineLane, item)); previously this used a wrong l*2 2-rows-per-lane
+            // scheme — the same class as the poly CV crosstalk bug.
+            auto eastMix = [&](float base, int engLane, int item, float lo, float hi)->float {
+                if (!eastVis || !eastVis->inputs[East::cvId(engLane,item)].isConnected()) return base;
+                float att = eastVis->params[East::attenId(dotModular::VoiceResolver::kMonoSlot, engLane, item)].getValue();   // slot 0 = mono
+                float cv  = eastVis->inputs[East::cvId(engLane,item)].getVoltage(0) / 10.f; // ch0
                 return math::clamp(base + cv * att * (hi - lo), lo, hi);
             };
             // Macro global CV distributed to voice 1 (voice-0 send × macroCVDelta).
+            // sendId AND macroCVDelta are ENGINE-lane indexed (REST=0,MEL=1,OCT=2,
+            // ACC=3) — same as the poly path — so pass the engine lane, not editor l.
             // NOTE: macroCVDelta is published by the Macro block LATER in this same
             // processDNA (after the mono strand), so voice 1 reads the PREVIOUS control
-            // block's delta — a one-block (sub-ms, control-rate) lag. Imperceptible for a
-            // modulation value; if it ever matters, hoist the macroActive publishGlobal
-            // block above the hasVisual mono block (it has no dependency on mono).
-            auto macroMix = [&](float base, int item, float lo, float hi)->float {
+            // block's delta — a one-block (sub-ms, control-rate) lag. Imperceptible.
+            auto macroMix = [&](float base, int engLane, int item, float lo, float hi)->float {
                 if (!hasMacro || !macroVis) return base;
-                float send = macroVis->params[Macro::sendId(dotModular::VoiceResolver::kMonoSlot, l, item)].getValue();   // slot 0 = mono
-                return math::clamp(base + macroVis->macroCVDelta[l][item] * send, lo, hi);
+                float send = macroVis->params[Macro::sendId(dotModular::VoiceResolver::kMonoSlot, engLane, item)].getValue();   // slot 0 = mono
+                return math::clamp(base + macroVis->macroCVDelta[engLane][item] * send, lo, hi);
             };
-            // REST/MEL/OCT (l=0/1/2) East (r,c): Len (l*2,0) Off (l*2,1) Rot (l*2+1,0).
-            baseLen = eastMix(baseLen, l*2,   0, 1.f, 16.f);  baseLen = macroMix(baseLen, 0, 1.f, 16.f);
-            baseOff = eastMix(baseOff, l*2,   1, 0.f, 15.f);  baseOff = macroMix(baseOff, 1, 0.f, 15.f);
-            baseRot = eastMix(baseRot, l*2+1, 0, 0.f, 15.f);  baseRot = macroMix(baseRot, 2, 0.f, 15.f);
+            // East CV exists only for the 4 poly lanes (MEL/OCT/REST/ACC); VAR/LEG
+            // (editor l>=4) are mono-only with no East jack → skip the eastMix there.
+            if (l < 4) {
+                int eng = dotModular::EDITOR_TO_ENGINE_LANE[l];   // editor → engine lane (East CV jack)
+                baseLen = eastMix(baseLen, eng, 0, 1.f, 16.f);
+                baseOff = eastMix(baseOff, eng, 1, 0.f, 15.f);
+                baseRot = eastMix(baseRot, eng, 2, 0.f, 15.f);
+                baseLen = macroMix(baseLen, eng, 0, 1.f, 16.f);
+                baseOff = macroMix(baseOff, eng, 1, 0.f, 15.f);
+                baseRot = macroMix(baseRot, eng, 2, 0.f, 15.f);
+            }
 
             engine.strandLenRef(strand) = clamp((int)std::round(baseLen), 1, 16);
             engine.strandOffRef(strand) = ((int)std::round(baseOff) % 16 + 16) % 16;
@@ -169,11 +181,15 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 float baseSpr = monoVis->params[Mono::sprId(l)].getValue();
                 float sp = applyMonoSprCV(baseSpr, l);
                 // INTERP Y — voice-1 spread mix-in (voice 0 slice), bipolar [-1,1].
+                // l is the spread/engine lane (0=REST,1=MEL,2=OCT). East's spread CV
+                // jack for that lane is cvId(engineLane, 3) (col 3 = SPR) — the gen's
+                // real layout. (Previously this used sprRow={1,3,5} cvId(row,1), the
+                // old 2-rows-per-lane scheme — wrong jacks, same bug class as the LOR
+                // crosstalk.) East CV ADDS to the mono spread (combo 7/8 V1 mod).
                 auto* eastVisS = expanderManager.cachedEastSandsVisual;
-                static const int sprRow[3] = { 1, 3, 5 };   // East spread CV at cvId(row,1)
-                if (eastVisS && eastVisS->inputs[East::cvId(sprRow[l],1)].isConnected()) {
-                    float att = eastVisS->params[East::attenId(dotModular::VoiceResolver::kMonoSlot, sprRow[l], 1)].getValue();  // slot 0 = mono
-                    float cv  = eastVisS->inputs[East::cvId(sprRow[l],1)].getVoltage(0) / 10.f;
+                if (eastVisS && eastVisS->inputs[East::cvId(l,3)].isConnected()) {
+                    float att = eastVisS->params[East::attenId(dotModular::VoiceResolver::kMonoSlot, l, 3)].getValue();  // slot 0 = mono
+                    float cv  = eastVisS->inputs[East::cvId(l,3)].getVoltage(0) / 10.f;
                     sp = rack::math::clamp(sp + cv * att * 2.f, -1.f, 1.f);   // span [-1,1]=2
                 }
                 if (hasMacro && macroVis) {
