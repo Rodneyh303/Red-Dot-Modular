@@ -18,7 +18,17 @@ namespace Macro = StraitsMacroVisualIds;
 namespace East  = StraitsEastVisualIds;   // for the voice-1 mix-in (interp. Y)
 
 void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManager, bool spreadInterpMono) {
-    const bool hasVisual = (expanderManager.cachedSandsVisualExpander != nullptr);
+    // ── Expander-presence / activity flags (names chosen to avoid the old trap) ──
+    //   hasMonoVisual    : the SANDS MONO editor is attached (NOT "any visual"; NOT Macro).
+    //   hasMacro         : the MACRO visual is attached (standalone counts — the right flag
+    //                      for Macro's DISPLAY/spread, which works without an output path).
+    //   hasEastVisual    : the East Sands visual is attached.
+    //   polyBaseActive   : a Straits BASE OUTPUT expander (East) present AND >=1 poly voice —
+    //                      i.e. there is an actual audio output path for poly voices.
+    //   macroDrivesOutput: Macro attached AND polyBaseActive — Macro modulation reaches real
+    //                      OUTPUT voices. NOT "Macro is on": standalone Macro still drives its
+    //                      own display, just no output.
+    const bool hasMonoVisual = (expanderManager.cachedSandsVisualExpander != nullptr);
     //const bool hasKnobs  = (expanderManager.cachedDnaExpander          != nullptr);
     const bool hasMacro  = (expanderManager.cachedMacroSandsVisual     != nullptr);
 
@@ -42,13 +52,13 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     const bool hasWest = (expanderManager.cachedStraitWestExpander != nullptr);
     const int  polyOutCap = polyBaseActive ? (hasWest ? 15 : 7) : 0;
     const int  effPolyVoices = clamp(engine.numPolyVoices, 0, polyOutCap);
-    const bool macroActive = hasMacro && polyBaseActive;
+    const bool macroDrivesOutput = hasMacro && polyBaseActive;
     // sandsActive must be true whenever ANYTHING writes the spread-applied final arrays,
     // or PatternEngine's slew stage copies the raw slewed draws back over them every
     // sample. Macro STANDALONE (hasMacro, no base expander) now applies its global spread
     // to the voices (see the else-branch below), so include it here too — otherwise that
     // work was silently overwritten and the spread knob looked dead.
-    engine.pe.setSandsActive(hasVisual || macroActive || (hasEastVisual && polyBaseActive) || hasMacro);
+    engine.pe.setSandsActive(hasMonoVisual || macroDrivesOutput || (hasEastVisual && polyBaseActive) || hasMacro);
     engine.pe.numPolyVoicesHint = effPolyVoices;  // gated + output-bounded: display matches audio
 
     // ── Helper: apply mono CV offset at read site ─────────────────────────
@@ -94,7 +104,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     // Spread interpolation is now centralised in redDot::SpreadInterp (see
     // src/dsp/SpreadInterp.hpp) — the single source of truth.
 
-    if (hasVisual) 
+    if (hasMonoVisual) 
     {
         // readStrand: read a mono strand's base L/O/R from the visual params,
         // apply mono CV, and write the clamped result to the engine strand for
@@ -197,7 +207,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
 
         // Spread (REST/MEL/OCT only): base trimpot + per-lane spread CV.
         // sprId/sprCvId lane index: 0=REST, 1=MELODY, 2=OCTAVE (editor order).
-       // if (hasVisual) 
+       // if (hasMonoVisual) 
        // {
             // REST/MEL/OCT/ACCENT spread (engine/spread lanes 0..3). Accent is now
             // wired like the others (was previously skipped: loop l<3 + spreadEffective[3]=0,
@@ -294,7 +304,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         }
         if (hasEastV1 && !engine.locked) {
             // Combo 3 (East owns V1, no Mono/Macro): apply East's V1 SPREAD to the mono
-            // final arrays — the Mono spread path (in the hasVisual block) doesn't run
+            // final arrays — the Mono spread path (in the hasMonoVisual block) doesn't run
             // without Mono, so without this East's V1 spread knob had no effect on the
             // displayed/played probabilities (LOR worked, spread didn't). East SPREAD_R/M/O/A
             // are spread/engine-indexed (0=REST,1=MEL,2=OCT,3=ACC). nPoly = effPolyVoices.
@@ -331,9 +341,9 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     }
 
     // ── Macro global LOR with CV (poly: per-lane, SAME for every voice) ────
-    if (macroActive) {
+    if (macroDrivesOutput) {
         // Macro publishes its per-(lane,item) base + CV-delta split; East's sync
-        // (runs after, always present when macroActive) combines them per voice
+        // (runs after, always present when macroDrivesOutput) combines them per voice
         // via the owner switch + blend send. Macro no longer writes engine.polyLen
         // directly — East owns the final write so the blend equation is applied in
         // one place.
