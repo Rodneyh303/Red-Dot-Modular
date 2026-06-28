@@ -76,6 +76,17 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
                 bool delegated = macro && !(mm->params[ownerDispId(dotModular::ENGINE_LANE_TO_EDITOR[sprIdx])].getValue() > 0.5f);
                 if (delegated && macro->inputs[StraitsMacroVisualIds::cvId(sprIdx,3)].isConnected())
                     return true;
+                // Mono-OWNED lane receiving Macro's SEND modulation: the send blend is
+                // folded into spreadEffective by the manager, so the arc must fire here
+                // too. Require a non-zero mono-slot send AND Macro's spread CV live (static
+                // blend excluded — matches the poly/V1 macroBlend gate, avoids the
+                // manual-turn red-residue race). spread lane = sprIdx (engine-indexed).
+                if (macro && !delegated) {
+                    float send = macro->params[StraitsMacroVisualIds::sendId(
+                        dotModular::VoiceResolver::kMonoSlot, sprIdx, 3)].getValue();
+                    bool macroSprCv = macro->inputs[StraitsMacroVisualIds::cvId(sprIdx,3)].isConnected();
+                    if (std::fabs(send) > 1e-4f && macroSprCv) return true;
+                }
                 return false;
             };
             addChild(arc);
