@@ -1,169 +1,186 @@
 #!/usr/bin/env python3
-"""Interchange (Tonal CV expander) panel generator — dot.modular Peranakan lattice.
+"""Interchange (Tonal CV expander) panel generator — dot.modular.
 
-Reverse-engineered from the hand-authored res/panels/interchange_gemini_new2.svg
-so the panel can be regenerated and, crucially, carries a #components marker layer
-for SvgPanelKit binding (the hand SVG had none, which blocked kit migration).
+FROM-SCRATCH parametric generator: constructs the peranakan hex-lattice panel entirely
+from layout rules (no source SVG dependency), reverse-engineered from the hand-authored
+"gemini" master panel. Produces res/panels/interchange_gemini_new2.svg + _light.svg,
+nanosvg-safe, with the #components SvgPanelKit marker layer. Only Monsoon then remains
+hand-authored.
 
-Panel: 270 x 380 px (this module is laid out in PX, unlike the mm-based brand
-panels — kept as-is to match the existing widget's hard-coded coordinates so a
-kit migration is a drop-in).
+PANEL 270x380 px (px-native, matches the widget's hard-coded coordinates).
+GRID: cols x=48,102,168,222 ; rows y=80..280 step40 (6 semitone) + 320 (octave).
+  per row L->R: CV-in, atten, atten, CV-in. left pair=semitone i / oct-lo, right=i+6 / oct-hi.
 
-Layout (ground truth = MonsoonInterchangeExpander widget):
-  6 semitone rows at y = 80,120,160,200,240,280; each row has, L→R:
-    CV-in (x=48)  atten (x=102)  atten (x=168)  CV-in (x=222)
-    left pair  = semitone i (0..5), right pair = semitone i+6 (6..11)
-  octave row at y=320: oct-lo CV(48) oct-lo att(102) oct-hi att(168) oct-hi CV(222)
+Layers (parametric rules reverse-engineered from the master's exact geometry):
+  rails, faint per-cell hex tint (gold/teal flat — stands in for the master's
+  radialGradient glows nanosvg can't draw), outer/mid/inner concentric flat-top hexes
+  (half-widths 18/16/12), spokes (inner->outer vertices), gold vertex dots, horizontal
+  connectors (3 ticks + diamond), centre nested diamonds, vertical connectors, teal edge
+  chain (diamond+dot+drop-line per row down both rails), header bar+rule, control wells,
+  and the invisible #components bind markers.
 
-Visual: the Peranakan hex-lattice motif from the original — outer/mid/inner
-hexagon rings, spokes, gold vertex dots, teal edge chain, header accent. Drawn as
-a faint background watermark; control wells + the #components markers sit on top.
+nanosvg-safe: solid strokes/fills only (no gradients/masks/patterns). The master used a
+grain pattern bg + radialGradient glows; nanosvg can't render those, so the in-Rack look
+IS this flat version.
 
-Decorative layer uses solid strokes/fills only (no gradients/masks) so it stays
-nanosvg-friendly; the original's grain pattern + radial glows are dropped (they
-were defs the panel renderer tolerated but aren't needed for the look).
+Run from repo root:  python3 panel_src/gen_interchange.py
 """
-import math
+import os
 
-W, H = 270, 380                       # px (this module is px-native)
+W, H = 270, 380
+COLS = [48, 102, 168, 222]
+ROWS = [80, 120, 160, 200, 240, 280, 320]
+RAIL_X = [18, 252]
 
 THEMES = {
-    "dark": dict(
-        bg="#141416", panel="#18181a", top="#d4001a",
-        hexOuter="#6a6a6a", hexMid="#555555", hexInner="#888888",
-        spoke="#999999", gold="#d4af37", connector="#666666",
-        teal="#26a69a", well="#0f1114", wellring="#3a3a3a", text="#f0f0f0",
-    ),
-    "light": dict(
-        bg="#dcdcdc", panel="#e4e4e4", top="#d4001a",
-        hexOuter="#9a9a9a", hexMid="#aeaeae", hexInner="#888888",
-        spoke="#888888", gold="#b07d00", connector="#a0a0a0",
-        teal="#1f8a80", well="#e8e2d6", wellring="#c0b8a8", text="#1a1a1a",
-    ),
+    "dark":  dict(out="interchange_gemini_new2.svg",  bg="#141416", header="#141416",
+                  outer="#6a6a6a", mid="#555555", inner="#888888", spoke="#999999",
+                  hconn="#666666", vconn="#777777", rail="#555555",
+                  gold="#d4af37", teal="#26a69a", wellGrey="#888888"),
+    "light": dict(out="interchange_gemini_light.svg", bg="#f7f7f7", header="#f7f7f7",
+                  outer="#b0b0b0", mid="#bdbdbd", inner="#999999", spoke="#aaaaaa",
+                  hconn="#b5b5b5", vconn="#b0b0b0", rail="#cccccc",
+                  gold="#c8960c", teal="#1f8f84", wellGrey="#999999"),
 }
 
-# ── Control layout (px) ──────────────────────────────────────────────────────
-COL_X = [48.0, 102.0, 168.0, 222.0]   # CV-in L, atten L, atten R, CV-in R
-SEMI_ROWS_Y = [80.0 + i * 40.0 for i in range(6)]
-OCT_Y = 320.0
+def hexpts(cx, cy, hw, top, sh):
+    return [(cx, cy-top), (cx+hw, cy-sh), (cx+hw, cy+sh),
+            (cx, cy+top), (cx-hw, cy+sh), (cx-hw, cy-sh)]
 
+def poly(pts, **attr):
+    p = " ".join(f"{x:g},{y:g}" for x, y in pts)
+    a = "".join(f' {k.replace("_","-")}="{v}"' for k, v in attr.items())
+    return f'<polygon points="{p}"{a} />'
 
-def hexagon(cx, cy, r, rot=0.0):
-    pts = []
-    for k in range(6):
-        a = rot + k * math.pi / 3.0
-        pts.append(f"{cx + r*math.cos(a):.1f},{cy + r*math.sin(a):.1f}")
-    return " ".join(pts)
+def diamond(cx, cy, rx, ry, **attr):
+    return poly([(cx-rx, cy), (cx, cy-ry), (cx+rx, cy), (cx, cy+ry)], **attr)
 
+def gen(t):
+    A = []; add = A.append
+    add(f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}">')
+    add(f'<rect width="{W}" height="{H}" fill="{t["bg"]}" />')
+    add(f'<g stroke="{t["rail"]}" stroke-width="0.6" fill="none" opacity="0.30">')
+    add('  <path d="M18,0 L18,380 M252,0 L252,380" />')
+    add('</g>')
 
-def hex_cell(cx, cy, t, r_out=15.0):
-    """One Peranakan hex motif centred on a control: nested hexes + spokes +
-    gold vertex dots + a small centre diamond. Matches the original's per-control
-    tiling (each control sits inside its own cell)."""
-    L = []
-    A = L.append
-    r_mid, r_in = r_out * 0.66, r_out * 0.36
-    rot = math.pi / 6
-    A(f'<polygon points="{hexagon(cx, cy, r_out, rot)}" fill="none" stroke="{t["hexOuter"]}" stroke-width="0.7" opacity="0.5"/>')
-    A(f'<polygon points="{hexagon(cx, cy, r_mid, rot)}" fill="none" stroke="{t["hexMid"]}" stroke-width="0.5" opacity="0.4"/>')
-    A(f'<polygon points="{hexagon(cx, cy, r_in, rot)}" fill="none" stroke="{t["hexInner"]}" stroke-width="0.5" opacity="0.45"/>')
-    # spokes inner→outer + gold vertex dots
-    for k in range(6):
-        a = rot + k * math.pi / 3.0
-        A(f'<line x1="{cx + r_in*math.cos(a):.1f}" y1="{cy + r_in*math.sin(a):.1f}" '
-          f'x2="{cx + r_out*math.cos(a):.1f}" y2="{cy + r_out*math.sin(a):.1f}" '
-          f'stroke="{t["spoke"]}" stroke-width="0.4" opacity="0.35"/>')
-        A(f'<circle cx="{cx + r_in*math.cos(a):.1f}" cy="{cy + r_in*math.sin(a):.1f}" r="0.9" fill="{t["gold"]}" opacity="0.55"/>')
-    return "".join(L)
+    add('<g opacity="1.0">')
+    for cy in ROWS:
+        for ci, cx in enumerate(COLS):
+            tint = t["teal"] if ci in (0, 3) else t["gold"]
+            op = 0.05 if ci in (0, 3) else 0.06
+            add("  " + poly(hexpts(cx, cy, 18, 16, 10), fill=tint, fill_opacity=f"{op}", stroke="none"))
+    add('</g>')
 
+    for hw, top, sh, col, sw, op in [
+        (18, 16, 10, t["outer"], 0.8, 0.55),
+        (16, 14,  8, t["mid"],   0.5, 0.40),
+        (12, 11,  6, t["inner"], 0.5, 0.45),
+    ]:
+        add(f'<g stroke="{col}" stroke-width="{sw}" fill="none" opacity="{op}">')
+        for cy in ROWS:
+            for cx in COLS:
+                add("  " + poly(hexpts(cx, cy, hw, top, sh)))
+        add('</g>')
 
-def diamond(cx, cy, t, r=7.0):
-    """Gold nested-diamond connector motif between the two centre columns."""
-    return (f'<polygon points="{cx:.1f},{cy-r:.1f} {cx+r:.1f},{cy:.1f} {cx:.1f},{cy+r:.1f} {cx-r:.1f},{cy:.1f}" '
-            f'fill="none" stroke="{t["gold"]}" stroke-width="0.6" opacity="0.5"/>'
-            f'<polygon points="{cx:.1f},{cy-r*0.5:.1f} {cx+r*0.5:.1f},{cy:.1f} {cx:.1f},{cy+r*0.5:.1f} {cx-r*0.5:.1f},{cy:.1f}" '
-            f'fill="none" stroke="{t["gold"]}" stroke-width="0.5" opacity="0.45"/>')
+    add(f'<g stroke="{t["spoke"]}" stroke-width="0.5" fill="none" opacity="0.35">')
+    for cy in ROWS:
+        for cx in COLS:
+            ip = hexpts(cx, cy, 12, 11, 6)
+            op_ = hexpts(cx, cy, 18, 16, 10)
+            d = " ".join(f"M{ix:g},{iy:g} L{ox:g},{oy:g}" for (ix, iy), (ox, oy) in zip(ip, op_))
+            add(f'  <path d="{d}" />')
+    add('</g>')
 
+    add(f'<g fill="{t["gold"]}" opacity="0.55">')
+    for cy in ROWS:
+        for cx in COLS:
+            for (vx, vy) in hexpts(cx, cy, 12, 11, 6):
+                add(f'  <circle cx="{vx:g}" cy="{vy:g}" r="1.5" />')
+    add('</g>')
 
-def lattice(t):
-    """Per-control Peranakan hex cells (one centred on every control) + a central
-    diamond chain between the two attenuverter columns + teal edge ticks."""
-    L = []
-    A = L.append
-    all_rows = SEMI_ROWS_Y + [OCT_Y]
-    # a hex cell on every control position
-    for y in all_rows:
-        for x in COL_X:
-            A(hex_cell(x, y, t))
-        # centre diamond between the two atten columns
-        A(diamond((COL_X[1] + COL_X[2]) * 0.5, y, t))
-    # teal edge chain — small ticks down each side, subtler than a big zigzag
-    A(f'<g fill="none" stroke="{t["teal"]}" stroke-width="0.9" opacity="0.4">')
-    for ex in (16.0, W - 16.0):
-        for yy in range(56, 340, 20):
-            A(f'<path d="M {ex-3:.1f} {yy:.1f} L {ex:.1f} {yy+5:.1f} L {ex-3:.1f} {yy+10:.1f}"/>')
-    A('</g>')
-    return "".join(L)
+    add(f'<g stroke="{t["hconn"]}" stroke-width="0.5" fill="none" opacity="0.45">')
+    for cy in ROWS:
+        for (xa, xb) in [(COLS[0]+18, COLS[1]-18), (COLS[2]+18, COLS[3]-18)]:
+            mx = (xa + xb) / 2
+            add(f'  <line x1="{xa:g}" y1="{cy-3}" x2="{xb:g}" y2="{cy-3}" />')
+            add(f'  <line x1="{xa:g}" y1="{cy+3}" x2="{xb:g}" y2="{cy+3}" />')
+            add(f'  <line x1="{xa:g}" y1="{cy}" x2="{xb:g}" y2="{cy}" stroke-width="0.3" opacity="0.5" />')
+            add("  " + diamond(mx, cy, 5, 6))
+    add('</g>')
 
+    add(f'<g stroke="{t["gold"]}" stroke-width="0.6" fill="none" opacity="0.50">')
+    cxm = (COLS[1] + COLS[2]) / 2
+    for cy in ROWS:
+        add("  " + diamond(cxm, cy, 15, 10))
+        add("  " + diamond(cxm, cy, 10, 6))
+        add("  " + diamond(cxm, cy, 4, 4, stroke_width="0.4"))
+    add('</g>')
 
-def well(cx, cy, t, ring=None):
-    ring = ring or t["wellring"]
-    return (f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="7.0" fill="{t["well"]}" '
-            f'stroke="{ring}" stroke-width="0.8" opacity="0.7"/>')
+    add(f'<g stroke="{t["vconn"]}" stroke-width="0.5" fill="none" opacity="0.45">')
+    for ri in range(len(ROWS) - 1):
+        gy = (ROWS[ri] + ROWS[ri+1]) / 2
+        for cx in COLS:
+            add("  " + diamond(cx, gy, 5, 5))
+    add('</g>')
 
+    add(f'<g fill="none" stroke="{t["teal"]}" opacity="0.40">')
+    for ri, cy in enumerate(ROWS):
+        for rx in RAIL_X:
+            add("  " + diamond(rx, cy, 6, 8, stroke_width="0.6"))
+            add(f'  <circle cx="{rx}" cy="{cy}" r="1.8" fill="{t["teal"]}" stroke="none" />')
+            if ri < len(ROWS) - 1:
+                add(f'  <line x1="{rx}" y1="{cy+8}" x2="{rx}" y2="{cy+32}" stroke-width="0.4" />')
+    add('</g>')
 
-def marker(kind, label, cx, cy):
-    return (f'<circle id="{kind}_{label}" cx="{cx:.2f}" cy="{cy:.2f}" r="0.5" '
-            f'fill="none" stroke="none"/>')
+    add('<g opacity="0.7">')
+    add(f'  <rect x="0" y="0" width="{W}" height="55" fill="{t["header"]}" />')
+    add(f'  <rect x="0" y="53" width="{W}" height="0.8" fill="{t["gold"]}" opacity="0.5" />')
+    add('</g>')
 
+    add('<g fill="none" stroke-width="1.0">')
+    add(f'  <g stroke="{t["wellGrey"]}">')
+    for cy in ROWS:
+        for cx in (COLS[0], COLS[3]):
+            add(f'    <circle cx="{cx}" cy="{cy}" r="9.0" />')
+    add('  </g>')
+    add(f'  <g stroke="{t["gold"]}">')
+    for cy in ROWS:
+        for cx in (COLS[1], COLS[2]):
+            add(f'    <circle cx="{cx}" cy="{cy}" r="9.0" />')
+    add('  </g>')
+    add('</g>')
 
-def panel(dark):
-    t = THEMES["dark" if dark else "light"]
-    o = []
-    A = o.append
-    A(f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}">')
-    # background + top accent rule + brand corner dot
-    A(f'<rect width="{W}" height="{H}" fill="{t["bg"]}"/>')
-    A(f'<rect width="{W}" height="4" fill="{t["top"]}"/>')
-    A(f'<circle cx="{W-14}" cy="14" r="5" fill="{t["top"]}"/>')
-
-    # decorative lattice
-    A('<g id="artwork">')
-    A(lattice(t))
-    A('</g>')
-
-    # control wells (graphics) — drawn under the bind markers
-    A('<g id="control-graphics">')
-    for y in SEMI_ROWS_Y:
-        A(well(COL_X[0], y, t)); A(well(COL_X[3], y, t))            # CV jacks
-        A(well(COL_X[1], y, t, t["gold"])); A(well(COL_X[2], y, t, t["gold"]))  # attens
-    A(well(COL_X[0], OCT_Y, t)); A(well(COL_X[3], OCT_Y, t))
-    A(well(COL_X[1], OCT_Y, t, t["gold"])); A(well(COL_X[2], OCT_Y, t, t["gold"]))
-    A('</g>')
-
-    # ── SvgPanelKit component layer: named markers at every control centre. ──
-    A('<g id="components">')
+    def mark(idn, cx, cy):
+        return f'  <circle id="{idn}" cx="{cx:.2f}" cy="{cy:.2f}" r="0.5" fill="none" stroke="none"/>'
+    add('<g id="components">')
     for i in range(6):
-        y = SEMI_ROWS_Y[i]
-        A(marker("input", f"SEMI_CV_{i}",      COL_X[0], y))   # semitone i
-        A(marker("param", f"SEMI_ATT_{i}",     COL_X[1], y))
-        A(marker("param", f"SEMI_ATT_{i+6}",   COL_X[2], y))   # semitone i+6
-        A(marker("input", f"SEMI_CV_{i+6}",    COL_X[3], y))
-    A(marker("input", "OCT_LO_CV",  COL_X[0], OCT_Y))
-    A(marker("param", "OCT_LO_ATT", COL_X[1], OCT_Y))
-    A(marker("param", "OCT_HI_ATT", COL_X[2], OCT_Y))
-    A(marker("input", "OCT_HI_CV",  COL_X[3], OCT_Y))
-    # dot.modular connect mark anchor (footer-centre).
-    A(marker("light", "connect", W * 0.5, H - 20.0))
-    A('</g>')
+        cy = ROWS[i]
+        add(mark(f"input_SEMI_CV_{i}",    COLS[0], cy))
+        add(mark(f"param_SEMI_ATT_{i}",   COLS[1], cy))
+        add(mark(f"param_SEMI_ATT_{i+6}", COLS[2], cy))
+        add(mark(f"input_SEMI_CV_{i+6}",  COLS[3], cy))
+    oy = ROWS[6]
+    add(mark("input_OCT_LO_CV",  COLS[0], oy))
+    add(mark("param_OCT_LO_ATT", COLS[1], oy))
+    add(mark("param_OCT_HI_ATT", COLS[2], oy))
+    add(mark("input_OCT_HI_CV",  COLS[3], oy))
+    add('</g>')
 
-    A('</svg>')
-    return "\n".join(o)
+    add('</svg>')
+    return "\n".join(A) + "\n"
 
+def main():
+    if not os.path.isdir("res/panels"):
+        raise SystemExit("run from repo root (need res/panels/)")
+    for key, t in THEMES.items():
+        svg = gen(t)
+        if "url(" in svg:
+            raise SystemExit(f"{t['out']}: url() present — nanosvg-unsafe")
+        path = os.path.join("res/panels", t["out"])
+        with open(path, "w") as f:
+            f.write(svg)
+        markers = svg.count('id="param_') + svg.count('id="input_')
+        print(f"wrote {path}  ({svg.count(chr(10))+1} lines, {markers} markers)")
 
 if __name__ == "__main__":
-    for dark, name in [(True, "interchange_gemini_new2.svg"),
-                       (False, "interchange_gemini_light.svg")]:
-        with open(f"res/panels/{name}", "w") as f:
-            f.write(panel(dark))
-        print(f"wrote res/panels/{name}")
+    main()

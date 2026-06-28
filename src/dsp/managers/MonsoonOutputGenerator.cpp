@@ -30,6 +30,7 @@ void OutputGenerator::drive(SequencerEngine& engine,
     // Cache gate state for summary outputs
     float gateV = outputs[GATE_OUTPUT].getVoltage();
     bool accentActive = engine.lastStepResult.accented && !effectiveMuted;
+    (void)accentActive;
 
     // 2. Straits East Expander (Voices 2-8)
     auto* polyExp = expanderManager.cachedPolyVoiceExpander;
@@ -44,7 +45,9 @@ void OutputGenerator::drive(SequencerEngine& engine,
             float vg = engine.voices[i].gs.process(sampleTime);
             polyExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(vg);
             polyExp->outputs[POLY_CV_OUT_1 + i].setVoltage(engine.voices[i].gs.currentPitchV);
-            polyExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage((accentActive && vg > 5.f) ? 10.f : 0.f);
+            // Accent is a poly lane now: each voice fires its OWN accent (drawn per-voice in
+            // executePolyVoice), not mono's. Still gated by the voice actually sounding.
+            polyExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage((!effectiveMuted && engine.voices[i].accented && vg > 5.f) ? 10.f : 0.f);
         }
         // Summary outputs for 1-8
         polyExp->outputs[POLY_GATE_1_8_OUT].setVoltage((gateV > 5.f && !effectiveMuted) ? 10.f : 0.f);
@@ -65,7 +68,7 @@ void OutputGenerator::drive(SequencerEngine& engine,
             float vg = engine.voices[vIdx].gs.process(sampleTime);
             westExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(vg);
             westExp->outputs[POLY_CV_OUT_1 + i].setVoltage(engine.voices[vIdx].gs.currentPitchV);
-            westExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage((accentActive && vg > 5.f) ? 10.f : 0.f);
+            westExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage((!effectiveMuted && engine.voices[vIdx].accented && vg > 5.f) ? 10.f : 0.f);
         }
         // Summary outputs for 1-16
         westExp->outputs[POLY_GATE_1_16_OUT].setVoltage((gateV > 5.f && !effectiveMuted) ? 10.f : 0.f);
@@ -119,8 +122,7 @@ void OutputGenerator::setPolyVoiceOutputs(engine::Output* outputs,
                                           float sampleTime) {
     if (!outputs) return;
     
-    // Mono decision for accent gating
-    bool monoAccented = engine.lastStepResult.accented;
+    // (mono accent stays on the mono ACCENT_OUTPUT; poly voices now use their OWN accent)
     
     // Output active voices
     for (int i = 0; i < numPolyVoices && i < 7; ++i) {
@@ -135,8 +137,8 @@ void OutputGenerator::setPolyVoiceOutputs(engine::Output* outputs,
             outputs[i + 7].setVoltage(muted ? 0.f : pv);
         }
         
-        // Poly accent: fires when mono is accented AND this voice is sounding
-        float polyAccent = (monoAccented && vg > 5.f) ? 10.f : 0.f;
+        // Poly accent: each voice fires its OWN accent (poly lane), gated by sounding.
+        float polyAccent = (engine.voices[i].accented && vg > 5.f) ? 10.f : 0.f;
         if (i + 14 < 21) {  // Assume accent outputs follow CV outputs
             setGateWithMute_(outputs[i + 14], polyAccent, muted);
         }

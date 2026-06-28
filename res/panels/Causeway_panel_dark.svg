@@ -45,5 +45,9 @@
 <circle id="input_CAUSEWAY_GATE_LIVESTATIC_M" cx="129.9" cy="301.2" r="13.0" fill="#0f1114" stroke="#26a69a" stroke-width="1"/>
 <circle id="input_CAUSEWAY_GATE_RESEED_ROLL" cx="47.2" cy="336.6" r="13.0" fill="#0f1114" stroke="#6a6e76" stroke-width="1"/>
 <circle id="input_CAUSEWAY_GATE_RESEED_RESTART" cx="129.9" cy="336.6" r="13.0" fill="#0f1114" stroke="#6a6e76" stroke-width="1"/>
+<circle id="input_CAUSEWAY_GATE_LASTDICE_R" cx="29.5" cy="369.1" r="13.0" fill="#0f1114" stroke="#dc2626" stroke-width="1"/>
+<circle id="input_CAUSEWAY_GATE_LASTDICE_M" cx="70.9" cy="369.1" r="13.0" fill="#0f1114" stroke="#dc2626" stroke-width="1"/>
+<circle id="input_CAUSEWAY_GATE_LASTTRIAL_R" cx="112.2" cy="369.1" r="13.0" fill="#0f1114" stroke="#c8960c" stroke-width="1"/>
+<circle id="input_CAUSEWAY_GATE_LASTTRIAL_M" cx="153.5" cy="369.1" r="13.0" fill="#0f1114" stroke="#c8960c" stroke-width="1"/>
 </g>
 </svg>

@@ -22,6 +22,7 @@
 #include <cassert>
 #include <cstring>
 #include "dsp/engines/ClockEngine.hpp"
+#include "dsp/engines/PhaseEngine.hpp"
 #include "dsp/engines/PatternEngine.hpp"
 #include "dsp/engines/SequencerEngine.hpp"
 #include "dsp/managers/MonsoonSandsManager.hpp"
@@ -139,6 +140,23 @@ namespace MonsoonIds {
         POLY_REST_PARAM_13,
         POLY_REST_PARAM_14,
         POLY_REST_PARAM_15,
+
+        // Accent Probability (15 voices) — accent as a poly lane, parallel to rest - NEW
+        POLY_ACCENT_PARAM_1,
+        POLY_ACCENT_PARAM_2,
+        POLY_ACCENT_PARAM_3,
+        POLY_ACCENT_PARAM_4,
+        POLY_ACCENT_PARAM_5,
+        POLY_ACCENT_PARAM_6,
+        POLY_ACCENT_PARAM_7,
+        POLY_ACCENT_PARAM_8,
+        POLY_ACCENT_PARAM_9,
+        POLY_ACCENT_PARAM_10,
+        POLY_ACCENT_PARAM_11,
+        POLY_ACCENT_PARAM_12,
+        POLY_ACCENT_PARAM_13,
+        POLY_ACCENT_PARAM_14,
+        POLY_ACCENT_PARAM_15,
         
         // Rest Probability Modulation Attenuverters (15 voices) - NEW
         POLY_REST_MOD_ATT_1,
@@ -156,6 +174,23 @@ namespace MonsoonIds {
         POLY_REST_MOD_ATT_13,
         POLY_REST_MOD_ATT_14,
         POLY_REST_MOD_ATT_15,
+
+        // Accent Probability Modulation Attenuverters (15 voices) - NEW
+        POLY_ACCENT_MOD_ATT_1,
+        POLY_ACCENT_MOD_ATT_2,
+        POLY_ACCENT_MOD_ATT_3,
+        POLY_ACCENT_MOD_ATT_4,
+        POLY_ACCENT_MOD_ATT_5,
+        POLY_ACCENT_MOD_ATT_6,
+        POLY_ACCENT_MOD_ATT_7,
+        POLY_ACCENT_MOD_ATT_8,
+        POLY_ACCENT_MOD_ATT_9,
+        POLY_ACCENT_MOD_ATT_10,
+        POLY_ACCENT_MOD_ATT_11,
+        POLY_ACCENT_MOD_ATT_12,
+        POLY_ACCENT_MOD_ATT_13,
+        POLY_ACCENT_MOD_ATT_14,
+        POLY_ACCENT_MOD_ATT_15,
 
         // Poly DNA Window Controls (15 voices x 3 params = 45) - MOVED TO SANDS
         POLY_DNA_VOICE_1_LEN,
@@ -297,6 +332,52 @@ namespace MonsoonIds {
         POLY_OCTAVE_VOICE_15_LEN,
         POLY_OCTAVE_VOICE_15_OFF,
         POLY_OCTAVE_VOICE_15_ROT,
+        // Poly Accent DNA Window Controls (15 voices x 3 params = 45) - accent poly lane
+        POLY_ACCENT_VOICE_1_LEN,
+        POLY_ACCENT_VOICE_1_OFF,
+        POLY_ACCENT_VOICE_1_ROT,
+        POLY_ACCENT_VOICE_2_LEN,
+        POLY_ACCENT_VOICE_2_OFF,
+        POLY_ACCENT_VOICE_2_ROT,
+        POLY_ACCENT_VOICE_3_LEN,
+        POLY_ACCENT_VOICE_3_OFF,
+        POLY_ACCENT_VOICE_3_ROT,
+        POLY_ACCENT_VOICE_4_LEN,
+        POLY_ACCENT_VOICE_4_OFF,
+        POLY_ACCENT_VOICE_4_ROT,
+        POLY_ACCENT_VOICE_5_LEN,
+        POLY_ACCENT_VOICE_5_OFF,
+        POLY_ACCENT_VOICE_5_ROT,
+        POLY_ACCENT_VOICE_6_LEN,
+        POLY_ACCENT_VOICE_6_OFF,
+        POLY_ACCENT_VOICE_6_ROT,
+        POLY_ACCENT_VOICE_7_LEN,
+        POLY_ACCENT_VOICE_7_OFF,
+        POLY_ACCENT_VOICE_7_ROT,
+        POLY_ACCENT_VOICE_8_LEN,
+        POLY_ACCENT_VOICE_8_OFF,
+        POLY_ACCENT_VOICE_8_ROT,
+        POLY_ACCENT_VOICE_9_LEN,
+        POLY_ACCENT_VOICE_9_OFF,
+        POLY_ACCENT_VOICE_9_ROT,
+        POLY_ACCENT_VOICE_10_LEN,
+        POLY_ACCENT_VOICE_10_OFF,
+        POLY_ACCENT_VOICE_10_ROT,
+        POLY_ACCENT_VOICE_11_LEN,
+        POLY_ACCENT_VOICE_11_OFF,
+        POLY_ACCENT_VOICE_11_ROT,
+        POLY_ACCENT_VOICE_12_LEN,
+        POLY_ACCENT_VOICE_12_OFF,
+        POLY_ACCENT_VOICE_12_ROT,
+        POLY_ACCENT_VOICE_13_LEN,
+        POLY_ACCENT_VOICE_13_OFF,
+        POLY_ACCENT_VOICE_13_ROT,
+        POLY_ACCENT_VOICE_14_LEN,
+        POLY_ACCENT_VOICE_14_OFF,
+        POLY_ACCENT_VOICE_14_ROT,
+        POLY_ACCENT_VOICE_15_LEN,
+        POLY_ACCENT_VOICE_15_OFF,
+        POLY_ACCENT_VOICE_15_ROT,
         
         // Interpolation Controls (15 voices) - NEW: blend per-voice vs average random
         POLY_VOICE_1_INTERP,
@@ -368,6 +449,22 @@ namespace MonsoonIds {
         POLY_OCTAVE_INTERP_13,
         POLY_OCTAVE_INTERP_14,
         POLY_OCTAVE_INTERP_15,
+        // Poly Accent spread interp (15 voices) - accent poly lane
+        POLY_ACCENT_INTERP_1,
+        POLY_ACCENT_INTERP_2,
+        POLY_ACCENT_INTERP_3,
+        POLY_ACCENT_INTERP_4,
+        POLY_ACCENT_INTERP_5,
+        POLY_ACCENT_INTERP_6,
+        POLY_ACCENT_INTERP_7,
+        POLY_ACCENT_INTERP_8,
+        POLY_ACCENT_INTERP_9,
+        POLY_ACCENT_INTERP_10,
+        POLY_ACCENT_INTERP_11,
+        POLY_ACCENT_INTERP_12,
+        POLY_ACCENT_INTERP_13,
+        POLY_ACCENT_INTERP_14,
+        POLY_ACCENT_INTERP_15,
         
         // Global Macro DNA Controls (for simple Straits Sands) - NEW
         // Single set of controls for all poly voices
@@ -384,6 +481,10 @@ namespace MonsoonIds {
         GLOBAL_OCTAVE_DNA_LEN,
         GLOBAL_OCTAVE_DNA_OFF,
         GLOBAL_OCTAVE_DNA_ROT,
+        // Macro global accent L/O/R (Stage 6 — panel relayout complete)
+        GLOBAL_ACCENT_DNA_LEN,
+        GLOBAL_ACCENT_DNA_OFF,
+        GLOBAL_ACCENT_DNA_ROT,
         GLOBAL_OCTAVE_INTERP,
 
         // Playable dice slew (0..1): live morph between locked (A) and candidate
@@ -403,34 +504,60 @@ namespace MonsoonIds {
         // A. The regular dice (DICE_R/M_PARAM) commits B→A (main mode).
         DICE_TRIAL_R_PARAM,
         DICE_TRIAL_M_PARAM,
+        // LastDice / LastTrial: step the draw index opposite to dice/trial (Philox
+        // addressability). Normal-mode only — blocked on reversible streams. Grouped
+        // with their dice/trial siblings.
+        LAST_DICE_R_PARAM,
+        LAST_DICE_M_PARAM,
+        LAST_TRIAL_R_PARAM,
+        LAST_TRIAL_M_PARAM,
 
         // ── Macro/East base-owner + Macro-CV blend sends (per voice, per lane) ──
         // Appended at END so existing param IDs stay stable (saved patches safe).
         // Per-(voice,lane) base owner: which expander owns the poly L/O/R base for
         // voice v, lane L. 0 = Macro (default), 1 = East. 15 voices × 3 lanes = 45.
-        //   index = MACRO_OWN_START + v*3 + lane
+        //   index = MACRO_OWN_START + v*4 + lane  (4 lanes: REST/MEL/OCT/ACCENT)
         MACRO_OWN_START,
-        MACRO_OWN_END = MACRO_OWN_START + 45,
+        MACRO_OWN_END = MACRO_OWN_START + 64,
         // Per-(voice,lane,item) Macro-CV blend send: how much of the (already
         // Macro-attenuated) Macro CV is mixed into this voice/lane/item. item
         // 0=LEN 1=OFF 2=ROT 3=SPR. 15 × 3 × 4 = 180. Default unity (Macro CV
         // reaches voices out of the box; turn down to localise).
-        //   index = MACRO_SEND_START + (v*3 + lane)*4 + item
+        //   index = MACRO_SEND_START + (v*4 + lane)*4 + item   (v = voiceNumber-1, slot0=mono)
         MACRO_SEND_START = MACRO_OWN_END,
-        MACRO_SEND_END = MACRO_SEND_START + 180,
+        MACRO_SEND_END = MACRO_SEND_START + 256,   // 16 voices × 4 lanes × 4 items
 
         // Display-proxy params for the East visual's SELECTED-VOICE owner/send
         // controls. Physical knobs/buttons bind to these fixed ids; the widget
         // copies them to/from the per-voice MACRO_OWN/SEND params on voice switch
         // (same pattern as SPREAD_R/M/O ↔ the per-voice interp params).
-        //   owner disp:  MACRO_OWN_DISP_START + lane            (3: lanes 0-2)
-        //   send  disp:  MACRO_SEND_DISP_START + lane*4 + item  (12: 3 lanes×4)
+        //   owner disp:  MACRO_OWN_DISP_START + lane            (4: lanes 0-3)
+        //   send  disp:  MACRO_SEND_DISP_START + lane*4 + item  (16: 4 lanes×4)
         MACRO_OWN_DISP_START = MACRO_SEND_END,
-        MACRO_OWN_DISP_END = MACRO_OWN_DISP_START + 3,
+        MACRO_OWN_DISP_END = MACRO_OWN_DISP_START + 4,
         MACRO_SEND_DISP_START = MACRO_OWN_DISP_END,
-        MACRO_SEND_DISP_END = MACRO_SEND_DISP_START + 12,
+        MACRO_SEND_DISP_END = MACRO_SEND_DISP_START + 16,
 
-        NUM_PARAMS = MACRO_SEND_DISP_END
+        // Per-(voice, jack) CV-depth attenuverter for East's poly CV inputs. The
+        // poly cable is a convenience (one cable, 16 channels) but each voice is an
+        // independent mod target: this gives each voice its OWN depth for each of the
+        // 12 CV jacks, so the same incoming CV can bite harder on one voice than
+        // another. 15 voices × 12 jacks = 180. The East panel's 12 physical
+        // attenuverters are display proxies (ATTEN_START) copied to/from the selected
+        // voice's slice here on voice switch — same pattern as owner/send.
+        //   index = MACRO_ATTEN_START + v*16 + (lane*4 + c)  (v = voiceNumber-1, slot0=mono)
+        MACRO_ATTEN_START = MACRO_SEND_DISP_END,
+        MACRO_ATTEN_END = MACRO_ATTEN_START + 256,   // 16 voices × 16 jacks (4 lanes × 4 cols)
+
+        // P9b: Macro send PRE/POST tap — TWO per lane: one for the LOR sends
+        // (LEN/OFF/ROT) and one for the SPREAD send. 0 = PRE (raw CV, att bypassed),
+        // 1 = POST (CV × left atten). Laid out as a 3rd row in each send group.
+        //   LOR tap    index = MACRO_TAP_START + lane*2 + 0
+        //   spread tap index = MACRO_TAP_START + lane*2 + 1
+        MACRO_TAP_START = MACRO_ATTEN_END,
+        MACRO_TAP_END = MACRO_TAP_START + 8,   // 4 lanes × (LOR, spread)
+
+        NUM_PARAMS = MACRO_TAP_END
     };
 
     enum InputIds {
@@ -497,6 +624,24 @@ namespace MonsoonIds {
         POLY_REST_MOD_CV_INPUT_13,
         POLY_REST_MOD_CV_INPUT_14,
         POLY_REST_MOD_CV_INPUT_15,
+
+        // Accent Probability CV (shared + 15 per-voice mod) - NEW
+        POLY_ACCENT_CV_INPUT,
+        POLY_ACCENT_MOD_CV_INPUT_1,
+        POLY_ACCENT_MOD_CV_INPUT_2,
+        POLY_ACCENT_MOD_CV_INPUT_3,
+        POLY_ACCENT_MOD_CV_INPUT_4,
+        POLY_ACCENT_MOD_CV_INPUT_5,
+        POLY_ACCENT_MOD_CV_INPUT_6,
+        POLY_ACCENT_MOD_CV_INPUT_7,
+        POLY_ACCENT_MOD_CV_INPUT_8,
+        POLY_ACCENT_MOD_CV_INPUT_9,
+        POLY_ACCENT_MOD_CV_INPUT_10,
+        POLY_ACCENT_MOD_CV_INPUT_11,
+        POLY_ACCENT_MOD_CV_INPUT_12,
+        POLY_ACCENT_MOD_CV_INPUT_13,
+        POLY_ACCENT_MOD_CV_INPUT_14,
+        POLY_ACCENT_MOD_CV_INPUT_15,
         
         // Poly DNA CV Modulation (8 voices × 2 = 16 inputs) - MOVED TO SANDS
         POLY_DNA_VOICE_8_LEN_INPUT,
@@ -574,6 +719,11 @@ namespace MonsoonIds {
         CAUSEWAY_GATE_LIVESTATIC_M,
         CAUSEWAY_GATE_RESEED_ROLL,
         CAUSEWAY_GATE_RESEED_RESTART,
+        // LastDice / LastTrial gates (step draw index opposite to dice/trial).
+        CAUSEWAY_GATE_LASTDICE_R,
+        CAUSEWAY_GATE_LASTDICE_M,
+        CAUSEWAY_GATE_LASTTRIAL_R,
+        CAUSEWAY_GATE_LASTTRIAL_M,
         NUM_CAUSEWAY_INPUTS
     };
 
@@ -699,8 +849,17 @@ struct MonsoonLeftMessage {
 // ------------------------------- Module --------------------------------------
 struct Monsoon : Module {
     ClockEngine clock;
+    redDot::PhaseEngine phase;   // Mode E: CV1 phase ramp → pulse grid (forward+reverse)
 
     int cv1Mode = 0;
+    int rhythmReversibleMode = 0;     // 0=Normal, 1=Reversible (per-stream, Mode E)
+    int melodyReversibleMode = 0;
+    int reseedOnModeChange = 1;       // global: reseed (+zero index) on entering reversible
+    int resetIndexOnModeChange = 1;   // global: zero index on entry when NOT reseeding (greyed if reseed on)
+    // Global probability-CV-out config (read by the Sands visual expanders; they have
+    // no menus of their own). Scale 0=0..1V,1=0..5V,2=0..10V; S&H vs continuous.
+    int  probOutScale = 2;
+    bool probOutSampleHold = true;
     int cv2Mode = 0;
 
     // Assignable mod routing for the main-panel CV3 / GATE3 jacks (persisted).
@@ -713,7 +872,7 @@ struct Monsoon : Module {
     int  cv3Target   = CV3_RHYTHM_SLEW;
     int  gate3Target = G3_TRIAL_RHYTHM;
     dsp::SchmittTrigger gate3Trig;   // rising-edge detect for GATE3 actions
-    dsp::SchmittTrigger causewayGateTrig[10];  // Causeway's 10 die-action gates
+    dsp::SchmittTrigger causewayGateTrig[14];  // Causeway's 14 die-action gates (incl Last*)
     // Which dice the LIVE mode drives, per lane: false=main (promote, A walks),
     // true=trial (anchored A, endless variations on a theme). Persisted.
     bool rhythmLiveTrial = false;
@@ -729,6 +888,8 @@ struct Monsoon : Module {
         DA_LIVESRC_R, DA_LIVESRC_M,          // toggle live source main<->trial
         DA_LIVESTATIC_R, DA_LIVESTATIC_M,    // toggle live<->static (rhythmMode)
         DA_RESEED_ROLL, DA_RESEED_RESTART,
+        DA_LASTDICE_R, DA_LASTDICE_M,        // step index opposite to dice
+        DA_LASTTRIAL_R, DA_LASTTRIAL_M,      // audition previous candidate
         DA_NUM
     };
     void fireDieAction(int a);   // defined in Monsoon.cpp
@@ -742,6 +903,7 @@ struct Monsoon : Module {
     // reseed (auditioning stays controlled). reseedOnRestart: a restart reseeds
     // for a fresh pattern instead of replaying the held one.
     bool reseedOnRoll    = false;
+    bool pendingRegenB   = false;   // set by load: regenerate candidate B post-seed (Option 3)
     bool reseedOnRestart = false;
 
     int lastModeSelect = -1;
@@ -808,9 +970,6 @@ struct Monsoon : Module {
     std::unique_ptr<OutputGenerator> outputGenerator;
 
     // Convenience accessors
-    rack::random::Xoroshiro128Plus& rhythmRng = engine.pe.rhythmRng;
-    rack::random::Xoroshiro128Plus& melodyRng = engine.pe.melodyRng;
-    //rack::random::Xoroshiro128Plus& stochasticRng = engine.pe.stochasticRng;
     float& holdRemain = engine.gs.holdRemain;
     bool& gateHeld = engine.gs.gateHeld;
     float& currentPitchV = engine.gs.currentPitchV;
@@ -946,6 +1105,8 @@ struct Monsoon : Module {
     void diceRhythm();
     void diceMelody();
     void onPhraseBoundary_();
+    void applyReversibleModeChange_();
+    bool rhythmReversiblePrev_ = false, melodyReversiblePrev_ = false;
     void onReset() override;
     void onSampleRateChange(const SampleRateChangeEvent& e) override;
     int getNoteLenIdx_();
@@ -955,8 +1116,6 @@ struct Monsoon : Module {
     float quantizePitch(int semitoneIndex, int octaveOffset);
 
     void process(const ProcessArgs& args) override;
-
-    void reseedXoroshiroFromFloat(rack::random::Xoroshiro128Plus& rng, float seedFloat);
 
     // Mode handlers now delegated to ModeController:
     // - executeModeA()  → modeController->executeModeA()

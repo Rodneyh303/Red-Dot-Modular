@@ -134,6 +134,7 @@ public:
     /// Get rest probability for poly voice (voiceIdx 0–6 maps to voices 2–8)
     /// Falls back to 0.1 if no poly voice expander
     float getPolyRest(int voiceIdx) const;
+    float getPolyAccent(int voiceIdx) const;
     
     // ──── CV2 Offset Management ──────────────────────────────────────────────
     

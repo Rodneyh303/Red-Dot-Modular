@@ -125,6 +125,33 @@ def editor_recess(ED_X, ED_Y, ED_W, ED_H, t, lanes=3, watermark=False):
         out.append(f'<line x1="{px(ED_X+1):.1f}" y1="{px(ly):.1f}" x2="{px(ED_X+ED_W-1):.1f}" y2="{px(ly):.1f}" stroke="{t["edborder"]}" stroke-width="0.75" stroke-opacity="0.7"/>')
     return "".join(out)
 
+def owner_block(owner_x, lane_ys, ed_right_x, t, cell_w_mm=6.0, label="SRC", draw_cells=True, cell_h_frac=0.9):
+    """Per-lane owner-source block, drawn right of the editor before the prob-outs.
+    v2-subtle: a thin separator from the editor grid, a faint backing strip, a
+    small label, and (when draw_cells) one outline cell per lane row. When the
+    LIVE OwnerCell widget draws the cells itself, pass draw_cells=False so only the
+    container (backing + separator + label) is baked. cell_h_frac sets the cell
+    height as a fraction of the lane spacing (match the live widget). lane_ys =
+    lane centre Y."""
+    if not lane_ys:
+        return ""
+    top = min(lane_ys); bot = max(lane_ys)
+    cell_h = ((bot - top) / max(1, len(lane_ys)-1)) * cell_h_frac if len(lane_ys) > 1 else 8.0
+    pad = 1.6
+    bx = owner_x - cell_w_mm*0.5 - pad
+    by = top - cell_h*0.5 - pad
+    bw = cell_w_mm + 2*pad
+    bh = (bot - top) + cell_h + 2*pad
+    out = [
+        f'<rect x="{px(bx):.1f}" y="{px(by):.1f}" width="{px(bw):.1f}" height="{px(bh):.1f}" rx="{px(1.0):.1f}" fill="#ffffff" fill-opacity="0.05"/>',
+        f'<line x1="{px(ed_right_x+1.4):.1f}" y1="{px(by):.1f}" x2="{px(ed_right_x+1.4):.1f}" y2="{px(by+bh):.1f}" stroke="{t["edborder"]}" stroke-width="1.2" stroke-opacity="0.8"/>',
+        f'<text x="{px(owner_x):.1f}" y="{px(by-1.4):.1f}" font-family="sans-serif" font-size="{px(2.0):.1f}" fill="{t["edborder"]}" text-anchor="middle">{label}</text>',
+    ]
+    if draw_cells:
+        for cy in lane_ys:
+            out.append(f'<rect x="{px(owner_x-cell_w_mm*0.5):.1f}" y="{px(cy-cell_h*0.5):.1f}" width="{px(cell_w_mm):.1f}" height="{px(cell_h):.1f}" rx="{px(0.8):.1f}" fill="none" stroke="{t["edborder"]}" stroke-width="1.0" stroke-opacity="0.55"/>')
+    return "".join(out)
+
 def kit_shape(kind, idx, x_mm, y_mm):
     """Emit a named, near-invisible marker circle the SvgPanelKit can bind to.
     `kind` is one of 'param'|'input'|'output'|'light'; `idx` is the control's

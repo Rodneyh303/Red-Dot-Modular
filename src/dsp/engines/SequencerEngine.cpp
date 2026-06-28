@@ -70,9 +70,31 @@ void SequencerEngine::setWindow(int length, int offset) {
     }
 }
 
-bool SequencerEngine::advancePlayhead() {
+bool SequencerEngine::advancePlayhead(int dir) {
     int prevStep = stepIndex;
-    totalStepsElapsed = (totalStepsElapsed + 1) % DNA_LCM;
+    lastPlayDir = (dir < 0) ? -1 : +1;
+    // Step the global DNA tick WITH direction: +1 forward, -1 backward. This is what
+    // maps physical positions to drifting DNA content (strand indices) and the ring
+    // lights; counting up in reverse desyncs it from stepIndex and both the strand
+    // drift and the lights go the wrong way (ring lights up all around).
+    if (dir < 0) totalStepsElapsed = (totalStepsElapsed - 1 + DNA_LCM) % DNA_LCM;
+    else         totalStepsElapsed = (totalStepsElapsed + 1) % DNA_LCM;
+
+    if (dir < 0) {
+        // ── Reverse traversal: mirror of forward, leftward through the window. ──
+        // From the "not started" state, seed just AFTER endStep so the first reverse
+        // step lands on endStep (the symmetric counterpart of forward seeding before
+        // startStep and stepping onto startStep).
+        if (stepIndex == -1) stepIndex = (endStep + 1) & 0x0F;
+        stepIndex = (stepIndex - 1 + 16) & 0x0F;
+        if (!isStepInWindow(stepIndex)) stepIndex = endStep;
+        for (int s = 0; s < 16 && !isStepInWindow(stepIndex); ++s)
+            stepIndex = (stepIndex - 1 + 16) & 0x0F;
+        // Phrase boundary (reverse): wrapped back round to endStep.
+        return (prevStep != -1 && stepIndex == endStep);
+    }
+
+    // ── Forward traversal (unchanged) ──
     if (stepIndex == -1) stepIndex = (startStep - 1 + 16) % 16;
     stepIndex = (stepIndex + 1) & 0x0F;
     if (!isStepInWindow(stepIndex)) stepIndex = startStep;
@@ -145,8 +167,20 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
         baseActive = isNote ? 0.35f : 0.07f;
     }
 
-    // The moving playhead should always follow the global timeline index
-    float current = (modeSelect < 3 && lightIdx == stepIndex) ? 1.0f : 0.0f;
+    // The moving playhead should always follow the global timeline index. Shown for
+    // stepped modes A/B/C (0/1/2) and the phase Mode E (4); Mode D (3) is continuous
+    // (no discrete playhead step).
+    bool steppedMode = (modeSelect == 0 || modeSelect == 1 || modeSelect == 2 || modeSelect == 4);
+    float current = (steppedMode && lightIdx == stepIndex) ? 1.0f : 0.0f;
+
+    // Direction cue (Mode E especially): a one-LED comet trail BEHIND the playhead in
+    // the travel direction, so forward vs reverse is visibly distinct. The trailing
+    // LED is the step the playhead just left: stepIndex - lastPlayDir.
+    if (steppedMode && current < 1.0f) {
+        int trailIdx = ((stepIndex - lastPlayDir) % 16 + 16) % 16;
+        if (lightIdx == trailIdx && isStepInWindow(lightIdx))
+            baseActive = std::max(baseActive, 0.5f);
+    }
 
     return std::max(baseActive, current);
 }
@@ -280,11 +314,11 @@ void SequencerEngine::handlePhraseBoundary(PatternInput input, bool isMelodyReal
     pe.applyPendingSeedsAndRedraw(input);
 }
 
-StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input) {
+StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input, int dir) {
     StepResult result;
     if (!clock.sixteenthEdge || muted) return result;
 
-    bool wrapped = advancePlayhead();
+    bool wrapped = advancePlayhead(dir);
     float r_vary   = pe.variationRandom[getVariationStep()];
     float r_rest   = pe.rhythmRandom[getRhythmStep()];
     float r_legato = pe.legatoRandom[getLegatoStep()];
@@ -365,7 +399,7 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
 //              their own hold.  Voices already at rest remain silent.
 //   Legato / LegatoMax / NewNote — mono played something new; each poly voice
 //              independently rolls its own rest probability then draws its
-//              own pitch using stochasticRng.  Gate type (retrigger vs slide)
+//              own pitch (legacy note). Gate type (retrigger vs slide)
 //              follows mono's decision.  Within the legato zone a poly-internal
 //              tie still emerges naturally when the voice's random pitch
 //              matches its own previous semitone.
@@ -387,7 +421,8 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         float r_rest = pe.polyRhythmRandom[voiceIdx][restIdx];
         
         if (r_rest < v.restProb) {
-            // Decide to Rest: Stick with it until mono gate drops.
+            // Decide to Rest: Stick with it until mono gate drops. No accent while resting.
+            v.accented = false;
             if (v.gs.holdRemain > 0.0001f) v.gs.gateHeld = true; // allow previous note tail to finish
             else v.gs.gateHeld = false;
             return;
@@ -396,6 +431,10 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         // Decide to Play: Draw pitch and follow mono's triggering behavior.
         int sem = 0;
         float pitchV = pe.genPitchLive(sem, input, pe.polyMelodyRandom[voiceIdx][melIdx], pe.polyOctaveRandom[voiceIdx][octIdx]);
+        // Accent as a poly lane (modelled after rest): this voice draws its OWN accent at
+        // its own accent LOR and compares to its own accentProb — not shared from mono.
+        int accIdx = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx][PL_ACCENT], polyOff[voiceIdx][PL_ACCENT], polyRot[voiceIdx][PL_ACCENT]);
+        v.accented = (pe.polyAccentRandom[voiceIdx][accIdx] < v.accentProb);
         if (lastStepResult.decision == MonoDecision::NewNote)
             v.gs.triggerNote(pitchV, sem, lastStepResult.nvIdx);
         else

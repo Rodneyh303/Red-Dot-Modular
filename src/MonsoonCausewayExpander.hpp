@@ -30,6 +30,10 @@ struct MonsoonCausewayExpander : Module {
         configInput(MonsoonIds::CAUSEWAY_GATE_LIVESTATIC_M,  "Toggle melody live/static (gate)");
         configInput(MonsoonIds::CAUSEWAY_GATE_RESEED_ROLL,   "Toggle reseed-on-roll (gate)");
         configInput(MonsoonIds::CAUSEWAY_GATE_RESEED_RESTART,"Toggle reseed-on-restart (gate)");
+        configInput(MonsoonIds::CAUSEWAY_GATE_LASTDICE_R,    "Last rhythm die (gate)");
+        configInput(MonsoonIds::CAUSEWAY_GATE_LASTDICE_M,    "Last melody die (gate)");
+        configInput(MonsoonIds::CAUSEWAY_GATE_LASTTRIAL_R,   "Last rhythm trial (gate)");
+        configInput(MonsoonIds::CAUSEWAY_GATE_LASTTRIAL_M,   "Last melody trial (gate)");
     }
     void process(const ProcessArgs& args) override {}
 };

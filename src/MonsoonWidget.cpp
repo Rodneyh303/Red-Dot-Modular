@@ -59,6 +59,32 @@ struct MonsoonLightSlider : VCVLightSlider<TLightBase> {
     }
 };
 
+// Trial dice button that disables itself (visually dimmed + press swallowed) when its
+// stream is in Reversible mode, where auditioning is blocked. isMelody picks which
+// stream's reversible flag to read.
+struct TrialButton : VCVButton {
+    bool isMelody = false;
+    bool inert() const {
+        auto* m = dynamic_cast<Monsoon*>(this->module);
+        if (!m) return false;
+        return (isMelody ? m->melodyReversibleMode : m->rhythmReversibleMode) != 0;
+    }
+    void onDragStart(const event::DragStart& e) override {
+        if (inert()) return;                 // swallow — no actuation, no value change
+        VCVButton::onDragStart(e);
+    }
+    void onButton(const event::Button& e) override {
+        if (inert()) { e.consume(this); return; }   // block click before it actuates
+        VCVButton::onButton(e);
+    }
+    void draw(const widget::Widget::DrawArgs& args) override {
+        bool dim = inert();
+        if (dim) nvgGlobalAlpha(args.vg, 0.4f);
+        VCVButton::draw(args);
+        if (dim) nvgGlobalAlpha(args.vg, 1.0f);
+    }
+};
+
 // ── Simple Befaco-inspired knobs ─────────────────────────────────────────────
 RDM_KnobLarge::RDM_KnobLarge() {
     minAngle = -0.83f * M_PI;
@@ -252,8 +278,21 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
             std::function<void(Trimpot*)>([this, module](Trimpot* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.melodySlew;}, [](const Monsoon::ModViz& m){return m.cv3Lane[1];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
         bindParam<VCVButton>("param_DICE_R_PARAM",        MonsoonIds::DICE_R_PARAM);
         bindParam<VCVButton>("param_DICE_M_PARAM",        MonsoonIds::DICE_M_PARAM);
-        bindParam<VCVButton>("param_DICE_TRIAL_R_PARAM",  MonsoonIds::DICE_TRIAL_R_PARAM);
-        bindParam<VCVButton>("param_DICE_TRIAL_M_PARAM",  MonsoonIds::DICE_TRIAL_M_PARAM);
+        bindParam<TrialButton>("param_DICE_TRIAL_R_PARAM",  MonsoonIds::DICE_TRIAL_R_PARAM,
+            std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = false; }));
+        bindParam<TrialButton>("param_DICE_TRIAL_M_PARAM",  MonsoonIds::DICE_TRIAL_M_PARAM,
+            std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = true; }));
+        // Last dice / last trial — same TrialButton (dims + inert on reversible streams,
+        // which is correct since Last* is Normal-mode only). These warn-and-skip until
+        // the panel SVG gains param_LAST_* markers (panels phase); harmless until then.
+        bindParam<TrialButton>("param_LAST_DICE_R_PARAM",   MonsoonIds::LAST_DICE_R_PARAM,
+            std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = false; }));
+        bindParam<TrialButton>("param_LAST_DICE_M_PARAM",   MonsoonIds::LAST_DICE_M_PARAM,
+            std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = true; }));
+        bindParam<TrialButton>("param_LAST_TRIAL_R_PARAM",  MonsoonIds::LAST_TRIAL_R_PARAM,
+            std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = false; }));
+        bindParam<TrialButton>("param_LAST_TRIAL_M_PARAM",  MonsoonIds::LAST_TRIAL_M_PARAM,
+            std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = true; }));
          bindParam<RDM_KnobSmall>("param_RHYTHM_MIX_PARAM", MonsoonIds::RHYTHM_MIX_PARAM,
             std::function<void(RDM_KnobSmall*)>([this, module](RDM_KnobSmall* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.rhythmMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[2];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
         bindParam<RDM_KnobSmall>("param_MELODY_MIX_PARAM", MonsoonIds::MELODY_MIX_PARAM,
@@ -633,6 +672,11 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
             void onAction(const event::Action&) override { if (module && target) *target = value; }
             void step() override { rightText = (target && *target == value) ? "✔" : ""; ui::MenuItem::step(); }
         };
+        struct BoolToggle : ui::MenuItem {
+            int* target = nullptr;
+            void onAction(const event::Action&) override { if (target) *target = (*target ? 0 : 1); }
+            void step() override { rightText = (target && *target) ? "✔" : ""; ui::MenuItem::step(); }
+        };
 
         menu->addChild(createSubmenuItem("Poly Voices", "", [=](ui::Menu* sub) {
             sub->addChild(new ui::MenuLabel);
@@ -653,8 +697,25 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
 
         menu->addChild(createSubmenuItem("Sequencer Modes", "", [=](ui::Menu* sub) {
             { auto* l = new ui::MenuLabel; l->text = "Operating Mode"; sub->addChild(l);
-              const char* n[] = {"A: Sequencer","B: Seq + Gate","C: Quantizer 1","D: Quantizer 2"};
-              for (int v=0;v<4;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->modeSelect;it->value=v;sub->addChild(it);} }
+              const char* n[] = {"A: Sequencer","B: Seq + Gate","C: Quantizer 1","D: Quantizer 2","E: Phase (CV1)"};
+              for (int v=0;v<5;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->modeSelect;it->value=v;sub->addChild(it);} }
+
+            sub->addChild(new ui::MenuSeparator);
+            { auto* l = new ui::MenuLabel; l->text = "Reversible (Mode E phase)"; sub->addChild(l);
+              // Per-stream Normal/Reversible. Reversible = pure dice, signed index,
+              // forward/back; blocks trial + reseed-on-roll for that stream.
+              const char* rm[] = {"Normal","Reversible"};
+              { auto* ll = new ui::MenuLabel; ll->text = "  Rhythm"; sub->addChild(ll); }
+              for (int v=0;v<2;++v){auto* it=createMenuItem<IntItem>(rm[v]);it->module=m;it->target=&m->rhythmReversibleMode;it->value=v;sub->addChild(it);}
+              { auto* ll = new ui::MenuLabel; ll->text = "  Melody"; sub->addChild(ll); }
+              for (int v=0;v<2;++v){auto* it=createMenuItem<IntItem>(rm[v]);it->module=m;it->target=&m->melodyReversibleMode;it->value=v;sub->addChild(it);}
+              sub->addChild(new ui::MenuSeparator);
+              // Global on entering reversible: reseed (+zero index), or just zero index.
+              { auto* it=createMenuItem<BoolToggle>("Reseed on mode change");it->target=&m->reseedOnModeChange;sub->addChild(it); }
+              { auto* it=createMenuItem<BoolToggle>("Reset index on mode change");it->target=&m->resetIndexOnModeChange;
+                it->disabled = (m->reseedOnModeChange != 0);   // greyed when reseed handles it
+                sub->addChild(it); }
+            }
 
             sub->addChild(new ui::MenuSeparator);
 
@@ -686,15 +747,25 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
 
             {
                 auto* l = new ui::MenuLabel; l->text = "Reseed Policy"; sub->addChild(l);
-                sub->addChild(createBoolPtrMenuItem("Reseed on roll (main dice)", "", &m->reseedOnRoll));
+                // Reseed-on-roll is inert when BOTH streams are reversible (reversible
+                // blocks it per stream); grey it then to signal that.
+                auto* ror = createBoolPtrMenuItem("Reseed on roll (main dice)", "", &m->reseedOnRoll);
+                ror->disabled = (m->rhythmReversibleMode != 0 && m->melodyReversibleMode != 0);
+                sub->addChild(ror);
                 sub->addChild(createBoolPtrMenuItem("Reseed on restart", "", &m->reseedOnRestart));
             }
 
             sub->addChild(new ui::MenuSeparator);
             {
-                auto* l = new ui::MenuLabel; l->text = "Which dice live mode drives"; sub->addChild(l); 
-                sub->addChild(createBoolPtrMenuItem("Rhythm: trial (else main)", "", &m->rhythmLiveTrial));
-                sub->addChild(createBoolPtrMenuItem("Melody: trial (else main)", "", &m->melodyLiveTrial));
+                auto* l = new ui::MenuLabel; l->text = "Which dice live mode drives"; sub->addChild(l);
+                // Live "trial as source" is blocked on a reversible stream — grey the
+                // matching per-stream toggle.
+                auto* rt = createBoolPtrMenuItem("Rhythm: trial (else main)", "", &m->rhythmLiveTrial);
+                rt->disabled = (m->rhythmReversibleMode != 0);
+                sub->addChild(rt);
+                auto* mt = createBoolPtrMenuItem("Melody: trial (else main)", "", &m->melodyLiveTrial);
+                mt->disabled = (m->melodyReversibleMode != 0);
+                sub->addChild(mt);
             }
 
         }));
@@ -755,6 +826,18 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
               const char* n3[] = {"Trial rhythm die","Trial melody die","Toggle reseed-on-roll","Toggle reseed-on-restart",
                                   "Toggle rhythm live source","Toggle melody live source"};
               for (int v=0;v<6;++v){auto* it=createMenuItem<IntItem>(n3[v]);it->module=m;it->target=&m->gate3Target;it->value=v;sub->addChild(it);} }
+        }));
+
+        menu->addChild(createSubmenuItem("Probability outs", "", [=](ui::Menu* sub) {
+            sub->addChild(createMenuLabel("Sands visual expander CV outs"));
+            sub->addChild(createIndexSubmenuItem("Output range",
+                {"0-1 V", "0-5 V", "0-10 V"},
+                [=]() { return m->probOutScale; },
+                [=](int i) { m->probOutScale = i; }));
+            sub->addChild(createIndexSubmenuItem("Output mode",
+                {"Continuous", "Sample & hold (per step)"},
+                [=]() { return m->probOutSampleHold ? 1 : 0; },
+                [=](int i) { m->probOutSampleHold = (i == 1); }));
         }));
 
         menu->addChild(createSubmenuItem("Scales", "", [=](ui::Menu* sub) {

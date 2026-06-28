@@ -61,6 +61,17 @@ struct MonsoonStraitsEastExpander : Module {
         
         configInput(MonsoonIds::POLY_REST_CV_INPUT, "Poly Rest CV");
 
+        // Accent as a poly lane — per-voice accent probability + mod att + mod CV (voices 2-8)
+        for (int i = 0; i < 7; i++) {
+            configParam(MonsoonIds::POLY_ACCENT_PARAM_1 + i, 0.f, 1.f, 0.f,
+                        "Voice " + std::to_string(i + 2) + " Accent Probability");
+            configParam(MonsoonIds::POLY_ACCENT_MOD_ATT_1 + i, -1.f, 1.f, 0.f,
+                        "Voice " + std::to_string(i + 2) + " Accent Mod Attenuverter");
+            configInput(MonsoonIds::POLY_ACCENT_MOD_CV_INPUT_1 + i,
+                        "Voice " + std::to_string(i + 2) + " Accent Mod CV");
+        }
+        configInput(MonsoonIds::POLY_ACCENT_CV_INPUT, "Poly Accent CV");
+
         // Configure individual outputs
         for (int i = 0; i < 7; i++) {
             configOutput(PolyVoiceExpanderIds::POLY_GATE_OUT_1 + i,

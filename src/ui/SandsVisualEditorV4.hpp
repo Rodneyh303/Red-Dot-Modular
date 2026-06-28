@@ -32,12 +32,12 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   };
   
   enum Lane {
-    REST = 0,
-    MELODY = 1,
-    OCTAVE = 2,
-    LEGATO = 3,
-    ACCENT = 4,
-    VARIATION = 5
+    MELODY = 0,
+    OCTAVE = 1,
+    REST = 2,
+    ACCENT = 3,
+    VARIATION = 4,
+    LEGATO = 5
   };
   
   struct Colors {
@@ -155,6 +155,18 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // count, so no lanes to draw). Mono never sets this.
   bool inert = false;
   const char* inertMessage = nullptr;
+  // readOnly: render data normally but block all editing/drag. Used for East/Macro
+  // tab 1 when Sands Mono is attached — the lane data belongs to Mono and is shown
+  // read-only (edit it on Sands Mono). Unlike `inert`, no hint message, data still drawn.
+  bool readOnly = false;
+  // Per-lane edit lock (P4 / G5): host returns true for a lane whose values are
+  // owned elsewhere (e.g. delegated to Macro) — that lane is shown but its handles
+  // and bar can't be edited, while other lanes stay editable. editorLane index.
+  std::function<bool(int editorLane)> laneLockedFn;
+  bool laneLocked(int editorLane) const { return laneLockedFn && laneLockedFn(editorLane); }
+  // Optional right-click callback: host registers this to open a context menu
+  // when a lane row is right-clicked. Called with (lane, pos); return true to consume.
+  std::function<bool(int lane, rack::math::Vec pos)> onLaneRightClick;
   
   VoiceState currentState;
   VoiceState clipboard;
@@ -162,6 +174,14 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   
   std::deque<VoiceState> undoHistory;
   bool showUndoDebug = false;   // hide internal undo-count readout by default
+  // The Sands expanders zero the editor's internal top/bottom padding so lanes
+  // fill the box evenly and align with the painted lanes + kit-bound jacks. The
+  // MONO/POLY control-bar text is drawn at a fixed top offset and would then land
+  // on lane 0, so it can be suppressed (the panel art can carry POLY/MONO).
+  // Lane labels (MELODY/OCTAVE/…) are NOT suppressible — the panel does not draw
+  // them (see dotmod_design.py: "No <text> for control labels"); the editor is
+  // their only source and they track the lane centres.
+  bool showControlBar = true;
   std::deque<VoiceState> redoHistory;
   static constexpr int UNDO_HISTORY_SIZE = 50;
   
@@ -214,6 +234,8 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // step = -1 means sequencer not running (no indicator drawn).
   int lanePlayStep[6] = {-1,-1,-1,-1,-1,-1};
   float activeStepAlpha = 0.f;
+  int playDir = +1;   // +1 forward, -1 reverse (Mode E); for directional playhead cue
+  void setPlayDir(int d) { playDir = (d < 0) ? -1 : +1; }
 
   // Convenience: set all active lanes to the same global step
   // (used when L/O/R is not yet available)
@@ -289,7 +311,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   
   void setMode(Mode m) {
     mode = m;
-    laneCount = (mode == MONO) ? 6 : 3;
+    laneCount = (mode == MONO) ? 6 : 4;
     // NOTE: box.size is owned by the module that creates this editor (it sets
     // box.size = mm2px(ED_W, ED_H)). The layout derives lane height from
     // box.size.y / laneCount, so we must NOT force a hardcoded height here —
@@ -437,7 +459,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       return;
     }
 
-    drawControlBar(args.vg);
+    if (showControlBar) drawControlBar(args.vg);
     
     for (int lane = 0; lane < laneCount; ++lane) {
       drawLaneLabel(args.vg, lane);
@@ -477,8 +499,8 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   }
   
   void drawLaneLabel(NVGcontext* vg, int lane) {
-    static const char* monoNames[] = {"REST", "MELODY", "OCTAVE", "LEGATO", "ACCENT", "VARIATION"};
-    static const char* polyNames[] = {"REST", "MELODY", "OCTAVE"};
+    static const char* monoNames[] = {"MELODY", "OCTAVE", "REST", "ACCENT", "VARIATION", "LEGATO"};
+    static const char* polyNames[] = {"MELODY", "OCTAVE", "REST", "ACCENT"};
     
     const char* name = (mode == MONO) ? monoNames[lane] : polyNames[lane];
     float y = layout.getLaneCenterY(lane);
@@ -774,6 +796,18 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       nvgRect(vg, rect.pos.x + 1, rect.pos.y, rect.size.x - 2, 2.f);
       nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.9f * activeStepAlpha));
       nvgFill(vg);
+
+      // Directional leading-edge marker: a bright vertical bar on the side the
+      // playhead is travelling TOWARD (right edge when forward, left when reverse).
+      // Makes forward vs reverse (Mode E) visible at a glance.
+      {
+        float ex = (playDir < 0) ? rect.pos.x + 0.5f
+                                  : rect.pos.x + rect.size.x - 2.5f;
+        nvgBeginPath(vg);
+        nvgRect(vg, ex, rect.pos.y, 2.f, rect.size.y);
+        nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.8f * activeStepAlpha));
+        nvgFill(vg);
+      }
     }
   }
   
@@ -817,9 +851,10 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   
   void onHover(const rack::event::Hover& e) override {
     Widget::onHover(e);
-    if (inert) { hoverLane = -1; hoverZone = DragState::NONE; return; }
+    if (inert || readOnly) { hoverLane = -1; hoverZone = DragState::NONE; return; }
     syncLayout();
     int lane = getLaneAtY(e.pos.y);
+    if (lane >= 0 && laneLocked(lane)) { hoverLane = -1; hoverZone = DragState::NONE; return; }
     DragState::Type z = (lane >= 0 && lane < laneCount)
                         ? hitTestHandle(lane, e.pos.x, e.pos.y) : DragState::NONE;
     hoverLane = (z == DragState::NONE) ? -1 : lane;
@@ -837,12 +872,13 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
 
   void onButton(const rack::event::Button& e) override {
     syncLayout();
-    if (inert) return;   // no interaction until poly source (Straits East) is attached
+    if (inert || readOnly) return;   // no edit when inert (no poly src) or readOnly (mono owns tab 1)
     if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT) {
       int lane = getLaneAtY(e.pos.y);
       //int step = getStepAtX(e.pos.x);
 
       if (lane >= 0 && lane < laneCount) {
+        if (laneLocked(lane)) { e.consume(this); return; }  // P4: delegated lane — inoperable
         // Hit-test handles first — they have priority over bar dragging
         DragState::Type handleHit = hitTestHandle(lane, e.pos.x, e.pos.y);
         if (handleHit != DragState::NONE) {
@@ -864,6 +900,15 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
         // handles above. A click that isn't on a handle does nothing here, so we
         // don't steal it from the window gestures. (Archived editor with per-cell
         // editing: src/deprecated/SandsVisualEditorV4_with_percell_editing.hpp.)
+      }
+    } else if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_RIGHT) {
+      // Right-click: if host registered a lane right-click callback, invoke it.
+      int lane = getLaneAtY(e.pos.y);
+      if (lane >= 0 && lane < laneCount && onLaneRightClick) {
+        if (onLaneRightClick(lane, e.pos)) {
+          e.consume(this);
+          return;
+        }
       }
     } else if (e.action == GLFW_RELEASE) {
       if (dragState.isDragging) saveToHistory();

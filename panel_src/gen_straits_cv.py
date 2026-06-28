@@ -23,11 +23,17 @@ Design notes:
 import math
 
 # ── panel + grid geometry (PX @ 75 DPI, matching the widget) ──────────────────
-PW, PH = 390.0, 380.0
+# Accent promoted to a poly lane: 3 new columns (accent probability knob, accent CV in,
+# accent CV attenuverter) added beside the existing per-voice accent OUT. Column spacing
+# tightened from the old generous ~54px to 43px (wells are ~18-20px, so still a clean gap),
+# so all 9 columns fit in 28HP — only +2HP vs the old 26HP 6-column panel.
+PW, PH = 420.0, 380.0   # 28HP (was 26HP/390px); +2HP absorbs the 3 accent columns
 MM2PX = 2.9528
 
-# control column X (px) — from the East/West widgets (knob/att/modIn + 3 outs)
-COL = dict(knob=48.0, att=102.0, modIn=168.0, gateOut=234.0, cvOut=288.0, accOut=342.0)
+# 9 control columns @ 43px. Rest lane: knob/att/modIn. Voice outs: gate/cv. Accent lane:
+# accKnob/accAtt/accModIn grouped just left of the existing accent OUT.
+COL = dict(knob=38.0, att=81.0, modIn=124.0, gateOut=167.0, cvOut=210.0,
+           accKnob=253.0, accAtt=296.0, accModIn=339.0, accOut=382.0)
 START_Y = 50.0
 SPACING_Y = 35.0
 # East adds voices 2-8 (7 rows; voice 1 is Monsoon's own mono voice). West adds
@@ -72,59 +78,77 @@ def kit_marker(kind, label, x, y):
     return (f'<circle id="{kind}_{label}" cx="{x:.2f}" cy="{y:.2f}" r="0.5" '
             f'fill="none" stroke="none"/>')
 
+import os as _os, re as _re2
+_ESPL_REF_PATH = _os.path.join(_os.path.dirname(__file__), "art_refs", "esplanade_dome_nanosvg.svg")
+try:
+    with open(_ESPL_REF_PATH) as _f:
+        _ESPL_REF = _f.read()
+except Exception:
+    _ESPL_REF = ""
+
 def esplanade(x, y, w, h, t, op=0.16):
-    # The improved Esplanade durian-dome concept (ported from
-    # panel_src/art_refs/esplanade_dome_nanosvg.svg): a perspective faceted dome
-    # shell (longitudinal ribs as ellipse arcs + latitudinal bands as Q-curves +
-    # a faint diamond facet grid), the dome outline, and the truss understructure
-    # + platform. Reference viewBox 0..1000 x 0..450 mapped into (x,y,w,h). The
-    # original's black "sky-frame" mask paths are recoloured to the panel bg so
-    # the rib spill above the dome curve is hidden on any background. nanosvg-safe
-    # (no gradients/masks/clipPath — the curve-following frame does the clipping).
-    RX1, RY1 = 1000.0, 450.0
-    def MX(rx): return x + rx / RX1 * w
-    def MY(ry): return y + ry / RY1 * h
-    def MP(d):
-        # scale a path's numbers — only used for the simple L/Q/C/M dome paths
-        # below where we emit coordinates directly via MX/MY, so not needed.
-        return d
-    fill = t["motif"]; ink = t["ink"]; bg = t["bg"]
-    L = []; A = L.append
-
-    # longitudinal latitude arcs (the dome's horizontal banding)
-    A(f'<g fill="none" stroke="{fill}" stroke-width="1.0" opacity="{op*3:.3f}" stroke-linecap="round">')
-    for (mx0,my0,qx,qy,ex,ey) in [
-        (35,340,420,240,965,250),(40,300,420,205,950,225),(45,265,415,175,925,200),
-        (55,230,410,145,890,178),(70,195,400,115,845,155),(90,160,380,88,790,138),
-        (120,130,350,68,720,125),(155,102,320,52,650,118)]:
-        A(f'<path d="M{MX(mx0):.1f} {MY(my0):.1f} Q{MX(qx):.1f} {MY(qy):.1f} {MX(ex):.1f} {MY(ey):.1f}"/>')
-    A('</g>')
-    # longitudinal ribs (vertical ellipse slices)
-    A(f'<g fill="none" stroke="{fill}" stroke-width="1.4" opacity="{op*3.5:.3f}">')
-    ribs = [(-40,140),(0,145),(40,150),(80,155),(120,160),(160,165),(200,170),(240,175),
-            (280,180),(320,185),(360,190),(420,180),(470,170),(520,160),(570,150),(620,140),
-            (670,130),(720,120),(770,110),(820,100),(870,90),(920,80),(960,70)]
-    for (cx,rx) in ribs:
-        A(f'<ellipse cx="{MX(cx):.1f}" cy="{MY(380):.1f}" rx="{rx/RX1*w:.1f}" ry="{370/RY1*h:.1f}"/>')
-    A('</g>')
-
-    # sky-frame: fill above/outside the dome curve with the panel bg so rib/band
-    # spill is hidden, following the dome curve exactly (replaces #000 in the ref).
-    A(f'<path d="M{MX(0):.1f} {MY(0):.1f} L{MX(1000):.1f} {MY(0):.1f} L{MX(1000):.1f} {MY(250):.1f} '
-      f'C{MX(900):.1f} {MY(125):.1f} {MX(720):.1f} {MY(45):.1f} {MX(500):.1f} {MY(42):.1f} '
-      f'C{MX(240):.1f} {MY(45):.1f} {MX(40):.1f} {MY(120):.1f} {MX(35):.1f} {MY(340):.1f} '
-      f'L{MX(0):.1f} {MY(340):.1f} Z" fill="{bg}"/>')
-    A(f'<path d="M{MX(0):.1f} {MY(343):.1f} L{MX(1000):.1f} {MY(343):.1f} L{MX(1000):.1f} {MY(450):.1f} L{MX(0):.1f} {MY(450):.1f} Z" fill="{bg}"/>')
-    A(f'<path d="M{MX(965):.1f} {MY(250):.1f} L{MX(1000):.1f} {MY(250):.1f} L{MX(1000):.1f} {MY(343):.1f} L{MX(965):.1f} {MY(343):.1f} Z" fill="{bg}"/>')
-
-    # dome outline + truss understructure (the bright metal edges)
-    A(f'<path d="M{MX(35):.1f} {MY(340):.1f} C{MX(40):.1f} {MY(120):.1f} {MX(240):.1f} {MY(45):.1f} {MX(500):.1f} {MY(42):.1f} '
-      f'C{MX(720):.1f} {MY(45):.1f} {MX(900):.1f} {MY(125):.1f} {MX(965):.1f} {MY(250):.1f}" '
-      f'fill="none" stroke="{ink}" stroke-width="2.0" opacity="{op*4:.3f}" stroke-linecap="round"/>')
-    A(f'<polyline points="{MX(40):.1f},{MY(403):.1f} {MX(130):.1f},{MY(340):.1f} {MX(250):.1f},{MY(392):.1f} '
-      f'{MX(395):.1f},{MY(385):.1f} {MX(540):.1f},{MY(318):.1f} {MX(675):.1f},{MY(370):.1f} {MX(760):.1f},{MY(285):.1f}" '
-      f'fill="none" stroke="{ink}" stroke-width="1.5" opacity="{op*3:.3f}" stroke-linejoin="round" stroke-linecap="round"/>')
-    return "".join(L)
+    # Faithful embed of the real asset (panel_src/art_refs/esplanade_dome_nanosvg.svg
+    # — the geodesic durian-shell, truss platform, shoulder + shadow). Earlier this
+    # function hand-reconstructed a PARTIAL version (missing the facet grid, truss
+    # structure, platform) which rendered crudely. Instead we now port the asset
+    # itself: recolour its greys→motif / bright→ink and its black sky-frame→bg, and
+    # flatten every group's stroke/fill onto its child shapes (nanosvg does NOT
+    # inherit). Scaled into (x,y,w,h) via a transform group (nanosvg-safe, same as
+    # logo_embed). `op` scales the overall structure opacity.
+    motif = t["motif"]; ink = t["ink"]; bg = t["bg"]
+    RX, RY = 1000.0, 450.0
+    sx, sy = w / RX, h / RY
+    s = _ESPL_REF
+    if not s:
+        return ""
+    s = _re2.sub(r'<svg[^>]*>', '', s); s = s.replace('</svg>', '')
+    s = _re2.sub(r'<rect width="1000" height="450" fill="#000"/>', '', s)
+    s = _re2.sub(r'<!--.*?-->', '', s, flags=_re2.DOTALL)
+    # Extra crop fills to kill the residual spill the asset's own sky-frame misses:
+    #  (A) LEFT skirt — the latitude band arcs curve out past the dome's LEFT
+    #      outline; this path fills everything left of that outline with bg.
+    #  (B) BELOW the dome base — the lowest latitude bands trail down-left BELOW
+    #      where the dome meets its support, reading as meaningless curves. This
+    #      path fills everything below the dome's base line (35,345)→(965,255)
+    #      with bg. Because these crops are injected BEFORE the outline + truss,
+    #      the support structure (outline / deck lines / truss polyline / legs /
+    #      platform) redraws crisply ON TOP and survives the crop.
+    _left_crop = ('<path d="M0 0 L35 340 C40 120 240 45 500 42 L500 0 Z" fill="#000"/>'
+                  '<path d="M0 0 L0 450 L35 450 L35 340 C30 250 28 150 35 60 Z" fill="#000"/>')
+    _bottom_crop = ('<path d="M35 345 L965 255 L1000 255 L1000 450 L0 450 L0 345 Z" '
+                    'fill="#000"/>')
+    _inject = _left_crop + _bottom_crop
+    # place just before the dome OUTLINE (the first stroke="#787878" width=6 path)
+    s = _re2.sub(r'(<path d="M35 340 C40 120)', _inject + r'\1', s, count=1)
+    # recolour: dome structure greys → motif, brightest highlight → ink.
+    for g in ['#666', '#6c6c6c', '#727272', '#767676', '#777', '#787878']:
+        s = s.replace(f'"{g}"', f'"{motif}"')
+    s = s.replace('#8a8a8a', ink)
+    # The black sky-frame + bottom + shoulder fills CROP the full-ellipse rib spill —
+    # they must stay at the panel bg colour AND full opacity so they actually mask.
+    # The watermark fade comes from the GROUP opacity below (applied uniformly to the
+    # whole dome), so the crop and the structure fade together and the spill never
+    # re-appears. (Keeping these fills semi-transparent was the bug that left
+    # criss-cross arcs floating outside the dome.)
+    for b in ['#000', '#111', '#222', '#474747']:
+        s = s.replace(f'"{b}"', f'"{bg}"')
+    # flatten group attrs onto children (nanosvg has no inheritance)
+    def _flatten(m):
+        gattr = dict(_re2.findall(r'([\w-]+)="([^"]*)"', m.group(1)))
+        inner = m.group(2)
+        def _add(tag):
+            existing = dict(_re2.findall(r'([\w-]+)="([^"]*)"', tag))
+            extra = "".join(f' {k}="{v}"' for k, v in gattr.items() if k not in existing)
+            return _re2.sub(r'/?>', extra + '/>', tag, count=1) if tag.endswith('/>') else tag
+        return _re2.sub(r'<(?:path|ellipse|polyline|polygon|line|rect)[^>]*/>',
+                        lambda mm: _add(mm.group(0)), inner)
+    prev = None
+    while prev != s:
+        prev = s
+        s = _re2.sub(r'<g([^>]*)>(((?!<g).)*?)</g>', _flatten, s, flags=_re2.DOTALL)
+    # Group opacity = the watermark fade (uniform over structure AND the bg crop).
+    return (f'<g transform="translate({x:.2f},{y:.2f}) scale({sx:.5f},{sy:.5f})" '
+            f'opacity="{min(1.0, op):.3f}">{s}</g>')
 
 
 def mbs(x, y, w, h, t, op=0.16):
@@ -170,6 +194,29 @@ def waves(x, y, t, op=0.6, rows=3, span=360.0):
         A(f'<path d="{d}" fill="none" stroke="{col}" stroke-width="1.5" stroke-opacity="{op}"/>')
     return "".join(L)
 
+def peranakan_edge(x, ytop, h, t, op=0.42, every=30.0):
+    # Subtle peranakan jade sideline: a thin double rule with small diamond motifs
+    # at intervals. nanosvg-safe (explicit lines/paths, every shape self-styled).
+    green = "#1f7a5a" if t["bg"][1] in "0123456" else "#2f8a6a"  # jade; lift on light bg
+    L = []; A = L.append
+    A(f'<line x1="{x:.1f}" y1="{ytop:.1f}" x2="{x:.1f}" y2="{ytop+h:.1f}" stroke="{green}" stroke-width="1.3" opacity="{op:.2f}"/>')
+    A(f'<line x1="{x+2.6:.1f}" y1="{ytop:.1f}" x2="{x+2.6:.1f}" y2="{ytop+h:.1f}" stroke="{green}" stroke-width="0.7" opacity="{op*0.5:.2f}"/>')
+    yy = ytop + 10.0
+    while yy < ytop + h - 10.0:
+        A(f'<path d="M{x-2.6:.1f} {yy:.1f} L{x+1.3:.1f} {yy-3.6:.1f} L{x+5.2:.1f} {yy:.1f} '
+          f'L{x+1.3:.1f} {yy+3.6:.1f} Z" fill="none" stroke="{green}" stroke-width="0.7" opacity="{op*0.8:.2f}"/>')
+        yy += every
+    return "".join(L)
+
+def row_label(side, i):
+    # Reference labelling: West module = voices 9..16, East = voices 2..8 (v1 is
+    # Monsoon's mono voice). Show the voice number; first row also tags the side.
+    if side == "east":
+        v = i + 2          # east rows are voices 2..8
+    else:
+        v = i + 9          # west rows are voices 9..16
+    return f"V{v}"
+
 def gen(side, dark, variant="plain"):
     """side: 'east' or 'west'. Returns SVG text."""
     t = theme(dark)
@@ -187,10 +234,13 @@ def gen(side, dark, variant="plain"):
     A(f'<rect x="0" y="0" width="{PW:.0f}" height="4" fill="{t["accent"]}"/>')   # top rule
     A(f'<circle cx="{PW-14:.0f}" cy="14" r="5" fill="{t["accent"]}"/>')          # corner dot
 
-    # background motif: the improved Esplanade durian-dome watermark (lower-centre)
-    # + Marina Bay water (waves) near the footer, matching the visual aesthetic.
-    A(esplanade(PW*0.10, 232.0, PW*0.80, 92.0, t, op=0.13))
-    A(waves(15.0, 338.0, t, op=0.5, rows=3, span=PW-30.0))
+    # background motif: Esplanade dome HIGH-RIGHT (crisp, contained — its own bg
+    # sky-frame crops the rib spill, faded uniformly by the group opacity). The
+    # Marina Bay waves run down the LEFT side only, the full height of the panel,
+    # like the straits along the western edge. Distinct zones, no overlap.
+    A(esplanade(PW*0.60, 40.0, PW*0.36, 64.0, t, op=0.5))     # upper-right, crisp
+    _wave_rows = int((PH - 70.0) / 9.4)                        # fill full height
+    A(waves(12.0, 56.0, t, op=0.34, rows=_wave_rows, span=PW*0.34))   # left band, top→bottom
 
     # title (display text — NOT a control, so text is fine here)
     A(f'<text x="14" y="30" fill="{t["ink"]}" font-family="sans-serif" '
@@ -198,27 +248,48 @@ def gen(side, dark, variant="plain"):
     A(f'<text x="14" y="44" fill="{t["dim"]}" font-family="sans-serif" '
       f'font-size="9">{sub}</text>')
 
+    # column header labels (display text above the first control row)
+    _hdr_y = START_Y - 20.0
+    for _cx, _lbl in [(COL["knob"],"LVL"), (COL["att"],"ATT"), (COL["modIn"],"MOD"),
+                      (COL["gateOut"],"GATE"), (COL["cvOut"],"CV"),
+                      (COL["accKnob"],"ACC"), (COL["accAtt"],"A·ATT"),
+                      (COL["accModIn"],"A·MOD"), (COL["accOut"],"A·CV")]:
+        A(f'<text x="{_cx:.1f}" y="{_hdr_y:.1f}" fill="{t["dim"]}" font-family="sans-serif" '
+          f'font-size="8" text-anchor="middle">{_lbl}</text>')
+
     # ── visible control art (wells/rings) ─────────────────────────────────────
     A('<g>')
     nrows = N_ROWS[side]
     gy = global_y(side)
+    # peranakan jade sideline down both edges (subtle family signature, nanosvg-safe)
+    A(peranakan_edge(7.0, START_Y-18.0, (gy+10.0)-(START_Y-18.0), t))
+    A(peranakan_edge(PW-7.0, START_Y-18.0, (gy+10.0)-(START_Y-18.0), t))
     for i in range(nrows):
         y = START_Y + i * SPACING_Y
+        # row label (voice number / side) — display text, left of the knob column
+        rlab = row_label(side, i)
+        A(f'<text x="{COL["knob"]-22:.1f}" y="{y+3:.1f}" fill="{t["dim"]}" '
+          f'font-family="sans-serif" font-size="9" text-anchor="end">{rlab}</text>')
         A(trimwell(COL["knob"], y, t))
         A(trimwell(COL["att"], y, t))
         A(jackwell(COL["modIn"], y, t))
         A(jackwell(COL["gateOut"], y, t))
         A(jackwell(COL["cvOut"], y, t))
+        A(trimwell(COL["accKnob"], y, t))
+        A(trimwell(COL["accAtt"], y, t))
+        A(jackwell(COL["accModIn"], y, t))
         A(jackwell(COL["accOut"], y, t))
     # global row
     if side == "east":
         A(jackwell(COL["modIn"], gy, t))
         A(jackwell(COL["gateOut"], gy, t))
         A(jackwell(COL["cvOut"], gy, t))
+        A(jackwell(COL["accModIn"], gy, t))   # shared accent CV
     else:
         A(jackwell(COL["knob"], gy, t))
         A(jackwell(COL["gateOut"], gy, t))
         A(jackwell(COL["cvOut"], gy, t))
+        A(jackwell(COL["accModIn"], gy, t))   # shared accent CV
     A('</g>')
 
     # ── SVG-kit component layer (bind anchors; near-invisible) ────────────────
@@ -232,15 +303,21 @@ def gen(side, dark, variant="plain"):
         A(kit_marker("input", f"modcv_{i}", COL["modIn"], y))
         A(kit_marker("output", f"gate_{i}", COL["gateOut"], y))
         A(kit_marker("output", f"cv_{i}",   COL["cvOut"], y))
+        A(kit_marker("param",  f"accknob_{i}", COL["accKnob"], y))
+        A(kit_marker("param",  f"accatt_{i}",  COL["accAtt"], y))
+        A(kit_marker("input",  f"accmodcv_{i}", COL["accModIn"], y))
         A(kit_marker("output", f"acc_{i}",  COL["accOut"], y))
     if side == "east":
         A(kit_marker("input",  "global_modcv", COL["modIn"], gy))
         A(kit_marker("output", "global_gate",  COL["gateOut"], gy))
         A(kit_marker("output", "global_cv",    COL["cvOut"], gy))
+        A(kit_marker("input",  "global_acc_cv", COL["accModIn"], gy))
     else:
         A(kit_marker("input",  "global_cv_in", COL["knob"], gy))
         A(kit_marker("output", "global_gate",  COL["gateOut"], gy))
         A(kit_marker("output", "global_cv",    COL["cvOut"], gy))
+        A(kit_marker("input",  "global_acc_cv", COL["accModIn"], gy))
+        A(kit_marker("input",  "global_acc_cv", COL["accModIn"], gy))
     # dot.modular connect mark anchor (footer-centre; reposition here).
     A(kit_marker("light", "connect", PW*0.5, PH-20.0))
     A('</g>')

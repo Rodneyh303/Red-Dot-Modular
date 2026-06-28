@@ -5,19 +5,31 @@ red corner screws. nanosvg-safe (no masks/gradients/text-for-controls)."""
 import math
 S = 75.0/25.4
 def px(mm): return round(mm*S, 2)
-W_MM, H_MM = 203.2, 128.5
+W_MM, H_MM = 218.44, 128.5  # 43HP (42 + 1HP for the per-lane owner-source block)
 PW, PH = px(W_MM), px(H_MM)
 
-ROW_TOP, ROW_BOT, N = 14.0, 108.0, 6
-def rowY(r): return ROW_TOP + (r+0.5)*(ROW_BOT-ROW_TOP)/N
-COL_J1, COL_J2, COL_A1, COL_A2, SPREAD_X = 8.0, 18.0, 30.0, 39.0, 49.0
+N = 4   # 4 lanes, one row each
 # Extra top margin so the voice tab row isn't crammed against the panel top edge.
 # 0.5 cm = 5 mm. Adjust + rerun the generator (and mirror TAB_TOP_OFFSET_MM in
 # StraitsEastSandsVisualWidget) to taste.
 TAB_TOP_OFFSET_MM = 5.0
-ED_X, ED_Y = 58.0, 18.0 + TAB_TOP_OFFSET_MM
-ED_W = W_MM - ED_X - 4.0
+ED_X, ED_Y = 88.0, 18.0 + TAB_TOP_OFFSET_MM
+ED_W = 111.0        # editor width (fixed; no longer tied to PROB_OUT_X — matches hpp)
+OWNER_X = 205.0     # owner-source cell column, right of the editor (matches hpp)
+PROB_OUT_X = 212.0  # right-strip jack column, pushed right by the owner block (matches hpp)
 ED_H = 48.0
+ED_LANE_H = ED_H / N
+# Left-control rows align with the EDITOR lane centres (must match the hpp's rowY):
+# each lane's CV jacks + attens sit beside the visual lane they modulate.
+def rowY(r): return ED_Y + (r+0.5)*ED_LANE_H
+# 4 CV jacks + 4 attens + spread base — columns match SandsMonoVisual, ED_X=88
+JACK_X  = [6.0, 15.0, 24.0, 33.0]   # LEN/OFF/ROT/SPR-cv
+ATTEN_X = [43.0, 52.0, 61.0, 70.0]  # LEN/OFF/ROT/SPR depth
+SPREAD_X = 80.0                      # spread base trimpot
+# Display order: row i → engine lane DISPLAY_ORDER[i] (MEL/OCT/REST/ACC top-to-bottom)
+# matches SandsVisualEditorV4 lane order so left jacks align with editor rows.
+DISPLAY_ORDER = [1, 2, 0, 3]   # row0=MEL(eng1), row1=OCT(eng2), row2=REST(eng0), row3=ACC(eng3)
+LANE_NAMES_DISPLAY = ["MELODY","OCTAVE","REST","ACCENT"]
 
 def theme(dark):
     if dark: return dict(
@@ -124,9 +136,24 @@ def gen(dark):
     A(f'<rect x="{px(ED_X):.1f}" y="{px(ED_Y):.1f}" width="{px(ED_W):.1f}" height="{px(ED_H):.1f}" rx="{px(1.5):.1f}" fill="{t["edrecess"]}" stroke="{t["edborder"]}" stroke-width="1"/>')
     # MBS watermark centred in the editor, large + faint (reads as Marina Bay)
     A(mbs(ED_X+ED_W*0.28, ED_Y+ED_H-5.0, ED_W*0.46, ED_H*0.68, t, op=0.16))
-    for k in range(1,3):
-        ly=ED_Y+k*(ED_H/3.0)
+    for k in range(1,4):   # 4 lanes → 3 dividers
+        ly=ED_Y+k*(ED_H/4.0)
         A(f'<line x1="{px(ED_X+1):.1f}" y1="{px(ly):.1f}" x2="{px(ED_X+ED_W-1):.1f}" y2="{px(ly):.1f}" stroke="{t["edborder"]}" stroke-width="0.75" opacity="0.7"/>')
+
+    # ── per-lane owner-source block, right of the editor before the prob-outs.
+    #    The faint backing + separator + "SRC" label form the container; the LIVE
+    #    OwnerCell widget draws each per-lane cell itself (filled = global/Macro,
+    #    outline in lane colour = East/per-voice), so no static outline cells here.
+    _ed_right = ED_X + ED_W
+    _lane_ys = [rowY(r) for r in range(N)]
+    _ch = ED_LANE_H * 0.9                  # match the live OwnerCell (≈ lane step cell)
+    _cw = (ED_W - 2*6.0) / 16.0            # one editor step wide (padding=6, 16 steps)
+    _pad = 1.6
+    _by = min(_lane_ys) - _ch*0.5 - _pad
+    _bh = (max(_lane_ys)-min(_lane_ys)) + _ch + 2*_pad
+    A(f'<rect x="{px(OWNER_X-_cw*0.5-_pad):.1f}" y="{px(_by):.1f}" width="{px(_cw+2*_pad):.1f}" height="{px(_bh):.1f}" rx="{px(1.0):.1f}" fill="#ffffff" fill-opacity="0.05"/>')
+    A(f'<line x1="{px(_ed_right+1.4):.1f}" y1="{px(_by):.1f}" x2="{px(_ed_right+1.4):.1f}" y2="{px(_by+_bh):.1f}" stroke="{t["edborder"]}" stroke-width="1.2" opacity="0.8"/>')
+    A(f'<text x="{px(OWNER_X):.1f}" y="{px(_by-1.4):.1f}" font-family="sans-serif" font-size="{px(2.0):.1f}" fill="{t["edborder"]}" text-anchor="middle">SRC</text>')
 
     # ── below the editor + footer: Marina Bay water (waves) as an integrated
     #    base band spanning the full control-to-edge width ──
@@ -134,10 +161,12 @@ def gen(dark):
     # a crisp MBS as the identity mark, sat on the water, lower-right
     A(mbs(W_MM-66.0, 111.0, 52.0, 14.0, t, op=0.85))
 
-    # ── control group recess (left) ──
-    gx,gy=4.0,ROW_TOP-4.0; gw,gh=(SPREAD_X+5.0)-gx,(ROW_BOT+2.0)-(ROW_TOP-4.0)
+    # ── control group recess (left) — wraps the editor-aligned rows ──
+    # box left edge clears the leftmost jack (JACK_X[0]=6, r=3.9 → left extent 2.1mm)
+    gx,gy=1.5,rowY(0)-ED_LANE_H*0.5-3.0
+    gw,gh=(SPREAD_X+6.0)-gx,(rowY(N-1)+ED_LANE_H*0.5+3.0)-gy
     A(f'<rect x="{px(gx):.1f}" y="{px(gy):.1f}" width="{px(gw):.1f}" height="{px(gh):.1f}" rx="{px(2):.1f}" fill="{t["group"]}" stroke="{t["groupline"]}" stroke-width="1"/>')
-    sepx=0.5*(COL_J2+COL_A1)
+    sepx=0.5*(JACK_X[-1]+ATTEN_X[0])  # separator between jack cluster and atten cluster
     A(f'<line x1="{px(sepx):.1f}" y1="{px(gy+2):.1f}" x2="{px(sepx):.1f}" y2="{px(gy+gh-2):.1f}" stroke="{t["groupline"]}" stroke-width="0.75" opacity="0.6"/>')
     A('</g>')
     A(f'<g inkscape:label="branding" inkscape:groupmode="layer">')
@@ -150,50 +179,31 @@ def gen(dark):
     def trim(x,y,col):
         A(f'<circle cx="{px(x):.1f}" cy="{px(y):.1f}" r="{px(3.2):.1f}" fill="{t["well"]}" stroke="{col}" stroke-width="1.25"/>')
         A(f'<line x1="{px(x):.1f}" y1="{px(y):.1f}" x2="{px(x):.1f}" y2="{px(y-2.4):.1f}" stroke="{col}" stroke-width="1"/>')
-    for r in range(6):
-        y=rowY(r); jack(COL_J1,y); jack(COL_J2,y)
-        trim(COL_A1,y,t["gold"]); trim(COL_A2,y,t["gold"])
-    for lane in range(3):
-        y=0.5*(rowY(lane*2)+rowY(lane*2+1)); trim(SPREAD_X,y,t["teal"])
+    for row in range(4):
+        y=rowY(row)
+        for x in JACK_X:  jack(x,y)
+        for x in ATTEN_X: trim(x,y,t["gold"])
+        trim(SPREAD_X,y,t["teal"])
 
     # ── Macro/East blend controls — 3 labelled groups (REST / MELODY / OCTAVE),
-    #    each a boxed cluster: an owner on/off button (top-left) + a 2×2 grid of
-    #    MACRO CV SEND trimpots (Len/Off/Rot/Spr). Group boxes + a "MACRO BLEND"
-    #    header give the previously-loose row a clear structure. Labels (group
-    #    names + item names) are drawn by the widget in NanoVG (the panel carries
-    #    no baked text), positioned to match these coordinates. Only meaningful
-    #    with a Macro visual attached; the module greys them out otherwise. ──
-    BLEND_TOP = 74.0               # below the editor (ED_Y+ED_H = 66)
-    BLEND_H   = 30.0
-    GROUP_W   = ED_W/3.0
-    GAP       = 3.0
-    # section header rule
-    A(f'<line x1="{px(ED_X):.1f}" y1="{px(BLEND_TOP-3.0):.1f}" x2="{px(ED_X+ED_W):.1f}" y2="{px(BLEND_TOP-3.0):.1f}" stroke="{t["edborder"]}" stroke-width="0.8" opacity="0.7"/>')
-    LANE_NAMES = ["REST","MELODY","OCTAVE"]
-    OWN_XY = []     # owner button centres, per lane
-    SEND_XY = []    # send trim centres, per (lane,item)
-    for l in range(3):
-        gx = ED_X + l*GROUP_W + GAP*0.5
-        gw = GROUP_W - GAP
-        # group box
-        A(f'<rect x="{px(gx):.1f}" y="{px(BLEND_TOP):.1f}" width="{px(gw):.1f}" height="{px(BLEND_H):.1f}" rx="{px(1.2):.1f}" fill="{t["edrecess"]}" stroke="{t["edborder"]}" stroke-width="0.9" opacity="0.9"/>')
-        # owner button: top-left of the box
-        oy = BLEND_TOP + 6.5
-        ox = gx + 5.5
-        A(f'<circle cx="{px(ox):.1f}" cy="{px(oy):.1f}" r="{px(2.4):.1f}" fill="{t["edrecess"]}" stroke="{t["accent"]}" stroke-width="1.1"/>')
-        OWN_XY.append((ox,oy))
-        # 2×2 send grid in the right ~2/3 of the box
-        sx0 = gx + gw*0.42
-        sxs = gw*0.26
-        sy0 = BLEND_TOP + 8.5
-        sys = 12.0
-        lane_sends=[]
-        for item in range(4):
-            cxs = sx0 + (item % 2)*sxs
-            cys = sy0 + (item // 2)*sys
-            trim(cxs, cys, t["gold"])
-            lane_sends.append((cxs,cys))
-        SEND_XY.append(lane_sends)
+    #    each a demarked box stacked as: lane-name header → owner latch (OWN) →
+    #    a 2×2 MACRO-SEND trim grid (LEN OFF / ROT SPR), every control centred under
+    #    its label. Labels are drawn by the widget in NanoVG (panel carries no baked
+    #    text) using the IDENTICAL constants below — keep the two in lockstep. Only
+    #    meaningful with a Macro visual attached; greyed otherwise.
+    #
+    #    SHARED LAYOUT CONSTANTS (mirror exactly in StraitsEastSandsVisual::draw):
+    #      editor ends at ED_Y+ED_H=71; bottom art starts ~111. Post-inversion the
+    #      Macro mix-in SENDS moved to the Macro panel — East keeps only the per-lane
+    #      BASE opt-in latch (inherit Macro base / local East). So the band is short:
+    #      a header + a centred latch per lane group.  BLEND_TOP=74  BLEND_H=22.
+    BLEND_TOP = 74.0
+    BLEND_H   = 22.0
+    GAP       = 2.5               # tighter gap for 4 groups
+    # ── (REMOVED) The old below-lanes "BASE" owner section. Ownership now lives in
+    #    the per-lane SRC owner cells right of the editor (param_owner_{lane} bound
+    #    to OwnerCell). The Macro mix-in sends had already moved to the Macro panel,
+    #    so this band held nothing but the old owner latch and is gone entirely.
     A('</g>')
     # ── SvgPanelKit component layer. Indices mirror StraitsEastSandsVisual.hpp:
     #    cvId(r,c)=CV_START(0)+r*2+c  inputs 0..11;
@@ -202,21 +212,22 @@ def gen(dark):
     def kit_shape(kind, idx, x, y):
         A(f'<circle id="{kind}_{idx}" cx="{px(x):.2f}" cy="{px(y):.2f}" r="0.5" fill="none" stroke="none"/>')
     A('<g inkscape:label="components" inkscape:groupmode="layer">')
-    for r in range(6):
-        y=rowY(r)
-        kit_shape("input", 0+r*2+0, COL_J1, y); kit_shape("input", 0+r*2+1, COL_J2, y)
-        kit_shape("param", 3+r*2+0, COL_A1, y); kit_shape("param", 3+r*2+1, COL_A2, y)
-    for lane in range(3):
-        y=0.5*(rowY(lane*2)+rowY(lane*2+1))
-        kit_shape("param", lane, SPREAD_X, y)   # SPREAD_R/M/O = 0/1/2
-    # Macro/East blend control markers (named; bound to display proxies). Use the
-    # grouped coordinates computed above (OWN_XY, SEND_XY).
-    for l in range(3):
-        ox,oy = OWN_XY[l]
-        A(f'<circle id="param_owner_{l}" cx="{px(ox):.2f}" cy="{px(oy):.2f}" r="0.5" fill="none" stroke="none"/>')
-        for item in range(4):
-            cxs,cys = SEND_XY[l][item]
-            A(f'<circle id="param_send_{l}_{item}" cx="{px(cxs):.2f}" cy="{px(cys):.2f}" r="0.5" fill="none" stroke="none"/>')
+    # Components placed in display order (row→engine lane via DISPLAY_ORDER).
+    # cvId/attenDispId/SPREAD use engine lane index; rowY uses display row.
+    for row in range(4):
+        lane = DISPLAY_ORDER[row]   # engine lane
+        y=rowY(row)
+        for p,x in enumerate(JACK_X):  kit_shape("input", 0+lane*4+p, x, y)
+        for p,x in enumerate(ATTEN_X): kit_shape("param", 4+lane*4+p, x, y)
+        kit_shape("param", lane, SPREAD_X, y)  # SPREAD_R/M/O/A engine lane index
+    # East opt-in (BASE) owner latches — now positioned ON the SRC owner-source
+    # cells (right of the editor). Each cell IS the per-lane owner button: the
+    # bound DimmableLatch renders/fills here by ownership state. Indexed by ENGINE
+    # lane l, placed at the editor row that displays that lane (DISPLAY_ORDER).
+    for row in range(4):
+        l = DISPLAY_ORDER[row]
+        A(f'<circle id="param_owner_{l}" cx="{px(OWNER_X):.2f}" cy="{px(rowY(row)):.2f}" '
+          f'r="0.5" fill="none" stroke="none"/>')
     A(f'<circle id="light_connect" cx="{px(W_MM*0.5):.2f}" cy="{px(124.0):.2f}" r="0.5" fill="none" stroke="none"/>')
     A('</g>')
     A('</svg>')

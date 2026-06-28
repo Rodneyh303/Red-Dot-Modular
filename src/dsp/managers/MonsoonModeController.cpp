@@ -8,7 +8,8 @@ using namespace rack;
 void ModeController::updatePolyVoiceRest_() {
     if (engine.numPolyVoices > 0) {
         for (int i = 0; i < engine.numPolyVoices; ++i) {
-            engine.voices[i].restProb = paramManager.getPolyRest(i);
+            engine.voices[i].restProb   = paramManager.getPolyRest(i);
+            engine.voices[i].accentProb = paramManager.getPolyAccent(i);
         }
     }
 }
@@ -84,6 +85,32 @@ void ModeController::postExecute_(const StepResult& result) {
 }
 
 // ──── Mode A: Clock-Driven Sequencing ───────────────────────────────────────
+
+// Mode E: phase-driven. The dispatch (Monsoon.cpp) only calls this when
+// phase.sixteenthEdge fired, so a 1/16 step is due now. Reuses the Mode A decision
+// path exactly (clock-style stepping) — the only difference is the edge SOURCE is
+// the phase ramp, not the clock. A synthesized clock-view carries sixteenthEdge=true
+// into engine.executeModeA, which reads nothing else from the clock. (Forward only;
+// reverse traversal is the next branch.)
+bool ModeController::executeModeE() {
+    engine.accentProb = paramManager.getAccent();
+    PatternInput in = assemblePatternInput_();
+
+    ClockEngine phaseView;            // edge-only view; executeModeA reads sixteenthEdge
+    phaseView.sixteenthEdge = true;
+
+    StepResult result = engine.executeModeA(
+        phaseView,
+        in.restProb,
+        paramManager.getLegato(),
+        paramManager.getNoteValue(),
+        in,
+        phaseReverse ? -1 : +1        // within-draw reverse traversal
+    );
+    postExecute_(result);
+    updateLastStepIndex();
+    return result.stepped;
+}
 
 bool ModeController::executeModeA() {
     if (clock.sixteenthEdge) {
@@ -203,6 +230,7 @@ bool ModeController::executeMode(int modeId,
         case 1: return executeModeB(input.gate1Rise, gate1High);
         case 2: return executeModeC(input.cv2);
         case 3: return executeModeD(gate2High, input.cv2);
+        case 4: return executeModeE();
         default: return false;
     }
 }
