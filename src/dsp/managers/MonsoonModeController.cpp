@@ -85,33 +85,6 @@ void ModeController::postExecute_(const StepResult& result) {
 }
 
 // ──── Mode A: Clock-Driven Sequencing ───────────────────────────────────────
-
-// Mode E: phase-driven. The dispatch (Monsoon.cpp) only calls this when
-// phase.sixteenthEdge fired, so a 1/16 step is due now. Reuses the Mode A decision
-// path exactly (clock-style stepping) — the only difference is the edge SOURCE is
-// the phase ramp, not the clock. A synthesized clock-view carries sixteenthEdge=true
-// into engine.executeModeA, which reads nothing else from the clock. (Forward only;
-// reverse traversal is the next branch.)
-bool ModeController::executeModeE() {
-    engine.accentProb = paramManager.getAccent();
-    PatternInput in = assemblePatternInput_();
-
-    ClockEngine phaseView;            // edge-only view; executeModeA reads sixteenthEdge
-    phaseView.sixteenthEdge = true;
-
-    StepResult result = engine.executeModeA(
-        phaseView,
-        in.restProb,
-        paramManager.getLegato(),
-        paramManager.getNoteValue(),
-        in,
-        phaseReverse ? -1 : +1        // within-draw reverse traversal
-    );
-    postExecute_(result);
-    updateLastStepIndex();
-    return result.stepped;
-}
-
 bool ModeController::executeModeA() {
     if (clock.sixteenthEdge) {
         // Fetch current parameters
@@ -218,6 +191,34 @@ bool ModeController::executeModeD(bool gate2High,
     
     return result.stepped;
 }
+
+// Mode E: phase-driven. The dispatch (Monsoon.cpp) only calls this when
+// phase.sixteenthEdge fired, so a 1/16 step is due now. Reuses the Mode A decision
+// path exactly (clock-style stepping) — the only difference is the edge SOURCE is
+// the phase ramp, not the clock. A synthesized clock-view carries sixteenthEdge=true
+// into engine.executeModeA, which reads nothing else from the clock. 
+// The phase ramp is also used to set the direction (forward/reverse) for the within-draw traversal, 
+// which is passed to executeModeA as +1/-1. 
+bool ModeController::executeModeE() {
+    engine.accentProb = paramManager.getAccent();
+    PatternInput in = assemblePatternInput_();
+
+    ClockEngine phaseView;            // edge-only view; executeModeA reads sixteenthEdge
+    phaseView.sixteenthEdge = true;
+
+    StepResult result = engine.executeModeA(
+        phaseView,
+        in.restProb,
+        paramManager.getLegato(),
+        paramManager.getNoteValue(),
+        in,
+        phaseReverse ? -1 : +1        // within-draw reverse traversal
+    );
+    postExecute_(result);
+    updateLastStepIndex();
+    return result.stepped;
+}
+
 
 // ──── High-Level Dispatcher ─────────────────────────────────────────────────
 

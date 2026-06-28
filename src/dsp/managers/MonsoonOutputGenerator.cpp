@@ -103,51 +103,51 @@ void OutputGenerator::generateOutputs(SequencerEngine& engine,
     setGateWithMute_(outputs[ACCENT_OUTPUT], accentGateV, muted);
 }
 
-void OutputGenerator::setGateOutput(engine::Output& gateOut, float gateV, bool muted) {
-    setGateWithMute_(gateOut, gateV, muted);
-}
+// void OutputGenerator::setGateOutput(engine::Output& gateOut, float gateV, bool muted) {
+//     setGateWithMute_(gateOut, gateV, muted);
+// }
 
-void OutputGenerator::setTieGateOutput(engine::Output& tieGateOut, bool isTie) {
-    tieGateOut.setVoltage(isTie ? 10.f : 0.f);
-}
+// void OutputGenerator::setTieGateOutput(engine::Output& tieGateOut, bool isTie) {
+//     tieGateOut.setVoltage(isTie ? 10.f : 0.f);
+// }
 
-void OutputGenerator::setAccentGateOutput(engine::Output& accentGateOut, bool isAccented) {
-    accentGateOut.setVoltage(isAccented ? 10.f : 0.f);
-}
+// void OutputGenerator::setAccentGateOutput(engine::Output& accentGateOut, bool isAccented) {
+//     accentGateOut.setVoltage(isAccented ? 10.f : 0.f);
+// }
 
-void OutputGenerator::setPolyVoiceOutputs(engine::Output* outputs,
-                                          SequencerEngine& engine,
-                                          int numPolyVoices,
-                                          bool muted,
-                                          float sampleTime) {
-    if (!outputs) return;
+// void OutputGenerator::setPolyVoiceOutputs(engine::Output* outputs,
+//                                           SequencerEngine& engine,
+//                                           int numPolyVoices,
+//                                           bool muted,
+//                                           float sampleTime) {
+//     if (!outputs) return;
     
-    // (mono accent stays on the mono ACCENT_OUTPUT; poly voices now use their OWN accent)
+//     // (mono accent stays on the mono ACCENT_OUTPUT; poly voices now use their OWN accent)
     
-    // Output active voices
-    for (int i = 0; i < numPolyVoices && i < 7; ++i) {
-        float vg = engine.voices[i].gs.process(sampleTime);
+//     // Output active voices
+//     for (int i = 0; i < numPolyVoices && i < 7; ++i) {
+//         float vg = engine.voices[i].gs.process(sampleTime);
         
-        // Main voice gate
-        setGateWithMute_(outputs[i], vg, muted);
+//         // Main voice gate
+//         setGateWithMute_(outputs[i], vg, muted);
         
-        // Poly voice CV (pitch)
-        float pv = engine.voices[i].gs.currentPitchV;
-        if (i + 7 < 14) {  // Assume CV outputs follow gate outputs
-            outputs[i + 7].setVoltage(muted ? 0.f : pv);
-        }
+//         // Poly voice CV (pitch)
+//         float pv = engine.voices[i].gs.currentPitchV;
+//         if (i + 7 < 14) {  // Assume CV outputs follow gate outputs
+//             outputs[i + 7].setVoltage(muted ? 0.f : pv);
+//         }
         
-        // Poly accent: each voice fires its OWN accent (poly lane), gated by sounding.
-        float polyAccent = (engine.voices[i].accented && vg > 5.f) ? 10.f : 0.f;
-        if (i + 14 < 21) {  // Assume accent outputs follow CV outputs
-            setGateWithMute_(outputs[i + 14], polyAccent, muted);
-        }
-    }
+//         // Poly accent: each voice fires its OWN accent (poly lane), gated by sounding.
+//         float polyAccent = (engine.voices[i].accented && vg > 5.f) ? 10.f : 0.f;
+//         if (i + 14 < 21) {  // Assume accent outputs follow CV outputs
+//             setGateWithMute_(outputs[i + 14], polyAccent, muted);
+//         }
+//     }
     
-    // Zero unused voice outputs (beyond numPolyVoices)
-    for (int i = numPolyVoices; i < 7; ++i) {
-        outputs[i].setVoltage(0.f);
-        if (i + 7 < 14) outputs[i + 7].setVoltage(0.f);
-        if (i + 14 < 21) outputs[i + 14].setVoltage(0.f);
-    }
-}
+//     // Zero unused voice outputs (beyond numPolyVoices)
+//     for (int i = numPolyVoices; i < 7; ++i) {
+//         outputs[i].setVoltage(0.f);
+//         if (i + 7 < 14) outputs[i + 7].setVoltage(0.f);
+//         if (i + 14 < 21) outputs[i + 14].setVoltage(0.f);
+//     }
+// }

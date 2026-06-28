@@ -41,23 +41,23 @@ public:
                          bool muted,
                          float sampleTime);
     
-    /// Generate gate output specifically
-    void setGateOutput(rack::engine::Output& gateOut, float gateV, bool muted);
+    // /// Generate gate output specifically
+    // void setGateOutput(rack::engine::Output& gateOut, float gateV, bool muted);
     
-    /// Generate tie gate output based on mono decision
-    void setTieGateOutput(rack::engine::Output& tieGateOut,
-                          bool isTie);
+    // /// Generate tie gate output based on mono decision
+    // void setTieGateOutput(rack::engine::Output& tieGateOut,
+    //                       bool isTie);
     
-    /// Generate accent gate output
-    void setAccentGateOutput(rack::engine::Output& accentGateOut,
-                             bool isAccented);
+    // /// Generate accent gate output
+    // void setAccentGateOutput(rack::engine::Output& accentGateOut,
+    //                          bool isAccented);
     
-    /// Generate poly voice trigger outputs
-    void setPolyVoiceOutputs(rack::engine::Output* outputs,
-                             SequencerEngine& engine,
-                             int numPolyVoices,
-                             bool muted,
-                             float sampleTime);
+    // /// Generate poly voice trigger outputs
+    // void setPolyVoiceOutputs(rack::engine::Output* outputs,
+    //                          SequencerEngine& engine,
+    //                          int numPolyVoices,
+    //                          bool muted,
+    //                          float sampleTime);
 
 private:
     // Helper: Set individual gate output with mute masking

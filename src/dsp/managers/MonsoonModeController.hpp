@@ -11,7 +11,7 @@ struct InputState; // Forward declaration
 /**
  * ModeController
  * 
- * Encapsulates all mode-specific sequencing logic (Modes A, B, C, D).
+ * Encapsulates all mode-specific sequencing logic (Modes A, B, C, D, E).
  * 
  * Centralizes:
  *   1. Mode dispatch logic
@@ -44,12 +44,8 @@ public:
     /// Triggers on clock sixteenth edges
     /// Returns true if a new step was taken
     bool executeModeA();
-    bool executeModeE();   // Mode E: phase-ramp driven (forward; reverse next branch)
 
-    // Mode E playhead direction, set from the PhaseEngine each block before dispatch.
-    bool phaseReverse = false;
-    void setPhaseReverse(bool rev) { phaseReverse = rev; }
-    
+
     /// Execute Mode B: Gate-driven sequencing
     /// Triggers on GATE1 rising edge or continuous hold
     /// Returns true if a new step was taken
@@ -67,6 +63,12 @@ public:
     bool executeModeD(bool gate2High,
                       float cv2Voltage);
     
+    // Mode E: phase-ramp driven (forward; reverse next branch)
+    bool executeModeE();   
+    // Mode E playhead direction, set from the PhaseEngine each block before dispatch.
+    bool phaseReverse = false;
+    void setPhaseReverse(bool rev) { phaseReverse = rev; }
+                        
     // ──── High-Level Dispatcher ──────────────────────────────────────────────
     
     /// Execute the appropriate mode based on modeId (0–3)
