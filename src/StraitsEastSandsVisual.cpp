@@ -241,10 +241,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // mirrors Mono, inoperable). editorLane → engine lane for the ownership check.
         visualEditor->laneLockedFn = [this](int editorLane) -> bool {
             if (tab1MonoMirror()) return true;           // V1 owned by Mono → all lanes locked on East
-            if (onMonoTab()) return false;               // V1 editable (no Mono) → not locked
             if (editorLane < 0 || editorLane >= 4) return false;
             int engLane = dotModular::EDITOR_TO_ENGINE_LANE[editorLane];
-            return laneOwnedByMacro(engLane);            // delegated poly lane → locked
+            // V1 (no Mono) AND poly tabs: a lane delegated to Macro is inoperable on East.
+            // (On V1 the ownerDispId proxy reflects monoOwnerId, so laneOwnedByMacro is the
+            // right per-lane test for both. Previously V1 returned false unconditionally,
+            // leaving delegated V1 lanes editable.)
+            return laneOwnedByMacro(engLane);
         };
         // Right-click on a lane row opens the ownership context menu.
         visualEditor->onLaneRightClick = [this](int lane, rack::math::Vec pos) -> bool {
@@ -762,6 +765,16 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             }
         } else if (v1Editable()) {
             // V1 editable (no Mono, combo 3/7-without-Mono): East IS the V1 editor.
+            // Spread-follow: for lanes DELEGATED to Macro, the East V1 spread knob is
+            // locked (laneOwnedByMacro) and should DISPLAY Macro's global spread. Mirror
+            // macroBase[lane][3] into SPREAD_R/M/O/A (engine-indexed, contiguous) so the
+            // locked knob tracks Macro. (Owned lanes keep the user's East spread value.)
+            if (macroAttached()) {
+                if (auto* macroVis = getMonsoon()->expanderManager.cachedMacroSandsVisual)
+                    for (int lane = 0; lane < 4; ++lane)
+                        if (monoLaneOwnedByMacro(lane))
+                            module->params[SPREAD_R + lane].setValue(macroVis->macroBase[lane][3]);
+            }
             // CV depth for V1 lives in the mono slot (kMonoSlot); saveVoiceMacro only
             // writes poly slots, so mirror the atten display proxies into the mono slot
             // each frame (engine-lane indexed) — otherwise V1 CV depth would be 0.
