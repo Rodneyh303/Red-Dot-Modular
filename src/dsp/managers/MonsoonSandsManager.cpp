@@ -284,6 +284,30 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             engine.rhythmRot = engine.variationRot = engine.legatoRot =
             engine.accentRot = engine.melodyRot = engine.octaveRot = 0;
         }
+        if (hasEastV1 && !engine.locked) {
+            // Combo 3 (East owns V1, no Mono/Macro): apply East's V1 SPREAD to the mono
+            // final arrays — the Mono spread path (in the hasVisual block) doesn't run
+            // without Mono, so without this East's V1 spread knob had no effect on the
+            // displayed/played probabilities (LOR worked, spread didn't). East SPREAD_R/M/O/A
+            // are spread/engine-indexed (0=REST,1=MEL,2=OCT,3=ACC). nPoly = effPolyVoices.
+            using EID = StraitsEastVisualIds;
+            const float spR = eastV1->params[EID::SPREAD_R].getValue();
+            const float spM = eastV1->params[EID::SPREAD_M].getValue();
+            const float spO = eastV1->params[EID::SPREAD_O].getValue();
+            const float spA = eastV1->params[EID::SPREAD_A].getValue();
+            const int nPoly = effPolyVoices;
+            const redDot::SpreadInterp::Target mode = spreadInterpMono
+                ? redDot::SpreadInterp::MONO_DRAW : redDot::SpreadInterp::AVERAGE_POLY;
+            engine.pe.setSandsActive(true);
+            for (int i = 0; i < 16; ++i) {
+                engine.pe.rhythmRandom[i] = redDot::SpreadInterp::apply(engine.pe, mode, 0, i, nPoly, engine.pe.slewedRhythm[i], spR);
+                engine.pe.melodyRandom[i] = redDot::SpreadInterp::apply(engine.pe, mode, 1, i, nPoly, engine.pe.slewedMelody[i], spM);
+                engine.pe.octaveRandom[i] = redDot::SpreadInterp::apply(engine.pe, mode, 2, i, nPoly, engine.pe.slewedOctave[i], spO);
+                engine.pe.accentRandom[i] = redDot::SpreadInterp::apply(engine.pe, mode, 3, i, nPoly, engine.pe.slewedAccent[i], spA);
+                engine.pe.legatoRandom[i]    = engine.pe.slewedLegato[i];
+                engine.pe.variationRandom[i] = engine.pe.slewedVariation[i];
+            }
+        }
     }
 
     // ── Macro global LOR with CV (poly: per-lane, SAME for every voice) ────

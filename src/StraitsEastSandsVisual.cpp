@@ -762,6 +762,20 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 visualEditor->currentState.lanes[el].setDisplayLOR(cvLen, cvOff, cvRot);
                 visualEditor->setLanePlayStep(el, calcPlayhead(gs, cvLen, cvOff, cvRot));
             }
+            // Probabilities: V1 (mono) probabilities are display-only (drag edits the LOR
+            // window only), so show the SPREAD-APPLIED values the sequencer plays. The
+            // poly branch does this for selectedVoice>=1; V1 (==0) was excluded, so on
+            // East-standalone V1 the spread knob changed the engine but not the bars.
+            // resolver.laneProbabilityAtStep(1, lane, s) → masterLaneProbability (spread-applied).
+            {
+                dotModular::VoiceResolver resolver(monsoon->engine);
+                for (int lane = 0; lane < 4; ++lane) {
+                    int el = dotModular::ENGINE_LANE_TO_EDITOR[lane];
+                    for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
+                        visualEditor->currentState.lanes[el].probabilities[s] =
+                            resolver.laneProbabilityAtStep(currentVoice(), lane, s);
+                }
+            }
         } else if (selectedVoice >= 1) {
             const int pv = polyVoice();
             // l = engine lane (0=REST 1=MEL 2=OCT 3=ACC) → editor lane
