@@ -1,8 +1,9 @@
 # Sands Topology Resolver — consolidation plan
 
-Status: **plan, not actioned.** Step 1 (the single-writer strand ledger) is done on
-branch `feature/sands-strand-write-ledger`. This document plans steps 2+: collapsing the
-scattered ownership / lock / editable / write-guard predicates behind one authority.
+Status: **plan, decisions settled (section 5), not actioned.** Step 1 (the single-writer
+strand ledger) is done on branch `feature/sands-strand-write-ledger`. This document plans
+steps 2+: collapsing the scattered ownership / lock / editable / write-guard predicates
+behind one authority. The five design questions in section 5 are now decided.
 
 Companion docs: `SANDS_ARCHITECTURE_CONSOLIDATION.md` (East↔Macro *mixer semantics* — the
 why), this doc (the *decision-routing structure* — the how). They don't overlap.
@@ -164,6 +165,13 @@ Order, safest first:
   → `topo.owner(...)`. Delete the now-unused helpers.
 - `combineLOR`/`combineSpread` `ownerEast` → `topo.owner(v, lane) == EAST`.
 
+**Step 5b — Extend single-writer coverage to the poly arrays + spread (per decision 4).**
+- Add a `setPoly(role, voice, lane, item, value)` mirroring `setStrand`, with the ledger
+  extended to (voice, lane, item) for `polyLen`/`polyOff`/`polyRot` and the spread arrays.
+- Bring `combineLOR`/`combineSpread` (the main poly writers) + East's poly writes under it.
+- Same build-between-each discipline. This is where a poly-side clobber (if any latent one
+  exists) would surface.
+
 **Step 6 — Lint + lock it in.**
 - Add a CI/grep check: `cachedMacroSandsVisual|hasMacro|ownerDispId\(` must not appear
   outside `SandsTopology` construction. Document the rule at the top of each Sands file.
@@ -172,36 +180,55 @@ Order, safest first:
 
 ---
 
-## 5. Design decisions to settle BEFORE coding (open questions)
+## 5. Design decisions — SETTLED
 
-1. **Where does `owner` resolution put the index conversions?** Today four conventions
-   (editor / engine-spread / PE-buffer / mono-param) cause off-by-ones
-   (`SANDS_LANE_INDEX_AUDIT.md`). Proposal: `SandsTopology` speaks **editor lane only** at
-   its API; conversions are baked inside, like `monoMacroOwnsEngineLane` already does.
-   Callers never convert. Confirm this is the one convention we want at the boundary.
+1. **Index convention at the API: EDITOR LANE ONLY.** DECIDED. `SandsTopology` speaks
+   editor lane at every public method; all editor<->engine<->PE-buffer<->mono-param
+   conversions are baked *inside* the resolver (as `monoMacroOwnsEngineLane` already does).
+   Callers never convert — this kills the off-by-one family at the boundary
+   (`SANDS_LANE_INDEX_AUDIT.md`).
 
-2. **Construction cost / threading.** Built once per control block on the audio thread in
-   `Monsoon::process`, read by widgets on the UI thread. The widgets currently read params
-   live each frame. Either (a) widgets read their own cheap topology, or (b) the engine
-   publishes a snapshot the widgets read. (a) is simpler and matches today's per-widget
-   reads; (b) is truer to "one authority" but adds a snapshot to marshal across threads.
-   **Recommend (a) for v1**: a `SandsTopology` is cheap to build; each consumer builds its
-   own from the same inputs. The single-source guarantee is in the *code path* (one
-   function), not one *instance*. Revisit if profiling shows cost.
+2. **Per-consumer construction, must stay lightweight.** DECIDED. Each consumer builds its
+   own `SandsTopology` from the shared inputs (presence pointers + ownership params). No
+   shared instance marshalled across threads. The single-source guarantee lives in the
+   *one build function*, not one instance. Build cost is a presence check + a small
+   ownership-param read — trivial. HARD REQUIREMENT: keep it allocation-free and cheap; if
+   it ever grows heavy, revisit. (See rate note below for who builds when.)
 
-3. **Does `Config` enumerate ALL reachable combinations, or just the ones with distinct
-   behaviour?** Listing all prevents the "two configs match one guard" bug, but some
-   combos behave identically. Proposal: enumerate all reachable; collapse only in the
-   derivation functions, never in the guards.
+3. **`Config` enumerates ALL reachable combinations.** DECIDED. Even where two combos
+   behave identically today, list them separately — behaviour may need to diverge later,
+   and naming all of them is what makes "one guard matches two configs" impossible.
+   Collapse only inside the derivation functions, never in the guards.
 
-4. **Spread vs LOR**: the ledger currently covers mono strands (LOR). Ownership also
-   governs spread and the poly arrays. Decide whether `writesEngine` (and a future ledger)
-   extends to `polyLen`/`polyOff`/spread, or stays LOR-only for v1. (Lower priority — the
-   bugs were LOR/V1.)
+4. **`writesEngine` + the ledger EXTEND to the poly arrays.** DECIDED. Not LOR/V1 only:
+   ownership governs `polyLen`/`polyOff`/`polyRot` (per voice/lane) and spread too, so the
+   single-writer invariant should cover them. Practical sequencing: land LOR/V1 first
+   (steps 3–5), then extend the ledger + `writesEngine` to poly arrays + spread as step 5b
+   — same pattern, one writer per (voice, lane, item). The `combineLOR`/`combineSpread`
+   path in `MonsoonExpanderManager` is the main poly writer to bring under it.
 
-5. **Persistence / patch-load:** ownership params load from the patch; topology is rebuilt
-   each block so it naturally reflects loaded state. No migration needed, but confirm
-   `config` is correct on the first block after load (before the user touches anything).
+5. **Patch-load correctness: verify on first block.** DECIDED. Topology is rebuilt each
+   control block so it reflects loaded ownership params automatically; add an explicit
+   debug check that `config` + `owner(...)` are correct on the FIRST control block after
+   load, before any user interaction, so a wrong default can't masquerade as correct.
+
+### Rate / cadence — SETTLED: control rate (with UI-rate widget builds)
+
+The topology's inputs (expander presence, ownership params) NEVER change at audio rate —
+only on patch/unpatch or an owner-cell click. So it is built at **control rate**, not
+audio rate. Concretely:
+
+- **Managers** build/consume inside the existing control-rate gate in `Monsoon::process`:
+  `if (controlDivider.process())` (~1500 Hz; `controlDivider.setDivision(sampleRate/1500)`,
+  Monsoon.cpp:43/762). `beginStrandWriteBlock()` + `buildSandsTopology(...)` go at the TOP
+  of that block, before `processDNA` + `sync` (Monsoon.cpp:784/787).
+- **Widgets** (`laneLockedFn`, `laneDelegated`, lock/dim lambdas) run on the UI thread at
+  frame rate (~60 Hz). With per-consumer building (decision 2), each widget builds its own
+  lightweight topology in `step()`/draw from the same inputs. 60 Hz x a few param reads is
+  negligible.
+
+Same code path, two cadences, no cross-thread snapshot to marshal. Audio-rate construction
+would be pure waste — explicitly rejected.
 
 ---
 
