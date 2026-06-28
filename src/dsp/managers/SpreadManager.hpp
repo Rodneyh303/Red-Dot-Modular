@@ -55,6 +55,12 @@ struct SpreadManager {
   InterpolationTarget target = AVERAGE_POLY;
   int numVoices = 7;  // 7 for East, 8 for West, 1 for Mono
   int startVoiceIdx = 0;  // 0 for East (voices 2-8), 8 for West (voices 9-16)
+  // True when this manager represents the MONO MASTER strand (V1) display — its view
+  // is always voice 1, so `original` must be the MONO draw regardless of how many poly
+  // voices exist for the AVERAGE_POLY ensemble. Without this, a mono manager with
+  // numVoices>1 (e.g. Mono widget defaulting to 7) interpolated V1 from a POLY draw,
+  // breaking the MONO_DRAW self-target no-op (positive V1 spread wrongly moved V1).
+  bool monoContext = false;
   
   // Spread values: [voice][lane]
   // For macro: all voices use same spread (but we store separately for flexibility)
@@ -293,7 +299,11 @@ struct SpreadManager {
     // the poly strand; mono-draw mode uses the mono strand as original only when
     // this IS the mono context (numVoices==1). Match the sequencer: poly voices
     // interpolate from their own slewed poly draw.
-    float original = (numVoices <= 1)
+    // The voice's own pre-spread draw. The MONO MASTER view (monoContext) always uses
+    // the mono draw — even with poly voices present for the average — so MONO_DRAW mode
+    // is a true self-target (positive no-op, negative invert). Poly per-voice managers
+    // interpolate from their own slewed poly draw.
+    float original = (monoContext || numVoices <= 1)
         ? redDot::SpreadInterp::monoSlewed(*patternEngine, lane, step)
         : redDot::SpreadInterp::polySlewed(*patternEngine, lane, startVoiceIdx + voiceIdx, step);
     return redDot::SpreadInterp::apply(*patternEngine, m, lane, step, nPoly,
