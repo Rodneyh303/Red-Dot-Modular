@@ -98,6 +98,14 @@ struct SpreadManager {
   void setInterpolationTarget(InterpolationTarget t) {
     target = t;
   }
+
+  // The mode actually used: pulled from the engine (single source of truth, mirrored
+  // from the Monsoon menu each frame) when available, else the locally-set `target`
+  // fallback (e.g. unit tests / no engine). Replaces per-widget pushing.
+  InterpolationTarget effectiveTarget() const {
+    if (patternEngine) return patternEngine->spreadInterpMono ? MONO_DRAW : AVERAGE_POLY;
+    return target;
+  }
   
   void setSpread(int voiceIdx, int lane, float value) {
     if (voiceIdx >= 0 && voiceIdx < numVoices && lane >= 0 && lane < 3) {
@@ -135,7 +143,7 @@ struct SpreadManager {
   float getInterpolationTarget(int voiceIdx, int lane, int step) const {
     if (!patternEngine) return 0.5f;
     
-    switch (target) {
+    switch (effectiveTarget()) {
       case AVERAGE_POLY:
         return calculateAveragePolyValue(lane, step);
       
@@ -293,7 +301,7 @@ struct SpreadManager {
     // averaged the post-spread *Random output and excluded mono — a different
     // computation from the sequencer.)
     const int nPoly = std::min(getActiveVoiceCount(), numVoices);
-    const redDot::SpreadInterp::Target m = (target == MONO_DRAW)
+    const redDot::SpreadInterp::Target m = (effectiveTarget() == MONO_DRAW)
         ? redDot::SpreadInterp::MONO_DRAW : redDot::SpreadInterp::AVERAGE_POLY;
     // The voice's own pre-spread draw. For a per-voice manager voiceIdx maps to
     // the poly strand; mono-draw mode uses the mono strand as original only when

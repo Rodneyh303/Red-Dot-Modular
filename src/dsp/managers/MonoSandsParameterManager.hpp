@@ -82,15 +82,13 @@ struct MonoSandsParameterManager {
     float spreadValue(int lane, int step) const {
         if (isSpreadLane(lane)) {
             float original = monoDraw(lane, step);
-            // Target depends on mode: MONO_DRAW = the lane's OWN draw (self-target →
-            // positive no-op, negative inverts toward 1-original); AVERAGE_POLY = the
-            // poly-incl-mono average. Delegate to SpreadInterp::interpolate so the
-            // display matches the engine exactly (single source of truth) — previously
-            // MONO_DRAW short-circuited 'return original', which also killed the negative
-            // inversion the engine applies.
-            float targetValue = (target == SpreadManager::MONO_DRAW)
-                ? original
-                : polyAverageInclMono(lane, step);
+            // Target depends on mode (pulled from the engine — single source of truth,
+            // mirrored from the Monsoon menu): MONO_DRAW = the lane's OWN draw (self-target
+            // → positive no-op, negative inverts toward 1-original); AVERAGE_POLY = the
+            // poly-incl-mono average. Delegate to SpreadInterp::interpolate so the display
+            // matches the engine exactly.
+            bool monoMode = patternEngine && patternEngine->spreadInterpMono;
+            float targetValue = monoMode ? original : polyAverageInclMono(lane, step);
             return redDot::SpreadInterp::interpolate(original, targetValue, laneSpread[lane]);
         }
         return monoDraw(lane, step);

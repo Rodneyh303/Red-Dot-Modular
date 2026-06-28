@@ -137,6 +137,13 @@ struct PatternEngine {
     // Set true when any Sands visual expander owns the spread→final stage this
     // cycle. When false, slew copies slewedDraw → final.
     bool  sandsActive = false;
+    // Single source of truth for the spread interpolation TARGET mode (Monsoon context
+    // menu: false = AVERAGE_POLY, true = MONO_DRAW / voice-1). Mirrored here each frame by
+    // Monsoon::process so BOTH the playback path and every display SpreadManager read one
+    // value — previously each widget pushed the menu setting into its own spreadMgr, and a
+    // widget that forgot (the Mono one) silently showed the wrong mode.
+    bool  spreadInterpMono = false;
+    void setSpreadInterpMono(bool m) { spreadInterpMono = m; }
     // Active poly voice count mirrored from SequencerEngine (for Sands display
     // ensemble sizing — the audio path uses SequencerEngine::numPolyVoices).
     int   numPolyVoicesHint = 0;
