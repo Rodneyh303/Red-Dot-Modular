@@ -292,4 +292,66 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
         //     }
         // }
     }
+    else if (cachedMacroSandsVisual && polyBaseActive) {
+        // ── MACRO-ONLY poly path (no East visual) ────────────────────────────
+        // When Macro is the sole Sands visual editor, Macro OWNS every lane, so its
+        // GLOBAL per-lane values drive all voices (there are no per-voice East params
+        // and no ownership split). The East-gated block above is the ONLY other writer
+        // of engine.polyLen/Off/Rot and the spread-applied polyRhythmRandom — so without
+        // this, Macro-only left polyLen at defaults and polyRhythmRandom un-spread
+        // (LOR only appeared to work because the WIDGET draws its window from Macro's own
+        // params; the engine never saw it). macroBase/macroSendDelta are published by
+        // MonsoonSandsManager::processDNA (macroDrivesOutput is true here).
+        using namespace StraitsMacroVisualIds;
+        auto* macroVis = cachedMacroSandsVisual;
+        const redDot::SpreadInterp::Target mode = spreadInterpMono
+            ? redDot::SpreadInterp::MONO_DRAW : redDot::SpreadInterp::AVERAGE_POLY;
+        const int nPoly = effPolyVoices;
+        if (!engine.locked) {
+            // V1 (mono final arrays + mono strand LOR): Macro owns V1 too when it is the
+            // sole visual. The hasMonoVisual block (which normally does this) is skipped
+            // with no Mono editor, so apply Macro's global LOR/spread to the mono strand
+            // here. (engine strand order: REST/MEL/OCT/ACC = macroBase lanes 0/1/2/3.)
+            {
+                const float spR = math::clamp(macroVis->macroBase[PL::PL_REST][3]   + macroVis->macroSendDelta[PL::PL_REST][3],   -1.f, 1.f);
+                const float spM = math::clamp(macroVis->macroBase[PL::PL_MELODY][3] + macroVis->macroSendDelta[PL::PL_MELODY][3], -1.f, 1.f);
+                const float spO = math::clamp(macroVis->macroBase[PL::PL_OCTAVE][3] + macroVis->macroSendDelta[PL::PL_OCTAVE][3], -1.f, 1.f);
+                const float spA = math::clamp(macroVis->macroBase[PL::PL_ACCENT][3] + macroVis->macroSendDelta[PL::PL_ACCENT][3], -1.f, 1.f);
+                for (int j = 0; j < 16; ++j) {
+                    engine.pe.rhythmRandom[j] = redDot::SpreadInterp::apply(engine.pe, mode, PL::PL_REST,   j, nPoly, engine.pe.slewedRhythm[j], spR);
+                    engine.pe.melodyRandom[j] = redDot::SpreadInterp::apply(engine.pe, mode, PL::PL_MELODY, j, nPoly, engine.pe.slewedMelody[j], spM);
+                    engine.pe.octaveRandom[j] = redDot::SpreadInterp::apply(engine.pe, mode, PL::PL_OCTAVE, j, nPoly, engine.pe.slewedOctave[j], spO);
+                    engine.pe.accentRandom[j] = redDot::SpreadInterp::apply(engine.pe, mode, PL::PL_ACCENT, j, nPoly, engine.pe.slewedAccent[j], spA);
+                }
+                // Mono strand LOR from Macro globals (REST/MEL/OCT/ACC strands).
+                static const int STRND[4] = { dotModular::STRAND_RHYTHM, dotModular::STRAND_MELODY,
+                                              dotModular::STRAND_OCTAVE, dotModular::STRAND_ACCENT };
+                for (int lane = 0; lane < 4; ++lane) {
+                    engine.strandLenRef(STRND[lane]) = (int)math::clamp(std::round(macroVis->macroBase[lane][0]), 1.f, 16.f);
+                    engine.strandOffRef(STRND[lane]) = ((int)std::round(macroVis->macroBase[lane][1]) % 16 + 16) % 16;
+                    engine.strandRotRef(STRND[lane]) = ((int)std::round(macroVis->macroBase[lane][2]) % 16 + 16) % 16;
+                }
+            }
+            for (int v = 0; v < effPolyVoices; ++v) {
+                // Global LOR per lane (Macro owns → no per-voice/ownership branch).
+                // macroBase[lane][item]: item 0=LEN 1=OFF 2=ROT, engine-lane indexed.
+                for (int lane = 0; lane < PL::PL_LANES; ++lane) {
+                    engine.polyLen[v][lane] = (int)math::clamp(std::round(macroVis->macroBase[lane][0]), 1.f, 16.f);
+                    engine.polyOff[v][lane] = ((int)std::round(macroVis->macroBase[lane][1]) % 16 + 16) % 16;
+                    engine.polyRot[v][lane] = ((int)std::round(macroVis->macroBase[lane][2]) % 16 + 16) % 16;
+                }
+                // Global spread per lane → spread-applied final arrays for this voice.
+                const float spR = math::clamp(macroVis->macroBase[PL::PL_REST][3]   + macroVis->macroSendDelta[PL::PL_REST][3],   -1.f, 1.f);
+                const float spM = math::clamp(macroVis->macroBase[PL::PL_MELODY][3] + macroVis->macroSendDelta[PL::PL_MELODY][3], -1.f, 1.f);
+                const float spO = math::clamp(macroVis->macroBase[PL::PL_OCTAVE][3] + macroVis->macroSendDelta[PL::PL_OCTAVE][3], -1.f, 1.f);
+                const float spA = math::clamp(macroVis->macroBase[PL::PL_ACCENT][3] + macroVis->macroSendDelta[PL::PL_ACCENT][3], -1.f, 1.f);
+                for (int j = 0; j < 16; ++j) {
+                    engine.pe.polyRhythmRandom[v][j] = redDot::SpreadInterp::apply(engine.pe, mode, PL::PL_REST,   j, nPoly, engine.pe.slewedPolyRhythm[v][j], spR);
+                    engine.pe.polyMelodyRandom[v][j] = redDot::SpreadInterp::apply(engine.pe, mode, PL::PL_MELODY, j, nPoly, engine.pe.slewedPolyMelody[v][j], spM);
+                    engine.pe.polyOctaveRandom[v][j] = redDot::SpreadInterp::apply(engine.pe, mode, PL::PL_OCTAVE, j, nPoly, engine.pe.slewedPolyOctave[v][j], spO);
+                    engine.pe.polyAccentRandom[v][j] = redDot::SpreadInterp::apply(engine.pe, mode, PL::PL_ACCENT, j, nPoly, engine.pe.slewedPolyAccent[v][j], spA);
+                }
+            }
+        }
+    }
 }
