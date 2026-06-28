@@ -200,16 +200,15 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
             }
             
             // ACCENT lane (3): per-voice base L/O/R from POLY_ACCENT_VOICE_* (default identity:
-            // LEN 16). Accent uses its OWN base params (POLY_ACCENT_VOICE_*) directly + a
-            // plain spread interp from POLY_ACCENT_INTERP. combineLOR/combineSpread integration
-            // (owner/send/macroBase v*4-lane routing) is the Stage 6b engine wiring — pending
-            // a build to verify. The banks are now sized for 4 lanes (v*4 stride) so no
-            // out-of-bounds; the accent lane just doesn't read from them yet.
+            // LEN 16). Now routed through combineLOR like REST/MEL/OCT so accent gets the owner
+            // switch + Macro base + per-voice SEND blend (previously it read its base params
+            // directly and bypassed combineLOR, so the accent send did nothing while the other
+            // three lanes worked).
             {
                 int accentBase = MonsoonIds::POLY_ACCENT_VOICE_1_LEN + v * 3;
-                engine.polyLen[v][PL::PL_ACCENT] = (int)math::clamp(eastLOR->params[accentBase].getValue(),     1.f, 16.f);
-                engine.polyOff[v][PL::PL_ACCENT] = (int)math::clamp(eastLOR->params[accentBase + 1].getValue(), 0.f, 15.f);
-                engine.polyRot[v][PL::PL_ACCENT] = (int)math::clamp(eastLOR->params[accentBase + 2].getValue(), 0.f, 15.f);
+                engine.polyLen[v][PL::PL_ACCENT] = combineLOR(PL::PL_ACCENT, 0, accentBase,     PL::PL_ACCENT, 0, 1.f, 16.f);
+                engine.polyOff[v][PL::PL_ACCENT] = combineLOR(PL::PL_ACCENT, 1, accentBase + 1, PL::PL_ACCENT, 1, 0.f, 15.f);
+                engine.polyRot[v][PL::PL_ACCENT] = combineLOR(PL::PL_ACCENT, 2, accentBase + 2, PL::PL_ACCENT, 2, 0.f, 15.f);
                 float accentInterp = math::clamp(eastInterp->params[MonsoonIds::POLY_ACCENT_INTERP_1 + v].getValue(), -1.f, 1.f);
                 // Accent spread CV (cvId(PL_ACCENT,3)) — was missing, so accent spread
                 // only responded to the manual knob, never to modulation. Mirror the
