@@ -72,7 +72,7 @@ namespace SandsMonoVisualIds {
     // gates lane N" off-by-one (found 5×). This helper bakes the conversion in: given a
     // Mono module and an ENGINE lane, returns true iff Macro owns that lane (delegated).
     // Returns false if mod is null. (param <= 0.5 == Macro owns; > 0.5 == Mono/local owns.)
-    inline bool monoMacroOwnsEngineLane(const rack::Module* mod, int engineLane) {
+    inline bool monoMacroOwnsEngineLane(rack::Module* mod, int engineLane) {
         if (!mod || engineLane < 0 || engineLane >= 4) return false;
         int editorLane = dotModular::ENGINE_LANE_TO_EDITOR[engineLane];
         return !(mod->params[ownerDispId(editorLane)].getValue() > 0.5f);

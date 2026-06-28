@@ -134,7 +134,7 @@ namespace StraitsMacroVisualIds {
     //                      gating on it raced the manual-knob turn → red residue arc.)
     // Caller resolves `delegated` (owner storage differs per module) and `sendSlot`
     // (mono slot 0 for V1/Mono; the voice slot for poly). macro may be null → false.
-    inline bool macroSpreadModulatesLane(const rack::Module* macro, int engineLane,
+    inline bool macroSpreadModulatesLane(rack::Module* macro, int engineLane,
                                          bool delegated, int sendSlot) {
         if (!macro || engineLane < 0 || engineLane >= 4) return false;
         bool sprCvLive = macro->inputs[cvId(engineLane, 3)].isConnected();
@@ -175,8 +175,8 @@ struct StraitsSandsMacroVisual : Module {
             configParam(tapSprId(lane), 0.f,1.f,1.f, std::string(laneNames[lane])+" spread send tap (PRE-POST)");
             for (int c=0; c<4; ++c) {
                 std::string nm = std::string(laneNames[lane])+" "+paramNames[c];
-                configParam(attenId(lane,c), -1.f,1.f,0.f, nm+" depth");
-                configInput(cvId(lane,c), nm+" CV");
+                configParam(StraitsMacroVisualIds::attenId(lane,c), -1.f,1.f,0.f, nm+" depth");
+                configInput(StraitsMacroVisualIds::cvId(lane,c), nm+" CV"); //check sandsmono visual version 3 lanes only?
             }
         }
 
