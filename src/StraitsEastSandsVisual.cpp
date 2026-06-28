@@ -275,13 +275,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 bindParam<DimmableTrimpot>("param_" + std::to_string(attenDispId(r,c)), attenDispId(r,c));
         }
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_R), SPREAD_R,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(0); }; k->lockWhen = [this](){ return laneOwnedByMacro(0) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 0}); }));
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(0) && !tab1MonoMirror(); }; k->lockWhen = [this](){ return laneOwnedByMacro(0) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 0}); }));
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_M), SPREAD_M,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(1); }; k->lockWhen = [this](){ return laneOwnedByMacro(1) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 1}); }));
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(1) && !tab1MonoMirror(); }; k->lockWhen = [this](){ return laneOwnedByMacro(1) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 1}); }));
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_O), SPREAD_O,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(2); }; k->lockWhen = [this](){ return laneOwnedByMacro(2) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 2}); }));
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(2) && !tab1MonoMirror(); }; k->lockWhen = [this](){ return laneOwnedByMacro(2) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 2}); }));
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_A), SPREAD_A,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(3); }; k->lockWhen = [this](){ return laneOwnedByMacro(3) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 3}); }));
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(3) && !tab1MonoMirror(); }; k->lockWhen = [this](){ return laneOwnedByMacro(3) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 3}); }));
 
         // Macro/East blend controls (bound to the display proxies; copied to/from
         // the per-voice MACRO params on voice switch + each frame). Owner = a
