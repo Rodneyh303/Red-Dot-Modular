@@ -327,6 +327,16 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             visualEditor->setLanePlayStep(l,
                 calcPlayhead(globalStep, effLen[l], effOff[l], effRot[l]));
         }
+        {  // DEBUG PROBE (remove): lane0, same instant — param vs engine strand vs what disp got
+            static int dbgD = -1;
+            int strand0 = dotModular::MONO_LANE_TO_STRAND[0];
+            int pv = (int)std::round(mod->params[lenId(0)].getValue());
+            int key = pv*1000 + effLen[0]*10 + (strand0 & 7);
+            if (dbgD != key) { dbgD = key;
+                WARN("[DispDbg] lane0 param.len=%d strand0=%d eng.strandLen=%d effLen0=%d -> set disp.len=%d",
+                     pv, strand0, eng.strandLen(strand0), effLen[0],
+                     visualEditor->currentState.lanes[0].dispLength); }
+        }
     }
 };
 
