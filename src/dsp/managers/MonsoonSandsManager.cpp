@@ -62,13 +62,17 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         return clamp(base + cv * att * (hi - lo), lo, hi);
     };
     // Macro SPREAD CV: bipolar, unit-scaled (cv*att over ±1) to match Mono's
-    // applyMonoSprCV. NOT routed through applyMacroCV because that scales by
-    // (hi-lo), which for a ±1 range would double the CV. param index 3 = SPR.
+    // applyMonoSprCV. The spread param is BIPOLAR ±1 → span (hi-lo) = 2. To make a
+    // full-depth CV reach the full range from a centered base, multiply by the span
+    // (×2), same as the LOR path's ×(hi-lo). (The earlier code dropped this ×2 on the
+    // mistaken belief it would "double" the CV — that left ±5V reaching only HALF the
+    // ±1 range. East V1 spread already used ×2 correctly; this aligns Mono/Macro.)
+    // param index 3 = SPR.
     auto applyMacroSprCV = [&](float base, int lane) -> float {
         if (!macroVis || !macroVis->inputs[Macro::macroCvId(lane,3)].isConnected()) return base;
         float cv  = macroVis->inputs[Macro::macroCvId(lane,3)].getVoltage() / 10.f;
         float att = macroVis->params[Macro::macroAttenId(lane,3)].getValue();
-        return clamp(base + cv * att, -1.f, 1.f);
+        return clamp(base + cv * att * 2.f, -1.f, 1.f);   // ×2 = ±1 span
     };
 
     // ── Helper: apply mono spread CV (REST/MEL/OCT only, own jack/atten) ──
@@ -76,11 +80,10 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         if (!monoVis || !monoVis->inputs[Mono::sprCvId(sprLane)].isConnected()) return base;
         float cv  = monoVis->inputs[Mono::sprCvId(sprLane)].getVoltage() / 10.f;
         float att = monoVis->params[Mono::sprAttenId(sprLane)].getValue();
-        // Spread is BIPOLAR (param range -1..1; negative inverts the interp
-        // target). Clamp to [-1,1], not [0,1] — the old [0,1] clamp floored any
-        // negative spread to 0, so negative modulation only worked when the base
-        // happened to be positive ([C]).
-        return clamp(base + cv * att, -1.f, 1.f);
+        // Spread is BIPOLAR (param range -1..1; negative inverts the interp target).
+        // ×2 spans the full ±1 range at full depth; clamp to [-1,1] (not [0,1], which
+        // would floor negative spread to 0).
+        return clamp(base + cv * att * 2.f, -1.f, 1.f);   // ×2 = ±1 span
     };
 
     // Spread interpolation is now centralised in redDot::SpreadInterp (see
