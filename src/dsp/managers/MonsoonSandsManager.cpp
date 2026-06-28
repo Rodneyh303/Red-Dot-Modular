@@ -430,6 +430,24 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                     engine.pe.polyAccentRandom[v][i] = redDot::SpreadInterp::apply(engine.pe, mode, 3, i, nPoly, engine.pe.slewedPolyAccent[v][i], spv[3]);
                 }
             }
+            // ===== TEMP DEBUG v2 (remove after diagnosis) =================
+            // FINAL write (overrides the math above): force ALL bars (V1 + every poly
+            // voice) flat to (restSpread+1)/2. Turn the REST spread knob:
+            //  • ANY page's bars track the knob → manager write reaches the display; the
+            //    real spread MATH or its inputs (slewed draws / target) is the problem.
+            //  • NOTHING moves on ANY page → the *Random write is clobbered before the
+            //    display reads it (slew/recompute path), independent of math.
+            {
+                float dbg = rack::math::clamp((macroVis->params[Macro::sprId(0)].getValue() + 1.f) * 0.5f, 0.f, 1.f);
+                for (int i = 0; i < 16; ++i) {
+                    engine.pe.rhythmRandom[i] = engine.pe.melodyRandom[i] =
+                        engine.pe.octaveRandom[i] = engine.pe.accentRandom[i] = dbg;
+                    for (int v = 0; v < 15; ++v)
+                        engine.pe.polyRhythmRandom[v][i] = engine.pe.polyMelodyRandom[v][i] =
+                            engine.pe.polyOctaveRandom[v][i] = engine.pe.polyAccentRandom[v][i] = dbg;
+                }
+            }
+            // ===== END TEMP DEBUG v2 =====================================
         }
     }
 
