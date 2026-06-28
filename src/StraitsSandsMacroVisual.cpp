@@ -335,6 +335,20 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                         peRef.finalRandomByStrand(strand, s);
             }
         }
+        // ===== TEMP DEBUG v3 (remove after diagnosis) =====================
+        // Force displayed probabilities DIRECTLY here in the widget from the REST spread
+        // knob, bypassing the engine arrays. Turn REST spread:
+        //  • bars track it → display render path works; the ENGINE write is being
+        //    clobbered upstream.
+        //  • bars don't move → the render doesn't read currentState.lanes[].probabilities[]
+        //    here (reads elsewhere), so engine writes are moot.
+        {
+            float dbg = rack::math::clamp((mod->params[StraitsMacroVisualIds::sprId(0)].getValue() + 1.f) * 0.5f, 0.f, 1.f);
+            for (int el = 0; el < 6; ++el)
+                for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
+                    visualEditor->currentState.lanes[el].probabilities[s] = dbg;
+        }
+        // ===== END TEMP DEBUG v3 ==========================================
 
         // Surface Macro's OWN CV-applied L/O/R to the display window. Previously
         // this read the engine output (eng.polyLen[0] etc.), but when East owns a
