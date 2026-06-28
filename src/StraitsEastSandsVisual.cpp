@@ -187,15 +187,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     // to avoid the manual-turn red-residue race).
                     if (lane < 0 || lane >= 4) return false;
                     if (mod->inputs[cvId(lane,3)].isConnected()) return true;
-                    if (auto* macroVis = mon->expanderManager.cachedMacroSandsVisual) {
-                        bool macroSprCv = macroVis->inputs[StraitsMacroVisualIds::macroCvId(lane, 3)].isConnected();
-                        bool delegated  = !(mod->params[ownerDispId(lane)].getValue() > 0.5f);
-                        if (delegated) return macroSprCv;
-                        float send = macroVis->params[StraitsMacroVisualIds::sendId(
-                            dotModular::VoiceResolver::kMonoSlot, lane, 3)].getValue();
-                        return std::fabs(send) > 1e-4f && macroSprCv;
-                    }
-                    return false;
+                    auto* macroVis = mon->expanderManager.cachedMacroSandsVisual;
+                    // East's ownerDispId is engine-ordered → no conversion. delegated =
+                    // Macro owns this V1 lane. Helper covers delegated (CV live) + owned
+                    // (mono-slot send + CV live). sendSlot = kMonoSlot (V1).
+                    bool delegated = macroVis && !(mod->params[ownerDispId(lane)].getValue() > 0.5f);
+                    return StraitsMacroVisualIds::macroSpreadModulatesLane(
+                        macroVis, lane, delegated, dotModular::VoiceResolver::kMonoSlot);
                 }
                 if (v >= 15) return false;
                 // Gate on a REAL modulation source (not a transient set-vs-effective
@@ -208,16 +206,16 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 bool cvConnected = mod->inputs[cvId(lane, 3)].isConnected();
                 bool macroBlend = false;
                 if (auto* macroVis = mon->expanderManager.cachedMacroSandsVisual) {
-                    // The Macro blend only DYNAMICALLY modulates spread when Macro's own
-                    // spread CV jack is connected (else macroCVDelta[lane][3] is 0 — a
-                    // static, zero contribution). Gating on send≠0 alone left the arc
-                    // "active" with a static blend, so a manual spread turn raced the
-                    // live param vs the control-rate effective → red flash. Require:
-                    // East owns the lane, send is non-zero, AND Macro spread CV is live.
+                    // East-owned lane receiving Macro's per-voice SEND. Helper consolidates
+                    // the "non-zero send AND Macro spread CV live" test (static blend
+                    // excluded — avoids the manual-turn red-residue race). Pass
+                    // delegated=false so this stays the OWNED-blend case exactly as before;
+                    // sendSlot = v (poly voice). (Delegated poly lanes show via getModNorm/
+                    // polySpreadEffective, unchanged.)
                     bool eastOwns = mod->params[ownerId(v, lane)].getValue() > 0.5f;
-                    float send = macroVis->params[StraitsMacroVisualIds::sendId(v, lane, 3)].getValue();
-                    bool macroSprCv = macroVis->inputs[StraitsMacroVisualIds::macroCvId(lane, 3)].isConnected();
-                    macroBlend = eastOwns && std::fabs(send) > 1e-4f && macroSprCv;
+                    if (eastOwns)
+                        macroBlend = StraitsMacroVisualIds::macroSpreadModulatesLane(
+                            macroVis, lane, /*delegated=*/false, /*sendSlot=*/v);
                 }
                 return cvConnected || macroBlend;
             };
