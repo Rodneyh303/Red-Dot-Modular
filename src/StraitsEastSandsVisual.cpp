@@ -142,20 +142,33 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 if (!mod) return 0.5f;
                 int v = polyVoice();
                 if (v < 0) {
-                    // V1 / mono tab (P6, combo 7): MOD = the spread knob value (Mono's,
-                    // mirrored) + East's own incoming V1 spread CV on this lane. Absolute
-                    // (not a centre deflection) so the arc reads as the total entering
-                    // East. lane = spread index 0=REST,1=MEL,2=OCT,3=ACC; CV jack cvId(lane,3).
+                    // V1 / mono tab: MOD = the EFFECTIVE V1 spread on this lane, matching
+                    // the manager's sprForLane: delegated → Macro base+CVdelta; owned →
+                    // East knob + East V1 spread CV + Macro send blend. lane = spread index
+                    // 0=REST,1=MEL,2=OCT,3=ACC; CV jack cvId(lane,3).
                     if (lane < 0 || lane >= 4) return 0.5f;
-                    int pid = (lane==0) ? (int)SPREAD_R : (lane==1) ? (int)SPREAD_M
-                            : (lane==2) ? (int)SPREAD_O : (int)SPREAD_A;
-                    float base = mod->params[pid].getValue();   // bipolar -1..1 (Mono's spread)
-                    if (mod->inputs[cvId(lane,3)].isConnected()) {
-                        float att = mod->params[attenId(dotModular::VoiceResolver::kMonoSlot, lane, 3)].getValue();
-                        float cv  = mod->inputs[cvId(lane,3)].getVoltage(0) / 10.f;
-                        base = base + cv * att * 2.f;
+                    Monsoon* mon = findMonsoonEitherSide(mod);
+                    auto* macroVis = mon ? mon->expanderManager.cachedMacroSandsVisual : nullptr;
+                    bool delegated = macroVis && !(mod->params[ownerDispId(lane)].getValue() > 0.5f);
+                    float sp;
+                    if (delegated) {
+                        sp = macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3];
+                    } else {
+                        int pid = (lane==0) ? (int)SPREAD_R : (lane==1) ? (int)SPREAD_M
+                                : (lane==2) ? (int)SPREAD_O : (int)SPREAD_A;
+                        sp = mod->params[pid].getValue();   // bipolar -1..1
+                        if (mod->inputs[cvId(lane,3)].isConnected()) {
+                            float att = mod->params[attenId(dotModular::VoiceResolver::kMonoSlot, lane, 3)].getValue();
+                            float cv  = mod->inputs[cvId(lane,3)].getVoltage(0) / 10.f;
+                            sp += cv * att * 2.f;
+                        }
+                        if (macroVis) {
+                            float send = macroVis->params[StraitsMacroVisualIds::sendId(
+                                dotModular::VoiceResolver::kMonoSlot, lane, 3)].getValue();
+                            sp += macroVis->macroSendDelta[lane][3] * send;
+                        }
                     }
-                    return rack::math::clamp((rack::math::clamp(base,-1.f,1.f) + 1.f) * 0.5f, 0.f, 1.f);
+                    return rack::math::clamp((rack::math::clamp(sp,-1.f,1.f) + 1.f) * 0.5f, 0.f, 1.f);
                 }
                 if (v >= 15) return 0.5f;
                 // polySpreadEffective is bipolar -1..1 → map to 0..1.
@@ -167,10 +180,22 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 if (!mon || !mon->modVizEast) return false;
                 int v = polyVoice();
                 if (v < 0) {
-                    // V1 / mono tab (P6): active when East's own V1 spread CV jack is
-                    // connected on this lane (the mod East contributes to V1). Incl accent.
+                    // V1 / mono tab: active when REAL modulation enters V1's spread on this
+                    // lane — East's own V1 spread CV, OR Macro modulation: delegated lane
+                    // with Macro spread CV live, OR owned lane with a non-zero send AND
+                    // Macro spread CV live (matches poly macroBlend; static blend excluded
+                    // to avoid the manual-turn red-residue race).
                     if (lane < 0 || lane >= 4) return false;
-                    return mod->inputs[cvId(lane,3)].isConnected();
+                    if (mod->inputs[cvId(lane,3)].isConnected()) return true;
+                    if (auto* macroVis = mon->expanderManager.cachedMacroSandsVisual) {
+                        bool macroSprCv = macroVis->inputs[StraitsMacroVisualIds::macroCvId(lane, 3)].isConnected();
+                        bool delegated  = !(mod->params[ownerDispId(lane)].getValue() > 0.5f);
+                        if (delegated) return macroSprCv;
+                        float send = macroVis->params[StraitsMacroVisualIds::sendId(
+                            dotModular::VoiceResolver::kMonoSlot, lane, 3)].getValue();
+                        return std::fabs(send) > 1e-4f && macroSprCv;
+                    }
+                    return false;
                 }
                 if (v >= 15) return false;
                 // Gate on a REAL modulation source (not a transient set-vs-effective
