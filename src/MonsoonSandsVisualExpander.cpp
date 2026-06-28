@@ -31,6 +31,7 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
     redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;
     int dbgLockState[4] = { -1, -1, -1, -1 };  // DEBUG PROBE: last logged lock-state per lane (remove after diagnosis)
+    int dbgE2P = -2;                            // DEBUG PROBE: last logged editor→param state for lane0 (remove after diagnosis)
 
     // Spread mod-arcs (bipolar -1..1), same as Macro: set = SPR param,
     // effective = mod->spreadEffective[spreadIdx] (CV-modulated). Normalised (v+1)/2.
@@ -249,8 +250,19 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             return macroForOwn && el < 4 && !(mod->params[ownerDispId(el)].getValue() > 0.5f);
         };
         for (int l = 0; l < 6; ++l) {
-            if (laneDelegated(l)) continue;   // delegated → tracks Macro, don't write Mono param
+            if (laneDelegated(l)) {
+                if (l == 0 && dbgE2P != -1) { dbgE2P = -1;
+                    WARN("[E2P] lane0 SKIPPED (laneDelegated=true) edit.len=%d param.len=%.1f",
+                         visualEditor->currentState.lanes[0].length, mod->params[lenId(0)].getValue()); }
+                continue;   // delegated → tracks Macro, don't write Mono param
+            }
             const auto& lane = visualEditor->currentState.lanes[l];
+            if (l == 0) {
+                int key = lane.length * 100 + lane.offset;
+                if (dbgE2P != key) { dbgE2P = key;
+                    WARN("[E2P] lane0 WRITE edit.len=%d edit.off=%d -> param was len=%.1f off=%.1f",
+                         lane.length, lane.offset, mod->params[lenId(0)].getValue(), mod->params[offId(0)].getValue()); }
+            }
             mod->params[lenId(l)].setValue((float)lane.length);
             mod->params[offId(l)].setValue((float)lane.offset);
             mod->params[rotId(l)].setValue((float)lane.rotation);
