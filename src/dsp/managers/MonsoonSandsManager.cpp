@@ -199,8 +199,13 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 // Delegation: if Mono CEDES this poly spread lane to Macro, the spread
                 // tracks Macro's global spread (base + tapped send delta) exclusively —
                 // no Mono base, no Mono/East CV (parallel to the LOR delegation above).
+                // l is the SPREAD/engine lane (0=REST,1=MEL,2=OCT,3=ACC); ownerDispId is
+                // EDITOR-ordered (0=MEL,1=OCT,2=REST,3=ACC), so convert — otherwise the
+                // owner of lane N+1 gates lane N's delegation (octave owner ↔ melody
+                // spread, etc.).
+                int ownEd = dotModular::ENGINE_LANE_TO_EDITOR[l];   // spread/engine → editor lane
                 bool sprDelegated = hasMacro && macroVis &&
-                                    !(monoVis->params[Mono::ownerDispId(l)].getValue() > 0.5f);
+                                    !(monoVis->params[Mono::ownerDispId(ownEd)].getValue() > 0.5f);
                 if (sprDelegated) {
                     float sp = rack::math::clamp(macroVis->macroBase[l][3] + macroVis->macroSendDelta[l][3], -1.f, 1.f);
                     monoVis->spreadEffective[l] = sp;
