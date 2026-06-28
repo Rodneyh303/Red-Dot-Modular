@@ -368,21 +368,53 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         publishGlobal(2);
         publishGlobal(3);   // accent lane (Stage 6)
     } else if (hasMacro && macroVis) {
-        // Macro present but NOT active (standalone: no base expander → no voices to
-        // distribute to, P7). The send/voice path stays inert, but Macro still has
-        // voice PAGES that display per-lane probabilities, and those read
-        // spreadEffective. publishGlobal (which writes it) only runs when macroActive,
-        // so standalone the spread knob did nothing visible. Populate spreadEffective
-        // from the spread knob (+ its own CV) here so the display tracks the knob.
-        for (int lane = 0; lane < 4; ++lane) {
-            float baseSpr = macroVis->params[Macro::sprId(lane)].getValue();
-            float sp = baseSpr;
-            if (macroVis->inputs[Macro::macroCvId(lane,3)].isConnected()) {
-                float att = macroVis->params[Macro::macroAttenId(lane,3)].getValue();
-                float cv  = macroVis->inputs[Macro::macroCvId(lane,3)].getVoltage() / 10.f;
-                sp = rack::math::clamp(baseSpr + cv * att * 2.f, -1.f, 1.f);   // ×2 = ±1 span
+        // Macro standalone (Macro present, no East base expander). The poly voices still
+        // EXIST — Monsoon generates numPolyVoices worth of draws regardless of East — but
+        // the per-voice spread application lives in MonsoonExpanderManager, gated on East.
+        // So nothing applied Macro's GLOBAL spread to the voices and the bars looked dead.
+        // Apply it here, exactly like East/Mono but with one GLOBAL level per lane for
+        // every voice. Ensemble = the voices that actually have draws (numPolyVoices) —
+        // NOT effPolyVoices, which is 0 here because it tracks East's OUTPUT topology, not
+        // the drawn voices we display. Spread converges each voice's draw toward the
+        // cross-voice average (or V1 in MONO_DRAW mode), the same definition as East/Mono.
+        if (!engine.locked) {
+            const int nPoly = rack::math::clamp(engine.numPolyVoices, 0, 15);
+            const redDot::SpreadInterp::Target mode = spreadInterpMono
+                ? redDot::SpreadInterp::MONO_DRAW : redDot::SpreadInterp::AVERAGE_POLY;
+            // Global spread level per lane (knob + CV), spread/engine-indexed 0..3.
+            float spv[4];
+            for (int lane = 0; lane < 4; ++lane) {
+                float baseSpr = macroVis->params[Macro::sprId(lane)].getValue();
+                float sp = baseSpr;
+                if (macroVis->inputs[Macro::macroCvId(lane,3)].isConnected()) {
+                    float att = macroVis->params[Macro::macroAttenId(lane,3)].getValue();
+                    float cv  = macroVis->inputs[Macro::macroCvId(lane,3)].getVoltage() / 10.f;
+                    sp = rack::math::clamp(baseSpr + cv * att * 2.f, -1.f, 1.f);   // ×2 = ±1 span
+                }
+                macroVis->spreadEffective[lane] = sp;
+                spv[lane] = sp;
             }
-            macroVis->spreadEffective[lane] = sp;
+            engine.pe.setSandsActive(true);
+            // V1 (mono final arrays): converge the mono draw toward the ensemble.
+            for (int i = 0; i < 16; ++i) {
+                engine.pe.rhythmRandom[i]    = redDot::SpreadInterp::apply(engine.pe, mode, 0, i, nPoly, engine.pe.slewedRhythm[i], spv[0]);
+                engine.pe.melodyRandom[i]    = redDot::SpreadInterp::apply(engine.pe, mode, 1, i, nPoly, engine.pe.slewedMelody[i], spv[1]);
+                engine.pe.octaveRandom[i]    = redDot::SpreadInterp::apply(engine.pe, mode, 2, i, nPoly, engine.pe.slewedOctave[i], spv[2]);
+                engine.pe.accentRandom[i]    = redDot::SpreadInterp::apply(engine.pe, mode, 3, i, nPoly, engine.pe.slewedAccent[i], spv[3]);
+                engine.pe.legatoRandom[i]    = engine.pe.slewedLegato[i];
+                engine.pe.variationRandom[i] = engine.pe.slewedVariation[i];
+            }
+            // Each poly voice's final arrays: same global spread level applied per voice.
+            // apply() computes the lane's ensemble target internally; pass each voice's
+            // own slewed draw as the value to interpolate (same call shape as East's loop).
+            for (int v = 0; v < nPoly; ++v) {
+                for (int i = 0; i < 16; ++i) {
+                    engine.pe.polyRhythmRandom[v][i] = redDot::SpreadInterp::apply(engine.pe, mode, 0, i, nPoly, engine.pe.slewedPolyRhythm[v][i], spv[0]);
+                    engine.pe.polyMelodyRandom[v][i] = redDot::SpreadInterp::apply(engine.pe, mode, 1, i, nPoly, engine.pe.slewedPolyMelody[v][i], spv[1]);
+                    engine.pe.polyOctaveRandom[v][i] = redDot::SpreadInterp::apply(engine.pe, mode, 2, i, nPoly, engine.pe.slewedPolyOctave[v][i], spv[2]);
+                    engine.pe.polyAccentRandom[v][i] = redDot::SpreadInterp::apply(engine.pe, mode, 3, i, nPoly, engine.pe.slewedPolyAccent[v][i], spv[3]);
+                }
+            }
         }
     }
 
