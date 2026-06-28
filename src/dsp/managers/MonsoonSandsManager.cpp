@@ -290,11 +290,12 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // without Mono, so without this East's V1 spread knob had no effect on the
             // displayed/played probabilities (LOR worked, spread didn't). East SPREAD_R/M/O/A
             // are spread/engine-indexed (0=REST,1=MEL,2=OCT,3=ACC). nPoly = effPolyVoices.
-            using EID = StraitsEastVisualIds;
-            const float spR = eastV1->params[EID::SPREAD_R].getValue();
-            const float spM = eastV1->params[EID::SPREAD_M].getValue();
-            const float spO = eastV1->params[EID::SPREAD_O].getValue();
-            const float spA = eastV1->params[EID::SPREAD_A].getValue();
+            // East SPREAD_R/M/O/A are spread/engine-indexed (0=REST,1=MEL,2=OCT,3=ACC).
+            // (East = StraitsEastVisualIds alias defined at top of this file.)
+            const float spR = eastV1->params[East::SPREAD_R].getValue();
+            const float spM = eastV1->params[East::SPREAD_M].getValue();
+            const float spO = eastV1->params[East::SPREAD_O].getValue();
+            const float spA = eastV1->params[East::SPREAD_A].getValue();
             const int nPoly = effPolyVoices;
             const redDot::SpreadInterp::Target mode = spreadInterpMono
                 ? redDot::SpreadInterp::MONO_DRAW : redDot::SpreadInterp::AVERAGE_POLY;
