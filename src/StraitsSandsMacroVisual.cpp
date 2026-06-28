@@ -365,7 +365,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // other voices' display), not Macro's global base. (Macro's left attenuverters
         // are hidden on tab 1 via gen panel / widget — Macro's global base doesn't reach
         // voice 1; only the mix-in sends could, under the deferred interp. Y.)
-        bool tab1Mono = onMonoTab && (monoVis != nullptr);
+        // (tab1Mono removed — its only use, readOnly=tab1Mono, was replaced by the
+        // per-lane laneLockedFn set in the constructor.)
         // When V1 is editable (no Mono), Macro's global LOR knobs act as the V1 base.
         // The global base params are already wired to the engine for poly; for V1,
         // processDNA reads them via publishGlobal which writes all mono strands.
