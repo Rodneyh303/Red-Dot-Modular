@@ -30,8 +30,6 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
     rack::app::SvgPanel* panelWidget = nullptr;
     redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;
-    int dbgLockState[4] = { -1, -1, -1, -1 };  // DEBUG PROBE: last logged lock-state per lane (remove after diagnosis)
-    int dbgE2P = -2;                            // DEBUG PROBE: last logged editor→param state for lane0 (remove after diagnosis)
 
     // Spread mod-arcs (bipolar -1..1), same as Macro: set = SPR param,
     // effective = mod->spreadEffective[spreadIdx] (CV-modulated). Normalised (v+1)/2.
@@ -119,18 +117,7 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             auto* mon = getMonsoon();
             bool hasMacro = mon && mon->expanderManager.cachedMacroSandsVisual != nullptr;
             if (!hasMacro || !module) return false;
-            float ownVal = module->params[ownerDispId(editorLane)].getValue();
-            bool locked  = !(ownVal > 0.5f);  // Macro owns → locked
-            // DEBUG PROBE (remove after diagnosis): log only when this lane's computed
-            // state changes, so the log isn't flooded. Shows the real runtime gate values
-            // for the Mono editor's lock. dbgLockState[] declared on the widget.
-            int key = (hasMacro ? 4 : 0) | (locked ? 2 : 0) | (ownVal > 0.5f ? 1 : 0);
-            if (dbgLockState[editorLane] != key) {
-                dbgLockState[editorLane] = key;
-                WARN("[MonoLock] lane=%d hasMacro=%d ownerDispId=%.3f -> locked=%d",
-                     editorLane, (int)hasMacro, ownVal, (int)locked);
-            }
-            return locked;
+            return !(module->params[ownerDispId(editorLane)].getValue() > 0.5f);  // Macro owns → locked
         };
         addChild(visualEditor);
 
@@ -250,19 +237,8 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             return macroForOwn && el < 4 && !(mod->params[ownerDispId(el)].getValue() > 0.5f);
         };
         for (int l = 0; l < 6; ++l) {
-            if (laneDelegated(l)) {
-                if (l == 0 && dbgE2P != -1) { dbgE2P = -1;
-                    WARN("[E2P] lane0 SKIPPED (laneDelegated=true) edit.len=%d param.len=%.1f",
-                         visualEditor->currentState.lanes[0].length, mod->params[lenId(0)].getValue()); }
-                continue;   // delegated → tracks Macro, don't write Mono param
-            }
+            if (laneDelegated(l)) continue;   // delegated → tracks Macro, don't write Mono param
             const auto& lane = visualEditor->currentState.lanes[l];
-            if (l == 0) {
-                int key = lane.length * 100 + lane.offset;
-                if (dbgE2P != key) { dbgE2P = key;
-                    WARN("[E2P] lane0 WRITE edit.len=%d edit.off=%d -> param was len=%.1f off=%.1f",
-                         lane.length, lane.offset, mod->params[lenId(0)].getValue(), mod->params[offId(0)].getValue()); }
-            }
             mod->params[lenId(l)].setValue((float)lane.length);
             mod->params[offId(l)].setValue((float)lane.offset);
             mod->params[rotId(l)].setValue((float)lane.rotation);
@@ -326,16 +302,6 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             visualEditor->currentState.lanes[l].setDisplayLOR(effLen[l], effOff[l], effRot[l]);
             visualEditor->setLanePlayStep(l,
                 calcPlayhead(globalStep, effLen[l], effOff[l], effRot[l]));
-        }
-        {  // DEBUG PROBE (remove): lane0, same instant — param vs engine strand vs what disp got
-            static int dbgD = -1;
-            int strand0 = dotModular::MONO_LANE_TO_STRAND[0];
-            int pv = (int)std::round(mod->params[lenId(0)].getValue());
-            int key = pv*1000 + effLen[0]*10 + (strand0 & 7);
-            if (dbgD != key) { dbgD = key;
-                WARN("[DispDbg] lane0 param.len=%d strand0=%d eng.strandLen=%d effLen0=%d -> set disp.len=%d",
-                     pv, strand0, eng.strandLen(strand0), effLen[0],
-                     visualEditor->currentState.lanes[0].dispLength); }
         }
     }
 };

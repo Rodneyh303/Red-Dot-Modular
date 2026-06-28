@@ -435,18 +435,6 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   
   void draw(const widget::Widget::DrawArgs& args) override {
     syncLayout();
-    // DEBUG PROBE (remove): one-shot per second, dump geometry + lane0 edit/disp so we
-    // can see if the shadow is vertical (lane rect) or horizontal (window) divergence.
-    {
-      static int dbgFrame = 0;
-      if (mode == MONO && (++dbgFrame % 120) == 0 && laneCount > 0) {
-        rack::Rect r0 = layout.getLaneRect(0);
-        const ProbabilityLane& L = currentState.lanes[0];
-        WARN("[Geom] mode=MONO laneCount=%d boxH=%.1f laneH=%.1f lane0Rect(y=%.1f h=%.1f) | lane0 EDIT off=%d len=%d DISP off=%d len=%d",
-             laneCount, layout.boxSize.y, layout.laneHeightF(), r0.pos.y, r0.size.y,
-             L.offset, L.length, L.dispOffset, L.dispLength);
-      }
-    }
     nvgBeginPath(args.vg);
     nvgRect(args.vg, 0, 0, box.size.x, box.size.y);
     nvgFillColor(args.vg, colors.background);
@@ -893,17 +881,6 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
         if (laneLocked(lane)) { e.consume(this); return; }  // P4: delegated lane — inoperable
         // Hit-test handles first — they have priority over bar dragging
         DragState::Type handleHit = hitTestHandle(lane, e.pos.x, e.pos.y);
-        // DEBUG PROBE (remove after diagnosis): show why a grab did/didn't land.
-        // edit window (offset/length, what hitTestHandle uses) vs disp window
-        // (dispOffset/dispLength, what's rendered). If they differ, the handles are
-        // not under the visible window → grab misses.
-        {
-          const ProbabilityLane& L = currentState.lanes[lane];
-          WARN("[HitTest] lane=%d clickX=%.1f clickY=%.1f hit=%d | EDIT off=%d len=%d (bars %d..%d) | DISP off=%d len=%d (bars %d..%d)",
-               lane, e.pos.x, e.pos.y, (int)handleHit,
-               L.offset, L.length, L.editStartBar(), L.editEndBar(),
-               L.dispOffset, L.dispLength, L.startBar(), L.endBar());
-        }
         if (handleHit != DragState::NONE) {
           dragState.type       = handleHit;
           dragState.dragLane   = lane;

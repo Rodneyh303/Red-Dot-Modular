@@ -316,7 +316,14 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
             // sole visual. The hasMonoVisual block (which normally does this) is skipped
             // with no Mono editor, so apply Macro's global LOR/spread to the mono strand
             // here. (engine strand order: REST/MEL/OCT/ACC = macroBase lanes 0/1/2/3.)
-            {
+            // BUT: when a Mono visual IS present, Mono owns V1 per-lane and
+            // MonsoonSandsManager::readStrand already writes the mono strands/finals from
+            // Mono's own params (respecting each lane's owner). Writing them here too would
+            // clobber Mono's V1 LOR every frame with Macro's global base — the editor's
+            // window then never matched the edit values (uneditable-looking V1 in
+            // Mono+Macro). So skip the V1/mono-strand writes when Mono is attached; the
+            // poly-voice writes below still run (Mono only owns V1, not V2+).
+            if (!cachedSandsVisualExpander) {
                 const float spR = math::clamp(macroVis->macroBase[PL::PL_REST][3]   + macroVis->macroSendDelta[PL::PL_REST][3],   -1.f, 1.f);
                 const float spM = math::clamp(macroVis->macroBase[PL::PL_MELODY][3] + macroVis->macroSendDelta[PL::PL_MELODY][3], -1.f, 1.f);
                 const float spO = math::clamp(macroVis->macroBase[PL::PL_OCTAVE][3] + macroVis->macroSendDelta[PL::PL_OCTAVE][3], -1.f, 1.f);

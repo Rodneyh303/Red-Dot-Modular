@@ -203,13 +203,6 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             engine.strandLenRef(strand) = clamp((int)std::round(baseLen), 1, 16);
             engine.strandOffRef(strand) = ((int)std::round(baseOff) % 16 + 16) % 16;
             engine.strandRotRef(strand) = ((int)std::round(baseRot) % 16 + 16) % 16;
-            if (l == 0) {  // DEBUG PROBE (remove): what readStrand reads/writes for lane0
-                static int dbgReadStrand = -1;
-                int key = (int)std::round(baseLen)*100 + (int)std::round(baseOff);
-                if (dbgReadStrand != key) { dbgReadStrand = key;
-                    WARN("[readStrand] lane0 baseLen=%.1f baseOff=%.1f -> strand(%d) len=%d off=%d",
-                         baseLen, baseOff, strand, engine.strandLen(strand), engine.strandOff(strand)); }
-            }
         };
 
         // Spread (REST/MEL/OCT only): base trimpot + per-lane spread CV.
