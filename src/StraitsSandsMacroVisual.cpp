@@ -401,7 +401,12 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
 
         const float BLEND_TOP=72.f, SEND_Y0=12.f, SEND_DY=11.f, SEND_DX=6.f, BGAP=2.5f;
         const float GROUP_W = ED_W/4.f;
-        const char* laneName[4] = { "REST", "MELODY", "OCTAVE", "ACCENT" };
+        // Labels in DISPLAY order (matching gen_macro_mono.py DISPLAY_ORDER = editor
+        // order MEL/OCT/REST/ACC). The SVG already places the send groups left-to-right
+        // in this order; the labels must match. (Previously laneName was indexed by
+        // physical position in ENGINE order, so e.g. the MEL group was mislabelled
+        // "REST" — the off-by-mapping the user saw: "REST" group drove melody.)
+        const char* laneName[4] = { "MELODY", "OCTAVE", "REST", "ACCENT" };  // editor/display order
         const char* itemName[4] = { "LEN", "OFF", "ROT", "SPR" };
 
         bool isLight = false;
