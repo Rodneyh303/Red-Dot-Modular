@@ -74,8 +74,13 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                                   float lo, float hi)-> int {
                 const bool ownerEast = eastLOR->params[
                     StraitsEastVisualIds::ownerId(v, lane)].getValue() > 0.5f;
+                // Macro owns → use Macro's CV-APPLIED value (base + its own main-modulator
+                // CV delta), not just the base. macroCVDelta is Macro's true POST delta
+                // (published in processDNA). Previously this used macroBase only, so a lane
+                // delegated to Macro ignored Macro's main LOR modulators on East's display.
                 float base = ownerEast ? eastLorVal(paramIdx, r, c, lo, hi)
-                                       : (macroPresent ? macroVis->macroBase[lane][item] : eastLorVal(paramIdx, r, c, lo, hi));
+                                       : (macroPresent ? (macroVis->macroBase[lane][item] + macroVis->macroCVDelta[lane][item])
+                                                       : eastLorVal(paramIdx, r, c, lo, hi));
                 // Macro-CV blend: only meaningful when EAST owns the lane (when Macro
                 // owns, the lane already IS the Macro value — nothing to blend). The
                 // send is a PER-VOICE attenuverter on Macro's CV contribution
@@ -103,7 +108,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 const bool ownerEast = eastLOR->params[
                     StraitsEastVisualIds::ownerId(v, lane)].getValue() > 0.5f;
                 float base = ownerEast ? eastInterpVal
-                                       : (macroPresent ? macroVis->macroBase[lane][3] : eastInterpVal);
+                                       : (macroPresent ? (macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3]) : eastInterpVal);
                 float blend = 0.f;
                 if (macroPresent && ownerEast) {
                     float send = macroVis->params[

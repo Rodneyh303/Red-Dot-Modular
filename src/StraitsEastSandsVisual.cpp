@@ -773,7 +773,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 if (auto* macroVis = getMonsoon()->expanderManager.cachedMacroSandsVisual)
                     for (int lane = 0; lane < 4; ++lane)
                         if (monoLaneOwnedByMacro(lane))
-                            module->params[SPREAD_R + lane].setValue(macroVis->macroBase[lane][3]);
+                            module->params[SPREAD_R + lane].setValue(macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3]);
             }
             // CV depth for V1 lives in the mono slot (kMonoSlot); saveVoiceMacro only
             // writes poly slots, so mirror the atten display proxies into the mono slot
@@ -801,9 +801,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 if (monoLaneOwnedByMacro(engLane)) {
                     auto* macroVis = getMonsoon()->expanderManager.cachedMacroSandsVisual;
                     if (macroVis) {
-                        eng.strandLenRef(strand) = (int)rack::math::clamp(std::round(macroVis->macroBase[engLane][0]), 1.f, 16.f);
-                        eng.strandOffRef(strand) = ((int)std::round(macroVis->macroBase[engLane][1]) % 16 + 16) % 16;
-                        eng.strandRotRef(strand) = ((int)std::round(macroVis->macroBase[engLane][2]) % 16 + 16) % 16;
+                        eng.strandLenRef(strand) = (int)rack::math::clamp(std::round(macroVis->macroBase[engLane][0] + macroVis->macroCVDelta[engLane][0]), 1.f, 16.f);
+                        eng.strandOffRef(strand) = ((int)std::round(macroVis->macroBase[engLane][1] + macroVis->macroCVDelta[engLane][1]) % 16 + 16) % 16;
+                        eng.strandRotRef(strand) = ((int)std::round(macroVis->macroBase[engLane][2] + macroVis->macroCVDelta[engLane][2]) % 16 + 16) % 16;
                     }
                 } else {
                     float len = (float)std::max(1, lane.length);

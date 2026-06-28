@@ -317,7 +317,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             };
             auto sprForLane = [&](int lane)->float {
                 if (monoOwnedByMacro(lane))
-                    return rack::math::clamp(macroVis->macroBase[lane][3] + macroVis->macroSendDelta[lane][3], -1.f, 1.f);
+                    return rack::math::clamp(macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3], -1.f, 1.f);
                 float sp = eastV1->params[East::SPREAD_R + lane].getValue();   // R/M/O/A contiguous
                 if (eastV1->inputs[East::cvId(lane,3)].isConnected()) {
                     float att = eastV1->params[East::attenId(dotModular::VoiceResolver::kMonoSlot, lane, 3)].getValue();
