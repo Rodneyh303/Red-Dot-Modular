@@ -319,12 +319,15 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     const float stepW = (ED_W - 2.f*6.f) / 16.f;   // editor padding=6, 16 steps
                     w->box.size = mm2px(Vec(stepW, ED_LANE_H * 0.9f));
                     w->box.pos  = ctr.minus(w->box.size.div(2.f));
-                    // Owner cell is locked (inoperable) when: no Macro to delegate to
-                    // (condition 2), OR this is the V1/mono tab — East can NEVER delegate
-                    // V1 (G4/P8): Mono owns V1, only Mono's own cell may cede it. On V1 the
-                    // cell still SHOWS the current V1 ownership (filled if Mono delegated to
-                    // Macro, outline otherwise) but can't be toggled here.
-                    w->lockWhen = [this](){ return !macroAttached() || onMonoTab(); };
+                    // Owner cell is locked (inoperable) when:
+                    //   • no Macro attached → nothing to delegate to (condition 2), OR
+                    //   • Mono is present AND this is the V1 tab → Mono owns V1, so East
+                    //     can't cede it (G4). Use tab1MonoMirror() (= V1 tab AND Mono
+                    //     attached), NOT onMonoTab() alone: with East+Macro and NO Mono,
+                    //     V1 IS delegatable to Macro like any other lane, so it must stay
+                    //     operable on the V1 tab. (Previously onMonoTab() locked V1 even
+                    //     without Mono, wrongly blocking East+Macro V1 delegation.)
+                    w->lockWhen = [this](){ return !macroAttached() || tab1MonoMirror(); };
                     // P1 (G1 no-hide): the owner cell is never hidden — not even on the
                     // V1/mono tab. It stays visible and is *locked* where appropriate
                     // (P2/P8). hideWhen is left unset → always shown.
