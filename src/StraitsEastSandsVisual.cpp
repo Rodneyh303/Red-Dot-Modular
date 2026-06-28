@@ -809,11 +809,23 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     float len = (float)std::max(1, lane.length);
                     float off = (float)(((lane.offset % 16) + 16) % 16);
                     float rot = (float)(((lane.rotation % 16) + 16) % 16);
+                    // Macro send blend on East-owned V1 lanes (mirrors poly combineLOR):
+                    // blend = macroSendDelta[lane][item] * mono-slot send. macroVis may be
+                    // absent (East alone) → blend 0. Send slot for V1 is kMonoSlot.
+                    auto* macroVis = getMonsoon()->expanderManager.cachedMacroSandsVisual;
+                    auto sendBlend = [&](int item)->float {
+                        if (!macroVis) return 0.f;
+                        float send = macroVis->params[StraitsMacroVisualIds::sendId(
+                            dotModular::VoiceResolver::kMonoSlot, engLane, item)].getValue();
+                        return macroVis->macroSendDelta[engLane][item] * send;
+                    };
                     auto addCV = [&](float base, int item, float lo, float hi)->float {
-                        if (!module->inputs[cvId(engLane,item)].isConnected()) return base;
-                        float att = module->params[attenId(dotModular::VoiceResolver::kMonoSlot, engLane, item)].getValue();
-                        float cv  = module->inputs[cvId(engLane,item)].getPolyVoltage(0) / 10.f;  // ch0 = V1
-                        return rack::math::clamp(base + cv * att * (hi - lo), lo, hi);
+                        if (module->inputs[cvId(engLane,item)].isConnected()) {
+                            float att = module->params[attenId(dotModular::VoiceResolver::kMonoSlot, engLane, item)].getValue();
+                            float cv  = module->inputs[cvId(engLane,item)].getPolyVoltage(0) / 10.f;  // ch0 = V1
+                            base += cv * att * (hi - lo);
+                        }
+                        return rack::math::clamp(base + sendBlend(item), lo, hi);
                     };
                     eng.strandLenRef(strand) = (int)std::round(addCV(len, 0, 1.f, 16.f));
                     eng.strandOffRef(strand) = ((int)std::round(addCV(off, 1, 0.f, 15.f)) % 16 + 16) % 16;

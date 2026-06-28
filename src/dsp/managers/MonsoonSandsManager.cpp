@@ -322,9 +322,16 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 if (eastV1->inputs[East::cvId(lane,3)].isConnected()) {
                     float att = eastV1->params[East::attenId(dotModular::VoiceResolver::kMonoSlot, lane, 3)].getValue();
                     float cv  = eastV1->inputs[East::cvId(lane,3)].getPolyVoltage(0) / 10.f;  // ch0 = V1
-                    sp = rack::math::clamp(sp + cv * att * 2.f, -1.f, 1.f);
+                    sp = sp + cv * att * 2.f;
                 }
-                return sp;
+                // Macro send blend on East-owned V1 spread (mirrors poly combineSpread):
+                // macroSendDelta[lane][3] * mono-slot send.
+                if (macroHere) {
+                    float send = macroVis->params[StraitsMacroVisualIds::sendId(
+                        dotModular::VoiceResolver::kMonoSlot, lane, 3)].getValue();
+                    sp += macroVis->macroSendDelta[lane][3] * send;
+                }
+                return rack::math::clamp(sp, -1.f, 1.f);
             };
             const float spR = sprForLane(0);
             const float spM = sprForLane(1);
