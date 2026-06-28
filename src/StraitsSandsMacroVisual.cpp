@@ -121,6 +121,20 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         visualEditor->showControlBar    = false;
         addChild(visualEditor);
 
+        // Per-lane V1 edit lock. On the V1 tab (viewVoice 0) with Mono attached, a lane is
+        // locked iff MONO owns it (Mono's editor-ordered ownerDispId > 0.5 = Mono owns →
+        // Macro can't edit); Macro-owned/delegated lanes (<=0.5) stay editable. No Mono
+        // (East+Macro) → fully editable. Off the V1 tab → not locked here. Fixes Mono+Macro
+        // where Macro-owned V1 LOR was uneditable (old blunt readOnly=tab1Mono).
+        visualEditor->laneLockedFn = [this](int editorLane) -> bool {
+            if (editorLane < 0 || editorLane >= 4) return false;   // VAR/LEG mono-only
+            if (viewVoice != 0) return false;                      // only the V1 tab
+            auto* mon = getMonsoon();
+            auto* mv  = mon ? mon->expanderManager.cachedSandsVisualExpander : nullptr;
+            if (!mv) return false;                                 // no Mono → editable
+            return mv->params[SandsMonoVisualIds::ownerDispId(editorLane)].getValue() > 0.5f;
+        };
+
         Module* mod_ = module;
         auto themeOut = [mod_](redDot::GoldPolyPort* p) {
             p->lightTheme = [mod_]() { Monsoon* m = mod_ ? redDot::findMonsoonEitherSide(mod_) : nullptr;
@@ -355,7 +369,12 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // When V1 is editable (no Mono), Macro's global LOR knobs act as the V1 base.
         // The global base params are already wired to the engine for poly; for V1,
         // processDNA reads them via publishGlobal which writes all mono strands.
-        visualEditor->readOnly = tab1Mono;   // Macro is already view-only, but mark it explicitly
+        // Macro V1 editing is locked PER-LANE via laneLockedFn (set up in the
+        // constructor): on the V1 tab with Mono attached, a lane is locked iff Mono owns
+        // it; Macro-owned (delegated) lanes stay editable. This replaced the old blunt
+        // `readOnly = tab1Mono`, which locked ALL of Macro's V1 whenever Mono was present
+        // (so Macro-owned lanes couldn't be edited in Mono+Macro). readOnly stays false.
+        visualEditor->readOnly = false;
         // P1 (G1 no-hide): Macro's left attenuverters are ALWAYS visible — they were
         // previously hidden on the V1 tab when Mono was attached. They stay shown now;
         // whether Macro displays its own base vs mirrors Mono on V1, and any locking,
