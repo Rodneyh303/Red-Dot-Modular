@@ -264,8 +264,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         paramMgr->spreadMgr.setSpread(1, mod->spreadEffective[1]);
         paramMgr->spreadMgr.setSpread(2, mod->spreadEffective[2]);
         paramMgr->spreadMgr.setSpread(3, mod->spreadEffective[3]);
-        paramMgr->spreadMgr.setInterpolationTarget(
-            monsoon->spreadInterpMono ? SpreadManager::MONO_DRAW : SpreadManager::AVERAGE_POLY);
+        // (Spread target mode pulled from the engine by SpreadManager — no push needed.)
 
         // CV applied at control rate in Monsoon::process() — base + cv*atten*scale.
 

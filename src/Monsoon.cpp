@@ -778,6 +778,9 @@ void Monsoon::process(const ProcessArgs& args) {
         engine.accentProb = paramManager->getAccent();
 
         // Check for expander changes and update cached pointers
+        // Mirror the global spread-target mode onto the engine so display SpreadManagers
+        // pull one value (no per-widget push). Playback still passes it explicitly below.
+        engine.pe.setSpreadInterpMono(spreadInterpMono);
         dnaManager.processDNA(expanderManager, spreadInterpMono);
 
         // ── Deep Straits Sands Expanders (Control Rate Orchestration) ──

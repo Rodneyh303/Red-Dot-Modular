@@ -668,11 +668,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             smgr.setSpread(polyVoice(), 2, mod->params[SPREAD_O].getValue());
             smgr.setSpread(polyVoice(), 3, mod->params[SPREAD_A].getValue());
         }
-        {
-            auto& smgr = paramMgr->spreadMgr;
-            smgr.setInterpolationTarget(
-                monsoon->spreadInterpMono ? SpreadManager::MONO_DRAW : SpreadManager::AVERAGE_POLY);
-        }
+        // (Spread target mode is now pulled from the engine by SpreadManager —
+        // Monsoon::process mirrors the menu setting onto engine.pe each frame. No
+        // per-widget push needed.)
 
         // CV applied at control rate in Monsoon::process() — base + scaled offset, no mutation here.
 
