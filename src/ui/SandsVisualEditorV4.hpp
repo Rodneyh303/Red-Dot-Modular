@@ -435,6 +435,18 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   
   void draw(const widget::Widget::DrawArgs& args) override {
     syncLayout();
+    // DEBUG PROBE (remove): one-shot per second, dump geometry + lane0 edit/disp so we
+    // can see if the shadow is vertical (lane rect) or horizontal (window) divergence.
+    {
+      static int dbgFrame = 0;
+      if (mode == MONO && (++dbgFrame % 120) == 0 && laneCount > 0) {
+        rack::Rect r0 = layout.getLaneRect(0);
+        const ProbabilityLane& L = currentState.lanes[0];
+        WARN("[Geom] mode=MONO laneCount=%d boxH=%.1f laneH=%.1f lane0Rect(y=%.1f h=%.1f) | lane0 EDIT off=%d len=%d DISP off=%d len=%d",
+             laneCount, layout.boxSize.y, layout.laneHeightF(), r0.pos.y, r0.size.y,
+             L.offset, L.length, L.dispOffset, L.dispLength);
+      }
+    }
     nvgBeginPath(args.vg);
     nvgRect(args.vg, 0, 0, box.size.x, box.size.y);
     nvgFillColor(args.vg, colors.background);
