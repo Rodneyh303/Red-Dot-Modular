@@ -268,7 +268,13 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             paramMgr->setLaneSpread(SPREAD_TO_BUFFER[l], mod->spreadEffective[l]);
         }
 
-        paramMgr->setInterpolationTarget(SpreadManager::AVERAGE_POLY);
+        // Display mode must follow the GLOBAL spread target (Monsoon context menu),
+        // not a hardcoded AVERAGE_POLY — otherwise the Mono V1 display always showed
+        // average-poly behaviour (positive spread converging V1 toward the poly avg)
+        // even when the engine was in voice-1 (MONO_DRAW) mode, where V1 positive spread
+        // is a no-op. That mismatch made positive V1 spread appear to change probability.
+        paramMgr->setInterpolationTarget(monsoon->spreadInterpMono
+            ? SpreadManager::MONO_DRAW : SpreadManager::AVERAGE_POLY);
 
         // ── Sync PatternEngine → display (uses SpreadManager.getInterpolatedValue) ──
         paramMgr->syncPatternEngineToEditor(visualEditor->currentState);
