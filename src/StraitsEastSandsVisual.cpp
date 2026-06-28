@@ -41,6 +41,22 @@ struct DimmableTrimpot : rack::componentlibrary::Trimpot {
         if (locked()) return;
         rack::componentlibrary::Trimpot::onDragStart(e);
     }
+    void onDragMove(const event::DragMove& e) override {
+        // The actual value change happens here during a drag — guard it too, or a
+        // locked knob can still be moved even though onDragStart was blocked.
+        if (locked()) { e.consume(this); return; }
+        rack::componentlibrary::Trimpot::onDragMove(e);
+    }
+    void onHoverScroll(const event::HoverScroll& e) override {
+        if (locked()) { e.consume(this); return; }   // scroll-wheel also changes value
+        rack::componentlibrary::Trimpot::onHoverScroll(e);
+    }
+    void onHoverScroll(const event::HoverScroll& e) override {
+        // Scroll-wheel also changes a knob's value — block it when locked so a
+        // read-only knob (e.g. East V1 spread following Mono) is truly inoperable.
+        if (locked()) { e.consume(this); return; }
+        rack::componentlibrary::Trimpot::onHoverScroll(e);
+    }
     void draw(const DrawArgs& args) override {
         // Locked no longer forces dim — a locked-but-shown control (e.g. V1 spread
         // mirroring Mono) must stay readable. Only dimWhen dims (truly unavailable).
