@@ -82,8 +82,9 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
                 // blend excluded — matches the poly/V1 macroBlend gate, avoids the
                 // manual-turn red-residue race). spread lane = sprIdx (engine-indexed).
                 if (macro && !delegated) {
-                    float send = macro->params[StraitsMacroVisualIds::sendId(
-                        dotModular::VoiceResolver::kMonoSlot, sprIdx, 3)].getValue();
+                    // mono-slot send = slot 0 (V1's send slice; == VoiceResolver::kMonoSlot,
+                    // used as a literal here since VoiceResolver isn't included in this file).
+                    float send = macro->params[StraitsMacroVisualIds::sendId(0, sprIdx, 3)].getValue();
                     bool macroSprCv = macro->inputs[StraitsMacroVisualIds::cvId(sprIdx,3)].isConnected();
                     if (std::fabs(send) > 1e-4f && macroSprCv) return true;
                 }
