@@ -741,17 +741,38 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             }
         } else if (v1Editable()) {
             // V1 editable (no Mono, combo 3/7-without-Mono): East IS the V1 editor.
+            // CV depth for V1 lives in the mono slot (kMonoSlot); saveVoiceMacro only
+            // writes poly slots, so mirror the atten display proxies into the mono slot
+            // each frame (engine-lane indexed) — otherwise V1 CV depth would be 0.
+            for (int lane=0; lane<4; ++lane)
+                for (int c=0; c<4; ++c)
+                    module->params[attenId(dotModular::VoiceResolver::kMonoSlot, lane, c)]
+                        .setValue(module->params[attenDispId(lane,c)].getValue());
             // Write the editor's lane LOR straight into the engine MONO strands (the
             // V1 home), via MONO_LANE_TO_STRAND, for all 4 poly lanes (MEL/OCT/REST/
             // ACC). The manager skips its no-Mono reset when East drives V1 (see
             // MonsoonSandsManager hasEastV1). VAR/LEG are mono-only — not edited here.
             //   editor lane el (0=MEL 1=OCT 2=REST 3=ACC) → engine strand.
+            // V1 also responds to East's CV: channel 0 of each lane's CV jack (= voice 1),
+            // using getPolyVoltage(0) so a MONO cable broadcasts to V1 too (Rack convention).
+            // CV is additive on top of the editor base, at control rate (no audio-rate CV).
+            // Depth = the mono-slot attenuator (mirrored from the display proxy below).
             for (int el = 0; el < 4; ++el) {
                 auto& lane = visualEditor->currentState.lanes[el];
-                int strand = dotModular::MONO_LANE_TO_STRAND[el];
-                eng.strandLenRef(strand) = std::max(1, lane.length);
-                eng.strandOffRef(strand) = ((lane.offset % 16) + 16) % 16;
-                eng.strandRotRef(strand) = ((lane.rotation % 16) + 16) % 16;
+                int strand  = dotModular::MONO_LANE_TO_STRAND[el];
+                int engLane = dotModular::EDITOR_TO_ENGINE_LANE[el];   // East CV jack uses engine lane
+                float len = (float)std::max(1, lane.length);
+                float off = (float)(((lane.offset % 16) + 16) % 16);
+                float rot = (float)(((lane.rotation % 16) + 16) % 16);
+                auto addCV = [&](float base, int item, float lo, float hi)->float {
+                    if (!module->inputs[cvId(engLane,item)].isConnected()) return base;
+                    float att = module->params[attenId(dotModular::VoiceResolver::kMonoSlot, engLane, item)].getValue();
+                    float cv  = module->inputs[cvId(engLane,item)].getPolyVoltage(0) / 10.f;  // ch0 = V1
+                    return rack::math::clamp(base + cv * att * (hi - lo), lo, hi);
+                };
+                eng.strandLenRef(strand) = (int)std::round(addCV(len, 0, 1.f, 16.f));
+                eng.strandOffRef(strand) = ((int)std::round(addCV(off, 1, 0.f, 15.f)) % 16 + 16) % 16;
+                eng.strandRotRef(strand) = ((int)std::round(addCV(rot, 2, 0.f, 15.f)) % 16 + 16) % 16;
             }
             // Display: reflect the engine's current mono strand LOR back to the editor.
             for (int el = 0; el < 4; ++el) {

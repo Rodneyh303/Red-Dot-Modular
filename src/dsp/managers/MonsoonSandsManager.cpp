@@ -290,12 +290,23 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // without Mono, so without this East's V1 spread knob had no effect on the
             // displayed/played probabilities (LOR worked, spread didn't). East SPREAD_R/M/O/A
             // are spread/engine-indexed (0=REST,1=MEL,2=OCT,3=ACC). nPoly = effPolyVoices.
-            // East SPREAD_R/M/O/A are spread/engine-indexed (0=REST,1=MEL,2=OCT,3=ACC).
             // (East = StraitsEastVisualIds alias defined at top of this file.)
-            const float spR = eastV1->params[East::SPREAD_R].getValue();
-            const float spM = eastV1->params[East::SPREAD_M].getValue();
-            const float spO = eastV1->params[East::SPREAD_O].getValue();
-            const float spA = eastV1->params[East::SPREAD_A].getValue();
+            // V1 spread also responds to East's spread CV (cvId(lane,3), channel 0 = V1,
+            // getPolyVoltage(0) so a mono cable broadcasts), additive on the knob, control
+            // rate — same as LOR CV on V1. Depth = mono-slot spread atten.
+            auto sprWithCV = [&](int lane)->float {
+                float sp = eastV1->params[East::SPREAD_R + lane].getValue();   // R/M/O/A contiguous
+                if (eastV1->inputs[East::cvId(lane,3)].isConnected()) {
+                    float att = eastV1->params[East::attenId(dotModular::VoiceResolver::kMonoSlot, lane, 3)].getValue();
+                    float cv  = eastV1->inputs[East::cvId(lane,3)].getPolyVoltage(0) / 10.f;  // ch0 = V1
+                    sp = rack::math::clamp(sp + cv * att * 2.f, -1.f, 1.f);
+                }
+                return sp;
+            };
+            const float spR = sprWithCV(0);
+            const float spM = sprWithCV(1);
+            const float spO = sprWithCV(2);
+            const float spA = sprWithCV(3);
             const int nPoly = effPolyVoices;
             const redDot::SpreadInterp::Target mode = spreadInterpMono
                 ? redDot::SpreadInterp::MONO_DRAW : redDot::SpreadInterp::AVERAGE_POLY;
