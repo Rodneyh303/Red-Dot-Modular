@@ -293,7 +293,10 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         // editor) — do NOT reset them here, or we'd clobber East's V1 edits every
         // block. Only reset to defaults when truly nothing drives the mono strand.
         auto* eastV1 = expanderManager.cachedEastSandsVisual;
-        const bool hasEastV1 = (eastV1 != nullptr) && !hasMacro;  // East owns V1 only when no Macro
+        // East drives V1 whenever East visual is present and no Mono (Mono owns V1). Macro
+        // may also be present: V1 is then PER-LANE (each lane owned by East or delegated to
+        // Macro). hasEastV1 no longer excludes Macro — the per-lane owner switch handles it.
+        const bool hasEastV1 = (eastV1 != nullptr);
         if (!hasEastV1 && engine.rhythmLen != 16) {
             engine.rhythmLen = engine.variationLen = engine.legatoLen =
             engine.accentLen = engine.melodyLen = engine.octaveLen = 16;
@@ -303,16 +306,18 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             engine.accentRot = engine.melodyRot = engine.octaveRot = 0;
         }
         if (hasEastV1 && !engine.locked) {
-            // Combo 3 (East owns V1, no Mono/Macro): apply East's V1 SPREAD to the mono
-            // final arrays — the Mono spread path (in the hasMonoVisual block) doesn't run
-            // without Mono, so without this East's V1 spread knob had no effect on the
-            // displayed/played probabilities (LOR worked, spread didn't). East SPREAD_R/M/O/A
-            // are spread/engine-indexed (0=REST,1=MEL,2=OCT,3=ACC). nPoly = effPolyVoices.
-            // (East = StraitsEastVisualIds alias defined at top of this file.)
-            // V1 spread also responds to East's spread CV (cvId(lane,3), channel 0 = V1,
-            // getPolyVoltage(0) so a mono cable broadcasts), additive on the knob, control
-            // rate — same as LOR CV on V1. Depth = mono-slot spread atten.
-            auto sprWithCV = [&](int lane)->float {
+            // Apply V1 SPREAD to the mono final arrays, PER LANE:
+            //   • lane owned by East   → East's V1 spread knob (+ East V1 spread CV).
+            //   • lane delegated Macro → Macro's GLOBAL spread (macroBase[lane][3] + send).
+            // (East SPREAD_R/M/O/A + macroBase are spread/engine-indexed 0=REST..3=ACC.)
+            // Macro-owned test mirrors the widget: East ownerDispId(lane) <= 0.5 == Macro.
+            const bool macroHere = hasMacro && (macroVis != nullptr);
+            auto monoOwnedByMacro = [&](int lane)->bool {
+                return macroHere && !(eastV1->params[East::ownerDispId(lane)].getValue() > 0.5f);
+            };
+            auto sprForLane = [&](int lane)->float {
+                if (monoOwnedByMacro(lane))
+                    return rack::math::clamp(macroVis->macroBase[lane][3] + macroVis->macroSendDelta[lane][3], -1.f, 1.f);
                 float sp = eastV1->params[East::SPREAD_R + lane].getValue();   // R/M/O/A contiguous
                 if (eastV1->inputs[East::cvId(lane,3)].isConnected()) {
                     float att = eastV1->params[East::attenId(dotModular::VoiceResolver::kMonoSlot, lane, 3)].getValue();
@@ -321,10 +326,10 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 }
                 return sp;
             };
-            const float spR = sprWithCV(0);
-            const float spM = sprWithCV(1);
-            const float spO = sprWithCV(2);
-            const float spA = sprWithCV(3);
+            const float spR = sprForLane(0);
+            const float spM = sprForLane(1);
+            const float spO = sprForLane(2);
+            const float spA = sprForLane(3);
             const int nPoly = effPolyVoices;
             const redDot::SpreadInterp::Target mode = spreadInterpMono
                 ? redDot::SpreadInterp::MONO_DRAW : redDot::SpreadInterp::AVERAGE_POLY;

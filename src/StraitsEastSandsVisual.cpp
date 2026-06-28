@@ -423,6 +423,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // V1-editable: nothing to save here — East writes the engine MONO strands
         // directly each frame in step() (V1's true home), so there is no per-voice
         // bank to persist. (The old saveVoiceLOR(0) wrote voice-2's poly bank — wrong.)
+        // BUT V1's per-lane OWNERSHIP does persist (monoOwnerId, the spare slot): push the
+        // live owner-cell proxy into it when leaving the V1 tab.
+        if (selectedVoice == 0) {
+            for (int lane = 0; lane < 4; ++lane)
+                module->params[monoOwnerId(lane)].setValue(module->params[ownerDispId(lane)].getValue());
+        }
         selectedVoice = nv;
         // Load the INCOMING voice.
         if (selectedVoice >= 1) {
@@ -432,7 +438,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             loadVoiceMacro(polyVoice());
         }
         // V1-editable: the editor is refreshed from the engine mono strands by the
-        // v1Editable() display branch in step(); no explicit load needed.
+        // v1Editable() display branch in step(); no explicit load needed. Owner cell
+        // proxy is restored from the persistent mono owner store.
+        if (selectedVoice == 0) {
+            for (int lane = 0; lane < 4; ++lane)
+                module->params[ownerDispId(lane)].setValue(module->params[monoOwnerId(lane)].getValue());
+        }
     }
 
     Monsoon* getMonsoon() const {
@@ -446,6 +457,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     // For East's OWN controls (base-spread, CV-depth): inert only when Macro is present
     // AND owns the lane (East base bypassed). Fully usable solo.
     bool laneOwnedByMacro(int lane) {
+        if (!macroAttached()) return false;
+        return !(module && module->params[StraitsEastVisualIds::ownerDispId(lane)].getValue() > 0.5f);
+    }
+    // V1 per-lane delegation: while on the V1 tab the owner cell proxy (ownerDispId) is
+    // synced to the persistent monoOwnerId, so reading the live proxy is correct here.
+    // (Same Macro-owned test as poly: cell value <=0.5 == Macro owns the lane.)
+    bool monoLaneOwnedByMacro(int lane) {
         if (!macroAttached()) return false;
         return !(module && module->params[StraitsEastVisualIds::ownerDispId(lane)].getValue() > 0.5f);
     }
@@ -763,19 +781,31 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             for (int el = 0; el < 4; ++el) {
                 auto& lane = visualEditor->currentState.lanes[el];
                 int strand  = dotModular::MONO_LANE_TO_STRAND[el];
-                int engLane = dotModular::EDITOR_TO_ENGINE_LANE[el];   // East CV jack uses engine lane
-                float len = (float)std::max(1, lane.length);
-                float off = (float)(((lane.offset % 16) + 16) % 16);
-                float rot = (float)(((lane.rotation % 16) + 16) % 16);
-                auto addCV = [&](float base, int item, float lo, float hi)->float {
-                    if (!module->inputs[cvId(engLane,item)].isConnected()) return base;
-                    float att = module->params[attenId(dotModular::VoiceResolver::kMonoSlot, engLane, item)].getValue();
-                    float cv  = module->inputs[cvId(engLane,item)].getPolyVoltage(0) / 10.f;  // ch0 = V1
-                    return rack::math::clamp(base + cv * att * (hi - lo), lo, hi);
-                };
-                eng.strandLenRef(strand) = (int)std::round(addCV(len, 0, 1.f, 16.f));
-                eng.strandOffRef(strand) = ((int)std::round(addCV(off, 1, 0.f, 15.f)) % 16 + 16) % 16;
-                eng.strandRotRef(strand) = ((int)std::round(addCV(rot, 2, 0.f, 15.f)) % 16 + 16) % 16;
+                int engLane = dotModular::EDITOR_TO_ENGINE_LANE[el];   // East CV jack / macroBase use engine lane
+                // Delegated to Macro? → write Macro's GLOBAL base LOR for this lane
+                // (macroBase is engine-lane indexed, item 0=LEN 1=OFF 2=ROT). Owned by
+                // East → write the editor's lane LOR (+ East V1 CV) as before.
+                if (monoLaneOwnedByMacro(engLane)) {
+                    auto* macroVis = getMonsoon()->expanderManager.cachedMacroSandsVisual;
+                    if (macroVis) {
+                        eng.strandLenRef(strand) = (int)rack::math::clamp(std::round(macroVis->macroBase[engLane][0]), 1.f, 16.f);
+                        eng.strandOffRef(strand) = ((int)std::round(macroVis->macroBase[engLane][1]) % 16 + 16) % 16;
+                        eng.strandRotRef(strand) = ((int)std::round(macroVis->macroBase[engLane][2]) % 16 + 16) % 16;
+                    }
+                } else {
+                    float len = (float)std::max(1, lane.length);
+                    float off = (float)(((lane.offset % 16) + 16) % 16);
+                    float rot = (float)(((lane.rotation % 16) + 16) % 16);
+                    auto addCV = [&](float base, int item, float lo, float hi)->float {
+                        if (!module->inputs[cvId(engLane,item)].isConnected()) return base;
+                        float att = module->params[attenId(dotModular::VoiceResolver::kMonoSlot, engLane, item)].getValue();
+                        float cv  = module->inputs[cvId(engLane,item)].getPolyVoltage(0) / 10.f;  // ch0 = V1
+                        return rack::math::clamp(base + cv * att * (hi - lo), lo, hi);
+                    };
+                    eng.strandLenRef(strand) = (int)std::round(addCV(len, 0, 1.f, 16.f));
+                    eng.strandOffRef(strand) = ((int)std::round(addCV(off, 1, 0.f, 15.f)) % 16 + 16) % 16;
+                    eng.strandRotRef(strand) = ((int)std::round(addCV(rot, 2, 0.f, 15.f)) % 16 + 16) % 16;
+                }
             }
             // Display: reflect the engine's current mono strand LOR back to the editor.
             for (int el = 0; el < 4; ++el) {
