@@ -362,19 +362,13 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // whether Macro displays its own base vs mirrors Mono on V1, and any locking,
         // is handled by the delegation P-items (P4/P5/P6), not by hiding.
         for (rack::Widget* w : leftAttenuverters) if (w) w->visible = true;
-        if (tab1Mono) {
-            // l = mono param bank (0=REST 1=MEL 2=OCT) → editor lane
-            for (int l = 0; l < 3; ++l) {
-                int mLen = (int)std::lround(monoVis->params[SandsMonoVisualIds::lenId(l)].getValue());
-                int mOff = (int)std::lround(monoVis->params[SandsMonoVisualIds::offId(l)].getValue());
-                int mRot = (int)std::lround(monoVis->params[SandsMonoVisualIds::rotId(l)].getValue());
-                mLen = std::max(1, mLen);
-                int el = l;  // Mono params now editor-ordered → identity
-                visualEditor->currentState.lanes[el].setDisplayLOR(mLen, mOff, mRot);
-                visualEditor->setLanePlayStep(el, calcPlayhead(gs, mLen, mOff, mRot));
-            }
-        } else {
-            // l = engine lane (0=REST 1=MEL 2=OCT 3=ACC) → editor lane
+        {
+            // Macro's V1 (and poly) LOR display ALWAYS shows MACRO's OWN global base +
+            // CV delta — the panel represents the Macro module's own state regardless of
+            // who owns the lane downstream (same principle as the poly display). Previously
+            // the tab1Mono branch showed MONO's LOR for Mono-owned lanes (and only 3 lanes,
+            // missing accent), so Macro's V1 page reflected Mono instead of Macro. l =
+            // engine lane (0=REST 1=MEL 2=OCT 3=ACC) → editor lane.
             for (int l = 0; l < 4; ++l) {
                 int ownLen = (int)std::lround(mod->macroBase[l][0] + mod->macroCVDelta[l][0]);
                 int ownOff = (int)std::lround(mod->macroBase[l][1] + mod->macroCVDelta[l][1]);

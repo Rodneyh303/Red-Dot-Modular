@@ -70,24 +70,13 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
                 auto* east = mon->expanderManager.cachedEastSandsVisual;
                 if (east && east->inputs[StraitsEastVisualIds::cvId(sprIdx,3)].isConnected())
                     return true;
-                // Delegated to Macro: show the arc when Macro's spread CV for this lane is
-                // connected (Macro modulation reaches the delegated lane → Mono shows it).
+                // Delegated to Macro, OR Mono-owned receiving Macro's send: the helper
+                // covers both (delegated → Macro spread CV live; owned → non-zero mono-slot
+                // send + CV live). Mono send slot = 0 (V1's slice). engine lane = sprIdx.
                 auto* macro = mon->expanderManager.cachedMacroSandsVisual;
-                bool delegated = macro && !(mm->params[ownerDispId(dotModular::ENGINE_LANE_TO_EDITOR[sprIdx])].getValue() > 0.5f);
-                if (delegated && macro->inputs[StraitsMacroVisualIds::cvId(sprIdx,3)].isConnected())
+                bool delegated = macro && monoMacroOwnsEngineLane(mm, sprIdx);  // engine→editor baked in
+                if (StraitsMacroVisualIds::macroSpreadModulatesLane(macro, sprIdx, delegated, /*sendSlot=*/0))
                     return true;
-                // Mono-OWNED lane receiving Macro's SEND modulation: the send blend is
-                // folded into spreadEffective by the manager, so the arc must fire here
-                // too. Require a non-zero mono-slot send AND Macro's spread CV live (static
-                // blend excluded — matches the poly/V1 macroBlend gate, avoids the
-                // manual-turn red-residue race). spread lane = sprIdx (engine-indexed).
-                if (macro && !delegated) {
-                    // mono-slot send = slot 0 (V1's send slice; == VoiceResolver::kMonoSlot,
-                    // used as a literal here since VoiceResolver isn't included in this file).
-                    float send = macro->params[StraitsMacroVisualIds::sendId(0, sprIdx, 3)].getValue();
-                    bool macroSprCv = macro->inputs[StraitsMacroVisualIds::cvId(sprIdx,3)].isConnected();
-                    if (std::fabs(send) > 1e-4f && macroSprCv) return true;
-                }
                 return false;
             };
             addChild(arc);

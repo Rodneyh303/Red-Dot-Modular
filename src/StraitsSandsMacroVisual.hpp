@@ -1,5 +1,6 @@
 #pragma once
 #include <rack.hpp>
+#include <cmath>   // std::fabs (macroSpreadModulatesLane)
 #include "Monsoon.hpp"
 
 using namespace rack;
@@ -122,6 +123,25 @@ namespace StraitsMacroVisualIds {
     // Mono-style: lane == row, col == param (0=LEN, 1=OFF, 2=ROT).
     inline int macroCvId   (int lane, int param) { return cvId   (lane, param); }
     inline int macroAttenId(int lane, int param) { return attenId(lane, param); }  // param 0..3 = LEN/OFF/ROT/SPR
+
+    // Does Macro DYNAMICALLY modulate this lane's SPREAD (item 3)? Used by all three
+    // spread mod-arc isActive predicates (East poly, East V1, Mono) — previously hand-
+    // written 3× with subtle drift. The rule (engine lane):
+    //   • delegated lane → active iff Macro's spread CV (cvId(lane,3)) is connected.
+    //   • owned lane     → active iff send(sendSlot,lane,3) is non-zero AND Macro's
+    //                      spread CV is connected. (Static blend excluded — a non-zero
+    //                      send with no live CV is a constant offset, not modulation, and
+    //                      gating on it raced the manual-knob turn → red residue arc.)
+    // Caller resolves `delegated` (owner storage differs per module) and `sendSlot`
+    // (mono slot 0 for V1/Mono; the voice slot for poly). macro may be null → false.
+    inline bool macroSpreadModulatesLane(rack::Module* macro, int engineLane,
+                                         bool delegated, int sendSlot) {
+        if (!macro || engineLane < 0 || engineLane >= 4) return false;
+        bool sprCvLive = macro->inputs[cvId(engineLane, 3)].isConnected();
+        if (delegated) return sprCvLive;
+        float send = macro->params[sendId(sendSlot, engineLane, 3)].getValue();
+        return std::fabs(send) > 1e-4f && sprCvLive;
+    }
     // P9b: PRE/POST tap mix — TWO per lane (LOR tap covers LEN/OFF/ROT items 0-2,
     // spread tap covers item 3). MonsoonIds tap region, lane*2 + (0=LOR,1=spread).
     inline int tapLorId(int lane) { return MonsoonIds::MACRO_TAP_START + lane*2 + 0; }
@@ -155,8 +175,8 @@ struct StraitsSandsMacroVisual : Module {
             configParam(tapSprId(lane), 0.f,1.f,1.f, std::string(laneNames[lane])+" spread send tap (PRE-POST)");
             for (int c=0; c<4; ++c) {
                 std::string nm = std::string(laneNames[lane])+" "+paramNames[c];
-                configParam(attenId(lane,c), -1.f,1.f,0.f, nm+" depth");
-                configInput(cvId(lane,c), nm+" CV");
+                configParam(StraitsMacroVisualIds::attenId(lane,c), -1.f,1.f,0.f, nm+" depth");
+                configInput(StraitsMacroVisualIds::cvId(lane,c), nm+" CV"); //check sandsmono visual version 3 lanes only?
             }
         }
 

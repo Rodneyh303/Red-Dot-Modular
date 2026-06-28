@@ -66,6 +66,18 @@ namespace SandsMonoVisualIds {
     // V1 owner display proxy: poly lane (editor order 0=MEL 1=OCT 2=REST 3=ACC).
     inline int ownerDispId(int polyLaneEditor) { return OWN_DISP_START + polyLaneEditor; }
 
+    // Owner lookup BY ENGINE LANE (REST=0,MEL=1,OCT=2,ACC=3). Mono's ownerDispId is
+    // EDITOR-ordered, so callers working in engine/spread lane order MUST convert via
+    // ENGINE_LANE_TO_EDITOR — forgetting this caused the recurring "owner of lane N+1
+    // gates lane N" off-by-one (found 5×). This helper bakes the conversion in: given a
+    // Mono module and an ENGINE lane, returns true iff Macro owns that lane (delegated).
+    // Returns false if mod is null. (param <= 0.5 == Macro owns; > 0.5 == Mono/local owns.)
+    inline bool monoMacroOwnsEngineLane(rack::Module* mod, int engineLane) {
+        if (!mod || engineLane < 0 || engineLane >= 4) return false;
+        int editorLane = dotModular::ENGINE_LANE_TO_EDITOR[engineLane];
+        return !(mod->params[ownerDispId(editorLane)].getValue() > 0.5f);
+    }
+
     // ── Input IDs ─────────────────────────────────────────────────────────
     enum InputId {
         // 18 LOR CV jacks (6 lanes × 3) + 4 spread CV jacks (REST/MEL/OCT/ACCENT) = 22

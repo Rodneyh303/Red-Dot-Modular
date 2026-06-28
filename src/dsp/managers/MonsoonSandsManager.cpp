@@ -221,9 +221,11 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 // EDITOR-ordered (0=MEL,1=OCT,2=REST,3=ACC), so convert — otherwise the
                 // owner of lane N+1 gates lane N's delegation (octave owner ↔ melody
                 // spread, etc.).
-                int ownEd = dotModular::ENGINE_LANE_TO_EDITOR[l];   // spread/engine → editor lane
+                // l is the SPREAD/engine lane (0=REST,1=MEL,2=OCT,3=ACC). Use the helper
+                // that bakes the engine→editor conversion (Mono's ownerDispId is editor-
+                // ordered) so we can't regress the owner-of-N+1-gates-N off-by-one.
                 bool sprDelegated = hasMacro && macroVis &&
-                                    !(monoVis->params[Mono::ownerDispId(ownEd)].getValue() > 0.5f);
+                                    SandsMonoVisualIds::monoMacroOwnsEngineLane(monoVis, l);
                 if (sprDelegated) {
                     float sp = rack::math::clamp(macroVis->macroBase[l][3] + macroVis->macroSendDelta[l][3], -1.f, 1.f);
                     monoVis->spreadEffective[l] = sp;
