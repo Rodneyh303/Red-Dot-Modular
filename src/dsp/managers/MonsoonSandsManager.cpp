@@ -43,7 +43,12 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     const int  polyOutCap = polyBaseActive ? (hasWest ? 15 : 7) : 0;
     const int  effPolyVoices = clamp(engine.numPolyVoices, 0, polyOutCap);
     const bool macroActive = hasMacro && polyBaseActive;
-    engine.pe.setSandsActive(hasVisual || macroActive || (hasEastVisual && polyBaseActive));
+    // sandsActive must be true whenever ANYTHING writes the spread-applied final arrays,
+    // or PatternEngine's slew stage copies the raw slewed draws back over them every
+    // sample. Macro STANDALONE (hasMacro, no base expander) now applies its global spread
+    // to the voices (see the else-branch below), so include it here too — otherwise that
+    // work was silently overwritten and the spread knob looked dead.
+    engine.pe.setSandsActive(hasVisual || macroActive || (hasEastVisual && polyBaseActive) || hasMacro);
     engine.pe.numPolyVoicesHint = effPolyVoices;  // gated + output-bounded: display matches audio
 
     // ── Helper: apply mono CV offset at read site ─────────────────────────
