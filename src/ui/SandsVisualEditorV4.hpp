@@ -881,6 +881,17 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
         if (laneLocked(lane)) { e.consume(this); return; }  // P4: delegated lane — inoperable
         // Hit-test handles first — they have priority over bar dragging
         DragState::Type handleHit = hitTestHandle(lane, e.pos.x, e.pos.y);
+        // DEBUG PROBE (remove after diagnosis): show why a grab did/didn't land.
+        // edit window (offset/length, what hitTestHandle uses) vs disp window
+        // (dispOffset/dispLength, what's rendered). If they differ, the handles are
+        // not under the visible window → grab misses.
+        {
+          const ProbabilityLane& L = currentState.lanes[lane];
+          WARN("[HitTest] lane=%d clickX=%.1f clickY=%.1f hit=%d | EDIT off=%d len=%d (bars %d..%d) | DISP off=%d len=%d (bars %d..%d)",
+               lane, e.pos.x, e.pos.y, (int)handleHit,
+               L.offset, L.length, L.editStartBar(), L.editEndBar(),
+               L.dispOffset, L.dispLength, L.startBar(), L.endBar());
+        }
         if (handleHit != DragState::NONE) {
           dragState.type       = handleHit;
           dragState.dragLane   = lane;
