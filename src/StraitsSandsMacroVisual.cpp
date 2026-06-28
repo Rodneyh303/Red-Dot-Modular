@@ -320,6 +320,20 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                     visualEditor->currentState.lanes[el].probabilities[s] =
                         resolver.laneProbabilityAtStep(viewVoiceNum, lane, s);
             }
+        } else {
+            // MONO TAB (V1): neither sync nor the resolver-overwrite above ran (both
+            // gated !onMonoTab), so V1's probability bars were NEVER populated from the
+            // engine — they showed stale currentState. That's why standalone-Macro spread
+            // looked dead: with numPolyVoices=0 the ONLY tab is V1. Read V1 per-step from
+            // the engine MONO final arrays (finalRandomByStrand — what Mono/East/standalone-
+            // Macro spread write), editor lane → engine strand via MONO_LANE_TO_STRAND.
+            auto& peRef = monsoon->engine.pe;
+            for (int el = 0; el < 4; ++el) {
+                int strand = dotModular::MONO_LANE_TO_STRAND[el];
+                for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
+                    visualEditor->currentState.lanes[el].probabilities[s] =
+                        peRef.finalRandomByStrand(strand, s);
+            }
         }
 
         // Surface Macro's OWN CV-applied L/O/R to the display window. Previously
