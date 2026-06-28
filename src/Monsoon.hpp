@@ -549,7 +549,15 @@ namespace MonsoonIds {
         MACRO_ATTEN_START = MACRO_SEND_DISP_END,
         MACRO_ATTEN_END = MACRO_ATTEN_START + 256,   // 16 voices × 16 jacks (4 lanes × 4 cols)
 
-        NUM_PARAMS = MACRO_ATTEN_END
+        // P9b: Macro send PRE/POST tap — TWO per lane: one for the LOR sends
+        // (LEN/OFF/ROT) and one for the SPREAD send. 0 = PRE (raw CV, att bypassed),
+        // 1 = POST (CV × left atten). Laid out as a 3rd row in each send group.
+        //   LOR tap    index = MACRO_TAP_START + lane*2 + 0
+        //   spread tap index = MACRO_TAP_START + lane*2 + 1
+        MACRO_TAP_START = MACRO_ATTEN_END,
+        MACRO_TAP_END = MACRO_TAP_START + 8,   // 4 lanes × (LOR, spread)
+
+        NUM_PARAMS = MACRO_TAP_END
     };
 
     enum InputIds {

@@ -142,6 +142,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             for (int c = 0; c < 4; ++c)
                 bindParam<Trimpot>("param_" + std::to_string(attenId(lane,c)), attenId(lane,c),
                     std::function<void(Trimpot*)>([this](Trimpot* a){ leftAttenuverters.push_back(a); }));
+            // P9b: the two PRE/POST send taps per lane live in the send groups below the
+            // lanes (3rd row) — bound by name there, not here. (see send-group binds.)
         }
 
         // Per-lane global SPREAD trimpots (param_SPREAD_REST..+3 = lanes 0..3).
@@ -158,6 +160,12 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             for (int item = 0; item < 4; ++item)
                 bindParam<Trimpot>("param_send_" + std::to_string(lane) + "_" + std::to_string(item),
                                    sendDispId(lane, item));
+        // P9b: the two PRE/POST CV taps per lane (3rd row of each send group) —
+        // param_taplor_{lane} → tapLorId, param_tapspr_{lane} → tapSprId.
+        for (int lane = 0; lane < 4; ++lane) {
+            bindParam<Trimpot>("param_taplor_" + std::to_string(lane), tapLorId(lane));
+            bindParam<Trimpot>("param_tapspr_" + std::to_string(lane), tapSprId(lane));
+        }
 
         paramMgr = new PolySandsParameterManager(nullptr, nullptr, nullptr, 7);
         flushSpreadArcs();   // attach spread mod-arcs on top of the trimpots
@@ -312,6 +320,20 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                     visualEditor->currentState.lanes[el].probabilities[s] =
                         resolver.laneProbabilityAtStep(viewVoiceNum, lane, s);
             }
+        } else {
+            // MONO TAB (V1): neither sync nor the resolver-overwrite above ran (both
+            // gated !onMonoTab), so V1's probability bars were NEVER populated from the
+            // engine — they showed stale currentState. That's why standalone-Macro spread
+            // looked dead: with numPolyVoices=0 the ONLY tab is V1. Read V1 per-step from
+            // the engine MONO final arrays (finalRandomByStrand — what Mono/East/standalone-
+            // Macro spread write), editor lane → engine strand via MONO_LANE_TO_STRAND.
+            auto& peRef = monsoon->engine.pe;
+            for (int el = 0; el < 4; ++el) {
+                int strand = dotModular::MONO_LANE_TO_STRAND[el];
+                for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
+                    visualEditor->currentState.lanes[el].probabilities[s] =
+                        peRef.finalRandomByStrand(strand, s);
+            }
         }
 
         // Surface Macro's OWN CV-applied L/O/R to the display window. Previously
@@ -372,31 +394,19 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         ModuleWidget::draw(args);
         NVGcontext* vg = args.vg;
 
-        // V1 / mono tab: Macro's global-base CV-depth attenuverters don't reach voice 1
-        // (mono provides the base). The knob widgets hide themselves (visible=false), but
-        // the panel bakes their gold rings — mask the two attenuverter columns with the
-        // panel background so V1 reads clean.
-        {
-            auto* mon = getMonsoon();
-            bool isLight = mon && mon->lightTheme;
-            bool monoTab = mon && dotModular::VoiceResolver::isMono(viewVoice + 1) &&
-                           (mon->expanderManager.cachedSandsVisualExpander != nullptr);
-            if (monoTab) {
-                NVGcolor bg = isLight ? nvgRGB(0xe8,0xe8,0xea) : nvgRGB(0x16,0x18,0x1c);
-                float x0 = mm2px(COL_A1) - mm2px(4.f);
-                float x1 = mm2px(COL_A4) + mm2px(4.f);
-                float y0 = mm2px(rowY(0)) - mm2px(4.f);
-                float y1 = mm2px(rowY(N_ROWS - 1)) + mm2px(4.f);
-                nvgBeginPath(vg);
-                nvgRect(vg, x0, y0, x1 - x0, y1 - y0);
-                nvgFillColor(vg, bg);
-                nvgFill(vg);
-            }
-        }
+        // (P1/G1 no-hide: the old V1 atten-masking rectangle was removed — Macro's
+        // left attenuverters are always visible, including on the V1 tab. They were
+        // being painted over with the panel background here, which is why the V1
+        // trimpots "disappeared" even though the widgets were visible.)
 
         const float BLEND_TOP=72.f, SEND_Y0=12.f, SEND_DY=11.f, SEND_DX=6.f, BGAP=2.5f;
         const float GROUP_W = ED_W/4.f;
-        const char* laneName[4] = { "REST", "MELODY", "OCTAVE", "ACCENT" };
+        // Labels in DISPLAY order (matching gen_macro_mono.py DISPLAY_ORDER = editor
+        // order MEL/OCT/REST/ACC). The SVG already places the send groups left-to-right
+        // in this order; the labels must match. (Previously laneName was indexed by
+        // physical position in ENGINE order, so e.g. the MEL group was mislabelled
+        // "REST" — the off-by-mapping the user saw: "REST" group drove melody.)
+        const char* laneName[4] = { "MELODY", "OCTAVE", "REST", "ACCENT" };  // editor/display order
         const char* itemName[4] = { "LEN", "OFF", "ROT", "SPR" };
 
         bool isLight = false;

@@ -5,6 +5,7 @@
 //#include "MonsoonSandsExpander.hpp"
 #include "MonsoonSandsVisualExpander.hpp"
 #include "StraitsSandsMacroVisual.hpp"  // complete type for macroBase (P4 delegated-lane tracking)
+#include "StraitsEastSandsVisual.hpp"   // East type + StraitsEastVisualIds::cvId (Mono spread-arc East-CV gate)
 #include "ui/SandsVisualEditorV4.hpp"
 #include "ui/OwnerCell.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
@@ -60,9 +61,34 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
                 if (!mm || sprIdx < 0 || sprIdx >= 4) return false;
                 Monsoon* mon = findMonsoonEitherSide(mm);
                 if (!mon || !mon->modVizMono) return false;
-                // Gate on this spread lane's CV jack being connected (sprCvId is
-                // spread/engine-indexed, same as sprIdx) — avoids set-vs-effective race.
-                return mm->inputs[sprCvId(sprIdx)].isConnected();
+                // Active when THIS spread lane is being modulated from any source feeding
+                // the mono strand: Mono's own spread CV jack, OR East's V1 spread CV jack
+                // (East adds to V1 spread — its mod must show on Mono's arc too, as the
+                // total). sprCvId is spread/engine-indexed (same as sprIdx); East's V1
+                // spread CV jack is East::cvId(sprIdx,3) read at the mono slot.
+                if (mm->inputs[sprCvId(sprIdx)].isConnected()) return true;
+                auto* east = mon->expanderManager.cachedEastSandsVisual;
+                if (east && east->inputs[StraitsEastVisualIds::cvId(sprIdx,3)].isConnected())
+                    return true;
+                // Delegated to Macro: show the arc when Macro's spread CV for this lane is
+                // connected (Macro modulation reaches the delegated lane → Mono shows it).
+                auto* macro = mon->expanderManager.cachedMacroSandsVisual;
+                bool delegated = macro && !(mm->params[ownerDispId(dotModular::ENGINE_LANE_TO_EDITOR[sprIdx])].getValue() > 0.5f);
+                if (delegated && macro->inputs[StraitsMacroVisualIds::cvId(sprIdx,3)].isConnected())
+                    return true;
+                // Mono-OWNED lane receiving Macro's SEND modulation: the send blend is
+                // folded into spreadEffective by the manager, so the arc must fire here
+                // too. Require a non-zero mono-slot send AND Macro's spread CV live (static
+                // blend excluded — matches the poly/V1 macroBlend gate, avoids the
+                // manual-turn red-residue race). spread lane = sprIdx (engine-indexed).
+                if (macro && !delegated) {
+                    // mono-slot send = slot 0 (V1's send slice; == VoiceResolver::kMonoSlot,
+                    // used as a literal here since VoiceResolver isn't included in this file).
+                    float send = macro->params[StraitsMacroVisualIds::sendId(0, sprIdx, 3)].getValue();
+                    bool macroSprCv = macro->inputs[StraitsMacroVisualIds::cvId(sprIdx,3)].isConnected();
+                    if (std::fabs(send) > 1e-4f && macroSprCv) return true;
+                }
+                return false;
             };
             addChild(arc);
         }
@@ -228,14 +254,17 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             mod->params[offId(l)].setValue((float)lane.offset);
             mod->params[rotId(l)].setValue((float)lane.rotation);
         }
-        // Delegated lanes: show Macro's global base (editor → engine lane for macroBase).
+        // Delegated lanes: show Macro's CV-APPLIED global value (base + macroCVDelta),
+        // so Macro's modulation is reflected on Mono too (combo 6/G6) — not just the
+        // static base. macroCVDelta is the true POST delta (Macro's own display value);
+        // matches what Macro shows for the same lane. editor → engine lane for macro arrays.
         if (macroForOwn) {
             for (int el = 0; el < 4; ++el) {
                 if (!laneDelegated(el)) continue;
                 int eng = dotModular::EDITOR_TO_ENGINE_LANE[el];
-                int mLen = (int)std::round(macroForOwn->macroBase[eng][0]);
-                int mOff = (int)std::round(macroForOwn->macroBase[eng][1]);
-                int mRot = (int)std::round(macroForOwn->macroBase[eng][2]);
+                int mLen = (int)std::round(macroForOwn->macroBase[eng][0] + macroForOwn->macroSendDelta[eng][0]);
+                int mOff = (int)std::round(macroForOwn->macroBase[eng][1] + macroForOwn->macroSendDelta[eng][1]);
+                int mRot = (int)std::round(macroForOwn->macroBase[eng][2] + macroForOwn->macroSendDelta[eng][2]);
                 visualEditor->currentState.lanes[el].setDisplayLOR(std::max(1,mLen), mOff, mRot);
             }
         }

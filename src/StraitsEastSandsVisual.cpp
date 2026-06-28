@@ -41,6 +41,16 @@ struct DimmableTrimpot : rack::componentlibrary::Trimpot {
         if (locked()) return;
         rack::componentlibrary::Trimpot::onDragStart(e);
     }
+    void onDragMove(const event::DragMove& e) override {
+        // The actual value change happens here during a drag — guard it too, or a
+        // locked knob can still be moved even though onDragStart was blocked.
+        if (locked()) { e.consume(this); return; }
+        rack::componentlibrary::Trimpot::onDragMove(e);
+    }
+    void onHoverScroll(const event::HoverScroll& e) override {
+        if (locked()) { e.consume(this); return; }   // scroll-wheel also changes value
+        rack::componentlibrary::Trimpot::onHoverScroll(e);
+    }
     void draw(const DrawArgs& args) override {
         // Locked no longer forces dim — a locked-but-shown control (e.g. V1 spread
         // mirroring Mono) must stay readable. Only dimWhen dims (truly unavailable).
@@ -132,20 +142,33 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 if (!mod) return 0.5f;
                 int v = polyVoice();
                 if (v < 0) {
-                    // V1 / mono tab (P6, combo 7): MOD = the spread knob value (Mono's,
-                    // mirrored) + East's own incoming V1 spread CV on this lane. Absolute
-                    // (not a centre deflection) so the arc reads as the total entering
-                    // East. lane = spread index 0=REST,1=MEL,2=OCT,3=ACC; CV jack cvId(lane,3).
+                    // V1 / mono tab: MOD = the EFFECTIVE V1 spread on this lane, matching
+                    // the manager's sprForLane: delegated → Macro base+CVdelta; owned →
+                    // East knob + East V1 spread CV + Macro send blend. lane = spread index
+                    // 0=REST,1=MEL,2=OCT,3=ACC; CV jack cvId(lane,3).
                     if (lane < 0 || lane >= 4) return 0.5f;
-                    int pid = (lane==0) ? (int)SPREAD_R : (lane==1) ? (int)SPREAD_M
-                            : (lane==2) ? (int)SPREAD_O : (int)SPREAD_A;
-                    float base = mod->params[pid].getValue();   // bipolar -1..1 (Mono's spread)
-                    if (mod->inputs[cvId(lane,3)].isConnected()) {
-                        float att = mod->params[attenId(dotModular::VoiceResolver::kMonoSlot, lane, 3)].getValue();
-                        float cv  = mod->inputs[cvId(lane,3)].getVoltage(0) / 10.f;
-                        base = base + cv * att * 2.f;
+                    Monsoon* mon = findMonsoonEitherSide(mod);
+                    auto* macroVis = mon ? mon->expanderManager.cachedMacroSandsVisual : nullptr;
+                    bool delegated = macroVis && !(mod->params[ownerDispId(lane)].getValue() > 0.5f);
+                    float sp;
+                    if (delegated) {
+                        sp = macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3];
+                    } else {
+                        int pid = (lane==0) ? (int)SPREAD_R : (lane==1) ? (int)SPREAD_M
+                                : (lane==2) ? (int)SPREAD_O : (int)SPREAD_A;
+                        sp = mod->params[pid].getValue();   // bipolar -1..1
+                        if (mod->inputs[cvId(lane,3)].isConnected()) {
+                            float att = mod->params[attenId(dotModular::VoiceResolver::kMonoSlot, lane, 3)].getValue();
+                            float cv  = mod->inputs[cvId(lane,3)].getVoltage(0) / 10.f;
+                            sp += cv * att * 2.f;
+                        }
+                        if (macroVis) {
+                            float send = macroVis->params[StraitsMacroVisualIds::sendId(
+                                dotModular::VoiceResolver::kMonoSlot, lane, 3)].getValue();
+                            sp += macroVis->macroSendDelta[lane][3] * send;
+                        }
                     }
-                    return rack::math::clamp((rack::math::clamp(base,-1.f,1.f) + 1.f) * 0.5f, 0.f, 1.f);
+                    return rack::math::clamp((rack::math::clamp(sp,-1.f,1.f) + 1.f) * 0.5f, 0.f, 1.f);
                 }
                 if (v >= 15) return 0.5f;
                 // polySpreadEffective is bipolar -1..1 → map to 0..1.
@@ -157,10 +180,22 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 if (!mon || !mon->modVizEast) return false;
                 int v = polyVoice();
                 if (v < 0) {
-                    // V1 / mono tab (P6): active when East's own V1 spread CV jack is
-                    // connected on this lane (the mod East contributes to V1). Incl accent.
+                    // V1 / mono tab: active when REAL modulation enters V1's spread on this
+                    // lane — East's own V1 spread CV, OR Macro modulation: delegated lane
+                    // with Macro spread CV live, OR owned lane with a non-zero send AND
+                    // Macro spread CV live (matches poly macroBlend; static blend excluded
+                    // to avoid the manual-turn red-residue race).
                     if (lane < 0 || lane >= 4) return false;
-                    return mod->inputs[cvId(lane,3)].isConnected();
+                    if (mod->inputs[cvId(lane,3)].isConnected()) return true;
+                    if (auto* macroVis = mon->expanderManager.cachedMacroSandsVisual) {
+                        bool macroSprCv = macroVis->inputs[StraitsMacroVisualIds::macroCvId(lane, 3)].isConnected();
+                        bool delegated  = !(mod->params[ownerDispId(lane)].getValue() > 0.5f);
+                        if (delegated) return macroSprCv;
+                        float send = macroVis->params[StraitsMacroVisualIds::sendId(
+                            dotModular::VoiceResolver::kMonoSlot, lane, 3)].getValue();
+                        return std::fabs(send) > 1e-4f && macroSprCv;
+                    }
+                    return false;
                 }
                 if (v >= 15) return false;
                 // Gate on a REAL modulation source (not a transient set-vs-effective
@@ -231,10 +266,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // mirrors Mono, inoperable). editorLane → engine lane for the ownership check.
         visualEditor->laneLockedFn = [this](int editorLane) -> bool {
             if (tab1MonoMirror()) return true;           // V1 owned by Mono → all lanes locked on East
-            if (onMonoTab()) return false;               // V1 editable (no Mono) → not locked
             if (editorLane < 0 || editorLane >= 4) return false;
             int engLane = dotModular::EDITOR_TO_ENGINE_LANE[editorLane];
-            return laneOwnedByMacro(engLane);            // delegated poly lane → locked
+            // V1 (no Mono) AND poly tabs: a lane delegated to Macro is inoperable on East.
+            // (On V1 the ownerDispId proxy reflects monoOwnerId, so laneOwnedByMacro is the
+            // right per-lane test for both. Previously V1 returned false unconditionally,
+            // leaving delegated V1 lanes editable.)
+            return laneOwnedByMacro(engLane);
         };
         // Right-click on a lane row opens the ownership context menu.
         visualEditor->onLaneRightClick = [this](int lane, rack::math::Vec pos) -> bool {
@@ -275,13 +313,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 bindParam<DimmableTrimpot>("param_" + std::to_string(attenDispId(r,c)), attenDispId(r,c));
         }
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_R), SPREAD_R,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(0); }; k->lockWhen = [this](){ return laneOwnedByMacro(0) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 0}); }));
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [](){ return false; }; k->lockWhen = [this](){ return laneOwnedByMacro(0) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 0}); }));
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_M), SPREAD_M,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(1); }; k->lockWhen = [this](){ return laneOwnedByMacro(1) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 1}); }));
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [](){ return false; }; k->lockWhen = [this](){ return laneOwnedByMacro(1) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 1}); }));
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_O), SPREAD_O,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(2); }; k->lockWhen = [this](){ return laneOwnedByMacro(2) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 2}); }));
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [](){ return false; }; k->lockWhen = [this](){ return laneOwnedByMacro(2) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 2}); }));
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_A), SPREAD_A,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [this](){ return laneOwnedByMacro(3); }; k->lockWhen = [this](){ return laneOwnedByMacro(3) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 3}); }));
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [](){ return false; }; k->lockWhen = [this](){ return laneOwnedByMacro(3) || tab1MonoMirror(); }; pendingSpreadArcs.push_back({k, 3}); }));
 
         // Macro/East blend controls (bound to the display proxies; copied to/from
         // the per-voice MACRO params on voice switch + each frame). Owner = a
@@ -309,12 +347,15 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     const float stepW = (ED_W - 2.f*6.f) / 16.f;   // editor padding=6, 16 steps
                     w->box.size = mm2px(Vec(stepW, ED_LANE_H * 0.9f));
                     w->box.pos  = ctr.minus(w->box.size.div(2.f));
-                    // Owner cell is locked (inoperable) when: no Macro to delegate to
-                    // (condition 2), OR this is the V1/mono tab — East can NEVER delegate
-                    // V1 (G4/P8): Mono owns V1, only Mono's own cell may cede it. On V1 the
-                    // cell still SHOWS the current V1 ownership (filled if Mono delegated to
-                    // Macro, outline otherwise) but can't be toggled here.
-                    w->lockWhen = [this](){ return !macroAttached() || onMonoTab(); };
+                    // Owner cell is locked (inoperable) when:
+                    //   • no Macro attached → nothing to delegate to (condition 2), OR
+                    //   • Mono is present AND this is the V1 tab → Mono owns V1, so East
+                    //     can't cede it (G4). Use tab1MonoMirror() (= V1 tab AND Mono
+                    //     attached), NOT onMonoTab() alone: with East+Macro and NO Mono,
+                    //     V1 IS delegatable to Macro like any other lane, so it must stay
+                    //     operable on the V1 tab. (Previously onMonoTab() locked V1 even
+                    //     without Mono, wrongly blocking East+Macro V1 delegation.)
+                    w->lockWhen = [this](){ return !macroAttached() || tab1MonoMirror(); };
                     // P1 (G1 no-hide): the owner cell is never hidden — not even on the
                     // V1/mono tab. It stays visible and is *locked* where appropriate
                     // (P2/P8). hideWhen is left unset → always shown.
@@ -410,6 +451,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // V1-editable: nothing to save here — East writes the engine MONO strands
         // directly each frame in step() (V1's true home), so there is no per-voice
         // bank to persist. (The old saveVoiceLOR(0) wrote voice-2's poly bank — wrong.)
+        // BUT V1's per-lane OWNERSHIP does persist (monoOwnerId, the spare slot): push the
+        // live owner-cell proxy into it when leaving the V1 tab.
+        if (selectedVoice == 0) {
+            for (int lane = 0; lane < 4; ++lane)
+                module->params[monoOwnerId(lane)].setValue(module->params[ownerDispId(lane)].getValue());
+        }
         selectedVoice = nv;
         // Load the INCOMING voice.
         if (selectedVoice >= 1) {
@@ -419,7 +466,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             loadVoiceMacro(polyVoice());
         }
         // V1-editable: the editor is refreshed from the engine mono strands by the
-        // v1Editable() display branch in step(); no explicit load needed.
+        // v1Editable() display branch in step(); no explicit load needed. Owner cell
+        // proxy is restored from the persistent mono owner store.
+        if (selectedVoice == 0) {
+            for (int lane = 0; lane < 4; ++lane)
+                module->params[ownerDispId(lane)].setValue(module->params[monoOwnerId(lane)].getValue());
+        }
     }
 
     Monsoon* getMonsoon() const {
@@ -433,6 +485,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     // For East's OWN controls (base-spread, CV-depth): inert only when Macro is present
     // AND owns the lane (East base bypassed). Fully usable solo.
     bool laneOwnedByMacro(int lane) {
+        if (!macroAttached()) return false;
+        return !(module && module->params[StraitsEastVisualIds::ownerDispId(lane)].getValue() > 0.5f);
+    }
+    // V1 per-lane delegation: while on the V1 tab the owner cell proxy (ownerDispId) is
+    // synced to the persistent monoOwnerId, so reading the live proxy is correct here.
+    // (Same Macro-owned test as poly: cell value <=0.5 == Macro owns the lane.)
+    bool monoLaneOwnedByMacro(int lane) {
         if (!macroAttached()) return false;
         return !(module && module->params[StraitsEastVisualIds::ownerDispId(lane)].getValue() > 0.5f);
     }
@@ -731,17 +790,72 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             }
         } else if (v1Editable()) {
             // V1 editable (no Mono, combo 3/7-without-Mono): East IS the V1 editor.
+            // Spread-follow: for lanes DELEGATED to Macro, the East V1 spread knob is
+            // locked (laneOwnedByMacro) and should DISPLAY Macro's global spread. Mirror
+            // macroBase[lane][3] into SPREAD_R/M/O/A (engine-indexed, contiguous) so the
+            // locked knob tracks Macro. (Owned lanes keep the user's East spread value.)
+            if (macroAttached()) {
+                if (auto* macroVis = getMonsoon()->expanderManager.cachedMacroSandsVisual)
+                    for (int lane = 0; lane < 4; ++lane)
+                        if (monoLaneOwnedByMacro(lane))
+                            module->params[SPREAD_R + lane].setValue(macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3]);
+            }
+            // CV depth for V1 lives in the mono slot (kMonoSlot); saveVoiceMacro only
+            // writes poly slots, so mirror the atten display proxies into the mono slot
+            // each frame (engine-lane indexed) — otherwise V1 CV depth would be 0.
+            for (int lane=0; lane<4; ++lane)
+                for (int c=0; c<4; ++c)
+                    module->params[attenId(dotModular::VoiceResolver::kMonoSlot, lane, c)]
+                        .setValue(module->params[attenDispId(lane,c)].getValue());
             // Write the editor's lane LOR straight into the engine MONO strands (the
             // V1 home), via MONO_LANE_TO_STRAND, for all 4 poly lanes (MEL/OCT/REST/
             // ACC). The manager skips its no-Mono reset when East drives V1 (see
             // MonsoonSandsManager hasEastV1). VAR/LEG are mono-only — not edited here.
             //   editor lane el (0=MEL 1=OCT 2=REST 3=ACC) → engine strand.
+            // V1 also responds to East's CV: channel 0 of each lane's CV jack (= voice 1),
+            // using getPolyVoltage(0) so a MONO cable broadcasts to V1 too (Rack convention).
+            // CV is additive on top of the editor base, at control rate (no audio-rate CV).
+            // Depth = the mono-slot attenuator (mirrored from the display proxy below).
             for (int el = 0; el < 4; ++el) {
                 auto& lane = visualEditor->currentState.lanes[el];
-                int strand = dotModular::MONO_LANE_TO_STRAND[el];
-                eng.strandLenRef(strand) = std::max(1, lane.length);
-                eng.strandOffRef(strand) = ((lane.offset % 16) + 16) % 16;
-                eng.strandRotRef(strand) = ((lane.rotation % 16) + 16) % 16;
+                int strand  = dotModular::MONO_LANE_TO_STRAND[el];
+                int engLane = dotModular::EDITOR_TO_ENGINE_LANE[el];   // East CV jack / macroBase use engine lane
+                // Delegated to Macro? → write Macro's GLOBAL base LOR for this lane
+                // (macroBase is engine-lane indexed, item 0=LEN 1=OFF 2=ROT). Owned by
+                // East → write the editor's lane LOR (+ East V1 CV) as before.
+                if (monoLaneOwnedByMacro(engLane)) {
+                    auto* macroVis = getMonsoon()->expanderManager.cachedMacroSandsVisual;
+                    if (macroVis) {
+                        eng.strandLenRef(strand) = (int)rack::math::clamp(std::round(macroVis->macroBase[engLane][0] + macroVis->macroCVDelta[engLane][0]), 1.f, 16.f);
+                        eng.strandOffRef(strand) = ((int)std::round(macroVis->macroBase[engLane][1] + macroVis->macroCVDelta[engLane][1]) % 16 + 16) % 16;
+                        eng.strandRotRef(strand) = ((int)std::round(macroVis->macroBase[engLane][2] + macroVis->macroCVDelta[engLane][2]) % 16 + 16) % 16;
+                    }
+                } else {
+                    float len = (float)std::max(1, lane.length);
+                    float off = (float)(((lane.offset % 16) + 16) % 16);
+                    float rot = (float)(((lane.rotation % 16) + 16) % 16);
+                    // Macro send blend on East-owned V1 lanes (mirrors poly combineLOR):
+                    // blend = macroSendDelta[lane][item] * mono-slot send. macroVis may be
+                    // absent (East alone) → blend 0. Send slot for V1 is kMonoSlot.
+                    auto* macroVis = getMonsoon()->expanderManager.cachedMacroSandsVisual;
+                    auto sendBlend = [&](int item)->float {
+                        if (!macroVis) return 0.f;
+                        float send = macroVis->params[StraitsMacroVisualIds::sendId(
+                            dotModular::VoiceResolver::kMonoSlot, engLane, item)].getValue();
+                        return macroVis->macroSendDelta[engLane][item] * send;
+                    };
+                    auto addCV = [&](float base, int item, float lo, float hi)->float {
+                        if (module->inputs[cvId(engLane,item)].isConnected()) {
+                            float att = module->params[attenId(dotModular::VoiceResolver::kMonoSlot, engLane, item)].getValue();
+                            float cv  = module->inputs[cvId(engLane,item)].getPolyVoltage(0) / 10.f;  // ch0 = V1
+                            base += cv * att * (hi - lo);
+                        }
+                        return rack::math::clamp(base + sendBlend(item), lo, hi);
+                    };
+                    eng.strandLenRef(strand) = (int)std::round(addCV(len, 0, 1.f, 16.f));
+                    eng.strandOffRef(strand) = ((int)std::round(addCV(off, 1, 0.f, 15.f)) % 16 + 16) % 16;
+                    eng.strandRotRef(strand) = ((int)std::round(addCV(rot, 2, 0.f, 15.f)) % 16 + 16) % 16;
+                }
             }
             // Display: reflect the engine's current mono strand LOR back to the editor.
             for (int el = 0; el < 4; ++el) {
@@ -751,6 +865,20 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 int cvRot = eng.strandRotRef(strand);
                 visualEditor->currentState.lanes[el].setDisplayLOR(cvLen, cvOff, cvRot);
                 visualEditor->setLanePlayStep(el, calcPlayhead(gs, cvLen, cvOff, cvRot));
+            }
+            // Probabilities: V1 (mono) probabilities are display-only (drag edits the LOR
+            // window only), so show the SPREAD-APPLIED values the sequencer plays. Read
+            // PER-STEP from finalRandomByStrand — NOT resolver.laneProbabilityAtStep, which
+            // for mono returns masterLaneProbability (the CURRENT step only), making every
+            // bar identical (regression). editor lane → engine strand via MONO_LANE_TO_STRAND.
+            {
+                auto& peRef = monsoon->engine.pe;
+                for (int el = 0; el < 4; ++el) {
+                    int strand = dotModular::MONO_LANE_TO_STRAND[el];
+                    for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
+                        visualEditor->currentState.lanes[el].probabilities[s] =
+                            peRef.finalRandomByStrand(strand, s);
+                }
             }
         } else if (selectedVoice >= 1) {
             const int pv = polyVoice();

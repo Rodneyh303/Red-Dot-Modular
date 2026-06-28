@@ -105,6 +105,11 @@ namespace StraitsEastVisualIds {
     // Macro/East base owner per (voice, lane): MonsoonIds::MACRO_OWN_START + v*4 + lane.
     // 0 = Macro owns (default), 1 = East owns. 4 lanes: REST/MEL/OCT/ACCENT.
     inline int ownerId(int v, int lane) { return MonsoonIds::MACRO_OWN_START + v*4 + lane; }
+    // V1 (mono) per-lane Macro-delegation owner. The MACRO_OWN block reserves 64 params
+    // but poly only uses v=0..14 (slots 0..59); slots 60..63 (v=15) are spare. Reuse them
+    // as the mono owner store so V1 delegation persists in the patch like poly voices do
+    // (real configSwitch params → Rack auto-saves them). 1.f = East owns, 0.f = Macro owns.
+    inline int monoOwnerId(int lane) { return MonsoonIds::MACRO_OWN_START + 15*4 + lane; }
     // (Macro mix-in send helpers relocated to StraitsMacroVisualIds under the control
     //  inversion — the send is a Macro concern now.)
     // Owner display proxy (selected-voice view; copied to/from per-voice on switch).
@@ -198,6 +203,13 @@ struct StraitsEastSandsVisual : Module {
                 configSwitch(ownerId(v,lane), 0.f,1.f,0.f,
                              vl+"L"+std::to_string(lane)+" base: inherit Macro / local East", {"Inherit Macro","Local East"});
             }
+        }
+        // V1 (mono) per-lane owner store (spare MACRO_OWN slot v=15). Default 0.f =
+        // inherit Macro, matching the poly ownerId and ownerDispId defaults (consistent
+        // delegation convention; toggle per lane via the V1 owner cell).
+        for (int lane=0; lane<4; ++lane) {
+            configSwitch(monoOwnerId(lane), 0.f,1.f,0.f,
+                         "V1 L"+std::to_string(lane)+" base: inherit Macro / local East", {"Inherit Macro","Local East"});
         }
         // Per-voice CV depth for each of the 12 jacks — its own bank is 16-wide now
         // (slot 0 = voice 1/mono, slot v = voice v+1), so the mono mix-in's depth no longer

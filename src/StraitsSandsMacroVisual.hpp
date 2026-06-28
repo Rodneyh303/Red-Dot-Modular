@@ -122,6 +122,11 @@ namespace StraitsMacroVisualIds {
     // Mono-style: lane == row, col == param (0=LEN, 1=OFF, 2=ROT).
     inline int macroCvId   (int lane, int param) { return cvId   (lane, param); }
     inline int macroAttenId(int lane, int param) { return attenId(lane, param); }  // param 0..3 = LEN/OFF/ROT/SPR
+    // P9b: PRE/POST tap mix — TWO per lane (LOR tap covers LEN/OFF/ROT items 0-2,
+    // spread tap covers item 3). MonsoonIds tap region, lane*2 + (0=LOR,1=spread).
+    inline int tapLorId(int lane) { return MonsoonIds::MACRO_TAP_START + lane*2 + 0; }
+    inline int tapSprId(int lane) { return MonsoonIds::MACRO_TAP_START + lane*2 + 1; }
+    inline int tapIdForItem(int lane, int item) { return (item==3) ? tapSprId(lane) : tapLorId(lane); }
 }
 
 struct StraitsSandsMacroVisual : Module {
@@ -143,12 +148,17 @@ struct StraitsSandsMacroVisual : Module {
 
         static const char* laneNames[4] = {"REST","MEL","OCT","ACC"};
         static const char* paramNames[4] = {"Len","Off","Rot","Spr"};
-        for (int lane=0; lane<4; ++lane)
+        for (int lane=0; lane<4; ++lane) {
+            // P9b: TWO PRE/POST taps per lane — LOR (LEN/OFF/ROT) and SPREAD. Default
+            // 1.0 (POST = send draws attenuated CV). 0.0 = PRE (raw CV pre-atten).
+            configParam(tapLorId(lane), 0.f,1.f,1.f, std::string(laneNames[lane])+" LOR send tap (PRE-POST)");
+            configParam(tapSprId(lane), 0.f,1.f,1.f, std::string(laneNames[lane])+" spread send tap (PRE-POST)");
             for (int c=0; c<4; ++c) {
                 std::string nm = std::string(laneNames[lane])+" "+paramNames[c];
                 configParam(attenId(lane,c), -1.f,1.f,0.f, nm+" depth");
                 configInput(cvId(lane,c), nm+" CV");
             }
+        }
 
         // Global L/O/R params
         configParam(GLOBAL_REST_DNA_LEN,   1.f,16.f,16.f,"Global REST Length");
@@ -197,6 +207,10 @@ struct StraitsSandsMacroVisual : Module {
     // sync reads these: value = base(owner) + eastCV + macroCVDelta·blendSend.
     float macroBase[4][4]    = {};
     float macroCVDelta[4][4] = {};
+    // P9: the send PRE/POST tap applies ONLY to what the sends distribute, not to
+    // Macro's own LOR/spread display (which always uses the true POST macroCVDelta).
+    // macroSendDelta = the tapped CV delta the East/Mono send mix-ins read.
+    float macroSendDelta[4][4] = {};
 
     json_t* dataToJson() override {
         json_t* r = json_object();
