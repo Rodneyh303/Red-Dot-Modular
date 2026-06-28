@@ -200,9 +200,10 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 baseRot = macroMix(baseRot, eng, 2, 0.f, 15.f);
             }
 
-            engine.strandLenRef(strand) = clamp((int)std::round(baseLen), 1, 16);
-            engine.strandOffRef(strand) = ((int)std::round(baseOff) % 16 + 16) % 16;
-            engine.strandRotRef(strand) = ((int)std::round(baseRot) % 16 + 16) % 16;
+            engine.setStrand(SequencerEngine::StrandWriter::MONO, strand,
+                             (int)std::round(baseLen),
+                             (int)std::round(baseOff),
+                             (int)std::round(baseRot));
         };
 
         // Spread (REST/MEL/OCT only): base trimpot + per-lane spread CV.
