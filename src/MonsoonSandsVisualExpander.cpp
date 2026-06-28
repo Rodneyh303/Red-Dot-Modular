@@ -30,6 +30,7 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
     rack::app::SvgPanel* panelWidget = nullptr;
     redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;
+    int dbgLockState[4] = { -1, -1, -1, -1 };  // DEBUG PROBE: last logged lock-state per lane (remove after diagnosis)
 
     // Spread mod-arcs (bipolar -1..1), same as Macro: set = SPR param,
     // effective = mod->spreadEffective[spreadIdx] (CV-modulated). Normalised (v+1)/2.
@@ -117,7 +118,18 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             auto* mon = getMonsoon();
             bool hasMacro = mon && mon->expanderManager.cachedMacroSandsVisual != nullptr;
             if (!hasMacro || !module) return false;
-            return !(module->params[ownerDispId(editorLane)].getValue() > 0.5f);  // Macro owns → locked
+            float ownVal = module->params[ownerDispId(editorLane)].getValue();
+            bool locked  = !(ownVal > 0.5f);  // Macro owns → locked
+            // DEBUG PROBE (remove after diagnosis): log only when this lane's computed
+            // state changes, so the log isn't flooded. Shows the real runtime gate values
+            // for the Mono editor's lock. dbgLockState[] declared on the widget.
+            int key = (hasMacro ? 4 : 0) | (locked ? 2 : 0) | (ownVal > 0.5f ? 1 : 0);
+            if (dbgLockState[editorLane] != key) {
+                dbgLockState[editorLane] = key;
+                WARN("[MonoLock] lane=%d hasMacro=%d ownerDispId=%.3f -> locked=%d",
+                     editorLane, (int)hasMacro, ownVal, (int)locked);
+            }
+            return locked;
         };
         addChild(visualEditor);
 
