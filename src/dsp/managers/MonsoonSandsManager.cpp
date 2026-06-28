@@ -367,6 +367,23 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         publishGlobal(1);
         publishGlobal(2);
         publishGlobal(3);   // accent lane (Stage 6)
+    } else if (hasMacro && macroVis) {
+        // Macro present but NOT active (standalone: no base expander → no voices to
+        // distribute to, P7). The send/voice path stays inert, but Macro still has
+        // voice PAGES that display per-lane probabilities, and those read
+        // spreadEffective. publishGlobal (which writes it) only runs when macroActive,
+        // so standalone the spread knob did nothing visible. Populate spreadEffective
+        // from the spread knob (+ its own CV) here so the display tracks the knob.
+        for (int lane = 0; lane < 4; ++lane) {
+            float baseSpr = macroVis->params[Macro::sprId(lane)].getValue();
+            float sp = baseSpr;
+            if (macroVis->inputs[Macro::macroCvId(lane,3)].isConnected()) {
+                float att = macroVis->params[Macro::macroAttenId(lane,3)].getValue();
+                float cv  = macroVis->inputs[Macro::macroCvId(lane,3)].getVoltage() / 10.f;
+                sp = rack::math::clamp(baseSpr + cv * att * 2.f, -1.f, 1.f);   // ×2 = ±1 span
+            }
+            macroVis->spreadEffective[lane] = sp;
+        }
     }
 
     // Note: Poly DNA windows handled in Monsoon::process controlDivider block.
