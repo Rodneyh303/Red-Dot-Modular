@@ -410,6 +410,24 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 spv[lane] = sp;
             }
             engine.pe.setSandsActive(true);
+            // ===== TEMP DEBUG (remove after diagnosis) =====================
+            // Force the final arrays to an UNMISTAKABLE pattern driven by the REST
+            // spread knob: every step of every voice = (spv[0]+1)/2 (0..1). If the
+            // display tracks the REST spread knob after this, my branch reaches the
+            // display and the real spread MATH is the issue. If the bars stay put,
+            // something downstream reverts these writes (the branch effect never lands).
+            {
+                float dbg = rack::math::clamp((spv[0] + 1.f) * 0.5f, 0.f, 1.f);
+                for (int i = 0; i < 16; ++i) {
+                    engine.pe.rhythmRandom[i] = engine.pe.melodyRandom[i] =
+                    engine.pe.octaveRandom[i] = engine.pe.accentRandom[i] = dbg;
+                    for (int v = 0; v < 15; ++v)
+                        engine.pe.polyRhythmRandom[v][i] = engine.pe.polyMelodyRandom[v][i] =
+                        engine.pe.polyOctaveRandom[v][i] = engine.pe.polyAccentRandom[v][i] = dbg;
+                }
+                return;  // skip the real spread math while debugging
+            }
+            // ===== END TEMP DEBUG =========================================
             // V1 (mono final arrays): converge the mono draw toward the ensemble.
             for (int i = 0; i < 16; ++i) {
                 engine.pe.rhythmRandom[i]    = redDot::SpreadInterp::apply(engine.pe, mode, 0, i, nPoly, engine.pe.slewedRhythm[i], spv[0]);
