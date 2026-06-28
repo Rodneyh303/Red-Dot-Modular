@@ -65,16 +65,20 @@ struct SpreadInterp {
     // The shared bipolar interpolation + clamp.
     static float interpolate(float original, float targetValue, float spreadAmount) {
         float result;
-        // Self-target is a NO-OP for both signs: when the interpolation target equals
-        // the voice's own draw (MONO_DRAW, or AVERAGE_POLY with no other voices), there
-        // is nothing to spread toward/away from — the strand is a fixed anchor (the
-        // documented intent). Previously only the spread>0 branch was a no-op here; the
-        // spread<0 branch interpolated toward (1−target) and so SHIFTED a self-targeting
-        // draw by (1−2·original)·|amount| — audible as probability moving when turning a
-        // lone Sands Mono spread knob into the negative. Guard both signs.
-        if (spreadAmount == 0.0f || targetValue == original) result = original;
-        else if (spreadAmount > 0.0f)  result = original + (targetValue - original) * spreadAmount;
-        else                           result = original + ((1.0f - targetValue) - original) * std::fabs(spreadAmount);
+        // Self-target handling depends on SIGN:
+        //  • spread >= 0 → converge TOWARD the target. When target == original there's
+        //    nothing to converge to → no-op (correct; a lone positive spread does nothing).
+        //  • spread <  0 → move toward the INVERSION (1 − target). This is meaningful even
+        //    when target == original: it inverts the draw toward (1 − d). V1 in voice-1-
+        //    target (MONO_DRAW) mode must respond to negative spread this way. (The earlier
+        //    blanket 'target==original → no-op' guard killed this; it only belongs on the
+        //    positive branch.)
+        if (spreadAmount == 0.0f) result = original;
+        else if (spreadAmount > 0.0f) {
+            if (targetValue == original) result = original;                       // converge to self = no-op
+            else result = original + (targetValue - original) * spreadAmount;
+        }
+        else result = original + ((1.0f - targetValue) - original) * std::fabs(spreadAmount);  // invert toward (1−target)
         return rack::math::clamp(result, 0.0f, 1.0f);
     }
 
