@@ -61,15 +61,28 @@ classic "which one is real?" trap during a future spread edit.
 
 ## B. Dead weight / build hygiene
 
-### B1. `src/deprecated/` — ~1,400 LOC of unbuilt code  ·  Impact: MED · Effort: LOW
-Includes a 897-line `SandsVisualEditorV4_with_percell_editing.hpp` (a near-duplicate of the
-live 1021-line editor), plus old Deep/Straits Sands, West visual, Peranakan panel, Surge
-test. The Makefile globs only `src/*.cpp` + `src/dsp/{engines,managers,gates}/*.cpp`, so
-`deprecated/` is **not compiled** — but it's indexed by greps/IDE and invites copy-paste
-from stale code (the percell editor especially looks authoritative).
-- **Fix:** move out of the tree (a `archive/` branch or tag, or delete — it's in git
-  history regardless). At minimum add a top-of-file `// DEPRECATED — not built, do not
-  copy` banner to each. The near-duplicate editor is the real hazard.
+### B0. Genuinely dead code in the BUILT tree (verified)  ·  Impact: MED · Effort: TRIVIAL
+(`deprecated/` excluded by design — this is dead code in *compiled* paths.)
+- **`src/ui/SpreadControlWidget.hpp` (220 lines)** — the `SpreadControlWidget` class is
+  referenced nowhere in src or test. Fully dead. Delete.
+- **`src/dsp/spread/SpreadInterpolation.hpp` (166 lines)** — included by nothing (dead dup
+  of the live `SpreadInterp.hpp`); see A3. Delete (+ the `spread/` dir if then empty).
+- **`StraitsWestSandsVisual` — a half-wired ghost.** The model registration is commented
+  out (`Monsoon.cpp:937 // p->addModel(modelStraitsWestSandsVisual)`) and the expander-scan
+  that would populate `cachedWestSandsVisual` is commented out
+  (`MonsoonExpanderManager.hpp:136-137`), so `cachedWestSandsVisual` is **always null**.
+  Yet `MonsoonExpanderManager.hpp:33` still `extern`-declares the model and line 164 ANDs
+  the pointer into `allTypesFound()` — a predicate that therefore **can never return true**.
+  Contained because `allTypesFound()` is itself never called (also dead), but it's a
+  landmine: any future code gated on it silently never runs. Either revive West (real
+  feature) or strip the forward-decl/extern/cached pointer/predicate term. Decide which;
+  don't leave it half-present.
+- **Commented-out Deep/Dna expander members** (`MonsoonExpanderManager.hpp:44,49-50,72,
+  77-78,113-131`) — abandoned-idea scaffolding in a live header. If these are "maybe
+  someday" like `deprecated/`, fine; if not, strip. Low urgency.
+- **9 commented-out `#include` lines** + ~37 commented-code lines in
+  `MonsoonExpanderManager.cpp` — mostly old expander-scan variants. Cosmetic; clean
+  opportunistically.
 
 ### B2. Mixed CRLF/LF line endings (7 files)  ·  Impact: LOW · Effort: TRIVIAL
 CRLF in: `MonsoonInterchangeExpander.cpp`, `MonsoonWidget.hpp`,
@@ -159,6 +172,72 @@ intentional. **No action**; if anything, document the convention in a top-level 
 Large, but it delegates to 29 managers/controllers — the size is mostly declarations +
 wiring, not logic concentration. **Not a god-object.** No action beyond watching that new
 logic goes into a manager, not into `Monsoon` directly.
+
+---
+
+## F. Checks worth running that aren't on your list (categories, not yet exhaustive)
+
+These are *kinds* of audit beyond consistency/dead-code. A few are spot-checked below; each
+deserves its own focused pass.
+
+### F1. Type-safety of expander casts  ·  Impact: HIGH (if it ever fires) · Effort: MED
+12 `reinterpret_cast`s on expander pointers in the built tree (e.g. the scan in
+`MonsoonExpanderManager`). They trust that a `module->model == modelX` check guarantees the
+concrete type. That's the Rack idiom, but `reinterpret_cast` (vs `static_cast` /
+`dynamic_cast`) means a single wrong model-guard is undefined behaviour, not a null. Worth
+auditing that every cast is immediately preceded by the matching `model ==` guard, and
+considering a one-line typed helper `as<T>(Module*, Model*)` that bundles guard+cast so the
+pattern can't be written wrong.
+
+### F2. Real-time safety (no allocation/lock/IO on the audio thread)  ·  Impact: HIGH · Effort: MED
+Spot-check came back clean — no `std::string`/`vector`/`new` in the Sands `process`/`sync`
+paths (good; the control-rate work is allocation-free). But this should be a *deliberate*
+audit across all `process()` paths: no heap alloc, no mutex, no file/JSON, no logging in
+the hot path (the debug `WARN` probes we used are fine only because they're temporary).
+A known-good check to institutionalize given how much logging we added this session.
+
+### F3. Thread-safety of UI↔audio shared state  ·  Impact: HIGH · Effort: HIGH
+The whole Sands ownership story is params written on the UI thread, read on the audio
+thread (and engine strands written audio-side, read UI-side for display). Rack params are
+designed for this, but the *derived* shared state (engine `melodyLen` etc. read by widgets
+for display) is read without synchronization. Mostly benign for display (a torn read shows
+one stale frame), but worth a conscious pass: list every field written on one thread and
+read on the other, confirm each tolerates a stale/torn read. The topology resolver is the
+place to document these crossings.
+
+### F4. Determinism / RNG seeding  ·  Impact: MED · Effort: LOW
+There are PhiloxRng + SquaresRng + RNG tests — good. Worth confirming: is pattern output
+fully reproducible from (seed, step) across save/load and sample-rate changes? A
+"same seed → same pattern after reload" test would catch a class of subtle bugs and is
+cheap given the RNG layer is already tested.
+
+### F5. Sample-rate independence  ·  Impact: MED · Effort: LOW
+`controlDivider.setDivision(sampleRate/1500)` — confirm all slew/timing constants are
+expressed in seconds (not samples), so behaviour is identical at 44.1k/48k/96k/192k. Spot
+audit of `slew`, decay, and any `*= 0.99`-style smoothing for hardcoded per-sample rates.
+
+### F6. Denormal / NaN protection in DSP  ·  Impact: MED · Effort: LOW
+Feedback/smoothing paths (spread slew, any IIR) can drift to denormals (CPU spike) or NaN
+(silent stuck state). Check whether the build sets FTZ/DAZ or flushes small values; add a
+NaN guard on output if not. The `-ffast-math` in the user's build flags makes NaN handling
+*less* predictable, so worth a look.
+
+### F7. Param config completeness  ·  Impact: LOW · Effort: LOW
+Every `configParam`/`configSwitch` should have sane min/max/default + a name + (ideally)
+unit/description for the UI. A quick audit that no param is unnamed or has a default
+outside its range (the kind of thing that makes a freshly-placed module behave oddly).
+
+### F8. Const-correctness pass  ·  Impact: LOW · Effort: MED
+The build-fix `2c24ca9` had to *drop* `const` because Rack's accessors aren't const-correct
+in this SDK. That's a known constraint, but it means "takes non-const Module*" has spread.
+Worth confirming non-const is only where Rack forces it, not by accident — so genuinely
+read-only helpers advertise it.
+
+### F9. Header include hygiene / build time  ·  Impact: LOW · Effort: MED
+`Monsoon.hpp` (1141 lines) is included widely; heavy headers included transitively inflate
+build time (the user rebuilds often on MSYS2). An include-what-you-use pass + forward
+declarations where possible would speed iteration. Measure first (which headers are most
+transitively included) before investing.
 
 ---
 
