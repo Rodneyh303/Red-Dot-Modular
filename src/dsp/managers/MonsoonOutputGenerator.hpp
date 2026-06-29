@@ -1,5 +1,6 @@
 #pragma once
 
+#include <vector>
 #include "rack.hpp"
 
 // Forward declarations
@@ -62,4 +63,19 @@ public:
 private:
     // Helper: Set individual gate output with mute masking
     void setGateWithMute_(rack::engine::Output& out, float gateV, bool muted);
+
+    // Helper: Drive a shared poly-expander output section for one voice range.
+    void drivePolyExpanderSection_(SequencerEngine& engine,
+                                   std::vector<rack::engine::Output>& expanderOutputs,
+                                   int voiceOffset,
+                                   int slotCount,
+                                   bool effectiveMuted,
+                                   float gateV,
+                                   float currentPitchV,
+                                   int gateOutBase,
+                                   int cvOutBase,
+                                   int accentOutBase,
+                                   int summaryGateOut,
+                                   int summaryCvOut,
+                                   float sampleTime);
 };

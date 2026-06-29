@@ -36,44 +36,70 @@ void OutputGenerator::drive(SequencerEngine& engine,
     auto* polyExp = expanderManager.cachedPolyVoiceExpander;
     if (polyExp && engine.numPolyVoices > 0) {
         using namespace PolyVoiceExpanderIds;
-        for (int i = 0; i < (int)engine.numPolyVoices && i < 7; ++i) {
-            if (effectiveMuted) {
-                polyExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
-                polyExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
-                continue;
-            }
-            float vg = engine.voices[i].gs.process(sampleTime);
-            polyExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(vg);
-            polyExp->outputs[POLY_CV_OUT_1 + i].setVoltage(engine.voices[i].gs.currentPitchV);
-            // Accent is a poly lane now: each voice fires its OWN accent (drawn per-voice in
-            // executePolyVoice), not mono's. Still gated by the voice actually sounding.
-            polyExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage((!effectiveMuted && engine.voices[i].accented && vg > 5.f) ? 10.f : 0.f);
-        }
-        // Summary outputs for 1-8
-        polyExp->outputs[POLY_GATE_1_8_OUT].setVoltage((gateV > 5.f && !effectiveMuted) ? 10.f : 0.f);
-        polyExp->outputs[POLY_CV_1_8_OUT].setVoltage(effectiveMuted ? 0.f : currentPitchV);
+        drivePolyExpanderSection_(engine,
+                                  polyExp->outputs,
+                                  0,
+                                  7,
+                                  effectiveMuted,
+                                  gateV,
+                                  currentPitchV,
+                                  POLY_GATE_OUT_1,
+                                  POLY_CV_OUT_1,
+                                  POLY_ACCENT_OUT_1,
+                                  POLY_GATE_1_8_OUT,
+                                  POLY_CV_1_8_OUT,
+                                  sampleTime);
     }
 
     // 3. Straits West Expander (Voices 9-16)
     auto* westExp = expanderManager.cachedStraitWestExpander;
     if (westExp && engine.numPolyVoices > 7) {
         using namespace StraitWestExpanderIds;
-        for (int i = 0; i < 8; ++i) {
-            int vIdx = 7 + i;
-            if (effectiveMuted || vIdx >= (int)engine.numPolyVoices) {
-                westExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
-                westExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
-                continue;
-            }
-            float vg = engine.voices[vIdx].gs.process(sampleTime);
-            westExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(vg);
-            westExp->outputs[POLY_CV_OUT_1 + i].setVoltage(engine.voices[vIdx].gs.currentPitchV);
-            westExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage((!effectiveMuted && engine.voices[vIdx].accented && vg > 5.f) ? 10.f : 0.f);
-        }
-        // Summary outputs for 1-16
-        westExp->outputs[POLY_GATE_1_16_OUT].setVoltage((gateV > 5.f && !effectiveMuted) ? 10.f : 0.f);
-        westExp->outputs[POLY_CV_1_16_OUT].setVoltage(effectiveMuted ? 0.f : currentPitchV);
+        drivePolyExpanderSection_(engine,
+                                  westExp->outputs,
+                                  7,
+                                  8,
+                                  effectiveMuted,
+                                  gateV,
+                                  currentPitchV,
+                                  POLY_GATE_OUT_1,
+                                  POLY_CV_OUT_1,
+                                  POLY_ACCENT_OUT_1,
+                                  POLY_GATE_1_16_OUT,
+                                  POLY_CV_1_16_OUT,
+                                  sampleTime);
     }
+}
+
+void OutputGenerator::drivePolyExpanderSection_(SequencerEngine& engine,
+                                                std::vector<rack::engine::Output>& expanderOutputs,
+                                                int voiceOffset,
+                                                int slotCount,
+                                                bool effectiveMuted,
+                                                float gateV,
+                                                float currentPitchV,
+                                                int gateOutBase,
+                                                int cvOutBase,
+                                                int accentOutBase,
+                                                int summaryGateOut,
+                                                int summaryCvOut,
+                                                float sampleTime) {
+    for (int i = 0; i < slotCount; ++i) {
+        int vIdx = voiceOffset + i;
+        if (effectiveMuted || vIdx >= (int)engine.numPolyVoices) {
+            expanderOutputs[gateOutBase + i].setVoltage(0.f);
+            expanderOutputs[accentOutBase + i].setVoltage(0.f);
+            continue;
+        }
+
+        float vg = engine.voices[vIdx].gs.process(sampleTime);
+        expanderOutputs[gateOutBase + i].setVoltage(vg);
+        expanderOutputs[cvOutBase + i].setVoltage(engine.voices[vIdx].gs.currentPitchV);
+        expanderOutputs[accentOutBase + i].setVoltage((!effectiveMuted && engine.voices[vIdx].accented && vg > 5.f) ? 10.f : 0.f);
+    }
+
+    expanderOutputs[summaryGateOut].setVoltage((gateV > 5.f && !effectiveMuted) ? 10.f : 0.f);
+    expanderOutputs[summaryCvOut].setVoltage(effectiveMuted ? 0.f : currentPitchV);
 }
 
 void OutputGenerator::generateOutputs(SequencerEngine& engine,
