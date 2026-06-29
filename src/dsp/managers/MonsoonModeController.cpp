@@ -93,7 +93,6 @@ void ModeController::postExecute_(const StepResult& result) {
 // into engine.executeModeA, which reads nothing else from the clock. (Forward only;
 // reverse traversal is the next branch.)
 bool ModeController::executeModeE() {
-    engine.accentProb = paramManager.getAccent();
     PatternInput in = assemblePatternInput_();
 
     ClockEngine phaseView;            // edge-only view; executeModeA reads sixteenthEdge
@@ -104,6 +103,7 @@ bool ModeController::executeModeE() {
         in.restProb,
         paramManager.getLegato(),
         paramManager.getNoteValue(),
+        paramManager.getAccent(),
         in,
         phaseReverse ? -1 : +1        // within-draw reverse traversal
     );
@@ -114,9 +114,6 @@ bool ModeController::executeModeE() {
 
 bool ModeController::executeModeA() {
     if (clock.sixteenthEdge) {
-        // Fetch current parameters
-        engine.accentProb = paramManager.getAccent();
-        
         // Ensure pattern input is fresh
         PatternInput in = assemblePatternInput_();
 
@@ -126,6 +123,7 @@ bool ModeController::executeModeA() {
             in.restProb,
             paramManager.getLegato(),
             paramManager.getNoteValue(),
+            paramManager.getAccent(),
             in
         );
         
@@ -159,6 +157,7 @@ bool ModeController::executeModeB(bool gate1Rise,
             // Note value (which influences note length) should have no impact.
             // Pass a neutral value (e.g., 2.f for 1/4 note, a common default).
             2.f,
+            paramManager.getAccent(),
             modeBPatternInput // Pass the modified PatternInput
         );
         

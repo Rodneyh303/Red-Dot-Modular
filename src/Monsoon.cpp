@@ -775,7 +775,6 @@ void Monsoon::process(const ProcessArgs& args) {
 
         // Refresh Sequencer Parameters (Throttled sampling of all knobs/CV)
         modeController->updatePatternInput();
-        engine.accentProb = paramManager->getAccent();
 
         // Check for expander changes and update cached pointers
         // Mirror the global spread-target mode onto the engine so display SpreadManagers

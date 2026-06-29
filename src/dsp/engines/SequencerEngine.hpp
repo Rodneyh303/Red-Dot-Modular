@@ -181,7 +181,6 @@ struct SequencerEngine {
     int modeSelect = 0;
     int ppqnSetting = 24;  // master PPQN pulse grid (24/48/96)
     int noteVariationMask = 0b111;
-    float accentProb = 0.25f;  // Probability of accent on each note (0..1) (NEW)
 
     // Quantizer cache
     int activeSemiList[12] = {};
@@ -272,8 +271,8 @@ struct SequencerEngine {
     bool shouldTriggerStep(int ppqn) const;
     StepResult executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float accentProb, const PatternInput& input, bool wasHeld, bool hadTail);
     void handlePhraseBoundary(PatternInput input, bool isMelodyRealtime, bool isRhythmRealtime);
-    StepResult executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input, int dir = +1);
-    StepResult executeModeB(bool gate1Rise, bool gate1High, float restProb, float legatoProb, float noteVal, const PatternInput& input);
+    StepResult executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, float accentProb, const PatternInput& input, int dir = +1);
+    StepResult executeModeB(bool gate1Rise, bool gate1High, float restProb, float legatoProb, float noteVal, float accentProb, const PatternInput& input);
     void executeModeC(const ClockEngine& clock, float inCV);
     void executeModeD(bool gateHigh, float inCV);
     float quantize(float vIn);

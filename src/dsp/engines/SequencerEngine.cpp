@@ -314,7 +314,7 @@ void SequencerEngine::handlePhraseBoundary(PatternInput input, bool isMelodyReal
     pe.applyPendingSeedsAndRedraw(input);
 }
 
-StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input, int dir) {
+StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, float accentProb, const PatternInput& input, int dir) {
     StepResult result;
     if (!clock.sixteenthEdge || muted) return result;
 
@@ -344,7 +344,7 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
     return result;
 }
 
-StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float restProb, float legatoProb, float noteVal, const PatternInput& input) {
+StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float restProb, float legatoProb, float noteVal, float accentProb, const PatternInput& input) {
     StepResult result;
     if (muted) {
         prevGate1High = gate1High;
