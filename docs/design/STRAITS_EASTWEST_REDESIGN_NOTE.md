@@ -39,9 +39,16 @@ storage/addressing.
    coherent voice model (the East/West *base* boundary goes away; whether West survives as
    anything is an open question below).
 
-3. **Straits East base = 15 REST knobs + 15 ACCENT knobs.** One REST + one ACCENT knob per
-   poly voice (voices 2–16 = 15 poly voices). Mirrors Monsoon's own REST/ACCENT controls,
-   multiplied across the poly voices — the base *levels* live here.
+3. **Straits East base = REST + ACCENT level knobs, laid out as a 4-column × 8-row grid.**
+   4 columns of level knobs: **2 columns REST + 2 columns ACCENT**, **8 rows** → 16 REST +
+   16 ACCENT = 32 knobs. Uses **slightly-smaller versions of the equivalent Monsoon knobs**
+   for coherent design, and **fits in sensible HP** (this is the HP-feasibility resolution
+   — see West question below). The knobs mirror Monsoon's own REST/ACCENT controls; the
+   base *levels* live here.
+   - DETAIL TO CONFIRM: 4×8 = 16 per group, not the 15 poly voices stated earlier. Either
+     all **16 voices get a real base knob** (voice 1/mono included — consistent with point
+     4's "voice 1 duplicate" if mono also has its own level here), or it's 15 voices + 1
+     spare per group. The clean reading is 16 (mono voice 1 gets a knob too). Decide which.
 
 4. **Straits East exposes POLY outputs (poly cables, not 21 jacks):** at least poly
    **gate**, poly **accent gate**, and poly **CV** outs. **16-voice** poly cables, with
@@ -59,13 +66,15 @@ storage/addressing.
 
 ### Resulting module shape (sketch)
 
-- **Straits East (base poly):** 15 REST + 15 ACCENT knobs; poly gate / poly accent-gate /
-  poly CV outs as 16ch cables (ch1 = mono duplicate). The "levels + poly outs" module.
+- **Straits East (base poly):** REST + ACCENT base level knobs in a **4-col × 8-row grid**
+  (2 cols REST + 2 cols ACCENT = 32 knobs, slightly-smaller Monsoon-style, sensible HP);
+  poly gate / poly accent-gate / poly CV outs as 16ch cables (ch1 = mono duplicate). The
+  "levels + poly outs" module.
 - **CV expander:** poly + mono CV modulation INPUTS, rethought.
 - **Mono expander:** mono output jack(s) + mono CV outs.
-- **West:** the base-level split is gone (point 2); West's fate is an open question — fold
-  its voices into East's 15, or repurpose, or retire (it's already a ghost on the visual
-  side, see CODEBASE_REFACTOR_REVIEW B0).
+- **West:** likely **retired** — the 4×8 knob grid fits one East module in sensible HP, so
+  there's no voice-range split and no overflow need (was a ghost on the visual side anyway,
+  CODEBASE_REFACTOR_REVIEW B0). Returns only if out-jacks alone push past sensible HP.
 
 ---
 
@@ -88,10 +97,12 @@ this is sequenced AFTER the topology work.
 
 ## Open questions to settle before designing (not now)
 
-1. **West's fate:** retire entirely (East's 15 knobs cover all poly voices), or keep a
-   second module for a reason (panel width / HP budget for 30 knobs + poly jacks)? 15 REST
-   + 15 ACCENT + poly out jacks may not fit one sensible HP — West may survive purely as a
-   *physical* knob-count overflow, not a voice-range boundary.
+1. **West's fate:** the HP worry is largely resolved — a 4-col × 8-row grid of slightly-
+   smaller Monsoon-style knobs (32 knobs) plus the poly-cable out jacks fits sensible HP on
+   **one** East module. So West likely **retires** as a base module (no voice-range split,
+   no overflow need). Confirm the full faceplate (32 knobs + poly gate/accent/CV out jacks
+   + any in) still fits comfortably; if jacks push it over, West could return purely as an
+   output-jack overflow, but that's now the exception, not the plan.
 2. **"Voice 1 duplicate" semantics:** is ch1 of the poly cable always == the mono voice, or
    only when mono is active? Define what ch1 carries when the patch is poly-only.
 3. **CV expander mapping:** how does a CV input address voices? Per-voice poly CV in (16ch
