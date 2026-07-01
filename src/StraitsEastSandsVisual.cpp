@@ -10,6 +10,8 @@
 #include "ui/SvgPanelKit.hpp"
 #include "ui/OwnerCell.hpp"
 #include "ui/ModArcOverlay.hpp"
+#include "dsp/SandsTopology.hpp"   // step 3c: East V1 write ownership via the resolver
+#include <cassert>
 #include "ui/ConnectMark.hpp"
 #include "ui/GoldPolyPort.hpp"
 #include "dsp/managers/PolyVoiceSandsParameterManager.hpp"
@@ -812,14 +814,34 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // using getPolyVoltage(0) so a MONO cable broadcasts to V1 too (Rack convention).
             // CV is additive on top of the editor base, at control rate (no audio-rate CV).
             // Depth = the mono-slot attenuator (mirrored from the display proxy below).
+            // STEP 3c: per-consumer topology for the V1 write ownership. East's ownerDispId
+            // is ENGINE-ordered, so populate eastV1Owner[editorLane] by reading
+            // ownerDispId(EDITOR_TO_ENGINE_LANE[editorLane]) — the conversion is baked here
+            // so topo speaks editor lane (design decision 1). No Mono in this branch
+            // (v1Editable), so monoPresent=false → owner() takes the East-V1 path.
+            dotModular::SandsTopology::Inputs v1In;
+            v1In.monoPresent    = false;   // v1Editable() guarantees no Mono
+            v1In.eastPresent    = true;    // this widget IS East
+            v1In.macroPresent   = macroAttached();
+            v1In.polyBaseActive = true;    // V1 editing implies base present
+            for (int el = 0; el < 4; ++el) {
+                int eng = dotModular::EDITOR_TO_ENGINE_LANE[el];
+                v1In.eastV1Owner[el] = module->params[StraitsEastVisualIds::ownerDispId(eng)].getValue() > 0.5f;
+            }
+            const dotModular::SandsTopology v1Topo = dotModular::SandsTopology::build(v1In);
             for (int el = 0; el < 4; ++el) {
                 auto& lane = visualEditor->currentState.lanes[el];
                 int strand  = dotModular::MONO_LANE_TO_STRAND[el];
                 int engLane = dotModular::EDITOR_TO_ENGINE_LANE[el];   // East CV jack / macroBase use engine lane
-                // Delegated to Macro? → write Macro's GLOBAL base LOR for this lane
-                // (macroBase is engine-lane indexed, item 0=LEN 1=OFF 2=ROT). Owned by
-                // East → write the editor's lane LOR (+ East V1 CV) as before.
-                if (monoLaneOwnedByMacro(engLane)) {
+                // STEP 3c: ownership via the resolver. This block runs only when East is
+                // the V1 editor (no Mono, v1Editable), so V1's owner is EAST or (delegated)
+                // MACRO. delegated ⟺ topo.owner(0, el) == MACRO. Was:
+                //   if (monoLaneOwnedByMacro(engLane))
+                // Cross-check against the old engine-lane predicate in debug.
+                const bool delegated = (v1Topo.owner(0, el) == dotModular::SandsTopology::Role::MACRO);
+                assert(delegated == monoLaneOwnedByMacro(engLane)
+                       && "topo V1 delegated must match monoLaneOwnedByMacro");
+                if (delegated) {
                     auto* macroVis = getMonsoon()->expanderManager.cachedMacroSandsVisual;
                     if (macroVis) {
                         eng.setStrand(SequencerEngine::StrandWriter::EAST, strand,
