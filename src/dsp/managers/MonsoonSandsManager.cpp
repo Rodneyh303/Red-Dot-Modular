@@ -229,7 +229,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 baseRot = macroMix(baseRot, eng, 2, 0.f, 15.f);
             }
 
-            engine.setStrand(SequencerEngine::StrandWriter::MONO, strand,
+            engine.setStrand(StrandWriter::MONO, strand,
                              (int)std::round(baseLen),
                              (int)std::round(baseOff),
                              (int)std::round(baseRot));

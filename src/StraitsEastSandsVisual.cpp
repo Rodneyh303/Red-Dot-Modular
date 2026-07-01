@@ -844,7 +844,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 if (delegated) {
                     auto* macroVis = getMonsoon()->expanderManager.cachedMacroSandsVisual;
                     if (macroVis) {
-                        eng.setStrand(SequencerEngine::StrandWriter::EAST, strand,
+                        eng.setStrand(StrandWriter::EAST, strand,
                             (int)std::round(macroVis->macroBase[engLane][0] + macroVis->macroCVDelta[engLane][0]),
                             (int)std::round(macroVis->macroBase[engLane][1] + macroVis->macroCVDelta[engLane][1]),
                             (int)std::round(macroVis->macroBase[engLane][2] + macroVis->macroCVDelta[engLane][2]));
@@ -871,7 +871,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         }
                         return rack::math::clamp(base + sendBlend(item), lo, hi);
                     };
-                    eng.setStrand(SequencerEngine::StrandWriter::EAST, strand,
+                    eng.setStrand(StrandWriter::EAST, strand,
                         (int)std::round(addCV(len, 0, 1.f, 16.f)),
                         (int)std::round(addCV(off, 1, 0.f, 15.f)),
                         (int)std::round(addCV(rot, 2, 0.f, 15.f)));
