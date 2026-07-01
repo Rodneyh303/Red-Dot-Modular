@@ -97,6 +97,10 @@ struct LanternDisplay : widget::Widget {
     // Geometry (mm→px handled by the panel; these are the display-box internals).
     static constexpr int   N_VOICES = 16;
     static constexpr int   N_STEPS  = 16;
+    // Layout inside the display box (matches gen_lantern.py): a left gutter for note
+    // labels, a right strip for velocity/accent dots, the step grid in between.
+    static constexpr float GUTTER_FRAC = 16.f / (208.28f - 12.f);  // ~16mm / DISP_W
+    static constexpr float DOTS_FRAC   = 10.f / (208.28f - 12.f);  // ~10mm / DISP_W
 
     void drawLayer(const DrawArgs& args, int layer) override {
         if (layer != 1) { Widget::drawLayer(args, layer); return; }
@@ -145,12 +149,14 @@ struct LanternWidget : ModuleWidget {
         addChild(createWidget<redDot::RedScrew>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
         addChild(createWidget<redDot::RedScrew>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
-        // The display box (position/size mirror the panel's editor recess — mm coords
-        // from gen_lantern.py; placeholder px values here, aligned in the panel step).
+        // The display box mirrors gen_lantern.py: DISP_X=6, DISP_Y=16, DISP_W=W-12,
+        // DISP_H=96 mm on a 41HP (208.28mm) panel. The widget reserves a left gutter
+        // (~16mm) for note-name labels and a right strip (~10mm) for velocity/accent
+        // dots; the 16 lanes fill the height (LANE_H = 96/16 = 6mm).
         auto* disp = new LanternDisplay();
         disp->module = module;
-        disp->box.pos  = mm2px(Vec(6.f, 14.f));
-        disp->box.size = mm2px(Vec(46.f, 78.f));
+        disp->box.pos  = mm2px(Vec(6.f, 16.f));
+        disp->box.size = mm2px(Vec(208.28f - 12.f, 96.f));
         addChild(disp);
 
         // TODO: view buttons (Notes/Velocity/Prob), Zoom knob, Follow button —
