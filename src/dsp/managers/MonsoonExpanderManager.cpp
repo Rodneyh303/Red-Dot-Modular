@@ -338,9 +338,10 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 static const int STRND[4] = { dotModular::STRAND_RHYTHM, dotModular::STRAND_MELODY,
                                               dotModular::STRAND_OCTAVE, dotModular::STRAND_ACCENT };
                 for (int lane = 0; lane < 4; ++lane) {
-                    engine.strandLenRef(STRND[lane]) = (int)math::clamp(std::round(macroVis->macroBase[lane][0]), 1.f, 16.f);
-                    engine.strandOffRef(STRND[lane]) = ((int)std::round(macroVis->macroBase[lane][1]) % 16 + 16) % 16;
-                    engine.strandRotRef(STRND[lane]) = ((int)std::round(macroVis->macroBase[lane][2]) % 16 + 16) % 16;
+                    engine.setStrand(SequencerEngine::StrandWriter::MACRO, STRND[lane],
+                                     (int)std::round(macroVis->macroBase[lane][0]),
+                                     (int)std::round(macroVis->macroBase[lane][1]),
+                                     (int)std::round(macroVis->macroBase[lane][2]));
                 }
             }
             for (int v = 0; v < effPolyVoices; ++v) {

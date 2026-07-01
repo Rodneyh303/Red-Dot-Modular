@@ -4,6 +4,8 @@
 #include "ClockEngine.hpp"
 #include "../NoteValues.hpp"
 #include "../LaneMapping.hpp"
+#include <cassert>
+#include <cstdio>
 
 // ── Poly voice architecture ────────────────────────────────────────────────────
 
@@ -37,6 +39,20 @@ struct PolyVoice {
 };
 
 // ── SequencerEngine ────────────────────────────────────────────────────────────
+
+// ── Debug-only strand-write ledger ────────────────────────────────────────────
+// Every producer that writes a mono strand's LOR (length/offset/rotation) declares
+// WHO it is via this role. In debug builds the engine records the role per strand
+// per process block and asserts that no strand is written by two different roles in
+// the same block — the invariant "exactly one writer per strand". This is the guard
+// that would have caught the Mono+Macro clobber (Macro-only sync stamping Mono's V1
+// strands) on the first frame: "melodyLen written by MONO and MACRO".
+enum class StrandWriter : uint8_t {
+    NONE = 0,
+    MONO,      // MonsoonSandsManager::readStrand (Mono visual owns V1, per-lane)
+    EAST,      // StraitsEastSandsVisual V1 editor (East owns / East-delegated-to-Macro)
+    MACRO,     // MonsoonExpanderManager Macro-only sync (Macro is the sole Sands visual)
+};
 
 struct SequencerEngine {
     PatternEngine pe;
@@ -164,6 +180,48 @@ struct SequencerEngine {
             case dotModular::STRAND_OCTAVE:    return octaveRot;
             case dotModular::STRAND_RHYTHM:
             default:                           return rhythmRot;
+        }
+    }
+
+    // ── Strand-write ledger (debug-only assert; behaviour-inert in release) ──────
+    // strandWriter[strand] = the role that wrote this strand this block. Reset at the
+    // top of each process block via beginStrandWriteBlock(). setStrand() records the
+    // writer and, in debug, asserts no second role writes the same strand in one block.
+    // Strand index domain is dotModular::STRAND_* (0..5). NONE means "not yet written".
+    StrandWriter strandWriter[6] = { StrandWriter::NONE };
+
+    void beginStrandWriteBlock() {
+        for (int i = 0; i < 6; ++i) strandWriter[i] = StrandWriter::NONE;
+    }
+
+    // The ONLY sanctioned way to write a mono strand's LOR. Records the writer role,
+    // asserts single-writer-per-block in debug, then assigns via the ref accessors.
+    // (len clamped 1..16; off/rot wrapped 0..15 — same normalisation the call sites did.)
+    void setStrand(StrandWriter role, int strand, int len, int off, int rot) {
+#ifndef NDEBUG
+        if (strand >= 0 && strand < 6) {
+            StrandWriter prev = strandWriter[strand];
+            if (prev != StrandWriter::NONE && prev != role) {
+                // Two different producers wrote the same strand this block — the exact
+                // bug class that made Mono+Macro V1 uneditable. Log loudly; the engine
+                // value is now ambiguous (last writer wins, races the display).
+#ifdef WARN
+                WARN("[StrandLedger] CONFLICT strand=%d written by %d then %d (two writers in one block)",
+                     strand, (int)prev, (int)role);
+#else
+                std::fprintf(stderr,
+                     "[StrandLedger] CONFLICT strand=%d written by %d then %d (two writers in one block)\n",
+                     strand, (int)prev, (int)role);
+#endif
+                assert(false && "two writers for one engine strand in a single block");
+            }
+            strandWriter[strand] = role;
+        }
+#endif
+        if (strand >= 0 && strand < 6) {
+            strandLenRef(strand) = rack::math::clamp(len, 1, 16);
+            strandOffRef(strand) = ((off % 16) + 16) % 16;
+            strandRotRef(strand) = ((rot % 16) + 16) % 16;
         }
     }
 

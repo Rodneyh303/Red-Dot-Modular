@@ -822,9 +822,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 if (monoLaneOwnedByMacro(engLane)) {
                     auto* macroVis = getMonsoon()->expanderManager.cachedMacroSandsVisual;
                     if (macroVis) {
-                        eng.strandLenRef(strand) = (int)rack::math::clamp(std::round(macroVis->macroBase[engLane][0] + macroVis->macroCVDelta[engLane][0]), 1.f, 16.f);
-                        eng.strandOffRef(strand) = ((int)std::round(macroVis->macroBase[engLane][1] + macroVis->macroCVDelta[engLane][1]) % 16 + 16) % 16;
-                        eng.strandRotRef(strand) = ((int)std::round(macroVis->macroBase[engLane][2] + macroVis->macroCVDelta[engLane][2]) % 16 + 16) % 16;
+                        eng.setStrand(SequencerEngine::StrandWriter::EAST, strand,
+                            (int)std::round(macroVis->macroBase[engLane][0] + macroVis->macroCVDelta[engLane][0]),
+                            (int)std::round(macroVis->macroBase[engLane][1] + macroVis->macroCVDelta[engLane][1]),
+                            (int)std::round(macroVis->macroBase[engLane][2] + macroVis->macroCVDelta[engLane][2]));
                     }
                 } else {
                     float len = (float)std::max(1, lane.length);
@@ -848,9 +849,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         }
                         return rack::math::clamp(base + sendBlend(item), lo, hi);
                     };
-                    eng.strandLenRef(strand) = (int)std::round(addCV(len, 0, 1.f, 16.f));
-                    eng.strandOffRef(strand) = ((int)std::round(addCV(off, 1, 0.f, 15.f)) % 16 + 16) % 16;
-                    eng.strandRotRef(strand) = ((int)std::round(addCV(rot, 2, 0.f, 15.f)) % 16 + 16) % 16;
+                    eng.setStrand(SequencerEngine::StrandWriter::EAST, strand,
+                        (int)std::round(addCV(len, 0, 1.f, 16.f)),
+                        (int)std::round(addCV(off, 1, 0.f, 15.f)),
+                        (int)std::round(addCV(rot, 2, 0.f, 15.f)));
                 }
             }
             // Display: reflect the engine's current mono strand LOR back to the editor.
