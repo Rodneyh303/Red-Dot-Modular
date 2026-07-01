@@ -253,3 +253,19 @@ would be pure waste — explicitly rejected.
 - Step 6: lint + cleanup. Low risk.
 
 Do NOT attempt steps 3–5 in one sitting. One predicate, one build, one UI sanity check.
+
+---
+
+## Deferred behaviour question — Macro V1 lock in EAST_PLUS_MACRO (found in step 4b)
+
+Migrating Macro's `laneLockedFn` surfaced a latent inconsistency in the OLD code: it
+returned "editable" for Macro's V1 tab whenever no Mono was attached — including
+EAST_PLUS_MACRO, where East is actually the V1 editor and owns (some) V1 lanes. So the old
+code would let Macro edit a V1 lane that East owns.
+
+- Step 4b preserves this exactly (migrated to `owner(0,l)==MONO`, NOT `lockedOn(MACRO)`),
+  so the cross-check assert stays silent — no behaviour change in this step.
+- `lockedOn(MACRO,0,l)` would be the *more correct* rule (lock Macro's V1 lane when EAST
+  owns it too), but that's a deliberate behaviour CHANGE. Decide separately whether Macro's
+  V1 tab is even reachable/meaningful in EAST_PLUS_MACRO; if so, switching to lockedOn(MACRO)
+  is the fix. Tracked for post-step-6 review, not done now.
