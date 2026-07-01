@@ -30,10 +30,30 @@ Each editor is named **after its host module + "Sands"** — the qualifier encod
 |---|---|---|
 | **Monsoon Sands** | mono-voice probability (single voice, the grain) | on Monsoon (the parent) |
 | **Straits Sands** | detailed poly probability (per-voice, fine) | on Straits — narrow channel = fine detail |
-| **Marina Sands** | broad poly probability (all voices, broad strokes) | wide bay = broad strokes |
+| **Sands Helix** | broad poly probability — intertwines Monsoon Sands + Straits Sands (both delegate lanes to it, it taps global CV) | the helix that winds the two Sands together — see rationale below |
 
 (Old overloaded names — Straits Sands / Sands East / Sands West for both base AND editors —
 are retired in favour of this clean scope-qualified set.)
+
+### Why "Sands Helix" (word order deliberate)
+
+Not "Helix Sands" (which would read as *a flavour of Sands*, a fourth sibling). **Sands
+Helix** = the helix that winds *through / above* the two Sands editors — it is the connective
+broad layer, not a peer in the "…Sands" list, so it reads differently on purpose. It needs
+no host module because **being the intertwiner IS its identity** (this is the naming
+principle Monsoon/Straits Sands don't extend to — those are host-named; Sands Helix is
+function-named). Three layers of meaning, all real:
+
+1. **Intertwining (function):** it winds Monsoon Sands (mono) and Straits Sands (detailed
+   poly) together — both can *delegate lanes to it*, and it *taps global CV* across them. The
+   broad-modulation layer twisting the two strands into one.
+2. **Helix Bridge (place):** the real Marina Bay landmark whose helix *connects to Marina Bay
+   Sands* — ties the family into the same Marina Bay geography as the Sands icon, via the
+   actual bridge to the "probability place" (the casino/Sands).
+3. **DNA double-helix (engine):** two intertwined strands. The engine literally works in
+   **strands** (`strandLen`, `MONO_LANE_TO_STRAND`, the strand-write ledger) — so the name
+   quietly describes the architecture: the double-strand binding the voices.
+
 
 ---
 
@@ -89,7 +109,7 @@ A debugging/▶display aid that shows what notes are actually coming out.
 | State | Names |
 |---|---|
 | **Unchanged (live)** | Monsoon (parent), Raffles (probability draws — "holds a raffle"), Junction + Interchange (mono-voice CV modulators; Junction is a core Monsoon modulator, out of scope) |
-| **New editor names (Sands family)** | Monsoon Sands, Straits Sands, Marina Sands |
+| **New editor names (Sands family)** | Monsoon Sands, Straits Sands, Sands Helix |
 | **New signal modules (transit)** | Straits (base), Causeway (poly CV), Changi (output) |
 | **New modules (planned)** | Shophouse (scale), Lantern (note visualiser) |
 | **Revived** | Causeway (now poly CV, different role) |
@@ -105,7 +125,7 @@ Fill in as the rename happens; classes/files keep old names until then.
 |---|---|---|
 | Monsoon Sands | `MonsoonSandsVisualExpander` (src/MonsoonSandsVisualExpander.*) | mono visual |
 | Straits Sands | `StraitsEastSandsVisual` (src/StraitsEastSandsVisual.*) | detailed poly visual |
-| Marina Sands | `StraitsSandsMacroVisual` (src/StraitsSandsMacroVisual.*) | broad poly visual |
+| Sands Helix | `StraitsSandsMacroVisual` (src/StraitsSandsMacroVisual.*) | broad poly visual; word order is deliberate (see rationale) |
 | Straits (base) | `MonsoonStraitsEastExpander` (+ retiring `MonsoonStraitWestExpander`) | base poly; West folds in |
 | Causeway (poly CV) | (CV currently on East/West surfaces) | new module; extract CV path |
 | Changi (output) | (poly outs currently on `MonsoonStraitsEastExpander`) | new module; per-voice outs |
