@@ -208,6 +208,20 @@ struct LanternDisplay : widget::Widget {
                 nvgFillColor(vg, col);
                 nvgFill(vg);
 
+                // GATE-START divider: a new note ONSET (not a Tie/MidNote continuation)
+                // gets a bright vertical tick at its left edge — so notes longer than one
+                // 1/16 step still show where each new gate begins (1/8 → tick every 2nd
+                // step, 1/32 → tick mid-step, etc). Without this, runs of long notes merge
+                // into one solid line. A Tie/Legato continuation gets NO tick (it's held).
+                const bool onset = !c.heldIn;
+                if (onset) {
+                    NVGcolor tick = nvgLerpRGBA(col, nvgRGB(0xff, 0xff, 0xff), 0.55f);
+                    nvgBeginPath(vg);
+                    nvgRect(vg, bx + 0.5f, yc - barH * 0.5f, 1.4f, barH);
+                    nvgFillColor(vg, tick);
+                    nvgFill(vg);
+                }
+
                 // accented notes get a thin brand-red top edge for extra legibility
                 if (c.accented) {
                     nvgBeginPath(vg);
@@ -278,8 +292,16 @@ struct LanternWidget : ModuleWidget {
         disp->box.size = mm2px(Vec(208.28f - 12.f, 96.f));
         addChild(disp);
 
-        // TODO: view buttons (Notes/Velocity/Prob), Zoom knob, Follow button —
-        //   wired to VIEW_PARAM / ZOOM_PARAM / FOLLOW_PARAM (display-only).
+        // Controls along the bottom strip — positions mirror gen_lantern.py wells
+        // (View buttons x≈10/33/56, Zoom knob centre, Follow x≈W-30, all near y≈118mm).
+        // Display-only params; a Trimpot per control (View 0-2, Zoom 0-2, Follow 0-1).
+        // TL1105 momentary buttons could replace View/Follow later for nicer UX.
+        addParam(createParamCentered<Trimpot>(
+            mm2px(Vec(20.f, 118.f)), module, Lantern::VIEW_PARAM));
+        addParam(createParamCentered<Trimpot>(
+            mm2px(Vec(208.28f / 2.f, 118.f)), module, Lantern::ZOOM_PARAM));
+        addParam(createParamCentered<Trimpot>(
+            mm2px(Vec(208.28f - 20.f, 118.f)), module, Lantern::FOLLOW_PARAM));
     }
 };
 
