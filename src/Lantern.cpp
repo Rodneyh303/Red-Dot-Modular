@@ -30,7 +30,8 @@ namespace lantern {
     }
 
     // Note-type for the colour axis, mapped from the engine's MonoDecision.
-    enum class NoteType : uint8_t { Inactive, Single, Tie, Legato, Accent };
+    // Accent is NOT here — it is an orthogonal overlay flag on the Cell.
+    enum class NoteType : uint8_t { Inactive, Single, Tie, Legato };
 }
 
 // ── Module: display-only params, reads Monsoon read-only ─────────────────────
@@ -66,9 +67,13 @@ struct Lantern : Module {
         configSwitch(FOLLOW_PARAM, 0.f, 1.f, 1.f, "Follow", {"Off", "On"});
     }
 
-    // Read-only sampler: called each process(); when a new step edge is seen on
-    // the engine, records the current per-voice state into the display buffer.
-    // NOTE: this only READS monsoon->engine; it never writes it.
+    // Read-only sampler: records the observed per-step state into Lantern's own
+    // display buffer on each step edge. Per-step, as-it-happens, NO look-back — a
+    // note reads as Single when it fires and only changes to Tie/Legato at the step
+    // where the engine's decision actually becomes a continuation (the 2nd note on).
+    // This mirrors what Monsoon really does (probabilistic, not pre-planned), so the
+    // colour change AT the join is the truthful tie/legato signal. Trusts MonoDecision.
+    // Reads engine state only; writes nothing back.
     void process(const ProcessArgs& args) override {
         Monsoon* mon = redDot::findMonsoonEitherSide(this);
         if (!mon) return;
@@ -79,14 +84,49 @@ struct Lantern : Module {
         lastObservedStep = step;
         if (step < 0 || step >= 16) return;
 
-        // TODO(step): populate cells[voice][step] from:
-        //   mono  → eng.gs, eng.lastStepResult
-        //   poly  → eng.voices[v].gs, eng.voices[v].accented, eng.lastStepResult.decision
-        // deriving NoteType from MonoDecision, lengthSteps from nvIdx via
-        // gs_noteSteps(), heldIn/heldOut from holdRemain vs step position, pitchV
-        // from GateState.currentPitchV. (Fleshed out next; scaffold records nothing
-        // yet so it's a safe no-op observer.)
-        (void)eng;
+        const MonoDecision dec = eng.lastStepResult.decision;
+        const bool accentedMono = eng.lastStepResult.accented;
+        const float lenSteps = gs_noteSteps(eng.lastStepResult.nvIdx);
+
+        // Row 0 = mono / V1.
+        recordCell(0, step, eng.gs, dec, accentedMono, lenSteps);
+
+        // Rows 1..numPolyVoices = poly voices 2.. . A poly voice follows mono's
+        // gate TYPE (retrigger/tie/legato) but can independently REST (then it's
+        // inactive this gate) and draws its OWN accent.
+        for (int v = 0; v < eng.numPolyVoices && v < 15; ++v) {
+            const PolyVoice& pv = eng.voices[v];
+            recordCell(v + 1, step, pv.gs, dec, pv.accented, lenSteps);
+        }
+        // Voices beyond numPolyVoices → mark inactive.
+        for (int v = eng.numPolyVoices; v < 15; ++v)
+            cells[v + 1][step].type = lantern::NoteType::Inactive;
+    }
+
+    // Map an observed voice state at a step into a display Cell. NoteType priority:
+    // inactive (gate down & not held) → else Accent if accented → else the join type
+    // (Tie/Legato) from the decision → else Single (a fresh/normal note).
+    void recordCell(int voice, int step, const GateState& gs, MonoDecision dec,
+                    bool accented, float lenSteps) {
+        Cell& c = cells[voice][step];
+        const bool sounding = gs.gateHeld || gs.holdRemain > 0.0001f;
+        if (!sounding) { c.type = lantern::NoteType::Inactive; return; }
+
+        c.pitchV      = gs.currentPitchV;
+        c.lengthSteps = lenSteps;
+        c.accented    = accented;   // orthogonal overlay (render brightens/marks), NOT a type
+        c.heldIn      = (dec == MonoDecision::Tie || dec == MonoDecision::MidNote);
+        c.heldOut     = gs.holdRemain > 1.0001f;   // still ringing past this whole step
+
+        // Note-TYPE is single/tie/legato only (accent is a separate overlay so an
+        // accented tie still reads as a tie). As-it-happens, no look-back:
+        if (dec == MonoDecision::Tie)                  c.type = lantern::NoteType::Tie;
+        else if (dec == MonoDecision::Legato ||
+                 dec == MonoDecision::LegatoMax)       c.type = lantern::NoteType::Legato;
+        else                                           c.type = lantern::NoteType::Single;
+        // (NewNote and MidNote both read as Single here — a MidNote is the tail of a
+        //  note that already showed its type on the step it fired; drawing it as the
+        //  same base colour keeps the bar continuous without claiming a new event.)
     }
 };
 
@@ -124,16 +164,18 @@ struct LanternDisplay : widget::Widget {
         // TODO: current-phase red vertical line at module engine stepIndex.
     }
 
-    // Colour per note type (brand-aligned; accent = brand red emphasis).
+    // Base colour per note type. Accent is drawn as a separate overlay (brighter
+    // outline / brand-red marker) on top of these, so an accented note keeps its
+    // tie/legato/single identity.
     static NVGcolor typeColour(lantern::NoteType t) {
         switch (t) {
-            case lantern::NoteType::Single: return nvgRGB(0x6c, 0x8c, 0xd4);
-            case lantern::NoteType::Tie:    return nvgRGB(0x8a, 0x6c, 0xd4);
-            case lantern::NoteType::Legato: return nvgRGB(0x26, 0xa6, 0x9a);
-            case lantern::NoteType::Accent: return nvgRGB(0xd4, 0x00, 0x1a);  // Singapore red
-            default:                        return nvgRGB(0x3a, 0x40, 0x48);
+            case lantern::NoteType::Single: return nvgRGB(0x6c, 0x8c, 0xd4);  // calm blue
+            case lantern::NoteType::Tie:    return nvgRGB(0x8a, 0x6c, 0xd4);  // violet — held/joined
+            case lantern::NoteType::Legato: return nvgRGB(0x26, 0xa6, 0x9a);  // teal — slid
+            default:                        return nvgRGB(0x3a, 0x40, 0x48);  // inactive
         }
     }
+    static NVGcolor accentColour() { return nvgRGB(0xd4, 0x00, 0x1a); }       // Singapore red overlay
 };
 
 // ── Module widget ────────────────────────────────────────────────────────────
