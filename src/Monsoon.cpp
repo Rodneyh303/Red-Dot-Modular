@@ -926,6 +926,7 @@ void init(rack::Plugin* p) {
 	p->addModel(modelMonsoonSurgeExpander);
 	//p->addModel(modelMonsoonSandsExpander);
 	p->addModel(modelMonsoonStraitsEastExpander);
+	p->addModel(modelLantern);                       // Lantern note-output visualiser
 	p->addModel(modelMonsoonStraitWestExpander);    // NEW (Phase 4)
 	//p->addModel(modelMonsoonStraitsSands);          // Macro: global DNA
 	//p->addModel(modelMonsoonDeepStraitsSandsEast);  // Deep: voices 2-8
