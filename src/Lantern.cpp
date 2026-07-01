@@ -56,10 +56,17 @@ struct Lantern : Module {
     struct Cell {
         lantern::NoteType type = lantern::NoteType::Inactive;
         float  pitchV   = 0.f;   // for the label
-        float  lengthSteps = 0.f;// note length in steps (sub-step ok)
+        float  lengthSteps = 0.f;// TRUE length in 1/16 steps from the gate pulse count
+                                 // (gatePulseRemain / pulsesPer16th at this step edge) —
+                                 // so triplets/1/32 and tied runs ending on them keep their
+                                 // real sub-step end, not the nominal note-value length.
         bool   heldIn   = false; // continues from previous bar
         bool   heldOut  = false; // continues past step 16
         bool   accented = false;
+        bool   isMidTail = false;// MidNote gate-tail (a longer note still ringing across this
+                                 // step edge) — NOT a new event. The onset cell's true
+                                 // fractional width already covers it, so the render skips
+                                 // drawing a bar here (else it fills the sub-step gap).
     };
     Cell cells[16][16];
     int  lastObservedStep = -1;
@@ -117,10 +124,21 @@ struct Lantern : Module {
         if (!sounding) { c.type = lantern::NoteType::Inactive; return; }
 
         c.pitchV      = gs.currentPitchV;
-        c.lengthSteps = lenSteps;
+        // TRUE fractional length from the gate's pulse countdown (the sole gate-close
+        // mechanism). At a step edge just after (re)arming, gatePulseRemain = the pulses
+        // this gate will stay open, so /pulsesPer16th gives the real length in 1/16 steps
+        // — 1.333 for a 1/8T, 0.5 for a 1/32, and the summed remainder for a tie ending on
+        // one. Falls back to nominal lenSteps if the pulse count isn't populated.
+        {
+            const int p16 = gs.pulsesPer16th > 0 ? gs.pulsesPer16th : 6;
+            c.lengthSteps = (gs.gatePulseRemain > 0)
+                            ? (float)gs.gatePulseRemain / (float)p16
+                            : lenSteps;
+        }
         c.accented    = accented;   // orthogonal overlay (render brightens/marks), NOT a type
         c.heldIn      = (dec == MonoDecision::Tie || dec == MonoDecision::MidNote);
         c.heldOut     = gs.holdRemain > 1.0001f;   // still ringing past this whole step
+        c.isMidTail   = (dec == MonoDecision::MidNote);   // gate tail, not a new event
 
         // Note-TYPE is single/tie/legato only (accent is a separate overlay so an
         // accented tie still reads as a tie). As-it-happens, no look-back:
@@ -194,6 +212,11 @@ struct LanternDisplay : widget::Widget {
             for (int s = 0; s < N_STEPS; ++s) {
                 const auto& c = module->cells[v][s];
                 if (c.type == lantern::NoteType::Inactive) continue;
+                // Skip MidNote gate-tails: the onset (or tie-join) cell's true fractional
+                // width already draws through this step and stops where the gate closes,
+                // leaving the real sub-step gap (triplet/1/32). Drawing a bar here would
+                // fill that gap and make a 1/8T look like a straight 1/8.
+                if (c.isMidTail) continue;
                 const float bx = gridX + s * stepW;
                 float span = std::max(0.15f, c.lengthSteps <= 0.f ? 1.f : c.lengthSteps);
                 float bw = std::min(span * stepW, (gridX + gridW) - bx);
