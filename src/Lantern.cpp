@@ -13,6 +13,9 @@
 #include <rack.hpp>
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
+#include <string>
+#include <algorithm>
+#include <cmath>
 
 using namespace rack;
 
@@ -145,23 +148,96 @@ struct LanternDisplay : widget::Widget {
     void drawLayer(const DrawArgs& args, int layer) override {
         if (layer != 1) { Widget::drawLayer(args, layer); return; }
         if (!module) return;
+        NVGcontext* vg = args.vg;
         const float W = box.size.x, H = box.size.y;
         const float laneH = H / N_VOICES;
+        const float gutter = W * GUTTER_FRAC;
+        const float dots   = W * DOTS_FRAC;
+        const float gridX  = gutter;
+        const float gridW  = W - gutter - dots;
+        const float stepW  = gridW / N_STEPS;
 
-        // Step grid + bar-boundary lines (1..4 bars of 4 steps) — TODO draw grid.
-        // Per voice row:
+        auto font = APP->window->loadFont(rack::asset::system("res/fonts/DejaVuSans-Bold.ttf"));
+
         for (int v = 0; v < N_VOICES; ++v) {
-            float y = v * laneH;
-            // TODO: gutter label = lantern::noteName(cell.pitchV) or "-"
+            const float y0 = v * laneH;
+            const float yc = y0 + laneH * 0.5f;
+            const float barH = laneH * 0.62f;
+
+            // Label pitch = most recent sounding cell's pitch for this voice.
+            bool anyActive = false; float labelPitch = 0.f;
+            for (int s = N_STEPS - 1; s >= 0; --s) {
+                if (module->cells[v][s].type != lantern::NoteType::Inactive) {
+                    labelPitch = module->cells[v][s].pitchV; anyActive = true; break;
+                }
+            }
+
+            // gutter label: "N  A3" (row number = voice number)
+            if (font) {
+                nvgFontFaceId(vg, font->handle);
+                nvgFontSize(vg, std::min(11.f, laneH * 0.7f));
+                nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+                nvgFillColor(vg, nvgRGB(0x8a, 0x8f, 0x98));
+                std::string num = std::to_string(v + 1);
+                nvgText(vg, 2.f, yc, num.c_str(), nullptr);
+                if (anyActive) {
+                    nvgFillColor(vg, nvgRGB(0xd8, 0xd8, 0xdc));
+                    nvgText(vg, gutter * 0.42f, yc, lantern::noteName(labelPitch).c_str(), nullptr);
+                } else {
+                    nvgFillColor(vg, nvgRGB(0x4a, 0x50, 0x58));
+                    nvgText(vg, gutter * 0.42f, yc, "-", nullptr);
+                }
+            }
+
+            // per-step bars
             for (int s = 0; s < N_STEPS; ++s) {
                 const auto& c = module->cells[v][s];
                 if (c.type == lantern::NoteType::Inactive) continue;
-                // TODO: bar from step s to s + c.lengthSteps (sub-step), coloured by
-                //   c.type; tie cross-lines; c.heldIn → left caret; c.heldOut → right.
-                (void)c; (void)y;
+                const float bx = gridX + s * stepW;
+                float span = std::max(0.15f, c.lengthSteps <= 0.f ? 1.f : c.lengthSteps);
+                float bw = std::min(span * stepW, (gridX + gridW) - bx);
+
+                NVGcolor col = typeColour(c.type);
+                // accent = shade: brighter when accented, slightly dimmed when not
+                if (c.accented) col = nvgLerpRGBA(col, nvgRGB(0xff, 0xff, 0xff), 0.28f);
+                else            col = nvgLerpRGBA(col, nvgRGB(0x00, 0x00, 0x00), 0.10f);
+
+                nvgBeginPath(vg);
+                nvgRoundedRect(vg, bx + 0.5f, yc - barH * 0.5f, std::max(1.5f, bw - 1.f), barH, 1.5f);
+                nvgFillColor(vg, col);
+                nvgFill(vg);
+
+                // accented notes get a thin brand-red top edge for extra legibility
+                if (c.accented) {
+                    nvgBeginPath(vg);
+                    nvgRect(vg, bx + 0.5f, yc - barH * 0.5f, std::max(1.5f, bw - 1.f), 1.2f);
+                    nvgFillColor(vg, accentColour());
+                    nvgFill(vg);
+                }
+                // held-in caret: note continued from previous bar (left of step 0)
+                if (s == 0 && c.heldIn) {
+                    nvgBeginPath(vg);
+                    nvgMoveTo(vg, gridX - 3.f, yc);
+                    nvgLineTo(vg, gridX,        yc - barH * 0.4f);
+                    nvgLineTo(vg, gridX,        yc + barH * 0.4f);
+                    nvgClosePath(vg);
+                    nvgFillColor(vg, nvgRGB(0xc8, 0x96, 0x0c));
+                    nvgFill(vg);
+                }
             }
         }
-        // TODO: current-phase red vertical line at module engine stepIndex.
+
+        // current-phase red line
+        int ph = module->lastObservedStep;
+        if (ph >= 0 && ph < N_STEPS) {
+            float pxp = gridX + (ph + 0.5f) * stepW;
+            nvgBeginPath(vg);
+            nvgStrokeColor(vg, nvgRGBA(0xd4, 0x00, 0x1a, 0xcc));
+            nvgStrokeWidth(vg, 1.2f);
+            nvgMoveTo(vg, pxp, 0.f);
+            nvgLineTo(vg, pxp, H);
+            nvgStroke(vg);
+        }
     }
 
     // Base colour per note type. Accent is drawn as a separate overlay (brighter
