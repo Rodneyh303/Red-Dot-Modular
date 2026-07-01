@@ -131,18 +131,11 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         visualEditor->laneLockedFn = [this](int editorLane) -> bool {
             if (editorLane < 0 || editorLane >= 4) return false;   // VAR/LEG mono-only
             if (viewVoice != 0) return false;                      // only the V1 tab
-            // STEP 4b: locked ⟺ MONO owns this V1 lane. The old predicate was
-            // "Mono present && Mono owns lane" and returned editable (false) whenever
-            // no Mono — even in EAST+MACRO. That equals owner(0,l)==MONO exactly, so we
-            // migrate to that (NOT lockedOn(MACRO), which would additionally lock when
-            // EAST owns V1 — a behaviour CHANGE we deliberately avoid here; see note).
-            const auto topo = buildV1Topo();
-            const bool locked = (topo.owner(0, editorLane) == dotModular::SandsTopology::Role::MONO);
-            auto* mon = getMonsoon();
-            auto* mv  = mon ? mon->expanderManager.cachedSandsVisualExpander : nullptr;
-            assert(locked == (mv && mv->params[SandsMonoVisualIds::ownerDispId(editorLane)].getValue() > 0.5f)
-                   && "topo owner==MONO must match old Macro lock predicate");
-            return locked;
+            // locked ⟺ MONO owns this V1 lane (owner(0,l)==MONO). NOTE: preserves the old
+            // "editable whenever no Mono" behaviour — including EAST+MACRO where East owns
+            // V1. Switching to lockedOn(MACRO) would also lock when East owns; that's the
+            // deliberate behaviour question tracked in SANDS_TOPOLOGY_RESOLVER_PLAN.md.
+            return buildV1Topo().owner(0, editorLane) == dotModular::SandsTopology::Role::MONO;
         };
 
         Module* mod_ = module;

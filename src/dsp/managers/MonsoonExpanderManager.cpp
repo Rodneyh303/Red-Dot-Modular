@@ -338,11 +338,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
             // poly-voice writes below still run (Mono only owns V1, not V2+).
             // STEP 3 migration: this V1/mono-strand sub-block is the MACRO_SOLE case.
             // At this site East-visual is absent (the East branch above is an `if`, this
-            // is its `else if`), so "no Mono" here means exactly MACRO_SOLE. Was:
-            //   if (!cachedSandsVisualExpander)
-            // Debug cross-check that the topology agrees before relying on it.
-            assert((topo.config == dotModular::SandsTopology::Config::MACRO_SOLE)
-                   == (!cachedSandsVisualExpander) && "topo MACRO_SOLE must match !mono here");
+            // is its `else if`), so "no Mono" here means exactly MACRO_SOLE.
             if (topo.config == dotModular::SandsTopology::Config::MACRO_SOLE) {
                 const float spR = math::clamp(macroVis->macroBase[PL::PL_REST][3]   + macroVis->macroSendDelta[PL::PL_REST][3],   -1.f, 1.f);
                 const float spM = math::clamp(macroVis->macroBase[PL::PL_MELODY][3] + macroVis->macroSendDelta[PL::PL_MELODY][3], -1.f, 1.f);
