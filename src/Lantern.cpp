@@ -3,8 +3,20 @@
 //
 // "Lights up what's happening." A 16-lane bar view of the notes Monsoon is
 // generating: one narrow lane per voice (row N = voice N), bars over the 16-step
-// grid, colour = note TYPE (single/tie/legato/accent), sub-step-resolution ends,
-// tie cross-lines, and held-over carets for notes spanning the bar boundary.
+// grid, colour = note TYPE, sub-step-resolution ends, gate-start ticks, and
+// held-over carets for notes spanning the bar boundary.
+//
+// ── COLOUR CONVENTION ────────────────────────────────────────────────────────
+//   BLUE   (0x6c8cd4) = Single  — a normal new note (NewNote onset)
+//   VIOLET (0x8a6cd4) = Tie     — held / joined to the previous note (same pitch)
+//   TEAL   (0x26a69a) = Legato  — slid to a new pitch without a retrigger
+//   GREY   (0x3a4048) = inactive / voice not sounding
+//   Accent is ORTHOGONAL (decided at the note's start, carried through a tie/
+//   legato): an accented note is a BRIGHTER SHADE of its type colour (lerp 0.28
+//   toward white) plus a thin brand-red (0xd4001a) top edge; non-accented is
+//   slightly dimmed. So hue = what kind of note, brightness = accented-or-not.
+//   A bright vertical tick at a bar's left edge marks each new gate ONSET; MidNote
+//   gate-tails draw no bar (the onset's true fractional width already spans them).
 //
 // PURE OBSERVER: reads Monsoon's engine state (via findMonsoonEitherSide) and
 // keeps its OWN per-voice 16-step display ring buffer. It writes NO engine state.
