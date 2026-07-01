@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="531.5" height="1122.0" viewBox="0 0 531.5 1122.0">
+<rect x="0" y="0" width="531.5" height="1122.0" fill="#e8e8ea"/>
+<rect x="0" y="0" width="531.5" height="35.4" fill="#d4001a" opacity="0.06"/>
+<line x1="0" y1="35.4" x2="531.5" y2="35.4" stroke="#d4001a" stroke-width="1.5" opacity="0.5"/>
+<g>
+<circle cx="265.7" cy="19.2" r="4.1" fill="#d4001a" fill-opacity="0.9"/>
+<circle cx="265.7" cy="19.2" r="8.9" fill="none" stroke="#d4001a" stroke-width="1.2" stroke-opacity="0.50"/>
+<circle cx="265.7" cy="19.2" r="13.6" fill="none" stroke="#d4001a" stroke-width="1.2" stroke-opacity="0.36"/>
+<circle cx="265.7" cy="19.2" r="18.3" fill="none" stroke="#d4001a" stroke-width="1.2" stroke-opacity="0.22"/>
+</g>
+<g id="components">
+<rect id="display_lantern" x="17.7" y="41.3" width="496.1" height="230.3" rx="4.4" fill="#d8dade" stroke="#c0c4ca" stroke-width="1.2"/>
+<rect id="param_VIEW_NOTES" x="41.3" y="289.4" width="65.0" height="20.7" rx="3.0" fill="#d4d6d9" stroke="#a8aeb6" stroke-width="1.2"/>
+<rect id="param_VIEW_VELOCITY" x="41.3" y="315.9" width="65.0" height="20.7" rx="3.0" fill="#d4d6d9" stroke="#a8aeb6" stroke-width="1.2"/>
+<rect id="param_VIEW_PROB" x="41.3" y="342.5" width="65.0" height="20.7" rx="3.0" fill="#d4d6d9" stroke="#a8aeb6" stroke-width="1.2"/>
+<circle id="param_ZOOM" cx="265.7" cy="318.9" r="20.7" fill="#d4d6d9" stroke="#a8aeb6" stroke-width="1.2"/>
+<rect id="param_FOLLOW" x="425.2" y="307.1" width="65.0" height="29.5" rx="3.0" fill="#d4d6d9" stroke="#a8aeb6" stroke-width="1.2"/>
+<circle id="light_connect" cx="265.7" cy="366.1" r="0.5" fill="#000000" fill-opacity="0"/>
+</g>
+</svg>

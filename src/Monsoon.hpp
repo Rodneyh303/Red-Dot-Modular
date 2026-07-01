@@ -1130,6 +1130,7 @@ extern Model* modelMonsoonCausewayExpander;
 extern Model* modelMonsoonSurgeExpander;
 //extern Model* modelMonsoonSandsExpander;
 extern Model* modelMonsoonStraitsEastExpander; // Declare new expander model
+extern Model* modelLantern;                    // Lantern note-output visualiser
 extern Model* modelMonsoonStraitWestExpander;  // NEW (Phase 4): voices 9-16
 //extern Model* modelMonsoonStraitsSands;        // NEW (Macro): global DNA controls (compact)
 //extern Model* modelMonsoonDeepStraitsSandsEast; // NEW (Deep): per-voice DNA voices 2-8
