@@ -295,3 +295,22 @@ Fix approach: when step 5b routes spread-value resolution through SandsTopology
 global-spread rule uniformly across ALL voices (fixes #1), and (b) give spread the same
 per-owner save/restore that LOR has so switching control round-trips (fixes #2). Both are
 refinements to schedule with 5b, not blockers for the lock migration.
+
+### Unified: does owning a lane EDIT-LOCK the other panel, or only win at PLAYBACK? (from 4b + 4c testing)
+
+The 4b note (Macro side) and this (Mono side) are ONE decision. Current behaviour is
+inconsistent — faithfully reproduced by the migration (no asserts), so it's PRE-EXISTING,
+not refactor-introduced:
+
+- **Mono+Macro:** Mono owning lane 1 EDIT-LOCKS Macro's lane 1 (Macro can't edit it).
+- **East+Macro:** East owning a lane does NOT edit-lock Macro (Macro edits freely; East
+  just wins at playback).
+
+Same situation ("the other panel owns this lane"), two rules. Per the confirmed semantics
+(ownership = playback arbitration, edit independently, owner wins at playback), the EAST
+behaviour is the consistent one and the Mono edit-lock is the outlier — but decide after
+more combination testing.
+
+The topology makes the fix a one-liner either way: the lock predicates are `owner(...)==self`
+(current, no cross-panel lock) vs `lockedOn(self,...)` (lock when anyone else owns). Pick one
+rule, apply to all three panels' lock predicates uniformly. Schedule with step 5/5b. Not now.
