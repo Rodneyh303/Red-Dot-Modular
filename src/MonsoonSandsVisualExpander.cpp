@@ -12,6 +12,8 @@
 #include "ui/ModArcOverlay.hpp"
 #include "dsp/managers/MonoSandsParameterManager.hpp"
 #include "dsp/managers/SpreadManager.hpp"
+#include "dsp/SandsTopology.hpp"   // step 4: Mono lock/editable predicates via the resolver
+#include <cassert>
 
 using namespace rack;
 using namespace redDot;
@@ -114,10 +116,18 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         // delegable. ownerDispId is editor-ordered (poly lane). Delegated = value 0.
         visualEditor->laneLockedFn = [this](int editorLane) -> bool {
             if (editorLane < 0 || editorLane >= 4) return false;   // VAR/LEG mono-only
+            if (!module) return false;
+            // STEP 4: lock ⟺ Mono is not the owner of this V1 lane. Was:
+            //   hasMacro && !(ownerDispId(l) > 0.5)
+            // topo.lockedOn(MONO,0,l) == (owner(0,l) != MONO && owner != NONE), which for a
+            // present Mono means "Macro owns it" — same as the old test. Cross-check.
+            const auto topo = buildV1Topo();
+            const bool locked = topo.lockedOn(dotModular::SandsTopology::Role::MONO, 0, editorLane);
             auto* mon = getMonsoon();
             bool hasMacro = mon && mon->expanderManager.cachedMacroSandsVisual != nullptr;
-            if (!hasMacro || !module) return false;
-            return !(module->params[ownerDispId(editorLane)].getValue() > 0.5f);  // Macro owns → locked
+            assert(locked == (hasMacro && !(module->params[ownerDispId(editorLane)].getValue() > 0.5f))
+                   && "topo lockedOn(MONO) must match old lock predicate");
+            return locked;
         };
         addChild(visualEditor);
 
@@ -194,6 +204,25 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         return module ? findMonsoonEitherSide(module) : nullptr;
     }
 
+    // STEP 4: single build of the ownership authority for THIS Mono widget's V1 view, so
+    // laneLockedFn and laneDelegated (which historically drifted apart — both hand-wrote
+    // the same ownership test) now read one resolver and cannot disagree. Lightweight,
+    // per-call (decision 2). This widget IS the Mono visual → monoPresent = true.
+    dotModular::SandsTopology buildV1Topo() {
+        dotModular::SandsTopology::Inputs in;
+        in.monoPresent  = true;   // this widget is the Mono visual
+        if (auto* mon = getMonsoon()) {
+            in.eastPresent    = mon->expanderManager.cachedEastSandsVisual  != nullptr;
+            in.macroPresent   = mon->expanderManager.cachedMacroSandsVisual != nullptr;
+            in.polyBaseActive = mon->expanderManager.cachedPolyVoiceExpander != nullptr;
+        }
+        if (module) {
+            for (int l = 0; l < 4; ++l)   // Mono ownerDispId is editor-ordered → no conversion
+                in.monoV1Owner[l] = module->params[SandsMonoVisualIds::ownerDispId(l)].getValue() > 0.5f;
+        }
+        return dotModular::SandsTopology::build(in);
+    }
+
     void step() override {
         ModuleWidget::step();
         if (!module || !paramMgr || !visualEditor) return;
@@ -233,8 +262,17 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         //    its display from Macro's global base instead. (G5.)
         Monsoon* monForOwn = getMonsoon();
         auto* macroForOwn = monForOwn ? monForOwn->expanderManager.cachedMacroSandsVisual : nullptr;
+        // STEP 4: delegated ⟺ Mono is NOT the owner of this V1 lane. Reads the SAME
+        // resolver as laneLockedFn (via buildV1Topo), so the two can no longer drift —
+        // this is the laneDelegated-vs-laneLockedFn desync class, closed. Was:
+        //   macroForOwn && el < 4 && !(mod->params[ownerDispId(el)].getValue() > 0.5f)
+        const auto ownTopo = buildV1Topo();
         auto laneDelegated = [&](int el) -> bool {
-            return macroForOwn && el < 4 && !(mod->params[ownerDispId(el)].getValue() > 0.5f);
+            if (el < 0 || el >= 4) return false;
+            const bool d = !ownTopo.editableOn(dotModular::SandsTopology::Role::MONO, 0, el);
+            assert(d == (macroForOwn && !(mod->params[ownerDispId(el)].getValue() > 0.5f))
+                   && "topo !editableOn(MONO) must match old laneDelegated");
+            return d;
         };
         for (int l = 0; l < 6; ++l) {
             if (laneDelegated(l)) continue;   // delegated → tracks Macro, don't write Mono param
