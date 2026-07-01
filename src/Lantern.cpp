@@ -13,6 +13,7 @@
 #include <rack.hpp>
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
+#include "ui/VisualExpanderHelpers.hpp"   // redDot::findMonsoonEitherSide
 #include <string>
 #include <algorithm>
 #include <cmath>
