@@ -253,3 +253,45 @@ would be pure waste — explicitly rejected.
 - Step 6: lint + cleanup. Low risk.
 
 Do NOT attempt steps 3–5 in one sitting. One predicate, one build, one UI sanity check.
+
+---
+
+## Deferred behaviour question — Macro V1 lock in EAST_PLUS_MACRO (found in step 4b)
+
+Migrating Macro's `laneLockedFn` surfaced a latent inconsistency in the OLD code: it
+returned "editable" for Macro's V1 tab whenever no Mono was attached — including
+EAST_PLUS_MACRO, where East is actually the V1 editor and owns (some) V1 lanes. So the old
+code would let Macro edit a V1 lane that East owns.
+
+- Step 4b preserves this exactly (migrated to `owner(0,l)==MONO`, NOT `lockedOn(MACRO)`),
+  so the cross-check assert stays silent — no behaviour change in this step.
+- `lockedOn(MACRO,0,l)` would be the *more correct* rule (lock Macro's V1 lane when EAST
+  owns it too), but that's a deliberate behaviour CHANGE. Decide separately whether Macro's
+  V1 tab is even reachable/meaningful in EAST_PLUS_MACRO; if so, switching to lockedOn(MACRO)
+  is the fix. Tracked for post-step-6 review, not done now.
+
+---
+
+## Pre-existing spread bugs (confirmed on master, NOT topology-induced) — for step 5b
+
+Ownership semantics clarified (user-confirmed): ownership governs **playback arbitration**,
+not edit-locking. Macro can always edit its own pattern on ANY tab regardless of ownership;
+East can also edit; when East owns a lane, EAST wins at playback. This lets both be prepared
+independently before switching control. (The only edit-lock is V1-vs-Mono.)
+
+Two bugs found while exercising V1 East/Macro control switching — both reproduce on master,
+so they are NOT caused by the topology branch. They are spread ownership/restore gaps and
+are the concrete motivation for folding spread-source resolution into the topology (step 5b):
+
+1. **East V2+ don't follow Macro's global spread on a ceded lane.** When a lane is given to
+   Macro, East V1's spread correctly locks to Macro's global spread, but East V2..V16 do NOT
+   track the global spread for that lane — they should (same rule as V1).
+2. **Spread not restored on East→Macro→East switch-back.** Switching a V1 lane's control
+   East→Macro→East restores East's last LOR but NOT its last spread. LOR has save/restore;
+   spread lacks the equivalent, so the pre-cede spread value is lost.
+
+Fix approach: when step 5b routes spread-value resolution through SandsTopology
+(`spreadSource(voice, lane) → {role, knobId, sendApplies}`), (a) apply the delegated-lane
+global-spread rule uniformly across ALL voices (fixes #1), and (b) give spread the same
+per-owner save/restore that LOR has so switching control round-trips (fixes #2). Both are
+refinements to schedule with 5b, not blockers for the lock migration.

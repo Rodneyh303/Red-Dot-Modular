@@ -6,6 +6,8 @@
 #include "ui/SvgPanelKit.hpp"
 //#include "MonsoonStraitsSands.hpp"
 #include "StraitsSandsMacroVisual.hpp"
+#include "dsp/SandsTopology.hpp"           // step 4b: Macro lock predicate via the resolver
+#include <cassert>
 #include "MonsoonSandsVisualExpander.hpp"  // complete mono type + SandsMonoVisualIds for the tab-1 mono mirror
 #include "ui/SandsVisualEditorV4.hpp"
 #include "ui/TabButton.hpp"
@@ -129,10 +131,18 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         visualEditor->laneLockedFn = [this](int editorLane) -> bool {
             if (editorLane < 0 || editorLane >= 4) return false;   // VAR/LEG mono-only
             if (viewVoice != 0) return false;                      // only the V1 tab
+            // STEP 4b: locked ⟺ MONO owns this V1 lane. The old predicate was
+            // "Mono present && Mono owns lane" and returned editable (false) whenever
+            // no Mono — even in EAST+MACRO. That equals owner(0,l)==MONO exactly, so we
+            // migrate to that (NOT lockedOn(MACRO), which would additionally lock when
+            // EAST owns V1 — a behaviour CHANGE we deliberately avoid here; see note).
+            const auto topo = buildV1Topo();
+            const bool locked = (topo.owner(0, editorLane) == dotModular::SandsTopology::Role::MONO);
             auto* mon = getMonsoon();
             auto* mv  = mon ? mon->expanderManager.cachedSandsVisualExpander : nullptr;
-            if (!mv) return false;                                 // no Mono → editable
-            return mv->params[SandsMonoVisualIds::ownerDispId(editorLane)].getValue() > 0.5f;
+            assert(locked == (mv && mv->params[SandsMonoVisualIds::ownerDispId(editorLane)].getValue() > 0.5f)
+                   && "topo owner==MONO must match old Macro lock predicate");
+            return locked;
         };
 
         Module* mod_ = module;
@@ -202,6 +212,26 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
 
     Monsoon* getMonsoon() {
         return module ? findMonsoonEitherSide(module) : nullptr;
+    }
+
+    // STEP 4b: ownership authority for the Macro widget's V1 view. Macro is present
+    // (this widget IS Macro); monoV1Owner[] read from Mono's editor-ordered ownerDispId
+    // (the same source the old predicate read). lockedOn(MACRO,0,l) == owner(0,l)!=MACRO,
+    // i.e. "Mono owns it" — matching the old mv->ownerDispId(l) > 0.5 test.
+    dotModular::SandsTopology buildV1Topo() {
+        dotModular::SandsTopology::Inputs in;
+        in.macroPresent = true;   // this widget is Macro
+        if (auto* mon = getMonsoon()) {
+            auto* mv = mon->expanderManager.cachedSandsVisualExpander;
+            in.monoPresent    = (mv != nullptr);
+            in.eastPresent    = mon->expanderManager.cachedEastSandsVisual  != nullptr;
+            in.polyBaseActive = mon->expanderManager.cachedPolyVoiceExpander != nullptr;
+            if (mv) {
+                for (int l = 0; l < 4; ++l)
+                    in.monoV1Owner[l] = mv->params[SandsMonoVisualIds::ownerDispId(l)].getValue() > 0.5f;
+            }
+        }
+        return dotModular::SandsTopology::build(in);
     }
 
     void saveLOR() {
