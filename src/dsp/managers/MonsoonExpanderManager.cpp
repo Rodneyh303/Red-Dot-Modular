@@ -1,7 +1,9 @@
 #include "MonsoonExpanderManager.hpp"
 #include "../SpreadInterp.hpp"
 #include "../VoiceResolver.hpp"   // read-only shadow (step 1)
+#include "../SandsTopology.hpp"   // step 3: solo/none write-guard migration
 #include "../../Monsoon.hpp"
+#include <cassert>
 //#include "../../MonsoonDeepStraitsSands.hpp"
 #include "../../StraitsEastSandsVisual.hpp"
 //#include "../../StraitsWestSandsVisual.hpp"
@@ -28,6 +30,17 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
     const bool polyBaseActive = (straitEast != nullptr) && (engine.numPolyVoices >= 1);
     const int  polyOutCap = polyBaseActive ? (straitWest ? 15 : 7) : 0;
     const int  effPolyVoices = math::clamp(engine.numPolyVoices, 0, polyOutCap);
+
+    // STEP 3: single-authority config classification (presence-only — enough for the
+    // solo/none write guards; per-lane ownership inputs are filled in later steps when
+    // the combination guards migrate). See docs/design/SANDS_TOPOLOGY_RESOLVER_PLAN.md.
+    dotModular::SandsTopology::Inputs topoIn;
+    topoIn.monoPresent     = (cachedSandsVisualExpander != nullptr);
+    topoIn.eastPresent     = (cachedEastSandsVisual    != nullptr);
+    topoIn.macroPresent    = (cachedMacroSandsVisual   != nullptr);
+    topoIn.polyBaseActive  = polyBaseActive;
+    topoIn.polyVoiceCount  = engine.numPolyVoices;
+    const dotModular::SandsTopology topo = dotModular::SandsTopology::build(topoIn);
 
     // Spread interpolation is now centralised in redDot::SpreadInterp (see
     // src/dsp/SpreadInterp.hpp) — the single source of truth shared with the
@@ -323,7 +336,14 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
             // window then never matched the edit values (uneditable-looking V1 in
             // Mono+Macro). So skip the V1/mono-strand writes when Mono is attached; the
             // poly-voice writes below still run (Mono only owns V1, not V2+).
-            if (!cachedSandsVisualExpander) {
+            // STEP 3 migration: this V1/mono-strand sub-block is the MACRO_SOLE case.
+            // At this site East-visual is absent (the East branch above is an `if`, this
+            // is its `else if`), so "no Mono" here means exactly MACRO_SOLE. Was:
+            //   if (!cachedSandsVisualExpander)
+            // Debug cross-check that the topology agrees before relying on it.
+            assert((topo.config == dotModular::SandsTopology::Config::MACRO_SOLE)
+                   == (!cachedSandsVisualExpander) && "topo MACRO_SOLE must match !mono here");
+            if (topo.config == dotModular::SandsTopology::Config::MACRO_SOLE) {
                 const float spR = math::clamp(macroVis->macroBase[PL::PL_REST][3]   + macroVis->macroSendDelta[PL::PL_REST][3],   -1.f, 1.f);
                 const float spM = math::clamp(macroVis->macroBase[PL::PL_MELODY][3] + macroVis->macroSendDelta[PL::PL_MELODY][3], -1.f, 1.f);
                 const float spO = math::clamp(macroVis->macroBase[PL::PL_OCTAVE][3] + macroVis->macroSendDelta[PL::PL_OCTAVE][3], -1.f, 1.f);
