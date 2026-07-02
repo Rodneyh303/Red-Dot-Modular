@@ -196,3 +196,35 @@ continue across it. Lantern's boundary rendering simplifies to "draw notes clipp
 boundary," no cross-boundary caret logic. (A long note whose gate is cut early by the boundary
 should render as ending AT the boundary, which is truthful.) Update LANTERN_SPEC.md accordingly
 when the reset lands.
+
+---
+
+## Phrase-boundary behaviour — CORRECTED after checking code + searching for evidence
+
+Earlier this doc sketched a "hard-reset at the phrase boundary" (gates stop, in-progress
+legato/long notes CUT). Two findings correct that:
+
+1. **The current implementation does NOT reset at the boundary.** In SequencerEngine.cpp the
+   wrap is detected (`wrapped = advancePlayhead(dir)`) but `wrapped` is NEVER used to reset
+   holdRemain/gateHeld — the hold state ticks down purely by the clock (`gs.tick(...)`),
+   independent of the wrap. So a long/legato note in progress just before the boundary
+   CONTINUES PAST the boundary. The wrap flag is display/consumer-only, not gate logic.
+
+2. **No evidence found for the hardware doing a hard reset.** Searched the Vermona meloDICER
+   manual (v1.1, v1.4) + multiple reviews (SoundOnSound, Waveform, Juno, ModularGrid). They
+   confirm legato = GATE HELD HIGH across the note transition (no new gate edge) — supporting
+   the leading-edge-legato model — but NONE address what happens to a held gate at the pattern
+   LOOP point. It appears undocumented; only an empirical scope test on real hardware (or a
+   Vermona-owner forum answer) could confirm it.
+
+**DECISION: keep current behaviour — long/legato notes CONTINUE across the phrase boundary.**
+Not changing the boundary/reset behaviour on an unconfirmed hypothesis. This is a defensible
+(arguably more natural) model: a held note stays held; the loop point is just a position marker.
+Consequences of NOT doing the reset:
+- Reverse mode still needs its cross-boundary handling (the reset would have simplified it, but
+  we're not taking that simplification on faith).
+- Lantern's heldIn/heldOut carets remain MEANINGFUL (notes genuinely cross the boundary), so
+  keep them — do NOT remove them as the earlier note suggested.
+
+The LEGATO change itself (leading-edge legato holds gate high) is evidence-supported and
+proceeds independently of the boundary question.
