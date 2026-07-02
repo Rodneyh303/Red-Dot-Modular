@@ -28,24 +28,31 @@ destructiveness is the SEPARATE physical fader forcing + redistribution in updat
 
 ---
 
-## The non-destructive change (small, mostly a REMOVAL)
+## Two ORTHOGONAL things (this was conflated in an earlier draft — corrected)
 
-Goal: out-of-scale note-probability faders are **read as probability zero by the engine but
-NOT physically moved** — so changing scale reveals the underlying faders unchanged, which
-makes scale changes/modulation clean.
+**(A) Lock mode = guide vs enforce (a real user choice — KEEP it).** This is the semantic
+switch, NOT a destructive/non-destructive thing:
+- **guide** (lock off): the scale mask only INDICATES what's in-scale; out-of-scale notes
+  still play at their fader probability. A visual hint.
+- **enforce** (lock on): out-of-scale notes are silenced — read as zero probability. The
+  scale is strictly enforced.
+On **Shophouse this mode is called "Conservation."** Conservation ON = enforce the scale
+(only in-scale notes sound); OFF = scale is a visual guide, everything can still play. (Nice
+double meaning: it conserves the SCALE — enforcement — and conserves the FADER VALUES —
+non-destructive, see B.)
 
-Mechanically:
-- **Keep** the read-time zero-enforcement in `getSemitoneWeight` (already correct). That IS
-  the non-destructive gate — same idea as the non-destructive spread work (value persists;
-  a mask gates whether it's read).
-- **Remove** the physical forcing in `updateScaleMask`: no `setValue(0)`, no `min=max=0`
-  pinning, no `redistributeWeights`. Faders keep their user values.
-- **Dim** out-of-scale faders instead of pinning them (visual guide retained; the earlier
-  "just a visual guide" mode and the lock mode effectively merge — the scale always gates
-  the read, faders always keep their values, out-of-scale ones are dimmed).
-- Net: the destructive "lock" mode goes away; scale is always a non-destructive read-time
-  mask + dimming. (Confirm we want to drop the old destructive mode entirely vs keep it as
-  an option.)
+**(B) HOW enforcement is done = destructive vs non-destructive (an implementation change).**
+Independent of A. Today enforcement (when lock is on) is DESTRUCTIVE: `updateScaleMask` forces
+out-of-scale faders to 0 + pins range + `redistributeWeights`. Change it to NON-DESTRUCTIVE:
+- **Keep** the read-time zero-enforcement in `getSemitoneWeight` (already correct — that IS
+  the enforcement, and it's already non-destructive at the read).
+- **Remove** the physical forcing in `updateScaleMask`: no `setValue(0)`, no `min=max=0`, no
+  `redistributeWeights`. Faders keep their user values.
+- **Dim** out-of-scale faders instead of pinning them.
+- Net: Conservation still enforces the scale (out-of-scale read as zero), but does so WITHOUT
+  destroying the underlying fader values — so toggling conservation or changing scale reveals
+  the faders unchanged. Same principle as the non-destructive spread work (value persists; a
+  mask gates the read). The guide-vs-enforce CHOICE (Conservation on/off) remains.
 
 ---
 
@@ -99,9 +106,10 @@ Path:
 
 ## Open questions
 
-1. **Drop the destructive lock mode entirely?** The non-destructive read-time mask + dimming
-   seems to supersede both the old "visual guide only" and "destructive lock" modes. Confirm
-   we collapse to one non-destructive behaviour.
+1. **Conservation (lock) mode STAYS** — it's the guide-vs-enforce choice, renamed
+   "Conservation" on Shophouse. What changes is only the ENFORCEMENT MECHANISM: destructive
+   fader-forcing → non-destructive read-time mask + dimming. (Corrected from an earlier draft
+   that wrongly proposed dropping lock mode.)
 2. **List modulation driver:** gate/dice-queued (a) vs CV-sampled-at-boundary (b) vs both.
 3. **List length:** 4 confirmed, or configurable?
 4. **List entry UI on Shophouse:** how does the user pick scale+root per slot — the same
