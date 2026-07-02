@@ -65,7 +65,7 @@ struct SpreadManager {
   // Spread values: [voice][lane]
   // For macro: all voices use same spread (but we store separately for flexibility)
   // For per-voice: each voice has own spread
-  std::array<std::array<float, 3>, 8> spread = {};  // [8 voices][3 lanes]
+  std::array<std::array<float, 4>, 8> spread = {};  // [8 voices][4 lanes: REST/MEL/OCT/ACC]
 
   // ── Average-poly display cache ───────────────────────────────────────────
   // calculateAveragePolyValue() was called 48x/UI-frame (3 lanes x 16 steps),
@@ -73,7 +73,7 @@ struct SpreadManager {
   // voices). The averaged grid only changes when the poly arrays or the active
   // voice count change, so cache the 3x16 grid and rebuild it at most once per
   // frame, and only when a cheap checksum of the inputs differs.
-  mutable std::array<std::array<float, 16>, 3> avgCache_ = {};
+  mutable std::array<std::array<float, 16>, 4> avgCache_ = {};
   mutable float avgChecksum_ = -1.f;
   mutable int   avgValid_ = 0;
   
@@ -81,7 +81,7 @@ struct SpreadManager {
     : patternEngine(pe), numVoices(nVoices), startVoiceIdx(startVoice) {
     // Initialize spreads to 0 (no interpolation)
     for (int v = 0; v < 8; ++v) {
-      for (int l = 0; l < 3; ++l) {
+      for (int l = 0; l < 4; ++l) {
         spread[v][l] = 0.0f;
       }
     }
@@ -108,13 +108,13 @@ struct SpreadManager {
   }
   
   void setSpread(int voiceIdx, int lane, float value) {
-    if (voiceIdx >= 0 && voiceIdx < numVoices && lane >= 0 && lane < 3) {
+    if (voiceIdx >= 0 && voiceIdx < numVoices && lane >= 0 && lane < 4) {
       spread[voiceIdx][lane] = rack::math::clamp(value, -1.0f, 1.0f);
     }
   }
   
   float getSpread(int voiceIdx, int lane) const {
-    if (voiceIdx >= 0 && voiceIdx < numVoices && lane >= 0 && lane < 3) {
+    if (voiceIdx >= 0 && voiceIdx < numVoices && lane >= 0 && lane < 4) {
       return spread[voiceIdx][lane];
     } // Default to 0.0f if out of bounds, meaning no spread
     return 0.0f; 
@@ -170,7 +170,7 @@ struct SpreadManager {
    *   Calculates average of polyRhythmRandom[0-5] (voices 9-14)
    */
   float calculateAveragePolyValue(int lane, int step) const {
-    if (!patternEngine || step < 0 || step >= 16 || lane < 0 || lane > 2) return 0.5f;
+    if (!patternEngine || step < 0 || step >= 16 || lane < 0 || lane > 3) return 0.5f;
     refreshAverageCache_();
     return avgCache_[lane][step];
   }
@@ -184,7 +184,7 @@ struct SpreadManager {
     int activeVoiceCount = std::min(getActiveVoiceCount(), numVoices);
     if (activeVoiceCount <= 0) {
       if (avgValid_ && avgChecksum_ == 0.f) return;
-      for (int l = 0; l < 3; ++l) for (int s = 0; s < 16; ++s) avgCache_[l][s] = 0.5f;
+      for (int l = 0; l < 4; ++l) for (int s = 0; s < 16; ++s) avgCache_[l][s] = 0.5f;
       avgChecksum_ = 0.f; avgValid_ = 1; return;
     }
     // Cheap checksum: active count + a few sampled cells. Catches re-rolls and
@@ -192,20 +192,23 @@ struct SpreadManager {
     float cs = activeVoiceCount * 1000.f;
     cs += patternEngine->polyRhythmRandom[0][0]
         + patternEngine->polyMelodyRandom[activeVoiceCount-1][7]
-        + patternEngine->polyOctaveRandom[0][15];
+        + patternEngine->polyOctaveRandom[0][15]
+        + patternEngine->polyAccentRandom[activeVoiceCount-1][3];
     if (avgValid_ && cs == avgChecksum_) return;   // unchanged → keep cache
 
     const float inv = 1.f / activeVoiceCount;
     for (int s = 0; s < 16; ++s) {
-      float r = 0.f, m = 0.f, o = 0.f;
+      float r = 0.f, m = 0.f, o = 0.f, a = 0.f;
       for (int v = 0; v < activeVoiceCount; ++v) {
         r += patternEngine->polyRhythmRandom[v][s];
         m += patternEngine->polyMelodyRandom[v][s];
         o += patternEngine->polyOctaveRandom[v][s];
+        a += patternEngine->polyAccentRandom[v][s];
       }
       avgCache_[0][s] = r * inv;
       avgCache_[1][s] = m * inv;
       avgCache_[2][s] = o * inv;
+      avgCache_[3][s] = a * inv;
     }
     avgChecksum_ = cs; avgValid_ = 1;
   }
@@ -240,6 +243,8 @@ struct SpreadManager {
         return patternEngine->melodyRandom[step];
       case 2:  // OCTAVE
         return patternEngine->octaveRandom[step];
+      case 3:  // ACCENT
+        return patternEngine->accentRandom[step];
       default:
         return 0.5f;
     }
@@ -252,7 +257,7 @@ struct SpreadManager {
    */
   float getOriginalValue(int voiceIdx, int lane, int step) const {
     if (!patternEngine || voiceIdx < 0 || voiceIdx >= numVoices) return 0.5f;
-    if (lane < 0 || lane > 2 || step < 0 || step >= 16) return 0.5f;
+    if (lane < 0 || lane > 3 || step < 0 || step >= 16) return 0.5f;
     
     switch (lane) {
       case 0:  // REST
@@ -261,6 +266,8 @@ struct SpreadManager {
         return patternEngine->polyMelodyRandom[voiceIdx][step];
       case 2:  // OCTAVE
         return patternEngine->polyOctaveRandom[voiceIdx][step];
+      case 3:  // ACCENT
+        return patternEngine->polyAccentRandom[voiceIdx][step];
       default:
         return 0.5f;
     }
@@ -333,9 +340,11 @@ struct SpreadManager {
   
   /**
    * Get all interpolated values for a voice (all 3 lanes, all 16 steps).
+   * NOTE: currently UNUSED (no callers) and still 3-lane (no accent). If ever
+   * revived, widen to 4 lanes like the rest of the spread path (accent = lane 3).
    */
   struct InterpolatedVoice {
-    std::array<std::array<float, 16>, 3> lanes;  // [lane][step]
+    std::array<std::array<float, 16>, 3> lanes;  // [lane][step] — 3-lane, dead code
   };
   
   InterpolatedVoice getInterpolatedVoice(int voiceIdx) const {
@@ -421,7 +430,7 @@ struct MacroSpreadManager : public SpreadManager {
   
   // Override: set spread applies to all voices
   void setSpread(int lane, float value) {
-    if (lane >= 0 && lane < 3) {
+    if (lane >= 0 && lane < 4) {
       float clamped = rack::math::clamp(value, -1.0f, 1.0f);
       for (int v = 0; v < numVoices; ++v) {
         SpreadManager::setSpread(v, lane, clamped);
