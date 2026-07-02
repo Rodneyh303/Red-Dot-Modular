@@ -314,3 +314,134 @@ more combination testing.
 The topology makes the fix a one-liner either way: the lock predicates are `owner(...)==self`
 (current, no cross-panel lock) vs `lockedOn(self,...)` (lock when anyone else owns). Pick one
 rule, apply to all three panels' lock predicates uniformly. Schedule with step 5/5b. Not now.
+
+---
+
+## Step 5b-part-2 — spread: refined diagnosis (from examining the code)
+
+Examining the poly write path for part 2 sharpened both spread bugs — the ENGINE value is
+already correct; both bugs are DISPLAY/PERSISTENCE, and neither needs a new topology method
+(the existing `owner(voice, lane)` answers the ownership question). The topology stays
+lightweight — no `spreadSource` struct needed; consumers just call `owner`.
+
+**Engine is fine:** `MonsoonExpanderManager::combineSpread` already uses Macro's global
+spread (`macroBase[lane][3] + macroCVDelta`) for EVERY voice `v` on a ceded lane (owner!=EAST).
+So playback is correct across all poly voices. The bugs are in the East UI only:
+
+**Bug #1 (display) — spread-follow is V1-only.** The `SPREAD_R/M/O/A` trimpots are the
+CURRENT-TAB spread display (4 params, not per-voice — like ownerDispId). The follow logic
+that forces them to Macro's global spread on a ceded lane is guarded to the V1 tab
+(`v1Topo.owner(0,el)`), so on V2+ tabs the trimpots don't reflect the global value.
+FIX: run the follow using `owner(currentVoice, lane)` (via buildTopo) so it applies on every
+tab, not just V1. Pure display; engine unaffected.
+
+**Bug #2 (persistence) — spread has no per-voice save/restore.** LOR has persistent
+`ownerId(v,lane)` + a display proxy `ownerDispId`, saved/restored on tab switch. Spread has
+only the 4 live trimpots — NO per-voice persistent backing. So ceding a lane to Macro
+(trimpots forced to global) then giving it back loses East's pre-cede spread.
+FIX: add per-voice persistent spread storage mirroring the owner pattern (a `spread[v][lane]`
+param block + save/restore on tab switch / cede / un-cede), so switching control round-trips.
+This is the bigger change (new params + persistence + JSON) — the LOR save/restore is the
+template.
+
+Neither is a topology change — the resolver already answers "who owns (voice,lane)". Part 2
+is East-UI work that USES the resolver. Keeps SandsTopology a pure lightweight value type.
+
+---
+
+## Step 5b-part-2 — bug #2 CORRECTION (spread DOES have save/restore)
+
+Earlier note was WRONG that "spread has no per-voice save/restore." It does:
+saveVoiceSpread(v)/loadVoiceSpread(v) copy the 4 SPREAD_* trimpots ↔ per-voice *InterpId(v)
+stores (restInterpId/melodyInterpId/octaveInterpId/accentInterpId), exactly parallel to
+saveVoiceMacro/loadVoiceMacro for ownership. It's params-based, so JSON-persistent for free —
+same mechanism as LOR. Answer to "memory or JSON?": NEITHER relies on JSON for the round-trip;
+both LOR and spread restore via a display-proxy ↔ per-voice-param COPY in save/loadVoice*.
+JSON persistence is a free side-effect of the store being params.
+
+So bug #2 is NOT missing storage. The round-trip breaks in the CEDE→UNCEDE sequence despite
+the store existing. Likely causes (need ordering trace, not yet confirmed):
+  (a) On cede, the V1 spread-follow forces SPREAD_* to Macro's global value; if saveVoiceSpread
+      then runs while the trimpot holds that FORCED value, it clobbers the stored East value
+      with the global one → nothing to restore on uncede. (Most likely.)
+  (b) The uncede/tab path calls loadVoiceMacro but not loadVoiceSpread at the equivalent point.
+
+Fix: ensure the East spread store (*InterpId) is preserved across a cede — i.e. the
+spread-follow must force only the DISPLAY (SPREAD_* trimpot) without letting that forced value
+be saved back into *InterpId, OR snapshot *InterpId before ceding and restore on uncede. This
+is the same class as the owner save/restore but the forcing-vs-saving ORDER is the bug. Trace
+the cede path (where spread-follow fires vs where saveVoiceSpread fires) before coding.
+
+---
+
+## Step 5b-part-2 — bug #1 FIXED; bug #2 splits into distinct cases
+
+**Bug #1 (poly spread-follow) — FIXED.** The V1 branch had a spread-follow forcing ceded-lane
+trimpots to Macro's global spread; poly tabs had none. Added the same follow to the poly path
+in step(), using owner(currentVoice-1, editorLane)==MACRO via the resolver. Critically it runs
+AFTER saveVoiceSpread + smgr.setSpread, so the real East value is already preserved in both
+stores and only the visible trimpot is overridden — this both fixes #1 AND avoids the
+cede→save clobber (bug #2's poly form).
+
+**Bug #2 is NOT one bug — it's 2-3 cases with different roots (found while fixing #1):**
+- **Poly cede→uncede:** was a clobber (saveVoiceSpread writing the forced-global value back).
+  The #1 fix's ordering (force display AFTER save) structurally avoids it for poly. Verify in
+  build that a poly lane ceded then reclaimed restores East's spread.
+- **V1 East→Macro→East (the originally-reported one):** V1 spread does NOT use
+  saveVoiceSpread/*InterpId (those are poly-indexed). V1 display is driven from either Mono's
+  sprId (combo 7, Mono present — line ~800) or forced to Macro global on a ceded lane. When
+  East IS the V1 editor with no Mono (v1Editable), East's V1 spread may have NO persistent
+  per-voice store of its own to restore from → that's the likely root of the original report.
+  NEEDS: locate/confirm where (if anywhere) East-as-V1-editor spread persists; if nowhere, add
+  a V1 East spread store (mono-slot-indexed, like the V1 CV attens already use kMonoSlot).
+- **V1 follows Mono (combo 7):** not a bug — intended (locked, tracks Mono).
+
+So: #1 done. #2-poly should be fixed as a side-effect (verify). #2-V1 needs the V1 East store
+located/added — separate small fix, trace in a build session.
+
+---
+
+## Step 5b-part-2 — REAL diagnosis of the spread cede/reclaim bug (LOR display/store split)
+
+Correcting several wrong attempts. The REQUIREMENT (matching LOR): on a ceded lane East's
+spread should FOLLOW Macro's global (visibly), and REVERT to East's stored value on reclaim.
+Current state: spread follows on cede but does NOT revert on reclaim. (An earlier "fix" wrongly
+REMOVED the follow — reverted in aadd28a. Back to follows-but-no-revert.)
+
+**Why LOR does both correctly — the mechanism (found at last):**
+LOR has a DISPLAY/STORE SEPARATION. In SandsVisualEditorV4.hpp each lane has:
+  - stored/edited: length/offset/rotation  (saved+restored via lorId params — the STORE)
+  - display-only:  dispLength/dispOffset/dispRotation, written by setDisplayLOR()
+The per-frame Macro-follow calls setDisplayLOR(macro values) — writing ONLY the display fields.
+The stored length/offset/rotation are NEVER touched by the follow. So:
+  - follow: display shows Macro every frame (setDisplayLOR)
+  - store stays pristine → reclaim restores East's real LOR (loadVoiceLOR reads lorId)
+Playback is arbitrated separately in the engine (combineLOR owner switch). Three clean layers:
+STORE (lorId) · DISPLAY (dispLOR) · PLAYBACK (combineLOR). The follow only writes DISPLAY.
+
+**Why spread fails:** spread has NO display/store split. The SPREAD_* trimpot is simultaneously
+the display, the user input, AND the source both spread stores (*InterpId params + SpreadManager)
+are written from. So "follow Macro" = force the trimpot = write the stores = clobber East's
+value = no revert. Guarding individual writers just moves the clobber (tried, failed). Removing
+the follow kills the feature (tried, wrong). The ONLY correct fix is to give spread the same
+display/store separation LOR has.
+
+**THE FIX (real work, own session — do NOT patch):**
+Add a display-only spread value to the East spread knob/arc, distinct from the SPREAD_* param
+that feeds the stores. On a ceded lane: the knob VISUALLY shows Macro's global spread (display
+field) while the SPREAD_* param (the store source) stays at East's value untouched. On reclaim
+the display field stops following and the untouched param value is already correct. Options:
+  (a) a custom knob widget that renders from a display field (like DimmableTrimpot but with a
+      dispValue the render uses when locked/ceded), leaving the param untouched; OR
+  (b) route the knob's VISUAL angle through a display value the same way the mod-ARC already
+      reads polySpreadEffective, while the param stays put.
+The arc's getModNorm already shows the effective (delegated) value via polySpreadEffective —
+so the ENGINE/playback + ARC layers are already right; only the KNOB-POSITION display forces
+the param. Fix = make the knob position a display-only follow, not a param write.
+
+**SpreadManager lane<3 (separate, real):** std::array<...,3> spread — only 3 lanes; ACCENT
+(lane 3) has no engine storage; setSpread/getSpread/loops all guard <3 (6 sites). Likely
+surfaced NOW because the topology migration routes lane ownership UNIFORMLY across all 4 editor
+lanes — the old spread code never exercised lane 3 through this store, so the 3-wide array was
+never hit. Widen to 4 as its own change. (Same "consolidation reveals latent per-lane bug"
+pattern as the edit-lock inconsistencies.)
