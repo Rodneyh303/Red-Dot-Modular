@@ -139,3 +139,20 @@ Fill in as the rename happens; classes/files keep old names until then.
 ---
 
 Idea capture only — nothing actioned. Sequenced after the Sands topology work.
+
+---
+
+## Sands Helix panel — hero Helix-Bridge mark (placement)
+
+Sands Helix = the StraitsSandsMacroVisual panel (43HP, 218.44×128.5mm; gen_macro_mono.py).
+The Helix Bridge artwork is a FOREGROUND HERO MARK (not a faint watermark), placed in the
+free BOTTOM-LEFT pocket:
+- Free zone ≈ x 4→80mm, y 70→122mm (≈76×50mm, landscape ~1.5:1). Below the left CV-jack/
+  atten/spread input_group (bottom ~y68), left of SPREAD_X=80 + the editor (ED_X=88).
+- Currently only a thin waves() strip at y=112 lives there — the hero mark replaces/absorbs it.
+- Landscape suits the bridge's natural left→right sweep toward MBS (towers upper-right of the
+  pocket). Real mbs() helper used for the towers, consistent with sibling panels.
+- Treatment: bold/foreground (thick bright teal rails, present MBS, punchy blue LED nodes,
+  occluded coiling truss) — the earlier low-op watermark reads too faint for this.
+- Function: helix_sands(x,y,w,h,t,op) matches mbs()/waves() signature → drops into
+  dotmod_design.py; the panel calls it at high op in the bottom-left pocket.
