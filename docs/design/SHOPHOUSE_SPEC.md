@@ -126,3 +126,28 @@ Path:
 Design capture only. The non-destructive fader change is small and could land on the parent
 ScaleManager independently; the list + boundary modulation is the new Shophouse module.
 Post-topology, own build session.
+
+---
+
+## TODO (near release) — house-groove example patch
+
+When Shophouse is built and release gets nearer, create an EXAMPLE PATCH: a house / deep-house
+groove built around Shophouse, to ship as a demo / documentation / marketing asset.
+
+Why it fits:
+- House lives in a tight harmonic pocket — a few notes, a clear mode, everything locked to the
+  groove. Conservation keeps Monsoon's probabilistic engine strictly in-scale so it never
+  wanders off-key.
+- The boundary-quantised scale LIST = mode/chord changes that land cleanly on the phrase
+  boundary (e.g. minor pentatonic → Dorian vamp at the 16-bar mark), snapped to the loop, no
+  fumble. That's a core house/deep-house move.
+- The "Shophouse for house music" pun is a nice hook for the demo.
+
+Framing: brings a TINY bit of what Scaler 3 does (scale/chord suggestion + mode changes) but
+in a MODULAR, probabilistic, performance context — not a chord-suggestion plugin, but
+scale-conservation + boundary-timed mode modulation feeding a stochastic sequencer. Position
+it as "Scaler-flavoured harmonic control for a generative modular voice," not a Scaler clone.
+
+Patch sketch (fill in when the module exists): Monsoon + Shophouse (Conservation on) driving a
+house bassline/stab voice, a 4-on-the-floor clock, scale-list stepped fwd at phrase boundaries
+for the arrangement, probability faders shaping the groove within the conserved scale.
