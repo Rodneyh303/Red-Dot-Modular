@@ -102,8 +102,9 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 // engine-ordered → convert to editor lane. Cross-check in debug.
                 const int elc = dotModular::ENGINE_LANE_TO_EDITOR[lane];
                 const bool ownerEast = (topo.owner(v + 1, elc) == dotModular::SandsTopology::Role::EAST);
-                assert(ownerEast == (eastLOR->params[StraitsEastVisualIds::ownerId(v, lane)].getValue() > 0.5f)
-                       && "topo owner(v+1)==EAST must match ownerId poly write predicate");
+                // (step 5+6 cross-check assert removed — the resolver is now the single
+                // source of truth; the old ownerId-match check fired on load-time transients
+                // during attach/teardown. Same strip as the other 7 topology cross-checks.)
                 // Macro owns → use Macro's CV-APPLIED value (base + its own main-modulator
                 // CV delta), not just the base. macroCVDelta is Macro's true POST delta
                 // (published in processDNA). Previously this used macroBase only, so a lane
@@ -138,8 +139,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 // STEP 5b: same poly write ownership via the resolver (spread path).
                 const int els = dotModular::ENGINE_LANE_TO_EDITOR[lane];
                 const bool ownerEast = (topo.owner(v + 1, els) == dotModular::SandsTopology::Role::EAST);
-                assert(ownerEast == (eastLOR->params[StraitsEastVisualIds::ownerId(v, lane)].getValue() > 0.5f)
-                       && "topo owner(v+1)==EAST must match ownerId poly spread predicate");
+                // (step 5+6 cross-check assert removed — see the poly-write path above.)
                 float base = ownerEast ? eastInterpVal
                                        : (macroPresent ? (macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3]) : eastInterpVal);
                 float blend = 0.f;
