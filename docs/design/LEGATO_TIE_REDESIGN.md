@@ -164,3 +164,35 @@ model boundary holds; reverse just moves the playhead the other way over the sam
 > "reach the neighbour", and "exclude triplet and 1/32" — are not the same set. A 1/8 triplet
 > is 1.333 steps (≥1) yet the user wants it excluded. So eligibility is about note-VALUE
 > alignment to the step grid, not raw length. Needs an explicit definition before coding.
+
+---
+
+## Phrase-boundary RESET (meloDICER behaviour — simplifies everything above)
+
+The real meloDICER **hard-resets at the phrase boundary**: all gates stop, and any
+in-progress legato or long note is CUT at the boundary. The next phrase starts fresh.
+
+This REMOVES the hardest parts of the phrase-boundary section above rather than adding to
+them:
+
+- **No cross-boundary holds** — a long/legato note cannot continue into the next phrase; its
+  gate stops at the boundary. So the "forward long note spanning the boundary" case is just a
+  truncation, not a continuation.
+- **Reverse mode simplifies** — the thorny "does a held gate/slur reconnect the other way in
+  reverse?" question evaporates: there is no slur crossing the boundary to reconnect. The
+  boundary is a hard barrier in BOTH directions.
+- **Determinism-under-direction** still matters WITHIN a phrase (replay committed state, don't
+  re-roll on reverse), but the boundary itself is a clean cut either way — implementation is
+  just "force all gates off / reset gate state at the boundary crossing."
+
+**Implication for legato eligibility:** a note near the end of a phrase that would extend past
+the boundary is simply cut at the boundary (gate stops). Whether it should even be *allowed* to
+roll legato when it can't complete before the boundary is an open question — leaning: allow it,
+it just gets truncated (matches "gates stop"), consistent with the hardware.
+
+**Implication for Lantern:** the heldOut (continues-past-step-16) and heldIn (continues-from-
+previous-phrase) carets become mostly moot — notes are TRUNCATED at the phrase edge, they don't
+continue across it. Lantern's boundary rendering simplifies to "draw notes clipped at the phrase
+boundary," no cross-boundary caret logic. (A long note whose gate is cut early by the boundary
+should render as ending AT the boundary, which is truthful.) Update LANTERN_SPEC.md accordingly
+when the reset lands.
