@@ -445,3 +445,71 @@ surfaced NOW because the topology migration routes lane ownership UNIFORMLY acro
 lanes — the old spread code never exercised lane 3 through this store, so the 3-wide array was
 never hit. Widen to 4 as its own change. (Same "consolidation reveals latent per-lane bug"
 pattern as the edit-lock inconsistencies.)
+
+---
+
+## Spread modulation → Macro prob-bar DISPLAY leak (V1) — diagnosis
+
+Symptom (user, build): on an East-OWNED V1 lane, moving East's SPREAD modulation depth from
+zero moves the probability bar heights on East AND on Macro's lane display. LOR modulation on
+the same lane moves East only (Macro shows nothing). East's spread ARC does NOT leak — only the
+prob-bar heights do. Engine output is correct (East owns → East plays East); this is DISPLAY
+only.
+
+Root cause (traced): Macro's V1-tab prob bars read
+  peRef.finalRandomByStrand(strand, s)   [StraitsSandsMacroVisual.cpp ~370]
+which resolves (masterLaneProbability → finalRandomByStrand → rhythmRandom[]/melodyRandom[]/…)
+to the MONO STRAND's FINAL probability arrays. East's V1 spread modulation writes those same
+final arrays. So East and Macro read ONE shared spread-modulated mono-strand probability →
+Macro's V1 display shows East's spread. 
+
+Why LOR doesn't leak: LOR modulation changes length/offset/rotation (range/playhead), NOT the
+probability values, and Macro's LOR display reads Macro's OWN macroBase[l]+macroCVDelta[l]
+(independent per-owner source). Spread has NO equivalent "Macro's own probability" source for
+V1 — the mono-strand final prob array is shared and spread-modulated. Same display/store
+separation gap as the spread base bug, now at the modulated-probability-display level.
+
+Likely surfaced now because the topology routes all lanes uniformly; the shared mono-strand
+prob read was always there but only noticed against LOR's clean per-owner display.
+
+FIX — needs a decision (NOT done; don't guess at end of session):
+ (a) Give Macro's V1 prob display a separate pre-East-spread probability source, mirroring the
+     LOR macroBase pattern (Macro shows its OWN global spread applied to its OWN probability,
+     independent of East). Bigger engine change — needs a Macro-own prob array.
+ (b) Treat it as cosmetic/acceptable: on V1 the mono strand's probability is genuinely SHARED,
+     and what Macro shows IS the mono strand's actual played probability. Arguably not wrong —
+     Macro's "global view" showing the shared mono strand's real probability.
+ (c) Suppress: on an East-owned lane, blank/hold Macro's prob bars for that lane (cheapest;
+     matches "Macro shows nothing for East-owned like LOR" — but LOR shows Macro's OWN, not
+     nothing, so this is only half-consistent).
+Decision hinges on whether Macro's V1 view is meant to be "Macro's own global" (→ a) or "the
+shared mono strand" (→ b). LOR treats it as Macro's own → (a) is the consistent answer, but
+it's the most work. Defer to a build/design session.
+
+### DECISION: fix via (a) — Macro shows its OWN probability, never East's
+
+Chosen: (a). Macro's V1 (and by extension any) prob display must read a Macro-OWN, pre-East-
+spread probability source — Macro shows its own global spread applied to its own probability,
+independent of East, mirroring how LOR already uses macroBase/macroCVDelta.
+
+Rationale (stronger than mere LOR-consistency): the architecture ALREADY provides an explicit,
+opt-in channel for East/Mono to tap Macro's global modulation PER VOICE (the send/blend
+mechanism). That is the intended one-way flow: Macro (upstream/global) → East (downstream/
+per-voice), when East chooses. If East's own modulation ALSO leaks into Macro's display, the
+coupling becomes bidirectional and unrequested: Macro modulates East (by design) while East
+appears to modulate Macro (by accident) — a conceptual FEEDBACK loop. A user reading Macro
+can't distinguish "Macro's own global" from "East bleeding back", and the mental model
+(Macro = global source, East = taps it) collapses. Authority must stay directional: downstream
+(East) must NEVER appear upstream (Macro). So (a) protects the whole ownership model, not just
+visual consistency.
+
+Implementation sketch (own session — real engine change):
+- Macro needs a Macro-own probability array (pre-East-spread), analogous to macroBase for LOR:
+  Macro's own global spread applied to Macro's own base probability, per lane/step.
+- Macro's V1 prob-bar display (StraitsSandsMacroVisual.cpp ~370, the finalRandomByStrand read)
+  and the poly path (~356 resolver read) should source from THAT, not the shared mono-strand
+  finalRandom arrays that East's spread writes.
+- Keep engine PLAYBACK unchanged (already correct: East owns → East plays). This is a DISPLAY-
+  source change: Macro's display reads its own probability instead of the shared final.
+- Watch the standalone-Macro case (numPolyVoices=0, only V1 tab) — its prob bars currently rely
+  on finalRandomByStrand being written by Macro's own spread; the Macro-own source must cover it.
