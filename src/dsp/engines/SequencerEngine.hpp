@@ -75,6 +75,13 @@ struct SequencerEngine {
     long legatoLE_startCount   = 0;
     long legatoLE_divergeCount = 0;
 
+    // STEP 2: when true, the legato connection is governed by the PREVIOUS note's onset
+    // commitment (gs.slurForward) instead of a fresh roll at the joining onset — the
+    // leading-edge model. Default OFF = exact current behaviour. Toggle (context menu /
+    // JSON) so the two models can be A/B'd by ear. Rest still cancels an optional slur
+    // (rest branch takes priority); fractional tails still outrank rest (canRest).
+    bool legatoLeadingEdge = false;
+
     int stepIndex = -1;
     int lastPlayDir = +1;   // +1 forward, -1 reverse (Mode E); for UI direction cues
     int lastStepIndex = -1;

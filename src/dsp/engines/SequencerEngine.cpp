@@ -249,18 +249,42 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     float pitchV = pe.genPitchLive(sem, input,
                                     pe.melodyRandom[getMelodyStep()],
                                     pe.octaveRandom[getOctaveStep()]);
-    
+
+    // ── Leading-edge legato (STEP 2, toggled by legatoLeadingEdge; default OFF) ──
+    // The PREVIOUS starting note recorded, at its own onset, whether it intends to hold
+    // its gate forward into THIS note (gs.slurForward). It survives untouched through the
+    // previous note's held steps (the MidNote guard above returns early). Capture it now,
+    // BEFORE this note's cascade recomputes gs.slurForward at the bottom. In leading-edge
+    // mode this — not a fresh r_legato_tie roll — governs whether THIS note connects back.
+    const bool prevSlur = gs.slurForward;
+
     // Structural Rest Roll:
     // canRest is true only if the previous note finished exactly on a step edge 
     // or was already silent. Fractional tails (e.g. triplets) block the rest roll
     // to ensure rhythmic alignment.
     bool canRest = (gs.holdRemain <= 0.0001f && !hadTail);
 
+    // Whether THIS note connects (tie/legato) to the previous one.
+    //  - Current model: fresh roll at this (joining) onset — r_legato_tie < legatoProb.
+    //  - Leading-edge:  the previous note's onset commitment — prevSlur — decides it.
+    // legatoProb>=0.999 (LegatoMax) forces connection in BOTH models.
+    const bool legatoConnects = (legatoProb >= 0.999f)
+        || (legatoLeadingEdge ? prevSlur : (r_legato_tie < legatoProb));
+
     if (legatoProb >= 0.999f) {
         gs.slideMax(pitchV, sem, nvIdx);
         result.decision = MonoDecision::LegatoMax;
     }
     else if (r_rest < restProb) {
+        // Rest precedence:
+        //  - A fractional NOTE TAIL always outranks a rest (physical — !canRest). Unchanged.
+        //  - Leading-edge structural rule (slur vs rest): a rest CANCELS an optional slur
+        //    reach ("can't slur into silence"). So even if the previous note committed to
+        //    slur forward (prevSlur), a rest here wins and the note is silent. This is the
+        //    default resolution of the slur-vs-rest conflict (see LEGATO_TIE_REDESIGN.md /
+        //    RHYTHM_BEHAVIOUR_POLICIES.md). No special-casing needed: the rest branch simply
+        //    takes priority over the legato branch below, exactly as in the current model —
+        //    which means rest-cancels-slur falls out for free. (Tail>rest still via canRest.)
         if (canRest) {
             gs.gateHeld = false;
             result.decision = MonoDecision::Rest;
@@ -270,7 +294,7 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
             result.decision = MonoDecision::MidNote;
         }
     }
-    else if (r_legato_tie < legatoProb) {
+    else if (legatoConnects) {
         if (sem == gs.lastSemitone && (wasHeld || hadTail)) {
             gs.extendHold(sem, nvIdx);
             result.decision = MonoDecision::Tie;
