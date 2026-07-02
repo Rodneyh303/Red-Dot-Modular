@@ -1,7 +1,9 @@
 #include "MonsoonExpanderManager.hpp"
 #include "../SpreadInterp.hpp"
 #include "../VoiceResolver.hpp"   // read-only shadow (step 1)
+#include "../SandsTopology.hpp"   // step 3: solo/none write-guard migration
 #include "../../Monsoon.hpp"
+#include <cassert>
 //#include "../../MonsoonDeepStraitsSands.hpp"
 #include "../../StraitsEastSandsVisual.hpp"
 //#include "../../StraitsWestSandsVisual.hpp"
@@ -28,6 +30,28 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
     const bool polyBaseActive = (straitEast != nullptr) && (engine.numPolyVoices >= 1);
     const int  polyOutCap = polyBaseActive ? (straitWest ? 15 : 7) : 0;
     const int  effPolyVoices = math::clamp(engine.numPolyVoices, 0, polyOutCap);
+
+    // STEP 3: single-authority config classification (presence-only — enough for the
+    // solo/none write guards; per-lane ownership inputs are filled in later steps when
+    // the combination guards migrate). See docs/design/SANDS_TOPOLOGY_RESOLVER_PLAN.md.
+    dotModular::SandsTopology::Inputs topoIn;
+    topoIn.monoPresent     = (cachedSandsVisualExpander != nullptr);
+    topoIn.eastPresent     = (cachedEastSandsVisual    != nullptr);
+    topoIn.macroPresent    = (cachedMacroSandsVisual   != nullptr);
+    topoIn.polyBaseActive  = polyBaseActive;
+    topoIn.polyVoiceCount  = engine.numPolyVoices;
+    // STEP 5b: populate per-voice East ownership so the topology can drive the POLY write
+    // guards (not just presence/V1). Source is East's persistent ownerId (engine-ordered)
+    // and monoOwnerId; converted to editor lane so topo speaks editor lane (decision 1).
+    if (cachedEastSandsVisual) {
+        for (int el = 0; el < 4; ++el) {
+            const int eng = dotModular::EDITOR_TO_ENGINE_LANE[el];
+            topoIn.eastV1Owner[el] = cachedEastSandsVisual->params[StraitsEastVisualIds::monoOwnerId(eng)].getValue() > 0.5f;
+            for (int pv = 0; pv < 15; ++pv)
+                topoIn.eastPolyOwner[pv][el] = cachedEastSandsVisual->params[StraitsEastVisualIds::ownerId(pv, eng)].getValue() > 0.5f;
+        }
+    }
+    const dotModular::SandsTopology topo = dotModular::SandsTopology::build(topoIn);
 
     // Spread interpolation is now centralised in redDot::SpreadInterp (see
     // src/dsp/SpreadInterp.hpp) — the single source of truth shared with the
@@ -72,8 +96,14 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
             //   r,c: East CV jack row/col     paramIdx: East voice LOR param
             auto combineLOR = [&](int lane, int item, int paramIdx, int r, int c,
                                   float lo, float hi)-> int {
-                const bool ownerEast = eastLOR->params[
-                    StraitsEastVisualIds::ownerId(v, lane)].getValue() > 0.5f;
+                // STEP 5b: poly write ownership via the resolver. Was:
+                //   ownerEast = ownerId(v, lane) > 0.5f
+                // topo voice arg is 1-based for poly (0 = mono/V1); `lane` here is
+                // engine-ordered → convert to editor lane. Cross-check in debug.
+                const int elc = dotModular::ENGINE_LANE_TO_EDITOR[lane];
+                const bool ownerEast = (topo.owner(v + 1, elc) == dotModular::SandsTopology::Role::EAST);
+                assert(ownerEast == (eastLOR->params[StraitsEastVisualIds::ownerId(v, lane)].getValue() > 0.5f)
+                       && "topo owner(v+1)==EAST must match ownerId poly write predicate");
                 // Macro owns → use Macro's CV-APPLIED value (base + its own main-modulator
                 // CV delta), not just the base. macroCVDelta is Macro's true POST delta
                 // (published in processDNA). Previously this used macroBase only, so a lane
@@ -105,8 +135,11 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
             // inconsistency, flagged separately; we clamp the COMBINED value to
             // [-1,1] so Macro ownership/blend can still reach negative spread.
             auto combineSpread = [&](int lane, float eastInterpVal)-> float {
-                const bool ownerEast = eastLOR->params[
-                    StraitsEastVisualIds::ownerId(v, lane)].getValue() > 0.5f;
+                // STEP 5b: same poly write ownership via the resolver (spread path).
+                const int els = dotModular::ENGINE_LANE_TO_EDITOR[lane];
+                const bool ownerEast = (topo.owner(v + 1, els) == dotModular::SandsTopology::Role::EAST);
+                assert(ownerEast == (eastLOR->params[StraitsEastVisualIds::ownerId(v, lane)].getValue() > 0.5f)
+                       && "topo owner(v+1)==EAST must match ownerId poly spread predicate");
                 float base = ownerEast ? eastInterpVal
                                        : (macroPresent ? (macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3]) : eastInterpVal);
                 float blend = 0.f;
@@ -323,7 +356,10 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
             // window then never matched the edit values (uneditable-looking V1 in
             // Mono+Macro). So skip the V1/mono-strand writes when Mono is attached; the
             // poly-voice writes below still run (Mono only owns V1, not V2+).
-            if (!cachedSandsVisualExpander) {
+            // STEP 3 migration: this V1/mono-strand sub-block is the MACRO_SOLE case.
+            // At this site East-visual is absent (the East branch above is an `if`, this
+            // is its `else if`), so "no Mono" here means exactly MACRO_SOLE.
+            if (topo.config == dotModular::SandsTopology::Config::MACRO_SOLE) {
                 const float spR = math::clamp(macroVis->macroBase[PL::PL_REST][3]   + macroVis->macroSendDelta[PL::PL_REST][3],   -1.f, 1.f);
                 const float spM = math::clamp(macroVis->macroBase[PL::PL_MELODY][3] + macroVis->macroSendDelta[PL::PL_MELODY][3], -1.f, 1.f);
                 const float spO = math::clamp(macroVis->macroBase[PL::PL_OCTAVE][3] + macroVis->macroSendDelta[PL::PL_OCTAVE][3], -1.f, 1.f);
@@ -338,9 +374,10 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 static const int STRND[4] = { dotModular::STRAND_RHYTHM, dotModular::STRAND_MELODY,
                                               dotModular::STRAND_OCTAVE, dotModular::STRAND_ACCENT };
                 for (int lane = 0; lane < 4; ++lane) {
-                    engine.strandLenRef(STRND[lane]) = (int)math::clamp(std::round(macroVis->macroBase[lane][0]), 1.f, 16.f);
-                    engine.strandOffRef(STRND[lane]) = ((int)std::round(macroVis->macroBase[lane][1]) % 16 + 16) % 16;
-                    engine.strandRotRef(STRND[lane]) = ((int)std::round(macroVis->macroBase[lane][2]) % 16 + 16) % 16;
+                    engine.setStrand(StrandWriter::MACRO, STRND[lane],
+                                     (int)std::round(macroVis->macroBase[lane][0]),
+                                     (int)std::round(macroVis->macroBase[lane][1]),
+                                     (int)std::round(macroVis->macroBase[lane][2]));
                 }
             }
             for (int v = 0; v < effPolyVoices; ++v) {

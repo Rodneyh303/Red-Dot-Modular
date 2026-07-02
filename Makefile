@@ -10,7 +10,7 @@ CXXFLAGS += -Wno-c++17-extensions
 
 # Link Time Optimization (LTO) can significantly improve performance 
 # by optimizing across your separate manager/engine files.
-FLAGS += -flto -O3 -ffast-math -march=native
+FLAGS += -flto -O1 -ffast-math -march=native
 LDFLAGS += -flto
 
 SOURCES += $(wildcard src/*.cpp)

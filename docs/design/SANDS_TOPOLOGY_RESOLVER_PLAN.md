@@ -253,3 +253,293 @@ would be pure waste — explicitly rejected.
 - Step 6: lint + cleanup. Low risk.
 
 Do NOT attempt steps 3–5 in one sitting. One predicate, one build, one UI sanity check.
+
+---
+
+## Deferred behaviour question — Macro V1 lock in EAST_PLUS_MACRO (found in step 4b)
+
+Migrating Macro's `laneLockedFn` surfaced a latent inconsistency in the OLD code: it
+returned "editable" for Macro's V1 tab whenever no Mono was attached — including
+EAST_PLUS_MACRO, where East is actually the V1 editor and owns (some) V1 lanes. So the old
+code would let Macro edit a V1 lane that East owns.
+
+- Step 4b preserves this exactly (migrated to `owner(0,l)==MONO`, NOT `lockedOn(MACRO)`),
+  so the cross-check assert stays silent — no behaviour change in this step.
+- `lockedOn(MACRO,0,l)` would be the *more correct* rule (lock Macro's V1 lane when EAST
+  owns it too), but that's a deliberate behaviour CHANGE. Decide separately whether Macro's
+  V1 tab is even reachable/meaningful in EAST_PLUS_MACRO; if so, switching to lockedOn(MACRO)
+  is the fix. Tracked for post-step-6 review, not done now.
+
+---
+
+## Pre-existing spread bugs (confirmed on master, NOT topology-induced) — for step 5b
+
+Ownership semantics clarified (user-confirmed): ownership governs **playback arbitration**,
+not edit-locking. Macro can always edit its own pattern on ANY tab regardless of ownership;
+East can also edit; when East owns a lane, EAST wins at playback. This lets both be prepared
+independently before switching control. (The only edit-lock is V1-vs-Mono.)
+
+Two bugs found while exercising V1 East/Macro control switching — both reproduce on master,
+so they are NOT caused by the topology branch. They are spread ownership/restore gaps and
+are the concrete motivation for folding spread-source resolution into the topology (step 5b):
+
+1. **East V2+ don't follow Macro's global spread on a ceded lane.** When a lane is given to
+   Macro, East V1's spread correctly locks to Macro's global spread, but East V2..V16 do NOT
+   track the global spread for that lane — they should (same rule as V1).
+2. **Spread not restored on East→Macro→East switch-back.** Switching a V1 lane's control
+   East→Macro→East restores East's last LOR but NOT its last spread. LOR has save/restore;
+   spread lacks the equivalent, so the pre-cede spread value is lost.
+
+Fix approach: when step 5b routes spread-value resolution through SandsTopology
+(`spreadSource(voice, lane) → {role, knobId, sendApplies}`), (a) apply the delegated-lane
+global-spread rule uniformly across ALL voices (fixes #1), and (b) give spread the same
+per-owner save/restore that LOR has so switching control round-trips (fixes #2). Both are
+refinements to schedule with 5b, not blockers for the lock migration.
+
+### Unified: does owning a lane EDIT-LOCK the other panel, or only win at PLAYBACK? (from 4b + 4c testing)
+
+The 4b note (Macro side) and this (Mono side) are ONE decision. Current behaviour is
+inconsistent — faithfully reproduced by the migration (no asserts), so it's PRE-EXISTING,
+not refactor-introduced:
+
+- **Mono+Macro:** Mono owning lane 1 EDIT-LOCKS Macro's lane 1 (Macro can't edit it).
+- **East+Macro:** East owning a lane does NOT edit-lock Macro (Macro edits freely; East
+  just wins at playback).
+
+Same situation ("the other panel owns this lane"), two rules. Per the confirmed semantics
+(ownership = playback arbitration, edit independently, owner wins at playback), the EAST
+behaviour is the consistent one and the Mono edit-lock is the outlier — but decide after
+more combination testing.
+
+The topology makes the fix a one-liner either way: the lock predicates are `owner(...)==self`
+(current, no cross-panel lock) vs `lockedOn(self,...)` (lock when anyone else owns). Pick one
+rule, apply to all three panels' lock predicates uniformly. Schedule with step 5/5b. Not now.
+
+---
+
+## Step 5b-part-2 — spread: refined diagnosis (from examining the code)
+
+Examining the poly write path for part 2 sharpened both spread bugs — the ENGINE value is
+already correct; both bugs are DISPLAY/PERSISTENCE, and neither needs a new topology method
+(the existing `owner(voice, lane)` answers the ownership question). The topology stays
+lightweight — no `spreadSource` struct needed; consumers just call `owner`.
+
+**Engine is fine:** `MonsoonExpanderManager::combineSpread` already uses Macro's global
+spread (`macroBase[lane][3] + macroCVDelta`) for EVERY voice `v` on a ceded lane (owner!=EAST).
+So playback is correct across all poly voices. The bugs are in the East UI only:
+
+**Bug #1 (display) — spread-follow is V1-only.** The `SPREAD_R/M/O/A` trimpots are the
+CURRENT-TAB spread display (4 params, not per-voice — like ownerDispId). The follow logic
+that forces them to Macro's global spread on a ceded lane is guarded to the V1 tab
+(`v1Topo.owner(0,el)`), so on V2+ tabs the trimpots don't reflect the global value.
+FIX: run the follow using `owner(currentVoice, lane)` (via buildTopo) so it applies on every
+tab, not just V1. Pure display; engine unaffected.
+
+**Bug #2 (persistence) — spread has no per-voice save/restore.** LOR has persistent
+`ownerId(v,lane)` + a display proxy `ownerDispId`, saved/restored on tab switch. Spread has
+only the 4 live trimpots — NO per-voice persistent backing. So ceding a lane to Macro
+(trimpots forced to global) then giving it back loses East's pre-cede spread.
+FIX: add per-voice persistent spread storage mirroring the owner pattern (a `spread[v][lane]`
+param block + save/restore on tab switch / cede / un-cede), so switching control round-trips.
+This is the bigger change (new params + persistence + JSON) — the LOR save/restore is the
+template.
+
+Neither is a topology change — the resolver already answers "who owns (voice,lane)". Part 2
+is East-UI work that USES the resolver. Keeps SandsTopology a pure lightweight value type.
+
+---
+
+## Step 5b-part-2 — bug #2 CORRECTION (spread DOES have save/restore)
+
+Earlier note was WRONG that "spread has no per-voice save/restore." It does:
+saveVoiceSpread(v)/loadVoiceSpread(v) copy the 4 SPREAD_* trimpots ↔ per-voice *InterpId(v)
+stores (restInterpId/melodyInterpId/octaveInterpId/accentInterpId), exactly parallel to
+saveVoiceMacro/loadVoiceMacro for ownership. It's params-based, so JSON-persistent for free —
+same mechanism as LOR. Answer to "memory or JSON?": NEITHER relies on JSON for the round-trip;
+both LOR and spread restore via a display-proxy ↔ per-voice-param COPY in save/loadVoice*.
+JSON persistence is a free side-effect of the store being params.
+
+So bug #2 is NOT missing storage. The round-trip breaks in the CEDE→UNCEDE sequence despite
+the store existing. Likely causes (need ordering trace, not yet confirmed):
+  (a) On cede, the V1 spread-follow forces SPREAD_* to Macro's global value; if saveVoiceSpread
+      then runs while the trimpot holds that FORCED value, it clobbers the stored East value
+      with the global one → nothing to restore on uncede. (Most likely.)
+  (b) The uncede/tab path calls loadVoiceMacro but not loadVoiceSpread at the equivalent point.
+
+Fix: ensure the East spread store (*InterpId) is preserved across a cede — i.e. the
+spread-follow must force only the DISPLAY (SPREAD_* trimpot) without letting that forced value
+be saved back into *InterpId, OR snapshot *InterpId before ceding and restore on uncede. This
+is the same class as the owner save/restore but the forcing-vs-saving ORDER is the bug. Trace
+the cede path (where spread-follow fires vs where saveVoiceSpread fires) before coding.
+
+---
+
+## Step 5b-part-2 — bug #1 FIXED; bug #2 splits into distinct cases
+
+**Bug #1 (poly spread-follow) — FIXED.** The V1 branch had a spread-follow forcing ceded-lane
+trimpots to Macro's global spread; poly tabs had none. Added the same follow to the poly path
+in step(), using owner(currentVoice-1, editorLane)==MACRO via the resolver. Critically it runs
+AFTER saveVoiceSpread + smgr.setSpread, so the real East value is already preserved in both
+stores and only the visible trimpot is overridden — this both fixes #1 AND avoids the
+cede→save clobber (bug #2's poly form).
+
+**Bug #2 is NOT one bug — it's 2-3 cases with different roots (found while fixing #1):**
+- **Poly cede→uncede:** was a clobber (saveVoiceSpread writing the forced-global value back).
+  The #1 fix's ordering (force display AFTER save) structurally avoids it for poly. Verify in
+  build that a poly lane ceded then reclaimed restores East's spread.
+- **V1 East→Macro→East (the originally-reported one):** V1 spread does NOT use
+  saveVoiceSpread/*InterpId (those are poly-indexed). V1 display is driven from either Mono's
+  sprId (combo 7, Mono present — line ~800) or forced to Macro global on a ceded lane. When
+  East IS the V1 editor with no Mono (v1Editable), East's V1 spread may have NO persistent
+  per-voice store of its own to restore from → that's the likely root of the original report.
+  NEEDS: locate/confirm where (if anywhere) East-as-V1-editor spread persists; if nowhere, add
+  a V1 East spread store (mono-slot-indexed, like the V1 CV attens already use kMonoSlot).
+- **V1 follows Mono (combo 7):** not a bug — intended (locked, tracks Mono).
+
+So: #1 done. #2-poly should be fixed as a side-effect (verify). #2-V1 needs the V1 East store
+located/added — separate small fix, trace in a build session.
+
+---
+
+## Step 5b-part-2 — REAL diagnosis of the spread cede/reclaim bug (LOR display/store split)
+
+Correcting several wrong attempts. The REQUIREMENT (matching LOR): on a ceded lane East's
+spread should FOLLOW Macro's global (visibly), and REVERT to East's stored value on reclaim.
+Current state: spread follows on cede but does NOT revert on reclaim. (An earlier "fix" wrongly
+REMOVED the follow — reverted in aadd28a. Back to follows-but-no-revert.)
+
+**Why LOR does both correctly — the mechanism (found at last):**
+LOR has a DISPLAY/STORE SEPARATION. In SandsVisualEditorV4.hpp each lane has:
+  - stored/edited: length/offset/rotation  (saved+restored via lorId params — the STORE)
+  - display-only:  dispLength/dispOffset/dispRotation, written by setDisplayLOR()
+The per-frame Macro-follow calls setDisplayLOR(macro values) — writing ONLY the display fields.
+The stored length/offset/rotation are NEVER touched by the follow. So:
+  - follow: display shows Macro every frame (setDisplayLOR)
+  - store stays pristine → reclaim restores East's real LOR (loadVoiceLOR reads lorId)
+Playback is arbitrated separately in the engine (combineLOR owner switch). Three clean layers:
+STORE (lorId) · DISPLAY (dispLOR) · PLAYBACK (combineLOR). The follow only writes DISPLAY.
+
+**Why spread fails:** spread has NO display/store split. The SPREAD_* trimpot is simultaneously
+the display, the user input, AND the source both spread stores (*InterpId params + SpreadManager)
+are written from. So "follow Macro" = force the trimpot = write the stores = clobber East's
+value = no revert. Guarding individual writers just moves the clobber (tried, failed). Removing
+the follow kills the feature (tried, wrong). The ONLY correct fix is to give spread the same
+display/store separation LOR has.
+
+**THE FIX (real work, own session — do NOT patch):**
+Add a display-only spread value to the East spread knob/arc, distinct from the SPREAD_* param
+that feeds the stores. On a ceded lane: the knob VISUALLY shows Macro's global spread (display
+field) while the SPREAD_* param (the store source) stays at East's value untouched. On reclaim
+the display field stops following and the untouched param value is already correct. Options:
+  (a) a custom knob widget that renders from a display field (like DimmableTrimpot but with a
+      dispValue the render uses when locked/ceded), leaving the param untouched; OR
+  (b) route the knob's VISUAL angle through a display value the same way the mod-ARC already
+      reads polySpreadEffective, while the param stays put.
+The arc's getModNorm already shows the effective (delegated) value via polySpreadEffective —
+so the ENGINE/playback + ARC layers are already right; only the KNOB-POSITION display forces
+the param. Fix = make the knob position a display-only follow, not a param write.
+
+**SpreadManager lane<3 (separate, real):** std::array<...,3> spread — only 3 lanes; ACCENT
+(lane 3) has no engine storage; setSpread/getSpread/loops all guard <3 (6 sites). Likely
+surfaced NOW because the topology migration routes lane ownership UNIFORMLY across all 4 editor
+lanes — the old spread code never exercised lane 3 through this store, so the 3-wide array was
+never hit. Widen to 4 as its own change. (Same "consolidation reveals latent per-lane bug"
+pattern as the edit-lock inconsistencies.)
+
+---
+
+## Spread modulation → Macro prob-bar DISPLAY leak (V1) — diagnosis
+
+Symptom (user, build): on an East-OWNED V1 lane, moving East's SPREAD modulation depth from
+zero moves the probability bar heights on East AND on Macro's lane display. LOR modulation on
+the same lane moves East only (Macro shows nothing). East's spread ARC does NOT leak — only the
+prob-bar heights do. Engine output is correct (East owns → East plays East); this is DISPLAY
+only.
+
+Root cause (traced): Macro's V1-tab prob bars read
+  peRef.finalRandomByStrand(strand, s)   [StraitsSandsMacroVisual.cpp ~370]
+which resolves (masterLaneProbability → finalRandomByStrand → rhythmRandom[]/melodyRandom[]/…)
+to the MONO STRAND's FINAL probability arrays. East's V1 spread modulation writes those same
+final arrays. So East and Macro read ONE shared spread-modulated mono-strand probability →
+Macro's V1 display shows East's spread. 
+
+Why LOR doesn't leak: LOR modulation changes length/offset/rotation (range/playhead), NOT the
+probability values, and Macro's LOR display reads Macro's OWN macroBase[l]+macroCVDelta[l]
+(independent per-owner source). Spread has NO equivalent "Macro's own probability" source for
+V1 — the mono-strand final prob array is shared and spread-modulated. Same display/store
+separation gap as the spread base bug, now at the modulated-probability-display level.
+
+Likely surfaced now because the topology routes all lanes uniformly; the shared mono-strand
+prob read was always there but only noticed against LOR's clean per-owner display.
+
+FIX — needs a decision (NOT done; don't guess at end of session):
+ (a) Give Macro's V1 prob display a separate pre-East-spread probability source, mirroring the
+     LOR macroBase pattern (Macro shows its OWN global spread applied to its OWN probability,
+     independent of East). Bigger engine change — needs a Macro-own prob array.
+ (b) Treat it as cosmetic/acceptable: on V1 the mono strand's probability is genuinely SHARED,
+     and what Macro shows IS the mono strand's actual played probability. Arguably not wrong —
+     Macro's "global view" showing the shared mono strand's real probability.
+ (c) Suppress: on an East-owned lane, blank/hold Macro's prob bars for that lane (cheapest;
+     matches "Macro shows nothing for East-owned like LOR" — but LOR shows Macro's OWN, not
+     nothing, so this is only half-consistent).
+Decision hinges on whether Macro's V1 view is meant to be "Macro's own global" (→ a) or "the
+shared mono strand" (→ b). LOR treats it as Macro's own → (a) is the consistent answer, but
+it's the most work. Defer to a build/design session.
+
+### DECISION: fix via (a) — Macro shows its OWN probability, never East's
+
+Chosen: (a). Macro's V1 (and by extension any) prob display must read a Macro-OWN, pre-East-
+spread probability source — Macro shows its own global spread applied to its own probability,
+independent of East, mirroring how LOR already uses macroBase/macroCVDelta.
+
+Rationale (stronger than mere LOR-consistency): the architecture ALREADY provides an explicit,
+opt-in channel for East/Mono to tap Macro's global modulation PER VOICE (the send/blend
+mechanism). That is the intended one-way flow: Macro (upstream/global) → East (downstream/
+per-voice), when East chooses. If East's own modulation ALSO leaks into Macro's display, the
+coupling becomes bidirectional and unrequested: Macro modulates East (by design) while East
+appears to modulate Macro (by accident) — a conceptual FEEDBACK loop. A user reading Macro
+can't distinguish "Macro's own global" from "East bleeding back", and the mental model
+(Macro = global source, East = taps it) collapses. Authority must stay directional: downstream
+(East) must NEVER appear upstream (Macro). So (a) protects the whole ownership model, not just
+visual consistency.
+
+Implementation sketch (own session — real engine change):
+- Macro needs a Macro-own probability array (pre-East-spread), analogous to macroBase for LOR:
+  Macro's own global spread applied to Macro's own base probability, per lane/step.
+- Macro's V1 prob-bar display (StraitsSandsMacroVisual.cpp ~370, the finalRandomByStrand read)
+  and the poly path (~356 resolver read) should source from THAT, not the shared mono-strand
+  finalRandom arrays that East's spread writes.
+- Keep engine PLAYBACK unchanged (already correct: East owns → East plays). This is a DISPLAY-
+  source change: Macro's display reads its own probability instead of the shared final.
+- Watch the standalone-Macro case (numPolyVoices=0, only V1 tab) — its prob bars currently rely
+  on finalRandomByStrand being written by Macro's own spread; the Macro-own source must cover it.
+
+---
+
+## Option (a) implementation — CORRECTED (Macro has no own probability; it has own SPREAD)
+
+Investigating revealed the plan's sketch ("Macro's own base probability array") was partly a
+phantom: **Macro has NO probability faders of its own** (its params are only global SPREAD,
+global LOR (DNA len/off/rot), sends/taps, CV depth). Macro doesn't own a probability pattern —
+it owns global spread + global LOR that MODULATE the shared draw.
+
+So "Macro's own probability" = the shared base draw with MACRO's OWN spread applied (not
+East's). The leak mechanism, precisely:
+- base draw (pre-spread) = slewedRhythm[]/slewedAccent[]/… (shared).
+- East writes the SHARED final: rhythmRandom[j] = SpreadInterp::apply(pe, mode, REST, j, nPoly,
+  slewedRhythm[j], spR_EAST)  [MonsoonExpanderManager.cpp:368/371].
+- Macro's V1 display reads that shared rhythmRandom[] → sees EAST's spread. THE LEAK.
+
+FIX (display-time compute, mirrors LOR's macroBase pattern — NO new stored array, NO engine
+change, playback untouched):
+- Macro's prob-bar display computes ITS OWN value:
+    SpreadInterp::apply(pe, mode, lane, s, nPoly, slewed<Lane>[s], MACRO_spread[lane])
+  using Macro's own spread (macroVis->spreadEffective[lane]) instead of East's, on the SAME
+  shared base draw. Never read the East-modulated final for display.
+- Two sites: StraitsSandsMacroVisual.cpp ~356 (poly, via resolver) and ~370 (V1, the
+  finalRandomByStrand read). The V1 read is the confirmed leak; the poly path reads the
+  resolver (laneProbabilityAtStep → also the shared final) so likely leaks too — fix both.
+- Base draw buffers: slewedRhythm/Melody/Octave/Accent[] (mono strand); poly uses
+  slewedPoly*[v][]. Apply Macro spread per lane/step.
+- Standalone-Macro (numPolyVoices=0, only V1): still correct — it computes from the shared base
+  draw + Macro's own spread, which IS what standalone Macro should show.

@@ -6,6 +6,8 @@
 #include "ui/SvgPanelKit.hpp"
 //#include "MonsoonStraitsSands.hpp"
 #include "StraitsSandsMacroVisual.hpp"
+#include "dsp/SandsTopology.hpp"           // step 4b: Macro lock predicate via the resolver
+#include <cassert>
 #include "MonsoonSandsVisualExpander.hpp"  // complete mono type + SandsMonoVisualIds for the tab-1 mono mirror
 #include "ui/SandsVisualEditorV4.hpp"
 #include "ui/TabButton.hpp"
@@ -129,10 +131,11 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         visualEditor->laneLockedFn = [this](int editorLane) -> bool {
             if (editorLane < 0 || editorLane >= 4) return false;   // VAR/LEG mono-only
             if (viewVoice != 0) return false;                      // only the V1 tab
-            auto* mon = getMonsoon();
-            auto* mv  = mon ? mon->expanderManager.cachedSandsVisualExpander : nullptr;
-            if (!mv) return false;                                 // no Mono → editable
-            return mv->params[SandsMonoVisualIds::ownerDispId(editorLane)].getValue() > 0.5f;
+            // locked ⟺ MONO owns this V1 lane (owner(0,l)==MONO). NOTE: preserves the old
+            // "editable whenever no Mono" behaviour — including EAST+MACRO where East owns
+            // V1. Switching to lockedOn(MACRO) would also lock when East owns; that's the
+            // deliberate behaviour question tracked in SANDS_TOPOLOGY_RESOLVER_PLAN.md.
+            return buildV1Topo().owner(0, editorLane) == dotModular::SandsTopology::Role::MONO;
         };
 
         Module* mod_ = module;
@@ -204,6 +207,26 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         return module ? findMonsoonEitherSide(module) : nullptr;
     }
 
+    // STEP 4b: ownership authority for the Macro widget's V1 view. Macro is present
+    // (this widget IS Macro); monoV1Owner[] read from Mono's editor-ordered ownerDispId
+    // (the same source the old predicate read). lockedOn(MACRO,0,l) == owner(0,l)!=MACRO,
+    // i.e. "Mono owns it" — matching the old mv->ownerDispId(l) > 0.5 test.
+    dotModular::SandsTopology buildV1Topo() {
+        dotModular::SandsTopology::Inputs in;
+        in.macroPresent = true;   // this widget is Macro
+        if (auto* mon = getMonsoon()) {
+            auto* mv = mon->expanderManager.cachedSandsVisualExpander;
+            in.monoPresent    = (mv != nullptr);
+            in.eastPresent    = mon->expanderManager.cachedEastSandsVisual  != nullptr;
+            in.polyBaseActive = mon->expanderManager.cachedPolyVoiceExpander != nullptr;
+            if (mv) {
+                for (int l = 0; l < 4; ++l)
+                    in.monoV1Owner[l] = mv->params[SandsMonoVisualIds::ownerDispId(l)].getValue() > 0.5f;
+            }
+        }
+        return dotModular::SandsTopology::build(in);
+    }
+
     void saveLOR() {
         if (!module || !visualEditor) return;
         for (int l = 0; l < 4; ++l) {   // l = engine lane (lorId) → editor lane
@@ -223,13 +246,47 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         }
     }
 
+    // Macro's OWN probability for a lane/step — the shared base draw with MACRO's own
+    // spread applied (NOT East's). Mirrors how Macro's LOR display uses macroBase instead
+    // of reading East's LOR: Macro shows its own modulation on the shared draw, never the
+    // East-spread-modulated shared final (rhythmRandom[] etc.). This enforces the one-way
+    // borrowing rule (East may borrow Macro; Macro never borrows East). See
+    // docs/design/DISPLAY_STORE_ENGINE_SEPARATION.md. engLane = PL_REST/MEL/OCT/ACC (0..3).
+    float macroOwnProbability(int engLane, int step, bool mono, int polyVoice) {
+        auto* mod = dynamic_cast<StraitsSandsMacroVisual*>(module);
+        Monsoon* mon = getMonsoon();
+        if (!mod || !mon) return 0.5f;
+        auto& pe = mon->engine.pe;
+        const redDot::SpreadInterp::Target smode = pe.spreadInterpMono
+            ? redDot::SpreadInterp::MONO_DRAW : redDot::SpreadInterp::AVERAGE_POLY;
+        const int nPoly = mon->engine.numPolyVoices;
+        // Macro's own spread for this lane (base knob + send-tapped delta, clamped) — the
+        // SAME expression the engine's MACRO_SOLE branch uses (MonsoonExpanderManager.cpp).
+        const float sp = rack::math::clamp(mod->macroBase[engLane][3] + mod->macroSendDelta[engLane][3], -1.f, 1.f);
+        // The pre-spread base draw buffer for this lane (mono strand vs poly bank).
+        using PL = SequencerEngine;  // PL::PL_REST etc. (enum lives in SequencerEngine)
+        float base;
+        if (mono) {
+            base = (engLane == PL::PL_REST)   ? pe.slewedRhythm[step & 0x0F]
+                 : (engLane == PL::PL_MELODY) ? pe.slewedMelody[step & 0x0F]
+                 : (engLane == PL::PL_OCTAVE) ? pe.slewedOctave[step & 0x0F]
+                 :                              pe.slewedAccent[step & 0x0F];
+        } else {
+            int v = rack::math::clamp(polyVoice, 0, 14);
+            base = (engLane == PL::PL_REST)   ? pe.slewedPolyRhythm[v][step & 0x0F]
+                 : (engLane == PL::PL_MELODY) ? pe.slewedPolyMelody[v][step & 0x0F]
+                 : (engLane == PL::PL_OCTAVE) ? pe.slewedPolyOctave[v][step & 0x0F]
+                 :                              pe.slewedPolyAccent[v][step & 0x0F];
+        }
+        return redDot::SpreadInterp::apply(pe, smode, engLane, step, nPoly, base, sp);
+    }
+
     void step() override {
         ModuleWidget::step();
         kitStep();   // kit: dev-mode live-reload poll (no-op unless enabled)
         if (!module || !paramMgr || !visualEditor) return;
         Monsoon* monsoon = getMonsoon();
         if (!monsoon) { if (visualEditor) visualEditor->clearPlaySteps(); return; }
-        auto* monoVis = monsoon->expanderManager.cachedSandsVisualExpander;  // null = no Mono attached
 
         int wantLight = monsoon->lightTheme ? 1 : 0;
         if (wantLight != lastThemeLight) {
@@ -325,13 +382,16 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // when Macro owns the lane → blank lanes. Macro's editor is read-only (display only),
         // so overwrite ALL displayed lanes from the resolver (polyRhythmRandom — the final
         // output the sequencer plays, populated regardless of owner; the prob-outs use it too).
+        // POLY TAB: show MACRO's OWN probability (shared base draw + Macro's own spread),
+        // NOT resolver.laneProbabilityAtStep (which returns the shared final that East's spread
+        // writes on East-owned lanes → leak). One-way borrowing: Macro never borrows East.
+        // lane = engine PL lane; el = editor lane it displays into; pv = poly bank index.
         if (!onMonoTab) {
-            dotModular::VoiceResolver resolver(monsoon->engine);
             for (int lane = 0; lane < 4; ++lane) {
                 int el = dotModular::ENGINE_LANE_TO_EDITOR[lane];
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
                     visualEditor->currentState.lanes[el].probabilities[s] =
-                        resolver.laneProbabilityAtStep(viewVoiceNum, lane, s);
+                        macroOwnProbability(lane, s, /*mono=*/false, /*polyVoice=*/pv);
             }
         } else {
             // MONO TAB (V1): neither sync nor the resolver-overwrite above ran (both
@@ -340,12 +400,16 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             // looked dead: with numPolyVoices=0 the ONLY tab is V1. Read V1 per-step from
             // the engine MONO final arrays (finalRandomByStrand — what Mono/East/standalone-
             // Macro spread write), editor lane → engine strand via MONO_LANE_TO_STRAND.
-            auto& peRef = monsoon->engine.pe;
+            // MONO TAB (V1): show MACRO's OWN probability — the shared base draw with Macro's
+            // OWN spread — NOT the shared finalRandomByStrand (which East's spread writes on an
+            // East-owned lane, leaking East's modulation into Macro's display). One-way
+            // borrowing: Macro never borrows East. el = EDITOR lane; macroOwnProbability wants
+            // the ENGINE PL lane → EDITOR_TO_ENGINE_LANE[el].
             for (int el = 0; el < 4; ++el) {
-                int strand = dotModular::MONO_LANE_TO_STRAND[el];
+                const int engLane = dotModular::EDITOR_TO_ENGINE_LANE[el];
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
                     visualEditor->currentState.lanes[el].probabilities[s] =
-                        peRef.finalRandomByStrand(strand, s);
+                        macroOwnProbability(engLane, s, /*mono=*/true, /*polyVoice=*/0);
             }
         }
 

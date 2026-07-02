@@ -6,8 +6,10 @@
 //#include "../../MonsoonSandsExpander.hpp"
 #include "../../StraitsSandsMacroVisual.hpp"
 #include "MonsoonExpanderManager.hpp"
+#include "../SandsTopology.hpp"   // step 3b: readStrand owner migration
 #include "../../MonsoonStraitsEastExpander.hpp"
 #include "../../StraitsEastSandsVisual.hpp"
+#include <cassert>
 
 using namespace rack;
 using namespace MonsoonIds;
@@ -52,6 +54,21 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     const bool hasWest = (expanderManager.cachedStraitWestExpander != nullptr);
     const int  polyOutCap = polyBaseActive ? (hasWest ? 15 : 7) : 0;
     const int  effPolyVoices = clamp(engine.numPolyVoices, 0, polyOutCap);
+
+    // STEP 3b: build the ownership authority for this block, with the per-lane Mono V1
+    // ownership populated (step 3a only needed presence). readStrand's owner decisions
+    // migrate onto topo.owner(0, l). See docs/design/SANDS_TOPOLOGY_RESOLVER_PLAN.md.
+    dotModular::SandsTopology::Inputs topoIn;
+    topoIn.monoPresent    = hasMonoVisual;
+    topoIn.eastPresent    = hasEastVisual;
+    topoIn.macroPresent   = hasMacro;
+    topoIn.polyBaseActive = polyBaseActive;
+    topoIn.polyVoiceCount = engine.numPolyVoices;
+    if (monoVis) {
+        for (int l = 0; l < 4; ++l)
+            topoIn.monoV1Owner[l] = monoVis->params[Mono::ownerDispId(l)].getValue() > 0.5f;
+    }
+    const dotModular::SandsTopology topo = dotModular::SandsTopology::build(topoIn);
     const bool macroDrivesOutput = hasMacro && polyBaseActive;
     // sandsActive must be true whenever ANYTHING writes the spread-applied final arrays,
     // or PatternEngine's slew stage copies the raw slewed draws back over them every
@@ -129,8 +146,9 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // are mono-only and always Mono-owned. (macroBase is published later in
             // this same block → one control-block lag, same as the macroMix delta.)
             if (l < 4 && hasMacro && macroVis) {
-                bool monoOwns = monoVis->params[Mono::ownerDispId(l)].getValue() > 0.5f;
-                if (!monoOwns) {
+                // STEP 3b: delegated ⟺ topo.owner(0,l) == MACRO.
+                const bool delegated = (topo.owner(0, l) == dotModular::SandsTopology::Role::MACRO);
+                if (delegated) {
                     int el = dotModular::EDITOR_TO_ENGINE_LANE[l];   // editor → poly engine lane
                     // Delegated → track Macro's base + the TAPPED CV delta (macroSendDelta),
                     // so the per-lane PRE/POST send tap controls how Macro's modulation
@@ -145,8 +163,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
 
             // Mono's own CV applies only to lanes Mono OWNS. A delegated lane tracks
             // Macro exclusively (G5) — Mono's CV must not additionally modulate it.
-            bool monoOwnsLane = !(l < 4 && hasMacro && macroVis
-                                  && !(monoVis->params[Mono::ownerDispId(l)].getValue() > 0.5f));
+            // Mono owns ⟺ owner(0,l)==MONO; lanes >=4 (VAR/LEG) are always MONO when present.
+            const bool monoOwnsLane = (topo.owner(0, l) == dotModular::SandsTopology::Role::MONO);
             if (monoOwnsLane) {
                 baseLen = applyMonoCV(baseLen, l, 0, 1.f, 16.f);
                 baseOff = applyMonoCV(baseOff, l, 1, 0.f, 15.f);
@@ -200,9 +218,10 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 baseRot = macroMix(baseRot, eng, 2, 0.f, 15.f);
             }
 
-            engine.strandLenRef(strand) = clamp((int)std::round(baseLen), 1, 16);
-            engine.strandOffRef(strand) = ((int)std::round(baseOff) % 16 + 16) % 16;
-            engine.strandRotRef(strand) = ((int)std::round(baseRot) % 16 + 16) % 16;
+            engine.setStrand(StrandWriter::MONO, strand,
+                             (int)std::round(baseLen),
+                             (int)std::round(baseOff),
+                             (int)std::round(baseRot));
         };
 
         // Spread (REST/MEL/OCT only): base trimpot + per-lane spread CV.
