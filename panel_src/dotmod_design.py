@@ -14,12 +14,14 @@ def theme(dark):
         bg="#16181c", ink="#d8d8dc", dim="#8a8f98", teal="#26a69a", gold="#c8960c",
         accent="#dc2626", jackwell="#0b0d10", jackring="#4a5058", well="#0f1114",
         wellring="#3a4048", edrecess="#101216", edborder="#2a2f37", tabband="#202833",
-        group="#13151a", groupline="#262b33", motif="#2e333c", motifwave="#333944")
+        group="#13151a", groupline="#262b33", motif="#2e333c", motifwave="#333944",
+        steel="#8fa3b0", ledblue="#5ab0e0")
     return dict(
         bg="#e8e8ea", ink="#2a2a2e", dim="#888d96", teal="#1a8276", gold="#a07808",
         accent="#c0202a", jackwell="#dadce0", jackring="#9298a0", well="#d4d6d9",
         wellring="#a8aeb6", edrecess="#d8dade", edborder="#c0c4ca", tabband="#cdd4dc",
-        group="#dfe0e3", groupline="#c8ccd2", motif="#cdcfd4", motifwave="#c8cad0")
+        group="#dfe0e3", groupline="#c8ccd2", motif="#cdcfd4", motifwave="#c8cad0",
+        steel="#6b7a86", ledblue="#2a80b0")
 
 # ── Real dot.modular wordmark embed (mask-free logo-{dark,light}.svg) ─────────
 def logo_embed(dark, x_mm, y_mm, target_w_mm, repo_root="."):
@@ -174,3 +176,57 @@ def trim(x_mm, y_mm, t, col):
 
 def svg_open(PW, PH):
     return f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="{PW}" height="{PH}" viewBox="0 0 {PW} {PH}">'
+
+# ── Sands Helix — the Helix Bridge as a double-helix hero mark ────────────────
+# nanosvg-safe (lines/circles/polys + opacity; no gradient/mask/filter). Same
+# (x,y,w,h,t,op) signature as mbs()/waves() so any panel can place it. Two teal
+# helical rails 180° opposed (the DNA double helix the bridge is modelled on),
+# occluded (front hides back via per-segment painter-sort), gold rungs + light
+# steel near-end diagonals for truss texture, blue LED nodes on the front rails,
+# and the real mbs() towers staged upper-right (helix sweeps up toward MBS —
+# the Helix Bridge → Marina Bay Sands geography). Designed as a foreground HERO
+# mark (high op); the Sands Helix (macro) panel places it in the bottom-left.
+def helix_sands(x_mm, y_mm, w_mm, h_mm, t, op, repo_root="."):
+    import math
+    x, y, w, h = px(x_mm), px(y_mm), px(w_mm), px(h_mm)
+    teal=t["teal"]; gold=t["gold"]; dim=t["dim"]
+    steel=t.get("steel","#8fa3b0"); blue=t.get("ledblue","#5ab0e0")
+    out=[]
+    # MBS towers upper-right, its own space (helix sweeps UP TO it, not into it)
+    out.append(mbs(x_mm+w_mm*0.62, y_mm+h_mm*0.02, w_mm*0.38, h_mm*0.46, t, op=op*0.60))
+    N=220; turns=2.5; R0=h*0.30
+    def axis(u):
+        ax=x+w*0.05+w*0.60*(u**0.88)
+        ay=y+h*0.62 - h*0.30*(u**1.15)
+        sc=1.05-0.74*u
+        return ax, ay, max(0.06, sc)
+    def strand(phase):
+        p=[]
+        for i in range(N+1):
+            u=i/N; ax,ay,sc=axis(u); ang=phase+turns*2*math.pi*u
+            oy=R0*sc*math.sin(ang); ox=R0*sc*0.36*math.cos(ang)
+            p.append((ax+ox, ay+oy, sc, math.cos(ang)))
+        return p
+    A=strand(0.0); B=strand(math.pi)
+    out.append(f'<path d="M '+" L ".join(f"{axis(i/N)[0]:.1f} {axis(i/N)[1]:.1f}" for i in range(N+1))+
+               f'" fill="none" stroke="{dim}" stroke-width="{px(1.3):.1f}" stroke-opacity="{op*0.40:.2f}"/>')
+    segs=[]
+    for i in range(0,N+1,5):   # gold rungs across the tube
+        x1,y1,s1,d1=A[i]; x2,y2,_,d2=B[i]; depth=(d1+d2)*0.5
+        segs.append((depth-0.03, f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="{gold}" stroke-width="{max(0.4,1.0*s1):.1f}" stroke-opacity="{op*(0.28+0.28*s1):.2f}"/>'))
+    for i in range(0,int(N*0.55),4):   # near-end steel truss texture
+        j=min(N,i+5); x1,y1,s1,d1=A[i]; x2,y2,_,d2=B[j]; depth=(d1+d2)*0.5
+        segs.append((depth-0.05, f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="{steel}" stroke-width="{max(0.3,0.8*s1):.1f}" stroke-opacity="{op*(0.22+0.28*s1):.2f}"/>'))
+    for pts in (A,B):   # bold occluded rails
+        for i in range(N):
+            x1,y1,s1,d1=pts[i]; x2,y2,s2,d2=pts[i+1]; depth=(d1+d2)*0.5; front=depth>0
+            lw=max(1.0,(4.4 if front else 2.2)*s1); oo=op*((1.0 if front else 0.55)*(0.55+0.45*s1))
+            segs.append((depth, f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="{teal}" stroke-width="{lw:.1f}" stroke-opacity="{oo:.2f}" stroke-linecap="round"/>'))
+    for pts in (A,B):   # LED nodes on front rails
+        for i in range(0,N+1,6):
+            x1,y1,s1,d1=pts[i]
+            if d1>0.15 and s1>0.3:
+                segs.append((1.49, f'<circle cx="{x1:.1f}" cy="{y1:.1f}" r="{max(1.3,3.4*s1):.1f}" fill="{blue}" fill-opacity="{op*0.20:.2f}"/>'))
+                segs.append((1.50, f'<circle cx="{x1:.1f}" cy="{y1:.1f}" r="{max(0.8,1.9*s1):.1f}" fill="{blue}" fill-opacity="{op:.2f}"/>'))
+    for d,s_ in sorted(segs, key=lambda z:z[0]): out.append(s_)
+    return "".join(out)
