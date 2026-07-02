@@ -399,3 +399,22 @@ Implementation: gate the flag on an "integer step length" predicate, e.g.
   float ns = noteValueSteps(nvIdx); bool canLead = (ns == std::floor(ns));
 Also: in leading-edge we must draw BOTH a legato roll AND an appropriate (grid-aligned) note
 length to START a legato — the note-value draw and legato draw jointly gate the lead.
+
+---
+
+## Fractional-as-destination = the DOTTED-NOTE generator (why the rule is load-bearing)
+
+The rule "a fractional note can't LEAD but CAN be a legato/tie destination" is not just a
+constraint — it's the mechanism that produces DOTTED (and other compound) note lengths from the
+base note-value set, via extendHold summing the lengths:
+  1/16 (1.0) + 1/32 (0.5), same pitch, tie → holdRemain 1.5 = DOTTED 1/16   (user's example)
+  1/8  (2.0) + 1/16 (1.0)  tie            → 3.0 = DOTTED 1/8
+  1/4  (4.0) + 1/8  (2.0)  tie            → 6.0 = DOTTED 1/4
+extendHold does `holdRemain += add; armGate(holdRemain)` — one continuous gate to the exact
+(sub-step) end. Engine comment "rule 2" already documents fractional destinations as exact
+(e.g. 1/8→1/32 = 2.5 steps).
+
+Leading-edge preserves this: note1 (grid, slurForward=true) → note2 (fractional, same pitch)
+arrives as a Tie via prevSlur → extendHold sums → dotted note; note2's own slurForward=false
+(can't lead) so the chain ends cleanly after the dotted note. So the fractional-destination
+behaviour must be protected — dotted rhythms depend on it; it's load-bearing, not incidental.
