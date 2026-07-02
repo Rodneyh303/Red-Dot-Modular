@@ -307,3 +307,33 @@ interrupt (continue-across, current behaviour). Dice/lock do NOT interrupt (side
 4. Confirm LegatoMax and legatoProb sweep behave; build + ear test; then remove the old join roll.
 Test suite: extend the mono decision tests (the 347-test suite / PatternEngine tests) to assert
 onset-committed legato, same-pitch tie vs diff-pitch legato, tail precedence, and poly slaving.
+
+---
+
+## OPEN DECISION — slur vs rest conflict (leading-edge only)
+
+Leading-edge commitment creates a conflict the reactive model never had: note N commits at its
+OWN onset to hold its gate forward (slur), but N+1's REST roll happens later. When N+1 rolls a
+rest, which wins — N's prior slur commitment, or N+1's rest?
+
+Existing precedent in the code (executeStep): a fractional NOTE TAIL already outranks a
+structural rest — "note tail takes priority over pattern structural rest" (gateHeld=true,
+MidNote). So "hold beats rest" exists — but that was written for PHYSICAL tails (a triplet
+finishing its real sub-step length), which is a different case from an OPTIONAL slur reach.
+
+Two options for the slur case:
+- **A: hold wins, rest suppressed.** N slurs into N+1 regardless of N+1's rest. Legato is a
+  strong commitment. Risk: high rest + high legato → legato stampedes over rests.
+- **B: rest wins, slur cancelled.** N+1's rest cancels the slur; N ends at nominal length, N+1
+  is silent. "You can't slur into silence." Matches the doc's earlier "rest-follows cancels
+  slur" instinct.
+
+LEANING B, with a key distinction that keeps the existing tail behaviour intact:
+  **A note must finish its OWN length (TAIL > rest — physical, unchanged), but its OPTIONAL
+  forward reach yields to a rest (REST > slur — structural).**
+So: fractional tails still outrank rests (no change to current behaviour); a leading-edge slur
+does NOT outrank a rest (rest cancels the slur, note ends at nominal length). This answers the
+conflict without touching the tail-precedence code and matches "can't slur into silence."
+
+Settle A vs B before implementing plan step 2 (it's ~a one-line difference in the join
+consumption logic but a real difference in feel — test both by ear if unsure).
