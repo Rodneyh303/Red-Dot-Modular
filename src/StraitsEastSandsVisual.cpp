@@ -214,6 +214,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     // delegated=false so this stays the OWNED-blend case exactly as before;
                     // sendSlot = v (poly voice). (Delegated poly lanes show via getModNorm/
                     // polySpreadEffective, unchanged.)
+                    // NOTE (step 5b): left on the direct persistent read deliberately.
+                    // Migrating to buildTopo() here would switch this current-tab decision
+                    // from persistent ownerId to the live-overlaid ownerDispId — a subtle
+                    // BEHAVIOUR change (persistent-until-tab-exit vs live), not a pure
+                    // refactor. Deferred until the live-vs-persistent semantics for the
+                    // current tab are decided (same question as the deferred edit-lock one).
                     bool eastOwns = mod->params[ownerId(v, lane)].getValue() > 0.5f;
                     if (eastOwns)
                         macroBlend = StraitsMacroVisualIds::macroSpreadModulatesLane(
