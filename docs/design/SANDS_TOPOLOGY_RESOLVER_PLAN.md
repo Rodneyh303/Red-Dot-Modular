@@ -314,3 +314,35 @@ more combination testing.
 The topology makes the fix a one-liner either way: the lock predicates are `owner(...)==self`
 (current, no cross-panel lock) vs `lockedOn(self,...)` (lock when anyone else owns). Pick one
 rule, apply to all three panels' lock predicates uniformly. Schedule with step 5/5b. Not now.
+
+---
+
+## Step 5b-part-2 — spread: refined diagnosis (from examining the code)
+
+Examining the poly write path for part 2 sharpened both spread bugs — the ENGINE value is
+already correct; both bugs are DISPLAY/PERSISTENCE, and neither needs a new topology method
+(the existing `owner(voice, lane)` answers the ownership question). The topology stays
+lightweight — no `spreadSource` struct needed; consumers just call `owner`.
+
+**Engine is fine:** `MonsoonExpanderManager::combineSpread` already uses Macro's global
+spread (`macroBase[lane][3] + macroCVDelta`) for EVERY voice `v` on a ceded lane (owner!=EAST).
+So playback is correct across all poly voices. The bugs are in the East UI only:
+
+**Bug #1 (display) — spread-follow is V1-only.** The `SPREAD_R/M/O/A` trimpots are the
+CURRENT-TAB spread display (4 params, not per-voice — like ownerDispId). The follow logic
+that forces them to Macro's global spread on a ceded lane is guarded to the V1 tab
+(`v1Topo.owner(0,el)`), so on V2+ tabs the trimpots don't reflect the global value.
+FIX: run the follow using `owner(currentVoice, lane)` (via buildTopo) so it applies on every
+tab, not just V1. Pure display; engine unaffected.
+
+**Bug #2 (persistence) — spread has no per-voice save/restore.** LOR has persistent
+`ownerId(v,lane)` + a display proxy `ownerDispId`, saved/restored on tab switch. Spread has
+only the 4 live trimpots — NO per-voice persistent backing. So ceding a lane to Macro
+(trimpots forced to global) then giving it back loses East's pre-cede spread.
+FIX: add per-voice persistent spread storage mirroring the owner pattern (a `spread[v][lane]`
+param block + save/restore on tab switch / cede / un-cede), so switching control round-trips.
+This is the bigger change (new params + persistence + JSON) — the LOR save/restore is the
+template.
+
+Neither is a topology change — the resolver already answers "who owns (voice,lane)". Part 2
+is East-UI work that USES the resolver. Keeps SandsTopology a pure lightweight value type.
