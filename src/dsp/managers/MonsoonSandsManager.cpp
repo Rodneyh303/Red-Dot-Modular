@@ -146,14 +146,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // are mono-only and always Mono-owned. (macroBase is published later in
             // this same block → one control-block lag, same as the macroMix delta.)
             if (l < 4 && hasMacro && macroVis) {
-                // STEP 3b: ownership via the resolver. Was:
-                //   bool monoOwns = monoVis->params[Mono::ownerDispId(l)].getValue() > 0.5f;
-                //   if (!monoOwns) { ... delegated to Macro ... }
-                // Now: delegated ⟺ topo.owner(0,l) == MACRO. Cross-check against the old
-                // predicate in debug before relying on it.
+                // STEP 3b: delegated ⟺ topo.owner(0,l) == MACRO.
                 const bool delegated = (topo.owner(0, l) == dotModular::SandsTopology::Role::MACRO);
-                assert(delegated == !(monoVis->params[Mono::ownerDispId(l)].getValue() > 0.5f)
-                       && "topo delegated must match !monoOwns");
                 if (delegated) {
                     int el = dotModular::EDITOR_TO_ENGINE_LANE[l];   // editor → poly engine lane
                     // Delegated → track Macro's base + the TAPPED CV delta (macroSendDelta),
@@ -169,13 +163,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
 
             // Mono's own CV applies only to lanes Mono OWNS. A delegated lane tracks
             // Macro exclusively (G5) — Mono's CV must not additionally modulate it.
-            // STEP 3b: was a hand-restatement of the same ownership test as above; now
-            // both read the resolver, so they cannot disagree. Mono owns ⟺
-            // owner(0,l)==MONO; lanes >=4 (VAR/LEG) are always MONO when present.
+            // Mono owns ⟺ owner(0,l)==MONO; lanes >=4 (VAR/LEG) are always MONO when present.
             const bool monoOwnsLane = (topo.owner(0, l) == dotModular::SandsTopology::Role::MONO);
-            assert(monoOwnsLane == !(l < 4 && hasMacro && macroVis
-                    && !(monoVis->params[Mono::ownerDispId(l)].getValue() > 0.5f))
-                   && "topo monoOwnsLane must match old predicate");
             if (monoOwnsLane) {
                 baseLen = applyMonoCV(baseLen, l, 0, 1.f, 16.f);
                 baseOff = applyMonoCV(baseOff, l, 1, 0.f, 15.f);

@@ -516,27 +516,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     }
     // For East's OWN controls (base-spread, CV-depth): inert only when Macro is present
     // AND owns the lane (East base bypassed). Fully usable solo.
-    bool laneOwnedByMacro(int lane) {
-        if (!macroAttached()) return false;
-        return !(module && module->params[StraitsEastVisualIds::ownerDispId(lane)].getValue() > 0.5f);
-    }
-    // STEP 4c: topology-backed equivalent of laneOwnedByMacro for the CURRENT tab, used by
-    // laneLockedFn and the spread-arc lockWhen lambdas so all East lock predicates read one
-    // authority. engLane in; converts to editor lane for the resolver. Cross-checked.
+    // Topology-backed lane ownership for the CURRENT tab, used by laneLockedFn and the
+    // spread-arc lockWhen lambdas so all East lock predicates read one authority.
+    // engLane in; converts to editor lane for the resolver.
     bool laneOwnedByMacroTopo(int engLane) {
         const int el = dotModular::ENGINE_LANE_TO_EDITOR[engLane];
-        const bool v = (buildTopo().owner(currentVoice() - 1, el)
-                        == dotModular::SandsTopology::Role::MACRO);
-        assert(v == laneOwnedByMacro(engLane)
-               && "topo owner==MACRO must match laneOwnedByMacro");
-        return v;
-    }
-    // V1 per-lane delegation: while on the V1 tab the owner cell proxy (ownerDispId) is
-    // synced to the persistent monoOwnerId, so reading the live proxy is correct here.
-    // (Same Macro-owned test as poly: cell value <=0.5 == Macro owns the lane.)
-    bool monoLaneOwnedByMacro(int lane) {
-        if (!macroAttached()) return false;
-        return !(module && module->params[StraitsEastVisualIds::ownerDispId(lane)].getValue() > 0.5f);
+        return buildTopo().owner(currentVoice() - 1, el) == dotModular::SandsTopology::Role::MACRO;
     }
     // The voice NUMBER (1..16) for the selected tab: tab 0 = V1 (mono), tab v = V(v+1).
     // All mono/poly identity + bank mapping flows through VoiceResolver so there's one
@@ -836,10 +821,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // macroBase[lane][3] into SPREAD_R/M/O/A (engine-indexed, contiguous) so the
             // locked knob tracks Macro. (Owned lanes keep the user's East spread value.)
             if (macroAttached()) {
-                if (auto* macroVis = getMonsoon()->expanderManager.cachedMacroSandsVisual)
-                    for (int lane = 0; lane < 4; ++lane)
-                        if (monoLaneOwnedByMacro(lane))
+                if (auto* macroVis = getMonsoon()->expanderManager.cachedMacroSandsVisual) {
+                    const auto v1Topo = buildTopo();   // resolver: is this V1 lane delegated to Macro?
+                    for (int lane = 0; lane < 4; ++lane) {   // lane = engine lane
+                        const int el = dotModular::ENGINE_LANE_TO_EDITOR[lane];
+                        if (v1Topo.owner(0, el) == dotModular::SandsTopology::Role::MACRO)
                             module->params[SPREAD_R + lane].setValue(macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3]);
+                    }
+                }
             }
             // CV depth for V1 lives in the mono slot (kMonoSlot); saveVoiceMacro only
             // writes poly slots, so mirror the atten display proxies into the mono slot
@@ -876,14 +865,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 auto& lane = visualEditor->currentState.lanes[el];
                 int strand  = dotModular::MONO_LANE_TO_STRAND[el];
                 int engLane = dotModular::EDITOR_TO_ENGINE_LANE[el];   // East CV jack / macroBase use engine lane
-                // STEP 3c: ownership via the resolver. This block runs only when East is
-                // the V1 editor (no Mono, v1Editable), so V1's owner is EAST or (delegated)
-                // MACRO. delegated ⟺ topo.owner(0, el) == MACRO. Was:
-                //   if (monoLaneOwnedByMacro(engLane))
-                // Cross-check against the old engine-lane predicate in debug.
+                // STEP 3c: this block runs only when East is the V1 editor (no Mono,
+                // v1Editable), so V1's owner is EAST or (delegated) MACRO.
+                // STEP 3c: delegated ⟺ v1Topo.owner(0, el) == MACRO (East is V1 editor here).
                 const bool delegated = (v1Topo.owner(0, el) == dotModular::SandsTopology::Role::MACRO);
-                assert(delegated == monoLaneOwnedByMacro(engLane)
-                       && "topo V1 delegated must match monoLaneOwnedByMacro");
                 if (delegated) {
                     auto* macroVis = getMonsoon()->expanderManager.cachedMacroSandsVisual;
                     if (macroVis) {

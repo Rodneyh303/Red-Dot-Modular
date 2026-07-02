@@ -117,17 +117,8 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         visualEditor->laneLockedFn = [this](int editorLane) -> bool {
             if (editorLane < 0 || editorLane >= 4) return false;   // VAR/LEG mono-only
             if (!module) return false;
-            // STEP 4: lock ⟺ Mono is not the owner of this V1 lane. Was:
-            //   hasMacro && !(ownerDispId(l) > 0.5)
-            // topo.lockedOn(MONO,0,l) == (owner(0,l) != MONO && owner != NONE), which for a
-            // present Mono means "Macro owns it" — same as the old test. Cross-check.
-            const auto topo = buildV1Topo();
-            const bool locked = topo.lockedOn(dotModular::SandsTopology::Role::MONO, 0, editorLane);
-            auto* mon = getMonsoon();
-            bool hasMacro = mon && mon->expanderManager.cachedMacroSandsVisual != nullptr;
-            assert(locked == (hasMacro && !(module->params[ownerDispId(editorLane)].getValue() > 0.5f))
-                   && "topo lockedOn(MONO) must match old lock predicate");
-            return locked;
+            // lock ⟺ Mono is not the owner of this V1 lane (Macro owns it).
+            return buildV1Topo().lockedOn(dotModular::SandsTopology::Role::MONO, 0, editorLane);
         };
         addChild(visualEditor);
 
@@ -262,17 +253,13 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         //    its display from Macro's global base instead. (G5.)
         Monsoon* monForOwn = getMonsoon();
         auto* macroForOwn = monForOwn ? monForOwn->expanderManager.cachedMacroSandsVisual : nullptr;
-        // STEP 4: delegated ⟺ Mono is NOT the owner of this V1 lane. Reads the SAME
-        // resolver as laneLockedFn (via buildV1Topo), so the two can no longer drift —
-        // this is the laneDelegated-vs-laneLockedFn desync class, closed. Was:
-        //   macroForOwn && el < 4 && !(mod->params[ownerDispId(el)].getValue() > 0.5f)
+        // delegated ⟺ Mono is NOT the owner of this V1 lane. Reads the SAME resolver as
+        // laneLockedFn (via buildV1Topo), so the two cannot drift — the laneDelegated-vs-
+        // laneLockedFn desync class, closed.
         const auto ownTopo = buildV1Topo();
         auto laneDelegated = [&](int el) -> bool {
             if (el < 0 || el >= 4) return false;
-            const bool d = !ownTopo.editableOn(dotModular::SandsTopology::Role::MONO, 0, el);
-            assert(d == (macroForOwn && !(mod->params[ownerDispId(el)].getValue() > 0.5f))
-                   && "topo !editableOn(MONO) must match old laneDelegated");
-            return d;
+            return !ownTopo.editableOn(dotModular::SandsTopology::Role::MONO, 0, el);
         };
         for (int l = 0; l < 6; ++l) {
             if (laneDelegated(l)) continue;   // delegated → tracks Macro, don't write Mono param
