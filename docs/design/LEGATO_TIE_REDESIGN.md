@@ -337,3 +337,35 @@ conflict without touching the tail-precedence code and matches "can't slur into 
 
 Settle A vs B before implementing plan step 2 (it's ~a one-line difference in the join
 consumption logic but a real difference in feel — test both by ear if unsure).
+
+---
+
+## STEP 1 FINDING (important) — the legato roll is ALREADY at the onset
+
+Implementing step 1 surfaced a subtlety that corrects the plan. The current model's legato roll
+does NOT happen "at the join, separately from the onset" — the join IS the next note's onset:
+- executeStep's MidNote guard (holdRemain>=1 || gatePulseRemain>0) returns early WHILE a note
+  holds, so the legato cascade only runs on steps where a note is STARTING.
+- At that step, r_legato = legatoRandom[getLegatoStep()] is read — this step is simultaneously
+  "the join between N and N+1" AND "N+1's onset."
+
+So the real difference between current and leading-edge is NOT "which random draw / which step"
+— it's the COMMITMENT DIRECTION and WHICH NOTE OWNS the decision:
+- CURRENT: at N+1's onset, decide "does N+1 connect BACKWARD to N?" (N+1 slides from N's gate).
+- LEADING-EDGE: at N's onset, decide "will N reach FORWARD and hold into N+1?" — using N's OWN
+  legato draw (N's onset index), which is a DIFFERENT draw than N+1's onset draw.
+
+Consequences:
+- The two models use DIFFERENT random draws (N's onset vs N+1's onset), so a leading-edge flag
+  will NOT always match the current decision — "assert they match" (the naive step 1) is wrong.
+- The slur-vs-rest conflict is INHERENT to leading-edge and ABSENT from current: current decides
+  legato at N+1's onset, the SAME step as N+1's rest roll (no ordering conflict). Leading-edge
+  commits N's reach BEFORE N+1's rest exists → the conflict. This confirms why that open
+  decision matters and is new.
+
+### Revised STEP 1 (safe, zero behaviour change) — INSTRUMENT, don't switch
+Add a hold-forward/slur flag to GateState, computed at N's onset from N's OWN legato draw, wired
+but UNUSED by the gate logic (the join still decides exactly as today). Also record, per starting
+step, what the leading-edge flag WOULD dictate vs what the current model DID — to characterize
+divergence before committing. No output change. This gives real data on how different the models
+are, and lets step 2 flip the decision source deliberately with the slur/rest policy in hand.
