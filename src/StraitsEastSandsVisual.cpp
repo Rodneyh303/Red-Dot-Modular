@@ -874,20 +874,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             }
         } else if (v1Editable()) {
             // V1 editable (no Mono, combo 3/7-without-Mono): East IS the V1 editor.
-            // Spread-follow: for lanes DELEGATED to Macro, the East V1 spread knob is
-            // locked (laneOwnedByMacro) and should DISPLAY Macro's global spread. Mirror
-            // macroBase[lane][3] into SPREAD_R/M/O/A (engine-indexed, contiguous) so the
-            // locked knob tracks Macro. (Owned lanes keep the user's East spread value.)
-            if (macroAttached()) {
-                if (auto* macroVis = getMonsoon()->expanderManager.cachedMacroSandsVisual) {
-                    const auto v1Topo = buildTopo();   // resolver: is this V1 lane delegated to Macro?
-                    for (int lane = 0; lane < 4; ++lane) {   // lane = engine lane
-                        const int el = dotModular::ENGINE_LANE_TO_EDITOR[lane];
-                        if (v1Topo.owner(0, el) == dotModular::SandsTopology::Role::MACRO)
-                            module->params[SPREAD_R + lane].setValue(macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3]);
-                    }
-                }
-            }
+            // Spread-follow is now handled by the knob's displayValueFn (see the SPREAD_*
+            // binds + spreadDisplayValue): on a ceded V1 lane the knob DISPLAYS Macro's base
+            // spread while SPREAD_* (the store) stays East's value — so reclaim reverts even
+            // after Macro's global spread is moved. (On the V1 tab currentVoice()-1==0, so
+            // spreadDisplayValue/laneOwnedByMacroTopo already evaluate owner(0,lane) = V1.)
+            // The old force of SPREAD_* to macroBase here was the clobber that lost V1's
+            // stored spread when Macro's knob moved during a cede — removed.
+
             // CV depth for V1 lives in the mono slot (kMonoSlot); saveVoiceMacro only
             // writes poly slots, so mirror the atten display proxies into the mono slot
             // each frame (engine-lane indexed) — otherwise V1 CV depth would be 0.
