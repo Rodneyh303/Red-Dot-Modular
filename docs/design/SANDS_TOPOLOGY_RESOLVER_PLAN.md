@@ -485,3 +485,31 @@ FIX — needs a decision (NOT done; don't guess at end of session):
 Decision hinges on whether Macro's V1 view is meant to be "Macro's own global" (→ a) or "the
 shared mono strand" (→ b). LOR treats it as Macro's own → (a) is the consistent answer, but
 it's the most work. Defer to a build/design session.
+
+### DECISION: fix via (a) — Macro shows its OWN probability, never East's
+
+Chosen: (a). Macro's V1 (and by extension any) prob display must read a Macro-OWN, pre-East-
+spread probability source — Macro shows its own global spread applied to its own probability,
+independent of East, mirroring how LOR already uses macroBase/macroCVDelta.
+
+Rationale (stronger than mere LOR-consistency): the architecture ALREADY provides an explicit,
+opt-in channel for East/Mono to tap Macro's global modulation PER VOICE (the send/blend
+mechanism). That is the intended one-way flow: Macro (upstream/global) → East (downstream/
+per-voice), when East chooses. If East's own modulation ALSO leaks into Macro's display, the
+coupling becomes bidirectional and unrequested: Macro modulates East (by design) while East
+appears to modulate Macro (by accident) — a conceptual FEEDBACK loop. A user reading Macro
+can't distinguish "Macro's own global" from "East bleeding back", and the mental model
+(Macro = global source, East = taps it) collapses. Authority must stay directional: downstream
+(East) must NEVER appear upstream (Macro). So (a) protects the whole ownership model, not just
+visual consistency.
+
+Implementation sketch (own session — real engine change):
+- Macro needs a Macro-own probability array (pre-East-spread), analogous to macroBase for LOR:
+  Macro's own global spread applied to Macro's own base probability, per lane/step.
+- Macro's V1 prob-bar display (StraitsSandsMacroVisual.cpp ~370, the finalRandomByStrand read)
+  and the poly path (~356 resolver read) should source from THAT, not the shared mono-strand
+  finalRandom arrays that East's spread writes.
+- Keep engine PLAYBACK unchanged (already correct: East owns → East plays). This is a DISPLAY-
+  source change: Macro's display reads its own probability instead of the shared final.
+- Watch the standalone-Macro case (numPolyVoices=0, only V1 tab) — its prob bars currently rely
+  on finalRandomByStrand being written by Macro's own spread; the Macro-own source must cover it.
