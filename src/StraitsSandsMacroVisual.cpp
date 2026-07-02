@@ -252,7 +252,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     // East-spread-modulated shared final (rhythmRandom[] etc.). This enforces the one-way
     // borrowing rule (East may borrow Macro; Macro never borrows East). See
     // docs/design/DISPLAY_STORE_ENGINE_SEPARATION.md. engLane = PL_REST/MEL/OCT/ACC (0..3).
-    float macroOwnProbability(int engLane, int step, bool mono, int polyVoice) const {
+    float macroOwnProbability(int engLane, int step, bool mono, int polyVoice) {
         auto* mod = dynamic_cast<StraitsSandsMacroVisual*>(module);
         Monsoon* mon = getMonsoon();
         if (!mod || !mon) return 0.5f;
@@ -287,7 +287,6 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         if (!module || !paramMgr || !visualEditor) return;
         Monsoon* monsoon = getMonsoon();
         if (!monsoon) { if (visualEditor) visualEditor->clearPlaySteps(); return; }
-        auto* monoVis = monsoon->expanderManager.cachedSandsVisualExpander;  // null = no Mono attached
 
         int wantLight = monsoon->lightTheme ? 1 : 0;
         if (wantLight != lastThemeLight) {
