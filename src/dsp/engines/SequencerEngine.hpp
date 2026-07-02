@@ -205,6 +205,18 @@ struct SequencerEngine {
                 // Two different producers wrote the same strand this block — the exact
                 // bug class that made Mono+Macro V1 uneditable. Log loudly; the engine
                 // value is now ambiguous (last writer wins, races the display).
+                //
+                // NOTE: this is a diagnostic, NOT a fatal condition — the documented
+                // behaviour is "last writer wins", which is a defined (if imperfect)
+                // fallback. A hard abort here (the old assert(false)) crashed the plugin on
+                // a LOAD-TIME TRANSIENT: during patch load there's a window where East's
+                // widget step() already writes its strand as EAST while Monsoon::process
+                // still sees cachedEastSandsVisual==nullptr (not yet populated by the
+                // expander scan) and so classifies MACRO_SOLE, writing the same strand as
+                // MACRO. Both fire in one block → conflict → (previously) crash. The cache
+                // populates a frame later and the conflict clears. So: WARN and continue
+                // (last-writer-wins), which is exactly the intent above. If a conflict ever
+                // persists in steady state, the log line will show it every block.
 #ifdef WARN
                 WARN("[StrandLedger] CONFLICT strand=%d written by %d then %d (two writers in one block)",
                      strand, (int)prev, (int)role);
@@ -213,7 +225,6 @@ struct SequencerEngine {
                      "[StrandLedger] CONFLICT strand=%d written by %d then %d (two writers in one block)\n",
                      strand, (int)prev, (int)role);
 #endif
-                assert(false && "two writers for one engine strand in a single block");
             }
             strandWriter[strand] = role;
         }
