@@ -388,22 +388,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
 
     void saveVoiceSpread(int v) {
         if (!module) return;
-        // BUG #2 (poly) FIX: a lane ceded to Macro has its SPREAD_* trimpot FORCED to
-        // Macro's global spread for display (see the poly spread-follow in step()). We must
-        // NOT save that forced value into East's per-voice store, or reclaiming the lane
-        // restores the global value instead of East's original — the exact reason LOR
-        // round-trips (it saves from engine truth) but spread didn't (it saved the display).
-        // So skip ceded lanes: their *InterpId store keeps East's real value untouched.
-        // v is 0-based poly; topo voice arg is 1-based for poly. SPREAD_R+lane = engine lane.
-        const auto topo = buildTopo();
-        auto owned = [&](int engLane){
-            return topo.owner(v + 1, dotModular::ENGINE_LANE_TO_EDITOR[engLane])
-                   == dotModular::SandsTopology::Role::MACRO;
-        };
-        if (!owned(0)) module->params[restInterpId(v)  ].setValue(module->params[SPREAD_R].getValue());
-        if (!owned(1)) module->params[melodyInterpId(v)].setValue(module->params[SPREAD_M].getValue());
-        if (!owned(2)) module->params[octaveInterpId(v)].setValue(module->params[SPREAD_O].getValue());
-        if (!owned(3)) module->params[accentInterpId(v)].setValue(module->params[SPREAD_A].getValue());
+        // The SPREAD_* trimpot is no longer force-overwritten for ceded lanes (see the
+        // poly step() block), so it always holds East's real value and can be saved
+        // cleanly — the store stays pristine and cede→reclaim round-trips (LOR pattern).
+        module->params[restInterpId(v)  ].setValue(module->params[SPREAD_R].getValue());
+        module->params[melodyInterpId(v)].setValue(module->params[SPREAD_M].getValue());
+        module->params[octaveInterpId(v)].setValue(module->params[SPREAD_O].getValue());
+        module->params[accentInterpId(v)].setValue(module->params[SPREAD_A].getValue());
     }
     void loadVoiceSpread(int v) {
         if (!module) return;
@@ -710,37 +701,19 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             saveVoiceSpread(polyVoice());
             saveVoiceMacro(polyVoice());
 
-            // BUG #2 (poly) root cause #2: smgr.setSpread writes the trimpot into the
-            // SpreadManager (the ENGINE spread store). On a ceded lane the trimpot is
-            // FORCED to Macro's global spread (poly spread-follow below), so writing it
-            // here clobbers the engine store with global — and loadVoiceSpread on reclaim
-            // only restores the trimpot, never smgr, so East's spread was lost. Guard it:
-            // for a ceded lane, do NOT push the forced display into smgr (leave the engine
-            // store holding East's real value, exactly as LOR leaves its engine state).
-            const auto spTopo = buildTopo();
-            auto ceded = [&](int engLane){
-                return spTopo.owner(currentVoice() - 1, dotModular::ENGINE_LANE_TO_EDITOR[engLane])
-                       == dotModular::SandsTopology::Role::MACRO;
-            };
+            // Spread now mirrors the LOR pattern: the store is NEVER forced to a display
+            // value. We do NOT overwrite the SPREAD_* trimpot for ceded lanes anymore —
+            // that forcing was clobbering both spread stores (*InterpId + SpreadManager),
+            // which is why LOR round-tripped on cede→reclaim but spread didn't. Instead the
+            // knob keeps East's stored value (locked via DimmableTrimpot.lockWhen when
+            // ceded), and the mod-ARC displays the effective/delegated Macro spread via
+            // polySpreadEffective (populated by combineSpread) — same as the V1 arc already
+            // does. So both stores stay pristine and reclaim restores East's real spread.
             auto& smgr = paramMgr->spreadMgr;
-            if (!ceded(0)) smgr.setSpread(polyVoice(), 0, mod->params[SPREAD_R].getValue());
-            if (!ceded(1)) smgr.setSpread(polyVoice(), 1, mod->params[SPREAD_M].getValue());
-            if (!ceded(2)) smgr.setSpread(polyVoice(), 2, mod->params[SPREAD_O].getValue());
-            if (!ceded(3)) smgr.setSpread(polyVoice(), 3, mod->params[SPREAD_A].getValue());
-
-            // BUG #1 FIX: spread-follow for POLY tabs (was V1-only). For a lane this
-            // voice has ceded to Macro, the (locked) spread knob DISPLAYS Macro's global
-            // spread. Only the visible trimpot is overridden; the *InterpId store (guarded
-            // saveVoiceSpread) and the engine store (guarded smgr above) keep East's value.
-            if (macroAttached()) {
-                if (auto* macroVis = getMonsoon()->expanderManager.cachedMacroSandsVisual) {
-                    for (int lane = 0; lane < 4; ++lane) {
-                        if (ceded(lane))
-                            mod->params[SPREAD_R + lane].setValue(
-                                macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3]);
-                    }
-                }
-            }
+            smgr.setSpread(polyVoice(), 0, mod->params[SPREAD_R].getValue());
+            smgr.setSpread(polyVoice(), 1, mod->params[SPREAD_M].getValue());
+            smgr.setSpread(polyVoice(), 2, mod->params[SPREAD_O].getValue());
+            smgr.setSpread(polyVoice(), 3, mod->params[SPREAD_A].getValue());
         }
         // (Spread target mode is now pulled from the engine by SpreadManager —
         // Monsoon::process mirrors the menu setting onto engine.pe each frame. No
