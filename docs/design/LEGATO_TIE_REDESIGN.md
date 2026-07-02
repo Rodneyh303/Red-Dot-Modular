@@ -418,3 +418,22 @@ Leading-edge preserves this: note1 (grid, slurForward=true) → note2 (fractiona
 arrives as a Tie via prevSlur → extendHold sums → dotted note; note2's own slurForward=false
 (can't lead) so the chain ends cleanly after the dotted note. So the fractional-destination
 behaviour must be protected — dotted rhythms depend on it; it's load-bearing, not incidental.
+
+### Compound lengths, full picture — clean dotted AND unusual hybrids
+
+The tie/extendHold sum yields TWO classes of compound note, both by design (engine already lists
+some as exact — 1/8→1/4T=4.667, 1/4→1/8T=5.333):
+
+1. STRAIGHT + STRAIGHT → clean dotted/compound:
+   1/16+1/32=1.5 (dotted 1/16), 1/8+1/16=3.0 (dotted 1/8), 1/4+1/8=6.0 (dotted 1/4).
+
+2. STRAIGHT + TRIPLET (or TRIPLET + TRIPLET) → "unusual" binary+ternary HYBRIDS with no standard
+   notation name — the organic, off-grid durations that give the stochastic engine its feel:
+   1/8+1/8T=3.333, 1/4+1/8T=5.333, 1/8+1/4T=4.667, 1/16+1/8T=2.333, 1/8T+1/8T=2.667.
+   (Some triplet+triplet sums resolve BACK to clean: 1/4T+1/8T=4.0 = a clean 1/4.)
+
+All form identically: a grid-aligned lead slurs forward; the destination (which CAN be a triplet
+or 1/32) arrives as Tie/Legato and extendHold sums the exact length. Leading-edge preserves it
+(destination reached via prevSlur; fractional destination's own slurForward=false ends the chain).
+So the note-value dial × the tie mechanism spans dotted, compound, AND hybrid lengths from just 8
+base values — a real expressive range, load-bearing on the fractional-destination rule.
