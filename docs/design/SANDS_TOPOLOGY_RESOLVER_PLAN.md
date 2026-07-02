@@ -398,3 +398,50 @@ cede→save clobber (bug #2's poly form).
 
 So: #1 done. #2-poly should be fixed as a side-effect (verify). #2-V1 needs the V1 East store
 located/added — separate small fix, trace in a build session.
+
+---
+
+## Step 5b-part-2 — REAL diagnosis of the spread cede/reclaim bug (LOR display/store split)
+
+Correcting several wrong attempts. The REQUIREMENT (matching LOR): on a ceded lane East's
+spread should FOLLOW Macro's global (visibly), and REVERT to East's stored value on reclaim.
+Current state: spread follows on cede but does NOT revert on reclaim. (An earlier "fix" wrongly
+REMOVED the follow — reverted in aadd28a. Back to follows-but-no-revert.)
+
+**Why LOR does both correctly — the mechanism (found at last):**
+LOR has a DISPLAY/STORE SEPARATION. In SandsVisualEditorV4.hpp each lane has:
+  - stored/edited: length/offset/rotation  (saved+restored via lorId params — the STORE)
+  - display-only:  dispLength/dispOffset/dispRotation, written by setDisplayLOR()
+The per-frame Macro-follow calls setDisplayLOR(macro values) — writing ONLY the display fields.
+The stored length/offset/rotation are NEVER touched by the follow. So:
+  - follow: display shows Macro every frame (setDisplayLOR)
+  - store stays pristine → reclaim restores East's real LOR (loadVoiceLOR reads lorId)
+Playback is arbitrated separately in the engine (combineLOR owner switch). Three clean layers:
+STORE (lorId) · DISPLAY (dispLOR) · PLAYBACK (combineLOR). The follow only writes DISPLAY.
+
+**Why spread fails:** spread has NO display/store split. The SPREAD_* trimpot is simultaneously
+the display, the user input, AND the source both spread stores (*InterpId params + SpreadManager)
+are written from. So "follow Macro" = force the trimpot = write the stores = clobber East's
+value = no revert. Guarding individual writers just moves the clobber (tried, failed). Removing
+the follow kills the feature (tried, wrong). The ONLY correct fix is to give spread the same
+display/store separation LOR has.
+
+**THE FIX (real work, own session — do NOT patch):**
+Add a display-only spread value to the East spread knob/arc, distinct from the SPREAD_* param
+that feeds the stores. On a ceded lane: the knob VISUALLY shows Macro's global spread (display
+field) while the SPREAD_* param (the store source) stays at East's value untouched. On reclaim
+the display field stops following and the untouched param value is already correct. Options:
+  (a) a custom knob widget that renders from a display field (like DimmableTrimpot but with a
+      dispValue the render uses when locked/ceded), leaving the param untouched; OR
+  (b) route the knob's VISUAL angle through a display value the same way the mod-ARC already
+      reads polySpreadEffective, while the param stays put.
+The arc's getModNorm already shows the effective (delegated) value via polySpreadEffective —
+so the ENGINE/playback + ARC layers are already right; only the KNOB-POSITION display forces
+the param. Fix = make the knob position a display-only follow, not a param write.
+
+**SpreadManager lane<3 (separate, real):** std::array<...,3> spread — only 3 lanes; ACCENT
+(lane 3) has no engine storage; setSpread/getSpread/loops all guard <3 (6 sites). Likely
+surfaced NOW because the topology migration routes lane ownership UNIFORMLY across all 4 editor
+lanes — the old spread code never exercised lane 3 through this store, so the 3-wide array was
+never hit. Widen to 4 as its own change. (Same "consolidation reveals latent per-lane bug"
+pattern as the edit-lock inconsistencies.)
