@@ -298,6 +298,31 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
         result.accented = lastStepResult.accented;
     }
 
+    // ── STEP 1 INSTRUMENT (leading-edge legato) — computed, NOT consulted ─────────
+    // In the leading-edge model, a note that is STARTING commits here (at its own onset)
+    // to hold its gate forward into the next note, iff BOTH: (a) its own legato draw
+    // fires (r_legato_tie < legatoProb, or LegatoMax), AND (b) its length is grid-aligned
+    // so it can cleanly reach the next onset (noteCanLeadLegato). This records that intended
+    // commitment on gs.slurForward WITHOUT changing any decision — the join above still
+    // decides exactly as today. Step 2 will make the next step consume this flag instead of
+    // rolling fresh. Only meaningful on a starting note; cleared otherwise.
+    bool leStarting = (result.decision == MonoDecision::NewNote)
+                   || (result.decision == MonoDecision::Legato)
+                   || (result.decision == MonoDecision::LegatoMax);
+    bool leWouldSlur = leStarting
+                    && noteCanLeadLegato(nvIdx)
+                    && (legatoProb >= 0.999f || r_legato_tie < legatoProb);
+    gs.slurForward = leWouldSlur;
+    // Divergence probe: what the leading-edge flag dictates vs what the current model DID
+    // at this join (Tie/Legato = connected; NewNote = not). Counts only; no behaviour change.
+    if (leStarting) {
+        bool currentConnected = (result.decision == MonoDecision::Tie)
+                             || (result.decision == MonoDecision::Legato)
+                             || (result.decision == MonoDecision::LegatoMax);
+        if (leWouldSlur != currentConnected) ++legatoLE_divergeCount;
+        ++legatoLE_startCount;
+    }
+
     lastStepResult = result;
     return result;
 }

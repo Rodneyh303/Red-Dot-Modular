@@ -68,6 +68,13 @@ struct SequencerEngine {
     // Most recent mono decision — written by executeStep, read by executePolyVoices.
     StepResult lastStepResult;
 
+    // Leading-edge legato instrument (STEP 1: characterization only, no behaviour change).
+    // Counts starting notes and how often the leading-edge slur-forward flag would DIVERGE
+    // from the current model's connect/not decision at the join. Purely diagnostic — read
+    // these to gauge how different the two models are before step 2 flips the decision source.
+    long legatoLE_startCount   = 0;
+    long legatoLE_divergeCount = 0;
+
     int stepIndex = -1;
     int lastPlayDir = +1;   // +1 forward, -1 reverse (Mode E); for UI direction cues
     int lastStepIndex = -1;

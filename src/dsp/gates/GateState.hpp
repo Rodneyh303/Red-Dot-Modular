@@ -56,6 +56,15 @@ struct GateState {
     int    lastSemitone    = -1;    // for tie detection
     float  semiPlayRemain[12] = {}; // per-semitone flash timers (steps)
 
+    // ── Leading-edge legato instrument (STEP 1: computed, UNUSED by gate logic) ──
+    // In the leading-edge model a note commits AT ITS ONSET to hold its gate forward
+    // into the next note (a "slur lead"). This flag records that intended commitment
+    // for the CURRENT note, computed at trigger time from the note's OWN legato draw
+    // AND the grid-alignment constraint (only integer-step lengths can lead — see
+    // LEGATO_TIE_REDESIGN.md). In step 1 it is set but NOT consulted by the gate/decision
+    // path (the join still decides exactly as today); step 2 will make the join consume it.
+    bool   slurForward     = false; // this note intends to hold forward (leading-edge)
+
     rack::dsp::PulseGenerator gatePulse;  // 1ms retrigger for envelopes
 
     // ── Core operations ───────────────────────────────────────────────────────

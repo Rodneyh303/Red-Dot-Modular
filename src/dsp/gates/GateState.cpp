@@ -123,6 +123,7 @@ void GateState::reset() {
     gatePulseRemain = -1;
     currentPitchV   = 0.f;
     lastSemitone    = -1;
+    slurForward     = false;
     gatePulse.reset();
     for (int i = 0; i < 12; ++i) semiPlayRemain[i] = 0.f;
 }
