@@ -239,3 +239,71 @@ behaviour we investigated but did NOT adopt by default). Would make the continue
 question a user choice rather than a hardcoded decision. The interrupt path is the reset logic
 sketched earlier (use the `wrapped` flag to clear holdRemain/gateHeld at the boundary). Defer —
 noted so the option isn't forgotten. If added, reverse mode + Lantern carets must handle both.
+
+---
+
+## SCOPE — leading-edge legato implementation plan
+
+### Current model (reactive / decided at the JOINING step)
+In SequencerEngine::executeStep (mono; poly slaves to it via lastStepResult):
+- When a note's hold expires (holdRemain < 1 && gatePulseRemain == 0), the cascade runs FOR
+  THE NEXT note and reads r_legato_tie = legatoRandom[getLegatoStep()] AT THE JOIN:
+    legatoProb>=0.999 → LegatoMax (always slide)
+    else rest roll → Rest (or MidNote if a tail blocks it — "tail takes priority over rest")
+    else r_legato_tie < legatoProb → same pitch = Tie (extendHold); diff pitch = Legato (slideNote)
+    else → NewNote (triggerNote, fresh gate)
+- So the JOIN's roll decides, reactively, whether note N+1 connects back to N. The gate-hold
+  choice is made AFTER N has already played. Gate commitment lives in GateState:
+  triggerNote/slideNote/slideMax/extendHold (all set holdRemain / gate).
+
+### Target model (leading-edge / decided at the note's OWN onset)
+"A note designated legato holds its gate high into the next note." The legato character is
+committed when the note STARTS, not at the join:
+- At note N's onset, roll legato → if legato, N commits to keeping its gate OPEN through to N+1
+  (hold-forward), rather than N+1 deciding at the join to connect backward.
+- Musically identical in the simple case, but: (a) the governing random draw is N's onset draw,
+  not the join draw; (b) the commitment is known at N's start (matters for look-ahead-free
+  display like Lantern — the onset already knows its legato-ness); (c) it generalises tie vs
+  legato as ONE "hold/slur" concept (gate stays open; same pitch reads tie-like, diff pitch
+  legato-like) while keeping the internal retrigger-vs-hold binary for poly consistency.
+
+### The precise mechanism change
+- Move the legato roll from "read at the join to decide backward-connection" to "read at N's
+  onset to set a HOLD-FORWARD flag on N". Concretely: when triggerNote fires for N, also decide
+  (from N's legato draw) whether N is a "slur note" that holds its gate past its nominal length
+  into the next onset. Store that on GateState (e.g. a `holdForward`/`slur` flag or by extending
+  holdRemain to bridge to the next step at N's onset).
+- At the next step, if the previous note was flagged hold-forward: the new note SLIDES (pitch
+  changes, gate stays high) instead of retriggering — same visible result as today's Legato,
+  but the DECISION already happened at N's onset.
+- Tie vs Legato remains a same-pitch-vs-different-pitch distinction at the actual join, but
+  gated by N's onset slur-flag rather than a fresh join roll.
+
+### Interrupts this must respect (fixed constraints — see the exceptions section)
+A hold-forward note still gets cut by: RESET (engine.gs.reset, at boundary), MUTE, a rest roll
+ON A NON-HELD step (but "tail takes priority over rest" precedence must be preserved — a
+slur/tail outranks a structural rest), poly slaving to mono gate. Phrase boundary does NOT
+interrupt (continue-across, current behaviour). Dice/lock do NOT interrupt (side-effect; keep).
+
+### Tricky bits / risks
+- LegatoMax (legatoProb>=0.999) currently ALWAYS slides at the join — in the leading-edge model
+  it means "every note is a slur note" (always hold-forward). Verify equivalence.
+- Fractional tails (triplets/1/32): holdRemain<1 with gatePulseRemain>0 is the MidNote guard.
+  The hold-forward flag must compose with sub-step tails without double-holding or cutting them
+  (the exact bug class the current gateSecRemain/gatePulseRemain checks fix).
+- Poly consistency: executePolyVoice reads lastStepResult.decision (Tie/Legato/MidNote) to slave
+  poly gates. The leading-edge flag must still surface the same decision enum so poly slaving is
+  unchanged — keep the internal retrigger-vs-hold binary.
+- accent inheritance: monoStarting logic (accent decided on NewNote or a legato shift from dead)
+  must still fire once per real onset, not per held step.
+
+### Stepped plan (own branch, cross-checked; engine-core change, needs build + ear)
+1. Add a hold-forward/slur flag to GateState, set at onset from N's legato draw (no behaviour
+   change yet — flag computed but the join still decides). Cross-check the flag matches the
+   join decision in the simple case.
+2. Switch the join to CONSUME the onset flag instead of rolling fresh; keep the same
+   MonoDecision enum outputs so poly slaving + Lantern are unaffected.
+3. Verify interrupts (rest-precedence, RESET, mute, poly slave) and fractional tails unchanged.
+4. Confirm LegatoMax and legatoProb sweep behave; build + ear test; then remove the old join roll.
+Test suite: extend the mono decision tests (the 347-test suite / PatternEngine tests) to assert
+onset-committed legato, same-pitch tie vs diff-pitch legato, tail precedence, and poly slaving.
