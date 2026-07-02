@@ -371,3 +371,30 @@ spread-follow must force only the DISPLAY (SPREAD_* trimpot) without letting tha
 be saved back into *InterpId, OR snapshot *InterpId before ceding and restore on uncede. This
 is the same class as the owner save/restore but the forcing-vs-saving ORDER is the bug. Trace
 the cede path (where spread-follow fires vs where saveVoiceSpread fires) before coding.
+
+---
+
+## Step 5b-part-2 — bug #1 FIXED; bug #2 splits into distinct cases
+
+**Bug #1 (poly spread-follow) — FIXED.** The V1 branch had a spread-follow forcing ceded-lane
+trimpots to Macro's global spread; poly tabs had none. Added the same follow to the poly path
+in step(), using owner(currentVoice-1, editorLane)==MACRO via the resolver. Critically it runs
+AFTER saveVoiceSpread + smgr.setSpread, so the real East value is already preserved in both
+stores and only the visible trimpot is overridden — this both fixes #1 AND avoids the
+cede→save clobber (bug #2's poly form).
+
+**Bug #2 is NOT one bug — it's 2-3 cases with different roots (found while fixing #1):**
+- **Poly cede→uncede:** was a clobber (saveVoiceSpread writing the forced-global value back).
+  The #1 fix's ordering (force display AFTER save) structurally avoids it for poly. Verify in
+  build that a poly lane ceded then reclaimed restores East's spread.
+- **V1 East→Macro→East (the originally-reported one):** V1 spread does NOT use
+  saveVoiceSpread/*InterpId (those are poly-indexed). V1 display is driven from either Mono's
+  sprId (combo 7, Mono present — line ~800) or forced to Macro global on a ceded lane. When
+  East IS the V1 editor with no Mono (v1Editable), East's V1 spread may have NO persistent
+  per-voice store of its own to restore from → that's the likely root of the original report.
+  NEEDS: locate/confirm where (if anywhere) East-as-V1-editor spread persists; if nowhere, add
+  a V1 East spread store (mono-slot-indexed, like the V1 CV attens already use kMonoSlot).
+- **V1 follows Mono (combo 7):** not a bug — intended (locked, tracks Mono).
+
+So: #1 done. #2-poly should be fixed as a side-effect (verify). #2-V1 needs the V1 East store
+located/added — separate small fix, trace in a build session.

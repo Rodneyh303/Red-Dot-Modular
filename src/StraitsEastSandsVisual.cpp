@@ -703,6 +703,25 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             smgr.setSpread(polyVoice(), 1, mod->params[SPREAD_M].getValue());
             smgr.setSpread(polyVoice(), 2, mod->params[SPREAD_O].getValue());
             smgr.setSpread(polyVoice(), 3, mod->params[SPREAD_A].getValue());
+
+            // BUG #1 FIX: spread-follow for POLY tabs (was V1-only). For a lane this
+            // voice has ceded to Macro, the (locked) spread knob should DISPLAY Macro's
+            // global spread — same rule as V1. Done AFTER the save-backs above so the
+            // real East value is already preserved in *InterpId + SpreadManager; we only
+            // override the visible trimpot, never the store (avoids the cede→uncede
+            // clobber, bug #2). owner(currentVoice-1, editorLane)==MACRO via the resolver.
+            if (macroAttached()) {
+                if (auto* macroVis = getMonsoon()->expanderManager.cachedMacroSandsVisual) {
+                    const auto topo = buildTopo();
+                    const int vIdx = currentVoice() - 1;   // 0=mono; poly ≥1
+                    for (int lane = 0; lane < 4; ++lane) { // lane = engine lane (SPREAD_R+lane)
+                        const int el = dotModular::ENGINE_LANE_TO_EDITOR[lane];
+                        if (topo.owner(vIdx, el) == dotModular::SandsTopology::Role::MACRO)
+                            mod->params[SPREAD_R + lane].setValue(
+                                macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3]);
+                    }
+                }
+            }
         }
         // (Spread target mode is now pulled from the engine by SpreadManager —
         // Monsoon::process mirrors the menu setting onto engine.pe each frame. No
