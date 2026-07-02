@@ -228,3 +228,14 @@ Consequences of NOT doing the reset:
 
 The LEGATO change itself (leading-edge legato holds gate high) is evidence-supported and
 proceeds independently of the boundary question.
+
+---
+
+## FUTURE (much later) — context-menu boundary-wrap behaviour toggle
+
+Possible context-menu option: rhythm boundary wrap = CONTINUE (current: held/long/legato notes
+carry across the phrase boundary) vs INTERRUPT (cut held notes at the boundary — the "reset"
+behaviour we investigated but did NOT adopt by default). Would make the continue-vs-reset
+question a user choice rather than a hardcoded decision. The interrupt path is the reset logic
+sketched earlier (use the `wrapped` flag to clear holdRemain/gateHeld at the boundary). Defer —
+noted so the option isn't forgotten. If added, reverse mode + Lantern carets must handle both.
