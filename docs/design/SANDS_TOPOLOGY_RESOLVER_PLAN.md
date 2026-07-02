@@ -346,3 +346,28 @@ template.
 
 Neither is a topology change — the resolver already answers "who owns (voice,lane)". Part 2
 is East-UI work that USES the resolver. Keeps SandsTopology a pure lightweight value type.
+
+---
+
+## Step 5b-part-2 — bug #2 CORRECTION (spread DOES have save/restore)
+
+Earlier note was WRONG that "spread has no per-voice save/restore." It does:
+saveVoiceSpread(v)/loadVoiceSpread(v) copy the 4 SPREAD_* trimpots ↔ per-voice *InterpId(v)
+stores (restInterpId/melodyInterpId/octaveInterpId/accentInterpId), exactly parallel to
+saveVoiceMacro/loadVoiceMacro for ownership. It's params-based, so JSON-persistent for free —
+same mechanism as LOR. Answer to "memory or JSON?": NEITHER relies on JSON for the round-trip;
+both LOR and spread restore via a display-proxy ↔ per-voice-param COPY in save/loadVoice*.
+JSON persistence is a free side-effect of the store being params.
+
+So bug #2 is NOT missing storage. The round-trip breaks in the CEDE→UNCEDE sequence despite
+the store existing. Likely causes (need ordering trace, not yet confirmed):
+  (a) On cede, the V1 spread-follow forces SPREAD_* to Macro's global value; if saveVoiceSpread
+      then runs while the trimpot holds that FORCED value, it clobbers the stored East value
+      with the global one → nothing to restore on uncede. (Most likely.)
+  (b) The uncede/tab path calls loadVoiceMacro but not loadVoiceSpread at the equivalent point.
+
+Fix: ensure the East spread store (*InterpId) is preserved across a cede — i.e. the
+spread-follow must force only the DISPLAY (SPREAD_* trimpot) without letting that forced value
+be saved back into *InterpId, OR snapshot *InterpId before ceding and restore on uncede. This
+is the same class as the owner save/restore but the forcing-vs-saving ORDER is the bug. Trace
+the cede path (where spread-follow fires vs where saveVoiceSpread fires) before coding.
