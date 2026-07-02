@@ -43,7 +43,9 @@ static Out decide(bool legatoLeadingEdge,
     }
 
     // This note's forward commitment (mirrors the step-1 instrument), used to chain.
-    bool leStarting = (o.dec==NEWNOTE || o.dec==LEGATO || o.dec==LEGATOMAX);
+    // Tie is included: a same-pitch continuation is a sounding note that can carry a 3+ note
+    // chain onward (if grid-aligned + rolls forward). Matches the engine's leStarting.
+    bool leStarting = (o.dec==NEWNOTE || o.dec==LEGATO || o.dec==LEGATOMAX || o.dec==TIE);
     o.slurForward = leStarting && noteCanLeadLegato(nvIdx)
                  && (legatoProb>=0.999f || r_legato_tie < legatoProb);
     return o;
@@ -110,6 +112,31 @@ int main(){
         Out off = decide(false, false, 1.f,0.f, 0.9f,/*legatoProb*/1.0f, true, true, false, I16);
         Out on  = decide(true,  false, 1.f,0.f, 0.9f,1.0f, true, true, false, I16);
         chk(off.dec==LEGATOMAX && on.dec==LEGATOMAX, "LegatoMax forces connect in both models");
+    }
+
+    // 6. 3+ note chain (leading-edge): the chain continues past note 2 only if note 2 is
+    //    itself lead-eligible (grid-aligned). Simulate note2 as a Tie that rolls legato:
+    //    - note2 is 1/16 (can lead) + rolls forward → its slurForward=true → note3 connects.
+    //    - note2 is 1/8T (cannot lead) → its slurForward=false → chain BREAKS, note3 = NewNote.
+    {
+        // note2 arrives as a Tie (prevSlur from note1 true, same pitch, held), 1/16, rolls fwd.
+        Out note2 = decide(true, /*prevSlur*/true, 1.f,0.f, /*r_leg fires*/0.1f,0.8f,
+                           /*canRest*/false, /*wasHeldOrTail*/true, /*samePitch*/true, I16);
+        chk(note2.dec==TIE, "chain: note2 is a Tie");
+        chk(note2.slurForward==true, "chain: grid-aligned Tie CAN lead onward (slurForward true)");
+        // note3 consumes note2's slurForward → connects.
+        Out note3 = decide(true, /*prevSlur=note2*/note2.slurForward, 1.f,0.f, 0.9f,0.8f,
+                           false, true, true, I16);
+        chk(note3.dec==TIE, "chain: note3 connects (chain continues through eligible note2)");
+
+        // Now note2 is a fractional Tie (1/8T) — cannot lead onward.
+        Out note2f = decide(true, true, 1.f,0.f, 0.1f,0.8f, false, true, true, I8T);
+        chk(note2f.dec==TIE, "chain: fractional note2 still plays as Tie (valid destination)");
+        chk(note2f.slurForward==false, "chain: fractional Tie CANNOT lead onward (slurForward false)");
+        // note3 sees prevSlur=false → chain breaks, NewNote.
+        Out note3b = decide(true, /*prevSlur=note2f*/note2f.slurForward, 1.f,0.f, 0.1f,0.8f,
+                            true, false, false, I16);
+        chk(note3b.dec==NEWNOTE, "chain: breaks at fractional note2 → note3 is NewNote");
     }
 
     printf(fails? "\n%d FAILED\n" : "\nALL PASS (leading-edge decision logic)\n", fails);

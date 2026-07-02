@@ -330,9 +330,18 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     // commitment on gs.slurForward WITHOUT changing any decision — the join above still
     // decides exactly as today. Step 2 will make the next step consume this flag instead of
     // rolling fresh. Only meaningful on a starting note; cleared otherwise.
+    // A note "starts" (and may thus lead the chain FORWARD) if it is a real sounding note
+    // at this onset: NewNote, Legato, LegatoMax — AND Tie. A Tie (same-pitch continuation)
+    // is a sounding note that can carry a 3+ note legato chain onward to the next note, IF
+    // its own length is grid-aligned and it rolls forward. Excluding Tie would break any
+    // chain at a tie (chain of 3+ can only continue past note 2 if note 2 is itself an
+    // eligible lead — see LEGATO_TIE_REDESIGN.md). MidNote (mid-hold, not an onset) and Rest
+    // (silent) correctly do NOT start. slurForward set at a note's onset survives its held
+    // steps (the MidNote guard returns early before this block).
     bool leStarting = (result.decision == MonoDecision::NewNote)
                    || (result.decision == MonoDecision::Legato)
-                   || (result.decision == MonoDecision::LegatoMax);
+                   || (result.decision == MonoDecision::LegatoMax)
+                   || (result.decision == MonoDecision::Tie);
     bool leWouldSlur = leStarting
                     && noteCanLeadLegato(nvIdx)
                     && (legatoProb >= 0.999f || r_legato_tie < legatoProb);
