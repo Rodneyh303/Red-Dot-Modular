@@ -369,3 +369,33 @@ but UNUSED by the gate logic (the join still decides exactly as today). Also rec
 step, what the leading-edge flag WOULD dictate vs what the current model DID — to characterize
 divergence before committing. No output change. This gives real data on how different the models
 are, and lets step 2 flip the decision source deliberately with the slur/rest policy in hand.
+
+---
+
+## STEP 1 CONSTRAINT — only grid-aligned notes can LEAD a legato (leading-edge model)
+
+User caught this: in the leading-edge model a note commits AT ITS ONSET to hold its gate forward
+into the next note. But a note that ends BETWEEN 1/16 grid edges cannot cleanly do so — the next
+note's onset is on a grid edge, and an off-grid-ending note doesn't end there.
+
+Note lengths in 1/16-step units (noteValueSteps = fraction×16, from NoteValues.hpp):
+  1/1=16, 1/2=8, 1/4=4, 1/8=2, 1/16=1  → INTEGER (land on grid edge) — CAN lead a legato
+  1/4T=2.667, 1/8T=1.333, 1/32=0.5      → FRACTIONAL (end off-grid) — CANNOT lead a legato
+
+Why, precisely (differs by note):
+- 1/32 (0.5 steps) closes BEFORE the next edge (at 1.0) → gate already down at the next onset →
+  nothing to hold forward. (In current model: wasHeld=false at that edge.)
+- Triplets (1.333, 2.667) end MID-WAY between edges → still holding at the intervening edge
+  (sustain/MidNote through it), but their actual END is off-grid, so the next onset can't cleanly
+  connect a forward hold.
+
+CONSTRAINT for the onset slur-forward flag: it may be set at N's onset ONLY IF N's note length is
+integer-step (nvIdx ∈ {1/1,1/2,1/4,1/8,1/16}). Fractional-length notes (1/4T, 1/8T, 1/32) can
+NEVER be a legato LEAD — the flag stays false for them regardless of the legato draw.
+(They can still be tie/legato TARGETS / sustain via the existing wasHeld||hadTail path — this
+constraint is specifically about LEADING a forward-hold in the leading-edge commitment.)
+
+Implementation: gate the flag on an "integer step length" predicate, e.g.
+  float ns = noteValueSteps(nvIdx); bool canLead = (ns == std::floor(ns));
+Also: in leading-edge we must draw BOTH a legato roll AND an appropriate (grid-aligned) note
+length to START a legato — the note-value draw and legato draw jointly gate the lead.
