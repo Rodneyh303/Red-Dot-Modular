@@ -388,10 +388,22 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
 
     void saveVoiceSpread(int v) {
         if (!module) return;
-        module->params[restInterpId(v)  ].setValue(module->params[SPREAD_R].getValue());
-        module->params[melodyInterpId(v)].setValue(module->params[SPREAD_M].getValue());
-        module->params[octaveInterpId(v)].setValue(module->params[SPREAD_O].getValue());
-        module->params[accentInterpId(v)].setValue(module->params[SPREAD_A].getValue());
+        // BUG #2 (poly) FIX: a lane ceded to Macro has its SPREAD_* trimpot FORCED to
+        // Macro's global spread for display (see the poly spread-follow in step()). We must
+        // NOT save that forced value into East's per-voice store, or reclaiming the lane
+        // restores the global value instead of East's original — the exact reason LOR
+        // round-trips (it saves from engine truth) but spread didn't (it saved the display).
+        // So skip ceded lanes: their *InterpId store keeps East's real value untouched.
+        // v is 0-based poly; topo voice arg is 1-based for poly. SPREAD_R+lane = engine lane.
+        const auto topo = buildTopo();
+        auto owned = [&](int engLane){
+            return topo.owner(v + 1, dotModular::ENGINE_LANE_TO_EDITOR[engLane])
+                   == dotModular::SandsTopology::Role::MACRO;
+        };
+        if (!owned(0)) module->params[restInterpId(v)  ].setValue(module->params[SPREAD_R].getValue());
+        if (!owned(1)) module->params[melodyInterpId(v)].setValue(module->params[SPREAD_M].getValue());
+        if (!owned(2)) module->params[octaveInterpId(v)].setValue(module->params[SPREAD_O].getValue());
+        if (!owned(3)) module->params[accentInterpId(v)].setValue(module->params[SPREAD_A].getValue());
     }
     void loadVoiceSpread(int v) {
         if (!module) return;
