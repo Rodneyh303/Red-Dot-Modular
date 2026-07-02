@@ -513,3 +513,33 @@ Implementation sketch (own session — real engine change):
   source change: Macro's display reads its own probability instead of the shared final.
 - Watch the standalone-Macro case (numPolyVoices=0, only V1 tab) — its prob bars currently rely
   on finalRandomByStrand being written by Macro's own spread; the Macro-own source must cover it.
+
+---
+
+## Option (a) implementation — CORRECTED (Macro has no own probability; it has own SPREAD)
+
+Investigating revealed the plan's sketch ("Macro's own base probability array") was partly a
+phantom: **Macro has NO probability faders of its own** (its params are only global SPREAD,
+global LOR (DNA len/off/rot), sends/taps, CV depth). Macro doesn't own a probability pattern —
+it owns global spread + global LOR that MODULATE the shared draw.
+
+So "Macro's own probability" = the shared base draw with MACRO's OWN spread applied (not
+East's). The leak mechanism, precisely:
+- base draw (pre-spread) = slewedRhythm[]/slewedAccent[]/… (shared).
+- East writes the SHARED final: rhythmRandom[j] = SpreadInterp::apply(pe, mode, REST, j, nPoly,
+  slewedRhythm[j], spR_EAST)  [MonsoonExpanderManager.cpp:368/371].
+- Macro's V1 display reads that shared rhythmRandom[] → sees EAST's spread. THE LEAK.
+
+FIX (display-time compute, mirrors LOR's macroBase pattern — NO new stored array, NO engine
+change, playback untouched):
+- Macro's prob-bar display computes ITS OWN value:
+    SpreadInterp::apply(pe, mode, lane, s, nPoly, slewed<Lane>[s], MACRO_spread[lane])
+  using Macro's own spread (macroVis->spreadEffective[lane]) instead of East's, on the SAME
+  shared base draw. Never read the East-modulated final for display.
+- Two sites: StraitsSandsMacroVisual.cpp ~356 (poly, via resolver) and ~370 (V1, the
+  finalRandomByStrand read). The V1 read is the confirmed leak; the poly path reads the
+  resolver (laneProbabilityAtStep → also the shared final) so likely leaks too — fix both.
+- Base draw buffers: slewedRhythm/Melody/Octave/Accent[] (mono strand); poly uses
+  slewedPoly*[v][]. Apply Macro spread per lane/step.
+- Standalone-Macro (numPolyVoices=0, only V1): still correct — it computes from the shared base
+  draw + Macro's own spread, which IS what standalone Macro should show.

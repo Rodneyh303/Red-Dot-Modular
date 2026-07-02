@@ -60,3 +60,26 @@ adopt it rather than needing a parallel mechanism.
 CAUTION: do NOT design lock mode now (open questions: which params lock, per-lane vs global,
 unlock conflict resolution, interaction with topology ownership). Just don't paint the spread
 split into a corner that blocks reuse. Build the specific thing well, general shape in mind.
+
+---
+
+## Directional borrowing rule (display authority)
+
+Confirmed principle governing what each editor's display shows:
+
+**Borrowing is one-way, upward only. East (downstream) can borrow Macro (upstream); Macro
+never borrows East.**
+
+- **East, on a lane it OWNS:** shows the shared base draw with EAST's own LOR + spread.
+- **East, on a lane it CEDED to Macro:** shows MACRO's LOR + spread (East reaches UP and taps
+  Macro — correct; the base-spread displayValueFn fix).
+- **Macro, always:** shows the shared base draw with MACRO's own LOR + spread. Never East's.
+
+So both spread display fixes are the SAME rule in the two directions:
+- East following Macro on a ceded lane = downstream borrowing upstream = ALLOWED.
+- Macro showing East's spread = upstream borrowing downstream = FORBIDDEN (the leak; option a).
+
+Consistency check: East-owned lane shows own-LOR+own-spread; Macro shows own-LOR+own-spread;
+LOR already worked this way (macroBase/macroCVDelta). Spread must match. This is why Macro's
+prob display computes base-draw + Macro's-own-spread rather than reading the East-modulated
+shared final.
