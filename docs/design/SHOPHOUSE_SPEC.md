@@ -151,3 +151,32 @@ it as "Scaler-flavoured harmonic control for a generative modular voice," not a 
 Patch sketch (fill in when the module exists): Monsoon + Shophouse (Conservation on) driving a
 house bassline/stab voice, a 4-on-the-floor clock, scale-list stepped fwd at phrase boundaries
 for the arrangement, probability faders shaping the groove within the conserved scale.
+
+---
+
+## Panel concept — decisions (2026-07)
+
+- **Literal shophouse design.** Lean into the actual building form (Peranakan shophouse:
+  ornate pediment, shuttered upper-floor windows, ground-floor five-foot-way colonnade).
+  Form-follows-meaning, in the dot.modular geography tradition (MBS, Straits Peranakan).
+- **20HP** starting width (portrait ~101.6 × 128.5mm — suits a tall narrow shophouse facade).
+- **Scale display: strong nice-to-have.** Concept A "the shutters" — the 12 semitones as a row
+  of louvered window shutters: OPEN (teal-lit) = in-scale, CLOSED (dark) = out-of-scale. The
+  facade literally shows the active scale. This is both the themed motif AND the functional
+  scale display.
+- **Scale list = the ground-floor shop units** (Concept C). ~4 arched units along the
+  five-foot-way colonnade, each = a (scale, root) entry. Active unit lit; next-queued unit
+  outlined. Combines A (upstairs = current scale's notes) + C (downstairs = the list).
+- **Driver: CV, sampled at the phrase boundary.** One CV input → list index, read only at the
+  boundary. (Leaning CV over fwd/back gates; could add gates later.) So jack layout = one CV
+  IN (+ maybe a reset/sync), not a fwd/back pair.
+- **Single scale = a 1-entry list.** KEY UNIFICATION: today's context-menu (scale, root) is
+  just list slot 0. No "simple vs list mode" — it's always a list; current behaviour is the
+  degenerate length-1 case. Migration = the existing scale/root becomes slot 0.
+- **Conservation toggle** (guide vs enforce, per the corrected framing) — a switch + indicator
+  at street level.
+
+Layout sketch (portrait, top→bottom): pediment + wordmark / cornice / upper facade = 12
+shutter-windows (scale display, 2 storeys × 6) / cornice / five-foot-way colonnade = 4 scale-
+list arched units (active lit, queued outlined) / street level = CV IN jack + Conservation
+toggle + list-position dots / screws at corners. Dark + light themes, Singapore-red accents.
