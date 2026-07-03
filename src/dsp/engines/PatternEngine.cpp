@@ -27,6 +27,11 @@ void PatternEngine::reset() {
         
         for (int v = 0; v < 15; v++) {
             polyRhythmRandom[v][i] = 1.0f; // Poly voices trigger by default
+            polyAccentRandom[v][i] = 1.0f; // No accent by default (1.0 < accentProb is false).
+                                           // BUG FIX: this seed was missing (rhythm had it, accent
+                                           // didn't), so polyAccentRandom stayed 0 → 0<accentProb
+                                           // always true → EVERY poly note accented on any nonzero
+                                           // accent knob. Mirrors polyAccentSource=1.0 below.
             polyMelodyRandom[v][i] = 0.5f;
             polyOctaveRandom[v][i] = 0.5f;
             
