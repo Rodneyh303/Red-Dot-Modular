@@ -317,6 +317,21 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
             gs.slideNote(pitchV, sem, nvIdx, /*wasHeld=*/true);
             result.decision = MonoDecision::Legato;
         }
+        // ── TEMP DEBUG PROBE (reverse-mode isolated-teal) — REMOVE after diagnosis ──
+        // Logs the full state at every Legato/Tie emission so we can see, from the actual
+        // engine, WHY an isolated teal appears in reverse (forward is clean). Key suspects:
+        // wasHeld reading a forward-baked gate; slurForward committed in the wrong direction;
+        // or the boundary. Compare forward vs reverse runs.
+        {
+            const char* d = (result.decision == MonoDecision::Tie) ? "TIE" : "LEG";
+            std::fprintf(stderr,
+                "[LEGPROBE] %s dir=%+d step=%d prevStep=%d wasHeld=%d hadTail=%d gateHeld=%d "
+                "holdRemain=%.3f prevSlur=%d slurFwd=%d legConn=%d lastSem=%d sem=%d\n",
+                d, lastPlayDir, stepIndex, lastStepIndex,
+                (int)wasHeld, (int)hadTail, (int)gs.gateHeld, gs.holdRemain,
+                (int)prevSlur, (int)gs.slurForward, (int)legatoConnects,
+                gs.lastSemitone, sem);
+        }
     }
     else {
         gs.triggerNote(pitchV, sem, nvIdx);
@@ -547,6 +562,21 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
             // bug. Trigger a fresh note instead. (Direction-independent; surfaced in reverse
             // mode but present forward too.)
             v.gs.triggerNote(pitchV, sem, lastStepResult.nvIdx);
+        // ── TEMP DEBUG PROBE (poly, reverse isolated-teal) — REMOVE after diagnosis ──
+        // Shows what THIS poly voice actually did (slide vs fresh trigger) vs what mono's
+        // decision was (which is what Lantern displays as the colour). If the voice triggered
+        // fresh but mono says Legato, Lantern paints teal → display bug, not behaviour.
+        {
+            const char* mono = (lastStepResult.decision == MonoDecision::Legato) ? "LEG"
+                             : (lastStepResult.decision == MonoDecision::LegatoMax) ? "LMX"
+                             : (lastStepResult.decision == MonoDecision::Tie) ? "TIE" : "OTH";
+            const char* did = (wasHeldPoly || hadPolyTail) ? "slide" : "FRESH";
+            std::fprintf(stderr,
+                "[POLYPROBE] v=%d dir=%+d step=%d monoDec=%s did=%s wasHeldPoly=%d hadPolyTail=%d "
+                "gateHeld=%d holdRemain=%.3f\n",
+                voiceIdx, lastPlayDir, stepIndex, mono, did,
+                (int)wasHeldPoly, (int)hadPolyTail, (int)v.gs.gateHeld, v.gs.holdRemain);
+        }
         return;
     }
 
