@@ -537,8 +537,16 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         v.accented = (pe.polyAccentRandom[voiceIdx][accIdx] < v.accentProb);
         if (lastStepResult.decision == MonoDecision::NewNote)
             v.gs.triggerNote(pitchV, sem, lastStepResult.nvIdx);
+        else if (wasHeldPoly || hadPolyTail)
+            // Mono is slurring/tying and THIS poly voice had a held predecessor → real slide.
+            v.gs.slideNote(pitchV, sem, lastStepResult.nvIdx, /*wasHeld=*/true);
         else
-            v.gs.slideNote(pitchV, sem, lastStepResult.nvIdx, wasHeldPoly);
+            // Mono slurs but this poly voice had NO held gate (it was resting/silent on its
+            // previous played step) — sliding would produce an isolated Legato cell (teal note
+            // with no predecessor on this lane), the poly analogue of the mono isolated-teal
+            // bug. Trigger a fresh note instead. (Direction-independent; surfaced in reverse
+            // mode but present forward too.)
+            v.gs.triggerNote(pitchV, sem, lastStepResult.nvIdx);
         return;
     }
 
