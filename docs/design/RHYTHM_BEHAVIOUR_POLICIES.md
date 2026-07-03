@@ -311,3 +311,36 @@ dir-awareness. Cheapest correct fix is likely (A) a per-receiver directional tic
 
 STATE: clean build, probes stripped, ENGINE CONFIRMED CORRECT in reverse, bug is display-only and
 localized to Lantern's lack of a direction-aware mid-pattern connection indicator.
+
+---
+
+## POSTMORTEM: reverse "isolated teal" was a DISPLAY bug (left-anchored bars). Engine was always correct.
+
+ROOT CAUSE: Lantern drew every note bar anchored to the cell's LEFT edge, extending right
+(bx = gridX + s*stepW), with no play-direction awareness. A short note (1/16 = 0.5 step) fills only
+the left ~half of its cell. Forward, the empty right half reads as the natural gap before the next
+note. In REVERSE (right-to-left), a note's predecessor sits to its RIGHT, but the fill still went
+left — so the empty half landed on the play-direction side, making a valid legato receiver look
+isolated with a "rest" to its right. The ENGINE produced identical, correct decisions in both
+directions (proven by a forward-vs-reverse [G] trace side-by-side: reverse teals were valid legatos
+with fully-sounding predecessors, pulse=6, same as forward).
+
+FIX: Cell.playDir (from eng.lastPlayDir); in draw() anchor short-note bars toward the play direction
+— reverse anchors to the cell RIGHT edge and extends left (bx = cellRight - bw); forward unchanged.
+(Lantern.cpp draw loop.)
+
+WHY IT TOOK SO LONG (the lesson): the left-anchored bar was VALUABLE and visibly correct in forward
+mode, so it was trusted and never suspected for reverse — the mirror case failed for the very same
+line that worked forward. Many engine theories were chased and falsified (wasHeld/gate direction,
+LegatoMax, prevPlayedSounded, rest-leads-slur, MidNote-mask, strand offset, forStep column skew,
+Mode E edge timing) — all dead ends because the engine was never wrong. The single diagnostic that
+cracked it was the one NOT done for far too long: a forward vs reverse trace of the SAME fields,
+side by side, showing the engine identical both ways ⇒ the difference had to be in the draw.
+
+RULE FOR NEXT TIME: when a mirror/inverse case (reverse) breaks but the common case (forward) is
+fine, SUSPECT THE SHARED CODE THAT WORKS IN THE COMMON CASE FIRST — especially any left/right/+1
+draw or index expression with no direction term. Do the forward-vs-mirror side-by-side comparison
+EARLY. "It clearly works [forward]" is the reason to check it, not skip it.
+
+COLLATERAL FIXED: a decFired sounding shortcut (tried mid-investigation) had rendered every poly
+voice whenever mono fired, erasing poly rests; reverted to per-voice gate test.
