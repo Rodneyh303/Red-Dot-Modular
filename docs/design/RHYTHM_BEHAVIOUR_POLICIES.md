@@ -39,3 +39,25 @@ Keep each policy as a single boolean read at its decision site (engine field, JS
 context-menu-bound), so the fork stays one branch and the combinations stay auditable. Group the
 menu items so their relatedness is visible. These are engine POLICY (how it behaves), distinct
 from user VALUES (knob/fader settings) — same conceptual layer as lock-mode/Conservation.
+
+---
+
+## The clearest illustration of boundary-wrap (lap 1 vs lap 2), from the build
+
+A wraparound legato at step 0 makes the continue-vs-interrupt policy concrete and visible:
+- LAP 1: step-0 note fires BLUE (NewNote) — no previous lap, so nothing to slur from; fresh note.
+- LAP 2: step-0 note is TEAL/Legato with a gold held-in caret — the PREVIOUS lap's final note is
+  a real predecessor, held across the boundary, so step 0 slurs from it.
+Same pattern, same settings, NO modulation change — yet lap 1 ≠ lap 2. This is the essence of the
+CONTINUE (current) policy: the sequence carries state across the loop point (a kind of cross-lap
+MEMORY), so successive laps can differ. The gate held over the boundary was confirmed on Rack's
+scope; the caret fix (Lantern heldIn now includes Legato) is what makes it visible.
+
+The alternative INTERRUPT policy (force a new gate / reset at step 0) would make lap 1 and lap 2
+IDENTICAL — every lap starts cold, so step 0 is always a fresh blue NewNote. Deterministic and
+repeatable, no cross-loop memory.
+
+So the boundary-wrap toggle is precisely: EVOLVING-across-laps (continue, has memory) vs
+REPEATABLE-every-lap (interrupt, no memory). Neither is 'correct' — different musical behaviours,
+which is why it's a toggle. These two build screenshots are the reference illustration. Not a bug:
+the leading-edge model is working; the lap-1≠lap-2 difference is the continue policy by design.
