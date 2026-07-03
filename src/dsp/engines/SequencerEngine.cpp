@@ -270,12 +270,20 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
             result.decision = MonoDecision::MidNote;
         }
     }
-    else if (r_legato_tie < legatoProb) {
-        if (sem == gs.lastSemitone && (wasHeld || hadTail)) {
+    else if (r_legato_tie < legatoProb && (wasHeld || hadTail)) {
+        // A legato/tie can only CONNECT if the previous note is still sounding into this step
+        // (wasHeld || hadTail) — the documented invariant "legato/tie decisions require the
+        // previous note still sounding". Previously only the Tie path checked this; the Legato
+        // (else) path slid UNCONDITIONALLY, so a legato roll with no held predecessor produced
+        // a slide-into-nothing — an isolated Legato note (teal cell with no note before it,
+        // e.g. a legato roll on the first note of a phrase or straight after a rest). Gating the
+        // whole connection on a held predecessor makes it real; otherwise fall through to
+        // NewNote (a fresh note — the roll had nothing to connect to).
+        if (sem == gs.lastSemitone) {
             gs.extendHold(sem, nvIdx);
             result.decision = MonoDecision::Tie;
         } else {
-            gs.slideNote(pitchV, sem, nvIdx, wasHeld || hadTail);
+            gs.slideNote(pitchV, sem, nvIdx, /*wasHeld=*/true);
             result.decision = MonoDecision::Legato;
         }
     }
