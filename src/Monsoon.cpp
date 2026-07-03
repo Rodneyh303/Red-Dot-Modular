@@ -914,12 +914,6 @@ void Monsoon::process(const ProcessArgs& args) {
             paramManager->setCv3Offset(i, clampv<float>(cv3Mods[i], -1.f, 1.f));
         }
     }
-
-    // TEMP: drain engine trace ring → log.txt via INFO (REMOVE after)
-    for (int n = 0; n < 8 && engine.dbgTail != engine.dbgHead; ++n) {
-        INFO("%s", engine.dbgLog[engine.dbgTail]);
-        engine.dbgTail = (engine.dbgTail + 1) % SequencerEngine::DBG_N;
-    }
 }
 
 

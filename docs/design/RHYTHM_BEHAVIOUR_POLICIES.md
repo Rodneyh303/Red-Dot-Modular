@@ -266,3 +266,48 @@ the answer is "display," this is where the dir-aware fix goes.
 
 STATE: clean build (probes stripped). Bug NOT fixed. 5+ theories eliminated. One clean
 discriminating observation needed to finish.
+
+---
+
+## SOLVED (diagnosis): reverse isolated-teal = mid-pattern connection has no explicit visual link
+
+The sequential play-order TRACE (one line/step, in play order, full final state) finally showed the
+receiver→predecessor relationship DIRECTLY. Reverse lap trace (dir=-1), the connections:
+  phys=10 LEG sem=9  ← predecessor phys=11 NEW sem=7 hold=1.00 pulse=6  (held, new pitch → valid slur)
+  phys= 5 LEG sem=4  ← predecessor phys= 6 NEW sem=5 hold=1.00 pulse=6  (held, new pitch → valid slur)
+  phys=15 TIE sem=7  ← predecessor phys= 0 NEW sem=7 hold=1.00 pulse=6  (held, same pitch → valid tie)
+
+CONCLUSION (from data, not inference): every reverse teal/tie is a GENUINE, CORRECT connection —
+held predecessor (pulse=6, gate fully open), sliding to a new pitch (or same for tie). The ENGINE
+IS CORRECT in reverse. No phantom hold, no retrigger-mislabel in this trace. Prior "gate drops /
+retrigger" reading was a different state/misread; the trace shows pulse=6 held predecessors.
+
+WHY IT LOOKS ISOLATED (the actual bug — PURE DISPLAY): each reverse receiver's predecessor is the
+physically-adjacent HIGHER step — one column to its RIGHT (10←11, 5←6). Lantern draws NO explicit
+connection indicator for a mid-pattern Legato/Tie — the only carets are the s==0 held-in (LEFT
+edge) and s==N-1 held-out (RIGHT edge), both for the PHRASE WRAP only. A mid-pattern teal relies
+entirely on being VISUALLY ADJACENT TO ITS PREDECESSOR to read as connected. Forward: predecessor
+is the cell to the LEFT (adjacent) → reads connected. Reverse: predecessor is the cell to the RIGHT
+→ the left-to-right eye finds nothing on the left → reads ISOLATED, even though the blue predecessor
+is right there to its right. Both mono & poly (same draw code), reverse-only.
+
+FIX (design choice for the user — NOT yet built):
+The connection visual must indicate WHICH neighbour a teal/tie connects to, direction-aware. Lantern
+has lastPlayDir. Options:
+  (A) Directional connection caret on the receiver cell pointing at the predecessor: forward → a
+      small mark on the LEFT edge of the teal; reverse → on the RIGHT edge. (Mirrors the existing
+      wrap carets but per-cell and dir-aware.)
+  (B) Draw an explicit JOIN/tie-bar between the receiver and its predecessor cell (a line/bracket
+      spanning the two columns), so the connection is shown regardless of read direction.
+  (C) Leave the cell colours; just fix the READING by making the wrap carets/onset logic dir-aware
+      AND accept that mid-pattern relies on adjacency (adjacency is correct in BOTH dirs — the
+      predecessor IS adjacent, just on the other side; so maybe only the s==0/s==15 edge carets
+      need dir-swapping for the wrap case, and mid-pattern is actually fine once the user knows to
+      read right-to-left in reverse).
+
+RECOMMENDATION: confirm with user whether mid-pattern reverse teal is truly a PROBLEM (the
+predecessor IS visually adjacent, just to the right) or only the WRAP-boundary carets need
+dir-awareness. Cheapest correct fix is likely (A) a per-receiver directional tick. Engine untouched.
+
+STATE: clean build, probes stripped, ENGINE CONFIRMED CORRECT in reverse, bug is display-only and
+localized to Lantern's lack of a direction-aware mid-pattern connection indicator.

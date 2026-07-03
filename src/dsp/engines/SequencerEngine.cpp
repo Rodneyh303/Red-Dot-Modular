@@ -241,14 +241,6 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     if (gs.holdRemain >= 1.f || gs.gatePulseRemain > 0) {
         result.decision = MonoDecision::MidNote;
         result.accented = lastStepResult.accented;
-        {
-            char line[220];
-            std::snprintf(line, sizeof(line),
-                "[TRACE] dir=%+d phys=%2d strand=%3d MID  sem=-- hold=%.2f pulse=%2d (midnote-early)",
-                lastPlayDir, stepIndex, (int)(totalStepsElapsed % 16),
-                gs.holdRemain, gs.gatePulseRemain);
-            dbgPush(line);
-        }
         lastStepResult = result;
         return result;
     }
@@ -377,26 +369,6 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
                              || (result.decision == MonoDecision::LegatoMax);
         if (leWouldSlur != currentConnected) ++legatoLE_divergeCount;
         ++legatoLE_startCount;
-    }
-
-    // ── TEMP sequential play-order trace (one line per step, in play order) — REMOVE after ──
-    // Logs the FINAL state of every step so an isolated-teal receiver's ACTUAL predecessor is
-    // simply the line above it: its step, pitch, decision, and whether its gate physically
-    // reached here. Answers "what is coming before the receiver in reverse" directly, not via
-    // flags claiming a connection.
-    {
-        const char* dn = (result.decision == MonoDecision::Legato) ? "LEG"
-                       : (result.decision == MonoDecision::LegatoMax) ? "LMX"
-                       : (result.decision == MonoDecision::Tie) ? "TIE"
-                       : (result.decision == MonoDecision::NewNote) ? "NEW"
-                       : (result.decision == MonoDecision::Rest) ? "REST"
-                       : (result.decision == MonoDecision::MidNote) ? "MID" : "OTH";
-        char line[220];
-        std::snprintf(line, sizeof(line),
-            "[TRACE] dir=%+d phys=%2d strand=%3d %-4s sem=%2d hold=%.2f pulse=%2d prevSlur=%d wasHeld=%d",
-            lastPlayDir, stepIndex, (int)(totalStepsElapsed % 16), dn, sem,
-            gs.holdRemain, gs.gatePulseRemain, (int)prevSlur, (int)wasHeld);
-        dbgPush(line);
     }
 
     lastStepResult = result;
