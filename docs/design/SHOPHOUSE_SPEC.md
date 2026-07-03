@@ -216,3 +216,30 @@ Scope of THIS branch (feature/nondestructive-scale):
 2. VIEW/MVC (write, but needs in-Rack build to confirm render): semitone fader gains
    DimmableTrimpot-style dim-on-out-of-scale, reading the mask as a DISPLAY input, never writing
    the store. Flagged like the spread knob's displayValueFn.
+
+---
+
+## Fader-view layer — decisions (user) + the acceptance test
+
+Decisions for out-of-scale faders under Conservation (enforce):
+1. DIM, DON'T CHANGE POSITION (default): render dimmed at the TRUE stored position — user sees
+   their real weight, greyed. Not dropped to zero visually (for now).
+2. WRITE IT FLEXIBLE: the fader's rendered value goes through a swappable displayValueFn (the
+   spread-knob pattern) so switching to "display zero position" later is a one-line change, not a
+   rewrite. Flexibility = the MVC separation (display value distinct from store, pluggable).
+3. ACCEPTANCE TEST (the real one): **the user must NEVER see an out-of-scale fader in its bright
+   / active (lit-up) state** when Conservation is on. A bright fader falsely signals "this note
+   is sounding" while enforcement silences it. Dimming is the visual truth of the read-time gate.
+   Invariant the view layer must guarantee: out-of-scale + Conservation-on ⇒ always dimmed, never
+   bright, ever.
+4. SHOW MODULATION FOR NOW (even though Conservation forces the gated VALUE to zero): the fader
+   may still show its modulation. NOTE the semantic tension — modulation moves a weight the engine
+   reads as 0 (out-of-scale). Shown for now, but the mod-display path is a SEPARATE, clearly-
+   marked, SWAPPABLE hook. STILL TODO: choose the final modulation-display method for faders
+   (dim-in-place mod arc vs suppressed vs gated indicator). Keep localized so the final choice is
+   a small change.
+
+Structure (mirrors DimmableTrimpot's separated concerns) — three pluggable hooks on the fader:
+  - dimWhen        → out-of-scale; drives the dim AND enforces the never-bright invariant.
+  - displayValueFn → currently "stored position" (dim-in-place); trivially → "zero position".
+  - mod-display    → currently "show modulation"; clearly marked swappable pending final method.
