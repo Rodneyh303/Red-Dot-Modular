@@ -180,3 +180,42 @@ So: the cleanest framing is "teal = the gate was genuinely continuous from the p
 this one" — a per-handoff continuity bit the engine can set (e.g. gateWasContinuous = gate never
 hit the -1 sentinel between the previous onset and this one), consumed by the decision (A) or by
 recordCell (B). That bit is the missing signal; design it first, then pick A or B.
+
+---
+
+## Candidate mechanism: how a legato-receiver follows a REST in reverse (Mode E)
+
+Q (user): why can a legato-receiver follow a rest in reverse? How would it happen?
+
+Ruled out first: a REST step itself DOES clear the slur. The Rest branch falls through (no early
+return) to `gs.slurForward = leWouldSlur`, and leStarting excludes Rest → leWouldSlur=false →
+slurForward cleared. So "rest failed to clear slurForward" is NOT it.
+
+THE CANDIDATE (code-grounded, NOT yet confirmed — needs the test below):
+- armGate (GateState.cpp:17) sets gatePulseRemain as a pure DURATION (durSteps×pulses),
+  DIRECTION-BLIND: "gate open for N pulses of wall-clock time," no notion of fwd/reverse.
+- MidNote guard (SequencerEngine.cpp:241): `if (holdRemain>=1 || gatePulseRemain>0) → MidNote,
+  EARLY RETURN` — fires whenever the gate is still counting down, REGARDLESS of direction, and
+  returns BEFORE the rest branch AND before the slurForward update (line 363).
+- FORWARD: a note's forward-in-time hold covers the NEXT FORWARD step = the next PLAYED step. So
+  MidNote masking a rest slot there is the intended "long note overlaps a rest slot" behaviour,
+  and slurForward persisting through the note's own held steps is correct.
+- REVERSE: the gate still holds FORWARD IN TIME, but the next PLAYED step is the LOWER step. The
+  strand content is read BACKWARD (totalStepsElapsed decrements) while the gate holds forward. So
+  the step the hold MASKS and the note the slur HANDS TO are paired DIFFERENTLY than forward — a
+  reverse-played step can be MidNote-masked (its own rest roll never runs) by a hold pointing the
+  "other way" in strand terms, leaving slurForward stale → the next played step reads prevSlur=1
+  and connects → legato-receiver following what was effectively a rest/ masked step.
+
+Fits ALL evidence: identical probe state fwd/reverse (gate values genuinely equal), scope shows
+RETRIGGER (mask + re-arm = drop/reopen), teal drawn (decision follows stale prevSlur), reverse-only
+(the fwd/reverse pairing scramble).
+
+FALSIFIABLE TEST (do this next session BEFORE any fix): probe at each MidNote EARLY-RETURN — log
+whether the strand's REST roll WOULD have fired at that masked step (compute r_rest<restProb there
+without acting on it), plus dir/step. PREDICTION: in reverse, isolated-teal receivers are preceded
+by a MidNote-masked step whose suppressed rest roll would have been a rest. If the log confirms
+masked-rest-before-teal in reverse but not forward → mechanism confirmed. THEN fix: the MidNote
+guard / hold must be evaluated against the PLAY-DIRECTION-next step, or the slurForward handoff must
+not survive a masked step in reverse. Design the continuity/direction-aware guard; do not point-read
+the gate (that was failed fix #3).
