@@ -75,22 +75,6 @@ struct SequencerEngine {
     long legatoLE_startCount   = 0;
     long legatoLE_divergeCount = 0;
 
-    // ── TEMP ring — REMOVE after ──
-    static constexpr int DBG_N = 64, DBG_W = 200;
-    char dbgLog[DBG_N][DBG_W] = {};
-    int  dbgHead = 0, dbgTail = 0;
-    void dbgPush(const char* s) {
-        std::snprintf(dbgLog[dbgHead], DBG_W, "%s", s);
-        dbgHead = (dbgHead + 1) % DBG_N;
-        if (dbgHead == dbgTail) dbgTail = (dbgTail + 1) % DBG_N;
-    }
-    // TEMP: the note length (nvIdx) and canLead of the step that most recently SET slurForward,
-    // so we can see whether the live slurForward came from a legal (integer-length) leader or is
-    // stale/illegal.
-    int  dbgSlurSetByNvIdx = -1;
-    bool dbgSlurSetByCanLead = false;
-    int  dbgSlurSetAtStep = -1;
-
     // STEP 2: when true, the legato connection is governed by the PREVIOUS note's onset
     // commitment (gs.slurForward) instead of a fresh roll at the joining onset — the
     // leading-edge model. Default OFF = exact current behaviour. Toggle (context menu /

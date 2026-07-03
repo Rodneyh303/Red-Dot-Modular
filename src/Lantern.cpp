@@ -134,7 +134,17 @@ struct Lantern : Module {
     void recordCell(int voice, int step, const GateState& gs, MonoDecision dec,
                     bool accented, float lenSteps, bool monoSlurForward) {
         Cell& c = cells[voice][step];
-        const bool sounding = gs.gateHeld || gs.holdRemain > 0.0001f;
+        // A cell renders as a note if a note FIRED this step, OR the gate is still up. The live
+        // gate alone (gs.gateHeld || holdRemain>0) MISSES short notes whose gate has already
+        // closed by the time this widget samples — notably a 1/16 (= 1.0 step), whose pulse
+        // closes within its own step. Sampling phase differs by play direction, so in reverse a
+        // 1/16 leader would sample gate-down and render BLANK — making its (valid) legato receiver
+        // look isolated (teal with an apparent rest before it). A fired-note DECISION
+        // (NewNote/Legato/LegatoMax/Tie) means the note sounded this step regardless of the
+        // momentary gate, so honour it. Rest → not sounding; MidNote → tail (handled below).
+        const bool decFired = (dec == MonoDecision::NewNote || dec == MonoDecision::Legato
+                            || dec == MonoDecision::LegatoMax || dec == MonoDecision::Tie);
+        const bool sounding = decFired || gs.gateHeld || gs.holdRemain > 0.0001f;
         if (!sounding) { c.type = lantern::NoteType::Inactive; return; }
 
         c.pitchV      = gs.currentPitchV;
