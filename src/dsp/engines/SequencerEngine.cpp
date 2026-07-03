@@ -441,17 +441,35 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
     int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
 
     float prevHold = gs.holdRemain;
-    dbgPrevPulse = gs.gatePulseRemain;   // TEMP: gate sub-counter carried IN (pre-tick) — if <=0,
-                                          // the gate had already dropped before this note re-arms.
-    wasHeldMono = gs.gateHeld || (prevHold > 0.0001f);
+    dbgPrevPulse = gs.gatePulseRemain;
+    // "Held predecessor" test for legato connection. It MUST reflect the PHYSICAL gate, not the
+    // coarse step-unit holdRemain. holdRemain (in whole-step units) and the real gate pulse
+    // (gatePulseRemain, fine PPQN units, closed by tickPulse) can DISAGREE: a short/fractional
+    // note can have holdRemain>0 while its gate pulse has already expired (gatePulseRemain=-1 =
+    // gate physically LOW). Reverse traversal hits this routinely (confirmed on scope + probe:
+    // prevPulse=-1 yet holdRemain=0.5), producing a Legato decision over a gate that actually
+    // dropped and re-armed = a retrigger drawn as a slur (isolated teal). Basing wasHeld on the
+    // true gate (gatePulseRemain>=0, i.e. not expired) makes "the lead's gate genuinely holds
+    // into this step" the real, direction-agnostic test — a fractional note whose gate lapsed in
+    // the gap does NOT lead, forward or reverse. tickPulse ran earlier in process(), so
+    // gatePulseRemain here is the predecessor's post-close state. (hadTail still uses holdRemain:
+    // a genuine fractional TAIL that is still physically ringing keeps gatePulseRemain>=0 too.)
+    const bool gateTrulyHeld = (gs.gatePulseRemain >= 0);
+    wasHeldMono = gateTrulyHeld;
+    // hadTail must ALSO reflect the true gate: a fractional tail only counts as "still ringing"
+    // if its gate pulse hasn't expired. Otherwise a phantom holdRemain=0.5 with an expired pulse
+    // would re-authorize a legato connection via the (wasHeld||hadTail) guard and defeat the
+    // wasHeld fix above. With the true-gate condition, hadTail implies gateTrulyHeld (so it's
+    // subsumed by wasHeld), but keeping the fractional test documents intent.
+    hadMonoTail = gateTrulyHeld && (prevHold > 0.0001f && prevHold < 0.999f);
     gs.tick(ClockEngine::pulsesPer16th(ppqnSetting));
-    hadMonoTail = (prevHold > 0.0001f && prevHold < 0.999f);
 
     for (int i = 0; i < numPolyVoices; ++i) {
-        wasHeldPolyPrev[i] = voices[i].gs.gateHeld || (voices[i].gs.holdRemain > 0.0001f);
+        wasHeldPolyPrev[i] = (voices[i].gs.gatePulseRemain >= 0);
+        bool polyGateHeld = (voices[i].gs.gatePulseRemain >= 0);
         float ph = voices[i].gs.holdRemain;
         voices[i].gs.tick(ClockEngine::pulsesPer16th(ppqnSetting));
-        hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
+        hadPolyTail[i] = polyGateHeld && (ph > 0.0001f && ph < 0.999f);
     }
     
     result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent, accentProb, input, wasHeldMono, hadMonoTail);
@@ -495,15 +513,17 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
         int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
 
         float prevHold = gs.holdRemain;
-        wasHeldMono = gs.gateHeld || (prevHold > 0.0001f);
+        const bool gateTrulyHeld2 = (gs.gatePulseRemain >= 0);   // true-gate test (see main path)
+        wasHeldMono = gateTrulyHeld2;
         gs.tick();
-        hadMonoTail = (prevHold > 0.0001f && prevHold < 0.999f);
+        hadMonoTail = gateTrulyHeld2 && (prevHold > 0.0001f && prevHold < 0.999f);
 
         for (int i = 0; i < numPolyVoices; ++i) {
-            wasHeldPolyPrev[i] = voices[i].gs.gateHeld || (voices[i].gs.holdRemain > 0.0001f);
+            wasHeldPolyPrev[i] = (voices[i].gs.gatePulseRemain >= 0);
+            bool polyGateHeld2 = (voices[i].gs.gatePulseRemain >= 0);
             float ph = voices[i].gs.holdRemain;
             voices[i].gs.tick();
-            hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
+            hadPolyTail[i] = polyGateHeld2 && (ph > 0.0001f && ph < 0.999f);
         }
         
         result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent, accentProb, input, wasHeldMono, hadMonoTail);
