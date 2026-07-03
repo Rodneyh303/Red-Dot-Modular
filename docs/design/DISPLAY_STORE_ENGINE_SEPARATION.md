@@ -83,3 +83,29 @@ Consistency check: East-owned lane shows own-LOR+own-spread; Macro shows own-LOR
 LOR already worked this way (macroBase/macroCVDelta). Spread must match. This is why Macro's
 prob display computes base-draw + Macro's-own-spread rather than reading the East-modulated
 shared final.
+
+---
+
+## KNOWN ISSUE (to investigate) — Mono spread cede/reclaim, in East+Mono+Macro
+
+User observation (config: East + Mono + Macro): Mono has the spread cede/reclaim issue that was
+ALREADY FIXED FOR EAST. On a Mono lane delegated to Macro then reclaimed: LOR restores but spread
+does NOT — OR spread doesn't track Macro while delegated. User to RECHECK which symptom (they are
+different bugs with different fixes — do not fix until confirmed):
+
+  Symptom A — "spread not restored on reclaim": the store/reclaim bug. Mono's spread path lacks
+    the display/store separation East got (the SPREAD_* displayValueFn split): the ceded display
+    value is being written into Mono's spread STORE, so reclaim restores Macro's value not Mono's.
+    Fix template = the East fix: knob DISPLAYS Macro's base via a display value while the param
+    (store) stays Mono's; engine arbitrates via combineSpread. Mirror it in the Mono visual /
+    MonsoonSandsManager spread path.
+
+  Symptom B — "spread not tracking Macro while delegated": the display-follow bug. A ceded Mono
+    lane should SHOW Macro's base spread; if it shows Mono's own instead, the follow is missing
+    (Mono's equivalent of the East poly/V1 spread-follow). Fix = wire the ceded-lane display to
+    Macro's macroBase[lane][3], same as East's spreadDisplayValue.
+
+Both are the SAME class as the East spread work (LOR got the separation, spread didn't — one
+layer over), consistent with the recurring finding that spread lags LOR in the display/store
+separation. Mono's spread path: MonsoonSandsManager (readStrand/spread) + the Mono visual
+expander's spread knobs. Confirm symptom, then apply the matching East-derived fix.
