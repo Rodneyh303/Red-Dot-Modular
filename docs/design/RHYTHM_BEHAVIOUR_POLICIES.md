@@ -140,3 +140,43 @@ STILL UNEXPLAINED / NEXT LEADS:
 RECOMMENDATION for next session: instrument the lead→receiver handoff (not per-step), or
 reconsider as a display/label fix (teal follows real gate continuity). Do NOT touch wasHeld's
 holdRemain basis again — it's load-bearing for forward.
+
+---
+
+## Lantern architecture finding (narrows the reverse-teal fix location)
+
+Q (user): is Lantern incorrect in reverse? Is it MVC?
+A: Lantern IS MVC-ish and IS a FAITHFUL VIEW — it is NOT the source of the bug in the
+view-mis-renders-model sense.
+  - MODEL: Lantern's own cells[16][16] store (Cell{type,pitch,carets,...}).
+  - VIEW: draw() renders cells[][].
+  - UPDATE: recordCell() translates the ENGINE decision into a Cell, once per step.
+  - Cell TYPE is set DIRECTLY from the engine decision: Lantern.cpp ~182
+    `c.type = Legato` iff `dec == MonoDecision::Legato`. So the teal colour is a faithful
+    mirror of the engine's decision.
+
+THEREFORE the incoherence is at the MODEL level: the engine produces decision=Legato while the
+GATE retriggers (scope). Lantern correctly displays an incorrect model value. The scope faithfully
+shows the gate; Lantern faithfully shows the decision; they disagree because the ENGINE emitted an
+incoherent (decision, gate) pair. This is THE key finding for where the fix goes.
+
+TWO FIX LOCATIONS (choose next session):
+  (A) ENGINE (model): make decision follow the gate — if the gate retriggers, don't emit Legato.
+      "Correct" (model should be internally coherent) and matches the user's spec. Risk: this is
+      exactly where failed-fix #3 lived; the hard part is the SIGNAL (see caveat).
+  (B) recordCell (view mapping): derive c.type from the ACTUAL gate, not dec. recordCell ALREADY
+      receives `const GateState& gs` AND already reads gs.gatePulseRemain (Lantern.cpp ~15 for
+      lengthSteps). Attractive: display-only, off the audio path, both signals already in hand.
+
+CAVEAT (do not repeat fix #3's mistake): recordCell runs at emission, when gs.gatePulseRemain is
+the FRESHLY-ARMED value (e.g. 3), not the gap history. A single-instant gate read CANNOT tell
+"the gate dropped in the gap before this onset" — that is precisely what sank fix #3
+(gatePulseRemain>=0 at capture is normal for short notes both directions). The correct signal is
+GATE CONTINUITY ACROSS THE LEAD→RECEIVER HANDOFF (did the gate stay high from the lead's onset to
+this onset with no pulse gap?), which must be TRACKED across steps, not point-read. Whether the fix
+is (A) or (B), it needs this continuity signal, not an instantaneous gate sample.
+
+So: the cleanest framing is "teal = the gate was genuinely continuous from the previous onset to
+this one" — a per-handoff continuity bit the engine can set (e.g. gateWasContinuous = gate never
+hit the -1 sentinel between the previous onset and this one), consumed by the decision (A) or by
+recordCell (B). That bit is the missing signal; design it first, then pick A or B.
