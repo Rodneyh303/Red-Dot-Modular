@@ -331,12 +331,13 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
             int predStep = ((stepIndex + lastPlayDir) % 16 + 16) % 16;
             char line[200];
             std::snprintf(line, sizeof(line),
-                "[LEGPROBE] %s dir=%+d step=%d predStep=%d wasHeld=%d hadTail=%d gateHeld=%d "
-                "holdRemain=%.3f prevSlur=%d legConn=%d lastSem=%d sem=%d totElapsed=%d",
+                "[LEGPROBE] %s dir=%+d step=%d predStep=%d wasHeld=%d gateHeld=%d "
+                "holdRemain=%.3f prevPulse=%d curPulse=%d prevSlur=%d legConn=%d lastSem=%d sem=%d",
                 d, lastPlayDir, stepIndex, predStep,
-                (int)wasHeld, (int)hadTail, (int)gs.gateHeld, gs.holdRemain,
+                (int)wasHeld, (int)gs.gateHeld, gs.holdRemain,
+                dbgPrevPulse, gs.gatePulseRemain,
                 (int)prevSlur, (int)legatoConnects,
-                gs.lastSemitone, sem, totalStepsElapsed);
+                gs.lastSemitone, sem);
             dbgPush(line);
         }
     }
@@ -440,6 +441,8 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
     int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
 
     float prevHold = gs.holdRemain;
+    dbgPrevPulse = gs.gatePulseRemain;   // TEMP: gate sub-counter carried IN (pre-tick) — if <=0,
+                                          // the gate had already dropped before this note re-arms.
     wasHeldMono = gs.gateHeld || (prevHold > 0.0001f);
     gs.tick(ClockEngine::pulsesPer16th(ppqnSetting));
     hadMonoTail = (prevHold > 0.0001f && prevHold < 0.999f);

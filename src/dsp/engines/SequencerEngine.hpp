@@ -83,6 +83,7 @@ struct SequencerEngine {
     char dbgLog[DBG_N][DBG_W] = {};
     int  dbgHead = 0;   // next write slot
     int  dbgTail = 0;   // next unread slot (drained by Monsoon)
+    int  dbgPrevPulse = -99;  // TEMP: pre-tick gatePulseRemain carried into the current step
     void dbgPush(const char* s) {
         std::snprintf(dbgLog[dbgHead], DBG_W, "%s", s);
         dbgHead = (dbgHead + 1) % DBG_N;
