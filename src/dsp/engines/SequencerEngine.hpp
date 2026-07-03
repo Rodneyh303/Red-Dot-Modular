@@ -75,6 +75,20 @@ struct SequencerEngine {
     long legatoLE_startCount   = 0;
     long legatoLE_divergeCount = 0;
 
+    // ── TEMP debug log ring (reverse isolated-teal) — REMOVE after diagnosis ──
+    // The engine is Rack-independent (no INFO macro), and on Windows plugin stderr is invisible.
+    // So probes write fixed-size lines into this ring; Monsoon::process drains it through Rack's
+    // INFO() into log.txt. No dynamic allocation in the audio path.
+    static constexpr int DBG_N = 64, DBG_W = 200;
+    char dbgLog[DBG_N][DBG_W] = {};
+    int  dbgHead = 0;   // next write slot
+    int  dbgTail = 0;   // next unread slot (drained by Monsoon)
+    void dbgPush(const char* s) {
+        std::snprintf(dbgLog[dbgHead], DBG_W, "%s", s);
+        dbgHead = (dbgHead + 1) % DBG_N;
+        if (dbgHead == dbgTail) dbgTail = (dbgTail + 1) % DBG_N;  // overwrite oldest
+    }
+
     // STEP 2: when true, the legato connection is governed by the PREVIOUS note's onset
     // commitment (gs.slurForward) instead of a fresh roll at the joining onset — the
     // leading-edge model. Default OFF = exact current behaviour. Toggle (context menu /

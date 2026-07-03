@@ -324,13 +324,15 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
         // or the boundary. Compare forward vs reverse runs.
         {
             const char* d = (result.decision == MonoDecision::Tie) ? "TIE" : "LEG";
-            std::fprintf(stderr,
+            char line[200];
+            std::snprintf(line, sizeof(line),
                 "[LEGPROBE] %s dir=%+d step=%d prevStep=%d wasHeld=%d hadTail=%d gateHeld=%d "
-                "holdRemain=%.3f prevSlur=%d slurFwd=%d legConn=%d lastSem=%d sem=%d\n",
+                "holdRemain=%.3f prevSlur=%d slurFwd=%d legConn=%d lastSem=%d sem=%d",
                 d, lastPlayDir, stepIndex, lastStepIndex,
                 (int)wasHeld, (int)hadTail, (int)gs.gateHeld, gs.holdRemain,
                 (int)prevSlur, (int)gs.slurForward, (int)legatoConnects,
                 gs.lastSemitone, sem);
+            dbgPush(line);
         }
     }
     else {
@@ -571,11 +573,13 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                              : (lastStepResult.decision == MonoDecision::LegatoMax) ? "LMX"
                              : (lastStepResult.decision == MonoDecision::Tie) ? "TIE" : "OTH";
             const char* did = (wasHeldPoly || hadPolyTail) ? "slide" : "FRESH";
-            std::fprintf(stderr,
+            char line[200];
+            std::snprintf(line, sizeof(line),
                 "[POLYPROBE] v=%d dir=%+d step=%d monoDec=%s did=%s wasHeldPoly=%d hadPolyTail=%d "
-                "gateHeld=%d holdRemain=%.3f\n",
+                "gateHeld=%d holdRemain=%.3f",
                 voiceIdx, lastPlayDir, stepIndex, mono, did,
                 (int)wasHeldPoly, (int)hadPolyTail, (int)v.gs.gateHeld, v.gs.holdRemain);
+            dbgPush(line);
         }
         return;
     }
