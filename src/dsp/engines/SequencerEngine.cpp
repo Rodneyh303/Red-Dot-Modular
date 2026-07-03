@@ -294,12 +294,21 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
             result.decision = MonoDecision::MidNote;
         }
     }
-    else if (legatoConnects) {
-        if (sem == gs.lastSemitone && (wasHeld || hadTail)) {
+    else if (legatoConnects && (wasHeld || hadTail)) {
+        // A slur can only CONNECT if the previous note actually held its gate into this step
+        // (wasHeld || hadTail) — the documented invariant "legato/tie requires the previous
+        // note still sounding". legatoConnects expresses the INTENT to connect (a fresh roll
+        // in reactive mode, or the previous note's prevSlur commitment in leading-edge mode),
+        // but intent alone isn't enough: in leading-edge, prevSlur can be true while the
+        // predecessor left NO held gate (it ended / was cut), which would otherwise slide into
+        // nothing — producing an isolated Legato cell (teal note connected to no predecessor).
+        // Requiring a held predecessor here makes the connection real; otherwise fall through
+        // to NewNote (the slur had nothing to land on → a fresh note).
+        if (sem == gs.lastSemitone) {
             gs.extendHold(sem, nvIdx);
             result.decision = MonoDecision::Tie;
         } else {
-            gs.slideNote(pitchV, sem, nvIdx, wasHeld || hadTail);
+            gs.slideNote(pitchV, sem, nvIdx, /*wasHeld=*/true);
             result.decision = MonoDecision::Legato;
         }
     }

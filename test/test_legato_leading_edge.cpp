@@ -36,8 +36,10 @@ static Out decide(bool legatoLeadingEdge,
         o.dec = LEGATOMAX;
     } else if (r_rest < restProb) {
         o.dec = canRest ? REST : MIDNOTE;   // rest wins over legato (rest-cancels-slur)
-    } else if (legatoConnects) {
-        o.dec = (samePitch && wasHeldOrTail) ? TIE : LEGATO;
+    } else if (legatoConnects && wasHeldOrTail) {
+        // A slur can only CONNECT if the previous note actually held into this step. Intent
+        // (legatoConnects) without a held predecessor → NewNote (no slide-into-nothing).
+        o.dec = samePitch ? TIE : LEGATO;
     } else {
         o.dec = NEWNOTE;
     }
@@ -137,6 +139,17 @@ int main(){
         Out note3b = decide(true, /*prevSlur=note2f*/note2f.slurForward, 1.f,0.f, 0.1f,0.8f,
                             true, false, false, I16);
         chk(note3b.dec==NEWNOTE, "chain: breaks at fractional note2 → note3 is NewNote");
+    }
+
+    // 7. REGRESSION (isolated-teal bug from the build): prevSlur true but the predecessor left
+    //    NOTHING held (wasHeldOrTail=false) → must NOT slide into nothing. NewNote, not Legato.
+    //    This is the bug the Lantern screenshot showed: teal cells with no predecessor.
+    {
+        Out o = decide(true, /*prevSlur*/true, /*r_rest*/1.f,0.f, 0.9f,0.8f,
+                       /*canRest*/true, /*wasHeldOrTail*/false, /*samePitch*/false, I16);
+        chk(o.dec==NEWNOTE, "isolated-slur: prevSlur true but nothing held → NewNote (not Legato)");
+        Out o2 = decide(true, true, 1.f,0.f, 0.9f,0.8f, true, /*wasHeldOrTail*/true, false, I16);
+        chk(o2.dec==LEGATO, "held predecessor + prevSlur → Legato (a real connection)");
     }
 
     printf(fails? "\n%d FAILED\n" : "\nALL PASS (leading-edge decision logic)\n", fails);
