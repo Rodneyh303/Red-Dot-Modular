@@ -85,3 +85,58 @@ If a fifth accent bug appears, this grep finds it before it ships.
 
 (Lantern was the diagnostic each time — the mono-works/poly-doesn't and all-on/all-off contrasts
 are immediately visible on the grid, far more legible than a scope trace for this class of bug.)
+
+---
+
+## OPEN BUG: reverse-mode (Mode E) isolated teal — investigation state (for next session)
+
+SYMPTOM: In reverse/phase mode, Lantern shows teal (Legato) with no predecessor IN THE PLAY
+DIRECTION (read right-to-left). Confirmed by user picture AND VCV scope: those teals RETRIGGER
+(gate drops, distinct attacks) — the teal is drawn over a retrigger, so the LABEL is wrong.
+Forward is clean; reverse-only. User confirms forward/reverse look identical in the log at the
+mono-decision level.
+
+KEY CONSTRAINT (the paradox to respect): the mono LEGPROBE state was IDENTICAL forward vs reverse
+(wasHeld=1, holdRemain=0.5, prevPulse=-1 on every legato, both directions). So if the mono
+decision state is the same both ways, the mono DECISION cannot be the sole differentiator — yet
+the OUTCOME differs. Whatever differs must be per-direction and NOT captured by the mono probe.
+
+THEORIES FALSIFIED (do not re-propose without new evidence):
+1. "Reverse connects rightward, just reads backward" — FALSE (scope shows retrigger; picture shows
+   no predecessor in play direction either).
+2. "Gate-carry is forward-baked, reverse reads against the grain / perpetual slur chain" — FALSE
+   (scope shows gate DROPS, not a continuous slur).
+3. "wasHeld should use the true gate (gatePulseRemain>=0) not holdRemain" — FALSE and HARMFUL:
+   a short note's gate legitimately closes mid-step (0.5 step = 3 of 6 pulses at ppqn24) in BOTH
+   directions, so gatePulseRemain=-1 at capture is normal; testing it killed ALL legato (forward
+   too). Reverted (c3e8526).
+4. "A rest is wrongly leading a slur in reverse" — FALSE: leStarting excludes Rest (a rest can't
+   set slurForward), and slur-into-a-rest is cancelled at the RECEIVER's rest branch in both
+   directions. Rest/legato-lead coherence holds both ways.
+
+STILL UNEXPLAINED / NEXT LEADS:
+- Strands are read via getStrandIdx(totalStepsElapsed, len, off, rot) PER STRAND (separate
+  len/off/rot). totalStepsElapsed advances WITH direction (−1 reverse). So content runs backward
+  correctly. But note LENGTH (getNoteLenIdx → nvIdx) and the legato draw are read at the played
+  step; slurForward is set by the lead and consumed by the NEXT PLAYED step as prevSlur. Need to
+  check: in reverse, does the lead's committed length/gate actually correspond to bridging to the
+  reverse-next note, or does the backward strand read pair a lead's commitment with a
+  non-adjacent note's gate? I.e. the DECISION chains temporally (fine) but the GATE SPAN that
+  makes it audibly a slur may not, because gate arming uses THIS note's length while the reversed
+  strand places a different-length note next.
+- The mono probe showed identical state because it only logs at emission; it does NOT log the
+  RELATIONSHIP between a lead's slurForward and the receiver's actual gate bridging. NEXT PROBE
+  (if needed): log, at a RECEIVER step, prevSlur AND whether the predecessor's gate pulse spanned
+  to this onset — i.e. instrument the lead→receiver handoff, not each step in isolation.
+- Consider: is the bug actually in DISPLAY (Lantern colour = decision) while the AUDIO is
+  arguably-acceptable, i.e. should reverse teal simply not be drawn when the gate retriggers? That
+  reframes it as "decision/label vs gate reality" — make the teal follow the actual gate, not the
+  intent. This is the most consistent with ALL evidence (identical decisions, gate drops, teal
+  wrong) and was the user's spec: "teal only if the lead's gate genuinely holds into this step."
+  The failed fix #3 had the RIGHT INTENT but the WRONG SIGNAL (gatePulseRemain at capture). The
+  right signal is whether the gate spanned CONTINUOUSLY from the lead's onset to THIS onset with
+  no pulse gap — which needs tracking across the handoff, not a point read.
+
+RECOMMENDATION for next session: instrument the lead→receiver handoff (not per-step), or
+reconsider as a display/label fix (teal follows real gate continuity). Do NOT touch wasHeld's
+holdRemain basis again — it's load-bearing for forward.
