@@ -386,9 +386,24 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
         ++legatoLE_startCount;
     }
 
+    // ── TEMP probe: what did THIS step decide, and what was the previous-PLAYED decision +
+    //    prevPlayedSounded that the guard saw? Shows directly whether a teal's predecessor was
+    //    recorded as Rest. REMOVE after. ──
+    {
+        auto nm = [](MonoDecision d)->const char*{
+            switch(d){case MonoDecision::NewNote:return "NEW";case MonoDecision::Legato:return "LEG";
+            case MonoDecision::LegatoMax:return "LMX";case MonoDecision::Tie:return "TIE";
+            case MonoDecision::Rest:return "REST";case MonoDecision::MidNote:return "MID";default:return "OTH";}};
+        char line[200];
+        std::snprintf(line, sizeof(line),
+            "[G] dir=%+d step=%d dec=%s prevPlayedDec=%s prevSounded=%d prevSlur=%d wasHeld=%d hadTail=%d",
+            lastPlayDir, stepIndex, nm(result.decision), nm(prevPlayedDec),
+            (int)prevPlayedSounded, (int)prevSlur, (int)wasHeld, (int)hadTail);
+        dbgPush(line);
+    }
+
     lastStepResult = result;
     return result;
-}
 
 void SequencerEngine::handlePhraseBoundary(PatternInput input, bool isMelodyRealtime, bool isRhythmRealtime) {
     if (isMelodyRealtime) {
