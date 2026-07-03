@@ -258,6 +258,21 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     // mode this — not a fresh r_legato_tie roll — governs whether THIS note connects back.
     const bool prevSlur = gs.slurForward;
 
+    // The previous PLAYED step's decision (lastStepResult is set at the end of each executeStep,
+    // so here it is the step played immediately before this one — in PLAY ORDER, correct in both
+    // directions because it is temporal, not step-numbered). A legato/tie means "connected to the
+    // note played just before"; if that step was a REST (or the initial Inactive), there is no
+    // note to connect to → this must NOT be a connection. This is the direction-correct
+    // predecessor test. wasHeld alone is NOT sufficient: in reverse, wasHeld (a gate read) can be
+    // true from a note that is not the play-order-adjacent predecessor, so a teal could otherwise
+    // be emitted with a rest immediately before it in play order (the reverse isolated-teal bug).
+    const MonoDecision prevPlayedDec = lastStepResult.decision;
+    const bool prevPlayedSounded = (prevPlayedDec == MonoDecision::NewNote)
+                                || (prevPlayedDec == MonoDecision::Legato)
+                                || (prevPlayedDec == MonoDecision::LegatoMax)
+                                || (prevPlayedDec == MonoDecision::Tie)
+                                || (prevPlayedDec == MonoDecision::MidNote);
+
     // Structural Rest Roll:
     // canRest is true only if the previous note finished exactly on a step edge 
     // or was already silent. Fractional tails (e.g. triplets) block the rest roll
@@ -276,7 +291,7 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     // toggle: when OFF, such a slur IGNORES the rest roll here (slur wins → plays as Legato/
     // Tie); when ON (default), the rest branch takes priority (rest cancels the slur). A
     // fractional TAIL still always outranks rest (canRest, below), regardless of the toggle.
-    const bool slurReachesHere    = legatoConnects && (wasHeld || hadTail);
+    const bool slurReachesHere    = legatoConnects && (wasHeld || hadTail) && prevPlayedSounded;
     const bool slurSuppressesRest = !restBeatsLegato && slurReachesHere;
 
     if (legatoProb >= 0.999f) {
@@ -300,7 +315,7 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
             result.decision = MonoDecision::MidNote;
         }
     }
-    else if (legatoConnects && (wasHeld || hadTail)) {
+    else if (legatoConnects && (wasHeld || hadTail) && prevPlayedSounded) {
         // A slur can only CONNECT if the previous note actually held its gate into this step
         // (wasHeld || hadTail) — the documented invariant "legato/tie requires the previous
         // note still sounding". legatoConnects expresses the INTENT to connect (a fresh roll
