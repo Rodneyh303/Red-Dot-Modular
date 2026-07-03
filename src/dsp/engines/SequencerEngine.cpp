@@ -294,7 +294,14 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     const bool slurReachesHere    = legatoConnects && (wasHeld || hadTail) && prevPlayedSounded;
     const bool slurSuppressesRest = !restBeatsLegato && slurReachesHere;
 
-    if (legatoProb >= 0.999f) {
+    if (legatoProb >= 0.999f && prevPlayedSounded) {
+        // LegatoMax forces a connection — but even a forced slur cannot connect to SILENCE.
+        // If the previously-PLAYED step was a Rest/Inactive (prevPlayedSounded == false), there
+        // is no note to slur from, so max-legato must NOT emit LegatoMax here — fall through to
+        // a fresh note. (This branch is the highest-priority one and previously fired
+        // UNCONDITIONALLY, bypassing both the rest check and the connection guard below — the
+        // real source of the reverse teal-after-a-rest, since at high legato every step took
+        // this path.)
         gs.slideMax(pitchV, sem, nvIdx);
         result.decision = MonoDecision::LegatoMax;
     }
