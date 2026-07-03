@@ -324,14 +324,19 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
         // or the boundary. Compare forward vs reverse runs.
         {
             const char* d = (result.decision == MonoDecision::Tie) ? "TIE" : "LEG";
+            // Ground truth the picture asks for: in the PLAY direction, the predecessor step is
+            // stepIndex + lastPlayDir (reverse: the higher step just played; forward: the lower).
+            // Log it so we can see whether that step actually SOUNDED (has a real note to connect
+            // from) or whether wasHeld is a stale gate with no predecessor note there.
+            int predStep = ((stepIndex + lastPlayDir) % 16 + 16) % 16;
             char line[200];
             std::snprintf(line, sizeof(line),
-                "[LEGPROBE] %s dir=%+d step=%d prevStep=%d wasHeld=%d hadTail=%d gateHeld=%d "
-                "holdRemain=%.3f prevSlur=%d slurFwd=%d legConn=%d lastSem=%d sem=%d",
-                d, lastPlayDir, stepIndex, lastStepIndex,
+                "[LEGPROBE] %s dir=%+d step=%d predStep=%d wasHeld=%d hadTail=%d gateHeld=%d "
+                "holdRemain=%.3f prevSlur=%d legConn=%d lastSem=%d sem=%d totElapsed=%d",
+                d, lastPlayDir, stepIndex, predStep,
                 (int)wasHeld, (int)hadTail, (int)gs.gateHeld, gs.holdRemain,
-                (int)prevSlur, (int)gs.slurForward, (int)legatoConnects,
-                gs.lastSemitone, sem);
+                (int)prevSlur, (int)legatoConnects,
+                gs.lastSemitone, sem, totalStepsElapsed);
             dbgPush(line);
         }
     }
