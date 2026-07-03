@@ -277,15 +277,25 @@ struct LanternDisplay : widget::Widget {
                 // slur-lead note often TAILS through the last step (its onset was earlier), and
                 // that tail is a MidNote which the skip would otherwise drop — losing the caret.
                 // (yc/barH are per-lane, available here.)
-                if (s == N_STEPS - 1 && c.heldOut) {
-                    const float rx = gridX + gridW;
-                    nvgBeginPath(vg);
-                    nvgMoveTo(vg, rx + 3.f, yc);
-                    nvgLineTo(vg, rx,        yc - barH * 0.4f);
-                    nvgLineTo(vg, rx,        yc + barH * 0.4f);
-                    nvgClosePath(vg);
-                    nvgFillColor(vg, nvgRGB(0xc8, 0x96, 0x0c));
-                    nvgFill(vg);
+                // Held-out caret = the note's gate LEAVES the pattern past the edge it travels
+                // TOWARD: forward that's the RIGHT edge (step 15); reverse the LEFT edge (step 0).
+                // The arrow points outward in the travel direction. Independent of held-in (a note
+                // can hold OUT without the next lap holding IN — a slur-lead whose landing is a
+                // fresh note), so this fires on its own condition at its own edge.
+                {
+                    const bool rev = (c.playDir < 0);
+                    const int  outStep = rev ? 0 : (N_STEPS - 1);
+                    if (s == outStep && c.heldOut) {
+                        const float ex = rev ? gridX : (gridX + gridW);   // leaving edge
+                        const float tip = rev ? (ex - 3.f) : (ex + 3.f);  // arrow points outward
+                        nvgBeginPath(vg);
+                        nvgMoveTo(vg, tip, yc);
+                        nvgLineTo(vg, ex,  yc - barH * 0.4f);
+                        nvgLineTo(vg, ex,  yc + barH * 0.4f);
+                        nvgClosePath(vg);
+                        nvgFillColor(vg, nvgRGB(0xc8, 0x96, 0x0c));
+                        nvgFill(vg);
+                    }
                 }
                 // Skip MidNote gate-tails: the onset (or tie-join) cell's true fractional
                 // width already draws through this step and stops where the gate closes,
@@ -340,15 +350,24 @@ struct LanternDisplay : widget::Widget {
                     nvgFillColor(vg, accentColour());
                     nvgFill(vg);
                 }
-                // held-in caret: note continued from previous bar (left of step 0)
-                if (s == 0 && c.heldIn) {
-                    nvgBeginPath(vg);
-                    nvgMoveTo(vg, gridX - 3.f, yc);
-                    nvgLineTo(vg, gridX,        yc - barH * 0.4f);
-                    nvgLineTo(vg, gridX,        yc + barH * 0.4f);
-                    nvgClosePath(vg);
-                    nvgFillColor(vg, nvgRGB(0xc8, 0x96, 0x0c));
-                    nvgFill(vg);
+                // Held-in caret = the note's gate ARRIVES from before the pattern, at the edge it
+                // travels FROM: forward the LEFT edge (step 0); reverse the RIGHT edge (step 15).
+                // The arrow points INWARD (into the grid, along the travel direction). Independent
+                // of held-out — mirrors it by play direction.
+                {
+                    const bool rev = (c.playDir < 0);
+                    const int  inStep = rev ? (N_STEPS - 1) : 0;
+                    if (s == inStep && c.heldIn) {
+                        const float ex  = rev ? (gridX + gridW) : gridX;   // arriving edge
+                        const float tip = rev ? (ex + 3.f) : (ex - 3.f);   // arrow points outward from edge
+                        nvgBeginPath(vg);
+                        nvgMoveTo(vg, tip, yc);
+                        nvgLineTo(vg, ex,  yc - barH * 0.4f);
+                        nvgLineTo(vg, ex,  yc + barH * 0.4f);
+                        nvgClosePath(vg);
+                        nvgFillColor(vg, nvgRGB(0xc8, 0x96, 0x0c));
+                        nvgFill(vg);
+                    }
                 }
                 // held-out caret: drawn earlier (before the MidNote-tail skip) so it shows
                 // even when the last step is a tail of a long slur-lead note.
