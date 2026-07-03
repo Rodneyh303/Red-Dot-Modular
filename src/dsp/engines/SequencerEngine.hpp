@@ -80,7 +80,10 @@ struct SequencerEngine {
     // leading-edge model. Default OFF = exact current behaviour. Toggle (context menu /
     // JSON) so the two models can be A/B'd by ear. Rest still cancels an optional slur
     // (rest branch takes priority); fractional tails still outrank rest (canRest).
-    bool legatoLeadingEdge = false;
+    bool legatoLeadingEdge = true;   // BRANCH DEFAULT ON: this branch tests the leading-edge
+                                     // model. (Reactive path still selectable by setting false;
+                                     // a proper context-menu toggle comes later per
+                                     // RHYTHM_BEHAVIOUR_POLICIES.md.)
 
     int stepIndex = -1;
     int lastPlayDir = +1;   // +1 forward, -1 reverse (Mode E); for UI direction cues
