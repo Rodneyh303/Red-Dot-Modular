@@ -157,14 +157,33 @@ float ParameterManager::getSemitone(int semIdx) const {
 // ──── Poly Voice Rest Probability ───────────────────────────────────────────
 
 float ParameterManager::getPolyAccent(int voiceIdx) const {
-    // Per-voice accent probability (accent as a poly lane), mirroring getRest/getPolyRest.
-    // The per-voice POLY_ACCENT_PARAM and the shared POLY_ACCENT_CV are mapped into the
-    // host's param/input space (expander params live there), so readParam_/readInput_ reach
-    // them directly — same mechanism getRest uses. Per-voice CV×attenuverter modulation is
-    // added on top in Monsoon's process loop (exactly like rest).
+    // Per-voice accent probability (accent as a poly lane), mirroring getPolyRest EXACTLY.
+    // BUG FIX: this previously used readParam_(POLY_ACCENT_PARAM_1 + voiceIdx) — the HOST param
+    // space — but the per-voice poly accent params live on the poly-voice EXPANDER (Straits
+    // East), same as the poly rest params. So readParam_ never saw the expander's accent knobs
+    // and returned ~0, so poly voices NEVER accented even with accent turned up on East. Read
+    // from cachedPolyVoiceExpander like getPolyRest does. (Per-voice CV×attenuverter modulation
+    // is still added on top in Monsoon's process loop, exactly like rest.)
     if (voiceIdx < 0 || voiceIdx > 14) return 0.f;
-    float v = readParam_(POLY_ACCENT_PARAM_1 + voiceIdx, 0.f, 1.f);
-    v += readInput_(POLY_ACCENT_CV_INPUT) * 0.1f;     // shared accent CV, 0–10V → 0–1
+
+    float v = 0.f;  // default: no accent
+
+    if (cachedPolyVoiceExpander && *cachedPolyVoiceExpander) {
+        auto& params = (*cachedPolyVoiceExpander)->params;
+        auto& inputs = (*cachedPolyVoiceExpander)->inputs;
+
+        int paramId = POLY_ACCENT_PARAM_1 + voiceIdx;
+        if (paramId < (int)params.size()) {
+            v = params[paramId].getValue();
+        }
+        // shared accent CV input (0–10V → 0–1 additional), mirroring poly rest's CV add
+        int cvInputId = POLY_ACCENT_CV_INPUT;
+        if (cvInputId < (int)inputs.size()) {
+            float cv = inputs[cvInputId].getNormalVoltage(0.f);
+            v += cv / 10.0f;
+        }
+    }
+
     return clampv(v, 0.f, 1.f);
 }
 
