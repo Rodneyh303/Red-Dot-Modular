@@ -404,6 +404,7 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
 
     lastStepResult = result;
     return result;
+}
 
 void SequencerEngine::handlePhraseBoundary(PatternInput input, bool isMelodyRealtime, bool isRhythmRealtime) {
     if (isMelodyRealtime) {
