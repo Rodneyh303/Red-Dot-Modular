@@ -219,3 +219,50 @@ masked-rest-before-teal in reverse but not forward → mechanism confirmed. THEN
 guard / hold must be evaluated against the PLAY-DIRECTION-next step, or the slurForward handoff must
 not survive a masked step in reverse. Design the continuity/direction-aware guard; do not point-read
 the gate (that was failed fix #3).
+
+---
+
+## Reverse isolated-teal — session 2 close: what's PROVEN, what's ELIMINATED, the narrowed question
+
+Probed extensively this session (MASKPROBE, RECVPROBE, LANTERNPROBE — all stripped). Established
+BY DATA (a full reverse lap logged), not theory:
+
+PROVEN:
+- Reverse MONO engine decisions are correct & sparse: connects (LEG/TIE) ONLY at a few steps
+  (logged run: steps 10, 5, 15), each with prevSlur=1 AND wasHeld=1 (a real held predecessor).
+  Writes NEW (blue) at every other step.
+- LANTERNPROBE confirmed Lantern WRITES those exact decisions to the matching cells: writeStep=10
+  dec=LEG, writeStep=5 dec=LEG, writeStep=15 dec=TIE; writeStep=6 and =11 dec=NEW (blue). So the
+  cell STORE matches the engine — no stale cells, no write skew, no stepIndex/decision mismatch.
+
+ELIMINATED (do not re-propose):
+- MidNote-masks-a-rest mechanism: ZERO MASKPROBE fired all lap. Dead.
+- Stale forward teal at 6/11: LANTERNPROBE shows 6/11 written NEW in reverse. Dead.
+- wasHeld true-gate (gatePulseRemain) basis: killed all legato forward too. Dead (reverted).
+- Rest-leads-a-slur: leStarting excludes Rest; slur-into-rest cancelled at receiver both dirs. Dead.
+
+THE REMAINING CONTRADICTION (the whole unsolved crux):
+- The LOG says reverse mono is a correct, sparse set of real connections (10/5/15).
+- The USER SEES isolated teal (mono AND poly) that does NOT have an adjacent blue predecessor to
+  its right (checked against a picture — the isolated teal has SPACE around it, not a touching
+  neighbour). So "predecessor is one column to the right, just no caret" does NOT cleanly hold.
+- Earlier scope showed these teals RETRIGGER (gate drops), yet decision=Legato.
+
+So the narrowed question for next session (fresh eyes): for ONE specific isolated teal, what is in
+the cell IMMEDIATELY BEFORE IT IN PLAY ORDER (to its RIGHT in reverse)? — a touching blue, a blue
+with a gap, or empty? And does THAT teal retrigger or hold? The answer splits it:
+  - touching blue + holds  → pure display: no rightward connection caret in reverse (fix: dir-aware
+    carets; connection visuals at Lantern.cpp heldIn/heldOut/onset are ALL left-biased, no
+    lastPlayDir awareness).
+  - gap/empty before it, or retriggers → the decision (LEG) is genuinely wrong for THAT cell: a
+    Legato emitted where the gate did NOT bridge — engine model incoherence at that step, despite
+    the sparse-and-valid-looking RECVPROBE. Would mean RECVPROBE's prevSlur/wasHeld can both be 1
+    while the actual gate still dropped in the gap (the holdRemain-vs-gatePulseRemain disagreement,
+    but WITHOUT the failed point-read fix — needs a continuity bit tracked across the handoff).
+
+Lantern connection visuals confirmed LEFT-BIASED / no direction awareness: heldIn caret only at
+s==0 (left edge), heldOut only at s==N-1 (right edge), onset=!heldIn. None consult lastPlayDir. If
+the answer is "display," this is where the dir-aware fix goes.
+
+STATE: clean build (probes stripped). Bug NOT fixed. 5+ theories eliminated. One clean
+discriminating observation needed to finish.

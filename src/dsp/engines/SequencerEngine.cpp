@@ -239,19 +239,6 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     // played as 1/8, 1/8T as 1/16. (1/32 = 0.5 steps closes within its own step
     // before any edge, so it was unaffected — matching the observed scope.)
     if (gs.holdRemain >= 1.f || gs.gatePulseRemain > 0) {
-        // TEST PROBE: this step is MidNote-masked (early return, before the rest branch AND
-        // before the slurForward update). Log whether the rest roll WOULD have fired here (the
-        // suppressed rest), the gate, and the slurForward being preserved. Prediction: in reverse,
-        // masked steps with wouldRest=1 precede isolated-teal receivers; absent/rare forward.
-        {
-            char line[200];
-            std::snprintf(line, sizeof(line),
-                "[MASKPROBE] dir=%+d step=%d MIDNOTE-MASK wouldRest=%d restProb=%.2f r_rest=%.2f "
-                "holdRemain=%.3f gatePulse=%d slurFwdPreserved=%d",
-                lastPlayDir, stepIndex, (int)(r_rest < restProb), restProb, r_rest,
-                gs.holdRemain, gs.gatePulseRemain, (int)gs.slurForward);
-            dbgPush(line);
-        }
         result.decision = MonoDecision::MidNote;
         result.accented = lastStepResult.accented;
         lastStepResult = result;
@@ -329,16 +316,6 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
         } else {
             gs.slideNote(pitchV, sem, nvIdx, /*wasHeld=*/true);
             result.decision = MonoDecision::Legato;
-        }
-        // TEST PROBE: a receiver connected (teal/tie). Log dir/step + prevSlur so we can check
-        // whether the step just before it (in play order) was a MASKPROBE masked-rest.
-        {
-            const char* d2 = (result.decision == MonoDecision::Tie) ? "TIE" : "LEG";
-            char line[200];
-            std::snprintf(line, sizeof(line),
-                "[RECVPROBE] %s dir=%+d step=%d CONNECTED prevSlur=%d wasHeld=%d",
-                d2, lastPlayDir, stepIndex, (int)prevSlur, (int)wasHeld);
-            dbgPush(line);
         }
     }
     else {
