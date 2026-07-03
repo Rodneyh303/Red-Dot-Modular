@@ -9,53 +9,84 @@
 using namespace rack;
 using namespace MonsoonIds;
 
-// ── Custom Slider for Scale Locking ──────────────────────────────────────────
+// ── Custom Slider for Scale (non-destructive display) ────────────────────────
+// Display layer of the non-destructive scale change (SHOPHOUSE_SPEC.md). Enforcement is
+// read-time in getSemitoneWeight (out-of-scale-when-locked → 0 probability → note never
+// plays). This widget only DISPLAYS; it never writes the store. Three concerns kept
+// separate + swappable so the open UX choices are one-line changes later:
+//   (1) dim-on-out-of-scale  — dims the fader without changing its position (the stored
+//       value stays visible, greyed). Flip DISPLAY_OUT_OF_SCALE_AS_ZERO to instead render
+//       the handle at zero (both are display-only; the store is untouched either way).
+//   (2) never-bright invariant — the handle FLASH light is play-driven (semiLedBrightness ←
+//       semiPlayRemain, set only when a note actually plays). An out-of-scale locked note
+//       reads weight 0 → never plays → never flashes. So the user never sees an out-of-scale
+//       fader light up: guaranteed by enforcement, not by this widget. (The alpha dim below
+//       also attenuates any residual, belt-and-suspenders.)
+//   (3) modulation display — shows the modulated value marker FOR NOW. STILL TODO: final mod-
+//       display method for gated faders (a modulated value on a note the engine reads as 0 is
+//       semantically odd). Isolated in drawModMarker() so the final choice is localized.
 template <typename TLightBase = RedLight>
 struct MonsoonLightSlider : VCVLightSlider<TLightBase> {
+    // Flip to true to render out-of-scale faders at ZERO position instead of dim-in-place.
+    // Display-only in both cases (store never written). Default false = dim-in-place (chosen).
+    static constexpr bool DISPLAY_OUT_OF_SCALE_AS_ZERO = false;
+
+    bool semiOutOfScale(Monsoon* m) const {
+        if (!m || !m->scaleManager) return false;
+        if (this->paramId < MonsoonIds::SEMI0_PARAM || this->paramId >= MonsoonIds::SEMI0_PARAM + 12)
+            return false;
+        int sem = this->paramId - MonsoonIds::SEMI0_PARAM;
+        return !(m->scaleManager->activeScaleMask & (1 << sem));
+    }
+
     void draw(const widget::Widget::DrawArgs& args) override {
         auto* m = dynamic_cast<Monsoon*>(this->module);
-        bool dimmed = false;
-        if (m) {
-            if (this->paramId >= MonsoonIds::SEMI0_PARAM && this->paramId < MonsoonIds::SEMI0_PARAM + 12) {
-                int sem = this->paramId - MonsoonIds::SEMI0_PARAM;
-                if (m->scaleManager && !(m->scaleManager->activeScaleMask & (1 << sem))) dimmed = true;
-            }
+        const bool dimmed = semiOutOfScale(m);
+
+        // (Option, flexible) render at zero instead of dim-in-place. Display-only: we transiently
+        // present 0 to the handle draw then restore, never writing the store — same present-then-
+        // restore idea as the spread knob's displayValueFn.
+        float restore = 0.f; bool didZero = false;
+        if (dimmed && DISPLAY_OUT_OF_SCALE_AS_ZERO) {
+            if (auto* pq = this->getParamQuantity()) { restore = pq->getValue(); pq->setValue(0.f); didZero = true; }  // semitone faders are 0..1; min is 0
         }
-        if (dimmed) nvgGlobalAlpha(args.vg, 0.4f);
+
+        if (dimmed) nvgGlobalAlpha(args.vg, 0.4f);   // dim, position unchanged (chosen default)
         VCVLightSlider<TLightBase>::draw(args);
         if (dimmed) nvgGlobalAlpha(args.vg, 1.0f);
 
-        // ── EXPERIMENT: superimposed modulated-value light ──────────────────
-        // A second, contrasting-colour light marker at the MODULATED value's
-        // height (the handle light already shows the SET value). Shown only when
-        // pitch modulation is active and the modulated value differs from set.
-        // Modulation amount is floored at 0 visually (slider min is 0, so a
-        // downward push can't render below the track bottom).
-        if (m && m->modVizMonsoonMelody &&
-            this->paramId >= MonsoonIds::SEMI0_PARAM && this->paramId < MonsoonIds::SEMI0_PARAM + 12 &&
-            m->modViz.pitchLane[this->paramId - MonsoonIds::SEMI0_PARAM]) {
-            int sem = this->paramId - MonsoonIds::SEMI0_PARAM;
-            float modN = rack::math::clamp(m->modViz.semitone[sem], 0.f, 1.f);  // floored at 0
-            float setN = 0.f;
-            if (auto* pq = m->paramQuantities[this->paramId]) setN = (float)pq->getScaledValue();
-            if (std::fabs(modN - setN) > 0.01f) {
-                // Map value→y within the handle travel (top = max). Inset a touch.
-                float top = this->box.size.y * 0.10f;
-                float bot = this->box.size.y * 0.90f;
-                float y = top + (1.f - modN) * (bot - top);
-                float cx = this->box.size.x * 0.5f;
-                // Glowing dot: a soft outer halo + bright core, in a contrasting
-                // cyan so it reads against the green/red handle light.
-                nvgBeginPath(args.vg);
-                nvgCircle(args.vg, cx, y, 4.2f);
-                nvgFillColor(args.vg, nvgRGBAf(0.1f, 0.8f, 0.95f, 0.30f));   // halo
-                nvgFill(args.vg);
-                nvgBeginPath(args.vg);
-                nvgCircle(args.vg, cx, y, 2.2f);
-                nvgFillColor(args.vg, nvgRGBAf(0.4f, 0.95f, 1.0f, 0.95f));   // core
-                nvgFill(args.vg);
-            }
-        }
+        if (didZero) { if (auto* pq = this->getParamQuantity()) pq->setValue(restore); }
+
+        drawModMarker(args, m);
+    }
+
+    // ── Modulation display (SWAPPABLE — final method TODO, see SHOPHOUSE_SPEC.md) ─────────
+    // Superimposed contrasting-colour marker at the MODULATED value's height (the handle
+    // light shows the SET value). Shown when pitch modulation is active and differs from set.
+    // Modulation floored at 0 (slider min is 0). Kept for now even on out-of-scale faders;
+    // isolate here so the final gated-fader mod-display choice is a localized change.
+    void drawModMarker(const widget::Widget::DrawArgs& args, Monsoon* m) {
+        if (!(m && m->modVizMonsoonMelody &&
+              this->paramId >= MonsoonIds::SEMI0_PARAM && this->paramId < MonsoonIds::SEMI0_PARAM + 12 &&
+              m->modViz.pitchLane[this->paramId - MonsoonIds::SEMI0_PARAM]))
+            return;
+        int sem = this->paramId - MonsoonIds::SEMI0_PARAM;
+        float modN = rack::math::clamp(m->modViz.semitone[sem], 0.f, 1.f);  // floored at 0
+        float setN = 0.f;
+        if (auto* pq = m->paramQuantities[this->paramId]) setN = (float)pq->getScaledValue();
+        if (std::fabs(modN - setN) <= 0.01f) return;
+        float top = this->box.size.y * 0.10f;
+        float bot = this->box.size.y * 0.90f;
+        float y = top + (1.f - modN) * (bot - top);
+        float cx = this->box.size.x * 0.5f;
+        nvgBeginPath(args.vg);
+        nvgCircle(args.vg, cx, y, 4.2f);
+        nvgFillColor(args.vg, nvgRGBAf(0.1f, 0.8f, 0.95f, 0.30f));   // halo
+        nvgFill(args.vg);
+        nvgBeginPath(args.vg);
+        nvgCircle(args.vg, cx, y, 2.2f);
+        nvgFillColor(args.vg, nvgRGBAf(0.4f, 0.95f, 1.0f, 0.95f));   // core
+        nvgFill(args.vg);
     }
 };
 
