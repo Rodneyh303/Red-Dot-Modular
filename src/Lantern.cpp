@@ -148,7 +148,15 @@ struct Lantern : Module {
                             : lenSteps;
         }
         c.accented    = accented;   // orthogonal overlay (render brightens/marks), NOT a type
-        c.heldIn      = (dec == MonoDecision::Tie || dec == MonoDecision::MidNote);
+        // heldIn = the gate carried over from the previous bar. This is about RHYTHM
+        // continuity (the gate held across the boundary), which is identical for a tie and a
+        // legato — the only difference between them is whether the note CV changes (Legato =
+        // held gate + new pitch; Tie = held gate + same pitch). So the held-in caret must fire
+        // for BOTH. (Previously only Tie/MidNote, so a cross-boundary legato showed teal with
+        // no caret and looked isolated at step 0 — confirmed on Rack's scope as genuinely held
+        // over the boundary.) MidNote is the tail of an already-shown note; also continues.
+        c.heldIn      = (dec == MonoDecision::Tie || dec == MonoDecision::MidNote ||
+                         dec == MonoDecision::Legato || dec == MonoDecision::LegatoMax);
         c.heldOut     = gs.holdRemain > 1.0001f;   // still ringing past this whole step
         c.isMidTail   = (dec == MonoDecision::MidNote);   // gate tail, not a new event
 
