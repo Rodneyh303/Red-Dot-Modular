@@ -269,3 +269,28 @@ consistent modulation language across both slider groups. To evaluate at a build
 dot vs red arc on the note sliders). The Conservation-gating (hide on out-of-scale when enforcing)
 applies regardless of which visual is chosen — it's the same suppression condition, just a
 different marker. Deferred: pick the visual after seeing both in Rack.
+
+---
+
+## List UI DECIDED — 4 shophouse fronts, keyboard-arranged scale shutters (prototyped)
+
+Decisions (user):
+- List length: FIXED 4 (one key-change is the common case; more is rare in electronic music;
+  4 fronts is a composition, not a limitation).
+- List UI: the "integrated into the design" option B — 4 SHOPHOUSE FRONTS in a row (the scale-
+  list "street" / five-foot-way), each front = one list slot holding one scale+root.
+- Scale-on-facade: each front's 12 shutters are arranged as a PIANO OCTAVE (7 white + 5 black),
+  lit = in-scale, dim/closed = out-of-scale, ROOT shutter accented in Singapore red. This solves
+  option B's legibility risk — you read the scale like a keyboard, instantly.
+
+Prototype: panel_src/gen_shophouse_proto.py → proto_shophouse_{dark,light}.svg. NanoSVG-safe
+(rects/lines/polys + opacity). Verified: note→shutter mapping is musically correct (C major lights
+exactly the 7 whites; D dorian lights the white-key set with D accented). Reads clearly in both
+themes. Black shutters sit in the upper ~55% between whites (piano layout). Red gable roof + gold
+five-foot-way arch give shophouse character.
+
+Still to refine (aesthetic — user's call at build/iterate): proportions on the real 20HP portrait
+panel (more room per front), degree of Peranakan ornament, how root+scale are SELECTED per front
+(dropdowns behind each facade? the shutters themselves are DISPLAY, selection is separate — likely
+a small scale + root menu per slot). The shutters are the scale DISPLAY; the selection mechanism
+(open Q4 remainder) is still to design — but the display half is settled + prototyped.
