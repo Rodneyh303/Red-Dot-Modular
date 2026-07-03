@@ -113,6 +113,19 @@ struct Lantern : Module {
         const bool monoSlur = eng.gs.slurForward;   // the mono gate's forward-hold commitment;
                                                      // poly voices follow mono's gate, so inherit it
 
+        // TEST PROBE: what decision gets WRITTEN to cells[0][step] this sample? Log physical step,
+        // dir, and dec. Answers: are the teal at 6/11 in reverse freshly WRITTEN (dec=Legato when
+        // step=6/11, dir=-1) or STALE (step 6/11 never sampled/overwritten in reverse)?
+        {
+            const char* dn = (dec == MonoDecision::Legato) ? "LEG"
+                           : (dec == MonoDecision::LegatoMax) ? "LMX"
+                           : (dec == MonoDecision::Tie) ? "TIE"
+                           : (dec == MonoDecision::NewNote) ? "NEW"
+                           : (dec == MonoDecision::Rest) ? "REST"
+                           : (dec == MonoDecision::MidNote) ? "MID" : "OTH";
+            INFO("[LANTERNPROBE] dir=%+d writeStep=%d dec=%s", eng.lastPlayDir, step, dn);
+        }
+
         // Row 0 = mono / V1.
         recordCell(0, step, eng.gs, dec, accentedMono, lenSteps, monoSlur);
 
