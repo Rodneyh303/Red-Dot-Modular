@@ -79,6 +79,13 @@ struct Lantern : Module {
                                  // step edge) — NOT a new event. The onset cell's true
                                  // fractional width already covers it, so the render skips
                                  // drawing a bar here (else it fills the sub-step gap).
+        int    playDir  = +1;    // play direction when this cell was recorded (+1 fwd / -1 rev).
+                                 // A short (<1 step) note's bar is anchored toward the play
+                                 // direction so its fill reaches toward the note it connects
+                                 // FROM: forward → left-anchored (extends right); reverse →
+                                 // right-anchored (extends left). Left-anchoring in reverse
+                                 // leaves the note's empty right portion as a visual gap on the
+                                 // play-direction side, making short legato notes look isolated.
     };
     Cell cells[16][16];
     int  lastObservedStep = -1;
@@ -126,14 +133,14 @@ struct Lantern : Module {
                         ? eng.lastStepResult.forStep : step;
 
         // Row 0 = mono / V1.
-        recordCell(0, writeStep, eng.gs, dec, accentedMono, lenSteps, monoSlur);
+        recordCell(0, writeStep, eng.gs, dec, accentedMono, lenSteps, monoSlur, eng.lastPlayDir);
 
         // Rows 1..numPolyVoices = poly voices 2.. . A poly voice follows mono's
         // gate TYPE (retrigger/tie/legato) but can independently REST (then it's
         // inactive this gate) and draws its OWN accent.
         for (int v = 0; v < eng.numPolyVoices && v < 15; ++v) {
             const PolyVoice& pv = eng.voices[v];
-            recordCell(v + 1, writeStep, pv.gs, dec, pv.accented, lenSteps, monoSlur);
+            recordCell(v + 1, writeStep, pv.gs, dec, pv.accented, lenSteps, monoSlur, eng.lastPlayDir);
         }
         // Voices beyond numPolyVoices → mark inactive.
         for (int v = eng.numPolyVoices; v < 15; ++v)
@@ -144,7 +151,7 @@ struct Lantern : Module {
     // inactive (gate down & not held) → else Accent if accented → else the join type
     // (Tie/Legato) from the decision → else Single (a fresh/normal note).
     void recordCell(int voice, int step, const GateState& gs, MonoDecision dec,
-                    bool accented, float lenSteps, bool monoSlurForward) {
+                    bool accented, float lenSteps, bool monoSlurForward, int playDir) {
         Cell& c = cells[voice][step];
         // A cell renders as a note if a note FIRED this step, OR the gate is still up. The live
         // gate alone (gs.gateHeld || holdRemain>0) MISSES short notes whose gate has already
@@ -160,6 +167,7 @@ struct Lantern : Module {
         if (!sounding) { c.type = lantern::NoteType::Inactive; return; }
 
         c.pitchV      = gs.currentPitchV;
+        c.playDir     = (playDir < 0) ? -1 : +1;
         // TRUE fractional length from the gate's pulse countdown (the sole gate-close
         // mechanism). At a step edge just after (re)arming, gatePulseRemain = the pulses
         // this gate will stay open, so /pulsesPer16th gives the real length in 1/16 steps
@@ -288,9 +296,22 @@ struct LanternDisplay : widget::Widget {
                 // leaving the real sub-step gap (triplet/1/32). Drawing a bar here would
                 // fill that gap and make a 1/8T look like a straight 1/8.
                 if (c.isMidTail) continue;
-                const float bx = gridX + s * stepW;
-                float span = std::max(0.15f, c.lengthSteps <= 0.f ? 1.f : c.lengthSteps);
-                float bw = std::min(span * stepW, (gridX + gridW) - bx);
+                const float span = std::max(0.15f, c.lengthSteps <= 0.f ? 1.f : c.lengthSteps);
+                float bx, bw;
+                if (c.playDir < 0) {
+                    // Reverse: anchor the bar to the RIGHT edge of the cell and extend LEFT, so a
+                    // short note's fill reaches toward the note it connects FROM (its predecessor
+                    // sits to the right in reverse play). Left-anchoring here would leave the
+                    // note's empty right portion as a gap on the play-direction side — the
+                    // "isolated teal with a rest to its right" the engine never actually produced.
+                    const float cellRight = gridX + (s + 1) * stepW;
+                    bw = std::min(span * stepW, cellRight - gridX);
+                    bx = cellRight - bw;
+                } else {
+                    // Forward: anchor left, extend right (unchanged).
+                    bx = gridX + s * stepW;
+                    bw = std::min(span * stepW, (gridX + gridW) - bx);
+                }
 
                 NVGcolor col = typeColour(c.type);
                 // accent = shade: brighter when accented, slightly dimmed when not

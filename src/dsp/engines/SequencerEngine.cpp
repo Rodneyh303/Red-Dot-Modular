@@ -386,19 +386,6 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
         ++legatoLE_startCount;
     }
 
-    {
-        auto nm = [](MonoDecision d)->const char*{
-            switch(d){case MonoDecision::NewNote:return "NEW";case MonoDecision::Legato:return "LEG";
-            case MonoDecision::LegatoMax:return "LMX";case MonoDecision::Tie:return "TIE";
-            case MonoDecision::Rest:return "REST";case MonoDecision::MidNote:return "MID";default:return "OTH";}};
-        char line[200];
-        std::snprintf(line, sizeof(line),
-            "[G] dir=%+d step=%d dec=%s prevPlayedDec=%s prevSounded=%d prevSlur=%d wasHeld=%d hadTail=%d hold=%.2f pulse=%d",
-            lastPlayDir, stepIndex, nm(result.decision), nm(prevPlayedDec),
-            (int)prevPlayedSounded, (int)prevSlur, (int)wasHeld, (int)hadTail,
-            gs.holdRemain, gs.gatePulseRemain);
-        dbgPush(line);
-    }
     result.forStep = stepIndex; lastStepResult = result;
     return result;
 }
