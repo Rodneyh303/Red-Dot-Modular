@@ -22,9 +22,11 @@ using namespace MonsoonIds;
 //       reads weight 0 → never plays → never flashes. So the user never sees an out-of-scale
 //       fader light up: guaranteed by enforcement, not by this widget. (The alpha dim below
 //       also attenuates any residual, belt-and-suspenders.)
-//   (3) modulation display — shows the modulated value marker FOR NOW. STILL TODO: final mod-
-//       display method for gated faders (a modulated value on a note the engine reads as 0 is
-//       semantically odd). Isolated in drawModMarker() so the final choice is localized.
+//   (3) modulation display — Conservation-GATED (fader-specific, automatic): show the modulated
+//       marker EXCEPT on an out-of-scale fader when Conservation is ON (that note is silenced, so
+//       its modulation is misleading). Conservation OFF (guide mode) shows everything freely.
+//       Layered on top of the existing global modVizMonsoonMelody context-menu choice. Conservation
+//       mode is the differentiator. (Isolated in drawModMarker.)
 template <typename TLightBase = RedLight>
 struct MonsoonLightSlider : VCVLightSlider<TLightBase> {
     // Flip to true to render out-of-scale faders at ZERO position instead of dim-in-place.
@@ -69,6 +71,14 @@ struct MonsoonLightSlider : VCVLightSlider<TLightBase> {
         if (!(m && m->modVizMonsoonMelody &&
               this->paramId >= MonsoonIds::SEMI0_PARAM && this->paramId < MonsoonIds::SEMI0_PARAM + 12 &&
               m->modViz.pitchLane[this->paramId - MonsoonIds::SEMI0_PARAM]))
+            return;
+        // Conservation-gated, fader-specific mod suppression (automatic — on top of the existing
+        // global modVizMonsoonMelody context-menu choice). When Conservation is ON, an out-of-
+        // scale note is silenced (read as 0), so showing its modulation is misleading (movement
+        // on a note that can't sound) — HIDE it. Conservation OFF = guide mode, nothing silenced,
+        // show everything freely. So Conservation mode is the differentiator; in-scale faders and
+        // all faders when Conservation is off are unaffected. (SHOPHOUSE_SPEC.md.)
+        if (m->scaleManager && m->scaleManager->lockScaleNotes && semiOutOfScale(m))
             return;
         int sem = this->paramId - MonsoonIds::SEMI0_PARAM;
         float modN = rack::math::clamp(m->modViz.semitone[sem], 0.f, 1.f);  // floored at 0

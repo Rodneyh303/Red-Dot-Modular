@@ -243,3 +243,17 @@ Structure (mirrors DimmableTrimpot's separated concerns) — three pluggable hoo
   - dimWhen        → out-of-scale; drives the dim AND enforces the never-bright invariant.
   - displayValueFn → currently "stored position" (dim-in-place); trivially → "zero position".
   - mod-display    → currently "show modulation"; clearly marked swappable pending final method.
+
+---
+
+## RESOLVED — fader modulation display method: Conservation-gated
+
+The "still todo: final mod-display method for faders" is decided: modulation visuals are
+CONSERVATION-GATED, fader-specific, automatic.
+- Conservation ON + out-of-scale fader → HIDE the mod marker (the note is silenced/read-as-0, so
+  its modulation is misleading — movement on a note that can't sound).
+- Conservation ON + in-scale → show normally.
+- Conservation OFF (guide mode) → show everything freely (nothing is silenced).
+Layered ON TOP of the existing global modVizMonsoonMelody context-menu toggle (not a replacement)
+— the new part is the automatic per-fader suppression driven by scale membership + Conservation.
+Conservation mode is the differentiator. Implemented in MonsoonLightSlider::drawModMarker.
