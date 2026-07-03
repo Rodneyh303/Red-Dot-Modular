@@ -157,7 +157,15 @@ struct Lantern : Module {
         // over the boundary.) MidNote is the tail of an already-shown note; also continues.
         c.heldIn      = (dec == MonoDecision::Tie || dec == MonoDecision::MidNote ||
                          dec == MonoDecision::Legato || dec == MonoDecision::LegatoMax);
-        c.heldOut     = gs.holdRemain > 1.0001f;   // still ringing past this whole step
+        // heldOut = this note's gate is still open PAST this whole step (carries into the next
+        // step / across the loop boundary). holdRemain>1 means more than one step of hold
+        // remains, so the note survives into the next step. (This catches LONG notes wrapping.
+        // A grid-aligned note wrapping purely via the gatePulseRemain sub-step timer — e.g. a
+        // cross-boundary legato where holdRemain<=1 — may NOT be caught here; if the lead-out
+        // caret is missing on such a wrap at the build, this predicate is why, and it should be
+        // widened to consult gatePulseRemain/the actual gate-open-at-next-step state. Kept
+        // conservative for now to avoid over-firing on every sounding note.)
+        c.heldOut     = gs.holdRemain > 1.0001f;
         c.isMidTail   = (dec == MonoDecision::MidNote);   // gate tail, not a new event
 
         // Note-TYPE is single/tie/legato only (accent is a separate overlay so an
@@ -278,6 +286,20 @@ struct LanternDisplay : widget::Widget {
                     nvgMoveTo(vg, gridX - 3.f, yc);
                     nvgLineTo(vg, gridX,        yc - barH * 0.4f);
                     nvgLineTo(vg, gridX,        yc + barH * 0.4f);
+                    nvgClosePath(vg);
+                    nvgFillColor(vg, nvgRGB(0xc8, 0x96, 0x0c));
+                    nvgFill(vg);
+                }
+                // held-out caret: note continues past the last step into the next lap (right
+                // of step N-1). Symmetric partner of the held-in caret — together they show a
+                // wraparound: the slur leaves the right edge and arrives at the left edge next
+                // lap. Points OUT to the right.
+                if (s == N_STEPS - 1 && c.heldOut) {
+                    const float rx = gridX + gridW;
+                    nvgBeginPath(vg);
+                    nvgMoveTo(vg, rx + 3.f, yc);
+                    nvgLineTo(vg, rx,        yc - barH * 0.4f);
+                    nvgLineTo(vg, rx,        yc + barH * 0.4f);
                     nvgClosePath(vg);
                     nvgFillColor(vg, nvgRGB(0xc8, 0x96, 0x0c));
                     nvgFill(vg);
