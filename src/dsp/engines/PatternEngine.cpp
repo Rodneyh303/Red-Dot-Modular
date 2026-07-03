@@ -290,6 +290,13 @@ void PatternEngine::recomputeEffectiveRhythm() {
             rhythmRandom[i]=slewedRhythm[i]; variationRandom[i]=slewedVariation[i];
             legatoRandom[i]=slewedLegato[i]; accentRandom[i]=slewedAccent[i];
             for (int v=0;v<15;v++) polyRhythmRandom[v][i]=slewedPolyRhythm[v][i];
+            // BUG FIX: poly accent was NOT promoted here (only rhythm was), so in the non-sands
+            // path polyAccentRandom never received its slewed random values — it stayed at its
+            // init value (0 → all notes accent; or 1.0 after the init-seed fix → no notes
+            // accent). This is the real root cause; the init seed only changed which stuck
+            // value showed. Mirror the rhythm promotion. (sandsActive path already sets both via
+            // SpreadInterp at MonsoonSandsManager 460/463.)
+            for (int v=0;v<15;v++) polyAccentRandom[v][i]=slewedPolyAccent[v][i];
         }
     }
     rhythmMixApplied = s;
