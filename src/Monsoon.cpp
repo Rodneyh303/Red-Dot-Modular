@@ -914,14 +914,6 @@ void Monsoon::process(const ProcessArgs& args) {
             paramManager->setCv3Offset(i, clampv<float>(cv3Mods[i], -1.f, 1.f));
         }
     }
-
-    // ── TEMP: drain the engine's debug ring into log.txt via INFO — REMOVE after diagnosis ──
-    // Rate-limited: at most a few lines per process call, only when unread lines exist. The
-    // engine writes probe lines from the audio path; here (which has Rack's INFO) we emit them.
-    for (int n = 0; n < 4 && engine.dbgTail != engine.dbgHead; ++n) {
-        INFO("%s", engine.dbgLog[engine.dbgTail]);
-        engine.dbgTail = (engine.dbgTail + 1) % SequencerEngine::DBG_N;
-    }
 }
 
 

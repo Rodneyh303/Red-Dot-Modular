@@ -317,29 +317,6 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
             gs.slideNote(pitchV, sem, nvIdx, /*wasHeld=*/true);
             result.decision = MonoDecision::Legato;
         }
-        // ── TEMP DEBUG PROBE (reverse-mode isolated-teal) — REMOVE after diagnosis ──
-        // Logs the full state at every Legato/Tie emission so we can see, from the actual
-        // engine, WHY an isolated teal appears in reverse (forward is clean). Key suspects:
-        // wasHeld reading a forward-baked gate; slurForward committed in the wrong direction;
-        // or the boundary. Compare forward vs reverse runs.
-        {
-            const char* d = (result.decision == MonoDecision::Tie) ? "TIE" : "LEG";
-            // Ground truth the picture asks for: in the PLAY direction, the predecessor step is
-            // stepIndex + lastPlayDir (reverse: the higher step just played; forward: the lower).
-            // Log it so we can see whether that step actually SOUNDED (has a real note to connect
-            // from) or whether wasHeld is a stale gate with no predecessor note there.
-            int predStep = ((stepIndex + lastPlayDir) % 16 + 16) % 16;
-            char line[200];
-            std::snprintf(line, sizeof(line),
-                "[LEGPROBE] %s dir=%+d step=%d predStep=%d wasHeld=%d gateHeld=%d "
-                "holdRemain=%.3f prevPulse=%d curPulse=%d prevSlur=%d legConn=%d lastSem=%d sem=%d",
-                d, lastPlayDir, stepIndex, predStep,
-                (int)wasHeld, (int)gs.gateHeld, gs.holdRemain,
-                dbgPrevPulse, gs.gatePulseRemain,
-                (int)prevSlur, (int)legatoConnects,
-                gs.lastSemitone, sem);
-            dbgPush(line);
-        }
     }
     else {
         gs.triggerNote(pitchV, sem, nvIdx);
@@ -441,8 +418,6 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
     int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
 
     float prevHold = gs.holdRemain;
-    dbgPrevPulse = gs.gatePulseRemain;   // TEMP: gate sub-counter carried IN (pre-tick) — if <=0,
-                                          // the gate had already dropped before this note re-arms.
     wasHeldMono = gs.gateHeld || (prevHold > 0.0001f);
     gs.tick(ClockEngine::pulsesPer16th(ppqnSetting));
     hadMonoTail = (prevHold > 0.0001f && prevHold < 0.999f);
@@ -572,23 +547,6 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
             // bug. Trigger a fresh note instead. (Direction-independent; surfaced in reverse
             // mode but present forward too.)
             v.gs.triggerNote(pitchV, sem, lastStepResult.nvIdx);
-        // ── TEMP DEBUG PROBE (poly, reverse isolated-teal) — REMOVE after diagnosis ──
-        // Shows what THIS poly voice actually did (slide vs fresh trigger) vs what mono's
-        // decision was (which is what Lantern displays as the colour). If the voice triggered
-        // fresh but mono says Legato, Lantern paints teal → display bug, not behaviour.
-        {
-            const char* mono = (lastStepResult.decision == MonoDecision::Legato) ? "LEG"
-                             : (lastStepResult.decision == MonoDecision::LegatoMax) ? "LMX"
-                             : (lastStepResult.decision == MonoDecision::Tie) ? "TIE" : "OTH";
-            const char* did = (wasHeldPoly || hadPolyTail) ? "slide" : "FRESH";
-            char line[200];
-            std::snprintf(line, sizeof(line),
-                "[POLYPROBE] v=%d dir=%+d step=%d monoDec=%s did=%s wasHeldPoly=%d hadPolyTail=%d "
-                "gateHeld=%d holdRemain=%.3f",
-                voiceIdx, lastPlayDir, stepIndex, mono, did,
-                (int)wasHeldPoly, (int)hadPolyTail, (int)v.gs.gateHeld, v.gs.holdRemain);
-            dbgPush(line);
-        }
         return;
     }
 
