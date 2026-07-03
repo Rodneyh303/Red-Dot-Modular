@@ -110,16 +110,18 @@ struct Lantern : Module {
         const MonoDecision dec = eng.lastStepResult.decision;
         const bool accentedMono = eng.lastStepResult.accented;
         const float lenSteps = gs_noteSteps(eng.lastStepResult.nvIdx);
+        const bool monoSlur = eng.gs.slurForward;   // the mono gate's forward-hold commitment;
+                                                     // poly voices follow mono's gate, so inherit it
 
         // Row 0 = mono / V1.
-        recordCell(0, step, eng.gs, dec, accentedMono, lenSteps);
+        recordCell(0, step, eng.gs, dec, accentedMono, lenSteps, monoSlur);
 
         // Rows 1..numPolyVoices = poly voices 2.. . A poly voice follows mono's
         // gate TYPE (retrigger/tie/legato) but can independently REST (then it's
         // inactive this gate) and draws its OWN accent.
         for (int v = 0; v < eng.numPolyVoices && v < 15; ++v) {
             const PolyVoice& pv = eng.voices[v];
-            recordCell(v + 1, step, pv.gs, dec, pv.accented, lenSteps);
+            recordCell(v + 1, step, pv.gs, dec, pv.accented, lenSteps, monoSlur);
         }
         // Voices beyond numPolyVoices → mark inactive.
         for (int v = eng.numPolyVoices; v < 15; ++v)
@@ -130,7 +132,7 @@ struct Lantern : Module {
     // inactive (gate down & not held) → else Accent if accented → else the join type
     // (Tie/Legato) from the decision → else Single (a fresh/normal note).
     void recordCell(int voice, int step, const GateState& gs, MonoDecision dec,
-                    bool accented, float lenSteps) {
+                    bool accented, float lenSteps, bool monoSlurForward) {
         Cell& c = cells[voice][step];
         const bool sounding = gs.gateHeld || gs.holdRemain > 0.0001f;
         if (!sounding) { c.type = lantern::NoteType::Inactive; return; }
@@ -159,15 +161,18 @@ struct Lantern : Module {
                          dec == MonoDecision::Legato || dec == MonoDecision::LegatoMax);
         // heldOut = this note holds its gate high PAST the last step, by EITHER mechanism:
         //   (1) a LONG note whose length extends past this step (holdRemain > 1), or
-        //   (2) a LEGATO LEAD that committed to hold its gate forward (gs.slurForward) — e.g.
-        //       the last note decided to slur into the next lap's step 0. This is knowable
-        //       right here at the note (slurForward is set at its onset), so no sub-step-timer
-        //       guessing is needed. Together with the step-0 held-in caret next lap, this shows
-        //       the wraparound: gate leaves the right edge, arrives at the left edge.
+        //   (2) a LEGATO LEAD that committed to hold its gate forward. slurForward is computed
+        //       only on the MONO gate (executeStep); poly voices FOLLOW mono's gate type, so
+        //       they inherit mono's commitment via monoSlurForward (gs.slurForward is always
+        //       false on a poly voice's own GateState). A poly voice that RESTED this gate
+        //       already early-returned Inactive above, so this marks only sounding voices
+        //       riding mono's forward-held gate — mono and its slaved poly voices together.
+        //       Knowable right here (no sub-step-timer guessing). Pairs with the step-0 held-in
+        //       caret next lap to show the wraparound: gate leaves right edge, arrives left.
         // (heldIn already only fires on a real connection — a rest at step 0 early-returns as
         //  Inactive before heldIn is set, and Tie/Legato/LegatoMax/MidNote are all genuine
         //  connections — so the two carets are symmetric and truthful.)
-        c.heldOut     = (gs.holdRemain > 1.0001f) || gs.slurForward;
+        c.heldOut     = (gs.holdRemain > 1.0001f) || monoSlurForward;
         c.isMidTail   = (dec == MonoDecision::MidNote);   // gate tail, not a new event
 
         // Note-TYPE is single/tie/legato only (accent is a separate overlay so an
