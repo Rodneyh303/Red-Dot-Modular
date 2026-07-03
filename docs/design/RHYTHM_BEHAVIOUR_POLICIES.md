@@ -61,3 +61,27 @@ So the boundary-wrap toggle is precisely: EVOLVING-across-laps (continue, has me
 REPEATABLE-every-lap (interrupt, no memory). Neither is 'correct' — different musical behaviours,
 which is why it's a toggle. These two build screenshots are the reference illustration. Not a bug:
 the leading-edge model is working; the lap-1≠lap-2 difference is the continue policy by design.
+
+---
+
+## Maintenance note: the ACCENT lane lags RHYTHM/REST — always check the twin
+
+Accent was added as a poly lane AFTER rhythm/rest, so it keeps turning up inconsistent with them
+— not for any principled reason, just missed PARALLEL steps, one per site. Four instances found:
+  1. getPolyAccent read the HOST param space, not the East expander (getPolyRest read the
+     expander) → poly accentProb ~0 → no poly accents.
+  2. polyAccentRandom had no init seed (polyRhythmRandom = 1.0 did) → stuck at 0 → all accent.
+  3. SpreadManager stubbed accent in 5 places (spread[8][3]→[8][4], avgCache_, guards, etc.).
+  4. recomputeEffectiveRhythm's !sandsActive block promoted polyRhythmRandom = slewedPolyRhythm
+     but had NO polyAccentRandom = slewedPolyAccent line → accent never updated during play.
+
+These are ONE incompleteness (accent bolted on later) surfacing wherever the two lanes should
+mirror — not four unrelated bugs. So the reliable rule when touching accent OR debugging it:
+  GREP for the rhythm/rest twin on the same code path and confirm the accent line exists.
+  Anywhere you see polyRhythmRandom / rhythmRandom / slewedPolyRhythm / getPolyRest / a rhythm
+  spread case, there MUST be a matching polyAccentRandom / accentRandom / slewedPolyAccent /
+  getPolyAccent / accent spread case beside it. A missing twin is the bug.
+If a fifth accent bug appears, this grep finds it before it ships.
+
+(Lantern was the diagnostic each time — the mono-works/poly-doesn't and all-on/all-off contrasts
+are immediately visible on the grid, far more legible than a scope trace for this class of bug.)
