@@ -257,3 +257,15 @@ CONSERVATION-GATED, fader-specific, automatic.
 Layered ON TOP of the existing global modVizMonsoonMelody context-menu toggle (not a replacement)
 — the new part is the automatic per-fader suppression driven by scale membership + Conservation.
 Conservation mode is the differentiator. Implemented in MonsoonLightSlider::drawModMarker.
+
+---
+
+## Note-slider mod VISUAL — candidate: reuse the octave sliders' red mod arcs
+
+The note (semitone) sliders currently show modulation as a cyan dot-marker at the modulated
+value's height (MonsoonLightSlider::drawModMarker). The OTHER candidate visual: the RED MOD ARCS
+already applied to the OCTAVE sliders — reuse that same arc treatment on the note sliders for a
+consistent modulation language across both slider groups. To evaluate at a build (compare cyan
+dot vs red arc on the note sliders). The Conservation-gating (hide on out-of-scale when enforcing)
+applies regardless of which visual is chosen — it's the same suppression condition, just a
+different marker. Deferred: pick the visual after seeing both in Rack.
