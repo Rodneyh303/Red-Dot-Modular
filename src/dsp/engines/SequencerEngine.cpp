@@ -271,20 +271,26 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     const bool legatoConnects = (legatoProb >= 0.999f)
         || (legatoLeadingEdge ? prevSlur : (r_legato_tie < legatoProb));
 
+    // A genuine committed slur reaching THIS note: it connects AND has a held predecessor to
+    // connect to (exactly the condition the legato branch below uses). "Rest beats legato"
+    // toggle: when OFF, such a slur IGNORES the rest roll here (slur wins → plays as Legato/
+    // Tie); when ON (default), the rest branch takes priority (rest cancels the slur). A
+    // fractional TAIL still always outranks rest (canRest, below), regardless of the toggle.
+    const bool slurReachesHere    = legatoConnects && (wasHeld || hadTail);
+    const bool slurSuppressesRest = !restBeatsLegato && slurReachesHere;
+
     if (legatoProb >= 0.999f) {
         gs.slideMax(pitchV, sem, nvIdx);
         result.decision = MonoDecision::LegatoMax;
     }
-    else if (r_rest < restProb) {
+    else if ((r_rest < restProb) && !slurSuppressesRest) {
         // Rest precedence:
         //  - A fractional NOTE TAIL always outranks a rest (physical — !canRest). Unchanged.
-        //  - Leading-edge structural rule (slur vs rest): a rest CANCELS an optional slur
-        //    reach ("can't slur into silence"). So even if the previous note committed to
-        //    slur forward (prevSlur), a rest here wins and the note is silent. This is the
-        //    default resolution of the slur-vs-rest conflict (see LEGATO_TIE_REDESIGN.md /
-        //    RHYTHM_BEHAVIOUR_POLICIES.md). No special-casing needed: the rest branch simply
-        //    takes priority over the legato branch below, exactly as in the current model —
-        //    which means rest-cancels-slur falls out for free. (Tail>rest still via canRest.)
+        //  - "Rest beats legato" ON (default): a rest CANCELS an optional slur reach ("can't
+        //    slur into silence") — even a committed prevSlur yields to the rest (N+1 silent).
+        //    OFF: slurSuppressesRest skips this branch, so the slur wins and the note falls
+        //    through to the legato branch below (rest ignored, N+1 plays as Legato/Tie with
+        //    its own drawn pitch). See RHYTHM_BEHAVIOUR_POLICIES.md.
         if (canRest) {
             gs.gateHeld = false;
             result.decision = MonoDecision::Rest;
@@ -386,6 +392,24 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
     if (!clock.sixteenthEdge || muted) return result;
 
     bool wrapped = advancePlayhead(dir);
+
+    // "Boundary interrupt" toggle: at the phrase boundary (wrap), force a fresh start by
+    // clearing any held gate BEFORE wasHeld is captured — so the note at step 0 sees no held
+    // predecessor and can't slur/tie across the loop. Result: every lap is identical (no
+    // cross-lap memory). Default OFF = CONTINUE (gate carries across the loop, laps can differ
+    // — see the lap-1-vs-lap-2 illustration in RHYTHM_BEHAVIOUR_POLICIES.md). Applied to mono
+    // and all poly voices.
+    if (wrapped && boundaryInterrupt) {
+        gs.gateHeld = false;
+        gs.holdRemain = 0.f;
+        gs.slurForward = false;
+        for (int i = 0; i < numPolyVoices; ++i) {
+            voices[i].gs.gateHeld   = false;
+            voices[i].gs.holdRemain = 0.f;
+            voices[i].gs.slurForward = false;
+        }
+    }
+
     float r_vary   = pe.variationRandom[getVariationStep()];
     float r_rest   = pe.rhythmRandom[getRhythmStep()];
     float r_legato = pe.legatoRandom[getLegatoStep()];
@@ -429,6 +453,15 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
     }
 
     if (triggered) {
+        // Boundary interrupt (see executeModeA): clear held gate at wrap so every lap starts
+        // fresh. Applied before wasHeld capture, mono + poly.
+        if (wrapped && boundaryInterrupt) {
+            gs.gateHeld = false; gs.holdRemain = 0.f; gs.slurForward = false;
+            for (int i = 0; i < numPolyVoices; ++i) {
+                voices[i].gs.gateHeld = false; voices[i].gs.holdRemain = 0.f;
+                voices[i].gs.slurForward = false;
+            }
+        }
         float r_vary   = pe.variationRandom[getVariationStep()];
         float r_rest   = pe.rhythmRandom[getRhythmStep()];
         float r_legato = pe.legatoRandom[getLegatoStep()];

@@ -666,6 +666,20 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
             add("Sands Macro (spread)", &m->modVizMacro);
             add("Sands Mono (spread)", &m->modVizMono);
         }));
+        // Rhythm behaviour: the two leading-edge policy toggles (RHYTHM_BEHAVIOUR_POLICIES.md).
+        // Reuses ModVizFlagItem (a plain bool* toggle) pointed at the engine flags.
+        menu->addChild(createSubmenuItem("Rhythm behaviour", "", [=](ui::Menu* sm) {
+            auto add = [&](const char* label, bool* f) {
+                auto* it = createMenuItem<ModVizFlagItem>(label); it->flag = f; sm->addChild(it);
+            };
+            // ON (default): a rest cancels a committed slur (N+1 silent). OFF: slur wins, the
+            // rest is ignored and N+1 plays as a legato/tie of its own drawn pitch.
+            add("Rest beats legato", &m->engine.restBeatsLegato);
+            sm->addChild(new ui::MenuSeparator);
+            // OFF (default): CONTINUE — gate carries across the loop, laps can differ. ON:
+            // INTERRUPT — reset at the boundary, every lap identical (no cross-lap memory).
+            add("Interrupt at phrase boundary", &m->engine.boundaryInterrupt);
+        }));
         menu->addChild(new ui::MenuSeparator);
         struct IntItem : ui::MenuItem {
             Monsoon* module; int* target; int value;

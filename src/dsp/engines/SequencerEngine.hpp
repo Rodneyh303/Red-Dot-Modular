@@ -85,6 +85,19 @@ struct SequencerEngine {
                                      // a proper context-menu toggle comes later per
                                      // RHYTHM_BEHAVIOUR_POLICIES.md.)
 
+    // ── Rhythm-behaviour toggles (context menu; see RHYTHM_BEHAVIOUR_POLICIES.md) ──
+    // "Rest beats legato" — when a committed slur (prevSlur) is reaching N+1 and N+1 rolls a
+    // rest: TRUE (default) = rest WINS, cancelling the slur (N+1 silent). FALSE = slur WINS,
+    // the rest roll is IGNORED and N+1 plays as a Legato/Tie (its own drawn pitch, gate-
+    // connected from N). Only affects the case where a genuine committed slur lands on a held
+    // predecessor; a rest on a non-slur note is unaffected.
+    bool restBeatsLegato = true;
+
+    // "Boundary interrupt" — at the phrase boundary (wrap): FALSE (default) = CONTINUE, gate/
+    // state carries across the loop (lap 2 can differ from lap 1). TRUE = INTERRUPT, force a
+    // fresh start at the boundary (reset the held gate) so every lap is identical.
+    bool boundaryInterrupt = false;
+
     int stepIndex = -1;
     int lastPlayDir = +1;   // +1 forward, -1 reverse (Mode E); for UI direction cues
     int lastStepIndex = -1;

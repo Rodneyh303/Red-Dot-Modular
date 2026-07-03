@@ -26,16 +26,19 @@ static Out decide(bool legatoLeadingEdge,
                   bool canRest,             // holdRemain<=0 && !hadTail
                   bool wasHeldOrTail,       // wasHeld || hadTail
                   bool samePitch,           // sem == lastSemitone
-                  int  nvIdx)               // note length index (for lead eligibility)
+                  int  nvIdx,               // note length index (for lead eligibility)
+                  bool restBeatsLegato = true)  // toggle: rest cancels slur (default) vs slur wins
 {
     Out o{NEWNOTE,false};
     const bool legatoConnects = (legatoProb >= 0.999f)
         || (legatoLeadingEdge ? prevSlur : (r_legato_tie < legatoProb));
+    const bool slurReachesHere    = legatoConnects && wasHeldOrTail;
+    const bool slurSuppressesRest = !restBeatsLegato && slurReachesHere;
 
     if (legatoProb >= 0.999f) {
         o.dec = LEGATOMAX;
-    } else if (r_rest < restProb) {
-        o.dec = canRest ? REST : MIDNOTE;   // rest wins over legato (rest-cancels-slur)
+    } else if ((r_rest < restProb) && !slurSuppressesRest) {
+        o.dec = canRest ? REST : MIDNOTE;   // rest wins (unless a committed slur suppresses it)
     } else if (legatoConnects && wasHeldOrTail) {
         // A slur can only CONNECT if the previous note actually held into this step. Intent
         // (legatoConnects) without a held predecessor → NewNote (no slide-into-nothing).
@@ -150,6 +153,25 @@ int main(){
         chk(o.dec==NEWNOTE, "isolated-slur: prevSlur true but nothing held → NewNote (not Legato)");
         Out o2 = decide(true, true, 1.f,0.f, 0.9f,0.8f, true, /*wasHeldOrTail*/true, false, I16);
         chk(o2.dec==LEGATO, "held predecessor + prevSlur → Legato (a real connection)");
+    }
+
+    // 8. "Rest beats legato" toggle.
+    {
+        // A committed slur reaches here (prevSlur, held predecessor) AND a rest rolls.
+        // ON (default): rest wins → Rest.
+        Out on = decide(true, /*prevSlur*/true, /*r_rest*/0.1f,/*restProb*/0.8f, 0.9f,0.8f,
+                        /*canRest*/true, /*wasHeldOrTail*/true, /*samePitch*/false, I16,
+                        /*restBeatsLegato*/true);
+        chk(on.dec==REST, "rest-beats-legato ON: committed slur + rest → Rest (rest wins)");
+        // OFF: slur wins → the rest is ignored, note plays as Legato.
+        Out off = decide(true, true, 0.1f,0.8f, 0.9f,0.8f, true, true, false, I16,
+                         /*restBeatsLegato*/false);
+        chk(off.dec==LEGATO, "rest-beats-legato OFF: committed slur + rest → Legato (slur wins)");
+        // OFF but NO committed slur reaching here (wasHeldOrTail=false): rest still wins (the
+        // toggle only suppresses the rest when a genuine slur reaches the note).
+        Out off2 = decide(true, true, 0.1f,0.8f, 0.9f,0.8f, true, /*wasHeldOrTail*/false, false, I16,
+                          /*restBeatsLegato*/false);
+        chk(off2.dec==REST, "rest-beats-legato OFF: no held predecessor → rest still wins");
     }
 
     printf(fails? "\n%d FAILED\n" : "\nALL PASS (leading-edge decision logic)\n", fails);
