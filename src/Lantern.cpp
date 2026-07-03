@@ -75,6 +75,10 @@ struct Lantern : Module {
         bool   heldIn   = false; // continues from previous bar
         bool   heldOut  = false; // continues past step 16
         bool   accented = false;
+        bool   leadsLegato = false;// this note INITIATES a legato lead: it committed slurForward
+                                 // (will hold its gate into the next note) AND is not itself a
+                                 // received Tie/Legato (the chain interior is already teal/violet).
+                                 // Drawn as an outline/edge marker over its normal fill colour.
         bool   isMidTail = false;// MidNote gate-tail (a longer note still ringing across this
                                  // step edge) — NOT a new event. The onset cell's true
                                  // fractional width already covers it, so the render skips
@@ -210,6 +214,12 @@ struct Lantern : Module {
         // (NewNote and MidNote both read as Single here — a MidNote is the tail of a
         //  note that already showed its type on the step it fired; drawing it as the
         //  same base colour keeps the bar continuous without claiming a new event.)
+
+        // Lead marker: this note INITIATES a legato — it committed slurForward (monoSlurForward)
+        // and is itself a fresh start (Single), NOT a received Tie/Legato/LegatoMax (those are
+        // chain interior, already teal/violet — the NEXT note being teal already shows the chain).
+        // Marks only the FIRST note of a chain that carries the lead intent.
+        c.leadsLegato = monoSlurForward && (c.type == lantern::NoteType::Single);
     }
 };
 
@@ -329,9 +339,20 @@ struct LanternDisplay : widget::Widget {
                 nvgFillColor(vg, col);
                 nvgFill(vg);
 
-                // GATE-START divider: a new note ONSET (not a Tie/MidNote continuation)
-                // gets a bright vertical tick at its left edge — so notes longer than one
-                // 1/16 step still show where each new gate begins (1/8 → tick every 2nd
+                // Legato-LEAD marker: a note that initiates a slur gets a distinct outline
+                // (amber, the same accent-family hue as the wraparound carets) drawn OVER its
+                // normal fill, so the lead intent is visible at the chain's start regardless of
+                // the note's base colour. Non-destructive: fill colour is unchanged.
+                if (c.leadsLegato) {
+                    nvgBeginPath(vg);
+                    nvgRoundedRect(vg, bx + 1.0f, yc - barH * 0.5f + 0.5f,
+                                   std::max(1.0f, bw - 2.0f), barH - 1.0f, 1.5f);
+                    nvgStrokeColor(vg, nvgRGB(0xe0, 0xa8, 0x1c));   // amber lead outline
+                    nvgStrokeWidth(vg, 1.4f);
+                    nvgStroke(vg);
+                }
+
+
                 // step, 1/32 → tick mid-step, etc). Without this, runs of long notes merge
                 // into one solid line. A Tie/Legato continuation gets NO tick (it's held).
                 const bool onset = !c.heldIn;
