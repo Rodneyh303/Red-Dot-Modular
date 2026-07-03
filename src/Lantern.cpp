@@ -157,15 +157,17 @@ struct Lantern : Module {
         // over the boundary.) MidNote is the tail of an already-shown note; also continues.
         c.heldIn      = (dec == MonoDecision::Tie || dec == MonoDecision::MidNote ||
                          dec == MonoDecision::Legato || dec == MonoDecision::LegatoMax);
-        // heldOut = this note's gate is still open PAST this whole step (carries into the next
-        // step / across the loop boundary). holdRemain>1 means more than one step of hold
-        // remains, so the note survives into the next step. (This catches LONG notes wrapping.
-        // A grid-aligned note wrapping purely via the gatePulseRemain sub-step timer — e.g. a
-        // cross-boundary legato where holdRemain<=1 — may NOT be caught here; if the lead-out
-        // caret is missing on such a wrap at the build, this predicate is why, and it should be
-        // widened to consult gatePulseRemain/the actual gate-open-at-next-step state. Kept
-        // conservative for now to avoid over-firing on every sounding note.)
-        c.heldOut     = gs.holdRemain > 1.0001f;
+        // heldOut = this note holds its gate high PAST the last step, by EITHER mechanism:
+        //   (1) a LONG note whose length extends past this step (holdRemain > 1), or
+        //   (2) a LEGATO LEAD that committed to hold its gate forward (gs.slurForward) — e.g.
+        //       the last note decided to slur into the next lap's step 0. This is knowable
+        //       right here at the note (slurForward is set at its onset), so no sub-step-timer
+        //       guessing is needed. Together with the step-0 held-in caret next lap, this shows
+        //       the wraparound: gate leaves the right edge, arrives at the left edge.
+        // (heldIn already only fires on a real connection — a rest at step 0 early-returns as
+        //  Inactive before heldIn is set, and Tie/Legato/LegatoMax/MidNote are all genuine
+        //  connections — so the two carets are symmetric and truthful.)
+        c.heldOut     = (gs.holdRemain > 1.0001f) || gs.slurForward;
         c.isMidTail   = (dec == MonoDecision::MidNote);   // gate tail, not a new event
 
         // Note-TYPE is single/tie/legato only (accent is a separate overlay so an
@@ -240,6 +242,20 @@ struct LanternDisplay : widget::Widget {
             for (int s = 0; s < N_STEPS; ++s) {
                 const auto& c = module->cells[v][s];
                 if (c.type == lantern::NoteType::Inactive) continue;
+                // Held-out caret is drawn BEFORE the MidNote-tail skip below, because a long
+                // slur-lead note often TAILS through the last step (its onset was earlier), and
+                // that tail is a MidNote which the skip would otherwise drop — losing the caret.
+                // (yc/barH are per-lane, available here.)
+                if (s == N_STEPS - 1 && c.heldOut) {
+                    const float rx = gridX + gridW;
+                    nvgBeginPath(vg);
+                    nvgMoveTo(vg, rx + 3.f, yc);
+                    nvgLineTo(vg, rx,        yc - barH * 0.4f);
+                    nvgLineTo(vg, rx,        yc + barH * 0.4f);
+                    nvgClosePath(vg);
+                    nvgFillColor(vg, nvgRGB(0xc8, 0x96, 0x0c));
+                    nvgFill(vg);
+                }
                 // Skip MidNote gate-tails: the onset (or tie-join) cell's true fractional
                 // width already draws through this step and stops where the gate closes,
                 // leaving the real sub-step gap (triplet/1/32). Drawing a bar here would
@@ -290,20 +306,8 @@ struct LanternDisplay : widget::Widget {
                     nvgFillColor(vg, nvgRGB(0xc8, 0x96, 0x0c));
                     nvgFill(vg);
                 }
-                // held-out caret: note continues past the last step into the next lap (right
-                // of step N-1). Symmetric partner of the held-in caret — together they show a
-                // wraparound: the slur leaves the right edge and arrives at the left edge next
-                // lap. Points OUT to the right.
-                if (s == N_STEPS - 1 && c.heldOut) {
-                    const float rx = gridX + gridW;
-                    nvgBeginPath(vg);
-                    nvgMoveTo(vg, rx + 3.f, yc);
-                    nvgLineTo(vg, rx,        yc - barH * 0.4f);
-                    nvgLineTo(vg, rx,        yc + barH * 0.4f);
-                    nvgClosePath(vg);
-                    nvgFillColor(vg, nvgRGB(0xc8, 0x96, 0x0c));
-                    nvgFill(vg);
-                }
+                // held-out caret: drawn earlier (before the MidNote-tail skip) so it shows
+                // even when the last step is a tail of a long slur-lead note.
             }
         }
 
