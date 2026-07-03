@@ -27,6 +27,7 @@ struct StepResult {
     bool stepped = false;   // true if a step edge actually fired this sample
     bool wrapped = false;   // true if the phrase boundary wrapped
     bool accented = false;  // true if this step is accented (NEW)
+    int  forStep = -1;      // the stepIndex this result was computed for (Lantern pairs decision→column)
 };
 
 // One additional voice beyond mono.  Owns its own GateState and rest

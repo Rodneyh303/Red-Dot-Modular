@@ -241,7 +241,7 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     if (gs.holdRemain >= 1.f || gs.gatePulseRemain > 0) {
         result.decision = MonoDecision::MidNote;
         result.accented = lastStepResult.accented;
-        lastStepResult = result;
+        result.forStep = stepIndex; lastStepResult = result;
         return result;
     }
 
@@ -386,7 +386,7 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
         ++legatoLE_startCount;
     }
 
-    lastStepResult = result;
+    result.forStep = stepIndex; lastStepResult = result;
     return result;
 }
 

@@ -113,19 +113,31 @@ struct Lantern : Module {
         const bool monoSlur = eng.gs.slurForward;   // the mono gate's forward-hold commitment;
                                                      // poly voices follow mono's gate, so inherit it
 
+        // Pair the decision with the column it was actually COMPUTED for. Lantern samples when
+        // eng.stepIndex changes, but stepIndex is advanced (by advancePlayhead) BEFORE the
+        // engine computes that step's decision into lastStepResult — so at the sample instant
+        // stepIndex can already point at the new step while lastStepResult still holds the
+        // PREVIOUS step's decision. Writing dec into cells[stepIndex] then paints the wrong
+        // column (the previous step's decision lands in the new step's cell → e.g. a real note's
+        // cell renders empty/rest). This is direction-sensitive and is the reverse isolated-teal.
+        // Fix: write into the decision's OWN step (lastStepResult.forStep), so a decision always
+        // lands in its own column regardless of sampling phase.
+        int writeStep = (eng.lastStepResult.forStep >= 0 && eng.lastStepResult.forStep < 16)
+                        ? eng.lastStepResult.forStep : step;
+
         // Row 0 = mono / V1.
-        recordCell(0, step, eng.gs, dec, accentedMono, lenSteps, monoSlur);
+        recordCell(0, writeStep, eng.gs, dec, accentedMono, lenSteps, monoSlur);
 
         // Rows 1..numPolyVoices = poly voices 2.. . A poly voice follows mono's
         // gate TYPE (retrigger/tie/legato) but can independently REST (then it's
         // inactive this gate) and draws its OWN accent.
         for (int v = 0; v < eng.numPolyVoices && v < 15; ++v) {
             const PolyVoice& pv = eng.voices[v];
-            recordCell(v + 1, step, pv.gs, dec, pv.accented, lenSteps, monoSlur);
+            recordCell(v + 1, writeStep, pv.gs, dec, pv.accented, lenSteps, monoSlur);
         }
         // Voices beyond numPolyVoices → mark inactive.
         for (int v = eng.numPolyVoices; v < 15; ++v)
-            cells[v + 1][step].type = lantern::NoteType::Inactive;
+            cells[v + 1][writeStep].type = lantern::NoteType::Inactive;
     }
 
     // Map an observed voice state at a step into a display Cell. NoteType priority:
