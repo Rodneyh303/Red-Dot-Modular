@@ -180,3 +180,39 @@ Layout sketch (portrait, top→bottom): pediment + wordmark / cornice / upper fa
 shutter-windows (scale display, 2 storeys × 6) / cornice / five-foot-way colonnade = 4 scale-
 list arched units (active lit, queued outlined) / street level = CV IN jack + Conservation
 toggle + list-position dots / screws at corners. Dark + light themes, Singapore-red accents.
+
+---
+
+## Non-destructive scale IS the display/store/engine (MVC) separation — same as spread/lock-mode
+
+The destructive updateScaleMask is the SAME anti-pattern as the old spread bug: it collapses
+STORE into a display/enforcement view. `setValue(0)` + `min=max=0` on an out-of-scale fader
+clobbers the PARAM (the store — the user's weight, JSON-persisted) to represent an ENFORCEMENT
+state. Identical mistake to forcing the spread trimpot; identical bug (toggle Conservation off or
+change scale → user's fader values gone, just as spread didn't revert on reclaim).
+
+Three-layer mapping (see DISPLAY_STORE_ENGINE_SEPARATION.md):
+- STORE   = the 12 semitone fader params (SEMI0..11). User's weights. Persisted. NEVER written
+            by enforcement.
+- DISPLAY = fader render + DIM. Out-of-scale faders show dimmed (and may show 0-effect) while
+            the stored value underneath is untouched. Derived from activeScaleMask.
+- ENGINE  = getSemitoneWeight reads the store, gates to 0 via the mask when Conservation on.
+            Read-time, non-destructive. ALREADY CORRECT.
+
+The scale mask is the same kind of external gate as Macro ownership: it changes what's DISPLAYED
+and what the ENGINE plays, without touching the STORE. So the fader wants the SAME treatment the
+spread knob got (DimmableTrimpot's dimWhen/displayValueFn): dim on out-of-scale, leave the store
+alone, optionally display the gated (0-effect) value while preserving the underlying weight.
+
+Convergence worth noting: Monsoon context-menu "lock mode", Shophouse "Conservation", and the
+spread cede/reclaim fix are ALL the same display/store/engine separation — the doc already
+predicted lock mode would want this infrastructure. Build the fader-view layer mirroring
+DimmableTrimpot rather than inventing a parallel mechanism.
+
+Scope of THIS branch (feature/nondestructive-scale):
+1. DATA/ALGORITHM (testable now): updateScaleMask stops writing the store — computes mask only;
+   remove setValue(0)/min=max=0/redistributeWeights from the enforce path. Keep getSemitoneWeight
+   read-time gate exactly. Keep the Conservation (lock) CHOICE.
+2. VIEW/MVC (write, but needs in-Rack build to confirm render): semitone fader gains
+   DimmableTrimpot-style dim-on-out-of-scale, reading the mask as a DISPLAY input, never writing
+   the store. Flagged like the spread knob's displayValueFn.
