@@ -47,3 +47,27 @@ same data. Hence "Lanterns" (plural views, one module).
 - Exact Monsoon param id/accessor for octaveLo/Hi (confirm in Monsoon.hpp param enum).
 - Left pitch-axis labels: every semitone, or just C's / octave boundaries (cleaner).
 - by-voice hue palette (needs N_VOICES distinct, legible-on-dark hues).
+
+---
+
+## REVISION (build session): scrollable viewport, NOT a range-tied axis
+
+Decision: do NOT restrict the engine octave range now (that's a behaviour change for existing
+patches — review later, possibly cage to meloDICER's 5 octaves). Instead DECOUPLE the display from
+the engine range with a SCROLLABLE VIEWPORT:
+- Model pitch range stays full: octaves 0..8 (genPitchLive: v = oct-4 + (sem+transpose)/12,
+  clamped ±5V) → up to 108 semitone rows.
+- The roll shows a FIXED-HEIGHT VIEWPORT of ~5 octaves (60 rows) — matches meloDICER's 5-octave
+  span for a musical, readable density — as a WINDOW onto the full range.
+- A vertical SCROLL offset moves the window up/down (scrollbar / drag / knob — pick at build).
+- Manual scroll is the stable default; an optional AUTO-FOLLOW (centre active notes) can come later.
+- Benefits: no engine change, no clamping/off-range edge cases, no wasted empty rows, notes anywhere
+  in the range are reachable. Viewport is a pure display concern.
+
+meloDICER range reference (confirmed via manual): overall output range up to FIVE octaves, 0–5 V,
+1V/oct, with independent LO/HI range faders caging the randomness. Our engine currently allows 0–8
+(wider); the eventual optional restriction would cage to 5 octaves to match.
+
+Build order: (1) roll draw with a fixed viewport + a scroll offset (default centred on the default
+window oct 2–5); (2) colour-mode toggle (voice/role); (3) per-voice visibility; (4) tab/view switch
+Grid<->Roll; (5) later: engine-range review, auto-follow.
