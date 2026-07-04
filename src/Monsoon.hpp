@@ -1130,6 +1130,7 @@ extern Model* modelMonsoonCausewayExpander;
 extern Model* modelMonsoonSurgeExpander;
 //extern Model* modelMonsoonSandsExpander;
 extern Model* modelMonsoonStraitsExpander; // base poly expander
+extern Model* modelMonsoonCausewayPolyExpander; // poly CV modulation expander
 extern Model* modelLantern;                    // Lantern note-output visualiser
 // West retired (Straits redesign)
 //extern Model* modelMonsoonStraitsSands;        // NEW (Macro): global DNA controls (compact)

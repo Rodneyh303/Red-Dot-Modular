@@ -9,6 +9,7 @@ struct MonsoonInterchangeExpander;
 struct MonsoonSandsExpander;
 struct MonsoonSandsVisualExpander;       // Mono visual DNA editor
 struct MonsoonStraitsExpander;
+struct MonsoonCausewayPolyExpander;
 struct MonsoonStraitsSands;
 struct MonsoonDeepStraitsSandsEast;
 struct MonsoonDeepStraitsSandsWest;
@@ -24,6 +25,7 @@ extern rack::Model* modelMonsoonSurgeExpander;
 extern rack::Model* modelMonsoonSandsExpander;
 extern rack::Model* modelMonsoonSandsVisualExpander;
 extern rack::Model* modelMonsoonStraitsExpander;
+extern rack::Model* modelMonsoonCausewayPolyExpander;
 extern rack::Model* modelMonsoonStraitsSands;
 extern rack::Model* modelMonsoonDeepStraitsSandsEast;
 extern rack::Model* modelMonsoonDeepStraitsSandsWest;
@@ -42,6 +44,7 @@ struct MonsoonExpanderManager {
     //MonsoonSandsExpander*        cachedDnaExpander                = nullptr;
     MonsoonSandsVisualExpander*  cachedSandsVisualExpander        = nullptr;
     MonsoonStraitsExpander*      cachedPolyVoiceExpander          = nullptr;
+    MonsoonCausewayPolyExpander* cachedCausewayPolyExpander       = nullptr;
     MonsoonStraitsSands*         cachedStraitsSandsExpander       = nullptr;
     //MonsoonDeepStraitsSandsEast* cachedDeepStraitsSandsEastExpander = nullptr;
     //MonsoonDeepStraitsSandsWest* cachedDeepStraitsSandsWestExpander = nullptr;
@@ -68,6 +71,7 @@ struct MonsoonExpanderManager {
         //cachedDnaExpander                = nullptr;
         cachedSandsVisualExpander        = nullptr;
         cachedPolyVoiceExpander          = nullptr;
+        cachedCausewayPolyExpander       = nullptr;
         cachedStraitsSandsExpander       = nullptr;
        // cachedDeepStraitsSandsEastExpander = nullptr;
         //cachedDeepStraitsSandsWestExpander = nullptr;
@@ -112,6 +116,8 @@ struct MonsoonExpanderManager {
                 } else if (curr->model == modelMonsoonStraitsExpander) {
                     if (!cachedPolyVoiceExpander) cachedPolyVoiceExpander = reinterpret_cast<MonsoonStraitsExpander*>(curr);
                     polyExpanderCount++;
+                } else if (curr->model == modelMonsoonCausewayPolyExpander) {
+                    if (!cachedCausewayPolyExpander) cachedCausewayPolyExpander = reinterpret_cast<MonsoonCausewayPolyExpander*>(curr);
                 // } else if (curr->model == modelMonsoonStraitsSands) {
                 //     if (!cachedStraitsSandsExpander) cachedStraitsSandsExpander = reinterpret_cast<MonsoonStraitsSands*>(curr);
                 //     straitsSandsExpanderCount++;

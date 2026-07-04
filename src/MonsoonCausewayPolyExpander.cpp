@@ -1,0 +1,68 @@
+#include <rack.hpp>
+#include "Monsoon.hpp"
+#include "MonsoonCausewayPolyExpander.hpp"
+#include "ui/VisualExpanderHelpers.hpp"
+#include "ui/SvgPanelKit.hpp"
+#include "ui/ConnectMark.hpp"
+
+using namespace rack;
+using namespace MonsoonIds;
+
+// Causeway — poly CV modulation expander widget. Two 16ch poly CV input jacks
+// (rest, accent) + two attenuverters. Simplified from the old East/West per-voice
+// mod jacks: a poly cable addresses voices per-channel.
+struct MonsoonCausewayPolyExpanderWidget : ModuleWidget,
+    dotModular::Compose<MonsoonCausewayPolyExpanderWidget,
+                        dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
+    std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
+    redDot::ConnectMark* connectMark = nullptr;
+    int lastThemeLight = -1;
+
+    MonsoonCausewayPolyExpanderWidget(MonsoonCausewayPolyExpander* mod) {
+        setModule(mod);
+        const char* darkPath  = "res/panels/CausewayPoly_panel_dark.svg";
+        const char* lightPath = "res/panels/CausewayPoly_panel_light.svg";
+        panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance, darkPath));
+        panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance, lightPath));
+        loadPanel(asset::plugin(pluginInstance, darkPath));
+
+        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
+        addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
+        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+        addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+
+        bindInput<PJ301MPort>("input_restcv",   MonsoonIds::POLY_REST_CV_INPUT);
+        bindParam<Trimpot>   ("param_restatt",  MonsoonIds::POLY_REST_MOD_ATT_1);
+        bindInput<PJ301MPort>("input_accentcv", MonsoonIds::POLY_ACCENT_CV_INPUT);
+        bindParam<Trimpot>   ("param_accentatt",MonsoonIds::POLY_ACCENT_MOD_ATT_1);
+
+        if (auto* s = findNamed("light_connect")) {
+            connectMark = redDot::makeConnectMark(module, centerOf(s), mm2px(8.f));
+            addChild(connectMark);
+        }
+    }
+
+    void step() override {
+        ModuleWidget::step();
+        kitStep();
+        if (!module) return;
+        Monsoon* m = redDot::findMonsoonEitherSide(module);
+        int wantLight = (m && m->lightTheme) ? 1 : 0;
+        if (wantLight != lastThemeLight) {
+            lastThemeLight = wantLight;
+            for (Widget* child : children) {
+                if (auto* sp = dynamic_cast<app::SvgPanel*>(child)) {
+                    sp->setBackground(wantLight ? panelSvgLight : panelSvgDark);
+                    break;
+                }
+            }
+        }
+    }
+};
+
+// NOTE: slug is temporarily "CausewayPoly" to avoid colliding with the OLD dice-gen
+// "Causeway" module that still exists on master (it is renamed to "Raffles" on a
+// separate branch). Once the Raffles rename merges to master, this slug becomes
+// "Causeway" per MODULE_NAMING_AND_ROADMAP.md.
+Model* modelMonsoonCausewayPolyExpander =
+    createModel<MonsoonCausewayPolyExpander, MonsoonCausewayPolyExpanderWidget>("CausewayPoly");

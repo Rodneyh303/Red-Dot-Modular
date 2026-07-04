@@ -57,6 +57,16 @@
       ]
     },
     {
+      "slug": "CausewayPoly",
+      "name": "Causeway",
+      "description": "Poly CV modulation — 16ch REST + ACCENT modulation CV in (ch1=mono) with attenuverters",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Random"
+      ]
+    },
+    {
       "slug": "MonsoonSandsVisualExpander",
       "name": "Sands Visual",
       "description": "Monsoon Probability Visualisation, Manipulation, and Modulation Expander",
