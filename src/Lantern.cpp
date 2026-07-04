@@ -235,6 +235,48 @@ struct LanternDisplay : widget::Widget {
     static constexpr float GUTTER_FRAC = 16.f / (208.28f - 12.f);  // ~16mm / DISP_W
     static constexpr float DOTS_FRAC   = 10.f / (208.28f - 12.f);  // ~10mm / DISP_W
 
+    // Text (note-name + row-number labels) MUST be drawn in draw(), NOT drawLayer(1): nvgText
+    // glyphs do not composite on Rack's self-illuminating light layer (the bars, being nvgFill
+    // rects, do — which is why bars showed but labels never did). Same trap TabButton documents:
+    // text renders on the base draw pass, not the glow layer.
+    void draw(const DrawArgs& args) override {
+        Widget::draw(args);
+        if (!module) return;
+        NVGcontext* vg = args.vg;
+        const float W = box.size.x, H = box.size.y;
+        const float laneH = H / N_VOICES;
+        const float gutter = W * GUTTER_FRAC;
+
+        auto font = APP->window->loadFont(rack::asset::system("res/fonts/DejaVuSans-Bold.ttf"));
+        if (!font) font = APP->window->uiFont;
+        if (!font) return;
+
+        for (int v = 0; v < N_VOICES; ++v) {
+            const float yc = v * laneH + laneH * 0.5f;
+
+            // Most-recent sounding pitch for this voice → the lane's note-name label.
+            bool anyActive = false; float labelPitch = 0.f;
+            for (int s = N_STEPS - 1; s >= 0; --s) {
+                if (module->cells[v][s].type != lantern::NoteType::Inactive) {
+                    labelPitch = module->cells[v][s].pitchV; anyActive = true; break;
+                }
+            }
+            // Only label lanes that carry notes (keeps the 16-lane grid from showing 16 dashes).
+            if (!anyActive) continue;
+
+            nvgFontFaceId(vg, font->handle);
+            nvgFontSize(vg, std::min(11.f, laneH * 0.62f));
+            nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+
+            nvgFillColor(vg, nvgRGB(0x8a, 0x8f, 0x98));
+            std::string num = std::to_string(v + 1);
+            nvgText(vg, 2.f, yc, num.c_str(), nullptr);
+
+            nvgFillColor(vg, nvgRGB(0xd8, 0xd8, 0xdc));
+            nvgText(vg, gutter * 0.42f, yc, lantern::noteName(labelPitch).c_str(), nullptr);
+        }
+    }
+
     void drawLayer(const DrawArgs& args, int layer) override {
         if (layer != 1) { Widget::drawLayer(args, layer); return; }
         if (!module) return;
@@ -247,37 +289,13 @@ struct LanternDisplay : widget::Widget {
         const float gridW  = W - gutter - dots;
         const float stepW  = gridW / N_STEPS;
 
-        auto font = APP->window->loadFont(rack::asset::system("res/fonts/DejaVuSans-Bold.ttf"));
-
         for (int v = 0; v < N_VOICES; ++v) {
             const float y0 = v * laneH;
             const float yc = y0 + laneH * 0.5f;
             const float barH = laneH * 0.62f;
 
-            // Label pitch = most recent sounding cell's pitch for this voice.
-            bool anyActive = false; float labelPitch = 0.f;
-            for (int s = N_STEPS - 1; s >= 0; --s) {
-                if (module->cells[v][s].type != lantern::NoteType::Inactive) {
-                    labelPitch = module->cells[v][s].pitchV; anyActive = true; break;
-                }
-            }
-
-            // gutter label: "N  A3" (row number = voice number)
-            if (font) {
-                nvgFontFaceId(vg, font->handle);
-                nvgFontSize(vg, std::min(11.f, laneH * 0.7f));
-                nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-                nvgFillColor(vg, nvgRGB(0x8a, 0x8f, 0x98));
-                std::string num = std::to_string(v + 1);
-                nvgText(vg, 2.f, yc, num.c_str(), nullptr);
-                if (anyActive) {
-                    nvgFillColor(vg, nvgRGB(0xd8, 0xd8, 0xdc));
-                    nvgText(vg, gutter * 0.42f, yc, lantern::noteName(labelPitch).c_str(), nullptr);
-                } else {
-                    nvgFillColor(vg, nvgRGB(0x4a, 0x50, 0x58));
-                    nvgText(vg, gutter * 0.42f, yc, "-", nullptr);
-                }
-            }
+            // (Note-name / row labels are drawn in draw(), not here — nvgText doesn't
+            //  composite on the light layer. See draw() above.)
 
             // per-step bars
             for (int s = 0; s < N_STEPS; ++s) {
