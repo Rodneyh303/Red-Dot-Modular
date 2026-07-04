@@ -20,8 +20,10 @@
 
 //#include "MonsoonSandsExpander.hpp"
 #include "MonsoonInterchangeExpander.hpp"
-#include "MonsoonStraitsEastExpander.hpp"
-#include "MonsoonStraitWestExpander.hpp"      // NEW (Phase 4)
+#include "MonsoonStraitsExpander.hpp"
+#include "MonsoonCausewayPolyExpander.hpp"
+#include "MonsoonChangiExpander.hpp"
+// West retired (Straits redesign): #include "MonsoonStraitWestExpander.hpp"
 //#include "MonsoonStraitsSands.hpp"            // NEW (Macro): global DNA controls
 //#include "MonsoonDeepStraitsSands.hpp"        // NEW (Deep): per-voice DNA controls
 #include "StraitsEastSandsVisual.hpp"         // Visual DNA editor (East)
@@ -806,43 +808,33 @@ void Monsoon::process(const ProcessArgs& args) {
         cachedRunBtn = params[RUN_GATE_PARAM].getValue();
         cachedResetBtn = params[RESET_BUTTON_PARAM].getValue();
 
-        // ── Throttled Poly Rest Logic ──
+        // ── Throttled Poly Rest / Accent Logic ──
+        // Per-voice modulation now comes from the CAUSEWAY poly-CV expander: two 16-channel poly
+        // CV inputs (rest, accent), each scaled by one attenuverter, added on top of the base
+        // knobs (on Straits, via getPolyRest/getPolyAccent). Channel i+1 = poly voice i+2
+        // (ch0 = mono, not a poly voice here). Replaces the old East(2-8)/West(9-16) split with
+        // 15 individual mod jacks + 15 attenuverters per lane.
+        MonsoonCausewayPolyExpander* cway = expanderManager.cachedCausewayPolyExpander;
         for (int i = 0; i < 15; ++i) {
             float base = paramManager->getPolyRest(i);
             cachedPolyRest[i] = base;
-            
-            float modulation = 0.f;
-            if (i < 7) { // East voices
-                if (inputs[POLY_REST_MOD_CV_INPUT_1 + i].isConnected()) {
-                    modulation = inputs[POLY_REST_MOD_CV_INPUT_1 + i].getVoltage() * 
-                                 params[POLY_REST_MOD_ATT_1 + i].getValue() * 0.1f;
-                }
-            } else { // West voices
-                int wi = i - 7;
-                if (inputs[POLY_REST_MOD_CV_INPUT_8 + wi].isConnected()) {
-                    modulation = inputs[POLY_REST_MOD_CV_INPUT_8 + wi].getVoltage() * 
-                                 params[POLY_REST_MOD_ATT_8 + wi].getValue() * 0.1f;
-                }
+
+            float modulation = 0.f, accMod = 0.f;
+            if (cway) {
+                const int ch = i + 1;   // poly voice i (voice 2..16) → poly-cable channel 1..15
+                auto& restIn = cway->inputs[POLY_REST_CV_INPUT];
+                auto& accIn  = cway->inputs[POLY_ACCENT_CV_INPUT];
+                if (restIn.isConnected() && ch < restIn.getChannels())
+                    modulation = restIn.getVoltage(ch) * cway->params[POLY_REST_MOD_ATT_1].getValue() * 0.1f;
+                if (accIn.isConnected() && ch < accIn.getChannels())
+                    accMod = accIn.getVoltage(ch) * cway->params[POLY_ACCENT_MOD_ATT_1].getValue() * 0.1f;
             }
-            // ParameterManager::getPolyRest includes the global Rest knob + global CV.
-            // Here we add the per-voice modulation on top.
+
             float eff = clamp(base + modulation, 0.f, 1.f);
             engine.voices[i].restProb = eff;
-            cachedPolyRestEffective[i] = eff;   // final value (knob+global+per-voice mod) for modviz
-            // Accent as a poly lane: base (POLY_ACCENT_PARAM + shared CV) from getPolyAccent,
-            // plus per-voice accent CV × attenuverter on top — exactly parallel to rest.
+            cachedPolyRestEffective[i] = eff;   // final (knob+global+per-voice mod) for modviz
+
             float accBase = paramManager->getPolyAccent(i);
-            float accMod = 0.f;
-            if (i < 7) {
-                if (inputs[POLY_ACCENT_MOD_CV_INPUT_1 + i].isConnected())
-                    accMod = inputs[POLY_ACCENT_MOD_CV_INPUT_1 + i].getVoltage() *
-                             params[POLY_ACCENT_MOD_ATT_1 + i].getValue() * 0.1f;
-            } else {
-                int wi = i - 7;
-                if (inputs[POLY_ACCENT_MOD_CV_INPUT_8 + wi].isConnected())
-                    accMod = inputs[POLY_ACCENT_MOD_CV_INPUT_8 + wi].getVoltage() *
-                             params[POLY_ACCENT_MOD_ATT_8 + wi].getValue() * 0.1f;
-            }
             engine.voices[i].accentProb = clamp(accBase + accMod, 0.f, 1.f);
         }
 
@@ -859,15 +851,8 @@ void Monsoon::process(const ProcessArgs& args) {
             paramManager->setCv1HiOffset(0.f);
         }
 
-        // Zero unused voice outputs so they don't emit stale voltages (Transferred from audio rate)
-        if (expanderManager.cachedPolyVoiceExpander) {
-            using namespace PolyVoiceExpanderIds;
-            for (int i = std::max(0, engine.numPolyVoices); i < 7; ++i) {
-                expanderManager.cachedPolyVoiceExpander->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
-                expanderManager.cachedPolyVoiceExpander->outputs[POLY_CV_OUT_1 + i].setVoltage(0.f);
-                expanderManager.cachedPolyVoiceExpander->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
-            }
-        }
+        // (Unused poly voices are zeroed by the OutputGenerator, which writes all 16
+        //  poly-cable channels each frame — gate-low/0V beyond numPolyVoices.)
 
         engine.updateWindow(
             params[PATTERN_LENGTH_PARAM].getValue(), inputs[LENGTH_INPUT].getVoltage(), inputs[LENGTH_INPUT].isConnected(),
@@ -926,9 +911,11 @@ void init(rack::Plugin* p) {
 	p->addModel(modelMonsoonRafflesExpander);
 	p->addModel(modelMonsoonJunctionExpander);
 	//p->addModel(modelMonsoonSandsExpander);
-	p->addModel(modelMonsoonStraitsEastExpander);
+	p->addModel(modelMonsoonStraitsExpander);
+	p->addModel(modelMonsoonCausewayPolyExpander);
+	p->addModel(modelMonsoonChangiExpander);
 	p->addModel(modelLantern);                       // Lantern note-output visualiser
-	p->addModel(modelMonsoonStraitWestExpander);    // NEW (Phase 4)
+	// West retired (Straits redesign): p->addModel(modelMonsoonStraitWestExpander);
 	//p->addModel(modelMonsoonStraitsSands);          // Macro: global DNA
 	//p->addModel(modelMonsoonDeepStraitsSandsEast);  // Deep: voices 2-8
 	//p->addModel(modelMonsoonDeepStraitsSandsWest);  // Deep: voices 9-16

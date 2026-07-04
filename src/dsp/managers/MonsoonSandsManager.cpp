@@ -7,7 +7,7 @@
 #include "../../StraitsSandsMacroVisual.hpp"
 #include "MonsoonExpanderManager.hpp"
 #include "../SandsTopology.hpp"   // step 3b: readStrand owner migration
-#include "../../MonsoonStraitsEastExpander.hpp"
+#include "../../MonsoonStraitsExpander.hpp"
 #include "../../StraitsEastSandsVisual.hpp"
 #include <cassert>
 
