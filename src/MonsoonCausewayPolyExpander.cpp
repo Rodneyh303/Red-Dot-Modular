@@ -20,8 +20,8 @@ struct MonsoonCausewayPolyExpanderWidget : ModuleWidget,
 
     MonsoonCausewayPolyExpanderWidget(MonsoonCausewayPolyExpander* mod) {
         setModule(mod);
-        const char* darkPath  = "res/panels/CausewayPoly_panel_dark.svg";
-        const char* lightPath = "res/panels/CausewayPoly_panel_light.svg";
+        const char* darkPath  = "res/panels/Causeway_panel_dark.svg";
+        const char* lightPath = "res/panels/Causeway_panel_light.svg";
         panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance, darkPath));
         panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance, lightPath));
         loadPanel(asset::plugin(pluginInstance, darkPath));
@@ -60,9 +60,7 @@ struct MonsoonCausewayPolyExpanderWidget : ModuleWidget,
     }
 };
 
-// NOTE: slug is temporarily "CausewayPoly" to avoid colliding with the OLD dice-gen
-// "Causeway" module that still exists on master (it is renamed to "Raffles" on a
-// separate branch). Once the Raffles rename merges to master, this slug becomes
-// "Causeway" per MODULE_NAMING_AND_ROADMAP.md.
+// Slug "Causeway" — the revived name (the old dice-gen Causeway was renamed to Raffles;
+// this poly-CV module takes the freed name per MODULE_NAMING_AND_ROADMAP.md).
 Model* modelMonsoonCausewayPolyExpander =
-    createModel<MonsoonCausewayPolyExpander, MonsoonCausewayPolyExpanderWidget>("CausewayPoly");
+    createModel<MonsoonCausewayPolyExpander, MonsoonCausewayPolyExpanderWidget>("Causeway");

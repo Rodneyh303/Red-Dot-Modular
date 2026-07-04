@@ -60,6 +60,6 @@ def gen(dark):
 if __name__ == "__main__":
     for dark in (True, False):
         theme = "dark" if dark else "light"
-        out = f"res/panels/CausewayPoly_panel_{theme}.svg"
+        out = f"res/panels/Causeway_panel_{theme}.svg"
         open(out, "w").write(gen(dark))
-        print(f"CausewayPoly {theme}: {out}  ({HP}HP, {PW}x{PH}px)")
+        print(f"Causeway {theme}: {out}  ({HP}HP, {PW}x{PH}px)")
