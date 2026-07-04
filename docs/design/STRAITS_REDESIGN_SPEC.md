@@ -30,15 +30,18 @@ accent probability) — plus the poly output cables. West retires.
    just READS it. No new count param/menu on the expander. Poly cables are 16ch wide; voices beyond
    the count output gate-low / 0V.
 
-## Resulting module shape
-- **Straits East (base poly):**
-  - 4x8 knob grid: 16 REST + 16 ACCENT level knobs (voice 1 = mono included).
-  - Poly OUT cables (16ch): gate, accent-gate, CV. ch1 = mono duplicate, ch2..16 = poly.
-  - Reads engine.numPolyVoices from parent (context-menu-set on Monsoon).
-- **CV expander (separate, new):** per-voice REST/ACCENT modulation — 16ch poly CV in + attenuation.
-  (The att+CV-in that used to sit on East.)
-- **West:** retired.
-- **Mono:** unchanged, on parent Monsoon.
+## Resulting module shape (transit family — per MODULE_NAMING_AND_ROADMAP.md)
+Three modules on the poly path:
+- **Straits** (base): 4x8 knob grid = 16 REST + 16 ACCENT level knobs (voice 1 = mono included);
+  poly OUT cables (16ch): gate, accent-gate, CV — ch1 = mono duplicate, ch2..16 = poly. Reads
+  engine.numPolyVoices from parent. "The channel the voices run through."
+- **Causeway** (poly CV): modulates poly REST + ACCENT — per-voice via 16ch poly CV in (ch1=mono,
+  matches outs) + attenuation. The mod att+CV-in that used to sit on East. Revived name, new role.
+  "The link across = modulation across the voices."
+- **Changi** (output): per-voice MONO outs — breaks the poly cable out into INDIVIDUAL jacks.
+  "Departures = per-voice outs." (This is the per-channel output expander, distinct from Straits'
+  poly-cable outs.)
+- **West:** retired. **Mono:** unchanged, on parent Monsoon.
 
 ## Build blast radius
 - New East module (panel 4x8 grid + 3 poly out jacks). Params map to existing POLY_REST_PARAM_*/
