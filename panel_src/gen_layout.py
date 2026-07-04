@@ -4,7 +4,7 @@
 Reads a module layout JSON (panel_src/layouts/<module>.json) — the single source
 of truth — and emits BOTH:
   1. res/panels/<Module>_panel_{dark,light}.svg   (for render + Inkscape review)
-     Control wells carry SvgHelper-compatible ids (e.g. id="input_CAUSEWAY_..."),
+     Control wells carry SvgHelper-compatible ids (e.g. id="input_RAFFLES_..."),
      so a future runtime live-reload binding is a drop-in.
   2. src/gen/<CppStruct>.gen.hpp                   (constexpr mm coords by enum id)
      The widget includes this and wraps each coord with mm2px() at the call site;
@@ -13,7 +13,7 @@ of truth — and emits BOTH:
 Screws are NOT emitted here — they are drawn in C++ (ui/RedScrew.hpp), the project
 standard. Run from the repo root so res/logo/ paths resolve.
 
-Usage:  python3 panel_src/gen_layout.py panel_src/layouts/causeway.json
+Usage:  python3 panel_src/gen_layout.py panel_src/layouts/raffles.json
         python3 panel_src/gen_layout.py --all
 """
 import sys, os, json, glob, re

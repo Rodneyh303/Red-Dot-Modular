@@ -20,7 +20,7 @@ struct StraitsSandsMacroVisual;
 
 extern rack::Model* modelMonsoon;
 extern rack::Model* modelMonsoonInterchangeExpander;
-extern rack::Model* modelMonsoonCausewayExpander;
+extern rack::Model* modelMonsoonRafflesExpander;
 extern rack::Model* modelMonsoonSurgeExpander;
 extern rack::Model* modelMonsoonSandsExpander;
 extern rack::Model* modelMonsoonSandsVisualExpander;
@@ -39,7 +39,7 @@ extern rack::Model* modelStraitsSandsMacroVisual;
  */
 struct MonsoonExpanderManager {
     MonsoonInterchangeExpander*  cachedScaleExpander              = nullptr;
-    rack::Module*                cachedCausewayExpander           = nullptr;
+    rack::Module*                cachedRafflesExpander           = nullptr;
     rack::Module*                cachedSurgeExpander              = nullptr;
     //MonsoonSandsExpander*        cachedDnaExpander                = nullptr;
     MonsoonSandsVisualExpander*  cachedSandsVisualExpander        = nullptr;
@@ -67,7 +67,7 @@ struct MonsoonExpanderManager {
 
     void update(rack::Module* module) {
         cachedScaleExpander              = nullptr;
-        cachedCausewayExpander           = nullptr;
+        cachedRafflesExpander           = nullptr;
         cachedSurgeExpander              = nullptr;
         //cachedDnaExpander                = nullptr;
         cachedSandsVisualExpander        = nullptr;
@@ -105,8 +105,8 @@ struct MonsoonExpanderManager {
                 if (curr->model == modelMonsoonInterchangeExpander) {
                     if (!cachedScaleExpander) cachedScaleExpander = reinterpret_cast<MonsoonInterchangeExpander*>(curr);
                     scaleExpanderCount++;
-                } else if (curr->model == modelMonsoonCausewayExpander) {
-                    if (!cachedCausewayExpander) cachedCausewayExpander = curr;
+                } else if (curr->model == modelMonsoonRafflesExpander) {
+                    if (!cachedRafflesExpander) cachedRafflesExpander = curr;
                 } else if (curr->model == modelMonsoonSurgeExpander) {
                     if (!cachedSurgeExpander) cachedSurgeExpander = curr;
                 // } else if (curr->model == modelMonsoonSandsExpander) {
@@ -158,7 +158,7 @@ struct MonsoonExpanderManager {
 
     // True once one pointer of every expander type has been cached.
     bool allTypesFound() const {
-        return cachedScaleExpander && cachedCausewayExpander && cachedSurgeExpander
+        return cachedScaleExpander && cachedRafflesExpander && cachedSurgeExpander
             && cachedSandsVisualExpander && cachedPolyVoiceExpander
             && cachedStraitWestExpander && cachedStraitsSandsExpander
             && cachedEastSandsVisual && cachedWestSandsVisual && cachedMacroSandsVisual;

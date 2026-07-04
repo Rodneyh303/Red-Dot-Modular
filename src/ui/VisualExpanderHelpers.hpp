@@ -50,7 +50,7 @@ inline bool isClaimedExpander(rack::Module* self, Monsoon* mon) {
     const auto& em = mon->expanderManager;
     const void* s = static_cast<const void*>(self);
     return s == (const void*)em.cachedScaleExpander
-        || s == (const void*)em.cachedCausewayExpander
+        || s == (const void*)em.cachedRafflesExpander
         || s == (const void*)em.cachedSurgeExpander
         || s == (const void*)em.cachedSandsVisualExpander
         || s == (const void*)em.cachedPolyVoiceExpander
