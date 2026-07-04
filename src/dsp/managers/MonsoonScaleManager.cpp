@@ -37,40 +37,24 @@ void ScaleManager::updateScaleMask() {
 
     activeScaleMask = calculateMask(scaleRoot, lastSelectedScale);
 
-    if (lockScaleNotes) {
-        float weights[12];
-        for (int i = 0; i < 12; i++) {
-            weights[i] = module->params[SEMI0_PARAM + i].getValue();
-        }
-
-        redistributeWeights(activeScaleMask, weights);
-
-        // Apply the redistributed values and lock the faders in the UI
-        for (int i = 0; i < 12; i++) {
-            bool inScale = (activeScaleMask & (1 << i));
-            ParamQuantity* pq = module->getParamQuantity(SEMI0_PARAM + i);
-            if (pq) {
-                if (!inScale) {
-                    module->params[SEMI0_PARAM + i].setValue(0.f);
-                    pq->minValue = 0.f;
-                    pq->maxValue = 0.f;
-                } else {
-                    module->params[SEMI0_PARAM + i].setValue(weights[i]);
-                    pq->minValue = 0.f;
-                    pq->maxValue = 1.f;
-                }
-            }
-        }
-    } else {
-        // Unlock logic: allow faders to move freely within 0..1 range
-        for (int i = 0; i < 12; i++) {
-            ParamQuantity* pq = module->getParamQuantity(SEMI0_PARAM + i);
-            if (pq) {
-                pq->minValue = 0.f;
-                pq->maxValue = 1.f;
-            }
+    // NON-DESTRUCTIVE enforcement (see SHOPHOUSE_SPEC.md / DISPLAY_STORE_ENGINE_SEPARATION.md):
+    // Scale enforcement is done ENTIRELY at READ time in getSemitoneWeight (out-of-scale
+    // semitones read as zero probability when locked). We therefore do NOT touch the fader
+    // VALUES or ranges here — no setValue(0), no min=max=0 pinning, no redistributeWeights.
+    // Faders keep the user's values (the STORE); the mask gates the READ (the ENFORCEMENT);
+    // toggling lock or changing scale reveals the faders unchanged. Out-of-scale faders are
+    // DIMMED in the UI (the fader widget reads activeScaleMask) rather than forced/pinned.
+    // Ranges stay full 0..1 in all cases so a value can never be clamped away and lost.
+    for (int i = 0; i < 12; i++) {
+        ParamQuantity* pq = module->getParamQuantity(SEMI0_PARAM + i);
+        if (pq) {
+            pq->minValue = 0.f;
+            pq->maxValue = 1.f;
         }
     }
+    // (redistributeWeights is retained as a static helper for a possible explicit,
+    //  user-invoked "nudge to scale" action later — but it is NO LONGER applied
+    //  automatically by enforcement, because that mutated the user's fader values.)
 }
 
 float ScaleManager::getSemitoneWeight(int semIdx, const ParameterManager& pm) const {

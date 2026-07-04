@@ -180,3 +180,117 @@ Layout sketch (portrait, top→bottom): pediment + wordmark / cornice / upper fa
 shutter-windows (scale display, 2 storeys × 6) / cornice / five-foot-way colonnade = 4 scale-
 list arched units (active lit, queued outlined) / street level = CV IN jack + Conservation
 toggle + list-position dots / screws at corners. Dark + light themes, Singapore-red accents.
+
+---
+
+## Non-destructive scale IS the display/store/engine (MVC) separation — same as spread/lock-mode
+
+The destructive updateScaleMask is the SAME anti-pattern as the old spread bug: it collapses
+STORE into a display/enforcement view. `setValue(0)` + `min=max=0` on an out-of-scale fader
+clobbers the PARAM (the store — the user's weight, JSON-persisted) to represent an ENFORCEMENT
+state. Identical mistake to forcing the spread trimpot; identical bug (toggle Conservation off or
+change scale → user's fader values gone, just as spread didn't revert on reclaim).
+
+Three-layer mapping (see DISPLAY_STORE_ENGINE_SEPARATION.md):
+- STORE   = the 12 semitone fader params (SEMI0..11). User's weights. Persisted. NEVER written
+            by enforcement.
+- DISPLAY = fader render + DIM. Out-of-scale faders show dimmed (and may show 0-effect) while
+            the stored value underneath is untouched. Derived from activeScaleMask.
+- ENGINE  = getSemitoneWeight reads the store, gates to 0 via the mask when Conservation on.
+            Read-time, non-destructive. ALREADY CORRECT.
+
+The scale mask is the same kind of external gate as Macro ownership: it changes what's DISPLAYED
+and what the ENGINE plays, without touching the STORE. So the fader wants the SAME treatment the
+spread knob got (DimmableTrimpot's dimWhen/displayValueFn): dim on out-of-scale, leave the store
+alone, optionally display the gated (0-effect) value while preserving the underlying weight.
+
+Convergence worth noting: Monsoon context-menu "lock mode", Shophouse "Conservation", and the
+spread cede/reclaim fix are ALL the same display/store/engine separation — the doc already
+predicted lock mode would want this infrastructure. Build the fader-view layer mirroring
+DimmableTrimpot rather than inventing a parallel mechanism.
+
+Scope of THIS branch (feature/nondestructive-scale):
+1. DATA/ALGORITHM (testable now): updateScaleMask stops writing the store — computes mask only;
+   remove setValue(0)/min=max=0/redistributeWeights from the enforce path. Keep getSemitoneWeight
+   read-time gate exactly. Keep the Conservation (lock) CHOICE.
+2. VIEW/MVC (write, but needs in-Rack build to confirm render): semitone fader gains
+   DimmableTrimpot-style dim-on-out-of-scale, reading the mask as a DISPLAY input, never writing
+   the store. Flagged like the spread knob's displayValueFn.
+
+---
+
+## Fader-view layer — decisions (user) + the acceptance test
+
+Decisions for out-of-scale faders under Conservation (enforce):
+1. DIM, DON'T CHANGE POSITION (default): render dimmed at the TRUE stored position — user sees
+   their real weight, greyed. Not dropped to zero visually (for now).
+2. WRITE IT FLEXIBLE: the fader's rendered value goes through a swappable displayValueFn (the
+   spread-knob pattern) so switching to "display zero position" later is a one-line change, not a
+   rewrite. Flexibility = the MVC separation (display value distinct from store, pluggable).
+3. ACCEPTANCE TEST (the real one): **the user must NEVER see an out-of-scale fader in its bright
+   / active (lit-up) state** when Conservation is on. A bright fader falsely signals "this note
+   is sounding" while enforcement silences it. Dimming is the visual truth of the read-time gate.
+   Invariant the view layer must guarantee: out-of-scale + Conservation-on ⇒ always dimmed, never
+   bright, ever.
+4. SHOW MODULATION FOR NOW (even though Conservation forces the gated VALUE to zero): the fader
+   may still show its modulation. NOTE the semantic tension — modulation moves a weight the engine
+   reads as 0 (out-of-scale). Shown for now, but the mod-display path is a SEPARATE, clearly-
+   marked, SWAPPABLE hook. STILL TODO: choose the final modulation-display method for faders
+   (dim-in-place mod arc vs suppressed vs gated indicator). Keep localized so the final choice is
+   a small change.
+
+Structure (mirrors DimmableTrimpot's separated concerns) — three pluggable hooks on the fader:
+  - dimWhen        → out-of-scale; drives the dim AND enforces the never-bright invariant.
+  - displayValueFn → currently "stored position" (dim-in-place); trivially → "zero position".
+  - mod-display    → currently "show modulation"; clearly marked swappable pending final method.
+
+---
+
+## RESOLVED — fader modulation display method: Conservation-gated
+
+The "still todo: final mod-display method for faders" is decided: modulation visuals are
+CONSERVATION-GATED, fader-specific, automatic.
+- Conservation ON + out-of-scale fader → HIDE the mod marker (the note is silenced/read-as-0, so
+  its modulation is misleading — movement on a note that can't sound).
+- Conservation ON + in-scale → show normally.
+- Conservation OFF (guide mode) → show everything freely (nothing is silenced).
+Layered ON TOP of the existing global modVizMonsoonMelody context-menu toggle (not a replacement)
+— the new part is the automatic per-fader suppression driven by scale membership + Conservation.
+Conservation mode is the differentiator. Implemented in MonsoonLightSlider::drawModMarker.
+
+---
+
+## Note-slider mod VISUAL — candidate: reuse the octave sliders' red mod arcs
+
+The note (semitone) sliders currently show modulation as a cyan dot-marker at the modulated
+value's height (MonsoonLightSlider::drawModMarker). The OTHER candidate visual: the RED MOD ARCS
+already applied to the OCTAVE sliders — reuse that same arc treatment on the note sliders for a
+consistent modulation language across both slider groups. To evaluate at a build (compare cyan
+dot vs red arc on the note sliders). The Conservation-gating (hide on out-of-scale when enforcing)
+applies regardless of which visual is chosen — it's the same suppression condition, just a
+different marker. Deferred: pick the visual after seeing both in Rack.
+
+---
+
+## List UI DECIDED — 4 shophouse fronts, keyboard-arranged scale shutters (prototyped)
+
+Decisions (user):
+- List length: FIXED 4 (one key-change is the common case; more is rare in electronic music;
+  4 fronts is a composition, not a limitation).
+- List UI: the "integrated into the design" option B — 4 SHOPHOUSE FRONTS in a row (the scale-
+  list "street" / five-foot-way), each front = one list slot holding one scale+root.
+- Scale-on-facade: each front's 12 shutters are arranged as a PIANO OCTAVE (7 white + 5 black),
+  lit = in-scale, dim/closed = out-of-scale, ROOT shutter accented in Singapore red. This solves
+  option B's legibility risk — you read the scale like a keyboard, instantly.
+
+Prototype: panel_src/gen_shophouse_proto.py → proto_shophouse_{dark,light}.svg. NanoSVG-safe
+(rects/lines/polys + opacity). Verified: note→shutter mapping is musically correct (C major lights
+exactly the 7 whites; D dorian lights the white-key set with D accented). Reads clearly in both
+themes. Black shutters sit in the upper ~55% between whites (piano layout). Red gable roof + gold
+five-foot-way arch give shophouse character.
+
+Still to refine (aesthetic — user's call at build/iterate): proportions on the real 20HP portrait
+panel (more room per front), degree of Peranakan ornament, how root+scale are SELECTED per front
+(dropdowns behind each facade? the shutters themselves are DISPLAY, selection is separate — likely
+a small scale + root menu per slot). The shutters are the scale DISPLAY; the selection mechanism
+(open Q4 remainder) is still to design — but the display half is settled + prototyped.
