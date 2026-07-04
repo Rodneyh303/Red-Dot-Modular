@@ -504,11 +504,22 @@ struct LanternDisplay : widget::Widget {
         const bool  byVoice  = module->params[Lantern::ROLL_COLOR_PARAM].getValue() > 0.5f;
 
         // Faint horizontal guide lines at each C (octave boundary).
+        // Octave (C) guide lines — clearly visible so octaves are easy to count. Faint semitone
+        // sub-lines between them give pitch reference without dominating.
         for (int o = 0; o <= ROLL_OCTAVES; ++o) {
             float y = H - o * 12 * rowH;
             nvgBeginPath(vg);
-            nvgStrokeColor(vg, nvgRGBA(0x40, 0x46, 0x50, 0x60));
-            nvgStrokeWidth(vg, 0.6f);
+            nvgStrokeColor(vg, nvgRGBA(0x5a, 0x62, 0x70, 0xd0));   // stronger C line
+            nvgStrokeWidth(vg, 1.0f);
+            nvgMoveTo(vg, gridX, y); nvgLineTo(vg, gridX + gridW, y);
+            nvgStroke(vg);
+        }
+        for (int r = 0; r < ROLL_ROWS; ++r) {
+            if (r % 12 == 0) continue;                            // C lines drawn above
+            float y = H - r * rowH;
+            nvgBeginPath(vg);
+            nvgStrokeColor(vg, nvgRGBA(0x40, 0x46, 0x50, 0x55));   // faint semitone line
+            nvgStrokeWidth(vg, 0.5f);
             nvgMoveTo(vg, gridX, y); nvgLineTo(vg, gridX + gridW, y);
             nvgStroke(vg);
         }
@@ -550,10 +561,18 @@ struct LanternDisplay : widget::Widget {
             }
         }
 
-        // Playhead.
+        // Playhead — drawn at the ONSET edge of the current step so it touches where the note
+        // currently sounding STARTS: forward = left edge of the step; reverse = right edge (matches
+        // the direction-aware bar anchoring, so the line meets the note's leading edge either way).
         int ph = module->lastObservedStep;
         if (ph >= 0 && ph < N_STEPS) {
-            float pxp = gridX + (ph + 0.5f) * stepW;
+            // Determine play direction from any active cell at this step (fallback forward).
+            int dir = +1;
+            for (int v = 0; v < N_VOICES; ++v) {
+                if (module->cells[v][ph].type != lantern::NoteType::Inactive) { dir = module->cells[v][ph].playDir; break; }
+            }
+            float pxp = (dir < 0) ? gridX + (ph + 1.f) * stepW    // reverse: right edge (onset)
+                                  : gridX + ph * stepW;           // forward: left edge (onset)
             nvgBeginPath(vg);
             nvgStrokeColor(vg, nvgRGBA(0xd4, 0x00, 0x1a, 0xcc));
             nvgStrokeWidth(vg, 1.2f);
