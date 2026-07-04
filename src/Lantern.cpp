@@ -251,17 +251,26 @@ struct LanternDisplay : widget::Widget {
         if (!font) font = APP->window->uiFont;
         if (!font) return;
 
+        const int ph = module->lastObservedStep;
+
         for (int v = 0; v < N_VOICES; ++v) {
             const float yc = v * laneH + laneH * 0.5f;
 
-            // Most-recent sounding pitch for this voice → the lane's note-name label.
+            // Label tracks the note UNDER the playhead: show the pitch of the cell at the current
+            // step. If that step is a rest (Inactive) for this voice, fall back to the most recent
+            // sounding cell AT OR BEFORE the playhead (the note still ringing / last heard), so the
+            // label follows the playhead as it moves instead of showing a static last-note.
             bool anyActive = false; float labelPitch = 0.f;
-            for (int s = N_STEPS - 1; s >= 0; --s) {
-                if (module->cells[v][s].type != lantern::NoteType::Inactive) {
-                    labelPitch = module->cells[v][s].pitchV; anyActive = true; break;
+            if (ph >= 0 && ph < N_STEPS && module->cells[v][ph].type != lantern::NoteType::Inactive) {
+                labelPitch = module->cells[v][ph].pitchV; anyActive = true;
+            } else if (ph >= 0 && ph < N_STEPS) {
+                for (int k = 0; k < N_STEPS; ++k) {
+                    int s = ((ph - k) % N_STEPS + N_STEPS) % N_STEPS;  // walk backward from playhead
+                    if (module->cells[v][s].type != lantern::NoteType::Inactive) {
+                        labelPitch = module->cells[v][s].pitchV; anyActive = true; break;
+                    }
                 }
             }
-            // Only label lanes that carry notes (keeps the 16-lane grid from showing 16 dashes).
             if (!anyActive) continue;
 
             nvgFontFaceId(vg, font->handle);
