@@ -1,7 +1,7 @@
 #include "MonsoonUIManager.hpp"
 #include "../../Monsoon.hpp"
 #include "../../MonsoonInterchangeExpander.hpp"
-#include "../../MonsoonStraitsEastExpander.hpp"
+#include "../../MonsoonStraitsExpander.hpp"
 
 using namespace rack;
 using namespace MonsoonIds;

@@ -44,7 +44,7 @@ using namespace rack;
 
 extern Plugin* pluginInstance;
 struct MonsoonInterchangeExpander;
-struct MonsoonStraitsEastExpander; // Forward declaration for the new expander
+struct MonsoonStraitsExpander; // base poly expander (Straits redesign)
 struct MonsoonSandsExpander;
 
 // Minimal clamp helper for C++11 (no std::clamp)
@@ -1129,9 +1129,9 @@ extern Model* modelMonsoonInterchangeExpander;
 extern Model* modelMonsoonCausewayExpander;
 extern Model* modelMonsoonSurgeExpander;
 //extern Model* modelMonsoonSandsExpander;
-extern Model* modelMonsoonStraitsEastExpander; // Declare new expander model
+extern Model* modelMonsoonStraitsExpander; // base poly expander
 extern Model* modelLantern;                    // Lantern note-output visualiser
-extern Model* modelMonsoonStraitWestExpander;  // NEW (Phase 4): voices 9-16
+// West retired (Straits redesign)
 //extern Model* modelMonsoonStraitsSands;        // NEW (Macro): global DNA controls (compact)
 //extern Model* modelMonsoonDeepStraitsSandsEast; // NEW (Deep): per-voice DNA voices 2-8
 //extern Model* modelMonsoonDeepStraitsSandsWest; // NEW (Deep): per-voice DNA voices 9-16

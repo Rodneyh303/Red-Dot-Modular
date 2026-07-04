@@ -4,7 +4,7 @@
 #include "rack.hpp"
 
 struct MonsoonInterchangeExpander;
-struct MonsoonStraitsEastExpander;
+struct MonsoonStraitsExpander;
 
 /**
  * ParameterManager
@@ -23,7 +23,7 @@ class ParameterManager {
 public:
     ParameterManager(rack::engine::Module* mainModule,
                      MonsoonInterchangeExpander** cachedExpander,
-                     MonsoonStraitsEastExpander** cachedPolyVoiceExpander)
+                     MonsoonStraitsExpander** cachedPolyVoiceExpander)
         : mainModule(mainModule),
           cachedExpander(cachedExpander),
           cachedPolyVoiceExpander(cachedPolyVoiceExpander) {}
@@ -187,7 +187,7 @@ public:
 private:
     rack::engine::Module* mainModule;
     MonsoonInterchangeExpander** cachedExpander;
-    MonsoonStraitsEastExpander** cachedPolyVoiceExpander;
+    MonsoonStraitsExpander** cachedPolyVoiceExpander;
     
     // CV2-aware offsets for note value, variation, legato, rest, accent
     float cv2Offsets[5] = {0.f, 0.f, 0.f, 0.f, 0.f}; // Increased size for Accent

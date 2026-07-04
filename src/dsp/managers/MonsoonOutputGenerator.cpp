@@ -3,7 +3,6 @@
 #include "../../Monsoon.hpp"
 #include "MonsoonExpanderManager.hpp"
 #include "../../MonsoonStraitsExpander.hpp"
-#include "../../MonsoonStraitWestExpander.hpp"
 
 using namespace rack;
 

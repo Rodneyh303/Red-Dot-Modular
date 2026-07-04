@@ -20,8 +20,8 @@
 
 //#include "MonsoonSandsExpander.hpp"
 #include "MonsoonInterchangeExpander.hpp"
-#include "MonsoonStraitsEastExpander.hpp"
-#include "MonsoonStraitWestExpander.hpp"      // NEW (Phase 4)
+#include "MonsoonStraitsExpander.hpp"
+// West retired (Straits redesign): #include "MonsoonStraitWestExpander.hpp"
 //#include "MonsoonStraitsSands.hpp"            // NEW (Macro): global DNA controls
 //#include "MonsoonDeepStraitsSands.hpp"        // NEW (Deep): per-voice DNA controls
 #include "StraitsEastSandsVisual.hpp"         // Visual DNA editor (East)
@@ -859,15 +859,8 @@ void Monsoon::process(const ProcessArgs& args) {
             paramManager->setCv1HiOffset(0.f);
         }
 
-        // Zero unused voice outputs so they don't emit stale voltages (Transferred from audio rate)
-        if (expanderManager.cachedPolyVoiceExpander) {
-            using namespace PolyVoiceExpanderIds;
-            for (int i = std::max(0, engine.numPolyVoices); i < 7; ++i) {
-                expanderManager.cachedPolyVoiceExpander->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
-                expanderManager.cachedPolyVoiceExpander->outputs[POLY_CV_OUT_1 + i].setVoltage(0.f);
-                expanderManager.cachedPolyVoiceExpander->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
-            }
-        }
+        // (Unused poly voices are zeroed by the OutputGenerator, which writes all 16
+        //  poly-cable channels each frame — gate-low/0V beyond numPolyVoices.)
 
         engine.updateWindow(
             params[PATTERN_LENGTH_PARAM].getValue(), inputs[LENGTH_INPUT].getVoltage(), inputs[LENGTH_INPUT].isConnected(),
@@ -926,9 +919,9 @@ void init(rack::Plugin* p) {
 	p->addModel(modelMonsoonCausewayExpander);
 	p->addModel(modelMonsoonSurgeExpander);
 	//p->addModel(modelMonsoonSandsExpander);
-	p->addModel(modelMonsoonStraitsEastExpander);
+	p->addModel(modelMonsoonStraitsExpander);
 	p->addModel(modelLantern);                       // Lantern note-output visualiser
-	p->addModel(modelMonsoonStraitWestExpander);    // NEW (Phase 4)
+	// West retired (Straits redesign): p->addModel(modelMonsoonStraitWestExpander);
 	//p->addModel(modelMonsoonStraitsSands);          // Macro: global DNA
 	//p->addModel(modelMonsoonDeepStraitsSandsEast);  // Deep: voices 2-8
 	//p->addModel(modelMonsoonDeepStraitsSandsWest);  // Deep: voices 9-16
