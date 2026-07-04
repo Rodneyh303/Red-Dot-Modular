@@ -6,7 +6,7 @@ fan of sails and a triangular bowsprit, sailing on red wave lines — honouring 
 Buginese maritime heritage referenced at Bugis (the area's name traces to the
 seafaring Bugis people). Black panel, gold knob trim, red detailing, white text.
 
-Geometry matches the in-use Surge panel: 120x380 px (mm coords at 75 DPI).
+Geometry matches the in-use Junction panel: 120x380 px (mm coords at 75 DPI).
 Controls live at y>=60mm; the pinisi occupies the header (y ~ 8..50mm).
 Screws drawn in C++ (RedScrew) — not painted here. nanosvg-safe: solid fills,
 no gradients/masks/text/url.
@@ -110,15 +110,15 @@ def panel(theme):
     # header motif: pinisi over waves — below branding band, sized to clear y=60 controls
     o += waves(t, 47.0)
     o += pinisi(t, cx_mm=W/2/S, top_mm=20.0)
-    # control wells with KIT ID markers, matching the Surge module's controls
+    # control wells with KIT ID markers, matching the Junction module's controls
     # (same geometry). Row order = NOTEVAL, VARIATION, LEGATO, REST, ACCENT;
     # per row: input=<NAME>_CV jack, param=<NAME>_ATT trim.
     ROWS=[60.,74.,88.,102.,116.]; JACK_X=14.; ATT_X=30.
     NAMES=["NOTEVAL","VARIATION","LEGATO","REST","ACCENT"]
     o.append('<g id="components">')
     for i, y in enumerate(ROWS):
-        o.append(jack_well(t, JACK_X, y, cid=f"input_SURGE_{NAMES[i]}_CV"))
-        o.append(trim_well(t, ATT_X, y,  cid=f"param_SURGE_{NAMES[i]}_ATT"))
+        o.append(jack_well(t, JACK_X, y, cid=f"input_JUNCTION_{NAMES[i]}_CV"))
+        o.append(trim_well(t, ATT_X, y,  cid=f"param_JUNCTION_{NAMES[i]}_ATT"))
     # dot.modular connect light anchor (brand red dot). Position via this marker;
     # the RedDotLight widget binds to it by id. Footer-centre by default.
     # dot.modular connect mark anchor. fill-opacity 0 (not fill=none) so nanosvg

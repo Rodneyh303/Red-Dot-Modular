@@ -71,7 +71,7 @@ Quick check which a module is:
 grep -c 'bindInput\|bindParam\|loadPanel' src/<Module>.cpp   # >0 => kit-bound
 grep -c 'createInputCentered\|mm2px(Vec'   src/<Module>.cpp   # >0 => coordinate-placed
 ```
-Observed today: Causeway, Surge, StraitsEast = kit-bound; Interchange,
+Observed today: Causeway, Junction, StraitsEast = kit-bound; Interchange,
 MonsoonSandsVisual = coordinate-placed.
 
 ---
@@ -146,16 +146,16 @@ python3 panel_src/embed_cluster_art.py    # injects dice/slew/mix + output reces
   into the rich SVGs (cy=280 row), not regenerated — same surgical approach as
   the Sands widen.
 
-### CV / modulation expanders — Surge, Causeway-art, Interchange, Straits CV
+### CV / modulation expanders — Junction, Causeway-art, Interchange, Straits CV
 ```bash
-python3 panel_src/gen_surge.py            # Surge 8HP (big-5 CV) dark+light
+python3 panel_src/gen_junction.py (gen_surge.py deleted)            # Junction 8HP (big-5 CV) dark+light
 python3 panel_src/gen_straits_cv.py       # Straits East+West poly CV (390x380 px)
 python3 panel_src/gen_interchange.py      # Interchange tonal-CV (270x380 px)
 python3 panel_src/embed_interchange_markers.py  # OR: keep hand art, inject markers only
 ```
-- **Surge** and **Causeway** also have *renamed* art-variant generators with
+- **Junction** and **Causeway** also have *renamed* art-variant generators with
   Singapore-themed hero graphics:
-  - `gen_junction.py` — Junction (was Surge): Bugis pinisi schooner, 120×380 px.
+  - `gen_junction.py` — Junction (was Junction): Bugis pinisi schooner, 120×380 px.
   - `gen_raffles.py` — Raffles (was Causeway): raffle-ticket fan, 180×380 px.
   These are alternative art treatments matching the same control geometry.
 - **Interchange** is px-native (270×380) to match hard-coded widget coords, and

@@ -29,15 +29,15 @@ void ModeController::updatePatternInput() {
     currentPatternInput.melodySlew        = paramManager.getMelodySlew();
     currentPatternInput.rhythmMix         = paramManager.getRhythmMix();
     currentPatternInput.melodyMix         = paramManager.getMelodyMix();
-    // Surge expander: 5 big-5 CV (x attenuverter) -> offsets the param getters add.
+    // Junction expander: 5 big-5 CV (x attenuverter) -> offsets the param getters add.
     // CV normalised 0..10V -> 0..1, scaled bipolar by the attenuverter.
-    paramManager.clearSurgeOffsets();
-    if (mainModule && mainModule->expanderManager.cachedSurgeExpander) {
-        rack::Module* sg = mainModule->expanderManager.cachedSurgeExpander;
+    paramManager.clearJunctionOffsets();
+    if (mainModule && mainModule->expanderManager.cachedJunctionExpander) {
+        rack::Module* sg = mainModule->expanderManager.cachedJunctionExpander;
         for (int i = 0; i < 5; ++i) {
-            float cv  = sg->inputs[MonsoonIds::SURGE_NOTEVAL_CV + i].getVoltage() / 10.f;
-            float att = sg->params[MonsoonIds::SURGE_NOTEVAL_ATT + i].getValue();
-            paramManager.setSurgeOffset(i, cv * att);
+            float cv  = sg->inputs[MonsoonIds::JUNCTION_NOTEVAL_CV + i].getVoltage() / 10.f;
+            float att = sg->params[MonsoonIds::JUNCTION_NOTEVAL_ATT + i].getValue();
+            paramManager.setJunctionOffset(i, cv * att);
         }
     }
     // PLAYABLE LIVE MORPH: apply the live MIX every process (control rate), like

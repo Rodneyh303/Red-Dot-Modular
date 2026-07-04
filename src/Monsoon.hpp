@@ -727,24 +727,24 @@ namespace MonsoonIds {
         NUM_CAUSEWAY_INPUTS
     };
 
-    // ── Surge expander (the big-5 pattern-knob modulation) ───────────────────
+    // ── Junction expander (the big-5 pattern-knob modulation) ───────────────────
     // 5 CV + attenuverters summing into NOTE VALUE / VARIATION / LEGATO / REST /
     // ACCENT. Own port enums (0-based).
-    enum SurgeParamIds {
-        SURGE_NOTEVAL_ATT = 0,
-        SURGE_VARIATION_ATT,
-        SURGE_LEGATO_ATT,
-        SURGE_REST_ATT,
-        SURGE_ACCENT_ATT,
-        NUM_SURGE_PARAMS
+    enum JunctionParamIds {
+        JUNCTION_NOTEVAL_ATT = 0,
+        JUNCTION_VARIATION_ATT,
+        JUNCTION_LEGATO_ATT,
+        JUNCTION_REST_ATT,
+        JUNCTION_ACCENT_ATT,
+        NUM_JUNCTION_PARAMS
     };
-    enum SurgeInputIds {
-        SURGE_NOTEVAL_CV = 0,
-        SURGE_VARIATION_CV,
-        SURGE_LEGATO_CV,
-        SURGE_REST_CV,
-        SURGE_ACCENT_CV,
-        NUM_SURGE_INPUTS
+    enum JunctionInputIds {
+        JUNCTION_NOTEVAL_CV = 0,
+        JUNCTION_VARIATION_CV,
+        JUNCTION_LEGATO_CV,
+        JUNCTION_REST_CV,
+        JUNCTION_ACCENT_CV,
+        NUM_JUNCTION_INPUTS
     };
 
     enum OutputIds {
@@ -1127,7 +1127,7 @@ struct Monsoon : Module {
 extern Model* modelMonsoon;
 extern Model* modelMonsoonInterchangeExpander;
 extern Model* modelMonsoonCausewayExpander;
-extern Model* modelMonsoonSurgeExpander;
+extern Model* modelMonsoonJunctionExpander;
 //extern Model* modelMonsoonSandsExpander;
 extern Model* modelMonsoonStraitsEastExpander; // Declare new expander model
 extern Model* modelLantern;                    // Lantern note-output visualiser
