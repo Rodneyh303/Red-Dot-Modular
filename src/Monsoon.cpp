@@ -23,6 +23,7 @@
 #include "MonsoonStraitsExpander.hpp"
 #include "MonsoonCausewayPolyExpander.hpp"
 #include "MonsoonChangiExpander.hpp"
+#include "MonsoonShophouseExpander.hpp"
 // West retired (Straits redesign): #include "MonsoonStraitWestExpander.hpp"
 //#include "MonsoonStraitsSands.hpp"            // NEW (Macro): global DNA controls
 //#include "MonsoonDeepStraitsSands.hpp"        // NEW (Deep): per-voice DNA controls
@@ -522,6 +523,33 @@ void Monsoon::process(const ProcessArgs& args) {
 
         if (shouldExecute) {
             mc.executeMode(modeSelect, input, tc.getGate2High());
+
+            // ── Shophouse scale expander: boundary-quantised scale/root ──
+            // Drive the attached Shophouse's ScaleList. The index CV is sampled at the phrase
+            // boundary (wrapped) to pick the pending front; commitAtBoundary() then makes it the
+            // active (scale, root), which we write into the existing ScaleManager slot. All scale
+            // changes therefore land on the loop edge — never mid-phrase. If no Shophouse is
+            // attached, the context-menu scale is left untouched.
+            if (auto* shop = expanderManager.cachedShophouseExpander) {
+                shop->syncEntriesFromParams();
+                // Conservation toggle (guide vs enforce) → ScaleManager lock (enforce = lock on).
+                scaleManager->lockScaleNotes =
+                    shop->params[ShophouseIds::CONSERVATION_PARAM].getValue() > 0.5f;
+                if (engine.lastStepResult.wrapped) {
+                    // Sample index CV (0..10V → front 0..N-1) at the boundary.
+                    auto& cv = shop->inputs[ShophouseIds::INDEX_CV_INPUT];
+                    if (cv.isConnected()) {
+                        int n = shop->list.size();
+                        int idx = (int)std::floor(clampv<float>(cv.getVoltage() / 10.f, 0.f, 0.999f) * n);
+                        shop->list.setPending(idx);
+                    }
+                    if (shop->list.commitAtBoundary()) {
+                        const auto& e = shop->list.activeEntry();
+                        scaleManager->lastSelectedScale = e.scaleIdx;
+                        scaleManager->scaleRoot         = e.root;
+                    }
+                }
+            }
         }
 
         // ── Mode E jump/scrub: replay the event chain over the jumped 1/16 steps ──
@@ -914,6 +942,7 @@ void init(rack::Plugin* p) {
 	p->addModel(modelMonsoonStraitsExpander);
 	p->addModel(modelMonsoonCausewayPolyExpander);
 	p->addModel(modelMonsoonChangiExpander);
+	p->addModel(modelMonsoonShophouseExpander);
 	p->addModel(modelLantern);                       // Lantern note-output visualiser
 	// West retired (Straits redesign): p->addModel(modelMonsoonStraitWestExpander);
 	//p->addModel(modelMonsoonStraitsSands);          // Macro: global DNA

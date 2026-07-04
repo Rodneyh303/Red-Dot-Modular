@@ -77,6 +77,16 @@
       ]
     },
     {
+      "slug": "Shophouse",
+      "name": "Shophouse",
+      "description": "Scale expander — 4-front scale list, click-a-shutter root, boundary-quantised modulation, Conservation lock",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Quantizer"
+      ]
+    },
+    {
       "slug": "MonsoonSandsVisualExpander",
       "name": "Sands Visual",
       "description": "Monsoon Probability Visualisation, Manipulation, and Modulation Expander",
