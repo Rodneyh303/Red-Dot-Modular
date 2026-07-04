@@ -150,8 +150,10 @@ struct MonsoonExpanderManager {
                     macroSandsVisualCount++;
                 } else break;   // Rule 1: stop at first foreign module.
 
-                // Rule 2 (early-out): once every type has a pointer, stop scanning.
-                if (allTypesFound()) break;
+                // (No early-out. Chains are at most depth-8 per side, so the cost of always
+                //  walking both sides is negligible, and it keeps discovery ORDER-STABLE: the
+                //  result never depends on whether all types happened to be found on one side
+                //  first. Each type still caches the FIRST instance found — left side, then right.)
 
                 curr = left ? curr->leftExpander.module : curr->rightExpander.module;
                 depth++;
@@ -159,18 +161,23 @@ struct MonsoonExpanderManager {
         };
 
         if (module) {
+            // Always scan BOTH sides fully. First-match-wins per type (left before right) is the
+            // one intentional order rule; everything else is order-independent.
             scan(module->leftExpander.module, true);
-            if (!allTypesFound())
-                scan(module->rightExpander.module, false);
+            scan(module->rightExpander.module, false);
         }
     }
 
-    // True once one pointer of every expander type has been cached.
+    // True once one pointer of every ACTIVE expander type has been cached. Only lists pointers
+    // whose cache branches exist in scan() — previously it also required cachedStraitsSandsExpander
+    // and cachedWestSandsVisual, whose branches are commented out (deprecated modules), so it could
+    // NEVER be true and the scan early-outs were dead. Now it reflects the live module set, so the
+    // "stop once everything's found" optimisation actually works and the walk is honest.
     bool allTypesFound() const {
         return cachedScaleExpander && cachedRafflesExpander && cachedJunctionExpander
             && cachedSandsVisualExpander && cachedPolyVoiceExpander
-            && cachedStraitsSandsExpander
-            && cachedEastSandsVisual && cachedWestSandsVisual && cachedMacroSandsVisual;
+            && cachedCausewayPolyExpander && cachedChangiExpander && cachedShophouseExpander
+            && cachedEastSandsVisual && cachedMacroSandsVisual;
     }
 
     /// Synchronizes data between the engine and specific expanders (Deep Straits, Visual Editors, etc.)
