@@ -3,6 +3,7 @@
 #include "../../Monsoon.hpp"
 #include "MonsoonExpanderManager.hpp"
 #include "../../MonsoonStraitsExpander.hpp"
+#include "../../MonsoonChangiExpander.hpp"
 
 using namespace rack;
 
@@ -65,6 +66,25 @@ void OutputGenerator::drive(SequencerEngine& engine,
             // Accent is a poly lane: each voice fires its OWN accent (drawn per-voice in
             // executePolyVoice), gated by the voice actually sounding.
             accentOut.setVoltage((engine.voices[i].accented && vg > 5.f) ? 10.f : 0.f, ch);
+        }
+    }
+
+    // 3. Changi — per-voice individual mono jacks (gate/CV/accent) for poly voices 2..16.
+    //    Same per-voice values as Straits' poly-cable channels 1..15, fanned to discrete jacks.
+    auto* changi = expanderManager.cachedChangiExpander;
+    if (changi) {
+        using namespace ChangiIds;
+        for (int i = 0; i < 15; ++i) {
+            if (effectiveMuted || i >= (int)engine.numPolyVoices) {
+                changi->outputs[GATE_OUT_0   + i].setVoltage(0.f);
+                changi->outputs[CV_OUT_0     + i].setVoltage(0.f);
+                changi->outputs[ACCENT_OUT_0 + i].setVoltage(0.f);
+                continue;
+            }
+            float vg = engine.voices[i].gs.process(sampleTime);
+            changi->outputs[GATE_OUT_0   + i].setVoltage(vg);
+            changi->outputs[CV_OUT_0     + i].setVoltage(engine.voices[i].gs.currentPitchV);
+            changi->outputs[ACCENT_OUT_0 + i].setVoltage((engine.voices[i].accented && vg > 5.f) ? 10.f : 0.f);
         }
     }
 }

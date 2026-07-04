@@ -67,6 +67,16 @@
       ]
     },
     {
+      "slug": "Changi",
+      "name": "Changi",
+      "description": "Per-voice output — poly voices 2..16 broken out to individual gate/CV/accent jacks",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Random"
+      ]
+    },
+    {
       "slug": "MonsoonSandsVisualExpander",
       "name": "Sands Visual",
       "description": "Monsoon Probability Visualisation, Manipulation, and Modulation Expander",
