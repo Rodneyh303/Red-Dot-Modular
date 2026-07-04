@@ -261,10 +261,10 @@ struct LanternDisplay : widget::Widget {
         if (!font0) font0 = APP->window->uiFont;
 
         // Piano-roll mode: label the pitch axis (C of each octave in the viewport) instead of lanes.
-        if (module->params[ROLL_PARAM].getValue() > 0.5f) {
+        if (module->params[Lantern::ROLL_PARAM].getValue() > 0.5f) {
             if (!font0) return;
             const float rowH  = H / (float)ROLL_ROWS;
-            const int   botOct = (int)std::round(module->params[ROLL_SCROLL_PARAM].getValue());
+            const int   botOct = (int)std::round(module->params[Lantern::ROLL_SCROLL_PARAM].getValue());
             nvgFontFaceId(vg, font0->handle);
             nvgFontSize(vg, std::min(10.f, rowH * 6.f));
             nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
@@ -320,7 +320,7 @@ struct LanternDisplay : widget::Widget {
         if (!module) return;
 
         // Piano-roll view replaces the lane grid on this layer.
-        if (module->params[ROLL_PARAM].getValue() > 0.5f) { drawRollLayer(args); return; }
+        if (module->params[Lantern::ROLL_PARAM].getValue() > 0.5f) { drawRollLayer(args); return; }
 
         NVGcontext* vg = args.vg;
         const float W = box.size.x, H = box.size.y;
@@ -499,9 +499,9 @@ struct LanternDisplay : widget::Widget {
         const float stepW  = gridW / N_STEPS;
         const float rowH   = H / (float)ROLL_ROWS;
 
-        const int   botOct   = (int)std::round(module->params[ROLL_SCROLL_PARAM].getValue());
+        const int   botOct   = (int)std::round(module->params[Lantern::ROLL_SCROLL_PARAM].getValue());
         const int   botSemi  = botOct * 12;          // semitone-from-C0 at the bottom row
-        const bool  byVoice  = module->params[ROLL_COLOR_PARAM].getValue() > 0.5f;
+        const bool  byVoice  = module->params[Lantern::ROLL_COLOR_PARAM].getValue() > 0.5f;
 
         // Faint horizontal guide lines at each C (octave boundary).
         for (int o = 0; o <= ROLL_OCTAVES; ++o) {
