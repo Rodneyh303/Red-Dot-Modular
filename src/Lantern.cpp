@@ -56,6 +56,9 @@ struct Lantern : Module {
         VIEW_PARAM,       // 0=Notes 1=Velocity 2=Prob (view-only)
         ZOOM_PARAM,       // 0=x1 1=x2 2=x4
         FOLLOW_PARAM,     // 0/1 keep phase in view
+        ROLL_PARAM,       // 0=Grid (lane) view, 1=Piano-roll view
+        ROLL_SCROLL_PARAM,// piano-roll vertical scroll: bottom octave of the 5-oct viewport (0..8-5)
+        ROLL_COLOR_PARAM, // 0=colour by ROLE (single/tie/legato), 1=colour by VOICE
         NUM_PARAMS
     };
     enum InputIds  { NUM_INPUTS };
@@ -99,6 +102,13 @@ struct Lantern : Module {
         configSwitch(VIEW_PARAM,   0.f, 2.f, 0.f, "View", {"Notes", "Velocity", "Prob"});
         configSwitch(ZOOM_PARAM,   0.f, 2.f, 0.f, "Zoom", {"x1", "x2", "x4"});
         configSwitch(FOLLOW_PARAM, 0.f, 1.f, 1.f, "Follow", {"Off", "On"});
+        configSwitch(ROLL_PARAM,   0.f, 1.f, 0.f, "Display", {"Grid", "Piano roll"});
+        // Scroll = bottom octave of the 5-octave viewport into the full 0..8 range → range 0..3
+        // (bottom oct 0 shows oct 0-4; bottom oct 3 shows oct 3-7... capped so top ≤ 8). Default 2
+        // so the viewport (oct 2-6) sits on the default pitch window (lo=2, hi=5).
+        configParam(ROLL_SCROLL_PARAM, 0.f, 4.f, 2.f, "Roll scroll (bottom octave)");
+        paramQuantities[ROLL_SCROLL_PARAM]->snapEnabled = true;
+        configSwitch(ROLL_COLOR_PARAM, 0.f, 1.f, 0.f, "Roll colour", {"By role", "By voice"});
     }
 
     // Read-only sampler: records the observed per-step state into Lantern's own
@@ -247,8 +257,27 @@ struct LanternDisplay : widget::Widget {
         const float laneH = H / N_VOICES;
         const float gutter = W * GUTTER_FRAC;
 
-        auto font = APP->window->loadFont(rack::asset::system("res/fonts/DejaVuSans-Bold.ttf"));
-        if (!font) font = APP->window->uiFont;
+        auto font0 = APP->window->loadFont(rack::asset::system("res/fonts/DejaVuSans-Bold.ttf"));
+        if (!font0) font0 = APP->window->uiFont;
+
+        // Piano-roll mode: label the pitch axis (C of each octave in the viewport) instead of lanes.
+        if (module->params[ROLL_PARAM].getValue() > 0.5f) {
+            if (!font0) return;
+            const float rowH  = H / (float)ROLL_ROWS;
+            const int   botOct = (int)std::round(module->params[ROLL_SCROLL_PARAM].getValue());
+            nvgFontFaceId(vg, font0->handle);
+            nvgFontSize(vg, std::min(10.f, rowH * 6.f));
+            nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+            nvgFillColor(vg, nvgRGB(0x8a, 0x8f, 0x98));
+            for (int o = 0; o < ROLL_OCTAVES; ++o) {
+                int oct = botOct + o;
+                float y = H - (o * 12 + 0.5f) * rowH;   // at the C row of this octave
+                std::string lbl = std::string("C") + std::to_string(oct); // C of this octave row
+                nvgText(vg, 2.f, y, lbl.c_str(), nullptr);
+            }
+            return;
+        }
+        auto font = font0;
         if (!font) return;
 
         const int ph = module->lastObservedStep;
@@ -289,6 +318,10 @@ struct LanternDisplay : widget::Widget {
     void drawLayer(const DrawArgs& args, int layer) override {
         if (layer != 1) { Widget::drawLayer(args, layer); return; }
         if (!module) return;
+
+        // Piano-roll view replaces the lane grid on this layer.
+        if (module->params[ROLL_PARAM].getValue() > 0.5f) { drawRollLayer(args); return; }
+
         NVGcontext* vg = args.vg;
         const float W = box.size.x, H = box.size.y;
         const float laneH = H / N_VOICES;
@@ -435,6 +468,100 @@ struct LanternDisplay : widget::Widget {
         }
     }
 
+    // ── Piano-roll view ──────────────────────────────────────────────────────
+    // A 5-octave viewport onto the full 0..8 octave range; ROLL_SCROLL_PARAM = the bottom octave
+    // of the window. Notes draw as horizontal bars at their pitch row, spanning lengthSteps.
+    // Colour: by ROLE (note type) or by VOICE (per-voice hue). Lead outline kept on top.
+    static constexpr int ROLL_OCTAVES = 5;                 // viewport height in octaves
+    static constexpr int ROLL_ROWS    = ROLL_OCTAVES * 12; // = 60 semitone rows
+
+    // Distinct, legible-on-dark hue per voice (mono = v0). Kept modest saturation so overlaps read.
+    static NVGcolor voiceColour(int v) {
+        static const NVGcolor P[8] = {
+            nvgRGB(0x6c, 0x8c, 0xd4), // 1 blue
+            nvgRGB(0x26, 0xa6, 0x9a), // 2 teal
+            nvgRGB(0xd4, 0x8a, 0x3c), // 3 amber
+            nvgRGB(0xb0, 0x6c, 0xd4), // 4 violet
+            nvgRGB(0x5c, 0xb8, 0x5c), // 5 green
+            nvgRGB(0xd4, 0x6c, 0x8c), // 6 rose
+            nvgRGB(0x4c, 0xb0, 0xc8), // 7 cyan
+            nvgRGB(0xc8, 0xb0, 0x4c), // 8 gold
+        };
+        return P[((v % 8) + 8) % 8];
+    }
+
+    void drawRollLayer(const DrawArgs& args) {
+        NVGcontext* vg = args.vg;
+        const float W = box.size.x, H = box.size.y;
+        const float gutter = W * GUTTER_FRAC;
+        const float gridX  = gutter;
+        const float gridW  = W - gutter - (W * DOTS_FRAC);
+        const float stepW  = gridW / N_STEPS;
+        const float rowH   = H / (float)ROLL_ROWS;
+
+        const int   botOct   = (int)std::round(module->params[ROLL_SCROLL_PARAM].getValue());
+        const int   botSemi  = botOct * 12;          // semitone-from-C0 at the bottom row
+        const bool  byVoice  = module->params[ROLL_COLOR_PARAM].getValue() > 0.5f;
+
+        // Faint horizontal guide lines at each C (octave boundary).
+        for (int o = 0; o <= ROLL_OCTAVES; ++o) {
+            float y = H - o * 12 * rowH;
+            nvgBeginPath(vg);
+            nvgStrokeColor(vg, nvgRGBA(0x40, 0x46, 0x50, 0x60));
+            nvgStrokeWidth(vg, 0.6f);
+            nvgMoveTo(vg, gridX, y); nvgLineTo(vg, gridX + gridW, y);
+            nvgStroke(vg);
+        }
+
+        // Notes.
+        for (int v = 0; v < N_VOICES; ++v) {
+            for (int s = 0; s < N_STEPS; ++s) {
+                const auto& c = module->cells[v][s];
+                if (c.type == lantern::NoteType::Inactive) continue;
+                if (c.isMidTail) continue;   // tail of a longer note; its onset cell draws the bar
+
+                // pitchV (0V=C4) → semitone-from-C0 = round(pitchV*12) + 48.
+                int semiC0 = (int)std::lround(c.pitchV * 12.f) + 48;
+                int row = semiC0 - botSemi;                 // 0 = bottom viewport row
+                if (row < 0 || row >= ROLL_ROWS) continue;  // outside the scrolled window
+
+                float y  = H - (row + 1) * rowH;            // row 0 at the bottom
+                float bx = gridX + s * stepW;
+                float span = std::max(0.25f, c.lengthSteps <= 0.f ? 1.f : c.lengthSteps);
+                float bw = std::min(span * stepW, (gridX + gridW) - bx);
+
+                NVGcolor col = byVoice ? voiceColour(v) : typeColour(c.type);
+                if (c.accented) col = nvgLerpRGBA(col, nvgRGB(0xff,0xff,0xff), 0.28f);
+
+                nvgBeginPath(vg);
+                nvgRoundedRect(vg, bx + 0.5f, y + 0.5f, std::max(1.5f, bw - 1.f),
+                               std::max(1.5f, rowH - 1.f), 1.f);
+                nvgFillColor(vg, col);
+                nvgFill(vg);
+
+                if (c.leadsLegato) {  // amber lead outline, on top, both colour modes
+                    nvgBeginPath(vg);
+                    nvgRoundedRect(vg, bx + 1.f, y + 1.f, std::max(1.f, bw - 2.f),
+                                   std::max(1.f, rowH - 2.f), 1.f);
+                    nvgStrokeColor(vg, nvgRGB(0xe0, 0xa8, 0x1c));
+                    nvgStrokeWidth(vg, 1.2f);
+                    nvgStroke(vg);
+                }
+            }
+        }
+
+        // Playhead.
+        int ph = module->lastObservedStep;
+        if (ph >= 0 && ph < N_STEPS) {
+            float pxp = gridX + (ph + 0.5f) * stepW;
+            nvgBeginPath(vg);
+            nvgStrokeColor(vg, nvgRGBA(0xd4, 0x00, 0x1a, 0xcc));
+            nvgStrokeWidth(vg, 1.2f);
+            nvgMoveTo(vg, pxp, 0.f); nvgLineTo(vg, pxp, H);
+            nvgStroke(vg);
+        }
+    }
+
     // Base colour per note type. Accent is drawn as a separate overlay (brighter
     // outline / brand-red marker) on top of these, so an accented note keeps its
     // tie/legato/single identity.
@@ -482,6 +609,14 @@ struct LanternWidget : ModuleWidget {
             mm2px(Vec(208.28f / 2.f, 118.f)), module, Lantern::ZOOM_PARAM));
         addParam(createParamCentered<Trimpot>(
             mm2px(Vec(208.28f - 20.f, 118.f)), module, Lantern::FOLLOW_PARAM));
+
+        // Piano-roll controls: Grid/Roll toggle, vertical scroll, colour mode.
+        addParam(createParamCentered<Trimpot>(
+            mm2px(Vec(45.f, 118.f)), module, Lantern::ROLL_PARAM));
+        addParam(createParamCentered<Trimpot>(
+            mm2px(Vec(70.f, 118.f)), module, Lantern::ROLL_SCROLL_PARAM));
+        addParam(createParamCentered<Trimpot>(
+            mm2px(Vec(95.f, 118.f)), module, Lantern::ROLL_COLOR_PARAM));
     }
 };
 
