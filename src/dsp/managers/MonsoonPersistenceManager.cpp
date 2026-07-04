@@ -28,6 +28,9 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_object_set_new(root, "invertMuteLogic", json_boolean(m->invertMuteLogic));
     json_object_set_new(root, "spreadInterpMono", json_boolean(m->spreadInterpMono));
     json_object_set_new(root, "modVizMonsoonMelody", json_boolean(m->modVizMonsoonMelody));
+    json_object_set_new(root, "restBeatsLegato",  json_boolean(m->engine.restBeatsLegato));
+    json_object_set_new(root, "boundaryInterrupt", json_boolean(m->engine.boundaryInterrupt));
+    json_object_set_new(root, "legatoLeadingEdge", json_boolean(m->engine.legatoLeadingEdge));
     json_object_set_new(root, "modVizMonsoonOther",  json_boolean(m->modVizMonsoonOther));
     json_object_set_new(root, "modVizEast",  json_boolean(m->modVizEast));
     json_object_set_new(root, "modVizWest",  json_boolean(m->modVizWest));
@@ -169,6 +172,9 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     if (auto j = json_object_get(root, "reseedOnModeChange")) m->reseedOnModeChange = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "probOutScale")) m->probOutScale = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "probOutSampleHold")) m->probOutSampleHold = json_boolean_value(j);
+    if (auto j = json_object_get(root, "restBeatsLegato"))   m->engine.restBeatsLegato   = json_boolean_value(j);
+    if (auto j = json_object_get(root, "boundaryInterrupt"))  m->engine.boundaryInterrupt  = json_boolean_value(j);
+    if (auto j = json_object_get(root, "legatoLeadingEdge"))  m->engine.legatoLeadingEdge  = json_boolean_value(j);
     if (auto j = json_object_get(root, "resetIndexOnModeChange")) m->resetIndexOnModeChange = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "cv2Mode")) m->cv2Mode = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "gate1Assign")) m->gate1Assign = (int)json_integer_value(j);

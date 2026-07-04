@@ -241,7 +241,7 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     if (gs.holdRemain >= 1.f || gs.gatePulseRemain > 0) {
         result.decision = MonoDecision::MidNote;
         result.accented = lastStepResult.accented;
-        lastStepResult = result;
+        result.forStep = stepIndex; lastStepResult = result;
         return result;
     }
 
@@ -249,18 +249,63 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     float pitchV = pe.genPitchLive(sem, input,
                                     pe.melodyRandom[getMelodyStep()],
                                     pe.octaveRandom[getOctaveStep()]);
-    
+
+    // ── Leading-edge legato (STEP 2, toggled by legatoLeadingEdge; default OFF) ──
+    // The PREVIOUS starting note recorded, at its own onset, whether it intends to hold
+    // its gate forward into THIS note (gs.slurForward). It survives untouched through the
+    // previous note's held steps (the MidNote guard above returns early). Capture it now,
+    // BEFORE this note's cascade recomputes gs.slurForward at the bottom. In leading-edge
+    // mode this — not a fresh r_legato_tie roll — governs whether THIS note connects back.
+    const bool prevSlur = gs.slurForward;
+
+    // The previous PLAYED step's decision (lastStepResult is set at the end of each executeStep,
+    // so here it is the step played immediately before this one — in PLAY ORDER, correct in both
+    // directions because it is temporal, not step-numbered). A legato/tie means "connected to the
+    // note played just before"; if that step was a REST (or the initial Inactive), there is no
+    // note to connect to → this must NOT be a connection. This is the direction-correct
+    // predecessor test. wasHeld alone is NOT sufficient: in reverse, wasHeld (a gate read) can be
+    // true from a note that is not the play-order-adjacent predecessor, so a teal could otherwise
+    // be emitted with a rest immediately before it in play order (the reverse isolated-teal bug).
+    const MonoDecision prevPlayedDec = lastStepResult.decision;
+    const bool prevPlayedSounded = (prevPlayedDec == MonoDecision::NewNote)
+                                || (prevPlayedDec == MonoDecision::Legato)
+                                || (prevPlayedDec == MonoDecision::LegatoMax)
+                                || (prevPlayedDec == MonoDecision::Tie)
+                                || (prevPlayedDec == MonoDecision::MidNote);
+
     // Structural Rest Roll:
     // canRest is true only if the previous note finished exactly on a step edge 
     // or was already silent. Fractional tails (e.g. triplets) block the rest roll
     // to ensure rhythmic alignment.
     bool canRest = (gs.holdRemain <= 0.0001f && !hadTail);
 
+    // Whether THIS note connects (tie/legato) to the previous one.
+    //  - Current model: fresh roll at this (joining) onset — r_legato_tie < legatoProb.
+    //  - Leading-edge:  the previous note's onset commitment — prevSlur — decides it.
+    // legatoProb>=0.999 (LegatoMax) forces connection in BOTH models.
+    const bool legatoConnects = (legatoProb >= 0.999f)
+        || (legatoLeadingEdge ? prevSlur : (r_legato_tie < legatoProb));
+
+    // A genuine committed slur reaching THIS note: it connects AND has a held predecessor to
+    // connect to (exactly the condition the legato branch below uses). "Rest beats legato"
+    // toggle: when OFF, such a slur IGNORES the rest roll here (slur wins → plays as Legato/
+    // Tie); when ON (default), the rest branch takes priority (rest cancels the slur). A
+    // fractional TAIL still always outranks rest (canRest, below), regardless of the toggle.
+    const bool slurReachesHere    = legatoConnects && (wasHeld || hadTail) && prevPlayedSounded;
+    const bool slurSuppressesRest = !restBeatsLegato && slurReachesHere;
+
     if (legatoProb >= 0.999f) {
         gs.slideMax(pitchV, sem, nvIdx);
         result.decision = MonoDecision::LegatoMax;
     }
-    else if (r_rest < restProb) {
+    else if ((r_rest < restProb) && !slurSuppressesRest) {
+        // Rest precedence:
+        //  - A fractional NOTE TAIL always outranks a rest (physical — !canRest). Unchanged.
+        //  - "Rest beats legato" ON (default): a rest CANCELS an optional slur reach ("can't
+        //    slur into silence") — even a committed prevSlur yields to the rest (N+1 silent).
+        //    OFF: slurSuppressesRest skips this branch, so the slur wins and the note falls
+        //    through to the legato branch below (rest ignored, N+1 plays as Legato/Tie with
+        //    its own drawn pitch). See RHYTHM_BEHAVIOUR_POLICIES.md.
         if (canRest) {
             gs.gateHeld = false;
             result.decision = MonoDecision::Rest;
@@ -270,15 +315,18 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
             result.decision = MonoDecision::MidNote;
         }
     }
-    else if (r_legato_tie < legatoProb && (wasHeld || hadTail)) {
-        // A legato/tie can only CONNECT if the previous note is still sounding into this step
-        // (wasHeld || hadTail) — the documented invariant "legato/tie decisions require the
-        // previous note still sounding". Previously only the Tie path checked this; the Legato
-        // (else) path slid UNCONDITIONALLY, so a legato roll with no held predecessor produced
-        // a slide-into-nothing — an isolated Legato note (teal cell with no note before it,
-        // e.g. a legato roll on the first note of a phrase or straight after a rest). Gating the
-        // whole connection on a held predecessor makes it real; otherwise fall through to
-        // NewNote (a fresh note — the roll had nothing to connect to).
+    else if (legatoConnects && (wasHeld || hadTail) && prevPlayedSounded) {
+        // A slur can only CONNECT if the previous note actually held its gate into this step
+        // (wasHeld || hadTail) — the documented invariant "legato/tie requires the previous
+        // note still sounding". legatoConnects expresses the INTENT to connect (a fresh roll
+        // in reactive mode, or the previous note's prevSlur commitment in leading-edge mode),
+        // but intent alone isn't enough: in leading-edge, prevSlur can be true while the
+        // predecessor left NO held gate (it ended / was cut), which would otherwise slide into
+        // nothing — producing an isolated Legato cell (teal note connected to no predecessor).
+        // Requiring a held predecessor here makes the connection real; otherwise fall through
+        // to NewNote (the slur had nothing to land on → a fresh note).
+        // (Supersedes master's standalone r_legato_tie<legatoProb form: legatoConnects already
+        // encodes that reactive-roll condition AND the leading-edge prevSlur path.)
         if (sem == gs.lastSemitone) {
             gs.extendHold(sem, nvIdx);
             result.decision = MonoDecision::Tie;
@@ -306,7 +354,41 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
         result.accented = lastStepResult.accented;
     }
 
-    lastStepResult = result;
+    // ── STEP 1 INSTRUMENT (leading-edge legato) — computed, NOT consulted ─────────
+    // In the leading-edge model, a note that is STARTING commits here (at its own onset)
+    // to hold its gate forward into the next note, iff BOTH: (a) its own legato draw
+    // fires (r_legato_tie < legatoProb, or LegatoMax), AND (b) its length is grid-aligned
+    // so it can cleanly reach the next onset (noteCanLeadLegato). This records that intended
+    // commitment on gs.slurForward WITHOUT changing any decision — the join above still
+    // decides exactly as today. Step 2 will make the next step consume this flag instead of
+    // rolling fresh. Only meaningful on a starting note; cleared otherwise.
+    // A note "starts" (and may thus lead the chain FORWARD) if it is a real sounding note
+    // at this onset: NewNote, Legato, LegatoMax — AND Tie. A Tie (same-pitch continuation)
+    // is a sounding note that can carry a 3+ note legato chain onward to the next note, IF
+    // its own length is grid-aligned and it rolls forward. Excluding Tie would break any
+    // chain at a tie (chain of 3+ can only continue past note 2 if note 2 is itself an
+    // eligible lead — see LEGATO_TIE_REDESIGN.md). MidNote (mid-hold, not an onset) and Rest
+    // (silent) correctly do NOT start. slurForward set at a note's onset survives its held
+    // steps (the MidNote guard returns early before this block).
+    bool leStarting = (result.decision == MonoDecision::NewNote)
+                   || (result.decision == MonoDecision::Legato)
+                   || (result.decision == MonoDecision::LegatoMax)
+                   || (result.decision == MonoDecision::Tie);
+    bool leWouldSlur = leStarting
+                    && noteCanLeadLegato(nvIdx)
+                    && (legatoProb >= 0.999f || r_legato_tie < legatoProb);
+    gs.slurForward = leWouldSlur;
+    // Divergence probe: what the leading-edge flag dictates vs what the current model DID
+    // at this join (Tie/Legato = connected; NewNote = not). Counts only; no behaviour change.
+    if (leStarting) {
+        bool currentConnected = (result.decision == MonoDecision::Tie)
+                             || (result.decision == MonoDecision::Legato)
+                             || (result.decision == MonoDecision::LegatoMax);
+        if (leWouldSlur != currentConnected) ++legatoLE_divergeCount;
+        ++legatoLE_startCount;
+    }
+
+    result.forStep = stepIndex; lastStepResult = result;
     return result;
 }
 
@@ -327,6 +409,24 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
     if (!clock.sixteenthEdge || muted) return result;
 
     bool wrapped = advancePlayhead(dir);
+
+    // "Boundary interrupt" toggle: at the phrase boundary (wrap), force a fresh start by
+    // clearing any held gate BEFORE wasHeld is captured — so the note at step 0 sees no held
+    // predecessor and can't slur/tie across the loop. Result: every lap is identical (no
+    // cross-lap memory). Default OFF = CONTINUE (gate carries across the loop, laps can differ
+    // — see the lap-1-vs-lap-2 illustration in RHYTHM_BEHAVIOUR_POLICIES.md). Applied to mono
+    // and all poly voices.
+    if (wrapped && boundaryInterrupt) {
+        gs.gateHeld = false;
+        gs.holdRemain = 0.f;
+        gs.slurForward = false;
+        for (int i = 0; i < numPolyVoices; ++i) {
+            voices[i].gs.gateHeld   = false;
+            voices[i].gs.holdRemain = 0.f;
+            voices[i].gs.slurForward = false;
+        }
+    }
+
     float r_vary   = pe.variationRandom[getVariationStep()];
     float r_rest   = pe.rhythmRandom[getRhythmStep()];
     float r_legato = pe.legatoRandom[getLegatoStep()];
@@ -370,6 +470,15 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
     }
 
     if (triggered) {
+        // Boundary interrupt (see executeModeA): clear held gate at wrap so every lap starts
+        // fresh. Applied before wasHeld capture, mono + poly.
+        if (wrapped && boundaryInterrupt) {
+            gs.gateHeld = false; gs.holdRemain = 0.f; gs.slurForward = false;
+            for (int i = 0; i < numPolyVoices; ++i) {
+                voices[i].gs.gateHeld = false; voices[i].gs.holdRemain = 0.f;
+                voices[i].gs.slurForward = false;
+            }
+        }
         float r_vary   = pe.variationRandom[getVariationStep()];
         float r_rest   = pe.rhythmRandom[getRhythmStep()];
         float r_legato = pe.legatoRandom[getLegatoStep()];
@@ -445,8 +554,16 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         v.accented = (pe.polyAccentRandom[voiceIdx][accIdx] < v.accentProb);
         if (lastStepResult.decision == MonoDecision::NewNote)
             v.gs.triggerNote(pitchV, sem, lastStepResult.nvIdx);
+        else if (wasHeldPoly || hadPolyTail)
+            // Mono is slurring/tying and THIS poly voice had a held predecessor → real slide.
+            v.gs.slideNote(pitchV, sem, lastStepResult.nvIdx, /*wasHeld=*/true);
         else
-            v.gs.slideNote(pitchV, sem, lastStepResult.nvIdx, wasHeldPoly);
+            // Mono slurs but this poly voice had NO held gate (it was resting/silent on its
+            // previous played step) — sliding would produce an isolated Legato cell (teal note
+            // with no predecessor on this lane), the poly analogue of the mono isolated-teal
+            // bug. Trigger a fresh note instead. (Direction-independent; surfaced in reverse
+            // mode but present forward too.)
+            v.gs.triggerNote(pitchV, sem, lastStepResult.nvIdx);
         return;
     }
 

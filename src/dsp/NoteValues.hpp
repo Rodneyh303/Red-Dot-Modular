@@ -23,6 +23,8 @@
 // allowedPPQN is a bitmask of the clock resolutions at which the value is
 // reachable: 1 = PPQN 1, 2 = PPQN 4, 4 = PPQN 24.
 
+#include <cmath>   // std::floor (noteCanLeadLegato)
+
 struct NoteValue {
     float       fraction;     // fraction of a whole note (×16 ⇒ length in 1/16 steps)
     int         allowedPPQN;  // bitmask: 1=PPQN1, 2=PPQN4, 4=PPQN24
@@ -49,4 +51,14 @@ constexpr NoteValue NOTE_VALUES[NUM_NOTE_VALUES] = {
 inline float noteValueSteps(int idx) {
     if (idx < 0 || idx >= NUM_NOTE_VALUES) return 1.0f;
     return NOTE_VALUES[idx].fraction * 16.0f;
+}
+
+// Leading-edge legato: a note can LEAD a legato (hold its gate forward into the next
+// note) only if it ends exactly on a 1/16 grid edge — i.e. its length in 1/16 steps is
+// an integer. Fractional lengths (1/4T=2.667, 1/8T=1.333, 1/32=0.5) end off-grid and
+// cannot cleanly reach the next (grid-aligned) onset, so they can never lead a legato.
+// See LEGATO_TIE_REDESIGN.md. (Integer-step lengths: 1/1,1/2,1/4,1/8,1/16 = 16,8,4,2,1.)
+inline bool noteCanLeadLegato(int idx) {
+    float ns = noteValueSteps(idx);
+    return ns == std::floor(ns);
 }

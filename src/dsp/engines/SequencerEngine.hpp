@@ -27,6 +27,7 @@ struct StepResult {
     bool stepped = false;   // true if a step edge actually fired this sample
     bool wrapped = false;   // true if the phrase boundary wrapped
     bool accented = false;  // true if this step is accented (NEW)
+    int  forStep = -1;      // the stepIndex this result was computed for (Lantern pairs decision→column)
 };
 
 // One additional voice beyond mono.  Owns its own GateState and rest
@@ -67,6 +68,36 @@ struct SequencerEngine {
 
     // Most recent mono decision — written by executeStep, read by executePolyVoices.
     StepResult lastStepResult;
+
+    // Leading-edge legato instrument (STEP 1: characterization only, no behaviour change).
+    // Counts starting notes and how often the leading-edge slur-forward flag would DIVERGE
+    // from the current model's connect/not decision at the join. Purely diagnostic — read
+    // these to gauge how different the two models are before step 2 flips the decision source.
+    long legatoLE_startCount   = 0;
+    long legatoLE_divergeCount = 0;
+
+    // STEP 2: when true, the legato connection is governed by the PREVIOUS note's onset
+    // commitment (gs.slurForward) instead of a fresh roll at the joining onset — the
+    // leading-edge model. Default OFF = exact current behaviour. Toggle (context menu /
+    // JSON) so the two models can be A/B'd by ear. Rest still cancels an optional slur
+    // (rest branch takes priority); fractional tails still outrank rest (canRest).
+    bool legatoLeadingEdge = true;   // BRANCH DEFAULT ON: this branch tests the leading-edge
+                                     // model. (Reactive path still selectable by setting false;
+                                     // a proper context-menu toggle comes later per
+                                     // RHYTHM_BEHAVIOUR_POLICIES.md.)
+
+    // ── Rhythm-behaviour toggles (context menu; see RHYTHM_BEHAVIOUR_POLICIES.md) ──
+    // "Rest beats legato" — when a committed slur (prevSlur) is reaching N+1 and N+1 rolls a
+    // rest: TRUE (default) = rest WINS, cancelling the slur (N+1 silent). FALSE = slur WINS,
+    // the rest roll is IGNORED and N+1 plays as a Legato/Tie (its own drawn pitch, gate-
+    // connected from N). Only affects the case where a genuine committed slur lands on a held
+    // predecessor; a rest on a non-slur note is unaffected.
+    bool restBeatsLegato = true;
+
+    // "Boundary interrupt" — at the phrase boundary (wrap): FALSE (default) = CONTINUE, gate/
+    // state carries across the loop (lap 2 can differ from lap 1). TRUE = INTERRUPT, force a
+    // fresh start at the boundary (reset the held gate) so every lap is identical.
+    bool boundaryInterrupt = false;
 
     int stepIndex = -1;
     int lastPlayDir = +1;   // +1 forward, -1 reverse (Mode E); for UI direction cues
