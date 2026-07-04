@@ -312,7 +312,7 @@ float Monsoon::semitoneToVolts(int semitone) {
     }
 
     // Single definition of every die-action. Fired by G3 (menu-routed) and by
-    // Causeway's dedicated gates (and any future source) — DRY.
+    // Raffles's dedicated gates (and any future source) — DRY.
     void Monsoon::fireDieAction(int a) {
         switch (a) {
             case DA_TRIAL_R:       rhythmMode = 0; engine.pe.setPendingRhythmTrial(); break;
@@ -762,12 +762,12 @@ void Monsoon::process(const ProcessArgs& args) {
     if (controlDivider.process()) {
         updateExpanderPointers();
 
-        if (expanderManager.cachedCausewayExpander) {
-            rack::Module* cw = expanderManager.cachedCausewayExpander;
+        if (expanderManager.cachedRafflesExpander) {
+            rack::Module* cw = expanderManager.cachedRafflesExpander;
             for (int i = 0; i < 14; ++i) {
-                int in = MonsoonIds::CAUSEWAY_GATE_TRIAL_R + i;
+                int in = MonsoonIds::RAFFLES_GATE_TRIAL_R + i;
                 if (cw->inputs[in].isConnected()
-                    && causewayGateTrig[i].process(cw->inputs[in].getVoltage(), 0.1f, 1.f)) {
+                    && rafflesGateTrig[i].process(cw->inputs[in].getVoltage(), 0.1f, 1.f)) {
                     fireDieAction(i);
                 }
             }
@@ -887,7 +887,7 @@ void Monsoon::process(const ProcessArgs& args) {
             if (cv2Mode == 4) paramManager->setCv2Offset(4, norm); // New: Accent modulation
         }
 
-        // ── Assignable CV3 & Causeway Modulation (Throttled) ──
+        // ── Assignable CV3 & Raffles Modulation (Throttled) ──
         float cv3Mods[4] = {0.f, 0.f, 0.f, 0.f};
         
         // 1. Main Panel CV3 (bipolar offset to selected target; was unipolar 0..5
@@ -897,13 +897,13 @@ void Monsoon::process(const ProcessArgs& args) {
             cv3Mods[cv3Target] = clampv<float>(v, -5.f, 5.f) / 5.f;
         }
 
-        // 2. Causeway Expander (Summing bipolar attenuverted CVs)
-        if (expanderManager.cachedCausewayExpander) {
-            rack::Module* cw = expanderManager.cachedCausewayExpander;
+        // 2. Raffles Expander (Summing bipolar attenuverted CVs)
+        if (expanderManager.cachedRafflesExpander) {
+            rack::Module* cw = expanderManager.cachedRafflesExpander;
             for (int i = 0; i < 4; ++i) {
-                if (cw->inputs[CAUSEWAY_SLEW_R_CV + i].isConnected()) {
-                    float v = cw->inputs[CAUSEWAY_SLEW_R_CV + i].getVoltage();
-                    float att = cw->params[CAUSEWAY_SLEW_R_ATT + i].getValue();
+                if (cw->inputs[RAFFLES_SLEW_R_CV + i].isConnected()) {
+                    float v = cw->inputs[RAFFLES_SLEW_R_CV + i].getVoltage();
+                    float att = cw->params[RAFFLES_SLEW_R_ATT + i].getValue();
                     cv3Mods[i] += (v / 5.f) * att;
                 }
             }
@@ -923,7 +923,7 @@ void init(rack::Plugin* p) {
 	pluginInstance = p;
 	p->addModel(modelMonsoon);
 	p->addModel(modelMonsoonInterchangeExpander);
-	p->addModel(modelMonsoonCausewayExpander);
+	p->addModel(modelMonsoonRafflesExpander);
 	p->addModel(modelMonsoonSurgeExpander);
 	//p->addModel(modelMonsoonSandsExpander);
 	p->addModel(modelMonsoonStraitsEastExpander);

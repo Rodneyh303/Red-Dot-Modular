@@ -6,7 +6,7 @@ evoking the random DRAW that this module performs (it modulates the dice/rhythm
 stochastic generation). "Raffles" doubles as the iconic Singapore name, keeping
 the place-name family. Black panel, gold trim, red detailing, white text.
 
-Geometry matches the in-use Causeway panel: 180x380 px (mm coords, 75 DPI).
+Geometry matches the in-use Raffles panel: 180x380 px (mm coords, 75 DPI).
 Controls live at y>=38mm; the ticket fan occupies the header (y ~ 6..34mm).
 R/L sectioning (rhythm left / melody right) preserved as faint tints.
 nanosvg-safe: solid fills, no gradients/masks/text/url. Screws via C++ RedScrew.
@@ -110,14 +110,14 @@ def panel(theme):
     o += ticket_fan(t, cx_mm=W/2/S, pivot_mm=17.0)
 
     # control wells with KIT ID markers, driven by the SAME source of truth as
-    # the module (panel_src/layouts/causeway.json). Each control's id becomes the
+    # the module (panel_src/layouts/raffles.json). Each control's id becomes the
     # SVG marker id "<kind>_<CONTROL_ID>" so the widget binds by name via the kit.
     import json, os
     _here = os.path.dirname(os.path.abspath(__file__))
-    controls = json.load(open(os.path.join(_here, "layouts", "causeway.json")))["controls"]
+    controls = json.load(open(os.path.join(_here, "layouts", "raffles.json")))["controls"]
     o.append('<g id="components">')
     for c in controls:
-        cid = f'{c["kind"]}_{c["id"]}'           # e.g. param_CAUSEWAY_SLEW_R_ATT
+        cid = f'{c["kind"]}_{c["id"]}'           # e.g. param_RAFFLES_SLEW_R_ATT
         if c["kind"] == "param":
             o.append(trim_well(t, c["x_mm"], c["y_mm"], cid=cid))
         else:

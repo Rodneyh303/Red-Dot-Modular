@@ -693,38 +693,38 @@ namespace MonsoonIds {
         NUM_EXPANDER_PARAMS
     };
 
-    // ── Causeway expander (dice/draw-generation modulation) ──────────────────
+    // ── Raffles expander (dice/draw-generation modulation) ──────────────────
     // Its own param/input enums (distinct from Interchange's EXPANDER_*). 4 CV
     // attenuverters (slew R/M, mix R/M) + 10 dedicated die-action gate inputs.
-    enum CausewayParamIds {
-        CAUSEWAY_SLEW_R_ATT = 0,
-        CAUSEWAY_SLEW_M_ATT,
-        CAUSEWAY_MIX_R_ATT,
-        CAUSEWAY_MIX_M_ATT,
-        NUM_CAUSEWAY_PARAMS
+    enum RafflesParamIds {
+        RAFFLES_SLEW_R_ATT = 0,
+        RAFFLES_SLEW_M_ATT,
+        RAFFLES_MIX_R_ATT,
+        RAFFLES_MIX_M_ATT,
+        NUM_RAFFLES_PARAMS
     };
-    enum CausewayInputIds {
-        CAUSEWAY_SLEW_R_CV = 0,
-        CAUSEWAY_SLEW_M_CV,
-        CAUSEWAY_MIX_R_CV,
-        CAUSEWAY_MIX_M_CV,
+    enum RafflesInputIds {
+        RAFFLES_SLEW_R_CV = 0,
+        RAFFLES_SLEW_M_CV,
+        RAFFLES_MIX_R_CV,
+        RAFFLES_MIX_M_CV,
         // 10 die-action gates (order = display order on the panel)
-        CAUSEWAY_GATE_TRIAL_R,
-        CAUSEWAY_GATE_TRIAL_M,
-        CAUSEWAY_GATE_REDICE_R,
-        CAUSEWAY_GATE_REDICE_M,
-        CAUSEWAY_GATE_LIVESRC_R,
-        CAUSEWAY_GATE_LIVESRC_M,
-        CAUSEWAY_GATE_LIVESTATIC_R,
-        CAUSEWAY_GATE_LIVESTATIC_M,
-        CAUSEWAY_GATE_RESEED_ROLL,
-        CAUSEWAY_GATE_RESEED_RESTART,
+        RAFFLES_GATE_TRIAL_R,
+        RAFFLES_GATE_TRIAL_M,
+        RAFFLES_GATE_REDICE_R,
+        RAFFLES_GATE_REDICE_M,
+        RAFFLES_GATE_LIVESRC_R,
+        RAFFLES_GATE_LIVESRC_M,
+        RAFFLES_GATE_LIVESTATIC_R,
+        RAFFLES_GATE_LIVESTATIC_M,
+        RAFFLES_GATE_RESEED_ROLL,
+        RAFFLES_GATE_RESEED_RESTART,
         // LastDice / LastTrial gates (step draw index opposite to dice/trial).
-        CAUSEWAY_GATE_LASTDICE_R,
-        CAUSEWAY_GATE_LASTDICE_M,
-        CAUSEWAY_GATE_LASTTRIAL_R,
-        CAUSEWAY_GATE_LASTTRIAL_M,
-        NUM_CAUSEWAY_INPUTS
+        RAFFLES_GATE_LASTDICE_R,
+        RAFFLES_GATE_LASTDICE_M,
+        RAFFLES_GATE_LASTTRIAL_R,
+        RAFFLES_GATE_LASTTRIAL_M,
+        NUM_RAFFLES_INPUTS
     };
 
     // ── Surge expander (the big-5 pattern-knob modulation) ───────────────────
@@ -865,14 +865,14 @@ struct Monsoon : Module {
     // Assignable mod routing for the main-panel CV3 / GATE3 jacks (persisted).
     // CV3 adds to the selected continuous target; GATE3 rising edge fires the
     // selected action. Same target sets are offered (in full, attenuverted) on
-    // the Causeway expander, and the contributions SUM.
+    // the Raffles expander, and the contributions SUM.
     enum Cv3Target  { CV3_RHYTHM_SLEW=0, CV3_MELODY_SLEW, CV3_RHYTHM_MIX, CV3_MELODY_MIX, CV3_NUM_TARGETS };
     enum Gate3Target{ G3_TRIAL_RHYTHM=0, G3_TRIAL_MELODY, G3_TOGGLE_RESEED_ROLL, G3_TOGGLE_RESEED_RESTART,
                       G3_TOGGLE_RHYTHM_LIVESRC, G3_TOGGLE_MELODY_LIVESRC, G3_NUM_TARGETS };
     int  cv3Target   = CV3_RHYTHM_SLEW;
     int  gate3Target = G3_TRIAL_RHYTHM;
     dsp::SchmittTrigger gate3Trig;   // rising-edge detect for GATE3 actions
-    dsp::SchmittTrigger causewayGateTrig[14];  // Causeway's 14 die-action gates (incl Last*)
+    dsp::SchmittTrigger rafflesGateTrig[14];  // Raffles's 14 die-action gates (incl Last*)
     // Which dice the LIVE mode drives, per lane: false=main (promote, A walks),
     // true=trial (anchored A, endless variations on a theme). Persisted.
     bool rhythmLiveTrial = false;
@@ -880,7 +880,7 @@ struct Monsoon : Module {
 
     // ── Shared die-action vocabulary ─────────────────────────────────────────
     // One definition of "what each die-action does", fired by G3 (menu-routed)
-    // AND by Causeway's dedicated gates (and any future source). DRY: add an
+    // AND by Raffles's dedicated gates (and any future source). DRY: add an
     // action here and every gate source can use it.
     enum DieAction {
         DA_TRIAL_R = 0, DA_TRIAL_M,
@@ -1126,7 +1126,7 @@ struct Monsoon : Module {
 
 extern Model* modelMonsoon;
 extern Model* modelMonsoonInterchangeExpander;
-extern Model* modelMonsoonCausewayExpander;
+extern Model* modelMonsoonRafflesExpander;
 extern Model* modelMonsoonSurgeExpander;
 //extern Model* modelMonsoonSandsExpander;
 extern Model* modelMonsoonStraitsEastExpander; // Declare new expander model

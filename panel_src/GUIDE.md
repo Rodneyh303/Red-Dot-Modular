@@ -44,7 +44,7 @@ The modern path. A JSON layout is the single source of truth; the generator
 emits BOTH the SVG (with invisible `id="input_…"`/`param_…`/`output_…` marker
 shapes) AND a `src/gen/<Struct>.gen.hpp` of `constexpr` mm coordinates. The
 widget either binds to the SVG markers via SvgPanelKit, or reads the gen.hpp
-coords. **Currently only Causeway uses the full JSON pipeline.**
+coords. **Currently only Raffles (formerly Causeway) uses the full JSON pipeline.**
 
 ### B) Bespoke art generators (one script per panel)
 
@@ -71,7 +71,7 @@ Quick check which a module is:
 grep -c 'bindInput\|bindParam\|loadPanel' src/<Module>.cpp   # >0 => kit-bound
 grep -c 'createInputCentered\|mm2px(Vec'   src/<Module>.cpp   # >0 => coordinate-placed
 ```
-Observed today: Causeway, Surge, StraitsEast = kit-bound; Interchange,
+Observed today: Raffles, Surge, StraitsEast = kit-bound; Interchange,
 MonsoonSandsVisual = coordinate-placed.
 
 ---
@@ -80,20 +80,20 @@ MonsoonSandsVisual = coordinate-placed.
 
 Run all from repo root. "Outputs" are under `res/panels/` unless noted.
 
-### Causeway — the ONLY JSON-pipeline panel
+### Raffles (formerly Causeway) — the ONLY JSON-pipeline panel
 ```bash
-python3 panel_src/gen_layout.py panel_src/layouts/causeway.json
+python3 panel_src/gen_layout.py panel_src/layouts/raffles.json
 #   or regenerate every JSON panel:
 python3 panel_src/gen_layout.py --all
 ```
-- Source of truth: `panel_src/layouts/causeway.json`.
-- Emits: `Causeway_panel_{dark,light}.svg` + `src/gen/CausewayLayout.gen.hpp`.
+- Source of truth: `panel_src/layouts/raffles.json`.
+- Emits: `Raffles_panel_{dark,light}.svg` + `src/gen/RafflesLayout.gen.hpp`.
 - Validates all control ids against the enum and prints `[ok] all N control ids
-  present`. Trust this over the bespoke `gen_causeway.py`.
-- **`gen_causeway.py` is the OLDER, SVG-only generator — do not use it.** It
+  present`. (gen_causeway.py has been deleted.)
+- **`gen_causeway.py` has been DELETED** (was the older SVG-only generator). It
   emits art but no gen.hpp and predates the JSON. Kept only for reference.
 - To add a control: edit the JSON (`controls` array, `id`/`kind`/`x_mm`/`y_mm`),
-  rerun, then add the `bind…` call in `MonsoonCausewayExpander.cpp`.
+  rerun, then add the `bind…` call in `MonsoonRafflesExpander.cpp`.
 
 ### Sands visual panels — Mono, Macro, East, West
 Shared design language lives in `dotmod_design.py` (palette, logo, MBS+waves
@@ -146,14 +146,14 @@ python3 panel_src/embed_cluster_art.py    # injects dice/slew/mix + output reces
   into the rich SVGs (cy=280 row), not regenerated — same surgical approach as
   the Sands widen.
 
-### CV / modulation expanders — Surge, Causeway-art, Interchange, Straits CV
+### CV / modulation expanders — Surge, Raffles-art, Interchange, Straits CV
 ```bash
 python3 panel_src/gen_surge.py            # Surge 8HP (big-5 CV) dark+light
 python3 panel_src/gen_straits_cv.py       # Straits East+West poly CV (390x380 px)
 python3 panel_src/gen_interchange.py      # Interchange tonal-CV (270x380 px)
 python3 panel_src/embed_interchange_markers.py  # OR: keep hand art, inject markers only
 ```
-- **Surge** and **Causeway** also have *renamed* art-variant generators with
+- **Surge** and **Raffles** also have *renamed* art-variant generators with
   Singapore-themed hero graphics:
   - `gen_junction.py` — Junction (was Surge): Bugis pinisi schooner, 120×380 px.
   - `gen_raffles.py` — Raffles (was Causeway): raffle-ticket fan, 180×380 px.
@@ -228,11 +228,11 @@ forEachMatched("voice_(\\d+)_lane_(\\d+)", cb)     // regex with capture groups
 
 ## 4. Common workflows
 
-**Add a jack to Causeway (JSON module):**
-1. Add a `controls` entry to `panel_src/layouts/causeway.json`
-   (`{"id":"CAUSEWAY_…","kind":"input","x_mm":…,"y_mm":…}`).
-2. `python3 panel_src/gen_layout.py panel_src/layouts/causeway.json`
-3. Add the `bindInput("input_CAUSEWAY_…", …)` call in the widget.
+**Add a jack to Raffles (JSON module):**
+1. Add a `controls` entry to `panel_src/layouts/raffles.json`
+   (`{"id":"RAFFLES_…","kind":"input","x_mm":…,"y_mm":…}`).
+2. `python3 panel_src/gen_layout.py panel_src/layouts/raffles.json`
+3. Add the `bindInput("input_RAFFLES_…", …)` call in the widget.
 4. Confirm the validator prints `[ok] all N control ids present`.
 
 **Add a jack to a Sands panel (coordinate-placed, e.g. prob-outs):**
@@ -257,7 +257,7 @@ python3 -c "import xml.dom.minidom as m; m.parse('res/panels/<file>.svg'); print
 
 - Run from repo root (§0).
 - 75 DPI (`75/25.4`), never 96 / `3.7795`.
-- `gen_layout.py` is canonical for JSON modules; `gen_causeway.py` is dead.
+- `gen_layout.py` is canonical for JSON modules; `gen_causeway.py` was deleted.
 - Regenerating a **Sands** panel reverts the prob-out width widen — see §2.
 - Don't regenerate **Monsoon** art; use the `embed_*` scripts (the active panel
   is hand-authored).
