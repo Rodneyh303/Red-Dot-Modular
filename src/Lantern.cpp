@@ -561,22 +561,35 @@ struct LanternDisplay : widget::Widget {
             }
         }
 
-        // Playhead — drawn at the ONSET edge of the current step so it touches where the note
-        // currently sounding STARTS: forward = left edge of the step; reverse = right edge (matches
-        // the direction-aware bar anchoring, so the line meets the note's leading edge either way).
+        // Playhead — a Sands-style block highlight spanning the WHOLE current step (both edges),
+        // plus a bright leading-edge bar on the side the playhead travels TOWARD (right forward,
+        // left reverse). Reads as "this column is the current step" rather than a single ambiguous
+        // line.
         int ph = module->lastObservedStep;
         if (ph >= 0 && ph < N_STEPS) {
-            // Determine play direction from any active cell at this step (fallback forward).
             int dir = +1;
             for (int v = 0; v < N_VOICES; ++v) {
                 if (module->cells[v][ph].type != lantern::NoteType::Inactive) { dir = module->cells[v][ph].playDir; break; }
             }
-            float pxp = (dir < 0) ? gridX + (ph + 1.f) * stepW    // reverse: right edge (onset)
-                                  : gridX + ph * stepW;           // forward: left edge (onset)
+            float cx = gridX + ph * stepW;                 // step column left
+            // Translucent red column fill (start→end of the step).
             nvgBeginPath(vg);
-            nvgStrokeColor(vg, nvgRGBA(0xd4, 0x00, 0x1a, 0xcc));
-            nvgStrokeWidth(vg, 1.2f);
-            nvgMoveTo(vg, pxp, 0.f); nvgLineTo(vg, pxp, H);
+            nvgRect(vg, cx, 0.f, stepW, H);
+            nvgFillColor(vg, nvgRGBA(0xd4, 0x00, 0x1a, 0x22));
+            nvgFill(vg);
+            // Both step edges, subtle.
+            nvgBeginPath(vg);
+            nvgStrokeColor(vg, nvgRGBA(0xd4, 0x00, 0x1a, 0x55));
+            nvgStrokeWidth(vg, 0.8f);
+            nvgMoveTo(vg, cx, 0.f);          nvgLineTo(vg, cx, H);
+            nvgMoveTo(vg, cx + stepW, 0.f);  nvgLineTo(vg, cx + stepW, H);
+            nvgStroke(vg);
+            // Bright leading edge on the travel-toward side (the note-onset edge).
+            float ex = (dir < 0) ? cx : (cx + stepW);
+            nvgBeginPath(vg);
+            nvgStrokeColor(vg, nvgRGBA(0xd4, 0x00, 0x1a, 0xdd));
+            nvgStrokeWidth(vg, 1.6f);
+            nvgMoveTo(vg, ex, 0.f); nvgLineTo(vg, ex, H);
             nvgStroke(vg);
         }
     }
