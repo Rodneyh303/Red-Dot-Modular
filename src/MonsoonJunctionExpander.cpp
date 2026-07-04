@@ -1,5 +1,5 @@
 #include <rack.hpp>
-#include "MonsoonSurgeExpander.hpp"
+#include "MonsoonJunctionExpander.hpp"
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
 #include "ui/ConnectMark.hpp"
@@ -13,14 +13,14 @@ static const float SG_ROWS[5]  = {60.0f, 74.0f, 88.0f, 102.0f, 116.0f};
 static const float SG_JACK_X   = 14.0f;
 static const float SG_ATT_X    = 30.0f;
 
-struct MonsoonSurgeExpanderWidget : ModuleWidget,
-    dotModular::Compose<MonsoonSurgeExpanderWidget,
+struct MonsoonJunctionExpanderWidget : ModuleWidget,
+    dotModular::Compose<MonsoonJunctionExpanderWidget,
                         dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
     int lastThemeLight = -1;
     redDot::ConnectMark* connectMark = nullptr;
 
-    MonsoonSurgeExpanderWidget(MonsoonSurgeExpander* mod) {
+    MonsoonJunctionExpanderWidget(MonsoonJunctionExpander* mod) {
         setModule(mod);
         const char* darkPath  = "res/panels/Junction_panel_dark.svg";
         const char* lightPath = "res/panels/Junction_panel_light.svg";
@@ -30,15 +30,15 @@ struct MonsoonSurgeExpanderWidget : ModuleWidget,
         redDot::addRedScrews(this);
 
         // Controls bound by id from the kit (#components). gen_junction.py emits
-        // input_SURGE_<NAME>_CV / param_SURGE_<NAME>_ATT for the 5 rows.
+        // input_JUNCTION_<NAME>_CV / param_JUNCTION_<NAME>_ATT for the 5 rows.
         const char* nm[5] = {"NOTEVAL","VARIATION","LEGATO","REST","ACCENT"};
-        const int cvId[5]  = { MonsoonIds::SURGE_NOTEVAL_CV, MonsoonIds::SURGE_VARIATION_CV,
-            MonsoonIds::SURGE_LEGATO_CV, MonsoonIds::SURGE_REST_CV, MonsoonIds::SURGE_ACCENT_CV };
-        const int attId[5] = { MonsoonIds::SURGE_NOTEVAL_ATT, MonsoonIds::SURGE_VARIATION_ATT,
-            MonsoonIds::SURGE_LEGATO_ATT, MonsoonIds::SURGE_REST_ATT, MonsoonIds::SURGE_ACCENT_ATT };
+        const int cvId[5]  = { MonsoonIds::JUNCTION_NOTEVAL_CV, MonsoonIds::JUNCTION_VARIATION_CV,
+            MonsoonIds::JUNCTION_LEGATO_CV, MonsoonIds::JUNCTION_REST_CV, MonsoonIds::JUNCTION_ACCENT_CV };
+        const int attId[5] = { MonsoonIds::JUNCTION_NOTEVAL_ATT, MonsoonIds::JUNCTION_VARIATION_ATT,
+            MonsoonIds::JUNCTION_LEGATO_ATT, MonsoonIds::JUNCTION_REST_ATT, MonsoonIds::JUNCTION_ACCENT_ATT };
         for (int r = 0; r < 5; ++r) {
-            bindInput<PJ301MPort>(std::string("input_SURGE_") + nm[r] + "_CV",  cvId[r]);
-            bindParam<Trimpot>   (std::string("param_SURGE_") + nm[r] + "_ATT", attId[r]);
+            bindInput<PJ301MPort>(std::string("input_JUNCTION_") + nm[r] + "_CV",  cvId[r]);
+            bindParam<Trimpot>   (std::string("param_JUNCTION_") + nm[r] + "_ATT", attId[r]);
         }
 
         // dot.modular connect mark — full brand colour when attached to a Monsoon
@@ -84,5 +84,5 @@ struct MonsoonSurgeExpanderWidget : ModuleWidget,
     }
 };
 
-Model* modelMonsoonSurgeExpander =
-    createModel<MonsoonSurgeExpander, MonsoonSurgeExpanderWidget>("Junction");
+Model* modelMonsoonJunctionExpander =
+    createModel<MonsoonJunctionExpander, MonsoonJunctionExpanderWidget>("Junction");

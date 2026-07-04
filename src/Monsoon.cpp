@@ -924,7 +924,7 @@ void init(rack::Plugin* p) {
 	p->addModel(modelMonsoon);
 	p->addModel(modelMonsoonInterchangeExpander);
 	p->addModel(modelMonsoonRafflesExpander);
-	p->addModel(modelMonsoonSurgeExpander);
+	p->addModel(modelMonsoonJunctionExpander);
 	//p->addModel(modelMonsoonSandsExpander);
 	p->addModel(modelMonsoonStraitsEastExpander);
 	p->addModel(modelLantern);                       // Lantern note-output visualiser

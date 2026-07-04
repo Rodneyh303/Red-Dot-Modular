@@ -1,5 +1,5 @@
 // Compile test for the VARIADIC composable-mixin SvgPanelKit (experiment).
-// Defines a Compose<>-based widget for the existing Surge module, exercising the
+// Defines a Compose<>-based widget for the existing Junction module, exercising the
 // full variadic machinery: Compose<T, ShapeQuery, Bind, Reload>, state access via
 // T::kit_, bind-by-name, dev reload, step + context menu.
 //
@@ -12,36 +12,36 @@
 // SvgHelper.hpp stays the choice.
 
 #include <rack.hpp>
-#include "MonsoonSurgeExpander.hpp"
+#include "MonsoonJunctionExpander.hpp"
 #include "Monsoon.hpp"
 #include "ui/SvgPanelKit.hpp"
 
 using namespace rack;
 using namespace dotModular;
 
-struct SurgeKitTestWidget
+struct JunctionKitTestWidget
     : ModuleWidget,
-      Compose<SurgeKitTestWidget, ShapeQuery, Bind, Reload> {
+      Compose<JunctionKitTestWidget, ShapeQuery, Bind, Reload> {
 
-    SurgeKitTestWidget(MonsoonSurgeExpander* module) {
+    JunctionKitTestWidget(MonsoonJunctionExpander* module) {
         setModule(module);
-        loadPanel(asset::plugin(pluginInstance, "res/panels/Surge_panel_dark.svg"));
+        loadPanel(asset::plugin(pluginInstance, "res/panels/Junction_panel_dark.svg"));
 
         // bind 5 CV inputs + 5 attenuverters by name
         const char* lanes[5] = { "NOTEVAL", "VARIATION", "LEGATO", "REST", "ACCENT" };
-        const int cvId[5]  = { MonsoonIds::SURGE_NOTEVAL_CV, MonsoonIds::SURGE_VARIATION_CV,
-            MonsoonIds::SURGE_LEGATO_CV, MonsoonIds::SURGE_REST_CV, MonsoonIds::SURGE_ACCENT_CV };
-        const int attId[5] = { MonsoonIds::SURGE_NOTEVAL_ATT, MonsoonIds::SURGE_VARIATION_ATT,
-            MonsoonIds::SURGE_LEGATO_ATT, MonsoonIds::SURGE_REST_ATT, MonsoonIds::SURGE_ACCENT_ATT };
+        const int cvId[5]  = { MonsoonIds::JUNCTION_NOTEVAL_CV, MonsoonIds::JUNCTION_VARIATION_CV,
+            MonsoonIds::JUNCTION_LEGATO_CV, MonsoonIds::JUNCTION_REST_CV, MonsoonIds::JUNCTION_ACCENT_CV };
+        const int attId[5] = { MonsoonIds::JUNCTION_NOTEVAL_ATT, MonsoonIds::JUNCTION_VARIATION_ATT,
+            MonsoonIds::JUNCTION_LEGATO_ATT, MonsoonIds::JUNCTION_REST_ATT, MonsoonIds::JUNCTION_ACCENT_ATT };
         for (int r = 0; r < 5; ++r) {
-            bindInput<PJ301MPort>(std::string("input_SURGE_") + lanes[r] + "_CV", cvId[r]);
-            bindParam<Trimpot>(   std::string("param_SURGE_") + lanes[r] + "_ATT", attId[r]);
+            bindInput<PJ301MPort>(std::string("input_JUNCTION_") + lanes[r] + "_CV", cvId[r]);
+            bindParam<Trimpot>(   std::string("param_JUNCTION_") + lanes[r] + "_ATT", attId[r]);
         }
 
         // exercise the variadic pack bind too (binds nothing real here, just
         // proves it instantiates under c++11 — names won't all resolve, which is
         // fine; the point is the template compiles)
-        // bindParams<Trimpot>("param_SURGE_", attId[0], attId[1]);  // (left commented: ids not prefixed _0/_1)
+        // bindParams<Trimpot>("param_JUNCTION_", attId[0], attId[1]);  // (left commented: ids not prefixed _0/_1)
 
         setDevMode(true);
     }
