@@ -2,7 +2,7 @@
 #include "../engines/SequencerEngine.hpp"
 #include "../../Monsoon.hpp"
 #include "MonsoonExpanderManager.hpp"
-#include "../../MonsoonStraitsEastExpander.hpp"
+#include "../../MonsoonStraitsExpander.hpp"
 #include "../../MonsoonStraitWestExpander.hpp"
 
 using namespace rack;
@@ -32,47 +32,41 @@ void OutputGenerator::drive(SequencerEngine& engine,
     bool accentActive = engine.lastStepResult.accented && !effectiveMuted;
     (void)accentActive;
 
-    // 2. Straits East Expander (Voices 2-8)
-    auto* polyExp = expanderManager.cachedPolyVoiceExpander;
-    if (polyExp && engine.numPolyVoices > 0) {
-        using namespace PolyVoiceExpanderIds;
-        for (int i = 0; i < (int)engine.numPolyVoices && i < 7; ++i) {
-            if (effectiveMuted) {
-                polyExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
-                polyExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
+    // 2. Straits base poly expander — three 16-channel poly cables (gate / CV / accent).
+    //    ch0 = MONO voice (voice 1) ALWAYS; ch1..15 = poly voices 2..16. Cables are always
+    //    16ch wide; voices beyond numPolyVoices output gate-low / 0V. Replaces the old
+    //    East(2-8)+West(9-16) 21-individual-jack split.
+    auto* straits = expanderManager.cachedPolyVoiceExpander;
+    if (straits) {
+        using namespace StraitsIds;
+        auto& gateOut   = straits->outputs[POLY_GATE_OUT];
+        auto& cvOut     = straits->outputs[POLY_CV_OUT];
+        auto& accentOut = straits->outputs[POLY_ACCENT_OUT];
+        gateOut.setChannels(16);
+        cvOut.setChannels(16);
+        accentOut.setChannels(16);
+
+        // ch0 = mono voice (voice 1), duplicated from the parent's mono path.
+        gateOut.setVoltage((gateV > 5.f && !effectiveMuted) ? 10.f : 0.f, 0);
+        cvOut.setVoltage(effectiveMuted ? 0.f : currentPitchV, 0);
+        accentOut.setVoltage((!effectiveMuted && engine.lastStepResult.accented && gateV > 5.f) ? 10.f : 0.f, 0);
+
+        // ch1..15 = poly voices 2..16.
+        for (int i = 0; i < 15; ++i) {
+            const int ch = i + 1;
+            if (effectiveMuted || i >= (int)engine.numPolyVoices) {
+                gateOut.setVoltage(0.f, ch);
+                cvOut.setVoltage(0.f, ch);
+                accentOut.setVoltage(0.f, ch);
                 continue;
             }
             float vg = engine.voices[i].gs.process(sampleTime);
-            polyExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(vg);
-            polyExp->outputs[POLY_CV_OUT_1 + i].setVoltage(engine.voices[i].gs.currentPitchV);
-            // Accent is a poly lane now: each voice fires its OWN accent (drawn per-voice in
-            // executePolyVoice), not mono's. Still gated by the voice actually sounding.
-            polyExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage((!effectiveMuted && engine.voices[i].accented && vg > 5.f) ? 10.f : 0.f);
+            gateOut.setVoltage(vg, ch);
+            cvOut.setVoltage(engine.voices[i].gs.currentPitchV, ch);
+            // Accent is a poly lane: each voice fires its OWN accent (drawn per-voice in
+            // executePolyVoice), gated by the voice actually sounding.
+            accentOut.setVoltage((engine.voices[i].accented && vg > 5.f) ? 10.f : 0.f, ch);
         }
-        // Summary outputs for 1-8
-        polyExp->outputs[POLY_GATE_1_8_OUT].setVoltage((gateV > 5.f && !effectiveMuted) ? 10.f : 0.f);
-        polyExp->outputs[POLY_CV_1_8_OUT].setVoltage(effectiveMuted ? 0.f : currentPitchV);
-    }
-
-    // 3. Straits West Expander (Voices 9-16)
-    auto* westExp = expanderManager.cachedStraitWestExpander;
-    if (westExp && engine.numPolyVoices > 7) {
-        using namespace StraitWestExpanderIds;
-        for (int i = 0; i < 8; ++i) {
-            int vIdx = 7 + i;
-            if (effectiveMuted || vIdx >= (int)engine.numPolyVoices) {
-                westExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
-                westExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
-                continue;
-            }
-            float vg = engine.voices[vIdx].gs.process(sampleTime);
-            westExp->outputs[POLY_GATE_OUT_1 + i].setVoltage(vg);
-            westExp->outputs[POLY_CV_OUT_1 + i].setVoltage(engine.voices[vIdx].gs.currentPitchV);
-            westExp->outputs[POLY_ACCENT_OUT_1 + i].setVoltage((!effectiveMuted && engine.voices[vIdx].accented && vg > 5.f) ? 10.f : 0.f);
-        }
-        // Summary outputs for 1-16
-        westExp->outputs[POLY_GATE_1_16_OUT].setVoltage((gateV > 5.f && !effectiveMuted) ? 10.f : 0.f);
-        westExp->outputs[POLY_CV_1_16_OUT].setVoltage(effectiveMuted ? 0.f : currentPitchV);
     }
 }
 

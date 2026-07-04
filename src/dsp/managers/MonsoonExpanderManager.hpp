@@ -8,8 +8,7 @@ class SequencerEngine;
 struct MonsoonInterchangeExpander;
 struct MonsoonSandsExpander;
 struct MonsoonSandsVisualExpander;       // Mono visual DNA editor
-struct MonsoonStraitsEastExpander;
-struct MonsoonStraitWestExpander;
+struct MonsoonStraitsExpander;
 struct MonsoonStraitsSands;
 struct MonsoonDeepStraitsSandsEast;
 struct MonsoonDeepStraitsSandsWest;
@@ -24,8 +23,7 @@ extern rack::Model* modelMonsoonCausewayExpander;
 extern rack::Model* modelMonsoonSurgeExpander;
 extern rack::Model* modelMonsoonSandsExpander;
 extern rack::Model* modelMonsoonSandsVisualExpander;
-extern rack::Model* modelMonsoonStraitsEastExpander;
-extern rack::Model* modelMonsoonStraitWestExpander;
+extern rack::Model* modelMonsoonStraitsExpander;
 extern rack::Model* modelMonsoonStraitsSands;
 extern rack::Model* modelMonsoonDeepStraitsSandsEast;
 extern rack::Model* modelMonsoonDeepStraitsSandsWest;
@@ -43,8 +41,7 @@ struct MonsoonExpanderManager {
     rack::Module*                cachedSurgeExpander              = nullptr;
     //MonsoonSandsExpander*        cachedDnaExpander                = nullptr;
     MonsoonSandsVisualExpander*  cachedSandsVisualExpander        = nullptr;
-    MonsoonStraitsEastExpander*  cachedPolyVoiceExpander          = nullptr;
-    MonsoonStraitWestExpander*   cachedStraitWestExpander         = nullptr;
+    MonsoonStraitsExpander*      cachedPolyVoiceExpander          = nullptr;
     MonsoonStraitsSands*         cachedStraitsSandsExpander       = nullptr;
     //MonsoonDeepStraitsSandsEast* cachedDeepStraitsSandsEastExpander = nullptr;
     //MonsoonDeepStraitsSandsWest* cachedDeepStraitsSandsWestExpander = nullptr;
@@ -57,7 +54,6 @@ struct MonsoonExpanderManager {
     int dnaExpanderCount                = 0;
     int sandsVisualExpanderCount        = 0;
     int polyExpanderCount               = 0;
-    int straitWestExpanderCount         = 0;
     int straitsSandsExpanderCount       = 0;
     int deepStraitsSandsEastExpanderCount = 0;
     int deepStraitsSandsWestExpanderCount = 0;
@@ -72,7 +68,6 @@ struct MonsoonExpanderManager {
         //cachedDnaExpander                = nullptr;
         cachedSandsVisualExpander        = nullptr;
         cachedPolyVoiceExpander          = nullptr;
-        cachedStraitWestExpander         = nullptr;
         cachedStraitsSandsExpander       = nullptr;
        // cachedDeepStraitsSandsEastExpander = nullptr;
         //cachedDeepStraitsSandsWestExpander = nullptr;
@@ -84,7 +79,6 @@ struct MonsoonExpanderManager {
         //dnaExpanderCount                = 0;
         sandsVisualExpanderCount        = 0;
         polyExpanderCount               = 0;
-        straitWestExpanderCount         = 0;
         straitsSandsExpanderCount       = 0;
         //deepStraitsSandsEastExpanderCount = 0;
         deepStraitsSandsWestExpanderCount = 0;
@@ -115,12 +109,9 @@ struct MonsoonExpanderManager {
                 } else if (curr->model == modelMonsoonSandsVisualExpander) {
                     if (!cachedSandsVisualExpander) cachedSandsVisualExpander = reinterpret_cast<MonsoonSandsVisualExpander*>(curr);
                     sandsVisualExpanderCount++;
-                } else if (curr->model == modelMonsoonStraitsEastExpander) {
-                    if (!cachedPolyVoiceExpander) cachedPolyVoiceExpander = reinterpret_cast<MonsoonStraitsEastExpander*>(curr);
+                } else if (curr->model == modelMonsoonStraitsExpander) {
+                    if (!cachedPolyVoiceExpander) cachedPolyVoiceExpander = reinterpret_cast<MonsoonStraitsExpander*>(curr);
                     polyExpanderCount++;
-                } else if (curr->model == modelMonsoonStraitWestExpander) {
-                    if (!cachedStraitWestExpander) cachedStraitWestExpander = reinterpret_cast<MonsoonStraitWestExpander*>(curr);
-                    straitWestExpanderCount++;
                 // } else if (curr->model == modelMonsoonStraitsSands) {
                 //     if (!cachedStraitsSandsExpander) cachedStraitsSandsExpander = reinterpret_cast<MonsoonStraitsSands*>(curr);
                 //     straitsSandsExpanderCount++;
@@ -160,7 +151,7 @@ struct MonsoonExpanderManager {
     bool allTypesFound() const {
         return cachedScaleExpander && cachedCausewayExpander && cachedSurgeExpander
             && cachedSandsVisualExpander && cachedPolyVoiceExpander
-            && cachedStraitWestExpander && cachedStraitsSandsExpander
+            && cachedStraitsSandsExpander
             && cachedEastSandsVisual && cachedWestSandsVisual && cachedMacroSandsVisual;
     }
 
