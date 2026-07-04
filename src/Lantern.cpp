@@ -97,6 +97,21 @@ struct Lantern : Module {
     Cell cells[16][16];
     int  lastObservedStep = -1;
 
+    // Piano-roll per-voice visibility (bit v = voice v shown). Default all on. Persisted.
+    uint16_t rollVoiceMask = 0xFFFF;
+    bool voiceVisible(int v) const { return (rollVoiceMask >> v) & 1u; }
+    void toggleVoice(int v)        { rollVoiceMask ^= (uint16_t)(1u << v); }
+
+    json_t* dataToJson() override {
+        json_t* root = json_object();
+        json_object_set_new(root, "rollVoiceMask", json_integer(rollVoiceMask));
+        return root;
+    }
+    void dataFromJson(json_t* root) override {
+        if (json_t* m = json_object_get(root, "rollVoiceMask"))
+            rollVoiceMask = (uint16_t)json_integer_value(m);
+    }
+
     Lantern() {
         config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
         configSwitch(VIEW_PARAM,   0.f, 2.f, 0.f, "View", {"Notes", "Velocity", "Prob"});
@@ -315,6 +330,34 @@ struct LanternDisplay : widget::Widget {
         }
     }
 
+    // Shared step-block playhead (Sands idiom): translucent column over the whole current step,
+    // both edges, and a bright leading-edge bar on the travel-toward side (right fwd / left rev).
+    void drawStepPlayhead(NVGcontext* vg, float gridX, float stepW, float H) {
+        int ph = module->lastObservedStep;
+        if (ph < 0 || ph >= N_STEPS) return;
+        int dir = +1;
+        for (int v = 0; v < N_VOICES; ++v) {
+            if (module->cells[v][ph].type != lantern::NoteType::Inactive) { dir = module->cells[v][ph].playDir; break; }
+        }
+        float cx = gridX + ph * stepW;
+        nvgBeginPath(vg);
+        nvgRect(vg, cx, 0.f, stepW, H);
+        nvgFillColor(vg, nvgRGBA(0xd4, 0x00, 0x1a, 0x22));
+        nvgFill(vg);
+        nvgBeginPath(vg);
+        nvgStrokeColor(vg, nvgRGBA(0xd4, 0x00, 0x1a, 0x55));
+        nvgStrokeWidth(vg, 0.8f);
+        nvgMoveTo(vg, cx, 0.f);         nvgLineTo(vg, cx, H);
+        nvgMoveTo(vg, cx + stepW, 0.f); nvgLineTo(vg, cx + stepW, H);
+        nvgStroke(vg);
+        float ex = (dir < 0) ? cx : (cx + stepW);
+        nvgBeginPath(vg);
+        nvgStrokeColor(vg, nvgRGBA(0xd4, 0x00, 0x1a, 0xdd));
+        nvgStrokeWidth(vg, 1.6f);
+        nvgMoveTo(vg, ex, 0.f); nvgLineTo(vg, ex, H);
+        nvgStroke(vg);
+    }
+
     void drawLayer(const DrawArgs& args, int layer) override {
         if (layer != 1) { Widget::drawLayer(args, layer); return; }
         if (!module) return;
@@ -455,17 +498,8 @@ struct LanternDisplay : widget::Widget {
             }
         }
 
-        // current-phase red line
-        int ph = module->lastObservedStep;
-        if (ph >= 0 && ph < N_STEPS) {
-            float pxp = gridX + (ph + 0.5f) * stepW;
-            nvgBeginPath(vg);
-            nvgStrokeColor(vg, nvgRGBA(0xd4, 0x00, 0x1a, 0xcc));
-            nvgStrokeWidth(vg, 1.2f);
-            nvgMoveTo(vg, pxp, 0.f);
-            nvgLineTo(vg, pxp, H);
-            nvgStroke(vg);
-        }
+        // current-step block highlight (shared with the roll)
+        drawStepPlayhead(vg, gridX, stepW, H);
     }
 
     // ── Piano-roll view ──────────────────────────────────────────────────────
@@ -488,6 +522,23 @@ struct LanternDisplay : widget::Widget {
             nvgRGB(0xc8, 0xb0, 0x4c), // 8 gold
         };
         return P[((v % 8) + 8) % 8];
+    }
+
+    // Voices that have any note this pattern (mono=0 + active poly) — the legend/toggle set.
+    int rollActiveVoiceCount() const {
+        int n = 1;  // mono always present
+        for (int v = 1; v < N_VOICES; ++v)
+            for (int s = 0; s < N_STEPS; ++s)
+                if (module->cells[v][s].type != lantern::NoteType::Inactive) { if (v + 1 > n) n = v + 1; break; }
+        return n;
+    }
+    // Rect of voice v's legend swatch (top strip). Also the click target.
+    rack::Rect voiceSwatchRect(int v, int count) const {
+        const float W = box.size.x;
+        const float gutter = W * GUTTER_FRAC;
+        const float gridW  = W - gutter - (W * DOTS_FRAC);
+        const float sw = std::min(16.f, gridW / std::max(1, count));
+        return rack::Rect(gutter + v * sw + 1.f, 1.f, sw - 2.f, 9.f);
     }
 
     void drawRollLayer(const DrawArgs& args) {
@@ -526,6 +577,7 @@ struct LanternDisplay : widget::Widget {
 
         // Notes.
         for (int v = 0; v < N_VOICES; ++v) {
+            if (!module->voiceVisible(v)) continue;   // per-voice visibility toggle
             for (int s = 0; s < N_STEPS; ++s) {
                 const auto& c = module->cells[v][s];
                 if (c.type == lantern::NoteType::Inactive) continue;
@@ -561,37 +613,44 @@ struct LanternDisplay : widget::Widget {
             }
         }
 
-        // Playhead — a Sands-style block highlight spanning the WHOLE current step (both edges),
-        // plus a bright leading-edge bar on the side the playhead travels TOWARD (right forward,
-        // left reverse). Reads as "this column is the current step" rather than a single ambiguous
-        // line.
-        int ph = module->lastObservedStep;
-        if (ph >= 0 && ph < N_STEPS) {
-            int dir = +1;
-            for (int v = 0; v < N_VOICES; ++v) {
-                if (module->cells[v][ph].type != lantern::NoteType::Inactive) { dir = module->cells[v][ph].playDir; break; }
+        // Voice legend / toggles: a row of swatches at the top. Filled when the voice is visible,
+        // hollow (outline only) when hidden. Click to toggle (see onButton).
+        {
+            int count = rollActiveVoiceCount();
+            for (int v = 0; v < count; ++v) {
+                rack::Rect r = voiceSwatchRect(v, count);
+                NVGcolor col = voiceColour(v);
+                nvgBeginPath(vg);
+                nvgRoundedRect(vg, r.pos.x, r.pos.y, r.size.x, r.size.y, 1.5f);
+                if (module->voiceVisible(v)) {
+                    nvgFillColor(vg, col);
+                    nvgFill(vg);
+                } else {
+                    nvgStrokeColor(vg, nvgTransRGBA(col, 0x90));
+                    nvgStrokeWidth(vg, 1.f);
+                    nvgStroke(vg);
+                }
             }
-            float cx = gridX + ph * stepW;                 // step column left
-            // Translucent red column fill (start→end of the step).
-            nvgBeginPath(vg);
-            nvgRect(vg, cx, 0.f, stepW, H);
-            nvgFillColor(vg, nvgRGBA(0xd4, 0x00, 0x1a, 0x22));
-            nvgFill(vg);
-            // Both step edges, subtle.
-            nvgBeginPath(vg);
-            nvgStrokeColor(vg, nvgRGBA(0xd4, 0x00, 0x1a, 0x55));
-            nvgStrokeWidth(vg, 0.8f);
-            nvgMoveTo(vg, cx, 0.f);          nvgLineTo(vg, cx, H);
-            nvgMoveTo(vg, cx + stepW, 0.f);  nvgLineTo(vg, cx + stepW, H);
-            nvgStroke(vg);
-            // Bright leading edge on the travel-toward side (the note-onset edge).
-            float ex = (dir < 0) ? cx : (cx + stepW);
-            nvgBeginPath(vg);
-            nvgStrokeColor(vg, nvgRGBA(0xd4, 0x00, 0x1a, 0xdd));
-            nvgStrokeWidth(vg, 1.6f);
-            nvgMoveTo(vg, ex, 0.f); nvgLineTo(vg, ex, H);
-            nvgStroke(vg);
         }
+
+        // current-step block highlight (shared with the grid)
+        drawStepPlayhead(vg, gridX, stepW, H);
+    }
+
+    // Click a legend swatch (roll mode) to toggle that voice's visibility.
+    void onButton(const event::Button& e) override {
+        if (module && e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT
+            && module->params[Lantern::ROLL_PARAM].getValue() > 0.5f) {
+            int count = rollActiveVoiceCount();
+            for (int v = 0; v < count; ++v) {
+                if (voiceSwatchRect(v, count).contains(e.pos)) {
+                    module->toggleVoice(v);
+                    e.consume(this);
+                    return;
+                }
+            }
+        }
+        Widget::onButton(e);
     }
 
     // Base colour per note type. Accent is drawn as a separate overlay (brighter
