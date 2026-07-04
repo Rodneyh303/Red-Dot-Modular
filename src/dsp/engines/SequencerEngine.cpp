@@ -325,6 +325,8 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
         // nothing — producing an isolated Legato cell (teal note connected to no predecessor).
         // Requiring a held predecessor here makes the connection real; otherwise fall through
         // to NewNote (the slur had nothing to land on → a fresh note).
+        // (Supersedes master's standalone r_legato_tie<legatoProb form: legatoConnects already
+        // encodes that reactive-roll condition AND the leading-edge prevSlur path.)
         if (sem == gs.lastSemitone) {
             gs.extendHold(sem, nvIdx);
             result.decision = MonoDecision::Tie;
