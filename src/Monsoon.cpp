@@ -588,15 +588,21 @@ void Monsoon::process(const ProcessArgs& args) {
                         int idx = (int)std::floor(norm * n);
                         shop->list.setPending(idx);
                     }
-                    if (shop->list.commitAtBoundary()) {
-                        const auto& e = shop->list.activeEntry();
-                        scaleManager->lastSelectedScale = e.scaleIdx;
-                        scaleManager->scaleRoot         = e.root;
-                        // Recompute the enforcement mask NOW — otherwise the new scale is stored but
-                        // the mask (and the fader dimming that reads it) stays frozen at its last
-                        // value. Every other scale-change path (context menu) does this too.
-                        scaleManager->updateScaleMask();
-                    }
+                    shop->list.commitAtBoundary();   // switch active front at the loop edge (if changed)
+                }
+                // Apply the ACTIVE front's (scale, root) EVERY frame — not only on a front-switch
+                // commit. This covers the common cases the boundary-commit misses: startup (pending
+                // == active, so commit never fires) and editing the currently-active front's scale
+                // knob (the active INDEX doesn't change, so commit returns false). Without this the
+                // Shophouse scale was never pushed to ScaleManager unless you switched fronts under
+                // CV, so the mask/fader-dimming never reflected it. Recompute the mask only when it
+                // actually changes, to stay cheap.
+                const auto& e = shop->list.activeEntry();
+                if (scaleManager->lastSelectedScale != e.scaleIdx
+                    || scaleManager->scaleRoot != e.root) {
+                    scaleManager->lastSelectedScale = e.scaleIdx;
+                    scaleManager->scaleRoot         = e.root;
+                    scaleManager->updateScaleMask();
                 }
             }
         }
