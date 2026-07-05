@@ -295,17 +295,8 @@ struct LanternDisplay : widget::Widget {
             nvgBeginPath(vg); nvgRect(vg, 0.f, 0.f, keyW, H);
             nvgFillColor(vg, nvgRGB(0xcf, 0xcf, 0xcf)); nvgFill(vg);
 
-            // 2. Faint separators between white keys (only where two whites are adjacent: E|F, B|C,
-            //    and at every key boundary for definition).
-            nvgStrokeColor(vg, nvgRGBA(0x30, 0x30, 0x34, 0x70));
-            nvgStrokeWidth(vg, 0.5f);
-            for (int r = 0; r <= ROLL_ROWS; ++r) {
-                float y = H - r * rowH;
-                nvgBeginPath(vg); nvgMoveTo(vg, 0.f, y); nvgLineTo(vg, keyW, y); nvgStroke(vg);
-            }
-
-            // 3. Black keys — FULL row height, ~2/3 width, on top of the white backing. The white
-            //    showing to the RIGHT of each black key is the "notch" connecting the white through.
+            // 2. Black keys — FULL row height, ~2/3 width, on top of the white backing. The white
+            //    to the RIGHT of each black key is the notch connecting the white through.
             for (int r = 0; r < ROLL_ROWS; ++r) {
                 int pc = ((botSemi + r) % 12 + 12) % 12;
                 if (!isBlack(pc)) continue;
@@ -315,7 +306,27 @@ struct LanternDisplay : widget::Widget {
                 nvgFillColor(vg, nvgRGB(0x17, 0x17, 0x19)); nvgFill(vg);
             }
 
-            // 4. SOUNDING-NOTE key highlight (under the grey overlay so it also tints there).
+            // 3. White-key divider lines. A physical keyboard only has a divider WHERE TWO WHITE KEYS
+            //    MEET. In this per-semitone-row layout that is: (a) the CENTRE of each black-key row
+            //    (one line splitting the white above from the white below — extends full width into
+            //    the white notch, so it reads as a single line dividing the two whites, not a black
+            //    edge on both sides of the black key), and (b) the direct white|white boundaries
+            //    E|F (pc 4|5) and B|C (pc 11|0).
+            nvgStrokeColor(vg, nvgRGBA(0x2a, 0x2a, 0x2e, 0xb0));
+            nvgStrokeWidth(vg, 0.75f);
+            for (int r = 0; r < ROLL_ROWS; ++r) {
+                int pc = ((botSemi + r) % 12 + 12) % 12;
+                if (isBlack(pc)) {
+                    float yc = H - (r + 0.5f) * rowH;           // centre of the black-key row
+                    nvgBeginPath(vg); nvgMoveTo(vg, 0.f, yc); nvgLineTo(vg, keyW, yc); nvgStroke(vg);
+                } else if (pc == 5 || pc == 0) {                 // F and C: boundary below them (E|F, B|C)
+                    float yb = H - r * rowH;                     // bottom edge of this white row
+                    nvgBeginPath(vg); nvgMoveTo(vg, 0.f, yb); nvgLineTo(vg, keyW, yb); nvgStroke(vg);
+                }
+            }
+
+            // 4. SOUNDING-NOTE key highlight — always FULL row width (a lit black note reads as a
+            //    full-width bar like a lit white note, extending over the white notch).
             {
                 const int ph = module->lastObservedStep;
                 if (ph >= 0 && ph < N_STEPS) {
@@ -326,11 +337,10 @@ struct LanternDisplay : widget::Widget {
                         int semiC0 = (int)std::lround(c.pitchV * 12.f) + 48;
                         int row = semiC0 - botSemi;
                         if (row < 0 || row >= ROLL_ROWS) continue;
-                        int pc = ((botSemi + row) % 12 + 12) % 12;
                         float y = H - (row + 1) * rowH;
                         NVGcolor hi = voiceColour(v);
                         nvgBeginPath(vg);
-                        nvgRect(vg, 0.f, y, isBlack(pc) ? blackW : keyW, rowH);
+                        nvgRect(vg, 0.f, y, keyW, rowH);
                         nvgFillColor(vg, nvgTransRGBA(hi, 0xd8)); nvgFill(vg);
                     }
                 }
