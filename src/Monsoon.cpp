@@ -838,40 +838,10 @@ void Monsoon::process(const ProcessArgs& args) {
         cachedRunBtn = params[RUN_GATE_PARAM].getValue();
         cachedResetBtn = params[RESET_BUTTON_PARAM].getValue();
 
-        // ── Throttled Poly Rest / Accent Logic ──
-        // Per-voice modulation from the CAUSEWAY poly-CV expander: two 16-channel poly CV inputs
-        // (rest, accent). Each voice's CV is scaled by (per-voice attenuator + global attenuator),
-        // then added on top of the base knobs (on Straits). Channel i+1 = poly voice i+2.
-        MonsoonCausewayPolyExpander* cway = expanderManager.cachedCausewayPolyExpander;
-        for (int i = 0; i < 15; ++i) {
-            float base = paramManager->getPolyRest(i);
-            cachedPolyRest[i] = base;
-
-            float modulation = 0.f, accMod = 0.f;
-            if (cway) {
-                const int ch = i + 1;   // poly voice i (voice 2..16) → poly-cable channel 1..15
-                auto& restIn = cway->inputs[POLY_REST_CV_INPUT];
-                auto& accIn  = cway->inputs[POLY_ACCENT_CV_INPUT];
-                float restAtt = cway->params[POLY_REST_MOD_ATT_1 + i].getValue()
-                              + cway->params[POLY_REST_MOD_ATT_GLOBAL].getValue();
-                float accAtt  = cway->params[POLY_ACCENT_MOD_ATT_1 + i].getValue()
-                              + cway->params[POLY_ACCENT_MOD_ATT_GLOBAL].getValue();
-                if (restIn.isConnected() && ch < restIn.getChannels())
-                    modulation = restIn.getVoltage(ch) * restAtt * 0.1f;
-                if (accIn.isConnected() && ch < accIn.getChannels())
-                    accMod = accIn.getVoltage(ch) * accAtt * 0.1f;
-            }
-
-            float eff = clamp(base + modulation, 0.f, 1.f);
-            engine.voices[i].restProb = eff;
-            cachedPolyRestEffective[i] = eff;   // final (knob + per-voice + global mod) for modviz
-
-            float accBase = paramManager->getPolyAccent(i);
-            cachedPolyAccent[i] = accBase;
-            float accEff = clamp(accBase + accMod, 0.f, 1.f);
-            engine.voices[i].accentProb = accEff;
-            cachedPolyAccentEffective[i] = accEff;
-        }
+        // (Per-voice rest/accent + Causeway CV modulation is applied in
+        //  ModeController::updatePolyVoiceRest_(), which runs BEFORE the step decision so the
+        //  modulated values actually reach the engine. The mod-viz caches — cachedPolyRest[Effective]
+        //  and cachedPolyAccent[Effective], read by the Straits mod arcs — are populated there too.)
 
         // Handle Throttled CV1 Logic (Range Modulation)
         if (cachedCv1Connected) {
