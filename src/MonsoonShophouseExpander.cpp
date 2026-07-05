@@ -69,20 +69,32 @@ struct ShutterBank : Widget {
             nvgFillColor(vg, col);
             nvgFill(vg);
         }
+    }
+};
 
-        // Scale-name readout — "<root> <scale name>", updates live as the scale dial rotates.
-        if (font && scaleIdx >= 0 && scaleIdx < (int)MONSOON_SCALES.size()) {
-            std::string label = std::string(rootName(root)) + " " + MONSOON_SCALES[scaleIdx].name;
-            // Find the top of the shutter cluster; place the text just above it.
-            float topY = box.size.y, cx = box.size.x * 0.5f;
-            for (int s = 0; s < 12; ++s) topY = std::min(topY, centres[s].y);
-            float ty = std::max(7.f, topY - r - 3.f);
-            nvgFontFaceId(vg, font->handle);
-            nvgFontSize(vg, 9.f);
-            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM);
-            nvgFillColor(vg, nvgRGB(0xe8, 0xe8, 0xec));
-            nvgText(vg, cx, ty, label.c_str(), nullptr);
-        }
+// Live scale-name readout for one front — draws "<root> <scale name>" on the name band,
+// updating as that front's scale dial rotates / a shutter sets the root.
+struct ScaleNameLabel : Widget {
+    MonsoonShophouseExpander* module = nullptr;
+    int front = 0;
+    std::shared_ptr<window::Font> font;
+    static const char* rootName(int r) {
+        static const char* N[12] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
+        return N[((r % 12) + 12) % 12];
+    }
+    void draw(const DrawArgs& args) override {
+        Widget::draw(args);
+        if (!module || !font) return;
+        int scaleIdx = (int)std::round(module->params[SCALE_PARAM_0 + front].getValue());
+        int root     = (int)std::round(module->params[ROOT_PARAM_0 + front].getValue());
+        if (scaleIdx < 0 || scaleIdx >= (int)MONSOON_SCALES.size()) return;
+        std::string label = std::string(rootName(root)) + "  " + MONSOON_SCALES[scaleIdx].name;
+        NVGcontext* vg = args.vg;
+        nvgFontFaceId(vg, font->handle);
+        nvgFontSize(vg, 10.f);
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+        nvgFillColor(vg, nvgRGB(0xe8, 0xe8, 0xec));
+        nvgText(vg, box.size.x * 0.5f, box.size.y * 0.5f, label.c_str(), nullptr);
     }
 };
 
@@ -107,14 +119,23 @@ struct MonsoonShophouseExpanderWidget : ModuleWidget,
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
         // Per-front scale knobs + shutter banks (click to set root + live display).
+        auto uiFont = APP->window->loadFont(rack::asset::system("res/fonts/DejaVuSans-Bold.ttf"));
         for (int f = 0; f < NUM_FRONTS; ++f) {
             bindParam<Trimpot>("param_scale_" + std::to_string(f), SCALE_PARAM_0 + f);
+
+            // Live scale-name readout on the name band.
+            if (auto* nb = findNamed("name_band_" + std::to_string(f))) {
+                auto* lbl = new ScaleNameLabel();
+                lbl->module = mod; lbl->front = f; lbl->font = uiFont;
+                Vec c = centerOf(nb);
+                lbl->box.size = Vec(mm2px(38.f), mm2px(4.f));
+                lbl->box.pos  = c.minus(lbl->box.size.div(2.f));
+                addChild(lbl);
+            }
 
             auto* bank = new ShutterBank();
             bank->module = mod;
             bank->front = f;
-            bank->font = APP->window->loadFont(
-                rack::asset::system("res/fonts/DejaVuSans-Bold.ttf"));
             // Gather this front's 12 shutter marker centres; size the bank to span them.
             // Track the bounding box manually (min/max corners) — avoids relying on a specific
             // Rect helper signature.

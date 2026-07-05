@@ -84,6 +84,8 @@ def gen(dark):
         # scale-name band (top strip of the front)
         A(f'<rect x="{px(FRONT_X+1)}" y="{px(fy+1)}" width="{px(FRONT_W-18)}" height="{px(3.5)}" '
           f'rx="{px(0.8)}" fill="{t["well"]}" opacity="0.6"/>')
+        # name-band marker (widget draws the live scale name here)
+        A(f'<circle id="name_band_{f}" cx="{px(FRONT_X+1+(FRONT_W-18)/2)}" cy="{px(fy+2.75)}" r="0.5" fill="none" stroke="none"/>')
         # scale knob (right end of the name band)
         kx, ky = FRONT_X + FRONT_W - 7.0, fy + 3.5
         A(f'<circle cx="{px(kx)}" cy="{px(ky)}" r="{px(3.0)}" fill="{t["well"]}" stroke="{t["gold"]}" stroke-width="1.25"/>')
