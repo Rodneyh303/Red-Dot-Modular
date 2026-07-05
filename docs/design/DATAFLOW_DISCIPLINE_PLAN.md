@@ -13,6 +13,37 @@ works for the scale faders — the pattern this plan generalises).
 
 ## 1. The pattern, stated precisely
 
+### 1.0 The deeper cause: mutable state crossing rate boundaries
+
+The bugs below all share a root the "push vs pull" framing only half-captures: **this is a
+multi-rate system with shared mutable state, and the defects are rate-boundary mismatches.**
+Three rates coexist:
+
+- **Sample rate** — the engine's per-sample decisions (`voices[].restProb` read in the hot
+  loop; `wrapped` set deep in per-step advance).
+- **Control rate** — block-level work (modulation math, expander sync, mask compute) — often
+  gated behind `shouldExecute` or run once per `process()`.
+- **Screen-refresh rate** — widget `draw()` at ~60 Hz, fully async from audio (arcs, fader
+  dimming, scale-name text).
+
+Every session bug was a value produced at one rate not correctly handed to a consumer at
+another: `wrapped` (sample-rate) not surviving to the control-rate boundary sampler (#6); the
+arc's effective value (control-rate) read at screen-rate but written at the wrong control
+moment (#2); the scale mask (control-rate) read at screen-rate but never *recomputed* at
+control rate (#4). Same rate-crossing hazard, different clothes.
+
+**Why PULL fixes it fundamentally:** a pull accessor computes *at the consumer's rate* from
+state owned at a lower rate, so there is no stale hand-off across the boundary.
+`getEffectivePolyRest()` works because the screen-rate arc and the control-rate engine both
+pull — each gets a fresh value at its own rate from the one source. The single-resolver
+pattern isn't just tidier; it **collapses the rate boundary** that the bugs live on. This is
+the real design principle behind every fix that stuck.
+
+Corollary for the plan: caches that must remain (hot-loop, §2) are exactly the rate-crossing
+points that still need discipline — single writer, produced every control block, so the
+sample-rate reader and screen-rate reader never see a half-updated or stale hand-off.
+
+
 Every bug below is the same shape: **a value is computed correctly, but does not reach a
 consumer** — because producer and consumer are coupled through *shared mutable state
 written at one time and read at another*. That temporal/spatial gap is the defect surface.

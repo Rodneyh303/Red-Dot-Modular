@@ -30,6 +30,32 @@ dataflow detector (Step 1) is what makes the review's risky items *safe to attem
 
 ---
 
+## Field finding (Tier 1 fix): the StrandLedger conflict was a SIX-source topology bug
+
+Fixing the live `MACRO-then-EAST` conflict (`fix/strandledger-macro-east-conflict`) surfaced the
+scale of the multiple-sources problem. **`SandsTopology::build()` is called at 6 independent sites**,
+each populating `eastPresent`/`macroPresent` from a *different* source that can disagree:
+
+| Site | eastPresent from | macroPresent from |
+|---|---|---|
+| East widget `topologyFor` (549) | `true` (self) | cache |
+| East widget V1 (923) | `true` (self) | `macroAttached()` |
+| Macro widget (227) | cache | `true` (self) |
+| Mono-visual widget (214) | cache | cache |
+| ExpanderManager (55) | cache | cache |
+| SandsManager (70) | cache | cache |
+
+The widgets **hardcode their own presence** (`true`) while the managers **read the cache** — they
+diverge exactly when the scan hasn't cached a widget that is nonetheless self-asserting present. That
+divergence *is* the conflict. The Tier-1 guard (defer East write unless Monsoon's cache recognises it)
+fixes the one write-collision, but the six-way disagreement will keep manifesting (ownership, lock,
+editability) until there is **one** topology authority everyone pulls from.
+
+**This is direct evidence to raise the Sands-topology-resolver work (`SANDS_TOPOLOGY_RESOLVER_PLAN.md`)
+in priority** — it is the same class as C2 (`polyBaseActive`, 3 defs / 5 sites) and A1 (strand→field,
+6×). All three are "one derived fact, recomputed independently at N sites." The resolver is the D4 cure
+for the whole family, not just Sands.
+
 ## Unified priority order
 
 Principle: **detector first (makes everything else verifiable) → the live bug → the
