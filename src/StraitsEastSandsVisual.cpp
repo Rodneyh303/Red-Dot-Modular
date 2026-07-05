@@ -591,7 +591,15 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     // mono-lane editor for V1 in this case (combinations 3, 7: East without Mono).
     bool v1Editable() const {
         Monsoon* m = getMonsoon();
-        return onMonoTab() && !(m && m->expanderManager.cachedSandsVisualExpander != nullptr);
+        if (!m) return false;
+        // Only edit/write V1 if Monsoon's AUTHORITATIVE expander scan recognises THIS module as its
+        // East visual. Otherwise Monsoon's topology classifies e.g. MACRO_SOLE (eastPresent=false)
+        // and its own MACRO path writes the mono strand — while this widget, asserting eastPresent=
+        // true from self-knowledge, would ALSO write it: two producers, one strand, per block (the
+        // persistent StrandLedger MACRO-then-EAST conflict). Deferring to the authoritative cache
+        // makes the two views agree by construction — exactly one writer.
+        if (m->expanderManager.cachedEastSandsVisual != module) return false;
+        return onMonoTab() && !(m->expanderManager.cachedSandsVisualExpander != nullptr);
     }
     // Poly bank index (0..14) for the selected tab; -1 on the mono tab (resolver-mapped,
     // == the old selectedVoice-1). Use only when !onMonoTab().
