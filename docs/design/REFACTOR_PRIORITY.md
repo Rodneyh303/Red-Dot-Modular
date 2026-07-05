@@ -62,17 +62,34 @@ Principle: **detector first (makes everything else verifiable) → the live bug 
 under-rated root predicate → cheap hygiene → durable tests → the bigger consolidations →
 opportunistic.** Value/risk, not doc-of-origin, decides order.
 
+### ✅ DONE (this session — on master)
+- **Tier 1 item 2 — StrandLedger MACRO-then-EAST conflict: FIXED** two ways (PR #219 targeted
+  guard `cachedEastSandsVisual == module` in `v1Editable`; PR #220 removed the *possibility* by
+  unifying presence). **Ledger confirmed SILENT at runtime in both branches** — the invariant
+  holds, not just the code.
+- **Tier 1 item 3 — `polyBaseActive` collapse: DONE** as part of the presence authority (PR #220).
+  The 3-way split (`ptr&&voices>=1` / `ptr-only` / hardcoded `true`) is now one definition in
+  `MonsoonExpanderManager::fillPresence`, the single presence authority all 6 SandsTopology build
+  sites route through. This is the "one copy" resolver work — the six-source divergence is gone.
+- **Bonus (fell out cheaply *because* the authority now exists) — Sands spread delegation:** lane
+  ceded to Macro now locks + display-mirrors Macro's spread and reverts on reclaim, matching East;
+  `DimmableTrimpot` extracted to shared `ui/DimmableTrimpot.hpp` (PR #220). Proof the refactor pays
+  off: a fix that would have been another multi-copy slog was a one-liner through `owner()`.
+
+**Tier 0 (generic write-detector) was consciously SKIPPED** — audit showed the poly fields it would
+guard are already single-writer post-resolver; the only live target was the strand path, already
+covered by the existing StrandLedger. Revisit only if a field regresses and proves it's needed.
+
+Remaining order below.
+
 ### Tier 0 — do first, unblocks the rest
 1. **Dataflow Step 1 — generalise the write-conflict detector.** Debug-only, near-zero risk,
    catches the whole shape-A class automatically, and is the guard rail for every item below.
-   *(Dataflow plan §4.1)*
+   *(Dataflow plan §4.1)* — **DEFERRED (see above): low marginal value until a field regresses.**
 
-### Tier 1 — live bug + the root predicate (highest value)
-2. **Dataflow Step 2 — fix the firing `StrandLedger MACRO-then-EAST` conflict.** A real bug
-   emitting every block now. *(Dataflow §4.2)*
-3. **Review C2 — collapse `polyBaseActive` to ONE definition** (absorb into the topology
-   build / one accessor). Re-rated HIGH: it caused bug #3 and likely underlies #2 above. Fixing
-   it may *resolve* item 2 — do them together. *(Review C2 = Dataflow D4)*
+### Tier 1 — live bug + the root predicate (highest value) — ✅ COMPLETE
+2. ~~**Dataflow Step 2 — fix the firing `StrandLedger MACRO-then-EAST` conflict.**~~ **DONE (#219/#220).**
+3. ~~**Review C2 — collapse `polyBaseActive` to ONE definition.**~~ **DONE (#220).**
 
 ### Tier 2 — cheap hygiene (minutes, pure win, do while warm)
 4. **Review A3** (delete dead `SpreadInterpolation.hpp`) + **B2** (`.gitattributes` CRLF) +
