@@ -46,13 +46,12 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     // Monsoon.cpp) are no-op unless this holds.
     const bool polyBaseActive = (expanderManager.cachedPolyVoiceExpander != nullptr)
                                 && (engine.numPolyVoices >= 1);
-    // Voice OUTPUT topology bounds the spread ensemble: East base expander
-    // outputs poly voices 2..8 (engine.voices[0..6], i.e. up to 7), West adds
-    // voices 9..15 (up to 8 more). Voices with no output path must NOT be
-    // averaged into spread, or the ensemble converges toward phantom voices.
-    // So the effective poly count exceeds 7 only when West is also present.
-    const bool hasWest = (expanderManager.cachedStraitWestExpander != nullptr);
-    const int  polyOutCap = polyBaseActive ? (hasWest ? 15 : 7) : 0;
+    // Voice OUTPUT topology bounds the spread ensemble: the Straits base expander
+    // outputs poly voices 2..16 (engine.voices[0..14], up to 15) on 16ch poly cables.
+    // Voices with no output path must NOT be averaged into spread, or the ensemble
+    // converges toward phantom voices. West retired (Straits redesign): one Straits
+    // module now covers all poly voices, so the cap is simply "poly base present → 15".
+    const int  polyOutCap = polyBaseActive ? 15 : 0;
     const int  effPolyVoices = clamp(engine.numPolyVoices, 0, polyOutCap);
 
     // STEP 3b: build the ownership authority for this block, with the per-lane Mono V1
