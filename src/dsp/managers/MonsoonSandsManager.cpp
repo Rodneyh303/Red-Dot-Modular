@@ -313,13 +313,13 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         // may also be present: V1 is then PER-LANE (each lane owned by East or delegated to
         // Macro). hasEastV1 no longer excludes Macro — the per-lane owner switch handles it.
         const bool hasEastV1 = (eastV1 != nullptr);
-        if (!hasEastV1 && engine.rhythmLen != 16) {
-            engine.rhythmLen = engine.variationLen = engine.legatoLen =
-            engine.accentLen = engine.melodyLen = engine.octaveLen = 16;
-            engine.rhythmOff = engine.variationOff = engine.legatoOff =
-            engine.accentOff = engine.melodyOff = engine.octaveOff = 0;
-            engine.rhythmRot = engine.variationRot = engine.legatoRot =
-            engine.accentRot = engine.melodyRot = engine.octaveRot = 0;
+        if (!hasEastV1 && engine.strandLen(dotModular::STRAND_RHYTHM) != 16) {
+            // Reset all mono-strand LOR to defaults (Length 16, Offset 0, Rotation 0).
+            for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
+                engine.strandLenRef(s) = 16;
+                engine.strandOffRef(s) = 0;
+                engine.strandRotRef(s) = 0;
+            }
         }
         if (hasEastV1 && !engine.locked) {
             // Apply V1 SPREAD to the mono final arrays, PER LANE:

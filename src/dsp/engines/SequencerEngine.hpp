@@ -113,106 +113,50 @@ struct SequencerEngine {
     bool hadPolyTail[15] = {};
     bool wasHeldPolyPrev[15] = {}; // Capture poly state before tick()
 
-    // Strand-specific Windowing (Length 1..16, Offset 0..15)
-    int rhythmLen = 16;
-    int rhythmOff = 0;
-    int variationLen = 16;
-    int variationOff = 0;
-    int legatoLen = 16;
-    int legatoOff = 0;
-    int accentLen = 16;     // NEW: accent strand length (DNA)
-    int accentOff = 0;      // NEW: accent strand offset (DNA)
-    int melodyLen = 16;
-    int melodyOff = 0;
-    int octaveLen = 16;
-    int octaveOff = 0;
-    // Per-voice-per-lane LOR (length/offset/rotation) — the INDEX into the
-    // 16-step probability vectors, kept SEPARATE from the probabilities.
-    // Lane: 0=REST, 1=MELODY, 2=OCTAVE. East sets all [voice][lane]
-    // independently; Macro sets the same lane LOR for every voice.
+    // ── Mono (V1) strand windowing: Length (1..16), Offset (0..15), Rotation ──
+    // Step 1 of the probability-modifier unification (docs/design/PROBABILITY_MODIFIER_MODEL.md):
+    // the 18 named fields (rhythmLen…octaveRot) + their 6 hand-written switch(strand) accessors are
+    // now ONE array indexed by strand (== editor lane, already the identity) × item {LEN,OFF,ROT}.
+    // This is mono/V1 only for now; a later step folds it in as slot 0 of a unified len/off/rot[16][6]
+    // alongside the poly arrays. Item order is fixed by MonoItem below. Access via strandLen/Off/Rot
+    // + …Ref (unchanged signatures); direct callers use lorRef(strand, item).
+    enum MonoItem { LOR_LEN = 0, LOR_OFF = 1, LOR_ROT = 2, LOR_ITEMS = 3 };
+    int monoLOR[dotModular::NUM_STRANDS][LOR_ITEMS] = {};   // [strand][item]; seeded in ctor/reset
+
+    int&       lorRef(int strand, int item)       { return monoLOR[strandClamp(strand)][item]; }
+    int        lor   (int strand, int item) const { return monoLOR[strandClamp(strand)][item]; }
+    static int strandClamp(int s) { return (s >= 0 && s < dotModular::NUM_STRANDS) ? s : dotModular::STRAND_RHYTHM; }
+
+    // Per-voice-per-lane poly LOR — the INDEX into the 16-step probability vectors, kept SEPARATE
+    // from the probabilities. Lane: 0=REST,1=MELODY,2=OCTAVE,3=ACCENT. East sets all [voice][lane]
+    // independently; Macro sets the same lane LOR for every voice. (Folds into the unified array as
+    // slots 1..15 in a later step.)
     enum PolyLane { PL_REST = 0, PL_MELODY = 1, PL_OCTAVE = 2, PL_ACCENT = 3, PL_LANES = 4 };
     int polyLen[15][PL_LANES];
     int polyOff[15][PL_LANES];
     int polyRot[15][PL_LANES];
 
-    // Discrete mutation offsets (mutation from scramble/context menu)
-    int rhythmRot = 0, variationRot = 0, legatoRot = 0, accentRot = 0, melodyRot = 0, octaveRot = 0;
-
     // Indexable strand accessors keyed by dotModular::EngineStrand order
     // (0 rhythm, 1 variation, 2 legato, 3 accent, 4 melody, 5 octave). These let
     // callers go editor-lane → strand (via MONO_LANE_TO_STRAND) → value without
     // hardcoding the permutation. Single source of truth for strand indexing.
+    // Strand LOR readers/writers, now backed by monoLOR[strand][item] (one array, no switches).
+    // Out-of-range semantics preserved EXACTLY from the previous 6 switches:
+    //   readers  → literal fallback (LEN 16, OFF 0, ROT 0) for an invalid strand;
+    //   writers  → the rhythm cell (strandClamp maps invalid → STRAND_RHYTHM), so an out-of-range
+    //              write lands on rhythm just as the old `default: return rhythmLen/Off/Rot` did.
     int strandLen(int strand) const {
-        switch (strand) {
-            case dotModular::STRAND_RHYTHM:    return rhythmLen;
-            case dotModular::STRAND_VARIATION: return variationLen;
-            case dotModular::STRAND_LEGATO:    return legatoLen;
-            case dotModular::STRAND_ACCENT:    return accentLen;
-            case dotModular::STRAND_MELODY:    return melodyLen;
-            case dotModular::STRAND_OCTAVE:    return octaveLen;
-            default: return 16;
-        }
+        return (strand >= 0 && strand < dotModular::NUM_STRANDS) ? lor(strand, LOR_LEN) : 16;
     }
     int strandOff(int strand) const {
-        switch (strand) {
-            case dotModular::STRAND_RHYTHM:    return rhythmOff;
-            case dotModular::STRAND_VARIATION: return variationOff;
-            case dotModular::STRAND_LEGATO:    return legatoOff;
-            case dotModular::STRAND_ACCENT:    return accentOff;
-            case dotModular::STRAND_MELODY:    return melodyOff;
-            case dotModular::STRAND_OCTAVE:    return octaveOff;
-            default: return 0;
-        }
+        return (strand >= 0 && strand < dotModular::NUM_STRANDS) ? lor(strand, LOR_OFF) : 0;
     }
     int strandRot(int strand) const {
-        switch (strand) {
-            case dotModular::STRAND_RHYTHM:    return rhythmRot;
-            case dotModular::STRAND_VARIATION: return variationRot;
-            case dotModular::STRAND_LEGATO:    return legatoRot;
-            case dotModular::STRAND_ACCENT:    return accentRot;
-            case dotModular::STRAND_MELODY:    return melodyRot;
-            case dotModular::STRAND_OCTAVE:    return octaveRot;
-            default: return 0;
-        }
+        return (strand >= 0 && strand < dotModular::NUM_STRANDS) ? lor(strand, LOR_ROT) : 0;
     }
-
-    // Writable strand references (same EngineStrand keying) so producers can
-    // assign by index too — used by readStrand to write the per-lane result to
-    // the correct strand via MONO_LANE_TO_STRAND, instead of a hand-ordered call
-    // list. rhythmLen is the safe fallback for an out-of-range index.
-    int& strandLenRef(int strand) {
-        switch (strand) {
-            case dotModular::STRAND_VARIATION: return variationLen;
-            case dotModular::STRAND_LEGATO:    return legatoLen;
-            case dotModular::STRAND_ACCENT:    return accentLen;
-            case dotModular::STRAND_MELODY:    return melodyLen;
-            case dotModular::STRAND_OCTAVE:    return octaveLen;
-            case dotModular::STRAND_RHYTHM:
-            default:                           return rhythmLen;
-        }
-    }
-    int& strandOffRef(int strand) {
-        switch (strand) {
-            case dotModular::STRAND_VARIATION: return variationOff;
-            case dotModular::STRAND_LEGATO:    return legatoOff;
-            case dotModular::STRAND_ACCENT:    return accentOff;
-            case dotModular::STRAND_MELODY:    return melodyOff;
-            case dotModular::STRAND_OCTAVE:    return octaveOff;
-            case dotModular::STRAND_RHYTHM:
-            default:                           return rhythmOff;
-        }
-    }
-    int& strandRotRef(int strand) {
-        switch (strand) {
-            case dotModular::STRAND_VARIATION: return variationRot;
-            case dotModular::STRAND_LEGATO:    return legatoRot;
-            case dotModular::STRAND_ACCENT:    return accentRot;
-            case dotModular::STRAND_MELODY:    return melodyRot;
-            case dotModular::STRAND_OCTAVE:    return octaveRot;
-            case dotModular::STRAND_RHYTHM:
-            default:                           return rhythmRot;
-        }
-    }
+    int& strandLenRef(int strand) { return lorRef(strand, LOR_LEN); }   // strandClamp → rhythm fallback
+    int& strandOffRef(int strand) { return lorRef(strand, LOR_OFF); }
+    int& strandRotRef(int strand) { return lorRef(strand, LOR_ROT); }
 
     // ── Strand-write ledger (debug-only assert; behaviour-inert in release) ──────
     // strandWriter[strand] = the role that wrote this strand this block. Reset at the

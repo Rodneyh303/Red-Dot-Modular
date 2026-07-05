@@ -24,9 +24,11 @@ void SequencerEngine::reset() {
     cachedLength = 16;
     cachedOffset = 0;
     totalStepsElapsed = 0;
-    rhythmLen = variationLen = legatoLen = accentLen = melodyLen = octaveLen = 16;
-    rhythmOff = variationOff = legatoOff = accentOff = melodyOff = octaveOff = 0;
-    rhythmRot = variationRot = legatoRot = accentRot = melodyRot = octaveRot = 0;
+    for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
+        monoLOR[s][LOR_LEN] = 16;   // Length defaults to full 16-step window
+        monoLOR[s][LOR_OFF] = 0;
+        monoLOR[s][LOR_ROT] = 0;
+    }
     for (int i = 0; i < 15; i++) {
         for (int l = 0; l < 3; ++l) {
             polyLen[i][l] = 16;
@@ -162,7 +164,7 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
         int relLight = (lightIdx - startStep + 16) % 16;
         int tickForLight = totalStepsElapsed - relCurrent + relLight;
 
-        int dnaIdx = getStrandIdx(tickForLight, rhythmLen, rhythmOff, rhythmRot);
+        int dnaIdx = getStrandIdx(tickForLight, lor(dotModular::STRAND_RHYTHM,LOR_LEN), lor(dotModular::STRAND_RHYTHM,LOR_OFF), lor(dotModular::STRAND_RHYTHM,LOR_ROT));
         bool isNote = pe.rhythmPattern[dnaIdx];
         baseActive = isNote ? 0.35f : 0.07f;
     }
@@ -689,12 +691,12 @@ int SequencerEngine::getStrandIdx(int tickCount, int len, int off, int mutation)
     return (timelineIdx + off) % 16;
 }
 
-int SequencerEngine::getRhythmStep() const    { return getStrandIdx(totalStepsElapsed, rhythmLen, rhythmOff, rhythmRot); }
-int SequencerEngine::getVariationStep() const { return getStrandIdx(totalStepsElapsed, variationLen, variationOff, variationRot); }
-int SequencerEngine::getLegatoStep() const    { return getStrandIdx(totalStepsElapsed, legatoLen, legatoOff, legatoRot); }
-int SequencerEngine::getAccentStep() const    { return getStrandIdx(totalStepsElapsed, accentLen, accentOff, accentRot); }
-int SequencerEngine::getMelodyStep() const    { return getStrandIdx(totalStepsElapsed, melodyLen, melodyOff, melodyRot); }
-int SequencerEngine::getOctaveStep() const    { return getStrandIdx(totalStepsElapsed, octaveLen, octaveOff, octaveRot); }
+int SequencerEngine::getRhythmStep() const    { return getStrandIdx(totalStepsElapsed, lor(dotModular::STRAND_RHYTHM,LOR_LEN), lor(dotModular::STRAND_RHYTHM,LOR_OFF), lor(dotModular::STRAND_RHYTHM,LOR_ROT)); }
+int SequencerEngine::getVariationStep() const { return getStrandIdx(totalStepsElapsed, lor(dotModular::STRAND_VARIATION,LOR_LEN), lor(dotModular::STRAND_VARIATION,LOR_OFF), lor(dotModular::STRAND_VARIATION,LOR_ROT)); }
+int SequencerEngine::getLegatoStep() const    { return getStrandIdx(totalStepsElapsed, lor(dotModular::STRAND_LEGATO,LOR_LEN), lor(dotModular::STRAND_LEGATO,LOR_OFF), lor(dotModular::STRAND_LEGATO,LOR_ROT)); }
+int SequencerEngine::getAccentStep() const    { return getStrandIdx(totalStepsElapsed, lor(dotModular::STRAND_ACCENT,LOR_LEN), lor(dotModular::STRAND_ACCENT,LOR_OFF), lor(dotModular::STRAND_ACCENT,LOR_ROT)); }
+int SequencerEngine::getMelodyStep() const    { return getStrandIdx(totalStepsElapsed, lor(dotModular::STRAND_MELODY,LOR_LEN), lor(dotModular::STRAND_MELODY,LOR_OFF), lor(dotModular::STRAND_MELODY,LOR_ROT)); }
+int SequencerEngine::getOctaveStep() const    { return getStrandIdx(totalStepsElapsed, lor(dotModular::STRAND_OCTAVE,LOR_LEN), lor(dotModular::STRAND_OCTAVE,LOR_OFF), lor(dotModular::STRAND_OCTAVE,LOR_ROT)); }
 
 void SequencerEngine::syncVisuals(const PatternInput& in) {
     pe.refreshVisualCache(in);
