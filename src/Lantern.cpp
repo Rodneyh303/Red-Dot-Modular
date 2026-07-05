@@ -275,20 +275,58 @@ struct LanternDisplay : widget::Widget {
         auto font0 = APP->window->loadFont(rack::asset::system("res/fonts/DejaVuSans-Bold.ttf"));
         if (!font0) font0 = APP->window->uiFont;
 
-        // Piano-roll mode: label the pitch axis (C of each octave in the viewport) instead of lanes.
+        // Piano-roll mode: draw a real piano-key gutter (Bitwig-style) instead of bare labels.
         if (module->params[Lantern::ROLL_PARAM].getValue() > 0.5f) {
             if (!font0) return;
-            const float rowH  = H / (float)ROLL_ROWS;
+            const float rowH   = H / (float)ROLL_ROWS;
+            const float gutter = W * GUTTER_FRAC;
             const int   botOct = (int)std::round(module->params[Lantern::ROLL_SCROLL_PARAM].getValue());
+            const int   botSemi = botOct * 12;
+            auto isBlack = [](int pc){ pc=((pc%12)+12)%12; return pc==1||pc==3||pc==6||pc==8||pc==10; };
+
+            // White-key backing: fill the whole gutter light, then lay black keys over it.
+            nvgBeginPath(vg);
+            nvgRect(vg, 0.f, 0.f, gutter, H);
+            nvgFillColor(vg, nvgRGB(0x1a, 0x1c, 0x20));   // gutter surround (near-black)
+            nvgFill(vg);
+
+            const float keyRight = gutter - 1.f;          // keys span to just inside the grid
+            const float whiteW   = keyRight;
+            const float blackW   = keyRight * 0.62f;
+            for (int r = 0; r < ROLL_ROWS; ++r) {
+                int pc = ((botSemi + r) % 12 + 12) % 12;
+                float y = H - (r + 1) * rowH;
+                if (!isBlack(pc)) {
+                    nvgBeginPath(vg);
+                    nvgRect(vg, 0.f, y, whiteW, rowH);
+                    nvgFillColor(vg, nvgRGB(0xcf, 0xcf, 0xcf));   // white key
+                    nvgFill(vg);
+                    nvgStrokeColor(vg, nvgRGBA(0x30, 0x30, 0x34, 0xc0));
+                    nvgStrokeWidth(vg, 0.5f);
+                    nvgStroke(vg);
+                }
+            }
+            for (int r = 0; r < ROLL_ROWS; ++r) {
+                int pc = ((botSemi + r) % 12 + 12) % 12;
+                float y = H - (r + 1) * rowH;
+                if (isBlack(pc)) {
+                    nvgBeginPath(vg);
+                    nvgRect(vg, 0.f, y, blackW, rowH);
+                    nvgFillColor(vg, nvgRGB(0x17, 0x17, 0x19));   // black key
+                    nvgFill(vg);
+                }
+            }
+
+            // C labels on the white keys.
             nvgFontFaceId(vg, font0->handle);
             nvgFontSize(vg, std::min(10.f, rowH * 6.f));
-            nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-            nvgFillColor(vg, nvgRGB(0x8a, 0x8f, 0x98));
+            nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+            nvgFillColor(vg, nvgRGB(0x28, 0x28, 0x2c));
             for (int o = 0; o < ROLL_OCTAVES; ++o) {
                 int oct = botOct + o;
                 float y = H - (o * 12 + 0.5f) * rowH;   // at the C row of this octave
-                std::string lbl = std::string("C") + std::to_string(oct); // C of this octave row
-                nvgText(vg, 2.f, y, lbl.c_str(), nullptr);
+                std::string lbl = std::string("C") + std::to_string(oct);
+                nvgText(vg, keyRight - 2.f, y, lbl.c_str(), nullptr);
             }
             return;
         }
@@ -554,23 +592,49 @@ struct LanternDisplay : widget::Widget {
         const int   botSemi  = botOct * 12;          // semitone-from-C0 at the bottom row
         const bool  byVoice  = module->params[Lantern::ROLL_COLOR_PARAM].getValue() > 0.5f;
 
-        // Faint horizontal guide lines at each C (octave boundary).
-        // Octave (C) guide lines — clearly visible so octaves are easy to count. Faint semitone
-        // sub-lines between them give pitch reference without dominating.
+        // ── Bitwig-style lane background: shade each semitone row by pitch class. ──
+        // Black-key rows (C#,D#,F#,G#,A#) get a darker slate; white-key rows a lighter blue-grey.
+        // This alternating banding is what makes the grid read as a piano roll at a glance.
+        auto isBlackKey = [](int pc) {
+            pc = ((pc % 12) + 12) % 12;
+            return pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10;
+        };
+        for (int r = 0; r < ROLL_ROWS; ++r) {
+            int pc = ((botSemi + r) % 12 + 12) % 12;
+            float y = H - (r + 1) * rowH;
+            // white-key lane = lighter blue-grey; black-key lane = darker slate.
+            NVGcolor lane = isBlackKey(pc) ? nvgRGB(0x20, 0x2a, 0x33) : nvgRGB(0x2b, 0x38, 0x44);
+            // Subtle octave emphasis: the C row (pitch class 0) a touch brighter so octaves anchor.
+            if (pc == 0) lane = nvgRGB(0x32, 0x40, 0x4d);
+            nvgBeginPath(vg);
+            nvgRect(vg, gridX, y, gridW, rowH);
+            nvgFillColor(vg, lane);
+            nvgFill(vg);
+        }
+
+        // Faint vertical beat grid (bar + beat divisions), behind the notes.
+        {
+            const float barW = gridW / 4.f;             // N_STEPS = 16 = one 4/4 bar of 1/16s
+            for (int b = 0; b <= 16; ++b) {
+                float x = gridX + b * stepW;
+                bool beat = (b % 4 == 0);
+                nvgBeginPath(vg);
+                nvgStrokeColor(vg, beat ? nvgRGBA(0x50, 0x58, 0x64, 0xa0)
+                                        : nvgRGBA(0x3c, 0x44, 0x4e, 0x60));
+                nvgStrokeWidth(vg, beat ? 1.0f : 0.5f);
+                nvgMoveTo(vg, x, 0.f); nvgLineTo(vg, x, H);
+                nvgStroke(vg);
+            }
+            (void)barW;
+        }
+        // Horizontal separators — very subtle now that the lane SHADING provides the banding.
+        // Just a faint line at each C (octave) for reference; semitone lines dropped (the
+        // per-row shading already gives pitch reference, and Bitwig keeps these minimal).
         for (int o = 0; o <= ROLL_OCTAVES; ++o) {
             float y = H - o * 12 * rowH;
             nvgBeginPath(vg);
-            nvgStrokeColor(vg, nvgRGBA(0x5a, 0x62, 0x70, 0xd0));   // stronger C line
-            nvgStrokeWidth(vg, 1.0f);
-            nvgMoveTo(vg, gridX, y); nvgLineTo(vg, gridX + gridW, y);
-            nvgStroke(vg);
-        }
-        for (int r = 0; r < ROLL_ROWS; ++r) {
-            if (r % 12 == 0) continue;                            // C lines drawn above
-            float y = H - r * rowH;
-            nvgBeginPath(vg);
-            nvgStrokeColor(vg, nvgRGBA(0x40, 0x46, 0x50, 0x55));   // faint semitone line
-            nvgStrokeWidth(vg, 0.5f);
+            nvgStrokeColor(vg, nvgRGBA(0x50, 0x58, 0x64, 0x70));   // faint C line
+            nvgStrokeWidth(vg, 0.75f);
             nvgMoveTo(vg, gridX, y); nvgLineTo(vg, gridX + gridW, y);
             nvgStroke(vg);
         }
