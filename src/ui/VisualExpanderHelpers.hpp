@@ -9,7 +9,7 @@ using namespace MonsoonIds;
 namespace redDot {
 
 // ── Chain-walk: find Monsoon anywhere to the right ───────────────────────────
-inline Monsoon* findMonsoon(rack::Module* startRight, int maxDepth = 8) {
+inline Monsoon* findMonsoon(rack::Module* startRight, int maxDepth = 12) {
     Module* curr = startRight;
     for (int d = 0; curr && d < maxDepth; ++d) {
         if (auto* m = dynamic_cast<Monsoon*>(curr)) return m;
@@ -23,7 +23,7 @@ inline Monsoon* findMonsoon(rack::Module* startRight, int maxDepth = 8) {
 // Interchange placed between a Sands editor and Monsoon). Use this from visual
 // expanders so they bind to the host regardless of which side they sit on and
 // regardless of what sits between them and Monsoon.
-inline Monsoon* findMonsoonEitherSide(rack::Module* self, int maxDepth = 8) {
+inline Monsoon* findMonsoonEitherSide(rack::Module* self, int maxDepth = 12) {
     if (!self) return nullptr;
     Module* curr = self->rightExpander.module;
     for (int d = 0; curr && d < maxDepth; ++d) {

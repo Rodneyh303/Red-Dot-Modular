@@ -101,7 +101,10 @@ struct MonsoonExpanderManager {
         auto scan = [&](rack::Module* start, bool left) {
             rack::Module* curr = start;
             int depth = 0;
-            while (curr && depth < 8) {
+            // Depth cap = max expanders that can chain on ONE side. The suite has 12 modules:
+            // Monsoon (parent) + 11 expander types, so up to 11 could all be on one side. Cap at
+            // 12 for a little headroom (duplicates, future modules) without unbounded walking.
+            while (curr && depth < 12) {
                 // Rule 3: a Monsoon is NOT an expander of another Monsoon. Treat
                 // it (and anything unrecognised) as foreign and stop this side.
                 if (curr->model == modelMonsoon) break;

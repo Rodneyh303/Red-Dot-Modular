@@ -5,7 +5,7 @@ expander type. This documents exactly how ORDER and ADJACENCY affect what gets f
 "occasional order differences" are understood as intentional rules, not surprises.
 
 ## The walk
-- From the parent Monsoon, scan LEFT fully (up to depth 8), then scan RIGHT fully.
+- From the parent Monsoon, scan LEFT fully (up to depth 12), then scan RIGHT fully.
 - Both sides are ALWAYS scanned (no early-out). Discovery is therefore ORDER-STABLE: the result
   does not depend on which side happened to satisfy some "found everything" condition first.
   (Previously an early-out gated on allTypesFound(), which referenced two never-set deprecated
