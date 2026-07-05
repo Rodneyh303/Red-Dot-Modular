@@ -1,4 +1,6 @@
 #include <rack.hpp>
+#include <algorithm>
+#include <cmath>
 #include "Monsoon.hpp"
 #include "MonsoonShophouseExpander.hpp"
 #include "dsp/managers/MonsoonScaleManager.hpp"
@@ -93,20 +95,25 @@ struct MonsoonShophouseExpanderWidget : ModuleWidget,
             bank->module = mod;
             bank->front = f;
             // Gather this front's 12 shutter marker centres; size the bank to span them.
-            Rect bb; bool init = false;
+            // Track the bounding box manually (min/max corners) — avoids relying on a specific
+            // Rect helper signature.
+            float minX = 0, minY = 0, maxX = 0, maxY = 0; bool init = false;
             for (int s = 0; s < 12; ++s) {
                 if (auto* m = findNamed("shutter_" + std::to_string(f) + "_" + std::to_string(s))) {
                     Vec c = centerOf(m);
                     bank->centres[s] = c;
-                    if (!init) { bb = Rect(c, Vec(0,0)); init = true; }
-                    else       { bb = bb.expand(c); }
+                    if (!init) { minX = maxX = c.x; minY = maxY = c.y; init = true; }
+                    else {
+                        minX = std::min(minX, c.x); maxX = std::max(maxX, c.x);
+                        minY = std::min(minY, c.y); maxY = std::max(maxY, c.y);
+                    }
                 }
             }
             if (init) {
                 // Inflate the bank box a bit so clicks near shutters register.
                 float pad = mm2px(3.5f);
-                bank->box.pos  = bb.pos.minus(Vec(pad, pad));
-                bank->box.size = bb.size.plus(Vec(2*pad, 2*pad));
+                bank->box.pos  = Vec(minX - pad, minY - pad);
+                bank->box.size = Vec((maxX - minX) + 2*pad, (maxY - minY) + 2*pad);
                 // Re-base shutter centres into bank-local coords.
                 for (int s = 0; s < 12; ++s) bank->centres[s] = bank->centres[s].minus(bank->box.pos);
                 bank->clickR = mm2px(3.0f);
