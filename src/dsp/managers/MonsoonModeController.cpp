@@ -16,7 +16,13 @@ void ModeController::updatePolyVoiceRest_() {
 
 void ModeController::updatePatternInput() {
     for (int i = 0; i < 12; ++i) {
-        currentPatternInput.semiWeights[i] = paramManager.getSemitone(i);
+        // Use the SCALE-GATED weight (mainModule->getSemitoneParam → ScaleManager::getSemitoneWeight),
+        // not the raw fader value. When Conservation/lock is enforced, out-of-scale semitones read 0
+        // here, so the DICE/PATTERN engine (which picks from semiWeights) won't generate out-of-scale
+        // notes — matching the realtime path. (Previously this used paramManager.getSemitone(i), the
+        // raw value, so locked patterns still fired out-of-scale notes.)
+        currentPatternInput.semiWeights[i] =
+            mainModule ? mainModule->getSemitoneParam(i) : paramManager.getSemitone(i);
     }
     currentPatternInput.restProb          = paramManager.getRest();
     currentPatternInput.variationAmount   = paramManager.getVariation();
