@@ -1,0 +1,25 @@
+# Normalize line endings. Source and text assets are LF in the repo; git converts on
+# checkout per the platform. Fixes the mixed CRLF/LF drift flagged in
+# docs/design/CODEBASE_REFACTOR_REVIEW.md (B2).
+* text=auto eol=lf
+
+# Explicitly text (LF) — the source + build + doc files.
+*.cpp   text eol=lf
+*.hpp   text eol=lf
+*.h     text eol=lf
+*.c     text eol=lf
+*.py    text eol=lf
+*.md    text eol=lf
+*.json  text eol=lf
+*.svg   text eol=lf
+*.txt   text eol=lf
+Makefile text eol=lf
+
+# Binary — never touch these.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.ttf   binary
+*.otf   binary
+*.wav   binary
+*.zip   binary

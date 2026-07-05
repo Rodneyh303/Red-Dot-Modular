@@ -28,7 +28,6 @@
 //#include "MonsoonStraitsSands.hpp"            // NEW (Macro): global DNA controls
 //#include "MonsoonDeepStraitsSands.hpp"        // NEW (Deep): per-voice DNA controls
 #include "StraitsEastSandsVisual.hpp"         // Visual DNA editor (East)
-//#include "StraitsWestSandsVisual.hpp"         // Visual DNA editor (West)
 #include "StraitsSandsMacroVisual.hpp"        // Visual DNA editor (Macro)
 #include "MonsoonWidget.hpp"
 #include "Monsoon.hpp"
@@ -986,6 +985,5 @@ void init(rack::Plugin* p) {
 	p->addModel(modelMonsoonSandsVisualExpander);   // Mono visual DNA editor
 	p->addModel(modelStraitsEastSandsVisual);       // East visual DNA editor (tabbed)
 	// RETIRED: West visual editor merged into East (15-voice). Source kept, not registered.
-	// p->addModel(modelStraitsWestSandsVisual);
 	p->addModel(modelStraitsSandsMacroVisual);      // Macro visual DNA editor
 }

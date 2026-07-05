@@ -1151,5 +1151,4 @@ extern Model* modelLantern;                    // Lantern note-output visualiser
 // Visual editor expanders
 extern Model* modelMonsoonSandsVisualExpander;  // Mono visual DNA editor (voice 1)
 extern Model* modelStraitsEastSandsVisual;      // East visual DNA editor (voices 2-8)
-//extern Model* modelStraitsWestSandsVisual;      // West visual DNA editor (voices 9-16)
 extern Model* modelStraitsSandsMacroVisual;     // Macro visual DNA editor (global)

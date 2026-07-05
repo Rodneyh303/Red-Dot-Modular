@@ -6,7 +6,6 @@
 #include <cassert>
 //#include "../../MonsoonDeepStraitsSands.hpp"
 #include "../../StraitsEastSandsVisual.hpp"
-//#include "../../StraitsWestSandsVisual.hpp"
 #include "../../StraitsSandsMacroVisual.hpp"
 
 using namespace rack;
@@ -21,7 +20,6 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
     //auto* deepWest   = cachedDeepStraitsSandsWestExpander;
     auto* straits = cachedPolyVoiceExpander;
     auto* eastVisual  = cachedEastSandsVisual;
-    //auto* westVisual  = cachedWestSandsVisual;
 
     auto* eastLOR   = eastVisual;// ? static_cast<rack::Module*>(eastVisual);
     auto* eastInterp = eastVisual;// ? static_cast<rack::Module*>(eastVisual)
