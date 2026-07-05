@@ -8,17 +8,31 @@ object instead of hardening the accidental seams. Supersedes the narrow A1 frami
 
 ## 1. The true model (one object)
 
-There are **four probability modifiers** — Length, Offset, Rotation, Spread — applied per **(lane,
-voice)**. LOR index into the 16-step probability vector; Spread interpolates/reshapes it. All four are
-the same *kind* of thing: **probability modifiers**. They are engine state (the engine consumes them to
-produce per-step probabilities), regardless of where the current code happens to store them.
+**The system is ONE 16-voice line, not a mono core plus a poly array.** Voice 1 (V1) *is* the Monsoon
+mono voice — always. Voices 2..16 are the 15 expansion voices the poly expander adds. There is no
+separate "poly voice 1" distinct from Monsoon; V1 is definitionally the mono voice, the first of the 16.
+The current code's split — named mono LOR fields *beside* a `polyLen[15]` array — is an **artifact**: it
+encodes a mono/poly separation the system's design does not have. They are not two things to unify; they
+are one 16-voice thing stored as two.
+
+**`VoiceResolver` already owns the correct model** (`VOICE_RESOLVER_SPEC.md`): `voiceSlot(v) = v - 1`
+(V1→slot 0 … V16→slot 15), a uniform 16-wide voice-indexed convention where **slot 0 is the mono voice**,
+and `voiceSlot(v) == polyBankIndex(v) + 1`. The addressing layer knows it's one 16-voice line; the
+*storage* layer never caught up — exactly like the `EngineStrand` renumber that stopped at the enum.
+
+On top of that one voice line, there are **four probability modifiers** — Length, Offset, Rotation,
+Spread — applied per **(lane, voice)**. LOR index into the 16-step probability vector; Spread
+interpolates/reshapes it. All four are the same kind of thing: **probability modifiers**, and all are
+engine state (the engine consumes them), regardless of where the current code parks them.
 
 - **Lanes:** REST, MELODY, OCTAVE, ACCENT have all four modifiers. VARIATION and LEGATO are
-  **mono-only and have LOR but no Spread** — the *only* real asymmetry in the model.
-- **Voices:** voice 0 = mono/V1; voices 1..15 = poly. Mono is not a separate thing — it is voice 0.
+  **mono-only and have LOR but no Spread** — the *only* real asymmetry.
+- **Voices:** slot 0 = V1 = mono/Monsoon; slots 1..15 = V2..V16 = expansion. Indexed by
+  `VoiceResolver::voiceSlot(v)`, NOT a bespoke mono/poly split.
 
-That's it. `modifier ∈ {Len, Off, Rot, Spread}` × `lane ∈ {Rest, Mel, Oct, Acc (+Var, Leg for LOR)}` ×
-`voice ∈ {0..15}`. Everything below is the same object seen through a development-history seam.
+So: `modifier ∈ {Len, Off, Rot, Spread}` × `lane ∈ {Rest, Mel, Oct, Acc (+Var, Leg for LOR)}` ×
+`voiceSlot ∈ {0..15}` (slot 0 = mono). Everything below is that one object seen through a
+development-history seam.
 
 ## 2. What actually exists today (the fragmentation)
 
@@ -48,27 +62,30 @@ lanes (VAR/LEG) happen to lack spread.
 
 ## 3. Target
 
-One storage model on the **engine** (where modifiers semantically belong):
+One storage model on the **engine**, indexed by `VoiceResolver::voiceSlot` (slot 0 = V1 = mono), so the
+storage layer finally matches the addressing layer:
 
 ```
-// lane ∈ 0..5 (MEL,OCT,REST,ACC,VAR,LEG — editor/strand order, now identical)
-// voice ∈ 0..15 (0 = mono/V1)
-int   len[16][6];    // was: mono named fields + polyLen[15][4]  → voice 0 + voices 1..15, all 6 lanes
+// lane ∈ 0..5 (MEL,OCT,REST,ACC,VAR,LEG — editor/strand order, already the identity)
+// slot ∈ 0..15  == VoiceResolver::voiceSlot(v);  slot 0 = V1 = mono, slots 1..15 = V2..V16
+int   len[16][6];    // was: mono named fields (slot 0) + polyLen[15][4] (slots 1..15) — now ONE array
 int   off[16][6];
 int   rot[16][6];
 float spread[16][6]; // VAR/LEG columns (4,5) unused/always 0 — the one asymmetry, made explicit
 ```
 
-- Mono = row 0. Poly = rows 1..15. No named fields, no `spreadEffective` on the visual — the visual
-  *computes* a spread value and writes it to `spread[voice][lane]` through the single-writer path (the
-  same discipline as the strand ledger). VAR/LEG spread columns exist but are never written (documented
-  invariant), so the model stays rectangular without a special case at every access.
-- All access via `int& len(voice, lane)` etc. — **one** accessor per modifier, no switches anywhere.
-  The PE `*Random[]` read collapses the same way (or the arrays themselves move to `[voice][lane]`).
+- V1 (mono) is **slot 0**, not a special case beside the array — it is `voiceSlot(kMonoVoice)`. The 15
+  expansion voices are slots 1..15. No named mono fields, no `polyLen[15]` beside them: one array the
+  whole 16-voice system indexes with `voiceSlot()`.
+- Spread leaves the visuals. The visual *computes* a spread value and writes `spread[slot][lane]`
+  through a single-writer path (same discipline as `setStrand`). The `[4]`-vs-`[6]` visual mismatch
+  vanishes because there is no per-visual spread array to diverge.
+- All access via `int& len(slot, lane)` etc. — **one** accessor per modifier, no switches anywhere. The
+  PE `*Random[]` read collapses the same way.
 
-Property: the strand→field mapping, the mono/poly split, and the spread-on-visual detour **all
-disappear** because there is one object. This is the D4 ("one resolver per concept") pattern applied to
-storage, and it's what the presence-authority work did for topology.
+Property: strand→field mapping, the mono/poly storage split, the spread-on-visual detour, AND the
+`voiceSlot`-vs-`polyBankIndex` storage confusion all disappear — one object, indexed one way. D4 ("one
+resolver per concept") applied to storage, aligned to the addressing `VoiceResolver` already owns.
 
 ## 4. Why NOT big-bang (the risk)
 
@@ -113,9 +130,10 @@ model. Keep the round-trip test + ledger permanently.
    = trivial. **Lean: 6, rectangular, VAR/LEG-spread documented-unused.**
 2. **Step 1 storage: pointer-to-member table vs. array-now?** (see Step 1.) **Lean: array-now**, so the
    first step is real progress toward §3, not a detour that gets un-built.
-3. **Voice-0-is-mono everywhere, or keep a `kMonoSlot` alias?** Keeping the named alias
-   (`VoiceResolver::kMonoSlot == 0`) reads better at call sites. **Lean: keep the alias, drop the
-   separate storage.**
+3. **Index convention: `VoiceResolver::voiceSlot` (slot 0 = V1 = mono) — SETTLED by the correction
+   above.** The unified array is voice-slot-indexed; mono is slot 0, not a bolted-on special case. Keep
+   `kMonoSlot`/`kMonoVoice` as named aliases for readability at call sites; drop the separate mono
+   storage and the standalone `polyLen[15]`. The one array replaces both.
 4. **Naming.** `len/off/rot/spread` as the four modifiers, `lane` (not "strand") as the axis — retire
    "strand" from the vocabulary except where it means the raw 16-step vector. Confirm before mass-rename.
 
