@@ -18,7 +18,6 @@ struct MonsoonDeepStraitsSandsEast;
 struct MonsoonDeepStraitsSandsWest;
 // Poly visual DNA editors
 struct StraitsEastSandsVisual;
-struct StraitsWestSandsVisual;
 struct StraitsSandsMacroVisual;
 
 extern rack::Model* modelMonsoon;
@@ -35,7 +34,6 @@ extern rack::Model* modelMonsoonStraitsSands;
 extern rack::Model* modelMonsoonDeepStraitsSandsEast;
 extern rack::Model* modelMonsoonDeepStraitsSandsWest;
 extern rack::Model* modelStraitsEastSandsVisual;
-extern rack::Model* modelStraitsWestSandsVisual;
 extern rack::Model* modelStraitsSandsMacroVisual;
 
 /**
@@ -57,7 +55,6 @@ struct MonsoonExpanderManager {
     //MonsoonDeepStraitsSandsWest* cachedDeepStraitsSandsWestExpander = nullptr;
     // Poly visual DNA editors
     StraitsEastSandsVisual*      cachedEastSandsVisual            = nullptr;
-    StraitsWestSandsVisual*      cachedWestSandsVisual            = nullptr;
     StraitsSandsMacroVisual*     cachedMacroSandsVisual           = nullptr;
 
     int scaleExpanderCount              = 0;
@@ -68,7 +65,6 @@ struct MonsoonExpanderManager {
     int deepStraitsSandsEastExpanderCount = 0;
     int deepStraitsSandsWestExpanderCount = 0;
     int eastSandsVisualCount            = 0;
-    int westSandsVisualCount            = 0;
     int macroSandsVisualCount           = 0;
 
     void update(rack::Module* module) {
@@ -85,7 +81,6 @@ struct MonsoonExpanderManager {
        // cachedDeepStraitsSandsEastExpander = nullptr;
         //cachedDeepStraitsSandsWestExpander = nullptr;
         cachedEastSandsVisual            = nullptr;
-        cachedWestSandsVisual            = nullptr;
         cachedMacroSandsVisual           = nullptr;
 
         scaleExpanderCount              = 0;
@@ -96,7 +91,6 @@ struct MonsoonExpanderManager {
         //deepStraitsSandsEastExpanderCount = 0;
         deepStraitsSandsWestExpanderCount = 0;
         eastSandsVisualCount            = 0;
-        westSandsVisualCount            = 0;
         macroSandsVisualCount           = 0;
 
         auto scan = [&](rack::Module* start, bool left) {
@@ -146,9 +140,6 @@ struct MonsoonExpanderManager {
                 } else if (curr->model == modelStraitsEastSandsVisual) {
                     if (!cachedEastSandsVisual) cachedEastSandsVisual = reinterpret_cast<StraitsEastSandsVisual*>(curr);
                     eastSandsVisualCount++;
-                // } else if (curr->model == modelStraitsWestSandsVisual) {
-                //     if (!cachedWestSandsVisual) cachedWestSandsVisual = reinterpret_cast<StraitsWestSandsVisual*>(curr);
-                //     westSandsVisualCount++;
                 } else if (curr->model == modelStraitsSandsMacroVisual) {
                     if (!cachedMacroSandsVisual) cachedMacroSandsVisual = reinterpret_cast<StraitsSandsMacroVisual*>(curr);
                     macroSandsVisualCount++;
