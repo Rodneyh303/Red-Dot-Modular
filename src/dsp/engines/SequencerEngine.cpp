@@ -449,6 +449,10 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
     result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent, accentProb, input, wasHeldMono, hadMonoTail);
     result.stepped = true;
     result.wrapped = wrapped;
+    // executeStep already assigned lastStepResult (BEFORE wrapped/stepped were set on the local
+    // result), so lastStepResult.wrapped was stale-false. Re-sync so consumers that read
+    // engine.lastStepResult.wrapped (e.g. the Shophouse boundary sampler) see the real value.
+    lastStepResult = result;
     return result;
 }
 
@@ -501,6 +505,7 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
         result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent, accentProb, input, wasHeldMono, hadMonoTail);
         result.stepped = true;
         result.wrapped = wrapped;
+        lastStepResult = result;   // re-sync wrapped/stepped (executeStep set lastStepResult before they were known)
     }
 
     prevGate1High = gate1High;
