@@ -192,6 +192,11 @@ namespace MonsoonIds {
         POLY_ACCENT_MOD_ATT_14,
         POLY_ACCENT_MOD_ATT_15,
 
+        // Causeway GLOBAL poly-mod attenuators — summed with the per-voice ones above.
+        // Effective scale for voice v = perVoiceAtt[v] + globalAtt.
+        POLY_REST_MOD_ATT_GLOBAL,
+        POLY_ACCENT_MOD_ATT_GLOBAL,
+
         // Poly DNA Window Controls (15 voices x 3 params = 45) - MOVED TO SANDS
         POLY_DNA_VOICE_1_LEN,
         POLY_DNA_VOICE_1_OFF,
@@ -1051,8 +1056,11 @@ struct Monsoon : Module {
     float cachedResetBtn = 0.f;
     float cachedPolyRest[15] = {0.f};
     // Final effective per-voice rest (knob + global + per-voice CV mod, clamped).
-    // Read by the East/West expander widgets for the per-voice REST mod-arc.
+    // Read by the Straits expander widget for the per-voice REST mod-arc.
     float cachedPolyRestEffective[15] = {0.f};
+    // Same pair for ACCENT — set value and post-modulation value, for the ACCENT mod-arc.
+    float cachedPolyAccent[15] = {0.f};
+    float cachedPolyAccentEffective[15] = {0.f};
 
     Monsoon();
 

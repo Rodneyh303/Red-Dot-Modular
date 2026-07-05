@@ -31,10 +31,15 @@ struct MonsoonCausewayPolyExpanderWidget : ModuleWidget,
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
+        for (int i = 0; i < 15; ++i) {
+            std::string r = std::to_string(i);
+            bindParam<Trimpot>("param_restatt_" + r, MonsoonIds::POLY_REST_MOD_ATT_1   + i);
+            bindParam<Trimpot>("param_accatt_"  + r, MonsoonIds::POLY_ACCENT_MOD_ATT_1 + i);
+        }
+        bindParam<Trimpot>   ("param_restatt_global", MonsoonIds::POLY_REST_MOD_ATT_GLOBAL);
+        bindParam<Trimpot>   ("param_accatt_global",  MonsoonIds::POLY_ACCENT_MOD_ATT_GLOBAL);
         bindInput<PJ301MPort>("input_restcv",   MonsoonIds::POLY_REST_CV_INPUT);
-        bindParam<Trimpot>   ("param_restatt",  MonsoonIds::POLY_REST_MOD_ATT_1);
         bindInput<PJ301MPort>("input_accentcv", MonsoonIds::POLY_ACCENT_CV_INPUT);
-        bindParam<Trimpot>   ("param_accentatt",MonsoonIds::POLY_ACCENT_MOD_ATT_1);
 
         if (auto* s = findNamed("light_connect")) {
             connectMark = redDot::makeConnectMark(module, centerOf(s), mm2px(8.f));

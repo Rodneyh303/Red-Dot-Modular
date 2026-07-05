@@ -839,11 +839,9 @@ void Monsoon::process(const ProcessArgs& args) {
         cachedResetBtn = params[RESET_BUTTON_PARAM].getValue();
 
         // ── Throttled Poly Rest / Accent Logic ──
-        // Per-voice modulation now comes from the CAUSEWAY poly-CV expander: two 16-channel poly
-        // CV inputs (rest, accent), each scaled by one attenuverter, added on top of the base
-        // knobs (on Straits, via getPolyRest/getPolyAccent). Channel i+1 = poly voice i+2
-        // (ch0 = mono, not a poly voice here). Replaces the old East(2-8)/West(9-16) split with
-        // 15 individual mod jacks + 15 attenuverters per lane.
+        // Per-voice modulation from the CAUSEWAY poly-CV expander: two 16-channel poly CV inputs
+        // (rest, accent). Each voice's CV is scaled by (per-voice attenuator + global attenuator),
+        // then added on top of the base knobs (on Straits). Channel i+1 = poly voice i+2.
         MonsoonCausewayPolyExpander* cway = expanderManager.cachedCausewayPolyExpander;
         for (int i = 0; i < 15; ++i) {
             float base = paramManager->getPolyRest(i);
@@ -854,18 +852,25 @@ void Monsoon::process(const ProcessArgs& args) {
                 const int ch = i + 1;   // poly voice i (voice 2..16) → poly-cable channel 1..15
                 auto& restIn = cway->inputs[POLY_REST_CV_INPUT];
                 auto& accIn  = cway->inputs[POLY_ACCENT_CV_INPUT];
+                float restAtt = cway->params[POLY_REST_MOD_ATT_1 + i].getValue()
+                              + cway->params[POLY_REST_MOD_ATT_GLOBAL].getValue();
+                float accAtt  = cway->params[POLY_ACCENT_MOD_ATT_1 + i].getValue()
+                              + cway->params[POLY_ACCENT_MOD_ATT_GLOBAL].getValue();
                 if (restIn.isConnected() && ch < restIn.getChannels())
-                    modulation = restIn.getVoltage(ch) * cway->params[POLY_REST_MOD_ATT_1].getValue() * 0.1f;
+                    modulation = restIn.getVoltage(ch) * restAtt * 0.1f;
                 if (accIn.isConnected() && ch < accIn.getChannels())
-                    accMod = accIn.getVoltage(ch) * cway->params[POLY_ACCENT_MOD_ATT_1].getValue() * 0.1f;
+                    accMod = accIn.getVoltage(ch) * accAtt * 0.1f;
             }
 
             float eff = clamp(base + modulation, 0.f, 1.f);
             engine.voices[i].restProb = eff;
-            cachedPolyRestEffective[i] = eff;   // final (knob+global+per-voice mod) for modviz
+            cachedPolyRestEffective[i] = eff;   // final (knob + per-voice + global mod) for modviz
 
             float accBase = paramManager->getPolyAccent(i);
-            engine.voices[i].accentProb = clamp(accBase + accMod, 0.f, 1.f);
+            cachedPolyAccent[i] = accBase;
+            float accEff = clamp(accBase + accMod, 0.f, 1.f);
+            engine.voices[i].accentProb = accEff;
+            cachedPolyAccentEffective[i] = accEff;
         }
 
         // Handle Throttled CV1 Logic (Range Modulation)
