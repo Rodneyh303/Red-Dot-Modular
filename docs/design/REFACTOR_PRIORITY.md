@@ -56,6 +56,20 @@ in priority** — it is the same class as C2 (`polyBaseActive`, 3 defs / 5 sites
 6×). All three are "one derived fact, recomputed independently at N sites." The resolver is the D4 cure
 for the whole family, not just Sands.
 
+## Deferred: Sands vs East+Macro — Macro global-LOR editability on V1 (minor, note only)
+
+Recorded to not lose it; fix later. **Macro's editing of its OWN global LOR must never be gated by
+mono/east lane ownership** — ownership is about whose values DRIVE the engine, not who may edit their
+own globals.
+- **East+Macro (correct):** Macro edits its global LOR on any tab incl. V1, whether or not East has
+  delegated the lane.
+- **Sands-mono+Macro (bug):** Macro's global-LOR editing is BLOCKED on the V1 tab when Mono owns the
+  lane. The Sands path conflates "who wins" (drive) with "who can edit" (Macro's own globals).
+- Fix direction: the Macro global-LOR edit gate should depend only on Macro presence, not on
+  `owner()`/mono-owns-lane. Compare the East V1 editability path (which doesn't block Macro's globals)
+  and mirror it on the Sands path. Low risk, isolated to the Macro global-LOR editability predicate.
+- Best done *after* the probability-modifier unification lands, since that touches the same edit paths.
+
 ## Unified priority order
 
 Principle: **detector first (makes everything else verifiable) → the live bug → the
