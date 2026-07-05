@@ -213,13 +213,9 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     // i.e. "Mono owns it" — matching the old mv->ownerDispId(l) > 0.5 test.
     dotModular::SandsTopology buildV1Topo() {
         dotModular::SandsTopology::Inputs in;
-        in.macroPresent = true;   // this widget is Macro
         if (auto* mon = getMonsoon()) {
-            auto* mv = mon->expanderManager.cachedSandsVisualExpander;
-            in.monoPresent    = (mv != nullptr);
-            in.eastPresent    = mon->expanderManager.cachedEastSandsVisual  != nullptr;
-            in.polyBaseActive = mon->expanderManager.cachedPolyVoiceExpander != nullptr;
-            if (mv) {
+            mon->expanderManager.fillPresence(in, mon->engine.numPolyVoices);  // single authority
+            if (auto* mv = mon->expanderManager.cachedSandsVisualExpander) {
                 for (int l = 0; l < 4; ++l)
                     in.monoV1Owner[l] = mv->params[SandsMonoVisualIds::ownerDispId(l)].getValue() > 0.5f;
             }

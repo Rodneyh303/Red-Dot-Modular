@@ -1,5 +1,6 @@
 #pragma once
 #include <rack.hpp>
+#include "../SandsTopology.hpp"   // for SandsTopology::Inputs (the presence authority target)
 
 // Forward declarations
 class SequencerEngine;
@@ -185,4 +186,21 @@ struct MonsoonExpanderManager {
 
     /// Synchronizes data between the engine and specific expanders (Deep Straits, Visual Editors, etc.)
     void sync(SequencerEngine& engine, bool spreadInterpMono = false);
+
+    // ── Single presence authority for SandsTopology ─────────────────────────────
+    // THE one place the topology's presence/base fields are populated. Every consumer
+    // (managers AND widgets) calls this instead of hand-setting eastPresent/macroPresent/
+    // monoPresent/polyBaseActive — which previously diverged (widgets hard-coded their own
+    // presence as `true`, managers read the cache; polyBaseActive was defined 3 ways). The
+    // authoritative source of "is X present" is ALWAYS the expander-scan cache pointer, never
+    // a widget's self-knowledge: a widget that Monsoon's scan hasn't cached is NOT topologically
+    // present (this is what produced the MACRO-then-EAST strand clobber). numPolyVoices is passed
+    // because this manager doesn't hold the engine.
+    void fillPresence(dotModular::SandsTopology::Inputs& in, int numPolyVoices) const {
+        in.monoPresent     = (cachedSandsVisualExpander != nullptr);
+        in.eastPresent     = (cachedEastSandsVisual     != nullptr);
+        in.macroPresent    = (cachedMacroSandsVisual    != nullptr);
+        in.polyBaseActive  = (cachedPolyVoiceExpander   != nullptr) && (numPolyVoices >= 1);
+        in.polyVoiceCount  = numPolyVoices;
+    }
 };
