@@ -742,10 +742,13 @@ void Monsoon::process(const ProcessArgs& args) {
         {
             bool faderDirty = false;
             for (int i = 0; i < 12; ++i) {
-                if (scaleManager && scaleManager->lockScaleNotes && !(scaleManager->activeScaleMask & (1 << i))) {
-                    if (params[SEMI0_PARAM + i].getValue() != 0.f)
-                        params[SEMI0_PARAM + i].setValue(0.f);
-                }
+                // NON-DESTRUCTIVE: do NOT snap out-of-scale faders to zero when locked. The lock is
+                // enforced at READ time (ScaleManager::getSemitoneWeight returns 0 for out-of-scale
+                // semitones while locked) and out-of-scale faders are DIMMED in the UI. The faders
+                // keep the user's stored values, so toggling lock / changing scale reveals them
+                // unchanged. (This block previously called params[SEMI0_PARAM+i].setValue(0.f) when
+                // locked+out-of-scale, which destroyed the user's fader values — the exact snap-to-
+                // zero the non-destructive scale work removes.)
                 float w = getSemitoneParam(i);
                 if (std::fabs(w - faderCache[i]) > 1e-5f) {
                     faderDirty = true;
