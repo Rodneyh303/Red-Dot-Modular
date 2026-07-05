@@ -597,23 +597,14 @@ void Monsoon::process(const ProcessArgs& args) {
                 // editing a scale knob responds immediately without waiting for a boundary.
                 if (engine.lastStepResult.wrapped) {
                     auto& cv = shop->inputs[ShophouseIds::INDEX_CV_INPUT];
-                    int prevActive = shop->list.active();
                     if (cv.isConnected()) {
                         int n = shop->list.size();
                         float att = shop->params[ShophouseIds::INDEX_CV_ATT_PARAM].getValue();
                         float norm = clampv<float>((cv.getVoltage() / 10.f) * att, 0.f, 0.999f);
                         int idx = (int)std::floor(norm * n);
                         shop->list.setPending(idx);
-                        INFO("[Shophouse] WRAP cv=%.2fV att=%.2f n=%d -> idx=%d (pending=%d active=%d)",
-                             cv.getVoltage(), att, n, idx, shop->list.pending(), prevActive);
-                    } else {
-                        INFO("[Shophouse] WRAP but INDEX_CV NOT CONNECTED (active=%d)", prevActive);
                     }
-                    bool changed = shop->list.commitAtBoundary();
-                    if (changed || shop->list.active() != prevActive)
-                        INFO("[Shophouse] COMMIT changed=%d active %d->%d scaleIdx=%d root=%d",
-                             (int)changed, prevActive, shop->list.active(),
-                             shop->list.activeEntry().scaleIdx, shop->list.activeEntry().root);
+                    shop->list.commitAtBoundary();
                 }
             }
         }
