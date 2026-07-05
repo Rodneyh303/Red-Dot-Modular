@@ -40,7 +40,7 @@ struct MonsoonShophouseExpander : Module {
 
     MonsoonShophouseExpander() {
         using namespace ShophouseIds;
-        config(NUM_PARAMS, NUM_INPUTS, 0, 0);
+        config(ShophouseIds::NUM_PARAMS, ShophouseIds::NUM_INPUTS, 0, 0);
         int nScales = 1;
         // MONSOON_SCALES size is known at runtime; configure a generous max, snapped.
         for (int f = 0; f < NUM_FRONTS; ++f) {

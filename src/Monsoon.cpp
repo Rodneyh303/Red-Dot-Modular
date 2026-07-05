@@ -670,7 +670,7 @@ void Monsoon::process(const ProcessArgs& args) {
             
             // Aggregate DNA and Poly counts for the status LEDs
             int totalDnaCount = expanderManager.dnaExpanderCount + expanderManager.straitsSandsExpanderCount + expanderManager.deepStraitsSandsEastExpanderCount + expanderManager.deepStraitsSandsWestExpanderCount;
-            int totalPolyCount = expanderManager.polyExpanderCount + expanderManager.straitWestExpanderCount;
+            int totalPolyCount = expanderManager.polyExpanderCount;
             uiManager->updateExpanderLights(expanderManager.scaleExpanderCount, totalDnaCount, totalPolyCount);
 
             uiManager->updateRunGateLight(runGateActive);
