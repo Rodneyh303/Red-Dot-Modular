@@ -1,4 +1,5 @@
 #include <rack.hpp>
+#include <limits>
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
 #include "ui/ConnectMark.hpp"
@@ -8,6 +9,7 @@
 #include "StraitsEastSandsVisual.hpp"   // East type + StraitsEastVisualIds::cvId (Mono spread-arc East-CV gate)
 #include "ui/SandsVisualEditorV4.hpp"
 #include "ui/OwnerCell.hpp"
+#include "ui/DimmableTrimpot.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/ModArcOverlay.hpp"
 #include "dsp/managers/MonoSandsParameterManager.hpp"
@@ -139,7 +141,35 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         for (int l = 0; l < N_SPREAD_LANES; ++l) {
             int editorLane = SPREAD_LANE_TO_EDITOR[l];
             float y = rowY(editorLane);
-            auto* sp = createParamCentered<Trimpot>(mm2px(Vec(SPR_BASE_X, y)), mod, sprId(l));
+            auto* sp = createParamCentered<DimmableTrimpot>(mm2px(Vec(SPR_BASE_X, y)), mod, sprId(l));
+            // Lock + display-mirror when Mono cedes this lane to Macro — parallel to how the LOR
+            // grid locks via laneLockedFn, and identical to East's spread behaviour. Locked so the
+            // knob can't be moved while delegated; displayValueFn SHOWS Macro's spread for the lane
+            // (base + tapped send delta, the same value the engine delegation writes to
+            // spreadEffective) WITHOUT touching the stored param — so reclaiming the lane reverts to
+            // Mono's own spread automatically. l is the spread/engine lane; lock predicate uses the
+            // single topology authority keyed on editor lane.
+            {
+                const int spLane = l;
+                const int edLane = editorLane;
+                sp->lockWhen = [this, edLane]() -> bool {
+                    if (!module) return false;
+                    return buildV1Topo().lockedOn(dotModular::SandsTopology::Role::MONO, 0, edLane);
+                };
+                sp->displayValueFn = [this, spLane, edLane]() -> float {
+                    if (!module) return std::numeric_limits<float>::quiet_NaN();
+                    auto* mon = getMonsoon();
+                    auto* macroVis = mon ? mon->expanderManager.cachedMacroSandsVisual : nullptr;
+                    // Delegated ⟺ topology says Macro owns this V1 lane — the SAME authority the
+                    // lock reads (lockedOn/owner), so lock and display can't disagree.
+                    const bool delegated =
+                        buildV1Topo().owner(0, edLane) == dotModular::SandsTopology::Role::MACRO;
+                    if (!macroVis || !delegated)
+                        return std::numeric_limits<float>::quiet_NaN();   // not delegated → show own value
+                    return rack::math::clamp(macroVis->macroBase[spLane][3]
+                                             + macroVis->macroSendDelta[spLane][3], -1.f, 1.f);
+                };
+            }
             addParam(sp);
             // Store the SPREAD index l (engine order REST/MEL/OCT/ACC), NOT the editor
             // lane: spreadEffective[] and sprCvId() are both spread/engine-indexed, so

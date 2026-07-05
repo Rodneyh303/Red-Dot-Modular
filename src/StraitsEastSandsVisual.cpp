@@ -9,6 +9,7 @@
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/SvgPanelKit.hpp"
 #include "ui/OwnerCell.hpp"
+#include "ui/DimmableTrimpot.hpp"
 #include "ui/ModArcOverlay.hpp"
 #include "dsp/SandsTopology.hpp"   // step 3c: East V1 write ownership via the resolver
 #include <cassert>
@@ -33,70 +34,7 @@ extern Plugin* pluginInstance;
 // which have no effect while Macro owns the lane but stay editable so the user can
 // pre-configure East's values before claiming. Full alpha once East owns the lane.
 // (Same nvgGlobalAlpha technique as Monsoon's TrialButton.)
-struct DimmableTrimpot : rack::componentlibrary::Trimpot {
-    std::function<bool()> dimWhen;    // draw at reduced alpha
-    std::function<bool()> lockWhen;   // swallow input (inoperable) — for inherited/locked state
-    // DISPLAY/STORE split (mirrors LOR dispLength vs length; see
-    // docs/design/DISPLAY_STORE_ENGINE_SEPARATION.md). When set and finite, the knob RENDERS
-    // this display value while the bound param (the STORE that save/restore reads) stays
-    // UNTOUCHED — so a ceded spread lane can SHOW Macro's base spread without clobbering
-    // East's stored value (reclaim reverts). Return NaN = no override (show the real param).
-    // NOTE: implemented by presenting the display value to the base step() (which sets the
-    // knob rotation from the ParamQuantity) then restoring the store in the SAME step, so the
-    // store is never observably changed. This is the one piece that needs an in-Rack build to
-    // confirm (no SDK headers in-container); guarded so a null/!finite case is a plain knob.
-    std::function<float()> displayValueFn;
-    bool locked() const { return lockWhen && lockWhen(); }
-
-    void step() override {
-        rack::engine::ParamQuantity* pq = getParamQuantity();
-        if (pq && displayValueFn) {
-            float dv = displayValueFn();
-            if (std::isfinite(dv)) {
-                float stored = pq->getValue();
-                if (dv != stored) {
-                    pq->setValue(dv);                          // present display value
-                    rack::componentlibrary::Trimpot::step();   // base sets rotation from it
-                    pq->setValue(stored);                      // restore store (same frame)
-                    return;
-                }
-            }
-        }
-        rack::componentlibrary::Trimpot::step();
-    }
-    void onButton(const event::Button& e) override {
-        if (locked()) { e.consume(this); return; }
-        rack::componentlibrary::Trimpot::onButton(e);
-    }
-    void onDragStart(const event::DragStart& e) override {
-        if (locked()) return;
-        rack::componentlibrary::Trimpot::onDragStart(e);
-    }
-    void onDragMove(const event::DragMove& e) override {
-        // The actual value change happens here during a drag — guard it too, or a
-        // locked knob can still be moved even though onDragStart was blocked.
-        if (locked()) { e.consume(this); return; }
-        rack::componentlibrary::Trimpot::onDragMove(e);
-    }
-    void onHoverScroll(const event::HoverScroll& e) override {
-        if (locked()) { e.consume(this); return; }   // scroll-wheel also changes value
-        rack::componentlibrary::Trimpot::onHoverScroll(e);
-    }
-    void draw(const DrawArgs& args) override {
-        // Locked no longer forces dim — a locked-but-shown control (e.g. V1 spread
-        // mirroring Mono) must stay readable. Only dimWhen dims (truly unavailable).
-        bool dim = (dimWhen && dimWhen());
-        if (dim) nvgGlobalAlpha(args.vg, 0.4f);
-        rack::componentlibrary::Trimpot::draw(args);
-        if (dim) nvgGlobalAlpha(args.vg, 1.0f);
-    }
-    void drawLayer(const DrawArgs& args, int layer) override {
-        bool dim = (dimWhen && dimWhen());
-        if (dim) nvgGlobalAlpha(args.vg, 0.4f);
-        rack::componentlibrary::Trimpot::drawLayer(args, layer);
-        if (dim) nvgGlobalAlpha(args.vg, 1.0f);
-    }
-};
+// DimmableTrimpot moved to ui/DimmableTrimpot.hpp (shared with the Mono/Sands visual).
 
 struct StraitsEastSandsVisualWidget;  // fwd
 
