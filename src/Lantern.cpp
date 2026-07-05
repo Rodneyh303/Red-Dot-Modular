@@ -275,7 +275,7 @@ struct LanternDisplay : widget::Widget {
         auto font0 = APP->window->loadFont(rack::asset::system("res/fonts/DejaVuSans-Bold.ttf"));
         if (!font0) font0 = APP->window->uiFont;
 
-        // Piano-roll mode: draw a real piano-key gutter (Bitwig-style) instead of bare labels.
+        // Piano-roll mode: piano-key gutter with a dark LABEL ZONE (left) + KEY ZONE (right).
         if (module->params[Lantern::ROLL_PARAM].getValue() > 0.5f) {
             if (!font0) return;
             const float rowH   = H / (float)ROLL_ROWS;
@@ -284,49 +284,77 @@ struct LanternDisplay : widget::Widget {
             const int   botSemi = botOct * 12;
             auto isBlack = [](int pc){ pc=((pc%12)+12)%12; return pc==1||pc==3||pc==6||pc==8||pc==10; };
 
-            // White-key backing: fill the whole gutter light, then lay black keys over it.
-            nvgBeginPath(vg);
-            nvgRect(vg, 0.f, 0.f, gutter, H);
-            nvgFillColor(vg, nvgRGB(0x1a, 0x1c, 0x20));   // gutter surround (near-black)
-            nvgFill(vg);
+            // Two zones: a dark LABEL strip on the left, the KEY strip on the right.
+            const float labelW = gutter * 0.42f;          // dark label zone
+            const float keyL   = labelW;                  // keys start here
+            const float keyR   = gutter - 1.f;            // ...to just inside the grid
+            const float keyW   = keyR - keyL;
+            const float blackW = keyW * 0.62f;
 
-            const float keyRight = gutter - 1.f;          // keys span to just inside the grid
-            const float whiteW   = keyRight;
-            const float blackW   = keyRight * 0.62f;
+            // Dark label zone (grey) + near-black surround behind the keys.
+            nvgBeginPath(vg); nvgRect(vg, 0.f, 0.f, gutter, H);
+            nvgFillColor(vg, nvgRGB(0x17, 0x19, 0x1d)); nvgFill(vg);
+            nvgBeginPath(vg); nvgRect(vg, 0.f, 0.f, labelW, H);
+            nvgFillColor(vg, nvgRGB(0x2a, 0x2d, 0x33)); nvgFill(vg);   // grey label zone
+
+            // White keys.
             for (int r = 0; r < ROLL_ROWS; ++r) {
                 int pc = ((botSemi + r) % 12 + 12) % 12;
                 float y = H - (r + 1) * rowH;
                 if (!isBlack(pc)) {
                     nvgBeginPath(vg);
-                    nvgRect(vg, 0.f, y, whiteW, rowH);
-                    nvgFillColor(vg, nvgRGB(0xcf, 0xcf, 0xcf));   // white key
+                    nvgRect(vg, keyL, y, keyW, rowH);
+                    nvgFillColor(vg, nvgRGB(0xcf, 0xcf, 0xcf));
                     nvgFill(vg);
                     nvgStrokeColor(vg, nvgRGBA(0x30, 0x30, 0x34, 0xc0));
-                    nvgStrokeWidth(vg, 0.5f);
-                    nvgStroke(vg);
+                    nvgStrokeWidth(vg, 0.5f); nvgStroke(vg);
                 }
             }
+            // Black keys (shorter, over the white backing).
             for (int r = 0; r < ROLL_ROWS; ++r) {
                 int pc = ((botSemi + r) % 12 + 12) % 12;
                 float y = H - (r + 1) * rowH;
                 if (isBlack(pc)) {
                     nvgBeginPath(vg);
-                    nvgRect(vg, 0.f, y, blackW, rowH);
-                    nvgFillColor(vg, nvgRGB(0x17, 0x17, 0x19));   // black key
+                    nvgRect(vg, keyL, y, blackW, rowH);
+                    nvgFillColor(vg, nvgRGB(0x17, 0x17, 0x19));
                     nvgFill(vg);
                 }
             }
 
-            // C labels on the white keys.
+            // SOUNDING-NOTE key highlight: any pitch row a visible voice is sounding at the
+            // playhead gets a brighter overlay on its key — the "keys light up" cue.
+            {
+                const int ph = module->lastObservedStep;
+                if (ph >= 0 && ph < N_STEPS) {
+                    for (int v = 0; v < N_VOICES; ++v) {
+                        if (!module->voiceVisible(v)) continue;
+                        const auto& c = module->cells[v][ph];
+                        if (c.type == lantern::NoteType::Inactive) continue;
+                        int semiC0 = (int)std::lround(c.pitchV * 12.f) + 48;
+                        int row = semiC0 - botSemi;
+                        if (row < 0 || row >= ROLL_ROWS) continue;
+                        int pc = ((botSemi + row) % 12 + 12) % 12;
+                        float y = H - (row + 1) * rowH;
+                        NVGcolor hi = voiceColour(v);
+                        nvgBeginPath(vg);
+                        nvgRect(vg, keyL, y, isBlack(pc) ? blackW : keyW, rowH);
+                        nvgFillColor(vg, nvgTransRGBA(hi, 0xcc));   // bright voice-tinted key
+                        nvgFill(vg);
+                    }
+                }
+            }
+
+            // Octave labels in the DARK zone (white on grey).
             nvgFontFaceId(vg, font0->handle);
-            nvgFontSize(vg, std::min(10.f, rowH * 6.f));
-            nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
-            nvgFillColor(vg, nvgRGB(0x28, 0x28, 0x2c));
+            nvgFontSize(vg, std::min(11.f, rowH * 5.f));
+            nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+            nvgFillColor(vg, nvgRGB(0xe4, 0xe4, 0xe8));   // white-ish label text
             for (int o = 0; o < ROLL_OCTAVES; ++o) {
                 int oct = botOct + o;
                 float y = H - (o * 12 + 0.5f) * rowH;   // at the C row of this octave
                 std::string lbl = std::string("C") + std::to_string(oct);
-                nvgText(vg, keyRight - 2.f, y, lbl.c_str(), nullptr);
+                nvgText(vg, 2.f, y, lbl.c_str(), nullptr);
             }
             return;
         }
@@ -544,8 +572,8 @@ struct LanternDisplay : widget::Widget {
     // A 5-octave viewport onto the full 0..8 octave range; ROLL_SCROLL_PARAM = the bottom octave
     // of the window. Notes draw as horizontal bars at their pitch row, spanning lengthSteps.
     // Colour: by ROLE (note type) or by VOICE (per-voice hue). Lead outline kept on top.
-    static constexpr int ROLL_OCTAVES = 5;                 // viewport height in octaves
-    static constexpr int ROLL_ROWS    = ROLL_OCTAVES * 12; // = 60 semitone rows
+    static constexpr int ROLL_OCTAVES = 4;                 // viewport height in octaves (taller rows)
+    static constexpr int ROLL_ROWS    = ROLL_OCTAVES * 12; // = 48 semitone rows
 
     // Distinct, legible-on-dark hue per voice (mono = v0). Kept modest saturation so overlaps read.
     static NVGcolor voiceColour(int v) {
