@@ -36,11 +36,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
     // solo/none write guards; per-lane ownership inputs are filled in later steps when
     // the combination guards migrate). See docs/design/SANDS_TOPOLOGY_RESOLVER_PLAN.md.
     dotModular::SandsTopology::Inputs topoIn;
-    topoIn.monoPresent     = (cachedSandsVisualExpander != nullptr);
-    topoIn.eastPresent     = (cachedEastSandsVisual    != nullptr);
-    topoIn.macroPresent    = (cachedMacroSandsVisual   != nullptr);
-    topoIn.polyBaseActive  = polyBaseActive;
-    topoIn.polyVoiceCount  = engine.numPolyVoices;
+    fillPresence(topoIn, engine.numPolyVoices);   // single presence authority
     // STEP 5b: populate per-voice East ownership so the topology can drive the POLY write
     // guards (not just presence/V1). Source is East's persistent ownerId (engine-ordered)
     // and monoOwnerId; converted to editor lane so topo speaks editor lane (decision 1).

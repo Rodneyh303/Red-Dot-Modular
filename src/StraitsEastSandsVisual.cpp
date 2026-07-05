@@ -520,12 +520,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     // editor lane so topo speaks editor lane (decision 1). eastPresent=true (this IS East).
     dotModular::SandsTopology buildTopo() const {
         dotModular::SandsTopology::Inputs in;
-        in.eastPresent = true;   // this widget is East
         if (auto* m = getMonsoon()) {
-            in.monoPresent    = m->expanderManager.cachedSandsVisualExpander != nullptr;
-            in.macroPresent   = m->expanderManager.cachedMacroSandsVisual    != nullptr;
-            in.polyBaseActive = m->expanderManager.cachedPolyVoiceExpander   != nullptr;
-            in.polyVoiceCount = m->engine.numPolyVoices;
+            // Presence from the single authority (the expander-scan cache), NOT self-assertion.
+            // A widget Monsoon hasn't cached is not topologically present — same rule everywhere.
+            m->expanderManager.fillPresence(in, m->engine.numPolyVoices);
         }
         if (module) {
             for (int el = 0; el < 4; ++el) {
@@ -903,11 +901,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // ownerDispId(EDITOR_TO_ENGINE_LANE[editorLane]) — the conversion is baked here
             // so topo speaks editor lane (design decision 1). No Mono in this branch
             // (v1Editable), so monoPresent=false → owner() takes the East-V1 path.
+            // Presence from the single authority. This branch runs only under v1Editable(), which
+            // now requires cachedEastSandsVisual==module and no Mono visual — so fillPresence yields
+            // eastPresent=true, monoPresent=false here by construction. Sourcing from the authority
+            // (not re-asserting) means if that ever stops holding, the topology reflects reality
+            // instead of a stale hardcode.
             dotModular::SandsTopology::Inputs v1In;
-            v1In.monoPresent    = false;   // v1Editable() guarantees no Mono
-            v1In.eastPresent    = true;    // this widget IS East
-            v1In.macroPresent   = macroAttached();
-            v1In.polyBaseActive = true;    // V1 editing implies base present
+            if (auto* mm = getMonsoon())
+                mm->expanderManager.fillPresence(v1In, mm->engine.numPolyVoices);
             for (int el = 0; el < 4; ++el) {
                 int eng = dotModular::EDITOR_TO_ENGINE_LANE[el];
                 v1In.eastV1Owner[el] = module->params[StraitsEastVisualIds::ownerDispId(eng)].getValue() > 0.5f;

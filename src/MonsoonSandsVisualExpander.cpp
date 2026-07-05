@@ -201,11 +201,9 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
     // per-call (decision 2). This widget IS the Mono visual → monoPresent = true.
     dotModular::SandsTopology buildV1Topo() {
         dotModular::SandsTopology::Inputs in;
-        in.monoPresent  = true;   // this widget is the Mono visual
         if (auto* mon = getMonsoon()) {
-            in.eastPresent    = mon->expanderManager.cachedEastSandsVisual  != nullptr;
-            in.macroPresent   = mon->expanderManager.cachedMacroSandsVisual != nullptr;
-            in.polyBaseActive = mon->expanderManager.cachedPolyVoiceExpander != nullptr;
+            // Presence from the single authority (expander-scan cache), not self-assertion.
+            mon->expanderManager.fillPresence(in, mon->engine.numPolyVoices);
         }
         if (module) {
             for (int l = 0; l < 4; ++l)   // Mono ownerDispId is editor-ordered → no conversion

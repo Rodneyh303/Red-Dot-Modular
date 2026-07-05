@@ -58,11 +58,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     // ownership populated (step 3a only needed presence). readStrand's owner decisions
     // migrate onto topo.owner(0, l). See docs/design/SANDS_TOPOLOGY_RESOLVER_PLAN.md.
     dotModular::SandsTopology::Inputs topoIn;
-    topoIn.monoPresent    = hasMonoVisual;
-    topoIn.eastPresent    = hasEastVisual;
-    topoIn.macroPresent   = hasMacro;
-    topoIn.polyBaseActive = polyBaseActive;
-    topoIn.polyVoiceCount = engine.numPolyVoices;
+    expanderManager.fillPresence(topoIn, engine.numPolyVoices);   // single presence authority
     if (monoVis) {
         for (int l = 0; l < 4; ++l)
             topoIn.monoV1Owner[l] = monoVis->params[Mono::ownerDispId(l)].getValue() > 0.5f;
