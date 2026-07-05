@@ -578,11 +578,14 @@ void Monsoon::process(const ProcessArgs& args) {
                 scaleManager->lockScaleNotes =
                     shop->params[ShophouseIds::CONSERVATION_PARAM].getValue() > 0.5f;
                 if (engine.lastStepResult.wrapped) {
-                    // Sample index CV (0..10V → front 0..N-1) at the boundary.
+                    // Sample index CV (0..10V → front 0..N-1) at the boundary, scaled by the
+                    // attenuverter (-1..1). Negative values invert the sweep across the list.
                     auto& cv = shop->inputs[ShophouseIds::INDEX_CV_INPUT];
                     if (cv.isConnected()) {
                         int n = shop->list.size();
-                        int idx = (int)std::floor(clampv<float>(cv.getVoltage() / 10.f, 0.f, 0.999f) * n);
+                        float att = shop->params[ShophouseIds::INDEX_CV_ATT_PARAM].getValue();
+                        float norm = clampv<float>((cv.getVoltage() / 10.f) * att, 0.f, 0.999f);
+                        int idx = (int)std::floor(norm * n);
                         shop->list.setPending(idx);
                     }
                     if (shop->list.commitAtBoundary()) {

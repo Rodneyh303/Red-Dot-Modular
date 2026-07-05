@@ -27,6 +27,7 @@ namespace ShophouseIds {
         SCALE_PARAM_0, SCALE_PARAM_END = SCALE_PARAM_0 + NUM_FRONTS - 1,   // scale index per front
         ROOT_PARAM_0,  ROOT_PARAM_END  = ROOT_PARAM_0  + NUM_FRONTS - 1,   // root 0..11 per front (set by shutter click)
         CONSERVATION_PARAM,                                                 // 0=guide, 1=enforce
+        INDEX_CV_ATT_PARAM,                                                 // attenuverter for INDEX_CV_INPUT
         NUM_PARAMS
     };
     enum InputIds {
@@ -54,6 +55,7 @@ struct MonsoonShophouseExpander : Module {
         }
         (void)nScales;
         configSwitch(CONSERVATION_PARAM, 0.f, 1.f, 0.f, "Conservation", {"Guide", "Enforce"});
+        configParam(INDEX_CV_ATT_PARAM, -1.f, 1.f, 1.f, "Index CV attenuverter");
         configInput(INDEX_CV_INPUT, "Scale-list index CV (sampled at phrase boundary)");
     }
 

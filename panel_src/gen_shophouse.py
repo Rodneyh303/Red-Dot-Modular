@@ -105,11 +105,16 @@ def gen(dark):
             cx, cy = cen[semi]
             A(f'<circle id="shutter_{f}_{semi}" cx="{px(cx)}" cy="{px(cy)}" r="0.5" fill="none" stroke="none"/>')
 
-    # street level: CV index in + Conservation toggle
+    # street level: CV index in + attenuverter + Conservation toggle
     sy = FRONT_TOP + NUM_FRONTS*(FRONT_H+FRONT_GAP) + 6.0
-    jx = W*0.30
+    jx = W*0.22
     A(f'<circle cx="{px(jx)}" cy="{px(sy)}" r="{px(3.9)}" fill="{t["jackwell"]}" stroke="{t["jackring"]}" stroke-width="1"/>')
     A(f'<circle id="input_indexcv" cx="{px(jx)}" cy="{px(sy)}" r="0.5" fill="none" stroke="none"/>')
+    # index CV attenuverter
+    ax = W*0.45
+    A(f'<circle cx="{px(ax)}" cy="{px(sy)}" r="{px(3.0)}" fill="{t["well"]}" stroke="{t["gold"]}" stroke-width="1.25"/>')
+    A(f'<line x1="{px(ax)}" y1="{px(sy)}" x2="{px(ax)}" y2="{px(sy-2.4)}" stroke="{t["gold"]}" stroke-width="1"/>')
+    A(f'<circle id="param_indexcvatt" cx="{px(ax)}" cy="{px(sy)}" r="0.5" fill="none" stroke="none"/>')
     tx = W*0.68
     A(f'<rect x="{px(tx-4)}" y="{px(sy-4)}" width="{px(8)}" height="{px(8)}" rx="{px(1)}" '
       f'fill="{t["well"]}" stroke="{t["teal"]}" stroke-width="1.25"/>')

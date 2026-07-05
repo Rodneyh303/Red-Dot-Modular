@@ -20,9 +20,14 @@ struct ShutterBank : Widget {
     int front = 0;
     Vec centres[12];              // shutter click centres (px), filled from panel markers
     float clickR = 0.f;           // hit radius (px)
+    std::shared_ptr<window::Font> font;   // for the scale-name readout
 
     static uint16_t maskFor(int scaleIdx, int root) {
         return ScaleManager::calculateMask(root, scaleIdx);
+    }
+    static const char* rootName(int r) {
+        static const char* N[12] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
+        return N[((r % 12) + 12) % 12];
     }
 
     void onButton(const event::Button& e) override {
@@ -64,6 +69,20 @@ struct ShutterBank : Widget {
             nvgFillColor(vg, col);
             nvgFill(vg);
         }
+
+        // Scale-name readout — "<root> <scale name>", updates live as the scale dial rotates.
+        if (font && scaleIdx >= 0 && scaleIdx < (int)MONSOON_SCALES.size()) {
+            std::string label = std::string(rootName(root)) + " " + MONSOON_SCALES[scaleIdx].name;
+            // Find the top of the shutter cluster; place the text just above it.
+            float topY = box.size.y, cx = box.size.x * 0.5f;
+            for (int s = 0; s < 12; ++s) topY = std::min(topY, centres[s].y);
+            float ty = std::max(7.f, topY - r - 3.f);
+            nvgFontFaceId(vg, font->handle);
+            nvgFontSize(vg, 9.f);
+            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM);
+            nvgFillColor(vg, nvgRGB(0xe8, 0xe8, 0xec));
+            nvgText(vg, cx, ty, label.c_str(), nullptr);
+        }
     }
 };
 
@@ -94,6 +113,8 @@ struct MonsoonShophouseExpanderWidget : ModuleWidget,
             auto* bank = new ShutterBank();
             bank->module = mod;
             bank->front = f;
+            bank->font = APP->window->loadFont(
+                rack::asset::system("res/fonts/DejaVuSans-Bold.ttf"));
             // Gather this front's 12 shutter marker centres; size the bank to span them.
             // Track the bounding box manually (min/max corners) — avoids relying on a specific
             // Rect helper signature.
@@ -123,6 +144,7 @@ struct MonsoonShophouseExpanderWidget : ModuleWidget,
 
         bindParam<CKSS>("param_conservation", CONSERVATION_PARAM);
         bindInput<PJ301MPort>("input_indexcv", INDEX_CV_INPUT);
+        bindParam<Trimpot>("param_indexcvatt", INDEX_CV_ATT_PARAM);
 
         if (auto* s = findNamed("light_connect")) {
             connectMark = redDot::makeConnectMark(module, centerOf(s), mm2px(8.f));
