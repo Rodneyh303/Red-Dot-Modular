@@ -47,9 +47,9 @@
       ]
     },
     {
-      "slug": "MonsoonStraitsEastExpander",
-      "name": "MonsoonStraitsEastExpander",
-      "description": "Polyphonice Expander and Modulation Expander - Voice 2-8",
+      "slug": "Straits",
+      "name": "Straits",
+      "description": "Poly base expander — per-voice REST/ACCENT probability + 16ch poly-cable outs (gate/CV/accent, ch1=mono)",
       "tags": [
         "Expander",
         "Sequencer",
@@ -57,13 +57,33 @@
       ]
     },
     {
-      "slug": "MonsoonStraitWestExpander",
-      "name": "MonsoonStraitWestExpander",
-      "description": "Polyphonice Expander and Modulation Expander - Voice 9-16",
+      "slug": "Causeway",
+      "name": "Causeway",
+      "description": "Poly CV modulation — 16ch REST + ACCENT modulation CV in (ch1=mono) with attenuverters",
       "tags": [
         "Expander",
         "Sequencer",
         "Random"
+      ]
+    },
+    {
+      "slug": "Changi",
+      "name": "Changi",
+      "description": "Per-voice output — poly voices 2..16 broken out to individual gate/CV/accent jacks",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Random"
+      ]
+    },
+    {
+      "slug": "Shophouse",
+      "name": "Shophouse",
+      "description": "Scale expander — 4-front scale list, click-a-shutter root, boundary-quantised modulation, Conservation lock",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Quantizer"
       ]
     },
     {

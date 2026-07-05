@@ -9,7 +9,7 @@ using namespace MonsoonIds;
 namespace redDot {
 
 // ── Chain-walk: find Monsoon anywhere to the right ───────────────────────────
-inline Monsoon* findMonsoon(rack::Module* startRight, int maxDepth = 8) {
+inline Monsoon* findMonsoon(rack::Module* startRight, int maxDepth = 12) {
     Module* curr = startRight;
     for (int d = 0; curr && d < maxDepth; ++d) {
         if (auto* m = dynamic_cast<Monsoon*>(curr)) return m;
@@ -23,7 +23,7 @@ inline Monsoon* findMonsoon(rack::Module* startRight, int maxDepth = 8) {
 // Interchange placed between a Sands editor and Monsoon). Use this from visual
 // expanders so they bind to the host regardless of which side they sit on and
 // regardless of what sits between them and Monsoon.
-inline Monsoon* findMonsoonEitherSide(rack::Module* self, int maxDepth = 8) {
+inline Monsoon* findMonsoonEitherSide(rack::Module* self, int maxDepth = 12) {
     if (!self) return nullptr;
     Module* curr = self->rightExpander.module;
     for (int d = 0; curr && d < maxDepth; ++d) {
@@ -50,11 +50,13 @@ inline bool isClaimedExpander(rack::Module* self, Monsoon* mon) {
     const auto& em = mon->expanderManager;
     const void* s = static_cast<const void*>(self);
     return s == (const void*)em.cachedScaleExpander
-        || s == (const void*)em.cachedCausewayExpander
-        || s == (const void*)em.cachedSurgeExpander
+        || s == (const void*)em.cachedRafflesExpander
+        || s == (const void*)em.cachedJunctionExpander
         || s == (const void*)em.cachedSandsVisualExpander
         || s == (const void*)em.cachedPolyVoiceExpander
-        || s == (const void*)em.cachedStraitWestExpander
+        || s == (const void*)em.cachedCausewayPolyExpander
+        || s == (const void*)em.cachedChangiExpander
+        || s == (const void*)em.cachedShophouseExpander
         || s == (const void*)em.cachedEastSandsVisual
         || s == (const void*)em.cachedMacroSandsVisual;
 }

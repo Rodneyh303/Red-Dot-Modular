@@ -20,8 +20,11 @@
 
 //#include "MonsoonSandsExpander.hpp"
 #include "MonsoonInterchangeExpander.hpp"
-#include "MonsoonStraitsEastExpander.hpp"
-#include "MonsoonStraitWestExpander.hpp"      // NEW (Phase 4)
+#include "MonsoonStraitsExpander.hpp"
+#include "MonsoonCausewayPolyExpander.hpp"
+#include "MonsoonChangiExpander.hpp"
+#include "MonsoonShophouseExpander.hpp"
+// West retired (Straits redesign): #include "MonsoonStraitWestExpander.hpp"
 //#include "MonsoonStraitsSands.hpp"            // NEW (Macro): global DNA controls
 //#include "MonsoonDeepStraitsSands.hpp"        // NEW (Deep): per-voice DNA controls
 #include "StraitsEastSandsVisual.hpp"         // Visual DNA editor (East)
@@ -146,6 +149,48 @@ float Monsoon::getOctaveHiParam()   { return paramManager->getOctaveHi(); }
 
 float Monsoon::getPolyRestParam(int voiceIdx) {
     return paramManager->getPolyRest(voiceIdx);
+}
+
+// ── Effective per-voice poly rest/accent — SINGLE SOURCE OF TRUTH ────────────
+// Every consumer (the engine's per-voice decision, the Straits mod arcs, and any future
+// reader) pulls the effective value from HERE. There are no cached "effective" copies to
+// keep in sync — that push-to-multiple-copies pattern caused three separate drift/clobber
+// bugs (scale-lock faders, dice-scale-gate, Causeway CV). Effective = base knob (on Straits,
+// via paramManager) + Causeway per-voice CV × (per-voice att + global att), clamped 0..1.
+// Base-only accessors give the arcs their "set" reference without a second copy.
+float Monsoon::getBasePolyRest(int voiceIdx) {
+    return paramManager ? paramManager->getPolyRest(voiceIdx) : 0.f;
+}
+float Monsoon::getBasePolyAccent(int voiceIdx) {
+    return paramManager ? paramManager->getPolyAccent(voiceIdx) : 0.f;
+}
+float Monsoon::getEffectivePolyRest(int voiceIdx) {
+    float base = getBasePolyRest(voiceIdx);
+    auto* cway = expanderManager.cachedCausewayPolyExpander;
+    if (cway && voiceIdx >= 0 && voiceIdx < 15) {
+        const int ch = voiceIdx + 1;   // poly voice → poly-cable channel (ch0 = mono)
+        auto& in = cway->inputs[POLY_REST_CV_INPUT];
+        if (in.isConnected() && ch < in.getChannels()) {
+            float att = cway->params[POLY_REST_MOD_ATT_1 + voiceIdx].getValue()
+                      + cway->params[POLY_REST_MOD_ATT_GLOBAL].getValue();
+            base += in.getVoltage(ch) * att * 0.1f;
+        }
+    }
+    return math::clamp(base, 0.f, 1.f);
+}
+float Monsoon::getEffectivePolyAccent(int voiceIdx) {
+    float base = getBasePolyAccent(voiceIdx);
+    auto* cway = expanderManager.cachedCausewayPolyExpander;
+    if (cway && voiceIdx >= 0 && voiceIdx < 15) {
+        const int ch = voiceIdx + 1;
+        auto& in = cway->inputs[POLY_ACCENT_CV_INPUT];
+        if (in.isConnected() && ch < in.getChannels()) {
+            float att = cway->params[POLY_ACCENT_MOD_ATT_1 + voiceIdx].getValue()
+                      + cway->params[POLY_ACCENT_MOD_ATT_GLOBAL].getValue();
+            base += in.getVoltage(ch) * att * 0.1f;
+        }
+    }
+    return math::clamp(base, 0.f, 1.f);
 }
 
 // --- switch melody/rhythm mode (dice/realtime), caching/restoring state as needed ---    
@@ -312,7 +357,7 @@ float Monsoon::semitoneToVolts(int semitone) {
     }
 
     // Single definition of every die-action. Fired by G3 (menu-routed) and by
-    // Causeway's dedicated gates (and any future source) — DRY.
+    // Raffles's dedicated gates (and any future source) — DRY.
     void Monsoon::fireDieAction(int a) {
         switch (a) {
             case DA_TRIAL_R:       rhythmMode = 0; engine.pe.setPendingRhythmTrial(); break;
@@ -497,6 +542,23 @@ void Monsoon::process(const ProcessArgs& args) {
         tc.handleGate2Assignment(gate2Assign, input.gate2Rise, tc.getGate2High(), invertMuteLogic);
     }
 
+    // --- Shophouse scale expander: sync + apply the ACTIVE front's scale EVERY process frame,
+    //     independent of the clock (so editing a scale knob dims the faders immediately, and it
+    //     works even when the sequencer is stopped). The boundary-quantised FRONT SWITCH (CV) is
+    //     handled separately inside the clock-edge path. Recompute the mask only when it changes. ---
+    if (auto* shop = expanderManager.cachedShophouseExpander) {
+        shop->syncEntriesFromParams();
+        scaleManager->lockScaleNotes =
+            shop->params[ShophouseIds::CONSERVATION_PARAM].getValue() > 0.5f;
+        const auto& e = shop->list.activeEntry();
+        if (scaleManager->lastSelectedScale != e.scaleIdx
+            || scaleManager->scaleRoot != e.root) {
+            scaleManager->lastSelectedScale = e.scaleIdx;
+            scaleManager->scaleRoot         = e.root;
+            scaleManager->updateScaleMask();
+        }
+    }
+
     // --- Mode dispatch (only if running) ---
     if (runGateActive) {
         // Gate-close on the PPQN grid pulse. In Mode E the pulse source is the phase
@@ -520,6 +582,31 @@ void Monsoon::process(const ProcessArgs& args) {
 
         if (shouldExecute) {
             mc.executeMode(modeSelect, input, tc.getGate2High());
+
+            // ── Shophouse scale expander: boundary-quantised scale/root ──
+            // Drive the attached Shophouse's ScaleList. The index CV is sampled at the phrase
+            // boundary (wrapped) to pick the pending front; commitAtBoundary() then makes it the
+            // active (scale, root), which we write into the existing ScaleManager slot. All scale
+            // changes therefore land on the loop edge — never mid-phrase. If no Shophouse is
+            // attached, the context-menu scale is left untouched.
+            if (auto* shop = expanderManager.cachedShophouseExpander) {
+                // Boundary-quantised FRONT SWITCH only (needs the phrase-boundary edge, which is why
+                // this part stays inside the clock-edge path). Sampling the index CV picks the
+                // pending front; commitAtBoundary() makes it active on the loop edge. The active
+                // front's scale is applied every process frame in the block below (not here), so
+                // editing a scale knob responds immediately without waiting for a boundary.
+                if (engine.lastStepResult.wrapped) {
+                    auto& cv = shop->inputs[ShophouseIds::INDEX_CV_INPUT];
+                    if (cv.isConnected()) {
+                        int n = shop->list.size();
+                        float att = shop->params[ShophouseIds::INDEX_CV_ATT_PARAM].getValue();
+                        float norm = clampv<float>((cv.getVoltage() / 10.f) * att, 0.f, 0.999f);
+                        int idx = (int)std::floor(norm * n);
+                        shop->list.setPending(idx);
+                    }
+                    shop->list.commitAtBoundary();
+                }
+            }
         }
 
         // ── Mode E jump/scrub: replay the event chain over the jumped 1/16 steps ──
@@ -640,7 +727,7 @@ void Monsoon::process(const ProcessArgs& args) {
             
             // Aggregate DNA and Poly counts for the status LEDs
             int totalDnaCount = expanderManager.dnaExpanderCount + expanderManager.straitsSandsExpanderCount + expanderManager.deepStraitsSandsEastExpanderCount + expanderManager.deepStraitsSandsWestExpanderCount;
-            int totalPolyCount = expanderManager.polyExpanderCount + expanderManager.straitWestExpanderCount;
+            int totalPolyCount = expanderManager.polyExpanderCount;
             uiManager->updateExpanderLights(expanderManager.scaleExpanderCount, totalDnaCount, totalPolyCount);
 
             uiManager->updateRunGateLight(runGateActive);
@@ -742,10 +829,12 @@ void Monsoon::process(const ProcessArgs& args) {
         {
             bool faderDirty = false;
             for (int i = 0; i < 12; ++i) {
-                if (scaleManager && scaleManager->lockScaleNotes && !(scaleManager->activeScaleMask & (1 << i))) {
-                    if (params[SEMI0_PARAM + i].getValue() != 0.f)
-                        params[SEMI0_PARAM + i].setValue(0.f);
-                }
+                // NON-DESTRUCTIVE: do NOT snap out-of-scale faders to zero when locked. The lock is
+                // enforced at READ time (ScaleManager::getSemitoneWeight returns 0 for out-of-scale
+                // semitones while locked) and the out-of-scale faders are DIMMED in the UI. The
+                // faders keep the user's stored values, so toggling lock / changing scale reveals
+                // them unchanged. (Previously this loop called setValue(0) here, which destroyed the
+                // user's values — the exact behaviour the non-destructive scale work removed.)
                 float w = getSemitoneParam(i);
                 if (std::fabs(w - faderCache[i]) > 1e-5f) {
                     faderDirty = true;
@@ -762,12 +851,12 @@ void Monsoon::process(const ProcessArgs& args) {
     if (controlDivider.process()) {
         updateExpanderPointers();
 
-        if (expanderManager.cachedCausewayExpander) {
-            rack::Module* cw = expanderManager.cachedCausewayExpander;
+        if (expanderManager.cachedRafflesExpander) {
+            rack::Module* cw = expanderManager.cachedRafflesExpander;
             for (int i = 0; i < 14; ++i) {
-                int in = MonsoonIds::CAUSEWAY_GATE_TRIAL_R + i;
+                int in = MonsoonIds::RAFFLES_GATE_TRIAL_R + i;
                 if (cw->inputs[in].isConnected()
-                    && causewayGateTrig[i].process(cw->inputs[in].getVoltage(), 0.1f, 1.f)) {
+                    && rafflesGateTrig[i].process(cw->inputs[in].getVoltage(), 0.1f, 1.f)) {
                     fireDieAction(i);
                 }
             }
@@ -806,45 +895,10 @@ void Monsoon::process(const ProcessArgs& args) {
         cachedRunBtn = params[RUN_GATE_PARAM].getValue();
         cachedResetBtn = params[RESET_BUTTON_PARAM].getValue();
 
-        // ── Throttled Poly Rest Logic ──
-        for (int i = 0; i < 15; ++i) {
-            float base = paramManager->getPolyRest(i);
-            cachedPolyRest[i] = base;
-            
-            float modulation = 0.f;
-            if (i < 7) { // East voices
-                if (inputs[POLY_REST_MOD_CV_INPUT_1 + i].isConnected()) {
-                    modulation = inputs[POLY_REST_MOD_CV_INPUT_1 + i].getVoltage() * 
-                                 params[POLY_REST_MOD_ATT_1 + i].getValue() * 0.1f;
-                }
-            } else { // West voices
-                int wi = i - 7;
-                if (inputs[POLY_REST_MOD_CV_INPUT_8 + wi].isConnected()) {
-                    modulation = inputs[POLY_REST_MOD_CV_INPUT_8 + wi].getVoltage() * 
-                                 params[POLY_REST_MOD_ATT_8 + wi].getValue() * 0.1f;
-                }
-            }
-            // ParameterManager::getPolyRest includes the global Rest knob + global CV.
-            // Here we add the per-voice modulation on top.
-            float eff = clamp(base + modulation, 0.f, 1.f);
-            engine.voices[i].restProb = eff;
-            cachedPolyRestEffective[i] = eff;   // final value (knob+global+per-voice mod) for modviz
-            // Accent as a poly lane: base (POLY_ACCENT_PARAM + shared CV) from getPolyAccent,
-            // plus per-voice accent CV × attenuverter on top — exactly parallel to rest.
-            float accBase = paramManager->getPolyAccent(i);
-            float accMod = 0.f;
-            if (i < 7) {
-                if (inputs[POLY_ACCENT_MOD_CV_INPUT_1 + i].isConnected())
-                    accMod = inputs[POLY_ACCENT_MOD_CV_INPUT_1 + i].getVoltage() *
-                             params[POLY_ACCENT_MOD_ATT_1 + i].getValue() * 0.1f;
-            } else {
-                int wi = i - 7;
-                if (inputs[POLY_ACCENT_MOD_CV_INPUT_8 + wi].isConnected())
-                    accMod = inputs[POLY_ACCENT_MOD_CV_INPUT_8 + wi].getVoltage() *
-                             params[POLY_ACCENT_MOD_ATT_8 + wi].getValue() * 0.1f;
-            }
-            engine.voices[i].accentProb = clamp(accBase + accMod, 0.f, 1.f);
-        }
+        // (Per-voice rest/accent + Causeway CV modulation is applied in
+        //  ModeController::updatePolyVoiceRest_(), which pulls from Monsoon::getEffectivePolyRest/
+        //  Accent — the single resolver — right before executePolyVoices. The Straits mod arcs pull
+        //  from the same resolver, so there are no cached-effective copies to drift or clobber.)
 
         // Handle Throttled CV1 Logic (Range Modulation)
         if (cachedCv1Connected) {
@@ -859,15 +913,8 @@ void Monsoon::process(const ProcessArgs& args) {
             paramManager->setCv1HiOffset(0.f);
         }
 
-        // Zero unused voice outputs so they don't emit stale voltages (Transferred from audio rate)
-        if (expanderManager.cachedPolyVoiceExpander) {
-            using namespace PolyVoiceExpanderIds;
-            for (int i = std::max(0, engine.numPolyVoices); i < 7; ++i) {
-                expanderManager.cachedPolyVoiceExpander->outputs[POLY_GATE_OUT_1 + i].setVoltage(0.f);
-                expanderManager.cachedPolyVoiceExpander->outputs[POLY_CV_OUT_1 + i].setVoltage(0.f);
-                expanderManager.cachedPolyVoiceExpander->outputs[POLY_ACCENT_OUT_1 + i].setVoltage(0.f);
-            }
-        }
+        // (Unused poly voices are zeroed by the OutputGenerator, which writes all 16
+        //  poly-cable channels each frame — gate-low/0V beyond numPolyVoices.)
 
         engine.updateWindow(
             params[PATTERN_LENGTH_PARAM].getValue(), inputs[LENGTH_INPUT].getVoltage(), inputs[LENGTH_INPUT].isConnected(),
@@ -887,7 +934,7 @@ void Monsoon::process(const ProcessArgs& args) {
             if (cv2Mode == 4) paramManager->setCv2Offset(4, norm); // New: Accent modulation
         }
 
-        // ── Assignable CV3 & Causeway Modulation (Throttled) ──
+        // ── Assignable CV3 & Raffles Modulation (Throttled) ──
         float cv3Mods[4] = {0.f, 0.f, 0.f, 0.f};
         
         // 1. Main Panel CV3 (bipolar offset to selected target; was unipolar 0..5
@@ -897,13 +944,13 @@ void Monsoon::process(const ProcessArgs& args) {
             cv3Mods[cv3Target] = clampv<float>(v, -5.f, 5.f) / 5.f;
         }
 
-        // 2. Causeway Expander (Summing bipolar attenuverted CVs)
-        if (expanderManager.cachedCausewayExpander) {
-            rack::Module* cw = expanderManager.cachedCausewayExpander;
+        // 2. Raffles Expander (Summing bipolar attenuverted CVs)
+        if (expanderManager.cachedRafflesExpander) {
+            rack::Module* cw = expanderManager.cachedRafflesExpander;
             for (int i = 0; i < 4; ++i) {
-                if (cw->inputs[CAUSEWAY_SLEW_R_CV + i].isConnected()) {
-                    float v = cw->inputs[CAUSEWAY_SLEW_R_CV + i].getVoltage();
-                    float att = cw->params[CAUSEWAY_SLEW_R_ATT + i].getValue();
+                if (cw->inputs[RAFFLES_SLEW_R_CV + i].isConnected()) {
+                    float v = cw->inputs[RAFFLES_SLEW_R_CV + i].getVoltage();
+                    float att = cw->params[RAFFLES_SLEW_R_ATT + i].getValue();
                     cv3Mods[i] += (v / 5.f) * att;
                 }
             }
@@ -923,12 +970,15 @@ void init(rack::Plugin* p) {
 	pluginInstance = p;
 	p->addModel(modelMonsoon);
 	p->addModel(modelMonsoonInterchangeExpander);
-	p->addModel(modelMonsoonCausewayExpander);
-	p->addModel(modelMonsoonSurgeExpander);
+	p->addModel(modelMonsoonRafflesExpander);
+	p->addModel(modelMonsoonJunctionExpander);
 	//p->addModel(modelMonsoonSandsExpander);
-	p->addModel(modelMonsoonStraitsEastExpander);
+	p->addModel(modelMonsoonStraitsExpander);
+	p->addModel(modelMonsoonCausewayPolyExpander);
+	p->addModel(modelMonsoonChangiExpander);
+	p->addModel(modelMonsoonShophouseExpander);
 	p->addModel(modelLantern);                       // Lantern note-output visualiser
-	p->addModel(modelMonsoonStraitWestExpander);    // NEW (Phase 4)
+	// West retired (Straits redesign): p->addModel(modelMonsoonStraitWestExpander);
 	//p->addModel(modelMonsoonStraitsSands);          // Macro: global DNA
 	//p->addModel(modelMonsoonDeepStraitsSandsEast);  // Deep: voices 2-8
 	//p->addModel(modelMonsoonDeepStraitsSandsWest);  // Deep: voices 9-16

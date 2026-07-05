@@ -2,7 +2,7 @@
 
 Surge = the big-5 pattern-knob modulation expander: CV (+ attenuverter) for
 NOTE VALUE, VARIATION, LEGATO, REST, ACCENT. Sibling to Interchange (pitch) and
-Causeway (draw generation); Surge + Interchange shape how we REACT to the draw.
+Raffles (draw generation); Surge + Interchange shape how we REACT to the draw.
 
 Layout: 5 rows of  jack | atten  (one CV pair per big-5 knob). 8HP is plenty.
 

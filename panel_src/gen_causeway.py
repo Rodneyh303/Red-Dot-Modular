@@ -3,7 +3,7 @@
 Causeway = the dice/draw-generation modulation expander. It carries CV (with
 attenuverters) for the 2 slews + 2 mixes, and 10 dedicated gate jacks for the
 die actions. Reacts INTO Monsoon's draw generation; the sibling expanders
-Interchange (pitch) and Surge (the big-5 pattern knobs) shape the REACTION to
+Interchange (pitch) and Junction (the big-5 pattern knobs) shape the REACTION to
 the draw.
 
 Layout (mm; VCV 1mm = 75/25.4 px):

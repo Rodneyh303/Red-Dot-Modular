@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Apply the dot.modular Peranakan palette across the whole module family —
-Surge, Causeway, Straits (East/West), Monsoon, Interchange — by recolouring the
+<<<<<<< HEAD
+Surge, Raffles, Straits (East/West), Monsoon, Interchange — by recolouring the
+=======
+Junction, Causeway, Straits (East/West), Monsoon, Interchange — by recolouring the
+>>>>>>> origin/refactor/surge-to-junction
 panels already in use. Geometry, layout and (critically) any components layer
 with named anchor shapes are left untouched; only artwork colours change.
 
@@ -9,7 +13,11 @@ Peranakan language:
   Light = light-grey background, near-black pattern, gold trim, red detailing.
 
 Two palette families among the panels:
-  A) Surge / Causeway: already dot.modular (#070707 bg, #d4001a red, #26a69a teal
+<<<<<<< HEAD
+  A) Surge / Raffles: already dot.modular (#070707 bg, #d4001a red, #26a69a teal
+=======
+  A) Junction / Causeway: already dot.modular (#070707 bg, #d4001a red, #26a69a teal
+>>>>>>> origin/refactor/surge-to-junction
      accent, #f0ede8 cream, #6a6e76 grey). Just teal->red + light inversion.
   B) Straits / Interchange: greys + #dc2626/teal + blue tints. Greys are the
      pattern; map accents to red, invert for light.
@@ -30,7 +38,11 @@ BLACK   = "#18181a"   # matt black (was glossy #080808)
 LGREY   = "#dcdcdc"   # light background
 
 # ── Per-family colour maps ────────────────────────────────────────────────
-# Surge / Causeway (palette family A)
+<<<<<<< HEAD
+# Surge / Raffles (palette family A)
+=======
+# Junction / Causeway (palette family A)
+>>>>>>> origin/refactor/surge-to-junction
 A_DARK = {
     "#26a69a": RED,        # teal accent -> red
     "#070707": BLACK,      # bg -> blacker
@@ -79,10 +91,17 @@ M_DARK = {
 
 TASKS = [
     # (src, out_dark, out_light, dark_map, light_map, dark_bg, light_bg, bg_dims)
+<<<<<<< HEAD
     ("res/panels/Surge_panel_dark.svg",  "res/panels/Surge_peranakan_dark.svg",
      "res/panels/Surge_peranakan_light.svg", A_DARK, A_LIGHT, BLACK, LGREY, ("120.0","380.0")),
+    ("res/panels/Raffles_panel_dark.svg", "res/panels/Raffles_peranakan_dark.svg",
+     "res/panels/Raffles_peranakan_light.svg", A_DARK, A_LIGHT, BLACK, LGREY, ("180.0","380.0")),
+=======
+    ("res/panels/Junction_panel_dark.svg",  "res/panels/Junction_peranakan_dark.svg",
+     "res/panels/Junction_peranakan_light.svg", A_DARK, A_LIGHT, BLACK, LGREY, ("120.0","380.0")),
     ("res/panels/Causeway_panel_dark.svg", "res/panels/Causeway_peranakan_dark.svg",
      "res/panels/Causeway_peranakan_light.svg", A_DARK, A_LIGHT, BLACK, LGREY, ("180.0","380.0")),
+>>>>>>> origin/refactor/surge-to-junction
     ("res/panels/interchange_wide_straits_dark.svg", "res/panels/straits_peranakan_dark.svg",
      "res/panels/straits_peranakan_light.svg", B_DARK, B_LIGHT, BLACK, LGREY, ("390","380")),
 ]

@@ -44,7 +44,7 @@ using namespace rack;
 
 extern Plugin* pluginInstance;
 struct MonsoonInterchangeExpander;
-struct MonsoonStraitsEastExpander; // Forward declaration for the new expander
+struct MonsoonStraitsExpander; // base poly expander (Straits redesign)
 struct MonsoonSandsExpander;
 
 // Minimal clamp helper for C++11 (no std::clamp)
@@ -191,6 +191,11 @@ namespace MonsoonIds {
         POLY_ACCENT_MOD_ATT_13,
         POLY_ACCENT_MOD_ATT_14,
         POLY_ACCENT_MOD_ATT_15,
+
+        // Causeway GLOBAL poly-mod attenuators — summed with the per-voice ones above.
+        // Effective scale for voice v = perVoiceAtt[v] + globalAtt.
+        POLY_REST_MOD_ATT_GLOBAL,
+        POLY_ACCENT_MOD_ATT_GLOBAL,
 
         // Poly DNA Window Controls (15 voices x 3 params = 45) - MOVED TO SANDS
         POLY_DNA_VOICE_1_LEN,
@@ -693,58 +698,58 @@ namespace MonsoonIds {
         NUM_EXPANDER_PARAMS
     };
 
-    // ── Causeway expander (dice/draw-generation modulation) ──────────────────
+    // ── Raffles expander (dice/draw-generation modulation) ──────────────────
     // Its own param/input enums (distinct from Interchange's EXPANDER_*). 4 CV
     // attenuverters (slew R/M, mix R/M) + 10 dedicated die-action gate inputs.
-    enum CausewayParamIds {
-        CAUSEWAY_SLEW_R_ATT = 0,
-        CAUSEWAY_SLEW_M_ATT,
-        CAUSEWAY_MIX_R_ATT,
-        CAUSEWAY_MIX_M_ATT,
-        NUM_CAUSEWAY_PARAMS
+    enum RafflesParamIds {
+        RAFFLES_SLEW_R_ATT = 0,
+        RAFFLES_SLEW_M_ATT,
+        RAFFLES_MIX_R_ATT,
+        RAFFLES_MIX_M_ATT,
+        NUM_RAFFLES_PARAMS
     };
-    enum CausewayInputIds {
-        CAUSEWAY_SLEW_R_CV = 0,
-        CAUSEWAY_SLEW_M_CV,
-        CAUSEWAY_MIX_R_CV,
-        CAUSEWAY_MIX_M_CV,
+    enum RafflesInputIds {
+        RAFFLES_SLEW_R_CV = 0,
+        RAFFLES_SLEW_M_CV,
+        RAFFLES_MIX_R_CV,
+        RAFFLES_MIX_M_CV,
         // 10 die-action gates (order = display order on the panel)
-        CAUSEWAY_GATE_TRIAL_R,
-        CAUSEWAY_GATE_TRIAL_M,
-        CAUSEWAY_GATE_REDICE_R,
-        CAUSEWAY_GATE_REDICE_M,
-        CAUSEWAY_GATE_LIVESRC_R,
-        CAUSEWAY_GATE_LIVESRC_M,
-        CAUSEWAY_GATE_LIVESTATIC_R,
-        CAUSEWAY_GATE_LIVESTATIC_M,
-        CAUSEWAY_GATE_RESEED_ROLL,
-        CAUSEWAY_GATE_RESEED_RESTART,
+        RAFFLES_GATE_TRIAL_R,
+        RAFFLES_GATE_TRIAL_M,
+        RAFFLES_GATE_REDICE_R,
+        RAFFLES_GATE_REDICE_M,
+        RAFFLES_GATE_LIVESRC_R,
+        RAFFLES_GATE_LIVESRC_M,
+        RAFFLES_GATE_LIVESTATIC_R,
+        RAFFLES_GATE_LIVESTATIC_M,
+        RAFFLES_GATE_RESEED_ROLL,
+        RAFFLES_GATE_RESEED_RESTART,
         // LastDice / LastTrial gates (step draw index opposite to dice/trial).
-        CAUSEWAY_GATE_LASTDICE_R,
-        CAUSEWAY_GATE_LASTDICE_M,
-        CAUSEWAY_GATE_LASTTRIAL_R,
-        CAUSEWAY_GATE_LASTTRIAL_M,
-        NUM_CAUSEWAY_INPUTS
+        RAFFLES_GATE_LASTDICE_R,
+        RAFFLES_GATE_LASTDICE_M,
+        RAFFLES_GATE_LASTTRIAL_R,
+        RAFFLES_GATE_LASTTRIAL_M,
+        NUM_RAFFLES_INPUTS
     };
 
-    // ── Surge expander (the big-5 pattern-knob modulation) ───────────────────
+    // ── Junction expander (the big-5 pattern-knob modulation) ───────────────────
     // 5 CV + attenuverters summing into NOTE VALUE / VARIATION / LEGATO / REST /
     // ACCENT. Own port enums (0-based).
-    enum SurgeParamIds {
-        SURGE_NOTEVAL_ATT = 0,
-        SURGE_VARIATION_ATT,
-        SURGE_LEGATO_ATT,
-        SURGE_REST_ATT,
-        SURGE_ACCENT_ATT,
-        NUM_SURGE_PARAMS
+    enum JunctionParamIds {
+        JUNCTION_NOTEVAL_ATT = 0,
+        JUNCTION_VARIATION_ATT,
+        JUNCTION_LEGATO_ATT,
+        JUNCTION_REST_ATT,
+        JUNCTION_ACCENT_ATT,
+        NUM_JUNCTION_PARAMS
     };
-    enum SurgeInputIds {
-        SURGE_NOTEVAL_CV = 0,
-        SURGE_VARIATION_CV,
-        SURGE_LEGATO_CV,
-        SURGE_REST_CV,
-        SURGE_ACCENT_CV,
-        NUM_SURGE_INPUTS
+    enum JunctionInputIds {
+        JUNCTION_NOTEVAL_CV = 0,
+        JUNCTION_VARIATION_CV,
+        JUNCTION_LEGATO_CV,
+        JUNCTION_REST_CV,
+        JUNCTION_ACCENT_CV,
+        NUM_JUNCTION_INPUTS
     };
 
     enum OutputIds {
@@ -865,14 +870,14 @@ struct Monsoon : Module {
     // Assignable mod routing for the main-panel CV3 / GATE3 jacks (persisted).
     // CV3 adds to the selected continuous target; GATE3 rising edge fires the
     // selected action. Same target sets are offered (in full, attenuverted) on
-    // the Causeway expander, and the contributions SUM.
+    // the Raffles expander, and the contributions SUM.
     enum Cv3Target  { CV3_RHYTHM_SLEW=0, CV3_MELODY_SLEW, CV3_RHYTHM_MIX, CV3_MELODY_MIX, CV3_NUM_TARGETS };
     enum Gate3Target{ G3_TRIAL_RHYTHM=0, G3_TRIAL_MELODY, G3_TOGGLE_RESEED_ROLL, G3_TOGGLE_RESEED_RESTART,
                       G3_TOGGLE_RHYTHM_LIVESRC, G3_TOGGLE_MELODY_LIVESRC, G3_NUM_TARGETS };
     int  cv3Target   = CV3_RHYTHM_SLEW;
     int  gate3Target = G3_TRIAL_RHYTHM;
     dsp::SchmittTrigger gate3Trig;   // rising-edge detect for GATE3 actions
-    dsp::SchmittTrigger causewayGateTrig[14];  // Causeway's 14 die-action gates (incl Last*)
+    dsp::SchmittTrigger rafflesGateTrig[14];  // Raffles's 14 die-action gates (incl Last*)
     // Which dice the LIVE mode drives, per lane: false=main (promote, A walks),
     // true=trial (anchored A, endless variations on a theme). Persisted.
     bool rhythmLiveTrial = false;
@@ -880,7 +885,7 @@ struct Monsoon : Module {
 
     // ── Shared die-action vocabulary ─────────────────────────────────────────
     // One definition of "what each die-action does", fired by G3 (menu-routed)
-    // AND by Causeway's dedicated gates (and any future source). DRY: add an
+    // AND by Raffles's dedicated gates (and any future source). DRY: add an
     // action here and every gate source can use it.
     enum DieAction {
         DA_TRIAL_R = 0, DA_TRIAL_M,
@@ -1049,10 +1054,9 @@ struct Monsoon : Module {
     bool  cachedResetConnected = false;
     float cachedRunBtn = 0.f;
     float cachedResetBtn = 0.f;
-    float cachedPolyRest[15] = {0.f};
-    // Final effective per-voice rest (knob + global + per-voice CV mod, clamped).
-    // Read by the East/West expander widgets for the per-voice REST mod-arc.
-    float cachedPolyRestEffective[15] = {0.f};
+    // (Per-voice effective rest/accent is resolved on demand via getEffectivePolyRest/Accent —
+    //  no cached-effective arrays. The old cachedPolyRest[Effective]/cachedPolyAccent[Effective]
+    //  push-copies were removed when the single-resolver pattern replaced them.)
 
     Monsoon();
 
@@ -1072,6 +1076,12 @@ struct Monsoon : Module {
     float getOctaveLoParam();
     float getOctaveHiParam();
     float getPolyRestParam(int voiceIdx);
+    // Effective per-voice poly rest/accent — the SINGLE source of truth every consumer pulls from
+    // (engine decision, Straits mod arcs). base = knob; effective = base + Causeway CV × att, clamped.
+    float getBasePolyRest(int voiceIdx);
+    float getBasePolyAccent(int voiceIdx);
+    float getEffectivePolyRest(int voiceIdx);
+    float getEffectivePolyAccent(int voiceIdx);
 
     // All other parameter getters now delegated to paramManager:
 
@@ -1126,12 +1136,15 @@ struct Monsoon : Module {
 
 extern Model* modelMonsoon;
 extern Model* modelMonsoonInterchangeExpander;
-extern Model* modelMonsoonCausewayExpander;
-extern Model* modelMonsoonSurgeExpander;
+extern Model* modelMonsoonRafflesExpander;
+extern Model* modelMonsoonJunctionExpander;
 //extern Model* modelMonsoonSandsExpander;
-extern Model* modelMonsoonStraitsEastExpander; // Declare new expander model
+extern Model* modelMonsoonStraitsExpander; // base poly expander
+extern Model* modelMonsoonCausewayPolyExpander; // poly CV modulation expander
+extern Model* modelMonsoonChangiExpander; // per-voice output expander
+extern Model* modelMonsoonShophouseExpander; // scale expander (12th module)
 extern Model* modelLantern;                    // Lantern note-output visualiser
-extern Model* modelMonsoonStraitWestExpander;  // NEW (Phase 4): voices 9-16
+// West retired (Straits redesign)
 //extern Model* modelMonsoonStraitsSands;        // NEW (Macro): global DNA controls (compact)
 //extern Model* modelMonsoonDeepStraitsSandsEast; // NEW (Deep): per-voice DNA voices 2-8
 //extern Model* modelMonsoonDeepStraitsSandsWest; // NEW (Deep): per-voice DNA voices 9-16

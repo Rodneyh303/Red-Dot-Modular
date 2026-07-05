@@ -7,7 +7,7 @@
 #include "../../StraitsSandsMacroVisual.hpp"
 #include "MonsoonExpanderManager.hpp"
 #include "../SandsTopology.hpp"   // step 3b: readStrand owner migration
-#include "../../MonsoonStraitsEastExpander.hpp"
+#include "../../MonsoonStraitsExpander.hpp"
 #include "../../StraitsEastSandsVisual.hpp"
 #include <cassert>
 
@@ -46,13 +46,12 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     // Monsoon.cpp) are no-op unless this holds.
     const bool polyBaseActive = (expanderManager.cachedPolyVoiceExpander != nullptr)
                                 && (engine.numPolyVoices >= 1);
-    // Voice OUTPUT topology bounds the spread ensemble: East base expander
-    // outputs poly voices 2..8 (engine.voices[0..6], i.e. up to 7), West adds
-    // voices 9..15 (up to 8 more). Voices with no output path must NOT be
-    // averaged into spread, or the ensemble converges toward phantom voices.
-    // So the effective poly count exceeds 7 only when West is also present.
-    const bool hasWest = (expanderManager.cachedStraitWestExpander != nullptr);
-    const int  polyOutCap = polyBaseActive ? (hasWest ? 15 : 7) : 0;
+    // Voice OUTPUT topology bounds the spread ensemble: the Straits base expander
+    // outputs poly voices 2..16 (engine.voices[0..14], up to 15) on 16ch poly cables.
+    // Voices with no output path must NOT be averaged into spread, or the ensemble
+    // converges toward phantom voices. West retired (Straits redesign): one Straits
+    // module now covers all poly voices, so the cap is simply "poly base present → 15".
+    const int  polyOutCap = polyBaseActive ? 15 : 0;
     const int  effPolyVoices = clamp(engine.numPolyVoices, 0, polyOutCap);
 
     // STEP 3b: build the ownership authority for this block, with the per-lane Mono V1
@@ -374,12 +373,13 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     }
 
     // ── Macro global LOR with CV (poly: per-lane, SAME for every voice) ────
-    if (macroDrivesOutput) {
-        // Macro publishes its per-(lane,item) base + CV-delta split; East's sync
-        // (runs after, always present when macroDrivesOutput) combines them per voice
-        // via the owner switch + blend send. Macro no longer writes engine.polyLen
-        // directly — East owns the final write so the blend equation is applied in
-        // one place.
+    // Macro publishes its OWN display data (macroBase / macroCVDelta / macroSendDelta /
+    // spreadEffective) whenever a Macro is present — this is what Sands Helix renders, and it must
+    // work standalone (no Straits / no poly output). The output-application (blend into the poly
+    // voices) is separately gated on macroDrivesOutput below. (Regression from the Straits refactor:
+    // publishGlobal used to be gated on macroDrivesOutput, so with no Straits attached Sands Helix's
+    // macroBase stayed zero and the module looked completely inert.)
+    if (hasMacro && macroVis) {
         auto publishGlobal = [&](int lane) {
             // bases (knob, no CV)
             float baseLen = macroVis->params[Macro::lorId(lane,0)].getValue();
@@ -415,16 +415,12 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         publishGlobal(1);
         publishGlobal(2);
         publishGlobal(3);   // accent lane (Stage 6)
-    } else if (hasMacro && macroVis) {
-        // Macro standalone (Macro present, no East base expander). The poly voices still
-        // EXIST — Monsoon generates numPolyVoices worth of draws regardless of East — but
-        // the per-voice spread application lives in MonsoonExpanderManager, gated on East.
-        // So nothing applied Macro's GLOBAL spread to the voices and the bars looked dead.
-        // Apply it here, exactly like East/Mono but with one GLOBAL level per lane for
-        // every voice. Ensemble = the voices that actually have draws (numPolyVoices) —
-        // NOT effPolyVoices, which is 0 here because it tracks East's OUTPUT topology, not
-        // the drawn voices we display. Spread converges each voice's draw toward the
-        // cross-voice average (or V1 in MONO_DRAW mode), the same definition as East/Mono.
+
+        // Output application: only when Macro actually drives real output voices (Straits attached
+        // with poly active). When macroDrivesOutput, East's per-voice sync (runs after) combines
+        // Macro's base+delta into each voice via the owner/blend send. When NOT — standalone Macro
+        // (no Straits) — apply Macro's GLOBAL spread to the drawn voices here so its bars aren't dead.
+        if (!macroDrivesOutput) {
         if (!engine.locked) {
             const int nPoly = rack::math::clamp(engine.numPolyVoices, 0, 15);
             const redDot::SpreadInterp::Target mode = spreadInterpMono
@@ -463,8 +459,9 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                     engine.pe.polyAccentRandom[v][i] = redDot::SpreadInterp::apply(engine.pe, mode, 3, i, nPoly, engine.pe.slewedPolyAccent[v][i], spv[3]);
                 }
             }
-        }
-    }
+        }   // if (!engine.locked)
+        }   // if (!macroDrivesOutput)
+    }       // if (hasMacro && macroVis)
 
     // Note: Poly DNA windows handled in Monsoon::process controlDivider block.
 }

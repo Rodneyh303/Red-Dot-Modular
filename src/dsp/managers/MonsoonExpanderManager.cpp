@@ -19,16 +19,17 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
     using PL = SequencerEngine;  // PL::PL_REST etc.
     //auto* deepEast   = cachedDeepStraitsSandsEastExpander;
     //auto* deepWest   = cachedDeepStraitsSandsWestExpander;
-    auto* straitEast = cachedPolyVoiceExpander;
-    auto* straitWest = cachedStraitWestExpander;
+    auto* straits = cachedPolyVoiceExpander;
     auto* eastVisual  = cachedEastSandsVisual;
     //auto* westVisual  = cachedWestSandsVisual;
 
     auto* eastLOR   = eastVisual;// ? static_cast<rack::Module*>(eastVisual);
     auto* eastInterp = eastVisual;// ? static_cast<rack::Module*>(eastVisual)
 
-    const bool polyBaseActive = (straitEast != nullptr) && (engine.numPolyVoices >= 1);
-    const int  polyOutCap = polyBaseActive ? (straitWest ? 15 : 7) : 0;
+    // West retired: one Straits module now handles all poly voices (2..16 = 15 voices).
+    // The poly cables are 16ch; the cap is simply "Straits present → up to 15 poly voices".
+    const bool polyBaseActive = (straits != nullptr) && (engine.numPolyVoices >= 1);
+    const int  polyOutCap = polyBaseActive ? 15 : 0;
     const int  effPolyVoices = math::clamp(engine.numPolyVoices, 0, polyOutCap);
 
     // STEP 3: single-authority config classification (presence-only — enough for the
@@ -57,7 +58,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
     // src/dsp/SpreadInterp.hpp) — the single source of truth shared with the
     // mono/macro path and the visual display.
 
-    if (eastLOR && (straitEast || eastVisual) && polyBaseActive) {
+    if (eastLOR && (straits || eastVisual) && polyBaseActive) {
        // using namespace DeepStraitsSandsEastIds;
         using namespace StraitsEastVisualIds;
 

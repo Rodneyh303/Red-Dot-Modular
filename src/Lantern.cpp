@@ -275,19 +275,98 @@ struct LanternDisplay : widget::Widget {
         auto font0 = APP->window->loadFont(rack::asset::system("res/fonts/DejaVuSans-Bold.ttf"));
         if (!font0) font0 = APP->window->uiFont;
 
-        // Piano-roll mode: label the pitch axis (C of each octave in the viewport) instead of lanes.
+        // Piano-roll mode: Bitwig-style piano-key gutter. Keys span the FULL gutter width and are
+        // drawn first; a SEMI-TRANSPARENT grey label overlay sits on top of the left portion (keys
+        // show faintly underneath), with the C-label rows at lower alpha so they read lighter.
         if (module->params[Lantern::ROLL_PARAM].getValue() > 0.5f) {
             if (!font0) return;
-            const float rowH  = H / (float)ROLL_ROWS;
+            const float rowH   = H / (float)ROLL_ROWS;
+            const float gutter = W * GUTTER_FRAC;
             const int   botOct = (int)std::round(module->params[Lantern::ROLL_SCROLL_PARAM].getValue());
+            const int   botSemi = botOct * 12;
+            auto isBlack = [](int pc){ pc=((pc%12)+12)%12; return pc==1||pc==3||pc==6||pc==8||pc==10; };
+
+            const float keyW   = gutter;                  // keys span the whole gutter width
+            const float blackW = keyW * 0.66f;            // black keys ~2/3 width
+            const float labelW = gutter * 0.42f;          // grey label zone width
+
+            // 1. White backing across the ENTIRE gutter height — merges E/F, B/C adjacencies and
+            //    forms the sliver above/below each black key automatically.
+            nvgBeginPath(vg); nvgRect(vg, 0.f, 0.f, keyW, H);
+            nvgFillColor(vg, nvgRGB(0xcf, 0xcf, 0xcf)); nvgFill(vg);
+
+            // 2. Black keys — FULL row height, ~2/3 width, on top of the white backing. The white
+            //    to the RIGHT of each black key is the notch connecting the white through.
+            for (int r = 0; r < ROLL_ROWS; ++r) {
+                int pc = ((botSemi + r) % 12 + 12) % 12;
+                if (!isBlack(pc)) continue;
+                float y = H - (r + 1) * rowH;
+                nvgBeginPath(vg);
+                nvgRect(vg, 0.f, y, blackW, rowH);
+                nvgFillColor(vg, nvgRGB(0x17, 0x17, 0x19)); nvgFill(vg);
+            }
+
+            // 3. White-key divider lines. A physical keyboard only has a divider WHERE TWO WHITE KEYS
+            //    MEET. In this per-semitone-row layout that is: (a) the CENTRE of each black-key row
+            //    (one line splitting the white above from the white below — extends full width into
+            //    the white notch, so it reads as a single line dividing the two whites, not a black
+            //    edge on both sides of the black key), and (b) the direct white|white boundaries
+            //    E|F (pc 4|5) and B|C (pc 11|0).
+            nvgStrokeColor(vg, nvgRGBA(0x2a, 0x2a, 0x2e, 0xb0));
+            nvgStrokeWidth(vg, 0.75f);
+            for (int r = 0; r < ROLL_ROWS; ++r) {
+                int pc = ((botSemi + r) % 12 + 12) % 12;
+                if (isBlack(pc)) {
+                    float yc = H - (r + 0.5f) * rowH;           // centre of the black-key row
+                    nvgBeginPath(vg); nvgMoveTo(vg, 0.f, yc); nvgLineTo(vg, keyW, yc); nvgStroke(vg);
+                } else if (pc == 5 || pc == 0) {                 // F and C: boundary below them (E|F, B|C)
+                    float yb = H - r * rowH;                     // bottom edge of this white row
+                    nvgBeginPath(vg); nvgMoveTo(vg, 0.f, yb); nvgLineTo(vg, keyW, yb); nvgStroke(vg);
+                }
+            }
+
+            // 4. SOUNDING-NOTE key highlight — always FULL row width (a lit black note reads as a
+            //    full-width bar like a lit white note, extending over the white notch).
+            {
+                const int ph = module->lastObservedStep;
+                if (ph >= 0 && ph < N_STEPS) {
+                    for (int v = 0; v < N_VOICES; ++v) {
+                        if (!module->voiceVisible(v)) continue;
+                        const auto& c = module->cells[v][ph];
+                        if (c.type == lantern::NoteType::Inactive) continue;
+                        int semiC0 = (int)std::lround(c.pitchV * 12.f) + 48;
+                        int row = semiC0 - botSemi;
+                        if (row < 0 || row >= ROLL_ROWS) continue;
+                        float y = H - (row + 1) * rowH;
+                        NVGcolor hi = voiceColour(v);
+                        nvgBeginPath(vg);
+                        nvgRect(vg, 0.f, y, keyW, rowH);
+                        nvgFillColor(vg, nvgTransRGBA(hi, 0xd8)); nvgFill(vg);
+                    }
+                }
+            }
+
+            // 5. Semi-transparent grey LABEL overlay on the left — keys show faintly underneath.
+            //    C-label rows use a LOWER alpha (lighter grey) while staying dark enough for the
+            //    white text; all other rows a bit more opaque.
+            for (int r = 0; r < ROLL_ROWS; ++r) {
+                int pc = ((botSemi + r) % 12 + 12) % 12;
+                float y = H - (r + 1) * rowH;
+                unsigned char a = (pc == 0) ? 0xb0 : 0xd0;   // C rows lighter (more transparent)
+                nvgBeginPath(vg);
+                nvgRect(vg, 0.f, y, labelW, rowH);
+                nvgFillColor(vg, nvgRGBA(0x22, 0x25, 0x2a, a)); nvgFill(vg);
+            }
+
+            // 6. Octave labels in the grey zone (white text).
             nvgFontFaceId(vg, font0->handle);
-            nvgFontSize(vg, std::min(10.f, rowH * 6.f));
+            nvgFontSize(vg, std::min(11.f, rowH * 5.f));
             nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-            nvgFillColor(vg, nvgRGB(0x8a, 0x8f, 0x98));
+            nvgFillColor(vg, nvgRGB(0xec, 0xec, 0xf0));
             for (int o = 0; o < ROLL_OCTAVES; ++o) {
                 int oct = botOct + o;
-                float y = H - (o * 12 + 0.5f) * rowH;   // at the C row of this octave
-                std::string lbl = std::string("C") + std::to_string(oct); // C of this octave row
+                float y = H - (o * 12 + 0.5f) * rowH;
+                std::string lbl = std::string("C") + std::to_string(oct);
                 nvgText(vg, 2.f, y, lbl.c_str(), nullptr);
             }
             return;
@@ -506,8 +585,8 @@ struct LanternDisplay : widget::Widget {
     // A 5-octave viewport onto the full 0..8 octave range; ROLL_SCROLL_PARAM = the bottom octave
     // of the window. Notes draw as horizontal bars at their pitch row, spanning lengthSteps.
     // Colour: by ROLE (note type) or by VOICE (per-voice hue). Lead outline kept on top.
-    static constexpr int ROLL_OCTAVES = 5;                 // viewport height in octaves
-    static constexpr int ROLL_ROWS    = ROLL_OCTAVES * 12; // = 60 semitone rows
+    static constexpr int ROLL_OCTAVES = 4;                 // viewport height in octaves (taller rows)
+    static constexpr int ROLL_ROWS    = ROLL_OCTAVES * 12; // = 48 semitone rows
 
     // Distinct, legible-on-dark hue per voice (mono = v0). Kept modest saturation so overlaps read.
     static NVGcolor voiceColour(int v) {
@@ -554,23 +633,49 @@ struct LanternDisplay : widget::Widget {
         const int   botSemi  = botOct * 12;          // semitone-from-C0 at the bottom row
         const bool  byVoice  = module->params[Lantern::ROLL_COLOR_PARAM].getValue() > 0.5f;
 
-        // Faint horizontal guide lines at each C (octave boundary).
-        // Octave (C) guide lines — clearly visible so octaves are easy to count. Faint semitone
-        // sub-lines between them give pitch reference without dominating.
+        // ── Bitwig-style lane background: shade each semitone row by pitch class. ──
+        // Black-key rows (C#,D#,F#,G#,A#) get a darker slate; white-key rows a lighter blue-grey.
+        // This alternating banding is what makes the grid read as a piano roll at a glance.
+        auto isBlackKey = [](int pc) {
+            pc = ((pc % 12) + 12) % 12;
+            return pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10;
+        };
+        for (int r = 0; r < ROLL_ROWS; ++r) {
+            int pc = ((botSemi + r) % 12 + 12) % 12;
+            float y = H - (r + 1) * rowH;
+            // white-key lane = lighter blue-grey; black-key lane = darker slate.
+            NVGcolor lane = isBlackKey(pc) ? nvgRGB(0x20, 0x2a, 0x33) : nvgRGB(0x2b, 0x38, 0x44);
+            // Subtle octave emphasis: the C row (pitch class 0) a touch brighter so octaves anchor.
+            if (pc == 0) lane = nvgRGB(0x32, 0x40, 0x4d);
+            nvgBeginPath(vg);
+            nvgRect(vg, gridX, y, gridW, rowH);
+            nvgFillColor(vg, lane);
+            nvgFill(vg);
+        }
+
+        // Faint vertical beat grid (bar + beat divisions), behind the notes.
+        {
+            const float barW = gridW / 4.f;             // N_STEPS = 16 = one 4/4 bar of 1/16s
+            for (int b = 0; b <= 16; ++b) {
+                float x = gridX + b * stepW;
+                bool beat = (b % 4 == 0);
+                nvgBeginPath(vg);
+                nvgStrokeColor(vg, beat ? nvgRGBA(0x50, 0x58, 0x64, 0xa0)
+                                        : nvgRGBA(0x3c, 0x44, 0x4e, 0x60));
+                nvgStrokeWidth(vg, beat ? 1.0f : 0.5f);
+                nvgMoveTo(vg, x, 0.f); nvgLineTo(vg, x, H);
+                nvgStroke(vg);
+            }
+            (void)barW;
+        }
+        // Horizontal separators — very subtle now that the lane SHADING provides the banding.
+        // Just a faint line at each C (octave) for reference; semitone lines dropped (the
+        // per-row shading already gives pitch reference, and Bitwig keeps these minimal).
         for (int o = 0; o <= ROLL_OCTAVES; ++o) {
             float y = H - o * 12 * rowH;
             nvgBeginPath(vg);
-            nvgStrokeColor(vg, nvgRGBA(0x5a, 0x62, 0x70, 0xd0));   // stronger C line
-            nvgStrokeWidth(vg, 1.0f);
-            nvgMoveTo(vg, gridX, y); nvgLineTo(vg, gridX + gridW, y);
-            nvgStroke(vg);
-        }
-        for (int r = 0; r < ROLL_ROWS; ++r) {
-            if (r % 12 == 0) continue;                            // C lines drawn above
-            float y = H - r * rowH;
-            nvgBeginPath(vg);
-            nvgStrokeColor(vg, nvgRGBA(0x40, 0x46, 0x50, 0x55));   // faint semitone line
-            nvgStrokeWidth(vg, 0.5f);
+            nvgStrokeColor(vg, nvgRGBA(0x50, 0x58, 0x64, 0x70));   // faint C line
+            nvgStrokeWidth(vg, 0.75f);
             nvgMoveTo(vg, gridX, y); nvgLineTo(vg, gridX + gridW, y);
             nvgStroke(vg);
         }
