@@ -24,12 +24,15 @@ THEMES = {
                   gatecol="#4c6ab0", cvcol="#1c7a70", acccol="#a07a00", text="#1a1a1a"),
 }
 
-# 15 voices, 3 jacks each. Lay out as rows of voices; 3 jack columns (gate/cv/accent).
-ROWS = 15
-TOP  = 20.0
-ROW_H = 7.0
-COL_X = [W*0.32, W*0.5, W*0.68]   # gate, cv, accent columns
+# 15 voices, 3 jacks each. Split into TWO groups of 8 side by side → 6 columns:
+# (groupA gate/cv/acc | groupB gate/cv/acc), max 8 rows. Voice v → group v//8, row v%8.
+NUM_VOICES = 15
+GROUP = 8
+TOP  = 22.0
+ROW_H = 9.0
 JACK_R = 3.4
+# 6 columns
+COL_X = [W*0.12, W*0.26, W*0.40,  W*0.60, W*0.74, W*0.88]  # A:gate,cv,acc  B:gate,cv,acc
 
 
 def gen(dark):
@@ -41,19 +44,23 @@ def gen(dark):
     A(f'<circle cx="{px(W-4)}" cy="{px(6)}" r="{px(1.6)}" fill="{t["red"]}"/>')
     A(f'<line x1="0" y1="{px(15)}" x2="{PW}" y2="{px(15)}" stroke="{t["groupline"]}" stroke-width="1" opacity="0.7"/>')
 
-    # column header ticks
-    for (cx, col) in zip(COL_X, (t["gatecol"], t["cvcol"], t["acccol"])):
-        A(f'<rect x="{px(cx-3.5)}" y="{px(16.5)}" width="{px(7)}" height="{px(2)}" fill="{col}" opacity="0.6"/>')
+    # column header ticks (both groups)
+    for (cx, col) in zip(COL_X, (t["gatecol"], t["cvcol"], t["acccol"],
+                                 t["gatecol"], t["cvcol"], t["acccol"])):
+        A(f'<rect x="{px(cx-3)}" y="{px(18)}" width="{px(6)}" height="{px(1.8)}" fill="{col}" opacity="0.6"/>')
 
     def jack(cx, y, kid, col):
         A(f'<circle cx="{px(cx)}" cy="{px(y)}" r="{px(JACK_R)}" fill="{t["jackwell"]}" stroke="{col}" stroke-width="1"/>')
         A(f'<circle id="{kid}" cx="{px(cx)}" cy="{px(y)}" r="0.5" fill="none" stroke="none"/>')
 
-    for i in range(ROWS):
-        y = TOP + i * ROW_H
-        jack(COL_X[0], y, f"output_gate_{i}",   t["gatecol"])
-        jack(COL_X[1], y, f"output_cv_{i}",     t["cvcol"])
-        jack(COL_X[2], y, f"output_accent_{i}", t["acccol"])
+    for v in range(NUM_VOICES):
+        g = v // GROUP
+        row = v % GROUP
+        y = TOP + row * ROW_H
+        base = 0 if g == 0 else 3
+        jack(COL_X[base + 0], y, f"output_gate_{v}",   t["gatecol"])
+        jack(COL_X[base + 1], y, f"output_cv_{v}",     t["cvcol"])
+        jack(COL_X[base + 2], y, f"output_accent_{v}", t["acccol"])
 
     A(f'<circle id="light_connect" cx="{px(W*0.5)}" cy="{px(9)}" r="0.5" fill="none" stroke="none"/>')
     A('</svg>')
