@@ -43,18 +43,18 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
             arc->getSetNorm = [self, voice, lane]() -> float {
                 Monsoon* m = redDot::findMonsoonEitherSide(self->module);
                 if (!m || voice < 0 || voice >= 15) return 0.f;
-                return lane == 0 ? m->cachedPolyRest[voice] : m->cachedPolyAccent[voice];
+                return lane == 0 ? m->getBasePolyRest(voice) : m->getBasePolyAccent(voice);
             };
             arc->getModNorm = [self, voice, lane]() -> float {
                 Monsoon* m = redDot::findMonsoonEitherSide(self->module);
                 if (!m || voice < 0 || voice >= 15) return 0.f;
-                return lane == 0 ? m->cachedPolyRestEffective[voice] : m->cachedPolyAccentEffective[voice];
+                return lane == 0 ? m->getEffectivePolyRest(voice) : m->getEffectivePolyAccent(voice);
             };
             arc->isActive = [self, voice, lane]() -> bool {
                 Monsoon* m = redDot::findMonsoonEitherSide(self->module);
                 if (!m || !m->modVizEast || voice < 0 || voice >= 15) return false;
-                float set = lane == 0 ? m->cachedPolyRest[voice] : m->cachedPolyAccent[voice];
-                float eff = lane == 0 ? m->cachedPolyRestEffective[voice] : m->cachedPolyAccentEffective[voice];
+                float set = lane == 0 ? m->getBasePolyRest(voice) : m->getBasePolyAccent(voice);
+                float eff = lane == 0 ? m->getEffectivePolyRest(voice) : m->getEffectivePolyAccent(voice);
                 return std::fabs(eff - set) > 1e-4f;
             };
             addChild(arc);

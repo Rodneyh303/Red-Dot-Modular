@@ -1054,13 +1054,9 @@ struct Monsoon : Module {
     bool  cachedResetConnected = false;
     float cachedRunBtn = 0.f;
     float cachedResetBtn = 0.f;
-    float cachedPolyRest[15] = {0.f};
-    // Final effective per-voice rest (knob + global + per-voice CV mod, clamped).
-    // Read by the Straits expander widget for the per-voice REST mod-arc.
-    float cachedPolyRestEffective[15] = {0.f};
-    // Same pair for ACCENT — set value and post-modulation value, for the ACCENT mod-arc.
-    float cachedPolyAccent[15] = {0.f};
-    float cachedPolyAccentEffective[15] = {0.f};
+    // (Per-voice effective rest/accent is resolved on demand via getEffectivePolyRest/Accent —
+    //  no cached-effective arrays. The old cachedPolyRest[Effective]/cachedPolyAccent[Effective]
+    //  push-copies were removed when the single-resolver pattern replaced them.)
 
     Monsoon();
 
@@ -1080,6 +1076,12 @@ struct Monsoon : Module {
     float getOctaveLoParam();
     float getOctaveHiParam();
     float getPolyRestParam(int voiceIdx);
+    // Effective per-voice poly rest/accent — the SINGLE source of truth every consumer pulls from
+    // (engine decision, Straits mod arcs). base = knob; effective = base + Causeway CV × att, clamped.
+    float getBasePolyRest(int voiceIdx);
+    float getBasePolyAccent(int voiceIdx);
+    float getEffectivePolyRest(int voiceIdx);
+    float getEffectivePolyAccent(int voiceIdx);
 
     // All other parameter getters now delegated to paramManager:
 

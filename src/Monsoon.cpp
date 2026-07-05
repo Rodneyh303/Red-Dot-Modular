@@ -151,6 +151,48 @@ float Monsoon::getPolyRestParam(int voiceIdx) {
     return paramManager->getPolyRest(voiceIdx);
 }
 
+// ── Effective per-voice poly rest/accent — SINGLE SOURCE OF TRUTH ────────────
+// Every consumer (the engine's per-voice decision, the Straits mod arcs, and any future
+// reader) pulls the effective value from HERE. There are no cached "effective" copies to
+// keep in sync — that push-to-multiple-copies pattern caused three separate drift/clobber
+// bugs (scale-lock faders, dice-scale-gate, Causeway CV). Effective = base knob (on Straits,
+// via paramManager) + Causeway per-voice CV × (per-voice att + global att), clamped 0..1.
+// Base-only accessors give the arcs their "set" reference without a second copy.
+float Monsoon::getBasePolyRest(int voiceIdx) {
+    return paramManager ? paramManager->getPolyRest(voiceIdx) : 0.f;
+}
+float Monsoon::getBasePolyAccent(int voiceIdx) {
+    return paramManager ? paramManager->getPolyAccent(voiceIdx) : 0.f;
+}
+float Monsoon::getEffectivePolyRest(int voiceIdx) {
+    float base = getBasePolyRest(voiceIdx);
+    auto* cway = expanderManager.cachedCausewayPolyExpander;
+    if (cway && voiceIdx >= 0 && voiceIdx < 15) {
+        const int ch = voiceIdx + 1;   // poly voice → poly-cable channel (ch0 = mono)
+        auto& in = cway->inputs[POLY_REST_CV_INPUT];
+        if (in.isConnected() && ch < in.getChannels()) {
+            float att = cway->params[POLY_REST_MOD_ATT_1 + voiceIdx].getValue()
+                      + cway->params[POLY_REST_MOD_ATT_GLOBAL].getValue();
+            base += in.getVoltage(ch) * att * 0.1f;
+        }
+    }
+    return math::clamp(base, 0.f, 1.f);
+}
+float Monsoon::getEffectivePolyAccent(int voiceIdx) {
+    float base = getBasePolyAccent(voiceIdx);
+    auto* cway = expanderManager.cachedCausewayPolyExpander;
+    if (cway && voiceIdx >= 0 && voiceIdx < 15) {
+        const int ch = voiceIdx + 1;
+        auto& in = cway->inputs[POLY_ACCENT_CV_INPUT];
+        if (in.isConnected() && ch < in.getChannels()) {
+            float att = cway->params[POLY_ACCENT_MOD_ATT_1 + voiceIdx].getValue()
+                      + cway->params[POLY_ACCENT_MOD_ATT_GLOBAL].getValue();
+            base += in.getVoltage(ch) * att * 0.1f;
+        }
+    }
+    return math::clamp(base, 0.f, 1.f);
+}
+
 // --- switch melody/rhythm mode (dice/realtime), caching/restoring state as needed ---    
 void Monsoon::switchMelodyMode() { engine.pe.switchMelodyMode(stepIndex, lastStepIndex); }
 
@@ -839,9 +881,9 @@ void Monsoon::process(const ProcessArgs& args) {
         cachedResetBtn = params[RESET_BUTTON_PARAM].getValue();
 
         // (Per-voice rest/accent + Causeway CV modulation is applied in
-        //  ModeController::updatePolyVoiceRest_(), which runs BEFORE the step decision so the
-        //  modulated values actually reach the engine. The mod-viz caches — cachedPolyRest[Effective]
-        //  and cachedPolyAccent[Effective], read by the Straits mod arcs — are populated there too.)
+        //  ModeController::updatePolyVoiceRest_(), which pulls from Monsoon::getEffectivePolyRest/
+        //  Accent — the single resolver — right before executePolyVoices. The Straits mod arcs pull
+        //  from the same resolver, so there are no cached-effective copies to drift or clobber.)
 
         // Handle Throttled CV1 Logic (Range Modulation)
         if (cachedCv1Connected) {

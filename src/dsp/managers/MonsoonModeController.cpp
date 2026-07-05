@@ -7,42 +7,16 @@ using namespace rack;
 // ──── Helper: Update poly voice rest probabilities ──────────────────────────
 
 void ModeController::updatePolyVoiceRest_() {
-    // Single source of truth for per-voice rest/accent probability, applied BEFORE the step
-    // decision runs. Base = the Straits knob (paramManager); modulation = Causeway per-voice CV ×
-    // (per-voice attenuator + global attenuator), summed. Writing the MODULATED value here (not the
-    // raw knob) is what makes Causeway CV actually affect the engine's rest/accent decisions — an
-    // earlier design set restProb = raw knob here and applied CV in a LATER block that the decision
-    // had already passed, so CV modulation never reached a decision (only knob moves did).
-    if (engine.numPolyVoices <= 0) return;
-    auto* cway = mainModule ? mainModule->expanderManager.cachedCausewayPolyExpander : nullptr;
+    // Write the engine's per-voice decision cache from the SINGLE resolver on Monsoon
+    // (getEffectivePolyRest/Accent = knob + Causeway CV × att, clamped). The engine reads
+    // voices[i].restProb per-sample in its hot loop, so it needs the value in the struct — but this
+    // is the ONLY writer, sourced from the one resolver, applied right before executePolyVoices.
+    // The Straits mod arcs pull from the same resolver directly (no cached-effective copies), so
+    // there is nothing to drift or clobber.
+    if (engine.numPolyVoices <= 0 || !mainModule) return;
     for (int i = 0; i < engine.numPolyVoices; ++i) {
-        float restBase = paramManager.getPolyRest(i);
-        float accBase  = paramManager.getPolyAccent(i);
-        float restMod = 0.f, accMod = 0.f;
-        if (cway) {
-            const int ch = i + 1;   // poly voice i (voice 2..16) → poly-cable channel 1..15
-            auto& restIn = cway->inputs[MonsoonIds::POLY_REST_CV_INPUT];
-            auto& accIn  = cway->inputs[MonsoonIds::POLY_ACCENT_CV_INPUT];
-            float restAtt = cway->params[MonsoonIds::POLY_REST_MOD_ATT_1 + i].getValue()
-                          + cway->params[MonsoonIds::POLY_REST_MOD_ATT_GLOBAL].getValue();
-            float accAtt  = cway->params[MonsoonIds::POLY_ACCENT_MOD_ATT_1 + i].getValue()
-                          + cway->params[MonsoonIds::POLY_ACCENT_MOD_ATT_GLOBAL].getValue();
-            if (restIn.isConnected() && ch < restIn.getChannels())
-                restMod = restIn.getVoltage(ch) * restAtt * 0.1f;
-            if (accIn.isConnected() && ch < accIn.getChannels())
-                accMod = accIn.getVoltage(ch) * accAtt * 0.1f;
-        }
-        float restEff = rack::math::clamp(restBase + restMod, 0.f, 1.f);
-        float accEff  = rack::math::clamp(accBase + accMod, 0.f, 1.f);
-        engine.voices[i].restProb   = restEff;
-        engine.voices[i].accentProb = accEff;
-        // Mirror into the mod-viz caches (read by the Straits mod arcs).
-        if (mainModule && i < 15) {
-            mainModule->cachedPolyRest[i]            = restBase;
-            mainModule->cachedPolyRestEffective[i]   = restEff;
-            mainModule->cachedPolyAccent[i]          = accBase;
-            mainModule->cachedPolyAccentEffective[i] = accEff;
-        }
+        engine.voices[i].restProb   = mainModule->getEffectivePolyRest(i);
+        engine.voices[i].accentProb = mainModule->getEffectivePolyAccent(i);
     }
 }
 
