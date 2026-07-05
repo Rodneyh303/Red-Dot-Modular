@@ -592,6 +592,10 @@ void Monsoon::process(const ProcessArgs& args) {
                         const auto& e = shop->list.activeEntry();
                         scaleManager->lastSelectedScale = e.scaleIdx;
                         scaleManager->scaleRoot         = e.root;
+                        // Recompute the enforcement mask NOW — otherwise the new scale is stored but
+                        // the mask (and the fader dimming that reads it) stays frozen at its last
+                        // value. Every other scale-change path (context menu) does this too.
+                        scaleManager->updateScaleMask();
                     }
                 }
             }
