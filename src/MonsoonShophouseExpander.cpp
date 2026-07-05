@@ -19,8 +19,9 @@ struct ShutterBank : Widget {
     MonsoonShophouseExpander* module = nullptr;
     int front = 0;
     Vec centres[12];              // shutter click centres (px), filled from panel markers
+    Rect rects[12];               // full shutter rectangles (bank-local px) — for whole-shutter fill
     float clickR = 0.f;           // hit radius (px)
-    std::shared_ptr<window::Font> font;   // for the scale-name readout
+    std::shared_ptr<window::Font> font;   // (unused now; kept for ABI simplicity)
 
     static uint16_t maskFor(int scaleIdx, int root) {
         return ScaleManager::calculateMask(root, scaleIdx);
@@ -56,18 +57,43 @@ struct ShutterBank : Widget {
         int scaleIdx = (int)std::round(module->params[SCALE_PARAM_0 + front].getValue());
         int root     = (int)std::round(module->params[ROOT_PARAM_0 + front].getValue());
         uint16_t mask = maskFor(scaleIdx, root);
-        float r = std::max(2.f, clickR * 0.7f);
         for (int s = 0; s < 12; ++s) {
+            const Rect& rc = rects[s];
+            if (rc.size.x <= 0.f) continue;
             bool in = (mask >> s) & 1u;
             bool isRoot = (s == root);
-            NVGcolor col;
-            if (isRoot && in)      col = nvgRGB(0xd4, 0x00, 0x1a);   // root = Singapore red
-            else if (in)           col = nvgRGB(0x26, 0xa6, 0x9a);   // in-scale = teal (open)
-            else                   col = nvgRGBA(0x3a, 0x3f, 0x46, 0x80); // closed = dim
+            NVGcolor fill, slat;
+            if (isRoot && in) {                 // root = Singapore red, "open" shutter
+                fill = nvgRGB(0xd4, 0x00, 0x1a); slat = nvgRGBA(0x00, 0x00, 0x00, 0x55);
+            } else if (in) {                    // in-scale = teal, open shutter
+                fill = nvgRGB(0x26, 0xa6, 0x9a); slat = nvgRGBA(0x00, 0x00, 0x00, 0x4d);
+            } else {                            // out-of-scale = dark, closed shutter
+                fill = nvgRGB(0x1b, 0x20, 0x26); slat = nvgRGBA(0xff, 0xff, 0xff, 0x14);
+            }
+            // Whole-shutter fill.
             nvgBeginPath(vg);
-            nvgCircle(vg, centres[s].x, centres[s].y, r);
-            nvgFillColor(vg, col);
+            nvgRoundedRect(vg, rc.pos.x, rc.pos.y, rc.size.x, rc.size.y, 1.f);
+            nvgFillColor(vg, fill);
             nvgFill(vg);
+            // Louvre slats — horizontal lines across the shutter, so it reads as a slatted panel.
+            int nslat = std::max(3, (int)(rc.size.y / 3.0f));
+            float step = rc.size.y / (nslat + 1);
+            nvgStrokeColor(vg, slat);
+            nvgStrokeWidth(vg, std::max(0.6f, step * 0.28f));
+            float inset = rc.size.x * 0.12f;
+            for (int k = 1; k <= nslat; ++k) {
+                float y = rc.pos.y + k * step;
+                nvgBeginPath(vg);
+                nvgMoveTo(vg, rc.pos.x + inset, y);
+                nvgLineTo(vg, rc.pos.x + rc.size.x - inset, y);
+                nvgStroke(vg);
+            }
+            // Frame the shutter.
+            nvgBeginPath(vg);
+            nvgRoundedRect(vg, rc.pos.x, rc.pos.y, rc.size.x, rc.size.y, 1.f);
+            nvgStrokeColor(vg, nvgRGBA(0x00, 0x00, 0x00, 0x66));
+            nvgStrokeWidth(vg, 0.6f);
+            nvgStroke(vg);
         }
     }
 };
@@ -84,13 +110,19 @@ struct ScaleNameLabel : Widget {
     }
     void draw(const DrawArgs& args) override {
         Widget::draw(args);
-        if (!module || !font) return;
+        if (!module) return;
+        // Load the font here with a fallback (matches Lantern) — loading in the ctor could return
+        // null before the window font cache is ready, leaving the label silently blank.
+        std::shared_ptr<window::Font> f =
+            APP->window->loadFont(rack::asset::system("res/fonts/DejaVuSans-Bold.ttf"));
+        if (!f) f = APP->window->uiFont;
+        if (!f) return;
         int scaleIdx = (int)std::round(module->params[SCALE_PARAM_0 + front].getValue());
         int root     = (int)std::round(module->params[ROOT_PARAM_0 + front].getValue());
         if (scaleIdx < 0 || scaleIdx >= (int)MONSOON_SCALES.size()) return;
         std::string label = std::string(rootName(root)) + "  " + MONSOON_SCALES[scaleIdx].name;
         NVGcontext* vg = args.vg;
-        nvgFontFaceId(vg, font->handle);
+        nvgFontFaceId(vg, f->handle);
         nvgFontSize(vg, 10.f);
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
         nvgFillColor(vg, nvgRGB(0xe8, 0xe8, 0xec));
@@ -159,6 +191,38 @@ struct MonsoonShophouseExpanderWidget : ModuleWidget,
                 // Re-base shutter centres into bank-local coords.
                 for (int s = 0; s < 12; ++s) bank->centres[s] = bank->centres[s].minus(bank->box.pos);
                 bank->clickR = mm2px(3.0f);
+                // Compute each shutter's full RECT (bank-local) mirroring the panel geometry, so the
+                // widget can fill the WHOLE shutter (not a dot). White keys: full height; black keys:
+                // ~0.62 width, ~0.55 height, top-aligned. Derived from the front band rect.
+                {
+                    static const int WHITE_ORDER[7] = {0,2,4,5,7,9,11};
+                    static const int BLACK_AFTER_K[5] = {1,3,6,8,10};
+                    static const int BLACK_AFTER_V[5] = {0,1,3,4,5};
+                    const float W_MM = 20.0f * 5.08f;   // 20HP panel width in mm
+                    float fy = mm2px(22.0f + f*(20.0f+2.2f));
+                    float fx = mm2px(6.0f);
+                    float fw = mm2px(W_MM - 12.0f);
+                    float fh = mm2px(20.0f);
+                    float padg = mm2px(2.0f);
+                    float bx = fx + padg, by = fy + padg + mm2px(4.0f);
+                    float bw = fw - 2*padg;
+                    float bh = fh - padg - mm2px(6.0f);
+                    float wgap = mm2px(0.6f);
+                    float ww = (bw - 6*wgap) / 7.0f;
+                    float wh = bh;
+                    Vec bp = bank->box.pos;
+                    for (int i = 0; i < 7; ++i) {
+                        int semi = WHITE_ORDER[i];
+                        float sx = bx + i*(ww+wgap);
+                        bank->rects[semi] = Rect(Vec(sx, by).minus(bp), Vec(ww, wh));
+                    }
+                    float bwd = ww * 0.62f, bhh = wh * 0.55f;
+                    for (int j = 0; j < 5; ++j) {
+                        int semi = BLACK_AFTER_K[j], after = BLACK_AFTER_V[j];
+                        float sx = bx + (after+1)*(ww+wgap) - wgap - bwd/2.f;
+                        bank->rects[semi] = Rect(Vec(sx, by).minus(bp), Vec(bwd, bhh));
+                    }
+                }
                 addChild(bank);
             }
         }
