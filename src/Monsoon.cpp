@@ -542,6 +542,23 @@ void Monsoon::process(const ProcessArgs& args) {
         tc.handleGate2Assignment(gate2Assign, input.gate2Rise, tc.getGate2High(), invertMuteLogic);
     }
 
+    // --- Shophouse scale expander: sync + apply the ACTIVE front's scale EVERY process frame,
+    //     independent of the clock (so editing a scale knob dims the faders immediately, and it
+    //     works even when the sequencer is stopped). The boundary-quantised FRONT SWITCH (CV) is
+    //     handled separately inside the clock-edge path. Recompute the mask only when it changes. ---
+    if (auto* shop = expanderManager.cachedShophouseExpander) {
+        shop->syncEntriesFromParams();
+        scaleManager->lockScaleNotes =
+            shop->params[ShophouseIds::CONSERVATION_PARAM].getValue() > 0.5f;
+        const auto& e = shop->list.activeEntry();
+        if (scaleManager->lastSelectedScale != e.scaleIdx
+            || scaleManager->scaleRoot != e.root) {
+            scaleManager->lastSelectedScale = e.scaleIdx;
+            scaleManager->scaleRoot         = e.root;
+            scaleManager->updateScaleMask();
+        }
+    }
+
     // --- Mode dispatch (only if running) ---
     if (runGateActive) {
         // Gate-close on the PPQN grid pulse. In Mode E the pulse source is the phase
@@ -573,13 +590,12 @@ void Monsoon::process(const ProcessArgs& args) {
             // changes therefore land on the loop edge — never mid-phrase. If no Shophouse is
             // attached, the context-menu scale is left untouched.
             if (auto* shop = expanderManager.cachedShophouseExpander) {
-                shop->syncEntriesFromParams();
-                // Conservation toggle (guide vs enforce) → ScaleManager lock (enforce = lock on).
-                scaleManager->lockScaleNotes =
-                    shop->params[ShophouseIds::CONSERVATION_PARAM].getValue() > 0.5f;
+                // Boundary-quantised FRONT SWITCH only (needs the phrase-boundary edge, which is why
+                // this part stays inside the clock-edge path). Sampling the index CV picks the
+                // pending front; commitAtBoundary() makes it active on the loop edge. The active
+                // front's scale is applied every process frame in the block below (not here), so
+                // editing a scale knob responds immediately without waiting for a boundary.
                 if (engine.lastStepResult.wrapped) {
-                    // Sample index CV (0..10V → front 0..N-1) at the boundary, scaled by the
-                    // attenuverter (-1..1). Negative values invert the sweep across the list.
                     auto& cv = shop->inputs[ShophouseIds::INDEX_CV_INPUT];
                     if (cv.isConnected()) {
                         int n = shop->list.size();
@@ -588,21 +604,7 @@ void Monsoon::process(const ProcessArgs& args) {
                         int idx = (int)std::floor(norm * n);
                         shop->list.setPending(idx);
                     }
-                    shop->list.commitAtBoundary();   // switch active front at the loop edge (if changed)
-                }
-                // Apply the ACTIVE front's (scale, root) EVERY frame — not only on a front-switch
-                // commit. This covers the common cases the boundary-commit misses: startup (pending
-                // == active, so commit never fires) and editing the currently-active front's scale
-                // knob (the active INDEX doesn't change, so commit returns false). Without this the
-                // Shophouse scale was never pushed to ScaleManager unless you switched fronts under
-                // CV, so the mask/fader-dimming never reflected it. Recompute the mask only when it
-                // actually changes, to stay cheap.
-                const auto& e = shop->list.activeEntry();
-                if (scaleManager->lastSelectedScale != e.scaleIdx
-                    || scaleManager->scaleRoot != e.root) {
-                    scaleManager->lastSelectedScale = e.scaleIdx;
-                    scaleManager->scaleRoot         = e.root;
-                    scaleManager->updateScaleMask();
+                    shop->list.commitAtBoundary();
                 }
             }
         }
