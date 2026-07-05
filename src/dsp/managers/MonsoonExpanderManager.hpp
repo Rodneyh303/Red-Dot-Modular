@@ -8,8 +8,10 @@ class SequencerEngine;
 struct MonsoonInterchangeExpander;
 struct MonsoonSandsExpander;
 struct MonsoonSandsVisualExpander;       // Mono visual DNA editor
-struct MonsoonStraitsEastExpander;
-struct MonsoonStraitWestExpander;
+struct MonsoonStraitsExpander;
+struct MonsoonCausewayPolyExpander;
+struct MonsoonChangiExpander;
+struct MonsoonShophouseExpander;
 struct MonsoonStraitsSands;
 struct MonsoonDeepStraitsSandsEast;
 struct MonsoonDeepStraitsSandsWest;
@@ -20,12 +22,14 @@ struct StraitsSandsMacroVisual;
 
 extern rack::Model* modelMonsoon;
 extern rack::Model* modelMonsoonInterchangeExpander;
-extern rack::Model* modelMonsoonCausewayExpander;
-extern rack::Model* modelMonsoonSurgeExpander;
+extern rack::Model* modelMonsoonRafflesExpander;
+extern rack::Model* modelMonsoonJunctionExpander;
 extern rack::Model* modelMonsoonSandsExpander;
 extern rack::Model* modelMonsoonSandsVisualExpander;
-extern rack::Model* modelMonsoonStraitsEastExpander;
-extern rack::Model* modelMonsoonStraitWestExpander;
+extern rack::Model* modelMonsoonStraitsExpander;
+extern rack::Model* modelMonsoonCausewayPolyExpander;
+extern rack::Model* modelMonsoonChangiExpander;
+extern rack::Model* modelMonsoonShophouseExpander;
 extern rack::Model* modelMonsoonStraitsSands;
 extern rack::Model* modelMonsoonDeepStraitsSandsEast;
 extern rack::Model* modelMonsoonDeepStraitsSandsWest;
@@ -39,15 +43,17 @@ extern rack::Model* modelStraitsSandsMacroVisual;
  */
 struct MonsoonExpanderManager {
     MonsoonInterchangeExpander*  cachedScaleExpander              = nullptr;
-    rack::Module*                cachedCausewayExpander           = nullptr;
-    rack::Module*                cachedSurgeExpander              = nullptr;
-    MonsoonSandsExpander*        cachedDnaExpander                = nullptr;
+    rack::Module*                cachedRafflesExpander           = nullptr;
+    rack::Module*                cachedJunctionExpander              = nullptr;
+    //MonsoonSandsExpander*        cachedDnaExpander                = nullptr;
     MonsoonSandsVisualExpander*  cachedSandsVisualExpander        = nullptr;
-    MonsoonStraitsEastExpander*  cachedPolyVoiceExpander          = nullptr;
-    MonsoonStraitWestExpander*   cachedStraitWestExpander         = nullptr;
+    MonsoonStraitsExpander*      cachedPolyVoiceExpander          = nullptr;
+    MonsoonCausewayPolyExpander* cachedCausewayPolyExpander       = nullptr;
+    MonsoonChangiExpander*       cachedChangiExpander             = nullptr;
+    MonsoonShophouseExpander*    cachedShophouseExpander          = nullptr;
     MonsoonStraitsSands*         cachedStraitsSandsExpander       = nullptr;
-    MonsoonDeepStraitsSandsEast* cachedDeepStraitsSandsEastExpander = nullptr;
-    MonsoonDeepStraitsSandsWest* cachedDeepStraitsSandsWestExpander = nullptr;
+    //MonsoonDeepStraitsSandsEast* cachedDeepStraitsSandsEastExpander = nullptr;
+    //MonsoonDeepStraitsSandsWest* cachedDeepStraitsSandsWestExpander = nullptr;
     // Poly visual DNA editors
     StraitsEastSandsVisual*      cachedEastSandsVisual            = nullptr;
     StraitsWestSandsVisual*      cachedWestSandsVisual            = nullptr;
@@ -57,7 +63,6 @@ struct MonsoonExpanderManager {
     int dnaExpanderCount                = 0;
     int sandsVisualExpanderCount        = 0;
     int polyExpanderCount               = 0;
-    int straitWestExpanderCount         = 0;
     int straitsSandsExpanderCount       = 0;
     int deepStraitsSandsEastExpanderCount = 0;
     int deepStraitsSandsWestExpanderCount = 0;
@@ -67,26 +72,27 @@ struct MonsoonExpanderManager {
 
     void update(rack::Module* module) {
         cachedScaleExpander              = nullptr;
-        cachedCausewayExpander           = nullptr;
-        cachedSurgeExpander              = nullptr;
-        cachedDnaExpander                = nullptr;
+        cachedRafflesExpander           = nullptr;
+        cachedJunctionExpander              = nullptr;
+        //cachedDnaExpander                = nullptr;
         cachedSandsVisualExpander        = nullptr;
         cachedPolyVoiceExpander          = nullptr;
-        cachedStraitWestExpander         = nullptr;
+        cachedCausewayPolyExpander       = nullptr;
+        cachedChangiExpander             = nullptr;
+        cachedShophouseExpander          = nullptr;
         cachedStraitsSandsExpander       = nullptr;
-        cachedDeepStraitsSandsEastExpander = nullptr;
-        cachedDeepStraitsSandsWestExpander = nullptr;
+       // cachedDeepStraitsSandsEastExpander = nullptr;
+        //cachedDeepStraitsSandsWestExpander = nullptr;
         cachedEastSandsVisual            = nullptr;
         cachedWestSandsVisual            = nullptr;
         cachedMacroSandsVisual           = nullptr;
 
         scaleExpanderCount              = 0;
-        dnaExpanderCount                = 0;
+        //dnaExpanderCount                = 0;
         sandsVisualExpanderCount        = 0;
         polyExpanderCount               = 0;
-        straitWestExpanderCount         = 0;
         straitsSandsExpanderCount       = 0;
-        deepStraitsSandsEastExpanderCount = 0;
+        //deepStraitsSandsEastExpanderCount = 0;
         deepStraitsSandsWestExpanderCount = 0;
         eastSandsVisualCount            = 0;
         westSandsVisualCount            = 0;
@@ -95,7 +101,10 @@ struct MonsoonExpanderManager {
         auto scan = [&](rack::Module* start, bool left) {
             rack::Module* curr = start;
             int depth = 0;
-            while (curr && depth < 8) {
+            // Depth cap = max expanders that can chain on ONE side. The suite has 12 modules:
+            // Monsoon (parent) + 11 expander types, so up to 11 could all be on one side. Cap at
+            // 12 for a little headroom (duplicates, future modules) without unbounded walking.
+            while (curr && depth < 12) {
                 // Rule 3: a Monsoon is NOT an expander of another Monsoon. Treat
                 // it (and anything unrecognised) as foreign and stop this side.
                 if (curr->model == modelMonsoon) break;
@@ -105,44 +114,49 @@ struct MonsoonExpanderManager {
                 if (curr->model == modelMonsoonInterchangeExpander) {
                     if (!cachedScaleExpander) cachedScaleExpander = reinterpret_cast<MonsoonInterchangeExpander*>(curr);
                     scaleExpanderCount++;
-                } else if (curr->model == modelMonsoonCausewayExpander) {
-                    if (!cachedCausewayExpander) cachedCausewayExpander = curr;
-                } else if (curr->model == modelMonsoonSurgeExpander) {
-                    if (!cachedSurgeExpander) cachedSurgeExpander = curr;
-                } else if (curr->model == modelMonsoonSandsExpander) {
-                    if (!cachedDnaExpander) cachedDnaExpander = reinterpret_cast<MonsoonSandsExpander*>(curr);
-                    dnaExpanderCount++;
+                } else if (curr->model == modelMonsoonRafflesExpander) {
+                    if (!cachedRafflesExpander) cachedRafflesExpander = curr;
+                } else if (curr->model == modelMonsoonJunctionExpander) {
+                    if (!cachedJunctionExpander) cachedJunctionExpander = curr;
+                // } else if (curr->model == modelMonsoonSandsExpander) {
+                //     if (!cachedDnaExpander) cachedDnaExpander = reinterpret_cast<MonsoonSandsExpander*>(curr);
+                //     dnaExpanderCount++;
                 } else if (curr->model == modelMonsoonSandsVisualExpander) {
                     if (!cachedSandsVisualExpander) cachedSandsVisualExpander = reinterpret_cast<MonsoonSandsVisualExpander*>(curr);
                     sandsVisualExpanderCount++;
-                } else if (curr->model == modelMonsoonStraitsEastExpander) {
-                    if (!cachedPolyVoiceExpander) cachedPolyVoiceExpander = reinterpret_cast<MonsoonStraitsEastExpander*>(curr);
+                } else if (curr->model == modelMonsoonStraitsExpander) {
+                    if (!cachedPolyVoiceExpander) cachedPolyVoiceExpander = reinterpret_cast<MonsoonStraitsExpander*>(curr);
                     polyExpanderCount++;
-                } else if (curr->model == modelMonsoonStraitWestExpander) {
-                    if (!cachedStraitWestExpander) cachedStraitWestExpander = reinterpret_cast<MonsoonStraitWestExpander*>(curr);
-                    straitWestExpanderCount++;
-                } else if (curr->model == modelMonsoonStraitsSands) {
-                    if (!cachedStraitsSandsExpander) cachedStraitsSandsExpander = reinterpret_cast<MonsoonStraitsSands*>(curr);
-                    straitsSandsExpanderCount++;
-                } else if (curr->model == modelMonsoonDeepStraitsSandsEast) {
-                    if (!cachedDeepStraitsSandsEastExpander) cachedDeepStraitsSandsEastExpander = reinterpret_cast<MonsoonDeepStraitsSandsEast*>(curr);
-                    deepStraitsSandsEastExpanderCount++;
-                } else if (curr->model == modelMonsoonDeepStraitsSandsWest) {
-                    if (!cachedDeepStraitsSandsWestExpander) cachedDeepStraitsSandsWestExpander = reinterpret_cast<MonsoonDeepStraitsSandsWest*>(curr);
-                    deepStraitsSandsWestExpanderCount++;
+                } else if (curr->model == modelMonsoonCausewayPolyExpander) {
+                    if (!cachedCausewayPolyExpander) cachedCausewayPolyExpander = reinterpret_cast<MonsoonCausewayPolyExpander*>(curr);
+                } else if (curr->model == modelMonsoonChangiExpander) {
+                    if (!cachedChangiExpander) cachedChangiExpander = reinterpret_cast<MonsoonChangiExpander*>(curr);
+                } else if (curr->model == modelMonsoonShophouseExpander) {
+                    if (!cachedShophouseExpander) cachedShophouseExpander = reinterpret_cast<MonsoonShophouseExpander*>(curr);
+                // } else if (curr->model == modelMonsoonStraitsSands) {
+                //     if (!cachedStraitsSandsExpander) cachedStraitsSandsExpander = reinterpret_cast<MonsoonStraitsSands*>(curr);
+                //     straitsSandsExpanderCount++;
+                // } else if (curr->model == modelMonsoonDeepStraitsSandsEast) {
+                //     if (!cachedDeepStraitsSandsEastExpander) cachedDeepStraitsSandsEastExpander = reinterpret_cast<MonsoonDeepStraitsSandsEast*>(curr);
+                //     deepStraitsSandsEastExpanderCount++;
+                // } else if (curr->model == modelMonsoonDeepStraitsSandsWest) {
+                //     if (!cachedDeepStraitsSandsWestExpander) cachedDeepStraitsSandsWestExpander = reinterpret_cast<MonsoonDeepStraitsSandsWest*>(curr);
+                //     deepStraitsSandsWestExpanderCount++;
                 } else if (curr->model == modelStraitsEastSandsVisual) {
                     if (!cachedEastSandsVisual) cachedEastSandsVisual = reinterpret_cast<StraitsEastSandsVisual*>(curr);
                     eastSandsVisualCount++;
-                } else if (curr->model == modelStraitsWestSandsVisual) {
-                    if (!cachedWestSandsVisual) cachedWestSandsVisual = reinterpret_cast<StraitsWestSandsVisual*>(curr);
-                    westSandsVisualCount++;
+                // } else if (curr->model == modelStraitsWestSandsVisual) {
+                //     if (!cachedWestSandsVisual) cachedWestSandsVisual = reinterpret_cast<StraitsWestSandsVisual*>(curr);
+                //     westSandsVisualCount++;
                 } else if (curr->model == modelStraitsSandsMacroVisual) {
                     if (!cachedMacroSandsVisual) cachedMacroSandsVisual = reinterpret_cast<StraitsSandsMacroVisual*>(curr);
                     macroSandsVisualCount++;
                 } else break;   // Rule 1: stop at first foreign module.
 
-                // Rule 2 (early-out): once every type has a pointer, stop scanning.
-                if (allTypesFound()) break;
+                // (No early-out. Chains are at most depth-8 per side, so the cost of always
+                //  walking both sides is negligible, and it keeps discovery ORDER-STABLE: the
+                //  result never depends on whether all types happened to be found on one side
+                //  first. Each type still caches the FIRST instance found — left side, then right.)
 
                 curr = left ? curr->leftExpander.module : curr->rightExpander.module;
                 depth++;
@@ -150,21 +164,25 @@ struct MonsoonExpanderManager {
         };
 
         if (module) {
+            // Always scan BOTH sides fully. First-match-wins per type (left before right) is the
+            // one intentional order rule; everything else is order-independent.
             scan(module->leftExpander.module, true);
-            if (!allTypesFound())
-                scan(module->rightExpander.module, false);
+            scan(module->rightExpander.module, false);
         }
     }
 
-    // True once one pointer of every expander type has been cached.
+    // True once one pointer of every ACTIVE expander type has been cached. Only lists pointers
+    // whose cache branches exist in scan() — previously it also required cachedStraitsSandsExpander
+    // and cachedWestSandsVisual, whose branches are commented out (deprecated modules), so it could
+    // NEVER be true and the scan early-outs were dead. Now it reflects the live module set, so the
+    // "stop once everything's found" optimisation actually works and the walk is honest.
     bool allTypesFound() const {
-        return cachedScaleExpander && cachedCausewayExpander && cachedSurgeExpander
-            && cachedDnaExpander && cachedSandsVisualExpander && cachedPolyVoiceExpander
-            && cachedStraitWestExpander && cachedStraitsSandsExpander
-            && cachedDeepStraitsSandsEastExpander && cachedDeepStraitsSandsWestExpander
-            && cachedEastSandsVisual && cachedWestSandsVisual && cachedMacroSandsVisual;
+        return cachedScaleExpander && cachedRafflesExpander && cachedJunctionExpander
+            && cachedSandsVisualExpander && cachedPolyVoiceExpander
+            && cachedCausewayPolyExpander && cachedChangiExpander && cachedShophouseExpander
+            && cachedEastSandsVisual && cachedMacroSandsVisual;
     }
 
     /// Synchronizes data between the engine and specific expanders (Deep Straits, Visual Editors, etc.)
-    void sync(SequencerEngine& engine);
+    void sync(SequencerEngine& engine, bool spreadInterpMono = false);
 };

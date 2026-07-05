@@ -7,9 +7,12 @@ using namespace MonsoonIds;
 void MonsoonConfigurator::setup(Monsoon* m) {
     m->config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
 
-    // Main controls
-    m->configSwitch(NOTE_VALUE_PARAM, 0.f, 7.f, 4.f, "Note value",
-        {"1/1", "1/2", "1/4", "1/4T", "1/8", "1/8T", "1/16", "1/32"});
+    // Main controls — labels come from the single source of truth in NoteValues.hpp
+    std::vector<std::string> noteValueLabels;
+    for (int i = 0; i < NUM_NOTE_VALUES; ++i)
+        noteValueLabels.push_back(NOTE_VALUES[i].label);
+    m->configSwitch(NOTE_VALUE_PARAM, 0.f, (float)(NUM_NOTE_VALUES - 1), 4.f,
+        "Note value", noteValueLabels);
     m->configParam(VARIATION_PARAM,   0.f, 1.f, 0.5f, "Variation (longer–shorter)");
     m->configParam(LEGATO_PARAM,      0.f, 1.f, 0.00f, "Legato probability");
     m->configParam(REST_PARAM,        0.f, 1.f, 0.00f, "Rest probability");
@@ -55,13 +58,17 @@ void MonsoonConfigurator::setup(Monsoon* m) {
     m->configParam(DICE_SLEW_M_PARAM, 0.f, 1.f, 1.f, "Melody dice slew", "%", 0.f, 100.f);
     m->configButton(DICE_TRIAL_R_PARAM, "Trial rhythm (audition vs fixed A)");
     m->configButton(DICE_TRIAL_M_PARAM, "Trial melody (audition vs fixed A)");
+    m->configButton(LAST_DICE_R_PARAM,  "Last dice rhythm (previous draw)");
+    m->configButton(LAST_DICE_M_PARAM,  "Last dice melody (previous draw)");
+    m->configButton(LAST_TRIAL_R_PARAM, "Last trial rhythm (previous candidate)");
+    m->configButton(LAST_TRIAL_M_PARAM, "Last trial melody (previous candidate)");
     //mix defaults to 100% B, so that dice+trial defaults to auditioning a new pattern rather than blending with the existing one.
     //mix of 100% mirrors MeloDicer which does not have mix.
     m->configParam(RHYTHM_MIX_PARAM, 0.f, 1.f, 1.f, "Rhythm A>B mix", "%", 0.f, 100.f);
     m->configParam(MELODY_MIX_PARAM, 0.f, 1.f, 1.f, "Melody A>B mix", "%", 0.f, 100.f);
     m->configButton(LOCK_PARAM,   "Lock");
     m->configButton(MUTE_PARAM,   "Mute");
-    m->configButton(MODE_PARAM,   "Mode (Cycle A-B-C-D)");
+    m->configButton(MODE_PARAM,   "Mode (Cycle A-B-C-D-E)");
     m->configButton(RESET_BUTTON_PARAM,  "Reset");
     m->configButton(RUN_GATE_PARAM,      "Run/Stop");
 

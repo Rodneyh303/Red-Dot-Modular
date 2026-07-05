@@ -1,21 +1,34 @@
 #include "MonsoonModeController.hpp"
 #include "../../Monsoon.hpp"
+#include "../../MonsoonCausewayPolyExpander.hpp"
 
 using namespace rack;
 
 // ──── Helper: Update poly voice rest probabilities ──────────────────────────
 
 void ModeController::updatePolyVoiceRest_() {
-    if (engine.numPolyVoices > 0) {
-        for (int i = 0; i < engine.numPolyVoices; ++i) {
-            engine.voices[i].restProb = paramManager.getPolyRest(i);
-        }
+    // Write the engine's per-voice decision cache from the SINGLE resolver on Monsoon
+    // (getEffectivePolyRest/Accent = knob + Causeway CV × att, clamped). The engine reads
+    // voices[i].restProb per-sample in its hot loop, so it needs the value in the struct — but this
+    // is the ONLY writer, sourced from the one resolver, applied right before executePolyVoices.
+    // The Straits mod arcs pull from the same resolver directly (no cached-effective copies), so
+    // there is nothing to drift or clobber.
+    if (engine.numPolyVoices <= 0 || !mainModule) return;
+    for (int i = 0; i < engine.numPolyVoices; ++i) {
+        engine.voices[i].restProb   = mainModule->getEffectivePolyRest(i);
+        engine.voices[i].accentProb = mainModule->getEffectivePolyAccent(i);
     }
 }
 
 void ModeController::updatePatternInput() {
     for (int i = 0; i < 12; ++i) {
-        currentPatternInput.semiWeights[i] = paramManager.getSemitone(i);
+        // Use the SCALE-GATED weight (mainModule->getSemitoneParam → ScaleManager::getSemitoneWeight),
+        // not the raw fader value. When Conservation/lock is enforced, out-of-scale semitones read 0
+        // here, so the DICE/PATTERN engine (which picks from semiWeights) won't generate out-of-scale
+        // notes — matching the realtime path. (Previously this used paramManager.getSemitone(i), the
+        // raw value, so locked patterns still fired out-of-scale notes.)
+        currentPatternInput.semiWeights[i] =
+            mainModule ? mainModule->getSemitoneParam(i) : paramManager.getSemitone(i);
     }
     currentPatternInput.restProb          = paramManager.getRest();
     currentPatternInput.variationAmount   = paramManager.getVariation();
@@ -28,15 +41,15 @@ void ModeController::updatePatternInput() {
     currentPatternInput.melodySlew        = paramManager.getMelodySlew();
     currentPatternInput.rhythmMix         = paramManager.getRhythmMix();
     currentPatternInput.melodyMix         = paramManager.getMelodyMix();
-    // Surge expander: 5 big-5 CV (x attenuverter) -> offsets the param getters add.
+    // Junction expander: 5 big-5 CV (x attenuverter) -> offsets the param getters add.
     // CV normalised 0..10V -> 0..1, scaled bipolar by the attenuverter.
-    paramManager.clearSurgeOffsets();
-    if (mainModule && mainModule->expanderManager.cachedSurgeExpander) {
-        rack::Module* sg = mainModule->expanderManager.cachedSurgeExpander;
+    paramManager.clearJunctionOffsets();
+    if (mainModule && mainModule->expanderManager.cachedJunctionExpander) {
+        rack::Module* sg = mainModule->expanderManager.cachedJunctionExpander;
         for (int i = 0; i < 5; ++i) {
-            float cv  = sg->inputs[MonsoonIds::SURGE_NOTEVAL_CV + i].getVoltage() / 10.f;
-            float att = sg->params[MonsoonIds::SURGE_NOTEVAL_ATT + i].getValue();
-            paramManager.setSurgeOffset(i, cv * att);
+            float cv  = sg->inputs[MonsoonIds::JUNCTION_NOTEVAL_CV + i].getVoltage() / 10.f;
+            float att = sg->params[MonsoonIds::JUNCTION_NOTEVAL_ATT + i].getValue();
+            paramManager.setJunctionOffset(i, cv * att);
         }
     }
     // PLAYABLE LIVE MORPH: apply the live MIX every process (control rate), like
@@ -89,6 +102,32 @@ void ModeController::postExecute_(const StepResult& result) {
 }
 
 // ──── Mode A: Clock-Driven Sequencing ───────────────────────────────────────
+
+// Mode E: phase-driven. The dispatch (Monsoon.cpp) only calls this when
+// phase.sixteenthEdge fired, so a 1/16 step is due now. Reuses the Mode A decision
+// path exactly (clock-style stepping) — the only difference is the edge SOURCE is
+// the phase ramp, not the clock. A synthesized clock-view carries sixteenthEdge=true
+// into engine.executeModeA, which reads nothing else from the clock. (Forward only;
+// reverse traversal is the next branch.)
+bool ModeController::executeModeE() {
+    engine.accentProb = paramManager.getAccent();
+    PatternInput in = assemblePatternInput_();
+
+    ClockEngine phaseView;            // edge-only view; executeModeA reads sixteenthEdge
+    phaseView.sixteenthEdge = true;
+
+    StepResult result = engine.executeModeA(
+        phaseView,
+        in.restProb,
+        paramManager.getLegato(),
+        paramManager.getNoteValue(),
+        in,
+        phaseReverse ? -1 : +1        // within-draw reverse traversal
+    );
+    postExecute_(result);
+    updateLastStepIndex();
+    return result.stepped;
+}
 
 bool ModeController::executeModeA() {
     if (clock.sixteenthEdge) {
@@ -218,6 +257,7 @@ bool ModeController::executeMode(int modeId,
         case 1: return executeModeB(input.gate1Rise, gate1High);
         case 2: return executeModeC(input.cv2);
         case 3: return executeModeD(gate2High, input.cv2);
+        case 4: return executeModeE();
         default: return false;
     }
 }

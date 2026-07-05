@@ -3,6 +3,7 @@
 #include <array>
 #include <algorithm>
 #include <cmath>
+#include "../SpreadInterp.hpp"
 
 namespace redDot {
 
@@ -54,11 +55,17 @@ struct SpreadManager {
   InterpolationTarget target = AVERAGE_POLY;
   int numVoices = 7;  // 7 for East, 8 for West, 1 for Mono
   int startVoiceIdx = 0;  // 0 for East (voices 2-8), 8 for West (voices 9-16)
+  // True when this manager represents the MONO MASTER strand (V1) display — its view
+  // is always voice 1, so `original` must be the MONO draw regardless of how many poly
+  // voices exist for the AVERAGE_POLY ensemble. Without this, a mono manager with
+  // numVoices>1 (e.g. Mono widget defaulting to 7) interpolated V1 from a POLY draw,
+  // breaking the MONO_DRAW self-target no-op (positive V1 spread wrongly moved V1).
+  bool monoContext = false;
   
   // Spread values: [voice][lane]
   // For macro: all voices use same spread (but we store separately for flexibility)
   // For per-voice: each voice has own spread
-  std::array<std::array<float, 3>, 8> spread = {};  // [8 voices][3 lanes]
+  std::array<std::array<float, 4>, 8> spread = {};  // [8 voices][4 lanes: REST/MEL/OCT/ACC]
 
   // ── Average-poly display cache ───────────────────────────────────────────
   // calculateAveragePolyValue() was called 48x/UI-frame (3 lanes x 16 steps),
@@ -66,7 +73,7 @@ struct SpreadManager {
   // voices). The averaged grid only changes when the poly arrays or the active
   // voice count change, so cache the 3x16 grid and rebuild it at most once per
   // frame, and only when a cheap checksum of the inputs differs.
-  mutable std::array<std::array<float, 16>, 3> avgCache_ = {};
+  mutable std::array<std::array<float, 16>, 4> avgCache_ = {};
   mutable float avgChecksum_ = -1.f;
   mutable int   avgValid_ = 0;
   
@@ -74,7 +81,7 @@ struct SpreadManager {
     : patternEngine(pe), numVoices(nVoices), startVoiceIdx(startVoice) {
     // Initialize spreads to 0 (no interpolation)
     for (int v = 0; v < 8; ++v) {
-      for (int l = 0; l < 3; ++l) {
+      for (int l = 0; l < 4; ++l) {
         spread[v][l] = 0.0f;
       }
     }
@@ -91,15 +98,23 @@ struct SpreadManager {
   void setInterpolationTarget(InterpolationTarget t) {
     target = t;
   }
+
+  // The mode actually used: pulled from the engine (single source of truth, mirrored
+  // from the Monsoon menu each frame) when available, else the locally-set `target`
+  // fallback (e.g. unit tests / no engine). Replaces per-widget pushing.
+  InterpolationTarget effectiveTarget() const {
+    if (patternEngine) return patternEngine->spreadInterpMono ? MONO_DRAW : AVERAGE_POLY;
+    return target;
+  }
   
   void setSpread(int voiceIdx, int lane, float value) {
-    if (voiceIdx >= 0 && voiceIdx < numVoices && lane >= 0 && lane < 3) {
+    if (voiceIdx >= 0 && voiceIdx < numVoices && lane >= 0 && lane < 4) {
       spread[voiceIdx][lane] = rack::math::clamp(value, -1.0f, 1.0f);
     }
   }
   
   float getSpread(int voiceIdx, int lane) const {
-    if (voiceIdx >= 0 && voiceIdx < numVoices && lane >= 0 && lane < 3) {
+    if (voiceIdx >= 0 && voiceIdx < numVoices && lane >= 0 && lane < 4) {
       return spread[voiceIdx][lane];
     } // Default to 0.0f if out of bounds, meaning no spread
     return 0.0f; 
@@ -128,7 +143,7 @@ struct SpreadManager {
   float getInterpolationTarget(int voiceIdx, int lane, int step) const {
     if (!patternEngine) return 0.5f;
     
-    switch (target) {
+    switch (effectiveTarget()) {
       case AVERAGE_POLY:
         return calculateAveragePolyValue(lane, step);
       
@@ -155,7 +170,7 @@ struct SpreadManager {
    *   Calculates average of polyRhythmRandom[0-5] (voices 9-14)
    */
   float calculateAveragePolyValue(int lane, int step) const {
-    if (!patternEngine || step < 0 || step >= 16 || lane < 0 || lane > 2) return 0.5f;
+    if (!patternEngine || step < 0 || step >= 16 || lane < 0 || lane > 3) return 0.5f;
     refreshAverageCache_();
     return avgCache_[lane][step];
   }
@@ -169,7 +184,7 @@ struct SpreadManager {
     int activeVoiceCount = std::min(getActiveVoiceCount(), numVoices);
     if (activeVoiceCount <= 0) {
       if (avgValid_ && avgChecksum_ == 0.f) return;
-      for (int l = 0; l < 3; ++l) for (int s = 0; s < 16; ++s) avgCache_[l][s] = 0.5f;
+      for (int l = 0; l < 4; ++l) for (int s = 0; s < 16; ++s) avgCache_[l][s] = 0.5f;
       avgChecksum_ = 0.f; avgValid_ = 1; return;
     }
     // Cheap checksum: active count + a few sampled cells. Catches re-rolls and
@@ -177,20 +192,23 @@ struct SpreadManager {
     float cs = activeVoiceCount * 1000.f;
     cs += patternEngine->polyRhythmRandom[0][0]
         + patternEngine->polyMelodyRandom[activeVoiceCount-1][7]
-        + patternEngine->polyOctaveRandom[0][15];
+        + patternEngine->polyOctaveRandom[0][15]
+        + patternEngine->polyAccentRandom[activeVoiceCount-1][3];
     if (avgValid_ && cs == avgChecksum_) return;   // unchanged → keep cache
 
     const float inv = 1.f / activeVoiceCount;
     for (int s = 0; s < 16; ++s) {
-      float r = 0.f, m = 0.f, o = 0.f;
+      float r = 0.f, m = 0.f, o = 0.f, a = 0.f;
       for (int v = 0; v < activeVoiceCount; ++v) {
         r += patternEngine->polyRhythmRandom[v][s];
         m += patternEngine->polyMelodyRandom[v][s];
         o += patternEngine->polyOctaveRandom[v][s];
+        a += patternEngine->polyAccentRandom[v][s];
       }
       avgCache_[0][s] = r * inv;
       avgCache_[1][s] = m * inv;
       avgCache_[2][s] = o * inv;
+      avgCache_[3][s] = a * inv;
     }
     avgChecksum_ = cs; avgValid_ = 1;
   }
@@ -225,6 +243,8 @@ struct SpreadManager {
         return patternEngine->melodyRandom[step];
       case 2:  // OCTAVE
         return patternEngine->octaveRandom[step];
+      case 3:  // ACCENT
+        return patternEngine->accentRandom[step];
       default:
         return 0.5f;
     }
@@ -237,7 +257,7 @@ struct SpreadManager {
    */
   float getOriginalValue(int voiceIdx, int lane, int step) const {
     if (!patternEngine || voiceIdx < 0 || voiceIdx >= numVoices) return 0.5f;
-    if (lane < 0 || lane > 2 || step < 0 || step >= 16) return 0.5f;
+    if (lane < 0 || lane > 3 || step < 0 || step >= 16) return 0.5f;
     
     switch (lane) {
       case 0:  // REST
@@ -246,6 +266,8 @@ struct SpreadManager {
         return patternEngine->polyMelodyRandom[voiceIdx][step];
       case 2:  // OCTAVE
         return patternEngine->polyOctaveRandom[voiceIdx][step];
+      case 3:  // ACCENT
+        return patternEngine->polyAccentRandom[voiceIdx][step];
       default:
         return 0.5f;
     }
@@ -280,12 +302,27 @@ struct SpreadManager {
    */
   float getInterpolatedValue(int voiceIdx, int lane, int step) const {
     if (!patternEngine) return 0.5f;
-    
-    float original = getOriginalValue(voiceIdx, lane, step);
-    float targetValue = getInterpolationTarget(voiceIdx, lane, step);
-    float spreadAmount = getSpread(voiceIdx, lane);
-    
-    return interpolate(original, targetValue, spreadAmount);
+    // Delegate to the single source of truth so the DISPLAY matches the
+    // sequencer exactly: same pre-spread slewed draws, same mono-inclusive
+    // average / mono-draw target, same bipolar interpolate. (Previously this
+    // averaged the post-spread *Random output and excluded mono — a different
+    // computation from the sequencer.)
+    const int nPoly = std::min(getActiveVoiceCount(), numVoices);
+    const redDot::SpreadInterp::Target m = (effectiveTarget() == MONO_DRAW)
+        ? redDot::SpreadInterp::MONO_DRAW : redDot::SpreadInterp::AVERAGE_POLY;
+    // The voice's own pre-spread draw. For a per-voice manager voiceIdx maps to
+    // the poly strand; mono-draw mode uses the mono strand as original only when
+    // this IS the mono context (numVoices==1). Match the sequencer: poly voices
+    // interpolate from their own slewed poly draw.
+    // The voice's own pre-spread draw. The MONO MASTER view (monoContext) always uses
+    // the mono draw — even with poly voices present for the average — so MONO_DRAW mode
+    // is a true self-target (positive no-op, negative invert). Poly per-voice managers
+    // interpolate from their own slewed poly draw.
+    float original = (monoContext || numVoices <= 1)
+        ? redDot::SpreadInterp::monoSlewed(*patternEngine, lane, step)
+        : redDot::SpreadInterp::polySlewed(*patternEngine, lane, startVoiceIdx + voiceIdx, step);
+    return redDot::SpreadInterp::apply(*patternEngine, m, lane, step, nPoly,
+                                       original, getSpread(voiceIdx, lane));
   }
   
   // ===== BATCH OPERATIONS =====
@@ -303,9 +340,11 @@ struct SpreadManager {
   
   /**
    * Get all interpolated values for a voice (all 3 lanes, all 16 steps).
+   * NOTE: currently UNUSED (no callers) and still 3-lane (no accent). If ever
+   * revived, widen to 4 lanes like the rest of the spread path (accent = lane 3).
    */
   struct InterpolatedVoice {
-    std::array<std::array<float, 16>, 3> lanes;  // [lane][step]
+    std::array<std::array<float, 16>, 3> lanes;  // [lane][step] — 3-lane, dead code
   };
   
   InterpolatedVoice getInterpolatedVoice(int voiceIdx) const {
@@ -391,7 +430,7 @@ struct MacroSpreadManager : public SpreadManager {
   
   // Override: set spread applies to all voices
   void setSpread(int lane, float value) {
-    if (lane >= 0 && lane < 3) {
+    if (lane >= 0 && lane < 4) {
       float clamped = rack::math::clamp(value, -1.0f, 1.0f);
       for (int v = 0; v < numVoices; ++v) {
         SpreadManager::setSpread(v, lane, clamped);

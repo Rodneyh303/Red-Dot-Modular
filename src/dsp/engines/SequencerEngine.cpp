@@ -2,14 +2,9 @@
 #include <cmath>
 #include <algorithm>
 
-//{"1/1","1/2","1/4","1/4T","1/8","1/8T","1/16","1/32"};
-//Fractional note values corresponding to the 8 possible note length settings, and the PPQN settings that allow them.
-//The sequencer uses the allowedPPQN bitmask to find the closest valid note length
-// if the user selects an unsupported one (e.g. 1/4T with PPQN=4).
-const NoteVal NOTEVALS[8] = {
-    {1.0f, 1|2|4}, {0.5f, 1|2|4}, {0.25f, 1|2|4}, {1.0f/6.0f, 4},
-    {0.125f, 2|4}, {1.0f/12.0f, 4}, {0.0625f, 2|4}, {0.03125f, 4},
-};
+// Note-value data (fraction, allowedPPQN, label) lives in dsp/NoteValues.hpp as
+// the single source of truth. The sequencer uses NOTE_VALUES[i].allowedPPQN to
+// snap an unsupported selection (e.g. 1/4T at PPQN=4) to the nearest valid one.
 
 
 
@@ -18,15 +13,9 @@ static const int DNA_LCM = 720720; // LCM of 1..16 ensures drift continuity
 void SequencerEngine::reset() {
     pe.reset();
     gs.reset();
-<<<<<<< HEAD
-    for (int i = 0; i < 7; ++i) voices[i].gs.reset();
-    // restProb values are NOT reset — the caller re-applies them from expander knobs.
-    for (int i = 0; i < 7; i++) wasHeldPolyPrev[i] = false;
-=======
     for (int i = 0; i < 15; ++i) voices[i].gs.reset();
     // restProb values are NOT reset — the caller re-applies them from expander knobs.
     for (int i = 0; i < 15; i++) wasHeldPolyPrev[i] = false;
->>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
     lastStepResult = StepResult{};
     stepIndex = -1;
     lastStepIndex = -1;
@@ -35,15 +24,9 @@ void SequencerEngine::reset() {
     cachedLength = 16;
     cachedOffset = 0;
     totalStepsElapsed = 0;
-<<<<<<< HEAD
-    rhythmLen = variationLen = legatoLen = melodyLen = octaveLen = 16;
-    rhythmOff = variationOff = legatoOff = melodyOff = octaveOff = 0;
-    rhythmRot = variationRot = legatoRot = melodyRot = octaveRot = 0;
-=======
     rhythmLen = variationLen = legatoLen = accentLen = melodyLen = octaveLen = 16;
     rhythmOff = variationOff = legatoOff = accentOff = melodyOff = octaveOff = 0;
     rhythmRot = variationRot = legatoRot = accentRot = melodyRot = octaveRot = 0;
->>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
     for (int i = 0; i < 15; i++) {
         for (int l = 0; l < 3; ++l) {
             polyLen[i][l] = 16;
@@ -58,7 +41,7 @@ void SequencerEngine::reset() {
     resetArmed = false;
     prevGate1High = false;
     modeSelect = 0;
-    ppqnSetting = 4;
+    ppqnSetting = 24;
     noteVariationMask = 0b111;
     activeSemiCount = 0;
     for (int i = 0; i < 12; ++i) faderCache[i] = -1.f;
@@ -87,9 +70,31 @@ void SequencerEngine::setWindow(int length, int offset) {
     }
 }
 
-bool SequencerEngine::advancePlayhead() {
+bool SequencerEngine::advancePlayhead(int dir) {
     int prevStep = stepIndex;
-    totalStepsElapsed = (totalStepsElapsed + 1) % DNA_LCM;
+    lastPlayDir = (dir < 0) ? -1 : +1;
+    // Step the global DNA tick WITH direction: +1 forward, -1 backward. This is what
+    // maps physical positions to drifting DNA content (strand indices) and the ring
+    // lights; counting up in reverse desyncs it from stepIndex and both the strand
+    // drift and the lights go the wrong way (ring lights up all around).
+    if (dir < 0) totalStepsElapsed = (totalStepsElapsed - 1 + DNA_LCM) % DNA_LCM;
+    else         totalStepsElapsed = (totalStepsElapsed + 1) % DNA_LCM;
+
+    if (dir < 0) {
+        // ── Reverse traversal: mirror of forward, leftward through the window. ──
+        // From the "not started" state, seed just AFTER endStep so the first reverse
+        // step lands on endStep (the symmetric counterpart of forward seeding before
+        // startStep and stepping onto startStep).
+        if (stepIndex == -1) stepIndex = (endStep + 1) & 0x0F;
+        stepIndex = (stepIndex - 1 + 16) & 0x0F;
+        if (!isStepInWindow(stepIndex)) stepIndex = endStep;
+        for (int s = 0; s < 16 && !isStepInWindow(stepIndex); ++s)
+            stepIndex = (stepIndex - 1 + 16) & 0x0F;
+        // Phrase boundary (reverse): wrapped back round to endStep.
+        return (prevStep != -1 && stepIndex == endStep);
+    }
+
+    // ── Forward traversal (unchanged) ──
     if (stepIndex == -1) stepIndex = (startStep - 1 + 16) % 16;
     stepIndex = (stepIndex + 1) & 0x0F;
     if (!isStepInWindow(stepIndex)) stepIndex = startStep;
@@ -117,7 +122,7 @@ void SequencerEngine::updateWindow(float lenParam, float lenCv, bool lenPatched,
 
 int SequencerEngine::computeNoteLengthIdx(int requestedIdx, int ppqnMask) const {
     int idx = pe_clamp(requestedIdx, 0, 7);
-    while (idx > 0 && !(NOTEVALS[idx].allowedPPQN & ppqnMask)) {
+    while (idx > 0 && !(NOTE_VALUES[idx].allowedPPQN & ppqnMask)) {
         idx--;
     }
     return idx;
@@ -125,7 +130,11 @@ int SequencerEngine::computeNoteLengthIdx(int requestedIdx, int ppqnMask) const 
 
 int SequencerEngine::getNoteLenIdx(float baseNoteParam, const PatternInput& input, float r) {
     int baseIdx = pe_clamp<int>((int)std::round(baseNoteParam), 0, 7);
-    int ppqnMask = (ppqnSetting == 1) ? 1 : (ppqnSetting == 4) ? 2 : 4;
+    // PPQN is now always 24/48/96 — all of which resolve every note value to an
+    // integer pulse count (24 already covers 1/32 and all triplets). So every
+    // value is legal; mask = the full-resolution bit (4). (The old 1/4 PPQN
+    // settings, which gated out sub-step values, are gone.)
+    int ppqnMask = 4;
     baseIdx = computeNoteLengthIdx(baseIdx, ppqnMask);
     return pe.varyNoteIndex(baseIdx, input, r);
 }
@@ -158,8 +167,20 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
         baseActive = isNote ? 0.35f : 0.07f;
     }
 
-    // The moving playhead should always follow the global timeline index
-    float current = (modeSelect < 3 && lightIdx == stepIndex) ? 1.0f : 0.0f;
+    // The moving playhead should always follow the global timeline index. Shown for
+    // stepped modes A/B/C (0/1/2) and the phase Mode E (4); Mode D (3) is continuous
+    // (no discrete playhead step).
+    bool steppedMode = (modeSelect == 0 || modeSelect == 1 || modeSelect == 2 || modeSelect == 4);
+    float current = (steppedMode && lightIdx == stepIndex) ? 1.0f : 0.0f;
+
+    // Direction cue (Mode E especially): a one-LED comet trail BEHIND the playhead in
+    // the travel direction, so forward vs reverse is visibly distinct. The trailing
+    // LED is the step the playhead just left: stepIndex - lastPlayDir.
+    if (steppedMode && current < 1.0f) {
+        int trailIdx = ((stepIndex - lastPlayDir) % 16 + 16) % 16;
+        if (lightIdx == trailIdx && isStepInWindow(lightIdx))
+            baseActive = std::max(baseActive, 0.5f);
+    }
 
     return std::max(baseActive, current);
 }
@@ -181,18 +202,46 @@ bool SequencerEngine::shouldTriggerStep(int ppqn) const {
 }
 
 StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float accentProb, const PatternInput& input, bool wasHeld, bool hadTail) {
+    // ── Fractional notes (1/4T=2.667, 1/8T=1.333, 1/32=0.5 steps) & legato/tie ──
+    // These notes end MID-STEP (closed by the gateSecRemain seconds-timer), not on
+    // a 1/16 grid edge. Legato/tie decisions only happen AT an edge and require the
+    // previous note to still be sounding (wasHeld). That gives three rules, all
+    // verified to hold with the current engine — they are by-design, not bugs:
+    //
+    //  1. A fractional note CANNOT be the FIRST/source note of a legato or tie.
+    //     It has already closed before the next edge, so wasHeld is false there and
+    //     the legato/tie branch is unreachable — the next step starts fresh. This
+    //     is musically correct: a sub-step note leaves a real gap, which is not
+    //     legato. (Design choice "A": accepted, not patched.)
+    //
+    //  2. A fractional note CAN be the LAST/destination note of a legato or tie.
+    //     The gate is already open from the held source note; extendHold()/
+    //     slideNote() add the fractional length and re-arm gateSecRemain on the
+    //     summed hold, so the gate rides open to the exact sub-step end.
+    //     e.g. 1/8→1/4T = 4.667 steps, 1/4→1/8T = 5.333, 1/8→1/32 = 2.5 (exact).
+    //
+    //  3. A fractional note CANNOT be a MIDDLE note of a 3-note tie. To be a middle
+    //     note it would have to be both a destination (rule 2, OK) AND a source
+    //     (rule 1, impossible). After it closes mid-step, the third note finds
+    //     wasHeld=false at its edge and retriggers as a NewNote — the tie chain
+    //     breaks cleanly at the fractional note, with no false reopened gate.
     StepResult result;
     result.nvIdx = nvIdx;
 
     // Mid-note: previous note's hold is still counting down.
     // Poly voices seeing MidNote will tick their own holds and return.
-    if (gs.holdRemain >= 1.f) {
+    //
+    // The guard must also stay in MidNote while a fractional sub-step tail is
+    // still sounding: a triplet (1/4T = 2.667 steps, 1/8T = 1.333) leaves
+    // holdRemain < 1 on its final partial step while the precise gate timer
+    // (gateSecRemain) is still open. Without the gateSecRemain check, that last
+    // step fired a NEW note and cut the triplet to a whole-step length — 1/4T
+    // played as 1/8, 1/8T as 1/16. (1/32 = 0.5 steps closes within its own step
+    // before any edge, so it was unaffected — matching the observed scope.)
+    if (gs.holdRemain >= 1.f || gs.gatePulseRemain > 0) {
         result.decision = MonoDecision::MidNote;
-<<<<<<< HEAD
-=======
         result.accented = lastStepResult.accented;
->>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
-        lastStepResult = result;
+        result.forStep = stepIndex; lastStepResult = result;
         return result;
     }
 
@@ -200,18 +249,63 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     float pitchV = pe.genPitchLive(sem, input,
                                     pe.melodyRandom[getMelodyStep()],
                                     pe.octaveRandom[getOctaveStep()]);
-    
+
+    // ── Leading-edge legato (STEP 2, toggled by legatoLeadingEdge; default OFF) ──
+    // The PREVIOUS starting note recorded, at its own onset, whether it intends to hold
+    // its gate forward into THIS note (gs.slurForward). It survives untouched through the
+    // previous note's held steps (the MidNote guard above returns early). Capture it now,
+    // BEFORE this note's cascade recomputes gs.slurForward at the bottom. In leading-edge
+    // mode this — not a fresh r_legato_tie roll — governs whether THIS note connects back.
+    const bool prevSlur = gs.slurForward;
+
+    // The previous PLAYED step's decision (lastStepResult is set at the end of each executeStep,
+    // so here it is the step played immediately before this one — in PLAY ORDER, correct in both
+    // directions because it is temporal, not step-numbered). A legato/tie means "connected to the
+    // note played just before"; if that step was a REST (or the initial Inactive), there is no
+    // note to connect to → this must NOT be a connection. This is the direction-correct
+    // predecessor test. wasHeld alone is NOT sufficient: in reverse, wasHeld (a gate read) can be
+    // true from a note that is not the play-order-adjacent predecessor, so a teal could otherwise
+    // be emitted with a rest immediately before it in play order (the reverse isolated-teal bug).
+    const MonoDecision prevPlayedDec = lastStepResult.decision;
+    const bool prevPlayedSounded = (prevPlayedDec == MonoDecision::NewNote)
+                                || (prevPlayedDec == MonoDecision::Legato)
+                                || (prevPlayedDec == MonoDecision::LegatoMax)
+                                || (prevPlayedDec == MonoDecision::Tie)
+                                || (prevPlayedDec == MonoDecision::MidNote);
+
     // Structural Rest Roll:
     // canRest is true only if the previous note finished exactly on a step edge 
     // or was already silent. Fractional tails (e.g. triplets) block the rest roll
     // to ensure rhythmic alignment.
     bool canRest = (gs.holdRemain <= 0.0001f && !hadTail);
 
+    // Whether THIS note connects (tie/legato) to the previous one.
+    //  - Current model: fresh roll at this (joining) onset — r_legato_tie < legatoProb.
+    //  - Leading-edge:  the previous note's onset commitment — prevSlur — decides it.
+    // legatoProb>=0.999 (LegatoMax) forces connection in BOTH models.
+    const bool legatoConnects = (legatoProb >= 0.999f)
+        || (legatoLeadingEdge ? prevSlur : (r_legato_tie < legatoProb));
+
+    // A genuine committed slur reaching THIS note: it connects AND has a held predecessor to
+    // connect to (exactly the condition the legato branch below uses). "Rest beats legato"
+    // toggle: when OFF, such a slur IGNORES the rest roll here (slur wins → plays as Legato/
+    // Tie); when ON (default), the rest branch takes priority (rest cancels the slur). A
+    // fractional TAIL still always outranks rest (canRest, below), regardless of the toggle.
+    const bool slurReachesHere    = legatoConnects && (wasHeld || hadTail) && prevPlayedSounded;
+    const bool slurSuppressesRest = !restBeatsLegato && slurReachesHere;
+
     if (legatoProb >= 0.999f) {
         gs.slideMax(pitchV, sem, nvIdx);
         result.decision = MonoDecision::LegatoMax;
     }
-    else if (r_rest < restProb) {
+    else if ((r_rest < restProb) && !slurSuppressesRest) {
+        // Rest precedence:
+        //  - A fractional NOTE TAIL always outranks a rest (physical — !canRest). Unchanged.
+        //  - "Rest beats legato" ON (default): a rest CANCELS an optional slur reach ("can't
+        //    slur into silence") — even a committed prevSlur yields to the rest (N+1 silent).
+        //    OFF: slurSuppressesRest skips this branch, so the slur wins and the note falls
+        //    through to the legato branch below (rest ignored, N+1 plays as Legato/Tie with
+        //    its own drawn pitch). See RHYTHM_BEHAVIOUR_POLICIES.md.
         if (canRest) {
             gs.gateHeld = false;
             result.decision = MonoDecision::Rest;
@@ -221,12 +315,23 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
             result.decision = MonoDecision::MidNote;
         }
     }
-    else if (r_legato_tie < legatoProb) {
-        if (sem == gs.lastSemitone && wasHeld) {
+    else if (legatoConnects && (wasHeld || hadTail) && prevPlayedSounded) {
+        // A slur can only CONNECT if the previous note actually held its gate into this step
+        // (wasHeld || hadTail) — the documented invariant "legato/tie requires the previous
+        // note still sounding". legatoConnects expresses the INTENT to connect (a fresh roll
+        // in reactive mode, or the previous note's prevSlur commitment in leading-edge mode),
+        // but intent alone isn't enough: in leading-edge, prevSlur can be true while the
+        // predecessor left NO held gate (it ended / was cut), which would otherwise slide into
+        // nothing — producing an isolated Legato cell (teal note connected to no predecessor).
+        // Requiring a held predecessor here makes the connection real; otherwise fall through
+        // to NewNote (the slur had nothing to land on → a fresh note).
+        // (Supersedes master's standalone r_legato_tie<legatoProb form: legatoConnects already
+        // encodes that reactive-roll condition AND the leading-edge prevSlur path.)
+        if (sem == gs.lastSemitone) {
             gs.extendHold(sem, nvIdx);
             result.decision = MonoDecision::Tie;
         } else {
-            gs.slideNote(pitchV, sem, nvIdx, wasHeld);
+            gs.slideNote(pitchV, sem, nvIdx, /*wasHeld=*/true);
             result.decision = MonoDecision::Legato;
         }
     }
@@ -235,13 +340,6 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
         result.decision = MonoDecision::NewNote;
     }
 
-<<<<<<< HEAD
-    // Determine if this note is accented (only on NewNote, Legato, LegatoMax — not on Rest, Tie, MidNote)
-    if (result.decision != MonoDecision::Rest && result.decision != MonoDecision::Tie && result.decision != MonoDecision::MidNote) {
-        result.accented = (r_accent < accentProb);
-    } else {
-        result.accented = false;
-=======
     // Determine if this note is accented. 
     // Decision happens on NewNote, or Legato shifts from a dead state.
     bool monoStarting = (result.decision == MonoDecision::NewNote) || 
@@ -254,10 +352,43 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     } else {
         // Sustain/Inherit: Tie, MidNote, or Legato shift during an existing held note
         result.accented = lastStepResult.accented;
->>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
     }
 
-    lastStepResult = result;
+    // ── STEP 1 INSTRUMENT (leading-edge legato) — computed, NOT consulted ─────────
+    // In the leading-edge model, a note that is STARTING commits here (at its own onset)
+    // to hold its gate forward into the next note, iff BOTH: (a) its own legato draw
+    // fires (r_legato_tie < legatoProb, or LegatoMax), AND (b) its length is grid-aligned
+    // so it can cleanly reach the next onset (noteCanLeadLegato). This records that intended
+    // commitment on gs.slurForward WITHOUT changing any decision — the join above still
+    // decides exactly as today. Step 2 will make the next step consume this flag instead of
+    // rolling fresh. Only meaningful on a starting note; cleared otherwise.
+    // A note "starts" (and may thus lead the chain FORWARD) if it is a real sounding note
+    // at this onset: NewNote, Legato, LegatoMax — AND Tie. A Tie (same-pitch continuation)
+    // is a sounding note that can carry a 3+ note legato chain onward to the next note, IF
+    // its own length is grid-aligned and it rolls forward. Excluding Tie would break any
+    // chain at a tie (chain of 3+ can only continue past note 2 if note 2 is itself an
+    // eligible lead — see LEGATO_TIE_REDESIGN.md). MidNote (mid-hold, not an onset) and Rest
+    // (silent) correctly do NOT start. slurForward set at a note's onset survives its held
+    // steps (the MidNote guard returns early before this block).
+    bool leStarting = (result.decision == MonoDecision::NewNote)
+                   || (result.decision == MonoDecision::Legato)
+                   || (result.decision == MonoDecision::LegatoMax)
+                   || (result.decision == MonoDecision::Tie);
+    bool leWouldSlur = leStarting
+                    && noteCanLeadLegato(nvIdx)
+                    && (legatoProb >= 0.999f || r_legato_tie < legatoProb);
+    gs.slurForward = leWouldSlur;
+    // Divergence probe: what the leading-edge flag dictates vs what the current model DID
+    // at this join (Tie/Legato = connected; NewNote = not). Counts only; no behaviour change.
+    if (leStarting) {
+        bool currentConnected = (result.decision == MonoDecision::Tie)
+                             || (result.decision == MonoDecision::Legato)
+                             || (result.decision == MonoDecision::LegatoMax);
+        if (leWouldSlur != currentConnected) ++legatoLE_divergeCount;
+        ++legatoLE_startCount;
+    }
+
+    result.forStep = stepIndex; lastStepResult = result;
     return result;
 }
 
@@ -273,11 +404,29 @@ void SequencerEngine::handlePhraseBoundary(PatternInput input, bool isMelodyReal
     pe.applyPendingSeedsAndRedraw(input);
 }
 
-StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input) {
+StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input, int dir) {
     StepResult result;
     if (!clock.sixteenthEdge || muted) return result;
 
-    bool wrapped = advancePlayhead();
+    bool wrapped = advancePlayhead(dir);
+
+    // "Boundary interrupt" toggle: at the phrase boundary (wrap), force a fresh start by
+    // clearing any held gate BEFORE wasHeld is captured — so the note at step 0 sees no held
+    // predecessor and can't slur/tie across the loop. Result: every lap is identical (no
+    // cross-lap memory). Default OFF = CONTINUE (gate carries across the loop, laps can differ
+    // — see the lap-1-vs-lap-2 illustration in RHYTHM_BEHAVIOUR_POLICIES.md). Applied to mono
+    // and all poly voices.
+    if (wrapped && boundaryInterrupt) {
+        gs.gateHeld = false;
+        gs.holdRemain = 0.f;
+        gs.slurForward = false;
+        for (int i = 0; i < numPolyVoices; ++i) {
+            voices[i].gs.gateHeld   = false;
+            voices[i].gs.holdRemain = 0.f;
+            voices[i].gs.slurForward = false;
+        }
+    }
+
     float r_vary   = pe.variationRandom[getVariationStep()];
     float r_rest   = pe.rhythmRandom[getRhythmStep()];
     float r_legato = pe.legatoRandom[getLegatoStep()];
@@ -286,20 +435,24 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
     int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
 
     float prevHold = gs.holdRemain;
-    wasHeldMono = gs.gateHeld;
-    gs.tick();
-    hadMonoTail = (wasHeldMono && prevHold > 0.0001f && prevHold < 0.999f);
+    wasHeldMono = gs.gateHeld || (prevHold > 0.0001f);
+    gs.tick(ClockEngine::pulsesPer16th(ppqnSetting));
+    hadMonoTail = (prevHold > 0.0001f && prevHold < 0.999f);
 
     for (int i = 0; i < numPolyVoices; ++i) {
-        wasHeldPolyPrev[i] = voices[i].gs.gateHeld;
+        wasHeldPolyPrev[i] = voices[i].gs.gateHeld || (voices[i].gs.holdRemain > 0.0001f);
         float ph = voices[i].gs.holdRemain;
-        voices[i].gs.tick();
+        voices[i].gs.tick(ClockEngine::pulsesPer16th(ppqnSetting));
         hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
     }
     
     result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent, accentProb, input, wasHeldMono, hadMonoTail);
     result.stepped = true;
     result.wrapped = wrapped;
+    // executeStep already assigned lastStepResult (BEFORE wrapped/stepped were set on the local
+    // result), so lastStepResult.wrapped was stale-false. Re-sync so consumers that read
+    // engine.lastStepResult.wrapped (e.g. the Shophouse boundary sampler) see the real value.
+    lastStepResult = result;
     return result;
 }
 
@@ -321,6 +474,15 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
     }
 
     if (triggered) {
+        // Boundary interrupt (see executeModeA): clear held gate at wrap so every lap starts
+        // fresh. Applied before wasHeld capture, mono + poly.
+        if (wrapped && boundaryInterrupt) {
+            gs.gateHeld = false; gs.holdRemain = 0.f; gs.slurForward = false;
+            for (int i = 0; i < numPolyVoices; ++i) {
+                voices[i].gs.gateHeld = false; voices[i].gs.holdRemain = 0.f;
+                voices[i].gs.slurForward = false;
+            }
+        }
         float r_vary   = pe.variationRandom[getVariationStep()];
         float r_rest   = pe.rhythmRandom[getRhythmStep()];
         float r_legato = pe.legatoRandom[getLegatoStep()];
@@ -329,12 +491,12 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
         int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
 
         float prevHold = gs.holdRemain;
-        wasHeldMono = gs.gateHeld;
+        wasHeldMono = gs.gateHeld || (prevHold > 0.0001f);
         gs.tick();
-        hadMonoTail = (wasHeldMono && prevHold > 0.0001f && prevHold < 0.999f);
+        hadMonoTail = (prevHold > 0.0001f && prevHold < 0.999f);
 
         for (int i = 0; i < numPolyVoices; ++i) {
-            wasHeldPolyPrev[i] = voices[i].gs.gateHeld;
+            wasHeldPolyPrev[i] = voices[i].gs.gateHeld || (voices[i].gs.holdRemain > 0.0001f);
             float ph = voices[i].gs.holdRemain;
             voices[i].gs.tick();
             hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
@@ -343,6 +505,7 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
         result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent, accentProb, input, wasHeldMono, hadMonoTail);
         result.stepped = true;
         result.wrapped = wrapped;
+        lastStepResult = result;   // re-sync wrapped/stepped (executeStep set lastStepResult before they were known)
     }
 
     prevGate1High = gate1High;
@@ -358,7 +521,7 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
 //              their own hold.  Voices already at rest remain silent.
 //   Legato / LegatoMax / NewNote — mono played something new; each poly voice
 //              independently rolls its own rest probability then draws its
-//              own pitch using stochasticRng.  Gate type (retrigger vs slide)
+//              own pitch (legacy note). Gate type (retrigger vs slide)
 //              follows mono's decision.  Within the legato zone a poly-internal
 //              tie still emerges naturally when the voice's random pitch
 //              matches its own previous semitone.
@@ -380,7 +543,8 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         float r_rest = pe.polyRhythmRandom[voiceIdx][restIdx];
         
         if (r_rest < v.restProb) {
-            // Decide to Rest: Stick with it until mono gate drops.
+            // Decide to Rest: Stick with it until mono gate drops. No accent while resting.
+            v.accented = false;
             if (v.gs.holdRemain > 0.0001f) v.gs.gateHeld = true; // allow previous note tail to finish
             else v.gs.gateHeld = false;
             return;
@@ -389,10 +553,22 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         // Decide to Play: Draw pitch and follow mono's triggering behavior.
         int sem = 0;
         float pitchV = pe.genPitchLive(sem, input, pe.polyMelodyRandom[voiceIdx][melIdx], pe.polyOctaveRandom[voiceIdx][octIdx]);
+        // Accent as a poly lane (modelled after rest): this voice draws its OWN accent at
+        // its own accent LOR and compares to its own accentProb — not shared from mono.
+        int accIdx = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx][PL_ACCENT], polyOff[voiceIdx][PL_ACCENT], polyRot[voiceIdx][PL_ACCENT]);
+        v.accented = (pe.polyAccentRandom[voiceIdx][accIdx] < v.accentProb);
         if (lastStepResult.decision == MonoDecision::NewNote)
             v.gs.triggerNote(pitchV, sem, lastStepResult.nvIdx);
+        else if (wasHeldPoly || hadPolyTail)
+            // Mono is slurring/tying and THIS poly voice had a held predecessor → real slide.
+            v.gs.slideNote(pitchV, sem, lastStepResult.nvIdx, /*wasHeld=*/true);
         else
-            v.gs.slideNote(pitchV, sem, lastStepResult.nvIdx, wasHeldPoly);
+            // Mono slurs but this poly voice had NO held gate (it was resting/silent on its
+            // previous played step) — sliding would produce an isolated Legato cell (teal note
+            // with no predecessor on this lane), the poly analogue of the mono isolated-teal
+            // bug. Trigger a fresh note instead. (Direction-independent; surfaced in reverse
+            // mode but present forward too.)
+            v.gs.triggerNote(pitchV, sem, lastStepResult.nvIdx);
         return;
     }
 
@@ -405,17 +581,6 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         if (gs.gateHeld && wasHeldPoly) {
             if (lastStepResult.decision == MonoDecision::Tie) {
                 v.gs.extendHold(v.gs.lastSemitone, lastStepResult.nvIdx);
-<<<<<<< HEAD
-            } else if (lastStepResult.decision == MonoDecision::Legato || lastStepResult.decision == MonoDecision::LegatoMax) {
-                // Shift pitch if mono shifted, but don't re-trigger.
-                int polyIdx = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx], polyOff[voiceIdx], polyRot[voiceIdx]);
-                int sem = 0;
-                float pitchV = pe.genPitchLive(sem, input, pe.polyMelodyRandom[voiceIdx][polyIdx], pe.polyOctaveRandom[voiceIdx][polyIdx]);
-                v.gs.slideNote(pitchV, sem, lastStepResult.nvIdx, wasHeldPoly);
-            } else {
-                // MidNote sustain: poly gate follows mono.
-                v.gs.gateHeld = true;
-=======
             } else {
                 // Re-draw pitch for glides (Legato) or sustains (MidNote).
                 // This allows the poly melody to move independently even if 
@@ -433,7 +598,6 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                     v.gs.lastSemitone = sem;
                     v.gs.gateHeld = true;
                 }
->>>>>>> 091ed97df88f5f836c12b99b805c203028fdcdf8
             }
         } else {
             // Mono gate is low OR poly chose to rest for this current high cycle.
@@ -456,7 +620,7 @@ void SequencerEngine::executePolyVoices(const PatternInput& input) {
 void SequencerEngine::executeModeC(const ClockEngine& clock, float inCV) {
     gs.gateHeld = false;
     if (clock.quarterEdge) {
-        gs.tick();
+        gs.tick(ClockEngine::pulsesPer16th(ppqnSetting));
         advancePlayhead();
         gs.currentPitchV = quantize(inCV);
         int sem = int(std::round((gs.currentPitchV - std::floor(gs.currentPitchV)) * 12.f)) % 12;

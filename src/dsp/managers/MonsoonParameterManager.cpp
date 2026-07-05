@@ -1,7 +1,7 @@
 #include "MonsoonParameterManager.hpp"
 #include "../../Monsoon.hpp"
 #include "../../MonsoonInterchangeExpander.hpp"
-#include "../../MonsoonStraitsEastExpander.hpp"
+#include "../../MonsoonStraitsExpander.hpp"
 
 using namespace rack;
 using namespace MonsoonIds;
@@ -28,26 +28,28 @@ float ParameterManager::readInput_(int inputId) const {
 // ──── Core Parameter Getters ────────────────────────────────────────────────
 
 float ParameterManager::getNoteValue() const {
-    float v = readParam_(NOTE_VALUE_PARAM, 0.f, 8.f);
-    v = clampv(v + cv2Offsets[0] + surgeOffsets[0]*8.f, 0.f, 8.f);
+    // Param range is 0..7 (8 note values, indices 0..7) — was mistakenly read/
+    // clamped to 0..8 (an index 8 doesn't exist) with junction scaled by 8.
+    float v = readParam_(NOTE_VALUE_PARAM, 0.f, 7.f);
+    v = clampv(v + cv2Offsets[0] + junctionOffsets[0]*7.f, 0.f, 7.f);
     return v;
 }
 
 float ParameterManager::getVariation() const {
     float v = readParam_(VARIATION_PARAM, 0.f, 1.f);
-    v = clampv(v + cv2Offsets[1] + surgeOffsets[1], 0.f, 1.f);
+    v = clampv(v + cv2Offsets[1] + junctionOffsets[1], 0.f, 1.f);
     return v;
 }
 
 float ParameterManager::getLegato() const {
     float v = readParam_(LEGATO_PARAM, 0.f, 1.f);
-    v = clampv(v + cv2Offsets[2] + surgeOffsets[2], 0.f, 1.f);
+    v = clampv(v + cv2Offsets[2] + junctionOffsets[2], 0.f, 1.f);
     return v;
 }
 
 float ParameterManager::getRest() const {
     float v = readParam_(REST_PARAM, 0.f, 1.f);
-    v = clampv(v + cv2Offsets[3] + surgeOffsets[3], 0.f, 1.f);
+    v = clampv(v + cv2Offsets[3] + junctionOffsets[3], 0.f, 1.f);
     return v;
 }
 
@@ -55,8 +57,29 @@ float ParameterManager::getAccent() const {
     float v = readParam_(ACCENT_KNOB, 0.f, 1.f);
     // Direct CV input: 0–10V = 0–100%
     float cv = readInput_(ACCENT_CV_INPUT); // CV input is 0-10V, scale to 0-1
-    v += cv * 0.1f + surgeOffsets[4] + cv2Offsets[4]; // Add CV2 offset for Accent
+    v += cv * 0.1f + junctionOffsets[4] + cv2Offsets[4]; // Add CV2 offset for Accent
     return clampv(v, 0.f, 1.f);
+}
+
+bool ParameterManager::anyPitchModulated() const {
+    for (int i = 0; i < 12; ++i)
+        if (std::fabs(getSemitone(i) - readParam_(SEMI0_PARAM + i, 0.f, 1.f)) > 1e-4f) return true;
+    if (std::fabs(getOctaveLo() - readParam_(OCT_LO_PARAM, 0.f, 8.f)) > 1e-4f) return true;
+    if (std::fabs(getOctaveHi() - readParam_(OCT_HI_PARAM, 0.f, 8.f)) > 1e-4f) return true;
+    return false;
+}
+
+// Per-lane: 0..11 = semitones, 12 = octaveLo, 13 = octaveHi. Each light slider's
+// arc gates on its OWN lane so an unmodulated slider never draws even when a
+// sibling pitch lane is modulated (the group-trail bug).
+bool ParameterManager::pitchLaneModulated(int lane) const {
+    if (lane >= 0 && lane < 12)
+        return std::fabs(getSemitone(lane) - readParam_(SEMI0_PARAM + lane, 0.f, 1.f)) > 1e-4f;
+    if (lane == 12)
+        return std::fabs(getOctaveLo() - readParam_(OCT_LO_PARAM, 0.f, 8.f)) > 1e-4f;
+    if (lane == 13)
+        return std::fabs(getOctaveHi() - readParam_(OCT_HI_PARAM, 0.f, 8.f)) > 1e-4f;
+    return false;
 }
 
 float ParameterManager::getTranspose() const {
@@ -132,6 +155,37 @@ float ParameterManager::getSemitone(int semIdx) const {
 }
 
 // ──── Poly Voice Rest Probability ───────────────────────────────────────────
+
+float ParameterManager::getPolyAccent(int voiceIdx) const {
+    // Per-voice accent probability (accent as a poly lane), mirroring getPolyRest EXACTLY.
+    // BUG FIX: this previously used readParam_(POLY_ACCENT_PARAM_1 + voiceIdx) — the HOST param
+    // space — but the per-voice poly accent params live on the poly-voice EXPANDER (Straits
+    // East), same as the poly rest params. So readParam_ never saw the expander's accent knobs
+    // and returned ~0, so poly voices NEVER accented even with accent turned up on East. Read
+    // from cachedPolyVoiceExpander like getPolyRest does. (Per-voice CV×attenuverter modulation
+    // is still added on top in Monsoon's process loop, exactly like rest.)
+    if (voiceIdx < 0 || voiceIdx > 14) return 0.f;
+
+    float v = 0.f;  // default: no accent
+
+    if (cachedPolyVoiceExpander && *cachedPolyVoiceExpander) {
+        auto& params = (*cachedPolyVoiceExpander)->params;
+        auto& inputs = (*cachedPolyVoiceExpander)->inputs;
+
+        int paramId = POLY_ACCENT_PARAM_1 + voiceIdx;
+        if (paramId < (int)params.size()) {
+            v = params[paramId].getValue();
+        }
+        // shared accent CV input (0–10V → 0–1 additional), mirroring poly rest's CV add
+        int cvInputId = POLY_ACCENT_CV_INPUT;
+        if (cvInputId < (int)inputs.size()) {
+            float cv = inputs[cvInputId].getNormalVoltage(0.f);
+            v += cv / 10.0f;
+        }
+    }
+
+    return clampv(v, 0.f, 1.f);
+}
 
 float ParameterManager::getPolyRest(int voiceIdx) const {
     if (voiceIdx < 0 || voiceIdx > 14) return 0.1f;

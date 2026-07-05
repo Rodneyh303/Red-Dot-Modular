@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 450" width="100%" height="100%">
+  <rect width="1000" height="450" fill="#000"/>
+  <!-- DOME GRID -->
+  <g fill="none" stroke-linecap="round">
+    <g stroke="#666" stroke-width="1.4" opacity="0.55">
+      <path d="M35 340 Q420 240 965 250"/><path d="M40 300 Q420 205 950 225"/><path d="M45 265 Q415 175 925 200"/><path d="M55 230 Q410 145 890 178"/><path d="M70 195 Q400 115 845 155"/><path d="M90 160 Q380 88 790 138"/><path d="M120 130 Q350 68 720 125"/><path d="M155 102 Q320 52 650 118"/>
+    </g>
+    <g stroke="#767676" stroke-width="2" opacity="0.65">
+      <ellipse cx="-40" cy="380" rx="140" ry="370"/><ellipse cx="0" cy="380" rx="145" ry="370"/><ellipse cx="40" cy="380" rx="150" ry="370"/><ellipse cx="80" cy="380" rx="155" ry="370"/><ellipse cx="120" cy="380" rx="160" ry="370"/><ellipse cx="160" cy="380" rx="165" ry="370"/><ellipse cx="200" cy="380" rx="170" ry="370"/><ellipse cx="240" cy="380" rx="175" ry="370"/><ellipse cx="280" cy="380" rx="180" ry="370"/><ellipse cx="320" cy="380" rx="185" ry="370"/><ellipse cx="360" cy="380" rx="190" ry="370"/>
+      <ellipse cx="420" cy="380" rx="180" ry="370"/><ellipse cx="470" cy="380" rx="170" ry="370"/><ellipse cx="520" cy="380" rx="160" ry="370"/><ellipse cx="570" cy="380" rx="150" ry="370"/><ellipse cx="620" cy="380" rx="140" ry="370"/><ellipse cx="670" cy="380" rx="130" ry="370"/><ellipse cx="720" cy="380" rx="120" ry="370"/><ellipse cx="770" cy="380" rx="110" ry="370"/><ellipse cx="820" cy="380" rx="100" ry="370"/><ellipse cx="870" cy="380" rx="90" ry="370"/><ellipse cx="920" cy="380" rx="80" ry="370"/><ellipse cx="960" cy="380" rx="70" ry="370"/>
+    </g>
+    <g stroke="#8a8a8a" stroke-width="1" opacity="0.13">
+      <path d="M70 330 L120 280 L170 330 M170 330 L220 280 L270 330 M270 330 L320 280 L370 330 M370 330 L420 280 L470 330 M470 330 L520 280 L570 330 M570 330 L620 280 L670 330 M670 330 L720 280 L770 330"/>
+      <path d="M120 250 L170 205 L220 250 M220 250 L270 205 L320 250 M320 250 L370 205 L420 250 M420 250 L470 205 L520 250 M520 250 L570 205 L620 250"/>
+    </g>
+  </g>
+  <!-- BAKED CLIP via a single black "sky frame" path: its inner boundary is the
+       EXACT dome curve, its outer boundary is the canvas top/sides. Fills every
+       pixel ABOVE & OUTSIDE the dome shell, hiding the rib/band spill while
+       following the curve precisely (no clipPath needed). -->
+  <path d="M0 0 L1000 0 L1000 250
+           C900 125 720 45 500 42
+           C240 45 40 120 35 340
+           L0 340 Z" fill="#000"/>
+  <!-- bottom band below the dome baseline -->
+  <path d="M0 343 L1000 343 L1000 450 L0 450 Z" fill="#000"/>
+  <!-- right shoulder fill (between dome right descent and the platform) -->
+  <path d="M965 250 L1000 250 L1000 343 L965 343 Z" fill="#000"/>
+  <!-- DOME OUTLINE (gradient flattened to solid metal grey) -->
+  <path d="M35 340 C40 120 240 45 500 42 C720 45 900 125 965 250" fill="none" stroke="#787878" stroke-width="6" stroke-linecap="round"/>
+  <path d="M18 342 L840 285" fill="none" stroke="#777" stroke-width="10" stroke-linecap="round"/>
+  <path d="M35 405 L760 375" fill="none" stroke="#6c6c6c" stroke-width="9" stroke-linecap="round"/>
+  <g stroke="#727272" stroke-width="10" fill="none" stroke-linejoin="round" stroke-linecap="round">
+    <polyline points="40,403 75,404 130,340 195,395 250,392 325,330 395,385 455,382 540,318 615,374 675,370 760,285"/>
+    <path d="M130 340 L130 398 M325 330 L325 388 M540 318 L540 380"/>
+  </g>
+  <polygon points="760,288 980,270 980,280 790,295" fill="#777"/>
+  <polygon points="790,295 980,295 980,340 855,340 855,360 735,360 735,350 790,347" fill="#474747"/>
+  <rect x="845" y="312" width="120" height="10" fill="#222"/>
+  <ellipse cx="470" cy="420" rx="410" ry="16" fill="#111" opacity="0.5"/>
+</svg>

@@ -1,35 +1,20 @@
 #include "PatternEngine.hpp"
 
-// ── RNG helpers ───────────────────────────────────────────────────────────
-void PatternEngine::seedRngFromFloat(rack::random::Xoroshiro128Plus& rng, float seedFloat) {
-    float s  = pe_clamp(seedFloat, 0.f, 10.f);
-    uint64_t s1 = (uint64_t)((double)s / 10.0 * (double)MAX_U64);
-    uint64_t s2 = s1 + 0x9e3779b97f4a7c15ULL;
-    s2 = (s2 ^ (s2 >> 30)) * 0xbf58476d1ce4e5b9ULL;
-    s2 = (s2 ^ (s2 >> 27)) * 0x94d049bb133111ebULL;
-    s2 ^= (s2 >> 31);
-    rng.seed(s1, s2);
-}
-
-void PatternEngine::seedRngFull(rack::random::Xoroshiro128Plus& rng) {
-    // Full state-space seed from two independent 64-bit entropy words — used for
-    // internal (no-CV) reseeds so they are not bottlenecked through the 0..10
-    // float that exists only for CV compatibility.
-    uint64_t s1 = rack::random::u64();
-    uint64_t s2 = rack::random::u64();
-    if (s1 == 0 && s2 == 0) s1 = 0x9e3779b97f4a7c15ULL;  // avoid all-zero state
-    rng.seed(s1, s2);
-}
-
 void PatternEngine::reset() {
     rhythmSeedPending = melodySeedPending = false;
     rhythmRollPending = melodyRollPending = false;
+    rhythmPendingLast = melodyPendingLast = false;
     rhythmTrialPending = melodyTrialPending = false;
     rhythmReseedRollPending = melodyReseedRollPending = false;
     rhythmReseedRollFull = melodyReseedRollFull = false;
     rhythmABCached = melodyABCached = false;
     rhythmMode = melodyMode = 0;
     rhythmSeedCached = melodySeedCached = false;
+
+    // Initialise the addressable Philox draw engines from the current seed floats
+    // (default 0 → a fixed reproducible starting sequence, counter at 0).
+    seedRhythmPhilox(rhythmSeedFloat);
+    seedMelodyPhilox(melodySeedFloat);
 
     // strands must not be all-zero or module is silent until dice/phrase
     for (int i = 0; i < 16; ++i) {
@@ -42,10 +27,16 @@ void PatternEngine::reset() {
         
         for (int v = 0; v < 15; v++) {
             polyRhythmRandom[v][i] = 1.0f; // Poly voices trigger by default
+            polyAccentRandom[v][i] = 1.0f; // No accent by default (1.0 < accentProb is false).
+                                           // BUG FIX: this seed was missing (rhythm had it, accent
+                                           // didn't), so polyAccentRandom stayed 0 → 0<accentProb
+                                           // always true → EVERY poly note accented on any nonzero
+                                           // accent knob. Mirrors polyAccentSource=1.0 below.
             polyMelodyRandom[v][i] = 0.5f;
             polyOctaveRandom[v][i] = 0.5f;
             
             polyRhythmSource[v][i] = 1.0f;
+            polyAccentSource[v][i] = 1.0f;
             polyMelodySource[v][i] = polyMelodyRandom[v][i];
             polyOctaveSource[v][i] = polyOctaveRandom[v][i];
         }
@@ -75,7 +66,9 @@ void PatternEngine::reset() {
 
         for (int v=0;v<15;v++){
             polyRhythmLockedA[v][i] = polyMelodyLockedA[v][i] = polyOctaveLockedA[v][i] = 0.f;
+            polyAccentLockedA[v][i] = 0.f;
             polyRhythmCandB[v][i] = polyRhythmRandom[v][i];
+            polyAccentCandB[v][i] = polyAccentRandom[v][i];
             polyMelodyCandB[v][i] = polyMelodyRandom[v][i];
             polyOctaveCandB[v][i] = polyOctaveRandom[v][i];
         }
@@ -142,62 +135,60 @@ float PatternEngine::genPitchLive(int& outSemitone, const PatternInput& in, floa
 
 // Apply variation bias to a note length index.
 int PatternEngine::varyNoteIndex(int baseIdx, const PatternInput& in, float r) {
-    // variationAmount=0.5 → zero variation (all weight on baseIdx, no spread).
-    // variationAmount → 0 → bias toward longer notes (lower index).
-    // variationAmount → 1 → bias toward shorter notes (higher index).
-    // spread = 0 at centre, 1 at extremes — controls how much adjacent
-    // indices are weighted relative to baseIdx.
-    // Bit 0 toggles 1/4T (Index 3).
-    // Bit 1 toggles 1/8T (Index 5).
-    // Bit 2 toggles 1/32 (Index 7).
+    // Weights are evenly distributed over a window that expands from the base 
+    // index toward the shorter (var > 0.5) or longer (var < 0.5) extremes. 
+    // At 50% variation, only the base note is played. At extremes, weight 
+    // is shared uniformly across the reachable range.
+
     auto allowed = [&](int idx) -> bool {
         if (idx < 0 || idx >= 8) return false;
         if (idx == 3) return (in.noteVariationMask & 0b001) != 0; // 1/4T
         if (idx == 5) return (in.noteVariationMask & 0b010) != 0; // 1/8T
-        if (idx == 7) return (in.noteVariationMask & 0b100) != 0; // 1/32
+        if (idx == 7) return (in.noteVariationMask & 0b100) != 0; // 1/32 & 1/32T
         return true;
     };
 
-    float var    = in.variationAmount;
-    float spread = 2.f * std::fabs(var - 0.5f);  // 0 at 50%, 1 at extremes
-    if (spread < 1e-4f) return baseIdx;           // exactly 50%: no variation
+    float var = in.variationAmount;
+    if (std::fabs(var - 0.5f) < 1e-4f) return baseIdx;
 
+    float spread = 2.f * std::fabs(var - 0.5f); // 0..1
+    int direction = (var < 0.5f) ? -1 : 1;
+    int targetExtreme = (direction == -1) ? 0 : 7;
+    float maxDist = (float)std::abs(targetExtreme - baseIdx);
+    
+    if (maxDist < 0.5f) return baseIdx; 
+
+    float reach = spread * maxDist;
     float weights[8] = {};
     float total = 0.f;
 
     for (int i = 0; i < 8; ++i) {
-        if (!allowed(i)) continue;
-
+        int dist = direction * (i - baseIdx);
+        if (dist < 0) continue; // Only consider chosen direction
+        
         if (i == baseIdx) {
-            // The original note's weight drops as variation increases.
-            // At 100% (spread = 1.0), the base note weight is 0.
-            weights[i] = 1.0f - spread;
+            weights[i] = 1.0f; // Base note always active
         } else {
-            bool isShorter = (i > baseIdx);
-            bool isLonger  = (i < baseIdx);
+            if (!allowed(i)) continue;
 
-            // Strict Directional Filtering:
-            // If variation is > 50%, we exclude longer notes entirely.
-            // If variation is < 50%, we exclude shorter notes entirely.
-            if (var > 0.5f && isLonger) weights[i] = 0.f;
-            else if (var < 0.5f && isShorter) weights[i] = 0.f;
-            else {
-                // Weight varies by distance, but is enabled by 'spread'
-                float dist = (float)std::abs(i - baseIdx);
-                weights[i] = spread / dist;
+            float fDist = (float)dist;
+            if (fDist <= reach) {
+                weights[i] = 1.0f;
+            } else if (fDist < reach + 1.0f) {
+                weights[i] = reach - (fDist - 1.0f); // partial weight for the leading edge
             }
         }
         total += weights[i];
     }
-
-    if (total <= 0.f) return baseIdx;
+    
+    if (total <= 1e-6f) return baseIdx;
     
     float acc = 0.f;
-    r *= total;
+    float roll = r * total;
     for (int i = 0; i < 8; ++i) {
         if (weights[i] > 0.f) {
             acc += weights[i];
-            if (r <= acc) return i;
+            if (roll <= acc) return i;
         }
     }
     return baseIdx;
@@ -218,6 +209,13 @@ void PatternEngine::redrawRhythm(const PatternInput& in, bool promoteToA) {
     const bool first = rhythmFirstDraw;
     rhythmFirstDraw = false;
 
+    // Philox addressable draw bookkeeping. A fresh seed (first) draws chunk 0. Forward
+    // → index +1; a reversible stream under backward phase → index -1 (no floor —
+    // negative indices are valid reproducible draws). Cursor resets to map unit() calls
+    // to this draw's chunk base.
+    if (!first) advanceRhythmDraw(rhythmDrawDir());
+    beginRhythmDraw();
+
     for (int i = 0; i < 16; ++i) {
         // MAIN mode: promote current B -> A (commit the last candidate) before
         // drawing the new one. TRIAL mode skips this so A stays anchored.
@@ -227,6 +225,7 @@ void PatternEngine::redrawRhythm(const PatternInput& in, bool promoteToA) {
             legatoLockedA[i]    = legatoCandB[i];
             accentLockedA[i]    = accentCandB[i];
             for (int v = 0; v < 15; v++) polyRhythmLockedA[v][i] = polyRhythmCandB[v][i];
+            for (int v = 0; v < 15; v++) polyAccentLockedA[v][i] = polyAccentCandB[v][i];
         }
 
         // fresh candidate B. MODEL 2: SLEW is consumed here — instead of storing
@@ -245,12 +244,14 @@ void PatternEngine::redrawRhythm(const PatternInput& in, bool promoteToA) {
             legatoCandB[i]    = unitRhythm();
             accentCandB[i]    = unitRhythm();
             for (int v = 0; v < 15; v++) polyRhythmCandB[v][i] = unitRhythm();
+            for (int v = 0; v < 15; v++) polyAccentCandB[v][i] = unitRhythm();
         } else {
             rhythmCandB[i]    = step(rhythmLockedA[i]);
             variationCandB[i] = step(variationLockedA[i]);
             legatoCandB[i]    = step(legatoLockedA[i]);
             accentCandB[i]    = step(accentLockedA[i]);
             for (int v = 0; v < 15; v++) polyRhythmCandB[v][i] = step(polyRhythmLockedA[v][i]);
+            for (int v = 0; v < 15; v++) polyAccentCandB[v][i] = step(polyAccentLockedA[v][i]);
         }
     }
     rhythmSlewApplied = -1.f;       // force recompute of slewedDraw
@@ -261,6 +262,7 @@ void PatternEngine::redrawRhythm(const PatternInput& in, bool promoteToA) {
         rhythmSource[i]=slewedRhythm[i]; variationSource[i]=slewedVariation[i];
         legatoSource[i]=slewedLegato[i]; accentSource[i]=slewedAccent[i];
         for (int v=0;v<15;v++) polyRhythmSource[v][i]=slewedPolyRhythm[v][i];
+        for (int v=0;v<15;v++) polyAccentSource[v][i]=slewedPolyAccent[v][i];
         rhythmPattern[i] = (slewedRhythm[i] >= in.restProb);
     }
 }
@@ -278,14 +280,23 @@ void PatternEngine::recomputeEffectiveRhythm() {
         slewedVariation[i] = bl(variationLockedA[i], variationCandB[i]);
         slewedLegato[i]    = bl(legatoLockedA[i],    legatoCandB[i]);
         slewedAccent[i]    = bl(accentLockedA[i],    accentCandB[i]);
-        for (int v = 0; v < 15; v++)
+        for (int v = 0; v < 15; v++) {
             slewedPolyRhythm[v][i] = bl(polyRhythmLockedA[v][i], polyRhythmCandB[v][i]);
+            slewedPolyAccent[v][i] = bl(polyAccentLockedA[v][i], polyAccentCandB[v][i]);
+        }
     }
     if (!sandsActive) {
         for (int i = 0; i < 16; ++i) {
             rhythmRandom[i]=slewedRhythm[i]; variationRandom[i]=slewedVariation[i];
             legatoRandom[i]=slewedLegato[i]; accentRandom[i]=slewedAccent[i];
             for (int v=0;v<15;v++) polyRhythmRandom[v][i]=slewedPolyRhythm[v][i];
+            // BUG FIX: poly accent was NOT promoted here (only rhythm was), so in the non-sands
+            // path polyAccentRandom never received its slewed random values — it stayed at its
+            // init value (0 → all notes accent; or 1.0 after the init-seed fix → no notes
+            // accent). This is the real root cause; the init seed only changed which stuck
+            // value showed. Mirror the rhythm promotion. (sandsActive path already sets both via
+            // SpreadInterp at MonsoonSandsManager 460/463.)
+            for (int v=0;v<15;v++) polyAccentRandom[v][i]=slewedPolyAccent[v][i];
         }
     }
     rhythmMixApplied = s;
@@ -317,6 +328,10 @@ void PatternEngine::redrawMelody(const PatternInput& in, bool promoteToA) {
     if (in.locked) return;
     const bool first = melodyFirstDraw;
     melodyFirstDraw = false;
+
+    // Philox addressable draw bookkeeping (mirror of redrawRhythm).
+    if (!first) advanceMelodyDraw(melodyDrawDir());
+    beginMelodyDraw();
 
     for (int i = 0; i < 16; ++i) {
         // MAIN: commit current B → A before drawing fresh B. TRIAL: A anchored.
@@ -389,49 +404,51 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
 
     if (rhythmSeedPending) {
         rhythmSeedFloat = rhythmSeedPendingFloat;
-        seedRngFromFloat(rhythmRng, rhythmSeedFloat);
+        seedRhythmPhilox(rhythmSeedFloat);     // mirror seed into Philox (counter→0)
         rhythmSeedPending = false;
         rhythmFirstDraw = true;   // new seed → A=B=draw, reproducible at any slew
     } else if (rhythmReseedRollPending) {
         // Reseed WITHOUT firstDraw — redrawRhythm(promote=true) commits B→A then
         // draws fresh B from the reseeded stream, so A≠B and slew survives.
-        if (rhythmReseedRollFull) seedRngFull(rhythmRng);
-        else { rhythmSeedFloat = rhythmReseedRollFloat; seedRngFromFloat(rhythmRng, rhythmSeedFloat); }
-    } else if (in.reseedOnRoll && rhythmMode == 1 && !in.rhythmLiveTrial) {
+        if (rhythmReseedRollFull) { seedRhythmPhiloxFull(); }
+        else { rhythmSeedFloat = rhythmReseedRollFloat; seedRhythmPhilox(rhythmSeedFloat); }
+    } else if (in.reseedOnRoll && rhythmMode == 1 && !in.rhythmLiveTrial && !rhythmReversible) {
         // Realtime MAIN + reseed-on-roll: reseed each redraw. (Live TRIAL never
         // reseeds — it auditions against a fixed A.) CV if present, else full
         // 64-bit internal entropy.
-        if (in.seedConnected) { rhythmSeedFloat = in.seedSampleValue; seedRngFromFloat(rhythmRng, rhythmSeedFloat); }
-        else                  seedRngFull(rhythmRng);
+        if (in.seedConnected) { rhythmSeedFloat = in.seedSampleValue; seedRhythmPhilox(rhythmSeedFloat); }
+        else                  { seedRhythmPhiloxFull(); }
     }
     // Promote (main, A walks) unless this is a momentary TRIAL roll OR live mode
     // is sourced from the TRIAL dice (anchored A → variations on a theme).
-    const bool rLiveTrial = (rhythmMode == 1 && in.rhythmLiveTrial);
+    const bool rLiveTrial = (rhythmMode == 1 && in.rhythmLiveTrial && !rhythmReversible);
     const bool rPromote = !rhythmTrialPending && !rLiveTrial;
     rhythmRollPending = false;
     rhythmTrialPending = false;
     rhythmReseedRollPending = false;
     if (shouldRedrawR) redrawRhythm(in, rPromote);
+    rhythmPendingLast = false;   // one-shot: consumed by this boundary's redraw
 
     if (melodySeedPending) {
         melodySeedFloat = melodySeedPendingFloat;
-        seedRngFromFloat(melodyRng, melodySeedFloat);
+        seedMelodyPhilox(melodySeedFloat);     // mirror seed into Philox (counter→0)
         melodySeedPending = false;
         melodyFirstDraw = true;
     } else if (melodyReseedRollPending) {
-        if (melodyReseedRollFull) seedRngFull(melodyRng);
-        else { melodySeedFloat = melodyReseedRollFloat; seedRngFromFloat(melodyRng, melodySeedFloat); }
-    } else if (in.reseedOnRoll && melodyMode == 1 && !in.melodyLiveTrial) {
+        if (melodyReseedRollFull) { seedMelodyPhiloxFull(); }
+        else { melodySeedFloat = melodyReseedRollFloat; seedMelodyPhilox(melodySeedFloat); }
+    } else if (in.reseedOnRoll && melodyMode == 1 && !in.melodyLiveTrial && !melodyReversible) {
         // Realtime MAIN + reseed-on-roll only (live TRIAL never reseeds).
-        if (in.seedConnected) { melodySeedFloat = in.seedSampleValue; seedRngFromFloat(melodyRng, melodySeedFloat); }
-        else                  seedRngFull(melodyRng);
+        if (in.seedConnected) { melodySeedFloat = in.seedSampleValue; seedMelodyPhilox(melodySeedFloat); }
+        else                  { seedMelodyPhiloxFull(); }
     }
-    const bool mLiveTrial = (melodyMode == 1 && in.melodyLiveTrial);
+    const bool mLiveTrial = (melodyMode == 1 && in.melodyLiveTrial && !melodyReversible);
     const bool mPromote = !melodyTrialPending && !mLiveTrial;
     melodyRollPending = false;
     melodyTrialPending = false;
     melodyReseedRollPending = false;
     if (shouldRedrawM) redrawMelody(in, mPromote);
+    melodyPendingLast = false;   // one-shot: consumed by this boundary's redraw
 
     // Always refresh the cache so the LEDs react to live knob changes in Dice mode
     if (!shouldRedrawR || !shouldRedrawM) refreshVisualCache(in);
@@ -507,6 +524,7 @@ void PatternEngine::switchRhythmMode(int& stepIndex, int& lastStepIndex) {
             cLegatoA[i]    = legatoLockedA[i];    cLegatoB[i]    = legatoCandB[i];
             cAccentA[i]    = accentLockedA[i];    cAccentB[i]    = accentCandB[i];
             for (int v = 0; v < 15; ++v) { cPolyRhythmA[v][i] = polyRhythmLockedA[v][i]; cPolyRhythmB[v][i] = polyRhythmCandB[v][i]; }
+            for (int v = 0; v < 15; ++v) { cPolyAccentA[v][i] = polyAccentLockedA[v][i]; cPolyAccentB[v][i] = polyAccentCandB[v][i]; }
         }
         rhythmABCached = true;
     } else if (prev == 1 && next == 0 && rhythmSeedCached) {
@@ -521,6 +539,7 @@ void PatternEngine::switchRhythmMode(int& stepIndex, int& lastStepIndex) {
                 legatoLockedA[i]    = cLegatoA[i];    legatoCandB[i]    = cLegatoB[i];
                 accentLockedA[i]    = cAccentA[i];    accentCandB[i]    = cAccentB[i];
                 for (int v = 0; v < 15; ++v) { polyRhythmLockedA[v][i] = cPolyRhythmA[v][i]; polyRhythmCandB[v][i] = cPolyRhythmB[v][i]; }
+                for (int v = 0; v < 15; ++v) { polyAccentLockedA[v][i] = cPolyAccentA[v][i]; polyAccentCandB[v][i] = cPolyAccentB[v][i]; }
             }
             recomputeEffectiveRhythm();
         } else {
@@ -580,6 +599,7 @@ void PatternEngine::resetDnaRotation() {
     for (int v = 0; v < 15; v++) {
         for (int i = 0; i < 16; i++) {
             polyRhythmRandom[v][i] = polyRhythmSource[v][i];
+            polyAccentRandom[v][i] = polyAccentSource[v][i];
             polyMelodyRandom[v][i] = polyMelodySource[v][i];
             polyOctaveRandom[v][i] = polyOctaveSource[v][i];
         }

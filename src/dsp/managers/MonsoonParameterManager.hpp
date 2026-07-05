@@ -1,9 +1,10 @@
 #pragma once
 
+#include <cmath>
 #include "rack.hpp"
 
 struct MonsoonInterchangeExpander;
-struct MonsoonStraitsEastExpander;
+struct MonsoonStraitsExpander;
 
 /**
  * ParameterManager
@@ -22,7 +23,7 @@ class ParameterManager {
 public:
     ParameterManager(rack::engine::Module* mainModule,
                      MonsoonInterchangeExpander** cachedExpander,
-                     MonsoonStraitsEastExpander** cachedPolyVoiceExpander)
+                     MonsoonStraitsExpander** cachedPolyVoiceExpander)
         : mainModule(mainModule),
           cachedExpander(cachedExpander),
           cachedPolyVoiceExpander(cachedPolyVoiceExpander) {}
@@ -43,6 +44,61 @@ public:
     
     /// Accent probability (0–1) with direct CV input (0–10V = 0–100%)
     float getAccent() const;
+
+    /// Big-5 effective values NORMALISED to 0..1 (for modulation visualisation).
+    /// These reuse the effective-value getters above; NOTE_VALUE is divided by 8
+    /// so all five share a 0..1 range the widgets can compare to knob position.
+    // Normalize over the param's ACTUAL range 0..7 (NUM_NOTE_VALUES-1 = 8 values,
+    // indices 0..7) so this matches paramQuantities->getScaledValue() (the mod-arc's
+    // setNorm). Dividing by 8 desynced set vs mod and left a permanent arc.
+    float getNoteValueNorm() const { return getNoteValue() / 7.f; }
+    float getVariationNorm() const { return getVariation(); }
+    float getLegatoNorm()    const { return getLegato(); }
+    float getRestNorm()      const { return getRest(); }
+    float getAccentNorm()    const { return getAccent(); }
+    /// True if any big-5 modulation source is currently contributing an offset.
+    bool  anyBig5Modulated() const {
+        for (int i = 0; i < 5; ++i) if (junctionOffsets[i] != 0.f) return true;
+        for (int i = 0; i < 5; ++i) if (cv2Offsets[i]   != 0.f) return true;
+        return false;
+    }
+    // Per-LANE modulation test (0=note,1=variation,2=legato,3=rest,4=accent). The
+    // mod-arcs must gate on THEIR OWN lane — using the global anyBig5Modulated()
+    // marked every big-5 arc active whenever ANY lane was modulated, so turning an
+    // unmodulated knob (while another lane was modulated) drew a stray arc/trail.
+    bool  big5LaneModulated(int lane) const {
+        if (lane < 0 || lane > 4) return false;
+        return junctionOffsets[lane] != 0.f || cv2Offsets[lane] != 0.f;
+    }
+    /// Slew/mix effective values (all native 0..1). True if any CV3 offset active.
+    float getRhythmSlewNorm() const { return getRhythmSlew(); }
+    float getMelodySlewNorm() const { return getMelodySlew(); }
+    float getRhythmMixNorm()  const { return getRhythmMix(); }
+    float getMelodyMixNorm()  const { return getMelodyMix(); }
+    bool  anyCv3Modulated() const {
+        for (int i = 0; i < 4; ++i) if (cv3Offsets[i] != 0.f) return true;
+        return false;
+    }
+    // Per-LANE CV3 test (0=rhythmSlew,1=melodySlew,2=rhythmMix,3=melodyMix). Same
+    // fix as big5LaneModulated: the slew/mix arcs must gate on THEIR OWN lane, else
+    // modulating one (e.g. rhythm slew) marks all four active and they trail when
+    // turned.
+    bool  cv3LaneModulated(int lane) const {
+        if (lane < 0 || lane > 3) return false;
+        return cv3Offsets[lane] != 0.f;
+    }
+    /// Pitch sliders, normalised 0..1 (semitones native 0..1; octaves /8).
+    float getSemitoneNorm(int i) const { return getSemitone(i); }
+    float getOctaveLoNorm() const { return getOctaveLo() / 8.f; }
+    float getOctaveHiNorm() const { return getOctaveHi() / 8.f; }
+    /// True if any pitch slider's effective value differs from its raw param
+    /// (i.e. expander/CV1 is modulating it). Compared with a small epsilon.
+    bool  anyPitchModulated() const;
+    // Per-LANE pitch modulation test (0..11 = semitones, 12 = octaveLo, 13 = octaveHi).
+    // Same per-lane fix as big5/cv3: each light slider's arc must gate on ITS OWN
+    // lane, else modulating one pitch element marks the whole group active and the
+    // others trail when turned manually. Defined in the .cpp (needs the getters).
+    bool  pitchLaneModulated(int lane) const;
     
     /// Transpose in semitones (-12 to +12)
     float getTranspose() const;
@@ -78,6 +134,7 @@ public:
     /// Get rest probability for poly voice (voiceIdx 0–6 maps to voices 2–8)
     /// Falls back to 0.1 if no poly voice expander
     float getPolyRest(int voiceIdx) const;
+    float getPolyAccent(int voiceIdx) const;
     
     // ──── CV2 Offset Management ──────────────────────────────────────────────
     
@@ -90,10 +147,13 @@ public:
     
     /// Get all CV2 offsets (for debugging/persistence) - now 5 elements
     const float* getCv2Offsets() const { return cv2Offsets; }
+    const float* getCv3Offsets() const { return cv3Offsets; }
+    const float* getJunctionOffsets() const { return junctionOffsets; }
     
     /// Clear all CV2 offsets
     void clearCv2Offsets() {
         for (int i = 0; i < 4; ++i) cv2Offsets[i] = 0.f;
+        for (int i = 0; i < 5; ++i) cv2Offsets[i] = 0.f;
     }
 
     // ──── CV3 Offset Management ──────────────────────────────────────────────
@@ -110,14 +170,14 @@ public:
         for (int i = 0; i < 4; ++i) cv3Offsets[i] = 0.f;
     }
 
-    // ──── Surge Expander Offset Management ───────────────────────────────────
-    // Big-5 CV (x attenuverter) offsets from the Surge expander, summed into the
+    // ──── Junction Expander Offset Management ───────────────────────────────────
+    // Big-5 CV (x attenuverter) offsets from the Junction expander, summed into the
     // matching getters. Index: 0 note value, 1 variation, 2 legato, 3 rest, 4 accent.
-    void setSurgeOffset(int i, float offset) {
-        if (i >= 0 && i < 5) surgeOffsets[i] = offset;
+    void setJunctionOffset(int i, float offset) {
+        if (i >= 0 && i < 5) junctionOffsets[i] = offset;
     }
-    void clearSurgeOffsets() {
-        for (int i = 0; i < 5; ++i) surgeOffsets[i] = 0.f;
+    void clearJunctionOffsets() {
+        for (int i = 0; i < 5; ++i) junctionOffsets[i] = 0.f;
     }
 
     // CV1 BPM Offset
@@ -127,14 +187,14 @@ public:
 private:
     rack::engine::Module* mainModule;
     MonsoonInterchangeExpander** cachedExpander;
-    MonsoonStraitsEastExpander** cachedPolyVoiceExpander;
+    MonsoonStraitsExpander** cachedPolyVoiceExpander;
     
     // CV2-aware offsets for note value, variation, legato, rest, accent
     float cv2Offsets[5] = {0.f, 0.f, 0.f, 0.f, 0.f}; // Increased size for Accent
     // CV3 offsets for rhythm slew, melody slew, rhythm mix, melody mix
     float cv3Offsets[4] = {0.f, 0.f, 0.f, 0.f};
-    // Surge expander offsets: note value, variation, legato, rest, accent
-    float surgeOffsets[5] = {0.f, 0.f, 0.f, 0.f, 0.f};
+    // Junction expander offsets: note value, variation, legato, rest, accent
+    float junctionOffsets[5] = {0.f, 0.f, 0.f, 0.f, 0.f};
     
     // Transient CV1 mode offsets (never persisted)
     float cv1LoOffset = 0.f;

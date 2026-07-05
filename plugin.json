@@ -23,12 +23,12 @@
       "tags": [
         "Expander",
         "Sequencer",
-		"Random"
+        "Random"
       ]
     },
     {
-      "slug": "MonsoonCausewayExpander",
-      "name": "Causeway",
+      "slug": "Raffles",
+      "name": "Raffles",
       "description": "Dice/draw-generation modulation expander (slew/mix CV + die-action gates)",
       "tags": [
         "Expander",
@@ -37,8 +37,8 @@
       ]
     },
     {
-      "slug": "MonsoonSurgeExpander",
-      "name": "Surge",
+      "slug": "Junction",
+      "name": "Junction",
       "description": "Big-5 pattern-knob CV modulation expander (note value, variation, legato, rest, accent)",
       "tags": [
         "Expander",
@@ -47,23 +47,43 @@
       ]
     },
     {
-      "slug": "MonsoonStraitsEastExpander",
-      "name": "MonsoonStraitsEastExpander",
-      "description": "Polyphonice Expander and Modulation Expander - Voice 2-8",
+      "slug": "Straits",
+      "name": "Straits",
+      "description": "Poly base expander — per-voice REST/ACCENT probability + 16ch poly-cable outs (gate/CV/accent, ch1=mono)",
       "tags": [
         "Expander",
         "Sequencer",
-		"Random"
+        "Random"
       ]
     },
     {
-      "slug": "MonsoonStraitWestExpander",
-      "name": "MonsoonStraitWestExpander",
-      "description": "Polyphonice Expander and Modulation Expander - Voice 9-16",
+      "slug": "Causeway",
+      "name": "Causeway",
+      "description": "Poly CV modulation — 16ch REST + ACCENT modulation CV in (ch1=mono) with attenuverters",
       "tags": [
         "Expander",
         "Sequencer",
-		"Random"
+        "Random"
+      ]
+    },
+    {
+      "slug": "Changi",
+      "name": "Changi",
+      "description": "Per-voice output — poly voices 2..16 broken out to individual gate/CV/accent jacks",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Random"
+      ]
+    },
+    {
+      "slug": "Shophouse",
+      "name": "Shophouse",
+      "description": "Scale expander — 4-front scale list, click-a-shutter root, boundary-quantised modulation, Conservation lock",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Quantizer"
       ]
     },
     {
@@ -73,7 +93,7 @@
       "tags": [
         "Expander",
         "Sequencer",
-		"Random",
+        "Random",
         "Visual"
       ]
     },
@@ -84,7 +104,7 @@
       "tags": [
         "Expander",
         "Sequencer",
-		"Random",
+        "Random",
         "Visual",
         "Polyphonic"
       ]
@@ -96,7 +116,18 @@
       "tags": [
         "Expander",
         "Sequencer",
-		"Random",
+        "Random",
+        "Visual",
+        "Polyphonic"
+      ]
+    },
+    {
+      "slug": "Lantern",
+      "name": "Lantern",
+      "description": "Read-only note-output visualiser for Monsoon — 16-lane display of notes, ties, legato and accents",
+      "tags": [
+        "Expander",
+        "Sequencer",
         "Visual",
         "Polyphonic"
       ]
