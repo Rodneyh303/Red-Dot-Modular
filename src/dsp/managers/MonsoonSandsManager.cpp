@@ -96,16 +96,11 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     // mistaken belief it would "double" the CV — that left ±5V reaching only HALF the
     // ±1 range. East V1 spread already used ×2 correctly; this aligns Mono/Macro.)
     // param index 3 = SPR.
-    auto applyMacroSprCV = [&](float base, int lane) -> float {
-        if (!macroVis || !macroVis->inputs[Macro::macroCvId(lane,3)].isConnected()) return base;
-        float cv  = macroVis->inputs[Macro::macroCvId(lane,3)].getVoltage() / 10.f;
-        float att = macroVis->params[Macro::macroAttenId(lane,3)].getValue();
-        return clamp(base + cv * att * 2.f, -1.f, 1.f);   // ×2 = ±1 span
-    };
+    // (Macro spread CV is now handled inside redDot::SpreadResolver — the former applyMacroSprCV
+    // lambda was folded into SpreadResolver::CvTerm and removed, like applyMonoSprCV before it.)
 
     // (Mono spread CV is now handled inside redDot::SpreadResolver — the former applyMonoSprCV
-    // lambda was folded into SpreadResolver::CvTerm and removed. Macro's applyMacroSprCV remains
-    // until the macro spread path is wired through the resolver too.)
+    // lambda was folded into SpreadResolver::CvTerm and removed, as was Macro's applyMacroSprCV.)
 
     // Spread interpolation is now centralised in redDot::SpreadInterp (see
     // src/dsp/SpreadInterp.hpp) — the single source of truth.
@@ -385,7 +380,17 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             float cvLen = applyMacroCV(baseLen, lane, 0, 1.f, 16.f);
             float cvOff = applyMacroCV(baseOff, lane, 1, 0.f, 15.f);
             float cvRot = applyMacroCV(baseRot, lane, 2, 0.f, 15.f);
-            float cvSpr = applyMacroSprCV(baseSpr, lane);
+            // Effective macro global spread via the single authority. Macro publishing its own global
+            // has only its own CV (no East, no delegation, no macro-send-to-self), so only ownCv is
+            // set — SpreadResolver then yields clamp(base + ownCv·2), identical to applyMacroSprCV.
+            redDot::SpreadResolver::Inputs msin;
+            msin.base = baseSpr;
+            if (macroVis->inputs[Macro::macroCvId(lane,3)].isConnected()) {
+                msin.ownCv.connected   = true;
+                msin.ownCv.unitVoltage = macroVis->inputs[Macro::macroCvId(lane,3)].getVoltage() / 10.f;
+                msin.ownCv.atten       = macroVis->params[Macro::macroAttenId(lane,3)].getValue();
+            }
+            float cvSpr = redDot::SpreadResolver::effective(msin);
             // P9 send-tap: the delta the SENDS distribute can be tapped PRE or POST the
             // left attenuverter. POST(tap=1)=cv*att (== the true delta); PRE(tap=0)=raw cv.
             // effective atten = lerp(1, att, tap) = 1 + (att-1)*tap.
@@ -423,13 +428,15 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // Global spread level per lane (knob + CV), spread/engine-indexed 0..3.
             float spv[4];
             for (int lane = 0; lane < 4; ++lane) {
-                float baseSpr = macroVis->params[Macro::sprId(lane)].getValue();
-                float sp = baseSpr;
+                // Standalone Macro global spread — own CV only (same as publishGlobal), via the resolver.
+                redDot::SpreadResolver::Inputs ssin;
+                ssin.base = macroVis->params[Macro::sprId(lane)].getValue();
                 if (macroVis->inputs[Macro::macroCvId(lane,3)].isConnected()) {
-                    float att = macroVis->params[Macro::macroAttenId(lane,3)].getValue();
-                    float cv  = macroVis->inputs[Macro::macroCvId(lane,3)].getVoltage() / 10.f;
-                    sp = rack::math::clamp(baseSpr + cv * att * 2.f, -1.f, 1.f);   // ×2 = ±1 span
+                    ssin.ownCv.connected   = true;
+                    ssin.ownCv.unitVoltage = macroVis->inputs[Macro::macroCvId(lane,3)].getVoltage() / 10.f;
+                    ssin.ownCv.atten       = macroVis->params[Macro::macroAttenId(lane,3)].getValue();
                 }
+                float sp = redDot::SpreadResolver::effective(ssin);
                 macroVis->spreadEffective[lane] = sp;
                 spv[lane] = sp;
             }
