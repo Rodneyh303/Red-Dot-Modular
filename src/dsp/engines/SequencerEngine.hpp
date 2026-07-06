@@ -120,58 +120,40 @@ struct SequencerEngine {
     // This is mono/V1 only for now; a later step folds it in as slot 0 of a unified len/off/rot[16][6]
     // alongside the poly arrays. Item order is fixed by MonoItem below. Access via strandLen/Off/Rot
     // + …Ref (unchanged signatures); direct callers use lorRef(strand, item).
+    // ── Unified probability-modifier LOR storage (Step 2b-ii) ────────────────────
+    // ONE array for all 16 voices × 6 editor lanes × 3 items, replacing the separate monoLOR[6][3]
+    // and polyLen/Off/Rot[15][4]. Indexed [voiceSlot][editorLane][item] where
+    //   voiceSlot = VoiceResolver::voiceSlot(v):  slot 0 = V1 (mono), slots 1..15 = V2..V16 (poly);
+    //   editorLane 0..5 = MEL,OCT,REST,ACC,VAR,LEG (poly uses only 0..3; VAR/LEG are mono-only);
+    //   item = MonoItem {LOR_LEN,LOR_OFF,LOR_ROT}.
+    // This is the storage layer finally matching the VoiceResolver addressing layer. All access goes
+    // through the accessors below — mono via lor()/lorRef() (editor lane == strand), poly via the
+    // editor-order polyLOR() and the engine-order polyLenE() family (which now converts engine→editor
+    // here, at the single storage boundary). Seeded in ctor/reset.
     enum MonoItem { LOR_LEN = 0, LOR_OFF = 1, LOR_ROT = 2, LOR_ITEMS = 3 };
-    int monoLOR[dotModular::NUM_STRANDS][LOR_ITEMS] = {};   // [strand][item]; seeded in ctor/reset
+    static constexpr int kVoiceSlots = 16;
+    int lorStore_[kVoiceSlots][dotModular::NUM_STRANDS][LOR_ITEMS] = {};   // [slot][editorLane][item]
 
-    int&       lorRef(int strand, int item)       { return monoLOR[strandClamp(strand)][item]; }
-    int        lor   (int strand, int item) const { return monoLOR[strandClamp(strand)][item]; }
+    // Mono (V1 = slot 0): editor lane == strand index (the identity), so strand IS the lane column.
+    int&       lorRef(int strand, int item)       { return lorStore_[0][strandClamp(strand)][item]; }
+    int        lor   (int strand, int item) const { return lorStore_[0][strandClamp(strand)][item]; }
     static int strandClamp(int s) { return (s >= 0 && s < dotModular::NUM_STRANDS) ? s : dotModular::STRAND_RHYTHM; }
 
-    // Per-voice-per-lane poly LOR — the INDEX into the 16-step probability vectors, kept SEPARATE
-    // from the probabilities. Lane: 0=REST,1=MELODY,2=OCTAVE,3=ACCENT. East sets all [voice][lane]
-    // independently; Macro sets the same lane LOR for every voice. (Folds into the unified array as
-    // slots 1..15 in a later step.)
     enum PolyLane { PL_REST = 0, PL_MELODY = 1, PL_OCTAVE = 2, PL_ACCENT = 3, PL_LANES = 4 };
-    int polyLen[15][PL_LANES];
-    int polyOff[15][PL_LANES];
-    int polyRot[15][PL_LANES];
 
-    // Editor-order poly LOR accessors (Step 2a of the probability-modifier unification): present the
-    // poly storage in EDITOR lane order (MEL=0,OCT=1,REST=2,ACC=3) — the canonical order the unified
-    // len/off/rot[16][6] will use — converting to the underlying PL_* engine lane internally via
-    // EDITOR_TO_ENGINE_LANE. Storage is UNCHANGED here; this just gives poly the same editor-order
-    // interface mono already has, so Step 2b can physically merge the arrays with no permutation.
-    // editorLane is 0..3 (poly has no VAR/LEG); item is MonoItem {LOR_LEN,LOR_OFF,LOR_ROT}.
-    int& polyLORRef(int bank, int editorLane, int item) {
-        int eng = dotModular::EDITOR_TO_ENGINE_LANE[editorLane & 3];   // editor → PL_ engine lane
-        switch (item) {
-            case LOR_OFF: return polyOff[bank][eng];
-            case LOR_ROT: return polyRot[bank][eng];
-            case LOR_LEN:
-            default:      return polyLen[bank][eng];
-        }
-    }
-    int polyLOR(int bank, int editorLane, int item) const {
-        int eng = dotModular::EDITOR_TO_ENGINE_LANE[editorLane & 3];
-        switch (item) {
-            case LOR_OFF: return polyOff[bank][eng];
-            case LOR_ROT: return polyRot[bank][eng];
-            case LOR_LEN:
-            default:      return polyLen[bank][eng];
-        }
-    }
+    // Editor-order poly accessors: bank b → slot b+1, editorLane indexes the unified array directly
+    // (storage IS editor order now — no permutation).
+    int& polyLORRef(int bank, int editorLane, int item) { return lorStore_[bank + 1][editorLane & 7][item]; }
+    int  polyLOR   (int bank, int editorLane, int item) const { return lorStore_[bank + 1][editorLane & 7][item]; }
 
-    // Engine-order poly LOR accessors (Step 2b-i). Thin wrappers over the raw poly arrays in their
-    // NATIVE PL_ engine lane order — introduced so every raw polyLen/Off/Rot[bank][engLane] site can
-    // route through an accessor WITHOUT changing its value or lane (pure rename, behaviour-inert).
-    // Step 2b-ii then physically reorders storage to editor order and these wrappers absorb the
-    // engine→editor conversion internally, so NO call site changes during the storage swap.
-    int& polyLenERef(int bank, int engLane) { return polyLen[bank][engLane]; }
-    int& polyOffERef(int bank, int engLane) { return polyOff[bank][engLane]; }
-    int& polyRotERef(int bank, int engLane) { return polyRot[bank][engLane]; }
-    int  polyLenE(int bank, int engLane) const { return polyLen[bank][engLane]; }
-    int  polyOffE(int bank, int engLane) const { return polyOff[bank][engLane]; }
-    int  polyRotE(int bank, int engLane) const { return polyRot[bank][engLane]; }
+    // Engine-order poly accessors: bank b → slot b+1; the engine PL_ lane converts to editor lane
+    // via ENGINE_LANE_TO_EDITOR HERE — the single storage boundary that absorbs the permutation.
+    int& polyLenERef(int bank, int engLane) { return lorStore_[bank + 1][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]][LOR_LEN]; }
+    int& polyOffERef(int bank, int engLane) { return lorStore_[bank + 1][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]][LOR_OFF]; }
+    int& polyRotERef(int bank, int engLane) { return lorStore_[bank + 1][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]][LOR_ROT]; }
+    int  polyLenE(int bank, int engLane) const { return lorStore_[bank + 1][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]][LOR_LEN]; }
+    int  polyOffE(int bank, int engLane) const { return lorStore_[bank + 1][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]][LOR_OFF]; }
+    int  polyRotE(int bank, int engLane) const { return lorStore_[bank + 1][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]][LOR_ROT]; }
 
     // Indexable strand accessors keyed by dotModular::EngineStrand order
     // (0 rhythm, 1 variation, 2 legato, 3 accent, 4 melody, 5 octave). These let

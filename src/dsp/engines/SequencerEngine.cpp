@@ -25,9 +25,9 @@ void SequencerEngine::reset() {
     cachedOffset = 0;
     totalStepsElapsed = 0;
     for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
-        monoLOR[s][LOR_LEN] = 16;   // Length defaults to full 16-step window
-        monoLOR[s][LOR_OFF] = 0;
-        monoLOR[s][LOR_ROT] = 0;
+        lorRef(s, LOR_LEN) = 16;   // Length defaults to full 16-step window
+        lorRef(s, LOR_OFF) = 0;
+        lorRef(s, LOR_ROT) = 0;
     }
     for (int i = 0; i < 15; i++) {
         for (int l = 0; l < PL_LANES; ++l) {   // was l < 3 — PL_ACCENT(3) was never reset (pre-existing bug)

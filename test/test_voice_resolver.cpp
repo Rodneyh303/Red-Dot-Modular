@@ -70,11 +70,11 @@ static void seedEngine(SequencerEngine& eng) {
             eng.pe.polyOctaveRandom[v][s] = sentinel(v + 2, E::PL_OCTAVE, s);
             eng.pe.polyAccentRandom[v][s] = sentinel(v + 2, E::PL_ACCENT, s);
             // identity LOR so step index is predictable (= totalStepsElapsed & 0x0F = 0)
-            eng.polyLen[v][s % 3] = 16; // harmless; lanes use [v][lane]
+            eng.polyLenERef(v, s % 3) = 16; // harmless; lanes use [v][lane]
         }
     // identity LOR per (voice, lane)
     for (int v = 0; v < 15; ++v)
-        for (int l = 0; l < 4; ++l) { eng.polyLen[v][l] = 16; eng.polyOff[v][l] = 0; eng.polyRot[v][l] = 0; }
+        for (int l = 0; l < 4; ++l) { eng.polyLenERef(v, l) = 16; eng.polyOffERef(v, l) = 0; eng.polyRotERef(v, l) = 0; }
 }
 
 int main() {

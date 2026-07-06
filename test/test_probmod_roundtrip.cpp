@@ -108,16 +108,16 @@ int main() {
     SUITE("Poly LOR: set/read polyLen/Off/Rot[bank][lane] — 15 banks × 4 lanes, no leak");
     for (int b = 0; b < 15; ++b)
         for (int l = 0; l < SequencerEngine::PL_LANES; ++l) {
-            eng.polyLen[b][l] = polySentinel(0, b, l);
-            eng.polyOff[b][l] = polySentinel(1, b, l);
-            eng.polyRot[b][l] = polySentinel(2, b, l);
+            eng.polyLenERef(b, l) = polySentinel(0, b, l);
+            eng.polyOffERef(b, l) = polySentinel(1, b, l);
+            eng.polyRotERef(b, l) = polySentinel(2, b, l);
         }
     TEST("every poly (bank,lane) reads its OWN sentinel (no cross-bank / cross-lane leak)", {
         for (int b = 0; b < 15; ++b)
             for (int l = 0; l < SequencerEngine::PL_LANES; ++l) {
-                EXPECT_EQ(eng.polyLen[b][l], polySentinel(0, b, l));
-                EXPECT_EQ(eng.polyOff[b][l], polySentinel(1, b, l));
-                EXPECT_EQ(eng.polyRot[b][l], polySentinel(2, b, l));
+                EXPECT_EQ(eng.polyLenE(b, l), polySentinel(0, b, l));
+                EXPECT_EQ(eng.polyOffE(b, l), polySentinel(1, b, l));
+                EXPECT_EQ(eng.polyRotE(b, l), polySentinel(2, b, l));
             }
     });
 
@@ -136,18 +136,22 @@ int main() {
                 EXPECT_EQ(eng.polyLOR(b, ed, SequencerEngine::LOR_ROT), polySentinel(2, b, engLane));
             }
     });
-    TEST("polyLORRef(bank, editorLane, item) writes the EDITOR_TO_ENGINE_LANE-mapped engine cell", {
-        // write a fresh distinct value via the editor-order ref, confirm it lands at the engine cell
+    TEST("polyLORRef(editorLane) and polyLenE(engineLane) address the SAME unified cell", {
+        // write via the editor-order ref at editor lane ed; the engine-order accessor at the
+        // corresponding engine lane (EDITOR_TO_ENGINE_LANE[ed]) must read the same value, and the
+        // editor-order reader must round-trip. Proves the two accessor families agree post-merge.
         for (int b = 0; b < 15; ++b)
             for (int ed = 0; ed < 4; ++ed) {
                 int engLane = dotModular::EDITOR_TO_ENGINE_LANE[ed];
-                eng.polyLORRef(b, ed, SequencerEngine::LOR_LEN) = 7000 + b*4 + ed;
-                EXPECT_EQ(eng.polyLen[b][engLane], 7000 + b*4 + ed);
+                int val = 7000 + b*4 + ed;
+                eng.polyLORRef(b, ed, SequencerEngine::LOR_LEN) = val;
+                EXPECT_EQ(eng.polyLOR(b, ed, SequencerEngine::LOR_LEN), val);   // editor round-trip
+                EXPECT_EQ(eng.polyLenE(b, engLane), val);                       // engine accessor agrees
             }
-        // restore the sentinels for later suites
+        // restore the sentinels (engine-order) for later suites
         for (int b = 0; b < 15; ++b)
             for (int l = 0; l < SequencerEngine::PL_LANES; ++l)
-                eng.polyLen[b][l] = polySentinel(0, b, l);
+                eng.polyLenERef(b, l) = polySentinel(0, b, l);
     });
 
     // ── 3. Mono ↔ poly independence (separate storage today; must still hold as
@@ -164,7 +168,7 @@ int main() {
         for (int i = 0; i < 6; ++i) eng.strandLenRef(kStrands[i]) = monoSentinel(0, kStrands[i]) + 1;
         for (int b = 0; b < 15; ++b)
             for (int l = 0; l < SequencerEngine::PL_LANES; ++l)
-                EXPECT_EQ(eng.polyLen[b][l], polySentinel(0, b, l));
+                EXPECT_EQ(eng.polyLenE(b, l), polySentinel(0, b, l));
     });
 
     std::cout << "\n\033[1m" << g_pass << " passed, " << g_fail << " failed\033[0m\n";
