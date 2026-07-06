@@ -82,15 +82,21 @@ struct PatternEngine {
     // the editor-lane→array permutation. Used by the Sands visual probability CV outs.
     inline float finalRandomByStrand(int strand, int step) const {
         step &= 0x0F;
-        switch (strand) {
-            case dotModular::STRAND_RHYTHM:    return rhythmRandom[step];
-            case dotModular::STRAND_VARIATION: return variationRandom[step];
-            case dotModular::STRAND_LEGATO:    return legatoRandom[step];
-            case dotModular::STRAND_ACCENT:    return accentRandom[step];
-            case dotModular::STRAND_MELODY:    return melodyRandom[step];
-            case dotModular::STRAND_OCTAVE:    return octaveRandom[step];
-            default:                           return rhythmRandom[step];
-        }
+        // Strand→array addressing collapsed to ONE table (was a 6-case switch — the last hand-written
+        // strand→field map, analogous to the LOR strandLen/Off/Rot switches already unified). The
+        // named arrays remain the storage; only the addressing is table-driven. Indexed by EngineStrand
+        // (MEL=0,OCT=1,RHYTHM=2,ACC=3,VAR=4,LEG=5); out-of-range falls back to rhythm (matching the old
+        // `default:`). float(PatternEngine::* const) member pointers, resolved at compile time.
+        static constexpr float (PatternEngine::* const kByStrand[dotModular::NUM_STRANDS])[16] = {
+            &PatternEngine::melodyRandom,     // STRAND_MELODY    = 0
+            &PatternEngine::octaveRandom,     // STRAND_OCTAVE    = 1
+            &PatternEngine::rhythmRandom,     // STRAND_RHYTHM    = 2
+            &PatternEngine::accentRandom,     // STRAND_ACCENT    = 3
+            &PatternEngine::variationRandom,  // STRAND_VARIATION = 4
+            &PatternEngine::legatoRandom,     // STRAND_LEGATO    = 5
+        };
+        const int s = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? strand : dotModular::STRAND_RHYTHM;
+        return (this->*kByStrand[s])[step];
     }
 
     // Poly strands: 15 voices, each with Rhythm, Melody, and Octave draws
