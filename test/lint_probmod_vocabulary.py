@@ -43,16 +43,15 @@ LOCKS = [
      "monoLOR[6][3] was subsumed by lorStore_[16][6][3] as slot 0 (Step 2b-ii).",
      True),
 
-    # ── PENDING (flip to True when the step lands on master) ──
+    # ── Activated once their steps landed on master (Step 3c, Step 4) ──
     ("applyMacroSprCV",
      r"\bapplyMacroSprCV\b",
-     "Macro spread CV moves into redDot::SpreadResolver (Step 3c — branch refactor/probmod-step3c-wire-macro).",
-     False),
+     "Macro spread CV is inside redDot::SpreadResolver now (Step 3c).",
+     True),
     ("finalRandomByStrand switch",
      r"case\s+dotModular::STRAND_\w+:\s*return\s+\w*Random\[",
-     "The strand→*Random switch was collapsed to a pointer-to-member table (Step 4 — branch "
-     "refactor/probmod-step4-pe-random-switch).",
-     False),
+     "The strand→*Random switch was collapsed to a pointer-to-member table (Step 4).",
+     True),
 ]
 
 # Files/paths exempt entirely.
