@@ -1,6 +1,7 @@
 #include "MonsoonSandsManager.hpp"
 #include "../VoiceResolver.hpp"   // kMonoSlot — the mono mix-in slice
 #include "../SpreadInterp.hpp"
+#include "../SpreadResolver.hpp"   // step 3b: single authority for effective spread amount
 #include "../../Monsoon.hpp"
 #include "../../MonsoonSandsVisualExpander.hpp"
 //#include "../../MonsoonSandsExpander.hpp"
@@ -102,16 +103,9 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         return clamp(base + cv * att * 2.f, -1.f, 1.f);   // ×2 = ±1 span
     };
 
-    // ── Helper: apply mono spread CV (REST/MEL/OCT only, own jack/atten) ──
-    auto applyMonoSprCV = [&](float base, int sprLane) -> float {
-        if (!monoVis || !monoVis->inputs[Mono::sprCvId(sprLane)].isConnected()) return base;
-        float cv  = monoVis->inputs[Mono::sprCvId(sprLane)].getVoltage() / 10.f;
-        float att = monoVis->params[Mono::sprAttenId(sprLane)].getValue();
-        // Spread is BIPOLAR (param range -1..1; negative inverts the interp target).
-        // ×2 spans the full ±1 range at full depth; clamp to [-1,1] (not [0,1], which
-        // would floor negative spread to 0).
-        return clamp(base + cv * att * 2.f, -1.f, 1.f);   // ×2 = ±1 span
-    };
+    // (Mono spread CV is now handled inside redDot::SpreadResolver — the former applyMonoSprCV
+    // lambda was folded into SpreadResolver::CvTerm and removed. Macro's applyMacroSprCV remains
+    // until the macro spread path is wired through the resolver too.)
 
     // Spread interpolation is now centralised in redDot::SpreadInterp (see
     // src/dsp/SpreadInterp.hpp) — the single source of truth.
@@ -238,30 +232,35 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 // l is the SPREAD/engine lane (0=REST,1=MEL,2=OCT,3=ACC). Use the helper
                 // that bakes the engine→editor conversion (Mono's ownerDispId is editor-
                 // ordered) so we can't regress the owner-of-N+1-gates-N off-by-one.
-                bool sprDelegated = hasMacro && macroVis &&
-                                    SandsMonoVisualIds::monoMacroOwnsEngineLane(monoVis, l);
-                if (sprDelegated) {
-                    float sp = rack::math::clamp(macroVis->macroBase[l][3] + macroVis->macroSendDelta[l][3], -1.f, 1.f);
-                    monoVis->spreadEffective[l] = sp;
-                    continue;
-                }
-                float baseSpr = monoVis->params[Mono::sprId(l)].getValue();
-                float sp = applyMonoSprCV(baseSpr, l);
-                // INTERP Y — voice-1 spread mix-in (voice 0 slice), bipolar [-1,1].
-                // l is the spread/engine lane (0=REST,1=MEL,2=OCT,3=ACC). East's spread
-                // CV jack for that lane is cvId(engineLane, 3) (col 3 = SPR). East CV
-                // ADDS to the mono spread (combo 7/8 V1 mod).
+                // Effective spread amount via the single authority (SpreadResolver). All inputs are
+                // read from exactly the same places the previous inline arithmetic did; the resolver
+                // replicates the manager's step-wise clamping, so this is behaviour-inert. Topology
+                // decides delegation (owner()==MACRO, via monoMacroOwnsEngineLane); the resolver only
+                // consumes that boolean. l is the SPREAD/engine lane (0=REST,1=MEL,2=OCT,3=ACC).
                 auto* eastVisS = expanderManager.cachedEastSandsVisual;
+                redDot::SpreadResolver::Inputs sin;
+                sin.delegated    = hasMacro && macroVis &&
+                                   SandsMonoVisualIds::monoMacroOwnsEngineLane(monoVis, l);
+                sin.macroPresent = (hasMacro && macroVis);
+                sin.base         = monoVis->params[Mono::sprId(l)].getValue();
+                // Own Mono spread CV (sprCvId jack + sprAttenId), unit-scaled /10.
+                if (monoVis->inputs[Mono::sprCvId(l)].isConnected()) {
+                    sin.ownCv.connected   = true;
+                    sin.ownCv.unitVoltage = monoVis->inputs[Mono::sprCvId(l)].getVoltage() / 10.f;
+                    sin.ownCv.atten       = monoVis->params[Mono::sprAttenId(l)].getValue();
+                }
+                // East V1 spread CV add (cvId(engineLane,3) jack + attenId(mono slot,l,3)).
                 if (eastVisS && eastVisS->inputs[East::cvId(l,3)].isConnected()) {
-                    float att = eastVisS->params[East::attenId(dotModular::VoiceResolver::kMonoSlot, l, 3)].getValue();  // slot 0 = mono
-                    float cv  = eastVisS->inputs[East::cvId(l,3)].getVoltage(0) / 10.f;
-                    sp = rack::math::clamp(sp + cv * att * 2.f, -1.f, 1.f);   // span [-1,1]=2
+                    sin.eastCv.connected   = true;
+                    sin.eastCv.unitVoltage = eastVisS->inputs[East::cvId(l,3)].getVoltage(0) / 10.f;
+                    sin.eastCv.atten       = eastVisS->params[East::attenId(dotModular::VoiceResolver::kMonoSlot, l, 3)].getValue();
                 }
-                if (hasMacro && macroVis) {
-                    float send = macroVis->params[Macro::sendId(dotModular::VoiceResolver::kMonoSlot, l, 3)].getValue();
-                    sp = rack::math::clamp(sp + macroVis->macroSendDelta[l][3] * send, -1.f, 1.f);  // P9: tapped
+                if (sin.macroPresent) {
+                    sin.macroBase      = macroVis->macroBase[l][3];
+                    sin.macroSendDelta = macroVis->macroSendDelta[l][3];
+                    sin.macroSend      = macroVis->params[Macro::sendId(dotModular::VoiceResolver::kMonoSlot, l, 3)].getValue();
                 }
-                monoVis->spreadEffective[l] = sp;
+                monoVis->spreadEffective[l] = redDot::SpreadResolver::effective(sin);
             }
             // spreadEffective[] is ENGINE/spread-indexed: 0=REST,1=MEL,2=OCT,3=ACCENT.
             // Indices 4/5 are unused (LEG/VAR are mono-only and have no spread).
@@ -313,13 +312,13 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         // may also be present: V1 is then PER-LANE (each lane owned by East or delegated to
         // Macro). hasEastV1 no longer excludes Macro — the per-lane owner switch handles it.
         const bool hasEastV1 = (eastV1 != nullptr);
-        if (!hasEastV1 && engine.rhythmLen != 16) {
-            engine.rhythmLen = engine.variationLen = engine.legatoLen =
-            engine.accentLen = engine.melodyLen = engine.octaveLen = 16;
-            engine.rhythmOff = engine.variationOff = engine.legatoOff =
-            engine.accentOff = engine.melodyOff = engine.octaveOff = 0;
-            engine.rhythmRot = engine.variationRot = engine.legatoRot =
-            engine.accentRot = engine.melodyRot = engine.octaveRot = 0;
+        if (!hasEastV1 && engine.strandLen(dotModular::STRAND_RHYTHM) != 16) {
+            // Reset all mono-strand LOR to defaults (Length 16, Offset 0, Rotation 0).
+            for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
+                engine.strandLenRef(s) = 16;
+                engine.strandOffRef(s) = 0;
+                engine.strandRotRef(s) = 0;
+            }
         }
         if (hasEastV1 && !engine.locked) {
             // Apply V1 SPREAD to the mono final arrays, PER LANE:

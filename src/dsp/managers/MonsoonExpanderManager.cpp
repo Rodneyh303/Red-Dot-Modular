@@ -147,9 +147,9 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
             };
 
             // REST lane (0): owner+blend equation. r/c are East CV jack coords.
-            engine.polyLen[v][PL::PL_REST] = combineLOR(PL::PL_REST, 0, rhythmBase,     PL::PL_REST, 0, 1.f, 16.f);
-            engine.polyOff[v][PL::PL_REST] = combineLOR(PL::PL_REST, 1, rhythmBase + 1, PL::PL_REST, 1, 0.f, 15.f);
-            engine.polyRot[v][PL::PL_REST] = combineLOR(PL::PL_REST, 2, rhythmBase + 2, PL::PL_REST, 2, 0.f, 15.f);
+            engine.polyLenERef(v, PL::PL_REST) = combineLOR(PL::PL_REST, 0, rhythmBase,     PL::PL_REST, 0, 1.f, 16.f);
+            engine.polyOffERef(v, PL::PL_REST) = combineLOR(PL::PL_REST, 1, rhythmBase + 1, PL::PL_REST, 1, 0.f, 15.f);
+            engine.polyRotERef(v, PL::PL_REST) = combineLOR(PL::PL_REST, 2, rhythmBase + 2, PL::PL_REST, 2, 0.f, 15.f);
 
             float restInterp = eastInterp->params[MonsoonIds::POLY_REST_INTERP_1 + v].getValue();
             if (eastVisual && eastVisual->inputs[cvId(PL::PL_REST,3)].isConnected()) {
@@ -176,9 +176,9 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
             
             int melodyBase = MonsoonIds::POLY_MELODY_VOICE_1_LEN + v * 3;
             float melodyInterp = eastInterp->params[MonsoonIds::POLY_MELODY_INTERP_1 + v].getValue();
-            engine.polyLen[v][PL::PL_MELODY] = combineLOR(PL::PL_MELODY, 0, melodyBase,     PL::PL_MELODY, 0, 1.f, 16.f);
-            engine.polyOff[v][PL::PL_MELODY] = combineLOR(PL::PL_MELODY, 1, melodyBase + 1, PL::PL_MELODY, 1, 0.f, 15.f);
-            engine.polyRot[v][PL::PL_MELODY] = combineLOR(PL::PL_MELODY, 2, melodyBase + 2, PL::PL_MELODY, 2, 0.f, 15.f);
+            engine.polyLenERef(v, PL::PL_MELODY) = combineLOR(PL::PL_MELODY, 0, melodyBase,     PL::PL_MELODY, 0, 1.f, 16.f);
+            engine.polyOffERef(v, PL::PL_MELODY) = combineLOR(PL::PL_MELODY, 1, melodyBase + 1, PL::PL_MELODY, 1, 0.f, 15.f);
+            engine.polyRotERef(v, PL::PL_MELODY) = combineLOR(PL::PL_MELODY, 2, melodyBase + 2, PL::PL_MELODY, 2, 0.f, 15.f);
             if (eastVisual && eastVisual->inputs[cvId(PL::PL_MELODY,3)].isConnected()) {
                 float att = eastLOR->params[attenId(slot,PL::PL_MELODY,3)].getValue();   // PER-VOICE depth
                 float cv  = eastVisual->inputs[cvId(PL::PL_MELODY,3)].getPolyVoltage(v) / 10.f;
@@ -198,15 +198,15 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
             }
             
             // if (deepEast) {
-            //     engine.polyLen[v][1] = (int)deepEast->params[melodyBase].getValue();
-            //     engine.polyOff[v][1] = (int)deepEast->params[melodyBase + 1].getValue();
-            //     engine.polyRot[v][1] = (int)deepEast->params[melodyBase + 2].getValue();
+            //     engine.polyLenERef(v, 1) = (int)deepEast->params[melodyBase].getValue();
+            //     engine.polyOffERef(v, 1) = (int)deepEast->params[melodyBase + 1].getValue();
+            //     engine.polyRotERef(v, 1) = (int)deepEast->params[melodyBase + 2].getValue();
             // }
             
             int octaveBase = MonsoonIds::POLY_OCTAVE_VOICE_1_LEN + v * 3;
-            engine.polyLen[v][PL::PL_OCTAVE] = combineLOR(PL::PL_OCTAVE, 0, octaveBase,     PL::PL_OCTAVE, 0, 1.f, 16.f);
-            engine.polyOff[v][PL::PL_OCTAVE] = combineLOR(PL::PL_OCTAVE, 1, octaveBase + 1, PL::PL_OCTAVE, 1, 0.f, 15.f);
-            engine.polyRot[v][PL::PL_OCTAVE] = combineLOR(PL::PL_OCTAVE, 2, octaveBase + 2, PL::PL_OCTAVE, 2, 0.f, 15.f);
+            engine.polyLenERef(v, PL::PL_OCTAVE) = combineLOR(PL::PL_OCTAVE, 0, octaveBase,     PL::PL_OCTAVE, 0, 1.f, 16.f);
+            engine.polyOffERef(v, PL::PL_OCTAVE) = combineLOR(PL::PL_OCTAVE, 1, octaveBase + 1, PL::PL_OCTAVE, 1, 0.f, 15.f);
+            engine.polyRotERef(v, PL::PL_OCTAVE) = combineLOR(PL::PL_OCTAVE, 2, octaveBase + 2, PL::PL_OCTAVE, 2, 0.f, 15.f);
 
             float octaveInterp = eastInterp->params[MonsoonIds::POLY_OCTAVE_INTERP_1 + v].getValue();
             if (eastVisual && eastVisual->inputs[cvId(PL::PL_OCTAVE,3)].isConnected()) {
@@ -234,9 +234,9 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
             // three lanes worked).
             {
                 int accentBase = MonsoonIds::POLY_ACCENT_VOICE_1_LEN + v * 3;
-                engine.polyLen[v][PL::PL_ACCENT] = combineLOR(PL::PL_ACCENT, 0, accentBase,     PL::PL_ACCENT, 0, 1.f, 16.f);
-                engine.polyOff[v][PL::PL_ACCENT] = combineLOR(PL::PL_ACCENT, 1, accentBase + 1, PL::PL_ACCENT, 1, 0.f, 15.f);
-                engine.polyRot[v][PL::PL_ACCENT] = combineLOR(PL::PL_ACCENT, 2, accentBase + 2, PL::PL_ACCENT, 2, 0.f, 15.f);
+                engine.polyLenERef(v, PL::PL_ACCENT) = combineLOR(PL::PL_ACCENT, 0, accentBase,     PL::PL_ACCENT, 0, 1.f, 16.f);
+                engine.polyOffERef(v, PL::PL_ACCENT) = combineLOR(PL::PL_ACCENT, 1, accentBase + 1, PL::PL_ACCENT, 1, 0.f, 15.f);
+                engine.polyRotERef(v, PL::PL_ACCENT) = combineLOR(PL::PL_ACCENT, 2, accentBase + 2, PL::PL_ACCENT, 2, 0.f, 15.f);
                 float accentInterp = math::clamp(eastInterp->params[MonsoonIds::POLY_ACCENT_INTERP_1 + v].getValue(), -1.f, 1.f);
                 // Accent spread CV (cvId(PL_ACCENT,3)) — was missing, so accent spread
                 // only responded to the manual knob, never to modulation. Mirror the
@@ -260,9 +260,9 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
             }
 
             // if (deepEast) {
-            //     engine.polyLen[v][2] = (int)deepEast->params[octaveBase].getValue();
-            //     engine.polyOff[v][2] = (int)deepEast->params[octaveBase + 1].getValue();
-            //     engine.polyRot[v][2] = (int)deepEast->params[octaveBase + 2].getValue();
+            //     engine.polyLenERef(v, 2) = (int)deepEast->params[octaveBase].getValue();
+            //     engine.polyOffERef(v, 2) = (int)deepEast->params[octaveBase + 1].getValue();
+            //     engine.polyRotERef(v, 2) = (int)deepEast->params[octaveBase + 2].getValue();
             // }
         }
         
@@ -379,9 +379,9 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 // Global LOR per lane (Macro owns → no per-voice/ownership branch).
                 // macroBase[lane][item]: item 0=LEN 1=OFF 2=ROT, engine-lane indexed.
                 for (int lane = 0; lane < PL::PL_LANES; ++lane) {
-                    engine.polyLen[v][lane] = (int)math::clamp(std::round(macroVis->macroBase[lane][0]), 1.f, 16.f);
-                    engine.polyOff[v][lane] = ((int)std::round(macroVis->macroBase[lane][1]) % 16 + 16) % 16;
-                    engine.polyRot[v][lane] = ((int)std::round(macroVis->macroBase[lane][2]) % 16 + 16) % 16;
+                    engine.polyLenERef(v, lane) = (int)math::clamp(std::round(macroVis->macroBase[lane][0]), 1.f, 16.f);
+                    engine.polyOffERef(v, lane) = ((int)std::round(macroVis->macroBase[lane][1]) % 16 + 16) % 16;
+                    engine.polyRotERef(v, lane) = ((int)std::round(macroVis->macroBase[lane][2]) % 16 + 16) % 16;
                 }
                 // Global spread per lane → spread-applied final arrays for this voice.
                 const float spR = math::clamp(macroVis->macroBase[PL::PL_REST][3]   + macroVis->macroSendDelta[PL::PL_REST][3],   -1.f, 1.f);

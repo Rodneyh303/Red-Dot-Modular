@@ -113,106 +113,69 @@ struct SequencerEngine {
     bool hadPolyTail[15] = {};
     bool wasHeldPolyPrev[15] = {}; // Capture poly state before tick()
 
-    // Strand-specific Windowing (Length 1..16, Offset 0..15)
-    int rhythmLen = 16;
-    int rhythmOff = 0;
-    int variationLen = 16;
-    int variationOff = 0;
-    int legatoLen = 16;
-    int legatoOff = 0;
-    int accentLen = 16;     // NEW: accent strand length (DNA)
-    int accentOff = 0;      // NEW: accent strand offset (DNA)
-    int melodyLen = 16;
-    int melodyOff = 0;
-    int octaveLen = 16;
-    int octaveOff = 0;
-    // Per-voice-per-lane LOR (length/offset/rotation) — the INDEX into the
-    // 16-step probability vectors, kept SEPARATE from the probabilities.
-    // Lane: 0=REST, 1=MELODY, 2=OCTAVE. East sets all [voice][lane]
-    // independently; Macro sets the same lane LOR for every voice.
-    enum PolyLane { PL_REST = 0, PL_MELODY = 1, PL_OCTAVE = 2, PL_ACCENT = 3, PL_LANES = 4 };
-    int polyLen[15][PL_LANES];
-    int polyOff[15][PL_LANES];
-    int polyRot[15][PL_LANES];
+    // ── Mono (V1) strand windowing: Length (1..16), Offset (0..15), Rotation ──
+    // Step 1 of the probability-modifier unification (docs/design/PROBABILITY_MODIFIER_MODEL.md):
+    // the 18 named fields (rhythmLen…octaveRot) + their 6 hand-written switch(strand) accessors are
+    // now ONE array indexed by strand (== editor lane, already the identity) × item {LEN,OFF,ROT}.
+    // This is mono/V1 only for now; a later step folds it in as slot 0 of a unified len/off/rot[16][6]
+    // alongside the poly arrays. Item order is fixed by MonoItem below. Access via strandLen/Off/Rot
+    // + …Ref (unchanged signatures); direct callers use lorRef(strand, item).
+    // ── Unified probability-modifier LOR storage (Step 2b-ii) ────────────────────
+    // ONE array for all 16 voices × 6 editor lanes × 3 items, replacing the separate monoLOR[6][3]
+    // and polyLen/Off/Rot[15][4]. Indexed [voiceSlot][editorLane][item] where
+    //   voiceSlot = VoiceResolver::voiceSlot(v):  slot 0 = V1 (mono), slots 1..15 = V2..V16 (poly);
+    //   editorLane 0..5 = MEL,OCT,REST,ACC,VAR,LEG (poly uses only 0..3; VAR/LEG are mono-only);
+    //   item = MonoItem {LOR_LEN,LOR_OFF,LOR_ROT}.
+    // This is the storage layer finally matching the VoiceResolver addressing layer. All access goes
+    // through the accessors below — mono via lor()/lorRef() (editor lane == strand), poly via the
+    // editor-order polyLOR() and the engine-order polyLenE() family (which now converts engine→editor
+    // here, at the single storage boundary). Seeded in ctor/reset.
+    enum MonoItem { LOR_LEN = 0, LOR_OFF = 1, LOR_ROT = 2, LOR_ITEMS = 3 };
+    static constexpr int kVoiceSlots = 16;
+    int lorStore_[kVoiceSlots][dotModular::NUM_STRANDS][LOR_ITEMS] = {};   // [slot][editorLane][item]
 
-    // Discrete mutation offsets (mutation from scramble/context menu)
-    int rhythmRot = 0, variationRot = 0, legatoRot = 0, accentRot = 0, melodyRot = 0, octaveRot = 0;
+    // Mono (V1 = slot 0): editor lane == strand index (the identity), so strand IS the lane column.
+    int&       lorRef(int strand, int item)       { return lorStore_[0][strandClamp(strand)][item]; }
+    int        lor   (int strand, int item) const { return lorStore_[0][strandClamp(strand)][item]; }
+    static int strandClamp(int s) { return (s >= 0 && s < dotModular::NUM_STRANDS) ? s : dotModular::STRAND_RHYTHM; }
+
+    enum PolyLane { PL_REST = 0, PL_MELODY = 1, PL_OCTAVE = 2, PL_ACCENT = 3, PL_LANES = 4 };
+
+    // Editor-order poly accessors: bank b → slot b+1, editorLane indexes the unified array directly
+    // (storage IS editor order now — no permutation).
+    int& polyLORRef(int bank, int editorLane, int item) { return lorStore_[bank + 1][editorLane & 7][item]; }
+    int  polyLOR   (int bank, int editorLane, int item) const { return lorStore_[bank + 1][editorLane & 7][item]; }
+
+    // Engine-order poly accessors: bank b → slot b+1; the engine PL_ lane converts to editor lane
+    // via ENGINE_LANE_TO_EDITOR HERE — the single storage boundary that absorbs the permutation.
+    int& polyLenERef(int bank, int engLane) { return lorStore_[bank + 1][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]][LOR_LEN]; }
+    int& polyOffERef(int bank, int engLane) { return lorStore_[bank + 1][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]][LOR_OFF]; }
+    int& polyRotERef(int bank, int engLane) { return lorStore_[bank + 1][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]][LOR_ROT]; }
+    int  polyLenE(int bank, int engLane) const { return lorStore_[bank + 1][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]][LOR_LEN]; }
+    int  polyOffE(int bank, int engLane) const { return lorStore_[bank + 1][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]][LOR_OFF]; }
+    int  polyRotE(int bank, int engLane) const { return lorStore_[bank + 1][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]][LOR_ROT]; }
 
     // Indexable strand accessors keyed by dotModular::EngineStrand order
     // (0 rhythm, 1 variation, 2 legato, 3 accent, 4 melody, 5 octave). These let
     // callers go editor-lane → strand (via MONO_LANE_TO_STRAND) → value without
     // hardcoding the permutation. Single source of truth for strand indexing.
+    // Strand LOR readers/writers, now backed by monoLOR[strand][item] (one array, no switches).
+    // Out-of-range semantics preserved EXACTLY from the previous 6 switches:
+    //   readers  → literal fallback (LEN 16, OFF 0, ROT 0) for an invalid strand;
+    //   writers  → the rhythm cell (strandClamp maps invalid → STRAND_RHYTHM), so an out-of-range
+    //              write lands on rhythm just as the old `default: return rhythmLen/Off/Rot` did.
     int strandLen(int strand) const {
-        switch (strand) {
-            case dotModular::STRAND_RHYTHM:    return rhythmLen;
-            case dotModular::STRAND_VARIATION: return variationLen;
-            case dotModular::STRAND_LEGATO:    return legatoLen;
-            case dotModular::STRAND_ACCENT:    return accentLen;
-            case dotModular::STRAND_MELODY:    return melodyLen;
-            case dotModular::STRAND_OCTAVE:    return octaveLen;
-            default: return 16;
-        }
+        return (strand >= 0 && strand < dotModular::NUM_STRANDS) ? lor(strand, LOR_LEN) : 16;
     }
     int strandOff(int strand) const {
-        switch (strand) {
-            case dotModular::STRAND_RHYTHM:    return rhythmOff;
-            case dotModular::STRAND_VARIATION: return variationOff;
-            case dotModular::STRAND_LEGATO:    return legatoOff;
-            case dotModular::STRAND_ACCENT:    return accentOff;
-            case dotModular::STRAND_MELODY:    return melodyOff;
-            case dotModular::STRAND_OCTAVE:    return octaveOff;
-            default: return 0;
-        }
+        return (strand >= 0 && strand < dotModular::NUM_STRANDS) ? lor(strand, LOR_OFF) : 0;
     }
     int strandRot(int strand) const {
-        switch (strand) {
-            case dotModular::STRAND_RHYTHM:    return rhythmRot;
-            case dotModular::STRAND_VARIATION: return variationRot;
-            case dotModular::STRAND_LEGATO:    return legatoRot;
-            case dotModular::STRAND_ACCENT:    return accentRot;
-            case dotModular::STRAND_MELODY:    return melodyRot;
-            case dotModular::STRAND_OCTAVE:    return octaveRot;
-            default: return 0;
-        }
+        return (strand >= 0 && strand < dotModular::NUM_STRANDS) ? lor(strand, LOR_ROT) : 0;
     }
-
-    // Writable strand references (same EngineStrand keying) so producers can
-    // assign by index too — used by readStrand to write the per-lane result to
-    // the correct strand via MONO_LANE_TO_STRAND, instead of a hand-ordered call
-    // list. rhythmLen is the safe fallback for an out-of-range index.
-    int& strandLenRef(int strand) {
-        switch (strand) {
-            case dotModular::STRAND_VARIATION: return variationLen;
-            case dotModular::STRAND_LEGATO:    return legatoLen;
-            case dotModular::STRAND_ACCENT:    return accentLen;
-            case dotModular::STRAND_MELODY:    return melodyLen;
-            case dotModular::STRAND_OCTAVE:    return octaveLen;
-            case dotModular::STRAND_RHYTHM:
-            default:                           return rhythmLen;
-        }
-    }
-    int& strandOffRef(int strand) {
-        switch (strand) {
-            case dotModular::STRAND_VARIATION: return variationOff;
-            case dotModular::STRAND_LEGATO:    return legatoOff;
-            case dotModular::STRAND_ACCENT:    return accentOff;
-            case dotModular::STRAND_MELODY:    return melodyOff;
-            case dotModular::STRAND_OCTAVE:    return octaveOff;
-            case dotModular::STRAND_RHYTHM:
-            default:                           return rhythmOff;
-        }
-    }
-    int& strandRotRef(int strand) {
-        switch (strand) {
-            case dotModular::STRAND_VARIATION: return variationRot;
-            case dotModular::STRAND_LEGATO:    return legatoRot;
-            case dotModular::STRAND_ACCENT:    return accentRot;
-            case dotModular::STRAND_MELODY:    return melodyRot;
-            case dotModular::STRAND_OCTAVE:    return octaveRot;
-            case dotModular::STRAND_RHYTHM:
-            default:                           return rhythmRot;
-        }
-    }
+    int& strandLenRef(int strand) { return lorRef(strand, LOR_LEN); }   // strandClamp → rhythm fallback
+    int& strandOffRef(int strand) { return lorRef(strand, LOR_OFF); }
+    int& strandRotRef(int strand) { return lorRef(strand, LOR_ROT); }
 
     // ── Strand-write ledger (debug-only assert; behaviour-inert in release) ──────
     // strandWriter[strand] = the role that wrote this strand this block. Reset at the
@@ -311,8 +274,8 @@ struct SequencerEngine {
     // 0..1. Used to assemble the poly probability cables (channels 2..1+nVoices).
     inline float polyLaneProbability(int polyLane, int voice) const {
         if (voice < 0 || voice >= 15 || polyLane < 0 || polyLane >= PL_LANES) return 0.f;
-        int idx = getStrandIdx(totalStepsElapsed, polyLen[voice][polyLane],
-                               polyOff[voice][polyLane], polyRot[voice][polyLane]);
+        int idx = getStrandIdx(totalStepsElapsed, polyLenE(voice, polyLane),
+                               polyOffE(voice, polyLane), polyRotE(voice, polyLane));
         idx &= 0x0F;
         switch (polyLane) {
             case PL_REST:   return pe.polyRhythmRandom[voice][idx];
@@ -341,8 +304,8 @@ struct SequencerEngine {
     // Step indices (for S&H edge detection) matching the probability accessors above.
     inline int polyLaneStep(int polyLane, int voice) const {
         if (voice < 0 || voice >= 15 || polyLane < 0 || polyLane >= PL_LANES) return -1;
-        return getStrandIdx(totalStepsElapsed, polyLen[voice][polyLane],
-                            polyOff[voice][polyLane], polyRot[voice][polyLane]) & 0x0F;
+        return getStrandIdx(totalStepsElapsed, polyLenE(voice, polyLane),
+                            polyOffE(voice, polyLane), polyRotE(voice, polyLane)) & 0x0F;
     }
     inline int masterLaneStep(int polyLane) const {
         int strand = (polyLane == PL_REST)   ? dotModular::STRAND_RHYTHM

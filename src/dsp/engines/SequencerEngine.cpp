@@ -24,14 +24,16 @@ void SequencerEngine::reset() {
     cachedLength = 16;
     cachedOffset = 0;
     totalStepsElapsed = 0;
-    rhythmLen = variationLen = legatoLen = accentLen = melodyLen = octaveLen = 16;
-    rhythmOff = variationOff = legatoOff = accentOff = melodyOff = octaveOff = 0;
-    rhythmRot = variationRot = legatoRot = accentRot = melodyRot = octaveRot = 0;
+    for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
+        lorRef(s, LOR_LEN) = 16;   // Length defaults to full 16-step window
+        lorRef(s, LOR_OFF) = 0;
+        lorRef(s, LOR_ROT) = 0;
+    }
     for (int i = 0; i < 15; i++) {
-        for (int l = 0; l < 3; ++l) {
-            polyLen[i][l] = 16;
-            polyOff[i][l] = 0;
-            polyRot[i][l] = 0;
+        for (int l = 0; l < PL_LANES; ++l) {   // was l < 3 — PL_ACCENT(3) was never reset (pre-existing bug)
+            polyLenERef(i, l) = 16;
+            polyOffERef(i, l) = 0;
+            polyRotERef(i, l) = 0;
         }
     }
     windowMask = 0xFFFF;
@@ -162,7 +164,7 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
         int relLight = (lightIdx - startStep + 16) % 16;
         int tickForLight = totalStepsElapsed - relCurrent + relLight;
 
-        int dnaIdx = getStrandIdx(tickForLight, rhythmLen, rhythmOff, rhythmRot);
+        int dnaIdx = getStrandIdx(tickForLight, lor(dotModular::STRAND_RHYTHM,LOR_LEN), lor(dotModular::STRAND_RHYTHM,LOR_OFF), lor(dotModular::STRAND_RHYTHM,LOR_ROT));
         bool isNote = pe.rhythmPattern[dnaIdx];
         baseActive = isNote ? 0.35f : 0.07f;
     }
@@ -537,9 +539,9 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
     if (monoGateStart) {
         // This is the decision point for this entire mono gate.
         // Each strand indexes with ITS OWN lane LOR (rest/melody/octave).
-        int restIdx = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx][PL_REST],   polyOff[voiceIdx][PL_REST],   polyRot[voiceIdx][PL_REST]);
-        int melIdx  = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx][PL_MELODY], polyOff[voiceIdx][PL_MELODY], polyRot[voiceIdx][PL_MELODY]);
-        int octIdx  = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx][PL_OCTAVE], polyOff[voiceIdx][PL_OCTAVE], polyRot[voiceIdx][PL_OCTAVE]);
+        int restIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_REST),   polyOffE(voiceIdx, PL_REST),   polyRotE(voiceIdx, PL_REST));
+        int melIdx  = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_MELODY), polyOffE(voiceIdx, PL_MELODY), polyRotE(voiceIdx, PL_MELODY));
+        int octIdx  = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_OCTAVE), polyOffE(voiceIdx, PL_OCTAVE), polyRotE(voiceIdx, PL_OCTAVE));
         float r_rest = pe.polyRhythmRandom[voiceIdx][restIdx];
         
         if (r_rest < v.restProb) {
@@ -555,7 +557,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         float pitchV = pe.genPitchLive(sem, input, pe.polyMelodyRandom[voiceIdx][melIdx], pe.polyOctaveRandom[voiceIdx][octIdx]);
         // Accent as a poly lane (modelled after rest): this voice draws its OWN accent at
         // its own accent LOR and compares to its own accentProb — not shared from mono.
-        int accIdx = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx][PL_ACCENT], polyOff[voiceIdx][PL_ACCENT], polyRot[voiceIdx][PL_ACCENT]);
+        int accIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_ACCENT), polyOffE(voiceIdx, PL_ACCENT), polyRotE(voiceIdx, PL_ACCENT));
         v.accented = (pe.polyAccentRandom[voiceIdx][accIdx] < v.accentProb);
         if (lastStepResult.decision == MonoDecision::NewNote)
             v.gs.triggerNote(pitchV, sem, lastStepResult.nvIdx);
@@ -585,8 +587,8 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                 // Re-draw pitch for glides (Legato) or sustains (MidNote).
                 // This allows the poly melody to move independently even if 
                 // the mono rhythm is static. Melody/octave use their own lane LOR.
-                int melIdx = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx][PL_MELODY], polyOff[voiceIdx][PL_MELODY], polyRot[voiceIdx][PL_MELODY]);
-                int octIdx = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx][PL_OCTAVE], polyOff[voiceIdx][PL_OCTAVE], polyRot[voiceIdx][PL_OCTAVE]);
+                int melIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_MELODY), polyOffE(voiceIdx, PL_MELODY), polyRotE(voiceIdx, PL_MELODY));
+                int octIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_OCTAVE), polyOffE(voiceIdx, PL_OCTAVE), polyRotE(voiceIdx, PL_OCTAVE));
                 int sem = 0;
                 float pitchV = pe.genPitchLive(sem, input, pe.polyMelodyRandom[voiceIdx][melIdx], pe.polyOctaveRandom[voiceIdx][octIdx]);
                 
@@ -689,12 +691,12 @@ int SequencerEngine::getStrandIdx(int tickCount, int len, int off, int mutation)
     return (timelineIdx + off) % 16;
 }
 
-int SequencerEngine::getRhythmStep() const    { return getStrandIdx(totalStepsElapsed, rhythmLen, rhythmOff, rhythmRot); }
-int SequencerEngine::getVariationStep() const { return getStrandIdx(totalStepsElapsed, variationLen, variationOff, variationRot); }
-int SequencerEngine::getLegatoStep() const    { return getStrandIdx(totalStepsElapsed, legatoLen, legatoOff, legatoRot); }
-int SequencerEngine::getAccentStep() const    { return getStrandIdx(totalStepsElapsed, accentLen, accentOff, accentRot); }
-int SequencerEngine::getMelodyStep() const    { return getStrandIdx(totalStepsElapsed, melodyLen, melodyOff, melodyRot); }
-int SequencerEngine::getOctaveStep() const    { return getStrandIdx(totalStepsElapsed, octaveLen, octaveOff, octaveRot); }
+int SequencerEngine::getRhythmStep() const    { return getStrandIdx(totalStepsElapsed, lor(dotModular::STRAND_RHYTHM,LOR_LEN), lor(dotModular::STRAND_RHYTHM,LOR_OFF), lor(dotModular::STRAND_RHYTHM,LOR_ROT)); }
+int SequencerEngine::getVariationStep() const { return getStrandIdx(totalStepsElapsed, lor(dotModular::STRAND_VARIATION,LOR_LEN), lor(dotModular::STRAND_VARIATION,LOR_OFF), lor(dotModular::STRAND_VARIATION,LOR_ROT)); }
+int SequencerEngine::getLegatoStep() const    { return getStrandIdx(totalStepsElapsed, lor(dotModular::STRAND_LEGATO,LOR_LEN), lor(dotModular::STRAND_LEGATO,LOR_OFF), lor(dotModular::STRAND_LEGATO,LOR_ROT)); }
+int SequencerEngine::getAccentStep() const    { return getStrandIdx(totalStepsElapsed, lor(dotModular::STRAND_ACCENT,LOR_LEN), lor(dotModular::STRAND_ACCENT,LOR_OFF), lor(dotModular::STRAND_ACCENT,LOR_ROT)); }
+int SequencerEngine::getMelodyStep() const    { return getStrandIdx(totalStepsElapsed, lor(dotModular::STRAND_MELODY,LOR_LEN), lor(dotModular::STRAND_MELODY,LOR_OFF), lor(dotModular::STRAND_MELODY,LOR_ROT)); }
+int SequencerEngine::getOctaveStep() const    { return getStrandIdx(totalStepsElapsed, lor(dotModular::STRAND_OCTAVE,LOR_LEN), lor(dotModular::STRAND_OCTAVE,LOR_OFF), lor(dotModular::STRAND_OCTAVE,LOR_ROT)); }
 
 void SequencerEngine::syncVisuals(const PatternInput& in) {
     pe.refreshVisualCache(in);
