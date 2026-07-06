@@ -31,9 +31,9 @@ void SequencerEngine::reset() {
     }
     for (int i = 0; i < 15; i++) {
         for (int l = 0; l < PL_LANES; ++l) {   // was l < 3 — PL_ACCENT(3) was never reset (pre-existing bug)
-            polyLen[i][l] = 16;
-            polyOff[i][l] = 0;
-            polyRot[i][l] = 0;
+            polyLenERef(i, l) = 16;
+            polyOffERef(i, l) = 0;
+            polyRotERef(i, l) = 0;
         }
     }
     windowMask = 0xFFFF;
@@ -539,9 +539,9 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
     if (monoGateStart) {
         // This is the decision point for this entire mono gate.
         // Each strand indexes with ITS OWN lane LOR (rest/melody/octave).
-        int restIdx = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx][PL_REST],   polyOff[voiceIdx][PL_REST],   polyRot[voiceIdx][PL_REST]);
-        int melIdx  = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx][PL_MELODY], polyOff[voiceIdx][PL_MELODY], polyRot[voiceIdx][PL_MELODY]);
-        int octIdx  = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx][PL_OCTAVE], polyOff[voiceIdx][PL_OCTAVE], polyRot[voiceIdx][PL_OCTAVE]);
+        int restIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_REST),   polyOffE(voiceIdx, PL_REST),   polyRotE(voiceIdx, PL_REST));
+        int melIdx  = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_MELODY), polyOffE(voiceIdx, PL_MELODY), polyRotE(voiceIdx, PL_MELODY));
+        int octIdx  = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_OCTAVE), polyOffE(voiceIdx, PL_OCTAVE), polyRotE(voiceIdx, PL_OCTAVE));
         float r_rest = pe.polyRhythmRandom[voiceIdx][restIdx];
         
         if (r_rest < v.restProb) {
@@ -557,7 +557,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         float pitchV = pe.genPitchLive(sem, input, pe.polyMelodyRandom[voiceIdx][melIdx], pe.polyOctaveRandom[voiceIdx][octIdx]);
         // Accent as a poly lane (modelled after rest): this voice draws its OWN accent at
         // its own accent LOR and compares to its own accentProb — not shared from mono.
-        int accIdx = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx][PL_ACCENT], polyOff[voiceIdx][PL_ACCENT], polyRot[voiceIdx][PL_ACCENT]);
+        int accIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_ACCENT), polyOffE(voiceIdx, PL_ACCENT), polyRotE(voiceIdx, PL_ACCENT));
         v.accented = (pe.polyAccentRandom[voiceIdx][accIdx] < v.accentProb);
         if (lastStepResult.decision == MonoDecision::NewNote)
             v.gs.triggerNote(pitchV, sem, lastStepResult.nvIdx);
@@ -587,8 +587,8 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                 // Re-draw pitch for glides (Legato) or sustains (MidNote).
                 // This allows the poly melody to move independently even if 
                 // the mono rhythm is static. Melody/octave use their own lane LOR.
-                int melIdx = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx][PL_MELODY], polyOff[voiceIdx][PL_MELODY], polyRot[voiceIdx][PL_MELODY]);
-                int octIdx = getStrandIdx(totalStepsElapsed, polyLen[voiceIdx][PL_OCTAVE], polyOff[voiceIdx][PL_OCTAVE], polyRot[voiceIdx][PL_OCTAVE]);
+                int melIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_MELODY), polyOffE(voiceIdx, PL_MELODY), polyRotE(voiceIdx, PL_MELODY));
+                int octIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_OCTAVE), polyOffE(voiceIdx, PL_OCTAVE), polyRotE(voiceIdx, PL_OCTAVE));
                 int sem = 0;
                 float pitchV = pe.genPitchLive(sem, input, pe.polyMelodyRandom[voiceIdx][melIdx], pe.polyOctaveRandom[voiceIdx][octIdx]);
                 

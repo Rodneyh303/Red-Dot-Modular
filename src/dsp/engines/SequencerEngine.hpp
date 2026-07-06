@@ -161,6 +161,18 @@ struct SequencerEngine {
         }
     }
 
+    // Engine-order poly LOR accessors (Step 2b-i). Thin wrappers over the raw poly arrays in their
+    // NATIVE PL_ engine lane order — introduced so every raw polyLen/Off/Rot[bank][engLane] site can
+    // route through an accessor WITHOUT changing its value or lane (pure rename, behaviour-inert).
+    // Step 2b-ii then physically reorders storage to editor order and these wrappers absorb the
+    // engine→editor conversion internally, so NO call site changes during the storage swap.
+    int& polyLenERef(int bank, int engLane) { return polyLen[bank][engLane]; }
+    int& polyOffERef(int bank, int engLane) { return polyOff[bank][engLane]; }
+    int& polyRotERef(int bank, int engLane) { return polyRot[bank][engLane]; }
+    int  polyLenE(int bank, int engLane) const { return polyLen[bank][engLane]; }
+    int  polyOffE(int bank, int engLane) const { return polyOff[bank][engLane]; }
+    int  polyRotE(int bank, int engLane) const { return polyRot[bank][engLane]; }
+
     // Indexable strand accessors keyed by dotModular::EngineStrand order
     // (0 rhythm, 1 variation, 2 legato, 3 accent, 4 melody, 5 octave). These let
     // callers go editor-lane → strand (via MONO_LANE_TO_STRAND) → value without
@@ -280,8 +292,8 @@ struct SequencerEngine {
     // 0..1. Used to assemble the poly probability cables (channels 2..1+nVoices).
     inline float polyLaneProbability(int polyLane, int voice) const {
         if (voice < 0 || voice >= 15 || polyLane < 0 || polyLane >= PL_LANES) return 0.f;
-        int idx = getStrandIdx(totalStepsElapsed, polyLen[voice][polyLane],
-                               polyOff[voice][polyLane], polyRot[voice][polyLane]);
+        int idx = getStrandIdx(totalStepsElapsed, polyLenE(voice, polyLane),
+                               polyOffE(voice, polyLane), polyRotE(voice, polyLane));
         idx &= 0x0F;
         switch (polyLane) {
             case PL_REST:   return pe.polyRhythmRandom[voice][idx];
@@ -310,8 +322,8 @@ struct SequencerEngine {
     // Step indices (for S&H edge detection) matching the probability accessors above.
     inline int polyLaneStep(int polyLane, int voice) const {
         if (voice < 0 || voice >= 15 || polyLane < 0 || polyLane >= PL_LANES) return -1;
-        return getStrandIdx(totalStepsElapsed, polyLen[voice][polyLane],
-                            polyOff[voice][polyLane], polyRot[voice][polyLane]) & 0x0F;
+        return getStrandIdx(totalStepsElapsed, polyLenE(voice, polyLane),
+                            polyOffE(voice, polyLane), polyRotE(voice, polyLane)) & 0x0F;
     }
     inline int masterLaneStep(int polyLane) const {
         int strand = (polyLane == PL_REST)   ? dotModular::STRAND_RHYTHM

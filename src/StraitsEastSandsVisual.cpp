@@ -931,9 +931,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             const int pv = polyVoice();
             // l = engine lane (0=REST 1=MEL 2=OCT 3=ACC) → editor lane
             for (int l=0; l<4; ++l) {
-                int cvLen = eng.polyLen[pv][l];
-                int cvOff = eng.polyOff[pv][l];
-                int cvRot = eng.polyRot[pv][l];
+                int cvLen = eng.polyLenE(pv, l);
+                int cvOff = eng.polyOffE(pv, l);
+                int cvRot = eng.polyRotE(pv, l);
                 int el = dotModular::ENGINE_LANE_TO_EDITOR[l];
                 visualEditor->currentState.lanes[el].setDisplayLOR(cvLen, cvOff, cvRot);
                 visualEditor->setLanePlayStep(el, calcPlayhead(gs, cvLen, cvOff, cvRot));
