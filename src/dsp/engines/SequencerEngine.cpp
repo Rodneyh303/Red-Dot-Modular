@@ -30,7 +30,7 @@ void SequencerEngine::reset() {
         monoLOR[s][LOR_ROT] = 0;
     }
     for (int i = 0; i < 15; i++) {
-        for (int l = 0; l < 3; ++l) {
+        for (int l = 0; l < PL_LANES; ++l) {   // was l < 3 — PL_ACCENT(3) was never reset (pre-existing bug)
             polyLen[i][l] = 16;
             polyOff[i][l] = 0;
             polyRot[i][l] = 0;

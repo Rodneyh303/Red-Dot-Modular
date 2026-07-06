@@ -121,6 +121,35 @@ int main() {
             }
     });
 
+    // ── 2a. Editor-order poly accessor: pins the editor→engine lane conversion ──
+    // The unified [16][6] storage is EDITOR-ordered. polyLOR/polyLORRef present the (engine-ordered)
+    // poly storage in editor order. Assert the conversion matches EDITOR_TO_ENGINE_LANE exactly, so a
+    // lane-swap in the Step-2b physical merge is caught here.
+    SUITE("Poly LOR editor-order accessor: editorLane→PL_ engine lane conversion is correct");
+    TEST("polyLOR(bank, editorLane, item) reads the EDITOR_TO_ENGINE_LANE-mapped engine cell", {
+        for (int b = 0; b < 15; ++b)
+            for (int ed = 0; ed < 4; ++ed) {
+                int engLane = dotModular::EDITOR_TO_ENGINE_LANE[ed];
+                // reading via editor lane `ed` must return the sentinel stored at engine lane `engLane`
+                EXPECT_EQ(eng.polyLOR(b, ed, SequencerEngine::LOR_LEN), polySentinel(0, b, engLane));
+                EXPECT_EQ(eng.polyLOR(b, ed, SequencerEngine::LOR_OFF), polySentinel(1, b, engLane));
+                EXPECT_EQ(eng.polyLOR(b, ed, SequencerEngine::LOR_ROT), polySentinel(2, b, engLane));
+            }
+    });
+    TEST("polyLORRef(bank, editorLane, item) writes the EDITOR_TO_ENGINE_LANE-mapped engine cell", {
+        // write a fresh distinct value via the editor-order ref, confirm it lands at the engine cell
+        for (int b = 0; b < 15; ++b)
+            for (int ed = 0; ed < 4; ++ed) {
+                int engLane = dotModular::EDITOR_TO_ENGINE_LANE[ed];
+                eng.polyLORRef(b, ed, SequencerEngine::LOR_LEN) = 7000 + b*4 + ed;
+                EXPECT_EQ(eng.polyLen[b][engLane], 7000 + b*4 + ed);
+            }
+        // restore the sentinels for later suites
+        for (int b = 0; b < 15; ++b)
+            for (int l = 0; l < SequencerEngine::PL_LANES; ++l)
+                eng.polyLen[b][l] = polySentinel(0, b, l);
+    });
+
     // ── 3. Mono ↔ poly independence (separate storage today; must still hold as
     //       distinct SLOTS after unification: slot 0 vs slots 1..15) ────────────
     SUITE("Mono and poly storage are independent (writing one never disturbs the other)");

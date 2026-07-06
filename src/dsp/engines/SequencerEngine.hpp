@@ -136,6 +136,31 @@ struct SequencerEngine {
     int polyOff[15][PL_LANES];
     int polyRot[15][PL_LANES];
 
+    // Editor-order poly LOR accessors (Step 2a of the probability-modifier unification): present the
+    // poly storage in EDITOR lane order (MEL=0,OCT=1,REST=2,ACC=3) — the canonical order the unified
+    // len/off/rot[16][6] will use — converting to the underlying PL_* engine lane internally via
+    // EDITOR_TO_ENGINE_LANE. Storage is UNCHANGED here; this just gives poly the same editor-order
+    // interface mono already has, so Step 2b can physically merge the arrays with no permutation.
+    // editorLane is 0..3 (poly has no VAR/LEG); item is MonoItem {LOR_LEN,LOR_OFF,LOR_ROT}.
+    int& polyLORRef(int bank, int editorLane, int item) {
+        int eng = dotModular::EDITOR_TO_ENGINE_LANE[editorLane & 3];   // editor → PL_ engine lane
+        switch (item) {
+            case LOR_OFF: return polyOff[bank][eng];
+            case LOR_ROT: return polyRot[bank][eng];
+            case LOR_LEN:
+            default:      return polyLen[bank][eng];
+        }
+    }
+    int polyLOR(int bank, int editorLane, int item) const {
+        int eng = dotModular::EDITOR_TO_ENGINE_LANE[editorLane & 3];
+        switch (item) {
+            case LOR_OFF: return polyOff[bank][eng];
+            case LOR_ROT: return polyRot[bank][eng];
+            case LOR_LEN:
+            default:      return polyLen[bank][eng];
+        }
+    }
+
     // Indexable strand accessors keyed by dotModular::EngineStrand order
     // (0 rhythm, 1 variation, 2 legato, 3 accent, 4 melody, 5 octave). These let
     // callers go editor-lane → strand (via MONO_LANE_TO_STRAND) → value without
