@@ -78,10 +78,14 @@ struct SpreadResolver {
             return clampSpread(in.macroBase + in.macroSendDelta);
         }
         float eff = in.base;
-        if (in.ownCv.connected)  eff = clampSpread(eff + in.ownCv.contribution());   // applyMono/MacroSprCV
-        if (in.eastCv.connected) eff = clampSpread(eff + in.eastCv.contribution());  // East V1 spread add
-        if (in.macroPresent)     eff = clampSpread(eff + in.macroSendDelta * in.macroSend);  // tapped send
-        return eff;
+        // if (in.ownCv.connected)  eff = clampSpread(eff + in.ownCv.contribution());   // applyMono/MacroSprCV
+        // if (in.eastCv.connected) eff = clampSpread(eff + in.eastCv.contribution());  // East V1 spread add
+        // if (in.macroPresent)     eff = clampSpread(eff + in.macroSendDelta * in.macroSend);  // tapped send
+
+        if (in.ownCv.connected)  eff += in.ownCv.contribution();   // applyMono/MacroSprCV
+        if (in.eastCv.connected) eff += in.eastCv.contribution();  // East V1 spread add
+        if (in.macroPresent)     eff += in.macroSendDelta * in.macroSend;  // tapped send
+        return clampSpread(eff);
     }
 
     static float clampSpread(float v) { return std::max(-1.f, std::min(1.f, v)); }
