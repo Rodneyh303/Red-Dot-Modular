@@ -153,18 +153,17 @@ def gen(dark):
         A(f'<rect x="{px(bx-0.4)}" y="{px(by-0.4)}" width="{px(bw+0.8)}" height="{px(bh+0.8)}" '
           f'rx="{px(0.4)}" fill="{t["shutterwell"]}"/>')
 
-        # ── Shutters (dark, widget re-colours the lit dots live) ──
+        # ── Shutters (dark, widget re-colours the lit keys live). The drawn rect IS the marker:
+        # its id lets the widget read the full key geometry (pos+size) straight from the panel,
+        # so panel art is the single source of shutter geometry (no hardcoded rects in the widget). ──
         for i, semi in enumerate(WHITE_ORDER):
             sx = bx + i*(ww+wgap)
-            A(f'<rect x="{px(sx)}" y="{px(by)}" width="{px(ww)}" height="{px(wh)}" rx="{px(0.5)}" '
+            A(f'<rect id="shutter_{f}_{semi}" x="{px(sx)}" y="{px(by)}" width="{px(ww)}" height="{px(wh)}" rx="{px(0.5)}" '
               f'fill="{t["shutterwell"]}" stroke="{t["wellring"]}" stroke-width="0.4"/>')
         for semi, after in BLACK_AFTER.items():
             sx = bx + (after+1)*(ww+wgap) - wgap - bwd/2
-            A(f'<rect x="{px(sx)}" y="{px(by)}" width="{px(bwd)}" height="{px(bhh)}" rx="{px(0.4)}" '
+            A(f'<rect id="shutter_{f}_{semi}" x="{px(sx)}" y="{px(by)}" width="{px(bwd)}" height="{px(bhh)}" rx="{px(0.4)}" '
               f'fill="{t["shutterblack"]}" stroke="{t["wellring"]}" stroke-width="0.4"/>')
-        for semi in range(12):
-            cx, cy = cen[semi]
-            A(f'<circle id="shutter_{f}_{semi}" cx="{px(cx)}" cy="{px(cy)}" r="0.5" fill="none" stroke="none"/>')
 
     # ── Five-foot-way colonnade at street level ──
     street_y = FRONT_TOP + NUM_FRONTS*(FRONT_H+FRONT_GAP) + 1.0
