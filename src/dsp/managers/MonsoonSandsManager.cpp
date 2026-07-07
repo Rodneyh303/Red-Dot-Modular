@@ -255,10 +255,12 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                     sin.macroSendDelta = macroVis->macroSendDelta[l][3];
                     sin.macroSend      = macroVis->params[Macro::sendId(dotModular::VoiceResolver::kMonoSlot, l, 3)].getValue();
                 }
-                monoVis->spreadEffective[l] = redDot::SpreadResolver::effective(sin);
+                engine.spreadERef(0, l) = redDot::SpreadResolver::effective(sin);   // slot 0 = mono/V1
             }
-            // spreadEffective[] is ENGINE/spread-indexed: 0=REST,1=MEL,2=OCT,3=ACCENT.
-            // Indices 4/5 are unused (LEG/VAR are mono-only and have no spread).
+            // engine.spread[slot][editorLane] is the engine's own spread state (was monoVis->
+            // spreadEffective — MVC: the model no longer reaches into the visual). Accessed engine-
+            // order via spreadE/spreadERef (0=REST,1=MEL,2=OCT,3=ACCENT); lanes 4/5 unused (LEG/VAR
+            // are mono-only, no spread).
 
             // ── Sands spread→final (Option W, Model 1) ───────────────────────
             // Mono owns the MONO final arrays: read the SLEWED draw, apply
@@ -282,14 +284,14 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 // Single source of truth: target (mode-aware, mono-inclusive avg)
                 // + bipolar interpolate, over the pre-spread slewed draws.
                 engine.pe.rhythmRandom[i] = redDot::SpreadInterp::apply(
-                    engine.pe, mode, 0, i, nPoly, engine.pe.slewedRhythm[i], monoVis->spreadEffective[0]);
+                    engine.pe, mode, 0, i, nPoly, engine.pe.slewedRhythm[i], engine.spreadE(0, 0));
                 engine.pe.melodyRandom[i] = redDot::SpreadInterp::apply(
-                    engine.pe, mode, 1, i, nPoly, engine.pe.slewedMelody[i], monoVis->spreadEffective[1]);
+                    engine.pe, mode, 1, i, nPoly, engine.pe.slewedMelody[i], engine.spreadE(0, 1));
                 engine.pe.octaveRandom[i] = redDot::SpreadInterp::apply(
-                    engine.pe, mode, 2, i, nPoly, engine.pe.slewedOctave[i], monoVis->spreadEffective[2]);
+                    engine.pe, mode, 2, i, nPoly, engine.pe.slewedOctave[i], engine.spreadE(0, 2));
                 engine.pe.legatoRandom[i]    = engine.pe.slewedLegato[i];     // mono-only, raw
                 engine.pe.accentRandom[i] = redDot::SpreadInterp::apply(
-                    engine.pe, mode, 3, i, nPoly, engine.pe.slewedAccent[i], monoVis->spreadEffective[3]);
+                    engine.pe, mode, 3, i, nPoly, engine.pe.slewedAccent[i], engine.spreadE(0, 3));
                 engine.pe.variationRandom[i] = engine.pe.slewedVariation[i];
             }
             }  // end if(!engine.locked)
