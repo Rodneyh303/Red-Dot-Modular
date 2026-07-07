@@ -68,35 +68,35 @@ struct PatternInput {
 // ── PatternEngine ─────────────────────────────────────────────────────────────
 struct PatternEngine {
 
-    // ── Output arrays (read by MeloDicer, never written externally) ───────────
-    float rhythmRandom[16]    = {};
-    float variationRandom[16] = {};
-    float legatoRandom[16]    = {};
-    float accentRandom[16]    = {};  // New: accent strand probabilities
-    float melodyRandom[16]    = {};
-    float octaveRandom[16]    = {};
+    // ── Unified probability storage (item 4): ONE array for all 16 voices × 6 editor lanes × 16 steps,
+    // replacing the separate mono named arrays (rhythmRandom…octaveRandom) and poly polyXRandom[15][16].
+    // Indexed [voiceSlot][editorLane][step] — the SAME convention as lorStore_/spread (slot 0 = V1/mono,
+    // slots 1..15 = V2..V16; editor lanes MEL=0,OCT=1,REST=2,ACC=3,VAR=4,LEG=5; VAR/LEG poly-unused).
+    // The 6 mono named arrays below are REFERENCE VIEWS onto random_[0][lane] so the ~160 existing
+    // rhythmRandom[step] / std::rotate / whole-array sites keep working unchanged; poly access goes via
+    // polyRandom(voice,lane). (mono row lane == strand index: MONO_LANE_TO_STRAND is the identity.)
+    float random_[16][dotModular::NUM_STRANDS][16] = {};
 
-    // Final post-everything (A/B-mix + spread + LOR feed in upstream) probability value
-    // for a given ENGINE STRAND at a given step, 0..1. Strand-keyed (use
-    // dotModular::STRAND_* or MONO_LANE_TO_STRAND[editorLane]) so callers never hardcode
-    // the editor-lane→array permutation. Used by the Sands visual probability CV outs.
+    // ── Mono output views (read by MeloDicer, never written externally) — bound to random_[0][lane].
+    float (&melodyRandom)[16]    = random_[0][dotModular::STRAND_MELODY];
+    float (&octaveRandom)[16]    = random_[0][dotModular::STRAND_OCTAVE];
+    float (&rhythmRandom)[16]    = random_[0][dotModular::STRAND_RHYTHM];
+    float (&accentRandom)[16]    = random_[0][dotModular::STRAND_ACCENT];  // accent strand probabilities
+    float (&variationRandom)[16] = random_[0][dotModular::STRAND_VARIATION];
+    float (&legatoRandom)[16]    = random_[0][dotModular::STRAND_LEGATO];
+
+    // Poly probability view: voice bank b (0..14 = V2..V16) → slot b+1; lane is the engine PL_ lane,
+    // converted to editor order. Returns the 16-step row (float(&)[16]) so callers index [step].
+    float (&polyRandom(int bank, int engLane))[16] { return random_[bank + 1][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]]; }
+    const float (&polyRandom(int bank, int engLane) const)[16] { return random_[bank + 1][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]]; }
+
+    // Final post-everything (A/B-mix + spread + LOR feed in upstream) probability value for a given
+    // ENGINE STRAND at a given step, 0..1. Now a direct index into random_[0] (mono row): strand index
+    // IS the editor-lane column (MONO_LANE_TO_STRAND identity), so no table/permutation. Out-of-range
+    // falls back to rhythm (matches the old default:). Used by the Sands visual probability CV outs.
     inline float finalRandomByStrand(int strand, int step) const {
-        step &= 0x0F;
-        // Strand→array addressing collapsed to ONE table (was a 6-case switch — the last hand-written
-        // strand→field map, analogous to the LOR strandLen/Off/Rot switches already unified). The
-        // named arrays remain the storage; only the addressing is table-driven. Indexed by EngineStrand
-        // (MEL=0,OCT=1,RHYTHM=2,ACC=3,VAR=4,LEG=5); out-of-range falls back to rhythm (matching the old
-        // `default:`). float(PatternEngine::* const) member pointers, resolved at compile time.
-        static constexpr float (PatternEngine::* const kByStrand[dotModular::NUM_STRANDS])[16] = {
-            &PatternEngine::melodyRandom,     // STRAND_MELODY    = 0
-            &PatternEngine::octaveRandom,     // STRAND_OCTAVE    = 1
-            &PatternEngine::rhythmRandom,     // STRAND_RHYTHM    = 2
-            &PatternEngine::accentRandom,     // STRAND_ACCENT    = 3
-            &PatternEngine::variationRandom,  // STRAND_VARIATION = 4
-            &PatternEngine::legatoRandom,     // STRAND_LEGATO    = 5
-        };
         const int s = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? strand : dotModular::STRAND_RHYTHM;
-        return (this->*kByStrand[s])[step];
+        return random_[0][s][step & 0x0F];
     }
 
     // Poly strands: 15 voices, each with Rhythm, Melody, and Octave draws
