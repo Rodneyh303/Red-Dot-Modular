@@ -123,20 +123,14 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         visualEditor->showControlBar    = false;
         addChild(visualEditor);
 
-        // Per-lane V1 edit lock. On the V1 tab (viewVoice 0) with Mono attached, a lane is
-        // locked iff MONO owns it (Mono's editor-ordered ownerDispId > 0.5 = Mono owns →
-        // Macro can't edit); Macro-owned/delegated lanes (<=0.5) stay editable. No Mono
-        // (East+Macro) → fully editable. Off the V1 tab → not locked here. Fixes Mono+Macro
-        // where Macro-owned V1 LOR was uneditable (old blunt readOnly=tab1Mono).
-        visualEditor->laneLockedFn = [this](int editorLane) -> bool {
-            if (editorLane < 0 || editorLane >= 4) return false;   // VAR/LEG mono-only
-            if (viewVoice != 0) return false;                      // only the V1 tab
-            // locked ⟺ MONO owns this V1 lane (owner(0,l)==MONO). NOTE: preserves the old
-            // "editable whenever no Mono" behaviour — including EAST+MACRO where East owns
-            // V1. Switching to lockedOn(MACRO) would also lock when East owns; that's the
-            // deliberate behaviour question tracked in SANDS_TOPOLOGY_RESOLVER_PLAN.md.
-            return buildV1Topo().owner(0, editorLane) == dotModular::SandsTopology::Role::MONO;
-        };
+        // Macro's V1 LOR editor is never locked by ownership. Macro's V1 knobs edit Macro's OWN global
+        // base (saveLOR → module->params[lorId(l,*)]) — the same params V2..V16 edit and the same
+        // principle its spread trimpots already follow: editing Macro's own state is never gated by who
+        // DRIVES the lane downstream (Mono or East). Ownership governs what reaches the ENGINE, not what
+        // Macro may edit on its own panel. Previously this locked V1 lanes owner(0,l)==MONO, which (with
+        // Gate A) was half the asymmetry: Mono owning a V1 lane blocked Macro's LOR there while spread
+        // stayed editable, and East+Mono+Macro behaved differently again.
+        visualEditor->laneLockedFn = [](int /*editorLane*/) -> bool { return false; };
 
         Module* mod_ = module;
         auto themeOut = [mod_](redDot::GoldPolyPort* p) {
@@ -211,7 +205,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     // (this widget IS Macro); monoV1Owner[] read from Mono's editor-ordered ownerDispId
     // (the same source the old predicate read). lockedOn(MACRO,0,l) == owner(0,l)!=MACRO,
     // i.e. "Mono owns it" — matching the old mv->ownerDispId(l) > 0.5 test.
-    dotModular::SandsTopology buildV1Topo() {
+    [[maybe_unused]] dotModular::SandsTopology buildV1Topo() {
         dotModular::SandsTopology::Inputs in;
         if (auto* mon = getMonsoon()) {
             mon->expanderManager.fillPresence(in, mon->engine.numPolyVoices);  // single authority
@@ -305,13 +299,12 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // all data work.
         // INERT unless poly data exists (expander + >=1 poly voice; matches the
         // engine's polyBaseActive). See the East visual note re: >=1 vs >=2.
-        if (monsoon->expanderManager.cachedPolyVoiceExpander == nullptr
-            || monsoon->engine.numPolyVoices < 1) {
-            visualEditor->inert = true;
-            visualEditor->inertMessage = "Attach Straits East expander";
-            visualEditor->clearPlaySteps();
-            return;
-        }
+        // Macro's OWN global base (V1 + V2..V16 LOR/spread knobs) is always editable — it edits
+        // Macro's own params, which exist regardless of any expander. East only supplies the poly
+        // voice COUNT (tabGroup->setActiveCount below limits selectable tabs to it, so without East the
+        // only tab is V1). So we no longer early-return / set inert when East is absent — that used to
+        // kill ALL of Macro's editing, producing the asymmetry where Mono+Macro/no-East blocked Macro
+        // LOR while spread (a separate control) stayed editable. inert stays false; editing is live.
         visualEditor->inert = false;
 
         if (paramMgr->patternEngine != pe) {
