@@ -27,7 +27,7 @@ namespace redDot {
  *   This requires SequencerEngine reference for polyphony tracking.
  * 
  * Data Storage:
- *   Probabilities: PatternEngine.polyRhythmRandom[voiceIdx][16], etc.
+ *   Probabilities: PatternEngine.polyRandom(voiceIdx, SequencerEngine::PL_REST)[16], etc.
  *   Spread: SpreadManager (per voice, per lane)
  * 
  * Voice Mapping:
@@ -87,20 +87,20 @@ struct PolyVoiceSandsParameterManager {
     
     // Rest lane (uses polyRhythmRandom)
     for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
-      patternEngine->polyRhythmRandom[voiceIdx][i] = editorState.lanes[SandsVisualEditorV4::REST].probabilities[i];
-      patternEngine->polyRhythmSource[voiceIdx][i] = patternEngine->polyRhythmRandom[voiceIdx][i];
+      patternEngine->polyRandom(voiceIdx, SequencerEngine::PL_REST)[i] = editorState.lanes[SandsVisualEditorV4::REST].probabilities[i];
+      patternEngine->polyRhythmSource[voiceIdx][i] = patternEngine->polyRandom(voiceIdx, SequencerEngine::PL_REST)[i];
     }
     
     // Melody lane
     for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
-      patternEngine->polyMelodyRandom[voiceIdx][i] = editorState.lanes[SandsVisualEditorV4::MELODY].probabilities[i];
-      patternEngine->polyMelodySource[voiceIdx][i] = patternEngine->polyMelodyRandom[voiceIdx][i];
+      patternEngine->polyRandom(voiceIdx, SequencerEngine::PL_MELODY)[i] = editorState.lanes[SandsVisualEditorV4::MELODY].probabilities[i];
+      patternEngine->polyMelodySource[voiceIdx][i] = patternEngine->polyRandom(voiceIdx, SequencerEngine::PL_MELODY)[i];
     }
     
     // Octave lane
     for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
-      patternEngine->polyOctaveRandom[voiceIdx][i] = editorState.lanes[SandsVisualEditorV4::OCTAVE].probabilities[i];
-      patternEngine->polyOctaveSource[voiceIdx][i] = patternEngine->polyOctaveRandom[voiceIdx][i];
+      patternEngine->polyRandom(voiceIdx, SequencerEngine::PL_OCTAVE)[i] = editorState.lanes[SandsVisualEditorV4::OCTAVE].probabilities[i];
+      patternEngine->polyOctaveSource[voiceIdx][i] = patternEngine->polyRandom(voiceIdx, SequencerEngine::PL_OCTAVE)[i];
     }
   }
   

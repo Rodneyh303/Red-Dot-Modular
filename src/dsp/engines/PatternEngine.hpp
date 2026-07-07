@@ -85,6 +85,10 @@ struct PatternEngine {
     float (&variationRandom)[16] = random_[0][dotModular::STRAND_VARIATION];
     float (&legatoRandom)[16]    = random_[0][dotModular::STRAND_LEGATO];
 
+    // Poly engine lane constants (mirror SequencerEngine::PolyLane) for polyRandom callers in this
+    // layer. 0=REST,1=MEL,2=OCT,3=ACC — the engine PL_ order (converted to editor order inside).
+    enum PolyLane { PL_REST = 0, PL_MELODY = 1, PL_OCTAVE = 2, PL_ACCENT = 3, PL_LANES = 4 };
+
     // Poly probability view: voice bank b (0..14 = V2..V16) → slot b+1; lane is the engine PL_ lane,
     // converted to editor order. Returns the 16-step row (float(&)[16]) so callers index [step].
     float (&polyRandom(int bank, int engLane))[16] { return random_[bank + 1][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]]; }
@@ -100,10 +104,8 @@ struct PatternEngine {
     }
 
     // Poly strands: 15 voices, each with Rhythm, Melody, and Octave draws
-    float polyRhythmRandom[15][16] = {};
-    float polyMelodyRandom[15][16] = {};
-    float polyOctaveRandom[15][16] = {};
-    float polyAccentRandom[15][16] = {};   // NEW: poly accent lane (modelled after rest)
+    // (poly probability arrays removed — poly voices live in random_[1..15], accessed via
+    // polyRandom(bank, engLane). Previously polyRhythm/Melody/Octave/AccentRandom[15][16].)
 
     // ── Playable slew: locked (A) + candidate (B) endpoints ───────────────────
     // The public arrays above are the EFFECTIVE output = A + slew*(B-A).

@@ -26,19 +26,19 @@ void PatternEngine::reset() {
         octaveRandom[i] = 0.5f;     // Default to middle of octave range
         
         for (int v = 0; v < 15; v++) {
-            polyRhythmRandom[v][i] = 1.0f; // Poly voices trigger by default
-            polyAccentRandom[v][i] = 1.0f; // No accent by default (1.0 < accentProb is false).
+            polyRandom(v, PL_REST)[i] = 1.0f; // Poly voices trigger by default
+            polyRandom(v, PL_ACCENT)[i] = 1.0f; // No accent by default (1.0 < accentProb is false).
                                            // BUG FIX: this seed was missing (rhythm had it, accent
                                            // didn't), so polyAccentRandom stayed 0 → 0<accentProb
                                            // always true → EVERY poly note accented on any nonzero
                                            // accent knob. Mirrors polyAccentSource=1.0 below.
-            polyMelodyRandom[v][i] = 0.5f;
-            polyOctaveRandom[v][i] = 0.5f;
+            polyRandom(v, PL_MELODY)[i] = 0.5f;
+            polyRandom(v, PL_OCTAVE)[i] = 0.5f;
             
             polyRhythmSource[v][i] = 1.0f;
             polyAccentSource[v][i] = 1.0f;
-            polyMelodySource[v][i] = polyMelodyRandom[v][i];
-            polyOctaveSource[v][i] = polyOctaveRandom[v][i];
+            polyMelodySource[v][i] = polyRandom(v, PL_MELODY)[i];
+            polyOctaveSource[v][i] = polyRandom(v, PL_OCTAVE)[i];
         }
         
         rhythmSource[i] = rhythmRandom[i];
@@ -67,10 +67,10 @@ void PatternEngine::reset() {
         for (int v=0;v<15;v++){
             polyRhythmLockedA[v][i] = polyMelodyLockedA[v][i] = polyOctaveLockedA[v][i] = 0.f;
             polyAccentLockedA[v][i] = 0.f;
-            polyRhythmCandB[v][i] = polyRhythmRandom[v][i];
-            polyAccentCandB[v][i] = polyAccentRandom[v][i];
-            polyMelodyCandB[v][i] = polyMelodyRandom[v][i];
-            polyOctaveCandB[v][i] = polyOctaveRandom[v][i];
+            polyRhythmCandB[v][i] = polyRandom(v, PL_REST)[i];
+            polyAccentCandB[v][i] = polyRandom(v, PL_ACCENT)[i];
+            polyMelodyCandB[v][i] = polyRandom(v, PL_MELODY)[i];
+            polyOctaveCandB[v][i] = polyRandom(v, PL_OCTAVE)[i];
         }
     }
 
@@ -84,9 +84,9 @@ void PatternEngine::reset() {
         slewedLegato[i]=legatoRandom[i]; slewedAccent[i]=accentRandom[i];
         slewedMelody[i]=melodyRandom[i]; slewedOctave[i]=octaveRandom[i];
         for (int v=0;v<15;v++){
-            slewedPolyRhythm[v][i]=polyRhythmRandom[v][i];
-            slewedPolyMelody[v][i]=polyMelodyRandom[v][i];
-            slewedPolyOctave[v][i]=polyOctaveRandom[v][i];
+            slewedPolyRhythm[v][i]=polyRandom(v, PL_REST)[i];
+            slewedPolyMelody[v][i]=polyRandom(v, PL_MELODY)[i];
+            slewedPolyOctave[v][i]=polyRandom(v, PL_OCTAVE)[i];
         }
     }
 }
@@ -289,14 +289,14 @@ void PatternEngine::recomputeEffectiveRhythm() {
         for (int i = 0; i < 16; ++i) {
             rhythmRandom[i]=slewedRhythm[i]; variationRandom[i]=slewedVariation[i];
             legatoRandom[i]=slewedLegato[i]; accentRandom[i]=slewedAccent[i];
-            for (int v=0;v<15;v++) polyRhythmRandom[v][i]=slewedPolyRhythm[v][i];
+            for (int v=0;v<15;v++) polyRandom(v, PL_REST)[i]=slewedPolyRhythm[v][i];
             // BUG FIX: poly accent was NOT promoted here (only rhythm was), so in the non-sands
             // path polyAccentRandom never received its slewed random values — it stayed at its
             // init value (0 → all notes accent; or 1.0 after the init-seed fix → no notes
             // accent). This is the real root cause; the init seed only changed which stuck
             // value showed. Mirror the rhythm promotion. (sandsActive path already sets both via
             // SpreadInterp at MonsoonSandsManager 460/463.)
-            for (int v=0;v<15;v++) polyAccentRandom[v][i]=slewedPolyAccent[v][i];
+            for (int v=0;v<15;v++) polyRandom(v, PL_ACCENT)[i]=slewedPolyAccent[v][i];
         }
     }
     rhythmMixApplied = s;
@@ -316,8 +316,8 @@ void PatternEngine::recomputeEffectiveMelody() {
     if (!sandsActive) {
         for (int i = 0; i < 16; ++i) {
             melodyRandom[i]=slewedMelody[i]; octaveRandom[i]=slewedOctave[i];
-            for (int v=0;v<15;v++){ polyMelodyRandom[v][i]=slewedPolyMelody[v][i];
-                                    polyOctaveRandom[v][i]=slewedPolyOctave[v][i]; }
+            for (int v=0;v<15;v++){ polyRandom(v, PL_MELODY)[i]=slewedPolyMelody[v][i];
+                                    polyRandom(v, PL_OCTAVE)[i]=slewedPolyOctave[v][i]; }
         }
     }
     melodyMixApplied = s;
@@ -598,10 +598,10 @@ void PatternEngine::resetDnaRotation() {
     }
     for (int v = 0; v < 15; v++) {
         for (int i = 0; i < 16; i++) {
-            polyRhythmRandom[v][i] = polyRhythmSource[v][i];
-            polyAccentRandom[v][i] = polyAccentSource[v][i];
-            polyMelodyRandom[v][i] = polyMelodySource[v][i];
-            polyOctaveRandom[v][i] = polyOctaveSource[v][i];
+            polyRandom(v, PL_REST)[i] = polyRhythmSource[v][i];
+            polyRandom(v, PL_ACCENT)[i] = polyAccentSource[v][i];
+            polyRandom(v, PL_MELODY)[i] = polyMelodySource[v][i];
+            polyRandom(v, PL_OCTAVE)[i] = polyOctaveSource[v][i];
         }
     }
 }

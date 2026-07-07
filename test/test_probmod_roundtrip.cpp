@@ -224,21 +224,21 @@ int main() {
                 for (int s = 0; s < 16; ++s)
                     EXPECT_NEAR(pe.finalRandomByStrand(c.strand, s), c.base + 0.001f * s);
         });
-        // Poly arrays: distinct per (voice, lane, step).
+        // Poly rows via polyRandom(bank, engLane): distinct per (voice, lane, step).
         for (int v = 0; v < 15; ++v)
             for (int s = 0; s < 16; ++s) {
-                pe.polyRhythmRandom[v][s] = 1.0f + v * 0.1f + s * 0.001f;
-                pe.polyMelodyRandom[v][s] = 2.0f + v * 0.1f + s * 0.001f;
-                pe.polyOctaveRandom[v][s] = 3.0f + v * 0.1f + s * 0.001f;
-                pe.polyAccentRandom[v][s] = 4.0f + v * 0.1f + s * 0.001f;
+                pe.polyRandom(v, SequencerEngine::PL_REST)[s]   = 1.0f + v * 0.1f + s * 0.001f;
+                pe.polyRandom(v, SequencerEngine::PL_MELODY)[s] = 2.0f + v * 0.1f + s * 0.001f;
+                pe.polyRandom(v, SequencerEngine::PL_OCTAVE)[s] = 3.0f + v * 0.1f + s * 0.001f;
+                pe.polyRandom(v, SequencerEngine::PL_ACCENT)[s] = 4.0f + v * 0.1f + s * 0.001f;
             }
-        TEST("poly *Random arrays hold distinct per-(voice,lane,step) values, no aliasing", {
+        TEST("poly rows hold distinct per-(voice,lane,step) values, no aliasing", {
             for (int v = 0; v < 15; ++v)
                 for (int s = 0; s < 16; ++s) {
-                    EXPECT_NEAR(pe.polyRhythmRandom[v][s], 1.0f + v * 0.1f + s * 0.001f);
-                    EXPECT_NEAR(pe.polyMelodyRandom[v][s], 2.0f + v * 0.1f + s * 0.001f);
-                    EXPECT_NEAR(pe.polyOctaveRandom[v][s], 3.0f + v * 0.1f + s * 0.001f);
-                    EXPECT_NEAR(pe.polyAccentRandom[v][s], 4.0f + v * 0.1f + s * 0.001f);
+                    EXPECT_NEAR(pe.polyRandom(v, SequencerEngine::PL_REST)[s],   1.0f + v * 0.1f + s * 0.001f);
+                    EXPECT_NEAR(pe.polyRandom(v, SequencerEngine::PL_MELODY)[s], 2.0f + v * 0.1f + s * 0.001f);
+                    EXPECT_NEAR(pe.polyRandom(v, SequencerEngine::PL_OCTAVE)[s], 3.0f + v * 0.1f + s * 0.001f);
+                    EXPECT_NEAR(pe.polyRandom(v, SequencerEngine::PL_ACCENT)[s], 4.0f + v * 0.1f + s * 0.001f);
                 }
         });
         TEST("mono and poly probability storage are independent (no cross-write)", {
