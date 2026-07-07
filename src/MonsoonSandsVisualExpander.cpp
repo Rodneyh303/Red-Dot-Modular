@@ -57,9 +57,13 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
                 return pq ? (float)pq->getScaledValue() : 0.5f;
             };
             // spreadEffective[] is spread/engine-indexed (REST=0,MEL=1,OCT=2,ACC=3).
+            // Spread is engine state now (engine.spread via spreadE, engine-order lane). The arc
+            // (view) reads the model — find the Monsoon each frame and read its engine spread.
             arc->getModNorm = [mm, sprIdx]() -> float {
                 if (!mm || sprIdx < 0 || sprIdx >= 4) return 0.5f;
-                return rack::math::clamp((mm->spreadEffective[sprIdx] + 1.f) * 0.5f, 0.f, 1.f);
+                Monsoon* mon = redDot::findMonsoonEitherSide(mm);
+                if (!mon) return 0.5f;
+                return rack::math::clamp((mon->engine.spreadE(0, sprIdx) + 1.f) * 0.5f, 0.f, 1.f);
             };
             arc->isActive = [mm, sprIdx]() -> bool {
                 if (!mm || sprIdx < 0 || sprIdx >= 4) return false;
@@ -270,8 +274,10 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
                 visualEditor->currentState.lanes[l].offset   = (int)std::round(mod->params[offId(l)].getValue());
                 visualEditor->currentState.lanes[l].rotation = (int)std::round(mod->params[rotId(l)].getValue());
             }
-            for (int l = 0; l < N_SPREAD_LANES; ++l)   // spread stays engine-ordered
-                mod->spreadEffective[SPREAD_LANE_TO_EDITOR[l]] = mod->params[sprId(l)].getValue();
+            // (The old spreadEffective init-seed was removed: spread is now engine state
+            // (engine.spread), written by the manager via SpreadResolver every frame, so a
+            // one-time visual seed is neither needed nor correct. It also carried a spurious
+            // SPREAD_LANE_TO_EDITOR permutation — gone with it.)
             initialized = true;
         }
 
@@ -318,7 +324,7 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         // the per-lane analogue of the spread-arc off-by-one.)
         static const int SPREAD_TO_BUFFER[4] = { 0, 1, 2, 4 };  // REST,MEL,OCT,ACCENT
         for (int l = 0; l < N_SPREAD_LANES; ++l) {
-            paramMgr->setLaneSpread(SPREAD_TO_BUFFER[l], mod->spreadEffective[l]);
+            paramMgr->setLaneSpread(SPREAD_TO_BUFFER[l], monsoon->engine.spreadE(0, l));  // engine state (slot 0)
         }
 
         // (Spread target mode is pulled from the engine by the param manager —

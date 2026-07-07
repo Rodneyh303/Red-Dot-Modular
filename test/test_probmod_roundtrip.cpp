@@ -41,6 +41,9 @@ static int g_pass = 0, g_fail = 0;
 #define EXPECT_EQ(a,b) do { if((a)!=(b)) { std::ostringstream _s; \
     _s << "EXPECT_EQ(" #a "," #b ") : " << (a) << " != " << (b); \
     throw std::runtime_error(_s.str()); } } while(0)
+#define EXPECT_NEAR(a,b) do { double _d=(double)(a)-(double)(b); if(_d<0)_d=-_d; if(_d>1e-6){ \
+    std::ostringstream _s; _s << "EXPECT_NEAR(" #a "," #b ") : " << (a) << " != " << (b); \
+    throw std::runtime_error(_s.str()); } } while(0)
 
 namespace SR = dotModular;   // STRAND_* enum lives in dotModular
 
@@ -169,6 +172,32 @@ int main() {
         for (int b = 0; b < 15; ++b)
             for (int l = 0; l < SequencerEngine::PL_LANES; ++l)
                 EXPECT_EQ(eng.polyLenE(b, l), polySentinel(0, b, l));
+    });
+
+    // ── 4. Spread storage on the engine (B-corrected): spread[16][6] editor-ordered, accessed
+    //       engine-order via spreadE/spreadERef. Pins the engine→editor conversion so the migration
+    //       of mono spread from the visual onto the engine is provably permutation-correct. ───────
+    SUITE("Spread engine storage: spreadERef(slot,engLane) round-trips + editor↔engine agree");
+    TEST("spreadERef writes the ENGINE_LANE_TO_EDITOR-mapped cell; spreadE reads it back", {
+        for (int slot = 0; slot < SequencerEngine::kVoiceSlots; ++slot)
+            for (int engLane = 0; engLane < 4; ++engLane) {
+                float val = 0.01f * slot + 0.001f * engLane - 0.5f;   // distinct bipolar sentinel
+                eng.spreadERef(slot, engLane) = val;
+                // engine accessor round-trips
+                EXPECT_NEAR(eng.spreadE(slot, engLane), val);
+                // and it landed at the editor-lane cell ENGINE_LANE_TO_EDITOR[engLane]
+                EXPECT_NEAR(eng.spread[slot][dotModular::ENGINE_LANE_TO_EDITOR[engLane]], val);
+            }
+    });
+    TEST("distinct slots/lanes never alias (no cross-voice / cross-lane spread leak)", {
+        for (int slot = 0; slot < SequencerEngine::kVoiceSlots; ++slot)
+            for (int engLane = 0; engLane < 4; ++engLane)
+                EXPECT_NEAR(eng.spreadE(slot, engLane), 0.01f * slot + 0.001f * engLane - 0.5f);
+    });
+    TEST("spread storage is independent of lorStore_ (writing spread leaves LOR intact)", {
+        // LOR mono slot-0 sentinels from suite 1 must survive spread writes above.
+        for (int i = 0; i < 6; ++i)
+            EXPECT_EQ(eng.strandLen(kStrands[i]), monoSentinel(0, kStrands[i]) + 1); // +1 from suite-3 rewrite
     });
 
     std::cout << "\n\033[1m" << g_pass << " passed, " << g_fail << " failed\033[0m\n";

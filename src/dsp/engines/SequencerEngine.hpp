@@ -155,6 +155,20 @@ struct SequencerEngine {
     int  polyOffE(int bank, int engLane) const { return lorStore_[bank + 1][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]][LOR_OFF]; }
     int  polyRotE(int bank, int engLane) const { return lorStore_[bank + 1][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]][LOR_ROT]; }
 
+    // ── Spread: the 4th probability modifier, now ENGINE STATE (MVC: was on the Mono visual, which the
+    // engine reached into for the draws — model reading from view. Now the model owns it). Stored in the
+    // SAME shape/order/index as lorStore_: spread[voiceSlot][editorLane], editor-ordered, slot 0 = V1
+    // (mono). Only the 4 spread lanes (editor MEL/OCT/REST/ACC = 0..3) are used; VAR/LEG (4,5) have no
+    // spread (documented-unused, keeps spread column-compatible with lorStore_ so the two can later
+    // share one modifier accessor). Written by the manager via SpreadResolver; read by the engine draws
+    // and (for its own display) the Mono visual — both through spreadE(slot, engineLane), which absorbs
+    // the engine→editor permutation at this single boundary (same trick as polyLenE).
+    float spread[kVoiceSlots][dotModular::NUM_STRANDS] = {};   // [slot][editorLane]; spread lanes 0..3 used
+
+    float& spreadERef(int slot, int engLane) { return spread[slot][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]]; }
+    float  spreadE   (int slot, int engLane) const { return spread[slot][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]]; }
+
+
     // Indexable strand accessors keyed by dotModular::EngineStrand order
     // (0 rhythm, 1 variation, 2 legato, 3 accent, 4 melody, 5 octave). These let
     // callers go editor-lane → strand (via MONO_LANE_TO_STRAND) → value without
