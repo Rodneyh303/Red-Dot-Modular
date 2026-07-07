@@ -28,6 +28,7 @@ Kit id markers (geometry single-sourced from the panel; widget reads shutter REC
   input_indexcv           list-index CV in
   light_connect
 """
+import math
 HP = 26
 W  = HP * 5.08
 H  = 128.5
@@ -79,15 +80,16 @@ def front_house(f): return f // 2
 def front_floor(f): return f % 2
 def front_y(f): return FLOOR_TOP + front_floor(f)*(FLOOR_H + STRING_H)
 
-WIN_MARGIN_X = 5.5
-WIN_TOP_PAD  = 9.0
-WIN_BOT_PAD  = 4.0
+WIN_MARGIN_X = 4.6      # inset from house edge (past pilasters)
+WIN_TOP_PAD  = 8.5      # below floor top (arch springs here)
+WIN_H        = 15.5     # shorter window → room for a majolica band + name band below
+TILE_BAND_H  = 7.5      # horizontal majolica band under each window
 WGAP = 0.5
 
 def window_rect(f):
     hx = HOUSE_X[front_house(f)]
     fy = front_y(f)
-    return hx + WIN_MARGIN_X, fy + WIN_TOP_PAD, HOUSE_W - 2*WIN_MARGIN_X, FLOOR_H - WIN_TOP_PAD - WIN_BOT_PAD
+    return hx + WIN_MARGIN_X, fy + WIN_TOP_PAD, HOUSE_W - 2*WIN_MARGIN_X, WIN_H
 
 def shutter_geometry(f):
     wx, wy, ww, wh = window_rect(f)
@@ -125,6 +127,19 @@ def tile_strip(A, t, x, y, w, h, n):
     r = min(w, step) * 0.42
     for i in range(n):
         tile(A, t, x + w/2, y + step*(i+0.5), r)
+
+def tile_row(A, t, x, y, w, h):
+    """A horizontal majolica band of square floral tiles across (x,y,w,h) — the signature element."""
+    # recessed band ground
+    A(f'<rect x="{px(x)}" y="{px(y)}" width="{px(w)}" height="{px(h)}" '
+      f'fill="{t["tilebg"]}" stroke="{t["plastersh"]}" stroke-width="0.35"/>')
+    r = h*0.42
+    step = 2*r + 0.6
+    n = max(1, int(w / step))
+    total = n*step - 0.6
+    x0 = x + (w - total)/2 + r
+    for i in range(n):
+        tile(A, t, x0 + i*step, y + h/2, r)
 
 def hipped_roof(A, t, hx, w):
     x0, x1 = hx, hx + w
@@ -180,14 +195,32 @@ def gen(dark):
         fy = front_y(f)
         cen, geo = shutter_geometry(f)
         wx, wy, ww, wh, kw, kh, bwd, bhh = geo
-        sur = 1.1
+        sur = 1.2
         arch_r = ww/2
         acx = wx + ww/2
-        A(f'<path d="M {px(wx-sur)} {px(wy)} L {px(wx-sur)} {px(wy-1)} '
-          f'A {px(arch_r+sur)} {px(arch_r+sur)} 0 0 1 {px(wx+ww+sur)} {px(wy-1)} '
-          f'L {px(wx+ww+sur)} {px(wy)} Z" fill="none" stroke="{t["surround"]}" stroke-width="1.4"/>')
+        asy = wy            # arch springs at window top
+        # ── Arched tympanum (filled fan above the window) so the arch reads strongly ──
+        A(f'<path d="M {px(wx)} {px(asy)} '
+          f'A {px(arch_r)} {px(arch_r)} 0 0 1 {px(wx+ww)} {px(asy)} Z" '
+          f'fill="{t["surround"]}" stroke="{t["plastersh"]}" stroke-width="0.4"/>')
+        # radiating fan ribs
+        for rr in range(1, 6):
+            ang = 3.14159 * rr/6
+            ex = acx - arch_r*math.cos(ang)
+            ey = asy - arch_r*math.sin(ang)
+            A(f'<line x1="{px(acx)}" y1="{px(asy)}" x2="{px(ex)}" y2="{px(ey)}" '
+              f'stroke="{t["plastersh"]}" stroke-width="0.3"/>')
+        # keystone at the crown
+        A(f'<polygon points="{px(acx-1.3)},{px(asy-arch_r)} {px(acx+1.3)},{px(asy-arch_r)} '
+          f'{px(acx+0.9)},{px(asy-arch_r+2.6)} {px(acx-0.9)},{px(asy-arch_r+2.6)}" '
+          f'fill="{t["cornice"]}" stroke="{t["plastersh"]}" stroke-width="0.3"/>')
+        # arch outline over the tympanum
+        A(f'<path d="M {px(wx-sur)} {px(asy)} '
+          f'A {px(arch_r+sur)} {px(arch_r+sur)} 0 0 1 {px(wx+ww+sur)} {px(asy)}" '
+          f'fill="none" stroke="{t["surround"]}" stroke-width="1.2"/>')
+        # ── window recess + shutters ──
         A(f'<rect x="{px(wx-0.4)}" y="{px(wy-0.4)}" width="{px(ww+0.8)}" height="{px(wh+0.8)}" '
-          f'rx="{px(0.4)}" fill="{t["shutterwell"]}"/>')
+          f'rx="{px(0.4)}" fill="{t["shutterwell"]}" stroke="{t["surround"]}" stroke-width="0.8"/>')
         for i, semi in enumerate(WHITE_ORDER):
             sx = wx + i*(kw+WGAP)
             A(f'<rect id="shutter_{f}_{semi}" x="{px(sx)}" y="{px(wy)}" width="{px(kw)}" height="{px(kh)}" rx="{px(0.5)}" '
@@ -200,14 +233,14 @@ def gen(dark):
             sx = wx + (after+1)*(kw+WGAP) - WGAP - bwd/2
             A(f'<rect id="shutter_{f}_{semi}" x="{px(sx)}" y="{px(wy)}" width="{px(bwd)}" height="{px(bhh)}" rx="{px(0.4)}" '
               f'fill="{t["shutterblack"]}" stroke="{t["wellring"]}" stroke-width="0.4"/>')
-        for side in (0, 1):
-            tx = (hx + 2.8) if side == 0 else (hx + HOUSE_W - 2.8 - 2.2)
-            tile_strip(A, t, tx, wy+1, 2.2, wh-2, max(2, int(wh/9)))
-        nb_x = wx
-        nb_y = wy + wh + 1.8
-        A(f'<rect x="{px(nb_x)}" y="{px(nb_y-1.4)}" width="{px(ww)}" height="{px(3.0)}" '
+        # ── horizontal majolica band below the window (the signature element) ──
+        band_y = wy + wh + 1.2
+        tile_row(A, t, wx, band_y, ww, TILE_BAND_H)
+        # ── name band (live scale readout) below the majolica band ──
+        nb_y = band_y + TILE_BAND_H + 2.0
+        A(f'<rect x="{px(wx)}" y="{px(nb_y-1.4)}" width="{px(ww)}" height="{px(2.8)}" '
           f'rx="{px(0.5)}" fill="{t["namewell"]}" stroke="{t["plastersh"]}" stroke-width="0.3"/>')
-        A(f'<circle id="name_band_{f}" cx="{px(nb_x+ww/2)}" cy="{px(nb_y)}" r="0.5" fill="none" stroke="none"/>')
+        A(f'<circle id="name_band_{f}" cx="{px(wx+ww/2)}" cy="{px(nb_y)}" r="0.5" fill="none" stroke="none"/>')
         kx = hx + HOUSE_W - 3.0
         ky = fy + 4.0
         A(f'<circle cx="{px(kx)}" cy="{px(ky)}" r="{px(2.6)}" fill="{t["plaster"]}" '
