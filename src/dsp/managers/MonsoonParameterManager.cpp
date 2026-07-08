@@ -48,16 +48,35 @@ float ParameterManager::getLegato() const {
 }
 
 float ParameterManager::getRest() const {
-    float v = readParam_(REST_PARAM, 0.f, 1.f);
+    // Voice-1/mono rest knob lives on the Straits expander (param_rest_0 → REST_PARAM in ITS store),
+    // same as the poly rest knobs live there. Prefer the expander's value when present; fall back to
+    // the host param otherwise. (Mirrors getPolyRest's cachedPolyVoiceExpander read.)
+    float v;
+    if (cachedPolyVoiceExpander && *cachedPolyVoiceExpander) {
+        auto& params = (*cachedPolyVoiceExpander)->params;
+        v = (REST_PARAM < (int)params.size()) ? params[REST_PARAM].getValue()
+                                              : readParam_(REST_PARAM, 0.f, 1.f);
+    } else {
+        v = readParam_(REST_PARAM, 0.f, 1.f);
+    }
     v = clampv(v + cv2Offsets[3] + junctionOffsets[3], 0.f, 1.f);
     return v;
 }
 
 float ParameterManager::getAccent() const {
-    float v = readParam_(ACCENT_KNOB, 0.f, 1.f);
+    // Voice-1/mono accent knob lives on the Straits expander (param_accent_0 → ACCENT_KNOB in ITS
+    // store). Prefer it when present, else the host param.
+    float v;
+    if (cachedPolyVoiceExpander && *cachedPolyVoiceExpander) {
+        auto& params = (*cachedPolyVoiceExpander)->params;
+        v = (ACCENT_KNOB < (int)params.size()) ? params[ACCENT_KNOB].getValue()
+                                               : readParam_(ACCENT_KNOB, 0.f, 1.f);
+    } else {
+        v = readParam_(ACCENT_KNOB, 0.f, 1.f);
+    }
     // Direct CV input: 0–10V = 0–100%
-    float cv = readInput_(ACCENT_CV_INPUT); // CV input is 0-10V, scale to 0-1
-    v += cv * 0.1f + junctionOffsets[4] + cv2Offsets[4]; // Add CV2 offset for Accent
+    float cv = readInput_(ACCENT_CV_INPUT);
+    v += cv * 0.1f + junctionOffsets[4] + cv2Offsets[4];
     return clampv(v, 0.f, 1.f);
 }
 
