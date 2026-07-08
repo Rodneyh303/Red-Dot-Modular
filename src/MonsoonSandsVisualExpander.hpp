@@ -113,7 +113,9 @@ struct MonsoonSandsVisualExpander : Module {
     // Effective spread per lane — written by processDNA at control rate,
     // read by widget at UI rate. Same cross-thread pattern as Rack params.
     // Base spread lives in sprId(lane) params (set by trimpot, never mutated by CV).
-    float spreadEffective[6] = {};
+    // (spreadEffective removed — spread is now ENGINE state, engine.spread[slot][lane], written by
+    // the manager via SpreadResolver and read via spreadE(). The Mono visual reads engine.spread for
+    // its display arcs; it no longer caches its own copy. MVC: the view reads the model.)
 
     // Probability CV out config (persisted): scale 0=0..1V, 1=0..5V, 2=0..10V;
     // sampleHold true = latch the value at each 16th step start (the decision value),

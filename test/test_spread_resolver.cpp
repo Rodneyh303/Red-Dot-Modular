@@ -90,14 +90,13 @@ int main() {
         SpreadResolver::Inputs in; in.base = -0.8f; in.ownCv = cv(true, 0.5f, -1.f); // -1.0 → -1.8
         EXPECT_NEAR(SpreadResolver::effective(in), -1.f);
     });
-    TEST("STEP-WISE clamp matches manager: intermediate overflow IS clamped before next term", {
-        // base 0.9 + own 0.4 → 1.3, CLAMPED to 1.0 (step-wise, as the manager does), then
-        // east -0.6 → 0.4. (A single end-clamp would give 0.9+0.4-0.6=0.7 — this asserts the
-        // resolver replicates the manager's per-term clamp, i.e. 0.4, not 0.7.)
+    TEST("END-clamp: intermediate overflow is NOT pinned — net preserved before the single clamp", {
+        // base 0.9 + own 0.4 = 1.3, then east -0.6 → 0.7 (summed, clamped ONCE). A step-wise clamp
+        // would pin 1.3→1.0 then -0.6→0.4; end-clamp preserves the net of the large-then-opposite pair.
         SpreadResolver::Inputs in; in.base = 0.9f;
-        in.ownCv  = cv(true, 0.2f, 1.f);   // +0.4  → 1.3 → clamp 1.0
-        in.eastCv = cv(true, 0.3f, -1.f);  // -0.6  → 0.4
-        EXPECT_NEAR(SpreadResolver::effective(in), 0.4f);
+        in.ownCv  = cv(true, 0.2f, 1.f);   // +0.4
+        in.eastCv = cv(true, 0.3f, -1.f);  // -0.6
+        EXPECT_NEAR(SpreadResolver::effective(in), 0.7f);
     });
 
     SUITE("Delegation override (lane ceded to Macro → mirror Macro, ignore own base/CV)");

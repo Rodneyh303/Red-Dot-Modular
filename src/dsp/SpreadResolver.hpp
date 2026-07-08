@@ -18,15 +18,12 @@
 // The caller wires topology's already-resolved booleans (delegated / eastPresent /
 // macroPresent) into SpreadResolver::Inputs; SpreadResolver never re-derives them.
 //
-// Canonical arithmetic (agreed with project owner), for a NON-delegated lane. NOTE: the current
-// manager clamps after EVERY additive term (applyMonoSprCV clamps, then East-add clamps, then
-// Macro-add clamps), so the resolver replicates that STEP-WISE clamping to be behaviour-inert with
-// the code it replaces. (A single end-clamp would be cleaner and differ only when an intermediate
-// overflows then a later term pulls it back; changing that is a deliberate future decision, not part
-// of this migration.)
-//   eff = clamp(base + ownCv·2)          (applyMono/MacroSprCV: clamp after own CV)
-//   eff = clamp(eff  + eastCv·2)         (East V1 spread add: clamp after)
-//   eff = clamp(eff  + macroSendDelta·send)   (tapped Macro send: clamp after)
+// Canonical arithmetic (agreed with project owner), for a NON-delegated lane. Contributions are
+// SUMMED, then clamped ONCE at the end (end-clamp). This is order-independent and preserves the net of
+// a large-then-opposite pair — an intermediate that overflows ±1 is not pinned before a later term can
+// pull it back (which per-term clamping would do). Absent terms (unconnected CV / no macro) add 0.
+//   eff = base + ownCv·2 + eastCv·2 + macroSendDelta·send
+//   eff = clamp(eff, -1, 1)                (single clamp at the end)
 // For a DELEGATED lane (Mono cedes to Macro, per topology owner()==MACRO):
 //   eff = clamp(macroBase + macroSendDelta)   (track Macro; ignore own base/CV)
 //
@@ -78,10 +75,6 @@ struct SpreadResolver {
             return clampSpread(in.macroBase + in.macroSendDelta);
         }
         float eff = in.base;
-        // if (in.ownCv.connected)  eff = clampSpread(eff + in.ownCv.contribution());   // applyMono/MacroSprCV
-        // if (in.eastCv.connected) eff = clampSpread(eff + in.eastCv.contribution());  // East V1 spread add
-        // if (in.macroPresent)     eff = clampSpread(eff + in.macroSendDelta * in.macroSend);  // tapped send
-
         if (in.ownCv.connected)  eff += in.ownCv.contribution();   // applyMono/MacroSprCV
         if (in.eastCv.connected) eff += in.eastCv.contribution();  // East V1 spread add
         if (in.macroPresent)     eff += in.macroSendDelta * in.macroSend;  // tapped send
