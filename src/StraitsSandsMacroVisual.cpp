@@ -123,13 +123,17 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         visualEditor->showControlBar    = false;
         addChild(visualEditor);
 
-        // Macro's V1 LOR editor is never locked by ownership. Macro's V1 knobs edit Macro's OWN global
-        // base (saveLOR → module->params[lorId(l,*)]) — the same params V2..V16 edit and the same
-        // principle its spread trimpots already follow: editing Macro's own state is never gated by who
         // DRIVES the lane downstream (Mono or East). Ownership governs what reaches the ENGINE, not what
         // Macro may edit on its own panel. Previously this locked V1 lanes owner(0,l)==MONO, which (with
         // Gate A) was half the asymmetry: Mono owning a V1 lane blocked Macro's LOR there while spread
         // stayed editable, and East+Mono+Macro behaved differently again.
+        //visualEditor->laneLockedFn = [](int /*editorLane*/) -> bool { return false; };
+        // NOT be gated by who DRIVES the lane downstream. Previously this locked V1 LOR whenever MONO
+        // owned the lane (owner(0,l)==MONO), which produced the asymmetry: on the Macro V1 tab with Mono
+        // owning a lane, its SPREAD was editable but its LOR was blocked — and East+Macro (East owns V1)
+        // did NOT block, so the two combos behaved inconsistently. Macro's own global LOR is now always
+        // editable (like its spread, like V2+); ownership governs what reaches the ENGINE, not what Macro
+        // may edit on its own panel. Off the V1 tab this was already false.
         visualEditor->laneLockedFn = [](int /*editorLane*/) -> bool { return false; };
 
         Module* mod_ = module;
@@ -205,7 +209,12 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     // (this widget IS Macro); monoV1Owner[] read from Mono's editor-ordered ownerDispId
     // (the same source the old predicate read). lockedOn(MACRO,0,l) == owner(0,l)!=MACRO,
     // i.e. "Mono owns it" — matching the old mv->ownerDispId(l) > 0.5 test.
-    [[maybe_unused]] dotModular::SandsTopology buildV1Topo() {
+    // NOTE: currently UNUSED — laneLockedFn stopped gating V1 LOR on Mono ownership (Macro's own
+    // global LOR is always editable, matching its spread). Kept because the tracked East-ownership
+    // open question (SANDS_TOPOLOGY_RESOLVER_PLAN.md) may revive a per-lane V1 ownership predicate.
+    //[[maybe_unused]] dotModular::SandsTopology buildV1Topo() {
+    //[[maybe_unused]] 
+    dotModular::SandsTopology buildV1Topo() {
         dotModular::SandsTopology::Inputs in;
         if (auto* mon = getMonsoon()) {
             mon->expanderManager.fillPresence(in, mon->engine.numPolyVoices);  // single authority
