@@ -129,3 +129,49 @@ fallback (never ctor-time — it returns null).
 Persistent `StrandLedger CONFLICT MACRO then EAST` every block (see
 `DATAFLOW_DISCIPLINE_PLAN.md` Step 2). Non-fatal (last-writer-wins) but real. Not a facade
 blocker; fix on the dataflow track.
+
+---
+
+## 7. Facade progress + refinement backlog (2026-07 build session)
+
+**DONE (on branch `feat/shophouse-facade`, off `integration/probmod-spread-macro`):**
+- Widget **decoupled** from hardcoded shutter geometry — reads shutter RECTS straight from the
+  panel `<rect>` markers via new `ShapeQuery::boundsOf()`. Panel is the single geometry source;
+  layout can change freely. (Removed the whole hardcoded-rect block from the widget.)
+- **Two-house facade**, 26HP (was 20HP/4-stack). House A (fronts 0,1) left, House B (2,3) right,
+  two storeys each, one arched louvred window per floor. Hipped roof + dormer, cornice reliefs,
+  string course, pilasters, five-foot-way colonnade.
+- **Poster-corrected** (against Rodney's eck&art reference): killed the big dominant semicircle
+  tympanums (my invention) → **shallow segmental arch caps**; shutters shifted to teal-grey;
+  roof flattened/widened to a low overhanging hipped roof with dark-window dormer; facades to
+  Peranakan mauve-pink. **Interchange majolica tile bands kept** (the tie-in Rodney liked).
+- **Active-scale lantern indicator** (`LanternWidget`): lit red lantern over the committed-active
+  front (`list.active()`), dark over the rest — resolves house + floor, hops on CV commit.
+
+**STILL NEEDS ART REFINEMENT (Rodney's eye + agreed items — do in a later render pass):**
+1. ~~**Five-foot-way** — deepen it, proper arcade, seat controls, pintu-pagar gate, base tile
+   panels.~~ DONE: 5-arch arcade with columns/keystones, plinth, **pintu-pagar swing gate**
+   (balusters + scrollwork rail) at centre, corner floral tile clusters. Controls relocated to
+   FLANK the gate (fixed a real collision — atten/conservation had sat on the gate edges).
+   (Barred side windows still optional if wanted.)
+2. **Roof detailing** — still reads a bit flat; poster roof is clean but has crisp eaves shadow +
+   the dark ventilator box. Tune tile courses / eaves.
+3. **Colour polish** — dark-theme facades still a touch muddy; make majolica tiles pop a little
+   more against the wash. Keep shutters legible (widget overpaints them live).
+4. **Shutters take a little colour** (Rodney) — the resting/preview shutter fill could carry a
+   hint of the teal rather than pure grey (live widget fill already does in-scale teal / root red
+   / out dark).
+5. Windows/arches are now right (shallow caps) — do NOT reintroduce big arches.
+
+All art is container-verifiable via cairosvg; iterate against the poster. Widget code
+(shutter reads, lantern) is build-gated — needs Rack build-verify.
+
+## 8. Live scale-note indication (the piano-keyboard shutters lighting per active mask)
+
+The shutters ARE the live scale display: for each front, the widget lights each of the 12
+key-shutters by that front's (scale, root) mask — in-scale = teal, root = Singapore red, out =
+dark. This is `ShutterBank::draw` reading `params[SCALE_PARAM_0+f]` / `ROOT_PARAM_0+f`. For the
+ACTIVE front specifically, the "current playing scale" reads live off the same mask; the lantern
+marks WHICH front is active. (If a stronger "live note played" pulse is wanted later — e.g. the
+currently-sounding degree flashing — that would read the engine's live step, a separate hook.)
+

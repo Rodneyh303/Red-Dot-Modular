@@ -15,6 +15,80 @@ using namespace ShophouseIds;
 // dim=out-of-scale, root=Singapore red) from that front's (scale,root) params, and
 // on click of a shutter sets that front's ROOT to the clicked semitone — the display
 // IS the control (no menu). Scale itself is the per-front scale knob.
+// Active-scale indicator: a lit lantern hanging over whichever front is the committed-active
+// scale (list.active()). Positioned by the module widget over each front's lantern_<f> anchor;
+// only the active front's lantern is lit (Singapore red), the rest hang dark. Resolves both
+// house (left/right) and floor (upper/lower) since there's one per window.
+struct LanternWidget : Widget {
+    MonsoonShophouseExpander* module = nullptr;
+    int front = 0;
+
+    void draw(const DrawArgs& args) override {
+        Widget::draw(args);
+        if (!module) return;
+        NVGcontext* vg = args.vg;
+        const bool lit = (module->list.active() == front);
+        const float cx = box.size.x * 0.5f;
+        const float topY = 0.f;
+        const float bodyTop = box.size.y * 0.28f;
+        const float bodyBot = box.size.y * 0.86f;
+        const float halfW = box.size.x * 0.30f;
+
+        // hanging cord from the arch down to the lantern cap
+        nvgBeginPath(vg);
+        nvgMoveTo(vg, cx, topY);
+        nvgLineTo(vg, cx, bodyTop);
+        nvgStrokeColor(vg, nvgRGBA(0x30, 0x30, 0x30, 0xcc));
+        nvgStrokeWidth(vg, 1.f);
+        nvgStroke(vg);
+
+        // lantern body colours: lit = Singapore red glow, dark = muted slate
+        NVGcolor body = lit ? nvgRGB(0xd4, 0x00, 0x1a) : nvgRGBA(0x3a, 0x3f, 0x46, 0xdd);
+        NVGcolor trim = lit ? nvgRGB(0xf0, 0xc0, 0x40) : nvgRGBA(0x5a, 0x60, 0x68, 0xdd);
+
+        // soft glow halo when lit
+        if (lit) {
+            nvgBeginPath(vg);
+            nvgCircle(vg, cx, (bodyTop + bodyBot) * 0.5f, halfW * 2.1f);
+            nvgFillColor(vg, nvgRGBA(0xd4, 0x00, 0x1a, 0x33));
+            nvgFill(vg);
+        }
+
+        // top cap
+        nvgBeginPath(vg);
+        nvgRect(vg, cx - halfW * 0.7f, bodyTop - box.size.y * 0.05f, halfW * 1.4f, box.size.y * 0.06f);
+        nvgFillColor(vg, trim);
+        nvgFill(vg);
+
+        // lantern body (rounded lozenge)
+        nvgBeginPath(vg);
+        nvgRoundedRect(vg, cx - halfW, bodyTop, halfW * 2.f, bodyBot - bodyTop, halfW * 0.5f);
+        nvgFillColor(vg, body);
+        nvgFill(vg);
+        nvgStrokeColor(vg, trim);
+        nvgStrokeWidth(vg, 0.8f);
+        nvgStroke(vg);
+
+        // horizontal ribs
+        for (int r = 1; r <= 2; ++r) {
+            float ry = bodyTop + (bodyBot - bodyTop) * r / 3.f;
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, cx - halfW * 0.9f, ry);
+            nvgLineTo(vg, cx + halfW * 0.9f, ry);
+            nvgStrokeColor(vg, nvgRGBA(0x00, 0x00, 0x00, lit ? 0x40 : 0x30));
+            nvgStrokeWidth(vg, 0.6f);
+            nvgStroke(vg);
+        }
+
+        // bottom finial
+        nvgBeginPath(vg);
+        nvgRect(vg, cx - halfW * 0.25f, bodyBot, halfW * 0.5f, box.size.y * 0.08f);
+        nvgFillColor(vg, trim);
+        nvgFill(vg);
+    }
+};
+
+
 struct ShutterBank : Widget {
     MonsoonShophouseExpander* module = nullptr;
     int front = 0;
@@ -57,6 +131,14 @@ struct ShutterBank : Widget {
         int scaleIdx = (int)std::round(module->params[SCALE_PARAM_0 + front].getValue());
         int root     = (int)std::round(module->params[ROOT_PARAM_0 + front].getValue());
         uint16_t mask = maskFor(scaleIdx, root);
+        // Live indication: the committed-ACTIVE front (the scale currently playing) draws at full
+        // brightness; the other (staged) fronts are dimmed, so the live scale reads vividly against
+        // the ones queued for modulation. Pairs with the lantern (which marks WHICH front is active).
+        const bool active = (module->list.active() == front);
+        const float dim = active ? 1.0f : 0.42f;
+        auto scaleC = [dim](int r, int g, int b) {
+            return nvgRGB((int)(r*dim), (int)(g*dim), (int)(b*dim));
+        };
         for (int s = 0; s < 12; ++s) {
             const Rect& rc = rects[s];
             if (rc.size.x <= 0.f) continue;
@@ -64,11 +146,11 @@ struct ShutterBank : Widget {
             bool isRoot = (s == root);
             NVGcolor fill, slat;
             if (isRoot && in) {                 // root = Singapore red, "open" shutter
-                fill = nvgRGB(0xd4, 0x00, 0x1a); slat = nvgRGBA(0x00, 0x00, 0x00, 0x55);
+                fill = scaleC(0xd4, 0x00, 0x1a); slat = nvgRGBA(0x00, 0x00, 0x00, 0x55);
             } else if (in) {                    // in-scale = teal, open shutter
-                fill = nvgRGB(0x26, 0xa6, 0x9a); slat = nvgRGBA(0x00, 0x00, 0x00, 0x4d);
+                fill = scaleC(0x26, 0xa6, 0x9a); slat = nvgRGBA(0x00, 0x00, 0x00, 0x4d);
             } else {                            // out-of-scale = dark, closed shutter
-                fill = nvgRGB(0x1b, 0x20, 0x26); slat = nvgRGBA(0xff, 0xff, 0xff, 0x14);
+                fill = scaleC(0x1b, 0x20, 0x26); slat = nvgRGBA(0xff, 0xff, 0xff, 0x14);
             }
             // Whole-shutter fill.
             nvgBeginPath(vg);
@@ -168,62 +250,49 @@ struct MonsoonShophouseExpanderWidget : ModuleWidget,
             auto* bank = new ShutterBank();
             bank->module = mod;
             bank->front = f;
-            // Gather this front's 12 shutter marker centres; size the bank to span them.
-            // Track the bounding box manually (min/max corners) — avoids relying on a specific
-            // Rect helper signature.
+            // Read each shutter's full RECT straight from its panel <rect> marker (boundsOf) — panel
+            // art is the single source of geometry truth. Centre is the rect centre. No hardcoded
+            // panel constants here, so the panel layout (HP, house arrangement) can change freely.
+            Rect markRects[12];
             float minX = 0, minY = 0, maxX = 0, maxY = 0; bool init = false;
             for (int s = 0; s < 12; ++s) {
                 if (auto* m = findNamed("shutter_" + std::to_string(f) + "_" + std::to_string(s))) {
-                    Vec c = centerOf(m);
+                    Rect r = boundsOf(m);
+                    markRects[s] = r;
+                    Vec c = r.pos.plus(r.size.div(2.f));   // rect centre (explicit; avoids API assumptions)
                     bank->centres[s] = c;
-                    if (!init) { minX = maxX = c.x; minY = maxY = c.y; init = true; }
+                    float x0 = r.pos.x, y0 = r.pos.y, x1 = r.pos.x + r.size.x, y1 = r.pos.y + r.size.y;
+                    if (!init) { minX = x0; minY = y0; maxX = x1; maxY = y1; init = true; }
                     else {
-                        minX = std::min(minX, c.x); maxX = std::max(maxX, c.x);
-                        minY = std::min(minY, c.y); maxY = std::max(maxY, c.y);
+                        minX = std::min(minX, x0); maxX = std::max(maxX, x1);
+                        minY = std::min(minY, y0); maxY = std::max(maxY, y1);
                     }
                 }
             }
             if (init) {
-                // Inflate the bank box a bit so clicks near shutters register.
                 float pad = mm2px(3.5f);
                 bank->box.pos  = Vec(minX - pad, minY - pad);
                 bank->box.size = Vec((maxX - minX) + 2*pad, (maxY - minY) + 2*pad);
-                // Re-base shutter centres into bank-local coords.
-                for (int s = 0; s < 12; ++s) bank->centres[s] = bank->centres[s].minus(bank->box.pos);
-                bank->clickR = mm2px(3.0f);
-                // Compute each shutter's full RECT (bank-local) mirroring the panel geometry, so the
-                // widget can fill the WHOLE shutter (not a dot). White keys: full height; black keys:
-                // ~0.62 width, ~0.55 height, top-aligned. Derived from the front band rect.
-                {
-                    static const int WHITE_ORDER[7] = {0,2,4,5,7,9,11};
-                    static const int BLACK_AFTER_K[5] = {1,3,6,8,10};
-                    static const int BLACK_AFTER_V[5] = {0,1,3,4,5};
-                    const float W_MM = 20.0f * 5.08f;   // 20HP panel width in mm
-                    float fy = mm2px(22.0f + f*(20.0f+2.2f));
-                    float fx = mm2px(6.0f);
-                    float fw = mm2px(W_MM - 12.0f);
-                    float fh = mm2px(20.0f);
-                    float padg = mm2px(2.0f);
-                    float bx = fx + padg, by = fy + padg + mm2px(4.0f);
-                    float bw = fw - 2*padg;
-                    float bh = fh - padg - mm2px(6.0f);
-                    float wgap = mm2px(0.6f);
-                    float ww = (bw - 6*wgap) / 7.0f;
-                    float wh = bh;
-                    Vec bp = bank->box.pos;
-                    for (int i = 0; i < 7; ++i) {
-                        int semi = WHITE_ORDER[i];
-                        float sx = bx + i*(ww+wgap);
-                        bank->rects[semi] = Rect(Vec(sx, by).minus(bp), Vec(ww, wh));
-                    }
-                    float bwd = ww * 0.62f, bhh = wh * 0.55f;
-                    for (int j = 0; j < 5; ++j) {
-                        int semi = BLACK_AFTER_K[j], after = BLACK_AFTER_V[j];
-                        float sx = bx + (after+1)*(ww+wgap) - wgap - bwd/2.f;
-                        bank->rects[semi] = Rect(Vec(sx, by).minus(bp), Vec(bwd, bhh));
-                    }
+                Vec bp = bank->box.pos;
+                // Re-base centres and rects into bank-local coords.
+                for (int s = 0; s < 12; ++s) {
+                    bank->centres[s] = bank->centres[s].minus(bp);
+                    bank->rects[s]   = Rect(markRects[s].pos.minus(bp), markRects[s].size);
                 }
+                bank->clickR = mm2px(3.0f);
                 addChild(bank);
+            }
+
+            // Active-scale lantern over this front's window (positioned on the lantern_<f> anchor).
+            if (auto* lm = findNamed("lantern_" + std::to_string(f))) {
+                auto* lantern = new LanternWidget();
+                lantern->module = mod;
+                lantern->front = f;
+                lantern->box.size = Vec(mm2px(4.4f), mm2px(7.0f));
+                Vec c = centerOf(lm);
+                // hang the lantern from the anchor: anchor sits at the top of the lantern box
+                lantern->box.pos = Vec(c.x - lantern->box.size.x * 0.5f, c.y - mm2px(0.5f));
+                addChild(lantern);
             }
         }
 

@@ -86,6 +86,12 @@ struct KitAccess {
         // Restored the missing array indices here:
         return Vec((b[0] + b[2]) / 2.f, (b[1] + b[3]) / 2.f);
     }
+    // Full bounding rect (px) of a shape marker — lets the widget read geometry (position AND size)
+    // straight from a panel <rect> marker, so panel art is the single source of geometry truth.
+    Rect boundsOf(NSVGshape* s) {
+        const float* b = s->bounds;   // [minx, miny, maxx, maxy]
+        return Rect(Vec(b[0], b[1]), Vec(b[2] - b[0], b[3] - b[1]));
+    }
 };
 // ── Feature mixin: panel load + shape queries ────────────────────────────────
 template <class T>
