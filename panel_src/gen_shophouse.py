@@ -41,23 +41,23 @@ WHITE_ORDER = [0, 2, 4, 5, 7, 9, 11]
 BLACK_AFTER = {1: 0, 3: 1, 6: 3, 8: 4, 10: 5}
 
 FACADE = {
-    "dark":  ["#2b4a48", "#284440", "#3f3236", "#3a2e33"],
-    "light": ["#bcd6cf", "#b2ccc5", "#d8b8b8", "#d0aeae"],
+    "dark":  ["#4a3f48", "#463b44", "#4a3a40", "#463640"],
+    "light": ["#d8c4cc", "#d0bcc4", "#dcc0c4", "#d4b8bc"],
 }
 THEMES = {
     "dark":  dict(bg="#16181c", red="#d4001a", ink="#f0f0f0", gold="#c8960c",
-                  shutterwell="#0d0f12", shutterblack="#0a0b0d", wellring="#454a52",
+                  shutterwell="#2f4a4a", shutterblack="#24393a", wellring="#5a7a78",
                   jackwell="#0c0e11", jackring="#4a4a4a", teal="#26a69a",
                   plaster="#5a6470", plasterhi="#727e8c", plastersh="#3c434c",
-                  surround="#6b7580", cornice="#7c8794", roof="#7a3a30", roofhi="#9a5040",
-                  roofsh="#5a2820", arch="#4a5058", namewell="#0f1114",
+                  surround="#8a94a0", cornice="#7c8794", roof="#6b4a3e", roofhi="#8a6454",
+                  roofsh="#4a3228", arch="#4a5058", namewell="#0f1114",
                   tileA="#c8960c", tileB="#26a69a", tileC="#b5546a", tilebg="#20242a"),
     "light": dict(bg="#dcdcdc", red="#d4001a", ink="#1a1a1a", gold="#b07d00",
-                  shutterwell="#2a2e33", shutterblack="#1c1f24", wellring="#8a8a8a",
+                  shutterwell="#7d9a98", shutterblack="#6a8785", wellring="#9ab4b2",
                   jackwell="#e2ddd2", jackring="#b0a898", teal="#1c7a70",
                   plaster="#c8cdd4", plasterhi="#e4e8ec", plastersh="#a4acb4",
-                  surround="#b8bec6", cornice="#d0d6dc", roof="#c08878", roofhi="#d8a898",
-                  roofsh="#a06858", arch="#c0c6cc", namewell="#e8e2d6",
+                  surround="#d8d0c8", cornice="#c8b8b0", roof="#8a6858", roofhi="#a88878",
+                  roofsh="#6a4838", arch="#c0c6cc", namewell="#e8e2d6",
                   tileA="#b07d00", tileB="#1c7a70", tileC="#a03a52", tilebg="#cdd2d8"),
 }
 
@@ -142,23 +142,33 @@ def tile_row(A, t, x, y, w, h):
         tile(A, t, x0 + i*step, y + h/2, r)
 
 def hipped_roof(A, t, hx, w):
-    x0, x1 = hx, hx + w
+    # Low, wide hipped roof that OVERHANGS the facade (poster: broad flat brown roof).
+    over = 1.8
+    x0, x1 = hx - over, hx + w + over
     top_y, bot_y = ROOF_TOP, ROOF_TOP + ROOF_H
-    inset = w * 0.16
-    A(f'<polygon points="{px(x0)},{px(bot_y)} {px(x0+inset)},{px(top_y)} '
-      f'{px(x1-inset)},{px(top_y)} {px(x1)},{px(bot_y)}" '
+    inset = w * 0.22
+    A(f'<polygon points="{px(x0)},{px(bot_y)} {px(hx+inset)},{px(top_y)} '
+      f'{px(hx+w-inset)},{px(top_y)} {px(x1)},{px(bot_y)}" '
       f'fill="{t["roof"]}" stroke="{t["roofsh"]}" stroke-width="0.5"/>')
-    for k in range(1, 4):
-        yy = top_y + (bot_y - top_y) * k/4
-        ix = inset * (1 - k/4)
-        A(f'<line x1="{px(x0+ix)}" y1="{px(yy)}" x2="{px(x1-ix)}" y2="{px(yy)}" '
-          f'stroke="{t["roofsh"]}" stroke-width="0.35"/>')
+    # a couple of subtle tile courses
+    for k in (1, 2):
+        yy = top_y + (bot_y - top_y) * k/3
+        ix = inset * (1 - k/3) - over*(k/3)
+        A(f'<line x1="{px(hx+ix)}" y1="{px(yy)}" x2="{px(hx+w-ix)}" y2="{px(yy)}" '
+          f'stroke="{t["roofsh"]}" stroke-width="0.3"/>')
+    # eaves shadow line
     A(f'<line x1="{px(x0)}" y1="{px(bot_y)}" x2="{px(x1)}" y2="{px(bot_y)}" '
-      f'stroke="{t["roofhi"]}" stroke-width="0.6"/>')
-    dw = w * 0.20
+      f'stroke="{t["roofhi"]}" stroke-width="0.7"/>')
+    # clean rectangular dormer / ventilator box centred on the ridge (poster has a dark-window box)
+    dw = w * 0.26
     dx = hx + w/2 - dw/2
-    A(f'<rect x="{px(dx)}" y="{px(top_y-3.2)}" width="{px(dw)}" height="{px(4.0)}" '
-      f'rx="{px(0.4)}" fill="{t["plaster"]}" stroke="{t["plastersh"]}" stroke-width="0.4"/>')
+    A(f'<rect x="{px(dx)}" y="{px(top_y-4.2)}" width="{px(dw)}" height="{px(4.6)}" '
+      f'rx="{px(0.3)}" fill="{t["roof"]}" stroke="{t["roofsh"]}" stroke-width="0.4"/>')
+    A(f'<rect x="{px(dx+dw*0.16)}" y="{px(top_y-3.4)}" width="{px(dw*0.68)}" height="{px(2.4)}" '
+      f'fill="{t["namewell"]}" stroke="{t["roofsh"]}" stroke-width="0.3"/>')
+    # thin roof cap over the dormer
+    A(f'<rect x="{px(dx-0.8)}" y="{px(top_y-4.8)}" width="{px(dw+1.6)}" height="{px(0.9)}" '
+      f'fill="{t["roofhi"]}"/>')
 
 def gen(dark):
     t = THEMES["dark" if dark else "light"]
@@ -196,31 +206,27 @@ def gen(dark):
         cen, geo = shutter_geometry(f)
         wx, wy, ww, wh, kw, kh, bwd, bhh = geo
         sur = 1.2
-        arch_r = ww/2
         acx = wx + ww/2
-        asy = wy            # arch springs at window top
-        # ── Arched tympanum (filled fan above the window) so the arch reads strongly ──
-        A(f'<path d="M {px(wx)} {px(asy)} '
-          f'A {px(arch_r)} {px(arch_r)} 0 0 1 {px(wx+ww)} {px(asy)} Z" '
-          f'fill="{t["surround"]}" stroke="{t["plastersh"]}" stroke-width="0.4"/>')
-        # radiating fan ribs
-        for rr in range(1, 6):
-            ang = 3.14159 * rr/6
-            ex = acx - arch_r*math.cos(ang)
-            ey = asy - arch_r*math.sin(ang)
-            A(f'<line x1="{px(acx)}" y1="{px(asy)}" x2="{px(ex)}" y2="{px(ey)}" '
-              f'stroke="{t["plastersh"]}" stroke-width="0.3"/>')
-        # keystone at the crown
-        A(f'<polygon points="{px(acx-1.3)},{px(asy-arch_r)} {px(acx+1.3)},{px(asy-arch_r)} '
-          f'{px(acx+0.9)},{px(asy-arch_r+2.6)} {px(acx-0.9)},{px(asy-arch_r+2.6)}" '
-          f'fill="{t["cornice"]}" stroke="{t["plastersh"]}" stroke-width="0.3"/>')
-        # arch outline over the tympanum
+        asy = wy
+        # ── Shallow SEGMENTAL arch cap (gentle curve, like the poster — NOT a big semicircle).
+        # A low-rise segmental arch: rise ~ 1/6 of the span. Drawn as a thin lintel band. ──
+        rise = ww * 0.11
+        # segmental curve radius for this rise/span
+        seg_r = (ww*ww/4 + rise*rise) / (2*rise)
+        cap_top = asy - rise
+        # filled thin arched lintel (surround colour) above the window
         A(f'<path d="M {px(wx-sur)} {px(asy)} '
-          f'A {px(arch_r+sur)} {px(arch_r+sur)} 0 0 1 {px(wx+ww+sur)} {px(asy)}" '
-          f'fill="none" stroke="{t["surround"]}" stroke-width="1.2"/>')
-        # ── window recess + shutters ──
+          f'A {px(seg_r)} {px(seg_r)} 0 0 1 {px(wx+ww+sur)} {px(asy)} '
+          f'L {px(wx+ww+sur)} {px(asy-1.6)} '
+          f'A {px(seg_r)} {px(seg_r)} 0 0 0 {px(wx-sur)} {px(asy-1.6)} Z" '
+          f'fill="{t["surround"]}" stroke="{t["plastersh"]}" stroke-width="0.35"/>')
+        # small keystone at the crown
+        A(f'<polygon points="{px(acx-1.2)},{px(cap_top-0.6)} {px(acx+1.2)},{px(cap_top-0.6)} '
+          f'{px(acx+0.8)},{px(cap_top+2.0)} {px(acx-0.8)},{px(cap_top+2.0)}" '
+          f'fill="{t["cornice"]}" stroke="{t["plastersh"]}" stroke-width="0.3"/>')
+        # ── window recess + shutters (shutters coloured toward shutter-teal so they read + take colour) ──
         A(f'<rect x="{px(wx-0.4)}" y="{px(wy-0.4)}" width="{px(ww+0.8)}" height="{px(wh+0.8)}" '
-          f'rx="{px(0.4)}" fill="{t["shutterwell"]}" stroke="{t["surround"]}" stroke-width="0.8"/>')
+          f'rx="{px(0.4)}" fill="{t["shutterwell"]}" stroke="{t["surround"]}" stroke-width="0.9"/>')
         for i, semi in enumerate(WHITE_ORDER):
             sx = wx + i*(kw+WGAP)
             A(f'<rect id="shutter_{f}_{semi}" x="{px(sx)}" y="{px(wy)}" width="{px(kw)}" height="{px(kh)}" rx="{px(0.5)}" '
@@ -246,7 +252,7 @@ def gen(dark):
         A(f'<circle cx="{px(kx)}" cy="{px(ky)}" r="{px(2.6)}" fill="{t["plaster"]}" '
           f'stroke="{t["plastersh"]}" stroke-width="0.4"/>')
         A(f'<circle id="param_scale_{f}" cx="{px(kx)}" cy="{px(ky)}" r="0.5" fill="none" stroke="none"/>')
-        A(f'<circle id="lantern_{f}" cx="{px(acx)}" cy="{px(wy-arch_r-sur-1.0)}" r="0.5" fill="none" stroke="none"/>')
+        A(f'<circle id="lantern_{f}" cx="{px(acx)}" cy="{px(cap_top-1.4)}" r="0.5" fill="none" stroke="none"/>')
 
     fw_y = FOOT_TOP
     A(f'<rect x="{px(MARGIN)}" y="{px(fw_y)}" width="{px(W-2*MARGIN)}" height="{px(FOOT_H)}" '
