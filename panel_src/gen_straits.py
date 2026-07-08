@@ -32,14 +32,14 @@ THEMES = {
                   spine="#5a6470", spinehi="#8a94a0", spinedot="#4c7ac0",
                   knobface="#2a2e33", knobring="#4a5058", knobtick="#c0c8d0",
                   jackwell="#0c0e11", jackring="#4a4a4a", gold="#c8960c",
-                  panelmid="#1a1d21"),
+                  panelmid="#1a1d21", wave_op=0.5),
     "light": dict(bg="#dcdcdc", red="#d4001a", ink="#1a1a1a",
-                  rest="#5a9a94", restwave="#a8ccc8", restknob="#c8ddd9",
-                  acc="#c88018", accwave="#e8cba0", accknob="#e4d4b8",
+                  rest="#5a9a94", restwave="#6fa8a2", restknob="#c8ddd9",
+                  acc="#c88018", accwave="#d09a48", accknob="#e4d4b8",
                   spine="#b0b8c0", spinehi="#8a94a0", spinedot="#4c6ab0",
                   knobface="#e8e2d6", knobring="#b0a898", knobtick="#5a5040",
                   jackwell="#e2ddd2", jackring="#b0a898", gold="#b07d00",
-                  panelmid="#d0d0d0"),
+                  panelmid="#d0d0d0", wave_op=0.75),
 }
 
 MARGIN   = 5.0
@@ -66,7 +66,7 @@ def wave_field(A, t, x0, y0, w, h, colour, n=9):
             wy = yy + amp*math.sin(k*0.9 + i*0.7)
             pts.append(f"{px(xx)},{px(wy)}")
         A(f'<polyline points="{" ".join(pts)}" fill="none" stroke="{colour}" '
-          f'stroke-width="0.4" stroke-opacity="0.5"/>')
+          f'stroke-width="0.45" stroke-opacity="{t["wave_op"]}"/>')
 
 def knob(A, t, cx, cy, r, face, ring, mono=False):
     A(f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(r)}" fill="{face}" '
