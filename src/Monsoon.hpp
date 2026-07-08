@@ -1077,6 +1077,8 @@ struct Monsoon : Module {
     float getNoteValueParam();
     float getVariationParam();
     float getLegatoParam();
+    float getMonoRestBase();
+    float getMonoAccentBase();
     float getRestParam();
     float getAccentParam();
     float getOctaveLoParam();

@@ -140,6 +140,11 @@ void Monsoon::updateExpanderPointers() {
 float Monsoon::getNoteValueParam()  { return paramManager->getNoteValue(); }
 float Monsoon::getVariationParam()  { return paramManager->getVariation(); }
 float Monsoon::getLegatoParam()     { return paramManager->getLegato(); }
+// Mono BASE (unmodulated) rest/accent — the arc's 'set' value.
+float Monsoon::getMonoRestBase()    { return paramManager ? paramManager->getRest()   : 0.f; }
+float Monsoon::getMonoAccentBase()  { return paramManager ? paramManager->getAccent() : 0.f; }
+// Mono EFFECTIVE (Causeway ch0-modulated) rest/accent — the arc's 'mod' value, and what the
+// engine consumes (see ModeController).
 float Monsoon::getRestParam()       { return getEffectiveMonoRest(paramManager->getRest()); }
 float Monsoon::getAccentParam()     { return getEffectiveMonoAccent(paramManager->getAccent()); }
 
@@ -728,10 +733,21 @@ void Monsoon::process(const ProcessArgs& args) {
         modViz.noteValue = paramManager->getNoteValueNorm();
         modViz.variation = paramManager->getVariationNorm();
         modViz.legato    = paramManager->getLegatoNorm();
-        modViz.rest      = paramManager->getRestNorm();
-        modViz.accent    = paramManager->getAccentNorm();
-        modViz.active    = paramManager->anyBig5Modulated();
+        // Rest/accent effective values must include the Causeway MONO (ch0) modulation, otherwise the
+        // mod arc shows base-vs-base and never appears. (The engine consumes the same effective values
+        // in ModeController.) Lane flags below are OR'd with a Causeway-mono-mod test for the same reason.
+        const float restBase   = paramManager->getRestNorm();
+        const float accentBase = paramManager->getAccentNorm();
+        const float restEff    = getEffectiveMonoRest(restBase);
+        const float accentEff  = getEffectiveMonoAccent(accentBase);
+        modViz.rest      = restEff;
+        modViz.accent    = accentEff;
+        const bool causewayRestMod   = (restEff   != restBase);
+        const bool causewayAccentMod = (accentEff != accentBase);
+        modViz.active    = paramManager->anyBig5Modulated() || causewayRestMod || causewayAccentMod;
         for (int i = 0; i < 5; ++i) modViz.big5Lane[i] = paramManager->big5LaneModulated(i);
+        modViz.big5Lane[3] = modViz.big5Lane[3] || causewayRestMod;    // lane 3 = rest
+        modViz.big5Lane[4] = modViz.big5Lane[4] || causewayAccentMod;  // lane 4 = accent
         modViz.rhythmSlew = paramManager->getRhythmSlewNorm();
         modViz.melodySlew = paramManager->getMelodySlewNorm();
         modViz.rhythmMix  = paramManager->getRhythmMixNorm();
