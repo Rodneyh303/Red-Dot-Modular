@@ -53,20 +53,23 @@ KNOB_R   = 3.0
 GRID_TOP = TOP + 2.0
 JACK_Y   = TOP + N_ROWS*ROW_H + 8.0
 
-def wave_field(A, t, x0, y0, w, h, colour, n=9):
-    """Flowing contour lines (the straits' water) across (x0,y0,w,h)."""
+def wave_field(A, t, x0, y0, w, h, colour, n=22):
+    """Flowing contour lines (the straits' water) across (x0,y0,w,h). Dense field — many
+    fine contours with varied amplitude/phase so it reads as moving water, not a few lines."""
+    seg = 40
     for i in range(n):
         yy = y0 + h*i/(n-1)
-        # a gentle sine contour
         pts = []
-        seg = 16
-        amp = 1.4 + (i % 3)*0.5
+        amp = 0.8 + (i % 4)*0.55
+        phase = i*0.55
+        freq = 0.55 + (i % 3)*0.15
         for k in range(seg+1):
             xx = x0 + w*k/seg
-            wy = yy + amp*math.sin(k*0.9 + i*0.7)
+            wy = yy + amp*math.sin(k*freq + phase) + 0.35*math.sin(k*1.7 + phase*1.3)
             pts.append(f"{px(xx)},{px(wy)}")
+        op = t["wave_op"] * (0.55 + 0.45*(i % 2))   # alternate darker/lighter for depth
         A(f'<polyline points="{" ".join(pts)}" fill="none" stroke="{colour}" '
-          f'stroke-width="0.45" stroke-opacity="{t["wave_op"]}"/>')
+          f'stroke-width="0.4" stroke-opacity="{op:.2f}"/>')
 
 def knob(A, t, cx, cy, r, face, ring, mono=False):
     A(f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(r)}" fill="{face}" '
@@ -133,7 +136,7 @@ def gen(dark):
         A(f'<circle cx="{px(jx)}" cy="{px(JACK_Y)}" r="{px(1.6)}" fill="none" stroke="{t["gold"]}" stroke-width="0.4"/>')
         A(f'<circle id="{jid}" cx="{px(jx)}" cy="{px(JACK_Y)}" r="0.5" fill="none" stroke="none"/>')
     # a wave sweeping under the jacks (the straits continuing)
-    wave_field(A, t, MARGIN, JACK_Y+6, W-2*MARGIN, 8, t["spine"], n=4)
+    wave_field(A, t, MARGIN, JACK_Y+6, W-2*MARGIN, 8, t["spine"], n=10)
 
     lcx = W - MARGIN - 3
     A(f'<circle cx="{px(lcx)}" cy="{px(JACK_Y)}" r="{px(1.6)}" fill="{t["jackwell"]}" stroke="{t["jackring"]}" stroke-width="0.3"/>')
