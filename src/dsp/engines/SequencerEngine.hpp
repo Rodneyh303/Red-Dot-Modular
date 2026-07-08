@@ -141,6 +141,11 @@ struct SequencerEngine {
 
     enum PolyLane { PL_REST = 0, PL_MELODY = 1, PL_OCTAVE = 2, PL_ACCENT = 3, PL_LANES = 4 };
 
+    // The single engine→editor lane conversion. The modifier stores (lorStore_, spread) are editor-
+    // ordered; every accessor that takes an engine PL_ lane converts through HERE — one definition
+    // instead of the ENGINE_LANE_TO_EDITOR[engLane&3] formula previously inlined in each accessor.
+    static int editorLane(int engLane) { return dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]; }
+
     // Editor-order poly accessors: bank b → slot b+1, editorLane indexes the unified array directly
     // (storage IS editor order now — no permutation).
     int& polyLORRef(int bank, int editorLane, int item) { return lorStore_[bank + 1][editorLane & 7][item]; }
@@ -148,12 +153,12 @@ struct SequencerEngine {
 
     // Engine-order poly accessors: bank b → slot b+1; the engine PL_ lane converts to editor lane
     // via ENGINE_LANE_TO_EDITOR HERE — the single storage boundary that absorbs the permutation.
-    int& polyLenERef(int bank, int engLane) { return lorStore_[bank + 1][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]][LOR_LEN]; }
-    int& polyOffERef(int bank, int engLane) { return lorStore_[bank + 1][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]][LOR_OFF]; }
-    int& polyRotERef(int bank, int engLane) { return lorStore_[bank + 1][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]][LOR_ROT]; }
-    int  polyLenE(int bank, int engLane) const { return lorStore_[bank + 1][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]][LOR_LEN]; }
-    int  polyOffE(int bank, int engLane) const { return lorStore_[bank + 1][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]][LOR_OFF]; }
-    int  polyRotE(int bank, int engLane) const { return lorStore_[bank + 1][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]][LOR_ROT]; }
+    int& polyLenERef(int bank, int engLane) { return lorStore_[bank + 1][editorLane(engLane)][LOR_LEN]; }
+    int& polyOffERef(int bank, int engLane) { return lorStore_[bank + 1][editorLane(engLane)][LOR_OFF]; }
+    int& polyRotERef(int bank, int engLane) { return lorStore_[bank + 1][editorLane(engLane)][LOR_ROT]; }
+    int  polyLenE(int bank, int engLane) const { return lorStore_[bank + 1][editorLane(engLane)][LOR_LEN]; }
+    int  polyOffE(int bank, int engLane) const { return lorStore_[bank + 1][editorLane(engLane)][LOR_OFF]; }
+    int  polyRotE(int bank, int engLane) const { return lorStore_[bank + 1][editorLane(engLane)][LOR_ROT]; }
 
     // ── Spread: the 4th probability modifier, now ENGINE STATE (MVC: was on the Mono visual, which the
     // engine reached into for the draws — model reading from view. Now the model owns it). Stored in the
@@ -165,8 +170,8 @@ struct SequencerEngine {
     // the engine→editor permutation at this single boundary (same trick as polyLenE).
     float spread[kVoiceSlots][dotModular::NUM_STRANDS] = {};   // [slot][editorLane]; spread lanes 0..3 used
 
-    float& spreadERef(int slot, int engLane) { return spread[slot][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]]; }
-    float  spreadE   (int slot, int engLane) const { return spread[slot][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]]; }
+    float& spreadERef(int slot, int engLane) { return spread[slot][editorLane(engLane)]; }
+    float  spreadE   (int slot, int engLane) const { return spread[slot][editorLane(engLane)]; }
 
 
     // Indexable strand accessors keyed by dotModular::EngineStrand order
