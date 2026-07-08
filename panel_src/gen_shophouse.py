@@ -73,7 +73,7 @@ FLOOR_TOP = ROOF_TOP + ROOF_H + CORNICE_H
 FLOOR_H   = 33.0
 STRING_H  = 4.0
 FOOT_TOP  = FLOOR_TOP + 2*FLOOR_H + STRING_H
-FOOT_H    = 20.0
+FOOT_H    = 30.0
 PILW = 2.6
 
 def front_house(f): return f // 2
@@ -254,33 +254,67 @@ def gen(dark):
         A(f'<circle id="param_scale_{f}" cx="{px(kx)}" cy="{px(ky)}" r="0.5" fill="none" stroke="none"/>')
         A(f'<circle id="lantern_{f}" cx="{px(acx)}" cy="{px(cap_top-1.4)}" r="0.5" fill="none" stroke="none"/>')
 
+    # ══ Five-foot-way (ground floor colonnade) ══
     fw_y = FOOT_TOP
+    # ground-floor wall base under both houses
     A(f'<rect x="{px(MARGIN)}" y="{px(fw_y)}" width="{px(W-2*MARGIN)}" height="{px(FOOT_H)}" '
       f'rx="{px(1.0)}" fill="{t["arch"]}" stroke="{t["plastersh"]}" stroke-width="0.5"/>')
-    n_arch = 4
-    a_gap = 1.6
-    a_w = (W - 2*MARGIN - (n_arch+1)*a_gap) / n_arch
+    # entablature band over the colonnade (top of the five-foot-way)
+    A(f'<rect x="{px(MARGIN)}" y="{px(fw_y)}" width="{px(W-2*MARGIN)}" height="{px(2.2)}" '
+      f'fill="{t["cornice"]}" stroke="{t["plastersh"]}" stroke-width="0.4"/>')
+    # colonnade: round-arched openings separated by square plaster columns (the five-foot-way arcade)
+    n_arch = 5
+    col_w = 3.0
+    span = W - 2*MARGIN - 2.0
+    arch_pitch = span / n_arch
+    a_w = arch_pitch - col_w
+    arch_top = fw_y + 3.0
+    arch_h = 12.0
+    ar = a_w/2
     for a in range(n_arch):
-        ax = MARGIN + a_gap + a*(a_w+a_gap)
-        ar = a_w/2
-        acy = fw_y + 2.0
-        A(f'<path d="M {px(ax)} {px(acy+7)} L {px(ax)} {px(acy+ar)} '
-          f'A {px(ar)} {px(ar)} 0 0 1 {px(ax+a_w)} {px(acy+ar)} '
-          f'L {px(ax+a_w)} {px(acy+7)} Z" fill="{t["bg"]}" stroke="{t["plaster"]}" stroke-width="0.6"/>')
-    cy_ctrl = fw_y + FOOT_H - 4.5
-    icx = MARGIN + 8
+        ax = MARGIN + 1.0 + a*arch_pitch + col_w/2
+        # arched opening (recessed, dark)
+        A(f'<path d="M {px(ax)} {px(arch_top+arch_h)} L {px(ax)} {px(arch_top+ar)} '
+          f'A {px(ar)} {px(ar)} 0 0 1 {px(ax+a_w)} {px(arch_top+ar)} '
+          f'L {px(ax+a_w)} {px(arch_top+arch_h)} Z" '
+          f'fill="{t["bg"]}" stroke="{t["plaster"]}" stroke-width="0.5"/>')
+        # keystone on each arch
+        A(f'<rect x="{px(ax+a_w/2-0.7)}" y="{px(arch_top)}" width="{px(1.4)}" height="{px(2.0)}" '
+          f'fill="{t["cornice"]}" stroke="{t["plastersh"]}" stroke-width="0.3"/>')
+    # square plaster columns between arches
+    for c in range(n_arch+1):
+        cxp = MARGIN + 1.0 + c*arch_pitch - col_w/2
+        cxp = max(MARGIN+0.6, min(cxp, W-MARGIN-0.6-col_w))
+        A(f'<rect x="{px(cxp)}" y="{px(arch_top-0.5)}" width="{px(col_w)}" height="{px(arch_h+2.5)}" '
+          f'fill="{t["plaster"]}" stroke="{t["plastersh"]}" stroke-width="0.4"/>')
+        A(f'<line x1="{px(cxp+col_w/2)}" y1="{px(arch_top)}" x2="{px(cxp+col_w/2)}" '
+          f'y2="{px(arch_top+arch_h+1)}" stroke="{t["plasterhi"]}" stroke-width="0.3"/>')
+
+    # ── base plinth (controls seated on it) + corner floral tile panels ──
+    plinth_y = arch_top + arch_h + 2.5
+    A(f'<rect x="{px(MARGIN)}" y="{px(plinth_y)}" width="{px(W-2*MARGIN)}" height="{px(fw_y+FOOT_H-plinth_y)}" '
+      f'fill="{t["plaster"]}" stroke="{t["plastersh"]}" stroke-width="0.4"/>')
+    # corner floral tile panels (poster ground-floor motif)
+    ptile = 2.0
+    tile(A, t, MARGIN+3.0, plinth_y+3.0, ptile)
+    tile(A, t, W-MARGIN-3.0, plinth_y+3.0, ptile)
+
+    # ── controls seated on the plinth ──
+    cy_ctrl = plinth_y + (fw_y+FOOT_H-plinth_y)/2
+    icx = MARGIN + 10
     A(f'<circle cx="{px(icx)}" cy="{px(cy_ctrl)}" r="{px(3.0)}" fill="{t["jackwell"]}" '
       f'stroke="{t["jackring"]}" stroke-width="0.5"/>')
     A(f'<circle id="input_indexcv" cx="{px(icx)}" cy="{px(cy_ctrl)}" r="0.5" fill="none" stroke="none"/>')
-    atx = MARGIN + 20
-    A(f'<circle cx="{px(atx)}" cy="{px(cy_ctrl)}" r="{px(2.6)}" fill="{t["plaster"]}" '
+    atx = W/2 - 6
+    A(f'<circle cx="{px(atx)}" cy="{px(cy_ctrl)}" r="{px(2.6)}" fill="{t["namewell"]}" '
       f'stroke="{t["plastersh"]}" stroke-width="0.4"/>')
     A(f'<circle id="param_indexcvatt" cx="{px(atx)}" cy="{px(cy_ctrl)}" r="0.5" fill="none" stroke="none"/>')
-    ctx = W - MARGIN - 12
+    ctx = W/2 + 8
     A(f'<rect x="{px(ctx-2)}" y="{px(cy_ctrl-3)}" width="{px(4)}" height="{px(6)}" '
       f'rx="{px(0.5)}" fill="{t["namewell"]}" stroke="{t["plastersh"]}" stroke-width="0.4"/>')
     A(f'<circle id="param_conservation" cx="{px(ctx)}" cy="{px(cy_ctrl)}" r="0.5" fill="none" stroke="none"/>')
-    lcx = W - MARGIN - 4
+    lcx = W - MARGIN - 10
+    A(f'<circle cx="{px(lcx)}" cy="{px(cy_ctrl)}" r="{px(1.6)}" fill="{t["namewell"]}" stroke="{t["plastersh"]}" stroke-width="0.3"/>')
     A(f'<circle id="light_connect" cx="{px(lcx)}" cy="{px(cy_ctrl)}" r="0.5" fill="none" stroke="none"/>')
     A('</svg>')
     return "\n".join(o)

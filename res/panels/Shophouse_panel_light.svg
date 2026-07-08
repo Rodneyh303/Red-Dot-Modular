@@ -427,16 +427,53 @@
 <circle cx="369.33" cy="186.02" r="7.68" fill="#c8cdd4" stroke="#a4acb4" stroke-width="0.4"/>
 <circle id="param_scale_3" cx="369.33" cy="186.02" r="0.5" fill="none" stroke="none"/>
 <circle id="lantern_3" cx="288.81" cy="178.5" r="0.5" fill="none" stroke="none"/>
-<rect x="11.81" y="271.65" width="366.38" height="59.06" rx="2.95" fill="#c0c6cc" stroke="#a4acb4" stroke-width="0.5"/>
-<path d="M 16.54 298.23 L 16.54 320.4 A 42.84 42.84 0 0 1 102.22 320.4 L 102.22 298.23 Z" fill="#dcdcdc" stroke="#c8cdd4" stroke-width="0.6"/>
-<path d="M 106.95 298.23 L 106.95 320.4 A 42.84 42.84 0 0 1 192.64 320.4 L 192.64 298.23 Z" fill="#dcdcdc" stroke="#c8cdd4" stroke-width="0.6"/>
-<path d="M 197.36 298.23 L 197.36 320.4 A 42.84 42.84 0 0 1 283.05 320.4 L 283.05 298.23 Z" fill="#dcdcdc" stroke="#c8cdd4" stroke-width="0.6"/>
-<path d="M 287.78 298.23 L 287.78 320.4 A 42.84 42.84 0 0 1 373.46 320.4 L 373.46 298.23 Z" fill="#dcdcdc" stroke="#c8cdd4" stroke-width="0.6"/>
-<circle cx="35.43" cy="317.42" r="8.86" fill="#e2ddd2" stroke="#b0a898" stroke-width="0.5"/>
-<circle id="input_indexcv" cx="35.43" cy="317.42" r="0.5" fill="none" stroke="none"/>
-<circle cx="70.87" cy="317.42" r="7.68" fill="#c8cdd4" stroke="#a4acb4" stroke-width="0.4"/>
-<circle id="param_indexcvatt" cx="70.87" cy="317.42" r="0.5" fill="none" stroke="none"/>
-<rect x="336.85" y="308.56" width="11.81" height="17.72" rx="1.48" fill="#e8e2d6" stroke="#a4acb4" stroke-width="0.4"/>
-<circle id="param_conservation" cx="342.76" cy="317.42" r="0.5" fill="none" stroke="none"/>
-<circle id="light_connect" cx="366.38" cy="317.42" r="0.5" fill="none" stroke="none"/>
+<rect x="11.81" y="271.65" width="366.38" height="88.58" rx="2.95" fill="#c0c6cc" stroke="#a4acb4" stroke-width="0.5"/>
+<rect x="11.81" y="271.65" width="366.38" height="6.5" fill="#c8b8b0" stroke="#a4acb4" stroke-width="0.4"/>
+<path d="M 19.19 315.94 L 19.19 312.13 A 31.62 31.62 0 0 1 82.43 312.13 L 82.43 315.94 Z" fill="#dcdcdc" stroke="#c8cdd4" stroke-width="0.5"/>
+<rect x="48.74" y="280.51" width="4.13" height="5.91" fill="#c8b8b0" stroke="#a4acb4" stroke-width="0.3"/>
+<path d="M 91.29 315.94 L 91.29 312.13 A 31.62 31.62 0 0 1 154.52 312.13 L 154.52 315.94 Z" fill="#dcdcdc" stroke="#c8cdd4" stroke-width="0.5"/>
+<rect x="120.84" y="280.51" width="4.13" height="5.91" fill="#c8b8b0" stroke="#a4acb4" stroke-width="0.3"/>
+<path d="M 163.38 315.94 L 163.38 312.13 A 31.62 31.62 0 0 1 226.62 312.13 L 226.62 315.94 Z" fill="#dcdcdc" stroke="#c8cdd4" stroke-width="0.5"/>
+<rect x="192.93" y="280.51" width="4.13" height="5.91" fill="#c8b8b0" stroke="#a4acb4" stroke-width="0.3"/>
+<path d="M 235.48 315.94 L 235.48 312.13 A 31.62 31.62 0 0 1 298.71 312.13 L 298.71 315.94 Z" fill="#dcdcdc" stroke="#c8cdd4" stroke-width="0.5"/>
+<rect x="265.03" y="280.51" width="4.13" height="5.91" fill="#c8b8b0" stroke="#a4acb4" stroke-width="0.3"/>
+<path d="M 307.57 315.94 L 307.57 312.13 A 31.62 31.62 0 0 1 370.81 312.13 L 370.81 315.94 Z" fill="#dcdcdc" stroke="#c8cdd4" stroke-width="0.5"/>
+<rect x="337.12" y="280.51" width="4.13" height="5.91" fill="#c8b8b0" stroke="#a4acb4" stroke-width="0.3"/>
+<rect x="13.58" y="279.04" width="8.86" height="42.81" fill="#c8cdd4" stroke="#a4acb4" stroke-width="0.4"/>
+<line x1="18.01" y1="280.51" x2="18.01" y2="318.9" stroke="#e4e8ec" stroke-width="0.3"/>
+<rect x="82.43" y="279.04" width="8.86" height="42.81" fill="#c8cdd4" stroke="#a4acb4" stroke-width="0.4"/>
+<line x1="86.86" y1="280.51" x2="86.86" y2="318.9" stroke="#e4e8ec" stroke-width="0.3"/>
+<rect x="154.52" y="279.04" width="8.86" height="42.81" fill="#c8cdd4" stroke="#a4acb4" stroke-width="0.4"/>
+<line x1="158.95" y1="280.51" x2="158.95" y2="318.9" stroke="#e4e8ec" stroke-width="0.3"/>
+<rect x="226.62" y="279.04" width="8.86" height="42.81" fill="#c8cdd4" stroke="#a4acb4" stroke-width="0.4"/>
+<line x1="231.05" y1="280.51" x2="231.05" y2="318.9" stroke="#e4e8ec" stroke-width="0.3"/>
+<rect x="298.71" y="279.04" width="8.86" height="42.81" fill="#c8cdd4" stroke="#a4acb4" stroke-width="0.4"/>
+<line x1="303.14" y1="280.51" x2="303.14" y2="318.9" stroke="#e4e8ec" stroke-width="0.3"/>
+<rect x="367.56" y="279.04" width="8.86" height="42.81" fill="#c8cdd4" stroke="#a4acb4" stroke-width="0.4"/>
+<line x1="371.99" y1="280.51" x2="371.99" y2="318.9" stroke="#e4e8ec" stroke-width="0.3"/>
+<rect x="11.81" y="323.33" width="366.38" height="36.91" fill="#c8cdd4" stroke="#a4acb4" stroke-width="0.4"/>
+<rect x="14.76" y="326.28" width="11.81" height="11.81" fill="#cdd2d8" stroke="#a4acb4" stroke-width="0.3"/>
+<polygon points="17.13,327.34 18.43,328.64 17.13,329.94 15.83,328.64" fill="#b07d00" stroke="none"/>
+<polygon points="17.13,334.43 18.43,335.73 17.13,337.03 15.83,335.73" fill="#b07d00" stroke="none"/>
+<polygon points="24.21,327.34 25.51,328.64 24.21,329.94 22.91,328.64" fill="#b07d00" stroke="none"/>
+<polygon points="24.21,334.43 25.51,335.73 24.21,337.03 22.91,335.73" fill="#b07d00" stroke="none"/>
+<polygon points="20.67,328.29 22.68,332.19 20.67,336.08 18.66,332.19" fill="#a03a52" stroke="none"/>
+<polygon points="16.77,332.19 20.67,330.18 24.57,332.19 20.67,334.19" fill="#1c7a70" fill-opacity="0.85" stroke="none"/>
+<circle cx="20.67" cy="332.19" r="1.06" fill="#b07d00"/>
+<rect x="363.43" y="326.28" width="11.81" height="11.81" fill="#cdd2d8" stroke="#a4acb4" stroke-width="0.3"/>
+<polygon points="365.79,327.34 367.09,328.64 365.79,329.94 364.49,328.64" fill="#b07d00" stroke="none"/>
+<polygon points="365.79,334.43 367.09,335.73 365.79,337.03 364.49,335.73" fill="#b07d00" stroke="none"/>
+<polygon points="372.87,327.34 374.17,328.64 372.87,329.94 371.57,328.64" fill="#b07d00" stroke="none"/>
+<polygon points="372.87,334.43 374.17,335.73 372.87,337.03 371.57,335.73" fill="#b07d00" stroke="none"/>
+<polygon points="369.33,328.29 371.34,332.19 369.33,336.08 367.32,332.19" fill="#a03a52" stroke="none"/>
+<polygon points="365.43,332.19 369.33,330.18 373.23,332.19 369.33,334.19" fill="#1c7a70" fill-opacity="0.85" stroke="none"/>
+<circle cx="369.33" cy="332.19" r="1.06" fill="#b07d00"/>
+<circle cx="41.34" cy="341.78" r="8.86" fill="#e2ddd2" stroke="#b0a898" stroke-width="0.5"/>
+<circle id="input_indexcv" cx="41.34" cy="341.78" r="0.5" fill="none" stroke="none"/>
+<circle cx="177.28" cy="341.78" r="7.68" fill="#e8e2d6" stroke="#a4acb4" stroke-width="0.4"/>
+<circle id="param_indexcvatt" cx="177.28" cy="341.78" r="0.5" fill="none" stroke="none"/>
+<rect x="212.72" y="332.92" width="11.81" height="17.72" rx="1.48" fill="#e8e2d6" stroke="#a4acb4" stroke-width="0.4"/>
+<circle id="param_conservation" cx="218.62" cy="341.78" r="0.5" fill="none" stroke="none"/>
+<circle cx="348.66" cy="341.78" r="4.72" fill="#e8e2d6" stroke="#a4acb4" stroke-width="0.3"/>
+<circle id="light_connect" cx="348.66" cy="341.78" r="0.5" fill="none" stroke="none"/>
 </svg>
