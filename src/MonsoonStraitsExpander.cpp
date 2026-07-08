@@ -110,6 +110,15 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
         kitStep();
         if (!module) return;
         Monsoon* m = redDot::findMonsoonEitherSide(module);
+        // Voice-1 (mono) knobs FOLLOW the parent Monsoon's mono rest/accent — mirror the parent's
+        // REST_PARAM/ACCENT_KNOB into this expander's matching params so the voice-1 knobs display
+        // (and stay locked to) the host's values. Display-only: the engine reads Monsoon's own knob
+        // (getRest/getAccent), so this never feeds audio. One-way (parent → Straits), matching the
+        // Sands visual-expander mirror idiom (param mirroring done widget-side).
+        if (m) {
+            module->params[MonsoonIds::REST_PARAM ].setValue(m->params[MonsoonIds::REST_PARAM ].getValue());
+            module->params[MonsoonIds::ACCENT_KNOB].setValue(m->params[MonsoonIds::ACCENT_KNOB].getValue());
+        }
         int wantLight = (m && m->lightTheme) ? 1 : 0;
         if (wantLight != lastThemeLight) {
             lastThemeLight = wantLight;

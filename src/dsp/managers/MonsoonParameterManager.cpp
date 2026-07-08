@@ -48,32 +48,17 @@ float ParameterManager::getLegato() const {
 }
 
 float ParameterManager::getRest() const {
-    // Voice-1/mono rest knob lives on the Straits expander (param_rest_0 → REST_PARAM in ITS store),
-    // same as the poly rest knobs live there. Prefer the expander's value when present; fall back to
-    // the host param otherwise. (Mirrors getPolyRest's cachedPolyVoiceExpander read.)
-    float v;
-    if (cachedPolyVoiceExpander && *cachedPolyVoiceExpander) {
-        auto& params = (*cachedPolyVoiceExpander)->params;
-        v = (REST_PARAM < (int)params.size()) ? params[REST_PARAM].getValue()
-                                              : readParam_(REST_PARAM, 0.f, 1.f);
-    } else {
-        v = readParam_(REST_PARAM, 0.f, 1.f);
-    }
+    // Monsoon's OWN mono rest knob is authoritative. When a Straits expander is attached, its voice-1
+    // knob MIRRORS this value (driven in Straits::process), rather than overriding it — so the host
+    // stays in control and all 16 voices read consistently on the expander.
+    float v = readParam_(REST_PARAM, 0.f, 1.f);
     v = clampv(v + cv2Offsets[3] + junctionOffsets[3], 0.f, 1.f);
     return v;
 }
 
 float ParameterManager::getAccent() const {
-    // Voice-1/mono accent knob lives on the Straits expander (param_accent_0 → ACCENT_KNOB in ITS
-    // store). Prefer it when present, else the host param.
-    float v;
-    if (cachedPolyVoiceExpander && *cachedPolyVoiceExpander) {
-        auto& params = (*cachedPolyVoiceExpander)->params;
-        v = (ACCENT_KNOB < (int)params.size()) ? params[ACCENT_KNOB].getValue()
-                                               : readParam_(ACCENT_KNOB, 0.f, 1.f);
-    } else {
-        v = readParam_(ACCENT_KNOB, 0.f, 1.f);
-    }
+    // Monsoon's own mono accent knob is authoritative (Straits voice-1 mirrors it — see getRest note).
+    float v = readParam_(ACCENT_KNOB, 0.f, 1.f);
     // Direct CV input: 0–10V = 0–100%
     float cv = readInput_(ACCENT_CV_INPUT);
     v += cv * 0.1f + junctionOffsets[4] + cv2Offsets[4];
