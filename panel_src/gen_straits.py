@@ -1,121 +1,153 @@
 #!/usr/bin/env python3
-"""Straits — base poly expander panel (functional, low-HP; art refined later).
+"""Straits — poly expander panel (22HP), styled as the flowing straits between two shores.
 
-The redesign/simplification of the old Straits East/West pair into ONE module.
-Carries the per-poly-voice REST + ACCENT probability knobs (15 poly voices =
-voices 2..16) as a compact grid, plus three 16ch poly-cable output jacks
-(gate / CV / accent). CV modulation moved to Causeway; per-voice mono outs to
-Changi — neither appears here.
+The refactored single Straits carries 16 REST + 16 ACCENT probability knobs (voice 1 = mono/ch0,
+voices 2..16 = poly) plus three 16ch poly-cable outs (gate/CV/accent). The old East/West split is
+gone — instead the two knob banks are REST (left, muted) and ACCENT (right, vibrant), the vibrancy
+itself the literal rest-vs-accent distinction. A field of flowing contour "wave" lines runs behind
+each bank (the straits' water), tinted to each side. A central voice spine (1..16) organises rows;
+voice 1 (mono) is marked distinctly.
 
-This is a FUNCTIONAL placeholder panel: solid fills, kit id markers, no art.
-~22HP. nanosvg-safe (no gradients/masks/text-as-font/url).
+nanosvg-safe (solid fills/strokes, no gradient/mask/text/url).
 
-Kit id markers emitted (bound by MonsoonStraitsExpander widget):
-  param_rest_<0..14>     REST probability knob, poly voice v+2
-  param_accent_<0..14>   ACCENT probability knob, poly voice v+2
-  output_polygate        16ch poly gate cable
-  output_polycv          16ch poly CV cable
-  output_polyaccent      16ch poly accent cable
-  light_connect          dot.modular connect mark anchor
+Kit id markers (widget binds; voice v 0..15, v0 = mono/voice 1):
+  param_rest_<0..15>     REST probability knob   (v0 → mono REST_PARAM, v1..15 → POLY_REST_PARAM_*)
+  param_accent_<0..15>   ACCENT probability knob (v0 → mono ACCENT_PARAM, v1..15 → POLY_ACCENT_PARAM_*)
+  output_polygate / output_polycv / output_polyaccent   16ch cable outs
+  light_connect
 """
-
+import math
 HP = 22
-W  = HP * 5.08                 # mm (1HP = 5.08mm)
-H  = 128.5                     # mm (3U)
-S  = 75 / 25.4                 # px per mm
-PW, PH = round(W * S, 2), round(H * S, 2)
-def px(v): return round(v * S, 2)
+W  = HP * 5.08
+H  = 128.5
+S  = 75 / 25.4
+PW, PH = round(W*S, 2), round(H*S, 2)
+def px(v): return round(v*S, 2)
 
 THEMES = {
-    "dark":  dict(bg="#16181c", red="#d4001a", redsoft="#dc2626", gold="#c8960c",
-                  well="#0f1114", wellring="#3a3a3a", jackwell="#0c0e11",
-                  jackring="#4a4a4a", group="#1c1f24", groupline="#33373d",
-                  text="#f0f0f0", restcol="#26a69a", acccol="#c8960c"),
-    "light": dict(bg="#dcdcdc", red="#d4001a", redsoft="#c0001a", gold="#b07d00",
-                  well="#e8e2d6", wellring="#c0b8a8", jackwell="#e2ddd2",
-                  jackring="#b0a898", group="#d0d0d0", groupline="#bcbcbc",
-                  text="#1a1a1a", restcol="#1c7a70", acccol="#a07a00"),
+    "dark":  dict(bg="#14171b", red="#d4001a", ink="#f0f0f0",
+                  # REST = muted, cool; ACCENT = vibrant, warm
+                  rest="#3f7d78", restwave="#2a5a56", restknob="#1a2e2c",
+                  acc="#e08a1a", accwave="#8a5410", accknob="#3a2a10",
+                  spine="#5a6470", spinehi="#8a94a0", spinedot="#4c7ac0",
+                  knobface="#2a2e33", knobring="#4a5058", knobtick="#c0c8d0",
+                  jackwell="#0c0e11", jackring="#4a4a4a", gold="#c8960c",
+                  panelmid="#1a1d21"),
+    "light": dict(bg="#dcdcdc", red="#d4001a", ink="#1a1a1a",
+                  rest="#5a9a94", restwave="#a8ccc8", restknob="#c8ddd9",
+                  acc="#c88018", accwave="#e8cba0", accknob="#e4d4b8",
+                  spine="#b0b8c0", spinehi="#8a94a0", spinedot="#4c6ab0",
+                  knobface="#e8e2d6", knobring="#b0a898", knobtick="#5a5040",
+                  jackwell="#e2ddd2", jackring="#b0a898", gold="#b07d00",
+                  panelmid="#d0d0d0"),
 }
 
-# ── Layout ───────────────────────────────────────────────────────────────────
-# 15 poly voices, REST + ACCENT each. Lay out as 8 rows: 4 knob columns per row
-# (2 REST + 2 ACCENT) would give 16 slots/8 rows — but we have 15 voices, so we
-# use a simpler readable scheme: two side-by-side blocks (REST | ACCENT), each a
-# column of 15 small knobs is too tall; instead 15 = 8 rows x 2 cols (last cell
-# spare) PER block. So: left block REST (8x2), right block ACCENT (8x2).
-ROWS = 8
-COLS = 2                       # per block
-KNOB_R = 3.0
-TOP    = 20.0                  # first knob row y
-ROW_H  = 11.0                  # vertical pitch
-COL_W  = 9.0                   # horizontal pitch within a block
+MARGIN   = 5.0
+SPINE_W  = 10.0
+SPINE_CX = W/2
+SIDE_W   = (W - 2*MARGIN - SPINE_W) / 2
+TOP      = 20.0
+N_ROWS   = 8
+ROW_H    = 10.2
+KNOB_R   = 3.0
+GRID_TOP = TOP + 2.0
+JACK_Y   = TOP + N_ROWS*ROW_H + 8.0
 
-REST_X0 = 10.0                 # left block first column x
-ACC_X0  = W - 10.0 - COL_W     # right block first column x (mirrored)
+def wave_field(A, t, x0, y0, w, h, colour, n=9):
+    """Flowing contour lines (the straits' water) across (x0,y0,w,h)."""
+    for i in range(n):
+        yy = y0 + h*i/(n-1)
+        # a gentle sine contour
+        pts = []
+        seg = 16
+        amp = 1.4 + (i % 3)*0.5
+        for k in range(seg+1):
+            xx = x0 + w*k/seg
+            wy = yy + amp*math.sin(k*0.9 + i*0.7)
+            pts.append(f"{px(xx)},{px(wy)}")
+        A(f'<polyline points="{" ".join(pts)}" fill="none" stroke="{colour}" '
+          f'stroke-width="0.4" stroke-opacity="0.5"/>')
 
-def voice_pos(block_x0, idx):
-    """idx 0..14 → (x,y) within an 8row x 2col block, column-major."""
-    col = idx // ROWS          # 0 or 1
-    row = idx %  ROWS
-    return block_x0 + col * COL_W, TOP + row * ROW_H
-
-JACK_Y = H - 16.0              # poly output jacks along the bottom
-JACK_R = 3.9
-
+def knob(A, t, cx, cy, r, face, ring, mono=False):
+    A(f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(r)}" fill="{face}" '
+      f'stroke="{ring}" stroke-width="{px(0.8 if mono else 0.5)}"/>')
+    # pointer tick
+    A(f'<line x1="{px(cx)}" y1="{px(cy)}" x2="{px(cx)}" y2="{px(cy-r*0.8)}" '
+      f'stroke="{t["knobtick"]}" stroke-width="{px(0.5)}"/>')
+    if mono:  # voice-1 mono ring accent
+        A(f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(r+1.0)}" fill="none" '
+          f'stroke="{t["red"]}" stroke-width="{px(0.5)}" stroke-opacity="0.8"/>')
 
 def gen(dark):
     t = THEMES["dark" if dark else "light"]
-    o = []
-    A = o.append
+    o = []; A = o.append
     A(f'<svg xmlns="http://www.w3.org/2000/svg" width="{PW}" height="{PH}" viewBox="0 0 {PW} {PH}">')
     A(f'<rect width="{PW}" height="{PH}" fill="{t["bg"]}"/>')
-    # top red hairline + brand dot
     A(f'<rect x="0" y="0" width="{PW}" height="{px(1.2)}" fill="{t["red"]}"/>')
-    A(f'<circle cx="{px(W-4)}" cy="{px(6)}" r="{px(1.6)}" fill="{t["red"]}"/>')
-    # header separator
-    A(f'<line x1="0" y1="{px(15)}" x2="{PW}" y2="{px(15)}" stroke="{t["groupline"]}" stroke-width="1" opacity="0.7"/>')
-    # two block backgrounds (REST | ACCENT)
-    for (bx, col) in ((REST_X0, t["restcol"]), (ACC_X0, t["acccol"])):
-        gx = bx - 4.0
-        gw = COL_W + 8.0
-        A(f'<rect x="{px(gx)}" y="{px(TOP-6)}" width="{px(gw)}" height="{px(ROWS*ROW_H+2)}" '
-          f'rx="{px(1.5)}" fill="{t["group"]}" stroke="{t["groupline"]}" stroke-width="1"/>')
-        A(f'<rect x="{px(gx)}" y="{px(TOP-6)}" width="{px(gw)}" height="{px(2.2)}" fill="{col}" opacity="0.5"/>')
 
-    # knob wells + kit id markers
-    def knob(x, y, col, kid):
-        A(f'<circle cx="{px(x)}" cy="{px(y)}" r="{px(KNOB_R)}" fill="{t["well"]}" stroke="{col}" stroke-width="1.25"/>')
-        A(f'<line x1="{px(x)}" y1="{px(y)}" x2="{px(x)}" y2="{px(y-KNOB_R+0.6)}" stroke="{col}" stroke-width="1"/>')
-        # invisible kit marker (bind anchor)
-        A(f'<circle id="{kid}" cx="{px(x)}" cy="{px(y)}" r="0.5" fill="none" stroke="none"/>')
+    # ── wave fields behind each bank ──
+    wave_field(A, t, MARGIN, TOP, SIDE_W, N_ROWS*ROW_H, t["restwave"])
+    wave_field(A, t, SPINE_CX+SPINE_W/2, TOP, SIDE_W, N_ROWS*ROW_H, t["accwave"])
 
-    for i in range(15):
-        rx, ry = voice_pos(REST_X0, i)
-        knob(rx, ry, t["restcol"], f"param_rest_{i}")
-        ax, ay = voice_pos(ACC_X0, i)
-        knob(ax, ay, t["acccol"], f"param_accent_{i}")
+    # ── side tint bands (subtle) ──
+    A(f'<rect x="{px(MARGIN-1)}" y="{px(TOP-4)}" width="{px(SIDE_W+2)}" height="{px(N_ROWS*ROW_H+6)}" '
+      f'rx="{px(1.5)}" fill="{t["rest"]}" fill-opacity="0.06" stroke="{t["rest"]}" stroke-width="0.3" stroke-opacity="0.4"/>')
+    A(f'<rect x="{px(SPINE_CX+SPINE_W/2-1)}" y="{px(TOP-4)}" width="{px(SIDE_W+2)}" height="{px(N_ROWS*ROW_H+6)}" '
+      f'rx="{px(1.5)}" fill="{t["acc"]}" fill-opacity="0.08" stroke="{t["acc"]}" stroke-width="0.3" stroke-opacity="0.5"/>')
 
-    # poly output jacks (3, along the bottom)
-    def jack(x, y, kid):
-        A(f'<circle cx="{px(x)}" cy="{px(y)}" r="{px(JACK_R)}" fill="{t["jackwell"]}" stroke="{t["jackring"]}" stroke-width="1"/>')
-        A(f'<circle id="{kid}" cx="{px(x)}" cy="{px(y)}" r="0.5" fill="none" stroke="none"/>')
+    # ── bank labels ──
+    def lbl_dot(cx, cy, col):  # small colour marker (label text drawn at runtime / left implicit)
+        A(f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(1.4)}" fill="{col}"/>')
+    lbl_dot(MARGIN+SIDE_W*0.5, TOP-6, t["rest"])
+    lbl_dot(SPINE_CX+SPINE_W/2+SIDE_W*0.5, TOP-6, t["acc"])
 
-    jx = [W*0.28, W*0.5, W*0.72]
-    jack(jx[0], JACK_Y, "output_polygate")
-    jack(jx[1], JACK_Y, "output_polycv")
-    jack(jx[2], JACK_Y, "output_polyaccent")
-    A(f'<line x1="0" y1="{px(JACK_Y-7)}" x2="{PW}" y2="{px(JACK_Y-7)}" stroke="{t["groupline"]}" stroke-width="1" opacity="0.6"/>')
+    # ── central voice spine 1..16 ──
+    A(f'<line x1="{px(SPINE_CX)}" y1="{px(TOP)}" x2="{px(SPINE_CX)}" y2="{px(TOP+N_ROWS*ROW_H)}" '
+      f'stroke="{t["spine"]}" stroke-width="{px(0.6)}"/>')
 
-    # connect mark anchor
-    A(f'<circle id="light_connect" cx="{px(W*0.5)}" cy="{px(9)}" r="0.5" fill="none" stroke="none"/>')
+    # ── knob grid: 2 columns per side x 8 rows = 16 per bank ──
+    # voice index mapping: row r (0..7), col c (0..1) → v = r*2 + c  (v0 = mono at top-left)
+    def bank(kind, x_base, col_face, col_ring):
+        cw = SIDE_W/2
+        for r in range(N_ROWS):
+            for c in range(2):
+                v = r*2 + c
+                cx = x_base + cw*(c+0.5)
+                cy = GRID_TOP + ROW_H*(r+0.5)
+                mono = (v == 0)
+                knob(A, t, cx, cy, KNOB_R, col_face, col_ring, mono)
+                A(f'<circle id="param_{kind}_{v}" cx="{px(cx)}" cy="{px(cy)}" r="0.5" fill="none" stroke="none"/>')
+                # voice number dot on the spine side
+                sx = SPINE_CX + (-1 if kind=="rest" else 1)*(SPINE_W/2 - 1.2)
+                sy = cy
+                A(f'<circle cx="{px(sx)}" cy="{px(sy)}" r="{px(0.7)}" '
+                  f'fill="{t["spinedot"] if mono else t["spinehi"]}" fill-opacity="{1.0 if mono else 0.5}"/>')
+    bank("rest",   MARGIN,                t["restknob"], t["rest"])
+    bank("accent", SPINE_CX+SPINE_W/2,    t["accknob"],  t["acc"])
 
+    # ── three poly-cable output jacks along the bottom ──
+    labels = [("output_polygate", W*0.30), ("output_polycv", W*0.5), ("output_polyaccent", W*0.70)]
+    for jid, jx in labels:
+        A(f'<circle cx="{px(jx)}" cy="{px(JACK_Y)}" r="{px(3.6)}" fill="{t["jackwell"]}" '
+          f'stroke="{t["jackring"]}" stroke-width="0.6"/>')
+        A(f'<circle cx="{px(jx)}" cy="{px(JACK_Y)}" r="{px(1.6)}" fill="none" stroke="{t["gold"]}" stroke-width="0.4"/>')
+        A(f'<circle id="{jid}" cx="{px(jx)}" cy="{px(JACK_Y)}" r="0.5" fill="none" stroke="none"/>')
+    # a wave sweeping under the jacks (the straits continuing)
+    wave_field(A, t, MARGIN, JACK_Y+6, W-2*MARGIN, 8, t["spine"], n=4)
+
+    lcx = W - MARGIN - 3
+    A(f'<circle cx="{px(lcx)}" cy="{px(JACK_Y)}" r="{px(1.6)}" fill="{t["jackwell"]}" stroke="{t["jackring"]}" stroke-width="0.3"/>')
+    A(f'<circle id="light_connect" cx="{px(lcx)}" cy="{px(JACK_Y)}" r="0.5" fill="none" stroke="none"/>')
     A('</svg>')
     return "\n".join(o)
 
+def main():
+    import os
+    out = os.path.join(os.path.dirname(__file__), "..", "res", "panels")
+    for dark, name in [(True, "Straits_panel_dark.svg"), (False, "Straits_panel_light.svg")]:
+        with open(os.path.join(out, name), "w") as fh:
+            fh.write(gen(dark))
+        print(f"Straits {'dark' if dark else 'light'}: res/panels/{name}  ({HP}HP, {PW}x{PH}px)")
 
 if __name__ == "__main__":
-    for dark in (True, False):
-        theme = "dark" if dark else "light"
-        out = f"res/panels/Straits_panel_{theme}.svg"
-        open(out, "w").write(gen(dark))
-        print(f"Straits {theme}: {out}  ({HP}HP, {PW}x{PH}px)")
+    main()
