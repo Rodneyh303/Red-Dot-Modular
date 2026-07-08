@@ -1,5 +1,14 @@
 # In-Rack render feedback (Rodney, end of session) — worklist
 
+## STATUS UPDATE (worked overnight)
+- BUGS 1+2+3 FIXED (commit d007eb9): getRest/getAccent now read the Straits expander's mono knob;
+  Causeway mono mod flows through as a result. Also fixed a COMPILE error (ACCENT_PARAM->ACCENT_KNOB)
+  — Rodney independently fixed the same in bf02cd4; rebased clean.
+- Straits waves: DENSER (22 lines/bank, was 9).
+- Changi: REBUILT airport-first (runway, taxiway network, control tower, planes, stands). No vortex.
+- TODO still: Causeway more detail; Changi Changi-specific touch (after airport reads well); verify
+  bug fixes in Rack.
+
 ## BUGS (priority — real wiring defects, not cosmetics)
 1. **Straits voice-1 knobs NOT locked to Monsoon mono rest/accent.** param_rest_0/accent_0 were
    bound to REST_PARAM/ACCENT_PARAM but in Rack they don't track. Likely: binding a param that
