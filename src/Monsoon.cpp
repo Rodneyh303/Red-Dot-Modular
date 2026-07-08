@@ -162,6 +162,18 @@ float Monsoon::getPolyRestParam(int voiceIdx) {
 // bugs (scale-lock faders, dice-scale-gate, Causeway CV). Effective = base knob (on Straits,
 // via paramManager) + Causeway per-voice CV × (per-voice att + global att), clamped 0..1.
 // Base-only accessors give the arcs their "set" reference without a second copy.
+// Read a Causeway modulation CV for a given voice CHANNEL, following the standard VCV convention:
+// a cable with fewer channels than requested normals channel 0 to all voices. So a 1-channel (mono)
+// LFO patched into the Causeway CV in modulates EVERY voice; a 16-channel poly cable modulates each
+// voice from its own channel (ch0 = mono voice, ch1..15 = poly voices 2..16). Without this, a mono
+// cable modulated nothing (ch >= getChannels()) and no mod arcs ever drew.
+static inline float causewayCv_(rack::engine::Input& in, int ch) {
+    if (!in.isConnected()) return 0.f;
+    const int n = in.getChannels();
+    if (n <= 0) return 0.f;
+    return in.getVoltage(ch < n ? ch : 0);
+}
+
 float Monsoon::getBasePolyRest(int voiceIdx) {
     return paramManager ? paramManager->getPolyRest(voiceIdx) : 0.f;
 }
@@ -174,10 +186,10 @@ float Monsoon::getEffectivePolyRest(int voiceIdx) {
     if (cway && voiceIdx >= 0 && voiceIdx < 15) {
         const int ch = voiceIdx + 1;   // poly voice → poly-cable channel (ch0 = mono)
         auto& in = cway->inputs[POLY_REST_CV_INPUT];
-        if (in.isConnected() && ch < in.getChannels()) {
+        if (in.isConnected()) {
             float att = cway->params[POLY_REST_MOD_ATT_1 + voiceIdx].getValue()
                       + cway->params[POLY_REST_MOD_ATT_GLOBAL].getValue();
-            base += in.getVoltage(ch) * att * 0.1f;
+            base += causewayCv_(in, ch) * att * 0.1f;
         }
     }
     return math::clamp(base, 0.f, 1.f);
@@ -188,10 +200,10 @@ float Monsoon::getEffectivePolyAccent(int voiceIdx) {
     if (cway && voiceIdx >= 0 && voiceIdx < 15) {
         const int ch = voiceIdx + 1;
         auto& in = cway->inputs[POLY_ACCENT_CV_INPUT];
-        if (in.isConnected() && ch < in.getChannels()) {
+        if (in.isConnected()) {
             float att = cway->params[POLY_ACCENT_MOD_ATT_1 + voiceIdx].getValue()
                       + cway->params[POLY_ACCENT_MOD_ATT_GLOBAL].getValue();
-            base += in.getVoltage(ch) * att * 0.1f;
+            base += causewayCv_(in, ch) * att * 0.1f;
         }
     }
     return math::clamp(base, 0.f, 1.f);
@@ -205,10 +217,10 @@ float Monsoon::getEffectiveMonoRest(float base) {
     auto* cway = expanderManager.cachedCausewayPolyExpander;
     if (cway) {
         auto& in = cway->inputs[POLY_REST_CV_INPUT];
-        if (in.isConnected() && in.getChannels() > 0) {
-            float att = params[MONO_REST_MOD_ATT].getValue()
+        if (in.isConnected()) {
+            float att = cway->params[MONO_REST_MOD_ATT].getValue()
                       + cway->params[POLY_REST_MOD_ATT_GLOBAL].getValue();
-            base += in.getVoltage(0) * att * 0.1f;
+            base += causewayCv_(in, 0) * att * 0.1f;
         }
     }
     return math::clamp(base, 0.f, 1.f);
@@ -217,10 +229,10 @@ float Monsoon::getEffectiveMonoAccent(float base) {
     auto* cway = expanderManager.cachedCausewayPolyExpander;
     if (cway) {
         auto& in = cway->inputs[POLY_ACCENT_CV_INPUT];
-        if (in.isConnected() && in.getChannels() > 0) {
-            float att = params[MONO_ACCENT_MOD_ATT].getValue()
+        if (in.isConnected()) {
+            float att = cway->params[MONO_ACCENT_MOD_ATT].getValue()
                       + cway->params[POLY_ACCENT_MOD_ATT_GLOBAL].getValue();
-            base += in.getVoltage(0) * att * 0.1f;
+            base += causewayCv_(in, 0) * att * 0.1f;
         }
     }
     return math::clamp(base, 0.f, 1.f);
