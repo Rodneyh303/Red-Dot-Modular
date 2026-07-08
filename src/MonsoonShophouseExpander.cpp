@@ -131,6 +131,14 @@ struct ShutterBank : Widget {
         int scaleIdx = (int)std::round(module->params[SCALE_PARAM_0 + front].getValue());
         int root     = (int)std::round(module->params[ROOT_PARAM_0 + front].getValue());
         uint16_t mask = maskFor(scaleIdx, root);
+        // Live indication: the committed-ACTIVE front (the scale currently playing) draws at full
+        // brightness; the other (staged) fronts are dimmed, so the live scale reads vividly against
+        // the ones queued for modulation. Pairs with the lantern (which marks WHICH front is active).
+        const bool active = (module->list.active() == front);
+        const float dim = active ? 1.0f : 0.42f;
+        auto scaleC = [dim](int r, int g, int b) {
+            return nvgRGB((int)(r*dim), (int)(g*dim), (int)(b*dim));
+        };
         for (int s = 0; s < 12; ++s) {
             const Rect& rc = rects[s];
             if (rc.size.x <= 0.f) continue;
@@ -138,11 +146,11 @@ struct ShutterBank : Widget {
             bool isRoot = (s == root);
             NVGcolor fill, slat;
             if (isRoot && in) {                 // root = Singapore red, "open" shutter
-                fill = nvgRGB(0xd4, 0x00, 0x1a); slat = nvgRGBA(0x00, 0x00, 0x00, 0x55);
+                fill = scaleC(0xd4, 0x00, 0x1a); slat = nvgRGBA(0x00, 0x00, 0x00, 0x55);
             } else if (in) {                    // in-scale = teal, open shutter
-                fill = nvgRGB(0x26, 0xa6, 0x9a); slat = nvgRGBA(0x00, 0x00, 0x00, 0x4d);
+                fill = scaleC(0x26, 0xa6, 0x9a); slat = nvgRGBA(0x00, 0x00, 0x00, 0x4d);
             } else {                            // out-of-scale = dark, closed shutter
-                fill = nvgRGB(0x1b, 0x20, 0x26); slat = nvgRGBA(0xff, 0xff, 0xff, 0x14);
+                fill = scaleC(0x1b, 0x20, 0x26); slat = nvgRGBA(0xff, 0xff, 0xff, 0x14);
             }
             // Whole-shutter fill.
             nvgBeginPath(vg);
