@@ -30,7 +30,7 @@ struct MonsoonChangiExpanderWidget : ModuleWidget,
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
-        for (int i = 0; i < 15; ++i) {
+        for (int i = 0; i < 16; ++i) {   // 0 = mono/voice-1, 1..15 = poly voices 2..16
             std::string r = std::to_string(i);
             bindOutput<PJ301MPort>("output_gate_"   + r, GATE_OUT_0   + i);
             bindOutput<PJ301MPort>("output_cv_"     + r, CV_OUT_0     + i);
