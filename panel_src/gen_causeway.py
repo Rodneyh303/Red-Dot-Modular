@@ -1,121 +1,182 @@
-"""Generate the Causeway expander panel (12HP, 180x380px) — dark + light.
+#!/usr/bin/env python3
+"""Causeway — poly modulation interface for Straits (22HP), styled as the Johor–Singapore Causeway.
 
-Causeway = the dice/draw-generation modulation expander. It carries CV (with
-attenuverters) for the 2 slews + 2 mixes, and 10 dedicated gate jacks for the
-die actions. Reacts INTO Monsoon's draw generation; the sibling expanders
-Interchange (pitch) and Junction (the big-5 pattern knobs) shape the REACTION to
-the draw.
+Carries per-voice CV attenuators that modulate Straits' REST + ACCENT probability levels:
+  16 REST attenuators (left) + 16 ACCENT attenuators (right)  (voice 0 = mono/ch0, 1..15 poly)
+  + global REST + global ACCENT attenuators
+  + 2 CV inputs (poly rest mod, poly accent mod) — 16ch, ch0 = mono.
 
-Layout (mm; VCV 1mm = 75/25.4 px):
-  CV section  : Interchange-style  jack | atten | atten | jack
-  Gate section: two columns of gate jacks (rhythm left, melody right)
+Motif: the Causeway bridge — a trussed roadway crossing water. The two attenuator banks are the
+two carriageways; truss girders run between the numbered voice channels; the CV inputs enter at the
+ends as "FROM MONSOON" (left) and "TO STRAITS" (right). Water ripples beneath. REST muted / ACCENT
+vibrant, matching the Straits rest-vs-accent colour language.
 
-nanosvg-safe: solid per-shape fills, no gradients/masks/filters. Control labels
-are drawn at RUNTIME in the widget (nvgText); the SVG carries wells + the logo.
-Brand palette from res/logo/README.md.
+nanosvg-safe (solid fills/strokes, no gradient/mask/text/url).
+
+Kit id markers (widget binds; voice v 0..15, v0 = mono):
+  param_restatt_<0..15> / param_accatt_<0..15>   per-voice attenuators
+  param_restatt_global / param_accatt_global      global attenuators
+  input_restcv / input_accentcv                   16ch CV in
+  light_connect
 """
-S = 75.0 / 25.4
-def px(mm): return round(mm * S, 2)
-
-W_PX, H_PX = 180.0, 380.0          # 12HP x 3U
-W_MM = W_PX / S
+import math
+HP = 22
+W  = HP * 5.08
+H  = 128.5
+S  = 75 / 25.4
+PW, PH = round(W*S, 2), round(H*S, 2)
+def px(v): return round(v*S, 2)
 
 THEMES = {
-    "dark":  dict(bg="#070707", rail="#111111", stripe="#d4001a", ink="#f0ede8",
-                  well="#0f1114", line="#2a2f37", red="#dc2626", gold="#c8960c",
-                  teal="#26a69a", neutral="#6a6e76", screw="#555", screwln="#222"),
-    "light": dict(bg="#ece9e2", rail="#dcd9d2", stripe="#d4001a", ink="#15140f",
-                  well="#d4d6d9", line="#c0c4ca", red="#c0202a", gold="#a07808",
-                  teal="#1a8276", neutral="#8a8e86", screw="#bbb", screwln="#888"),
+    "dark":  dict(bg="#101319", red="#d4001a", ink="#f0f0f0",
+                  rest="#3f7d78", restknob="#1a2e2c",
+                  acc="#e08a1a", accknob="#3a2a10",
+                  truss="#7a6a3a", trusshi="#b09850", trussdim="#4a4020",
+                  deck="#2a2e35", deckline="#3a4048", water="#2a5a72", waterhi="#4a86a8",
+                  knobface="#2a2e33", knobring="#4a5058", knobtick="#c0c8d0",
+                  jackwell="#0c0e11", jackring="#4a4a4a", gold="#c8960c",
+                  wave_op=0.5),
+    "light": dict(bg="#e2e0d6", red="#d4001a", ink="#1a1a1a",
+                  rest="#5a9a94", restknob="#c8ddd9",
+                  acc="#c88018", accknob="#e4d4b8",
+                  truss="#a89050", trusshi="#8a7238", trussdim="#c4b488",
+                  deck="#c4c8cc", deckline="#a8b0b8", water="#7ba8c0", waterhi="#5a8aa4",
+                  knobface="#e8e2d6", knobring="#b0a898", knobtick="#5a5040",
+                  jackwell="#e2ddd2", jackring="#b0a898", gold="#b07d00",
+                  wave_op=0.72),
 }
 
-# ── Control geometry (mm) ────────────────────────────────────────────────────
-# Fit 2 CV rows + 5 gate rows in the y=30..120mm band (366px rail = ~123.9mm).
-# CV section: 4 columns jack|att|att|jack at these x (mm); two rows (slew, mix).
-CV_COLS = [9.0, 21.0, 39.0, 51.0]     # within 60mm width (12HP=~60.96mm)
-CV_ROWS = [38.0, 50.0]                # slew row, mix row
-# Gate section: 2 columns (rhythm left, melody right), 5 rows.
-G_COLS = [16.0, 44.0]
-G_ROWS = [66.0, 78.0, 90.0, 102.0, 114.0]
+MARGIN   = 5.0
+SPINE_W  = 12.0
+SPINE_CX = W/2
+SIDE_W   = (W - 2*MARGIN - SPINE_W) / 2
+BRIDGE_TOP = 26.0
+N_ROWS   = 8
+ROW_H    = 9.6
+KNOB_R   = 2.7
+GLOBAL_Y = BRIDGE_TOP - 6.0
+CV_Y     = 16.0
+WATER_Y  = BRIDGE_TOP + N_ROWS*ROW_H + 4.0
 
-def header(t):
-    o = [f'<rect width="{W_PX}" height="{H_PX}" fill="{t["bg"]}"/>',
-         f'<rect x="0" y="0" width="{W_PX}" height="14.5" fill="{t["rail"]}"/>',
-         f'<rect x="0" y="366" width="{W_PX}" height="14.5" fill="{t["rail"]}"/>',
-         f'<rect x="0" y="0" width="{W_PX}" height="2" fill="{t["stripe"]}"/>']
-    # Screws are drawn in C++ (ui/RedScrew.hpp), NOT painted here — avoids the
-    # double-draw and keeps screw style/size/position consistent across modules.
-    return o
+def truss_span(A, t, x0, y0, w, h):
+    """A truss girder panel (the causeway structure) across (x0,y0,w,h) — zigzag web + chords."""
+    A(f'<rect x="{px(x0)}" y="{px(y0)}" width="{px(w)}" height="{px(h)}" '
+      f'fill="{t["deck"]}" fill-opacity="0.4" stroke="{t["trussdim"]}" stroke-width="0.3"/>')
+    # top & bottom chords
+    for yy in (y0, y0+h):
+        A(f'<line x1="{px(x0)}" y1="{px(yy)}" x2="{px(x0+w)}" y2="{px(yy)}" '
+          f'stroke="{t["truss"]}" stroke-width="0.4"/>')
+    # zigzag web
+    seg = 8
+    up = True
+    pts = []
+    for k in range(seg+1):
+        xx = x0 + w*k/seg
+        yy = y0 if up else y0+h
+        pts.append(f"{px(xx)},{px(yy)}")
+        up = not up
+    A(f'<polyline points="{" ".join(pts)}" fill="none" stroke="{t["truss"]}" '
+      f'stroke-width="0.35" stroke-opacity="0.7"/>')
 
-def sectioning(t):
-    # Rhythm (left) / Melody (right) visual split. Faint tinted column backings
-    # spanning the control area, plus a centre divider. Causeway places rhythm
-    # controls in the left column of each pair, melody in the right.
-    o = []
-    a = o.append
-    y0, y1 = 30.0, 120.0
-    h = y1 - y0
-    mid = W_MM / 2.0
-    # left (rhythm) tint
-    a(f'<rect x="{px(2):.1f}" y="{px(y0):.1f}" width="{px(mid-3):.1f}" height="{px(h):.1f}" '
-      f'rx="{px(2):.1f}" fill="{t["red"]}" fill-opacity="0.05"/>')
-    # right (melody) tint
-    a(f'<rect x="{px(mid+1):.1f}" y="{px(y0):.1f}" width="{px(mid-3):.1f}" height="{px(h):.1f}" '
-      f'rx="{px(2):.1f}" fill="{t["teal"]}" fill-opacity="0.05"/>')
-    # centre divider
-    a(f'<line x1="{px(mid):.1f}" y1="{px(y0):.1f}" x2="{px(mid):.1f}" y2="{px(y1):.1f}" '
-      f'stroke="{t["line"]}" stroke-width="0.8" stroke-opacity="0.5"/>')
-    return o
+def water(A, t, x0, y0, w, h, n=5):
+    for i in range(n):
+        yy = y0 + h*i/(n-1)
+        pts = []
+        seg = 18
+        amp = 1.0 + (i % 2)*0.6
+        for k in range(seg+1):
+            xx = x0 + w*k/seg
+            wy = yy + amp*math.sin(k*0.8 + i*0.9)
+            pts.append(f"{px(xx)},{px(wy)}")
+        A(f'<polyline points="{" ".join(pts)}" fill="none" stroke="{t["water"]}" '
+          f'stroke-width="0.4" stroke-opacity="{t["wave_op"]}"/>')
 
-def wells(t):
-    o = []
-    a = o.append
-    # CV section recess
-    a(f'<rect x="{px(4):.1f}" y="{px(33):.1f}" width="{px(W_MM-8):.1f}" height="{px(24):.1f}" '
-      f'rx="{px(2):.1f}" fill="{t["well"]}" fill-opacity="0.5" stroke="{t["line"]}" stroke-width="1"/>')
-    # CV jacks (outer cols) + attenuverter wells (inner cols), 2 rows
-    for ry in CV_ROWS:
-        # jacks outer
-        for cx in (CV_COLS[0], CV_COLS[3]):
-            a(f'<circle cx="{px(cx):.1f}" cy="{px(ry):.1f}" r="{px(4.0):.1f}" fill="{t["well"]}" stroke="{t["teal"]}" stroke-width="1"/>')
-        # attenuverters inner
-        for cx in (CV_COLS[1], CV_COLS[2]):
-            a(f'<circle cx="{px(cx):.1f}" cy="{px(ry):.1f}" r="{px(3.2):.1f}" fill="{t["well"]}" stroke="{t["neutral"]}" stroke-width="1"/>')
-    # Gate section: 10 gate jacks (2 cols x 5 rows). Ring colour hints action group.
-    ring = [(t["red"],t["red"]), (t["red"],t["red"]), (t["gold"],t["gold"]),
-            (t["teal"],t["teal"]), (t["neutral"],t["neutral"])]
-    for r, ry in enumerate(G_ROWS):
-        for cx in G_COLS:
-            col = ring[r][0]
-            a(f'<circle cx="{px(cx):.1f}" cy="{px(ry):.1f}" r="{px(4.0):.1f}" fill="{t["well"]}" stroke="{col}" stroke-width="1"/>')
-    return o
+def knob(A, t, cx, cy, r, ring, mono=False):
+    A(f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(r)}" fill="{t["knobface"]}" '
+      f'stroke="{ring}" stroke-width="{px(0.8 if mono else 0.5)}"/>')
+    A(f'<line x1="{px(cx)}" y1="{px(cy)}" x2="{px(cx)}" y2="{px(cy-r*0.8)}" '
+      f'stroke="{t["knobtick"]}" stroke-width="{px(0.45)}"/>')
+    if mono:
+        A(f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(r+1.0)}" fill="none" '
+          f'stroke="{t["red"]}" stroke-width="{px(0.5)}" stroke-opacity="0.8"/>')
 
-import re
+def cvjack(A, t, cx, cy, col):
+    A(f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(3.4)}" fill="{t["jackwell"]}" '
+      f'stroke="{t["jackring"]}" stroke-width="0.6"/>')
+    A(f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(1.5)}" fill="none" stroke="{col}" stroke-width="0.5"/>')
 
-def logo(t, theme_name):
-    """Embed the real nanosvg-safe wordmark (res/logo/dot-modular-logo-*.svg),
-    stripped of its <svg> wrapper + background, scaled to fit the 12HP header."""
-    src = open(f"res/logo/dot-modular-logo-{theme_name}.svg").read()
-    # inner content = everything between the opening <svg ...> and </svg>,
-    # minus the full-bleed background rect and the red top stripe (we have our own).
-    inner = re.sub(r'^.*?<svg[^>]*>', '', src, flags=re.DOTALL)
-    inner = inner.replace('</svg>', '')
-    inner = re.sub(r'<rect width="717" height="190"[^>]*/>', '', inner)
-    inner = re.sub(r'<rect x="0" y="0" width="717" height="2.5"[^>]*/>', '', inner)
-    # wordmark native 717x190; scale to ~150px wide, placed under the top rail.
-    sc = 150.0 / 717.0
-    x = (W_PX - 150.0) / 2.0
-    y = 20.0
-    return [f'<g transform="translate({x:.2f},{y:.2f}) scale({sc:.5f})">{inner}</g>']
+def gen(dark):
+    t = THEMES["dark" if dark else "light"]
+    o = []; A = o.append
+    A(f'<svg xmlns="http://www.w3.org/2000/svg" width="{PW}" height="{PH}" viewBox="0 0 {PW} {PH}">')
+    A(f'<rect width="{PW}" height="{PH}" fill="{t["bg"]}"/>')
+    A(f'<rect x="0" y="0" width="{PW}" height="{px(1.2)}" fill="{t["red"]}"/>')
 
-def gen(theme_name):
-    t = THEMES[theme_name]
-    body = header(t) + sectioning(t) + logo(t, theme_name) + wells(t)
-    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W_PX:.0f} {H_PX:.0f}" '
-           f'width="{W_PX:.0f}" height="{H_PX:.0f}">\n' + "\n".join(body) + "\n</svg>")
-    return svg
+    # ── the bridge span header: a shallow suspension/truss silhouette across the top ──
+    span_y = CV_Y - 3
+    A(f'<line x1="{px(MARGIN)}" y1="{px(span_y)}" x2="{px(W-MARGIN)}" y2="{px(span_y)}" '
+      f'stroke="{t["truss"]}" stroke-width="0.6"/>')
+    # bridge towers + cables
+    for tx in (W*0.28, W*0.72):
+        A(f'<line x1="{px(tx)}" y1="{px(span_y)}" x2="{px(tx)}" y2="{px(span_y-7)}" '
+          f'stroke="{t["trusshi"]}" stroke-width="0.6"/>')
+        # cable sweeps
+        A(f'<path d="M {px(tx-W*0.22)} {px(span_y)} Q {px(tx)} {px(span_y-9)} {px(tx+W*0.22)} {px(span_y)}" '
+          f'fill="none" stroke="{t["truss"]}" stroke-width="0.35" stroke-opacity="0.7"/>')
+
+    # ── CV inputs at the ends: FROM MONSOON (left), TO STRAITS (right) ──
+    cvjack(A, t, MARGIN+5, CV_Y, t["rest"])
+    A(f'<circle id="input_restcv" cx="{px(MARGIN+5)}" cy="{px(CV_Y)}" r="0.5" fill="none" stroke="none"/>')
+    cvjack(A, t, W-MARGIN-5, CV_Y, t["acc"])
+    A(f'<circle id="input_accentcv" cx="{px(W-MARGIN-5)}" cy="{px(CV_Y)}" r="0.5" fill="none" stroke="none"/>')
+
+    # ── global attenuators (one per side, above the banks) ──
+    knob(A, t, MARGIN+SIDE_W*0.5, GLOBAL_Y, KNOB_R+0.4, t["rest"])
+    A(f'<circle id="param_restatt_global" cx="{px(MARGIN+SIDE_W*0.5)}" cy="{px(GLOBAL_Y)}" r="0.5" fill="none" stroke="none"/>')
+    knob(A, t, SPINE_CX+SPINE_W/2+SIDE_W*0.5, GLOBAL_Y, KNOB_R+0.4, t["acc"])
+    A(f'<circle id="param_accatt_global" cx="{px(SPINE_CX+SPINE_W/2+SIDE_W*0.5)}" cy="{px(GLOBAL_Y)}" r="0.5" fill="none" stroke="none"/>')
+
+    # ── central truss spine (the causeway structure between the two carriageways) ──
+    truss_span(A, t, SPINE_CX-SPINE_W/2, BRIDGE_TOP, SPINE_W, N_ROWS*ROW_H)
+
+    # ── the two carriageways: truss deck behind each bank of attenuators ──
+    truss_span(A, t, MARGIN, BRIDGE_TOP, SIDE_W, N_ROWS*ROW_H)
+    truss_span(A, t, SPINE_CX+SPINE_W/2, BRIDGE_TOP, SIDE_W, N_ROWS*ROW_H)
+
+    # ── attenuator grids: 2 cols x 8 rows = 16 per side ──
+    def bank(kind, x_base, ring):
+        cw = SIDE_W/2
+        for r in range(N_ROWS):
+            for c in range(2):
+                v = r*2 + c
+                cx = x_base + cw*(c+0.5)
+                cy = BRIDGE_TOP + ROW_H*(r+0.5)
+                mono = (v == 0)
+                knob(A, t, cx, cy, KNOB_R, ring, mono)
+                A(f'<circle id="param_{kind}_{v}" cx="{px(cx)}" cy="{px(cy)}" r="0.5" fill="none" stroke="none"/>')
+                # voice number tick on the spine
+                sx = SPINE_CX + (-1 if kind=="restatt" else 1)*(SPINE_W/2 - 1.0)
+                A(f'<circle cx="{px(sx)}" cy="{px(cy)}" r="{px(0.7)}" '
+                  f'fill="{t["trusshi"] if mono else t["truss"]}" fill-opacity="{1.0 if mono else 0.6}"/>')
+    bank("restatt", MARGIN,               t["rest"])
+    bank("accatt",  SPINE_CX+SPINE_W/2,   t["acc"])
+
+    # ── water beneath the causeway ──
+    water(A, t, MARGIN, WATER_Y, W-2*MARGIN, 12)
+
+    lcx = W - MARGIN - 3
+    A(f'<circle cx="{px(lcx)}" cy="{px(WATER_Y+13)}" r="{px(1.6)}" fill="{t["jackwell"]}" stroke="{t["jackring"]}" stroke-width="0.3"/>')
+    A(f'<circle id="light_connect" cx="{px(lcx)}" cy="{px(WATER_Y+13)}" r="0.5" fill="none" stroke="none"/>')
+    A('</svg>')
+    return "\n".join(o)
+
+def main():
+    import os
+    out = os.path.join(os.path.dirname(__file__), "..", "res", "panels")
+    for dark, name in [(True, "Causeway_panel_dark.svg"), (False, "Causeway_panel_light.svg")]:
+        with open(os.path.join(out, name), "w") as fh:
+            fh.write(gen(dark))
+        print(f"Causeway {'dark' if dark else 'light'}: res/panels/{name}  ({HP}HP, {PW}x{PH}px)")
 
 if __name__ == "__main__":
-    for v in ("dark","light"):
-        open(f"res/panels/Causeway_panel_{v}.svg","w").write(gen(v))
-        print(f"Causeway {v}: written")
+    main()
