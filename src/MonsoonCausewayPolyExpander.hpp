@@ -29,6 +29,8 @@ struct MonsoonCausewayPolyExpander : Module {
         }
         configParam(MonsoonIds::POLY_REST_MOD_ATT_GLOBAL,   -1.f, 1.f, 0.f, "Global rest CV attenuator");
         configParam(MonsoonIds::POLY_ACCENT_MOD_ATT_GLOBAL, -1.f, 1.f, 0.f, "Global accent CV attenuator");
+        configParam(MonsoonIds::MONO_REST_MOD_ATT,   -1.f, 1.f, 0.f, "Voice 1 (mono) rest CV attenuator");
+        configParam(MonsoonIds::MONO_ACCENT_MOD_ATT, -1.f, 1.f, 0.f, "Voice 1 (mono) accent CV attenuator");
         configInput(MonsoonIds::POLY_REST_CV_INPUT,   "Poly rest modulation CV (16ch: ch1=mono)");
         configInput(MonsoonIds::POLY_ACCENT_CV_INPUT, "Poly accent modulation CV (16ch: ch1=mono)");
     }

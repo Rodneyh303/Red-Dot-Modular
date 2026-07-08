@@ -140,8 +140,8 @@ void Monsoon::updateExpanderPointers() {
 float Monsoon::getNoteValueParam()  { return paramManager->getNoteValue(); }
 float Monsoon::getVariationParam()  { return paramManager->getVariation(); }
 float Monsoon::getLegatoParam()     { return paramManager->getLegato(); }
-float Monsoon::getRestParam()       { return paramManager->getRest(); }
-float Monsoon::getAccentParam()     { return paramManager->getAccent(); }
+float Monsoon::getRestParam()       { return getEffectiveMonoRest(paramManager->getRest()); }
+float Monsoon::getAccentParam()     { return getEffectiveMonoAccent(paramManager->getAccent()); }
 
 float Monsoon::getOctaveLoParam()   { return paramManager->getOctaveLo(); }
 float Monsoon::getOctaveHiParam()   { return paramManager->getOctaveHi(); }
@@ -187,6 +187,35 @@ float Monsoon::getEffectivePolyAccent(int voiceIdx) {
             float att = cway->params[POLY_ACCENT_MOD_ATT_1 + voiceIdx].getValue()
                       + cway->params[POLY_ACCENT_MOD_ATT_GLOBAL].getValue();
             base += in.getVoltage(ch) * att * 0.1f;
+        }
+    }
+    return math::clamp(base, 0.f, 1.f);
+}
+
+// Voice-1 / MONO counterparts: apply the Causeway MONO attenuator to CV channel 0 (the mono
+// channel) of the Causeway CV inputs, added onto the mono base rest/accent. Mirrors the poly
+// path above but for ch0 + the MONO_*_MOD_ATT params (voice-1's own attenuator). The GLOBAL
+// attenuator sums in too, matching the poly convention.
+float Monsoon::getEffectiveMonoRest(float base) {
+    auto* cway = expanderManager.cachedCausewayPolyExpander;
+    if (cway) {
+        auto& in = cway->inputs[POLY_REST_CV_INPUT];
+        if (in.isConnected() && in.getChannels() > 0) {
+            float att = params[MONO_REST_MOD_ATT].getValue()
+                      + cway->params[POLY_REST_MOD_ATT_GLOBAL].getValue();
+            base += in.getVoltage(0) * att * 0.1f;
+        }
+    }
+    return math::clamp(base, 0.f, 1.f);
+}
+float Monsoon::getEffectiveMonoAccent(float base) {
+    auto* cway = expanderManager.cachedCausewayPolyExpander;
+    if (cway) {
+        auto& in = cway->inputs[POLY_ACCENT_CV_INPUT];
+        if (in.isConnected() && in.getChannels() > 0) {
+            float att = params[MONO_ACCENT_MOD_ATT].getValue()
+                      + cway->params[POLY_ACCENT_MOD_ATT_GLOBAL].getValue();
+            base += in.getVoltage(0) * att * 0.1f;
         }
     }
     return math::clamp(base, 0.f, 1.f);
@@ -863,7 +892,7 @@ void Monsoon::process(const ProcessArgs& args) {
 
         // Refresh Sequencer Parameters (Throttled sampling of all knobs/CV)
         modeController->updatePatternInput();
-        engine.accentProb = paramManager->getAccent();
+        engine.accentProb = getEffectiveMonoAccent(paramManager->getAccent());
 
         // Check for expander changes and update cached pointers
         // Mirror the global spread-target mode onto the engine so display SpreadManagers

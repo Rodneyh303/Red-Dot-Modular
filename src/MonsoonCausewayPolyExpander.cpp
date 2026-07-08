@@ -31,10 +31,13 @@ struct MonsoonCausewayPolyExpanderWidget : ModuleWidget,
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
-        for (int i = 0; i < 15; ++i) {
+        // voice 0 = mono/voice-1 → the MONO attenuators; markers 1..15 = poly voices 2..16.
+        bindParam<Trimpot>("param_restatt_0", MonsoonIds::MONO_REST_MOD_ATT);
+        bindParam<Trimpot>("param_accatt_0",  MonsoonIds::MONO_ACCENT_MOD_ATT);
+        for (int i = 1; i < 16; ++i) {
             std::string r = std::to_string(i);
-            bindParam<Trimpot>("param_restatt_" + r, MonsoonIds::POLY_REST_MOD_ATT_1   + i);
-            bindParam<Trimpot>("param_accatt_"  + r, MonsoonIds::POLY_ACCENT_MOD_ATT_1 + i);
+            bindParam<Trimpot>("param_restatt_" + r, MonsoonIds::POLY_REST_MOD_ATT_1   + (i - 1));
+            bindParam<Trimpot>("param_accatt_"  + r, MonsoonIds::POLY_ACCENT_MOD_ATT_1 + (i - 1));
         }
         bindParam<Trimpot>   ("param_restatt_global", MonsoonIds::POLY_REST_MOD_ATT_GLOBAL);
         bindParam<Trimpot>   ("param_accatt_global",  MonsoonIds::POLY_ACCENT_MOD_ATT_GLOBAL);

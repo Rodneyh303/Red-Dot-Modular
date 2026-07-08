@@ -197,6 +197,12 @@ namespace MonsoonIds {
         POLY_REST_MOD_ATT_GLOBAL,
         POLY_ACCENT_MOD_ATT_GLOBAL,
 
+        // Causeway MONO (voice-1) mod attenuators — voice-1's counterpart to the poly per-voice
+        // attenuators above. Applies to CV channel 0 (the mono channel) of the Causeway CV inputs,
+        // added onto the mono base rest/accent. Panel marker param_restatt_0 / param_accatt_0.
+        MONO_REST_MOD_ATT,
+        MONO_ACCENT_MOD_ATT,
+
         // Poly DNA Window Controls (15 voices x 3 params = 45) - MOVED TO SANDS
         POLY_DNA_VOICE_1_LEN,
         POLY_DNA_VOICE_1_OFF,
@@ -1082,6 +1088,8 @@ struct Monsoon : Module {
     float getBasePolyAccent(int voiceIdx);
     float getEffectivePolyRest(int voiceIdx);
     float getEffectivePolyAccent(int voiceIdx);
+    float getEffectiveMonoRest(float base);
+    float getEffectiveMonoAccent(float base);
 
     // All other parameter getters now delegated to paramManager:
 
