@@ -612,22 +612,23 @@ struct LanternDisplay : widget::Widget {
         return P[((v % 8) + 8) % 8];
     }
 
-    // Distinct hue per pitch class (C=0..B=11). Same colour for the same note name
+    // Distinct hue per pitch class (C=0..B=11), aligned with Bitwig Studio's
+    // piano-roll "by pitch" colour scheme. Same colour for the same note name
     // across all octaves, so you can see harmonic content at a glance.
     static NVGcolor noteColour(int pitchClass) {
         static const NVGcolor P[12] = {
-            nvgRGB(0xe0, 0x5c, 0x5c), // C  — red
-            nvgRGB(0xe0, 0x8c, 0x4c), // C# — orange
-            nvgRGB(0xe0, 0xc4, 0x4c), // D  — gold
-            nvgRGB(0xb0, 0xe0, 0x4c), // D# — chartreuse
-            nvgRGB(0x5c, 0xe0, 0x5c), // E  — green
-            nvgRGB(0x4c, 0xe0, 0xb0), // F  — spring green
-            nvgRGB(0x4c, 0xc4, 0xe0), // F# — cyan
-            nvgRGB(0x4c, 0x8c, 0xe0), // G  — sky blue
-            nvgRGB(0x5c, 0x5c, 0xe0), // G# — blue
-            nvgRGB(0x8c, 0x4c, 0xe0), // A  — violet
-            nvgRGB(0xc4, 0x4c, 0xe0), // A# — magenta
-            nvgRGB(0xe0, 0x4c, 0xb0), // B  — rose
+            nvgRGB(0xef, 0x53, 0x50), // C  — red
+            nvgRGB(0xff, 0x70, 0x43), // C# — deep orange
+            nvgRGB(0xff, 0xa7, 0x26), // D  — orange
+            nvgRGB(0xff, 0xca, 0x28), // D# — amber
+            nvgRGB(0xd4, 0xe1, 0x57), // E  — lime
+            nvgRGB(0x66, 0xbb, 0x6a), // F  — green
+            nvgRGB(0x26, 0xa6, 0x9a), // F# — teal
+            nvgRGB(0x29, 0xb6, 0xf6), // G  — light blue
+            nvgRGB(0x42, 0xa5, 0xf5), // G# — blue
+            nvgRGB(0x5c, 0x6b, 0xc0), // A  — indigo
+            nvgRGB(0xab, 0x47, 0xbc), // A# — purple
+            nvgRGB(0xec, 0x40, 0x7a), // B  — pink
         };
         return P[((pitchClass % 12) + 12) % 12];
     }

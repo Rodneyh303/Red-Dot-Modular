@@ -134,7 +134,7 @@ def gen(dark):
           f'stroke="{t["panelline"]}" stroke-width="0.3" stroke-opacity="0.5"/>')
 
     # ── central Rain Vortex spine (slim, runs the band region) ──
-    rain_vortex(A, t, SPINE_CX, BAND_TOP-1, SPINE_W, 3*(BAND_H+BAND_GAP)-4)
+    # rain_vortex(A, t, SPINE_CX, BAND_TOP-1, SPINE_W, 3*(BAND_H+BAND_GAP)-4)
     # runway centre-line dashes down the spine (over the vortex base)
     for d in range(6):
         dy = FOOTER_Y - 4 - d*4
