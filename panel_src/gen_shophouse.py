@@ -294,26 +294,62 @@ def gen(dark):
     plinth_y = arch_top + arch_h + 2.5
     A(f'<rect x="{px(MARGIN)}" y="{px(plinth_y)}" width="{px(W-2*MARGIN)}" height="{px(fw_y+FOOT_H-plinth_y)}" '
       f'fill="{t["plaster"]}" stroke="{t["plastersh"]}" stroke-width="0.4"/>')
-    # corner floral tile panels (poster ground-floor motif)
-    ptile = 2.0
-    tile(A, t, MARGIN+3.0, plinth_y+3.0, ptile)
-    tile(A, t, W-MARGIN-3.0, plinth_y+3.0, ptile)
 
-    # ── controls seated on the plinth ──
+    # ── pintu pagar: the low half-height swing gate at the centre entrance (poster signature) ──
+    gate_cx = W/2
+    gate_w = 11.0
+    gate_top = arch_top + 1.5
+    gate_bot = arch_top + arch_h
+    gx0 = gate_cx - gate_w/2
+    # recessed dark doorway behind the gate
+    A(f'<rect x="{px(gx0-0.6)}" y="{px(gate_top-0.6)}" width="{px(gate_w+1.2)}" height="{px(gate_bot-gate_top+0.6)}" '
+      f'fill="{t["namewell"]}" stroke="{t["plaster"]}" stroke-width="0.6"/>')
+    # two gate leaves with vertical balusters + a top rail (the pintu pagar lattice)
+    for leaf in (0, 1):
+        lx0 = gate_cx - gate_w/2 + leaf*(gate_w/2)
+        lw = gate_w/2 - 0.3
+        # leaf frame
+        A(f'<rect x="{px(lx0)}" y="{px(gate_top)}" width="{px(lw)}" height="{px(gate_bot-gate_top)}" '
+          f'fill="none" stroke="{t["cornice"]}" stroke-width="0.6"/>')
+        # top scrollwork rail
+        A(f'<rect x="{px(lx0)}" y="{px(gate_top)}" width="{px(lw)}" height="{px(1.6)}" '
+          f'fill="{t["cornice"]}" stroke="none"/>')
+        # vertical balusters
+        nb = 4
+        for b in range(1, nb+1):
+            bx = lx0 + lw*b/(nb+1)
+            A(f'<line x1="{px(bx)}" y1="{px(gate_top+1.8)}" x2="{px(bx)}" y2="{px(gate_bot)}" '
+              f'stroke="{t["cornice"]}" stroke-width="0.5"/>')
+        # a mid rail
+        A(f'<line x1="{px(lx0)}" y1="{px((gate_top+gate_bot)/2)}" x2="{px(lx0+lw)}" '
+          f'y2="{px((gate_top+gate_bot)/2)}" stroke="{t["cornice"]}" stroke-width="0.4"/>')
+
+    # corner floral tile panels (poster ground-floor motif) — a small 2x2 cluster each side
+    for side in (0, 1):
+        px0 = (MARGIN+2.5) if side == 0 else (W-MARGIN-6.5)
+        for i in range(2):
+            for j in range(2):
+                tile(A, t, px0 + i*2.4, plinth_y+2.6 + j*2.4, 1.05)
+
+    # ── controls seated on the plinth, FLANKING the central pintu-pagar gate (clear of W/2 ± gate_w/2) ──
     cy_ctrl = plinth_y + (fw_y+FOOT_H-plinth_y)/2
-    icx = MARGIN + 10
+    # CV in — far left
+    icx = MARGIN + 9
     A(f'<circle cx="{px(icx)}" cy="{px(cy_ctrl)}" r="{px(3.0)}" fill="{t["jackwell"]}" '
       f'stroke="{t["jackring"]}" stroke-width="0.5"/>')
     A(f'<circle id="input_indexcv" cx="{px(icx)}" cy="{px(cy_ctrl)}" r="0.5" fill="none" stroke="none"/>')
-    atx = W/2 - 6
+    # attenuverter — left of the gate
+    atx = gate_cx - gate_w/2 - 6.5
     A(f'<circle cx="{px(atx)}" cy="{px(cy_ctrl)}" r="{px(2.6)}" fill="{t["namewell"]}" '
       f'stroke="{t["plastersh"]}" stroke-width="0.4"/>')
     A(f'<circle id="param_indexcvatt" cx="{px(atx)}" cy="{px(cy_ctrl)}" r="0.5" fill="none" stroke="none"/>')
-    ctx = W/2 + 8
+    # conservation toggle — right of the gate
+    ctx = gate_cx + gate_w/2 + 6.5
     A(f'<rect x="{px(ctx-2)}" y="{px(cy_ctrl-3)}" width="{px(4)}" height="{px(6)}" '
       f'rx="{px(0.5)}" fill="{t["namewell"]}" stroke="{t["plastersh"]}" stroke-width="0.4"/>')
     A(f'<circle id="param_conservation" cx="{px(ctx)}" cy="{px(cy_ctrl)}" r="0.5" fill="none" stroke="none"/>')
-    lcx = W - MARGIN - 10
+    # connect light — far right
+    lcx = W - MARGIN - 9
     A(f'<circle cx="{px(lcx)}" cy="{px(cy_ctrl)}" r="{px(1.6)}" fill="{t["namewell"]}" stroke="{t["plastersh"]}" stroke-width="0.3"/>')
     A(f'<circle id="light_connect" cx="{px(lcx)}" cy="{px(cy_ctrl)}" r="0.5" fill="none" stroke="none"/>')
     A('</svg>')

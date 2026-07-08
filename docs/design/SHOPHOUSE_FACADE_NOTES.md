@@ -149,9 +149,11 @@ blocker; fix on the dataflow track.
   front (`list.active()`), dark over the rest — resolves house + floor, hops on CV commit.
 
 **STILL NEEDS ART REFINEMENT (Rodney's eye + agreed items — do in a later render pass):**
-1. **Five-foot-way** is thin — deepen it, make the colonnade arches proper, seat the controls on
-   a base (currently they float). Add pintu-pagar gate + barred side windows + base floral tile
-   panels per the poster ground floor.
+1. ~~**Five-foot-way** — deepen it, proper arcade, seat controls, pintu-pagar gate, base tile
+   panels.~~ DONE: 5-arch arcade with columns/keystones, plinth, **pintu-pagar swing gate**
+   (balusters + scrollwork rail) at centre, corner floral tile clusters. Controls relocated to
+   FLANK the gate (fixed a real collision — atten/conservation had sat on the gate edges).
+   (Barred side windows still optional if wanted.)
 2. **Roof detailing** — still reads a bit flat; poster roof is clean but has crisp eaves shadow +
    the dark ventilator box. Tune tile courses / eaves.
 3. **Colour polish** — dark-theme facades still a touch muddy; make majolica tiles pop a little
