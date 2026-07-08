@@ -98,9 +98,9 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_t* poarr = json_array();
     for (int v = 0; v < 15; v++) {
         for (int i = 0; i < 16; i++) {
-            json_array_append_new(prarr, json_real(m->engine.pe.polyRhythmRandom[v][i]));
-            json_array_append_new(pmarr, json_real(m->engine.pe.polyMelodyRandom[v][i]));
-            json_array_append_new(poarr, json_real(m->engine.pe.polyOctaveRandom[v][i]));
+            json_array_append_new(prarr, json_real(m->engine.pe.polyRandom(v, SequencerEngine::PL_REST)[i]));
+            json_array_append_new(pmarr, json_real(m->engine.pe.polyRandom(v, SequencerEngine::PL_MELODY)[i]));
+            json_array_append_new(poarr, json_real(m->engine.pe.polyRandom(v, SequencerEngine::PL_OCTAVE)[i]));
         }
     }
     json_object_set_new(root, "polyRhythmRandom", prarr);
@@ -247,24 +247,27 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     loadArr("accentRandom", m->engine.pe.accentRandom);
 
     // ── Poly DNA Random Buffers ──
-    auto loadPolyArr = [&](const char* name, float target[15][16], float source[15][16]) {
+    // target is the unified random_ store (written per-element via polyRandom, since random_[1..15]
+    // isn't a contiguous [15][16] block); source is still a plain [15][16] slew-cache array.
+    auto loadPolyArr = [&](const char* name, int engLane, float source[15][16]) {
         if (auto j = json_object_get(root, name)) {
             if (json_is_array(j)) {
                 for (int v = 0; v < 15; v++) {
                     for (int i = 0; i < 16; i++) {
                         json_t* val = json_array_get(j, v * 16 + i);
                         if (val) {
-                            target[v][i] = (float)json_real_value(val);
-                            source[v][i] = target[v][i];
+                            float x = (float)json_real_value(val);
+                            m->engine.pe.polyRandom(v, engLane)[i] = x;
+                            source[v][i] = x;
                         }
                     }
                 }
             }
         }
     };
-    loadPolyArr("polyRhythmRandom", m->engine.pe.polyRhythmRandom, m->engine.pe.polyRhythmSource);
-    loadPolyArr("polyMelodyRandom", m->engine.pe.polyMelodyRandom, m->engine.pe.polyMelodySource);
-    loadPolyArr("polyOctaveRandom", m->engine.pe.polyOctaveRandom, m->engine.pe.polyOctaveSource);
+    loadPolyArr("polyRhythmRandom", SequencerEngine::PL_REST,   m->engine.pe.polyRhythmSource);
+    loadPolyArr("polyMelodyRandom", SequencerEngine::PL_MELODY, m->engine.pe.polyMelodySource);
+    loadPolyArr("polyOctaveRandom", SequencerEngine::PL_OCTAVE, m->engine.pe.polyOctaveSource);
 
     // ── Playable slew: restore A/B endpoints + latched slew, recompute effective ─
     {
@@ -315,9 +318,9 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
             seed(m->engine.pe.octaveLockedA,m->engine.pe.octaveCandB,m->engine.pe.octaveRandom);
             for(int v=0;v<15;v++){
                 for(int i=0;i<16;i++){
-                    m->engine.pe.polyRhythmLockedA[v][i]=m->engine.pe.polyRhythmCandB[v][i]=m->engine.pe.polyRhythmRandom[v][i];
-                    m->engine.pe.polyMelodyLockedA[v][i]=m->engine.pe.polyMelodyCandB[v][i]=m->engine.pe.polyMelodyRandom[v][i];
-                    m->engine.pe.polyOctaveLockedA[v][i]=m->engine.pe.polyOctaveCandB[v][i]=m->engine.pe.polyOctaveRandom[v][i];
+                    m->engine.pe.polyRhythmLockedA[v][i]=m->engine.pe.polyRhythmCandB[v][i]=m->engine.pe.polyRandom(v, SequencerEngine::PL_REST)[i];
+                    m->engine.pe.polyMelodyLockedA[v][i]=m->engine.pe.polyMelodyCandB[v][i]=m->engine.pe.polyRandom(v, SequencerEngine::PL_MELODY)[i];
+                    m->engine.pe.polyOctaveLockedA[v][i]=m->engine.pe.polyOctaveCandB[v][i]=m->engine.pe.polyRandom(v, SequencerEngine::PL_OCTAVE)[i];
                 }
             }
             m->engine.pe.rhythmFirstDraw = false; m->engine.pe.melodyFirstDraw = false;

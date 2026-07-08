@@ -65,10 +65,10 @@ static void seedEngine(SequencerEngine& eng) {
     // Poly banks (voices 2..16 → bank 0..14).
     for (int v = 0; v < 15; ++v)
         for (int s = 0; s < 16; ++s) {
-            eng.pe.polyRhythmRandom[v][s] = sentinel(v + 2, E::PL_REST,   s);
-            eng.pe.polyMelodyRandom[v][s] = sentinel(v + 2, E::PL_MELODY, s);
-            eng.pe.polyOctaveRandom[v][s] = sentinel(v + 2, E::PL_OCTAVE, s);
-            eng.pe.polyAccentRandom[v][s] = sentinel(v + 2, E::PL_ACCENT, s);
+            eng.pe.polyRandom(v, E::PL_REST)[s] = sentinel(v + 2, E::PL_REST,   s);
+            eng.pe.polyRandom(v, E::PL_MELODY)[s] = sentinel(v + 2, E::PL_MELODY, s);
+            eng.pe.polyRandom(v, E::PL_OCTAVE)[s] = sentinel(v + 2, E::PL_OCTAVE, s);
+            eng.pe.polyRandom(v, E::PL_ACCENT)[s] = sentinel(v + 2, E::PL_ACCENT, s);
             // identity LOR so step index is predictable (= totalStepsElapsed & 0x0F = 0)
             eng.polyLenERef(v, s % 3) = 16; // harmless; lanes use [v][lane]
         }
