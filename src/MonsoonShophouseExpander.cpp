@@ -19,7 +19,7 @@ using namespace ShophouseIds;
 // scale (list.active()). Positioned by the module widget over each front's lantern_<f> anchor;
 // only the active front's lantern is lit (Singapore red), the rest hang dark. Resolves both
 // house (left/right) and floor (upper/lower) since there's one per window.
-struct LanternWidget : Widget {
+struct ShophouseLanternWidget : Widget {
     MonsoonShophouseExpander* module = nullptr;
     int front = 0;
 
@@ -285,7 +285,7 @@ struct MonsoonShophouseExpanderWidget : ModuleWidget,
 
             // Active-scale lantern over this front's window (positioned on the lantern_<f> anchor).
             if (auto* lm = findNamed("lantern_" + std::to_string(f))) {
-                auto* lantern = new LanternWidget();
+               auto* lantern = new ShophouseLanternWidget();
                 lantern->module = mod;
                 lantern->front = f;
                 lantern->box.size = Vec(mm2px(4.4f), mm2px(7.0f));

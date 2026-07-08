@@ -80,7 +80,7 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
         //    getBasePolyRest which is poly-indexed 0..14; there is no mono equivalent, so the mono knob
         //    shows no East-mod arc — its value is the mono base directly). ──
         bindParam<Trimpot>("param_rest_0",   MonsoonIds::REST_PARAM);
-        bindParam<Trimpot>("param_accent_0", MonsoonIds::ACCENT_PARAM);
+        bindParam<Trimpot>("param_accent_0", MonsoonIds::ACCENT_KNOB);
         // ── voices 1..15 = poly. Param = POLY_*_PARAM_1 + (i-1); arc voice index = poly index (i-1),
         //    which maps to getBasePolyRest(0..14). ──
         for (int i = 1; i < 16; i++) {
