@@ -75,14 +75,21 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
-        // 15 poly voices (voices 2..16): REST + ACCENT probability knobs, each with a mod-arc.
-        for (int i = 0; i < 15; i++) {
+        // 16 voices. New panel convention: marker 0 = mono/voice-1, markers 1..15 = poly voices 2..16.
+        // ── voice 0 = mono: binds the parent's mono REST/ACCENT params. No poly mod-arc (the arc reads
+        //    getBasePolyRest which is poly-indexed 0..14; there is no mono equivalent, so the mono knob
+        //    shows no East-mod arc — its value is the mono base directly). ──
+        bindParam<Trimpot>("param_rest_0",   MonsoonIds::REST_PARAM);
+        bindParam<Trimpot>("param_accent_0", MonsoonIds::ACCENT_PARAM);
+        // ── voices 1..15 = poly. Param = POLY_*_PARAM_1 + (i-1); arc voice index = poly index (i-1),
+        //    which maps to getBasePolyRest(0..14). ──
+        for (int i = 1; i < 16; i++) {
             std::string r = std::to_string(i);
-            int voice = i;
-            bindParam<Trimpot>("param_rest_"   + r, MonsoonIds::POLY_REST_PARAM_1   + i,
-                std::function<void(Trimpot*)>([this, voice](Trimpot* k){ queueArc(k, voice, 0); }));
-            bindParam<Trimpot>("param_accent_" + r, MonsoonIds::POLY_ACCENT_PARAM_1 + i,
-                std::function<void(Trimpot*)>([this, voice](Trimpot* k){ queueArc(k, voice, 1); }));
+            int polyIdx = i - 1;                 // 0..14 for the mod-arc + POLY_*_PARAM offset
+            bindParam<Trimpot>("param_rest_"   + r, MonsoonIds::POLY_REST_PARAM_1   + polyIdx,
+                std::function<void(Trimpot*)>([this, polyIdx](Trimpot* k){ queueArc(k, polyIdx, 0); }));
+            bindParam<Trimpot>("param_accent_" + r, MonsoonIds::POLY_ACCENT_PARAM_1 + polyIdx,
+                std::function<void(Trimpot*)>([this, polyIdx](Trimpot* k){ queueArc(k, polyIdx, 1); }));
         }
 
         // Three 16-channel poly-cable outputs (ch1 = mono, ch2.. = poly).

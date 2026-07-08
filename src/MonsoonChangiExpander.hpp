@@ -14,10 +14,10 @@ using namespace rack;
 // via the cached pointer (see MonsoonOutputGenerator), same as Straits.
 namespace ChangiIds {
     enum OutputIds {
-        // gate 0..14, cv 0..14, accent 0..14  (poly voices 2..16)
-        GATE_OUT_0,   GATE_OUT_END   = GATE_OUT_0   + 14,
-        CV_OUT_0,     CV_OUT_END     = CV_OUT_0     + 14,
-        ACCENT_OUT_0, ACCENT_OUT_END = ACCENT_OUT_0 + 14,
+        // 16 per group: index 0 = MONO (voice 1), 1..15 = poly voices 2..16.
+        GATE_OUT_0,   GATE_OUT_END   = GATE_OUT_0   + 15,
+        CV_OUT_0,     CV_OUT_END     = CV_OUT_0     + 15,
+        ACCENT_OUT_0, ACCENT_OUT_END = ACCENT_OUT_0 + 15,
         NUM_OUTPUTS
     };
 }

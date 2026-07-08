@@ -1,121 +1,227 @@
-"""Generate the Causeway expander panel (12HP, 180x380px) — dark + light.
+#!/usr/bin/env python3
+"""Causeway — poly modulation interface for Straits (22HP), as a dense trussed BRIDGE.
 
-Causeway = the dice/draw-generation modulation expander. It carries CV (with
-attenuverters) for the 2 slews + 2 mixes, and 10 dedicated gate jacks for the
-die actions. Reacts INTO Monsoon's draw generation; the sibling expanders
-Interchange (pitch) and Junction (the big-5 pattern knobs) shape the REACTION to
-the draw.
+The whole panel is the Johor-Singapore Causeway rendered as an engineering drawing: twin truss
+carriageways running the full height, each attenuator row a bridge BAY sitting INSIDE the girder
+framework (knobs intersecting the beams, like Interchange's controls sit in its hex lattice), a
+perspective bridge span with towers + piers across the top, water beneath, gold linework throughout.
 
-Layout (mm; VCV 1mm = 75/25.4 px):
-  CV section  : Interchange-style  jack | atten | atten | jack
-  Gate section: two columns of gate jacks (rhythm left, melody right)
+Controls (voice 0 = mono/ch0, 1..15 poly):
+  16 REST attenuverters (left carriageway) + 16 ACCENT attenuverters (right carriageway)
+  + global REST + global ACCENT attenuators + 2 CV inputs (FROM MONSOON / TO STRAITS).
 
-nanosvg-safe: solid per-shape fills, no gradients/masks/filters. Control labels
-are drawn at RUNTIME in the widget (nvgText); the SVG carries wells + the logo.
-Brand palette from res/logo/README.md.
+nanosvg-safe (solid fills/strokes, elliptical arcs ok; no gradient/mask/text/url).
+
+Kit id markers (widget binds):
+  param_restatt_<0..15> / param_accatt_<0..15> / param_restatt_global / param_accatt_global
+  input_restcv / input_accentcv / light_connect
 """
-S = 75.0 / 25.4
-def px(mm): return round(mm * S, 2)
-
-W_PX, H_PX = 180.0, 380.0          # 12HP x 3U
-W_MM = W_PX / S
+import math
+HP = 22
+W  = HP * 5.08
+H  = 128.5
+S  = 75 / 25.4
+PW, PH = round(W*S, 2), round(H*S, 2)
+def px(v): return round(v*S, 2)
 
 THEMES = {
-    "dark":  dict(bg="#070707", rail="#111111", stripe="#d4001a", ink="#f0ede8",
-                  well="#0f1114", line="#2a2f37", red="#dc2626", gold="#c8960c",
-                  teal="#26a69a", neutral="#6a6e76", screw="#555", screwln="#222"),
-    "light": dict(bg="#ece9e2", rail="#dcd9d2", stripe="#d4001a", ink="#15140f",
-                  well="#d4d6d9", line="#c0c4ca", red="#c0202a", gold="#a07808",
-                  teal="#1a8276", neutral="#8a8e86", screw="#bbb", screwln="#888"),
+    "dark":  dict(bg="#0c0d0a", red="#d4001a", ink="#f0ead8",
+                  gold="#b8901c", goldhi="#e8c050", golddim="#5a4818", goldfaint="#3a3014",
+                  rest="#4c8c86", restknob="#16211f", acc="#e0951e", accknob="#2e2210",
+                  knobface="#191b17", knobring="#4a4428", knobtick="#d8c890",
+                  jackwell="#0a0b08", jackring="#5a4a1c",
+                  water="#1e4658", waterhi="#3a7088", node="#c8a83c",
+                  wave_op=0.5),
+    "light": dict(bg="#e6e2d4", red="#d4001a", ink="#2a2418",
+                  gold="#8a6a10", goldhi="#a88420", golddim="#c0b088", goldfaint="#cabf98",
+                  rest="#3a7a74", restknob="#c4dad6", acc="#b0740e", accknob="#e0d0b0",
+                  knobface="#ece6d8", knobring="#a89860", knobtick="#5a4a20",
+                  jackwell="#d8d0b8", jackring="#a89860",
+                  water="#6a9aae", waterhi="#4a7a90", node="#8a6a10",
+                  wave_op=0.72),
 }
 
-# ── Control geometry (mm) ────────────────────────────────────────────────────
-# Fit 2 CV rows + 5 gate rows in the y=30..120mm band (366px rail = ~123.9mm).
-# CV section: 4 columns jack|att|att|jack at these x (mm); two rows (slew, mix).
-CV_COLS = [9.0, 21.0, 39.0, 51.0]     # within 60mm width (12HP=~60.96mm)
-CV_ROWS = [38.0, 50.0]                # slew row, mix row
-# Gate section: 2 columns (rhythm left, melody right), 5 rows.
-G_COLS = [16.0, 44.0]
-G_ROWS = [66.0, 78.0, 90.0, 102.0, 114.0]
+MARGIN   = 4.5
+CARR_W   = 46.0                       # each carriageway (truss + knobs) width
+GAP      = W - 2*MARGIN - 2*CARR_W    # central gap (spine truss)
+CARR_X   = [MARGIN, W - MARGIN - CARR_W]
+SPINE_X0 = MARGIN + CARR_W
+SPAN_TOP = 14.0
+SPAN_H   = 14.0
+BRIDGE_TOP = SPAN_TOP + SPAN_H + 4.0
+N_ROWS   = 8
+ROW_H    = 9.6
+BAYS_H   = N_ROWS * ROW_H
+KNOB_R   = 2.7
+GLOBAL_Y = BRIDGE_TOP - 3.0
+WATER_Y  = BRIDGE_TOP + BAYS_H + 3.0
 
-def header(t):
-    o = [f'<rect width="{W_PX}" height="{H_PX}" fill="{t["bg"]}"/>',
-         f'<rect x="0" y="0" width="{W_PX}" height="14.5" fill="{t["rail"]}"/>',
-         f'<rect x="0" y="366" width="{W_PX}" height="14.5" fill="{t["rail"]}"/>',
-         f'<rect x="0" y="0" width="{W_PX}" height="2" fill="{t["stripe"]}"/>']
-    # Screws are drawn in C++ (ui/RedScrew.hpp), NOT painted here — avoids the
-    # double-draw and keeps screw style/size/position consistent across modules.
-    return o
+def truss_frame(A, t, x0, w, y0, h, rows):
+    """Continuous truss girder over (x0,y0,w,h) with `rows` bays. Layered like Interchange:
+    chords, verticals, diagonal web (zigzag both ways = X-bracing), rivet nodes."""
+    x1 = x0 + w
+    bay = h / rows
+    # ── outer + inner top/bottom chords (double lines = girder depth) ──
+    for xx in (x0, x1, x0+2.2, x1-2.2):
+        A(f'<line x1="{px(xx)}" y1="{px(y0)}" x2="{px(xx)}" y2="{px(y0+h)}" '
+          f'stroke="{t["gold"]}" stroke-width="0.5"/>')
+    # ── horizontal cross-beams at every bay line ──
+    for r in range(rows+1):
+        yy = y0 + bay*r
+        A(f'<line x1="{px(x0)}" y1="{px(yy)}" x2="{px(x1)}" y2="{px(yy)}" '
+          f'stroke="{t["gold"]}" stroke-width="0.5"/>')
+        A(f'<line x1="{px(x0+2.2)}" y1="{px(yy)}" x2="{px(x1-2.2)}" y2="{px(yy)}" '
+          f'stroke="{t["golddim"]}" stroke-width="0.3"/>')
+    # ── X-bracing diagonals in each bay (the truss web) ──
+    for r in range(rows):
+        ya, yb = y0+bay*r, y0+bay*(r+1)
+        A(f'<line x1="{px(x0+2.2)}" y1="{px(ya)}" x2="{px(x1-2.2)}" y2="{px(yb)}" '
+          f'stroke="{t["golddim"]}" stroke-width="0.35" stroke-opacity="0.8"/>')
+        A(f'<line x1="{px(x1-2.2)}" y1="{px(ya)}" x2="{px(x0+2.2)}" y2="{px(yb)}" '
+          f'stroke="{t["golddim"]}" stroke-width="0.35" stroke-opacity="0.8"/>')
+    # ── rivet nodes at bay intersections ──
+    for r in range(rows+1):
+        yy = y0 + bay*r
+        for xx in (x0, x1, x0+2.2, x1-2.2):
+            A(f'<circle cx="{px(xx)}" cy="{px(yy)}" r="{px(0.55)}" fill="{t["node"]}"/>')
 
-def sectioning(t):
-    # Rhythm (left) / Melody (right) visual split. Faint tinted column backings
-    # spanning the control area, plus a centre divider. Causeway places rhythm
-    # controls in the left column of each pair, melody in the right.
-    o = []
-    a = o.append
-    y0, y1 = 30.0, 120.0
-    h = y1 - y0
-    mid = W_MM / 2.0
-    # left (rhythm) tint
-    a(f'<rect x="{px(2):.1f}" y="{px(y0):.1f}" width="{px(mid-3):.1f}" height="{px(h):.1f}" '
-      f'rx="{px(2):.1f}" fill="{t["red"]}" fill-opacity="0.05"/>')
-    # right (melody) tint
-    a(f'<rect x="{px(mid+1):.1f}" y="{px(y0):.1f}" width="{px(mid-3):.1f}" height="{px(h):.1f}" '
-      f'rx="{px(2):.1f}" fill="{t["teal"]}" fill-opacity="0.05"/>')
-    # centre divider
-    a(f'<line x1="{px(mid):.1f}" y1="{px(y0):.1f}" x2="{px(mid):.1f}" y2="{px(y1):.1f}" '
-      f'stroke="{t["line"]}" stroke-width="0.8" stroke-opacity="0.5"/>')
-    return o
+def spine_truss(A, t, x0, w, y0, h, rows):
+    """Central parallel-truss spine between the carriageways (the causeway median)."""
+    x1 = x0 + w
+    bay = h / rows
+    cx = (x0+x1)/2
+    for xx in (x0+1, x1-1, cx):
+        A(f'<line x1="{px(xx)}" y1="{px(y0)}" x2="{px(xx)}" y2="{px(y0+h)}" '
+          f'stroke="{t["gold"]}" stroke-width="0.45"/>')
+    for r in range(rows):
+        ya, yb = y0+bay*r, y0+bay*(r+1)
+        A(f'<line x1="{px(x0+1)}" y1="{px(ya)}" x2="{px(cx)}" y2="{px(yb)}" stroke="{t["golddim"]}" stroke-width="0.3"/>')
+        A(f'<line x1="{px(x1-1)}" y1="{px(ya)}" x2="{px(cx)}" y2="{px(yb)}" stroke="{t["golddim"]}" stroke-width="0.3"/>')
+    for r in range(rows+1):
+        yy = y0+bay*r
+        A(f'<rect x="{px(x0+1)}" y="{px(yy-0.6)}" width="{px(w-2)}" height="{px(1.2)}" fill="{t["golddim"]}" fill-opacity="0.5"/>')
 
-def wells(t):
-    o = []
-    a = o.append
-    # CV section recess
-    a(f'<rect x="{px(4):.1f}" y="{px(33):.1f}" width="{px(W_MM-8):.1f}" height="{px(24):.1f}" '
-      f'rx="{px(2):.1f}" fill="{t["well"]}" fill-opacity="0.5" stroke="{t["line"]}" stroke-width="1"/>')
-    # CV jacks (outer cols) + attenuverter wells (inner cols), 2 rows
-    for ry in CV_ROWS:
-        # jacks outer
-        for cx in (CV_COLS[0], CV_COLS[3]):
-            a(f'<circle cx="{px(cx):.1f}" cy="{px(ry):.1f}" r="{px(4.0):.1f}" fill="{t["well"]}" stroke="{t["teal"]}" stroke-width="1"/>')
-        # attenuverters inner
-        for cx in (CV_COLS[1], CV_COLS[2]):
-            a(f'<circle cx="{px(cx):.1f}" cy="{px(ry):.1f}" r="{px(3.2):.1f}" fill="{t["well"]}" stroke="{t["neutral"]}" stroke-width="1"/>')
-    # Gate section: 10 gate jacks (2 cols x 5 rows). Ring colour hints action group.
-    ring = [(t["red"],t["red"]), (t["red"],t["red"]), (t["gold"],t["gold"]),
-            (t["teal"],t["teal"]), (t["neutral"],t["neutral"])]
-    for r, ry in enumerate(G_ROWS):
-        for cx in G_COLS:
-            col = ring[r][0]
-            a(f'<circle cx="{px(cx):.1f}" cy="{px(ry):.1f}" r="{px(4.0):.1f}" fill="{t["well"]}" stroke="{col}" stroke-width="1"/>')
-    return o
+def bridge_span(A, t):
+    """Perspective bridge span across the top: deck, twin towers, cable sweeps, piers."""
+    y = SPAN_TOP + SPAN_H*0.5
+    # deck line receding (two parallel = perspective)
+    A(f'<line x1="{px(MARGIN)}" y1="{px(y)}" x2="{px(W-MARGIN)}" y2="{px(y)}" stroke="{t["gold"]}" stroke-width="0.7"/>')
+    A(f'<line x1="{px(MARGIN+6)}" y1="{px(y-3)}" x2="{px(W-MARGIN-6)}" y2="{px(y-3)}" stroke="{t["golddim"]}" stroke-width="0.4"/>')
+    # towers
+    for tx in (W*0.30, W*0.70):
+        A(f'<line x1="{px(tx)}" y1="{px(y+3)}" x2="{px(tx)}" y2="{px(SPAN_TOP-2)}" stroke="{t["goldhi"]}" stroke-width="0.7"/>')
+        A(f'<line x1="{px(tx-2)}" y1="{px(y+3)}" x2="{px(tx-2)}" y2="{px(SPAN_TOP)}" stroke="{t["gold"]}" stroke-width="0.4"/>')
+        A(f'<line x1="{px(tx+2)}" y1="{px(y+3)}" x2="{px(tx+2)}" y2="{px(SPAN_TOP)}" stroke="{t["gold"]}" stroke-width="0.4"/>')
+    # cable catenaries between towers and to the ends
+    pts = [(MARGIN, y), (W*0.30, SPAN_TOP-2), (W*0.70, SPAN_TOP-2), (W-MARGIN, y)]
+    for (x1,y1),(x2,y2) in zip(pts, pts[1:]):
+        midx=(x1+x2)/2; midy=min(y1,y2)-2
+        A(f'<path d="M {px(x1)} {px(y1)} Q {px(midx)} {px(midy)} {px(x2)} {px(y2)}" '
+          f'fill="none" stroke="{t["gold"]}" stroke-width="0.4" stroke-opacity="0.8"/>')
+    # vertical hangers from cable to deck
+    for k in range(1, 20):
+        hx = MARGIN + (W-2*MARGIN)*k/20
+        A(f'<line x1="{px(hx)}" y1="{px(y-6)}" x2="{px(hx)}" y2="{px(y)}" stroke="{t["goldfaint"]}" stroke-width="0.25"/>')
+    # piers descending into water below the deck
+    for px_ in (W*0.14, W*0.46, W*0.54, W*0.86):
+        A(f'<line x1="{px(px_)}" y1="{px(y)}" x2="{px(px_)}" y2="{px(y+4)}" stroke="{t["golddim"]}" stroke-width="0.4"/>')
 
-import re
+def knob(A, t, cx, cy, r, ring, mono=False):
+    # knob well recess so the beams read as passing BEHIND the knob
+    A(f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(r+1.0)}" fill="{t["bg"]}"/>')
+    A(f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(r)}" fill="{t["knobface"]}" '
+      f'stroke="{ring}" stroke-width="{px(0.9 if mono else 0.6)}"/>')
+    A(f'<line x1="{px(cx)}" y1="{px(cy)}" x2="{px(cx)}" y2="{px(cy-r*0.8)}" '
+      f'stroke="{t["knobtick"]}" stroke-width="{px(0.45)}"/>')
+    if mono:
+        A(f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(r+1.6)}" fill="none" '
+          f'stroke="{t["red"]}" stroke-width="{px(0.5)}" stroke-opacity="0.85"/>')
 
-def logo(t, theme_name):
-    """Embed the real nanosvg-safe wordmark (res/logo/dot-modular-logo-*.svg),
-    stripped of its <svg> wrapper + background, scaled to fit the 12HP header."""
-    src = open(f"res/logo/dot-modular-logo-{theme_name}.svg").read()
-    # inner content = everything between the opening <svg ...> and </svg>,
-    # minus the full-bleed background rect and the red top stripe (we have our own).
-    inner = re.sub(r'^.*?<svg[^>]*>', '', src, flags=re.DOTALL)
-    inner = inner.replace('</svg>', '')
-    inner = re.sub(r'<rect width="717" height="190"[^>]*/>', '', inner)
-    inner = re.sub(r'<rect x="0" y="0" width="717" height="2.5"[^>]*/>', '', inner)
-    # wordmark native 717x190; scale to ~150px wide, placed under the top rail.
-    sc = 150.0 / 717.0
-    x = (W_PX - 150.0) / 2.0
-    y = 20.0
-    return [f'<g transform="translate({x:.2f},{y:.2f}) scale({sc:.5f})">{inner}</g>']
+def plusminus(A, t, cx, cy, r):
+    # +/- attenuverter markings flanking a knob
+    A(f'<line x1="{px(cx-r-2.2)}" y1="{px(cy)}" x2="{px(cx-r-1.0)}" y2="{px(cy)}" stroke="{t["golddim"]}" stroke-width="0.4"/>')
+    A(f'<line x1="{px(cx+r+1.0)}" y1="{px(cy)}" x2="{px(cx+r+2.2)}" y2="{px(cy)}" stroke="{t["golddim"]}" stroke-width="0.4"/>')
+    A(f'<line x1="{px(cx+r+1.6)}" y1="{px(cy-0.6)}" x2="{px(cx+r+1.6)}" y2="{px(cy+0.6)}" stroke="{t["golddim"]}" stroke-width="0.4"/>')
 
-def gen(theme_name):
-    t = THEMES[theme_name]
-    body = header(t) + sectioning(t) + logo(t, theme_name) + wells(t)
-    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W_PX:.0f} {H_PX:.0f}" '
-           f'width="{W_PX:.0f}" height="{H_PX:.0f}">\n' + "\n".join(body) + "\n</svg>")
-    return svg
+def water(A, t, x0, y0, w, h, n=5):
+    for i in range(n):
+        yy = y0 + h*i/(n-1)
+        pts=[]; seg=20; amp=1.0+(i%2)*0.6
+        for k in range(seg+1):
+            xx=x0+w*k/seg; wy=yy+amp*math.sin(k*0.8+i*0.9)
+            pts.append(f"{px(xx)},{px(wy)}")
+        A(f'<polyline points="{" ".join(pts)}" fill="none" stroke="{t["water"]}" '
+          f'stroke-width="0.4" stroke-opacity="{t["wave_op"]}"/>')
+
+def cvjack(A, t, cx, cy, col):
+    A(f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(3.4)}" fill="{t["jackwell"]}" stroke="{t["jackring"]}" stroke-width="0.6"/>')
+    A(f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(1.5)}" fill="none" stroke="{col}" stroke-width="0.5"/>')
+
+def gen(dark):
+    t = THEMES["dark" if dark else "light"]
+    o=[]; A=o.append
+    A(f'<svg xmlns="http://www.w3.org/2000/svg" width="{PW}" height="{PH}" viewBox="0 0 {PW} {PH}">')
+    A(f'<rect width="{PW}" height="{PH}" fill="{t["bg"]}"/>')
+    A(f'<rect x="0" y="0" width="{PW}" height="{px(1.2)}" fill="{t["red"]}"/>')
+
+    # ── bridge span across the top ──
+    bridge_span(A, t)
+    # ── CV inputs at the ends (FROM MONSOON / TO STRAITS) ──
+    cvjack(A, t, MARGIN+4, SPAN_TOP+SPAN_H*0.5, t["rest"])
+    A(f'<circle id="input_restcv" cx="{px(MARGIN+4)}" cy="{px(SPAN_TOP+SPAN_H*0.5)}" r="0.5" fill="none" stroke="none"/>')
+    cvjack(A, t, W-MARGIN-4, SPAN_TOP+SPAN_H*0.5, t["acc"])
+    A(f'<circle id="input_accentcv" cx="{px(W-MARGIN-4)}" cy="{px(SPAN_TOP+SPAN_H*0.5)}" r="0.5" fill="none" stroke="none"/>')
+
+    # ── truss frameworks FIRST (so knobs sit inside them) ──
+    truss_frame(A, t, CARR_X[0], CARR_W, BRIDGE_TOP, BAYS_H, N_ROWS)
+    truss_frame(A, t, CARR_X[1], CARR_W, BRIDGE_TOP, BAYS_H, N_ROWS)
+    spine_truss(A, t, SPINE_X0, GAP, BRIDGE_TOP, BAYS_H, N_ROWS)
+
+    # ── global attenuators above each carriageway ──
+    knob(A, t, CARR_X[0]+CARR_W*0.5, GLOBAL_Y, KNOB_R+0.5, t["rest"])
+    A(f'<circle id="param_restatt_global" cx="{px(CARR_X[0]+CARR_W*0.5)}" cy="{px(GLOBAL_Y)}" r="0.5" fill="none" stroke="none"/>')
+    knob(A, t, CARR_X[1]+CARR_W*0.5, GLOBAL_Y, KNOB_R+0.5, t["acc"])
+    A(f'<circle id="param_accatt_global" cx="{px(CARR_X[1]+CARR_W*0.5)}" cy="{px(GLOBAL_Y)}" r="0.5" fill="none" stroke="none"/>')
+
+    # ── attenuverter knobs INSIDE the truss bays: 2 cols x 8 rows per carriageway = 16 ──
+    def bank(kind, cxbase, ring):
+        cw = CARR_W/2
+        for r in range(N_ROWS):
+            for c in range(2):
+                v = r*2 + c
+                cx = cxbase + cw*(c+0.5)
+                cy = BRIDGE_TOP + ROW_H*(r+0.5)
+                mono = (v==0)
+                knob(A, t, cx, cy, KNOB_R, ring, mono)
+                plusminus(A, t, cx, cy, KNOB_R)
+                A(f'<circle id="param_{kind}_{v}" cx="{px(cx)}" cy="{px(cy)}" r="0.5" fill="none" stroke="none"/>')
+    bank("restatt", CARR_X[0], t["rest"])
+    bank("accatt",  CARR_X[1], t["acc"])
+
+    # ── voice numbers down the spine (nodes) ──
+    bay = BAYS_H/N_ROWS
+    for r in range(N_ROWS):
+        for c in range(2):
+            v=r*2+c
+            sy = BRIDGE_TOP + ROW_H*(r+0.5)
+        # a node per row on the spine centre
+        A(f'<circle cx="{px(W/2)}" cy="{px(BRIDGE_TOP+bay*(r+0.5))}" r="{px(0.9)}" fill="{t["node"]}"/>')
+
+    # ── water beneath ──
+    water(A, t, MARGIN, WATER_Y, W-2*MARGIN, 11)
+    lcx = W - MARGIN - 3
+    A(f'<circle cx="{px(lcx)}" cy="{px(WATER_Y+12)}" r="{px(1.6)}" fill="{t["jackwell"]}" stroke="{t["jackring"]}" stroke-width="0.3"/>')
+    A(f'<circle id="light_connect" cx="{px(lcx)}" cy="{px(WATER_Y+12)}" r="0.5" fill="none" stroke="none"/>')
+    A('</svg>')
+    return "\n".join(o)
+
+def main():
+    import os
+    out = os.path.join(os.path.dirname(__file__), "..", "res", "panels")
+    for dark, name in [(True, "Causeway_panel_dark.svg"), (False, "Causeway_panel_light.svg")]:
+        with open(os.path.join(out, name), "w") as fh:
+            fh.write(gen(dark))
+        print(f"Causeway {'dark' if dark else 'light'}: res/panels/{name}  ({HP}HP, {PW}x{PH}px)")
 
 if __name__ == "__main__":
-    for v in ("dark","light"):
-        open(f"res/panels/Causeway_panel_{v}.svg","w").write(gen(v))
-        print(f"Causeway {v}: written")
+    main()

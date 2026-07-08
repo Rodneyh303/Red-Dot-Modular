@@ -69,22 +69,28 @@ void OutputGenerator::drive(SequencerEngine& engine,
         }
     }
 
-    // 3. Changi — per-voice individual mono jacks (gate/CV/accent) for poly voices 2..16.
-    //    Same per-voice values as Straits' poly-cable channels 1..15, fanned to discrete jacks.
+    // 3. Changi — per-voice individual mono jacks (gate/CV/accent). Index 0 = MONO voice (voice 1,
+    //    from the parent mono path, matching Straits' poly-cable ch0); 1..15 = poly voices 2..16.
     auto* changi = expanderManager.cachedChangiExpander;
     if (changi) {
         using namespace ChangiIds;
+        // index 0 = mono voice
+        changi->outputs[GATE_OUT_0   + 0].setVoltage((gateV > 5.f && !effectiveMuted) ? 10.f : 0.f);
+        changi->outputs[CV_OUT_0     + 0].setVoltage(effectiveMuted ? 0.f : currentPitchV);
+        changi->outputs[ACCENT_OUT_0 + 0].setVoltage((!effectiveMuted && engine.lastStepResult.accented && gateV > 5.f) ? 10.f : 0.f);
+        // indices 1..15 = poly voices 2..16 (engine.voices[0..14])
         for (int i = 0; i < 15; ++i) {
+            const int out = i + 1;
             if (effectiveMuted || i >= (int)engine.numPolyVoices) {
-                changi->outputs[GATE_OUT_0   + i].setVoltage(0.f);
-                changi->outputs[CV_OUT_0     + i].setVoltage(0.f);
-                changi->outputs[ACCENT_OUT_0 + i].setVoltage(0.f);
+                changi->outputs[GATE_OUT_0   + out].setVoltage(0.f);
+                changi->outputs[CV_OUT_0     + out].setVoltage(0.f);
+                changi->outputs[ACCENT_OUT_0 + out].setVoltage(0.f);
                 continue;
             }
             float vg = engine.voices[i].gs.process(sampleTime);
-            changi->outputs[GATE_OUT_0   + i].setVoltage(vg);
-            changi->outputs[CV_OUT_0     + i].setVoltage(engine.voices[i].gs.currentPitchV);
-            changi->outputs[ACCENT_OUT_0 + i].setVoltage((engine.voices[i].accented && vg > 5.f) ? 10.f : 0.f);
+            changi->outputs[GATE_OUT_0   + out].setVoltage(vg);
+            changi->outputs[CV_OUT_0     + out].setVoltage(engine.voices[i].gs.currentPitchV);
+            changi->outputs[ACCENT_OUT_0 + out].setVoltage((engine.voices[i].accented && vg > 5.f) ? 10.f : 0.f);
         }
     }
 }
