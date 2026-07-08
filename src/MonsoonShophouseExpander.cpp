@@ -15,6 +15,80 @@ using namespace ShophouseIds;
 // dim=out-of-scale, root=Singapore red) from that front's (scale,root) params, and
 // on click of a shutter sets that front's ROOT to the clicked semitone — the display
 // IS the control (no menu). Scale itself is the per-front scale knob.
+// Active-scale indicator: a lit lantern hanging over whichever front is the committed-active
+// scale (list.active()). Positioned by the module widget over each front's lantern_<f> anchor;
+// only the active front's lantern is lit (Singapore red), the rest hang dark. Resolves both
+// house (left/right) and floor (upper/lower) since there's one per window.
+struct LanternWidget : Widget {
+    MonsoonShophouseExpander* module = nullptr;
+    int front = 0;
+
+    void draw(const DrawArgs& args) override {
+        Widget::draw(args);
+        if (!module) return;
+        NVGcontext* vg = args.vg;
+        const bool lit = (module->list.active() == front);
+        const float cx = box.size.x * 0.5f;
+        const float topY = 0.f;
+        const float bodyTop = box.size.y * 0.28f;
+        const float bodyBot = box.size.y * 0.86f;
+        const float halfW = box.size.x * 0.30f;
+
+        // hanging cord from the arch down to the lantern cap
+        nvgBeginPath(vg);
+        nvgMoveTo(vg, cx, topY);
+        nvgLineTo(vg, cx, bodyTop);
+        nvgStrokeColor(vg, nvgRGBA(0x30, 0x30, 0x30, 0xcc));
+        nvgStrokeWidth(vg, 1.f);
+        nvgStroke(vg);
+
+        // lantern body colours: lit = Singapore red glow, dark = muted slate
+        NVGcolor body = lit ? nvgRGB(0xd4, 0x00, 0x1a) : nvgRGBA(0x3a, 0x3f, 0x46, 0xdd);
+        NVGcolor trim = lit ? nvgRGB(0xf0, 0xc0, 0x40) : nvgRGBA(0x5a, 0x60, 0x68, 0xdd);
+
+        // soft glow halo when lit
+        if (lit) {
+            nvgBeginPath(vg);
+            nvgCircle(vg, cx, (bodyTop + bodyBot) * 0.5f, halfW * 2.1f);
+            nvgFillColor(vg, nvgRGBA(0xd4, 0x00, 0x1a, 0x33));
+            nvgFill(vg);
+        }
+
+        // top cap
+        nvgBeginPath(vg);
+        nvgRect(vg, cx - halfW * 0.7f, bodyTop - box.size.y * 0.05f, halfW * 1.4f, box.size.y * 0.06f);
+        nvgFillColor(vg, trim);
+        nvgFill(vg);
+
+        // lantern body (rounded lozenge)
+        nvgBeginPath(vg);
+        nvgRoundedRect(vg, cx - halfW, bodyTop, halfW * 2.f, bodyBot - bodyTop, halfW * 0.5f);
+        nvgFillColor(vg, body);
+        nvgFill(vg);
+        nvgStrokeColor(vg, trim);
+        nvgStrokeWidth(vg, 0.8f);
+        nvgStroke(vg);
+
+        // horizontal ribs
+        for (int r = 1; r <= 2; ++r) {
+            float ry = bodyTop + (bodyBot - bodyTop) * r / 3.f;
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, cx - halfW * 0.9f, ry);
+            nvgLineTo(vg, cx + halfW * 0.9f, ry);
+            nvgStrokeColor(vg, nvgRGBA(0x00, 0x00, 0x00, lit ? 0x40 : 0x30));
+            nvgStrokeWidth(vg, 0.6f);
+            nvgStroke(vg);
+        }
+
+        // bottom finial
+        nvgBeginPath(vg);
+        nvgRect(vg, cx - halfW * 0.25f, bodyBot, halfW * 0.5f, box.size.y * 0.08f);
+        nvgFillColor(vg, trim);
+        nvgFill(vg);
+    }
+};
+
+
 struct ShutterBank : Widget {
     MonsoonShophouseExpander* module = nullptr;
     int front = 0;
@@ -199,6 +273,18 @@ struct MonsoonShophouseExpanderWidget : ModuleWidget,
                 }
                 bank->clickR = mm2px(3.0f);
                 addChild(bank);
+            }
+
+            // Active-scale lantern over this front's window (positioned on the lantern_<f> anchor).
+            if (auto* lm = findNamed("lantern_" + std::to_string(f))) {
+                auto* lantern = new LanternWidget();
+                lantern->module = mod;
+                lantern->front = f;
+                lantern->box.size = Vec(mm2px(4.4f), mm2px(7.0f));
+                Vec c = centerOf(lm);
+                // hang the lantern from the anchor: anchor sits at the top of the lantern box
+                lantern->box.pos = Vec(c.x - lantern->box.size.x * 0.5f, c.y - mm2px(0.5f));
+                addChild(lantern);
             }
         }
 
