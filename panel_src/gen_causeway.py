@@ -30,14 +30,14 @@ THEMES = {
                   rest="#4c8c86", restknob="#16211f", acc="#e0951e", accknob="#2e2210",
                   knobface="#191b17", knobring="#4a4428", knobtick="#d8c890",
                   jackwell="#0a0b08", jackring="#5a4a1c",
-                  water="#1e4658", waterhi="#3a7088", node="#c8a83c",
+                  water="#1e4658", waterhi="#3a7088", node="#c8a83c", deck="#1a2018",
                   wave_op=0.5),
     "light": dict(bg="#e6e2d4", red="#d4001a", ink="#2a2418",
                   gold="#8a6a10", goldhi="#a88420", golddim="#c0b088", goldfaint="#cabf98",
                   rest="#3a7a74", restknob="#c4dad6", acc="#b0740e", accknob="#e0d0b0",
                   knobface="#ece6d8", knobring="#a89860", knobtick="#5a4a20",
                   jackwell="#d8d0b8", jackring="#a89860",
-                  water="#6a9aae", waterhi="#4a7a90", node="#8a6a10",
+                  water="#6a9aae", waterhi="#4a7a90", node="#8a6a10", deck="#cdc9b8",
                   wave_op=0.72),
 }
 
@@ -57,33 +57,39 @@ GLOBAL_Y = BRIDGE_TOP - 3.0
 WATER_Y  = BRIDGE_TOP + BAYS_H + 3.0
 
 def truss_frame(A, t, x0, w, y0, h, rows):
-    """Continuous truss girder over (x0,y0,w,h) with `rows` bays. Layered like Interchange:
-    chords, verticals, diagonal web (zigzag both ways = X-bracing), rivet nodes."""
+    """Continuous truss girder over (x0,y0,w,h) with `rows` bays. Dense, layered like Interchange:
+    deck plating, double chords, X-bracing + sub-diagonals, gusset plates, rivet nodes."""
     x1 = x0 + w
     bay = h / rows
+    # ── deck plating panels (faint alternating fill for depth) ──
+    for r in range(rows):
+        yy = y0 + bay*r
+        fillc = t["deck"] if r % 2 == 0 else t["bg"]
+        A(f'<rect x="{px(x0+2.2)}" y="{px(yy)}" width="{px(w-4.4)}" height="{px(bay)}" '
+          f'fill="{fillc}" fill-opacity="0.35"/>')
     # ── outer + inner top/bottom chords (double lines = girder depth) ──
     for xx in (x0, x1, x0+2.2, x1-2.2):
-        A(f'<line x1="{px(xx)}" y1="{px(y0)}" x2="{px(xx)}" y2="{px(y0+h)}" '
-          f'stroke="{t["gold"]}" stroke-width="0.5"/>')
-    # ── horizontal cross-beams at every bay line ──
+        A(f'<line x1="{px(xx)}" y1="{px(y0)}" x2="{px(xx)}" y2="{px(y0+h)}" stroke="{t["gold"]}" stroke-width="0.5"/>')
+    # ── horizontal cross-beams (double) at every bay line ──
     for r in range(rows+1):
         yy = y0 + bay*r
-        A(f'<line x1="{px(x0)}" y1="{px(yy)}" x2="{px(x1)}" y2="{px(yy)}" '
-          f'stroke="{t["gold"]}" stroke-width="0.5"/>')
-        A(f'<line x1="{px(x0+2.2)}" y1="{px(yy)}" x2="{px(x1-2.2)}" y2="{px(yy)}" '
-          f'stroke="{t["golddim"]}" stroke-width="0.3"/>')
-    # ── X-bracing diagonals in each bay (the truss web) ──
+        A(f'<line x1="{px(x0)}" y1="{px(yy)}" x2="{px(x1)}" y2="{px(yy)}" stroke="{t["gold"]}" stroke-width="0.5"/>')
+        A(f'<line x1="{px(x0+2.2)}" y1="{px(yy+0.5)}" x2="{px(x1-2.2)}" y2="{px(yy+0.5)}" stroke="{t["golddim"]}" stroke-width="0.3"/>')
+    # ── X-bracing + sub-diagonals in each bay (denser web) ──
     for r in range(rows):
-        ya, yb = y0+bay*r, y0+bay*(r+1)
-        A(f'<line x1="{px(x0+2.2)}" y1="{px(ya)}" x2="{px(x1-2.2)}" y2="{px(yb)}" '
-          f'stroke="{t["golddim"]}" stroke-width="0.35" stroke-opacity="0.8"/>')
-        A(f'<line x1="{px(x1-2.2)}" y1="{px(ya)}" x2="{px(x0+2.2)}" y2="{px(yb)}" '
-          f'stroke="{t["golddim"]}" stroke-width="0.35" stroke-opacity="0.8"/>')
-    # ── rivet nodes at bay intersections ──
+        ya, yb = y0+bay*r, y0+bay*(r+1); ym=(ya+yb)/2; xm=(x0+x1)/2
+        A(f'<line x1="{px(x0+2.2)}" y1="{px(ya)}" x2="{px(x1-2.2)}" y2="{px(yb)}" stroke="{t["golddim"]}" stroke-width="0.35" stroke-opacity="0.8"/>')
+        A(f'<line x1="{px(x1-2.2)}" y1="{px(ya)}" x2="{px(x0+2.2)}" y2="{px(yb)}" stroke="{t["golddim"]}" stroke-width="0.35" stroke-opacity="0.8"/>')
+        # sub-diagonals from mid-span to corners (finer web)
+        A(f'<line x1="{px(xm)}" y1="{px(ya)}" x2="{px(x0+2.2)}" y2="{px(ym)}" stroke="{t["goldfaint"]}" stroke-width="0.25"/>')
+        A(f'<line x1="{px(xm)}" y1="{px(ya)}" x2="{px(x1-2.2)}" y2="{px(ym)}" stroke="{t["goldfaint"]}" stroke-width="0.25"/>')
+    # ── gusset plates (small diamonds) at bay intersections + rivet nodes ──
     for r in range(rows+1):
         yy = y0 + bay*r
         for xx in (x0, x1, x0+2.2, x1-2.2):
-            A(f'<circle cx="{px(xx)}" cy="{px(yy)}" r="{px(0.55)}" fill="{t["node"]}"/>')
+            A(f'<polygon points="{px(xx)},{px(yy-0.9)} {px(xx+0.9)},{px(yy)} {px(xx)},{px(yy+0.9)} {px(xx-0.9)},{px(yy)}" '
+              f'fill="{t["golddim"]}" stroke="{t["gold"]}" stroke-width="0.2"/>')
+            A(f'<circle cx="{px(xx)}" cy="{px(yy)}" r="{px(0.4)}" fill="{t["node"]}"/>')
 
 def spine_truss(A, t, x0, w, y0, h, rows):
     """Central parallel-truss spine between the carriageways (the causeway median)."""
