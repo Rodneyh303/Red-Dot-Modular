@@ -123,20 +123,16 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         visualEditor->showControlBar    = false;
         addChild(visualEditor);
 
-        // Per-lane V1 edit lock. On the V1 tab (viewVoice 0) with Mono attached, a lane is
-        // locked iff MONO owns it (Mono's editor-ordered ownerDispId > 0.5 = Mono owns →
-        // Macro can't edit); Macro-owned/delegated lanes (<=0.5) stay editable. No Mono
-        // (East+Macro) → fully editable. Off the V1 tab → not locked here. Fixes Mono+Macro
-        // where Macro-owned V1 LOR was uneditable (old blunt readOnly=tab1Mono).
-        visualEditor->laneLockedFn = [this](int editorLane) -> bool {
-            if (editorLane < 0 || editorLane >= 4) return false;   // VAR/LEG mono-only
-            if (viewVoice != 0) return false;                      // only the V1 tab
-            // locked ⟺ MONO owns this V1 lane (owner(0,l)==MONO). NOTE: preserves the old
-            // "editable whenever no Mono" behaviour — including EAST+MACRO where East owns
-            // V1. Switching to lockedOn(MACRO) would also lock when East owns; that's the
-            // deliberate behaviour question tracked in SANDS_TOPOLOGY_RESOLVER_PLAN.md.
-            return buildV1Topo().owner(0, editorLane) == dotModular::SandsTopology::Role::MONO;
-        };
+        // Per-lane V1 edit lock for Macro's LOR editor. Macro's V1 LOR knobs edit Macro's OWN global
+        // base (saveLOR writes module->params[lorId(l,*)]) — the same global base the V2..V16 tabs edit,
+        // and the same principle Macro's SPREAD trimpots already follow: editing Macro's own state must
+        // NOT be gated by who DRIVES the lane downstream. Previously this locked V1 LOR whenever MONO
+        // owned the lane (owner(0,l)==MONO), which produced the asymmetry: on the Macro V1 tab with Mono
+        // owning a lane, its SPREAD was editable but its LOR was blocked — and East+Macro (East owns V1)
+        // did NOT block, so the two combos behaved inconsistently. Macro's own global LOR is now always
+        // editable (like its spread, like V2+); ownership governs what reaches the ENGINE, not what Macro
+        // may edit on its own panel. Off the V1 tab this was already false.
+        visualEditor->laneLockedFn = [](int /*editorLane*/) -> bool { return false; };
 
         Module* mod_ = module;
         auto themeOut = [mod_](redDot::GoldPolyPort* p) {
@@ -211,7 +207,10 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     // (this widget IS Macro); monoV1Owner[] read from Mono's editor-ordered ownerDispId
     // (the same source the old predicate read). lockedOn(MACRO,0,l) == owner(0,l)!=MACRO,
     // i.e. "Mono owns it" — matching the old mv->ownerDispId(l) > 0.5 test.
-    dotModular::SandsTopology buildV1Topo() {
+    // NOTE: currently UNUSED — laneLockedFn stopped gating V1 LOR on Mono ownership (Macro's own
+    // global LOR is always editable, matching its spread). Kept because the tracked East-ownership
+    // open question (SANDS_TOPOLOGY_RESOLVER_PLAN.md) may revive a per-lane V1 ownership predicate.
+    [[maybe_unused]] dotModular::SandsTopology buildV1Topo() {
         dotModular::SandsTopology::Inputs in;
         if (auto* mon = getMonsoon()) {
             mon->expanderManager.fillPresence(in, mon->engine.numPolyVoices);  // single authority
