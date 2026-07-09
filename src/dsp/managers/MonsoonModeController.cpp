@@ -30,7 +30,11 @@ void ModeController::updatePatternInput() {
         currentPatternInput.semiWeights[i] =
             mainModule ? mainModule->getSemitoneParam(i) : paramManager.getSemitone(i);
     }
-    currentPatternInput.restProb          = paramManager.getRest();
+    // MONO rest: use the Causeway-modulated effective value (mirrors the poly idiom
+    // engine.voices[i].restProb = mainModule->getEffectivePolyRest(i) above). Falls back to the
+    // raw param when there's no mainModule.
+    currentPatternInput.restProb          = mainModule ? mainModule->getEffectiveMonoRest(paramManager.getRestUnclamped())
+                                                      : paramManager.getRest();
     currentPatternInput.variationAmount   = paramManager.getVariation();
     currentPatternInput.octaveLo          = paramManager.getOctaveLo();
     currentPatternInput.octaveHi          = paramManager.getOctaveHi();
@@ -105,7 +109,8 @@ void ModeController::postExecute_(const StepResult& result) {
 // into engine.executeModeA, which reads nothing else from the clock. (Forward only;
 // reverse traversal is the next branch.)
 bool ModeController::executeModeE() {
-    engine.accentProb = paramManager.getAccent();
+    engine.accentProb = mainModule ? mainModule->getEffectiveMonoAccent(paramManager.getAccentUnclamped())
+                                  : paramManager.getAccent();   // MONO accent: Causeway-modulated
     PatternInput in = assemblePatternInput_();
 
     ClockEngine phaseView;            // edge-only view; executeModeA reads sixteenthEdge
@@ -127,7 +132,8 @@ bool ModeController::executeModeE() {
 bool ModeController::executeModeA() {
     if (clock.sixteenthEdge) {
         // Fetch current parameters
-        engine.accentProb = paramManager.getAccent();
+        engine.accentProb = mainModule ? mainModule->getEffectiveMonoAccent(paramManager.getAccentUnclamped())
+                                  : paramManager.getAccent();   // MONO accent: Causeway-modulated
         
         // Ensure pattern input is fresh
         PatternInput in = assemblePatternInput_();

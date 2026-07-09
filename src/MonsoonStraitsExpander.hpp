@@ -42,6 +42,12 @@ struct MonsoonStraitsExpander : Module {
         // those IDs), plus the local poly-cable outputs.
         config(MonsoonIds::NUM_PARAMS, MonsoonIds::NUM_INPUTS, StraitsIds::NUM_OUTPUTS, 0);
 
+        // Voice 1 (mono) rest/accent: these knobs MIRROR the parent Monsoon's mono rest/accent
+        // (driven each frame in process()). Configured here so the params exist with range; the
+        // parent stays authoritative (see getRest/getAccent in the parameter manager).
+        configParam(MonsoonIds::REST_PARAM,  0.f, 1.f, 0.1f, "Voice 1 (mono) Rest Probability - follows Monsoon");
+        configParam(MonsoonIds::ACCENT_KNOB, 0.f, 1.f, 0.f,  "Voice 1 (mono) Accent Probability - follows Monsoon");
+
         // Per-poly-voice REST + ACCENT probability knobs (voices 2..16 = 15 knobs each).
         // Voice 1 (mono) rest/accent lives on the parent Monsoon.
         for (int i = 0; i < 15; i++) {
@@ -56,7 +62,10 @@ struct MonsoonStraitsExpander : Module {
         configOutput(StraitsIds::POLY_ACCENT_OUT, "Poly accent gate (16ch)");
     }
 
-    // The parent Monsoon writes the poly-cable outputs via the cached pointer
-    // (see MonsoonOutputGenerator). Nothing to do per-sample here.
+    // The parent Monsoon writes the poly-cable outputs via the cached pointer (see
+    // MonsoonOutputGenerator). The voice-1 (mono) knobs MIRROR the parent's mono rest/accent for
+    // display — driven from the WIDGET each frame (matching the Sands visual-expander mirror idiom,
+    // which does its param mirroring widget-side, not on the audio thread), since the mirror is
+    // display-only (the engine reads Monsoon's own knob; see getRest/getAccent). Nothing per-sample.
     void process(const ProcessArgs& args) override {}
 };

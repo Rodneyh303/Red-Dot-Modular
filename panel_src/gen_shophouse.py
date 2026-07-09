@@ -61,19 +61,32 @@ THEMES = {
                   tileA="#b07d00", tileB="#1c7a70", tileC="#a03a52", tilebg="#cdd2d8"),
 }
 
-MARGIN = 4.0
+# ── Layout. The art is INSET from the panel edges (it used to run edge-to-edge: the dormer
+# reached y=0.2mm and the base y=122 of 128.5). Vertical space inside a floor is now an EXPLICIT
+# budget that sums to FLOOR_H, so the name band can never spill into the five-foot-way. ──
+MARGIN = 6.0                 # was 4.0 — side inset
 GUTTER = 3.0
 HOUSE_W = (W - 2*MARGIN - GUTTER) / 2
 HOUSE_X = [MARGIN, MARGIN + HOUSE_W + GUTTER]
 
-ROOF_TOP  = 5.0
-ROOF_H    = 14.0
-CORNICE_H = 3.0
-FLOOR_TOP = ROOF_TOP + ROOF_H + CORNICE_H
-FLOOR_H   = 33.0
-STRING_H  = 4.0
-FOOT_TOP  = FLOOR_TOP + 2*FLOOR_H + STRING_H
-FOOT_H    = 30.0
+ROOF_TOP  = 9.0              # was 5.0 — dormer top now 4.2mm clear of the panel edge
+ROOF_H    = 12.0             # was 14.0
+CORNICE_H = 2.6              # was 3.0
+FLOOR_TOP = ROOF_TOP + ROOF_H + CORNICE_H          # 23.6
+
+# floor content budget (must sum to FLOOR_H)
+WIN_TOP_PAD_  = 6.0          # arch springs / space above the window
+WIN_H_        = 13.5
+BAND_GAP_     = 1.0
+TILE_BAND_H_  = 5.8
+NAME_GAP_     = 1.6
+NAME_H_       = 3.6          # the scale-name DISPLAY WINDOW
+FLOOR_BOT_PAD = 1.5
+FLOOR_H   = (WIN_TOP_PAD_ + WIN_H_ + BAND_GAP_ + TILE_BAND_H_
+             + NAME_GAP_ + NAME_H_ + FLOOR_BOT_PAD)                 # = 33.0
+STRING_H  = 3.4
+FOOT_TOP  = FLOOR_TOP + 2*FLOOR_H + STRING_H       # 93.0
+FOOT_H    = 25.0             # was 30.0 — base now ends at 118.0, leaving a 10.5mm bottom margin
 PILW = 2.6
 
 def front_house(f): return f // 2
@@ -81,9 +94,9 @@ def front_floor(f): return f % 2
 def front_y(f): return FLOOR_TOP + front_floor(f)*(FLOOR_H + STRING_H)
 
 WIN_MARGIN_X = 4.6      # inset from house edge (past pilasters)
-WIN_TOP_PAD  = 8.5      # below floor top (arch springs here)
-WIN_H        = 15.5     # shorter window → room for a majolica band + name band below
-TILE_BAND_H  = 7.5      # horizontal majolica band under each window
+WIN_TOP_PAD  = WIN_TOP_PAD_
+WIN_H        = WIN_H_
+TILE_BAND_H  = TILE_BAND_H_
 WGAP = 0.5
 
 def window_rect(f):
@@ -240,13 +253,17 @@ def gen(dark):
             A(f'<rect id="shutter_{f}_{semi}" x="{px(sx)}" y="{px(wy)}" width="{px(bwd)}" height="{px(bhh)}" rx="{px(0.4)}" '
               f'fill="{t["shutterblack"]}" stroke="{t["wellring"]}" stroke-width="0.4"/>')
         # ── horizontal majolica band below the window (the signature element) ──
-        band_y = wy + wh + 1.2
+        band_y = wy + wh + BAND_GAP_
         tile_row(A, t, wx, band_y, ww, TILE_BAND_H)
-        # ── name band (live scale readout) below the majolica band ──
-        nb_y = band_y + TILE_BAND_H + 2.0
-        A(f'<rect x="{px(wx)}" y="{px(nb_y-1.4)}" width="{px(ww)}" height="{px(2.8)}" '
-          f'rx="{px(0.5)}" fill="{t["namewell"]}" stroke="{t["plastersh"]}" stroke-width="0.3"/>')
-        A(f'<circle id="name_band_{f}" cx="{px(wx+ww/2)}" cy="{px(nb_y)}" r="0.5" fill="none" stroke="none"/>')
+        # ── scale-name DISPLAY WINDOW below the majolica band. Recessed well + bezel, sized from the
+        #    floor budget so its bottom always clears FOOT_TOP (it used to compute to 93.7 vs FOOT_TOP=92). ──
+        nw_top = band_y + TILE_BAND_H + NAME_GAP_
+        nw_x, nw_w = wx + 1.0, ww - 2.0
+        A(f'<rect x="{px(nw_x-0.5)}" y="{px(nw_top-0.5)}" width="{px(nw_w+1.0)}" height="{px(NAME_H_+1.0)}" '
+          f'rx="{px(0.6)}" fill="{t["cornice"]}" stroke="{t["plastersh"]}" stroke-width="0.35"/>')
+        A(f'<rect x="{px(nw_x)}" y="{px(nw_top)}" width="{px(nw_w)}" height="{px(NAME_H_)}" '
+          f'rx="{px(0.4)}" fill="{t["namewell"]}" stroke="{t["plastersh"]}" stroke-width="0.3"/>')
+        A(f'<circle id="name_band_{f}" cx="{px(wx+ww/2)}" cy="{px(nw_top+NAME_H_/2)}" r="0.5" fill="none" stroke="none"/>')
         kx = hx + HOUSE_W - 3.0
         ky = fy + 4.0
         A(f'<circle cx="{px(kx)}" cy="{px(ky)}" r="{px(2.6)}" fill="{t["plaster"]}" '
@@ -324,12 +341,16 @@ def gen(dark):
         A(f'<line x1="{px(lx0)}" y1="{px((gate_top+gate_bot)/2)}" x2="{px(lx0+lw)}" '
           f'y2="{px((gate_top+gate_bot)/2)}" stroke="{t["cornice"]}" stroke-width="0.4"/>')
 
-    # corner floral tile panels (poster ground-floor motif) — a small 2x2 cluster each side
-    for side in (0, 1):
-        px0 = (MARGIN+2.5) if side == 0 else (W-MARGIN-6.5)
-        for i in range(2):
-            for j in range(2):
-                tile(A, t, px0 + i*2.4, plinth_y+2.6 + j*2.4, 1.05)
+    # Corner floral tile panels: MOVED. They previously sat at x~6.5-8.9 and ~121-123.5 on the plinth,
+    # directly beneath the CV jack (x=13) and the connect light (x=123.1) — the widget's controls
+    # overwrote them. Now a single row of tiles is tucked under the arcade, clear of every control.
+    # Free zones on the plinth (between jack/atten and conservation/light) — verified clear of every
+    # control: jack x=15, atten x=54.0, conservation x=78.1, light x=117.1.
+    ctl_y = plinth_y + (fw_y + FOOT_H - plinth_y) / 2
+    for k in range(3):
+        tile(A, t, 24.0 + k*3.0, ctl_y, 1.0)
+    for k in range(3):
+        tile(A, t, 91.0 + k*3.0, ctl_y, 1.0)
 
     # ── controls seated on the plinth, FLANKING the central pintu-pagar gate (clear of W/2 ± gate_w/2) ──
     cy_ctrl = plinth_y + (fw_y+FOOT_H-plinth_y)/2

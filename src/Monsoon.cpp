@@ -140,8 +140,16 @@ void Monsoon::updateExpanderPointers() {
 float Monsoon::getNoteValueParam()  { return paramManager->getNoteValue(); }
 float Monsoon::getVariationParam()  { return paramManager->getVariation(); }
 float Monsoon::getLegatoParam()     { return paramManager->getLegato(); }
-float Monsoon::getRestParam()       { return getEffectiveMonoRest(paramManager->getRest()); }
-float Monsoon::getAccentParam()     { return getEffectiveMonoAccent(paramManager->getAccent()); }
+// Mono BASE (RAW KNOB, unmodulated) rest/accent — the arc's 'set' value. Must be the raw param, NOT
+// paramManager->getRest()/getAccent() (those already fold in Junction + CV2 offsets, which would make
+// Junction modulation invisible to the arc). Matches Monsoon's own arcs, which read pq->getScaledValue().
+// The arc therefore spans raw knob → fully-modulated (Junction + CV2 + Causeway), showing ALL modulation.
+float Monsoon::getMonoRestBase()    { return params[REST_PARAM ].getValue(); }
+float Monsoon::getMonoAccentBase()  { return params[ACCENT_KNOB].getValue(); }
+// Mono EFFECTIVE (Causeway ch0-modulated) rest/accent — the arc's 'mod' value, and what the
+// engine consumes (see ModeController).
+float Monsoon::getRestParam()       { return getEffectiveMonoRest(paramManager->getRestUnclamped()); }
+float Monsoon::getAccentParam()     { return getEffectiveMonoAccent(paramManager->getAccentUnclamped()); }
 
 float Monsoon::getOctaveLoParam()   { return paramManager->getOctaveLo(); }
 float Monsoon::getOctaveHiParam()   { return paramManager->getOctaveHi(); }
@@ -157,6 +165,18 @@ float Monsoon::getPolyRestParam(int voiceIdx) {
 // bugs (scale-lock faders, dice-scale-gate, Causeway CV). Effective = base knob (on Straits,
 // via paramManager) + Causeway per-voice CV × (per-voice att + global att), clamped 0..1.
 // Base-only accessors give the arcs their "set" reference without a second copy.
+// Read a Causeway modulation CV for a given voice CHANNEL, following the standard VCV convention:
+// a cable with fewer channels than requested normals channel 0 to all voices. So a 1-channel (mono)
+// LFO patched into the Causeway CV in modulates EVERY voice; a 16-channel poly cable modulates each
+// voice from its own channel (ch0 = mono voice, ch1..15 = poly voices 2..16). Without this, a mono
+// cable modulated nothing (ch >= getChannels()) and no mod arcs ever drew.
+static inline float causewayCv_(rack::engine::Input& in, int ch) {
+    if (!in.isConnected()) return 0.f;
+    const int n = in.getChannels();
+    if (n <= 0) return 0.f;
+    return in.getVoltage(ch < n ? ch : 0);
+}
+
 float Monsoon::getBasePolyRest(int voiceIdx) {
     return paramManager ? paramManager->getPolyRest(voiceIdx) : 0.f;
 }
@@ -169,10 +189,10 @@ float Monsoon::getEffectivePolyRest(int voiceIdx) {
     if (cway && voiceIdx >= 0 && voiceIdx < 15) {
         const int ch = voiceIdx + 1;   // poly voice → poly-cable channel (ch0 = mono)
         auto& in = cway->inputs[POLY_REST_CV_INPUT];
-        if (in.isConnected() && ch < in.getChannels()) {
+        if (in.isConnected()) {
             float att = cway->params[POLY_REST_MOD_ATT_1 + voiceIdx].getValue()
                       + cway->params[POLY_REST_MOD_ATT_GLOBAL].getValue();
-            base += in.getVoltage(ch) * att * 0.1f;
+            base += causewayCv_(in, ch) * att * 0.1f;
         }
     }
     return math::clamp(base, 0.f, 1.f);
@@ -183,10 +203,10 @@ float Monsoon::getEffectivePolyAccent(int voiceIdx) {
     if (cway && voiceIdx >= 0 && voiceIdx < 15) {
         const int ch = voiceIdx + 1;
         auto& in = cway->inputs[POLY_ACCENT_CV_INPUT];
-        if (in.isConnected() && ch < in.getChannels()) {
+        if (in.isConnected()) {
             float att = cway->params[POLY_ACCENT_MOD_ATT_1 + voiceIdx].getValue()
                       + cway->params[POLY_ACCENT_MOD_ATT_GLOBAL].getValue();
-            base += in.getVoltage(ch) * att * 0.1f;
+            base += causewayCv_(in, ch) * att * 0.1f;
         }
     }
     return math::clamp(base, 0.f, 1.f);
@@ -200,10 +220,10 @@ float Monsoon::getEffectiveMonoRest(float base) {
     auto* cway = expanderManager.cachedCausewayPolyExpander;
     if (cway) {
         auto& in = cway->inputs[POLY_REST_CV_INPUT];
-        if (in.isConnected() && in.getChannels() > 0) {
-            float att = params[MONO_REST_MOD_ATT].getValue()
+        if (in.isConnected()) {
+            float att = cway->params[MONO_REST_MOD_ATT].getValue()
                       + cway->params[POLY_REST_MOD_ATT_GLOBAL].getValue();
-            base += in.getVoltage(0) * att * 0.1f;
+            base += causewayCv_(in, 0) * att * 0.1f;
         }
     }
     return math::clamp(base, 0.f, 1.f);
@@ -212,10 +232,10 @@ float Monsoon::getEffectiveMonoAccent(float base) {
     auto* cway = expanderManager.cachedCausewayPolyExpander;
     if (cway) {
         auto& in = cway->inputs[POLY_ACCENT_CV_INPUT];
-        if (in.isConnected() && in.getChannels() > 0) {
-            float att = params[MONO_ACCENT_MOD_ATT].getValue()
+        if (in.isConnected()) {
+            float att = cway->params[MONO_ACCENT_MOD_ATT].getValue()
                       + cway->params[POLY_ACCENT_MOD_ATT_GLOBAL].getValue();
-            base += in.getVoltage(0) * att * 0.1f;
+            base += causewayCv_(in, 0) * att * 0.1f;
         }
     }
     return math::clamp(base, 0.f, 1.f);
@@ -728,10 +748,26 @@ void Monsoon::process(const ProcessArgs& args) {
         modViz.noteValue = paramManager->getNoteValueNorm();
         modViz.variation = paramManager->getVariationNorm();
         modViz.legato    = paramManager->getLegatoNorm();
-        modViz.rest      = paramManager->getRestNorm();
-        modViz.accent    = paramManager->getAccentNorm();
-        modViz.active    = paramManager->anyBig5Modulated();
+        // Mono rest/accent take modulation from BOTH sources, summed:
+        //   Junction (+ CV2) — folded in by paramManager->getRest/AccentUnclamped()
+        //   Causeway ch0     — added on top by getEffectiveMono{Rest,Accent}()
+        // ALL mods sum UNCLAMPED; the result is clamped exactly ONCE, at the end (in getEffectiveMono*).
+        // modViz.rest/.accent carry the FULLY effective value (the arc's endpoint). The lane flags OR
+        // the paramManager's junction/cv2 test with a Causeway test, so either source lights the arc.
+        // (Previously modViz carried the unmodulated base and only tested junction/cv2, so a Causeway-
+        // only mod compared base-vs-base and no arc ever drew.)
+        const float restBase   = paramManager->getRestNorm();
+        const float accentBase = paramManager->getAccentNorm();
+        const float restEff    = getEffectiveMonoRest(paramManager->getRestUnclamped());
+        const float accentEff  = getEffectiveMonoAccent(paramManager->getAccentUnclamped());
+        modViz.rest      = restEff;
+        modViz.accent    = accentEff;
+        const bool causewayRestMod   = std::fabs(restEff   - restBase)   > 1e-4f;
+        const bool causewayAccentMod = std::fabs(accentEff - accentBase) > 1e-4f;
+        modViz.active    = paramManager->anyBig5Modulated() || causewayRestMod || causewayAccentMod;
         for (int i = 0; i < 5; ++i) modViz.big5Lane[i] = paramManager->big5LaneModulated(i);
+        modViz.big5Lane[3] = modViz.big5Lane[3] || causewayRestMod;    // lane 3 = rest
+        modViz.big5Lane[4] = modViz.big5Lane[4] || causewayAccentMod;  // lane 4 = accent
         modViz.rhythmSlew = paramManager->getRhythmSlewNorm();
         modViz.melodySlew = paramManager->getMelodySlewNorm();
         modViz.rhythmMix  = paramManager->getRhythmMixNorm();
@@ -892,7 +928,7 @@ void Monsoon::process(const ProcessArgs& args) {
 
         // Refresh Sequencer Parameters (Throttled sampling of all knobs/CV)
         modeController->updatePatternInput();
-        engine.accentProb = getEffectiveMonoAccent(paramManager->getAccent());
+        engine.accentProb = getEffectiveMonoAccent(paramManager->getAccentUnclamped());
 
         // Check for expander changes and update cached pointers
         // Mirror the global spread-target mode onto the engine so display SpreadManagers

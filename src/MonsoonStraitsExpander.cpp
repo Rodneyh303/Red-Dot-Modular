@@ -8,6 +8,7 @@
 #include "ui/SvgPanelKit.hpp"
 #include "ui/ConnectMark.hpp"
 #include "ui/ModArcOverlay.hpp"
+#include "ui/DimmableTrimpot.hpp"
 
 using namespace rack;
 using namespace MonsoonIds;
@@ -40,21 +41,35 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
             auto* arc = new redDot::ModArcOverlay();
             arc->radius = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
             arc->attachOverKnob(knob, mm2px(2.5f));
+            // voice == -1 → the MONO lane (voice 1): set = Monsoon's own mono base, mod = the
+            // Causeway ch0-modulated effective value. Gives the Straits voice-1 knobs the same mod
+            // arc that Monsoon's own rest/accent knobs show. voice 0..14 → poly voices 2..16.
             arc->getSetNorm = [self, voice, lane]() -> float {
                 Monsoon* m = redDot::findMonsoonEitherSide(self->module);
-                if (!m || voice < 0 || voice >= 15) return 0.f;
+                if (!m) return 0.f;
+                if (voice == -1) return lane == 0 ? m->getMonoRestBase() : m->getMonoAccentBase();
+                if (voice < 0 || voice >= 15) return 0.f;
                 return lane == 0 ? m->getBasePolyRest(voice) : m->getBasePolyAccent(voice);
             };
             arc->getModNorm = [self, voice, lane]() -> float {
                 Monsoon* m = redDot::findMonsoonEitherSide(self->module);
-                if (!m || voice < 0 || voice >= 15) return 0.f;
+                if (!m) return 0.f;
+                if (voice == -1) return lane == 0 ? m->getRestParam() : m->getAccentParam();
+                if (voice < 0 || voice >= 15) return 0.f;
                 return lane == 0 ? m->getEffectivePolyRest(voice) : m->getEffectivePolyAccent(voice);
             };
             arc->isActive = [self, voice, lane]() -> bool {
                 Monsoon* m = redDot::findMonsoonEitherSide(self->module);
-                if (!m || !m->modVizEast || voice < 0 || voice >= 15) return false;
-                float set = lane == 0 ? m->getBasePolyRest(voice) : m->getBasePolyAccent(voice);
-                float eff = lane == 0 ? m->getEffectivePolyRest(voice) : m->getEffectivePolyAccent(voice);
+                if (!m || !m->modVizEast) return false;
+                float set, eff;
+                if (voice == -1) {
+                    set = lane == 0 ? m->getMonoRestBase() : m->getMonoAccentBase();
+                    eff = lane == 0 ? m->getRestParam()    : m->getAccentParam();
+                } else {
+                    if (voice < 0 || voice >= 15) return false;
+                    set = lane == 0 ? m->getBasePolyRest(voice) : m->getBasePolyAccent(voice);
+                    eff = lane == 0 ? m->getEffectivePolyRest(voice) : m->getEffectivePolyAccent(voice);
+                }
                 return std::fabs(eff - set) > 1e-4f;
             };
             addChild(arc);
@@ -79,8 +94,31 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
         // ── voice 0 = mono: binds the parent's mono REST/ACCENT params. No poly mod-arc (the arc reads
         //    getBasePolyRest which is poly-indexed 0..14; there is no mono equivalent, so the mono knob
         //    shows no East-mod arc — its value is the mono base directly). ──
-        bindParam<Trimpot>("param_rest_0",   MonsoonIds::REST_PARAM);
-        bindParam<Trimpot>("param_accent_0", MonsoonIds::ACCENT_KNOB);
+        // ── voice 0 = mono: LOCKED knobs that MIRROR the parent Monsoon's mono rest/accent.
+        //    Uses the shared DimmableTrimpot idiom (same as Sands' ceded-lane spread knobs):
+        //      lockWhen       → always true: swallow input, so the knob can't be dragged.
+        //      displayValueFn → show the parent's value WITHOUT clobbering the local store.
+        //    Monsoon stays authoritative (the engine reads its knob); these just display it.
+        //    Arc queued with voice -1 = the MONO lane, so it shows the same Causeway/mono mod arc
+        //    that Monsoon's own rest/accent knobs show. ──
+        bindParam<DimmableTrimpot>("param_rest_0", MonsoonIds::REST_PARAM,
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){
+                k->lockWhen = [](){ return true; };
+                k->displayValueFn = [this]() -> float {
+                    Monsoon* m = redDot::findMonsoonEitherSide(module);
+                    return m ? m->params[MonsoonIds::REST_PARAM].getValue() : NAN;
+                };
+                queueArc(k, -1, 0);
+            }));
+        bindParam<DimmableTrimpot>("param_accent_0", MonsoonIds::ACCENT_KNOB,
+            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){
+                k->lockWhen = [](){ return true; };
+                k->displayValueFn = [this]() -> float {
+                    Monsoon* m = redDot::findMonsoonEitherSide(module);
+                    return m ? m->params[MonsoonIds::ACCENT_KNOB].getValue() : NAN;
+                };
+                queueArc(k, -1, 1);
+            }));
         // ── voices 1..15 = poly. Param = POLY_*_PARAM_1 + (i-1); arc voice index = poly index (i-1),
         //    which maps to getBasePolyRest(0..14). ──
         for (int i = 1; i < 16; i++) {
