@@ -94,8 +94,8 @@ def panel(theme):
     o.append(f'<rect x="0" y="{H-3}" width="{W}" height="3" fill="{t["red"]}"/>')
     # ── branding band: logo mark (red dot) left + module-name space ("RAFFLES"
     #    drawn by the widget at runtime) + underline. ──
-    o.append(f'<circle cx="{mm(6):.1f}" cy="{mm(9):.1f}" r="{mm(2.4):.1f}" fill="{t["red"]}"/>')
-    o.append(f'<line x1="{mm(2):.1f}" y1="{mm(15):.1f}" x2="{mm(W/S-2):.1f}" y2="{mm(15):.1f}" stroke="{t["line"]}" stroke-width="0.8" stroke-opacity="0.6"/>')
+    # o.append(f'<circle cx="{mm(6):.1f}" cy="{mm(9):.1f}" r="{mm(2.4):.1f}" fill="{t["red"]}"/>')
+    # o.append(f'<line x1="{mm(2):.1f}" y1="{mm(15):.1f}" x2="{mm(W/S-2):.1f}" y2="{mm(15):.1f}" stroke="{t["line"]}" stroke-width="0.8" stroke-opacity="0.6"/>')
     # R/L sides separated by OUTLINED recess boxes (no fill) — a grey highlight
     # outline reads cleaner than a red wash. Rhythm left / melody right.
     rx0, ry, rw, rh = mm(3), mm(34), mm(26), mm(88)
@@ -106,8 +106,8 @@ def panel(theme):
     # tiny red tab on each box top-centre as a subtle R/M side cue (not a fill)
     o.append(f'<rect x="{rx0+rw/2-mm(3):.1f}" y="{ry-mm(0.6):.1f}" width="{mm(6):.1f}" height="{mm(1.2):.1f}" fill="{t["red"]}" opacity="0.7"/>')
     o.append(f'<rect x="{mm(31)+rw/2-mm(3):.1f}" y="{ry-mm(0.6):.1f}" width="{mm(6):.1f}" height="{mm(1.2):.1f}" fill="{t["redsoft"]}" opacity="0.7"/>')
-    # header motif: fanning raffle tickets — pivot below the branding band
-    o += ticket_fan(t, cx_mm=W/2/S, pivot_mm=17.0)
+    # header motif: fanning raffle tickets — pivot just under the branding band
+    o += ticket_fan(t, cx_mm=W/2/S, pivot_mm=13.0)
 
     # control wells with KIT ID markers, driven by the SAME source of truth as
     # the module (panel_src/layouts/raffles.json). Each control's id becomes the

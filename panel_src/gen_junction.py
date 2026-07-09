@@ -107,8 +107,8 @@ def panel(theme):
     # ── branding band (logo mark left + module-name space) at the very top ──
     #    The module name "JUNCTION" is drawn by the widget at runtime (nvgText);
     #    here we reserve the band + a subtle underline. Logo mark = red dot + DM hint.
-    o.append(f'<circle cx="{mm(6):.1f}" cy="{mm(10):.1f}" r="{mm(2.4):.1f}" fill="{t["red"]}"/>')
-    o.append(f'<line x1="{mm(2):.1f}" y1="{mm(17):.1f}" x2="{mm(W/S-2):.1f}" y2="{mm(17):.1f}" stroke="{t["line"]}" stroke-width="0.8" stroke-opacity="0.6"/>')
+    #    o.append(f'<circle cx="{mm(6):.1f}" cy="{mm(10):.1f}" r="{mm(2.4):.1f}" fill="{t["red"]}"/>')
+    #    o.append(f'<line x1="{mm(2):.1f}" y1="{mm(17):.1f}" x2="{mm(W/S-2):.1f}" y2="{mm(17):.1f}" stroke="{t["line"]}" stroke-width="0.8" stroke-opacity="0.6"/>')
     # header motif: pinisi over waves — tucked just under the branding band,
     # scaled small so it sits close to the top and clears the y=60 controls
     o += waves(t, 40.0)

@@ -2,8 +2,6 @@
 <rect width="120" height="380" fill="#18181a"/>
 <rect x="0" y="0" width="120" height="3" fill="#d4001a"/>
 <rect x="0" y="377" width="120" height="3" fill="#d4001a"/>
-<circle cx="17.7" cy="29.5" r="7.1" fill="#d4001a"/>
-<line x1="5.9" y1="50.2" x2="114.1" y2="50.2" stroke="#2a2a2a" stroke-width="0.8" stroke-opacity="0.6"/>
 <g>
 <path d="M 0 118.1 q 8.9 -4.7 17.7 0 q 8.9 4.7 17.7 0 q 8.9 -4.7 17.7 0 q 8.9 4.7 17.7 0 q 8.9 -4.7 17.7 0 q 8.9 4.7 17.7 0 q 8.9 -4.7 17.7 0 q 8.9 4.7 17.7 0" fill="none" stroke="#8a1414" stroke-width="1.0" stroke-opacity="0.7"/>
 <path d="M 0 127.0 q 8.9 -4.7 17.7 0 q 8.9 4.7 17.7 0 q 8.9 -4.7 17.7 0 q 8.9 4.7 17.7 0 q 8.9 -4.7 17.7 0 q 8.9 4.7 17.7 0 q 8.9 -4.7 17.7 0 q 8.9 4.7 17.7 0" fill="none" stroke="#8a1414" stroke-width="1.0" stroke-opacity="0.5499999999999999"/>
