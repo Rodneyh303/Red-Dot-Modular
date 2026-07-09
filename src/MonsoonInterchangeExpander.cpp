@@ -85,37 +85,39 @@ addInput(createInputCentered<PJ301MPort>(Vec(222.0f, octY), module, MonsoonIds::
         nvgFontSize(args.vg, mm2px(3.5f));
         nvgText(args.vg, mm2px(20.0f), mm2px(10.0f), "EXPANDER CV", nullptr);
 
-        // Semitone Labels
+        // Semitone Labels — placed directly above each CV jack. Coordinates are in
+        // pixels to match the createInputCentered positions above: left column
+        // x=48, right column x=222, rows y = 80 + row*40.
         nvgFontSize(args.vg, mm2px(2.5f));
         const char* noteNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+        const float semiRow0 = 80.0f;
+        const float semiRowStep = 40.0f;
+        const float labelOffset = 20.0f;   // px above jack centre
         for (int i = 0; i < 12; i++) {
             int col = i / 6;
             int row = i % 6;
-            float jackX = (col == 0) ? 8.0f : 28.0f;
-            float labelX = jackX + 3.75f;
-            float rowY = 25.0f + (row * 15.0f);
-            
-            nvgText(args.vg, mm2px(labelX), mm2px(rowY - 8.0f), noteNames[i], nullptr);
+            float jackX = (col == 0) ? 48.0f : 222.0f;
+            float jackY = semiRow0 + (row * semiRowStep);
+            nvgText(args.vg, jackX, jackY - labelOffset, noteNames[i], nullptr);
         }
 
-        // Octave Labels
-        float octY = 115.0f;
-        nvgText(args.vg, mm2px(11.75f), mm2px(octY - 8.0f), "OCT LO", nullptr);
-        nvgText(args.vg, mm2px(31.75f), mm2px(octY - 8.0f), "OCT HI", nullptr);
+        // Octave Labels — above the octave CV jacks (x=48 / x=222, y=320)
+        float octY = 320.0f;
+        nvgText(args.vg, 48.0f,  octY - labelOffset, "OCT LO", nullptr);
+        nvgText(args.vg, 222.0f, octY - labelOffset, "OCT HI", nullptr);
 
-        // Attenuation guides
+        // Attenuation guides — "-" / "+" flanking each trimpot (x=102 and x=168)
         nvgFontSize(args.vg, mm2px(1.8f));
         nvgFillColor(args.vg, light ? nvgRGBA(0x88, 0x8d, 0x96, 0xff) : nvgRGBA(0x99, 0x99, 0x99, 0xff));
-        for (float jackX : {8.0f, 28.0f}) {
-            float knobX = jackX + 7.5f;
+        for (float knobX : {102.0f, 168.0f}) {
             for (int row = 0; row < 6; row++) {
-                float y = 25.0f + (row * 15.0f);
-                nvgText(args.vg, mm2px(knobX - 4.5f), mm2px(y), "-", nullptr);
-                nvgText(args.vg, mm2px(knobX + 4.5f), mm2px(y), "+", nullptr);
+                float y = semiRow0 + (row * semiRowStep);
+                nvgText(args.vg, knobX - 9.0f, y, "-", nullptr);
+                nvgText(args.vg, knobX + 9.0f, y, "+", nullptr);
             }
             // Octave row guides
-            nvgText(args.vg, mm2px(knobX - 4.5f), mm2px(octY), "-", nullptr);
-            nvgText(args.vg, mm2px(knobX + 4.5f), mm2px(octY), "+", nullptr);
+            nvgText(args.vg, knobX - 9.0f, octY, "-", nullptr);
+            nvgText(args.vg, knobX + 9.0f, octY, "+", nullptr);
         }
     }
 };

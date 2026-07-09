@@ -200,6 +200,54 @@ int main() {
             EXPECT_EQ(eng.strandLen(kStrands[i]), monoSentinel(0, kStrands[i]) + 1); // +1 from suite-3 rewrite
     });
 
+    // ── 5. Probability *Random storage (item 4 prep): pin mono + poly probability arrays through
+    //       their current access so the [16][6][16] unification is provably behaviour-preserving. ──
+    SUITE("Probability *Random storage round-trips (regression net for the [16][6][16] unification)");
+    {
+        PatternEngine pe;
+        // Seed each mono strand array with a distinct per-(strand,step) value.
+        auto seedMono = [&](float* arr, float base) { for (int s = 0; s < 16; ++s) arr[s] = base + 0.001f * s; };
+        seedMono(pe.melodyRandom,    0.10f);
+        seedMono(pe.octaveRandom,    0.20f);
+        seedMono(pe.rhythmRandom,    0.30f);
+        seedMono(pe.accentRandom,    0.40f);
+        seedMono(pe.variationRandom, 0.50f);
+        seedMono(pe.legatoRandom,    0.60f);
+        // finalRandomByStrand (the mono accessor) must map each strand to its own array.
+        struct { int strand; float base; } mc[] = {
+            {dotModular::STRAND_MELODY,0.10f},{dotModular::STRAND_OCTAVE,0.20f},
+            {dotModular::STRAND_RHYTHM,0.30f},{dotModular::STRAND_ACCENT,0.40f},
+            {dotModular::STRAND_VARIATION,0.50f},{dotModular::STRAND_LEGATO,0.60f},
+        };
+        TEST("mono finalRandomByStrand maps each strand to its own *Random array (all steps)", {
+            for (auto& c : mc)
+                for (int s = 0; s < 16; ++s)
+                    EXPECT_NEAR(pe.finalRandomByStrand(c.strand, s), c.base + 0.001f * s);
+        });
+        // Poly rows via polyRandom(bank, engLane): distinct per (voice, lane, step).
+        for (int v = 0; v < 15; ++v)
+            for (int s = 0; s < 16; ++s) {
+                pe.polyRandom(v, SequencerEngine::PL_REST)[s]   = 1.0f + v * 0.1f + s * 0.001f;
+                pe.polyRandom(v, SequencerEngine::PL_MELODY)[s] = 2.0f + v * 0.1f + s * 0.001f;
+                pe.polyRandom(v, SequencerEngine::PL_OCTAVE)[s] = 3.0f + v * 0.1f + s * 0.001f;
+                pe.polyRandom(v, SequencerEngine::PL_ACCENT)[s] = 4.0f + v * 0.1f + s * 0.001f;
+            }
+        TEST("poly rows hold distinct per-(voice,lane,step) values, no aliasing", {
+            for (int v = 0; v < 15; ++v)
+                for (int s = 0; s < 16; ++s) {
+                    EXPECT_NEAR(pe.polyRandom(v, SequencerEngine::PL_REST)[s],   1.0f + v * 0.1f + s * 0.001f);
+                    EXPECT_NEAR(pe.polyRandom(v, SequencerEngine::PL_MELODY)[s], 2.0f + v * 0.1f + s * 0.001f);
+                    EXPECT_NEAR(pe.polyRandom(v, SequencerEngine::PL_OCTAVE)[s], 3.0f + v * 0.1f + s * 0.001f);
+                    EXPECT_NEAR(pe.polyRandom(v, SequencerEngine::PL_ACCENT)[s], 4.0f + v * 0.1f + s * 0.001f);
+                }
+        });
+        TEST("mono and poly probability storage are independent (no cross-write)", {
+            // mono still intact after all poly writes
+            for (auto& c : mc)
+                EXPECT_NEAR(pe.finalRandomByStrand(c.strand, 7), c.base + 0.001f * 7);
+        });
+    }
+
     std::cout << "\n\033[1m" << g_pass << " passed, " << g_fail << " failed\033[0m\n";
     return g_fail ? 1 : 0;
 }

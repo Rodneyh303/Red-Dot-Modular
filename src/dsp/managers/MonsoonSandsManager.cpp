@@ -459,10 +459,10 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // own slewed draw as the value to interpolate (same call shape as East's loop).
             for (int v = 0; v < nPoly; ++v) {
                 for (int i = 0; i < 16; ++i) {
-                    engine.pe.polyRhythmRandom[v][i] = redDot::SpreadInterp::apply(engine.pe, mode, 0, i, nPoly, engine.pe.slewedPolyRhythm[v][i], spv[0]);
-                    engine.pe.polyMelodyRandom[v][i] = redDot::SpreadInterp::apply(engine.pe, mode, 1, i, nPoly, engine.pe.slewedPolyMelody[v][i], spv[1]);
-                    engine.pe.polyOctaveRandom[v][i] = redDot::SpreadInterp::apply(engine.pe, mode, 2, i, nPoly, engine.pe.slewedPolyOctave[v][i], spv[2]);
-                    engine.pe.polyAccentRandom[v][i] = redDot::SpreadInterp::apply(engine.pe, mode, 3, i, nPoly, engine.pe.slewedPolyAccent[v][i], spv[3]);
+                    engine.pe.polyRandom(v, SequencerEngine::PL_REST)[i] = redDot::SpreadInterp::apply(engine.pe, mode, 0, i, nPoly, engine.pe.slewedPolyRhythm[v][i], spv[0]);
+                    engine.pe.polyRandom(v, SequencerEngine::PL_MELODY)[i] = redDot::SpreadInterp::apply(engine.pe, mode, 1, i, nPoly, engine.pe.slewedPolyMelody[v][i], spv[1]);
+                    engine.pe.polyRandom(v, SequencerEngine::PL_OCTAVE)[i] = redDot::SpreadInterp::apply(engine.pe, mode, 2, i, nPoly, engine.pe.slewedPolyOctave[v][i], spv[2]);
+                    engine.pe.polyRandom(v, SequencerEngine::PL_ACCENT)[i] = redDot::SpreadInterp::apply(engine.pe, mode, 3, i, nPoly, engine.pe.slewedPolyAccent[v][i], spv[3]);
                 }
             }
         }   // if (!engine.locked)

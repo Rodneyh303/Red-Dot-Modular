@@ -123,7 +123,7 @@ struct Lantern : Module {
         // so the viewport (oct 2-6) sits on the default pitch window (lo=2, hi=5).
         configParam(ROLL_SCROLL_PARAM, 0.f, 4.f, 2.f, "Roll scroll (bottom octave)");
         paramQuantities[ROLL_SCROLL_PARAM]->snapEnabled = true;
-        configSwitch(ROLL_COLOR_PARAM, 0.f, 1.f, 0.f, "Roll colour", {"By role", "By voice"});
+        configSwitch(ROLL_COLOR_PARAM, 0.f, 2.f, 0.f, "Roll colour", {"By role", "By voice", "By note"});
     }
 
     // Read-only sampler: records the observed per-step state into Lantern's own
@@ -338,7 +338,13 @@ struct LanternDisplay : widget::Widget {
                         int row = semiC0 - botSemi;
                         if (row < 0 || row >= ROLL_ROWS) continue;
                         float y = H - (row + 1) * rowH;
-                        NVGcolor hi = voiceColour(v);
+                        NVGcolor hi;
+                        {
+                            int cm = (int)std::round(module->params[Lantern::ROLL_COLOR_PARAM].getValue());
+                            if (cm == 1)      hi = voiceColour(v);
+                            else if (cm == 2) hi = noteColour(semiC0);
+                            else              hi = typeColour(c.type);
+                        }
                         nvgBeginPath(vg);
                         nvgRect(vg, 0.f, y, keyW, rowH);
                         nvgFillColor(vg, nvgTransRGBA(hi, 0xd8)); nvgFill(vg);
@@ -511,7 +517,10 @@ struct LanternDisplay : widget::Widget {
                     bw = std::min(span * stepW, (gridX + gridW) - bx);
                 }
 
-                NVGcolor col = typeColour(c.type);
+                int cm = (int)std::round(module->params[Lantern::ROLL_COLOR_PARAM].getValue());
+                NVGcolor col = (cm == 2)
+                    ? noteColour((int)std::lround(c.pitchV * 12.f) + 48)
+                    : typeColour(c.type);
                 // accent = shade: brighter when accented, slightly dimmed when not
                 if (c.accented) col = nvgLerpRGBA(col, nvgRGB(0xff, 0xff, 0xff), 0.28f);
                 else            col = nvgLerpRGBA(col, nvgRGB(0x00, 0x00, 0x00), 0.10f);
@@ -603,6 +612,27 @@ struct LanternDisplay : widget::Widget {
         return P[((v % 8) + 8) % 8];
     }
 
+    // Distinct hue per pitch class (C=0..B=11), aligned with Bitwig Studio's
+    // piano-roll "by pitch" colour scheme. Same colour for the same note name
+    // across all octaves, so you can see harmonic content at a glance.
+    static NVGcolor noteColour(int pitchClass) {
+        static const NVGcolor P[12] = {
+            nvgRGB(0xef, 0x53, 0x50), // C  — red
+            nvgRGB(0xff, 0x70, 0x43), // C# — deep orange
+            nvgRGB(0xff, 0xa7, 0x26), // D  — orange
+            nvgRGB(0xff, 0xca, 0x28), // D# — amber
+            nvgRGB(0xd4, 0xe1, 0x57), // E  — lime
+            nvgRGB(0x66, 0xbb, 0x6a), // F  — green
+            nvgRGB(0x26, 0xa6, 0x9a), // F# — teal
+            nvgRGB(0x29, 0xb6, 0xf6), // G  — light blue
+            nvgRGB(0x42, 0xa5, 0xf5), // G# — blue
+            nvgRGB(0x5c, 0x6b, 0xc0), // A  — indigo
+            nvgRGB(0xab, 0x47, 0xbc), // A# — purple
+            nvgRGB(0xec, 0x40, 0x7a), // B  — pink
+        };
+        return P[((pitchClass % 12) + 12) % 12];
+    }
+
     // Voices that have any note this pattern (mono=0 + active poly) — the legend/toggle set.
     int rollActiveVoiceCount() const {
         int n = 1;  // mono always present
@@ -631,7 +661,7 @@ struct LanternDisplay : widget::Widget {
 
         const int   botOct   = (int)std::round(module->params[Lantern::ROLL_SCROLL_PARAM].getValue());
         const int   botSemi  = botOct * 12;          // semitone-from-C0 at the bottom row
-        const bool  byVoice  = module->params[Lantern::ROLL_COLOR_PARAM].getValue() > 0.5f;
+        const int   colorMode = (int)std::round(module->params[Lantern::ROLL_COLOR_PARAM].getValue());
 
         // ── Bitwig-style lane background: shade each semitone row by pitch class. ──
         // Black-key rows (C#,D#,F#,G#,A#) get a darker slate; white-key rows a lighter blue-grey.
@@ -698,7 +728,10 @@ struct LanternDisplay : widget::Widget {
                 float span = std::max(0.25f, c.lengthSteps <= 0.f ? 1.f : c.lengthSteps);
                 float bw = std::min(span * stepW, (gridX + gridW) - bx);
 
-                NVGcolor col = byVoice ? voiceColour(v) : typeColour(c.type);
+                NVGcolor col;
+                if (colorMode == 1)      col = voiceColour(v);
+                else if (colorMode == 2) col = noteColour(semiC0);
+                else                     col = typeColour(c.type);
                 if (c.accented) col = nvgLerpRGBA(col, nvgRGB(0xff,0xff,0xff), 0.28f);
 
                 nvgBeginPath(vg);

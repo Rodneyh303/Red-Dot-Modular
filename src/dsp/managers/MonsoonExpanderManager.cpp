@@ -171,7 +171,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 const redDot::SpreadInterp::Target mode = spreadInterpMono
                     ? redDot::SpreadInterp::MONO_DRAW : redDot::SpreadInterp::AVERAGE_POLY;
                 for (int j = 0; j < 16; j++) {
-                    engine.pe.polyRhythmRandom[v][j] = redDot::SpreadInterp::apply(
+                    engine.pe.polyRandom(v, PL::PL_REST)[j] = redDot::SpreadInterp::apply(
                         engine.pe, mode, PL::PL_REST, j, nPoly, engine.pe.slewedPolyRhythm[v][j], restInterp);
                 }
             }
@@ -196,7 +196,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 const redDot::SpreadInterp::Target mode = spreadInterpMono
                     ? redDot::SpreadInterp::MONO_DRAW : redDot::SpreadInterp::AVERAGE_POLY;
                 for (int j = 0; j < 16; j++) {
-                    engine.pe.polyMelodyRandom[v][j] = redDot::SpreadInterp::apply(
+                    engine.pe.polyRandom(v, PL::PL_MELODY)[j] = redDot::SpreadInterp::apply(
                         engine.pe, mode, PL::PL_MELODY, j, nPoly, engine.pe.slewedPolyMelody[v][j], melodyInterp);
                 }
             }
@@ -228,7 +228,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 const redDot::SpreadInterp::Target mode = spreadInterpMono
                     ? redDot::SpreadInterp::MONO_DRAW : redDot::SpreadInterp::AVERAGE_POLY;
                 for (int j = 0; j < 16; j++) {
-                    engine.pe.polyOctaveRandom[v][j] = redDot::SpreadInterp::apply(
+                    engine.pe.polyRandom(v, PL::PL_OCTAVE)[j] = redDot::SpreadInterp::apply(
                         engine.pe, mode, PL::PL_OCTAVE, j, nPoly, engine.pe.slewedPolyOctave[v][j], octaveInterp);
                 }
             }
@@ -261,7 +261,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                     const redDot::SpreadInterp::Target mode = spreadInterpMono
                         ? redDot::SpreadInterp::MONO_DRAW : redDot::SpreadInterp::AVERAGE_POLY;
                     for (int j = 0; j < 16; j++) {
-                        engine.pe.polyAccentRandom[v][j] = redDot::SpreadInterp::apply(
+                        engine.pe.polyRandom(v, PL::PL_ACCENT)[j] = redDot::SpreadInterp::apply(
                             engine.pe, mode, PL::PL_ACCENT, j, nPoly, engine.pe.slewedPolyAccent[v][j], accentInterp);
                     }
                 }
@@ -397,10 +397,10 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 const float spO = math::clamp(macroVis->macroBase[PL::PL_OCTAVE][3] + macroVis->macroSendDelta[PL::PL_OCTAVE][3], -1.f, 1.f);
                 const float spA = math::clamp(macroVis->macroBase[PL::PL_ACCENT][3] + macroVis->macroSendDelta[PL::PL_ACCENT][3], -1.f, 1.f);
                 for (int j = 0; j < 16; ++j) {
-                    engine.pe.polyRhythmRandom[v][j] = redDot::SpreadInterp::apply(engine.pe, mode, PL::PL_REST,   j, nPoly, engine.pe.slewedPolyRhythm[v][j], spR);
-                    engine.pe.polyMelodyRandom[v][j] = redDot::SpreadInterp::apply(engine.pe, mode, PL::PL_MELODY, j, nPoly, engine.pe.slewedPolyMelody[v][j], spM);
-                    engine.pe.polyOctaveRandom[v][j] = redDot::SpreadInterp::apply(engine.pe, mode, PL::PL_OCTAVE, j, nPoly, engine.pe.slewedPolyOctave[v][j], spO);
-                    engine.pe.polyAccentRandom[v][j] = redDot::SpreadInterp::apply(engine.pe, mode, PL::PL_ACCENT, j, nPoly, engine.pe.slewedPolyAccent[v][j], spA);
+                    engine.pe.polyRandom(v, PL::PL_REST)[j] = redDot::SpreadInterp::apply(engine.pe, mode, PL::PL_REST,   j, nPoly, engine.pe.slewedPolyRhythm[v][j], spR);
+                    engine.pe.polyRandom(v, PL::PL_MELODY)[j] = redDot::SpreadInterp::apply(engine.pe, mode, PL::PL_MELODY, j, nPoly, engine.pe.slewedPolyMelody[v][j], spM);
+                    engine.pe.polyRandom(v, PL::PL_OCTAVE)[j] = redDot::SpreadInterp::apply(engine.pe, mode, PL::PL_OCTAVE, j, nPoly, engine.pe.slewedPolyOctave[v][j], spO);
+                    engine.pe.polyRandom(v, PL::PL_ACCENT)[j] = redDot::SpreadInterp::apply(engine.pe, mode, PL::PL_ACCENT, j, nPoly, engine.pe.slewedPolyAccent[v][j], spA);
                 }
             }
         }

@@ -190,20 +190,20 @@ struct SpreadManager {
     // Cheap checksum: active count + a few sampled cells. Catches re-rolls and
     // voice-count changes without summing the whole grid every frame.
     float cs = activeVoiceCount * 1000.f;
-    cs += patternEngine->polyRhythmRandom[0][0]
-        + patternEngine->polyMelodyRandom[activeVoiceCount-1][7]
-        + patternEngine->polyOctaveRandom[0][15]
-        + patternEngine->polyAccentRandom[activeVoiceCount-1][3];
+    cs += patternEngine->polyRandom(0, SequencerEngine::PL_REST)[0]
+        + patternEngine->polyRandom(activeVoiceCount-1, SequencerEngine::PL_MELODY)[7]
+        + patternEngine->polyRandom(0, SequencerEngine::PL_OCTAVE)[15]
+        + patternEngine->polyRandom(activeVoiceCount-1, SequencerEngine::PL_ACCENT)[3];
     if (avgValid_ && cs == avgChecksum_) return;   // unchanged → keep cache
 
     const float inv = 1.f / activeVoiceCount;
     for (int s = 0; s < 16; ++s) {
       float r = 0.f, m = 0.f, o = 0.f, a = 0.f;
       for (int v = 0; v < activeVoiceCount; ++v) {
-        r += patternEngine->polyRhythmRandom[v][s];
-        m += patternEngine->polyMelodyRandom[v][s];
-        o += patternEngine->polyOctaveRandom[v][s];
-        a += patternEngine->polyAccentRandom[v][s];
+        r += patternEngine->polyRandom(v, SequencerEngine::PL_REST)[s];
+        m += patternEngine->polyRandom(v, SequencerEngine::PL_MELODY)[s];
+        o += patternEngine->polyRandom(v, SequencerEngine::PL_OCTAVE)[s];
+        a += patternEngine->polyRandom(v, SequencerEngine::PL_ACCENT)[s];
       }
       avgCache_[0][s] = r * inv;
       avgCache_[1][s] = m * inv;
@@ -261,13 +261,13 @@ struct SpreadManager {
     
     switch (lane) {
       case 0:  // REST
-        return patternEngine->polyRhythmRandom[voiceIdx][step];
+        return patternEngine->polyRandom(voiceIdx, SequencerEngine::PL_REST)[step];
       case 1:  // MELODY
-        return patternEngine->polyMelodyRandom[voiceIdx][step];
+        return patternEngine->polyRandom(voiceIdx, SequencerEngine::PL_MELODY)[step];
       case 2:  // OCTAVE
-        return patternEngine->polyOctaveRandom[voiceIdx][step];
+        return patternEngine->polyRandom(voiceIdx, SequencerEngine::PL_OCTAVE)[step];
       case 3:  // ACCENT
-        return patternEngine->polyAccentRandom[voiceIdx][step];
+        return patternEngine->polyRandom(voiceIdx, SequencerEngine::PL_ACCENT)[step];
       default:
         return 0.5f;
     }
