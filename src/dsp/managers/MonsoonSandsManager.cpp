@@ -170,11 +170,14 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // (engLane, item) addresses East's CV jack exactly as the gen binds it
             // (cvId(engineLane, item)); previously this used a wrong l*2 2-rows-per-lane
             // scheme — the same class as the poly CV crosstalk bug.
-            auto eastMix = [&](float base, int engLane, int item, float lo, float hi)->float {
-                if (!eastVis || !eastVis->inputs[East::cvId(engLane,item)].isConnected()) return base;
+            // Returns the UNCLAMPED East CV delta (0 when unpatched). Mods are summed first and the
+            // TOTAL is clamped once by the caller — clamping each term as it lands discards headroom
+            // and makes the result order-dependent (East-then-Macro != Macro-then-East).
+            auto eastDelta = [&](int engLane, int item, float lo, float hi)->float {
+                if (!eastVis || !eastVis->inputs[East::cvId(engLane,item)].isConnected()) return 0.f;
                 float att = eastVis->params[East::attenId(dotModular::VoiceResolver::kMonoSlot, engLane, item)].getValue();   // slot 0 = mono
                 float cv  = eastVis->inputs[East::cvId(engLane,item)].getVoltage(0) / 10.f; // ch0
-                return math::clamp(base + cv * att * (hi - lo), lo, hi);
+                return cv * att * (hi - lo);
             };
             // Macro global CV distributed to voice 1 (voice-0 send × macroCVDelta).
             // sendId AND macroCVDelta are ENGINE-lane indexed (REST=0,MEL=1,OCT=2,
@@ -182,10 +185,11 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // NOTE: macroCVDelta is published by the Macro block LATER in this same
             // processDNA (after the mono strand), so voice 1 reads the PREVIOUS control
             // block's delta — a one-block (sub-ms, control-rate) lag. Imperceptible.
-            auto macroMix = [&](float base, int engLane, int item, float lo, float hi)->float {
-                if (!hasMacro || !macroVis) return base;
+            // Returns the UNCLAMPED Macro send delta (0 when no Macro). Summed with East's, clamped once.
+            auto macroDelta = [&](int engLane, int item)->float {
+                if (!hasMacro || !macroVis) return 0.f;
                 float send = macroVis->params[Macro::sendId(dotModular::VoiceResolver::kMonoSlot, engLane, item)].getValue();   // slot 0 = mono
-                return math::clamp(base + macroVis->macroSendDelta[engLane][item] * send, lo, hi);  // P9: tapped send delta
+                return macroVis->macroSendDelta[engLane][item] * send;  // P9: tapped send delta
             };
             // East CV exists only for the 4 poly lanes (MEL/OCT/REST/ACC); VAR/LEG
             // (editor l>=4) are mono-only with no East jack → skip the eastMix there.
@@ -194,12 +198,10 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // modulation, already in the delegated base). Only OWNED lanes receive these.
             if (l < 4 && monoOwnsLane) {
                 int eng = dotModular::EDITOR_TO_ENGINE_LANE[l];   // editor → engine lane (East CV jack)
-                baseLen = eastMix(baseLen, eng, 0, 1.f, 16.f);
-                baseOff = eastMix(baseOff, eng, 1, 0.f, 15.f);
-                baseRot = eastMix(baseRot, eng, 2, 0.f, 15.f);
-                baseLen = macroMix(baseLen, eng, 0, 1.f, 16.f);
-                baseOff = macroMix(baseOff, eng, 1, 0.f, 15.f);
-                baseRot = macroMix(baseRot, eng, 2, 0.f, 15.f);
+                // Sum ALL mods (East CV + Macro send) onto the base, then clamp the END RESULT once.
+                baseLen = math::clamp(baseLen + eastDelta(eng, 0, 1.f, 16.f) + macroDelta(eng, 0),  1.f, 16.f);
+                baseOff = math::clamp(baseOff + eastDelta(eng, 1, 0.f, 15.f) + macroDelta(eng, 1),  0.f, 15.f);
+                baseRot = math::clamp(baseRot + eastDelta(eng, 2, 0.f, 15.f) + macroDelta(eng, 2),  0.f, 15.f);
             }
 
             engine.setStrand(StrandWriter::MONO, strand,
