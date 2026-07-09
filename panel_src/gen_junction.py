@@ -116,7 +116,8 @@ def panel(theme):
     # control wells with KIT ID markers, matching the Junction module's controls
     # (same geometry). Row order = NOTEVAL, VARIATION, LEGATO, REST, ACCENT;
     # per row: input=<NAME>_CV jack, param=<NAME>_ATT trim.
-    ROWS=[60.,74.,88.,102.,116.]; JACK_X=14.; ATT_X=30.
+    # 12mm pitch — shares Raffles' bottom five rows (68/80/92/104/116) so the knob rows line up
+    ROWS=[68.,80.,92.,104.,116.]; JACK_X=14.; ATT_X=30.
     NAMES=["NOTEVAL","VARIATION","LEGATO","REST","ACCENT"]
     o.append('<g id="components">')
     for i, y in enumerate(ROWS):
