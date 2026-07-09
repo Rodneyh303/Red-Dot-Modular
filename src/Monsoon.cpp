@@ -148,8 +148,8 @@ float Monsoon::getMonoRestBase()    { return params[REST_PARAM ].getValue(); }
 float Monsoon::getMonoAccentBase()  { return params[ACCENT_KNOB].getValue(); }
 // Mono EFFECTIVE (Causeway ch0-modulated) rest/accent — the arc's 'mod' value, and what the
 // engine consumes (see ModeController).
-float Monsoon::getRestParam()       { return getEffectiveMonoRest(paramManager->getRest()); }
-float Monsoon::getAccentParam()     { return getEffectiveMonoAccent(paramManager->getAccent()); }
+float Monsoon::getRestParam()       { return getEffectiveMonoRest(paramManager->getRestUnclamped()); }
+float Monsoon::getAccentParam()     { return getEffectiveMonoAccent(paramManager->getAccentUnclamped()); }
 
 float Monsoon::getOctaveLoParam()   { return paramManager->getOctaveLo(); }
 float Monsoon::getOctaveHiParam()   { return paramManager->getOctaveHi(); }
@@ -749,16 +749,17 @@ void Monsoon::process(const ProcessArgs& args) {
         modViz.variation = paramManager->getVariationNorm();
         modViz.legato    = paramManager->getLegatoNorm();
         // Mono rest/accent take modulation from BOTH sources, summed:
-        //   Junction (+ CV2) — folded in by paramManager->getRest()/getAccent()
+        //   Junction (+ CV2) — folded in by paramManager->getRest/AccentUnclamped()
         //   Causeway ch0     — added on top by getEffectiveMono{Rest,Accent}()
+        // ALL mods sum UNCLAMPED; the result is clamped exactly ONCE, at the end (in getEffectiveMono*).
         // modViz.rest/.accent carry the FULLY effective value (the arc's endpoint). The lane flags OR
         // the paramManager's junction/cv2 test with a Causeway test, so either source lights the arc.
         // (Previously modViz carried the unmodulated base and only tested junction/cv2, so a Causeway-
         // only mod compared base-vs-base and no arc ever drew.)
         const float restBase   = paramManager->getRestNorm();
         const float accentBase = paramManager->getAccentNorm();
-        const float restEff    = getEffectiveMonoRest(restBase);
-        const float accentEff  = getEffectiveMonoAccent(accentBase);
+        const float restEff    = getEffectiveMonoRest(paramManager->getRestUnclamped());
+        const float accentEff  = getEffectiveMonoAccent(paramManager->getAccentUnclamped());
         modViz.rest      = restEff;
         modViz.accent    = accentEff;
         const bool causewayRestMod   = std::fabs(restEff   - restBase)   > 1e-4f;
@@ -927,7 +928,7 @@ void Monsoon::process(const ProcessArgs& args) {
 
         // Refresh Sequencer Parameters (Throttled sampling of all knobs/CV)
         modeController->updatePatternInput();
-        engine.accentProb = getEffectiveMonoAccent(paramManager->getAccent());
+        engine.accentProb = getEffectiveMonoAccent(paramManager->getAccentUnclamped());
 
         // Check for expander changes and update cached pointers
         // Mirror the global spread-target mode onto the engine so display SpreadManagers

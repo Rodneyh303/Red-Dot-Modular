@@ -40,9 +40,11 @@ public:
     float getLegato() const;
     
     /// Rest probability (0–1) with CV2 offset
+    float getRestUnclamped() const;   ///< knob + CV2 + Junction, NO clamp (Causeway added downstream)
     float getRest() const;
     
     /// Accent probability (0–1) with direct CV input (0–10V = 0–100%)
+    float getAccentUnclamped() const; ///< knob + accent CV + Junction + CV2, NO clamp
     float getAccent() const;
 
     /// Big-5 effective values NORMALISED to 0..1 (for modulation visualisation).

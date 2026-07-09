@@ -47,22 +47,35 @@ float ParameterManager::getLegato() const {
     return v;
 }
 
-float ParameterManager::getRest() const {
+// UNCLAMPED mono rest/accent: knob + all local modulation (CV2 + Junction [+ direct accent CV]),
+// summed with NO clamp. Causeway's mono mod is added on top downstream (getEffectiveMono*), and the
+// result is clamped ONCE there. Clamping each term as it's added silently discards headroom — e.g.
+// Junction pushing rest to 1.4 would truncate to 1.0, so a later negative Causeway CV would pull down
+// from 1.0 instead of 1.4, making the result order-dependent. Sum all mods, clamp the end result.
+// (Same principle as the clampSpread per-term→end fix.)
+float ParameterManager::getRestUnclamped() const {
     // Monsoon's OWN mono rest knob is authoritative. When a Straits expander is attached, its voice-1
-    // knob MIRRORS this value (driven in Straits::process), rather than overriding it — so the host
-    // stays in control and all 16 voices read consistently on the expander.
-    float v = readParam_(REST_PARAM, 0.f, 1.f);
-    v = clampv(v + cv2Offsets[3] + junctionOffsets[3], 0.f, 1.f);
-    return v;
+    // knob MIRRORS this value (display-only), rather than overriding it.
+    return readParam_(REST_PARAM, 0.f, 1.f) + cv2Offsets[3] + junctionOffsets[3];
+}
+
+float ParameterManager::getAccentUnclamped() const {
+    // Monsoon's own mono accent knob is authoritative (Straits voice-1 mirrors it — see getRest note).
+    // Direct CV input: 0–10V = 0–100%.
+    return readParam_(ACCENT_KNOB, 0.f, 1.f)
+         + readInput_(ACCENT_CV_INPUT) * 0.1f
+         + junctionOffsets[4] + cv2Offsets[4];
+}
+
+// Clamped convenience forms — for callers that want the local-modulation result on its own (e.g. the
+// modViz base test). The ENGINE path must go through getEffectiveMono* so Causeway is included and the
+// clamp happens once, at the end.
+float ParameterManager::getRest() const {
+    return clampv(getRestUnclamped(), 0.f, 1.f);
 }
 
 float ParameterManager::getAccent() const {
-    // Monsoon's own mono accent knob is authoritative (Straits voice-1 mirrors it — see getRest note).
-    float v = readParam_(ACCENT_KNOB, 0.f, 1.f);
-    // Direct CV input: 0–10V = 0–100%
-    float cv = readInput_(ACCENT_CV_INPUT);
-    v += cv * 0.1f + junctionOffsets[4] + cv2Offsets[4];
-    return clampv(v, 0.f, 1.f);
+    return clampv(getAccentUnclamped(), 0.f, 1.f);
 }
 
 bool ParameterManager::anyPitchModulated() const {
