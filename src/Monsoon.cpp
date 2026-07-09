@@ -140,9 +140,12 @@ void Monsoon::updateExpanderPointers() {
 float Monsoon::getNoteValueParam()  { return paramManager->getNoteValue(); }
 float Monsoon::getVariationParam()  { return paramManager->getVariation(); }
 float Monsoon::getLegatoParam()     { return paramManager->getLegato(); }
-// Mono BASE (unmodulated) rest/accent — the arc's 'set' value.
-float Monsoon::getMonoRestBase()    { return paramManager ? paramManager->getRest()   : 0.f; }
-float Monsoon::getMonoAccentBase()  { return paramManager ? paramManager->getAccent() : 0.f; }
+// Mono BASE (RAW KNOB, unmodulated) rest/accent — the arc's 'set' value. Must be the raw param, NOT
+// paramManager->getRest()/getAccent() (those already fold in Junction + CV2 offsets, which would make
+// Junction modulation invisible to the arc). Matches Monsoon's own arcs, which read pq->getScaledValue().
+// The arc therefore spans raw knob → fully-modulated (Junction + CV2 + Causeway), showing ALL modulation.
+float Monsoon::getMonoRestBase()    { return params[REST_PARAM ].getValue(); }
+float Monsoon::getMonoAccentBase()  { return params[ACCENT_KNOB].getValue(); }
 // Mono EFFECTIVE (Causeway ch0-modulated) rest/accent — the arc's 'mod' value, and what the
 // engine consumes (see ModeController).
 float Monsoon::getRestParam()       { return getEffectiveMonoRest(paramManager->getRest()); }
@@ -745,17 +748,21 @@ void Monsoon::process(const ProcessArgs& args) {
         modViz.noteValue = paramManager->getNoteValueNorm();
         modViz.variation = paramManager->getVariationNorm();
         modViz.legato    = paramManager->getLegatoNorm();
-        // Rest/accent effective values must include the Causeway MONO (ch0) modulation, otherwise the
-        // mod arc shows base-vs-base and never appears. (The engine consumes the same effective values
-        // in ModeController.) Lane flags below are OR'd with a Causeway-mono-mod test for the same reason.
+        // Mono rest/accent take modulation from BOTH sources, summed:
+        //   Junction (+ CV2) — folded in by paramManager->getRest()/getAccent()
+        //   Causeway ch0     — added on top by getEffectiveMono{Rest,Accent}()
+        // modViz.rest/.accent carry the FULLY effective value (the arc's endpoint). The lane flags OR
+        // the paramManager's junction/cv2 test with a Causeway test, so either source lights the arc.
+        // (Previously modViz carried the unmodulated base and only tested junction/cv2, so a Causeway-
+        // only mod compared base-vs-base and no arc ever drew.)
         const float restBase   = paramManager->getRestNorm();
         const float accentBase = paramManager->getAccentNorm();
         const float restEff    = getEffectiveMonoRest(restBase);
         const float accentEff  = getEffectiveMonoAccent(accentBase);
         modViz.rest      = restEff;
         modViz.accent    = accentEff;
-        const bool causewayRestMod   = (restEff   != restBase);
-        const bool causewayAccentMod = (accentEff != accentBase);
+        const bool causewayRestMod   = std::fabs(restEff   - restBase)   > 1e-4f;
+        const bool causewayAccentMod = std::fabs(accentEff - accentBase) > 1e-4f;
         modViz.active    = paramManager->anyBig5Modulated() || causewayRestMod || causewayAccentMod;
         for (int i = 0; i < 5; ++i) modViz.big5Lane[i] = paramManager->big5LaneModulated(i);
         modViz.big5Lane[3] = modViz.big5Lane[3] || causewayRestMod;    // lane 3 = rest
