@@ -7,38 +7,38 @@
 // Control positions in MILLIMETRES. Wrap with mm2px() at the call site.
 namespace RafflesLayout {
     struct P { float x, y; };
-    static constexpr P RAFFLES_SLEW_R_CV = { 9.0000f, 38.0000f };
-    static constexpr P RAFFLES_SLEW_R_ATT = { 21.0000f, 38.0000f };
-    static constexpr P RAFFLES_SLEW_M_ATT = { 39.0000f, 38.0000f };
-    static constexpr P RAFFLES_SLEW_M_CV = { 51.0000f, 38.0000f };
-    static constexpr P RAFFLES_MIX_R_CV = { 9.0000f, 50.0000f };
-    static constexpr P RAFFLES_MIX_R_ATT = { 21.0000f, 50.0000f };
-    static constexpr P RAFFLES_MIX_M_ATT = { 39.0000f, 50.0000f };
-    static constexpr P RAFFLES_MIX_M_CV = { 51.0000f, 50.0000f };
-    static constexpr P RAFFLES_GATE_TRIAL_R = { 11.0000f, 66.0000f };
-    static constexpr P RAFFLES_GATE_TRIAL_M = { 49.0000f, 66.0000f };
-    static constexpr P RAFFLES_GATE_REDICE_R = { 11.0000f, 78.0000f };
-    static constexpr P RAFFLES_GATE_REDICE_M = { 49.0000f, 78.0000f };
-    static constexpr P RAFFLES_GATE_LASTTRIAL_R = { 22.0000f, 66.0000f };
-    static constexpr P RAFFLES_GATE_LASTTRIAL_M = { 38.0000f, 66.0000f };
-    static constexpr P RAFFLES_GATE_LASTDICE_R = { 22.0000f, 78.0000f };
-    static constexpr P RAFFLES_GATE_LASTDICE_M = { 38.0000f, 78.0000f };
-    static constexpr P RAFFLES_GATE_LIVESRC_R = { 16.0000f, 90.0000f };
-    static constexpr P RAFFLES_GATE_LIVESRC_M = { 44.0000f, 90.0000f };
-    static constexpr P RAFFLES_GATE_LIVESTATIC_R = { 16.0000f, 102.0000f };
-    static constexpr P RAFFLES_GATE_LIVESTATIC_M = { 44.0000f, 102.0000f };
-    static constexpr P RAFFLES_GATE_RESEED_ROLL = { 16.0000f, 114.0000f };
-    static constexpr P RAFFLES_GATE_RESEED_RESTART = { 44.0000f, 114.0000f };
+    static constexpr P RAFFLES_SLEW_R_CV = { 9.0000f, 44.0000f };
+    static constexpr P RAFFLES_SLEW_R_ATT = { 21.0000f, 44.0000f };
+    static constexpr P RAFFLES_SLEW_M_ATT = { 39.0000f, 44.0000f };
+    static constexpr P RAFFLES_SLEW_M_CV = { 51.0000f, 44.0000f };
+    static constexpr P RAFFLES_MIX_R_CV = { 9.0000f, 56.0000f };
+    static constexpr P RAFFLES_MIX_R_ATT = { 21.0000f, 56.0000f };
+    static constexpr P RAFFLES_MIX_M_ATT = { 39.0000f, 56.0000f };
+    static constexpr P RAFFLES_MIX_M_CV = { 51.0000f, 56.0000f };
+    static constexpr P RAFFLES_GATE_TRIAL_R = { 11.0000f, 68.0000f };
+    static constexpr P RAFFLES_GATE_TRIAL_M = { 49.0000f, 68.0000f };
+    static constexpr P RAFFLES_GATE_REDICE_R = { 11.0000f, 80.0000f };
+    static constexpr P RAFFLES_GATE_REDICE_M = { 49.0000f, 80.0000f };
+    static constexpr P RAFFLES_GATE_LASTTRIAL_R = { 22.0000f, 68.0000f };
+    static constexpr P RAFFLES_GATE_LASTTRIAL_M = { 38.0000f, 68.0000f };
+    static constexpr P RAFFLES_GATE_LASTDICE_R = { 22.0000f, 80.0000f };
+    static constexpr P RAFFLES_GATE_LASTDICE_M = { 38.0000f, 80.0000f };
+    static constexpr P RAFFLES_GATE_LIVESRC_R = { 16.0000f, 92.0000f };
+    static constexpr P RAFFLES_GATE_LIVESRC_M = { 44.0000f, 92.0000f };
+    static constexpr P RAFFLES_GATE_LIVESTATIC_R = { 16.0000f, 104.0000f };
+    static constexpr P RAFFLES_GATE_LIVESTATIC_M = { 44.0000f, 104.0000f };
+    static constexpr P RAFFLES_GATE_RESEED_ROLL = { 16.0000f, 116.0000f };
+    static constexpr P RAFFLES_GATE_RESEED_RESTART = { 44.0000f, 116.0000f };
     static constexpr P LBL_RAFFLES_0 = { 30.0000f, 30.0000f };
     static constexpr P LBL_SLEW_1 = { 30.0000f, 32.0000f };
     static constexpr P LBL_MIX_2 = { 30.0000f, 44.0000f };
     static constexpr P LBL_R_3 = { 9.0000f, 44.0000f };
     static constexpr P LBL_M_4 = { 51.0000f, 44.0000f };
-    static constexpr P LBL_TRIAL_5 = { 30.0000f, 66.0000f };
-    static constexpr P LBL_REDICE_6 = { 30.0000f, 78.0000f };
-    static constexpr P LBL_LIVE_SRC_7 = { 30.0000f, 90.0000f };
-    static constexpr P LBL_LIVE_STAT_8 = { 30.0000f, 102.0000f };
-    static constexpr P LBL_RESEED_9 = { 30.0000f, 114.0000f };
+    static constexpr P LBL_TRIAL_5 = { 30.0000f, 68.0000f };
+    static constexpr P LBL_REDICE_6 = { 30.0000f, 80.0000f };
+    static constexpr P LBL_LIVE_SRC_7 = { 30.0000f, 92.0000f };
+    static constexpr P LBL_LIVE_STAT_8 = { 30.0000f, 104.0000f };
+    static constexpr P LBL_RESEED_9 = { 30.0000f, 116.0000f };
 }
 
 #endif // RAFFLESLAYOUT_GEN_HPP
