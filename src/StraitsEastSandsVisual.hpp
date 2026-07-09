@@ -1,5 +1,6 @@
 #pragma once
 #include <rack.hpp>
+#include "ui/SandsGrid.hpp"
 #include "Monsoon.hpp"
 
 using namespace rack;
@@ -17,9 +18,11 @@ namespace StraitsEastVisualIds {
     // separator + backing (drawn in the gen) so it doesn't read as a 17th step.
     static constexpr float OWNER_X    = 205.f;   // owner cell column (editor right edge = 199)
     static constexpr float PROB_OUT_X = 212.f;   // poly prob-out jack column (right strip, pushed right by the owner block)
-    static constexpr int   N_ROWS  = 4;         // 1 row per lane (REST/MEL/OCT/ACCENT)
-    static constexpr float ROW_TOP = 14.f;
-    static constexpr float ROW_BOT = 108.f;
+    static constexpr int   N_ROWS  = dotModular::SandsGrid::POLY_LANES;  // 4 — 1 row per lane
+    // ROW_TOP/ROW_BOT were DEAD here (nothing read them; rows come from ED_Y + ED_LANE_H) yet still
+    // said 14..108, which is what made this look aligned with Mono when it wasn't. Bound to the grid.
+    static constexpr float ROW_TOP = dotModular::SandsGrid::LANE_TOP;      // 14
+    static constexpr float ROW_BOT = dotModular::SandsGrid::polyBottom();  // 70
     // Mono-style: 4 CV jacks (LEN/OFF/ROT/SPR-cv) + 4 attens + 1 spread-base trimpot per lane.
     // Column layout and ED_X=88 match SandsMonoVisual exactly.
     static constexpr float COL_J1 = 6.f;    // LEN CV in
@@ -33,12 +36,13 @@ namespace StraitsEastVisualIds {
     static constexpr float SPREAD_X = 80.f; // per-lane spread base trimpot
     // Mirror TAB_TOP_OFFSET_MM in panel_src/gen_east_clean.py (extra top margin so
     // the tab row clears the panel top edge; 0.5cm = 5mm).
-    static constexpr float TAB_TOP_OFFSET_MM = 5.f;
-    static constexpr float ED_Y   = 18.f + TAB_TOP_OFFSET_MM;  // editor top (below 2-row tab band)
+    static constexpr float TAB_TOP_OFFSET_MM = 5.f;   // (retained; tabs now sit ABOVE the grid)
+    // Voice tabs moved into 3..13mm (above the grid) so lane 0 starts at LANE_TOP like Mono.
+    static constexpr float ED_Y   = dotModular::SandsGrid::LANE_TOP;   // 14 (was 23)
     // Editor holds 4 poly lanes (MEL/OCT/REST/ACCENT); ~12mm each. ED_LANE_H
     // drives prob-out vertical placement and must match the gen script's ED_H/4.
-    static constexpr float ED_H      = 48.f;
-    static constexpr float ED_LANE_H = ED_H / 4.f;      // 12mm per lane (4 lanes: MEL/OCT/REST/ACCENT)
+    static constexpr float ED_H      = dotModular::SandsGrid::polyHeight();  // 56 (was 48)
+    static constexpr float ED_LANE_H = dotModular::SandsGrid::LANE_H;        // 14 (was 12)
 
     // Left-control rows align with the EDITOR lane centres (not the full panel),
     // so each lane's CV jacks + attens sit beside the visual lane they modulate —

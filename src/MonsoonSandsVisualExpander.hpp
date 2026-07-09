@@ -1,5 +1,6 @@
 #pragma once
 #include <rack.hpp>
+#include "ui/SandsGrid.hpp"
 #include "Monsoon.hpp"
 #include "dsp/LaneMapping.hpp"   // ENGINE_LANE_TO_EDITOR / MONO_PARAM_TO_EDITOR — single source of truth
 
@@ -13,10 +14,12 @@ namespace SandsMonoVisualIds {
     static constexpr float ED_W     = 111.f;    // editor width (fixed; no longer tied to PROB_OUT_X)
     static constexpr float OWNER_X    = 205.f;  // owner cell column (matches East/Macro)
     static constexpr float PROB_OUT_X = 212.f;  // output jack column (pushed right by the owner block)
-    static constexpr float ED_Y     = 16.f;
-    static constexpr float ROW_TOP  = 14.f;
-    static constexpr float ROW_BOT  = 108.f;
-    static constexpr int   N_LANES  = 6;
+    // Grid now comes from ui/SandsGrid.hpp so Mono, East and Macro cannot drift apart.
+    // ROW_BOT 108 -> 98: lane height 15.667 -> 14, matching East/Macro's lanes exactly.
+    static constexpr float ED_Y     = dotModular::SandsGrid::LANE_TOP;      // 14
+    static constexpr float ROW_TOP  = dotModular::SandsGrid::LANE_TOP;      // 14
+    static constexpr float ROW_BOT  = dotModular::SandsGrid::monoBottom();  // 98 (was 108)
+    static constexpr int   N_LANES  = dotModular::SandsGrid::MONO_LANES;    // 6
     static constexpr int   N_SPREAD_LANES = 4;  // REST, MELODY, OCTAVE, ACCENT
     // Spread control index (0..3 = REST/MEL/OCT/ACCENT) → editor lane.
     // Shares the poly engine→editor mapping (dsp/LaneMapping.hpp): REST=2, MEL=0,
