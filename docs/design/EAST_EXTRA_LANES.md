@@ -157,6 +157,40 @@ The strongest argument is economy — one shared probability array, sixteen view
 
 ---
 
+## 6b. Decisions taken (Rodney)
+
+**These lanes are LOR-ONLY. No spread control, no spread CV, ever.**
+Spread distributes a *mono probability across voices*. Here the probability array stays mono **by design**
+— only each voice's *reading position* differs. There is no per-voice VAR/LEG probability to spread into.
+So VAR/LEG get: length, offset, rotation, and (later) LOR mod. Nothing else. This is why East's spread
+control rows correctly stay `N_ROWS = 4` on lanes 0..3.
+
+**Macro does NOT get this feature — and the reason is semantic, not spatial.**
+Macro's role is *ownership*: it takes a lane and drives it for all voices. If Macro owned VARIATION, every
+voice would receive the same LOR window → the same index → the same note length. **Macro-ownership does not
+merely crowd the feature out, it annihilates it**, because per-voice divergence *is* the content. (Lack of
+panel space is a true but secondary reason.)
+> Parked idea, not vacuous: Macro sending a *common rotation offset* to all voices would slide the whole
+> articulation field while preserving relative phase between voices. That is a **send**, not ownership, and
+> could be musical. Out of scope for now.
+
+## 6c. Stage 1b will need NEW param banks (two silent traps found and closed)
+
+Two aliasing hazards were discovered while preparing to unlock the lanes. Both compiled cleanly and returned
+plausible wrong values — the project's recurring failure mode:
+
+1. `StraitsEastSandsVisual::lorId(v, lane, c)` fell through to **the OCTAVE bank** for any unrecognised
+   lane. Unlocking VAR/LEG would have *corrupted every voice's octave LOR*, not written an unread store.
+   → now returns `-1`; live callers loop `l < 4` so it is unreachable, i.e. a tripwire.
+2. `SequencerEngine::editorLane(engLane)` masks `& 3` over a 4-entry table. Called with 4/5 it would alias
+   **VAR→REST, LEG→MELODY**. It cannot be reached by correct code (`PL_LANES == 4`), and is now documented
+   at the boundary. **For per-voice VAR/LEG LOR use the EDITOR-order accessors** `polyLOR` / `polyLORRef`
+   (they mask `& 7` and index `lorStore_` directly — already 6-lane safe).
+
+Therefore **stage 1b (making lanes 4/5 editable) is not a small change**: it needs two new 15-voice LOR
+param banks (`POLY_VARIATION_VOICE_1_LEN…`, `POLY_LEGATO_VOICE_1_LEN…`) = 2 x 15 x 3 = **90 new params**,
+plus `lorId` branches and East save/load loops widened to 6. Do it deliberately; do not bolt it on.
+
 ## 7. Open questions
 
 - VARIATION: per-voice `nvIdx` (and therefore gate length), or variation-bias only? **Blocking.**

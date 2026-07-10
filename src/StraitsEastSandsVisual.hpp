@@ -85,11 +85,21 @@ namespace StraitsEastVisualIds {
     static inline int cvId(int lane, int col) { return CV_START + lane*4 + col; }
 
     // ── LOR / Interp param ID helpers ─────────────────────────────────────
+    // `lane` here is a POLY lane (SequencerEngine::PolyLane), NOT an editor lane:
+    //     0 = PL_REST   1 = PL_MELODY   2 = PL_OCTAVE   3 = PL_ACCENT
+    // VARIATION and LEGATO are mono strands, not poly lanes (PL_LANES == 4), so they have no bank.
+    //
+    // HAZARD CLOSED: this used to fall through to the OCTAVE bank for ANY unrecognised lane, so
+    // lorId(v, 4|5, c) silently returned OCTAVE's params. Unlocking East's VARIATION/LEGATO lanes
+    // would have CORRUPTED every voice's octave LOR, not merely written an unread store.
+    // Now returns -1 for lanes with no bank, so a caller fails loudly instead of writing the wrong one.
+    // (Live callers loop l < 4, so -1 is unreachable today — it is a tripwire for stage 1b.)
     inline int lorId(int v, int lane, int c) {
         if (lane == 0) return POLY_DNA_VOICE_1_LEN    + v*3 + c;
         if (lane == 1) return POLY_MELODY_VOICE_1_LEN + v*3 + c;
+        if (lane == 2) return POLY_OCTAVE_VOICE_1_LEN + v*3 + c;
         if (lane == 3) return POLY_ACCENT_VOICE_1_LEN + v*3 + c;
-        return              POLY_OCTAVE_VOICE_1_LEN   + v*3 + c;
+        return -1;   // VARIATION(4) / LEGATO(5): no LOR param bank yet (EAST_EXTRA_LANES.md stage 1b)
     }
     inline int restInterpId  (int v) { return POLY_REST_INTERP_1   + v; }
     inline int melodyInterpId(int v) { return POLY_MELODY_INTERP_1 + v; }

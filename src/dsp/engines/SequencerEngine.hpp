@@ -144,6 +144,12 @@ struct SequencerEngine {
     // The single engine→editor lane conversion. The modifier stores (lorStore_, spread) are editor-
     // ordered; every accessor that takes an engine PL_ lane converts through HERE — one definition
     // instead of the ENGINE_LANE_TO_EDITOR[engLane&3] formula previously inlined in each accessor.
+    // engLane is a POLY lane (PL_REST/PL_MELODY/PL_OCTAVE/PL_ACCENT) — 0..3 ONLY. VARIATION and
+    // LEGATO are mono strands, NOT poly lanes (PL_LANES == 4), so they have no engine-order id.
+    // The `& 3` therefore cannot be reached with 4/5 by correct code — but if it were, it would
+    // silently alias VAR->REST and LEG->MELODY. For per-voice VAR/LEG LOR use the EDITOR-order
+    // accessors polyLOR/polyLORRef (they mask & 7 and index lorStore_ directly). See
+    // docs/design/EAST_EXTRA_LANES.md.
     static int editorLane(int engLane) { return dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]; }
 
     // Editor-order poly accessors: bank b → slot b+1, editorLane indexes the unified array directly
