@@ -1,6 +1,7 @@
 # LOR backlog — per-lane DIRECTION (reflection)
 
-**Status: LOGGED, NOT RECOMMENDED — see §4e, which is the decisive one. Do not build without re-reading §4.**
+**Status: RECONSIDERED — see §7. The original "not recommended" verdict rested on two mistakes, both
+Rodney's corrections. §4 is kept as written, with its errors marked, because the errors are the useful part.**
 
 Origin: comparing dot.modular's lanes to Reaktor's Kodiak **Shift Sequencer**, which has independent
 sequence-length *and direction* per lane (pitch, octave, velocity, hold, gate). The lane sets correspond
@@ -74,7 +75,7 @@ EAST_EXTRA_LANES stage 1b).
 **4d. Payoff is bounded.** It doubles distinct read-orders per length from 16 to 32. Useful; not
 transformative.
 
-**4e. The CONTROL-SURFACE cost is the real blocker (Rodney).** A fourth LOR item is not just storage — it
+**4e. ~~The CONTROL-SURFACE cost is the real blocker.~~ — WRONG, see §7a.** *(kept for the record)* A fourth LOR item is not just storage — it
 is knobs and modulation on every surface that exposes LOR:
 
 - **East**: a per-voice DIR knob per lane. 15 poly voices x 4 poly lanes = **60 new params**, before
@@ -112,3 +113,70 @@ not a lane transform.
 - Confine it to lanes whose content is *composed*, not diced, if such lanes ever exist.
 - Keep it out of VARIATION/LEGATO: those are LOR-only precisely because their probability field is shared
   and mono-owned. A mirrored read there changes contour but not rate — the least audible case of all.
+
+
+---
+
+# 7. RECONSIDERED (Rodney's corrections)
+
+## 7a. §4e is wrong: direction is BINARY
+
+Length/offset/rotation are ints; spread is a float. **Direction is a bool.** There is nothing to attenuvert,
+nothing to spread, and no meaningful *delta* for a Macro send to blend into a bool. So:
+
+- no fifth send row, no `sendId` stride break, no growth of the send bank — **§4e evaporates**;
+- no attenuverters;
+- modulation is a **gate that flips direction**, not a CV that scales it. With MVC separation the gate can
+  drive engine state directly.
+
+Implementation, honestly measured:
+
+- `getStrandIdx`: **one line** — `if (rev) timelineIdx = safeLen - 1 - timelineIdx;`
+- storage, **per-lane** (the Shift-like design): `bool laneReverse_[NUM_STRANDS]` — *six bools*.
+  Per-voice-per-lane would instead cost ~90 toggle params; almost certainly not worth it, and per-lane
+  preserves the voices' relative phase, which is the thing that makes them sound related.
+- UI: a lane toggle, plus 1..6 gate inputs. No knobs.
+
+## 7b. §4a is wrong for a LIVE flip: it produces an audible palindrome
+
+"Retrograde of a diced field is statistically identical noise" is true of a **fixed** reversed read. It is
+not true of a **live** flip. Reversing mid-cycle makes the read-head walk back over cells it has just
+played, and *that* is audible regardless of whether the field is composed or diced — it is the same reason
+phase-mode scrubbing sounds like something.
+
+Verified it really retraces rather than jumping to a mirror image. With `len = 6`:
+
+```
+forward   idx(t) = t % 6            → 0 1 2 3 4 5 ...
+reverse   idx(t) = 5 - (t % 6)      → 5 4 3 2 1 0 ...
+flip at t=3                         → 0 1 2 | 2 1 0 5 4 ...   (a genuine backwards walk)
+```
+
+Still a pure function of `(tick, dir)`: **no path dependence, no state.** One caveat — the stateless mirror
+has a one-cell hitch at the flip (t=3 reads 3 forward, 2 reversed). A seamless bounce, `idx = (2*t0 - t) mod
+len`, needs the flip time `t0`, i.e. state. Take the hitch; keep it stateless.
+
+## 7c. What actually survives
+
+- **§4b stands**: "reverse" already means *un-rolling the Philox draw stream* in phase mode. A lane-level
+  flip is a different operation. **Name it MIRROR**, and the ambiguity is gone.
+- **§3 stands**: it does not lengthen the cycle. Multi-bar structure is `lcm(lengths)` alone.
+- **§4d is revised**: static reflection doubles read-orders 16 → 32 (marginal). A *gate-flippable* MIRROR is
+  a live performance control, which is a different and better proposition.
+
+## 7d. Revised verdict
+
+The cheap, defensible feature is: **per-lane MIRROR — six bools, one line in `getStrandIdx`, a gate input
+per lane, no knobs, no sends, no attenuverters, no Macro involvement.** Musically it is a live retrace, not
+a static mirror. Cost is trivial; the earlier estimate of 90–120 params and a send-bank rewrite described a
+design nobody proposed.
+
+Two things to settle before building: (1) per-lane or per-voice-per-lane — per-lane is 6 bools and keeps
+voices phase-related, per-voice is ~90 params; (2) whether the one-cell hitch at the flip is acceptable, or
+whether seamless bounce is wanted badly enough to hold `t0`.
+
+## 7e. Lesson
+
+Two of the three arguments in §4 were wrong, and both because I reasoned about a *continuous* LOR item and
+about a *static* reflection. Neither was the feature. The pattern is by now familiar in this codebase:
+**the plausible-looking wrong thing compiles, and the plausible-looking wrong argument persuades.**
