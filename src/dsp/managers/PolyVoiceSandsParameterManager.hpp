@@ -107,27 +107,20 @@ struct PolyVoiceSandsParameterManager {
   // Sync PatternEngine to visual editor for a specific voice
   // Shows interpolated values with spread applied
   // Average is calculated from only the active/requested voices
-  void syncPatternEngineToEditor(int voiceIdx, SandsVisualEditorV4::VoiceState& editorState) {
-    if (!patternEngine || voiceIdx < 0 || voiceIdx >= numVoices) return;
-    
-    // Rest lane - show interpolated values
-    for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
-      editorState.lanes[SandsVisualEditorV4::REST].probabilities[i] = 
-        spreadMgr.getInterpolatedValue(voiceIdx, 0, i);
-    }
-    
-    // Melody lane
-    for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
-      editorState.lanes[SandsVisualEditorV4::MELODY].probabilities[i] = 
-        spreadMgr.getInterpolatedValue(voiceIdx, 1, i);
-    }
-    
-    // Octave lane
-    for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
-      editorState.lanes[SandsVisualEditorV4::OCTAVE].probabilities[i] = 
-        spreadMgr.getInterpolatedValue(voiceIdx, 2, i);
-    }
-  }
+  // syncPatternEngineToEditor(voiceIdx, editorState) was DELETED (cleanup/dead-poly-sync).
+  //
+  // It filled only REST/MEL/OCT — never ACCENT — from spreadMgr.getInterpolatedValue(), i.e. the
+  // PRE-spread values. Both behaviours are bugs that were fixed elsewhere: East's step() reads
+  // VoiceResolver::laneProbabilityAtStep() for all four poly lanes, post-spread, because reading the
+  // raw drawn pattern meant "moving spread changed the audio but NOT the visible bars", and it also
+  // fixed blank lanes under Macro ownership.
+  //
+  // Both call sites (East step() + onVoiceTabChanged) were overwritten by that resolver fill in the
+  // same frame, so the method had no observable effect — but anyone calling it in good faith would
+  // have got stale accent and pre-spread probabilities. Do not reintroduce it.
+  //
+  // The WRITE direction, syncEditorToPatternEngine(), is live and load-bearing. Leave it alone.
+
   
   // Get spread-adjusted probability for display (voice-specific)
   // Average is calculated from only the active voices at this moment
