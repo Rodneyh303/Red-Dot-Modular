@@ -244,10 +244,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // mirrors Mono, inoperable). editorLane → engine lane for the ownership check.
         visualEditor->laneLockedFn = [this](int editorLane) -> bool {
             if (tab1MonoMirror()) return true;           // V1 owned by Mono → all lanes locked on East
-            // Stage 1b: VARIATION (4) / LEGATO (5) are now editable — they have their own param
-            // banks and an engine push path. They are never Macro-delegated (Macro cannot own them:
-            // an owned lane drives all voices identically, which annihilates per-voice divergence).
-            if (editorLane >= dotModular::SandsGrid::POLY_LANES) return false;
+            // VARIATION (4) / LEGATO (5): the usual V1 pattern. MONO owns these strands, so on the
+            // V1 tab they are LOCKED and merely MIRROR mono's values — even when no Sands Mono is
+            // attached (East is the V1 editor for the four poly lanes only; VAR/LEG stay mono's).
+            // On poly tabs they are editable (stage 1b banks). They are never Macro-delegated:
+            // an owned lane drives all voices identically, annihilating per-voice divergence.
+            // Modulation still reaches mono's VAR/LEG through mono's own path — locking the East
+            // display does not gate the strand.
+            if (editorLane >= dotModular::SandsGrid::POLY_LANES) return onMonoTab();
             if (editorLane < 0) return false;
             int engLane = dotModular::EDITOR_TO_ENGINE_LANE[editorLane];
             // STEP 4c: a lane delegated to Macro is inoperable on East (V1 + poly tabs).
@@ -406,8 +410,26 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     }
     // Iterate EDITOR lanes 0..5 directly — currentState.lanes[] is editor-indexed, and VAR(4)/LEG(5)
     // have no PolyLane id, so the old engine-lane loop could not reach them. lorIdEditor() maps.
+    // On the V1/mono tab, editor lanes 4/5 DISPLAY mono's VARIATION/LEGATO (they are mono strands;
+    // East never owns them). The strands were renumbered so editor lane == strand index
+    // (MEL 0, OCT 1, REST 2, ACC 3, VAR 4, LEG 5), hence lorStore_[0][el] is mono's own LOR column.
+    // Read-only: laneLockedFn() locks these lanes whenever onMonoTab().
+    void mirrorMonoExtraLanes() {
+        Monsoon* m = getMonsoon();
+        if (!m || !visualEditor || !onMonoTab()) return;
+        for (int el = dotModular::SandsGrid::POLY_LANES; el < dotModular::SandsGrid::EAST_LANES; ++el) {
+            const int strand = el;   // identity, by the renumber above
+            auto& lane = visualEditor->currentState.lanes[el];
+            lane.length   = std::max(1, m->engine.lor(strand, SequencerEngine::LOR_LEN));
+            lane.offset   =            m->engine.lor(strand, SequencerEngine::LOR_OFF);
+            lane.rotation =            m->engine.lor(strand, SequencerEngine::LOR_ROT);
+            for (int st = 0; st < SandsVisualEditorV4::STEP_COUNT; ++st)
+                lane.probabilities[st] = m->engine.pe.finalRandomByStrand(strand, st);
+        }
+    }
+
     void saveVoiceLOR(int v) {
-        if (!module || !visualEditor) return;
+        if (!module || !visualEditor) return;   // poly banks only; V1 has none (see onVoiceTabChanged)
         for (int el=0; el<dotModular::SandsGrid::EAST_LANES; ++el) {
             const auto& lane = visualEditor->currentState.lanes[el];
             module->params[lorIdEditor(v,el,0)].setValue((float)lane.length);
@@ -827,7 +849,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                             monsoon->engine.pe.finalRandomByStrand(strand, s);
                 }
             }
+            mirrorMonoExtraLanes();   // lanes 4/5: mono's VARIATION/LEGATO, read-only
         } else if (v1Editable()) {
+            mirrorMonoExtraLanes();   // V1 without Mono: East edits lanes 0..3; VAR/LEG stay mono's
             // V1 editable (no Mono, combo 3/7-without-Mono): East IS the V1 editor.
             // Spread-follow is now handled by the knob's displayValueFn (see the SPREAD_*
             // binds + spreadDisplayValue): on a ceded V1 lane the knob DISPLAYS Macro's base
