@@ -35,6 +35,14 @@ void SequencerEngine::reset() {
             polyOffERef(i, l) = 0;
             polyRotERef(i, l) = 0;
         }
+        // VARIATION/LEGATO per-voice LOR were NEVER seeded (lorStore_ is zero-init, so len==0 →
+        // getStrandIdx's max(1,len) pinned every step to index 0 — NOT identity). Editor-order
+        // accessor: these lanes have no PL_ id.
+        for (int el : { EDITOR_LANE_VARIATION, EDITOR_LANE_LEGATO }) {
+            polyLORRef(i, el, LOR_LEN) = 16;
+            polyLORRef(i, el, LOR_OFF) = 0;
+            polyLORRef(i, el, LOR_ROT) = 0;
+        }
     }
     windowMask = 0xFFFF;
     locked = false;
@@ -407,6 +415,7 @@ void SequencerEngine::handlePhraseBoundary(PatternInput input, bool isMelodyReal
 }
 
 StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input, int dir) {
+    lastNoteVal_ = noteVal;   // poly voices derive their own nvIdx from this (stage 2)
     StepResult result;
     if (!clock.sixteenthEdge || muted) return result;
 
@@ -459,6 +468,7 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
 }
 
 StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float restProb, float legatoProb, float noteVal, const PatternInput& input) {
+    lastNoteVal_ = noteVal;   // poly voices derive their own nvIdx from this (stage 2)
     StepResult result;
     if (muted) {
         prevGate1High = gate1High;
@@ -530,6 +540,10 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
 
 void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, bool wasHeldPoly, bool hadPolyTail) {
     PolyVoice& v = voices[voiceIdx];
+    // Stage 2: this voice's note length. Identical to nvV when
+    // perVoiceArticulation is off (default) or the voice's VAR LOR is identity. Clamped so the
+    // voice can never hold past mono's next event — articulation is subtractive.
+    const int nvV = nvIdxForVoice(voiceIdx, input);
 
     // Start Detection: A new note/retrigger happens on NewNote, or on 
     // Legato shifts from a dead state (low gate and no tail).
@@ -560,17 +574,17 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         int accIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_ACCENT), polyOffE(voiceIdx, PL_ACCENT), polyRotE(voiceIdx, PL_ACCENT));
         v.accented = (pe.polyRandom(voiceIdx, PL_ACCENT)[accIdx] < v.accentProb);
         if (lastStepResult.decision == MonoDecision::NewNote)
-            v.gs.triggerNote(pitchV, sem, lastStepResult.nvIdx);
+            v.gs.triggerNote(pitchV, sem, nvV);
         else if (wasHeldPoly || hadPolyTail)
             // Mono is slurring/tying and THIS poly voice had a held predecessor → real slide.
-            v.gs.slideNote(pitchV, sem, lastStepResult.nvIdx, /*wasHeld=*/true);
+            v.gs.slideNote(pitchV, sem, nvV, /*wasHeld=*/true);
         else
             // Mono slurs but this poly voice had NO held gate (it was resting/silent on its
             // previous played step) — sliding would produce an isolated Legato cell (teal note
             // with no predecessor on this lane), the poly analogue of the mono isolated-teal
             // bug. Trigger a fresh note instead. (Direction-independent; surfaced in reverse
             // mode but present forward too.)
-            v.gs.triggerNote(pitchV, sem, lastStepResult.nvIdx);
+            v.gs.triggerNote(pitchV, sem, nvV);
         return;
     }
 
@@ -582,7 +596,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         // Poly follows mono gate presence strictly IF it was already active ("in").
         if (gs.gateHeld && wasHeldPoly) {
             if (lastStepResult.decision == MonoDecision::Tie) {
-                v.gs.extendHold(v.gs.lastSemitone, lastStepResult.nvIdx);
+                v.gs.extendHold(v.gs.lastSemitone, nvV);
             } else {
                 // Re-draw pitch for glides (Legato) or sustains (MidNote).
                 // This allows the poly melody to move independently even if 
@@ -593,7 +607,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                 float pitchV = pe.genPitchLive(sem, input, pe.polyRandom(voiceIdx, PL_MELODY)[melIdx], pe.polyRandom(voiceIdx, PL_OCTAVE)[octIdx]);
                 
                 if (lastStepResult.decision == MonoDecision::Legato || lastStepResult.decision == MonoDecision::LegatoMax) {
-                    v.gs.slideNote(pitchV, sem, lastStepResult.nvIdx, wasHeldPoly);
+                    v.gs.slideNote(pitchV, sem, nvV, wasHeldPoly);
                 } else {
                     // MidNote sustain: update pitch and keep gate high
                     v.gs.currentPitchV = pitchV;
@@ -689,6 +703,25 @@ int SequencerEngine::getStrandIdx(int tickCount, int len, int off, int mutation)
     int timelineIdx = ((tickCount + mutation) % safeLen + safeLen) % safeLen;
     // 2. ... + off                     => Slide the entire DNA window across the source buffer
     return (timelineIdx + off) % 16;
+}
+
+// ── EAST_EXTRA_LANES stage 2 ──────────────────────────────────────────────────────────────────
+int SequencerEngine::getVariationStepForVoice(int bank) const {
+    return getStrandIdx(totalStepsElapsed,
+                        polyLOR(bank, EDITOR_LANE_VARIATION, LOR_LEN),
+                        polyLOR(bank, EDITOR_LANE_VARIATION, LOR_OFF),
+                        polyLOR(bank, EDITOR_LANE_VARIATION, LOR_ROT));
+}
+
+int SequencerEngine::nvIdxForVoice(int bank, const PatternInput& input) const {
+    if (!perVoiceArticulation || bank < 0 || bank >= 15) return lastStepResult.nvIdx;
+    // The probability array stays MONO (one shared shape); only the reading position is per-voice.
+    const int idx = getVariationStepForVoice(bank) & 0x0F;
+    const float r = pe.variationRandom[idx];
+    const int nv  = const_cast<SequencerEngine*>(this)->getNoteLenIdx(lastNoteVal_, input, r);
+    // CLAMP to the mono event grid: a voice may release early, never hold past mono's next note.
+    // NOTE_VALUES is ordered slowest→fastest, so max() picks the SHORTER of the two.
+    return (nv > lastStepResult.nvIdx) ? nv : lastStepResult.nvIdx;
 }
 
 int SequencerEngine::getRhythmStep() const    { return getStrandIdx(totalStepsElapsed, lor(dotModular::STRAND_RHYTHM,LOR_LEN), lor(dotModular::STRAND_RHYTHM,LOR_OFF), lor(dotModular::STRAND_RHYTHM,LOR_ROT)); }

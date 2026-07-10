@@ -141,6 +141,27 @@ struct SequencerEngine {
 
     enum PolyLane { PL_REST = 0, PL_MELODY = 1, PL_OCTAVE = 2, PL_ACCENT = 3, PL_LANES = 4 };
 
+    // ── EAST_EXTRA_LANES stage 2: per-voice ARTICULATION (clamped) ─────────────────────────────
+    // VARIATION/LEGATO are mono STRANDS, not poly lanes, so they have no PL_ id and CANNOT be
+    // addressed via polyLenE()/editorLane() (that masks & 3 and would alias VAR->REST). Use the
+    // editor-order accessors polyLOR/polyLORRef, which mask & 7.
+    static constexpr int EDITOR_LANE_VARIATION = 4;
+    static constexpr int EDITOR_LANE_LEGATO    = 5;
+
+    // OFF by default: every poly voice uses mono's nvIdx exactly, as before. Even when ON, the
+    // per-voice LOR defaults to identity (len 16, off 0, rot 0), so voices read mono's own
+    // variation index and the result is bit-identical. Doubly inert.
+    bool perVoiceArticulation = false;
+
+    // Per-voice VARIATION step — mono's getStrandIdx transform, driven by THIS voice's LOR window.
+    int getVariationStepForVoice(int bank) const;
+
+    // This voice's note-length index, CLAMPED so its hold can never exceed mono's.
+    // NOTE_VALUES is documented "ordered slowest -> fastest", so a HIGHER index is a SHORTER note;
+    // std::max(nv, mono) therefore guarantees duration <= mono's. Articulation is thus SUBTRACTIVE,
+    // exactly like rest and accent: voices may release early, never hold past mono's next event.
+    int nvIdxForVoice(int bank, const PatternInput& input) const;
+
     // The single engine→editor lane conversion. The modifier stores (lorStore_, spread) are editor-
     // ordered; every accessor that takes an engine PL_ lane converts through HERE — one definition
     // instead of the ENGINE_LANE_TO_EDITOR[engLane&3] formula previously inlined in each accessor.
@@ -292,6 +313,7 @@ struct SequencerEngine {
     float getStepLightBrightness(int lightIdx) const;
     int getOffsetStep() const;
     int getStrandIdx(int tickCount, int len, int off, int mutation) const;
+    float lastNoteVal_ = 4.f;   // mono NOTE_VALUE param of the current step (poly reads it)
 
     // ── Probability CV-out accessors (Sands East/Macro poly outs) ──────────────
     // Per-voice final probability (post A/B mix + spread + LOR) for a poly lane
