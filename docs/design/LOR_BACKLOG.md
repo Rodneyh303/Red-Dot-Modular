@@ -1,6 +1,6 @@
 # LOR backlog — per-lane DIRECTION (reflection)
 
-**Status: LOGGED, NOT RECOMMENDED. Do not build without re-reading §4.**
+**Status: LOGGED, NOT RECOMMENDED — see §4e, which is the decisive one. Do not build without re-reading §4.**
 
 Origin: comparing dot.modular's lanes to Reaktor's Kodiak **Shift Sequencer**, which has independent
 sequence-length *and direction* per lane (pitch, octave, velocity, hold, gate). The lane sets correspond
@@ -73,6 +73,28 @@ EAST_EXTRA_LANES stage 1b).
 
 **4d. Payoff is bounded.** It doubles distinct read-orders per length from 16 to 32. Useful; not
 transformative.
+
+**4e. The CONTROL-SURFACE cost is the real blocker (Rodney).** A fourth LOR item is not just storage — it
+is knobs and modulation on every surface that exposes LOR:
+
+- **East**: a per-voice DIR knob per lane. 15 poly voices x 4 poly lanes = **60 new params**, before
+  VARIATION/LEGATO (which would add 30 more). Compare: the whole VAR/LEG feature cost 90.
+- **Macro sends**: `sendId(v, lane, item) = MACRO_SEND_START + (v*4 + lane)*4 + item` — the item stride is
+  hard-coded **4** (LEN/OFF/ROT/SPR). A fifth item changes the stride to 5, shifting **every id in the send
+  bank**, and the same for `sendDispId(lane, item) = ... + lane*4 + item`.
+- **Macro panel**: a fifth send row per lane group. Each group is `ED_W/4 ≈ 27.75mm` wide, laid out
+  2 items per row at `SEND_DY = 9.5mm`. The send area was *just* shrunk (BLEND_TOP 72→76, SEND_DY 11→9.5)
+  to free space below the lanes. Macro is the most space-constrained panel in the set. **The sends would
+  have to grow, on the one panel with no room.**
+- **Modulation**: a CV/mod path per new item, on East and via Macro sends.
+
+So the ledger is roughly: +90..120 params, a 25% growth of the Macro send bank with an id-stride break,
+a fifth row on a panel already at its limit, and new mod plumbing — to double read-orders and change
+contour without changing density, over a field of dice.
+
+Note the asymmetry that makes this sting: VARIATION/LEGATO are **LOR-only** (no spread, never
+Macro-owned), so direction would cost them *no sends at all*. It is the four ordinary poly lanes — the ones
+Macro does own — that carry the whole control-surface burden.
 
 ## 5. Where global direction correctly lives
 
