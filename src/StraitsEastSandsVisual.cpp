@@ -1,4 +1,5 @@
 #include <rack.hpp>
+#include "ui/SandsGrid.hpp"
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
 #include "StraitsEastSandsVisual.hpp"
@@ -225,6 +226,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
 
         // Visual editor
         visualEditor = new SandsVisualEditorV4(SandsVisualEditorV4::POLY);
+        // EAST_EXTRA_LANES.md stage 1: show all six lanes (VARIATION/LEGATO added), on the same
+        // 14..98 band as Mono. Mode stays POLY (all mode==POLY logic unchanged); only the lane
+        // count is overridden. Lanes 4/5 are LOCKED below — display-only, nothing reads them.
+        visualEditor->setLaneCount(dotModular::SandsGrid::EAST_LANES);   // 6
         visualEditor->box.pos  = mm2px(Vec(ED_X, ED_Y));
         visualEditor->box.size = mm2px(Vec(ED_W, ED_H));
         // Lanes fill the box evenly (no internal padding) so the live lanes line
@@ -239,7 +244,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // mirrors Mono, inoperable). editorLane → engine lane for the ownership check.
         visualEditor->laneLockedFn = [this](int editorLane) -> bool {
             if (tab1MonoMirror()) return true;           // V1 owned by Mono → all lanes locked on East
-            if (editorLane < 0 || editorLane >= 4) return false;
+            // Stage 1: VARIATION (4) and LEGATO (5) render but are INOPERABLE. They previously
+            // returned false here (i.e. editable) simply because they were never displayed.
+            if (editorLane >= dotModular::SandsGrid::POLY_LANES) return true;
+            if (editorLane < 0) return false;
             int engLane = dotModular::EDITOR_TO_ENGINE_LANE[editorLane];
             // STEP 4c: a lane delegated to Macro is inoperable on East (V1 + poly tabs).
             // Shared resolver-backed helper: owner(currentVoice, lane) == MACRO.

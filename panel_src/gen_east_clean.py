@@ -19,8 +19,9 @@ ED_X, ED_Y = 88.0, 14.0
 ED_W = 111.0        # editor width (fixed; no longer tied to PROB_OUT_X — matches hpp)
 OWNER_X = 205.0     # owner-source cell column, right of the editor (matches hpp)
 PROB_OUT_X = 212.0  # right-strip jack column, pushed right by the owner block (matches hpp)
-ED_H = 56.0   # 4 lanes x 14mm (SandsGrid::polyHeight)
-ED_LANE_H = ED_H / N
+ED_H = 84.0   # 6 lanes x 14mm — East shows VARIATION/LEGATO (EAST_EXTRA_LANES.md stage 1)
+ED_LANES = 6  # editor lanes drawn; control rows stay N=4 (spread lanes only)
+ED_LANE_H = ED_H / ED_LANES
 # Left-control rows align with the EDITOR lane centres (must match the hpp's rowY):
 # each lane's CV jacks + attens sit beside the visual lane they modulate.
 def rowY(r): return ED_Y + (r+0.5)*ED_LANE_H

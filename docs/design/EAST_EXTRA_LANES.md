@@ -56,57 +56,88 @@ along. (Macro is different — its send group occupies that band. Macro would st
 
 ## 4. The two lanes are NOT equally safe
 
-### 4a. VARIATION — moderate risk, do first
+### 4a. CORRECTION — there is only ONE coherent option, and it is coupled to LEGATO
 
-`PolyVoice` docstring: *"Owns its own GateState and rest probability; everything else (**nvIdx**,
-legatoProb, scale) is shared from mono."*
+An earlier draft of this note posed a choice: per-voice `nvIdx`, or "variation-bias only". **The second
+does not exist.** From source:
 
-**Open question that must be settled before coding:** `nvIdx` (note-value index) is passed into
-`executeStep(...)` and reaches `gs.slideMax(pitchV, sem, nvIdx)` — i.e. it feeds **gate length**, not just
-note choice. So "per-voice variation" is not cosmetic: voices would acquire independent gate lengths.
+```cpp
+float r_vary = pe.variationRandom[ getVariationStep() ];   // mono LOR-transformed step
+int   nvIdx  = getNoteLenIdx(noteVal, input, r_vary);      // → pe.varyNoteIndex(baseIdx, in, r)
+```
 
-Decide explicitly which is meant:
-1. **Per-voice note-value** — each voice reads the mono VARIATION array through its own LOR and derives
-   its own `nvIdx`. Voices diverge in note value *and* gate length. Musically strong; touches gate timing.
-2. **Per-voice variation-bias only** — the LOR window shifts which variation *probability* the voice sees,
-   but `nvIdx` stays mono-derived. Safer; possibly a weaker effect.
+`varyNoteIndex(baseIdx, variationAmount, r)`: the **knob** (`in.variationAmount`) sets how WIDE the window
+of reachable note-length indices is; the **array value** `r` picks WHICH variant inside it. VARIATION *is*
+the note-length bias. There is no separate bias to move without moving `nvIdx`.
 
-Do not implement until (1) vs (2) is chosen. Guessing here would produce a plausible-looking feature with
-the wrong musical meaning.
+So the feature is exactly one thing, and it is a good shape:
 
-### 4b. LEGATO — high risk, gate behind a flag, do second
+> **The window stays global (mono VARIATION knob). The pick within it becomes per-voice.**
+> *How much* variation is one musical decision; *which* variant each voice takes is where polyphony lives.
+> At `variationAmount == 0.5` `varyNoteIndex` returns `baseIdx` unchanged — so the feature is SILENT until
+> the knob is turned up. No toggle needed for backwards compatibility; old patches are bit-identical.
 
-Poly currently **follows mono's legato decision**. From `SequencerEngine.cpp:522-529`:
+**THE COUPLING (this is the real finding).** `nvIdx` reaches `gs.slideMax(pitchV, semitone, nvIdx)`, which
+sets `holdRemain`. Per-voice `nvIdx` ⇒ per-voice hold length. Legato/tie **rides on hold**
+(`holdRemain >= 1.f` is the phrase-spanning guard; ties extend holds; `prevSlur` tracks committed slurs).
 
-> *Tie — mono held the same pitch; poly voices that are sounding extend their own hold. Legato /
-> LegatoMax / NewNote — mono played something new; each poly voice independently rolls its own rest
-> probability then draws its own pitch. **Gate type (retrigger vs slide) follows mono's decision.***
+**Therefore VARIATION and LEGATO cannot be cleanly staged apart.** Doing VARIATION per-voice already
+perturbs the quantity LEGATO depends on. The earlier claim "VARIATION is low risk, do it first" was wrong.
 
-Per-voice legato means `lastStepResult.decision` **no longer drives poly gate type**. The following
-invariants were all written assuming legato is shared, and each must be re-examined:
+### 4b. What the current model actually is (and why it may be deliberate)
 
-- `triggerStepEventForOffsetStep_` guards on `holdRemain >= 1.f` before firing a new note decision
-  (`SequencerEngine.cpp:243`) — the multi-step phrase-spanning "secret sauce".
-- `legatoLeadingEdge` (default **on**): the slur is governed by the *previous* note's onset
-  (`SequencerEngine.hpp:84`).
-- `restBeatsLegato` (default **on**): a committed slur (`prevSlur`) reaching N+1 that rolls a rest —
-  rest wins, cancelling the slur (`SequencerEngine.hpp:90-94`).
-- Poly `wasHeldPoly` / `hadPolyTail` are derived per voice but the *decision* is mono's.
+| shared from mono | per-voice |
+|---|---|
+| `nvIdx` (note length) | rest decision |
+| `legatoProb` (tie/slur) | accent decision |
+| `scale` | pitch draw |
 
-Each `PolyVoice` already owning a `GateState` says independent holds are *feasible*. It does not say the
-above invariants still hold when voices slur independently. **This is a behaviour change in the most
-delicate part of the engine, not a wiring job.**
+Rest is *subtractive*. Accent is *decorative*. Pitch is *within the shared scale*. **None move the clock.**
+`nvIdx` and `legatoProb` are the only two that do, because both feed `holdRemain`. The boundary looks like
+a principle, not an oversight:
 
----
+> Poly voices may subtract, decorate, and choose pitches within the shared key —
+> but they may not move the clock or leave the scale.
+
+That is what makes the poly voices read as *one line, thinned and coloured sixteen ways* rather than sixteen
+sequencers. Note that the two lanes East lacks are **precisely the two structural ones**. Lifting the
+boundary is a MODEL CHANGE, not a feature.
+
+### 4c. THE MIDDLE GROUND — per-voice articulation, clamped to the mono event grid
+
+Each voice derives its own `nvIdx` through its own LOR window, **but `holdRemain` is clamped so a voice can
+never hold past the next mono event.** The clock stays mono's. Legato's invariants never see a divergent
+hold, because divergent holds cannot occur.
+
+You hear: attacks tight (all voices land together), releases scattered (each lets go at its own time).
+Articulation stratification — sustain / tenuto / staccato across a chord. Gate length is what envelopes
+see, so with Changi's 16 individual gate outs this becomes per-voice **timbre**.
+
+Emergent, for free: the clamp is "hold until mono's next note", so **dense passages force every voice short
+and sparse passages let voices stretch into the gaps.** Articulation follows rhythmic density with no
+programming. That the safety mechanism produces a musical behaviour is a good sign it is the right
+constraint.
+
+It cannot do: independent lines, counterpoint, polyrhythm, sounding through a mono rest. It stays *one line,
+sixteen articulations*.
+
+**MPE framing (Rodney):** this is exactly per-note expression — one note event, per-voice articulation.
+The clamped model is the shape MPE controllers and DAW note-expression already assume.
 
 ## 5. Staging
 
-1. **Panel + editor only.** East → 6 lanes (`ED_H` 56 → 84, `laneCount` 4 → 6) on the shared grid. Lanes
-   4/5 render, and their per-voice LOR is editable and persisted, but **nothing reads them**. Zero
-   behaviour change. Ship-able, and it proves the UI.
-2. **VARIATION**, after (1) vs (2) above is decided. Guard with a context-menu toggle, default **off**.
-3. **LEGATO**, behind its own toggle, default **off**. Only after 2 is musically confirmed.
-4. Merge to master only once 2 (and optionally 3) are proven by ear.
+1. **Panel + editor only — DONE (this branch).** East → 6 lanes (`ED_H` 56 → 84, `setLaneCount(6)`), same
+   14..98 band as Mono. Lanes 4/5 render but are **LOCKED / display-only**. (They previously fell through
+   `laneLockedFn`'s `editorLane >= 4 → false`, i.e. *editable*, purely because they were never displayed —
+   fixed here.) Zero data change, zero behaviour change. Answers the cheap question: does a 6-lane East
+   look right?
+2. **Clamped per-voice articulation (§4c).** Per-voice `nvIdx` via per-voice LOR, `holdRemain` clamped to
+   the next mono event. Legato invariants untouched by construction. Default off; silent anyway at
+   `variationAmount == 0.5`.
+3. **Unclamped** — only if 2 sounds *nearly* right and you want voices to breathe across the bar. This is
+   the model change. Re-derive `holdRemain >= 1.f`, `legatoLeadingEdge`, `restBeatsLegato`/`prevSlur`
+   per voice. By ear, on this branch.
+4. Merge only once 2 is proven by ear. Stage 3 may never be wanted, and that is a fine outcome.
 
 Each stage is independently revertible. Stage 1 alone answers "does a 6-lane East look right", which is
 the cheap question.

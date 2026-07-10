@@ -41,7 +41,10 @@ namespace StraitsEastVisualIds {
     static constexpr float ED_Y   = dotModular::SandsGrid::LANE_TOP;   // 14 (was 23)
     // Editor holds 4 poly lanes (MEL/OCT/REST/ACCENT); ~12mm each. ED_LANE_H
     // drives prob-out vertical placement and must match the gen script's ED_H/4.
-    static constexpr float ED_H      = dotModular::SandsGrid::polyHeight();  // 56 (was 48)
+    // Stage 1 of EAST_EXTRA_LANES.md: East shows 6 lanes (adds VARIATION/LEGATO), so its editor
+    // spans the SAME band as Mono (14..98). Lanes 4/5 are locked/display-only for now.
+    static constexpr float ED_H      = dotModular::SandsGrid::monoHeight();  // 84 (4-lane was 56)
+    static constexpr int   N_EDITOR_LANES = dotModular::SandsGrid::EAST_LANES;  // 6
     static constexpr float ED_LANE_H = dotModular::SandsGrid::LANE_H;        // 14 (was 12)
 
     // Left-control rows align with the EDITOR lane centres (not the full panel),
