@@ -51,12 +51,21 @@ so reading them backwards is a classical musical operation. Our lanes hold a **d
 has identical statistics and no audible relation to the forward reading. Two voices that are mirror images
 of a random field do not *sound* related.
 
-**4b. "Reverse" already has a precise, different meaning here.** `src/dsp/SquaresRng.hpp` is a stateless,
-addressable counter-based PRNG: `value(N) = squares64(N, key)`. Phase mode (E) reverses by walking the
-**draw index** backwards — `advanceRhythmDraw(dir)`, *"negative indices are valid reproducible draws"* — so
-backward phase **un-rolls the dice**, replaying the exact same draws. That is what direction means in this
-engine, and it is a transport operation over the whole sequence. Introducing a second, unrelated "reverse"
-at the lane level would make the word ambiguous precisely where precision has been load-bearing.
+**4b. "Reverse" already has a precise, different meaning here.** `src/dsp/PhiloxRng.hpp` is Philox4x32-10
+(Salmon et al., Random123) — counter-based, therefore **stateless and addressable**: `philox4x32(counter,
+key)` is a pure function, so the draw at index N does not depend on having generated 0..N-1. Phase mode (E)
+reverses by walking the **draw index** backwards — `advanceRhythmDraw(dir)`, *"negative indices are valid
+reproducible draws"* — so backward phase **un-rolls the dice**, replaying the exact same draws. That is what
+direction means in this engine: a transport operation over the whole sequence, not a lane transform.
+Introducing a second, unrelated "reverse" at the lane level would make the word ambiguous precisely where
+precision has been load-bearing.
+
+> Philox, not Squares: chosen for standard-library recognition — it is the same family C++26 adds as
+> `std::philox_engine`, and this is a standalone C++17 implementation of the identical algorithm, verified
+> against the canonical Random123 known-answer test vectors. Better-pedigreed than Squares (NumPy/TensorFlow
+> default) and yields 4 x 32-bit outputs per block, which suits block-drawing the pattern arrays.
+> `src/dsp/SquaresRng.hpp` remains as a drop-in alternative of the same shape (currently zero includes) and
+> is slated for deprecation; the addressability argument above is identical for either.
 
 **4c. Cost is not small.** `lorStore_[16][6][3] → [16][6][4]`, a branch in `getStrandIdx`, persistence, and —
 the real cost — another round of per-voice param banks (cf. the 90 ids added for VAR/LEG in
