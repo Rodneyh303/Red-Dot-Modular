@@ -251,7 +251,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // an owned lane drives all voices identically, annihilating per-voice divergence.
             // Modulation still reaches mono's VAR/LEG through mono's own path — locking the East
             // display does not gate the strand.
-            if (editorLane >= dotModular::SandsGrid::POLY_LANES) return onMonoTab();
+            // Editable on poly tabs, and on V1 when East IS the V1 editor (no Sands Mono).
+            // Locked only when Mono owns V1 — which tab1MonoMirror() already caught above.
+            if (editorLane >= dotModular::SandsGrid::POLY_LANES) return onMonoTab() && !v1Editable();
             if (editorLane < 0) return false;
             int engLane = dotModular::EDITOR_TO_ENGINE_LANE[editorLane];
             // STEP 4c: a lane delegated to Macro is inoperable on East (V1 + poly tabs).
@@ -477,6 +479,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // v1Editable() display branch in step(); no explicit load needed. Owner cell
         // proxy is restored from the persistent mono owner store.
         if (selectedVoice == 0) {
+            // Seed editor lanes 4/5 from mono's VARIATION/LEGATO strands BEFORE step()'s v1Editable
+            // write runs, otherwise the outgoing poly voice's VAR/LEG would be pushed into mono.
+            mirrorMonoExtraLanes();
             for (int lane = 0; lane < 4; ++lane)
                 module->params[ownerDispId(lane)].setValue(module->params[monoOwnerId(lane)].getValue());
         }
@@ -851,7 +856,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             }
             mirrorMonoExtraLanes();   // lanes 4/5: mono's VARIATION/LEGATO, read-only
         } else if (v1Editable()) {
-            mirrorMonoExtraLanes();   // V1 without Mono: East edits lanes 0..3; VAR/LEG stay mono's
+            // (no per-frame mirror here: East OWNS lanes 4/5 on V1 in this branch and writes them
+            //  to the mono strands below. They are seeded once on tab entry — see onVoiceTabChanged.)
             // V1 editable (no Mono, combo 3/7-without-Mono): East IS the V1 editor.
             // Spread-follow is now handled by the knob's displayValueFn (see the SPREAD_*
             // binds + spreadDisplayValue): on a ceded V1 lane the knob DISPLAYS Macro's base
@@ -939,8 +945,21 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         (int)std::round(addCV(rot, 2, 0.f, 15.f)));
                 }
             }
+
+            // VARIATION (editor 4) / LEGATO (5): East is the V1 editor here (v1Editable), so it owns
+            // these mono strands too — same as lanes 0..3. No delegation branch: Macro can never own
+            // them (an owned lane drives every voice identically, annihilating per-voice divergence).
+            // strand == editor lane by the deliberate strand renumber (VAR 4, LEG 5).
+            for (int el = dotModular::SandsGrid::POLY_LANES; el < dotModular::SandsGrid::EAST_LANES; ++el) {
+                const auto& lane = visualEditor->currentState.lanes[el];
+                eng.setStrand(StrandWriter::EAST, /*strand=*/el,
+                              std::max(1, lane.length),
+                              ((lane.offset   % 16) + 16) % 16,
+                              ((lane.rotation % 16) + 16) % 16);
+            }
             // Display: reflect the engine's current mono strand LOR back to the editor.
-            for (int el = 0; el < 4; ++el) {
+            // Six lanes now — MONO_LANE_TO_STRAND is [6] and VAR/LEG are East-owned on V1 here.
+            for (int el = 0; el < dotModular::SandsGrid::EAST_LANES; ++el) {
                 int strand = dotModular::MONO_LANE_TO_STRAND[el];
                 int cvLen = eng.strandLenRef(strand);
                 int cvOff = eng.strandOffRef(strand);
