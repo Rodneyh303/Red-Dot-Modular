@@ -164,16 +164,104 @@ len`, needs the flip time `t0`, i.e. state. Take the hitch; keep it stateless.
 - **§4d is revised**: static reflection doubles read-orders 16 → 32 (marginal). A *gate-flippable* MIRROR is
   a live performance control, which is a different and better proposition.
 
-## 7d. Revised verdict
+## 7d. The negated-read shortcut is WRONG — the codebase already says so
 
-The cheap, defensible feature is: **per-lane MIRROR — six bools, one line in `getStrandIdx`, a gate input
-per lane, no knobs, no sends, no attenuverters, no Macro involvement.** Musically it is a live retrace, not
-a static mirror. Cost is trivial; the earlier estimate of 90–120 params and a send-bank rewrite described a
-design nobody proposed.
+Both one-liners I proposed (`timelineIdx = L-1-timelineIdx`, and `j = 15-j`) fake reversal by transforming
+the *read* of a forward-running counter. They **teleport** at the flip: after flipping at `t0` the lane reads
+`f(-t0)` where it was reading `f(t0)`, and those agree only when `2*t0 == 0 (mod L)`.
 
-Two things to settle before building: (1) per-lane or per-voice-per-lane — per-lane is 6 bools and keeps
-voices phase-related, per-voice is ~90 params; (2) whether the one-cell hitch at the flip is acceptable, or
-whether seamless bounce is wanted badly enough to hold `t0`.
+This exact bug was hit and rejected at the global level. From `advancePlayhead(int dir)`:
+
+```cpp
+// Step the global DNA tick WITH direction: +1 forward, -1 backward. This is what
+// maps physical positions to drifting DNA content (strand indices) and the ring
+// lights; counting up in reverse desyncs it from stepIndex and both the strand
+// drift and the lights go the wrong way (ring lights up all around).
+if (dir < 0) totalStepsElapsed = (totalStepsElapsed - 1 + DNA_LCM) % DNA_LCM;
+else         totalStepsElapsed = (totalStepsElapsed + 1) % DNA_LCM;
+```
+
+Phase reverse **decrements the real counter**. That is why it retraces seamlessly and may be flipped at any
+moment — no phrase-boundary gating is needed, and none exists. Reversal is time reversal, not an index trick.
+
+## 7e. Therefore: proper per-lane direction = per-lane TICK COUNTERS
+
+```cpp
+int laneTick_[NUM_STRANDS];                 // 6 ints  (or [kVoiceSlots][NUM_STRANDS] = 96 for per-voice)
+laneTick_[l] += globalDir * laneDir_[l];    // advance once per step
+getStrandIdx(laneTick_[l], len, off, mut);  // unchanged
+```
+
+- **Seamless, flippable at any time**, exactly like phase — because the counter itself walks backwards.
+- **Composes by sign product.** In modes A/B `globalDir = +1`. In mode E it is ±1, so a reversed lane under
+  reversed phase runs *forward*. Scrubbing phase backwards therefore retraces every lane exactly.
+- **Cost: six integers.** Not the 90-120 params and send-bank rewrite of §4e.
+- **Price: it is STATE.** Lane content stops being a pure function of `totalStepsElapsed`; a mid-phrase flip
+  makes the read path history-dependent. `laneTick_` must be persisted. This is consistent with the engine
+  (`totalStepsElapsed` and `stepIndex` are already state), but it must be saved, and phase scrub must move
+  the lane counters too or the reproducibility contract breaks.
+
+## 7f. Modes A and B: yes, and that is where it belongs
+
+`executeModeA(..., int dir)` carries a direction; **`executeModeB` has none**, and `lastPlayDir` is documented
+as *"+1 forward, -1 reverse (Mode E); for UI direction cues"*. So today only phase reverses.
+
+Per-lane direction should be available in **A and B**, where the transport runs forward and the lanes
+counter-rotate against it. That is precisely Shift's model — a forward transport with per-lane direction —
+and it is the case mode E does not already cover.
+
+**"Playheads going forward and others back" is the wrong mental picture, and the distinction matters for UI.**
+There is exactly ONE playhead: `stepIndex`, which drives the ring lights. Lanes are not playheads; they are
+**read-heads into a 16-cell array**. Per-lane direction changes which DNA cell a lane reads, not where the
+playhead is. So the ring keeps showing one position; what is needed is a small per-lane direction indicator,
+not a second ring.
+
+  * one playhead (`stepIndex`) — physical position, lights
+  * one DNA tick (`totalStepsElapsed`) — global drift
+  * six read-heads (`laneTick_`) — per-lane drift
+
+## 7g. No draw index. No cache. And per-lane draw indices would be harmful
+
+Reversibility machinery (addressable Philox; `advanceRhythmDraw(dir)`; *"negative indices are valid
+reproducible draws"*) exists to walk the **draw stream** backwards — you cannot rewind a sequential PRNG.
+
+A lane reads a **materialised 16-cell array**. Reading an existing array backwards requires nothing at all.
+So lane direction needs only the *read* half of phase reverse and **inherits none of the reversibility cost**.
+That is the whole reason it is cheap.
+
+Nor is a "cache the last draw" needed: rolls are **event-triggered** (a dice input), not tick-triggered, so a
+lane running backwards never *un-crosses* a roll boundary. There is no per-lane roll history to rewind.
+
+And per-lane draw indices would actively hurt. From `PatternEngine.hpp`:
+
+> *"reversible stream: there the index<->phase coupling IS the reproducibility contract"*
+
+One phase, one draw index, one contract. Six lane phases would fork that coupling six ways, and the contract
+would no longer be statable, let alone testable. **Do not give lanes their own draw indices.**
+
+## 7h. Naming
+
+It genuinely *is* a reverse — of a lane's timeline. Phase reverse is a reverse of the transport timeline
+**and** the draw stream. Distinguish them as **lane reverse** vs **transport reverse**; "MIRROR" (§6) is a
+worse name now that we know it is a true counter reversal and not a reflection.
+
+## 7i. Revised verdict
+
+
+
+**Per-lane REVERSE: six `int` counters, a `laneDir_[6]` sign, a gate input per lane. No knobs, no sends, no
+attenuverters, no Macro involvement, no draw indices, no cache.** Advanced by `globalDir * laneDir_[l]`, so
+it composes with phase reverse for free. Available in modes A and B, where the transport runs forward.
+
+Settle before building:
+1. **Per-lane (6 counters) or per-voice-per-lane (96)?** Per-lane keeps the voices phase-related, which is
+   what makes them sound like one line rather than sixteen. Per-voice is the Shift-like maximum but costs
+   ~90 toggle params and decorrelates the grove. Start per-lane.
+2. **Persistence.** `laneTick_` becomes save state, and phase scrub must move it. Without that, a reversed
+   lane silently desyncs on load — the exact failure the `advancePlayhead` comment warns about.
+3. **What the ring lights do.** Nothing: one playhead, six read-heads. A per-lane direction glyph is enough.
+
+Still true, unchanged: it does **not** lengthen the joint cycle (§3). `lcm(lengths)` does that alone.
 
 ## 7e. Lesson
 
