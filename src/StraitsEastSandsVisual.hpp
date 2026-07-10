@@ -99,7 +99,18 @@ namespace StraitsEastVisualIds {
         if (lane == 1) return POLY_MELODY_VOICE_1_LEN + v*3 + c;
         if (lane == 2) return POLY_OCTAVE_VOICE_1_LEN + v*3 + c;
         if (lane == 3) return POLY_ACCENT_VOICE_1_LEN + v*3 + c;
-        return -1;   // VARIATION(4) / LEGATO(5): no LOR param bank yet (EAST_EXTRA_LANES.md stage 1b)
+        return -1;   // unreachable: lanes 0..3 are the only PolyLanes
+    }
+
+    // EDITOR-lane LOR id (0=MEL 1=OCT 2=REST 3=ACC 4=VAR 5=LEG). Lanes 0..3 map back to their
+    // PolyLane bank; 4/5 use the dedicated VARIATION/LEGATO banks added for EAST_EXTRA_LANES.
+    // Prefer this over lorId() in editor-facing code — currentState.lanes[] is editor-indexed,
+    // and VAR/LEG have no PolyLane id at all.
+    inline int lorIdEditor(int v, int editorLane, int c) {
+        if (editorLane == 4) return MonsoonIds::POLY_VARIATION_VOICE_1_LEN + v*3 + c;
+        if (editorLane == 5) return MonsoonIds::POLY_LEGATO_VOICE_1_LEN    + v*3 + c;
+        if (editorLane < 0 || editorLane > 3) return -1;
+        return lorId(v, dotModular::EDITOR_TO_ENGINE_LANE[editorLane], c);
     }
     inline int restInterpId  (int v) { return POLY_REST_INTERP_1   + v; }
     inline int melodyInterpId(int v) { return POLY_MELODY_INTERP_1 + v; }
@@ -196,6 +207,18 @@ struct StraitsEastSandsVisual : Module {
                 configParam(attenDispId(lane,c), -1.f,1.f,0.f, nm+" depth (selected voice)");
                 configInput(cvId(lane,c), nm+" CV (poly, per-voice depth)");
             }
+
+        // VARIATION (editor lane 4) and LEGATO (5): per-voice LOR, LEN defaults 16 (identity window,
+        // so the feature is silent until a lane is shortened). LOR-only — no spread params.
+        for (int v=0; v<15; ++v) {
+            std::string vl = "V"+std::to_string(v+2)+" ";
+            for (int c=0; c<3; ++c) {
+                configParam(MonsoonIds::POLY_VARIATION_VOICE_1_LEN + v*3 + c, 0.f,16.f,
+                            c==0?16.f:0.f, vl+"VAR c"+std::to_string(c));
+                configParam(MonsoonIds::POLY_LEGATO_VOICE_1_LEN    + v*3 + c, 0.f,16.f,
+                            c==0?16.f:0.f, vl+"LEG c"+std::to_string(c));
+            }
+        }
 
         for (int v=0; v<15; ++v) {   // poly voices 2..16: lorId/owner/interp banks are 15-wide
             std::string vl = "V"+std::to_string(v+2)+" ";

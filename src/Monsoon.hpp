@@ -389,6 +389,17 @@ namespace MonsoonIds {
         POLY_ACCENT_VOICE_15_LEN,
         POLY_ACCENT_VOICE_15_OFF,
         POLY_ACCENT_VOICE_15_ROT,
+
+        // ── EAST_EXTRA_LANES stage 1b: per-voice LOR for the two MONO strands East now shows.
+        // VARIATION and LEGATO are NOT poly lanes (PL_LANES == 4), so they get their own banks
+        // rather than a PL_ slot. 15 poly voices x 3 items (LEN/OFF/ROT) = 45 ids each.
+        // Address as POLY_VARIATION_VOICE_1_LEN + v*3 + c   (v = 0..14, c = 0..2).
+        // These lanes are LOR-ONLY: no spread, ever (nothing to spread — the probability array
+        // stays mono; only each voice's reading position differs). See EAST_EXTRA_LANES.md.
+        POLY_VARIATION_VOICE_1_LEN,
+        POLY_VARIATION_LAST = POLY_VARIATION_VOICE_1_LEN + 44,
+        POLY_LEGATO_VOICE_1_LEN,
+        POLY_LEGATO_LAST = POLY_LEGATO_VOICE_1_LEN + 44,
         
         // Interpolation Controls (15 voices) - NEW: blend per-voice vs average random
         POLY_VOICE_1_INTERP,

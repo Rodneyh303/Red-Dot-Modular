@@ -151,6 +151,28 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
             engine.polyOffERef(v, PL::PL_REST) = combineLOR(PL::PL_REST, 1, rhythmBase + 1, PL::PL_REST, 1, 0.f, 15.f);
             engine.polyRotERef(v, PL::PL_REST) = combineLOR(PL::PL_REST, 2, rhythmBase + 2, PL::PL_REST, 2, 0.f, 15.f);
 
+            // ── EAST_EXTRA_LANES: per-voice VARIATION / LEGATO LOR ────────────────────────────
+            // These are mono STRANDS, not PolyLanes, so they must use the EDITOR-order accessor
+            // (polyLORRef masks & 7). polyLenERef would mask & 3 and silently alias VAR -> REST.
+            // No Macro blend and no spread: Macro cannot own these lanes (an owned lane drives all
+            // voices identically, which annihilates the per-voice divergence that IS the feature),
+            // and there is nothing to spread (the probability array stays mono; only the reading
+            // position differs). Straight base params, clamped to the same ranges as the poly lanes.
+            if (eastLOR) {
+                using SE = SequencerEngine;
+                const int varBase = MonsoonIds::POLY_VARIATION_VOICE_1_LEN + v * 3;
+                const int legBase = MonsoonIds::POLY_LEGATO_VOICE_1_LEN    + v * 3;
+                auto rd = [&](int id, float lo, float hi) {
+                    return (int)std::lround(math::clamp(eastLOR->params[id].getValue(), lo, hi));
+                };
+                engine.polyLORRef(v, SE::EDITOR_LANE_VARIATION, SE::LOR_LEN) = rd(varBase + 0, 1.f, 16.f);
+                engine.polyLORRef(v, SE::EDITOR_LANE_VARIATION, SE::LOR_OFF) = rd(varBase + 1, 0.f, 15.f);
+                engine.polyLORRef(v, SE::EDITOR_LANE_VARIATION, SE::LOR_ROT) = rd(varBase + 2, 0.f, 15.f);
+                engine.polyLORRef(v, SE::EDITOR_LANE_LEGATO,    SE::LOR_LEN) = rd(legBase + 0, 1.f, 16.f);
+                engine.polyLORRef(v, SE::EDITOR_LANE_LEGATO,    SE::LOR_OFF) = rd(legBase + 1, 0.f, 15.f);
+                engine.polyLORRef(v, SE::EDITOR_LANE_LEGATO,    SE::LOR_ROT) = rd(legBase + 2, 0.f, 15.f);
+            }
+
             float restInterp = eastInterp->params[MonsoonIds::POLY_REST_INTERP_1 + v].getValue();
             if (eastVisual && eastVisual->inputs[cvId(PL::PL_REST,3)].isConnected()) {
                 float att = eastLOR->params[attenId(slot,PL::PL_REST,3)].getValue();   // PER-VOICE depth

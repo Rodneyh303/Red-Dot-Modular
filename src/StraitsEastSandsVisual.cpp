@@ -244,9 +244,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // mirrors Mono, inoperable). editorLane → engine lane for the ownership check.
         visualEditor->laneLockedFn = [this](int editorLane) -> bool {
             if (tab1MonoMirror()) return true;           // V1 owned by Mono → all lanes locked on East
-            // Stage 1: VARIATION (4) and LEGATO (5) render but are INOPERABLE. They previously
-            // returned false here (i.e. editable) simply because they were never displayed.
-            if (editorLane >= dotModular::SandsGrid::POLY_LANES) return true;
+            // Stage 1b: VARIATION (4) / LEGATO (5) are now editable — they have their own param
+            // banks and an engine push path. They are never Macro-delegated (Macro cannot own them:
+            // an owned lane drives all voices identically, which annihilates per-voice divergence).
+            if (editorLane >= dotModular::SandsGrid::POLY_LANES) return false;
             if (editorLane < 0) return false;
             int engLane = dotModular::EDITOR_TO_ENGINE_LANE[editorLane];
             // STEP 4c: a lane delegated to Macro is inoperable on East (V1 + poly tabs).
@@ -403,22 +404,24 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             for (int c=0; c<4; ++c)
                 module->params[attenDispId(lane,c)].setValue(module->params[attenId(slot,lane,c)].getValue());
     }
+    // Iterate EDITOR lanes 0..5 directly — currentState.lanes[] is editor-indexed, and VAR(4)/LEG(5)
+    // have no PolyLane id, so the old engine-lane loop could not reach them. lorIdEditor() maps.
     void saveVoiceLOR(int v) {
         if (!module || !visualEditor) return;
-        for (int l=0; l<4; ++l) {   // l = engine lane; read from mapped editor lane
-            const auto& lane = visualEditor->currentState.lanes[dotModular::ENGINE_LANE_TO_EDITOR[l]];
-            module->params[lorId(v,l,0)].setValue((float)lane.length);
-            module->params[lorId(v,l,1)].setValue((float)lane.offset);
-            module->params[lorId(v,l,2)].setValue((float)lane.rotation);
+        for (int el=0; el<dotModular::SandsGrid::EAST_LANES; ++el) {
+            const auto& lane = visualEditor->currentState.lanes[el];
+            module->params[lorIdEditor(v,el,0)].setValue((float)lane.length);
+            module->params[lorIdEditor(v,el,1)].setValue((float)lane.offset);
+            module->params[lorIdEditor(v,el,2)].setValue((float)lane.rotation);
         }
     }
     void loadVoiceLOR(int v) {
         if (!module || !visualEditor) return;
-        for (int l=0; l<4; ++l) {   // l = engine lane; write to mapped editor lane
-            auto& lane = visualEditor->currentState.lanes[dotModular::ENGINE_LANE_TO_EDITOR[l]];
-            lane.length   = std::max(1,(int)std::round(module->params[lorId(v,l,0)].getValue()));
-            lane.offset   = (int)std::round(module->params[lorId(v,l,1)].getValue());
-            lane.rotation = (int)std::round(module->params[lorId(v,l,2)].getValue());
+        for (int el=0; el<dotModular::SandsGrid::EAST_LANES; ++el) {
+            auto& lane = visualEditor->currentState.lanes[el];
+            lane.length   = std::max(1,(int)std::round(module->params[lorIdEditor(v,el,0)].getValue()));
+            lane.offset   = (int)std::round(module->params[lorIdEditor(v,el,1)].getValue());
+            lane.rotation = (int)std::round(module->params[lorIdEditor(v,el,2)].getValue());
         }
     }
     void onVoiceTabChanged(int nv) {
