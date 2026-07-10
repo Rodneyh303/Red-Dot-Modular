@@ -540,7 +540,7 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
 
 void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, bool wasHeldPoly, bool hadPolyTail) {
     PolyVoice& v = voices[voiceIdx];
-    // Stage 2: this voice's note length. Identical to nvV when
+    // Stage 2: this voice's note length. Identical to lastStepResult.nvIdx when
     // perVoiceArticulation is off (default) or the voice's VAR LOR is identity. Clamped so the
     // voice can never hold past mono's next event — articulation is subtractive.
     const int nvV = nvIdxForVoice(voiceIdx, input);
