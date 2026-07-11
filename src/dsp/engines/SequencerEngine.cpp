@@ -595,25 +595,30 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         // Mono is Sustaining (MidNote, Tie, or shifted Legato shift).
         // Poly follows mono gate presence strictly IF it was already active ("in").
         if (gs.gateHeld && wasHeldPoly) {
-            if (lastStepResult.decision == MonoDecision::Tie) {
-                v.gs.extendHold(v.gs.lastSemitone, nvV);
-            } else {
-                // Re-draw pitch for glides (Legato) or sustains (MidNote).
-                // This allows the poly melody to move independently even if 
-                // the mono rhythm is static. Melody/octave use their own lane LOR.
+            if (lastStepResult.decision == MonoDecision::Legato || lastStepResult.decision == MonoDecision::LegatoMax) {
+                // Mono slid to a NEW pitch (a real pitch move) → poly draws its OWN new pitch
+                // (its own melody/octave LOR) and slides to it. Poly tracks mono's articulation
+                // shape, never mono's actual notes.
                 int melIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_MELODY), polyOffE(voiceIdx, PL_MELODY), polyRotE(voiceIdx, PL_MELODY));
                 int octIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_OCTAVE), polyOffE(voiceIdx, PL_OCTAVE), polyRotE(voiceIdx, PL_OCTAVE));
                 int sem = 0;
                 float pitchV = pe.genPitchLive(sem, input, pe.polyRandom(voiceIdx, PL_MELODY)[melIdx], pe.polyRandom(voiceIdx, PL_OCTAVE)[octIdx]);
-                
-                if (lastStepResult.decision == MonoDecision::Legato || lastStepResult.decision == MonoDecision::LegatoMax) {
-                    v.gs.slideNote(pitchV, sem, nvV, wasHeldPoly);
-                } else {
-                    // MidNote sustain: update pitch and keep gate high
-                    v.gs.currentPitchV = pitchV;
-                    v.gs.lastSemitone = sem;
-                    v.gs.gateHeld = true;
-                }
+                v.gs.slideNote(pitchV, sem, nvV, wasHeldPoly);
+            } else if (lastStepResult.decision == MonoDecision::Tie) {
+                // Mono held the same pitch (tie) → poly holds its own current pitch, extends hold.
+                v.gs.extendHold(v.gs.lastSemitone, nvV);
+            } else {
+                // MidNote: mono is HOLDING a note still sounding — nothing was chosen this step
+                // (the executeStep guard returned early). Poly holds too: NO pitch redraw, just
+                // keep the gate high, so poly follows mono through the whole held span. This is
+                // the fix for the pitch drift where the MidNote path shared the Legato redraw and
+                // moved poly's pitch UNDER a static mono note — contradicting the enum's "MidNote:
+                // poly just ticks, no new draw" and the test_poly_voices replica (which returns on
+                // MidNote). Gate-close timing is unchanged: still owned by the armed pulse timer /
+                // tickPulse (the sole gate-close mechanism), so the Stage-2 length clamp still
+                // releases shorter voices early. gateHeld=true here only re-asserts an already-open
+                // gate (we are inside `gs.gateHeld && wasHeldPoly`).
+                v.gs.gateHeld = true;
             }
         } else {
             // Mono gate is low OR poly chose to rest for this current high cycle.
