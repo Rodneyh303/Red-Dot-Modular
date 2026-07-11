@@ -224,24 +224,32 @@ gate-off default, reproduced by the same code, not a parallel path. This mirrors
 mono's `slurForward` (equivalently, skips the new branch) when the gate is off. One gated addition per
 rule; each degenerates to mono by *not firing*, never by a second implementation.
 
-**The three gates (and one robustness fix owed):**
-1. **`perVoiceArticulation`** — the context-menu toggle ("Per-voice articulation (East VARIATION)", widen to
-   "…VARIATION/LEGATO" once Rule 2 lands), default **off**. The master choose. Off ⇒ follow-mono; the
-   unwritten `LEN=0` store is never read.
-2. **East presence** — the per-voice VAR/LEG LOR is sourced only inside `if (eastLOR)`; no East, no data.
-   Today the toggle is *independent* of East, so `perVoiceArticulation` on with no East reads the `LEN=0`
-   store — pinned to cell 0 by `getStrandIdx`'s `max(1,len)`, which is *not* identity and *not* silent.
-   **Build task:** gate as `perVoiceArticulation && eastPresent`, or treat `LEN=0` as "inactive ⇒ follow
-   mono," so "silent without East" holds by construction rather than by luck.
-3. **Identity windows** — with the toggle on and East feeding, lanes default to `LEN=16`; the voice still
-   mirrors mono until a lane is shortened/offset. Per-voice, per-lane engage.
+**Sourcing: lane delegation (RESOLVED).** VAR/LEG follow the established lane-end delegation-toggle pattern
+(the same one carried through the three Sands visual expanders), with one deliberate difference from lanes
+0–3: the delegation *target is mono, not Macro*, for every voice.
+- **V1 is locked to mono** — no toggle, always follows, consistent with "V1 mirrors mono" everywhere.
+- **V2–16 default to delegate-to-mono** — a per-voice, per-lane binary toggle (mono ⇆ Local East). Delegate
+  (default) ⇒ the voice reads *mono's* VAR/LEG LOR into the shared array ⇒ mirrors mono, live, tracking a
+  *dialed* mono correctly. Local East ⇒ the voice reads its **own outright** LEN/OFF/ROT (params stay
+  outright — no `LEN=0`, no offset).
+- Only the *reading position* delegates; the probability array stays the shared mono shape.
 
-> **Sourcing sub-note (pre-existing, affects Rule 1 too):** VAR/LEG use *straight* East params (default
-> `16/0/0`), unlike `REST`'s `combineLOR` (which blends the mono base). So a lane at neutral reads the base
-> array *in order*, which equals mono only when mono's own LOR is also at `16/0/0`. If the intent is "a
-> neutral poly lane tracks a *dialed* mono," the sourcing must become `combineLOR`-style (default ⇒ mono's
-> LOR); if "neutral = base-array reference" is acceptable, leave it. Decide before Stage 3 ships — it sets
-> what "silent" means for V2–V15.
+Because Macro is never a delegation target for these lanes, §6b's "Macro cannot own VAR/LEG" holds by
+construction — VAR/LEG delegation is a clean mono-or-East binary, no Macro leg. This dissolves the earlier
+loose ends: "silent at neutral" is now *structural* (default delegate = mirror mono), and the
+`perVoiceArticulation && eastPresent` worry evaporates (no East ⇒ nothing is set to Local East ⇒ every voice
+delegates to mono ⇒ follow-mono, and the `LEN=0` zero-init store is never read).
+
+> **Build task (Stage 3):** the delegation toggles don't exist for VAR/LEG yet — the owner block is
+> `+ v*4 + lane` (64 params, lanes 0–3 = REST/MEL/OCT/ACCENT only), and the VAR/LEG param blocks are
+> LOR-only (`+ v*3 + c`, 45 each, no switch slot). Add **30** delegation toggles (V2–16 × {VAR, LEG}),
+> V1 locked, default delegate-to-mono, rendered as the lane-end toggle. Then the read is:
+> `lor = delegated ? monoLOR[lane] : voiceOwnLOR[lane]` for both rules — Rule 1's `nvIdxForVoice` and
+> Rule 2's per-voice slur roll consume it identically.
+
+**Master gate.** `perVoiceArticulation` (context-menu toggle, default **off**; widen its label to
+"…VARIATION/LEGATO" once Rule 2 lands) still governs whether the per-voice path runs at all. Off ⇒ the
+existing follow-mono dispatch, unchanged. On ⇒ the delegation toggles above decide per voice/lane.
 
 
 ## 5. Staging
@@ -322,13 +330,14 @@ plus `lorId` branches and East save/load loops widened to 6. Do it deliberately;
 
 ## 7. Open questions
 
-- **`perVoiceArticulation && eastPresent` gate (§4d). Build task, Stage 3.** Today the toggle is
-  independent of East; with it on and no East attached, the per-voice LOR reads the `LEN=0` zero-init store
-  (pinned to cell 0, not silent). Gate on East presence, or treat `LEN=0` as "follow mono," so
-  follow-mono-without-East holds by construction.
-- **VAR/LEG sourcing: straight params vs `combineLOR` (§4d sub-note). Decide before Stage 3 ships.** Straight
-  `16/0/0` default = base-array reference (mirrors mono only if mono is also at `16/0/0`); `combineLOR`-style
-  = a neutral lane tracks a *dialed* mono. Sets what "silent at neutral" means for V2–V15. Affects Rule 1 too.
+- **Add VAR/LEG lane-delegation toggles (§4d). Build task, Stage 3.** 30 per-voice toggles (V2–16 × {VAR,
+  LEG}), V1 locked to mono, default delegate-to-mono, rendered as the lane-end toggle (established pattern).
+  Read becomes `lor = delegated ? monoLOR[lane] : voiceOwnLOR[lane]`, shared by Rule 1 and Rule 2.
+- ~~VAR/LEG sourcing: straight vs `combineLOR`; and `perVoiceArticulation && eastPresent`.~~ **Resolved via
+  lane delegation (§4d):** outright LOR params, follow-mono is delegation (target = mono, not Macro), default
+  delegate ⇒ structurally silent. No East ⇒ every voice delegates to mono, so "silent without East" and
+  "mirror a dialed mono" both hold by construction; the `eastPresent` guard and the `LEN=0` hazard both
+  evaporate. Full `combineLOR` was the wrong tool (it drags in Macro ownership, which §6b forbids here).
 - ~~Rule 2 Tie semantics — does opt-out re-articulate at a mono `Tie`?~~ **Resolved: yes, tie = legato.**
   A `Tie` note leads its own slur exactly as mono's does; opt-out re-strikes, opt-in holds; the only Tie/Legato
   difference is held vs drawn pitch (§4d).
