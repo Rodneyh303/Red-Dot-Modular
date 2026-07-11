@@ -52,6 +52,12 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
     // src/dsp/SpreadInterp.hpp) — the single source of truth shared with the
     // mono/macro path and the visual display.
 
+    // VAR/LEG delegation fallback (§4d): default every voice to follow-mono BEFORE the
+    // East-gated block. If East is absent or detached, the block below is skipped and this
+    // stands — so "no East ⇒ follow mono" holds even after East is removed mid-session (no
+    // stale Local-East state). When East IS present, the block re-asserts Local East per param.
+    for (int dv = 0; dv < 15; ++dv) { engine.setVarlegLocalEast(dv, 0, false); engine.setVarlegLocalEast(dv, 1, false); }
+
     if (eastLOR && (straits || eastVisual) && polyBaseActive) {
        // using namespace DeepStraitsSandsEastIds;
         using namespace StraitsEastVisualIds;
@@ -171,6 +177,12 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 engine.polyLORRef(v, SE::EDITOR_LANE_LEGATO,    SE::LOR_LEN) = rd(legBase + 0, 1.f, 16.f);
                 engine.polyLORRef(v, SE::EDITOR_LANE_LEGATO,    SE::LOR_OFF) = rd(legBase + 1, 0.f, 15.f);
                 engine.polyLORRef(v, SE::EDITOR_LANE_LEGATO,    SE::LOR_ROT) = rd(legBase + 2, 0.f, 15.f);
+
+                // Delegation toggles (§4d): 0 = follow mono (default, silent), 1 = Local East.
+                // When Local East, the LOR pushed above is read; when delegating, the engine
+                // ignores it and reads mono's VAR/LEG position instead. lane 0 = VAR, 1 = LEG.
+                engine.setVarlegLocalEast(v, 0, eastLOR->params[MonsoonIds::VARLEG_DELEG_START + v*2 + 0].getValue() > 0.5f);
+                engine.setVarlegLocalEast(v, 1, eastLOR->params[MonsoonIds::VARLEG_DELEG_START + v*2 + 1].getValue() > 0.5f);
             }
 
             float restInterp = eastInterp->params[MonsoonIds::POLY_REST_INTERP_1 + v].getValue();

@@ -144,8 +144,28 @@ struct SequencerEngine {
     // variation index and the result is bit-identical. Doubly inert.
     bool perVoiceArticulation = false;
 
+    // VAR/LEG per-voice delegation (EAST_EXTRA_LANES §4d). false (default) = delegate to
+    // mono → the voice reads MONO's VAR/LEG position, so it mirrors mono (silent). true =
+    // Local East → the voice reads its OWN LOR slot and may diverge. Indexed [bank][lane],
+    // bank 0..14 = V2..V16, lane 0 = VAR, 1 = LEG. Zero-init = all-delegate = follow mono,
+    // which is also the correct fallback when East is absent (nothing sets Local East).
+    // Pushed each cycle by MonsoonExpanderManager from the East delegation params.
+    bool varlegLocalEast_[15][2] = {};
+    void setVarlegLocalEast(int bank, int lane, bool localEast) {
+        if (bank >= 0 && bank < 15 && lane >= 0 && lane < 2) varlegLocalEast_[bank][lane] = localEast;
+    }
+    // VAR = lane 0, LEG = lane 1.
+    bool varlegDelegated(int bank, int lane) const {
+        return !(bank >= 0 && bank < 15 && lane >= 0 && lane < 2 && varlegLocalEast_[bank][lane]);
+    }
+
     // Per-voice VARIATION step — mono's getStrandIdx transform, driven by THIS voice's LOR window.
+    // Delegated voices (default) return mono's variation step, so they mirror mono.
     int getVariationStepForVoice(int bank) const;
+
+    // Per-voice LEGATO step — same, for Rule 2's per-voice slur roll. Delegated voices (default)
+    // return mono's legato step. Present now (Step 1) so Rule 2 consumes it without re-plumbing.
+    int getLegatoStepForVoice(int bank) const;
 
     // This voice's note-length index, CLAMPED so its hold can never exceed mono's.
     // NOTE_VALUES is documented "ordered slowest -> fastest", so a HIGHER index is a SHORTER note;

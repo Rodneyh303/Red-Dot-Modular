@@ -579,7 +579,19 @@ namespace MonsoonIds {
         MACRO_TAP_START = MACRO_ATTEN_END,
         MACRO_TAP_END = MACRO_TAP_START + 8,   // 4 lanes × (LOR, spread)
 
-        NUM_PARAMS = MACRO_TAP_END
+        // ── EAST_EXTRA_LANES Stage 3: VAR/LEG per-voice delegation toggle ──
+        // For the VARIATION and LEGATO lanes, each poly voice either DELEGATES its reading
+        // position to MONO (default) or uses its OWN outright LOR (Local East). Unlike lanes
+        // 0-3 (MACRO_OWN), the only delegation target here is mono — Macro never owns these
+        // lanes (EAST_EXTRA_LANES.md §6b), so this is a clean mono-or-East binary. V1 is mono,
+        // never a poly voice, so it is always mono (no toggle). 15 poly voices × 2 lanes = 30.
+        // Appended at END so existing param IDs stay stable (saved patches safe).
+        //   index = VARLEG_DELEG_START + v*2 + lane   (v = 0..14 = V2..V16, lane 0=VAR 1=LEG)
+        //   value: 0 = delegate to mono (default, silent), 1 = Local East (own LOR)
+        VARLEG_DELEG_START = MACRO_TAP_END,
+        VARLEG_DELEG_END = VARLEG_DELEG_START + 30,
+
+        NUM_PARAMS = VARLEG_DELEG_END
     };
 
     enum InputIds {

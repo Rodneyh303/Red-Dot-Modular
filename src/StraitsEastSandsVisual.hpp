@@ -138,6 +138,10 @@ namespace StraitsEastVisualIds {
     // as the mono owner store so V1 delegation persists in the patch like poly voices do
     // (real configSwitch params → Rack auto-saves them). 1.f = East owns, 0.f = Macro owns.
     inline int monoOwnerId(int lane) { return MonsoonIds::MACRO_OWN_START + 15*4 + lane; }
+    // VAR/LEG per-voice delegation toggle (EAST_EXTRA_LANES §4d). 0 = delegate to mono
+    // (default), 1 = Local East (own LOR). 15 poly voices (v=0..14 = V2..V16) × 2 lanes
+    // (lane 0 = VAR, 1 = LEG). V1 is mono → always follows, no toggle.
+    inline int varlegDelegId(int v, int lane) { return MonsoonIds::VARLEG_DELEG_START + v*2 + lane; }
     // (Macro mix-in send helpers relocated to StraitsMacroVisualIds under the control
     //  inversion — the send is a Macro concern now.)
     // Owner display proxy (selected-voice view; copied to/from per-voice on switch).
@@ -242,6 +246,14 @@ struct StraitsEastSandsVisual : Module {
             for (int lane=0; lane<4; ++lane) {
                 configSwitch(ownerId(v,lane), 0.f,1.f,0.f,
                              vl+"L"+std::to_string(lane)+" base: inherit Macro / local East", {"Inherit Macro","Local East"});
+            }
+            // VAR/LEG delegation (§4d): the only target is mono (no Macro), so this is a
+            // clean binary — follow mono (default, silent) or Local East (own LOR). lane
+            // 0 = VAR, 1 = LEG. Rendered as the lane-end toggle for editor lanes 4/5.
+            for (int lane=0; lane<2; ++lane) {
+                configSwitch(varlegDelegId(v,lane), 0.f,1.f,0.f,
+                             vl+(lane==0?"VAR":"LEG")+std::string(" delegate: follow mono / local East"),
+                             {"Follow mono","Local East"});
             }
         }
         // V1 (mono) per-lane owner store (spare MACRO_OWN slot v=15). Default 0.f =

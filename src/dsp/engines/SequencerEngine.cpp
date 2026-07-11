@@ -702,10 +702,21 @@ int SequencerEngine::getStrandIdx(int tickCount, int len, int off, int mutation)
 
 // ── EAST_EXTRA_LANES stage 2 ──────────────────────────────────────────────────────────────────
 int SequencerEngine::getVariationStepForVoice(int bank) const {
+    // Delegated (default) → read mono's VARIATION position, so the voice mirrors mono.
+    if (varlegDelegated(bank, 0)) return getVariationStep();
     return getStrandIdx(totalStepsElapsed,
                         polyLOR(bank, EDITOR_LANE_VARIATION, LOR_LEN),
                         polyLOR(bank, EDITOR_LANE_VARIATION, LOR_OFF),
                         polyLOR(bank, EDITOR_LANE_VARIATION, LOR_ROT));
+}
+
+int SequencerEngine::getLegatoStepForVoice(int bank) const {
+    // Delegated (default) → read mono's LEGATO position, so the voice's slur roll matches mono.
+    if (varlegDelegated(bank, 1)) return getLegatoStep();
+    return getStrandIdx(totalStepsElapsed,
+                        polyLOR(bank, EDITOR_LANE_LEGATO, LOR_LEN),
+                        polyLOR(bank, EDITOR_LANE_LEGATO, LOR_OFF),
+                        polyLOR(bank, EDITOR_LANE_LEGATO, LOR_ROT));
 }
 
 int SequencerEngine::nvIdxForVoice(int bank, const PatternInput& input) const {
