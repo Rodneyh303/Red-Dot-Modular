@@ -241,6 +241,27 @@ int main() {
         EXPECT_NEAR(e.voices[0].gs.currentPitchV, 2.5f, 1e-5f);
     });
 
+    TEST("Held span: poly holds pitch across the whole MidNote interior", {
+        // A multi-step note: NewNote onset draws a pitch, then MidNote steps hold it.
+        // Poly must keep that pitch for the whole span — no redraw under a static mono note.
+        // (Regression guard for the drift where MidNote shared the Legato pitch redraw.)
+        PolyEngine e; e.reset(); e.numPolyVoices = 1;
+        e.voices[0].restProb = 0.f;                  // always play
+        e.setRng(0.9f);                              // r_rest high → never rests
+        e.nextPitchV = 3.0f; e.nextSem = 7;
+        e.lastStepResult.decision = MonoDecision::NewNote;
+        e.lastStepResult.nvIdx = 4;                  // spans several steps
+        e.executePolyVoice(0);                       // onset draws 3.0
+        EXPECT_NEAR(e.voices[0].gs.currentPitchV, 3.0f, 1e-5f);
+        // Interior: mono holds (MidNote); a different pitch is queued but must be ignored.
+        e.nextPitchV = 5.0f;
+        e.lastStepResult.decision = MonoDecision::MidNote;
+        e.executePolyVoice(0);
+        EXPECT_NEAR(e.voices[0].gs.currentPitchV, 3.0f, 1e-5f);
+        e.executePolyVoice(0);
+        EXPECT_NEAR(e.voices[0].gs.currentPitchV, 3.0f, 1e-5f);
+    });
+
     // ─────────────────────────────────────────────────────────────────────────
     SUITE("MonoDecision::Rest — poly cannot initiate");
     // ─────────────────────────────────────────────────────────────────────────
