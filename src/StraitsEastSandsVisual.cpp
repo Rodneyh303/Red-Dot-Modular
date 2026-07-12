@@ -450,6 +450,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     void mirrorMonoExtraLanes() {
         Monsoon* m = getMonsoon();
         if (!m || !visualEditor || !onMonoTab()) return;
+        const int gs = m->engine.stepIndex;
         for (int el = dotModular::SandsGrid::POLY_LANES; el < dotModular::SandsGrid::EAST_LANES; ++el) {
             const int strand = el;   // identity, by the renumber above
             auto& lane = visualEditor->currentState.lanes[el];
@@ -458,6 +459,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             lane.rotation =            m->engine.lor(strand, SequencerEngine::LOR_ROT);
             for (int st = 0; st < SandsVisualEditorV4::STEP_COUNT; ++st)
                 lane.probabilities[st] = m->engine.pe.finalRandomByStrand(strand, st);
+            visualEditor->setLanePlayStep(el, calcPlayhead(gs, lane.length, lane.offset, lane.rotation));
         }
     }
 
@@ -1025,6 +1027,30 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 int el = dotModular::ENGINE_LANE_TO_EDITOR[l];
                 visualEditor->currentState.lanes[el].setDisplayLOR(cvLen, cvOff, cvRot);
                 visualEditor->setLanePlayStep(el, calcPlayhead(gs, cvLen, cvOff, cvRot));
+            }
+            // VARIATION (4) / LEGATO (5): show the window the ENGINE actually reads for this voice
+            // — mono's when the lane DELEGATES (default), the voice's own when Local East — plus the
+            // moving playhead and mono's SHARED VAR/LEG probability array (per §4d the array is
+            // global; only the reading window is per-voice). strand == editor lane (VAR 4, LEG 5).
+            // Use polyLOR (editor-order, masks &7) NOT polyLenE (engine-order, masks &3 → would
+            // alias VAR→REST). eng.lor(el) / finalRandomByStrand(el) are mono's, as in mirrorMono.
+            for (int el = dotModular::SandsGrid::POLY_LANES; el < dotModular::SandsGrid::EAST_LANES; ++el) {
+                const bool localEast =
+                    module->params[varlegDelegId(pv, el - dotModular::SandsGrid::POLY_LANES)].getValue() > 0.5f;
+                int cvLen, cvOff, cvRot;
+                if (localEast) {   // voice's own window (what the engine reads under Local East)
+                    cvLen = std::max(1, eng.polyLOR(pv, el, SequencerEngine::LOR_LEN));
+                    cvOff = eng.polyLOR(pv, el, SequencerEngine::LOR_OFF);
+                    cvRot = eng.polyLOR(pv, el, SequencerEngine::LOR_ROT);
+                } else {           // delegated → mono's window (what the engine reads under delegate)
+                    cvLen = std::max(1, eng.lor(el, SequencerEngine::LOR_LEN));
+                    cvOff = eng.lor(el, SequencerEngine::LOR_OFF);
+                    cvRot = eng.lor(el, SequencerEngine::LOR_ROT);
+                }
+                visualEditor->currentState.lanes[el].setDisplayLOR(cvLen, cvOff, cvRot);
+                visualEditor->setLanePlayStep(el, calcPlayhead(gs, cvLen, cvOff, cvRot));
+                for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
+                    visualEditor->currentState.lanes[el].probabilities[s] = eng.pe.finalRandomByStrand(el, s);
             }
         }
     }
