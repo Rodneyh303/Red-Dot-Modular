@@ -183,6 +183,19 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 // ignores it and reads mono's VAR/LEG position instead. lane 0 = VAR, 1 = LEG.
                 engine.setVarlegLocalEast(v, 0, eastLOR->params[MonsoonIds::VARLEG_DELEG_START + v*2 + 0].getValue() > 0.5f);
                 engine.setVarlegLocalEast(v, 1, eastLOR->params[MonsoonIds::VARLEG_DELEG_START + v*2 + 1].getValue() > 0.5f);
+#if RULE2_DEBUG
+                {
+                    // Throttled: ~15-line burst (covers all voices once) every ~131k iters.
+                    static unsigned long r2c = 0;
+                    if ((r2c++ & 0x1FFFF) < 15)
+                        std::fprintf(stderr,
+                            "[R2 push ] v=%2d VARp=%.2f LEGp=%.2f legLOR=(%d,%d,%d)\n",
+                            v,
+                            eastLOR->params[MonsoonIds::VARLEG_DELEG_START + v*2 + 0].getValue(),
+                            eastLOR->params[MonsoonIds::VARLEG_DELEG_START + v*2 + 1].getValue(),
+                            rd(legBase + 0, 1.f, 16.f), rd(legBase + 1, 0.f, 15.f), rd(legBase + 2, 0.f, 15.f));
+                }
+#endif
             }
 
             float restInterp = eastInterp->params[MonsoonIds::POLY_REST_INTERP_1 + v].getValue();

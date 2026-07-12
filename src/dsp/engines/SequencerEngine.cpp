@@ -1,6 +1,9 @@
 #include "SequencerEngine.hpp"
 #include <cmath>
 #include <algorithm>
+#include <cstdio>
+
+// RULE2_DEBUG is defined in SequencerEngine.hpp (shared with the manager).
 
 // Note-value data (fraction, allowedPPQN, label) lives in dsp/NoteValues.hpp as
 // the single source of truth. The sequencer uses NOTE_VALUES[i].allowedPPQN to
@@ -604,6 +607,18 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
             v.gs.slurForward = leStartingV
                              && noteCanLeadLegato(nvV)
                              && (lastLegatoProb_ >= 0.999f || r_polyLegato < lastLegatoProb_);
+#if RULE2_DEBUG
+            std::fprintf(stderr,
+                "[R2 roll ] v=%2d step=%3d LE=%d legCell=%2d monoCell=%2d legLOR=(%2d,%2d,%2d) "
+                "r=%.3f prob=%.3f nvV=%d canLead=%d -> slur=%d\n",
+                voiceIdx, (int)totalStepsElapsed, (int)!varlegDelegated(voiceIdx, 1),
+                getLegatoStepForVoice(voiceIdx), getLegatoStep(),
+                polyLOR(voiceIdx, EDITOR_LANE_LEGATO, LOR_LEN),
+                polyLOR(voiceIdx, EDITOR_LANE_LEGATO, LOR_OFF),
+                polyLOR(voiceIdx, EDITOR_LANE_LEGATO, LOR_ROT),
+                r_polyLegato, lastLegatoProb_, nvV, (int)noteCanLeadLegato(nvV),
+                (int)v.gs.slurForward);
+#endif
         }
         return;
     }
@@ -633,6 +648,13 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
             } else {
                 const bool prevSlur = v.gs.slurForward;
                 const bool isTie    = (lastStepResult.decision == MonoDecision::Tie);
+#if RULE2_DEBUG
+                std::fprintf(stderr,
+                    "[R2 land ] v=%2d step=%3d LE=%d part=%d prevSlur=%d isTie=%d -> %s\n",
+                    voiceIdx, (int)totalStepsElapsed, (int)!varlegDelegated(voiceIdx, 1),
+                    (int)v.participating, (int)prevSlur, (int)isTie,
+                    prevSlur ? "CONNECT" : "REARTICULATE");
+#endif
                 if (prevSlur && isTie) {
                     // committed tie → hold own pitch and extend (no redraw), like the follow-mono tie
                     v.gs.extendHold(v.gs.lastSemitone, nvV);

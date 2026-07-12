@@ -7,6 +7,11 @@
 #include <cassert>
 #include <cstdio>
 
+// TARGETED DEBUG for Rule 2 per-voice legato — set to 0 (and rebuild) to remove.
+// Shared by SequencerEngine.cpp (roll/consume trace) and MonsoonExpanderManager.cpp
+// (delegation-param + LEG-LOR push trace). Output → Rack log.txt (stderr).
+#define RULE2_DEBUG 1
+
 // ── Poly voice architecture ────────────────────────────────────────────────────
 
 // What mono decided on the most recent step edge.
