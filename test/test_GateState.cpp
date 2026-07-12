@@ -362,6 +362,11 @@ int main(){
         g.extendHold(5,4);
         EXPECT(g.lastNoteType == GateState::NoteType::Tie);
     });
+    TEST("slideMax (LegatoMax) -> Legato", {
+        auto g=fresh(); g.triggerNote(1.f,5,4);
+        g.slideMax(2.f,7,4);
+        EXPECT(g.lastNoteType == GateState::NoteType::Legato);
+    });
     TEST("opt-out re-strike after a slur returns to Single", {
         auto g=fresh(); g.triggerNote(1.f,5,4);
         g.slideNote(2.f,7,4,true);              // Legato

@@ -61,6 +61,7 @@ void GateState::slideMax(float pitchV, int semitone, int nvIdx) {
     holdRemain = dur;
     armGate(dur);
     markSemi(semitone, dur);
+    lastNoteType = NoteType::Legato;        // LegatoMax = forced slide, no retrigger
 }
 
 void GateState::extendHold(int semitone, int nvIdx) {
