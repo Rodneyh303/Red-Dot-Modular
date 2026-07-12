@@ -16,7 +16,7 @@ Kit id markers (widget binds; voice v 0..15, v0 = mono/voice 1):
   output_polygate / output_polycv / output_polyaccent   16ch cable outs
   light_connect
 """
-import math
+import math, os, re
 HP = 22
 W  = HP * 5.08
 H  = 128.5
@@ -81,6 +81,19 @@ def knob(A, t, cx, cy, r, face, ring, mono=False):
         A(f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(r+1.0)}" fill="none" '
           f'stroke="{t["red"]}" stroke-width="{px(0.5)}" stroke-opacity="0.8"/>')
 
+# ── dot.modular wordmark embed (nondestructive wordmark crop — strips positioning
+#    brackets + blank margins via a translate/scale transform; source logo untouched). ──
+_LOGO_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "res", "logo")
+def logo_embed(dark, x_mm, y_mm, target_w_mm):
+    path = os.path.join(_LOGO_DIR, "dot-modular-logo-dark.svg" if dark else "dot-modular-logo-light.svg")
+    s = open(path).read()
+    body = s[s.find('<g '):s.rfind('</svg>')]
+    body = re.sub(r'<polyline\b[^>]*/>', '', body)   # strip the 2 positioning brackets
+    CX, CY, CW = 26.0, 65.0, 657.0                   # wordmark crop (matches *-tight.svg)
+    sc = px(target_w_mm) / CW
+    tx, ty = px(x_mm), px(y_mm)
+    return f'<g transform="translate({tx:.2f},{ty:.2f}) scale({sc:.5f}) translate({-CX:.2f},{-CY:.2f})">{body}</g>'
+
 def gen(dark):
     t = THEMES["dark" if dark else "light"]
     o = []; A = o.append
@@ -141,6 +154,8 @@ def gen(dark):
     lcx = W - MARGIN - 3
     A(f'<circle cx="{px(lcx)}" cy="{px(JACK_Y)}" r="{px(1.6)}" fill="{t["jackwell"]}" stroke="{t["jackring"]}" stroke-width="0.3"/>')
     A(f'<circle id="light_connect" cx="{px(lcx)}" cy="{px(JACK_Y)}" r="0.5" fill="none" stroke="none"/>')
+    # dot.modular wordmark — centred horizontally, lower band (a bit below the Sands panels' y≈113)
+    A(logo_embed(dark, (W - 36.0) / 2.0, 116.0, 36.0))
     A('</svg>')
     return "\n".join(o)
 

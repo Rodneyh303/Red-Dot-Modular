@@ -67,10 +67,16 @@ def logo_embed(dark, x_mm, y_mm, target_w_mm):
     path = "res/logo/dot-modular-logo-dark.svg" if dark else "res/logo/dot-modular-logo-light.svg"
     s = open(path).read()
     body = s[s.find('<g '):s.rfind('</svg>')]   # drop the two leading bg/accent rects
-    LOGO_W, LOGO_H = 717.0, 190.0
-    scale = px(target_w_mm) / LOGO_W            # uniform scale to target width (px)
+    # Nondestructive wordmark crop (viewBox-style zoom): strip the two <polyline>
+    # positioning brackets (top-left & bottom-right registration marks for physical module
+    # placement) and zoom to the wordmark bbox (matches dot-modular-logo-*-tight.svg:
+    # x26 y65 w657 h95) so the wordmark fills target_w_mm with no blank margins. Done as a
+    # translate/scale transform — nanosvg-safe (no clip / nested <svg>); source untouched.
+    body = _re.sub(r'<polyline\b[^>]*/>', '', body)
+    CX, CY, CW = 26.0, 65.0, 657.0
+    sc = px(target_w_mm) / CW
     tx, ty = px(x_mm), px(y_mm)
-    return f'<g transform="translate({tx:.2f},{ty:.2f}) scale({scale:.5f})">{body}</g>'
+    return f'<g transform="translate({tx:.2f},{ty:.2f}) scale({sc:.5f}) translate({-CX:.2f},{-CY:.2f})">{body}</g>'
 
 def mbs(x_mm, y_mm, w_mm, h_mm, t, op):
     # Marina Bay Sands: three leaning tower-pairs (curved-lean outer + straight
@@ -174,7 +180,7 @@ def gen(dark):
     A(f'<line x1="{px(sepx):.1f}" y1="{px(gy+2):.1f}" x2="{px(sepx):.1f}" y2="{px(gy+gh-2):.1f}" stroke="{t["groupline"]}" stroke-width="0.75" opacity="0.6"/>')
     A('</g>')
     A(f'<g inkscape:label="branding" inkscape:groupmode="layer">')
-    A(logo_embed(dark, x_mm=11.0, y_mm=4.5, target_w_mm=42.0))
+    A(logo_embed(dark, x_mm=11.0, y_mm=113.0, target_w_mm=42.0))
     A('</g>')
     A(f'<g inkscape:label="control-graphics" inkscape:groupmode="layer">')
     def jack(x,y):
