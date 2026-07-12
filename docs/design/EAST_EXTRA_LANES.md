@@ -1,9 +1,13 @@
 # East: per-voice LOR over the mono VARIATION / LEGATO probability
 
-**Status: Stages 1–2 built on `integration/east-extra-lanes`; Stage 3 (Rule 2) designed here, not yet
-built.** Dev lives on that branch until the idea is proven good by ear. Do not merge to master on the
-strength of this document. Leading-edge legato is now the *only* legato model (reactive path removed on
-`cleanup/remove-reactive-legato`); Rule 2 (§4d) depends on that and is described accordingly.
+**Status: Stages 1–2 built on `integration/east-extra-lanes`. Stage 3 (Rule 2) now built on
+`feat/east-rule2-legato` — delegation (step 1), per-voice slur roll (step 2), and per-voice consume +
+`participating` latch (step 3) are all in the engine; NOT yet compile-verified (no Rack SDK in dev
+container) or proven by ear.** Design logic is validated by standalone replicas: `test_poly_slur_roll`
+(roll: delegated follows mono, Local East diverges) and `test_rule2_consume` (consume: connect /
+re-articulate / silent by `participating` + `prevSlur`). Dev lives on that branch until the idea is proven
+good by ear. Do not merge to master on the strength of this document. Leading-edge legato is now the *only*
+legato model (reactive path removed on `cleanup/remove-reactive-legato`); Rule 2 (§4d) depends on that.
 
 Origin: Rodney — *"allow per channel LOR on the mono probability for the extra lanes."* The kind of
 thing a thoughtful user would ask for, which is a reason to take it seriously and a reason not to rush it.
@@ -130,7 +134,7 @@ sixteen articulations*.
 **MPE framing (Rodney):** this is exactly per-note expression — one note event, per-voice articulation.
 The clamped model is the shape MPE controllers and DAW note-expression already assume.
 
-### 4d. RULE 2 (LEGATO) — per-voice, per-onset leading-edge slur — **DESIGNED, Stage 3**
+### 4d. RULE 2 (LEGATO) — per-voice, per-onset leading-edge slur — **BUILT (Stage 3), pending ear/build**
 
 Rule 1 gives each voice its own *length*. It leaves the LEGATO lane's cells wired to nothing. Rule 2 makes
 that lane earn them: each voice runs **its own leading-edge legato, per note**, bounded by mono's chain and

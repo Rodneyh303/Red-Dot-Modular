@@ -426,6 +426,7 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
             voices[i].gs.gateHeld   = false;
             voices[i].gs.holdRemain = 0.f;
             voices[i].gs.slurForward = false;
+            voices[i].participating = false;
         }
     }
 
@@ -483,7 +484,7 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
             gs.gateHeld = false; gs.holdRemain = 0.f; gs.slurForward = false;
             for (int i = 0; i < numPolyVoices; ++i) {
                 voices[i].gs.gateHeld = false; voices[i].gs.holdRemain = 0.f;
-                voices[i].gs.slurForward = false;
+                voices[i].gs.slurForward = false; voices[i].participating = false;
             }
         }
         float r_vary   = pe.variationRandom[getVariationStep()];
@@ -554,8 +555,10 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
             v.accented = false;
             if (v.gs.holdRemain > 0.0001f) v.gs.gateHeld = true; // allow previous note tail to finish
             else v.gs.gateHeld = false;
-            // Rule 2: a resting voice starts no note, so it commits no forward slur.
-            if (perVoiceArticulation) v.gs.slurForward = false;
+            // Rule 2: a resting voice starts no note, so it commits no forward slur, and it
+            // is NOT part of this chain — landings must skip it (distinct from an opted-out
+            // voice whose gate merely closed).
+            if (perVoiceArticulation) { v.gs.slurForward = false; v.participating = false; }
             return;
         }
         
@@ -591,6 +594,8 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         // NOTE: this only ROLLS the commitment. The poly landing does not consume it yet (that
         // is Rule 2 step 3 — the opt-out re-articulate branch); until then this is inert.
         if (perVoiceArticulation) {
+            // This voice played at the chain onset → it is part of the chain for its life.
+            v.participating = true;
             bool leStartingV = (lastStepResult.decision == MonoDecision::NewNote)
                             || (lastStepResult.decision == MonoDecision::Legato)
                             || (lastStepResult.decision == MonoDecision::LegatoMax)
@@ -606,38 +611,74 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
     // If mono is Sustaining or Resting, poly must stick to its current role.
     if (lastStepResult.decision == MonoDecision::Rest) {
         v.gs.gateHeld = false;
+        v.participating = false;   // Rule 2: mono rested → the chain ends for this voice.
     } else {
-        // Mono is Sustaining (MidNote, Tie, or shifted Legato shift).
-        // Poly follows mono gate presence strictly IF it was already active ("in").
-        if (gs.gateHeld && wasHeldPoly) {
-            if (lastStepResult.decision == MonoDecision::Legato || lastStepResult.decision == MonoDecision::LegatoMax) {
-                // Mono slid to a NEW pitch (a real pitch move) → poly draws its OWN new pitch
-                // (its own melody/octave LOR) and slides to it. Poly tracks mono's articulation
-                // shape, never mono's actual notes.
-                int melIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_MELODY), polyOffE(voiceIdx, PL_MELODY), polyRotE(voiceIdx, PL_MELODY));
-                int octIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_OCTAVE), polyOffE(voiceIdx, PL_OCTAVE), polyRotE(voiceIdx, PL_OCTAVE));
-                int sem = 0;
-                float pitchV = pe.genPitchLive(sem, input, pe.polyRandom(voiceIdx, PL_MELODY)[melIdx], pe.polyRandom(voiceIdx, PL_OCTAVE)[octIdx]);
-                v.gs.slideNote(pitchV, sem, nvV, wasHeldPoly);
-            } else if (lastStepResult.decision == MonoDecision::Tie) {
-                // Mono held the same pitch (tie) → poly holds its own current pitch, extends hold.
-                v.gs.extendHold(v.gs.lastSemitone, nvV);
+        // A LANDING = mono connects at this edge (Legato / LegatoMax / Tie). MidNote is a
+        // mid-hold, not an onset edge, so it never consumes or rolls a slur.
+        const bool monoConnectLanding = (lastStepResult.decision == MonoDecision::Legato)
+                                      || (lastStepResult.decision == MonoDecision::LegatoMax)
+                                      || (lastStepResult.decision == MonoDecision::Tie);
+
+        if (perVoiceArticulation && monoConnectLanding) {
+            // ── Rule 2 CONSUME (per-voice landing) ────────────────────────────────────────
+            // A participating voice decides its OWN connect at this edge from its OWN prevSlur
+            // (committed at its previous onset): prevSlur → connect (slide/extend, tracking mono's
+            // articulation shape); else RE-ARTICULATE a fresh note (clamped ≤ mono via nvV). A
+            // rester (participating==false) stays silent — this is why the latch is explicit, not
+            // read off the gate (an opted-out voice whose short note closed is still in the chain).
+            // Then re-roll this voice's forward commitment for the NEXT landing, exactly as mono
+            // re-rolls at every sounding onset, so 3+ note chains carry forward per voice.
+            if (!v.participating) {
+                v.gs.gateHeld = false;   // rested at the onset → not part of this chain
             } else {
-                // MidNote: mono is HOLDING a note still sounding — nothing was chosen this step
-                // (the executeStep guard returned early). Poly holds too: NO pitch redraw, just
-                // keep the gate high, so poly follows mono through the whole held span. This is
-                // the fix for the pitch drift where the MidNote path shared the Legato redraw and
-                // moved poly's pitch UNDER a static mono note — contradicting the enum's "MidNote:
-                // poly just ticks, no new draw" and the test_poly_voices replica (which returns on
-                // MidNote). Gate-close timing is unchanged: still owned by the armed pulse timer /
-                // tickPulse (the sole gate-close mechanism), so the Stage-2 length clamp still
-                // releases shorter voices early. gateHeld=true here only re-asserts an already-open
-                // gate (we are inside `gs.gateHeld && wasHeldPoly`).
-                v.gs.gateHeld = true;
+                const bool prevSlur = v.gs.slurForward;
+                const bool isTie    = (lastStepResult.decision == MonoDecision::Tie);
+                if (prevSlur && isTie) {
+                    // committed tie → hold own pitch and extend (no redraw), like the follow-mono tie
+                    v.gs.extendHold(v.gs.lastSemitone, nvV);
+                } else {
+                    // committed legato → slide to own new pitch; opted out → re-articulate fresh.
+                    // Either way this voice draws its OWN pitch (melody/octave LOR), never mono's.
+                    int melIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_MELODY), polyOffE(voiceIdx, PL_MELODY), polyRotE(voiceIdx, PL_MELODY));
+                    int octIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_OCTAVE), polyOffE(voiceIdx, PL_OCTAVE), polyRotE(voiceIdx, PL_OCTAVE));
+                    int sem = 0;
+                    float pitchV = pe.genPitchLive(sem, input, pe.polyRandom(voiceIdx, PL_MELODY)[melIdx], pe.polyRandom(voiceIdx, PL_OCTAVE)[octIdx]);
+                    if (prevSlur) v.gs.slideNote(pitchV, sem, nvV, /*wasHeld=*/true);   // connect
+                    else          v.gs.triggerNote(pitchV, sem, nvV);                    // re-articulate
+                }
+                // Re-roll the forward commitment for the NEXT landing (mirror mono's LEAD, per voice).
+                float r_polyLegato = pe.legatoRandom[getLegatoStepForVoice(voiceIdx)];
+                v.gs.slurForward = noteCanLeadLegato(nvV)
+                                 && (lastLegatoProb_ >= 0.999f || r_polyLegato < lastLegatoProb_);
             }
         } else {
-            // Mono gate is low OR poly chose to rest for this current high cycle.
-            v.gs.gateHeld = false;
+            // ── follow-mono path (perVoiceArticulation OFF, or a MidNote hold) ─────────────
+            // Poly follows mono gate presence strictly IF it was already active ("in").
+            if (gs.gateHeld && wasHeldPoly) {
+                if (lastStepResult.decision == MonoDecision::Legato || lastStepResult.decision == MonoDecision::LegatoMax) {
+                    // Mono slid to a NEW pitch (a real pitch move) → poly draws its OWN new pitch
+                    // (its own melody/octave LOR) and slides to it. Poly tracks mono's articulation
+                    // shape, never mono's actual notes.
+                    int melIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_MELODY), polyOffE(voiceIdx, PL_MELODY), polyRotE(voiceIdx, PL_MELODY));
+                    int octIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_OCTAVE), polyOffE(voiceIdx, PL_OCTAVE), polyRotE(voiceIdx, PL_OCTAVE));
+                    int sem = 0;
+                    float pitchV = pe.genPitchLive(sem, input, pe.polyRandom(voiceIdx, PL_MELODY)[melIdx], pe.polyRandom(voiceIdx, PL_OCTAVE)[octIdx]);
+                    v.gs.slideNote(pitchV, sem, nvV, wasHeldPoly);
+                } else if (lastStepResult.decision == MonoDecision::Tie) {
+                    // Mono held the same pitch (tie) → poly holds its own current pitch, extends hold.
+                    v.gs.extendHold(v.gs.lastSemitone, nvV);
+                } else {
+                    // MidNote: mono is HOLDING a note still sounding — nothing was chosen this step
+                    // (the executeStep guard returned early). Poly holds too: NO pitch redraw, just
+                    // keep the gate high, so poly follows mono through the whole held span. Gate-close
+                    // timing is unchanged: still owned by the armed pulse timer / tickPulse, so the
+                    // Stage-2 length clamp still releases shorter voices early.
+                    v.gs.gateHeld = true;
+                }
+            } else {
+                // Mono gate is low OR poly chose to rest for this current high cycle.
+                v.gs.gateHeld = false;
+            }
         }
     }
 }

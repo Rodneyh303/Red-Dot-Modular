@@ -37,6 +37,13 @@ struct PolyVoice {
     float restProb = 0.0f;
     float accentProb = 0.0f;   // per-voice accent probability (accent as a poly lane)
     bool  accented = false;    // result of this voice's own accent draw this step
+    // Rule 2 (EAST_EXTRA_LANES §4d): latched at the mono chain onset — true if this voice
+    // PLAYED (vs rested) when mono started the gate, and held for the chain's life. It, not
+    // the gate-held flag, is what tells a landing whether this voice is part of the chain:
+    // a voice that opted out and let its short note close still reads participating==true and
+    // re-articulates, whereas a rester reads false and stays silent. Only consulted when
+    // perVoiceArticulation is on. Reset at each new onset and when mono rests.
+    bool  participating = false;
 };
 
 // ── SequencerEngine ────────────────────────────────────────────────────────────
