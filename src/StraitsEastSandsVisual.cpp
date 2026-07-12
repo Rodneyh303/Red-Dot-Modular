@@ -349,6 +349,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             );
         }
 
+        paramMgr = new PolyVoiceSandsParameterManager(nullptr, nullptr, 15, 0);
+
         // VAR/LEG delegation cells (editor lanes 4/5): same lane-end OwnerCell, but the
         // delegation target is MONO (always present), so FILLED = follow mono, OUTLINE =
         // Local East. Locked on the V1/mono tab (V1 is mono — nothing to delegate). Anchored
