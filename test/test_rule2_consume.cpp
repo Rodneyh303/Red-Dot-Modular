@@ -45,7 +45,9 @@ struct V {
 
 // One edge. pva = perVoiceArticulation. plays = at a NewNote chain onset, this voice
 // rolled to play (vs rest). prevSlur = this voice's own commitment consumed at a landing.
-static void step(V& v, Mono m, bool pva, bool plays, bool prevSlur) {
+// held = the voice's own gate actually held into this landing (wasHeldPoly || hadPolyTail);
+// a slur/tie can only connect into a held gate, else it re-articulates (no slur across a rest).
+static void step(V& v, Mono m, bool pva, bool plays, bool prevSlur, bool held = true) {
     switch (m) {
         case Mono::NewNote:
             if (plays) { v.participating = true;  v.trigger(); }
@@ -63,8 +65,8 @@ static void step(V& v, Mono m, bool pva, bool plays, bool prevSlur) {
                 return;
             }
             if (!v.participating) { v.silent(); return; }  // rested → stay out
-            if (prevSlur) v.connect();                     // committed → connect
-            else          v.trigger();                     // opted out → re-articulate
+            if (prevSlur && held) v.connect();             // committed AND gate survived → connect
+            else                  v.trigger();             // opted out, OR gate closed → re-articulate
             return;
     }
 }
@@ -135,6 +137,24 @@ int main() {
         bool plays[N]     = {false,false,false,false,false,false,true,false};
         for (int i = 0; i < N; ++i) { step(v, chain[i], true, plays[i], /*prevSlur=*/true); log += v.last; }
         check(log == "....-.TC", "re-latches: silent until it plays a NewNote, then participates");
+    }
+
+    // 6. A voice that LED a slur (prevSlur=true) but whose short note CLOSED before the
+    //    landing (held=false — a rest/gap) must RE-ARTICULATE, not connect: no slur across a
+    //    rest, mirroring mono's "legato/tie requires the previous note still sounding". This is
+    //    the case where a poly 1/16 lead + 1/16 rest was wrongly showing a teal/violet continuation.
+    {
+        V v; v.participating = true;
+        step(v, Mono::NewNote, true, true, /*prevSlur=*/true);     // leads a slur
+        check(v.last == 'T', "slur lead fires (trigger)");
+        // its short note closed before the landing → held=false, even though prevSlur=true:
+        step(v, Mono::Legato, true, true, /*prevSlur=*/true, /*held=*/false);
+        check(v.last == 'T', "slur lead + closed gate (rest) -> RE-ARTICULATE, not connect");
+        // contrast: same commitment but the gate DID survive → connect
+        V v2; v2.participating = true;
+        step(v2, Mono::NewNote, true, true, /*prevSlur=*/true);
+        step(v2, Mono::Legato, true, true, /*prevSlur=*/true, /*held=*/true);
+        check(v2.last == 'C', "slur lead + held gate -> CONNECT");
     }
 
     std::printf("%d passed, %d failed\n", passed, failed);

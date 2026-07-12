@@ -650,24 +650,32 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                 v.gs.gateHeld = false;   // rested at the onset → not part of this chain
             } else {
                 const bool prevSlur = v.gs.slurForward;
+                // A slur/tie can only CONNECT if the voice's OWN gate actually held into this
+                // landing (wasHeldPoly || hadPolyTail) — the same invariant mono enforces
+                // ("legato/tie requires the previous note still sounding"). A voice that led a
+                // slur then let its short note close (a rest/gap before the landing) has nothing
+                // to connect to, so it RE-ARTICULATES a fresh note rather than slurring across
+                // silence — exactly as mono falls through to NewNote.
+                const bool connect  = prevSlur && (wasHeldPoly || hadPolyTail);
                 const bool isTie    = (lastStepResult.decision == MonoDecision::Tie);
 #if RULE2_DEBUG
-                INFO("[R2 land ] v=%2d step=%3d LE=%d part=%d prevSlur=%d isTie=%d -> %s",
+                INFO("[R2 land ] v=%2d step=%3d LE=%d part=%d prevSlur=%d held=%d isTie=%d -> %s",
                     voiceIdx, (int)totalStepsElapsed, (int)!varlegDelegated(voiceIdx, 1),
-                    (int)v.participating, (int)prevSlur, (int)isTie,
-                    prevSlur ? "CONNECT" : "REARTICULATE");
+                    (int)v.participating, (int)prevSlur, (int)(wasHeldPoly || hadPolyTail),
+                    (int)isTie, connect ? "CONNECT" : "REARTICULATE");
 #endif
-                if (prevSlur && isTie) {
-                    // committed tie → hold own pitch and extend (no redraw), like the follow-mono tie
+                if (connect && isTie) {
+                    // committed tie into a held gate → hold own pitch and extend (no redraw)
                     v.gs.extendHold(v.gs.lastSemitone, nvV);
                 } else {
-                    // committed legato → slide to own new pitch; opted out → re-articulate fresh.
+                    // committed legato into a held gate → slide to own new pitch; otherwise
+                    // (no commitment, OR the gate had closed) → re-articulate a fresh note.
                     // Either way this voice draws its OWN pitch (melody/octave LOR), never mono's.
                     int melIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_MELODY), polyOffE(voiceIdx, PL_MELODY), polyRotE(voiceIdx, PL_MELODY));
                     int octIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_OCTAVE), polyOffE(voiceIdx, PL_OCTAVE), polyRotE(voiceIdx, PL_OCTAVE));
                     int sem = 0;
                     float pitchV = pe.genPitchLive(sem, input, pe.polyRandom(voiceIdx, PL_MELODY)[melIdx], pe.polyRandom(voiceIdx, PL_OCTAVE)[octIdx]);
-                    if (prevSlur) {
+                    if (connect) {
                         v.gs.slideNote(pitchV, sem, nvV, /*wasHeld=*/true);   // connect (keep chain accent)
                     } else {
                         // re-articulate: a fresh onset, so draw this voice's OWN accent (its accent
