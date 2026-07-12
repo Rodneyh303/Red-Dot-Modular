@@ -643,8 +643,16 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                     int octIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_OCTAVE), polyOffE(voiceIdx, PL_OCTAVE), polyRotE(voiceIdx, PL_OCTAVE));
                     int sem = 0;
                     float pitchV = pe.genPitchLive(sem, input, pe.polyRandom(voiceIdx, PL_MELODY)[melIdx], pe.polyRandom(voiceIdx, PL_OCTAVE)[octIdx]);
-                    if (prevSlur) v.gs.slideNote(pitchV, sem, nvV, /*wasHeld=*/true);   // connect
-                    else          v.gs.triggerNote(pitchV, sem, nvV);                    // re-articulate
+                    if (prevSlur) {
+                        v.gs.slideNote(pitchV, sem, nvV, /*wasHeld=*/true);   // connect (keep chain accent)
+                    } else {
+                        // re-articulate: a fresh onset, so draw this voice's OWN accent (its accent
+                        // LOR vs its own accentProb), exactly as the chain onset does — a re-struck
+                        // note isn't stuck with the accent the chain opened on.
+                        int accIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_ACCENT), polyOffE(voiceIdx, PL_ACCENT), polyRotE(voiceIdx, PL_ACCENT));
+                        v.accented = (pe.polyRandom(voiceIdx, PL_ACCENT)[accIdx] < v.accentProb);
+                        v.gs.triggerNote(pitchV, sem, nvV);                   // re-articulate
+                    }
                 }
                 // Re-roll the forward commitment for the NEXT landing (mirror mono's LEAD, per voice).
                 float r_polyLegato = pe.legatoRandom[getLegatoStepForVoice(voiceIdx)];

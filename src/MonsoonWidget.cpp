@@ -725,9 +725,10 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
             // derives its own note length from its VARIATION LOR window onto the SHARED mono
             // variation array, CLAMPED so it can never hold past mono's next event. Articulation is
             // therefore subtractive (voices release early, never late) — the clock stays mono's.
-            // Silent unless the VARIATION knob is off centre AND a voice's VAR LOR is shortened.
-            // See docs/design/EAST_EXTRA_LANES.md.
-            add("Per-voice articulation (East VARIATION)", &m->engine.perVoiceArticulation);
+            // Also gates Rule 2: each voice rolls its own leading-edge legato from its LEGATO LOR
+            // window and connects/re-articulates independently (EAST_EXTRA_LANES §4d). Silent unless
+            // a voice's VAR/LEG is set Local East on the East expander. See EAST_EXTRA_LANES.md.
+            add("Per-voice articulation (East VARIATION/LEGATO)", &m->engine.perVoiceArticulation);
         }));
         menu->addChild(new ui::MenuSeparator);
         struct IntItem : ui::MenuItem {
