@@ -69,6 +69,12 @@ struct SequencerEngine {
     // Most recent mono decision — written by executeStep, read by executePolyVoices.
     StepResult lastStepResult;
 
+    // Most recent mono legato probability — written by executeStep, read by executePolyVoice
+    // for the Rule 2 per-voice slur roll (the legato THRESHOLD stays global/mono; only each
+    // voice's reading CELL differs, via getLegatoStepForVoice). Same write-once/read-by-poly
+    // pattern as lastStepResult above.
+    float lastLegatoProb_ = 0.f;
+
     // Leading-edge legato is now the ONLY legato model: the connection is governed by the
     // PREVIOUS note's onset commitment (gs.slurForward), captured before this note's cascade
     // recomputes it. The old reactive model (fresh r_legato_tie roll at the joining onset)

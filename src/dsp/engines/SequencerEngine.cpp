@@ -212,6 +212,7 @@ bool SequencerEngine::shouldTriggerStep(int ppqn) const {
 }
 
 StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float accentProb, const PatternInput& input, bool wasHeld, bool hadTail) {
+    lastLegatoProb_ = legatoProb;   // for the Rule 2 per-voice slur roll (read in executePolyVoice)
     // ── Fractional notes (1/4T=2.667, 1/8T=1.333, 1/32=0.5 steps) & legato/tie ──
     // These notes end MID-STEP (closed by the gateSecRemain seconds-timer), not on
     // a 1/16 grid edge. Legato/tie decisions only happen AT an edge and require the
@@ -553,6 +554,8 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
             v.accented = false;
             if (v.gs.holdRemain > 0.0001f) v.gs.gateHeld = true; // allow previous note tail to finish
             else v.gs.gateHeld = false;
+            // Rule 2: a resting voice starts no note, so it commits no forward slur.
+            if (perVoiceArticulation) v.gs.slurForward = false;
             return;
         }
         
@@ -575,6 +578,28 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
             // bug. Trigger a fresh note instead. (Direction-independent; surfaced in reverse
             // mode but present forward too.)
             v.gs.triggerNote(pitchV, sem, nvV);
+
+        // ── Rule 2 LEAD (per-voice leading-edge slur roll) ────────────────────────────────
+        // Mirror mono's LEAD commitment (executeStep), per voice: this note commits to slur its
+        // gate forward into the NEXT note iff its OWN legato draw fires. The draw reads the
+        // SHARED mono legatoRandom array at THIS voice's cell (getLegatoStepForVoice → mono's
+        // cell when delegated (default) so it matches mono, own cell when Local East). The
+        // THRESHOLD (lastLegatoProb_) and the array stay global/mono — only the reading cell is
+        // per-voice, exactly as VARIATION. Rolled here at the leading edge and consumed at the
+        // NEXT landing (v.gs.slurForward → prevSlur). Gated by perVoiceArticulation; when off,
+        // slurForward is left to the existing follow-mono path (Rule 2 is additive).
+        // NOTE: this only ROLLS the commitment. The poly landing does not consume it yet (that
+        // is Rule 2 step 3 — the opt-out re-articulate branch); until then this is inert.
+        if (perVoiceArticulation) {
+            bool leStartingV = (lastStepResult.decision == MonoDecision::NewNote)
+                            || (lastStepResult.decision == MonoDecision::Legato)
+                            || (lastStepResult.decision == MonoDecision::LegatoMax)
+                            || (lastStepResult.decision == MonoDecision::Tie);
+            float r_polyLegato = pe.legatoRandom[getLegatoStepForVoice(voiceIdx)];
+            v.gs.slurForward = leStartingV
+                             && noteCanLeadLegato(nvV)
+                             && (lastLegatoProb_ >= 0.999f || r_polyLegato < lastLegatoProb_);
+        }
         return;
     }
 
