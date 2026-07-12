@@ -65,6 +65,17 @@ struct GateState {
     // path (the join still decides exactly as today); step 2 will make the join consume it.
     bool   slurForward     = false; // this note intends to hold forward (leading-edge)
 
+    // ── Articulation type (per voice) — the single source of truth the display reads ──
+    // Set by the three articulation methods: triggerNote → Single (a fresh attack, including an
+    // opt-out re-strike INSIDE a slur), slideNote → Legato (slid to a new pitch, no retrigger),
+    // extendHold → Tie (held same pitch). MidNote/hold leave it unchanged (the note continues).
+    // This is what the lantern reads per voice (voices[i].gs.lastNoteType) — and, later, what a
+    // poly TIE/LEGATO output jack emits — so per-voice legato is exposed exactly like mono's,
+    // rather than inferred from a 1ms gate dip that the display can't recover. Values match the
+    // lantern's colour convention: Single (blue) / Tie (violet) / Legato (teal).
+    enum class NoteType : uint8_t { Single = 0, Tie = 1, Legato = 2 };
+    NoteType lastNoteType = NoteType::Single;
+
     rack::dsp::PulseGenerator gatePulse;  // 1ms retrigger for envelopes
 
     // ── Core operations ───────────────────────────────────────────────────────
