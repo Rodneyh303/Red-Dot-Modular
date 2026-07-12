@@ -651,23 +651,36 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
             } else {
                 const bool prevSlur = v.gs.slurForward;
                 const bool isTie    = (lastStepResult.decision == MonoDecision::Tie);
+                // Mono invariant: "a slur can only connect to a still-sounding predecessor."
+                // A participating voice whose short note already closed via the Stage-2 clamp
+                // (gatePulseRemain hit 0 mid-step) is NOT still sounding at this edge, so it must
+                // RE-ARTICULATE rather than connect — even though it remains in the chain
+                // (participating). Without this guard, a short legato lead followed by a clamp gap
+                // (the visible/audible "rest") would draw a false teal/violet continuation at the
+                // next landing, because prevSlur (committed at the lead) is only cleared by a real
+                // rest DECISION (line ~568), not by an early gate close. wasHeldPoly/hadPolyTail
+                // here are the still-sounding read, made accurate by the MidNote re-assert fix
+                // (line ~712) which keeps a clamped voice's gateHeld from sticking high.
+                const bool stillSounding = wasHeldPoly || hadPolyTail;
+                const bool connect = prevSlur && stillSounding;
 #if RULE2_DEBUG
-                INFO("[R2 land ] v=%2d step=%3d LE=%d part=%d prevSlur=%d isTie=%d -> %s",
+                INFO("[R2 land ] v=%2d step=%3d LE=%d part=%d prevSlur=%d sound=%d isTie=%d -> %s",
                     voiceIdx, (int)totalStepsElapsed, (int)!varlegDelegated(voiceIdx, 1),
-                    (int)v.participating, (int)prevSlur, (int)isTie,
-                    prevSlur ? "CONNECT" : "REARTICULATE");
+                    (int)v.participating, (int)prevSlur, (int)stillSounding, (int)isTie,
+                    connect ? "CONNECT" : "REARTICULATE");
 #endif
-                if (prevSlur && isTie) {
+                if (connect && isTie) {
                     // committed tie → hold own pitch and extend (no redraw), like the follow-mono tie
                     v.gs.extendHold(v.gs.lastSemitone, nvV);
                 } else {
-                    // committed legato → slide to own new pitch; opted out → re-articulate fresh.
-                    // Either way this voice draws its OWN pitch (melody/octave LOR), never mono's.
+                    // committed legato → slide to own new pitch; opted out / not still sounding →
+                    // re-articulate fresh. Either way this voice draws its OWN pitch (melody/octave
+                    // LOR), never mono's.
                     int melIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_MELODY), polyOffE(voiceIdx, PL_MELODY), polyRotE(voiceIdx, PL_MELODY));
                     int octIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_OCTAVE), polyOffE(voiceIdx, PL_OCTAVE), polyRotE(voiceIdx, PL_OCTAVE));
                     int sem = 0;
                     float pitchV = pe.genPitchLive(sem, input, pe.polyRandom(voiceIdx, PL_MELODY)[melIdx], pe.polyRandom(voiceIdx, PL_OCTAVE)[octIdx]);
-                    if (prevSlur) {
+                    if (connect) {
                         v.gs.slideNote(pitchV, sem, nvV, /*wasHeld=*/true);   // connect (keep chain accent)
                     } else {
                         // re-articulate: a fresh onset, so draw this voice's OWN accent (its accent
@@ -701,11 +714,15 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                     v.gs.extendHold(v.gs.lastSemitone, nvV);
                 } else {
                     // MidNote: mono is HOLDING a note still sounding — nothing was chosen this step
-                    // (the executeStep guard returned early). Poly holds too: NO pitch redraw, just
-                    // keep the gate high, so poly follows mono through the whole held span. Gate-close
-                    // timing is unchanged: still owned by the armed pulse timer / tickPulse, so the
-                    // Stage-2 length clamp still releases shorter voices early.
-                    v.gs.gateHeld = true;
+                    // (the executeStep guard returned early). Poly follows mono's hold ONLY while THIS
+                    // voice's own armed gate window is still open. Setting gateHeld=true unconditionally
+                    // here would RE-OPEN a gate that tickPulse already closed (gatePulseRemain == -1) for
+                    // a short/Stage-2-clamped voice — and since tickPulse only closes gates it armed
+                    // (gatePulseRemain >= 0), that re-opened gate would stick high and pollute
+                    // wasHeldPolyPrev at the next landing, producing a false teal/violet continuation
+                    // after a rest. So keep the gate high only if the voice is genuinely still sounding;
+                    // otherwise honour the length clamp and leave it released.
+                    v.gs.gateHeld = (v.gs.gatePulseRemain >= 0) || (v.gs.holdRemain > 0.0001f);
                 }
             } else {
                 // Mono gate is low OR poly chose to rest for this current high cycle.
