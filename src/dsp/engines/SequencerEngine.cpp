@@ -3,7 +3,11 @@
 #include <algorithm>
 #include <cstdio>
 
-// RULE2_DEBUG is defined in SequencerEngine.hpp (shared with the manager).
+// RULE2_DEBUG is defined in SequencerEngine.hpp (shared with the manager). The trace uses
+// Rack's INFO() logger (writes to log.txt); fprintf(stderr) is discarded under a GUI launch.
+#if RULE2_DEBUG
+#include <rack.hpp>
+#endif
 
 // Note-value data (fraction, allowedPPQN, label) lives in dsp/NoteValues.hpp as
 // the single source of truth. The sequencer uses NOTE_VALUES[i].allowedPPQN to
@@ -608,9 +612,8 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                              && noteCanLeadLegato(nvV)
                              && (lastLegatoProb_ >= 0.999f || r_polyLegato < lastLegatoProb_);
 #if RULE2_DEBUG
-            std::fprintf(stderr,
-                "[R2 roll ] v=%2d step=%3d LE=%d legCell=%2d monoCell=%2d legLOR=(%2d,%2d,%2d) "
-                "r=%.3f prob=%.3f nvV=%d canLead=%d -> slur=%d\n",
+            INFO("[R2 roll ] v=%2d step=%3d LE=%d legCell=%2d monoCell=%2d legLOR=(%2d,%2d,%2d) "
+                 "r=%.3f prob=%.3f nvV=%d canLead=%d -> slur=%d",
                 voiceIdx, (int)totalStepsElapsed, (int)!varlegDelegated(voiceIdx, 1),
                 getLegatoStepForVoice(voiceIdx), getLegatoStep(),
                 polyLOR(voiceIdx, EDITOR_LANE_LEGATO, LOR_LEN),
@@ -649,8 +652,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                 const bool prevSlur = v.gs.slurForward;
                 const bool isTie    = (lastStepResult.decision == MonoDecision::Tie);
 #if RULE2_DEBUG
-                std::fprintf(stderr,
-                    "[R2 land ] v=%2d step=%3d LE=%d part=%d prevSlur=%d isTie=%d -> %s\n",
+                INFO("[R2 land ] v=%2d step=%3d LE=%d part=%d prevSlur=%d isTie=%d -> %s",
                     voiceIdx, (int)totalStepsElapsed, (int)!varlegDelegated(voiceIdx, 1),
                     (int)v.participating, (int)prevSlur, (int)isTie,
                     prevSlur ? "CONNECT" : "REARTICULATE");

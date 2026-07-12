@@ -188,8 +188,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                     // Throttled: ~15-line burst (covers all voices once) every ~131k iters.
                     static unsigned long r2c = 0;
                     if ((r2c++ & 0x1FFFF) < 15)
-                        std::fprintf(stderr,
-                            "[R2 push ] v=%2d VARp=%.2f LEGp=%.2f legLOR=(%d,%d,%d)\n",
+                        INFO("[R2 push ] v=%2d VARp=%.2f LEGp=%.2f legLOR=(%d,%d,%d)",
                             v,
                             eastLOR->params[MonsoonIds::VARLEG_DELEG_START + v*2 + 0].getValue(),
                             eastLOR->params[MonsoonIds::VARLEG_DELEG_START + v*2 + 1].getValue(),
