@@ -591,7 +591,14 @@ namespace MonsoonIds {
         VARLEG_DELEG_START = MACRO_TAP_END,
         VARLEG_DELEG_END = VARLEG_DELEG_START + 30,
 
-        NUM_PARAMS = VARLEG_DELEG_END
+        // Display proxies for the SELECTED voice's VAR/LEG delegation cells. Two physical
+        // lane-end cells (lane 0=VAR, 1=LEG) bind to these fixed ids; the East widget copies
+        // them to/from the per-voice VARLEG_DELEG params on voice switch (same pattern as the
+        // owner cells ↔ MACRO_OWN_DISP). index = VARLEG_DELEG_DISP_START + lane.
+        VARLEG_DELEG_DISP_START = VARLEG_DELEG_END,
+        VARLEG_DELEG_DISP_END = VARLEG_DELEG_DISP_START + 2,
+
+        NUM_PARAMS = VARLEG_DELEG_DISP_END
     };
 
     enum InputIds {

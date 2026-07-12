@@ -142,6 +142,8 @@ namespace StraitsEastVisualIds {
     // (default), 1 = Local East (own LOR). 15 poly voices (v=0..14 = V2..V16) × 2 lanes
     // (lane 0 = VAR, 1 = LEG). V1 is mono → always follows, no toggle.
     inline int varlegDelegId(int v, int lane) { return MonsoonIds::VARLEG_DELEG_START + v*2 + lane; }
+    // Selected-voice display proxy for the VAR/LEG delegation cells. lane 0=VAR, 1=LEG.
+    inline int varlegDelegDispId(int lane) { return MonsoonIds::VARLEG_DELEG_DISP_START + lane; }
     // (Macro mix-in send helpers relocated to StraitsMacroVisualIds under the control
     //  inversion — the send is a Macro concern now.)
     // Owner display proxy (selected-voice view; copied to/from per-voice on switch).
@@ -262,6 +264,12 @@ struct StraitsEastSandsVisual : Module {
         for (int lane=0; lane<4; ++lane) {
             configSwitch(monoOwnerId(lane), 0.f,1.f,0.f,
                          "V1 L"+std::to_string(lane)+" base: inherit Macro / local East", {"Inherit Macro","Local East"});
+        }
+        // VAR/LEG delegation display proxies (selected-voice cells). lane 0=VAR, 1=LEG.
+        for (int lane=0; lane<2; ++lane) {
+            configSwitch(varlegDelegDispId(lane), 0.f,1.f,0.f,
+                         std::string(lane==0?"VAR":"LEG")+" delegate: follow mono / local East",
+                         {"Follow mono","Local East"});
         }
         // Per-voice CV depth for each of the 12 jacks — its own bank is 16-wide now
         // (slot 0 = voice 1/mono, slot v = voice v+1), so the mono mix-in's depth no longer

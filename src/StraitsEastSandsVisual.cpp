@@ -349,7 +349,30 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             );
         }
 
-        paramMgr = new PolyVoiceSandsParameterManager(nullptr, nullptr, 15, 0);
+        // VAR/LEG delegation cells (editor lanes 4/5): same lane-end OwnerCell, but the
+        // delegation target is MONO (always present), so FILLED = follow mono, OUTLINE =
+        // Local East. Locked on the V1/mono tab (V1 is mono — nothing to delegate). Anchored
+        // to param_owner_4/5 in the SRC column, one LANE_H below the poly lanes.
+        static const NVGcolor varlegCol[2] = {
+            nvgRGB(0xff,0x6b,0x6b),   // VARIATION (matches editor colors.variation)
+            nvgRGB(0x26,0xa6,0x9a)    // LEGATO    (matches editor colors.legato)
+        };
+        for (int lane = 0; lane < 2; ++lane) {
+            bindParam<OwnerCell>(
+                "param_owner_" + std::to_string(4 + lane),
+                varlegDelegDispId(lane),
+                [this, lane](OwnerCell* w) {
+                    w->laneCol = varlegCol[lane];
+                    Vec ctr = w->box.pos.plus(w->box.size.div(2.f));
+                    const float stepW = (ED_W - 2.f*6.f) / 16.f;
+                    w->box.size = mm2px(Vec(stepW, ED_LANE_H * 0.9f));
+                    w->box.pos  = ctr.minus(w->box.size.div(2.f));
+                    // V1 is mono → always follows; lock the cell on the mono tab. Off the V1
+                    // tab the cell is always operable (mono is always a valid delegation target).
+                    w->lockWhen = [this](){ return onMonoTab(); };
+                }
+            );
+        }
         flushSpreadArcs();
 
         // dot.modular connect mark (brand mark; greyed when no Monsoon attached).
@@ -395,6 +418,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         const int slot = dotModular::VoiceResolver::voiceSlot(v + dotModular::VoiceResolver::kFirstPoly);
         for (int lane=0; lane<4; ++lane)
             module->params[ownerId(v,lane)].setValue(module->params[ownerDispId(lane)].getValue());
+        // VAR/LEG delegation: display proxy → this voice's per-voice store. lane 0=VAR, 1=LEG.
+        for (int lane=0; lane<2; ++lane)
+            module->params[varlegDelegId(v,lane)].setValue(module->params[varlegDelegDispId(lane)].getValue());
         // CV-depth attenuverters: display proxy → this voice's per-voice store.
         for (int lane=0; lane<4; ++lane)
             for (int c=0; c<4; ++c)
@@ -405,6 +431,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         const int slot = dotModular::VoiceResolver::voiceSlot(v + dotModular::VoiceResolver::kFirstPoly);
         for (int lane=0; lane<4; ++lane)
             module->params[ownerDispId(lane)].setValue(module->params[ownerId(v,lane)].getValue());
+        // VAR/LEG delegation: this voice's per-voice store → display proxy. lane 0=VAR, 1=LEG.
+        for (int lane=0; lane<2; ++lane)
+            module->params[varlegDelegDispId(lane)].setValue(module->params[varlegDelegId(v,lane)].getValue());
         // CV-depth attenuverters: this voice's per-voice store → display proxy.
         for (int lane=0; lane<4; ++lane)
             for (int c=0; c<4; ++c)
@@ -484,6 +513,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             mirrorMonoExtraLanes();
             for (int lane = 0; lane < 4; ++lane)
                 module->params[ownerDispId(lane)].setValue(module->params[monoOwnerId(lane)].getValue());
+            // V1 is mono → VAR/LEG always follow mono; show the cells filled (and they lock).
+            for (int lane = 0; lane < 2; ++lane)
+                module->params[varlegDelegDispId(lane)].setValue(0.f);
         }
     }
 
