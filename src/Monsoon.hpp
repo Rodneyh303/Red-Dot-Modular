@@ -598,7 +598,17 @@ namespace MonsoonIds {
         VARLEG_DELEG_DISP_START = VARLEG_DELEG_END,
         VARLEG_DELEG_DISP_END = VARLEG_DELEG_DISP_START + 2,
 
-        NUM_PARAMS = VARLEG_DELEG_DISP_END
+        // ── EAST_EXTRA_LANES Stage 4: VAR/LEG per-voice CV-depth attenuverter ──
+        // VARIATION/LEGATO get poly CV inputs (LEN/OFF/ROT only — no SPR, no spread:
+        // spread does not apply to these mono-strand lanes). Each poly voice needs its
+        // OWN depth per jack (same independence model as MACRO_ATTEN for lanes 0-3), so
+        // this is a 16-wide voice-slot bank (slot 0 = mono/V1, the ch1 mix-in depth),
+        // 2 lanes × 3 cols = 6 jacks per voice. 16 × 6 = 96. Appended at END.
+        //   index = VARLEG_ATTEN_START + v*6 + lane*3 + col   (v=0..15, lane 0=VAR 1=LEG, col 0..2)
+        VARLEG_ATTEN_START = VARLEG_DELEG_DISP_END,
+        VARLEG_ATTEN_END = VARLEG_ATTEN_START + 96,
+
+        NUM_PARAMS = VARLEG_ATTEN_END
     };
 
     enum InputIds {

@@ -168,15 +168,28 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 using SE = SequencerEngine;
                 const int varBase = MonsoonIds::POLY_VARIATION_VOICE_1_LEN + v * 3;
                 const int legBase = MonsoonIds::POLY_LEGATO_VOICE_1_LEN    + v * 3;
-                auto rd = [&](int id, float lo, float hi) {
-                    return (int)std::lround(math::clamp(eastLOR->params[id].getValue(), lo, hi));
+                // East's own base + per-voice poly CV for a VAR/LEG L/O/R item. Mirrors eastLorVal
+                // but uses the VAR/LEG CV jacks (varlegCvId) and per-voice depth (varlegAttId).
+                // No Macro blend: VAR/LEG are never Macro-owned (an owned lane would annihilate
+                // per-voice divergence). vl = 0 (VAR) or 1 (LEG); col c = 0/1/2 (LEN/OFF/ROT).
+                // Poly cable ch(v) → poly voice v (V(v+2)); the mono/V1 ch0 mix-in is applied in
+                // the East widget's v1Editable strand write, not here.
+                auto varlegLorVal = [&](int paramIdx, int vl, int c, float lo, float hi)->int {
+                    float base = eastLOR->params[paramIdx].getValue();
+                    if (eastVisual->inputs[StraitsEastVisualIds::varlegCvId(vl,c)].isConnected()) {
+                        float att = eastLOR->params[StraitsEastVisualIds::varlegAttId(slot, vl, c)].getValue();
+                        float cv  = eastVisual->inputs[StraitsEastVisualIds::varlegCvId(vl,c)]
+                                        .getPolyVoltage(v) / 10.f;
+                        base = math::clamp(base + cv * att * (hi - lo), lo, hi);
+                    }
+                    return (int)std::lround(base);
                 };
-                engine.polyLORRef(v, SE::EDITOR_LANE_VARIATION, SE::LOR_LEN) = rd(varBase + 0, 1.f, 16.f);
-                engine.polyLORRef(v, SE::EDITOR_LANE_VARIATION, SE::LOR_OFF) = rd(varBase + 1, 0.f, 15.f);
-                engine.polyLORRef(v, SE::EDITOR_LANE_VARIATION, SE::LOR_ROT) = rd(varBase + 2, 0.f, 15.f);
-                engine.polyLORRef(v, SE::EDITOR_LANE_LEGATO,    SE::LOR_LEN) = rd(legBase + 0, 1.f, 16.f);
-                engine.polyLORRef(v, SE::EDITOR_LANE_LEGATO,    SE::LOR_OFF) = rd(legBase + 1, 0.f, 15.f);
-                engine.polyLORRef(v, SE::EDITOR_LANE_LEGATO,    SE::LOR_ROT) = rd(legBase + 2, 0.f, 15.f);
+                engine.polyLORRef(v, SE::EDITOR_LANE_VARIATION, SE::LOR_LEN) = varlegLorVal(varBase + 0, 0, 0, 1.f, 16.f);
+                engine.polyLORRef(v, SE::EDITOR_LANE_VARIATION, SE::LOR_OFF) = varlegLorVal(varBase + 1, 0, 1, 0.f, 15.f);
+                engine.polyLORRef(v, SE::EDITOR_LANE_VARIATION, SE::LOR_ROT) = varlegLorVal(varBase + 2, 0, 2, 0.f, 15.f);
+                engine.polyLORRef(v, SE::EDITOR_LANE_LEGATO,    SE::LOR_LEN) = varlegLorVal(legBase + 0, 1, 0, 1.f, 16.f);
+                engine.polyLORRef(v, SE::EDITOR_LANE_LEGATO,    SE::LOR_OFF) = varlegLorVal(legBase + 1, 1, 1, 0.f, 15.f);
+                engine.polyLORRef(v, SE::EDITOR_LANE_LEGATO,    SE::LOR_ROT) = varlegLorVal(legBase + 2, 1, 2, 0.f, 15.f);
 
                 // Delegation toggles (§4d): 0 = follow mono (default, silent), 1 = Local East.
                 // When Local East, the LOR pushed above is read; when delegating, the engine
@@ -192,7 +205,9 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                             v,
                             eastLOR->params[MonsoonIds::VARLEG_DELEG_START + v*2 + 0].getValue(),
                             eastLOR->params[MonsoonIds::VARLEG_DELEG_START + v*2 + 1].getValue(),
-                            rd(legBase + 0, 1.f, 16.f), rd(legBase + 1, 0.f, 15.f), rd(legBase + 2, 0.f, 15.f));
+                            (int)std::lround(math::clamp(eastLOR->params[legBase + 0].getValue(), 1.f, 16.f)),
+                            (int)std::lround(math::clamp(eastLOR->params[legBase + 1].getValue(), 0.f, 15.f)),
+                            (int)std::lround(math::clamp(eastLOR->params[legBase + 2].getValue(), 0.f, 15.f)));
                 }
 #endif
             }

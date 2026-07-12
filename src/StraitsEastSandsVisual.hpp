@@ -68,7 +68,10 @@ namespace StraitsEastVisualIds {
         // 16 attenuverter DISPLAY proxies — lane l, col c → ATTEN_START + l*4 + c
         // (4-19). Selected-voice view; real depth in MonsoonIds::MACRO_ATTEN_START.
         ATTEN_START,
-        NUM_SPREAD_PARAMS = ATTEN_START + 16  // = 20
+        // 6 VAR/LEG CV-depth DISPLAY proxies (LEN/OFF/ROT only — no SPR): lane 0=VAR,
+        // 1=LEG; col 0..2. Selected-voice view; real depth in VARLEG_ATTEN_START.
+        VARLEG_ATTEN_DISP_START = ATTEN_START + 16,   // = 20
+        NUM_SPREAD_PARAMS = VARLEG_ATTEN_DISP_START + 6  // = 26
     };
     // Selected-voice display proxy (physical knob binds here).
     static inline int attenDispId(int lane, int col) { return ATTEN_START + lane*4 + col; }
@@ -76,13 +79,24 @@ namespace StraitsEastVisualIds {
     static inline int attenId(int v, int lane, int col) {
         return MonsoonIds::MACRO_ATTEN_START + v*16 + (lane*4 + col);
     }
+    // VAR/LEG CV-depth display proxy (selected-voice view). lane 0=VAR, 1=LEG; col 0..2.
+    static inline int varlegAttDispId(int lane, int col) { return VARLEG_ATTEN_DISP_START + lane*3 + col; }
+    // VAR/LEG per-voice CV depth (the real store). v=0..15 (slot 0 = mono/V1 ch1 mix-in).
+    static inline int varlegAttId(int v, int lane, int col) {
+        return MonsoonIds::VARLEG_ATTEN_START + v*6 + (lane*3 + col);
+    }
 
     // ── Input IDs ─────────────────────────────────────────────────────────
     enum InputId {
         CV_START = 0,
-        NUM_INPUTS = CV_START + 16   // 4 lanes × 4 cols
+        NUM_LANE_INPUTS = CV_START + 16,              // 4 lanes × 4 cols (LEN/OFF/ROT/SPR)
+        // VAR/LEG poly CV inputs (LEN/OFF/ROT only — no SPR). lane 0=VAR, 1=LEG; col 0..2.
+        VARLEG_CV_START = NUM_LANE_INPUTS,            // = 16
+        NUM_INPUTS = VARLEG_CV_START + 6              // = 22
     };
     static inline int cvId(int lane, int col) { return CV_START + lane*4 + col; }
+    // VAR/LEG CV jack id. lane 0=VAR, 1=LEG; col 0=LEN,1=OFF,2=ROT.
+    static inline int varlegCvId(int lane, int col) { return VARLEG_CV_START + lane*3 + col; }
 
     // ── LOR / Interp param ID helpers ─────────────────────────────────────
     // `lane` here is a POLY lane (SequencerEngine::PolyLane), NOT an editor lane:
@@ -213,6 +227,30 @@ struct StraitsEastSandsVisual : Module {
                 configParam(attenDispId(lane,c), -1.f,1.f,0.f, nm+" depth (selected voice)");
                 configInput(cvId(lane,c), nm+" CV (poly, per-voice depth)");
             }
+
+        // VARIATION / LEGATO poly CV (LEN/OFF/ROT only — no SPR, no spread). Display
+        // proxies + per-voice depth store, same selected-voice pattern as the 4 lanes.
+        // ch0 of each jack is the mono/V1 mix-in (slot 0); ch1.. feed poly voices.
+        {
+            static const char* vlNames[2] = {"VARIATION","LEGATO"};
+            static const char* vlItems[3] = {"Len","Off","Rot"};
+            for (int lane=0; lane<2; ++lane)
+                for (int c=0; c<3; ++c) {
+                    std::string nm = std::string(vlNames[lane])+" "+vlItems[c];
+                    configParam(varlegAttDispId(lane,c), -1.f,1.f,0.f,
+                                nm+" depth (selected voice)");
+                    configInput(varlegCvId(lane,c),
+                                nm+" CV (poly: ch1=mono mix-in, ch2+ voices)");
+                }
+            // Per-voice depth store (16-wide, slot 0 = mono/V1).
+            for (int v=0; v<16; ++v) {
+                std::string vs = "V"+std::to_string(v+1)+" ";
+                for (int lane=0; lane<2; ++lane)
+                    for (int c=0; c<3; ++c)
+                        configParam(varlegAttId(v,lane,c), -1.f,1.f,0.f,
+                                    vs+std::string(vlNames[lane])+" "+vlItems[c]+" depth");
+            }
+        }
 
         // VARIATION (editor lane 4) and LEGATO (5): per-voice LOR, LEN defaults 16 (identity window,
         // so the feature is silent until a lane is shortened). LOR-only — no spread params.

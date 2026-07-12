@@ -298,6 +298,25 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             for (int c = 0; c < 4; ++c)
                 bindParam<DimmableTrimpot>("param_" + std::to_string(attenDispId(r,c)), attenDispId(r,c));
         }
+
+        // VARIATION / LEGATO poly CV (LEN/OFF/ROT only — no SPR). Same bind pattern as
+        // the 4 lanes: gold poly jacks (theme-follow) + always-live depth attenuverters.
+        // ch0 = mono/V1 mix-in, ch1+ = poly voices (applied in the expander manager).
+        {
+            Module* mod = module;
+            auto themeCfg = [mod](redDot::GoldPolyPort* p) {
+                p->lightTheme = [mod]() { Monsoon* m = mod ? redDot::findMonsoonEitherSide(mod) : nullptr;
+                                          return m && m->lightTheme; };
+            };
+            for (int lane = 0; lane < 2; ++lane)
+                for (int c = 0; c < 3; ++c)
+                    bindInput<redDot::GoldPolyPort>("input_" + std::to_string(varlegCvId(lane,c)),
+                        varlegCvId(lane,c), std::function<void(redDot::GoldPolyPort*)>(themeCfg));
+            for (int lane = 0; lane < 2; ++lane)
+                for (int c = 0; c < 3; ++c)
+                    bindParam<DimmableTrimpot>("param_" + std::to_string(varlegAttDispId(lane,c)),
+                        varlegAttDispId(lane,c));
+        }
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_R), SPREAD_R,
             std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [](){ return false; }; k->lockWhen = [this](){ return laneOwnedByMacroTopo(0) || tab1MonoMirror(); }; k->displayValueFn = [this](){ return spreadDisplayValue(0); }; pendingSpreadArcs.push_back({k, 0}); }));
         bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_M), SPREAD_M,
@@ -427,6 +446,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         for (int lane=0; lane<4; ++lane)
             for (int c=0; c<4; ++c)
                 module->params[attenId(slot,lane,c)].setValue(module->params[attenDispId(lane,c)].getValue());
+        // VAR/LEG CV-depth: display proxy → this voice's per-voice store. lane 0=VAR,1=LEG; col 0..2.
+        for (int lane=0; lane<2; ++lane)
+            for (int c=0; c<3; ++c)
+                module->params[varlegAttId(slot,lane,c)].setValue(module->params[varlegAttDispId(lane,c)].getValue());
     }
     void loadVoiceMacro(int v) {   // v = 0-based poly bank
         if (!module) return;
@@ -440,6 +463,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         for (int lane=0; lane<4; ++lane)
             for (int c=0; c<4; ++c)
                 module->params[attenDispId(lane,c)].setValue(module->params[attenId(slot,lane,c)].getValue());
+        // VAR/LEG CV-depth: this voice's per-voice store → display proxy. lane 0=VAR,1=LEG; col 0..2.
+        for (int lane=0; lane<2; ++lane)
+            for (int c=0; c<3; ++c)
+                module->params[varlegAttDispId(lane,c)].setValue(module->params[varlegAttId(slot,lane,c)].getValue());
     }
     // Iterate EDITOR lanes 0..5 directly — currentState.lanes[] is editor-indexed, and VAR(4)/LEG(5)
     // have no PolyLane id, so the old engine-lane loop could not reach them. lorIdEditor() maps.
@@ -862,6 +889,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 for (int c=0; c<4; ++c)
                     module->params[attenId(dotModular::VoiceResolver::kMonoSlot, lane, c)]
                         .setValue(module->params[attenDispId(lane,c)].getValue());
+            // VAR/LEG CV-depth: same mono-slot mirror so V1's ch1 mix-in has its depth.
+            for (int lane=0; lane<2; ++lane)
+                for (int c=0; c<3; ++c)
+                    module->params[varlegAttId(dotModular::VoiceResolver::kMonoSlot, lane, c)]
+                        .setValue(module->params[varlegAttDispId(lane,c)].getValue());
             // P8: East's owner cells on V1 are locked (East can't delegate V1) but should
             // SHOW the real V1 ownership, which Mono decides. Mirror Mono's owner param
             // into East's ownerDispId so the cell draws filled/outline correctly. East
@@ -910,6 +942,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 for (int c=0; c<4; ++c)
                     module->params[attenId(dotModular::VoiceResolver::kMonoSlot, lane, c)]
                         .setValue(module->params[attenDispId(lane,c)].getValue());
+            // VAR/LEG CV-depth: same mono-slot mirror so V1's ch1 mix-in has its depth.
+            for (int lane=0; lane<2; ++lane)
+                for (int c=0; c<3; ++c)
+                    module->params[varlegAttId(dotModular::VoiceResolver::kMonoSlot, lane, c)]
+                        .setValue(module->params[varlegAttDispId(lane,c)].getValue());
             // Write the editor's lane LOR straight into the engine MONO strands (the
             // V1 home), via MONO_LANE_TO_STRAND, for all 4 poly lanes (MEL/OCT/REST/
             // ACC). The manager skips its no-Mono reset when East drives V1 (see
@@ -988,10 +1025,22 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // strand == editor lane by the deliberate strand renumber (VAR 4, LEG 5).
             for (int el = dotModular::SandsGrid::POLY_LANES; el < dotModular::SandsGrid::EAST_LANES; ++el) {
                 const auto& lane = visualEditor->currentState.lanes[el];
+                const int vl = el - dotModular::SandsGrid::POLY_LANES;   // 0=VAR, 1=LEG
+                // V1 mono mix-in: ch0 of this lane's VAR/LEG CV jack + the mono-slot depth
+                // (mirrored above), additive on the editor base — same ch1→mono convention as
+                // lanes 0..3. No Macro blend (VAR/LEG are never Macro-owned).
+                auto addCV = [&](float base, int item, float lo, float hi)->float {
+                    if (module->inputs[varlegCvId(vl,item)].isConnected()) {
+                        float att = module->params[varlegAttId(dotModular::VoiceResolver::kMonoSlot, vl, item)].getValue();
+                        float cv  = module->inputs[varlegCvId(vl,item)].getPolyVoltage(0) / 10.f;  // ch0 = V1
+                        base += cv * att * (hi - lo);
+                    }
+                    return rack::math::clamp(base, lo, hi);
+                };
                 eng.setStrand(StrandWriter::EAST, /*strand=*/el,
-                              std::max(1, lane.length),
-                              ((lane.offset   % 16) + 16) % 16,
-                              ((lane.rotation % 16) + 16) % 16);
+                              (int)std::round(addCV((float)std::max(1, lane.length), 0, 1.f, 16.f)),
+                              (int)std::round(addCV((float)(((lane.offset   % 16) + 16) % 16), 1, 0.f, 15.f)),
+                              (int)std::round(addCV((float)(((lane.rotation % 16) + 16) % 16), 2, 0.f, 15.f)));
             }
             // Display: reflect the engine's current mono strand LOR back to the editor.
             // Six lanes now — MONO_LANE_TO_STRAND is [6] and VAR/LEG are East-owned on V1 here.
