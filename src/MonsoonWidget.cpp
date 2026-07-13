@@ -720,6 +720,14 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
             // OFF (default): CONTINUE — gate carries across the loop, laps can differ. ON:
             // INTERRUPT — reset at the boundary, every lap identical (no cross-lap memory).
             add("Interrupt at phrase boundary", &m->engine.boundaryInterrupt);
+            sm->addChild(new ui::MenuSeparator);
+            // OFF (default): every poly voice uses mono's note length, as before. ON: each voice
+            // derives its own note length from its VARIATION LOR window onto the SHARED mono
+            // variation array, CLAMPED so it can never hold past mono's next event. Articulation is
+            // therefore subtractive (voices release early, never late) — the clock stays mono's.
+            // Silent unless the VARIATION knob is off centre AND a voice's VAR LOR is shortened.
+            // See docs/design/EAST_EXTRA_LANES.md.
+            add("Per-voice articulation (East VARIATION)", &m->engine.perVoiceArticulation);
         }));
         menu->addChild(new ui::MenuSeparator);
         struct IntItem : ui::MenuItem {

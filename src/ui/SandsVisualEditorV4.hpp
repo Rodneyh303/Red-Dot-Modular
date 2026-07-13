@@ -309,9 +309,14 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     if (curHand)   glfwDestroyCursor(curHand);
   }
   
+  // Explicit lane-count override. 0 = derive from mode (the original behaviour, unchanged).
+  // Set to 6 by East when it shows the extra VARIATION/LEGATO lanes.
+  int laneCountOverride = 0;
+  void setLaneCount(int n) { laneCountOverride = n; laneCount = n; }
+
   void setMode(Mode m) {
     mode = m;
-    laneCount = (mode == MONO) ? 6 : 4;
+    laneCount = laneCountOverride ? laneCountOverride : ((mode == MONO) ? 6 : 4);
     // NOTE: box.size is owned by the module that creates this editor (it sets
     // box.size = mm2px(ED_W, ED_H)). The layout derives lane height from
     // box.size.y / laneCount, so we must NOT force a hardcoded height here —

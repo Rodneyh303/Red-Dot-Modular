@@ -1,4 +1,5 @@
 #include <rack.hpp>
+#include "ui/SandsGrid.hpp"
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
 #include "StraitsEastSandsVisual.hpp"
@@ -225,6 +226,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
 
         // Visual editor
         visualEditor = new SandsVisualEditorV4(SandsVisualEditorV4::POLY);
+        // EAST_EXTRA_LANES.md stage 1: show all six lanes (VARIATION/LEGATO added), on the same
+        // 14..98 band as Mono. Mode stays POLY (all mode==POLY logic unchanged); only the lane
+        // count is overridden. Lanes 4/5 are LOCKED below — display-only, nothing reads them.
+        visualEditor->setLaneCount(dotModular::SandsGrid::EAST_LANES);   // 6
         visualEditor->box.pos  = mm2px(Vec(ED_X, ED_Y));
         visualEditor->box.size = mm2px(Vec(ED_W, ED_H));
         // Lanes fill the box evenly (no internal padding) so the live lanes line
@@ -239,7 +244,17 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // mirrors Mono, inoperable). editorLane → engine lane for the ownership check.
         visualEditor->laneLockedFn = [this](int editorLane) -> bool {
             if (tab1MonoMirror()) return true;           // V1 owned by Mono → all lanes locked on East
-            if (editorLane < 0 || editorLane >= 4) return false;
+            // VARIATION (4) / LEGATO (5): the usual V1 pattern. MONO owns these strands, so on the
+            // V1 tab they are LOCKED and merely MIRROR mono's values — even when no Sands Mono is
+            // attached (East is the V1 editor for the four poly lanes only; VAR/LEG stay mono's).
+            // On poly tabs they are editable (stage 1b banks). They are never Macro-delegated:
+            // an owned lane drives all voices identically, annihilating per-voice divergence.
+            // Modulation still reaches mono's VAR/LEG through mono's own path — locking the East
+            // display does not gate the strand.
+            // Editable on poly tabs, and on V1 when East IS the V1 editor (no Sands Mono).
+            // Locked only when Mono owns V1 — which tab1MonoMirror() already caught above.
+            if (editorLane >= dotModular::SandsGrid::POLY_LANES) return onMonoTab() && !v1Editable();
+            if (editorLane < 0) return false;
             int engLane = dotModular::EDITOR_TO_ENGINE_LANE[editorLane];
             // STEP 4c: a lane delegated to Macro is inoperable on East (V1 + poly tabs).
             // Shared resolver-backed helper: owner(currentVoice, lane) == MACRO.
@@ -395,22 +410,42 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             for (int c=0; c<4; ++c)
                 module->params[attenDispId(lane,c)].setValue(module->params[attenId(slot,lane,c)].getValue());
     }
+    // Iterate EDITOR lanes 0..5 directly — currentState.lanes[] is editor-indexed, and VAR(4)/LEG(5)
+    // have no PolyLane id, so the old engine-lane loop could not reach them. lorIdEditor() maps.
+    // On the V1/mono tab, editor lanes 4/5 DISPLAY mono's VARIATION/LEGATO (they are mono strands;
+    // East never owns them). The strands were renumbered so editor lane == strand index
+    // (MEL 0, OCT 1, REST 2, ACC 3, VAR 4, LEG 5), hence lorStore_[0][el] is mono's own LOR column.
+    // Read-only: laneLockedFn() locks these lanes whenever onMonoTab().
+    void mirrorMonoExtraLanes() {
+        Monsoon* m = getMonsoon();
+        if (!m || !visualEditor || !onMonoTab()) return;
+        for (int el = dotModular::SandsGrid::POLY_LANES; el < dotModular::SandsGrid::EAST_LANES; ++el) {
+            const int strand = el;   // identity, by the renumber above
+            auto& lane = visualEditor->currentState.lanes[el];
+            lane.length   = std::max(1, m->engine.lor(strand, SequencerEngine::LOR_LEN));
+            lane.offset   =            m->engine.lor(strand, SequencerEngine::LOR_OFF);
+            lane.rotation =            m->engine.lor(strand, SequencerEngine::LOR_ROT);
+            for (int st = 0; st < SandsVisualEditorV4::STEP_COUNT; ++st)
+                lane.probabilities[st] = m->engine.pe.finalRandomByStrand(strand, st);
+        }
+    }
+
     void saveVoiceLOR(int v) {
-        if (!module || !visualEditor) return;
-        for (int l=0; l<4; ++l) {   // l = engine lane; read from mapped editor lane
-            const auto& lane = visualEditor->currentState.lanes[dotModular::ENGINE_LANE_TO_EDITOR[l]];
-            module->params[lorId(v,l,0)].setValue((float)lane.length);
-            module->params[lorId(v,l,1)].setValue((float)lane.offset);
-            module->params[lorId(v,l,2)].setValue((float)lane.rotation);
+        if (!module || !visualEditor) return;   // poly banks only; V1 has none (see onVoiceTabChanged)
+        for (int el=0; el<dotModular::SandsGrid::EAST_LANES; ++el) {
+            const auto& lane = visualEditor->currentState.lanes[el];
+            module->params[lorIdEditor(v,el,0)].setValue((float)lane.length);
+            module->params[lorIdEditor(v,el,1)].setValue((float)lane.offset);
+            module->params[lorIdEditor(v,el,2)].setValue((float)lane.rotation);
         }
     }
     void loadVoiceLOR(int v) {
         if (!module || !visualEditor) return;
-        for (int l=0; l<4; ++l) {   // l = engine lane; write to mapped editor lane
-            auto& lane = visualEditor->currentState.lanes[dotModular::ENGINE_LANE_TO_EDITOR[l]];
-            lane.length   = std::max(1,(int)std::round(module->params[lorId(v,l,0)].getValue()));
-            lane.offset   = (int)std::round(module->params[lorId(v,l,1)].getValue());
-            lane.rotation = (int)std::round(module->params[lorId(v,l,2)].getValue());
+        for (int el=0; el<dotModular::SandsGrid::EAST_LANES; ++el) {
+            auto& lane = visualEditor->currentState.lanes[el];
+            lane.length   = std::max(1,(int)std::round(module->params[lorIdEditor(v,el,0)].getValue()));
+            lane.offset   = (int)std::round(module->params[lorIdEditor(v,el,1)].getValue());
+            lane.rotation = (int)std::round(module->params[lorIdEditor(v,el,2)].getValue());
         }
     }
     void onVoiceTabChanged(int nv) {
@@ -444,6 +479,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // v1Editable() display branch in step(); no explicit load needed. Owner cell
         // proxy is restored from the persistent mono owner store.
         if (selectedVoice == 0) {
+            // Seed editor lanes 4/5 from mono's VARIATION/LEGATO strands BEFORE step()'s v1Editable
+            // write runs, otherwise the outgoing poly voice's VAR/LEG would be pushed into mono.
+            mirrorMonoExtraLanes();
             for (int lane = 0; lane < 4; ++lane)
                 module->params[ownerDispId(lane)].setValue(module->params[monoOwnerId(lane)].getValue());
         }
@@ -816,7 +854,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                             monsoon->engine.pe.finalRandomByStrand(strand, s);
                 }
             }
+            mirrorMonoExtraLanes();   // lanes 4/5: mono's VARIATION/LEGATO, read-only
         } else if (v1Editable()) {
+            // (no per-frame mirror here: East OWNS lanes 4/5 on V1 in this branch and writes them
+            //  to the mono strands below. They are seeded once on tab entry — see onVoiceTabChanged.)
             // V1 editable (no Mono, combo 3/7-without-Mono): East IS the V1 editor.
             // Spread-follow is now handled by the knob's displayValueFn (see the SPREAD_*
             // binds + spreadDisplayValue): on a ceded V1 lane the knob DISPLAYS Macro's base
@@ -904,8 +945,21 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         (int)std::round(addCV(rot, 2, 0.f, 15.f)));
                 }
             }
+
+            // VARIATION (editor 4) / LEGATO (5): East is the V1 editor here (v1Editable), so it owns
+            // these mono strands too — same as lanes 0..3. No delegation branch: Macro can never own
+            // them (an owned lane drives every voice identically, annihilating per-voice divergence).
+            // strand == editor lane by the deliberate strand renumber (VAR 4, LEG 5).
+            for (int el = dotModular::SandsGrid::POLY_LANES; el < dotModular::SandsGrid::EAST_LANES; ++el) {
+                const auto& lane = visualEditor->currentState.lanes[el];
+                eng.setStrand(StrandWriter::EAST, /*strand=*/el,
+                              std::max(1, lane.length),
+                              ((lane.offset   % 16) + 16) % 16,
+                              ((lane.rotation % 16) + 16) % 16);
+            }
             // Display: reflect the engine's current mono strand LOR back to the editor.
-            for (int el = 0; el < 4; ++el) {
+            // Six lanes now — MONO_LANE_TO_STRAND is [6] and VAR/LEG are East-owned on V1 here.
+            for (int el = 0; el < dotModular::SandsGrid::EAST_LANES; ++el) {
                 int strand = dotModular::MONO_LANE_TO_STRAND[el];
                 int cvLen = eng.strandLenRef(strand);
                 int cvOff = eng.strandOffRef(strand);

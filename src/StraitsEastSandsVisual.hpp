@@ -41,7 +41,10 @@ namespace StraitsEastVisualIds {
     static constexpr float ED_Y   = dotModular::SandsGrid::LANE_TOP;   // 14 (was 23)
     // Editor holds 4 poly lanes (MEL/OCT/REST/ACCENT); ~12mm each. ED_LANE_H
     // drives prob-out vertical placement and must match the gen script's ED_H/4.
-    static constexpr float ED_H      = dotModular::SandsGrid::polyHeight();  // 56 (was 48)
+    // Stage 1 of EAST_EXTRA_LANES.md: East shows 6 lanes (adds VARIATION/LEGATO), so its editor
+    // spans the SAME band as Mono (14..98). Lanes 4/5 are locked/display-only for now.
+    static constexpr float ED_H      = dotModular::SandsGrid::monoHeight();  // 84 (4-lane was 56)
+    static constexpr int   N_EDITOR_LANES = dotModular::SandsGrid::EAST_LANES;  // 6
     static constexpr float ED_LANE_H = dotModular::SandsGrid::LANE_H;        // 14 (was 12)
 
     // Left-control rows align with the EDITOR lane centres (not the full panel),
@@ -82,11 +85,32 @@ namespace StraitsEastVisualIds {
     static inline int cvId(int lane, int col) { return CV_START + lane*4 + col; }
 
     // ── LOR / Interp param ID helpers ─────────────────────────────────────
+    // `lane` here is a POLY lane (SequencerEngine::PolyLane), NOT an editor lane:
+    //     0 = PL_REST   1 = PL_MELODY   2 = PL_OCTAVE   3 = PL_ACCENT
+    // VARIATION and LEGATO are mono strands, not poly lanes (PL_LANES == 4), so they have no bank.
+    //
+    // HAZARD CLOSED: this used to fall through to the OCTAVE bank for ANY unrecognised lane, so
+    // lorId(v, 4|5, c) silently returned OCTAVE's params. Unlocking East's VARIATION/LEGATO lanes
+    // would have CORRUPTED every voice's octave LOR, not merely written an unread store.
+    // Now returns -1 for lanes with no bank, so a caller fails loudly instead of writing the wrong one.
+    // (Live callers loop l < 4, so -1 is unreachable today — it is a tripwire for stage 1b.)
     inline int lorId(int v, int lane, int c) {
         if (lane == 0) return POLY_DNA_VOICE_1_LEN    + v*3 + c;
         if (lane == 1) return POLY_MELODY_VOICE_1_LEN + v*3 + c;
+        if (lane == 2) return POLY_OCTAVE_VOICE_1_LEN + v*3 + c;
         if (lane == 3) return POLY_ACCENT_VOICE_1_LEN + v*3 + c;
-        return              POLY_OCTAVE_VOICE_1_LEN   + v*3 + c;
+        return -1;   // unreachable: lanes 0..3 are the only PolyLanes
+    }
+
+    // EDITOR-lane LOR id (0=MEL 1=OCT 2=REST 3=ACC 4=VAR 5=LEG). Lanes 0..3 map back to their
+    // PolyLane bank; 4/5 use the dedicated VARIATION/LEGATO banks added for EAST_EXTRA_LANES.
+    // Prefer this over lorId() in editor-facing code — currentState.lanes[] is editor-indexed,
+    // and VAR/LEG have no PolyLane id at all.
+    inline int lorIdEditor(int v, int editorLane, int c) {
+        if (editorLane == 4) return MonsoonIds::POLY_VARIATION_VOICE_1_LEN + v*3 + c;
+        if (editorLane == 5) return MonsoonIds::POLY_LEGATO_VOICE_1_LEN    + v*3 + c;
+        if (editorLane < 0 || editorLane > 3) return -1;
+        return lorId(v, dotModular::EDITOR_TO_ENGINE_LANE[editorLane], c);
     }
     inline int restInterpId  (int v) { return POLY_REST_INTERP_1   + v; }
     inline int melodyInterpId(int v) { return POLY_MELODY_INTERP_1 + v; }
@@ -183,6 +207,18 @@ struct StraitsEastSandsVisual : Module {
                 configParam(attenDispId(lane,c), -1.f,1.f,0.f, nm+" depth (selected voice)");
                 configInput(cvId(lane,c), nm+" CV (poly, per-voice depth)");
             }
+
+        // VARIATION (editor lane 4) and LEGATO (5): per-voice LOR, LEN defaults 16 (identity window,
+        // so the feature is silent until a lane is shortened). LOR-only — no spread params.
+        for (int v=0; v<15; ++v) {
+            std::string vl = "V"+std::to_string(v+2)+" ";
+            for (int c=0; c<3; ++c) {
+                configParam(MonsoonIds::POLY_VARIATION_VOICE_1_LEN + v*3 + c, 0.f,16.f,
+                            c==0?16.f:0.f, vl+"VAR c"+std::to_string(c));
+                configParam(MonsoonIds::POLY_LEGATO_VOICE_1_LEN    + v*3 + c, 0.f,16.f,
+                            c==0?16.f:0.f, vl+"LEG c"+std::to_string(c));
+            }
+        }
 
         for (int v=0; v<15; ++v) {   // poly voices 2..16: lorId/owner/interp banks are 15-wide
             std::string vl = "V"+std::to_string(v+2)+" ";

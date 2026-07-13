@@ -26,7 +26,10 @@ namespace SandsGrid {
     static constexpr float LANE_TOP   = 14.f;   // top of lane 0 — identical on all three
     static constexpr float LANE_H     = 14.f;   // one lane height everywhere
     static constexpr int   MONO_LANES = 6;      // MEL, OCT, REST, ACCENT, VARIATION, LEGATO
-    static constexpr int   POLY_LANES = 4;      // MEL, OCT, REST, ACCENT (East/Macro)
+    static constexpr int   POLY_LANES = 4;      // MEL, OCT, REST, ACCENT (Macro; East's spread rows)
+    // East displays all six lanes (adds VARIATION, LEGATO) — its empty band was exactly 2 x LANE_H.
+    // Lanes 4/5 are display-only until the per-voice LOR feature lands (EAST_EXTRA_LANES.md).
+    static constexpr int   EAST_LANES = 6;
 
     // Voice-tab band, above the grid (East/Macro only). Two rows of 5mm: 3..13.
     static constexpr float TAB_TOP   = 3.f;
