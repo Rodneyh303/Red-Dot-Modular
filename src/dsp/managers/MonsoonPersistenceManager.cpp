@@ -31,6 +31,12 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_object_set_new(root, "restBeatsLegato",  json_boolean(m->engine.restBeatsLegato));
     json_object_set_new(root, "boundaryInterrupt", json_boolean(m->engine.boundaryInterrupt));
     json_object_set_new(root, "perVoiceArticulation", json_boolean(m->engine.perVoiceArticulation));
+    // Per-lane direction: the requested sign per strand (+1 fwd / -1 rev) and the flip-quant mode.
+    { json_t* arr = json_array();
+      for (int s = 0; s < dotModular::NUM_STRANDS; ++s)
+          json_array_append_new(arr, json_integer(m->engine.laneSignPending_[s]));
+      json_object_set_new(root, "laneSign", arr); }
+    json_object_set_new(root, "laneFlipQuant", json_integer((int)m->engine.laneFlipQuant));
     json_object_set_new(root, "modVizMonsoonOther",  json_boolean(m->modVizMonsoonOther));
     json_object_set_new(root, "modVizEast",  json_boolean(m->modVizEast));
     json_object_set_new(root, "modVizWest",  json_boolean(m->modVizWest));
@@ -175,6 +181,16 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     if (auto j = json_object_get(root, "restBeatsLegato"))   m->engine.restBeatsLegato   = json_boolean_value(j);
     if (auto j = json_object_get(root, "boundaryInterrupt"))  m->engine.boundaryInterrupt  = json_boolean_value(j);
     if (auto j = json_object_get(root, "perVoiceArticulation")) m->engine.perVoiceArticulation = json_boolean_value(j);
+    if (auto j = json_object_get(root, "laneSign")) {
+        for (int s = 0; s < dotModular::NUM_STRANDS && s < (int)json_array_size(j); ++s) {
+            int v = ((int)json_integer_value(json_array_get(j, s)) < 0) ? -1 : 1;
+            m->engine.laneSign_[s] = v;         // apply immediately on load (no wait for a wrap)
+            m->engine.laneSignPending_[s] = v;
+        }
+    }
+    if (auto j = json_object_get(root, "laneFlipQuant"))
+        m->engine.laneFlipQuant = (json_integer_value(j) == 1) ? SequencerEngine::LaneFlipQuant::Phrase
+                                                               : SequencerEngine::LaneFlipQuant::StepEdge;
     if (auto j = json_object_get(root, "resetIndexOnModeChange")) m->resetIndexOnModeChange = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "cv2Mode")) m->cv2Mode = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "gate1Assign")) m->gate1Assign = (int)json_integer_value(j);

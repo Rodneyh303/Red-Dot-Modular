@@ -730,6 +730,39 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
             // a voice's VAR/LEG is set Local East on the East expander. See EAST_EXTRA_LANES.md.
             add("Per-voice articulation (East VARIATION/LEGATO)", &m->engine.perVoiceArticulation);
         }));
+        // Lane direction: reverse a strand's read independently (opposite-to-global). Sets the
+        // PENDING sign; the engine promotes it at a boundary per the flip-quant choice, so the
+        // lane turns around from its current position (no jump). See plans/lane_direction.md.
+        struct LaneDirItem : ui::MenuItem {
+            int* pending = nullptr;   // &engine.laneSignPending_[strand]
+            void onAction(const event::Action&) override { if (pending) *pending = -*pending; }
+            void step() override { rightText = (pending && *pending < 0) ? "REV ✔" : ""; ui::MenuItem::step(); }
+        };
+        struct FlipQuantItem : ui::MenuItem {
+            Monsoon* module = nullptr; SequencerEngine::LaneFlipQuant value{};
+            void onAction(const event::Action&) override { if (module) module->engine.laneFlipQuant = value; }
+            void step() override { if (module) rightText = (module->engine.laneFlipQuant == value) ? "✔" : ""; ui::MenuItem::step(); }
+        };
+        menu->addChild(createSubmenuItem("Lane direction", "", [=](ui::Menu* sm) {
+            auto add = [&](const char* label, int strand) {
+                auto* it = createMenuItem<LaneDirItem>(label);
+                it->pending = &m->engine.laneSignPending_[strand]; sm->addChild(it);
+            };
+            add("Reverse Melody",    dotModular::STRAND_MELODY);
+            add("Reverse Octave",    dotModular::STRAND_OCTAVE);
+            add("Reverse Rest",      dotModular::STRAND_RHYTHM);
+            add("Reverse Accent",    dotModular::STRAND_ACCENT);
+            add("Reverse Variation", dotModular::STRAND_VARIATION);
+            add("Reverse Legato",    dotModular::STRAND_LEGATO);
+            sm->addChild(new ui::MenuSeparator);
+            auto addQ = [&](const char* label, SequencerEngine::LaneFlipQuant v) {
+                auto* it = createMenuItem<FlipQuantItem>(label); it->module = m; it->value = v; sm->addChild(it);
+            };
+            // When a reversed direction takes effect: at the phrase wrap (default, musical) or
+            // on the next step edge (live turnaround). Applies to all lanes.
+            addQ("Flip at phrase boundary", SequencerEngine::LaneFlipQuant::Phrase);
+            addQ("Flip at step edge",       SequencerEngine::LaneFlipQuant::StepEdge);
+        }));
         menu->addChild(new ui::MenuSeparator);
         struct IntItem : ui::MenuItem {
             Monsoon* module; int* target; int value;
