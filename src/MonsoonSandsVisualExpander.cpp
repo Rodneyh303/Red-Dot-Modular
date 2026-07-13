@@ -355,16 +355,21 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             effOff[l] = eng.strandOff(strand);
             effRot[l] = eng.strandRot(strand);
         }
-        int globalStep = monsoon->engine.stepIndex;
+        const bool started = (monsoon->engine.stepIndex >= 0);
         // Per-lane direction cue: each mono strand's effective trail direction is the global
         // play direction times its own lane sign (reverse / pendulum flips it). Display lane
         // index == strand index (MEL/OCT/REST/ACC/VAR/LEG).
         for (int l = 0; l < 6; ++l)
             visualEditor->setLanePlayDir(l, monsoon->engine.lastPlayDir * monsoon->engine.laneSign_[l]);
         for (int l = 0; l < 6; ++l) {
+            int strand = dotModular::MONO_LANE_TO_STRAND[l];
             visualEditor->currentState.lanes[l].setDisplayLOR(effLen[l], effOff[l], effRot[l]);
-            visualEditor->setLanePlayStep(l,
-                calcPlayhead(globalStep, effLen[l], effOff[l], effRot[l]));
+            // Playhead POSITION follows THIS lane's own accumulated tick, so a reversed /
+            // pendulum lane's highlight moves BACKWARD and lands on the exact cell the engine
+            // reads (calcPlayhead(laneTick_[strand]) == getStrandIdx(laneTick_[strand])).
+            // -1 while not started keeps it hidden, as before.
+            int ph = started ? eng.laneTick_[strand] : -1;
+            visualEditor->setLanePlayStep(l, calcPlayhead(ph, effLen[l], effOff[l], effRot[l]));
         }
     }
 };
@@ -378,13 +383,13 @@ void MonsoonSandsVisualExpander::process(const ProcessArgs&) {
         return;
     }
     auto& eng = monsoon->engine;
-    const int globalStep = eng.stepIndex;
     const float scaleV = (monsoon->probOutScale == 0) ? 1.f : (monsoon->probOutScale == 1) ? 5.f : 10.f;
     const bool sh = monsoon->probOutSampleHold;
     for (int l = 0; l < 6; ++l) {
         int strand = dotModular::MONO_LANE_TO_STRAND[l];
-        // Lane's post-LOR step — same mapping the visual uses for the playhead.
-        int step = calcPlayhead(globalStep, eng.strandLen(strand),
+        // Lane's post-LOR step — read each lane's OWN tick so a reversed / pendulum lane's CV
+        // matches the cell the engine reads (laneTick_ is always >= 0, so no not-started -1).
+        int step = calcPlayhead(eng.laneTick_[strand], eng.strandLen(strand),
                                 eng.strandOff(strand), eng.strandRot(strand));
         float v;
         if (sh) {
