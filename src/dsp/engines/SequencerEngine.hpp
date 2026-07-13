@@ -7,6 +7,11 @@
 #include <cassert>
 #include <cstdio>
 
+// TARGETED DEBUG for Rule 2 per-voice legato — set to 0 (and rebuild) to remove.
+// Shared by SequencerEngine.cpp (roll/consume trace) and MonsoonExpanderManager.cpp
+// (delegation-param + LEG-LOR push trace). Output → Rack log.txt (stderr).
+#define RULE2_DEBUG 0
+
 // ── Poly voice architecture ────────────────────────────────────────────────────
 
 // What mono decided on the most recent step edge.
@@ -37,6 +42,13 @@ struct PolyVoice {
     float restProb = 0.0f;
     float accentProb = 0.0f;   // per-voice accent probability (accent as a poly lane)
     bool  accented = false;    // result of this voice's own accent draw this step
+    // Rule 2 (EAST_EXTRA_LANES §4d): latched at the mono chain onset — true if this voice
+    // PLAYED (vs rested) when mono started the gate, and held for the chain's life. It, not
+    // the gate-held flag, is what tells a landing whether this voice is part of the chain:
+    // a voice that opted out and let its short note close still reads participating==true and
+    // re-articulates, whereas a rester reads false and stays silent. Only consulted when
+    // perVoiceArticulation is on. Reset at each new onset and when mono rests.
+    bool  participating = false;
 };
 
 // ── SequencerEngine ────────────────────────────────────────────────────────────
@@ -69,6 +81,12 @@ struct SequencerEngine {
     // Most recent mono decision — written by executeStep, read by executePolyVoices.
     StepResult lastStepResult;
 
+    // Most recent mono legato probability — written by executeStep, read by executePolyVoice
+    // for the Rule 2 per-voice slur roll (the legato THRESHOLD stays global/mono; only each
+    // voice's reading CELL differs, via getLegatoStepForVoice). Same write-once/read-by-poly
+    // pattern as lastStepResult above.
+    float lastLegatoProb_ = 0.f;
+
     // Leading-edge legato is now the ONLY legato model: the connection is governed by the
     // PREVIOUS note's onset commitment (gs.slurForward), captured before this note's cascade
     // recomputes it. The old reactive model (fresh r_legato_tie roll at the joining onset)
@@ -92,6 +110,20 @@ struct SequencerEngine {
 
     int stepIndex = -1;
     int lastPlayDir = +1;   // +1 forward, -1 reverse (Mode E); for UI direction cues
+
+    // ── Per-lane direction (reverse a lane's read independently) ──────────────────
+    // Each strand walks its OWN accumulated tick, advanced per step by
+    // globalDir * laneSign_[s]; cell = getStrandIdx(laneTick_[s], ...). laneSign_ = +1
+    // follows global (default), -1 = reverse (opposite-to-global). All-forward keeps
+    // laneTick_[s] == totalStepsElapsed exactly, so it is a no-op until a lane is reversed.
+    // A UI change sets laneSignPending_[s]; advancePlayhead promotes it to laneSign_[s] at a
+    // boundary (StepEdge: top of every step; Phrase: only at the window wrap), so the lane
+    // turns around from its current position with no jump. See plans/lane_direction.md.
+    enum class LaneFlipQuant { StepEdge, Phrase };
+    int laneTick_[dotModular::NUM_STRANDS]        = {0,0,0,0,0,0};
+    int laneSign_[dotModular::NUM_STRANDS]        = {1,1,1,1,1,1};
+    int laneSignPending_[dotModular::NUM_STRANDS] = {1,1,1,1,1,1};
+    LaneFlipQuant laneFlipQuant = LaneFlipQuant::Phrase;   // musical default; StepEdge = live turns
     int lastStepIndex = -1;
     int startStep = 0;
     int endStep = 15;
@@ -144,8 +176,28 @@ struct SequencerEngine {
     // variation index and the result is bit-identical. Doubly inert.
     bool perVoiceArticulation = false;
 
+    // VAR/LEG per-voice delegation (EAST_EXTRA_LANES §4d). false (default) = delegate to
+    // mono → the voice reads MONO's VAR/LEG position, so it mirrors mono (silent). true =
+    // Local East → the voice reads its OWN LOR slot and may diverge. Indexed [bank][lane],
+    // bank 0..14 = V2..V16, lane 0 = VAR, 1 = LEG. Zero-init = all-delegate = follow mono,
+    // which is also the correct fallback when East is absent (nothing sets Local East).
+    // Pushed each cycle by MonsoonExpanderManager from the East delegation params.
+    bool varlegLocalEast_[15][2] = {};
+    void setVarlegLocalEast(int bank, int lane, bool localEast) {
+        if (bank >= 0 && bank < 15 && lane >= 0 && lane < 2) varlegLocalEast_[bank][lane] = localEast;
+    }
+    // VAR = lane 0, LEG = lane 1.
+    bool varlegDelegated(int bank, int lane) const {
+        return !(bank >= 0 && bank < 15 && lane >= 0 && lane < 2 && varlegLocalEast_[bank][lane]);
+    }
+
     // Per-voice VARIATION step — mono's getStrandIdx transform, driven by THIS voice's LOR window.
+    // Delegated voices (default) return mono's variation step, so they mirror mono.
     int getVariationStepForVoice(int bank) const;
+
+    // Per-voice LEGATO step — same, for Rule 2's per-voice slur roll. Delegated voices (default)
+    // return mono's legato step. Present now (Step 1) so Rule 2 consumes it without re-plumbing.
+    int getLegatoStepForVoice(int bank) const;
 
     // This voice's note-length index, CLAMPED so its hold can never exceed mono's.
     // NOTE_VALUES is documented "ordered slowest -> fastest", so a HIGHER index is a SHORTER note;

@@ -1,6 +1,13 @@
 #include "SequencerEngine.hpp"
 #include <cmath>
 #include <algorithm>
+#include <cstdio>
+
+// RULE2_DEBUG is defined in SequencerEngine.hpp (shared with the manager). The trace uses
+// Rack's INFO() logger (writes to log.txt); fprintf(stderr) is discarded under a GUI launch.
+#if RULE2_DEBUG
+#include <rack.hpp>
+#endif
 
 // Note-value data (fraction, allowedPPQN, label) lives in dsp/NoteValues.hpp as
 // the single source of truth. The sequencer uses NOTE_VALUES[i].allowedPPQN to
@@ -28,6 +35,9 @@ void SequencerEngine::reset() {
         lorRef(s, LOR_LEN) = 16;   // Length defaults to full 16-step window
         lorRef(s, LOR_OFF) = 0;
         lorRef(s, LOR_ROT) = 0;
+        laneTick_[s] = 0;          // per-lane direction: reset walk + default forward
+        laneSign_[s] = 1;
+        laneSignPending_[s] = 1;
     }
     for (int i = 0; i < 15; i++) {
         for (int l = 0; l < PL_LANES; ++l) {   // was l < 3 — PL_ACCENT(3) was never reset (pre-existing bug)
@@ -83,6 +93,16 @@ void SequencerEngine::setWindow(int length, int offset) {
 bool SequencerEngine::advancePlayhead(int dir) {
     int prevStep = stepIndex;
     lastPlayDir = (dir < 0) ? -1 : +1;
+
+    // ── Per-lane direction ──────────────────────────────────────────────────────
+    // StepEdge: promote the pending sign now (before advancing) so the lane turns around
+    // THIS step. Then advance each lane's own tick by globalDir * its sign — all-forward
+    // (sign=+1) keeps laneTick_[l] == totalStepsElapsed exactly (no behaviour change).
+    if (laneFlipQuant == LaneFlipQuant::StepEdge)
+        for (int l = 0; l < dotModular::NUM_STRANDS; ++l) laneSign_[l] = laneSignPending_[l];
+    for (int l = 0; l < dotModular::NUM_STRANDS; ++l)
+        laneTick_[l] = (int)((((long)laneTick_[l] + (long)dir * laneSign_[l]) % DNA_LCM + DNA_LCM) % DNA_LCM);
+
     // Step the global DNA tick WITH direction: +1 forward, -1 backward. This is what
     // maps physical positions to drifting DNA content (strand indices) and the ring
     // lights; counting up in reverse desyncs it from stepIndex and both the strand
@@ -90,6 +110,7 @@ bool SequencerEngine::advancePlayhead(int dir) {
     if (dir < 0) totalStepsElapsed = (totalStepsElapsed - 1 + DNA_LCM) % DNA_LCM;
     else         totalStepsElapsed = (totalStepsElapsed + 1) % DNA_LCM;
 
+    bool wrapped;
     if (dir < 0) {
         // ── Reverse traversal: mirror of forward, leftward through the window. ──
         // From the "not started" state, seed just AFTER endStep so the first reverse
@@ -101,18 +122,23 @@ bool SequencerEngine::advancePlayhead(int dir) {
         for (int s = 0; s < 16 && !isStepInWindow(stepIndex); ++s)
             stepIndex = (stepIndex - 1 + 16) & 0x0F;
         // Phrase boundary (reverse): wrapped back round to endStep.
-        return (prevStep != -1 && stepIndex == endStep);
+        wrapped = (prevStep != -1 && stepIndex == endStep);
+    } else {
+        // ── Forward traversal (unchanged) ──
+        if (stepIndex == -1) stepIndex = (startStep - 1 + 16) % 16;
+        stepIndex = (stepIndex + 1) & 0x0F;
+        if (!isStepInWindow(stepIndex)) stepIndex = startStep;
+        for (int s = 0; s < 16 && !isStepInWindow(stepIndex); ++s)
+            stepIndex = (stepIndex + 1) & 0x0F;
+        // Return true if wrapped to start (phrase boundary)
+        wrapped = (prevStep != -1 && stepIndex == startStep);
     }
 
-    // ── Forward traversal (unchanged) ──
-    if (stepIndex == -1) stepIndex = (startStep - 1 + 16) % 16;
-    stepIndex = (stepIndex + 1) & 0x0F;
-    if (!isStepInWindow(stepIndex)) stepIndex = startStep;
-    for (int s = 0; s < 16 && !isStepInWindow(stepIndex); ++s)
-        stepIndex = (stepIndex + 1) & 0x0F;
+    // Phrase: defer the flip to the wrap, so the next phrase plays in the new direction.
+    if (laneFlipQuant == LaneFlipQuant::Phrase && wrapped)
+        for (int l = 0; l < dotModular::NUM_STRANDS; ++l) laneSign_[l] = laneSignPending_[l];
 
-    // Return true if wrapped to start (phrase boundary)
-    return (prevStep != -1 && stepIndex == startStep);
+    return wrapped;
 }
 
 void SequencerEngine::updateWindow(float lenParam, float lenCv, bool lenPatched, float offParam, float offCv, bool offPatched) {
@@ -212,6 +238,7 @@ bool SequencerEngine::shouldTriggerStep(int ppqn) const {
 }
 
 StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float accentProb, const PatternInput& input, bool wasHeld, bool hadTail) {
+    lastLegatoProb_ = legatoProb;   // for the Rule 2 per-voice slur roll (read in executePolyVoice)
     // ── Fractional notes (1/4T=2.667, 1/8T=1.333, 1/32=0.5 steps) & legato/tie ──
     // These notes end MID-STEP (closed by the gateSecRemain seconds-timer), not on
     // a 1/16 grid edge. Legato/tie decisions only happen AT an edge and require the
@@ -425,6 +452,7 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
             voices[i].gs.gateHeld   = false;
             voices[i].gs.holdRemain = 0.f;
             voices[i].gs.slurForward = false;
+            voices[i].participating = false;
         }
     }
 
@@ -482,7 +510,7 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
             gs.gateHeld = false; gs.holdRemain = 0.f; gs.slurForward = false;
             for (int i = 0; i < numPolyVoices; ++i) {
                 voices[i].gs.gateHeld = false; voices[i].gs.holdRemain = 0.f;
-                voices[i].gs.slurForward = false;
+                voices[i].gs.slurForward = false; voices[i].participating = false;
             }
         }
         float r_vary   = pe.variationRandom[getVariationStep()];
@@ -553,6 +581,10 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
             v.accented = false;
             if (v.gs.holdRemain > 0.0001f) v.gs.gateHeld = true; // allow previous note tail to finish
             else v.gs.gateHeld = false;
+            // Rule 2: a resting voice starts no note, so it commits no forward slur, and it
+            // is NOT part of this chain — landings must skip it (distinct from an opted-out
+            // voice whose gate merely closed).
+            if (perVoiceArticulation) { v.gs.slurForward = false; v.participating = false; }
             return;
         }
         
@@ -575,44 +607,146 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
             // bug. Trigger a fresh note instead. (Direction-independent; surfaced in reverse
             // mode but present forward too.)
             v.gs.triggerNote(pitchV, sem, nvV);
+
+        // ── Rule 2 LEAD (per-voice leading-edge slur roll) ────────────────────────────────
+        // Mirror mono's LEAD commitment (executeStep), per voice: this note commits to slur its
+        // gate forward into the NEXT note iff its OWN legato draw fires. The draw reads the
+        // SHARED mono legatoRandom array at THIS voice's cell (getLegatoStepForVoice → mono's
+        // cell when delegated (default) so it matches mono, own cell when Local East). The
+        // THRESHOLD (lastLegatoProb_) and the array stay global/mono — only the reading cell is
+        // per-voice, exactly as VARIATION. Rolled here at the leading edge and consumed at the
+        // NEXT landing (v.gs.slurForward → prevSlur). Gated by perVoiceArticulation; when off,
+        // slurForward is left to the existing follow-mono path (Rule 2 is additive).
+        // NOTE: this only ROLLS the commitment. The poly landing does not consume it yet (that
+        // is Rule 2 step 3 — the opt-out re-articulate branch); until then this is inert.
+        if (perVoiceArticulation) {
+            // This voice played at the chain onset → it is part of the chain for its life.
+            v.participating = true;
+            bool leStartingV = (lastStepResult.decision == MonoDecision::NewNote)
+                            || (lastStepResult.decision == MonoDecision::Legato)
+                            || (lastStepResult.decision == MonoDecision::LegatoMax)
+                            || (lastStepResult.decision == MonoDecision::Tie);
+            float r_polyLegato = pe.legatoRandom[getLegatoStepForVoice(voiceIdx)];
+            v.gs.slurForward = leStartingV
+                             && noteCanLeadLegato(nvV)
+                             && (lastLegatoProb_ >= 0.999f || r_polyLegato < lastLegatoProb_);
+#if RULE2_DEBUG
+            INFO("[R2 roll ] v=%2d step=%3d LE=%d legCell=%2d monoCell=%2d legLOR=(%2d,%2d,%2d) "
+                 "r=%.3f prob=%.3f nvV=%d canLead=%d -> slur=%d",
+                voiceIdx, (int)totalStepsElapsed, (int)!varlegDelegated(voiceIdx, 1),
+                getLegatoStepForVoice(voiceIdx), getLegatoStep(),
+                polyLOR(voiceIdx, EDITOR_LANE_LEGATO, LOR_LEN),
+                polyLOR(voiceIdx, EDITOR_LANE_LEGATO, LOR_OFF),
+                polyLOR(voiceIdx, EDITOR_LANE_LEGATO, LOR_ROT),
+                r_polyLegato, lastLegatoProb_, nvV, (int)noteCanLeadLegato(nvV),
+                (int)v.gs.slurForward);
+#endif
+        }
         return;
     }
 
     // If mono is Sustaining or Resting, poly must stick to its current role.
     if (lastStepResult.decision == MonoDecision::Rest) {
         v.gs.gateHeld = false;
+        v.participating = false;   // Rule 2: mono rested → the chain ends for this voice.
     } else {
-        // Mono is Sustaining (MidNote, Tie, or shifted Legato shift).
-        // Poly follows mono gate presence strictly IF it was already active ("in").
-        if (gs.gateHeld && wasHeldPoly) {
-            if (lastStepResult.decision == MonoDecision::Legato || lastStepResult.decision == MonoDecision::LegatoMax) {
-                // Mono slid to a NEW pitch (a real pitch move) → poly draws its OWN new pitch
-                // (its own melody/octave LOR) and slides to it. Poly tracks mono's articulation
-                // shape, never mono's actual notes.
-                int melIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_MELODY), polyOffE(voiceIdx, PL_MELODY), polyRotE(voiceIdx, PL_MELODY));
-                int octIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_OCTAVE), polyOffE(voiceIdx, PL_OCTAVE), polyRotE(voiceIdx, PL_OCTAVE));
-                int sem = 0;
-                float pitchV = pe.genPitchLive(sem, input, pe.polyRandom(voiceIdx, PL_MELODY)[melIdx], pe.polyRandom(voiceIdx, PL_OCTAVE)[octIdx]);
-                v.gs.slideNote(pitchV, sem, nvV, wasHeldPoly);
-            } else if (lastStepResult.decision == MonoDecision::Tie) {
-                // Mono held the same pitch (tie) → poly holds its own current pitch, extends hold.
-                v.gs.extendHold(v.gs.lastSemitone, nvV);
+        // A LANDING = mono connects at this edge (Legato / LegatoMax / Tie). MidNote is a
+        // mid-hold, not an onset edge, so it never consumes or rolls a slur.
+        const bool monoConnectLanding = (lastStepResult.decision == MonoDecision::Legato)
+                                      || (lastStepResult.decision == MonoDecision::LegatoMax)
+                                      || (lastStepResult.decision == MonoDecision::Tie);
+
+        if (perVoiceArticulation && monoConnectLanding) {
+            // ── Rule 2 CONSUME (per-voice landing) ────────────────────────────────────────
+            // A participating voice decides its OWN connect at this edge from its OWN prevSlur
+            // (committed at its previous onset): prevSlur → connect (slide/extend, tracking mono's
+            // articulation shape); else RE-ARTICULATE a fresh note (clamped ≤ mono via nvV). A
+            // rester (participating==false) stays silent — this is why the latch is explicit, not
+            // read off the gate (an opted-out voice whose short note closed is still in the chain).
+            // Then re-roll this voice's forward commitment for the NEXT landing, exactly as mono
+            // re-rolls at every sounding onset, so 3+ note chains carry forward per voice.
+            if (!v.participating) {
+                v.gs.gateHeld = false;   // rested at the onset → not part of this chain
             } else {
-                // MidNote: mono is HOLDING a note still sounding — nothing was chosen this step
-                // (the executeStep guard returned early). Poly holds too: NO pitch redraw, just
-                // keep the gate high, so poly follows mono through the whole held span. This is
-                // the fix for the pitch drift where the MidNote path shared the Legato redraw and
-                // moved poly's pitch UNDER a static mono note — contradicting the enum's "MidNote:
-                // poly just ticks, no new draw" and the test_poly_voices replica (which returns on
-                // MidNote). Gate-close timing is unchanged: still owned by the armed pulse timer /
-                // tickPulse (the sole gate-close mechanism), so the Stage-2 length clamp still
-                // releases shorter voices early. gateHeld=true here only re-asserts an already-open
-                // gate (we are inside `gs.gateHeld && wasHeldPoly`).
-                v.gs.gateHeld = true;
+                const bool prevSlur = v.gs.slurForward;
+                const bool isTie    = (lastStepResult.decision == MonoDecision::Tie);
+                // Mono invariant: "a slur can only connect to a still-sounding predecessor."
+                // A participating voice whose short note already closed via the Stage-2 clamp
+                // (gatePulseRemain hit 0 mid-step) is NOT still sounding at this edge, so it must
+                // RE-ARTICULATE rather than connect — even though it remains in the chain
+                // (participating). Without this guard, a short legato lead followed by a clamp gap
+                // (the visible/audible "rest") would draw a false teal/violet continuation at the
+                // next landing, because prevSlur (committed at the lead) is only cleared by a real
+                // rest DECISION (line ~568), not by an early gate close. wasHeldPoly/hadPolyTail
+                // here are the still-sounding read, made accurate by the MidNote re-assert fix
+                // (line ~712) which keeps a clamped voice's gateHeld from sticking high.
+                const bool stillSounding = wasHeldPoly || hadPolyTail;
+                const bool connect = prevSlur && stillSounding;
+#if RULE2_DEBUG
+                INFO("[R2 land ] v=%2d step=%3d LE=%d part=%d prevSlur=%d sound=%d isTie=%d -> %s",
+                    voiceIdx, (int)totalStepsElapsed, (int)!varlegDelegated(voiceIdx, 1),
+                    (int)v.participating, (int)prevSlur, (int)stillSounding, (int)isTie,
+                    connect ? "CONNECT" : "REARTICULATE");
+#endif
+                if (connect && isTie) {
+                    // committed tie → hold own pitch and extend (no redraw), like the follow-mono tie
+                    v.gs.extendHold(v.gs.lastSemitone, nvV);
+                } else {
+                    // committed legato → slide to own new pitch; opted out / not still sounding →
+                    // re-articulate fresh. Either way this voice draws its OWN pitch (melody/octave
+                    // LOR), never mono's.
+                    int melIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_MELODY), polyOffE(voiceIdx, PL_MELODY), polyRotE(voiceIdx, PL_MELODY));
+                    int octIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_OCTAVE), polyOffE(voiceIdx, PL_OCTAVE), polyRotE(voiceIdx, PL_OCTAVE));
+                    int sem = 0;
+                    float pitchV = pe.genPitchLive(sem, input, pe.polyRandom(voiceIdx, PL_MELODY)[melIdx], pe.polyRandom(voiceIdx, PL_OCTAVE)[octIdx]);
+                    if (connect) {
+                        v.gs.slideNote(pitchV, sem, nvV, /*wasHeld=*/true);   // connect (keep chain accent)
+                    } else {
+                        // re-articulate: a fresh onset, so draw this voice's OWN accent (its accent
+                        // LOR vs its own accentProb), exactly as the chain onset does — a re-struck
+                        // note isn't stuck with the accent the chain opened on.
+                        int accIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_ACCENT), polyOffE(voiceIdx, PL_ACCENT), polyRotE(voiceIdx, PL_ACCENT));
+                        v.accented = (pe.polyRandom(voiceIdx, PL_ACCENT)[accIdx] < v.accentProb);
+                        v.gs.triggerNote(pitchV, sem, nvV);                   // re-articulate
+                    }
+                }
+                // Re-roll the forward commitment for the NEXT landing (mirror mono's LEAD, per voice).
+                float r_polyLegato = pe.legatoRandom[getLegatoStepForVoice(voiceIdx)];
+                v.gs.slurForward = noteCanLeadLegato(nvV)
+                                 && (lastLegatoProb_ >= 0.999f || r_polyLegato < lastLegatoProb_);
             }
         } else {
-            // Mono gate is low OR poly chose to rest for this current high cycle.
-            v.gs.gateHeld = false;
+            // ── follow-mono path (perVoiceArticulation OFF, or a MidNote hold) ─────────────
+            // Poly follows mono gate presence strictly IF it was already active ("in").
+            if (gs.gateHeld && wasHeldPoly) {
+                if (lastStepResult.decision == MonoDecision::Legato || lastStepResult.decision == MonoDecision::LegatoMax) {
+                    // Mono slid to a NEW pitch (a real pitch move) → poly draws its OWN new pitch
+                    // (its own melody/octave LOR) and slides to it. Poly tracks mono's articulation
+                    // shape, never mono's actual notes.
+                    int melIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_MELODY), polyOffE(voiceIdx, PL_MELODY), polyRotE(voiceIdx, PL_MELODY));
+                    int octIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_OCTAVE), polyOffE(voiceIdx, PL_OCTAVE), polyRotE(voiceIdx, PL_OCTAVE));
+                    int sem = 0;
+                    float pitchV = pe.genPitchLive(sem, input, pe.polyRandom(voiceIdx, PL_MELODY)[melIdx], pe.polyRandom(voiceIdx, PL_OCTAVE)[octIdx]);
+                    v.gs.slideNote(pitchV, sem, nvV, wasHeldPoly);
+                } else if (lastStepResult.decision == MonoDecision::Tie) {
+                    // Mono held the same pitch (tie) → poly holds its own current pitch, extends hold.
+                    v.gs.extendHold(v.gs.lastSemitone, nvV);
+                } else {
+                    // MidNote: mono is HOLDING a note still sounding — nothing was chosen this step
+                    // (the executeStep guard returned early). Poly follows mono's hold ONLY while THIS
+                    // voice's own armed gate window is still open. Setting gateHeld=true unconditionally
+                    // here would RE-OPEN a gate that tickPulse already closed (gatePulseRemain == -1) for
+                    // a short/Stage-2-clamped voice — and since tickPulse only closes gates it armed
+                    // (gatePulseRemain >= 0), that re-opened gate would stick high and pollute
+                    // wasHeldPolyPrev at the next landing, producing a false teal/violet continuation
+                    // after a rest. So keep the gate high only if the voice is genuinely still sounding;
+                    // otherwise honour the length clamp and leave it released.
+                    v.gs.gateHeld = (v.gs.gatePulseRemain >= 0) || (v.gs.holdRemain > 0.0001f);
+                }
+            } else {
+                // Mono gate is low OR poly chose to rest for this current high cycle.
+                v.gs.gateHeld = false;
+            }
         }
     }
 }
@@ -702,10 +836,21 @@ int SequencerEngine::getStrandIdx(int tickCount, int len, int off, int mutation)
 
 // ── EAST_EXTRA_LANES stage 2 ──────────────────────────────────────────────────────────────────
 int SequencerEngine::getVariationStepForVoice(int bank) const {
+    // Delegated (default) → read mono's VARIATION position, so the voice mirrors mono.
+    if (varlegDelegated(bank, 0)) return getVariationStep();
     return getStrandIdx(totalStepsElapsed,
                         polyLOR(bank, EDITOR_LANE_VARIATION, LOR_LEN),
                         polyLOR(bank, EDITOR_LANE_VARIATION, LOR_OFF),
                         polyLOR(bank, EDITOR_LANE_VARIATION, LOR_ROT));
+}
+
+int SequencerEngine::getLegatoStepForVoice(int bank) const {
+    // Delegated (default) → read mono's LEGATO position, so the voice's slur roll matches mono.
+    if (varlegDelegated(bank, 1)) return getLegatoStep();
+    return getStrandIdx(totalStepsElapsed,
+                        polyLOR(bank, EDITOR_LANE_LEGATO, LOR_LEN),
+                        polyLOR(bank, EDITOR_LANE_LEGATO, LOR_OFF),
+                        polyLOR(bank, EDITOR_LANE_LEGATO, LOR_ROT));
 }
 
 int SequencerEngine::nvIdxForVoice(int bank, const PatternInput& input) const {
@@ -719,12 +864,12 @@ int SequencerEngine::nvIdxForVoice(int bank, const PatternInput& input) const {
     return (nv > lastStepResult.nvIdx) ? nv : lastStepResult.nvIdx;
 }
 
-int SequencerEngine::getRhythmStep() const    { return getStrandIdx(totalStepsElapsed, lor(dotModular::STRAND_RHYTHM,LOR_LEN), lor(dotModular::STRAND_RHYTHM,LOR_OFF), lor(dotModular::STRAND_RHYTHM,LOR_ROT)); }
-int SequencerEngine::getVariationStep() const { return getStrandIdx(totalStepsElapsed, lor(dotModular::STRAND_VARIATION,LOR_LEN), lor(dotModular::STRAND_VARIATION,LOR_OFF), lor(dotModular::STRAND_VARIATION,LOR_ROT)); }
-int SequencerEngine::getLegatoStep() const    { return getStrandIdx(totalStepsElapsed, lor(dotModular::STRAND_LEGATO,LOR_LEN), lor(dotModular::STRAND_LEGATO,LOR_OFF), lor(dotModular::STRAND_LEGATO,LOR_ROT)); }
-int SequencerEngine::getAccentStep() const    { return getStrandIdx(totalStepsElapsed, lor(dotModular::STRAND_ACCENT,LOR_LEN), lor(dotModular::STRAND_ACCENT,LOR_OFF), lor(dotModular::STRAND_ACCENT,LOR_ROT)); }
-int SequencerEngine::getMelodyStep() const    { return getStrandIdx(totalStepsElapsed, lor(dotModular::STRAND_MELODY,LOR_LEN), lor(dotModular::STRAND_MELODY,LOR_OFF), lor(dotModular::STRAND_MELODY,LOR_ROT)); }
-int SequencerEngine::getOctaveStep() const    { return getStrandIdx(totalStepsElapsed, lor(dotModular::STRAND_OCTAVE,LOR_LEN), lor(dotModular::STRAND_OCTAVE,LOR_OFF), lor(dotModular::STRAND_OCTAVE,LOR_ROT)); }
+int SequencerEngine::getRhythmStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_RHYTHM],    lor(dotModular::STRAND_RHYTHM,LOR_LEN), lor(dotModular::STRAND_RHYTHM,LOR_OFF), lor(dotModular::STRAND_RHYTHM,LOR_ROT)); }
+int SequencerEngine::getVariationStep() const { return getStrandIdx(laneTick_[dotModular::STRAND_VARIATION], lor(dotModular::STRAND_VARIATION,LOR_LEN), lor(dotModular::STRAND_VARIATION,LOR_OFF), lor(dotModular::STRAND_VARIATION,LOR_ROT)); }
+int SequencerEngine::getLegatoStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_LEGATO],    lor(dotModular::STRAND_LEGATO,LOR_LEN), lor(dotModular::STRAND_LEGATO,LOR_OFF), lor(dotModular::STRAND_LEGATO,LOR_ROT)); }
+int SequencerEngine::getAccentStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_ACCENT],    lor(dotModular::STRAND_ACCENT,LOR_LEN), lor(dotModular::STRAND_ACCENT,LOR_OFF), lor(dotModular::STRAND_ACCENT,LOR_ROT)); }
+int SequencerEngine::getMelodyStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_MELODY],    lor(dotModular::STRAND_MELODY,LOR_LEN), lor(dotModular::STRAND_MELODY,LOR_OFF), lor(dotModular::STRAND_MELODY,LOR_ROT)); }
+int SequencerEngine::getOctaveStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_OCTAVE],    lor(dotModular::STRAND_OCTAVE,LOR_LEN), lor(dotModular::STRAND_OCTAVE,LOR_OFF), lor(dotModular::STRAND_OCTAVE,LOR_ROT)); }
 
 void SequencerEngine::syncVisuals(const PatternInput& in) {
     pe.refreshVisualCache(in);

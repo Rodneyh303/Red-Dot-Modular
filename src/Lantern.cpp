@@ -162,14 +162,22 @@ struct Lantern : Module {
                         ? eng.lastStepResult.forStep : step;
 
         // Row 0 = mono / V1.
-        recordCell(0, writeStep, eng.gs, dec, accentedMono, lenSteps, monoSlur, eng.lastPlayDir);
+        recordCell(0, writeStep, eng.gs, dec, accentedMono, lenSteps, monoSlur, monoSlur, eng.lastPlayDir);
 
         // Rows 1..numPolyVoices = poly voices 2.. . A poly voice follows mono's
         // gate TYPE (retrigger/tie/legato) but can independently REST (then it's
         // inactive this gate) and draws its OWN accent.
         for (int v = 0; v < eng.numPolyVoices && v < 15; ++v) {
             const PolyVoice& pv = eng.voices[v];
-            recordCell(v + 1, writeStep, pv.gs, dec, pv.accented, lenSteps, monoSlur, eng.lastPlayDir);
+            // With per-voice articulation the voice rolls its OWN forward-slur commitment
+            // (Rule 2), so use it; otherwise it follows mono's gate, so inherit monoSlur.
+            const bool voiceSlur = eng.perVoiceArticulation ? pv.gs.slurForward : monoSlur;
+            // The amber lead marker ties a poly voice's lead to MONO's chain: only show it when
+            // mono is also leading (monoSlur). A per-voice slurForward rolled at a mono Tie (where
+            // mono is just holding, monoSlur=0) would otherwise draw a lead outline floating outside
+            // mono's chain — the "legato lead note outside the mono envelope" symptom. The voice's
+            // commitment is unchanged; only the marker is gated.
+            recordCell(v + 1, writeStep, pv.gs, dec, pv.accented, lenSteps, voiceSlur, monoSlur, eng.lastPlayDir);
         }
         // Voices beyond numPolyVoices → mark inactive.
         for (int v = eng.numPolyVoices; v < 15; ++v)
@@ -179,8 +187,10 @@ struct Lantern : Module {
     // Map an observed voice state at a step into a display Cell. NoteType priority:
     // inactive (gate down & not held) → else Accent if accented → else the join type
     // (Tie/Legato) from the decision → else Single (a fresh/normal note).
+    // `monoLeading` = mono's slurForward (whether mono is leading a slur). Used to gate the
+    // poly lead marker so a per-voice lead never floats outside mono's chain.
     void recordCell(int voice, int step, const GateState& gs, MonoDecision dec,
-                    bool accented, float lenSteps, bool monoSlurForward, int playDir) {
+                    bool accented, float lenSteps, bool slurFwd, bool monoLeading, int playDir) {
         Cell& c = cells[voice][step];
         // A cell sounds if THIS voice's own gate is up. recordCell is called for mono AND each
         // poly voice with the SAME mono 'dec', so 'dec' must NOT drive sounding — a poly voice
@@ -190,6 +200,20 @@ struct Lantern : Module {
         // fixed properly by direction-aware bar anchoring in draw(), so this stays gate-based.
         const bool sounding = gs.gateHeld || gs.holdRemain > 0.0001f;
         if (!sounding) { c.type = lantern::NoteType::Inactive; return; }
+        // HELD-OVER TAIL: this voice did NOT fire a new onset this step, so its lastNoteType is
+        // STALE from the previous note. Rendering it as a fresh Legato/Single cell produced a
+        // stray "legato note outside the mono chain" — e.g. a teal poly cell when mono had moved
+        // on to a fresh blue NewNote. Two detectable forms:
+        //   (a) the voice's audible gate already closed (gatePulseRemain <= 0 — tickPulse ran it
+        //       down) but a stale holdRemain > 0 lingers (the poly rest-branch re-opens gateHeld
+        //       from holdRemain alone, without re-arming the pulse timer);
+        //   (b) at a mono NewNote, a voice that PLAYED always calls triggerNote → lastNoteType =
+        //       Single. So a sounding voice whose lastNoteType is NOT Single at a NewNote did NOT
+        //       fire this step — it rested while its previous note's tail still rings (the gate
+        //       may still be armed, so (a) alone misses it). Its Legato/Tie type is stale from the
+        //       previous chain. Treat both as a continuation tail (isMidTail): keep the old base
+        //       colour, draw no fresh type and no lead marker.
+        const bool heldOverTail = (gs.gatePulseRemain <= 0) && (gs.holdRemain > 0.0001f);
 
         c.pitchV      = gs.currentPitchV;
         c.playDir     = (playDir < 0) ? -1 : +1;
@@ -212,39 +236,50 @@ struct Lantern : Module {
         // for BOTH. (Previously only Tie/MidNote, so a cross-boundary legato showed teal with
         // no caret and looked isolated at step 0 — confirmed on Rack's scope as genuinely held
         // over the boundary.) MidNote is the tail of an already-shown note; also continues.
-        c.heldIn      = (dec == MonoDecision::Tie || dec == MonoDecision::MidNote ||
-                         dec == MonoDecision::Legato || dec == MonoDecision::LegatoMax);
+        c.heldIn      = (gs.lastNoteType == GateState::NoteType::Tie ||
+                         gs.lastNoteType == GateState::NoteType::Legato ||
+                         dec == MonoDecision::MidNote);
         // heldOut = this note holds its gate high PAST the last step, by EITHER mechanism:
         //   (1) a LONG note whose length extends past this step (holdRemain > 1), or
-        //   (2) a LEGATO LEAD that committed to hold its gate forward. slurForward is computed
-        //       only on the MONO gate (executeStep); poly voices FOLLOW mono's gate type, so
-        //       they inherit mono's commitment via monoSlurForward (gs.slurForward is always
-        //       false on a poly voice's own GateState). A poly voice that RESTED this gate
-        //       already early-returned Inactive above, so this marks only sounding voices
-        //       riding mono's forward-held gate — mono and its slaved poly voices together.
-        //       Knowable right here (no sub-step-timer guessing). Pairs with the step-0 held-in
-        //       caret next lap to show the wraparound: gate leaves right edge, arrives left.
+        //   (2) a LEGATO LEAD that committed to hold its gate forward (slurFwd). With
+        //       perVoiceArticulation OFF a poly voice follows mono, so slurFwd is mono's
+        //       commitment (passed in); with it ON the voice rolls its OWN slurForward
+        //       (Rule 2), so slurFwd is that per-voice value. Either way it is the correct
+        //       forward-hold for THIS voice. A poly voice that RESTED already early-returned
+        //       Inactive above, so this marks only sounding voices. Pairs with the step-0
+        //       held-in caret next lap to show the wraparound: leaves right edge, arrives left.
         // (heldIn already only fires on a real connection — a rest at step 0 early-returns as
         //  Inactive before heldIn is set, and Tie/Legato/LegatoMax/MidNote are all genuine
         //  connections — so the two carets are symmetric and truthful.)
-        c.heldOut     = (gs.holdRemain > 1.0001f) || monoSlurForward;
-        c.isMidTail   = (dec == MonoDecision::MidNote);   // gate tail, not a new event
+        c.heldOut     = (gs.holdRemain > 1.0001f) || slurFwd;
+        c.isMidTail   = (dec == MonoDecision::MidNote) || heldOverTail;   // gate tail, not a new event
 
         // Note-TYPE is single/tie/legato only (accent is a separate overlay so an
-        // accented tie still reads as a tie). As-it-happens, no look-back:
-        if (dec == MonoDecision::Tie)                  c.type = lantern::NoteType::Tie;
-        else if (dec == MonoDecision::Legato ||
-                 dec == MonoDecision::LegatoMax)       c.type = lantern::NoteType::Legato;
-        else                                           c.type = lantern::NoteType::Single;
-        // (NewNote and MidNote both read as Single here — a MidNote is the tail of a
-        //  note that already showed its type on the step it fired; drawing it as the
-        //  same base colour keeps the bar continuous without claiming a new event.)
+        // accented tie still reads as a tie). Read the VOICE'S OWN articulation
+        // (gs.lastNoteType), not mono's decision — so a poly voice that opted out and
+        // re-struck inside a slur reads Single (blue) while a connecting voice reads
+        // Legato/Tie. This is what makes per-voice legato visible; mono (row 0) reads
+        // eng.gs.lastNoteType and is unchanged. (Set by triggerNote/slideNote/extendHold,
+        // so it is correct with perVoiceArticulation on OR off.)
+        // A MidNote is the tail of an already-shown note — keep the old base colour for it
+        // (isMidTail drives its rendering as a continuation), so tails are unchanged.
+        if (dec == MonoDecision::MidNote) {
+            c.type = lantern::NoteType::Single;
+        } else switch (gs.lastNoteType) {
+            case GateState::NoteType::Tie:    c.type = lantern::NoteType::Tie;    break;
+            case GateState::NoteType::Legato: c.type = lantern::NoteType::Legato; break;
+            case GateState::NoteType::Single:
+            default:                          c.type = lantern::NoteType::Single; break;
+        }
 
-        // Lead marker: this note INITIATES a legato — it committed slurForward (monoSlurForward)
-        // and is itself a fresh start (Single), NOT a received Tie/Legato/LegatoMax (those are
-        // chain interior, already teal/violet — the NEXT note being teal already shows the chain).
-        // Marks only the FIRST note of a chain that carries the lead intent.
-        c.leadsLegato = monoSlurForward && (c.type == lantern::NoteType::Single);
+        // Lead marker: this note INITIATES a legato — it committed slurFwd (its own under
+        // Rule 2, mono's when following) and is itself a fresh start (Single), NOT a received
+        // Tie/Legato (those are chain interior, already teal/violet). Gated on monoLeading so a
+        // poly voice's per-voice slurForward (rolled at e.g. a mono Tie where mono is just holding,
+        // monoSlur=0) does NOT draw a lead outline floating outside mono's chain — the "legato lead
+        // outside the mono envelope" symptom. For mono (row 0) slurFwd == monoLeading, so this is
+        // unchanged. A held-over tail is never a lead (stale slurFwd, continuation not a chain start).
+        c.leadsLegato = slurFwd && monoLeading && (c.type == lantern::NoteType::Single) && !heldOverTail;
     }
 };
 

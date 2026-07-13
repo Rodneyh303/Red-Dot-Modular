@@ -1,9 +1,13 @@
 # East: per-voice LOR over the mono VARIATION / LEGATO probability
 
-**Status: Stages 1–2 built on `integration/east-extra-lanes`; Stage 3 (Rule 2) designed here, not yet
-built.** Dev lives on that branch until the idea is proven good by ear. Do not merge to master on the
-strength of this document. Leading-edge legato is now the *only* legato model (reactive path removed on
-`cleanup/remove-reactive-legato`); Rule 2 (§4d) depends on that and is described accordingly.
+**Status: Stages 1–2 built on `integration/east-extra-lanes`. Stage 3 (Rule 2) now built on
+`feat/east-rule2-legato` — delegation (step 1), per-voice slur roll (step 2), and per-voice consume +
+`participating` latch (step 3) are all in the engine; NOT yet compile-verified (no Rack SDK in dev
+container) or proven by ear.** Design logic is validated by standalone replicas: `test_poly_slur_roll`
+(roll: delegated follows mono, Local East diverges) and `test_rule2_consume` (consume: connect /
+re-articulate / silent by `participating` + `prevSlur`). Dev lives on that branch until the idea is proven
+good by ear. Do not merge to master on the strength of this document. Leading-edge legato is now the *only*
+legato model (reactive path removed on `cleanup/remove-reactive-legato`); Rule 2 (§4d) depends on that.
 
 Origin: Rodney — *"allow per channel LOR on the mono probability for the extra lanes."* The kind of
 thing a thoughtful user would ask for, which is a reason to take it seriously and a reason not to rush it.
@@ -130,79 +134,127 @@ sixteen articulations*.
 **MPE framing (Rodney):** this is exactly per-note expression — one note event, per-voice articulation.
 The clamped model is the shape MPE controllers and DAW note-expression already assume.
 
-### 4d. RULE 2 (LEGATO) — per-voice opt-in / opt-out — **DESIGNED, Stage 3**
+### 4d. RULE 2 (LEGATO) — per-voice, per-onset leading-edge slur — **BUILT (Stage 3), pending ear/build**
 
-Rule 1 gives each voice its own *length*. It leaves the LEGATO lane's 45 params wired to nothing. Rule 2
-is what makes that lane earn them: each voice decides, per mono chain, whether to **slur with mono or
-re-articulate against it**.
+Rule 1 gives each voice its own *length*. It leaves the LEGATO lane's cells wired to nothing. Rule 2 makes
+that lane earn them: each voice runs **its own leading-edge legato, per note**, bounded by mono's chain and
+clamped subtractive. This supersedes the earlier "one latched opt-in/opt-out per chain" sketch — per-onset
+is cleaner (less latched state, fuller use of the lane, more principled identity), and is the settled design.
 
-**The model.** At each mono gate start (`monoGateStart` — `NewNote`, or `Legato`-from-dead — i.e. the
-chain start):
+**The model.** Rest stays one decision per chain; legato is decided per note, exactly as mono decides its own:
 
-1. **Rest roll** — own array, own knob, as today. Rest ⇒ the voice is out for the *whole chain*.
-2. **If playing and mono committed a slur** (`gs.slurForward` true at this onset): **legato roll** — mono's
-   legato array read through the voice's own LEG LOR, against the *global* legato knob. One decision,
-   latched for the whole chain.
-   - **Opt in** ⇒ exactly today's behaviour: slide through, mono's chain extent, the voice's own re-drawn
-     pitch.
-   - **Opt out** ⇒ at this onset and every subsequent *connected* onset in the chain, **re-articulate**
-     (`triggerNote`) with the voice's own length ≤ mono's (Rule 1's clamp). Fractional lengths allowed.
+1. **Rest roll (latched).** At each mono gate start (`monoGateStart` — `NewNote`, or `Legato`-from-dead), a
+   participating roll: own array, own knob. Rest ⇒ the voice is out for the *whole chain*. One
+   `participating` flag, cleared at the next `monoGateStart` or a mono `Rest`.
+2. **Legato roll (per note, leading-edge).** At each onset a participating voice plays, it rolls its OWN
+   forward-slur commitment — the per-voice analogue of mono's:
+   ```
+   poly.slurForward = leStarting && noteCanLeadLegato(nvV)
+                    && (legatoMax || r_polyLegato < legatoProb)   // voice's own LEG LOR, this tick
+   ```
+   and consumes it at the next landing: `poly.prevSlur` true ⇒ connect (slide on `Legato` / `extendHold`
+   on `Tie`); false ⇒ re-articulate (`triggerNote`, clamped `nvV`).
 
-**Why identity falls out (the property Rodney asked for).** Same LEG LOR ⇒ same legato cell ⇒ same
-comparison to the same global knob ⇒ the same boolean mono's own leading-edge roll produced. Mono slurred,
-so that roll was *yes*, so the voice's roll is *yes*, so it opts in — and opt-in is master behaviour. Same
-VAR LOR ⇒ Rule 1's `max(nv, nv)` no-op. So **identical LOR (all lanes) ⇒ bit-identical playback**, with no
-special-casing. It falls out of the construction rather than being bolted on.
+**The governing predicate — the whole feature in one line:**
 
-**Two invariants, both subtractive:**
-- *A voice can never be smoother than mono.* It can only decline a slur, never invent one — poly slides
-  only where mono slides AND the voice opts in. With Rule 1's clamp, the whole feature is purely *shorter
-  and more detached*. Nothing else.
-- *No new event times.* Opt-out re-strikes only at onsets mono already defines (`Legato`/`Tie` steps).
-  Poly's gate strikes may exceed mono's (mono glides once where poly strikes at each onset), but the step
-  clock is untouched. Decoration, not clock movement.
+> A participating voice **connects** (legato *or* tie) at an edge ⟺ **mono connects there AND the voice's
+> own `slurForward` fired.** Otherwise it re-articulates a fresh note clamped ≤ mono's length.
 
-**Leading-edge removes the only wobble.** The single roll at the chain start is well-defined *because*
-leading-edge commits mono's slur at the chain-start onset: at note 1, `gs.slurForward` is already set
-(`executeStep` runs before `executePolyVoices`), so the voice can decide "join this chain?" with full
-information. The old reactive path decided the slur at note 2's onset — *inside* the chain — which forced a
-latch-vs-per-transition choice. That path is **gone** (`cleanup/remove-reactive-legato`), so there is
-exactly one semantics: roll once at the start, latch, clear at chain end.
+It is an **AND of two independent leading-edge rolls** — mono's and the voice's, both committed at the
+*previous* note and consumed at this landing. Poly can't slur where mono didn't (a mono `NewNote` boundary
+is a `monoGateStart`, which discards poly's pending `slurForward` and forces a fresh trigger); poly can
+decline where mono did (its own roll missed). So `poly slur = mono slur ∩ poly roll ∩ participating`,
+subtractive on both counts. You never gate poly's roll on mono's — the AND falls out of consumption plus
+the `monoGateStart` reset. (That reset half is *already wired*; only the roll and consume halves are new.)
 
-**restBeatsLegato is now mono-only, permanently.** Rest is decided once per chain; a participating voice
-never re-rolls rest mid-chain; so a committed slur can never meet a rest *inside* a voice. The toggle stays
-a mono concern and never needs a per-voice form. (This was a blocker; it is retired.)
+**Read at the LEADING edge, not the landing — the identity linchpin.** In leading-edge, the slur into N+1
+was committed at **N's onset** (mono set `slurForward` from its legato cell at tick `T_N`); the landing at
+N+1 only consumes it. So the voice must roll its own `slurForward` at **its own onset** (`T_N`), from *its*
+LEG LOR — the same cell mono read for that edge. Roll at the landing (`T_{N+1}`) instead and even an
+identical LOR reads a *different* cell, and identity breaks. Rolling at the leading edge, identity falls out
+**structurally**: same LEG LOR ⇒ same cell ⇒ same boolean ⇒ the voice slurs exactly where mono slurs. (The
+latched sketch got identity by the weaker "opt-in happens to equal mono" coincidence and read the lane only
+*once per chain*, discarding 15/16 of its cells. Per-onset uses every cell.)
 
-**The one structural change.** Today the sustain branch is guarded by `gs.gateHeld && wasHeldPoly`. An
-opt-out voice's short note has already released, so at the next mono slur onset `wasHeldPoly` is false and
-it falls through to `gateHeld = false` — silent for the rest of the chain (staccato-then-*absent*, not
-staccato). It needs a genuine new-onset `triggerNote` **inside a mono slur** — precisely the case
-`monoGateStart` excludes (mid-chain, `wasHeldMono` is true). New branch in the sustain section:
+**Pitch is a separate axis (already fixed in `fix/poly-midnote-pitch-hold`).** The slur decision (connect
+vs re-strike) is orthogonal to the pitch source:
+- `Legato` edge (mono moved pitch) ⇒ the voice draws its OWN new pitch (its melody/octave LOR).
+- `Tie` edge (mono held pitch) ⇒ the voice holds its current pitch.
+- `MidNote` (mono holding, no onset) ⇒ hold; never a slur decision, never a re-strike.
 
+Both opt-in and opt-out use this same pitch rule; only connect-vs-re-strike differs. **`Tie` and `Legato`
+are one rule** — a `Tie` note leads the next slur exactly as mono's does (its `slurForward` rolls
+normally); the sole difference is held vs drawn pitch. (This is why the MidNote-hold fix had to land first:
+without it, "follow mono through a held span" was a lie the engine told itself.)
+
+**Invariants, all subtractive — now per-edge:**
+- *Never smoother than mono.* The voice can only decline a slur, never invent one. What changed from the
+  latched sketch is only that the subtraction is now *granular* — this edge slurred, that edge detached —
+  rather than uniform across the phrase.
+- *No new event times.* Opt-out re-strikes land only on mono onsets (a per-edge subset). Clock untouched.
+- *Triplet-safe by construction.* `noteCanLeadLegato(nvV)` sits in the voice's own roll, so a fractional
+  (triplet) clamped length can't lead — it forces `slurForward = false` ⇒ re-articulate. Fractional lengths
+  appear only where they re-strike, never where they'd have to reach the next onset off-grid. Same
+  guarantee, same mechanism as mono.
+
+**State: one latch, not two.** The earlier sketch needed `participating` **and** `optIn` latched. Per-onset
+drops `optIn` entirely: the legato decision is a pure per-tick function (the voice's LEG LOR read at each
+onset), carried on `poly.slurForward` for exactly one note (onset→landing), surviving `MidNote` the same
+way mono's does. The field **already exists** (`GateState::slurForward`, per voice) and is currently only
+ever *cleared* (reset + wrap) — never rolled or consumed. So this wires up dormant infrastructure and
+*restores* tick-purity: only `participating` is cached across a chain, and it must be — rest-per-onset would
+let a voice go silent mid-chain, resurrecting the retired `restBeatsLegato`-for-poly problem. Legato
+per-onset is free because opt-out still *sounds*.
+
+**The one structural change.** The sustain branch is guarded by `gs.gateHeld && wasHeldPoly`. An opt-out
+voice's short note has already released, so at the next mono slur onset `wasHeldPoly` is false and it falls
+through to `gateHeld = false` — silent for the rest of the chain (staccato-then-*absent*). It needs a
+genuine new-onset `triggerNote` **inside a mono slur** — the case `monoGateStart` excludes (mid-chain,
+`wasHeldMono` true). New branch:
 ```
-participating && !optIn && decision ∈ {Legato, LegatoMax, Tie}
-    → triggerNote(own pitch draw, own accent draw, nvIdxForVoice() clamp)
+participating && !poly.prevSlur && decision ∈ {Legato, LegatoMax, Tie}
+    → triggerNote(own pitch per the Legato/Tie rule, own accent draw, nvIdxForVoice() clamp)
 ```
+And `participating` must be explicit: today a rested voice and an opt-out voice with a closed gate *both*
+read `wasHeldPoly == false` and both stay silent; under Rule 2 they diverge (rested ⇒ silent, opt-out ⇒
+re-strike), so `wasHeldPoly == false` can no longer stand in for "not participating."
 
-**Participation must become explicit latched state.** Today a rested voice and an opt-out voice with a
-closed gate *both* read `wasHeldPoly == false`, and that coincidence is load-bearing — both stay silent.
-Under Rule 2 they must diverge: rested ⇒ stay silent; opt-out ⇒ re-articulate. So `wasHeldPoly == false`
-can no longer stand in for "not participating." Two latched per-voice flags, set at `monoGateStart`,
-cleared at the next `monoGateStart` or a mono `Rest`:
-- `participating` — the rest roll's result (playing vs out, whole chain).
-- `optIn` — the legato roll's result (slide vs re-articulate, whole chain; only meaningful when mono slurs).
+**Additive and gated — no second implementation; follow-mono is the default.** Rule 2 does not replace the
+follow-mono path; it *adds* the opt-out re-strike branch behind the existing `perVoiceArticulation` gate
+(§4c — Rule 1 rides the same flag). With the gate off, the new branch is never taken and the existing
+slide/hold/MidNote dispatch runs unchanged — which *is* follow-mono. So the original behaviour is the
+gate-off default, reproduced by the same code, not a parallel path. This mirrors Rule 1 exactly:
+`nvIdxForVoice` returns mono's `nvIdx` when the gate is off; Rule 2's per-voice slur likewise resolves to
+mono's `slurForward` (equivalently, skips the new branch) when the gate is off. One gated addition per
+rule; each degenerates to mono by *not firing*, never by a second implementation.
 
-This is the second piece of per-voice state (after `laneTick_`) that this branch makes *persistent* rather
-than a pure function of the tick. Worth stating loudly, given how much of the engine's correctness rests on
-tick-purity: both flags are *derivable* from the mono decision stream, but caching them across a chain is
-the price of one-roll-per-chain.
+**Sourcing: lane delegation (RESOLVED).** VAR/LEG follow the established lane-end delegation-toggle pattern
+(the same one carried through the three Sands visual expanders), with one deliberate difference from lanes
+0–3: the delegation *target is mono, not Macro*, for every voice.
+- **V1 is locked to mono** — no toggle, always follows, consistent with "V1 mirrors mono" everywhere.
+- **V2–16 default to delegate-to-mono** — a per-voice, per-lane binary toggle (mono ⇆ Local East). Delegate
+  (default) ⇒ the voice reads *mono's* VAR/LEG LOR into the shared array ⇒ mirrors mono, live, tracking a
+  *dialed* mono correctly. Local East ⇒ the voice reads its **own outright** LEN/OFF/ROT (params stay
+  outright — no `LEN=0`, no offset).
+- Only the *reading position* delegates; the probability array stays the shared mono shape.
 
-**Decision still owed — Tie (see §7).** Does opt-out re-articulate at a mono `Tie` (same pitch, extended)?
-The `MonoDecision` enum today documents *Tie ⇒ poly holds its own notes*. Re-striking at a Tie is
-consistent ("re-articulate at every connected onset") and musical (repeated-note articulation under mono's
-tied note), but it *changes* that Tie semantics for opt-out voices. Recommend **yes, re-articulate at
-Tie** — the honest reading of "more detached" — and update the enum comment to *Tie ⇒ opt-in holds,
-opt-out re-strikes*. `MidNote` is never a re-articulation point (no new mono onset; the voice just ticks).
+Because Macro is never a delegation target for these lanes, §6b's "Macro cannot own VAR/LEG" holds by
+construction — VAR/LEG delegation is a clean mono-or-East binary, no Macro leg. This dissolves the earlier
+loose ends: "silent at neutral" is now *structural* (default delegate = mirror mono), and the
+`perVoiceArticulation && eastPresent` worry evaporates (no East ⇒ nothing is set to Local East ⇒ every voice
+delegates to mono ⇒ follow-mono, and the `LEN=0` zero-init store is never read).
+
+> **Build task (Stage 3):** the delegation toggles don't exist for VAR/LEG yet — the owner block is
+> `+ v*4 + lane` (64 params, lanes 0–3 = REST/MEL/OCT/ACCENT only), and the VAR/LEG param blocks are
+> LOR-only (`+ v*3 + c`, 45 each, no switch slot). Add **30** delegation toggles (V2–16 × {VAR, LEG}),
+> V1 locked, default delegate-to-mono, rendered as the lane-end toggle. Then the read is:
+> `lor = delegated ? monoLOR[lane] : voiceOwnLOR[lane]` for both rules — Rule 1's `nvIdxForVoice` and
+> Rule 2's per-voice slur roll consume it identically.
+
+**Master gate.** `perVoiceArticulation` (context-menu toggle, default **off**; widen its label to
+"…VARIATION/LEGATO" once Rule 2 lands) still governs whether the per-voice path runs at all. Off ⇒ the
+existing follow-mono dispatch, unchanged. On ⇒ the delegation toggles above decide per voice/lane.
+
 
 ## 5. Staging
 
@@ -217,12 +269,14 @@ opt-out re-strikes*. `MidNote` is never a re-articulation point (no new mono ons
 2. **Rule 1 — clamped per-voice VARIATION (§4c). DONE.** Per-voice `nvIdx` via per-voice VAR LOR, clamped
    to the mono grid (`nvIdxForVoice`). Legato invariants untouched by construction. 2312 assertions
    passing; silent at `variationAmount == 0.5`, so old patches are bit-identical.
-3. **Rule 2 — per-voice LEGATO opt-in / opt-out (§4d).** Two latched per-voice flags (`participating`,
-   `optIn`), one new `triggerNote` branch in the sustain section for opt-out re-articulation, reusing
-   Rule 1's clamp for the opt-out length. **Leading-edge only** — the reactive path is removed
-   (`cleanup/remove-reactive-legato`), so there is a single semantics: no latch-vs-per-transition choice.
-   This is what makes the LEGATO lane's 45 params live. Settle the Tie decision (§7) first. By ear, on the
-   branch.
+3. **Rule 2 — per-voice, per-onset leading-edge legato (§4d).** One latched flag (`participating`) plus a
+   per-note `poly.slurForward` roll (the field already exists, currently only cleared) and one new
+   `triggerNote` branch in the sustain section for opt-out re-articulation, reusing Rule 1's clamp for the
+   length. **Leading-edge only** (`cleanup/remove-reactive-legato`) + **MidNote-hold**
+   (`fix/poly-midnote-pitch-hold`) are prerequisites — this branch (`feat/east-rule2-legato`) is cut off
+   both. Additive and behind `perVoiceArticulation` (§4d gates), so gate-off degenerates to follow-mono via
+   the existing path — no second implementation. This is what makes the LEGATO lane's cells live. Do the
+   `&& eastPresent` gate + sourcing decision (§7) first. By ear, on the branch.
 4. Merge only once Rule 2 is proven by ear. Stage 3 may land inert-but-visible (LEGATO shown, no re-strike)
    or trimmed (variation only) if it doesn't earn its keep — both are fine outcomes.
 
@@ -280,9 +334,17 @@ plus `lorId` branches and East save/load loops widened to 6. Do it deliberately;
 
 ## 7. Open questions
 
-- **Rule 2 Tie semantics (§4d). Blocking Stage 3.** Does an opt-out voice re-articulate at a mono `Tie`
-  (same pitch, extended)? Recommend yes; requires updating the `MonoDecision` enum comment to
-  *Tie ⇒ opt-in holds, opt-out re-strikes*. Nothing else in Stage 3 is undecided.
+- **Add VAR/LEG lane-delegation toggles (§4d). Build task, Stage 3.** 30 per-voice toggles (V2–16 × {VAR,
+  LEG}), V1 locked to mono, default delegate-to-mono, rendered as the lane-end toggle (established pattern).
+  Read becomes `lor = delegated ? monoLOR[lane] : voiceOwnLOR[lane]`, shared by Rule 1 and Rule 2.
+- ~~VAR/LEG sourcing: straight vs `combineLOR`; and `perVoiceArticulation && eastPresent`.~~ **Resolved via
+  lane delegation (§4d):** outright LOR params, follow-mono is delegation (target = mono, not Macro), default
+  delegate ⇒ structurally silent. No East ⇒ every voice delegates to mono, so "silent without East" and
+  "mirror a dialed mono" both hold by construction; the `eastPresent` guard and the `LEN=0` hazard both
+  evaporate. Full `combineLOR` was the wrong tool (it drags in Macro ownership, which §6b forbids here).
+- ~~Rule 2 Tie semantics — does opt-out re-articulate at a mono `Tie`?~~ **Resolved: yes, tie = legato.**
+  A `Tie` note leads its own slur exactly as mono's does; opt-out re-strikes, opt-in holds; the only Tie/Legato
+  difference is held vs drawn pitch (§4d).
 - Does per-voice legato interact with the parked `StrandLedger CONFLICT MACRO then EAST` bug?
 - ~~VARIATION: per-voice `nvIdx`, or variation-bias only?~~ **Resolved:** per-voice `nvIdx`, clamped
   (§4c, Rule 1, built). "Bias-only" does not exist — VARIATION *is* the note-length bias.

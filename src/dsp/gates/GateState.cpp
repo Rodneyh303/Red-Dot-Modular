@@ -31,6 +31,7 @@ void GateState::triggerNote(float pitchV, int semitone, int nvIdx) {
     holdRemain = dur;
     armGate(dur);
     markSemi(semitone, dur);
+    lastNoteType = NoteType::Single;        // a fresh attack (incl. an opt-out re-strike)
 }
 
 void GateState::slideNote(float pitchV, int semitone, int nvIdx, bool wasHeld) {
@@ -41,11 +42,13 @@ void GateState::slideNote(float pitchV, int semitone, int nvIdx, bool wasHeld) {
         holdRemain += dur;
         gateHeld = true;            // stays open if tick() just zeroed holdRemain
         armGate(holdRemain);        // re-arm gate to the summed length (in pulses)
+        lastNoteType = NoteType::Legato;    // slid to a new pitch, no retrigger
     } else {
         gatePulse.trigger(1e-3f);   // first note of legato run opens the gate
         holdRemain = dur;
         gateHeld   = true;
         armGate(dur);
+        lastNoteType = NoteType::Single;    // this note retriggers → a fresh attack
     }
     markSemi(semitone, dur);
 }
@@ -58,6 +61,7 @@ void GateState::slideMax(float pitchV, int semitone, int nvIdx) {
     holdRemain = dur;
     armGate(dur);
     markSemi(semitone, dur);
+    lastNoteType = NoteType::Legato;        // LegatoMax = forced slide, no retrigger
 }
 
 void GateState::extendHold(int semitone, int nvIdx) {
@@ -66,6 +70,7 @@ void GateState::extendHold(int semitone, int nvIdx) {
     gateHeld = true;
     armGate(holdRemain);            // re-arm to the summed length
     markSemi(semitone, holdRemain);
+    lastNoteType = NoteType::Tie;           // held same pitch, no retrigger
 }
 
 void GateState::rest(bool tieExtend, int nvIdx) {

@@ -505,9 +505,11 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   
   void drawLaneLabel(NVGcontext* vg, int lane) {
     static const char* monoNames[] = {"MELODY", "OCTAVE", "REST", "ACCENT", "VARIATION", "LEGATO"};
-    static const char* polyNames[] = {"MELODY", "OCTAVE", "REST", "ACCENT"};
-    
-    const char* name = (mode == MONO) ? monoNames[lane] : polyNames[lane];
+    // monoNames carries all six correct labels and its first four equal the poly labels, so it
+    // is safe for every lane. The East editor shows 6 lanes in a non-MONO mode, so the old
+    // `polyNames[lane]` (4 entries) read out of bounds for lanes 4/5 — the mislabelled
+    // MELODY/OCTAVE on VARIATION/LEGATO. Use monoNames for all lanes (lane < laneCount ≤ 6).
+    const char* name = (lane >= 0 && lane < 6) ? monoNames[lane] : "";
     float y = layout.getLaneCenterY(lane);
     
     nvgFontSize(vg, 10.f);

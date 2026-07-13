@@ -25,11 +25,20 @@ def theme(dark):
 
 # ── Real dot.modular wordmark embed (mask-free logo-{dark,light}.svg) ─────────
 def logo_embed(dark, x_mm, y_mm, target_w_mm, repo_root="."):
+    import re
     path = f"{repo_root}/res/logo/dot-modular-logo-dark.svg" if dark else f"{repo_root}/res/logo/dot-modular-logo-light.svg"
     s = open(path).read()
     body = s[s.find('<g '):s.rfind('</svg>')]   # strip the logo's own bg + accent rects
-    scale = px(target_w_mm) / 717.0
-    return f'<g transform="translate({px(x_mm):.2f},{px(y_mm):.2f}) scale({scale:.5f})">{body}</g>'
+    # Nondestructive wordmark crop (viewBox-style zoom): the source is 717x190 with big
+    # margins + two <polyline> positioning brackets (top-left & bottom-right registration
+    # marks for physical module placement). Crop to the wordmark bbox (matches the
+    # *-tight.svg variant: x26 y65 w657 h95), strip the bracket polylines, and zoom so the
+    # wordmark fills target_w_mm with no blank margins. Implemented as a translate/scale
+    # transform (nanosvg-safe — no clip / nested <svg>); the source file is untouched.
+    body = re.sub(r'<polyline\b[^>]*/>', '', body)   # remove the 2 positioning brackets
+    CX, CY, CW = 26.0, 65.0, 657.0
+    sc = px(target_w_mm) / CW
+    return f'<g transform="translate({px(x_mm):.2f},{px(y_mm):.2f}) scale({sc:.5f}) translate({-CX:.2f},{-CY:.2f})">{body}</g>'
 
 # ── Marina Bay Sands silhouette — leaning tuning-fork legs + lifted skypark ───
 # nanosvg-safe (polygons + lines, no clip/gradient/mask). Same signature as before

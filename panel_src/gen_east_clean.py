@@ -67,10 +67,16 @@ def logo_embed(dark, x_mm, y_mm, target_w_mm):
     path = "res/logo/dot-modular-logo-dark.svg" if dark else "res/logo/dot-modular-logo-light.svg"
     s = open(path).read()
     body = s[s.find('<g '):s.rfind('</svg>')]   # drop the two leading bg/accent rects
-    LOGO_W, LOGO_H = 717.0, 190.0
-    scale = px(target_w_mm) / LOGO_W            # uniform scale to target width (px)
+    # Nondestructive wordmark crop (viewBox-style zoom): strip the two <polyline>
+    # positioning brackets (top-left & bottom-right registration marks for physical module
+    # placement) and zoom to the wordmark bbox (matches dot-modular-logo-*-tight.svg:
+    # x26 y65 w657 h95) so the wordmark fills target_w_mm with no blank margins. Done as a
+    # translate/scale transform — nanosvg-safe (no clip / nested <svg>); source untouched.
+    body = _re.sub(r'<polyline\b[^>]*/>', '', body)
+    CX, CY, CW = 26.0, 65.0, 657.0
+    sc = px(target_w_mm) / CW
     tx, ty = px(x_mm), px(y_mm)
-    return f'<g transform="translate({tx:.2f},{ty:.2f}) scale({scale:.5f})">{body}</g>'
+    return f'<g transform="translate({tx:.2f},{ty:.2f}) scale({sc:.5f}) translate({-CX:.2f},{-CY:.2f})">{body}</g>'
 
 def mbs(x_mm, y_mm, w_mm, h_mm, t, op):
     # Marina Bay Sands: three leaning tower-pairs (curved-lean outer + straight
@@ -139,8 +145,8 @@ def gen(dark):
     A(f'<rect x="{px(ED_X):.1f}" y="{px(ED_Y):.1f}" width="{px(ED_W):.1f}" height="{px(ED_H):.1f}" rx="{px(1.5):.1f}" fill="{t["edrecess"]}" stroke="{t["edborder"]}" stroke-width="1"/>')
     # MBS watermark centred in the editor, large + faint (reads as Marina Bay)
     A(mbs(ED_X+ED_W*0.28, ED_Y+ED_H-5.0, ED_W*0.46, ED_H*0.68, t, op=0.16))
-    for k in range(1,4):   # 4 lanes → 3 dividers
-        ly=ED_Y+k*(ED_H/4.0)
+    for k in range(1,ED_LANES):   # 6 lanes → 5 dividers (was /4, a 4-lane leftover)
+        ly=ED_Y+k*ED_LANE_H
         A(f'<line x1="{px(ED_X+1):.1f}" y1="{px(ly):.1f}" x2="{px(ED_X+ED_W-1):.1f}" y2="{px(ly):.1f}" stroke="{t["edborder"]}" stroke-width="0.75" opacity="0.7"/>')
 
     # ── per-lane owner-source block, right of the editor before the prob-outs.
@@ -148,7 +154,7 @@ def gen(dark):
     #    OwnerCell widget draws each per-lane cell itself (filled = global/Macro,
     #    outline in lane colour = East/per-voice), so no static outline cells here.
     _ed_right = ED_X + ED_W
-    _lane_ys = [rowY(r) for r in range(N)]
+    _lane_ys = [rowY(r) for r in range(N+2)]   # 4 spread lanes + VAR/LEG rows 4,5
     _ch = ED_LANE_H * 0.9                  # match the live OwnerCell (≈ lane step cell)
     _cw = (ED_W - 2*6.0) / 16.0            # one editor step wide (padding=6, 16 steps)
     _pad = 1.6
@@ -167,13 +173,14 @@ def gen(dark):
     # ── control group recess (left) — wraps the editor-aligned rows ──
     # box left edge clears the leftmost jack (JACK_X[0]=6, r=3.9 → left extent 2.1mm)
     gx,gy=1.5,rowY(0)-ED_LANE_H*0.5-3.0
-    gw,gh=(SPREAD_X+6.0)-gx,(rowY(N-1)+ED_LANE_H*0.5+3.0)-gy
+    # recess spans all 6 control rows (4 spread lanes + VAR/LEG rows 4,5)
+    gw,gh=(SPREAD_X+6.0)-gx,(rowY(N+1)+ED_LANE_H*0.5+3.0)-gy
     A(f'<rect x="{px(gx):.1f}" y="{px(gy):.1f}" width="{px(gw):.1f}" height="{px(gh):.1f}" rx="{px(2):.1f}" fill="{t["group"]}" stroke="{t["groupline"]}" stroke-width="1"/>')
     sepx=0.5*(JACK_X[-1]+ATTEN_X[0])  # separator between jack cluster and atten cluster
     A(f'<line x1="{px(sepx):.1f}" y1="{px(gy+2):.1f}" x2="{px(sepx):.1f}" y2="{px(gy+gh-2):.1f}" stroke="{t["groupline"]}" stroke-width="0.75" opacity="0.6"/>')
     A('</g>')
     A(f'<g inkscape:label="branding" inkscape:groupmode="layer">')
-    A(logo_embed(dark, x_mm=11.0, y_mm=4.5, target_w_mm=42.0))
+    A(logo_embed(dark, x_mm=11.0, y_mm=113.0, target_w_mm=42.0))
     A('</g>')
     A(f'<g inkscape:label="control-graphics" inkscape:groupmode="layer">')
     def jack(x,y):
@@ -187,6 +194,12 @@ def gen(dark):
         for x in JACK_X:  jack(x,y)
         for x in ATTEN_X: trim(x,y,t["gold"])
         trim(SPREAD_X,y,t["teal"])
+    # VARIATION (row 4) / LEGATO (row 5): LEN/OFF/ROT only — no SPR jack, no spread knob
+    # (spread does not apply to these mono-strand lanes). Attens in gold like the others.
+    for row in range(N, N+2):
+        y=rowY(row)
+        for x in JACK_X[:3]:  jack(x,y)
+        for x in ATTEN_X[:3]: trim(x,y,t["gold"])
 
     # ── Macro/East blend controls — 3 labelled groups (REST / MELODY / OCTAVE),
     #    each a demarked box stacked as: lane-name header → owner latch (OWN) →
@@ -223,6 +236,14 @@ def gen(dark):
         for p,x in enumerate(JACK_X):  kit_shape("input", 0+lane*4+p, x, y)
         for p,x in enumerate(ATTEN_X): kit_shape("param", 4+lane*4+p, x, y)
         kit_shape("param", lane, SPREAD_X, y)  # SPREAD_R/M/O/A engine lane index
+    # VARIATION (row 4) / LEGATO (row 5): VAR/LEG CV jacks + depth attens (LEN/OFF/ROT).
+    # input id = varlegCvId(lane,col)  = VARLEG_CV_START(16) + lane*3 + col
+    # param id = varlegAttDispId(lane,col) = VARLEG_ATTEN_DISP_START(20) + lane*3 + col
+    for lane in range(2):
+        y=rowY(N+lane)   # rows 4,5
+        for c in range(3):
+            kit_shape("input", 16 + lane*3 + c, JACK_X[c], y)
+            kit_shape("param",  20 + lane*3 + c, ATTEN_X[c], y)
     # East opt-in (BASE) owner latches — now positioned ON the SRC owner-source
     # cells (right of the editor). Each cell IS the per-lane owner button: the
     # bound DimmableLatch renders/fills here by ownership state. Indexed by ENGINE
@@ -230,6 +251,10 @@ def gen(dark):
     for row in range(4):
         l = DISPLAY_ORDER[row]
         A(f'<circle id="param_owner_{l}" cx="{px(OWNER_X):.2f}" cy="{px(rowY(row)):.2f}" '
+          f'r="0.5" fill="none" stroke="none"/>')
+    # VAR/LEG delegation cells (editor lanes 4/5) — the widget binds param_owner_4/5.
+    for lane in range(2):
+        A(f'<circle id="param_owner_{4+lane}" cx="{px(OWNER_X):.2f}" cy="{px(rowY(4+lane)):.2f}" '
           f'r="0.5" fill="none" stroke="none"/>')
     A(f'<circle id="light_connect" cx="{px(W_MM*0.5):.2f}" cy="{px(124.0):.2f}" r="0.5" fill="none" stroke="none"/>')
     A('</g>')

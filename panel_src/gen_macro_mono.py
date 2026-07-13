@@ -36,8 +36,9 @@ def gen_macro(dark, W_MM=218.44):   # 43HP (42 + 1HP for the per-lane owner-sour
     # Identity artwork in the BOTTOM-LEFT corner (vs East's lower-right) so the
     # two near-identical 42HP panels read apart at a glance. Bottom-left is free
     # on Macro (send grids live in the right section).
-    A(D.helix_sands(4.0, 70.0, 74.0, 52.0, t, op=0.95))   # Sands Helix hero mark, bottom-left pocket
-    A(D.mbs(6.0, 110.0, 60.0, 14.0, t, op=0.85))
+    A(D.helix_sands(4.0, 76.0, 74.0, 35.0, t, op=0.95))   # Sands Helix hero mark, bottom-left pocket (moved down 6mm so its MBS motif reads lower; wordmark moved the same amount)
+    # (MBS identity mark removed — the Helix already carries an MBS motif in its background,
+    #  and it collided with the bottom-left wordmark. The Helix alone is the identity art here.)
     A(D.accent_rules(PW,t))
     gx,gy=1.5,rowY(0)-ED_LANE_H*0.5-3.0; gw,gh=(SPREAD_X+6.0)-gx,(rowY(N-1)+ED_LANE_H*0.5+3.0)-gy  # gx clears leftmost jack
     A(D.input_group(gx,gy,gw,gh,t,sep_mm=0.5*(JACK_X[-1]+ATTEN_X[0])))
@@ -45,7 +46,7 @@ def gen_macro(dark, W_MM=218.44):   # 43HP (42 + 1HP for the per-lane owner-sour
     A(D.owner_block(OWNER_X, [rowY(r) for r in range(N)], ED_X+ED_W, t, cell_w_mm=6.0))
     A('</g>')
     A('<g inkscape:label="branding" inkscape:groupmode="layer">')
-    A(D.logo_embed(dark, x_mm=11.0, y_mm=4.5, target_w_mm=42.0))
+    A(D.logo_embed(dark, x_mm=11.0, y_mm=113.0, target_w_mm=42.0))
     A('</g>')
     A('<g inkscape:label="control-graphics" inkscape:groupmode="layer">')
     for row in range(4):
@@ -148,7 +149,7 @@ def gen_mono(dark):
     A(D.owner_block(OWNER_X, [laneY(l) for l in range(4)], ED_X+ED_W, t, cell_w_mm=(ED_W-2*6.0)/16.0, draw_cells=False))
     A('</g>')
     A('<g inkscape:label="branding" inkscape:groupmode="layer">')
-    A(D.logo_embed(dark, x_mm=11.0, y_mm=4.5, target_w_mm=42.0))
+    A(D.logo_embed(dark, x_mm=11.0, y_mm=113.0, target_w_mm=42.0))
     A('</g>')
     A('<g inkscape:label="control-graphics" inkscape:groupmode="layer">')
     for lane in range(6):

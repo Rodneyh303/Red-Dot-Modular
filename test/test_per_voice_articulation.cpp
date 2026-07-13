@@ -1,8 +1,9 @@
-// EAST_EXTRA_LANES stage 2 — per-voice articulation, clamped to the mono event grid.
-// Proves the three properties the design rests on:
+// EAST_EXTRA_LANES stage 2/3 — per-voice articulation, clamped to the mono event grid.
+// Proves the properties the design rests on:
 //   1. flag OFF  → every voice's nvIdx == mono's (bit-identical to today)
 //   2. flag ON, identity LOR → still identical (doubly inert)
-//   3. flag ON, non-identity LOR → voices diverge, but ALWAYS hold <= mono's hold (the clamp)
+//   3. flag ON, dialed LOR but DELEGATED (default) → still mono's (§4d delegation)
+//   4. flag ON, dialed LOR + Local East → voices diverge, but ALWAYS hold <= mono's (the clamp)
 #include "SequencerEngine.hpp"
 #include "NoteValues.hpp"
 #include <cstdio>
@@ -46,11 +47,25 @@ int main() {
             check(e.nvIdxForVoice(v, in) == e.lastStepResult.nvIdx, "identity LOR -> mono nvIdx");
     }
 
-    // ── 3. flag ON, per-voice LOR windows: divergence + the clamp invariant ──
+    // ── 3. flag ON, per-voice LOR windows: delegation default, then divergence + clamp ──
     e.polyLORRef(1, SequencerEngine::EDITOR_LANE_VARIATION, SequencerEngine::LOR_LEN) = 6;   // V3
     e.polyLORRef(2, SequencerEngine::EDITOR_LANE_VARIATION, SequencerEngine::LOR_LEN) = 12;  // V4
     e.polyLORRef(2, SequencerEngine::EDITOR_LANE_VARIATION, SequencerEngine::LOR_OFF) = 3;
     e.polyLORRef(2, SequencerEngine::EDITOR_LANE_VARIATION, SequencerEngine::LOR_ROT) = 2;
+
+    // 3a. DELEGATION DEFAULT (§4d): even with a dialed LOR, a delegated voice (the default)
+    //     reads mono's position → mono nvIdx. Divergence must NOT appear until Local East.
+    for (int step = 0; step < 64; ++step) {
+        e.totalStepsElapsed = step;
+        int monoIdx = e.getStrandIdx(step, 16, 0, 0) & 0x0F;
+        e.lastStepResult.nvIdx = e.getNoteLenIdx(e.lastNoteVal_, in, e.pe.variationRandom[monoIdx]);
+        for (int v : {1, 2})
+            check(e.nvIdxForVoice(v, in) == e.lastStepResult.nvIdx, "delegated (default) -> mono nvIdx despite dialed LOR");
+    }
+
+    // 3b. Flip V3/V4 VAR to Local East, THEN the dialed LOR takes effect and they diverge.
+    e.setVarlegLocalEast(1, 0, true);   // V3 VAR: Local East (opt out of mono delegation)
+    e.setVarlegLocalEast(2, 0, true);   // V4 VAR: Local East
 
     int diverged = 0, checked = 0;
     for (int step = 0; step < 96; ++step) {
@@ -69,7 +84,7 @@ int main() {
             if (nv != e.lastStepResult.nvIdx) ++diverged;
         }
     }
-    check(diverged > 0, "non-identity LOR actually diverges");
+    check(diverged > 0, "non-identity LOR actually diverges (Local East)");
     std::printf("  divergence: %d/%d voice-steps differ from mono\n", diverged, checked);
 
     // ── 4. table contract the clamp relies on: slowest -> fastest ──

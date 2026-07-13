@@ -579,7 +579,36 @@ namespace MonsoonIds {
         MACRO_TAP_START = MACRO_ATTEN_END,
         MACRO_TAP_END = MACRO_TAP_START + 8,   // 4 lanes × (LOR, spread)
 
-        NUM_PARAMS = MACRO_TAP_END
+        // ── EAST_EXTRA_LANES Stage 3: VAR/LEG per-voice delegation toggle ──
+        // For the VARIATION and LEGATO lanes, each poly voice either DELEGATES its reading
+        // position to MONO (default) or uses its OWN outright LOR (Local East). Unlike lanes
+        // 0-3 (MACRO_OWN), the only delegation target here is mono — Macro never owns these
+        // lanes (EAST_EXTRA_LANES.md §6b), so this is a clean mono-or-East binary. V1 is mono,
+        // never a poly voice, so it is always mono (no toggle). 15 poly voices × 2 lanes = 30.
+        // Appended at END so existing param IDs stay stable (saved patches safe).
+        //   index = VARLEG_DELEG_START + v*2 + lane   (v = 0..14 = V2..V16, lane 0=VAR 1=LEG)
+        //   value: 0 = delegate to mono (default, silent), 1 = Local East (own LOR)
+        VARLEG_DELEG_START = MACRO_TAP_END,
+        VARLEG_DELEG_END = VARLEG_DELEG_START + 30,
+
+        // Display proxies for the SELECTED voice's VAR/LEG delegation cells. Two physical
+        // lane-end cells (lane 0=VAR, 1=LEG) bind to these fixed ids; the East widget copies
+        // them to/from the per-voice VARLEG_DELEG params on voice switch (same pattern as the
+        // owner cells ↔ MACRO_OWN_DISP). index = VARLEG_DELEG_DISP_START + lane.
+        VARLEG_DELEG_DISP_START = VARLEG_DELEG_END,
+        VARLEG_DELEG_DISP_END = VARLEG_DELEG_DISP_START + 2,
+
+        // ── EAST_EXTRA_LANES Stage 4: VAR/LEG per-voice CV-depth attenuverter ──
+        // VARIATION/LEGATO get poly CV inputs (LEN/OFF/ROT only — no SPR, no spread:
+        // spread does not apply to these mono-strand lanes). Each poly voice needs its
+        // OWN depth per jack (same independence model as MACRO_ATTEN for lanes 0-3), so
+        // this is a 16-wide voice-slot bank (slot 0 = mono/V1, the ch1 mix-in depth),
+        // 2 lanes × 3 cols = 6 jacks per voice. 16 × 6 = 96. Appended at END.
+        //   index = VARLEG_ATTEN_START + v*6 + lane*3 + col   (v=0..15, lane 0=VAR 1=LEG, col 0..2)
+        VARLEG_ATTEN_START = VARLEG_DELEG_DISP_END,
+        VARLEG_ATTEN_END = VARLEG_ATTEN_START + 96,
+
+        NUM_PARAMS = VARLEG_ATTEN_END
     };
 
     enum InputIds {

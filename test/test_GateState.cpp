@@ -341,6 +341,40 @@ int main(){
         for(int i=1;i<=7;++i) EXPECT(gs_noteSteps(i-1) > gs_noteSteps(i));
     });
 
+    // ─────────────────────────────────────────────────────────────────────────
+    SUITE("lastNoteType — per-voice articulation the display reads");
+    // ─────────────────────────────────────────────────────────────────────────
+    TEST("triggerNote -> Single", {
+        auto g=fresh(); g.triggerNote(1.f,5,4);
+        EXPECT(g.lastNoteType == GateState::NoteType::Single);
+    });
+    TEST("slideNote wasHeld -> Legato (slur, no retrigger)", {
+        auto g=fresh(); g.triggerNote(1.f,5,4);
+        g.slideNote(2.f,7,4,true);
+        EXPECT(g.lastNoteType == GateState::NoteType::Legato);
+    });
+    TEST("slideNote cold -> Single (first note opens the gate)", {
+        auto g=fresh(); g.slideNote(1.5f,3,4,false);
+        EXPECT(g.lastNoteType == GateState::NoteType::Single);
+    });
+    TEST("extendHold -> Tie (held same pitch)", {
+        auto g=fresh(); g.triggerNote(1.f,5,4);
+        g.extendHold(5,4);
+        EXPECT(g.lastNoteType == GateState::NoteType::Tie);
+    });
+    TEST("slideMax (LegatoMax) -> Legato", {
+        auto g=fresh(); g.triggerNote(1.f,5,4);
+        g.slideMax(2.f,7,4);
+        EXPECT(g.lastNoteType == GateState::NoteType::Legato);
+    });
+    TEST("opt-out re-strike after a slur returns to Single", {
+        auto g=fresh(); g.triggerNote(1.f,5,4);
+        g.slideNote(2.f,7,4,true);              // Legato
+        EXPECT(g.lastNoteType == GateState::NoteType::Legato);
+        g.triggerNote(3.f,9,4);                 // opt-out re-strike inside the slur
+        EXPECT(g.lastNoteType == GateState::NoteType::Single);
+    });
+
     std::cout<<"\n"<<std::string(50,'=')<<"\n";
     std::cout<<"\033[32m"<<s_pass<<" passed\033[0m  ";
     if(s_fail>0)std::cout<<"\033[31m"<<s_fail<<" failed\033[0m";

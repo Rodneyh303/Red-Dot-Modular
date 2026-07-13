@@ -12,6 +12,7 @@ poly CV jacks below. nanosvg-safe. Kit id markers:
   input_restcv / input_accentcv                   16ch poly CV in
   light_connect
 """
+import os, re
 HP = 16
 W  = HP * 5.08
 H  = 128.5
@@ -37,6 +38,19 @@ GLOBAL_Y = 22.0
 # 4 columns: groupA rest, groupA acc, groupB rest, groupB acc
 COLX = [W*0.18, W*0.38, W*0.62, W*0.82]
 
+
+# ── dot.modular wordmark embed (nondestructive wordmark crop — strips positioning
+#    brackets + blank margins via a translate/scale transform; source logo untouched). ──
+_LOGO_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "res", "logo")
+def logo_embed(dark, x_mm, y_mm, target_w_mm):
+    path = os.path.join(_LOGO_DIR, "dot-modular-logo-dark.svg" if dark else "dot-modular-logo-light.svg")
+    s = open(path).read()
+    body = s[s.find('<g '):s.rfind('</svg>')]
+    body = re.sub(r'<polyline\b[^>]*/>', '', body)   # strip the 2 positioning brackets
+    CX, CY, CW = 26.0, 65.0, 657.0                   # wordmark crop (matches *-tight.svg)
+    sc = px(target_w_mm) / CW
+    tx, ty = px(x_mm), px(y_mm)
+    return f'<g transform="translate({tx:.2f},{ty:.2f}) scale({sc:.5f}) translate({-CX:.2f},{-CY:.2f})">{body}</g>'
 
 def gen(dark):
     t = THEMES["dark" if dark else "light"]
@@ -80,6 +94,8 @@ def gen(dark):
         A(f'<circle id="{kid}" cx="{px(cx)}" cy="{px(jy)}" r="0.5" fill="none" stroke="none"/>')
 
     A(f'<circle id="light_connect" cx="{px(W*0.5)}" cy="{px(9)}" r="0.5" fill="none" stroke="none"/>')
+    # dot.modular wordmark — centred horizontally, lower band (a bit below the Sands panels' y≈113)
+    A(logo_embed(dark, (W - 30.0) / 2.0, 116.0, 30.0))
     A('</svg>')
     return "\n".join(o)
 
