@@ -470,7 +470,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         selectedVoice = nv;
         // Load the INCOMING voice.
         if (selectedVoice >= 1) {
-            paramMgr->syncPatternEngineToEditor(polyVoice(), visualEditor->currentState);
+            // (Removed: paramMgr->syncPatternEngineToEditor(...) — superseded by step()'s
+            //  resolver fill, which runs on the next frame and covers all four poly lanes.)
             loadVoiceLOR(polyVoice());
             loadVoiceSpread(polyVoice());
             loadVoiceMacro(polyVoice());
@@ -752,7 +753,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // turn (esp. ACCENT) didn't mutate until you switched tabs. Now accent spread
             // modulates immediately and its mod arc reads a live value.
             saveVoiceSpread(polyVoice());
-            paramMgr->syncPatternEngineToEditor(polyVoice(), visualEditor->currentState);
+            // (Removed: paramMgr->syncPatternEngineToEditor(...). It wrote REST/MEL/OCT from
+            //  spreadMgr.getInterpolatedValue — PRE-spread and missing ACCENT — and every one of
+            //  those three lanes was overwritten by the resolver fill immediately below, in this
+            //  same block. See cleanup/dead-poly-sync.)
             // The editor's drag only edits the LOR WINDOW (length/offset/rotation), never
             // individual step probabilities — those are display-only. So show the
             // SPREAD-APPLIED probabilities (polyRhythmRandom etc., what actually plays)
