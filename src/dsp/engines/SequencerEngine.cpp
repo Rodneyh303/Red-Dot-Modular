@@ -44,6 +44,10 @@ void SequencerEngine::reset() {
         lanePingPongHold_[s] = false;
         for (int v = 0; v < 15; ++v) {
             laneTickV_[v][s] = 0;   // per-voice tick: reset (inherits mono dir)
+            laneSignV_[v][s] = 1;   // CRITICAL: must be +1, not 0 — -0 == 0 in integer
+                                    // arithmetic, so a bounce flip on 0 is a no-op (the
+                                    // Pendulum/PingPong bounce would never reverse direction).
+            laneSignVPending_[v][s] = 1;
             laneDirV_[v][s] = LaneDir::Forward;
             laneDirVPending_[v][s] = LaneDir::Forward;
             lanePingPongHoldV_[v][s] = false;
@@ -123,7 +127,9 @@ bool SequencerEngine::advancePlayhead(int dir) {
     for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
         if (laneDir_[l] == LaneDir::Forward)      laneSign_[l] = +1;
         else if (laneDir_[l] == LaneDir::Reverse) laneSign_[l] = -1;
-        // Pendulum/PingPong: laneSign_ is managed by the auto-flip; don't override here.
+        // Pendulum/PingPong: laneSign_ is managed by the auto-flip; don't override — EXCEPT
+        // if it's 0 (unset). -0 == 0, so a bounce on 0 is a no-op. Default to +1 (forward).
+        else if (laneSign_[l] == 0) laneSign_[l] = +1;
     }
     // Same derivation for per-voice signs: Forward/Reverse get a deterministic sign
     // from laneDirV_; Pendulum/PingPong keep their bounce-managed sign. This lets the
@@ -133,7 +139,11 @@ bool SequencerEngine::advancePlayhead(int dir) {
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
             if (laneDirV_[v][l] == LaneDir::Forward)      laneSignV_[v][l] = +1;
             else if (laneDirV_[v][l] == LaneDir::Reverse) laneSignV_[v][l] = -1;
-            // Pendulum/PingPong: laneSignV_ managed by auto-flip; don't override.
+            // Pendulum/PingPong: laneSignV_ managed by auto-flip; don't override — EXCEPT
+            // if it's 0 (unset/default). -0 == 0 in integer arithmetic, so a bounce flip on
+            // 0 is a no-op and the direction never reverses. Default to +1 (forward) so the
+            // first bounce can flip it to -1.
+            else if (laneSignV_[v][l] == 0) laneSignV_[v][l] = +1;
         }
     // Advance each lane's tick, with Pendulum/PingPong endpoint-bounce support.
     // Both Pendulum and PingPong reverse at the LOR window endpoint (pos len-1 fwd, pos 0 rev).
@@ -172,21 +182,23 @@ bool SequencerEngine::advancePlayhead(int dir) {
             }
         }
     }
-    // Per-voice tick: the EFFECTIVE sign is mono's lane sign × the voice's own sign
-    // (polyLaneSign). +1/+1 (default) = follows mono exactly; mono reversed + voice +1 = voice
-    // follows the reversal; voice -1 = reversed relative to mono (independent). All-forward keeps
-    // laneTickV_[v][l] == laneTick_[l] exactly → no-op until something is reversed.
+    // Per-voice tick: the EFFECTIVE sign is the voice's own sign (polyLaneSign) — ABSOLUTE,
+    // not relative to mono. The DirCell directly controls the direction: Forward = +1, Reverse =
+    // -1, Pendulum/PingPong bounce at the voice's own LOR endpoint. All-forward keeps
+    // laneTickV_[v][l] == laneTick_[l] exactly when mono is also forward → no-op until something
+    // is reversed. (Previously effSign = laneSign_[l] * polyLaneSign(v, l), which made poly
+    // direction relative to mono — counter-intuitive when mono is reversed.)
     // Per-voice PingPong: same endpoint-hold logic as mono, on the voice's own tick + LOR.
     // Per-voice Pendulum: same endpoint-bounce as mono (flip at the LOR edge, no hold).
     for (int v = 0; v < 15; ++v)
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
-            int effSign = laneSign_[l] * polyLaneSign(v, l);
+            int effSign = polyLaneSign(v, l);
             // Per-voice PingPong hold (analogous to mono's, on the voice's own LOR window)
             if (laneDirV_[v][l] == LaneDir::PingPong && lanePingPongHoldV_[v][l]) {
                 lanePingPongHoldV_[v][l] = false;
                 laneSignV_[v][l] = -laneSignV_[v][l];
                 laneSignVPending_[v][l] = laneSignV_[v][l];
-                effSign = laneSign_[l] * polyLaneSign(v, l);   // recompute after flip
+                effSign = polyLaneSign(v, l);   // recompute after flip
             } else if (laneDirV_[v][l] == LaneDir::PingPong) {
                 int len = std::max(1, polyLOR(v, l, LOR_LEN));
                 int pos = ((laneTickV_[v][l] % len) + len) % len;

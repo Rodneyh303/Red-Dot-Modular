@@ -413,17 +413,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     const float stepW = (ED_W - 2.f*6.f) / 16.f;
                     w->box.size = mm2px(Vec(stepW, ED_LANE_H * 0.9f));
                     w->box.pos  = ctr.minus(w->box.size.div(2.f));
-                    // Lanes 0..3: locked when Macro owns the lane (delegated) OR on the V1/mono
+                    // All lanes: locked when Macro owns the lane (delegated) OR on the V1/mono
                     // tab with Mono attached (tab1MonoMirror — V1's direction follows Mono).
-                    // Lanes 4..5 (VAR/LEG): locked only when Macro owns the lane (never in practice
-                    // — Macro doesn't own VAR/LEG). VAR/LEG are independent mono strands and are
-                    // always settable, including on the mono tab.
-                    if (lane < 4)
-                        w->lockWhen = [this, lane]() {
-                            return laneOwnedByMacroTopo(lane) || tab1MonoMirror();
-                        };
-                    else
-                        w->lockWhen = [this, lane]() { return laneOwnedByMacroTopo(lane); };
+                    // When Mono is attached, V1's direction for ALL lanes (including VAR/LEG)
+                    // is controlled by Mono, so the DirCells lock.
+                    w->lockWhen = [this, lane]() {
+                        return laneOwnedByMacroTopo(lane) || tab1MonoMirror();
+                    };
                 }
             );
         }
@@ -513,13 +509,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         const int gs = m->engine.stepIndex;
         for (int el = dotModular::SandsGrid::POLY_LANES; el < dotModular::SandsGrid::EAST_LANES; ++el) {
             const int strand = el;   // identity, by the renumber above
+            int mLen = std::max(1, m->engine.lor(strand, SequencerEngine::LOR_LEN));
+            int mOff = m->engine.lor(strand, SequencerEngine::LOR_OFF);
+            int mRot = m->engine.lor(strand, SequencerEngine::LOR_ROT);
             auto& lane = visualEditor->currentState.lanes[el];
-            lane.length   = std::max(1, m->engine.lor(strand, SequencerEngine::LOR_LEN));
-            lane.offset   =            m->engine.lor(strand, SequencerEngine::LOR_OFF);
-            lane.rotation =            m->engine.lor(strand, SequencerEngine::LOR_ROT);
+            lane.setDisplayLOR(mLen, mOff, mRot);
             for (int st = 0; st < SandsVisualEditorV4::STEP_COUNT; ++st)
                 lane.probabilities[st] = m->engine.pe.finalRandomByStrand(strand, st);
-            visualEditor->setLanePlayStep(el, calcPlayhead(m->engine.laneTick_[strand], lane.length, lane.offset, lane.rotation));
+            visualEditor->setLanePlayStep(el, calcPlayhead(m->engine.laneTick_[strand], mLen, mOff, mRot));
         }
     }
 
@@ -917,12 +914,17 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // the EDIT values, so this is display-only.
         int gs = monsoon->engine.stepIndex;
         auto& eng = monsoon->engine;
-        // Per-lane direction cue on the mono tab (the mono strands carry laneSign_). Poly tabs
-        // read forward for now (per-voice direction is deferred, step 6), so keep the global cue.
+        // Per-lane direction cue: mono tab uses laneSign_, poly tabs use the per-voice
+        // sign directly (absolute direction, not relative to mono).
         if (onMonoTab())
             for (int l = 0; l < 6; ++l) visualEditor->setLanePlayDir(l, eng.lastPlayDir * eng.laneSign_[l]);
-        else
-            visualEditor->setPlayDir(eng.lastPlayDir);   // direction cue (Mode E reverse)
+        else {
+            int pv = polyVoice();
+            for (int l = 0; l < 6; ++l) {
+                int strand = dotModular::MONO_LANE_TO_STRAND[l];
+                visualEditor->setLanePlayDir(l, eng.lastPlayDir * eng.polyLaneSign(pv, strand));
+            }
+        }
         // TAB-1 MONO MIRROR: when Sands Mono is attached, voice 1 / tab 1 follows the
         // mono master strand — its LORS base belongs to Mono, not East. Show mono's
         // values read-only (consistent with the other lanes' display), and lock the
@@ -1158,7 +1160,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 int cvRot = eng.polyRotE(pv, l);
                 int el = dotModular::ENGINE_LANE_TO_EDITOR[l];
                 visualEditor->currentState.lanes[el].setDisplayLOR(cvLen, cvOff, cvRot);
-                visualEditor->setLanePlayStep(el, calcPlayhead(eng.laneTick_[dotModular::MONO_LANE_TO_STRAND[el]], cvLen, cvOff, cvRot));
+                // Use the PER-VOICE tick (laneTickV_), not mono's laneTick_ — otherwise
+                // the poly playhead always follows mono's direction, ignoring the DirCell.
+                visualEditor->setLanePlayStep(el, calcPlayhead(eng.laneTickV_[pv][dotModular::MONO_LANE_TO_STRAND[el]], cvLen, cvOff, cvRot));
             }
             // VARIATION (4) / LEGATO (5): show the window the ENGINE actually reads for this voice
             // — mono's when the lane DELEGATES (default), the voice's own when Local East — plus the

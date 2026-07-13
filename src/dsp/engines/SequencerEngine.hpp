@@ -435,12 +435,12 @@ struct SequencerEngine {
         int strand = polyLaneStrand(polyLane);
         return (bank >= 0 && bank < 15) ? laneTickV_[bank][strand] : laneTick_[strand];
     }
-    // Per-voice effective sign for an engine poly lane (mono's lane sign × the voice's own sign).
-    // +1 = follows mono's direction (default); -1 = reversed relative to mono. Used by the visual
+    // Per-voice effective sign for an engine poly lane — ABSOLUTE (the voice's own sign,
+    // not relative to mono). +1 = forward (default); -1 = reversed. Used by the visual
     // cue (each poly voice's leading-edge marker points its own way).
     int polyLaneDir(int bank, int polyLane) const {
         int strand = polyLaneStrand(polyLane);
-        return laneSign_[strand] * polyLaneSign(bank, strand);
+        return polyLaneSign(bank, strand);
     }
     inline int masterLaneStep(int polyLane) const {
         int strand = polyLaneStrand(polyLane);
