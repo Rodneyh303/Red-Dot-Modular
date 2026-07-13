@@ -840,7 +840,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // the EDIT values, so this is display-only.
         int gs = monsoon->engine.stepIndex;
         auto& eng = monsoon->engine;
-        visualEditor->setPlayDir(eng.lastPlayDir);   // direction cue (Mode E reverse)
+        // Per-lane direction cue on the mono tab (the mono strands carry laneSign_). Poly tabs
+        // read forward for now (per-voice direction is deferred, step 6), so keep the global cue.
+        if (onMonoTab())
+            for (int l = 0; l < 6; ++l) visualEditor->setLanePlayDir(l, eng.lastPlayDir * eng.laneSign_[l]);
+        else
+            visualEditor->setPlayDir(eng.lastPlayDir);   // direction cue (Mode E reverse)
         // TAB-1 MONO MIRROR: when Sands Mono is attached, voice 1 / tab 1 follows the
         // mono master strand — its LORS base belongs to Mono, not East. Show mono's
         // values read-only (consistent with the other lanes' display), and lock the

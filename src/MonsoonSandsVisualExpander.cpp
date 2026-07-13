@@ -356,7 +356,11 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             effRot[l] = eng.strandRot(strand);
         }
         int globalStep = monsoon->engine.stepIndex;
-        visualEditor->setPlayDir(monsoon->engine.lastPlayDir);   // direction cue (Mode E reverse)
+        // Per-lane direction cue: each mono strand's effective trail direction is the global
+        // play direction times its own lane sign (reverse / pendulum flips it). Display lane
+        // index == strand index (MEL/OCT/REST/ACC/VAR/LEG).
+        for (int l = 0; l < 6; ++l)
+            visualEditor->setLanePlayDir(l, monsoon->engine.lastPlayDir * monsoon->engine.laneSign_[l]);
         for (int l = 0; l < 6; ++l) {
             visualEditor->currentState.lanes[l].setDisplayLOR(effLen[l], effOff[l], effRot[l]);
             visualEditor->setLanePlayStep(l,

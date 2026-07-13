@@ -93,6 +93,12 @@ and needs **no** new predecessor logic — mono keeps one global articulation st
    arrow cell in the visual editor (same pattern as the delegation `OwnerCell`), an arrow
    glyph on reversed lanes, and a per-lane playhead that travels the lane's own direction
    (extend the existing `setPlayDir`).
+   STATUS (feat/lane-playhead): direction cue DONE — editor `playDir` is now per-lane
+   (`lanePlayDir[6]` + `setLanePlayDir`), the trail marker uses it, and the Monsoon mono
+   visual + East mono tab feed `lastPlayDir * laneSign_[strand]`. REMAINING: the reversed-lane
+   HIGHLIGHT POSITION still uses the physical `gs`; route reversed lanes through
+   `laneTick_[strand]` at the widget `setLanePlayStep` sites so the lit cell matches the
+   engine's actual backward read. Best confirmed live. Macro visual still global-only.
 
 5. **Audition, legato last.** Value lanes → retrograde textures, low risk. Then the legato
    lane on its own: confirm no isolated-teal (there shouldn't be — classification stays

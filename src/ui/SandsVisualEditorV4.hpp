@@ -234,8 +234,10 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // step = -1 means sequencer not running (no indicator drawn).
   int lanePlayStep[6] = {-1,-1,-1,-1,-1,-1};
   float activeStepAlpha = 0.f;
-  int playDir = +1;   // +1 forward, -1 reverse (Mode E); for directional playhead cue
-  void setPlayDir(int d) { playDir = (d < 0) ? -1 : +1; }
+  int lanePlayDir[6] = {1,1,1,1,1,1};   // per-lane trail direction (+1 fwd / -1 rev); Mode E and per-lane
+  // Set all lanes at once (Mode E global cue). Per-lane callers use setLanePlayDir.
+  void setPlayDir(int d) { int s = (d < 0) ? -1 : +1; for (int l = 0; l < 6; ++l) lanePlayDir[l] = s; }
+  void setLanePlayDir(int lane, int d) { if (lane >= 0 && lane < 6) lanePlayDir[lane] = (d < 0) ? -1 : +1; }
 
   // Convenience: set all active lanes to the same global step
   // (used when L/O/R is not yet available)
@@ -806,10 +808,11 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
 
       // Directional leading-edge marker: a bright vertical bar on the side the
       // playhead is travelling TOWARD (right edge when forward, left when reverse).
-      // Makes forward vs reverse (Mode E) visible at a glance.
+      // Uses THIS lane's direction (lanePlayDir[l]) so a reversed / pendulum lane reads
+      // backward at a glance, independent of the others and of global Mode E.
       {
-        float ex = (playDir < 0) ? rect.pos.x + 0.5f
-                                  : rect.pos.x + rect.size.x - 2.5f;
+        float ex = (lanePlayDir[l] < 0) ? rect.pos.x + 0.5f
+                                        : rect.pos.x + rect.size.x - 2.5f;
         nvgBeginPath(vg);
         nvgRect(vg, ex, rect.pos.y, 2.f, rect.size.y);
         nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.8f * activeStepAlpha));
