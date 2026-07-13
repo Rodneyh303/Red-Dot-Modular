@@ -39,6 +39,15 @@ void SequencerEngine::reset() {
         laneSign_[s] = 1;
         laneSignPending_[s] = 1;
         lanePendulum_[s] = false;
+        laneDir_[s] = LaneDir::Forward;
+        laneDirPending_[s] = LaneDir::Forward;
+        lanePingPongHold_[s] = false;
+        for (int v = 0; v < 15; ++v) {
+            laneTickV_[v][s] = 0;   // per-voice tick: reset (inherits mono dir)
+            laneDirV_[v][s] = LaneDir::Forward;
+            laneDirVPending_[v][s] = LaneDir::Forward;
+            lanePingPongHoldV_[v][s] = false;
+        }
     }
     for (int i = 0; i < 15; i++) {
         for (int l = 0; l < PL_LANES; ++l) {   // was l < 3 — PL_ACCENT(3) was never reset (pre-existing bug)
@@ -96,13 +105,106 @@ bool SequencerEngine::advancePlayhead(int dir) {
     lastPlayDir = (dir < 0) ? -1 : +1;
 
     // ── Per-lane direction ──────────────────────────────────────────────────────
-    // StepEdge: promote the pending sign now (before advancing) so the lane turns around
+    // StepEdge: promote the pending sign/dir now (before advancing) so the lane turns around
     // THIS step. Then advance each lane's own tick by globalDir * its sign — all-forward
     // (sign=+1) keeps laneTick_[l] == totalStepsElapsed exactly (no behaviour change).
-    if (laneFlipQuant == LaneFlipQuant::StepEdge)
-        for (int l = 0; l < dotModular::NUM_STRANDS; ++l) laneSign_[l] = laneSignPending_[l];
-    for (int l = 0; l < dotModular::NUM_STRANDS; ++l)
+    if (laneFlipQuant == LaneFlipQuant::StepEdge) {
+        for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
+            laneSign_[l] = laneSignPending_[l];
+            laneDir_[l]  = laneDirPending_[l];
+            for (int v = 0; v < 15; ++v) {
+                laneSignV_[v][l] = laneSignVPending_[v][l];
+                laneDirV_[v][l]  = laneDirVPending_[v][l];
+            }
+        }
+    }
+    // Sync laneSign_ from laneDir_ for Forward/Reverse (Pendulum/PingPong keep their
+    // current flipped sign, managed by the auto-flip at the wrap below).
+    for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
+        if (laneDir_[l] == LaneDir::Forward)      laneSign_[l] = +1;
+        else if (laneDir_[l] == LaneDir::Reverse) laneSign_[l] = -1;
+        // Pendulum/PingPong: laneSign_ is managed by the auto-flip; don't override here.
+    }
+    // Same derivation for per-voice signs: Forward/Reverse get a deterministic sign
+    // from laneDirV_; Pendulum/PingPong keep their bounce-managed sign. This lets the
+    // widget push ONLY laneDirVPending_ (not laneSignVPending_), so the engine's
+    // bounce-induced sign flip in laneSignVPending_ is not overwritten every frame.
+    for (int v = 0; v < 15; ++v)
+        for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
+            if (laneDirV_[v][l] == LaneDir::Forward)      laneSignV_[v][l] = +1;
+            else if (laneDirV_[v][l] == LaneDir::Reverse) laneSignV_[v][l] = -1;
+            // Pendulum/PingPong: laneSignV_ managed by auto-flip; don't override.
+        }
+    // Advance each lane's tick, with Pendulum/PingPong endpoint-bounce support.
+    // Both Pendulum and PingPong reverse at the LOR window endpoint (pos len-1 fwd, pos 0 rev).
+    // PingPong also repeats the endpoint step (hold for one step before bouncing); Pendulum
+    // bounces immediately (no repeat).
+    for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
+        if (laneDir_[l] == LaneDir::PingPong && lanePingPongHold_[l]) {
+            // Hold was set last step → bounce: flip sign, clear hold, advance normally.
+            lanePingPongHold_[l] = false;
+            laneSign_[l] = -laneSign_[l];
+            laneSignPending_[l] = laneSign_[l];   // keep pending in sync
+        } else if (laneDir_[l] == LaneDir::PingPong) {
+            // Check if we're at the endpoint (about to leave the window). The LOR length for
+            // this strand determines the window; laneTick_ walks 0..len-1 cyclically.
+            int len = std::max(1, strandLen(l));
+            int pos = ((laneTick_[l] % len) + len) % len;
+            bool atFwdEnd = (laneSign_[l] > 0 && pos == len - 1);
+            bool atRevEnd = (laneSign_[l] < 0 && pos == 0);
+            if (atFwdEnd || atRevEnd) {
+                // Hold: don't advance this step (the endpoint repeats). Set the hold flag so
+                // next step bounces.
+                lanePingPongHold_[l] = true;
+                continue;   // skip the advance — tick stays at the endpoint
+            }
+        }
         laneTick_[l] = (int)((((long)laneTick_[l] + (long)dir * laneSign_[l]) % DNA_LCM + DNA_LCM) % DNA_LCM);
+        // Pendulum: after advancing, check if we just reached the endpoint → flip sign now
+        // (at the LOR window edge, not waiting for the phrase wrap). No hold (no repeat).
+        if (laneDir_[l] == LaneDir::Pendulum) {
+            int len = std::max(1, strandLen(l));
+            int pos = ((laneTick_[l] % len) + len) % len;
+            bool atEnd = (laneSign_[l] > 0 && pos == len - 1) || (laneSign_[l] < 0 && pos == 0);
+            if (atEnd) {
+                laneSign_[l] = -laneSign_[l];
+                laneSignPending_[l] = laneSign_[l];
+            }
+        }
+    }
+    // Per-voice tick: the EFFECTIVE sign is mono's lane sign × the voice's own sign
+    // (polyLaneSign). +1/+1 (default) = follows mono exactly; mono reversed + voice +1 = voice
+    // follows the reversal; voice -1 = reversed relative to mono (independent). All-forward keeps
+    // laneTickV_[v][l] == laneTick_[l] exactly → no-op until something is reversed.
+    // Per-voice PingPong: same endpoint-hold logic as mono, on the voice's own tick + LOR.
+    // Per-voice Pendulum: same endpoint-bounce as mono (flip at the LOR edge, no hold).
+    for (int v = 0; v < 15; ++v)
+        for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
+            int effSign = laneSign_[l] * polyLaneSign(v, l);
+            // Per-voice PingPong hold (analogous to mono's, on the voice's own LOR window)
+            if (laneDirV_[v][l] == LaneDir::PingPong && lanePingPongHoldV_[v][l]) {
+                lanePingPongHoldV_[v][l] = false;
+                laneSignV_[v][l] = -laneSignV_[v][l];
+                laneSignVPending_[v][l] = laneSignV_[v][l];
+                effSign = laneSign_[l] * polyLaneSign(v, l);   // recompute after flip
+            } else if (laneDirV_[v][l] == LaneDir::PingPong) {
+                int len = std::max(1, polyLOR(v, l, LOR_LEN));
+                int pos = ((laneTickV_[v][l] % len) + len) % len;
+                bool atEnd = (effSign > 0 && pos == len - 1) || (effSign < 0 && pos == 0);
+                if (atEnd) { lanePingPongHoldV_[v][l] = true; continue; }
+            }
+            laneTickV_[v][l] = (int)((((long)laneTickV_[v][l] + (long)dir * effSign) % DNA_LCM + DNA_LCM) % DNA_LCM);
+            // Per-voice Pendulum: after advancing, flip if at the LOR endpoint (no hold, no repeat).
+            if (laneDirV_[v][l] == LaneDir::Pendulum) {
+                int len = std::max(1, polyLOR(v, l, LOR_LEN));
+                int pos = ((laneTickV_[v][l] % len) + len) % len;
+                bool atEnd = (effSign > 0 && pos == len - 1) || (effSign < 0 && pos == 0);
+                if (atEnd) {
+                    laneSignV_[v][l] = -laneSignV_[v][l];
+                    laneSignVPending_[v][l] = laneSignV_[v][l];
+                }
+            }
+        }
 
     // Step the global DNA tick WITH direction: +1 forward, -1 backward. This is what
     // maps physical positions to drifting DNA content (strand indices) and the ring
@@ -135,15 +237,22 @@ bool SequencerEngine::advancePlayhead(int dir) {
         wrapped = (prevStep != -1 && stepIndex == startStep);
     }
 
-    // Pendulum lanes auto-reverse at every phrase boundary (ping-pong); keep pending in sync
-    // so the manual promotion below is a no-op for them.
-    if (wrapped)
-        for (int l = 0; l < dotModular::NUM_STRANDS; ++l)
-            if (lanePendulum_[l]) { laneSign_[l] = -laneSign_[l]; laneSignPending_[l] = laneSign_[l]; }
+    // Pendulum/PingPong now bounce at the LOR window endpoint (handled above in the tick
+    // advance loop), NOT at the phrase boundary. The old phrase-boundary auto-flip is removed
+    // — it was the legacy lanePendulum_ mechanism, superseded by the per-lane endpoint check.
+    // (If a lane's LOR length == the phrase length, the endpoint coincides with the wrap, so
+    // the behaviour is the same. If the LOR is shorter, the bounce happens sooner — correct.)
 
-    // Phrase: defer the flip to the wrap, so the next phrase plays in the new direction.
+    // Phrase: defer the manual flip to the wrap, so the next phrase plays in the new direction.
     if (laneFlipQuant == LaneFlipQuant::Phrase && wrapped)
-        for (int l = 0; l < dotModular::NUM_STRANDS; ++l) laneSign_[l] = laneSignPending_[l];
+        for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
+            laneSign_[l] = laneSignPending_[l];
+            laneDir_[l]  = laneDirPending_[l];
+            for (int v = 0; v < 15; ++v) {
+                laneSignV_[v][l] = laneSignVPending_[v][l];
+                laneDirV_[v][l]  = laneDirVPending_[v][l];
+            }
+        }
 
     return wrapped;
 }
@@ -578,9 +687,11 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
     if (monoGateStart) {
         // This is the decision point for this entire mono gate.
         // Each strand indexes with ITS OWN lane LOR (rest/melody/octave).
-        int restIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_REST),   polyOffE(voiceIdx, PL_REST),   polyRotE(voiceIdx, PL_REST));
-        int melIdx  = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_MELODY), polyOffE(voiceIdx, PL_MELODY), polyRotE(voiceIdx, PL_MELODY));
-        int octIdx  = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_OCTAVE), polyOffE(voiceIdx, PL_OCTAVE), polyRotE(voiceIdx, PL_OCTAVE));
+        // Per-voice tick (inherits mono's per-lane direction) so a reversed mono lane reverses
+        // this voice's read on the same lane.
+        int restIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_REST),   polyLenE(voiceIdx, PL_REST),   polyOffE(voiceIdx, PL_REST),   polyRotE(voiceIdx, PL_REST));
+        int melIdx  = getStrandIdx(polyLaneTick(voiceIdx, PL_MELODY), polyLenE(voiceIdx, PL_MELODY), polyOffE(voiceIdx, PL_MELODY), polyRotE(voiceIdx, PL_MELODY));
+        int octIdx  = getStrandIdx(polyLaneTick(voiceIdx, PL_OCTAVE), polyLenE(voiceIdx, PL_OCTAVE), polyOffE(voiceIdx, PL_OCTAVE), polyRotE(voiceIdx, PL_OCTAVE));
         float r_rest = pe.polyRandom(voiceIdx, PL_REST)[restIdx];
         
         if (r_rest < v.restProb) {
@@ -600,7 +711,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         float pitchV = pe.genPitchLive(sem, input, pe.polyRandom(voiceIdx, PL_MELODY)[melIdx], pe.polyRandom(voiceIdx, PL_OCTAVE)[octIdx]);
         // Accent as a poly lane (modelled after rest): this voice draws its OWN accent at
         // its own accent LOR and compares to its own accentProb — not shared from mono.
-        int accIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_ACCENT), polyOffE(voiceIdx, PL_ACCENT), polyRotE(voiceIdx, PL_ACCENT));
+        int accIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_ACCENT), polyLenE(voiceIdx, PL_ACCENT), polyOffE(voiceIdx, PL_ACCENT), polyRotE(voiceIdx, PL_ACCENT));
         v.accented = (pe.polyRandom(voiceIdx, PL_ACCENT)[accIdx] < v.accentProb);
         if (lastStepResult.decision == MonoDecision::NewNote)
             v.gs.triggerNote(pitchV, sem, nvV);
@@ -702,8 +813,8 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                     // committed legato → slide to own new pitch; opted out / not still sounding →
                     // re-articulate fresh. Either way this voice draws its OWN pitch (melody/octave
                     // LOR), never mono's.
-                    int melIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_MELODY), polyOffE(voiceIdx, PL_MELODY), polyRotE(voiceIdx, PL_MELODY));
-                    int octIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_OCTAVE), polyOffE(voiceIdx, PL_OCTAVE), polyRotE(voiceIdx, PL_OCTAVE));
+                    int melIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_MELODY), polyLenE(voiceIdx, PL_MELODY), polyOffE(voiceIdx, PL_MELODY), polyRotE(voiceIdx, PL_MELODY));
+                    int octIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_OCTAVE), polyLenE(voiceIdx, PL_OCTAVE), polyOffE(voiceIdx, PL_OCTAVE), polyRotE(voiceIdx, PL_OCTAVE));
                     int sem = 0;
                     float pitchV = pe.genPitchLive(sem, input, pe.polyRandom(voiceIdx, PL_MELODY)[melIdx], pe.polyRandom(voiceIdx, PL_OCTAVE)[octIdx]);
                     if (connect) {
@@ -712,7 +823,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                         // re-articulate: a fresh onset, so draw this voice's OWN accent (its accent
                         // LOR vs its own accentProb), exactly as the chain onset does — a re-struck
                         // note isn't stuck with the accent the chain opened on.
-                        int accIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_ACCENT), polyOffE(voiceIdx, PL_ACCENT), polyRotE(voiceIdx, PL_ACCENT));
+                        int accIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_ACCENT), polyLenE(voiceIdx, PL_ACCENT), polyOffE(voiceIdx, PL_ACCENT), polyRotE(voiceIdx, PL_ACCENT));
                         v.accented = (pe.polyRandom(voiceIdx, PL_ACCENT)[accIdx] < v.accentProb);
                         v.gs.triggerNote(pitchV, sem, nvV);                   // re-articulate
                     }
@@ -730,8 +841,8 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                     // Mono slid to a NEW pitch (a real pitch move) → poly draws its OWN new pitch
                     // (its own melody/octave LOR) and slides to it. Poly tracks mono's articulation
                     // shape, never mono's actual notes.
-                    int melIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_MELODY), polyOffE(voiceIdx, PL_MELODY), polyRotE(voiceIdx, PL_MELODY));
-                    int octIdx = getStrandIdx(totalStepsElapsed, polyLenE(voiceIdx, PL_OCTAVE), polyOffE(voiceIdx, PL_OCTAVE), polyRotE(voiceIdx, PL_OCTAVE));
+                    int melIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_MELODY), polyLenE(voiceIdx, PL_MELODY), polyOffE(voiceIdx, PL_MELODY), polyRotE(voiceIdx, PL_MELODY));
+                    int octIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_OCTAVE), polyLenE(voiceIdx, PL_OCTAVE), polyOffE(voiceIdx, PL_OCTAVE), polyRotE(voiceIdx, PL_OCTAVE));
                     int sem = 0;
                     float pitchV = pe.genPitchLive(sem, input, pe.polyRandom(voiceIdx, PL_MELODY)[melIdx], pe.polyRandom(voiceIdx, PL_OCTAVE)[octIdx]);
                     v.gs.slideNote(pitchV, sem, nvV, wasHeldPoly);
@@ -845,7 +956,9 @@ int SequencerEngine::getStrandIdx(int tickCount, int len, int off, int mutation)
 int SequencerEngine::getVariationStepForVoice(int bank) const {
     // Delegated (default) → read mono's VARIATION position, so the voice mirrors mono.
     if (varlegDelegated(bank, 0)) return getVariationStep();
-    return getStrandIdx(totalStepsElapsed,
+    // Local East: read THIS voice's own window, advanced on its per-voice tick (which inherits
+    // mono's per-lane direction — a reversed mono VARIATION lane reverses this voice too).
+    return getStrandIdx(laneTickV_[bank][dotModular::STRAND_VARIATION],
                         polyLOR(bank, EDITOR_LANE_VARIATION, LOR_LEN),
                         polyLOR(bank, EDITOR_LANE_VARIATION, LOR_OFF),
                         polyLOR(bank, EDITOR_LANE_VARIATION, LOR_ROT));
@@ -854,7 +967,9 @@ int SequencerEngine::getVariationStepForVoice(int bank) const {
 int SequencerEngine::getLegatoStepForVoice(int bank) const {
     // Delegated (default) → read mono's LEGATO position, so the voice's slur roll matches mono.
     if (varlegDelegated(bank, 1)) return getLegatoStep();
-    return getStrandIdx(totalStepsElapsed,
+    // Local East: read THIS voice's own window, advanced on its per-voice tick (inherits mono's
+    // per-lane direction — a reversed mono LEGATO lane reverses this voice's slur roll too).
+    return getStrandIdx(laneTickV_[bank][dotModular::STRAND_LEGATO],
                         polyLOR(bank, EDITOR_LANE_LEGATO, LOR_LEN),
                         polyLOR(bank, EDITOR_LANE_LEGATO, LOR_OFF),
                         polyLOR(bank, EDITOR_LANE_LEGATO, LOR_ROT));

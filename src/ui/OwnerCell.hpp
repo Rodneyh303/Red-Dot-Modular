@@ -97,3 +97,118 @@ inline NVGcolor sandsLaneColorEditor(int editorLane) {
         default: return nvgRGB(0x80, 0x80, 0x80);
     }
 }
+
+// ── DirCell ──────────────────────────────────────────────────────────────────
+// The per-lane direction control: a 4-state cell cycling Forward → Reverse →
+// Pendulum → Ping-pong → Forward on left-click. Draws a direction glyph (→ ← ↔ «»)
+// in the lane's colour. Value: 0=Forward, 1=Reverse, 2=Pendulum, 3=PingPong.
+// Mirrors the OwnerCell pattern (ParamWidget, click to cycle, lockWhen to disable).
+struct DirCell : rack::ParamWidget {
+    NVGcolor laneCol = nvgRGB(0x80, 0x80, 0x80);
+    std::function<bool()> lockWhen;
+    DirCell() { box.size = rack::math::Vec(18.f, 28.f); }
+
+    bool locked() const { return lockWhen && lockWhen(); }
+    int state() {   // 0..3
+        return getParamQuantity() ? (int)std::round(getParamQuantity()->getValue()) : 0;
+    }
+    void cycle() {
+        if (!getParamQuantity()) return;
+        getParamQuantity()->setValue((state() + 1) % 4);
+    }
+    void onButton(const rack::event::Button& e) override {
+        if (locked()) { if (e.action == GLFW_PRESS) e.consume(this); return; }
+        if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT) {
+            cycle();
+            e.consume(this);
+            return;
+        }
+        rack::ParamWidget::onButton(e);
+    }
+    void draw(const DrawArgs& args) override {
+        const float w = box.size.x, h = box.size.y, r = 2.2f;
+        const bool lock = locked();
+        const float a = lock ? 0.45f : 1.0f;
+        NVGcolor col = laneCol; col.a = a;
+        // Cell background: rounded rect outline in the lane colour.
+        nvgBeginPath(args.vg);
+        nvgRoundedRect(args.vg, 1.0f, 1.0f, w - 2.0f, h - 2.0f, r);
+        nvgStrokeColor(args.vg, col);
+        nvgStrokeWidth(args.vg, 1.0f);
+        nvgStroke(args.vg);
+        // Direction glyph centred in the cell.
+        drawDirGlyph(args, col);
+        if (lock) {
+            // Dim overlay for locked cells (simpler than OwnerCell's padlock — just dim the glyph).
+            nvgBeginPath(args.vg);
+            nvgRoundedRect(args.vg, 1.0f, 1.0f, w - 2.0f, h - 2.0f, r);
+            nvgFillColor(args.vg, nvgRGBA(0x16, 0x18, 0x1c, 0xb0));
+            nvgFill(args.vg);
+        }
+    }
+    void drawDirGlyph(const DrawArgs& args, NVGcolor col) {
+        const float cx = box.size.x * 0.5f, cy = box.size.y * 0.5f;
+        const float s = std::min(box.size.x, box.size.y) * 0.28f;
+        NVGcolor g = col;
+        nvgStrokeColor(args.vg, g);
+        nvgStrokeWidth(args.vg, std::max(1.0f, s * 0.35f));
+        nvgLineCap(args.vg, NVG_ROUND);
+        switch (state()) {
+            case 0:  // Forward →
+                nvgBeginPath(args.vg);
+                nvgMoveTo(args.vg, cx - s, cy);
+                nvgLineTo(args.vg, cx + s * 0.7f, cy);
+                nvgStroke(args.vg);
+                // arrowhead
+                nvgBeginPath(args.vg);
+                nvgMoveTo(args.vg, cx + s * 0.7f, cy);
+                nvgLineTo(args.vg, cx + s * 0.3f, cy - s * 0.35f);
+                nvgMoveTo(args.vg, cx + s * 0.7f, cy);
+                nvgLineTo(args.vg, cx + s * 0.3f, cy + s * 0.35f);
+                nvgStroke(args.vg);
+                break;
+            case 1:  // Reverse ←
+                nvgBeginPath(args.vg);
+                nvgMoveTo(args.vg, cx + s, cy);
+                nvgLineTo(args.vg, cx - s * 0.7f, cy);
+                nvgStroke(args.vg);
+                nvgBeginPath(args.vg);
+                nvgMoveTo(args.vg, cx - s * 0.7f, cy);
+                nvgLineTo(args.vg, cx - s * 0.3f, cy - s * 0.35f);
+                nvgMoveTo(args.vg, cx - s * 0.7f, cy);
+                nvgLineTo(args.vg, cx - s * 0.3f, cy + s * 0.35f);
+                nvgStroke(args.vg);
+                break;
+            case 2:  // Pendulum ↔
+                nvgBeginPath(args.vg);
+                nvgMoveTo(args.vg, cx - s * 0.6f, cy);
+                nvgLineTo(args.vg, cx + s * 0.6f, cy);
+                nvgStroke(args.vg);
+                // left arrowhead
+                nvgBeginPath(args.vg);
+                nvgMoveTo(args.vg, cx - s * 0.6f, cy);
+                nvgLineTo(args.vg, cx - s * 0.3f, cy - s * 0.35f);
+                nvgMoveTo(args.vg, cx - s * 0.6f, cy);
+                nvgLineTo(args.vg, cx - s * 0.3f, cy + s * 0.35f);
+                // right arrowhead
+                nvgMoveTo(args.vg, cx + s * 0.6f, cy);
+                nvgLineTo(args.vg, cx + s * 0.3f, cy - s * 0.35f);
+                nvgMoveTo(args.vg, cx + s * 0.6f, cy);
+                nvgLineTo(args.vg, cx + s * 0.3f, cy + s * 0.35f);
+                nvgStroke(args.vg);
+                break;
+            case 3:  // Ping-pong «» (double arrows)
+                // left pair
+                nvgBeginPath(args.vg);
+                nvgMoveTo(args.vg, cx - s * 0.2f, cy - s * 0.4f);
+                nvgLineTo(args.vg, cx - s * 0.7f, cy);
+                nvgLineTo(args.vg, cx - s * 0.2f, cy + s * 0.4f);
+                // right pair
+                nvgMoveTo(args.vg, cx + s * 0.2f, cy - s * 0.4f);
+                nvgLineTo(args.vg, cx + s * 0.7f, cy);
+                nvgLineTo(args.vg, cx + s * 0.2f, cy + s * 0.4f);
+                nvgStroke(args.vg);
+                break;
+        }
+    }
+};

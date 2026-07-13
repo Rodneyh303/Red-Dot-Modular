@@ -9,15 +9,15 @@ using namespace MonsoonIds;
 namespace StraitsEastVisualIds {
 
     // ── Panel ──────────────────────────────────────────────────────────────
-    static constexpr float W_MM    = 218.44f;   // 43HP (42 + 1HP for the per-lane
-                                                 // owner-source block right of the editor)
+    static constexpr float W_MM    = 223.52f;   // 44HP (43 + 1HP for the per-lane direction column)
     static constexpr float ED_X   = 88.f;   // editor (matches SandsMonoVisual)
     static constexpr float ED_W   = 111.f;  // editor width (fixed; no longer tied to PROB_OUT_X)
     // Owner-source block: per-lane cells just right of the editor, before the
     // prob-out strip. OWNER_X is the cell-column centre; the block has a faint
     // separator + backing (drawn in the gen) so it doesn't read as a 17th step.
     static constexpr float OWNER_X    = 205.f;   // owner cell column (editor right edge = 199)
-    static constexpr float PROB_OUT_X = 212.f;   // poly prob-out jack column (right strip, pushed right by the owner block)
+    static constexpr float DIR_X      = 212.f;   // direction cell column (Fwd/Rev/Pend/PingPong)
+    static constexpr float PROB_OUT_X = 219.f;   // poly prob-out jack column (pushed right by the direction block)
     static constexpr int   N_ROWS  = dotModular::SandsGrid::POLY_LANES;  // 4 — 1 row per lane
     // ROW_TOP/ROW_BOT were DEAD here (nothing read them; rows come from ED_Y + ED_LANE_H) yet still
     // said 14..108, which is what made this look aligned with Mono when it wasn't. Bound to the grid.
@@ -71,8 +71,14 @@ namespace StraitsEastVisualIds {
         // 6 VAR/LEG CV-depth DISPLAY proxies (LEN/OFF/ROT only — no SPR): lane 0=VAR,
         // 1=LEG; col 0..2. Selected-voice view; real depth in VARLEG_ATTEN_START.
         VARLEG_ATTEN_DISP_START = ATTEN_START + 16,   // = 20
-        NUM_SPREAD_PARAMS = VARLEG_ATTEN_DISP_START + 6  // = 26
+        // 6 direction display proxies (one per editor lane 0..5). Value 0..3 =
+        // Forward/Reverse/Pendulum/PingPong. Selected-voice view; the engine holds the
+        // real per-voice state in laneDir_/laneDirV_.
+        DIR_DISP_START = VARLEG_ATTEN_DISP_START + 6,  // = 26
+        NUM_SPREAD_PARAMS = DIR_DISP_START + 6          // = 32
     };
+    // Direction display proxy (selected-voice view). lane = editor lane 0..5.
+    static inline int dirDispId(int lane) { return DIR_DISP_START + lane; }
     // Selected-voice display proxy (physical knob binds here).
     static inline int attenDispId(int lane, int col) { return ATTEN_START + lane*4 + col; }
     // Per-voice CV depth (the real store): voice v, lane l, col c (0=LEN,1=OFF,2=ROT).
@@ -319,6 +325,14 @@ struct StraitsEastSandsVisual : Module {
                 for (int c=0; c<4; ++c)
                     configParam(attenId(v,lane,c), -1.f,1.f,0.f,
                                 vl+"depth l"+std::to_string(lane)+"c"+std::to_string(c));
+        }
+        // Direction display proxies (selected-voice view). lane = editor lane 0..5.
+        // Value 0=Forward, 1=Reverse, 2=Pendulum, 3=PingPong. Default 0 (Forward).
+        {
+            const char* laneNm[6] = {"MEL","OCT","REST","ACC","VAR","LEG"};
+            for (int lane=0; lane<6; ++lane)
+                configParam(dirDispId(lane), 0.f, 3.f, 0.f,
+                            std::string(laneNm[lane])+" direction (selected voice)");
         }
     }
 

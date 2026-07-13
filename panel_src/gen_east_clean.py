@@ -5,7 +5,7 @@ red corner screws. nanosvg-safe (no masks/gradients/text-for-controls)."""
 import math
 S = 75.0/25.4
 def px(mm): return round(mm*S, 2)
-W_MM, H_MM = 218.44, 128.5  # 43HP (42 + 1HP for the per-lane owner-source block)
+W_MM, H_MM = 223.52, 128.5  # 44HP (43 + 1HP for the per-lane direction column)
 PW, PH = px(W_MM), px(H_MM)
 
 N = 4   # 4 lanes, one row each
@@ -18,7 +18,8 @@ TAB_TOP_OFFSET_MM = 5.0
 ED_X, ED_Y = 88.0, 14.0
 ED_W = 111.0        # editor width (fixed; no longer tied to PROB_OUT_X — matches hpp)
 OWNER_X = 205.0     # owner-source cell column, right of the editor (matches hpp)
-PROB_OUT_X = 212.0  # right-strip jack column, pushed right by the owner block (matches hpp)
+DIR_X = 212.0       # direction cell column (Fwd/Rev/Pend/PingPong), right of owner (matches hpp)
+PROB_OUT_X = 219.0  # right-strip jack column, pushed right by the direction block (matches hpp)
 ED_H = 84.0   # 6 lanes x 14mm — East shows VARIATION/LEGATO (EAST_EXTRA_LANES.md stage 1)
 ED_LANES = 6  # editor lanes drawn; control rows stay N=4 (spread lanes only)
 ED_LANE_H = ED_H / ED_LANES
@@ -255,6 +256,11 @@ def gen(dark):
     # VAR/LEG delegation cells (editor lanes 4/5) — the widget binds param_owner_4/5.
     for lane in range(2):
         A(f'<circle id="param_owner_{4+lane}" cx="{px(OWNER_X):.2f}" cy="{px(rowY(4+lane)):.2f}" '
+          f'r="0.5" fill="none" stroke="none"/>')
+    # Direction cells (param_dir_<lane>) — per-lane direction toggle (Fwd/Rev/Pend/PingPong),
+    # placed at DIR_X, one per editor lane (0..5). The widget binds a DirCell to each.
+    for lane in range(6):
+        A(f'<circle id="param_dir_{lane}" cx="{px(DIR_X):.2f}" cy="{px(rowY(lane)):.2f}" '
           f'r="0.5" fill="none" stroke="none"/>')
     A(f'<circle id="light_connect" cx="{px(W_MM*0.5):.2f}" cy="{px(124.0):.2f}" r="0.5" fill="none" stroke="none"/>')
     A('</g>')

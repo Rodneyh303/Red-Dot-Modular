@@ -394,6 +394,39 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 }
             );
         }
+        // Direction cells (param_dir_<lane>) — per-lane direction toggle (Fwd/Rev/Pend/PingPong).
+        // Locked when the lane is delegated (not locally owned): direction follows the delegated
+        // owner and can't be overridden. Lanes 0..3 (poly): locked when Macro owns. Lanes 4..5
+        // (VAR/LEG): locked on the mono tab (V1 follows mono's direction).
+        static const NVGcolor dirCol[6] = {
+            nvgRGB(0xd4,0xaf,0x37), nvgRGB(0xb8,0x86,0x0b),  // MEL gold, OCT dark gold
+            nvgRGB(0x50,0x50,0x50), nvgRGB(0xff,0x95,0x00),  // REST grey, ACC orange
+            nvgRGB(0xff,0x6b,0x6b), nvgRGB(0x26,0xa6,0x9a)   // VAR red, LEG teal
+        };
+        for (int lane = 0; lane < 6; ++lane) {
+            bindParam<DirCell>(
+                "param_dir_" + std::to_string(lane),
+                dirDispId(lane),
+                [this, lane](DirCell* w) {
+                    w->laneCol = dirCol[lane];
+                    Vec ctr = w->box.pos.plus(w->box.size.div(2.f));
+                    const float stepW = (ED_W - 2.f*6.f) / 16.f;
+                    w->box.size = mm2px(Vec(stepW, ED_LANE_H * 0.9f));
+                    w->box.pos  = ctr.minus(w->box.size.div(2.f));
+                    // Lanes 0..3: locked when Macro owns the lane (delegated) OR on the V1/mono
+                    // tab with Mono attached (tab1MonoMirror — V1's direction follows Mono).
+                    // Lanes 4..5 (VAR/LEG): locked only when Macro owns the lane (never in practice
+                    // — Macro doesn't own VAR/LEG). VAR/LEG are independent mono strands and are
+                    // always settable, including on the mono tab.
+                    if (lane < 4)
+                        w->lockWhen = [this, lane]() {
+                            return laneOwnedByMacroTopo(lane) || tab1MonoMirror();
+                        };
+                    else
+                        w->lockWhen = [this, lane]() { return laneOwnedByMacroTopo(lane); };
+                }
+            );
+        }
         flushSpreadArcs();
 
         // dot.modular connect mark (brand mark; greyed when no Monsoon attached).
@@ -486,7 +519,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             lane.rotation =            m->engine.lor(strand, SequencerEngine::LOR_ROT);
             for (int st = 0; st < SandsVisualEditorV4::STEP_COUNT; ++st)
                 lane.probabilities[st] = m->engine.pe.finalRandomByStrand(strand, st);
-            visualEditor->setLanePlayStep(el, calcPlayhead(gs, lane.length, lane.offset, lane.rotation));
+            visualEditor->setLanePlayStep(el, calcPlayhead(m->engine.laneTick_[strand], lane.length, lane.offset, lane.rotation));
         }
     }
 
@@ -534,6 +567,15 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             loadVoiceLOR(polyVoice());
             loadVoiceSpread(polyVoice());
             loadVoiceMacro(polyVoice());
+            // Sync DirCell display proxy from the engine's per-voice direction so the
+            // DirCell shows the incoming voice's actual state (not the outgoing voice's).
+            if (auto* m = getMonsoon()) {
+                int pv = polyVoice();
+                for (int lane = 0; lane < 6; ++lane) {
+                    int strand = dotModular::MONO_LANE_TO_STRAND[lane];
+                    module->params[dirDispId(lane)].setValue((float)m->engine.laneDirVPending_[pv][strand]);
+                }
+            }
         }
         // V1-editable: the editor is refreshed from the engine mono strands by the
         // v1Editable() display branch in step(); no explicit load needed. Owner cell
@@ -547,6 +589,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // V1 is mono → VAR/LEG always follow mono; show the cells filled (and they lock).
             for (int lane = 0; lane < 2; ++lane)
                 module->params[varlegDelegDispId(lane)].setValue(0.f);
+            // Sync DirCell display proxy from the engine's mono direction.
+            if (auto* m = getMonsoon()) {
+                for (int lane = 0; lane < 6; ++lane) {
+                    int strand = dotModular::MONO_LANE_TO_STRAND[lane];
+                    module->params[dirDispId(lane)].setValue((float)m->engine.laneDirPending_[strand]);
+                }
+            }
         }
     }
 
@@ -801,6 +850,34 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             smgr.setSpread(polyVoice(), 2, mod->params[SPREAD_O].getValue());
             smgr.setSpread(polyVoice(), 3, mod->params[SPREAD_A].getValue());
         }
+        // ── Direction sync: push the DirCell display proxy values into the engine's
+        //    laneDirPending_ (mono tab) or laneDirVPending_ (poly tabs). The DirCell
+        //    writes the display proxy (dirDispId); the engine reads laneDirPending_ /
+        //    laneDirVPending_. This per-frame sync makes a click on the DirCell take
+        //    effect immediately, exactly like saveVoiceMacro syncs owner cells.
+        //
+        //    ONLY laneDirPending_ / laneDirVPending_ is pushed here. The engine's
+        //    advancePlayhead derives laneSign_ from laneDir_ for Forward/Reverse, and
+        //    manages the sign internally for Pendulum/PingPong bounces (flipping
+        //    laneSignPending_ at the LOR endpoint). If we also pushed laneSignPending_
+        //    every frame, we would overwrite the bounce-induced sign flip with
+        //    laneDirSign(Pendulum) = +1, undoing the bounce at the next promotion.
+        if (onMonoTab()) {
+            // Mono/V1 tab: direction applies to the mono strands (laneDir_).
+            for (int lane = 0; lane < 6; ++lane) {
+                int strand = dotModular::MONO_LANE_TO_STRAND[lane];
+                auto d = (SequencerEngine::LaneDir)(int)std::round(mod->params[dirDispId(lane)].getValue());
+                se->laneDirPending_[strand] = d;
+            }
+        } else if (selectedVoice >= 1) {
+            // Poly tab: direction applies to this voice's lanes (laneDirV_).
+            int pv = polyVoice();
+            for (int lane = 0; lane < 6; ++lane) {
+                int strand = dotModular::MONO_LANE_TO_STRAND[lane];
+                auto d = (SequencerEngine::LaneDir)(int)std::round(mod->params[dirDispId(lane)].getValue());
+                se->laneDirVPending_[pv][strand] = d;
+            }
+        }
         // (Spread target mode is now pulled from the engine by SpreadManager —
         // Monsoon::process mirrors the menu setting onto engine.pe each frame. No
         // per-widget push needed.)
@@ -874,7 +951,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 int mOff = monsoon->engine.strandOff(strand);
                 int mRot = monsoon->engine.strandRot(strand);
                 visualEditor->currentState.lanes[l].setDisplayLOR(std::max(1,mLen), mOff, mRot);
-                visualEditor->setLanePlayStep(l, calcPlayhead(gs, std::max(1,mLen), mOff, mRot));
+                int strand_m = dotModular::MONO_LANE_TO_STRAND[l];
+                visualEditor->setLanePlayStep(l, calcPlayhead(eng.laneTick_[strand_m], std::max(1,mLen), mOff, mRot));
             }
             // Spread (combo 7): East's V1 spread knobs FOLLOW Mono's spread (inoperable,
             // locked). Mono's sprId is engine/spread order (REST=0,MEL=1,OCT=2); East's
@@ -1055,7 +1133,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 int cvOff = eng.strandOffRef(strand);
                 int cvRot = eng.strandRotRef(strand);
                 visualEditor->currentState.lanes[el].setDisplayLOR(cvLen, cvOff, cvRot);
-                visualEditor->setLanePlayStep(el, calcPlayhead(gs, cvLen, cvOff, cvRot));
+                visualEditor->setLanePlayStep(el, calcPlayhead(eng.laneTick_[dotModular::MONO_LANE_TO_STRAND[el]], cvLen, cvOff, cvRot));
             }
             // Probabilities: V1 (mono) probabilities are display-only (drag edits the LOR
             // window only), so show the SPREAD-APPLIED values the sequencer plays. Read
@@ -1080,7 +1158,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 int cvRot = eng.polyRotE(pv, l);
                 int el = dotModular::ENGINE_LANE_TO_EDITOR[l];
                 visualEditor->currentState.lanes[el].setDisplayLOR(cvLen, cvOff, cvRot);
-                visualEditor->setLanePlayStep(el, calcPlayhead(gs, cvLen, cvOff, cvRot));
+                visualEditor->setLanePlayStep(el, calcPlayhead(eng.laneTick_[dotModular::MONO_LANE_TO_STRAND[el]], cvLen, cvOff, cvRot));
             }
             // VARIATION (4) / LEGATO (5): show the window the ENGINE actually reads for this voice
             // — mono's when the lane DELEGATES (default), the voice's own when Local East — plus the
@@ -1102,7 +1180,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     cvRot = eng.lor(el, SequencerEngine::LOR_ROT);
                 }
                 visualEditor->currentState.lanes[el].setDisplayLOR(cvLen, cvOff, cvRot);
-                visualEditor->setLanePlayStep(el, calcPlayhead(gs, cvLen, cvOff, cvRot));
+                int pvTick = eng.laneTickV_[pv][dotModular::MONO_LANE_TO_STRAND[el]];
+                visualEditor->setLanePlayStep(el, calcPlayhead(pvTick, cvLen, cvOff, cvRot));
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
                     visualEditor->currentState.lanes[el].probabilities[s] = eng.pe.finalRandomByStrand(el, s);
             }

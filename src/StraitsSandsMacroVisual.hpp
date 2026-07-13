@@ -13,9 +13,10 @@ namespace StraitsMacroVisualIds {
     // Macro does the same job as the East visual (spread control) but GLOBAL
     // rather than per-lane, so it shares East's 40HP width and column geometry
     // for consistency and to give the spread column proper room.
-    static constexpr float W_MM    = 218.44f;   // 43HP (42 + 1HP for the per-lane owner-source block)
+    static constexpr float W_MM    = 223.52f;   // 44HP (43 + 1HP for the per-lane direction column)
     static constexpr float OWNER_X    = 205.f;  // owner cell column (matches East)
-    static constexpr float PROB_OUT_X = 212.f;  // poly prob-out jack column (pushed right by owner block)
+    static constexpr float DIR_X      = 212.f;  // direction cell column (matches East)
+    static constexpr float PROB_OUT_X = 219.f;  // poly prob-out jack column (pushed right by direction block)
     static constexpr float ROW_TOP = 14.f;
     static constexpr float ROW_BOT = 108.f;
     static constexpr int   N_ROWS  = 4;         // 1 row per lane (REST/MEL/OCT/ACCENT)

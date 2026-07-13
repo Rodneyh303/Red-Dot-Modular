@@ -112,22 +112,50 @@ struct SequencerEngine {
     int lastPlayDir = +1;   // +1 forward, -1 reverse (Mode E); for UI direction cues
 
     // ── Per-lane direction (reverse a lane's read independently) ──────────────────
-    // Each strand walks its OWN accumulated tick, advanced per step by
-    // globalDir * laneSign_[s]; cell = getStrandIdx(laneTick_[s], ...). laneSign_ = +1
-    // follows global (default), -1 = reverse (opposite-to-global). All-forward keeps
-    // laneTick_[s] == totalStepsElapsed exactly, so it is a no-op until a lane is reversed.
-    // A UI change sets laneSignPending_[s]; advancePlayhead promotes it to laneSign_[s] at a
-    // boundary (StepEdge: top of every step; Phrase: only at the window wrap), so the lane
-    // turns around from its current position with no jump. See plans/lane_direction.md.
+    // 4-state direction per strand: Forward, Reverse, Pendulum (bounce, no endpoint repeat),
+    // PingPong (bounce, WITH endpoint repeat — the endpoint step plays twice per turn).
+    // Each strand walks its OWN accumulated tick; the sign is derived from the state (+1 fwd,
+    // -1 rev; Pendulum/PingPong flip at the window wrap). PingPong also holds the tick at the
+    // endpoint for one extra step (repeat) before flipping. See plans/lane_direction_ui.md.
+    enum class LaneDir : uint8_t { Forward = 0, Reverse = 1, Pendulum = 2, PingPong = 3 };
     enum class LaneFlipQuant { StepEdge, Phrase };
     int laneTick_[dotModular::NUM_STRANDS]        = {0,0,0,0,0,0};
-    int laneSign_[dotModular::NUM_STRANDS]        = {1,1,1,1,1,1};
+    int laneSign_[dotModular::NUM_STRANDS]        = {1,1,1,1,1,1};   // derived from laneDir_ (+1/-1)
     int laneSignPending_[dotModular::NUM_STRANDS] = {1,1,1,1,1,1};
+    LaneDir laneDir_[dotModular::NUM_STRANDS]        = {};   // default Forward
+    LaneDir laneDirPending_[dotModular::NUM_STRANDS] = {};
+    bool lanePendulum_[dotModular::NUM_STRANDS]   = {false,false,false,false,false,false}; // derived: Pendulum/PingPong
+    // PingPong endpoint-repeat: when true, the tick stays at the endpoint for one extra step
+    // (the endpoint step repeats) before the direction flips. Per-strand hold flag.
+    bool lanePingPongHold_[dotModular::NUM_STRANDS] = {};
+    // Per-voice per-strand accumulated tick (poly analogue of laneTick_). Advanced in advancePlayhead
+    // by dir * (laneSign_[s] * polyLaneSign(v, s)) — the EFFECTIVE sign is mono's lane sign times the
+    // voice's own sign. laneSignV_ = +1 (default) = follow mono's lane direction; -1 = reverse
+    // independently of mono (Local East). So a voice inherits mono's reversal AND can flip again on
+    // top. All-forward (all signs +1) keeps laneTickV_[v][s] == laneTick_[s] exactly → no-op.
+    // laneSignVPending_ is promoted to laneSignV_ at the same boundary as mono's (laneFlipQuant),
+    // so a per-voice flip also takes effect musically (no jump). See plans/lane_direction_rollout.md.
+    int laneTickV_[15][dotModular::NUM_STRANDS]        = {};
+    int laneSignV_[15][dotModular::NUM_STRANDS]        = {};   // default 0 → treated as +1 (see polyLaneSign)
+    int laneSignVPending_[15][dotModular::NUM_STRANDS] = {};
+    LaneDir laneDirV_[15][dotModular::NUM_STRANDS]        = {};   // per-voice direction (default Forward)
+    LaneDir laneDirVPending_[15][dotModular::NUM_STRANDS] = {};
+    bool lanePingPongHoldV_[15][dotModular::NUM_STRANDS] = {};   // per-voice ping-pong hold flag
+    // Effective per-voice sign for a strand: +1 if laneSignV_ is 0 (default/unset → follow mono) or
+    // positive, -1 if negative. Multiplied with mono's laneSign_ in advancePlayhead.
+    int polyLaneSign(int bank, int strand) const {
+        if (bank < 0 || bank >= 15) return 1;
+        return (laneSignV_[bank][strand] < 0) ? -1 : +1;
+    }
+    int polyLaneSignPending(int bank, int strand) const {
+        if (bank < 0 || bank >= 15) return 1;
+        return (laneSignVPending_[bank][strand] < 0) ? -1 : +1;
+    }
+    // Derive sign (+1/-1) from a LaneDir state.
+    static int laneDirSign(LaneDir d) { return (d == LaneDir::Reverse) ? -1 : +1; }
+    // Is this state an auto-flip (pendulum/ping-pong)?
+    static bool laneDirAutoFlip(LaneDir d) { return d == LaneDir::Pendulum || d == LaneDir::PingPong; }
     LaneFlipQuant laneFlipQuant = LaneFlipQuant::Phrase;   // musical default; StepEdge = live turns
-    // Pendulum (ping-pong): when set, the lane auto-reverses at every phrase boundary,
-    // alternating direction each lap. Independent of the manual sign (it flips it in place,
-    // keeping laneSignPending_ in sync so the manual promotion is a no-op for these lanes).
-    bool lanePendulum_[dotModular::NUM_STRANDS]   = {false,false,false,false,false,false};
     int lastStepIndex = -1;
     int startStep = 0;
     int endStep = 15;
@@ -391,11 +419,31 @@ struct SequencerEngine {
         return getStrandIdx(totalStepsElapsed, polyLenE(voice, polyLane),
                             polyOffE(voice, polyLane), polyRotE(voice, polyLane)) & 0x0F;
     }
+    // Engine poly lane (PL_REST..PL_ACCENT) → strand index. Single mapping (was inlined in
+    // masterLaneStep and polyLaneTick). PL_LANES.. have no strand (VAR/LEG are mono-only); this
+    // is only valid for the 4 poly lanes.
+    static int polyLaneStrand(int polyLane) {
+        return (polyLane == PL_REST)   ? dotModular::STRAND_RHYTHM
+             : (polyLane == PL_MELODY) ? dotModular::STRAND_MELODY
+             : (polyLane == PL_ACCENT) ? dotModular::STRAND_ACCENT
+                                       : dotModular::STRAND_OCTAVE;
+    }
+    // Per-voice tick for an engine poly lane, respecting mono's per-lane direction (poly inherits
+    // it via laneTickV_; Local-East independent direction is step 3). Delegated voices track
+    // mono's laneTick_[strand] exactly through this. Out-of-range bank falls back to mono's tick.
+    int polyLaneTick(int bank, int polyLane) const {
+        int strand = polyLaneStrand(polyLane);
+        return (bank >= 0 && bank < 15) ? laneTickV_[bank][strand] : laneTick_[strand];
+    }
+    // Per-voice effective sign for an engine poly lane (mono's lane sign × the voice's own sign).
+    // +1 = follows mono's direction (default); -1 = reversed relative to mono. Used by the visual
+    // cue (each poly voice's leading-edge marker points its own way).
+    int polyLaneDir(int bank, int polyLane) const {
+        int strand = polyLaneStrand(polyLane);
+        return laneSign_[strand] * polyLaneSign(bank, strand);
+    }
     inline int masterLaneStep(int polyLane) const {
-        int strand = (polyLane == PL_REST)   ? dotModular::STRAND_RHYTHM
-                   : (polyLane == PL_MELODY) ? dotModular::STRAND_MELODY
-                   : (polyLane == PL_ACCENT) ? dotModular::STRAND_ACCENT
-                                             : dotModular::STRAND_OCTAVE;
+        int strand = polyLaneStrand(polyLane);
         return getStrandIdx(totalStepsElapsed, strandLen(strand),
                             strandOff(strand), strandRot(strand)) & 0x0F;
     }

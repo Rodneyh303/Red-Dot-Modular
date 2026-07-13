@@ -31,7 +31,12 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_object_set_new(root, "restBeatsLegato",  json_boolean(m->engine.restBeatsLegato));
     json_object_set_new(root, "boundaryInterrupt", json_boolean(m->engine.boundaryInterrupt));
     json_object_set_new(root, "perVoiceArticulation", json_boolean(m->engine.perVoiceArticulation));
-    // Per-lane direction: the requested sign per strand (+1 fwd / -1 rev) and the flip-quant mode.
+    // Per-lane direction: the 4-state LaneDir enum per strand (Forward/Reverse/Pendulum/PingPong).
+    // Also saves the legacy sign + pendulum fields for backward compat with older patches.
+    { json_t* arr = json_array();
+      for (int s = 0; s < dotModular::NUM_STRANDS; ++s)
+          json_array_append_new(arr, json_integer((int)m->engine.laneDirPending_[s]));
+      json_object_set_new(root, "laneDir", arr); }
     { json_t* arr = json_array();
       for (int s = 0; s < dotModular::NUM_STRANDS; ++s)
           json_array_append_new(arr, json_integer(m->engine.laneSignPending_[s]));
@@ -41,6 +46,12 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
           json_array_append_new(arr, json_boolean(m->engine.lanePendulum_[s]));
       json_object_set_new(root, "lanePendulum", arr); }
     json_object_set_new(root, "laneFlipQuant", json_integer((int)m->engine.laneFlipQuant));
+    // Per-voice direction: the 4-state LaneDir enum per voice-per-lane (15 × 6 = 90 values).
+    { json_t* arr = json_array();
+      for (int v = 0; v < 15; ++v)
+          for (int s = 0; s < dotModular::NUM_STRANDS; ++s)
+              json_array_append_new(arr, json_integer((int)m->engine.laneDirVPending_[v][s]));
+      json_object_set_new(root, "laneDirV", arr); }
     json_object_set_new(root, "modVizMonsoonOther",  json_boolean(m->modVizMonsoonOther));
     json_object_set_new(root, "modVizEast",  json_boolean(m->modVizEast));
     json_object_set_new(root, "modVizWest",  json_boolean(m->modVizWest));
@@ -185,16 +196,53 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     if (auto j = json_object_get(root, "restBeatsLegato"))   m->engine.restBeatsLegato   = json_boolean_value(j);
     if (auto j = json_object_get(root, "boundaryInterrupt"))  m->engine.boundaryInterrupt  = json_boolean_value(j);
     if (auto j = json_object_get(root, "perVoiceArticulation")) m->engine.perVoiceArticulation = json_boolean_value(j);
-    if (auto j = json_object_get(root, "laneSign")) {
+    // Per-lane direction: prefer the new 4-state laneDir enum; fall back to legacy laneSign +
+    // lanePendulum for older patches.
+    if (auto j = json_object_get(root, "laneDir")) {
         for (int s = 0; s < dotModular::NUM_STRANDS && s < (int)json_array_size(j); ++s) {
-            int v = ((int)json_integer_value(json_array_get(j, s)) < 0) ? -1 : 1;
-            m->engine.laneSign_[s] = v;         // apply immediately on load (no wait for a wrap)
-            m->engine.laneSignPending_[s] = v;
+            auto d = (SequencerEngine::LaneDir)json_integer_value(json_array_get(j, s));
+            m->engine.laneDir_[s] = d;
+            m->engine.laneDirPending_[s] = d;
+            // Sync legacy fields.
+            m->engine.laneSign_[s] = SequencerEngine::laneDirSign(d);
+            m->engine.laneSignPending_[s] = m->engine.laneSign_[s];
+            m->engine.lanePendulum_[s] = SequencerEngine::laneDirAutoFlip(d);
+        }
+    } else {
+        // Legacy: derive from laneSign + lanePendulum.
+        if (auto j = json_object_get(root, "laneSign")) {
+            for (int s = 0; s < dotModular::NUM_STRANDS && s < (int)json_array_size(j); ++s) {
+                int v = ((int)json_integer_value(json_array_get(j, s)) < 0) ? -1 : 1;
+                m->engine.laneSign_[s] = v;
+                m->engine.laneSignPending_[s] = v;
+            }
+        }
+        if (auto j = json_object_get(root, "lanePendulum"))
+            for (int s = 0; s < dotModular::NUM_STRANDS && s < (int)json_array_size(j); ++s)
+                m->engine.lanePendulum_[s] = json_boolean_value(json_array_get(j, s));
+        // Reconstruct laneDir_ from the legacy fields.
+        for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
+            auto d = m->engine.lanePendulum_[s] ? SequencerEngine::LaneDir::Pendulum
+                   : (m->engine.laneSign_[s] < 0) ? SequencerEngine::LaneDir::Reverse
+                   : SequencerEngine::LaneDir::Forward;
+            m->engine.laneDir_[s] = d;
+            m->engine.laneDirPending_[s] = d;
         }
     }
-    if (auto j = json_object_get(root, "lanePendulum"))
-        for (int s = 0; s < dotModular::NUM_STRANDS && s < (int)json_array_size(j); ++s)
-            m->engine.lanePendulum_[s] = json_boolean_value(json_array_get(j, s));
+    // Per-voice direction (laneDirV).
+    if (auto j = json_object_get(root, "laneDirV")) {
+        for (int v = 0; v < 15; ++v)
+            for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
+                int idx = v * dotModular::NUM_STRANDS + s;
+                if (idx < (int)json_array_size(j)) {
+                    auto d = (SequencerEngine::LaneDir)json_integer_value(json_array_get(j, idx));
+                    m->engine.laneDirV_[v][s] = d;
+                    m->engine.laneDirVPending_[v][s] = d;
+                    m->engine.laneSignV_[v][s] = (d == SequencerEngine::LaneDir::Reverse) ? -1 : 1;
+                    m->engine.laneSignVPending_[v][s] = m->engine.laneSignV_[v][s];
+                }
+            }
+    }
     if (auto j = json_object_get(root, "laneFlipQuant"))
         m->engine.laneFlipQuant = (json_integer_value(j) == 1) ? SequencerEngine::LaneFlipQuant::Phrase
                                                                : SequencerEngine::LaneFlipQuant::StepEdge;

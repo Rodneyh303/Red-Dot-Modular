@@ -9,11 +9,12 @@ using namespace rack;
 namespace SandsMonoVisualIds {
 
     // ── Panel ────────────────────────────────────────────────────────────
-    static constexpr float W_MM     = 218.44f;  // 43HP (42 + 1HP for the per-lane owner-source block)
+    static constexpr float W_MM     = 223.52f;  // 44HP (43 + 1HP for the per-lane direction column)
     static constexpr float ED_X     = 88.f;
     static constexpr float ED_W     = 111.f;    // editor width (fixed; no longer tied to PROB_OUT_X)
     static constexpr float OWNER_X    = 205.f;  // owner cell column (matches East/Macro)
-    static constexpr float PROB_OUT_X = 212.f;  // output jack column (pushed right by the owner block)
+    static constexpr float DIR_X      = 212.f;  // direction cell column (matches East/Macro)
+    static constexpr float PROB_OUT_X = 219.f;  // output jack column (pushed right by the direction block)
     // Grid now comes from ui/SandsGrid.hpp so Mono, East and Macro cannot drift apart.
     // ROW_BOT 108 -> 98: lane height 15.667 -> 14, matching East/Macro's lanes exactly.
     static constexpr float ED_Y     = dotModular::SandsGrid::LANE_TOP;      // 14
