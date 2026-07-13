@@ -110,6 +110,20 @@ struct SequencerEngine {
 
     int stepIndex = -1;
     int lastPlayDir = +1;   // +1 forward, -1 reverse (Mode E); for UI direction cues
+
+    // ── Per-lane direction (reverse a lane's read independently) ──────────────────
+    // Each strand walks its OWN accumulated tick, advanced per step by
+    // globalDir * laneSign_[s]; cell = getStrandIdx(laneTick_[s], ...). laneSign_ = +1
+    // follows global (default), -1 = reverse (opposite-to-global). All-forward keeps
+    // laneTick_[s] == totalStepsElapsed exactly, so it is a no-op until a lane is reversed.
+    // A UI change sets laneSignPending_[s]; advancePlayhead promotes it to laneSign_[s] at a
+    // boundary (StepEdge: top of every step; Phrase: only at the window wrap), so the lane
+    // turns around from its current position with no jump. See plans/lane_direction.md.
+    enum class LaneFlipQuant { StepEdge, Phrase };
+    int laneTick_[dotModular::NUM_STRANDS]        = {0,0,0,0,0,0};
+    int laneSign_[dotModular::NUM_STRANDS]        = {1,1,1,1,1,1};
+    int laneSignPending_[dotModular::NUM_STRANDS] = {1,1,1,1,1,1};
+    LaneFlipQuant laneFlipQuant = LaneFlipQuant::Phrase;   // musical default; StepEdge = live turns
     int lastStepIndex = -1;
     int startStep = 0;
     int endStep = 15;

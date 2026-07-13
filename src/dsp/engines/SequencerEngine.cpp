@@ -35,6 +35,9 @@ void SequencerEngine::reset() {
         lorRef(s, LOR_LEN) = 16;   // Length defaults to full 16-step window
         lorRef(s, LOR_OFF) = 0;
         lorRef(s, LOR_ROT) = 0;
+        laneTick_[s] = 0;          // per-lane direction: reset walk + default forward
+        laneSign_[s] = 1;
+        laneSignPending_[s] = 1;
     }
     for (int i = 0; i < 15; i++) {
         for (int l = 0; l < PL_LANES; ++l) {   // was l < 3 — PL_ACCENT(3) was never reset (pre-existing bug)
@@ -90,6 +93,16 @@ void SequencerEngine::setWindow(int length, int offset) {
 bool SequencerEngine::advancePlayhead(int dir) {
     int prevStep = stepIndex;
     lastPlayDir = (dir < 0) ? -1 : +1;
+
+    // ── Per-lane direction ──────────────────────────────────────────────────────
+    // StepEdge: promote the pending sign now (before advancing) so the lane turns around
+    // THIS step. Then advance each lane's own tick by globalDir * its sign — all-forward
+    // (sign=+1) keeps laneTick_[l] == totalStepsElapsed exactly (no behaviour change).
+    if (laneFlipQuant == LaneFlipQuant::StepEdge)
+        for (int l = 0; l < dotModular::NUM_STRANDS; ++l) laneSign_[l] = laneSignPending_[l];
+    for (int l = 0; l < dotModular::NUM_STRANDS; ++l)
+        laneTick_[l] = (int)((((long)laneTick_[l] + (long)dir * laneSign_[l]) % DNA_LCM + DNA_LCM) % DNA_LCM);
+
     // Step the global DNA tick WITH direction: +1 forward, -1 backward. This is what
     // maps physical positions to drifting DNA content (strand indices) and the ring
     // lights; counting up in reverse desyncs it from stepIndex and both the strand
@@ -97,6 +110,7 @@ bool SequencerEngine::advancePlayhead(int dir) {
     if (dir < 0) totalStepsElapsed = (totalStepsElapsed - 1 + DNA_LCM) % DNA_LCM;
     else         totalStepsElapsed = (totalStepsElapsed + 1) % DNA_LCM;
 
+    bool wrapped;
     if (dir < 0) {
         // ── Reverse traversal: mirror of forward, leftward through the window. ──
         // From the "not started" state, seed just AFTER endStep so the first reverse
@@ -108,18 +122,23 @@ bool SequencerEngine::advancePlayhead(int dir) {
         for (int s = 0; s < 16 && !isStepInWindow(stepIndex); ++s)
             stepIndex = (stepIndex - 1 + 16) & 0x0F;
         // Phrase boundary (reverse): wrapped back round to endStep.
-        return (prevStep != -1 && stepIndex == endStep);
+        wrapped = (prevStep != -1 && stepIndex == endStep);
+    } else {
+        // ── Forward traversal (unchanged) ──
+        if (stepIndex == -1) stepIndex = (startStep - 1 + 16) % 16;
+        stepIndex = (stepIndex + 1) & 0x0F;
+        if (!isStepInWindow(stepIndex)) stepIndex = startStep;
+        for (int s = 0; s < 16 && !isStepInWindow(stepIndex); ++s)
+            stepIndex = (stepIndex + 1) & 0x0F;
+        // Return true if wrapped to start (phrase boundary)
+        wrapped = (prevStep != -1 && stepIndex == startStep);
     }
 
-    // ── Forward traversal (unchanged) ──
-    if (stepIndex == -1) stepIndex = (startStep - 1 + 16) % 16;
-    stepIndex = (stepIndex + 1) & 0x0F;
-    if (!isStepInWindow(stepIndex)) stepIndex = startStep;
-    for (int s = 0; s < 16 && !isStepInWindow(stepIndex); ++s)
-        stepIndex = (stepIndex + 1) & 0x0F;
+    // Phrase: defer the flip to the wrap, so the next phrase plays in the new direction.
+    if (laneFlipQuant == LaneFlipQuant::Phrase && wrapped)
+        for (int l = 0; l < dotModular::NUM_STRANDS; ++l) laneSign_[l] = laneSignPending_[l];
 
-    // Return true if wrapped to start (phrase boundary)
-    return (prevStep != -1 && stepIndex == startStep);
+    return wrapped;
 }
 
 void SequencerEngine::updateWindow(float lenParam, float lenCv, bool lenPatched, float offParam, float offCv, bool offPatched) {
@@ -845,12 +864,12 @@ int SequencerEngine::nvIdxForVoice(int bank, const PatternInput& input) const {
     return (nv > lastStepResult.nvIdx) ? nv : lastStepResult.nvIdx;
 }
 
-int SequencerEngine::getRhythmStep() const    { return getStrandIdx(totalStepsElapsed, lor(dotModular::STRAND_RHYTHM,LOR_LEN), lor(dotModular::STRAND_RHYTHM,LOR_OFF), lor(dotModular::STRAND_RHYTHM,LOR_ROT)); }
-int SequencerEngine::getVariationStep() const { return getStrandIdx(totalStepsElapsed, lor(dotModular::STRAND_VARIATION,LOR_LEN), lor(dotModular::STRAND_VARIATION,LOR_OFF), lor(dotModular::STRAND_VARIATION,LOR_ROT)); }
-int SequencerEngine::getLegatoStep() const    { return getStrandIdx(totalStepsElapsed, lor(dotModular::STRAND_LEGATO,LOR_LEN), lor(dotModular::STRAND_LEGATO,LOR_OFF), lor(dotModular::STRAND_LEGATO,LOR_ROT)); }
-int SequencerEngine::getAccentStep() const    { return getStrandIdx(totalStepsElapsed, lor(dotModular::STRAND_ACCENT,LOR_LEN), lor(dotModular::STRAND_ACCENT,LOR_OFF), lor(dotModular::STRAND_ACCENT,LOR_ROT)); }
-int SequencerEngine::getMelodyStep() const    { return getStrandIdx(totalStepsElapsed, lor(dotModular::STRAND_MELODY,LOR_LEN), lor(dotModular::STRAND_MELODY,LOR_OFF), lor(dotModular::STRAND_MELODY,LOR_ROT)); }
-int SequencerEngine::getOctaveStep() const    { return getStrandIdx(totalStepsElapsed, lor(dotModular::STRAND_OCTAVE,LOR_LEN), lor(dotModular::STRAND_OCTAVE,LOR_OFF), lor(dotModular::STRAND_OCTAVE,LOR_ROT)); }
+int SequencerEngine::getRhythmStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_RHYTHM],    lor(dotModular::STRAND_RHYTHM,LOR_LEN), lor(dotModular::STRAND_RHYTHM,LOR_OFF), lor(dotModular::STRAND_RHYTHM,LOR_ROT)); }
+int SequencerEngine::getVariationStep() const { return getStrandIdx(laneTick_[dotModular::STRAND_VARIATION], lor(dotModular::STRAND_VARIATION,LOR_LEN), lor(dotModular::STRAND_VARIATION,LOR_OFF), lor(dotModular::STRAND_VARIATION,LOR_ROT)); }
+int SequencerEngine::getLegatoStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_LEGATO],    lor(dotModular::STRAND_LEGATO,LOR_LEN), lor(dotModular::STRAND_LEGATO,LOR_OFF), lor(dotModular::STRAND_LEGATO,LOR_ROT)); }
+int SequencerEngine::getAccentStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_ACCENT],    lor(dotModular::STRAND_ACCENT,LOR_LEN), lor(dotModular::STRAND_ACCENT,LOR_OFF), lor(dotModular::STRAND_ACCENT,LOR_ROT)); }
+int SequencerEngine::getMelodyStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_MELODY],    lor(dotModular::STRAND_MELODY,LOR_LEN), lor(dotModular::STRAND_MELODY,LOR_OFF), lor(dotModular::STRAND_MELODY,LOR_ROT)); }
+int SequencerEngine::getOctaveStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_OCTAVE],    lor(dotModular::STRAND_OCTAVE,LOR_LEN), lor(dotModular::STRAND_OCTAVE,LOR_OFF), lor(dotModular::STRAND_OCTAVE,LOR_ROT)); }
 
 void SequencerEngine::syncVisuals(const PatternInput& in) {
     pe.refreshVisualCache(in);

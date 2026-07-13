@@ -44,10 +44,18 @@ Never mid-step (that glitches the value read). A UI direction change sets
   so the next phrase plays retrograde from its start.
 
 Provide both, as a mode (`laneFlipQuant ∈ {StepEdge, PhraseBoundary}`), global first;
-per-lane later if wanted. **Recommended default: PhraseBoundary** (most musical / least
-surprising), with StepEdge available for live turnarounds. The phrase boundary is the
-global window wrap (`advancePlayhead`'s return), i.e. the same boundary
-`boundaryInterrupt` keys off.
+per-lane later if wanted. **Build order: StepEdge FIRST** — it is the simpler primitive
+(promote pending→current at the top of every step, then advance; no wrap detection), and
+because the accumulated tick turns the lane around from its current position it is already
+glitch-free. PhraseBoundary is then a thin layer on top: *defer* the same promotion until
+`advancePlayhead` reports a wrap. **Recommended runtime default: PhraseBoundary** (most
+musical / least surprising for a "retrograde the phrase" gesture), with StepEdge available
+for live turnarounds. The phrase boundary is the global window wrap (`advancePlayhead`'s
+return), i.e. the same boundary `boundaryInterrupt` keys off.
+
+Note: a StepEdge turnaround reflects on the pivot's neighbour (…2,3 → flip → 2,1,0), the
+standard ping-pong reflection — the note just before the turn sounds again. Fine by
+default; an exclusive convention (skip the repeat) is a one-line tweak at promotion time.
 
 ### 4. Scope
 Mono's 6 lanes first (rest/mel/oct/acc/var/leg). Value lanes are pure read-flips; the
