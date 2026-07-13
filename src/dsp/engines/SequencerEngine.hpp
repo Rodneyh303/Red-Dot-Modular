@@ -69,22 +69,13 @@ struct SequencerEngine {
     // Most recent mono decision — written by executeStep, read by executePolyVoices.
     StepResult lastStepResult;
 
-    // Leading-edge legato instrument (STEP 1: characterization only, no behaviour change).
-    // Counts starting notes and how often the leading-edge slur-forward flag would DIVERGE
-    // from the current model's connect/not decision at the join. Purely diagnostic — read
-    // these to gauge how different the two models are before step 2 flips the decision source.
-    long legatoLE_startCount   = 0;
-    long legatoLE_divergeCount = 0;
-
-    // STEP 2: when true, the legato connection is governed by the PREVIOUS note's onset
-    // commitment (gs.slurForward) instead of a fresh roll at the joining onset — the
-    // leading-edge model. Default OFF = exact current behaviour. Toggle (context menu /
-    // JSON) so the two models can be A/B'd by ear. Rest still cancels an optional slur
-    // (rest branch takes priority); fractional tails still outrank rest (canRest).
-    bool legatoLeadingEdge = true;   // BRANCH DEFAULT ON: this branch tests the leading-edge
-                                     // model. (Reactive path still selectable by setting false;
-                                     // a proper context-menu toggle comes later per
-                                     // RHYTHM_BEHAVIOUR_POLICIES.md.)
+    // Leading-edge legato is now the ONLY legato model: the connection is governed by the
+    // PREVIOUS note's onset commitment (gs.slurForward), captured before this note's cascade
+    // recomputes it. The old reactive model (fresh r_legato_tie roll at the joining onset)
+    // and its legatoLeadingEdge toggle were removed — reactive was never UI-reachable (no
+    // menu/switch ever wrote it) and Stage 3 poly opt-in requires a single, onset-committed
+    // semantics. Rest still cancels an optional slur (rest branch takes priority); fractional
+    // tails still outrank rest (canRest). See RHYTHM_BEHAVIOUR_POLICIES.md.
 
     // ── Rhythm-behaviour toggles (context menu; see RHYTHM_BEHAVIOUR_POLICIES.md) ──
     // "Rest beats legato" — when a committed slur (prevSlur) is reaching N+1 and N+1 rolls a

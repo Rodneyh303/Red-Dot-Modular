@@ -260,12 +260,12 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
                                     pe.melodyRandom[getMelodyStep()],
                                     pe.octaveRandom[getOctaveStep()]);
 
-    // ── Leading-edge legato (STEP 2, toggled by legatoLeadingEdge; default OFF) ──
+    // ── Leading-edge legato (STEP 2, the only legato model) ──
     // The PREVIOUS starting note recorded, at its own onset, whether it intends to hold
     // its gate forward into THIS note (gs.slurForward). It survives untouched through the
     // previous note's held steps (the MidNote guard above returns early). Capture it now,
-    // BEFORE this note's cascade recomputes gs.slurForward at the bottom. In leading-edge
-    // mode this — not a fresh r_legato_tie roll — governs whether THIS note connects back.
+    // BEFORE this note's cascade recomputes gs.slurForward at the bottom. This onset
+    // commitment — not a fresh roll at the join — governs whether THIS note connects back.
     const bool prevSlur = gs.slurForward;
 
     // The previous PLAYED step's decision (lastStepResult is set at the end of each executeStep,
@@ -289,12 +289,12 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     // to ensure rhythmic alignment.
     bool canRest = (gs.holdRemain <= 0.0001f && !hadTail);
 
-    // Whether THIS note connects (tie/legato) to the previous one.
-    //  - Current model: fresh roll at this (joining) onset — r_legato_tie < legatoProb.
-    //  - Leading-edge:  the previous note's onset commitment — prevSlur — decides it.
-    // legatoProb>=0.999 (LegatoMax) forces connection in BOTH models.
-    const bool legatoConnects = (legatoProb >= 0.999f)
-        || (legatoLeadingEdge ? prevSlur : (r_legato_tie < legatoProb));
+    // Whether THIS note connects (tie/legato) to the previous one: the previous note's onset
+    // commitment — prevSlur — decides it (leading-edge). The joining onset does NOT re-roll;
+    // r_legato_tie is consumed only at the LEAD commitment (gs.slurForward, at the bottom of
+    // this cascade), i.e. by the note that produces the next note's prevSlur.
+    // legatoProb>=0.999 (LegatoMax) still forces connection.
+    const bool legatoConnects = (legatoProb >= 0.999f) || prevSlur;
 
     // A genuine committed slur reaching THIS note: it connects AND has a held predecessor to
     // connect to (exactly the condition the legato branch below uses). "Rest beats legato"
@@ -328,15 +328,14 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     else if (legatoConnects && (wasHeld || hadTail) && prevPlayedSounded) {
         // A slur can only CONNECT if the previous note actually held its gate into this step
         // (wasHeld || hadTail) — the documented invariant "legato/tie requires the previous
-        // note still sounding". legatoConnects expresses the INTENT to connect (a fresh roll
-        // in reactive mode, or the previous note's prevSlur commitment in leading-edge mode),
-        // but intent alone isn't enough: in leading-edge, prevSlur can be true while the
-        // predecessor left NO held gate (it ended / was cut), which would otherwise slide into
-        // nothing — producing an isolated Legato cell (teal note connected to no predecessor).
-        // Requiring a held predecessor here makes the connection real; otherwise fall through
-        // to NewNote (the slur had nothing to land on → a fresh note).
-        // (Supersedes master's standalone r_legato_tie<legatoProb form: legatoConnects already
-        // encodes that reactive-roll condition AND the leading-edge prevSlur path.)
+        // note still sounding". legatoConnects (== prevSlur, the predecessor's onset
+        // commitment) expresses the INTENT to connect, but intent alone isn't enough:
+        // prevSlur can be true while the predecessor left NO held gate (it ended / was cut),
+        // which would otherwise slide into nothing — producing an isolated Legato cell (teal
+        // note connected to no predecessor). Requiring a held predecessor here makes the
+        // connection real; otherwise fall through to NewNote (the slur had nothing to land
+        // on → a fresh note). (Supersedes master's standalone r_legato_tie<legatoProb form:
+        // the joining onset no longer re-rolls — prevSlur carries the decision.)
         if (sem == gs.lastSemitone) {
             gs.extendHold(sem, nvIdx);
             result.decision = MonoDecision::Tie;
@@ -364,14 +363,14 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
         result.accented = lastStepResult.accented;
     }
 
-    // ── STEP 1 INSTRUMENT (leading-edge legato) — computed, NOT consulted ─────────
-    // In the leading-edge model, a note that is STARTING commits here (at its own onset)
-    // to hold its gate forward into the next note, iff BOTH: (a) its own legato draw
-    // fires (r_legato_tie < legatoProb, or LegatoMax), AND (b) its length is grid-aligned
-    // so it can cleanly reach the next onset (noteCanLeadLegato). This records that intended
-    // commitment on gs.slurForward WITHOUT changing any decision — the join above still
-    // decides exactly as today. Step 2 will make the next step consume this flag instead of
-    // rolling fresh. Only meaningful on a starting note; cleared otherwise.
+    // ── LEAD COMMITMENT (leading-edge legato) — sets the next note's prevSlur ─────
+    // A note that is STARTING commits here (at its own onset) to hold its gate forward into
+    // the next note, iff BOTH: (a) its own legato draw fires (r_legato_tie < legatoProb, or
+    // LegatoMax), AND (b) its length is grid-aligned so it can cleanly reach the next onset
+    // (noteCanLeadLegato). This is the sole consumer of r_legato_tie: the roll happens once,
+    // at the LEAD, and is recorded on gs.slurForward — which the NEXT step reads as prevSlur
+    // to decide its connect (see legatoConnects above). Only meaningful on a starting note;
+    // cleared otherwise.
     // A note "starts" (and may thus lead the chain FORWARD) if it is a real sounding note
     // at this onset: NewNote, Legato, LegatoMax — AND Tie. A Tie (same-pitch continuation)
     // is a sounding note that can carry a 3+ note legato chain onward to the next note, IF
@@ -384,19 +383,10 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
                    || (result.decision == MonoDecision::Legato)
                    || (result.decision == MonoDecision::LegatoMax)
                    || (result.decision == MonoDecision::Tie);
-    bool leWouldSlur = leStarting
-                    && noteCanLeadLegato(nvIdx)
-                    && (legatoProb >= 0.999f || r_legato_tie < legatoProb);
-    gs.slurForward = leWouldSlur;
-    // Divergence probe: what the leading-edge flag dictates vs what the current model DID
-    // at this join (Tie/Legato = connected; NewNote = not). Counts only; no behaviour change.
-    if (leStarting) {
-        bool currentConnected = (result.decision == MonoDecision::Tie)
-                             || (result.decision == MonoDecision::Legato)
-                             || (result.decision == MonoDecision::LegatoMax);
-        if (leWouldSlur != currentConnected) ++legatoLE_divergeCount;
-        ++legatoLE_startCount;
-    }
+    bool leadsSlur = leStarting
+                  && noteCanLeadLegato(nvIdx)
+                  && (legatoProb >= 0.999f || r_legato_tie < legatoProb);
+    gs.slurForward = leadsSlur;
 
     result.forStep = stepIndex; lastStepResult = result;
     return result;
