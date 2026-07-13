@@ -474,7 +474,9 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // being painted over with the panel background here, which is why the V1
         // trimpots "disappeared" even though the widgets were visible.)
 
-        const float BLEND_TOP=72.f, SEND_Y0=12.f, SEND_DY=11.f, SEND_DX=6.f, BGAP=2.5f;
+        // Lanes now end at SandsGrid::polyBottom() = 70. Send group shrunk (DY 11->9.5) and moved
+        // down (BLEND_TOP 72->76) into the unused space below the tap knobs, per Rodney.
+        const float BLEND_TOP=76.f, SEND_Y0=10.f, SEND_DY=9.5f, SEND_DX=6.f, BGAP=2.5f;
         const float GROUP_W = ED_W/4.f;
         // Labels in DISPLAY order (matching gen_macro_mono.py DISPLAY_ORDER = editor
         // order MEL/OCT/REST/ACC). The SVG already places the send groups left-to-right

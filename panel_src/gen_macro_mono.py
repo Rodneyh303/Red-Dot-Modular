@@ -14,8 +14,11 @@ def gen_macro(dark, W_MM=218.44):   # 43HP (42 + 1HP for the per-lane owner-sour
     N=4   # 4 lanes, one row each
     # Extra top margin so the view-tab row isn't crammed against the panel top
     # edge. 0.5 cm = 5 mm. Mirror TAB_TOP_OFFSET_MM in StraitsSandsMacroVisualWidget.
+        # Mirrors src/ui/SandsGrid.hpp — tabs sit ABOVE the grid (3..13mm), lane 0 starts at 14.
+    TAB_TOP, TAB_ROW_H = 3.0, 5.0
     TAB_TOP_OFFSET_MM = 5.0
-    ED_X=88.; ED_W=111.; OWNER_X=205.; PROB_OUT_X=212.; ED_Y=18.+TAB_TOP_OFFSET_MM; ED_H=48.  # +1HP owner block; ED_W decoupled from PROB_OUT_X
+    # Mirrors src/ui/SandsGrid.hpp: lane 0 at 14mm, 4 lanes x 14mm = 56 (tabs live above, 3..13).
+    ED_X=88.; ED_W=111.; OWNER_X=205.; PROB_OUT_X=212.; ED_Y=14.; ED_H=56.
     ED_LANE_H=ED_H/N
     # Left-control rows align with the EDITOR lane centres (must match the hpp's rowY).
     def rowY(r): return ED_Y+(r+0.5)*ED_LANE_H
@@ -115,7 +118,8 @@ def gen_macro(dark, W_MM=218.44):   # 43HP (42 + 1HP for the per-lane owner-sour
 
 def gen_mono(dark):
     t=theme(dark); W_MM,H_MM=218.44,128.5; PW,PH=px(W_MM),px(H_MM)   # 43HP (42 + 1HP owner block)
-    ROW_TOP,ROW_BOT,N=14.,108.,6
+    # Mirrors src/ui/SandsGrid.hpp: 6 lanes x 14mm from 14 → bottom 98 (was 108, laneH 15.667).
+    ROW_TOP,ROW_BOT,N=14.,98.,6
     def laneY(l): return ROW_TOP+(l+0.5)*(ROW_BOT-ROW_TOP)/N
     # Geometry MUST match MonsoonSandsVisualExpander.hpp:
     #   JACK_X={6,15,24}  ATTEN_X={34,43,52}  (all 6 lanes)

@@ -12,12 +12,14 @@ N = 4   # 4 lanes, one row each
 # Extra top margin so the voice tab row isn't crammed against the panel top edge.
 # 0.5 cm = 5 mm. Adjust + rerun the generator (and mirror TAB_TOP_OFFSET_MM in
 # StraitsEastSandsVisualWidget) to taste.
+# Mirrors src/ui/SandsGrid.hpp — tabs sit ABOVE the grid (3..13mm), lane 0 starts at 14.
+TAB_TOP, TAB_ROW_H = 3.0, 5.0
 TAB_TOP_OFFSET_MM = 5.0
-ED_X, ED_Y = 88.0, 18.0 + TAB_TOP_OFFSET_MM
+ED_X, ED_Y = 88.0, 14.0
 ED_W = 111.0        # editor width (fixed; no longer tied to PROB_OUT_X — matches hpp)
 OWNER_X = 205.0     # owner-source cell column, right of the editor (matches hpp)
 PROB_OUT_X = 212.0  # right-strip jack column, pushed right by the owner block (matches hpp)
-ED_H = 48.0
+ED_H = 56.0   # 4 lanes x 14mm (SandsGrid::polyHeight)
 ED_LANE_H = ED_H / N
 # Left-control rows align with the EDITOR lane centres (must match the hpp's rowY):
 # each lane's CV jacks + attens sit beside the visual lane they modulate.

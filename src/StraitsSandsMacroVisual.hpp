@@ -1,5 +1,6 @@
 #pragma once
 #include <rack.hpp>
+#include "ui/SandsGrid.hpp"
 #include <cmath>   // std::fabs (macroSpreadModulatesLane)
 #include "Monsoon.hpp"
 
@@ -34,12 +35,13 @@ namespace StraitsMacroVisualIds {
     // Mirror TAB_TOP_OFFSET_MM in gen_macro_mono.py (extra top margin; 0.5cm=5mm).
     // Base 18 matches the generator's editor recess (was 16 here — a small drift;
     // aligned now so the widget editor sits exactly on the drawn recess).
-    static constexpr float TAB_TOP_OFFSET_MM = 5.f;
-    static constexpr float ED_Y   = 18.f + TAB_TOP_OFFSET_MM;
+    static constexpr float TAB_TOP_OFFSET_MM = 5.f;   // (retained; tabs now sit ABOVE the grid)
+    // Voice tabs moved into 3..13mm (above the grid) so lane 0 starts at LANE_TOP like Mono.
+    static constexpr float ED_Y   = dotModular::SandsGrid::LANE_TOP;   // 14 (was 23)
     // Editor holds 4 poly lanes (MEL/OCT/REST/ACCENT); ~12mm each. ED_LANE_H
     // drives prob-out vertical placement and must match the gen script's ED_H/4.
-    static constexpr float ED_H      = 48.f;
-    static constexpr float ED_LANE_H = ED_H / 4.f;      // 12mm per lane (4 lanes)
+    static constexpr float ED_H      = dotModular::SandsGrid::polyHeight();  // 56 (was 48)
+    static constexpr float ED_LANE_H = dotModular::SandsGrid::LANE_H;        // 14 (was 12)
 
     // Left-control rows align with the EDITOR lane centres (not the full panel),
     // so each lane's CV jacks + attens sit beside the visual lane they modulate.
