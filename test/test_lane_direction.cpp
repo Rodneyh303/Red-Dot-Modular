@@ -41,10 +41,12 @@ struct Lane {
     int  sign = +1;        // applied
     int  pending = +1;     // requested by UI
     // One sequencer step. `wrapped` = advancePlayhead reported a phrase boundary on THIS step.
-    void step(int globalDir, Quant q, bool wrapped) {
+    // `pendulum` = this lane auto-reverses at each phrase boundary (ping-pong).
+    void step(int globalDir, Quant q, bool wrapped, bool pendulum = false) {
         if (q == Quant::StepEdge) sign = pending;          // promote before advancing
         tick = wrapT(tick + (long)globalDir * sign);
-        if (q == Quant::Phrase && wrapped) sign = pending; // defer promotion to the wrap
+        if (wrapped && pendulum) { sign = -sign; pending = sign; }  // auto-flip; keep pending in sync
+        if (q == Quant::Phrase && wrapped) sign = pending; // deferred manual promotion (no-op if pendulum)
     }
 };
 
@@ -120,6 +122,26 @@ int main() {
         // Reverse lane under global reverse walks FORWARD (opposite of global; double negative).
         Lane b; b.sign = -1; b.pending = -1; b.step(-1, Quant::StepEdge, false);
         check(b.tick == +1, "reverse lane under Mode E goes forward (opposite-to-global)");
+    }
+
+    // ── 6. Pendulum: a lane auto-reverses at each phrase boundary (ping-pong) ─────
+    {
+        const int P = 4;                 // phrase length for the test
+        Lane ln;
+        std::vector<long> lap1, lap2;
+        for (int lap = 0; lap < 2; ++lap) {
+            for (int s = 0; s < P; ++s) {
+                bool wrapped = (s == P - 1);
+                ln.step(+1, Quant::Phrase, wrapped, /*pendulum=*/true);
+                (lap == 0 ? lap1 : lap2).push_back(ln.tick);
+            }
+        }
+        bool lap1Fwd = true, lap2Rev = true;
+        for (int i = 1; i < P; ++i) { if (lap1[i] != lap1[i-1] + 1) lap1Fwd = false; }
+        // lap2 walks backward (sign flipped at the lap-1 wrap).
+        for (int i = 1; i < P; ++i) { if (lap2[i] != wrapT(lap2[i-1] - 1)) lap2Rev = false; }
+        check(lap1Fwd, "pendulum lap 1 runs forward");
+        check(lap2Rev, "pendulum lap 2 runs reverse (auto-flipped at the boundary)");
     }
 
     std::printf("%d passed, %d failed\n", passed, failed);

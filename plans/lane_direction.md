@@ -119,4 +119,5 @@ and needs **no** new predecessor logic — mono keeps one global articulation st
 - Absolute retrograde (v2): a lane that always retrogrades regardless of global — needs a
   separate model (ignore `globalDir` for that lane). Defer.
 - Pendulum/ping-pong as a *lane* mode (auto-flip `laneSign_[l]` at each phrase boundary),
-  reusing this exact machinery — natural follow-on once flip-quant exists.
+  reusing this exact machinery. **DONE** — `lanePendulum_[6]`, auto-flips at the wrap in
+  `advancePlayhead`, menu toggles + persistence, replica-covered (lap 1 fwd / lap 2 rev).

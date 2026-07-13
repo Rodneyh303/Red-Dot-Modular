@@ -755,6 +755,19 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
             add("Reverse Variation", dotModular::STRAND_VARIATION);
             add("Reverse Legato",    dotModular::STRAND_LEGATO);
             sm->addChild(new ui::MenuSeparator);
+            // Pendulum (ping-pong): the lane auto-reverses every phrase. Reuses ModVizFlagItem
+            // (bool* toggle) pointed at engine.lanePendulum_[strand].
+            auto addP = [&](const char* label, int strand) {
+                auto* it = createMenuItem<ModVizFlagItem>(label);
+                it->flag = &m->engine.lanePendulum_[strand]; sm->addChild(it);
+            };
+            addP("Pendulum Melody",    dotModular::STRAND_MELODY);
+            addP("Pendulum Octave",    dotModular::STRAND_OCTAVE);
+            addP("Pendulum Rest",      dotModular::STRAND_RHYTHM);
+            addP("Pendulum Accent",    dotModular::STRAND_ACCENT);
+            addP("Pendulum Variation", dotModular::STRAND_VARIATION);
+            addP("Pendulum Legato",    dotModular::STRAND_LEGATO);
+            sm->addChild(new ui::MenuSeparator);
             auto addQ = [&](const char* label, SequencerEngine::LaneFlipQuant v) {
                 auto* it = createMenuItem<FlipQuantItem>(label); it->module = m; it->value = v; sm->addChild(it);
             };

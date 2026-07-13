@@ -38,6 +38,7 @@ void SequencerEngine::reset() {
         laneTick_[s] = 0;          // per-lane direction: reset walk + default forward
         laneSign_[s] = 1;
         laneSignPending_[s] = 1;
+        lanePendulum_[s] = false;
     }
     for (int i = 0; i < 15; i++) {
         for (int l = 0; l < PL_LANES; ++l) {   // was l < 3 — PL_ACCENT(3) was never reset (pre-existing bug)
@@ -133,6 +134,12 @@ bool SequencerEngine::advancePlayhead(int dir) {
         // Return true if wrapped to start (phrase boundary)
         wrapped = (prevStep != -1 && stepIndex == startStep);
     }
+
+    // Pendulum lanes auto-reverse at every phrase boundary (ping-pong); keep pending in sync
+    // so the manual promotion below is a no-op for them.
+    if (wrapped)
+        for (int l = 0; l < dotModular::NUM_STRANDS; ++l)
+            if (lanePendulum_[l]) { laneSign_[l] = -laneSign_[l]; laneSignPending_[l] = laneSign_[l]; }
 
     // Phrase: defer the flip to the wrap, so the next phrase plays in the new direction.
     if (laneFlipQuant == LaneFlipQuant::Phrase && wrapped)

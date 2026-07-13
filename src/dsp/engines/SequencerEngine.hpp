@@ -124,6 +124,10 @@ struct SequencerEngine {
     int laneSign_[dotModular::NUM_STRANDS]        = {1,1,1,1,1,1};
     int laneSignPending_[dotModular::NUM_STRANDS] = {1,1,1,1,1,1};
     LaneFlipQuant laneFlipQuant = LaneFlipQuant::Phrase;   // musical default; StepEdge = live turns
+    // Pendulum (ping-pong): when set, the lane auto-reverses at every phrase boundary,
+    // alternating direction each lap. Independent of the manual sign (it flips it in place,
+    // keeping laneSignPending_ in sync so the manual promotion is a no-op for these lanes).
+    bool lanePendulum_[dotModular::NUM_STRANDS]   = {false,false,false,false,false,false};
     int lastStepIndex = -1;
     int startStep = 0;
     int endStep = 15;

@@ -36,6 +36,10 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
       for (int s = 0; s < dotModular::NUM_STRANDS; ++s)
           json_array_append_new(arr, json_integer(m->engine.laneSignPending_[s]));
       json_object_set_new(root, "laneSign", arr); }
+    { json_t* arr = json_array();
+      for (int s = 0; s < dotModular::NUM_STRANDS; ++s)
+          json_array_append_new(arr, json_boolean(m->engine.lanePendulum_[s]));
+      json_object_set_new(root, "lanePendulum", arr); }
     json_object_set_new(root, "laneFlipQuant", json_integer((int)m->engine.laneFlipQuant));
     json_object_set_new(root, "modVizMonsoonOther",  json_boolean(m->modVizMonsoonOther));
     json_object_set_new(root, "modVizEast",  json_boolean(m->modVizEast));
@@ -188,6 +192,9 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
             m->engine.laneSignPending_[s] = v;
         }
     }
+    if (auto j = json_object_get(root, "lanePendulum"))
+        for (int s = 0; s < dotModular::NUM_STRANDS && s < (int)json_array_size(j); ++s)
+            m->engine.lanePendulum_[s] = json_boolean_value(json_array_get(j, s));
     if (auto j = json_object_get(root, "laneFlipQuant"))
         m->engine.laneFlipQuant = (json_integer_value(j) == 1) ? SequencerEngine::LaneFlipQuant::Phrase
                                                                : SequencerEngine::LaneFlipQuant::StepEdge;
