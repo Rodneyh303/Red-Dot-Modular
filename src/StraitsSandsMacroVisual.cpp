@@ -203,8 +203,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                     w->box.size = mm2px(Vec(stepW, ED_LANE_H * 0.9f));
                     w->box.pos  = ctr.minus(w->box.size.div(2.f));
                     w->lockWhen = [this]() {
-                        auto* mon = getMonsoon();
-                        return !mon || mon->expanderManager.cachedSandsVisualExpander != nullptr;
+                        return !getMonsoon();
                     };
                 }
             );
@@ -362,24 +361,17 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             initialized = true;
         }
 
-        // ── Direction sync: when Mono is NOT attached, Macro is the authority for the
-        //    mono direction → push display proxy → engine. When Mono IS attached, Mono
-        //    is the authority → sync display proxy FROM engine (read-only on Macro).
-        bool monoPresent = monsoon->expanderManager.cachedSandsVisualExpander != nullptr;
+        // ── Direction sync: Macro is always an authority for the mono direction (like
+        //    LOR and spread). Push display proxy → engine.laneDirPending_ every frame.
+        //    If Mono is also present, both push — last writer wins, which is fine since
+        //    both are editable and reflect the same engine state.
         {
             auto* se = &monsoon->engine;
-            if (!monoPresent) {
-                for (int lane = 0; lane < 4; ++lane) {
-                    int strand = dotModular::MONO_LANE_TO_STRAND[lane];
-                    auto d = (SequencerEngine::LaneDir)(int)std::round(
-                        mod->params[dirDispId(lane)].getValue());
-                    se->laneDirPending_[strand] = d;
-                }
-            } else {
-                for (int lane = 0; lane < 4; ++lane) {
-                    int strand = dotModular::MONO_LANE_TO_STRAND[lane];
-                    mod->params[dirDispId(lane)].setValue((float)se->laneDirPending_[strand]);
-                }
+            for (int lane = 0; lane < 4; ++lane) {
+                int strand = dotModular::MONO_LANE_TO_STRAND[lane];
+                auto d = (SequencerEngine::LaneDir)(int)std::round(
+                    mod->params[dirDispId(lane)].getValue());
+                se->laneDirPending_[strand] = d;
             }
         }
 

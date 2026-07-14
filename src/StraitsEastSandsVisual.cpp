@@ -413,13 +413,28 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     const float stepW = (ED_W - 2.f*6.f) / 16.f;
                     w->box.size = mm2px(Vec(stepW, ED_LANE_H * 0.9f));
                     w->box.pos  = ctr.minus(w->box.size.div(2.f));
-                    // All lanes: locked when Macro owns the lane (delegated) OR on the V1/mono
-                    // tab with Mono attached (tab1MonoMirror — V1's direction follows Mono).
-                    // When Mono is attached, V1's direction for ALL lanes (including VAR/LEG)
-                    // is controlled by Mono, so the DirCells lock.
-                    w->lockWhen = [this, lane]() {
-                        return laneOwnedByMacroTopo(lane) || tab1MonoMirror();
-                    };
+                    // Lanes 0..3 (MEL/OCT/REST/ACC): locked when Macro owns the lane
+                    // (delegated) OR on the V1/mono tab with Mono attached (tab1MonoMirror).
+                    // NOTE: laneOwnedByMacroTopo takes an ENGINE lane (REST=0,MEL=1,OCT=2,ACC=3),
+                    // but `lane` here is an EDITOR lane (MEL=0,OCT=1,REST=2,ACC=3). Convert via
+                    // EDITOR_TO_ENGINE_LANE to avoid the MEL↔OCT↔REST circular permutation.
+                    // Lanes 4..5 (VAR/LEG): on mono tab, locked when tab1MonoMirror (V1 follows
+                    // Mono). On poly tabs, locked when the lane is delegated to mono (follows
+                    // mono's direction) — checked via varlegDelegDispId (0 = delegated).
+                    if (lane < 4)
+                        w->lockWhen = [this, lane]() {
+                            int engLane = dotModular::EDITOR_TO_ENGINE_LANE[lane];
+                            return laneOwnedByMacroTopo(engLane) || tab1MonoMirror();
+                        };
+                    else
+                        w->lockWhen = [this, lane]() {
+                            if (tab1MonoMirror()) return true;
+                            if (!onMonoTab() && selectedVoice >= 1) {
+                                int vl = lane - 4;   // 0=VAR, 1=LEG
+                                return module->params[varlegDelegDispId(vl)].getValue() < 0.5f;
+                            }
+                            return false;
+                        };
                 }
             );
         }
@@ -860,18 +875,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         //    every frame, we would overwrite the bounce-induced sign flip with
         //    laneDirSign(Pendulum) = +1, undoing the bounce at the next promotion.
         if (onMonoTab() && !tab1MonoMirror()) {
-            // V1 editable (no Mono attached). For lanes 0..3: if Macro is present, Macro
-            // is the authority → sync FROM engine (read-only). For lanes 4..5 (VAR/LEG)
-            // and for all lanes when no Macro: East IS the mono editor → push TO engine.
-            bool macroHere = macroAttached();
+            // V1 editable (no Mono attached): East IS the mono editor → push to engine.
+            // Macro (if present) also pushes — both are editable, last writer wins.
             for (int lane = 0; lane < 6; ++lane) {
                 int strand = dotModular::MONO_LANE_TO_STRAND[lane];
-                if (lane < 4 && macroHere) {
-                    mod->params[dirDispId(lane)].setValue((float)se->laneDirPending_[strand]);
-                } else {
-                    auto d = (SequencerEngine::LaneDir)(int)std::round(mod->params[dirDispId(lane)].getValue());
-                    se->laneDirPending_[strand] = d;
-                }
+                auto d = (SequencerEngine::LaneDir)(int)std::round(mod->params[dirDispId(lane)].getValue());
+                se->laneDirPending_[strand] = d;
             }
         } else if (onMonoTab() && tab1MonoMirror()) {
             // Mono is attached: Mono is the authority for mono direction. Sync the
