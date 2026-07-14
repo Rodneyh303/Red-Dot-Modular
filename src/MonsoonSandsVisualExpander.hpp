@@ -65,10 +65,15 @@ namespace SandsMonoVisualIds {
         // (this expander's own LOR edit). LEG/VAR are mono-only → always Mono-owned,
         // no owner param. Mono is single-voice (V1), so no per-voice bank needed.
         OWN_DISP_START = SPR_ATTEN_START + 4,   // 44 .. 47
-        NUM_PARAMS = OWN_DISP_START + 4
+        // Direction display proxy (mono direction, 6 lanes). DirCell writes here;
+        // widget step() syncs to engine.laneDirPending_.
+        DIR_DISP_START = OWN_DISP_START + 4,    // 48 .. 53
+        NUM_PARAMS = DIR_DISP_START + 6
     };
     // V1 owner display proxy: poly lane (editor order 0=MEL 1=OCT 2=REST 3=ACC).
     inline int ownerDispId(int polyLaneEditor) { return OWN_DISP_START + polyLaneEditor; }
+    // Direction display proxy: lane 0..5 (editor order MEL/OCT/REST/ACC/VAR/LEG).
+    static inline int dirDispId(int lane) { return DIR_DISP_START + lane; }
 
     // Owner lookup BY ENGINE LANE (REST=0,MEL=1,OCT=2,ACC=3). Mono's ownerDispId is
     // EDITOR-ordered, so callers working in engine/spread lane order MUST convert via
@@ -163,6 +168,10 @@ struct MonsoonSandsVisualExpander : Module {
             configSwitch(ownerDispId(l), 0.f, 1.f, 1.f,
                          std::string(names[l]) + " V1 owner",
                          { "Macro (global)", "Mono" });
+        // Direction display proxies (6 lanes). DirCell writes 0..3 = Fwd/Rev/Pend/PingPong.
+        for (int l = 0; l < 6; ++l)
+            configParam(dirDispId(l), 0.f, 3.f, 0.f,
+                        std::string(names[l]) + " direction");
     }
     void process(const ProcessArgs&) override;   // defined in .cpp (needs calcPlayhead)
 

@@ -56,9 +56,13 @@ namespace StraitsMacroVisualIds {
         SPREAD_REST = 0, SPREAD_MELODY, SPREAD_OCTAVE, SPREAD_ACCENT,  // already added
         // 16 attenuverters: lane l, col c → ATTEN_START + l*4 + c (4-19)
         ATTEN_START,
-        NUM_SPREAD_PARAMS = ATTEN_START + 16  // = 20
+        // Direction display proxy: 4 lanes (MEL/OCT/REST/ACC). DirCell writes here;
+        // widget step() syncs to engine.laneDirPending_ (Macro = global = mono direction).
+        DIR_DISP_START = ATTEN_START + 16,   // 20 .. 23
+        NUM_SPREAD_PARAMS = DIR_DISP_START + 4  // = 24
     };
     static inline int attenId(int lane, int c) { return ATTEN_START + lane*4 + c; }
+    static inline int dirDispId(int lane) { return DIR_DISP_START + lane; }
 
     // ── Per-voice Macro→voice mix-in send (RELOCATED from East under the control
     //    inversion). Conceptually a MACRO concern: "per voice, how much of Macro's
@@ -209,6 +213,11 @@ struct StraitsSandsMacroVisual : Module {
                 for (int item=0; item<4; ++item)
                     configParam(sendId(v,lane,item), -1.f,1.f,0.f,
                                 "V"+std::to_string(v+1)+" L"+std::to_string(lane)+" mix-in "+std::to_string(item));
+        // Direction display proxies (4 poly lanes). DirCell writes 0..3 = Fwd/Rev/Pend/PingPong.
+        static const char* dirNames[4] = {"MEL","OCT","REST","ACC"};
+        for (int l = 0; l < 4; ++l)
+            configParam(dirDispId(l), 0.f, 3.f, 0.f,
+                        std::string(dirNames[l]) + " direction");
     }
 
     void process(const ProcessArgs&) override;   // defined in .cpp (needs findMonsoonEitherSide)

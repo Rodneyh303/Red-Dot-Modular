@@ -210,6 +210,27 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             addParam(oc);
         }
 
+        // ── Direction cells (param_dir_<lane>) — per-lane direction toggle (Fwd/Rev/Pend/PingPong).
+        // Mono is the master strand editor → DirCell sets the MONO direction (laneDirPending_).
+        // Locked when no Monsoon is attached (nothing to drive).
+        static const NVGcolor dirCol[6] = {
+            nvgRGB(0xd4,0xaf,0x37), nvgRGB(0xb8,0x86,0x0b),  // MEL gold, OCT dark gold
+            nvgRGB(0x50,0x50,0x50), nvgRGB(0xff,0x95,0x00),  // REST grey, ACC orange
+            nvgRGB(0xff,0x6b,0x6b), nvgRGB(0x26,0xa6,0x9a)   // VAR red, LEG teal
+        };
+        for (int lane = 0; lane < 6; ++lane) {
+            auto* dc = createParamCentered<DirCell>(
+                mm2px(Vec(DIR_X, rowY(lane))), mod, dirDispId(lane));
+            dc->laneCol = dirCol[lane];
+            const float stepW = (ED_W - 2.f*6.f) / 16.f;
+            const float monoLaneH = (ROW_BOT - ROW_TOP) / N_LANES;
+            dc->box.size = mm2px(Vec(stepW, monoLaneH * 0.9f));
+            dc->box.pos  = mm2px(Vec(DIR_X, rowY(lane))).minus(dc->box.size.div(2.f));
+            // Always settable when Monsoon is present (Mono owns the mono strands).
+            dc->lockWhen = [this]() { return !getMonsoon(); };
+            addParam(dc);
+        }
+
         // Per-lane probability CV outs — one jack right of each of the 6 lane rows.
         for (int l = 0; l < N_LANES; ++l) {
             addOutput(createOutputCentered<PJ301MPort>(
@@ -278,7 +299,25 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             // (engine.spread), written by the manager via SpreadResolver every frame, so a
             // one-time visual seed is neither needed nor correct. It also carried a spurious
             // SPREAD_LANE_TO_EDITOR permutation — gone with it.)
+            // Sync DirCell display proxy from the engine's current mono direction.
+            for (int l = 0; l < 6; ++l)
+                mod->params[dirDispId(l)].setValue(
+                    (float)monsoon->engine.laneDirPending_[dotModular::MONO_LANE_TO_STRAND[l]]);
             initialized = true;
+        }
+
+        // ── Direction sync: push DirCell display proxy → engine.laneDirPending_ (mono).
+        //    Mono is the master strand editor; its DirCell directly controls the mono direction.
+        //    Only laneDirPending_ is pushed (not laneSignPending_) — the engine's advancePlayhead
+        //    derives signs from laneDir_ and manages bounces internally.
+        {
+            auto* se = &monsoon->engine;
+            for (int lane = 0; lane < 6; ++lane) {
+                int strand = dotModular::MONO_LANE_TO_STRAND[lane];
+                auto d = (SequencerEngine::LaneDir)(int)std::round(
+                    mod->params[dirDispId(lane)].getValue());
+                se->laneDirPending_[strand] = d;
+            }
         }
 
         // ── Editor → params (UI thread, own params). Skip delegated lanes: when a

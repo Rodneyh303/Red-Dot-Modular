@@ -114,9 +114,11 @@ def gen_macro(dark, W_MM=223.52):   # 44HP (43 + 1HP for the per-lane direction 
         A(f'<circle id="param_taplor_{l}" cx="{px(lx):.2f}" cy="{px(ly):.2f}" r="0.5" fill="none" stroke="none"/>')
         A(f'<circle id="param_tapspr_{l}" cx="{px(sx):.2f}" cy="{px(sy):.2f}" r="0.5" fill="none" stroke="none"/>')
     # Direction cells (param_dir_<lane>) — per-lane direction toggle, at DIR_X, one per lane.
+    # Uses EDITOR lane order (row 0..3 = MEL/OCT/REST/ACC), matching East's convention
+    # and the C++ dirDispId(editorLane). NOT engine lane order — avoids the conversion
+    # that other kit markers (cvId/attenId) require via DISPLAY_ORDER.
     for row in range(4):
-        l = DISPLAY_ORDER[row]
-        A(f'<circle id="param_dir_{l}" cx="{px(DIR_X):.2f}" cy="{px(rowY(row)):.2f}" '
+        A(f'<circle id="param_dir_{row}" cx="{px(DIR_X):.2f}" cy="{px(rowY(row)):.2f}" '
           f'r="0.5" fill="none" stroke="none"/>')
     A('</g>')
     A('</svg>')

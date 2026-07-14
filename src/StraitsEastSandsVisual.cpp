@@ -859,12 +859,26 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         //    laneSignPending_ at the LOR endpoint). If we also pushed laneSignPending_
         //    every frame, we would overwrite the bounce-induced sign flip with
         //    laneDirSign(Pendulum) = +1, undoing the bounce at the next promotion.
-        if (onMonoTab()) {
-            // Mono/V1 tab: direction applies to the mono strands (laneDir_).
+        if (onMonoTab() && !tab1MonoMirror()) {
+            // V1 editable (no Mono attached). For lanes 0..3: if Macro is present, Macro
+            // is the authority → sync FROM engine (read-only). For lanes 4..5 (VAR/LEG)
+            // and for all lanes when no Macro: East IS the mono editor → push TO engine.
+            bool macroHere = macroAttached();
             for (int lane = 0; lane < 6; ++lane) {
                 int strand = dotModular::MONO_LANE_TO_STRAND[lane];
-                auto d = (SequencerEngine::LaneDir)(int)std::round(mod->params[dirDispId(lane)].getValue());
-                se->laneDirPending_[strand] = d;
+                if (lane < 4 && macroHere) {
+                    mod->params[dirDispId(lane)].setValue((float)se->laneDirPending_[strand]);
+                } else {
+                    auto d = (SequencerEngine::LaneDir)(int)std::round(mod->params[dirDispId(lane)].getValue());
+                    se->laneDirPending_[strand] = d;
+                }
+            }
+        } else if (onMonoTab() && tab1MonoMirror()) {
+            // Mono is attached: Mono is the authority for mono direction. Sync the
+            // display proxy FROM the engine so the DirCell shows what Mono set (read-only).
+            for (int lane = 0; lane < 6; ++lane) {
+                int strand = dotModular::MONO_LANE_TO_STRAND[lane];
+                mod->params[dirDispId(lane)].setValue((float)se->laneDirPending_[strand]);
             }
         } else if (selectedVoice >= 1) {
             // Poly tab: direction applies to this voice's lanes (laneDirV_).
