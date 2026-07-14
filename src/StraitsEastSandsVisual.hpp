@@ -308,6 +308,7 @@ struct StraitsEastSandsVisual : Module {
         // V1 (mono) per-lane owner store (spare MACRO_OWN slot v=15). Default 0.f =
         // inherit Macro, matching the poly ownerId and ownerDispId defaults (consistent
         // delegation convention; toggle per lane via the V1 owner cell).
+        gateModDiv.setDivision(GATE_MOD_DIV);   // gate-mod scan runs at /8, not per sample
         for (int lane=0; lane<4; ++lane) {
             configSwitch(monoOwnerId(lane), 0.f,1.f,0.f,
                          "V1 L"+std::to_string(lane)+" base: inherit Macro / local East", {"Inherit Macro","Local East"});
@@ -350,21 +351,24 @@ struct StraitsEastSandsVisual : Module {
     // Gate edge detection state for dir_mod and deleg_mod inputs.
     // dirModPrev[lane][channel] — 6 lanes × 16 channels (ch0=mono, ch1..15=voices 2..16)
     // delegModPrev[lane][channel] — 4 lanes × 16 channels
-    bool dirModPrev[6][16] = {};
-    bool delegModPrev[6][16] = {};
-
-    // Which tab the widget is showing, mirrored here so process() (the module, audio thread)
-    // can tell whether a gate-mod's target is the one currently on screen. 0 = mono/V1 tab,
-    // n>=1 = poly voice bank n-1. This deliberately uses the SAME numbering as a poly mod
-    // cable's channel index (ch0 = mono, ch n = voice bank n-1), so "is this mod's target
-    // displayed?" is exactly `selectedVoiceMirror == ch`.
+    // ── Gate-mod inputs (dir_mod / deleg_mod) ───────────────────────────────────
+    // Deliberately split across threads. The AUDIO thread does one job: spot rising edges
+    // and bump a counter. The UI thread (widget step()) interprets them — it already owns
+    // the display-proxy <-> per-voice-store sync and it alone knows which tab is shown, so
+    // nothing has to read the selected voice at audio rate.
     //
-    // Why it's needed: dirDispId() is a DISPLAY PROXY shared by all tabs — it holds only the
-    // SELECTED target's direction, and the widget pushes it into the engine every frame. So a
-    // mod may only write the proxy when it is modulating the displayed target; otherwise it
-    // must write the engine alone, or the per-frame push would smear one target's direction
-    // onto whichever tab happens to be open.
-    int selectedVoiceMirror = 0;
+    // Counters are monotonic uint8 and the audio thread is their ONLY writer; the widget
+    // keeps its own "seen" copy and applies the unsigned difference, so wrap is harmless and
+    // no edge is lost or double-applied (a burst between frames applies as N cycles).
+    //
+    // The scan runs on a divider rather than every sample: a gate is milliseconds long
+    // (hundreds of samples), so /8 still catches every edge at an eighth of the cost.
+    static constexpr int GATE_MOD_DIV = 8;
+    rack::dsp::ClockDivider gateModDiv;
+    bool    dirModPrev[6][16]    = {};
+    bool    delegModPrev[6][16]  = {};
+    uint8_t dirModEdges[6][16]   = {};   // audio thread is the sole writer
+    uint8_t delegModEdges[6][16] = {};
 
     json_t* dataToJson() override {
         json_t* r = json_object();

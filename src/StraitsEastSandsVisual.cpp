@@ -790,12 +790,91 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         menu->addChild(allMacro);
     }
 
+    // ── Apply gate-mod edges queued by the audio thread ─────────────────────────
+    // The audio thread only counts edges; interpreting them lives here because this is
+    // where the display-proxy <-> per-voice-store contract is owned, and where the selected
+    // tab is known. Runs early in step() so a proxy write lands before the direction push
+    // and any tab-exit flush later in the same frame.
+    //
+    // Channel n targets exactly what tab n shows (ch0 = V1/mono, ch n = poly bank n-1), so
+    // "is this target on screen?" is just `selectedVoice == ch`. That matters because the
+    // proxy holds ONLY the selected target's value: write it for anything else and the sync
+    // smears that value onto whichever voice is open. So each edge writes the per-target
+    // truth (engine for direction, the per-voice owner store for delegation) and touches the
+    // proxy only when its target is displayed — for that one the proxy IS the live value.
+    uint8_t dirModSeen[6][16]   = {};
+    uint8_t delegModSeen[6][16] = {};
+    bool    gateModSeenInit     = false;
+
+    void applyGateMods() {
+        auto* mod = static_cast<StraitsEastSandsVisual*>(module);
+        Monsoon* m = getMonsoon();
+        if (!mod || !m) return;
+        SequencerEngine* se = &m->engine;
+        // First pass after a (re)build: adopt the current counts rather than treating the
+        // backlog as fresh edges, which would fire a spurious burst of cycles.
+        if (!gateModSeenInit) {
+            for (int lane = 0; lane < 6; ++lane)
+                for (int ch = 0; ch < 16; ++ch) {
+                    dirModSeen[lane][ch]   = mod->dirModEdges[lane][ch];
+                    delegModSeen[lane][ch] = mod->delegModEdges[lane][ch];
+                }
+            gateModSeenInit = true;
+            return;
+        }
+        for (int lane = 0; lane < 6; ++lane) {
+            const int strand = dotModular::MONO_LANE_TO_STRAND[lane];
+            // ── Direction: cycle Fwd→Rev→Pend→PingPong→Fwd, once per queued edge ──
+            for (int ch = 0; ch < 16; ++ch) {
+                uint8_t n = mod->dirModEdges[lane][ch];
+                uint8_t d = (uint8_t)(n - dirModSeen[lane][ch]);   // unsigned diff: wrap-safe
+                if (!d) continue;
+                dirModSeen[lane][ch] = n;
+                // Read the CURRENT value from the engine (the per-target truth), never from
+                // the shared proxy — the proxy only ever holds the displayed target's value.
+                int nxt;
+                if (ch == 0) {
+                    nxt = (((int)se->laneDirPending_[strand]) + d) % 4;
+                    se->laneDirPending_[strand] = (SequencerEngine::LaneDir)nxt;
+                } else {
+                    const int pv = ch - 1;
+                    nxt = (((int)se->laneDirVPending_[pv][strand]) + d) % 4;
+                    se->laneDirVPending_[pv][strand] = (SequencerEngine::LaneDir)nxt;
+                }
+                if (selectedVoice == ch) mod->params[dirDispId(lane)].setValue((float)nxt);
+            }
+            // ── Delegation: flip local/delegated in the voice's OWN owner store ──
+            // lanes 0..3 -> ownerId(pv, engineLane) (V1 uses its own monoOwnerId slot);
+            // lanes 4..5 -> varlegDelegId(pv, VAR|LEG), which is poly-only: mono's
+            // VARIATION/LEGATO are mono strands East never owns, so ch0 is a no-op there.
+            const int eng = (lane < 4) ? dotModular::EDITOR_TO_ENGINE_LANE[lane] : -1;
+            for (int ch = 0; ch < 16; ++ch) {
+                uint8_t n = mod->delegModEdges[lane][ch];
+                uint8_t d = (uint8_t)(n - delegModSeen[lane][ch]);
+                if (!d) continue;
+                delegModSeen[lane][ch] = n;
+                if (!(d & 1)) continue;          // an even number of flips is a no-op
+                if (lane >= 4 && ch == 0) continue;   // mono has no VAR/LEG delegation
+                int storeId;
+                if (lane < 4) storeId = (ch == 0) ? monoOwnerId(eng) : ownerId(ch - 1, eng);
+                else          storeId = varlegDelegId(ch - 1, lane - 4);
+                const float nv = (mod->params[storeId].getValue() > 0.5f) ? 0.f : 1.f;
+                mod->params[storeId].setValue(nv);
+                if (selectedVoice == ch) {
+                    const int dispId = (lane < 4) ? ownerDispId(eng) : varlegDelegDispId(lane - 4);
+                    mod->params[dispId].setValue(nv);
+                }
+            }
+        }
+    }
+
     void step() override {
         ModuleWidget::step();
         kitStep();
         if (!module || !paramMgr || !visualEditor) return;
         Monsoon* monsoon = getMonsoon();
         if (!monsoon) { if (visualEditor) visualEditor->clearPlaySteps(); return; }
+        applyGateMods();
 
         // Follow the connected Monsoon's theme: swap panel SVG + editor colours
         // when it changes (and on first run). One toggle on Monsoon themes the
@@ -895,11 +974,6 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         //    laneSignPending_ at the LOR endpoint). If we also pushed laneSignPending_
         //    every frame, we would overwrite the bounce-induced sign flip with
         //    laneDirSign(Pendulum) = +1, undoing the bounce at the next promotion.
-        //
-        //    Publish which tab is showing so process() (module/audio thread) can tell
-        //    whether a dir-mod gate is targeting the displayed voice — it must only touch
-        //    the shared display proxy for that one, since this push overwrites it per frame.
-        mod->selectedVoiceMirror = selectedVoice;
         if (onMonoTab() && !tab1MonoMirror()) {
             // V1 editable (no Mono attached): East IS the mono editor → push to engine.
             // Macro (if present) also pushes — both are editable, last writer wins.
@@ -1260,74 +1334,32 @@ void StraitsEastSandsVisual::process(const ProcessArgs&) {
                                       outputs[PROB_OUT_REST + l].setVoltage(0.f); }
         return;
     }
-    // ── Gate edge detection for dir_mod and deleg_mod inputs ──────────────
-    // Direction gate-mod: poly input, rising edge cycles Fwd→Rev→Pend→PingPong→Fwd.
-    // Channel n targets the SAME thing tab n shows: ch0 = mono/V1, ch1..15 = voices 2..16.
-    //
-    // Two stores hold direction: the engine (laneDirPending_ / laneDirVPending_[pv]) is the
-    // truth for EVERY target, while dirDispId() is a display proxy holding only the SELECTED
-    // target's value — and the widget pushes that proxy into the engine every frame.
-    // So a mod edge always writes the engine, and writes the proxy ONLY when its target is the
-    // one on screen (selectedVoiceMirror == ch). Otherwise the two disagree and the per-frame
-    // push wins, which is what smeared direction across voices:
-    //   - a ch0 (mono) pulse used to write the proxy unconditionally, so with a poly tab open
-    //     the push then shoved mono's new direction onto that poly voice;
-    //   - a ch>=1 pulse wrote only the engine, so for the DISPLAYED voice the push immediately
-    //     overwrote it from the stale proxy — the mod appeared to do nothing on the open tab
-    //     while working on the others.
-    {
-        auto* se = &mon->engine;
+    // ── Gate-mod edge detection (audio thread) ────────────────────────────
+    // The only audio-rate job here: spot rising edges and bump a counter. Every decision
+    // about what an edge MEANS (which voice, per-voice store vs display proxy, whether that
+    // target is on screen) belongs to the widget's step(), which already owns that sync and
+    // is the only place that knows the selected tab — so nothing reads the tab at audio rate.
+    // Scanned on a divider: gates are milliseconds (hundreds of samples), so /8 catches every
+    // edge at an eighth of the cost. dir/deleg share the scan since they share the cadence.
+    if (gateModDiv.process()) {
         for (int lane = 0; lane < 6; ++lane) {
-            auto& in = inputs[dirModId(lane)];
-            if (!in.isConnected()) continue;
-            int nch = in.getChannels();
-            int strand = dotModular::MONO_LANE_TO_STRAND[lane];
-            for (int ch = 0; ch < nch && ch < 16; ++ch) {
-                bool high = in.getVoltage(ch) > 1.f;
-                if (high && !dirModPrev[lane][ch]) {
-                    // Rising edge — cycle this channel's own target, reading the CURRENT value
-                    // from the engine (the per-target truth), never from the shared proxy.
-                    const bool displayed = (selectedVoiceMirror == ch);
-                    int nxt;
-                    if (ch == 0) {                       // mono / V1
-                        nxt = (((int)se->laneDirPending_[strand]) + 1) % 4;
-                        se->laneDirPending_[strand] = (SequencerEngine::LaneDir)nxt;
-                    } else {                             // voices 2..16 → bank ch-1
-                        int pv = ch - 1;
-                        nxt = (((int)se->laneDirVPending_[pv][strand]) + 1) % 4;
-                        se->laneDirVPending_[pv][strand] = (SequencerEngine::LaneDir)nxt;
-                    }
-                    // Keep the proxy in step ONLY for the displayed target, so the widget's
-                    // per-frame push re-pushes the same value (a no-op) instead of fighting it.
-                    if (displayed) params[dirDispId(lane)].setValue((float)nxt);
+            auto& din = inputs[dirModId(lane)];
+            if (din.isConnected()) {
+                int nch = std::min(din.getChannels(), 16);
+                for (int ch = 0; ch < nch; ++ch) {
+                    bool high = din.getVoltage(ch) > 1.f;
+                    if (high && !dirModPrev[lane][ch]) ++dirModEdges[lane][ch];
+                    dirModPrev[lane][ch] = high;
                 }
-                dirModPrev[lane][ch] = high;
             }
-        }
-    }
-    // Delegation gate-mod: poly input, rising edge flips local/delegated.
-    // Flips the display proxy param (affects selected voice). Per-voice delegation
-    // flip would require modifying the per-voice owner store — deferred to v2.
-    // Lanes 0..3 use ownerDispId; lanes 4..5 (VAR/LEG) use varlegDelegDispId.
-    {
-        for (int lane = 0; lane < 6; ++lane) {
-            auto& in = inputs[delegModId(lane)];
-            if (!in.isConnected()) continue;
-            int nch = in.getChannels();
-            for (int ch = 0; ch < nch && ch < 16; ++ch) {
-                bool high = in.getVoltage(ch) > 1.f;
-                if (high && !delegModPrev[lane][ch]) {
-                    // ownerDispId is in ENGINE order (REST=0, MEL=1, OCT=2, ACC=3).
-                    // Convert editor lane to engine lane before indexing.
-                    int pid;
-                    if (lane < 4)
-                        pid = ownerDispId(dotModular::EDITOR_TO_ENGINE_LANE[lane]);
-                    else
-                        pid = varlegDelegDispId(lane - 4);
-                    float cur = params[pid].getValue();
-                    params[pid].setValue(cur > 0.5f ? 0.f : 1.f);
+            auto& gin = inputs[delegModId(lane)];
+            if (gin.isConnected()) {
+                int nch = std::min(gin.getChannels(), 16);
+                for (int ch = 0; ch < nch; ++ch) {
+                    bool high = gin.getVoltage(ch) > 1.f;
+                    if (high && !delegModPrev[lane][ch]) ++delegModEdges[lane][ch];
+                    delegModPrev[lane][ch] = high;
                 }
-                delegModPrev[lane][ch] = high;
             }
         }
     }
