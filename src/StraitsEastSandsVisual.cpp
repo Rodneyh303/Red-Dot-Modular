@@ -895,6 +895,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         //    laneSignPending_ at the LOR endpoint). If we also pushed laneSignPending_
         //    every frame, we would overwrite the bounce-induced sign flip with
         //    laneDirSign(Pendulum) = +1, undoing the bounce at the next promotion.
+        //
+        //    Publish which tab is showing so process() (module/audio thread) can tell
+        //    whether a dir-mod gate is targeting the displayed voice — it must only touch
+        //    the shared display proxy for that one, since this push overwrites it per frame.
+        mod->selectedVoiceMirror = selectedVoice;
         if (onMonoTab() && !tab1MonoMirror()) {
             // V1 editable (no Mono attached): East IS the mono editor → push to engine.
             // Macro (if present) also pushes — both are editable, last writer wins.
@@ -1257,10 +1262,19 @@ void StraitsEastSandsVisual::process(const ProcessArgs&) {
     }
     // ── Gate edge detection for dir_mod and deleg_mod inputs ──────────────
     // Direction gate-mod: poly input, rising edge cycles Fwd→Rev→Pend→PingPong→Fwd.
-    // Cycles the dirDispId display proxy param (same approach as delegation flips
-    // ownerDispId). The widget's step() syncs this to the engine. For per-voice
-    // poly modulation on non-selected voices, the engine state is also directly
-    // modified — the display proxy only reflects the selected voice.
+    // Channel n targets the SAME thing tab n shows: ch0 = mono/V1, ch1..15 = voices 2..16.
+    //
+    // Two stores hold direction: the engine (laneDirPending_ / laneDirVPending_[pv]) is the
+    // truth for EVERY target, while dirDispId() is a display proxy holding only the SELECTED
+    // target's value — and the widget pushes that proxy into the engine every frame.
+    // So a mod edge always writes the engine, and writes the proxy ONLY when its target is the
+    // one on screen (selectedVoiceMirror == ch). Otherwise the two disagree and the per-frame
+    // push wins, which is what smeared direction across voices:
+    //   - a ch0 (mono) pulse used to write the proxy unconditionally, so with a poly tab open
+    //     the push then shoved mono's new direction onto that poly voice;
+    //   - a ch>=1 pulse wrote only the engine, so for the DISPLAYED voice the push immediately
+    //     overwrote it from the stale proxy — the mod appeared to do nothing on the open tab
+    //     while working on the others.
     {
         auto* se = &mon->engine;
         for (int lane = 0; lane < 6; ++lane) {
@@ -1271,19 +1285,21 @@ void StraitsEastSandsVisual::process(const ProcessArgs&) {
             for (int ch = 0; ch < nch && ch < 16; ++ch) {
                 bool high = in.getVoltage(ch) > 1.f;
                 if (high && !dirModPrev[lane][ch]) {
-                    // Rising edge — cycle direction
-                    if (ch == 0) {
-                        // Channel 0 = mono/V1 — cycle display proxy + engine
-                        int cur = (int)params[dirDispId(lane)].getValue();
-                        int nxt = (cur + 1) % 4;
-                        params[dirDispId(lane)].setValue((float)nxt);
+                    // Rising edge — cycle this channel's own target, reading the CURRENT value
+                    // from the engine (the per-target truth), never from the shared proxy.
+                    const bool displayed = (selectedVoiceMirror == ch);
+                    int nxt;
+                    if (ch == 0) {                       // mono / V1
+                        nxt = (((int)se->laneDirPending_[strand]) + 1) % 4;
                         se->laneDirPending_[strand] = (SequencerEngine::LaneDir)nxt;
-                    } else {
-                        // Channel 1..15 = voices 2..16 — cycle engine directly
+                    } else {                             // voices 2..16 → bank ch-1
                         int pv = ch - 1;
-                        int cur = (int)se->laneDirVPending_[pv][strand];
-                        se->laneDirVPending_[pv][strand] = (SequencerEngine::LaneDir)((cur + 1) % 4);
+                        nxt = (((int)se->laneDirVPending_[pv][strand]) + 1) % 4;
+                        se->laneDirVPending_[pv][strand] = (SequencerEngine::LaneDir)nxt;
                     }
+                    // Keep the proxy in step ONLY for the displayed target, so the widget's
+                    // per-frame push re-pushes the same value (a no-op) instead of fighting it.
+                    if (displayed) params[dirDispId(lane)].setValue((float)nxt);
                 }
                 dirModPrev[lane][ch] = high;
             }

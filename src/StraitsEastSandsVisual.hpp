@@ -353,6 +353,19 @@ struct StraitsEastSandsVisual : Module {
     bool dirModPrev[6][16] = {};
     bool delegModPrev[6][16] = {};
 
+    // Which tab the widget is showing, mirrored here so process() (the module, audio thread)
+    // can tell whether a gate-mod's target is the one currently on screen. 0 = mono/V1 tab,
+    // n>=1 = poly voice bank n-1. This deliberately uses the SAME numbering as a poly mod
+    // cable's channel index (ch0 = mono, ch n = voice bank n-1), so "is this mod's target
+    // displayed?" is exactly `selectedVoiceMirror == ch`.
+    //
+    // Why it's needed: dirDispId() is a DISPLAY PROXY shared by all tabs — it holds only the
+    // SELECTED target's direction, and the widget pushes it into the engine every frame. So a
+    // mod may only write the proxy when it is modulating the displayed target; otherwise it
+    // must write the engine alone, or the per-frame push would smear one target's direction
+    // onto whichever tab happens to be open.
+    int selectedVoiceMirror = 0;
+
     json_t* dataToJson() override {
         json_t* r = json_object();
         return r;
