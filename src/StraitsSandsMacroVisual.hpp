@@ -13,10 +13,11 @@ namespace StraitsMacroVisualIds {
     // Macro does the same job as the East visual (spread control) but GLOBAL
     // rather than per-lane, so it shares East's 40HP width and column geometry
     // for consistency and to give the spread column proper room.
-    static constexpr float W_MM    = 223.52f;   // 44HP (43 + 1HP for the per-lane direction column)
+    static constexpr float W_MM    = 243.84f;   // 48HP (44 + 4HP for dir_mod + prob_out jack columns)
     static constexpr float OWNER_X    = 205.f;  // owner cell column (matches East)
     static constexpr float DIR_X      = 212.f;  // direction cell column (matches East)
-    static constexpr float PROB_OUT_X = 219.f;  // poly prob-out jack column (pushed right by direction block)
+    static constexpr float DIR_MOD_X  = 220.f;  // direction gate-mod jack column
+    static constexpr float PROB_OUT_X = 236.f;  // poly prob-out jack column (aligned with East/Mono)
     static constexpr float ROW_TOP = 14.f;
     static constexpr float ROW_BOT = 108.f;
     static constexpr int   N_ROWS  = 4;         // 1 row per lane (REST/MEL/OCT/ACCENT)
@@ -83,8 +84,10 @@ namespace StraitsMacroVisualIds {
     // ── Input IDs ─────────────────────────────────────────────────────────
     enum InputId {
         CV_START = 0,
-        NUM_INPUTS = CV_START + 16   // 4 lanes × 4 cols (LEN/OFF/ROT/SPR CV)
+        DIR_MOD_START = CV_START + 16,   // = 16 — direction gate-mod (4 mono jacks)
+        NUM_INPUTS = DIR_MOD_START + 4   // = 20
     };
+    static inline int dirModId(int lane) { return DIR_MOD_START + lane; }
     static inline int cvId(int lane, int c) { return CV_START + lane*4 + c; }
 
     // ── Output IDs ────────────────────────────────────────────────────────

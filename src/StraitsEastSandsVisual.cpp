@@ -209,11 +209,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     explicit StraitsEastSandsVisualWidget(StraitsEastSandsVisual* mod) {
         setModule(mod);
         panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance,
-                            "res/panels/StraitsEastSandsVisual_40HP.svg"));
+                            "res/panels/StraitsEastSandsVisual_48HP.svg"));
         panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance,
-                            "res/panels/StraitsEastSandsVisual_40HP_light.svg"));
+                            "res/panels/StraitsEastSandsVisual_48HP_light.svg"));
         loadPanel(asset::plugin(pluginInstance,
-                            "res/panels/StraitsEastSandsVisual_40HP.svg"));
+                            "res/panels/StraitsEastSandsVisual_48HP.svg"));
 
         redDot::addRedScrews(this);
 
@@ -269,15 +269,36 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         };
         addChild(visualEditor);
 
-        // 4 poly probability CV outs, one per lane row (aligned to editor lane centers).
-        for (int l = 0; l < 4; ++l) {
-            float y = ED_Y + (l + 0.5f) * ED_LANE_H;
-            auto* p = createOutputCentered<redDot::GoldPolyPort>(
-                mm2px(Vec(PROB_OUT_X, y)), module, StraitsEastVisualIds::PROB_OUT_REST + l);
+        // 4 poly probability CV outs — bound via SVG panel kit (output_prob_<lane>).
+        // NOTE: output IDs are in ENGINE order (REST=0, MEL=1, OCT=2, ACC=3) but panel
+        // rows are in EDITOR order (MEL=0, OCT=1, REST=2, ACC=3). Convert via
+        // EDITOR_TO_ENGINE_LANE so the jack at the MEL row drives PROB_OUT_MEL, etc.
+        {
             Module* mod = module;
-            p->lightTheme = [mod]() { Monsoon* m = mod ? redDot::findMonsoonEitherSide(mod) : nullptr;
-                                      return m && m->lightTheme; };
-            addOutput(p);
+            auto themeOut = [mod](redDot::GoldPolyPort* p) {
+                p->lightTheme = [mod]() { Monsoon* m = mod ? redDot::findMonsoonEitherSide(mod) : nullptr;
+                                          return m && m->lightTheme; };
+            };
+            for (int l = 0; l < 4; ++l)
+                bindOutput<redDot::GoldPolyPort>("output_prob_" + std::to_string(l),
+                    StraitsEastVisualIds::PROB_OUT_REST + dotModular::EDITOR_TO_ENGINE_LANE[l],
+                    std::function<void(redDot::GoldPolyPort*)>(themeOut));
+        }
+        // Direction gate-mod jacks (input_dir_mod_<lane>) — poly, gate cycles Fwd→Rev→Pend→PingPong.
+        // Delegation gate-mod jacks (input_deleg_mod_<lane>) — poly, gate flips local/delegated.
+        // All 6 lanes (MEL/OCT/REST/ACC/VAR/LEG).
+        {
+            Module* mod = module;
+            auto themeIn = [mod](redDot::GoldPolyPort* p) {
+                p->lightTheme = [mod]() { Monsoon* m = mod ? redDot::findMonsoonEitherSide(mod) : nullptr;
+                                          return m && m->lightTheme; };
+            };
+            for (int lane = 0; lane < 6; ++lane) {
+                bindInput<redDot::GoldPolyPort>("input_dir_mod_" + std::to_string(lane),
+                    dirModId(lane), std::function<void(redDot::GoldPolyPort*)>(themeIn));
+                bindInput<redDot::GoldPolyPort>("input_deleg_mod_" + std::to_string(lane),
+                    delegModId(lane), std::function<void(redDot::GoldPolyPort*)>(themeIn));
+            }
         }
 
         // ── Controls bound by id from the SVG kit (#components in
@@ -1233,6 +1254,66 @@ void StraitsEastSandsVisual::process(const ProcessArgs&) {
         for (int l = 0; l < 4; ++l) { outputs[PROB_OUT_REST + l].setChannels(1);
                                       outputs[PROB_OUT_REST + l].setVoltage(0.f); }
         return;
+    }
+    // ── Gate edge detection for dir_mod and deleg_mod inputs ──────────────
+    // Direction gate-mod: poly input, rising edge cycles Fwd→Rev→Pend→PingPong→Fwd.
+    // Cycles the dirDispId display proxy param (same approach as delegation flips
+    // ownerDispId). The widget's step() syncs this to the engine. For per-voice
+    // poly modulation on non-selected voices, the engine state is also directly
+    // modified — the display proxy only reflects the selected voice.
+    {
+        auto* se = &mon->engine;
+        for (int lane = 0; lane < 6; ++lane) {
+            auto& in = inputs[dirModId(lane)];
+            if (!in.isConnected()) continue;
+            int nch = in.getChannels();
+            int strand = dotModular::MONO_LANE_TO_STRAND[lane];
+            for (int ch = 0; ch < nch && ch < 16; ++ch) {
+                bool high = in.getVoltage(ch) > 1.f;
+                if (high && !dirModPrev[lane][ch]) {
+                    // Rising edge — cycle direction
+                    if (ch == 0) {
+                        // Channel 0 = mono/V1 — cycle display proxy + engine
+                        int cur = (int)params[dirDispId(lane)].getValue();
+                        int nxt = (cur + 1) % 4;
+                        params[dirDispId(lane)].setValue((float)nxt);
+                        se->laneDirPending_[strand] = (SequencerEngine::LaneDir)nxt;
+                    } else {
+                        // Channel 1..15 = voices 2..16 — cycle engine directly
+                        int pv = ch - 1;
+                        int cur = (int)se->laneDirVPending_[pv][strand];
+                        se->laneDirVPending_[pv][strand] = (SequencerEngine::LaneDir)((cur + 1) % 4);
+                    }
+                }
+                dirModPrev[lane][ch] = high;
+            }
+        }
+    }
+    // Delegation gate-mod: poly input, rising edge flips local/delegated.
+    // Flips the display proxy param (affects selected voice). Per-voice delegation
+    // flip would require modifying the per-voice owner store — deferred to v2.
+    // Lanes 0..3 use ownerDispId; lanes 4..5 (VAR/LEG) use varlegDelegDispId.
+    {
+        for (int lane = 0; lane < 6; ++lane) {
+            auto& in = inputs[delegModId(lane)];
+            if (!in.isConnected()) continue;
+            int nch = in.getChannels();
+            for (int ch = 0; ch < nch && ch < 16; ++ch) {
+                bool high = in.getVoltage(ch) > 1.f;
+                if (high && !delegModPrev[lane][ch]) {
+                    // ownerDispId is in ENGINE order (REST=0, MEL=1, OCT=2, ACC=3).
+                    // Convert editor lane to engine lane before indexing.
+                    int pid;
+                    if (lane < 4)
+                        pid = ownerDispId(dotModular::EDITOR_TO_ENGINE_LANE[lane]);
+                    else
+                        pid = varlegDelegDispId(lane - 4);
+                    float cur = params[pid].getValue();
+                    params[pid].setValue(cur > 0.5f ? 0.f : 1.f);
+                }
+                delegModPrev[lane][ch] = high;
+            }
+        }
     }
     const float scaleV = (mon->probOutScale == 0) ? 1.f : (mon->probOutScale == 1) ? 5.f : 10.f;
     const bool sh = mon->probOutSampleHold;

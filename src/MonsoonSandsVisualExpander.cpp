@@ -95,11 +95,11 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
     explicit MonsoonSandsVisualExpanderWidget(MonsoonSandsVisualExpander* mod) {
         setModule(mod);
         panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance,
-                            "res/panels/SandsMonoVisual_40HP.svg"));
+                            "res/panels/SandsMonoVisual_48HP.svg"));
         panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance,
-                            "res/panels/SandsMonoVisual_40HP_light.svg"));
+                            "res/panels/SandsMonoVisual_48HP_light.svg"));
         panelWidget = createPanel(asset::plugin(pluginInstance,
-                            "res/panels/SandsMonoVisual_40HP.svg"));
+                            "res/panels/SandsMonoVisual_48HP.svg"));
         setPanel(panelWidget);
 
         redDot::addRedScrews(this);

@@ -9,12 +9,14 @@ using namespace rack;
 namespace SandsMonoVisualIds {
 
     // ── Panel ────────────────────────────────────────────────────────────
-    static constexpr float W_MM     = 223.52f;  // 44HP (43 + 1HP for the per-lane direction column)
+    static constexpr float W_MM     = 243.84f;  // 48HP (44 + 4HP for dir_mod + deleg_mod + prob_out)
     static constexpr float ED_X     = 88.f;
     static constexpr float ED_W     = 111.f;    // editor width (fixed; no longer tied to PROB_OUT_X)
     static constexpr float OWNER_X    = 205.f;  // owner cell column (matches East/Macro)
     static constexpr float DIR_X      = 212.f;  // direction cell column (matches East/Macro)
-    static constexpr float PROB_OUT_X = 219.f;  // output jack column (pushed right by the direction block)
+    static constexpr float DIR_MOD_X   = 220.f; // direction gate-mod jack column
+    static constexpr float DELEG_MOD_X = 228.f; // delegation gate-mod jack column
+    static constexpr float PROB_OUT_X = 236.f;  // output jack column (pushed right by mod columns)
     // Grid now comes from ui/SandsGrid.hpp so Mono, East and Macro cannot drift apart.
     // ROW_BOT 108 -> 98: lane height 15.667 -> 14, matching East/Macro's lanes exactly.
     static constexpr float ED_Y     = dotModular::SandsGrid::LANE_TOP;      // 14
@@ -92,8 +94,12 @@ namespace SandsMonoVisualIds {
         // 18 LOR CV jacks (6 lanes × 3) + 4 spread CV jacks (REST/MEL/OCT/ACCENT) = 22
         CV_START = 0,                       // 0 .. 17
         SPR_CV_START = CV_START + 18,       // 18 .. 21
-        NUM_INPUTS = SPR_CV_START + 4
+        DIR_MOD_START = SPR_CV_START + 4,   // = 22 — direction gate-mod (6 mono jacks)
+        DELEG_MOD_START = DIR_MOD_START + 6, // = 28 — delegation gate-mod (4 mono jacks)
+        NUM_INPUTS = DELEG_MOD_START + 4    // = 32
     };
+    static inline int dirModId(int lane) { return DIR_MOD_START + lane; }
+    static inline int delegModId(int lane) { return DELEG_MOD_START + lane; }
 
     // ── Output IDs ────────────────────────────────────────────────────────
     enum OutputId {

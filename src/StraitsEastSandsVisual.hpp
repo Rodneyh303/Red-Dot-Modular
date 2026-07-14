@@ -8,17 +8,16 @@ using namespace MonsoonIds;
 
 namespace StraitsEastVisualIds {
 
-    // ── Panel ──────────────────────────────────────────────────────────────
-    static constexpr float W_MM    = 223.52f;   // 44HP (43 + 1HP for the per-lane direction column)
-    static constexpr float ED_X   = 88.f;   // editor (matches SandsMonoVisual)
-    static constexpr float ED_W   = 111.f;  // editor width (fixed; no longer tied to PROB_OUT_X)
-    // Owner-source block: per-lane cells just right of the editor, before the
-    // prob-out strip. OWNER_X is the cell-column centre; the block has a faint
-    // separator + backing (drawn in the gen) so it doesn't read as a 17th step.
-    static constexpr float OWNER_X    = 205.f;   // owner cell column (editor right edge = 199)
-    static constexpr float DIR_X      = 212.f;   // direction cell column (Fwd/Rev/Pend/PingPong)
-    static constexpr float PROB_OUT_X = 219.f;   // poly prob-out jack column (pushed right by the direction block)
-    static constexpr int   N_ROWS  = dotModular::SandsGrid::POLY_LANES;  // 4 — 1 row per lane
+    // ── Panel geometry (48HP — +4HP for dir_mod + deleg_mod + prob_out jack columns) ──
+    static constexpr float W_MM        = 243.84f;  // 48HP
+    static constexpr float ED_X        = 88.f;
+    static constexpr float ED_W        = 111.f;
+    static constexpr float OWNER_X     = 205.f;
+    static constexpr float DIR_X       = 212.f;
+    static constexpr float DIR_MOD_X   = 220.f;    // direction gate-mod jack column
+    static constexpr float DELEG_MOD_X = 228.f;    // delegation gate-mod jack column
+    static constexpr float PROB_OUT_X  = 236.f;    // prob-out jack column (shifted right)
+    static constexpr int   N_ROWS      = dotModular::SandsGrid::POLY_LANES;  // 4 — 1 row per lane
     // ROW_TOP/ROW_BOT were DEAD here (nothing read them; rows come from ED_Y + ED_LANE_H) yet still
     // said 14..108, which is what made this look aligned with Mono when it wasn't. Bound to the grid.
     static constexpr float ROW_TOP = dotModular::SandsGrid::LANE_TOP;      // 14
@@ -98,8 +97,12 @@ namespace StraitsEastVisualIds {
         NUM_LANE_INPUTS = CV_START + 16,              // 4 lanes × 4 cols (LEN/OFF/ROT/SPR)
         // VAR/LEG poly CV inputs (LEN/OFF/ROT only — no SPR). lane 0=VAR, 1=LEG; col 0..2.
         VARLEG_CV_START = NUM_LANE_INPUTS,            // = 16
-        NUM_INPUTS = VARLEG_CV_START + 6              // = 22
+        DIR_MOD_START = VARLEG_CV_START + 6,          // = 22 — direction gate-mod (6 poly jacks)
+        DELEG_MOD_START = DIR_MOD_START + 6,          // = 28 — delegation gate-mod (6 poly jacks, all lanes)
+        NUM_INPUTS = DELEG_MOD_START + 6              // = 34
     };
+    static inline int dirModId(int lane) { return DIR_MOD_START + lane; }
+    static inline int delegModId(int lane) { return DELEG_MOD_START + lane; }
     static inline int cvId(int lane, int col) { return CV_START + lane*4 + col; }
     // VAR/LEG CV jack id. lane 0=VAR, 1=LEG; col 0=LEN,1=OFF,2=ROT.
     static inline int varlegCvId(int lane, int col) { return VARLEG_CV_START + lane*3 + col; }
@@ -328,15 +331,27 @@ struct StraitsEastSandsVisual : Module {
         }
         // Direction display proxies (selected-voice view). lane = editor lane 0..5.
         // Value 0=Forward, 1=Reverse, 2=Pendulum, 3=PingPong. Default 0 (Forward).
+        // Direction gate-mod inputs (poly: ch1=mono, ch2+=voices). Gate cycles Fwd→Rev→Pend→PingPong.
+        // Delegation gate-mod inputs (poly: ch1=mono, ch2+=voices). Gate flips local/delegated.
         {
             const char* laneNm[6] = {"MEL","OCT","REST","ACC","VAR","LEG"};
-            for (int lane=0; lane<6; ++lane)
+            for (int lane=0; lane<6; ++lane) {
                 configParam(dirDispId(lane), 0.f, 3.f, 0.f,
                             std::string(laneNm[lane])+" direction (selected voice)");
+                configInput(dirModId(lane), std::string(laneNm[lane])+" direction gate-mod (poly)");
+            }
+            for (int lane=0; lane<6; ++lane)
+                configInput(delegModId(lane), std::string(laneNm[lane])+" delegation gate-mod (poly)");
         }
-    }
+   }
 
     void process(const ProcessArgs&) override;   // defined in .cpp (needs findMonsoonEitherSide)
+
+    // Gate edge detection state for dir_mod and deleg_mod inputs.
+    // dirModPrev[lane][channel] — 6 lanes × 16 channels (ch0=mono, ch1..15=voices 2..16)
+    // delegModPrev[lane][channel] — 4 lanes × 16 channels
+    bool dirModPrev[6][16] = {};
+    bool delegModPrev[6][16] = {};
 
     json_t* dataToJson() override {
         json_t* r = json_object();
