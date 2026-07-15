@@ -218,12 +218,17 @@ struct StraitsSandsMacroVisual : Module {
                                 "V"+std::to_string(v+1)+" L"+std::to_string(lane)+" mix-in "+std::to_string(item));
         // Direction display proxies (4 poly lanes). DirCell writes 0..3 = Fwd/Rev/Pend/PingPong.
         static const char* dirNames[4] = {"MEL","OCT","REST","ACC"};
-        for (int l = 0; l < 4; ++l)
+        for (int l = 0; l < 4; ++l) {
             configParam(dirDispId(l), 0.f, 3.f, 0.f,
                         std::string(dirNames[l]) + " direction");
+            configInput(dirModId(l), std::string(dirNames[l]) + " direction gate-mod");
+        }
     }
 
     void process(const ProcessArgs&) override;   // defined in .cpp (needs findMonsoonEitherSide)
+
+    // Gate edge detection state for dir_mod inputs (mono, 1 channel per jack).
+    bool dirModPrev[4] = {};
 
     // S&H latch state for the poly prob outs: [lane][channel] (ch0 reserved, 1..15 voices).
     float probHeld[4][16] = {};

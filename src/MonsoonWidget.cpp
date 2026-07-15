@@ -730,58 +730,23 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
             // a voice's VAR/LEG is set Local East on the East expander. See EAST_EXTRA_LANES.md.
             add("Per-voice articulation (East VARIATION/LEGATO)", &m->engine.perVoiceArticulation);
         }));
-        // Lane direction: 4-state per strand (Forward / Reverse / Pendulum / PingPong). Writes
-        // the PENDING LaneDir enum; the engine promotes it at a boundary per the flip-quant
-        // choice. See plans/lane_direction_ui.md.
-        struct LaneDirStateItem : ui::MenuItem {
-            Monsoon* module = nullptr;
-            int strand = 0;
-            SequencerEngine::LaneDir value{};
-            void onAction(const event::Action&) override {
-                if (module) {
-                    module->engine.laneDirPending_[strand] = value;
-                    // Also sync the legacy sign/pendulum fields so both code paths agree.
-                    module->engine.laneSignPending_[strand] = SequencerEngine::laneDirSign(value);
-                    module->engine.lanePendulum_[strand] = SequencerEngine::laneDirAutoFlip(value);
-                }
-            }
-            void step() override {
-                if (module) rightText = (module->engine.laneDirPending_[strand] == value) ? "✔" : "";
-                ui::MenuItem::step();
-            }
-        };
-        struct FlipQuantItem : ui::MenuItem {
-            Monsoon* module = nullptr; SequencerEngine::LaneFlipQuant value{};
-            void onAction(const event::Action&) override { if (module) module->engine.laneFlipQuant = value; }
-            void step() override { if (module) rightText = (module->engine.laneFlipQuant == value) ? "✔" : ""; ui::MenuItem::step(); }
-        };
-        menu->addChild(createSubmenuItem("Lane direction", "", [=](ui::Menu* sm) {
-            // Per-strand submenu: Forward / Reverse / Pendulum / PingPong.
-            const char* strandNames[6] = {"Melody", "Octave", "Rest", "Accent", "Variation", "Legato"};
-            const int   strandIds[6]   = {dotModular::STRAND_MELODY, dotModular::STRAND_OCTAVE,
-                                          dotModular::STRAND_RHYTHM, dotModular::STRAND_ACCENT,
-                                          dotModular::STRAND_VARIATION, dotModular::STRAND_LEGATO};
-            const char* dirNames[4]    = {"Forward →", "Reverse ←", "Pendulum ↔", "Ping-pong «»"};
-            const SequencerEngine::LaneDir dirVals[4] = {
-                SequencerEngine::LaneDir::Forward, SequencerEngine::LaneDir::Reverse,
-                SequencerEngine::LaneDir::Pendulum, SequencerEngine::LaneDir::PingPong
+        // Lane direction context menu removed (step 4 of lane_direction_homes.md).
+        // Direction is now expander-homed — set it via DirCell or gate-mod on the Sands panels.
+        // The flip-quant setting is still accessible; it's a global engine property.
+        {
+            struct FlipQuantItem : ui::MenuItem {
+                Monsoon* module = nullptr; SequencerEngine::LaneFlipQuant value{};
+                void onAction(const event::Action&) override { if (module) module->engine.laneFlipQuant = value; }
+                void step() override { if (module) rightText = (module->engine.laneFlipQuant == value) ? "✔" : ""; ui::MenuItem::step(); }
             };
-            for (int s = 0; s < 6; ++s) {
-                sm->addChild(createSubmenuItem(strandNames[s], "", [=](ui::Menu* dm) {
-                    for (int d = 0; d < 4; ++d) {
-                        auto* it = createMenuItem<LaneDirStateItem>(dirNames[d]);
-                        it->module = m; it->strand = strandIds[s]; it->value = dirVals[d];
-                        dm->addChild(it);
-                    }
-                }));
-            }
-            sm->addChild(new ui::MenuSeparator);
-            auto addQ = [&](const char* label, SequencerEngine::LaneFlipQuant v) {
-                auto* it = createMenuItem<FlipQuantItem>(label); it->module = m; it->value = v; sm->addChild(it);
-            };
-            addQ("Flip at phrase boundary", SequencerEngine::LaneFlipQuant::Phrase);
-            addQ("Flip at step edge",       SequencerEngine::LaneFlipQuant::StepEdge);
-        }));
+            menu->addChild(createSubmenuItem("Lane flip quant", "", [=](ui::Menu* sm) {
+                auto addQ = [&](const char* label, SequencerEngine::LaneFlipQuant v) {
+                    auto* it = createMenuItem<FlipQuantItem>(label); it->module = m; it->value = v; sm->addChild(it);
+                };
+                addQ("Flip at phrase boundary", SequencerEngine::LaneFlipQuant::Phrase);
+                addQ("Flip at step edge",       SequencerEngine::LaneFlipQuant::StepEdge);
+            }));
+        }
         menu->addChild(new ui::MenuSeparator);
         struct IntItem : ui::MenuItem {
             Monsoon* module; int* target; int value;

@@ -7,6 +7,7 @@
 //#include "../../MonsoonDeepStraitsSands.hpp"
 #include "../../StraitsEastSandsVisual.hpp"
 #include "../../StraitsSandsMacroVisual.hpp"
+#include "../../MonsoonSandsVisualExpander.hpp"   // SandsMonoVisualIds::dirDispId for mono direction push
 
 using namespace rack;
 
@@ -64,6 +65,63 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
     for (int dv = 0; dv < 15; ++dv)
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l)
             engine.laneDirVPending_[dv][l] = SequencerEngine::LaneDir::Forward;
+    // Step 4: mono direction reset — same pattern. No expander => Forward.
+    for (int l = 0; l < dotModular::NUM_STRANDS; ++l)
+        engine.laneDirPending_[l] = SequencerEngine::LaneDir::Forward;
+    // Push mono direction from the owning expander.
+    // Lanes 0..3: if Mono present and owns → Mono's dirDispId; if Macro owns → Macro's dirDispId.
+    // Lanes 4..5 (VAR/LEG): Mono always owns → Mono's dirDispId.
+    // If Mono absent but Macro present → Macro's dirDispId (lanes 0..3 only).
+    // If neither Mono nor Macro → East's monoDirId (V1 slot). If nothing → Forward (reset).
+    //
+    // ALSO push Macro's own direction to macroLaneDir_ (always, regardless of ownership)
+    // so the engine advances macroLaneTick_ independently for Macro's playhead display.
+    {
+        auto* monoVis = cachedSandsVisualExpander;
+        auto* macroVis = cachedMacroSandsVisual;
+        if (monoVis) {
+            for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
+                bool monoOwns = (l >= 4) || (monoVis->params[SandsMonoVisualIds::ownerDispId(l)].getValue() > 0.5f);
+                if (monoOwns) {
+                    engine.laneDirPending_[l] = (SequencerEngine::LaneDir)(int)std::lround(
+                        math::clamp(monoVis->params[SandsMonoVisualIds::dirDispId(l)].getValue(), 0.f, 3.f));
+                } else if (macroVis) {
+                    engine.laneDirPending_[l] = (SequencerEngine::LaneDir)(int)std::lround(
+                        math::clamp(macroVis->params[StraitsMacroVisualIds::dirDispId(l)].getValue(), 0.f, 3.f));
+                }
+            }
+        } else if (macroVis) {
+            for (int l = 0; l < 4; ++l)
+                engine.laneDirPending_[l] = (SequencerEngine::LaneDir)(int)std::lround(
+                    math::clamp(macroVis->params[StraitsMacroVisualIds::dirDispId(l)].getValue(), 0.f, 3.f));
+        } else if (eastLOR) {
+            using namespace StraitsEastVisualIds;
+            for (int l = 0; l < dotModular::NUM_STRANDS; ++l)
+                engine.laneDirPending_[l] = (SequencerEngine::LaneDir)(int)std::lround(
+                    math::clamp(eastLOR->params[monoDirId(l)].getValue(), 0.f, 3.f));
+        }
+        // Push Macro's direction + LOR length to macroLaneDir_/macroLOR_ (all 4 lanes, always)
+        if (macroVis) {
+            auto* mmod = dynamic_cast<StraitsSandsMacroVisual*>(macroVis);
+            for (int el = 0; el < 4; ++el) {
+                // el = editor lane (MEL=0, OCT=1, REST=2, ACC=3) = strand index
+                engine.macroLaneDir_[el] = (SequencerEngine::LaneDir)(int)std::lround(
+                    math::clamp(macroVis->params[StraitsMacroVisualIds::dirDispId(el)].getValue(), 0.f, 3.f));
+                // Push Macro's own LOR length for bounce detection.
+                // macroBase is indexed by ENGINE lane (REST=0, MEL=1, OCT=2, ACC=3);
+                // convert editor lane → engine lane via EDITOR_TO_ENGINE_LANE.
+                if (mmod) {
+                    int engLane = dotModular::EDITOR_TO_ENGINE_LANE[el];
+                    engine.macroLOR_[el] = std::max(1, (int)std::lround(mmod->macroBase[engLane][0] + mmod->macroCVDelta[engLane][0]));
+                }
+            }
+        } else {
+            for (int el = 0; el < 4; ++el) {
+                engine.macroLaneDir_[el] = SequencerEngine::LaneDir::Forward;
+                engine.macroLOR_[el] = 16;
+            }
+        }
+    }
 
     if (eastLOR && (straits || eastVisual) && polyBaseActive) {
        // using namespace DeepStraitsSandsEastIds;

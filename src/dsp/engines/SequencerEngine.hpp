@@ -128,6 +128,15 @@ struct SequencerEngine {
     // PingPong endpoint-repeat: when true, the tick stays at the endpoint for one extra step
     // (the endpoint step repeats) before the direction flips. Per-strand hold flag.
     bool lanePingPongHold_[dotModular::NUM_STRANDS] = {};
+    // Macro's own per-lane tick — always follows Macro's direction, independent of
+    // who owns the lane. Same bounce logic as laneTick_. Advanced in advancePlayhead.
+    // Macro's widget reads this for its playhead, so Macro's display always reflects
+    // Macro's DirCell, even when Mono owns the lane (engine's laneTick_ follows Mono).
+    int macroLaneTick_[dotModular::NUM_STRANDS] = {};
+    int macroLaneSign_[dotModular::NUM_STRANDS] = {1,1,1,1,1,1};
+    LaneDir macroLaneDir_[dotModular::NUM_STRANDS] = {};
+    bool macroPingPongHold_[dotModular::NUM_STRANDS] = {};
+    int macroLOR_[4] = {16,16,16,16};  // Macro's own LOR lengths (lanes 0..3) for bounce
     // Per-voice per-strand accumulated tick (poly analogue of laneTick_). Advanced in advancePlayhead
     // by dir * polyLaneSign(v, s) — the effective sign is the voice's OWN, i.e. ABSOLUTE, not
     // relative to mono. laneSignV_ = +1 (default) = Forward; -1 = Reverse. A voice therefore does

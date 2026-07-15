@@ -226,10 +226,24 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             const float monoLaneH = (ROW_BOT - ROW_TOP) / N_LANES;
             dc->box.size = mm2px(Vec(stepW, monoLaneH * 0.9f));
             dc->box.pos  = mm2px(Vec(DIR_X, rowY(lane))).minus(dc->box.size.div(2.f));
-            // Always settable when Monsoon is present (Mono owns the mono strands).
-            dc->lockWhen = [this]() { return !getMonsoon(); };
+            // Lanes 0..3: locked when delegated to Macro (ownerDispId <= 0.5 = Macro owns).
+            // Lanes 4..5 (VAR/LEG): always settable (Mono always owns them).
+            dc->lockWhen = [this, lane, mod]() {
+                if (!getMonsoon()) return true;
+                if (lane >= 4) return false;  // VAR/LEG always Mono-owned
+                return mod->params[ownerDispId(lane)].getValue() <= 0.5f;  // Macro owns
+            };
             addParam(dc);
         }
+
+        // Direction gate-mod jacks — mono, gate cycles Fwd→Rev→Pend→PingPong.
+        for (int lane = 0; lane < 6; ++lane)
+            addInput(createInputCentered<PJ301MPort>(
+                mm2px(Vec(DIR_MOD_X, rowY(lane))), mod, dirModId(lane)));
+        // Delegation gate-mod jacks — mono, gate flips local/delegated. Lanes 0..3.
+        for (int lane = 0; lane < 4; ++lane)
+            addInput(createInputCentered<PJ301MPort>(
+                mm2px(Vec(DELEG_MOD_X, rowY(lane))), mod, delegModId(lane)));
 
         // Per-lane probability CV outs — one jack right of each of the 6 lane rows.
         for (int l = 0; l < N_LANES; ++l) {
@@ -306,19 +320,10 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             initialized = true;
         }
 
-        // ── Direction sync: push DirCell display proxy → engine.laneDirPending_ (mono).
-        //    Mono is the master strand editor; its DirCell directly controls the mono direction.
-        //    Only laneDirPending_ is pushed (not laneSignPending_) — the engine's advancePlayhead
-        //    derives signs from laneDir_ and manages bounces internally.
-        {
-            auto* se = &monsoon->engine;
-            for (int lane = 0; lane < 6; ++lane) {
-                int strand = dotModular::MONO_LANE_TO_STRAND[lane];
-                auto d = (SequencerEngine::LaneDir)(int)std::round(
-                    mod->params[dirDispId(lane)].getValue());
-                se->laneDirPending_[strand] = d;
-            }
-        }
+        // ── Direction sync: Step 4 (lane_direction_homes.md) — NO sync needed.
+        //    dirDispId IS the home. The DirCell writes it, the manager reads it and pushes
+        //    to laneDirPending_. The widget must NOT overwrite dirDispId FROM the engine,
+        //    or it would clobber DirCell clicks before the manager reads them.
 
         // ── Editor → params (UI thread, own params). Skip delegated lanes: when a
         //    poly lane is owned by Macro it's inoperable + must TRACK Macro, so we
@@ -420,6 +425,31 @@ void MonsoonSandsVisualExpander::process(const ProcessArgs&) {
     if (!monsoon) {
         for (int l = 0; l < 6; ++l) outputs[PROB_OUT_START + l].setVoltage(0.f);
         return;
+    }
+    // ── Gate edge detection for dir_mod and deleg_mod inputs ─────────────
+    // Mono jacks (1 channel). Direction cycles Fwd→Rev→Pend→PingPong→Fwd.
+    // Delegation flips local/delegated (ownerDispId for lanes 0..3).
+    {
+        for (int lane = 0; lane < 6; ++lane) {
+            auto& in = inputs[dirModId(lane)];
+            if (!in.isConnected()) continue;
+            bool high = in.getVoltage(0) > 1.f;
+            if (high && !dirModPrev[lane]) {
+                int cur = (int)params[dirDispId(lane)].getValue();
+                params[dirDispId(lane)].setValue((float)((cur + 1) % 4));
+            }
+            dirModPrev[lane] = high;
+        }
+        for (int lane = 0; lane < 4; ++lane) {
+            auto& in = inputs[delegModId(lane)];
+            if (!in.isConnected()) continue;
+            bool high = in.getVoltage(0) > 1.f;
+            if (high && !delegModPrev[lane]) {
+                float cur = params[ownerDispId(lane)].getValue();
+                params[ownerDispId(lane)].setValue(cur > 0.5f ? 0.f : 1.f);
+            }
+            delegModPrev[lane] = high;
+        }
     }
     auto& eng = monsoon->engine;
     const float scaleV = (monsoon->probOutScale == 0) ? 1.f : (monsoon->probOutScale == 1) ? 5.f : 10.f;
