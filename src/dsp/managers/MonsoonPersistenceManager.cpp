@@ -180,39 +180,10 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     if (auto j = json_object_get(root, "restBeatsLegato"))   m->engine.restBeatsLegato   = json_boolean_value(j);
     if (auto j = json_object_get(root, "boundaryInterrupt"))  m->engine.boundaryInterrupt  = json_boolean_value(j);
     if (auto j = json_object_get(root, "perVoiceArticulation")) m->engine.perVoiceArticulation = json_boolean_value(j);
-    // Per-lane direction: prefer the new 4-state laneDir enum; fall back to legacy laneSign +
-    // lanePendulum for older patches.
-    if (auto j = json_object_get(root, "laneDir")) {
-        for (int s = 0; s < dotModular::NUM_STRANDS && s < (int)json_array_size(j); ++s) {
-            auto d = (SequencerEngine::LaneDir)json_integer_value(json_array_get(j, s));
-            m->engine.laneDir_[s] = d;
-            m->engine.laneDirPending_[s] = d;
-            // Sync legacy fields.
-            m->engine.laneSign_[s] = SequencerEngine::laneDirSign(d);
-            m->engine.laneSignPending_[s] = m->engine.laneSign_[s];
-            m->engine.lanePendulum_[s] = SequencerEngine::laneDirAutoFlip(d);
-        }
-    } else {
-        // Legacy: derive from laneSign + lanePendulum.
-        if (auto j = json_object_get(root, "laneSign")) {
-            for (int s = 0; s < dotModular::NUM_STRANDS && s < (int)json_array_size(j); ++s) {
-                int v = ((int)json_integer_value(json_array_get(j, s)) < 0) ? -1 : 1;
-                m->engine.laneSign_[s] = v;
-                m->engine.laneSignPending_[s] = v;
-            }
-        }
-        if (auto j = json_object_get(root, "lanePendulum"))
-            for (int s = 0; s < dotModular::NUM_STRANDS && s < (int)json_array_size(j); ++s)
-                m->engine.lanePendulum_[s] = json_boolean_value(json_array_get(j, s));
-        // Reconstruct laneDir_ from the legacy fields.
-        for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
-            auto d = m->engine.lanePendulum_[s] ? SequencerEngine::LaneDir::Pendulum
-                   : (m->engine.laneSign_[s] < 0) ? SequencerEngine::LaneDir::Reverse
-                   : SequencerEngine::LaneDir::Forward;
-            m->engine.laneDir_[s] = d;
-            m->engine.laneDirPending_[s] = d;
-        }
-    }
+    // Step 4: laneDir and laneDirV are NOT restored here any more. Direction is now
+    // expander-homed (Mono's dirDispId for mono, East's dirId/monoDirId bank for poly).
+    // Rack restores the expander params, then MonsoonExpanderManager::sync() pushes them
+    // to the engine. No legacy fallback needed (pre-release, no patches to preserve).
     // Step 3: laneDirV is NOT restored here any more — East's direction bank is poly
     // direction's home and Rack restores it as module params, after which
     // MonsoonExpanderManager::sync() pushes it into the engine (which is a derived cache).

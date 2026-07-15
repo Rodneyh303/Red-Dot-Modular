@@ -110,3 +110,35 @@ with no fallback, and the legacy `laneSign` + `lanePendulum` reconstruction in
    expander-homed — like every other lane-addressing datum.
 
 Lesson: check where a datum is *persisted*, and *who authors* it, before choosing its home.
+
+4. **"Macro can reuse `laneTick_` — the manager pushes Macro's direction to the engine."**
+   False: the engine has ONE `laneTick_` per strand. When Mono owns a lane, the manager
+   pushes Mono's direction, so `laneTick_` follows Mono — not Macro. Macro's playhead would
+   show Mono's direction. Reverted to using `totalStepsElapsed` (wrong — see #5).
+
+5. **"Compute Macro's playhead from `totalStepsElapsed`."** Wrong: `totalStepsElapsed` is
+   the global step counter. It doesn't account for per-lane LOR wrapping or bounce patterns
+   (Pendulum/PingPong). The playhead jumped at wrong positions and Pendulum/PingPong didn't
+   bounce correctly. User correctly rejected this: "we agreed totalStepsElapsed was a bad
+   way to go."
+
+6. **"Check if `macroDir == eng.laneDir_` and use `laneTick_` when they match."** Half-baked:
+   the check was fragile and the manager was overwriting `laneDir_` before the widget could
+   read it. The direction would flip back to Mono's as soon as Mono was added. Reverted.
+
+7. **The real answer was the same pattern Mono and East already use.** Mono uses `laneTick_`
+   (the engine's mono tick). East uses `laneTickV_[15][6]` (per-voice ticks). Macro needed
+   its own `macroLaneTick_[6]` — a third parallel tick set, advanced in `advancePlayhead`
+   using `macroLaneDir_` (pushed by the manager from Macro's `dirDispId`). Each independent
+   direction authority gets its own tick array. The pattern was right there the whole time.
+
+8. **Bounce endpoint used `strandLen(l)` instead of Macro's own LOR.** When Mono is attached,
+   `strandLen()` returns Mono's LOR (the manager pushes Mono's LOR to the engine strands).
+   Macro's Pendulum/PingPong bounced at Mono's LOR endpoints, not Macro's. Fixed by adding
+   `macroLOR_[4]` — the manager pushes Macro's own `macroBase[l][0] + macroCVDelta[l][0]`
+   and the bounce logic uses it instead of `strandLen(l)`.
+
+Lesson: when the engine has multiple independent authorities for the same datum (direction,
+LOR), each needs its own parallel storage. The existing `laneTick_` / `laneTickV_` pattern
+was the blueprint — a third authority (Macro) needs a third parallel set (`macroLaneTick_`).
+And each tick's bounce logic must use its OWN LOR, not the shared engine LOR.

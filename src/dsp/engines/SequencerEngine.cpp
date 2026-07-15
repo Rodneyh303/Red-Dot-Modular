@@ -42,6 +42,10 @@ void SequencerEngine::reset() {
         laneDir_[s] = LaneDir::Forward;
         laneDirPending_[s] = LaneDir::Forward;
         lanePingPongHold_[s] = false;
+        macroLaneTick_[s] = 0;
+        macroLaneSign_[s] = 1;
+        macroLaneDir_[s] = LaneDir::Forward;
+        macroPingPongHold_[s] = false;
         for (int v = 0; v < 15; ++v) {
             laneTickV_[v][s] = 0;   // per-voice tick: reset (inherits mono dir)
             laneSignV_[v][s] = 1;   // CRITICAL: must be +1, not 0 — -0 == 0 in integer
@@ -217,6 +221,32 @@ bool SequencerEngine::advancePlayhead(int dir) {
                 }
             }
         }
+
+    // Macro's own per-lane tick — same bounce logic as laneTick_ but with macroLaneDir_.
+    // Uses Macro's LOR (strandLen, same as mono's since Macro's base is pushed to the
+    // engine strands by the manager). This lets Macro's playhead always follow Macro's
+    // DirCell, independent of who owns the lane.
+    for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
+        if (macroLaneDir_[l] == LaneDir::Forward)      macroLaneSign_[l] = +1;
+        else if (macroLaneDir_[l] == LaneDir::Reverse) macroLaneSign_[l] = -1;
+        else if (macroLaneSign_[l] == 0)               macroLaneSign_[l] = +1;
+        if (macroLaneDir_[l] == LaneDir::PingPong && macroPingPongHold_[l]) {
+            macroPingPongHold_[l] = false;
+            macroLaneSign_[l] = -macroLaneSign_[l];
+        } else if (macroLaneDir_[l] == LaneDir::PingPong) {
+            int len = std::max(1, (l < 4) ? macroLOR_[l] : strandLen(l));
+            int pos = ((macroLaneTick_[l] % len) + len) % len;
+            bool atEnd = (macroLaneSign_[l] > 0 && pos == len - 1) || (macroLaneSign_[l] < 0 && pos == 0);
+            if (atEnd) { macroPingPongHold_[l] = true; continue; }
+        }
+        macroLaneTick_[l] = (int)((((long)macroLaneTick_[l] + (long)dir * macroLaneSign_[l]) % DNA_LCM + DNA_LCM) % DNA_LCM);
+        if (macroLaneDir_[l] == LaneDir::Pendulum) {
+            int len = std::max(1, (l < 4) ? macroLOR_[l] : strandLen(l));
+            int pos = ((macroLaneTick_[l] % len) + len) % len;
+            bool atEnd = (macroLaneSign_[l] > 0 && pos == len - 1) || (macroLaneSign_[l] < 0 && pos == 0);
+            if (atEnd) macroLaneSign_[l] = -macroLaneSign_[l];
+        }
+    }
 
     // Step the global DNA tick WITH direction: +1 forward, -1 backward. This is what
     // maps physical positions to drifting DNA content (strand indices) and the ring

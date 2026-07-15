@@ -175,11 +175,20 @@ struct MonsoonSandsVisualExpander : Module {
                          std::string(names[l]) + " V1 owner",
                          { "Macro (global)", "Mono" });
         // Direction display proxies (6 lanes). DirCell writes 0..3 = Fwd/Rev/Pend/PingPong.
-        for (int l = 0; l < 6; ++l)
+        for (int l = 0; l < 6; ++l) {
             configParam(dirDispId(l), 0.f, 3.f, 0.f,
                         std::string(names[l]) + " direction");
+            configInput(dirModId(l), std::string(names[l]) + " direction gate-mod");
+        }
+        const char* delegNm[4] = {"MEL","OCT","REST","ACC"};
+        for (int l = 0; l < 4; ++l)
+            configInput(delegModId(l), std::string(delegNm[l]) + " delegation gate-mod");
     }
     void process(const ProcessArgs&) override;   // defined in .cpp (needs calcPlayhead)
+
+    // Gate edge detection state (mono, 1 channel per jack).
+    bool dirModPrev[6] = {};
+    bool delegModPrev[4] = {};
 
     json_t* dataToJson() override {
         json_t* root = json_object();

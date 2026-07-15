@@ -542,7 +542,6 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     void mirrorMonoExtraLanes() {
         Monsoon* m = getMonsoon();
         if (!m || !visualEditor || !onMonoTab()) return;
-        const int gs = m->engine.stepIndex;
         for (int el = dotModular::SandsGrid::POLY_LANES; el < dotModular::SandsGrid::EAST_LANES; ++el) {
             const int strand = el;   // identity, by the renumber above
             int mLen = std::max(1, m->engine.lor(strand, SequencerEngine::LOR_LEN));
@@ -1014,16 +1013,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         //    every frame, we would overwrite the bounce-induced sign flip with
         //    laneDirSign(Pendulum) = +1, undoing the bounce at the next promotion.
         if (onMonoTab() && !tab1MonoMirror()) {
-            // V1 editable (no Mono attached): East IS the mono editor → push to engine.
-            // Macro (if present) also pushes — both are editable, last writer wins.
-            for (int lane = 0; lane < 6; ++lane) {
-                int strand = dotModular::MONO_LANE_TO_STRAND[lane];
-                auto d = (SequencerEngine::LaneDir)(int)std::round(mod->params[dirDispId(lane)].getValue());
-                se->laneDirPending_[strand] = d;
-            }
+            // V1 editable (no Mono attached): East IS the mono editor.
+            // Step 4: NO sync needed. The DirCell writes dirDispId; syncDirBank()
+            // persists it to monoDirId(lane); the manager reads monoDirId and pushes
+            // to laneDirPending_. The widget must NOT overwrite dirDispId FROM engine.
         } else if (onMonoTab() && tab1MonoMirror()) {
-            // Mono is attached: Mono is the authority for mono direction. Sync the
-            // display proxy FROM the engine so the DirCell shows what Mono set (read-only).
+            // Mono is attached: Mono is the authority for mono direction.
+            // Sync the display proxy FROM the engine so the DirCell shows what Mono set.
             for (int lane = 0; lane < 6; ++lane) {
                 int strand = dotModular::MONO_LANE_TO_STRAND[lane];
                 mod->params[dirDispId(lane)].setValue((float)se->laneDirPending_[strand]);
@@ -1077,7 +1073,6 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // engine.polyLen/Off/Rot[voice][lane] (lane 0/1/2 = REST/MEL/OCT) hold the
         // post-CV values. With no CV these equal the edit values. Editing/drag use
         // the EDIT values, so this is display-only.
-        int gs = monsoon->engine.stepIndex;
         auto& eng = monsoon->engine;
         // Per-lane direction cue: mono tab uses laneSign_, poly tabs use the per-voice
         // sign directly (absolute direction, not relative to mono).
