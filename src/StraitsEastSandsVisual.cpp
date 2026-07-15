@@ -826,11 +826,16 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         for (int lane = 0; lane < 6; ++lane) {
             const int strand = dotModular::MONO_LANE_TO_STRAND[lane];
             // ── Direction: cycle Fwd→Rev→Pend→PingPong→Fwd, once per queued edge ──
+            // A 1-channel cable BROADCASTS to every target (VCV poly norm): a mono gate means
+            // "apply this everywhere", not "apply it to V1" — which is all ch0 would mean under
+            // the channel==tab convention. Poly cables stay per-channel.
+            const bool dBcast = (mod->dirModChans[lane] == 1);
             for (int ch = 0; ch < 16; ++ch) {
-                uint8_t n = mod->dirModEdges[lane][ch];
-                uint8_t d = (uint8_t)(n - dirModSeen[lane][ch]);   // unsigned diff: wrap-safe
+                const int src = dBcast ? 0 : ch;                  // which counter to read
+                uint8_t n = mod->dirModEdges[lane][src];
+                uint8_t d = (uint8_t)(n - dirModSeen[lane][src]);  // unsigned diff: wrap-safe
                 if (!d) continue;
-                dirModSeen[lane][ch] = n;
+                if (!dBcast || ch == 15) dirModSeen[lane][src] = n;   // broadcast: consume once, after all targets
                 // Read the CURRENT value from the engine (the per-target truth), never from
                 // the shared proxy — the proxy only ever holds the displayed target's value.
                 int nxt;
@@ -854,11 +859,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // lanes 4..5 -> varlegDelegId(pv, VAR|LEG), which is poly-only: mono's
             // VARIATION/LEGATO are mono strands East never owns, so ch0 is a no-op there.
             const int eng = (lane < 4) ? dotModular::EDITOR_TO_ENGINE_LANE[lane] : -1;
+            const bool gBcast = (mod->delegModChans[lane] == 1);
             for (int ch = 0; ch < 16; ++ch) {
-                uint8_t n = mod->delegModEdges[lane][ch];
-                uint8_t d = (uint8_t)(n - delegModSeen[lane][ch]);
+                const int src = gBcast ? 0 : ch;
+                uint8_t n = mod->delegModEdges[lane][src];
+                uint8_t d = (uint8_t)(n - delegModSeen[lane][src]);
                 if (!d) continue;
-                delegModSeen[lane][ch] = n;
+                if (!gBcast || ch == 15) delegModSeen[lane][src] = n;
                 if (!(d & 1)) continue;          // an even number of flips is a no-op
                 if (lane >= 4 && ch == 0) continue;   // mono has no VAR/LEG delegation
                 int storeId;
@@ -1379,6 +1386,7 @@ void StraitsEastSandsVisual::process(const ProcessArgs&) {
     if (gateModDiv.process()) {
         for (int lane = 0; lane < 6; ++lane) {
             auto& din = inputs[dirModId(lane)];
+            dirModChans[lane] = din.isConnected() ? (uint8_t)din.getChannels() : 0;
             if (din.isConnected()) {
                 int nch = std::min(din.getChannels(), 16);
                 for (int ch = 0; ch < nch; ++ch) {
@@ -1388,6 +1396,7 @@ void StraitsEastSandsVisual::process(const ProcessArgs&) {
                 }
             }
             auto& gin = inputs[delegModId(lane)];
+            delegModChans[lane] = gin.isConnected() ? (uint8_t)gin.getChannels() : 0;
             if (gin.isConnected()) {
                 int nch = std::min(gin.getChannels(), 16);
                 for (int ch = 0; ch < nch; ++ch) {
