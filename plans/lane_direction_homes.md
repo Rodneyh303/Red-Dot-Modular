@@ -61,9 +61,8 @@ editors already pick the mono authority: Mono expander if attached, else East's 
 ## Steps
 
 1. **East direction bank (inert).** `MonsoonIds::LANE_DIR_START`, 96 params = 16 slots × 6
-   strands, appended at END so existing patches load. 4-state `configSwitch`
-   (Forward/Reverse/Pendulum/PingPong), default Forward. Accessors `dirId(v,lane)`,
-   `monoDirId(lane)`. Nothing reads it yet.
+   strands, appended at END. 4-state `configSwitch` (Forward/Reverse/Pendulum/PingPong),
+   default Forward. Accessors `dirId(v,lane)`, `monoDirId(lane)`. Nothing reads it yet.
 2. **East cells + gate-mods write the bank** (still inert — nothing reads it). `DirCell` is a
    `ParamWidget` bound to the proxy and cannot know the voice, so persist on change in
    `step()`; gate-mods write `dirId(ch-1, lane)` / `monoDirId(lane)` directly.
@@ -77,6 +76,15 @@ editors already pick the mono authority: Mono expander if attached, else East's 
 control rate, far more often than the 60 Hz widget push, so step 3 before step 2 would push a
 still-default bank over the widget every frame and kill direction outright. The bank must be
 *correct* before anything reads it.
+
+**Patch compatibility is NOT a requirement** (this branch is pre-release). That removes what
+was the most fragile part of step 2: a one-time seed of the bank from the engine, guarded by
+a persisted `dirBankMigrated` flag, existed purely so an old patch's saved direction (living
+in Monsoon's JSON) survived the switchover. With no patches to preserve, the bank simply
+starts at its Forward defaults and is authoritative from the first frame — no seed, no flag,
+no once-only path to get wrong. Likewise step 3 can drop `laneDirV` from the JSON outright
+with no fallback, and the legacy `laneSign` + `lanePendulum` reconstruction in
+`MonsoonPersistenceManager` can go with it.
 
 ## Invariants
 

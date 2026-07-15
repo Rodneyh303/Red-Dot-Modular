@@ -884,23 +884,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
 
     void syncDirBank() {
         auto* mod = static_cast<StraitsEastSandsVisual*>(module);
-        Monsoon* m = getMonsoon();
-        if (!mod || !m) return;
-        SequencerEngine* se = &m->engine;
-
-        // One-time migration: seed the (new) bank from the engine, which at this point still
-        // holds the patch's saved direction from Monsoon's JSON. Without it, step 3 would push
-        // a default-Forward bank over saved settings. Guarded by a persisted flag so it runs
-        // exactly once per patch.
-        if (!mod->dirBankMigrated) {
-            for (int v = 0; v < 15; ++v)
-                for (int s = 0; s < dotModular::NUM_STRANDS; ++s)
-                    mod->params[dirId(v, s)].setValue((float)(int)se->laneDirVPending_[v][s]);
-            for (int s = 0; s < dotModular::NUM_STRANDS; ++s)
-                mod->params[monoDirId(s)].setValue((float)(int)se->laneDirPending_[s]);
-            mod->dirBankMigrated = true;
-        }
-
+        if (!mod) return;
         const int cv = currentVoice();                       // 1 = V1/mono, 2..16 = poly
         const bool mono = dotModular::VoiceResolver::isMono(cv);
         const int  pv   = dotModular::VoiceResolver::polyBankIndex(cv);
