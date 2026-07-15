@@ -167,14 +167,6 @@ namespace StraitsEastVisualIds {
     inline int varlegDelegId(int v, int lane) { return MonsoonIds::VARLEG_DELEG_START + v*2 + lane; }
     // Selected-voice display proxy for the VAR/LEG delegation cells. lane 0=VAR, 1=LEG.
     inline int varlegDelegDispId(int lane) { return MonsoonIds::VARLEG_DELEG_DISP_START + lane; }
-    // Per-voice LANE DIRECTION store (plans/lane_direction_store.md). 4-state per lane:
-    // 0=Forward 1=Reverse 2=Pendulum 3=PingPong (SequencerEngine::LaneDir). Poly-bank
-    // indexed like ownerId/varlegDelegId (v = 0..14 = V2..V16); lane = STRAND index 0..5.
-    // MonsoonExpanderManager::sync() reads this module-side and pushes it to the engine, so
-    // direction no longer depends on the widget pushing a display proxy.
-    inline int dirId(int v, int lane) { return MonsoonIds::LANE_DIR_START + v*6 + lane; }
-    // V1/mono direction store — the spare slot v=15, same trick as monoOwnerId.
-    inline int monoDirId(int lane) { return MonsoonIds::LANE_DIR_START + 15*6 + lane; }
     // (Macro mix-in send helpers relocated to StraitsMacroVisualIds under the control
     //  inversion — the send is a Macro concern now.)
     // Owner display proxy (selected-voice view; copied to/from per-voice on switch).
@@ -317,17 +309,6 @@ struct StraitsEastSandsVisual : Module {
         // inherit Macro, matching the poly ownerId and ownerDispId defaults (consistent
         // delegation convention; toggle per lane via the V1 owner cell).
         gateModDiv.setDivision(GATE_MOD_DIV);   // gate-mod scan runs at /8, not per sample
-        // Per-voice LANE DIRECTION store: 16 slots (0..14 = poly V2..V16, 15 = V1/mono) × 6
-        // strands. Real params, so Rack persists them and the manager can read them
-        // module-side. Default Forward = today's behaviour.
-        for (int v = 0; v < 16; ++v) {
-            const std::string vn = (v == 15) ? "V1 " : ("V" + std::to_string(v + 2) + " ");
-            for (int lane = 0; lane < 6; ++lane) {
-                configSwitch(MonsoonIds::LANE_DIR_START + v*6 + lane, 0.f, 3.f, 0.f,
-                             vn + "L" + std::to_string(lane) + " direction",
-                             {"Forward", "Reverse", "Pendulum", "PingPong"});
-            }
-        }
         for (int lane=0; lane<4; ++lane) {
             configSwitch(monoOwnerId(lane), 0.f,1.f,0.f,
                          "V1 L"+std::to_string(lane)+" base: inherit Macro / local East", {"Inherit Macro","Local East"});
