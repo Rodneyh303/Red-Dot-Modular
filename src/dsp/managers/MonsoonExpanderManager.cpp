@@ -57,6 +57,13 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
     // stands — so "no East ⇒ follow mono" holds even after East is removed mid-session (no
     // stale Local-East state). When East IS present, the block re-asserts Local East per param.
     for (int dv = 0; dv < 15; ++dv) { engine.setVarlegLocalEast(dv, 0, false); engine.setVarlegLocalEast(dv, 1, false); }
+    // Step 3 (plans/lane_direction_homes.md): poly direction is reset-then-pushed exactly like
+    // delegation above. The reset is the half that was missing while the engine was direction's
+    // home: nothing cleared laneDirV_, so pulling East out of the rack left poly direction
+    // applied forever. Now no East => Forward, same as no East => no delegation.
+    for (int dv = 0; dv < 15; ++dv)
+        for (int l = 0; l < dotModular::NUM_STRANDS; ++l)
+            engine.laneDirVPending_[dv][l] = SequencerEngine::LaneDir::Forward;
 
     if (eastLOR && (straits || eastVisual) && polyBaseActive) {
        // using namespace DeepStraitsSandsEastIds;
@@ -196,6 +203,20 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 // ignores it and reads mono's VAR/LEG position instead. lane 0 = VAR, 1 = LEG.
                 engine.setVarlegLocalEast(v, 0, eastLOR->params[MonsoonIds::VARLEG_DELEG_START + v*2 + 0].getValue() > 0.5f);
                 engine.setVarlegLocalEast(v, 1, eastLOR->params[MonsoonIds::VARLEG_DELEG_START + v*2 + 1].getValue() > 0.5f);
+
+                // Per-voice LANE DIRECTION, from East's bank — same shape as the delegation
+                // push above. This is what frees direction from the widget: the editor owns the
+                // datum, the manager pushes it module-side, the engine derives.
+                //
+                // Push ONLY laneDirVPending_, never laneSignV_/laneSignVPending_: advancePlayhead
+                // derives the sign for Forward/Reverse and OWNS it for Pendulum/PingPong (flipping
+                // at the LOR endpoint). Pushing a sign here would overwrite the bounce-induced flip
+                // with laneDirSign(Pendulum)=+1 every pass and the lane would never turn around.
+                for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
+                    int dv = (int)std::lround(math::clamp(
+                        eastLOR->params[StraitsEastVisualIds::dirId(v, l)].getValue(), 0.f, 3.f));
+                    engine.laneDirVPending_[v][l] = (SequencerEngine::LaneDir)dv;
+                }
 #if RULE2_DEBUG
                 {
                     // Throttled: ~15-line burst (covers all voices once) every ~131k iters.

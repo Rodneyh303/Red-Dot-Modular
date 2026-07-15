@@ -14,8 +14,10 @@ namespace StraitsEastVisualIds {
     static constexpr float ED_W        = 111.f;
     static constexpr float OWNER_X     = 205.f;
     static constexpr float DIR_X       = 212.f;
-    static constexpr float DIR_MOD_X   = 220.f;    // direction gate-mod jack column
-    static constexpr float DELEG_MOD_X = 228.f;    // delegation gate-mod jack column
+    // Column order matches the TOGGLE order left->right (delegation cell, then direction
+    // cell), so the jacks line up with the controls they modulate instead of crossing over.
+    static constexpr float DELEG_MOD_X = 220.f;    // delegation gate-mod jack column
+    static constexpr float DIR_MOD_X   = 228.f;    // direction gate-mod jack column
     static constexpr float PROB_OUT_X  = 236.f;    // prob-out jack column (shifted right)
     static constexpr int   N_ROWS      = dotModular::SandsGrid::POLY_LANES;  // 4 — 1 row per lane
     // ROW_TOP/ROW_BOT were DEAD here (nothing read them; rows come from ED_Y + ED_LANE_H) yet still
@@ -390,6 +392,11 @@ struct StraitsEastSandsVisual : Module {
     bool    delegModPrev[6][16]  = {};
     uint8_t dirModEdges[6][16]   = {};   // audio thread is the sole writer
     uint8_t delegModEdges[6][16] = {};
+    // Channel count of each connected mod cable. A 1-channel cable into a poly input is
+    // BROADCAST to every target (the VCV norm), rather than hitting only ch0 = V1 — a mono
+    // gate means "apply this everywhere", not "apply it to voice 1".
+    uint8_t dirModChans[6]   = {};
+    uint8_t delegModChans[6] = {};
 
     json_t* dataToJson() override {
         json_t* r = json_object();

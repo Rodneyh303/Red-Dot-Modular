@@ -602,12 +602,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             loadVoiceMacro(polyVoice());
             // Sync DirCell display proxy from the engine's per-voice direction so the
             // DirCell shows the incoming voice's actual state (not the outgoing voice's).
-            if (auto* m = getMonsoon()) {
+            // Step 3: read the BANK, which is now the home for poly direction — the engine is
+            // a derived cache. (Reading the engine would still work today, but it would keep
+            // the view coupled to the derived copy and re-open the door to display/engine drift.)
+            {
                 int pv = polyVoice();
-                for (int lane = 0; lane < 6; ++lane) {
-                    int strand = dotModular::MONO_LANE_TO_STRAND[lane];
-                    module->params[dirDispId(lane)].setValue((float)m->engine.laneDirVPending_[pv][strand]);
-                }
+                for (int lane = 0; lane < 6; ++lane)
+                    module->params[dirDispId(lane)].setValue(module->params[dirId(pv, lane)].getValue());
             }
         }
         // V1-editable: the editor is refreshed from the engine mono strands by the
@@ -825,11 +826,16 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         for (int lane = 0; lane < 6; ++lane) {
             const int strand = dotModular::MONO_LANE_TO_STRAND[lane];
             // ── Direction: cycle Fwd→Rev→Pend→PingPong→Fwd, once per queued edge ──
+            // A 1-channel cable BROADCASTS to every target (VCV poly norm): a mono gate means
+            // "apply this everywhere", not "apply it to V1" — which is all ch0 would mean under
+            // the channel==tab convention. Poly cables stay per-channel.
+            const bool dBcast = (mod->dirModChans[lane] == 1);
             for (int ch = 0; ch < 16; ++ch) {
-                uint8_t n = mod->dirModEdges[lane][ch];
-                uint8_t d = (uint8_t)(n - dirModSeen[lane][ch]);   // unsigned diff: wrap-safe
+                const int src = dBcast ? 0 : ch;                  // which counter to read
+                uint8_t n = mod->dirModEdges[lane][src];
+                uint8_t d = (uint8_t)(n - dirModSeen[lane][src]);  // unsigned diff: wrap-safe
                 if (!d) continue;
-                dirModSeen[lane][ch] = n;
+                if (!dBcast || ch == 15) dirModSeen[lane][src] = n;   // broadcast: consume once, after all targets
                 // Read the CURRENT value from the engine (the per-target truth), never from
                 // the shared proxy — the proxy only ever holds the displayed target's value.
                 int nxt;
@@ -853,11 +859,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // lanes 4..5 -> varlegDelegId(pv, VAR|LEG), which is poly-only: mono's
             // VARIATION/LEGATO are mono strands East never owns, so ch0 is a no-op there.
             const int eng = (lane < 4) ? dotModular::EDITOR_TO_ENGINE_LANE[lane] : -1;
+            const bool gBcast = (mod->delegModChans[lane] == 1);
             for (int ch = 0; ch < 16; ++ch) {
-                uint8_t n = mod->delegModEdges[lane][ch];
-                uint8_t d = (uint8_t)(n - delegModSeen[lane][ch]);
+                const int src = gBcast ? 0 : ch;
+                uint8_t n = mod->delegModEdges[lane][src];
+                uint8_t d = (uint8_t)(n - delegModSeen[lane][src]);
                 if (!d) continue;
-                delegModSeen[lane][ch] = n;
+                if (!gBcast || ch == 15) delegModSeen[lane][src] = n;
                 if (!(d & 1)) continue;          // an even number of flips is a no-op
                 if (lane >= 4 && ch == 0) continue;   // mono has no VAR/LEG delegation
                 int storeId;
@@ -1021,13 +1029,16 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 mod->params[dirDispId(lane)].setValue((float)se->laneDirPending_[strand]);
             }
         } else if (selectedVoice >= 1) {
-            // Poly tab: direction applies to this voice's lanes (laneDirV_).
-            int pv = polyVoice();
-            for (int lane = 0; lane < 6; ++lane) {
-                int strand = dotModular::MONO_LANE_TO_STRAND[lane];
-                auto d = (SequencerEngine::LaneDir)(int)std::round(mod->params[dirDispId(lane)].getValue());
-                se->laneDirVPending_[pv][strand] = d;
-            }
+            // Step 3 (plans/lane_direction_homes.md): the poly push is GONE. East's direction
+            // BANK is the home now and MonsoonExpanderManager::sync() pushes it into the engine
+            // module-side, exactly as it already does for LOR and delegation. syncDirBank()
+            // persists a DirCell edit into this voice's bank slot; the engine is derived.
+            //
+            // Deleting this is the point of the step: an unconditional per-frame push made the
+            // display proxy an AUTHORITY, which is what smeared one voice's direction onto
+            // another and made gate-mods fight the frame loop. A view must not write its model
+            // on a timer.
+            // (Mono still pushes above until step 4 moves it to the Mono expander.)
         }
         // (Spread target mode is now pulled from the engine by SpreadManager —
         // Monsoon::process mirrors the menu setting onto engine.pe each frame. No
@@ -1375,6 +1386,7 @@ void StraitsEastSandsVisual::process(const ProcessArgs&) {
     if (gateModDiv.process()) {
         for (int lane = 0; lane < 6; ++lane) {
             auto& din = inputs[dirModId(lane)];
+            dirModChans[lane] = din.isConnected() ? (uint8_t)din.getChannels() : 0;
             if (din.isConnected()) {
                 int nch = std::min(din.getChannels(), 16);
                 for (int ch = 0; ch < nch; ++ch) {
@@ -1384,6 +1396,7 @@ void StraitsEastSandsVisual::process(const ProcessArgs&) {
                 }
             }
             auto& gin = inputs[delegModId(lane)];
+            delegModChans[lane] = gin.isConnected() ? (uint8_t)gin.getChannels() : 0;
             if (gin.isConnected()) {
                 int nch = std::min(gin.getChannels(), 16);
                 for (int ch = 0; ch < nch; ++ch) {

@@ -19,8 +19,10 @@ ED_X, ED_Y = 88.0, 14.0
 ED_W = 111.0        # editor width (fixed; no longer tied to PROB_OUT_X — matches hpp)
 OWNER_X = 205.0     # owner-source cell column, right of the editor (matches hpp)
 DIR_X = 212.0       # direction cell column (Fwd/Rev/Pend/PingPong), right of owner (matches hpp)
-DIR_MOD_X = 220.0   # direction gate-mod jack column (gate cycles Fwd→Rev→Pend→PingPong)
-DELEG_MOD_X = 228.0 # delegation gate-mod jack column (gate flips local/delegated)
+# Jack columns follow the TOGGLE order left->right (owner/delegation cell, then dir cell),
+# so each jack sits under the control it modulates instead of crossing over.
+DELEG_MOD_X = 220.0 # delegation gate-mod jack column (gate flips local/delegated)
+DIR_MOD_X = 228.0   # direction gate-mod jack column (gate cycles Fwd→Rev→Pend→PingPong)
 PROB_OUT_X = 236.0  # right-strip jack column, pushed right by the mod jack columns (matches hpp)
 ED_H = 84.0   # 6 lanes x 14mm — East shows VARIATION/LEGATO (EAST_EXTRA_LANES.md stage 1)
 ED_LANES = 6  # editor lanes drawn; control rows stay N=4 (spread lanes only)
