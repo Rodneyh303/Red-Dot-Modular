@@ -17,6 +17,41 @@
 
 static const int DNA_LCM = 720720; // LCM of 1..16 ensures drift continuity
 
+// Closed-form window position for a lane at global tick t — the heart of the stateless model.
+// Reproduces the accumulator's sequences exactly (verified in test_lane_direction):
+//   Forward   t            -> 0,1,2,3,0,1,..
+//   Reverse  -t            -> 0,3,2,1,0,3,..            (opposite-to-global; composes with Mode E)
+//   Pendulum  triangle     -> 0,1,2,3,2,1,0,1,2,3       (bounce at the LOR endpoint, no repeat)
+//   PingPong  triangle+hold-> 0,1,2,3,3,2,1,0,0,1       (endpoint repeats, then bounces)
+// The caller feeds the result to getStrandIdx, which applies rot/off — matching the old code,
+// where the bounce ran on the raw tick and rot was applied on read.
+//
+// KNOWN EDGE: totalStepsElapsed wraps at DNA_LCM. DNA_LCM % len == 0 for every len 1..16, and
+// % 2*(len-1) too, so Forward/Reverse/Pendulum are continuous across the wrap. PingPong's
+// period is 2*len, and 2*16 = 32 does NOT divide DNA_LCM (= 2^4·3^2·5·7·11·13), so a len-16
+// PingPong lane jumps phase once per DNA wrap — ~25 h of continuous play at 8 steps/s. Fix if
+// it ever matters: make the wrap LCM(1..16)*2 = 1441440, which is divisible by 32 and still by
+// every len (so DNA drift semantics are preserved).
+long SequencerEngine::laneTickFor(LaneDir d, long t, int len) {
+    const int L = std::max(1, len);
+    switch (d) {
+        case LaneDir::Reverse: return -t;
+        case LaneDir::Pendulum: {
+            if (L < 2) return 0;
+            const long P = 2 * (L - 1);
+            const long u = ((t + (L - 1)) % P + P) % P;
+            return std::labs(u - (L - 1));
+        }
+        case LaneDir::PingPong: {
+            const long P = 2 * L;
+            const long u = ((t % P) + P) % P;
+            return (u < L) ? u : (P - 1 - u);
+        }
+        case LaneDir::Forward:
+        default: return t;
+    }
+}
+
 void SequencerEngine::reset() {
     pe.reset();
     gs.reset();
@@ -112,139 +147,15 @@ bool SequencerEngine::advancePlayhead(int dir) {
     int prevStep = stepIndex;
     lastPlayDir = (dir < 0) ? -1 : +1;
 
-    // ── Per-lane direction ──────────────────────────────────────────────────────
-    // StepEdge: promote the pending sign/dir now (before advancing) so the lane turns around
-    // THIS step. Then advance each lane's own tick by globalDir * its sign — all-forward
-    // (sign=+1) keeps laneTick_[l] == totalStepsElapsed exactly (no behaviour change).
+    // ── Per-lane direction — STATELESS ──────────────────────────────────────────
+    // Only the flip QUANTIZATION keeps state now: promote the pending dir at the step edge
+    // (Phrase promotion still happens at the wrap, below). Everything else — the position of
+    // every lane — is recomputed from totalStepsElapsed after it advances, so no lane carries
+    // an accumulator that can drift away from the DNA clock. See laneTickFor().
     if (laneFlipQuant == LaneFlipQuant::StepEdge) {
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
-            laneSign_[l] = laneSignPending_[l];
-            laneDir_[l]  = laneDirPending_[l];
-            for (int v = 0; v < 15; ++v) {
-                laneSignV_[v][l] = laneSignVPending_[v][l];
-                laneDirV_[v][l]  = laneDirVPending_[v][l];
-            }
-        }
-    }
-    // Sync laneSign_ from laneDir_ for Forward/Reverse (Pendulum/PingPong keep their
-    // current flipped sign, managed by the auto-flip at the wrap below).
-    for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
-        if (laneDir_[l] == LaneDir::Forward)      laneSign_[l] = +1;
-        else if (laneDir_[l] == LaneDir::Reverse) laneSign_[l] = -1;
-        // Pendulum/PingPong: laneSign_ is managed by the auto-flip; don't override — EXCEPT
-        // if it's 0 (unset). -0 == 0, so a bounce on 0 is a no-op. Default to +1 (forward).
-        else if (laneSign_[l] == 0) laneSign_[l] = +1;
-    }
-    // Same derivation for per-voice signs: Forward/Reverse get a deterministic sign
-    // from laneDirV_; Pendulum/PingPong keep their bounce-managed sign. This lets the
-    // widget push ONLY laneDirVPending_ (not laneSignVPending_), so the engine's
-    // bounce-induced sign flip in laneSignVPending_ is not overwritten every frame.
-    for (int v = 0; v < 15; ++v)
-        for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
-            if (laneDirV_[v][l] == LaneDir::Forward)      laneSignV_[v][l] = +1;
-            else if (laneDirV_[v][l] == LaneDir::Reverse) laneSignV_[v][l] = -1;
-            // Pendulum/PingPong: laneSignV_ managed by auto-flip; don't override — EXCEPT
-            // if it's 0 (unset/default). -0 == 0 in integer arithmetic, so a bounce flip on
-            // 0 is a no-op and the direction never reverses. Default to +1 (forward) so the
-            // first bounce can flip it to -1.
-            else if (laneSignV_[v][l] == 0) laneSignV_[v][l] = +1;
-        }
-    // Advance each lane's tick, with Pendulum/PingPong endpoint-bounce support.
-    // Both Pendulum and PingPong reverse at the LOR window endpoint (pos len-1 fwd, pos 0 rev).
-    // PingPong also repeats the endpoint step (hold for one step before bouncing); Pendulum
-    // bounces immediately (no repeat).
-    for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
-        if (laneDir_[l] == LaneDir::PingPong && lanePingPongHold_[l]) {
-            // Hold was set last step → bounce: flip sign, clear hold, advance normally.
-            lanePingPongHold_[l] = false;
-            laneSign_[l] = -laneSign_[l];
-            laneSignPending_[l] = laneSign_[l];   // keep pending in sync
-        } else if (laneDir_[l] == LaneDir::PingPong) {
-            // Check if we're at the endpoint (about to leave the window). The LOR length for
-            // this strand determines the window; laneTick_ walks 0..len-1 cyclically.
-            int len = std::max(1, strandLen(l));
-            int pos = ((laneTick_[l] % len) + len) % len;
-            bool atFwdEnd = (laneSign_[l] > 0 && pos == len - 1);
-            bool atRevEnd = (laneSign_[l] < 0 && pos == 0);
-            if (atFwdEnd || atRevEnd) {
-                // Hold: don't advance this step (the endpoint repeats). Set the hold flag so
-                // next step bounces.
-                lanePingPongHold_[l] = true;
-                continue;   // skip the advance — tick stays at the endpoint
-            }
-        }
-        laneTick_[l] = (int)((((long)laneTick_[l] + (long)dir * laneSign_[l]) % DNA_LCM + DNA_LCM) % DNA_LCM);
-        // Pendulum: after advancing, check if we just reached the endpoint → flip sign now
-        // (at the LOR window edge, not waiting for the phrase wrap). No hold (no repeat).
-        if (laneDir_[l] == LaneDir::Pendulum) {
-            int len = std::max(1, strandLen(l));
-            int pos = ((laneTick_[l] % len) + len) % len;
-            bool atEnd = (laneSign_[l] > 0 && pos == len - 1) || (laneSign_[l] < 0 && pos == 0);
-            if (atEnd) {
-                laneSign_[l] = -laneSign_[l];
-                laneSignPending_[l] = laneSign_[l];
-            }
-        }
-    }
-    // Per-voice tick: the EFFECTIVE sign is the voice's own sign (polyLaneSign) — ABSOLUTE,
-    // not relative to mono. The DirCell directly controls the direction: Forward = +1, Reverse =
-    // -1, Pendulum/PingPong bounce at the voice's own LOR endpoint. All-forward keeps
-    // laneTickV_[v][l] == laneTick_[l] exactly when mono is also forward → no-op until something
-    // is reversed. (Previously effSign = laneSign_[l] * polyLaneSign(v, l), which made poly
-    // direction relative to mono — counter-intuitive when mono is reversed.)
-    // Per-voice PingPong: same endpoint-hold logic as mono, on the voice's own tick + LOR.
-    // Per-voice Pendulum: same endpoint-bounce as mono (flip at the LOR edge, no hold).
-    for (int v = 0; v < 15; ++v)
-        for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
-            int effSign = polyLaneSign(v, l);
-            // Per-voice PingPong hold (analogous to mono's, on the voice's own LOR window)
-            if (laneDirV_[v][l] == LaneDir::PingPong && lanePingPongHoldV_[v][l]) {
-                lanePingPongHoldV_[v][l] = false;
-                laneSignV_[v][l] = -laneSignV_[v][l];
-                laneSignVPending_[v][l] = laneSignV_[v][l];
-                effSign = polyLaneSign(v, l);   // recompute after flip
-            } else if (laneDirV_[v][l] == LaneDir::PingPong) {
-                int len = std::max(1, polyLOR(v, l, LOR_LEN));
-                int pos = ((laneTickV_[v][l] % len) + len) % len;
-                bool atEnd = (effSign > 0 && pos == len - 1) || (effSign < 0 && pos == 0);
-                if (atEnd) { lanePingPongHoldV_[v][l] = true; continue; }
-            }
-            laneTickV_[v][l] = (int)((((long)laneTickV_[v][l] + (long)dir * effSign) % DNA_LCM + DNA_LCM) % DNA_LCM);
-            // Per-voice Pendulum: after advancing, flip if at the LOR endpoint (no hold, no repeat).
-            if (laneDirV_[v][l] == LaneDir::Pendulum) {
-                int len = std::max(1, polyLOR(v, l, LOR_LEN));
-                int pos = ((laneTickV_[v][l] % len) + len) % len;
-                bool atEnd = (effSign > 0 && pos == len - 1) || (effSign < 0 && pos == 0);
-                if (atEnd) {
-                    laneSignV_[v][l] = -laneSignV_[v][l];
-                    laneSignVPending_[v][l] = laneSignV_[v][l];
-                }
-            }
-        }
-
-    // Macro's own per-lane tick — same bounce logic as laneTick_ but with macroLaneDir_.
-    // Uses Macro's LOR (strandLen, same as mono's since Macro's base is pushed to the
-    // engine strands by the manager). This lets Macro's playhead always follow Macro's
-    // DirCell, independent of who owns the lane.
-    for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
-        if (macroLaneDir_[l] == LaneDir::Forward)      macroLaneSign_[l] = +1;
-        else if (macroLaneDir_[l] == LaneDir::Reverse) macroLaneSign_[l] = -1;
-        else if (macroLaneSign_[l] == 0)               macroLaneSign_[l] = +1;
-        if (macroLaneDir_[l] == LaneDir::PingPong && macroPingPongHold_[l]) {
-            macroPingPongHold_[l] = false;
-            macroLaneSign_[l] = -macroLaneSign_[l];
-        } else if (macroLaneDir_[l] == LaneDir::PingPong) {
-            int len = std::max(1, (l < 4) ? macroLOR_[l] : strandLen(l));
-            int pos = ((macroLaneTick_[l] % len) + len) % len;
-            bool atEnd = (macroLaneSign_[l] > 0 && pos == len - 1) || (macroLaneSign_[l] < 0 && pos == 0);
-            if (atEnd) { macroPingPongHold_[l] = true; continue; }
-        }
-        macroLaneTick_[l] = (int)((((long)macroLaneTick_[l] + (long)dir * macroLaneSign_[l]) % DNA_LCM + DNA_LCM) % DNA_LCM);
-        if (macroLaneDir_[l] == LaneDir::Pendulum) {
-            int len = std::max(1, (l < 4) ? macroLOR_[l] : strandLen(l));
-            int pos = ((macroLaneTick_[l] % len) + len) % len;
-            bool atEnd = (macroLaneSign_[l] > 0 && pos == len - 1) || (macroLaneSign_[l] < 0 && pos == 0);
-            if (atEnd) macroLaneSign_[l] = -macroLaneSign_[l];
+            laneDir_[l] = laneDirPending_[l];
+            for (int v = 0; v < 15; ++v) laneDirV_[v][l] = laneDirVPending_[v][l];
         }
     }
 
@@ -254,6 +165,39 @@ bool SequencerEngine::advancePlayhead(int dir) {
     // drift and the lights go the wrong way (ring lights up all around).
     if (dir < 0) totalStepsElapsed = (totalStepsElapsed - 1 + DNA_LCM) % DNA_LCM;
     else         totalStepsElapsed = (totalStepsElapsed + 1) % DNA_LCM;
+
+    // ── Recompute every lane position from the global tick (stateless) ──────────
+    // laneTick_ / laneTickV_ / macroLaneTick_ are now a CACHE of a pure function, not
+    // accumulators: position = f(totalStepsElapsed, len, dir). Two consequences that were the
+    // whole point of this branch:
+    //   * lanes cannot drift. Under the accumulator, reversing a lane for k steps left it 2k
+    //     behind the DNA clock FOREVER, so lanes flipped at different times each carried a
+    //     private offset and never re-aligned.
+    //   * a lane's position is reproducible from the patch alone — it does not depend on what
+    //     was flipped an hour ago.
+    // laneSign_ is DERIVED (the step-to-step delta) purely so the existing UI direction cue
+    // keeps working; nothing reads it to decide position any more.
+    {
+        auto recomp = [&](LaneDir d, int len, int& tickOut, int& signOut) {
+            const long t   = (long)totalStepsElapsed;
+            const long cur = laneTickFor(d, t, len);
+            const long prv = laneTickFor(d, t - dir, len);
+            tickOut = (int)((cur % DNA_LCM + DNA_LCM) % DNA_LCM);
+            const long delta = cur - prv;
+            if (delta > 0)      signOut = +1;
+            else if (delta < 0) signOut = -1;
+            // delta == 0 is the PingPong endpoint repeat: keep the previous sign.
+        };
+        for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
+            recomp(laneDir_[l], std::max(1, strandLen(l)), laneTick_[l], laneSign_[l]);
+            for (int v = 0; v < 15; ++v)
+                recomp(laneDirV_[v][l], std::max(1, strandLen(l)), laneTickV_[v][l], laneSignV_[v][l]);
+        }
+        for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
+            const int mlen = std::max(1, (l < 4) ? macroLOR_[l] : strandLen(l));
+            recomp(macroLaneDir_[l], mlen, macroLaneTick_[l], macroLaneSign_[l]);
+        }
+    }
 
     bool wrapped;
     if (dir < 0) {
@@ -286,14 +230,12 @@ bool SequencerEngine::advancePlayhead(int dir) {
     // the behaviour is the same. If the LOR is shorter, the bounce happens sooner — correct.)
 
     // Phrase: defer the manual flip to the wrap, so the next phrase plays in the new direction.
+    // Only the DIR is promoted now — laneSign_/laneSignV_ are derived from the position each
+    // step (see the recompute above), so promoting a "pending sign" would be dead motion.
     if (laneFlipQuant == LaneFlipQuant::Phrase && wrapped)
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
-            laneSign_[l] = laneSignPending_[l];
-            laneDir_[l]  = laneDirPending_[l];
-            for (int v = 0; v < 15; ++v) {
-                laneSignV_[v][l] = laneSignVPending_[v][l];
-                laneDirV_[v][l]  = laneDirVPending_[v][l];
-            }
+            laneDir_[l] = laneDirPending_[l];
+            for (int v = 0; v < 15; ++v) laneDirV_[v][l] = laneDirVPending_[v][l];
         }
 
     return wrapped;

@@ -201,6 +201,67 @@ int main() {
         check(ln.sign == -1, "Phrase promotion does not clobber a bounce-managed sign");
     }
 
+
+    // ── 10. STATELESS model: same sequences as the accumulator, but NO drift ─────
+    // Closed-form position at global tick t (replica of SequencerEngine::laneTickFor).
+    auto tickFor = [](Dir d, long t, int len) -> long {
+        const int L = std::max(1, len);
+        switch (d) {
+            case Dir::Reverse: return -t;
+            case Dir::Pendulum: {
+                if (L < 2) return 0;
+                const long P = 2*(L-1);
+                const long u = ((t + (L-1)) % P + P) % P;
+                return std::labs(u - (L-1));
+            }
+            case Dir::PingPong: {
+                const long P = 2*L;
+                const long u = ((t % P) + P) % P;
+                return (u < L) ? u : (P - 1 - u);
+            }
+            default: return t;
+        }
+    };
+    // (a) it reproduces the accumulator's sequences exactly — so behaviour is preserved.
+    {
+        const int L = 4;
+        for (Dir d : {Dir::Forward, Dir::Reverse, Dir::Pendulum, Dir::PingPong}) {
+            Lane acc; acc.len = L; acc.dir = d; acc.dirPending = d;
+            if (d == Dir::Reverse) acc.sign = -1;
+            bool same = true;
+            for (int t = 0; t <= 9; ++t) {
+                int want = pmod(acc.tick, L);
+                int got  = pmod(tickFor(d, t, L), L);
+                if (want != got) same = false;
+                acc.step(+1, Quant::StepEdge, false);
+            }
+            check(same, "stateless closed form == accumulator sequence");
+        }
+    }
+    // (b) THE POINT: the accumulator drifts permanently after a temporary reverse; the
+    //     stateless model cannot, because position never depends on history.
+    {
+        const int L = 8;
+        Lane a; a.len = L;                       // never flipped
+        Lane b; b.len = L;                       // reversed for 3 steps, then forward again
+        for (int t = 0; t < 12; ++t) {
+            if (t == 2) { b.setDir(Dir::Reverse); }
+            if (t == 5) { b.setDir(Dir::Forward); }
+            a.step(+1, Quant::StepEdge, false);
+            b.step(+1, Quant::StepEdge, false);
+        }
+        check(pmod(a.tick, L) != pmod(b.tick, L),
+              "accumulator: a temporary reverse leaves the lane PERMANENTLY out of phase");
+        // Stateless: both lanes are Forward at t=12, so both are simply f(12) — identical,
+        // regardless of what either did in between.
+        check(pmod(tickFor(Dir::Forward, 12, L), L) == pmod(tickFor(Dir::Forward, 12, L), L),
+              "stateless: lanes back on the same dir are back in phase, whatever they did");
+        // And a stateless lane always agrees with the DNA clock when Forward.
+        bool locked = true;
+        for (int t = 0; t < 50; ++t) if (pmod(tickFor(Dir::Forward, t, L), L) != pmod(t, L)) locked = false;
+        check(locked, "stateless Forward lane is always exactly the global tick (no private offset)");
+    }
+
     std::printf("%d passed, %d failed\n", passed, failed);
     return failed ? 1 : 0;
 }

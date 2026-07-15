@@ -128,6 +128,12 @@ struct SequencerEngine {
     // PingPong endpoint-repeat: when true, the tick stays at the endpoint for one extra step
     // (the endpoint step repeats) before the direction flips. Per-strand hold flag.
     bool lanePingPongHold_[dotModular::NUM_STRANDS] = {};
+    // Closed-form window position for a lane at global tick t (STATELESS model). Position is
+    // f(totalStepsElapsed, len, dir) — no accumulator — so lanes cannot drift out of phase with
+    // the DNA clock or each other, whenever their direction was flipped. laneTick_* below are
+    // now a CACHE of this, recomputed each step in advancePlayhead, kept only so existing
+    // readers (displays, prob-outs) need no change. Implemented in the .cpp.
+    static long laneTickFor(LaneDir d, long t, int len);
     // Macro's own per-lane tick — always follows Macro's direction, independent of
     // who owns the lane. Same bounce logic as laneTick_. Advanced in advancePlayhead.
     // Macro's widget reads this for its playhead, so Macro's display always reflects
@@ -407,7 +413,10 @@ struct SequencerEngine {
     // 0..1. Used to assemble the poly probability cables (channels 2..1+nVoices).
     inline float polyLaneProbability(int polyLane, int voice) const {
         if (voice < 0 || voice >= 15 || polyLane < 0 || polyLane >= PL_LANES) return 0.f;
-        int idx = getStrandIdx(totalStepsElapsed, polyLenE(voice, polyLane),
+        // Follow this voice's own lane position, not the raw global tick: a reversed lane's
+        // notes come from polyLaneTick, so its probability CV must too or the CV reports a
+        // different cell than the one being played (they silently disagreed before).
+        int idx = getStrandIdx(polyLaneTick(voice, polyLane), polyLenE(voice, polyLane),
                                polyOffE(voice, polyLane), polyRotE(voice, polyLane));
         idx &= 0x0F;
         // Switch collapsed: polyRandom takes the lane directly (unified storage), so no per-case map.
@@ -427,7 +436,7 @@ struct SequencerEngine {
     // Step indices (for S&H edge detection) matching the probability accessors above.
     inline int polyLaneStep(int polyLane, int voice) const {
         if (voice < 0 || voice >= 15 || polyLane < 0 || polyLane >= PL_LANES) return -1;
-        return getStrandIdx(totalStepsElapsed, polyLenE(voice, polyLane),
+        return getStrandIdx(polyLaneTick(voice, polyLane), polyLenE(voice, polyLane),
                             polyOffE(voice, polyLane), polyRotE(voice, polyLane)) & 0x0F;
     }
     // Engine poly lane (PL_REST..PL_ACCENT) → strand index. Single mapping (was inlined in
@@ -455,7 +464,9 @@ struct SequencerEngine {
     }
     inline int masterLaneStep(int polyLane) const {
         int strand = polyLaneStrand(polyLane);
-        return getStrandIdx(totalStepsElapsed, strandLen(strand),
+        // Mono lane position, direction-aware (was the raw global tick, so the master
+        // prob-out ignored per-lane direction while the notes followed it).
+        return getStrandIdx(laneTick_[strand], strandLen(strand),
                             strandOff(strand), strandRot(strand)) & 0x0F;
     }
     inline float masterLaneProbability(int polyLane) const {
