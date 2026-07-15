@@ -134,6 +134,20 @@ struct SequencerEngine {
     // now a CACHE of this, recomputed each step in advancePlayhead, kept only so existing
     // readers (displays, prob-outs) need no change. Implemented in the .cpp.
     static long laneTickFor(LaneDir d, long t, int len);
+
+    // Clear the WALK state of the bouncing lanes (Pendulum/PingPong) so they restart from the
+    // window origin. Forward/Reverse need nothing — they are a closed form of totalStepsElapsed
+    // and follow it automatically. Called on hard restart, where zeroing the master clock alone
+    // would leave a walker carrying on and silently ignoring RESET.
+    void resetLaneWalk() {
+        for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
+            laneTick_[s] = 0; laneSign_[s] = 1; lanePingPongHold_[s] = false;
+            macroLaneTick_[s] = 0; macroLaneSign_[s] = 1; macroPingPongHold_[s] = false;
+            for (int v = 0; v < 15; ++v) {
+                laneTickV_[v][s] = 0; laneSignV_[v][s] = 1; lanePingPongHoldV_[v][s] = false;
+            }
+        }
+    }
     // Macro's own per-lane tick — always follows Macro's direction, independent of
     // who owns the lane. Same bounce logic as laneTick_. Advanced in advancePlayhead.
     // Macro's widget reads this for its playhead, so Macro's display always reflects

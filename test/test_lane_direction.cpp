@@ -262,6 +262,48 @@ int main() {
         check(locked, "stateless Forward lane is always exactly the global tick (no private offset)");
     }
 
+
+    // ── 11. HYBRID: positions stateless, trajectories walked ────────────────────
+    // Forward/Reverse are POSITIONS (closed form); Pendulum/PingPong are TRAJECTORIES (walker).
+    // (a) LOR MODULATION — the objection that killed full stateless. `len` is CV-modulated at
+    //     control rate. A closed-form bouncer's period is 2(len-1)/2*len, so its phase
+    //     recomputes and the lane TELEPORTS on every modulation step; a walker just turns
+    //     around at the new endpoint.
+    {
+        const int L1 = 4, L2 = 7;
+        // Closed-form pendulum: same t, len nudged 4 -> 7. Phase is recomputed => jump.
+        long a = tickFor(Dir::Pendulum, 5, L1);
+        long b = tickFor(Dir::Pendulum, 5, L2);
+        check(a != b, "closed-form bouncer: changing len at fixed t moves the lane (teleports)");
+        // Walker: len change cannot move it — position is where it walked to; only the
+        // BOUNCE POINT moves. Step it with len=4, then again with len=7, and it advances by
+        // exactly one step either way.
+        Lane w; w.len = L1; w.dir = Dir::Pendulum; w.dirPending = Dir::Pendulum;
+        w.step(+1, Quant::StepEdge, false);
+        long before = w.tick;
+        w.len = L2;                                  // modulate the window mid-walk
+        w.step(+1, Quant::StepEdge, false);
+        check(std::labs(w.tick - before) == 1, "walker bouncer: len modulation never teleports it");
+    }
+    // (b) The closed-form modes are unaffected by len — the formula never mentions it, so
+    //     modulation cannot perturb the no-drift guarantee.
+    {
+        bool same = true;
+        for (int L = 1; L <= 16; ++L)
+            if (tickFor(Dir::Forward, 37, L) != 37 || tickFor(Dir::Reverse, 37, L) != -37) same = false;
+        check(same, "Forward/Reverse tick is independent of len (LOR modulation cannot drift them)");
+    }
+    // (c) RESET: zeroing the master clock syncs the closed-form lanes for free, but a walker
+    //     carries on — which is why handleRestart must clear the walk state (it did not, so
+    //     RESET silently stopped syncing polymeters once lanes got their own tick).
+    {
+        check(tickFor(Dir::Forward, 0, 8) == 0 && tickFor(Dir::Reverse, 0, 8) == 0,
+              "RESET: closed-form lanes land on Beat 1 from t=0 automatically");
+        Lane w; w.len = 8; w.dir = Dir::Pendulum; w.dirPending = Dir::Pendulum;
+        for (int i = 0; i < 5; ++i) w.step(+1, Quant::StepEdge, false);
+        check(w.tick != 0, "RESET: a walker does NOT return to Beat 1 on its own => must be cleared");
+    }
+
     std::printf("%d passed, %d failed\n", passed, failed);
     return failed ? 1 : 0;
 }
