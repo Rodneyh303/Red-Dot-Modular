@@ -608,7 +608,22 @@ namespace MonsoonIds {
         VARLEG_ATTEN_START = VARLEG_DELEG_DISP_END,
         VARLEG_ATTEN_END = VARLEG_ATTEN_START + 96,
 
-        NUM_PARAMS = VARLEG_ATTEN_END
+        // ── Per-voice LANE DIRECTION store (plans/lane_direction_store.md step 1) ──
+        // Direction was the ONLY per-voice datum on East with no store: it lived solely in
+        // engine.laneDirVPending_, so the widget was the only thing that could populate it
+        // per voice — which forced a per-frame proxy→engine push (a GUI dependency) and made
+        // the display proxy a second authority (the source of the direction-smearing bugs).
+        // With a store, MonsoonExpanderManager::sync() pushes it module-side exactly as it
+        // already does for VARLEG_DELEG, and the proxy (dirDispId) becomes a pure view.
+        //
+        // 4-state per lane: 0=Forward 1=Reverse 2=Pendulum 3=PingPong (SequencerEngine::LaneDir).
+        // Poly-bank indexed like MACRO_OWN / VARLEG_DELEG (v = 0..14 = V2..V16); V1/mono uses
+        // the spare slot v=15, the same convention as monoOwnerId. 16 × 6 = 96. Appended at END.
+        //   index = LANE_DIR_START + v*6 + lane   (v=0..14 poly bank, 15 = V1/mono; lane = strand 0..5)
+        LANE_DIR_START = VARLEG_ATTEN_END,
+        LANE_DIR_END = LANE_DIR_START + 96,
+
+        NUM_PARAMS = LANE_DIR_END
     };
 
     enum InputIds {
