@@ -11,6 +11,36 @@
 
 using namespace rack;
 
+// Who owns V1/mono direction on `lane`? The ONE place that decides — see the header.
+// Precedence:
+//   Mono present and owns the lane  -> Mono's cell   (Mono always owns VAR/LEG)
+//   otherwise Macro present         -> Macro's cell  (lanes 0..3 only; Macro has no VAR/LEG)
+//   otherwise East present          -> East's V1 slot (East is the mono editor)
+//   otherwise                       -> nothing (caller leaves the lane Forward)
+MonsoonExpanderManager::MonoDirSrc MonsoonExpanderManager::monoDirAuthority(int lane) const {
+    MonoDirSrc r;
+    if (lane < 0 || lane >= dotModular::NUM_STRANDS) return r;
+    auto* monoVis  = cachedSandsVisualExpander;
+    auto* macroVis = cachedMacroSandsVisual;
+    auto* eastVis  = cachedEastSandsVisual;
+    const bool varleg = (lane >= 4);          // VARIATION / LEGATO: Macro has no such lane
+
+    if (monoVis) {
+        // Mono always owns VAR/LEG; for 0..3 it owns only when its owner cell says so.
+        const bool monoOwns = varleg
+            || (monoVis->params[SandsMonoVisualIds::ownerDispId(lane)].getValue() > 0.5f);
+        if (monoOwns) { r.mod = monoVis; r.paramId = SandsMonoVisualIds::dirDispId(lane); return r; }
+        if (macroVis) { r.mod = macroVis; r.paramId = StraitsMacroVisualIds::dirDispId(lane); return r; }
+        return r;                              // Mono present but doesn't own, no Macro -> nobody
+    }
+    if (macroVis && !varleg) { r.mod = macroVis; r.paramId = StraitsMacroVisualIds::dirDispId(lane); return r; }
+    // No Mono, and either no Macro or a VAR/LEG lane Macro cannot own -> East's V1 slot.
+    // This is the arm that was missing: with Macro attached, V1's VAR/LEG had NO source, so
+    // those lanes were pinned Forward and East's DirCell for them did nothing.
+    if (eastVis) { r.mod = eastVis; r.paramId = StraitsEastVisualIds::monoDirId(lane); return r; }
+    return r;
+}
+
 void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono) {
     // Poly-lane constants (engine order REST=0,MEL=1,OCT=2,ACC=3). Named here so
     // the renumber tracks automatically and the parallel index conventions below
@@ -77,29 +107,16 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
     // ALSO push Macro's own direction to macroLaneDir_ (always, regardless of ownership)
     // so the engine advances macroLaneTick_ independently for Macro's playhead display.
     {
-        auto* monoVis = cachedSandsVisualExpander;
-        auto* macroVis = cachedMacroSandsVisual;
-        if (monoVis) {
-            for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
-                bool monoOwns = (l >= 4) || (monoVis->params[SandsMonoVisualIds::ownerDispId(l)].getValue() > 0.5f);
-                if (monoOwns) {
-                    engine.laneDirPending_[l] = (SequencerEngine::LaneDir)(int)std::lround(
-                        math::clamp(monoVis->params[SandsMonoVisualIds::dirDispId(l)].getValue(), 0.f, 3.f));
-                } else if (macroVis) {
-                    engine.laneDirPending_[l] = (SequencerEngine::LaneDir)(int)std::lround(
-                        math::clamp(macroVis->params[StraitsMacroVisualIds::dirDispId(l)].getValue(), 0.f, 3.f));
-                }
-            }
-        } else if (macroVis) {
-            for (int l = 0; l < 4; ++l)
+        // Read through the single authority helper — the same one East's V1 gate-mod writes
+        // through, so the mod can never target a store the manager isn't reading.
+        for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
+            MonoDirSrc src = monoDirAuthority(l);
+            if (src.valid())
                 engine.laneDirPending_[l] = (SequencerEngine::LaneDir)(int)std::lround(
-                    math::clamp(macroVis->params[StraitsMacroVisualIds::dirDispId(l)].getValue(), 0.f, 3.f));
-        } else if (eastLOR) {
-            using namespace StraitsEastVisualIds;
-            for (int l = 0; l < dotModular::NUM_STRANDS; ++l)
-                engine.laneDirPending_[l] = (SequencerEngine::LaneDir)(int)std::lround(
-                    math::clamp(eastLOR->params[monoDirId(l)].getValue(), 0.f, 3.f));
+                    math::clamp(src.mod->params[src.paramId].getValue(), 0.f, 3.f));
+            // else: nothing owns this lane -> leave the Forward set by the reset above.
         }
+        auto* macroVis = cachedMacroSandsVisual;
         // Push Macro's direction + LOR length to macroLaneDir_/macroLOR_ (all 4 lanes, always)
         if (macroVis) {
             auto* mmod = dynamic_cast<StraitsSandsMacroVisual*>(macroVis);

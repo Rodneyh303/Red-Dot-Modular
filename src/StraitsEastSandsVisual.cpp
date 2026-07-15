@@ -839,18 +839,30 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 // the shared proxy — the proxy only ever holds the displayed target's value.
                 int nxt;
                 if (ch == 0) {
-                    nxt = (((int)se->laneDirPending_[strand]) + d) % 4;
-                    se->laneDirPending_[strand] = (SequencerEngine::LaneDir)nxt;
+                    // V1/mono: write through the SAME authority the manager reads — Mono's
+                    // cell, Macro's cell, or East's own V1 slot. Writing East's slot
+                    // unconditionally was the bug: with Mono or Macro attached the manager
+                    // pushes THEIR cell at control rate and never reads East's slot, so the
+                    // mod silently did nothing on V1 (and lanes 0..3 were the visible case,
+                    // because Macro owns exactly those).
+                    auto auth = m->expanderManager.monoDirAuthority(strand);
+                    if (!auth.valid()) continue;   // nobody owns this lane — nothing to cycle
+                    int cur = (int)std::lround(math::clamp(
+                        auth.mod->params[auth.paramId].getValue(), 0.f, 3.f));
+                    nxt = (cur + d) % 4;
+                    auth.mod->params[auth.paramId].setValue((float)nxt);
                 } else {
                     const int pv = ch - 1;
                     nxt = (((int)se->laneDirVPending_[pv][strand]) + d) % 4;
                     se->laneDirVPending_[pv][strand] = (SequencerEngine::LaneDir)nxt;
                 }
-                // Step 2: persist to the target's BANK slot as well. syncDirBank() only ever
-                // sees the proxy, i.e. the displayed voice — a mod aimed at any other voice
-                // would never reach the bank otherwise. Indexed by channel, so no tab needed:
-                // this is the write that becomes the ONLY one at step 3.
-                mod->params[(ch == 0) ? monoDirId(lane) : dirId(ch - 1, lane)].setValue((float)nxt);
+                // Poly voices: persist to the target's BANK slot — syncDirBank() only ever
+                // sees the proxy, i.e. the displayed voice, so a mod aimed at any other voice
+                // would never reach the bank. ch0 is not here: its store was already written
+                // through monoDirAuthority above (which IS East's monoDirId when East owns V1,
+                // and Mono's/Macro's cell otherwise — writing monoDirId unconditionally would
+                // just poke a store nobody reads).
+                if (ch != 0) mod->params[dirId(ch - 1, lane)].setValue((float)nxt);
                 if (selectedVoice == ch) mod->params[dirDispId(lane)].setValue((float)nxt);
             }
             // ── Delegation: flip local/delegated in the voice's OWN owner store ──
