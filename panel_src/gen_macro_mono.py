@@ -144,7 +144,10 @@ def gen_mono(dark):
     SPR_BASE_X,SPR_CV_X,SPR_ATTEN_X=62.,71.,80.
     N_SPREAD=4                                  # REST/MEL/OCT + ACCENT (poly lanes)
     SPR_TO_EDITOR=[2,0,1,3]                      # spread index (REST/MEL/OCT/ACCENT) → editor lane; matches cpp ENGINE_LANE_TO_EDITOR
-    ED_X=88.; ED_W=111.; OWNER_X=205.; DIR_X=212.; DIR_MOD_X=220.; DELEG_MOD_X=228.; PROB_OUT_X=236.  # +4HP mod+prob_out columns
+    # Jack columns follow the TOGGLE order left->right (owner cell at OWNER_X, then dir cell
+    # at DIR_X), so deleg_mod sits under the owner cell and dir_mod under the dir cell instead
+    # of crossing over.
+    ED_X=88.; ED_W=111.; OWNER_X=205.; DIR_X=212.; DELEG_MOD_X=220.; DIR_MOD_X=228.; PROB_OUT_X=236.  # +4HP mod+prob_out columns
     # Editor recess spans the SAME band the left controls (laneY) divide, so the
     # live editor lanes (zero internal padding, even division) line up with the
     # left jacks/attens and the painted lanes.
