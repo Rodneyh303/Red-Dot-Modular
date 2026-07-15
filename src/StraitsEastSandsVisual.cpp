@@ -841,6 +841,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     nxt = (((int)se->laneDirVPending_[pv][strand]) + d) % 4;
                     se->laneDirVPending_[pv][strand] = (SequencerEngine::LaneDir)nxt;
                 }
+                // Step 2: persist to the target's BANK slot as well. syncDirBank() only ever
+                // sees the proxy, i.e. the displayed voice — a mod aimed at any other voice
+                // would never reach the bank otherwise. Indexed by channel, so no tab needed:
+                // this is the write that becomes the ONLY one at step 3.
+                mod->params[(ch == 0) ? monoDirId(lane) : dirId(ch - 1, lane)].setValue((float)nxt);
                 if (selectedVoice == ch) mod->params[dirDispId(lane)].setValue((float)nxt);
             }
             // ── Delegation: flip local/delegated in the voice's OWN owner store ──
@@ -868,6 +873,47 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         }
     }
 
+    // ── Step 2 (plans/lane_direction_homes.md): keep East's direction BANK correct ──────
+    // DirCell is a ParamWidget bound to the shared proxy (a ParamWidget binds one paramId at
+    // construction, so a per-voice control needs proxy + tab copy) and so cannot know which
+    // voice it is editing. Persist any proxy change into the CURRENT voice's bank slot the
+    // frame it happens — the continuous equivalent of the tab-exit flush. Writes only on
+    // change, so it never fights the existing pushes. Inert until step 3 reads the bank.
+    float lastDirDisp[6] = {};
+    bool  dirDispInit = false;
+
+    void syncDirBank() {
+        auto* mod = static_cast<StraitsEastSandsVisual*>(module);
+        Monsoon* m = getMonsoon();
+        if (!mod || !m) return;
+        SequencerEngine* se = &m->engine;
+
+        // One-time migration: seed the (new) bank from the engine, which at this point still
+        // holds the patch's saved direction from Monsoon's JSON. Without it, step 3 would push
+        // a default-Forward bank over saved settings. Guarded by a persisted flag so it runs
+        // exactly once per patch.
+        if (!mod->dirBankMigrated) {
+            for (int v = 0; v < 15; ++v)
+                for (int s = 0; s < dotModular::NUM_STRANDS; ++s)
+                    mod->params[dirId(v, s)].setValue((float)(int)se->laneDirVPending_[v][s]);
+            for (int s = 0; s < dotModular::NUM_STRANDS; ++s)
+                mod->params[monoDirId(s)].setValue((float)(int)se->laneDirPending_[s]);
+            mod->dirBankMigrated = true;
+        }
+
+        const int cv = currentVoice();                       // 1 = V1/mono, 2..16 = poly
+        const bool mono = dotModular::VoiceResolver::isMono(cv);
+        const int  pv   = dotModular::VoiceResolver::polyBankIndex(cv);
+        for (int lane = 0; lane < 6; ++lane) {
+            const float v = mod->params[dirDispId(lane)].getValue();
+            if (dirDispInit && v == lastDirDisp[lane]) continue;   // no edit → don't write
+            lastDirDisp[lane] = v;
+            if (mono)                        mod->params[monoDirId(lane)].setValue(v);
+            else if (pv >= 0 && pv < 15)     mod->params[dirId(pv, lane)].setValue(v);
+        }
+        dirDispInit = true;
+    }
+
     void step() override {
         ModuleWidget::step();
         kitStep();
@@ -875,6 +921,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         Monsoon* monsoon = getMonsoon();
         if (!monsoon) { if (visualEditor) visualEditor->clearPlaySteps(); return; }
         applyGateMods();
+        syncDirBank();
 
         // Follow the connected Monsoon's theme: swap panel SVG + editor colours
         // when it changes (and on first run). One toggle on Monsoon themes the

@@ -391,10 +391,20 @@ struct StraitsEastSandsVisual : Module {
     uint8_t dirModEdges[6][16]   = {};   // audio thread is the sole writer
     uint8_t delegModEdges[6][16] = {};
 
+    // One-time migration guard for the direction bank. The bank is new, so an existing patch's
+    // direction still lives in the engine (restored from Monsoon's JSON laneDirV/laneDir). It
+    // must be seeded into the bank once, or step 3 — where the manager starts pushing the bank —
+    // would shove a default-Forward bank over the patch's saved direction. Persisted, so the
+    // seed happens exactly once per patch: an old patch migrates, a new one skips. Once step 3
+    // drops laneDirV from Monsoon's JSON, a fresh East seeds from Forward defaults = harmless.
+    bool dirBankMigrated = false;
+
     json_t* dataToJson() override {
         json_t* r = json_object();
+        json_object_set_new(r, "dirBankMigrated", json_boolean(dirBankMigrated));
         return r;
     }
     void dataFromJson(json_t* root) override {
+        if (auto j = json_object_get(root, "dirBankMigrated")) dirBankMigrated = json_boolean_value(j);
     }
 };
