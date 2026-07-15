@@ -8,17 +8,18 @@ using namespace MonsoonIds;
 
 namespace StraitsEastVisualIds {
 
-    // ── Panel ──────────────────────────────────────────────────────────────
-    static constexpr float W_MM    = 223.52f;   // 44HP (43 + 1HP for the per-lane direction column)
-    static constexpr float ED_X   = 88.f;   // editor (matches SandsMonoVisual)
-    static constexpr float ED_W   = 111.f;  // editor width (fixed; no longer tied to PROB_OUT_X)
-    // Owner-source block: per-lane cells just right of the editor, before the
-    // prob-out strip. OWNER_X is the cell-column centre; the block has a faint
-    // separator + backing (drawn in the gen) so it doesn't read as a 17th step.
-    static constexpr float OWNER_X    = 205.f;   // owner cell column (editor right edge = 199)
-    static constexpr float DIR_X      = 212.f;   // direction cell column (Fwd/Rev/Pend/PingPong)
-    static constexpr float PROB_OUT_X = 219.f;   // poly prob-out jack column (pushed right by the direction block)
-    static constexpr int   N_ROWS  = dotModular::SandsGrid::POLY_LANES;  // 4 — 1 row per lane
+    // ── Panel geometry (48HP — +4HP for dir_mod + deleg_mod + prob_out jack columns) ──
+    static constexpr float W_MM        = 243.84f;  // 48HP
+    static constexpr float ED_X        = 88.f;
+    static constexpr float ED_W        = 111.f;
+    static constexpr float OWNER_X     = 205.f;
+    static constexpr float DIR_X       = 212.f;
+    // Column order matches the TOGGLE order left->right (delegation cell, then direction
+    // cell), so the jacks line up with the controls they modulate instead of crossing over.
+    static constexpr float DELEG_MOD_X = 220.f;    // delegation gate-mod jack column
+    static constexpr float DIR_MOD_X   = 228.f;    // direction gate-mod jack column
+    static constexpr float PROB_OUT_X  = 236.f;    // prob-out jack column (shifted right)
+    static constexpr int   N_ROWS      = dotModular::SandsGrid::POLY_LANES;  // 4 — 1 row per lane
     // ROW_TOP/ROW_BOT were DEAD here (nothing read them; rows come from ED_Y + ED_LANE_H) yet still
     // said 14..108, which is what made this look aligned with Mono when it wasn't. Bound to the grid.
     static constexpr float ROW_TOP = dotModular::SandsGrid::LANE_TOP;      // 14
@@ -98,8 +99,12 @@ namespace StraitsEastVisualIds {
         NUM_LANE_INPUTS = CV_START + 16,              // 4 lanes × 4 cols (LEN/OFF/ROT/SPR)
         // VAR/LEG poly CV inputs (LEN/OFF/ROT only — no SPR). lane 0=VAR, 1=LEG; col 0..2.
         VARLEG_CV_START = NUM_LANE_INPUTS,            // = 16
-        NUM_INPUTS = VARLEG_CV_START + 6              // = 22
+        DIR_MOD_START = VARLEG_CV_START + 6,          // = 22 — direction gate-mod (6 poly jacks)
+        DELEG_MOD_START = DIR_MOD_START + 6,          // = 28 — delegation gate-mod (6 poly jacks, all lanes)
+        NUM_INPUTS = DELEG_MOD_START + 6              // = 34
     };
+    static inline int dirModId(int lane) { return DIR_MOD_START + lane; }
+    static inline int delegModId(int lane) { return DELEG_MOD_START + lane; }
     static inline int cvId(int lane, int col) { return CV_START + lane*4 + col; }
     // VAR/LEG CV jack id. lane 0=VAR, 1=LEG; col 0=LEN,1=OFF,2=ROT.
     static inline int varlegCvId(int lane, int col) { return VARLEG_CV_START + lane*3 + col; }
@@ -164,6 +169,16 @@ namespace StraitsEastVisualIds {
     inline int varlegDelegId(int v, int lane) { return MonsoonIds::VARLEG_DELEG_START + v*2 + lane; }
     // Selected-voice display proxy for the VAR/LEG delegation cells. lane 0=VAR, 1=LEG.
     inline int varlegDelegDispId(int lane) { return MonsoonIds::VARLEG_DELEG_DISP_START + lane; }
+    // East's per-voice LANE DIRECTION bank (plans/lane_direction_homes.md). 4-state per lane:
+    // 0=Forward 1=Reverse 2=Pendulum 3=PingPong (SequencerEngine::LaneDir). Poly-bank indexed
+    // like ownerId/varlegDelegId (v = 0..14 = V2..V16); lane = STRAND index 0..5. The manager
+    // reads this module-side and pushes it to the engine, so direction is expander-homed and
+    // engine-derived like every other lane-addressing datum.
+    inline int dirId(int v, int lane) { return MonsoonIds::LANE_DIR_START + v*6 + lane; }
+    // V1/mono direction — the spare slot v=15, the same trick monoOwnerId uses. This is the
+    // mono source only when East IS the mono editor (no Mono attached); when Mono is present
+    // it owns mono direction beside its own LOR.
+    inline int monoDirId(int lane) { return MonsoonIds::LANE_DIR_START + 15*6 + lane; }
     // (Macro mix-in send helpers relocated to StraitsMacroVisualIds under the control
     //  inversion — the send is a Macro concern now.)
     // Owner display proxy (selected-voice view; copied to/from per-voice on switch).
@@ -305,6 +320,18 @@ struct StraitsEastSandsVisual : Module {
         // V1 (mono) per-lane owner store (spare MACRO_OWN slot v=15). Default 0.f =
         // inherit Macro, matching the poly ownerId and ownerDispId defaults (consistent
         // delegation convention; toggle per lane via the V1 owner cell).
+        gateModDiv.setDivision(GATE_MOD_DIV);   // gate-mod scan runs at /8, not per sample
+        // East LANE DIRECTION bank: 16 slots (0..14 = poly V2..V16, 15 = V1/mono spare slot,
+        // the monoOwnerId trick) x 6 strands. Real params, so Rack persists them and the
+        // manager can read them module-side. Default Forward = today's behaviour.
+        for (int v = 0; v < 16; ++v) {
+            const std::string vn = (v == 15) ? "V1 " : ("V" + std::to_string(v + 2) + " ");
+            for (int lane = 0; lane < 6; ++lane) {
+                configSwitch(MonsoonIds::LANE_DIR_START + v*6 + lane, 0.f, 3.f, 0.f,
+                             vn + "L" + std::to_string(lane) + " direction",
+                             {"Forward", "Reverse", "Pendulum", "PingPong"});
+            }
+        }
         for (int lane=0; lane<4; ++lane) {
             configSwitch(monoOwnerId(lane), 0.f,1.f,0.f,
                          "V1 L"+std::to_string(lane)+" base: inherit Macro / local East", {"Inherit Macro","Local East"});
@@ -328,15 +355,48 @@ struct StraitsEastSandsVisual : Module {
         }
         // Direction display proxies (selected-voice view). lane = editor lane 0..5.
         // Value 0=Forward, 1=Reverse, 2=Pendulum, 3=PingPong. Default 0 (Forward).
+        // Direction gate-mod inputs (poly: ch1=mono, ch2+=voices). Gate cycles Fwd→Rev→Pend→PingPong.
+        // Delegation gate-mod inputs (poly: ch1=mono, ch2+=voices). Gate flips local/delegated.
         {
             const char* laneNm[6] = {"MEL","OCT","REST","ACC","VAR","LEG"};
-            for (int lane=0; lane<6; ++lane)
+            for (int lane=0; lane<6; ++lane) {
                 configParam(dirDispId(lane), 0.f, 3.f, 0.f,
                             std::string(laneNm[lane])+" direction (selected voice)");
+                configInput(dirModId(lane), std::string(laneNm[lane])+" direction gate-mod (poly)");
+            }
+            for (int lane=0; lane<6; ++lane)
+                configInput(delegModId(lane), std::string(laneNm[lane])+" delegation gate-mod (poly)");
         }
-    }
+   }
 
     void process(const ProcessArgs&) override;   // defined in .cpp (needs findMonsoonEitherSide)
+
+    // Gate edge detection state for dir_mod and deleg_mod inputs.
+    // dirModPrev[lane][channel] — 6 lanes × 16 channels (ch0=mono, ch1..15=voices 2..16)
+    // delegModPrev[lane][channel] — 4 lanes × 16 channels
+    // ── Gate-mod inputs (dir_mod / deleg_mod) ───────────────────────────────────
+    // Deliberately split across threads. The AUDIO thread does one job: spot rising edges
+    // and bump a counter. The UI thread (widget step()) interprets them — it already owns
+    // the display-proxy <-> per-voice-store sync and it alone knows which tab is shown, so
+    // nothing has to read the selected voice at audio rate.
+    //
+    // Counters are monotonic uint8 and the audio thread is their ONLY writer; the widget
+    // keeps its own "seen" copy and applies the unsigned difference, so wrap is harmless and
+    // no edge is lost or double-applied (a burst between frames applies as N cycles).
+    //
+    // The scan runs on a divider rather than every sample: a gate is milliseconds long
+    // (hundreds of samples), so /8 still catches every edge at an eighth of the cost.
+    static constexpr int GATE_MOD_DIV = 8;
+    rack::dsp::ClockDivider gateModDiv;
+    bool    dirModPrev[6][16]    = {};
+    bool    delegModPrev[6][16]  = {};
+    uint8_t dirModEdges[6][16]   = {};   // audio thread is the sole writer
+    uint8_t delegModEdges[6][16] = {};
+    // Channel count of each connected mod cable. A 1-channel cable into a poly input is
+    // BROADCAST to every target (the VCV norm), rather than hitting only ch0 = V1 — a mono
+    // gate means "apply this everywhere", not "apply it to voice 1".
+    uint8_t dirModChans[6]   = {};
+    uint8_t delegModChans[6] = {};
 
     json_t* dataToJson() override {
         json_t* r = json_object();

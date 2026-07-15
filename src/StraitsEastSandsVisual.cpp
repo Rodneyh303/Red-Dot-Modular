@@ -209,11 +209,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     explicit StraitsEastSandsVisualWidget(StraitsEastSandsVisual* mod) {
         setModule(mod);
         panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance,
-                            "res/panels/StraitsEastSandsVisual_40HP.svg"));
+                            "res/panels/StraitsEastSandsVisual_48HP.svg"));
         panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance,
-                            "res/panels/StraitsEastSandsVisual_40HP_light.svg"));
+                            "res/panels/StraitsEastSandsVisual_48HP_light.svg"));
         loadPanel(asset::plugin(pluginInstance,
-                            "res/panels/StraitsEastSandsVisual_40HP.svg"));
+                            "res/panels/StraitsEastSandsVisual_48HP.svg"));
 
         redDot::addRedScrews(this);
 
@@ -269,15 +269,36 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         };
         addChild(visualEditor);
 
-        // 4 poly probability CV outs, one per lane row (aligned to editor lane centers).
-        for (int l = 0; l < 4; ++l) {
-            float y = ED_Y + (l + 0.5f) * ED_LANE_H;
-            auto* p = createOutputCentered<redDot::GoldPolyPort>(
-                mm2px(Vec(PROB_OUT_X, y)), module, StraitsEastVisualIds::PROB_OUT_REST + l);
+        // 4 poly probability CV outs — bound via SVG panel kit (output_prob_<lane>).
+        // NOTE: output IDs are in ENGINE order (REST=0, MEL=1, OCT=2, ACC=3) but panel
+        // rows are in EDITOR order (MEL=0, OCT=1, REST=2, ACC=3). Convert via
+        // EDITOR_TO_ENGINE_LANE so the jack at the MEL row drives PROB_OUT_MEL, etc.
+        {
             Module* mod = module;
-            p->lightTheme = [mod]() { Monsoon* m = mod ? redDot::findMonsoonEitherSide(mod) : nullptr;
-                                      return m && m->lightTheme; };
-            addOutput(p);
+            auto themeOut = [mod](redDot::GoldPolyPort* p) {
+                p->lightTheme = [mod]() { Monsoon* m = mod ? redDot::findMonsoonEitherSide(mod) : nullptr;
+                                          return m && m->lightTheme; };
+            };
+            for (int l = 0; l < 4; ++l)
+                bindOutput<redDot::GoldPolyPort>("output_prob_" + std::to_string(l),
+                    StraitsEastVisualIds::PROB_OUT_REST + dotModular::EDITOR_TO_ENGINE_LANE[l],
+                    std::function<void(redDot::GoldPolyPort*)>(themeOut));
+        }
+        // Direction gate-mod jacks (input_dir_mod_<lane>) — poly, gate cycles Fwd→Rev→Pend→PingPong.
+        // Delegation gate-mod jacks (input_deleg_mod_<lane>) — poly, gate flips local/delegated.
+        // All 6 lanes (MEL/OCT/REST/ACC/VAR/LEG).
+        {
+            Module* mod = module;
+            auto themeIn = [mod](redDot::GoldPolyPort* p) {
+                p->lightTheme = [mod]() { Monsoon* m = mod ? redDot::findMonsoonEitherSide(mod) : nullptr;
+                                          return m && m->lightTheme; };
+            };
+            for (int lane = 0; lane < 6; ++lane) {
+                bindInput<redDot::GoldPolyPort>("input_dir_mod_" + std::to_string(lane),
+                    dirModId(lane), std::function<void(redDot::GoldPolyPort*)>(themeIn));
+                bindInput<redDot::GoldPolyPort>("input_deleg_mod_" + std::to_string(lane),
+                    delegModId(lane), std::function<void(redDot::GoldPolyPort*)>(themeIn));
+            }
         }
 
         // ── Controls bound by id from the SVG kit (#components in
@@ -581,12 +602,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             loadVoiceMacro(polyVoice());
             // Sync DirCell display proxy from the engine's per-voice direction so the
             // DirCell shows the incoming voice's actual state (not the outgoing voice's).
-            if (auto* m = getMonsoon()) {
+            // Step 3: read the BANK, which is now the home for poly direction — the engine is
+            // a derived cache. (Reading the engine would still work today, but it would keep
+            // the view coupled to the derived copy and re-open the door to display/engine drift.)
+            {
                 int pv = polyVoice();
-                for (int lane = 0; lane < 6; ++lane) {
-                    int strand = dotModular::MONO_LANE_TO_STRAND[lane];
-                    module->params[dirDispId(lane)].setValue((float)m->engine.laneDirVPending_[pv][strand]);
-                }
+                for (int lane = 0; lane < 6; ++lane)
+                    module->params[dirDispId(lane)].setValue(module->params[dirId(pv, lane)].getValue());
             }
         }
         // V1-editable: the editor is refreshed from the engine mono strands by the
@@ -769,12 +791,129 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         menu->addChild(allMacro);
     }
 
+    // ── Apply gate-mod edges queued by the audio thread ─────────────────────────
+    // The audio thread only counts edges; interpreting them lives here because this is
+    // where the display-proxy <-> per-voice-store contract is owned, and where the selected
+    // tab is known. Runs early in step() so a proxy write lands before the direction push
+    // and any tab-exit flush later in the same frame.
+    //
+    // Channel n targets exactly what tab n shows (ch0 = V1/mono, ch n = poly bank n-1), so
+    // "is this target on screen?" is just `selectedVoice == ch`. That matters because the
+    // proxy holds ONLY the selected target's value: write it for anything else and the sync
+    // smears that value onto whichever voice is open. So each edge writes the per-target
+    // truth (engine for direction, the per-voice owner store for delegation) and touches the
+    // proxy only when its target is displayed — for that one the proxy IS the live value.
+    uint8_t dirModSeen[6][16]   = {};
+    uint8_t delegModSeen[6][16] = {};
+    bool    gateModSeenInit     = false;
+
+    void applyGateMods() {
+        auto* mod = static_cast<StraitsEastSandsVisual*>(module);
+        Monsoon* m = getMonsoon();
+        if (!mod || !m) return;
+        SequencerEngine* se = &m->engine;
+        // First pass after a (re)build: adopt the current counts rather than treating the
+        // backlog as fresh edges, which would fire a spurious burst of cycles.
+        if (!gateModSeenInit) {
+            for (int lane = 0; lane < 6; ++lane)
+                for (int ch = 0; ch < 16; ++ch) {
+                    dirModSeen[lane][ch]   = mod->dirModEdges[lane][ch];
+                    delegModSeen[lane][ch] = mod->delegModEdges[lane][ch];
+                }
+            gateModSeenInit = true;
+            return;
+        }
+        for (int lane = 0; lane < 6; ++lane) {
+            const int strand = dotModular::MONO_LANE_TO_STRAND[lane];
+            // ── Direction: cycle Fwd→Rev→Pend→PingPong→Fwd, once per queued edge ──
+            // A 1-channel cable BROADCASTS to every target (VCV poly norm): a mono gate means
+            // "apply this everywhere", not "apply it to V1" — which is all ch0 would mean under
+            // the channel==tab convention. Poly cables stay per-channel.
+            const bool dBcast = (mod->dirModChans[lane] == 1);
+            for (int ch = 0; ch < 16; ++ch) {
+                const int src = dBcast ? 0 : ch;                  // which counter to read
+                uint8_t n = mod->dirModEdges[lane][src];
+                uint8_t d = (uint8_t)(n - dirModSeen[lane][src]);  // unsigned diff: wrap-safe
+                if (!d) continue;
+                if (!dBcast || ch == 15) dirModSeen[lane][src] = n;   // broadcast: consume once, after all targets
+                // Read the CURRENT value from the engine (the per-target truth), never from
+                // the shared proxy — the proxy only ever holds the displayed target's value.
+                int nxt;
+                if (ch == 0) {
+                    nxt = (((int)se->laneDirPending_[strand]) + d) % 4;
+                    se->laneDirPending_[strand] = (SequencerEngine::LaneDir)nxt;
+                } else {
+                    const int pv = ch - 1;
+                    nxt = (((int)se->laneDirVPending_[pv][strand]) + d) % 4;
+                    se->laneDirVPending_[pv][strand] = (SequencerEngine::LaneDir)nxt;
+                }
+                // Step 2: persist to the target's BANK slot as well. syncDirBank() only ever
+                // sees the proxy, i.e. the displayed voice — a mod aimed at any other voice
+                // would never reach the bank otherwise. Indexed by channel, so no tab needed:
+                // this is the write that becomes the ONLY one at step 3.
+                mod->params[(ch == 0) ? monoDirId(lane) : dirId(ch - 1, lane)].setValue((float)nxt);
+                if (selectedVoice == ch) mod->params[dirDispId(lane)].setValue((float)nxt);
+            }
+            // ── Delegation: flip local/delegated in the voice's OWN owner store ──
+            // lanes 0..3 -> ownerId(pv, engineLane) (V1 uses its own monoOwnerId slot);
+            // lanes 4..5 -> varlegDelegId(pv, VAR|LEG), which is poly-only: mono's
+            // VARIATION/LEGATO are mono strands East never owns, so ch0 is a no-op there.
+            const int eng = (lane < 4) ? dotModular::EDITOR_TO_ENGINE_LANE[lane] : -1;
+            const bool gBcast = (mod->delegModChans[lane] == 1);
+            for (int ch = 0; ch < 16; ++ch) {
+                const int src = gBcast ? 0 : ch;
+                uint8_t n = mod->delegModEdges[lane][src];
+                uint8_t d = (uint8_t)(n - delegModSeen[lane][src]);
+                if (!d) continue;
+                if (!gBcast || ch == 15) delegModSeen[lane][src] = n;
+                if (!(d & 1)) continue;          // an even number of flips is a no-op
+                if (lane >= 4 && ch == 0) continue;   // mono has no VAR/LEG delegation
+                int storeId;
+                if (lane < 4) storeId = (ch == 0) ? monoOwnerId(eng) : ownerId(ch - 1, eng);
+                else          storeId = varlegDelegId(ch - 1, lane - 4);
+                const float nv = (mod->params[storeId].getValue() > 0.5f) ? 0.f : 1.f;
+                mod->params[storeId].setValue(nv);
+                if (selectedVoice == ch) {
+                    const int dispId = (lane < 4) ? ownerDispId(eng) : varlegDelegDispId(lane - 4);
+                    mod->params[dispId].setValue(nv);
+                }
+            }
+        }
+    }
+
+    // ── Step 2 (plans/lane_direction_homes.md): keep East's direction BANK correct ──────
+    // DirCell is a ParamWidget bound to the shared proxy (a ParamWidget binds one paramId at
+    // construction, so a per-voice control needs proxy + tab copy) and so cannot know which
+    // voice it is editing. Persist any proxy change into the CURRENT voice's bank slot the
+    // frame it happens — the continuous equivalent of the tab-exit flush. Writes only on
+    // change, so it never fights the existing pushes. Inert until step 3 reads the bank.
+    float lastDirDisp[6] = {};
+    bool  dirDispInit = false;
+
+    void syncDirBank() {
+        auto* mod = static_cast<StraitsEastSandsVisual*>(module);
+        if (!mod) return;
+        const int cv = currentVoice();                       // 1 = V1/mono, 2..16 = poly
+        const bool mono = dotModular::VoiceResolver::isMono(cv);
+        const int  pv   = dotModular::VoiceResolver::polyBankIndex(cv);
+        for (int lane = 0; lane < 6; ++lane) {
+            const float v = mod->params[dirDispId(lane)].getValue();
+            if (dirDispInit && v == lastDirDisp[lane]) continue;   // no edit → don't write
+            lastDirDisp[lane] = v;
+            if (mono)                        mod->params[monoDirId(lane)].setValue(v);
+            else if (pv >= 0 && pv < 15)     mod->params[dirId(pv, lane)].setValue(v);
+        }
+        dirDispInit = true;
+    }
+
     void step() override {
         ModuleWidget::step();
         kitStep();
         if (!module || !paramMgr || !visualEditor) return;
         Monsoon* monsoon = getMonsoon();
         if (!monsoon) { if (visualEditor) visualEditor->clearPlaySteps(); return; }
+        applyGateMods();
+        syncDirBank();
 
         // Follow the connected Monsoon's theme: swap panel SVG + editor colours
         // when it changes (and on first run). One toggle on Monsoon themes the
@@ -890,13 +1029,16 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 mod->params[dirDispId(lane)].setValue((float)se->laneDirPending_[strand]);
             }
         } else if (selectedVoice >= 1) {
-            // Poly tab: direction applies to this voice's lanes (laneDirV_).
-            int pv = polyVoice();
-            for (int lane = 0; lane < 6; ++lane) {
-                int strand = dotModular::MONO_LANE_TO_STRAND[lane];
-                auto d = (SequencerEngine::LaneDir)(int)std::round(mod->params[dirDispId(lane)].getValue());
-                se->laneDirVPending_[pv][strand] = d;
-            }
+            // Step 3 (plans/lane_direction_homes.md): the poly push is GONE. East's direction
+            // BANK is the home now and MonsoonExpanderManager::sync() pushes it into the engine
+            // module-side, exactly as it already does for LOR and delegation. syncDirBank()
+            // persists a DirCell edit into this voice's bank slot; the engine is derived.
+            //
+            // Deleting this is the point of the step: an unconditional per-frame push made the
+            // display proxy an AUTHORITY, which is what smeared one voice's direction onto
+            // another and made gate-mods fight the frame loop. A view must not write its model
+            // on a timer.
+            // (Mono still pushes above until step 4 moves it to the Mono expander.)
         }
         // (Spread target mode is now pulled from the engine by SpreadManager —
         // Monsoon::process mirrors the menu setting onto engine.pe each frame. No
@@ -1233,6 +1375,37 @@ void StraitsEastSandsVisual::process(const ProcessArgs&) {
         for (int l = 0; l < 4; ++l) { outputs[PROB_OUT_REST + l].setChannels(1);
                                       outputs[PROB_OUT_REST + l].setVoltage(0.f); }
         return;
+    }
+    // ── Gate-mod edge detection (audio thread) ────────────────────────────
+    // The only audio-rate job here: spot rising edges and bump a counter. Every decision
+    // about what an edge MEANS (which voice, per-voice store vs display proxy, whether that
+    // target is on screen) belongs to the widget's step(), which already owns that sync and
+    // is the only place that knows the selected tab — so nothing reads the tab at audio rate.
+    // Scanned on a divider: gates are milliseconds (hundreds of samples), so /8 catches every
+    // edge at an eighth of the cost. dir/deleg share the scan since they share the cadence.
+    if (gateModDiv.process()) {
+        for (int lane = 0; lane < 6; ++lane) {
+            auto& din = inputs[dirModId(lane)];
+            dirModChans[lane] = din.isConnected() ? (uint8_t)din.getChannels() : 0;
+            if (din.isConnected()) {
+                int nch = std::min(din.getChannels(), 16);
+                for (int ch = 0; ch < nch; ++ch) {
+                    bool high = din.getVoltage(ch) > 1.f;
+                    if (high && !dirModPrev[lane][ch]) ++dirModEdges[lane][ch];
+                    dirModPrev[lane][ch] = high;
+                }
+            }
+            auto& gin = inputs[delegModId(lane)];
+            delegModChans[lane] = gin.isConnected() ? (uint8_t)gin.getChannels() : 0;
+            if (gin.isConnected()) {
+                int nch = std::min(gin.getChannels(), 16);
+                for (int ch = 0; ch < nch; ++ch) {
+                    bool high = gin.getVoltage(ch) > 1.f;
+                    if (high && !delegModPrev[lane][ch]) ++delegModEdges[lane][ch];
+                    delegModPrev[lane][ch] = high;
+                }
+            }
+        }
     }
     const float scaleV = (mon->probOutScale == 0) ? 1.f : (mon->probOutScale == 1) ? 5.f : 10.f;
     const bool sh = mon->probOutSampleHold;

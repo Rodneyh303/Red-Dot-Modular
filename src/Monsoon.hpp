@@ -608,7 +608,25 @@ namespace MonsoonIds {
         VARLEG_ATTEN_START = VARLEG_DELEG_DISP_END,
         VARLEG_ATTEN_END = VARLEG_ATTEN_START + 96,
 
-        NUM_PARAMS = VARLEG_ATTEN_END
+        // ── East LANE DIRECTION bank (plans/lane_direction_homes.md step 1) ──────
+        // Direction is lane-addressing data authored by an EXPANDER, so — like LOR, atten,
+        // spread and delegation — its home is the editor's params and the engine is a derived
+        // cache the manager rebuilds each sync(). It was the one exception: engine-homed and
+        // persisted in Monsoon's JSON, so pulling East out of the rack left poly direction
+        // stuck applied forever (nothing resets laneDirV_, unlike delegation and LOR).
+        //
+        // 4-state per lane: 0=Forward 1=Reverse 2=Pendulum 3=PingPong (SequencerEngine::LaneDir).
+        // Poly-bank indexed like ownerId/varlegDelegId (v = 0..14 = V2..V16) — NOT the 16-wide
+        // voice-slot scheme the atten banks use. Slot 15 is V1/mono, the same spare-slot trick
+        // monoOwnerId uses so V1 persists in the patch like poly voices do; it is the mono
+        // source when East is the mono editor (no Mono attached). 16 x 6 = 96, appended at END
+        // so existing patches still load. lane = STRAND index 0..5 (== editor lane; the mono
+        // lane <-> strand map is the identity).
+        //   index = LANE_DIR_START + v*6 + lane   (v = 0..14 poly bank, 15 = V1/mono)
+        LANE_DIR_START = VARLEG_ATTEN_END,
+        LANE_DIR_END = LANE_DIR_START + 96,
+
+        NUM_PARAMS = LANE_DIR_END
     };
 
     enum InputIds {

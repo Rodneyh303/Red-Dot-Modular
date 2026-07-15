@@ -33,25 +33,9 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_object_set_new(root, "perVoiceArticulation", json_boolean(m->engine.perVoiceArticulation));
     // Per-lane direction: the 4-state LaneDir enum per strand (Forward/Reverse/Pendulum/PingPong).
     // Also saves the legacy sign + pendulum fields for backward compat with older patches.
-    { json_t* arr = json_array();
-      for (int s = 0; s < dotModular::NUM_STRANDS; ++s)
-          json_array_append_new(arr, json_integer((int)m->engine.laneDirPending_[s]));
-      json_object_set_new(root, "laneDir", arr); }
-    { json_t* arr = json_array();
-      for (int s = 0; s < dotModular::NUM_STRANDS; ++s)
-          json_array_append_new(arr, json_integer(m->engine.laneSignPending_[s]));
-      json_object_set_new(root, "laneSign", arr); }
-    { json_t* arr = json_array();
-      for (int s = 0; s < dotModular::NUM_STRANDS; ++s)
-          json_array_append_new(arr, json_boolean(m->engine.lanePendulum_[s]));
-      json_object_set_new(root, "lanePendulum", arr); }
-    json_object_set_new(root, "laneFlipQuant", json_integer((int)m->engine.laneFlipQuant));
-    // Per-voice direction: the 4-state LaneDir enum per voice-per-lane (15 × 6 = 90 values).
-    { json_t* arr = json_array();
-      for (int v = 0; v < 15; ++v)
-          for (int s = 0; s < dotModular::NUM_STRANDS; ++s)
-              json_array_append_new(arr, json_integer((int)m->engine.laneDirVPending_[v][s]));
-      json_object_set_new(root, "laneDirV", arr); }
+    // Step 3: laneDirV is NOT persisted here any more — East's direction bank is poly
+    // direction's home and Rack persists it as module params. Two persisted homes for one
+    // datum is the bug this arc kept hitting.
     json_object_set_new(root, "modVizMonsoonOther",  json_boolean(m->modVizMonsoonOther));
     json_object_set_new(root, "modVizEast",  json_boolean(m->modVizEast));
     json_object_set_new(root, "modVizWest",  json_boolean(m->modVizWest));
@@ -229,20 +213,11 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
             m->engine.laneDirPending_[s] = d;
         }
     }
-    // Per-voice direction (laneDirV).
-    if (auto j = json_object_get(root, "laneDirV")) {
-        for (int v = 0; v < 15; ++v)
-            for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
-                int idx = v * dotModular::NUM_STRANDS + s;
-                if (idx < (int)json_array_size(j)) {
-                    auto d = (SequencerEngine::LaneDir)json_integer_value(json_array_get(j, idx));
-                    m->engine.laneDirV_[v][s] = d;
-                    m->engine.laneDirVPending_[v][s] = d;
-                    m->engine.laneSignV_[v][s] = (d == SequencerEngine::LaneDir::Reverse) ? -1 : 1;
-                    m->engine.laneSignVPending_[v][s] = m->engine.laneSignV_[v][s];
-                }
-            }
-    }
+    // Step 3: laneDirV is NOT restored here any more — East's direction bank is poly
+    // direction's home and Rack restores it as module params, after which
+    // MonsoonExpanderManager::sync() pushes it into the engine (which is a derived cache).
+    // With no East in the rack, sync() resets poly direction to Forward, so it no longer
+    // outlives its editor.
     if (auto j = json_object_get(root, "laneFlipQuant"))
         m->engine.laneFlipQuant = (json_integer_value(j) == 1) ? SequencerEngine::LaneFlipQuant::Phrase
                                                                : SequencerEngine::LaneFlipQuant::StepEdge;

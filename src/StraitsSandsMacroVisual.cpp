@@ -97,14 +97,14 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     explicit StraitsSandsMacroVisualWidget(StraitsSandsMacroVisual* mod) {
         setModule(mod);
         panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance,
-                            "res/panels/StraitsSandsMacroVisual_40HP.svg"));
+                            "res/panels/StraitsSandsMacroVisual_48HP.svg"));
         panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance,
-                            "res/panels/StraitsSandsMacroVisual_40HP_light.svg"));
+                            "res/panels/StraitsSandsMacroVisual_48HP_light.svg"));
         // Kit owns the SvgPanel (created + setPanel'd here); widgets bind to the
         // named shapes baked into the SVG by panel_src/gen_macro_mono.py, so the
         // gen script is the single source of widget geometry (no rowY/columns here).
         loadPanel(asset::plugin(pluginInstance,
-                            "res/panels/StraitsSandsMacroVisual_40HP.svg"));
+                            "res/panels/StraitsSandsMacroVisual_48HP.svg"));
 
         redDot::addRedScrews(this);
 

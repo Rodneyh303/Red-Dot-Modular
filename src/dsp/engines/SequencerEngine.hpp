@@ -129,12 +129,14 @@ struct SequencerEngine {
     // (the endpoint step repeats) before the direction flips. Per-strand hold flag.
     bool lanePingPongHold_[dotModular::NUM_STRANDS] = {};
     // Per-voice per-strand accumulated tick (poly analogue of laneTick_). Advanced in advancePlayhead
-    // by dir * (laneSign_[s] * polyLaneSign(v, s)) — the EFFECTIVE sign is mono's lane sign times the
-    // voice's own sign. laneSignV_ = +1 (default) = follow mono's lane direction; -1 = reverse
-    // independently of mono (Local East). So a voice inherits mono's reversal AND can flip again on
-    // top. All-forward (all signs +1) keeps laneTickV_[v][s] == laneTick_[s] exactly → no-op.
+    // by dir * polyLaneSign(v, s) — the effective sign is the voice's OWN, i.e. ABSOLUTE, not
+    // relative to mono. laneSignV_ = +1 (default) = Forward; -1 = Reverse. A voice therefore does
+    // NOT inherit mono's reversal: the DirCell directly controls that voice's direction. (It was
+    // once laneSign_[s] * polyLaneSign(v, s) — mono-relative — which read as counter-intuitive
+    // when mono was reversed.) laneTickV_[v][s] == laneTick_[s] exactly only when the voice AND
+    // mono's lane are both Forward → no-op until something is reversed.
     // laneSignVPending_ is promoted to laneSignV_ at the same boundary as mono's (laneFlipQuant),
-    // so a per-voice flip also takes effect musically (no jump). See plans/lane_direction_rollout.md.
+    // so a per-voice flip also takes effect musically (no jump).
     int laneTickV_[15][dotModular::NUM_STRANDS]        = {};
     int laneSignV_[15][dotModular::NUM_STRANDS]        = {};   // default 0 → treated as +1 (see polyLaneSign)
     int laneSignVPending_[15][dotModular::NUM_STRANDS] = {};
@@ -428,9 +430,9 @@ struct SequencerEngine {
              : (polyLane == PL_ACCENT) ? dotModular::STRAND_ACCENT
                                        : dotModular::STRAND_OCTAVE;
     }
-    // Per-voice tick for an engine poly lane, respecting mono's per-lane direction (poly inherits
-    // it via laneTickV_; Local-East independent direction is step 3). Delegated voices track
-    // mono's laneTick_[strand] exactly through this. Out-of-range bank falls back to mono's tick.
+    // Per-voice tick for an engine poly lane. The voice's direction is ABSOLUTE (its own DirCell),
+    // so this tracks mono's laneTick_[strand] only while both the voice and mono's lane are
+    // Forward — a voice does NOT inherit mono's reversal. Out-of-range bank falls back to mono's tick.
     int polyLaneTick(int bank, int polyLane) const {
         int strand = polyLaneStrand(polyLane);
         return (bank >= 0 && bank < 15) ? laneTickV_[bank][strand] : laneTick_[strand];
