@@ -379,11 +379,19 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         bindInput<PJ301MPort>("input_CV2_INPUT",           MonsoonIds::CV2_INPUT);
         bindInput<PJ301MPort>("input_CV3_MOD_INPUT",       MonsoonIds::CV3_MOD_INPUT);
 
-        // Output-group accent region (unchanged)
+        // Output-group accent region: REMOVED (see below).
         {
-            Monsoon* mm = dynamic_cast<Monsoon*>(module);
-            redDot::addOutputAccent(this, 106.f, 97.f, 88.f, 31.f,
-                [mm]() { return mm ? mm->lightTheme : false; });
+            // Monsoon* mm = dynamic_cast<Monsoon*>(module);   // only fed the accent's theme fn
+            // Output-accent region REMOVED. It implemented a real Rack convention (outputs
+            // should read distinctly from inputs), but as a slab at hardcoded mm — 106,97
+            // 88x31 — sized by eye rather than derived from the output jacks it covers, so
+            // it neither fitted them nor matched the two SVG group boxes it sat beside (all
+            // three now gone). Flat fill + hairline outline reads as taped-on paper, not a
+            // recess. If in/out differentiation is wanted back, derive the region from the
+            // output jack ANCHORS in the generator (cleanup step 5) so it cannot drift:
+            // redDot::addOutputAccent still exists and takes a rect.
+            //             redDot::addOutputAccent(this, 106.f, 97.f, 88.f, 31.f,
+            //                 [mm]() { return mm ? mm->lightTheme : false; });
         }
         // Outputs (two rows) — bound by name
         bindOutput<PJ301MPort>("output_GATE_OUTPUT",          MonsoonIds::GATE_OUTPUT);
