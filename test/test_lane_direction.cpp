@@ -27,7 +27,7 @@ static void check(bool ok, const char* what) {
     if (ok) ++passed; else { ++failed; std::printf("  FAIL: %s\n", what); }
 }
 
-static const long DNA_LCM = 720720;                 // matches SequencerEngine
+static const long DNA_LCM = 1441440;                // matches SequencerEngine (LCM(1..16)*2)
 static long wrapT(long t) { return ((t % DNA_LCM) + DNA_LCM) % DNA_LCM; }
 static int  pmod(long a, int m) { return (int)(((a % m) + m) % m); }
 
@@ -302,6 +302,25 @@ int main() {
         Lane w; w.len = 8; w.dir = Dir::Pendulum; w.dirPending = Dir::Pendulum;
         for (int i = 0; i < 5; ++i) w.step(+1, Quant::StepEdge, false);
         check(w.tick != 0, "RESET: a walker does NOT return to Beat 1 on its own => must be cleared");
+    }
+
+
+    // ── 12. DNA_LCM must be a multiple of EVERY lane period ─────────────────────
+    // The wrap is inaudible only if, at t=DNA_LCM, every lane is exactly where it was at t=0.
+    // That needs DNA_LCM % period == 0 for each mode's period — not merely % len:
+    //   Forward/Reverse  len         Pendulum  2*(len-1)        PingPong  2*len
+    // LCM(1..16)=720720 carries only 2^4 and so failed the single cell len-16 PingPong (2*16=32),
+    // by exactly half a period — that lane flipped direction once per wrap (~25 h at 120 BPM).
+    // Guard it here so adding a mode or widening the length range can't silently reopen it.
+    {
+        bool ok = true;
+        for (int L = 1; L <= 16; ++L) {
+            if (DNA_LCM % L) ok = false;                                   // Forward / Reverse
+            if (L > 1 && DNA_LCM % (2*(L-1))) ok = false;                  // Pendulum
+            if (DNA_LCM % (2*L)) ok = false;                               // PingPong
+        }
+        check(ok, "DNA_LCM is a multiple of every lane period (fwd/rev, pendulum, pingpong)");
+        check(720720 % 32 != 0, "...and LCM(1..16) alone was NOT — len-16 PingPong was the gap");
     }
 
     std::printf("%d passed, %d failed\n", passed, failed);

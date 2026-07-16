@@ -15,7 +15,19 @@
 
 
 
-static const int DNA_LCM = 720720; // LCM of 1..16 ensures drift continuity
+// Wrap period for the master DNA tick. It must be a multiple of EVERY lane period, so that at
+// the wrap every lane is exactly where it was at t=0 and the reset is inaudible:
+//   Forward/Reverse  len         (1..16)
+//   Pendulum         2*(len-1)   (<=30; worst case 2*8 = 16 = 2^4)
+//   PingPong         2*len       (<=32 = 2^5)
+// LCM(1..16) = 2^4*3^2*5*7*11*13 = 720720 covers every case EXCEPT len-16 PingPong: 32 needs
+// 2^5 and 720720 carries only 2^4. 720720 = 32*22522 + 16, i.e. HALF a ping-pong period, so a
+// len-16 PingPong lane used to flip direction once per wrap (~25 h of continuous play at 120 BPM).
+// Doubling to LCM(1..16)*2 = 1441440 adds the missing factor of 2 and still divides every len,
+// so the DNA drift pattern is unchanged — it already repeated at 720720, and the counter now
+// simply passes through that point without resetting. This is what lets "position is a pure
+// function of the clock" hold with no asterisk.
+static const int DNA_LCM = 1441440; // LCM(1..16)*2 — covers every lane period incl. 2*16 PingPong
 
 // Closed-form window position for a lane at global tick t — the heart of the stateless model.
 // Reproduces the accumulator's sequences exactly (verified in test_lane_direction):

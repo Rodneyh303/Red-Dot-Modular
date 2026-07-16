@@ -126,11 +126,15 @@ The walker wins on the one axis where the rest of the instrument doesn't even tr
   prob-out bug becomes structurally impossible rather than merely fixed.
 - **`resetLaneWalk()` is now redundant** (zeroing the clock syncs everything). Kept because it
   is free and correct again the instant a walker returns.
-- **The len-16 PingPong wrap edge does not arise** for the walker (phase in state) but **does**
-  for closed form: PingPong's period is `2·len`, and `2·16 = 32` does not divide `DNA_LCM`
-  (`2⁴·…`), so a len-16 PingPong lane jumps phase once per DNA wrap ≈ 25 h of continuous play.
-  Fix if it ever matters: wrap at `LCM(1..16)·2 = 1441440` — divisible by 32 and still by every
-  `len`, so DNA drift semantics are preserved.
+- **The len-16 PingPong wrap edge is closed.** `DNA_LCM` must be a multiple of every lane
+  *period*, not just every `len`: Forward/Reverse need `len`, Pendulum needs `2(len-1)` (≤30,
+  worst case `2·8 = 16 = 2⁴`), PingPong needs `2·len` (≤ `32 = 2⁵`). `LCM(1..16) = 720720`
+  carries only `2⁴`, so len-16 PingPong was the single failing cell — and `720720 = 32·22522+16`
+  is *half* a ping-pong period, so that lane flipped direction once per wrap (~25 h at 120 BPM).
+  `DNA_LCM` is now `LCM(1..16)·2 = 1441440`: it adds the missing factor of 2, still divides every
+  `len`, and leaves the drift pattern untouched (it already repeated at 720720 — the counter just
+  passes through without resetting). With no walker anywhere, the wrap was the last place history
+  could leak in; closing it makes "position is a pure function of the clock" true with no asterisk.
 
 ## History of wrong turns (the useful part)
 
