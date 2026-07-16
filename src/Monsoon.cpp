@@ -337,13 +337,10 @@ float Monsoon::semitoneToVolts(int semitone) {
     void Monsoon::handleRestart(bool manual, bool resetImmediate) {
         stepIndex = (startStep - 1 + 16) % 16;
         engine.totalStepsElapsed = 0; // Sync polymeters to "Beat 1" on hard reset
-        // Re-sync the LANES to Beat 1 too. Zeroing the master clock alone stopped being enough
-        // the moment lanes got their own tick: Forward/Reverse lanes are a closed form of
-        // totalStepsElapsed so they follow it for free, but a Pendulum/PingPong lane WALKS —
-        // it would carry straight on from wherever it was and quietly ignore RESET. (That was
-        // live: the per-lane tick forked off the master clock and no one updated this path.)
-        // Clearing the walk state here is what makes "sync polymeters to Beat 1" true again;
-        // it is a no-op for the closed-form lanes, which recompute from t regardless.
+        // Under the stateless model the lanes follow this for free (each is a pure function
+        // of totalStepsElapsed), so Beat 1 sync is automatic. resetLaneWalk() is belt-and-braces:
+        // redundant now, but it was MISSING when lanes had their own accumulators — RESET zeroed
+        // the master clock while every lane walked on, and polymeters silently stopped syncing.
         engine.resetLaneWalk();
         engine.gs.reset();          // clears gate, hold, pitch, pulse, semiPlayRemain
         prevExtGate = false;

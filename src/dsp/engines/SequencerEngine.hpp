@@ -135,10 +135,15 @@ struct SequencerEngine {
     // readers (displays, prob-outs) need no change. Implemented in the .cpp.
     static long laneTickFor(LaneDir d, long t, int len);
 
-    // Clear the WALK state of the bouncing lanes (Pendulum/PingPong) so they restart from the
-    // window origin. Forward/Reverse need nothing — they are a closed form of totalStepsElapsed
-    // and follow it automatically. Called on hard restart, where zeroing the master clock alone
-    // would leave a walker carrying on and silently ignoring RESET.
+    // Clear per-lane walk state on hard restart. Under the fully-stateless model this is
+    // REDUNDANT — every lane is a pure function of totalStepsElapsed, so zeroing that at
+    // handleRestart() already syncs all of them to Beat 1 (the next advancePlayhead recomputes
+    // these fields from t regardless). Kept because it is free, self-documenting, and correct
+    // again the moment any walker is reintroduced.
+    //
+    // It is NOT redundant historically: with per-lane ACCUMULATORS, handleRestart() zeroed the
+    // master clock but nothing cleared these, so RESET silently stopped syncing polymeters —
+    // lanes had forked off the shared clock and the reset path was never updated to follow.
     void resetLaneWalk() {
         for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
             laneTick_[s] = 0; laneSign_[s] = 1; lanePingPongHold_[s] = false;
@@ -146,6 +151,8 @@ struct SequencerEngine {
             for (int v = 0; v < 15; ++v) {
                 laneTickV_[v][s] = 0; laneSignV_[v][s] = 1; lanePingPongHoldV_[v][s] = false;
             }
+        }
+    }
         }
     }
     // Macro's own per-lane tick — always follows Macro's direction, independent of

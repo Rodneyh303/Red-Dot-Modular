@@ -166,63 +166,46 @@ bool SequencerEngine::advancePlayhead(int dir) {
     if (dir < 0) totalStepsElapsed = (totalStepsElapsed - 1 + DNA_LCM) % DNA_LCM;
     else         totalStepsElapsed = (totalStepsElapsed + 1) % DNA_LCM;
 
-    // ── Lane position: HYBRID ───────────────────────────────────────────────────
-    // Forward/Reverse are POSITIONS; Pendulum/PingPong are TRAJECTORIES. That distinction is
-    // the whole design:
+    // ── Lane position: FULLY STATELESS ──────────────────────────────────────────
+    // Every lane, every mode, is a pure function of the master clock:
+    //     position = laneTickFor(dir, totalStepsElapsed, len)
+    // laneTick_ / laneTickV_ / macroLaneTick_ are a CACHE of that, not accumulators, so every
+    // existing reader keeps working unchanged. laneSign_* are derived for the UI cue only —
+    // nothing reads them to decide position.
     //
-    //  * Forward/Reverse -> closed form, laneTick_ = ±totalStepsElapsed. No accumulator, so
-    //    they cannot drift from the DNA clock or each other however often direction is flipped,
-    //    and they are unaffected by LOR modulation because the formula never mentions `len`.
-    //    (The accumulator left a lane reversed for k steps 2k behind FOREVER — that was the
-    //    reported "lanes get out of sync if I flip at different times".)
-    //
-    //  * Pendulum/PingPong -> keep walking + bouncing at the CURRENT endpoint. Their period is
-    //    2(len-1) / 2*len, so a closed form's SHAPE depends on `len` — and `len` is CV-modulated
-    //    at control rate, which would make the phase recompute and the lane teleport on every
-    //    modulation step. A walker in a box whose walls move just turns around sooner or later.
-    //    Carrying phase in state also makes them immune to the DNA_LCM wrap (no need for the
-    //    wrap to divide 2*len — the len-16 PingPong edge simply does not arise).
-    //
-    // A lane leaving Pendulum for Forward snaps straight back onto the clock, so a bouncer's
-    // excursion leaves no permanent residue. laneSign_* are derived for the UI cue only.
+    // Why no walker (see docs/design/LANE_POSITION_MODEL.md):
+    //   * Reversible mode already declares this instrument's answer to "how do we go
+    //     backward?": Philox, a pure function of a SIGNED index. A walker is an integrator
+    //     with a time-asymmetric update, so reversing it does not retrace — it runs a
+    //     DIFFERENT system (measured: pendulum fwd 0 1 2 3 2 1 0, walked back 3 0 3 0 3 0).
+    //     Under Mode E with a reversing ramp the draws retrace exactly while a walked lane
+    //     does not, so the lane desyncs from its own random data — precisely what Reversible
+    //     exists to prevent.
+    //   * A walker cannot be scrubbed or evaluated at an arbitrary t; a closed form can.
+    //   * Teleport-on-len-modulation is NOT a cost of this model: a plain Forward lane already
+    //     jumps when len is modulated (len is part of the address, exactly like rot), and has
+    //     always done so. A walker would make bouncers uniquely immune to a behaviour every
+    //     other lane has — an inconsistency, not a feature.
     {
-        auto closedForm = [&](LaneDir d) { return d == LaneDir::Forward || d == LaneDir::Reverse; };
-        // Closed-form lanes: position is a pure function of the master clock.
-        auto setStateless = [&](LaneDir d, int& tickOut, int& signOut) {
-            const long cur = laneTickFor(d, (long)totalStepsElapsed, 1);   // len unused for Fwd/Rev
+        auto recomp = [&](LaneDir d, int len, int& tickOut, int& signOut) {
+            const long t   = (long)totalStepsElapsed;
+            const long cur = laneTickFor(d, t, len);
+            const long prv = laneTickFor(d, t - dir, len);
             tickOut = (int)((cur % DNA_LCM + DNA_LCM) % DNA_LCM);
-            signOut = (d == LaneDir::Reverse) ? -dir : dir;                 // composes with Mode E
-        };
-        // Walking lanes: step by the current sign, bounce at the live LOR endpoint.
-        auto walk = [&](LaneDir d, int len, int& tick, int& sign, bool& hold) {
-            if (sign == 0) sign = +1;                     // -0 == 0 would never flip
-            if (d == LaneDir::PingPong && hold) {         // hold was set last step -> bounce
-                hold = false; sign = -sign;
-            } else if (d == LaneDir::PingPong) {
-                const int pos = ((tick % len) + len) % len;
-                if ((sign > 0 && pos == len - 1) || (sign < 0 && pos == 0)) {
-                    hold = true; return;                  // endpoint repeats: don't advance
-                }
-            }
-            tick = (int)((((long)tick + (long)dir * sign) % DNA_LCM + DNA_LCM) % DNA_LCM);
-            if (d == LaneDir::Pendulum) {                 // flip at the endpoint, no repeat
-                const int pos = ((tick % len) + len) % len;
-                if ((sign > 0 && pos == len - 1) || (sign < 0 && pos == 0)) sign = -sign;
-            }
+            const long delta = cur - prv;
+            if (delta > 0)      signOut = +1;
+            else if (delta < 0) signOut = -1;
+            // delta == 0 is the PingPong endpoint repeat: keep the previous sign.
         };
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
             const int len = std::max(1, strandLen(l));
-            if (closedForm(laneDir_[l])) setStateless(laneDir_[l], laneTick_[l], laneSign_[l]);
-            else                         walk(laneDir_[l], len, laneTick_[l], laneSign_[l], lanePingPongHold_[l]);
-            for (int v = 0; v < 15; ++v) {
-                if (closedForm(laneDirV_[v][l])) setStateless(laneDirV_[v][l], laneTickV_[v][l], laneSignV_[v][l]);
-                else                             walk(laneDirV_[v][l], len, laneTickV_[v][l], laneSignV_[v][l], lanePingPongHoldV_[v][l]);
-            }
+            recomp(laneDir_[l], len, laneTick_[l], laneSign_[l]);
+            for (int v = 0; v < 15; ++v)
+                recomp(laneDirV_[v][l], len, laneTickV_[v][l], laneSignV_[v][l]);
         }
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
             const int mlen = std::max(1, (l < 4) ? macroLOR_[l] : strandLen(l));
-            if (closedForm(macroLaneDir_[l])) setStateless(macroLaneDir_[l], macroLaneTick_[l], macroLaneSign_[l]);
-            else                              walk(macroLaneDir_[l], mlen, macroLaneTick_[l], macroLaneSign_[l], macroPingPongHold_[l]);
+            recomp(macroLaneDir_[l], mlen, macroLaneTick_[l], macroLaneSign_[l]);
         }
     }
 
