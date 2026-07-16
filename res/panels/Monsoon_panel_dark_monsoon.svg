@@ -1,14 +1,9 @@
 <svg xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns="http://www.w3.org/2000/svg" width="600.0" height="379.4291" viewBox="0 0 600.0 379.4291">
-<defs>
-    <pattern id="grain" x="0" y="0" width="767.99" height="0.5" patternUnits="userSpaceOnUse"><rect width="767.99" height="0.5" fill="#111214"/><rect y="0.25" width="767.99" height="0.12" fill="#1e2228" opacity="0.40"/></pattern>
-    <radialGradient id="ringGlow" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#26a69a" stop-opacity="0.22"/><stop offset="70%" stop-color="#26a69a" stop-opacity="0.04"/><stop offset="100%" stop-color="#26a69a" stop-opacity="0.0"/></radialGradient>
-    <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0e1420" stop-opacity="1.0"/><stop offset="100%" stop-color="#111214" stop-opacity="0.0"/></linearGradient>
-    <linearGradient id="treeGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#18202a" stop-opacity="0.0"/><stop offset="60%" stop-color="#18202a" stop-opacity="0.70"/><stop offset="100%" stop-color="#18202a" stop-opacity="0.90"/></linearGradient>
-  </defs>
+<!-- defs removed: nanosvg renders no gradients/patterns; every fill is now solid -->
 <g transform="scale(0.78125)">
   
-  <rect width="767.99" height="485.67" fill="url(#grain)"/>
-  <rect x="0" y="0" width="767.99" height="151.18" fill="url(#skyGrad)"/>
+  <rect width="767.99" height="485.67" fill="#121416"/>
+  <g stroke="none"><rect x="0" y="0.00" width="767.99" height="15.12" fill="#0e1420" opacity="0.950"/><rect x="0" y="15.12" width="767.99" height="15.12" fill="#0e1420" opacity="0.850"/><rect x="0" y="30.24" width="767.99" height="15.12" fill="#0e1420" opacity="0.750"/><rect x="0" y="45.35" width="767.99" height="15.12" fill="#0e1420" opacity="0.650"/><rect x="0" y="60.47" width="767.99" height="15.12" fill="#0e1420" opacity="0.550"/><rect x="0" y="75.59" width="767.99" height="15.12" fill="#0e1420" opacity="0.450"/><rect x="0" y="90.71" width="767.99" height="15.12" fill="#0e1420" opacity="0.350"/><rect x="0" y="105.83" width="767.99" height="15.12" fill="#0e1420" opacity="0.250"/><rect x="0" y="120.94" width="767.99" height="15.12" fill="#0e1420" opacity="0.150"/><rect x="0" y="136.06" width="767.99" height="15.12" fill="#0e1420" opacity="0.050"/></g>
   <g stroke="#1a2535" stroke-width="0.5" opacity="0.55">
     <line x1="-44.77" y1="44.52" x2="10.98" y2="441.15" stroke-dasharray="3.5,3.6"/>
     <line x1="-18.37" y1="111.30" x2="18.60" y2="374.37" stroke-dasharray="5.2,2.9"/>
@@ -78,7 +73,7 @@
     <ellipse cx="623.62" cy="34.02" rx="60.47" ry="18.90"/>
     <ellipse cx="672.75" cy="26.46" rx="37.80" ry="18.90"/>
   </g>
-  <g fill="url(#treeGrad)" stroke="none">
+  <g fill="#18202a" opacity="0.78" stroke="none">
     <polygon points="48.98,485.67 87.08,485.67 72.79,387.40 63.27,387.40"/>
     <ellipse cx="68.03" cy="387.40" rx="27.51" ry="7.70"/>
     <polygon points="151.33,485.67 181.26,485.67 170.04,417.63 162.56,417.63"/>
@@ -269,7 +264,7 @@
     <circle cx="672.75" cy="219.21" r="22.68"/>
     <circle cx="672.75" cy="219.21" r="15.12" stroke-width="0.4" opacity="0.55"/>
   </g>
-  <circle cx="612.28" cy="113.39" r="90.71" fill="url(#ringGlow)" stroke="none"/>
+  <g stroke="none"><circle cx="612.28" cy="113.39" r="75.59" fill="#26a69a" opacity="0.022"/><circle cx="612.28" cy="113.39" r="60.47" fill="#26a69a" opacity="0.027"/><circle cx="612.28" cy="113.39" r="45.35" fill="#26a69a" opacity="0.045"/><circle cx="612.28" cy="113.39" r="30.24" fill="#26a69a" opacity="0.047"/><circle cx="612.28" cy="113.39" r="15.12" fill="#26a69a" opacity="0.050"/></g>
   <g stroke="#c8960c" stroke-width="0.9" fill="none" opacity="0.70"><circle cx="612.28" cy="113.39" r="75.59"/><circle cx="612.28" cy="113.39" r="90.71" stroke-width="0.4" opacity="0.40"/></g>
   <g stroke="#c8960c" stroke-width="0.7" opacity="0.68">
     <line x1="612.28" y1="43.46" x2="612.28" y2="26.46"/>
