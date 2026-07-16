@@ -385,7 +385,7 @@
 </g>
 </g>
 <g inkscape:label="cluster-art" inkscape:groupmode="layer" id="cluster-art">
-<rect x="17.7" y="239.2" width="380.6" height="35.4" rx="5.9" fill="#d8dade" stroke="#c0c4ca" stroke-width="1"/>
+<!-- removed: cluster recess (SLEW/DICE/TRIAL/MIX) -->
 <circle cx="35.4" cy="256.9" r="10.0" fill="#d4d6d9" stroke="#c0c4ca" stroke-width="1"/>
 <circle cx="84.7" cy="256.9" r="10.0" fill="#d4d6d9" stroke="#c0c4ca" stroke-width="1"/>
 <rect x="125.2" y="248.0" width="17.7" height="17.7" rx="3.5" fill="#d4d6d9" stroke="#c0202a" stroke-width="0.9"/>
@@ -398,8 +398,8 @@
 <circle cx="479.2" cy="256.9" r="7.7" fill="#d4d6d9" stroke="#c0c4ca" stroke-width="0.9"/>
 <circle cx="528.5" cy="256.9" r="7.7" fill="#d4d6d9" stroke="#c0c4ca" stroke-width="0.9"/>
 <circle cx="577.9" cy="256.9" r="7.7" fill="#d4d6d9" stroke="#c0c4ca" stroke-width="0.9"/>
-<rect x="23.6" y="292.3" width="292.3" height="79.7" rx="7.4" fill="#d8dade" fill-opacity="0.92" stroke="#c0c4ca" stroke-width="1"/>
-<rect x="315.9" y="292.3" width="242.1" height="79.7" rx="7.4" fill="#d8dade" fill-opacity="0.86" stroke="#c0c4ca" stroke-width="1"/>
+<!-- removed: left jack group recess -->
+<!-- removed: right jack group recess -->
 <circle cx="44.3" cy="310.0" r="13.0" fill="#d4d6d9" stroke="#c0c4ca" stroke-width="1"/>
 <circle cx="94.5" cy="310.0" r="13.0" fill="#d4d6d9" stroke="#c0c4ca" stroke-width="1"/>
 <circle cx="144.7" cy="310.0" r="13.0" fill="#d4d6d9" stroke="#c0c4ca" stroke-width="1"/>
