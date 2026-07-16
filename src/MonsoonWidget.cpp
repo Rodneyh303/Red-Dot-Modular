@@ -127,40 +127,55 @@ struct TrialButton : VCVButton {
 };
 
 // ── Simple Befaco-inspired knobs ─────────────────────────────────────────────
+// ── Knob shadows ─────────────────────────────────────────────────────────────
+// Rack's SvgKnob always builds a CircularShadow and, in setSvg(), sizes it to the
+// knob and offsets it DOWN by 10% of the knob height. CircularShadow defaults to
+// blurRadius = 0, so its radial gradient runs r -> r+0: not a soft shadow at all,
+// but a HARD-EDGED black disc at 15% opacity peeking out below every knob. On the
+// light panel that reads as a grey smudge, and our knob SVGs already carry their
+// own bevel, so it is redundant as well as ugly. Kill it on every RDM knob.
+// (Restore by raising opacity AND giving blurRadius a real value — never opacity alone.)
 RDM_KnobLarge::RDM_KnobLarge() {
     minAngle = -0.83f * M_PI;
     maxAngle =  0.83f * M_PI;
     setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobLarge.svg")));
+    shadow->opacity = 0.f;   // see note above
 }
 RDM_KnobMedium::RDM_KnobMedium() {
     minAngle = -0.83f * M_PI;
     maxAngle =  0.83f * M_PI;
     setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobMedium.svg")));
+    shadow->opacity = 0.f;   // see note above
 }
 RDM_KnobSmall::RDM_KnobSmall() {
     minAngle = -0.83f * M_PI;
     maxAngle =  0.83f * M_PI;
     setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobSmall.svg")));
+    shadow->opacity = 0.f;   // see note above
 }
 RDM_KnobDarkLarge::RDM_KnobDarkLarge() {
     minAngle = -0.83f * M_PI;
     maxAngle =  0.83f * M_PI;
     setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobDark_Large.svg")));
+    shadow->opacity = 0.f;   // see note above
 }
 RDM_KnobDarkMedium::RDM_KnobDarkMedium() {
     minAngle = -0.83f * M_PI;
     maxAngle =  0.83f * M_PI;
     setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobDark_Medium.svg")));
+    shadow->opacity = 0.f;   // see note above
 }
 RDM_KnobCreamLarge::RDM_KnobCreamLarge() {
     minAngle = -0.83f * M_PI;
     maxAngle =  0.83f * M_PI;
     setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobCream_Large.svg")));
+    shadow->opacity = 0.f;   // see note above
 }
 RDM_KnobCreamMedium::RDM_KnobCreamMedium() {
     minAngle = -0.83f * M_PI;
     maxAngle =  0.83f * M_PI;
     setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobCream_Medium.svg")));
+    shadow->opacity = 0.f;   // see note above
 }
 
 bool MonsoonWidget::getLightTheme() const {
