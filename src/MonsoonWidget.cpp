@@ -276,25 +276,31 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         // EXPERIMENT branch: the semitone modulation is shown by a superimposed
         // light marker inside MonsoonLightSlider::draw (not the linear tick), so
         // no queueModArcLinear here — this lets us compare the two approaches.
+        // Bound by ANCHOR, not coordinates: panel_src/fader_level_markers.py emits each
+        // param_SEMIn_PARAM anchor AND that fader's level ticks from one loop, so the ticks
+        // cannot drift from the slider (cleanup doc A3). Do not reintroduce mm here.
         for (int i = 0; i < 12; ++i) {
-            auto* s = createLightParamCentered<MonsoonLightSlider<GreenRedLight>>(
-                mm2px(Vec(7.5f + i*9.f, 59.75f)), module, SEMI0_PARAM+i, SEMI_LED_START+2*i);
-            addParam(s);
+            bindLightParam<MonsoonLightSlider<GreenRedLight>>(
+                "param_SEMI" + std::to_string(i) + "_PARAM", SEMI0_PARAM + i, SEMI_LED_START + 2*i);
         }
 
         // ── OCT sliders ───────────────────────────────────────────────────────
         {
-            auto* lo = createLightParamCentered<VCVLightSlider<RedLight>>(
-                mm2px(Vec(119.f, 59.75f)), module, MonsoonIds::OCT_LO_PARAM, MonsoonIds::OCT_LO_LED);
-            addParam(lo);
-            queueModArcLinear(this, module, lo,
+            VCVLightSlider<RedLight>* lo = nullptr;
+            bindLightParam<VCVLightSlider<RedLight>>("param_OCT_LO_PARAM",
+                MonsoonIds::OCT_LO_PARAM, MonsoonIds::OCT_LO_LED,
+                std::function<void(VCVLightSlider<RedLight>*)>([&lo](VCVLightSlider<RedLight>* w){ lo = w; }));
+            // Guard: bindLightParam only WARNs on a missing anchor, so the slider may be null.
+            if (lo) queueModArcLinear(this, module, lo,
                 [](const Monsoon::ModViz& m){ return m.octaveLo; },
                 [](const Monsoon::ModViz& m){ return m.pitchLane[12]; },
                 [](const Monsoon& mm){ return mm.modVizMonsoonMelody; });
-            auto* hi = createLightParamCentered<VCVLightSlider<RedLight>>(
-                mm2px(Vec(128.f, 59.75f)), module, MonsoonIds::OCT_HI_PARAM, MonsoonIds::OCT_HI_LED);
-            addParam(hi);
-            queueModArcLinear(this, module, hi,
+            VCVLightSlider<RedLight>* hi = nullptr;
+            bindLightParam<VCVLightSlider<RedLight>>("param_OCT_HI_PARAM",
+                MonsoonIds::OCT_HI_PARAM, MonsoonIds::OCT_HI_LED,
+                std::function<void(VCVLightSlider<RedLight>*)>([&hi](VCVLightSlider<RedLight>* w){ hi = w; }));
+            // Guard: bindLightParam only WARNs on a missing anchor, so the slider may be null.
+            if (hi) queueModArcLinear(this, module, hi,
                 [](const Monsoon::ModViz& m){ return m.octaveHi; },
                 [](const Monsoon::ModViz& m){ return m.pitchLane[13]; },
                 [](const Monsoon& mm){ return mm.modVizMonsoonMelody; });

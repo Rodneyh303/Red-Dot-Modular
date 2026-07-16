@@ -1,62 +1,90 @@
 #!/usr/bin/env python3
-"""Monsoon fader level markers — Befaco Octaves style.
+"""Monsoon faders: emit the ANCHORS and their level-marker ticks from ONE loop.
 
-Reference: Befaco Octaves (res/panels/Octaves.svg). Its sliders are scaled by ONE column
-of ticks sitting in the gap beside each fader: long (roughly a third of the fader pitch),
-solid, uniform weight, evenly spanning the travel. Legible at a glance and quiet.
+This is the single-source fix (cleanup doc A3 / step 5), applied to the faders only.
 
-History of this panel's markers:
-  v1  one line drawn ACROSS each fader (major +/-2.8mm, minor +/-1.6mm) against a
-      ~2mm track half-width -> minors fully hidden, majors poking out ~0.8mm. Read as dashes.
-  v2  short ticks flanking BOTH sides of every fader -> 252 marks, visible but speckled.
-  v3  (this) one column per GAP, long and uniform. 13 columns x 9 levels = 117 ticks.
+Before: the widget placed the 14 faders from hardcoded mm (MonsoonWidget.cpp:
+        7.5f + i*9.f, then 119.f/128.f) while the ticks were absolute coords in the
+        SVG. Two grids -> they drifted, and the LO/HI markers ended up 3.5mm from
+        their sliders because the tick grid never knew about the gap after B.
 
-Geometry is derived from the fader centres, so a tick cannot drift from its fader --
-including OCT_LO/OCT_HI, which sit past a gap after B and which v1 missed by 3.5mm
-(cleanup doc A3).
+After:  FADERS_MM below is the only place a fader position exists. This script emits
+          * one <circle id="param_SEMIn_PARAM"> anchor per fader (components layer)
+          * the tick columns, derived from the same list
+        and MonsoonWidget binds by anchor id via SvgPanelKit::bindLightParam, so it
+        no longer carries coordinates at all. A tick cannot drift from its fader
+        because both come from one loop.
 
-STILL TWO SOURCES until cleanup step 5: the fader mm live in MonsoonWidget.cpp and are
-copied here. The fix is for the generator to emit each fader's ANCHOR and its ticks from
-ONE loop, with the widget binding by anchor id -- then drift is impossible, not merely
-corrected.
+Tick design follows Befaco Octaves (res/panels/Octaves.svg): one column per gap,
+long, solid, uniform weight -- no major/minor, which at this size only made the
+minors vanish.
 """
 import re
 
-MM = 3.779527559          # inner SVG units per mm (inner units are 96dpi px)
-# Fader centres, mm -- MUST match MonsoonWidget.cpp: 7.5f + i*9.f, then 119.f, 128.f
-FADERS_MM = [7.5 + i * 9.0 for i in range(12)] + [119.0, 128.0]
+MM_INNER = 3.779527559     # inner SVG units per mm (inner = 96dpi px)
+MM_OUTER = 2.9527559       # outer px per mm (Rack mm2px, 75dpi) -- anchors live here
 
-TOP_Y, BOT_Y = 170.08, 281.57     # inner units: the sliders' travel, unchanged
-LEVELS = 9                         # tick rows, evenly spaced across the travel
-TICK_MM = 3.0                      # tick length ~1/3 of the 9mm pitch, as Befaco
+# ── THE SINGLE SOURCE ────────────────────────────────────────────────────────
+# 12 semitones on a 9mm pitch, then the octave pair past a wider gap after B.
+FADERS_MM = [7.5 + i * 9.0 for i in range(12)] + [119.0, 128.0]
+FADER_Y_MM = 59.75         # slider centre line (matches the sliders' travel below)
+ANCHOR_IDS = ['param_SEMI%d_PARAM' % i for i in range(12)] + \
+             ['param_OCT_LO_PARAM', 'param_OCT_HI_PARAM']
+
+TOP_Y, BOT_Y = 170.08, 281.57   # inner units: the sliders' travel
+LEVELS  = 9
+TICK_MM = 3.4              # ~38% of the 9mm pitch
+TRACK_HALF_MM = 1.6        # visible slider track half-width; ticks must clear it
 
 def gap_centres_mm():
-    """One column per gap between adjacent faders (13 for 14 faders), as Befaco."""
     return [(FADERS_MM[i] + FADERS_MM[i + 1]) / 2.0 for i in range(len(FADERS_MM) - 1)]
 
-def build(stroke):
+def build_ticks(stroke):
     ys = [TOP_Y + (BOT_Y - TOP_Y) * k / (LEVELS - 1) for k in range(LEVELS)]
-    L = ['  <g stroke="%s" stroke-width="0.9" opacity="0.55" fill="none" stroke-linecap="round">' % stroke]
-    half = TICK_MM * MM / 2.0
+    half = TICK_MM * MM_INNER / 2.0
+    L = ['  <g stroke="%s" stroke-width="1.5" opacity="0.75" fill="none" stroke-linecap="round">' % stroke]
     for cx_mm in gap_centres_mm():
-        cx = cx_mm * MM
+        cx = cx_mm * MM_INNER
         for y in ys:
             L.append('    <line x1="%.2f" y1="%.2f" x2="%.2f" y2="%.2f"/>' % (cx - half, y, cx + half, y))
     L.append('  </g>')
     return '\n'.join(L)
 
-for theme, stroke in (('dark', '#888888'), ('light', '#999999')):
-    p = 'res/panels/Monsoon_panel_%s_monsoon.svg' % theme
-    s = open(p).read()
-    m = re.search(r'  <g stroke="%s"[^>]*fill="none"[^>]*>' % re.escape(stroke), s)
-    i, depth = m.end(), 0
+def build_anchors():
+    return '\n'.join(
+        '<circle id="%s" cx="%.2f" cy="%.2f" r="3" fill="none" stroke="none"/>'
+        % (aid, mm * MM_OUTER, FADER_Y_MM * MM_OUTER)
+        for aid, mm in zip(ANCHOR_IDS, FADERS_MM))
+
+def cut_group(s, open_re):
+    m = re.search(open_re, s); i, depth = m.end(), 0
     while True:
         o, c = s.find('<g', i), s.find('</g>', i)
         if o != -1 and o < c: depth += 1; i = o + 2
         else:
-            if depth == 0: break
+            if depth == 0: return m.start(), c + 4
             depth -= 1; i = c + 4
-    old = s[m.start():c + 4]
-    new = build(stroke)
-    open(p, 'w').write(s.replace(old, new, 1))
-    print('%-6s  %3d -> %3d ticks  (13 gaps x %d levels)' % (theme, old.count('<line'), new.count('<line'), LEVELS))
+
+# sanity: no tick may touch a track, nor reach its neighbour's
+half = TICK_MM / 2.0
+for cx in gap_centres_mm():
+    for f in FADERS_MM:
+        assert abs(cx - f) - half > TRACK_HALF_MM + 0.2 or abs(cx - f) > 6, \
+            'tick at %.2f would touch the fader at %.2f' % (cx, f)
+print('geometry ok: tick %.1fmm, clears %.1fmm track by %.2fmm' %
+      (TICK_MM, TRACK_HALF_MM * 2, (4.5 - half) - TRACK_HALF_MM))
+
+for theme, stroke in (('dark', '#888888'), ('light', '#999999')):
+    p = 'res/panels/Monsoon_panel_%s_monsoon.svg' % theme
+    s = open(p).read()
+    a, b = cut_group(s, r'  <g stroke="%s"[^>]*fill="none"[^>]*>' % re.escape(stroke))
+    old = s[a:b]
+    s = s[:a] + build_ticks(stroke) + s[b:]
+    # anchors: drop any we emitted before, then insert at the top of the components layer
+    for aid in ANCHOR_IDS:
+        s = re.sub(r'\n?<circle id="%s"[^>]*/>' % aid, '', s)
+    k = s.index('id="components">') + len('id="components">')
+    s = s[:k] + '\n' + build_anchors() + s[k:]
+    open(p, 'w').write(s)
+    print('%-6s  ticks %d -> %d   anchors emitted: %d' %
+          (theme, old.count('<line'), build_ticks(stroke).count('<line'), len(ANCHOR_IDS)))
