@@ -31,8 +31,13 @@ FADER_Y_MM = 59.75         # slider centre line (matches the sliders' travel bel
 ANCHOR_IDS = ['param_SEMI%d_PARAM' % i for i in range(12)] + \
              ['param_OCT_LO_PARAM', 'param_OCT_HI_PARAM']
 
-TOP_Y, BOT_Y = 170.08, 281.57   # inner units: the sliders' travel
+# The travel, inner units. SL_TOP=45mm .. SL_TOP+SLH=74.5mm in MonsoonWidget.hpp.
+TOP_Y, BOT_Y = 170.08, 281.57
+# Rows across that span. The OUTERMOST two are dropped: a tick exactly at the travel limit
+# sits level with the cap at its end stop, so it read as overshooting the slider rather than
+# marking it. 9 divisions, 7 drawn.
 LEVELS  = 9
+DROP_ENDS = True
 TICK_MM = 3.4              # ~38% of the 9mm pitch
 TRACK_HALF_MM = 1.6        # visible slider track half-width; ticks must clear it
 
@@ -41,6 +46,7 @@ def gap_centres_mm():
 
 def build_ticks(stroke):
     ys = [TOP_Y + (BOT_Y - TOP_Y) * k / (LEVELS - 1) for k in range(LEVELS)]
+    if DROP_ENDS: ys = ys[1:-1]
     half = TICK_MM * MM_INNER / 2.0
     L = ['  <g stroke="%s" stroke-width="1.5" opacity="0.75" fill="none" stroke-linecap="round">' % stroke]
     for cx_mm in gap_centres_mm():

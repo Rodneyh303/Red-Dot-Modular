@@ -565,12 +565,15 @@ void MonsoonWidget::draw(const DrawArgs& args) {
             }
         };
 
+        // Knob names sit BELOW each dial's own arc labels (1/1, 1/32, 0%, 100%), which the
+        // arcLabel() calls place at r*sin(45 deg) ~= 8.5-9.5mm under the knob centre. At dy=12
+        // the name spanned 10.3..13.7mm and nearly touched them; 14.5 leaves ~2-3mm clear.
         setNvgFontSize(3.4f); fillNvgColour(200,200,200);
-        labelAt("param_NOTE_VALUE_PARAM", 12.f, "NOTE VALUE");
-        labelAt("param_VARIATION_PARAM",  12.f, "VARIATION");
-        labelAt("param_LEGATO_PARAM",     12.f, "LEGATO");
-        labelAt("param_REST_PARAM",       12.f, "REST");
-        labelAt("param_ACCENT_KNOB",      12.f, "ACCENT");
+        labelAt("param_NOTE_VALUE_PARAM", 14.5f, "NOTE VALUE");
+        labelAt("param_VARIATION_PARAM",  14.5f, "VARIATION");
+        labelAt("param_LEGATO_PARAM",     14.5f, "LEGATO");
+        labelAt("param_REST_PARAM",       14.5f, "REST");
+        labelAt("param_ACCENT_KNOB",      14.5f, "ACCENT");
 
         auto arcLabel = [&](float cx_mm, float cy_mm, float r_mm, float angle_deg, const char* text, int ri=160, int gi=160, int bi=160) {
             float a=angle_deg*float(M_PI)/180.f, tx=cx_mm+r_mm*std::cos(a), ty=cy_mm+r_mm*std::sin(a);
@@ -607,35 +610,22 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         setNvgFontSize(3.0f);
         const char* sn[12]={"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
         for(int i=0;i<12;++i){ fillNvgColour(200,200,200); writeNvgText(7.5f+i*9.f,43.f,sn[i]); }
-        setNvgFontSize(2.7f); fillNvgColour(85,85,85);
+        // Fader numerals: sit just under the sliders. They used to be at SL_TOP+SLH+6 = 80.5mm,
+        // i.e. 0.5mm from the control-row labels at y=81 -- hence the overlap with SLEW/DICE/
+        // TRIAL. Pulled up to 2.8mm below the travel, which leaves ~3.7mm clear of that row.
+        // Brightness raised 85 -> 165: at 85 they read far fainter than the note names above.
+        setNvgFontSize(2.7f); fillNvgColour(165,165,165);
         const char* nums[12]={"1","2","3","4","5","6","7","8","9","10","11","12"};
-        for(int i=0;i<12;++i) writeNvgText(7.5f+i*9.f,SL_TOP+SLH+6.f,nums[i]);
+        for(int i=0;i<12;++i) writeNvgText(7.5f+i*9.f, SL_TOP+SLH+2.8f, nums[i]);
         setNvgFontSize(2.9f); fillNvgColour(38,166,154);
         writeNvgText(119.f,43.f,"LO"); writeNvgText(128.f,43.f,"HI");
 
-        // ── Slider tick marks: parallel horizontal lines per slider (meloDICER style) ──
-        // 9 tick levels in the slider travel range, alternating long/short
-        // Travel: SL_TOP=45mm to SL_TOP+SLH=74.5mm → 29.5mm / 8 intervals = 3.69mm each
-        {
-            const float SL_BOT = SL_TOP + SLH;
-            const int   N_TICKS = 9;
-            const float tickXs[14] = {7.5f,16.5f,25.5f,34.5f,43.5f,52.5f,61.5f,70.5f,79.5f,88.5f,97.5f,106.5f,119.f,128.f};
-            nvgBeginPath(vg);
-            for (int t = 0; t < N_TICKS; ++t) {
-                float ty   = mm2px(SL_TOP + t*(SL_BOT-SL_TOP)/(N_TICKS-1));
-                bool  major = (t==0 || t==4 || t==8);
-                float hw   = mm2px(major ? 2.2f : 1.4f);
-                for (int i = 0; i < 14; ++i) {
-                    float cx = mm2px(tickXs[i]);
-                    nvgMoveTo(vg, cx - hw, ty);
-                    nvgLineTo(vg, cx + hw, ty);
-                }
-            }
-            nvgStrokeWidth(vg, 0.6f);
-            if (lt) nvgStrokeColor(vg, nvgRGBA(140,140,140,90));
-            else    nvgStrokeColor(vg, nvgRGBA(180,180,180,55));
-            nvgStroke(vg);
-        }
+        // Slider level ticks are SVG panel art now, emitted by
+        // panel_src/fader_level_markers.py from the same loop as the fader anchors.
+        // The runtime drawer that used to live here was a SECOND tick system: 9 levels x 14
+        // faders at hw 2.2/1.4mm centred ON each slider, off its own hardcoded tickXs[14].
+        // It is what drew lines through the tracks, and it was a third copy of the fader
+        // positions (widget mm, tickXs, SVG). Do not reintroduce it.
 
         // Mode
         setNvgFontSize(3.2f); fillNvgColour(210,210,210); writeNvgText(197.f,5.f,"MODE");
