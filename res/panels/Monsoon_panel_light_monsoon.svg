@@ -370,6 +370,12 @@
 <circle cx="487.2" cy="354.3" r="13.0" fill="#d4d6d9" stroke="#c0c4ca" stroke-width="1"/>
 </g>
 <g inkscape:label="components" inkscape:groupmode="layer" id="components">
+<circle id="param_MODE_PARAM" cx="572.83" cy="41.34" r="3" fill="none" stroke="none"/>
+<circle id="light_MODE_A_LIGHT" cx="558.07" cy="88.58" r="3" fill="none" stroke="none"/>
+<circle id="light_MODE_B_LIGHT" cx="558.07" cy="112.20" r="3" fill="none" stroke="none"/>
+<circle id="light_MODE_C_LIGHT" cx="558.07" cy="135.83" r="3" fill="none" stroke="none"/>
+<circle id="light_MODE_D_LIGHT" cx="558.07" cy="159.45" r="3" fill="none" stroke="none"/>
+<circle id="light_MODE_E_LIGHT" cx="558.07" cy="183.07" r="3" fill="none" stroke="none"/>
 <circle id="param_SEMI0_PARAM" cx="22.15" cy="176.43" r="3" fill="none" stroke="none"/>
 <circle id="param_SEMI1_PARAM" cx="48.72" cy="176.43" r="3" fill="none" stroke="none"/>
 <circle id="param_SEMI2_PARAM" cx="75.30" cy="176.43" r="3" fill="none" stroke="none"/>
@@ -386,13 +392,12 @@
 <circle id="param_OCT_HI_PARAM" cx="377.95" cy="176.43" r="3" fill="none" stroke="none"/>
 <circle id="param_NOTE_VALUE_PARAM" cx="47.24" cy="64.96" r="3" fill="none" stroke="none"/>
 <circle id="param_VARIATION_PARAM" cx="124.02" cy="64.96" r="3" fill="none" stroke="none"/>
-  <circle id="param_MODE_PARAM" cx="581.69" cy="35.43" r="3" fill="none" stroke="none"/>
 <circle id="param_LEGATO_PARAM" cx="200.79" cy="64.96" r="3" fill="none" stroke="none"/>
 <circle id="param_REST_PARAM" cx="277.56" cy="64.96" r="3" fill="none" stroke="none"/>
 <circle id="param_ACCENT_KNOB" cx="354.33" cy="64.96" r="3" fill="none" stroke="none"/>
-<circle id="param_BPM_PARAM" cx="437.01" cy="171.26" r="3" fill="none" stroke="none"/>
-<circle id="param_PATTERN_LENGTH_PARAM" cx="481.30" cy="171.26" r="3" fill="none" stroke="none"/>
-<circle id="param_PATTERN_OFFSET_PARAM" cx="525.59" cy="171.26" r="3" fill="none" stroke="none"/>
+<circle id="param_BPM_PARAM" cx="437.01" cy="177.17" r="3" fill="none" stroke="none"/>
+<circle id="param_PATTERN_LENGTH_PARAM" cx="481.30" cy="177.17" r="3" fill="none" stroke="none"/>
+<circle id="param_PATTERN_OFFSET_PARAM" cx="525.59" cy="177.17" r="3" fill="none" stroke="none"/>
 <circle id="param_DICE_SLEW_R_PARAM" cx="35.43" cy="256.89" r="3" fill="none" stroke="none"/>
 <circle id="param_DICE_SLEW_M_PARAM" cx="84.74" cy="256.89" r="3" fill="none" stroke="none"/>
 <circle id="param_DICE_R_PARAM" cx="134.06" cy="256.89" r="3" fill="none" stroke="none"/>

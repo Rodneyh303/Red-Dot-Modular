@@ -79,10 +79,10 @@ void UIManager::updateModeLights(int currentMode, int& lastMode) {
     
     // Only update if mode changed to avoid redundant updates
     if (currentMode != lastMode) {
-        lights[MODE_A_LIGHT].setBrightness(currentMode == 0 ? 1.f : 0.f);
-        lights[MODE_B_LIGHT].setBrightness(currentMode == 1 ? 1.f : 0.f);
-        lights[MODE_C_LIGHT].setBrightness(currentMode == 2 ? 1.f : 0.f);
-        lights[MODE_D_LIGHT].setBrightness(currentMode == 3 ? 1.f : 0.f);
+        // One light per mode. Loop rather than a line each, so adding a mode cannot leave a
+        // light behind again -- which is exactly how Mode E ended up selectable but unlit.
+        for (int i = 0; i < 5; ++i)
+            lights[MODE_A_LIGHT + i].setBrightness(currentMode == i ? 1.f : 0.f);
         lastMode = currentMode;
     }
 }

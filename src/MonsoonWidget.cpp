@@ -318,11 +318,15 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
             }
         }
 
-        // ── Mode button + lights: far right ──────────────────────────────────
-        addParam(createParamCentered<TL1105>(mm2px(Vec(197.f, 12.f)), module, MonsoonIds::MODE_PARAM));
-        for (int i = 0; i < 4; ++i)
-            addChild(createLightCentered<MediumLight<YellowLight>>(
-                mm2px(Vec(192.f, 34.f + i*8.f)), module, MonsoonIds::MODE_A_LIGHT+i));
+        // ── Mode button + lights: right strip, bound by ANCHOR ────────────────
+        // Anchors come from panel_src/mode_column.py, which also asserts each light row
+        // clears the step ring. FIVE lights: Mode E was always selectable (the cycle is
+        // (modeSelect+1)%5 and the engine handles modeSelect==4) but had no light, so
+        // choosing it turned them all off and looked broken.
+        bindParam<TL1105>("param_MODE_PARAM", MonsoonIds::MODE_PARAM);
+        for (int i = 0; i < 5; ++i)
+            bindLight<MediumLight<YellowLight>>("light_MODE_" + std::string(1, char('A'+i)) + "_LIGHT",
+                                                MonsoonIds::MODE_A_LIGHT + i);
 
         // ── Single control row at y=87: all dice/slew/mix + utility aligned ──
         // ── EXPERIMENT: bottom 3 rows bound by NAME from the panel SVG ───────
@@ -627,12 +631,21 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         // It is what drew lines through the tracks, and it was a third copy of the fader
         // positions (widget mm, tickXs, SVG). Do not reintroduce it.
 
-        // Mode
-        setNvgFontSize(3.2f); fillNvgColour(210,210,210); writeNvgText(197.f,5.f,"MODE");
-        setNvgFontSize(3.8f);
-        const float LX=192.f, LY0=34.f, LDY=8.f;
-        writeNvgText(LX,LY0,"A"); writeNvgText(LX,LY0+LDY,"B");
-        writeNvgText(LX,LY0+2*LDY,"C"); writeNvgText(LX,LY0+3*LDY,"D");
+        // Mode. The letters used to be drawn at EXACTLY the light coordinates, so each glyph
+        // covered its own LED: the letter appeared to light up instead of the light, and on
+        // the light theme a near-black glyph on an unlit light's dark circle vanished. They
+        // now sit OUTBOARD of the LED column, anchored to the same shapes the lights bind to
+        // so they cannot drift apart again.
+        setNvgFontSize(3.2f); fillNvgColour(210,210,210); writeNvgText(194.f,7.f,"MODE");
+        setNvgFontSize(3.4f); fillNvgColour(185,185,185);
+        for (int i = 0; i < 5; ++i) {
+            const std::string id = "light_MODE_" + std::string(1, char('A'+i)) + "_LIGHT";
+            if (NSVGshape* sh = findNamed(id.c_str())) {
+                Vec c = centerOf(sh);
+                const char t[2] = { char('A'+i), 0 };
+                nvgText(vg, c.x + mm2px(6.5f), c.y, t, nullptr);
+            }
+        }
 
         // (Legacy S/D/P expander-light labels removed along with their lights.)
 

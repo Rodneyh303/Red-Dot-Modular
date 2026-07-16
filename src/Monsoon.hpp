@@ -844,6 +844,9 @@ namespace MonsoonIds {
         MODE_B_LIGHT,
         MODE_C_LIGHT,
         MODE_D_LIGHT,
+        MODE_E_LIGHT,   // Mode E (phase-driven) was reachable but had no light: the cycle is
+                        // (modeSelect+1)%5 and Monsoon.cpp handles modeSelect==4 throughout,
+                        // so selecting it simply turned every mode light off.
 
         SEMI_LED_START,
         SEMI_LED_END = SEMI_LED_START + 24,  // 2 channels × 12 semitones
