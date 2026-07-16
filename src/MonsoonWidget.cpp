@@ -458,7 +458,7 @@ void MonsoonWidget::applyTheme() {
         // live in res/panels/Monsoon_panel_*_monsoon.svg (components layer).
         if (lightTheme) {
             bindParam<RDM_KnobDarkLarge> ("param_NOTE_VALUE_PARAM",     MonsoonIds::NOTE_VALUE_PARAM,
-                std::function<void(RDM_KnobDarkLarge*)>([this, m](RDM_KnobDarkLarge* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.noteValue;}, [](const Monsoon::ModViz& v){return v.big5Lane[0];}, 0.50f,[](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+                std::function<void(RDM_KnobDarkMedium*)>([this, m](RDM_KnobDarkLarge* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.noteValue;}, [](const Monsoon::ModViz& v){return v.big5Lane[0];}, 0.50f,[](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
             bindParam<RDM_KnobDarkMedium>("param_VARIATION_PARAM",      MonsoonIds::VARIATION_PARAM,
                 std::function<void(RDM_KnobDarkMedium*)>([this, m](RDM_KnobDarkMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.variation;}, [](const Monsoon::ModViz& v){return v.big5Lane[1];},0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
             bindParam<RDM_KnobDarkMedium>("param_LEGATO_PARAM",         MonsoonIds::LEGATO_PARAM,
@@ -473,7 +473,7 @@ void MonsoonWidget::applyTheme() {
             bindParam<RDM_KnobSmall>     ("param_PATTERN_OFFSET_PARAM", MonsoonIds::PATTERN_OFFSET_PARAM);
         } else {
             bindParam<RDM_KnobCreamLarge>("param_NOTE_VALUE_PARAM",     MonsoonIds::NOTE_VALUE_PARAM,
-                std::function<void(RDM_KnobCreamLarge*)>([this, m](RDM_KnobCreamLarge* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.noteValue;}, [](const Monsoon::ModViz& v){return v.big5Lane[0];},0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+                std::function<void(RDM_KnobCreamMedium*)>([this, m](RDM_KnobCreamLarge* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.noteValue;}, [](const Monsoon::ModViz& v){return v.big5Lane[0];},0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
             bindParam<RDM_KnobCreamMedium>("param_VARIATION_PARAM",      MonsoonIds::VARIATION_PARAM,
                 std::function<void(RDM_KnobCreamMedium*)>([this, m](RDM_KnobCreamMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.variation;}, [](const Monsoon::ModViz& v){return v.big5Lane[1];},0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
             bindParam<RDM_KnobCreamMedium>("param_LEGATO_PARAM",         MonsoonIds::LEGATO_PARAM,

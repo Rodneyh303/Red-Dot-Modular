@@ -153,8 +153,6 @@ struct SequencerEngine {
             }
         }
     }
-        }
-    }
     // Macro's own per-lane tick — always follows Macro's direction, independent of
     // who owns the lane. Same bounce logic as laneTick_. Advanced in advancePlayhead.
     // Macro's widget reads this for its playhead, so Macro's display always reflects
