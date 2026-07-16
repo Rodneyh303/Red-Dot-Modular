@@ -370,12 +370,12 @@
 <circle cx="487.2" cy="354.3" r="13.0" fill="#d4d6d9" stroke="#c0c4ca" stroke-width="1"/>
 </g>
 <g inkscape:label="components" inkscape:groupmode="layer" id="components">
-<circle id="param_MODE_PARAM" cx="572.83" cy="41.34" r="3" fill="none" stroke="none"/>
-<circle id="light_MODE_A_LIGHT" cx="558.07" cy="88.58" r="3" fill="none" stroke="none"/>
-<circle id="light_MODE_B_LIGHT" cx="558.07" cy="112.20" r="3" fill="none" stroke="none"/>
-<circle id="light_MODE_C_LIGHT" cx="558.07" cy="135.83" r="3" fill="none" stroke="none"/>
-<circle id="light_MODE_D_LIGHT" cx="558.07" cy="159.45" r="3" fill="none" stroke="none"/>
-<circle id="light_MODE_E_LIGHT" cx="558.07" cy="183.07" r="3" fill="none" stroke="none"/>
+<circle id="param_MODE_PARAM" cx="572.83" cy="177.17" r="3" fill="none" stroke="none"/>
+<circle id="light_MODE_A_LIGHT" cx="583.17" cy="38.39" r="3" fill="none" stroke="none"/>
+<circle id="light_MODE_B_LIGHT" cx="583.17" cy="64.96" r="3" fill="none" stroke="none"/>
+<circle id="light_MODE_C_LIGHT" cx="583.17" cy="91.54" r="3" fill="none" stroke="none"/>
+<circle id="light_MODE_D_LIGHT" cx="583.17" cy="118.11" r="3" fill="none" stroke="none"/>
+<circle id="light_MODE_E_LIGHT" cx="583.17" cy="144.69" r="3" fill="none" stroke="none"/>
 <circle id="param_SEMI0_PARAM" cx="22.15" cy="176.43" r="3" fill="none" stroke="none"/>
 <circle id="param_SEMI1_PARAM" cx="48.72" cy="176.43" r="3" fill="none" stroke="none"/>
 <circle id="param_SEMI2_PARAM" cx="75.30" cy="176.43" r="3" fill="none" stroke="none"/>

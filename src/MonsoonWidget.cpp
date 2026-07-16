@@ -631,19 +631,46 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         // It is what drew lines through the tracks, and it was a third copy of the fader
         // positions (widget mm, tickXs, SVG). Do not reintroduce it.
 
-        // Mode. The letters used to be drawn at EXACTLY the light coordinates, so each glyph
-        // covered its own LED: the letter appeared to light up instead of the light, and on
-        // the light theme a near-black glyph on an unlit light's dark circle vanished. They
-        // now sit OUTBOARD of the LED column, anchored to the same shapes the lights bind to
-        // so they cannot drift apart again.
-        setNvgFontSize(3.2f); fillNvgColour(210,210,210); writeNvgText(194.f,7.f,"MODE");
-        setNvgFontSize(3.4f); fillNvgColour(185,185,185);
-        for (int i = 0; i < 5; ++i) {
-            const std::string id = "light_MODE_" + std::string(1, char('A'+i)) + "_LIGHT";
-            if (NSVGshape* sh = findNamed(id.c_str())) {
-                Vec c = centerOf(sh);
+        // ── Mode column (meloDICER layout: boxed letter, LED beside it, description under) ──
+        // Everything is positioned FROM the light anchor emitted by panel_src/mode_column.py,
+        // so a glyph can never drift off its LED. That was the original bug: the letters were
+        // drawn at EXACTLY the light coordinates, so each letter covered its own light -- the
+        // letter appeared to light up instead of the LED, and on the light theme a near-black
+        // glyph on an unlit light's dark circle vanished completely.
+        {
+            static const char* kModeDesc[5] = {
+                "sequencer", "seq + gate", "quantizer 1", "quantizer 2", "phase seq" };
+            const float BOX_DX = -7.0f;   // box centre, relative to the LED
+            const float BOX_W  =  5.5f, BOX_H = 5.5f;
+            const float TXT_DX = -3.5f, TXT_DY = 4.6f;   // description, relative to the LED
+
+            setNvgFontSize(3.2f); fillNvgColour(210,210,210);
+            writeNvgText(193.f, 6.f, "MODE");
+
+            for (int i = 0; i < 5; ++i) {
+                const std::string id = "light_MODE_" + std::string(1, char('A'+i)) + "_LIGHT";
+                NSVGshape* sh = findNamed(id.c_str());
+                if (!sh) continue;
+                const Vec c = centerOf(sh);
+
+                // Key-cap box: always the OPPOSITE luminance to the panel, so the letter reads
+                // on either theme (meloDICER uses a light cap on its dark panel).
+                const float bx = c.x + mm2px(BOX_DX) - mm2px(BOX_W)*0.5f;
+                const float by = c.y - mm2px(BOX_H)*0.5f;
+                nvgBeginPath(vg);
+                nvgRoundedRect(vg, bx, by, mm2px(BOX_W), mm2px(BOX_H), mm2px(0.9f));
+                nvgFillColor(vg,   lt ? nvgRGB(0x3a,0x40,0x48) : nvgRGB(0xd8,0xda,0xde));
+                nvgFill(vg);
+                nvgStrokeColor(vg, lt ? nvgRGB(0x20,0x24,0x2a) : nvgRGB(0x9a,0x9a,0x9a));
+                nvgStrokeWidth(vg, 0.8f); nvgStroke(vg);
+
                 const char t[2] = { char('A'+i), 0 };
-                nvgText(vg, c.x + mm2px(6.5f), c.y, t, nullptr);
+                setNvgFontSize(3.4f);
+                nvgFillColor(vg, lt ? nvgRGB(0xe6,0xe8,0xec) : nvgRGB(0x10,0x12,0x16));
+                nvgText(vg, c.x + mm2px(BOX_DX), c.y, t, nullptr);
+
+                setNvgFontSize(1.9f); fillNvgColour(150,150,140);
+                nvgText(vg, c.x + mm2px(TXT_DX), c.y + mm2px(TXT_DY), kModeDesc[i], nullptr);
             }
         }
 
