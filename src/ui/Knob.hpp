@@ -17,7 +17,7 @@ namespace redDot {
 // their own bevel, so kill it -- once, here, instead of once per constructor.
 // (Restore by raising opacity AND giving blurRadius a real value -- never opacity alone.)
 template <typename Tag>
-struct KnobT : rack::componentlibrary::SvgKnob {
+struct KnobT : rack::app::SvgKnob {
     KnobT() {
         minAngle = -0.83f * (float)M_PI;
         maxAngle =  0.83f * (float)M_PI;
