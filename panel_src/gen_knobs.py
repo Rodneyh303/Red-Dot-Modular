@@ -25,6 +25,19 @@ import math
 # name -> (viewBox half-extent mm, px width, body radius mm, palette)
 # Footprints copied from the existing assets. Small/Straits sizes are new but reuse the
 # same 2.9527559 px/mm scale so they sit on the same grid.
+# OFF-WHITE. Sampled from the meloDICER photo: the four big faces mean #d8d1c2, i.e. warmth
+# (R-B) of 22 -- essentially IDENTICAL to our CREAM's 23. So ours was never warmer than the
+# reference; it is brighter and, decisively, FLAT. The photo reads white because each knob
+# carries a near-white specular highlight with shading falling away, and the eye reads "white
+# object, lit" and discounts the warm midtone.
+#
+# We cannot bake that highlight: SvgKnob rotates our SVG, so a fixed light source would spin
+# with the knob. Faking it is off the table. The honest move is therefore to cut the WARMTH
+# rather than add brightness -- an actually off-white knob instead of a beige one pretending
+# to be lit. R-B drops 23 -> 8.
+OFFWHITE = dict(body='#eae8e2', bodyLo='#d9d7d0', cap='#f6f5f2', capRim='#c4c2bc',
+                edge='#2b2926', flute='#b6b4ad', pointer='#1b1815', dot='#d4001a')
+
 CREAM = dict(body='#e9e3d2', bodyLo='#d8d1bd', cap='#f4f0e4', capRim='#c9c2ad',
              edge='#2b2620', flute='#b9b2a0', pointer='#1b1815', dot='#d4001a')
 # OFF-WHITE. Sampling the meloDICER photo, the LIT face of the big knobs is #e7e2cf
@@ -221,11 +234,11 @@ for name, half, px, R, c in SPECS:
 # Trim CONCEPTS: all four styles emitted so they can be compared on a real panel before
 # choosing. Nothing binds these yet -- Straits still uses 30 stock Trimpots + 8
 # DimmableTrimpots, and SLEW R/M on Monsoon is a stock Trimpot too.
-# OFF-WHITE variants of the big 5, for comparison against CREAM. Not bound.
+# OFF-WHITE hero variants -- see the palette note. Same geometry, warmth cut 23 -> 8.
 print()
-for n, half, px, R in (('RDM_KnobOffwhite_Large',  13.500, 79.724, 10.80),
-                       ('RDM_KnobOffwhite_Medium', 11.000, 64.961,  8.30),
-                       ('RDM_KnobOffwhite_Small',   8.000, 47.240,  4.00)):
+for n, half, px, R in (('RDM_KnobOffWhite_Large',  13.500, 79.724, 10.80),
+                       ('RDM_KnobOffWhite_Medium', 11.000, 64.961,  8.30),
+                       ('RDM_KnobOffWhite_Small',   8.000, 47.240,  4.00)):
     open('res/%s.svg' % n, 'w').write(build(half, px, R, OFFWHITE, 'cog'))
     print('  %-24s R=%5.2f  style=cog  (off-white)' % (n, R))
 
