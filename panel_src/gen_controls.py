@@ -309,6 +309,8 @@ with open(HDR, 'w') as h:
 // load-bearing: the SVG box pins the mod arc; body radius alone sets the arc gap),
 // and styles (Cog hero / Bar attenuverter / Slot|Quad|Dot trim concepts).
 #include <rack.hpp>
+#include <functional>
+#include <cmath>
 
 extern rack::plugin::Plugin* pluginInstance;
 
@@ -332,9 +334,92 @@ struct KnobT : rack::app::SvgKnob {
 };
 
 ''')
+    h.write('''\
+// ── Behaviours, orthogonal to artwork ────────────────────────────────────────
+// Dimmable<Base>: DimmableTrimpot's behaviour lifted off its hard-wired Trimpot
+// base so it composes with ANY knob (ours or stock). Three lambda-driven hooks:
+//   dimWhen        -- draw at reduced alpha (unavailable / not the target)
+//   lockWhen       -- swallow input (Button, DragStart, DragMove, HoverScroll --
+//                     DragMove and HoverScroll change the value, so guarding only
+//                     DragStart is not enough)
+//   displayValueFn -- RENDER a value while the bound param (the STORE that
+//                     save/restore reads) stays untouched: present to base
+//                     step(), restore in the SAME frame. NaN = no override.
+// See docs/design/DISPLAY_STORE_ENGINE_SEPARATION.md. Behaviour kept in exact
+// lockstep with ui/DimmableTrimpot.hpp until Straits migrates onto this and
+// that header is retired -- change BOTH or neither.
+template <typename Base>
+struct Dimmable : Base {
+    std::function<bool()>  dimWhen;
+    std::function<bool()>  lockWhen;
+    std::function<float()> displayValueFn;
+    bool locked() const { return lockWhen && lockWhen(); }
+
+    void step() override {
+        rack::engine::ParamQuantity* pq = this->getParamQuantity();
+        if (pq && displayValueFn) {
+            float dv = displayValueFn();
+            if (std::isfinite(dv)) {
+                float stored = pq->getValue();
+                if (dv != stored) {
+                    pq->setValue(dv);        // present display value
+                    Base::step();            // base sets rotation from it
+                    pq->setValue(stored);    // restore store (same frame)
+                    return;
+                }
+            }
+        }
+        Base::step();
+    }
+    void onButton(const rack::event::Button& e) override {
+        if (locked()) { e.consume(this); return; }
+        Base::onButton(e);
+    }
+    void onDragStart(const rack::event::DragStart& e) override {
+        if (locked()) return;
+        Base::onDragStart(e);
+    }
+    void onDragMove(const rack::event::DragMove& e) override {
+        if (locked()) { e.consume(this); return; }
+        Base::onDragMove(e);
+    }
+    void onHoverScroll(const rack::event::HoverScroll& e) override {
+        if (locked()) { e.consume(this); return; }
+        Base::onHoverScroll(e);
+    }
+    void draw(const typename Base::DrawArgs& args) override {
+        // locked does NOT dim -- a locked-but-shown control (V1 spread mirroring
+        // Mono) must stay readable. Only dimWhen dims (truly unavailable).
+        bool dim = (dimWhen && dimWhen());
+        if (dim) nvgGlobalAlpha(args.vg, 0.4f);
+        Base::draw(args);
+        if (dim) nvgGlobalAlpha(args.vg, 1.0f);
+    }
+    void drawLayer(const typename Base::DrawArgs& args, int layer) override {
+        bool dim = (dimWhen && dimWhen());
+        if (dim) nvgGlobalAlpha(args.vg, 0.4f);
+        Base::drawLayer(args, layer);
+        if (dim) nvgGlobalAlpha(args.vg, 1.0f);
+    }
+};
+
+// AttenuverterT: a DISTINCT TYPE, deliberately empty today. Rack's double-click
+// already resets to default (0 on a bipolar param), and the bipolar mod-arc
+// treatment lives in ModArcOverlay at the call site. The type exists so that
+// when attenuverter behaviour is wanted (snap band at zero, finer drag), it
+// lands HERE once -- call sites already say what they are.
+template <typename Tag>
+struct AttenuverterT : KnobT<Tag> {};
+
+''')
+    h.write('// Per-asset aliases. <Name> = plain KnobT. <Name>_Dim / <Name>_Att opt into a\n')
+    h.write('// behaviour over the SAME artwork -- role is chosen at the call site.\n')
     for a in aliases:
         h.write('struct Tag_%s { static const char* path() '
                 '{ return "res/controls/RDM_%s.svg"; } };\n' % (a, a))
         h.write('using %s = KnobT<Tag_%s>;\n' % (a, a))
+        h.write('using %s_Dim = Dimmable<KnobT<Tag_%s>>;\n' % (a, a))
+        h.write('using %s_Att = AttenuverterT<Tag_%s>;\n' % (a, a))
     h.write('\n} // namespace redDot\n')
-print('  %s: %d aliases (same loop as the assets)' % (HDR, len(aliases)))
+print('  %s: %d assets x 3 roles = %d aliases (same loop as the assets)'
+      % (HDR, len(aliases), 3*len(aliases)))

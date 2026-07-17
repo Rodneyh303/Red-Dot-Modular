@@ -5,6 +5,8 @@
 // load-bearing: the SVG box pins the mod arc; body radius alone sets the arc gap),
 // and styles (Cog hero / Bar attenuverter / Slot|Quad|Dot trim concepts).
 #include <rack.hpp>
+#include <functional>
+#include <cmath>
 
 extern rack::plugin::Plugin* pluginInstance;
 
@@ -27,245 +29,563 @@ struct KnobT : rack::app::SvgKnob {
     }
 };
 
+// ── Behaviours, orthogonal to artwork ────────────────────────────────────────
+// Dimmable<Base>: DimmableTrimpot's behaviour lifted off its hard-wired Trimpot
+// base so it composes with ANY knob (ours or stock). Three lambda-driven hooks:
+//   dimWhen        -- draw at reduced alpha (unavailable / not the target)
+//   lockWhen       -- swallow input (Button, DragStart, DragMove, HoverScroll --
+//                     DragMove and HoverScroll change the value, so guarding only
+//                     DragStart is not enough)
+//   displayValueFn -- RENDER a value while the bound param (the STORE that
+//                     save/restore reads) stays untouched: present to base
+//                     step(), restore in the SAME frame. NaN = no override.
+// See docs/design/DISPLAY_STORE_ENGINE_SEPARATION.md. Behaviour kept in exact
+// lockstep with ui/DimmableTrimpot.hpp until Straits migrates onto this and
+// that header is retired -- change BOTH or neither.
+template <typename Base>
+struct Dimmable : Base {
+    std::function<bool()>  dimWhen;
+    std::function<bool()>  lockWhen;
+    std::function<float()> displayValueFn;
+    bool locked() const { return lockWhen && lockWhen(); }
+
+    void step() override {
+        rack::engine::ParamQuantity* pq = this->getParamQuantity();
+        if (pq && displayValueFn) {
+            float dv = displayValueFn();
+            if (std::isfinite(dv)) {
+                float stored = pq->getValue();
+                if (dv != stored) {
+                    pq->setValue(dv);        // present display value
+                    Base::step();            // base sets rotation from it
+                    pq->setValue(stored);    // restore store (same frame)
+                    return;
+                }
+            }
+        }
+        Base::step();
+    }
+    void onButton(const rack::event::Button& e) override {
+        if (locked()) { e.consume(this); return; }
+        Base::onButton(e);
+    }
+    void onDragStart(const rack::event::DragStart& e) override {
+        if (locked()) return;
+        Base::onDragStart(e);
+    }
+    void onDragMove(const rack::event::DragMove& e) override {
+        if (locked()) { e.consume(this); return; }
+        Base::onDragMove(e);
+    }
+    void onHoverScroll(const rack::event::HoverScroll& e) override {
+        if (locked()) { e.consume(this); return; }
+        Base::onHoverScroll(e);
+    }
+    void draw(const typename Base::DrawArgs& args) override {
+        // locked does NOT dim -- a locked-but-shown control (V1 spread mirroring
+        // Mono) must stay readable. Only dimWhen dims (truly unavailable).
+        bool dim = (dimWhen && dimWhen());
+        if (dim) nvgGlobalAlpha(args.vg, 0.4f);
+        Base::draw(args);
+        if (dim) nvgGlobalAlpha(args.vg, 1.0f);
+    }
+    void drawLayer(const typename Base::DrawArgs& args, int layer) override {
+        bool dim = (dimWhen && dimWhen());
+        if (dim) nvgGlobalAlpha(args.vg, 0.4f);
+        Base::drawLayer(args, layer);
+        if (dim) nvgGlobalAlpha(args.vg, 1.0f);
+    }
+};
+
+// AttenuverterT: a DISTINCT TYPE, deliberately empty today. Rack's double-click
+// already resets to default (0 on a bipolar param), and the bipolar mod-arc
+// treatment lives in ModArcOverlay at the call site. The type exists so that
+// when attenuverter behaviour is wanted (snap band at zero, finer drag), it
+// lands HERE once -- call sites already say what they are.
+template <typename Tag>
+struct AttenuverterT : KnobT<Tag> {};
+
+// Per-asset aliases. <Name> = plain KnobT. <Name>_Dim / <Name>_Att opt into a
+// behaviour over the SAME artwork -- role is chosen at the call site.
 struct Tag_OffWhite_Large_Cog { static const char* path() { return "res/controls/RDM_OffWhite_Large_Cog.svg"; } };
 using OffWhite_Large_Cog = KnobT<Tag_OffWhite_Large_Cog>;
+using OffWhite_Large_Cog_Dim = Dimmable<KnobT<Tag_OffWhite_Large_Cog>>;
+using OffWhite_Large_Cog_Att = AttenuverterT<Tag_OffWhite_Large_Cog>;
 struct Tag_OffWhite_Large_Bar { static const char* path() { return "res/controls/RDM_OffWhite_Large_Bar.svg"; } };
 using OffWhite_Large_Bar = KnobT<Tag_OffWhite_Large_Bar>;
+using OffWhite_Large_Bar_Dim = Dimmable<KnobT<Tag_OffWhite_Large_Bar>>;
+using OffWhite_Large_Bar_Att = AttenuverterT<Tag_OffWhite_Large_Bar>;
 struct Tag_OffWhite_Large_Slot { static const char* path() { return "res/controls/RDM_OffWhite_Large_Slot.svg"; } };
 using OffWhite_Large_Slot = KnobT<Tag_OffWhite_Large_Slot>;
+using OffWhite_Large_Slot_Dim = Dimmable<KnobT<Tag_OffWhite_Large_Slot>>;
+using OffWhite_Large_Slot_Att = AttenuverterT<Tag_OffWhite_Large_Slot>;
 struct Tag_OffWhite_Large_Quad { static const char* path() { return "res/controls/RDM_OffWhite_Large_Quad.svg"; } };
 using OffWhite_Large_Quad = KnobT<Tag_OffWhite_Large_Quad>;
+using OffWhite_Large_Quad_Dim = Dimmable<KnobT<Tag_OffWhite_Large_Quad>>;
+using OffWhite_Large_Quad_Att = AttenuverterT<Tag_OffWhite_Large_Quad>;
 struct Tag_OffWhite_Large_Dot { static const char* path() { return "res/controls/RDM_OffWhite_Large_Dot.svg"; } };
 using OffWhite_Large_Dot = KnobT<Tag_OffWhite_Large_Dot>;
+using OffWhite_Large_Dot_Dim = Dimmable<KnobT<Tag_OffWhite_Large_Dot>>;
+using OffWhite_Large_Dot_Att = AttenuverterT<Tag_OffWhite_Large_Dot>;
 struct Tag_OffWhite_Medium_Cog { static const char* path() { return "res/controls/RDM_OffWhite_Medium_Cog.svg"; } };
 using OffWhite_Medium_Cog = KnobT<Tag_OffWhite_Medium_Cog>;
+using OffWhite_Medium_Cog_Dim = Dimmable<KnobT<Tag_OffWhite_Medium_Cog>>;
+using OffWhite_Medium_Cog_Att = AttenuverterT<Tag_OffWhite_Medium_Cog>;
 struct Tag_OffWhite_Medium_Bar { static const char* path() { return "res/controls/RDM_OffWhite_Medium_Bar.svg"; } };
 using OffWhite_Medium_Bar = KnobT<Tag_OffWhite_Medium_Bar>;
+using OffWhite_Medium_Bar_Dim = Dimmable<KnobT<Tag_OffWhite_Medium_Bar>>;
+using OffWhite_Medium_Bar_Att = AttenuverterT<Tag_OffWhite_Medium_Bar>;
 struct Tag_OffWhite_Medium_Slot { static const char* path() { return "res/controls/RDM_OffWhite_Medium_Slot.svg"; } };
 using OffWhite_Medium_Slot = KnobT<Tag_OffWhite_Medium_Slot>;
+using OffWhite_Medium_Slot_Dim = Dimmable<KnobT<Tag_OffWhite_Medium_Slot>>;
+using OffWhite_Medium_Slot_Att = AttenuverterT<Tag_OffWhite_Medium_Slot>;
 struct Tag_OffWhite_Medium_Quad { static const char* path() { return "res/controls/RDM_OffWhite_Medium_Quad.svg"; } };
 using OffWhite_Medium_Quad = KnobT<Tag_OffWhite_Medium_Quad>;
+using OffWhite_Medium_Quad_Dim = Dimmable<KnobT<Tag_OffWhite_Medium_Quad>>;
+using OffWhite_Medium_Quad_Att = AttenuverterT<Tag_OffWhite_Medium_Quad>;
 struct Tag_OffWhite_Medium_Dot { static const char* path() { return "res/controls/RDM_OffWhite_Medium_Dot.svg"; } };
 using OffWhite_Medium_Dot = KnobT<Tag_OffWhite_Medium_Dot>;
+using OffWhite_Medium_Dot_Dim = Dimmable<KnobT<Tag_OffWhite_Medium_Dot>>;
+using OffWhite_Medium_Dot_Att = AttenuverterT<Tag_OffWhite_Medium_Dot>;
 struct Tag_OffWhite_Mid_Cog { static const char* path() { return "res/controls/RDM_OffWhite_Mid_Cog.svg"; } };
 using OffWhite_Mid_Cog = KnobT<Tag_OffWhite_Mid_Cog>;
+using OffWhite_Mid_Cog_Dim = Dimmable<KnobT<Tag_OffWhite_Mid_Cog>>;
+using OffWhite_Mid_Cog_Att = AttenuverterT<Tag_OffWhite_Mid_Cog>;
 struct Tag_OffWhite_Mid_Bar { static const char* path() { return "res/controls/RDM_OffWhite_Mid_Bar.svg"; } };
 using OffWhite_Mid_Bar = KnobT<Tag_OffWhite_Mid_Bar>;
+using OffWhite_Mid_Bar_Dim = Dimmable<KnobT<Tag_OffWhite_Mid_Bar>>;
+using OffWhite_Mid_Bar_Att = AttenuverterT<Tag_OffWhite_Mid_Bar>;
 struct Tag_OffWhite_Mid_Slot { static const char* path() { return "res/controls/RDM_OffWhite_Mid_Slot.svg"; } };
 using OffWhite_Mid_Slot = KnobT<Tag_OffWhite_Mid_Slot>;
+using OffWhite_Mid_Slot_Dim = Dimmable<KnobT<Tag_OffWhite_Mid_Slot>>;
+using OffWhite_Mid_Slot_Att = AttenuverterT<Tag_OffWhite_Mid_Slot>;
 struct Tag_OffWhite_Mid_Quad { static const char* path() { return "res/controls/RDM_OffWhite_Mid_Quad.svg"; } };
 using OffWhite_Mid_Quad = KnobT<Tag_OffWhite_Mid_Quad>;
+using OffWhite_Mid_Quad_Dim = Dimmable<KnobT<Tag_OffWhite_Mid_Quad>>;
+using OffWhite_Mid_Quad_Att = AttenuverterT<Tag_OffWhite_Mid_Quad>;
 struct Tag_OffWhite_Mid_Dot { static const char* path() { return "res/controls/RDM_OffWhite_Mid_Dot.svg"; } };
 using OffWhite_Mid_Dot = KnobT<Tag_OffWhite_Mid_Dot>;
+using OffWhite_Mid_Dot_Dim = Dimmable<KnobT<Tag_OffWhite_Mid_Dot>>;
+using OffWhite_Mid_Dot_Att = AttenuverterT<Tag_OffWhite_Mid_Dot>;
 struct Tag_OffWhite_Compact_Cog { static const char* path() { return "res/controls/RDM_OffWhite_Compact_Cog.svg"; } };
 using OffWhite_Compact_Cog = KnobT<Tag_OffWhite_Compact_Cog>;
+using OffWhite_Compact_Cog_Dim = Dimmable<KnobT<Tag_OffWhite_Compact_Cog>>;
+using OffWhite_Compact_Cog_Att = AttenuverterT<Tag_OffWhite_Compact_Cog>;
 struct Tag_OffWhite_Compact_Bar { static const char* path() { return "res/controls/RDM_OffWhite_Compact_Bar.svg"; } };
 using OffWhite_Compact_Bar = KnobT<Tag_OffWhite_Compact_Bar>;
+using OffWhite_Compact_Bar_Dim = Dimmable<KnobT<Tag_OffWhite_Compact_Bar>>;
+using OffWhite_Compact_Bar_Att = AttenuverterT<Tag_OffWhite_Compact_Bar>;
 struct Tag_OffWhite_Compact_Slot { static const char* path() { return "res/controls/RDM_OffWhite_Compact_Slot.svg"; } };
 using OffWhite_Compact_Slot = KnobT<Tag_OffWhite_Compact_Slot>;
+using OffWhite_Compact_Slot_Dim = Dimmable<KnobT<Tag_OffWhite_Compact_Slot>>;
+using OffWhite_Compact_Slot_Att = AttenuverterT<Tag_OffWhite_Compact_Slot>;
 struct Tag_OffWhite_Compact_Quad { static const char* path() { return "res/controls/RDM_OffWhite_Compact_Quad.svg"; } };
 using OffWhite_Compact_Quad = KnobT<Tag_OffWhite_Compact_Quad>;
+using OffWhite_Compact_Quad_Dim = Dimmable<KnobT<Tag_OffWhite_Compact_Quad>>;
+using OffWhite_Compact_Quad_Att = AttenuverterT<Tag_OffWhite_Compact_Quad>;
 struct Tag_OffWhite_Compact_Dot { static const char* path() { return "res/controls/RDM_OffWhite_Compact_Dot.svg"; } };
 using OffWhite_Compact_Dot = KnobT<Tag_OffWhite_Compact_Dot>;
+using OffWhite_Compact_Dot_Dim = Dimmable<KnobT<Tag_OffWhite_Compact_Dot>>;
+using OffWhite_Compact_Dot_Att = AttenuverterT<Tag_OffWhite_Compact_Dot>;
 struct Tag_OffWhite_Small_Cog { static const char* path() { return "res/controls/RDM_OffWhite_Small_Cog.svg"; } };
 using OffWhite_Small_Cog = KnobT<Tag_OffWhite_Small_Cog>;
+using OffWhite_Small_Cog_Dim = Dimmable<KnobT<Tag_OffWhite_Small_Cog>>;
+using OffWhite_Small_Cog_Att = AttenuverterT<Tag_OffWhite_Small_Cog>;
 struct Tag_OffWhite_Small_Bar { static const char* path() { return "res/controls/RDM_OffWhite_Small_Bar.svg"; } };
 using OffWhite_Small_Bar = KnobT<Tag_OffWhite_Small_Bar>;
+using OffWhite_Small_Bar_Dim = Dimmable<KnobT<Tag_OffWhite_Small_Bar>>;
+using OffWhite_Small_Bar_Att = AttenuverterT<Tag_OffWhite_Small_Bar>;
 struct Tag_OffWhite_Small_Slot { static const char* path() { return "res/controls/RDM_OffWhite_Small_Slot.svg"; } };
 using OffWhite_Small_Slot = KnobT<Tag_OffWhite_Small_Slot>;
+using OffWhite_Small_Slot_Dim = Dimmable<KnobT<Tag_OffWhite_Small_Slot>>;
+using OffWhite_Small_Slot_Att = AttenuverterT<Tag_OffWhite_Small_Slot>;
 struct Tag_OffWhite_Small_Quad { static const char* path() { return "res/controls/RDM_OffWhite_Small_Quad.svg"; } };
 using OffWhite_Small_Quad = KnobT<Tag_OffWhite_Small_Quad>;
+using OffWhite_Small_Quad_Dim = Dimmable<KnobT<Tag_OffWhite_Small_Quad>>;
+using OffWhite_Small_Quad_Att = AttenuverterT<Tag_OffWhite_Small_Quad>;
 struct Tag_OffWhite_Small_Dot { static const char* path() { return "res/controls/RDM_OffWhite_Small_Dot.svg"; } };
 using OffWhite_Small_Dot = KnobT<Tag_OffWhite_Small_Dot>;
+using OffWhite_Small_Dot_Dim = Dimmable<KnobT<Tag_OffWhite_Small_Dot>>;
+using OffWhite_Small_Dot_Att = AttenuverterT<Tag_OffWhite_Small_Dot>;
 struct Tag_OffWhite_Trim_Cog { static const char* path() { return "res/controls/RDM_OffWhite_Trim_Cog.svg"; } };
 using OffWhite_Trim_Cog = KnobT<Tag_OffWhite_Trim_Cog>;
+using OffWhite_Trim_Cog_Dim = Dimmable<KnobT<Tag_OffWhite_Trim_Cog>>;
+using OffWhite_Trim_Cog_Att = AttenuverterT<Tag_OffWhite_Trim_Cog>;
 struct Tag_OffWhite_Trim_Bar { static const char* path() { return "res/controls/RDM_OffWhite_Trim_Bar.svg"; } };
 using OffWhite_Trim_Bar = KnobT<Tag_OffWhite_Trim_Bar>;
+using OffWhite_Trim_Bar_Dim = Dimmable<KnobT<Tag_OffWhite_Trim_Bar>>;
+using OffWhite_Trim_Bar_Att = AttenuverterT<Tag_OffWhite_Trim_Bar>;
 struct Tag_OffWhite_Trim_Slot { static const char* path() { return "res/controls/RDM_OffWhite_Trim_Slot.svg"; } };
 using OffWhite_Trim_Slot = KnobT<Tag_OffWhite_Trim_Slot>;
+using OffWhite_Trim_Slot_Dim = Dimmable<KnobT<Tag_OffWhite_Trim_Slot>>;
+using OffWhite_Trim_Slot_Att = AttenuverterT<Tag_OffWhite_Trim_Slot>;
 struct Tag_OffWhite_Trim_Quad { static const char* path() { return "res/controls/RDM_OffWhite_Trim_Quad.svg"; } };
 using OffWhite_Trim_Quad = KnobT<Tag_OffWhite_Trim_Quad>;
+using OffWhite_Trim_Quad_Dim = Dimmable<KnobT<Tag_OffWhite_Trim_Quad>>;
+using OffWhite_Trim_Quad_Att = AttenuverterT<Tag_OffWhite_Trim_Quad>;
 struct Tag_OffWhite_Trim_Dot { static const char* path() { return "res/controls/RDM_OffWhite_Trim_Dot.svg"; } };
 using OffWhite_Trim_Dot = KnobT<Tag_OffWhite_Trim_Dot>;
+using OffWhite_Trim_Dot_Dim = Dimmable<KnobT<Tag_OffWhite_Trim_Dot>>;
+using OffWhite_Trim_Dot_Att = AttenuverterT<Tag_OffWhite_Trim_Dot>;
 struct Tag_Cream_Large_Cog { static const char* path() { return "res/controls/RDM_Cream_Large_Cog.svg"; } };
 using Cream_Large_Cog = KnobT<Tag_Cream_Large_Cog>;
+using Cream_Large_Cog_Dim = Dimmable<KnobT<Tag_Cream_Large_Cog>>;
+using Cream_Large_Cog_Att = AttenuverterT<Tag_Cream_Large_Cog>;
 struct Tag_Cream_Large_Bar { static const char* path() { return "res/controls/RDM_Cream_Large_Bar.svg"; } };
 using Cream_Large_Bar = KnobT<Tag_Cream_Large_Bar>;
+using Cream_Large_Bar_Dim = Dimmable<KnobT<Tag_Cream_Large_Bar>>;
+using Cream_Large_Bar_Att = AttenuverterT<Tag_Cream_Large_Bar>;
 struct Tag_Cream_Large_Slot { static const char* path() { return "res/controls/RDM_Cream_Large_Slot.svg"; } };
 using Cream_Large_Slot = KnobT<Tag_Cream_Large_Slot>;
+using Cream_Large_Slot_Dim = Dimmable<KnobT<Tag_Cream_Large_Slot>>;
+using Cream_Large_Slot_Att = AttenuverterT<Tag_Cream_Large_Slot>;
 struct Tag_Cream_Large_Quad { static const char* path() { return "res/controls/RDM_Cream_Large_Quad.svg"; } };
 using Cream_Large_Quad = KnobT<Tag_Cream_Large_Quad>;
+using Cream_Large_Quad_Dim = Dimmable<KnobT<Tag_Cream_Large_Quad>>;
+using Cream_Large_Quad_Att = AttenuverterT<Tag_Cream_Large_Quad>;
 struct Tag_Cream_Large_Dot { static const char* path() { return "res/controls/RDM_Cream_Large_Dot.svg"; } };
 using Cream_Large_Dot = KnobT<Tag_Cream_Large_Dot>;
+using Cream_Large_Dot_Dim = Dimmable<KnobT<Tag_Cream_Large_Dot>>;
+using Cream_Large_Dot_Att = AttenuverterT<Tag_Cream_Large_Dot>;
 struct Tag_Cream_Medium_Cog { static const char* path() { return "res/controls/RDM_Cream_Medium_Cog.svg"; } };
 using Cream_Medium_Cog = KnobT<Tag_Cream_Medium_Cog>;
+using Cream_Medium_Cog_Dim = Dimmable<KnobT<Tag_Cream_Medium_Cog>>;
+using Cream_Medium_Cog_Att = AttenuverterT<Tag_Cream_Medium_Cog>;
 struct Tag_Cream_Medium_Bar { static const char* path() { return "res/controls/RDM_Cream_Medium_Bar.svg"; } };
 using Cream_Medium_Bar = KnobT<Tag_Cream_Medium_Bar>;
+using Cream_Medium_Bar_Dim = Dimmable<KnobT<Tag_Cream_Medium_Bar>>;
+using Cream_Medium_Bar_Att = AttenuverterT<Tag_Cream_Medium_Bar>;
 struct Tag_Cream_Medium_Slot { static const char* path() { return "res/controls/RDM_Cream_Medium_Slot.svg"; } };
 using Cream_Medium_Slot = KnobT<Tag_Cream_Medium_Slot>;
+using Cream_Medium_Slot_Dim = Dimmable<KnobT<Tag_Cream_Medium_Slot>>;
+using Cream_Medium_Slot_Att = AttenuverterT<Tag_Cream_Medium_Slot>;
 struct Tag_Cream_Medium_Quad { static const char* path() { return "res/controls/RDM_Cream_Medium_Quad.svg"; } };
 using Cream_Medium_Quad = KnobT<Tag_Cream_Medium_Quad>;
+using Cream_Medium_Quad_Dim = Dimmable<KnobT<Tag_Cream_Medium_Quad>>;
+using Cream_Medium_Quad_Att = AttenuverterT<Tag_Cream_Medium_Quad>;
 struct Tag_Cream_Medium_Dot { static const char* path() { return "res/controls/RDM_Cream_Medium_Dot.svg"; } };
 using Cream_Medium_Dot = KnobT<Tag_Cream_Medium_Dot>;
+using Cream_Medium_Dot_Dim = Dimmable<KnobT<Tag_Cream_Medium_Dot>>;
+using Cream_Medium_Dot_Att = AttenuverterT<Tag_Cream_Medium_Dot>;
 struct Tag_Cream_Mid_Cog { static const char* path() { return "res/controls/RDM_Cream_Mid_Cog.svg"; } };
 using Cream_Mid_Cog = KnobT<Tag_Cream_Mid_Cog>;
+using Cream_Mid_Cog_Dim = Dimmable<KnobT<Tag_Cream_Mid_Cog>>;
+using Cream_Mid_Cog_Att = AttenuverterT<Tag_Cream_Mid_Cog>;
 struct Tag_Cream_Mid_Bar { static const char* path() { return "res/controls/RDM_Cream_Mid_Bar.svg"; } };
 using Cream_Mid_Bar = KnobT<Tag_Cream_Mid_Bar>;
+using Cream_Mid_Bar_Dim = Dimmable<KnobT<Tag_Cream_Mid_Bar>>;
+using Cream_Mid_Bar_Att = AttenuverterT<Tag_Cream_Mid_Bar>;
 struct Tag_Cream_Mid_Slot { static const char* path() { return "res/controls/RDM_Cream_Mid_Slot.svg"; } };
 using Cream_Mid_Slot = KnobT<Tag_Cream_Mid_Slot>;
+using Cream_Mid_Slot_Dim = Dimmable<KnobT<Tag_Cream_Mid_Slot>>;
+using Cream_Mid_Slot_Att = AttenuverterT<Tag_Cream_Mid_Slot>;
 struct Tag_Cream_Mid_Quad { static const char* path() { return "res/controls/RDM_Cream_Mid_Quad.svg"; } };
 using Cream_Mid_Quad = KnobT<Tag_Cream_Mid_Quad>;
+using Cream_Mid_Quad_Dim = Dimmable<KnobT<Tag_Cream_Mid_Quad>>;
+using Cream_Mid_Quad_Att = AttenuverterT<Tag_Cream_Mid_Quad>;
 struct Tag_Cream_Mid_Dot { static const char* path() { return "res/controls/RDM_Cream_Mid_Dot.svg"; } };
 using Cream_Mid_Dot = KnobT<Tag_Cream_Mid_Dot>;
+using Cream_Mid_Dot_Dim = Dimmable<KnobT<Tag_Cream_Mid_Dot>>;
+using Cream_Mid_Dot_Att = AttenuverterT<Tag_Cream_Mid_Dot>;
 struct Tag_Cream_Compact_Cog { static const char* path() { return "res/controls/RDM_Cream_Compact_Cog.svg"; } };
 using Cream_Compact_Cog = KnobT<Tag_Cream_Compact_Cog>;
+using Cream_Compact_Cog_Dim = Dimmable<KnobT<Tag_Cream_Compact_Cog>>;
+using Cream_Compact_Cog_Att = AttenuverterT<Tag_Cream_Compact_Cog>;
 struct Tag_Cream_Compact_Bar { static const char* path() { return "res/controls/RDM_Cream_Compact_Bar.svg"; } };
 using Cream_Compact_Bar = KnobT<Tag_Cream_Compact_Bar>;
+using Cream_Compact_Bar_Dim = Dimmable<KnobT<Tag_Cream_Compact_Bar>>;
+using Cream_Compact_Bar_Att = AttenuverterT<Tag_Cream_Compact_Bar>;
 struct Tag_Cream_Compact_Slot { static const char* path() { return "res/controls/RDM_Cream_Compact_Slot.svg"; } };
 using Cream_Compact_Slot = KnobT<Tag_Cream_Compact_Slot>;
+using Cream_Compact_Slot_Dim = Dimmable<KnobT<Tag_Cream_Compact_Slot>>;
+using Cream_Compact_Slot_Att = AttenuverterT<Tag_Cream_Compact_Slot>;
 struct Tag_Cream_Compact_Quad { static const char* path() { return "res/controls/RDM_Cream_Compact_Quad.svg"; } };
 using Cream_Compact_Quad = KnobT<Tag_Cream_Compact_Quad>;
+using Cream_Compact_Quad_Dim = Dimmable<KnobT<Tag_Cream_Compact_Quad>>;
+using Cream_Compact_Quad_Att = AttenuverterT<Tag_Cream_Compact_Quad>;
 struct Tag_Cream_Compact_Dot { static const char* path() { return "res/controls/RDM_Cream_Compact_Dot.svg"; } };
 using Cream_Compact_Dot = KnobT<Tag_Cream_Compact_Dot>;
+using Cream_Compact_Dot_Dim = Dimmable<KnobT<Tag_Cream_Compact_Dot>>;
+using Cream_Compact_Dot_Att = AttenuverterT<Tag_Cream_Compact_Dot>;
 struct Tag_Cream_Small_Cog { static const char* path() { return "res/controls/RDM_Cream_Small_Cog.svg"; } };
 using Cream_Small_Cog = KnobT<Tag_Cream_Small_Cog>;
+using Cream_Small_Cog_Dim = Dimmable<KnobT<Tag_Cream_Small_Cog>>;
+using Cream_Small_Cog_Att = AttenuverterT<Tag_Cream_Small_Cog>;
 struct Tag_Cream_Small_Bar { static const char* path() { return "res/controls/RDM_Cream_Small_Bar.svg"; } };
 using Cream_Small_Bar = KnobT<Tag_Cream_Small_Bar>;
+using Cream_Small_Bar_Dim = Dimmable<KnobT<Tag_Cream_Small_Bar>>;
+using Cream_Small_Bar_Att = AttenuverterT<Tag_Cream_Small_Bar>;
 struct Tag_Cream_Small_Slot { static const char* path() { return "res/controls/RDM_Cream_Small_Slot.svg"; } };
 using Cream_Small_Slot = KnobT<Tag_Cream_Small_Slot>;
+using Cream_Small_Slot_Dim = Dimmable<KnobT<Tag_Cream_Small_Slot>>;
+using Cream_Small_Slot_Att = AttenuverterT<Tag_Cream_Small_Slot>;
 struct Tag_Cream_Small_Quad { static const char* path() { return "res/controls/RDM_Cream_Small_Quad.svg"; } };
 using Cream_Small_Quad = KnobT<Tag_Cream_Small_Quad>;
+using Cream_Small_Quad_Dim = Dimmable<KnobT<Tag_Cream_Small_Quad>>;
+using Cream_Small_Quad_Att = AttenuverterT<Tag_Cream_Small_Quad>;
 struct Tag_Cream_Small_Dot { static const char* path() { return "res/controls/RDM_Cream_Small_Dot.svg"; } };
 using Cream_Small_Dot = KnobT<Tag_Cream_Small_Dot>;
+using Cream_Small_Dot_Dim = Dimmable<KnobT<Tag_Cream_Small_Dot>>;
+using Cream_Small_Dot_Att = AttenuverterT<Tag_Cream_Small_Dot>;
 struct Tag_Cream_Trim_Cog { static const char* path() { return "res/controls/RDM_Cream_Trim_Cog.svg"; } };
 using Cream_Trim_Cog = KnobT<Tag_Cream_Trim_Cog>;
+using Cream_Trim_Cog_Dim = Dimmable<KnobT<Tag_Cream_Trim_Cog>>;
+using Cream_Trim_Cog_Att = AttenuverterT<Tag_Cream_Trim_Cog>;
 struct Tag_Cream_Trim_Bar { static const char* path() { return "res/controls/RDM_Cream_Trim_Bar.svg"; } };
 using Cream_Trim_Bar = KnobT<Tag_Cream_Trim_Bar>;
+using Cream_Trim_Bar_Dim = Dimmable<KnobT<Tag_Cream_Trim_Bar>>;
+using Cream_Trim_Bar_Att = AttenuverterT<Tag_Cream_Trim_Bar>;
 struct Tag_Cream_Trim_Slot { static const char* path() { return "res/controls/RDM_Cream_Trim_Slot.svg"; } };
 using Cream_Trim_Slot = KnobT<Tag_Cream_Trim_Slot>;
+using Cream_Trim_Slot_Dim = Dimmable<KnobT<Tag_Cream_Trim_Slot>>;
+using Cream_Trim_Slot_Att = AttenuverterT<Tag_Cream_Trim_Slot>;
 struct Tag_Cream_Trim_Quad { static const char* path() { return "res/controls/RDM_Cream_Trim_Quad.svg"; } };
 using Cream_Trim_Quad = KnobT<Tag_Cream_Trim_Quad>;
+using Cream_Trim_Quad_Dim = Dimmable<KnobT<Tag_Cream_Trim_Quad>>;
+using Cream_Trim_Quad_Att = AttenuverterT<Tag_Cream_Trim_Quad>;
 struct Tag_Cream_Trim_Dot { static const char* path() { return "res/controls/RDM_Cream_Trim_Dot.svg"; } };
 using Cream_Trim_Dot = KnobT<Tag_Cream_Trim_Dot>;
+using Cream_Trim_Dot_Dim = Dimmable<KnobT<Tag_Cream_Trim_Dot>>;
+using Cream_Trim_Dot_Att = AttenuverterT<Tag_Cream_Trim_Dot>;
 struct Tag_Grey_Large_Cog { static const char* path() { return "res/controls/RDM_Grey_Large_Cog.svg"; } };
 using Grey_Large_Cog = KnobT<Tag_Grey_Large_Cog>;
+using Grey_Large_Cog_Dim = Dimmable<KnobT<Tag_Grey_Large_Cog>>;
+using Grey_Large_Cog_Att = AttenuverterT<Tag_Grey_Large_Cog>;
 struct Tag_Grey_Large_Bar { static const char* path() { return "res/controls/RDM_Grey_Large_Bar.svg"; } };
 using Grey_Large_Bar = KnobT<Tag_Grey_Large_Bar>;
+using Grey_Large_Bar_Dim = Dimmable<KnobT<Tag_Grey_Large_Bar>>;
+using Grey_Large_Bar_Att = AttenuverterT<Tag_Grey_Large_Bar>;
 struct Tag_Grey_Large_Slot { static const char* path() { return "res/controls/RDM_Grey_Large_Slot.svg"; } };
 using Grey_Large_Slot = KnobT<Tag_Grey_Large_Slot>;
+using Grey_Large_Slot_Dim = Dimmable<KnobT<Tag_Grey_Large_Slot>>;
+using Grey_Large_Slot_Att = AttenuverterT<Tag_Grey_Large_Slot>;
 struct Tag_Grey_Large_Quad { static const char* path() { return "res/controls/RDM_Grey_Large_Quad.svg"; } };
 using Grey_Large_Quad = KnobT<Tag_Grey_Large_Quad>;
+using Grey_Large_Quad_Dim = Dimmable<KnobT<Tag_Grey_Large_Quad>>;
+using Grey_Large_Quad_Att = AttenuverterT<Tag_Grey_Large_Quad>;
 struct Tag_Grey_Large_Dot { static const char* path() { return "res/controls/RDM_Grey_Large_Dot.svg"; } };
 using Grey_Large_Dot = KnobT<Tag_Grey_Large_Dot>;
+using Grey_Large_Dot_Dim = Dimmable<KnobT<Tag_Grey_Large_Dot>>;
+using Grey_Large_Dot_Att = AttenuverterT<Tag_Grey_Large_Dot>;
 struct Tag_Grey_Medium_Cog { static const char* path() { return "res/controls/RDM_Grey_Medium_Cog.svg"; } };
 using Grey_Medium_Cog = KnobT<Tag_Grey_Medium_Cog>;
+using Grey_Medium_Cog_Dim = Dimmable<KnobT<Tag_Grey_Medium_Cog>>;
+using Grey_Medium_Cog_Att = AttenuverterT<Tag_Grey_Medium_Cog>;
 struct Tag_Grey_Medium_Bar { static const char* path() { return "res/controls/RDM_Grey_Medium_Bar.svg"; } };
 using Grey_Medium_Bar = KnobT<Tag_Grey_Medium_Bar>;
+using Grey_Medium_Bar_Dim = Dimmable<KnobT<Tag_Grey_Medium_Bar>>;
+using Grey_Medium_Bar_Att = AttenuverterT<Tag_Grey_Medium_Bar>;
 struct Tag_Grey_Medium_Slot { static const char* path() { return "res/controls/RDM_Grey_Medium_Slot.svg"; } };
 using Grey_Medium_Slot = KnobT<Tag_Grey_Medium_Slot>;
+using Grey_Medium_Slot_Dim = Dimmable<KnobT<Tag_Grey_Medium_Slot>>;
+using Grey_Medium_Slot_Att = AttenuverterT<Tag_Grey_Medium_Slot>;
 struct Tag_Grey_Medium_Quad { static const char* path() { return "res/controls/RDM_Grey_Medium_Quad.svg"; } };
 using Grey_Medium_Quad = KnobT<Tag_Grey_Medium_Quad>;
+using Grey_Medium_Quad_Dim = Dimmable<KnobT<Tag_Grey_Medium_Quad>>;
+using Grey_Medium_Quad_Att = AttenuverterT<Tag_Grey_Medium_Quad>;
 struct Tag_Grey_Medium_Dot { static const char* path() { return "res/controls/RDM_Grey_Medium_Dot.svg"; } };
 using Grey_Medium_Dot = KnobT<Tag_Grey_Medium_Dot>;
+using Grey_Medium_Dot_Dim = Dimmable<KnobT<Tag_Grey_Medium_Dot>>;
+using Grey_Medium_Dot_Att = AttenuverterT<Tag_Grey_Medium_Dot>;
 struct Tag_Grey_Mid_Cog { static const char* path() { return "res/controls/RDM_Grey_Mid_Cog.svg"; } };
 using Grey_Mid_Cog = KnobT<Tag_Grey_Mid_Cog>;
+using Grey_Mid_Cog_Dim = Dimmable<KnobT<Tag_Grey_Mid_Cog>>;
+using Grey_Mid_Cog_Att = AttenuverterT<Tag_Grey_Mid_Cog>;
 struct Tag_Grey_Mid_Bar { static const char* path() { return "res/controls/RDM_Grey_Mid_Bar.svg"; } };
 using Grey_Mid_Bar = KnobT<Tag_Grey_Mid_Bar>;
+using Grey_Mid_Bar_Dim = Dimmable<KnobT<Tag_Grey_Mid_Bar>>;
+using Grey_Mid_Bar_Att = AttenuverterT<Tag_Grey_Mid_Bar>;
 struct Tag_Grey_Mid_Slot { static const char* path() { return "res/controls/RDM_Grey_Mid_Slot.svg"; } };
 using Grey_Mid_Slot = KnobT<Tag_Grey_Mid_Slot>;
+using Grey_Mid_Slot_Dim = Dimmable<KnobT<Tag_Grey_Mid_Slot>>;
+using Grey_Mid_Slot_Att = AttenuverterT<Tag_Grey_Mid_Slot>;
 struct Tag_Grey_Mid_Quad { static const char* path() { return "res/controls/RDM_Grey_Mid_Quad.svg"; } };
 using Grey_Mid_Quad = KnobT<Tag_Grey_Mid_Quad>;
+using Grey_Mid_Quad_Dim = Dimmable<KnobT<Tag_Grey_Mid_Quad>>;
+using Grey_Mid_Quad_Att = AttenuverterT<Tag_Grey_Mid_Quad>;
 struct Tag_Grey_Mid_Dot { static const char* path() { return "res/controls/RDM_Grey_Mid_Dot.svg"; } };
 using Grey_Mid_Dot = KnobT<Tag_Grey_Mid_Dot>;
+using Grey_Mid_Dot_Dim = Dimmable<KnobT<Tag_Grey_Mid_Dot>>;
+using Grey_Mid_Dot_Att = AttenuverterT<Tag_Grey_Mid_Dot>;
 struct Tag_Grey_Compact_Cog { static const char* path() { return "res/controls/RDM_Grey_Compact_Cog.svg"; } };
 using Grey_Compact_Cog = KnobT<Tag_Grey_Compact_Cog>;
+using Grey_Compact_Cog_Dim = Dimmable<KnobT<Tag_Grey_Compact_Cog>>;
+using Grey_Compact_Cog_Att = AttenuverterT<Tag_Grey_Compact_Cog>;
 struct Tag_Grey_Compact_Bar { static const char* path() { return "res/controls/RDM_Grey_Compact_Bar.svg"; } };
 using Grey_Compact_Bar = KnobT<Tag_Grey_Compact_Bar>;
+using Grey_Compact_Bar_Dim = Dimmable<KnobT<Tag_Grey_Compact_Bar>>;
+using Grey_Compact_Bar_Att = AttenuverterT<Tag_Grey_Compact_Bar>;
 struct Tag_Grey_Compact_Slot { static const char* path() { return "res/controls/RDM_Grey_Compact_Slot.svg"; } };
 using Grey_Compact_Slot = KnobT<Tag_Grey_Compact_Slot>;
+using Grey_Compact_Slot_Dim = Dimmable<KnobT<Tag_Grey_Compact_Slot>>;
+using Grey_Compact_Slot_Att = AttenuverterT<Tag_Grey_Compact_Slot>;
 struct Tag_Grey_Compact_Quad { static const char* path() { return "res/controls/RDM_Grey_Compact_Quad.svg"; } };
 using Grey_Compact_Quad = KnobT<Tag_Grey_Compact_Quad>;
+using Grey_Compact_Quad_Dim = Dimmable<KnobT<Tag_Grey_Compact_Quad>>;
+using Grey_Compact_Quad_Att = AttenuverterT<Tag_Grey_Compact_Quad>;
 struct Tag_Grey_Compact_Dot { static const char* path() { return "res/controls/RDM_Grey_Compact_Dot.svg"; } };
 using Grey_Compact_Dot = KnobT<Tag_Grey_Compact_Dot>;
+using Grey_Compact_Dot_Dim = Dimmable<KnobT<Tag_Grey_Compact_Dot>>;
+using Grey_Compact_Dot_Att = AttenuverterT<Tag_Grey_Compact_Dot>;
 struct Tag_Grey_Small_Cog { static const char* path() { return "res/controls/RDM_Grey_Small_Cog.svg"; } };
 using Grey_Small_Cog = KnobT<Tag_Grey_Small_Cog>;
+using Grey_Small_Cog_Dim = Dimmable<KnobT<Tag_Grey_Small_Cog>>;
+using Grey_Small_Cog_Att = AttenuverterT<Tag_Grey_Small_Cog>;
 struct Tag_Grey_Small_Bar { static const char* path() { return "res/controls/RDM_Grey_Small_Bar.svg"; } };
 using Grey_Small_Bar = KnobT<Tag_Grey_Small_Bar>;
+using Grey_Small_Bar_Dim = Dimmable<KnobT<Tag_Grey_Small_Bar>>;
+using Grey_Small_Bar_Att = AttenuverterT<Tag_Grey_Small_Bar>;
 struct Tag_Grey_Small_Slot { static const char* path() { return "res/controls/RDM_Grey_Small_Slot.svg"; } };
 using Grey_Small_Slot = KnobT<Tag_Grey_Small_Slot>;
+using Grey_Small_Slot_Dim = Dimmable<KnobT<Tag_Grey_Small_Slot>>;
+using Grey_Small_Slot_Att = AttenuverterT<Tag_Grey_Small_Slot>;
 struct Tag_Grey_Small_Quad { static const char* path() { return "res/controls/RDM_Grey_Small_Quad.svg"; } };
 using Grey_Small_Quad = KnobT<Tag_Grey_Small_Quad>;
+using Grey_Small_Quad_Dim = Dimmable<KnobT<Tag_Grey_Small_Quad>>;
+using Grey_Small_Quad_Att = AttenuverterT<Tag_Grey_Small_Quad>;
 struct Tag_Grey_Small_Dot { static const char* path() { return "res/controls/RDM_Grey_Small_Dot.svg"; } };
 using Grey_Small_Dot = KnobT<Tag_Grey_Small_Dot>;
+using Grey_Small_Dot_Dim = Dimmable<KnobT<Tag_Grey_Small_Dot>>;
+using Grey_Small_Dot_Att = AttenuverterT<Tag_Grey_Small_Dot>;
 struct Tag_Grey_Trim_Cog { static const char* path() { return "res/controls/RDM_Grey_Trim_Cog.svg"; } };
 using Grey_Trim_Cog = KnobT<Tag_Grey_Trim_Cog>;
+using Grey_Trim_Cog_Dim = Dimmable<KnobT<Tag_Grey_Trim_Cog>>;
+using Grey_Trim_Cog_Att = AttenuverterT<Tag_Grey_Trim_Cog>;
 struct Tag_Grey_Trim_Bar { static const char* path() { return "res/controls/RDM_Grey_Trim_Bar.svg"; } };
 using Grey_Trim_Bar = KnobT<Tag_Grey_Trim_Bar>;
+using Grey_Trim_Bar_Dim = Dimmable<KnobT<Tag_Grey_Trim_Bar>>;
+using Grey_Trim_Bar_Att = AttenuverterT<Tag_Grey_Trim_Bar>;
 struct Tag_Grey_Trim_Slot { static const char* path() { return "res/controls/RDM_Grey_Trim_Slot.svg"; } };
 using Grey_Trim_Slot = KnobT<Tag_Grey_Trim_Slot>;
+using Grey_Trim_Slot_Dim = Dimmable<KnobT<Tag_Grey_Trim_Slot>>;
+using Grey_Trim_Slot_Att = AttenuverterT<Tag_Grey_Trim_Slot>;
 struct Tag_Grey_Trim_Quad { static const char* path() { return "res/controls/RDM_Grey_Trim_Quad.svg"; } };
 using Grey_Trim_Quad = KnobT<Tag_Grey_Trim_Quad>;
+using Grey_Trim_Quad_Dim = Dimmable<KnobT<Tag_Grey_Trim_Quad>>;
+using Grey_Trim_Quad_Att = AttenuverterT<Tag_Grey_Trim_Quad>;
 struct Tag_Grey_Trim_Dot { static const char* path() { return "res/controls/RDM_Grey_Trim_Dot.svg"; } };
 using Grey_Trim_Dot = KnobT<Tag_Grey_Trim_Dot>;
+using Grey_Trim_Dot_Dim = Dimmable<KnobT<Tag_Grey_Trim_Dot>>;
+using Grey_Trim_Dot_Att = AttenuverterT<Tag_Grey_Trim_Dot>;
 struct Tag_Dark_Large_Cog { static const char* path() { return "res/controls/RDM_Dark_Large_Cog.svg"; } };
 using Dark_Large_Cog = KnobT<Tag_Dark_Large_Cog>;
+using Dark_Large_Cog_Dim = Dimmable<KnobT<Tag_Dark_Large_Cog>>;
+using Dark_Large_Cog_Att = AttenuverterT<Tag_Dark_Large_Cog>;
 struct Tag_Dark_Large_Bar { static const char* path() { return "res/controls/RDM_Dark_Large_Bar.svg"; } };
 using Dark_Large_Bar = KnobT<Tag_Dark_Large_Bar>;
+using Dark_Large_Bar_Dim = Dimmable<KnobT<Tag_Dark_Large_Bar>>;
+using Dark_Large_Bar_Att = AttenuverterT<Tag_Dark_Large_Bar>;
 struct Tag_Dark_Large_Slot { static const char* path() { return "res/controls/RDM_Dark_Large_Slot.svg"; } };
 using Dark_Large_Slot = KnobT<Tag_Dark_Large_Slot>;
+using Dark_Large_Slot_Dim = Dimmable<KnobT<Tag_Dark_Large_Slot>>;
+using Dark_Large_Slot_Att = AttenuverterT<Tag_Dark_Large_Slot>;
 struct Tag_Dark_Large_Quad { static const char* path() { return "res/controls/RDM_Dark_Large_Quad.svg"; } };
 using Dark_Large_Quad = KnobT<Tag_Dark_Large_Quad>;
+using Dark_Large_Quad_Dim = Dimmable<KnobT<Tag_Dark_Large_Quad>>;
+using Dark_Large_Quad_Att = AttenuverterT<Tag_Dark_Large_Quad>;
 struct Tag_Dark_Large_Dot { static const char* path() { return "res/controls/RDM_Dark_Large_Dot.svg"; } };
 using Dark_Large_Dot = KnobT<Tag_Dark_Large_Dot>;
+using Dark_Large_Dot_Dim = Dimmable<KnobT<Tag_Dark_Large_Dot>>;
+using Dark_Large_Dot_Att = AttenuverterT<Tag_Dark_Large_Dot>;
 struct Tag_Dark_Medium_Cog { static const char* path() { return "res/controls/RDM_Dark_Medium_Cog.svg"; } };
 using Dark_Medium_Cog = KnobT<Tag_Dark_Medium_Cog>;
+using Dark_Medium_Cog_Dim = Dimmable<KnobT<Tag_Dark_Medium_Cog>>;
+using Dark_Medium_Cog_Att = AttenuverterT<Tag_Dark_Medium_Cog>;
 struct Tag_Dark_Medium_Bar { static const char* path() { return "res/controls/RDM_Dark_Medium_Bar.svg"; } };
 using Dark_Medium_Bar = KnobT<Tag_Dark_Medium_Bar>;
+using Dark_Medium_Bar_Dim = Dimmable<KnobT<Tag_Dark_Medium_Bar>>;
+using Dark_Medium_Bar_Att = AttenuverterT<Tag_Dark_Medium_Bar>;
 struct Tag_Dark_Medium_Slot { static const char* path() { return "res/controls/RDM_Dark_Medium_Slot.svg"; } };
 using Dark_Medium_Slot = KnobT<Tag_Dark_Medium_Slot>;
+using Dark_Medium_Slot_Dim = Dimmable<KnobT<Tag_Dark_Medium_Slot>>;
+using Dark_Medium_Slot_Att = AttenuverterT<Tag_Dark_Medium_Slot>;
 struct Tag_Dark_Medium_Quad { static const char* path() { return "res/controls/RDM_Dark_Medium_Quad.svg"; } };
 using Dark_Medium_Quad = KnobT<Tag_Dark_Medium_Quad>;
+using Dark_Medium_Quad_Dim = Dimmable<KnobT<Tag_Dark_Medium_Quad>>;
+using Dark_Medium_Quad_Att = AttenuverterT<Tag_Dark_Medium_Quad>;
 struct Tag_Dark_Medium_Dot { static const char* path() { return "res/controls/RDM_Dark_Medium_Dot.svg"; } };
 using Dark_Medium_Dot = KnobT<Tag_Dark_Medium_Dot>;
+using Dark_Medium_Dot_Dim = Dimmable<KnobT<Tag_Dark_Medium_Dot>>;
+using Dark_Medium_Dot_Att = AttenuverterT<Tag_Dark_Medium_Dot>;
 struct Tag_Dark_Mid_Cog { static const char* path() { return "res/controls/RDM_Dark_Mid_Cog.svg"; } };
 using Dark_Mid_Cog = KnobT<Tag_Dark_Mid_Cog>;
+using Dark_Mid_Cog_Dim = Dimmable<KnobT<Tag_Dark_Mid_Cog>>;
+using Dark_Mid_Cog_Att = AttenuverterT<Tag_Dark_Mid_Cog>;
 struct Tag_Dark_Mid_Bar { static const char* path() { return "res/controls/RDM_Dark_Mid_Bar.svg"; } };
 using Dark_Mid_Bar = KnobT<Tag_Dark_Mid_Bar>;
+using Dark_Mid_Bar_Dim = Dimmable<KnobT<Tag_Dark_Mid_Bar>>;
+using Dark_Mid_Bar_Att = AttenuverterT<Tag_Dark_Mid_Bar>;
 struct Tag_Dark_Mid_Slot { static const char* path() { return "res/controls/RDM_Dark_Mid_Slot.svg"; } };
 using Dark_Mid_Slot = KnobT<Tag_Dark_Mid_Slot>;
+using Dark_Mid_Slot_Dim = Dimmable<KnobT<Tag_Dark_Mid_Slot>>;
+using Dark_Mid_Slot_Att = AttenuverterT<Tag_Dark_Mid_Slot>;
 struct Tag_Dark_Mid_Quad { static const char* path() { return "res/controls/RDM_Dark_Mid_Quad.svg"; } };
 using Dark_Mid_Quad = KnobT<Tag_Dark_Mid_Quad>;
+using Dark_Mid_Quad_Dim = Dimmable<KnobT<Tag_Dark_Mid_Quad>>;
+using Dark_Mid_Quad_Att = AttenuverterT<Tag_Dark_Mid_Quad>;
 struct Tag_Dark_Mid_Dot { static const char* path() { return "res/controls/RDM_Dark_Mid_Dot.svg"; } };
 using Dark_Mid_Dot = KnobT<Tag_Dark_Mid_Dot>;
+using Dark_Mid_Dot_Dim = Dimmable<KnobT<Tag_Dark_Mid_Dot>>;
+using Dark_Mid_Dot_Att = AttenuverterT<Tag_Dark_Mid_Dot>;
 struct Tag_Dark_Compact_Cog { static const char* path() { return "res/controls/RDM_Dark_Compact_Cog.svg"; } };
 using Dark_Compact_Cog = KnobT<Tag_Dark_Compact_Cog>;
+using Dark_Compact_Cog_Dim = Dimmable<KnobT<Tag_Dark_Compact_Cog>>;
+using Dark_Compact_Cog_Att = AttenuverterT<Tag_Dark_Compact_Cog>;
 struct Tag_Dark_Compact_Bar { static const char* path() { return "res/controls/RDM_Dark_Compact_Bar.svg"; } };
 using Dark_Compact_Bar = KnobT<Tag_Dark_Compact_Bar>;
+using Dark_Compact_Bar_Dim = Dimmable<KnobT<Tag_Dark_Compact_Bar>>;
+using Dark_Compact_Bar_Att = AttenuverterT<Tag_Dark_Compact_Bar>;
 struct Tag_Dark_Compact_Slot { static const char* path() { return "res/controls/RDM_Dark_Compact_Slot.svg"; } };
 using Dark_Compact_Slot = KnobT<Tag_Dark_Compact_Slot>;
+using Dark_Compact_Slot_Dim = Dimmable<KnobT<Tag_Dark_Compact_Slot>>;
+using Dark_Compact_Slot_Att = AttenuverterT<Tag_Dark_Compact_Slot>;
 struct Tag_Dark_Compact_Quad { static const char* path() { return "res/controls/RDM_Dark_Compact_Quad.svg"; } };
 using Dark_Compact_Quad = KnobT<Tag_Dark_Compact_Quad>;
+using Dark_Compact_Quad_Dim = Dimmable<KnobT<Tag_Dark_Compact_Quad>>;
+using Dark_Compact_Quad_Att = AttenuverterT<Tag_Dark_Compact_Quad>;
 struct Tag_Dark_Compact_Dot { static const char* path() { return "res/controls/RDM_Dark_Compact_Dot.svg"; } };
 using Dark_Compact_Dot = KnobT<Tag_Dark_Compact_Dot>;
+using Dark_Compact_Dot_Dim = Dimmable<KnobT<Tag_Dark_Compact_Dot>>;
+using Dark_Compact_Dot_Att = AttenuverterT<Tag_Dark_Compact_Dot>;
 struct Tag_Dark_Small_Cog { static const char* path() { return "res/controls/RDM_Dark_Small_Cog.svg"; } };
 using Dark_Small_Cog = KnobT<Tag_Dark_Small_Cog>;
+using Dark_Small_Cog_Dim = Dimmable<KnobT<Tag_Dark_Small_Cog>>;
+using Dark_Small_Cog_Att = AttenuverterT<Tag_Dark_Small_Cog>;
 struct Tag_Dark_Small_Bar { static const char* path() { return "res/controls/RDM_Dark_Small_Bar.svg"; } };
 using Dark_Small_Bar = KnobT<Tag_Dark_Small_Bar>;
+using Dark_Small_Bar_Dim = Dimmable<KnobT<Tag_Dark_Small_Bar>>;
+using Dark_Small_Bar_Att = AttenuverterT<Tag_Dark_Small_Bar>;
 struct Tag_Dark_Small_Slot { static const char* path() { return "res/controls/RDM_Dark_Small_Slot.svg"; } };
 using Dark_Small_Slot = KnobT<Tag_Dark_Small_Slot>;
+using Dark_Small_Slot_Dim = Dimmable<KnobT<Tag_Dark_Small_Slot>>;
+using Dark_Small_Slot_Att = AttenuverterT<Tag_Dark_Small_Slot>;
 struct Tag_Dark_Small_Quad { static const char* path() { return "res/controls/RDM_Dark_Small_Quad.svg"; } };
 using Dark_Small_Quad = KnobT<Tag_Dark_Small_Quad>;
+using Dark_Small_Quad_Dim = Dimmable<KnobT<Tag_Dark_Small_Quad>>;
+using Dark_Small_Quad_Att = AttenuverterT<Tag_Dark_Small_Quad>;
 struct Tag_Dark_Small_Dot { static const char* path() { return "res/controls/RDM_Dark_Small_Dot.svg"; } };
 using Dark_Small_Dot = KnobT<Tag_Dark_Small_Dot>;
+using Dark_Small_Dot_Dim = Dimmable<KnobT<Tag_Dark_Small_Dot>>;
+using Dark_Small_Dot_Att = AttenuverterT<Tag_Dark_Small_Dot>;
 struct Tag_Dark_Trim_Cog { static const char* path() { return "res/controls/RDM_Dark_Trim_Cog.svg"; } };
 using Dark_Trim_Cog = KnobT<Tag_Dark_Trim_Cog>;
+using Dark_Trim_Cog_Dim = Dimmable<KnobT<Tag_Dark_Trim_Cog>>;
+using Dark_Trim_Cog_Att = AttenuverterT<Tag_Dark_Trim_Cog>;
 struct Tag_Dark_Trim_Bar { static const char* path() { return "res/controls/RDM_Dark_Trim_Bar.svg"; } };
 using Dark_Trim_Bar = KnobT<Tag_Dark_Trim_Bar>;
+using Dark_Trim_Bar_Dim = Dimmable<KnobT<Tag_Dark_Trim_Bar>>;
+using Dark_Trim_Bar_Att = AttenuverterT<Tag_Dark_Trim_Bar>;
 struct Tag_Dark_Trim_Slot { static const char* path() { return "res/controls/RDM_Dark_Trim_Slot.svg"; } };
 using Dark_Trim_Slot = KnobT<Tag_Dark_Trim_Slot>;
+using Dark_Trim_Slot_Dim = Dimmable<KnobT<Tag_Dark_Trim_Slot>>;
+using Dark_Trim_Slot_Att = AttenuverterT<Tag_Dark_Trim_Slot>;
 struct Tag_Dark_Trim_Quad { static const char* path() { return "res/controls/RDM_Dark_Trim_Quad.svg"; } };
 using Dark_Trim_Quad = KnobT<Tag_Dark_Trim_Quad>;
+using Dark_Trim_Quad_Dim = Dimmable<KnobT<Tag_Dark_Trim_Quad>>;
+using Dark_Trim_Quad_Att = AttenuverterT<Tag_Dark_Trim_Quad>;
 struct Tag_Dark_Trim_Dot { static const char* path() { return "res/controls/RDM_Dark_Trim_Dot.svg"; } };
 using Dark_Trim_Dot = KnobT<Tag_Dark_Trim_Dot>;
+using Dark_Trim_Dot_Dim = Dimmable<KnobT<Tag_Dark_Trim_Dot>>;
+using Dark_Trim_Dot_Att = AttenuverterT<Tag_Dark_Trim_Dot>;
 
 } // namespace redDot
