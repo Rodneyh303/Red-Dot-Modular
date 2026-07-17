@@ -30,31 +30,42 @@ CREAM = dict(body='#e9e3d2', bodyLo='#d8d1bd', cap='#f4f0e4', capRim='#c9c2ad',
 DARK  = dict(body='#2e2e2e', bodyLo='#1f1f1f', cap='#3a3a3a', capRim='#141414',
              edge='#0b0b0b', flute='#141414', pointer='#e8e8e8')
 
+# name -> (viewBox half-extent mm, px width, BODY RADIUS mm, palette)
+#
+# BODY RADIUS IS LOAD-BEARING, not a style choice. The mod-arc overlay computes its radius
+# from the WIDGET BOX -- arc->radius = min(box.size) * radiusFrac + 0.6mm (MonsoonWidget) --
+# and the box comes from the SVG's viewBox/width. So the box fixes where the arc sits, and
+# the body radius alone decides the gap between knob edge and arc. Shrink a body and the arc
+# floats away from it; grow one and the arc cuts into it. Both silent.
+#
+# These radii are therefore copied verbatim from the pre-existing assets, measured as the
+# LARGEST circle in each file. (An earlier pass read the FIRST circle instead -- a 0.42mm
+# decoration dot -- and built this table from it, shrinking the cream knobs ~20% and growing
+# the dark ones up to 40%. That is the failure this comment exists to prevent.)
+# The body/box ratios are inconsistent (0.80 / 0.75 / 0.62 / 0.56 / 0.50) because the old
+# margins were sized for an feDropShadow that nanosvg never rendered. Inconsistent or not,
+# they must be preserved: they set each knob's arc gap.
 SPECS = [
-    # existing — footprints must not change
-    ('RDM_KnobCream_Large',  13.500, 79.724, 9.00, CREAM),
-    ('RDM_KnobCream_Medium', 11.000, 64.961, 6.50, CREAM),
-    ('RDM_KnobDark_Large',   13.500, 79.724, 9.00, DARK),
-    ('RDM_KnobDark_Medium',  11.000, 64.961, 6.50, DARK),
-    ('RDM_KnobLarge',        10.500, 62.010, 8.30, DARK),
-    ('RDM_KnobMedium',        9.000, 53.150, 6.60, DARK),
-    ('RDM_KnobSmall',         8.000, 47.240, 5.60, DARK),
-    # new — small cream/dark, and a Trimpot-scale pair for the Straits expanders so the
-    # brand reads at expander scale too. NOTE these do not need to match Rack's Trimpot
-    # footprint: SvgKnob sizes its box from OUR svg and the kit anchors by CENTRE, so a
-    # swap of bindParam<Trimpot> -> bindParam<RDM_TrimDark> just renders our art at our
-    # size. The 8mm body is a starting point, tune TRIM_R if it crowds the Straits rows.
-    ('RDM_KnobCream_Small',   8.000, 47.240, 5.60, CREAM),
-    ('RDM_KnobDark_Small',    8.000, 47.240, 5.60, DARK),
-    ('RDM_TrimCream',         5.500, 32.480, 4.00, CREAM),
-    ('RDM_TrimDark',          5.500, 32.480, 4.00, DARK),
+    # existing -- footprint AND body radius must not change
+    ('RDM_KnobCream_Large',  13.500, 79.724, 10.80, CREAM),
+    ('RDM_KnobCream_Medium', 11.000, 64.961,  8.30, CREAM),
+    ('RDM_KnobDark_Large',   13.500, 79.724, 10.80, DARK),
+    ('RDM_KnobDark_Medium',  11.000, 64.961,  8.30, DARK),
+    ('RDM_KnobLarge',        10.500, 62.010,  6.50, DARK),
+    ('RDM_KnobMedium',        9.000, 53.150,  5.00, DARK),
+    ('RDM_KnobSmall',         8.000, 47.240,  4.00, DARK),
+    # new -- Cream/Dark Small follow RDM_KnobSmall's box+body exactly, so they are
+    # interchangeable with it and inherit the same arc gap.
+    ('RDM_KnobCream_Small',   8.000, 47.240,  4.00, CREAM),
+    ('RDM_KnobDark_Small',    8.000, 47.240,  4.00, DARK),
+    # new -- Trimpot scale for the Straits expanders. No existing asset to match; body/box
+    # 0.65 sits between the Small (0.50) and Large (0.80) ratios.
+    ('RDM_TrimCream',         5.500, 32.480,  3.60, CREAM),
+    ('RDM_TrimDark',          5.500, 32.480,  3.60, DARK),
 ]
 
-# meloDICER's big knobs have SIX deep finger scallops -- a grip, not a knurl. The old assets
-# used 18 tiny ellipses and I copied that count from them; 18 was never the reference. Six
-# deep flutes is the classic synth knob (Rogan/Moog family) and it is what the photo shows.
 FLUTES     = 6       # finger grips, not knurling
-FLUTE_DEEP = 0.115   # deep enough to read as a grip at panel size
+FLUTE_DEEP = 0.150   # deep grips, as the original
 DOME_FRAC  = 0.80    # smooth face; meloDICER has no separate cap ring, just a domed top
 PTR_IN     = 0.20    # pointer runs most of the face, as on the original
 PTR_OUT    = 0.82
