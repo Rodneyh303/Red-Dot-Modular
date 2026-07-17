@@ -135,8 +135,17 @@ starts from a panel whose *intent* is already clear.
 Lantern has no theme handling of any kind; its only `findMonsoonEitherSide` calls read
 engine state.
 
-**Do:** copy the established swap from `StraitsEastSandsVisual.cpp:932-937` — cache both
-SVGs, watch `monsoon->lightTheme`, `sp->setBackground(...)` on change.
+**DONE** (`7ae7768`): swap copied from `StraitsEastSandsVisual.cpp:932-937` — both SVGs
+cached, `step()` follows `monsoon->lightTheme`, `setBackground` on change; holds the last
+theme with no host attached.
+
+Trivially safe because the panel carries **no text**: both SVGs are 19 lines / 8 rects /
+6 circles and nothing else, and every `nvgText` in `Lantern.cpp` is inside `LanternDisplay`
+— on the LCD. Nothing can be left in the wrong colour.
+
+**Found while doing it:** the Lantern panel has **no silkscreen at all**. VIEW / ZOOM /
+FOLLOW / DISPLAY / ROLL are named via `configSwitch` (so they tooltip) but nothing is
+printed beside them. Separate gap; worth a pass before release.
 
 **Do NOT theme the LCD.** The note-grid display stays dark on both themes, same rule as
 the Sands lane wells (see `SandsVisualEditorV4::setTheme`): its cell colours are

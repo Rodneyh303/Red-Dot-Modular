@@ -847,6 +847,16 @@ struct LanternWidget : ModuleWidget {
     // Sands expanders (StraitsEastSandsVisual): follow the connected Monsoon, so one toggle
     // on Monsoon themes the whole suite.
     //
+    // The swap is trivially safe here because the panel carries NO text: both SVGs are 19
+    // lines / 8 rects / 6 circles and nothing else, and every nvgText in this file is inside
+    // LanternDisplay, i.e. on the LCD. So no label can be left in the wrong colour -- unlike
+    // Monsoon, where panel text is drawn at runtime and that split is the root of the
+    // outstanding label work.
+    //
+    // (Corollary worth fixing separately: the panel has no silkscreen at all. VIEW / ZOOM /
+    //  FOLLOW / DISPLAY are named via configSwitch so they tooltip, but nothing is printed
+    //  beside the controls.)
+    //
     // The LCD is deliberately NOT themed. LanternDisplay keeps its dark ground on both
     // themes because its cell colours are high-luminance and tuned against dark, and -- the
     // real reason -- the grid encodes state in colour AND alpha, so on a light ground a
