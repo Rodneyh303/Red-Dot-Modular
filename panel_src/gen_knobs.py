@@ -83,26 +83,40 @@ SPECS = [
 # geometry. A fixed gloss would have to be drawn by the WIDGET, outside the rotation.
 # Also unavailable: <filter>/drop shadows (nanosvg ignores them) and >2-stop gradients
 # (Rack's svgDraw keeps only the first and last stop).
-FLUTES    = 6        # finger grips, per the photo
-GRIP_OUT  = 0.93     # cog points, as a fraction of R -- inset, so the round rim shows
-GRIP_IN   = 0.76     # cog valleys; sharp, teeth connect (triangle wave, no flat)
-FACE_FRAC = 0.70     # smooth domed top, inside the cog
+FLUTES    = 6        # 6 sharp points
+GRIP_OUT  = 0.93     # the points, inset from the round rim
+GRIP_IN   = 0.70     # depth of the concave scoop at the flute centre
+FACE_FRAC = 0.66     # smooth domed top
 PTR_IN    = 0.16
-PTR_OUT   = 0.62
+PTR_OUT   = 0.60
 
-def cog_path(R, n=FLUTES, steps=40):
-    """Raised grip: a cog with SHARP points that connect. A triangle wave in r gives sharp
-    maxima AND minima with no flat between -- teeth touching, which is what the photo shows.
-    (A cosine would give soft equal lobes; a powered cosine gives flats with notches. Both
-    were tried and neither is this knob.)"""
-    ro, ri = R * GRIP_OUT, R * GRIP_IN
+def cog_path(R, n=FLUTES, steps=26):
+    """Raised grip: 6 sharp points with ONE CONCAVE ARC between each pair.
+
+    Not two convex lobes meeting in a valley, and not a triangle wave -- between adjacent
+    points the edge is a single circular arc that scoops INWARD. That is the classic fluted
+    knob and it is what the photo shows.
+
+    Each scoop is a circle centred OUTSIDE the knob, on the flute's mid-angle, passing
+    through both neighbouring points and dipping to GRIP_IN at the middle. Three points fix
+    it; by symmetry the centre lies on the mid-angle ray at:
+        cx = (Rp^2 - Rv^2) / (2*(Rp*cos(pi/n) - Rv))      rc = cx - Rv
+    A ray at angle d off the flute centre meets that circle (near side) at:
+        t = cx*cos d - sqrt(cx^2*cos^2 d - cx^2 + rc^2)
+    """
+    Rp, Rv = R * GRIP_OUT, R * GRIP_IN
+    half = math.pi / n                      # half a flute, in radians
+    cx = (Rp*Rp - Rv*Rv) / (2.0 * (Rp*math.cos(half) - Rv))
+    rc = cx - Rv                            # centre outside, arc bulges inward => concave
     pts = []
-    for k in range(n * steps):
-        th = 2.0 * math.pi * k / (n * steps)
-        x  = (n * th / math.pi) % 2.0            # 0..2 per tooth
-        tri = 1.0 - abs(x - 1.0)                 # 0 ->1 ->0, linear: sharp at both ends
-        r  = ri + (ro - ri) * tri
-        pts.append((r * math.cos(th), r * math.sin(th)))
+    for k in range(n):
+        phi = 2.0*math.pi*k/n + half        # this flute's mid-angle
+        for j in range(steps + 1):
+            d  = -half + 2.0*half*j/steps   # -half .. +half across the scoop
+            cd = math.cos(d)
+            t  = cx*cd - math.sqrt(max(0.0, cx*cx*cd*cd - cx*cx + rc*rc))
+            th = phi + d
+            pts.append((t*math.cos(th), t*math.sin(th)))
     return 'M %.3f %.3f ' % pts[0] + ' '.join('L %.3f %.3f' % p for p in pts[1:]) + ' Z'
 
 def build(half, px, R, c):
