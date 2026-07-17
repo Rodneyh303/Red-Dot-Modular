@@ -27,6 +27,14 @@ import math
 # same 2.9527559 px/mm scale so they sit on the same grid.
 CREAM = dict(body='#e9e3d2', bodyLo='#d8d1bd', cap='#f4f0e4', capRim='#c9c2ad',
              edge='#2b2620', flute='#b9b2a0', pointer='#1b1815', dot='#d4001a')
+# OFF-WHITE. Sampling the meloDICER photo, the LIT face of the big knobs is #e7e2cf
+# (warmth R-B +26) -- i.e. our CREAM #e9e3d2 (+23) already matches the PHOTOGRAPH almost
+# exactly. But the photo is a warm-lit studio shot, so it is an unreliable witness to the
+# object: the real knob is very likely cooler than it renders, and on a black panel a warm
+# cream reads as white anyway (simultaneous contrast). This palette keeps the same lightness
+# and drops the warmth to ~+8 -- a departure from the photo, toward the thing the photo is of.
+OFFWHITE = dict(body='#eeece6', bodyLo='#dcdad3', cap='#f8f7f4', capRim='#cdccc6',
+                edge='#2a2a27', flute='#bfbeb8', pointer='#1b1815', dot='#d4001a')
 DARK  = dict(body='#2e2e2e', bodyLo='#1f1f1f', cap='#3a3a3a', capRim='#141414',
              edge='#0b0b0b', flute='#141414', pointer='#e8e8e8', dot='#d4001a')
 # GREY: a third tier for the DARK theme. That panel is overwhelmingly dark -- cream heroes on
@@ -213,6 +221,14 @@ for name, half, px, R, c in SPECS:
 # Trim CONCEPTS: all four styles emitted so they can be compared on a real panel before
 # choosing. Nothing binds these yet -- Straits still uses 30 stock Trimpots + 8
 # DimmableTrimpots, and SLEW R/M on Monsoon is a stock Trimpot too.
+# OFF-WHITE variants of the big 5, for comparison against CREAM. Not bound.
+print()
+for n, half, px, R in (('RDM_KnobOffwhite_Large',  13.500, 79.724, 10.80),
+                       ('RDM_KnobOffwhite_Medium', 11.000, 64.961,  8.30),
+                       ('RDM_KnobOffwhite_Small',   8.000, 47.240,  4.00)):
+    open('res/%s.svg' % n, 'w').write(build(half, px, R, OFFWHITE, 'cog'))
+    print('  %-24s R=%5.2f  style=cog  (off-white)' % (n, R))
+
 # GREY tier for the dark theme's secondary knobs -- see the palette note.
 print()
 for n, half, px, R in (('RDM_KnobGrey_Small',  8.000, 47.240, 4.00),
