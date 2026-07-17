@@ -126,57 +126,10 @@ struct TrialButton : VCVButton {
     }
 };
 
-// ── Simple Befaco-inspired knobs ─────────────────────────────────────────────
-// ── Knob shadows ─────────────────────────────────────────────────────────────
-// Rack's SvgKnob always builds a CircularShadow and, in setSvg(), sizes it to the
-// knob and offsets it DOWN by 10% of the knob height. CircularShadow defaults to
-// blurRadius = 0, so its radial gradient runs r -> r+0: not a soft shadow at all,
-// but a HARD-EDGED black disc at 15% opacity peeking out below every knob. On the
-// light panel that reads as a grey smudge, and our knob SVGs already carry their
-// own bevel, so it is redundant as well as ugly. Kill it on every RDM knob.
-// (Restore by raising opacity AND giving blurRadius a real value — never opacity alone.)
-RDM_KnobLarge::RDM_KnobLarge() {
-    minAngle = -0.83f * M_PI;
-    maxAngle =  0.83f * M_PI;
-    setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobLarge.svg")));
-    shadow->opacity = 0.f;   // see note above
-}
-RDM_KnobMedium::RDM_KnobMedium() {
-    minAngle = -0.83f * M_PI;
-    maxAngle =  0.83f * M_PI;
-    setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobMedium.svg")));
-    shadow->opacity = 0.f;   // see note above
-}
-RDM_KnobSmall::RDM_KnobSmall() {
-    minAngle = -0.83f * M_PI;
-    maxAngle =  0.83f * M_PI;
-    setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobSmall.svg")));
-    shadow->opacity = 0.f;   // see note above
-}
-RDM_KnobDarkLarge::RDM_KnobDarkLarge() {
-    minAngle = -0.83f * M_PI;
-    maxAngle =  0.83f * M_PI;
-    setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobDark_Large.svg")));
-    shadow->opacity = 0.f;   // see note above
-}
-RDM_KnobDarkMedium::RDM_KnobDarkMedium() {
-    minAngle = -0.83f * M_PI;
-    maxAngle =  0.83f * M_PI;
-    setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobDark_Medium.svg")));
-    shadow->opacity = 0.f;   // see note above
-}
-RDM_KnobCreamLarge::RDM_KnobCreamLarge() {
-    minAngle = -0.83f * M_PI;
-    maxAngle =  0.83f * M_PI;
-    setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobCream_Large.svg")));
-    shadow->opacity = 0.f;   // see note above
-}
-RDM_KnobCreamMedium::RDM_KnobCreamMedium() {
-    minAngle = -0.83f * M_PI;
-    maxAngle =  0.83f * M_PI;
-    setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobCream_Medium.svg")));
-    shadow->opacity = 0.f;   // see note above
-}
+// ── Knobs ────────────────────────────────────────────────────────────────────
+// redDot::<Palette>_<Size>_<Style> from ui/Knob.hpp (generated). Angles and the
+// CircularShadow kill (hard-edged disc: blurRadius defaults to 0) live once in
+// redDot::KnobT -- see the note there before re-enabling any shadow.
 
 bool MonsoonWidget::getLightTheme() const {
     auto* m = dynamic_cast<const Monsoon*>(module);
@@ -359,10 +312,10 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
             std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = false; }));
         bindParam<TrialButton>("param_LAST_TRIAL_M_PARAM",  MonsoonIds::LAST_TRIAL_M_PARAM,
             std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = true; }));
-         bindParam<RDM_KnobSmall>("param_RHYTHM_MIX_PARAM", MonsoonIds::RHYTHM_MIX_PARAM,
-            std::function<void(RDM_KnobSmall*)>([this, module](RDM_KnobSmall* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.rhythmMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[2];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
-        bindParam<RDM_KnobSmall>("param_MELODY_MIX_PARAM", MonsoonIds::MELODY_MIX_PARAM,
-            std::function<void(RDM_KnobSmall*)>([this, module](RDM_KnobSmall* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.melodyMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[3];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+         bindParam<redDot::Dark_Small_Cog>("param_RHYTHM_MIX_PARAM", MonsoonIds::RHYTHM_MIX_PARAM,
+            std::function<void(redDot::Dark_Small_Cog*)>([this, module](redDot::Dark_Small_Cog* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.rhythmMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[2];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+        bindParam<redDot::Dark_Small_Cog>("param_MELODY_MIX_PARAM", MonsoonIds::MELODY_MIX_PARAM,
+            std::function<void(redDot::Dark_Small_Cog*)>([this, module](redDot::Dark_Small_Cog* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.melodyMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[3];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
         bindParam<TL1105>("param_LOCK_PARAM",             MonsoonIds::LOCK_PARAM);
         bindParam<TL1105>("param_MUTE_PARAM",             MonsoonIds::MUTE_PARAM);
         bindParam<TL1105>("param_RESET_BUTTON_PARAM",     MonsoonIds::RESET_BUTTON_PARAM);
@@ -490,35 +443,35 @@ void MonsoonWidget::applyTheme() {
         // by theme). Ring + sliders stay C++-computed elsewhere. The named shapes
         // live in res/panels/Monsoon_panel_*_monsoon.svg (components layer).
         if (lightTheme) {
-            bindParam<RDM_KnobDarkMedium> ("param_NOTE_VALUE_PARAM",     MonsoonIds::NOTE_VALUE_PARAM,
-                std::function<void(RDM_KnobDarkMedium*)>([this, m](RDM_KnobDarkMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.noteValue;}, [](const Monsoon::ModViz& v){return v.big5Lane[0];}, 0.50f,[](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
-            bindParam<RDM_KnobDarkMedium>("param_VARIATION_PARAM",      MonsoonIds::VARIATION_PARAM,
-                std::function<void(RDM_KnobDarkMedium*)>([this, m](RDM_KnobDarkMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.variation;}, [](const Monsoon::ModViz& v){return v.big5Lane[1];},0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
-            bindParam<RDM_KnobDarkMedium>("param_LEGATO_PARAM",         MonsoonIds::LEGATO_PARAM,
-                std::function<void(RDM_KnobDarkMedium*)>([this, m](RDM_KnobDarkMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.legato;}, [](const Monsoon::ModViz& v){return v.big5Lane[2];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
-            bindParam<RDM_KnobDarkMedium>("param_REST_PARAM",           MonsoonIds::REST_PARAM,
-                std::function<void(RDM_KnobDarkMedium*)>([this, m](RDM_KnobDarkMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.rest;}, [](const Monsoon::ModViz& v){return v.big5Lane[3];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
-            bindParam<RDM_KnobDarkMedium>("param_ACCENT_KNOB",          MonsoonIds::ACCENT_KNOB,
-                std::function<void(RDM_KnobDarkMedium*)>([this, m](RDM_KnobDarkMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.accent;}, [](const Monsoon::ModViz& v){return v.big5Lane[4];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            bindParam<redDot::Dark_Medium_Cog> ("param_NOTE_VALUE_PARAM",     MonsoonIds::NOTE_VALUE_PARAM,
+                std::function<void(redDot::Dark_Medium_Cog*)>([this, m](redDot::Dark_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.noteValue;}, [](const Monsoon::ModViz& v){return v.big5Lane[0];}, 0.50f,[](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            bindParam<redDot::Dark_Medium_Cog>("param_VARIATION_PARAM",      MonsoonIds::VARIATION_PARAM,
+                std::function<void(redDot::Dark_Medium_Cog*)>([this, m](redDot::Dark_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.variation;}, [](const Monsoon::ModViz& v){return v.big5Lane[1];},0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            bindParam<redDot::Dark_Medium_Cog>("param_LEGATO_PARAM",         MonsoonIds::LEGATO_PARAM,
+                std::function<void(redDot::Dark_Medium_Cog*)>([this, m](redDot::Dark_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.legato;}, [](const Monsoon::ModViz& v){return v.big5Lane[2];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            bindParam<redDot::Dark_Medium_Cog>("param_REST_PARAM",           MonsoonIds::REST_PARAM,
+                std::function<void(redDot::Dark_Medium_Cog*)>([this, m](redDot::Dark_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.rest;}, [](const Monsoon::ModViz& v){return v.big5Lane[3];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            bindParam<redDot::Dark_Medium_Cog>("param_ACCENT_KNOB",          MonsoonIds::ACCENT_KNOB,
+                std::function<void(redDot::Dark_Medium_Cog*)>([this, m](redDot::Dark_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.accent;}, [](const Monsoon::ModViz& v){return v.big5Lane[4];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
 
-            bindParam<RDM_KnobSmall>     ("param_BPM_PARAM",            MonsoonIds::BPM_PARAM);
-            bindParam<RDM_KnobSmall>     ("param_PATTERN_LENGTH_PARAM", MonsoonIds::PATTERN_LENGTH_PARAM);
-            bindParam<RDM_KnobSmall>     ("param_PATTERN_OFFSET_PARAM", MonsoonIds::PATTERN_OFFSET_PARAM);
+            bindParam<redDot::Dark_Small_Cog>     ("param_BPM_PARAM",            MonsoonIds::BPM_PARAM);
+            bindParam<redDot::Dark_Small_Cog>     ("param_PATTERN_LENGTH_PARAM", MonsoonIds::PATTERN_LENGTH_PARAM);
+            bindParam<redDot::Dark_Small_Cog>     ("param_PATTERN_OFFSET_PARAM", MonsoonIds::PATTERN_OFFSET_PARAM);
         } else {
-            bindParam<RDM_KnobCreamMedium>("param_NOTE_VALUE_PARAM",     MonsoonIds::NOTE_VALUE_PARAM,
-                std::function<void(RDM_KnobCreamMedium*)>([this, m](RDM_KnobCreamMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.noteValue;}, [](const Monsoon::ModViz& v){return v.big5Lane[0];},0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
-            bindParam<RDM_KnobCreamMedium>("param_VARIATION_PARAM",      MonsoonIds::VARIATION_PARAM,
-                std::function<void(RDM_KnobCreamMedium*)>([this, m](RDM_KnobCreamMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.variation;}, [](const Monsoon::ModViz& v){return v.big5Lane[1];},0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
-            bindParam<RDM_KnobCreamMedium>("param_LEGATO_PARAM",         MonsoonIds::LEGATO_PARAM,
-                std::function<void(RDM_KnobCreamMedium*)>([this, m](RDM_KnobCreamMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.legato;}, [](const Monsoon::ModViz& v){return v.big5Lane[2];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
-            bindParam<RDM_KnobCreamMedium>("param_REST_PARAM",           MonsoonIds::REST_PARAM,
-                std::function<void(RDM_KnobCreamMedium*)>([this, m](RDM_KnobCreamMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.rest;}, [](const Monsoon::ModViz& v){return v.big5Lane[3];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
-            bindParam<RDM_KnobCreamMedium>("param_ACCENT_KNOB",          MonsoonIds::ACCENT_KNOB,
-                std::function<void(RDM_KnobCreamMedium*)>([this, m](RDM_KnobCreamMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.accent;}, [](const Monsoon::ModViz& v){return v.big5Lane[4];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            bindParam<redDot::Cream_Medium_Cog>("param_NOTE_VALUE_PARAM",     MonsoonIds::NOTE_VALUE_PARAM,
+                std::function<void(redDot::Cream_Medium_Cog*)>([this, m](redDot::Cream_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.noteValue;}, [](const Monsoon::ModViz& v){return v.big5Lane[0];},0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            bindParam<redDot::Cream_Medium_Cog>("param_VARIATION_PARAM",      MonsoonIds::VARIATION_PARAM,
+                std::function<void(redDot::Cream_Medium_Cog*)>([this, m](redDot::Cream_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.variation;}, [](const Monsoon::ModViz& v){return v.big5Lane[1];},0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            bindParam<redDot::Cream_Medium_Cog>("param_LEGATO_PARAM",         MonsoonIds::LEGATO_PARAM,
+                std::function<void(redDot::Cream_Medium_Cog*)>([this, m](redDot::Cream_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.legato;}, [](const Monsoon::ModViz& v){return v.big5Lane[2];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            bindParam<redDot::Cream_Medium_Cog>("param_REST_PARAM",           MonsoonIds::REST_PARAM,
+                std::function<void(redDot::Cream_Medium_Cog*)>([this, m](redDot::Cream_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.rest;}, [](const Monsoon::ModViz& v){return v.big5Lane[3];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            bindParam<redDot::Cream_Medium_Cog>("param_ACCENT_KNOB",          MonsoonIds::ACCENT_KNOB,
+                std::function<void(redDot::Cream_Medium_Cog*)>([this, m](redDot::Cream_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.accent;}, [](const Monsoon::ModViz& v){return v.big5Lane[4];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
 
-            bindParam<RDM_KnobSmall>      ("param_BPM_PARAM",            MonsoonIds::BPM_PARAM);
-            bindParam<RDM_KnobSmall>      ("param_PATTERN_LENGTH_PARAM", MonsoonIds::PATTERN_LENGTH_PARAM);
-            bindParam<RDM_KnobSmall>      ("param_PATTERN_OFFSET_PARAM", MonsoonIds::PATTERN_OFFSET_PARAM);
+            bindParam<redDot::Dark_Small_Cog>      ("param_BPM_PARAM",            MonsoonIds::BPM_PARAM);
+            bindParam<redDot::Dark_Small_Cog>      ("param_PATTERN_LENGTH_PARAM", MonsoonIds::PATTERN_LENGTH_PARAM);
+            bindParam<redDot::Dark_Small_Cog>      ("param_PATTERN_OFFSET_PARAM", MonsoonIds::PATTERN_OFFSET_PARAM);
         }
 
         // All big-5 knobs are bound; build their modulation-arc overlays on top.

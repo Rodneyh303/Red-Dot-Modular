@@ -280,12 +280,9 @@ for pname, pal in PALETTES:
 print('  res/knobs/: %d files  (%d palettes x %d sizes x %d styles)'
       % (n, len(PALETTES), len(SIZES), 5))
 
-# ── the currently BOUND assets, kept at their existing paths so the build is unaffected.
-# MonsoonWidget's setSvg() calls point here; migrating those to res/knobs/ is a separate step.
-print()
-for name, half, px, R, c in SPECS:
-    open('res/%s.svg' % name, 'w').write(build(half, px, R, c, 'cog'))
-print('  res/RDM_*.svg: %d bound assets regenerated (paths unchanged)' % len(SPECS))
+# ── legacy res/RDM_Knob*.svg: RETIRED. MonsoonWidget now binds res/knobs/ via ui/Knob.hpp.
+# SPECS is kept above as the record of which library entries the old classes mapped to
+# (note RDM_KnobLarge was a *Mid*, RDM_KnobMedium a *Compact* -- the names had drifted).
 
 # ── src/ui/Knob.hpp : the library as C++ bindings ────────────────────────────
 # Emitted from the SAME loop as the assets, so name<->file cannot drift. That drift is not
