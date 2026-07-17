@@ -2,7 +2,7 @@
 
 #include <rack.hpp>
 #include "ui/SvgPanelKit.hpp"
-#include "ui/Knob.hpp"   // redDot::<Palette>_<Size>_<Style>, generated
+#include "ui/Controls.hpp"   // redDot::<Palette>_<Size>_<Style>, generated
 
 using namespace rack;
 

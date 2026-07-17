@@ -127,7 +127,7 @@ struct TrialButton : VCVButton {
 };
 
 // ── Knobs ────────────────────────────────────────────────────────────────────
-// redDot::<Palette>_<Size>_<Style> from ui/Knob.hpp (generated). Angles and the
+// redDot::<Palette>_<Size>_<Style> from ui/Controls.hpp (generated). Angles and the
 // CircularShadow kill (hard-edged disc: blurRadius defaults to 0) live once in
 // redDot::KnobT -- see the note there before re-enabling any shadow.
 
