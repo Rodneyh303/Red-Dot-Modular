@@ -74,7 +74,12 @@ GREY  = dict(body='#8b8a84', bodyLo='#74736e', cap='#9d9c96', capRim='#5f5e5a',
 # margins were sized for an feDropShadow that nanosvg never rendered. Inconsistent or not,
 # they must be preserved: they set each knob's arc gap.
 SPECS = [
-    # existing -- footprint AND body radius must not change
+    # The ONLY assets the code loads today: MonsoonWidget's RDM_Knob*::setSvg() paths.
+    # Footprint AND body radius are load-bearing -- viewBox/width set the widget box, the box
+    # sets where the mod arc lands, and the body radius alone sets the gap to it. Do not touch
+    # without re-checking the arc gaps (3.30mm cream family / 4.60mm dark family).
+    # Everything else now lives in res/knobs/ as a library; migrating these paths there is a
+    # separate step.
     ('RDM_KnobCream_Large',  13.500, 79.724, 10.80, CREAM),
     ('RDM_KnobCream_Medium', 11.000, 64.961,  8.30, CREAM),
     ('RDM_KnobDark_Large',   13.500, 79.724, 10.80, DARK),
@@ -82,14 +87,6 @@ SPECS = [
     ('RDM_KnobLarge',        10.500, 62.010,  6.50, DARK),
     ('RDM_KnobMedium',        9.000, 53.150,  5.00, DARK),
     ('RDM_KnobSmall',         8.000, 47.240,  4.00, DARK),
-    # new -- Cream/Dark Small follow RDM_KnobSmall's box+body exactly, so they are
-    # interchangeable with it and inherit the same arc gap.
-    ('RDM_KnobCream_Small',   8.000, 47.240,  4.00, CREAM),
-    ('RDM_KnobDark_Small',    8.000, 47.240,  4.00, DARK),
-    # new -- Trimpot scale for the Straits expanders. No existing asset to match; body/box
-    # 0.65 sits between the Small (0.50) and Large (0.80) ratios.
-    ('RDM_TrimCream',         5.500, 32.480,  3.60, CREAM),
-    ('RDM_TrimDark',          5.500, 32.480,  3.60, DARK),
 ]
 
 # ── Anatomy, from the meloDICER photo ────────────────────────────────────────
@@ -217,7 +214,27 @@ def body_dot(R, c):
              % (-R*0.55, max(R*0.16, 0.34), c['dot']))
     return ''.join(L)
 
-STYLES = {'cog': body_cog, 'slot': body_slot, 'quad': body_quad, 'dot': body_dot}
+def body_bar(R, c):
+    """Attenuverter: hero cog body, but the pointer is a BAR THROUGH CENTRE rather than a
+    line from it. That single change says "bipolar" pre-attentively, at any size, before the
+    angle is read -- which is the one thing an attenuverter must communicate and a value knob
+    must not. Family silhouette, different job."""
+    L=[]
+    L.append('<circle cx="0" cy="0" r="%.3f" fill="%s" stroke="%s" stroke-width="%.3f"/>'
+             % (R, c['bodyLo'], c['edge'], stroke(R)))
+    L.append('<circle cx="0" cy="0" r="%.3f" fill="%s"/>' % (R*GRIP_OUT, c['flute']))
+    L.append('<path d="%s" fill="%s" stroke="%s" stroke-width="%.3f" stroke-linejoin="round"/>'
+             % (cog_path(R, FLUTES, GRIP_OUT, GRIP_IN), c['body'], c['edge'], stroke(R)*0.75))
+    L.append('<circle cx="0" cy="0" r="%.3f" fill="%s"/>' % (R*FACE_FRAC, c['cap']))
+    # tail is dimmed so the pointing end still leads, but the bar reads as bipolar
+    L.append('<line x1="0" y1="0" x2="0" y2="%.3f" stroke="%s" stroke-width="%.3f" '
+             'opacity="0.42" stroke-linecap="round"/>' % (R*PTR_OUT, c['pointer'], ptr_w(R)))
+    L.append('<line x1="0" y1="0" x2="0" y2="%.3f" stroke="%s" stroke-width="%.3f" '
+             'stroke-linecap="round"/>' % (-R*PTR_OUT, c['pointer'], ptr_w(R)))
+    return ''.join(L)
+
+STYLES = {'cog': body_cog, 'slot': body_slot, 'quad': body_quad, 'dot': body_dot,
+          'bar': body_bar}
 
 def build(half, px, R, c, style='cog'):
     return ('<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -227,33 +244,45 @@ def build(half, px, R, c, style='cog'):
             % (px, px, -half, -half, 2*half, 2*half)
             + STYLES[style](R, c) + '\n</svg>\n')
 
+# ── res/knobs/ : the full library ────────────────────────────────────────────
+# Naming: RDM_<Palette>_<Size>_<Style>.svg
+#
+# PALETTES.  Chosen by measurement, not taste (see the palette notes above):
+#   OffWhite  hero on the DARK panel   12.8:1
+#   Dark      hero on the LIGHT panel  10.9:1
+#   Grey      SECONDARY on BOTH        4.5:1 dark / 2.8:1 light -- one tier, either theme
+#   Cream     the previous hero, kept until the bindings move off it
+#
+# SIZES are the existing footprints, unchanged. viewBox/width fix the widget box, and the box
+# fixes where the mod arc lands (arc->radius = min(box)*radiusFrac + 0.6mm), so the body
+# radius alone sets the arc gap. These are not free parameters -- see SPECS.
+#
+# STYLES.  cog = hero/value. bar = attenuverter (bipolar). slot/quad/dot = trim concepts,
+# undecided. Every size is emitted in every style: they are ~3KB each and it costs nothing to
+# be able to try one on a panel.
+SIZES = [('Large',   13.500, 79.724, 10.80),
+         ('Medium',  11.000, 64.961,  8.30),
+         ('Mid',     10.500, 62.010,  6.50),
+         ('Compact',  9.000, 53.150,  5.00),
+         ('Small',    8.000, 47.240,  4.00),
+         ('Trim',     5.500, 32.480,  3.60)]
+PALETTES = [('OffWhite', OFFWHITE), ('Cream', CREAM), ('Grey', GREY), ('Dark', DARK)]
+
+import os
+os.makedirs('res/knobs', exist_ok=True)
+n = 0
+for pname, pal in PALETTES:
+    for sname, half, px, R in SIZES:
+        for style in ('cog', 'bar', 'slot', 'quad', 'dot'):
+            fn = 'res/knobs/RDM_%s_%s_%s.svg' % (pname, sname, style.capitalize())
+            open(fn, 'w').write(build(half, px, R, pal, style))
+            n += 1
+print('  res/knobs/: %d files  (%d palettes x %d sizes x %d styles)'
+      % (n, len(PALETTES), len(SIZES), 5))
+
+# ── the currently BOUND assets, kept at their existing paths so the build is unaffected.
+# MonsoonWidget's setSvg() calls point here; migrating those to res/knobs/ is a separate step.
+print()
 for name, half, px, R, c in SPECS:
     open('res/%s.svg' % name, 'w').write(build(half, px, R, c, 'cog'))
-    print('  %-24s R=%5.2f  ptr=%.2fmm (%.1fpx)  style=cog' % (name, R, ptr_w(R), ptr_w(R)*2.9527559))
-
-# Trim CONCEPTS: all four styles emitted so they can be compared on a real panel before
-# choosing. Nothing binds these yet -- Straits still uses 30 stock Trimpots + 8
-# DimmableTrimpots, and SLEW R/M on Monsoon is a stock Trimpot too.
-# OFF-WHITE hero variants -- see the palette note. Same geometry, warmth cut 23 -> 8.
-print()
-for n, half, px, R in (('RDM_KnobOffWhite_Large',  13.500, 79.724, 10.80),
-                       ('RDM_KnobOffWhite_Medium', 11.000, 64.961,  8.30),
-                       ('RDM_KnobOffWhite_Small',   8.000, 47.240,  4.00)):
-    open('res/%s.svg' % n, 'w').write(build(half, px, R, OFFWHITE, 'cog'))
-    print('  %-24s R=%5.2f  style=cog  (off-white)' % (n, R))
-
-# GREY tier for the dark theme's secondary knobs -- see the palette note.
-print()
-for n, half, px, R in (('RDM_KnobGrey_Small',  8.000, 47.240, 4.00),
-                       ('RDM_KnobGrey_Medium', 11.000, 64.961, 8.30),
-                       ('RDM_TrimGrey',         5.500, 32.480, 3.60)):
-    open('res/%s.svg' % n, 'w').write(build(half, px, R, GREY, 'cog'))
-    print('  %-24s R=%5.2f  style=cog  (grey tier)' % (n, R))
-
-print()
-for style in ('cog', 'slot', 'quad', 'dot'):
-    for pal, c in (('Cream', CREAM), ('Dark', DARK)):
-        n = 'RDM_Trim%s_%s' % (pal, style.capitalize())
-        open('res/%s.svg' % n, 'w').write(build(5.500, 32.480, 3.60, c, style))
-        print('  %-24s R= 3.60  ptr=%.2fmm (%.1fpx)  style=%s'
-              % (n, ptr_w(3.60), ptr_w(3.60)*2.9527559, style))
+print('  res/RDM_*.svg: %d bound assets regenerated (paths unchanged)' % len(SPECS))
