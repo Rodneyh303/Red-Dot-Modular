@@ -18,6 +18,42 @@
 //   A bright vertical tick at a bar's left edge marks each new gate ONSET; MidNote
 //   gate-tails draw no bar (the onset's true fractional width already spans them).
 //
+// ── ENGINE CONTRACT ──────────────────────────────────────────────────────────
+// The Lantern is a scope that reads the ENGINE, not cables -- which is why it can show
+// per-voice articulation at all (poly exposes only gate+pitch+accent; there is no cable
+// carrying "this voice tied"). The cost is coupling: a refactor can silently falsify this
+// display, and a faithful scope that has quietly gone stale is worse than none, because it
+// is trusted. Audited at 5e76373 (post Rule 2, per-lane direction, stateless positions).
+//
+// Fields read, and what each must keep meaning:
+//   eng.stepIndex                physical playhead column (0..15)
+//   eng.lastStepResult.forStep   the stepIndex a decision was computed for. The engine
+//                                comments this as "(Lantern pairs decision→column)" -- this
+//                                is the pairing.
+//   eng.lastStepResult.decision  MONO's decision. Used ONLY for MidNote (tail) detection.
+//   eng.lastStepResult.nvIdx     note-length index -> bar length
+//   eng.lastStepResult.accented  mono accent
+//   eng.lastPlayDir              GLOBAL play direction (+1/-1). Deliberately global: the
+//                                columns are physical steps, so bar extension follows the
+//                                direction of TIME. Per-lane direction (laneSign_/laneTick_)
+//                                is NOT read and must not be -- a reversed lane still played
+//                                its notes at the steps shown.
+//   eng.numPolyVoices, eng.voices, eng.perVoiceArticulation
+//   gs.gateHeld / gs.holdRemain  SOUNDING test, per voice. NOT MonoDecision::Rest -- the
+//                                voice's own gate is the per-voice truth.
+//   gs.gatePulseRemain           distinguishes a fresh attack from a held-over tail
+//   gs.lastNoteType              CELL COLOUR. Single/Tie/Legato.
+//   gs.slurForward, pv.accented  per-voice, under perVoiceArticulation
+//
+// THE INVARIANT THIS DISPLAY RESTS ON:
+//   lastNoteType describes the CURRENT NOTE, and a tail is the same note.
+// Every path that STARTS a note goes through GateState's five articulation methods
+// (triggerNote/slideNote x2/slideMax/extendHold), all of which set it. Four paths in
+// SequencerEngine re-assert gateHeld without setting it (~473, 706, 868) -- all are tails of
+// a note already sounding, so its type is still correct. Break that (re-open a gate for a
+// NEW note without going through those methods) and the Lantern will faithfully draw a stale
+// colour. That is the failure mode to watch for.
+//
 // PURE OBSERVER: reads Monsoon's engine state (via findMonsoonEitherSide) and
 // keeps its OWN per-voice 16-step display ring buffer. It writes NO engine state.
 // Independent of the Sands topology work. See docs/design/LANTERN_SPEC.md.
