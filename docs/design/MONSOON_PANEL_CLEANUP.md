@@ -125,3 +125,26 @@ same safety (write to a new name first, compare renders, then switch the widget 
 
 Steps 1–4 are edits to the existing SVG + widget; step 5 is the rebuild. Doing 1–4 first means step 5
 starts from a panel whose *intent* is already clear.
+
+---
+
+## E. Lantern light theme (open)
+
+`Lantern_panel_light.svg` exists and ships, but `Lantern.cpp:848` hard-loads
+`Lantern_panel_dark.svg` unconditionally — so the light panel has never been used. The
+Lantern has no theme handling of any kind; its only `findMonsoonEitherSide` calls read
+engine state.
+
+**Do:** copy the established swap from `StraitsEastSandsVisual.cpp:932-937` — cache both
+SVGs, watch `monsoon->lightTheme`, `sp->setBackground(...)` on change.
+
+**Do NOT theme the LCD.** The note-grid display stays dark on both themes, same rule as
+the Sands lane wells (see `SandsVisualEditorV4::setTheme`): its cell colours are
+high-luminance and tuned against a dark ground, and — the real point — the grid encodes
+state in colour and alpha, so lightening the ground makes low-alpha cells read as *absent*
+rather than *quiet*. Theme the panel around it; leave the screen alone.
+
+Note for the record: the Sands commit originally cited "the Lantern has no light theme"
+as evidence that displays shouldn't theme. That was wrong — it has no light theme because
+nobody wrote one. **Absence is not a decision.** The rule rests on the contrast maths and
+the alpha semantics, not on precedent.

@@ -67,9 +67,13 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // a low-probability step washes toward the background and reads as ABSENT rather than
   // unlikely. The display lies about the data.
   //
-  // So we theme the PANEL, not the DISPLAY -- as hardware does, and as the Lantern already
-  // does here (it has no light theme at all). This also keeps ONE lane colour table with one
+  // So we theme the PANEL, not the DISPLAY -- as hardware does: light panel, dark screen,
+  // and nobody expects an LCD to invert. This also keeps ONE lane colour table with one
   // meaning per hue, instead of two that can drift apart.
+  //
+  // (The Lantern is NOT evidence for this. It has no light theme because none was written
+  //  yet -- absence is not a decision. When it gets one, the same rule applies: theme its
+  //  panel, leave its LCD dark.)
   //
   // The border still follows the host: a light bezel around a dark well reads as a recessed
   // screen on the light panel rather than a hole punched in it.
