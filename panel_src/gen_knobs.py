@@ -66,16 +66,23 @@ SPECS = [
 
 FLUTES     = 6       # finger grips, not knurling
 FLUTE_DEEP = 0.150   # deep grips, as the original
-DOME_FRAC  = 0.80    # smooth face; meloDICER has no separate cap ring, just a domed top
+FLUTE_POW  = 2.5     # notch NARROWNESS. A raw cosine gives equal lobes and valleys -- a
+                     # scallop. The original is wide flats with narrow notches CUT INTO them,
+                     # so the depth term is raised to a power: >1 holds r near R across the
+                     # flat and spikes only at the notch.
+DOME_FRAC  = 0.74    # smooth face. Must clear the flute VALLEY or the dome hides the grips:
+                     # at 0.80 the face (r=8.64) sat inside the valley (r=9.18), leaving 0.5mm
+                     # of visible skirt and the flutes read as a faint wave.
 PTR_IN     = 0.20    # pointer runs most of the face, as on the original
 PTR_OUT    = 0.82
 
-def scallop_path(R, n=FLUTES, depth=FLUTE_DEEP, steps=16):
+def scallop_path(R, n=FLUTES, depth=FLUTE_DEEP, steps=28):
     """Fluted silhouette: flutes are the OUTLINE, not paint on the face."""
     pts = []
     for k in range(n * steps):
         th = 2.0 * math.pi * k / (n * steps)
-        r  = R - R * depth * (1.0 + math.cos(n * th)) * 0.5
+        # ((1-cos)/2)^p : 0 across the flat, 1 at the notch. p>1 narrows the notch.
+        r  = R - R * depth * ((1.0 - math.cos(n * th)) * 0.5) ** FLUTE_POW
         pts.append((r * math.cos(th), r * math.sin(th)))
     d = 'M %.3f %.3f ' % pts[0] + ' '.join('L %.3f %.3f' % p for p in pts[1:]) + ' Z'
     return d
