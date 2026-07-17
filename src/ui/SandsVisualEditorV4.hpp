@@ -55,25 +55,36 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     NVGcolor inactiveText = nvgRGB(0x6a, 0x6e, 0x76);  // dim hint text for inert state
   };
 
-  // Theme: swap the recess/border (and handle) to match the host panel theme.
-  // Lane colours stay constant (they read identically on both themes); only the
-  // editor's background well + border + neutral handle change.
+  // Theme: the lane display stays DARK on both themes. Only its BEZEL follows the host.
+  //
+  // The old comment here claimed "lane colours read identically on both themes". They do
+  // not. The lane hues are high-luminance (yellow, orange, teal) and were tuned against a
+  // dark well; on the light "slot" (#d8dade) melody yellow falls from 7.9:1 contrast to
+  // 1.7:1 -- under the 3:1 floor for graphical objects, i.e. genuinely unreadable. Every
+  // lane loses 60-80%.
+  //
+  // Worse than dim, it is WRONG: the bars encode probability in alpha, so on a light ground
+  // a low-probability step washes toward the background and reads as ABSENT rather than
+  // unlikely. The display lies about the data.
+  //
+  // So we theme the PANEL, not the DISPLAY -- as hardware does, and as the Lantern already
+  // does here (it has no light theme at all). This also keeps ONE lane colour table with one
+  // meaning per hue, instead of two that can drift apart.
+  //
+  // The border still follows the host: a light bezel around a dark well reads as a recessed
+  // screen on the light panel rather than a hole punched in it.
   bool lightTheme = false;
   void setTheme(bool light) {
     lightTheme = light;
-    if (light) {
-      colors.background = nvgRGB(0xd8, 0xda, 0xde);  // Monsoon light "slot"
-      colors.border     = nvgRGB(0xc0, 0xc4, 0xca);  // Monsoon light "slotline"
-      colors.handle     = nvgRGB(0x70, 0x76, 0x80);
-      colors.rest       = nvgRGB(0x9a, 0x9a, 0x9a);  // lighten neutral rest for light bg
-    } else {
-      colors.background = nvgRGB(0x10, 0x12, 0x16);
-      colors.border     = nvgRGB(0x2a, 0x2f, 0x37);
-      colors.handle     = nvgRGB(0x88, 0x88, 0x88);
-      colors.rest       = nvgRGB(0x50, 0x50, 0x50);
-    }
+    // Display: dark always. These are the values the lane colours were designed against.
+    colors.background = nvgRGB(0x10, 0x12, 0x16);
+    colors.handle     = nvgRGB(0x88, 0x88, 0x88);
+    colors.rest       = nvgRGB(0x50, 0x50, 0x50);
+    // Bezel: follows the host panel, so the well reads as inset into it.
+    colors.border     = light ? nvgRGB(0xc0, 0xc4, 0xca)   // Monsoon light "slotline"
+                              : nvgRGB(0x2a, 0x2f, 0x37);
   }
-  
+
   // Per-lane probability distribution
   struct ProbabilityLane {
     std::array<float, STEP_COUNT> probabilities;  // 16 values
