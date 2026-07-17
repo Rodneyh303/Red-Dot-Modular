@@ -403,23 +403,18 @@ struct Dimmable : Base {
     }
 };
 
-// AttenuverterT: a DISTINCT TYPE, deliberately empty today. Rack's double-click
-// already resets to default (0 on a bipolar param), and the bipolar mod-arc
-// treatment lives in ModArcOverlay at the call site. The type exists so that
-// when attenuverter behaviour is wanted (snap band at zero, finer drag), it
-// lands HERE once -- call sites already say what they are.
-template <typename Tag>
-struct AttenuverterT : KnobT<Tag> {};
 
 ''')
-    h.write('// Per-asset aliases. <Name> = plain KnobT. <Name>_Dim / <Name>_Att opt into a\n')
-    h.write('// behaviour over the SAME artwork -- role is chosen at the call site.\n')
+    h.write('// Per-asset aliases. <Name> = plain KnobT; <Name>_Dim opts into Dimmable over\n')
+    h.write("// the SAME artwork. Bipolar 'attenuverter' is NOT a widget type: bipolarity is\n")
+    h.write("// the PARAM's range (configParam -1..1, default 0 -- double-click resets there)\n")
+    h.write("// and the centre-out arc is ModArcOverlay's. The widget only carries artwork\n")
+    h.write("// and, optionally, Dimmable behaviour.\n")
     for a in aliases:
         h.write('struct Tag_%s { static const char* path() '
                 '{ return "res/controls/RDM_%s.svg"; } };\n' % (a, a))
         h.write('using %s = KnobT<Tag_%s>;\n' % (a, a))
         h.write('using %s_Dim = Dimmable<KnobT<Tag_%s>>;\n' % (a, a))
-        h.write('using %s_Att = AttenuverterT<Tag_%s>;\n' % (a, a))
     h.write('\n} // namespace redDot\n')
-print('  %s: %d assets x 3 roles = %d aliases (same loop as the assets)'
-      % (HDR, len(aliases), 3*len(aliases)))
+print('  %s: %d assets x 2 roles = %d aliases (same loop as the assets)'
+      % (HDR, len(aliases), 2*len(aliases)))
