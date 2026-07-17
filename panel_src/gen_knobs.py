@@ -29,6 +29,13 @@ CREAM = dict(body='#e9e3d2', bodyLo='#d8d1bd', cap='#f4f0e4', capRim='#c9c2ad',
              edge='#2b2620', flute='#b9b2a0', pointer='#1b1815', dot='#d4001a')
 DARK  = dict(body='#2e2e2e', bodyLo='#1f1f1f', cap='#3a3a3a', capRim='#141414',
              edge='#0b0b0b', flute='#141414', pointer='#e8e8e8', dot='#d4001a')
+# GREY: a third tier for the DARK theme. That panel is overwhelmingly dark -- cream heroes on
+# dark everything-else -- so the secondary knobs (BPM/LEN/OFFSET, MIX R/M, SLEW) can lift it
+# without going all-cream, which would flatten the hierarchy the big 5 currently have.
+# Warmed slightly toward the cream so it reads as the same family rather than a grey part in
+# a beige instrument. Pointer stays dark: on grey a dark mark out-contrasts a light one.
+GREY  = dict(body='#8b8a84', bodyLo='#74736e', cap='#9d9c96', capRim='#5f5e5a',
+             edge='#2a2a27', flute='#5a5955', pointer='#1b1815', dot='#d4001a')
 
 # name -> (viewBox half-extent mm, px width, BODY RADIUS mm, palette)
 #
@@ -206,6 +213,14 @@ for name, half, px, R, c in SPECS:
 # Trim CONCEPTS: all four styles emitted so they can be compared on a real panel before
 # choosing. Nothing binds these yet -- Straits still uses 30 stock Trimpots + 8
 # DimmableTrimpots, and SLEW R/M on Monsoon is a stock Trimpot too.
+# GREY tier for the dark theme's secondary knobs -- see the palette note.
+print()
+for n, half, px, R in (('RDM_KnobGrey_Small',  8.000, 47.240, 4.00),
+                       ('RDM_KnobGrey_Medium', 11.000, 64.961, 8.30),
+                       ('RDM_TrimGrey',         5.500, 32.480, 3.60)):
+    open('res/%s.svg' % n, 'w').write(build(half, px, R, GREY, 'cog'))
+    print('  %-24s R=%5.2f  style=cog  (grey tier)' % (n, R))
+
 print()
 for style in ('cog', 'slot', 'quad', 'dot'):
     for pal, c in (('Cream', CREAM), ('Dark', DARK)):
