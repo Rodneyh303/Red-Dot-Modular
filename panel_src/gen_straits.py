@@ -47,12 +47,20 @@ SPINE_W  = 10.0
 SPINE_CX = W/2
 SIDE_W   = (W - 2*MARGIN - SPINE_W) / 2
 TOP      = 16.0
-N_ROWS   = 6                    # 3 cols x 6/6/4 (col-major: voices 1-6, 7-12, 13-16)
-COLS     = [6, 6, 4]
+N_ROWS   = 6                    # 6 rows max per column
+# MIRRORED banks so each bank's short column sits on the panel's OUTER edge, freeing its
+# bottom two cells for that bank's I/O jacks -- cables then exit AWAY from the knob field
+# instead of crossing it. REST short col first (left/outer), ACCENT short col last
+# (right/outer). Column-major within each bank.
+COLS_REST = [4, 6, 6]           # col0 (outer-left): 4 knobs -> 2 free cells for CV + GATE
+COLS_ACC  = [6, 6, 4]           # col2 (outer-right): 4 knobs -> 1 free cell (ACCENT out) + 1 blank
 ROW_H    = 14.77                # 43.6px -- Compact(tight) arc dia 43.4px kisses, never crosses
 KNOB_R   = 4.5                  # painted preview under the Compact body (5.0mm)
 GRID_TOP = TOP + 2.0
-JACK_Y   = TOP + N_ROWS*ROW_H + 6.5   # 111.1mm; logo band below
+# jacks live INSIDE the grid (rows 5-6 of each short column), not in a bottom strip.
+JACK_R5  = GRID_TOP + ROW_H*(4 + 0.5)   # row-5 cell centre
+JACK_R6  = GRID_TOP + ROW_H*(5 + 0.5)   # row-6 cell centre
+JACK_Y   = TOP + N_ROWS*ROW_H + 6.5     # logo band reference (kept for wordmark)
 
 def wave_field(A, t, x0, y0, w, h, colour, n=22):
     """Flowing contour lines (the straits' water) across (x0,y0,w,h). Dense field — many
@@ -120,42 +128,46 @@ def gen(dark):
 
     # ── central voice spine 1..16 ──
     A(f'<line x1="{px(SPINE_CX)}" y1="{px(TOP)}" x2="{px(SPINE_CX)}" y2="{px(TOP+N_ROWS*ROW_H)}" '
-      f'stroke="{t["spine"]}" stroke-width="{px(0.6)}"/>')
+      f'stroke="{t["spine"]}" stroke-width="{px(0.4)}" stroke-opacity="0.5"/>')
 
-    # ── knob grid: 3 columns per side, 6/6/4 = 16 per bank, COLUMN-major ──
-    # col 0 = voices 1-6 (v0..5, v0 = mono at top-left), col 1 = 7-12, col 2 = 13-16
-    # (4-knob col vertically centred: offset one row). Column position = voice range,
-    # which is what the 2x8 row-major grid could never say.
-    def bank(kind, x_base, col_face, col_ring):
+    # ── knob grid: 3 columns per bank, COLUMN-major, mirrored short columns ──
+    # REST 4/6/6: col0 (outer-left) = voices 0-3, col1 = 4-9, col2 = 10-15.
+    # ACCENT 6/6/4: col0 = voices 0-5, col1 = 6-11, col2 (outer-right) = 12-15.
+    # v0 = mono, red-ringed, top of the bank's OUTER column so it neighbours that
+    # bank's jacks (the "special" column: inherited-mono + I/O together).
+    # The knob-count columns are top-aligned (no vertical centring) so the freed cells
+    # are always the BOTTOM of the short column -- that is where the jacks go.
+    def bank(kind, x_base, cols, col_face, col_ring):
         cw = SIDE_W/3
         v = 0
-        for c, nrows in enumerate(COLS):
-            roff = (N_ROWS - nrows) / 2.0
+        # column render order is left-to-right, but the SHORT column must be on the
+        # panel's outer edge: for rest that is col index 0 (left), for accent col index 2
+        # (right). cols is already authored that way (4,6,6 vs 6,6,4).
+        for c, nrows in enumerate(cols):
             for r in range(nrows):
                 cx = x_base + cw*(c+0.5)
-                cy = GRID_TOP + ROW_H*(r+roff+0.5)
+                cy = GRID_TOP + ROW_H*(r+0.5)
                 mono = (v == 0)
                 knob(A, t, cx, cy, KNOB_R, col_face, col_ring, mono)
                 A(f'<circle id="param_{kind}_{v}" cx="{px(cx)}" cy="{px(cy)}" r="0.5" fill="none" stroke="none"/>')
-                # voice number dot on the spine side -- first column only (the spine
-                # indexes voices 1-6; cols 2-3 are read from the column header position)
-                if c == 0:
-                    sx = SPINE_CX + (-1 if kind=="rest" else 1)*(SPINE_W/2 - 1.2)
-                    A(f'<circle cx="{px(sx)}" cy="{px(cy)}" r="{px(0.7)}" '
-                      f'fill="{t["spinedot"] if mono else t["spinehi"]}" fill-opacity="{1.0 if mono else 0.5}"/>')
                 v += 1
-    bank("rest",   MARGIN,                t["restknob"], t["rest"])
-    bank("accent", SPINE_CX+SPINE_W/2,    t["accknob"],  t["acc"])
+    bank("rest",   MARGIN,             COLS_REST, t["restknob"], t["rest"])
+    bank("accent", SPINE_CX+SPINE_W/2, COLS_ACC,  t["accknob"],  t["acc"])
 
-    # ── three poly-cable output jacks along the bottom ──
-    labels = [("output_polygate", W*0.30), ("output_polycv", W*0.5), ("output_polyaccent", W*0.70)]
-    for jid, jx in labels:
-        A(f'<circle cx="{px(jx)}" cy="{px(JACK_Y)}" r="{px(3.6)}" fill="{t["jackwell"]}" '
-          f'stroke="{t["jackring"]}" stroke-width="0.6"/>')
-        A(f'<circle cx="{px(jx)}" cy="{px(JACK_Y)}" r="{px(1.6)}" fill="none" stroke="{t["gold"]}" stroke-width="0.4"/>')
-        A(f'<circle id="{jid}" cx="{px(jx)}" cy="{px(JACK_Y)}" r="0.5" fill="none" stroke="none"/>')
-    # a wave sweeping under the jacks (the straits continuing)
-    wave_field(A, t, MARGIN, JACK_Y+5.5, W-2*MARGIN, 5.5, t["spine"], n=7)
+    # ── I/O jacks INSIDE the grid, in the freed bottom cells of each short column ──
+    cw = SIDE_W/3
+    rest_col0_cx = MARGIN + cw*0.5                       # outer-left column
+    acc_col2_cx  = (SPINE_CX+SPINE_W/2) + cw*2.5         # outer-right column
+    def outjack(jid, cx, cy, label_gold=True):
+        A(f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(4.4)}" fill="{t["jackwell"]}" '
+          f'stroke="{t["jackring"]}" stroke-width="0.8"/>')
+        A(f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(2.0)}" fill="none" stroke="{t["gold"]}" stroke-width="0.5"/>')
+        A(f'<circle id="{jid}" cx="{px(cx)}" cy="{px(cy)}" r="0.5" fill="none" stroke="none"/>')
+    # rest short column (col0), rows 5 & 6: POLY CV then POLY GATE
+    outjack("output_polycv",   rest_col0_cx, JACK_R5)
+    outjack("output_polygate", rest_col0_cx, JACK_R6)
+    # accent short column (col2), row 5: POLY ACCENT; row 6 left BLANK (balances rest's 2nd jack)
+    outjack("output_polyaccent", acc_col2_cx, JACK_R5)
 
     lcx = W - MARGIN - 3
     A(f'<circle cx="{px(lcx)}" cy="{px(JACK_Y)}" r="{px(1.6)}" fill="{t["jackwell"]}" stroke="{t["jackring"]}" stroke-width="0.3"/>')
