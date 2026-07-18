@@ -626,7 +626,13 @@ namespace MonsoonIds {
         LANE_DIR_START = VARLEG_ATTEN_END,
         LANE_DIR_END = LANE_DIR_START + 96,
 
-        NUM_PARAMS = LANE_DIR_END
+        // Mode E manual phase knob. Full range = one upward ramp cycle (phase 0->1 = one bar).
+        // Only used when CV1 (the phase input) is UNPATCHED -- it's the fallback phase source,
+        // so a host (Bitwig etc.) can automate this param to drive Mode E from a DAW phase
+        // modulator when no CV cable is present. Appended at END; existing patches still load.
+        PHASE_PARAM = LANE_DIR_END,
+
+        NUM_PARAMS
     };
 
     enum InputIds {

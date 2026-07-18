@@ -540,8 +540,22 @@ void Monsoon::process(const ProcessArgs& args) {
     // mirroring how Mode B repurposes gate1). The PhaseEngine emits the same
     // pulseEdge/sixteenthEdge/quarterEdge contract as the clock, plus a reverse flag.
     if (modeSelect == 4) {
-        phase.process(input.cv1, cachedCv1Connected, args.sampleTime, ppqnSetting);
-        if (cachedCv1Connected) bpm = phase.bpm;   // tempo follows the ramp's velocity
+        // Phase source: CV1 when patched, else the manual PHASE_PARAM knob (0..1 of the
+        // knob = 0..phaseInMax volts = one bar ramp). The knob path reports connected=true
+        // to the PhaseEngine so it drives the grid identically -- this is what lets a DAW
+        // automate PHASE_PARAM to run Mode E with no CV cable (e.g. Bitwig Grid phase out).
+        float phaseVolt;
+        bool  phaseDriven;
+        if (cachedCv1Connected) {
+            phaseVolt   = input.cv1;
+            phaseDriven = true;
+        } else {
+            // knob 0..1 -> 0..phaseInMax volts (one upward ramp cycle over the full range)
+            phaseVolt   = params[PHASE_PARAM].getValue() * phase.phaseInMax;
+            phaseDriven = true;
+        }
+        phase.process(phaseVolt, phaseDriven, args.sampleTime, ppqnSetting);
+        if (phaseDriven) bpm = phase.bpm;   // tempo follows the ramp's velocity (knob or CV)
         modeController->setPhaseReverse(phase.reverse);
         engine.pe.setReverseActive(phase.reverse);
         applyReversibleModeChange_();

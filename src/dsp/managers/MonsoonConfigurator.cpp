@@ -66,6 +66,10 @@ void MonsoonConfigurator::setup(Monsoon* m) {
     //mix of 100% mirrors MeloDicer which does not have mix.
     m->configParam(RHYTHM_MIX_PARAM, 0.f, 1.f, 1.f, "Rhythm A>B mix", "%", 0.f, 100.f);
     m->configParam(MELODY_MIX_PARAM, 0.f, 1.f, 1.f, "Melody A>B mix", "%", 0.f, 100.f);
+
+    // Mode E manual phase (full range = one upward ramp = one bar). Fallback when CV1
+    // is unpatched; automatable by a host to drive Mode E from a DAW phase modulator.
+    m->configParam(PHASE_PARAM, 0.f, 1.f, 0.f, "Mode E phase (when CV1 unpatched)", "%", 0.f, 100.f);
     m->configButton(LOCK_PARAM,   "Lock");
     m->configButton(MUTE_PARAM,   "Mute");
     m->configButton(MODE_PARAM,   "Mode (Cycle A-B-C-D-E)");
