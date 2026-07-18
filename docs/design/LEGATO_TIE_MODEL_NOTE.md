@@ -283,19 +283,48 @@ Combined with the LEVEL operations (next section: in-legato = GATE XOR STEP GATE
 its inverse) and ACCENT gating any of the above, the four jacks span the space: two levels
 for the "are we in a slur" questions, their two edge-sets for the "which onset" questions.
 
-### Not needed: any "only during / only outside legato" gate is derivable
-A gate that fires only OUTSIDE legato (isolated notes), or only DURING it, is recurrently
-tempting. It is not a third primitive -- it is a Boolean combination of the two we have:
+### Not needed as jacks: the derived legato-region signals (and the ONE that needs memory)
+Signals like "fires only outside legato", "only during it", or "a continuous gate high for
+the whole slur" are recurrently tempting. None is a new primitive; each is derived from the
+gates we emit. But they split into two classes -- pure Boolean (combinational) vs
+latch-requiring (needs one bit of memory) -- and it's worth being exact about which is which,
+because an earlier draft here overstated the XOR case.
 
-- "in a legato phrase?" == GATE stays high past this note's own end == **GATE != STEP GATE**.
-- So **GATE XOR STEP GATE** is high exactly DURING slurs, low outside them; its inverse is
-  the isolated-notes gate.
+**Combinational (pure AND/OR/NOT, no memory) -- one logic module:**
+- **within-legato interior** = `GATE AND NOT STEP GATE`. High in the GAPS between a slur's
+  re-articulations (where GATE holds but STEP has dropped). This is NOT a continuous
+  "in a slur" level -- it is low DURING each STEP pulse, so it looks like the inverse of the
+  slur's rhythm, not a phrase-long gate. (The earlier claim that `GATE XOR STEP` "is high
+  exactly during slurs" was wrong in exactly this way: XOR gives the interior gaps, not a
+  sustained level.)
+- **continuation-only** (STEP gates GATE fused away) = `edge(STEP) AND GATE AND NOT edge(GATE)`.
+- **phrase-initial only** = `rising-edge(GATE)` (GATE alone -- it rises once per phrase).
+- **every onset** = `rising-edge(STEP GATE)`.
 
-Both fall out of one logic module. Exposing a dedicated jack would violate the same
-discipline that rejected LEG/TIE: do not ship what two primitives + a Boolean already
-produce. GATE and STEP GATE are the basis; IN-LEGATO, ISOLATED, ONLY-CONTINUATIONS, etc. are
-derived. (They combine cleanly because both gates are emitted at the SAME step boundaries --
-time-aligned, so a plain XOR/AND/difference suffices; no special module needed.)
+**Latch-requiring (needs one bit of memory) -- ~2 modules:**
+- **IN-LEGATO** = a CONTINUOUS gate, high for the whole duration of a slurred phrase, low on
+  isolated notes ("the legato-envelope gate" other sequencers are imagined to have). This
+  CANNOT be a pure Boolean: it is a phrase-level STATE, but every gate we emit is note-level
+  PULSES, and turning "a slur pulse occurred" into "we are inside the slur" needs memory.
+  Derivation: `SR-latch(set = STEP LEGATO, reset = falling-edge GATE) AND GATE`. The latch
+  goes high on the first STEP-LEGATO pulse and holds until GATE falls; ANDing GATE bounds it
+  to the phrase. On an isolated note STEP LEGATO never fires, so the latch stays low -> not
+  in legato. (Equivalent set/reset using STEP: latch `GATE XOR STEP`, reset on falling GATE.)
+  ~2 utility modules (any flip-flop + AND).
+
+**Why IN-LEGATO is correctly NOT a jack** -- two reasons, both decisive:
+1. It's a cheap latch-derivation from gates we already emit (STEP LEGATO makes it trivial).
+2. More fundamentally, on a CONVENTIONAL sequencer "gate high during legato" IS just the main
+   gate -- a normal gate goes high and stays high through a slur (that's what legato means to
+   it). IN-LEGATO and GATE are the same wire there. It only looks like a distinct signal on
+   OUR design because we deliberately split articulations out of the main GATE into
+   STEP/STEP LEGATO. Nobody ships it as an output because it's either the plain gate
+   (conventional) or a two-module latch (ours). Exposing it would be the LEG/TIE mistake
+   inverted: shipping what the patcher gets for free.
+
+So the emitted set stays GATE + STEP + STEP LEGATO (+ CV + ACCENT). Every legato-region
+variant -- IN-LEGATO, ISOLATED, within-legato, continuation-only, phrase-initial -- is a
+Boolean or a one-latch derivation of these, per the edge-set algebra below.
 
 **Why the whole family is derivable -- the two edge-sets.** Phrase structure is entirely
 encoded in the relationship between GATE's edges and STEP GATE's edges:
