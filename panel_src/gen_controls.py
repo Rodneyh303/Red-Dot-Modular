@@ -263,7 +263,7 @@ def build(half, px, R, c, style='cog'):
 SIZES = [('Large',   13.500, 79.724, 10.80),
          ('Medium',  11.000, 64.961,  8.30),
          ('Mid',     10.500, 62.010,  6.50),
-         ('Compact',  9.000, 53.150,  5.00),
+         ('Compact',  6.750, 39.862,  5.00),   # tightened 9.0->6.75 for the Straits 3-col grid: arc dia 43.4px vs 43.6px pitch
          ('Small',    8.000, 47.240,  4.00),
          ('Trim',     4.500, 26.575,  3.60)]   # tightened 5.5->4.5: arc dia 30.11px vs Straits pitch 30.12 -- clears; body/box 0.80 = Large's ratio
 PALETTES = [('OffWhite', OFFWHITE), ('Cream', CREAM), ('Grey', GREY), ('Dark', DARK)]

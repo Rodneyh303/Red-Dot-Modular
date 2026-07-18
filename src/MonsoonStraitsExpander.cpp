@@ -104,8 +104,8 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
         //    Monsoon stays authoritative (the engine reads its knob); these just display it.
         //    Arc queued with voice -1 = the MONO lane, so it shows the same Causeway/mono mod arc
         //    that Monsoon's own rest/accent knobs show. ──
-        bindParam<redDot::Themed_Trim_Cog_Dim>("param_rest_0", MonsoonIds::REST_PARAM,
-            std::function<void(redDot::Themed_Trim_Cog_Dim*)>([this](redDot::Themed_Trim_Cog_Dim* k){
+        bindParam<redDot::Themed_Compact_Cog_Dim>("param_rest_0", MonsoonIds::REST_PARAM,
+            std::function<void(redDot::Themed_Compact_Cog_Dim*)>([this](redDot::Themed_Compact_Cog_Dim* k){
                 k->lightWhen = [this](){ return themeLight_; };
                 k->lockWhen = [](){ return true; };
                 k->displayValueFn = [this]() -> float {
@@ -114,8 +114,8 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
                 };
                 queueArc(k, -1, 0);
             }));
-        bindParam<redDot::Themed_Trim_Cog_Dim>("param_accent_0", MonsoonIds::ACCENT_KNOB,
-            std::function<void(redDot::Themed_Trim_Cog_Dim*)>([this](redDot::Themed_Trim_Cog_Dim* k){
+        bindParam<redDot::Themed_Compact_Cog_Dim>("param_accent_0", MonsoonIds::ACCENT_KNOB,
+            std::function<void(redDot::Themed_Compact_Cog_Dim*)>([this](redDot::Themed_Compact_Cog_Dim* k){
                 k->lightWhen = [this](){ return themeLight_; };
                 k->lockWhen = [](){ return true; };
                 k->displayValueFn = [this]() -> float {
@@ -129,13 +129,13 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
         for (int i = 1; i < 16; i++) {
             std::string r = std::to_string(i);
             int polyIdx = i - 1;                 // 0..14 for the mod-arc + POLY_*_PARAM offset
-            bindParam<redDot::Themed_Trim_Cog>("param_rest_"   + r, MonsoonIds::POLY_REST_PARAM_1   + polyIdx,
-                std::function<void(redDot::Themed_Trim_Cog*)>([this, polyIdx](redDot::Themed_Trim_Cog* k){
+            bindParam<redDot::Themed_Compact_Cog>("param_rest_"   + r, MonsoonIds::POLY_REST_PARAM_1   + polyIdx,
+                std::function<void(redDot::Themed_Compact_Cog*)>([this, polyIdx](redDot::Themed_Compact_Cog* k){
                     k->lightWhen = [this](){ return themeLight_; };
                     queueArc(k, polyIdx, 0);
                 }));
-            bindParam<redDot::Themed_Trim_Cog>("param_accent_" + r, MonsoonIds::POLY_ACCENT_PARAM_1 + polyIdx,
-                std::function<void(redDot::Themed_Trim_Cog*)>([this, polyIdx](redDot::Themed_Trim_Cog* k){
+            bindParam<redDot::Themed_Compact_Cog>("param_accent_" + r, MonsoonIds::POLY_ACCENT_PARAM_1 + polyIdx,
+                std::function<void(redDot::Themed_Compact_Cog*)>([this, polyIdx](redDot::Themed_Compact_Cog* k){
                     k->lightWhen = [this](){ return themeLight_; };
                     queueArc(k, polyIdx, 1);
                 }));
