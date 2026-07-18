@@ -26,6 +26,12 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
     // Cached once per frame in step(); the 32 knobs' lightWhen read THIS, not a
     // per-frame findMonsoonEitherSide() each (that would be 32 chain-walks/frame).
     bool themeLight_ = false;
+    // Also cached per frame: how many poly voices Monsoon has active (numPolyVoices,
+    // 0..15 meaning 1..16). -1 = no Monsoon connected. The poly knobs' dimWhen reads
+    // THIS, not a chain-walk each. Dimming a voice's knob when it's above the active
+    // count makes the panel self-documenting: lit knobs = live voices. Only dims when
+    // CONNECTED (poly mode is gated on Straits being present, so disconnected = show all).
+    int activeVoices_ = -1;
     redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;
 
@@ -125,26 +131,36 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
                 queueArc(k, -1, 1);
             }));
         // ── voices 1..15 = poly. Param = POLY_*_PARAM_1 + (i-1); arc voice index = poly index (i-1),
-        //    which maps to getBasePolyRest(0..14). ──
+        //    which maps to getBasePolyRest(0..14). Themed_Compact_Cog_Dim (not plain) so each
+        //    poly knob can dim when its voice is above Monsoon's active count -- lit = live. ──
         for (int i = 1; i < 16; i++) {
             std::string r = std::to_string(i);
             int polyIdx = i - 1;                 // 0..14 for the mod-arc + POLY_*_PARAM offset
-            bindParam<redDot::Themed_Compact_Cog>("param_rest_"   + r, MonsoonIds::POLY_REST_PARAM_1   + polyIdx,
-                std::function<void(redDot::Themed_Compact_Cog*)>([this, polyIdx](redDot::Themed_Compact_Cog* k){
+            int voiceNum = i;                    // this knob is voice (i+1) in 1-based; active when activeVoices_ > i
+            auto dimIfInactive = [this, voiceNum](){
+                // activeVoices_ is numPolyVoices (0..15 => 1..16 active). Voice index i (1..15)
+                // is active iff activeVoices_ >= i. Only dim when CONNECTED (-1 = show all).
+                return activeVoices_ >= 0 && voiceNum > activeVoices_;
+            };
+            bindParam<redDot::Themed_Compact_Cog_Dim>("param_rest_"   + r, MonsoonIds::POLY_REST_PARAM_1   + polyIdx,
+                std::function<void(redDot::Themed_Compact_Cog_Dim*)>([this, polyIdx, dimIfInactive](redDot::Themed_Compact_Cog_Dim* k){
                     k->lightWhen = [this](){ return themeLight_; };
+                    k->dimWhen   = dimIfInactive;
                     queueArc(k, polyIdx, 0);
                 }));
-            bindParam<redDot::Themed_Compact_Cog>("param_accent_" + r, MonsoonIds::POLY_ACCENT_PARAM_1 + polyIdx,
-                std::function<void(redDot::Themed_Compact_Cog*)>([this, polyIdx](redDot::Themed_Compact_Cog* k){
+            bindParam<redDot::Themed_Compact_Cog_Dim>("param_accent_" + r, MonsoonIds::POLY_ACCENT_PARAM_1 + polyIdx,
+                std::function<void(redDot::Themed_Compact_Cog_Dim*)>([this, polyIdx, dimIfInactive](redDot::Themed_Compact_Cog_Dim* k){
                     k->lightWhen = [this](){ return themeLight_; };
+                    k->dimWhen   = dimIfInactive;
                     queueArc(k, polyIdx, 1);
                 }));
         }
 
         // Three 16-channel poly-cable outputs (ch1 = mono, ch2.. = poly).
-        bindOutput<PJ301MPort>("output_polygate",   POLY_GATE_OUT);
-        bindOutput<PJ301MPort>("output_polycv",     POLY_CV_OUT);
-        bindOutput<PJ301MPort>("output_polyaccent", POLY_ACCENT_OUT);
+        bindOutput<PJ301MPort>("output_polygate",     POLY_GATE_OUT);
+        bindOutput<PJ301MPort>("output_polystepgate", POLY_STEP_GATE_OUT);
+        bindOutput<PJ301MPort>("output_polycv",       POLY_CV_OUT);
+        bindOutput<PJ301MPort>("output_polyaccent",   POLY_ACCENT_OUT);
 
         flushArcs();   // attach per-voice REST + ACCENT mod-arcs on top of the knobs
 
@@ -161,6 +177,9 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
         if (module) {
             Monsoon* mm = redDot::findMonsoonEitherSide(module);
             themeLight_ = (mm && mm->lightTheme);
+            // active poly-voice count for the dimming (numPolyVoices 0..15 => 1..16 active);
+            // -1 when no Monsoon connected so knobs show at full brightness (see dimWhen).
+            activeVoices_ = mm ? mm->engine.numPolyVoices : -1;
         }
         ModuleWidget::step();
         kitStep();

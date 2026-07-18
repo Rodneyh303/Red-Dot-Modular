@@ -29,7 +29,11 @@ using namespace MonsoonIds;
 // carries only the base knobs + the poly-cable outs.
 namespace StraitsIds {
     enum OutputIds {
-        POLY_GATE_OUT,     // 16ch: ch0 = mono, ch1..15 = poly voices 2..16
+        POLY_GATE_OUT,     // 16ch: ch0 = mono, ch1..15 = poly voices 2..16 (FUSED gate)
+        POLY_STEP_GATE_OUT,// 16ch: the un-fused gate -- legato/tie REMOVED, every sub-note
+                           //       articulated (see LEGATO_TIE_MODEL_NOTE.md). ENGINE EMISSION
+                           //       PENDING: MonsoonOutputGenerator must compute the pre-fusion
+                           //       gate; jack is wired so the panel + binding are ready.
         POLY_CV_OUT,       // 16ch pitch
         POLY_ACCENT_OUT,   // 16ch accent gate
         NUM_OUTPUTS
@@ -57,9 +61,10 @@ struct MonsoonStraitsExpander : Module {
                         "Voice " + std::to_string(i + 2) + " Accent Probability");
         }
 
-        configOutput(StraitsIds::POLY_GATE_OUT,   "Poly gate (16ch: ch1 = mono, ch2.. = poly)");
-        configOutput(StraitsIds::POLY_CV_OUT,     "Poly CV / pitch (16ch)");
-        configOutput(StraitsIds::POLY_ACCENT_OUT, "Poly accent gate (16ch)");
+        configOutput(StraitsIds::POLY_GATE_OUT,      "Poly gate (16ch: ch1 = mono, ch2.. = poly)");
+        configOutput(StraitsIds::POLY_STEP_GATE_OUT, "Poly STEP gate (16ch: legato removed -- every sub-note articulated)");
+        configOutput(StraitsIds::POLY_CV_OUT,        "Poly CV / pitch (16ch)");
+        configOutput(StraitsIds::POLY_ACCENT_OUT,    "Poly accent gate (16ch)");
     }
 
     // The parent Monsoon writes the poly-cable outputs via the cached pointer (see
