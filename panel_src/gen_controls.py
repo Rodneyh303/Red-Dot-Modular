@@ -48,8 +48,14 @@ CREAM = dict(body='#e9e3d2', bodyLo='#d8d1bd', cap='#f4f0e4', capRim='#c9c2ad',
 # and drops the warmth to ~+8 -- a departure from the photo, toward the thing the photo is of.
 OFFWHITE = dict(body='#eeece6', bodyLo='#dcdad3', cap='#f8f7f4', capRim='#cdccc6',
                 edge='#2a2a27', flute='#bfbeb8', pointer='#1b1815', dot='#d4001a')
-DARK  = dict(body='#2e2e2e', bodyLo='#1f1f1f', cap='#3a3a3a', capRim='#141414',
-             edge='#0b0b0b', flute='#141414', pointer='#e8e8e8', dot='#d4001a')
+# V3 'charcoal': cap-vs-body lifted #3a/#2e (d12) -> #58/#40 (d24) so the cog's anatomy
+# (dome, flute scoops, skirt) reads on the LIGHT panel, where the silhouette can no longer
+# carry it. Pointer and flutes lifted in step so their contrast is preserved, not eroded.
+# Still unambiguously a dark knob (face vs #dc panel ~4.4:1) -- deliberately short of GREY
+# (#8b body), which stays the dark theme's third tier. Side effect, in the right direction:
+# body #40 on the dark panel roughly doubles the old 1.2:1 camouflage of Dark_Small there.
+DARK  = dict(body='#404040', bodyLo='#2d2d2d', cap='#585858', capRim='#202020',
+             edge='#0b0b0b', flute='#282828', pointer='#f0f0f0', dot='#d4001a')
 # GREY: a third tier for the DARK theme. That panel is overwhelmingly dark -- cream heroes on
 # dark everything-else -- so the secondary knobs (BPM/LEN/OFFSET, MIX R/M, SLEW) can lift it
 # without going all-cream, which would flatten the hierarchy the big 5 currently have.
