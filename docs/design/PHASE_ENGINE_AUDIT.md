@@ -279,3 +279,56 @@ warping ramps are in play, and only affects fractional/sub-step gate tails (whol
 steps close on the positional boundary anyway, so they breathe correctly for free).
 This is an Option-A-relevant detail too (forward warping phase already exposes it),
 not just Option B.
+
+---
+
+# Mode E phase from a host (DAW automation) — direction & scrub
+
+PHASE_PARAM (added feat 7d48661) is the Mode E phase source when CV1 is unpatched:
+`params[PHASE_PARAM] * phaseInMax` fed to `phase.process(..., connected=true)`, identical
+to the CV path. Purpose is host automation — a `configParam` is in the DAW's parameter
+list whether or not a widget draws it, so e.g. Bitwig can drive Mode E from a Grid phase
+modulator out with no CV cable.
+
+## All three motions already work (the engine reads MOTION, not rising)
+PhaseEngine derives everything from the shortest-path per-sample delta `d`, so nothing is
+special-cased to "rising". The knob path inherits the full CV semantics:
+
+- **Forward** — phase rising: `d>0`, edges forward, playhead forward.
+- **Reverse** — phase FALLING (automate the value downward, or a descending ramp): `d<0`,
+  `reverse=true`, edges fire backward, SequencerEngine steps the playhead backward via
+  `setPhaseReverse`/`setReverseActive`. Reverse is NOT limited to the CV input.
+- **Scrub/jump** — a move >1/16 in one sample: caught as a jump, position resyncs and
+  `jumpSixteenths` reports the crossed steps to replay. Loop wraps and playhead drags land
+  here.
+
+So from Bitwig: a rising Grid-phase ramp = forward; automate it downward = reverse; jump/
+loop it = scrub. No new code — it's the same `process()`.
+
+## The one inherent caveat: the wrap seam (shortest-path ambiguity)
+PhaseEngine uses SHORTEST-PATH delta, so `0.98 -> 0.02` reads as a small FORWARD step across
+the bar line, not a huge reverse. This is CORRECT for a LOOPING phase ramp (Bitwig's phase
+out wraps 1->0 each cycle and you want it to keep going forward) — and that is exactly the
+intended use.
+
+But it means a DELIBERATE backward scrub that CROSSES the 0/1 seam (`0.02 -> 0.98` meaning
+"go back one step") is read as forward-by-one instead of back-by-fifteen. Shortest-path
+cannot distinguish "wrapped forward" from "jumped backward across the seam" — same delta.
+This is a fundamental property of ANY wrapped phase signal (tape, Phonogene, Rings' clock
+in, etc.), not a bug. Backward moves that stay WITHIN the bar reverse correctly; only
+seam-crossing backward moves alias to forward.
+
+## Optional future mode: unbounded (non-wrapping) phase for unambiguous scrub
+If unambiguous arbitrary scrub is ever wanted, feed an UNBOUNDED phase — a ramp that climbs
+0,1,2,3,… bars instead of wrapping 0->1. With no seam, direction is never ambiguous. The
+engine ALREADY tracks `prevContPhase` (continuous/unwrapped) internally, so this is a small
+addition: a "continuous phase" option that skips `normPhase`'s wrap and the shortest-path
+clamp, integrating the raw delta directly. NOT needed for Bitwig Grid phase out (a wrapping
+ramp, works as-is); only for exotic full-range scrubbing. Deferred.
+
+## Build check (the only real open question)
+The knob path feeds phaseVolt/connected into `phase.process` identically to CV, so
+`phase.reverse` SHOULD propagate through the same `setPhaseReverse`/`setReverseActive`.
+Confirm on a scope in Rack: automate PHASE_PARAM downward and verify the sequence runs
+backward (not just that it stops). Also confirm one Bitwig phase cycle == one Monsoon bar
+(phaseInMax scaling) so the mapping is 1:1; if the host ramps per-beat, add a multiplier.
