@@ -191,8 +191,8 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
             // the dimWhen predicate (voice index i active iff i <= activeVoices_). Only meaningful
             // when connected to a Monsoon (poly is gated on that); -1 => show all knobs bright.
             if (mm) {
-                float vc = params[StraitsIds::VOICE_COUNT_PARAM].getValue();  // 1..16
-                activeVoices_ = (int)vc - 1;                                   // 0..15
+                float vc = module->params[StraitsIds::VOICE_COUNT_PARAM].getValue();  // 1..16
+                activeVoices_ = (int)vc - 1;                                            // 0..15
             } else {
                 activeVoices_ = -1;
             }
