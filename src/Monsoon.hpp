@@ -822,9 +822,15 @@ namespace MonsoonIds {
         SEED_OUTPUT,
         RESET_TRIGGER_OUTPUT,
         RUN_GATE_OUTPUT,
-        TIE_OUTPUT,               // High on Tie decision
-        LEGATO_OUTPUT,            // High on Legato/LegatoMax
-        TIE_OR_LEGATO_OUTPUT,     // High on Tie OR Legato (combined)
+        STEP_GATE_OUTPUT,         // The UN-FUSED gate: legato/tie REMOVED, every sub-note
+                                  // articulated (see LEGATO_TIE_MODEL_NOTE.md). Replaces the
+                                  // three old TIE/LEGATO/TIE_OR_LEGATO outputs -- those emitted
+                                  // a join-CLASSIFICATION (a distinction the leading-edge model
+                                  // can't make at onset); STEP GATE emits the pre-legato-drop
+                                  // gate, which is the only truthful second gate. ENGINE
+                                  // EMISSION PENDING: OutputGenerator must track the gate BEFORE
+                                  // legato drops edges (a second gate-state / pre-drop flag),
+                                  // not lastStepResult.decision.
         ACCENT_OUTPUT,            // High when accented
         
         NUM_OUTPUTS

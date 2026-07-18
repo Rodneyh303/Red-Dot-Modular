@@ -358,9 +358,11 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         }
         // Outputs (two rows) — bound by name
         bindOutput<PJ301MPort>("output_GATE_OUTPUT",          MonsoonIds::GATE_OUTPUT);
-        bindOutput<PJ301MPort>("output_TIE_OUTPUT",           MonsoonIds::TIE_OUTPUT);
-        bindOutput<PJ301MPort>("output_LEGATO_OUTPUT",        MonsoonIds::LEGATO_OUTPUT);
-        bindOutput<PJ301MPort>("output_TIE_OR_LEGATO_OUTPUT", MonsoonIds::TIE_OR_LEGATO_OUTPUT);
+        // STEP GATE (the un-fused gate) reuses the old T|L jack position; the two other
+        // legato jacks (TIE, LEG) are retired -- the empty spots are cleaned up in a future
+        // panel iteration. Kept id "output_TIE_OR_LEGATO_OUTPUT" as the panel marker for now
+        // to avoid a panel-artifact rebuild; it BINDS to STEP_GATE_OUTPUT.
+        bindOutput<PJ301MPort>("output_TIE_OR_LEGATO_OUTPUT", MonsoonIds::STEP_GATE_OUTPUT);
         bindOutput<PJ301MPort>("output_ACCENT_OUTPUT",        MonsoonIds::ACCENT_OUTPUT);
         bindOutput<PJ301MPort>("output_CV_OUTPUT",            MonsoonIds::CV_OUTPUT);
         bindOutput<PJ301MPort>("output_SEED_OUTPUT",          MonsoonIds::SEED_OUTPUT);
@@ -661,9 +663,8 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         labelAt("input_CV3_MOD_INPUT",       JLBL, "CV3");
         fillNvgColour(180,180,180);
         labelAt("output_GATE_OUTPUT",          JLBL, "GATE");
-        labelAt("output_TIE_OUTPUT",           JLBL, "TIE");
-        labelAt("output_LEGATO_OUTPUT",        JLBL, "LEG");
-        labelAt("output_TIE_OR_LEGATO_OUTPUT", JLBL, "T|L");
+        // TIE and LEG jacks retired; STEP GATE reuses the T|L position/marker.
+        labelAt("output_TIE_OR_LEGATO_OUTPUT", JLBL, "STEP");
         labelAt("output_ACCENT_OUTPUT",        JLBL, "ACC");
         labelAt("output_CV_OUTPUT",            JLBL, "CV");
         labelAt("output_SEED_OUTPUT",          JLBL, "SEED");

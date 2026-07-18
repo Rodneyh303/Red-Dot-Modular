@@ -162,6 +162,14 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
         bindOutput<PJ301MPort>("output_polycv",       POLY_CV_OUT);
         bindOutput<PJ301MPort>("output_polyaccent",   POLY_ACCENT_OUT);
 
+        // Poly voice-count knob: stepped 1..16, Slot style (set-and-forget). Themed so it
+        // follows the panel like the cogs. This param is the SOURCE of truth for the poly
+        // count -- the dimming reads it (below), and Monsoon reads it engine-side (pending).
+        bindParam<redDot::Themed_Trim_Slot>("param_voicecount", StraitsIds::VOICE_COUNT_PARAM,
+            std::function<void(redDot::Themed_Trim_Slot*)>([this](redDot::Themed_Trim_Slot* k){
+                k->lightWhen = [this](){ return themeLight_; };
+            }));
+
         flushArcs();   // attach per-voice REST + ACCENT mod-arcs on top of the knobs
 
         if (auto* s = findNamed("light_connect")) {
@@ -177,9 +185,16 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
         if (module) {
             Monsoon* mm = redDot::findMonsoonEitherSide(module);
             themeLight_ = (mm && mm->lightTheme);
-            // active poly-voice count for the dimming (numPolyVoices 0..15 => 1..16 active);
-            // -1 when no Monsoon connected so knobs show at full brightness (see dimWhen).
-            activeVoices_ = mm ? mm->engine.numPolyVoices : -1;
+            // Active poly-voice count now comes from Straits' OWN voice-count knob (the source
+            // of truth), not Monsoon's numPolyVoices. Param is 1..16; store as 0..15 to match
+            // the dimWhen predicate (voice index i active iff i <= activeVoices_). Only meaningful
+            // when connected to a Monsoon (poly is gated on that); -1 => show all knobs bright.
+            if (mm) {
+                float vc = params[StraitsIds::VOICE_COUNT_PARAM].getValue();  // 1..16
+                activeVoices_ = (int)vc - 1;                                   // 0..15
+            } else {
+                activeVoices_ = -1;
+            }
         }
         ModuleWidget::step();
         kitStep();

@@ -110,8 +110,6 @@ void MonsoonConfigurator::setup(Monsoon* m) {
     m->configOutput(SEED_OUTPUT,           "Seed Voltage Out (0..10V)");
     m->configOutput(RESET_TRIGGER_OUTPUT,  "Reset Trigger Out");
     m->configOutput(RUN_GATE_OUTPUT,       "Run Gate Out");
-    m->configOutput(TIE_OUTPUT,            "Tie Gate (high on Tie)");
-    m->configOutput(LEGATO_OUTPUT,         "Legato Gate (high on Legato/Max)");
-    m->configOutput(TIE_OR_LEGATO_OUTPUT,  "Tie or Legato Gate (high on either)");
+    m->configOutput(STEP_GATE_OUTPUT,      "Step Gate (legato/tie removed -- every sub-note articulated)");
     m->configOutput(ACCENT_OUTPUT,         "Accent Gate (high when accented)");
 }

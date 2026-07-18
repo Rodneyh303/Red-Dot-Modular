@@ -38,13 +38,28 @@ namespace StraitsIds {
         POLY_ACCENT_OUT,   // 16ch accent gate
         NUM_OUTPUTS
     };
+    // Straits reuses MonsoonIds for the rest/accent params, but the VOICE-COUNT knob is
+    // Straits' OWN control (poly is gated on Straits being present, so Straits owns "how
+    // many"). It lives ABOVE Monsoon's param namespace so it can't collide.
+    enum ParamIds {
+        VOICE_COUNT_PARAM = MonsoonIds::NUM_PARAMS,  // stepped 1..16; Monsoon READS this
+        NUM_PARAMS
+    };
 }
 
 struct MonsoonStraitsExpander : Module {
     MonsoonStraitsExpander() {
         // Sized to the main MonsoonIds param/input namespace (the expander reuses
-        // those IDs), plus the local poly-cable outputs.
-        config(MonsoonIds::NUM_PARAMS, MonsoonIds::NUM_INPUTS, StraitsIds::NUM_OUTPUTS, 0);
+        // those IDs), PLUS Straits' own params (the voice-count knob), plus the local
+        // poly-cable outputs.
+        config(StraitsIds::NUM_PARAMS, MonsoonIds::NUM_INPUTS, StraitsIds::NUM_OUTPUTS, 0);
+
+        // Poly voice count: stepped 1..16, set-and-forget (Slot widget on panel). Straits
+        // OWNS this -- poly mode is gated on Straits being present, so the count lives here
+        // and Monsoon READS it from the connected Straits. Default 1 (mono only) so adding
+        // Straits doesn't silently change behaviour until the user dials voices.
+        configParam(StraitsIds::VOICE_COUNT_PARAM, 1.f, 16.f, 1.f, "Poly voice count");
+        getParamQuantity(StraitsIds::VOICE_COUNT_PARAM)->snapEnabled = true;
 
         // Voice 1 (mono) rest/accent: these knobs MIRROR the parent Monsoon's mono rest/accent
         // (driven each frame in process()). Configured here so the params exist with range; the

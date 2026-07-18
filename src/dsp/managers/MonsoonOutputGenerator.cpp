@@ -108,17 +108,25 @@ void OutputGenerator::generateOutputs(SequencerEngine& engine,
 
     // Set main pitch CV
     outputs[CV_OUTPUT].setVoltage(currentPitchV);
-    
-    // Derived outputs based on mono decision
-    float tieGateV = (engine.lastStepResult.decision == MonoDecision::Tie) ? 10.f : 0.f;
-    float legatoGateV = (engine.lastStepResult.decision == MonoDecision::Legato || 
-                         engine.lastStepResult.decision == MonoDecision::LegatoMax) ? 10.f : 0.f;
+
     float accentGateV = (engine.lastStepResult.accented && gateV > 5.f) ? 10.f : 0.f;
-    float tieOrLegatoV = (tieGateV > 5.f || legatoGateV > 5.f) ? 10.f : 0.f;
-    
-    setGateWithMute_(outputs[TIE_OUTPUT], tieGateV, muted);
-    setGateWithMute_(outputs[LEGATO_OUTPUT], legatoGateV, muted);
-    setGateWithMute_(outputs[TIE_OR_LEGATO_OUTPUT], tieOrLegatoV, muted);
+
+    // ── STEP GATE: the un-fused gate (legato/tie removed; every sub-note articulated). ──
+    // Replaces the three retired TIE/LEGATO/TIE_OR_LEGATO outputs, which emitted a join
+    // CLASSIFICATION from lastStepResult.decision. STEP GATE is NOT a classification: it is
+    // the gate BEFORE legato drops its edges -- see LEGATO_TIE_MODEL_NOTE.md.
+    //
+    // TODO(engine, MSYS2): emit the pre-legato-drop gate. The current gateV already has the
+    // legato drop APPLIED (edges fused across held notes). STEP GATE needs the gate as it
+    // would be if legato/tie did nothing: a fresh gate edge at every sub-step boundary,
+    // each carrying its own note length. This requires the engine to TRACK that pre-drop
+    // gate (a second gate-state, or a per-step "would-articulate" flag recorded at the point
+    // legato decides to suppress an edge) rather than reconstructing it here. Until that
+    // exists, STEP GATE mirrors the fused gate (safe: identical to GATE on non-legato
+    // patterns; only wrong DURING legato, where it under-articulates rather than misfires).
+    float stepGateV = gateV;   // PLACEHOLDER — see TODO above; replace with pre-drop gate.
+
+    setGateWithMute_(outputs[STEP_GATE_OUTPUT], stepGateV, muted);
     setGateWithMute_(outputs[ACCENT_OUTPUT], accentGateV, muted);
 }
 
