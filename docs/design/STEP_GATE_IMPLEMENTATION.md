@@ -165,15 +165,13 @@ its siblings fall out cheaply. So **GATE + SLUR is the more generative two-jack 
 GATE + STEP**: from GATE+SLUR you get STEP with one OR; from GATE+STEP you get SLUR only
 with a latch.
 
-DECISION TO MAKE (not assumed here): three viable output sets --
-  (a) GATE + STEP            — 2 jacks; SLUR is the ugly derivation. (current spec)
-  (b) GATE + SLUR            — 2 jacks; STEP is a 1-OR derivation. More generative.
-  (c) GATE + STEP + SLUR     — 3 jacks; nothing to derive, all three present.
-STEP is the more "obvious" output (every-note articulation) and the better default patch
-(VCA/VCF split); SLUR is the more generative primitive. (c) costs one more jack per module
-(Monsoon panel has room after the TIE/LEG retirement; Straits would need a 5th strip slot).
-Recommendation deferred to the build/panel review -- but note (b) or (c), not (a), once
-SLUR is understood, because SLUR is the primitive that makes the others cheap.
+DECISION (made): set (c) -- GATE + STEP + STEP LEGATO (the slur-masked SLUR gate). All
+three emitted, nothing derived. STEP is the obvious every-note articulation and the default
+VCA/VCF patch; STEP LEGATO is the generative primitive (GATE + STEP LEGATO => STEP via one
+OR + a slur latch, cheap; the reverse needs a 3-module latch). Emitting both removes the
+derivation burden from the patcher entirely. Cost: one extra jack per module -- Monsoon uses
+a freed TIE/LEG spot (SLEG label on the old LEG marker), Straits widened to a 5-jack strip
+(GATE|STEP|SLEG|CV|ACC). Named STEP LEGATO GATE (jack label SLEG).
 
 ## Implementation (mirrors STEP GATE's gsStep, gated by slurForward)
 SLUR GATE does not need a THIRD GateState. It is STEP GATE's signal (`gsStep`) masked by the
@@ -199,11 +197,11 @@ SLUR wants BOTH -> mask on `slurForward (this note leads) OR prevSlur (this note
 slur)`. Confirm this OR lights every note of the slur and nothing else, on the scope.
 
 ## Panel
-- Monsoon: after TIE/LEG retirement there are two freed jack spots; SLUR takes one (the
-  future panel-iteration cleanup places STEP + SLUR + the remaining gap deliberately).
-- Straits: needs a 5th output in the bottom strip if set (c) is chosen (gate | step | slur |
-  cv | accent), or replaces STEP with SLUR if set (b). Decide with the output-set decision
-  above before widening the strip.
+- Monsoon: DONE (scaffolding) -- STEP binds the old T|L marker (label STEP), STEP LEGATO
+  binds the old LEG marker (label SLEG); the old TIE spot stays empty until a future panel
+  iteration re-places all three deliberately.
+- Straits: DONE (scaffolding) -- 5-jack strip GATE|STEP|SLEG|CV|ACC, voice-count knob clear
+  at far left. Emission for both STEP and STEP LEGATO still PENDING (see placeholders).
 
 ## Test (scope, in Rack)
 - Two 1/8s slurred into a 1/4: GATE = one 1/4-high; STEP = two 1/8 gates; SLUR = two 1/8

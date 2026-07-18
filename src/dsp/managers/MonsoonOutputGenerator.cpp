@@ -126,7 +126,16 @@ void OutputGenerator::generateOutputs(SequencerEngine& engine,
     // patterns; only wrong DURING legato, where it under-articulates rather than misfires).
     float stepGateV = gateV;   // PLACEHOLDER — see TODO above; replace with pre-drop gate.
 
+    // ── STEP LEGATO GATE: STEP GATE masked to slurred notes only (silent on isolated). ──
+    // = gsStep gated by (slurForward OR prevSlur) -- the articulations INSIDE a slur, lead
+    // and continuations both. ENGINE EMISSION PENDING (see STEP_GATE_IMPLEMENTATION.md, SLUR
+    // GATE section). Placeholder emits 0 (never falsely fires); real emission masks stepGateV
+    // by the slur commitment. 0 is safe: STEP LEGATO is a strict subset of STEP, so an
+    // all-zero placeholder is silent, not wrong-signal.
+    float stepLegatoV = 0.f;   // PLACEHOLDER — mask stepGateV by slurForward||prevSlur.
+
     setGateWithMute_(outputs[STEP_GATE_OUTPUT], stepGateV, muted);
+    setGateWithMute_(outputs[STEP_LEGATO_GATE_OUTPUT], stepLegatoV, muted);
     setGateWithMute_(outputs[ACCENT_OUTPUT], accentGateV, muted);
 }
 

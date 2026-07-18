@@ -831,6 +831,13 @@ namespace MonsoonIds {
                                   // EMISSION PENDING: OutputGenerator must track the gate BEFORE
                                   // legato drops edges (a second gate-state / pre-drop flag),
                                   // not lastStepResult.decision.
+        STEP_LEGATO_GATE_OUTPUT,  // STEP GATE masked to SLURRED notes only (silent on isolated
+                                  // notes): the articulations that occur INSIDE a legato/tie.
+                                  // = gsStep gated by (slurForward OR prevSlur). The generative
+                                  // primitive: GATE + this derive STEP with one OR + a slur
+                                  // latch; deriving this from GATE+STEP needs a 3-module latch
+                                  // (the lead vs isolated instant is the onset-knowledge wall).
+                                  // See STEP_GATE_IMPLEMENTATION.md. ENGINE EMISSION PENDING.
         ACCENT_OUTPUT,            // High when accented
         
         NUM_OUTPUTS

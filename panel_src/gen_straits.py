@@ -147,14 +147,14 @@ def gen(dark):
     bank("rest",   MARGIN,                t["restknob"], t["rest"])
     bank("accent", SPINE_CX+SPINE_W/2,    t["accknob"],  t["acc"])
 
-    # ── four poly-cable output jacks along the bottom ──
-    # GATE (fused), STEP GATE (un-fused/pre-legato: legato removed), CV, ACCENT.
-    # STEP GATE is the 4th that makes the wide strip real -- see LEGATO_TIE_MODEL_NOTE.md.
-    # Order groups the two gates then CV then accent (gate | step gate | cv | accent).
-    labels = [("output_polygate",     W*0.34, "GATE"),
-              ("output_polystepgate", W*0.50, "STEP"),
-              ("output_polycv",       W*0.66, "CV"),
-              ("output_polyaccent",   W*0.82, "ACC")]
+    # ── five poly-cable output jacks along the bottom ──
+    # GATE (fused), STEP (un-fused), SLEG (step-legato: articulations inside slurs only),
+    # CV, ACCENT. See LEGATO_TIE_MODEL_NOTE.md + STEP_GATE_IMPLEMENTATION.md.
+    labels = [("output_polygate",      W*0.36, "GATE"),
+              ("output_polystepgate",  W*0.49, "STEP"),
+              ("output_polyslegato",   W*0.62, "SLEG"),
+              ("output_polycv",        W*0.75, "CV"),
+              ("output_polyaccent",    W*0.88, "ACC")]
     for jid, jx, _lab in labels:
         A(f'<circle cx="{px(jx)}" cy="{px(JACK_Y)}" r="{px(3.6)}" fill="{t["jackwell"]}" '
           f'stroke="{t["jackring"]}" stroke-width="0.6"/>')

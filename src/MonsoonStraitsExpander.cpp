@@ -159,6 +159,7 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
         // Three 16-channel poly-cable outputs (ch1 = mono, ch2.. = poly).
         bindOutput<PJ301MPort>("output_polygate",     POLY_GATE_OUT);
         bindOutput<PJ301MPort>("output_polystepgate", POLY_STEP_GATE_OUT);
+        bindOutput<PJ301MPort>("output_polyslegato",  POLY_STEP_LEGATO_GATE_OUT);
         bindOutput<PJ301MPort>("output_polycv",       POLY_CV_OUT);
         bindOutput<PJ301MPort>("output_polyaccent",   POLY_ACCENT_OUT);
 
