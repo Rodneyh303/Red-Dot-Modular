@@ -128,3 +128,87 @@ Once STEP GATE emits correctly, the `NoteType lastNoteType` field and the Lanter
 it are UNAFFECTED (STEP GATE doesn't read them). But confirm nothing else still reads the
 removed TIE/LEGATO/TIE_OR_LEGATO outputs (grep already clean in the widget/enum; this is a
 belt-and-braces check after the engine change).
+
+---
+
+# SLUR GATE — the third gate (spec, Monsoon + Straits)
+
+Added after STEP GATE, answering "the STEP articulations but ONLY during a slur, silent on
+isolated notes" (e.g. two 1/8s slurred into a 1/4: GATE = one 1/4; STEP = two 1/8s
+everywhere; SLUR = those two 1/8s, and nothing on ordinary notes).
+
+## Why it earns a jack (not derivable cheaply from GATE + STEP)
+SLUR = "STEP masked to slurred notes only". Deriving it from GATE + STEP is possible but
+ugly: it is `edge(STEP) ∧ GATE ∧ ¬edge(GATE)` for the CONTINUATIONS, UNION the slur LEAD's
+pulse -- and detecting the lead vs an isolated note from GATE/STEP alone hits the
+onset-knowledge wall (both look like GATE+STEP rising together). A Boolean can't separate
+them; you'd need an edge-detector + a widening latch + an OR (~3 utility modules) and it
+still fumbles the lead instant.
+
+But the engine ALREADY holds the missing bit: `gs.slurForward` (and per-voice
+`v.gs.slurForward`), the note's onset commitment to hold forward into a slur -- set at
+trigger time, read by the Lantern today. SLUR GATE is STEP GATE MASKED BY slurForward-active.
+Knowable at emission, no latch, no lead ambiguity. It passes the emission test for the same
+reason STEP GATE does and LEG/TIE didn't: it emits a commitment the engine possesses, not a
+hindsight classification.
+
+## The three-gate relationship (and why the emitted PAIR should be GATE + SLUR)
+Three gates, any two derive the third, but at very different cost:
+
+- **GATE + SLUR  ⇒  STEP  = SLUR OR (GATE AND not-in-slur)** — ONE or-gate + a slur-active
+  mask. On an isolated note STEP == GATE (nothing fused); inside a slur STEP == SLUR. Cheap.
+- **GATE + STEP  ⇒  SLUR** — edge + widen + and, ~3 modules, edge-fiddly (above). Expensive.
+- STEP + SLUR ⇒ GATE — needs re-fusing; also not trivial.
+
+The hard-to-derive gate is the one carrying the extra bit (slur membership). Emit THAT and
+its siblings fall out cheaply. So **GATE + SLUR is the more generative two-jack basis than
+GATE + STEP**: from GATE+SLUR you get STEP with one OR; from GATE+STEP you get SLUR only
+with a latch.
+
+DECISION TO MAKE (not assumed here): three viable output sets --
+  (a) GATE + STEP            — 2 jacks; SLUR is the ugly derivation. (current spec)
+  (b) GATE + SLUR            — 2 jacks; STEP is a 1-OR derivation. More generative.
+  (c) GATE + STEP + SLUR     — 3 jacks; nothing to derive, all three present.
+STEP is the more "obvious" output (every-note articulation) and the better default patch
+(VCA/VCF split); SLUR is the more generative primitive. (c) costs one more jack per module
+(Monsoon panel has room after the TIE/LEG retirement; Straits would need a 5th strip slot).
+Recommendation deferred to the build/panel review -- but note (b) or (c), not (a), once
+SLUR is understood, because SLUR is the primitive that makes the others cheap.
+
+## Implementation (mirrors STEP GATE's gsStep, gated by slurForward)
+SLUR GATE does not need a THIRD GateState. It is STEP GATE's signal (`gsStep`) masked by the
+slur commitment:
+
+    slurActive = gs.slurForward  (mono)  /  v.gs.slurForward  (poly, perVoiceArticulation)
+                 -- OR the note is a continuation OF a slur (prevSlur reaching here), so the
+                 lead AND its continuations all read active. Use the same condition the
+                 articulation path uses to decide connect (slurReachesHere / connect), latched
+                 for the life of the phrase, so every note of the slur (lead + continuations)
+                 masks in and isolated notes mask out.
+
+    slurGateV = slurActive ? gsStep.process(dt) : 0.f
+
+Emit to new outputs SLUR_GATE_OUTPUT (mono) and POLY_SLUR_GATE_OUT (Straits 16ch), same
+wiring shape as STEP. Per-voice uses v.gs.slurForward so voice 3 can be in a slur while
+voice 5 isn't -- SLUR is per-voice exactly like STEP.
+
+Subtlety to resolve on the build: "slurActive for the WHOLE phrase including the lead". The
+lead sets slurForward at its own onset (prevSlur is read at the NEXT step). So masking on
+`slurForward` alone lights the lead; masking on `prevSlur` alone lights the continuations.
+SLUR wants BOTH -> mask on `slurForward (this note leads) OR prevSlur (this note continues a
+slur)`. Confirm this OR lights every note of the slur and nothing else, on the scope.
+
+## Panel
+- Monsoon: after TIE/LEG retirement there are two freed jack spots; SLUR takes one (the
+  future panel-iteration cleanup places STEP + SLUR + the remaining gap deliberately).
+- Straits: needs a 5th output in the bottom strip if set (c) is chosen (gate | step | slur |
+  cv | accent), or replaces STEP with SLUR if set (b). Decide with the output-set decision
+  above before widening the strip.
+
+## Test (scope, in Rack)
+- Two 1/8s slurred into a 1/4: GATE = one 1/4-high; STEP = two 1/8 gates; SLUR = two 1/8
+  gates (SAME as STEP here, because BOTH notes are slurred).
+- The DIFFERENCE shows on a mixed phrase: isolated 1/4, then two slurred 1/8s. STEP = three
+  gates (the isolated + the two); SLUR = two gates (only the slurred pair); GATE = a 1/4
+  then a 1/4-fused. That is the case that proves SLUR masks out isolated notes.
+- Derive STEP from GATE+SLUR (one OR + slur-mask) and confirm it matches the STEP jack.
