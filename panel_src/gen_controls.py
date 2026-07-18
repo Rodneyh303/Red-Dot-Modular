@@ -403,6 +403,45 @@ struct Dimmable : Base {
     }
 };
 
+// ── ThemedKnobT: one knob, both palettes, live swap ─────────────────────────
+// KnobT bakes its path in the ctor, so a theme toggle cannot reach it. This
+// carries BOTH and swaps in step(), the same way the panels swap their
+// background -- no widget rebuild, no re-bind.
+//
+// House convention, encoded here once: LIGHT panel -> Dark knob,
+// DARK panel -> OffWhite knob. (Dark knobs on a dark panel measure 1.2:1 --
+// camouflage, not subordination. See README.)
+//
+// lightWhen is a lambda, matching Dimmable's idiom, so this header stays free
+// of any Monsoon/expander lookup -- the consumer decides what 'light' means and
+// should point it at a value it has ALREADY cached, not a per-frame search.
+//
+// setSvg() re-reads box.size and rebuilds the CircularShadow, so the shadow
+// kill must be re-applied after EVERY swap, not just in the ctor. Both palettes
+// are the same size, so box.size is unchanged and an attached mod arc stays put.
+template <typename TagLight, typename TagDark>
+struct ThemedKnobT : rack::app::SvgKnob {
+    std::function<bool()> lightWhen;
+    int applied_ = -1;                     // -1 = nothing applied yet
+
+    ThemedKnobT() {
+        minAngle = -0.83f * (float)M_PI;
+        maxAngle =  0.83f * (float)M_PI;
+        apply(0);                          // default: dark panel -> OffWhite
+    }
+    void apply(int light) {
+        applied_ = light;
+        setSvg(APP->window->loadSvg(rack::asset::plugin(
+            pluginInstance, light ? TagLight::path() : TagDark::path())));
+        shadow->opacity = 0.f;             // setSvg rebuilt it -- kill again
+        if (fb) fb->dirty = true;
+    }
+    void step() override {
+        int want = (lightWhen && lightWhen()) ? 1 : 0;
+        if (want != applied_) apply(want);
+        rack::app::SvgKnob::step();
+    }
+};
 
 ''')
     h.write('// Per-asset aliases. <Name> = plain KnobT; <Name>_Dim opts into Dimmable over\n')
@@ -415,6 +454,17 @@ struct Dimmable : Base {
                 '{ return "res/controls/RDM_%s.svg"; } };\n' % (a, a))
         h.write('using %s = KnobT<Tag_%s>;\n' % (a, a))
         h.write('using %s_Dim = Dimmable<KnobT<Tag_%s>>;\n' % (a, a))
+
+    h.write('\n// Theme-switching aliases: Dark artwork on a LIGHT panel, OffWhite on a DARK\n')
+    h.write('// one. Set lightWhen. _Dim composes Dimmable on top (Dimmable::step chains to\n')
+    h.write('// ThemedKnobT::step, so lock/display and the palette swap coexist).\n')
+    for sname, half, px, R in SIZES:
+        for style in ('cog', 'bar', 'slot', 'quad', 'dot'):
+            st = style.capitalize()
+            h.write('using Themed_%s_%s = ThemedKnobT<Tag_Dark_%s_%s, Tag_OffWhite_%s_%s>;\n'
+                    % (sname, st, sname, st, sname, st))
+            h.write('using Themed_%s_%s_Dim = Dimmable<ThemedKnobT<Tag_Dark_%s_%s, Tag_OffWhite_%s_%s>>;\n'
+                    % (sname, st, sname, st, sname, st))
     h.write('\n} // namespace redDot\n')
-print('  %s: %d assets x 2 roles = %d aliases (same loop as the assets)'
-      % (HDR, len(aliases), 2*len(aliases)))
+print('  %s: %d assets x 2 roles + %d themed x 2 = %d aliases'
+      % (HDR, len(aliases), len(SIZES)*5, 2*len(aliases) + 2*len(SIZES)*5))

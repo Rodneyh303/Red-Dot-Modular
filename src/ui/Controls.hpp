@@ -97,6 +97,45 @@ struct Dimmable : Base {
     }
 };
 
+// ── ThemedKnobT: one knob, both palettes, live swap ─────────────────────────
+// KnobT bakes its path in the ctor, so a theme toggle cannot reach it. This
+// carries BOTH and swaps in step(), the same way the panels swap their
+// background -- no widget rebuild, no re-bind.
+//
+// House convention, encoded here once: LIGHT panel -> Dark knob,
+// DARK panel -> OffWhite knob. (Dark knobs on a dark panel measure 1.2:1 --
+// camouflage, not subordination. See README.)
+//
+// lightWhen is a lambda, matching Dimmable's idiom, so this header stays free
+// of any Monsoon/expander lookup -- the consumer decides what 'light' means and
+// should point it at a value it has ALREADY cached, not a per-frame search.
+//
+// setSvg() re-reads box.size and rebuilds the CircularShadow, so the shadow
+// kill must be re-applied after EVERY swap, not just in the ctor. Both palettes
+// are the same size, so box.size is unchanged and an attached mod arc stays put.
+template <typename TagLight, typename TagDark>
+struct ThemedKnobT : rack::app::SvgKnob {
+    std::function<bool()> lightWhen;
+    int applied_ = -1;                     // -1 = nothing applied yet
+
+    ThemedKnobT() {
+        minAngle = -0.83f * (float)M_PI;
+        maxAngle =  0.83f * (float)M_PI;
+        apply(0);                          // default: dark panel -> OffWhite
+    }
+    void apply(int light) {
+        applied_ = light;
+        setSvg(APP->window->loadSvg(rack::asset::plugin(
+            pluginInstance, light ? TagLight::path() : TagDark::path())));
+        shadow->opacity = 0.f;             // setSvg rebuilt it -- kill again
+        if (fb) fb->dirty = true;
+    }
+    void step() override {
+        int want = (lightWhen && lightWhen()) ? 1 : 0;
+        if (want != applied_) apply(want);
+        rack::app::SvgKnob::step();
+    }
+};
 
 // Per-asset aliases. <Name> = plain KnobT; <Name>_Dim opts into Dimmable over
 // the SAME artwork. Bipolar 'attenuverter' is NOT a widget type: bipolarity is
@@ -463,5 +502,69 @@ using Dark_Trim_Quad_Dim = Dimmable<KnobT<Tag_Dark_Trim_Quad>>;
 struct Tag_Dark_Trim_Dot { static const char* path() { return "res/controls/RDM_Dark_Trim_Dot.svg"; } };
 using Dark_Trim_Dot = KnobT<Tag_Dark_Trim_Dot>;
 using Dark_Trim_Dot_Dim = Dimmable<KnobT<Tag_Dark_Trim_Dot>>;
+
+// Theme-switching aliases: Dark artwork on a LIGHT panel, OffWhite on a DARK
+// one. Set lightWhen. _Dim composes Dimmable on top (Dimmable::step chains to
+// ThemedKnobT::step, so lock/display and the palette swap coexist).
+using Themed_Large_Cog = ThemedKnobT<Tag_Dark_Large_Cog, Tag_OffWhite_Large_Cog>;
+using Themed_Large_Cog_Dim = Dimmable<ThemedKnobT<Tag_Dark_Large_Cog, Tag_OffWhite_Large_Cog>>;
+using Themed_Large_Bar = ThemedKnobT<Tag_Dark_Large_Bar, Tag_OffWhite_Large_Bar>;
+using Themed_Large_Bar_Dim = Dimmable<ThemedKnobT<Tag_Dark_Large_Bar, Tag_OffWhite_Large_Bar>>;
+using Themed_Large_Slot = ThemedKnobT<Tag_Dark_Large_Slot, Tag_OffWhite_Large_Slot>;
+using Themed_Large_Slot_Dim = Dimmable<ThemedKnobT<Tag_Dark_Large_Slot, Tag_OffWhite_Large_Slot>>;
+using Themed_Large_Quad = ThemedKnobT<Tag_Dark_Large_Quad, Tag_OffWhite_Large_Quad>;
+using Themed_Large_Quad_Dim = Dimmable<ThemedKnobT<Tag_Dark_Large_Quad, Tag_OffWhite_Large_Quad>>;
+using Themed_Large_Dot = ThemedKnobT<Tag_Dark_Large_Dot, Tag_OffWhite_Large_Dot>;
+using Themed_Large_Dot_Dim = Dimmable<ThemedKnobT<Tag_Dark_Large_Dot, Tag_OffWhite_Large_Dot>>;
+using Themed_Medium_Cog = ThemedKnobT<Tag_Dark_Medium_Cog, Tag_OffWhite_Medium_Cog>;
+using Themed_Medium_Cog_Dim = Dimmable<ThemedKnobT<Tag_Dark_Medium_Cog, Tag_OffWhite_Medium_Cog>>;
+using Themed_Medium_Bar = ThemedKnobT<Tag_Dark_Medium_Bar, Tag_OffWhite_Medium_Bar>;
+using Themed_Medium_Bar_Dim = Dimmable<ThemedKnobT<Tag_Dark_Medium_Bar, Tag_OffWhite_Medium_Bar>>;
+using Themed_Medium_Slot = ThemedKnobT<Tag_Dark_Medium_Slot, Tag_OffWhite_Medium_Slot>;
+using Themed_Medium_Slot_Dim = Dimmable<ThemedKnobT<Tag_Dark_Medium_Slot, Tag_OffWhite_Medium_Slot>>;
+using Themed_Medium_Quad = ThemedKnobT<Tag_Dark_Medium_Quad, Tag_OffWhite_Medium_Quad>;
+using Themed_Medium_Quad_Dim = Dimmable<ThemedKnobT<Tag_Dark_Medium_Quad, Tag_OffWhite_Medium_Quad>>;
+using Themed_Medium_Dot = ThemedKnobT<Tag_Dark_Medium_Dot, Tag_OffWhite_Medium_Dot>;
+using Themed_Medium_Dot_Dim = Dimmable<ThemedKnobT<Tag_Dark_Medium_Dot, Tag_OffWhite_Medium_Dot>>;
+using Themed_Mid_Cog = ThemedKnobT<Tag_Dark_Mid_Cog, Tag_OffWhite_Mid_Cog>;
+using Themed_Mid_Cog_Dim = Dimmable<ThemedKnobT<Tag_Dark_Mid_Cog, Tag_OffWhite_Mid_Cog>>;
+using Themed_Mid_Bar = ThemedKnobT<Tag_Dark_Mid_Bar, Tag_OffWhite_Mid_Bar>;
+using Themed_Mid_Bar_Dim = Dimmable<ThemedKnobT<Tag_Dark_Mid_Bar, Tag_OffWhite_Mid_Bar>>;
+using Themed_Mid_Slot = ThemedKnobT<Tag_Dark_Mid_Slot, Tag_OffWhite_Mid_Slot>;
+using Themed_Mid_Slot_Dim = Dimmable<ThemedKnobT<Tag_Dark_Mid_Slot, Tag_OffWhite_Mid_Slot>>;
+using Themed_Mid_Quad = ThemedKnobT<Tag_Dark_Mid_Quad, Tag_OffWhite_Mid_Quad>;
+using Themed_Mid_Quad_Dim = Dimmable<ThemedKnobT<Tag_Dark_Mid_Quad, Tag_OffWhite_Mid_Quad>>;
+using Themed_Mid_Dot = ThemedKnobT<Tag_Dark_Mid_Dot, Tag_OffWhite_Mid_Dot>;
+using Themed_Mid_Dot_Dim = Dimmable<ThemedKnobT<Tag_Dark_Mid_Dot, Tag_OffWhite_Mid_Dot>>;
+using Themed_Compact_Cog = ThemedKnobT<Tag_Dark_Compact_Cog, Tag_OffWhite_Compact_Cog>;
+using Themed_Compact_Cog_Dim = Dimmable<ThemedKnobT<Tag_Dark_Compact_Cog, Tag_OffWhite_Compact_Cog>>;
+using Themed_Compact_Bar = ThemedKnobT<Tag_Dark_Compact_Bar, Tag_OffWhite_Compact_Bar>;
+using Themed_Compact_Bar_Dim = Dimmable<ThemedKnobT<Tag_Dark_Compact_Bar, Tag_OffWhite_Compact_Bar>>;
+using Themed_Compact_Slot = ThemedKnobT<Tag_Dark_Compact_Slot, Tag_OffWhite_Compact_Slot>;
+using Themed_Compact_Slot_Dim = Dimmable<ThemedKnobT<Tag_Dark_Compact_Slot, Tag_OffWhite_Compact_Slot>>;
+using Themed_Compact_Quad = ThemedKnobT<Tag_Dark_Compact_Quad, Tag_OffWhite_Compact_Quad>;
+using Themed_Compact_Quad_Dim = Dimmable<ThemedKnobT<Tag_Dark_Compact_Quad, Tag_OffWhite_Compact_Quad>>;
+using Themed_Compact_Dot = ThemedKnobT<Tag_Dark_Compact_Dot, Tag_OffWhite_Compact_Dot>;
+using Themed_Compact_Dot_Dim = Dimmable<ThemedKnobT<Tag_Dark_Compact_Dot, Tag_OffWhite_Compact_Dot>>;
+using Themed_Small_Cog = ThemedKnobT<Tag_Dark_Small_Cog, Tag_OffWhite_Small_Cog>;
+using Themed_Small_Cog_Dim = Dimmable<ThemedKnobT<Tag_Dark_Small_Cog, Tag_OffWhite_Small_Cog>>;
+using Themed_Small_Bar = ThemedKnobT<Tag_Dark_Small_Bar, Tag_OffWhite_Small_Bar>;
+using Themed_Small_Bar_Dim = Dimmable<ThemedKnobT<Tag_Dark_Small_Bar, Tag_OffWhite_Small_Bar>>;
+using Themed_Small_Slot = ThemedKnobT<Tag_Dark_Small_Slot, Tag_OffWhite_Small_Slot>;
+using Themed_Small_Slot_Dim = Dimmable<ThemedKnobT<Tag_Dark_Small_Slot, Tag_OffWhite_Small_Slot>>;
+using Themed_Small_Quad = ThemedKnobT<Tag_Dark_Small_Quad, Tag_OffWhite_Small_Quad>;
+using Themed_Small_Quad_Dim = Dimmable<ThemedKnobT<Tag_Dark_Small_Quad, Tag_OffWhite_Small_Quad>>;
+using Themed_Small_Dot = ThemedKnobT<Tag_Dark_Small_Dot, Tag_OffWhite_Small_Dot>;
+using Themed_Small_Dot_Dim = Dimmable<ThemedKnobT<Tag_Dark_Small_Dot, Tag_OffWhite_Small_Dot>>;
+using Themed_Trim_Cog = ThemedKnobT<Tag_Dark_Trim_Cog, Tag_OffWhite_Trim_Cog>;
+using Themed_Trim_Cog_Dim = Dimmable<ThemedKnobT<Tag_Dark_Trim_Cog, Tag_OffWhite_Trim_Cog>>;
+using Themed_Trim_Bar = ThemedKnobT<Tag_Dark_Trim_Bar, Tag_OffWhite_Trim_Bar>;
+using Themed_Trim_Bar_Dim = Dimmable<ThemedKnobT<Tag_Dark_Trim_Bar, Tag_OffWhite_Trim_Bar>>;
+using Themed_Trim_Slot = ThemedKnobT<Tag_Dark_Trim_Slot, Tag_OffWhite_Trim_Slot>;
+using Themed_Trim_Slot_Dim = Dimmable<ThemedKnobT<Tag_Dark_Trim_Slot, Tag_OffWhite_Trim_Slot>>;
+using Themed_Trim_Quad = ThemedKnobT<Tag_Dark_Trim_Quad, Tag_OffWhite_Trim_Quad>;
+using Themed_Trim_Quad_Dim = Dimmable<ThemedKnobT<Tag_Dark_Trim_Quad, Tag_OffWhite_Trim_Quad>>;
+using Themed_Trim_Dot = ThemedKnobT<Tag_Dark_Trim_Dot, Tag_OffWhite_Trim_Dot>;
+using Themed_Trim_Dot_Dim = Dimmable<ThemedKnobT<Tag_Dark_Trim_Dot, Tag_OffWhite_Trim_Dot>>;
 
 } // namespace redDot
