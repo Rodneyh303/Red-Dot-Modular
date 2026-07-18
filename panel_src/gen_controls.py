@@ -265,7 +265,7 @@ SIZES = [('Large',   13.500, 79.724, 10.80),
          ('Mid',     10.500, 62.010,  6.50),
          ('Compact',  9.000, 53.150,  5.00),
          ('Small',    8.000, 47.240,  4.00),
-         ('Trim',     5.500, 32.480,  3.60)]
+         ('Trim',     4.500, 26.575,  3.60)]   # tightened 5.5->4.5: arc dia 30.11px vs Straits pitch 30.12 -- clears; body/box 0.80 = Large's ratio
 PALETTES = [('OffWhite', OFFWHITE), ('Cream', CREAM), ('Grey', GREY), ('Dark', DARK)]
 
 import os

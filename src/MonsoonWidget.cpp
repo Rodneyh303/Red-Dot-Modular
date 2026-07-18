@@ -458,16 +458,16 @@ void MonsoonWidget::applyTheme() {
             bindParam<redDot::Dark_Small_Cog>     ("param_PATTERN_LENGTH_PARAM", MonsoonIds::PATTERN_LENGTH_PARAM);
             bindParam<redDot::Dark_Small_Cog>     ("param_PATTERN_OFFSET_PARAM", MonsoonIds::PATTERN_OFFSET_PARAM);
         } else {
-            bindParam<redDot::Cream_Medium_Cog>("param_NOTE_VALUE_PARAM",     MonsoonIds::NOTE_VALUE_PARAM,
-                std::function<void(redDot::Cream_Medium_Cog*)>([this, m](redDot::Cream_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.noteValue;}, [](const Monsoon::ModViz& v){return v.big5Lane[0];},0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
-            bindParam<redDot::Cream_Medium_Cog>("param_VARIATION_PARAM",      MonsoonIds::VARIATION_PARAM,
-                std::function<void(redDot::Cream_Medium_Cog*)>([this, m](redDot::Cream_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.variation;}, [](const Monsoon::ModViz& v){return v.big5Lane[1];},0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
-            bindParam<redDot::Cream_Medium_Cog>("param_LEGATO_PARAM",         MonsoonIds::LEGATO_PARAM,
-                std::function<void(redDot::Cream_Medium_Cog*)>([this, m](redDot::Cream_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.legato;}, [](const Monsoon::ModViz& v){return v.big5Lane[2];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
-            bindParam<redDot::Cream_Medium_Cog>("param_REST_PARAM",           MonsoonIds::REST_PARAM,
-                std::function<void(redDot::Cream_Medium_Cog*)>([this, m](redDot::Cream_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.rest;}, [](const Monsoon::ModViz& v){return v.big5Lane[3];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
-            bindParam<redDot::Cream_Medium_Cog>("param_ACCENT_KNOB",          MonsoonIds::ACCENT_KNOB,
-                std::function<void(redDot::Cream_Medium_Cog*)>([this, m](redDot::Cream_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.accent;}, [](const Monsoon::ModViz& v){return v.big5Lane[4];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            bindParam<redDot::OffWhite_Medium_Cog>("param_NOTE_VALUE_PARAM",     MonsoonIds::NOTE_VALUE_PARAM,
+                std::function<void(redDot::OffWhite_Medium_Cog*)>([this, m](redDot::OffWhite_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.noteValue;}, [](const Monsoon::ModViz& v){return v.big5Lane[0];},0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            bindParam<redDot::OffWhite_Medium_Cog>("param_VARIATION_PARAM",      MonsoonIds::VARIATION_PARAM,
+                std::function<void(redDot::OffWhite_Medium_Cog*)>([this, m](redDot::OffWhite_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.variation;}, [](const Monsoon::ModViz& v){return v.big5Lane[1];},0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            bindParam<redDot::OffWhite_Medium_Cog>("param_LEGATO_PARAM",         MonsoonIds::LEGATO_PARAM,
+                std::function<void(redDot::OffWhite_Medium_Cog*)>([this, m](redDot::OffWhite_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.legato;}, [](const Monsoon::ModViz& v){return v.big5Lane[2];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            bindParam<redDot::OffWhite_Medium_Cog>("param_REST_PARAM",           MonsoonIds::REST_PARAM,
+                std::function<void(redDot::OffWhite_Medium_Cog*)>([this, m](redDot::OffWhite_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.rest;}, [](const Monsoon::ModViz& v){return v.big5Lane[3];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            bindParam<redDot::OffWhite_Medium_Cog>("param_ACCENT_KNOB",          MonsoonIds::ACCENT_KNOB,
+                std::function<void(redDot::OffWhite_Medium_Cog*)>([this, m](redDot::OffWhite_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.accent;}, [](const Monsoon::ModViz& v){return v.big5Lane[4];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
 
             bindParam<redDot::Dark_Small_Cog>      ("param_BPM_PARAM",            MonsoonIds::BPM_PARAM);
             bindParam<redDot::Dark_Small_Cog>      ("param_PATTERN_LENGTH_PARAM", MonsoonIds::PATTERN_LENGTH_PARAM);
