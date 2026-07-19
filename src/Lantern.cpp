@@ -648,9 +648,11 @@ struct LanternDisplay : widget::Widget {
                 nvgFill(vg);
 
                 // Legato-LEAD marker: a note that initiates a slur gets a distinct outline
-                // (amber, the same accent-family hue as the wraparound carets) drawn OVER its
-                // normal fill, so the lead intent is visible at the chain's start regardless of
-                // the note's base colour. Non-destructive: fill colour is unchanged.
+                // (amber -- the CONNECTION-family hue shared with the wraparound carets and
+                // the slur underline; NOT the accent hue, which is the brand-red top edge)
+                // drawn OVER its normal fill, so the lead intent is visible at the chain's
+                // start regardless of the note's base colour. Non-destructive: fill colour is
+                // unchanged.
                 if (c.leadsLegato) {
                     nvgBeginPath(vg);
                     nvgRoundedRect(vg, bx + 1.0f, yc - barH * 0.5f + 0.5f,
