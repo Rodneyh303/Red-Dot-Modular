@@ -475,23 +475,35 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // Probability-out config lives on Monsoon (single source of truth).
     }
 
-    void saveVoiceSpread(int v) {
-        if (!module) return;
+    // Unified per-slot store <-> editor for LOR + spread. slot = voiceSlot (0 = V1/mono,
+    // 1..15 = V2..V16). V1 and every poly voice run THIS code — the only difference is the slot
+    // number. Owner/atten/send keep their own load/save (saveVoiceMacro); the mono-tab master
+    // display is mirrorMonoExtraLanes, an engine->display path, not a store load (Stage 3).
+    void saveSlot(int slot) {   // editor -> store
+        if (!module || !visualEditor) return;
         auto* mm = getMonsoon(); if (!mm) return;
-        // The SPREAD_* trimpot is never force-overwritten anymore (a ceded lane's knob
-        // DISPLAYS Macro's base via DimmableTrimpot.displayValueFn without touching the
-        // param), so it always holds East's real value and saves cleanly. Store stays
-        // pristine → cede→reclaim reverts. (See DISPLAY_STORE_ENGINE_SEPARATION.md.)
-        const int slot = dotModular::VoiceResolver::voiceSlot(v + dotModular::VoiceResolver::kFirstPoly);
+        for (int el=0; el<dotModular::SandsGrid::EAST_LANES; ++el) {
+            const auto& lane = visualEditor->currentState.lanes[el];
+            const int bank = lorBank(el);
+            mm->setLorBase(slot, bank, 0, (float)lane.length);
+            mm->setLorBase(slot, bank, 1, (float)lane.offset);
+            mm->setLorBase(slot, bank, 2, (float)lane.rotation);
+        }
         mm->setSpread(slot, 0, module->params[SPREAD_R].getValue());
         mm->setSpread(slot, 1, module->params[SPREAD_M].getValue());
         mm->setSpread(slot, 2, module->params[SPREAD_O].getValue());
         mm->setSpread(slot, 3, module->params[SPREAD_A].getValue());
     }
-    void loadVoiceSpread(int v) {
-        if (!module) return;
+    void loadSlot(int slot) {   // store -> editor
+        if (!module || !visualEditor) return;
         auto* mm = getMonsoon(); if (!mm) return;
-        const int slot = dotModular::VoiceResolver::voiceSlot(v + dotModular::VoiceResolver::kFirstPoly);
+        for (int el=0; el<dotModular::SandsGrid::EAST_LANES; ++el) {
+            auto& lane = visualEditor->currentState.lanes[el];
+            const int bank = lorBank(el);
+            lane.length   = std::max(1,(int)std::round(mm->getLorBase(slot, bank, 0)));
+            lane.offset   = (int)std::round(mm->getLorBase(slot, bank, 1));
+            lane.rotation = (int)std::round(mm->getLorBase(slot, bank, 2));
+        }
         module->params[SPREAD_R].setValue(mm->getSpread(slot, 0));
         module->params[SPREAD_M].setValue(mm->getSpread(slot, 1));
         module->params[SPREAD_O].setValue(mm->getSpread(slot, 2));
@@ -557,36 +569,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         }
     }
 
-    void saveVoiceLOR(int v) {
-        if (!module || !visualEditor) return;   // poly banks only; V1 uses slot 0 (see step)
-        auto* mm = getMonsoon(); if (!mm) return;
-        const int slot = dotModular::VoiceResolver::voiceSlot(v + dotModular::VoiceResolver::kFirstPoly);
-        for (int el=0; el<dotModular::SandsGrid::EAST_LANES; ++el) {
-            const auto& lane = visualEditor->currentState.lanes[el];
-            mm->setLorBase(slot, lorBank(el), 0, (float)lane.length);
-            mm->setLorBase(slot, lorBank(el), 1, (float)lane.offset);
-            mm->setLorBase(slot, lorBank(el), 2, (float)lane.rotation);
-        }
-    }
-    void loadVoiceLOR(int v) {
-        if (!module || !visualEditor) return;
-        auto* mm = getMonsoon(); if (!mm) return;
-        const int slot = dotModular::VoiceResolver::voiceSlot(v + dotModular::VoiceResolver::kFirstPoly);
-        for (int el=0; el<dotModular::SandsGrid::EAST_LANES; ++el) {
-            auto& lane = visualEditor->currentState.lanes[el];
-            lane.length   = std::max(1,(int)std::round(mm->getLorBase(slot, lorBank(el), 0)));
-            lane.offset   = (int)std::round(mm->getLorBase(slot, lorBank(el), 1));
-            lane.rotation = (int)std::round(mm->getLorBase(slot, lorBank(el), 2));
-        }
-    }
     void onVoiceTabChanged(int nv) {
         if (!paramMgr || !visualEditor) return;
         // Save the OUTGOING voice's edits.
         // Poly tabs always save. Mono tab saves when it is editable (no Mono attached).
         if (selectedVoice >= 1) {
             paramMgr->syncEditorToPatternEngine(polyVoice(), visualEditor->currentState);
-            saveVoiceLOR(polyVoice());
-            saveVoiceSpread(polyVoice());
+            saveSlot(currentSlot());       // LOR + spread (poly slot; V1 handled in step)
             saveVoiceMacro(polyVoice());
         }
         // V1-editable: nothing to save here — East writes the engine MONO strands
@@ -602,8 +591,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // Load the INCOMING voice.
         if (selectedVoice >= 1) {
             paramMgr->syncPatternEngineToEditor(polyVoice(), visualEditor->currentState);
-            loadVoiceLOR(polyVoice());
-            loadVoiceSpread(polyVoice());
+            loadSlot(currentSlot());       // LOR + spread (poly slot)
             loadVoiceMacro(polyVoice());
             // Sync DirCell display proxy from the engine's per-voice direction so the
             // DirCell shows the incoming voice's actual state (not the outgoing voice's).
@@ -709,6 +697,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     // source of truth (the resolver), not hand-rolled selectedVoice arithmetic scattered
     // here. The resolver methods are static/constexpr — no engine ref, no per-call cost.
     int currentVoice() const { return selectedVoice + 1; }
+    // Unified store slot for the selected tab: 0 = V1/mono, 1..15 = V2..V16. Composes
+    // currentVoice() with voiceSlot so V1 and poly index the same lorBase/spread store.
+    int currentSlot() const { return dotModular::VoiceResolver::voiceSlot(currentVoice()); }
 
     // Voice 1 / tab 1 with Sands Mono attached: the lane base belongs to Mono — East's
     // base controls lock + mirror mono (display-only). Independent of Macro.
@@ -1005,8 +996,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
 
         if (!initialized) {
             if (selectedVoice >= 1) {
-                loadVoiceLOR(polyVoice());
-                loadVoiceSpread(polyVoice());
+                loadSlot(currentSlot());   // LOR + spread
             }
             initialized = true;
         }
@@ -1018,7 +1008,6 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // take effect immediately. Poly tabs only — the mono tab (index 0) is display-only
         // (its base lives on Sands Mono); writing it back would corrupt poly slot 0.
         if (selectedVoice >= 1) {
-            saveVoiceSpread(polyVoice());
             saveVoiceMacro(polyVoice());
 
             // DISPLAY/STORE/ENGINE separation (see DISPLAY_STORE_ENGINE_SEPARATION.md):
@@ -1078,13 +1067,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // CV applied at control rate in Monsoon::process() — base + scaled offset, no mutation here.
 
         if (selectedVoice >= 1) {
-            saveVoiceLOR(polyVoice());
-            // Per-frame: push the spread knobs (SPREAD_R/M/O/A) into this voice's interp
-            // params so turning a spread knob takes effect LIVE — previously this only
-            // happened on tab change (saveVoiceSpread in onVoiceTabChanged), so a spread
-            // turn (esp. ACCENT) didn't mutate until you switched tabs. Now accent spread
-            // modulates immediately and its mod arc reads a live value.
-            saveVoiceSpread(polyVoice());
+            // Per-frame LOR + spread push so grid edits and spread-knob turns take effect
+            // LIVE (spread esp. ACCENT previously only mutated on tab change). One call now.
+            saveSlot(currentSlot());
             paramMgr->syncPatternEngineToEditor(polyVoice(), visualEditor->currentState);
             // The editor's drag only edits the LOR WINDOW (length/offset/rotation), never
             // individual step probabilities — those are display-only. So show the
@@ -1215,22 +1200,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // so the stores — and thus save/load and the next round-trip — stay current.
             if (auto* mmV1 = getMonsoon()) {
                 if (!v1Loaded_) {
-                    // Seed editor/display from the unified store slot 0. Safe even on a fresh
-                    // patch: lorBase[0] is identity (len=16) and spread[0] is 0 — exactly the
-                    // editor's own defaults — so the seed is a no-op until V1 has been edited.
-                    // (This is why eastV1Stored is gone: an identity/zero-init store needs no
-                    // "has this ever been written" guard — Stage 1 folded V1 into slot 0.)
-                    for (int el = 0; el < dotModular::SandsGrid::EAST_LANES; ++el) {
-                        auto& lane = visualEditor->currentState.lanes[el];
-                        const int bank = lorBank(el);
-                        lane.length   = std::max(1, (int)std::round(mmV1->getLorBase(0, bank, 0)));
-                        lane.offset   = (int)std::round(mmV1->getLorBase(0, bank, 1));
-                        lane.rotation = (int)std::round(mmV1->getLorBase(0, bank, 2));
-                    }
-                    module->params[SPREAD_R].setValue(mmV1->getSpread(0, 0));
-                    module->params[SPREAD_M].setValue(mmV1->getSpread(0, 1));
-                    module->params[SPREAD_O].setValue(mmV1->getSpread(0, 2));
-                    module->params[SPREAD_A].setValue(mmV1->getSpread(0, 3));
+                    // Seed editor/display from the unified store slot 0 — the SAME loadSlot()
+                    // every poly voice uses, just slot 0. Safe even on a fresh patch: lorBase[0]
+                    // is identity (len=16) and spread[0] is 0 (the editor's own defaults), so the
+                    // seed is a no-op until V1 has been edited. (Owner/atten aren't in loadSlot;
+                    // V1's atten displays are restored from the mono-slot store just below.)
+                    loadSlot(dotModular::VoiceResolver::kMonoSlot);
                     // atten displays ← preserved mono-slot stores (valid even fresh: 0 = no depth).
                     // Must precede the every-frame *Disp→kMonoSlot mirrors below, else the stale
                     // (last poly voice's) display proxies would overwrite V1's saved depth.
@@ -1245,17 +1220,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                                 mmV1->getVarlegAtten(dotModular::VoiceResolver::kMonoSlot, vl, c));
                     v1Loaded_ = true;
                 } else {
-                    for (int el = 0; el < dotModular::SandsGrid::EAST_LANES; ++el) {
-                        const auto& lane = visualEditor->currentState.lanes[el];
-                        const int bank = lorBank(el);
-                        mmV1->setLorBase(0, bank, 0, (float)lane.length);
-                        mmV1->setLorBase(0, bank, 1, (float)lane.offset);
-                        mmV1->setLorBase(0, bank, 2, (float)lane.rotation);
-                    }
-                    mmV1->setSpread(0, 0, module->params[SPREAD_R].getValue());
-                    mmV1->setSpread(0, 1, module->params[SPREAD_M].getValue());
-                    mmV1->setSpread(0, 2, module->params[SPREAD_O].getValue());
-                    mmV1->setSpread(0, 3, module->params[SPREAD_A].getValue());
+                    saveSlot(dotModular::VoiceResolver::kMonoSlot);   // mirror V1 edits → store slot 0
                 }
             }
             // ─────────────────────────────────────────────────────────────────────────────
