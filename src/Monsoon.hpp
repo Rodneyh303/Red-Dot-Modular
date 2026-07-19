@@ -586,27 +586,10 @@ namespace MonsoonIds {
         // lanes (EAST_EXTRA_LANES.md §6b), so this is a clean mono-or-East binary. V1 is mono,
         // never a poly voice, so it is always mono (no toggle). 15 poly voices × 2 lanes = 30.
         // Appended at END so existing param IDs stay stable (saved patches safe).
-        //   index = VARLEG_DELEG_START + v*2 + lane   (v = 0..14 = V2..V16, lane 0=VAR 1=LEG)
-        //   value: 0 = delegate to mono (default, silent), 1 = Local East (own LOR)
-        VARLEG_DELEG_START = MACRO_TAP_END,
-        VARLEG_DELEG_END = VARLEG_DELEG_START + 30,
-
-        // Display proxies for the SELECTED voice's VAR/LEG delegation cells. Two physical
-        // lane-end cells (lane 0=VAR, 1=LEG) bind to these fixed ids; the East widget copies
-        // them to/from the per-voice VARLEG_DELEG params on voice switch (same pattern as the
-        // owner cells ↔ MACRO_OWN_DISP). index = VARLEG_DELEG_DISP_START + lane.
-        VARLEG_DELEG_DISP_START = VARLEG_DELEG_END,
-        VARLEG_DELEG_DISP_END = VARLEG_DELEG_DISP_START + 2,
-
-        // ── EAST_EXTRA_LANES Stage 4: VAR/LEG per-voice CV-depth attenuverter ──
-        // VARIATION/LEGATO get poly CV inputs (LEN/OFF/ROT only — no SPR, no spread:
-        // spread does not apply to these mono-strand lanes). Each poly voice needs its
-        // OWN depth per jack (same independence model as MACRO_ATTEN for lanes 0-3), so
-        // this is a 16-wide voice-slot bank (slot 0 = mono/V1, the ch1 mix-in depth),
-        // 2 lanes × 3 cols = 6 jacks per voice. 16 × 6 = 96. Appended at END.
-        //   index = VARLEG_ATTEN_START + v*6 + lane*3 + col   (v=0..15, lane 0=VAR 1=LEG, col 0..2)
-        VARLEG_ATTEN_START = VARLEG_DELEG_DISP_END,
-        VARLEG_ATTEN_END = VARLEG_ATTEN_START + 96,
+        // ── VARLEG ranges (DELEG 30, DELEG_DISP 2, ATTEN 96) MIGRATED OUT of params[]
+        //    (NUM_PARAMS_MIGRATION.md): DELEG + ATTEN -> Monsoon::editor.varlegDeleg/varlegAtten
+        //    (accessors getVarlegDeleg/…); DELEG_DISP re-homed to StraitsEastVisualIds
+        //    (VARLEG_DELEG_DISP_START) since it drives a visible cell. No enum slots here now. ──
 
         // ── East LANE DIRECTION bank (plans/lane_direction_homes.md step 1) ──────
         // Direction is lane-addressing data authored by an EXPANDER, so — like LOR, atten,
@@ -630,7 +613,7 @@ namespace MonsoonIds {
         // Only used when CV1 (the phase input) is UNPATCHED -- it's the fallback phase source,
         // so a host (Bitwig etc.) can automate this param to drive Mode E from a DAW phase
         // modulator when no CV cable is present. Appended at END; existing patches still load.
-        PHASE_PARAM = VARLEG_ATTEN_END,
+        PHASE_PARAM = MACRO_TAP_END,
 
         NUM_PARAMS
     };
@@ -1063,6 +1046,12 @@ struct Monsoon : Module {
         // laneDir: per (voice-bank v = 0..14 poly = V2..V16, 15 = V1/mono) × lane (0..5).
         // index = v*6 + lane  (identical to the old LANE_DIR_START + v*6 + lane).
         float laneDir[96] = {0};
+        // varlegDeleg: delegation local/delegated per (v = 0..14 = V2..V16) × lane (0=VAR,1=LEG).
+        // index = v*2 + lane  (== old VARLEG_DELEG_START + v*2 + lane).
+        float varlegDeleg[30] = {0};
+        // varlegAtten: VAR/LEG attenuation per (v = 0..15 voice-slot) × lane(0=VAR,1=LEG) × col(0..2).
+        // index = v*6 + lane*3 + col  (== old VARLEG_ATTEN_START + v*6 + lane*3 + col).
+        float varlegAtten[96] = {0};
     } editor;
 
     // LANE_DIR accessors — the ONE place the index math lives (mirrors old dirId/monoDirId).
@@ -1070,6 +1059,12 @@ struct Monsoon : Module {
     void  setLaneDir(int v, int lane, float x) { editor.laneDir[v*6 + lane] = x; }
     float getMonoLaneDir(int lane) const { return editor.laneDir[15*6 + lane]; }
     void  setMonoLaneDir(int lane, float x) { editor.laneDir[15*6 + lane] = x; }
+
+    // VARLEG accessors (mirror old varlegDelegId / varlegAttId index math).
+    float getVarlegDeleg(int v, int lane) const { return editor.varlegDeleg[v*2 + lane]; }
+    void  setVarlegDeleg(int v, int lane, float x) { editor.varlegDeleg[v*2 + lane] = x; }
+    float getVarlegAtten(int v, int lane, int col) const { return editor.varlegAtten[v*6 + lane*3 + col]; }
+    void  setVarlegAtten(int v, int lane, int col, float x) { editor.varlegAtten[v*6 + lane*3 + col] = x; }
 
     MonsoonSandsManager dnaManager{engine}; // Always valid
     std::unique_ptr<ParameterManager> paramManager;

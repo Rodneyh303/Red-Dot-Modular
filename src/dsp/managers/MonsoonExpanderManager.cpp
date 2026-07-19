@@ -257,6 +257,9 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
             // position differs). Straight base params, clamped to the same ranges as the poly lanes.
             if (eastLOR) {
                 using SE = SequencerEngine;
+                // VARLEG deleg + atten migrated to Monsoon::editor (NUM_PARAMS_MIGRATION.md);
+                // read them via this Monsoon pointer (LANE_DIR below uses the same lookup).
+                Monsoon* mmE = redDot::findMonsoonEitherSide(eastLOR);
                 const int varBase = MonsoonIds::POLY_VARIATION_VOICE_1_LEN + v * 3;
                 const int legBase = MonsoonIds::POLY_LEGATO_VOICE_1_LEN    + v * 3;
                 // East's own base + per-voice poly CV for a VAR/LEG L/O/R item. Mirrors eastLorVal
@@ -268,7 +271,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 auto varlegLorVal = [&](int paramIdx, int vl, int c, float lo, float hi)->int {
                     float base = eastLOR->params[paramIdx].getValue();
                     if (eastVisual->inputs[StraitsEastVisualIds::varlegCvId(vl,c)].isConnected()) {
-                        float att = eastLOR->params[StraitsEastVisualIds::varlegAttId(slot, vl, c)].getValue();
+                        float att = mmE ? mmE->getVarlegAtten(slot, vl, c) : 0.f;
                         float cv  = eastVisual->inputs[StraitsEastVisualIds::varlegCvId(vl,c)]
                                         .getPolyVoltage(v) / 10.f;
                         base = math::clamp(base + cv * att * (hi - lo), lo, hi);
@@ -285,8 +288,8 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 // Delegation toggles (§4d): 0 = follow mono (default, silent), 1 = Local East.
                 // When Local East, the LOR pushed above is read; when delegating, the engine
                 // ignores it and reads mono's VAR/LEG position instead. lane 0 = VAR, 1 = LEG.
-                engine.setVarlegLocalEast(v, 0, eastLOR->params[MonsoonIds::VARLEG_DELEG_START + v*2 + 0].getValue() > 0.5f);
-                engine.setVarlegLocalEast(v, 1, eastLOR->params[MonsoonIds::VARLEG_DELEG_START + v*2 + 1].getValue() > 0.5f);
+                engine.setVarlegLocalEast(v, 0, mmE && mmE->getVarlegDeleg(v, 0) > 0.5f);
+                engine.setVarlegLocalEast(v, 1, mmE && mmE->getVarlegDeleg(v, 1) > 0.5f);
 
                 // Per-voice LANE DIRECTION, from East's bank — same shape as the delegation
                 // push above. This is what frees direction from the widget: the editor owns the
@@ -309,8 +312,8 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                     if ((r2c++ & 0x1FFFF) < 15)
                         INFO("[R2 push ] v=%2d VARp=%.2f LEGp=%.2f legLOR=(%d,%d,%d)",
                             v,
-                            eastLOR->params[MonsoonIds::VARLEG_DELEG_START + v*2 + 0].getValue(),
-                            eastLOR->params[MonsoonIds::VARLEG_DELEG_START + v*2 + 1].getValue(),
+                            (mmE ? mmE->getVarlegDeleg(v, 0) : 0.f),
+                            (mmE ? mmE->getVarlegDeleg(v, 1) : 0.f),
                             (int)std::lround(math::clamp(eastLOR->params[legBase + 0].getValue(), 1.f, 16.f)),
                             (int)std::lround(math::clamp(eastLOR->params[legBase + 1].getValue(), 0.f, 15.f)),
                             (int)std::lround(math::clamp(eastLOR->params[legBase + 2].getValue(), 0.f, 15.f)));

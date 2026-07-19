@@ -170,6 +170,14 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     for (int i = 0; i < 96; ++i) json_array_append_new(ld, json_real(m->editor.laneDir[i]));
     json_object_set_new(root, "editorLaneDir", ld);
 
+    // VARLEG deleg (30) + atten (96), migrated out of params[] (NUM_PARAMS_MIGRATION.md).
+    json_t* vd = json_array();
+    for (int i = 0; i < 30; ++i) json_array_append_new(vd, json_real(m->editor.varlegDeleg[i]));
+    json_object_set_new(root, "editorVarlegDeleg", vd);
+    json_t* va = json_array();
+    for (int i = 0; i < 96; ++i) json_array_append_new(va, json_real(m->editor.varlegAtten[i]));
+    json_object_set_new(root, "editorVarlegAtten", va);
+
     return root;
 }
 
@@ -373,5 +381,15 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
                 m->editor.laneDir[i] = math::clamp(v, 0.f, 3.f);
             }
         }
+    }
+    if (auto j = json_object_get(root, "editorVarlegDeleg")) {
+        if (json_is_array(j))
+            for (size_t i = 0; i < 30 && i < json_array_size(j); ++i)
+                m->editor.varlegDeleg[i] = (float)json_real_value(json_array_get(j, i));
+    }
+    if (auto j = json_object_get(root, "editorVarlegAtten")) {
+        if (json_is_array(j))
+            for (size_t i = 0; i < 96 && i < json_array_size(j); ++i)
+                m->editor.varlegAtten[i] = (float)json_real_value(json_array_get(j, i));
     }
 }

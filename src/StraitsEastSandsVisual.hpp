@@ -76,8 +76,15 @@ namespace StraitsEastVisualIds {
         // Forward/Reverse/Pendulum/PingPong. Selected-voice view; the engine holds the
         // real per-voice state in laneDir_/laneDirV_.
         DIR_DISP_START = VARLEG_ATTEN_DISP_START + 6,  // = 26
-        NUM_SPREAD_PARAMS = DIR_DISP_START + 6          // = 32
+        // 2 VAR/LEG delegation display proxies (lane 0=VAR, 1=LEG), re-homed here from
+        // MonsoonIds::VARLEG_DELEG_DISP (NUM_PARAMS_MIGRATION.md): they drive a visible
+        // OwnerCell so they MUST stay params, but in the EXPANDER's small namespace so they
+        // don't inflate the shared MonsoonIds pool.
+        VARLEG_DELEG_DISP_START = DIR_DISP_START + 6,   // = 32
+        NUM_SPREAD_PARAMS = VARLEG_DELEG_DISP_START + 2 // = 34
     };
+    // VAR/LEG delegation display proxy (selected-voice view). lane 0=VAR, 1=LEG.
+    static inline int varlegDelegDispId(int lane) { return VARLEG_DELEG_DISP_START + lane; }
     // Direction display proxy (selected-voice view). lane = editor lane 0..5.
     static inline int dirDispId(int lane) { return DIR_DISP_START + lane; }
     // Selected-voice display proxy (physical knob binds here).
@@ -88,10 +95,8 @@ namespace StraitsEastVisualIds {
     }
     // VAR/LEG CV-depth display proxy (selected-voice view). lane 0=VAR, 1=LEG; col 0..2.
     static inline int varlegAttDispId(int lane, int col) { return VARLEG_ATTEN_DISP_START + lane*3 + col; }
-    // VAR/LEG per-voice CV depth (the real store). v=0..15 (slot 0 = mono/V1 ch1 mix-in).
-    static inline int varlegAttId(int v, int lane, int col) {
-        return MonsoonIds::VARLEG_ATTEN_START + v*6 + (lane*3 + col);
-    }
+    // VAR/LEG per-voice CV depth (the real store) MIGRATED to Monsoon::editor.varlegAtten:
+    // use monsoon->getVarlegAtten/setVarlegAtten(v,lane,col). (v=0..15, slot 0 = mono/V1.)
 
     // ── Input IDs ─────────────────────────────────────────────────────────
     enum InputId {
@@ -166,9 +171,11 @@ namespace StraitsEastVisualIds {
     // VAR/LEG per-voice delegation toggle (EAST_EXTRA_LANES §4d). 0 = delegate to mono
     // (default), 1 = Local East (own LOR). 15 poly voices (v=0..14 = V2..V16) × 2 lanes
     // (lane 0 = VAR, 1 = LEG). V1 is mono → always follows, no toggle.
-    inline int varlegDelegId(int v, int lane) { return MonsoonIds::VARLEG_DELEG_START + v*2 + lane; }
-    // Selected-voice display proxy for the VAR/LEG delegation cells. lane 0=VAR, 1=LEG.
-    inline int varlegDelegDispId(int lane) { return MonsoonIds::VARLEG_DELEG_DISP_START + lane; }
+    // VAR/LEG delegation + attenuation MIGRATED to Monsoon::editor (NUM_PARAMS_MIGRATION.md):
+    // use monsoon->getVarlegDeleg/setVarlegDeleg(v,lane) and
+    // getVarlegAtten/setVarlegAtten(v,lane,col). The DISPLAY proxy varlegDelegDispId re-homed
+    // to this expander's own namespace (VARLEG_DELEG_DISP_START, above) since it drives a
+    // visible OwnerCell.
     // East's per-voice LANE DIRECTION bank (plans/lane_direction_homes.md). 4-state per lane:
     // 0=Forward 1=Reverse 2=Pendulum 3=PingPong (SequencerEngine::LaneDir). Poly-bank indexed
     // like ownerId/varlegDelegId (v = 0..14 = V2..V16); lane = STRAND index 0..5. The manager
@@ -262,13 +269,8 @@ struct StraitsEastSandsVisual : Module {
                                 nm+" CV (poly: ch1=mono mix-in, ch2+ voices)");
                 }
             // Per-voice depth store (16-wide, slot 0 = mono/V1).
-            for (int v=0; v<16; ++v) {
-                std::string vs = "V"+std::to_string(v+1)+" ";
-                for (int lane=0; lane<2; ++lane)
-                    for (int c=0; c<3; ++c)
-                        configParam(varlegAttId(v,lane,c), -1.f,1.f,0.f,
-                                    vs+std::string(vlNames[lane])+" "+vlItems[c]+" depth");
-            }
+            // Per-voice VAR/LEG depth store MIGRATED to Monsoon::editor.varlegAtten
+            // (NUM_PARAMS_MIGRATION.md) -- no configParam here; accessors carry it.
         }
 
         // VARIATION (editor lane 4) and LEGATO (5): per-voice LOR, LEN defaults 16 (identity window,
@@ -309,11 +311,9 @@ struct StraitsEastSandsVisual : Module {
             // VAR/LEG delegation (§4d): the only target is mono (no Macro), so this is a
             // clean binary — follow mono (default, silent) or Local East (own LOR). lane
             // 0 = VAR, 1 = LEG. Rendered as the lane-end toggle for editor lanes 4/5.
-            for (int lane=0; lane<2; ++lane) {
-                configSwitch(varlegDelegId(v,lane), 0.f,1.f,0.f,
-                             vl+(lane==0?"VAR":"LEG")+std::string(" delegate: follow mono / local East"),
-                             {"Follow mono","Local East"});
-            }
+            // VAR/LEG delegation store MIGRATED to Monsoon::editor.varlegDeleg
+            // (NUM_PARAMS_MIGRATION.md) -- no configSwitch; setVarlegDeleg carries it. The
+            // visible selected-voice cell is varlegDelegDispId (expander-local, configured below).
         }
         // V1 (mono) per-lane owner store (spare MACRO_OWN slot v=15). Default 0.f =
         // inherit Macro, matching the poly ownerId and ownerDispId defaults (consistent
