@@ -1,0 +1,79 @@
+# Monsoon params don't appear in the DAW automation list — diagnosis
+
+## Symptom
+In Bitwig, moving VCO-1's FREQ instantly shows it in the modulation/automation list. Moving
+Monsoon's VARIATION (or any Big-5 knob) does NOT show up. VCV-brand params auto-appear;
+Monsoon's don't.
+
+## Not the cause
+- **Bad configParam**: VARIATION is a normal `configParam(VARIATION_PARAM, 0,1,0.5,"Variation…")`.
+  Fine.
+- **The 1024 host cap alone**: VARIATION is at enum index ~1 (very start), so it's far under any
+  cap. If a simple overflow were the cause, the LAST params would drop, not VARIATION. (The
+  overflow IS a real latent bug — see below — but it's not why VARIATION specifically fails.)
+- **The map-to-slot workflow**: the A/B test settles this — VCO-1 auto-appears WITHOUT
+  mapping, so Rack Pro does auto-expose params. Monsoon differs, so it's not "you forgot to
+  map".
+
+## The cause: NUM_PARAMS is ~1128, dominated by internal-state params
+Rack Pro exposes each module's params into the host's FINITE parameter pool (the Surge XT
+devs describe "burning" host VST params per instantiated module). Monsoon's `NUM_PARAMS` is
+roughly:
+
+    base individual + poly banks       ~200-300
+    MACRO_OWN 64 + SEND 256 + OWN_DISP 4 + SEND_DISP 16 + ATTEN 256 + TAP 8   = 604
+    VARLEG deleg 30 + disp 2 + atten 96                                        = 128
+    LANE_DIR 96                                                                = 96
+    ------------------------------------------------------------------------------
+    NUM_PARAMS  ~= 1128
+
+The vast majority (the ~700 MACRO/VARLEG/LANE_DIR entries) are NOT user-facing knobs. They
+are per-voice-per-lane EDITOR STATE (owner ids, per-lane direction switches, attenuator
+depths) stored as params so they persist in the patch and are editable on the Sands/East/
+Macro EXPANDER panels. They are `configParam`/`configSwitch`'d (e.g.
+StraitsEastSandsVisual.hpp:330 configSwitch LANE_DIR), so each claims a host-automation slot.
+
+A module claiming ~1128 host slots either overflows the pool or makes the host's per-module
+param registration behave badly — and the practical result is that the genuinely-automatable
+controls (VARIATION etc.) don't register cleanly. VCO-1 (a handful of params) always fits.
+
+## Verify on the build (confirms this vs a config bug)
+In Bitwig with Monsoon loaded, check the automation list:
+- If NO Monsoon params appear, or only the first N (up to some cap) appear and the rest are
+  missing → pool exhaustion / NUM_PARAMS bloat (this diagnosis).
+- If params appear but with wrong names/values → a different (display) issue.
+Also: temporarily shrink NUM_PARAMS (stub out the MACRO/VARLEG/LANE_DIR ranges in a scratch
+build) and see if VARIATION reappears. That isolates it conclusively.
+
+## Fix options (need the build to validate; touches ~700 params)
+
+### Option A — mark internal-state params non-automatable (preferred if Rack Pro honors it)
+Rack Pro / the plugin layer may skip host-exposure for params flagged appropriately. Check
+the SDK for a ParamQuantity flag that removes a param from the host pool (the Surge XT thread
+"way to make params hidden in rack pro" is the same ask — confirm what shipped). If such a
+flag exists, set it in the configurator loops for every MACRO/VARLEG/LANE_DIR param:
+
+    auto* pq = m->getParamQuantity(id);
+    pq->/*host-hidden flag*/ = true;   // exact member per SDK
+
+This keeps them as params (persistence + expander widgets unchanged) but drops Monsoon's
+host footprint from ~1128 to the ~80 real controls. Lowest-risk if the flag exists.
+
+### Option B — move internal state out of params[] entirely
+These ranges don't NEED to be params — they're storage with expander-side widgets. Convert
+them to plain module fields (arrays) + JSON persistence (dataToJson/dataFromJson), and have
+the expander widgets read/write those fields instead of params[]. Bigger change (touches the
+expander editors and persistence) but it's the architecturally correct home for
+per-voice-per-lane state, and it fixes the host-pool bloat at the root. Also removes ~700
+entries from randomize/reset/preset handling where they never belonged.
+
+### Option C — accept it and document the map workflow
+If neither is quick: the params still work via Rack's host-parameter MAP mode (click the knob
+in map mode to bind a slot). Not auto-exposed, but reachable. Weakest option — VARIATION
+being un-automatable out of the box is a real UX regression vs VCV-brand modules.
+
+## Recommendation
+Confirm with the shrink-NUM_PARAMS test, then Option A if the SDK has a host-hide flag, else
+Option B. Either way the target is: only the ~80 genuine controls consume host slots; the
+~700 internal-state entries do not. This ALSO fixes the latent >1024 overflow (params above
+index 1024 currently can't be host-automated at all regardless).
