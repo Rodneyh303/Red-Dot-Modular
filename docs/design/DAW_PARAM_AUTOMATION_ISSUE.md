@@ -161,3 +161,46 @@ and is the correct home for non-knob state.
 ### Also fixed for free
 The latent >1024 overflow (LANE_DIR params sat above index 1024, unautomatable regardless) —
 gone once the internal ranges stop consuming the low, registrable slots.
+
+---
+
+## CORRECTED ROOT CAUSE: it's every module sized to MonsoonIds::NUM_PARAMS, not Monsoon alone
+
+The previous "Monsoon uniquely broken" conclusion was wrong. New data — which modules export:
+
+  EXPORT (own small param namespace):   Lantern, Sands-mono (SandsMonoVisualIds), Shophouse
+                                        (ShophouseIds), Junction (NUM_JUNCTION_PARAMS),
+                                        Raffles (NUM_RAFFLES_PARAMS), Interchange
+                                        (NUM_EXPANDER_PARAMS).
+  FAIL (config sized to MonsoonIds::NUM_PARAMS ~1128):
+                                        Monsoon, Straits (StraitsIds::NUM_PARAMS =
+                                        MonsoonIds::NUM_PARAMS + 1), Causeway, East
+                                        (StraitsEastSandsVisual), Macro (StraitsSandsMacroVisual).
+
+The split is EXACT and it is the config() size. Straits/Causeway/East/Macro reuse Monsoon's
+param IDs (they edit Monsoon's params over the expander bus), so each calls
+`config(MonsoonIds::NUM_PARAMS, …)` to size its param array to the shared namespace. Every such
+module claims a ~1128-slot host block and overflows -> the host drops ALL its params. The six
+with their own modest namespaces register fine.
+
+So it's not "the Monsoon module"; it's "the shared 1128-wide MonsoonIds param namespace",
+inherited by 5 modules. Fixing the namespace size fixes all 5 at once.
+
+### Why they inherit the full namespace
+The MACRO/VARLEG/LANE_DIR editor-state params live in MonsoonIds so they persist centrally and
+any expander can address them by the same id. Sizing each expander's param array to
+NUM_PARAMS is how Rack gives every module a params[] big enough to hold those shared ids. The
+cost: each module also EXPORTS all 1128 to the host.
+
+### Fix (unchanged in kind, bigger in payoff)
+Option A (host-hide the ~700 internal MACRO/VARLEG/LANE_DIR params) or B (move them out of
+params[] into fields+JSON) now fixes Monsoon AND Straits AND Causeway AND East AND Macro
+simultaneously — because all five shrink with the shared namespace. Confirmation test is the
+same: shrink the internal ranges, rebuild, check VARIATION (Monsoon) AND a Straits/East knob
+all appear.
+
+Caveat for Option B: because the ids are SHARED (expanders address Monsoon's params by id over
+the bus), moving them out of params[] means moving them to a shared, bus-addressable store —
+more involved than a single module's fields. Option A (host-hide flag, keep the shared params)
+is therefore even more strongly preferred here: it needs no change to the cross-module
+addressing, only a flag on config.
