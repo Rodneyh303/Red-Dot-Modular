@@ -205,24 +205,6 @@ namespace MonsoonIds {
 
 
         
-        // Interpolation Controls (15 voices) - NEW: blend per-voice vs average random
-        POLY_VOICE_1_INTERP,
-        POLY_VOICE_2_INTERP,
-        POLY_VOICE_3_INTERP,
-        POLY_VOICE_4_INTERP,
-        POLY_VOICE_5_INTERP,
-        POLY_VOICE_6_INTERP,
-        POLY_VOICE_7_INTERP,
-        POLY_VOICE_8_INTERP,
-        POLY_VOICE_9_INTERP,
-        POLY_VOICE_10_INTERP,
-        POLY_VOICE_11_INTERP,
-        POLY_VOICE_12_INTERP,
-        POLY_VOICE_13_INTERP,
-        POLY_VOICE_14_INTERP,
-        POLY_VOICE_15_INTERP,
-        
-        
         // Global Macro DNA Controls (for simple Straits Sands) - NEW
         // Single set of controls for all poly voices
         GLOBAL_REST_DNA_LEN,
