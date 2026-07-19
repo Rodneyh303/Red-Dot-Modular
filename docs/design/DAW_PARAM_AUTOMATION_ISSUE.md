@@ -77,3 +77,42 @@ Confirm with the shrink-NUM_PARAMS test, then Option A if the SDK has a host-hid
 Option B. Either way the target is: only the ~80 genuine controls consume host slots; the
 ~700 internal-state entries do not. This ALSO fixes the latent >1024 overflow (params above
 index 1024 currently can't be host-automated at all regardless).
+
+---
+
+## Update: "Sands visual params appear, Big-5 don't" — refines the diagnosis
+
+New data: in Bitwig the Sands/East/Macro visual params (HIGH enum indices, ~300+) DO appear,
+but the Big-5 core knobs (LOW indices, ~0-5) do NOT. This is the opposite of a simple
+"pool fills up, later params drop" — so raw NUM_PARAMS overflow is not the whole story.
+
+Ruled out in-container:
+- **Missing widgets**: `bindParam` (SvgPanelKit.hpp:156) does createParamCentered + addParam
+  exactly like stock Rack, BUT silently WARNs and creates NO widget if the panel marker isn't
+  found. However, the Big-5 markers (param_VARIATION_PARAM etc.) ARE present in both live
+  panels (dark + light), 1 each. So binding should succeed. Widget-presence theory: not
+  confirmed from the files.
+
+Two candidates remain, both needing the build to settle:
+
+1. **Runtime bind failure despite the marker existing in the file** — the LOADED panel differs
+   from the committed SVG (stale build, or a different panel variant loading at runtime). This
+   is the most likely cause of "some appear, some don't" and is ONE LINE to confirm:
+   → Open Rack's `log.txt` with Monsoon loaded. Look for:
+        [SvgKit] param shape not found: param_VARIATION_PARAM
+     (or any Big-5). If present, the runtime panel isn't the one on disk — rebuild clean /
+     check which panel path loadPanel() actually resolves. If ABSENT, binding is fine and it's
+     the host-pool/index issue below.
+
+2. **Index/pool interaction** — high-index params exposing while low-index don't could be a
+   fixed host window offset, or an enum arithmetic overlap (a mis-sized range making low IDs
+   collide). Verify NUM_PARAMS and that every range's START==previous END with no gaps/overlaps;
+   confirm PHASE_PARAM = LANE_DIR_END didn't shift anything. The shrink-NUM_PARAMS test still
+   applies.
+
+RECOMMENDED ORDER on the build:
+  a. Check log.txt for the SvgKit WARN (settles candidate 1 immediately, one line).
+  b. If clean, shrink NUM_PARAMS (stub MACRO/VARLEG/LANE_DIR) and see if Big-5 appear.
+  c. Fix per Option A/B above.
+Do NOT assume the NUM_PARAMS bloat is the cause until (a) is checked — the appear/not-appear
+ordering points at a bind/panel-load mismatch first.
