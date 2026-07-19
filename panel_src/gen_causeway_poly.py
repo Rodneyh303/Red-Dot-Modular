@@ -101,8 +101,13 @@ def gen(dark):
 
 
 if __name__ == "__main__":
+    # NOTE: writes to Causeway_GRID_* (NOT Causeway_panel_*). The module ships the bridge panel
+    # (gen_causeway.py → Causeway_panel_*). This grid layout is kept as an alternative; giving it
+    # its own filenames means running it can never clobber the bridge render again (which is exactly
+    # how the bridge was lost — see c919342). To use the grid, repoint MonsoonCausewayPolyExpander's
+    # darkPath/lightPath at these files.
     for dark in (True, False):
         theme = "dark" if dark else "light"
-        out = f"res/panels/Causeway_panel_{theme}.svg"
+        out = f"res/panels/Causeway_grid_{theme}.svg"
         open(out, "w").write(gen(dark))
-        print(f"Causeway {theme}: {out}  ({HP}HP, {PW}x{PH}px)")
+        print(f"Causeway GRID (alt) {theme}: {out}  ({HP}HP, {PW}x{PH}px)")
