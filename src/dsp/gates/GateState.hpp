@@ -64,6 +64,11 @@ struct GateState {
     // LEGATO_TIE_REDESIGN.md). In step 1 it is set but NOT consulted by the gate/decision
     // path (the join still decides exactly as today); step 2 will make the join consume it.
     bool   slurForward     = false; // this note intends to hold forward (leading-edge)
+    // STEP LEGATO (SLEG) mask: this note is PART OF a slur — it either leads one (slurForward)
+    // or continues one (prevSlur reached it). Set at the articulation site, read at emission to
+    // gate the SLEG output (= gsStep masked to slurred notes; silent on isolated notes). See
+    // STEP_GATE_IMPLEMENTATION.md (SLUR GATE section).
+    bool   slurMember      = false;
 
     // ── Articulation type (per voice) — the single source of truth the display reads ──
     // Set by the three articulation methods: triggerNote → Single (a fresh attack, including an

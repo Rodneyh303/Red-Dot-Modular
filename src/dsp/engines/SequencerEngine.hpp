@@ -39,6 +39,7 @@ struct StepResult {
 // probability; everything else (nvIdx, legatoProb, scale) is shared from mono.
 struct PolyVoice {
     GateState gs;
+    GateState gsStep;   // STEP mirror: same calls as gs but continuations re-struck (no fusion)
     float restProb = 0.0f;
     float accentProb = 0.0f;   // per-voice accent probability (accent as a poly lane)
     bool  accented = false;    // result of this voice's own accent draw this step
@@ -70,6 +71,7 @@ enum class StrandWriter : uint8_t {
 struct SequencerEngine {
     PatternEngine pe;
     GateState gs;
+    GateState gsStep;   // STEP mirror of gs (mono) — see STEP_GATE_IMPLEMENTATION.md
 
     // ── Poly voices ───────────────────────────────────────────────────────────
     // voices[0] = voice 2, voices[6] = voice 8.

@@ -29,6 +29,8 @@ void OutputGenerator::drive(SequencerEngine& engine,
 
     // Cache gate state for summary outputs
     float gateV = outputs[GATE_OUTPUT].getVoltage();
+    float stepGateV   = outputs[STEP_GATE_OUTPUT].getVoltage();         // mono STEP  (for poly ch0)
+    float stepLegatoV = outputs[STEP_LEGATO_GATE_OUTPUT].getVoltage();  // mono SLEG  (for poly ch0)
     bool accentActive = engine.lastStepResult.accented && !effectiveMuted;
     (void)accentActive;
 
@@ -42,14 +44,20 @@ void OutputGenerator::drive(SequencerEngine& engine,
         auto& gateOut   = straits->outputs[POLY_GATE_OUT];
         auto& cvOut     = straits->outputs[POLY_CV_OUT];
         auto& accentOut = straits->outputs[POLY_ACCENT_OUT];
+        auto& stepOut   = straits->outputs[POLY_STEP_GATE_OUT];
+        auto& slegOut   = straits->outputs[POLY_STEP_LEGATO_GATE_OUT];
         gateOut.setChannels(16);
         cvOut.setChannels(16);
         accentOut.setChannels(16);
+        stepOut.setChannels(16);
+        slegOut.setChannels(16);
 
         // ch0 = mono voice (voice 1), duplicated from the parent's mono path.
         gateOut.setVoltage((gateV > 5.f && !effectiveMuted) ? 10.f : 0.f, 0);
         cvOut.setVoltage(effectiveMuted ? 0.f : currentPitchV, 0);
         accentOut.setVoltage((!effectiveMuted && engine.lastStepResult.accented && gateV > 5.f) ? 10.f : 0.f, 0);
+        stepOut.setVoltage((stepGateV   > 5.f && !effectiveMuted) ? 10.f : 0.f, 0);
+        slegOut.setVoltage((stepLegatoV > 5.f && !effectiveMuted) ? 10.f : 0.f, 0);
 
         // ch1..15 = poly voices 2..16.
         for (int i = 0; i < 15; ++i) {
@@ -58,14 +66,19 @@ void OutputGenerator::drive(SequencerEngine& engine,
                 gateOut.setVoltage(0.f, ch);
                 cvOut.setVoltage(0.f, ch);
                 accentOut.setVoltage(0.f, ch);
+                stepOut.setVoltage(0.f, ch);
+                slegOut.setVoltage(0.f, ch);
                 continue;
             }
-            float vg = engine.voices[i].gs.process(sampleTime);
+            float vg     = engine.voices[i].gs.process(sampleTime);
+            float vgStep = engine.voices[i].gsStep.process(sampleTime);   // STEP mirror (per voice)
             gateOut.setVoltage(vg, ch);
             cvOut.setVoltage(engine.voices[i].gs.currentPitchV, ch);
             // Accent is a poly lane: each voice fires its OWN accent (drawn per-voice in
             // executePolyVoice), gated by the voice actually sounding.
             accentOut.setVoltage((engine.voices[i].accented && vg > 5.f) ? 10.f : 0.f, ch);
+            stepOut.setVoltage(vgStep, ch);
+            slegOut.setVoltage(engine.voices[i].gs.slurMember ? vgStep : 0.f, ch);  // SLEG: slur-masked
         }
     }
 
@@ -88,6 +101,7 @@ void OutputGenerator::drive(SequencerEngine& engine,
                 continue;
             }
             float vg = engine.voices[i].gs.process(sampleTime);
+            engine.voices[i].gsStep.process(sampleTime);  // STEP: advance in lockstep with gs (Changi emits no STEP jack)
             changi->outputs[GATE_OUT_0   + out].setVoltage(vg);
             changi->outputs[CV_OUT_0     + out].setVoltage(engine.voices[i].gs.currentPitchV);
             changi->outputs[ACCENT_OUT_0 + out].setVoltage((engine.voices[i].accented && vg > 5.f) ? 10.f : 0.f);
@@ -116,23 +130,18 @@ void OutputGenerator::generateOutputs(SequencerEngine& engine,
     // CLASSIFICATION from lastStepResult.decision. STEP GATE is NOT a classification: it is
     // the gate BEFORE legato drops its edges -- see LEGATO_TIE_MODEL_NOTE.md.
     //
-    // TODO(engine, MSYS2): emit the pre-legato-drop gate. The current gateV already has the
-    // legato drop APPLIED (edges fused across held notes). STEP GATE needs the gate as it
-    // would be if legato/tie did nothing: a fresh gate edge at every sub-step boundary,
-    // each carrying its own note length. This requires the engine to TRACK that pre-drop
-    // gate (a second gate-state, or a per-step "would-articulate" flag recorded at the point
-    // legato decides to suppress an edge) rather than reconstructing it here. Until that
-    // exists, STEP GATE mirrors the fused gate (safe: identical to GATE on non-legato
-    // patterns; only wrong DURING legato, where it under-articulates rather than misfires).
-    float stepGateV = gateV;   // PLACEHOLDER — see TODO above; replace with pre-drop gate.
+    // gsStep is the mono STEP mirror-GateState: it receives the SAME ticks/pulses as gs but
+    // every continuation is re-struck (triggerNote) instead of fused (slide/extend), so its
+    // gate falls+rises at every sub-note boundary. Gated by runGateActive exactly like gs so
+    // the two countdowns stay in lockstep (process() advances the retrigger pulse). See
+    // STEP_GATE_IMPLEMENTATION.md.
+    float stepGateV = engine.runGateActive ? engine.gsStep.process(sampleTime) : 0.f;
 
-    // ── STEP LEGATO GATE: STEP GATE masked to slurred notes only (silent on isolated). ──
-    // = gsStep gated by (slurForward OR prevSlur) -- the articulations INSIDE a slur, lead
-    // and continuations both. ENGINE EMISSION PENDING (see STEP_GATE_IMPLEMENTATION.md, SLUR
-    // GATE section). Placeholder emits 0 (never falsely fires); real emission masks stepGateV
-    // by the slur commitment. 0 is safe: STEP LEGATO is a strict subset of STEP, so an
-    // all-zero placeholder is silent, not wrong-signal.
-    float stepLegatoV = 0.f;   // PLACEHOLDER — mask stepGateV by slurForward||prevSlur.
+    // ── STEP LEGATO GATE (SLEG): STEP GATE masked to slurred notes only (silent on isolated). ──
+    // gsStep gated by slurMember (= this note leads OR continues a slur; set at the articulation
+    // site). Isolated notes have slurMember=false → silent; every note of a slur (lead + all
+    // continuations) masks in. See STEP_GATE_IMPLEMENTATION.md (SLUR GATE section).
+    float stepLegatoV = engine.gs.slurMember ? stepGateV : 0.f;
 
     setGateWithMute_(outputs[STEP_GATE_OUTPUT], stepGateV, muted);
     setGateWithMute_(outputs[STEP_LEGATO_GATE_OUTPUT], stepLegatoV, muted);

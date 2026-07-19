@@ -67,7 +67,8 @@ long SequencerEngine::laneTickFor(LaneDir d, long t, int len) {
 void SequencerEngine::reset() {
     pe.reset();
     gs.reset();
-    for (int i = 0; i < 15; ++i) voices[i].gs.reset();
+    gsStep.reset();
+    for (int i = 0; i < 15; ++i) { voices[i].gs.reset(); voices[i].gsStep.reset(); }
     // restProb values are NOT reset — the caller re-applies them from expander knobs.
     for (int i = 0; i < 15; i++) wasHeldPolyPrev[i] = false;
     lastStepResult = StepResult{};
@@ -455,6 +456,7 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
 
     if (legatoProb >= 0.999f) {
         gs.slideMax(pitchV, sem, nvIdx);
+        gsStep.triggerNote(pitchV, sem, nvIdx);            // STEP: re-strike (un-fused)
         result.decision = MonoDecision::LegatoMax;
     }
     else if ((r_rest < restProb) && !slurSuppressesRest) {
@@ -467,6 +469,7 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
         //    its own drawn pitch). See RHYTHM_BEHAVIOUR_POLICIES.md.
         if (canRest) {
             gs.gateHeld = false;
+            gsStep.gateHeld = false;                       // STEP: mirror the rest (close)
             result.decision = MonoDecision::Rest;
         } else {
             // Precedence: note tail takes priority over pattern structural rest.
@@ -487,14 +490,17 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
         // the joining onset no longer re-rolls — prevSlur carries the decision.)
         if (sem == gs.lastSemitone) {
             gs.extendHold(sem, nvIdx);
+            gsStep.triggerNote(gs.currentPitchV, sem, nvIdx);  // STEP: re-strike, same pitch
             result.decision = MonoDecision::Tie;
         } else {
             gs.slideNote(pitchV, sem, nvIdx, /*wasHeld=*/true);
+            gsStep.triggerNote(pitchV, sem, nvIdx);        // STEP: re-strike (un-fused)
             result.decision = MonoDecision::Legato;
         }
     }
     else {
         gs.triggerNote(pitchV, sem, nvIdx);
+        gsStep.triggerNote(pitchV, sem, nvIdx);            // STEP: same as fused (fresh note)
         result.decision = MonoDecision::NewNote;
     }
 
@@ -536,6 +542,7 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
                   && noteCanLeadLegato(nvIdx)
                   && (legatoProb >= 0.999f || r_legato_tie < legatoProb);
     gs.slurForward = leadsSlur;
+    gs.slurMember  = prevSlur || leadsSlur;   // SLEG mask: this note leads OR continues a slur
 
     result.forStep = stepIndex; lastStepResult = result;
     return result;
@@ -570,11 +577,13 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
         gs.gateHeld = false;
         gs.holdRemain = 0.f;
         gs.slurForward = false;
+        gsStep.gateHeld = false; gsStep.holdRemain = 0.f;      // STEP: stop with the fused gate
         for (int i = 0; i < numPolyVoices; ++i) {
             voices[i].gs.gateHeld   = false;
             voices[i].gs.holdRemain = 0.f;
             voices[i].gs.slurForward = false;
             voices[i].participating = false;
+            voices[i].gsStep.gateHeld = false; voices[i].gsStep.holdRemain = 0.f;
         }
     }
 
@@ -588,12 +597,14 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
     float prevHold = gs.holdRemain;
     wasHeldMono = gs.gateHeld || (prevHold > 0.0001f);
     gs.tick(ClockEngine::pulsesPer16th(ppqnSetting));
+    gsStep.tick(ClockEngine::pulsesPer16th(ppqnSetting));
     hadMonoTail = (prevHold > 0.0001f && prevHold < 0.999f);
 
     for (int i = 0; i < numPolyVoices; ++i) {
         wasHeldPolyPrev[i] = voices[i].gs.gateHeld || (voices[i].gs.holdRemain > 0.0001f);
         float ph = voices[i].gs.holdRemain;
         voices[i].gs.tick(ClockEngine::pulsesPer16th(ppqnSetting));
+        voices[i].gsStep.tick(ClockEngine::pulsesPer16th(ppqnSetting));
         hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
     }
     
@@ -630,9 +641,11 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
         // fresh. Applied before wasHeld capture, mono + poly.
         if (wrapped && boundaryInterrupt) {
             gs.gateHeld = false; gs.holdRemain = 0.f; gs.slurForward = false;
+            gsStep.gateHeld = false; gsStep.holdRemain = 0.f;      // STEP: stop with the fused gate
             for (int i = 0; i < numPolyVoices; ++i) {
                 voices[i].gs.gateHeld = false; voices[i].gs.holdRemain = 0.f;
                 voices[i].gs.slurForward = false; voices[i].participating = false;
+                voices[i].gsStep.gateHeld = false; voices[i].gsStep.holdRemain = 0.f;
             }
         }
         float r_vary   = pe.variationRandom[getVariationStep()];
@@ -645,12 +658,14 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
         float prevHold = gs.holdRemain;
         wasHeldMono = gs.gateHeld || (prevHold > 0.0001f);
         gs.tick();
+        gsStep.tick();
         hadMonoTail = (prevHold > 0.0001f && prevHold < 0.999f);
 
         for (int i = 0; i < numPolyVoices; ++i) {
             wasHeldPolyPrev[i] = voices[i].gs.gateHeld || (voices[i].gs.holdRemain > 0.0001f);
             float ph = voices[i].gs.holdRemain;
             voices[i].gs.tick();
+            voices[i].gsStep.tick();
             hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
         }
         
@@ -704,11 +719,12 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
             // Decide to Rest: Stick with it until mono gate drops. No accent while resting.
             v.accented = false;
             if (v.gs.holdRemain > 0.0001f) v.gs.gateHeld = true; // allow previous note tail to finish
-            else v.gs.gateHeld = false;
+            else { v.gs.gateHeld = false; v.gsStep.gateHeld = false; }  // STEP: mirror rest close
             // Rule 2: a resting voice starts no note, so it commits no forward slur, and it
             // is NOT part of this chain — landings must skip it (distinct from an opted-out
             // voice whose gate merely closed).
             if (perVoiceArticulation) { v.gs.slurForward = false; v.participating = false; }
+            v.gs.slurMember = false;   // SLEG: a resting voice is not part of a slur
             return;
         }
         
@@ -731,6 +747,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
             // bug. Trigger a fresh note instead. (Direction-independent; surfaced in reverse
             // mode but present forward too.)
             v.gs.triggerNote(pitchV, sem, nvV);
+        v.gsStep.triggerNote(pitchV, sem, nvV);   // STEP: every played onset re-strikes (un-fused)
 
         // ── Rule 2 LEAD (per-voice leading-edge slur roll) ────────────────────────────────
         // Mirror mono's LEAD commitment (executeStep), per voice: this note commits to slur its
@@ -754,6 +771,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
             v.gs.slurForward = leStartingV
                              && noteCanLeadLegato(nvV)
                              && (lastLegatoProb_ >= 0.999f || r_polyLegato < lastLegatoProb_);
+            v.gs.slurMember = v.gs.slurForward;   // SLEG: onset member iff it leads a slur
 #if RULE2_DEBUG
             INFO("[R2 roll ] v=%2d step=%3d LE=%d legCell=%2d monoCell=%2d legLOR=(%2d,%2d,%2d) "
                  "r=%.3f prob=%.3f nvV=%d canLead=%d -> slur=%d",
@@ -772,6 +790,8 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
     // If mono is Sustaining or Resting, poly must stick to its current role.
     if (lastStepResult.decision == MonoDecision::Rest) {
         v.gs.gateHeld = false;
+        v.gsStep.gateHeld = false;   // STEP: mirror mono rest
+        v.gs.slurMember = false;     // SLEG: mono rested
         v.participating = false;   // Rule 2: mono rested → the chain ends for this voice.
     } else {
         // A LANDING = mono connects at this edge (Legato / LegatoMax / Tie). MidNote is a
@@ -791,6 +811,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
             // re-rolls at every sounding onset, so 3+ note chains carry forward per voice.
             if (!v.participating) {
                 v.gs.gateHeld = false;   // rested at the onset → not part of this chain
+                v.gsStep.gateHeld = false; v.gs.slurMember = false;   // STEP/SLEG mirror
             } else {
                 const bool prevSlur = v.gs.slurForward;
                 const bool isTie    = (lastStepResult.decision == MonoDecision::Tie);
@@ -815,6 +836,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                 if (connect && isTie) {
                     // committed tie → hold own pitch and extend (no redraw), like the follow-mono tie
                     v.gs.extendHold(v.gs.lastSemitone, nvV);
+                    v.gsStep.triggerNote(v.gs.currentPitchV, v.gs.lastSemitone, nvV);  // STEP
                 } else {
                     // committed legato → slide to own new pitch; opted out / not still sounding →
                     // re-articulate fresh. Either way this voice draws its OWN pitch (melody/octave
@@ -833,11 +855,13 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                         v.accented = (pe.polyRandom(voiceIdx, PL_ACCENT)[accIdx] < v.accentProb);
                         v.gs.triggerNote(pitchV, sem, nvV);                   // re-articulate
                     }
+                    v.gsStep.triggerNote(pitchV, sem, nvV);   // STEP: slide/re-artic both re-strike
                 }
                 // Re-roll the forward commitment for the NEXT landing (mirror mono's LEAD, per voice).
                 float r_polyLegato = pe.legatoRandom[getLegatoStepForVoice(voiceIdx)];
                 v.gs.slurForward = noteCanLeadLegato(nvV)
                                  && (lastLegatoProb_ >= 0.999f || r_polyLegato < lastLegatoProb_);
+                v.gs.slurMember = prevSlur || v.gs.slurForward;  // SLEG: continues OR leads
             }
         } else {
             // ── follow-mono path (perVoiceArticulation OFF, or a MidNote hold) ─────────────
@@ -852,9 +876,11 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                     int sem = 0;
                     float pitchV = pe.genPitchLive(sem, input, pe.polyRandom(voiceIdx, PL_MELODY)[melIdx], pe.polyRandom(voiceIdx, PL_OCTAVE)[octIdx]);
                     v.gs.slideNote(pitchV, sem, nvV, wasHeldPoly);
+                    v.gsStep.triggerNote(pitchV, sem, nvV); v.gs.slurMember = true;  // STEP/SLEG
                 } else if (lastStepResult.decision == MonoDecision::Tie) {
                     // Mono held the same pitch (tie) → poly holds its own current pitch, extends hold.
                     v.gs.extendHold(v.gs.lastSemitone, nvV);
+                    v.gsStep.triggerNote(v.gs.currentPitchV, v.gs.lastSemitone, nvV); v.gs.slurMember = true;  // STEP/SLEG
                 } else {
                     // MidNote: mono is HOLDING a note still sounding — nothing was chosen this step
                     // (the executeStep guard returned early). Poly follows mono's hold ONLY while THIS
@@ -870,6 +896,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
             } else {
                 // Mono gate is low OR poly chose to rest for this current high cycle.
                 v.gs.gateHeld = false;
+                v.gsStep.gateHeld = false; v.gs.slurMember = false;  // STEP/SLEG mirror
             }
         }
     }
@@ -890,6 +917,7 @@ void SequencerEngine::executeModeC(const ClockEngine& clock, float inCV) {
     gs.gateHeld = false;
     if (clock.quarterEdge) {
         gs.tick(ClockEngine::pulsesPer16th(ppqnSetting));
+        gsStep.tick(ClockEngine::pulsesPer16th(ppqnSetting));
         advancePlayhead();
         gs.currentPitchV = quantize(inCV);
         int sem = int(std::round((gs.currentPitchV - std::floor(gs.currentPitchV)) * 12.f)) % 12;

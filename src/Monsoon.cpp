@@ -639,8 +639,11 @@ void Monsoon::process(const ProcessArgs& args) {
         bool gridPulse = (modeSelect == 4) ? phase.pulseEdge : clock.pulseEdge;
         if (gridPulse) {
             engine.gs.tickPulse();
-            for (int i = 0; i < engine.numPolyVoices; ++i)
+            engine.gsStep.tickPulse();
+            for (int i = 0; i < engine.numPolyVoices; ++i) {
                 engine.voices[i].gs.tickPulse();
+                engine.voices[i].gsStep.tickPulse();
+            }
         }
         // Optimization: Only execute mode logic if a relevant trigger/state is active.
         // This avoids calling executeMode and its internal switch every sample for Modes A, B, C.
@@ -712,8 +715,11 @@ void Monsoon::process(const ProcessArgs& args) {
                 // post-jump gate state aligned with the landing position.
                 for (int pu = 0; pu < p16; ++pu) {
                     engine.gs.tickPulse();
-                    for (int i = 0; i < engine.numPolyVoices; ++i)
+                    engine.gsStep.tickPulse();
+                    for (int i = 0; i < engine.numPolyVoices; ++i) {
                         engine.voices[i].gs.tickPulse();
+                        engine.voices[i].gsStep.tickPulse();
+                    }
                 }
             }
             engine.pe.setReverseActive(savedReverse);
