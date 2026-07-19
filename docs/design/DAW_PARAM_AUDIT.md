@@ -36,6 +36,13 @@ store-back-smear across voices under host modulation.
 **Full-system patch ≈ 855 slots (~84 % of 1024) before a single VCO, filter, or mixer.**
 Dead allocation alone (East + Macro + Causeway over-sizing) ≈ **336 slots**.
 
+Taxonomy that makes the audit tractable: apart from Monsoon and Straits, every expander
+is either a MODULATOR of probabilities / the reaction surface (Junction, Interchange,
+Raffles, Causeway attens, Shophouse) or a pure OUTPUT expander (Changi, Lantern's view
+controls aside). Modulator params are attenuverters — legitimately params, rarely worth
+host automation (the CV jack next to them is the modulation path). The problem class is
+confined to the visual editors' proxies and the over-sized allocations.
+
 ## 3. Special-semantics params (the confusion inventory)
 
 These are params whose HOST-VISIBLE meaning differs from what a DAW user would assume:
@@ -51,8 +58,11 @@ store-back runs every same-voice frame):
 **B. Display/derived proxies (not selection-dependent but not controls either)**:
 Macro tap params (widgeted trimpots that are really tap config), owner cells.
 
-**C. State stashes as params**: Monsoon `LAST_DICE_R/M`, `LAST_TRIAL_R/M` — persistence
-of last dice results. Automating them is meaningless-to-harmful.
+**C. (CORRECTED) — no state stashes found.** `LAST_DICE_R/M` and `LAST_TRIAL_R/M` are
+momentary BUTTONS (configButton, SchmittTrigger-processed): "recall the previous draw /
+previous candidate" gestures. The stashed VALUES live in the engine's dice state, not in
+params. They pair 1:1 with Raffles' LASTDICE/LASTTRIAL gate inputs — same gesture, button
+vs CV form — and are part of the dice reaction surface. They STAY.
 
 **D. Momentary buttons**: DNA scramble ×7, reset ×7, DICE R/M, RESET_BUTTON. Legitimate
 params (host-triggerable gestures) but arguably better served by CV/gate inputs which
@@ -78,9 +88,9 @@ redundant — patch a DC-coupled DAW output into the CV jack instead.
 | 57–61 | LOCK/MUTE/MODE/RESET/RUN | KEEP (performance switches) |
 | 62–91 | Per-voice REST/ACC ×15+15 | **KEEP — the GOOD per-voice pattern**: one param per voice, fixed addressing, no selection dependence. This is what per-voice DAW control should look like. |
 | 92–125 | Per-voice + global MOD attenuverters ×34 | keep (bound on Causeway); attens are config-ish, rarely automated |
-| 126–141 | GLOBAL_* DNA + INTERP ×16 | keep; structural |
-| 142–147 | Dice slew/mix/trial ×6 | keep (Raffles surface) |
-| 148–151 | LAST_DICE/LAST_TRIAL ×4 | **DEMOTE to json state** — not controls |
+| 126–140 | GLOBAL_* DNA + INTERP ×15 (no ACCENT_INTERP) | keep; structural |
+| 141–146 | Dice slew/mix/trial ×6 | keep (Raffles surface) |
+| 147–150 | LAST_DICE/LAST_TRIAL ×4 | **KEEP — recall GESTURES (buttons), not stashes; the dice reaction surface. Raffles exposes the same as gates.** |
 | 151 | PHASE_PARAM | **KEEP — explicitly designed as the DAW-automatable phase fallback** |
 
 ## 5. Recommended actions (ordered by value/effort)
@@ -95,7 +105,8 @@ redundant — patch a DC-coupled DAW output into the CV jack instead.
    East/Macro/Mono Sands become store-backed widgets. Kills the retarget/smear
    confusion class and refunds ~50 more slots. The proxy-sync latches
    (`lastSendVoice` etc.) get deleted with it.
-3. **Demote LAST_DICE/LAST_TRIAL to dataToJson/FromJson.**
+3. ~~Demote LAST_DICE/LAST_TRIAL~~ — WITHDRAWN on inspection: they are recall buttons
+   (gestures), not value stashes; the values already live in engine state. They stay.
 4. **Optional (Option C)**: add 16 stable "V*n* macro receive" params on Macro if
    per-voice DAW control of the macro bus earns its slots. Decide after 1–2.
 5. **Rename what remains** so host lists self-describe: params that survive should
