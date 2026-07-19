@@ -343,6 +343,21 @@ struct LanternDisplay : widget::Widget {
         const float laneH = H / N_VOICES;
         const float gutter = W * GUTTER_FRAC;
 
+        // LCD ground: DARK on BOTH themes. The panel's display well follows the host theme
+        // (light #d4d6d9 on the light panel), but the cells encode state in colour AND alpha —
+        // on a light ground a low-alpha cell washes out and reads as ABSENT, misreporting data
+        // (see the note on LanternWidget). So draw our own dark well over the panel's, same rule
+        // as SandsVisualEditorV4::setTheme ('theme the panel, leave the screen alone'). Inset a
+        // hair so the panel's wellring bezel still frames it — a light bezel round a dark well
+        // reads as a recessed screen. Matches gen_lantern.py's dark well (#0f1114).
+        {
+            const float inset = 1.f;
+            nvgBeginPath(vg);
+            nvgRoundedRect(vg, inset, inset, W - 2.f * inset, H - 2.f * inset, mm2px(1.2f));
+            nvgFillColor(vg, nvgRGB(0x0f, 0x11, 0x14));
+            nvgFill(vg);
+        }
+
         auto font0 = APP->window->loadFont(rack::asset::system("res/fonts/DejaVuSans-Bold.ttf"));
         if (!font0) font0 = APP->window->uiFont;
 
