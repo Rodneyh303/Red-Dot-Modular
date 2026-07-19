@@ -189,7 +189,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // Returns the UNCLAMPED Macro send delta (0 when no Macro). Summed with East's, clamped once.
             auto macroDelta = [&](int engLane, int item)->float {
                 if (!hasMacro || !macroVis) return 0.f;
-                float send = macroVis->params[Macro::sendId(dotModular::VoiceResolver::kMonoSlot, engLane, item)].getValue();   // slot 0 = mono
+                float send = (redDot::findMonsoonEitherSide(macroVis) ? redDot::findMonsoonEitherSide(macroVis)->getMacroSend(dotModular::VoiceResolver::kMonoSlot, engLane, item) : 0.f);   // slot 0 = mono
                 return macroVis->macroSendDelta[engLane][item] * send;  // P9: tapped send delta
             };
             // East CV exists only for the 4 poly lanes (MEL/OCT/REST/ACC); VAR/LEG

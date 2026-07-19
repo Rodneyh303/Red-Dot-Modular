@@ -502,14 +502,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // voice v+2 → slot), anchored to the asserted slot/bank invariant.
         const int slot = dotModular::VoiceResolver::voiceSlot(v + dotModular::VoiceResolver::kFirstPoly);
         for (int lane=0; lane<4; ++lane)
-            module->params[ownerId(v,lane)].setValue(module->params[ownerDispId(lane)].getValue());
+            if (auto* mm = getMonsoon()) mm->setMacroOwn(v, lane, module->params[ownerDispId(lane)].getValue());
         // VAR/LEG delegation: display proxy → this voice's per-voice store. lane 0=VAR, 1=LEG.
         for (int lane=0; lane<2; ++lane)
             if (auto* mm = getMonsoon()) mm->setVarlegDeleg(v, lane, module->params[varlegDelegDispId(lane)].getValue());
         // CV-depth attenuverters: display proxy → this voice's per-voice store.
         for (int lane=0; lane<4; ++lane)
             for (int c=0; c<4; ++c)
-                module->params[attenId(slot,lane,c)].setValue(module->params[attenDispId(lane,c)].getValue());
+                if (auto* mm = getMonsoon()) mm->setMacroAtten(slot, lane*4 + c, module->params[attenDispId(lane,c)].getValue());
         // VAR/LEG CV-depth: display proxy → this voice's per-voice store. lane 0=VAR,1=LEG; col 0..2.
         for (int lane=0; lane<2; ++lane)
             for (int c=0; c<3; ++c)
@@ -519,14 +519,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         if (!module) return;
         const int slot = dotModular::VoiceResolver::voiceSlot(v + dotModular::VoiceResolver::kFirstPoly);
         for (int lane=0; lane<4; ++lane)
-            module->params[ownerDispId(lane)].setValue(module->params[ownerId(v,lane)].getValue());
+            if (auto* mm = getMonsoon()) module->params[ownerDispId(lane)].setValue(mm->getMacroOwn(v, lane));
         // VAR/LEG delegation: this voice's per-voice store → display proxy. lane 0=VAR, 1=LEG.
         for (int lane=0; lane<2; ++lane)
             if (auto* mm = getMonsoon()) module->params[varlegDelegDispId(lane)].setValue(mm->getVarlegDeleg(v,lane));
         // CV-depth attenuverters: this voice's per-voice store → display proxy.
         for (int lane=0; lane<4; ++lane)
             for (int c=0; c<4; ++c)
-                module->params[attenDispId(lane,c)].setValue(module->params[attenId(slot,lane,c)].getValue());
+                if (auto* mm = getMonsoon()) module->params[attenDispId(lane,c)].setValue(mm->getMacroAtten(slot, lane*4 + c));
         // VAR/LEG CV-depth: this voice's per-voice store → display proxy. lane 0=VAR,1=LEG; col 0..2.
         for (int lane=0; lane<2; ++lane)
             for (int c=0; c<3; ++c)
@@ -589,7 +589,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // live owner-cell proxy into it when leaving the V1 tab.
         if (selectedVoice == 0) {
             for (int lane = 0; lane < 4; ++lane)
-                module->params[monoOwnerId(lane)].setValue(module->params[ownerDispId(lane)].getValue());
+                if (auto* mm = getMonsoon()) mm->setMonoMacroOwn(lane, module->params[ownerDispId(lane)].getValue());
         }
         selectedVoice = nv;
         // Load the INCOMING voice.
@@ -618,7 +618,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // write runs, otherwise the outgoing poly voice's VAR/LEG would be pushed into mono.
             mirrorMonoExtraLanes();
             for (int lane = 0; lane < 4; ++lane)
-                module->params[ownerDispId(lane)].setValue(module->params[monoOwnerId(lane)].getValue());
+                if (auto* mm = getMonsoon()) module->params[ownerDispId(lane)].setValue(mm->getMonoMacroOwn(lane));
             // V1 is mono → VAR/LEG always follow mono; show the cells filled (and they lock).
             for (int lane = 0; lane < 2; ++lane)
                 module->params[varlegDelegDispId(lane)].setValue(0.f);
