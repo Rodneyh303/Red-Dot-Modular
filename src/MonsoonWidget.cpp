@@ -380,6 +380,16 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         // never get built. flushModArcs clears the pending list, so this only
         // builds the as-yet-unflushed (slew/mix/slider) overlays.
         flushModArcs(this, dynamic_cast<Monsoon*>(module));
+
+        // ── TEMPORARY: Mode E phase knob at a FIXED position (no panel marker yet). ──
+        // In the CONSTRUCTOR (added once), NOT applyTheme() (which re-runs on theme toggle
+        // and would stack duplicates). Placed below the OFFSET knob so it's clickable for
+        // host-parameter mapping -- VCV binds host automation slots to on-screen controls,
+        // so PHASE_PARAM needs a visible knob before Bitwig can map/modulate it. Position is
+        // provisional; the real placement comes with the Monsoon panel rejig (TIE-jack
+        // cleanup + STEP/SLEG). Plain small cog, no theme swap (fine for a test control).
+        addParam(createParamCentered<redDot::Dark_Small_Cog>(
+            mm2px(Vec(178.0f, 72.0f)), module, MonsoonIds::PHASE_PARAM));
     }
 
 void MonsoonWidget::applyTheme() {
