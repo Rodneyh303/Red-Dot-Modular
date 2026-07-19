@@ -89,15 +89,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             auto* arc = new redDot::ModArcOverlay();
             arc->radius   = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
             arc->attachOverKnob(knob, mm2px(2.5f));
-            auto interpParamId = [this, lane]() -> int {
-                int v = polyVoice();
-                if (v < 0) v = 0;   // mono tab: arc is inactive anyway; keep id in range
-                return (lane==0) ? restInterpId(v)
-                     : (lane==1) ? melodyInterpId(v)
-                     : (lane==2) ? octaveInterpId(v)
-                     :             accentInterpId(v);   // lane 3 = ACCENT (was falling through to octave)
-            };
-            arc->getSetNorm = [mod, this, interpParamId, lane]() -> float {
+            arc->getSetNorm = [mod, this, lane]() -> float {
                 if (!mod) return 0.5f;
                 if (polyVoice() < 0) {
                     // V1 (combo 7): SET = East's spread knob, which now mirrors Mono's
@@ -108,8 +100,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     auto* pq = mod->paramQuantities[pid];
                     return pq ? (float)pq->getScaledValue() : 0.5f;
                 }
-                auto* pq = mod->paramQuantities[interpParamId()];
-                return pq ? (float)pq->getScaledValue() : 0.5f;
+                // Poly: SET = this voice's stored spread (unified store, bipolar -1..1 → 0..1).
+                Monsoon* mm = findMonsoonEitherSide(mod);
+                int v = polyVoice();
+                if (!mm || v < 0 || v >= 15 || lane < 0 || lane >= 4) return 0.5f;
+                int slot = dotModular::VoiceResolver::voiceSlot(v + dotModular::VoiceResolver::kFirstPoly);
+                return rack::math::clamp((mm->getSpread(slot, lane) + 1.f) * 0.5f, 0.f, 1.f);
             };
             arc->getModNorm = [mod, this, lane]() -> float {
                 if (!mod) return 0.5f;
@@ -146,7 +142,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 // polySpreadEffective is bipolar -1..1 → map to 0..1.
                 return rack::math::clamp((mod->polySpreadEffective[v][lane] + 1.f) * 0.5f, 0.f, 1.f);
             };
-            arc->isActive = [mod, this, lane, interpParamId]() -> bool {
+            arc->isActive = [mod, this, lane]() -> bool {
                 if (!mod) return false;
                 Monsoon* mon = findMonsoonEitherSide(mod);
                 if (!mon || !mon->modVizEast) return false;
@@ -481,21 +477,25 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
 
     void saveVoiceSpread(int v) {
         if (!module) return;
+        auto* mm = getMonsoon(); if (!mm) return;
         // The SPREAD_* trimpot is never force-overwritten anymore (a ceded lane's knob
         // DISPLAYS Macro's base via DimmableTrimpot.displayValueFn without touching the
         // param), so it always holds East's real value and saves cleanly. Store stays
         // pristine → cede→reclaim reverts. (See DISPLAY_STORE_ENGINE_SEPARATION.md.)
-        module->params[restInterpId(v)  ].setValue(module->params[SPREAD_R].getValue());
-        module->params[melodyInterpId(v)].setValue(module->params[SPREAD_M].getValue());
-        module->params[octaveInterpId(v)].setValue(module->params[SPREAD_O].getValue());
-        module->params[accentInterpId(v)].setValue(module->params[SPREAD_A].getValue());
+        const int slot = dotModular::VoiceResolver::voiceSlot(v + dotModular::VoiceResolver::kFirstPoly);
+        mm->setSpread(slot, 0, module->params[SPREAD_R].getValue());
+        mm->setSpread(slot, 1, module->params[SPREAD_M].getValue());
+        mm->setSpread(slot, 2, module->params[SPREAD_O].getValue());
+        mm->setSpread(slot, 3, module->params[SPREAD_A].getValue());
     }
     void loadVoiceSpread(int v) {
         if (!module) return;
-        module->params[SPREAD_R].setValue(module->params[restInterpId(v)  ].getValue());
-        module->params[SPREAD_M].setValue(module->params[melodyInterpId(v)].getValue());
-        module->params[SPREAD_O].setValue(module->params[octaveInterpId(v)].getValue());
-        module->params[SPREAD_A].setValue(module->params[accentInterpId(v)].getValue());
+        auto* mm = getMonsoon(); if (!mm) return;
+        const int slot = dotModular::VoiceResolver::voiceSlot(v + dotModular::VoiceResolver::kFirstPoly);
+        module->params[SPREAD_R].setValue(mm->getSpread(slot, 0));
+        module->params[SPREAD_M].setValue(mm->getSpread(slot, 1));
+        module->params[SPREAD_O].setValue(mm->getSpread(slot, 2));
+        module->params[SPREAD_A].setValue(mm->getSpread(slot, 3));
     }
     // Owner display proxy ↔ per-voice MACRO_OWN; CV-depth attenuverters disp↔per-voice.
     // (Macro mix-in send sync relocated to Macro under the control inversion.)
@@ -1215,19 +1215,22 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // so the stores — and thus save/load and the next round-trip — stay current.
             if (auto* mmV1 = getMonsoon()) {
                 if (!v1Loaded_) {
-                    if (mmV1->getEastV1Stored()) {
-                        for (int el = 0; el < dotModular::SandsGrid::EAST_LANES; ++el) {
-                            auto& lane = visualEditor->currentState.lanes[el];
-                            const int bank = lorBank(el);
-                            lane.length   = std::max(1, (int)std::round(mmV1->getLorBase(0, bank, 0)));
-                            lane.offset   = (int)std::round(mmV1->getLorBase(0, bank, 1));
-                            lane.rotation = (int)std::round(mmV1->getLorBase(0, bank, 2));
-                        }
-                        module->params[SPREAD_R].setValue(mmV1->getEastV1Spread(0));
-                        module->params[SPREAD_M].setValue(mmV1->getEastV1Spread(1));
-                        module->params[SPREAD_O].setValue(mmV1->getEastV1Spread(2));
-                        module->params[SPREAD_A].setValue(mmV1->getEastV1Spread(3));
+                    // Seed editor/display from the unified store slot 0. Safe even on a fresh
+                    // patch: lorBase[0] is identity (len=16) and spread[0] is 0 — exactly the
+                    // editor's own defaults — so the seed is a no-op until V1 has been edited.
+                    // (This is why eastV1Stored is gone: an identity/zero-init store needs no
+                    // "has this ever been written" guard — Stage 1 folded V1 into slot 0.)
+                    for (int el = 0; el < dotModular::SandsGrid::EAST_LANES; ++el) {
+                        auto& lane = visualEditor->currentState.lanes[el];
+                        const int bank = lorBank(el);
+                        lane.length   = std::max(1, (int)std::round(mmV1->getLorBase(0, bank, 0)));
+                        lane.offset   = (int)std::round(mmV1->getLorBase(0, bank, 1));
+                        lane.rotation = (int)std::round(mmV1->getLorBase(0, bank, 2));
                     }
+                    module->params[SPREAD_R].setValue(mmV1->getSpread(0, 0));
+                    module->params[SPREAD_M].setValue(mmV1->getSpread(0, 1));
+                    module->params[SPREAD_O].setValue(mmV1->getSpread(0, 2));
+                    module->params[SPREAD_A].setValue(mmV1->getSpread(0, 3));
                     // atten displays ← preserved mono-slot stores (valid even fresh: 0 = no depth).
                     // Must precede the every-frame *Disp→kMonoSlot mirrors below, else the stale
                     // (last poly voice's) display proxies would overwrite V1's saved depth.
@@ -1249,11 +1252,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         mmV1->setLorBase(0, bank, 1, (float)lane.offset);
                         mmV1->setLorBase(0, bank, 2, (float)lane.rotation);
                     }
-                    mmV1->setEastV1Spread(0, module->params[SPREAD_R].getValue());
-                    mmV1->setEastV1Spread(1, module->params[SPREAD_M].getValue());
-                    mmV1->setEastV1Spread(2, module->params[SPREAD_O].getValue());
-                    mmV1->setEastV1Spread(3, module->params[SPREAD_A].getValue());
-                    mmV1->setEastV1Stored(true);
+                    mmV1->setSpread(0, 0, module->params[SPREAD_R].getValue());
+                    mmV1->setSpread(0, 1, module->params[SPREAD_M].getValue());
+                    mmV1->setSpread(0, 2, module->params[SPREAD_O].getValue());
+                    mmV1->setSpread(0, 3, module->params[SPREAD_A].getValue());
                 }
             }
             // ─────────────────────────────────────────────────────────────────────────────

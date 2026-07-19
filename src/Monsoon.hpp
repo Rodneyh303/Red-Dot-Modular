@@ -993,19 +993,19 @@ struct Monsoon : Module {
         // editable LOR base, replacing the per-voice East params (POLY_*_VOICE_1_LEN) and the
         // old V1-only eastV1Lor. Identity-initialised (len=16) in the Monsoon constructor.
         float lorBase[288] = {0};     // 16 slots × 6 banks × 3
-        // V1 (East-alone) spread backup (LOR now unified above; spread unified in Stage 1b).
-        float eastV1Spread[4] = {0};  // 0=REST 1=MEL 2=OCT 3=ACC (SPREAD_R/M/O/A order)
-        bool  eastV1Stored = false;
+        // Unified per-voice SPREAD store (Stage 1b). Same slot convention as lorBase
+        // (0 = V1/mono, 1..15 = V2..V16) × lane 0..3 (REST/MEL/OCT/ACC — spread does not
+        // apply to VAR/LEG). Zero-init = no spread, matching the old configParam default.
+        // Replaces the per-voice interp params AND the old V1-only eastV1Spread. V1 is slot 0.
+        float spread[64] = {0};       // 16 slots × 4 lanes
     } editor;
 
     // Unified LOR base accessors. slot = voiceSlot (0 = V1/mono), bank 0..5, c 0..2.
     float getLorBase(int slot, int bank, int c) const { return editor.lorBase[slot*18 + bank*3 + c]; }
     void  setLorBase(int slot, int bank, int c, float x) { editor.lorBase[slot*18 + bank*3 + c] = x; }
-    // V1 spread backup accessors — see EditorState comment.
-    float getEastV1Spread(int i) const { return editor.eastV1Spread[i]; }
-    void  setEastV1Spread(int i, float x) { editor.eastV1Spread[i] = x; }
-    bool  getEastV1Stored() const { return editor.eastV1Stored; }
-    void  setEastV1Stored(bool b) { editor.eastV1Stored = b; }
+    // Unified spread accessors. slot = voiceSlot (0 = V1/mono), lane 0..3.
+    float getSpread(int slot, int lane) const { return editor.spread[slot*4 + lane]; }
+    void  setSpread(int slot, int lane, float x) { editor.spread[slot*4 + lane] = x; }
 
     // MACRO accessors (mirror old ownerId/sendId/attenId/tapId index math).
     float getMacroOwn(int v, int lane) const { return editor.macroOwn[v*4 + lane]; }

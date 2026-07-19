@@ -54,7 +54,6 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
     auto* eastVisual  = cachedEastSandsVisual;
 
     auto* eastLOR   = eastVisual;// ? static_cast<rack::Module*>(eastVisual);
-    auto* eastInterp = eastVisual;// ? static_cast<rack::Module*>(eastVisual)
 
     // West retired: one Straits module now handles all poly voices (2..16 = 15 voices).
     // The poly cables are 16ch; the cap is simply "Straits present → up to 15 poly voices".
@@ -322,7 +321,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
 #endif
             }
 
-            float restInterp = eastInterp->params[MonsoonIds::POLY_REST_INTERP_1 + v].getValue();
+            float restInterp = mmOwn ? mmOwn->getSpread(slot, PL::PL_REST) : 0.f;
             if (eastVisual && eastVisual->inputs[cvId(PL::PL_REST,3)].isConnected()) {
                 float att = mmOwn ? mmOwn->getMacroAtten(slot, PL::PL_REST*4 + 3) : 0.f;   // PER-VOICE depth
                 float cv  = eastVisual->inputs[cvId(PL::PL_REST,3)].getPolyVoltage(v) / 10.f;
@@ -347,7 +346,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 }
             }
             
-            float melodyInterp = eastInterp->params[MonsoonIds::POLY_MELODY_INTERP_1 + v].getValue();
+            float melodyInterp = mmOwn ? mmOwn->getSpread(slot, PL::PL_MELODY) : 0.f;
             engine.polyLenERef(v, PL::PL_MELODY) = combineLOR(PL::PL_MELODY, 0, PL::PL_MELODY, 0, 1.f, 16.f);
             engine.polyOffERef(v, PL::PL_MELODY) = combineLOR(PL::PL_MELODY, 1, PL::PL_MELODY, 1, 0.f, 15.f);
             engine.polyRotERef(v, PL::PL_MELODY) = combineLOR(PL::PL_MELODY, 2, PL::PL_MELODY, 2, 0.f, 15.f);
@@ -381,7 +380,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
             engine.polyOffERef(v, PL::PL_OCTAVE) = combineLOR(PL::PL_OCTAVE, 1, PL::PL_OCTAVE, 1, 0.f, 15.f);
             engine.polyRotERef(v, PL::PL_OCTAVE) = combineLOR(PL::PL_OCTAVE, 2, PL::PL_OCTAVE, 2, 0.f, 15.f);
 
-            float octaveInterp = eastInterp->params[MonsoonIds::POLY_OCTAVE_INTERP_1 + v].getValue();
+            float octaveInterp = mmOwn ? mmOwn->getSpread(slot, PL::PL_OCTAVE) : 0.f;
             if (eastVisual && eastVisual->inputs[cvId(PL::PL_OCTAVE,3)].isConnected()) {
                 float att = mmOwn ? mmOwn->getMacroAtten(slot, PL::PL_OCTAVE*4 + 3) : 0.f;   // PER-VOICE depth
                 float cv  = eastVisual->inputs[cvId(PL::PL_OCTAVE,3)].getPolyVoltage(v) / 10.f;
@@ -411,7 +410,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 engine.polyLenERef(v, PL::PL_ACCENT) = combineLOR(PL::PL_ACCENT, 0, PL::PL_ACCENT, 0, 1.f, 16.f);
                 engine.polyOffERef(v, PL::PL_ACCENT) = combineLOR(PL::PL_ACCENT, 1, PL::PL_ACCENT, 1, 0.f, 15.f);
                 engine.polyRotERef(v, PL::PL_ACCENT) = combineLOR(PL::PL_ACCENT, 2, PL::PL_ACCENT, 2, 0.f, 15.f);
-                float accentInterp = math::clamp(eastInterp->params[MonsoonIds::POLY_ACCENT_INTERP_1 + v].getValue(), -1.f, 1.f);
+                float accentInterp = math::clamp(mmOwn ? mmOwn->getSpread(slot, PL::PL_ACCENT) : 0.f, -1.f, 1.f);
                 // Accent spread CV (cvId(PL_ACCENT,3)) — was missing, so accent spread
                 // only responded to the manual knob, never to modulation. Mirror the
                 // REST/MEL/OCT path: add CV×atten, then combineSpread (owner + Macro blend).
