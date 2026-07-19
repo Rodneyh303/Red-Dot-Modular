@@ -118,57 +118,14 @@ namespace StraitsEastVisualIds {
     // VAR/LEG CV jack id. lane 0=VAR, 1=LEG; col 0=LEN,1=OFF,2=ROT.
     static inline int varlegCvId(int lane, int col) { return VARLEG_CV_START + lane*3 + col; }
 
-    // ── LOR / Interp param ID helpers ─────────────────────────────────────
-    // `lane` here is a POLY lane (SequencerEngine::PolyLane), NOT an editor lane:
-    //     0 = PL_REST   1 = PL_MELODY   2 = PL_OCTAVE   3 = PL_ACCENT
-    // VARIATION and LEGATO are mono strands, not poly lanes (PL_LANES == 4), so they have no bank.
-    //
-    // HAZARD CLOSED: this used to fall through to the OCTAVE bank for ANY unrecognised lane, so
-    // lorId(v, 4|5, c) silently returned OCTAVE's params. Unlocking East's VARIATION/LEGATO lanes
-    // would have CORRUPTED every voice's octave LOR, not merely written an unread store.
-    // Now returns -1 for lanes with no bank, so a caller fails loudly instead of writing the wrong one.
-    // (Live callers loop l < 4, so -1 is unreachable today — it is a tripwire for stage 1b.)
-    inline int lorId(int v, int lane, int c) {
-        if (lane == 0) return POLY_DNA_VOICE_1_LEN    + v*3 + c;
-        if (lane == 1) return POLY_MELODY_VOICE_1_LEN + v*3 + c;
-        if (lane == 2) return POLY_OCTAVE_VOICE_1_LEN + v*3 + c;
-        if (lane == 3) return POLY_ACCENT_VOICE_1_LEN + v*3 + c;
-        return -1;   // unreachable: lanes 0..3 are the only PolyLanes
-    }
+    // ── LOR bank helper ───────────────────────────────────────────────────
 
-    // EDITOR-lane LOR id (0=MEL 1=OCT 2=REST 3=ACC 4=VAR 5=LEG). Lanes 0..3 map back to their
-    // PolyLane bank; 4/5 use the dedicated VARIATION/LEGATO banks added for EAST_EXTRA_LANES.
-    // Prefer this over lorId() in editor-facing code — currentState.lanes[] is editor-indexed,
-    // and VAR/LEG have no PolyLane id at all.
-    inline int lorIdEditor(int v, int editorLane, int c) {
-        if (editorLane == 4) return MonsoonIds::POLY_VARIATION_VOICE_1_LEN + v*3 + c;
-        if (editorLane == 5) return MonsoonIds::POLY_LEGATO_VOICE_1_LEN    + v*3 + c;
-        if (editorLane < 0 || editorLane > 3) return -1;
-        return lorId(v, dotModular::EDITOR_TO_ENGINE_LANE[editorLane], c);
-    }
     // Unified LOR bank for an EDITOR lane: engine lane for 0..3 (REST/MEL/OCT/ACC), self for
     // VAR(4)/LEG(5). Mirrors lorIdEditor's mapping so Monsoon::getLorBase/setLorBase index the
     // same per-voice slot the old POLY_*_VOICE_1_LEN params did.
     static inline int lorBank(int editorLane) {
         return (editorLane <= 3) ? dotModular::EDITOR_TO_ENGINE_LANE[editorLane] : editorLane;
     }
-    inline int restInterpId  (int v) { return POLY_REST_INTERP_1   + v; }
-    inline int melodyInterpId(int v) { return POLY_MELODY_INTERP_1 + v; }
-    inline int octaveInterpId(int v) { return POLY_OCTAVE_INTERP_1 + v; }
-    inline int accentInterpId(int v) { return POLY_ACCENT_INTERP_1 + v; }
-    inline int interpId(int v, int lane) {
-        if (lane == 0) return restInterpId(v);
-        if (lane == 1) return melodyInterpId(v);
-        if (lane == 3) return accentInterpId(v);
-        return              octaveInterpId(v);
-    }
-    // param 0=LEN,1=OFF,2=ROT: lorId; param 3=SPR: interpId
-    inline int targetId(int v, int lane, int param) {
-        if (param < 3) return lorId(v, lane, param);
-        return interpId(v, lane);
-    }
-    inline float targetLo(int param) { return (param == 0) ? 1.f : 0.f; }
-    inline float targetHi(int param) { return (param == 0) ? 16.f : (param < 3) ? 15.f : 1.f; }
 
     // Macro/East base owner per (voice, lane): MonsoonIds::MACRO_OWN_START + v*4 + lane.
     // 0 = Macro owns (default), 1 = East owns. 4 lanes: REST/MEL/OCT/ACCENT.
@@ -283,34 +240,9 @@ struct StraitsEastSandsVisual : Module {
             // (NUM_PARAMS_MIGRATION.md) -- no configParam here; accessors carry it.
         }
 
-        // VARIATION (editor lane 4) and LEGATO (5): per-voice LOR, LEN defaults 16 (identity window,
-        // so the feature is silent until a lane is shortened). LOR-only — no spread params.
-        for (int v=0; v<15; ++v) {
+        for (int v=0; v<15; ++v) {   // poly voices 2..16: owner/send/atten banks are 15-wide
             std::string vl = "V"+std::to_string(v+2)+" ";
-            for (int c=0; c<3; ++c) {
-                configParam(MonsoonIds::POLY_VARIATION_VOICE_1_LEN + v*3 + c, 0.f,16.f,
-                            c==0?16.f:0.f, vl+"VAR c"+std::to_string(c));
-                configParam(MonsoonIds::POLY_LEGATO_VOICE_1_LEN    + v*3 + c, 0.f,16.f,
-                            c==0?16.f:0.f, vl+"LEG c"+std::to_string(c));
-            }
-        }
-
-        for (int v=0; v<15; ++v) {   // poly voices 2..16: lorId/owner/interp banks are 15-wide
-            std::string vl = "V"+std::to_string(v+2)+" ";
-            for (int lane=0; lane<3; ++lane) {
-                for (int c=0; c<3; ++c)
-                    configParam(lorId(v,lane,c), 0.f,16.f,
-                                c==0?16.f:0.f, vl+"l"+std::to_string(lane)+"c"+std::to_string(c));
-            }
-            // Accent LOR (lane 3) — own base params; LEN default 16 (identity window). Panel
-            // controls for these come with the East/Macro 4th-lane relayout; until then they
-            // hold the identity default so poly accent has a valid LOR.
-            for (int c=0; c<3; ++c)
-                configParam(lorId(v,3,c), 0.f,16.f, c==0?16.f:0.f, vl+"l3c"+std::to_string(c));
-            configParam(restInterpId(v),   -1.f,1.f,0.f,vl+"Spread REST");
-            configParam(melodyInterpId(v), -1.f,1.f,0.f,vl+"Spread MEL");
-            configParam(octaveInterpId(v), -1.f,1.f,0.f,vl+"Spread OCT");
-            configParam(accentInterpId(v), -1.f,1.f,0.f,vl+"Spread ACC");
+            // (LOR base + spread migrated to Monsoon::editor.lorBase / .spread — no params here.)
 
             // Base owner (0=Macro default, 1=East) + Macro-CV blend sends (unity
             // default) per lane. Switch/snap so owner reads as discrete 0/1.

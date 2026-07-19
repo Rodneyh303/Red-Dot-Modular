@@ -93,42 +93,6 @@ inline int readOffRotParam(rack::Module* mod, int paramId, int fallback = 0) {
     return (int)std::round(mod->params[paramId].getValue());
 }
 
-// ── Poly per-voice playhead (3 lanes: REST/MELODY/OCTAVE) ────────────────────
-// voiceIdx: 0-based index into POLY_DNA_VOICE_n params (voice 2 = index 0).
-// Reads L/O/R for each of the 3 lanes from the module that owns those params.
-// `paramMod` is the module holding POLY_DNA/POLY_MELODY/POLY_OCTAVE params.
-inline void setPolyVoicePlayheads(SandsVisualEditorV4* editor,
-                                   int globalStep,
-                                   rack::Module* paramMod,
-                                   int voiceIdx) {
-    if (!editor) return;
-
-    // REST lane: POLY_DNA_VOICE_n_LEN/OFF/ROT
-    {
-        int base = POLY_DNA_VOICE_1_LEN + voiceIdx * 3;
-        int len  = readLenParam   (paramMod, base);
-        int off  = readOffRotParam(paramMod, base + 1);
-        int rot  = readOffRotParam(paramMod, base + 2);
-        editor->setLanePlayStep(0, calcPlayhead(globalStep, len, off, rot));
-    }
-    // MELODY lane: POLY_MELODY_VOICE_n_LEN/OFF/ROT
-    {
-        int base = POLY_MELODY_VOICE_1_LEN + voiceIdx * 3;
-        int len  = readLenParam   (paramMod, base);
-        int off  = readOffRotParam(paramMod, base + 1);
-        int rot  = readOffRotParam(paramMod, base + 2);
-        editor->setLanePlayStep(1, calcPlayhead(globalStep, len, off, rot));
-    }
-    // OCTAVE lane: POLY_OCTAVE_VOICE_n_LEN/OFF/ROT
-    {
-        int base = POLY_OCTAVE_VOICE_1_LEN + voiceIdx * 3;
-        int len  = readLenParam   (paramMod, base);
-        int off  = readOffRotParam(paramMod, base + 1);
-        int rot  = readOffRotParam(paramMod, base + 2);
-        editor->setLanePlayStep(2, calcPlayhead(globalStep, len, off, rot));
-    }
-}
-
 // ── Macro poly playhead (global L/O/R, same for all voices) ─────────────────
 // Reads GLOBAL_REST/MELODY/OCTAVE_DNA_LEN/OFF/ROT from paramMod.
 inline void setMacroPolyPlayheads(SandsVisualEditorV4* editor,
