@@ -1247,102 +1247,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 for (int c=0; c<3; ++c)
                     if (auto* mm = getMonsoon()) mm->setVarlegAtten(dotModular::VoiceResolver::kMonoSlot, lane, c,
                         module->params[varlegAttDispId(lane,c)].getValue());
-            // Write the editor's lane LOR straight into the engine MONO strands (the
-            // V1 home), via MONO_LANE_TO_STRAND, for all 4 poly lanes (MEL/OCT/REST/
-            // ACC). The manager skips its no-Mono reset when East drives V1 (see
-            // MonsoonSandsManager hasEastV1). VAR/LEG are mono-only — not edited here.
-            //   editor lane el (0=MEL 1=OCT 2=REST 3=ACC) → engine strand.
-            // V1 also responds to East's CV: channel 0 of each lane's CV jack (= voice 1),
-            // using getPolyVoltage(0) so a MONO cable broadcasts to V1 too (Rack convention).
-            // CV is additive on top of the editor base, at control rate (no audio-rate CV).
-            // Depth = the mono-slot attenuator (mirrored from the display proxy below).
-            // STEP 3c: per-consumer topology for the V1 write ownership. East's ownerDispId
-            // is ENGINE-ordered, so populate eastV1Owner[editorLane] by reading
-            // ownerDispId(EDITOR_TO_ENGINE_LANE[editorLane]) — the conversion is baked here
-            // so topo speaks editor lane (design decision 1). No Mono in this branch
-            // (v1Editable), so monoPresent=false → owner() takes the East-V1 path.
-            // Presence from the single authority. This branch runs only under v1Editable(), which
-            // now requires cachedEastSandsVisual==module and no Mono visual — so fillPresence yields
-            // eastPresent=true, monoPresent=false here by construction. Sourcing from the authority
-            // (not re-asserting) means if that ever stops holding, the topology reflects reality
-            // instead of a stale hardcode.
-            dotModular::SandsTopology::Inputs v1In;
-            if (auto* mm = getMonsoon())
-                mm->expanderManager.fillPresence(v1In, mm->engine.numPolyVoices);
-            for (int el = 0; el < 4; ++el) {
-                int eng = dotModular::EDITOR_TO_ENGINE_LANE[el];
-                v1In.eastV1Owner[el] = module->params[StraitsEastVisualIds::ownerDispId(eng)].getValue() > 0.5f;
-            }
-            const dotModular::SandsTopology v1Topo = dotModular::SandsTopology::build(v1In);
-            for (int el = 0; el < 4; ++el) {
-                auto& lane = visualEditor->currentState.lanes[el];
-                int strand  = dotModular::MONO_LANE_TO_STRAND[el];
-                int engLane = dotModular::EDITOR_TO_ENGINE_LANE[el];   // East CV jack / macroBase use engine lane
-                // STEP 3c: this block runs only when East is the V1 editor (no Mono,
-                // v1Editable), so V1's owner is EAST or (delegated) MACRO.
-                // STEP 3c: delegated ⟺ v1Topo.owner(0, el) == MACRO (East is V1 editor here).
-                const bool delegated = (v1Topo.owner(0, el) == dotModular::SandsTopology::Role::MACRO);
-                if (delegated) {
-                    auto* macroVis = getMonsoon()->expanderManager.cachedMacroSandsVisual;
-                    if (macroVis) {
-                        eng.setStrand(StrandWriter::EAST, strand,
-                            (int)std::round(macroVis->macroBase[engLane][0] + macroVis->macroCVDelta[engLane][0]),
-                            (int)std::round(macroVis->macroBase[engLane][1] + macroVis->macroCVDelta[engLane][1]),
-                            (int)std::round(macroVis->macroBase[engLane][2] + macroVis->macroCVDelta[engLane][2]));
-                    }
-                } else {
-                    float len = (float)std::max(1, lane.length);
-                    float off = (float)(((lane.offset % 16) + 16) % 16);
-                    float rot = (float)(((lane.rotation % 16) + 16) % 16);
-                    // Macro send blend on East-owned V1 lanes (mirrors poly combineLOR):
-                    // blend = macroSendDelta[lane][item] * mono-slot send. macroVis may be
-                    // absent (East alone) → blend 0. Send slot for V1 is kMonoSlot.
-                    auto* macroVis = getMonsoon()->expanderManager.cachedMacroSandsVisual;
-                    auto sendBlend = [&](int item)->float {
-                        if (!macroVis) return 0.f;
-                        float send = (redDot::findMonsoonEitherSide(macroVis)
-                            ? redDot::findMonsoonEitherSide(macroVis)->getMacroSend(dotModular::VoiceResolver::kMonoSlot, engLane, item)
-                            : 0.f);
-                        return macroVis->macroSendDelta[engLane][item] * send;
-                    };
-                    auto addCV = [&](float base, int item, float lo, float hi)->float {
-                        if (module->inputs[cvId(engLane,item)].isConnected()) {
-                            float att = (getMonsoon() ? getMonsoon()->getMacroAtten(dotModular::VoiceResolver::kMonoSlot, engLane*4 + item) : 0.f);
-                            float cv  = module->inputs[cvId(engLane,item)].getPolyVoltage(0) / 10.f;  // ch0 = V1
-                            base += cv * att * (hi - lo);
-                        }
-                        return rack::math::clamp(base + sendBlend(item), lo, hi);
-                    };
-                    eng.setStrand(StrandWriter::EAST, strand,
-                        (int)std::round(addCV(len, 0, 1.f, 16.f)),
-                        (int)std::round(addCV(off, 1, 0.f, 15.f)),
-                        (int)std::round(addCV(rot, 2, 0.f, 15.f)));
-                }
-            }
-
-            // VARIATION (editor 4) / LEGATO (5): East is the V1 editor here (v1Editable), so it owns
-            // these mono strands too — same as lanes 0..3. No delegation branch: Macro can never own
-            // them (an owned lane drives every voice identically, annihilating per-voice divergence).
-            // strand == editor lane by the deliberate strand renumber (VAR 4, LEG 5).
-            for (int el = dotModular::SandsGrid::POLY_LANES; el < dotModular::SandsGrid::EAST_LANES; ++el) {
-                const auto& lane = visualEditor->currentState.lanes[el];
-                const int vl = el - dotModular::SandsGrid::POLY_LANES;   // 0=VAR, 1=LEG
-                // V1 mono mix-in: ch0 of this lane's VAR/LEG CV jack + the mono-slot depth
-                // (mirrored above), additive on the editor base — same ch1→mono convention as
-                // lanes 0..3. No Macro blend (VAR/LEG are never Macro-owned).
-                auto addCV = [&](float base, int item, float lo, float hi)->float {
-                    if (module->inputs[varlegCvId(vl,item)].isConnected()) {
-                        float att = getMonsoon() ? getMonsoon()->getVarlegAtten(dotModular::VoiceResolver::kMonoSlot, vl, item) : 0.f;
-                        float cv  = module->inputs[varlegCvId(vl,item)].getPolyVoltage(0) / 10.f;  // ch0 = V1
-                        base += cv * att * (hi - lo);
-                    }
-                    return rack::math::clamp(base, lo, hi);
-                };
-                eng.setStrand(StrandWriter::EAST, /*strand=*/el,
-                              (int)std::round(addCV((float)std::max(1, lane.length), 0, 1.f, 16.f)),
-                              (int)std::round(addCV((float)(((lane.offset   % 16) + 16) % 16), 1, 0.f, 15.f)),
-                              (int)std::round(addCV((float)(((lane.rotation % 16) + 16) % 16), 2, 0.f, 15.f)));
-            }
+            // V1 LOR is now derived in the MANAGER (MonsoonSandsManager hasEastV1 block),
+            // reading the Model (lorBase[kMonoSlot]) — same as poly. The direct mono-strand
+            // write that used to live here was moved there in Stage 3b. The atten/varleg-depth
+            // display->store mirror above stays (View->Model); the manager reads that store.
             // Display: reflect the engine's current mono strand LOR back to the editor.
             // Six lanes now — MONO_LANE_TO_STRAND is [6] and VAR/LEG are East-owned on V1 here.
             for (int el = 0; el < dotModular::SandsGrid::EAST_LANES; ++el) {
@@ -1358,9 +1266,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // PER-STEP from finalRandomByStrand — NOT resolver.laneProbabilityAtStep, which
             // for mono returns masterLaneProbability (the CURRENT step only), making every
             // bar identical (regression). editor lane → engine strand via MONO_LANE_TO_STRAND.
+            // All SIX lanes: lanes 4/5 (VAR/LEG) were previously skipped (loop ran el<4), so on
+            // first load V1's VAR/LEG cells showed a flat/default array until a poly-voice visit
+            // populated the shared array — the "flat probability until V2 round-trip" bug. VAR/LEG
+            // share the mono array (§4d), so this reads the same finalRandomByStrand the mono tab does.
             {
                 auto& peRef = monsoon->engine.pe;
-                for (int el = 0; el < 4; ++el) {
+                for (int el = 0; el < dotModular::SandsGrid::EAST_LANES; ++el) {
                     int strand = dotModular::MONO_LANE_TO_STRAND[el];
                     for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
                         visualEditor->currentState.lanes[el].probabilities[s] =
