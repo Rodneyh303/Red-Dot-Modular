@@ -987,7 +987,26 @@ struct Monsoon : Module {
         float macroSend[256] = {0};
         // macroAtten: atten depth per (v=0..15)×(lane*4+col, 16 wide). index = v*16 + lane*4+col.
         float macroAtten[256] = {0};
+        // V1 (East-alone) editable base LOR + spread. V1 has no per-voice bank like poly
+        // voices (poly use lorIdEditor/interp params); its editable base lives only in the
+        // live editor/display, which loadVoice*(polyVoice) overwrites — so a round-trip or
+        // reload would let the last-visited poly voice's data clobber V1's mono strands.
+        // These dedicated stores give V1 a home. eastV1Stored guards the seed: false until V1
+        // has been written once, so a fresh patch keeps the editor's identity default instead
+        // of being blanked. (Atten's V1 home is already macroAtten[kMonoSlot]; direction and
+        // VAR/LEG have their own restores.)
+        float eastV1Lor[12] = {0};    // lane(0..3)*3 + (0=len,1=off,2=rot)
+        float eastV1Spread[4] = {0};  // 0=REST 1=MEL 2=OCT 3=ACC (SPREAD_R/M/O/A order)
+        bool  eastV1Stored = false;
     } editor;
+
+    // V1 (East-alone) LOR/spread backup accessors — see EditorState comment.
+    float getEastV1Lor(int lane, int c) const { return editor.eastV1Lor[lane*3 + c]; }
+    void  setEastV1Lor(int lane, int c, float x) { editor.eastV1Lor[lane*3 + c] = x; }
+    float getEastV1Spread(int i) const { return editor.eastV1Spread[i]; }
+    void  setEastV1Spread(int i, float x) { editor.eastV1Spread[i] = x; }
+    bool  getEastV1Stored() const { return editor.eastV1Stored; }
+    void  setEastV1Stored(bool b) { editor.eastV1Stored = b; }
 
     // MACRO accessors (mirror old ownerId/sendId/attenId/tapId index math).
     float getMacroOwn(int v, int lane) const { return editor.macroOwn[v*4 + lane]; }

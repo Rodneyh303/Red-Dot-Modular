@@ -73,6 +73,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     // (blend controls now dim/disable themselves via DimmableTrimpot/DimmableLatch
     //  predicates — no central visibility list needed.)
     int  selectedVoice = 0;
+    // V1 (East-alone) editor is seeded from Monsoon's eastV1Lor/Spread stores on the first
+    // frame of each V1 entry, then mirrors live edits back. false = seed pending.
+    bool v1Loaded_ = false;
     // East spread mod-arcs. Compared in the INTERP domain (0..1) to sidestep the
     // pre-existing display-trimpot bipolar (-1..1) vs interp (0..1) mismatch: set
     // = the viewed voice's interp param (pre-CV), effective = the published
@@ -617,6 +620,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // Seed editor lanes 4/5 from mono's VARIATION/LEGATO strands BEFORE step()'s v1Editable
             // write runs, otherwise the outgoing poly voice's VAR/LEG would be pushed into mono.
             mirrorMonoExtraLanes();
+            // Force the v1Editable seed on the next frame: the editor currently still holds the
+            // OUTGOING poly voice's LOR/spread, so we must restore V1's stores rather than mirror
+            // that stale data into them.
+            v1Loaded_ = false;
             for (int lane = 0; lane < 4; ++lane)
                 if (auto* mm = getMonsoon()) module->params[ownerDispId(lane)].setValue(mm->getMonoMacroOwn(lane));
             // V1 is mono → VAR/LEG always follow mono; show the cells filled (and they lock).
@@ -1193,6 +1200,52 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             }
             mirrorMonoExtraLanes();   // lanes 4/5: mono's VARIATION/LEGATO, read-only
         } else if (v1Editable()) {
+            // ── V1 (East-alone) persistence ──────────────────────────────────────────────
+            // V1 has no per-voice bank (poly voices use lorIdEditor/interp params). Its
+            // editable base LOR + spread live only in the editor/display, which
+            // loadVoice*(polyVoice) overwrites on a tab switch — so without this, returning
+            // to V1 would let the last-visited poly voice's data get written into V1's mono
+            // strands (the every-frame writes below), losing V1. Seed the editor/display from
+            // the dedicated Monsoon stores on the first frame of each V1 entry (v1Loaded_
+            // latched in onVoiceTabChanged / initial), then mirror live edits back each frame
+            // so the stores — and thus save/load and the next round-trip — stay current.
+            if (auto* mmV1 = getMonsoon()) {
+                if (!v1Loaded_) {
+                    if (mmV1->getEastV1Stored()) {
+                        for (int el = 0; el < 4; ++el) {
+                            auto& lane = visualEditor->currentState.lanes[el];
+                            lane.length   = std::max(1, (int)std::round(mmV1->getEastV1Lor(el, 0)));
+                            lane.offset   = (int)std::round(mmV1->getEastV1Lor(el, 1));
+                            lane.rotation = (int)std::round(mmV1->getEastV1Lor(el, 2));
+                        }
+                        module->params[SPREAD_R].setValue(mmV1->getEastV1Spread(0));
+                        module->params[SPREAD_M].setValue(mmV1->getEastV1Spread(1));
+                        module->params[SPREAD_O].setValue(mmV1->getEastV1Spread(2));
+                        module->params[SPREAD_A].setValue(mmV1->getEastV1Spread(3));
+                    }
+                    // atten display ← preserved mono-slot store (valid even fresh: 0 = no depth).
+                    // Must precede the every-frame attenDispId→kMonoSlot mirror below, else the
+                    // stale (last poly voice's) attenDispId would overwrite V1's saved depth.
+                    for (int lane = 0; lane < 4; ++lane)
+                        for (int c = 0; c < 4; ++c)
+                            module->params[attenDispId(lane, c)].setValue(
+                                mmV1->getMacroAtten(dotModular::VoiceResolver::kMonoSlot, lane*4 + c));
+                    v1Loaded_ = true;
+                } else {
+                    for (int el = 0; el < 4; ++el) {
+                        const auto& lane = visualEditor->currentState.lanes[el];
+                        mmV1->setEastV1Lor(el, 0, (float)lane.length);
+                        mmV1->setEastV1Lor(el, 1, (float)lane.offset);
+                        mmV1->setEastV1Lor(el, 2, (float)lane.rotation);
+                    }
+                    mmV1->setEastV1Spread(0, module->params[SPREAD_R].getValue());
+                    mmV1->setEastV1Spread(1, module->params[SPREAD_M].getValue());
+                    mmV1->setEastV1Spread(2, module->params[SPREAD_O].getValue());
+                    mmV1->setEastV1Spread(3, module->params[SPREAD_A].getValue());
+                    mmV1->setEastV1Stored(true);
+                }
+            }
+            // ─────────────────────────────────────────────────────────────────────────────
             // (no per-frame mirror here: East OWNS lanes 4/5 on V1 in this branch and writes them
             //  to the mono strands below. They are seeded once on tab entry — see onVoiceTabChanged.)
             // V1 editable (no Mono, combo 3/7-without-Mono): East IS the V1 editor.
