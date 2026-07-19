@@ -466,6 +466,23 @@ struct LanternDisplay : widget::Widget {
         auto font = font0;
         if (!font) return;
 
+        // Faint lane separators over the dark well, matching gen_lantern.py's dark lanesep
+        // (#20242b) so the 16 lanes stay delineated on both themes (the flat well otherwise
+        // covered the panel's own separators). Grid view only — the roll view has its own
+        // key-row structure. Drawn on the base layer, under the note bars (drawLayer 1).
+        {
+            const float inset = 1.f;
+            nvgStrokeColor(vg, nvgRGB(0x20, 0x24, 0x2b));
+            nvgStrokeWidth(vg, 0.75f);
+            for (int v = 1; v < N_VOICES; ++v) {
+                const float y = v * laneH;
+                nvgBeginPath(vg);
+                nvgMoveTo(vg, inset, y);
+                nvgLineTo(vg, W - inset, y);
+                nvgStroke(vg);
+            }
+        }
+
         const int ph = module->lastObservedStep;
 
         for (int v = 0; v < N_VOICES; ++v) {
