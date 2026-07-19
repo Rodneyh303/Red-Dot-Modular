@@ -32,6 +32,10 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
     // count makes the panel self-documenting: lit knobs = live voices. Only dims when
     // CONNECTED (poly mode is gated on Straits being present, so disconnected = show all).
     int activeVoices_ = -1;
+    // Latches once per Monsoon connection: on first frame after attach we ADOPT Monsoon's
+    // count into our knob (so we don't clobber a saved/menu value with the param default),
+    // then the knob drives numPolyVoices. Cleared on disconnect so a re-attach re-syncs.
+    bool voiceCountSynced_ = false;
     redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;
 
@@ -186,15 +190,31 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
         if (module) {
             Monsoon* mm = redDot::findMonsoonEitherSide(module);
             themeLight_ = (mm && mm->lightTheme);
-            // Active poly-voice count now comes from Straits' OWN voice-count knob (the source
-            // of truth), not Monsoon's numPolyVoices. Param is 1..16; store as 0..15 to match
-            // the dimWhen predicate (voice index i active iff i <= activeVoices_). Only meaningful
-            // when connected to a Monsoon (poly is gated on that); -1 => show all knobs bright.
+            // Straits OWNS the poly voice count: write its knob (1..16) into Monsoon's
+            // numPolyVoices (0..15) so that field stays the SINGLE authority every consumer
+            // reads (Sands/East/Macro tab counts, Causeway dimming, the Lantern, our dimming).
+            // This replaces the context menu as the source when Straits is connected -- poly
+            // is gated on Straits being present, so Straits driving the count is correct.
+            // (Half-migrating -- reading the param only for our own dimming -- created two
+            // disagreeing sources and drove Sands' tabs off the menu, not the knob. One
+            // authority fixes all consumers at once.)
             if (mm) {
-                float vc = module->params[StraitsIds::VOICE_COUNT_PARAM].getValue();  // 1..16
-                activeVoices_ = (int)vc - 1;                                            // 0..15
+                // First frame after (re)connect: adopt Monsoon's current count INTO our knob,
+                // so attaching Straits doesn't clobber a patch's saved numPolyVoices (or a
+                // menu value) with the param's default. After that, the knob is authority and
+                // drives the field. voiceCountSynced_ latches per-connection.
+                if (!voiceCountSynced_) {
+                    float knob = (float)(mm->engine.numPolyVoices + 1);   // 0..15 -> 1..16
+                    module->params[StraitsIds::VOICE_COUNT_PARAM].setValue(knob);
+                    voiceCountSynced_ = true;
+                }
+                int want = (int)module->params[StraitsIds::VOICE_COUNT_PARAM].getValue() - 1; // 0..15
+                if (want < 0) want = 0; else if (want > 15) want = 15;
+                mm->engine.numPolyVoices = want;
+                activeVoices_ = want;
             } else {
                 activeVoices_ = -1;
+                voiceCountSynced_ = false;   // re-sync on next connect
             }
         }
         ModuleWidget::step();
