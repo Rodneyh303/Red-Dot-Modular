@@ -146,6 +146,12 @@ namespace StraitsEastVisualIds {
         if (editorLane < 0 || editorLane > 3) return -1;
         return lorId(v, dotModular::EDITOR_TO_ENGINE_LANE[editorLane], c);
     }
+    // Unified LOR bank for an EDITOR lane: engine lane for 0..3 (REST/MEL/OCT/ACC), self for
+    // VAR(4)/LEG(5). Mirrors lorIdEditor's mapping so Monsoon::getLorBase/setLorBase index the
+    // same per-voice slot the old POLY_*_VOICE_1_LEN params did.
+    static inline int lorBank(int editorLane) {
+        return (editorLane <= 3) ? dotModular::EDITOR_TO_ENGINE_LANE[editorLane] : editorLane;
+    }
     inline int restInterpId  (int v) { return POLY_REST_INTERP_1   + v; }
     inline int melodyInterpId(int v) { return POLY_MELODY_INTERP_1 + v; }
     inline int octaveInterpId(int v) { return POLY_OCTAVE_INTERP_1 + v; }

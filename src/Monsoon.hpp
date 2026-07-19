@@ -987,22 +987,21 @@ struct Monsoon : Module {
         float macroSend[256] = {0};
         // macroAtten: atten depth per (v=0..15)×(lane*4+col, 16 wide). index = v*16 + lane*4+col.
         float macroAtten[256] = {0};
-        // V1 (East-alone) editable base LOR + spread. V1 has no per-voice bank like poly
-        // voices (poly use lorIdEditor/interp params); its editable base lives only in the
-        // live editor/display, which loadVoice*(polyVoice) overwrites — so a round-trip or
-        // reload would let the last-visited poly voice's data clobber V1's mono strands.
-        // These dedicated stores give V1 a home. eastV1Stored guards the seed: false until V1
-        // has been written once, so a fresh patch keeps the editor's identity default instead
-        // of being blanked. (Atten's V1 home is already macroAtten[kMonoSlot]; direction and
-        // VAR/LEG have their own restores.)
-        float eastV1Lor[18] = {0};    // lane(0..5)*3 + (0=len,1=off,2=rot); 4=VAR 5=LEG
+        // Unified per-voice LOR base store (Stage 1 of the MVC unification). Indexed by
+        // voiceSlot (0 = V1/mono, 1..15 = V2..V16) × bank (0=REST/DNA 1=MEL 2=OCT 3=ACC
+        // 4=VAR 5=LEG) × (0=len 1=off 2=rot). This is the SINGLE home for every voice's
+        // editable LOR base, replacing the per-voice East params (POLY_*_VOICE_1_LEN) and the
+        // old V1-only eastV1Lor. Identity-initialised (len=16) in the Monsoon constructor.
+        float lorBase[288] = {0};     // 16 slots × 6 banks × 3
+        // V1 (East-alone) spread backup (LOR now unified above; spread unified in Stage 1b).
         float eastV1Spread[4] = {0};  // 0=REST 1=MEL 2=OCT 3=ACC (SPREAD_R/M/O/A order)
         bool  eastV1Stored = false;
     } editor;
 
-    // V1 (East-alone) LOR/spread backup accessors — see EditorState comment.
-    float getEastV1Lor(int lane, int c) const { return editor.eastV1Lor[lane*3 + c]; }
-    void  setEastV1Lor(int lane, int c, float x) { editor.eastV1Lor[lane*3 + c] = x; }
+    // Unified LOR base accessors. slot = voiceSlot (0 = V1/mono), bank 0..5, c 0..2.
+    float getLorBase(int slot, int bank, int c) const { return editor.lorBase[slot*18 + bank*3 + c]; }
+    void  setLorBase(int slot, int bank, int c, float x) { editor.lorBase[slot*18 + bank*3 + c] = x; }
+    // V1 spread backup accessors — see EditorState comment.
     float getEastV1Spread(int i) const { return editor.eastV1Spread[i]; }
     void  setEastV1Spread(int i, float x) { editor.eastV1Spread[i] = x; }
     bool  getEastV1Stored() const { return editor.eastV1Stored; }

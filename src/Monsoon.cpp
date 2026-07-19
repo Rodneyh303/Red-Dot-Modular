@@ -48,6 +48,12 @@ void Monsoon::onSampleRateChange(const SampleRateChangeEvent& e) {
 Monsoon::Monsoon() {
         MonsoonConfigurator::setup(this);
 
+        // Unified LOR base store: identity default (len=16, off=0, rot=0) for every voice
+        // slot and bank, matching the old per-voice configParam defaults.
+        for (int slot = 0; slot < 16; ++slot)
+            for (int bank = 0; bank < 6; ++bank)
+                editor.lorBase[slot*18 + bank*3 + 0] = 16.f;
+
         // Seed RNGs with a random value — safe to call here (uses rack::random, not inputs[])
         rhythmSeedFloat = rack::random::uniform() * 10.f;
         melodySeedFloat = rack::random::uniform() * 10.f;

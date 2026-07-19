@@ -558,21 +558,25 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     }
 
     void saveVoiceLOR(int v) {
-        if (!module || !visualEditor) return;   // poly banks only; V1 has none (see onVoiceTabChanged)
+        if (!module || !visualEditor) return;   // poly banks only; V1 uses slot 0 (see step)
+        auto* mm = getMonsoon(); if (!mm) return;
+        const int slot = dotModular::VoiceResolver::voiceSlot(v + dotModular::VoiceResolver::kFirstPoly);
         for (int el=0; el<dotModular::SandsGrid::EAST_LANES; ++el) {
             const auto& lane = visualEditor->currentState.lanes[el];
-            module->params[lorIdEditor(v,el,0)].setValue((float)lane.length);
-            module->params[lorIdEditor(v,el,1)].setValue((float)lane.offset);
-            module->params[lorIdEditor(v,el,2)].setValue((float)lane.rotation);
+            mm->setLorBase(slot, lorBank(el), 0, (float)lane.length);
+            mm->setLorBase(slot, lorBank(el), 1, (float)lane.offset);
+            mm->setLorBase(slot, lorBank(el), 2, (float)lane.rotation);
         }
     }
     void loadVoiceLOR(int v) {
         if (!module || !visualEditor) return;
+        auto* mm = getMonsoon(); if (!mm) return;
+        const int slot = dotModular::VoiceResolver::voiceSlot(v + dotModular::VoiceResolver::kFirstPoly);
         for (int el=0; el<dotModular::SandsGrid::EAST_LANES; ++el) {
             auto& lane = visualEditor->currentState.lanes[el];
-            lane.length   = std::max(1,(int)std::round(module->params[lorIdEditor(v,el,0)].getValue()));
-            lane.offset   = (int)std::round(module->params[lorIdEditor(v,el,1)].getValue());
-            lane.rotation = (int)std::round(module->params[lorIdEditor(v,el,2)].getValue());
+            lane.length   = std::max(1,(int)std::round(mm->getLorBase(slot, lorBank(el), 0)));
+            lane.offset   = (int)std::round(mm->getLorBase(slot, lorBank(el), 1));
+            lane.rotation = (int)std::round(mm->getLorBase(slot, lorBank(el), 2));
         }
     }
     void onVoiceTabChanged(int nv) {
@@ -1214,9 +1218,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     if (mmV1->getEastV1Stored()) {
                         for (int el = 0; el < dotModular::SandsGrid::EAST_LANES; ++el) {
                             auto& lane = visualEditor->currentState.lanes[el];
-                            lane.length   = std::max(1, (int)std::round(mmV1->getEastV1Lor(el, 0)));
-                            lane.offset   = (int)std::round(mmV1->getEastV1Lor(el, 1));
-                            lane.rotation = (int)std::round(mmV1->getEastV1Lor(el, 2));
+                            const int bank = lorBank(el);
+                            lane.length   = std::max(1, (int)std::round(mmV1->getLorBase(0, bank, 0)));
+                            lane.offset   = (int)std::round(mmV1->getLorBase(0, bank, 1));
+                            lane.rotation = (int)std::round(mmV1->getLorBase(0, bank, 2));
                         }
                         module->params[SPREAD_R].setValue(mmV1->getEastV1Spread(0));
                         module->params[SPREAD_M].setValue(mmV1->getEastV1Spread(1));
@@ -1239,9 +1244,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 } else {
                     for (int el = 0; el < dotModular::SandsGrid::EAST_LANES; ++el) {
                         const auto& lane = visualEditor->currentState.lanes[el];
-                        mmV1->setEastV1Lor(el, 0, (float)lane.length);
-                        mmV1->setEastV1Lor(el, 1, (float)lane.offset);
-                        mmV1->setEastV1Lor(el, 2, (float)lane.rotation);
+                        const int bank = lorBank(el);
+                        mmV1->setLorBase(0, bank, 0, (float)lane.length);
+                        mmV1->setLorBase(0, bank, 1, (float)lane.offset);
+                        mmV1->setLorBase(0, bank, 2, (float)lane.rotation);
                     }
                     mmV1->setEastV1Spread(0, module->params[SPREAD_R].getValue());
                     mmV1->setEastV1Spread(1, module->params[SPREAD_M].getValue());

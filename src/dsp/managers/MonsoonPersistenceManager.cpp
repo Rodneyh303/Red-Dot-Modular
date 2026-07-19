@@ -191,9 +191,9 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_object_set_new(root, "editorMacroAtten", ma);
 
     // V1 (East-alone) LOR/spread backup + its written-once guard.
-    json_t* v1l = json_array();
-    for (int i = 0; i < 18; ++i) json_array_append_new(v1l, json_real(m->editor.eastV1Lor[i]));
-    json_object_set_new(root, "editorEastV1Lor", v1l);
+    json_t* lb = json_array();
+    for (int i = 0; i < 288; ++i) json_array_append_new(lb, json_real(m->editor.lorBase[i]));
+    json_object_set_new(root, "editorLorBase", lb);
     json_t* v1s = json_array();
     for (int i = 0; i < 4; ++i) json_array_append_new(v1s, json_real(m->editor.eastV1Spread[i]));
     json_object_set_new(root, "editorEastV1Spread", v1s);
@@ -428,10 +428,10 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
             for (size_t i = 0; i < 256 && i < json_array_size(j); ++i)
                 m->editor.macroAtten[i] = (float)json_real_value(json_array_get(j, i));
     }
-    if (auto j = json_object_get(root, "editorEastV1Lor")) {
+    if (auto j = json_object_get(root, "editorLorBase")) {
         if (json_is_array(j))
-            for (size_t i = 0; i < 18 && i < json_array_size(j); ++i)
-                m->editor.eastV1Lor[i] = (float)json_real_value(json_array_get(j, i));
+            for (size_t i = 0; i < 288 && i < json_array_size(j); ++i)
+                m->editor.lorBase[i] = (float)json_real_value(json_array_get(j, i));
     }
     if (auto j = json_object_get(root, "editorEastV1Spread")) {
         if (json_is_array(j))
