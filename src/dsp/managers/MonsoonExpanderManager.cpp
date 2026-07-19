@@ -116,7 +116,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 // East V1 direction lives in Monsoon::editor.laneDir (NUM_PARAMS_MIGRATION.md).
                 // Reach it through the East expander's Monsoon pointer.
                 if (auto* ev = dynamic_cast<StraitsEastSandsVisual*>(src.mod))
-                    if (auto* mm = ev->getMonsoon())
+                    if (auto* mm = redDot::findMonsoonEitherSide(ev))
                         engine.laneDirPending_[l] = (SequencerEngine::LaneDir)(int)std::lround(
                             math::clamp(mm->getMonoLaneDir(src.eastMonoLane), 0.f, 3.f));
             } else {
@@ -295,7 +295,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 // derives the sign for Forward/Reverse and OWNS it for Pendulum/PingPong (flipping
                 // at the LOR endpoint). Pushing a sign here would overwrite the bounce-induced flip
                 // with laneDirSign(Pendulum)=+1 every pass and the lane would never turn around.
-                if (auto* mm = eastLOR->getMonsoon()) {
+                if (auto* mm = redDot::findMonsoonEitherSide(eastLOR)) {
                     for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
                         int dv = (int)std::lround(math::clamp(mm->getLaneDir(v, l), 0.f, 3.f));
                         engine.laneDirVPending_[v][l] = (SequencerEngine::LaneDir)dv;

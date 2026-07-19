@@ -865,7 +865,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 // through monoDirAuthority above (which IS East's monoDirId when East owns V1,
                 // and Mono's/Macro's cell otherwise — writing monoDirId unconditionally would
                 // just poke a store nobody reads).
-                if (ch != 0) { if (auto* m = mod->getMonsoon()) m->setLaneDir(ch - 1, lane, (float)nxt); }
+                if (ch != 0) { if (auto* m = findMonsoonEitherSide(mod)) m->setLaneDir(ch - 1, lane, (float)nxt); }
                 if (selectedVoice == ch) mod->params[dirDispId(lane)].setValue((float)nxt);
             }
             // ── Delegation: flip local/delegated in the voice's OWN owner store ──
@@ -914,7 +914,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             const float v = mod->params[dirDispId(lane)].getValue();
             if (dirDispInit && v == lastDirDisp[lane]) continue;   // no edit → don't write
             lastDirDisp[lane] = v;
-            if (auto* m = mod->getMonsoon()) {
+            if (auto* m = findMonsoonEitherSide(mod)) {
                 if (mono)                    m->setMonoLaneDir(lane, v);
                 else if (pv >= 0 && pv < 15) m->setLaneDir(pv, lane, v);
             }
