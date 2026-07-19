@@ -784,6 +784,15 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                 (int)v.gs.slurForward);
 #endif
         }
+        else {
+            // Follow-mono (Rule 2 off): this voice tracks mono's articulation shape, so its
+            // slur MEMBERSHIP at the onset is mono's (already computed this step — mono's
+            // cascade runs first). Without this, a follow-mono voice's slur LEAD never sets
+            // slurMember (the continuations set it in the follow-mono slide/tie path below),
+            // so SLEG missed the lead strike and the Lantern underlined only the chain
+            // interior — the doc's flagged poly-mask subtlety, surfaced by the display.
+            v.gs.slurMember = gs.slurMember;
+        }
         return;
     }
 
