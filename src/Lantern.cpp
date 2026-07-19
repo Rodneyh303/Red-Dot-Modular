@@ -44,6 +44,10 @@
 //   gs.gatePulseRemain           distinguishes a fresh attack from a held-over tail
 //   gs.lastNoteType              CELL COLOUR. Single/Tie/Legato.
 //   gs.slurForward, pv.accented  per-voice, under perVoiceArticulation
+//   gs.slurMember                SLUR UNDERLINE. The SLEG output mask (leads OR continues a
+//                                slur), read per voice exactly like lastNoteType. An
+//                                underlined run of cells = one fused GATE; its cell edges =
+//                                the STEP strikes; the underline = SLEG.
 //
 // THE INVARIANT THIS DISPLAY RESTS ON:
 //   lastNoteType describes the CURRENT NOTE, and a tail is the same note.
@@ -114,6 +118,11 @@ struct Lantern : Module {
         bool   heldIn   = false; // continues from previous bar
         bool   heldOut  = false; // continues past step 16
         bool   accented = false;
+        bool   slurMember = false;// this note is PART OF a slur (leads one, or continues one) —
+                                 // the engine's gs.slurMember, the exact SLEG output mask. Drawn
+                                 // as a thin underline so an underlined RUN of cells = one fused
+                                 // GATE (lead + continuations), and its cell edges = the STEP
+                                 // strikes inside it. Isolated notes: no underline.
         bool   leadsLegato = false;// this note INITIATES a legato lead: it committed slurForward
                                  // (will hold its gate into the next note) AND is not itself a
                                  // received Tie/Legato (the chain interior is already teal/violet).
@@ -265,6 +274,11 @@ struct Lantern : Module {
                             : lenSteps;
         }
         c.accented    = accented;   // orthogonal overlay (render brightens/marks), NOT a type
+        // SLEG membership: the voice's OWN slurMember (set at every articulation alongside
+        // lastNoteType) — per-voice for the same reason type is. A held-over tail's value is
+        // stale from the previous note, but such cells are isMidTail and the render skips
+        // them, so no gating needed here.
+        c.slurMember  = gs.slurMember;
         // heldIn = the gate carried over from the previous bar. This is about RHYTHM
         // continuity (the gate held across the boundary), which is identical for a tie and a
         // legato — the only difference between them is whether the note CV changes (Legato =
@@ -646,6 +660,20 @@ struct LanternDisplay : widget::Widget {
                     nvgStroke(vg);
                 }
 
+                // SLUR UNDERLINE (SLEG): a thin amber bar along the bottom edge of every cell
+                // whose note is a slur member — musical notation's slur arc, flattened for an
+                // LED grid. An underlined RUN spans exactly one fused GATE (the lead's amber
+                // outline marks where it starts); the cell edges inside the run are the STEP
+                // strikes; the underline itself is the SLEG mask. Same amber family as the
+                // lead outline so all slur semantics share one hue. Non-destructive overlay.
+                if (c.slurMember) {
+                    nvgBeginPath(vg);
+                    nvgRect(vg, bx + 0.5f, yc + barH * 0.5f + 1.0f,
+                            std::max(1.5f, bw - 1.f), 1.5f);
+                    nvgFillColor(vg, nvgRGB(0xe0, 0xa8, 0x1c));
+                    nvgFill(vg);
+                }
+
 
                 // step, 1/32 → tick mid-step, etc). Without this, runs of long notes merge
                 // into one solid line. A Tie/Legato continuation gets NO tick (it's held).
@@ -850,6 +878,13 @@ struct LanternDisplay : widget::Widget {
                     nvgStrokeColor(vg, nvgRGB(0xe0, 0xa8, 0x1c));
                     nvgStrokeWidth(vg, 1.2f);
                     nvgStroke(vg);
+                }
+                if (c.slurMember) {  // SLEG underline (see grid view) — under the note's bottom edge
+                    nvgBeginPath(vg);
+                    nvgRect(vg, bx + 0.5f, y + std::max(1.5f, rowH - 1.f) - 0.75f,
+                            std::max(1.5f, bw - 1.f), 1.25f);
+                    nvgFillColor(vg, nvgRGB(0xe0, 0xa8, 0x1c));
+                    nvgFill(vg);
                 }
             }
         }
