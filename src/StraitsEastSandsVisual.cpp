@@ -606,8 +606,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // the view coupled to the derived copy and re-open the door to display/engine drift.)
             {
                 int pv = polyVoice();
-                for (int lane = 0; lane < 6; ++lane)
-                    module->params[dirDispId(lane)].setValue(module->params[dirId(pv, lane)].getValue());
+                if (auto* m = getMonsoon())
+                    for (int lane = 0; lane < 6; ++lane)
+                        module->params[dirDispId(lane)].setValue(m->getLaneDir(pv, lane));
             }
         }
         // V1-editable: the editor is refreshed from the engine mono strands by the
@@ -847,10 +848,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     // because Macro owns exactly those).
                     auto auth = m->expanderManager.monoDirAuthority(strand);
                     if (!auth.valid()) continue;   // nobody owns this lane — nothing to cycle
-                    int cur = (int)std::lround(math::clamp(
-                        auth.mod->params[auth.paramId].getValue(), 0.f, 3.f));
+                    int cur = auth.isField()
+                        ? (int)std::lround(math::clamp(m->getMonoLaneDir(auth.eastMonoLane), 0.f, 3.f))
+                        : (int)std::lround(math::clamp(auth.mod->params[auth.paramId].getValue(), 0.f, 3.f));
                     nxt = (cur + d) % 4;
-                    auth.mod->params[auth.paramId].setValue((float)nxt);
+                    if (auth.isField()) m->setMonoLaneDir(auth.eastMonoLane, (float)nxt);
+                    else                auth.mod->params[auth.paramId].setValue((float)nxt);
                 } else {
                     const int pv = ch - 1;
                     nxt = (((int)se->laneDirVPending_[pv][strand]) + d) % 4;
@@ -862,7 +865,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 // through monoDirAuthority above (which IS East's monoDirId when East owns V1,
                 // and Mono's/Macro's cell otherwise — writing monoDirId unconditionally would
                 // just poke a store nobody reads).
-                if (ch != 0) mod->params[dirId(ch - 1, lane)].setValue((float)nxt);
+                if (ch != 0) { if (auto* m = mod->getMonsoon()) m->setLaneDir(ch - 1, lane, (float)nxt); }
                 if (selectedVoice == ch) mod->params[dirDispId(lane)].setValue((float)nxt);
             }
             // ── Delegation: flip local/delegated in the voice's OWN owner store ──
@@ -911,8 +914,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             const float v = mod->params[dirDispId(lane)].getValue();
             if (dirDispInit && v == lastDirDisp[lane]) continue;   // no edit → don't write
             lastDirDisp[lane] = v;
-            if (mono)                        mod->params[monoDirId(lane)].setValue(v);
-            else if (pv >= 0 && pv < 15)     mod->params[dirId(pv, lane)].setValue(v);
+            if (auto* m = mod->getMonsoon()) {
+                if (mono)                    m->setMonoLaneDir(lane, v);
+                else if (pv >= 0 && pv < 15) m->setLaneDir(pv, lane, v);
+            }
         }
         dirDispInit = true;
     }

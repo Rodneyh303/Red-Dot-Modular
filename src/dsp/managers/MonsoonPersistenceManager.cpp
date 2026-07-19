@@ -164,6 +164,12 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_object_set_new(root, "rhythmPattern", rarr);
     json_object_set_new(root, "melodyPitchV", marr);
 
+    // EditorState.laneDir (migrated out of params[]; params were auto-saved, fields are not).
+    // See NUM_PARAMS_MIGRATION.md. 96 floats = 16 voice-bank slots x 6 lanes.
+    json_t* ld = json_array();
+    for (int i = 0; i < 96; ++i) json_array_append_new(ld, json_real(m->editor.laneDir[i]));
+    json_object_set_new(root, "editorLaneDir", ld);
+
     return root;
 }
 
@@ -355,6 +361,17 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
         if (json_is_array(j)) {
             for (size_t i = 0; i < 16 && i < json_array_size(j); ++i)
                 m->melodyPitchV[i] = (float)json_real_value(json_array_get(j, i));
+        }
+    }
+
+    // EditorState.laneDir (NUM_PARAMS_MIGRATION.md). Missing key = pre-migration patch ->
+    // fields keep their Forward (0) defaults, which matches the old default param value.
+    if (auto j = json_object_get(root, "editorLaneDir")) {
+        if (json_is_array(j)) {
+            for (size_t i = 0; i < 96 && i < json_array_size(j); ++i) {
+                float v = (float)json_real_value(json_array_get(j, i));
+                m->editor.laneDir[i] = math::clamp(v, 0.f, 3.f);
+            }
         }
     }
 }

@@ -174,11 +174,9 @@ namespace StraitsEastVisualIds {
     // like ownerId/varlegDelegId (v = 0..14 = V2..V16); lane = STRAND index 0..5. The manager
     // reads this module-side and pushes it to the engine, so direction is expander-homed and
     // engine-derived like every other lane-addressing datum.
-    inline int dirId(int v, int lane) { return MonsoonIds::LANE_DIR_START + v*6 + lane; }
-    // V1/mono direction — the spare slot v=15, the same trick monoOwnerId uses. This is the
-    // mono source only when East IS the mono editor (no Mono attached); when Mono is present
-    // it owns mono direction beside its own LOR.
-    inline int monoDirId(int lane) { return MonsoonIds::LANE_DIR_START + 15*6 + lane; }
+    // LANE_DIR migrated to Monsoon::editor.laneDir -- use monsoon->getLaneDir(v,lane) /
+    // setLaneDir(v,lane,x) and getMonoLaneDir/setMonoLaneDir(lane) instead of dirId/monoDirId.
+    // (v = 0..14 poly bank = V2..V16; mono is the spare slot, via the Mono accessors.)
     // (Macro mix-in send helpers relocated to StraitsMacroVisualIds under the control
     //  inversion — the send is a Macro concern now.)
     // Owner display proxy (selected-voice view; copied to/from per-voice on switch).
@@ -323,15 +321,9 @@ struct StraitsEastSandsVisual : Module {
         gateModDiv.setDivision(GATE_MOD_DIV);   // gate-mod scan runs at /8, not per sample
         // East LANE DIRECTION bank: 16 slots (0..14 = poly V2..V16, 15 = V1/mono spare slot,
         // the monoOwnerId trick) x 6 strands. Real params, so Rack persists them and the
-        // manager can read them module-side. Default Forward = today's behaviour.
-        for (int v = 0; v < 16; ++v) {
-            const std::string vn = (v == 15) ? "V1 " : ("V" + std::to_string(v + 2) + " ");
-            for (int lane = 0; lane < 6; ++lane) {
-                configSwitch(MonsoonIds::LANE_DIR_START + v*6 + lane, 0.f, 3.f, 0.f,
-                             vn + "L" + std::to_string(lane) + " direction",
-                             {"Forward", "Reverse", "Pendulum", "PingPong"});
-            }
-        }
+        // LANE_DIR migrated out of params[] to Monsoon::editor.laneDir (NUM_PARAMS_MIGRATION.md).
+        // No configSwitch here anymore -- the direction state is plain fields on Monsoon,
+        // reached via getLaneDir/setLaneDir. (Default Forward = 0 = field default.)
         for (int lane=0; lane<4; ++lane) {
             configSwitch(monoOwnerId(lane), 0.f,1.f,0.f,
                          "V1 L"+std::to_string(lane)+" base: inherit Macro / local East", {"Inherit Macro","Local East"});

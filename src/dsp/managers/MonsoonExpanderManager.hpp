@@ -50,8 +50,14 @@ struct MonsoonExpanderManager {
     // control rate, so V1 lanes 0..3 never moved). Encoding the precedence once is the point.
     struct MonoDirSrc {
         rack::Module* mod = nullptr;   // owning expander, or null if nothing owns the lane
-        int paramId = -1;              // its direction param for this lane
-        bool valid() const { return mod && paramId >= 0; }
+        int paramId = -1;              // its direction param for this lane (param-backed sources)
+        // East's V1 direction migrated from a param to Monsoon::editor.laneDir
+        // (NUM_PARAMS_MIGRATION.md). When the owner is East, the source is a FIELD, not a param:
+        // eastMonoLane >= 0 marks that, and the value is read/written via Monsoon's
+        // getMonoLaneDir/setMonoLaneDir(eastMonoLane) instead of params[paramId].
+        int eastMonoLane = -1;         // >=0 => field-backed (East V1); read via Monsoon accessor
+        bool valid() const { return mod && (paramId >= 0 || eastMonoLane >= 0); }
+        bool isField() const { return eastMonoLane >= 0; }
     };
     // lane = STRAND index 0..5. Precedence: Mono (if it owns the lane; it always owns
     // VAR/LEG) → Macro (lanes 0..3 only; it has no VAR/LEG) → East's V1 slot → nothing.

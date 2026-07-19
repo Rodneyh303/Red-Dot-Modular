@@ -37,7 +37,7 @@ MonsoonExpanderManager::MonoDirSrc MonsoonExpanderManager::monoDirAuthority(int 
     // No Mono, and either no Macro or a VAR/LEG lane Macro cannot own -> East's V1 slot.
     // This is the arm that was missing: with Macro attached, V1's VAR/LEG had NO source, so
     // those lanes were pinned Forward and East's DirCell for them did nothing.
-    if (eastVis) { r.mod = eastVis; r.paramId = StraitsEastVisualIds::monoDirId(lane); return r; }
+    if (eastVis) { r.mod = eastVis; r.eastMonoLane = lane; return r; }   // field-backed (Monsoon::editor.laneDir V1 slot)
     return r;
 }
 
@@ -111,10 +111,18 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
         // through, so the mod can never target a store the manager isn't reading.
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
             MonoDirSrc src = monoDirAuthority(l);
-            if (src.valid())
+            if (!src.valid()) continue;   // nothing owns this lane -> leave Forward from reset
+            if (src.isField()) {
+                // East V1 direction lives in Monsoon::editor.laneDir (NUM_PARAMS_MIGRATION.md).
+                // Reach it through the East expander's Monsoon pointer.
+                if (auto* ev = dynamic_cast<StraitsEastSandsVisual*>(src.mod))
+                    if (auto* mm = ev->getMonsoon())
+                        engine.laneDirPending_[l] = (SequencerEngine::LaneDir)(int)std::lround(
+                            math::clamp(mm->getMonoLaneDir(src.eastMonoLane), 0.f, 3.f));
+            } else {
                 engine.laneDirPending_[l] = (SequencerEngine::LaneDir)(int)std::lround(
                     math::clamp(src.mod->params[src.paramId].getValue(), 0.f, 3.f));
-            // else: nothing owns this lane -> leave the Forward set by the reset above.
+            }
         }
         auto* macroVis = cachedMacroSandsVisual;
         // Push Macro's direction + LOR length to macroLaneDir_/macroLOR_ (all 4 lanes, always)
@@ -287,10 +295,11 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 // derives the sign for Forward/Reverse and OWNS it for Pendulum/PingPong (flipping
                 // at the LOR endpoint). Pushing a sign here would overwrite the bounce-induced flip
                 // with laneDirSign(Pendulum)=+1 every pass and the lane would never turn around.
-                for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
-                    int dv = (int)std::lround(math::clamp(
-                        eastLOR->params[StraitsEastVisualIds::dirId(v, l)].getValue(), 0.f, 3.f));
-                    engine.laneDirVPending_[v][l] = (SequencerEngine::LaneDir)dv;
+                if (auto* mm = eastLOR->getMonsoon()) {
+                    for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
+                        int dv = (int)std::lround(math::clamp(mm->getLaneDir(v, l), 0.f, 3.f));
+                        engine.laneDirVPending_[v][l] = (SequencerEngine::LaneDir)dv;
+                    }
                 }
 #if RULE2_DEBUG
                 {

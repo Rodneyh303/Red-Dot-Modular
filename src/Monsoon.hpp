@@ -622,15 +622,15 @@ namespace MonsoonIds {
         // source when East is the mono editor (no Mono attached). 16 x 6 = 96, appended at END
         // so existing patches still load. lane = STRAND index 0..5 (== editor lane; the mono
         // lane <-> strand map is the identity).
-        //   index = LANE_DIR_START + v*6 + lane   (v = 0..14 poly bank, 15 = V1/mono)
-        LANE_DIR_START = VARLEG_ATTEN_END,
-        LANE_DIR_END = LANE_DIR_START + 96,
+        // ── LANE_DIR range MIGRATED OUT of params[] to Monsoon::editor.laneDir (see
+        //    NUM_PARAMS_MIGRATION.md). No enum slots consumed here anymore. Accessors:
+        //    Monsoon::getLaneDir/setLaneDir/getMonoLaneDir/setMonoLaneDir. ──
 
         // Mode E manual phase knob. Full range = one upward ramp cycle (phase 0->1 = one bar).
         // Only used when CV1 (the phase input) is UNPATCHED -- it's the fallback phase source,
         // so a host (Bitwig etc.) can automate this param to drive Mode E from a DAW phase
         // modulator when no CV cable is present. Appended at END; existing patches still load.
-        PHASE_PARAM = LANE_DIR_END,
+        PHASE_PARAM = VARLEG_ATTEN_END,
 
         NUM_PARAMS
     };
@@ -1051,6 +1051,26 @@ struct Monsoon : Module {
     dsp::ClockDivider controlDivider; // For DNA modulation at "Control Rate"
 
     SequencerEngine engine;
+
+    // ── EditorState: per-voice-per-lane editor storage formerly held in MonsoonIds param
+    //    ranges (see NUM_PARAMS_MIGRATION.md). Moved OUT of params[] because every configParam
+    //    is exported to the DAW host, and ~828 of them overflowed the host pool so NO Monsoon-
+    //    family param appeared in Bitwig. These are bus-addressable: expanders reach them via
+    //    the Monsoon* they already hold, through the accessors below. Persisted in
+    //    dataToJson/dataFromJson (params[] auto-saved; plain fields do not).
+    //    PILOT: LANE_DIR only (96). Remaining ranges (MACRO*, VARLEG*) migrate next.
+    struct EditorState {
+        // laneDir: per (voice-bank v = 0..14 poly = V2..V16, 15 = V1/mono) × lane (0..5).
+        // index = v*6 + lane  (identical to the old LANE_DIR_START + v*6 + lane).
+        float laneDir[96] = {0};
+    } editor;
+
+    // LANE_DIR accessors — the ONE place the index math lives (mirrors old dirId/monoDirId).
+    float getLaneDir(int v, int lane) const { return editor.laneDir[v*6 + lane]; }
+    void  setLaneDir(int v, int lane, float x) { editor.laneDir[v*6 + lane] = x; }
+    float getMonoLaneDir(int lane) const { return editor.laneDir[15*6 + lane]; }
+    void  setMonoLaneDir(int lane, float x) { editor.laneDir[15*6 + lane] = x; }
+
     MonsoonSandsManager dnaManager{engine}; // Always valid
     std::unique_ptr<ParameterManager> paramManager;
     std::unique_ptr<ScaleManager> scaleManager;
