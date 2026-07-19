@@ -48,9 +48,9 @@ struct MonsoonCausewayPolyExpanderWidget : ModuleWidget,
                 return activeVoices_ >= 0 && voiceNum > activeVoices_;
             };
             bindParam<redDot::Dimmable<Trimpot>>("param_restatt_" + r, MonsoonIds::POLY_REST_MOD_ATT_1 + (i - 1),
-                std::function<void(redDot::Dimmable<Trimpot>*)>([dimIfInactive](redDot::Dimmable<Trimpot>* k){ k->dimWhen = dimIfInactive; }));
+                std::function<void(redDot::Dimmable<Trimpot>*)>([dimIfInactive](redDot::Dimmable<Trimpot>* k){ k->dimWhen = dimIfInactive; k->lockWhen = dimIfInactive; }));
             bindParam<redDot::Dimmable<Trimpot>>("param_accatt_"  + r, MonsoonIds::POLY_ACCENT_MOD_ATT_1 + (i - 1),
-                std::function<void(redDot::Dimmable<Trimpot>*)>([dimIfInactive](redDot::Dimmable<Trimpot>* k){ k->dimWhen = dimIfInactive; }));
+                std::function<void(redDot::Dimmable<Trimpot>*)>([dimIfInactive](redDot::Dimmable<Trimpot>* k){ k->dimWhen = dimIfInactive; k->lockWhen = dimIfInactive; }));
         }
         bindParam<Trimpot>   ("param_restatt_global", MonsoonIds::POLY_REST_MOD_ATT_GLOBAL);
         bindParam<Trimpot>   ("param_accatt_global",  MonsoonIds::POLY_ACCENT_MOD_ATT_GLOBAL);

@@ -61,12 +61,19 @@ struct DimmableTrimpot : rack::componentlibrary::Trimpot {
         rack::componentlibrary::Trimpot::onHoverScroll(e);
     }
     void draw(const DrawArgs& args) override {
-        // Locked no longer forces dim — a locked-but-shown control (e.g. V1 spread
-        // mirroring Mono) must stay readable. Only dimWhen dims (truly unavailable).
-        bool dim = (dimWhen && dimWhen());
-        if (dim) nvgGlobalAlpha(args.vg, 0.4f);
+        // Draw at full opacity, then wash a grey scrim when dimmed (see redDot::Dimmable for the
+        // rationale — the old nvgGlobalAlpha made the knob body see-through, bleeding the panel and
+        // a second dial through it). Locked no longer forces dim — a locked-but-shown control
+        // (V1 spread mirroring Mono) must stay readable.
         rack::componentlibrary::Trimpot::draw(args);
-        if (dim) nvgGlobalAlpha(args.vg, 1.0f);
+        if (dimWhen && dimWhen()) {
+            const float w = box.size.x, h = box.size.y;
+            const float r = (w < h ? w : h) * 0.5f;
+            nvgBeginPath(args.vg);
+            nvgCircle(args.vg, w * 0.5f, h * 0.5f, r);
+            nvgFillColor(args.vg, nvgRGBA(0x73, 0x73, 0x73, 0x8c));
+            nvgFill(args.vg);
+        }
     }
     void drawLayer(const DrawArgs& args, int layer) override {
         bool dim = (dimWhen && dimWhen());

@@ -82,14 +82,23 @@ struct Dimmable : Base {
         Base::onHoverScroll(e);
     }
     void draw(const typename Base::DrawArgs& args) override {
-        // locked does NOT dim -- a locked-but-shown control (V1 spread mirroring
-        // Mono) must stay readable. Only dimWhen dims (truly unavailable).
-        bool dim = (dimWhen && dimWhen());
-        if (dim) nvgGlobalAlpha(args.vg, 0.4f);
+        // Draw the knob at FULL opacity first, so it occludes the panel, then wash a grey scrim
+        // over it when dimmed. The old approach (nvgGlobalAlpha 0.4) made the knob body itself
+        // see-through: the panel and any knob behind showed through, and a dimmed knob still read
+        // as a live dial. Scrim keeps it opaque but clearly muted. locked does NOT dim — a
+        // locked-but-shown control (V1 spread mirroring Mono) must stay readable.
         Base::draw(args);
-        if (dim) nvgGlobalAlpha(args.vg, 1.0f);
+        if (dimWhen && dimWhen()) {
+            const float w = this->box.size.x, h = this->box.size.y;
+            const float r = (w < h ? w : h) * 0.5f;
+            nvgBeginPath(args.vg);
+            nvgCircle(args.vg, w * 0.5f, h * 0.5f, r);
+            nvgFillColor(args.vg, nvgRGBA(0x73, 0x73, 0x73, 0x8c));   // neutral grey wash (~55%)
+            nvgFill(args.vg);
+        }
     }
     void drawLayer(const typename Base::DrawArgs& args, int layer) override {
+        // Light layer is additive glow (no panel bleed), so dimming its alpha is fine.
         bool dim = (dimWhen && dimWhen());
         if (dim) nvgGlobalAlpha(args.vg, 0.4f);
         Base::drawLayer(args, layer);

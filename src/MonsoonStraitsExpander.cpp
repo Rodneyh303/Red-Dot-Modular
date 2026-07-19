@@ -74,6 +74,10 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
             arc->isActive = [self, voice, lane]() -> bool {
                 Monsoon* m = redDot::findMonsoonEitherSide(self->module);
                 if (!m || !m->modVizEast) return false;
+                // Inactive poly voice (beyond Monsoon's active count) → no arc: the knob is
+                // dimmed + locked, so it isn't a live param. voice 0..14 = V2..V16; active iff
+                // activeVoices_ >= voice+1, hence inactive iff voice >= activeVoices_.
+                if (voice >= 0 && self->activeVoices_ >= 0 && voice >= self->activeVoices_) return false;
                 float set, eff;
                 if (voice == -1) {
                     set = lane == 0 ? m->getMonoRestBase() : m->getMonoAccentBase();
@@ -150,12 +154,14 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
                 std::function<void(redDot::Themed_Compact_Cog_Dim*)>([this, polyIdx, dimIfInactive](redDot::Themed_Compact_Cog_Dim* k){
                     k->lightWhen = [this](){ return themeLight_; };
                     k->dimWhen   = dimIfInactive;
+                    k->lockWhen  = dimIfInactive;   // inactive voice → inoperative (was draggable)
                     queueArc(k, polyIdx, 0);
                 }));
             bindParam<redDot::Themed_Compact_Cog_Dim>("param_accent_" + r, MonsoonIds::POLY_ACCENT_PARAM_1 + polyIdx,
                 std::function<void(redDot::Themed_Compact_Cog_Dim*)>([this, polyIdx, dimIfInactive](redDot::Themed_Compact_Cog_Dim* k){
                     k->lightWhen = [this](){ return themeLight_; };
                     k->dimWhen   = dimIfInactive;
+                    k->lockWhen  = dimIfInactive;   // inactive voice → inoperative (was draggable)
                     queueArc(k, polyIdx, 1);
                 }));
         }
