@@ -141,6 +141,7 @@ struct Lantern : Module {
     };
     Cell cells[16][16];
     int  lastObservedStep = -1;
+    int  lastWriteStepObs = -1;   // previous writeStep, for lap-wrap (arrival) detection
 
     // Piano-roll per-voice visibility (bit v = voice v shown). Default all on. Persisted.
     uint16_t rollVoiceMask = 0xFFFF;
@@ -206,8 +207,22 @@ struct Lantern : Module {
         int writeStep = (eng.lastStepResult.forStep >= 0 && eng.lastStepResult.forStep < 16)
                         ? eng.lastStepResult.forStep : step;
 
+        // LAP ARRIVAL: the playhead crossed the lap boundary since the last sample — the write
+        // step moved AGAINST the travel direction (forward: new < old; reverse: new > old). A
+        // note that held its gate OUT of the previous lap is still sounding here, but its onset
+        // bar lives on the PREVIOUS lap's cells (clipped at the far edge) and cannot cover this
+        // lap's tail — so without special handling the tail renders as nothing (isMidTail skip)
+        // and a legato join landing on it looks like teal-after-a-rest. recordCell turns the
+        // FIRST tail cell of the lap into a drawable continuation bar instead. (A jump that
+        // moves against travel also flags this; its covering onset is likewise elsewhere, so
+        // drawing the tail is the truthful render there too.)
+        const bool lapArrival = (lastWriteStepObs >= 0) && (eng.lastPlayDir < 0
+                                ? (writeStep > lastWriteStepObs)
+                                : (writeStep < lastWriteStepObs));
+        lastWriteStepObs = writeStep;
+
         // Row 0 = mono / V1.
-        recordCell(0, writeStep, eng.gs, dec, accentedMono, lenSteps, monoSlur, monoSlur, eng.lastPlayDir);
+        recordCell(0, writeStep, eng.gs, dec, accentedMono, lenSteps, monoSlur, monoSlur, eng.lastPlayDir, lapArrival);
 
         // Rows 1..numPolyVoices = poly voices 2.. . A poly voice follows mono's
         // gate TYPE (retrigger/tie/legato) but can independently REST (then it's
@@ -222,7 +237,7 @@ struct Lantern : Module {
             // mono is just holding, monoSlur=0) would otherwise draw a lead outline floating outside
             // mono's chain — the "legato lead note outside the mono envelope" symptom. The voice's
             // commitment is unchanged; only the marker is gated.
-            recordCell(v + 1, writeStep, pv.gs, dec, pv.accented, lenSteps, voiceSlur, monoSlur, eng.lastPlayDir);
+            recordCell(v + 1, writeStep, pv.gs, dec, pv.accented, lenSteps, voiceSlur, monoSlur, eng.lastPlayDir, lapArrival);
         }
         // Voices beyond numPolyVoices → mark inactive.
         for (int v = eng.numPolyVoices; v < 15; ++v)
@@ -235,7 +250,8 @@ struct Lantern : Module {
     // `monoLeading` = mono's slurForward (whether mono is leading a slur). Used to gate the
     // poly lead marker so a per-voice lead never floats outside mono's chain.
     void recordCell(int voice, int step, const GateState& gs, MonoDecision dec,
-                    bool accented, float lenSteps, bool slurFwd, bool monoLeading, int playDir) {
+                    bool accented, float lenSteps, bool slurFwd, bool monoLeading, int playDir,
+                    bool lapArrival = false) {
         Cell& c = cells[voice][step];
         // A cell sounds if THIS voice's own gate is up. recordCell is called for mono AND each
         // poly voice with the SAME mono 'dec', so 'dec' must NOT drive sounding — a poly voice
@@ -259,6 +275,15 @@ struct Lantern : Module {
         //       previous chain. Treat both as a continuation tail (isMidTail): keep the old base
         //       colour, draw no fresh type and no lead marker.
         const bool heldOverTail = (gs.gatePulseRemain <= 0) && (gs.holdRemain > 0.0001f);
+
+        // WRAP-ARRIVAL TAIL: this is the first cell of a new lap and this voice is mid-tail —
+        // the note it continues started LAST lap, so no onset bar this lap can cover it. Render
+        // THIS cell as a continuation bar (remaining length from the gate countdown, the note's
+        // own type colour, held-in caret, no onset tick) instead of skipping it. Later tail
+        // cells of the same note stay isMidTail — this bar's fractional width covers them.
+        const bool wrapTail = lapArrival
+                           && (dec == MonoDecision::MidNote || heldOverTail)
+                           && (gs.gatePulseRemain > 0);
 
         c.pitchV      = gs.currentPitchV;
         c.playDir     = (playDir < 0) ? -1 : +1;
@@ -288,7 +313,8 @@ struct Lantern : Module {
         // over the boundary.) MidNote is the tail of an already-shown note; also continues.
         c.heldIn      = (gs.lastNoteType == GateState::NoteType::Tie ||
                          gs.lastNoteType == GateState::NoteType::Legato ||
-                         dec == MonoDecision::MidNote);
+                         dec == MonoDecision::MidNote)
+                      || wrapTail;   // arrival bar: the note carried over the lap boundary
         // heldOut = this note holds its gate high PAST the last step, by EITHER mechanism:
         //   (1) a LONG note whose length extends past this step (holdRemain > 1), or
         //   (2) a LEGATO LEAD that committed to hold its gate forward (slurFwd). With
@@ -302,7 +328,8 @@ struct Lantern : Module {
         //  Inactive before heldIn is set, and Tie/Legato/LegatoMax/MidNote are all genuine
         //  connections — so the two carets are symmetric and truthful.)
         c.heldOut     = (gs.holdRemain > 1.0001f) || slurFwd;
-        c.isMidTail   = (dec == MonoDecision::MidNote) || heldOverTail;   // gate tail, not a new event
+        c.isMidTail   = ((dec == MonoDecision::MidNote) || heldOverTail)
+                      && !wrapTail;   // arrival bar draws; later tail cells stay covered by it
 
         // Note-TYPE is single/tie/legato only (accent is a separate overlay so an
         // accented tie still reads as a tie). Read the VOICE'S OWN articulation
@@ -313,7 +340,7 @@ struct Lantern : Module {
         // so it is correct with perVoiceArticulation on OR off.)
         // A MidNote is the tail of an already-shown note — keep the old base colour for it
         // (isMidTail drives its rendering as a continuation), so tails are unchanged.
-        if (dec == MonoDecision::MidNote) {
+        if (dec == MonoDecision::MidNote && !wrapTail) {
             c.type = lantern::NoteType::Single;
         } else switch (gs.lastNoteType) {
             case GateState::NoteType::Tie:    c.type = lantern::NoteType::Tie;    break;
@@ -329,7 +356,9 @@ struct Lantern : Module {
         // monoSlur=0) does NOT draw a lead outline floating outside mono's chain — the "legato lead
         // outside the mono envelope" symptom. For mono (row 0) slurFwd == monoLeading, so this is
         // unchanged. A held-over tail is never a lead (stale slurFwd, continuation not a chain start).
-        c.leadsLegato = slurFwd && monoLeading && (c.type == lantern::NoteType::Single) && !heldOverTail;
+        c.leadsLegato = slurFwd && monoLeading && (c.type == lantern::NoteType::Single)
+                     && !heldOverTail && !wrapTail;   // the arrival is a continuation, its onset
+                                                      // (last lap) already carries the outline
     }
 };
 
