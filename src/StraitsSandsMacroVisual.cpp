@@ -411,17 +411,25 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // its CV leaked onto mono — the N→N off-by-one.)
         {
             const int slot = dotModular::VoiceResolver::voiceSlot(viewVoiceNum);  // V→16-wide slot (slot0=mono)
-            if (viewVoice != lastSendVoice) {
-                if (auto* mm = redDot::findMonsoonEitherSide(module))
+            // Send store now lives on Monsoon::editor (was a local param). Guard the WHOLE
+            // load/store on a valid Monsoon: if the lookup is momentarily null (e.g. early
+            // frames of a patch load before the expander chain is wired), do NOTHING this
+            // frame and leave lastSendVoice untouched, so the load retries next frame. If we
+            // advanced the latch on a skipped load, the following same-voice frame would STORE
+            // the un-loaded display proxies over this voice's saved sends -- the per-voice
+            // clobber. (Pre-migration this couldn't happen: the store was an always-present
+            // local param.)
+            if (auto* mm = redDot::findMonsoonEitherSide(module)) {
+                if (viewVoice != lastSendVoice) {
                     for (int lane=0; lane<4; ++lane)
                         for (int item=0; item<4; ++item)
                             module->params[sendDispId(lane,item)].setValue(mm->getMacroSend(slot,lane,item));
-                lastSendVoice = viewVoice;
-            } else {
-                if (auto* mm = redDot::findMonsoonEitherSide(module))
+                    lastSendVoice = viewVoice;
+                } else {
                     for (int lane=0; lane<4; ++lane)
                         for (int item=0; item<4; ++item)
                             mm->setMacroSend(slot,lane,item, module->params[sendDispId(lane,item)].getValue());
+                }
             }
         }
 
