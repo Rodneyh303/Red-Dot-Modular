@@ -757,12 +757,10 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     rack::Rect cell = layout.getStepRect(lane, rotBar);
     float cx = cell.pos.x + cell.size.x * 0.5f;
     float cyc = stripTop + stripH * 0.5f;
-    float h = stripH * 0.7f;
+    float h = stripH * 0.9f;          // chevron height (~0.27 of lane height, up from ~0.21)
+    float d = 3.f;                    // chevron arm depth (horizontal), up from 2
     float halfW = (cell.size.x - 2.f) * 0.42f;
 
-    // Distinct from the square start/end brackets: a "phase" marker drawn as a
-    // pair of inward-pointing chevrons ›‹ around the rotation block, plus a thin
-    // baseline highlight of the block. Brighter when rotation > 0.
     // Phase marker, hue-INDEPENDENT so it reads on every lane — including legato, whose hue
     // IS colors.rotation (teal), where the old fixed-teal marker vanished. Any single hue
     // collides with the lane sharing it, so use luminance contrast instead: darken the cell
@@ -780,12 +778,12 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     // chevrons ›‹ — path built once, stroked twice (dark halo under, white core over)
     auto chevrons = [&]() {
       nvgBeginPath(vg);
-      nvgMoveTo(vg, cx - halfW - 2.f, cyc - h * 0.5f);   // left "›" toward centre
-      nvgLineTo(vg, cx - halfW + 2.f, cyc);
-      nvgLineTo(vg, cx - halfW - 2.f, cyc + h * 0.5f);
-      nvgMoveTo(vg, cx + halfW + 2.f, cyc - h * 0.5f);   // right "‹" toward centre
-      nvgLineTo(vg, cx + halfW - 2.f, cyc);
-      nvgLineTo(vg, cx + halfW + 2.f, cyc + h * 0.5f);
+      nvgMoveTo(vg, cx - halfW - d, cyc - h * 0.5f);   // left "›" toward centre
+      nvgLineTo(vg, cx - halfW + d, cyc);
+      nvgLineTo(vg, cx - halfW - d, cyc + h * 0.5f);
+      nvgMoveTo(vg, cx + halfW + d, cyc - h * 0.5f);   // right "‹" toward centre
+      nvgLineTo(vg, cx + halfW - d, cyc);
+      nvgLineTo(vg, cx + halfW + d, cyc + h * 0.5f);
     };
     nvgLineCap(vg, NVG_ROUND);
     nvgLineJoin(vg, NVG_ROUND);
