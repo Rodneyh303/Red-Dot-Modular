@@ -113,10 +113,41 @@ redundant — patch a DC-coupled DAW output into the CV jack instead.
    never need "(selected voice)" qualifiers — if a param needs one, it should not be
    a param.
 
+## 5b. Prerequisite for action 2: custom undo (the real cost of de-paramming)
+
+What ParamWidget gives for free — undo/redo (ParamChange history), tooltip + typed
+entry, host/MIDI mapping — is forfeited by store-backed widgets. Recoverable:
+
+- **Undo**: Rack's history API is open (`APP->history->push()` takes any
+  `history::Action`), the same mechanism cable/module edits already use. Add ONE shared
+  helper to the redDot kit — a `StoreEditAction` capturing (voice, lane, item, oldValue,
+  newValue) with setter-lambda `undo()`/`redo()` — and wire it into the ~5 de-parammed
+  widget classes (send cells, atten cells, dir cells, owner/delegation cells). All are
+  discrete click/drag edits with clear before/after. For continuous drags, mimic
+  ParamWidget's coalescing: capture old on `onDragStart`, push one action on `onDragEnd`.
+- **Correctness GAIN**: current proxy undo is subtly wrong — undoing after switching
+  voices restores the param and the store-back writes it into the NEWLY selected voice.
+  A StoreEditAction records the voice index, so undo lands on the voice actually edited
+  regardless of current selection. Undo doesn't just survive; it becomes voice-correct
+  for the first time.
+- **Typed entry**: keep where it matters via a text field writing the store (the Sands
+  editors already have custom text-entry patterns).
+- **Host/MIDI mapping**: genuinely lost — which is the point of removing them.
+
+So action 2's cost line: one shared undo helper + wiring into ~5 widget classes, in
+exchange for the slot refund, deletion of the proxy-sync/smear bug class, and
+voice-correct undo.
+
 ## 6. End-state target
 
-Monsoon ≈ 148, Straits ≈ 149, East ≈ ~8 (spread trimpots + real controls only),
-Macro ≈ ~20, Causeway 34, others unchanged → **full system ≈ 560 slots (~55 %)**,
+The arithmetic floor of actions 1–3 is ≈ 560 slots (~55 %): Monsoon ≈ 148, Straits
+≈ 149, East ≈ ~8, Macro ≈ ~20, Causeway 34, others unchanged. But 560 is the FLOOR of
+the mechanical cleanup, not the target — the aim is to use a lot less. The same
+scrutiny that killed the proxies applies to what remains: attenuverters whose CV jack
+is the real modulation path, config-ish structural knobs, and buttons duplicated as
+Raffles/CV gates are all candidates for staying params without needing to survive a
+"would anyone automate this from a DAW" test — and where the answer is no and the
+param serves no other purpose, it can go to the store too. End state:
 every host-visible param stable, self-describing, and musically automatable — with the
 probability-reaction surface (big-5, DNA LOR, per-voice REST/ACC, PHASE) as the
 headline automation story, and everything else modulated in-rack via CV.
