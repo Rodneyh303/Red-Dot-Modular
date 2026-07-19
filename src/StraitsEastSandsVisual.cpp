@@ -1212,7 +1212,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             if (auto* mmV1 = getMonsoon()) {
                 if (!v1Loaded_) {
                     if (mmV1->getEastV1Stored()) {
-                        for (int el = 0; el < 4; ++el) {
+                        for (int el = 0; el < dotModular::SandsGrid::EAST_LANES; ++el) {
                             auto& lane = visualEditor->currentState.lanes[el];
                             lane.length   = std::max(1, (int)std::round(mmV1->getEastV1Lor(el, 0)));
                             lane.offset   = (int)std::round(mmV1->getEastV1Lor(el, 1));
@@ -1223,16 +1223,21 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         module->params[SPREAD_O].setValue(mmV1->getEastV1Spread(2));
                         module->params[SPREAD_A].setValue(mmV1->getEastV1Spread(3));
                     }
-                    // atten display ← preserved mono-slot store (valid even fresh: 0 = no depth).
-                    // Must precede the every-frame attenDispId→kMonoSlot mirror below, else the
-                    // stale (last poly voice's) attenDispId would overwrite V1's saved depth.
+                    // atten displays ← preserved mono-slot stores (valid even fresh: 0 = no depth).
+                    // Must precede the every-frame *Disp→kMonoSlot mirrors below, else the stale
+                    // (last poly voice's) display proxies would overwrite V1's saved depth.
                     for (int lane = 0; lane < 4; ++lane)
                         for (int c = 0; c < 4; ++c)
                             module->params[attenDispId(lane, c)].setValue(
                                 mmV1->getMacroAtten(dotModular::VoiceResolver::kMonoSlot, lane*4 + c));
+                    // VAR/LEG CV-depth displays ← preserved mono-slot store (vl 0=VAR 1=LEG, col 0..2).
+                    for (int vl = 0; vl < 2; ++vl)
+                        for (int c = 0; c < 3; ++c)
+                            module->params[varlegAttDispId(vl, c)].setValue(
+                                mmV1->getVarlegAtten(dotModular::VoiceResolver::kMonoSlot, vl, c));
                     v1Loaded_ = true;
                 } else {
-                    for (int el = 0; el < 4; ++el) {
+                    for (int el = 0; el < dotModular::SandsGrid::EAST_LANES; ++el) {
                         const auto& lane = visualEditor->currentState.lanes[el];
                         mmV1->setEastV1Lor(el, 0, (float)lane.length);
                         mmV1->setEastV1Lor(el, 1, (float)lane.offset);

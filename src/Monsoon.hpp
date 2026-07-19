@@ -995,7 +995,7 @@ struct Monsoon : Module {
         // has been written once, so a fresh patch keeps the editor's identity default instead
         // of being blanked. (Atten's V1 home is already macroAtten[kMonoSlot]; direction and
         // VAR/LEG have their own restores.)
-        float eastV1Lor[12] = {0};    // lane(0..3)*3 + (0=len,1=off,2=rot)
+        float eastV1Lor[18] = {0};    // lane(0..5)*3 + (0=len,1=off,2=rot); 4=VAR 5=LEG
         float eastV1Spread[4] = {0};  // 0=REST 1=MEL 2=OCT 3=ACC (SPREAD_R/M/O/A order)
         bool  eastV1Stored = false;
     } editor;
