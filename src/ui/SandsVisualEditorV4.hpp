@@ -740,7 +740,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     // tracks CV modulation in step with the window band (which uses startBar()).
     int startBar = L.dispOffset % STEP_COUNT;
     int lenC = std::max(1, std::min(L.dispLength, STEP_COUNT));
-    NVGcolor track = colors.rotation; track.a = 0.10f;
+    NVGcolor track = nvgRGB(0x00, 0x00, 0x00); track.a = 0.07f;   // faint neutral darkening (was teal)
     for (int k = 0; k < lenC; ++k) {
       int bar = (startBar + k) % STEP_COUNT;
       rack::Rect c = layout.getStepRect(lane, bar);
@@ -763,29 +763,38 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     // Distinct from the square start/end brackets: a "phase" marker drawn as a
     // pair of inward-pointing chevrons ›‹ around the rotation block, plus a thin
     // baseline highlight of the block. Brighter when rotation > 0.
-    NVGcolor mk = colors.rotation; mk.a = (L.rotation > 0) ? 0.9f : 0.4f;
+    // Phase marker, hue-INDEPENDENT so it reads on every lane — including legato, whose hue
+    // IS colors.rotation (teal), where the old fixed-teal marker vanished. Any single hue
+    // collides with the lane sharing it, so use luminance contrast instead: darken the cell
+    // (works over any colour) and draw the chevrons as a white core with a dark halo (legible
+    // over bright OR dark fills). Brighter when rotation > 0.
+    const float on = (L.rotation > 0) ? 1.f : 0.55f;
 
-    // block baseline tint
+    // block baseline tint — DARKEN the rotation cell (universal across lane hues)
     nvgBeginPath(vg);
     nvgRect(vg, cell.pos.x + 1.f, stripTop, cell.size.x - 2.f, stripH);
-    NVGcolor blockTint = colors.rotation; blockTint.a = (L.rotation > 0) ? 0.30f : 0.15f;
+    NVGcolor blockTint = nvgRGB(0x00, 0x00, 0x00); blockTint.a = (L.rotation > 0) ? 0.32f : 0.16f;
     nvgFillColor(vg, blockTint);
     nvgFill(vg);
 
-    // left chevron "›" pointing right toward centre
-    nvgBeginPath(vg);
-    nvgMoveTo(vg, cx - halfW - 2.f, cyc - h * 0.5f);
-    nvgLineTo(vg, cx - halfW + 2.f, cyc);
-    nvgLineTo(vg, cx - halfW - 2.f, cyc + h * 0.5f);
-    // right chevron "‹" pointing left toward centre
-    nvgMoveTo(vg, cx + halfW + 2.f, cyc - h * 0.5f);
-    nvgLineTo(vg, cx + halfW - 2.f, cyc);
-    nvgLineTo(vg, cx + halfW + 2.f, cyc + h * 0.5f);
-    nvgStrokeColor(vg, mk);
-    nvgStrokeWidth(vg, 1.8f);
+    // chevrons ›‹ — path built once, stroked twice (dark halo under, white core over)
+    auto chevrons = [&]() {
+      nvgBeginPath(vg);
+      nvgMoveTo(vg, cx - halfW - 2.f, cyc - h * 0.5f);   // left "›" toward centre
+      nvgLineTo(vg, cx - halfW + 2.f, cyc);
+      nvgLineTo(vg, cx - halfW - 2.f, cyc + h * 0.5f);
+      nvgMoveTo(vg, cx + halfW + 2.f, cyc - h * 0.5f);   // right "‹" toward centre
+      nvgLineTo(vg, cx + halfW - 2.f, cyc);
+      nvgLineTo(vg, cx + halfW + 2.f, cyc + h * 0.5f);
+    };
     nvgLineCap(vg, NVG_ROUND);
     nvgLineJoin(vg, NVG_ROUND);
-    nvgStroke(vg);
+    chevrons();                                          // halo
+    { NVGcolor halo = nvgRGB(0x0a, 0x0c, 0x10); halo.a = 0.60f * on;
+      nvgStrokeColor(vg, halo); nvgStrokeWidth(vg, 3.4f); nvgStroke(vg); }
+    chevrons();                                          // white core
+    { NVGcolor core = nvgRGB(0xf2, 0xf2, 0xf6); core.a = 0.95f * on;
+      nvgStrokeColor(vg, core); nvgStrokeWidth(vg, 1.6f); nvgStroke(vg); }
   }
   
   // Draw a per-lane playhead highlight.
