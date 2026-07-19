@@ -178,6 +178,18 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     for (int i = 0; i < 96; ++i) json_array_append_new(va, json_real(m->editor.varlegAtten[i]));
     json_object_set_new(root, "editorVarlegAtten", va);
 
+    // MACRO owner (64) + send (256) + atten (256), migrated out of params[]. Tap re-homed to
+    // an expander param, so it persists via the normal Rack param path -- not here.
+    json_t* mo = json_array();
+    for (int i = 0; i < 64; ++i) json_array_append_new(mo, json_real(m->editor.macroOwn[i]));
+    json_object_set_new(root, "editorMacroOwn", mo);
+    json_t* ms = json_array();
+    for (int i = 0; i < 256; ++i) json_array_append_new(ms, json_real(m->editor.macroSend[i]));
+    json_object_set_new(root, "editorMacroSend", ms);
+    json_t* ma = json_array();
+    for (int i = 0; i < 256; ++i) json_array_append_new(ma, json_real(m->editor.macroAtten[i]));
+    json_object_set_new(root, "editorMacroAtten", ma);
+
     return root;
 }
 
@@ -391,5 +403,20 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
         if (json_is_array(j))
             for (size_t i = 0; i < 96 && i < json_array_size(j); ++i)
                 m->editor.varlegAtten[i] = (float)json_real_value(json_array_get(j, i));
+    }
+    if (auto j = json_object_get(root, "editorMacroOwn")) {
+        if (json_is_array(j))
+            for (size_t i = 0; i < 64 && i < json_array_size(j); ++i)
+                m->editor.macroOwn[i] = (float)json_real_value(json_array_get(j, i));
+    }
+    if (auto j = json_object_get(root, "editorMacroSend")) {
+        if (json_is_array(j))
+            for (size_t i = 0; i < 256 && i < json_array_size(j); ++i)
+                m->editor.macroSend[i] = (float)json_real_value(json_array_get(j, i));
+    }
+    if (auto j = json_object_get(root, "editorMacroAtten")) {
+        if (json_is_array(j))
+            for (size_t i = 0; i < 256 && i < json_array_size(j); ++i)
+                m->editor.macroAtten[i] = (float)json_real_value(json_array_get(j, i));
     }
 }

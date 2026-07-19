@@ -534,86 +534,15 @@ namespace MonsoonIds {
         LAST_TRIAL_R_PARAM,
         LAST_TRIAL_M_PARAM,
 
-        // ── Macro/East base-owner + Macro-CV blend sends (per voice, per lane) ──
-        // Appended at END so existing param IDs stay stable (saved patches safe).
-        // Per-(voice,lane) base owner: which expander owns the poly L/O/R base for
-        // voice v, lane L. 0 = Macro (default), 1 = East. 15 voices × 3 lanes = 45.
-        //   index = MACRO_OWN_START + v*4 + lane  (4 lanes: REST/MEL/OCT/ACCENT)
-        MACRO_OWN_START,
-        MACRO_OWN_END = MACRO_OWN_START + 64,
-        // Per-(voice,lane,item) Macro-CV blend send: how much of the (already
-        // Macro-attenuated) Macro CV is mixed into this voice/lane/item. item
-        // 0=LEN 1=OFF 2=ROT 3=SPR. 15 × 3 × 4 = 180. Default unity (Macro CV
-        // reaches voices out of the box; turn down to localise).
-        //   index = MACRO_SEND_START + (v*4 + lane)*4 + item   (v = voiceNumber-1, slot0=mono)
-        MACRO_SEND_START = MACRO_OWN_END,
-        MACRO_SEND_END = MACRO_SEND_START + 256,   // 16 voices × 4 lanes × 4 items
-
-        // Display-proxy params for the East visual's SELECTED-VOICE owner/send
-        // controls. Physical knobs/buttons bind to these fixed ids; the widget
-        // copies them to/from the per-voice MACRO_OWN/SEND params on voice switch
-        // (same pattern as SPREAD_R/M/O ↔ the per-voice interp params).
-        //   owner disp:  MACRO_OWN_DISP_START + lane            (4: lanes 0-3)
-        //   send  disp:  MACRO_SEND_DISP_START + lane*4 + item  (16: 4 lanes×4)
-        MACRO_OWN_DISP_START = MACRO_SEND_END,
-        MACRO_OWN_DISP_END = MACRO_OWN_DISP_START + 4,
-        MACRO_SEND_DISP_START = MACRO_OWN_DISP_END,
-        MACRO_SEND_DISP_END = MACRO_SEND_DISP_START + 16,
-
-        // Per-(voice, jack) CV-depth attenuverter for East's poly CV inputs. The
-        // poly cable is a convenience (one cable, 16 channels) but each voice is an
-        // independent mod target: this gives each voice its OWN depth for each of the
-        // 12 CV jacks, so the same incoming CV can bite harder on one voice than
-        // another. 15 voices × 12 jacks = 180. The East panel's 12 physical
-        // attenuverters are display proxies (ATTEN_START) copied to/from the selected
-        // voice's slice here on voice switch — same pattern as owner/send.
-        //   index = MACRO_ATTEN_START + v*16 + (lane*4 + c)  (v = voiceNumber-1, slot0=mono)
-        MACRO_ATTEN_START = MACRO_SEND_DISP_END,
-        MACRO_ATTEN_END = MACRO_ATTEN_START + 256,   // 16 voices × 16 jacks (4 lanes × 4 cols)
-
-        // P9b: Macro send PRE/POST tap — TWO per lane: one for the LOR sends
-        // (LEN/OFF/ROT) and one for the SPREAD send. 0 = PRE (raw CV, att bypassed),
-        // 1 = POST (CV × left atten). Laid out as a 3rd row in each send group.
-        //   LOR tap    index = MACRO_TAP_START + lane*2 + 0
-        //   spread tap index = MACRO_TAP_START + lane*2 + 1
-        MACRO_TAP_START = MACRO_ATTEN_END,
-        MACRO_TAP_END = MACRO_TAP_START + 8,   // 4 lanes × (LOR, spread)
-
-        // ── EAST_EXTRA_LANES Stage 3: VAR/LEG per-voice delegation toggle ──
-        // For the VARIATION and LEGATO lanes, each poly voice either DELEGATES its reading
-        // position to MONO (default) or uses its OWN outright LOR (Local East). Unlike lanes
-        // 0-3 (MACRO_OWN), the only delegation target here is mono — Macro never owns these
-        // lanes (EAST_EXTRA_LANES.md §6b), so this is a clean mono-or-East binary. V1 is mono,
-        // never a poly voice, so it is always mono (no toggle). 15 poly voices × 2 lanes = 30.
-        // Appended at END so existing param IDs stay stable (saved patches safe).
-        // ── VARLEG ranges (DELEG 30, DELEG_DISP 2, ATTEN 96) MIGRATED OUT of params[]
-        //    (NUM_PARAMS_MIGRATION.md): DELEG + ATTEN -> Monsoon::editor.varlegDeleg/varlegAtten
-        //    (accessors getVarlegDeleg/…); DELEG_DISP re-homed to StraitsEastVisualIds
-        //    (VARLEG_DELEG_DISP_START) since it drives a visible cell. No enum slots here now. ──
-
-        // ── East LANE DIRECTION bank (plans/lane_direction_homes.md step 1) ──────
-        // Direction is lane-addressing data authored by an EXPANDER, so — like LOR, atten,
-        // spread and delegation — its home is the editor's params and the engine is a derived
-        // cache the manager rebuilds each sync(). It was the one exception: engine-homed and
-        // persisted in Monsoon's JSON, so pulling East out of the rack left poly direction
-        // stuck applied forever (nothing resets laneDirV_, unlike delegation and LOR).
-        //
-        // 4-state per lane: 0=Forward 1=Reverse 2=Pendulum 3=PingPong (SequencerEngine::LaneDir).
-        // Poly-bank indexed like ownerId/varlegDelegId (v = 0..14 = V2..V16) — NOT the 16-wide
-        // voice-slot scheme the atten banks use. Slot 15 is V1/mono, the same spare-slot trick
-        // monoOwnerId uses so V1 persists in the patch like poly voices do; it is the mono
-        // source when East is the mono editor (no Mono attached). 16 x 6 = 96, appended at END
-        // so existing patches still load. lane = STRAND index 0..5 (== editor lane; the mono
-        // lane <-> strand map is the identity).
-        // ── LANE_DIR range MIGRATED OUT of params[] to Monsoon::editor.laneDir (see
-        //    NUM_PARAMS_MIGRATION.md). No enum slots consumed here anymore. Accessors:
-        //    Monsoon::getLaneDir/setLaneDir/getMonoLaneDir/setMonoLaneDir. ──
+        // ── MACRO ranges (OWN 64, SEND 256, ATTEN 256, TAP 8 = 584) MIGRATED OUT of params[]
+        //    to Monsoon::editor.macroOwn/macroSend/macroAtten (accessors getMacroOwn/…); tap re-homed to a Macro param;
+        //    the DISP proxies (OWN_DISP 4 -> StraitsEastVisualIds, SEND_DISP 16 ->
+        //    StraitsMacroVisualIds) re-homed to expander namespaces since they drive visible
+        //    cells. NUM_PARAMS_MIGRATION.md. No shared-pool slots consumed here now. ──
 
         // Mode E manual phase knob. Full range = one upward ramp cycle (phase 0->1 = one bar).
-        // Only used when CV1 (the phase input) is UNPATCHED -- it's the fallback phase source,
-        // so a host (Bitwig etc.) can automate this param to drive Mode E from a DAW phase
-        // modulator when no CV cable is present. Appended at END; existing patches still load.
-        PHASE_PARAM = MACRO_TAP_END,
+        // Only used when CV1 (the phase input) is UNPATCHED -- the DAW-automatable fallback.
+        PHASE_PARAM,
 
         NUM_PARAMS
     };
@@ -1052,7 +981,23 @@ struct Monsoon : Module {
         // varlegAtten: VAR/LEG attenuation per (v = 0..15 voice-slot) × lane(0=VAR,1=LEG) × col(0..2).
         // index = v*6 + lane*3 + col  (== old VARLEG_ATTEN_START + v*6 + lane*3 + col).
         float varlegAtten[96] = {0};
+        // macroOwn: owner per (v=0..15 voice-slot, 15=mono) × lane(0..3). index = v*4 + lane.
+        float macroOwn[64] = {0};
+        // macroSend: Macro-CV blend send per (v=0..15)×lane(0..3)×item(0..3). index=(v*4+lane)*4+item.
+        float macroSend[256] = {0};
+        // macroAtten: atten depth per (v=0..15)×(lane*4+col, 16 wide). index = v*16 + lane*4+col.
+        float macroAtten[256] = {0};
     } editor;
+
+    // MACRO accessors (mirror old ownerId/sendId/attenId/tapId index math).
+    float getMacroOwn(int v, int lane) const { return editor.macroOwn[v*4 + lane]; }
+    void  setMacroOwn(int v, int lane, float x) { editor.macroOwn[v*4 + lane] = x; }
+    float getMonoMacroOwn(int lane) const { return editor.macroOwn[15*4 + lane]; }
+    void  setMonoMacroOwn(int lane, float x) { editor.macroOwn[15*4 + lane] = x; }
+    float getMacroSend(int v, int lane, int item) const { return editor.macroSend[(v*4 + lane)*4 + item]; }
+    void  setMacroSend(int v, int lane, int item, float x) { editor.macroSend[(v*4 + lane)*4 + item] = x; }
+    float getMacroAtten(int v, int laneCol) const { return editor.macroAtten[v*16 + laneCol]; }
+    void  setMacroAtten(int v, int laneCol, float x) { editor.macroAtten[v*16 + laneCol] = x; }
 
     // LANE_DIR accessors — the ONE place the index math lives (mirrors old dirId/monoDirId).
     float getLaneDir(int v, int lane) const { return editor.laneDir[v*6 + lane]; }

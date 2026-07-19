@@ -3,6 +3,7 @@
 #include "ui/SandsGrid.hpp"
 #include <cmath>   // std::fabs (macroSpreadModulatesLane)
 #include "Monsoon.hpp"
+#include "ui/VisualExpanderHelpers.hpp"   // redDot::findMonsoonEitherSide (MACRO field accessors)
 
 using namespace rack;
 using namespace MonsoonIds;
@@ -60,8 +61,19 @@ namespace StraitsMacroVisualIds {
         // Direction display proxy: 4 lanes (MEL/OCT/REST/ACC). DirCell writes here;
         // widget step() syncs to engine.laneDirPending_ (Macro = global = mono direction).
         DIR_DISP_START = ATTEN_START + 16,   // 20 .. 23
-        NUM_SPREAD_PARAMS = DIR_DISP_START + 4  // = 24
+        // 16 send display proxies (lane*4+item), re-homed from MonsoonIds::MACRO_SEND_DISP
+        // (NUM_PARAMS_MIGRATION.md): drive visible send cells so they stay params, in the
+        // expander namespace to keep them out of the shared pool.
+        SEND_DISP_START = DIR_DISP_START + 4,   // = 24
+        // 8 PRE/POST tap params (lane*2 + which), re-homed from MonsoonIds::MACRO_TAP
+        // (widgeted trimpots, so they stay params in the expander namespace).
+        TAP_START = SEND_DISP_START + 16,       // = 40
+        NUM_SPREAD_PARAMS = TAP_START + 8       // = 48
     };
+    static inline int sendDispId(int lane, int item) { return SEND_DISP_START + lane*4 + item; }
+    static inline int tapLorId(int lane) { return TAP_START + lane*2 + 0; }
+    static inline int tapSprId(int lane) { return TAP_START + lane*2 + 1; }
+    static inline int tapIdForItem(int lane, int item) { return (item==3) ? tapSprId(lane) : tapLorId(lane); }
     static inline int attenId(int lane, int c) { return ATTEN_START + lane*4 + c; }
     static inline int dirDispId(int lane) { return DIR_DISP_START + lane; }
 
@@ -78,8 +90,8 @@ namespace StraitsMacroVisualIds {
     // bug). Bank is 3-lane-strided × 4 items, 16 slots wide.
     // NOTE: bank is still 3-lane-strided; accent (lane 3) uses POLY_ACCENT_VOICE_* directly
     //       until the bank resize in Stage 6b.
-    inline int sendId(int v, int lane, int item) { return MonsoonIds::MACRO_SEND_START + (v*4 + lane)*4 + item; }
-    inline int sendDispId(int lane, int item)    { return MonsoonIds::MACRO_SEND_DISP_START + lane*4 + item; }
+    // sendId (MACRO_SEND) MIGRATED to Monsoon::editor.macroSend -- use
+    // monsoon->getMacroSend/setMacroSend(v, lane, item). sendDispId + tap re-homed above.
 
     // ── Input IDs ─────────────────────────────────────────────────────────
     enum InputId {
@@ -149,14 +161,12 @@ namespace StraitsMacroVisualIds {
         if (!macro || engineLane < 0 || engineLane >= 4) return false;
         bool sprCvLive = macro->inputs[cvId(engineLane, 3)].isConnected();
         if (delegated) return sprCvLive;
-        float send = macro->params[sendId(sendSlot, engineLane, 3)].getValue();
+        float send = (redDot::findMonsoonEitherSide(macro)
+            ? redDot::findMonsoonEitherSide(macro)->getMacroSend(sendSlot, engineLane, 3) : 0.f);
         return std::fabs(send) > 1e-4f && sprCvLive;
     }
-    // P9b: PRE/POST tap mix — TWO per lane (LOR tap covers LEN/OFF/ROT items 0-2,
-    // spread tap covers item 3). MonsoonIds tap region, lane*2 + (0=LOR,1=spread).
-    inline int tapLorId(int lane) { return MonsoonIds::MACRO_TAP_START + lane*2 + 0; }
-    inline int tapSprId(int lane) { return MonsoonIds::MACRO_TAP_START + lane*2 + 1; }
-    inline int tapIdForItem(int lane, int item) { return (item==3) ? tapSprId(lane) : tapLorId(lane); }
+    // P9b: PRE/POST tap params re-homed to this expander's namespace (TAP_START, above):
+    // tapLorId/tapSprId/tapIdForItem. Still params (visible trimpots).
 }
 
 struct StraitsSandsMacroVisual : Module {
@@ -211,11 +221,8 @@ struct StraitsSandsMacroVisual : Module {
             for (int item=0; item<4; ++item)
                 configParam(sendDispId(lane,item), -1.f,1.f,0.f,
                             "L"+std::to_string(lane)+" mix-in "+std::to_string(item)+" (selected voice)");
-        for (int v=0; v<16; ++v)   // 16 voice slots: 0=mono(V1), 1..15=poly(V2..V16)
-            for (int lane=0; lane<4; ++lane)
-                for (int item=0; item<4; ++item)
-                    configParam(sendId(v,lane,item), -1.f,1.f,0.f,
-                                "V"+std::to_string(v+1)+" L"+std::to_string(lane)+" mix-in "+std::to_string(item));
+        // send store MIGRATED to Monsoon::editor.macroSend (getMacroSend/setMacroSend) --
+        // no per-voice configParam here; the visible send cells are sendDispId (configured above).
         // Direction display proxies (4 poly lanes). DirCell writes 0..3 = Fwd/Rev/Pend/PingPong.
         static const char* dirNames[4] = {"MEL","OCT","REST","ACC"};
         for (int l = 0; l < 4; ++l) {

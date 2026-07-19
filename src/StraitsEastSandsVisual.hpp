@@ -81,18 +81,22 @@ namespace StraitsEastVisualIds {
         // OwnerCell so they MUST stay params, but in the EXPANDER's small namespace so they
         // don't inflate the shared MonsoonIds pool.
         VARLEG_DELEG_DISP_START = DIR_DISP_START + 6,   // = 32
-        NUM_SPREAD_PARAMS = VARLEG_DELEG_DISP_START + 2 // = 34
+        // 4 owner display proxies (lanes 0-3), re-homed from MonsoonIds::MACRO_OWN_DISP
+        // (NUM_PARAMS_MIGRATION.md): drive visible owner cells so they stay params, but in
+        // the expander namespace so they don't inflate the shared pool.
+        OWN_DISP_START = VARLEG_DELEG_DISP_START + 2,    // = 34
+        NUM_SPREAD_PARAMS = OWN_DISP_START + 4           // = 38
     };
+    // Owner display proxy (selected-voice view). lane 0..3.
+    static inline int ownerDispId(int lane) { return OWN_DISP_START + lane; }
     // VAR/LEG delegation display proxy (selected-voice view). lane 0=VAR, 1=LEG.
     static inline int varlegDelegDispId(int lane) { return VARLEG_DELEG_DISP_START + lane; }
     // Direction display proxy (selected-voice view). lane = editor lane 0..5.
     static inline int dirDispId(int lane) { return DIR_DISP_START + lane; }
     // Selected-voice display proxy (physical knob binds here).
     static inline int attenDispId(int lane, int col) { return ATTEN_START + lane*4 + col; }
-    // Per-voice CV depth (the real store): voice v, lane l, col c (0=LEN,1=OFF,2=ROT).
-    static inline int attenId(int v, int lane, int col) {
-        return MonsoonIds::MACRO_ATTEN_START + v*16 + (lane*4 + col);
-    }
+    // Per-voice CV depth (real store) MIGRATED to Monsoon::editor.macroAtten -- use
+    // monsoon->getMacroAtten/setMacroAtten(v, lane*4+col). (attenDispId above stays local.)
     // VAR/LEG CV-depth display proxy (selected-voice view). lane 0=VAR, 1=LEG; col 0..2.
     static inline int varlegAttDispId(int lane, int col) { return VARLEG_ATTEN_DISP_START + lane*3 + col; }
     // VAR/LEG per-voice CV depth (the real store) MIGRATED to Monsoon::editor.varlegAtten:
@@ -162,12 +166,12 @@ namespace StraitsEastVisualIds {
 
     // Macro/East base owner per (voice, lane): MonsoonIds::MACRO_OWN_START + v*4 + lane.
     // 0 = Macro owns (default), 1 = East owns. 4 lanes: REST/MEL/OCT/ACCENT.
-    inline int ownerId(int v, int lane) { return MonsoonIds::MACRO_OWN_START + v*4 + lane; }
+    // ownerId MIGRATED to Monsoon::editor.macroOwn -- getMacroOwn/setMacroOwn(v,lane).
     // V1 (mono) per-lane Macro-delegation owner. The MACRO_OWN block reserves 64 params
     // but poly only uses v=0..14 (slots 0..59); slots 60..63 (v=15) are spare. Reuse them
     // as the mono owner store so V1 delegation persists in the patch like poly voices do
     // (real configSwitch params → Rack auto-saves them). 1.f = East owns, 0.f = Macro owns.
-    inline int monoOwnerId(int lane) { return MonsoonIds::MACRO_OWN_START + 15*4 + lane; }
+    // monoOwnerId MIGRATED -- getMonoMacroOwn/setMonoMacroOwn(lane).
     // VAR/LEG per-voice delegation toggle (EAST_EXTRA_LANES §4d). 0 = delegate to mono
     // (default), 1 = Local East (own LOR). 15 poly voices (v=0..14 = V2..V16) × 2 lanes
     // (lane 0 = VAR, 1 = LEG). V1 is mono → always follows, no toggle.
@@ -187,7 +191,7 @@ namespace StraitsEastVisualIds {
     // (Macro mix-in send helpers relocated to StraitsMacroVisualIds under the control
     //  inversion — the send is a Macro concern now.)
     // Owner display proxy (selected-voice view; copied to/from per-voice on switch).
-    inline int ownerDispId(int lane)           { return MonsoonIds::MACRO_OWN_DISP_START + lane; }
+    // ownerDispId re-homed to expander namespace (OWN_DISP_START, above).
 
     // Local lights for this module (East visual has its own light space, separate
     // from Monsoon's). Owner latch lights — lit when the lane is East-owned.
@@ -304,10 +308,7 @@ struct StraitsEastSandsVisual : Module {
 
             // Base owner (0=Macro default, 1=East) + Macro-CV blend sends (unity
             // default) per lane. Switch/snap so owner reads as discrete 0/1.
-            for (int lane=0; lane<4; ++lane) {
-                configSwitch(ownerId(v,lane), 0.f,1.f,0.f,
-                             vl+"L"+std::to_string(lane)+" base: inherit Macro / local East", {"Inherit Macro","Local East"});
-            }
+            // owner base MIGRATED to Monsoon::editor.macroOwn -- no configSwitch here.
             // VAR/LEG delegation (§4d): the only target is mono (no Macro), so this is a
             // clean binary — follow mono (default, silent) or Local East (own LOR). lane
             // 0 = VAR, 1 = LEG. Rendered as the lane-end toggle for editor lanes 4/5.
@@ -324,10 +325,7 @@ struct StraitsEastSandsVisual : Module {
         // LANE_DIR migrated out of params[] to Monsoon::editor.laneDir (NUM_PARAMS_MIGRATION.md).
         // No configSwitch here anymore -- the direction state is plain fields on Monsoon,
         // reached via getLaneDir/setLaneDir. (Default Forward = 0 = field default.)
-        for (int lane=0; lane<4; ++lane) {
-            configSwitch(monoOwnerId(lane), 0.f,1.f,0.f,
-                         "V1 L"+std::to_string(lane)+" base: inherit Macro / local East", {"Inherit Macro","Local East"});
-        }
+        // V1 owner base MIGRATED to Monsoon::editor.macroOwn (mono slot) -- no configSwitch.
         // VAR/LEG delegation display proxies (selected-voice cells). lane 0=VAR, 1=LEG.
         for (int lane=0; lane<2; ++lane) {
             configSwitch(varlegDelegDispId(lane), 0.f,1.f,0.f,
@@ -340,10 +338,10 @@ struct StraitsEastSandsVisual : Module {
         // the selected voice's slice on voice switch.
         for (int v=0; v<16; ++v) {
             std::string vl = "V"+std::to_string(v+1)+" ";   // slot v = voice v+1
-            for (int lane=0; lane<4; ++lane)
-                for (int c=0; c<4; ++c)
-                    configParam(attenId(v,lane,c), -1.f,1.f,0.f,
-                                vl+"depth l"+std::to_string(lane)+"c"+std::to_string(c));
+            // atten store MIGRATED to Monsoon::editor.macroAtten (getMacroAtten/setMacroAtten);
+            // the per-voice depth params no longer live in params[]. The 12 visible attenuverters
+            // are the display proxies (attenDispId), configured above.
+            (void)vl;
         }
         // Direction display proxies (selected-voice view). lane = editor lane 0..5.
         // Value 0=Forward, 1=Reverse, 2=Pendulum, 3=PingPong. Default 0 (Forward).

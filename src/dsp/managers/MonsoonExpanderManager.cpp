@@ -73,9 +73,9 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
     if (cachedEastSandsVisual) {
         for (int el = 0; el < 4; ++el) {
             const int eng = dotModular::EDITOR_TO_ENGINE_LANE[el];
-            topoIn.eastV1Owner[el] = cachedEastSandsVisual->params[StraitsEastVisualIds::monoOwnerId(eng)].getValue() > 0.5f;
+            topoIn.eastV1Owner[el] = (redDot::findMonsoonEitherSide(cachedEastSandsVisual) ? redDot::findMonsoonEitherSide(cachedEastSandsVisual)->getMonoMacroOwn(eng) > 0.5f : false);
             for (int pv = 0; pv < 15; ++pv)
-                topoIn.eastPolyOwner[pv][el] = cachedEastSandsVisual->params[StraitsEastVisualIds::ownerId(pv, eng)].getValue() > 0.5f;
+                topoIn.eastPolyOwner[pv][el] = (redDot::findMonsoonEitherSide(cachedEastSandsVisual) ? redDot::findMonsoonEitherSide(cachedEastSandsVisual)->getMacroOwn(pv, eng) > 0.5f : false);
         }
     }
     const dotModular::SandsTopology topo = dotModular::SandsTopology::build(topoIn);
@@ -164,6 +164,10 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
         // item index: 0=LEN 1=OFF 2=ROT 3=SPR. (Spr handled in the interp path.)
         auto* macroVis = cachedMacroSandsVisual;
         const bool macroPresent = (macroVis != nullptr);
+        // MACRO atten/send migrated to Monsoon::editor (NUM_PARAMS_MIGRATION.md). Pointer for
+        // the field reads in this loop (East owns atten, Macro owns send; same Monsoon).
+        Monsoon* mmOwn = eastLOR ? redDot::findMonsoonEitherSide(eastLOR)
+                       : (macroVis ? redDot::findMonsoonEitherSide(macroVis) : nullptr);
 
         for (int v = 0; v < 15; v++) {
             int rhythmBase = MonsoonIds::POLY_DNA_VOICE_1_LEN + v * 3;
@@ -177,7 +181,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
             auto eastLorVal = [&](int paramIdx, int r, int c, float lo, float hi)-> float {
                 float base = eastLOR->params[paramIdx].getValue();
                 if (eastVisual && eastVisual->inputs[cvId(r,c)].isConnected()) {
-                    float att = eastLOR->params[attenId(slot,r,c)].getValue();   // PER-VOICE depth
+                    float att = mmOwn ? mmOwn->getMacroAtten(slot, r*4 + c) : 0.f;   // PER-VOICE depth
                     float cv  = eastVisual->inputs[cvId(r,c)].getPolyVoltage(v) / 10.f;
                     base = math::clamp(base + cv * att * (hi - lo), lo, hi);
                 }
@@ -211,8 +215,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 // eastLorVal already folded into base. Default 0 → opt-in.
                 float blend = 0.f;
                 if (macroPresent && ownerEast) {
-                    float send = macroVis->params[
-                        StraitsMacroVisualIds::sendId(slot, lane, item)].getValue();
+                    float send = mmOwn ? mmOwn->getMacroSend(slot, lane, item) : 0.f;
                     blend = macroVis->macroSendDelta[lane][item] * send;  // P9: tapped send delta
                 }
                 return (int)math::clamp(base + blend, lo, hi);
@@ -236,8 +239,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                                        : (macroPresent ? (macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3]) : eastInterpVal);
                 float blend = 0.f;
                 if (macroPresent && ownerEast) {
-                    float send = macroVis->params[
-                        StraitsMacroVisualIds::sendId(slot, lane, 3)].getValue();
+                    float send = mmOwn ? mmOwn->getMacroSend(slot, lane, 3) : 0.f;
                     blend = macroVis->macroSendDelta[lane][3] * send;  // P9: tapped send delta
                 }
                 return math::clamp(base + blend, -1.f, 1.f);
@@ -323,7 +325,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
 
             float restInterp = eastInterp->params[MonsoonIds::POLY_REST_INTERP_1 + v].getValue();
             if (eastVisual && eastVisual->inputs[cvId(PL::PL_REST,3)].isConnected()) {
-                float att = eastLOR->params[attenId(slot,PL::PL_REST,3)].getValue();   // PER-VOICE depth
+                float att = mmE ? mmE->getMacroAtten(slot, PL::PL_REST*4 + 3) : 0.f;   // PER-VOICE depth
                 float cv  = eastVisual->inputs[cvId(PL::PL_REST,3)].getPolyVoltage(v) / 10.f;
                 restInterp += cv * att * 2.f;   // ×2 = ±1 span. UNCLAMPED: summed with the Macro blend in
                     // combineSpread, which end-clamps the TOTAL once (per-term clamping
@@ -352,7 +354,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
             engine.polyOffERef(v, PL::PL_MELODY) = combineLOR(PL::PL_MELODY, 1, melodyBase + 1, PL::PL_MELODY, 1, 0.f, 15.f);
             engine.polyRotERef(v, PL::PL_MELODY) = combineLOR(PL::PL_MELODY, 2, melodyBase + 2, PL::PL_MELODY, 2, 0.f, 15.f);
             if (eastVisual && eastVisual->inputs[cvId(PL::PL_MELODY,3)].isConnected()) {
-                float att = eastLOR->params[attenId(slot,PL::PL_MELODY,3)].getValue();   // PER-VOICE depth
+                float att = mmE ? mmE->getMacroAtten(slot, PL::PL_MELODY*4 + 3) : 0.f;   // PER-VOICE depth
                 float cv  = eastVisual->inputs[cvId(PL::PL_MELODY,3)].getPolyVoltage(v) / 10.f;
                 melodyInterp += cv * att * 2.f;   // ×2 = ±1 span. UNCLAMPED: summed with the Macro blend in
                     // combineSpread, which end-clamps the TOTAL once (per-term clamping
@@ -384,7 +386,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
 
             float octaveInterp = eastInterp->params[MonsoonIds::POLY_OCTAVE_INTERP_1 + v].getValue();
             if (eastVisual && eastVisual->inputs[cvId(PL::PL_OCTAVE,3)].isConnected()) {
-                float att = eastLOR->params[attenId(slot,PL::PL_OCTAVE,3)].getValue();   // PER-VOICE depth
+                float att = mmE ? mmE->getMacroAtten(slot, PL::PL_OCTAVE*4 + 3) : 0.f;   // PER-VOICE depth
                 float cv  = eastVisual->inputs[cvId(PL::PL_OCTAVE,3)].getPolyVoltage(v) / 10.f;
                 octaveInterp += cv * att * 2.f;   // ×2 = ±1 span. UNCLAMPED: summed with the Macro blend in
                     // combineSpread, which end-clamps the TOTAL once (per-term clamping
@@ -418,7 +420,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 // only responded to the manual knob, never to modulation. Mirror the
                 // REST/MEL/OCT path: add CV×atten, then combineSpread (owner + Macro blend).
                 if (eastVisual && eastVisual->inputs[cvId(PL::PL_ACCENT,3)].isConnected()) {
-                    float att = eastLOR->params[attenId(slot, PL::PL_ACCENT, 3)].getValue();   // PER-VOICE depth
+                    float att = mmE ? mmE->getMacroAtten(slot, PL::PL_ACCENT*4 + 3) : 0.f;   // PER-VOICE depth
                     float cv  = eastVisual->inputs[cvId(PL::PL_ACCENT,3)].getPolyVoltage(v) / 10.f;
                     accentInterp += cv * att * 2.f;   // ×2 = ±1 span. UNCLAMPED: summed with the Macro blend in
                     // combineSpread, which end-clamps the TOTAL once (per-term clamping

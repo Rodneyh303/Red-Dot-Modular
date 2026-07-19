@@ -412,16 +412,16 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         {
             const int slot = dotModular::VoiceResolver::voiceSlot(viewVoiceNum);  // V→16-wide slot (slot0=mono)
             if (viewVoice != lastSendVoice) {
-                for (int lane=0; lane<4; ++lane)
-                    for (int item=0; item<4; ++item)
-                        module->params[sendDispId(lane,item)].setValue(
-                            module->params[sendId(slot,lane,item)].getValue());
+                if (auto* mm = redDot::findMonsoonEitherSide(module))
+                    for (int lane=0; lane<4; ++lane)
+                        for (int item=0; item<4; ++item)
+                            module->params[sendDispId(lane,item)].setValue(mm->getMacroSend(slot,lane,item));
                 lastSendVoice = viewVoice;
             } else {
-                for (int lane=0; lane<4; ++lane)
-                    for (int item=0; item<4; ++item)
-                        module->params[sendId(slot,lane,item)].setValue(
-                            module->params[sendDispId(lane,item)].getValue());
+                if (auto* mm = redDot::findMonsoonEitherSide(module))
+                    for (int lane=0; lane<4; ++lane)
+                        for (int item=0; item<4; ++item)
+                            mm->setMacroSend(slot,lane,item, module->params[sendDispId(lane,item)].getValue());
             }
         }
 

@@ -128,13 +128,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                                 : (lane==2) ? (int)SPREAD_O : (int)SPREAD_A;
                         sp = mod->params[pid].getValue();   // bipolar -1..1
                         if (mod->inputs[cvId(lane,3)].isConnected()) {
-                            float att = mod->params[attenId(dotModular::VoiceResolver::kMonoSlot, lane, 3)].getValue();
+                            float att = (redDot::findMonsoonEitherSide(mod) ? redDot::findMonsoonEitherSide(mod)->getMacroAtten(dotModular::VoiceResolver::kMonoSlot, lane*4 + 3) : 0.f);
                             float cv  = mod->inputs[cvId(lane,3)].getVoltage(0) / 10.f;
                             sp += cv * att * 2.f;
                         }
                         if (macroVis) {
-                            float send = macroVis->params[StraitsMacroVisualIds::sendId(
-                                dotModular::VoiceResolver::kMonoSlot, lane, 3)].getValue();
+                            float send = (redDot::findMonsoonEitherSide(macroVis) ? redDot::findMonsoonEitherSide(macroVis)->getMacroSend(dotModular::VoiceResolver::kMonoSlot, lane, 3) : 0.f);
                             sp += macroVis->macroSendDelta[lane][3] * send;
                         }
                     }
@@ -188,7 +187,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     // BEHAVIOUR change (persistent-until-tab-exit vs live), not a pure
                     // refactor. Deferred until the live-vs-persistent semantics for the
                     // current tab are decided (same question as the deferred edit-lock one).
-                    bool eastOwns = mod->params[ownerId(v, lane)].getValue() > 0.5f;
+                    bool eastOwns = (redDot::findMonsoonEitherSide(mod) ? redDot::findMonsoonEitherSide(mod)->getMacroOwn(v, lane) > 0.5f : false);
                     if (eastOwns)
                         macroBlend = StraitsMacroVisualIds::macroSpreadModulatesLane(
                             macroVis, lane, /*delegated=*/false, /*sendSlot=*/v);
@@ -648,11 +647,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             m->expanderManager.fillPresence(in, m->engine.numPolyVoices);
         }
         if (module) {
+            Monsoon* mmT = getMonsoon();
             for (int el = 0; el < 4; ++el) {
                 int eng = dotModular::EDITOR_TO_ENGINE_LANE[el];
-                in.eastV1Owner[el] = module->params[StraitsEastVisualIds::monoOwnerId(eng)].getValue() > 0.5f;
+                in.eastV1Owner[el] = mmT ? (mmT->getMonoMacroOwn(eng) > 0.5f) : false;
                 for (int pv = 0; pv < 15; ++pv)
-                    in.eastPolyOwner[pv][el] = module->params[StraitsEastVisualIds::ownerId(pv, eng)].getValue() > 0.5f;
+                    in.eastPolyOwner[pv][el] = mmT ? (mmT->getMacroOwn(pv, eng) > 0.5f) : false;
             }
             // The CURRENT tab's owner cells live in the display proxy (ownerDispId) and are
             // only flushed to the persistent slot on tab-exit — so for the current voice,
@@ -774,9 +774,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 float val = setToEast ? 1.f : 0.f;
                 // Set display proxy and persist to all 15 poly voice slots
                 widget->module->params[StraitsEastVisualIds::ownerDispId(lane)].setValue(val);
-                for (int v = 0; v < 15; ++v) {
-                    widget->module->params[StraitsEastVisualIds::ownerId(v, lane)].setValue(val);
-                }
+                if (auto* mmA = redDot::findMonsoonEitherSide(widget->module))
+                    for (int v = 0; v < 15; ++v) mmA->setMacroOwn(v, lane, val);
             }
         };
 
@@ -883,11 +882,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 if (!(d & 1)) continue;          // an even number of flips is a no-op
                 if (lane >= 4 && ch == 0) continue;   // mono has no VAR/LEG delegation
                 if (lane < 4) {
-                    // owner delegation (MACRO_OWN, still param-backed)
-                    int storeId = (ch == 0) ? monoOwnerId(eng) : ownerId(ch - 1, eng);
-                    const float nv = (mod->params[storeId].getValue() > 0.5f) ? 0.f : 1.f;
-                    mod->params[storeId].setValue(nv);
-                    if (selectedVoice == ch) mod->params[ownerDispId(eng)].setValue(nv);
+                    // owner delegation (MACRO_OWN) migrated to Monsoon::editor.macroOwn
+                    if (auto* mm = findMonsoonEitherSide(mod)) {
+                        const float cur = (ch == 0) ? mm->getMonoMacroOwn(eng) : mm->getMacroOwn(ch - 1, eng);
+                        const float nv = (cur > 0.5f) ? 0.f : 1.f;
+                        if (ch == 0) mm->setMonoMacroOwn(eng, nv); else mm->setMacroOwn(ch - 1, eng, nv);
+                        if (selectedVoice == ch) mod->params[ownerDispId(eng)].setValue(nv);
+                    }
                 } else {
                     // VAR/LEG delegation migrated to Monsoon::editor.varlegDeleg (fields)
                     if (auto* mm = findMonsoonEitherSide(mod)) {
@@ -1155,8 +1156,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // its depth. (Owner/base stay Mono's; only the CV depth is East's here.)
             for (int lane=0; lane<4; ++lane)
                 for (int c=0; c<4; ++c)
-                    module->params[attenId(dotModular::VoiceResolver::kMonoSlot, lane, c)]
-                        .setValue(module->params[attenDispId(lane,c)].getValue());
+                    if (auto* mmA = getMonsoon()) mmA->setMacroAtten(dotModular::VoiceResolver::kMonoSlot, lane*4 + c,
+                        module->params[attenDispId(lane,c)].getValue());
             // VAR/LEG CV-depth: same mono-slot mirror so V1's ch1 mix-in has its depth.
             for (int lane=0; lane<2; ++lane)
                 for (int c=0; c<3; ++c)
@@ -1208,8 +1209,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // each frame (engine-lane indexed) — otherwise V1 CV depth would be 0.
             for (int lane=0; lane<4; ++lane)
                 for (int c=0; c<4; ++c)
-                    module->params[attenId(dotModular::VoiceResolver::kMonoSlot, lane, c)]
-                        .setValue(module->params[attenDispId(lane,c)].getValue());
+                    if (auto* mmA = getMonsoon()) mmA->setMacroAtten(dotModular::VoiceResolver::kMonoSlot, lane*4 + c,
+                        module->params[attenDispId(lane,c)].getValue());
             // VAR/LEG CV-depth: same mono-slot mirror so V1's ch1 mix-in has its depth.
             for (int lane=0; lane<2; ++lane)
                 for (int c=0; c<3; ++c)
@@ -1268,13 +1269,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     auto* macroVis = getMonsoon()->expanderManager.cachedMacroSandsVisual;
                     auto sendBlend = [&](int item)->float {
                         if (!macroVis) return 0.f;
-                        float send = macroVis->params[StraitsMacroVisualIds::sendId(
-                            dotModular::VoiceResolver::kMonoSlot, engLane, item)].getValue();
+                        float send = (redDot::findMonsoonEitherSide(macroVis)
+                            ? redDot::findMonsoonEitherSide(macroVis)->getMacroSend(dotModular::VoiceResolver::kMonoSlot, engLane, item)
+                            : 0.f);
                         return macroVis->macroSendDelta[engLane][item] * send;
                     };
                     auto addCV = [&](float base, int item, float lo, float hi)->float {
                         if (module->inputs[cvId(engLane,item)].isConnected()) {
-                            float att = module->params[attenId(dotModular::VoiceResolver::kMonoSlot, engLane, item)].getValue();
+                            float att = (getMonsoon() ? getMonsoon()->getMacroAtten(dotModular::VoiceResolver::kMonoSlot, engLane*4 + item) : 0.f);
                             float cv  = module->inputs[cvId(engLane,item)].getPolyVoltage(0) / 10.f;  // ch0 = V1
                             base += cv * att * (hi - lo);
                         }

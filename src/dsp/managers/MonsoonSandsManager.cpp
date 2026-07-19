@@ -10,6 +10,7 @@
 #include "../SandsTopology.hpp"   // step 3b: readStrand owner migration
 #include "../../MonsoonStraitsExpander.hpp"
 #include "../../StraitsEastSandsVisual.hpp"
+#include "../../ui/VisualExpanderHelpers.hpp"   // redDot::findMonsoonEitherSide (MACRO field reads)
 #include <cassert>
 
 using namespace rack;
@@ -175,7 +176,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // and makes the result order-dependent (East-then-Macro != Macro-then-East).
             auto eastDelta = [&](int engLane, int item, float lo, float hi)->float {
                 if (!eastVis || !eastVis->inputs[East::cvId(engLane,item)].isConnected()) return 0.f;
-                float att = eastVis->params[East::attenId(dotModular::VoiceResolver::kMonoSlot, engLane, item)].getValue();   // slot 0 = mono
+                float att = (redDot::findMonsoonEitherSide(eastVis) ? redDot::findMonsoonEitherSide(eastVis)->getMacroAtten(dotModular::VoiceResolver::kMonoSlot, engLane*4 + item) : 0.f);   // slot 0 = mono
                 float cv  = eastVis->inputs[East::cvId(engLane,item)].getVoltage(0) / 10.f; // ch0
                 return cv * att * (hi - lo);
             };
@@ -250,12 +251,12 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 if (eastVisS && eastVisS->inputs[East::cvId(l,3)].isConnected()) {
                     sin.eastCv.connected   = true;
                     sin.eastCv.unitVoltage = eastVisS->inputs[East::cvId(l,3)].getVoltage(0) / 10.f;
-                    sin.eastCv.atten       = eastVisS->params[East::attenId(dotModular::VoiceResolver::kMonoSlot, l, 3)].getValue();
+                    sin.eastCv.atten       = (redDot::findMonsoonEitherSide(eastVisS) ? redDot::findMonsoonEitherSide(eastVisS)->getMacroAtten(dotModular::VoiceResolver::kMonoSlot, l*4 + 3) : 0.f);
                 }
                 if (sin.macroPresent) {
                     sin.macroBase      = macroVis->macroBase[l][3];
                     sin.macroSendDelta = macroVis->macroSendDelta[l][3];
-                    sin.macroSend      = macroVis->params[Macro::sendId(dotModular::VoiceResolver::kMonoSlot, l, 3)].getValue();
+                    sin.macroSend      = (redDot::findMonsoonEitherSide(macroVis) ? redDot::findMonsoonEitherSide(macroVis)->getMacroSend(dotModular::VoiceResolver::kMonoSlot, l, 3) : 0.f);
                 }
                 engine.spreadERef(0, l) = redDot::SpreadResolver::effective(sin);   // slot 0 = mono/V1
             }
@@ -334,15 +335,14 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                     return rack::math::clamp(macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3], -1.f, 1.f);
                 float sp = eastV1->params[East::SPREAD_R + lane].getValue();   // R/M/O/A contiguous
                 if (eastV1->inputs[East::cvId(lane,3)].isConnected()) {
-                    float att = eastV1->params[East::attenId(dotModular::VoiceResolver::kMonoSlot, lane, 3)].getValue();
+                    float att = (redDot::findMonsoonEitherSide(eastV1) ? redDot::findMonsoonEitherSide(eastV1)->getMacroAtten(dotModular::VoiceResolver::kMonoSlot, lane*4 + 3) : 0.f);
                     float cv  = eastV1->inputs[East::cvId(lane,3)].getPolyVoltage(0) / 10.f;  // ch0 = V1
                     sp = sp + cv * att * 2.f;
                 }
                 // Macro send blend on East-owned V1 spread (mirrors poly combineSpread):
                 // macroSendDelta[lane][3] * mono-slot send.
                 if (macroHere) {
-                    float send = macroVis->params[StraitsMacroVisualIds::sendId(
-                        dotModular::VoiceResolver::kMonoSlot, lane, 3)].getValue();
+                    float send = (redDot::findMonsoonEitherSide(macroVis) ? redDot::findMonsoonEitherSide(macroVis)->getMacroSend(dotModular::VoiceResolver::kMonoSlot, lane, 3) : 0.f);
                     sp += macroVis->macroSendDelta[lane][3] * send;
                 }
                 return rack::math::clamp(sp, -1.f, 1.f);
