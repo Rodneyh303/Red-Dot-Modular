@@ -6,6 +6,7 @@
 #include <cassert>
 //#include "../../MonsoonDeepStraitsSands.hpp"
 #include "../../StraitsEastSandsVisual.hpp"
+#include "../../ui/VisualExpanderHelpers.hpp"   // redDot::findMonsoonEitherSide (LANE_DIR field reads)
 #include "../../StraitsSandsMacroVisual.hpp"
 #include "../../MonsoonSandsVisualExpander.hpp"   // SandsMonoVisualIds::dirDispId for mono direction push
 
