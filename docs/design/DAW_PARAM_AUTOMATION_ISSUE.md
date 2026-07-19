@@ -116,3 +116,48 @@ RECOMMENDED ORDER on the build:
   c. Fix per Option A/B above.
 Do NOT assume the NUM_PARAMS bloat is the cause until (a) is checked — the appear/not-appear
 ordering points at a bind/panel-load mismatch first.
+
+---
+
+## RESOLVED (diagnosis): Monsoon-the-module is uniquely broken, for ALL its params
+
+Decisive facts:
+- Sands MONO params, tweaked on the SANDS panel, DO appear in Bitwig. Those are on the Sands
+  MODULE (separate from Monsoon).
+- Monsoon's own params (VARIATION etc.) do NOT appear — even though the knob is visible and
+  works, so the widget bound fine (rules out any bind/panel-load failure).
+- VCO-1 works. Sands/East/Macro work. Only Monsoon fails.
+
+Conclusion: it is PER-MODULE, not per-param. Monsoon's ~1128-param block is too large for the
+host to register, so the host drops the WHOLE module's params (that's why VARIATION at index 0
+vanishes too, not just high indices). Every other module has a manageable block and exports
+normally. The "Sands params appear" observation was a red herring — different module.
+
+Why Monsoon is 1128: the MACRO/VARLEG/LANE_DIR ranges (~700 params) are per-voice-per-lane
+editor STATE that lives in MONSOON's params[] (so it persists centrally and survives expander
+detach), but is configured from and widgeted ONLY on the expander panels
+(e.g. StraitsEastSandsVisual.hpp:330 configSwitch MonsoonIds::LANE_DIR_START...). They have
+NO widget on the Monsoon panel and are never user-facing automation targets — yet each burns
+a host slot and together they blow past the registrable limit.
+
+### Decisive confirmation test (one scratch build)
+Stub out the MACRO/VARLEG/LANE_DIR ranges so Monsoon's NUM_PARAMS drops to ~200, rebuild,
+load in Bitwig. If VARIATION (and the Big-5) now appear → confirmed, done. (Expect yes.)
+
+### Fix — Option A (preferred): host-hide the internal-state params
+These ~700 params must STAY params (central persistence + expander widgets depend on it), but
+should not be exported to the host. Set the host-hide flag on each in its config call. Check
+the Rack Pro SDK for the ParamQuantity/plugin flag that removes a param from host export (the
+Surge XT "hidden params in rack pro" request — confirm what shipped in your SDK version). Apply
+in the loops that configSwitch/configParam the MACRO/VARLEG/LANE_DIR ids (in
+StraitsEastSandsVisual / StraitsSandsMacroVisual where MonsoonIds::* ranges are configured, and
+any in the Monsoon configurator). Result: Monsoon exports only its ~80 real controls; block
+becomes registrable; VARIATION appears.
+
+If the SDK has NO such flag → Option B (move the state out of params[] into Monsoon fields +
+dataToJson, expander editors read/write the fields). Bigger, but removes the bloat at the root
+and is the correct home for non-knob state.
+
+### Also fixed for free
+The latent >1024 overflow (LANE_DIR params sat above index 1024, unautomatable regardless) —
+gone once the internal ranges stop consuming the low, registrable slots.
