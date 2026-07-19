@@ -322,10 +322,14 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         }
         if (hasEastV1 && !engine.locked) {
             // Apply V1 SPREAD to the mono final arrays, PER LANE:
-            //   • lane owned by East   → East's V1 spread knob (+ East V1 spread CV).
+            //   • lane owned by East   → East's V1 spread base (Model: spread[kMonoSlot]) + CV.
             //   • lane delegated Macro → Macro's GLOBAL spread (macroBase[lane][3] + send).
-            // (East SPREAD_R/M/O/A + macroBase are spread/engine-indexed 0=REST..3=ACC.)
+            // (spread[0]/macroBase are spread/engine-indexed 0=REST..3=ACC.)
             // Macro-owned test mirrors the widget: East ownerDispId(lane) <= 0.5 == Macro.
+            // Stage 3a: the BASE is read from the unified store (Model), not SPREAD_* (View).
+            // saveSlot(kMonoSlot) mirrors SPREAD_*→spread[0] every UI frame, so this is
+            // value-preserving; the View is now only edited, never read for the engine.
+            Monsoon* mmV1 = redDot::findMonsoonEitherSide(eastV1);
             const bool macroHere = hasMacro && (macroVis != nullptr);
             auto monoOwnedByMacro = [&](int lane)->bool {
                 return macroHere && !(eastV1->params[East::ownerDispId(lane)].getValue() > 0.5f);
@@ -333,9 +337,10 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             auto sprForLane = [&](int lane)->float {
                 if (monoOwnedByMacro(lane))
                     return rack::math::clamp(macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3], -1.f, 1.f);
-                float sp = eastV1->params[East::SPREAD_R + lane].getValue();   // R/M/O/A contiguous
+                float sp = mmV1 ? mmV1->getSpread(dotModular::VoiceResolver::kMonoSlot, lane)
+                                : eastV1->params[East::SPREAD_R + lane].getValue();   // R/M/O/A contiguous
                 if (eastV1->inputs[East::cvId(lane,3)].isConnected()) {
-                    float att = (redDot::findMonsoonEitherSide(eastV1) ? redDot::findMonsoonEitherSide(eastV1)->getMacroAtten(dotModular::VoiceResolver::kMonoSlot, lane*4 + 3) : 0.f);
+                    float att = (mmV1 ? mmV1->getMacroAtten(dotModular::VoiceResolver::kMonoSlot, lane*4 + 3) : 0.f);
                     float cv  = eastV1->inputs[East::cvId(lane,3)].getPolyVoltage(0) / 10.f;  // ch0 = V1
                     sp = sp + cv * att * 2.f;
                 }
