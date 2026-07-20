@@ -65,6 +65,19 @@ changes the material, never the relationships).
 
 Decision: TABLE remap. One semantics, no per-pin modes.
 
+**Sharpened (confirmed): original Philox draws, then deterministic map.** Generation is
+untouched — all 16 voices' per-lane tables are drawn exactly as today (same keys,
+counters, values); the matrix is a pure READ-TIME indirection. Three properties follow:
+- **Locality**: moving a pin perturbs nothing but the row that changed — no RNG state
+  is touched, every other voice stays bit-identical. Pin edits are surgical, live-safe.
+  (A re-keying design would reshuffle on every pin move; rejected for this reason.)
+- **Dice/pin orthogonality**: dice re-rolls the TABLES (new material), pins keep the
+  RELATIONSHIPS. Re-dicing a nested pair yields a new rhythm with the same hierarchy.
+- **Lock semantics**: lock freezes tables; a pin move under lock still changes which
+  frozen table a voice reads, so pins stay audible while locked. Intended: pins are
+  routing/configuration (same category as rotation, which also works under lock), not
+  material.
+
 ## 4. Matrix semantics
 
 - Rows = consuming voices (V1..V16), columns = source voices. Per stream type, each row
