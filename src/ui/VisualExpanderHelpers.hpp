@@ -58,7 +58,8 @@ inline bool isClaimedExpander(rack::Module* self, Monsoon* mon) {
         || s == (const void*)em.cachedChangiExpander
         || s == (const void*)em.cachedShophouseExpander
         || s == (const void*)em.cachedEastSandsVisual
-        || s == (const void*)em.cachedMacroSandsVisual;
+        || s == (const void*)em.cachedMacroSandsVisual
+        || s == (const void*)em.cachedChangeAlleyExpander;
 }
 
 // Convenience for the connect mark: this expander is "connected" iff a Monsoon is

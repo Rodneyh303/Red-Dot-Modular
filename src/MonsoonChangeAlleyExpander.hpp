@@ -198,6 +198,32 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
                     nvgFillColor(vg, nvgRGB(0xd4,0x00,0x1a)); nvgFill(vg);
                     nvgFillColor(vg, inkdim);
                     nvgText(vg, legX + mm2px(Vec(20.f,0)).x + 6.f, legY, "melody  (right-click / ctrl-click)", NULL);
+
+                    // ── Connect marker: the brand red dot doubles as the expander
+                    //    connection indicator (house convention — Causeway's
+                    //    light_connect analogue). BRIGHT = a Monsoon is reachable in
+                    //    the chain AND this is the claimed Change Alley (first of its
+                    //    type found); HOLLOW = not connected / not claimed. ──
+                    {
+                        bool connected = module && redDot::isConnectedAndClaimed(module);
+                        float mx = box.size.x * 0.5f;
+                        float myv = mm2px(Vec(0, PH_MM - 5.5f)).y;
+                        if (connected) {
+                            nvgBeginPath(vg); nvgCircle(vg, mx, myv, 4.5f);
+                            nvgFillColor(vg, nvgRGBA(0xd4,0x00,0x1a,0x30)); nvgFill(vg);
+                            nvgBeginPath(vg); nvgCircle(vg, mx, myv, 3.0f);
+                            nvgFillColor(vg, nvgRGB(0xd4,0x00,0x1a)); nvgFill(vg);
+                        } else {
+                            nvgBeginPath(vg); nvgCircle(vg, mx, myv, 3.0f);
+                            nvgStrokeColor(vg, nvgRGBA(0xd4,0x00,0x1a,0x70));
+                            nvgStrokeWidth(vg, 1.2f); nvgStroke(vg);
+                        }
+                        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+                        nvgFontSize(vg, mm2px(Vec(2.6f,0)).x);
+                        NVGcolor bink = settings::preferDarkPanels ? nvgRGB(0xe8,0xe2,0xd0) : nvgRGB(0x1a,0x18,0x10);
+                        nvgFillColor(vg, bink);
+                        nvgText(vg, mx + 7.f, myv, "modular", NULL);
+                    }
                 }
             }
             if (!module) return;
