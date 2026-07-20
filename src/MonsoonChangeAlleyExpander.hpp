@@ -77,11 +77,11 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
     static constexpr float GUTTER_T = 10.0f;
     static constexpr float GUTTER_B = 12.0f;
     static constexpr float MX_MM    = GUTTER_L;
-    static constexpr float MY_MM    = GUTTER_T + 4.0f;
+    static constexpr float MY_MM    = GUTTER_T + 8.0f;              // square grid: matches generator
     static constexpr float MW_MM    = PW_MM - GUTTER_L - GUTTER_R;
-    static constexpr float MH_MM    = PH_MM - MY_MM - GUTTER_B - 2.0f;
-    static constexpr float CELL_W   = MW_MM / N_VOICES;
-    static constexpr float CELL_H   = MH_MM / N_VOICES;
+    static constexpr float CELL_W   = MW_MM / N_VOICES;             // SQUARE cells (width-constrained)
+    static constexpr float CELL_H   = CELL_W;
+    static constexpr float MH_MM    = CELL_H * N_VOICES;
 
     // Cell centre in px (rack mm2px)
     static Vec cellCentre(int row, int col) {

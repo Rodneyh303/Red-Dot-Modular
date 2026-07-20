@@ -81,11 +81,13 @@ def gen(dark):
     GUTTER_B  = 12.0   # mm for brand at bottom
 
     MX = GUTTER_L                      # matrix left edge (mm)
-    MY = GUTTER_T + 4.0                # matrix top edge (mm)
     MW = SVG_W - GUTTER_L - GUTTER_R  # matrix width
-    MH = SVG_H - MY - GUTTER_B - 2.0  # matrix height
-    CELL_W = MW / N
-    CELL_H = MH / N
+    CELL   = MW / N                    # SQUARE cells — width-constrained
+    CELL_W = CELL
+    CELL_H = CELL
+    MH = CELL * N                      # square matrix
+    # centre the square grid in the vertical space between title and legend
+    MY = GUTTER_T + 8.0                # top edge: title + column labels above
 
     # ── Matrix well (dark, always) ────────────────────────────────────────────
     E(f'<rect x="{MX:.3f}" y="{MY:.3f}" width="{MW:.3f}" height="{MH:.3f}" '
@@ -109,31 +111,34 @@ def gen(dark):
         E(f'<line x1="{MX:.3f}" y1="{y:.3f}" x2="{MX+MW:.3f}" y2="{y:.3f}" '
           f'stroke="{t["gridln"]}" stroke-width="0.4"/>')
 
-    # ── Column labels (top: source voice = currency code) ─────────────────────
-    label_y = MY - 1.8
+    # ── Column labels: voice NUMBER (primary, nearest grid) + currency (dim, above) ──
     for col, cur in enumerate(CURRENCIES):
         cx = MX + col * CELL_W + CELL_W * 0.5
-        is_sgd = (cur == "SGD")
-        col_ink = t["red"] if is_sgd else inkdim
-        E(f'<text x="{cx:.3f}" y="{label_y:.3f}" text-anchor="middle" '
-          f'font-family="monospace" font-size="2.3" fill="{col_ink}">'
+        is_mono = (col == 0)
+        num_ink = t["mono"] if is_mono else ink
+        # voice number 1..16 — poly channel order (1 = V1/mono)
+        E(f'<text x="{cx:.3f}" y="{MY - 1.5:.3f}" text-anchor="middle" '
+          f'font-family="monospace" font-size="2.5" fill="{num_ink}">{col+1}</text>')
+        # currency code, dim, above the number
+        E(f'<text x="{cx:.3f}" y="{MY - 4.6:.3f}" text-anchor="middle" '
+          f'font-family="monospace" font-size="1.9" fill="{inkdim}" opacity="0.7">'
           f'{cur}</text>')
 
     # "source pool →" axis label at top
-    E(f'<text x="{MX + MW*0.5:.3f}" y="{MY - GUTTER_T*0.6:.3f}" '
-      f'text-anchor="middle" font-family="monospace" font-size="2.6" '
+    E(f'<text x="{MX + MW*0.5:.3f}" y="{MY - 7.2:.3f}" '
+      f'text-anchor="middle" font-family="monospace" font-size="2.4" '
       f'fill="{inkdim}" opacity="0.6">source voice →</text>')
 
-    # ── Row labels (left: consuming voice = currency code) ────────────────────
+    # ── Row labels: voice NUMBER (primary, nearest grid) + currency (dim, left) ──
     for row, cur in enumerate(CURRENCIES):
         cy = MY + row * CELL_H + CELL_H * 0.5 + 0.9
-        is_sgd  = (cur == "SGD")
         is_mono = (row == 0)
-        col_ink = t["mono"] if is_mono else (t["red"] if is_sgd else ink)
-        weight = 'font-weight="bold"' if (is_mono or is_sgd) else ''
+        num_ink = t["mono"] if is_mono else ink
+        weight = 'font-weight="bold"' if is_mono else ''
         E(f'<text x="{MX - 1.2:.3f}" y="{cy:.3f}" text-anchor="end" '
-          f'font-family="monospace" font-size="2.5" fill="{col_ink}" {weight}>'
-          f'{cur}</text>')
+          f'font-family="monospace" font-size="2.5" fill="{num_ink}" {weight}>{row+1}</text>')
+        E(f'<text x="{MX - 5.2:.3f}" y="{cy:.3f}" text-anchor="end" '
+          f'font-family="monospace" font-size="1.9" fill="{inkdim}" opacity="0.7">{cur}</text>')
 
     # ── Identity diagonal pins (default state — dim concentric) ───────────────
     # White outer ring (rhythm), red inner dot (melody), both on diagonal.
@@ -163,12 +168,12 @@ def gen(dark):
     E(f'<circle cx="{e2cx:.3f}" cy="{e2cy:.3f}" r="{r_inner:.3f}" fill="{t["melody"]}"/>')
 
     # ── Module title ──────────────────────────────────────────────────────────
-    E(f'<text x="{SVG_W*0.5:.3f}" y="{MY - GUTTER_T + 1.5:.3f}" '
+    E(f'<text x="{SVG_W*0.5:.3f}" y="6.5" '
       f'text-anchor="middle" font-family="monospace" font-size="4.0" '
       f'font-weight="bold" letter-spacing="0.5" fill="{ink}">CHANGE ALLEY</text>')
 
     # ── Legend: white = rhythm, red = melody ─────────────────────────────────
-    leg_y = SVG_H - GUTTER_B + 2.5
+    leg_y = MY + MH + 4.0
     leg_x = MX
     r_leg = 1.2
     E(f'<circle cx="{leg_x + r_leg:.3f}" cy="{leg_y:.3f}" r="{r_leg:.3f}" fill="{t["rhythm"]}"/>')
