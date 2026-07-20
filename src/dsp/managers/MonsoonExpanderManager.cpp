@@ -90,17 +90,16 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
     // stale Local-East state). When East IS present, the block re-asserts Local East per param.
     for (int dv = 0; dv < 15; ++dv) { engine.setVarlegLocalEast(dv, 0, false); engine.setVarlegLocalEast(dv, 1, false); }
 
-    // Change Alley pin-matrix: push rhythmSrc[]/melodySrc[] to the engine (reset-then-push,
-    // same pattern as direction). No expander → identity (voice v reads its own tables).
-    // Locality: only the touched rows change; dice/pins are orthogonal — dice re-rolls tables,
-    // pins are read-time indirection that survives.
+    // Change Alley pin-matrix: push rhythmSrc[]/melodySrc[] to the engine.
+    // Unified 16-voice: index 0=mono, 1..15=poly voices. No offset needed —
+    // the bank arithmetic (src-1) handles it in polyRandomSrc/monoRandomSrc.
     if (cachedChangeAlleyExpander) {
-        for (int v = 0; v < 15; ++v) {
-            engine.rhythmSrc[v] = cachedChangeAlleyExpander->rhythmSrc[v + 1]; // voice 0=mono, expander row 0=V1=poly voice 1
-            engine.melodySrc[v] = cachedChangeAlleyExpander->melodySrc[v + 1];
+        for (int v = 0; v < 16; ++v) {
+            engine.rhythmSrc[v] = cachedChangeAlleyExpander->rhythmSrc[v];
+            engine.melodySrc[v] = cachedChangeAlleyExpander->melodySrc[v];
         }
     } else {
-        for (int v = 0; v < 15; ++v) { engine.rhythmSrc[v] = (uint8_t)v; engine.melodySrc[v] = (uint8_t)v; }
+        for (int v = 0; v < 16; ++v) { engine.rhythmSrc[v] = (uint8_t)v; engine.melodySrc[v] = (uint8_t)v; }
     }
     // Step 3 (plans/lane_direction_homes.md): poly direction is reset-then-pushed exactly like
     // delegation above. The reset is the half that was missing while the engine was direction's

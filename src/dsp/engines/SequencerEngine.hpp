@@ -395,25 +395,38 @@ struct SequencerEngine {
     uint16_t windowMask = 0xFFFF;
 
     // ── Change Alley pin-matrix indirection (CHANGE_ALLEY_DESIGN.md) ────────
-    // rhythmSrc[v] / melodySrc[v]: which voice's Philox tables voice v reads for
-    // REST/ACCENT (rhythm) and MELODY/OCTAVE (melody). Identity by default.
-    // Written by the expander manager on each control-rate cycle; engine consumes
-    // at the polyRandom(voiceIdx, lane) call sites via polyRandomSrc() below.
-    uint8_t rhythmSrc[15] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14};
-    uint8_t melodySrc[15] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14};
+    // Unified 16-voice addressing: index 0 = mono (bank 0), 1..15 = poly (banks 1..15).
+    // rhythmSrc[v] / melodySrc[v]: which source voice v draws REST/ACCENT or MELODY/OCTAVE from.
+    // Identity default: rhythmSrc[v]=v, melodySrc[v]=v (no exchange).
+    // Written by the expander manager each control-rate cycle. No v+1 offset — the
+    // unified bank layout (random_[0]=mono, random_[1..15]=poly) handles it in polyRandom.
+    uint8_t rhythmSrc[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
+    uint8_t melodySrc[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
 
-    // The indirection call: replaces polyRandom(voiceIdx, lane) at articulation sites.
-    // REST + ACCENT → rhythm pool; MELODY + OCTAVE → melody pool. Table remap only:
-    // the consumer keeps its OWN tick/rotation/direction; locality and dice/pin
-    // orthogonality follow from this (see CHANGE_ALLEY_DESIGN.md §3).
+    // Poly indirection (voices 1..15 → banks 1..15). voiceIdx here is 0..14 (engine poly index).
+    // The +1 in pe.polyRandom is the existing bank offset; we remap which bank via melodySrc[v+1].
     inline const float (&polyRandomSrc(int voiceIdx, int polyLane) const)[16] {
-        int src = voiceIdx;
-        if (voiceIdx >= 0 && voiceIdx < 15) {
-            src = (polyLane == PL_REST || polyLane == PL_ACCENT)
-                  ? rhythmSrc[voiceIdx]
-                  : melodySrc[voiceIdx];
+        // voiceIdx 0..14 = engine poly voices = expander rows 1..15
+        int expRow = voiceIdx + 1;
+        int src = (polyLane == PL_REST || polyLane == PL_ACCENT)
+                  ? (int)rhythmSrc[expRow]
+                  : (int)melodySrc[expRow];
+        // src is in expander-row space (0=mono, 1..15=poly); poly bank = src-1 if src>0.
+        // If src==0 (routed to mono's pool): read bank 0 via polyRandom(-1,...) which
+        // maps to random_[0]; use the non-offset version instead.
+        if (src == 0) {
+            // Borrow mono's bank: random_[0][lane] — same as pe.rhythmRandom/melodyRandom
+            return pe.polyRandom(-1, polyLane);   // bank -1+1=0 in random_[bank+1]
         }
-        return pe.polyRandom(src, polyLane);
+        return pe.polyRandom(src - 1, polyLane);  // normal poly bank src-1
+    }
+
+    // Mono indirection (expander row 0). Replaces pe.rhythmRandom / pe.melodyRandom etc.
+    // Returns the draw array for mono based on rhythmSrc[0] or melodySrc[0].
+    inline const float (&monoRandomSrc(bool isRhythmLane) const)[16] {
+        int src = isRhythmLane ? (int)rhythmSrc[0] : (int)melodySrc[0];
+        if (src == 0) return pe.polyRandom(-1, isRhythmLane ? PL_REST : PL_MELODY);
+        return pe.polyRandom(src - 1, isRhythmLane ? PL_REST : PL_MELODY);
     }
     bool muted = false;
     bool runGateActive = false;

@@ -587,9 +587,9 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
         }
     }
 
-    float r_vary   = pe.variationRandom[getVariationStep()];
-    float r_rest   = pe.rhythmRandom[getRhythmStep()];
-    float r_legato = pe.legatoRandom[getLegatoStep()];
+    float r_vary   = monoRandomSrc(true)[getVariationStep()];
+    float r_rest   = monoRandomSrc(true)[getRhythmStep()];
+    float r_legato = monoRandomSrc(true)[getLegatoStep()];
     float r_accent = pe.accentRandom[getAccentStep()];  // New: accent strand
     
     int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
@@ -648,9 +648,9 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
                 voices[i].gsStep.gateHeld = false; voices[i].gsStep.holdRemain = 0.f;
             }
         }
-        float r_vary   = pe.variationRandom[getVariationStep()];
-        float r_rest   = pe.rhythmRandom[getRhythmStep()];
-        float r_legato = pe.legatoRandom[getLegatoStep()];
+        float r_vary   = monoRandomSrc(true)[getVariationStep()];
+        float r_rest   = monoRandomSrc(true)[getRhythmStep()];
+        float r_legato = monoRandomSrc(true)[getLegatoStep()];
         float r_accent = pe.accentRandom[getAccentStep()];  // New: accent strand
         
         int nvIdx = getNoteLenIdx(noteVal, input, r_vary);

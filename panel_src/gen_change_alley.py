@@ -1,224 +1,192 @@
 #!/usr/bin/env python3
 """
-gen_change_alley.py — Change Alley pin matrix panel
-16 voices (rows) × 2 stream pools (R/M columns), EMS-style.
-Rows labelled with SGD-adjacent FX currency pairs vs USD — the actual Change Alley booths.
-Panel: dark alley corridor feel, matrix as the exchange counter grid.
+Change Alley pin matrix panel — 16×16, EMS VCS3 lineage.
+Rows = consuming voices (which currency is exchanging).
+Columns = source voices (whose pool to borrow from).
+Pin colours: white = rhythm, red = melody, concentric when both occupy same cell.
+Dark grid forced on BOTH themes (same rule as Lantern LCD — state encoded in
+pin position/colour; a light background would wash out the red/white contrast).
 """
+import os, math
 
-import math, os
+PW_MM = 18 * 5.08   # 91.44 mm (18HP)
+PH_MM = 128.5       # standard Rack height
 
-PW, PH = 270.0, 380.0   # 18HP
 HP = 18
 
-def px(mm): return mm * (PW / (HP * 5.08))   # 1HP = 5.08mm, panel is HP*5.08mm wide
+# All coordinates in mm; SVG uses the same unit via viewBox.
+SVG_W, SVG_H = PW_MM, PH_MM
 
-DARK = dict(
-    bg       = "#0a0b08",
-    red      = "#d4001a",
-    ink      = "#f0ead8",
-    inkdim   = "#a09880",
-    steel    = "#3c4650",
-    steeldim = "#2a333c",
-    steelfaint="#1c242c",
-    steelhi  = "#586470",
-    amber    = "#c8900c",
-    amberdim = "#7a5808",
-    amberfaint="#3a2c10",
-    teal     = "#2a7870",
-    tealdim  = "#1a4840",
-    tealfaint= "#0e2820",
-    gold     = "#b8901c",
-    golddim  = "#5a4818",
-    accent   = "#d4001a",
-    node     = "#4a5560",
-    well     = "#060706",
-    alley    = "#0e1008",   # slightly warm dark for the alley corridor
-    booth    = "#181c10",   # booth separator bands
-    boothhi  = "#222818",
+DARK_GRID = dict(
+    bg      = "#080a07",
+    red     = "#d4001a",
+    ink     = "#e8e2d0",
+    inkdim  = "#7a7060",
+    well    = "#0d100b",        # cell background
+    gridln  = "#1e2420",        # grid lines
+    booth   = "#111410",        # alternate row tint
+    # Pin colours
+    rhythm  = "#f0f0ee",        # white — rhythm source
+    melody  = "#d4001a",        # red — melody source
+    rhythmD = "#404040",        # ghost outline — rhythm
+    melodyD = "#4a0008",        # ghost outline — melody
+    both    = "#d4001a",        # outer ring when concentric
+    # Active voice indicator
+    active  = "#d4001a",        # red tick for active poly rows
+    inactive= "#282c28",
+    mono    = "#c8900c",        # amber for row 0 (mono)
 )
 
-LIGHT = dict(
-    bg       = "#e4e0d0",
-    red      = "#d4001a",
-    ink      = "#1a1810",
-    inkdim   = "#6a6050",
-    steel    = "#8090a0",
-    steeldim = "#a0adb8",
-    steelfaint="#c0c8d0",
-    steelhi  = "#607080",
-    amber    = "#906008",
-    amberdim = "#c0a060",
-    amberfaint="#ddd0a8",
-    teal     = "#287068",
-    tealdim  = "#6aada8",
-    tealfaint="#c0dcd8",
-    gold     = "#806010",
-    golddim  = "#b8a060",
-    accent   = "#d4001a",
-    node     = "#7a8895",
-    well     = "#c8c4b0",
-    alley    = "#d8d4c0",
-    booth    = "#ccc8b4",
-    boothhi  = "#e0dcd0",
-)
+# Light mode: keep the grid dark (forced, same as Lantern)
+LIGHT_GRID = dict(**DARK_GRID)
+LIGHT_GRID.update(dict(
+    bg   = "#e4e0d0",           # panel surround is light
+    ink  = "#1a1810",
+    inkdim = "#6a6050",
+))
 
-# 16 currency codes — the Change Alley FX booths, SGD neighbourhood first
 CURRENCIES = [
-    "SGD","MYR","IDR","THB",   # ASEAN 4
-    "PHP","VND","MMK","KHR",   # ASEAN 4 more
-    "HKD","CNY","TWD","KRW",   # North Asia
-    "JPY","AUD","INR","USD",   # Further + base
+    "SGD","MYR","IDR","THB",
+    "PHP","VND","MMK","KHR",
+    "HKD","CNY","TWD","KRW",
+    "JPY","AUD","INR","USD",
 ]
 
-# Column pool labels
-POOLS = ["R", "M"]   # rhythm, melody — two dice pools
-
-def logo_embed(dark, cx, cy, size):
-    c = "#d4001a"
-    r = size * 0.18
-    o = size * 0.09
-    return (
-        f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(r*1.8)}" fill="{c}" opacity="0.15"/>'
-        f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(r*1.2)}" fill="{c}" opacity="0.25"/>'
-        f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(r)}" fill="{c}"/>'
-        f'<text x="{px(cx+o*2.2)}" y="{px(cy+o*0.38)}" '
-        f'font-family="monospace" font-size="{px(o*1.1)}" fill="{c}" font-weight="bold">modular</text>'
-    )
+N = 16
 
 def gen(dark):
-    t = DARK if dark else LIGHT
-    A = []
-    def E(s): A.append(s)
+    t = DARK_GRID   # grid is ALWAYS dark regardless of theme
+    bg_panel = DARK_GRID["bg"] if dark else LIGHT_GRID["bg"]
+    ink      = DARK_GRID["ink"] if dark else LIGHT_GRID["ink"]
+    inkdim   = DARK_GRID["inkdim"] if dark else LIGHT_GRID["inkdim"]
 
-    E(f'<svg width="{px(PW)}" height="{px(PH)}" viewBox="0 0 {px(PW)} {px(PH)}" '
-      f'xmlns="http://www.w3.org/2000/svg">')
+    o = []
+    def E(s): o.append(s)
 
-    # background
-    E(f'<rect width="{px(PW)}" height="{px(PH)}" fill="{t["bg"]}"/>')
+    E(f'<svg width="{SVG_W:.3f}" height="{SVG_H:.3f}" '
+      f'viewBox="0 0 {SVG_W:.3f} {SVG_H:.3f}" xmlns="http://www.w3.org/2000/svg">')
 
-    # top red stripe
-    E(f'<rect width="{px(PW)}" height="{px(2.5)}" fill="{t["red"]}"/>')
+    # Panel background
+    E(f'<rect width="{SVG_W:.3f}" height="{SVG_H:.3f}" fill="{bg_panel}"/>')
 
-    # alley corridor — vertical warm-dark band behind the matrix
-    MX = 28.0; MY = 18.0   # matrix top-left in mm
-    CELL = 9.5             # cell size in mm
-    COLS = 2; ROWS = 16
-    MW = COLS * CELL        # matrix width
-    MH = ROWS * CELL        # matrix height
-    GUTTER_L = 22.0         # left label gutter
-    GUTTER_T = 12.0         # top label gutter
+    # Top red stripe
+    E(f'<rect width="{SVG_W:.3f}" height="2.0" fill="{t["red"]}"/>')
 
-    E(f'<rect x="{px(MX - GUTTER_L - 2)}" y="{px(MY - GUTTER_T - 1)}" '
-      f'width="{px(MW + GUTTER_L + 4)}" height="{px(MH + GUTTER_T + 3)}" '
-      f'rx="{px(1.5)}" fill="{t["alley"]}" opacity="0.7"/>')
+    # ── Matrix geometry ───────────────────────────────────────────────────────
+    # We want 16×16 cells with row labels (left) and column labels (top/bottom).
+    # Available width after left gutter and right margin:
+    GUTTER_L  = 13.0   # mm for row currency labels
+    GUTTER_R  =  3.5   # mm right margin / poly indicator
+    GUTTER_T  = 10.0   # mm for column labels at top
+    GUTTER_B  = 12.0   # mm for brand at bottom
 
-    # booth bands (alternating row tint — the booths)
-    for row in range(ROWS):
+    MX = GUTTER_L                      # matrix left edge (mm)
+    MY = GUTTER_T + 4.0                # matrix top edge (mm)
+    MW = SVG_W - GUTTER_L - GUTTER_R  # matrix width
+    MH = SVG_H - MY - GUTTER_B - 2.0  # matrix height
+    CELL_W = MW / N
+    CELL_H = MH / N
+
+    # ── Matrix well (dark, always) ────────────────────────────────────────────
+    E(f'<rect x="{MX:.3f}" y="{MY:.3f}" width="{MW:.3f}" height="{MH:.3f}" '
+      f'fill="{t["well"]}"/>')
+
+    # ── Alternate row tints ───────────────────────────────────────────────────
+    for row in range(N):
         if row % 2 == 1:
-            ry = MY + row * CELL
-            E(f'<rect x="{px(MX - GUTTER_L)}" y="{px(ry)}" '
-              f'width="{px(MW + GUTTER_L + 1)}" height="{px(CELL)}" '
-              f'fill="{t["boothhi"]}" opacity="0.25"/>')
+            E(f'<rect x="{MX:.3f}" y="{MY + row*CELL_H:.3f}" '
+              f'width="{MW:.3f}" height="{CELL_H:.3f}" '
+              f'fill="{t["booth"]}" opacity="0.8"/>')
 
-    # matrix cell backgrounds (wells)
-    for row in range(ROWS):
-        for col in range(COLS):
-            cx = MX + col * CELL + CELL * 0.5
-            cy = MY + row * CELL + CELL * 0.5
-            E(f'<rect x="{px(MX + col*CELL + 1)}" y="{px(MY + row*CELL + 1)}" '
-              f'width="{px(CELL - 2)}" height="{px(CELL - 2)}" '
-              f'rx="{px(1.2)}" fill="{t["well"]}" opacity="0.85"/>')
+    # ── Grid lines ────────────────────────────────────────────────────────────
+    for i in range(N + 1):
+        # Verticals
+        x = MX + i * CELL_W
+        E(f'<line x1="{x:.3f}" y1="{MY:.3f}" x2="{x:.3f}" y2="{MY+MH:.3f}" '
+          f'stroke="{t["gridln"]}" stroke-width="0.4"/>')
+        # Horizontals
+        y = MY + i * CELL_H
+        E(f'<line x1="{MX:.3f}" y1="{y:.3f}" x2="{MX+MW:.3f}" y2="{y:.3f}" '
+          f'stroke="{t["gridln"]}" stroke-width="0.4"/>')
 
-    # column header grid lines and pool labels
-    for col in range(COLS):
-        cx = MX + col * CELL + CELL * 0.5
-        pool_col = t["amber"] if col == 0 else t["teal"]
-        pool_dim = t["amberdim"] if col == 0 else t["tealdim"]
-        # header label
-        E(f'<text x="{px(cx)}" y="{px(MY - 3.5)}" text-anchor="middle" '
-          f'font-family="monospace" font-size="{px(4.5)}" font-weight="bold" '
-          f'fill="{pool_col}">{POOLS[col]}</text>')
-        # vertical column separator line
-        E(f'<line x1="{px(MX + col*CELL)}" y1="{px(MY - 1)}" '
-          f'x2="{px(MX + col*CELL)}" y2="{px(MY + MH + 1)}" '
-          f'stroke="{t["steel"]}" stroke-width="{px(0.5)}" opacity="0.5"/>')
-    # right edge
-    E(f'<line x1="{px(MX + MW)}" y1="{px(MY - 1)}" '
-      f'x2="{px(MX + MW)}" y2="{px(MY + MH + 1)}" '
-      f'stroke="{t["steel"]}" stroke-width="{px(0.5)}" opacity="0.5"/>')
-
-    # row separator lines
-    for row in range(ROWS + 1):
-        E(f'<line x1="{px(MX - 1)}" y1="{px(MY + row*CELL)}" '
-          f'x2="{px(MX + MW + 1)}" y2="{px(MY + row*CELL)}" '
-          f'stroke="{t["steel"]}" stroke-width="{px(0.4)}" opacity="0.4"/>')
-
-    # currency row labels
-    for row, cur in enumerate(CURRENCIES):
-        cy = MY + row * CELL + CELL * 0.5
+    # ── Column labels (top: source voice = currency code) ─────────────────────
+    label_y = MY - 1.8
+    for col, cur in enumerate(CURRENCIES):
+        cx = MX + col * CELL_W + CELL_W * 0.5
         is_sgd = (cur == "SGD")
-        is_usd = (cur == "USD")
-        col = t["red"] if is_sgd else (t["inkdim"] if is_usd else t["ink"])
-        # FX pair label: CUR/USD
-        label = f"{cur}" if is_usd else f"{cur}/USD"
-        weight = 'font-weight="bold"' if is_sgd else ''
-        if is_usd:
-            E(f'<text x="{px(MX - 2.5)}" y="{px(cy + 1.5)}" text-anchor="end" '
-              f'font-family="monospace" font-size="{px(3.5)}" fill="{col}" {weight}>{cur} (base)</text>')
-        else:
-            E(f'<text x="{px(MX - 2.5)}" y="{px(cy + 1.5)}" text-anchor="end" '
-              f'font-family="monospace" font-size="{px(3.5)}" fill="{col}" {weight}>'
-              f'<tspan>{cur}</tspan>'
-              f'<tspan font-size="{px(2.5)}" fill="{t["inkdim"]}" opacity="0.6">/USD</tspan>'
-              f'</text>')
-        # /USD suffix dim
+        col_ink = t["red"] if is_sgd else inkdim
+        E(f'<text x="{cx:.3f}" y="{label_y:.3f}" text-anchor="middle" '
+          f'font-family="monospace" font-size="2.3" fill="{col_ink}">'
+          f'{cur}</text>')
 
+    # "source pool →" axis label at top
+    E(f'<text x="{MX + MW*0.5:.3f}" y="{MY - GUTTER_T*0.6:.3f}" '
+      f'text-anchor="middle" font-family="monospace" font-size="2.6" '
+      f'fill="{inkdim}" opacity="0.6">source voice →</text>')
 
-    # identity diagonal pins (default state, shown as dim outlines)
-    for i in range(ROWS):
-        col = i % COLS   # identity diagonal maps voice to pool by modulo
-        cx = MX + col * CELL + CELL * 0.5
-        cy = MY + i * CELL + CELL * 0.5
-        pin_col = t["amberdim"] if col == 0 else t["tealdim"]
-        E(f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(2.2)}" '
-          f'fill="none" stroke="{pin_col}" stroke-width="{px(0.8)}" opacity="0.4"/>')
+    # ── Row labels (left: consuming voice = currency code) ────────────────────
+    for row, cur in enumerate(CURRENCIES):
+        cy = MY + row * CELL_H + CELL_H * 0.5 + 0.9
+        is_sgd  = (cur == "SGD")
+        is_mono = (row == 0)
+        col_ink = t["mono"] if is_mono else (t["red"] if is_sgd else ink)
+        weight = 'font-weight="bold"' if (is_mono or is_sgd) else ''
+        E(f'<text x="{MX - 1.2:.3f}" y="{cy:.3f}" text-anchor="end" '
+          f'font-family="monospace" font-size="2.5" fill="{col_ink}" {weight}>'
+          f'{cur}</text>')
 
-    # example active pin (SGD row, R column) — to show the live pin aesthetic
-    E(f'<circle cx="{px(MX + 0*CELL + CELL*0.5)}" cy="{px(MY + 0*CELL + CELL*0.5)}" '
-      f'r="{px(2.8)}" fill="{t["amber"]}"/>')
-    E(f'<circle cx="{px(MX + 0*CELL + CELL*0.5)}" cy="{px(MY + 0*CELL + CELL*0.5)}" '
-      f'r="{px(1.2)}" fill="{t["bg"]}" opacity="0.4"/>')
+    # ── Identity diagonal pins (default state — dim concentric) ───────────────
+    # White outer ring (rhythm), red inner dot (melody), both on diagonal.
+    r_outer = min(CELL_W, CELL_H) * 0.30
+    r_inner = min(CELL_W, CELL_H) * 0.14
+    for i in range(N):
+        cx = MX + i * CELL_W + CELL_W * 0.5
+        cy = MY + i * CELL_H + CELL_H * 0.5
+        # Outer ring (rhythm) — dim white
+        E(f'<circle cx="{cx:.3f}" cy="{cy:.3f}" r="{r_outer:.3f}" '
+          f'fill="{t["rhythmD"]}" opacity="0.55"/>')
+        # Inner dot (melody) — dim red
+        E(f'<circle cx="{cx:.3f}" cy="{cy:.3f}" r="{r_inner:.3f}" '
+          f'fill="{t["melodyD"]}" opacity="0.55"/>')
 
-    # "vs USD" axis label (rotated, left of rows)
-    E(f'<text transform="rotate(-90,{px(MX-GUTTER_L+3)},{px(MY+MH/2)})" '
-      f'x="{px(MX-GUTTER_L+3)}" y="{px(MY+MH/2)}" text-anchor="middle" '
-      f'font-family="monospace" font-size="{px(2.8)}" fill="{t["inkdim"]}" opacity="0.5">'
-      f'consuming voice</text>')
+    # ── Example active pins (show the live aesthetic) ─────────────────────────
+    # Row 1 (MYR) rhythm → SGD column (col 0): white filled pin
+    ex_row, ex_col = 1, 0
+    ecx = MX + ex_col * CELL_W + CELL_W * 0.5
+    ecy = MY + ex_row * CELL_H + CELL_H * 0.5
+    E(f'<circle cx="{ecx:.3f}" cy="{ecy:.3f}" r="{r_outer:.3f}" fill="{t["rhythm"]}"/>')
+    # Row 2 (IDR) both → col 2 (IDR's own = identity, but shown bright to illustrate)
+    ex2r, ex2c = 2, 0
+    e2cx = MX + ex2c * CELL_W + CELL_W * 0.5
+    e2cy = MY + ex2r * CELL_H + CELL_H * 0.5
+    E(f'<circle cx="{e2cx:.3f}" cy="{e2cy:.3f}" r="{r_outer:.3f}" fill="{t["rhythm"]}"/>')
+    E(f'<circle cx="{e2cx:.3f}" cy="{e2cy:.3f}" r="{r_inner:.3f}" fill="{t["melody"]}"/>')
 
-    # column axis label (pool / source)
-    E(f'<text x="{px(MX + MW/2)}" y="{px(MY - GUTTER_T + 1.5)}" text-anchor="middle" '
-      f'font-family="monospace" font-size="{px(2.8)}" fill="{t["inkdim"]}" opacity="0.5">'
-      f'source pool</text>')
+    # ── Module title ──────────────────────────────────────────────────────────
+    E(f'<text x="{SVG_W*0.5:.3f}" y="{MY - GUTTER_T + 1.5:.3f}" '
+      f'text-anchor="middle" font-family="monospace" font-size="4.0" '
+      f'font-weight="bold" letter-spacing="0.5" fill="{ink}">CHANGE ALLEY</text>')
 
-    # module title — top
-    E(f'<text x="{px(PW * 0.5)}" y="{px(8.5)}" text-anchor="middle" '
-      f'font-family="monospace" font-size="{px(5.5)}" font-weight="bold" '
-      f'letter-spacing="{px(0.8)}" fill="{t["ink"]}">CHANGE ALLEY</text>')
+    # ── Legend: white = rhythm, red = melody ─────────────────────────────────
+    leg_y = SVG_H - GUTTER_B + 2.5
+    leg_x = MX
+    r_leg = 1.2
+    E(f'<circle cx="{leg_x + r_leg:.3f}" cy="{leg_y:.3f}" r="{r_leg:.3f}" fill="{t["rhythm"]}"/>')
+    E(f'<text x="{leg_x + r_leg*2 + 1:.3f}" y="{leg_y + 0.9:.3f}" '
+      f'font-family="monospace" font-size="2.4" fill="{inkdim}">rhythm</text>')
+    leg_x2 = leg_x + 22.0
+    E(f'<circle cx="{leg_x2 + r_leg:.3f}" cy="{leg_y:.3f}" r="{r_leg:.3f}" fill="{t["melody"]}"/>')
+    E(f'<text x="{leg_x2 + r_leg*2 + 1:.3f}" y="{leg_y + 0.9:.3f}" '
+      f'font-family="monospace" font-size="2.4" fill="{inkdim}">melody</text>')
 
-    # bottom brand + dot
-    bot = PH - 8.0
-    E(f'<circle cx="{px(PW*0.5 - 11)}" cy="{px(bot)}" r="{px(1.8)}" fill="{t["red"]}"/>')
-    E(f'<text x="{px(PW*0.5 - 7.5)}" y="{px(bot + 1.8)}" '
-      f'font-family="monospace" font-size="{px(3.8)}" fill="{t["ink"]}">modular</text>')
-
-    # bottom note: FX exchange framing
-    E(f'<text x="{px(PW*0.5)}" y="{px(PH - 15)}" text-anchor="middle" '
-      f'font-family="monospace" font-size="{px(2.5)}" fill="{t["inkdim"]}" opacity="0.55">'
-      f'rhythm · melody  ×  voice allocation</text>')
+    # ── Brand ─────────────────────────────────────────────────────────────────
+    bot = SVG_H - 3.5
+    E(f'<circle cx="{SVG_W*0.5 - 8:.3f}" cy="{bot:.3f}" r="1.5" fill="{t["red"]}"/>')
+    E(f'<text x="{SVG_W*0.5 - 4.5:.3f}" y="{bot + 1.0:.3f}" '
+      f'font-family="monospace" font-size="3.2" fill="{ink}">modular</text>')
 
     E('</svg>')
-    return "\n".join(A)
+    return "\n".join(o)
 
 if __name__ == "__main__":
     os.makedirs("res/panels", exist_ok=True)
@@ -226,4 +194,4 @@ if __name__ == "__main__":
         theme = "dark" if dark else "light"
         out = f"res/panels/ChangeAlley_panel_{theme}.svg"
         open(out, "w").write(gen(dark))
-        print(f"ChangeAlley {theme}: {out}  ({HP}HP, {PW}×{PH}px)")
+        print(f"ChangeAlley {theme}: {out}  ({HP}HP, {SVG_W:.1f}×{SVG_H:.1f}mm)")
