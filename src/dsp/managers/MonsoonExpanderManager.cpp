@@ -9,6 +9,7 @@
 #include "../../ui/VisualExpanderHelpers.hpp"   // redDot::findMonsoonEitherSide (LANE_DIR field reads)
 #include "../../StraitsSandsMacroVisual.hpp"
 #include "../../MonsoonSandsVisualExpander.hpp"   // SandsMonoVisualIds::dirDispId for mono direction push
+#include "../../MonsoonChangeAlleyExpander.hpp"   // pin-matrix src tables
 
 using namespace rack;
 
@@ -88,6 +89,19 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
     // stands — so "no East ⇒ follow mono" holds even after East is removed mid-session (no
     // stale Local-East state). When East IS present, the block re-asserts Local East per param.
     for (int dv = 0; dv < 15; ++dv) { engine.setVarlegLocalEast(dv, 0, false); engine.setVarlegLocalEast(dv, 1, false); }
+
+    // Change Alley pin-matrix: push rhythmSrc[]/melodySrc[] to the engine (reset-then-push,
+    // same pattern as direction). No expander → identity (voice v reads its own tables).
+    // Locality: only the touched rows change; dice/pins are orthogonal — dice re-rolls tables,
+    // pins are read-time indirection that survives.
+    if (cachedChangeAlleyExpander) {
+        for (int v = 0; v < 15; ++v) {
+            engine.rhythmSrc[v] = cachedChangeAlleyExpander->rhythmSrc[v + 1]; // voice 0=mono, expander row 0=V1=poly voice 1
+            engine.melodySrc[v] = cachedChangeAlleyExpander->melodySrc[v + 1];
+        }
+    } else {
+        for (int v = 0; v < 15; ++v) { engine.rhythmSrc[v] = (uint8_t)v; engine.melodySrc[v] = (uint8_t)v; }
+    }
     // Step 3 (plans/lane_direction_homes.md): poly direction is reset-then-pushed exactly like
     // delegation above. The reset is the half that was missing while the engine was direction's
     // home: nothing cleared laneDirV_, so pulling East out of the rack left poly direction

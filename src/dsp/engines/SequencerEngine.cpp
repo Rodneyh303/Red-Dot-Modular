@@ -713,7 +713,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         int restIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_REST),   polyLenE(voiceIdx, PL_REST),   polyOffE(voiceIdx, PL_REST),   polyRotE(voiceIdx, PL_REST));
         int melIdx  = getStrandIdx(polyLaneTick(voiceIdx, PL_MELODY), polyLenE(voiceIdx, PL_MELODY), polyOffE(voiceIdx, PL_MELODY), polyRotE(voiceIdx, PL_MELODY));
         int octIdx  = getStrandIdx(polyLaneTick(voiceIdx, PL_OCTAVE), polyLenE(voiceIdx, PL_OCTAVE), polyOffE(voiceIdx, PL_OCTAVE), polyRotE(voiceIdx, PL_OCTAVE));
-        float r_rest = pe.polyRandom(voiceIdx, PL_REST)[restIdx];
+        float r_rest = polyRandomSrc(voiceIdx, PL_REST)[restIdx];
         
         if (r_rest < v.restProb) {
             // Decide to Rest: Stick with it until mono gate drops. No accent while resting.
@@ -730,11 +730,11 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         
         // Decide to Play: Draw pitch and follow mono's triggering behavior.
         int sem = 0;
-        float pitchV = pe.genPitchLive(sem, input, pe.polyRandom(voiceIdx, PL_MELODY)[melIdx], pe.polyRandom(voiceIdx, PL_OCTAVE)[octIdx]);
+        float pitchV = pe.genPitchLive(sem, input, polyRandomSrc(voiceIdx, PL_MELODY)[melIdx], polyRandomSrc(voiceIdx, PL_OCTAVE)[octIdx]);
         // Accent as a poly lane (modelled after rest): this voice draws its OWN accent at
         // its own accent LOR and compares to its own accentProb — not shared from mono.
         int accIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_ACCENT), polyLenE(voiceIdx, PL_ACCENT), polyOffE(voiceIdx, PL_ACCENT), polyRotE(voiceIdx, PL_ACCENT));
-        v.accented = (pe.polyRandom(voiceIdx, PL_ACCENT)[accIdx] < v.accentProb);
+        v.accented = (polyRandomSrc(voiceIdx, PL_ACCENT)[accIdx] < v.accentProb);
         if (lastStepResult.decision == MonoDecision::NewNote)
             v.gs.triggerNote(pitchV, sem, nvV);
         else if (wasHeldPoly || hadPolyTail)
@@ -853,7 +853,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                     int melIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_MELODY), polyLenE(voiceIdx, PL_MELODY), polyOffE(voiceIdx, PL_MELODY), polyRotE(voiceIdx, PL_MELODY));
                     int octIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_OCTAVE), polyLenE(voiceIdx, PL_OCTAVE), polyOffE(voiceIdx, PL_OCTAVE), polyRotE(voiceIdx, PL_OCTAVE));
                     int sem = 0;
-                    float pitchV = pe.genPitchLive(sem, input, pe.polyRandom(voiceIdx, PL_MELODY)[melIdx], pe.polyRandom(voiceIdx, PL_OCTAVE)[octIdx]);
+                    float pitchV = pe.genPitchLive(sem, input, polyRandomSrc(voiceIdx, PL_MELODY)[melIdx], polyRandomSrc(voiceIdx, PL_OCTAVE)[octIdx]);
                     if (connect) {
                         v.gs.slideNote(pitchV, sem, nvV, /*wasHeld=*/true);   // connect (keep chain accent)
                     } else {
@@ -861,7 +861,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                         // LOR vs its own accentProb), exactly as the chain onset does — a re-struck
                         // note isn't stuck with the accent the chain opened on.
                         int accIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_ACCENT), polyLenE(voiceIdx, PL_ACCENT), polyOffE(voiceIdx, PL_ACCENT), polyRotE(voiceIdx, PL_ACCENT));
-                        v.accented = (pe.polyRandom(voiceIdx, PL_ACCENT)[accIdx] < v.accentProb);
+                        v.accented = (polyRandomSrc(voiceIdx, PL_ACCENT)[accIdx] < v.accentProb);
                         v.gs.triggerNote(pitchV, sem, nvV);                   // re-articulate
                     }
                     v.gsStep.triggerNote(pitchV, sem, nvV);   // STEP: slide/re-artic both re-strike
@@ -883,7 +883,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                     int melIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_MELODY), polyLenE(voiceIdx, PL_MELODY), polyOffE(voiceIdx, PL_MELODY), polyRotE(voiceIdx, PL_MELODY));
                     int octIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_OCTAVE), polyLenE(voiceIdx, PL_OCTAVE), polyOffE(voiceIdx, PL_OCTAVE), polyRotE(voiceIdx, PL_OCTAVE));
                     int sem = 0;
-                    float pitchV = pe.genPitchLive(sem, input, pe.polyRandom(voiceIdx, PL_MELODY)[melIdx], pe.polyRandom(voiceIdx, PL_OCTAVE)[octIdx]);
+                    float pitchV = pe.genPitchLive(sem, input, polyRandomSrc(voiceIdx, PL_MELODY)[melIdx], polyRandomSrc(voiceIdx, PL_OCTAVE)[octIdx]);
                     v.gs.slideNote(pitchV, sem, nvV, wasHeldPoly);
                     v.gsStep.triggerNote(pitchV, sem, nvV); v.gs.slurMember = true;  // STEP/SLEG
                 } else if (lastStepResult.decision == MonoDecision::Tie) {

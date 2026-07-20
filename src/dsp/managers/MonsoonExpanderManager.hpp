@@ -7,6 +7,7 @@ class SequencerEngine;
 
 // Forward declarations
 struct MonsoonInterchangeExpander;
+struct MonsoonChangeAlleyExpander;
 struct MonsoonSandsExpander;
 struct MonsoonSandsVisualExpander;       // Mono visual DNA editor
 struct MonsoonStraitsExpander;
@@ -24,6 +25,7 @@ extern rack::Model* modelMonsoon;
 extern rack::Model* modelMonsoonInterchangeExpander;
 extern rack::Model* modelMonsoonRafflesExpander;
 extern rack::Model* modelMonsoonJunctionExpander;
+extern rack::Model* modelMonsoonChangeAlleyExpander;
 extern rack::Model* modelMonsoonSandsExpander;
 extern rack::Model* modelMonsoonSandsVisualExpander;
 extern rack::Model* modelMonsoonStraitsExpander;
@@ -65,7 +67,8 @@ struct MonsoonExpanderManager {
 
     MonsoonInterchangeExpander*  cachedScaleExpander              = nullptr;
     rack::Module*                cachedRafflesExpander           = nullptr;
-    rack::Module*                cachedJunctionExpander              = nullptr;
+    rack::Module*                cachedJunctionExpander          = nullptr;
+    MonsoonChangeAlleyExpander*  cachedChangeAlleyExpander       = nullptr;
     //MonsoonSandsExpander*        cachedDnaExpander                = nullptr;
     MonsoonSandsVisualExpander*  cachedSandsVisualExpander        = nullptr;
     MonsoonStraitsExpander*      cachedPolyVoiceExpander          = nullptr;
@@ -92,7 +95,8 @@ struct MonsoonExpanderManager {
     void update(rack::Module* module) {
         cachedScaleExpander              = nullptr;
         cachedRafflesExpander           = nullptr;
-        cachedJunctionExpander              = nullptr;
+        cachedJunctionExpander          = nullptr;
+        cachedChangeAlleyExpander       = nullptr;
         //cachedDnaExpander                = nullptr;
         cachedSandsVisualExpander        = nullptr;
         cachedPolyVoiceExpander          = nullptr;
@@ -135,6 +139,9 @@ struct MonsoonExpanderManager {
                     if (!cachedRafflesExpander) cachedRafflesExpander = curr;
                 } else if (curr->model == modelMonsoonJunctionExpander) {
                     if (!cachedJunctionExpander) cachedJunctionExpander = curr;
+                } else if (curr->model == modelMonsoonChangeAlleyExpander) {
+                    if (!cachedChangeAlleyExpander)
+                        cachedChangeAlleyExpander = reinterpret_cast<MonsoonChangeAlleyExpander*>(curr);
                 // } else if (curr->model == modelMonsoonSandsExpander) {
                 //     if (!cachedDnaExpander) cachedDnaExpander = reinterpret_cast<MonsoonSandsExpander*>(curr);
                 //     dnaExpanderCount++;

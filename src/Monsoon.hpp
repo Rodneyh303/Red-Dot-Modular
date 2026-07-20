@@ -923,6 +923,7 @@ extern Model* modelMonsoon;
 extern Model* modelMonsoonInterchangeExpander;
 extern Model* modelMonsoonRafflesExpander;
 extern Model* modelMonsoonJunctionExpander;
+extern Model* modelMonsoonChangeAlleyExpander;
 //extern Model* modelMonsoonSandsExpander;
 extern Model* modelMonsoonStraitsExpander; // base poly expander
 extern Model* modelMonsoonCausewayPolyExpander; // poly CV modulation expander
@@ -937,3 +938,13 @@ extern Model* modelLantern;                    // Lantern note-output visualiser
 extern Model* modelMonsoonSandsVisualExpander;  // Mono visual DNA editor (voice 1)
 extern Model* modelStraitsEastSandsVisual;      // East visual DNA editor (voices 2-8)
 extern Model* modelStraitsSandsMacroVisual;     // Macro visual DNA editor (global)
+
+// ─── Change Alley pin matrix expander ────────────────────────────────────────
+namespace ChangeAlleyIds {
+    enum ParamIds { NUM_PARAMS = 0 };
+    enum InputIds  { NUM_INPUTS = 0 };
+    enum OutputIds { NUM_OUTPUTS = 0 };
+    enum LightIds  { NUM_LIGHTS = 0 };
+    static constexpr int N_VOICES = 16;
+    static constexpr int N_POOLS  = 2;   // 0=rhythm 1=melody
+}

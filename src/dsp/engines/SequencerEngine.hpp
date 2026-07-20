@@ -394,7 +394,27 @@ struct SequencerEngine {
 
     uint16_t windowMask = 0xFFFF;
 
-    bool locked = false;
+    // ── Change Alley pin-matrix indirection (CHANGE_ALLEY_DESIGN.md) ────────
+    // rhythmSrc[v] / melodySrc[v]: which voice's Philox tables voice v reads for
+    // REST/ACCENT (rhythm) and MELODY/OCTAVE (melody). Identity by default.
+    // Written by the expander manager on each control-rate cycle; engine consumes
+    // at the polyRandom(voiceIdx, lane) call sites via polyRandomSrc() below.
+    uint8_t rhythmSrc[15] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14};
+    uint8_t melodySrc[15] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14};
+
+    // The indirection call: replaces polyRandom(voiceIdx, lane) at articulation sites.
+    // REST + ACCENT → rhythm pool; MELODY + OCTAVE → melody pool. Table remap only:
+    // the consumer keeps its OWN tick/rotation/direction; locality and dice/pin
+    // orthogonality follow from this (see CHANGE_ALLEY_DESIGN.md §3).
+    inline const float (&polyRandomSrc(int voiceIdx, int polyLane) const)[16] {
+        int src = voiceIdx;
+        if (voiceIdx >= 0 && voiceIdx < 15) {
+            src = (polyLane == PL_REST || polyLane == PL_ACCENT)
+                  ? rhythmSrc[voiceIdx]
+                  : melodySrc[voiceIdx];
+        }
+        return pe.polyRandom(src, polyLane);
+    }
     bool muted = false;
     bool runGateActive = false;
     bool resetArmed = false;
