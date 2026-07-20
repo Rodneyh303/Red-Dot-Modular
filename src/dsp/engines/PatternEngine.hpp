@@ -98,9 +98,31 @@ struct PatternEngine {
     // ENGINE STRAND at a given step, 0..1. Now a direct index into random_[0] (mono row): strand index
     // IS the editor-lane column (MONO_LANE_TO_STRAND identity), so no table/permutation. Out-of-range
     // falls back to rhythm (matches the old default:). Used by the Sands visual probability CV outs.
+    // ── Change Alley pin-matrix (CHANGE_ALLEY_DESIGN.md) — the mapping lives HERE,
+    //    right after Philox, because PatternEngine owns random_ and every consumer
+    //    (articulation, displays, probability CV outs) reads through this API. Rows
+    //    0..15 (0 = mono). Strand→pool: MELODY/OCTAVE = melody pin; everything else
+    //    (RHYTHM/ACCENT/VARIATION/LEGATO) = rhythm pin. READS are remapped; WRITES
+    //    (dice fills, slew/spread pipeline, rotations) always target the OWN bank —
+    //    that separation is what makes pins pure read-time indirection (locality,
+    //    dice/pin orthogonality). ──
+    uint8_t caRhythmSrc[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
+    uint8_t caMelodySrc[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
+
+    inline int caSrcRow(int row, int strand) const {
+        const bool mel = (strand == dotModular::STRAND_MELODY || strand == dotModular::STRAND_OCTAVE);
+        const int r = (row >= 0 && row < 16) ? row : 0;
+        return mel ? (int)caMelodySrc[r] : (int)caRhythmSrc[r];
+    }
+    // The remapped READ: row's draw table for a strand, via that row's pin.
+    inline const float (&readStrand(int row, int strand) const)[16] {
+        const int s = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? strand : dotModular::STRAND_RHYTHM;
+        return random_[caSrcRow(row, s)][s];
+    }
+
     inline float finalRandomByStrand(int strand, int step) const {
         const int s = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? strand : dotModular::STRAND_RHYTHM;
-        return random_[0][s][step & 0x0F];
+        return readStrand(0, s)[step & 0x0F];   // mono display: through row 0's pins
     }
 
     // Poly strands: 15 voices, each with Rhythm, Melody, and Octave draws

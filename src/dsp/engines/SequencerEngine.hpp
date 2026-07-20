@@ -396,40 +396,25 @@ struct SequencerEngine {
 
     bool locked = false;
 
-    // ── Change Alley pin-matrix indirection (CHANGE_ALLEY_DESIGN.md) ────────
-    // Unified 16-voice addressing: index 0 = mono (bank 0), 1..15 = poly (banks 1..15).
-    // rhythmSrc[v] / melodySrc[v]: which source voice v draws REST/ACCENT or MELODY/OCTAVE from.
-    // Identity default: rhythmSrc[v]=v, melodySrc[v]=v (no exchange).
-    // Written by the expander manager each control-rate cycle. No v+1 offset — the
-    // unified bank layout (random_[0]=mono, random_[1..15]=poly) handles it in polyRandom.
-    uint8_t rhythmSrc[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
-    uint8_t melodySrc[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
-
-    // Poly indirection (voices 1..15 → banks 1..15). voiceIdx here is 0..14 (engine poly index).
-    // The +1 in pe.polyRandom is the existing bank offset; we remap which bank via melodySrc[v+1].
+    // ── Change Alley pin-matrix (CHANGE_ALLEY_DESIGN.md) ─────────────────────
+    // The src tables live in PatternEngine (pe.caRhythmSrc/caMelodySrc) so EVERY
+    // consumer — articulation here, the displays, the probability CV outs — reads
+    // through the SAME remap: pe.readStrand(row, strand). "Right after Philox" made
+    // literal. Row 0 = mono, rows 1..15 = poly V2..V16 (engine poly index v = row v+1).
+    // The manager pushes pins into pe each control cycle.
     inline const float (&polyRandomSrc(int voiceIdx, int polyLane) const)[16] {
-        // voiceIdx 0..14 = engine poly voices = expander rows 1..15
-        int expRow = voiceIdx + 1;
-        int src = (polyLane == PL_REST || polyLane == PL_ACCENT)
-                  ? (int)rhythmSrc[expRow]
-                  : (int)melodySrc[expRow];
-        // src is in expander-row space (0=mono, 1..15=poly); poly bank = src-1 if src>0.
-        // If src==0 (routed to mono's pool): read bank 0 via polyRandom(-1,...) which
-        // maps to random_[0]; use the non-offset version instead.
-        if (src == 0) {
-            // Borrow mono's bank: random_[0][lane] — same as pe.rhythmRandom/melodyRandom
-            return pe.polyRandom(-1, polyLane);   // bank -1+1=0 in random_[bank+1]
-        }
-        return pe.polyRandom(src - 1, polyLane);  // normal poly bank src-1
+        return pe.readStrand(voiceIdx + 1, polyLaneToStrand(polyLane));
     }
-
-    // Mono indirection (expander row 0). Replaces pe.rhythmRandom / pe.melodyRandom etc.
-    // Returns the draw array for mono based on rhythmSrc[0] or melodySrc[0].
-    inline const float (&monoRandomSrc(bool isRhythmLane) const)[16] {
-        int src = isRhythmLane ? (int)rhythmSrc[0] : (int)melodySrc[0];
-        if (src == 0) return pe.polyRandom(-1, isRhythmLane ? PL_REST : PL_MELODY);
-        return pe.polyRandom(src - 1, isRhythmLane ? PL_REST : PL_MELODY);
+    static inline int polyLaneToStrand(int polyLane) {
+        return (polyLane == PL_REST)   ? dotModular::STRAND_RHYTHM
+             : (polyLane == PL_MELODY) ? dotModular::STRAND_MELODY
+             : (polyLane == PL_ACCENT) ? dotModular::STRAND_ACCENT
+                                       : dotModular::STRAND_OCTAVE;
     }
+    // Mono reads by STRAND — each strand keeps its OWN table, remapped by row 0's pin.
+    // (An earlier version routed mono VARIATION/LEGATO through the REST strand's table —
+    //  wrong table even at identity. readStrand keeps strand identity by construction.)
+    inline const float (&monoStrand(int strand) const)[16] { return pe.readStrand(0, strand); }
     bool muted = false;
     bool runGateActive = false;
     bool resetArmed = false;
@@ -475,9 +460,9 @@ struct SequencerEngine {
         int idx = getStrandIdx(polyLaneTick(voice, polyLane), polyLenE(voice, polyLane),
                                polyOffE(voice, polyLane), polyRotE(voice, polyLane));
         idx &= 0x0F;
-        // Switch collapsed: polyRandom takes the lane directly (unified storage), so no per-case map.
+        // Through the Change Alley remap: the CV out reports what the voice will CONSUME.
         if (polyLane < 0 || polyLane >= PL_LANES) return 0.f;
-        return pe.polyRandom(voice, polyLane)[idx];
+        return polyRandomSrc(voice, polyLane)[idx];
     }
     // Per-voice draw value for a poly lane at an EXPLICIT step (caller supplies the
     // step from its own LOR view). Used by Macro's prob-out, which samples each voice's
@@ -486,7 +471,7 @@ struct SequencerEngine {
     inline float polyLaneProbabilityAtStep(int polyLane, int voice, int step) const {
         if (voice < 0 || voice >= 15 || polyLane < 0 || polyLane >= PL_LANES) return 0.f;
         step &= 0x0F;
-        return pe.polyRandom(voice, polyLane)[step];   // switch collapsed (unified storage)
+        return polyRandomSrc(voice, polyLane)[step];   // through the Change Alley remap
     }
 
     // Step indices (for S&H edge detection) matching the probability accessors above.

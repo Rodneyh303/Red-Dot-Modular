@@ -95,11 +95,11 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
     // the bank arithmetic (src-1) handles it in polyRandomSrc/monoRandomSrc.
     if (cachedChangeAlleyExpander) {
         for (int v = 0; v < 16; ++v) {
-            engine.rhythmSrc[v] = cachedChangeAlleyExpander->rhythmSrc[v];
-            engine.melodySrc[v] = cachedChangeAlleyExpander->melodySrc[v];
+            engine.pe.caRhythmSrc[v] = cachedChangeAlleyExpander->rhythmSrc[v];
+            engine.pe.caMelodySrc[v] = cachedChangeAlleyExpander->melodySrc[v];
         }
     } else {
-        for (int v = 0; v < 16; ++v) { engine.rhythmSrc[v] = (uint8_t)v; engine.melodySrc[v] = (uint8_t)v; }
+        for (int v = 0; v < 16; ++v) { engine.pe.caRhythmSrc[v] = (uint8_t)v; engine.pe.caMelodySrc[v] = (uint8_t)v; }
     }
     // Step 3 (plans/lane_direction_homes.md): poly direction is reset-then-pushed exactly like
     // delegation above. The reset is the half that was missing while the engine was direction's

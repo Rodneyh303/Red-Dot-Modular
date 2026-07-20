@@ -587,10 +587,10 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
         }
     }
 
-    float r_vary   = monoRandomSrc(true)[getVariationStep()];
-    float r_rest   = monoRandomSrc(true)[getRhythmStep()];
-    float r_legato = monoRandomSrc(true)[getLegatoStep()];
-    float r_accent = pe.accentRandom[getAccentStep()];  // New: accent strand
+    float r_vary   = monoStrand(dotModular::STRAND_VARIATION)[getVariationStep()];
+    float r_rest   = monoStrand(dotModular::STRAND_RHYTHM)[getRhythmStep()];
+    float r_legato = monoStrand(dotModular::STRAND_LEGATO)[getLegatoStep()];
+    float r_accent = monoStrand(dotModular::STRAND_ACCENT)[getAccentStep()];  // New: accent strand
     
     int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
 
@@ -648,10 +648,10 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
                 voices[i].gsStep.gateHeld = false; voices[i].gsStep.holdRemain = 0.f;
             }
         }
-        float r_vary   = monoRandomSrc(true)[getVariationStep()];
-        float r_rest   = monoRandomSrc(true)[getRhythmStep()];
-        float r_legato = monoRandomSrc(true)[getLegatoStep()];
-        float r_accent = pe.accentRandom[getAccentStep()];  // New: accent strand
+        float r_vary   = monoStrand(dotModular::STRAND_VARIATION)[getVariationStep()];
+        float r_rest   = monoStrand(dotModular::STRAND_RHYTHM)[getRhythmStep()];
+        float r_legato = monoStrand(dotModular::STRAND_LEGATO)[getLegatoStep()];
+        float r_accent = monoStrand(dotModular::STRAND_ACCENT)[getAccentStep()];  // New: accent strand
         
         int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
 
