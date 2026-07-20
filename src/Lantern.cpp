@@ -526,6 +526,37 @@ struct LanternDisplay : widget::Widget {
             }
         }
 
+        // Vertical step grid — the time axis, previously invisible. Three tiers of weight so
+        // the eye reads the metre without the lines competing with the note bars:
+        //   • 16th steps (every column)      — faintest; the fundamental grid Monsoon runs on
+        //   • quarter-bar (steps 4, 8, 12)   — medium; the four beats of a 4/4 bar of 1/16s
+        //   • start / end boundary (0 and 16)— brightest; the loop extent, otherwise unseeable
+        // Same gridX/stepW as the bars and playhead (drawGrid, ~600) so lines sit on cell
+        // edges exactly. Base layer, under the bars. dots = the right-hand heldOut caret gutter.
+        {
+            const float dots   = W * DOTS_FRAC;
+            const float gridX  = gutter;
+            const float gridW  = W - gutter - dots;
+            const float stepW  = gridW / N_STEPS;
+            const float yTop = 1.f, yBot = H - 1.f;
+            auto vline = [&](float x, NVGcolor col, float w) {
+                nvgBeginPath(vg);
+                nvgStrokeColor(vg, col); nvgStrokeWidth(vg, w);
+                nvgMoveTo(vg, x, yTop); nvgLineTo(vg, x, yBot); nvgStroke(vg);
+            };
+            // faint 16th lines first (interior only; skip beats + boundaries, drawn heavier below)
+            for (int s = 1; s < N_STEPS; ++s) {
+                if (s % 4 == 0) continue;
+                vline(gridX + s * stepW, nvgRGB(0x1c, 0x20, 0x27), 0.5f);
+            }
+            // quarter-bar beats (4, 8, 12)
+            for (int s = 4; s < N_STEPS; s += 4)
+                vline(gridX + s * stepW, nvgRGB(0x33, 0x39, 0x43), 0.9f);
+            // start / end boundaries
+            vline(gridX,                 nvgRGB(0x50, 0x57, 0x62), 1.2f);
+            vline(gridX + N_STEPS * stepW, nvgRGB(0x50, 0x57, 0x62), 1.2f);
+        }
+
         const int ph = module->lastObservedStep;
 
         for (int v = 0; v < N_VOICES; ++v) {
