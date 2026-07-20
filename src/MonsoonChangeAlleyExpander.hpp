@@ -138,13 +138,8 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
             int poly = getPolyCount();
             float ro = cellRadius(), ri = innerRadius();
 
-            // Colours
-            NVGcolor white     = nvgRGB(0xf0,0xf0,0xee);
-            NVGcolor red       = nvgRGB(0xd4,0x00,0x1a);
-            NVGcolor whiteDim  = nvgRGBA(0xf0,0xf0,0xee,0x30);
-            NVGcolor redDimC   = nvgRGBA(0xd4,0x00,0x1a,0x30);
-            NVGcolor whiteDef  = nvgRGBA(0xf0,0xf0,0xee,0x70);  // identity — dim filled
-            NVGcolor redDef    = nvgRGBA(0xd4,0x00,0x1a,0x70);
+            // Pin colours are inlined below (white=rhythm, red=melody; identity pins at
+            // 0.7 alpha, inactive rows at 0.4). Single literals, easy to tune.
 
             for (int row = 0; row < CA::N_VOICES; ++row) {
                 bool active = (row == 0) || (row <= poly);  // row 0=mono always active
