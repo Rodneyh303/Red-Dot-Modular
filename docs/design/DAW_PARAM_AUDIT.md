@@ -115,6 +115,13 @@ redundant — patch a DC-coupled DAW output into the CV jack instead.
 
 ## 5b. Prerequisite for action 2: custom undo (the real cost of de-paramming)
 
+> STATUS: **helper LANDED** — `src/ui/StoreEditAction.hpp` (StoreEditAction<TModule>,
+> pushStoreEdit, applyAndPushStoreEdit, StoreEditCoalescer), with a standalone suite at
+> `test/test_StoreEditAction.cpp` (20/20: record-only push semantics, voice-correct undo
+> under selection change, module-deletion safety, drag coalescing, int round-trip).
+> Remaining: wire into the widget classes as they are de-parammed (action 2 proper);
+> verify against the real SDK on the MSYS2 build (the suite runs against the test shim).
+
 What ParamWidget gives for free — undo/redo (ParamChange history), tooltip + typed
 entry, host/MIDI mapping — is forfeited by store-backed widgets. Recoverable:
 
