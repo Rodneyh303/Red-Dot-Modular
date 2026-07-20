@@ -10,8 +10,10 @@
 // Zero param slots by design (DAW_PARAM_AUDIT.md).
 
 #include <rack.hpp>
+#include <cmath>
 #include "Monsoon.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
+#include "ui/StoreEditAction.hpp"   // pin edits: store-backed, undoable (DAW_PARAM_AUDIT 5b)
 
 using namespace rack;
 // NOT 'using namespace ChangeAlleyIds' — Monsoon.hpp exposes MonsoonIds with the same
@@ -203,10 +205,22 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
             for (int row = 0; row < CA::N_VOICES; ++row) {
                 for (int col = 0; col < CA::N_VOICES; ++col) {
                     if (!hitCell(e.pos, row, col)) continue;
-                    if (setMelody) {
-                        module->melodySrc[row] = (uint8_t)col;
-                    } else {
-                        module->rhythmSrc[row] = (uint8_t)col;
+                    // Store-backed + undoable: the pin tables are NOT params (zero DAW
+                    // slots -- DAW_PARAM_AUDIT), so undo goes through StoreEditAction.
+                    // The action targets the EXPANDER's module id and bakes (row, which
+                    // table) into the setter, so undo lands on the row actually edited
+                    // no matter what has happened since. Equal old/new never records.
+                    {
+                        float oldV = setMelody ? (float)module->melodySrc[row]
+                                               : (float)module->rhythmSrc[row];
+                        redDot::applyAndPushStoreEdit<MonsoonChangeAlleyExpander>(
+                            module,
+                            setMelody ? "move melody pin" : "move rhythm pin",
+                            [row, setMelody](MonsoonChangeAlleyExpander& m, float v) {
+                                uint8_t c = (uint8_t)math::clamp((int)std::lround(v), 0, CA::N_VOICES - 1);
+                                (setMelody ? m.melodySrc : m.rhythmSrc)[row] = c;
+                            },
+                            oldV, (float)col);
                     }
                     e.consume(this);
                     return;
@@ -215,11 +229,27 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
             OpaqueWidget::onButton(e);
         }
 
-        void appendContextMenu(ui::Menu* menu) {
-            if (!module) return;
-            menu->addChild(new MenuSeparator);
-            menu->addChild(createMenuItem("Reset to identity diagonal", "",
-                [this]() { if (module) module->resetToIdentity(); }));
+    };
+
+    // Reset = up to 32 cell changes; one gesture must be ONE undo step, so it gets a
+    // whole-table snapshot action rather than 32 StoreEditActions. Same module-id
+    // resolution discipline as StoreEditAction (survives deletion; no-ops while gone).
+    struct ResetPinsAction : rack::history::Action {
+        int64_t moduleId;
+        uint8_t oldR[CA::N_VOICES], oldM[CA::N_VOICES];
+        ResetPinsAction(MonsoonChangeAlleyExpander* m) : moduleId(m->id) {
+            name = "reset pins to identity";
+            for (int v = 0; v < CA::N_VOICES; ++v) { oldR[v] = m->rhythmSrc[v]; oldM[v] = m->melodySrc[v]; }
+        }
+        MonsoonChangeAlleyExpander* resolve() {
+            return dynamic_cast<MonsoonChangeAlleyExpander*>(APP->engine->getModule(moduleId));
+        }
+        void undo() override {
+            if (auto* m = resolve())
+                for (int v = 0; v < CA::N_VOICES; ++v) { m->rhythmSrc[v] = oldR[v]; m->melodySrc[v] = oldM[v]; }
+        }
+        void redo() override {
+            if (auto* m = resolve()) m->resetToIdentity();
         }
     };
 
@@ -229,6 +259,15 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
         if (!module) return;
         menu->addChild(new MenuSeparator);
         menu->addChild(createMenuItem("Reset to identity diagonal", "",
-            [module]() { module->resetToIdentity(); }));
+            [module]() {
+                // Skip the no-op (already identity) so undo history stays clean.
+                bool isIdentity = true;
+                for (int v = 0; v < CA::N_VOICES; ++v)
+                    if (module->rhythmSrc[v] != v || module->melodySrc[v] != v) { isIdentity = false; break; }
+                if (isIdentity) return;
+                auto* act = new ResetPinsAction(module);
+                module->resetToIdentity();
+                APP->history->push(act);
+            }));
     }
 };
