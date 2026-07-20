@@ -14,24 +14,27 @@
 #include "ui/VisualExpanderHelpers.hpp"
 
 using namespace rack;
-using namespace ChangeAlleyIds;
+// NOT 'using namespace ChangeAlleyIds' — Monsoon.hpp exposes MonsoonIds with the same
+// NUM_PARAMS/NUM_INPUTS/... names, so we qualify explicitly (same rule as the Sands
+// managers: 'NOT using namespace ... to avoid ambiguous calls — qualify below').
+namespace CA = ChangeAlleyIds;
 
 struct MonsoonChangeAlleyExpander : Module {
-    uint8_t rhythmSrc[N_VOICES];
-    uint8_t melodySrc[N_VOICES];
+    uint8_t rhythmSrc[CA::N_VOICES];
+    uint8_t melodySrc[CA::N_VOICES];
 
-    static constexpr const char* CURRENCIES[N_VOICES] = {
+    static constexpr const char* CURRENCIES[CA::N_VOICES] = {
         "SGD","MYR","IDR","THB","PHP","VND","MMK","KHR",
         "HKD","CNY","TWD","KRW","JPY","AUD","INR","USD",
     };
 
     MonsoonChangeAlleyExpander() {
-        config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
+        config(CA::NUM_PARAMS, CA::NUM_INPUTS, CA::NUM_OUTPUTS, CA::NUM_LIGHTS);
         resetToIdentity();
     }
 
     void resetToIdentity() {
-        for (int v = 0; v < N_VOICES; ++v) { rhythmSrc[v] = v; melodySrc[v] = v; }
+        for (int v = 0; v < CA::N_VOICES; ++v) { rhythmSrc[v] = v; melodySrc[v] = v; }
     }
 
     void process(const ProcessArgs&) override {}
@@ -40,7 +43,7 @@ struct MonsoonChangeAlleyExpander : Module {
         json_t* root = json_object();
         auto save = [&](const char* k, const uint8_t* a) {
             json_t* arr = json_array();
-            for (int v = 0; v < N_VOICES; ++v) json_array_append_new(arr, json_integer(a[v]));
+            for (int v = 0; v < CA::N_VOICES; ++v) json_array_append_new(arr, json_integer(a[v]));
             json_object_set_new(root, k, arr);
         };
         save("rhythmSrc", rhythmSrc);
@@ -53,10 +56,10 @@ struct MonsoonChangeAlleyExpander : Module {
         auto load = [&](const char* k, uint8_t* a) {
             json_t* arr = json_object_get(root, k);
             if (!arr) return;
-            for (int v = 0; v < N_VOICES && v < (int)json_array_size(arr); ++v) {
+            for (int v = 0; v < CA::N_VOICES && v < (int)json_array_size(arr); ++v) {
                 json_t* val = json_array_get(arr, v);
                 if (json_is_integer(val))
-                    a[v] = (uint8_t)math::clamp((int)json_integer_value(val), 0, N_VOICES-1);
+                    a[v] = (uint8_t)math::clamp((int)json_integer_value(val), 0, CA::N_VOICES-1);
             }
         };
         load("rhythmSrc", rhythmSrc);
@@ -79,9 +82,9 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
     static constexpr float MX_MM    = GUTTER_L;
     static constexpr float MY_MM    = GUTTER_T + 8.0f;              // square grid: matches generator
     static constexpr float MW_MM    = PW_MM - GUTTER_L - GUTTER_R;
-    static constexpr float CELL_W   = MW_MM / N_VOICES;             // SQUARE cells (width-constrained)
+    static constexpr float CELL_W   = MW_MM / CA::N_VOICES;             // SQUARE cells (width-constrained)
     static constexpr float CELL_H   = CELL_W;
-    static constexpr float MH_MM    = CELL_H * N_VOICES;
+    static constexpr float MH_MM    = CELL_H * CA::N_VOICES;
 
     // Cell centre in px (rack mm2px)
     static Vec cellCentre(int row, int col) {
@@ -141,13 +144,13 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
             NVGcolor whiteDef  = nvgRGBA(0xf0,0xf0,0xee,0x70);  // identity — dim filled
             NVGcolor redDef    = nvgRGBA(0xd4,0x00,0x1a,0x70);
 
-            for (int row = 0; row < N_VOICES; ++row) {
+            for (int row = 0; row < CA::N_VOICES; ++row) {
                 bool active = (row == 0) || (row <= poly);  // row 0=mono always active
                 float alpha = active ? 1.f : 0.4f;
                 uint8_t rSrc = module->rhythmSrc[row];
                 uint8_t mSrc = module->melodySrc[row];
 
-                for (int col = 0; col < N_VOICES; ++col) {
+                for (int col = 0; col < CA::N_VOICES; ++col) {
                     Vec c = cellCentre(row, col);
                     bool hasR = (rSrc == (uint8_t)col);
                     bool hasM = (mSrc == (uint8_t)col);
@@ -197,8 +200,8 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
         void onButton(const event::Button& e) override {
             if (!module || e.action != GLFW_PRESS) { OpaqueWidget::onButton(e); return; }
             bool setMelody = (e.button == GLFW_MOUSE_BUTTON_RIGHT) || (e.mods & RACK_MOD_CTRL);
-            for (int row = 0; row < N_VOICES; ++row) {
-                for (int col = 0; col < N_VOICES; ++col) {
+            for (int row = 0; row < CA::N_VOICES; ++row) {
+                for (int col = 0; col < CA::N_VOICES; ++col) {
                     if (!hitCell(e.pos, row, col)) continue;
                     if (setMelody) {
                         module->melodySrc[row] = (uint8_t)col;
