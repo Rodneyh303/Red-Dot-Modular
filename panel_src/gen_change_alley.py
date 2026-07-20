@@ -63,7 +63,11 @@ def gen(dark):
     o = []
     def E(s): o.append(s)
 
-    E(f'<svg width="{SVG_W:.3f}" height="{SVG_H:.3f}" '
+    # Document size in PX (Rack: 1HP = 15px, 75dpi => px = mm * 75/25.4). 18HP = 270px,
+    # 128.5mm = 379.43px (house height, cf. Causeway). The viewBox keeps every coordinate
+    # below in mm, and 270/91.44 == Rack's mm2px scale exactly, so the widget's mm2px
+    # hit-test lands on the same points the panel draws.
+    E(f'<svg width="270.0" height="379.43" '
       f'viewBox="0 0 {SVG_W:.3f} {SVG_H:.3f}" xmlns="http://www.w3.org/2000/svg">')
 
     # Panel background
