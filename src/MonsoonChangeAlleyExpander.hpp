@@ -123,7 +123,11 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
         addChild(ov);
     }
 
-    struct PinOverlay : widget::OpaqueWidget {
+    // TransparentWidget, NOT Opaque: an opaque overlay sized to the module box consumed
+    // every left-press, leaving nowhere to grab the panel for dragging (and blocked the
+    // context menu outside the grid). Transparent passes everything through; we consume
+    // ONLY genuine cell hits in onButton.
+    struct PinOverlay : widget::TransparentWidget {
         MonsoonChangeAlleyExpander* module;
         PinOverlay(MonsoonChangeAlleyExpander* m) : module(m) {}
 
@@ -289,7 +293,7 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
         // Clicking cell (row, col) sets rhythmSrc[row]=col or melodySrc[row]=col.
         // Row-radio is automatic: src[row] holds exactly one value — this overwrites it.
         void onButton(const event::Button& e) override {
-            if (!module || e.action != GLFW_PRESS) { OpaqueWidget::onButton(e); return; }
+            if (!module || e.action != GLFW_PRESS) { TransparentWidget::onButton(e); return; }
             bool setMelody = (e.button == GLFW_MOUSE_BUTTON_RIGHT) || (e.mods & RACK_MOD_CTRL);
             for (int row = 0; row < CA::N_VOICES; ++row) {
                 for (int col = 0; col < CA::N_VOICES; ++col) {
@@ -315,7 +319,7 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
                     return;
                 }
             }
-            OpaqueWidget::onButton(e);
+            TransparentWidget::onButton(e);
         }
 
     };
