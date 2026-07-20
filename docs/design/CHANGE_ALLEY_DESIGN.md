@@ -65,6 +65,30 @@ changes the material, never the relationships).
 
 Decision: TABLE remap. One semantics, no per-pin modes.
 
+**§3-REVISED (settled, IMPLEMENTATION PENDING — supersedes the read-side design):**
+The read-side implementation (readStrand + enumerated consumer remaps) is a CODE SMELL:
+one pin borrowed two different materials (finals for East/articulation, slewed base for
+Macro), and every read surface had to be found and remembered (two misses proved the
+risk). The mapping moves to CANDIDATE CONSUMPTION in the derivation pipeline:
+- Voice v's derivation reads candA/candB[caSrcRow(v, strand)] — raw A and B draws
+  remapped BEFORE mixing; v's OWN mix, slew, spread then process borrowed raw material
+  into v's OWN final bank.
+- ALL reads everywhere become plain own-bank reads again. REVERT: polyRandomSrc,
+  monoStrand, finalRandomByStrand routing, polyLaneProbability(AtStep) remaps, and the
+  macroOwnProbability srcRow patch (commits 39360f2, 25c2379 read-side parts).
+- Philox raw draws stay per-voice (no re-keying); banks rewritten are derived state the
+  pipeline recomputes anyway → locality + dice/pin orthogonality hold.
+- LOCK: pipeline output freezes under lock → pins inaudible until unlock, CONSISTENT
+  with the settled Vermona lock (pins latch). Resolves the prior contradiction.
+- Trade-off (accepted): borrowers apply their own spread — subset/superset exact at
+  zero spread, softening as spread widens = "same dice, own manipulation".
+- Same pass: readStrand→identity replica test becomes candidate-level identity test
+  (bit-exact with no expander; mono VAR/LEG the regression case).
+
+**§6 addendum — UI (XILS-4 reference, photo captured):** on hover/drag draw white
+CROSSHAIR guide lines from the cell to both axes plus a tooltip "row col value" (XILS:
+"left Adv. Matrix : 5 8 1.00") — solves far-cell targeting on a 16×16 grid.
+
 **Sharpened (confirmed): original Philox draws, then deterministic map.** Generation is
 untouched — all 16 voices' per-lane tables are drawn exactly as today (same keys,
 counters, values); the matrix is a pure READ-TIME indirection. Three properties follow:
