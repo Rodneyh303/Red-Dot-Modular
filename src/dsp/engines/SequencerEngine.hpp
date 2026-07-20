@@ -394,6 +394,8 @@ struct SequencerEngine {
 
     uint16_t windowMask = 0xFFFF;
 
+    bool locked = false;
+
     // ── Change Alley pin-matrix indirection (CHANGE_ALLEY_DESIGN.md) ────────
     // Unified 16-voice addressing: index 0 = mono (bank 0), 1..15 = poly (banks 1..15).
     // rhythmSrc[v] / melodySrc[v]: which source voice v draws REST/ACCENT or MELODY/OCTAVE from.
