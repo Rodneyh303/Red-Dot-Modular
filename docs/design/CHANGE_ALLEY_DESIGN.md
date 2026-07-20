@@ -133,5 +133,18 @@ two-colour pins solve it, and one board halves the panel cost (16×16 at ~4.5 mm
 3. Pin CV: a trigger input that re-scatters / re-identities the board (performance
    gesture), or fully manual? (Dice already re-rolls material; a "scramble pins" button
    would be the correlation-space analogue of DNA scramble.)
-4. Panel: booth/alley motif around the board — the matrix as the row of exchange
-   counters; needs the render mock from §6 first.
+4. Panel aesthetics pass (function-first phase done; reference captured):
+   The real-world reference is the money changers' RATE BOARD (e.g. Raffles Money
+   Change) — flag/label column, aligned rate columns, alternating red/white row
+   blocking, branded header strip, regulatory footer line. Steal the LAYOUT LANGUAGE,
+   not the palette: the board's red-on-white assault works for a shopfront, not a
+   panel stared at while patching. Concretely:
+   - Keep the forced-dark grid (the dark well is what makes red/white pins readable —
+     the board's white ground is exactly what makes ITS red unbearable).
+   - Keep booth-band row alternation at whisper level (the board validates the idea).
+   - Rate-board typography: monospace, ISO currency codes (what a real board's header
+     shows), numbers right-aligned — already close.
+   - Header strip: the title band as the branded header (the top red stripe already
+     plays this role); axis labels in the "WE BUY / WE SELL" register.
+   - RED AS PUNCTUATION, not wallpaper: melody pins, connect dot, active-voice bars,
+     mono row accent — and nothing else. The little red dot, not the little red panel.
