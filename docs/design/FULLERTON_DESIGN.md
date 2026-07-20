@@ -1,7 +1,34 @@
 # Fullerton — a jack-fed Lantern for arbitrary gate/CV combinations
 
-Status: DESIGN. No code. Named for the lighthouse on the Fullerton Building's roof:
-a light for EXTERNAL ships — where the Lantern lights the engine's own.
+Status: DESIGN. No code.
+
+## 0. Naming — Fullerton and Lantern (thought through, not trivia)
+
+The Fullerton Bay Hotel (2010, at Clifford Pier, Fullerton Heritage precinct — NOT the
+main 1928 Fullerton Hotel, be precise) has a rooftop bar named LANTERN. The bar takes
+its name from Clifford Pier's historic Chinese name, "Red Lantern Pier": red lanterns
+hung at the pier to guide seafarers and arriving immigrants to shore — the landing
+point for signals from OUTSIDE. The original Fullerton Building separately carried a
+working lighthouse on its roof. Both stories are "a light on a Fullerton roof, guiding
+ships in."
+
+The pair maps to the architecture truthfully, which is why the names are load-bearing
+and not a pun:
+1. **Lantern sits atop Fullerton** — in Singapore (the bar on the hotel's roof) and in
+   the code (Fullerton = a new capture front-end; the Lantern's RENDER layer is reused
+   on top of it). The names encode the software layering.
+2. **Red lanterns guided ARRIVING vessels** — external signals landing. Exactly the
+   module split: the Lantern lights the engine's own material; Fullerton lights what
+   arrives from elsewhere in the rack (arbitrary gate/CV over ordinary jacks).
+3. **Red lantern → the little red dot** — the beacon motif lands on brand #d4001a and
+   hands the panel its centrepiece: a red lantern beacon at the top of the panel (the
+   rooftop), its light-sweep as the playhead. Clifford Pier's arrival semantics also
+   ties Fullerton into the crossing/arrival family with Causeway and Changi.
+
+Naming risks considered: precinct place-names are the established dot.modular
+convention (Esplanade, Causeway, Changi, Raffles), so Fullerton conforms; the shared
+visual language between Lantern and Fullerton is a deliberate implication of the pair,
+not an accident users must be warned about.
 
 ## 1. Concept
 
@@ -96,4 +123,5 @@ anywhere in the rack (not an expander).
 2. Grid length: fixed 16 vs clock-divided ring length control.
 3. Should Fullerton ALSO accept the expander bus when adjacent to Monsoon (faithful
    mode), or stay a pure jack observer? Purity is cleaner; one module, one semantics.
-4. Panel: lighthouse motif — beam sweep as the playhead?
+4. Panel: RESOLVED direction in §0 — red lantern beacon at the rooftop position,
+   beam/light-sweep as the playhead; lighthouse and red-lantern stories converge.
