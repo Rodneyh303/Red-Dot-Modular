@@ -11,6 +11,7 @@
 
 #include <rack.hpp>
 #include <cmath>
+#include <cstdio>
 #include "Monsoon.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/StoreEditAction.hpp"   // pin edits: store-backed, undoable (DAW_PARAM_AUDIT 5b)
@@ -133,10 +134,73 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
         }
 
         void draw(const DrawArgs& args) override {
-            if (!module) return;
             NVGcontext* vg = args.vg;
             int poly = getPolyCount();
             float ro = cellRadius(), ri = innerRadius();
+
+            // ── Labels: drawn HERE because nanosvg ignores SVG <text> (the brand rule
+            //    "fonts outlined to paths" exists for panels; for a live widget nvgText
+            //    is simpler and theme-aware). Drawn with module==nullptr too, so the
+            //    browser preview shows a labelled panel. ──
+            {
+                std::shared_ptr<Font> font = APP->window->loadFont(
+                    asset::system("res/fonts/ShareTechMono-Regular.ttf"));
+                if (font) {
+                    nvgFontFaceId(vg, font->handle);
+                    const bool darkPanel = settings::preferDarkPanels;
+                    NVGcolor ink    = darkPanel ? nvgRGB(0xe8,0xe2,0xd0) : nvgRGB(0x1a,0x18,0x10);
+                    NVGcolor inkdim = darkPanel ? nvgRGBA(0x7a,0x70,0x60,0xb0) : nvgRGBA(0x6a,0x60,0x50,0xb0);
+                    NVGcolor amber  = nvgRGB(0xc8,0x90,0x0c);
+                    static constexpr const char* CUR[CA::N_VOICES] = {
+                        "SGD","MYR","IDR","THB","PHP","VND","MMK","KHR",
+                        "HKD","CNY","TWD","KRW","JPY","AUD","INR","USD" };
+                    char num[4];
+                    // Column labels: number (near grid) + currency (dim, above)
+                    for (int col = 0; col < CA::N_VOICES; ++col) {
+                        Vec c = cellCentre(0, col);
+                        float topY = mm2px(Vec(0, MY_MM)).y;
+                        snprintf(num, sizeof(num), "%d", col + 1);
+                        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BASELINE);
+                        nvgFontSize(vg, mm2px(Vec(2.4f,0)).x);
+                        nvgFillColor(vg, col == 0 ? amber : ink);
+                        nvgText(vg, c.x, topY - mm2px(Vec(0,1.2f)).y, num, NULL);
+                        nvgFontSize(vg, mm2px(Vec(1.8f,0)).x);
+                        nvgFillColor(vg, inkdim);
+                        nvgText(vg, c.x, topY - mm2px(Vec(0,4.0f)).y, CUR[col], NULL);
+                    }
+                    // Row labels: number (near grid) + currency (dim, further left)
+                    for (int row = 0; row < CA::N_VOICES; ++row) {
+                        Vec c = cellCentre(row, 0);
+                        float leftX = mm2px(Vec(MX_MM,0)).x;
+                        snprintf(num, sizeof(num), "%d", row + 1);
+                        nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+                        nvgFontSize(vg, mm2px(Vec(2.4f,0)).x);
+                        nvgFillColor(vg, row == 0 ? amber : ink);
+                        nvgText(vg, leftX - mm2px(Vec(1.0f,0)).x, c.y, num, NULL);
+                        nvgFontSize(vg, mm2px(Vec(1.8f,0)).x);
+                        nvgFillColor(vg, inkdim);
+                        nvgText(vg, leftX - mm2px(Vec(4.6f,0)).x, c.y, CUR[row], NULL);
+                    }
+                    // Title + legend
+                    nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BASELINE);
+                    nvgFontSize(vg, mm2px(Vec(3.6f,0)).x);
+                    nvgFillColor(vg, ink);
+                    nvgText(vg, box.size.x * 0.5f, mm2px(Vec(0,6.0f)).y, "CHANGE ALLEY", NULL);
+                    float legY = mm2px(Vec(0, MY_MM + MH_MM + 4.5f)).y;
+                    float legX = mm2px(Vec(MX_MM,0)).x;
+                    nvgBeginPath(vg); nvgCircle(vg, legX + 4.f, legY, 3.2f);
+                    nvgFillColor(vg, nvgRGB(0xf0,0xf0,0xee)); nvgFill(vg);
+                    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+                    nvgFontSize(vg, mm2px(Vec(2.2f,0)).x);
+                    nvgFillColor(vg, inkdim);
+                    nvgText(vg, legX + 10.f, legY, "rhythm", NULL);
+                    nvgBeginPath(vg); nvgCircle(vg, legX + mm2px(Vec(20.f,0)).x, legY, 3.2f);
+                    nvgFillColor(vg, nvgRGB(0xd4,0x00,0x1a)); nvgFill(vg);
+                    nvgFillColor(vg, inkdim);
+                    nvgText(vg, legX + mm2px(Vec(20.f,0)).x + 6.f, legY, "melody  (right-click / ctrl-click)", NULL);
+                }
+            }
+            if (!module) return;
 
             // Pin colours are inlined below (white=rhythm, red=melody; identity pins at
             // 0.7 alpha, inactive rows at 0.4). Single literals, easy to tune.
@@ -167,8 +231,12 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
                         nvgBeginPath(vg); nvgCircle(vg, c.x, c.y, ro);
                         nvgFillColor(vg, col_); nvgFill(vg);
                     } else if (hasM) {
+                        // Lone melody pin draws at NEAR-FULL size — at the concentric inner
+                        // radius it was a ~2px dot, invisible on the dark grid (the "can't
+                        // see moved red pins" bug). Slightly smaller than white so the two
+                        // types stay distinguishable even when separated.
                         NVGcolor col_ = mIdentity ? nvgRGBAf(0.83f,0.f,0.1f,0.7f*alpha) : nvgRGBAf(0.83f,0.f,0.1f,alpha);
-                        nvgBeginPath(vg); nvgCircle(vg, c.x, c.y, ri);
+                        nvgBeginPath(vg); nvgCircle(vg, c.x, c.y, ro * 0.78f);
                         nvgFillColor(vg, col_); nvgFill(vg);
                     } else {
                         // Empty — very faint ghost

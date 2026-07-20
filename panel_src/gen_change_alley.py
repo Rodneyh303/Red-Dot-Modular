@@ -115,84 +115,9 @@ def gen(dark):
         E(f'<line x1="{MX:.3f}" y1="{y:.3f}" x2="{MX+MW:.3f}" y2="{y:.3f}" '
           f'stroke="{t["gridln"]}" stroke-width="0.4"/>')
 
-    # ── Column labels: voice NUMBER (primary, nearest grid) + currency (dim, above) ──
-    for col, cur in enumerate(CURRENCIES):
-        cx = MX + col * CELL_W + CELL_W * 0.5
-        is_mono = (col == 0)
-        num_ink = t["mono"] if is_mono else ink
-        # voice number 1..16 — poly channel order (1 = V1/mono)
-        E(f'<text x="{cx:.3f}" y="{MY - 1.5:.3f}" text-anchor="middle" '
-          f'font-family="monospace" font-size="2.5" fill="{num_ink}">{col+1}</text>')
-        # currency code, dim, above the number
-        E(f'<text x="{cx:.3f}" y="{MY - 4.6:.3f}" text-anchor="middle" '
-          f'font-family="monospace" font-size="1.9" fill="{inkdim}" opacity="0.7">'
-          f'{cur}</text>')
 
-    # "source pool →" axis label at top
-    E(f'<text x="{MX + MW*0.5:.3f}" y="{MY - 7.2:.3f}" '
-      f'text-anchor="middle" font-family="monospace" font-size="2.4" '
-      f'fill="{inkdim}" opacity="0.6">source voice →</text>')
-
-    # ── Row labels: voice NUMBER (primary, nearest grid) + currency (dim, left) ──
-    for row, cur in enumerate(CURRENCIES):
-        cy = MY + row * CELL_H + CELL_H * 0.5 + 0.9
-        is_mono = (row == 0)
-        num_ink = t["mono"] if is_mono else ink
-        weight = 'font-weight="bold"' if is_mono else ''
-        E(f'<text x="{MX - 1.2:.3f}" y="{cy:.3f}" text-anchor="end" '
-          f'font-family="monospace" font-size="2.5" fill="{num_ink}" {weight}>{row+1}</text>')
-        E(f'<text x="{MX - 5.2:.3f}" y="{cy:.3f}" text-anchor="end" '
-          f'font-family="monospace" font-size="1.9" fill="{inkdim}" opacity="0.7">{cur}</text>')
-
-    # ── Identity diagonal pins (default state — dim concentric) ───────────────
-    # White outer ring (rhythm), red inner dot (melody), both on diagonal.
-    r_outer = min(CELL_W, CELL_H) * 0.30
-    r_inner = min(CELL_W, CELL_H) * 0.14
-    for i in range(N):
-        cx = MX + i * CELL_W + CELL_W * 0.5
-        cy = MY + i * CELL_H + CELL_H * 0.5
-        # Outer ring (rhythm) — dim white
-        E(f'<circle cx="{cx:.3f}" cy="{cy:.3f}" r="{r_outer:.3f}" '
-          f'fill="{t["rhythmD"]}" opacity="0.55"/>')
-        # Inner dot (melody) — dim red
-        E(f'<circle cx="{cx:.3f}" cy="{cy:.3f}" r="{r_inner:.3f}" '
-          f'fill="{t["melodyD"]}" opacity="0.55"/>')
-
-    # ── Example active pins (show the live aesthetic) ─────────────────────────
-    # Row 1 (MYR) rhythm → SGD column (col 0): white filled pin
-    ex_row, ex_col = 1, 0
-    ecx = MX + ex_col * CELL_W + CELL_W * 0.5
-    ecy = MY + ex_row * CELL_H + CELL_H * 0.5
-    E(f'<circle cx="{ecx:.3f}" cy="{ecy:.3f}" r="{r_outer:.3f}" fill="{t["rhythm"]}"/>')
-    # Row 2 (IDR) both → col 2 (IDR's own = identity, but shown bright to illustrate)
-    ex2r, ex2c = 2, 0
-    e2cx = MX + ex2c * CELL_W + CELL_W * 0.5
-    e2cy = MY + ex2r * CELL_H + CELL_H * 0.5
-    E(f'<circle cx="{e2cx:.3f}" cy="{e2cy:.3f}" r="{r_outer:.3f}" fill="{t["rhythm"]}"/>')
-    E(f'<circle cx="{e2cx:.3f}" cy="{e2cy:.3f}" r="{r_inner:.3f}" fill="{t["melody"]}"/>')
-
-    # ── Module title ──────────────────────────────────────────────────────────
-    E(f'<text x="{SVG_W*0.5:.3f}" y="6.5" '
-      f'text-anchor="middle" font-family="monospace" font-size="4.0" '
-      f'font-weight="bold" letter-spacing="0.5" fill="{ink}">CHANGE ALLEY</text>')
-
-    # ── Legend: white = rhythm, red = melody ─────────────────────────────────
-    leg_y = MY + MH + 4.0
-    leg_x = MX
-    r_leg = 1.2
-    E(f'<circle cx="{leg_x + r_leg:.3f}" cy="{leg_y:.3f}" r="{r_leg:.3f}" fill="{t["rhythm"]}"/>')
-    E(f'<text x="{leg_x + r_leg*2 + 1:.3f}" y="{leg_y + 0.9:.3f}" '
-      f'font-family="monospace" font-size="2.4" fill="{inkdim}">rhythm</text>')
-    leg_x2 = leg_x + 22.0
-    E(f'<circle cx="{leg_x2 + r_leg:.3f}" cy="{leg_y:.3f}" r="{r_leg:.3f}" fill="{t["melody"]}"/>')
-    E(f'<text x="{leg_x2 + r_leg*2 + 1:.3f}" y="{leg_y + 0.9:.3f}" '
-      f'font-family="monospace" font-size="2.4" fill="{inkdim}">melody</text>')
-
-    # ── Brand ─────────────────────────────────────────────────────────────────
-    bot = SVG_H - 3.5
-    E(f'<circle cx="{SVG_W*0.5 - 8:.3f}" cy="{bot:.3f}" r="1.5" fill="{t["red"]}"/>')
-    E(f'<text x="{SVG_W*0.5 - 4.5:.3f}" y="{bot + 1.0:.3f}" '
-      f'font-family="monospace" font-size="3.2" fill="{ink}">modular</text>')
+    # (Pins, labels and legend are ALL drawn by the widget — nanosvg ignores <text>,
+    #  and baked pins would double under the live ones. The SVG is grid + wells only.)
 
     E('</svg>')
     return "\n".join(o)
