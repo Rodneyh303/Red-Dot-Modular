@@ -991,6 +991,25 @@ struct LanternDisplay : widget::Widget {
         Widget::onButton(e);
     }
 
+    // Mouse wheel scrolls the piano-roll viewport vertically — the natural gesture the
+    // ROLL_SCROLL_PARAM knob stands in for. Wheel up = view higher octaves. Writes the
+    // param directly (snap-enabled, clamped to its 0..max range), so it stays a normal
+    // param edit: undo, automation and the knob-as-indicator all keep working. Grid mode
+    // ignores the wheel (it has no vertical scroll). e.scrollDelta.y is +up / -down.
+    void onHoverScroll(const event::HoverScroll& e) override {
+        if (module && module->params[Lantern::ROLL_PARAM].getValue() > 0.5f
+            && std::abs(e.scrollDelta.y) > 0.f) {
+            auto* pq = module->paramQuantities[Lantern::ROLL_SCROLL_PARAM];
+            const float lo = pq->getMinValue(), hi = pq->getMaxValue();
+            const float cur = module->params[Lantern::ROLL_SCROLL_PARAM].getValue();
+            const float next = clamp(cur + (e.scrollDelta.y > 0.f ? 1.f : -1.f), lo, hi);
+            if (next != cur) module->params[Lantern::ROLL_SCROLL_PARAM].setValue(next);
+            e.consume(this);   // don't let the wheel scroll the rack behind the display
+            return;
+        }
+        Widget::onHoverScroll(e);
+    }
+
     // Base colour per note type. Accent is drawn as a separate overlay (brighter
     // outline / brand-red marker) on top of these, so an accented note keeps its
     // tie/legato/single identity.
