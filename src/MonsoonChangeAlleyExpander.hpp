@@ -78,7 +78,6 @@ struct MonsoonChangeAlleyExpander : Module {
         for (int v = 0; v < CA::N_VOICES; ++v) { rhythmSrc[v] = v; melodySrc[v] = v; }
     }
 
-    void process(const ProcessArgs&) override {}
 
     json_t* dataToJson() override {
         json_t* root = json_object();
@@ -382,7 +381,8 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
                     // near the cursor cell, clamped inside the grid
                     float tx = c.x + ro*1.8f, ty = c.y - th*0.5f;
                     if (tx + tw > gx1) tx = c.x - ro*1.8f - tw;
-                    if (ty < gy0) ty = gy0; if (ty + th > gy1) ty = gy1 - th;
+                    if (ty < gy0) ty = gy0;
+                    if (ty + th > gy1) ty = gy1 - th;
                     nvgBeginPath(vg); nvgRect(vg, tx, ty, tw, th);
                     nvgFillColor(vg, nvgRGBAf(0,0,0,0.8f)); nvgFill(vg);
                     nvgFillColor(vg, nvgRGBf(0.95f,0.95f,0.94f));
