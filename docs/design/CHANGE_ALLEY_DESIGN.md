@@ -189,9 +189,8 @@ two-colour pins solve it, and one board halves the panel cost (16×16 at ~4.5 mm
 2. Do ACCENT / VARIATION / LEGATO streams eventually join as pin types (a 3rd/4th pin
    colour), or stay per-voice forever? Start with rhythm+melody; the indirection
    generalises trivially, the UI is the constraint.
-3. Pin CV: a trigger input that re-scatters / re-identities the board (performance
-   gesture), or fully manual? (Dice already re-rolls material; a "scramble pins" button
-   would be the correlation-space analogue of DNA scramble.)
+3. Pin modulation: RESOLVED — see §10. Structural pins that latch (never continuous
+   per-pin CV), plus a discrete "restructure" gesture (Identity / Rotate / Scatter).
 4. Panel aesthetics pass (function-first phase done; reference captured):
    The real-world reference is the money changers' RATE BOARD (e.g. Raffles Money
    Change) — flag/label column, aligned rate columns, alternating red/white row
@@ -270,3 +269,44 @@ case) but the INTERIOR of the width×length rectangle, where polyphony and phras
 trade against each other and pin-groups impose variation structure across the chosen
 axis. Voice count as a phrase-length resource, not only a density resource — few
 generative sequencers treat it that way.
+
+## 10. Pin modulation — structural pins + a discrete restructure gesture (SETTLED)
+
+Pins stay STRUCTURAL: they latch under the Vermona lock (LOCK_SEMANTICS), same category
+as routing — the thing you set up and play AGAINST, not a value you ride. Continuous
+per-pin CV is DECLINED: it would reclassify pins as a value surface, reopen the lock
+question (a modulated pin inert under lock is surprising), and muddy the material-vs-
+configuration split. Instead, pin modulation is a discrete RESTRUCTURE gesture — atomic
+transforms of the whole board, fired by trigger, latch-compatible (fire on unlock like
+dice). Each must preserve the one-pin-per-row invariant (permute/reassign sources, never
+two-per-row) and must produce a MUSICALLY meaningful change, not just a different board.
+
+Three transforms (each a distinct musical intent; the correlation-space analogue of dice):
+
+- **Identity** — src[v] = v for all v. Reset: every voice back on its own stream, fully
+  decorrelated. The "clear the routing" home state a restructure sequence returns to.
+- **Rotate** — src[v] = (src[v] + 1) mod 16, stepping +1 per trigger. Every source shifts
+  together, so the correlation SHAPE is preserved and slid across the voice pool: a group
+  on voice 2 becomes a group on 3, then 4... The same relational structure reassigned to
+  new source material each trigger. THIS is what turns a static 4-bar loop into an
+  evolving 8/16-bar structure without touching anything else. Step fixed at +1 (variable
+  stride = "trigger N times", NOT a CV amount — keeps every change a discrete event).
+- **Scatter** — src[v] = seeded random draw ∈ [0,16) per voice, one deterministic shuffle
+  per trigger (seeded → reproducible/undoable). Re-randomises relationships wholesale:
+  the "surprise me" gesture. Distinct from Rotate: Rotate PRESERVES structure and moves
+  it (continuity); Scatter DESTROYS and rebuilds it (rupture).
+
+Dropped: **Invert** (src[v] = 15 - v). Reflection of a relationship graph has no clear
+musical meaning the way transposition-of-structure (Rotate) and re-randomisation
+(Scatter) do. Three transforms that each mean something beats four where one is there
+for symmetry. Add later only if a concrete use surfaces.
+
+Scope: restructure acts on rhythm pins and melody pins SEPARATELY (per-type trigger
+inputs or a mode switch). Rotating rhythm relationships while melody grouping stays fixed
+is exactly the independent control the two-pin-colour design exists for; coupling them
+halves the expressiveness.
+
+Relation to dice (the clean parallel): dice re-rolls MATERIAL (the tables), restructure
+re-rolls RELATIONSHIPS (the pins). Both discrete, both lock-respecting (fire on unlock),
+both leave the other axis untouched. Restructure is to correlation-space what dice is to
+material-space.
