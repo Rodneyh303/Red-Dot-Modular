@@ -49,6 +49,36 @@ scattered pins = families of related voices. Every intermediate is reachable and
 deterministic (Philox streams, dice re-rolls tables, pins survive dice — re-dicing
 changes the material, never the relationships).
 
+### 2a. Pinning vs Spread — orthogonal, not redundant
+
+Both touch inter-voice relationships, so it is worth stating why they don't overlap
+(and heading off "don't we already have spread?"):
+
+- **Pinning sets the SOURCE** (discrete routing at random_): voice v's stream IS voice
+  src's stream — 100% correlated, identical draws. Arbitrary topology: pin 3 and 7 to a
+  shared source and leave 1 alone → an isolated correlated PAIR inside an otherwise
+  independent ensemble.
+- **Spread sets the PULL toward a reference** (continuous, downstream in derivation):
+  voice v's OWN draw leaned some fraction toward mono/voice-1 or the ensemble average.
+  Single-hub only: at maximum it converges everything toward ONE reference (a star, or a
+  mean). It CANNOT make voice 3 and voice 7 track each other while voice 1 stays free —
+  it has no way to say "these two, not those."
+
+The asymmetry: pinning is arbitrary-pair correlation; spread is single-hub convergence.
+Neither produces the other's effect.
+
+They COMPOSE, precisely because they live at different levels (the write-side
+architecture makes this literal): pinning acts at random_ — WHICH stream — before
+spread acts in derivation — HOW MUCH the stream leans. So: pin 3 and 7 for identical
+dice, THEN spread that correlated pair toward voice 1 to pull it partway to the hub.
+Two independent operations stacking; pinning is a 100% correlation floor, spread adds
+convergence on top.
+
+Precision consequence for subset/superset: pinning gives EXACT nesting (identical draws,
+different thresholds → strict subset). Spread SOFTENS it (pulled draws diverge slightly
+from the reference). Clean hierarchical rhythms → pinning; approximately-related voices
+with organic variation → spread. Same neighbourhood, two grains.
+
 ## 3. THE FORK — source-table vs source-value remap (the defining decision)
 
 - **Table remap (RECOMMENDED)**: voice v reads polyRandom(src[v], lane) at v's OWN
