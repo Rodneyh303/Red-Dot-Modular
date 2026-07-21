@@ -590,10 +590,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         selectedVoice = nv;
         // Load the INCOMING voice.
         if (selectedVoice >= 1) {
-            // (Removed: paramMgr->syncPatternEngineToEditor(...) — superseded by step()'s
-            //  resolver fill, which runs on the next frame and covers all four poly lanes.)
-            loadVoiceLOR(polyVoice());
-            loadVoiceSpread(polyVoice());
+            // (Removed: paramMgr->syncPatternEngineToEditor(...) — master's cleanup/dead-poly-sync
+            //  deleted the voice-indexed overload; its job is done by step()'s resolver fill on
+            //  the next frame, which covers all four poly lanes. loadSlot carries LOR + spread.)
+            loadSlot(currentSlot());       // LOR + spread (poly slot)
             loadVoiceMacro(polyVoice());
             // Sync DirCell display proxy from the engine's per-voice direction so the
             // DirCell shows the incoming voice's actual state (not the outgoing voice's).
@@ -1069,17 +1069,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // CV applied at control rate in Monsoon::process() — base + scaled offset, no mutation here.
 
         if (selectedVoice >= 1) {
-            saveVoiceLOR(polyVoice());
-            // Per-frame: push the spread knobs (SPREAD_R/M/O/A) into this voice's interp
-            // params so turning a spread knob takes effect LIVE — previously this only
-            // happened on tab change (saveVoiceSpread in onVoiceTabChanged), so a spread
-            // turn (esp. ACCENT) didn't mutate until you switched tabs. Now accent spread
-            // modulates immediately and its mod arc reads a live value.
-            saveVoiceSpread(polyVoice());
-            // (Removed: paramMgr->syncPatternEngineToEditor(...). It wrote REST/MEL/OCT from
-            //  spreadMgr.getInterpolatedValue — PRE-spread and missing ACCENT — and every one of
-            //  those three lanes was overwritten by the resolver fill immediately below, in this
-            //  same block. See cleanup/dead-poly-sync.)
+            // Per-frame LOR + spread push so grid edits and spread-knob turns take effect
+            // LIVE (spread esp. ACCENT previously only mutated on tab change). One call now.
+            // (Removed: paramMgr->syncPatternEngineToEditor(...) — master's cleanup/dead-poly-sync
+            //  deleted the voice-indexed overload; it wrote REST/MEL/OCT from PRE-spread interp
+            //  values, missing ACCENT, and every lane is overwritten by the resolver fill
+            //  immediately below in this same block anyway.)
+            saveSlot(currentSlot());
             // The editor's drag only edits the LOR WINDOW (length/offset/rotation), never
             // individual step probabilities — those are display-only. So show the
             // SPREAD-APPLIED probabilities (polyRhythmRandom etc., what actually plays)
