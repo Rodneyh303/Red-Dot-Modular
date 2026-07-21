@@ -283,18 +283,23 @@ two-per-row) and must produce a MUSICALLY meaningful change, not just a differen
 
 ### The structure: FOUR transforms × a BLOCK-SIZE modifier
 
-The key generalisation (Rodney): a BLOCK SIZE (2/4/8/16) makes each transform operate
-WITHIN blocks rather than across all 16. Block size is not another transform — it is a
-modifier that multiplies the transforms, and it retroactively absorbs "Collapse" (which
-IS Identity-per-block) and restores Reflect (meaningless globally, a retrograde when
-blocked). Four transforms × 4 block sizes = 16 behaviours from four verbs and one knob,
-each with a clear meaning because block size answers "at what GRAIN does this relationship
+The key generalisation (Rodney): a BLOCK SIZE modifier makes each transform operate
+WITHIN blocks rather than across all 16, and it restores Reflect (meaningless globally,
+a retrograde when blocked). CORRECTION: Collapse is NOT Identity-per-block — Identity is
+src[v]=v (self-mapping, blocks change nothing), whereas Collapse is src[v]=blockLeader(v)
+(every voice sources its block's leader → homophony). They are different operations;
+Collapse keeps its own slot. Block size answers "at what GRAIN does this relationship
 operate."
 
 Transforms (src[] operations; all preserve one-pin-per-row):
-- **Identity** — src[v] = v within each block. Block 16 = full decorrelate/reset. Block 4
-  = four self-contained groups of four (this is "Collapse": deliberate homophony at a
-  chosen grain — the one-gesture way to set polyphony WIDTH for the width×length patch).
+- **Identity** — src[v] = v. Full decorrelation; every voice on its own stream. (Block
+  size irrelevant — self-mapping ignores grouping.) Identity IS Collapse at block size 1.
+- **Collapse** — src[v] = blockLeader(v): every voice sources its block's first voice, so
+  each block becomes HOMOPHONIC. Block 2 = pairs {0,1}→0, {2,3}→2…; block 4 = four
+  quartets each locked to their leader; block 16 = total unison (all on voice 0). THE
+  width-setting gesture and the one that builds theme-and-variation groups in one move.
+  Its grain knob spans 1 (=Identity, full independence) → 16 (total homophony) — a single
+  control from full decorrelation to full unison.
 - **Rotate** — src[v] = (src[v] + 1) wrapped WITHIN its block. Block 16 = the shape marches
   across the whole pool (static loop → evolving 8/16-bar structure). Block 4 = each group
   of four rotates internally; the four-group partition holds while its internals evolve.
