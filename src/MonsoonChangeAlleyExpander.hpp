@@ -130,12 +130,33 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
     // ONLY genuine cell hits in onButton.
     struct PinOverlay : widget::TransparentWidget {
         MonsoonChangeAlleyExpander* module;
+        int hoverRow = -1, hoverCol = -1;   // XILS crosshair target (-1 = none)
         PinOverlay(MonsoonChangeAlleyExpander* m) : module(m) {}
 
         int getPolyCount() const {
             if (!module) return 0;
             auto* mon = redDot::findMonsoonEitherSide(module);
             return mon ? mon->engine.numPolyVoices : 0;
+        }
+
+        // A pin that reads as a physical peg: soft drop shadow, flat colour body,
+        // a rim a shade darker, and an offset specular highlight. col = body colour.
+        static void drawPin(NVGcontext* vg, float cx, float cy, float r,
+                            NVGcolor body, float alpha) {
+            // drop shadow
+            nvgBeginPath(vg); nvgCircle(vg, cx + r*0.12f, cy + r*0.16f, r);
+            nvgFillColor(vg, nvgRGBAf(0,0,0,0.35f*alpha)); nvgFill(vg);
+            // body
+            nvgBeginPath(vg); nvgCircle(vg, cx, cy, r);
+            NVGcolor b = body; b.a *= alpha;
+            nvgFillColor(vg, b); nvgFill(vg);
+            // rim (slightly darker ring)
+            nvgBeginPath(vg); nvgCircle(vg, cx, cy, r);
+            nvgStrokeColor(vg, nvgRGBAf(0,0,0,0.30f*alpha)); nvgStrokeWidth(vg, r*0.16f);
+            nvgStroke(vg);
+            // specular highlight, upper-left
+            nvgBeginPath(vg); nvgCircle(vg, cx - r*0.30f, cy - r*0.32f, r*0.30f);
+            nvgFillColor(vg, nvgRGBAf(1,1,1,0.55f*alpha)); nvgFill(vg);
         }
 
         void draw(const DrawArgs& args) override {
@@ -204,30 +225,24 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
                     nvgFillColor(vg, inkdim);
                     nvgText(vg, legX + mm2px(Vec(20.f,0)).x + 6.f, legY, "melody  (right-click / ctrl-click)", NULL);
 
-                    // ── Connect marker: the brand red dot doubles as the expander
-                    //    connection indicator (house convention — Causeway's
-                    //    light_connect analogue). BRIGHT = a Monsoon is reachable in
-                    //    the chain AND this is the claimed Change Alley (first of its
-                    //    type found); HOLLOW = not connected / not claimed. ──
+                    // ── Connect indicator: a small state dot to the RIGHT of the SVG
+                    //    logo (which draws the wordmark itself). BRIGHT red w/ halo =
+                    //    connected + claimed; HOLLOW = not. No wordmark here — the panel
+                    //    SVG embeds the real dot.modular logo. ──
                     {
                         bool connected = module && redDot::isConnectedAndClaimed(module);
-                        float mx = box.size.x * 0.5f;
+                        float mx = box.size.x * 0.5f + mm2px(Vec(18.f,0)).x;
                         float myv = mm2px(Vec(0, PH_MM - 5.5f)).y;
                         if (connected) {
-                            nvgBeginPath(vg); nvgCircle(vg, mx, myv, 4.5f);
+                            nvgBeginPath(vg); nvgCircle(vg, mx, myv, 3.6f);
                             nvgFillColor(vg, nvgRGBA(0xd4,0x00,0x1a,0x30)); nvgFill(vg);
-                            nvgBeginPath(vg); nvgCircle(vg, mx, myv, 3.0f);
+                            nvgBeginPath(vg); nvgCircle(vg, mx, myv, 2.2f);
                             nvgFillColor(vg, nvgRGB(0xd4,0x00,0x1a)); nvgFill(vg);
                         } else {
-                            nvgBeginPath(vg); nvgCircle(vg, mx, myv, 3.0f);
+                            nvgBeginPath(vg); nvgCircle(vg, mx, myv, 2.2f);
                             nvgStrokeColor(vg, nvgRGBA(0xd4,0x00,0x1a,0x70));
-                            nvgStrokeWidth(vg, 1.2f); nvgStroke(vg);
+                            nvgStrokeWidth(vg, 1.0f); nvgStroke(vg);
                         }
-                        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-                        nvgFontSize(vg, mm2px(Vec(2.6f,0)).x);
-                        NVGcolor bink = settings::preferDarkPanels ? nvgRGB(0xe8,0xe2,0xd0) : nvgRGB(0x1a,0x18,0x10);
-                        nvgFillColor(vg, bink);
-                        nvgText(vg, mx + 7.f, myv, "modular", NULL);
                     }
                 }
             }
@@ -249,26 +264,18 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
                     bool rIdentity = hasR && (col == row);
                     bool mIdentity = hasM && (col == row);
 
+                    NVGcolor white = nvgRGBf(0.95f,0.95f,0.94f);
+                    NVGcolor red   = nvgRGBf(0.83f,0.f,0.10f);
                     if (hasR && hasM) {
-                        // Concentric: white outer, red inner
-                        NVGcolor oc = rIdentity ? nvgRGBAf(0.94f,0.94f,0.93f,0.7f*alpha) : nvgRGBAf(0.94f,0.94f,0.93f,alpha);
-                        NVGcolor ic = mIdentity ? nvgRGBAf(0.83f,0.f,0.1f,0.7f*alpha) : nvgRGBAf(0.83f,0.f,0.1f,alpha);
-                        nvgBeginPath(vg); nvgCircle(vg, c.x, c.y, ro);
-                        nvgFillColor(vg, oc); nvgFill(vg);
+                        // Concentric: white peg with a red inset dot on top
+                        drawPin(vg, c.x, c.y, ro, white, rIdentity ? 0.72f*alpha : alpha);
+                        NVGcolor ic = red; ic.a = (mIdentity ? 0.72f : 1.f) * alpha;
                         nvgBeginPath(vg); nvgCircle(vg, c.x, c.y, ri);
                         nvgFillColor(vg, ic); nvgFill(vg);
                     } else if (hasR) {
-                        NVGcolor col_ = rIdentity ? nvgRGBAf(0.94f,0.94f,0.93f,0.7f*alpha) : nvgRGBAf(0.94f,0.94f,0.93f,alpha);
-                        nvgBeginPath(vg); nvgCircle(vg, c.x, c.y, ro);
-                        nvgFillColor(vg, col_); nvgFill(vg);
+                        drawPin(vg, c.x, c.y, ro, white, rIdentity ? 0.72f*alpha : alpha);
                     } else if (hasM) {
-                        // Lone melody pin draws at NEAR-FULL size — at the concentric inner
-                        // radius it was a ~2px dot, invisible on the dark grid (the "can't
-                        // see moved red pins" bug). Slightly smaller than white so the two
-                        // types stay distinguishable even when separated.
-                        NVGcolor col_ = mIdentity ? nvgRGBAf(0.83f,0.f,0.1f,0.7f*alpha) : nvgRGBAf(0.83f,0.f,0.1f,alpha);
-                        nvgBeginPath(vg); nvgCircle(vg, c.x, c.y, ro * 0.78f);
-                        nvgFillColor(vg, col_); nvgFill(vg);
+                        drawPin(vg, c.x, c.y, ro * 0.82f, red, mIdentity ? 0.72f*alpha : alpha);
                     } else {
                         // Empty — very faint ghost
                         nvgBeginPath(vg); nvgCircle(vg, c.x, c.y, ro * 0.55f);
@@ -288,6 +295,49 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
                     nvgFillColor(vg, bc); nvgFill(vg);
                 }
             }
+
+            // ── XILS-style targeting crosshair + readout on hover ─────────────
+            if (hoverRow >= 0 && hoverCol >= 0) {
+                Vec c = cellCentre(hoverRow, hoverCol);
+                float gx0 = mm2px(Vec(MX_MM, 0)).x, gx1 = mm2px(Vec(MX_MM + MW_MM, 0)).x;
+                float gy0 = mm2px(Vec(0, MY_MM)).y, gy1 = mm2px(Vec(0, MY_MM + MH_MM)).y;
+                nvgStrokeColor(vg, nvgRGBAf(1,1,1,0.5f));
+                nvgStrokeWidth(vg, 0.7f);
+                nvgBeginPath(vg); nvgMoveTo(vg, gx0, c.y); nvgLineTo(vg, gx1, c.y); nvgStroke(vg);
+                nvgBeginPath(vg); nvgMoveTo(vg, c.x, gy0); nvgLineTo(vg, c.x, gy1); nvgStroke(vg);
+                // hovered-cell ring
+                nvgBeginPath(vg); nvgCircle(vg, c.x, c.y, ro * 1.15f);
+                nvgStrokeColor(vg, nvgRGBAf(1,1,1,0.8f)); nvgStrokeWidth(vg, 0.8f); nvgStroke(vg);
+                // readout "row->col" near the cursor (top-left of grid)
+                std::shared_ptr<Font> font = APP->window->loadFont(
+                    asset::system("res/fonts/ShareTechMono-Regular.ttf"));
+                if (font) {
+                    char buf[32];
+                    snprintf(buf, sizeof(buf), "v%d  <-  v%d", hoverRow + 1, hoverCol + 1);
+                    nvgFontFaceId(vg, font->handle);
+                    nvgFontSize(vg, mm2px(Vec(2.6f,0)).x);
+                    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_TOP);
+                    float tx = gx0 + 1.f, ty = gy0 + 1.f;
+                    float tw = mm2px(Vec(22.f,0)).x, th = mm2px(Vec(4.f,0)).x;
+                    nvgBeginPath(vg); nvgRect(vg, tx, ty, tw, th);
+                    nvgFillColor(vg, nvgRGBAf(0,0,0,0.7f)); nvgFill(vg);
+                    nvgFillColor(vg, nvgRGBf(0.95f,0.95f,0.94f));
+                    nvgText(vg, tx + 1.5f, ty + 1.f, buf, NULL);
+                }
+            }
+        }
+
+        // Track hovered cell for the crosshair; keep events passing through.
+        void onHover(const event::Hover& e) override {
+            hoverRow = hoverCol = -1;
+            for (int row = 0; row < CA::N_VOICES && hoverRow < 0; ++row)
+                for (int col = 0; col < CA::N_VOICES; ++col)
+                    if (hitCell(e.pos, row, col)) { hoverRow = row; hoverCol = col; break; }
+            TransparentWidget::onHover(e);
+        }
+        void onLeave(const event::Leave& e) override {
+            hoverRow = hoverCol = -1;
+            TransparentWidget::onLeave(e);
         }
 
         // Row-radio click: left=rhythm, right/ctrl=melody

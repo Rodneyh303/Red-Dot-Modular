@@ -18,31 +18,37 @@ HP = 23
 SVG_W, SVG_H = PW_MM, PH_MM
 
 DARK_GRID = dict(
-    bg      = "#080a07",
+    bg      = "#18181a",        # panel body — Raffles house charcoal (was greenish)
+    bgdeep  = "#0f1012",        # recessed tone (matrix well surround, header trough)
     red     = "#d4001a",
     ink     = "#e8e2d0",
-    inkdim  = "#7a7060",
-    well    = "#0d100b",        # cell background
-    gridln  = "#1e2420",        # grid lines
-    booth   = "#111410",        # alternate row tint
-    # Pin colours
-    rhythm  = "#f0f0ee",        # white — rhythm source
+    inkdim  = "#7a7670",
+    steel   = "#46464c",        # house structure grey (frame lines, Raffles)
+    steeldim= "#3a3a3e",
+    well    = "#0b0c0d",        # cell background (deepest, so pins pop)
+    gridln  = "#26262b",        # grid lines — neutral, lifted off pure black
+    booth   = "#141416",        # alternate row tint (neutral now)
+    # Pin colours — red & white on black (confirmed on the Change Alley board)
+    rhythm  = "#f2f2f0",        # white — rhythm source
     melody  = "#d4001a",        # red — melody source
-    rhythmD = "#404040",        # ghost outline — rhythm
-    melodyD = "#4a0008",        # ghost outline — melody
-    both    = "#d4001a",        # outer ring when concentric
-    # Active voice indicator
-    active  = "#d4001a",        # red tick for active poly rows
-    inactive= "#282c28",
-    mono    = "#c8900c",        # amber for row 0 (mono)
+    rhythmD = "#4a4a4e",        # ghost outline — rhythm
+    melodyD = "#5a1018",        # ghost outline — melody
+    active  = "#d4001a",
+    inactive= "#2a2a2e",
+    mono    = "#c8960c",        # amber (Raffles amber) for row/col 1 (mono)
 )
 
-# Light mode: keep the grid dark (forced, same as Lantern)
+# Light mode: keep the matrix grid dark (forced, same as Lantern LCD); surround follows
+# the house LIGHT panel (warm greys, Raffles).
 LIGHT_GRID = dict(**DARK_GRID)
 LIGHT_GRID.update(dict(
-    bg   = "#e4e0d0",           # panel surround is light
-    ink  = "#1a1810",
-    inkdim = "#6a6050",
+    bg     = "#e8e2d6",         # panel body — Raffles house cream
+    bgdeep = "#dcdcdc",         # recessed tone
+    ink    = "#1a1810",
+    inkdim = "#6a6458",
+    steel  = "#c0b8a8",         # house light structure grey
+    steeldim="#bcbcbc",
+    mono   = "#b07d00",         # Raffles light amber
 ))
 
 CURRENCIES = [
@@ -59,6 +65,8 @@ def gen(dark):
     bg_panel = DARK_GRID["bg"] if dark else LIGHT_GRID["bg"]
     ink      = DARK_GRID["ink"] if dark else LIGHT_GRID["ink"]
     inkdim   = DARK_GRID["inkdim"] if dark else LIGHT_GRID["inkdim"]
+    bgdeep   = DARK_GRID["bgdeep"] if dark else LIGHT_GRID["bgdeep"]
+    steel    = DARK_GRID["steel"] if dark else LIGHT_GRID["steel"]
 
     o = []
     def E(s): o.append(s)
@@ -77,23 +85,31 @@ def gen(dark):
     E(f'<rect width="{SVG_W:.3f}" height="2.0" fill="{t["red"]}"/>')
 
     # ── Matrix geometry ───────────────────────────────────────────────────────
-    # We want 16×16 cells with row labels (left) and column labels (top/bottom).
-    # Available width after left gutter and right margin:
     GUTTER_L  = 13.0   # mm for row currency labels
     GUTTER_R  =  3.5   # mm right margin / poly indicator
     GUTTER_T  =  9.0   # mm for column labels at top
     GUTTER_B  = 10.0   # mm for brand at bottom
 
-    # Square cells sized to the VERTICAL budget so the grid fills the panel height;
-    # width has slack (wider panel), so the grid is horizontally centred in it.
-    MY = GUTTER_T + 8.0                        # top edge: title + column labels above
-    avail_h = SVG_H - MY - GUTTER_B - 2.0      # vertical space for the grid
-    CELL   = avail_h / N                        # SQUARE, height-driven
+    MY = GUTTER_T + 8.0
+    avail_h = SVG_H - MY - GUTTER_B - 2.0
+    CELL   = avail_h / N
     CELL_W = CELL; CELL_H = CELL
     MW = CELL * N; MH = CELL * N
-    MX = GUTTER_L + (SVG_W - GUTTER_L - GUTTER_R - MW) * 0.5   # centre horizontally
+    MX = GUTTER_L + (SVG_W - GUTTER_L - GUTTER_R - MW) * 0.5
 
-    # ── Matrix well (dark, always) ────────────────────────────────────────────
+    # ── Header trough (recessed strip behind the title) ───────────────────────
+    E(f'<rect x="0" y="2.0" width="{SVG_W:.3f}" height="{MY - CELL*1.2:.3f}" '
+      f'fill="{bgdeep}"/>')
+    E(f'<line x1="0" y1="{MY - CELL*1.2:.3f}" x2="{SVG_W:.3f}" y2="{MY - CELL*1.2:.3f}" '
+      f'stroke="{steel}" stroke-width="0.3" opacity="0.5"/>')
+
+    # ── Recessed frame around the matrix (bgdeep bezel + steel hairline) ───────
+    pad = 2.2
+    E(f'<rect x="{MX-pad:.3f}" y="{MY-pad:.3f}" '
+      f'width="{MW+2*pad:.3f}" height="{MH+2*pad:.3f}" rx="1.2" '
+      f'fill="{bgdeep}" stroke="{steel}" stroke-width="0.35"/>')
+
+    # ── Matrix well (deepest dark, so red/white pins pop) ─────────────────────
     E(f'<rect x="{MX:.3f}" y="{MY:.3f}" width="{MW:.3f}" height="{MH:.3f}" '
       f'fill="{t["well"]}"/>')
 
@@ -106,18 +122,32 @@ def gen(dark):
 
     # ── Grid lines ────────────────────────────────────────────────────────────
     for i in range(N + 1):
-        # Verticals
         x = MX + i * CELL_W
         E(f'<line x1="{x:.3f}" y1="{MY:.3f}" x2="{x:.3f}" y2="{MY+MH:.3f}" '
           f'stroke="{t["gridln"]}" stroke-width="0.4"/>')
-        # Horizontals
         y = MY + i * CELL_H
         E(f'<line x1="{MX:.3f}" y1="{y:.3f}" x2="{MX+MW:.3f}" y2="{y:.3f}" '
           f'stroke="{t["gridln"]}" stroke-width="0.4"/>')
 
+    # ── Bottom dot.modular logo — embed the REAL asset (res/logo/dot-modular-logo-*.svg),
+    #    same wordmark crop the Sands/Straits panels use. My coordinate space is mm (viewBox),
+    #    so the crop transform is expressed directly in mm. nanosvg renders the logo's paths
+    #    (it's outlined vector, unlike a <text> element). ──
+    import os as _os, re as _re
+    _logo_dir = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "res", "logo")
+    _logo_path = _os.path.join(_logo_dir, "dot-modular-logo-dark.svg" if dark else "dot-modular-logo-light.svg")
+    _ls = open(_logo_path).read()
+    _body = _ls[_ls.find('<g '):_ls.rfind('</svg>')]
+    _body = _re.sub(r'<polyline\b[^>]*/>', '', _body)   # strip positioning brackets
+    CX, CY, CW = 26.0, 65.0, 657.0                      # wordmark crop (matches *-tight.svg)
+    logo_w_mm = 30.0
+    sc = logo_w_mm / CW
+    tx = (SVG_W - logo_w_mm) * 0.5
+    ty = SVG_H - GUTTER_B * 0.5 - 2.0
+    E(f'<g transform="translate({tx:.3f},{ty:.3f}) scale({sc:.6f}) translate({-CX:.3f},{-CY:.3f})">{_body}</g>')
 
-    # (Pins, labels and legend are ALL drawn by the widget — nanosvg ignores <text>,
-    #  and baked pins would double under the live ones. The SVG is grid + wells only.)
+    # (Pins, labels, legend, crosshairs are drawn by the widget — nanosvg ignores
+    #  <text>; the logo above is outlined vector so it renders in the panel.)
 
     E('</svg>')
     return "\n".join(o)
