@@ -370,20 +370,28 @@ Block size: a STEPPED knob PER TRANSFORM (grain 1/2/4/8/16, capped at active poo
 Shared across R/M for that transform (one grain per transform; the per-type split is the
 gate/trigger, not the grain). Applies at the same phase-boundary/unlock moment.
 
-### Panel controls — direction, not committed layout
-Rodney's picture: all inputs (jacks, manual gate buttons doubling as pending lights,
-block-size knobs) in a column LEFT of the grid. Illuminated pushbutton = manual trigger
-AND pending light in one element; gate jack feeds it. Per transform row: block-size knob
-+ [rhythm gate jack + illuminated button] + [melody gate jack + illuminated button].
+### Panel controls — COMMITTED layout (Rodney): 8×(knob+jack+button), grid claims the right
 
-WIDTH REALITY: 5 transform rows of that cluster + the 16×16 grid pushes the panel to
-~28–30HP even tightly packed — a large module. Options to decide at build:
-- Accept ~28HP (grid at ~5.5mm cells to claw back width); Change Alley is a centrepiece
-  utility, wide is defensible (cf. big matrix mixers).
-- Fewer on-panel controls: expose gates + pending lights on panel, put block-size in the
-  context menu (grain is set-and-forget, not performed).
-- A companion CV/gate mini-expander carries the trigger jacks; the main panel stays grid
-  + lights + manual buttons. (Keeps the main module reasonable; the "all inputs left of
-  grid" picture becomes the expander's job.)
-Lean: gates+buttons+lights on panel, block-size in context menu (set-and-forget), grid
-stays generous. Revisit against a real mock. NOT built until the engine transform set is.
+Identity is NOT a control (it is Collapse@block-1). So the controls are the FOUR real
+transforms × TWO pin types = 8 control rows: 8 block-size knobs, 8 gate jacks, 8
+illuminated buttons (button = manual trigger AND pending light in one element).
+
+Row order (top→bottom), grouped by transform with a hairline between transforms:
+  Collapse-R, Collapse-M, Rotate-R, Rotate-M, Scatter-R, Scatter-M, Reflect-R, Reflect-M
+
+Per row, left→right: block-size knob · gate jack · illuminated button/light.
+Control column on the LEFT; the 16×16 grid claims the RIGHT (no longer centred).
+Geometry (23HP→29HP): knobs ~x16mm, jacks ~x25mm, buttons ~x33mm; grid left edge ~x40mm,
+grid 99.5mm wide (6.22mm cells kept), panel ~147mm = 29HP. 8 rows over the 99.5mm grid
+height = 12.4mm pitch, control cluster vertically centred on the grid.
+
+Block-size knob = stepped 1/2/4/8/16 (grain), capped at active pool. Per transform per
+type (the 8 knobs) — so Collapse-R grain is independent of Collapse-M grain, Rotate, etc.
+Button illuminates when that transform is PENDING (queued, awaiting phase boundary);
+pressing it queues manually; the jack queues on a gate. Latest-overwrites per (transform,
+type) — one pending each.
+
+29HP is large but defensible: Change Alley is a centrepiece correlation controller (cf.
+large matrix mixers / the EMS matrix it descends from). NOT built until the engine
+transform set exists; then panel regenerates at 29HP with this cluster and the widget
+wires 8 params (knobs) + 8 buttons + 8 inputs.
