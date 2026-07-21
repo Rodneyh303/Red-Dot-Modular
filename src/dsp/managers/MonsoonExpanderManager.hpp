@@ -69,6 +69,8 @@ struct MonsoonExpanderManager {
     rack::Module*                cachedRafflesExpander           = nullptr;
     rack::Module*                cachedJunctionExpander          = nullptr;
     MonsoonChangeAlleyExpander*  cachedChangeAlleyExpander       = nullptr;
+    int  caPrevStep_   = 0;      // phrase-boundary detect for restructure queue
+    bool caPrevLocked_ = false;  // unlock-edge detect for restructure queue
     //MonsoonSandsExpander*        cachedDnaExpander                = nullptr;
     MonsoonSandsVisualExpander*  cachedSandsVisualExpander        = nullptr;
     MonsoonStraitsExpander*      cachedPolyVoiceExpander          = nullptr;

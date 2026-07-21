@@ -10,6 +10,7 @@
 #include "../../StraitsSandsMacroVisual.hpp"
 #include "../../MonsoonSandsVisualExpander.hpp"   // SandsMonoVisualIds::dirDispId for mono direction push
 #include "../../MonsoonChangeAlleyExpander.hpp"   // pin-matrix src tables
+#include "../ChangeAlleyTransforms.hpp"           // restructure verbs (§10)
 
 using namespace rack;
 
@@ -94,6 +95,33 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
     // Unified 16-voice: index 0=mono, 1..15=poly voices. No offset needed —
     // the bank arithmetic (src-1) handles it in polyRandomSrc/monoRandomSrc.
     if (cachedChangeAlleyExpander) {
+        // ── Restructure queue application (§10/§11): pending transforms fire at the
+        //    PHRASE BOUNDARY (global step wrap) and on UNLOCK — audio-side, here,
+        //    BEFORE the pin push below so the result reaches pe the same cycle.
+        //    Row order: (Collapse,Rotate,Scatter,Reflect) × (R,M). Active pool =
+        //    mono + numPolyVoices; transforms tile it, rows beyond stay untouched.
+        {
+            auto* ca = cachedChangeAlleyExpander;
+            const int  step      = engine.stepIndex;
+            const bool boundary  = (step < caPrevStep_);          // wrapped → phrase start
+            const bool unlockEdge = (caPrevLocked_ && !engine.locked);
+            caPrevStep_   = step;
+            caPrevLocked_ = engine.locked;
+            if ((boundary && !engine.locked) || unlockEdge) {
+                const int active = engine.numPolyVoices + 1;      // mono + live poly
+                for (int row = 0; row < 8; ++row) {
+                    if (!ca->pendingRow[row]) continue;
+                    const int  t   = row / 2;                     // transform index
+                    const bool isR = (row % 2 == 0);
+                    const int  blk = MonsoonChangeAlleyExpander::blockFromKnob(
+                                         ca->params[ChangeAlleyIds::BLOCK_KNOB_START + row].getValue());
+                    uint8_t* tbl = isR ? ca->rhythmSrc : ca->melodySrc;
+                    if (t == ChangeAlleyIds::T_SCATTER) ca->scatterSeed = ca->scatterSeed * 1664525u + 1013904223u;
+                    dotModular::ca::apply(t, tbl, active, blk, ca->scatterSeed);
+                    ca->pendingRow[row] = false;
+                }
+            }
+        }
         for (int v = 0; v < 16; ++v) {
             engine.pe.caRhythmSrc[v] = cachedChangeAlleyExpander->rhythmSrc[v];
             engine.pe.caMelodySrc[v] = cachedChangeAlleyExpander->melodySrc[v];

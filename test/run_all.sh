@@ -36,6 +36,7 @@ TESTS=(
   "test_SquaresRng|"
   "test_StepGate|$SE $GS $PE"
   "test_StoreEditAction|"
+  "test_change_alley_transforms|"
   "test_edge_cases|"
   "test_final_random_by_strand|"
   "test_fractional_tail|"
