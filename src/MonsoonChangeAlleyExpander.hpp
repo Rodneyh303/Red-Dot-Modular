@@ -125,11 +125,14 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
     static constexpr float MH_MM    = CELL_H * CA::N_VOICES;
     static constexpr float MX_MM    = PW_MM - 4.0f - MW_MM;                  // grid claims the RIGHT
     // Control column (generator CTRL_*)
-    static constexpr float CTRL_X_KNOB = 10.0f, CTRL_X_JACK = 20.5f,
-                           CTRL_X_BTN  = 29.0f, CTRL_X_LED  = 34.5f;
-    static constexpr float CTRL_TOP    = MY_MM + 2.0f;
-    static constexpr float CTRL_ROW_H  = MW_MM / 8.0f * 0.78f;
-    static float ctrlRowY(int row) { return CTRL_TOP + row * CTRL_ROW_H + CTRL_ROW_H * 0.5f; }
+    static constexpr float CTRL_X_JACK = 6.0f,  CTRL_X_KNOB = 15.5f,
+                           CTRL_X_BTN  = 24.0f, CTRL_X_LED  = 29.5f;
+    static constexpr float CTRL_TOP    = MY_MM + 4.5f;
+    static constexpr float CTRL_ROW_H  = 9.0f;
+    static constexpr float GROUP_GAP   = 6.8f;
+    static float ctrlRowY(int row) {
+        return CTRL_TOP + (row/2)*(2.f*CTRL_ROW_H + GROUP_GAP) + (row%2)*CTRL_ROW_H + CTRL_ROW_H*0.5f;
+    }
 
     // Cell centre in px (rack mm2px)
     static Vec cellCentre(int row, int col) {
@@ -229,9 +232,10 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
                     asset::system("res/fonts/ShareTechMono-Regular.ttf"));
                 if (font) {
                     nvgFontFaceId(vg, font->handle);
-                    const bool darkPanel = settings::preferDarkPanels;
-                    NVGcolor ink    = darkPanel ? nvgRGB(0xe8,0xe2,0xd0) : nvgRGB(0x1a,0x18,0x10);
-                    NVGcolor inkdim = darkPanel ? nvgRGBA(0x7a,0x70,0x60,0xb0) : nvgRGBA(0x6a,0x60,0x50,0xb0);
+                    // Body is DARK in both themes -> ink is always light. (The 'only row 1
+                    // numbered' bug: light-panel mode picked dark ink on the dark body.)
+                    NVGcolor ink    = nvgRGB(0xe8,0xe2,0xd0);
+                    NVGcolor inkdim = nvgRGBA(0x9a,0x95,0x88,0xb0);
                     NVGcolor amber  = nvgRGB(0xc8,0x90,0x0c);
                     char num[4];
                     // Voice-number labels only (currency codes dropped — tiny + noisy in-rack).
@@ -253,6 +257,15 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
                         nvgFontSize(vg, mm2px(Vec(3.2f,0)).x);
                         nvgFillColor(vg, row == 0 ? amber : ink);
                         nvgText(vg, leftX - mm2px(Vec(1.4f,0)).x, c.y, num, NULL);
+                    }
+                    // Transform group labels in the gaps above each pair (room per Rodney)
+                    static constexpr const char* TN[4] = {"COLLAPSE","ROTATE","SCATTER","REFLECT"};
+                    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BASELINE);
+                    nvgFontSize(vg, mm2px(Vec(2.7f,0)).x);
+                    nvgFillColor(vg, inkdim);
+                    for (int t2 = 0; t2 < 4; ++t2) {
+                        float gy = mm2px(Vec(0, ctrlRowY(t2*2) - CTRL_ROW_H*0.5f - 1.4f)).y;
+                        nvgText(vg, mm2px(Vec(CTRL_X_JACK - 3.5f, 0)).x, gy, TN[t2], NULL);
                     }
                     // Title + legend
                     nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BASELINE);

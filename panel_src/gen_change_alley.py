@@ -41,12 +41,14 @@ MW_MM    = CELL * 16.0
 GRID_R_MARGIN = 4.0
 MX_MM    = PW_MM - GRID_R_MARGIN - MW_MM     # grid claims the RIGHT
 # Control column
-CTRL_X_KNOB = 10.0     # knob centre x
-CTRL_X_JACK = 20.5
-CTRL_X_BTN  = 29.0
-CTRL_X_LED  = 34.5
-CTRL_TOP    = MY_MM + 2.0
-CTRL_ROW_H  = (MH := MW_MM) / 8.0 * 0.78     # 8 rows packed in upper ~78% of grid height
+CTRL_X_JACK = 6.0      # jacks at the EDGE (cables don't drape over knobs)
+CTRL_X_KNOB = 15.5
+CTRL_X_BTN  = 24.0
+CTRL_X_LED  = 29.5
+CTRL_X_DOT  = 33.8     # R/M type dot, grid side
+CTRL_TOP    = MY_MM + 4.5
+CTRL_ROW_H  = 9.0
+GROUP_GAP   = 6.8      # vertical room between transform groups for widget labels
 LABEL_GAP   = 6.5                            # widget row-number labels sit left of grid
 
 def transform_rows():
@@ -54,8 +56,8 @@ def transform_rows():
     rows = []
     for tIdx in range(4):
         for r in range(2):
-            i = tIdx*2 + r
-            rows.append((CTRL_TOP + i*CTRL_ROW_H + CTRL_ROW_H*0.5, tIdx, r == 0))
+            y = CTRL_TOP + tIdx*(2*CTRL_ROW_H + GROUP_GAP) + r*CTRL_ROW_H + CTRL_ROW_H*0.5
+            rows.append((y, tIdx, r == 0))
     return rows
 
 def gen(dark):
@@ -80,12 +82,6 @@ def gen(dark):
 
     # ── Control column: 4 transform groups x (R,M) rows ──────────────────────
     for (y, tIdx, isR) in transform_rows():
-        # hairline separator above each transform group (between groups)
-        if isR and tIdx > 0:
-            sy = px(y - CTRL_ROW_H*0.5)
-            E(f'<line x1="{px(4.0)}" y1="{sy}" x2="{px(38.5)}" y2="{sy}" stroke="{t["frame"]}" stroke-width="0.8"/>')
-        if isR:  # block-size knob spans the R row (shared placement; per-type knobs stacked)
-            pass
         col = t["rhythm"] if isR else t["melody"]
         # knob (block size) — per transform PER TYPE (8 knobs): gold ring, type tick
         E(f'<circle cx="{px(CTRL_X_KNOB)}" cy="{px(y)}" r="{px(3.6)}" fill="{t["knobwell"]}" stroke="{t["knobring"]}" stroke-width="1.2"/>')
@@ -97,7 +93,7 @@ def gen(dark):
         # pending light bezel (widget draws the lit state)
         E(f'<circle cx="{px(CTRL_X_LED)}" cy="{px(y)}" r="{px(1.6)}" fill="{t["ledoff"]}" stroke="{t["btnring"]}" stroke-width="0.7"/>')
         # type marker: small dot in the type colour left of the knob
-        E(f'<circle cx="{px(4.6)}" cy="{px(y)}" r="{px(1.1)}" fill="{col}"/>')
+        E(f'<circle cx="{px(CTRL_X_DOT)}" cy="{px(y)}" r="{px(1.1)}" fill="{col}"/>')
 
     # ── Logo: LARGE, under the control column (real estate it deserves) ─────
     E(logo_embed(True, 4.0, PH_MM - 13.5, 34.0))   # dark wordmark on dark body, 34mm wide
