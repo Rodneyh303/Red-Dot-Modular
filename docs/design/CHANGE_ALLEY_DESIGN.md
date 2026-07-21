@@ -433,8 +433,40 @@ This is the read-side architecture's structural cost surfacing: PIN PICKS THE BA
 SPREAD WAS COMPUTED PER-BANK toward per-bank/global references. Reading a borrowed bank
 borrows its spread; the consumer's spread is bypassed.
 
-THE DESIGN QUESTION (decide before fixing — do NOT rush): when voice v is pinned to
-source s, whose SPREAD applies?
+SETTLED (this was ALWAYS the design — pinning must equal pinning the A/B samples, i.e.
+PRE-SPREAD; provably fine to sit after A/B-mix and slew because both are linear, but it
+MUST be before spread). The current code applies the remap at FINALS (post-spread) —
+that is the bug, a straight violation of the agreed design, not an open question.
+
+CONFIRMED SEAM (traced): the slewed buffers (slewedRhythm[16] / slewedPolyRhythm[15][16]
+etc.) are written by recomputeEffective{Rhythm,Melody} as bl(LockedA,CandB) — post A/B-mix,
+post-slew, PRE-spread — on the audio thread. processDNA then reads slewed as spread's
+input A AND to compute spread's target. So remapping the SLEWED buffers by pin, after
+recompute and before processDNA's spread loops, makes spread operate on the borrowed draw
+with the CONSUMER's own reference. That is the fix. Exactly (A) below.
+
+FIX PLAN (next session, one coherent commit + tests — do NOT half-apply):
+1. Add PatternEngine::remapSlewedByPins(): snapshot slewed{Rhythm,Melody,Octave,Accent,
+   Variation,Legato} mono[16] + poly[15][16], write each row/strand from caSrcRow(row,strand)'s
+   snapshot. Mono row 0 uses caSrcRow(0,·); poly row r uses caSrcRow(r+1,·) → poly bank
+   or mono. Identity = no-op.
+2. Monsoon::process REORDER: push CA pins into pe BEFORE processDNA (move that block out
+   of expanderManager.sync, or split a pin-push that runs pre-processDNA). Then call
+   pe.remapSlewedByPins() after recompute/ before processDNA's spread. (Restructure-queue
+   application stays where it is; only the pin PUSH moves earlier.)
+3. REVERT the finals read-side remap: readStrand → plain random_[row][strand]; polyRandomSrc
+   → pe.polyRandom(v,·); monoStrand → random_[0][strand]; Macro macroOwnProbability srcRow
+   patch → own bank. (These become correct because the mapping now lives upstream in slewed.)
+4. Tests: extend the transforms/remap replica — assert a pinned voice's FINAL reflects the
+   CONSUMER's spread amount (not the source's), and that AVERAGE_POLY vs MONO_DRAW now differ
+   off-diagonal. Build-verify on East: off-diagonal pin + spread sweep must move bars; target
+   switch must change them.
+Race note: slewed is written/read on the AUDIO thread within processDNA's cycle, so the
+remap is single-thread and race-free — it does NOT reopen the GUI-writer hazard (that was
+specific to in-place random_ rewrite competing with GUI param-manager finals writes; slewed
+has no GUI writers). This is why pre-spread/slewed is both correct AND safe.
+
+(Historical options, for the record:) when voice v is pinned to source s, whose SPREAD applies?
   (A) Consumer's spread on borrowed DRAWS. Pin borrows s's raw/slewed draw, then v applies
       v's OWN spread toward the hub. Requires spread to run AFTER the pin remap, on the
       remapped pre-spread buffer — i.e. remap the SLEWED buffers (pre-spread), then spread.
