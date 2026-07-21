@@ -281,32 +281,58 @@ transforms of the whole board, fired by trigger, latch-compatible (fire on unloc
 dice). Each must preserve the one-pin-per-row invariant (permute/reassign sources, never
 two-per-row) and must produce a MUSICALLY meaningful change, not just a different board.
 
-Three transforms (each a distinct musical intent; the correlation-space analogue of dice):
+### The structure: FOUR transforms × a BLOCK-SIZE modifier
 
-- **Identity** — src[v] = v for all v. Reset: every voice back on its own stream, fully
-  decorrelated. The "clear the routing" home state a restructure sequence returns to.
-- **Rotate** — src[v] = (src[v] + 1) mod 16, stepping +1 per trigger. Every source shifts
-  together, so the correlation SHAPE is preserved and slid across the voice pool: a group
-  on voice 2 becomes a group on 3, then 4... The same relational structure reassigned to
-  new source material each trigger. THIS is what turns a static 4-bar loop into an
-  evolving 8/16-bar structure without touching anything else. Step fixed at +1 (variable
-  stride = "trigger N times", NOT a CV amount — keeps every change a discrete event).
-- **Scatter** — src[v] = seeded random draw ∈ [0,16) per voice, one deterministic shuffle
-  per trigger (seeded → reproducible/undoable). Re-randomises relationships wholesale:
-  the "surprise me" gesture. Distinct from Rotate: Rotate PRESERVES structure and moves
-  it (continuity); Scatter DESTROYS and rebuilds it (rupture).
+The key generalisation (Rodney): a BLOCK SIZE (2/4/8/16) makes each transform operate
+WITHIN blocks rather than across all 16. Block size is not another transform — it is a
+modifier that multiplies the transforms, and it retroactively absorbs "Collapse" (which
+IS Identity-per-block) and restores Reflect (meaningless globally, a retrograde when
+blocked). Four transforms × 4 block sizes = 16 behaviours from four verbs and one knob,
+each with a clear meaning because block size answers "at what GRAIN does this relationship
+operate."
 
-Dropped: **Invert** (src[v] = 15 - v). Reflection of a relationship graph has no clear
-musical meaning the way transposition-of-structure (Rotate) and re-randomisation
-(Scatter) do. Three transforms that each mean something beats four where one is there
-for symmetry. Add later only if a concrete use surfaces.
+Transforms (src[] operations; all preserve one-pin-per-row):
+- **Identity** — src[v] = v within each block. Block 16 = full decorrelate/reset. Block 4
+  = four self-contained groups of four (this is "Collapse": deliberate homophony at a
+  chosen grain — the one-gesture way to set polyphony WIDTH for the width×length patch).
+- **Rotate** — src[v] = (src[v] + 1) wrapped WITHIN its block. Block 16 = the shape marches
+  across the whole pool (static loop → evolving 8/16-bar structure). Block 4 = each group
+  of four rotates internally; the four-group partition holds while its internals evolve.
+  Step fixed +1 (variable stride = trigger N times, not CV).
+- **Scatter** — seeded shuffle WITHIN each block. Block 16 = global re-randomise (rupture).
+  Block 4 = reshuffle inside each quartet; the coarse four-group architecture survives
+  while who's-related inside each block changes. Blocked scatter is FAR more musical than
+  global — it preserves phrase macro-structure. Seeded → reproducible/undoable.
+- **Reflect** — src reversed WITHIN each block (block of 4: 0,1,2,3 ← 3,2,1,0). Globally
+  meaningless (why we dropped "Invert"); BLOCKED it is RETROGRADE of the correlation
+  structure at the phrase-group grain — in a Changi scan, the group plays its variations
+  in reverse relatedness order. Odd partial blocks have a self-reflecting centre voice
+  (correct, no special case: it's the mirror axis).
 
-Scope: restructure acts on rhythm pins and melody pins SEPARATELY (per-type trigger
-inputs or a mode switch). Rotating rhythm relationships while melody grouping stays fixed
-is exactly the independent control the two-pin-colour design exists for; coupling them
-halves the expressiveness.
+### Block size × active poly
+Blocks tile the ACTIVE pool [0, polyCount] (0=mono always active), NOT raw 16 — sourcing
+from an inactive voice borrows a stream nothing plays (musically dead; Scatter is the
+worst offender). So:
+- Automatic transforms draw/rotate/reflect only over LIVE voices; block size is capped at
+  the active count (block-8 with poly-6 = one block of 6; the knob's top detent is
+  effectively "whole active pool" regardless of label).
+- Partial trailing blocks operate on their live members only (poly-6, block-4 → block
+  {0-3} full + block {4-5} of two).
+- Consequence (document, don't surprise): transform RESULTS depend on numPolyVoices — raise
+  poly and a re-Scatter uses the newly-live voices. Correct, but state it. Transforms read
+  the count the same way the widget does (cached Monsoon).
+- The MANUAL pin grid stays full 16: you may deliberately pin to an inactive source (about
+  to raise poly; routing persists like rotation/direction already do across poly changes).
+  Only the AUTOMATIC transforms respect the live pool.
+
+### Controls & scope
+- Per pin TYPE, independently: rhythm and melody restructure separately (per-type trigger
+  + per-type block-size knob). Rotate rhythm across 8 while Scatter melody within 4 — the
+  independent control the two-pin-colour design exists for.
+- Block size = a STEPPED knob per transform type (2/4/8/16, capped at active pool).
+- Every transform is a discrete atomic event, latch-compatible (fires on unlock like dice).
 
 Relation to dice (the clean parallel): dice re-rolls MATERIAL (the tables), restructure
 re-rolls RELATIONSHIPS (the pins). Both discrete, both lock-respecting (fire on unlock),
 both leave the other axis untouched. Restructure is to correlation-space what dice is to
-material-space.
+material-space; block size is the grain at which the relationship operates.
