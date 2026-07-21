@@ -379,7 +379,8 @@ illuminated buttons (button = manual trigger AND pending light in one element).
 Row order (top→bottom), grouped by transform with a hairline between transforms:
   Collapse-R, Collapse-M, Rotate-R, Rotate-M, Scatter-R, Scatter-M, Reflect-R, Reflect-M
 
-Per row, left→right: block-size knob · gate jack · illuminated button/light.
+Per row, left→right: block-size knob · gate jack · button · light (button+light separate,
+as dice).
 Control column on the LEFT; the 16×16 grid claims the RIGHT (no longer centred).
 Geometry (23HP→29HP): knobs ~x16mm, jacks ~x25mm, buttons ~x33mm; grid left edge ~x40mm,
 grid 99.5mm wide (6.22mm cells kept), panel ~147mm = 29HP. 8 rows over the 99.5mm grid
@@ -387,8 +388,8 @@ height = 12.4mm pitch, control cluster vertically centred on the grid.
 
 Block-size knob = stepped 1/2/4/8/16 (grain), capped at active pool. Per transform per
 type (the 8 knobs) — so Collapse-R grain is independent of Collapse-M grain, Rotate, etc.
-Button illuminates when that transform is PENDING (queued, awaiting phase boundary);
-pressing it queues manually; the jack queues on a gate. Latest-overwrites per (transform,
+The LIGHT shows PENDING (queued, awaiting phase boundary); the BUTTON queues manually;
+the jack queues on a gate — same button+light relationship as dice. Latest-overwrites per (transform,
 type) — one pending each.
 
 29HP is large but defensible: Change Alley is a centrepiece correlation controller (cf.
