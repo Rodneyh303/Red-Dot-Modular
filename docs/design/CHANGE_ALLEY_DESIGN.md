@@ -207,16 +207,21 @@ two-colour pins solve it, and one board halves the panel cost (16×16 at ~4.5 mm
    - RED AS PUNCTUATION, not wallpaper: melody pins, connect dot, active-voice bars,
      mono row accent — and nothing else. The little red dot, not the little red panel.
 
-> IMPLEMENTED (branch feat/change-alley-ab-remap): the remap is applied write-side by
-> PatternEngine::applyChangeAlleyRemap() — called once per control cycle in Monsoon after
-> processDNA (fills random_ via BOTH non-Sands and Sands paths) and expanderManager.sync
-> (pushes pins into pe). It snapshots random_ and rewrites each row's strand from its
-> pinned source row; no-op at identity. This is the SINGLE SEAM: it runs after whichever
-> fill path populated random_, so both are covered without touching either. All read-side
-> remaps reverted to plain own-bank reads (polyRandomSrc, monoStrand, the two
-> polyLaneProbability accessors, macroOwnProbability). Guarded by test_change_alley_remap
-> (13/13: identity no-op on all strands, pool-split borrow, locality, shared-source
-> identity, mono participation).
+> SUPERSEDED — WRITE-SIDE REVERTED (race + non-idempotence, found in Rack):
+> The write-side in-place remap FLASHED the East visual on off-diagonal pins. Root cause,
+> measured: random_ has 73 WRITE SITES across 7 files INCLUDING GUI-THREAD parameter
+> managers (Mono/Poly/PolyVoiceSandsParameterManager write finals from editor save
+> paths). Writers between remaps expose unmapped transients (flash), and in-place remap
+> is NON-IDEMPOTENT under pin chains (remap twice = mapping composed twice — any bank
+> not refilled between remaps WALKS through the chain). Making it safe needs tail-calls
+> at all 73 writers (fragile forever) or true double-buffering (bigger, own hazards).
+> The enumeration argument in fact runs the OTHER way in this codebase: READS funnel
+> through 5 accessors (proven complete — East/Macro/CV/articulation agreed); WRITES
+> scatter across 73 sites on two threads. Read-side mapping is race-free BY CONSTRUCTION
+> (atomic at each read, no transient ever visible, no writer cooperation).
+> RESOLUTION: read-side mapping (39360f2 semantics + the Macro slewed-base srcRow patch)
+> is the FINAL architecture. The read accessors are the narrow waist; the write surface
+> is the wide one. test_change_alley_remap removed with the reverted seam.
 >
 > LEVEL DECISION (SETTLED — post-mix is correct, A/B pinning declined):
 > random_ is the system's SINGLE CANONICAL STREAM — the one point where a voice's dice

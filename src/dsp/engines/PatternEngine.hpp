@@ -98,17 +98,14 @@ struct PatternEngine {
     // ENGINE STRAND at a given step, 0..1. Now a direct index into random_[0] (mono row): strand index
     // IS the editor-lane column (MONO_LANE_TO_STRAND identity), so no table/permutation. Out-of-range
     // falls back to rhythm (matches the old default:). Used by the Sands visual probability CV outs.
-    // ── Change Alley pin-matrix (CHANGE_ALLEY_DESIGN.md §3-REVISED) ──────────
-    //    The mapping is applied ONCE per control cycle by applyChangeAlleyRemap(),
-    //    AFTER both fill paths (non-Sands slew-copy and Sands SpreadInterp) have
-    //    populated random_ per-voice-own-bank, and AFTER the manager has pushed the
-    //    current pins into caRhythmSrc/caMelodySrc. It snapshots random_ and rewrites
-    //    each row's strand from its pinned SOURCE row. Because it runs after the fill,
-    //    it catches BOTH paths with one seam; because the src tables (caRhythmSrc/
-    //    caMelodySrc) and the *Source[]/slewed pipeline stay per-voice, locality and
-    //    dice/pin orthogonality hold. Every consumer then reads its OWN bank as before
-    //    — no read-side remap anywhere. Strand→pool: MELODY/OCTAVE = melody pin;
-    //    RHYTHM/ACCENT/VARIATION/LEGATO = rhythm pin. Identity tables = no-op.
+    // ── Change Alley pin-matrix (CHANGE_ALLEY_DESIGN.md) — the mapping lives HERE,
+    //    right after Philox, because PatternEngine owns random_ and every consumer
+    //    (articulation, displays, probability CV outs) reads through this API. Rows
+    //    0..15 (0 = mono). Strand→pool: MELODY/OCTAVE = melody pin; everything else
+    //    (RHYTHM/ACCENT/VARIATION/LEGATO) = rhythm pin. READS are remapped; WRITES
+    //    (dice fills, slew/spread pipeline, rotations) always target the OWN bank —
+    //    that separation is what makes pins pure read-time indirection (locality,
+    //    dice/pin orthogonality). ──
     uint8_t caRhythmSrc[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
     uint8_t caMelodySrc[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
 
@@ -117,30 +114,15 @@ struct PatternEngine {
         const int r = (row >= 0 && row < 16) ? row : 0;
         return mel ? (int)caMelodySrc[r] : (int)caRhythmSrc[r];
     }
-
-    // The one seam. Call once per control cycle after fills + pin push. No-op at identity.
-    inline void applyChangeAlleyRemap() {
-        // Fast identity check: skip the snapshot+rewrite entirely when no pin is moved.
-        bool identity = true;
-        for (int v = 0; v < 16 && identity; ++v)
-            if (caRhythmSrc[v] != v || caMelodySrc[v] != v) identity = false;
-        if (identity) return;
-        // Snapshot the just-filled banks, then write each row's strand from its source row.
-        static thread_local float snap[16][dotModular::NUM_STRANDS][16];
-        for (int b = 0; b < 16; ++b)
-            for (int s = 0; s < dotModular::NUM_STRANDS; ++s)
-                for (int i = 0; i < 16; ++i) snap[b][s][i] = random_[b][s][i];
-        for (int row = 0; row < 16; ++row)
-            for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
-                const int src = caSrcRow(row, s);
-                if (src == row) continue;
-                for (int i = 0; i < 16; ++i) random_[row][s][i] = snap[src][s][i];
-            }
+    // The remapped READ: row's draw table for a strand, via that row's pin.
+    inline const float (&readStrand(int row, int strand) const)[16] {
+        const int s = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? strand : dotModular::STRAND_RHYTHM;
+        return random_[caSrcRow(row, s)][s];
     }
 
     inline float finalRandomByStrand(int strand, int step) const {
         const int s = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? strand : dotModular::STRAND_RHYTHM;
-        return random_[0][s][step & 0x0F];   // plain own-bank read; remap already applied
+        return readStrand(0, s)[step & 0x0F];   // mono display: through row 0's pins
     }
 
     // Poly strands: 15 voices, each with Rhythm, Melody, and Octave draws
