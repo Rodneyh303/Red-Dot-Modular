@@ -401,3 +401,14 @@ type) — one pending each.
 large matrix mixers / the EMS matrix it descends from). NOT built until the engine
 transform set exists; then panel regenerates at 29HP with this cluster and the widget
 wires 8 params (knobs) + 8 buttons + 8 inputs.
+
+## NEXT-SESSION FIRST TASK — merge regression: East VAR/LEG lanes render transparent
+Symptom (Rodney, screenshot 2026-07-21): on East (V1 tab), VARIATION and LEGATO lane
+bars render faded/transparent; Sands mono renders them solid. Post f2925ac merge.
+NOT the value fill: mirrorMonoExtraLanes exists and is called (cpp 616 onVoiceTabChanged,
+1195 step) and finalRandomByStrand reads are correct. Suspect the STYLING path:
+src/ui/SandsVisualEditorV4.hpp was a MASTER-side file in the merge (branch cpp mostly
+won the East file) — likely an alpha/lane-style/locked-dim API the master editor expects
+that the branch-era cpp doesn't call (or a default alpha change). Leads: diff de96cf4 vs
+merge-base for SandsVisualEditorV4.hpp; check laneLockedFn/dim styling for lanes 4/5;
+compare against Sands mono expander's calls (renders correctly, same editor class).
