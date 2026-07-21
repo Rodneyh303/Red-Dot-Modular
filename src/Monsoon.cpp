@@ -970,6 +970,12 @@ void Monsoon::process(const ProcessArgs& args) {
 
         // ── Deep Straits Sands Expanders (Control Rate Orchestration) ──
         expanderManager.sync(engine, spreadInterpMono);
+
+        // Change Alley: apply the pin remap ONCE here, after processDNA filled random_
+        // (both non-Sands and Sands paths) and sync pushed the current pins into pe.
+        // Rewrites random_ in place per pin; no-op at identity. Every consumer then
+        // reads its own bank and inherits the remap. (§3-REVISED single seam.)
+        engine.pe.applyChangeAlleyRemap();
         
         // Refresh Audio-Rate Caches (Throttled)
         cachedBpmParam = params[BPM_PARAM].getValue();

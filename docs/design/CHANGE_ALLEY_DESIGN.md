@@ -177,3 +177,25 @@ two-colour pins solve it, and one board halves the panel cost (16×16 at ~4.5 mm
      plays this role); axis labels in the "WE BUY / WE SELL" register.
    - RED AS PUNCTUATION, not wallpaper: melody pins, connect dot, active-voice bars,
      mono row accent — and nothing else. The little red dot, not the little red panel.
+
+> IMPLEMENTED (branch feat/change-alley-ab-remap): the remap is applied write-side by
+> PatternEngine::applyChangeAlleyRemap() — called once per control cycle in Monsoon after
+> processDNA (fills random_ via BOTH non-Sands and Sands paths) and expanderManager.sync
+> (pushes pins into pe). It snapshots random_ and rewrites each row's strand from its
+> pinned source row; no-op at identity. This is the SINGLE SEAM: it runs after whichever
+> fill path populated random_, so both are covered without touching either. All read-side
+> remaps reverted to plain own-bank reads (polyRandomSrc, monoStrand, the two
+> polyLaneProbability accessors, macroOwnProbability). Guarded by test_change_alley_remap
+> (13/13: identity no-op on all strands, pool-split borrow, locality, shared-source
+> identity, mono participation).
+>
+> LEVEL CAVEAT — random_ is POST A/B-blend. Borrowers therefore share the source's
+> variation-mix OUTCOME, not just its dice: subset/superset holds (identical final draws,
+> own REST threshold), but a pinned voice cannot blend the shared A/B with its OWN
+> variation knob. The maximal-correctness level is the A/B CANDIDATE buffers
+> (rhythmLockedA/rhythmCandB, polyRhythmLockedA/CandB, and the 8 other strand pairs at
+> PatternEngine.hpp 156-166), remapped after redraw so each voice applies its own bl()
+> variation mix to borrowed A/B. Deferred: it is per-strand-shaped (mono [16] vs poly
+> [15][16]) and interacts with the trial/promote/lock machinery in regenerate(); a
+> deliberate follow-up, not folded into this seam.
+

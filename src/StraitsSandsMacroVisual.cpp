@@ -301,23 +301,22 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // Macro's own spread for this lane (base knob + send-tapped delta, clamped) — the
         // SAME expression the engine's MACRO_SOLE branch uses (MonsoonExpanderManager.cpp).
         const float sp = rack::math::clamp(mod->macroBase[engLane][3] + mod->macroSendDelta[engLane][3], -1.f, 1.f);
-        // The pre-spread base draw buffer for this lane — through the CHANGE ALLEY remap:
-        // the row's pin selects WHOSE slewed base we start from (srcRow 0 = mono buffers,
-        // 1..15 = poly bank srcRow-1), then Macro's OWN spread is applied on top. This keeps
-        // the one-way firewall intact: slewed buffers are PRE-spread, so East's spread (which
-        // writes finals) still cannot leak into Macro's display — we borrow the raw base,
-        // not the served final. Consistent with East's bars post-39360f2.
+        // The pre-spread base draw buffer for this lane (mono strand vs poly bank).
+        // NOTE: the slewed buffers are per-voice-OWN and NOT touched by the Change Alley
+        // remap (which rewrites random_ post-fill, not the slewed pipeline). Macro's
+        // display therefore shows the voice's own base + Macro's own spread, as designed —
+        // the pin's effect on Macro is visible via the FINAL path that other surfaces use,
+        // not here. (If Macro should reflect pins too, that is a separate decision; the
+        // firewall design deliberately keeps Macro on its own pre-spread base.)
         using PL = SequencerEngine;  // PL::PL_REST etc. (enum lives in SequencerEngine)
-        const int row    = mono ? 0 : (rack::math::clamp(polyVoice, 0, 14) + 1);
-        const int srcRow = pe.caSrcRow(row, SequencerEngine::polyLaneToStrand(engLane));
         float base;
-        if (srcRow == 0) {
+        if (mono) {
             base = (engLane == PL::PL_REST)   ? pe.slewedRhythm[step & 0x0F]
                  : (engLane == PL::PL_MELODY) ? pe.slewedMelody[step & 0x0F]
                  : (engLane == PL::PL_OCTAVE) ? pe.slewedOctave[step & 0x0F]
                  :                              pe.slewedAccent[step & 0x0F];
         } else {
-            int v = srcRow - 1;
+            int v = rack::math::clamp(polyVoice, 0, 14);
             base = (engLane == PL::PL_REST)   ? pe.slewedPolyRhythm[v][step & 0x0F]
                  : (engLane == PL::PL_MELODY) ? pe.slewedPolyMelody[v][step & 0x0F]
                  : (engLane == PL::PL_OCTAVE) ? pe.slewedPolyOctave[v][step & 0x0F]
