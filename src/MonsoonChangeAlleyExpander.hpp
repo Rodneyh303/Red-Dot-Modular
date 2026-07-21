@@ -233,9 +233,6 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
                     NVGcolor ink    = darkPanel ? nvgRGB(0xe8,0xe2,0xd0) : nvgRGB(0x1a,0x18,0x10);
                     NVGcolor inkdim = darkPanel ? nvgRGBA(0x7a,0x70,0x60,0xb0) : nvgRGBA(0x6a,0x60,0x50,0xb0);
                     NVGcolor amber  = nvgRGB(0xc8,0x90,0x0c);
-                    static constexpr const char* CUR[CA::N_VOICES] = {
-                        "SGD","MYR","IDR","THB","PHP","VND","MMK","KHR",
-                        "HKD","CNY","TWD","KRW","JPY","AUD","INR","USD" };
                     char num[4];
                     // Voice-number labels only (currency codes dropped — tiny + noisy in-rack).
                     // ShareTechMono, 3.2mm — readable at 100% zoom.
