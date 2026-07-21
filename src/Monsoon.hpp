@@ -941,10 +941,19 @@ extern Model* modelStraitsSandsMacroVisual;     // Macro visual DNA editor (glob
 
 // ─── Change Alley pin matrix expander ────────────────────────────────────────
 namespace ChangeAlleyIds {
-    enum ParamIds { NUM_PARAMS = 0 };
-    enum InputIds  { NUM_INPUTS = 0 };
+    // Restructure transforms (CHANGE_ALLEY_DESIGN.md §10/§11): Collapse/Rotate/Scatter/Reflect
+    // × (Rhythm, Melody). Row order: C-R, C-M, Ro-R, Ro-M, Sc-R, Sc-M, Rf-R, Rf-M.
+    enum ParamIds {
+        BLOCK_KNOB_START = 0,          // 8 stepped block-size knobs (grain 1/2/4/8/16)
+        TRIG_BTN_START   = 8,          // 8 manual trigger buttons (momentary)
+        NUM_PARAMS       = 16
+    };
+    enum InputIds  { TRIG_IN_START = 0, NUM_INPUTS = 8 };   // 8 gate jacks
     enum OutputIds { NUM_OUTPUTS = 0 };
-    enum LightIds  { NUM_LIGHTS = 0 };
+    enum LightIds  { PENDING_LIGHT_START = 0, NUM_LIGHTS = 8 };
     static constexpr int N_VOICES = 16;
     static constexpr int N_POOLS  = 2;   // 0=rhythm 1=melody
+    enum Transform { T_COLLAPSE = 0, T_ROTATE = 1, T_SCATTER = 2, T_REFLECT = 3, N_TRANSFORMS = 4 };
+    // Row index for (transform, isRhythm): t*2 + (isRhythm?0:1)
+    inline int ctrlRow(int t, bool isRhythm) { return t * 2 + (isRhythm ? 0 : 1); }
 }
