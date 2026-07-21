@@ -10,6 +10,7 @@
 #include "../SandsTopology.hpp"   // step 3b: readStrand owner migration
 #include "../../MonsoonStraitsExpander.hpp"
 #include "../../StraitsEastSandsVisual.hpp"
+#include "../../ui/VisualExpanderHelpers.hpp"   // redDot::findMonsoonEitherSide (MACRO field reads)
 #include <cassert>
 
 using namespace rack;
@@ -175,7 +176,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // and makes the result order-dependent (East-then-Macro != Macro-then-East).
             auto eastDelta = [&](int engLane, int item, float lo, float hi)->float {
                 if (!eastVis || !eastVis->inputs[East::cvId(engLane,item)].isConnected()) return 0.f;
-                float att = eastVis->params[East::attenId(dotModular::VoiceResolver::kMonoSlot, engLane, item)].getValue();   // slot 0 = mono
+                float att = (redDot::findMonsoonEitherSide(eastVis) ? redDot::findMonsoonEitherSide(eastVis)->getMacroAtten(dotModular::VoiceResolver::kMonoSlot, engLane*4 + item) : 0.f);   // slot 0 = mono
                 float cv  = eastVis->inputs[East::cvId(engLane,item)].getVoltage(0) / 10.f; // ch0
                 return cv * att * (hi - lo);
             };
@@ -188,7 +189,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // Returns the UNCLAMPED Macro send delta (0 when no Macro). Summed with East's, clamped once.
             auto macroDelta = [&](int engLane, int item)->float {
                 if (!hasMacro || !macroVis) return 0.f;
-                float send = macroVis->params[Macro::sendId(dotModular::VoiceResolver::kMonoSlot, engLane, item)].getValue();   // slot 0 = mono
+                float send = (redDot::findMonsoonEitherSide(macroVis) ? redDot::findMonsoonEitherSide(macroVis)->getMacroSend(dotModular::VoiceResolver::kMonoSlot, engLane, item) : 0.f);   // slot 0 = mono
                 return macroVis->macroSendDelta[engLane][item] * send;  // P9: tapped send delta
             };
             // East CV exists only for the 4 poly lanes (MEL/OCT/REST/ACC); VAR/LEG
@@ -250,12 +251,12 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 if (eastVisS && eastVisS->inputs[East::cvId(l,3)].isConnected()) {
                     sin.eastCv.connected   = true;
                     sin.eastCv.unitVoltage = eastVisS->inputs[East::cvId(l,3)].getVoltage(0) / 10.f;
-                    sin.eastCv.atten       = eastVisS->params[East::attenId(dotModular::VoiceResolver::kMonoSlot, l, 3)].getValue();
+                    sin.eastCv.atten       = (redDot::findMonsoonEitherSide(eastVisS) ? redDot::findMonsoonEitherSide(eastVisS)->getMacroAtten(dotModular::VoiceResolver::kMonoSlot, l*4 + 3) : 0.f);
                 }
                 if (sin.macroPresent) {
                     sin.macroBase      = macroVis->macroBase[l][3];
                     sin.macroSendDelta = macroVis->macroSendDelta[l][3];
-                    sin.macroSend      = macroVis->params[Macro::sendId(dotModular::VoiceResolver::kMonoSlot, l, 3)].getValue();
+                    sin.macroSend      = (redDot::findMonsoonEitherSide(macroVis) ? redDot::findMonsoonEitherSide(macroVis)->getMacroSend(dotModular::VoiceResolver::kMonoSlot, l, 3) : 0.f);
                 }
                 engine.spreadERef(0, l) = redDot::SpreadResolver::effective(sin);   // slot 0 = mono/V1
             }
@@ -319,30 +320,104 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 engine.strandRotRef(s) = 0;
             }
         }
-        if (hasEastV1 && !engine.locked) {
+        if (hasEastV1) {
+            // V1 LOR (below) runs unconditionally, matching poly combineLOR — the LOR window is
+            // derived even under lock; only SPREAD is lock-gated (wrapped in if(!locked) further down).
             // Apply V1 SPREAD to the mono final arrays, PER LANE:
-            //   • lane owned by East   → East's V1 spread knob (+ East V1 spread CV).
+            //   • lane owned by East   → East's V1 spread base (Model: spread[kMonoSlot]) + CV.
             //   • lane delegated Macro → Macro's GLOBAL spread (macroBase[lane][3] + send).
-            // (East SPREAD_R/M/O/A + macroBase are spread/engine-indexed 0=REST..3=ACC.)
+            // (spread[0]/macroBase are spread/engine-indexed 0=REST..3=ACC.)
             // Macro-owned test mirrors the widget: East ownerDispId(lane) <= 0.5 == Macro.
+            // Stage 3a: the BASE is read from the unified store (Model), not SPREAD_* (View).
+            // saveSlot(kMonoSlot) mirrors SPREAD_*→spread[0] every UI frame, so this is
+            // value-preserving; the View is now only edited, never read for the engine.
+            Monsoon* mmV1 = redDot::findMonsoonEitherSide(eastV1);
             const bool macroHere = hasMacro && (macroVis != nullptr);
             auto monoOwnedByMacro = [&](int lane)->bool {
                 return macroHere && !(eastV1->params[East::ownerDispId(lane)].getValue() > 0.5f);
             };
+
+            // Stage 3b: V1 LOR derivation — moved here from the East widget's v1Editable
+            // mono-strand write. The manager now derives V1's windows from the Model
+            // (lorBase[kMonoSlot]) exactly as it derives poly windows, so V1 is no longer a
+            // special widget-side path and the strands are written on the audio thread (no
+            // UI/audio race). Value-preserving: lorBase[0] == the old currentState via the
+            // widget's saveSlot(kMonoSlot) mirror (Stage 2); delegation reuses monoOwnedByMacro
+            // (== the old v1Topo.owner(0,el)==MACRO for the no-Mono/v1Editable case).
+            {
+                const int kMono = dotModular::VoiceResolver::kMonoSlot;
+                // Lanes 0..3 (REST/MEL/OCT/ACC): Macro base when delegated, else base+CV+send blend.
+                for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
+                    const int engLane = dotModular::EDITOR_TO_ENGINE_LANE[el];
+                    const int strand  = dotModular::MONO_LANE_TO_STRAND[el];
+                    if (monoOwnedByMacro(engLane)) {
+                        engine.setStrand(StrandWriter::EAST, strand,
+                            (int)std::round(macroVis->macroBase[engLane][0] + macroVis->macroCVDelta[engLane][0]),
+                            (int)std::round(macroVis->macroBase[engLane][1] + macroVis->macroCVDelta[engLane][1]),
+                            (int)std::round(macroVis->macroBase[engLane][2] + macroVis->macroCVDelta[engLane][2]));
+                        continue;
+                    }
+                    const int b0 = mmV1 ? (int)std::round(mmV1->getLorBase(kMono, engLane, 0)) : 16;
+                    const int b1 = mmV1 ? (int)std::round(mmV1->getLorBase(kMono, engLane, 1)) : 0;
+                    const int b2 = mmV1 ? (int)std::round(mmV1->getLorBase(kMono, engLane, 2)) : 0;
+                    const float len = (float)std::max(1, b0);
+                    const float off = (float)(((b1 % 16) + 16) % 16);
+                    const float rot = (float)(((b2 % 16) + 16) % 16);
+                    auto sendBlend = [&](int item)->float {
+                        if (!macroVis) return 0.f;   // match the widget's guard exactly
+                        float send = mmV1 ? mmV1->getMacroSend(kMono, engLane, item) : 0.f;
+                        return macroVis->macroSendDelta[engLane][item] * send;
+                    };
+                    auto addCV = [&](float base, int item, float lo, float hi)->float {
+                        if (eastV1->inputs[East::cvId(engLane,item)].isConnected()) {
+                            float att = mmV1 ? mmV1->getMacroAtten(kMono, engLane*4 + item) : 0.f;
+                            float cv  = eastV1->inputs[East::cvId(engLane,item)].getPolyVoltage(0) / 10.f;  // ch0 = V1
+                            base += cv * att * (hi - lo);
+                        }
+                        return rack::math::clamp(base + sendBlend(item), lo, hi);
+                    };
+                    engine.setStrand(StrandWriter::EAST, strand,
+                        (int)std::round(addCV(len, 0, 1.f, 16.f)),
+                        (int)std::round(addCV(off, 1, 0.f, 15.f)),
+                        (int)std::round(addCV(rot, 2, 0.f, 15.f)));
+                }
+                // VAR/LEG (4/5): East-owned, never Macro-delegated, no send blend. strand == el.
+                for (int el = dotModular::SandsGrid::POLY_LANES; el < dotModular::SandsGrid::EAST_LANES; ++el) {
+                    const int vl = el - dotModular::SandsGrid::POLY_LANES;   // 0=VAR, 1=LEG
+                    const int b0 = mmV1 ? (int)std::round(mmV1->getLorBase(kMono, el, 0)) : 16;
+                    const int b1 = mmV1 ? (int)std::round(mmV1->getLorBase(kMono, el, 1)) : 0;
+                    const int b2 = mmV1 ? (int)std::round(mmV1->getLorBase(kMono, el, 2)) : 0;
+                    auto addCV = [&](float base, int item, float lo, float hi)->float {
+                        if (eastV1->inputs[East::varlegCvId(vl,item)].isConnected()) {
+                            float att = mmV1 ? mmV1->getVarlegAtten(kMono, vl, item) : 0.f;
+                            float cv  = eastV1->inputs[East::varlegCvId(vl,item)].getPolyVoltage(0) / 10.f;  // ch0 = V1
+                            base += cv * att * (hi - lo);
+                        }
+                        return rack::math::clamp(base, lo, hi);
+                    };
+                    engine.setStrand(StrandWriter::EAST, el,
+                        (int)std::round(addCV((float)std::max(1, b0), 0, 1.f, 16.f)),
+                        (int)std::round(addCV((float)(((b1 % 16) + 16) % 16), 1, 0.f, 15.f)),
+                        (int)std::round(addCV((float)(((b2 % 16) + 16) % 16), 2, 0.f, 15.f)));
+                }
+            }
+
+            // ── SPREAD: lock-gated (frozen pattern must not be re-spread). LOR above already ran.
+            if (!engine.locked) {
             auto sprForLane = [&](int lane)->float {
                 if (monoOwnedByMacro(lane))
                     return rack::math::clamp(macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3], -1.f, 1.f);
-                float sp = eastV1->params[East::SPREAD_R + lane].getValue();   // R/M/O/A contiguous
+                float sp = mmV1 ? mmV1->getSpread(dotModular::VoiceResolver::kMonoSlot, lane)
+                                : eastV1->params[East::SPREAD_R + lane].getValue();   // R/M/O/A contiguous
                 if (eastV1->inputs[East::cvId(lane,3)].isConnected()) {
-                    float att = eastV1->params[East::attenId(dotModular::VoiceResolver::kMonoSlot, lane, 3)].getValue();
+                    float att = (mmV1 ? mmV1->getMacroAtten(dotModular::VoiceResolver::kMonoSlot, lane*4 + 3) : 0.f);
                     float cv  = eastV1->inputs[East::cvId(lane,3)].getPolyVoltage(0) / 10.f;  // ch0 = V1
                     sp = sp + cv * att * 2.f;
                 }
                 // Macro send blend on East-owned V1 spread (mirrors poly combineSpread):
                 // macroSendDelta[lane][3] * mono-slot send.
                 if (macroHere) {
-                    float send = macroVis->params[StraitsMacroVisualIds::sendId(
-                        dotModular::VoiceResolver::kMonoSlot, lane, 3)].getValue();
+                    float send = (redDot::findMonsoonEitherSide(macroVis) ? redDot::findMonsoonEitherSide(macroVis)->getMacroSend(dotModular::VoiceResolver::kMonoSlot, lane, 3) : 0.f);
                     sp += macroVis->macroSendDelta[lane][3] * send;
                 }
                 return rack::math::clamp(sp, -1.f, 1.f);
@@ -363,6 +438,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 engine.pe.legatoRandom[i]    = engine.pe.slewedLegato[i];
                 engine.pe.variationRandom[i] = engine.pe.slewedVariation[i];
             }
+            }   // end if (!engine.locked) — spread only; V1 LOR above runs under lock too
         }
     }
 

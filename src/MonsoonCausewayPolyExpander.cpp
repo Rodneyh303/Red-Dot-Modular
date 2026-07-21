@@ -4,6 +4,7 @@
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/SvgPanelKit.hpp"
 #include "ui/ConnectMark.hpp"
+#include "ui/Controls.hpp"   // redDot::Dimmable<> for voice-count dimming
 
 using namespace rack;
 using namespace MonsoonIds;
@@ -17,6 +18,10 @@ struct MonsoonCausewayPolyExpanderWidget : ModuleWidget,
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
     redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;
+    // Cached per frame (see step()): Monsoon's active poly-voice count, so the per-voice
+    // attenuator knobs dim when their voice is inactive -- the SAME family rule as Straits
+    // (any panel of per-voice controls dims voices above the active count). -1 = disconnected.
+    int activeVoices_ = -1;
 
     MonsoonCausewayPolyExpanderWidget(MonsoonCausewayPolyExpander* mod) {
         setModule(mod);
@@ -32,12 +37,20 @@ struct MonsoonCausewayPolyExpanderWidget : ModuleWidget,
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
         // voice 0 = mono/voice-1 → the MONO attenuators; markers 1..15 = poly voices 2..16.
+        // Mono + globals never dim (always relevant). Per-voice 1..15 dim when their voice is
+        // above Monsoon's active count -- lit = live, same rule as Straits' knobs.
         bindParam<Trimpot>("param_restatt_0", MonsoonIds::MONO_REST_MOD_ATT);
         bindParam<Trimpot>("param_accatt_0",  MonsoonIds::MONO_ACCENT_MOD_ATT);
         for (int i = 1; i < 16; ++i) {
             std::string r = std::to_string(i);
-            bindParam<Trimpot>("param_restatt_" + r, MonsoonIds::POLY_REST_MOD_ATT_1   + (i - 1));
-            bindParam<Trimpot>("param_accatt_"  + r, MonsoonIds::POLY_ACCENT_MOD_ATT_1 + (i - 1));
+            int voiceNum = i;                  // active iff activeVoices_ >= i (see Straits)
+            auto dimIfInactive = [this, voiceNum](){
+                return activeVoices_ >= 0 && voiceNum > activeVoices_;
+            };
+            bindParam<redDot::Dimmable<Trimpot>>("param_restatt_" + r, MonsoonIds::POLY_REST_MOD_ATT_1 + (i - 1),
+                std::function<void(redDot::Dimmable<Trimpot>*)>([dimIfInactive](redDot::Dimmable<Trimpot>* k){ k->dimWhen = dimIfInactive; k->lockWhen = dimIfInactive; }));
+            bindParam<redDot::Dimmable<Trimpot>>("param_accatt_"  + r, MonsoonIds::POLY_ACCENT_MOD_ATT_1 + (i - 1),
+                std::function<void(redDot::Dimmable<Trimpot>*)>([dimIfInactive](redDot::Dimmable<Trimpot>* k){ k->dimWhen = dimIfInactive; k->lockWhen = dimIfInactive; }));
         }
         bindParam<Trimpot>   ("param_restatt_global", MonsoonIds::POLY_REST_MOD_ATT_GLOBAL);
         bindParam<Trimpot>   ("param_accatt_global",  MonsoonIds::POLY_ACCENT_MOD_ATT_GLOBAL);
@@ -51,6 +64,13 @@ struct MonsoonCausewayPolyExpanderWidget : ModuleWidget,
     }
 
     void step() override {
+        // Resolve active-voice count BEFORE stepping children: the attenuators' dimWhen
+        // reads activeVoices_, and ModuleWidget::step() draws them. (Same frame-order
+        // reasoning as Straits' theme swap -- do it after and the dim lags a frame.)
+        if (module) {
+            Monsoon* mm = redDot::findMonsoonEitherSide(module);
+            activeVoices_ = mm ? mm->engine.numPolyVoices : -1;
+        }
         ModuleWidget::step();
         kitStep();
         if (!module) return;

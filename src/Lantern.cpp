@@ -18,6 +18,46 @@
 //   A bright vertical tick at a bar's left edge marks each new gate ONSET; MidNote
 //   gate-tails draw no bar (the onset's true fractional width already spans them).
 //
+// ── ENGINE CONTRACT ──────────────────────────────────────────────────────────
+// The Lantern is a scope that reads the ENGINE, not cables -- which is why it can show
+// per-voice articulation at all (poly exposes only gate+pitch+accent; there is no cable
+// carrying "this voice tied"). The cost is coupling: a refactor can silently falsify this
+// display, and a faithful scope that has quietly gone stale is worse than none, because it
+// is trusted. Audited at 5e76373 (post Rule 2, per-lane direction, stateless positions).
+//
+// Fields read, and what each must keep meaning:
+//   eng.stepIndex                physical playhead column (0..15)
+//   eng.lastStepResult.forStep   the stepIndex a decision was computed for. The engine
+//                                comments this as "(Lantern pairs decision→column)" -- this
+//                                is the pairing.
+//   eng.lastStepResult.decision  MONO's decision. Used ONLY for MidNote (tail) detection.
+//   eng.lastStepResult.nvIdx     note-length index -> bar length
+//   eng.lastStepResult.accented  mono accent
+//   eng.lastPlayDir              GLOBAL play direction (+1/-1). Deliberately global: the
+//                                columns are physical steps, so bar extension follows the
+//                                direction of TIME. Per-lane direction (laneSign_/laneTick_)
+//                                is NOT read and must not be -- a reversed lane still played
+//                                its notes at the steps shown.
+//   eng.numPolyVoices, eng.voices, eng.perVoiceArticulation
+//   gs.gateHeld / gs.holdRemain  SOUNDING test, per voice. NOT MonoDecision::Rest -- the
+//                                voice's own gate is the per-voice truth.
+//   gs.gatePulseRemain           distinguishes a fresh attack from a held-over tail
+//   gs.lastNoteType              CELL COLOUR. Single/Tie/Legato.
+//   gs.slurForward, pv.accented  per-voice, under perVoiceArticulation
+//   gs.slurMember                SLUR UNDERLINE. The SLEG output mask (leads OR continues a
+//                                slur), read per voice exactly like lastNoteType. An
+//                                underlined run of cells = one fused GATE; its cell edges =
+//                                the STEP strikes; the underline = SLEG.
+//
+// THE INVARIANT THIS DISPLAY RESTS ON:
+//   lastNoteType describes the CURRENT NOTE, and a tail is the same note.
+// Every path that STARTS a note goes through GateState's five articulation methods
+// (triggerNote/slideNote x2/slideMax/extendHold), all of which set it. Four paths in
+// SequencerEngine re-assert gateHeld without setting it (~473, 706, 868) -- all are tails of
+// a note already sounding, so its type is still correct. Break that (re-open a gate for a
+// NEW note without going through those methods) and the Lantern will faithfully draw a stale
+// colour. That is the failure mode to watch for.
+//
 // PURE OBSERVER: reads Monsoon's engine state (via findMonsoonEitherSide) and
 // keeps its OWN per-voice 16-step display ring buffer. It writes NO engine state.
 // Independent of the Sands topology work. See docs/design/LANTERN_SPEC.md.
@@ -78,6 +118,11 @@ struct Lantern : Module {
         bool   heldIn   = false; // continues from previous bar
         bool   heldOut  = false; // continues past step 16
         bool   accented = false;
+        bool   slurMember = false;// this note is PART OF a slur (leads one, or continues one) —
+                                 // the engine's gs.slurMember, the exact SLEG output mask. Drawn
+                                 // as a thin underline so an underlined RUN of cells = one fused
+                                 // GATE (lead + continuations), and its cell edges = the STEP
+                                 // strikes inside it. Isolated notes: no underline.
         bool   leadsLegato = false;// this note INITIATES a legato lead: it committed slurForward
                                  // (will hold its gate into the next note) AND is not itself a
                                  // received Tie/Legato (the chain interior is already teal/violet).
@@ -96,6 +141,7 @@ struct Lantern : Module {
     };
     Cell cells[16][16];
     int  lastObservedStep = -1;
+    int  lastWriteStepObs = -1;   // previous writeStep, for lap-wrap (arrival) detection
 
     // Piano-roll per-voice visibility (bit v = voice v shown). Default all on. Persisted.
     uint16_t rollVoiceMask = 0xFFFF;
@@ -161,8 +207,22 @@ struct Lantern : Module {
         int writeStep = (eng.lastStepResult.forStep >= 0 && eng.lastStepResult.forStep < 16)
                         ? eng.lastStepResult.forStep : step;
 
+        // LAP ARRIVAL: the playhead crossed the lap boundary since the last sample — the write
+        // step moved AGAINST the travel direction (forward: new < old; reverse: new > old). A
+        // note that held its gate OUT of the previous lap is still sounding here, but its onset
+        // bar lives on the PREVIOUS lap's cells (clipped at the far edge) and cannot cover this
+        // lap's tail — so without special handling the tail renders as nothing (isMidTail skip)
+        // and a legato join landing on it looks like teal-after-a-rest. recordCell turns the
+        // FIRST tail cell of the lap into a drawable continuation bar instead. (A jump that
+        // moves against travel also flags this; its covering onset is likewise elsewhere, so
+        // drawing the tail is the truthful render there too.)
+        const bool lapArrival = (lastWriteStepObs >= 0) && (eng.lastPlayDir < 0
+                                ? (writeStep > lastWriteStepObs)
+                                : (writeStep < lastWriteStepObs));
+        lastWriteStepObs = writeStep;
+
         // Row 0 = mono / V1.
-        recordCell(0, writeStep, eng.gs, dec, accentedMono, lenSteps, monoSlur, monoSlur, eng.lastPlayDir);
+        recordCell(0, writeStep, eng.gs, dec, accentedMono, lenSteps, monoSlur, monoSlur, eng.lastPlayDir, lapArrival);
 
         // Rows 1..numPolyVoices = poly voices 2.. . A poly voice follows mono's
         // gate TYPE (retrigger/tie/legato) but can independently REST (then it's
@@ -177,7 +237,7 @@ struct Lantern : Module {
             // mono is just holding, monoSlur=0) would otherwise draw a lead outline floating outside
             // mono's chain — the "legato lead note outside the mono envelope" symptom. The voice's
             // commitment is unchanged; only the marker is gated.
-            recordCell(v + 1, writeStep, pv.gs, dec, pv.accented, lenSteps, voiceSlur, monoSlur, eng.lastPlayDir);
+            recordCell(v + 1, writeStep, pv.gs, dec, pv.accented, lenSteps, voiceSlur, monoSlur, eng.lastPlayDir, lapArrival);
         }
         // Voices beyond numPolyVoices → mark inactive.
         for (int v = eng.numPolyVoices; v < 15; ++v)
@@ -190,7 +250,8 @@ struct Lantern : Module {
     // `monoLeading` = mono's slurForward (whether mono is leading a slur). Used to gate the
     // poly lead marker so a per-voice lead never floats outside mono's chain.
     void recordCell(int voice, int step, const GateState& gs, MonoDecision dec,
-                    bool accented, float lenSteps, bool slurFwd, bool monoLeading, int playDir) {
+                    bool accented, float lenSteps, bool slurFwd, bool monoLeading, int playDir,
+                    bool lapArrival = false) {
         Cell& c = cells[voice][step];
         // A cell sounds if THIS voice's own gate is up. recordCell is called for mono AND each
         // poly voice with the SAME mono 'dec', so 'dec' must NOT drive sounding — a poly voice
@@ -215,6 +276,15 @@ struct Lantern : Module {
         //       colour, draw no fresh type and no lead marker.
         const bool heldOverTail = (gs.gatePulseRemain <= 0) && (gs.holdRemain > 0.0001f);
 
+        // WRAP-ARRIVAL TAIL: this is the first cell of a new lap and this voice is mid-tail —
+        // the note it continues started LAST lap, so no onset bar this lap can cover it. Render
+        // THIS cell as a continuation bar (remaining length from the gate countdown, the note's
+        // own type colour, held-in caret, no onset tick) instead of skipping it. Later tail
+        // cells of the same note stay isMidTail — this bar's fractional width covers them.
+        const bool wrapTail = lapArrival
+                           && (dec == MonoDecision::MidNote || heldOverTail)
+                           && (gs.gatePulseRemain > 0);
+
         c.pitchV      = gs.currentPitchV;
         c.playDir     = (playDir < 0) ? -1 : +1;
         // TRUE fractional length from the gate's pulse countdown (the sole gate-close
@@ -229,6 +299,11 @@ struct Lantern : Module {
                             : lenSteps;
         }
         c.accented    = accented;   // orthogonal overlay (render brightens/marks), NOT a type
+        // SLEG membership: the voice's OWN slurMember (set at every articulation alongside
+        // lastNoteType) — per-voice for the same reason type is. A held-over tail's value is
+        // stale from the previous note, but such cells are isMidTail and the render skips
+        // them, so no gating needed here.
+        c.slurMember  = gs.slurMember;
         // heldIn = the gate carried over from the previous bar. This is about RHYTHM
         // continuity (the gate held across the boundary), which is identical for a tie and a
         // legato — the only difference between them is whether the note CV changes (Legato =
@@ -238,7 +313,8 @@ struct Lantern : Module {
         // over the boundary.) MidNote is the tail of an already-shown note; also continues.
         c.heldIn      = (gs.lastNoteType == GateState::NoteType::Tie ||
                          gs.lastNoteType == GateState::NoteType::Legato ||
-                         dec == MonoDecision::MidNote);
+                         dec == MonoDecision::MidNote)
+                      || wrapTail;   // arrival bar: the note carried over the lap boundary
         // heldOut = this note holds its gate high PAST the last step, by EITHER mechanism:
         //   (1) a LONG note whose length extends past this step (holdRemain > 1), or
         //   (2) a LEGATO LEAD that committed to hold its gate forward (slurFwd). With
@@ -252,7 +328,8 @@ struct Lantern : Module {
         //  Inactive before heldIn is set, and Tie/Legato/LegatoMax/MidNote are all genuine
         //  connections — so the two carets are symmetric and truthful.)
         c.heldOut     = (gs.holdRemain > 1.0001f) || slurFwd;
-        c.isMidTail   = (dec == MonoDecision::MidNote) || heldOverTail;   // gate tail, not a new event
+        c.isMidTail   = ((dec == MonoDecision::MidNote) || heldOverTail)
+                      && !wrapTail;   // arrival bar draws; later tail cells stay covered by it
 
         // Note-TYPE is single/tie/legato only (accent is a separate overlay so an
         // accented tie still reads as a tie). Read the VOICE'S OWN articulation
@@ -263,7 +340,7 @@ struct Lantern : Module {
         // so it is correct with perVoiceArticulation on OR off.)
         // A MidNote is the tail of an already-shown note — keep the old base colour for it
         // (isMidTail drives its rendering as a continuation), so tails are unchanged.
-        if (dec == MonoDecision::MidNote) {
+        if (dec == MonoDecision::MidNote && !wrapTail) {
             c.type = lantern::NoteType::Single;
         } else switch (gs.lastNoteType) {
             case GateState::NoteType::Tie:    c.type = lantern::NoteType::Tie;    break;
@@ -279,7 +356,9 @@ struct Lantern : Module {
         // monoSlur=0) does NOT draw a lead outline floating outside mono's chain — the "legato lead
         // outside the mono envelope" symptom. For mono (row 0) slurFwd == monoLeading, so this is
         // unchanged. A held-over tail is never a lead (stale slurFwd, continuation not a chain start).
-        c.leadsLegato = slurFwd && monoLeading && (c.type == lantern::NoteType::Single) && !heldOverTail;
+        c.leadsLegato = slurFwd && monoLeading && (c.type == lantern::NoteType::Single)
+                     && !heldOverTail && !wrapTail;   // the arrival is a continuation, its onset
+                                                      // (last lap) already carries the outline
     }
 };
 
@@ -306,6 +385,21 @@ struct LanternDisplay : widget::Widget {
         const float W = box.size.x, H = box.size.y;
         const float laneH = H / N_VOICES;
         const float gutter = W * GUTTER_FRAC;
+
+        // LCD ground: DARK on BOTH themes. The panel's display well follows the host theme
+        // (light #d4d6d9 on the light panel), but the cells encode state in colour AND alpha —
+        // on a light ground a low-alpha cell washes out and reads as ABSENT, misreporting data
+        // (see the note on LanternWidget). So draw our own dark well over the panel's, same rule
+        // as SandsVisualEditorV4::setTheme ('theme the panel, leave the screen alone'). Inset a
+        // hair so the panel's wellring bezel still frames it — a light bezel round a dark well
+        // reads as a recessed screen. Matches gen_lantern.py's dark well (#0f1114).
+        {
+            const float inset = 1.f;
+            nvgBeginPath(vg);
+            nvgRoundedRect(vg, inset, inset, W - 2.f * inset, H - 2.f * inset, mm2px(1.2f));
+            nvgFillColor(vg, nvgRGB(0x0f, 0x11, 0x14));
+            nvgFill(vg);
+        }
 
         auto font0 = APP->window->loadFont(rack::asset::system("res/fonts/DejaVuSans-Bold.ttf"));
         if (!font0) font0 = APP->window->uiFont;
@@ -414,6 +508,54 @@ struct LanternDisplay : widget::Widget {
         }
         auto font = font0;
         if (!font) return;
+
+        // Faint lane separators over the dark well, matching gen_lantern.py's dark lanesep
+        // (#20242b) so the 16 lanes stay delineated on both themes (the flat well otherwise
+        // covered the panel's own separators). Grid view only — the roll view has its own
+        // key-row structure. Drawn on the base layer, under the note bars (drawLayer 1).
+        {
+            const float inset = 1.f;
+            nvgStrokeColor(vg, nvgRGB(0x20, 0x24, 0x2b));
+            nvgStrokeWidth(vg, 0.75f);
+            for (int v = 1; v < N_VOICES; ++v) {
+                const float y = v * laneH;
+                nvgBeginPath(vg);
+                nvgMoveTo(vg, inset, y);
+                nvgLineTo(vg, W - inset, y);
+                nvgStroke(vg);
+            }
+        }
+
+        // Vertical step grid — the time axis, previously invisible. Three tiers of weight so
+        // the eye reads the metre without the lines competing with the note bars:
+        //   • 16th steps (every column)      — faintest; the fundamental grid Monsoon runs on
+        //   • quarter-bar (steps 4, 8, 12)   — medium; the four beats of a 4/4 bar of 1/16s
+        //   • start / end boundary (0 and 16)— brightest; the loop extent, otherwise unseeable
+        // Same gridX/stepW as the bars and playhead (drawGrid, ~600) so lines sit on cell
+        // edges exactly. Base layer, under the bars. dots = the right-hand heldOut caret gutter.
+        {
+            const float dots   = W * DOTS_FRAC;
+            const float gridX  = gutter;
+            const float gridW  = W - gutter - dots;
+            const float stepW  = gridW / N_STEPS;
+            const float yTop = 1.f, yBot = H - 1.f;
+            auto vline = [&](float x, NVGcolor col, float w) {
+                nvgBeginPath(vg);
+                nvgStrokeColor(vg, col); nvgStrokeWidth(vg, w);
+                nvgMoveTo(vg, x, yTop); nvgLineTo(vg, x, yBot); nvgStroke(vg);
+            };
+            // faint 16th lines first (interior only; skip beats + boundaries, drawn heavier below)
+            for (int s = 1; s < N_STEPS; ++s) {
+                if (s % 4 == 0) continue;
+                vline(gridX + s * stepW, nvgRGB(0x1c, 0x20, 0x27), 0.5f);
+            }
+            // quarter-bar beats (4, 8, 12)
+            for (int s = 4; s < N_STEPS; s += 4)
+                vline(gridX + s * stepW, nvgRGB(0x33, 0x39, 0x43), 0.9f);
+            // start / end boundaries
+            vline(gridX,                 nvgRGB(0x50, 0x57, 0x62), 1.2f);
+            vline(gridX + N_STEPS * stepW, nvgRGB(0x50, 0x57, 0x62), 1.2f);
+        }
 
         const int ph = module->lastObservedStep;
 
@@ -566,9 +708,11 @@ struct LanternDisplay : widget::Widget {
                 nvgFill(vg);
 
                 // Legato-LEAD marker: a note that initiates a slur gets a distinct outline
-                // (amber, the same accent-family hue as the wraparound carets) drawn OVER its
-                // normal fill, so the lead intent is visible at the chain's start regardless of
-                // the note's base colour. Non-destructive: fill colour is unchanged.
+                // (amber -- the CONNECTION-family hue shared with the wraparound carets and
+                // the slur underline; NOT the accent hue, which is the brand-red top edge)
+                // drawn OVER its normal fill, so the lead intent is visible at the chain's
+                // start regardless of the note's base colour. Non-destructive: fill colour is
+                // unchanged.
                 if (c.leadsLegato) {
                     nvgBeginPath(vg);
                     nvgRoundedRect(vg, bx + 1.0f, yc - barH * 0.5f + 0.5f,
@@ -576,6 +720,20 @@ struct LanternDisplay : widget::Widget {
                     nvgStrokeColor(vg, nvgRGB(0xe0, 0xa8, 0x1c));   // amber lead outline
                     nvgStrokeWidth(vg, 1.4f);
                     nvgStroke(vg);
+                }
+
+                // SLUR UNDERLINE (SLEG): a thin amber bar along the bottom edge of every cell
+                // whose note is a slur member — musical notation's slur arc, flattened for an
+                // LED grid. An underlined RUN spans exactly one fused GATE (the lead's amber
+                // outline marks where it starts); the cell edges inside the run are the STEP
+                // strikes; the underline itself is the SLEG mask. Same amber family as the
+                // lead outline so all slur semantics share one hue. Non-destructive overlay.
+                if (c.slurMember) {
+                    nvgBeginPath(vg);
+                    nvgRect(vg, bx + 0.5f, yc + barH * 0.5f + 1.0f,
+                            std::max(1.5f, bw - 1.f), 1.5f);
+                    nvgFillColor(vg, nvgRGB(0xe0, 0xa8, 0x1c));
+                    nvgFill(vg);
                 }
 
 
@@ -783,6 +941,13 @@ struct LanternDisplay : widget::Widget {
                     nvgStrokeWidth(vg, 1.2f);
                     nvgStroke(vg);
                 }
+                if (c.slurMember) {  // SLEG underline (see grid view) — under the note's bottom edge
+                    nvgBeginPath(vg);
+                    nvgRect(vg, bx + 0.5f, y + std::max(1.5f, rowH - 1.f) - 0.75f,
+                            std::max(1.5f, bw - 1.f), 1.25f);
+                    nvgFillColor(vg, nvgRGB(0xe0, 0xa8, 0x1c));
+                    nvgFill(vg);
+                }
             }
         }
 
@@ -826,6 +991,25 @@ struct LanternDisplay : widget::Widget {
         Widget::onButton(e);
     }
 
+    // Mouse wheel scrolls the piano-roll viewport vertically — the natural gesture the
+    // ROLL_SCROLL_PARAM knob stands in for. Wheel up = view higher octaves. Writes the
+    // param directly (snap-enabled, clamped to its 0..max range), so it stays a normal
+    // param edit: undo, automation and the knob-as-indicator all keep working. Grid mode
+    // ignores the wheel (it has no vertical scroll). e.scrollDelta.y is +up / -down.
+    void onHoverScroll(const event::HoverScroll& e) override {
+        if (module && module->params[Lantern::ROLL_PARAM].getValue() > 0.5f
+            && std::abs(e.scrollDelta.y) > 0.f) {
+            auto* pq = module->paramQuantities[Lantern::ROLL_SCROLL_PARAM];
+            const float lo = pq->getMinValue(), hi = pq->getMaxValue();
+            const float cur = module->params[Lantern::ROLL_SCROLL_PARAM].getValue();
+            const float next = clamp(cur + (e.scrollDelta.y > 0.f ? 1.f : -1.f), lo, hi);
+            if (next != cur) module->params[Lantern::ROLL_SCROLL_PARAM].setValue(next);
+            e.consume(this);   // don't let the wheel scroll the rack behind the display
+            return;
+        }
+        Widget::onHoverScroll(e);
+    }
+
     // Base colour per note type. Accent is drawn as a separate overlay (brighter
     // outline / brand-red marker) on top of these, so an accented note keeps its
     // tie/legato/single identity.
@@ -842,9 +1026,35 @@ struct LanternDisplay : widget::Widget {
 
 // ── Module widget ────────────────────────────────────────────────────────────
 struct LanternWidget : ModuleWidget {
+    // Panel theme. Lantern_panel_light.svg has existed and shipped all along -- this widget
+    // simply never used it, hard-loading the dark panel unconditionally. Same swap as the
+    // Sands expanders (StraitsEastSandsVisual): follow the connected Monsoon, so one toggle
+    // on Monsoon themes the whole suite.
+    //
+    // The swap is trivially safe here because the panel carries NO text: both SVGs are 19
+    // lines / 8 rects / 6 circles and nothing else, and every nvgText in this file is inside
+    // LanternDisplay, i.e. on the LCD. So no label can be left in the wrong colour -- unlike
+    // Monsoon, where panel text is drawn at runtime and that split is the root of the
+    // outstanding label work.
+    //
+    // (Corollary worth fixing separately: the panel has no silkscreen at all. VIEW / ZOOM /
+    //  FOLLOW / DISPLAY are named via configSwitch so they tooltip, but nothing is printed
+    //  beside the controls.)
+    //
+    // The LCD is deliberately NOT themed. LanternDisplay keeps its dark ground on both
+    // themes because its cell colours are high-luminance and tuned against dark, and -- the
+    // real reason -- the grid encodes state in colour AND alpha, so on a light ground a
+    // low-alpha cell washes out and reads as ABSENT rather than quiet. That would make the
+    // display misreport the data. Theme the panel, leave the screen alone (same rule as
+    // SandsVisualEditorV4::setTheme).
+    std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
+    int lastThemeLight = -1;   // -1 = unset, forces the first apply
+
     LanternWidget(Lantern* module) {
         setModule(module);
-        // Panel SVG generated by panel_src/gen_lantern.py (dark; light theme swap TODO).
+        // Panel SVGs generated by panel_src/gen_lantern.py.
+        panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/Lantern_panel_dark.svg"));
+        panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/Lantern_panel_light.svg"));
         setPanel(createPanel(asset::plugin(pluginInstance, "res/panels/Lantern_panel_dark.svg")));
 
         // Screws (C++ RedScrew, matching the family).
@@ -881,6 +1091,24 @@ struct LanternWidget : ModuleWidget {
             mm2px(Vec(70.f, 118.f)), module, Lantern::ROLL_SCROLL_PARAM));
         addParam(createParamCentered<Trimpot>(
             mm2px(Vec(95.f, 118.f)), module, Lantern::ROLL_COLOR_PARAM));
+    }
+    void step() override {
+        ModuleWidget::step();
+        if (!module) return;
+        // Follow the connected Monsoon. If none is attached, hold the last theme rather than
+        // snapping to dark -- matches the Sands expanders, which return early without a host.
+        Monsoon* mon = redDot::findMonsoonEitherSide(module);
+        if (!mon) return;
+        const int wantLight = mon->lightTheme ? 1 : 0;
+        if (wantLight == lastThemeLight) return;
+        lastThemeLight = wantLight;
+        for (Widget* child : children) {
+            if (auto* sp = dynamic_cast<app::SvgPanel*>(child)) {
+                sp->setBackground(wantLight ? panelSvgLight : panelSvgDark);
+                break;
+            }
+        }
+        // NB no display retheme here, by design -- see the note at the top of this struct.
     }
 };
 

@@ -31,6 +31,11 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_object_set_new(root, "restBeatsLegato",  json_boolean(m->engine.restBeatsLegato));
     json_object_set_new(root, "boundaryInterrupt", json_boolean(m->engine.boundaryInterrupt));
     json_object_set_new(root, "perVoiceArticulation", json_boolean(m->engine.perVoiceArticulation));
+    // Per-lane direction: the 4-state LaneDir enum per strand (Forward/Reverse/Pendulum/PingPong).
+    // Also saves the legacy sign + pendulum fields for backward compat with older patches.
+    // Step 3: laneDirV is NOT persisted here any more — East's direction bank is poly
+    // direction's home and Rack persists it as module params. Two persisted homes for one
+    // datum is the bug this arc kept hitting.
     json_object_set_new(root, "modVizMonsoonOther",  json_boolean(m->modVizMonsoonOther));
     json_object_set_new(root, "modVizEast",  json_boolean(m->modVizEast));
     json_object_set_new(root, "modVizWest",  json_boolean(m->modVizWest));
@@ -159,6 +164,40 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_object_set_new(root, "rhythmPattern", rarr);
     json_object_set_new(root, "melodyPitchV", marr);
 
+    // EditorState.laneDir (migrated out of params[]; params were auto-saved, fields are not).
+    // See NUM_PARAMS_MIGRATION.md. 96 floats = 16 voice-bank slots x 6 lanes.
+    json_t* ld = json_array();
+    for (int i = 0; i < 96; ++i) json_array_append_new(ld, json_real(m->editor.laneDir[i]));
+    json_object_set_new(root, "editorLaneDir", ld);
+
+    // VARLEG deleg (30) + atten (96), migrated out of params[] (NUM_PARAMS_MIGRATION.md).
+    json_t* vd = json_array();
+    for (int i = 0; i < 30; ++i) json_array_append_new(vd, json_real(m->editor.varlegDeleg[i]));
+    json_object_set_new(root, "editorVarlegDeleg", vd);
+    json_t* va = json_array();
+    for (int i = 0; i < 96; ++i) json_array_append_new(va, json_real(m->editor.varlegAtten[i]));
+    json_object_set_new(root, "editorVarlegAtten", va);
+
+    // MACRO owner (64) + send (256) + atten (256), migrated out of params[]. Tap re-homed to
+    // an expander param, so it persists via the normal Rack param path -- not here.
+    json_t* mo = json_array();
+    for (int i = 0; i < 64; ++i) json_array_append_new(mo, json_real(m->editor.macroOwn[i]));
+    json_object_set_new(root, "editorMacroOwn", mo);
+    json_t* ms = json_array();
+    for (int i = 0; i < 256; ++i) json_array_append_new(ms, json_real(m->editor.macroSend[i]));
+    json_object_set_new(root, "editorMacroSend", ms);
+    json_t* ma = json_array();
+    for (int i = 0; i < 256; ++i) json_array_append_new(ma, json_real(m->editor.macroAtten[i]));
+    json_object_set_new(root, "editorMacroAtten", ma);
+
+    // V1 (East-alone) LOR/spread backup + its written-once guard.
+    json_t* lb = json_array();
+    for (int i = 0; i < 288; ++i) json_array_append_new(lb, json_real(m->editor.lorBase[i]));
+    json_object_set_new(root, "editorLorBase", lb);
+    json_t* sp = json_array();
+    for (int i = 0; i < 64; ++i) json_array_append_new(sp, json_real(m->editor.spread[i]));
+    json_object_set_new(root, "editorSpread", sp);
+
     return root;
 }
 
@@ -175,6 +214,18 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     if (auto j = json_object_get(root, "restBeatsLegato"))   m->engine.restBeatsLegato   = json_boolean_value(j);
     if (auto j = json_object_get(root, "boundaryInterrupt"))  m->engine.boundaryInterrupt  = json_boolean_value(j);
     if (auto j = json_object_get(root, "perVoiceArticulation")) m->engine.perVoiceArticulation = json_boolean_value(j);
+    // Step 4: laneDir and laneDirV are NOT restored here any more. Direction is now
+    // expander-homed (Mono's dirDispId for mono, East's dirId/monoDirId bank for poly).
+    // Rack restores the expander params, then MonsoonExpanderManager::sync() pushes them
+    // to the engine. No legacy fallback needed (pre-release, no patches to preserve).
+    // Step 3: laneDirV is NOT restored here any more — East's direction bank is poly
+    // direction's home and Rack restores it as module params, after which
+    // MonsoonExpanderManager::sync() pushes it into the engine (which is a derived cache).
+    // With no East in the rack, sync() resets poly direction to Forward, so it no longer
+    // outlives its editor.
+    if (auto j = json_object_get(root, "laneFlipQuant"))
+        m->engine.laneFlipQuant = (json_integer_value(j) == 1) ? SequencerEngine::LaneFlipQuant::Phrase
+                                                               : SequencerEngine::LaneFlipQuant::StepEdge;
     if (auto j = json_object_get(root, "resetIndexOnModeChange")) m->resetIndexOnModeChange = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "cv2Mode")) m->cv2Mode = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "gate1Assign")) m->gate1Assign = (int)json_integer_value(j);
@@ -339,5 +390,51 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
             for (size_t i = 0; i < 16 && i < json_array_size(j); ++i)
                 m->melodyPitchV[i] = (float)json_real_value(json_array_get(j, i));
         }
+    }
+
+    // EditorState.laneDir (NUM_PARAMS_MIGRATION.md). Missing key = pre-migration patch ->
+    // fields keep their Forward (0) defaults, which matches the old default param value.
+    if (auto j = json_object_get(root, "editorLaneDir")) {
+        if (json_is_array(j)) {
+            for (size_t i = 0; i < 96 && i < json_array_size(j); ++i) {
+                float v = (float)json_real_value(json_array_get(j, i));
+                m->editor.laneDir[i] = math::clamp(v, 0.f, 3.f);
+            }
+        }
+    }
+    if (auto j = json_object_get(root, "editorVarlegDeleg")) {
+        if (json_is_array(j))
+            for (size_t i = 0; i < 30 && i < json_array_size(j); ++i)
+                m->editor.varlegDeleg[i] = (float)json_real_value(json_array_get(j, i));
+    }
+    if (auto j = json_object_get(root, "editorVarlegAtten")) {
+        if (json_is_array(j))
+            for (size_t i = 0; i < 96 && i < json_array_size(j); ++i)
+                m->editor.varlegAtten[i] = (float)json_real_value(json_array_get(j, i));
+    }
+    if (auto j = json_object_get(root, "editorMacroOwn")) {
+        if (json_is_array(j))
+            for (size_t i = 0; i < 64 && i < json_array_size(j); ++i)
+                m->editor.macroOwn[i] = (float)json_real_value(json_array_get(j, i));
+    }
+    if (auto j = json_object_get(root, "editorMacroSend")) {
+        if (json_is_array(j))
+            for (size_t i = 0; i < 256 && i < json_array_size(j); ++i)
+                m->editor.macroSend[i] = (float)json_real_value(json_array_get(j, i));
+    }
+    if (auto j = json_object_get(root, "editorMacroAtten")) {
+        if (json_is_array(j))
+            for (size_t i = 0; i < 256 && i < json_array_size(j); ++i)
+                m->editor.macroAtten[i] = (float)json_real_value(json_array_get(j, i));
+    }
+    if (auto j = json_object_get(root, "editorLorBase")) {
+        if (json_is_array(j))
+            for (size_t i = 0; i < 288 && i < json_array_size(j); ++i)
+                m->editor.lorBase[i] = (float)json_real_value(json_array_get(j, i));
+    }
+    if (auto j = json_object_get(root, "editorSpread")) {
+        if (json_is_array(j))
+            for (size_t i = 0; i < 64 && i < json_array_size(j); ++i)
+                m->editor.spread[i] = (float)json_real_value(json_array_get(j, i));
     }
 }

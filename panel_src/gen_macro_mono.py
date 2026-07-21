@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import dotmod_design as D
 from dotmod_design import px, theme
 
-def gen_macro(dark, W_MM=218.44):   # 43HP (42 + 1HP for the per-lane owner-source block)
+def gen_macro(dark, W_MM=243.84):   # 48HP (44 + 4HP for dir_mod + prob_out jack columns)
     # Macro mirrors the East visual's 40HP geometry exactly (same columns); it does
     # the same spread job but GLOBAL (3 lanes) rather than per-lane. Must match
     # StraitsSandsMacroVisual.hpp: COL_J1=8 J2=18 A1=30 A2=39 SPREAD_X=49 ED_X=58.
@@ -18,7 +18,7 @@ def gen_macro(dark, W_MM=218.44):   # 43HP (42 + 1HP for the per-lane owner-sour
     TAB_TOP, TAB_ROW_H = 3.0, 5.0
     TAB_TOP_OFFSET_MM = 5.0
     # Mirrors src/ui/SandsGrid.hpp: lane 0 at 14mm, 4 lanes x 14mm = 56 (tabs live above, 3..13).
-    ED_X=88.; ED_W=111.; OWNER_X=205.; PROB_OUT_X=212.; ED_Y=14.; ED_H=56.
+    ED_X=88.; ED_W=111.; OWNER_X=205.; DIR_X=212.; DIR_MOD_X=220.; PROB_OUT_X=236.; ED_Y=14.; ED_H=56.
     ED_LANE_H=ED_H/N
     # Left-control rows align with the EDITOR lane centres (must match the hpp's rowY).
     def rowY(r): return ED_Y+(r+0.5)*ED_LANE_H
@@ -113,12 +113,27 @@ def gen_macro(dark, W_MM=218.44):   # 43HP (42 + 1HP for the per-lane owner-sour
         (lx,ly),(sx,sy) = TAP_XY[l]
         A(f'<circle id="param_taplor_{l}" cx="{px(lx):.2f}" cy="{px(ly):.2f}" r="0.5" fill="none" stroke="none"/>')
         A(f'<circle id="param_tapspr_{l}" cx="{px(sx):.2f}" cy="{px(sy):.2f}" r="0.5" fill="none" stroke="none"/>')
+    # Direction cells (param_dir_<lane>) — per-lane direction toggle, at DIR_X, one per lane.
+    # Uses EDITOR lane order (row 0..3 = MEL/OCT/REST/ACC), matching East's convention
+    # and the C++ dirDispId(editorLane). NOT engine lane order — avoids the conversion
+    # that other kit markers (cvId/attenId) require via DISPLAY_ORDER.
+    for row in range(4):
+        A(f'<circle id="param_dir_{row}" cx="{px(DIR_X):.2f}" cy="{px(rowY(row)):.2f}" '
+          f'r="0.5" fill="none" stroke="none"/>')
+    # Direction gate-mod jacks (input_dir_mod_<lane>) — mono, gate cycles direction.
+    for row in range(4):
+        A(f'<circle id="input_dir_mod_{row}" cx="{px(DIR_MOD_X):.2f}" cy="{px(rowY(row)):.2f}" '
+          f'r="0.5" fill="none" stroke="none"/>')
+    # Probability-out jacks (output_prob_<lane>) — 4 poly prob CV outs.
+    for row in range(4):
+        A(f'<circle id="output_prob_{row}" cx="{px(PROB_OUT_X):.2f}" cy="{px(rowY(row)):.2f}" '
+          f'r="0.5" fill="none" stroke="none"/>')
     A('</g>')
     A('</svg>')
     return "\n".join(L)
 
 def gen_mono(dark):
-    t=theme(dark); W_MM,H_MM=218.44,128.5; PW,PH=px(W_MM),px(H_MM)   # 43HP (42 + 1HP owner block)
+    t=theme(dark); W_MM,H_MM=243.84,128.5; PW,PH=px(W_MM),px(H_MM)   # 48HP (44 + 4HP for mod + prob_out jacks)
     # Mirrors src/ui/SandsGrid.hpp: 6 lanes x 14mm from 14 → bottom 98 (was 108, laneH 15.667).
     ROW_TOP,ROW_BOT,N=14.,98.,6
     def laneY(l): return ROW_TOP+(l+0.5)*(ROW_BOT-ROW_TOP)/N
@@ -129,7 +144,10 @@ def gen_mono(dark):
     SPR_BASE_X,SPR_CV_X,SPR_ATTEN_X=62.,71.,80.
     N_SPREAD=4                                  # REST/MEL/OCT + ACCENT (poly lanes)
     SPR_TO_EDITOR=[2,0,1,3]                      # spread index (REST/MEL/OCT/ACCENT) → editor lane; matches cpp ENGINE_LANE_TO_EDITOR
-    ED_X=88.; ED_W=111.; OWNER_X=205.; PROB_OUT_X=212.  # +1HP owner block; ED_W decoupled from PROB_OUT_X
+    # Jack columns follow the TOGGLE order left->right (owner cell at OWNER_X, then dir cell
+    # at DIR_X), so deleg_mod sits under the owner cell and dir_mod under the dir cell instead
+    # of crossing over.
+    ED_X=88.; ED_W=111.; OWNER_X=205.; DIR_X=212.; DELEG_MOD_X=220.; DIR_MOD_X=228.; PROB_OUT_X=236.  # +4HP mod+prob_out columns
     # Editor recess spans the SAME band the left controls (laneY) divide, so the
     # live editor lanes (zero internal padding, even division) line up with the
     # left jacks/attens and the painted lanes.
@@ -184,12 +202,30 @@ def gen_mono(dark):
         A(D.kit_shape("param", 18+sidx, SPR_BASE_X, y))   # SPR_REST/MEL/OCT/ACCENT (18..21, engine order)
         A(D.kit_shape("input", 18+sidx, SPR_CV_X, y))     # SPR_CV (18..21)
         A(D.kit_shape("param", 40+sidx, SPR_ATTEN_X, y))  # SPR_ATTEN (40..43)
+    # Direction cells (param_dir_<lane>) — per-lane direction toggle, at DIR_X, one per lane (0..5).
+    for lane in range(6):
+        A(f'<circle id="param_dir_{lane}" cx="{px(DIR_X):.2f}" cy="{px(laneY(lane)):.2f}" '
+          f'r="0.5" fill="none" stroke="none"/>')
+    # Direction gate-mod jacks (input_dir_mod_<lane>) — mono, gate cycles direction. 6 lanes.
+    for lane in range(6):
+        A(f'<circle id="input_dir_mod_{lane}" cx="{px(DIR_MOD_X):.2f}" cy="{px(laneY(lane)):.2f}" '
+          f'r="0.5" fill="none" stroke="none"/>')
+    # Delegation gate-mod jacks (input_deleg_mod_<lane>) — mono, gate flips delegation. Lanes 0..3.
+    for lane in range(4):
+        A(f'<circle id="input_deleg_mod_{lane}" cx="{px(DELEG_MOD_X):.2f}" cy="{px(laneY(lane)):.2f}" '
+          f'r="0.5" fill="none" stroke="none"/>')
+    # Probability-out jacks (output_prob_<lane>) — 6 mono prob CV outs.
+    for lane in range(6):
+        A(f'<circle id="output_prob_{lane}" cx="{px(PROB_OUT_X):.2f}" cy="{px(laneY(lane)):.2f}" '
+          f'r="0.5" fill="none" stroke="none"/>')
     A('</g>')
     A('</svg>')
     return "\n".join(L)
 
-for fn,base in [(gen_macro,"StraitsSandsMacroVisual_40HP"),(gen_mono,"SandsMonoVisual_40HP")]:
+import os as _os
+_outdir = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "res", "panels")
+for fn,base in [(gen_macro,"StraitsSandsMacroVisual_48HP"),(gen_mono,"SandsMonoVisual_48HP")]:
     for dark,suf in [(True,""),(False,"_light")]:
         svg=fn(dark); name=f"{base}{suf}.svg"
-        with open(f"res/panels/{name}","w") as f: f.write(svg)
+        with open(_os.path.join(_outdir, name),"w") as f: f.write(svg)
         print(f"{name}: {len(svg):,} bytes")

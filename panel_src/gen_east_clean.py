@@ -2,10 +2,10 @@
 dot.modular panel system: Monsoon palette, title/footer DM mark, input-group
 recess, editor recess w/ header + lane separators, MBS+waves background motif,
 red corner screws. nanosvg-safe (no masks/gradients/text-for-controls)."""
-import math
+import math, os
 S = 75.0/25.4
 def px(mm): return round(mm*S, 2)
-W_MM, H_MM = 218.44, 128.5  # 43HP (42 + 1HP for the per-lane owner-source block)
+W_MM, H_MM = 243.84, 128.5  # 48HP (44 + 4HP for dir_mod + deleg_mod + prob_out jack columns)
 PW, PH = px(W_MM), px(H_MM)
 
 N = 4   # 4 lanes, one row each
@@ -18,7 +18,12 @@ TAB_TOP_OFFSET_MM = 5.0
 ED_X, ED_Y = 88.0, 14.0
 ED_W = 111.0        # editor width (fixed; no longer tied to PROB_OUT_X — matches hpp)
 OWNER_X = 205.0     # owner-source cell column, right of the editor (matches hpp)
-PROB_OUT_X = 212.0  # right-strip jack column, pushed right by the owner block (matches hpp)
+DIR_X = 212.0       # direction cell column (Fwd/Rev/Pend/PingPong), right of owner (matches hpp)
+# Jack columns follow the TOGGLE order left->right (owner/delegation cell, then dir cell),
+# so each jack sits under the control it modulates instead of crossing over.
+DELEG_MOD_X = 220.0 # delegation gate-mod jack column (gate flips local/delegated)
+DIR_MOD_X = 228.0   # direction gate-mod jack column (gate cycles Fwd→Rev→Pend→PingPong)
+PROB_OUT_X = 236.0  # right-strip jack column, pushed right by the mod jack columns (matches hpp)
 ED_H = 84.0   # 6 lanes x 14mm — East shows VARIATION/LEGATO (EAST_EXTRA_LANES.md stage 1)
 ED_LANES = 6  # editor lanes drawn; control rows stay N=4 (spread lanes only)
 ED_LANE_H = ED_H / ED_LANES
@@ -64,7 +69,8 @@ def dm_mark(cx_mm, cy_mm, r_mm, t):
 # groups) and place it via translate+scale into the title strip.
 import re as _re
 def logo_embed(dark, x_mm, y_mm, target_w_mm):
-    path = "res/logo/dot-modular-logo-dark.svg" if dark else "res/logo/dot-modular-logo-light.svg"
+    _dir = os.path.dirname(os.path.abspath(__file__))
+    path = os.path.join(_dir, "..", "res", "logo", "dot-modular-logo-dark.svg" if dark else "dot-modular-logo-light.svg")
     s = open(path).read()
     body = s[s.find('<g '):s.rfind('</svg>')]   # drop the two leading bg/accent rects
     # Nondestructive wordmark crop (viewBox-style zoom): strip the two <polyline>
@@ -256,12 +262,30 @@ def gen(dark):
     for lane in range(2):
         A(f'<circle id="param_owner_{4+lane}" cx="{px(OWNER_X):.2f}" cy="{px(rowY(4+lane)):.2f}" '
           f'r="0.5" fill="none" stroke="none"/>')
+    # Direction cells (param_dir_<lane>) — per-lane direction toggle (Fwd/Rev/Pend/PingPong),
+    # placed at DIR_X, one per editor lane (0..5). The widget binds a DirCell to each.
+    for lane in range(6):
+        A(f'<circle id="param_dir_{lane}" cx="{px(DIR_X):.2f}" cy="{px(rowY(lane)):.2f}" '
+          f'r="0.5" fill="none" stroke="none"/>')
+    # Direction gate-mod jacks (input_dir_mod_<lane>) — poly, gate cycles direction. 6 lanes.
+    for lane in range(6):
+        A(f'<circle id="input_dir_mod_{lane}" cx="{px(DIR_MOD_X):.2f}" cy="{px(rowY(lane)):.2f}" '
+          f'r="0.5" fill="none" stroke="none"/>')
+    # Delegation gate-mod jacks (input_deleg_mod_<lane>) — poly, gate flips delegation. All 6 lanes.
+    for lane in range(6):
+        A(f'<circle id="input_deleg_mod_{lane}" cx="{px(DELEG_MOD_X):.2f}" cy="{px(rowY(lane)):.2f}" '
+          f'r="0.5" fill="none" stroke="none"/>')
+    # Probability-out jacks (output_prob_<lane>) — 4 poly prob CV outs.
+    for lane in range(4):
+        A(f'<circle id="output_prob_{lane}" cx="{px(PROB_OUT_X):.2f}" cy="{px(rowY(lane)):.2f}" '
+          f'r="0.5" fill="none" stroke="none"/>')
     A(f'<circle id="light_connect" cx="{px(W_MM*0.5):.2f}" cy="{px(124.0):.2f}" r="0.5" fill="none" stroke="none"/>')
     A('</g>')
     A('</svg>')
     return "\n".join(L)
 
-for dark,name in [(True,"StraitsEastSandsVisual_40HP.svg"),(False,"StraitsEastSandsVisual_40HP_light.svg")]:
+_outdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "res", "panels")
+for dark,name in [(True,"StraitsEastSandsVisual_48HP.svg"),(False,"StraitsEastSandsVisual_48HP_light.svg")]:
     svg=gen(dark)
-    with open(f"res/panels/{name}","w") as f: f.write(svg)
+    with open(os.path.join(_outdir, name),"w") as f: f.write(svg)
     print(f"{name}: {len(svg):,} bytes ({PW} x {PH})")

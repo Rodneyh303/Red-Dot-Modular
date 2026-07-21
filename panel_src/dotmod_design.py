@@ -24,9 +24,11 @@ def theme(dark):
         steel="#6b7a86", ledblue="#2a80b0")
 
 # ── Real dot.modular wordmark embed (mask-free logo-{dark,light}.svg) ─────────
-def logo_embed(dark, x_mm, y_mm, target_w_mm, repo_root="."):
-    import re
-    path = f"{repo_root}/res/logo/dot-modular-logo-dark.svg" if dark else f"{repo_root}/res/logo/dot-modular-logo-light.svg"
+def logo_embed(dark, x_mm, y_mm, target_w_mm, repo_root=None):
+    import re, os
+    if repo_root is None:
+        repo_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+    path = os.path.join(repo_root, "res", "logo", "dot-modular-logo-dark.svg" if dark else "dot-modular-logo-light.svg")
     s = open(path).read()
     body = s[s.find('<g '):s.rfind('</svg>')]   # strip the logo's own bg + accent rects
     # Nondestructive wordmark crop (viewBox-style zoom): the source is 717x190 with big

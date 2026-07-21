@@ -48,6 +48,12 @@ void Monsoon::onSampleRateChange(const SampleRateChangeEvent& e) {
 Monsoon::Monsoon() {
         MonsoonConfigurator::setup(this);
 
+        // Unified LOR base store: identity default (len=16, off=0, rot=0) for every voice
+        // slot and bank, matching the old per-voice configParam defaults.
+        for (int slot = 0; slot < 16; ++slot)
+            for (int bank = 0; bank < 6; ++bank)
+                editor.lorBase[slot*18 + bank*3 + 0] = 16.f;
+
         // Seed RNGs with a random value — safe to call here (uses rack::random, not inputs[])
         rhythmSeedFloat = rack::random::uniform() * 10.f;
         melodySeedFloat = rack::random::uniform() * 10.f;
@@ -337,6 +343,11 @@ float Monsoon::semitoneToVolts(int semitone) {
     void Monsoon::handleRestart(bool manual, bool resetImmediate) {
         stepIndex = (startStep - 1 + 16) % 16;
         engine.totalStepsElapsed = 0; // Sync polymeters to "Beat 1" on hard reset
+        // Under the stateless model the lanes follow this for free (each is a pure function
+        // of totalStepsElapsed), so Beat 1 sync is automatic. resetLaneWalk() is belt-and-braces:
+        // redundant now, but it was MISSING when lanes had their own accumulators — RESET zeroed
+        // the master clock while every lane walked on, and polymeters silently stopped syncing.
+        engine.resetLaneWalk();
         engine.gs.reset();          // clears gate, hold, pitch, pulse, semiPlayRemain
         prevExtGate = false;
 
@@ -535,8 +546,22 @@ void Monsoon::process(const ProcessArgs& args) {
     // mirroring how Mode B repurposes gate1). The PhaseEngine emits the same
     // pulseEdge/sixteenthEdge/quarterEdge contract as the clock, plus a reverse flag.
     if (modeSelect == 4) {
-        phase.process(input.cv1, cachedCv1Connected, args.sampleTime, ppqnSetting);
-        if (cachedCv1Connected) bpm = phase.bpm;   // tempo follows the ramp's velocity
+        // Phase source: CV1 when patched, else the manual PHASE_PARAM knob (0..1 of the
+        // knob = 0..phaseInMax volts = one bar ramp). The knob path reports connected=true
+        // to the PhaseEngine so it drives the grid identically -- this is what lets a DAW
+        // automate PHASE_PARAM to run Mode E with no CV cable (e.g. Bitwig Grid phase out).
+        float phaseVolt;
+        bool  phaseDriven;
+        if (cachedCv1Connected) {
+            phaseVolt   = input.cv1;
+            phaseDriven = true;
+        } else {
+            // knob 0..1 -> 0..phaseInMax volts (one upward ramp cycle over the full range)
+            phaseVolt   = params[PHASE_PARAM].getValue() * phase.phaseInMax;
+            phaseDriven = true;
+        }
+        phase.process(phaseVolt, phaseDriven, args.sampleTime, ppqnSetting);
+        if (phaseDriven) bpm = phase.bpm;   // tempo follows the ramp's velocity (knob or CV)
         modeController->setPhaseReverse(phase.reverse);
         engine.pe.setReverseActive(phase.reverse);
         applyReversibleModeChange_();
@@ -614,8 +639,11 @@ void Monsoon::process(const ProcessArgs& args) {
         bool gridPulse = (modeSelect == 4) ? phase.pulseEdge : clock.pulseEdge;
         if (gridPulse) {
             engine.gs.tickPulse();
-            for (int i = 0; i < engine.numPolyVoices; ++i)
+            engine.gsStep.tickPulse();
+            for (int i = 0; i < engine.numPolyVoices; ++i) {
                 engine.voices[i].gs.tickPulse();
+                engine.voices[i].gsStep.tickPulse();
+            }
         }
         // Optimization: Only execute mode logic if a relevant trigger/state is active.
         // This avoids calling executeMode and its internal switch every sample for Modes A, B, C.
@@ -687,8 +715,11 @@ void Monsoon::process(const ProcessArgs& args) {
                 // post-jump gate state aligned with the landing position.
                 for (int pu = 0; pu < p16; ++pu) {
                     engine.gs.tickPulse();
-                    for (int i = 0; i < engine.numPolyVoices; ++i)
+                    engine.gsStep.tickPulse();
+                    for (int i = 0; i < engine.numPolyVoices; ++i) {
                         engine.voices[i].gs.tickPulse();
+                        engine.voices[i].gsStep.tickPulse();
+                    }
                 }
             }
             engine.pe.setReverseActive(savedReverse);
@@ -939,6 +970,12 @@ void Monsoon::process(const ProcessArgs& args) {
 
         // ── Deep Straits Sands Expanders (Control Rate Orchestration) ──
         expanderManager.sync(engine, spreadInterpMono);
+
+        // Change Alley: apply the pin remap ONCE here, after processDNA filled random_
+        // (both non-Sands and Sands paths) and sync pushed the current pins into pe.
+        // Rewrites random_ in place per pin; no-op at identity. Every consumer then
+        // reads its own bank and inherits the remap. (§3-REVISED single seam.)
+        engine.pe.applyChangeAlleyRemap();
         
         // Refresh Audio-Rate Caches (Throttled)
         cachedBpmParam = params[BPM_PARAM].getValue();
@@ -1035,6 +1072,7 @@ void init(rack::Plugin* p) {
 	p->addModel(modelMonsoon);
 	p->addModel(modelMonsoonInterchangeExpander);
 	p->addModel(modelMonsoonRafflesExpander);
+	p->addModel(modelMonsoonChangeAlleyExpander);
 	p->addModel(modelMonsoonJunctionExpander);
 	//p->addModel(modelMonsoonSandsExpander);
 	p->addModel(modelMonsoonStraitsExpander);

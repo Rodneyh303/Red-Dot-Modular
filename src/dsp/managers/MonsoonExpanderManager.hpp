@@ -7,6 +7,7 @@ class SequencerEngine;
 
 // Forward declarations
 struct MonsoonInterchangeExpander;
+struct MonsoonChangeAlleyExpander;
 struct MonsoonSandsExpander;
 struct MonsoonSandsVisualExpander;       // Mono visual DNA editor
 struct MonsoonStraitsExpander;
@@ -24,6 +25,7 @@ extern rack::Model* modelMonsoon;
 extern rack::Model* modelMonsoonInterchangeExpander;
 extern rack::Model* modelMonsoonRafflesExpander;
 extern rack::Model* modelMonsoonJunctionExpander;
+extern rack::Model* modelMonsoonChangeAlleyExpander;
 extern rack::Model* modelMonsoonSandsExpander;
 extern rack::Model* modelMonsoonSandsVisualExpander;
 extern rack::Model* modelMonsoonStraitsExpander;
@@ -42,9 +44,31 @@ extern rack::Model* modelLantern;   // note-output visualiser — suite member, 
  * It walks the left and right expansion chains to identify connected modules.
  */
 struct MonsoonExpanderManager {
+    // ── Single source of truth for WHO owns V1/mono direction on a lane ───────────
+    // The manager READS this to push laneDirPending_; East's V1 direction gate-mod WRITES
+    // through it. Both must agree, or the mod writes one store while the manager pushes
+    // another and the modulation silently does nothing (which is exactly what happened:
+    // East's ch0 mod wrote East's monoDirId while the manager was pushing Macro's cell at
+    // control rate, so V1 lanes 0..3 never moved). Encoding the precedence once is the point.
+    struct MonoDirSrc {
+        rack::Module* mod = nullptr;   // owning expander, or null if nothing owns the lane
+        int paramId = -1;              // its direction param for this lane (param-backed sources)
+        // East's V1 direction migrated from a param to Monsoon::editor.laneDir
+        // (NUM_PARAMS_MIGRATION.md). When the owner is East, the source is a FIELD, not a param:
+        // eastMonoLane >= 0 marks that, and the value is read/written via Monsoon's
+        // getMonoLaneDir/setMonoLaneDir(eastMonoLane) instead of params[paramId].
+        int eastMonoLane = -1;         // >=0 => field-backed (East V1); read via Monsoon accessor
+        bool valid() const { return mod && (paramId >= 0 || eastMonoLane >= 0); }
+        bool isField() const { return eastMonoLane >= 0; }
+    };
+    // lane = STRAND index 0..5. Precedence: Mono (if it owns the lane; it always owns
+    // VAR/LEG) → Macro (lanes 0..3 only; it has no VAR/LEG) → East's V1 slot → nothing.
+    MonoDirSrc monoDirAuthority(int lane) const;
+
     MonsoonInterchangeExpander*  cachedScaleExpander              = nullptr;
     rack::Module*                cachedRafflesExpander           = nullptr;
-    rack::Module*                cachedJunctionExpander              = nullptr;
+    rack::Module*                cachedJunctionExpander          = nullptr;
+    MonsoonChangeAlleyExpander*  cachedChangeAlleyExpander       = nullptr;
     //MonsoonSandsExpander*        cachedDnaExpander                = nullptr;
     MonsoonSandsVisualExpander*  cachedSandsVisualExpander        = nullptr;
     MonsoonStraitsExpander*      cachedPolyVoiceExpander          = nullptr;
@@ -71,7 +95,8 @@ struct MonsoonExpanderManager {
     void update(rack::Module* module) {
         cachedScaleExpander              = nullptr;
         cachedRafflesExpander           = nullptr;
-        cachedJunctionExpander              = nullptr;
+        cachedJunctionExpander          = nullptr;
+        cachedChangeAlleyExpander       = nullptr;
         //cachedDnaExpander                = nullptr;
         cachedSandsVisualExpander        = nullptr;
         cachedPolyVoiceExpander          = nullptr;
@@ -114,6 +139,9 @@ struct MonsoonExpanderManager {
                     if (!cachedRafflesExpander) cachedRafflesExpander = curr;
                 } else if (curr->model == modelMonsoonJunctionExpander) {
                     if (!cachedJunctionExpander) cachedJunctionExpander = curr;
+                } else if (curr->model == modelMonsoonChangeAlleyExpander) {
+                    if (!cachedChangeAlleyExpander)
+                        cachedChangeAlleyExpander = reinterpret_cast<MonsoonChangeAlleyExpander*>(curr);
                 // } else if (curr->model == modelMonsoonSandsExpander) {
                 //     if (!cachedDnaExpander) cachedDnaExpander = reinterpret_cast<MonsoonSandsExpander*>(curr);
                 //     dnaExpanderCount++;

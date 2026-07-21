@@ -17,7 +17,7 @@ Kit id markers (widget binds; voice v 0..15, v0 = mono/voice 1):
   light_connect
 """
 import math, os, re
-HP = 22
+HP = 26
 W  = HP * 5.08
 H  = 128.5
 S  = 75 / 25.4
@@ -46,12 +46,13 @@ MARGIN   = 5.0
 SPINE_W  = 10.0
 SPINE_CX = W/2
 SIDE_W   = (W - 2*MARGIN - SPINE_W) / 2
-TOP      = 20.0
-N_ROWS   = 8
-ROW_H    = 10.2
-KNOB_R   = 3.0
+TOP      = 16.0
+N_ROWS   = 6                    # 3 cols x 6/6/4 (col-major: voices 1-6, 7-12, 13-16)
+COLS     = [6, 6, 4]
+ROW_H    = 14.77                # 43.6px -- Compact(tight) arc dia 43.4px kisses, never crosses
+KNOB_R   = 4.5                  # painted preview under the Compact body (5.0mm)
 GRID_TOP = TOP + 2.0
-JACK_Y   = TOP + N_ROWS*ROW_H + 8.0
+JACK_Y   = TOP + N_ROWS*ROW_H + 6.5   # 111.1mm; logo band below
 
 def wave_field(A, t, x0, y0, w, h, colour, n=22):
     """Flowing contour lines (the straits' water) across (x0,y0,w,h). Dense field — many
@@ -121,41 +122,62 @@ def gen(dark):
     A(f'<line x1="{px(SPINE_CX)}" y1="{px(TOP)}" x2="{px(SPINE_CX)}" y2="{px(TOP+N_ROWS*ROW_H)}" '
       f'stroke="{t["spine"]}" stroke-width="{px(0.6)}"/>')
 
-    # ── knob grid: 2 columns per side x 8 rows = 16 per bank ──
-    # voice index mapping: row r (0..7), col c (0..1) → v = r*2 + c  (v0 = mono at top-left)
+    # ── knob grid: 3 columns per side, 6/6/4 = 16 per bank, COLUMN-major ──
+    # col 0 = voices 1-6 (v0..5, v0 = mono at top-left), col 1 = 7-12, col 2 = 13-16
+    # (4-knob col vertically centred: offset one row). Column position = voice range,
+    # which is what the 2x8 row-major grid could never say.
     def bank(kind, x_base, col_face, col_ring):
-        cw = SIDE_W/2
-        for r in range(N_ROWS):
-            for c in range(2):
-                v = r*2 + c
+        cw = SIDE_W/3
+        v = 0
+        for c, nrows in enumerate(COLS):
+            roff = (N_ROWS - nrows) / 2.0
+            for r in range(nrows):
                 cx = x_base + cw*(c+0.5)
-                cy = GRID_TOP + ROW_H*(r+0.5)
+                cy = GRID_TOP + ROW_H*(r+roff+0.5)
                 mono = (v == 0)
                 knob(A, t, cx, cy, KNOB_R, col_face, col_ring, mono)
                 A(f'<circle id="param_{kind}_{v}" cx="{px(cx)}" cy="{px(cy)}" r="0.5" fill="none" stroke="none"/>')
-                # voice number dot on the spine side
-                sx = SPINE_CX + (-1 if kind=="rest" else 1)*(SPINE_W/2 - 1.2)
-                sy = cy
-                A(f'<circle cx="{px(sx)}" cy="{px(sy)}" r="{px(0.7)}" '
-                  f'fill="{t["spinedot"] if mono else t["spinehi"]}" fill-opacity="{1.0 if mono else 0.5}"/>')
+                # voice number dot on the spine side -- first column only (the spine
+                # indexes voices 1-6; cols 2-3 are read from the column header position)
+                if c == 0:
+                    sx = SPINE_CX + (-1 if kind=="rest" else 1)*(SPINE_W/2 - 1.2)
+                    A(f'<circle cx="{px(sx)}" cy="{px(cy)}" r="{px(0.7)}" '
+                      f'fill="{t["spinedot"] if mono else t["spinehi"]}" fill-opacity="{1.0 if mono else 0.5}"/>')
+                v += 1
     bank("rest",   MARGIN,                t["restknob"], t["rest"])
     bank("accent", SPINE_CX+SPINE_W/2,    t["accknob"],  t["acc"])
 
-    # ── three poly-cable output jacks along the bottom ──
-    labels = [("output_polygate", W*0.30), ("output_polycv", W*0.5), ("output_polyaccent", W*0.70)]
-    for jid, jx in labels:
+    # ── five poly-cable output jacks along the bottom ──
+    # GATE (fused), STEP (un-fused), SLEG (step-legato: articulations inside slurs only),
+    # CV, ACCENT. See LEGATO_TIE_MODEL_NOTE.md + STEP_GATE_IMPLEMENTATION.md.
+    labels = [("output_polygate",      W*0.36, "GATE"),
+              ("output_polystepgate",  W*0.49, "STEP"),
+              ("output_polyslegato",   W*0.62, "SLEG"),
+              ("output_polycv",        W*0.75, "CV"),
+              ("output_polyaccent",    W*0.88, "ACC")]
+    for jid, jx, _lab in labels:
         A(f'<circle cx="{px(jx)}" cy="{px(JACK_Y)}" r="{px(3.6)}" fill="{t["jackwell"]}" '
           f'stroke="{t["jackring"]}" stroke-width="0.6"/>')
         A(f'<circle cx="{px(jx)}" cy="{px(JACK_Y)}" r="{px(1.6)}" fill="none" stroke="{t["gold"]}" stroke-width="0.4"/>')
         A(f'<circle id="{jid}" cx="{px(jx)}" cy="{px(JACK_Y)}" r="0.5" fill="none" stroke="none"/>')
     # a wave sweeping under the jacks (the straits continuing)
-    wave_field(A, t, MARGIN, JACK_Y+6, W-2*MARGIN, 8, t["spine"], n=10)
+    wave_field(A, t, MARGIN, JACK_Y+5.5, W-2*MARGIN, 5.5, t["spine"], n=7)
+
+    # ── poly voice-count knob (stepped 1..16, set-and-forget). Sits at the bottom-left,
+    #    left of the output strip, so the global "how many voices" reads apart from the
+    #    per-voice/per-signal jacks. Slot-style widget bound in the widget. ──
+    vc_x, vc_y = MARGIN + 6.0, JACK_Y
+    A(f'<circle cx="{px(vc_x)}" cy="{px(vc_y)}" r="{px(3.2)}" fill="{t["knobface"]}" '
+      f'stroke="{t["knobring"]}" stroke-width="0.6"/>')
+    A(f'<circle id="param_voicecount" cx="{px(vc_x)}" cy="{px(vc_y)}" r="0.5" fill="none" stroke="none"/>')
+    A(f'<text x="{px(vc_x)}" y="{px(vc_y+5.8)}" fill="{t["ink"]}" font-family="sans-serif" '
+      f'font-size="{px(2.0)}" text-anchor="middle" opacity="0.75">VOICES</text>')
 
     lcx = W - MARGIN - 3
     A(f'<circle cx="{px(lcx)}" cy="{px(JACK_Y)}" r="{px(1.6)}" fill="{t["jackwell"]}" stroke="{t["jackring"]}" stroke-width="0.3"/>')
     A(f'<circle id="light_connect" cx="{px(lcx)}" cy="{px(JACK_Y)}" r="0.5" fill="none" stroke="none"/>')
     # dot.modular wordmark — centred horizontally, lower band (a bit below the Sands panels' y≈113)
-    A(logo_embed(dark, (W - 36.0) / 2.0, 116.0, 36.0))
+    A(logo_embed(dark, (W - 34.0) / 2.0, 120.5, 34.0))
     A('</svg>')
     return "\n".join(o)
 

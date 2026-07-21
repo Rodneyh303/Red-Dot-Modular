@@ -203,290 +203,7 @@ namespace MonsoonIds {
         MONO_REST_MOD_ATT,
         MONO_ACCENT_MOD_ATT,
 
-        // Poly DNA Window Controls (15 voices x 3 params = 45) - MOVED TO SANDS
-        POLY_DNA_VOICE_1_LEN,
-        POLY_DNA_VOICE_1_OFF,
-        POLY_DNA_VOICE_1_ROT,
-        POLY_DNA_VOICE_2_LEN,
-        POLY_DNA_VOICE_2_OFF,
-        POLY_DNA_VOICE_2_ROT,
-        POLY_DNA_VOICE_3_LEN,
-        POLY_DNA_VOICE_3_OFF,
-        POLY_DNA_VOICE_3_ROT,
-        POLY_DNA_VOICE_4_LEN,
-        POLY_DNA_VOICE_4_OFF,
-        POLY_DNA_VOICE_4_ROT,
-        POLY_DNA_VOICE_5_LEN,
-        POLY_DNA_VOICE_5_OFF,
-        POLY_DNA_VOICE_5_ROT,
-        POLY_DNA_VOICE_6_LEN,
-        POLY_DNA_VOICE_6_OFF,
-        POLY_DNA_VOICE_6_ROT,
-        POLY_DNA_VOICE_7_LEN,
-        POLY_DNA_VOICE_7_OFF,
-        POLY_DNA_VOICE_7_ROT,
-        POLY_DNA_VOICE_8_LEN,   // NEW (Phase 4): voices 9-16
-        POLY_DNA_VOICE_8_OFF,
-        POLY_DNA_VOICE_8_ROT,
-        POLY_DNA_VOICE_9_LEN,
-        POLY_DNA_VOICE_9_OFF,
-        POLY_DNA_VOICE_9_ROT,
-        POLY_DNA_VOICE_10_LEN,
-        POLY_DNA_VOICE_10_OFF,
-        POLY_DNA_VOICE_10_ROT,
-        POLY_DNA_VOICE_11_LEN,
-        POLY_DNA_VOICE_11_OFF,
-        POLY_DNA_VOICE_11_ROT,
-        POLY_DNA_VOICE_12_LEN,
-        POLY_DNA_VOICE_12_OFF,
-        POLY_DNA_VOICE_12_ROT,
-        POLY_DNA_VOICE_13_LEN,
-        POLY_DNA_VOICE_13_OFF,
-        POLY_DNA_VOICE_13_ROT,
-        POLY_DNA_VOICE_14_LEN,
-        POLY_DNA_VOICE_14_OFF,
-        POLY_DNA_VOICE_14_ROT,
-        POLY_DNA_VOICE_15_LEN,
-        POLY_DNA_VOICE_15_OFF,
-        POLY_DNA_VOICE_15_ROT,
-        
-        // Poly Melody DNA Window Controls (15 voices x 3 params = 45) - NEW (Extended Sands)
-        POLY_MELODY_VOICE_1_LEN,
-        POLY_MELODY_VOICE_1_OFF,
-        POLY_MELODY_VOICE_1_ROT,
-        POLY_MELODY_VOICE_2_LEN,
-        POLY_MELODY_VOICE_2_OFF,
-        POLY_MELODY_VOICE_2_ROT,
-        POLY_MELODY_VOICE_3_LEN,
-        POLY_MELODY_VOICE_3_OFF,
-        POLY_MELODY_VOICE_3_ROT,
-        POLY_MELODY_VOICE_4_LEN,
-        POLY_MELODY_VOICE_4_OFF,
-        POLY_MELODY_VOICE_4_ROT,
-        POLY_MELODY_VOICE_5_LEN,
-        POLY_MELODY_VOICE_5_OFF,
-        POLY_MELODY_VOICE_5_ROT,
-        POLY_MELODY_VOICE_6_LEN,
-        POLY_MELODY_VOICE_6_OFF,
-        POLY_MELODY_VOICE_6_ROT,
-        POLY_MELODY_VOICE_7_LEN,
-        POLY_MELODY_VOICE_7_OFF,
-        POLY_MELODY_VOICE_7_ROT,
-        POLY_MELODY_VOICE_8_LEN,
-        POLY_MELODY_VOICE_8_OFF,
-        POLY_MELODY_VOICE_8_ROT,
-        POLY_MELODY_VOICE_9_LEN,
-        POLY_MELODY_VOICE_9_OFF,
-        POLY_MELODY_VOICE_9_ROT,
-        POLY_MELODY_VOICE_10_LEN,
-        POLY_MELODY_VOICE_10_OFF,
-        POLY_MELODY_VOICE_10_ROT,
-        POLY_MELODY_VOICE_11_LEN,
-        POLY_MELODY_VOICE_11_OFF,
-        POLY_MELODY_VOICE_11_ROT,
-        POLY_MELODY_VOICE_12_LEN,
-        POLY_MELODY_VOICE_12_OFF,
-        POLY_MELODY_VOICE_12_ROT,
-        POLY_MELODY_VOICE_13_LEN,
-        POLY_MELODY_VOICE_13_OFF,
-        POLY_MELODY_VOICE_13_ROT,
-        POLY_MELODY_VOICE_14_LEN,
-        POLY_MELODY_VOICE_14_OFF,
-        POLY_MELODY_VOICE_14_ROT,
-        POLY_MELODY_VOICE_15_LEN,
-        POLY_MELODY_VOICE_15_OFF,
-        POLY_MELODY_VOICE_15_ROT,
-        
-        // Poly Octave DNA Window Controls (15 voices x 3 params = 45) - NEW (Extended Sands)
-        POLY_OCTAVE_VOICE_1_LEN,
-        POLY_OCTAVE_VOICE_1_OFF,
-        POLY_OCTAVE_VOICE_1_ROT,
-        POLY_OCTAVE_VOICE_2_LEN,
-        POLY_OCTAVE_VOICE_2_OFF,
-        POLY_OCTAVE_VOICE_2_ROT,
-        POLY_OCTAVE_VOICE_3_LEN,
-        POLY_OCTAVE_VOICE_3_OFF,
-        POLY_OCTAVE_VOICE_3_ROT,
-        POLY_OCTAVE_VOICE_4_LEN,
-        POLY_OCTAVE_VOICE_4_OFF,
-        POLY_OCTAVE_VOICE_4_ROT,
-        POLY_OCTAVE_VOICE_5_LEN,
-        POLY_OCTAVE_VOICE_5_OFF,
-        POLY_OCTAVE_VOICE_5_ROT,
-        POLY_OCTAVE_VOICE_6_LEN,
-        POLY_OCTAVE_VOICE_6_OFF,
-        POLY_OCTAVE_VOICE_6_ROT,
-        POLY_OCTAVE_VOICE_7_LEN,
-        POLY_OCTAVE_VOICE_7_OFF,
-        POLY_OCTAVE_VOICE_7_ROT,
-        POLY_OCTAVE_VOICE_8_LEN,
-        POLY_OCTAVE_VOICE_8_OFF,
-        POLY_OCTAVE_VOICE_8_ROT,
-        POLY_OCTAVE_VOICE_9_LEN,
-        POLY_OCTAVE_VOICE_9_OFF,
-        POLY_OCTAVE_VOICE_9_ROT,
-        POLY_OCTAVE_VOICE_10_LEN,
-        POLY_OCTAVE_VOICE_10_OFF,
-        POLY_OCTAVE_VOICE_10_ROT,
-        POLY_OCTAVE_VOICE_11_LEN,
-        POLY_OCTAVE_VOICE_11_OFF,
-        POLY_OCTAVE_VOICE_11_ROT,
-        POLY_OCTAVE_VOICE_12_LEN,
-        POLY_OCTAVE_VOICE_12_OFF,
-        POLY_OCTAVE_VOICE_12_ROT,
-        POLY_OCTAVE_VOICE_13_LEN,
-        POLY_OCTAVE_VOICE_13_OFF,
-        POLY_OCTAVE_VOICE_13_ROT,
-        POLY_OCTAVE_VOICE_14_LEN,
-        POLY_OCTAVE_VOICE_14_OFF,
-        POLY_OCTAVE_VOICE_14_ROT,
-        POLY_OCTAVE_VOICE_15_LEN,
-        POLY_OCTAVE_VOICE_15_OFF,
-        POLY_OCTAVE_VOICE_15_ROT,
-        // Poly Accent DNA Window Controls (15 voices x 3 params = 45) - accent poly lane
-        POLY_ACCENT_VOICE_1_LEN,
-        POLY_ACCENT_VOICE_1_OFF,
-        POLY_ACCENT_VOICE_1_ROT,
-        POLY_ACCENT_VOICE_2_LEN,
-        POLY_ACCENT_VOICE_2_OFF,
-        POLY_ACCENT_VOICE_2_ROT,
-        POLY_ACCENT_VOICE_3_LEN,
-        POLY_ACCENT_VOICE_3_OFF,
-        POLY_ACCENT_VOICE_3_ROT,
-        POLY_ACCENT_VOICE_4_LEN,
-        POLY_ACCENT_VOICE_4_OFF,
-        POLY_ACCENT_VOICE_4_ROT,
-        POLY_ACCENT_VOICE_5_LEN,
-        POLY_ACCENT_VOICE_5_OFF,
-        POLY_ACCENT_VOICE_5_ROT,
-        POLY_ACCENT_VOICE_6_LEN,
-        POLY_ACCENT_VOICE_6_OFF,
-        POLY_ACCENT_VOICE_6_ROT,
-        POLY_ACCENT_VOICE_7_LEN,
-        POLY_ACCENT_VOICE_7_OFF,
-        POLY_ACCENT_VOICE_7_ROT,
-        POLY_ACCENT_VOICE_8_LEN,
-        POLY_ACCENT_VOICE_8_OFF,
-        POLY_ACCENT_VOICE_8_ROT,
-        POLY_ACCENT_VOICE_9_LEN,
-        POLY_ACCENT_VOICE_9_OFF,
-        POLY_ACCENT_VOICE_9_ROT,
-        POLY_ACCENT_VOICE_10_LEN,
-        POLY_ACCENT_VOICE_10_OFF,
-        POLY_ACCENT_VOICE_10_ROT,
-        POLY_ACCENT_VOICE_11_LEN,
-        POLY_ACCENT_VOICE_11_OFF,
-        POLY_ACCENT_VOICE_11_ROT,
-        POLY_ACCENT_VOICE_12_LEN,
-        POLY_ACCENT_VOICE_12_OFF,
-        POLY_ACCENT_VOICE_12_ROT,
-        POLY_ACCENT_VOICE_13_LEN,
-        POLY_ACCENT_VOICE_13_OFF,
-        POLY_ACCENT_VOICE_13_ROT,
-        POLY_ACCENT_VOICE_14_LEN,
-        POLY_ACCENT_VOICE_14_OFF,
-        POLY_ACCENT_VOICE_14_ROT,
-        POLY_ACCENT_VOICE_15_LEN,
-        POLY_ACCENT_VOICE_15_OFF,
-        POLY_ACCENT_VOICE_15_ROT,
 
-        // ── EAST_EXTRA_LANES stage 1b: per-voice LOR for the two MONO strands East now shows.
-        // VARIATION and LEGATO are NOT poly lanes (PL_LANES == 4), so they get their own banks
-        // rather than a PL_ slot. 15 poly voices x 3 items (LEN/OFF/ROT) = 45 ids each.
-        // Address as POLY_VARIATION_VOICE_1_LEN + v*3 + c   (v = 0..14, c = 0..2).
-        // These lanes are LOR-ONLY: no spread, ever (nothing to spread — the probability array
-        // stays mono; only each voice's reading position differs). See EAST_EXTRA_LANES.md.
-        POLY_VARIATION_VOICE_1_LEN,
-        POLY_VARIATION_LAST = POLY_VARIATION_VOICE_1_LEN + 44,
-        POLY_LEGATO_VOICE_1_LEN,
-        POLY_LEGATO_LAST = POLY_LEGATO_VOICE_1_LEN + 44,
-        
-        // Interpolation Controls (15 voices) - NEW: blend per-voice vs average random
-        POLY_VOICE_1_INTERP,
-        POLY_VOICE_2_INTERP,
-        POLY_VOICE_3_INTERP,
-        POLY_VOICE_4_INTERP,
-        POLY_VOICE_5_INTERP,
-        POLY_VOICE_6_INTERP,
-        POLY_VOICE_7_INTERP,
-        POLY_VOICE_8_INTERP,
-        POLY_VOICE_9_INTERP,
-        POLY_VOICE_10_INTERP,
-        POLY_VOICE_11_INTERP,
-        POLY_VOICE_12_INTERP,
-        POLY_VOICE_13_INTERP,
-        POLY_VOICE_14_INTERP,
-        POLY_VOICE_15_INTERP,
-        
-        // Dimension-Specific Interpolation (15 voices × 3 dimensions = 45) - NEW
-        // Each voice has independent blending for Rest, Melody, Octave
-        
-        // Rest Probability Interpolation (15 voices)
-        POLY_REST_INTERP_1,
-        POLY_REST_INTERP_2,
-        POLY_REST_INTERP_3,
-        POLY_REST_INTERP_4,
-        POLY_REST_INTERP_5,
-        POLY_REST_INTERP_6,
-        POLY_REST_INTERP_7,
-        POLY_REST_INTERP_8,
-        POLY_REST_INTERP_9,
-        POLY_REST_INTERP_10,
-        POLY_REST_INTERP_11,
-        POLY_REST_INTERP_12,
-        POLY_REST_INTERP_13,
-        POLY_REST_INTERP_14,
-        POLY_REST_INTERP_15,
-        
-        // Melody (Semitone) Interpolation (15 voices)
-        POLY_MELODY_INTERP_1,
-        POLY_MELODY_INTERP_2,
-        POLY_MELODY_INTERP_3,
-        POLY_MELODY_INTERP_4,
-        POLY_MELODY_INTERP_5,
-        POLY_MELODY_INTERP_6,
-        POLY_MELODY_INTERP_7,
-        POLY_MELODY_INTERP_8,
-        POLY_MELODY_INTERP_9,
-        POLY_MELODY_INTERP_10,
-        POLY_MELODY_INTERP_11,
-        POLY_MELODY_INTERP_12,
-        POLY_MELODY_INTERP_13,
-        POLY_MELODY_INTERP_14,
-        POLY_MELODY_INTERP_15,
-        
-        // Octave Interpolation (15 voices)
-        POLY_OCTAVE_INTERP_1,
-        POLY_OCTAVE_INTERP_2,
-        POLY_OCTAVE_INTERP_3,
-        POLY_OCTAVE_INTERP_4,
-        POLY_OCTAVE_INTERP_5,
-        POLY_OCTAVE_INTERP_6,
-        POLY_OCTAVE_INTERP_7,
-        POLY_OCTAVE_INTERP_8,
-        POLY_OCTAVE_INTERP_9,
-        POLY_OCTAVE_INTERP_10,
-        POLY_OCTAVE_INTERP_11,
-        POLY_OCTAVE_INTERP_12,
-        POLY_OCTAVE_INTERP_13,
-        POLY_OCTAVE_INTERP_14,
-        POLY_OCTAVE_INTERP_15,
-        // Poly Accent spread interp (15 voices) - accent poly lane
-        POLY_ACCENT_INTERP_1,
-        POLY_ACCENT_INTERP_2,
-        POLY_ACCENT_INTERP_3,
-        POLY_ACCENT_INTERP_4,
-        POLY_ACCENT_INTERP_5,
-        POLY_ACCENT_INTERP_6,
-        POLY_ACCENT_INTERP_7,
-        POLY_ACCENT_INTERP_8,
-        POLY_ACCENT_INTERP_9,
-        POLY_ACCENT_INTERP_10,
-        POLY_ACCENT_INTERP_11,
-        POLY_ACCENT_INTERP_12,
-        POLY_ACCENT_INTERP_13,
-        POLY_ACCENT_INTERP_14,
-        POLY_ACCENT_INTERP_15,
         
         // Global Macro DNA Controls (for simple Straits Sands) - NEW
         // Single set of controls for all poly voices
@@ -534,81 +251,17 @@ namespace MonsoonIds {
         LAST_TRIAL_R_PARAM,
         LAST_TRIAL_M_PARAM,
 
-        // ── Macro/East base-owner + Macro-CV blend sends (per voice, per lane) ──
-        // Appended at END so existing param IDs stay stable (saved patches safe).
-        // Per-(voice,lane) base owner: which expander owns the poly L/O/R base for
-        // voice v, lane L. 0 = Macro (default), 1 = East. 15 voices × 3 lanes = 45.
-        //   index = MACRO_OWN_START + v*4 + lane  (4 lanes: REST/MEL/OCT/ACCENT)
-        MACRO_OWN_START,
-        MACRO_OWN_END = MACRO_OWN_START + 64,
-        // Per-(voice,lane,item) Macro-CV blend send: how much of the (already
-        // Macro-attenuated) Macro CV is mixed into this voice/lane/item. item
-        // 0=LEN 1=OFF 2=ROT 3=SPR. 15 × 3 × 4 = 180. Default unity (Macro CV
-        // reaches voices out of the box; turn down to localise).
-        //   index = MACRO_SEND_START + (v*4 + lane)*4 + item   (v = voiceNumber-1, slot0=mono)
-        MACRO_SEND_START = MACRO_OWN_END,
-        MACRO_SEND_END = MACRO_SEND_START + 256,   // 16 voices × 4 lanes × 4 items
+        // ── MACRO ranges (OWN 64, SEND 256, ATTEN 256, TAP 8 = 584) MIGRATED OUT of params[]
+        //    to Monsoon::editor.macroOwn/macroSend/macroAtten (accessors getMacroOwn/…); tap re-homed to a Macro param;
+        //    the DISP proxies (OWN_DISP 4 -> StraitsEastVisualIds, SEND_DISP 16 ->
+        //    StraitsMacroVisualIds) re-homed to expander namespaces since they drive visible
+        //    cells. NUM_PARAMS_MIGRATION.md. No shared-pool slots consumed here now. ──
 
-        // Display-proxy params for the East visual's SELECTED-VOICE owner/send
-        // controls. Physical knobs/buttons bind to these fixed ids; the widget
-        // copies them to/from the per-voice MACRO_OWN/SEND params on voice switch
-        // (same pattern as SPREAD_R/M/O ↔ the per-voice interp params).
-        //   owner disp:  MACRO_OWN_DISP_START + lane            (4: lanes 0-3)
-        //   send  disp:  MACRO_SEND_DISP_START + lane*4 + item  (16: 4 lanes×4)
-        MACRO_OWN_DISP_START = MACRO_SEND_END,
-        MACRO_OWN_DISP_END = MACRO_OWN_DISP_START + 4,
-        MACRO_SEND_DISP_START = MACRO_OWN_DISP_END,
-        MACRO_SEND_DISP_END = MACRO_SEND_DISP_START + 16,
+        // Mode E manual phase knob. Full range = one upward ramp cycle (phase 0->1 = one bar).
+        // Only used when CV1 (the phase input) is UNPATCHED -- the DAW-automatable fallback.
+        PHASE_PARAM,
 
-        // Per-(voice, jack) CV-depth attenuverter for East's poly CV inputs. The
-        // poly cable is a convenience (one cable, 16 channels) but each voice is an
-        // independent mod target: this gives each voice its OWN depth for each of the
-        // 12 CV jacks, so the same incoming CV can bite harder on one voice than
-        // another. 15 voices × 12 jacks = 180. The East panel's 12 physical
-        // attenuverters are display proxies (ATTEN_START) copied to/from the selected
-        // voice's slice here on voice switch — same pattern as owner/send.
-        //   index = MACRO_ATTEN_START + v*16 + (lane*4 + c)  (v = voiceNumber-1, slot0=mono)
-        MACRO_ATTEN_START = MACRO_SEND_DISP_END,
-        MACRO_ATTEN_END = MACRO_ATTEN_START + 256,   // 16 voices × 16 jacks (4 lanes × 4 cols)
-
-        // P9b: Macro send PRE/POST tap — TWO per lane: one for the LOR sends
-        // (LEN/OFF/ROT) and one for the SPREAD send. 0 = PRE (raw CV, att bypassed),
-        // 1 = POST (CV × left atten). Laid out as a 3rd row in each send group.
-        //   LOR tap    index = MACRO_TAP_START + lane*2 + 0
-        //   spread tap index = MACRO_TAP_START + lane*2 + 1
-        MACRO_TAP_START = MACRO_ATTEN_END,
-        MACRO_TAP_END = MACRO_TAP_START + 8,   // 4 lanes × (LOR, spread)
-
-        // ── EAST_EXTRA_LANES Stage 3: VAR/LEG per-voice delegation toggle ──
-        // For the VARIATION and LEGATO lanes, each poly voice either DELEGATES its reading
-        // position to MONO (default) or uses its OWN outright LOR (Local East). Unlike lanes
-        // 0-3 (MACRO_OWN), the only delegation target here is mono — Macro never owns these
-        // lanes (EAST_EXTRA_LANES.md §6b), so this is a clean mono-or-East binary. V1 is mono,
-        // never a poly voice, so it is always mono (no toggle). 15 poly voices × 2 lanes = 30.
-        // Appended at END so existing param IDs stay stable (saved patches safe).
-        //   index = VARLEG_DELEG_START + v*2 + lane   (v = 0..14 = V2..V16, lane 0=VAR 1=LEG)
-        //   value: 0 = delegate to mono (default, silent), 1 = Local East (own LOR)
-        VARLEG_DELEG_START = MACRO_TAP_END,
-        VARLEG_DELEG_END = VARLEG_DELEG_START + 30,
-
-        // Display proxies for the SELECTED voice's VAR/LEG delegation cells. Two physical
-        // lane-end cells (lane 0=VAR, 1=LEG) bind to these fixed ids; the East widget copies
-        // them to/from the per-voice VARLEG_DELEG params on voice switch (same pattern as the
-        // owner cells ↔ MACRO_OWN_DISP). index = VARLEG_DELEG_DISP_START + lane.
-        VARLEG_DELEG_DISP_START = VARLEG_DELEG_END,
-        VARLEG_DELEG_DISP_END = VARLEG_DELEG_DISP_START + 2,
-
-        // ── EAST_EXTRA_LANES Stage 4: VAR/LEG per-voice CV-depth attenuverter ──
-        // VARIATION/LEGATO get poly CV inputs (LEN/OFF/ROT only — no SPR, no spread:
-        // spread does not apply to these mono-strand lanes). Each poly voice needs its
-        // OWN depth per jack (same independence model as MACRO_ATTEN for lanes 0-3), so
-        // this is a 16-wide voice-slot bank (slot 0 = mono/V1, the ch1 mix-in depth),
-        // 2 lanes × 3 cols = 6 jacks per voice. 16 × 6 = 96. Appended at END.
-        //   index = VARLEG_ATTEN_START + v*6 + lane*3 + col   (v=0..15, lane 0=VAR 1=LEG, col 0..2)
-        VARLEG_ATTEN_START = VARLEG_DELEG_DISP_END,
-        VARLEG_ATTEN_END = VARLEG_ATTEN_START + 96,
-
-        NUM_PARAMS = VARLEG_ATTEN_END
+        NUM_PARAMS
     };
 
     enum InputIds {
@@ -804,9 +457,22 @@ namespace MonsoonIds {
         SEED_OUTPUT,
         RESET_TRIGGER_OUTPUT,
         RUN_GATE_OUTPUT,
-        TIE_OUTPUT,               // High on Tie decision
-        LEGATO_OUTPUT,            // High on Legato/LegatoMax
-        TIE_OR_LEGATO_OUTPUT,     // High on Tie OR Legato (combined)
+        STEP_GATE_OUTPUT,         // The UN-FUSED gate: legato/tie REMOVED, every sub-note
+                                  // articulated (see LEGATO_TIE_MODEL_NOTE.md). Replaces the
+                                  // three old TIE/LEGATO/TIE_OR_LEGATO outputs -- those emitted
+                                  // a join-CLASSIFICATION (a distinction the leading-edge model
+                                  // can't make at onset); STEP GATE emits the pre-legato-drop
+                                  // gate, which is the only truthful second gate. ENGINE
+                                  // EMISSION PENDING: OutputGenerator must track the gate BEFORE
+                                  // legato drops edges (a second gate-state / pre-drop flag),
+                                  // not lastStepResult.decision.
+        STEP_LEGATO_GATE_OUTPUT,  // STEP GATE masked to SLURRED notes only (silent on isolated
+                                  // notes): the articulations that occur INSIDE a legato/tie.
+                                  // = gsStep gated by (slurForward OR prevSlur). The generative
+                                  // primitive: GATE + this derive STEP with one OR + a slur
+                                  // latch; deriving this from GATE+STEP needs a 3-module latch
+                                  // (the lead vs isolated instant is the onset-knowledge wall).
+                                  // See STEP_GATE_IMPLEMENTATION.md. ENGINE EMISSION PENDING.
         ACCENT_OUTPUT,            // High when accented
         
         NUM_OUTPUTS
@@ -826,6 +492,9 @@ namespace MonsoonIds {
         MODE_B_LIGHT,
         MODE_C_LIGHT,
         MODE_D_LIGHT,
+        MODE_E_LIGHT,   // Mode E (phase-driven) was reachable but had no light: the cycle is
+                        // (modeSelect+1)%5 and Monsoon.cpp handles modeSelect==4 throughout,
+                        // so selecting it simply turned every mode light off.
 
         SEMI_LED_START,
         SEMI_LED_END = SEMI_LED_START + 24,  // 2 channels × 12 semitones
@@ -1011,6 +680,72 @@ struct Monsoon : Module {
     dsp::ClockDivider controlDivider; // For DNA modulation at "Control Rate"
 
     SequencerEngine engine;
+
+    // ── EditorState: per-voice-per-lane editor storage formerly held in MonsoonIds param
+    //    ranges (see NUM_PARAMS_MIGRATION.md). Moved OUT of params[] because every configParam
+    //    is exported to the DAW host, and ~828 of them overflowed the host pool so NO Monsoon-
+    //    family param appeared in Bitwig. These are bus-addressable: expanders reach them via
+    //    the Monsoon* they already hold, through the accessors below. Persisted in
+    //    dataToJson/dataFromJson (params[] auto-saved; plain fields do not).
+    //    PILOT: LANE_DIR only (96). Remaining ranges (MACRO*, VARLEG*) migrate next.
+    struct EditorState {
+        // laneDir: per (voice-bank v = 0..14 poly = V2..V16, 15 = V1/mono) × lane (0..5).
+        // index = v*6 + lane  (identical to the old LANE_DIR_START + v*6 + lane).
+        float laneDir[96] = {0};
+        // varlegDeleg: delegation local/delegated per (v = 0..14 = V2..V16) × lane (0=VAR,1=LEG).
+        // index = v*2 + lane  (== old VARLEG_DELEG_START + v*2 + lane).
+        float varlegDeleg[30] = {0};
+        // varlegAtten: VAR/LEG attenuation per (v = 0..15 voice-slot) × lane(0=VAR,1=LEG) × col(0..2).
+        // index = v*6 + lane*3 + col  (== old VARLEG_ATTEN_START + v*6 + lane*3 + col).
+        float varlegAtten[96] = {0};
+        // macroOwn: owner per (v=0..15 voice-slot, 15=mono) × lane(0..3). index = v*4 + lane.
+        float macroOwn[64] = {0};
+        // macroSend: Macro-CV blend send per (v=0..15)×lane(0..3)×item(0..3). index=(v*4+lane)*4+item.
+        float macroSend[256] = {0};
+        // macroAtten: atten depth per (v=0..15)×(lane*4+col, 16 wide). index = v*16 + lane*4+col.
+        float macroAtten[256] = {0};
+        // Unified per-voice LOR base store (Stage 1 of the MVC unification). Indexed by
+        // voiceSlot (0 = V1/mono, 1..15 = V2..V16) × bank (0=REST/DNA 1=MEL 2=OCT 3=ACC
+        // 4=VAR 5=LEG) × (0=len 1=off 2=rot). This is the SINGLE home for every voice's
+        // editable LOR base, replacing the per-voice East params (POLY_*_VOICE_1_LEN) and the
+        // old V1-only eastV1Lor. Identity-initialised (len=16) in the Monsoon constructor.
+        float lorBase[288] = {0};     // 16 slots × 6 banks × 3
+        // Unified per-voice SPREAD store (Stage 1b). Same slot convention as lorBase
+        // (0 = V1/mono, 1..15 = V2..V16) × lane 0..3 (REST/MEL/OCT/ACC — spread does not
+        // apply to VAR/LEG). Zero-init = no spread, matching the old configParam default.
+        // Replaces the per-voice interp params AND the old V1-only eastV1Spread. V1 is slot 0.
+        float spread[64] = {0};       // 16 slots × 4 lanes
+    } editor;
+
+    // Unified LOR base accessors. slot = voiceSlot (0 = V1/mono), bank 0..5, c 0..2.
+    float getLorBase(int slot, int bank, int c) const { return editor.lorBase[slot*18 + bank*3 + c]; }
+    void  setLorBase(int slot, int bank, int c, float x) { editor.lorBase[slot*18 + bank*3 + c] = x; }
+    // Unified spread accessors. slot = voiceSlot (0 = V1/mono), lane 0..3.
+    float getSpread(int slot, int lane) const { return editor.spread[slot*4 + lane]; }
+    void  setSpread(int slot, int lane, float x) { editor.spread[slot*4 + lane] = x; }
+
+    // MACRO accessors (mirror old ownerId/sendId/attenId/tapId index math).
+    float getMacroOwn(int v, int lane) const { return editor.macroOwn[v*4 + lane]; }
+    void  setMacroOwn(int v, int lane, float x) { editor.macroOwn[v*4 + lane] = x; }
+    float getMonoMacroOwn(int lane) const { return editor.macroOwn[15*4 + lane]; }
+    void  setMonoMacroOwn(int lane, float x) { editor.macroOwn[15*4 + lane] = x; }
+    float getMacroSend(int v, int lane, int item) const { return editor.macroSend[(v*4 + lane)*4 + item]; }
+    void  setMacroSend(int v, int lane, int item, float x) { editor.macroSend[(v*4 + lane)*4 + item] = x; }
+    float getMacroAtten(int v, int laneCol) const { return editor.macroAtten[v*16 + laneCol]; }
+    void  setMacroAtten(int v, int laneCol, float x) { editor.macroAtten[v*16 + laneCol] = x; }
+
+    // LANE_DIR accessors — the ONE place the index math lives (mirrors old dirId/monoDirId).
+    float getLaneDir(int v, int lane) const { return editor.laneDir[v*6 + lane]; }
+    void  setLaneDir(int v, int lane, float x) { editor.laneDir[v*6 + lane] = x; }
+    float getMonoLaneDir(int lane) const { return editor.laneDir[15*6 + lane]; }
+    void  setMonoLaneDir(int lane, float x) { editor.laneDir[15*6 + lane] = x; }
+
+    // VARLEG accessors (mirror old varlegDelegId / varlegAttId index math).
+    float getVarlegDeleg(int v, int lane) const { return editor.varlegDeleg[v*2 + lane]; }
+    void  setVarlegDeleg(int v, int lane, float x) { editor.varlegDeleg[v*2 + lane] = x; }
+    float getVarlegAtten(int v, int lane, int col) const { return editor.varlegAtten[v*6 + lane*3 + col]; }
+    void  setVarlegAtten(int v, int lane, int col, float x) { editor.varlegAtten[v*6 + lane*3 + col] = x; }
+
     MonsoonSandsManager dnaManager{engine}; // Always valid
     std::unique_ptr<ParameterManager> paramManager;
     std::unique_ptr<ScaleManager> scaleManager;
@@ -1188,6 +923,7 @@ extern Model* modelMonsoon;
 extern Model* modelMonsoonInterchangeExpander;
 extern Model* modelMonsoonRafflesExpander;
 extern Model* modelMonsoonJunctionExpander;
+extern Model* modelMonsoonChangeAlleyExpander;
 //extern Model* modelMonsoonSandsExpander;
 extern Model* modelMonsoonStraitsExpander; // base poly expander
 extern Model* modelMonsoonCausewayPolyExpander; // poly CV modulation expander
@@ -1202,3 +938,13 @@ extern Model* modelLantern;                    // Lantern note-output visualiser
 extern Model* modelMonsoonSandsVisualExpander;  // Mono visual DNA editor (voice 1)
 extern Model* modelStraitsEastSandsVisual;      // East visual DNA editor (voices 2-8)
 extern Model* modelStraitsSandsMacroVisual;     // Macro visual DNA editor (global)
+
+// ─── Change Alley pin matrix expander ────────────────────────────────────────
+namespace ChangeAlleyIds {
+    enum ParamIds { NUM_PARAMS = 0 };
+    enum InputIds  { NUM_INPUTS = 0 };
+    enum OutputIds { NUM_OUTPUTS = 0 };
+    enum LightIds  { NUM_LIGHTS = 0 };
+    static constexpr int N_VOICES = 16;
+    static constexpr int N_POOLS  = 2;   // 0=rhythm 1=melody
+}

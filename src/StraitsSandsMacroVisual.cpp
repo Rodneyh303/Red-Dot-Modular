@@ -13,6 +13,8 @@
 #include "ui/TabButton.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/ModArcOverlay.hpp"
+#include "ui/OwnerCell.hpp"       // DirCell
+#include "dsp/engines/SequencerEngine.hpp"  // LaneDir
 #include "dsp/managers/PolySandsParameterManager.hpp"
 #include "dsp/VoiceResolver.hpp"   // activeVoiceCount + voice identity, single source of truth for the tab→voice mapping and uniform 16-voice addressing for prob-out
 #include "dsp/LaneMapping.hpp"        // ENGINE_LANE_TO_EDITOR / MONO_PARAM_TO_EDITOR — single source of truth for lane order
@@ -95,14 +97,14 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     explicit StraitsSandsMacroVisualWidget(StraitsSandsMacroVisual* mod) {
         setModule(mod);
         panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance,
-                            "res/panels/StraitsSandsMacroVisual_40HP.svg"));
+                            "res/panels/StraitsSandsMacroVisual_48HP.svg"));
         panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance,
-                            "res/panels/StraitsSandsMacroVisual_40HP_light.svg"));
+                            "res/panels/StraitsSandsMacroVisual_48HP_light.svg"));
         // Kit owns the SvgPanel (created + setPanel'd here); widgets bind to the
         // named shapes baked into the SVG by panel_src/gen_macro_mono.py, so the
         // gen script is the single source of widget geometry (no rowY/columns here).
         loadPanel(asset::plugin(pluginInstance,
-                            "res/panels/StraitsSandsMacroVisual_40HP.svg"));
+                            "res/panels/StraitsSandsMacroVisual_48HP.svg"));
 
         redDot::addRedScrews(this);
 
@@ -180,6 +182,43 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         for (int lane = 0; lane < 4; ++lane) {
             bindParam<Trimpot>("param_taplor_" + std::to_string(lane), tapLorId(lane));
             bindParam<Trimpot>("param_tapspr_" + std::to_string(lane), tapSprId(lane));
+        }
+
+        // ── Direction cells (param_dir_<lane>) — per-lane direction toggle (Fwd/Rev/Pend/PingPong).
+        // Macro is the global editor → DirCell sets the MONO direction (laneDirPending_).
+        // Kit markers use EDITOR lane order (row 0..3 = MEL/OCT/REST/ACC), matching East.
+        // Locked when no Monsoon or when Mono is present (Mono is the authority).
+        static const NVGcolor editorDirCol[4] = {
+            nvgRGB(0xd4,0xaf,0x37), nvgRGB(0xb8,0x86,0x0b),  // MEL gold, OCT dark gold
+            nvgRGB(0x50,0x50,0x50), nvgRGB(0xff,0x95,0x00)   // REST grey, ACC orange
+        };
+        for (int lane = 0; lane < 4; ++lane) {
+            bindParam<DirCell>(
+                "param_dir_" + std::to_string(lane),
+                dirDispId(lane),
+                [this, lane](DirCell* w) {
+                    w->laneCol = editorDirCol[lane];
+                    Vec ctr = w->box.pos.plus(w->box.size.div(2.f));
+                    const float stepW = (ED_W - 2.f*6.f) / 16.f;
+                    w->box.size = mm2px(Vec(stepW, ED_LANE_H * 0.9f));
+                    w->box.pos  = ctr.minus(w->box.size.div(2.f));
+                    w->lockWhen = [this]() {
+                        return !getMonsoon();
+                    };
+                }
+            );
+        }
+
+        // Direction gate-mod jacks (input_dir_mod_<lane>) — mono, gate cycles Fwd→Rev→Pend→PingPong.
+        {
+            Module* mod_ = module;
+            auto themeIn = [mod_](redDot::GoldPolyPort* p) {
+                p->lightTheme = [mod_]() { Monsoon* m = mod_ ? redDot::findMonsoonEitherSide(mod_) : nullptr;
+                                          return m && m->lightTheme; };
+            };
+            for (int lane = 0; lane < 4; ++lane)
+                bindInput<redDot::GoldPolyPort>("input_dir_mod_" + std::to_string(lane),
+                    dirModId(lane), std::function<void(redDot::GoldPolyPort*)>(themeIn));
         }
 
         paramMgr = new PolySandsParameterManager(nullptr, nullptr, nullptr, 7);
@@ -263,6 +302,12 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // SAME expression the engine's MACRO_SOLE branch uses (MonsoonExpanderManager.cpp).
         const float sp = rack::math::clamp(mod->macroBase[engLane][3] + mod->macroSendDelta[engLane][3], -1.f, 1.f);
         // The pre-spread base draw buffer for this lane (mono strand vs poly bank).
+        // NOTE: the slewed buffers are per-voice-OWN and NOT touched by the Change Alley
+        // remap (which rewrites random_ post-fill, not the slewed pipeline). Macro's
+        // display therefore shows the voice's own base + Macro's own spread, as designed —
+        // the pin's effect on Macro is visible via the FINAL path that other surfaces use,
+        // not here. (If Macro should reflect pins too, that is a separate decision; the
+        // firewall design deliberately keeps Macro on its own pre-spread base.)
         using PL = SequencerEngine;  // PL::PL_REST etc. (enum lives in SequencerEngine)
         float base;
         if (mono) {
@@ -323,9 +368,22 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             paramMgr->spreadMgr.sequencerEngine = se;
         }
 
-        if (!initialized) { loadLOR(); initialized = true; }
-
         auto* mod = static_cast<StraitsSandsMacroVisual*>(module);
+
+        if (!initialized) {
+            loadLOR();
+            // Sync DirCell display proxy from the engine's current mono direction.
+            for (int l = 0; l < 4; ++l)
+                mod->params[dirDispId(l)].setValue(
+                    (float)monsoon->engine.laneDirPending_[dotModular::MONO_LANE_TO_STRAND[l]]);
+            initialized = true;
+        }
+
+        // ── Direction sync: Step 4 (lane_direction_homes.md) — NO sync needed.
+        //    dirDispId IS the home. The DirCell writes it, the manager reads it and pushes
+        //    to laneDirPending_. The widget must NOT overwrite dirDispId FROM the engine.
+        //    (Macro only owns lanes 0..3 when Mono delegates them — the manager handles
+        //    ownership by reading from the correct expander.)
 
         // Spread: processDNA has already applied CV offset to SPREAD_REST/MEL/OCT params.
         // Read effective values here for SpreadManager display.
@@ -359,17 +417,25 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // its CV leaked onto mono — the N→N off-by-one.)
         {
             const int slot = dotModular::VoiceResolver::voiceSlot(viewVoiceNum);  // V→16-wide slot (slot0=mono)
-            if (viewVoice != lastSendVoice) {
-                for (int lane=0; lane<4; ++lane)
-                    for (int item=0; item<4; ++item)
-                        module->params[sendDispId(lane,item)].setValue(
-                            module->params[sendId(slot,lane,item)].getValue());
-                lastSendVoice = viewVoice;
-            } else {
-                for (int lane=0; lane<4; ++lane)
-                    for (int item=0; item<4; ++item)
-                        module->params[sendId(slot,lane,item)].setValue(
-                            module->params[sendDispId(lane,item)].getValue());
+            // Send store now lives on Monsoon::editor (was a local param). Guard the WHOLE
+            // load/store on a valid Monsoon: if the lookup is momentarily null (e.g. early
+            // frames of a patch load before the expander chain is wired), do NOTHING this
+            // frame and leave lastSendVoice untouched, so the load retries next frame. If we
+            // advanced the latch on a skipped load, the following same-voice frame would STORE
+            // the un-loaded display proxies over this voice's saved sends -- the per-voice
+            // clobber. (Pre-migration this couldn't happen: the store was an always-present
+            // local param.)
+            if (auto* mm = redDot::findMonsoonEitherSide(module)) {
+                if (viewVoice != lastSendVoice) {
+                    for (int lane=0; lane<4; ++lane)
+                        for (int item=0; item<4; ++item)
+                            module->params[sendDispId(lane,item)].setValue(mm->getMacroSend(slot,lane,item));
+                    lastSendVoice = viewVoice;
+                } else {
+                    for (int lane=0; lane<4; ++lane)
+                        for (int item=0; item<4; ++item)
+                            mm->setMacroSend(slot,lane,item, module->params[sendDispId(lane,item)].getValue());
+                }
             }
         }
 
@@ -420,8 +486,13 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // is exactly Macro's own CV-applied value independent of ownership.
         // Display-only. (Lane base rings already come from Macro's own params via
         // loadLOR; this overlay now matches them.)
-        int gs = monsoon->engine.stepIndex;
-        visualEditor->setPlayDir(monsoon->engine.lastPlayDir);   // direction cue (Mode E reverse)
+        auto& eng = monsoon->engine;
+        // Per-lane direction cue: use Macro's OWN macroLaneSign_ (always follows Macro's DirCell)
+        for (int l = 0; l < 4; ++l) {
+            int el = dotModular::ENGINE_LANE_TO_EDITOR[l];
+            int strand = dotModular::MONO_LANE_TO_STRAND[el];
+            visualEditor->setLanePlayDir(el, eng.lastPlayDir * eng.macroLaneSign_[strand]);
+        }
         // TAB-1 MONO MIRROR: view tab 1 = voice 1 = the mono master strand when Sands
         // Mono is attached. Show mono's LORS read-only (consistent treatment with the
         // other voices' display), not Macro's global base. (Macro's left attenuverters
@@ -457,7 +528,11 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                 ownLen = std::max(1, ownLen);
                 int el = dotModular::ENGINE_LANE_TO_EDITOR[l];
                 visualEditor->currentState.lanes[el].setDisplayLOR(ownLen, ownOff, ownRot);
-                visualEditor->setLanePlayStep(el, calcPlayhead(gs, ownLen, ownOff, ownRot));
+                // Use Macro's OWN macroLaneTick_ — advanced by the engine in advancePlayhead
+                // using Macro's direction (macroLaneDir_), with full bounce support for
+                // Pendulum/PingPong. Same pattern as East's laneTickV_.
+                int strand = dotModular::MONO_LANE_TO_STRAND[el];
+                visualEditor->setLanePlayStep(el, calcPlayhead(eng.macroLaneTick_[strand], ownLen, ownOff, ownRot));
             }
         }
     }
@@ -529,6 +604,21 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
         for (int l = 0; l < 4; ++l) { outputs[PROB_OUT_REST + l].setChannels(1);
                                       outputs[PROB_OUT_REST + l].setVoltage(0.f); }
         return;
+    }
+    // ── Gate edge detection for dir_mod inputs ────────────────────────────
+    // Mono jacks (1 channel). Rising edge cycles Fwd→Rev→Pend→PingPong→Fwd.
+    // Cycles the dirDispId display proxy param; the widget's step() syncs to engine.
+    {
+        for (int lane = 0; lane < 4; ++lane) {
+            auto& in = inputs[dirModId(lane)];
+            if (!in.isConnected()) continue;
+            bool high = in.getVoltage(0) > 1.f;
+            if (high && !dirModPrev[lane]) {
+                int cur = (int)params[dirDispId(lane)].getValue();
+                params[dirDispId(lane)].setValue((float)((cur + 1) % 4));
+            }
+            dirModPrev[lane] = high;
+        }
     }
     const float scaleV = (mon->probOutScale == 0) ? 1.f : (mon->probOutScale == 1) ? 5.f : 10.f;
     const bool sh = mon->probOutSampleHold;

@@ -95,11 +95,11 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
     explicit MonsoonSandsVisualExpanderWidget(MonsoonSandsVisualExpander* mod) {
         setModule(mod);
         panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance,
-                            "res/panels/SandsMonoVisual_40HP.svg"));
+                            "res/panels/SandsMonoVisual_48HP.svg"));
         panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance,
-                            "res/panels/SandsMonoVisual_40HP_light.svg"));
+                            "res/panels/SandsMonoVisual_48HP_light.svg"));
         panelWidget = createPanel(asset::plugin(pluginInstance,
-                            "res/panels/SandsMonoVisual_40HP.svg"));
+                            "res/panels/SandsMonoVisual_48HP.svg"));
         setPanel(panelWidget);
 
         redDot::addRedScrews(this);
@@ -210,6 +210,41 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             addParam(oc);
         }
 
+        // ── Direction cells (param_dir_<lane>) — per-lane direction toggle (Fwd/Rev/Pend/PingPong).
+        // Mono is the master strand editor → DirCell sets the MONO direction (laneDirPending_).
+        // Locked when no Monsoon is attached (nothing to drive).
+        static const NVGcolor dirCol[6] = {
+            nvgRGB(0xd4,0xaf,0x37), nvgRGB(0xb8,0x86,0x0b),  // MEL gold, OCT dark gold
+            nvgRGB(0x50,0x50,0x50), nvgRGB(0xff,0x95,0x00),  // REST grey, ACC orange
+            nvgRGB(0xff,0x6b,0x6b), nvgRGB(0x26,0xa6,0x9a)   // VAR red, LEG teal
+        };
+        for (int lane = 0; lane < 6; ++lane) {
+            auto* dc = createParamCentered<DirCell>(
+                mm2px(Vec(DIR_X, rowY(lane))), mod, dirDispId(lane));
+            dc->laneCol = dirCol[lane];
+            const float stepW = (ED_W - 2.f*6.f) / 16.f;
+            const float monoLaneH = (ROW_BOT - ROW_TOP) / N_LANES;
+            dc->box.size = mm2px(Vec(stepW, monoLaneH * 0.9f));
+            dc->box.pos  = mm2px(Vec(DIR_X, rowY(lane))).minus(dc->box.size.div(2.f));
+            // Lanes 0..3: locked when delegated to Macro (ownerDispId <= 0.5 = Macro owns).
+            // Lanes 4..5 (VAR/LEG): always settable (Mono always owns them).
+            dc->lockWhen = [this, lane, mod]() {
+                if (!getMonsoon()) return true;
+                if (lane >= 4) return false;  // VAR/LEG always Mono-owned
+                return mod->params[ownerDispId(lane)].getValue() <= 0.5f;  // Macro owns
+            };
+            addParam(dc);
+        }
+
+        // Direction gate-mod jacks — mono, gate cycles Fwd→Rev→Pend→PingPong.
+        for (int lane = 0; lane < 6; ++lane)
+            addInput(createInputCentered<PJ301MPort>(
+                mm2px(Vec(DIR_MOD_X, rowY(lane))), mod, dirModId(lane)));
+        // Delegation gate-mod jacks — mono, gate flips local/delegated. Lanes 0..3.
+        for (int lane = 0; lane < 4; ++lane)
+            addInput(createInputCentered<PJ301MPort>(
+                mm2px(Vec(DELEG_MOD_X, rowY(lane))), mod, delegModId(lane)));
+
         // Per-lane probability CV outs — one jack right of each of the 6 lane rows.
         for (int l = 0; l < N_LANES; ++l) {
             addOutput(createOutputCentered<PJ301MPort>(
@@ -278,8 +313,17 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             // (engine.spread), written by the manager via SpreadResolver every frame, so a
             // one-time visual seed is neither needed nor correct. It also carried a spurious
             // SPREAD_LANE_TO_EDITOR permutation — gone with it.)
+            // Sync DirCell display proxy from the engine's current mono direction.
+            for (int l = 0; l < 6; ++l)
+                mod->params[dirDispId(l)].setValue(
+                    (float)monsoon->engine.laneDirPending_[dotModular::MONO_LANE_TO_STRAND[l]]);
             initialized = true;
         }
+
+        // ── Direction sync: Step 4 (lane_direction_homes.md) — NO sync needed.
+        //    dirDispId IS the home. The DirCell writes it, the manager reads it and pushes
+        //    to laneDirPending_. The widget must NOT overwrite dirDispId FROM the engine,
+        //    or it would clobber DirCell clicks before the manager reads them.
 
         // ── Editor → params (UI thread, own params). Skip delegated lanes: when a
         //    poly lane is owned by Macro it's inoperable + must TRACK Macro, so we
@@ -355,12 +399,21 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             effOff[l] = eng.strandOff(strand);
             effRot[l] = eng.strandRot(strand);
         }
-        int globalStep = monsoon->engine.stepIndex;
-        visualEditor->setPlayDir(monsoon->engine.lastPlayDir);   // direction cue (Mode E reverse)
+        const bool started = (monsoon->engine.stepIndex >= 0);
+        // Per-lane direction cue: each mono strand's effective trail direction is the global
+        // play direction times its own lane sign (reverse / pendulum flips it). Display lane
+        // index == strand index (MEL/OCT/REST/ACC/VAR/LEG).
+        for (int l = 0; l < 6; ++l)
+            visualEditor->setLanePlayDir(l, monsoon->engine.lastPlayDir * monsoon->engine.laneSign_[l]);
         for (int l = 0; l < 6; ++l) {
+            int strand = dotModular::MONO_LANE_TO_STRAND[l];
             visualEditor->currentState.lanes[l].setDisplayLOR(effLen[l], effOff[l], effRot[l]);
-            visualEditor->setLanePlayStep(l,
-                calcPlayhead(globalStep, effLen[l], effOff[l], effRot[l]));
+            // Playhead POSITION follows THIS lane's own accumulated tick, so a reversed /
+            // pendulum lane's highlight moves BACKWARD and lands on the exact cell the engine
+            // reads (calcPlayhead(laneTick_[strand]) == getStrandIdx(laneTick_[strand])).
+            // -1 while not started keeps it hidden, as before.
+            int ph = started ? eng.laneTick_[strand] : -1;
+            visualEditor->setLanePlayStep(l, calcPlayhead(ph, effLen[l], effOff[l], effRot[l]));
         }
     }
 };
@@ -373,14 +426,39 @@ void MonsoonSandsVisualExpander::process(const ProcessArgs&) {
         for (int l = 0; l < 6; ++l) outputs[PROB_OUT_START + l].setVoltage(0.f);
         return;
     }
+    // ── Gate edge detection for dir_mod and deleg_mod inputs ─────────────
+    // Mono jacks (1 channel). Direction cycles Fwd→Rev→Pend→PingPong→Fwd.
+    // Delegation flips local/delegated (ownerDispId for lanes 0..3).
+    {
+        for (int lane = 0; lane < 6; ++lane) {
+            auto& in = inputs[dirModId(lane)];
+            if (!in.isConnected()) continue;
+            bool high = in.getVoltage(0) > 1.f;
+            if (high && !dirModPrev[lane]) {
+                int cur = (int)params[dirDispId(lane)].getValue();
+                params[dirDispId(lane)].setValue((float)((cur + 1) % 4));
+            }
+            dirModPrev[lane] = high;
+        }
+        for (int lane = 0; lane < 4; ++lane) {
+            auto& in = inputs[delegModId(lane)];
+            if (!in.isConnected()) continue;
+            bool high = in.getVoltage(0) > 1.f;
+            if (high && !delegModPrev[lane]) {
+                float cur = params[ownerDispId(lane)].getValue();
+                params[ownerDispId(lane)].setValue(cur > 0.5f ? 0.f : 1.f);
+            }
+            delegModPrev[lane] = high;
+        }
+    }
     auto& eng = monsoon->engine;
-    const int globalStep = eng.stepIndex;
     const float scaleV = (monsoon->probOutScale == 0) ? 1.f : (monsoon->probOutScale == 1) ? 5.f : 10.f;
     const bool sh = monsoon->probOutSampleHold;
     for (int l = 0; l < 6; ++l) {
         int strand = dotModular::MONO_LANE_TO_STRAND[l];
-        // Lane's post-LOR step — same mapping the visual uses for the playhead.
-        int step = calcPlayhead(globalStep, eng.strandLen(strand),
+        // Lane's post-LOR step — read each lane's OWN tick so a reversed / pendulum lane's CV
+        // matches the cell the engine reads (laneTick_ is always >= 0, so no not-started -1).
+        int step = calcPlayhead(eng.laneTick_[strand], eng.strandLen(strand),
                                 eng.strandOff(strand), eng.strandRot(strand));
         float v;
         if (sh) {

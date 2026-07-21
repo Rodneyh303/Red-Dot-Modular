@@ -49,7 +49,7 @@
     {
       "slug": "Straits",
       "name": "Straits",
-      "description": "Poly base expander — per-voice REST/ACCENT probability + 16ch poly-cable outs (gate/CV/accent, ch1=mono)",
+      "description": "Poly base expander \u2014 per-voice REST/ACCENT probability + 16ch poly-cable outs (gate/CV/accent, ch1=mono)",
       "tags": [
         "Expander",
         "Sequencer",
@@ -59,7 +59,7 @@
     {
       "slug": "Causeway",
       "name": "Causeway",
-      "description": "Poly CV modulation — 16ch REST + ACCENT modulation CV in (ch1=mono) with attenuverters",
+      "description": "Poly CV modulation \u2014 16ch REST + ACCENT modulation CV in (ch1=mono) with attenuverters",
       "tags": [
         "Expander",
         "Sequencer",
@@ -69,7 +69,7 @@
     {
       "slug": "Changi",
       "name": "Changi",
-      "description": "Per-voice output — poly voices 2..16 broken out to individual gate/CV/accent jacks",
+      "description": "Per-voice output \u2014 poly voices 2..16 broken out to individual gate/CV/accent jacks",
       "tags": [
         "Expander",
         "Sequencer",
@@ -79,7 +79,7 @@
     {
       "slug": "Shophouse",
       "name": "Shophouse",
-      "description": "Scale expander — 4-front scale list, click-a-shutter root, boundary-quantised modulation, Conservation lock",
+      "description": "Scale expander \u2014 4-front scale list, click-a-shutter root, boundary-quantised modulation, Conservation lock",
       "tags": [
         "Expander",
         "Sequencer",
@@ -100,7 +100,7 @@
     {
       "slug": "StraitsEastSandsVisual",
       "name": "Straits East Sands Visual",
-      "description": "Monsoon Polyphonic Per Channel Probability Visualisation, Manipulation, and Modulation Expander — all 15 poly voices (V2-V16)",
+      "description": "Monsoon Polyphonic Per Channel Probability Visualisation, Manipulation, and Modulation Expander \u2014 all 15 poly voices (V2-V16)",
       "tags": [
         "Expander",
         "Sequencer",
@@ -124,12 +124,22 @@
     {
       "slug": "Lantern",
       "name": "Lantern",
-      "description": "Read-only note-output visualiser for Monsoon — 16-lane display of notes, ties, legato and accents",
+      "description": "Read-only note-output visualiser for Monsoon \u2014 16-lane display of notes, ties, legato and accents",
       "tags": [
         "Expander",
         "Sequencer",
         "Visual",
         "Polyphonic"
+      ]
+    },
+    {
+      "slug": "ChangeAlley",
+      "name": "Change Alley",
+      "description": "Pin-matrix expander: reallocates which voice consumes which rhythm/melody random stream before all manipulation. EMS VCS3-style matrix, currency-pair labelled rows (the actual Change Alley FX booths vs USD).",
+      "tags": [
+        "Expander",
+        "Random",
+        "Sequencer"
       ]
     }
   ]

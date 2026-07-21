@@ -8,7 +8,7 @@
 #include "ui/SvgPanelKit.hpp"
 #include "ui/ConnectMark.hpp"
 #include "ui/ModArcOverlay.hpp"
-#include "ui/DimmableTrimpot.hpp"
+#include "ui/Controls.hpp"
 
 using namespace rack;
 using namespace MonsoonIds;
@@ -23,6 +23,19 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
     dotModular::Compose<MonsoonStraitsExpanderWidget,
                         dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
+    // Cached once per frame in step(); the 32 knobs' lightWhen read THIS, not a
+    // per-frame findMonsoonEitherSide() each (that would be 32 chain-walks/frame).
+    bool themeLight_ = false;
+    // Also cached per frame: how many poly voices Monsoon has active (numPolyVoices,
+    // 0..15 meaning 1..16). -1 = no Monsoon connected. The poly knobs' dimWhen reads
+    // THIS, not a chain-walk each. Dimming a voice's knob when it's above the active
+    // count makes the panel self-documenting: lit knobs = live voices. Only dims when
+    // CONNECTED (poly mode is gated on Straits being present, so disconnected = show all).
+    int activeVoices_ = -1;
+    // Latches once per Monsoon connection: on first frame after attach we ADOPT Monsoon's
+    // count into our knob (so we don't clobber a saved/menu value with the param default),
+    // then the knob drives numPolyVoices. Cleared on disconnect so a re-attach re-syncs.
+    bool voiceCountSynced_ = false;
     redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;
 
@@ -61,6 +74,10 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
             arc->isActive = [self, voice, lane]() -> bool {
                 Monsoon* m = redDot::findMonsoonEitherSide(self->module);
                 if (!m || !m->modVizEast) return false;
+                // Inactive poly voice (beyond Monsoon's active count) → no arc: the knob is
+                // dimmed + locked, so it isn't a live param. voice 0..14 = V2..V16; active iff
+                // activeVoices_ >= voice+1, hence inactive iff voice >= activeVoices_.
+                if (voice >= 0 && self->activeVoices_ >= 0 && voice >= self->activeVoices_) return false;
                 float set, eff;
                 if (voice == -1) {
                     set = lane == 0 ? m->getMonoRestBase() : m->getMonoAccentBase();
@@ -95,14 +112,15 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
         //    getBasePolyRest which is poly-indexed 0..14; there is no mono equivalent, so the mono knob
         //    shows no East-mod arc — its value is the mono base directly). ──
         // ── voice 0 = mono: LOCKED knobs that MIRROR the parent Monsoon's mono rest/accent.
-        //    Uses the shared DimmableTrimpot idiom (same as Sands' ceded-lane spread knobs):
+        //    Uses the shared Dimmable idiom (ui/Controls.hpp; same as Sands ceded-lane spread):
         //      lockWhen       → always true: swallow input, so the knob can't be dragged.
         //      displayValueFn → show the parent's value WITHOUT clobbering the local store.
         //    Monsoon stays authoritative (the engine reads its knob); these just display it.
         //    Arc queued with voice -1 = the MONO lane, so it shows the same Causeway/mono mod arc
         //    that Monsoon's own rest/accent knobs show. ──
-        bindParam<DimmableTrimpot>("param_rest_0", MonsoonIds::REST_PARAM,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){
+        bindParam<redDot::Themed_Compact_Cog_Dim>("param_rest_0", MonsoonIds::REST_PARAM,
+            std::function<void(redDot::Themed_Compact_Cog_Dim*)>([this](redDot::Themed_Compact_Cog_Dim* k){
+                k->lightWhen = [this](){ return themeLight_; };
                 k->lockWhen = [](){ return true; };
                 k->displayValueFn = [this]() -> float {
                     Monsoon* m = redDot::findMonsoonEitherSide(module);
@@ -110,8 +128,9 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
                 };
                 queueArc(k, -1, 0);
             }));
-        bindParam<DimmableTrimpot>("param_accent_0", MonsoonIds::ACCENT_KNOB,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){
+        bindParam<redDot::Themed_Compact_Cog_Dim>("param_accent_0", MonsoonIds::ACCENT_KNOB,
+            std::function<void(redDot::Themed_Compact_Cog_Dim*)>([this](redDot::Themed_Compact_Cog_Dim* k){
+                k->lightWhen = [this](){ return themeLight_; };
                 k->lockWhen = [](){ return true; };
                 k->displayValueFn = [this]() -> float {
                     Monsoon* m = redDot::findMonsoonEitherSide(module);
@@ -120,20 +139,47 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
                 queueArc(k, -1, 1);
             }));
         // ── voices 1..15 = poly. Param = POLY_*_PARAM_1 + (i-1); arc voice index = poly index (i-1),
-        //    which maps to getBasePolyRest(0..14). ──
+        //    which maps to getBasePolyRest(0..14). Themed_Compact_Cog_Dim (not plain) so each
+        //    poly knob can dim when its voice is above Monsoon's active count -- lit = live. ──
         for (int i = 1; i < 16; i++) {
             std::string r = std::to_string(i);
             int polyIdx = i - 1;                 // 0..14 for the mod-arc + POLY_*_PARAM offset
-            bindParam<Trimpot>("param_rest_"   + r, MonsoonIds::POLY_REST_PARAM_1   + polyIdx,
-                std::function<void(Trimpot*)>([this, polyIdx](Trimpot* k){ queueArc(k, polyIdx, 0); }));
-            bindParam<Trimpot>("param_accent_" + r, MonsoonIds::POLY_ACCENT_PARAM_1 + polyIdx,
-                std::function<void(Trimpot*)>([this, polyIdx](Trimpot* k){ queueArc(k, polyIdx, 1); }));
+            int voiceNum = i;                    // this knob is voice (i+1) in 1-based; active when activeVoices_ > i
+            auto dimIfInactive = [this, voiceNum](){
+                // activeVoices_ is numPolyVoices (0..15 => 1..16 active). Voice index i (1..15)
+                // is active iff activeVoices_ >= i. Only dim when CONNECTED (-1 = show all).
+                return activeVoices_ >= 0 && voiceNum > activeVoices_;
+            };
+            bindParam<redDot::Themed_Compact_Cog_Dim>("param_rest_"   + r, MonsoonIds::POLY_REST_PARAM_1   + polyIdx,
+                std::function<void(redDot::Themed_Compact_Cog_Dim*)>([this, polyIdx, dimIfInactive](redDot::Themed_Compact_Cog_Dim* k){
+                    k->lightWhen = [this](){ return themeLight_; };
+                    k->dimWhen   = dimIfInactive;
+                    k->lockWhen  = dimIfInactive;   // inactive voice → inoperative (was draggable)
+                    queueArc(k, polyIdx, 0);
+                }));
+            bindParam<redDot::Themed_Compact_Cog_Dim>("param_accent_" + r, MonsoonIds::POLY_ACCENT_PARAM_1 + polyIdx,
+                std::function<void(redDot::Themed_Compact_Cog_Dim*)>([this, polyIdx, dimIfInactive](redDot::Themed_Compact_Cog_Dim* k){
+                    k->lightWhen = [this](){ return themeLight_; };
+                    k->dimWhen   = dimIfInactive;
+                    k->lockWhen  = dimIfInactive;   // inactive voice → inoperative (was draggable)
+                    queueArc(k, polyIdx, 1);
+                }));
         }
 
         // Three 16-channel poly-cable outputs (ch1 = mono, ch2.. = poly).
-        bindOutput<PJ301MPort>("output_polygate",   POLY_GATE_OUT);
-        bindOutput<PJ301MPort>("output_polycv",     POLY_CV_OUT);
-        bindOutput<PJ301MPort>("output_polyaccent", POLY_ACCENT_OUT);
+        bindOutput<PJ301MPort>("output_polygate",     POLY_GATE_OUT);
+        bindOutput<PJ301MPort>("output_polystepgate", POLY_STEP_GATE_OUT);
+        bindOutput<PJ301MPort>("output_polyslegato",  POLY_STEP_LEGATO_GATE_OUT);
+        bindOutput<PJ301MPort>("output_polycv",       POLY_CV_OUT);
+        bindOutput<PJ301MPort>("output_polyaccent",   POLY_ACCENT_OUT);
+
+        // Poly voice-count knob: stepped 1..16, Slot style (set-and-forget). Themed so it
+        // follows the panel like the cogs. This param is the SOURCE of truth for the poly
+        // count -- the dimming reads it (below), and Monsoon reads it engine-side (pending).
+        bindParam<redDot::Themed_Trim_Slot>("param_voicecount", StraitsIds::VOICE_COUNT_PARAM,
+            std::function<void(redDot::Themed_Trim_Slot*)>([this](redDot::Themed_Trim_Slot* k){
+                k->lightWhen = [this](){ return themeLight_; };
+            }));
 
         flushArcs();   // attach per-voice REST + ACCENT mod-arcs on top of the knobs
 
@@ -144,6 +190,39 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
     }
 
     void step() override {
+        // Resolve the theme BEFORE stepping children: the knobs' lightWhen reads
+        // themeLight_, and ModuleWidget::step() is what steps them. Doing this after
+        // would leave every knob a frame behind the panel on a toggle.
+        if (module) {
+            Monsoon* mm = redDot::findMonsoonEitherSide(module);
+            themeLight_ = (mm && mm->lightTheme);
+            // Straits OWNS the poly voice count: write its knob (1..16) into Monsoon's
+            // numPolyVoices (0..15) so that field stays the SINGLE authority every consumer
+            // reads (Sands/East/Macro tab counts, Causeway dimming, the Lantern, our dimming).
+            // This replaces the context menu as the source when Straits is connected -- poly
+            // is gated on Straits being present, so Straits driving the count is correct.
+            // (Half-migrating -- reading the param only for our own dimming -- created two
+            // disagreeing sources and drove Sands' tabs off the menu, not the knob. One
+            // authority fixes all consumers at once.)
+            if (mm) {
+                // First frame after (re)connect: adopt Monsoon's current count INTO our knob,
+                // so attaching Straits doesn't clobber a patch's saved numPolyVoices (or a
+                // menu value) with the param's default. After that, the knob is authority and
+                // drives the field. voiceCountSynced_ latches per-connection.
+                if (!voiceCountSynced_) {
+                    float knob = (float)(mm->engine.numPolyVoices + 1);   // 0..15 -> 1..16
+                    module->params[StraitsIds::VOICE_COUNT_PARAM].setValue(knob);
+                    voiceCountSynced_ = true;
+                }
+                int want = (int)module->params[StraitsIds::VOICE_COUNT_PARAM].getValue() - 1; // 0..15
+                if (want < 0) want = 0; else if (want > 15) want = 15;
+                mm->engine.numPolyVoices = want;
+                activeVoices_ = want;
+            } else {
+                activeVoices_ = -1;
+                voiceCountSynced_ = false;   // re-sync on next connect
+            }
+        }
         ModuleWidget::step();
         kitStep();
         if (!module) return;

@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <cmath>
 #include <algorithm>
+#include <string>
+#include <vector>
 namespace rack {
     struct Module;   // fwd — SpreadInterp::monoBuf takes a const Module* (unused)
     namespace math {
@@ -35,4 +37,44 @@ namespace rack {
             void  reset() { remaining = 0.f; }
         };
     }
+    // Minimal history + engine + APP surface so ui/StoreEditAction.hpp compiles standalone.
+    // Mirrors the real API shape: history::State::push takes OWNERSHIP and does NOT call
+    // redo() (Rack convention: the edit was already applied by the caller); Engine's module
+    // lookup is a settable hook so tests can register fake modules and simulate deletion.
+    namespace history {
+        struct Action {
+            std::string name;
+            virtual ~Action() {}
+            virtual void undo() {}
+            virtual void redo() {}
+        };
+        struct State {
+            std::vector<Action*> actions;   // tests drive undo()/redo() directly
+            void push(Action* a) { actions.push_back(a); }
+            ~State() { for (auto* a : actions) delete a; }
+        };
+    }
+    namespace engine {
+        struct Module {
+            int64_t id = -1;
+            virtual ~Module() {}
+        };
+        struct Engine {
+            Module* (*getModuleHook)(int64_t) = nullptr;   // test registry seam
+            Module* getModule(int64_t id) { return getModuleHook ? getModuleHook(id) : nullptr; }
+        };
+    }
+    struct Context {
+        history::State* history;
+        engine::Engine* engine;
+    };
+    inline Context* testContext() {
+        static history::State hs;
+        static engine::Engine eng;
+        static Context c{ &hs, &eng };
+        return &c;
+    }
 }
+#ifndef APP
+#define APP rack::testContext()
+#endif

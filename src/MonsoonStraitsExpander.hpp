@@ -29,18 +29,41 @@ using namespace MonsoonIds;
 // carries only the base knobs + the poly-cable outs.
 namespace StraitsIds {
     enum OutputIds {
-        POLY_GATE_OUT,     // 16ch: ch0 = mono, ch1..15 = poly voices 2..16
+        POLY_GATE_OUT,     // 16ch: ch0 = mono, ch1..15 = poly voices 2..16 (FUSED gate)
+        POLY_STEP_GATE_OUT,// 16ch: the un-fused gate -- legato/tie REMOVED, every sub-note
+                           //       articulated (see LEGATO_TIE_MODEL_NOTE.md). ENGINE EMISSION
+                           //       PENDING: MonsoonOutputGenerator must compute the pre-fusion
+                           //       gate; jack is wired so the panel + binding are ready.
+        POLY_STEP_LEGATO_GATE_OUT,// 16ch: STEP GATE masked to SLURRED notes only (silent on
+                           //       isolated notes) -- gsStep gated by slurForward||prevSlur,
+                           //       per voice. The generative primitive (GATE+this => STEP via
+                           //       one OR + latch). ENGINE EMISSION PENDING.
         POLY_CV_OUT,       // 16ch pitch
         POLY_ACCENT_OUT,   // 16ch accent gate
         NUM_OUTPUTS
+    };
+    // Straits reuses MonsoonIds for the rest/accent params, but the VOICE-COUNT knob is
+    // Straits' OWN control (poly is gated on Straits being present, so Straits owns "how
+    // many"). It lives ABOVE Monsoon's param namespace so it can't collide.
+    enum ParamIds {
+        VOICE_COUNT_PARAM = MonsoonIds::NUM_PARAMS,  // stepped 1..16; Monsoon READS this
+        NUM_PARAMS
     };
 }
 
 struct MonsoonStraitsExpander : Module {
     MonsoonStraitsExpander() {
         // Sized to the main MonsoonIds param/input namespace (the expander reuses
-        // those IDs), plus the local poly-cable outputs.
-        config(MonsoonIds::NUM_PARAMS, MonsoonIds::NUM_INPUTS, StraitsIds::NUM_OUTPUTS, 0);
+        // those IDs), PLUS Straits' own params (the voice-count knob), plus the local
+        // poly-cable outputs.
+        config(StraitsIds::NUM_PARAMS, MonsoonIds::NUM_INPUTS, StraitsIds::NUM_OUTPUTS, 0);
+
+        // Poly voice count: stepped 1..16, set-and-forget (Slot widget on panel). Straits
+        // OWNS this -- poly mode is gated on Straits being present, so the count lives here
+        // and Monsoon READS it from the connected Straits. Default 1 (mono only) so adding
+        // Straits doesn't silently change behaviour until the user dials voices.
+        configParam(StraitsIds::VOICE_COUNT_PARAM, 1.f, 16.f, 1.f, "Poly voice count");
+        getParamQuantity(StraitsIds::VOICE_COUNT_PARAM)->snapEnabled = true;
 
         // Voice 1 (mono) rest/accent: these knobs MIRROR the parent Monsoon's mono rest/accent
         // (driven each frame in process()). Configured here so the params exist with range; the
@@ -57,9 +80,11 @@ struct MonsoonStraitsExpander : Module {
                         "Voice " + std::to_string(i + 2) + " Accent Probability");
         }
 
-        configOutput(StraitsIds::POLY_GATE_OUT,   "Poly gate (16ch: ch1 = mono, ch2.. = poly)");
-        configOutput(StraitsIds::POLY_CV_OUT,     "Poly CV / pitch (16ch)");
-        configOutput(StraitsIds::POLY_ACCENT_OUT, "Poly accent gate (16ch)");
+        configOutput(StraitsIds::POLY_GATE_OUT,           "Poly gate (16ch: ch1 = mono, ch2.. = poly)");
+        configOutput(StraitsIds::POLY_STEP_GATE_OUT,      "Poly STEP gate (16ch: legato removed -- every sub-note articulated)");
+        configOutput(StraitsIds::POLY_STEP_LEGATO_GATE_OUT,"Poly STEP LEGATO gate (16ch: sub-note articulations inside slurs only)");
+        configOutput(StraitsIds::POLY_CV_OUT,             "Poly CV / pitch (16ch)");
+        configOutput(StraitsIds::POLY_ACCENT_OUT,         "Poly accent gate (16ch)");
     }
 
     // The parent Monsoon writes the poly-cable outputs via the cached pointer (see

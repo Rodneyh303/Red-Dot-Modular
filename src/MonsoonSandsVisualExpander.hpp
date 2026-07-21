@@ -9,11 +9,14 @@ using namespace rack;
 namespace SandsMonoVisualIds {
 
     // ── Panel ────────────────────────────────────────────────────────────
-    static constexpr float W_MM     = 218.44f;  // 43HP (42 + 1HP for the per-lane owner-source block)
+    static constexpr float W_MM     = 243.84f;  // 48HP (44 + 4HP for dir_mod + deleg_mod + prob_out)
     static constexpr float ED_X     = 88.f;
     static constexpr float ED_W     = 111.f;    // editor width (fixed; no longer tied to PROB_OUT_X)
     static constexpr float OWNER_X    = 205.f;  // owner cell column (matches East/Macro)
-    static constexpr float PROB_OUT_X = 212.f;  // output jack column (pushed right by the owner block)
+    static constexpr float DIR_X      = 212.f;  // direction cell column (matches East/Macro)
+    static constexpr float DIR_MOD_X   = 220.f; // direction gate-mod jack column
+    static constexpr float DELEG_MOD_X = 228.f; // delegation gate-mod jack column
+    static constexpr float PROB_OUT_X = 236.f;  // output jack column (pushed right by mod columns)
     // Grid now comes from ui/SandsGrid.hpp so Mono, East and Macro cannot drift apart.
     // ROW_BOT 108 -> 98: lane height 15.667 -> 14, matching East/Macro's lanes exactly.
     static constexpr float ED_Y     = dotModular::SandsGrid::LANE_TOP;      // 14
@@ -64,10 +67,15 @@ namespace SandsMonoVisualIds {
         // (this expander's own LOR edit). LEG/VAR are mono-only → always Mono-owned,
         // no owner param. Mono is single-voice (V1), so no per-voice bank needed.
         OWN_DISP_START = SPR_ATTEN_START + 4,   // 44 .. 47
-        NUM_PARAMS = OWN_DISP_START + 4
+        // Direction display proxy (mono direction, 6 lanes). DirCell writes here;
+        // widget step() syncs to engine.laneDirPending_.
+        DIR_DISP_START = OWN_DISP_START + 4,    // 48 .. 53
+        NUM_PARAMS = DIR_DISP_START + 6
     };
     // V1 owner display proxy: poly lane (editor order 0=MEL 1=OCT 2=REST 3=ACC).
     inline int ownerDispId(int polyLaneEditor) { return OWN_DISP_START + polyLaneEditor; }
+    // Direction display proxy: lane 0..5 (editor order MEL/OCT/REST/ACC/VAR/LEG).
+    static inline int dirDispId(int lane) { return DIR_DISP_START + lane; }
 
     // Owner lookup BY ENGINE LANE (REST=0,MEL=1,OCT=2,ACC=3). Mono's ownerDispId is
     // EDITOR-ordered, so callers working in engine/spread lane order MUST convert via
@@ -86,8 +94,12 @@ namespace SandsMonoVisualIds {
         // 18 LOR CV jacks (6 lanes × 3) + 4 spread CV jacks (REST/MEL/OCT/ACCENT) = 22
         CV_START = 0,                       // 0 .. 17
         SPR_CV_START = CV_START + 18,       // 18 .. 21
-        NUM_INPUTS = SPR_CV_START + 4
+        DIR_MOD_START = SPR_CV_START + 4,   // = 22 — direction gate-mod (6 mono jacks)
+        DELEG_MOD_START = DIR_MOD_START + 6, // = 28 — delegation gate-mod (4 mono jacks)
+        NUM_INPUTS = DELEG_MOD_START + 4    // = 32
     };
+    static inline int dirModId(int lane) { return DIR_MOD_START + lane; }
+    static inline int delegModId(int lane) { return DELEG_MOD_START + lane; }
 
     // ── Output IDs ────────────────────────────────────────────────────────
     enum OutputId {
@@ -162,8 +174,21 @@ struct MonsoonSandsVisualExpander : Module {
             configSwitch(ownerDispId(l), 0.f, 1.f, 1.f,
                          std::string(names[l]) + " V1 owner",
                          { "Macro (global)", "Mono" });
+        // Direction display proxies (6 lanes). DirCell writes 0..3 = Fwd/Rev/Pend/PingPong.
+        for (int l = 0; l < 6; ++l) {
+            configParam(dirDispId(l), 0.f, 3.f, 0.f,
+                        std::string(names[l]) + " direction");
+            configInput(dirModId(l), std::string(names[l]) + " direction gate-mod");
+        }
+        const char* delegNm[4] = {"MEL","OCT","REST","ACC"};
+        for (int l = 0; l < 4; ++l)
+            configInput(delegModId(l), std::string(delegNm[l]) + " delegation gate-mod");
     }
     void process(const ProcessArgs&) override;   // defined in .cpp (needs calcPlayhead)
+
+    // Gate edge detection state (mono, 1 channel per jack).
+    bool dirModPrev[6] = {};
+    bool delegModPrev[4] = {};
 
     json_t* dataToJson() override {
         json_t* root = json_object();

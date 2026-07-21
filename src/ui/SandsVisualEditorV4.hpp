@@ -55,25 +55,40 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     NVGcolor inactiveText = nvgRGB(0x6a, 0x6e, 0x76);  // dim hint text for inert state
   };
 
-  // Theme: swap the recess/border (and handle) to match the host panel theme.
-  // Lane colours stay constant (they read identically on both themes); only the
-  // editor's background well + border + neutral handle change.
+  // Theme: the lane display stays DARK on both themes. Only its BEZEL follows the host.
+  //
+  // The old comment here claimed "lane colours read identically on both themes". They do
+  // not. The lane hues are high-luminance (yellow, orange, teal) and were tuned against a
+  // dark well; on the light "slot" (#d8dade) melody yellow falls from 7.9:1 contrast to
+  // 1.7:1 -- under the 3:1 floor for graphical objects, i.e. genuinely unreadable. Every
+  // lane loses 60-80%.
+  //
+  // Worse than dim, it is WRONG: the bars encode probability in alpha, so on a light ground
+  // a low-probability step washes toward the background and reads as ABSENT rather than
+  // unlikely. The display lies about the data.
+  //
+  // So we theme the PANEL, not the DISPLAY -- as hardware does: light panel, dark screen,
+  // and nobody expects an LCD to invert. This also keeps ONE lane colour table with one
+  // meaning per hue, instead of two that can drift apart.
+  //
+  // (The Lantern is NOT evidence for this. It has no light theme because none was written
+  //  yet -- absence is not a decision. When it gets one, the same rule applies: theme its
+  //  panel, leave its LCD dark.)
+  //
+  // The border still follows the host: a light bezel around a dark well reads as a recessed
+  // screen on the light panel rather than a hole punched in it.
   bool lightTheme = false;
   void setTheme(bool light) {
     lightTheme = light;
-    if (light) {
-      colors.background = nvgRGB(0xd8, 0xda, 0xde);  // Monsoon light "slot"
-      colors.border     = nvgRGB(0xc0, 0xc4, 0xca);  // Monsoon light "slotline"
-      colors.handle     = nvgRGB(0x70, 0x76, 0x80);
-      colors.rest       = nvgRGB(0x9a, 0x9a, 0x9a);  // lighten neutral rest for light bg
-    } else {
-      colors.background = nvgRGB(0x10, 0x12, 0x16);
-      colors.border     = nvgRGB(0x2a, 0x2f, 0x37);
-      colors.handle     = nvgRGB(0x88, 0x88, 0x88);
-      colors.rest       = nvgRGB(0x50, 0x50, 0x50);
-    }
+    // Display: dark always. These are the values the lane colours were designed against.
+    colors.background = nvgRGB(0x10, 0x12, 0x16);
+    colors.handle     = nvgRGB(0x88, 0x88, 0x88);
+    colors.rest       = nvgRGB(0x50, 0x50, 0x50);
+    // Bezel: follows the host panel, so the well reads as inset into it.
+    colors.border     = light ? nvgRGB(0xc0, 0xc4, 0xca)   // Monsoon light "slotline"
+                              : nvgRGB(0x2a, 0x2f, 0x37);
   }
-  
+
   // Per-lane probability distribution
   struct ProbabilityLane {
     std::array<float, STEP_COUNT> probabilities;  // 16 values
@@ -234,8 +249,10 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // step = -1 means sequencer not running (no indicator drawn).
   int lanePlayStep[6] = {-1,-1,-1,-1,-1,-1};
   float activeStepAlpha = 0.f;
-  int playDir = +1;   // +1 forward, -1 reverse (Mode E); for directional playhead cue
-  void setPlayDir(int d) { playDir = (d < 0) ? -1 : +1; }
+  int lanePlayDir[6] = {1,1,1,1,1,1};   // per-lane trail direction (+1 fwd / -1 rev); Mode E and per-lane
+  // Set all lanes at once (Mode E global cue). Per-lane callers use setLanePlayDir.
+  void setPlayDir(int d) { int s = (d < 0) ? -1 : +1; for (int l = 0; l < 6; ++l) lanePlayDir[l] = s; }
+  void setLanePlayDir(int lane, int d) { if (lane >= 0 && lane < 6) lanePlayDir[lane] = (d < 0) ? -1 : +1; }
 
   // Convenience: set all active lanes to the same global step
   // (used when L/O/R is not yet available)
@@ -723,7 +740,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     // tracks CV modulation in step with the window band (which uses startBar()).
     int startBar = L.dispOffset % STEP_COUNT;
     int lenC = std::max(1, std::min(L.dispLength, STEP_COUNT));
-    NVGcolor track = colors.rotation; track.a = 0.10f;
+    NVGcolor track = nvgRGB(0x00, 0x00, 0x00); track.a = 0.07f;   // faint neutral darkening (was teal)
     for (int k = 0; k < lenC; ++k) {
       int bar = (startBar + k) % STEP_COUNT;
       rack::Rect c = layout.getStepRect(lane, bar);
@@ -740,35 +757,42 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     rack::Rect cell = layout.getStepRect(lane, rotBar);
     float cx = cell.pos.x + cell.size.x * 0.5f;
     float cyc = stripTop + stripH * 0.5f;
-    float h = stripH * 0.7f;
+    float h = stripH * 0.9f;          // chevron height (~0.27 of lane height, up from ~0.21)
+    float d = 3.f;                    // chevron arm depth (horizontal), up from 2
     float halfW = (cell.size.x - 2.f) * 0.42f;
 
-    // Distinct from the square start/end brackets: a "phase" marker drawn as a
-    // pair of inward-pointing chevrons ›‹ around the rotation block, plus a thin
-    // baseline highlight of the block. Brighter when rotation > 0.
-    NVGcolor mk = colors.rotation; mk.a = (L.rotation > 0) ? 0.9f : 0.4f;
+    // Phase marker, hue-INDEPENDENT so it reads on every lane — including legato, whose hue
+    // IS colors.rotation (teal), where the old fixed-teal marker vanished. Any single hue
+    // collides with the lane sharing it, so use luminance contrast instead: darken the cell
+    // (works over any colour) and draw the chevrons as a white core with a dark halo (legible
+    // over bright OR dark fills). Brighter when rotation > 0.
+    const float on = (L.rotation > 0) ? 1.f : 0.55f;
 
-    // block baseline tint
+    // block baseline tint — DARKEN the rotation cell (universal across lane hues)
     nvgBeginPath(vg);
     nvgRect(vg, cell.pos.x + 1.f, stripTop, cell.size.x - 2.f, stripH);
-    NVGcolor blockTint = colors.rotation; blockTint.a = (L.rotation > 0) ? 0.30f : 0.15f;
+    NVGcolor blockTint = nvgRGB(0x00, 0x00, 0x00); blockTint.a = (L.rotation > 0) ? 0.32f : 0.16f;
     nvgFillColor(vg, blockTint);
     nvgFill(vg);
 
-    // left chevron "›" pointing right toward centre
-    nvgBeginPath(vg);
-    nvgMoveTo(vg, cx - halfW - 2.f, cyc - h * 0.5f);
-    nvgLineTo(vg, cx - halfW + 2.f, cyc);
-    nvgLineTo(vg, cx - halfW - 2.f, cyc + h * 0.5f);
-    // right chevron "‹" pointing left toward centre
-    nvgMoveTo(vg, cx + halfW + 2.f, cyc - h * 0.5f);
-    nvgLineTo(vg, cx + halfW - 2.f, cyc);
-    nvgLineTo(vg, cx + halfW + 2.f, cyc + h * 0.5f);
-    nvgStrokeColor(vg, mk);
-    nvgStrokeWidth(vg, 1.8f);
+    // chevrons ›‹ — path built once, stroked twice (dark halo under, white core over)
+    auto chevrons = [&]() {
+      nvgBeginPath(vg);
+      nvgMoveTo(vg, cx - halfW - d, cyc - h * 0.5f);   // left "›" toward centre
+      nvgLineTo(vg, cx - halfW + d, cyc);
+      nvgLineTo(vg, cx - halfW - d, cyc + h * 0.5f);
+      nvgMoveTo(vg, cx + halfW + d, cyc - h * 0.5f);   // right "‹" toward centre
+      nvgLineTo(vg, cx + halfW - d, cyc);
+      nvgLineTo(vg, cx + halfW + d, cyc + h * 0.5f);
+    };
     nvgLineCap(vg, NVG_ROUND);
     nvgLineJoin(vg, NVG_ROUND);
-    nvgStroke(vg);
+    chevrons();                                          // halo
+    { NVGcolor halo = nvgRGB(0x0a, 0x0c, 0x10); halo.a = 0.60f * on;
+      nvgStrokeColor(vg, halo); nvgStrokeWidth(vg, 3.4f); nvgStroke(vg); }
+    chevrons();                                          // white core
+    { NVGcolor core = nvgRGB(0xf2, 0xf2, 0xf6); core.a = 0.95f * on;
+      nvgStrokeColor(vg, core); nvgStrokeWidth(vg, 1.6f); nvgStroke(vg); }
   }
   
   // Draw a per-lane playhead highlight.
@@ -806,10 +830,11 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
 
       // Directional leading-edge marker: a bright vertical bar on the side the
       // playhead is travelling TOWARD (right edge when forward, left when reverse).
-      // Makes forward vs reverse (Mode E) visible at a glance.
+      // Uses THIS lane's direction (lanePlayDir[l]) so a reversed / pendulum lane reads
+      // backward at a glance, independent of the others and of global Mode E.
       {
-        float ex = (playDir < 0) ? rect.pos.x + 0.5f
-                                  : rect.pos.x + rect.size.x - 2.5f;
+        float ex = (lanePlayDir[l] < 0) ? rect.pos.x + 0.5f
+                                        : rect.pos.x + rect.size.x - 2.5f;
         nvgBeginPath(vg);
         nvgRect(vg, ex, rect.pos.y, 2.f, rect.size.y);
         nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.8f * activeStepAlpha));

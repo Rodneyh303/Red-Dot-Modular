@@ -66,6 +66,10 @@ void MonsoonConfigurator::setup(Monsoon* m) {
     //mix of 100% mirrors MeloDicer which does not have mix.
     m->configParam(RHYTHM_MIX_PARAM, 0.f, 1.f, 1.f, "Rhythm A>B mix", "%", 0.f, 100.f);
     m->configParam(MELODY_MIX_PARAM, 0.f, 1.f, 1.f, "Melody A>B mix", "%", 0.f, 100.f);
+
+    // Mode E manual phase (full range = one upward ramp = one bar). Fallback when CV1
+    // is unpatched; automatable by a host to drive Mode E from a DAW phase modulator.
+    m->configParam(PHASE_PARAM, 0.f, 1.f, 0.f, "Mode E phase (when CV1 unpatched)", "%", 0.f, 100.f);
     m->configButton(LOCK_PARAM,   "Lock");
     m->configButton(MUTE_PARAM,   "Mute");
     m->configButton(MODE_PARAM,   "Mode (Cycle A-B-C-D-E)");
@@ -110,8 +114,7 @@ void MonsoonConfigurator::setup(Monsoon* m) {
     m->configOutput(SEED_OUTPUT,           "Seed Voltage Out (0..10V)");
     m->configOutput(RESET_TRIGGER_OUTPUT,  "Reset Trigger Out");
     m->configOutput(RUN_GATE_OUTPUT,       "Run Gate Out");
-    m->configOutput(TIE_OUTPUT,            "Tie Gate (high on Tie)");
-    m->configOutput(LEGATO_OUTPUT,         "Legato Gate (high on Legato/Max)");
-    m->configOutput(TIE_OR_LEGATO_OUTPUT,  "Tie or Legato Gate (high on either)");
+    m->configOutput(STEP_GATE_OUTPUT,        "Step Gate (legato/tie removed -- every sub-note articulated)");
+    m->configOutput(STEP_LEGATO_GATE_OUTPUT, "Step Legato Gate (sub-note articulations INSIDE slurs; silent on isolated notes)");
     m->configOutput(ACCENT_OUTPUT,         "Accent Gate (high when accented)");
 }

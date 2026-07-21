@@ -126,42 +126,10 @@ struct TrialButton : VCVButton {
     }
 };
 
-// ── Simple Befaco-inspired knobs ─────────────────────────────────────────────
-RDM_KnobLarge::RDM_KnobLarge() {
-    minAngle = -0.83f * M_PI;
-    maxAngle =  0.83f * M_PI;
-    setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobLarge.svg")));
-}
-RDM_KnobMedium::RDM_KnobMedium() {
-    minAngle = -0.83f * M_PI;
-    maxAngle =  0.83f * M_PI;
-    setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobMedium.svg")));
-}
-RDM_KnobSmall::RDM_KnobSmall() {
-    minAngle = -0.83f * M_PI;
-    maxAngle =  0.83f * M_PI;
-    setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobSmall.svg")));
-}
-RDM_KnobDarkLarge::RDM_KnobDarkLarge() {
-    minAngle = -0.83f * M_PI;
-    maxAngle =  0.83f * M_PI;
-    setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobDark_Large.svg")));
-}
-RDM_KnobDarkMedium::RDM_KnobDarkMedium() {
-    minAngle = -0.83f * M_PI;
-    maxAngle =  0.83f * M_PI;
-    setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobDark_Medium.svg")));
-}
-RDM_KnobCreamLarge::RDM_KnobCreamLarge() {
-    minAngle = -0.83f * M_PI;
-    maxAngle =  0.83f * M_PI;
-    setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobCream_Large.svg")));
-}
-RDM_KnobCreamMedium::RDM_KnobCreamMedium() {
-    minAngle = -0.83f * M_PI;
-    maxAngle =  0.83f * M_PI;
-    setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/RDM_KnobCream_Medium.svg")));
-}
+// ── Knobs ────────────────────────────────────────────────────────────────────
+// redDot::<Palette>_<Size>_<Style> from ui/Controls.hpp (generated). Angles and the
+// CircularShadow kill (hard-edged disc: blurRadius defaults to 0) live once in
+// redDot::KnobT -- see the note there before re-enabling any shadow.
 
 bool MonsoonWidget::getLightTheme() const {
     auto* m = dynamic_cast<const Monsoon*>(module);
@@ -261,25 +229,31 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         // EXPERIMENT branch: the semitone modulation is shown by a superimposed
         // light marker inside MonsoonLightSlider::draw (not the linear tick), so
         // no queueModArcLinear here — this lets us compare the two approaches.
+        // Bound by ANCHOR, not coordinates: panel_src/fader_level_markers.py emits each
+        // param_SEMIn_PARAM anchor AND that fader's level ticks from one loop, so the ticks
+        // cannot drift from the slider (cleanup doc A3). Do not reintroduce mm here.
         for (int i = 0; i < 12; ++i) {
-            auto* s = createLightParamCentered<MonsoonLightSlider<GreenRedLight>>(
-                mm2px(Vec(7.5f + i*9.f, 59.75f)), module, SEMI0_PARAM+i, SEMI_LED_START+2*i);
-            addParam(s);
+            bindLightParam<MonsoonLightSlider<GreenRedLight>>(
+                "param_SEMI" + std::to_string(i) + "_PARAM", SEMI0_PARAM + i, SEMI_LED_START + 2*i);
         }
 
         // ── OCT sliders ───────────────────────────────────────────────────────
         {
-            auto* lo = createLightParamCentered<VCVLightSlider<RedLight>>(
-                mm2px(Vec(119.f, 59.75f)), module, MonsoonIds::OCT_LO_PARAM, MonsoonIds::OCT_LO_LED);
-            addParam(lo);
-            queueModArcLinear(this, module, lo,
+            VCVLightSlider<RedLight>* lo = nullptr;
+            bindLightParam<VCVLightSlider<RedLight>>("param_OCT_LO_PARAM",
+                MonsoonIds::OCT_LO_PARAM, MonsoonIds::OCT_LO_LED,
+                std::function<void(VCVLightSlider<RedLight>*)>([&lo](VCVLightSlider<RedLight>* w){ lo = w; }));
+            // Guard: bindLightParam only WARNs on a missing anchor, so the slider may be null.
+            if (lo) queueModArcLinear(this, module, lo,
                 [](const Monsoon::ModViz& m){ return m.octaveLo; },
                 [](const Monsoon::ModViz& m){ return m.pitchLane[12]; },
                 [](const Monsoon& mm){ return mm.modVizMonsoonMelody; });
-            auto* hi = createLightParamCentered<VCVLightSlider<RedLight>>(
-                mm2px(Vec(128.f, 59.75f)), module, MonsoonIds::OCT_HI_PARAM, MonsoonIds::OCT_HI_LED);
-            addParam(hi);
-            queueModArcLinear(this, module, hi,
+            VCVLightSlider<RedLight>* hi = nullptr;
+            bindLightParam<VCVLightSlider<RedLight>>("param_OCT_HI_PARAM",
+                MonsoonIds::OCT_HI_PARAM, MonsoonIds::OCT_HI_LED,
+                std::function<void(VCVLightSlider<RedLight>*)>([&hi](VCVLightSlider<RedLight>* w){ hi = w; }));
+            // Guard: bindLightParam only WARNs on a missing anchor, so the slider may be null.
+            if (hi) queueModArcLinear(this, module, hi,
                 [](const Monsoon::ModViz& m){ return m.octaveHi; },
                 [](const Monsoon::ModViz& m){ return m.pitchLane[13]; },
                 [](const Monsoon& mm){ return mm.modVizMonsoonMelody; });
@@ -297,11 +271,15 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
             }
         }
 
-        // ── Mode button + lights: far right ──────────────────────────────────
-        addParam(createParamCentered<TL1105>(mm2px(Vec(197.f, 12.f)), module, MonsoonIds::MODE_PARAM));
-        for (int i = 0; i < 4; ++i)
-            addChild(createLightCentered<MediumLight<YellowLight>>(
-                mm2px(Vec(192.f, 34.f + i*8.f)), module, MonsoonIds::MODE_A_LIGHT+i));
+        // ── Mode button + lights: right strip, bound by ANCHOR ────────────────
+        // Anchors come from panel_src/mode_column.py, which also asserts each light row
+        // clears the step ring. FIVE lights: Mode E was always selectable (the cycle is
+        // (modeSelect+1)%5 and the engine handles modeSelect==4) but had no light, so
+        // choosing it turned them all off and looked broken.
+        bindParam<TL1105>("param_MODE_PARAM", MonsoonIds::MODE_PARAM);
+        for (int i = 0; i < 5; ++i)
+            bindLight<MediumLight<YellowLight>>("light_MODE_" + std::string(1, char('A'+i)) + "_LIGHT",
+                                                MonsoonIds::MODE_A_LIGHT + i);
 
         // ── Single control row at y=87: all dice/slew/mix + utility aligned ──
         // ── EXPERIMENT: bottom 3 rows bound by NAME from the panel SVG ───────
@@ -334,10 +312,10 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
             std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = false; }));
         bindParam<TrialButton>("param_LAST_TRIAL_M_PARAM",  MonsoonIds::LAST_TRIAL_M_PARAM,
             std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = true; }));
-         bindParam<RDM_KnobSmall>("param_RHYTHM_MIX_PARAM", MonsoonIds::RHYTHM_MIX_PARAM,
-            std::function<void(RDM_KnobSmall*)>([this, module](RDM_KnobSmall* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.rhythmMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[2];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
-        bindParam<RDM_KnobSmall>("param_MELODY_MIX_PARAM", MonsoonIds::MELODY_MIX_PARAM,
-            std::function<void(RDM_KnobSmall*)>([this, module](RDM_KnobSmall* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.melodyMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[3];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+         bindParam<redDot::Dark_Small_Cog>("param_RHYTHM_MIX_PARAM", MonsoonIds::RHYTHM_MIX_PARAM,
+            std::function<void(redDot::Dark_Small_Cog*)>([this, module](redDot::Dark_Small_Cog* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.rhythmMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[2];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+        bindParam<redDot::Dark_Small_Cog>("param_MELODY_MIX_PARAM", MonsoonIds::MELODY_MIX_PARAM,
+            std::function<void(redDot::Dark_Small_Cog*)>([this, module](redDot::Dark_Small_Cog* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.melodyMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[3];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
         bindParam<TL1105>("param_LOCK_PARAM",             MonsoonIds::LOCK_PARAM);
         bindParam<TL1105>("param_MUTE_PARAM",             MonsoonIds::MUTE_PARAM);
         bindParam<TL1105>("param_RESET_BUTTON_PARAM",     MonsoonIds::RESET_BUTTON_PARAM);
@@ -364,17 +342,28 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         bindInput<PJ301MPort>("input_CV2_INPUT",           MonsoonIds::CV2_INPUT);
         bindInput<PJ301MPort>("input_CV3_MOD_INPUT",       MonsoonIds::CV3_MOD_INPUT);
 
-        // Output-group accent region (unchanged)
+        // Output-group accent region: REMOVED (see below).
         {
-            Monsoon* mm = dynamic_cast<Monsoon*>(module);
-            redDot::addOutputAccent(this, 106.f, 97.f, 88.f, 31.f,
-                [mm]() { return mm ? mm->lightTheme : false; });
+            // Monsoon* mm = dynamic_cast<Monsoon*>(module);   // only fed the accent's theme fn
+            // Output-accent region REMOVED. It implemented a real Rack convention (outputs
+            // should read distinctly from inputs), but as a slab at hardcoded mm — 106,97
+            // 88x31 — sized by eye rather than derived from the output jacks it covers, so
+            // it neither fitted them nor matched the two SVG group boxes it sat beside (all
+            // three now gone). Flat fill + hairline outline reads as taped-on paper, not a
+            // recess. If in/out differentiation is wanted back, derive the region from the
+            // output jack ANCHORS in the generator (cleanup step 5) so it cannot drift:
+            // redDot::addOutputAccent still exists and takes a rect.
+            //             redDot::addOutputAccent(this, 106.f, 97.f, 88.f, 31.f,
+            //                 [mm]() { return mm ? mm->lightTheme : false; });
         }
         // Outputs (two rows) — bound by name
         bindOutput<PJ301MPort>("output_GATE_OUTPUT",          MonsoonIds::GATE_OUTPUT);
-        bindOutput<PJ301MPort>("output_TIE_OUTPUT",           MonsoonIds::TIE_OUTPUT);
-        bindOutput<PJ301MPort>("output_LEGATO_OUTPUT",        MonsoonIds::LEGATO_OUTPUT);
-        bindOutput<PJ301MPort>("output_TIE_OR_LEGATO_OUTPUT", MonsoonIds::TIE_OR_LEGATO_OUTPUT);
+        // STEP GATE (the un-fused gate) reuses the old T|L jack position; STEP LEGATO GATE
+        // (slur-masked) reuses the old LEG position. The old TIE spot stays empty for now --
+        // cleaned up (all three re-placed deliberately) in a future panel iteration.
+        // Marker ids kept to avoid a panel-artifact rebuild; they BIND to the new outputs.
+        bindOutput<PJ301MPort>("output_TIE_OR_LEGATO_OUTPUT", MonsoonIds::STEP_GATE_OUTPUT);
+        bindOutput<PJ301MPort>("output_LEGATO_OUTPUT",        MonsoonIds::STEP_LEGATO_GATE_OUTPUT);
         bindOutput<PJ301MPort>("output_ACCENT_OUTPUT",        MonsoonIds::ACCENT_OUTPUT);
         bindOutput<PJ301MPort>("output_CV_OUTPUT",            MonsoonIds::CV_OUTPUT);
         bindOutput<PJ301MPort>("output_SEED_OUTPUT",          MonsoonIds::SEED_OUTPUT);
@@ -391,6 +380,16 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         // never get built. flushModArcs clears the pending list, so this only
         // builds the as-yet-unflushed (slew/mix/slider) overlays.
         flushModArcs(this, dynamic_cast<Monsoon*>(module));
+
+        // ── TEMPORARY: Mode E phase knob at a FIXED position (no panel marker yet). ──
+        // In the CONSTRUCTOR (added once), NOT applyTheme() (which re-runs on theme toggle
+        // and would stack duplicates). Placed below the OFFSET knob so it's clickable for
+        // host-parameter mapping -- VCV binds host automation slots to on-screen controls,
+        // so PHASE_PARAM needs a visible knob before Bitwig can map/modulate it. Position is
+        // provisional; the real placement comes with the Monsoon panel rejig (TIE-jack
+        // cleanup + STEP/SLEG). Plain small cog, no theme swap (fine for a test control).
+        addParam(createParamCentered<redDot::Dark_Small_Cog>(
+            mm2px(Vec(178.0f, 72.0f)), module, MonsoonIds::PHASE_PARAM));
     }
 
 void MonsoonWidget::applyTheme() {
@@ -457,35 +456,35 @@ void MonsoonWidget::applyTheme() {
         // by theme). Ring + sliders stay C++-computed elsewhere. The named shapes
         // live in res/panels/Monsoon_panel_*_monsoon.svg (components layer).
         if (lightTheme) {
-            bindParam<RDM_KnobDarkLarge> ("param_NOTE_VALUE_PARAM",     MonsoonIds::NOTE_VALUE_PARAM,
-                std::function<void(RDM_KnobDarkLarge*)>([this, m](RDM_KnobDarkLarge* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.noteValue;}, [](const Monsoon::ModViz& v){return v.big5Lane[0];}, 0.50f,[](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
-            bindParam<RDM_KnobDarkMedium>("param_VARIATION_PARAM",      MonsoonIds::VARIATION_PARAM,
-                std::function<void(RDM_KnobDarkMedium*)>([this, m](RDM_KnobDarkMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.variation;}, [](const Monsoon::ModViz& v){return v.big5Lane[1];},0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
-            bindParam<RDM_KnobDarkMedium>("param_LEGATO_PARAM",         MonsoonIds::LEGATO_PARAM,
-                std::function<void(RDM_KnobDarkMedium*)>([this, m](RDM_KnobDarkMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.legato;}, [](const Monsoon::ModViz& v){return v.big5Lane[2];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
-            bindParam<RDM_KnobDarkMedium>("param_REST_PARAM",           MonsoonIds::REST_PARAM,
-                std::function<void(RDM_KnobDarkMedium*)>([this, m](RDM_KnobDarkMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.rest;}, [](const Monsoon::ModViz& v){return v.big5Lane[3];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
-            bindParam<RDM_KnobDarkMedium>("param_ACCENT_KNOB",          MonsoonIds::ACCENT_KNOB,
-                std::function<void(RDM_KnobDarkMedium*)>([this, m](RDM_KnobDarkMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.accent;}, [](const Monsoon::ModViz& v){return v.big5Lane[4];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            bindParam<redDot::Dark_Medium_Cog> ("param_NOTE_VALUE_PARAM",     MonsoonIds::NOTE_VALUE_PARAM,
+                std::function<void(redDot::Dark_Medium_Cog*)>([this, m](redDot::Dark_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.noteValue;}, [](const Monsoon::ModViz& v){return v.big5Lane[0];}, 0.50f,[](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            bindParam<redDot::Dark_Medium_Cog>("param_VARIATION_PARAM",      MonsoonIds::VARIATION_PARAM,
+                std::function<void(redDot::Dark_Medium_Cog*)>([this, m](redDot::Dark_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.variation;}, [](const Monsoon::ModViz& v){return v.big5Lane[1];},0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            bindParam<redDot::Dark_Medium_Cog>("param_LEGATO_PARAM",         MonsoonIds::LEGATO_PARAM,
+                std::function<void(redDot::Dark_Medium_Cog*)>([this, m](redDot::Dark_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.legato;}, [](const Monsoon::ModViz& v){return v.big5Lane[2];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            bindParam<redDot::Dark_Medium_Cog>("param_REST_PARAM",           MonsoonIds::REST_PARAM,
+                std::function<void(redDot::Dark_Medium_Cog*)>([this, m](redDot::Dark_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.rest;}, [](const Monsoon::ModViz& v){return v.big5Lane[3];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            bindParam<redDot::Dark_Medium_Cog>("param_ACCENT_KNOB",          MonsoonIds::ACCENT_KNOB,
+                std::function<void(redDot::Dark_Medium_Cog*)>([this, m](redDot::Dark_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.accent;}, [](const Monsoon::ModViz& v){return v.big5Lane[4];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
 
-            bindParam<RDM_KnobSmall>     ("param_BPM_PARAM",            MonsoonIds::BPM_PARAM);
-            bindParam<RDM_KnobSmall>     ("param_PATTERN_LENGTH_PARAM", MonsoonIds::PATTERN_LENGTH_PARAM);
-            bindParam<RDM_KnobSmall>     ("param_PATTERN_OFFSET_PARAM", MonsoonIds::PATTERN_OFFSET_PARAM);
+            bindParam<redDot::Dark_Small_Cog>     ("param_BPM_PARAM",            MonsoonIds::BPM_PARAM);
+            bindParam<redDot::Dark_Small_Cog>     ("param_PATTERN_LENGTH_PARAM", MonsoonIds::PATTERN_LENGTH_PARAM);
+            bindParam<redDot::Dark_Small_Cog>     ("param_PATTERN_OFFSET_PARAM", MonsoonIds::PATTERN_OFFSET_PARAM);
         } else {
-            bindParam<RDM_KnobCreamLarge>("param_NOTE_VALUE_PARAM",     MonsoonIds::NOTE_VALUE_PARAM,
-                std::function<void(RDM_KnobCreamLarge*)>([this, m](RDM_KnobCreamLarge* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.noteValue;}, [](const Monsoon::ModViz& v){return v.big5Lane[0];},0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
-            bindParam<RDM_KnobCreamMedium>("param_VARIATION_PARAM",      MonsoonIds::VARIATION_PARAM,
-                std::function<void(RDM_KnobCreamMedium*)>([this, m](RDM_KnobCreamMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.variation;}, [](const Monsoon::ModViz& v){return v.big5Lane[1];},0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
-            bindParam<RDM_KnobCreamMedium>("param_LEGATO_PARAM",         MonsoonIds::LEGATO_PARAM,
-                std::function<void(RDM_KnobCreamMedium*)>([this, m](RDM_KnobCreamMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.legato;}, [](const Monsoon::ModViz& v){return v.big5Lane[2];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
-            bindParam<RDM_KnobCreamMedium>("param_REST_PARAM",           MonsoonIds::REST_PARAM,
-                std::function<void(RDM_KnobCreamMedium*)>([this, m](RDM_KnobCreamMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.rest;}, [](const Monsoon::ModViz& v){return v.big5Lane[3];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
-            bindParam<RDM_KnobCreamMedium>("param_ACCENT_KNOB",          MonsoonIds::ACCENT_KNOB,
-                std::function<void(RDM_KnobCreamMedium*)>([this, m](RDM_KnobCreamMedium* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.accent;}, [](const Monsoon::ModViz& v){return v.big5Lane[4];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            bindParam<redDot::OffWhite_Medium_Cog>("param_NOTE_VALUE_PARAM",     MonsoonIds::NOTE_VALUE_PARAM,
+                std::function<void(redDot::OffWhite_Medium_Cog*)>([this, m](redDot::OffWhite_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.noteValue;}, [](const Monsoon::ModViz& v){return v.big5Lane[0];},0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            bindParam<redDot::OffWhite_Medium_Cog>("param_VARIATION_PARAM",      MonsoonIds::VARIATION_PARAM,
+                std::function<void(redDot::OffWhite_Medium_Cog*)>([this, m](redDot::OffWhite_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.variation;}, [](const Monsoon::ModViz& v){return v.big5Lane[1];},0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            bindParam<redDot::OffWhite_Medium_Cog>("param_LEGATO_PARAM",         MonsoonIds::LEGATO_PARAM,
+                std::function<void(redDot::OffWhite_Medium_Cog*)>([this, m](redDot::OffWhite_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.legato;}, [](const Monsoon::ModViz& v){return v.big5Lane[2];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            bindParam<redDot::OffWhite_Medium_Cog>("param_REST_PARAM",           MonsoonIds::REST_PARAM,
+                std::function<void(redDot::OffWhite_Medium_Cog*)>([this, m](redDot::OffWhite_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.rest;}, [](const Monsoon::ModViz& v){return v.big5Lane[3];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            bindParam<redDot::OffWhite_Medium_Cog>("param_ACCENT_KNOB",          MonsoonIds::ACCENT_KNOB,
+                std::function<void(redDot::OffWhite_Medium_Cog*)>([this, m](redDot::OffWhite_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.accent;}, [](const Monsoon::ModViz& v){return v.big5Lane[4];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
 
-            bindParam<RDM_KnobSmall>      ("param_BPM_PARAM",            MonsoonIds::BPM_PARAM);
-            bindParam<RDM_KnobSmall>      ("param_PATTERN_LENGTH_PARAM", MonsoonIds::PATTERN_LENGTH_PARAM);
-            bindParam<RDM_KnobSmall>      ("param_PATTERN_OFFSET_PARAM", MonsoonIds::PATTERN_OFFSET_PARAM);
+            bindParam<redDot::Dark_Small_Cog>      ("param_BPM_PARAM",            MonsoonIds::BPM_PARAM);
+            bindParam<redDot::Dark_Small_Cog>      ("param_PATTERN_LENGTH_PARAM", MonsoonIds::PATTERN_LENGTH_PARAM);
+            bindParam<redDot::Dark_Small_Cog>      ("param_PATTERN_OFFSET_PARAM", MonsoonIds::PATTERN_OFFSET_PARAM);
         }
 
         // All big-5 knobs are bound; build their modulation-arc overlays on top.
@@ -536,12 +535,15 @@ void MonsoonWidget::draw(const DrawArgs& args) {
             }
         };
 
+        // Knob names sit BELOW each dial's own arc labels (1/1, 1/32, 0%, 100%), which the
+        // arcLabel() calls place at r*sin(45 deg) ~= 8.5-9.5mm under the knob centre. At dy=12
+        // the name spanned 10.3..13.7mm and nearly touched them; 14.5 leaves ~2-3mm clear.
         setNvgFontSize(3.4f); fillNvgColour(200,200,200);
-        labelAt("param_NOTE_VALUE_PARAM", 12.f, "NOTE VALUE");
-        labelAt("param_VARIATION_PARAM",  12.f, "VARIATION");
-        labelAt("param_LEGATO_PARAM",     12.f, "LEGATO");
-        labelAt("param_REST_PARAM",       12.f, "REST");
-        labelAt("param_ACCENT_KNOB",      12.f, "ACCENT");
+        labelAt("param_NOTE_VALUE_PARAM", 14.5f, "NOTE VALUE");
+        labelAt("param_VARIATION_PARAM",  14.5f, "VARIATION");
+        labelAt("param_LEGATO_PARAM",     14.5f, "LEGATO");
+        labelAt("param_REST_PARAM",       14.5f, "REST");
+        labelAt("param_ACCENT_KNOB",      14.5f, "ACCENT");
 
         auto arcLabel = [&](float cx_mm, float cy_mm, float r_mm, float angle_deg, const char* text, int ri=160, int gi=160, int bi=160) {
             float a=angle_deg*float(M_PI)/180.f, tx=cx_mm+r_mm*std::cos(a), ty=cy_mm+r_mm*std::sin(a);
@@ -578,42 +580,65 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         setNvgFontSize(3.0f);
         const char* sn[12]={"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
         for(int i=0;i<12;++i){ fillNvgColour(200,200,200); writeNvgText(7.5f+i*9.f,43.f,sn[i]); }
-        setNvgFontSize(2.7f); fillNvgColour(85,85,85);
+        // Fader numerals: sit just under the sliders. They used to be at SL_TOP+SLH+6 = 80.5mm,
+        // i.e. 0.5mm from the control-row labels at y=81 -- hence the overlap with SLEW/DICE/
+        // TRIAL. Pulled up to 2.8mm below the travel, which leaves ~3.7mm clear of that row.
+        // Brightness raised 85 -> 165: at 85 they read far fainter than the note names above.
+        setNvgFontSize(2.7f); fillNvgColour(165,165,165);
         const char* nums[12]={"1","2","3","4","5","6","7","8","9","10","11","12"};
-        for(int i=0;i<12;++i) writeNvgText(7.5f+i*9.f,SL_TOP+SLH+6.f,nums[i]);
+        for(int i=0;i<12;++i) writeNvgText(7.5f+i*9.f, SL_TOP+SLH+2.8f, nums[i]);
         setNvgFontSize(2.9f); fillNvgColour(38,166,154);
         writeNvgText(119.f,43.f,"LO"); writeNvgText(128.f,43.f,"HI");
 
-        // ── Slider tick marks: parallel horizontal lines per slider (meloDICER style) ──
-        // 9 tick levels in the slider travel range, alternating long/short
-        // Travel: SL_TOP=45mm to SL_TOP+SLH=74.5mm → 29.5mm / 8 intervals = 3.69mm each
-        {
-            const float SL_BOT = SL_TOP + SLH;
-            const int   N_TICKS = 9;
-            const float tickXs[14] = {7.5f,16.5f,25.5f,34.5f,43.5f,52.5f,61.5f,70.5f,79.5f,88.5f,97.5f,106.5f,119.f,128.f};
-            nvgBeginPath(vg);
-            for (int t = 0; t < N_TICKS; ++t) {
-                float ty   = mm2px(SL_TOP + t*(SL_BOT-SL_TOP)/(N_TICKS-1));
-                bool  major = (t==0 || t==4 || t==8);
-                float hw   = mm2px(major ? 2.2f : 1.4f);
-                for (int i = 0; i < 14; ++i) {
-                    float cx = mm2px(tickXs[i]);
-                    nvgMoveTo(vg, cx - hw, ty);
-                    nvgLineTo(vg, cx + hw, ty);
-                }
-            }
-            nvgStrokeWidth(vg, 0.6f);
-            if (lt) nvgStrokeColor(vg, nvgRGBA(140,140,140,90));
-            else    nvgStrokeColor(vg, nvgRGBA(180,180,180,55));
-            nvgStroke(vg);
-        }
+        // Slider level ticks are SVG panel art now, emitted by
+        // panel_src/fader_level_markers.py from the same loop as the fader anchors.
+        // The runtime drawer that used to live here was a SECOND tick system: 9 levels x 14
+        // faders at hw 2.2/1.4mm centred ON each slider, off its own hardcoded tickXs[14].
+        // It is what drew lines through the tracks, and it was a third copy of the fader
+        // positions (widget mm, tickXs, SVG). Do not reintroduce it.
 
-        // Mode
-        setNvgFontSize(3.2f); fillNvgColour(210,210,210); writeNvgText(197.f,5.f,"MODE");
-        setNvgFontSize(3.8f);
-        const float LX=192.f, LY0=34.f, LDY=8.f;
-        writeNvgText(LX,LY0,"A"); writeNvgText(LX,LY0+LDY,"B");
-        writeNvgText(LX,LY0+2*LDY,"C"); writeNvgText(LX,LY0+3*LDY,"D");
+        // ── Mode column (meloDICER layout: boxed letter, LED beside it, description under) ──
+        // Everything is positioned FROM the light anchor emitted by panel_src/mode_column.py,
+        // so a glyph can never drift off its LED. That was the original bug: the letters were
+        // drawn at EXACTLY the light coordinates, so each letter covered its own light -- the
+        // letter appeared to light up instead of the LED, and on the light theme a near-black
+        // glyph on an unlit light's dark circle vanished completely.
+        {
+            static const char* kModeDesc[5] = {
+                "sequencer", "seq + gate", "quantizer 1", "quantizer 2", "phase seq" };
+            const float BOX_DX = -7.0f;   // box centre, relative to the LED
+            const float BOX_W  =  5.5f, BOX_H = 5.5f;
+            const float TXT_DX = -3.5f, TXT_DY = 4.6f;   // description, relative to the LED
+
+            setNvgFontSize(3.2f); fillNvgColour(210,210,210);
+            writeNvgText(193.f, 6.f, "MODE");
+
+            for (int i = 0; i < 5; ++i) {
+                const std::string id = "light_MODE_" + std::string(1, char('A'+i)) + "_LIGHT";
+                NSVGshape* sh = findNamed(id.c_str());
+                if (!sh) continue;
+                const Vec c = centerOf(sh);
+
+                // Key-cap box: always the OPPOSITE luminance to the panel, so the letter reads
+                // on either theme (meloDICER uses a light cap on its dark panel).
+                const float bx = c.x + mm2px(BOX_DX) - mm2px(BOX_W)*0.5f;
+                const float by = c.y - mm2px(BOX_H)*0.5f;
+                nvgBeginPath(vg);
+                nvgRoundedRect(vg, bx, by, mm2px(BOX_W), mm2px(BOX_H), mm2px(0.9f));
+                nvgFillColor(vg,   lt ? nvgRGB(0x3a,0x40,0x48) : nvgRGB(0xd8,0xda,0xde));
+                nvgFill(vg);
+                nvgStrokeColor(vg, lt ? nvgRGB(0x20,0x24,0x2a) : nvgRGB(0x9a,0x9a,0x9a));
+                nvgStrokeWidth(vg, 0.8f); nvgStroke(vg);
+
+                const char t[2] = { char('A'+i), 0 };
+                setNvgFontSize(3.4f);
+                nvgFillColor(vg, lt ? nvgRGB(0xe6,0xe8,0xec) : nvgRGB(0x10,0x12,0x16));
+                nvgText(vg, c.x + mm2px(BOX_DX), c.y, t, nullptr);
+
+                setNvgFontSize(1.9f); fillNvgColour(150,150,140);
+                nvgText(vg, c.x + mm2px(TXT_DX), c.y + mm2px(TXT_DY), kModeDesc[i], nullptr);
+            }
+        }
 
         // (Legacy S/D/P expander-light labels removed along with their lights.)
 
@@ -649,9 +674,9 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         labelAt("input_CV3_MOD_INPUT",       JLBL, "CV3");
         fillNvgColour(180,180,180);
         labelAt("output_GATE_OUTPUT",          JLBL, "GATE");
-        labelAt("output_TIE_OUTPUT",           JLBL, "TIE");
-        labelAt("output_LEGATO_OUTPUT",        JLBL, "LEG");
-        labelAt("output_TIE_OR_LEGATO_OUTPUT", JLBL, "T|L");
+        // TIE retired (spot empty for now); STEP reuses T|L, SLEG (step-legato) reuses LEG.
+        labelAt("output_TIE_OR_LEGATO_OUTPUT", JLBL, "STEP");
+        labelAt("output_LEGATO_OUTPUT",        JLBL, "SLEG");
         labelAt("output_ACCENT_OUTPUT",        JLBL, "ACC");
         labelAt("output_CV_OUTPUT",            JLBL, "CV");
         labelAt("output_SEED_OUTPUT",          JLBL, "SEED");
@@ -730,6 +755,23 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
             // a voice's VAR/LEG is set Local East on the East expander. See EAST_EXTRA_LANES.md.
             add("Per-voice articulation (East VARIATION/LEGATO)", &m->engine.perVoiceArticulation);
         }));
+        // Lane direction context menu removed (step 4 of lane_direction_homes.md).
+        // Direction is now expander-homed — set it via DirCell or gate-mod on the Sands panels.
+        // The flip-quant setting is still accessible; it's a global engine property.
+        {
+            struct FlipQuantItem : ui::MenuItem {
+                Monsoon* module = nullptr; SequencerEngine::LaneFlipQuant value{};
+                void onAction(const event::Action&) override { if (module) module->engine.laneFlipQuant = value; }
+                void step() override { if (module) rightText = (module->engine.laneFlipQuant == value) ? "✔" : ""; ui::MenuItem::step(); }
+            };
+            menu->addChild(createSubmenuItem("Lane flip quant", "", [=](ui::Menu* sm) {
+                auto addQ = [&](const char* label, SequencerEngine::LaneFlipQuant v) {
+                    auto* it = createMenuItem<FlipQuantItem>(label); it->module = m; it->value = v; sm->addChild(it);
+                };
+                addQ("Flip at phrase boundary", SequencerEngine::LaneFlipQuant::Phrase);
+                addQ("Flip at step edge",       SequencerEngine::LaneFlipQuant::StepEdge);
+            }));
+        }
         menu->addChild(new ui::MenuSeparator);
         struct IntItem : ui::MenuItem {
             Monsoon* module; int* target; int value;
