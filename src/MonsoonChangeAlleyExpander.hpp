@@ -76,18 +76,19 @@ struct MonsoonChangeAlleyExpander : Module {
 struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
 
     // Matrix geometry in mm (must match gen_change_alley.py exactly)
-    static constexpr float PW_MM    = 18.f * 5.08f;
+    static constexpr float PW_MM    = 23.f * 5.08f;
     static constexpr float PH_MM    = 128.5f;
     static constexpr float GUTTER_L = 13.0f;
     static constexpr float GUTTER_R =  3.5f;
-    static constexpr float GUTTER_T = 10.0f;
-    static constexpr float GUTTER_B = 12.0f;
-    static constexpr float MX_MM    = GUTTER_L;
-    static constexpr float MY_MM    = GUTTER_T + 8.0f;              // square grid: matches generator
-    static constexpr float MW_MM    = PW_MM - GUTTER_L - GUTTER_R;
-    static constexpr float CELL_W   = MW_MM / CA::N_VOICES;             // SQUARE cells (width-constrained)
-    static constexpr float CELL_H   = CELL_W;
+    static constexpr float GUTTER_T =  9.0f;
+    static constexpr float GUTTER_B = 10.0f;
+    static constexpr float MY_MM    = GUTTER_T + 8.0f;                       // matches generator
+    static constexpr float AVAIL_H  = PH_MM - MY_MM - GUTTER_B - 2.0f;       // vertical budget
+    static constexpr float CELL_H   = AVAIL_H / CA::N_VOICES;                // SQUARE, height-driven
+    static constexpr float CELL_W   = CELL_H;
+    static constexpr float MW_MM    = CELL_W * CA::N_VOICES;
     static constexpr float MH_MM    = CELL_H * CA::N_VOICES;
+    static constexpr float MX_MM    = GUTTER_L + (PW_MM - GUTTER_L - GUTTER_R - MW_MM) * 0.5f;  // centred
 
     // Cell centre in px (rack mm2px)
     static Vec cellCentre(int row, int col) {

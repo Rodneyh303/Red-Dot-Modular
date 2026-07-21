@@ -9,10 +9,10 @@ pin position/colour; a light background would wash out the red/white contrast).
 """
 import os, math
 
-PW_MM = 18 * 5.08   # 91.44 mm (18HP)
+PW_MM = 23 * 5.08   # 116.84 mm (23HP)
 PH_MM = 128.5       # standard Rack height
 
-HP = 18
+HP = 23
 
 # All coordinates in mm; SVG uses the same unit via viewBox.
 SVG_W, SVG_H = PW_MM, PH_MM
@@ -65,9 +65,9 @@ def gen(dark):
 
     # Document size in PX (Rack: 1HP = 15px, 75dpi => px = mm * 75/25.4). 18HP = 270px,
     # 128.5mm = 379.43px (house height, cf. Causeway). The viewBox keeps every coordinate
-    # below in mm, and 270/91.44 == Rack's mm2px scale exactly, so the widget's mm2px
+    # below in mm, and 345/116.84 == Rack's mm2px scale exactly, so the widget's mm2px
     # hit-test lands on the same points the panel draws.
-    E(f'<svg width="270.0" height="379.43" '
+    E(f'<svg width="345.0" height="379.43" '
       f'viewBox="0 0 {SVG_W:.3f} {SVG_H:.3f}" xmlns="http://www.w3.org/2000/svg">')
 
     # Panel background
@@ -81,17 +81,17 @@ def gen(dark):
     # Available width after left gutter and right margin:
     GUTTER_L  = 13.0   # mm for row currency labels
     GUTTER_R  =  3.5   # mm right margin / poly indicator
-    GUTTER_T  = 10.0   # mm for column labels at top
-    GUTTER_B  = 12.0   # mm for brand at bottom
+    GUTTER_T  =  9.0   # mm for column labels at top
+    GUTTER_B  = 10.0   # mm for brand at bottom
 
-    MX = GUTTER_L                      # matrix left edge (mm)
-    MW = SVG_W - GUTTER_L - GUTTER_R  # matrix width
-    CELL   = MW / N                    # SQUARE cells — width-constrained
-    CELL_W = CELL
-    CELL_H = CELL
-    MH = CELL * N                      # square matrix
-    # centre the square grid in the vertical space between title and legend
-    MY = GUTTER_T + 8.0                # top edge: title + column labels above
+    # Square cells sized to the VERTICAL budget so the grid fills the panel height;
+    # width has slack (wider panel), so the grid is horizontally centred in it.
+    MY = GUTTER_T + 8.0                        # top edge: title + column labels above
+    avail_h = SVG_H - MY - GUTTER_B - 2.0      # vertical space for the grid
+    CELL   = avail_h / N                        # SQUARE, height-driven
+    CELL_W = CELL; CELL_H = CELL
+    MW = CELL * N; MH = CELL * N
+    MX = GUTTER_L + (SVG_W - GUTTER_L - GUTTER_R - MW) * 0.5   # centre horizontally
 
     # ── Matrix well (dark, always) ────────────────────────────────────────────
     E(f'<rect x="{MX:.3f}" y="{MY:.3f}" width="{MW:.3f}" height="{MH:.3f}" '

@@ -70,9 +70,14 @@ The read-side implementation (readStrand + enumerated consumer remaps) is a CODE
 one pin borrowed two different materials (finals for East/articulation, slewed base for
 Macro), and every read surface had to be found and remembered (two misses proved the
 risk). The mapping moves to CANDIDATE CONSUMPTION in the derivation pipeline:
-- Voice v's derivation reads candA/candB[caSrcRow(v, strand)] — raw A and B draws
-  remapped BEFORE mixing; v's OWN mix, slew, spread then process borrowed raw material
-  into v's OWN final bank.
+- CONFIRMED INJECTION POINT (PatternEngine.cpp ~592-602 and the split melody/rhythm
+  partners): random_ is written FROM the *Source[] arrays each cycle (Source → slew →
+  random_, recirculating). There is no separate pristine raw buffer, so the remap must
+  happen AT THAT COPY: change random_[v][strand] = Source[v] to = Source[srcRow(v,strand)].
+  The *Source[] arrays stay per-voice and untouched (locality, dice/pin orthogonality
+  preserved); random_ — the structure every consumer reads — now holds the MAPPED result.
+  A naive in-place remap of random_ is WRONG (it would remap already-slewed data and feed
+  it back through the recirculation). Map at the Source→random_ landing, nowhere else.
 - ALL reads everywhere become plain own-bank reads again. REVERT: polyRandomSrc,
   monoStrand, finalRandomByStrand routing, polyLaneProbability(AtStep) remaps, and the
   macroOwnProbability srcRow patch (commits 39360f2, 25c2379 read-side parts).
