@@ -341,3 +341,49 @@ Relation to dice (the clean parallel): dice re-rolls MATERIAL (the tables), rest
 re-rolls RELATIONSHIPS (the pins). Both discrete, both lock-respecting (fire on unlock),
 both leave the other axis untouched. Restructure is to correlation-space what dice is to
 material-space; block size is the grain at which the relationship operates.
+
+## 11. Restructure queuing & controls (SETTLED spec)
+
+### Queuing — adopt the dice machinery, one pending PER TYPE
+Each transform is gate-triggerable like dice: fire a gate → the transform is QUEUED with
+a pending light → applies at the next PHASE BOUNDARY (and on UNLOCK, like dice). Manual
+button = same as a gate pulse.
+
+One pending transform per pin type (rhythm has one pending slot, melody has one),
+LATEST-OVERWRITES — exactly the dice UI (pending light per type). But the REASON differs
+from dice, and it settles the "queue multiple?" question:
+- Dice queues one because dice/trial/backwards are MUTUALLY EXCLUSIVE outcomes on the same
+  material — a second would just overwrite the first.
+- Transforms are COMPOSABLE and ORDER-DEPENDENT (Collapse∘Rotate ≠ Rotate∘Collapse). So
+  the question is "single op or ordered chain per boundary?"
+- DECISION: single op, latest-overwrites. Composition is reached ACROSS boundaries —
+  trigger Collapse (fires boundary 1), then Rotate (fires boundary 2) = Collapse-then-
+  Rotate as a two-bar EVOLUTION, which is MORE musical than batching (you hear each step)
+  and matches the whole point of phase-boundary timing (structure develops in time). An
+  ordered per-boundary chain would need a visible queue, chain undo, dup rules — more
+  machinery for a less musical result.
+- Rhythm and melody pending INDEPENDENTLY: they are parallel axes, not a sequence, so one
+  pending-rhythm + one pending-melody firing at the same boundary is coherent and wanted.
+  Two pending lights, one per type, each latest-overwrites within its type.
+
+Block size: a STEPPED knob PER TRANSFORM (grain 1/2/4/8/16, capped at active pool).
+Shared across R/M for that transform (one grain per transform; the per-type split is the
+gate/trigger, not the grain). Applies at the same phase-boundary/unlock moment.
+
+### Panel controls — direction, not committed layout
+Rodney's picture: all inputs (jacks, manual gate buttons doubling as pending lights,
+block-size knobs) in a column LEFT of the grid. Illuminated pushbutton = manual trigger
+AND pending light in one element; gate jack feeds it. Per transform row: block-size knob
++ [rhythm gate jack + illuminated button] + [melody gate jack + illuminated button].
+
+WIDTH REALITY: 5 transform rows of that cluster + the 16×16 grid pushes the panel to
+~28–30HP even tightly packed — a large module. Options to decide at build:
+- Accept ~28HP (grid at ~5.5mm cells to claw back width); Change Alley is a centrepiece
+  utility, wide is defensible (cf. big matrix mixers).
+- Fewer on-panel controls: expose gates + pending lights on panel, put block-size in the
+  context menu (grain is set-and-forget, not performed).
+- A companion CV/gate mini-expander carries the trigger jacks; the main panel stays grid
+  + lights + manual buttons. (Keeps the main module reasonable; the "all inputs left of
+  grid" picture becomes the expander's job.)
+Lean: gates+buttons+lights on panel, block-size in context menu (set-and-forget), grid
+stays generous. Revisit against a real mock. NOT built until the engine transform set is.
