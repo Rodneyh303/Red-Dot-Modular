@@ -189,13 +189,17 @@ two-colour pins solve it, and one board halves the panel cost (16×16 at ~4.5 mm
 > (13/13: identity no-op on all strands, pool-split borrow, locality, shared-source
 > identity, mono participation).
 >
-> LEVEL CAVEAT — random_ is POST A/B-blend. Borrowers therefore share the source's
-> variation-mix OUTCOME, not just its dice: subset/superset holds (identical final draws,
-> own REST threshold), but a pinned voice cannot blend the shared A/B with its OWN
-> variation knob. The maximal-correctness level is the A/B CANDIDATE buffers
-> (rhythmLockedA/rhythmCandB, polyRhythmLockedA/CandB, and the 8 other strand pairs at
-> PatternEngine.hpp 156-166), remapped after redraw so each voice applies its own bl()
-> variation mix to borrowed A/B. Deferred: it is per-strand-shaped (mono [16] vs poly
-> [15][16]) and interacts with the trial/promote/lock machinery in regenerate(); a
-> deliberate follow-up, not folded into this seam.
+> LEVEL DECISION (SETTLED — post-mix is correct, A/B pinning declined):
+> random_ is the system's SINGLE CANONICAL STREAM — the one point where a voice's dice
+> become one definite value per step/strand, before any interpretation (thresholds, LOR,
+> spread, articulation). Pinning there gives the pin ONE MEANING everywhere (visible and
+> audible agree by construction) — the whole point of the feature. A/B-level pinning
+> would break that: a pinned voice would share source's dice but diverge on its own
+> variation blend, so "what is voice v playing" loses a clean answer relative to its
+> source. The per-voice variation divergence A/B would add is NOT lost at post-mix — it
+> is relocated to the honest place: pin two voices together and give them different
+> REST/variation, and the divergence comes from their OWN parameters on a shared stream
+> ("same dice, own manipulation"). A/B pinning would be a SECOND, redundant divergence
+> axis duplicating what per-voice parameters already do — more machinery for a muddier
+> abstraction. Declined on architectural grounds, not cost. Post-mix is final.
 
