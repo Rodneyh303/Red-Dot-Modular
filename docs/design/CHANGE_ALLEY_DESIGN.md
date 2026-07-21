@@ -412,3 +412,43 @@ won the East file) — likely an alpha/lane-style/locked-dim API the master edit
 that the branch-era cpp doesn't call (or a default alpha change). Leads: diff de96cf4 vs
 merge-base for SandsVisualEditorV4.hpp; check laneLockedFn/dim styling for lanes 4/5;
 compare against Sands mono expander's calls (renders correctly, same editor class).
+
+## BUG (Rodney, in-rack) + DESIGN QUESTION: pin off-diagonal makes spread inert
+
+Symptom: with Change Alley pins OFF the identity diagonal, most spreads have no visible
+effect on East, and AVERAGE_POLY vs MONO_DRAW (voice-1) targets look identical. On the
+diagonal, spread works normally.
+
+Root cause (traced): spread is applied PER BANK in MonsoonSandsManager (mono →
+random_[0] via the *Random refs; poly → random_[v] via polyRandom(v,·)), each voice
+pulled toward the SAME GLOBAL reference (AVERAGE_POLY = mono+Σpoly average, or MONO_DRAW
+= voice 1's slewed draw). The read-side pin remap then makes voice v's display/articulation
+read random_[caSrcRow(v)] — the SOURCE's bank, already spread-resolved toward the global
+hub for the SOURCE, not the consumer. So:
+- The consumer's OWN spread knob is invisible (its bank isn't the one being read).
+- With spread high, every bank is pulled toward the same hub, so all banks look alike →
+  pinning to any source shows ~the same thing, and switching the target barely changes it.
+
+This is the read-side architecture's structural cost surfacing: PIN PICKS THE BANK, but
+SPREAD WAS COMPUTED PER-BANK toward per-bank/global references. Reading a borrowed bank
+borrows its spread; the consumer's spread is bypassed.
+
+THE DESIGN QUESTION (decide before fixing — do NOT rush): when voice v is pinned to
+source s, whose SPREAD applies?
+  (A) Consumer's spread on borrowed DRAWS. Pin borrows s's raw/slewed draw, then v applies
+      v's OWN spread toward the hub. Requires spread to run AFTER the pin remap, on the
+      remapped pre-spread buffer — i.e. remap the SLEWED buffers (pre-spread), then spread.
+      This is the candidate-level idea again, one stage earlier than random_. Matches "same
+      dice, own manipulation" and makes the spread knob live for pinned voices.
+  (B) Inherit source's spread (current accidental behaviour). Pin borrows s's fully-resolved
+      stream including s's spread. Coherent IF documented, but makes the consumer's spread
+      knob dead when pinned — surprising, and the reported bug.
+  (C) Post-mix pin stays; spread re-applied per-CONSUMER after the remap on the borrowed
+      value using the consumer's reference. More code, and double-spreads (source already
+      spread) unless we remap PRE-spread — which collapses to (A).
+
+Leaning (A): remap at the SLEWED (pre-spread) buffers so each voice spreads its borrowed
+draw with its own knob toward the hub. This is where the "map right after the draw" instinct
+was actually pointing. But it reopens the two-fill-path question (non-Sands slew copy vs
+Sands SpreadInterp) and the GUI-thread-writer race — so it must be designed against the
+GUI_THREAD_FINALS_MIGRATION plan, not bolted on. NEXT-SESSION DESIGN TASK, with build tests.
