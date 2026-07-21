@@ -233,3 +233,40 @@ two-colour pins solve it, and one board halves the panel cost (16×16 at ~4.5 mm
 > axis duplicating what per-voice parameters already do — more machinery for a muddier
 > abstraction. Declined on architectural grounds, not cost. Post-mix is final.
 
+
+## 9. Worked example — theme & variations, and voices-as-timeline
+
+This is not a feature; it is what the composed primitives (pinning · spread · Changi
+switch) AFFORD. Recorded as evidence the architecture is right — the interesting musical
+objects are emergent, not enumerated.
+
+### 9a. Four-bar theme & variations (the seed patch)
+1. Pin voices 3 and 4 to source 2 → voices 2, 3, 4 now share 2's stream, 100% correlated.
+2. Spread 2, 3, 4 each toward voice 1 by DIFFERENT amounts (2 light, 3 medium, 4 far) →
+   three graded departures from a common root, with voice 1 as the reference theme.
+3. Changi sequential switch cycling the four mono outputs 1→2→3→4→loop → each BAR plays
+   the next voice: theme, then three progressively-further variations. A 4-bar phrase
+   where every bar is a variation on the first.
+Nothing knows it is making theme-and-variations: pinning sets the common root, spread
+sets graded departure, Changi turns parallel voices into serial bars. Emergent.
+
+### 9b. The generalisation — voices are a TIMELINE, not just a chord
+Once Changi sequences them, N voices become N SLOTS IN TIME, and pinning+spread control
+the relationship between slots. The 16 partition into (groups × members):
+- 4 groups × 1 voice, switch/bar → 4-bar loop of a 1-voice line (9a).
+- 2 groups × 2 voices, switch/bar → 4-bar loop of a 2-voice pattern (paired call/response).
+- 1 group × 2 voices over 8 slots → 8-bar loop of a 2-voice pattern (longer, thinner).
+- 4 groups × 4 voices → 4-bar loop of a 4-voice chord progression (variation at chord level).
+
+CONSERVATION LAW: voices = polyphony_width × phrase_length (in switch slots). 16 is a
+fixed budget spent on either axis. Thick chords = spend on width, short loop. Long phrase
+= spend on length, thin texture. The same 16 voices are one 16-note chord (width 16,
+length 1 — the DEGENERATE case), OR a 16-bar monophonic phrase (width 1, length 16), OR
+any rectangle between. Pin-groups decide which voices are related within the rectangle;
+spread decides how related; Changi's cycle scans the rectangle into time.
+
+This reframes why 16-voice poly matters: not just massive chords (width-16 degenerate
+case) but the INTERIOR of the width×length rectangle, where polyphony and phrase-length
+trade against each other and pin-groups impose variation structure across the chosen
+axis. Voice count as a phrase-length resource, not only a density resource — few
+generative sequencers treat it that way.
