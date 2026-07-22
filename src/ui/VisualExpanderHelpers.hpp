@@ -94,24 +94,4 @@ inline int readOffRotParam(rack::Module* mod, int paramId, int fallback = 0) {
     return (int)std::round(mod->params[paramId].getValue());
 }
 
-// ── Macro poly playhead (global L/O/R, same for all voices) ─────────────────
-// Reads GLOBAL_REST/MELODY/OCTAVE_DNA_LEN/OFF/ROT from paramMod.
-inline void setMacroPolyPlayheads(SandsVisualEditorV4* editor,
-                                   int globalStep,
-                                   rack::Module* paramMod) {
-    if (!editor) return;
-
-    struct { int lenId, offId, rotId; } lanes[3] = {
-        { GLOBAL_REST_DNA_LEN,   GLOBAL_REST_DNA_OFF,   GLOBAL_REST_DNA_ROT   },
-        { GLOBAL_MELODY_DNA_LEN, GLOBAL_MELODY_DNA_OFF, GLOBAL_MELODY_DNA_ROT },
-        { GLOBAL_OCTAVE_DNA_LEN, GLOBAL_OCTAVE_DNA_OFF, GLOBAL_OCTAVE_DNA_ROT },
-    };
-    for (int l = 0; l < 3; ++l) {
-        int len = readLenParam   (paramMod, lanes[l].lenId);
-        int off = readOffRotParam(paramMod, lanes[l].offId);
-        int rot = readOffRotParam(paramMod, lanes[l].rotId);
-        editor->setLanePlayStep(l, calcPlayhead(globalStep, len, off, rot));
-    }
-}
-
 }  // namespace redDot
