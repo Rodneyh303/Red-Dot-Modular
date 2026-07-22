@@ -90,21 +90,7 @@ namespace MonsoonIds {
         DNA_O_LEN_PARAM, DNA_O_OFF_PARAM, DNA_O_ROT_PARAM,
 
         // DNA Buttons (6 Buttons)
-        DNA_SCRAMBLE_ALL_PARAM,
-        DNA_SCRAMBLE_R_PARAM,
-        DNA_SCRAMBLE_M_PARAM,
-        DNA_SCRAMBLE_V_PARAM, // Added for completeness
-        DNA_SCRAMBLE_L_PARAM,
-        DNA_SCRAMBLE_A_PARAM,  // New: scramble accent strand
-        DNA_SCRAMBLE_O_PARAM,
 
-        DNA_RESET_ALL_PARAM,
-        DNA_RESET_R_PARAM,
-        DNA_RESET_M_PARAM,
-        DNA_RESET_V_PARAM, // Moved here to keep SEMI range contiguous
-        DNA_RESET_L_PARAM,
-        DNA_RESET_A_PARAM,  // New: reset accent strand
-        DNA_RESET_O_PARAM,
 
         SEMI0_PARAM,  SEMI1_PARAM,  SEMI2_PARAM,  SEMI3_PARAM,
         SEMI4_PARAM,  SEMI5_PARAM,  SEMI6_PARAM,  SEMI7_PARAM,
@@ -294,20 +280,6 @@ namespace MonsoonIds {
 
         // DNA Gate Triggers (6 Inputs)
         // Corrected to include all scramble/reset inputs
-        DNA_SCRAMBLE_ALL_INPUT,
-        DNA_SCRAMBLE_R_INPUT,
-        DNA_SCRAMBLE_M_INPUT,
-        DNA_SCRAMBLE_V_INPUT,
-        DNA_SCRAMBLE_L_INPUT,
-        DNA_SCRAMBLE_A_INPUT,  // New: scramble accent strand
-        DNA_SCRAMBLE_O_INPUT,
-        DNA_RESET_ALL_INPUT,
-        DNA_RESET_R_INPUT,
-        DNA_RESET_M_INPUT,
-        DNA_RESET_V_INPUT,
-        DNA_RESET_L_INPUT,
-        DNA_RESET_A_INPUT,  // New: reset accent strand
-        DNA_RESET_O_INPUT,
 
         // Poly Voice Expander Inputs
         POLY_REST_CV_INPUT,

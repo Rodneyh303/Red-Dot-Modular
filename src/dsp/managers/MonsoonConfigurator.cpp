@@ -24,19 +24,6 @@ void MonsoonConfigurator::setup(Monsoon* m) {
     m->configParam(PATTERN_OFFSET_PARAM, 0.f, 15.f, 0.f, "Pattern offset");
 
     // DNA Action Buttons (Main module only configures these if no expander)
-    m->configButton(DNA_SCRAMBLE_ALL_PARAM, "Scramble ALL DNA");
-    m->configButton(DNA_SCRAMBLE_R_PARAM,   "Scramble Rhythm");
-    m->configButton(DNA_SCRAMBLE_V_PARAM,   "Scramble Variation");
-    m->configButton(DNA_SCRAMBLE_L_PARAM,   "Scramble Legato");
-    m->configButton(DNA_SCRAMBLE_M_PARAM,   "Scramble Melody");
-    m->configButton(DNA_SCRAMBLE_O_PARAM,   "Scramble Octave");
-
-    m->configButton(DNA_RESET_ALL_PARAM,    "Reset ALL DNA");
-    m->configButton(DNA_RESET_R_PARAM,      "Reset Rhythm");
-    m->configButton(DNA_RESET_V_PARAM,      "Reset Variation");
-    m->configButton(DNA_RESET_L_PARAM,      "Reset Legato");
-    m->configButton(DNA_RESET_M_PARAM,      "Reset Melody");
-    m->configButton(DNA_RESET_O_PARAM,      "Reset Octave");
 
     // 12 semitone sliders – default to major scale C (C,D,E,F,G,A,B)
     for (int i = 0; i < 12; ++i) {
@@ -93,21 +80,6 @@ void MonsoonConfigurator::setup(Monsoon* m) {
     m->configInput(RUN_GATE_INPUT, "Run/Stop Gate");
 
     // DNA Gate Inputs
-    m->configInput(DNA_SCRAMBLE_ALL_INPUT, "Scramble ALL DNA Gate");
-    m->configInput(DNA_SCRAMBLE_R_INPUT,   "Scramble Rhythm Gate");
-    m->configInput(DNA_SCRAMBLE_V_INPUT,   "Scramble Variation Gate");
-    m->configInput(DNA_SCRAMBLE_L_INPUT,   "Scramble Legato Gate");
-    m->configInput(DNA_SCRAMBLE_A_INPUT,   "Scramble Accent Gate");
-    m->configInput(DNA_SCRAMBLE_M_INPUT,   "Scramble Melody Gate");
-    m->configInput(DNA_SCRAMBLE_O_INPUT,   "Scramble Octave Gate");
-
-    m->configInput(DNA_RESET_ALL_INPUT,    "Reset ALL DNA Gate");
-    m->configInput(DNA_RESET_R_INPUT,      "Reset Rhythm Gate");
-    m->configInput(DNA_RESET_V_INPUT,      "Reset Variation Gate");
-    m->configInput(DNA_RESET_L_INPUT,      "Reset Legato Gate");
-    m->configInput(DNA_RESET_A_INPUT,      "Reset Accent Gate");
-    m->configInput(DNA_RESET_M_INPUT,      "Reset Melody Gate");
-    m->configInput(DNA_RESET_O_INPUT,      "Reset Octave Gate");
 
     m->configOutput(GATE_OUTPUT,           "Gate");
     m->configOutput(CV_OUTPUT,             "1V/Oct");

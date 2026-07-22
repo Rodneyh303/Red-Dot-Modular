@@ -81,7 +81,7 @@ redundant — patch a DC-coupled DAW output into the CV jack instead.
 | 0–5 | Big-5 probability knobs + transpose | **KEEP — prime automation surface** |
 | 6–7 | Pattern length/offset | KEEP (musical structure moves) |
 | 8–25 | DNA LOR 6×(LEN/OFF/ROT) | KEEP (probability-shape reaction) |
-| 26–39 | Scramble/reset buttons ×14 | keep as params, not promoted; CV gates exist |
+| ~~26–39~~ | ~~Scramble/reset buttons ×14~~ | **REMOVED** (cleanup/dna-scramble-params) — declared + configured but never read and bound to no widget; the subsystem behind them was deleted in cleanup/dna-rotation-dead-code. 14 param + 14 input slots refunded. |
 | 40–51 | SEMI toggles ×12 | keep (scale changes are musical), low priority |
 | 52–54 | OCT LO/HI, BPM | keep |
 | 55–56 | DICE R/M | keep (host-triggered re-dice is a real gesture) |
