@@ -536,12 +536,6 @@ struct SequencerEngine {
     float quantize(float vIn);
 
     // High-level DNA Actions
-    void scrambleRhythmStrands();
-    void scrambleMelodyStrands();
-    void scrambleAllStrands();
-    void resetRhythmStrands();
-    void resetMelodyStrands();
-    void resetAllStrands();
     void syncVisuals(const PatternInput& in);
 
     // ── Poly voice execution ──────────────────────────────────────────────────
