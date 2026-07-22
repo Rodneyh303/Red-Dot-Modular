@@ -264,6 +264,6 @@ struct StraitsSandsMacroVisual : Module {
         return r;
     }
     void dataFromJson(json_t* root) override {
-        (void)root;  // interpUseMono moved to Monsoon::spreadInterpMono
+        (void)root;  // spread target is always voice 1 (no mode to persist)
     }
 };

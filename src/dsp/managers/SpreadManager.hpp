@@ -39,27 +39,20 @@ namespace redDot {
  * Usage:
  *   SpreadManager mgr(patternEngine);
  *   mgr.setSequencerEngine(sequencerEngine);  // For active voice count
- *   mgr.setInterpolationTarget(AVERAGE_POLY);  // or MONO_DRAW
  *   mgr.setSpread(voiceIdx, lane, 0.5);
  *   float interpolated = mgr.getInterpolatedValue(voiceIdx, lane, step);
  */
 
 struct SpreadManager {
-  enum InterpolationTarget {
-    AVERAGE_POLY,    // Average of active poly voices
-    MONO_DRAW        // Mono voice draw (for reference)
-  };
-  
   PatternEngine* patternEngine = nullptr;
   SequencerEngine* sequencerEngine = nullptr;  // For active voice count
-  InterpolationTarget target = AVERAGE_POLY;
   int numVoices = 7;  // 7 for East, 8 for West, 1 for Mono
   int startVoiceIdx = 0;  // 0 for East (voices 2-8), 8 for West (voices 9-16)
   // True when this manager represents the MONO MASTER strand (V1) display — its view
   // is always voice 1, so `original` must be the MONO draw regardless of how many poly
-  // voices exist for the AVERAGE_POLY ensemble. Without this, a mono manager with
+  // voices exist. Without this, a mono manager with
   // numVoices>1 (e.g. Mono widget defaulting to 7) interpolated V1 from a POLY draw,
-  // breaking the MONO_DRAW self-target no-op (positive V1 spread wrongly moved V1).
+  // breaking the voice-1 self-target no-op (positive V1 spread wrongly moved V1).
   bool monoContext = false;
   
   // Spread values: [voice][lane]
@@ -95,17 +88,6 @@ struct SpreadManager {
     sequencerEngine = se;
   }
   
-  void setInterpolationTarget(InterpolationTarget t) {
-    target = t;
-  }
-
-  // The mode actually used: pulled from the engine (single source of truth, mirrored
-  // from the Monsoon menu each frame) when available, else the locally-set `target`
-  // fallback (e.g. unit tests / no engine). Replaces per-widget pushing.
-  InterpolationTarget effectiveTarget() const {
-    if (patternEngine) return patternEngine->spreadInterpMono ? MONO_DRAW : AVERAGE_POLY;
-    return target;
-  }
   
   void setSpread(int voiceIdx, int lane, float value) {
     if (voiceIdx >= 0 && voiceIdx < numVoices && lane >= 0 && lane < 4) {
@@ -143,16 +125,7 @@ struct SpreadManager {
   float getInterpolationTarget(int voiceIdx, int lane, int step) const {
     if (!patternEngine) return 0.5f;
     
-    switch (effectiveTarget()) {
-      case AVERAGE_POLY:
-        return calculateAveragePolyValue(lane, step);
-      
-      case MONO_DRAW:
-        return getMonoDrawValue(lane, step);
-      
-      default:
-        return 0.5f;
-    }
+    return getMonoDrawValue(lane, step);   // spread target is always voice 1
   }
   
   /**
@@ -218,7 +191,7 @@ struct SpreadManager {
    * Get the number of active voices from SequencerEngine.
    * 
    * This reflects the actual polyphony setting currently in use.
-   * Only voices within this count are averaged for AVERAGE_POLY target.
+   * (Retained for voice-count bookkeeping.)
    */
   int getActiveVoiceCount() const {
     if (!sequencerEngine) return numVoices;
@@ -303,25 +276,22 @@ struct SpreadManager {
   float getInterpolatedValue(int voiceIdx, int lane, int step) const {
     if (!patternEngine) return 0.5f;
     // Delegate to the single source of truth so the DISPLAY matches the
-    // sequencer exactly: same pre-spread slewed draws, same mono-inclusive
-    // average / mono-draw target, same bipolar interpolate. (Previously this
+    // sequencer exactly: same pre-spread slewed draws, same mono-draw target, same bipolar interpolate. (Previously this
     // averaged the post-spread *Random output and excluded mono — a different
     // computation from the sequencer.)
     const int nPoly = std::min(getActiveVoiceCount(), numVoices);
-    const redDot::SpreadInterp::Target m = (effectiveTarget() == MONO_DRAW)
-        ? redDot::SpreadInterp::MONO_DRAW : redDot::SpreadInterp::AVERAGE_POLY;
     // The voice's own pre-spread draw. For a per-voice manager voiceIdx maps to
     // the poly strand; mono-draw mode uses the mono strand as original only when
     // this IS the mono context (numVoices==1). Match the sequencer: poly voices
     // interpolate from their own slewed poly draw.
     // The voice's own pre-spread draw. The MONO MASTER view (monoContext) always uses
-    // the mono draw — even with poly voices present for the average — so MONO_DRAW mode
+    // the mono draw, so voice-1 target
     // is a true self-target (positive no-op, negative invert). Poly per-voice managers
     // interpolate from their own slewed poly draw.
     float original = (monoContext || numVoices <= 1)
         ? redDot::SpreadInterp::monoSlewed(*patternEngine, lane, step)
         : redDot::SpreadInterp::polySlewed(*patternEngine, lane, startVoiceIdx + voiceIdx, step);
-    return redDot::SpreadInterp::apply(*patternEngine, m, lane, step, nPoly,
+    return redDot::SpreadInterp::apply(*patternEngine, lane, step,
                                        original, getSpread(voiceIdx, lane));
   }
   

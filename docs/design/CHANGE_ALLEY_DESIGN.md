@@ -58,11 +58,12 @@ Both touch inter-voice relationships, so it is worth stating why they don't over
   src's stream — 100% correlated, identical draws. Arbitrary topology: pin 3 and 7 to a
   shared source and leave 1 alone → an isolated correlated PAIR inside an otherwise
   independent ensemble.
-- **Spread sets the PULL toward a reference** (continuous, downstream in derivation):
-  voice v's OWN draw leaned some fraction toward mono/voice-1 or the ensemble average.
-  Single-hub only: at maximum it converges everything toward ONE reference (a star, or a
-  mean). It CANNOT make voice 3 and voice 7 track each other while voice 1 stays free —
-  it has no way to say "these two, not those."
+- **Spread sets the PULL toward VOICE 1** (continuous, downstream in derivation):
+  voice v's OWN draw leaned some fraction toward the mono/voice-1 draw. Single-hub, and
+  the hub is a REAL VOICE you can hear and tune. At maximum every voice converges onto
+  voice 1 = unison. It CANNOT make voice 3 and voice 7 track each other while voice 1
+  stays free — it has no way to say "these two, not those."
+  (The former AVERAGE_POLY target was REMOVED — see SPREAD_TARGET_DECISION below.)
 
 The asymmetry: pinning is arbitrary-pair correlation; spread is single-hub convergence.
 Neither produces the other's effect.
@@ -484,3 +485,31 @@ draw with its own knob toward the hub. This is where the "map right after the dr
 was actually pointing. But it reopens the two-fill-path question (non-Sands slew copy vs
 Sands SpreadInterp) and the GUI-thread-writer race — so it must be designed against the
 GUI_THREAD_FINALS_MIGRATION plan, not bolted on. NEXT-SESSION DESIGN TASK, with build tests.
+
+
+## Spread target: voice-1 only (AVERAGE_POLY removed)
+
+Decision (Rodney): delete the ensemble-average spread target; spread always pulls toward
+the mono/voice-1 draw.
+
+Reason — the average target's EXTREME is a musically dead state. At each step the target
+was the mean of (1 + nPoly) iid uniform draws, which concentrates at 0.5 (std ≈ 0.07 at
+16 voices). Full spread therefore collapsed every voice AND every step toward ~0.5: not
+just inter-voice divergence (spread's actual job) but the step-to-step variation inside
+each pattern — maximum-entropy mush. Full spread toward voice 1 converges everyone onto
+voice 1's real draw sequence = UNISON, a genuine musical destination with full internal
+character. A control whose maximum yields flatness is broken; one whose maximum yields
+homophony is good.
+
+Corroborating: SpreadInterp's own comment already called mono-as-fixed-anchor "the
+desired behaviour"; voice-1 primacy already holds elsewhere (VAR/LEG have no per-poly
+buffers and borrow mono, §4d); and no designed patch used the average (§9a spreads
+toward voice 1). The average was only non-degenerate at 1-2 poly voices — i.e. it worked
+where the module is least interesting and failed where it is most interesting.
+
+Removed with it: SpreadInterp::Target enum + the average computation, SpreadManager's
+InterpolationTarget/target/effectiveTarget/setInterpolationTarget, the per-manager target
+members and setters, VoiceResolver::spreadMode (dead), Monsoon::spreadInterpMono and
+PatternEngine's mirror + setter, the context-menu toggle, the JSON field, and the
+spreadInterpMono parameter threaded through processDNA/sync. apply()/target() lost their
+mode and nPoly parameters. Pre-release, so no migration path was needed.

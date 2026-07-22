@@ -295,8 +295,6 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         Monsoon* mon = getMonsoon();
         if (!mod || !mon) return 0.5f;
         auto& pe = mon->engine.pe;
-        const redDot::SpreadInterp::Target smode = pe.spreadInterpMono
-            ? redDot::SpreadInterp::MONO_DRAW : redDot::SpreadInterp::AVERAGE_POLY;
         const int nPoly = mon->engine.numPolyVoices;
         // Macro's own spread for this lane (base knob + send-tapped delta, clamped) — the
         // SAME expression the engine's MACRO_SOLE branch uses (MonsoonExpanderManager.cpp).
@@ -320,7 +318,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                  : (engLane == PL::PL_OCTAVE) ? pe.slewedPolyOctave[v][step & 0x0F]
                  :                              pe.slewedPolyAccent[v][step & 0x0F];
         }
-        return redDot::SpreadInterp::apply(pe, smode, engLane, step, nPoly, base, sp);
+        return redDot::SpreadInterp::apply(pe, engLane, step, base, sp);
     }
 
     void step() override {

@@ -38,7 +38,6 @@ namespace redDot {
  * Usage:
  *   SequencerEngine* seqEngine = nullptr; // from monsoon
  *   PolyVoiceSandsParameterManager mgr(patternEngine, seqEngine, 7, 0);  // East
- *   mgr.setInterpolationTarget(SpreadManager::AVERAGE_POLY);
  *   mgr.setSpread(voiceIdx, lane, spreadValue);
  *   mgr.syncPatternEngineToEditor(voiceIdx, editor->currentState);
  *   
@@ -60,7 +59,7 @@ struct PolyVoiceSandsParameterManager {
     : patternEngine(pe), sequencerEngine(se), numVoices(nVoices), 
       spreadMgr(pe, nVoices, startVoice) {
     // Set SequencerEngine so SpreadManager can track active voices
-    // This makes AVERAGE_POLY target use only requested polyphony
+    // Voice-count bookkeeping uses only requested polyphony
     if (se) {
       spreadMgr.setSequencerEngine(se);
     }
@@ -76,10 +75,6 @@ struct PolyVoiceSandsParameterManager {
     return spreadMgr.getSpread(voiceIdx, lane);
   }
   
-  // Set interpolation target (AVERAGE_POLY or MONO_DRAW)
-  void setInterpolationTarget(SpreadManager::InterpolationTarget target) {
-    spreadMgr.setInterpolationTarget(target);
-  }
   
   // Sync visual editor to PatternEngine for a specific voice
   void syncEditorToPatternEngine(int voiceIdx, const SandsVisualEditorV4::VoiceState& editorState) {

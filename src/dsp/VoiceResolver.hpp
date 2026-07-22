@@ -22,7 +22,6 @@
 // generation (executePolyVoice) are untouched; this wraps their outputs.
 
 #include "engines/SequencerEngine.hpp"
-#include "SpreadInterp.hpp"   // for SpreadInterp::Target (spread mode metadata)
 
 namespace dotModular {
 
@@ -74,10 +73,6 @@ struct VoiceResolver {
     // Spread interpolation target for this voice: mono self-targets (fixed anchor),
     // poly converges toward the ensemble average. Already a SpreadInterp parameter, not
     // a separate algorithm — surfaced here as per-voice metadata.
-    static redDot::SpreadInterp::Target spreadMode(int v) {
-        return isMono(v) ? redDot::SpreadInterp::MONO_DRAW
-                         : redDot::SpreadInterp::AVERAGE_POLY;
-    }
 
     // ── Uniform per-lane reads (the point of the layer) ─────────────────────────
     // lane: SequencerEngine::PL_REST / PL_MELODY / PL_OCTAVE / PL_ACCENT (0/1/2/3).

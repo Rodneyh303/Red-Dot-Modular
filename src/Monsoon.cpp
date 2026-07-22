@@ -964,12 +964,11 @@ void Monsoon::process(const ProcessArgs& args) {
         // Check for expander changes and update cached pointers
         // Mirror the global spread-target mode onto the engine so display SpreadManagers
         // pull one value (no per-widget push). Playback still passes it explicitly below.
-        engine.pe.setSpreadInterpMono(spreadInterpMono);
         engine.beginStrandWriteBlock();   // debug-only: reset the per-block strand-writer ledger
-        dnaManager.processDNA(expanderManager, spreadInterpMono);
+        dnaManager.processDNA(expanderManager);
 
         // ── Deep Straits Sands Expanders (Control Rate Orchestration) ──
-        expanderManager.sync(engine, spreadInterpMono);
+        expanderManager.sync(engine);
         
         // Refresh Audio-Rate Caches (Throttled)
         cachedBpmParam = params[BPM_PARAM].getValue();
