@@ -232,11 +232,19 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
                     asset::system("res/fonts/ShareTechMono-Regular.ttf"));
                 if (font) {
                     nvgFontFaceId(vg, font->handle);
-                    // Body is DARK in both themes -> ink is always light. (The 'only row 1
-                    // numbered' bug: light-panel mode picked dark ink on the dark body.)
-                    NVGcolor ink    = nvgRGB(0xe8,0xe2,0xd0);
-                    NVGcolor inkdim = nvgRGBA(0x9a,0x95,0x88,0xb0);
-                    NVGcolor amber  = nvgRGB(0xc8,0x90,0x0c);
+                    // Ink follows WHERE the text sits, not just the theme:
+                    //   • on the BODY (row/col numbers, transform labels) -> theme ink,
+                    //     because the body is light in light theme, dark in dark theme.
+                    //   • inside the GRID (tooltip) -> always light; the grid is dark in
+                    //     BOTH themes and the tooltip has its own dark backing box.
+                    // (The earlier 'only row 1 numbered' bug was dark ink on a dark body;
+                    //  the fix is theme-correct ink, not permanently-light ink.)
+                    const bool lightBody = !settings::preferDarkPanels;
+                    NVGcolor ink    = lightBody ? nvgRGB(0x2a,0x2a,0x2e) : nvgRGB(0xe8,0xe2,0xd0);
+                    NVGcolor inkdim = lightBody ? nvgRGBA(0x88,0x8d,0x96,0xd0)
+                                                : nvgRGBA(0x9a,0x95,0x88,0xb0);
+                    NVGcolor amber  = lightBody ? nvgRGB(0xa0,0x78,0x08)   // kit light gold
+                                                : nvgRGB(0xc8,0x90,0x0c);
                     char num[4];
                     // Voice-number labels only (currency codes dropped — tiny + noisy in-rack).
                     // ShareTechMono, 3.2mm — readable at 100% zoom.
@@ -274,16 +282,28 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
                     nvgText(vg, box.size.x * 0.5f, mm2px(Vec(0,6.0f)).y, "CHANGE ALLEY", NULL);
                     float legY = mm2px(Vec(0, MY_MM + MH_MM + 4.5f)).y;
                     float legX = mm2px(Vec(MX_MM,0)).x;
-                    nvgBeginPath(vg); nvgCircle(vg, legX + 4.f, legY, 3.2f);
+                    // Legend swatches sit on a small DARK CHIP in both themes: the white
+                    // rhythm pin would be invisible on the light body, and showing the pins
+                    // on grid-coloured ground is also semantically right (that is where
+                    // they live). Text stays on the body, so it uses theme ink.
+                    {
+                        float chipX = legX, chipY = legY - 5.f;
+                        float chipW = mm2px(Vec(24.5f,0)).x, chipH = 10.f;
+                        nvgBeginPath(vg); nvgRoundedRect(vg, chipX, chipY, chipW, chipH, 2.f);
+                        nvgFillColor(vg, nvgRGB(0x0b,0x0c,0x0d)); nvgFill(vg);
+                    }
+                    nvgBeginPath(vg); nvgCircle(vg, legX + 6.f, legY, 3.2f);
                     nvgFillColor(vg, nvgRGB(0xf0,0xf0,0xee)); nvgFill(vg);
                     nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
                     nvgFontSize(vg, mm2px(Vec(2.2f,0)).x);
-                    nvgFillColor(vg, inkdim);
-                    nvgText(vg, legX + 10.f, legY, "rhythm", NULL);
-                    nvgBeginPath(vg); nvgCircle(vg, legX + mm2px(Vec(20.f,0)).x, legY, 3.2f);
+                    nvgFillColor(vg, nvgRGBAf(0.94f,0.94f,0.93f,0.85f));   // on the chip
+                    nvgText(vg, legX + 12.f, legY, "rhythm", NULL);
+                    nvgBeginPath(vg); nvgCircle(vg, legX + mm2px(Vec(15.5f,0)).x, legY, 3.2f);
                     nvgFillColor(vg, nvgRGB(0xd4,0x00,0x1a)); nvgFill(vg);
-                    nvgFillColor(vg, inkdim);
-                    nvgText(vg, legX + mm2px(Vec(20.f,0)).x + 6.f, legY, "melody  (right-click / ctrl-click)", NULL);
+                    nvgFillColor(vg, nvgRGBAf(0.94f,0.94f,0.93f,0.85f));   // on the chip
+                    nvgText(vg, legX + mm2px(Vec(15.5f,0)).x + 6.f, legY, "melody", NULL);
+                    nvgFillColor(vg, inkdim);                              // back on the body
+                    nvgText(vg, legX + mm2px(Vec(26.5f,0)).x, legY, "right-click / ctrl-click", NULL);
 
                     // ── Connect indicator: a small state dot to the RIGHT of the SVG
                     //    logo (which draws the wordmark itself). BRIGHT red w/ halo =
