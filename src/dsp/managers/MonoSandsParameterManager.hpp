@@ -77,11 +77,10 @@ struct MonoSandsParameterManager {
     float spreadValue(int lane, int step) const {
         if (isSpreadLane(lane)) {
             float original = monoDraw(lane, step);
-            // Target depends on mode (pulled from the engine — single source of truth,
+
             // Spread target is always the mono (voice-1) draw; self-target is a
             // positive no-op and a negative invert.
-            float targetValue = monoMode ? original : polyAverageInclMono(lane, step);
-            return redDot::SpreadInterp::interpolate(original, targetValue, laneSpread[lane]);
+            return redDot::SpreadInterp::interpolate(original, original, laneSpread[lane]);
         }
         return monoDraw(lane, step);
     }
