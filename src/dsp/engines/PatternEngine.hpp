@@ -98,14 +98,12 @@ struct PatternEngine {
     // ENGINE STRAND at a given step, 0..1. Now a direct index into random_[0] (mono row): strand index
     // IS the editor-lane column (MONO_LANE_TO_STRAND identity), so no table/permutation. Out-of-range
     // falls back to rhythm (matches the old default:). Used by the Sands visual probability CV outs.
-    // ── Change Alley pin-matrix (CHANGE_ALLEY_DESIGN.md) — the mapping lives HERE,
-    //    right after Philox, because PatternEngine owns random_ and every consumer
-    //    (articulation, displays, probability CV outs) reads through this API. Rows
-    //    0..15 (0 = mono). Strand→pool: MELODY/OCTAVE = melody pin; everything else
-    //    (RHYTHM/ACCENT/VARIATION/LEGATO) = rhythm pin. READS are remapped; WRITES
-    //    (dice fills, slew/spread pipeline, rotations) always target the OWN bank —
-    //    that separation is what makes pins pure read-time indirection (locality,
-    //    dice/pin orthogonality). ──
+    // ── Change Alley pin-matrix (CHANGE_ALLEY_DESIGN.md §3-REVISED, PRE-SPREAD) ──
+    // The pins remap the SLEWED buffers (post A/B-mix, post-slew, PRE-spread) so that a
+    // pinned voice's borrowed draw is then spread with the CONSUMER's own reference —
+    // equivalent to pinning the A/B samples (the agreed design). random_ reads stay plain
+    // own-bank. Row 0 = mono, rows 1..15 = poly V2..V16. Strand→pool: MELODY/OCTAVE =
+    // melody pin; RHYTHM/ACCENT/VARIATION/LEGATO = rhythm pin. Identity = no-op.
     uint8_t caRhythmSrc[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
     uint8_t caMelodySrc[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
 
@@ -114,15 +112,107 @@ struct PatternEngine {
         const int r = (row >= 0 && row < 16) ? row : 0;
         return mel ? (int)caMelodySrc[r] : (int)caRhythmSrc[r];
     }
-    // The remapped READ: row's draw table for a strand, via that row's pin.
-    inline const float (&readStrand(int row, int strand) const)[16] {
-        const int s = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? strand : dotModular::STRAND_RHYTHM;
-        return random_[caSrcRow(row, s)][s];
+
+    // Remap the slewed buffers by pins, ONCE per cycle, BEFORE spread (called from
+    // MonsoonSandsManager::processDNA head). Snapshot then rewrite: row's strand takes its
+    // pinned source row's slewed value. Mono buffers are row 0; poly buffers row v are
+    // "expander row v+1". A source row of 0 = borrow mono's slewed; 1..15 = poly v-1.
+    void remapSlewedByPins() {
+        // Fast identity skip.
+        bool identity = true;
+        for (int v = 0; v < 16 && identity; ++v)
+            if (caRhythmSrc[v] != v || caMelodySrc[v] != v) identity = false;
+        if (identity) return;
+
+        // Snapshot mono[16] + poly[15][16] for the six strands.
+        float mR[16], mM[16], mO[16], mA[16], mV[16], mL[16];
+        for (int i = 0; i < 16; ++i) {
+            mR[i]=slewedRhythm[i]; mM[i]=slewedMelody[i]; mO[i]=slewedOctave[i];
+            mA[i]=slewedAccent[i]; mV[i]=slewedVariation[i]; mL[i]=slewedLegato[i];
+        }
+        static thread_local float pR[15][16], pM[15][16], pO[15][16], pA[15][16];
+        for (int v = 0; v < 15; ++v) for (int i = 0; i < 16; ++i) {
+            pR[v][i]=slewedPolyRhythm[v][i]; pM[v][i]=slewedPolyMelody[v][i];
+            pO[v][i]=slewedPolyOctave[v][i]; pA[v][i]=slewedPolyAccent[v][i];
+        }
+        // src row → (mono buffer if 0, else poly buffer src-1) for a given strand family.
+        auto pickMono = [&](int srcRow, int strand, int i) -> float {
+            if (srcRow == 0) {
+                switch (strand) {
+                    case dotModular::STRAND_RHYTHM:    return mR[i];
+                    case dotModular::STRAND_MELODY:    return mM[i];
+                    case dotModular::STRAND_OCTAVE:    return mO[i];
+                    case dotModular::STRAND_ACCENT:    return mA[i];
+                    case dotModular::STRAND_VARIATION: return mV[i];
+                    default:                           return mL[i];
+                }
+            }
+            const int v = srcRow - 1;
+            switch (strand) {
+                case dotModular::STRAND_RHYTHM: return pR[v][i];
+                case dotModular::STRAND_MELODY: return pM[v][i];
+                case dotModular::STRAND_OCTAVE: return pO[v][i];
+                case dotModular::STRAND_ACCENT: return pA[v][i];
+                // VAR/LEG have no per-poly slewed buffer (shared mono §4d) — borrow mono.
+                case dotModular::STRAND_VARIATION: return mV[i];
+                default:                           return mL[i];
+            }
+        };
+        // Mono row 0.
+        for (int i = 0; i < 16; ++i) {
+            slewedRhythm[i]    = pickMono(caSrcRow(0, dotModular::STRAND_RHYTHM),    dotModular::STRAND_RHYTHM,    i);
+            slewedAccent[i]    = pickMono(caSrcRow(0, dotModular::STRAND_ACCENT),    dotModular::STRAND_ACCENT,    i);
+            slewedVariation[i] = pickMono(caSrcRow(0, dotModular::STRAND_VARIATION), dotModular::STRAND_VARIATION, i);
+            slewedLegato[i]    = pickMono(caSrcRow(0, dotModular::STRAND_LEGATO),    dotModular::STRAND_LEGATO,    i);
+            slewedMelody[i]    = pickMono(caSrcRow(0, dotModular::STRAND_MELODY),    dotModular::STRAND_MELODY,    i);
+            slewedOctave[i]    = pickMono(caSrcRow(0, dotModular::STRAND_OCTAVE),    dotModular::STRAND_OCTAVE,    i);
+        }
+        // Poly rows 1..15 → poly buffers 0..14.
+        for (int v = 0; v < 15; ++v) {
+            const int row = v + 1;
+            const int sR = caSrcRow(row, dotModular::STRAND_RHYTHM);
+            const int sA = caSrcRow(row, dotModular::STRAND_ACCENT);
+            const int sM = caSrcRow(row, dotModular::STRAND_MELODY);
+            const int sO = caSrcRow(row, dotModular::STRAND_OCTAVE);
+            for (int i = 0; i < 16; ++i) {
+                slewedPolyRhythm[v][i] = pickMono(sR, dotModular::STRAND_RHYTHM, i);
+                slewedPolyAccent[v][i] = pickMono(sA, dotModular::STRAND_ACCENT, i);
+                slewedPolyMelody[v][i] = pickMono(sM, dotModular::STRAND_MELODY, i);
+                slewedPolyOctave[v][i] = pickMono(sO, dotModular::STRAND_OCTAVE, i);
+            }
+        }
+        // NON-SANDS path: recomputeEffective already promoted the (un-remapped) slewed into
+        // random_ before this runs. With no Sands there is no spread stage to re-read slewed,
+        // so re-promote the remapped slewed into random_ here. (When sandsActive, spread reads
+        // slewed and writes random_ itself, so this promote is skipped.)
+        if (!sandsActive) {
+            for (int i = 0; i < 16; ++i) {
+                rhythmRandom[i]=slewedRhythm[i]; accentRandom[i]=slewedAccent[i];
+                variationRandom[i]=slewedVariation[i]; legatoRandom[i]=slewedLegato[i];
+                melodyRandom[i]=slewedMelody[i]; octaveRandom[i]=slewedOctave[i];
+                for (int v=0;v<15;v++){
+                    polyRandom(v, PL_REST)[i]=slewedPolyRhythm[v][i];
+                    polyRandom(v, PL_ACCENT)[i]=slewedPolyAccent[v][i];
+                    polyRandom(v, PL_MELODY)[i]=slewedPolyMelody[v][i];
+                    polyRandom(v, PL_OCTAVE)[i]=slewedPolyOctave[v][i];
+                }
+            }
+        }
+    }
+
+    // Force a fresh slewed = bl(LockedA, CandB) for BOTH rhythm and melody families,
+    // regardless of mix-latch state — used before the Change Alley pin remap so the
+    // remap always operates on pristine (un-remapped) slewed. Cheap; idempotent.
+    void forceRecomputeSlewed() {
+        rhythmMixApplied = -999.f;   // invalidate so recompute* actually runs
+        melodyMixApplied = -999.f;
+        recomputeEffectiveRhythm();
+        recomputeEffectiveMelody();
     }
 
     inline float finalRandomByStrand(int strand, int step) const {
         const int s = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? strand : dotModular::STRAND_RHYTHM;
-        return readStrand(0, s)[step & 0x0F];   // mono display: through row 0's pins
+        return random_[0][s][step & 0x0F];   // plain own-bank; pin remap lives upstream in slewed
     }
 
     // Poly strands: 15 voices, each with Rhythm, Melody, and Octave draws

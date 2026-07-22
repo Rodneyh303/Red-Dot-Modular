@@ -396,14 +396,12 @@ struct SequencerEngine {
 
     bool locked = false;
 
-    // ── Change Alley pin-matrix (CHANGE_ALLEY_DESIGN.md) ─────────────────────
-    // The src tables live in PatternEngine (pe.caRhythmSrc/caMelodySrc) so EVERY
-    // consumer — articulation here, the displays, the probability CV outs — reads
-    // through the SAME remap: pe.readStrand(row, strand). "Right after Philox" made
-    // literal. Row 0 = mono, rows 1..15 = poly V2..V16 (engine poly index v = row v+1).
-    // The manager pushes pins into pe each control cycle.
+    // ── Change Alley pin-matrix (CHANGE_ALLEY_DESIGN.md §3-REVISED) ──────────
+    // The pin remap now lives UPSTREAM in the slewed buffers (pe.remapSlewedByPins,
+    // pre-spread), so every read here is a PLAIN own-bank read — a pinned voice's
+    // borrowed draw already carries the consumer's own spread. No read-time indirection.
     inline const float (&polyRandomSrc(int voiceIdx, int polyLane) const)[16] {
-        return pe.readStrand(voiceIdx + 1, polyLaneToStrand(polyLane));
+        return pe.polyRandom(voiceIdx, polyLane);
     }
     static inline int polyLaneToStrand(int polyLane) {
         return (polyLane == PL_REST)   ? dotModular::STRAND_RHYTHM
@@ -411,10 +409,11 @@ struct SequencerEngine {
              : (polyLane == PL_ACCENT) ? dotModular::STRAND_ACCENT
                                        : dotModular::STRAND_OCTAVE;
     }
-    // Mono reads by STRAND — each strand keeps its OWN table, remapped by row 0's pin.
-    // (An earlier version routed mono VARIATION/LEGATO through the REST strand's table —
-    //  wrong table even at identity. readStrand keeps strand identity by construction.)
-    inline const float (&monoStrand(int strand) const)[16] { return pe.readStrand(0, strand); }
+    // Mono reads by STRAND — plain own bank (random_[0][strand]); remap is upstream.
+    inline const float (&monoStrand(int strand) const)[16] {
+        const int s = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? strand : dotModular::STRAND_RHYTHM;
+        return pe.random_[0][s];
+    }
     bool muted = false;
     bool runGateActive = false;
     bool resetArmed = false;

@@ -22,6 +22,29 @@ namespace Macro = StraitsMacroVisualIds;
 namespace East  = StraitsEastVisualIds;   // for the voice-1 mix-in (interp. Y)
 
 void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManager, bool spreadInterpMono) {
+    // ── Change Alley pin remap (PRE-SPREAD) ──────────────────────────────────
+    // Push the current pins into pe, then remap the SLEWED buffers by pin BEFORE any
+    // spread runs below. A pinned voice's borrowed draw is then spread with the CONSUMER's
+    // own reference (== pinning the A/B samples, the agreed design). Identity = no-op.
+    // IDEMPOTENCE: slewed persists across cycles (recompute is mix-latch-gated, not
+    // per-cycle), so remapping in place would compound. Regenerate slewed fresh from the
+    // pristine A/B buffers FIRST (recompute is a cheap re-derivation, MixApplied-idempotent),
+    // then remap the clean result. This makes the per-cycle remap correct and non-walking.
+    if (expanderManager.cachedChangeAlleyExpander) {
+        auto* ca = expanderManager.cachedChangeAlleyExpander;
+        bool identity = true;
+        for (int v = 0; v < 16; ++v) {
+            engine.pe.caRhythmSrc[v] = ca->rhythmSrc[v];
+            engine.pe.caMelodySrc[v] = ca->melodySrc[v];
+            if (ca->rhythmSrc[v] != v || ca->melodySrc[v] != v) identity = false;
+        }
+        if (!identity) {
+            engine.pe.forceRecomputeSlewed();   // fresh slewed = bl(A,B), pristine
+            engine.pe.remapSlewedByPins();       // then remap the clean buffers
+        }
+    } else {
+        for (int v = 0; v < 16; ++v) { engine.pe.caRhythmSrc[v] = (uint8_t)v; engine.pe.caMelodySrc[v] = (uint8_t)v; }
+    }
     // ── Expander-presence / activity flags (names chosen to avoid the old trap) ──
     //   hasMonoVisual    : the SANDS MONO editor is attached (NOT "any visual"; NOT Macro).
     //   hasMacro         : the MACRO visual is attached (standalone counts — the right flag

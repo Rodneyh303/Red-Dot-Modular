@@ -122,12 +122,11 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool spreadInterpMono
                 }
             }
         }
-        for (int v = 0; v < 16; ++v) {
-            engine.pe.caRhythmSrc[v] = cachedChangeAlleyExpander->rhythmSrc[v];
-            engine.pe.caMelodySrc[v] = cachedChangeAlleyExpander->melodySrc[v];
-        }
+        // (pin push to pe moved to processDNA head — it must precede the pre-spread
+        //  remapSlewedByPins. Restructure-transform application above stays here, at the
+        //  phrase boundary; its result is picked up by processDNA's push next cycle.)
     } else {
-        for (int v = 0; v < 16; ++v) { engine.pe.caRhythmSrc[v] = (uint8_t)v; engine.pe.caMelodySrc[v] = (uint8_t)v; }
+        // no-op: processDNA resets pe.ca*Src to identity when no Change Alley is present.
     }
     // Step 3 (plans/lane_direction_homes.md): poly direction is reset-then-pushed exactly like
     // delegation above. The reset is the half that was missing while the engine was direction's
