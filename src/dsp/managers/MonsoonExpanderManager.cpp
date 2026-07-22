@@ -377,7 +377,6 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
             // }
 
             if (!engine.locked) {
-                const int nPoly = effPolyVoices;
                 for (int j = 0; j < 16; j++) {
                     engine.pe.polyRandom(v, PL::PL_REST)[j] = redDot::SpreadInterp::apply(
                         engine.pe, PL::PL_REST, j, engine.pe.slewedPolyRhythm[v][j], restInterp);
@@ -399,7 +398,6 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
             if (eastVisual) eastVisual->polySpreadEffective[v][PL::PL_MELODY] = melodyInterp;
             
             if (!engine.locked) {
-                const int nPoly = effPolyVoices;
                 for (int j = 0; j < 16; j++) {
                     engine.pe.polyRandom(v, PL::PL_MELODY)[j] = redDot::SpreadInterp::apply(
                         engine.pe, PL::PL_MELODY, j, engine.pe.slewedPolyMelody[v][j], melodyInterp);
@@ -428,7 +426,6 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
             if (eastVisual) eastVisual->polySpreadEffective[v][PL::PL_OCTAVE] = octaveInterp;
             
             if (!engine.locked) {
-                const int nPoly = effPolyVoices;
                 for (int j = 0; j < 16; j++) {
                     engine.pe.polyRandom(v, PL::PL_OCTAVE)[j] = redDot::SpreadInterp::apply(
                         engine.pe, PL::PL_OCTAVE, j, engine.pe.slewedPolyOctave[v][j], octaveInterp);
@@ -458,7 +455,6 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
                 accentInterp = combineSpread(PL::PL_ACCENT, accentInterp);   // owner + Macro-CV blend (spread)
                 if (eastVisual) eastVisual->polySpreadEffective[v][PL::PL_ACCENT] = accentInterp;   // accent spread → editor display
                 if (!engine.locked) {
-                    const int nPoly = effPolyVoices;
                     for (int j = 0; j < 16; j++) {
                         engine.pe.polyRandom(v, PL::PL_ACCENT)[j] = redDot::SpreadInterp::apply(
                             engine.pe, PL::PL_ACCENT, j, engine.pe.slewedPolyAccent[v][j], accentInterp);
@@ -543,7 +539,6 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
         // MonsoonSandsManager::processDNA (macroDrivesOutput is true here).
         using namespace StraitsMacroVisualIds;
         auto* macroVis = cachedMacroSandsVisual;
-        const int nPoly = effPolyVoices;
         if (!engine.locked) {
             // V1 (mono final arrays + mono strand LOR): Macro owns V1 too when it is the
             // sole visual. The hasMonoVisual block (which normally does this) is skipped

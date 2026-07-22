@@ -299,12 +299,11 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // lock freezes the audible output — spread CV won't leak through.
             engine.pe.setSandsActive(true);
             if (!engine.locked) {
-            // Ensemble = mono + active poly voices. Average over (1 + nPoly).
+            // Spread target is the mono/voice-1 draw (the ensemble average was removed).
             // Ensemble poly count is bounded by the voice OUTPUT topology
             // (effPolyVoices): only voices with an actual output path (East ≤7,
             // +West for 8..15) are averaged. With no base expander it is 0, so
             // Mono spread degenerates to a no-op (average == mono draw itself).
-            const int nPoly = effPolyVoices;
             for (int i = 0; i < 16; ++i) {
                 // Single source of truth: target (mode-aware, mono-inclusive avg)
                 // + bipolar interpolate, over the pre-spread slewed draws.
@@ -448,7 +447,6 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             const float spM = sprForLane(1);
             const float spO = sprForLane(2);
             const float spA = sprForLane(3);
-            const int nPoly = effPolyVoices;
             engine.pe.setSandsActive(true);
             for (int i = 0; i < 16; ++i) {
                 engine.pe.rhythmRandom[i] = redDot::SpreadInterp::apply(engine.pe, 0, i, engine.pe.slewedRhythm[i], spR);
