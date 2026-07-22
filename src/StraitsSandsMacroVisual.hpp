@@ -68,8 +68,20 @@ namespace StraitsMacroVisualIds {
         // 8 PRE/POST tap params (lane*2 + which), re-homed from MonsoonIds::MACRO_TAP
         // (widgeted trimpots, so they stay params in the expander namespace).
         TAP_START = SEND_DISP_START + 16,       // = 40
-        NUM_SPREAD_PARAMS = TAP_START + 8       // = 48
+        // 12 global LOR params (4 lanes x LEN/OFF/ROT), re-homed OUT of the shared
+        // MonsoonIds pool so Macro can be right-sized. Deliberately ONE symbol +
+        // arithmetic: individual names (GLOBAL_REST_DNA_LEN ...) would be ambiguous
+        // against the file-scope `using namespace MonsoonIds`. Lane order matches the
+        // MonsoonIds layout that was replaced: REST, MELODY, OCTAVE, ACCENT; c = 0 LEN,
+        // 1 OFF, 2 ROT.
+        GLOBAL_DNA_START = TAP_START + 8,       // = 48 .. 59
+        NUM_SPREAD_PARAMS = GLOBAL_DNA_START + 12   // = 60
     };
+    // lane: 0 REST, 1 MELODY, 2 OCTAVE, 3 ACCENT -> block offset
+    static inline int globalDnaId(int lane, int c) {
+        const int blk = (lane == 0) ? 0 : (lane == 1) ? 3 : (lane == 3) ? 9 : 6;
+        return GLOBAL_DNA_START + blk + c;
+    }
     static inline int sendDispId(int lane, int item) { return SEND_DISP_START + lane*4 + item; }
     static inline int tapLorId(int lane) { return TAP_START + lane*2 + 0; }
     static inline int tapSprId(int lane) { return TAP_START + lane*2 + 1; }
@@ -117,10 +129,7 @@ namespace StraitsMacroVisualIds {
 
     // ── Global LOR param helpers ──────────────────────────────────────────
     inline int lorId(int lane, int c) {
-        if (lane == 0) return GLOBAL_REST_DNA_LEN   + c;
-        if (lane == 1) return GLOBAL_MELODY_DNA_LEN + c;
-        if (lane == 3) return GLOBAL_ACCENT_DNA_LEN + c;
-        return              GLOBAL_OCTAVE_DNA_LEN   + c;
+        return StraitsMacroVisualIds::globalDnaId(lane, c);   // local pool, was MonsoonIds
     }
     // Spread: stored in SPREAD_REST/MELODY/OCTAVE display params
     inline int sprId(int lane) {
@@ -173,7 +182,9 @@ struct StraitsSandsMacroVisual : Module {
 
     StraitsSandsMacroVisual() {
         using namespace StraitsMacroVisualIds;
-        config(MonsoonIds::NUM_PARAMS, StraitsMacroVisualIds::NUM_INPUTS,
+        // RIGHT-SIZED: local param count only, now that the 12 global LOR params were
+        // re-homed out of the shared MonsoonIds pool (see GLOBAL_DNA_START).
+        config(StraitsMacroVisualIds::NUM_SPREAD_PARAMS, StraitsMacroVisualIds::NUM_INPUTS,
                StraitsMacroVisualIds::NUM_OUTPUTS, 0);
         for (auto& a : probLastStep) for (auto& x : a) x = -1;
         { static const char* ln[4] = {"REST","MEL","OCT","ACC"};
@@ -201,18 +212,18 @@ struct StraitsSandsMacroVisual : Module {
         }
 
         // Global L/O/R params
-        configParam(GLOBAL_REST_DNA_LEN,   1.f,16.f,16.f,"Global REST Length");
-        configParam(GLOBAL_REST_DNA_OFF,   0.f,15.f, 0.f,"Global REST Offset");
-        configParam(GLOBAL_REST_DNA_ROT,   0.f,15.f, 0.f,"Global REST Rotation");
-        configParam(GLOBAL_MELODY_DNA_LEN, 1.f,16.f,16.f,"Global MELODY Length");
-        configParam(GLOBAL_MELODY_DNA_OFF, 0.f,15.f, 0.f,"Global MELODY Offset");
-        configParam(GLOBAL_MELODY_DNA_ROT, 0.f,15.f, 0.f,"Global MELODY Rotation");
-        configParam(GLOBAL_OCTAVE_DNA_LEN, 1.f,16.f,16.f,"Global OCTAVE Length");
-        configParam(GLOBAL_OCTAVE_DNA_OFF, 0.f,15.f, 0.f,"Global OCTAVE Offset");
-        configParam(GLOBAL_OCTAVE_DNA_ROT, 0.f,15.f, 0.f,"Global OCTAVE Rotation");
-        configParam(GLOBAL_ACCENT_DNA_LEN, 1.f,16.f,16.f,"Global ACCENT Length");
-        configParam(GLOBAL_ACCENT_DNA_OFF, 0.f,15.f, 0.f,"Global ACCENT Offset");
-        configParam(GLOBAL_ACCENT_DNA_ROT, 0.f,15.f, 0.f,"Global ACCENT Rotation");
+        configParam(globalDnaId(0,0),   1.f,16.f,16.f,"Global REST Length");
+        configParam(globalDnaId(0,1),   0.f,15.f, 0.f,"Global REST Offset");
+        configParam(globalDnaId(0,2),   0.f,15.f, 0.f,"Global REST Rotation");
+        configParam(globalDnaId(1,0), 1.f,16.f,16.f,"Global MELODY Length");
+        configParam(globalDnaId(1,1), 0.f,15.f, 0.f,"Global MELODY Offset");
+        configParam(globalDnaId(1,2), 0.f,15.f, 0.f,"Global MELODY Rotation");
+        configParam(globalDnaId(2,0), 1.f,16.f,16.f,"Global OCTAVE Length");
+        configParam(globalDnaId(2,1), 0.f,15.f, 0.f,"Global OCTAVE Offset");
+        configParam(globalDnaId(2,2), 0.f,15.f, 0.f,"Global OCTAVE Rotation");
+        configParam(globalDnaId(3,0), 1.f,16.f,16.f,"Global ACCENT Length");
+        configParam(globalDnaId(3,1), 0.f,15.f, 0.f,"Global ACCENT Offset");
+        configParam(globalDnaId(3,2), 0.f,15.f, 0.f,"Global ACCENT Rotation");
 
         // Per-voice Macro→voice mix-in sends (relocated from East). 12 display proxies
         // (selected-voice view, bound on the panel) + 180 per-voice store. Default 0
