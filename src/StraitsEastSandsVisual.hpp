@@ -189,7 +189,11 @@ struct StraitsEastSandsVisual : Module {
 
     StraitsEastSandsVisual() {
         using namespace StraitsEastVisualIds;
-        config(MonsoonIds::NUM_PARAMS, StraitsEastVisualIds::NUM_INPUTS,
+        // RIGHT-SIZED to the LOCAL param count (38). Verified by census: all 9 configured
+        // param ids resolve to StraitsEastVisualIds, none to the shared MonsoonIds pool,
+        // and nothing reads this module's params[] by a MonsoonIds index. Claiming
+        // MonsoonIds::NUM_PARAMS (152) was pure over-allocation.
+        config(StraitsEastVisualIds::NUM_SPREAD_PARAMS, StraitsEastVisualIds::NUM_INPUTS,
                StraitsEastVisualIds::NUM_OUTPUTS, StraitsEastVisualIds::NUM_LIGHTS);
         for (auto& a : probLastStep) for (auto& x : a) x = -1;
         { static const char* ln[4] = {"REST","MEL","OCT","ACC"};
