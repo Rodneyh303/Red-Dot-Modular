@@ -246,6 +246,13 @@ struct PatternEngine {
     float rhythmSlewApplied =-1.f, melodySlewApplied =-1.f;  // force first recompute
     // Live MIX (A<->B blend) latched at control rate; the effective arrays are
     // recomputed when it changes. This is what drives the continuous morph.
+    // A/B morph coefficient — GLOBAL per strand family (one scalar for ALL voices).
+    // LOAD-BEARING INVARIANT: because this is global and the blend is linear, remapping
+    // Change Alley pins at the slewed buffers (post-mix) is provably IDENTICAL to remapping
+    // at the A/B candidates (pre-mix): both give A[src] + s*(B[src]-A[src]). If this ever
+    // becomes PER-VOICE, that equivalence breaks — post-mix would apply the SOURCE's mix
+    // while "own manipulation" demands the CONSUMER's — and the Change Alley remap must
+    // move to the A/B candidate buffers. See CHANGE_ALLEY_DESIGN.md §3.
     float rhythmMixLatched = 0.f, melodyMixLatched = 0.f;
     float rhythmMixApplied =-1.f, melodyMixApplied =-1.f;
 
