@@ -95,3 +95,38 @@ lock, and lock can be specified against categories rather than against a param l
 
 Any surviving param that would need a "(selected voice)" qualifier in a host list should
 not be a param. Self-describing names are the acceptance test for step 1.
+
+
+## DECISION — visual/editor expanders expose NOTHING to the host (settled 2026-07-22)
+
+Rodney's call, after seeing the surface in Bitwig. Two rules:
+
+**1. Editor expanders are not control surfaces.** East Sands Visual, Macro Sands Visual,
+Mono Sands Visual and Lantern are EDITORS: they render and edit engine/patch state. A host
+should automate the instrument's controls, not an editor's widgets. So NONE of their params
+are host-exposed; all become store-backed (StoreEditAction for undo).
+Independently decisive: East and Macro carry SELECTED-VOICE proxies, so automating them is
+incoherent in principle — one automation lane would write to whichever voice the UI happens
+to have selected, a state the host cannot see. No budget argument needed.
+
+**2. Control expanders keep their params.** Raffles, Junction, Causeway, Interchange, Change
+Alley are hardware-like surfaces: each knob/jack means one fixed thing, no selection
+dependence. The codebase already names the split (`*SandsVisual*` vs the rest).
+
+### Consequence: global LOR is NOT automatable
+Global LOR is simply MACRO's SCOPE of LOR — it is not special or privileged relative to
+mono LOR or East's per-voice LOR. Exposing one scope and not the others was an accident of
+which happened to be implemented as params, not a decision. So:
+- Macro's 12 global LOR params → store-backed.
+- Monsoon's 18 dead DNA_*_{LEN,OFF,ROT}_PARAM ids → DELETE (do not wire them up; an earlier
+  suggestion to do so is withdrawn — it would have re-created the same privilege).
+- The VAR/LEG "gap" dissolves: there is nothing to be missing from.
+
+NOT a loss of control: these remain fully modulatable in-rack via CV, and Rack's CV sources
+can be clock/DAW-synced — which gives finer resolution than host automation and none of the
+selected-voice ambiguity.
+
+### Resulting automation surface (the whole of it)
+Monsoon's big-5 + per-voice REST/ACC + SEMI/OCT + LENGTH/OFFSET + dice/gesture buttons +
+transport (BPM/RUN/RESET/MODE/PHASE/MUTE), plus the control expanders. Everything else is
+store-backed and modulated in-rack.
