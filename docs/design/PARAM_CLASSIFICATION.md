@@ -57,7 +57,7 @@ lock, and lock can be specified against categories rather than against a param l
 | 5 | TRANSPOSE | *judgment* — leans TRANSPORT (performance, like transposing any sequence) | LIVE (open) | KEEP param |
 | 6–7 | PATTERN_LENGTH / OFFSET | GENERATION (Vermona FIRST/LAST STEP) | LATCH | KEEP param |
 | 8–25 | DNA LOR 6×(LEN/OFF/ROT) | GENERATION | LATCH | KEEP param |
-| 26–39 | DNA scramble / reset buttons ×14 | — unreachable (never wired) | n/a | **DELETE** (LOCK_SEMANTICS §4) |
+| ~~26–39~~ | DNA scramble / reset buttons ×14 | — unreachable (never wired) | n/a | **DONE — deleted** (cleanup/dna-scramble-params); also removed the 14 matching INPUTs |
 | 40–51 | SEMI toggles ×12 | GENERATION (scale) | LATCH | KEEP param |
 | 52–53 | OCT LO / HI | GENERATION (range) | LATCH | KEEP param |
 | 54 | BPM | TRANSPORT | LIVE | KEEP param |
