@@ -152,11 +152,19 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
         return d.x*d.x + d.y*d.y < r*r;
     }
 
+    // Theme follows the CONNECTED MONSOON's lightTheme flag — the plugin-wide convention
+    // (Raffles/Shophouse do the same). It is NOT Rack's global settings::preferDarkPanels;
+    // using that was why Change Alley ignored Monsoon's dark setting.
+    std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
+    int lastThemeLight = -1;
+
     MonsoonChangeAlleyExpanderWidget(MonsoonChangeAlleyExpander* module) {
         setModule(module);
         std::string dark  = asset::plugin(pluginInstance, "res/panels/ChangeAlley_panel_dark.svg");
         std::string light = asset::plugin(pluginInstance, "res/panels/ChangeAlley_panel_light.svg");
-        setPanel(Svg::load(settings::preferDarkPanels ? dark : light));
+        panelSvgDark  = APP->window->loadSvg(dark);
+        panelSvgLight = APP->window->loadSvg(light);
+        setPanel(Svg::load(dark));
         addChild(createWidget<ScrewSilver>(mm2px(Vec(1.5,    1.5))));
         addChild(createWidget<ScrewSilver>(mm2px(Vec(PW_MM - 1.5, 1.5))));
         addChild(createWidget<ScrewSilver>(mm2px(Vec(1.5,    PH_MM - 1.5))));
@@ -239,7 +247,9 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
                     //     BOTH themes and the tooltip has its own dark backing box.
                     // (The earlier 'only row 1 numbered' bug was dark ink on a dark body;
                     //  the fix is theme-correct ink, not permanently-light ink.)
-                    const bool lightBody = !settings::preferDarkPanels;
+                    // Same source as the panel swap: the connected Monsoon's flag.
+                    Monsoon* themeM = module ? redDot::findMonsoonEitherSide(module) : nullptr;
+                    const bool lightBody = themeM && themeM->lightTheme;
                     NVGcolor ink    = lightBody ? nvgRGB(0x2a,0x2a,0x2e) : nvgRGB(0xe8,0xe2,0xd0);
                     NVGcolor inkdim = lightBody ? nvgRGBA(0x88,0x8d,0x96,0xd0)
                                                 : nvgRGBA(0x9a,0x95,0x88,0xb0);
@@ -490,6 +500,22 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
             if (auto* m = resolve()) m->resetToIdentity();
         }
     };
+
+    void step() override {
+        ModuleWidget::step();
+        if (!module) return;
+        Monsoon* m = redDot::findMonsoonEitherSide(module);
+        const int wantLight = (m && m->lightTheme) ? 1 : 0;
+        if (wantLight != lastThemeLight) {
+            lastThemeLight = wantLight;
+            for (Widget* child : children) {
+                if (auto* sp = dynamic_cast<app::SvgPanel*>(child)) {
+                    sp->setBackground(wantLight ? panelSvgLight : panelSvgDark);
+                    break;
+                }
+            }
+        }
+    }
 
     void appendContextMenu(Menu* menu) override {
         ModuleWidget::appendContextMenu(menu);
