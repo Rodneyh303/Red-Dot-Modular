@@ -7,6 +7,7 @@
 //#include "../../MonsoonSandsExpander.hpp"
 #include "../../StraitsSandsMacroVisual.hpp"
 #include "MonsoonExpanderManager.hpp"
+#include "../../MonsoonChangeAlleyExpander.hpp"   // full type: processDNA reads ca->rhythmSrc/melodySrc
 #include "../SandsTopology.hpp"   // step 3b: readStrand owner migration
 #include "../../MonsoonStraitsExpander.hpp"
 #include "../../StraitsEastSandsVisual.hpp"
