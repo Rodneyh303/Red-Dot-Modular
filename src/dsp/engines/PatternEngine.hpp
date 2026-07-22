@@ -203,6 +203,11 @@ struct PatternEngine {
     // Force a fresh slewed = bl(LockedA, CandB) for BOTH rhythm and melody families,
     // regardless of mix-latch state — used before the Change Alley pin remap so the
     // remap always operates on pristine (un-remapped) slewed. Cheap; idempotent.
+    // NAMING TRAP (do not be misled): the "slewed*" buffers are NOT slew output. Actual
+    // SLEW is consumed at ROLL/phrase time inside redrawRhythm/Melody (blends A↔B at the
+    // roll — phrase-bounded, per design). recomputeEffective* only computes the stateless
+    // MIX blend A + mix*(B-A) from the already-rolled LockedA/CandB, so calling it every
+    // audio cycle re-derives the SAME values from unchanged inputs — no re-slew, safe.
     void forceRecomputeSlewed() {
         rhythmMixApplied = -999.f;   // invalidate so recompute* actually runs
         melodyMixApplied = -999.f;
