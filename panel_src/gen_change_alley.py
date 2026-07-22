@@ -18,18 +18,23 @@ PW, PH = px(PW_MM), px(PH_MM)
 
 # ── Palette: Raffles house, dark body BOTH themes ────────────────────────────
 def pal(dark):
-    base = dict(
-        bg="#131316", body="#18181a", red="#d4001a", ink="#e8e2d0", dim="#8a8578",
-        well="#0b0c0d", gridln="#26262b", booth="#141416", frame="#2e2e33",
-        jackwell="#0a0b0c", jackring="#46464c", edrecess="#101113",
-        knobwell="#0f1012", knobring="#c8960c", knobtick="#e8e2d0",
-        btnwell="#0f1012", btnring="#46464c", ledoff="#3a2226",
-        rhythm="#f0f0ee", melody="#d4001a", gold="#c8960c",
-    )
-    if not dark:
-        # Light theme: SAME dark body (deliberate); only lift trims slightly
-        base.update(dim="#9a9588", jackring="#54545c", frame="#36363c")
-    return base
+    # THE GRID IS ALWAYS DARK (instrument surface — Lantern LCD rule): well/gridln/booth
+    # never change with theme, so the white/red pins keep their contrast. Only the BODY
+    # around the grid follows the theme. Light body is the kit's NEUTRAL grey (#e8e8ea),
+    # deliberately not a cream — the earlier yellowish body read badly in-rack.
+    grid = dict(well="#0b0c0d", gridln="#26262b", booth="#141416",
+                rhythm="#f0f0ee", melody="#d4001a", red="#d4001a", gold="#c8960c")
+    if dark:
+        return dict(grid,
+            body="#18181a", ink="#e8e2d0", dim="#8a8578", frame="#2e2e33",
+            jackwell="#0a0b0c", jackring="#46464c", edrecess="#101113",
+            knobwell="#0f1012", knobring="#c8960c", knobtick="#e8e2d0",
+            btnwell="#0f1012", btnring="#46464c", ledoff="#3a2226")
+    return dict(grid,
+        body="#e8e8ea", ink="#2a2a2e", dim="#888d96", frame="#a8aeb6",
+        jackwell="#dadce0", jackring="#9298a0", edrecess="#d8dade",
+        knobwell="#dcdee2", knobring="#a07808", knobtick="#2a2a2e",
+        btnwell="#dcdee2", btnring="#9298a0", ledoff="#d8c4c6")
 
 # ── Shared geometry (single source of truth — widget mirrors via these) ──────
 GUTTER_T = 9.0
@@ -96,7 +101,7 @@ def gen(dark):
         E(f'<circle cx="{px(CTRL_X_DOT)}" cy="{px(y)}" r="{px(1.1)}" fill="{col}"/>')
 
     # ── Logo: LARGE, under the control column (real estate it deserves) ─────
-    E(logo_embed(True, 4.0, PH_MM - 13.5, 34.0))   # dark wordmark on dark body, 34mm wide
+    E(logo_embed(dark, 4.0, PH_MM - 13.5, 34.0))   # dark wordmark on dark body, 34mm wide
 
     E('</svg>')
     return "\n".join(o)
