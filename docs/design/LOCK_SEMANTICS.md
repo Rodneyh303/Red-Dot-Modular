@@ -34,8 +34,14 @@ valuable — "ride knobs over a frozen pattern" — but belongs under a differen
 - Big-5: NOTE_VALUE, VARIATION, LEGATO, REST, ACCENT
 - Per-voice POLY_REST 1–15, POLY_ACCENT 1–15 (the poly extension of the rhythm section)
 - Their CV modulation: mono/poly/global mod attenuverters AND incoming CV (Causeway,
-  Junction, East var/leg CV). The Vermona manual explicitly decouples incoming MIDI CC
-  (MEX3); the dot.modular analogue is external CV. Latching the knob but letting CV
+  Junction, East var/leg CV). PRECEDENT (meloDICER manual, verbatim pointer note):
+  "If you have a MEX3 module connected to your meloDICER, lock-mode also applies for
+  incoming MIDI Control Change messages." MIDI CC is meloDICER's remote-modulation path,
+  so Vermona freezes remote writes along with the panel controls. NOTE the exact scope of
+  the quoted precedent: control elements of the rhythm/melody sections + FIRST/LAST STEP,
+  and MIDI CC. The manual does NOT address meloDICER's own CV IN 1/2 under lock, so
+  latching external CV is OUR EXTENSION of the precedent (justified by the coherence
+  argument below), not a quotation of it. Latching the knob but letting CV
   through would defeat the purpose. Mechanism: snapshot the RESOLVED value (knob+CV)
   at lock-on; engine reads the snapshot.
 - Scale + range: SEMI 0–11 toggles, OCT LO/HI (melody section — preparing a scale

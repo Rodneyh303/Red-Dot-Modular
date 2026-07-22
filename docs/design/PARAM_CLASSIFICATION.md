@@ -25,7 +25,16 @@ decoupled equally:
 - **Knob** — turning it does nothing until unlock.
 - **VCV CV** — incoming CV is ignored (Causeway/Junction/East var-leg etc.). Confirmed:
   latching the knob while CV still moved the value would defeat the purpose, and the
-  Vermona manual's decoupling of incoming MIDI CC (MEX3) is the precedent.
+  Vermona manual's decoupling of incoming MIDI CC (MEX3) is the precedent — verbatim:
+  "lock-mode also applies for incoming MIDI Control Change messages".
+- **DAW automation** — MIDI CC is the DIRECT analogue (a host/sequencer remotely writing
+  parameter values), so freezing host automation under lock is precedented, not inferred.
+
+SCOPE OF THE PRECEDENT (stated precisely, because it was once mis-cited here): the manual
+covers control elements of the rhythm/melody sections, FIRST/LAST STEP, and MIDI CC. It
+does NOT address meloDICER's own CV inputs under lock — latching external CV is our
+extension, resting on the coherence argument, not on a quotation. It also confirms
+snap-on-unlock: leaving lock-mode overwrites the stored values with the current settings.
 - **DAW automation** — same treatment, for the same reason. "Knob frozen, CV frozen, but
   the host can still move it" is incoherent. Host writes land in the param; the engine
   reads the snapshot.
