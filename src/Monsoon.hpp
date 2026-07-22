@@ -879,13 +879,6 @@ struct Monsoon : Module {
     void redrawRhythmPattern();
     void redrawMelodyPattern();
 
-    void rotateRhythmPattern(int steps);
-    void rotateMelodyPattern(int steps);
-    void rotateRhythm(int steps);
-    void rotateMelody(int steps);
-    void rotateVariation(int steps);
-    void rotateLegato(int steps);
-    void rotateOctave(int steps);
     void rotatePattern(bool isMelody, int steps);
     void rotatePattern(int steps);
 

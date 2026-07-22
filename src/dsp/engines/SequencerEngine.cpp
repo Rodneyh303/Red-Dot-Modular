@@ -1039,39 +1039,3 @@ int SequencerEngine::getOctaveStep() const    { return getStrandIdx(laneTick_[do
 void SequencerEngine::syncVisuals(const PatternInput& in) {
     pe.refreshVisualCache(in);
 }
-
-void SequencerEngine::scrambleRhythmStrands() {
-    pe.rotateRhythm(rack::random::u32() % 16);
-    pe.rotateVariation(rack::random::u32() % 16);
-    pe.rotateLegato(rack::random::u32() % 16);
-}
-
-void SequencerEngine::scrambleMelodyStrands() {
-    pe.rotateMelody(rack::random::u32() % 16);
-    pe.rotateOctave(rack::random::u32() % 16);
-}
-
-void SequencerEngine::scrambleAllStrands() {
-    scrambleRhythmStrands();
-    scrambleMelodyStrands();
-    pe.rotateAccent(rack::random::u32() % 16);
-}
-
-void SequencerEngine::resetRhythmStrands() {
-    for (int i = 0; i < 16; ++i) {
-        pe.rhythmRandom[i] = pe.rhythmSource[i];
-        pe.variationRandom[i] = pe.variationSource[i];
-        pe.legatoRandom[i] = pe.legatoSource[i];
-    }
-}
-
-void SequencerEngine::resetMelodyStrands() {
-    for (int i = 0; i < 16; ++i) {
-        pe.melodyRandom[i] = pe.melodySource[i];
-        pe.octaveRandom[i] = pe.octaveSource[i];
-    }
-}
-
-void SequencerEngine::resetAllStrands() {
-    pe.resetDnaRotation();
-}

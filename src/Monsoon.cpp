@@ -295,41 +295,6 @@ float Monsoon::semitoneToVolts(int semitone) {
     void Monsoon::redrawRhythmPattern() { engine.pe.redrawRhythm(modeController->currentPatternInput); }
     void  Monsoon::redrawMelodyPattern() { engine.pe.redrawMelody(modeController->currentPatternInput); }
 
-    void Monsoon::rotateRhythm(int steps) {
-        engine.pe.rotateRhythm(steps);
-        engine.pe.refreshPatternCache(modeController->currentPatternInput);
-    }
-
-    void Monsoon::rotateRhythmPattern(int steps) {
-        engine.pe.rotateRhythmPattern(steps);
-        engine.pe.refreshPatternCache(modeController->currentPatternInput);
-    }
-    
-    void Monsoon::rotateVariation(int steps) {
-        engine.pe.rotateVariation(steps);
-        engine.pe.refreshPatternCache(modeController->currentPatternInput);
-    }
-
-    void Monsoon::rotateLegato(int steps) {
-        engine.pe.rotateLegato(steps);
-        engine.pe.refreshPatternCache(modeController->currentPatternInput);
-    }
-
-    void Monsoon::rotateMelody(int steps) {
-        engine.pe.rotateMelody(steps);
-        engine.pe.refreshPatternCache(modeController->currentPatternInput);
-    }
-
-    void Monsoon::rotateMelodyPattern(int steps) {
-        engine.pe.rotateMelodyPattern(steps);
-        engine.pe.refreshPatternCache(modeController->currentPatternInput);
-    }
-    
-    void Monsoon::rotateOctave(int steps) {
-        engine.pe.rotateOctave(steps);
-        engine.pe.refreshPatternCache(modeController->currentPatternInput);
-    }
-
     void Monsoon::rebuildSemiCache_() {
         float weights[12];
         for (int i = 0; i < 12; ++i) weights[i] = scaleManager->getSemitoneWeight(i, *paramManager);
