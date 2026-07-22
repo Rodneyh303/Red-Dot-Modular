@@ -632,7 +632,6 @@ struct Monsoon : Module {
     // menu lives on Monsoon). false = Average Poly (mono + active poly average);
     // true = Mono Draw (target the raw mono draw; mono strand becomes a fixed
     // anchor). Replaces the old per-visual interpUseMono flags on East/Macro.
-    bool spreadInterpMono = false;
 
     // Modulation-visualisation (mod arc) enables, grouped by surface. All default
     // on; toggled via the Monsoon "Modulation arcs" context submenu. Each arc's

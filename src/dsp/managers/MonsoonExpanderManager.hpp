@@ -214,7 +214,7 @@ struct MonsoonExpanderManager {
     }
 
     /// Synchronizes data between the engine and specific expanders (Deep Straits, Visual Editors, etc.)
-    void sync(SequencerEngine& engine, bool spreadInterpMono = false);
+    void sync(SequencerEngine& engine);
 
     // ── Single presence authority for SandsTopology ─────────────────────────────
     // THE one place the topology's presence/base fields are populated. Every consumer

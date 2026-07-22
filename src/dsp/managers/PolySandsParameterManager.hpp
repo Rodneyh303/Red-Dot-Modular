@@ -33,7 +33,6 @@ namespace redDot {
  * Usage:
  *   SequencerEngine* seqEngine = nullptr; // from monsoon
  *   PolySandsParameterManager mgr(patternEngine, seqEngine, monsoonModule);
- *   mgr.spreadMgr.setInterpolationTarget(SpreadManager::AVERAGE_POLY);
  *   mgr.spreadMgr.setSpread(lane, spread);
  *   mgr.syncPatternEngineToEditor(editor->currentState);
  * 
@@ -53,11 +52,10 @@ struct PolySandsParameterManager {
                              rack::Module* m = nullptr, int numVoices = 7)
     : patternEngine(pe), sequencerEngine(se), monsoonModule(m), spreadMgr(pe, numVoices) {
     // This manager IS the mono master (V1) display. Mark its spreadMgr mono-context so
-    // V1 interpolates from the MONO draw in MONO_DRAW mode (true self-target), regardless
-    // of numVoices (kept at the poly count for the AVERAGE_POLY ensemble size).
+    // V1 interpolates from the MONO draw (true self-target), regardless of numVoices.
     spreadMgr.monoContext = true;
     // Set SequencerEngine so SpreadManager can track active voices
-    // This makes AVERAGE_POLY target use only requested polyphony
+    // Voice-count bookkeeping uses only requested polyphony
     if (se) {
       spreadMgr.setSequencerEngine(se);
     }

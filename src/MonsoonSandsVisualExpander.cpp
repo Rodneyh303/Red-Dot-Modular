@@ -371,10 +371,9 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             paramMgr->setLaneSpread(SPREAD_TO_BUFFER[l], monsoon->engine.spreadE(0, l));  // engine state (slot 0)
         }
 
-        // (Spread target mode is pulled from the engine by the param manager —
-        // Monsoon::process mirrors the menu setting onto engine.pe each frame. This is
-        // what fixes the original bug at the source: the Mono widget used to hardcode
-        // AVERAGE_POLY here and silently ignore voice-1 mode.)
+        // (Spread target is ALWAYS the mono/voice-1 draw — there is no target mode to
+        // sync any more. The old per-widget mode push, and the bug where this widget
+        // hardcoded the wrong target, are both gone with the mode itself.)
 
         // ── Sync PatternEngine → display (uses SpreadManager.getInterpolatedValue) ──
         paramMgr->syncPatternEngineToEditor(visualEditor->currentState);

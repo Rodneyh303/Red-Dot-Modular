@@ -9,7 +9,7 @@ namespace redDot {
 struct MonoSandsParameterManager {
     PatternEngine* patternEngine = nullptr;
 
-    // SpreadManager kept for the AVERAGE_POLY target enum + poly arrays.
+    // SpreadManager kept for the poly arrays / spread plumbing.
     SpreadManager spreadMgr;
 
     // Base spread per SPREADABLE lane (REST, MELODY, OCTAVE only), 0..1.
@@ -24,7 +24,6 @@ struct MonoSandsParameterManager {
     }
     float laneSpread[SPREAD_LANES] = {};
 
-    SpreadManager::InterpolationTarget target = SpreadManager::AVERAGE_POLY;
 
     MonoSandsParameterManager(PatternEngine* pe = nullptr)
         : patternEngine(pe)
@@ -39,10 +38,6 @@ struct MonoSandsParameterManager {
     void setLaneSpread(int lane, float value) {
         if (lane >= 0 && lane < SPREAD_LANES)
             laneSpread[lane] = rack::math::clamp(value, -1.f, 1.f);
-    }
-    void setInterpolationTarget(SpreadManager::InterpolationTarget t) {
-        target = t;
-        spreadMgr.setInterpolationTarget(t);
     }
 
     static constexpr int LANE_COUNT = 6;
@@ -83,11 +78,8 @@ struct MonoSandsParameterManager {
         if (isSpreadLane(lane)) {
             float original = monoDraw(lane, step);
             // Target depends on mode (pulled from the engine — single source of truth,
-            // mirrored from the Monsoon menu): MONO_DRAW = the lane's OWN draw (self-target
-            // → positive no-op, negative inverts toward 1-original); AVERAGE_POLY = the
-            // poly-incl-mono average. Delegate to SpreadInterp::interpolate so the display
-            // matches the engine exactly.
-            bool monoMode = patternEngine && patternEngine->spreadInterpMono;
+            // Spread target is always the mono (voice-1) draw; self-target is a
+            // positive no-op and a negative invert.
             float targetValue = monoMode ? original : polyAverageInclMono(lane, step);
             return redDot::SpreadInterp::interpolate(original, targetValue, laneSpread[lane]);
         }

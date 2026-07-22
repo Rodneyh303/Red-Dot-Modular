@@ -24,7 +24,7 @@ public:
     // ──── Scramble Operations ────────────────────────────────────────────
 
     /// Main update loop called at control rate
-    void processDNA(const MonsoonExpanderManager& expanderManager, bool spreadInterpMono = false);
+    void processDNA(const MonsoonExpanderManager& expanderManager);
 
     // Rotate a single strand by a random amount (0–15 steps)
     // and refresh the visual cache

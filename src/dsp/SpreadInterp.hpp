@@ -17,10 +17,12 @@
 //     the post-mix slewed draw is equivalent to mixing spread-applied A/B.
 //   • Lane index here is the SPREAD lane: 0=REST(rhythm) 1=MELODY 2=OCTAVE.
 //   • Target modes:
-//       AVERAGE_POLY : (mono + Σ active-poly) / (1 + nPoly)  — mono IS included.
-//       MONO_DRAW    : the raw mono slewed draw. (A voice targeting itself in
-//                      MONO_DRAW is a no-op, so the mono strand stays a fixed
-//                      anchor — the desired behaviour.)
+//   TARGET: always the mono (voice-1) slewed draw. A voice targeting itself is a
+//   no-op, so the mono strand is a fixed anchor — the desired behaviour.
+//   (The former AVERAGE_POLY target was REMOVED: the per-step mean of N iid uniform
+//   draws concentrates at 0.5, so full spread collapsed every voice AND every step to
+//   ~0.5 — mush. Full spread toward mono gives UNISON, a real musical destination.
+//   Voice-1 primacy already holds elsewhere: VAR/LEG borrow mono. See §2a.)
 //   • Bipolar spread: amount>0 → toward target; amount<0 → toward (1−target) by
 //     |amount|; ==0 → unchanged. Result clamped 0..1.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -28,8 +30,6 @@
 namespace redDot {
 
 struct SpreadInterp {
-    enum Target { AVERAGE_POLY, MONO_DRAW };
-
     // Pointers to the lane's slewed buffers for the engine. Set per lane by the
     // caller so the same code serves rhythm/melody/octave.
     static const float* monoBuf(const rack::Module* /*unused*/) { return nullptr; }
@@ -52,14 +52,9 @@ struct SpreadInterp {
         }
     }
 
-    // The interpolation target for a lane/step under the chosen mode.
-    // nPoly = number of active poly voices included in the average.
-    static float target(const PatternEngine& pe, Target mode, int lane, int step, int nPoly) {
-        if (mode == MONO_DRAW) return monoSlewed(pe, lane, step);
-        // AVERAGE_POLY: mono + all active poly, over (1 + nPoly).
-        float s = monoSlewed(pe, lane, step);
-        for (int v = 0; v < nPoly; ++v) s += polySlewed(pe, lane, v, step);
-        return s / (1.f + (float)nPoly);
+    // The interpolation target for a lane/step: always the mono (voice-1) draw.
+    static float target(const PatternEngine& pe, int lane, int step) {
+        return monoSlewed(pe, lane, step);
     }
 
     // The shared bipolar interpolation + clamp.
@@ -70,7 +65,7 @@ struct SpreadInterp {
         //    nothing to converge to → no-op (correct; a lone positive spread does nothing).
         //  • spread <  0 → move toward the INVERSION (1 − target). This is meaningful even
         //    when target == original: it inverts the draw toward (1 − d). V1 in voice-1-
-        //    target (MONO_DRAW) mode must respond to negative spread this way. (The earlier
+        //    voice-1 target must respond to negative spread this way. (The earlier
         //    blanket 'target==original → no-op' guard killed this; it only belongs on the
         //    positive branch.)
         if (spreadAmount == 0.0f) result = original;
@@ -85,9 +80,9 @@ struct SpreadInterp {
     // Convenience: full pipeline for one value.
     //   original     = the voice's own slewed draw (mono path: the mono draw)
     //   spreadAmount = the (possibly modulated) spread for this voice/lane
-    static float apply(const PatternEngine& pe, Target mode, int lane, int step,
-                       int nPoly, float original, float spreadAmount) {
-        return interpolate(original, target(pe, mode, lane, step, nPoly), spreadAmount);
+    static float apply(const PatternEngine& pe, int lane, int step,
+                       float original, float spreadAmount) {
+        return interpolate(original, target(pe, lane, step), spreadAmount);
     }
 };
 

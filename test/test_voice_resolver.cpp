@@ -112,11 +112,6 @@ int main() {
         EXPECT(!VoiceResolver::baseEditableHere(1));
         for (int v = 2; v <= 16; ++v) EXPECT(VoiceResolver::baseEditableHere(v));
     });
-    TEST("spreadMode: MONO_DRAW for V1, AVERAGE_POLY for V2..V16", {
-        EXPECT_EQ((int)VoiceResolver::spreadMode(1), (int)redDot::SpreadInterp::MONO_DRAW);
-        for (int v = 2; v <= 16; ++v)
-            EXPECT_EQ((int)VoiceResolver::spreadMode(v), (int)redDot::SpreadInterp::AVERAGE_POLY);
-    });
     TEST("activeVoiceCount = numPolyVoices + 1", {
         EXPECT_EQ(r.activeVoiceCount(), eng.numPolyVoices + 1);
     });

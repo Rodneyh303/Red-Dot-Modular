@@ -26,7 +26,6 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_object_set_new(root, "rhythmLiveTrial", json_boolean(m->rhythmLiveTrial));
     json_object_set_new(root, "melodyLiveTrial", json_boolean(m->melodyLiveTrial));
     json_object_set_new(root, "invertMuteLogic", json_boolean(m->invertMuteLogic));
-    json_object_set_new(root, "spreadInterpMono", json_boolean(m->spreadInterpMono));
     json_object_set_new(root, "modVizMonsoonMelody", json_boolean(m->modVizMonsoonMelody));
     json_object_set_new(root, "restBeatsLegato",  json_boolean(m->engine.restBeatsLegato));
     json_object_set_new(root, "boundaryInterrupt", json_boolean(m->engine.boundaryInterrupt));
@@ -235,7 +234,6 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     if (auto j = json_object_get(root, "rhythmLiveTrial")) m->rhythmLiveTrial = json_boolean_value(j);
     if (auto j = json_object_get(root, "melodyLiveTrial")) m->melodyLiveTrial = json_boolean_value(j);
     if (auto j = json_object_get(root, "invertMuteLogic")) m->invertMuteLogic = (bool)json_boolean_value(j);
-    if (auto j = json_object_get(root, "spreadInterpMono")) m->spreadInterpMono = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "modVizMonsoonMelody")) m->modVizMonsoonMelody = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "modVizMonsoonOther"))  m->modVizMonsoonOther  = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "modVizEast"))  m->modVizEast  = (bool)json_boolean_value(j);

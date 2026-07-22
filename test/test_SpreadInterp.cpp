@@ -3,7 +3,7 @@
  * Compile: g++ -std=c++17 -I../src/dsp test_SpreadInterp.cpp -o test_si && ./test_si
  *
  * Guards the spread interpolation contract for a voice targeting its OWN draw
- * (MONO_DRAW, or AVERAGE_POLY with no other voices):
+ * (voice-1 target):
  *   • spread >= 0 → NO-OP (nothing to converge toward).
  *   • spread <  0 → inverts toward (1−target) = (1−original); V1 negative spread is
  *     intended and meaningful (e.g. Sands Mono voice-1-target mode).
@@ -30,7 +30,7 @@ int main(){
     SUITE("self-target: POSITIVE/zero no-op, NEGATIVE inverts toward (1-original)");
     {
         // Agreed contract (supersedes the older 'both signs no-op'): a lane targeting
-        // its OWN draw (MONO_DRAW, or AVERAGE_POLY with no other voices) does NOTHING for
+        // its OWN draw (voice-1 target) does NOTHING for
         // spread >= 0 (nothing to converge toward), but spread < 0 inverts the draw toward
         // (1 - original) — V1 negative spread is meaningful and intended.
         float os[] = {0.0f, 0.2f, 0.5f, 0.8f, 1.0f};
