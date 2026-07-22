@@ -145,49 +145,15 @@ namespace MonsoonIds {
         POLY_ACCENT_PARAM_15,
         
         // Rest Probability Modulation Attenuverters (15 voices) - NEW
-        POLY_REST_MOD_ATT_1,
-        POLY_REST_MOD_ATT_2,
-        POLY_REST_MOD_ATT_3,
-        POLY_REST_MOD_ATT_4,
-        POLY_REST_MOD_ATT_5,
-        POLY_REST_MOD_ATT_6,
-        POLY_REST_MOD_ATT_7,
-        POLY_REST_MOD_ATT_8,
-        POLY_REST_MOD_ATT_9,
-        POLY_REST_MOD_ATT_10,
-        POLY_REST_MOD_ATT_11,
-        POLY_REST_MOD_ATT_12,
-        POLY_REST_MOD_ATT_13,
-        POLY_REST_MOD_ATT_14,
-        POLY_REST_MOD_ATT_15,
 
         // Accent Probability Modulation Attenuverters (15 voices) - NEW
-        POLY_ACCENT_MOD_ATT_1,
-        POLY_ACCENT_MOD_ATT_2,
-        POLY_ACCENT_MOD_ATT_3,
-        POLY_ACCENT_MOD_ATT_4,
-        POLY_ACCENT_MOD_ATT_5,
-        POLY_ACCENT_MOD_ATT_6,
-        POLY_ACCENT_MOD_ATT_7,
-        POLY_ACCENT_MOD_ATT_8,
-        POLY_ACCENT_MOD_ATT_9,
-        POLY_ACCENT_MOD_ATT_10,
-        POLY_ACCENT_MOD_ATT_11,
-        POLY_ACCENT_MOD_ATT_12,
-        POLY_ACCENT_MOD_ATT_13,
-        POLY_ACCENT_MOD_ATT_14,
-        POLY_ACCENT_MOD_ATT_15,
 
         // Causeway GLOBAL poly-mod attenuators — summed with the per-voice ones above.
         // Effective scale for voice v = perVoiceAtt[v] + globalAtt.
-        POLY_REST_MOD_ATT_GLOBAL,
-        POLY_ACCENT_MOD_ATT_GLOBAL,
 
         // Causeway MONO (voice-1) mod attenuators — voice-1's counterpart to the poly per-voice
         // attenuators above. Applies to CV channel 0 (the mono channel) of the Causeway CV inputs,
         // added onto the mono base rest/accent. Panel marker param_restatt_0 / param_accatt_0.
-        MONO_REST_MOD_ATT,
-        MONO_ACCENT_MOD_ATT,
 
 
         

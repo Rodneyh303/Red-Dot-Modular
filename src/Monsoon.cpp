@@ -194,10 +194,10 @@ float Monsoon::getEffectivePolyRest(int voiceIdx) {
     auto* cway = expanderManager.cachedCausewayPolyExpander;
     if (cway && voiceIdx >= 0 && voiceIdx < 15) {
         const int ch = voiceIdx + 1;   // poly voice → poly-cable channel (ch0 = mono)
-        auto& in = cway->inputs[POLY_REST_CV_INPUT];
+        auto& in = cway->inputs[CausewayIds::REST_CV_INPUT];
         if (in.isConnected()) {
-            float att = cway->params[POLY_REST_MOD_ATT_1 + voiceIdx].getValue()
-                      + cway->params[POLY_REST_MOD_ATT_GLOBAL].getValue();
+            float att = cway->params[CausewayIds::POLY_REST_ATT_START + voiceIdx].getValue()
+                      + cway->params[CausewayIds::POLY_REST_ATT_GLOBAL].getValue();
             base += causewayCv_(in, ch) * att * 0.1f;
         }
     }
@@ -208,10 +208,10 @@ float Monsoon::getEffectivePolyAccent(int voiceIdx) {
     auto* cway = expanderManager.cachedCausewayPolyExpander;
     if (cway && voiceIdx >= 0 && voiceIdx < 15) {
         const int ch = voiceIdx + 1;
-        auto& in = cway->inputs[POLY_ACCENT_CV_INPUT];
+        auto& in = cway->inputs[CausewayIds::ACCENT_CV_INPUT];
         if (in.isConnected()) {
-            float att = cway->params[POLY_ACCENT_MOD_ATT_1 + voiceIdx].getValue()
-                      + cway->params[POLY_ACCENT_MOD_ATT_GLOBAL].getValue();
+            float att = cway->params[CausewayIds::POLY_ACCENT_ATT_START + voiceIdx].getValue()
+                      + cway->params[CausewayIds::POLY_ACCENT_ATT_GLOBAL].getValue();
             base += causewayCv_(in, ch) * att * 0.1f;
         }
     }
@@ -225,10 +225,10 @@ float Monsoon::getEffectivePolyAccent(int voiceIdx) {
 float Monsoon::getEffectiveMonoRest(float base) {
     auto* cway = expanderManager.cachedCausewayPolyExpander;
     if (cway) {
-        auto& in = cway->inputs[POLY_REST_CV_INPUT];
+        auto& in = cway->inputs[CausewayIds::REST_CV_INPUT];
         if (in.isConnected()) {
-            float att = cway->params[MONO_REST_MOD_ATT].getValue()
-                      + cway->params[POLY_REST_MOD_ATT_GLOBAL].getValue();
+            float att = cway->params[CausewayIds::MONO_REST_ATT].getValue()
+                      + cway->params[CausewayIds::POLY_REST_ATT_GLOBAL].getValue();
             base += causewayCv_(in, 0) * att * 0.1f;
         }
     }
@@ -237,10 +237,10 @@ float Monsoon::getEffectiveMonoRest(float base) {
 float Monsoon::getEffectiveMonoAccent(float base) {
     auto* cway = expanderManager.cachedCausewayPolyExpander;
     if (cway) {
-        auto& in = cway->inputs[POLY_ACCENT_CV_INPUT];
+        auto& in = cway->inputs[CausewayIds::ACCENT_CV_INPUT];
         if (in.isConnected()) {
-            float att = cway->params[MONO_ACCENT_MOD_ATT].getValue()
-                      + cway->params[POLY_ACCENT_MOD_ATT_GLOBAL].getValue();
+            float att = cway->params[CausewayIds::MONO_ACCENT_ATT].getValue()
+                      + cway->params[CausewayIds::POLY_ACCENT_ATT_GLOBAL].getValue();
             base += causewayCv_(in, 0) * att * 0.1f;
         }
     }

@@ -87,7 +87,7 @@ redundant — patch a DC-coupled DAW output into the CV jack instead.
 | 55–56 | DICE R/M | keep (host-triggered re-dice is a real gesture) |
 | 57–61 | LOCK/MUTE/MODE/RESET/RUN | KEEP (performance switches) |
 | 62–91 | Per-voice REST/ACC ×15+15 | **KEEP — the GOOD per-voice pattern**: one param per voice, fixed addressing, no selection dependence. This is what per-voice DAW control should look like. |
-| 92–125 | Per-voice + global MOD attenuverters ×34 | keep (bound on Causeway); attens are config-ish, rarely automated |
+| ~~92–125~~ | ~~Per-voice + global MOD attenuverters ×34~~ | **REMOVED** (cleanup/causeway-right-size) — re-homed to a local CausewayIds pool; the MonsoonIds entries were never configured by Monsoon and became dead. |
 | 126–140 | GLOBAL_* DNA + INTERP ×15 (no ACCENT_INTERP) | keep; structural |
 | 141–146 | Dice slew/mix/trial ×6 | keep (Raffles surface) |
 | 147–150 | LAST_DICE/LAST_TRIAL ×4 | **KEEP — recall GESTURES (buttons), not stashes; the dice reaction surface. Raffles exposes the same as gates.** |
