@@ -103,14 +103,40 @@ param) and after (store is authoritative) — so it was safe to land early, and 
 one of step 1d's three couplings ahead of time.
 
 ### Why not templates / policy classes
-A `Knob<Art, Binding>` policy design would work, but it is the wrong trade here:
-- It requires rewriting the artwork classes (Controls.hpp is GENERATOR-OWNED, "do not
-  hand-edit"), whereas lambda injection composes over them untouched.
-- Consumers (overlays, cells, displays) would each need templating on the binding type,
-  spreading template parameters through the UI layer.
-- Lambda injection is already what every other cross-cutting concern in this codebase uses,
-  so it needs no new concepts.
-Templates buy compile-time dispatch we do not need for a handful of UI widgets.
+
+CORRECTION (Rodney): an earlier version of this argued that Controls.hpp being
+GENERATOR-OWNED prevents rewriting the artwork classes. That reason is WRONG — the file is
+produced by panel_src/gen_controls.py, so a policy shape would simply mean changing the
+generator and regenerating. "Generator-owned" means do not HAND-edit; it does not freeze the
+design. Withdrawn.
+
+The conclusion still stands, on two reasons that survive:
+
+1. **The two knob kinds no longer share a render path.** Param knobs are `SvgKnob`
+   subclasses and draw through a FramebufferWidget. `StoreKnob` draws its SVG directly,
+   because the framebuffer refresh is driven from inside Rack's `if (getParamQuantity())`
+   and never fires for a param-less knob (see the StoreKnob history note). So this is not
+   "same artwork, swappable binding" — the rendering differs too. A shared policy design
+   would have to move the WORKING param knobs onto the direct-draw path as well, which is a
+   large blast radius across every existing module for no user-visible gain.
+
+2. **Consumers would need templating or type erasure anyway.** Overlays, cells and displays
+   take values from controls. Under a policy design each would need a template parameter or
+   an erased interface; with lambda injection they take `Widget*` for geometry and a
+   `std::function` for value, and are indifferent to the binding. `ModArcOverlay` already
+   demonstrates this — it needed ZERO changes to serve both kinds.
+
+Lambda injection is also already the codebase's idiom for every cross-cutting concern
+(`Dimmable::displayValueFn`, `ConnectMark`/`GoldPolyPort::lightTheme`,
+`ModArcOverlay::getSetNorm`), so it adds no new mechanism. `std::function` dispatch is
+irrelevant for tens of widgets at frame rate.
+
+### Where the generator SHOULD be used
+Call sites currently pass raw asset paths (`"res/controls/RDM_Grey_Trim_Bar.svg"`), which is
+stringly-typed and can silently mis-name a face. gen_controls.py already emits a Tag struct
+per asset carrying exactly that path — so store-backed call sites should take a Tag instead
+of a string, giving compile-time checking. That is a real, small generator change worth
+making; the policy-class rewrite is not.
 
 ### On Rack's gap
 Rodney is right that Rack lacks a clean "control, but not host-exposed" concept: ParamWidget
