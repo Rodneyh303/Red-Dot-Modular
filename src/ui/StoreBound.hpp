@@ -21,6 +21,10 @@
 #include <rack.hpp>
 #include "StoreEditAction.hpp"
 
+// The plugin global, used to resolve control-face assets. Declared here rather than
+// pulled in via plugin.hpp, matching Controls.hpp (which does exactly the same).
+extern rack::plugin::Plugin* pluginInstance;
+
 namespace redDot {
 
 template <typename TModule>
