@@ -130,3 +130,32 @@ selected-voice ambiguity.
 Monsoon's big-5 + per-voice REST/ACC + SEMI/OCT + LENGTH/OFFSET + dice/gesture buttons +
 transport (BPM/RUN/RESET/MODE/PHASE/MUTE), plus the control expanders. Everything else is
 store-backed and modulated in-rack.
+
+
+## De-param progress and CORRECTED module sizes
+
+Earlier estimates counted `configParam` CALL SITES; several sit inside per-lane loops, so
+the real counts are larger. Verified from the id enums:
+
+| Module | Params | Status |
+|---|---|---|
+| Lantern | 6 | **DONE** (feat/lantern-deparam) — all pure view state; module now claims 0 params |
+| Mono Sands Visual | **54** (was estimated 8) | next |
+| East Sands Visual | 38 | after Mono |
+| Macro Sands Visual | 60 | last (largest) |
+
+Mono Sands' 54 = 18 LOR (6 lanes × LEN/OFF/ROT) + 4 spread + 18 LOR attenuverters +
+4 spread attenuverters + 4 owner-display proxies + 6 direction-display proxies.
+
+### Lessons from the Lantern migration (apply to the rest)
+1. **configSwitch value labels are load-bearing.** De-paramming silently removes the
+   ParamQuantity tooltip, so a multi-position trimpot becomes unreadable. StoreBound now
+   carries `valueLabels` / `tooltipTextFn`; use them for every switch-like control.
+2. **configParam also gave persistence free.** Every de-parammed field must be added to
+   dataToJson/dataFromJson explicitly or view/edit state is lost on reload.
+3. **Direct param writes elsewhere in the file must move too** — Lantern's piano-roll wheel
+   scroll wrote the param directly; it now records a StoreEditAction (and gained undo it
+   never had). Grep for `params[...].setValue` in each module before declaring it done.
+4. Mono/East/Macro differ from Lantern in kind: their LOR and spread values REACH THE
+   ENGINE (via setLorBase etc.), so those migrations must preserve the engine write path,
+   not just the widget. Only the owner/direction/attenuator entries are pure proxies.
