@@ -658,12 +658,44 @@ struct Monsoon : Module {
         // apply to VAR/LEG). Zero-init = no spread, matching the old configParam default.
         // Replaces the per-voice interp params AND the old V1-only eastV1Spread. V1 is slot 0.
         float spread[64] = {0};       // 16 slots × 4 lanes
+
+        // ── GLOBAL slice (MVC_UNIFICATION step 1) ────────────────────────────────────
+        // Macro's scope. Previously these lived in Macro's params[] and the engine read
+        // them off the module directly — i.e. for global scope the VIEW was the MODEL,
+        // the one real MVC break. They now live here, so Macro is a view like East/Mono.
+        // Lane order 0..3 = REST, MELODY, OCTAVE, ACCENT (Macro has no VAR/LEG scope).
+        float globalLor[12]    = {0};   // lane*3 + c   (c: 0=len 1=off 2=rot)
+        float globalSpread[4]  = {0};   // lane
+        float globalAtten[16]  = {0};   // lane*4 + col (col 0..2 = LOR items, 3 = spread)
+        float globalTap[8]     = {0};   // lane*2 + (0 = LOR tap, 1 = spread tap)
+        float globalDir[4]     = {0};   // lane
     } editor;
 
     // Unified LOR base accessors. slot = voiceSlot (0 = V1/mono), bank 0..5, c 0..2.
     float getLorBase(int slot, int bank, int c) const { return editor.lorBase[slot*18 + bank*3 + c]; }
     void  setLorBase(int slot, int bank, int c, float x) { editor.lorBase[slot*18 + bank*3 + c] = x; }
     // Unified spread accessors. slot = voiceSlot (0 = V1/mono), lane 0..3.
+    // ── GLOBAL slice accessors (Macro's scope) ──────────────────────────────────────
+    // lane 0..3 = REST/MELODY/OCTAVE/ACCENT. Bounds-guarded: a bad lane returns 0 rather
+    // than reading past the array (these are read on the audio thread every cycle).
+    static bool gLaneOk(int lane) { return lane >= 0 && lane < 4; }
+    float getGlobalLor(int lane, int c) const {
+        return (gLaneOk(lane) && c >= 0 && c < 3) ? editor.globalLor[lane*3 + c] : 0.f; }
+    void  setGlobalLor(int lane, int c, float x) {
+        if (gLaneOk(lane) && c >= 0 && c < 3) editor.globalLor[lane*3 + c] = x; }
+    float getGlobalSpread(int lane) const { return gLaneOk(lane) ? editor.globalSpread[lane] : 0.f; }
+    void  setGlobalSpread(int lane, float x) { if (gLaneOk(lane)) editor.globalSpread[lane] = x; }
+    float getGlobalAtten(int lane, int col) const {
+        return (gLaneOk(lane) && col >= 0 && col < 4) ? editor.globalAtten[lane*4 + col] : 0.f; }
+    void  setGlobalAtten(int lane, int col, float x) {
+        if (gLaneOk(lane) && col >= 0 && col < 4) editor.globalAtten[lane*4 + col] = x; }
+    float getGlobalTap(int lane, int which) const {
+        return (gLaneOk(lane) && which >= 0 && which < 2) ? editor.globalTap[lane*2 + which] : 0.f; }
+    void  setGlobalTap(int lane, int which, float x) {
+        if (gLaneOk(lane) && which >= 0 && which < 2) editor.globalTap[lane*2 + which] = x; }
+    float getGlobalDir(int lane) const { return gLaneOk(lane) ? editor.globalDir[lane] : 0.f; }
+    void  setGlobalDir(int lane, float x) { if (gLaneOk(lane)) editor.globalDir[lane] = x; }
+
     float getSpread(int slot, int lane) const { return editor.spread[slot*4 + lane]; }
     void  setSpread(int slot, int lane, float x) { editor.spread[slot*4 + lane] = x; }
 

@@ -328,6 +328,31 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         Monsoon* monsoon = getMonsoon();
         if (!monsoon) { if (visualEditor) visualEditor->clearPlaySteps(); return; }
 
+        // ── MVC step 1b: DUAL-WRITE the GLOBAL slice (MVC_UNIFICATION.md) ──────────────
+        // Global scope had no home in the model, so these params WERE the model and the
+        // engine read them off this module. The store now owns them. This mirror is the
+        // bridge: params remain authoritative (knobs write them directly, so there is no
+        // code write-site to pair with), and every frame we copy them into the store.
+        //
+        // Purely ADDITIVE — nothing reads the global slice yet, so behaviour is unchanged.
+        // Next step flips the 11 engine reads to the store, which is then a NO-OP if this
+        // mirror is right; that makes it an A/B proof. Finally the params are deleted and
+        // the knobs become StoreBound, at which point this mirror goes away too.
+        {
+            namespace MId = StraitsMacroVisualIds;   // namespace alias (NOT `using X = Y`, which is a TYPE alias)
+            auto pv = [&](int id) { return module->params[id].getValue(); };
+            for (int lane = 0; lane < 4; ++lane) {
+                for (int c = 0; c < 3; ++c) monsoon->setGlobalLor(lane, c, pv(MId::lorId(lane, c)));
+                monsoon->setGlobalSpread(lane, pv(MId::sprId(lane)));
+                for (int col = 0; col < 4; ++col)
+                    monsoon->setGlobalAtten(lane, col, pv(MId::macroAttenId(lane, col)));
+                // tapIdForItem: item 3 -> spread tap, otherwise the shared LOR tap.
+                monsoon->setGlobalTap(lane, 0, pv(MId::tapIdForItem(lane, 0)));
+                monsoon->setGlobalTap(lane, 1, pv(MId::tapIdForItem(lane, 3)));
+                monsoon->setGlobalDir(lane, pv(MId::dirDispId(lane)));
+            }
+        }
+
         int wantLight = monsoon->lightTheme ? 1 : 0;
         if (wantLight != lastThemeLight) {
             lastThemeLight = wantLight;

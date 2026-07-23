@@ -1,109 +1,41 @@
-# MVC unification — finish Stage 1 BEFORE any more de-param work
 
-## The rule (what we should have been holding to)
+## Step 1 — implementation plan (branch: feat/mvc-step1-global-slice)
 
-**Params and widgets are always VIEWS. The store is always the MODEL. Scope — mono,
-per-voice, global — selects a SLICE of the model; it must never change which layer owns
-the data.**
+### Done (this commit): the model, inert
+- `EditorState` gains the GLOBAL slice — `globalLor[12]`, `globalSpread[4]`, `globalAtten[16]`,
+  `globalTap[8]`, `globalDir[4]` (44 floats, exactly the 44 engine-read Macro params).
+  Lane order 0..3 = REST/MELODY/OCTAVE/ACCENT; Macro has no VAR/LEG scope.
+- Bounds-guarded accessors on Monsoon (`getGlobalLor(lane,c)` … `setGlobalDir(lane,x)`).
+  Guarded because the engine reads these every cycle on the audio thread.
+- Persistence in `MonsoonPersistenceManager` — `configParam` was giving Macro save/restore
+  for free; store fields must be saved explicitly or globals reset on reload.
+Nothing reads the slice yet, so this commit changes no behaviour.
 
-Today that rule is broken in a way that made East and Macro need fundamentally different
-de-param work (see PARAM_CLASSIFICATION "why East and Macro differ"). That difference is
-not justified by their scope. It is an artefact.
-
-## How we got here (diagnosed, not guessed)
-
-`Monsoon::EditorState` shows a migration that was STARTED and left half-done. `lorBase` and
-`spread` carry the comment "Stage 1 / Stage 1b of the MVC unification" and use a clean
-convention. The arrays that predate them were never migrated, and Macro was never brought
-into the store at all — so Macro's params became the model by default.
-
-### Symptom 1 — mixed mono conventions (CENSUSED against call sites, not comments)
-
-| array | convention | how verified |
+### The 11 engine read sites (44 params, most inside loops)
+| file:line | reads | becomes |
 |---|---|---|
-| `lorBase[288]`, `spread[64]` | **OK** — voiceSlot, mono = slot 0 | callers use `VoiceResolver::voiceSlot(...)` |
-| `varlegAtten[96]`, `macroSend[256]`, `macroAtten[256]` | **OK** — voiceSlot, mono = slot 0 | East passes `VoiceResolver::voiceSlot` results |
-| `laneDir[96]`, `macroOwn[64]` | **LEGACY** — poly-bank, mono at index **15** | `getMonoLaneDir`/`getMonoMacroOwn` read `15*6` / `15*4` |
-| `varlegDeleg[30]` | **NO MONO SLOT** — poly only (v = 0..14) | declaration + accessors |
+| MonsoonSandsManager 473-475 | `Macro::lorId(lane,0..2)` | `getGlobalLor(lane, c)` |
+| MonsoonSandsManager 476, 529 | `Macro::sprId(lane)` | `getGlobalSpread(lane)` |
+| MonsoonSandsManager 114, 489, 498, 533 | `Macro::macroAttenId(lane,col)` | `getGlobalAtten(lane, col)` |
+| MonsoonSandsManager 499 | `Macro::tapIdForItem(lane,item)` | `getGlobalTap(lane, item==3 ? 1 : 0)` |
+| MonsoonExpanderManager 174 | `StraitsMacroVisualIds::dirDispId(el)` | `getGlobalDir(el)` |
 
-So FIVE of eight arrays are already on the right convention; only two are legacy and one
-lacks a mono slot. The scope of the fix is much smaller than the struct's comments suggest.
+### DO NOT lockstep-swap. Use the dual-write bridge.
+Switching the engine to store reads while Macro still writes only params would read zeros —
+a silent, total failure. The Causeway job had to move both sides at once because the params
+were being deleted in the same change; here we can avoid that entirely:
 
-`macroOwn`'s comment is actively WRONG and is what made the whole struct look inconsistent:
-it says "v=0..15 voice-slot, 15=mono", but `voiceSlot(V1)` is 0 — it is poly-bank indexing,
-not voice-slot. Fix the comment even if the array migration is deferred.
+1. **Dual-write** — Macro's widgets write the STORE *in addition to* their params. Additive;
+   nothing reads the store, so behaviour is unchanged and the store becomes populated.
+2. **Flip the readers** — switch the 11 engine sites to the accessors. Behaviourally a NO-OP
+   if step 1 is correct, which makes it a clean A/B test: if anything changes, step 1 is
+   wrong. Build-verify here.
+3. **Delete** — remove Macro's 44 `configParam` calls, the param writes, and right-size
+   `config()`. Only now does Macro stop being host-exposed.
 
-CAUTION for the migration: several call sites pass `ch - 1` / `pv` rather than a named
-`voiceSlot(...)` expression. Those must be read individually — the accessor tells you the
-array's convention, but only the call site tells you what the caller believed. This is the
-documented off-by-one breeding ground (two parallel addressing schemes).
+Each step is independently safe and independently verifiable, and step 2 doubles as the
+proof of step 1. This is the pattern to reuse for Mono and East.
 
-### Symptom 2 — global scope has no home in the model
-Macro's global LOR / attens / spread / taps live in Macro's `params[]`, which the engine
-reads directly. So for global scope the VIEW is the MODEL. Nothing about "global" requires
-that; the store simply has no global slice, so params filled the gap.
-
-### Symptom 3 — the consequence we tripped over
-East's params are a redundant mirror (delete them) while Macro's are load-bearing storage
-(re-platform them). Same panels, same lane indexing, opposite layer roles.
-
-## Target state
-
-1. **One addressing convention everywhere**: `VoiceResolver::voiceSlot` — slot 0 = V1/mono,
-   1..15 = V2..V16. No array keeps its own mono placement. `laneDir`, `macroOwn`,
-   `varlegDeleg`, `varlegAtten`, `macroSend`, `macroAtten` migrate onto it.
-2. **Global scope becomes a slice of the model**, not a param array — either an extra slot
-   (16 = global) or a parallel `globalX[]` with identical bank/item shape. Then Macro reads
-   and writes the store exactly as East and Mono do.
-3. **No `params[]` is storage anywhere.** Engine reads the store; widgets are views over it;
-   de-paramming becomes uniform — the same subtraction for every module.
-
-## RE-PRIORITISED after the call-site census (supersedes the order below)
-
-Reading every `laneDir`/`macroOwn` call site changed the ranking.
-
-**Symptom 1 (mono convention) is inconsistency WITHOUT a bug, and does NOT block de-param.**
-Those arrays use dual accessors — `getMacroOwn(polyBank,…)` / `getMonoMacroOwn(…)` — and
-every call site correctly selects one:
-```cpp
-const float cur = (ch == 0) ? mm->getMonoMacroOwn(eng) : mm->getMacroOwn(ch - 1, eng);
-if (mono) m->setMonoLaneDir(lane, v); else if (pv >= 0 && pv < 15) m->setLaneDir(pv, lane, v);
-```
-Mono is EXPLICIT at every site — arguably safer than a single accessor where mono is
-silently "slot 0" and easy to pass wrong. Migrating means ~20 sites of working code with a
-silent-failure mode, for uniformity only. And de-paramming moves params→store; it is
-indifferent to how the store indexes internally.
-
-**Symptom 2 (global scope has no home in the model) IS the real break, and DOES block it.**
-With no global slice in the store, Macro's `params[]` became the model and the engine reads
-them directly. That is the actual MVC violation, the reason East and Macro need different
-de-param work, and what must be fixed first.
-
-### Revised order
-0. **DONE** (fix/mvc-step0-conventions) — correct the wrong/misleading convention comments.
-1. **Add the global slice; move Macro's 44 engine-read params onto it.** The real unblocker.
-   Afterwards every module's params are views and de-paramming is one shape of job.
-2. Resume de-param: East (38) → Mono (54) → Macro (60), now uniform.
-3. **Optional / low priority** — reconcile `laneDir`/`macroOwn` onto `voiceSlot`, give
-   `varlegDeleg` a mono slot. Uniformity only; do it when those arrays are being touched
-   anyway, not as standalone risk.
-
-## Original order (superseded)
-
-This precedes the remaining de-param work. Doing it after would mean migrating East onto a
-model we then change, and re-platforming Macro twice.
-
-Suggested slices, each build-verified (a wrong slot is a SILENT wrong-value read):
-0. Fix `macroOwn`'s incorrect comment immediately (zero risk, and it is what makes the
-   struct read as more broken than it is).
-1. Reconcile `laneDir` and `macroOwn` onto `voiceSlot` — the ONLY two arrays needing it.
-   Highest off-by-one risk; do it alone, extend the static_asserts, and read every
-   `ch - 1` / `pv` call site individually rather than trusting the accessor.
-2. Give `varlegDeleg` a mono slot so it matches the others.
-3. Add the global slice and move Macro's engine-read params into it (the re-platforming).
-4. THEN resume de-param: East, Mono, Macro — all now the same shape of job.
-
-## Note for whoever plans work on top of this
-Check the MODEL layer before sequencing VIEW-layer work. The de-param plan in
-PARAM_CLASSIFICATION was sequenced without reading `EditorState`, which is why this was
-found at slice four rather than slice zero.
+### Verify at step 2 (behavioural — a wrong index is a silent wrong value, not a compile error)
+Global LOR length/offset/rotation each move the Sands Helix display; global spread responds;
+the four attenuverters scale their CV; PRE/POST taps still switch; direction cells still flip.
