@@ -740,45 +740,51 @@ void Monsoon::process(const ProcessArgs& args) {
     // resulting set-vs-mod delta (≈1/7 per note step ≫ the 0.01 draw threshold)
     // drew a transient arc each frame that read as a red "trail" — even with no
     // modulator attached. Cheap (~17 scalar getters/sample).
-    if (paramManager) {
-        modViz.noteValue = paramManager->getNoteValueNorm();
-        modViz.variation = paramManager->getVariationNorm();
-        modViz.legato    = paramManager->getLegatoNorm();
-        // Mono rest/accent take modulation from BOTH sources, summed:
-        //   Junction (+ CV2) — folded in by paramManager->getRest/AccentUnclamped()
-        //   Causeway ch0     — added on top by getEffectiveMono{Rest,Accent}()
-        // ALL mods sum UNCLAMPED; the result is clamped exactly ONCE, at the end (in getEffectiveMono*).
-        // modViz.rest/.accent carry the FULLY effective value (the arc's endpoint). The lane flags OR
-        // the paramManager's junction/cv2 test with a Causeway test, so either source lights the arc.
-        // (Previously modViz carried the unmodulated base and only tested junction/cv2, so a Causeway-
-        // only mod compared base-vs-base and no arc ever drew.)
-        const float restBase   = paramManager->getRestNorm();
-        const float accentBase = paramManager->getAccentNorm();
-        const float restEff    = getEffectiveMonoRest(paramManager->getRestUnclamped());
-        const float accentEff  = getEffectiveMonoAccent(paramManager->getAccentUnclamped());
-        modViz.rest      = restEff;
-        modViz.accent    = accentEff;
-        const bool causewayRestMod   = std::fabs(restEff   - restBase)   > 1e-4f;
-        const bool causewayAccentMod = std::fabs(accentEff - accentBase) > 1e-4f;
-        modViz.active    = paramManager->anyBig5Modulated() || causewayRestMod || causewayAccentMod;
-        for (int i = 0; i < 5; ++i) modViz.big5Lane[i] = paramManager->big5LaneModulated(i);
-        modViz.big5Lane[3] = modViz.big5Lane[3] || causewayRestMod;    // lane 3 = rest
-        modViz.big5Lane[4] = modViz.big5Lane[4] || causewayAccentMod;  // lane 4 = accent
-        modViz.rhythmSlew = paramManager->getRhythmSlewNorm();
-        modViz.melodySlew = paramManager->getMelodySlewNorm();
-        modViz.rhythmMix  = paramManager->getRhythmMixNorm();
-        modViz.melodyMix  = paramManager->getMelodyMixNorm();
-        modViz.activeCv3  = paramManager->anyCv3Modulated();
-        for (int i = 0; i < 4; ++i) modViz.cv3Lane[i] = paramManager->cv3LaneModulated(i);
-        for (int i = 0; i < 12; ++i) modViz.semitone[i] = paramManager->getSemitoneNorm(i);
-        modViz.octaveLo   = paramManager->getOctaveLoNorm();
-        modViz.octaveHi   = paramManager->getOctaveHiNorm();
-        modViz.activePitch = paramManager->anyPitchModulated();
-        for (int i = 0; i < 14; ++i) modViz.pitchLane[i] = paramManager->pitchLaneModulated(i);
-    }
 
     // ── Throttle UI and Light processing ──
     if (lightDivider.process()) {
+        // ── modViz: DISPLAY-ONLY modulation visualisation ────────────────────────────
+        // Moved inside lightDivider. It was running EVERY SAMPLE, gated only on the
+        // always-true `if (paramManager)`, resolving ~35 modulated values per call purely
+        // to fill a struct that ONLY MonsoonWidget reads. Audio-rate updates were pure
+        // waste; frame rate is the correct rate for a visualisation.
+        if (paramManager) {
+            modViz.noteValue = paramManager->getNoteValueNorm();
+            modViz.variation = paramManager->getVariationNorm();
+            modViz.legato    = paramManager->getLegatoNorm();
+            // Mono rest/accent take modulation from BOTH sources, summed:
+            //   Junction (+ CV2) — folded in by paramManager->getRest/AccentUnclamped()
+            //   Causeway ch0     — added on top by getEffectiveMono{Rest,Accent}()
+            // ALL mods sum UNCLAMPED; the result is clamped exactly ONCE, at the end (in getEffectiveMono*).
+            // modViz.rest/.accent carry the FULLY effective value (the arc's endpoint). The lane flags OR
+            // the paramManager's junction/cv2 test with a Causeway test, so either source lights the arc.
+            // (Previously modViz carried the unmodulated base and only tested junction/cv2, so a Causeway-
+            // only mod compared base-vs-base and no arc ever drew.)
+            const float restBase   = paramManager->getRestNorm();
+            const float accentBase = paramManager->getAccentNorm();
+            const float restEff    = getEffectiveMonoRest(paramManager->getRestUnclamped());
+            const float accentEff  = getEffectiveMonoAccent(paramManager->getAccentUnclamped());
+            modViz.rest      = restEff;
+            modViz.accent    = accentEff;
+            const bool causewayRestMod   = std::fabs(restEff   - restBase)   > 1e-4f;
+            const bool causewayAccentMod = std::fabs(accentEff - accentBase) > 1e-4f;
+            modViz.active    = paramManager->anyBig5Modulated() || causewayRestMod || causewayAccentMod;
+            for (int i = 0; i < 5; ++i) modViz.big5Lane[i] = paramManager->big5LaneModulated(i);
+            modViz.big5Lane[3] = modViz.big5Lane[3] || causewayRestMod;    // lane 3 = rest
+            modViz.big5Lane[4] = modViz.big5Lane[4] || causewayAccentMod;  // lane 4 = accent
+            modViz.rhythmSlew = paramManager->getRhythmSlewNorm();
+            modViz.melodySlew = paramManager->getMelodySlewNorm();
+            modViz.rhythmMix  = paramManager->getRhythmMixNorm();
+            modViz.melodyMix  = paramManager->getMelodyMixNorm();
+            modViz.activeCv3  = paramManager->anyCv3Modulated();
+            for (int i = 0; i < 4; ++i) modViz.cv3Lane[i] = paramManager->cv3LaneModulated(i);
+            for (int i = 0; i < 12; ++i) modViz.semitone[i] = paramManager->getSemitoneNorm(i);
+            modViz.octaveLo   = paramManager->getOctaveLoNorm();
+            modViz.octaveHi   = paramManager->getOctaveHiNorm();
+            modViz.activePitch = paramManager->anyPitchModulated();
+            for (int i = 0; i < 14; ++i) modViz.pitchLane[i] = paramManager->pitchLaneModulated(i);
+        }
+
         if (uiManager) {
             // Move these here from per-sample logic
             uiManager->updateDiceLights(engine.pe.isRhythmSeedPending(), engine.pe.isMelodySeedPending());

@@ -64,3 +64,39 @@ The Singapore frame (see the panel design docs) is not decoration bolted on afte
 it maps onto the architecture: Change Alley (the money-changers' alley) for an exchange
 matrix, the MRT map's six lines for six strands (IDEAS_PARKED), the Lantern for the
 piano-roll readout. The instrument's structure and its imagery were designed together.
+
+## The reference behaviour is a COORDINATE, not a mode
+
+Observation (Rodney): meloDICER/MEX3 appears to give poly voices the MONO accent
+probability — they accent together rather than independently. In dot.modular that is
+reachable exactly: **poly-accent spread = 1** pulls every voice fully onto mono's accent
+draw, so all voices accent together. Same for rest/melody/octave.
+
+The point is not compatibility. It is that the reference instrument's FIXED behaviour is a
+single coordinate in a continuous space we expose:
+
+| spread | behaviour |
+|---|---|
+| 0 | fully independent per-voice probability (16 uncorrelated streams) |
+| 0 < s < 1 | graded family resemblance — the interesting region |
+| 1 | unison on voice 1 = the meloDICER/MEX3 behaviour |
+
+No emulation mode, no compatibility switch: one knob, and the ancestor sits at its end
+stop. This is the clearest instance of the LINEAGE thesis (every idiom lifted one level):
+where the reference has a behaviour, we have an AXIS THROUGH it.
+
+It also retro-justifies removing AVERAGE_POLY (see CHANGE_ALLEY_DESIGN, spread target
+decision). With a centroid target, spread = 1 gave ~0.5 mush — the end stop was a dead
+state and coincided with nothing. With voice 1 as the hub, spread = 1 is unison on a real
+voice, which is exactly what makes it land on the reference behaviour.
+
+### VARIATION and LEGATO are already mono-only (no work to do)
+The same question for VAR/LEG is already answered by the architecture: `PL_LANES = 4` —
+only REST, MELODY, OCTAVE and ACCENT have per-voice buffers. VARIATION and LEGATO exist
+ONLY on mono and are shared by every voice, so they are permanently at the "spread = 1"
+end by construction. (The Change Alley pre-spread remap states this explicitly: a pinned
+poly voice borrows MONO's VAR/LEG because there is no per-voice version to borrow.)
+
+Rodney's reasoning for why that is right, and why it should not be extended to per-voice:
+mono would lose its primacy and the result is too much chaos. VAR/LEG are phrase-level
+articulation — properties of the LINE, not of individual voices in it.
