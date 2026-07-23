@@ -194,18 +194,11 @@ struct StraitsSandsMacroVisual : Module {
             configOutput(StraitsMacroVisualIds::PROB_OUT_REST + l,
                 std::string("Probability ") + ln[l] + " (poly: ch2+ voices)"); }
 
-        configParam(SPREAD_REST,   -1.f,1.f,0.f,"Global Spread REST");
-        configParam(SPREAD_MELODY, -1.f,1.f,0.f,"Global Spread MELODY");
-        configParam(SPREAD_OCTAVE, -1.f,1.f,0.f,"Global Spread OCTAVE");
-        configParam(SPREAD_ACCENT, -1.f,1.f,0.f,"Global Spread ACCENT");
-
         static const char* laneNames[4] = {"REST","MEL","OCT","ACC"};
         static const char* paramNames[4] = {"Len","Off","Rot","Spr"};
         for (int lane=0; lane<4; ++lane) {
             // P9b: TWO PRE/POST taps per lane — LOR (LEN/OFF/ROT) and SPREAD. Default
             // 1.0 (POST = send draws attenuated CV). 0.0 = PRE (raw CV pre-atten).
-            configParam(tapLorId(lane), 0.f,1.f,1.f, std::string(laneNames[lane])+" LOR send tap (PRE-POST)");
-            configParam(tapSprId(lane), 0.f,1.f,1.f, std::string(laneNames[lane])+" spread send tap (PRE-POST)");
             for (int c=0; c<4; ++c) {
                 std::string nm = std::string(laneNames[lane])+" "+paramNames[c];
                 // attenId: STORE-BACKED (StoreKnob) - no configParam, not host-exposed.

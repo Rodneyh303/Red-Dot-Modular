@@ -182,11 +182,16 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         }
 
         // Per-lane global SPREAD trimpots (param_SPREAD_REST..+3 = lanes 0..3).
+        // STORE-BACKED (MVC step 1d). The mod-arcs were decoupled from paramId earlier, so
+        // pendingSpreadArcs takes a Widget* and the arc reads getGlobalSpread(lane).
         static const int spreadPid[4] = { SPREAD_REST, SPREAD_MELODY, SPREAD_OCTAVE, SPREAD_ACCENT };
         for (int lane = 0; lane < 4; ++lane) {
-            int pid = spreadPid[lane];
-            bindParam<Trimpot>("param_" + std::to_string(pid), pid,
-                std::function<void(Trimpot*)>([this, lane](Trimpot* sp){ pendingSpreadArcs.push_back({sp, lane}); }));
+            auto* sp = redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
+                "param_" + std::to_string(spreadPid[lane]), storeResolver(),
+                -1.f, 1.f, 0.f, "Global spread",
+                [lane](Monsoon& m)          { return m.getGlobalSpread(lane); },
+                [lane](Monsoon& m, float v) { m.setGlobalSpread(lane, v); });
+            if (sp) pendingSpreadArcs.push_back({sp, lane});
         }
 
         // Macro→voice MIX-IN send 2×2 grids — bound to param_send_{lane}_{item}
@@ -197,9 +202,18 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                                    sendDispId(lane, item));
         // P9b: the two PRE/POST CV taps per lane (3rd row of each send group) —
         // param_taplor_{lane} → tapLorId, param_tapspr_{lane} → tapSprId.
+        // STORE-BACKED (MVC step 1d). globalTap index: 0 = LOR tap, 1 = spread tap.
         for (int lane = 0; lane < 4; ++lane) {
-            bindParam<Trimpot>("param_taplor_" + std::to_string(lane), tapLorId(lane));
-            bindParam<Trimpot>("param_tapspr_" + std::to_string(lane), tapSprId(lane));
+            redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
+                "param_taplor_" + std::to_string(lane), storeResolver(),
+                0.f, 1.f, 1.f, "LOR send tap (PRE-POST)",
+                [lane](Monsoon& m)          { return m.getGlobalTap(lane, 0); },
+                [lane](Monsoon& m, float v) { m.setGlobalTap(lane, 0, v); });
+            redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
+                "param_tapspr_" + std::to_string(lane), storeResolver(),
+                0.f, 1.f, 1.f, "Spread send tap (PRE-POST)",
+                [lane](Monsoon& m)          { return m.getGlobalTap(lane, 1); },
+                [lane](Monsoon& m, float v) { m.setGlobalTap(lane, 1, v); });
         }
 
         // ── Direction cells (param_dir_<lane>) — per-lane direction toggle (Fwd/Rev/Pend/PingPong).
@@ -361,11 +375,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             auto pv = [&](int id) { return module->params[id].getValue(); };
             for (int lane = 0; lane < 4; ++lane) {
                 for (int c = 0; c < 3; ++c) monsoon->setGlobalLor(lane, c, pv(MId::lorId(lane, c)));
-                monsoon->setGlobalSpread(lane, pv(MId::sprId(lane)));
                 // (attenuverters are now StoreKnobs writing the store directly - no mirror)
                 // tapIdForItem: item 3 -> spread tap, otherwise the shared LOR tap.
-                monsoon->setGlobalTap(lane, 0, pv(MId::tapIdForItem(lane, 0)));
-                monsoon->setGlobalTap(lane, 1, pv(MId::tapIdForItem(lane, 3)));
                 monsoon->setGlobalDir(lane, pv(MId::dirDispId(lane)));
             }
         }
