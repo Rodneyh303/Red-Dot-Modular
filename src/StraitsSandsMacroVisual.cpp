@@ -644,6 +644,15 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                 float cys = BLEND_TOP + SEND_Y0 + (it / 2)*SEND_DY;
                 nvgText(vg, mm2px(cxs), mm2px(cys + 4.4f), itemName[it], nullptr);
             }
+            // Row 3: the two PRE/POST CV taps. These had NO on-panel label -- only the
+            // configParam tooltip named them -- so de-paramming left them unidentifiable
+            // (Rodney). Labelled here in the same style as the send items above.
+            {
+                const float TAP_ROW_DY = SEND_DY;
+                const float tapY = BLEND_TOP + SEND_Y0 + 2*TAP_ROW_DY;
+                nvgText(vg, mm2px(gcx - SEND_DX), mm2px(tapY + 4.4f), "LOR",  nullptr);
+                nvgText(vg, mm2px(gcx + SEND_DX), mm2px(tapY + 4.4f), "SPR",  nullptr);
+            }
         }
     }
 };
