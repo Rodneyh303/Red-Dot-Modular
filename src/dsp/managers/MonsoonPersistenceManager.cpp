@@ -448,16 +448,16 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
             for (size_t i = 0; i < 64 && i < json_array_size(j); ++i)
                 m->editor.spread[i] = (float)json_real_value(json_array_get(j, i));
     }
-    auto loadArr = [&](const char* key, float* a, int n) {
+    auto loadArrN = [&](const char* key, float* a, int n) {
         if (auto j = json_object_get(root, key)) {
             if (json_is_array(j))
                 for (size_t i = 0; i < (size_t)n && i < json_array_size(j); ++i)
                     a[i] = (float)json_real_value(json_array_get(j, i));
         }
     };
-    loadArr("editorGlobalLor",    m->editor.globalLor,    12);
-    loadArr("editorGlobalSpread", m->editor.globalSpread,  4);
-    loadArr("editorGlobalAtten",  m->editor.globalAtten,  16);
-    loadArr("editorGlobalTap",    m->editor.globalTap,     8);
-    loadArr("editorGlobalDir",    m->editor.globalDir,     4);
+    loadArrN("editorGlobalLor",    m->editor.globalLor,    12);
+    loadArrN("editorGlobalSpread", m->editor.globalSpread,  4);
+    loadArrN("editorGlobalAtten",  m->editor.globalAtten,  16);
+    loadArrN("editorGlobalTap",    m->editor.globalTap,     8);
+    loadArrN("editorGlobalDir",    m->editor.globalDir,     4);
 }
