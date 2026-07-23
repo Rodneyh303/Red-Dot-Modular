@@ -97,6 +97,11 @@ struct StoreKnob : rack::widget::Widget {
         coalesce.commit<TModule>(storeModule, label, setter, endV);
     }
 
+    // A plain Widget does not become the hovered widget unless it CONSUMES onHover, and
+    // without that onEnter/onLeave never fire -> no tooltip. (SvgKnob got this free from
+    // ParamWidget; we do not.)
+    void onHover(const rack::event::Hover& e) override { e.consume(this); }
+
     void onButton(const rack::event::Button& e) override {
         // Claim the press so the drag events reach us.
         if (e.button == GLFW_MOUSE_BUTTON_LEFT && e.action == GLFW_PRESS) e.consume(this);
