@@ -130,3 +130,124 @@ selected-voice ambiguity.
 Monsoon's big-5 + per-voice REST/ACC + SEMI/OCT + LENGTH/OFFSET + dice/gesture buttons +
 transport (BPM/RUN/RESET/MODE/PHASE/MUTE), plus the control expanders. Everything else is
 store-backed and modulated in-rack.
+
+
+## De-param progress and CORRECTED module sizes
+
+Earlier estimates counted `configParam` CALL SITES; several sit inside per-lane loops, so
+the real counts are larger. Verified from the id enums:
+
+| Module | Params | Status |
+|---|---|---|
+| Lantern | 6 | **DONE** (feat/lantern-deparam) — all pure view state; module now claims 0 params |
+| Mono Sands Visual | **54** (was estimated 8) | next |
+| East Sands Visual | 38 | after Mono |
+| Macro Sands Visual | 60 | last (largest) |
+
+Mono Sands' 54 = 18 LOR (6 lanes × LEN/OFF/ROT) + 4 spread + 18 LOR attenuverters +
+4 spread attenuverters + 4 owner-display proxies + 6 direction-display proxies.
+
+### Lessons from the Lantern migration (apply to the rest)
+1. **configSwitch value labels are load-bearing.** De-paramming silently removes the
+   ParamQuantity tooltip, so a multi-position trimpot becomes unreadable. StoreBound now
+   carries `valueLabels` / `tooltipTextFn`; use them for every switch-like control.
+2. **configParam also gave persistence free.** Every de-parammed field must be added to
+   dataToJson/dataFromJson explicitly or view/edit state is lost on reload.
+3. **Direct param writes elsewhere in the file must move too** — Lantern's piano-roll wheel
+   scroll wrote the param directly; it now records a StoreEditAction (and gained undo it
+   never had). Grep for `params[...].setValue` in each module before declaring it done.
+4. Mono/East/Macro differ from Lantern in kind: their LOR and spread values REACH THE
+   ENGINE (via setLorBase etc.), so those migrations must preserve the engine write path,
+   not just the widget. Only the owner/direction/attenuator entries are pure proxies.
+
+## Scope: East (38) and Macro (60) — and why the order should be EAST FIRST
+
+Censused from the id enums plus a read-site sweep of `src/dsp/` and `Monsoon.cpp`.
+
+### The decisive difference: who READS the params
+
+| | params | read by the ENGINE? |
+|---|---|---|
+| **East** | 38 | **NONE.** Zero engine-side reads of East's params. |
+| **Macro** | 60 | **44 of 60**, every control cycle. |
+
+Engine-side reads are all Macro's (`MonsoonSandsManager` / `Monsoon.cpp`):
+`Macro::lorId(lane,0..2)` ×12, `Macro::macroAttenId(lane,·)` ×16, `Macro::sprId(lane)` ×4,
+`Macro::tapIdForItem(lane,item)` ×8, `StraitsMacroVisualIds::dirDispId(el)` ×4.
+
+**So East is the easier job despite looking similar, and Macro is the hardest in the
+codebase.** East's params are entirely internal — its edits reach the engine INDIRECTLY
+through store writes (`setLorBase` etc.) that already exist and do not change. Macro's are
+read directly off the module's `params[]` array by the audio side, so de-paramming them is
+the Causeway problem again — binding side and read side must move in lockstep — but with
+44 sites instead of 12, and a wrong id is a SILENT wrong-value read, not a compile error.
+
+### East (38) — all internal; 34 are pure selected-voice proxies
+| Group | n | Kind |
+|---|---|---|
+| Spread display trimpots (SPREAD_R/M/O/A) | 4 | writes through to the store/engine path |
+| Attenuverter display proxies (ATTEN_START) | 16 | pure proxy — real depth in MonsoonIds::MACRO_ATTEN_START |
+| VAR/LEG CV-depth proxies | 6 | pure proxy — real depth in VARLEG_ATTEN_START |
+| Direction display proxies | 6 | pure proxy — engine holds laneDir_/laneDirV_ |
+| VAR/LEG delegation proxies | 2 | pure proxy — drives an OwnerCell |
+| Owner display proxies | 4 | pure proxy — drives owner cells |
+
+26 `params[...].setValue` sites in East.cpp must move to store writes (Lantern lesson 3).
+
+### Macro (60)
+| Group | n | Engine-read? |
+|---|---|---|
+| Spread display trimpots | 4 | **yes** (`sprId`) |
+| Attenuverters (ATTEN_START) | 16 | **yes** (`macroAttenId`) |
+| Direction display proxies | 4 | **yes** (`dirDispId`) — proxy-NAMED but engine-read |
+| Send display proxies | 16 | no |
+| PRE/POST tap params | 8 | **yes** (`tapIdForItem`) |
+| Global LOR (GLOBAL_DNA_START) | 12 | **yes** (`lorId`) |
+
+6 `params[...].setValue` sites in Macro.cpp.
+
+### Recommended order and shape
+1. **East first** — bigger proxy count but zero engine coupling, so it is widget+store work
+   only and validates StoreBound at scale (38) after Lantern's 6.
+2. **Mono Sands (54)** — its LOR/spread DO reach the engine, but via `setLorBase`, not via
+   `params[]` reads, so it sits between East and Macro in difficulty.
+3. **Macro last (60)** — needs an engine-side migration: every `macroVis->params[...]` read
+   becomes a store read, moved in lockstep with the bindings. Treat like Causeway:
+   behavioural build-verify, not just "it compiles". Get a working baseline first.
+
+Caution for Macro: `dirDispId` is named a display proxy but IS read by the engine — do not
+assume from the name. The census, not the naming, is the source of truth.
+
+### WHY East and Macro differ on engine reads (it is not inconsistency)
+
+A Rack `params[]` array can serve as STORAGE only when the data has no voice dimension.
+Both modules index their params by LANE. The difference is what the data actually is:
+
+- **Macro is GLOBAL scope** — one value per lane, no voice axis. A lane-indexed param array
+  fits the data exactly, so the param IS the storage and the engine reads it straight off
+  the module (`macroVis->params[Macro::lorId(lane,c)]`).
+- **East is PER-VOICE scope** — 16 voices × lanes. Lane-indexed params physically cannot
+  hold that, so the authoritative value goes to a voice-indexed store and the param is only
+  a MIRROR of the selected voice.
+
+East's own code shows the two-step directly:
+```cpp
+if (ch != 0) { m->setLaneDir(ch - 1, lane, nxt); }              // real value -> store (voice-indexed)
+if (selectedVoice == ch) mod->params[dirDispId(lane)].setValue(nxt);  // mirror, only when selected
+```
+
+**Migration consequence — bigger than the read-count difference implies:**
+
+| | what the params ARE | de-param work |
+|---|---|---|
+| East | a redundant DISPLAY MIRROR of data already stored elsewhere | **delete the mirror**; point widgets at the store that already exists; no engine change, no new storage, no new persistence |
+| Macro | the DATA ITSELF (load-bearing storage) | **invent the storage**: new store fields, migrate 44 engine read sites, and add persistence that configParam was providing for free |
+
+So East is a subtraction and Macro is a re-platforming. Do not treat them as the same job
+because the panels look alike.
+
+This also explains why the selected-voice proxies are incoherent to automate (the original
+reason for the whole decision): a mirror of "whichever voice is selected" has no stable
+meaning to a host. Macro's globals do have stable meaning — they are excluded for the
+different reason that global LOR is just Macro's SCOPE and should not be privileged over
+mono/East (see the decision above).
