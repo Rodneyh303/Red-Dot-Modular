@@ -278,3 +278,48 @@ Both call the identical `configureStoreKnob`, so the only difference is where th
 lands.
 
 Applies to what remains: Macro's other five groups, Mono Sands (54), East (38).
+
+## Prior art: Rack has NO hidden-param API (confirmed)
+
+VCV community thread "Way to make params 'hidden' in rack pro" (Oct 2022):
+https://community.vcvrack.com/t/way-to-make-params-hidden-in-rack-pro/18604
+
+baconpaul (Paul Walker, Surge XT) asked exactly our question and the answer was **no** —
+he filed a feature request and marked the thread solved as such. His use case is word-for-
+word ours: *"an attenuverter for each CV control to each knob … useful to edit but not
+useful to automate. These belong as parameters since I want all that tooling of config,
+knob, etc… but there's no reason to expose them at the edge of Rack Pro."*
+
+So this is a real gap in Rack, not a misunderstanding on our side. VST/AU/CLAP all have a
+non-automatable/hidden flag; `rack::ParamQuantity` has none, and Rack's VST is proprietary
+so the exposure rule cannot even be inspected.
+
+### The two options, and why we are on the right one
+
+**(a) Shadow params** (Patheros' sketch in the thread): keep `ParamWidget` but store values
+in a parallel `hiddenParams` vector with a custom `HiddenParamQuantity` overriding
+get/setValue, so they never enter `module->params` and the VST cannot see them.
+- Paul declined it. His objection is the decisive one: *"how many places does ParamWidget
+  assume paramQuantity points to this->module->params[this->paramId]? Maybe none. But if it
+  is even one…"* — it depends on undocumented invariants that Rack may change.
+- It does **not** even save persistence: Paul notes *"in the to/from json you have to stream
+  them"* — manual JSON either way.
+- **Decisive for US: it would not solve our actual problem.** Our goal is not merely
+  "hide from the DAW" — it is the MVC unification (one store on Monsoon; mono, poly and
+  global as slices of it; widgets as views). Shadow params keep state in per-module param
+  arrays, which is exactly the fragmentation we are removing. It fixes DAW exposure and
+  leaves the model broken.
+
+**(b) No params at all** (Squinky in the thread: *"do like voxglitch"*) — what we built.
+The cost is exactly what Paul predicted: *"a lot of tooling to reconstruct especially in
+the UI layer with tooltips typeins and so forth."* We paid it in full — render path
+(SvgKnob's framebuffer is driven from inside `if (getParamQuantity())`), tooltips (a plain
+Widget must consume onHover to become hovered), undo (StoreEditCoalescer), persistence,
+and lazy store resolution. All now centralised in `configureStoreKnob`, so it is paid ONCE
+rather than per module.
+
+### Consequence
+No change of course. But it is worth knowing that the expensive part of this work is a
+known Rack limitation rather than a self-inflicted one — and that the shortcut which looks
+attractive from outside (shadow params) would have left the MVC problem untouched while
+adding a dependency on undocumented internals.
