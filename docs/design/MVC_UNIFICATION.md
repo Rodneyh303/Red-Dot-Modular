@@ -39,3 +39,41 @@ proof of step 1. This is the pattern to reuse for Mono and East.
 ### Verify at step 2 (behavioural — a wrong index is a silent wrong value, not a compile error)
 Global LOR length/offset/rotation each move the Sands Helix display; global spread responds;
 the four attenuverters scale their CV; PRE/POST taps still switch; direction cells still flip.
+
+## Step 1d — full scope (three dependencies found while preparing it)
+
+Macro binds its 60 params through SIX loops, not 60 call sites. But converting them is not
+uniform — three separate couplings surfaced:
+
+| # | Group | n | Widget | Coupling |
+|---|---|---|---|---|
+| 1 | Attenuverters | 16 | Trimpot | `leftAttenuverters` is `vector<Widget*>` — **StoreKnob fits, no change** |
+| 2 | Spread | 4 | Trimpot | **BLOCKER** — `pendingSpreadArcs` is `vector<pair<ParamWidget*,int>>` and the ModArcOverlay reads `knob->paramId`. StoreKnob is not a ParamWidget. |
+| 3 | LOR | 12 | Trimpot | clean |
+| 4 | Taps | 8 | Trimpot ×2 rows | clean |
+| 5 | Sends | 16 | Trimpot | clean; NOT engine-read (pure proxy) — convert in the same pass so Macro reaches 0 params |
+| 6 | Direction | 4 | **DirCell** (custom) | not a knob — needs its own store-write path to `setGlobalDir`, mirroring how East's DirCell already calls `setLaneDir` |
+
+### Prerequisite DONE
+`SvgPanelKit::bindWidget<W>(name, config)` — binds a non-param widget to a named shape
+(createParamCentered/addParam require a ParamWidget). Runs `config` before centring because
+`setSvg` establishes `box.size`. Reusable by Mono and East.
+
+### The spread blocker, concretely
+`ModArcOverlay` is attached over each spread knob and captures `pid = knob->paramId`, then
+reads the param by id in `getSetNorm`. Converting spread to StoreKnob requires:
+- retyping `pendingSpreadArcs` to `vector<pair<Widget*,int>>`, and
+- rewriting `getSetNorm` to read `getGlobalSpread(lane)` from the store instead of the param.
+Both are small, but they must land WITH the spread conversion or the arcs read a dead param.
+
+### ATOMICITY RULE (do not slice by group)
+Each group's three edits must land together: widget → StoreKnob, `configParam` deleted, and
+that group removed from the step-1b dual-write mirror. Converting a group while the mirror
+still copies its (now deleted) param into the same store field puts two writers on one value.
+Practically this means step 1d is ONE commit covering all six groups, then `config()`
+right-sized to 0 and the mirror deleted entirely.
+
+### Verify (behavioural — silent failure, not compile errors)
+Everything from the step-1c list, PLUS: mod arcs still track the spread knobs; direction
+cells still flip; send grids still work; Macro shows ZERO parameters in the DAW; undo works
+per drag on every converted control; patch save/reload preserves all 60 values.
