@@ -58,7 +58,11 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;
 
- std::vector<std::pair<rack::ParamWidget*, int>> pendingSpreadArcs;
+    // Widget*, not ParamWidget*: ModArcOverlay needs the widget only for GEOMETRY
+    // (box.size + attachOverKnob, both Widget-level) and takes its VALUE from the
+    // getSetNorm lambda. Typing this ParamWidget* was the last thing coupling the arcs to
+    // the param system. See MVC_UNIFICATION step 1d.
+    std::vector<std::pair<rack::widget::Widget*, int>> pendingSpreadArcs;
     // The store lives on MONSOON, resolved lazily (it may be attached after this widget is
     // built, or detached later). One resolver shared by every store-backed control here.
     std::function<Monsoon*()> storeResolver() {
@@ -327,7 +331,6 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         Monsoon* mon = getMonsoon();
         if (!mod || !mon) return 0.5f;
         auto& pe = mon->engine.pe;
-        const int nPoly = mon->engine.numPolyVoices;
         // Macro's own spread for this lane (base knob + send-tapped delta, clamped) — the
         // SAME expression the engine's MACRO_SOLE branch uses (MonsoonExpanderManager.cpp).
         const float sp = rack::math::clamp(mod->macroBase[engLane][3] + mod->macroSendDelta[engLane][3], -1.f, 1.f);
