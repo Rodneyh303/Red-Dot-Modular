@@ -63,6 +63,8 @@
 // Independent of the Sands topology work. See docs/design/LANTERN_SPEC.md.
 // ─────────────────────────────────────────────────────────────────────────────
 #include <rack.hpp>
+#include "ui/StoreBound.hpp"
+#include "ui/Controls.hpp"
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
 #include "ui/VisualExpanderHelpers.hpp"   // redDot::findMonsoonEitherSide
@@ -92,15 +94,18 @@ namespace lantern {
 
 // ── Module: display-only params, reads Monsoon read-only ─────────────────────
 struct Lantern : Module {
-    enum ParamIds {
-        VIEW_PARAM,       // 0=Notes 1=Velocity 2=Prob (view-only)
-        ZOOM_PARAM,       // 0=x1 1=x2 2=x4
-        FOLLOW_PARAM,     // 0/1 keep phase in view
-        ROLL_PARAM,       // 0=Grid (lane) view, 1=Piano-roll view
-        ROLL_SCROLL_PARAM,// piano-roll vertical scroll: bottom octave of the 5-oct viewport (0..8-5)
-        ROLL_COLOR_PARAM, // 0=colour by ROLE (single/tie/legato), 1=colour by VOICE
-        NUM_PARAMS
-    };
+    // DE-PARAMMED (PARAM_CLASSIFICATION: visual/editor expanders expose nothing to the
+    // host). These are pure VIEW STATE — nothing here reaches the engine — so they are
+    // plain fields, edited by StoreBound knobs with undo, persisted in dataToJson.
+    enum ParamIds { NUM_PARAMS };
+
+    int viewMode   = 0;   // 0=Notes 1=Velocity 2=Prob
+    int zoomMode   = 0;   // 0=x1 1=x2 2=x4
+    int followMode = 1;   // 0=Off 1=On
+    int rollView   = 0;   // 0=Grid (lane) view, 1=Piano roll
+    int rollScroll = 2;   // bottom octave of the 5-octave viewport (0..4)
+    int rollColor  = 0;   // 0=by role, 1=by voice, 2=by note
+    static constexpr int ROLL_SCROLL_MIN = 0, ROLL_SCROLL_MAX = 4;
     enum InputIds  { NUM_INPUTS };
     enum OutputIds { NUM_OUTPUTS };
     enum LightIds  { NUM_LIGHTS };
@@ -151,25 +156,29 @@ struct Lantern : Module {
     json_t* dataToJson() override {
         json_t* root = json_object();
         json_object_set_new(root, "rollVoiceMask", json_integer(rollVoiceMask));
+        // View state (was params before de-paramming — configParam gave persistence free)
+        json_object_set_new(root, "viewMode",   json_integer(viewMode));
+        json_object_set_new(root, "zoomMode",   json_integer(zoomMode));
+        json_object_set_new(root, "followMode", json_integer(followMode));
+        json_object_set_new(root, "rollView",   json_integer(rollView));
+        json_object_set_new(root, "rollScroll", json_integer(rollScroll));
+        json_object_set_new(root, "rollColor",  json_integer(rollColor));
         return root;
     }
     void dataFromJson(json_t* root) override {
         if (json_t* m = json_object_get(root, "rollVoiceMask"))
             rollVoiceMask = (uint16_t)json_integer_value(m);
+        auto rdInt = [&](const char* k, int& dst) {
+            if (json_t* j = json_object_get(root, k)) dst = (int)json_integer_value(j);
+        };
+        rdInt("viewMode", viewMode);     rdInt("zoomMode", zoomMode);
+        rdInt("followMode", followMode); rdInt("rollView", rollView);
+        rdInt("rollScroll", rollScroll); rdInt("rollColor", rollColor);
     }
 
     Lantern() {
+        // No params at all: Lantern is a display. Its view state lives in the fields above.
         config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
-        configSwitch(VIEW_PARAM,   0.f, 2.f, 0.f, "View", {"Notes", "Velocity", "Prob"});
-        configSwitch(ZOOM_PARAM,   0.f, 2.f, 0.f, "Zoom", {"x1", "x2", "x4"});
-        configSwitch(FOLLOW_PARAM, 0.f, 1.f, 1.f, "Follow", {"Off", "On"});
-        configSwitch(ROLL_PARAM,   0.f, 1.f, 0.f, "Display", {"Grid", "Piano roll"});
-        // Scroll = bottom octave of the 5-octave viewport into the full 0..8 range → range 0..3
-        // (bottom oct 0 shows oct 0-4; bottom oct 3 shows oct 3-7... capped so top ≤ 8). Default 2
-        // so the viewport (oct 2-6) sits on the default pitch window (lo=2, hi=5).
-        configParam(ROLL_SCROLL_PARAM, 0.f, 4.f, 2.f, "Roll scroll (bottom octave)");
-        paramQuantities[ROLL_SCROLL_PARAM]->snapEnabled = true;
-        configSwitch(ROLL_COLOR_PARAM, 0.f, 2.f, 0.f, "Roll colour", {"By role", "By voice", "By note"});
     }
 
     // Read-only sampler: records the observed per-step state into Lantern's own
@@ -407,11 +416,11 @@ struct LanternDisplay : widget::Widget {
         // Piano-roll mode: Bitwig-style piano-key gutter. Keys span the FULL gutter width and are
         // drawn first; a SEMI-TRANSPARENT grey label overlay sits on top of the left portion (keys
         // show faintly underneath), with the C-label rows at lower alpha so they read lighter.
-        if (module->params[Lantern::ROLL_PARAM].getValue() > 0.5f) {
+        if (module->rollView != 0) {
             if (!font0) return;
             const float rowH   = H / (float)ROLL_ROWS;
             const float gutter = W * GUTTER_FRAC;
-            const int   botOct = (int)std::round(module->params[Lantern::ROLL_SCROLL_PARAM].getValue());
+            const int   botOct = module->rollScroll;
             const int   botSemi = botOct * 12;
             auto isBlack = [](int pc){ pc=((pc%12)+12)%12; return pc==1||pc==3||pc==6||pc==8||pc==10; };
 
@@ -469,7 +478,7 @@ struct LanternDisplay : widget::Widget {
                         float y = H - (row + 1) * rowH;
                         NVGcolor hi;
                         {
-                            int cm = (int)std::round(module->params[Lantern::ROLL_COLOR_PARAM].getValue());
+                            int cm = module->rollColor;
                             if (cm == 1)      hi = voiceColour(v);
                             else if (cm == 2) hi = noteColour(semiC0);
                             else              hi = typeColour(c.type);
@@ -625,7 +634,7 @@ struct LanternDisplay : widget::Widget {
         if (!module) return;
 
         // Piano-roll view replaces the lane grid on this layer.
-        if (module->params[Lantern::ROLL_PARAM].getValue() > 0.5f) { drawRollLayer(args); return; }
+        if (module->rollView != 0) { drawRollLayer(args); return; }
 
         NVGcontext* vg = args.vg;
         const float W = box.size.x, H = box.size.y;
@@ -694,7 +703,7 @@ struct LanternDisplay : widget::Widget {
                     bw = std::min(span * stepW, (gridX + gridW) - bx);
                 }
 
-                int cm = (int)std::round(module->params[Lantern::ROLL_COLOR_PARAM].getValue());
+                int cm = module->rollColor;
                 NVGcolor col = (cm == 2)
                     ? noteColour((int)std::lround(c.pitchV * 12.f) + 48)
                     : typeColour(c.type);
@@ -784,7 +793,7 @@ struct LanternDisplay : widget::Widget {
     }
 
     // ── Piano-roll view ──────────────────────────────────────────────────────
-    // A 5-octave viewport onto the full 0..8 octave range; ROLL_SCROLL_PARAM = the bottom octave
+    // A 5-octave viewport onto the full 0..8 octave range; rollScroll = the bottom octave
     // of the window. Notes draw as horizontal bars at their pitch row, spanning lengthSteps.
     // Colour: by ROLE (note type) or by VOICE (per-voice hue). Lead outline kept on top.
     static constexpr int ROLL_OCTAVES = 4;                 // viewport height in octaves (taller rows)
@@ -852,9 +861,9 @@ struct LanternDisplay : widget::Widget {
         const float stepW  = gridW / N_STEPS;
         const float rowH   = H / (float)ROLL_ROWS;
 
-        const int   botOct   = (int)std::round(module->params[Lantern::ROLL_SCROLL_PARAM].getValue());
+        const int   botOct   = module->rollScroll;
         const int   botSemi  = botOct * 12;          // semitone-from-C0 at the bottom row
-        const int   colorMode = (int)std::round(module->params[Lantern::ROLL_COLOR_PARAM].getValue());
+        const int   colorMode = module->rollColor;
 
         // ── Bitwig-style lane background: shade each semitone row by pitch class. ──
         // Black-key rows (C#,D#,F#,G#,A#) get a darker slate; white-key rows a lighter blue-grey.
@@ -978,7 +987,7 @@ struct LanternDisplay : widget::Widget {
     // Click a legend swatch (roll mode) to toggle that voice's visibility.
     void onButton(const event::Button& e) override {
         if (module && e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT
-            && module->params[Lantern::ROLL_PARAM].getValue() > 0.5f) {
+            && module->rollView != 0) {
             int count = rollActiveVoiceCount();
             for (int v = 0; v < count; ++v) {
                 if (voiceSwatchRect(v, count).contains(e.pos)) {
@@ -992,18 +1001,24 @@ struct LanternDisplay : widget::Widget {
     }
 
     // Mouse wheel scrolls the piano-roll viewport vertically — the natural gesture the
-    // ROLL_SCROLL_PARAM knob stands in for. Wheel up = view higher octaves. Writes the
+    // rollScroll knob stands in for. Wheel up = view higher octaves. Writes the
     // param directly (snap-enabled, clamped to its 0..max range), so it stays a normal
     // param edit: undo, automation and the knob-as-indicator all keep working. Grid mode
     // ignores the wheel (it has no vertical scroll). e.scrollDelta.y is +up / -down.
     void onHoverScroll(const event::HoverScroll& e) override {
-        if (module && module->params[Lantern::ROLL_PARAM].getValue() > 0.5f
+        if (module && module->rollView != 0
             && std::abs(e.scrollDelta.y) > 0.f) {
-            auto* pq = module->paramQuantities[Lantern::ROLL_SCROLL_PARAM];
-            const float lo = pq->getMinValue(), hi = pq->getMaxValue();
-            const float cur = module->params[Lantern::ROLL_SCROLL_PARAM].getValue();
-            const float next = clamp(cur + (e.scrollDelta.y > 0.f ? 1.f : -1.f), lo, hi);
-            if (next != cur) module->params[Lantern::ROLL_SCROLL_PARAM].setValue(next);
+            const int cur  = module->rollScroll;
+            const int next = (int)clamp((float)cur + (e.scrollDelta.y > 0.f ? 1.f : -1.f),
+                                        (float)Lantern::ROLL_SCROLL_MIN,
+                                        (float)Lantern::ROLL_SCROLL_MAX);
+            if (next != cur) {
+                // Wheel scroll is a discrete gesture -> one undoable store edit, matching
+                // the StoreBound knob's behaviour.
+                redDot::applyAndPushStoreEdit<Lantern>(module, "roll scroll",
+                    [](Lantern& m, float v) { m.rollScroll = (int)v; },
+                    (float)cur, (float)next);
+            }
             e.consume(this);   // don't let the wheel scroll the rack behind the display
             return;
         }
@@ -1077,20 +1092,37 @@ struct LanternWidget : ModuleWidget {
         // (View buttons x≈10/33/56, Zoom knob centre, Follow x≈W-30, all near y≈118mm).
         // Display-only params; a Trimpot per control (View 0-2, Zoom 0-2, Follow 0-1).
         // TL1105 momentary buttons could replace View/Follow later for nicer UX.
-        addParam(createParamCentered<Trimpot>(
-            mm2px(Vec(20.f, 118.f)), module, Lantern::VIEW_PARAM));
-        addParam(createParamCentered<Trimpot>(
-            mm2px(Vec(208.28f / 2.f, 118.f)), module, Lantern::ZOOM_PARAM));
-        addParam(createParamCentered<Trimpot>(
-            mm2px(Vec(208.28f - 20.f, 118.f)), module, Lantern::FOLLOW_PARAM));
-
-        // Piano-roll controls: Grid/Roll toggle, vertical scroll, colour mode.
-        addParam(createParamCentered<Trimpot>(
-            mm2px(Vec(45.f, 118.f)), module, Lantern::ROLL_PARAM));
-        addParam(createParamCentered<Trimpot>(
-            mm2px(Vec(70.f, 118.f)), module, Lantern::ROLL_SCROLL_PARAM));
-        addParam(createParamCentered<Trimpot>(
-            mm2px(Vec(95.f, 118.f)), module, Lantern::ROLL_COLOR_PARAM));
+        // STORE-BACKED knobs (no params -> nothing exposed to the host). RDM Bar faces
+        // from res/controls; Grey is the one palette that reads on BOTH panels (see
+        // res/controls/README.md), so no theme lambda is needed here.
+        // Each carries valueLabels so the switch position still reads out on hover —
+        // that readout used to come from configSwitch's ParamQuantity.
+        auto addStoreKnob = [&](float xmm, int Lantern::*field, const char* label,
+                                int maxV, std::vector<std::string> labels) {
+            auto* k = createWidget<redDot::StoreBound<redDot::Grey_Small_Bar, Lantern>>(Vec(0,0));
+            k->box.pos = mm2px(Vec(xmm, 118.f)).minus(k->box.size.div(2));
+            k->storeModule  = module;
+            k->label        = label;
+            k->minValue     = 0.f;
+            k->maxValue     = (float)maxV;
+            k->defaultValue = (field == &Lantern::followMode) ? 1.f
+                            : (field == &Lantern::rollScroll) ? 2.f : 0.f;
+            k->snap         = true;
+            k->valueLabels  = std::move(labels);
+            k->getValue = [module, field]() {
+                return module ? (float)(module->*field) : 0.f;
+            };
+            k->setter = [field](Lantern& m, float v) { m.*field = (int)std::round(v); };
+            addChild(k);
+        };
+        addStoreKnob(20.f,            &Lantern::viewMode,   "View",    2, {"Notes","Velocity","Prob"});
+        addStoreKnob(208.28f / 2.f,   &Lantern::zoomMode,   "Zoom",    2, {"x1","x2","x4"});
+        addStoreKnob(208.28f - 20.f,  &Lantern::followMode, "Follow",  1, {"Off","On"});
+        addStoreKnob(45.f,            &Lantern::rollView,   "Display", 1, {"Grid","Piano roll"});
+        addStoreKnob(70.f,            &Lantern::rollScroll, "Roll scroll",
+                     Lantern::ROLL_SCROLL_MAX, {"Oct 0-4","Oct 1-5","Oct 2-6","Oct 3-7","Oct 4-8"});
+        addStoreKnob(95.f,            &Lantern::rollColor,  "Roll colour",
+                     2, {"By role","By voice","By note"});
     }
     void step() override {
         ModuleWidget::step();
