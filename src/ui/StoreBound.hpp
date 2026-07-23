@@ -149,4 +149,45 @@ struct StoreKnob : rack::widget::Widget {
     ~StoreKnob() { if (tooltip_) { APP->scene->removeChild(tooltip_); delete tooltip_; } }
 };
 
+// ── bindStoreKnob: one call per control ──────────────────────────────────────
+// Collapses the ~18 lines of StoreKnob wiring (face, resolver, range, label, getter,
+// setter) into a single call, in the spirit of SvgPanelKit's bind* helpers.
+//
+// WHY THIS MATTERS beyond brevity: the getter and setter appear ADJACENT and share their
+// captured indices, so a mismatched lane/col between them is visible on one line instead of
+// eighteen apart. That mismatch is the characteristic de-param bug — it compiles, and
+// produces a silently wrong value.
+//
+//   bindStoreKnob<Monsoon>(this, shapeName, "res/controls/RDM_Grey_Trim_Bar.svg",
+//       resolver, -1.f, 1.f, 0.f, "Global atten",
+//       [lane,c](Monsoon& m){ return m.getGlobalAtten(lane,c); },
+//       [lane,c](Monsoon& m, float v){ m.setGlobalAtten(lane,c,v); });
+//
+// `Self` is the ModuleWidget (needs the kit's bindWidget). `resolve` returns the module
+// that OWNS the store, evaluated lazily — it may be attached after the widget is built.
+template <class M, class Self>
+StoreKnob<M>* bindStoreKnob(Self* self,
+                            const std::string& shape,
+                            const char* facePath,
+                            std::function<M*()> resolve,
+                            float lo, float hi, float def,
+                            std::string label,
+                            std::function<float(M&)> get,
+                            std::function<void(M&, float)> set,
+                            bool snap = false,
+                            std::vector<std::string> labels = {}) {
+    using SK = StoreKnob<M>;
+    return self->template bindWidget<SK>(shape, std::function<void(SK*)>(
+        [=](SK* w) {
+            w->setSvg(APP->window->loadSvg(rack::asset::plugin(pluginInstance, facePath)));
+            w->resolveStore = resolve;
+            w->minValue = lo; w->maxValue = hi; w->defaultValue = def;
+            w->label = label;
+            w->snap = snap;
+            w->valueLabels = labels;
+            w->getValue = [resolve, get]() { M* m = resolve(); return m ? get(*m) : 0.f; };
+            w->setter   = set;
+        }));
+}
+
 } // namespace redDot

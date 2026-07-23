@@ -59,6 +59,13 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     int lastThemeLight = -1;
 
  std::vector<std::pair<rack::ParamWidget*, int>> pendingSpreadArcs;
+    // The store lives on MONSOON, resolved lazily (it may be attached after this widget is
+    // built, or detached later). One resolver shared by every store-backed control here.
+    std::function<Monsoon*()> storeResolver() {
+        auto* self = this;
+        return [self]() -> Monsoon* {
+            return self->module ? redDot::findMonsoonEitherSide(self->module) : nullptr; };
+    }
  std::vector<rack::Widget*> leftAttenuverters;  // 12 CV-depth knobs; hidden on tab-1 when mono attached
     void flushSpreadArcs() {
         auto* mod = dynamic_cast<StraitsSandsMacroVisual*>(module);
@@ -163,20 +170,12 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             // Monsoon (which owns the store) is resolved lazily -- it may not be attached
             // when the widget is built, and can be attached/detached later.
             for (int c = 0; c < 4; ++c) {
-                using SK = redDot::StoreKnob<Monsoon>;
-                auto* mw_ = this;
-                auto* k = bindWidget<SK>("param_" + std::to_string(attenId(lane,c)),
-                    std::function<void(SK*)>([mw_, lane, c](SK* w) {
-                        w->setSvg(APP->window->loadSvg(rack::asset::plugin(
-                            pluginInstance, "res/controls/RDM_Grey_Trim_Bar.svg")));
-                        auto res = [mw_]() -> Monsoon* {
-                            return mw_->module ? redDot::findMonsoonEitherSide(mw_->module) : nullptr; };
-                        w->resolveStore = res;
-                        w->minValue = -1.f; w->maxValue = 1.f; w->defaultValue = 0.f;
-                        w->label    = "Global atten";
-                        w->getValue = [res, lane, c]() { auto* m = res(); return m ? m->getGlobalAtten(lane, c) : 0.f; };
-                        w->setter   = [lane, c](Monsoon& m, float v) { m.setGlobalAtten(lane, c, v); };
-                    }));
+                auto* k = redDot::bindStoreKnob<Monsoon>(this,
+                    "param_" + std::to_string(attenId(lane,c)),
+                    "res/controls/RDM_Grey_Trim_Bar.svg", storeResolver(),
+                    -1.f, 1.f, 0.f, "Global atten",
+                    [lane, c](Monsoon& m)          { return m.getGlobalAtten(lane, c); },
+                    [lane, c](Monsoon& m, float v) { m.setGlobalAtten(lane, c, v); });
                 if (k) leftAttenuverters.push_back(k);
             }
             // P9b: the two PRE/POST send taps per lane live in the send groups below the
