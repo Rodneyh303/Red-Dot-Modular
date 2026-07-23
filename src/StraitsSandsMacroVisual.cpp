@@ -69,17 +69,20 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             arc->radius   = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
             arc->attachOverKnob(knob, mm2px(2.5f));
             StraitsSandsMacroVisual* mm = mod;
-            int pid = knob->paramId;
-            arc->getSetNorm = [mm, pid]() -> float {
-                if (!mm) return 0.5f;
-                auto* pq = mm->paramQuantities[pid];
-                return pq ? (float)pq->getScaledValue() : 0.5f;   // bipolar → 0..1
+            // Read the SET value from the STORE via lane, not from a param by id. Correct
+            // both before step 1d (Macro's step() mirrors param -> store, so this is the
+            // same number) and after it (the store becomes authoritative). This removes the
+            // arcs' dependence on paramId -- what made them a step-1d blocker.
+            arc->getSetNorm = [mm, lane]() -> float {
+                Monsoon* mon = mm ? findMonsoonEitherSide(mm) : nullptr;
+                if (!mon) return 0.5f;
+                return rack::math::clamp((mon->getGlobalSpread(lane) + 1.f) * 0.5f, 0.f, 1.f);
             };
             arc->getModNorm = [mm, lane]() -> float {
                 if (!mm || lane < 0 || lane >= 3) return 0.5f;
                 return rack::math::clamp((mm->spreadEffective[lane] + 1.f) * 0.5f, 0.f, 1.f);
             };
-            arc->isActive = [mm, lane, pid]() -> bool {
+            arc->isActive = [mm, lane]() -> bool {
                 if (!mm || lane < 0 || lane >= 3) return false;
                 Monsoon* mon = findMonsoonEitherSide(mm);
                 if (!mon || !mon->modVizMacro) return false;

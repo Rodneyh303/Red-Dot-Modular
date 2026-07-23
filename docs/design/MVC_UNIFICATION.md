@@ -77,3 +77,44 @@ right-sized to 0 and the mirror deleted entirely.
 Everything from the step-1c list, PLUS: mod arcs still track the spread knobs; direction
 cells still flip; send grids still work; Macro shows ZERO parameters in the DAW; undo works
 per drag on every converted control; patch save/reload preserves all 60 values.
+
+## The general pattern for de-paramming: LAMBDA INJECTION, not templates
+
+Rodney asked how overlays/displays can serve BOTH param-backed controls (Monsoon, Straits)
+and store-backed ones — and whether templates or kit-style mixins are the better attack.
+
+**Answer: the codebase already has the right idiom, and it is lambda injection.**
+`Dimmable::displayValueFn`, `ConnectMark::lightTheme`, `GoldPolyPort::lightTheme`,
+`ModArcOverlay::getSetNorm/getModNorm/isActive` — every one of these already takes its
+value/state through a `std::function`, not through a param. That is the abstraction. Lean
+on it rather than introducing a second mechanism.
+
+### The rule
+> A consumer widget (overlay, display, cell) must depend on a control only for GEOMETRY
+> (`Widget*`: `box`, position). Every VALUE it needs comes through an injected lambda.
+> Then param-backed and store-backed controls are interchangeable at zero cost.
+
+`ModArcOverlay` already obeyed this — it contains ZERO references to `ParamWidget` or
+`paramId`, and `attachOverKnob` already takes `Widget*`. The only coupling was Macro's
+`pendingSpreadArcs` being typed `vector<pair<ParamWidget*,int>>` plus one lambda that read
+`knob->paramId`. Both are now fixed: the vector is `Widget*`, and `getSetNorm` reads
+`getGlobalSpread(lane)` from the store. Correct BEFORE step 1d (the mirror keeps store ==
+param) and after (store is authoritative) — so it was safe to land early, and it removes
+one of step 1d's three couplings ahead of time.
+
+### Why not templates / policy classes
+A `Knob<Art, Binding>` policy design would work, but it is the wrong trade here:
+- It requires rewriting the artwork classes (Controls.hpp is GENERATOR-OWNED, "do not
+  hand-edit"), whereas lambda injection composes over them untouched.
+- Consumers (overlays, cells, displays) would each need templating on the binding type,
+  spreading template parameters through the UI layer.
+- Lambda injection is already what every other cross-cutting concern in this codebase uses,
+  so it needs no new concepts.
+Templates buy compile-time dispatch we do not need for a handful of UI widgets.
+
+### On Rack's gap
+Rodney is right that Rack lacks a clean "control, but not host-exposed" concept: ParamWidget
+bundles value storage, persistence, undo, tooltips, MIDI-map AND host automation, and you
+cannot take the last one away. Everything StoreKnob had to re-implement (drag, tooltip,
+undo, persistence, hover) is a thing that came free from that bundle. Worth remembering when
+estimating the remaining modules: the widget is never the hard part; the free services are.
