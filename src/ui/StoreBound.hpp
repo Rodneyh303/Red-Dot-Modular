@@ -38,6 +38,42 @@ struct StoreBound : Base {
     float minValue = 0.f, maxValue = 1.f, defaultValue = 0.f;
     bool  snap = false;
 
+    // Tooltip. De-paramming loses the ParamQuantity tooltip, which for SWITCH-LIKE knobs
+    // (configSwitch with value labels: "Notes/Velocity/Prob", "x1/x2/x4", "Grid/Piano roll")
+    // is the only thing telling the user which position they are in — a real UX regression,
+    // not cosmetic. Supply either:
+    //   valueLabels — discrete labels, indexed by the snapped value, or
+    //   tooltipTextFn — full control (continuous knobs: format the number + unit).
+    // If neither is set, no tooltip is shown (fine for self-evident controls).
+    std::vector<std::string>     valueLabels;
+    std::function<std::string()> tooltipTextFn;
+    rack::ui::Tooltip*           tooltip_ = nullptr;
+
+    std::string tooltipText() {
+        if (tooltipTextFn) return tooltipTextFn();
+        float v = getValue ? getValue() : defaultValue;
+        if (!valueLabels.empty()) {
+            int i = rack::math::clamp((int)std::round(v), 0, (int)valueLabels.size() - 1);
+            return label + ": " + valueLabels[(size_t)i];
+        }
+        return "";
+    }
+
+    void onEnter(const rack::event::Enter& e) override {
+        std::string txt = tooltipText();
+        if (!txt.empty() && !tooltip_) {
+            tooltip_ = new rack::ui::Tooltip;
+            tooltip_->text = txt;
+            APP->scene->addChild(tooltip_);
+        }
+        Base::onEnter(e);
+    }
+    void onLeave(const rack::event::Leave& e) override {
+        if (tooltip_) { APP->scene->removeChild(tooltip_); delete tooltip_; tooltip_ = nullptr; }
+        Base::onLeave(e);
+    }
+    ~StoreBound() { if (tooltip_) { APP->scene->removeChild(tooltip_); delete tooltip_; } }
+
     StoreEditCoalescer coalesce;
     float dragValue = 0.f;
 
@@ -81,6 +117,7 @@ struct StoreBound : Base {
         dragValue = rack::math::clamp(dragValue, minValue, maxValue);
         float applied = snap ? std::round(dragValue) : dragValue;
         if (storeModule && setter) setter(*storeModule, applied);   // live store write
+        if (tooltip_) tooltip_->text = tooltipText();                // keep readout live
     }
 
     void onDragEnd(const rack::event::DragEnd& e) override {
