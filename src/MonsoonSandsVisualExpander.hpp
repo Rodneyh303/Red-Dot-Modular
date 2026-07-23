@@ -141,6 +141,7 @@ struct MonsoonSandsVisualExpander : Module {
     MonsoonSandsVisualExpander() {
         using namespace SandsMonoVisualIds;
         config(SandsMonoVisualIds::NUM_PARAMS, SandsMonoVisualIds::NUM_INPUTS,
+        monLookupDiv.setDivision(8);   // topology changes are control-rate
                SandsMonoVisualIds::NUM_OUTPUTS, 0);
         for (int l = 0; l < 6; ++l)
             configOutput(PROB_OUT_START + l, std::string("Probability ") +
@@ -187,6 +188,9 @@ struct MonsoonSandsVisualExpander : Module {
     void process(const ProcessArgs&) override;   // defined in .cpp (needs calcPlayhead)
 
     // Gate edge detection state (mono, 1 channel per jack).
+    // PERF: chain walk is control-rate work (Rodney audit item 3).
+    Monsoon* cachedMon_ = nullptr;
+    rack::dsp::ClockDivider monLookupDiv;
     bool dirModPrev[6] = {};
     bool delegModPrev[4] = {};
 

@@ -262,7 +262,7 @@ struct StraitsEastSandsVisual : Module {
         // inherit Macro, matching the poly ownerId and ownerDispId defaults (consistent
         // delegation convention; toggle per lane via the V1 owner cell).
         gateModDiv.setDivision(GATE_MOD_DIV);   // gate-mod scan runs at /8, not per sample
-        probOutDiv.setDivision(16);             // prob CV outs recompute at /16 (~3 kHz @48k)
+        probOutDiv.setDivision(32);             // prob CV outs = CONTROL rate (~1.5 kHz @48k, matches controlDivider)
         // East LANE DIRECTION bank: 16 slots (0..14 = poly V2..V16, 15 = V1/mono spare slot,
         // the monoOwnerId trick) x 6 strands. Real params, so Rack persists them and the
         // LANE_DIR migrated out of params[] to Monsoon::editor.laneDir (NUM_PARAMS_MIGRATION.md).
@@ -323,7 +323,7 @@ struct StraitsEastSandsVisual : Module {
     rack::dsp::ClockDivider gateModDiv;
     Monsoon* cachedMon_  = nullptr;   // refreshed on gateModDiv (topology is control-rate)
     bool     gateModScan_ = false;    // set when gateModDiv ticks; consumed by the gate scan
-    rack::dsp::ClockDivider probOutDiv;   // prob CV outs: /16 (Rodney audit item 2)
+    rack::dsp::ClockDivider probOutDiv;   // prob CV outs: /32 = control rate
     bool    dirModPrev[6][16]    = {};
     bool    delegModPrev[6][16]  = {};
     uint8_t dirModEdges[6][16]   = {};   // audio thread is the sole writer

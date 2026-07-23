@@ -186,6 +186,7 @@ struct StraitsSandsMacroVisual : Module {
         // RIGHT-SIZED: local param count only, now that the 12 global LOR params were
         // re-homed out of the shared MonsoonIds pool (see GLOBAL_DNA_START).
         config(StraitsMacroVisualIds::NUM_SPREAD_PARAMS, StraitsMacroVisualIds::NUM_INPUTS,
+        monLookupDiv.setDivision(8);   // topology changes are control-rate
                StraitsMacroVisualIds::NUM_OUTPUTS, 0);
         for (auto& a : probLastStep) for (auto& x : a) x = -1;
         { static const char* ln[4] = {"REST","MEL","OCT","ACC"};
@@ -247,6 +248,9 @@ struct StraitsSandsMacroVisual : Module {
     void process(const ProcessArgs&) override;   // defined in .cpp (needs findMonsoonEitherSide)
 
     // Gate edge detection state for dir_mod inputs (mono, 1 channel per jack).
+    // PERF: chain walk is control-rate work (Rodney audit item 3).
+    Monsoon* cachedMon_ = nullptr;
+    rack::dsp::ClockDivider monLookupDiv;
     bool dirModPrev[4] = {};
 
     // S&H latch state for the poly prob outs: [lane][channel] (ch0 reserved, 1..15 voices).

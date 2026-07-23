@@ -420,7 +420,9 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
 // ── Module process(): emit per-lane probability CV outs (audio rate) ──────────
 void MonsoonSandsVisualExpander::process(const ProcessArgs&) {
     using namespace SandsMonoVisualIds;
-    Monsoon* monsoon = redDot::findMonsoonEitherSide(this);
+    // PERF (Rodney audit item 3): chain walk cached; topology changes are control-rate.
+    if (monLookupDiv.process()) cachedMon_ = redDot::findMonsoonEitherSide(this);
+    Monsoon* monsoon = cachedMon_;
     if (!monsoon) {
         for (int l = 0; l < 6; ++l) outputs[PROB_OUT_START + l].setVoltage(0.f);
         return;

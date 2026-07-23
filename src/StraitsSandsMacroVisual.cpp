@@ -637,7 +637,10 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
 // ── Module process(): 3 poly probability CV outs (ch1 reserved, voices ch2+) ──
 void StraitsSandsMacroVisual::process(const ProcessArgs&) {
     using namespace StraitsMacroVisualIds;
-    Monsoon* mon = redDot::findMonsoonEitherSide(this);
+    // PERF (Rodney audit item 3): findMonsoonEitherSide walks the expander chain and ran
+    // every sample. Topology is control-rate, so cache it and refresh on a divider.
+    if (monLookupDiv.process()) cachedMon_ = redDot::findMonsoonEitherSide(this);
+    Monsoon* mon = cachedMon_;
     if (!mon) {
         for (int l = 0; l < 4; ++l) { outputs[PROB_OUT_REST + l].setChannels(1);
                                       outputs[PROB_OUT_REST + l].setVoltage(0.f); }

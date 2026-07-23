@@ -29,6 +29,24 @@ master).
   run ONLY when pins are off the identity diagonal, so it costs a 16-iteration check in the
   common case.
 
+## Round 2 (Rodney's sample-rate audit) — FIXED
+
+- **East prob CV outs** were the heaviest per-sample work in the plugin: laneStep() +
+  laneProbability() for every lane x voice, EVERY SAMPLE (up to 4 x 16 = 64 resolver calls).
+  Now recomputed on a /32 divider = ~1.5 kHz at 48k, matching the plugin's own controlDivider
+  target. Rodney confirmed these are explicitly NOT for audio-rate modulation. The OUTPUT is
+  not gated -- ports hold their last voltage, so CV stays continuous; only the COMPUTATION is
+  throttled, and channel counts are still set per sample so polyphony changes apply at once.
+- **findMonsoonEitherSide() cached in all three expanders** (East, Mono, Macro). It walks the
+  expander chain and ran every sample; topology only changes at control rate, so the pointer
+  is refreshed on a /8 divider.
+  GOTCHA: East shares one divider between the pointer refresh and the gate scan via a flag --
+  calling .process() twice would consume two ticks and silently halve the effective rate.
+
+Confirmed already fine (no change): gate-mod edge scan at /8 (gates are milliseconds);
+Lantern step-edge sampling (early-returns unless the step changed); processDNA/sync (gated on
+sixteenthEdge); Monsoon control-rate section (gated on sixteenthEdge).
+
 ## Where to look next if more is needed
 1. Widget `step()` methods — these run at frame rate, so they are only a problem if they do
    something very heavy (full-grid rebuilds, SVG reloads, allocations per frame).
