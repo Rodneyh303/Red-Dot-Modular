@@ -197,6 +197,19 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     for (int i = 0; i < 64; ++i) json_array_append_new(sp, json_real(m->editor.spread[i]));
     json_object_set_new(root, "editorSpread", sp);
 
+    // GLOBAL slice (MVC step 1). Macro's globals used to be params, which gave save/restore
+    // for free; now they are store fields and must be persisted explicitly.
+    auto saveArr = [&](const char* key, const float* a, int n) {
+        json_t* j = json_array();
+        for (int i = 0; i < n; ++i) json_array_append_new(j, json_real(a[i]));
+        json_object_set_new(root, key, j);
+    };
+    saveArr("editorGlobalLor",    m->editor.globalLor,    12);
+    saveArr("editorGlobalSpread", m->editor.globalSpread,  4);
+    saveArr("editorGlobalAtten",  m->editor.globalAtten,  16);
+    saveArr("editorGlobalTap",    m->editor.globalTap,     8);
+    saveArr("editorGlobalDir",    m->editor.globalDir,     4);
+
     return root;
 }
 
@@ -435,4 +448,16 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
             for (size_t i = 0; i < 64 && i < json_array_size(j); ++i)
                 m->editor.spread[i] = (float)json_real_value(json_array_get(j, i));
     }
+    auto loadArr = [&](const char* key, float* a, int n) {
+        if (auto j = json_object_get(root, key)) {
+            if (json_is_array(j))
+                for (size_t i = 0; i < (size_t)n && i < json_array_size(j); ++i)
+                    a[i] = (float)json_real_value(json_array_get(j, i));
+        }
+    };
+    loadArr("editorGlobalLor",    m->editor.globalLor,    12);
+    loadArr("editorGlobalSpread", m->editor.globalSpread,  4);
+    loadArr("editorGlobalAtten",  m->editor.globalAtten,  16);
+    loadArr("editorGlobalTap",    m->editor.globalTap,     8);
+    loadArr("editorGlobalDir",    m->editor.globalDir,     4);
 }
