@@ -81,16 +81,9 @@ namespace MonsoonIds {
         PATTERN_LENGTH_PARAM,
         PATTERN_OFFSET_PARAM,
 
-        // DNA Strand Windows (Grouped for easy looping: Len, Off, Rot)
-        DNA_R_LEN_PARAM, DNA_R_OFF_PARAM, DNA_R_ROT_PARAM,
-        DNA_V_LEN_PARAM, DNA_V_OFF_PARAM, DNA_V_ROT_PARAM,
-        DNA_L_LEN_PARAM, DNA_L_OFF_PARAM, DNA_L_ROT_PARAM,
-        DNA_A_LEN_PARAM, DNA_A_OFF_PARAM, DNA_A_ROT_PARAM,  // New: accent strand
-        DNA_M_LEN_PARAM, DNA_M_OFF_PARAM, DNA_M_ROT_PARAM,
-        DNA_O_LEN_PARAM, DNA_O_OFF_PARAM, DNA_O_ROT_PARAM,
-
-        // DNA Buttons (6 Buttons)
-
+        // (DNA strand-window LEN/OFF/ROT param ids removed: never configured, never read.
+        //  LOR lives in the engine store and is edited by the visual expanders — see
+        //  PARAM_CLASSIFICATION.md, "visual/editor expanders expose nothing".)
 
         SEMI0_PARAM,  SEMI1_PARAM,  SEMI2_PARAM,  SEMI3_PARAM,
         SEMI4_PARAM,  SEMI5_PARAM,  SEMI6_PARAM,  SEMI7_PARAM,
@@ -154,7 +147,6 @@ namespace MonsoonIds {
         // Causeway MONO (voice-1) mod attenuators — voice-1's counterpart to the poly per-voice
         // attenuators above. Applies to CV channel 0 (the mono channel) of the Causeway CV inputs,
         // added onto the mono base rest/accent. Panel marker param_restatt_0 / param_accatt_0.
-
 
         
         // Global Macro DNA Controls (for simple Straits Sands) - NEW
@@ -502,7 +494,6 @@ struct MonsoonLeftMessage {
     bool  requestLock    = false;  // level: override lock state
     bool  lockOverride   = false;  // value when requestLock=true
 };
-
 
 // ------------------------------- Module --------------------------------------
 struct Monsoon : Module {
