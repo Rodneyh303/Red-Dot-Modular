@@ -141,8 +141,8 @@ struct MonsoonSandsVisualExpander : Module {
     MonsoonSandsVisualExpander() {
         using namespace SandsMonoVisualIds;
         config(SandsMonoVisualIds::NUM_PARAMS, SandsMonoVisualIds::NUM_INPUTS,
-        monLookupDiv.setDivision(8);   // topology changes are control-rate
                SandsMonoVisualIds::NUM_OUTPUTS, 0);
+        monLookupDiv.setDivision(8);   // topology changes are control-rate
         for (int l = 0; l < 6; ++l)
             configOutput(PROB_OUT_START + l, std::string("Probability ") +
                 (const char*[]){"MEL","OCT","REST","ACC","VAR","LEG"}[l]);
