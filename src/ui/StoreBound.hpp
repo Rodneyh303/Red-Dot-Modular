@@ -19,6 +19,7 @@
 // TModule = the module that OWNS the store (the action keeps its id, not a pointer).
 
 #include <rack.hpp>
+#include <cstdio>
 #include "StoreEditAction.hpp"
 
 // The plugin global, used to resolve control-face assets. Declared here rather than
@@ -113,18 +114,34 @@ struct StoreKnob : rack::widget::Widget {
     // ParamWidget; we do not.)
     void onHover(const rack::event::Hover& e) override { e.consume(this); }
 
+    double lastPressTime_ = -1.0;
+
     void onButton(const rack::event::Button& e) override {
-        // Claim the press so the drag events reach us.
-        if (e.button == GLFW_MOUSE_BUTTON_LEFT && e.action == GLFW_PRESS) e.consume(this);
+        if (e.button == GLFW_MOUSE_BUTTON_LEFT && e.action == GLFW_PRESS) {
+            e.consume(this);   // claim the press so drag events reach us
+            // Detect the double-click OURSELVES. Rack's DoubleClick dispatch was not
+            // reaching this widget (ParamWidget/Knob get it via machinery a plain Widget
+            // does not participate in), so a de-parammed knob lost double-click-to-default.
+            const double now = rack::system::getTime();
+            if (lastPressTime_ > 0.0 && (now - lastPressTime_) <= 0.3) {
+                lastPressTime_ = -1.0;      // consume the pair; a triple click is not two resets
+                resetToDefault();
+                return;                     // do not also start a drag
+            }
+            lastPressTime_ = now;
+        }
         Widget::onButton(e);
     }
 
-    void onDoubleClick(const rack::event::DoubleClick& e) override {
+    void resetToDefault() {
         auto* m = store();
         if (!m || !setter) return;
         const float oldV = getValue ? getValue() : defaultValue;
+        if (oldV == defaultValue) return;
         applyAndPushStoreEdit<TModule>(m, label, setter, oldV, defaultValue);
     }
+
+    void onDoubleClick(const rack::event::DoubleClick& e) override { resetToDefault(); }
 
     // ── tooltip ──
     std::string tooltipText() {
@@ -134,7 +151,12 @@ struct StoreKnob : rack::widget::Widget {
             int i = rack::math::clamp((int)std::round(v), 0, (int)valueLabels.size() - 1);
             return label + ": " + valueLabels[(size_t)i];
         }
-        return "";
+        // Continuous knob: fall back to label + value. Without this a de-parammed knob has
+        // NO tooltip at all (configParam's name used to supply it), which is how the taps
+        // lost their labels.
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "%.3g", v);
+        return label.empty() ? std::string(buf) : (label + ": " + buf);
     }
 
     void onEnter(const rack::event::Enter& e) override {
