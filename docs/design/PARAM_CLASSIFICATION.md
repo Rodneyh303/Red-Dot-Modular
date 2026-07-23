@@ -217,3 +217,37 @@ the Causeway problem again — binding side and read side must move in lockstep 
 
 Caution for Macro: `dirDispId` is named a display proxy but IS read by the engine — do not
 assume from the name. The census, not the naming, is the source of truth.
+
+### WHY East and Macro differ on engine reads (it is not inconsistency)
+
+A Rack `params[]` array can serve as STORAGE only when the data has no voice dimension.
+Both modules index their params by LANE. The difference is what the data actually is:
+
+- **Macro is GLOBAL scope** — one value per lane, no voice axis. A lane-indexed param array
+  fits the data exactly, so the param IS the storage and the engine reads it straight off
+  the module (`macroVis->params[Macro::lorId(lane,c)]`).
+- **East is PER-VOICE scope** — 16 voices × lanes. Lane-indexed params physically cannot
+  hold that, so the authoritative value goes to a voice-indexed store and the param is only
+  a MIRROR of the selected voice.
+
+East's own code shows the two-step directly:
+```cpp
+if (ch != 0) { m->setLaneDir(ch - 1, lane, nxt); }              // real value -> store (voice-indexed)
+if (selectedVoice == ch) mod->params[dirDispId(lane)].setValue(nxt);  // mirror, only when selected
+```
+
+**Migration consequence — bigger than the read-count difference implies:**
+
+| | what the params ARE | de-param work |
+|---|---|---|
+| East | a redundant DISPLAY MIRROR of data already stored elsewhere | **delete the mirror**; point widgets at the store that already exists; no engine change, no new storage, no new persistence |
+| Macro | the DATA ITSELF (load-bearing storage) | **invent the storage**: new store fields, migrate 44 engine read sites, and add persistence that configParam was providing for free |
+
+So East is a subtraction and Macro is a re-platforming. Do not treat them as the same job
+because the panels look alike.
+
+This also explains why the selected-voice proxies are incoherent to automate (the original
+reason for the whole decision): a mirror of "whichever voice is selected" has no stable
+meaning to a host. Macro's globals do have stable meaning — they are excluded for the
+different reason that global LOR is just Macro's SCOPE and should not be privileged over
+mono/East (see the decision above).
