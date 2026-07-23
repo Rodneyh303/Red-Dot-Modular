@@ -107,8 +107,14 @@ struct StoreBound : Base {
                 lastNorm_ = n;
                 float angle = rack::math::rescale(n, 0.f, 1.f, this->minAngle, this->maxAngle);
                 if (this->tw) { this->tw->identity(); this->tw->rotate(angle); }
-                if (this->fb) this->fb->dirty = true;
             }
+            // Dirty EVERY frame, not just on change. Observed on Rodney's build: with
+            // change-only dirtying the knob rendered ONLY on the frames the flag was set
+            // (it "flashed" while dragging and was invisible otherwise), i.e. the
+            // FramebufferWidget is not retaining cached content for a ParamQuantity-less
+            // knob. Re-rendering unconditionally costs nothing at these counts (6 on
+            // Lantern) and removes the dependence on Rack's caching behaviour entirely.
+            if (this->fb) this->fb->dirty = true;
         }
         Base::step();
     }
