@@ -159,9 +159,26 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         for (int lane = 0; lane < 4; ++lane) {
             for (int c = 0; c < 4; ++c)
                 bindInput<PJ301MPort>("input_" + std::to_string(cvId(lane,c)), cvId(lane,c));
-            for (int c = 0; c < 4; ++c)
-                bindParam<Trimpot>("param_" + std::to_string(attenId(lane,c)), attenId(lane,c),
-                    std::function<void(Trimpot*)>([this](Trimpot* a){ leftAttenuverters.push_back(a); }));
+            // STORE-BACKED (MVC step 1d): the global attenuverters are no longer params.
+            // Monsoon (which owns the store) is resolved lazily -- it may not be attached
+            // when the widget is built, and can be attached/detached later.
+            for (int c = 0; c < 4; ++c) {
+                using SK = redDot::StoreKnob<Monsoon>;
+                auto* mw_ = this;
+                auto* k = bindWidget<SK>("param_" + std::to_string(attenId(lane,c)),
+                    std::function<void(SK*)>([mw_, lane, c](SK* w) {
+                        w->setSvg(APP->window->loadSvg(rack::asset::plugin(
+                            pluginInstance, "res/controls/RDM_Grey_Trim_Bar.svg")));
+                        auto res = [mw_]() -> Monsoon* {
+                            return mw_->module ? redDot::findMonsoonEitherSide(mw_->module) : nullptr; };
+                        w->resolveStore = res;
+                        w->minValue = -1.f; w->maxValue = 1.f; w->defaultValue = 0.f;
+                        w->label    = "Global atten";
+                        w->getValue = [res, lane, c]() { auto* m = res(); return m ? m->getGlobalAtten(lane, c) : 0.f; };
+                        w->setter   = [lane, c](Monsoon& m, float v) { m.setGlobalAtten(lane, c, v); };
+                    }));
+                if (k) leftAttenuverters.push_back(k);
+            }
             // P9b: the two PRE/POST send taps per lane live in the send groups below the
             // lanes (3rd row) — bound by name there, not here. (see send-group binds.)
         }
@@ -347,8 +364,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             for (int lane = 0; lane < 4; ++lane) {
                 for (int c = 0; c < 3; ++c) monsoon->setGlobalLor(lane, c, pv(MId::lorId(lane, c)));
                 monsoon->setGlobalSpread(lane, pv(MId::sprId(lane)));
-                for (int col = 0; col < 4; ++col)
-                    monsoon->setGlobalAtten(lane, col, pv(MId::macroAttenId(lane, col)));
+                // (attenuverters are now StoreKnobs writing the store directly - no mirror)
                 // tapIdForItem: item 3 -> spread tap, otherwise the shared LOR tap.
                 monsoon->setGlobalTap(lane, 0, pv(MId::tapIdForItem(lane, 0)));
                 monsoon->setGlobalTap(lane, 1, pv(MId::tapIdForItem(lane, 3)));

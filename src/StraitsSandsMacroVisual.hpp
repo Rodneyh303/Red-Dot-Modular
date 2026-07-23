@@ -3,7 +3,8 @@
 #include "ui/SandsGrid.hpp"
 #include <cmath>   // std::fabs (macroSpreadModulatesLane)
 #include "Monsoon.hpp"
-#include "ui/VisualExpanderHelpers.hpp"   // redDot::findMonsoonEitherSide (MACRO field accessors)
+#include "ui/VisualExpanderHelpers.hpp"
+#include "ui/StoreBound.hpp"   // redDot::StoreKnob (de-parammed controls)   // redDot::findMonsoonEitherSide (MACRO field accessors)
 
 using namespace rack;
 using namespace MonsoonIds;
@@ -206,7 +207,7 @@ struct StraitsSandsMacroVisual : Module {
             configParam(tapSprId(lane), 0.f,1.f,1.f, std::string(laneNames[lane])+" spread send tap (PRE-POST)");
             for (int c=0; c<4; ++c) {
                 std::string nm = std::string(laneNames[lane])+" "+paramNames[c];
-                configParam(StraitsMacroVisualIds::attenId(lane,c), -1.f,1.f,0.f, nm+" depth");
+                // attenId: STORE-BACKED (StoreKnob) - no configParam, not host-exposed.
                 configInput(StraitsMacroVisualIds::cvId(lane,c), nm+" CV"); //check sandsmono visual version 3 lanes only?
             }
         }

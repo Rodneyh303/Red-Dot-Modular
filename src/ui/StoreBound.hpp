@@ -31,7 +31,13 @@ struct StoreKnob : rack::widget::Widget {
     float maxAngle =  0.83f * (float)M_PI;
 
     // ── binding ──
+    // storeModule: the module that OWNS the store. For Lantern that is the widget's own
+    // module; for the Sands expanders the store lives on MONSOON, which may not be attached
+    // when the widget is built and can be attached/detached later. So prefer resolveStore
+    // (a lambda evaluated at use time); storeModule is the static fallback.
     TModule*                             storeModule = nullptr;
+    std::function<TModule*()>            resolveStore;
+    TModule* store() const { return resolveStore ? resolveStore() : storeModule; }
     std::function<float()>               getValue;
     std::function<void(TModule&, float)> setter;
     std::string label = "value";
@@ -86,15 +92,16 @@ struct StoreKnob : rack::widget::Widget {
         dragValue += -e.mouseDelta.y * speed / 200.f * range;   // up = positive
         dragValue = rack::math::clamp(dragValue, minValue, maxValue);
         const float applied = snap ? std::round(dragValue) : dragValue;
-        if (storeModule && setter) setter(*storeModule, applied);
+        if (auto* m = store()) { if (setter) setter(*m, applied); }
         if (tooltip_) tooltip_->text = tooltipText();
     }
 
     void onDragEnd(const rack::event::DragEnd& e) override {
         APP->window->cursorUnlock();
-        if (!storeModule || !setter) { coalesce.cancel(); return; }
+        auto* m = store();
+        if (!m || !setter) { coalesce.cancel(); return; }
         const float endV = snap ? std::round(dragValue) : dragValue;
-        coalesce.commit<TModule>(storeModule, label, setter, endV);
+        coalesce.commit<TModule>(m, label, setter, endV);
     }
 
     // A plain Widget does not become the hovered widget unless it CONSUMES onHover, and
@@ -109,9 +116,10 @@ struct StoreKnob : rack::widget::Widget {
     }
 
     void onDoubleClick(const rack::event::DoubleClick& e) override {
-        if (!storeModule || !setter) return;
+        auto* m = store();
+        if (!m || !setter) return;
         const float oldV = getValue ? getValue() : defaultValue;
-        applyAndPushStoreEdit<TModule>(storeModule, label, setter, oldV, defaultValue);
+        applyAndPushStoreEdit<TModule>(m, label, setter, oldV, defaultValue);
     }
 
     // ── tooltip ──
