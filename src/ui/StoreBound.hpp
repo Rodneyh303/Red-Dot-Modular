@@ -20,6 +20,7 @@
 
 #include <rack.hpp>
 #include <cstdio>
+#include <algorithm>
 #include "StoreEditAction.hpp"
 
 // The plugin global, used to resolve control-face assets. Declared here rather than
@@ -70,15 +71,44 @@ struct StoreKnob : rack::widget::Widget {
         return rack::math::clamp(t, 0.f, 1.f);
     }
 
+    // Fixed specular gloss, drawn OUTSIDE the rotation (same trick as Rack's CircularShadow).
+    // res/controls/README: a baked highlight is impossible because Rack rotates the whole SVG,
+    // so the light would spin with the knob. Drawing it here keeps the light fixed while the
+    // cog turns underneath -- which is what real metal does. 0 = off.
+    float glossAmount = 0.55f;
+
     void draw(const DrawArgs& args) override {
         if (!svg || !svg->handle) return;
         const float angle = rack::math::rescale(norm(), 0.f, 1.f, minAngle, maxAngle);
+        // 1. the artwork, rotated
         nvgSave(args.vg);
         nvgTranslate(args.vg, box.size.x * 0.5f, box.size.y * 0.5f);
         nvgRotate(args.vg, angle);
         nvgTranslate(args.vg, -box.size.x * 0.5f, -box.size.y * 0.5f);
         rack::window::svgDraw(args.vg, svg->handle);
         nvgRestore(args.vg);
+
+        // 2. the light, NOT rotated
+        if (glossAmount > 0.f) {
+            const float cx = box.size.x * 0.5f, cy = box.size.y * 0.5f;
+            const float r  = std::min(box.size.x, box.size.y) * 0.5f;
+            const float a  = rack::math::clamp(glossAmount, 0.f, 1.f);
+            // Top-lit sheen across the face: bright above, shaded below. The circle IS the
+            // shape, so the gradient cannot spill past the knob.
+            nvgBeginPath(args.vg);
+            nvgCircle(args.vg, cx, cy, r * 0.88f);
+            nvgFillPaint(args.vg, nvgLinearGradient(args.vg, cx, cy - r, cx, cy + r,
+                nvgRGBA(255, 255, 255, (unsigned char)(70 * a)),
+                nvgRGBA(0, 0, 0, (unsigned char)(55 * a))));
+            nvgFill(args.vg);
+            // Narrow highlight near the top edge — the glint that reads as polished metal.
+            nvgBeginPath(args.vg);
+            nvgEllipse(args.vg, cx, cy - r * 0.46f, r * 0.44f, r * 0.20f);
+            nvgFillPaint(args.vg, nvgRadialGradient(args.vg, cx, cy - r * 0.46f,
+                r * 0.02f, r * 0.46f,
+                nvgRGBA(255, 255, 255, (unsigned char)(95 * a)), nvgRGBA(255, 255, 255, 0)));
+            nvgFill(args.vg);
+        }
     }
 
     // ── drag: write the store live, one undo per drag ──
