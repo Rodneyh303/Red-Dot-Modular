@@ -1338,7 +1338,11 @@ void StraitsEastSandsVisual::process(const ProcessArgs&) {
         lights[ownerLightId(lane)].setBrightness(
             params[ownerDispId(lane)].getValue() > 0.5f ? 1.f : 0.f);
 
-    Monsoon* mon = redDot::findMonsoonEitherSide(this);
+    // PERF: findMonsoonEitherSide walks the expander chain. Topology only changes at
+    // control rate, so refresh the cached pointer on the same /8 divider as the gate scan
+    // rather than every sample. (Rodney's audit, item 3.)
+    if (gateModDiv.process()) { cachedMon_ = redDot::findMonsoonEitherSide(this); gateModScan_ = true; }
+    Monsoon* mon = cachedMon_;
     if (!mon) {
         for (int l = 0; l < 4; ++l) { outputs[PROB_OUT_REST + l].setChannels(1);
                                       outputs[PROB_OUT_REST + l].setVoltage(0.f); }
@@ -1351,7 +1355,8 @@ void StraitsEastSandsVisual::process(const ProcessArgs&) {
     // is the only place that knows the selected tab — so nothing reads the tab at audio rate.
     // Scanned on a divider: gates are milliseconds (hundreds of samples), so /8 catches every
     // edge at an eighth of the cost. dir/deleg share the scan since they share the cadence.
-    if (gateModDiv.process()) {
+    if (gateModScan_) {
+        gateModScan_ = false;
         for (int lane = 0; lane < 6; ++lane) {
             auto& din = inputs[dirModId(lane)];
             dirModChans[lane] = din.isConnected() ? (uint8_t)din.getChannels() : 0;
@@ -1380,6 +1385,16 @@ void StraitsEastSandsVisual::process(const ProcessArgs&) {
     auto& eng = mon->engine;
     const int nV = eng.numPolyVoices;                  // 0..15 poly voices
     const int nCh = 1 + nV;                            // mono on ch1 + poly on ch2..1+nV
+    // PERF (Rodney's audit, item 2 -- the heaviest per-sample work in the expanders):
+    // recomputing every lane x voice probability EVERY SAMPLE is pointless. laneStep() +
+    // laneProbability() x 4 lanes x up to 16 voices = up to 64 resolver calls per sample.
+    // Probabilities change at STEP rate, so /16 is far finer than the signal warrants and
+    // still gives ~3 kHz CV updates at 48 kHz.
+    //
+    // The output VOLTAGE is not gated -- Rack ports hold their last value, so channels are
+    // still set every sample and the CV is continuous; only the COMPUTATION is throttled.
+    // Channel count is likewise set every sample so polyphony changes take effect at once.
+    const bool recompute = probOutDiv.process();
     dotModular::VoiceResolver resolver(eng);
     for (int l = 0; l < 4; ++l) {
         auto& out = outputs[PROB_OUT_REST + l];
@@ -1389,6 +1404,7 @@ void StraitsEastSandsVisual::process(const ProcessArgs&) {
         //   ch v → voice v+1 (poly) for v in 1..nV.
         // The resolver maps voice 1 → master accessors, voices 2..16 → poly bank (voice-2),
         // so this single loop replaces the old hand-split (0V stub + per-poly indexing).
+        if (!recompute) continue;                      // ports hold their last voltage
         for (int ch = 0; ch < nCh; ++ch) {
             const int voice = ch + 1;                  // 1..16
             int step = resolver.laneStep(voice, l);
