@@ -626,21 +626,35 @@ struct Monsoon : Module {
     //    dataToJson/dataFromJson (params[] auto-saved; plain fields do not).
     //    PILOT: LANE_DIR only (96). Remaining ranges (MACRO*, VARLEG*) migrate next.
     struct EditorState {
-        // laneDir: per (voice-bank v = 0..14 poly = V2..V16, 15 = V1/mono) × lane (0..5).
-        // index = v*6 + lane  (identical to the old LANE_DIR_START + v*6 + lane).
+        // laneDir: per lane (0..5).
+        //   ADDRESSING: POLY-BANK, NOT voiceSlot — v = 0..14 is V2..V16, 15 = V1/mono
+        //   (see getMonoLaneDir). One of only TWO arrays still on the legacy convention
+        //   (the other is macroOwn); MVC_UNIFICATION.md step 1 migrates both to voiceSlot.
+        //   index = v*6 + lane  (identical to the old LANE_DIR_START + v*6 + lane).
         float laneDir[96] = {0};
         // varlegDeleg: delegation local/delegated per (v = 0..14 = V2..V16) × lane (0=VAR,1=LEG).
+        //   ADDRESSING: POLY-ONLY — there is NO mono slot here, unlike every other array.
+        //   MVC_UNIFICATION.md step 2 gives it one.
         // index = v*2 + lane  (== old VARLEG_DELEG_START + v*2 + lane).
         float varlegDeleg[30] = {0};
         // varlegAtten: VAR/LEG attenuation per (v = 0..15 voice-slot) × lane(0=VAR,1=LEG) × col(0..2).
         // index = v*6 + lane*3 + col  (== old VARLEG_ATTEN_START + v*6 + lane*3 + col).
         float varlegAtten[96] = {0};
-        // macroOwn: owner per (v=0..15 voice-slot, 15=mono) × lane(0..3). index = v*4 + lane.
+        //   ADDRESSING: voiceSlot (0 = V1/mono) — verified against call sites. OK.
+        // macroOwn: owner per lane(0..3).
+        //   ADDRESSING: POLY-BANK, NOT voiceSlot — v = 0..14 is V2..V16, and index 15 is
+        //   V1/mono (see getMonoMacroOwn). An earlier comment here said "v=0..15
+        //   voice-slot, 15=mono", which cannot hold: voiceSlot(V1) == 0. That wrong comment
+        //   is why this struct read as far more inconsistent than it is — five of the eight
+        //   arrays below ARE on voiceSlot. See MVC_UNIFICATION.md.
+        //   index = v*4 + lane.
         float macroOwn[64] = {0};
         // macroSend: Macro-CV blend send per (v=0..15)×lane(0..3)×item(0..3). index=(v*4+lane)*4+item.
         float macroSend[256] = {0};
+        //   ADDRESSING: voiceSlot (0 = V1/mono) — verified against call sites. OK.
         // macroAtten: atten depth per (v=0..15)×(lane*4+col, 16 wide). index = v*16 + lane*4+col.
         float macroAtten[256] = {0};
+        //   ADDRESSING: voiceSlot (0 = V1/mono) — verified against call sites. OK.
         // Unified per-voice LOR base store (Stage 1 of the MVC unification). Indexed by
         // voiceSlot (0 = V1/mono, 1..15 = V2..V16) × bank (0=REST/DNA 1=MEL 2=OCT 3=ACC
         // 4=VAR 5=LEG) × (0=len 1=off 2=rot). This is the SINGLE home for every voice's
