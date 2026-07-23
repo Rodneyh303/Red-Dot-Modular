@@ -159,3 +159,61 @@ Mono Sands' 54 = 18 LOR (6 lanes × LEN/OFF/ROT) + 4 spread + 18 LOR attenuverte
 4. Mono/East/Macro differ from Lantern in kind: their LOR and spread values REACH THE
    ENGINE (via setLorBase etc.), so those migrations must preserve the engine write path,
    not just the widget. Only the owner/direction/attenuator entries are pure proxies.
+
+## Scope: East (38) and Macro (60) — and why the order should be EAST FIRST
+
+Censused from the id enums plus a read-site sweep of `src/dsp/` and `Monsoon.cpp`.
+
+### The decisive difference: who READS the params
+
+| | params | read by the ENGINE? |
+|---|---|---|
+| **East** | 38 | **NONE.** Zero engine-side reads of East's params. |
+| **Macro** | 60 | **44 of 60**, every control cycle. |
+
+Engine-side reads are all Macro's (`MonsoonSandsManager` / `Monsoon.cpp`):
+`Macro::lorId(lane,0..2)` ×12, `Macro::macroAttenId(lane,·)` ×16, `Macro::sprId(lane)` ×4,
+`Macro::tapIdForItem(lane,item)` ×8, `StraitsMacroVisualIds::dirDispId(el)` ×4.
+
+**So East is the easier job despite looking similar, and Macro is the hardest in the
+codebase.** East's params are entirely internal — its edits reach the engine INDIRECTLY
+through store writes (`setLorBase` etc.) that already exist and do not change. Macro's are
+read directly off the module's `params[]` array by the audio side, so de-paramming them is
+the Causeway problem again — binding side and read side must move in lockstep — but with
+44 sites instead of 12, and a wrong id is a SILENT wrong-value read, not a compile error.
+
+### East (38) — all internal; 34 are pure selected-voice proxies
+| Group | n | Kind |
+|---|---|---|
+| Spread display trimpots (SPREAD_R/M/O/A) | 4 | writes through to the store/engine path |
+| Attenuverter display proxies (ATTEN_START) | 16 | pure proxy — real depth in MonsoonIds::MACRO_ATTEN_START |
+| VAR/LEG CV-depth proxies | 6 | pure proxy — real depth in VARLEG_ATTEN_START |
+| Direction display proxies | 6 | pure proxy — engine holds laneDir_/laneDirV_ |
+| VAR/LEG delegation proxies | 2 | pure proxy — drives an OwnerCell |
+| Owner display proxies | 4 | pure proxy — drives owner cells |
+
+26 `params[...].setValue` sites in East.cpp must move to store writes (Lantern lesson 3).
+
+### Macro (60)
+| Group | n | Engine-read? |
+|---|---|---|
+| Spread display trimpots | 4 | **yes** (`sprId`) |
+| Attenuverters (ATTEN_START) | 16 | **yes** (`macroAttenId`) |
+| Direction display proxies | 4 | **yes** (`dirDispId`) — proxy-NAMED but engine-read |
+| Send display proxies | 16 | no |
+| PRE/POST tap params | 8 | **yes** (`tapIdForItem`) |
+| Global LOR (GLOBAL_DNA_START) | 12 | **yes** (`lorId`) |
+
+6 `params[...].setValue` sites in Macro.cpp.
+
+### Recommended order and shape
+1. **East first** — bigger proxy count but zero engine coupling, so it is widget+store work
+   only and validates StoreBound at scale (38) after Lantern's 6.
+2. **Mono Sands (54)** — its LOR/spread DO reach the engine, but via `setLorBase`, not via
+   `params[]` reads, so it sits between East and Macro in difficulty.
+3. **Macro last (60)** — needs an engine-side migration: every `macroVis->params[...]` read
+   becomes a store read, moved in lockstep with the bindings. Treat like Causeway:
+   behavioural build-verify, not just "it compiles". Get a working baseline first.
+
+Caution for Macro: `dirDispId` is named a display proxy but IS read by the engine — do not
+assume from the name. The census, not the naming, is the source of truth.
