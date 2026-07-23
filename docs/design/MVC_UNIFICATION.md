@@ -144,3 +144,30 @@ bundles value storage, persistence, undo, tooltips, MIDI-map AND host automation
 cannot take the last one away. Everything StoreKnob had to re-implement (drag, tooltip,
 undo, persistence, hover) is a thing that came free from that bundle. Worth remembering when
 estimating the remaining modules: the widget is never the hard part; the free services are.
+
+## Step 1d progress (28 of Macro's 60 params done)
+
+| Group | n | Status |
+|---|---|---|
+| Attenuverters | 16 | **DONE** — StoreKnob, Grey_Trim_Bar |
+| Spread | 4 | **DONE** — mod-arcs needed no change once decoupled |
+| Taps | 8 | **DONE** — + on-panel LOR/SPR labels added |
+| LOR | 12 | TODO — **not knobs**: grid-edited via saveSlot/loadSlot, so redirect the editor's save/load to the store rather than swapping widgets |
+| Sends | 16 | TODO — pure proxy (not engine-read); needs the view-voice context since macroSend is per-voice |
+| Direction | 4 | TODO — **DirCell, not a knob**: needs its own store-write path to setGlobalDir, mirroring East's DirCell -> setLaneDir |
+
+Then: `config()` to 0, delete the dual-write mirror (down to the LOR + direction lines),
+and Macro leaves the host param list entirely.
+
+### Services a de-parammed control must re-supply (all now central in configureStoreKnob)
+Found one at a time, each only on a real build — the full list, so later modules inherit
+rather than rediscover: render path (SvgKnob's framebuffer is driven from inside
+`if (getParamQuantity())`), hover (a plain Widget must consume onHover to become hovered),
+tooltip text (incl. a value fallback for continuous knobs), undo coalescing, persistence,
+lazy store resolution (the store may live on another module attached later), and
+double-click-to-default (Rack's DoubleClick does not reach a plain Widget).
+
+### Aesthetic note
+Rodney: the Grey control faces read better on the LIGHT panel — a metallic look against the
+light body. Faces are Tag types now, so changing family is a one-token edit per call site;
+revisit once more of the panel is converted.
