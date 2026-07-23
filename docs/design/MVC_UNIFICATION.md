@@ -58,7 +58,37 @@ East's params are a redundant mirror (delete them) while Macro's are load-bearin
 3. **No `params[]` is storage anywhere.** Engine reads the store; widgets are views over it;
    de-paramming becomes uniform — the same subtraction for every module.
 
-## Order
+## RE-PRIORITISED after the call-site census (supersedes the order below)
+
+Reading every `laneDir`/`macroOwn` call site changed the ranking.
+
+**Symptom 1 (mono convention) is inconsistency WITHOUT a bug, and does NOT block de-param.**
+Those arrays use dual accessors — `getMacroOwn(polyBank,…)` / `getMonoMacroOwn(…)` — and
+every call site correctly selects one:
+```cpp
+const float cur = (ch == 0) ? mm->getMonoMacroOwn(eng) : mm->getMacroOwn(ch - 1, eng);
+if (mono) m->setMonoLaneDir(lane, v); else if (pv >= 0 && pv < 15) m->setLaneDir(pv, lane, v);
+```
+Mono is EXPLICIT at every site — arguably safer than a single accessor where mono is
+silently "slot 0" and easy to pass wrong. Migrating means ~20 sites of working code with a
+silent-failure mode, for uniformity only. And de-paramming moves params→store; it is
+indifferent to how the store indexes internally.
+
+**Symptom 2 (global scope has no home in the model) IS the real break, and DOES block it.**
+With no global slice in the store, Macro's `params[]` became the model and the engine reads
+them directly. That is the actual MVC violation, the reason East and Macro need different
+de-param work, and what must be fixed first.
+
+### Revised order
+0. **DONE** (fix/mvc-step0-conventions) — correct the wrong/misleading convention comments.
+1. **Add the global slice; move Macro's 44 engine-read params onto it.** The real unblocker.
+   Afterwards every module's params are views and de-paramming is one shape of job.
+2. Resume de-param: East (38) → Mono (54) → Macro (60), now uniform.
+3. **Optional / low priority** — reconcile `laneDir`/`macroOwn` onto `voiceSlot`, give
+   `varlegDeleg` a mono slot. Uniformity only; do it when those arrays are being touched
+   anyway, not as standalone risk.
+
+## Original order (superseded)
 
 This precedes the remaining de-param work. Doing it after would mean migrating East onto a
 model we then change, and re-platforming Macro twice.
