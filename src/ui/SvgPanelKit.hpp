@@ -160,6 +160,22 @@ struct Bind {
             this->self()->mw()->addParam(w); this->self()->state().bound[s->id] = w; 
         } else WARN("[SvgKit] param shape not found: %s", n.c_str());
     }
+    // Bind a NON-PARAM widget (e.g. redDot::StoreKnob) to a named panel shape.
+    // De-parammed controls are not ParamWidgets, so createParamCentered/addParam cannot be
+    // used: this creates the widget, lets `config` run FIRST (setSvg establishes box.size),
+    // then centres it on the shape and addChild()s it. Returns the widget so the caller can
+    // finish wiring it. See PARAM_CLASSIFICATION.md.
+    template <class W> W* bindWidget(const std::string& n, std::function<void(W*)> config = nullptr) {
+        auto* s = this->self()->findNamed(n);
+        if (!s) { WARN("[SvgKit] widget shape not found: %s", n.c_str()); return nullptr; }
+        auto* w = createWidget<W>(rack::math::Vec(0, 0));
+        if (config) config(w);                       // must precede centring: sets box.size
+        w->box.pos = this->self()->centerOf(s).minus(w->box.size.div(2));
+        this->self()->mw()->addChild(w);
+        this->self()->state().bound[s->id] = w;
+        return w;
+    }
+
     template <class W> void bindInput(const std::string& n, int id, std::function<void(W*)> config = nullptr) {
         if (auto* s = this->self()->findNamed(n)) { 
             auto* w = createInputCentered<W>(this->self()->centerOf(s), this->self()->mw()->module, id); 
