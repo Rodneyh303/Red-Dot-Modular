@@ -112,7 +112,9 @@ struct StoreBound : Base {
 
     void onDragMove(const rack::event::DragMove& e) override {
         float range = maxValue - minValue;
-        float speed = (e.mods & GLFW_MOD_SHIFT) ? 0.05f : 0.5f;
+        // DragMoveEvent has no mods field; use APP->window for modifier state.
+        int mods = APP->window->getMods();
+        float speed = (mods & GLFW_MOD_SHIFT) ? 0.05f : 0.5f;
         dragValue += -e.mouseDelta.y * speed / 200.f * range;   // up = positive
         dragValue = rack::math::clamp(dragValue, minValue, maxValue);
         float applied = snap ? std::round(dragValue) : dragValue;
