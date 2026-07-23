@@ -170,9 +170,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             // Monsoon (which owns the store) is resolved lazily -- it may not be attached
             // when the widget is built, and can be attached/detached later.
             for (int c = 0; c < 4; ++c) {
-                auto* k = redDot::bindStoreKnob<Monsoon>(this,
-                    "param_" + std::to_string(attenId(lane,c)),
-                    "res/controls/RDM_Grey_Trim_Bar.svg", storeResolver(),
+                auto* k = redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
+                    "param_" + std::to_string(attenId(lane,c)), storeResolver(),
                     -1.f, 1.f, 0.f, "Global atten",
                     [lane, c](Monsoon& m)          { return m.getGlobalAtten(lane, c); },
                     [lane, c](Monsoon& m, float v) { m.setGlobalAtten(lane, c, v); });

@@ -251,3 +251,30 @@ reason for the whole decision): a mirror of "whichever voice is selected" has no
 meaning to a host. Macro's globals do have stable meaning — they are excluded for the
 different reason that global LOR is just Macro's SCOPE and should not be privileged over
 mono/East (see the decision above).
+
+## CONSISTENCY RULE for de-paramming (binding on all remaining modules)
+
+Rodney: differences between de-parammed modules must come only from GENUINE differences —
+never from the order modules happened to be migrated, nor from mono-vs-poly, nor any other
+incidental choice. Lantern and Macro had already diverged exactly that way (Lantern:
+`createWidget` + manual field wiring + fixed `storeModule`; Macro: helper + resolver), and
+both have been retrofitted onto one path.
+
+**Every de-parammed control, on every module, is wired through `configureStoreKnob`:**
+
+| Concern | The one way |
+|---|---|
+| Face | a generator-emitted **Tag** (`Tag_<Palette>_<Size>_<Style>`), never a path string — a mis-named face is a COMPILE error, not a knob that silently fails to render |
+| Store owner | **always** a `resolveStore` lambda, evaluated lazily — even when the store is trivially the widget's own module (Lantern), so no site differs merely because its store is local |
+| Value | adjacent `get`/`set` lambdas sharing captured indices — a mismatch between them is the characteristic de-param bug (compiles, silently wrong), and adjacency makes it visible on one line |
+| Undo | `StoreEditCoalescer` — one action per drag, plus double-click reset |
+| Tooltip | `valueLabels` (discrete) or `tooltipTextFn` (continuous) — mandatory for switch-like knobs, which are unreadable without it |
+| Persistence | explicit in `dataToJson`/`dataFromJson` — `configParam` used to provide this free |
+
+**Only placement may differ, and only because panels genuinely differ:**
+- `bindStoreKnob<M, Tag>(self, shapeName, …)` — panels using the SVG kit's named shapes.
+- `placeStoreKnob<M, Tag>(self, centreMm, …)` — panels positioning by explicit coordinates.
+Both call the identical `configureStoreKnob`, so the only difference is where the widget
+lands.
+
+Applies to what remains: Macro's other five groups, Mono Sands (54), East (38).

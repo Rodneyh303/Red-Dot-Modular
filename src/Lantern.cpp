@@ -1097,25 +1097,20 @@ struct LanternWidget : ModuleWidget {
         // res/controls/README.md), so no theme lambda is needed here.
         // Each carries valueLabels so the switch position still reads out on hover —
         // that readout used to come from configSwitch's ParamQuantity.
+        // Same wiring path as every other de-parammed control (see StoreBound.hpp
+        // CONSISTENCY RULE). Lantern's store is its OWN module, but it still supplies a
+        // resolver so no call site differs merely because its store happens to be local.
+        auto res = [module]() -> Lantern* { return module; };
         auto addStoreKnob = [&](float xmm, int Lantern::*field, const char* label,
                                 int maxV, std::vector<std::string> labels) {
-            auto* k = createWidget<redDot::StoreKnob<Lantern>>(Vec(0,0));
-            k->setSvg(APP->window->loadSvg(
-                asset::plugin(pluginInstance, "res/controls/RDM_Grey_Small_Bar.svg")));
-            k->box.pos = mm2px(Vec(xmm, 118.f)).minus(k->box.size.div(2));
-            k->storeModule  = module;
-            k->label        = label;
-            k->minValue     = 0.f;
-            k->maxValue     = (float)maxV;
-            k->defaultValue = (field == &Lantern::followMode) ? 1.f
+            const float def = (field == &Lantern::followMode) ? 1.f
                             : (field == &Lantern::rollScroll) ? 2.f : 0.f;
-            k->snap         = true;
-            k->valueLabels  = std::move(labels);
-            k->getValue = [module, field]() {
-                return module ? (float)(module->*field) : 0.f;
-            };
-            k->setter = [field](Lantern& m, float v) { m.*field = (int)std::round(v); };
-            addChild(k);
+            redDot::placeStoreKnob<Lantern, redDot::Tag_Grey_Small_Bar>(
+                this, Vec(xmm, 118.f), res,
+                0.f, (float)maxV, def, label,
+                [field](Lantern& m)          { return (float)(m.*field); },
+                [field](Lantern& m, float v) { m.*field = (int)std::round(v); },
+                /*snap=*/true, std::move(labels));
         };
         addStoreKnob(20.f,            &Lantern::viewMode,   "View",    2, {"Notes","Velocity","Prob"});
         addStoreKnob(208.28f / 2.f,   &Lantern::zoomMode,   "Zoom",    2, {"x1","x2","x4"});

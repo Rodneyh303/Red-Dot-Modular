@@ -149,45 +149,66 @@ struct StoreKnob : rack::widget::Widget {
     ~StoreKnob() { if (tooltip_) { APP->scene->removeChild(tooltip_); delete tooltip_; } }
 };
 
-// ── bindStoreKnob: one call per control ──────────────────────────────────────
-// Collapses the ~18 lines of StoreKnob wiring (face, resolver, range, label, getter,
-// setter) into a single call, in the spirit of SvgPanelKit's bind* helpers.
+// ── ONE configuration path for every de-parammed control ─────────────────────
+// CONSISTENCY RULE (Rodney): every de-parammed control — already migrated or not, mono or
+// poly, kit-panel or hand-placed — is wired the SAME way. Differences may come only from
+// genuine differences (where the store lives, how the panel places widgets), never from
+// the order modules happened to be migrated.
 //
-// WHY THIS MATTERS beyond brevity: the getter and setter appear ADJACENT and share their
-// captured indices, so a mismatched lane/col between them is visible on one line instead of
-// eighteen apart. That mismatch is the characteristic de-param bug — it compiles, and
-// produces a silently wrong value.
+// Face is a generator-emitted Tag (Controls.hpp `Tag_<Palette>_<Size>_<Style>`), not a
+// path string: a mis-named face becomes a COMPILE error rather than a knob that silently
+// fails to render.
 //
-//   bindStoreKnob<Monsoon>(this, shapeName, "res/controls/RDM_Grey_Trim_Bar.svg",
-//       resolver, -1.f, 1.f, 0.f, "Global atten",
-//       [lane,c](Monsoon& m){ return m.getGlobalAtten(lane,c); },
-//       [lane,c](Monsoon& m, float v){ m.setGlobalAtten(lane,c,v); });
-//
-// `Self` is the ModuleWidget (needs the kit's bindWidget). `resolve` returns the module
-// that OWNS the store, evaluated lazily — it may be attached after the widget is built.
-template <class M, class Self>
-StoreKnob<M>* bindStoreKnob(Self* self,
-                            const std::string& shape,
-                            const char* facePath,
+// The store owner is ALWAYS supplied as a resolver lambda, even when it is trivially the
+// widget's own module — so no call site differs merely because its store happens to be local.
+template <class M, class Tag, class W>
+void configureStoreKnob(W* w,
+                        std::function<M*()> resolve,
+                        float lo, float hi, float def,
+                        std::string label,
+                        std::function<float(M&)> get,
+                        std::function<void(M&, float)> set,
+                        bool snap = false,
+                        std::vector<std::string> labels = {}) {
+    w->setSvg(APP->window->loadSvg(rack::asset::plugin(pluginInstance, Tag::path())));
+    w->resolveStore = resolve;
+    w->minValue = lo; w->maxValue = hi; w->defaultValue = def;
+    w->label = label;
+    w->snap = snap;
+    w->valueLabels = labels;
+    // getter and setter sit ADJACENT sharing their captured indices: a mismatch between
+    // them is the characteristic de-param bug (compiles, silently wrong value), and this
+    // makes it visible on one line.
+    w->getValue = [resolve, get]() { M* m = resolve(); return m ? get(*m) : 0.f; };
+    w->setter   = set;
+}
+
+// Placement A — panels using the SVG kit (named shapes). Returns the widget.
+template <class M, class Tag, class Self>
+StoreKnob<M>* bindStoreKnob(Self* self, const std::string& shape,
                             std::function<M*()> resolve,
-                            float lo, float hi, float def,
-                            std::string label,
-                            std::function<float(M&)> get,
-                            std::function<void(M&, float)> set,
-                            bool snap = false,
-                            std::vector<std::string> labels = {}) {
+                            float lo, float hi, float def, std::string label,
+                            std::function<float(M&)> get, std::function<void(M&, float)> set,
+                            bool snap = false, std::vector<std::string> labels = {}) {
     using SK = StoreKnob<M>;
-    return self->template bindWidget<SK>(shape, std::function<void(SK*)>(
-        [=](SK* w) {
-            w->setSvg(APP->window->loadSvg(rack::asset::plugin(pluginInstance, facePath)));
-            w->resolveStore = resolve;
-            w->minValue = lo; w->maxValue = hi; w->defaultValue = def;
-            w->label = label;
-            w->snap = snap;
-            w->valueLabels = labels;
-            w->getValue = [resolve, get]() { M* m = resolve(); return m ? get(*m) : 0.f; };
-            w->setter   = set;
-        }));
+    return self->template bindWidget<SK>(shape, std::function<void(SK*)>([=](SK* w) {
+        configureStoreKnob<M, Tag>(w, resolve, lo, hi, def, label, get, set, snap, labels);
+    }));
+}
+
+// Placement B — panels placing widgets by explicit mm coordinates (no named shapes).
+// Same configuration path; only the positioning differs.
+template <class M, class Tag, class Self>
+StoreKnob<M>* placeStoreKnob(Self* self, rack::math::Vec centreMm,
+                             std::function<M*()> resolve,
+                             float lo, float hi, float def, std::string label,
+                             std::function<float(M&)> get, std::function<void(M&, float)> set,
+                             bool snap = false, std::vector<std::string> labels = {}) {
+    auto* w = rack::createWidget<StoreKnob<M>>(rack::math::Vec(0, 0));
+    configureStoreKnob<M, Tag>(w, resolve, lo, hi, def, label, get, set, snap, labels);
+    w->box.pos = rack::mm2px(centreMm).minus(w->box.size.div(2));   // config first: sets box.size
+    self->addChild(w);
+    return w;
 }
 
 } // namespace redDot
