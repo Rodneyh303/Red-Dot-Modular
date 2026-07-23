@@ -90,14 +90,25 @@ struct StoreBound : Base {
     }
 
     // Present the store value as rotation each frame. We set the SvgKnob transform (tw)
-    // directly, so no ParamQuantity is required. API note: SvgKnob::tw/fb/shadow are
-    // public members in Rack v2 -- Controls.hpp already writes shadow->opacity and
-    // fb->dirty from subclasses, and tw is their sibling, so this is consistent with
-    // existing access. (Unverifiable in the container: no Rack SDK to compile against.)
+    // directly, so no ParamQuantity is required.
+    //
+    // CRITICAL: SvgKnob renders through a FramebufferWidget, which only re-renders when
+    // fb->dirty is set. Rack's SvgKnob::step() sets that flag INSIDE its
+    // `if (getParamQuantity())` branch -- and we deliberately have no ParamQuantity, so
+    // without the explicit fb->dirty below the framebuffer never renders and the knob is
+    // INVISIBLE. (That was the "all the controls disappeared" bug on the first build.)
+    // Dirty only on change, not every frame, so we do not defeat the framebuffer cache.
+    float lastNorm_ = -2.f;   // impossible value -> always dirty on the first step
+
     void step() override {
         if (getValue) {
-            float angle = rack::math::rescale(norm(), 0.f, 1.f, this->minAngle, this->maxAngle);
-            if (this->tw) { this->tw->identity(); this->tw->rotate(angle); }
+            float n = norm();
+            if (n != lastNorm_) {
+                lastNorm_ = n;
+                float angle = rack::math::rescale(n, 0.f, 1.f, this->minAngle, this->maxAngle);
+                if (this->tw) { this->tw->identity(); this->tw->rotate(angle); }
+                if (this->fb) this->fb->dirty = true;
+            }
         }
         Base::step();
     }
