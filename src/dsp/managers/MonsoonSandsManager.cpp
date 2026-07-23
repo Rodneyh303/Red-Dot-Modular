@@ -62,6 +62,10 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
 
     auto* monoVis  = expanderManager.cachedSandsVisualExpander;
     auto* macroVis = expanderManager.cachedMacroSandsVisual;
+    // MVC step 1c: Macro's GLOBAL scope now lives in the store, not in Macro's params.
+    // Resolved once here; the lambdas below capture it by reference. (Macro's widget
+    // step() dual-writes params -> store, so this reads the same values the params hold.)
+    Monsoon* gMon = macroVis ? redDot::findMonsoonEitherSide(macroVis) : nullptr;
 
     // Sands final-ownership lifecycle (Option W): default each cycle to whether
     // any Sands visual stage will own final (Mono, Macro, or East poly). When
@@ -111,7 +115,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     auto applyMacroCV = [&](float base, int lane, int param, float lo, float hi) -> float {
         if (!macroVis || !macroVis->inputs[Macro::macroCvId(lane,param)].isConnected()) return base;
         float cv  = macroVis->inputs[Macro::macroCvId(lane,param)].getVoltage() / 10.f;
-        float att = macroVis->params[Macro::macroAttenId(lane,param)].getValue();
+        float att = (gMon ? gMon->getGlobalAtten(lane, param) : 0.f);
         return clamp(base + cv * att * (hi - lo), lo, hi);
     };
     // Macro SPREAD CV: bipolar, unit-scaled (cv*att over ±1) to match Mono's
@@ -470,10 +474,10 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     if (hasMacro && macroVis) {
         auto publishGlobal = [&](int lane) {
             // bases (knob, no CV)
-            float baseLen = macroVis->params[Macro::lorId(lane,0)].getValue();
-            float baseOff = macroVis->params[Macro::lorId(lane,1)].getValue();
-            float baseRot = macroVis->params[Macro::lorId(lane,2)].getValue();
-            float baseSpr = macroVis->params[Macro::sprId(lane)].getValue();
+            float baseLen = gMon ? gMon->getGlobalLor(lane,0) : 0.f;
+            float baseOff = gMon ? gMon->getGlobalLor(lane,1) : 0.f;
+            float baseRot = gMon ? gMon->getGlobalLor(lane,2) : 0.f;
+            float baseSpr = gMon ? gMon->getGlobalSpread(lane) : 0.f;
             // CV-applied (Macro's OWN value — true POST, drives Macro's own display).
             float cvLen = applyMacroCV(baseLen, lane, 0, 1.f, 16.f);
             float cvOff = applyMacroCV(baseOff, lane, 1, 0.f, 15.f);
@@ -486,7 +490,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             if (macroVis->inputs[Macro::macroCvId(lane,3)].isConnected()) {
                 msin.ownCv.connected   = true;
                 msin.ownCv.unitVoltage = macroVis->inputs[Macro::macroCvId(lane,3)].getVoltage() / 10.f;
-                msin.ownCv.atten       = macroVis->params[Macro::macroAttenId(lane,3)].getValue();
+                msin.ownCv.atten       = (gMon ? gMon->getGlobalAtten(lane, 3) : 0.f);
             }
             float cvSpr = redDot::SpreadResolver::effective(msin);
             // P9 send-tap: the delta the SENDS distribute can be tapped PRE or POST the
@@ -495,8 +499,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             auto tappedDelta = [&](int item, float lo, float hi) -> float {
                 if (!macroVis || !macroVis->inputs[Macro::macroCvId(lane,item)].isConnected()) return 0.f;
                 float cv  = macroVis->inputs[Macro::macroCvId(lane,item)].getVoltage() / 10.f;
-                float att = macroVis->params[Macro::macroAttenId(lane,item)].getValue();
-                float tap = macroVis->params[Macro::tapIdForItem(lane,item)].getValue();  // P9b: LOR tap (0-2) or spread tap (3)
+                float att = (gMon ? gMon->getGlobalAtten(lane, item) : 0.f);
+                float tap = (gMon ? gMon->getGlobalTap(lane, ((item) == 3 ? 1 : 0)) : 0.f);  // P9b: LOR tap (0-2) or spread tap (3)
                 float effAtt = 1.f + (att - 1.f) * tap;
                 return cv * effAtt * (hi - lo);
             };
@@ -526,11 +530,11 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             for (int lane = 0; lane < 4; ++lane) {
                 // Standalone Macro global spread — own CV only (same as publishGlobal), via the resolver.
                 redDot::SpreadResolver::Inputs ssin;
-                ssin.base = macroVis->params[Macro::sprId(lane)].getValue();
+                ssin.base = (gMon ? gMon->getGlobalSpread(lane) : 0.f);
                 if (macroVis->inputs[Macro::macroCvId(lane,3)].isConnected()) {
                     ssin.ownCv.connected   = true;
                     ssin.ownCv.unitVoltage = macroVis->inputs[Macro::macroCvId(lane,3)].getVoltage() / 10.f;
-                    ssin.ownCv.atten       = macroVis->params[Macro::macroAttenId(lane,3)].getValue();
+                    ssin.ownCv.atten       = (gMon ? gMon->getGlobalAtten(lane, 3) : 0.f);
                 }
                 float sp = redDot::SpreadResolver::effective(ssin);
                 macroVis->spreadEffective[lane] = sp;

@@ -168,10 +168,12 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
         // Push Macro's direction + LOR length to macroLaneDir_/macroLOR_ (all 4 lanes, always)
         if (macroVis) {
             auto* mmod = dynamic_cast<StraitsSandsMacroVisual*>(macroVis);
+            // MVC step 1c: Macro's global direction now reads from the store, not its params.
+            Monsoon* gMon = redDot::findMonsoonEitherSide(macroVis);
             for (int el = 0; el < 4; ++el) {
                 // el = editor lane (MEL=0, OCT=1, REST=2, ACC=3) = strand index
                 engine.macroLaneDir_[el] = (SequencerEngine::LaneDir)(int)std::lround(
-                    math::clamp(macroVis->params[StraitsMacroVisualIds::dirDispId(el)].getValue(), 0.f, 3.f));
+                    math::clamp(gMon ? gMon->getGlobalDir(el) : 0.f, 0.f, 3.f));
                 // Push Macro's own LOR length for bounce detection.
                 // macroBase is indexed by ENGINE lane (REST=0, MEL=1, OCT=2, ACC=3);
                 // convert editor lane → engine lane via EDITOR_TO_ENGINE_LANE.
