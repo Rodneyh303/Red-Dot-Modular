@@ -339,7 +339,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // mirror is right; that makes it an A/B proof. Finally the params are deleted and
         // the knobs become StoreBound, at which point this mirror goes away too.
         {
-            using MId = StraitsMacroVisualIds;
+            namespace MId = StraitsMacroVisualIds;   // namespace alias (NOT `using X = Y`, which is a TYPE alias)
             auto pv = [&](int id) { return module->params[id].getValue(); };
             for (int lane = 0; lane < 4; ++lane) {
                 for (int c = 0; c < 3; ++c) monsoon->setGlobalLor(lane, c, pv(MId::lorId(lane, c)));
