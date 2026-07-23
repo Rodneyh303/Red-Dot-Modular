@@ -1099,7 +1099,9 @@ struct LanternWidget : ModuleWidget {
         // that readout used to come from configSwitch's ParamQuantity.
         auto addStoreKnob = [&](float xmm, int Lantern::*field, const char* label,
                                 int maxV, std::vector<std::string> labels) {
-            auto* k = createWidget<redDot::StoreBound<redDot::Grey_Small_Bar, Lantern>>(Vec(0,0));
+            auto* k = createWidget<redDot::StoreKnob<Lantern>>(Vec(0,0));
+            k->setSvg(APP->window->loadSvg(
+                asset::plugin(pluginInstance, "res/controls/RDM_Grey_Small_Bar.svg")));
             k->box.pos = mm2px(Vec(xmm, 118.f)).minus(k->box.size.div(2));
             k->storeModule  = module;
             k->label        = label;
