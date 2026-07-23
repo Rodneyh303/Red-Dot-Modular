@@ -17,16 +17,26 @@ not justified by their scope. It is an artefact.
 convention. The arrays that predate them were never migrated, and Macro was never brought
 into the store at all — so Macro's params became the model by default.
 
-### Symptom 1 — three different mono conventions in ONE struct
-| array | mono lives at |
-|---|---|
-| `lorBase[288]`, `spread[64]` (Stage 1/1b) | slot **0** (`VoiceResolver::voiceSlot`) |
-| `laneDir[96]`, `macroOwn[64]` | index **15** |
-| `varlegDeleg[30]` | **absent** — poly only |
+### Symptom 1 — mixed mono conventions (CENSUSED against call sites, not comments)
 
-`macroOwn`'s comment is self-contradictory: "v=0..15 voice-slot, 15=mono". `voiceSlot(V1)`
-is 0, so "voice-slot" and "15 = mono" cannot both hold. This is exactly the documented
-failure mode — two parallel addressing schemes is where off-by-ones breed.
+| array | convention | how verified |
+|---|---|---|
+| `lorBase[288]`, `spread[64]` | **OK** — voiceSlot, mono = slot 0 | callers use `VoiceResolver::voiceSlot(...)` |
+| `varlegAtten[96]`, `macroSend[256]`, `macroAtten[256]` | **OK** — voiceSlot, mono = slot 0 | East passes `VoiceResolver::voiceSlot` results |
+| `laneDir[96]`, `macroOwn[64]` | **LEGACY** — poly-bank, mono at index **15** | `getMonoLaneDir`/`getMonoMacroOwn` read `15*6` / `15*4` |
+| `varlegDeleg[30]` | **NO MONO SLOT** — poly only (v = 0..14) | declaration + accessors |
+
+So FIVE of eight arrays are already on the right convention; only two are legacy and one
+lacks a mono slot. The scope of the fix is much smaller than the struct's comments suggest.
+
+`macroOwn`'s comment is actively WRONG and is what made the whole struct look inconsistent:
+it says "v=0..15 voice-slot, 15=mono", but `voiceSlot(V1)` is 0 — it is poly-bank indexing,
+not voice-slot. Fix the comment even if the array migration is deferred.
+
+CAUTION for the migration: several call sites pass `ch - 1` / `pv` rather than a named
+`voiceSlot(...)` expression. Those must be read individually — the accessor tells you the
+array's convention, but only the call site tells you what the caller believed. This is the
+documented off-by-one breeding ground (two parallel addressing schemes).
 
 ### Symptom 2 — global scope has no home in the model
 Macro's global LOR / attens / spread / taps live in Macro's `params[]`, which the engine
@@ -54,8 +64,11 @@ This precedes the remaining de-param work. Doing it after would mean migrating E
 model we then change, and re-platforming Macro twice.
 
 Suggested slices, each build-verified (a wrong slot is a SILENT wrong-value read):
-1. Reconcile the mono convention in `laneDir` and `macroOwn` onto `voiceSlot` (highest
-   off-by-one risk; do it alone, with the static_asserts extended).
+0. Fix `macroOwn`'s incorrect comment immediately (zero risk, and it is what makes the
+   struct read as more broken than it is).
+1. Reconcile `laneDir` and `macroOwn` onto `voiceSlot` — the ONLY two arrays needing it.
+   Highest off-by-one risk; do it alone, extend the static_asserts, and read every
+   `ch - 1` / `pv` call site individually rather than trusting the accessor.
 2. Give `varlegDeleg` a mono slot so it matches the others.
 3. Add the global slice and move Macro's engine-read params into it (the re-platforming).
 4. THEN resume de-param: East, Mono, Macro — all now the same shape of job.
