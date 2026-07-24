@@ -137,9 +137,9 @@ struct MonsoonTemasekExpander : Module {
                         latchFromButton(r, false);
                     // Buttons (momentary params, manual only)
                     if (btnTrig[r*2].process(params[TK::BTN_START + r*2].getValue()))
-                        latchRow(true);
+                        latchFromButton(r, true);
                     if (btnTrig[r*2+1].process(params[TK::BTN_START + r*2+1].getValue()))
-                        latchRow(false);
+                        latchFromButton(r, false);
                 }
             }
         }
@@ -337,115 +337,3 @@ struct TemasekTrigButton : widget::Widget {
     void onDragEnd(const event::DragEnd&) override { pressed = false; }
 };
 
-struct MonsoonTemasekExpanderWidget : ModuleWidget {
-    static constexpr float HP_W   = 40.f;
-    static constexpr float PW_MM  = HP_W * 5.08f;    // 203.2
-    static constexpr float PH_MM  = 128.5f;
-
-    // Geometry -- must match panel_src/gen_temasek.py
-    static constexpr float MARGIN  = 5.0f;
-    static constexpr float ROW_TOP = 8.0f;
-    static constexpr float ROW_H   = (PH_MM - 16.0f) / 8.f;
-    static constexpr float J_OUTER = MARGIN;
-    static constexpr float BTN_D   = MARGIN + 8.5f;
-    static constexpr float KNOB1   = MARGIN + 17.5f;
-    static constexpr float KNOB2   = MARGIN + 27.0f;
-    static constexpr float BTN_C   = MARGIN + 36.0f;
-    static constexpr float J_INNER = MARGIN + 44.5f;
-
-    static float rowY(int verb, int sub) {
-        return ROW_TOP + (verb * 2 + sub + 0.5f) * ROW_H;
-    }
-    static float lx(float x_mm, bool flip) { return flip ? (PW_MM - x_mm) : x_mm; }
-
-    std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
-    int lastThemeLight = -1;
-
-    MonsoonTemasekExpanderWidget(MonsoonTemasekExpander* module) {
-        setModule(module);
-        std::string dark  = asset::plugin(pluginInstance, "res/panels/Temasek_panel_dark.svg");
-        std::string light = asset::plugin(pluginInstance, "res/panels/Temasek_panel_light.svg");
-        panelSvgDark  = APP->window->loadSvg(dark);
-        panelSvgLight = APP->window->loadSvg(light);
-        setPanel(Svg::load(dark));
-        addChild(createWidget<ScrewSilver>(mm2px(Vec(1.5f, 1.5f))));
-        addChild(createWidget<ScrewSilver>(mm2px(Vec(PW_MM - 1.5f, 1.5f))));
-        addChild(createWidget<ScrewSilver>(mm2px(Vec(1.5f, PH_MM - 1.5f))));
-        addChild(createWidget<ScrewSilver>(mm2px(Vec(PW_MM - 1.5f, PH_MM - 1.5f))));
-
-        for (int verb = 0; verb < TK::N_VERBS; ++verb) {
-            for (int sub = 0; sub < TK::TYPES; ++sub) {
-                const float y = rowY(verb, sub);
-                for (int side = 0; side < TK::SIDES; ++side) {
-                    const bool flip = (side == 1);
-                    const int  r    = TK::rowId(verb, side, sub);
-
-                    // trigger jacks: domain outside, codomain inside
-                    addInput(createInputCentered<PJ301MPort>(
-                        mm2px(Vec(lx(J_OUTER, flip), y)), module, TK::DOMAIN_TRIG_START + r));
-                    addInput(createInputCentered<PJ301MPort>(
-                        mm2px(Vec(lx(J_INNER, flip), y)), module, TK::CODOMAIN_TRIG_START + r));
-
-                    // momentary buttons (NOT params)
-                    for (int d = 0; d < 2; ++d) {
-                        auto* b = new TemasekTrigButton();
-                        b->mod      = module;
-                        b->row      = r;
-                        b->isDomain = (d == 0);
-                        b->box.pos  = mm2px(Vec(lx(d == 0 ? BTN_D : BTN_C, flip), y))
-                                          .minus(b->box.size.div(2));
-                        addChild(b);
-                    }
-
-                    // grain knob (DAW-exposed param)
-                    auto* g = createParamCentered<Trimpot>(
-                        mm2px(Vec(lx(KNOB1, flip), y)), module, TK::GRAIN_START + r);
-                    if (g->getParamQuantity()) g->getParamQuantity()->snapEnabled = true;
-                    addParam(g);
-
-                    // second knob: leader (Collapse) or step (Rotate)
-                    if (verb == TK::V_COLLAPSE || verb == TK::V_ROTATE) {
-                        const int idx = (verb == TK::V_COLLAPSE)
-                                      ? TK::LEADER_START + side * TK::TYPES + sub
-                                      : TK::STEP_START   + side * TK::TYPES + sub;
-                        auto* k2 = createParamCentered<Trimpot>(
-                            mm2px(Vec(lx(KNOB2, flip), y)), module, idx);
-                        if (k2->getParamQuantity()) k2->getParamQuantity()->snapEnabled = true;
-                        addParam(k2);
-                    }
-
-                    // scatter fwd/back jacks
-                    if (verb == TK::V_SCATTER) {
-                        const int i = side * TK::TYPES + sub;
-                        addInput(createInputCentered<PJ301MPort>(
-                            mm2px(Vec(lx(J_OUTER, flip), y - ROW_H * 0.22f)),
-                            module, TK::SCATTER_FWD_START + i));
-                        addInput(createInputCentered<PJ301MPort>(
-                            mm2px(Vec(lx(J_OUTER, flip), y + ROW_H * 0.22f)),
-                            module, TK::SCATTER_BACK_START + i));
-                    }
-
-                    // pending light
-                    addChild(createLightCentered<SmallLight<RedLight>>(
-                        mm2px(Vec(lx(KNOB1, flip), y - ROW_H * 0.34f)), module,
-                        TK::PENDING_LIGHT_START + r));
-                }
-            }
-        }
-    }
-
-    void step() override {
-        ModuleWidget::step();
-        if (!module) return;
-        Monsoon* m = redDot::findMonsoonEitherSide(module);
-        const int wantLight = (m && m->lightTheme) ? 1 : 0;
-        if (wantLight != lastThemeLight) {
-            lastThemeLight = wantLight;
-            for (Widget* child : children)
-                if (auto* sp = dynamic_cast<app::SvgPanel*>(child)) {
-                    sp->setBackground(wantLight ? panelSvgLight : panelSvgDark);
-                    break;
-                }
-        }
-    }
-};
