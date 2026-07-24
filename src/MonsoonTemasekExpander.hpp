@@ -171,24 +171,25 @@ struct MonsoonTemasekExpander : Module {
 // ── Widget ────────────────────────────────────────────────────────────────────
 struct MonsoonTemasekExpanderWidget : ModuleWidget {
 
-    static constexpr float PW_MM = 40.f * 5.08f;
+    static constexpr float PW_MM = 30.f * 5.08f;
     static constexpr float PH_MM = 128.5f;
 
-    // Mirror geometry -- must match gen_temasek.py exactly
-    static constexpr float MARGIN   =  5.0f;
-    static constexpr float CX       = PW_MM / 2.f;
-    static constexpr float N_ROWS_F = 8.f;
-    static constexpr float ROW_H    = (PH_MM - 16.f) / N_ROWS_F;
-    static constexpr float ROW_TOP  =  8.0f;
-    static constexpr float J_OUTER  = MARGIN;
-    static constexpr float BTN_D    = MARGIN +  8.5f;
-    static constexpr float KNOB1    = MARGIN + 17.5f;
-    static constexpr float KNOB2    = MARGIN + 27.0f;
-    static constexpr float BTN_C    = MARGIN + 36.0f;
-    static constexpr float J_INNER  = MARGIN + 44.5f;
+    // Mirror geometry -- MUST MATCH gen_temasek.py exactly
+    static constexpr float MARGIN    =  4.0f;
+    static constexpr float CX        = PW_MM / 2.f;
+    static constexpr float N_ROWS_F  = 8.f;
+    static constexpr float GROUP_GAP =  4.0f;
+    static constexpr float ROW_H     = (PH_MM - 14.f - GROUP_GAP * 3.f) / N_ROWS_F;
+    static constexpr float ROW_TOP   =  7.0f;
+    static constexpr float J_OUTER   = MARGIN +  0.0f;
+    static constexpr float BTN_D     = MARGIN +  7.5f;
+    static constexpr float KNOB1     = MARGIN + 15.0f;
+    static constexpr float KNOB2     = MARGIN + 22.5f;
+    static constexpr float BTN_C     = MARGIN + 30.0f;
+    static constexpr float J_INNER   = MARGIN + 37.5f;
 
     static float rowY(int verb, int sub) {
-        return ROW_TOP + (verb * 2 + sub + 0.5f) * ROW_H;
+        return ROW_TOP + verb * GROUP_GAP + (verb * 2 + sub + 0.5f) * ROW_H;
     }
     static float lx(float x_mm, bool flip) {
         return flip ? PW_MM - x_mm : x_mm;

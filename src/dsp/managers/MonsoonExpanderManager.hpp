@@ -148,6 +148,11 @@ struct MonsoonExpanderManager {
                 } else if (curr->model == modelMonsoonChangeAlleyExpander) {
                     if (!cachedChangeAlleyExpander)
                         cachedChangeAlleyExpander = reinterpret_cast<MonsoonChangeAlleyExpander*>(curr);
+                } else if (curr->model == modelMonsoonTemasekExpander) {
+                    // Temasek: transform companion. Without this the pointer stayed null,
+                    // so pendings latched and lit but NOTHING ever applied.
+                    if (!cachedTemasekExpander)
+                        cachedTemasekExpander = reinterpret_cast<MonsoonTemasekExpander*>(curr);
                 // } else if (curr->model == modelMonsoonSandsExpander) {
                 //     if (!cachedDnaExpander) cachedDnaExpander = reinterpret_cast<MonsoonSandsExpander*>(curr);
                 //     dnaExpanderCount++;

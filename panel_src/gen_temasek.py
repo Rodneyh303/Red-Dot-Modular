@@ -6,7 +6,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dotmod_design import px, svg_open, logo_embed, jack, trim
 
-HP     = 40
+HP     = 30          # tightened from 40 -- the 40HP version was mostly empty space
 PW_MM  = HP * 5.08
 PH_MM  = 128.5
 
@@ -23,22 +23,25 @@ def pal(dark):
                  edborder="#c0c4ca", tabband="#cdd4dc",
                  red="#d4001a", gold="#a07808")
 
-MARGIN  = 5.0
+MARGIN  = 4.0
 CX      = PW_MM / 2
 N_VERBS = 4
 N_ROWS  = N_VERBS * 2
-ROW_H   = (PH_MM - 16.0) / N_ROWS
-ROW_TOP = 8.0
+# Verb groups get a gap between them; rows within a group are tight.
+GROUP_GAP = 4.0
+ROW_H     = (PH_MM - 14.0 - GROUP_GAP * (N_VERBS - 1)) / N_ROWS
+ROW_TOP   = 7.0
 
-J_OUTER = MARGIN
-BTN_D   = MARGIN + 8.5
-KNOB1   = MARGIN + 17.5
-KNOB2   = MARGIN + 27.0
-BTN_C   = MARGIN + 36.0
-J_INNER = MARGIN + 44.5
+# Tight column pitch: jack 8mm, button 6mm, trim 7mm -- 7.5mm pitch is comfortable.
+J_OUTER = MARGIN + 0.0
+BTN_D   = MARGIN + 7.5
+KNOB1   = MARGIN + 15.0
+KNOB2   = MARGIN + 22.5
+BTN_C   = MARGIN + 30.0
+J_INNER = MARGIN + 37.5
 
 def rowY(verb, sub):
-    return ROW_TOP + (verb * 2 + sub + 0.5) * ROW_H
+    return ROW_TOP + verb * GROUP_GAP + (verb * 2 + sub + 0.5) * ROW_H
 
 def lx(x_mm, flip):
     return (PW_MM - x_mm) if flip else x_mm
