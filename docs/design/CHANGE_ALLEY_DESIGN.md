@@ -1089,3 +1089,37 @@ So the knob layout is more uniform than 13 claimed: Collapse (grain + leader), R
 (grain + step), Scatter (grain + counter delta) all take two; only Reflect takes one, being
 self-inverse with no pivot worth exposing (an off-centre reflection is just reflect-then-
 rotate, already reachable by composition).
+
+
+### 13e. SETTLED — Scatter navigates by FWD/BACK jacks, exactly like dice
+
+Supersedes the counter-knob idea in 12f/13d. Scatter gets **one grain knob** plus **two extra
+jacks: forward one step and back one step** — the same control shape as dice/backwards-dice.
+
+**Why this beats the signed step knob** (which I had argued was more expressive because it
+gives jump distance): dice already establishes fwd/back as THE idiom for navigating
+addressable randomness in this instrument. Scatter does the same job one level up, on
+relationships instead of material. Using the identical gesture makes the parallel legible on
+the panel — *this is dice, for structure* — which is the LINEAGE thesis stated in hardware.
+Coherence with an established gesture beats a nice-to-have.
+
+**Signed indices are free** (Rodney, from phase reversible mode). PhiloxRng holds a
+`uint64_t counter`, and `philox4x32(counter, key)` is a pure function of it, so:
+- back from 0 wraps to UINT64_MAX — still a valid, deterministic draw, not an error;
+- a signed offset cast to the counter lands there automatically via two's complement;
+- **`counter + 1 - 1 == counter` in modular arithmetic at every position**, so FWD and BACK
+  are exact inverses everywhere, including across the origin.
+This is the same property phase reversible mode relies on for scrubbing backwards, which is
+why it needed no special casing there either.
+
+**Revised knob/jack count per verb, per side, per pin type:**
+
+| Verb | Knobs | Buttons | Jacks |
+|---|---|---|---|
+| Collapse | 2 (grain, leader) | 2 (dom, codom) | 2 |
+| Rotate | 2 (grain, step) | 2 | 2 |
+| **Scatter** | **1 (grain)** | 2 | **4** (2 trigger + fwd + back) |
+| Reflect | 1 (grain) | 2 | 2 |
+
+Scatter trades a knob for two jacks — better, because the two jacks are sequencer-drivable
+where a knob position is not.
