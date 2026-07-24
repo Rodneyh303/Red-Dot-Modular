@@ -100,6 +100,30 @@ int main() {
       bool inRange = true; for (int v = 0; v < 16; ++v) inRange &= (s2[v] < 16);
       CHK(inRange, "transpose keeps every source in range under fan-in"); }
 
+    // ── §12: STEP SIZE changes the STRUCTURE, not just the speed ──
+    { uint8_t s2[16]; fillIdent(s2);
+      rotateValues(s2, 16, 4, 2);                       // block 4, step 2
+      CHK(s2[0] == 2 && s2[2] == 0, "step 2 in a block of 4 makes a 2-CYCLE (0<->2)");
+      CHK(s2[1] == 3 && s2[3] == 1, "...and a second disjoint 2-cycle (1<->3)");
+      rotateValues(s2, 16, 4, 2);
+      bool id = true; for (int v = 0; v < 16; ++v) id &= (s2[v] == v);
+      CHK(id, "step 2 has PERIOD 2, not 4 -- a different structure, not a faster rotate"); }
+    { uint8_t s2[16]; fillIdent(s2);
+      rotateValues(s2, 16, 4, 3);                       // span-1 = backwards
+      CHK(s2[1] == 0 && s2[0] == 3, "step span-1 runs the rotation BACKWARDS"); }
+    { uint8_t s2[16]; fillIdent(s2); uint8_t a1[16], b1[16];
+      rotateValues(s2, 16, 4, 0); std::memcpy(a1, s2, 16);
+      fillIdent(s2); rotateValues(s2, 16, 4, 1); std::memcpy(b1, s2, 16);
+      CHK(std::memcmp(a1, b1, 16) == 0, "step 0 clamps to 1 -- the knob cannot select a no-op"); }
+    { uint8_t s2[16]; fillIdent(s2); uint8_t a1[16], b1[16];
+      rotateValues(s2, 16, 4, 4); std::memcpy(a1, s2, 16);      // step == span
+      fillIdent(s2); rotateValues(s2, 16, 4, 1); std::memcpy(b1, s2, 16);
+      CHK(std::memcmp(a1, b1, 16) == 0, "step == span also clamps to 1"); }
+    { uint8_t s2[16]; fillIdent(s2); collapse(s2, 16, 4);
+      blockOffset(s2, 16, 4, 2);                        // 4 blocks, k=2 = opposite
+      CHK(s2[0] == 8, "offset k=2: block 0 follows block 2 (partners, not neighbours)");
+      CHK(s2[8] == 0, "...and block 2 follows block 0 -- a swap"); }
+
     std::printf(fail ? "\n%d passed, %d FAILED\n" : "\n%d passed, 0 failed\n", pass, fail);
     return fail ? 1 : 0;
 }

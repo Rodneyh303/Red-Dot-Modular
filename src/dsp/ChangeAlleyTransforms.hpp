@@ -31,7 +31,20 @@ inline void collapse(uint8_t* src, int activeCount, int blockSize) {
 
 // RotateValues: src[v] advances +1 WITHIN its block (CODOMAIN -- shifts the SOURCE) (wraps at block edge). Applied to the
 // CURRENT table (composes per trigger — that is the point: repeated triggers march).
-inline void rotateValues(uint8_t* src, int activeCount, int blockSize) {
+// STEP is a stepped-knob parameter, not CV: it is configuration (set-and-forget, latches
+// under lock) and each trigger still applies exactly ONE discrete change. It alters the
+// STRUCTURE, not merely the speed -- in a block of 4, step 2 yields two 2-cycles (0<->2,
+// 1<->3) rather than one 4-cycle, and step span-1 runs the rotation BACKWARDS. Steps that
+// share a factor with the span produce sub-cycles; coprime steps traverse the whole block.
+// Clamped into [1, span-1]: 0 and span are both no-ops, so the knob cannot select nothing.
+inline int clampStep(int step, int span) {
+    if (span <= 1) return 0;
+    int st = step % span;
+    if (st < 0) st += span;
+    return (st == 0) ? 1 : st;
+}
+
+inline void rotateValues(uint8_t* src, int activeCount, int blockSize, int step = 1) {
     const int b = clampBlock(blockSize, activeCount);
     for (int v = 0; v < activeCount && v < 16; ++v) {
         const int cur   = src[v];
@@ -39,7 +52,8 @@ inline void rotateValues(uint8_t* src, int activeCount, int blockSize) {
         int blockEnd    = base + b;                       // tile edge…
         if (blockEnd > activeCount) blockEnd = activeCount; // …partial trailing block
         const int span  = blockEnd - base;
-        src[v] = (uint8_t)(base + ((cur - base + 1) % (span > 0 ? span : 1)));
+        if (span <= 1) continue;
+        src[v] = (uint8_t)(base + ((cur - base + clampStep(step, span)) % span));
     }
 }
 
@@ -82,9 +96,11 @@ inline void reflectRows(uint8_t* src, int activeCount, int blockSize) {
 // (one source per row in, one out), and wraps over the ACTIVE pool.
 inline void blockOffset(uint8_t* src, int activeCount, int blockSize, int k) {
     const int b = clampBlock(blockSize, activeCount);
-    if (k == 0 || b <= 0) return;
+    if (b <= 0) return;
+    if (k == 0) return;   // explicit no-op before clamping
     const int nBlocks = (activeCount + b - 1) / b;          // includes a partial trailing block
     if (nBlocks <= 1) return;
+    k = clampStep(k, nBlocks);                             // 1..nBlocks-1; 0/nBlocks are no-ops
     for (int v = 0; v < activeCount && v < 16; ++v) {
         const int cur      = src[v];
         const int curBlock = cur / b;
@@ -105,7 +121,7 @@ inline void blockOffset(uint8_t* src, int activeCount, int blockSize, int k) {
 // reflectRows() is already the domain-mirror, so its codomain twin is reflectValues().
 
 // Rotate ROWS within each block: voices cycle their sourcing roles.
-inline void rotateRows(uint8_t* src, int activeCount, int blockSize) {
+inline void rotateRows(uint8_t* src, int activeCount, int blockSize, int step = 1) {
     const int b = clampBlock(blockSize, activeCount);
     uint8_t tmp[16];
     for (int v = 0; v < 16; ++v) tmp[v] = src[v];
@@ -113,7 +129,8 @@ inline void rotateRows(uint8_t* src, int activeCount, int blockSize) {
         const int base = (v / b) * b;
         int end = base + b; if (end > activeCount) end = activeCount;
         const int span = end - base; if (span <= 0) continue;
-        const int from = base + (((v - base) - 1 + span) % span);   // take the previous row's source
+        const int st   = clampStep(step, span);
+        const int from = base + (((v - base) - st + span * 16) % span);   // take that row's source
         src[v] = tmp[from];
     }
 }
@@ -148,10 +165,11 @@ inline void transpose(uint8_t* src, int activeCount) {
 }
 
 // Dispatch. transform: 0=Collapse 1=Rotate 2=Scatter 3=Reflect (ChangeAlleyIds order).
-inline void apply(int transform, uint8_t* src, int activeCount, int blockSize, uint32_t seed) {
+inline void apply(int transform, uint8_t* src, int activeCount, int blockSize, uint32_t seed,
+                  int step = 1) {
     switch (transform) {
         case 0: collapse(src, activeCount, blockSize); break;
-        case 1: rotateValues (src, activeCount, blockSize); break;
+        case 1: rotateValues (src, activeCount, blockSize, step); break;
         case 2: scatter (src, activeCount, blockSize, seed); break;
         case 3: reflectRows  (src, activeCount, blockSize); break;
         default: break;

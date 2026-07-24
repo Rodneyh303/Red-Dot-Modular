@@ -598,3 +598,37 @@ Two ways out, to decide before building the panel:
   height or forces a second expander.
 Leaning mode toggle: the axis is a genuine *pair* relationship (each verb has exactly two
 twins), which is what a two-position switch expresses well.
+
+### 12c. STEP SIZE as a stepped knob (settled) — and a correction
+
+§10 said "step fixed at +1; variable stride = trigger N times, NOT a CV amount". That
+conflated two different things. The objection was to CV — continuous, modulated, breaking
+"every pin change is a discrete atomic event". **A stepped knob is not CV.** It is
+configuration: set-and-forget, latching under lock, and each trigger still applies exactly
+one discrete change. The objection does not apply, and the earlier blanket "fixed at +1" is
+withdrawn.
+
+**And step size is not a shortcut for repeated triggers — it changes the STRUCTURE.**
+In a block of 4:
+- step 1 → one 4-cycle (period 4)
+- step 2 → TWO DISJOINT 2-CYCLES, 0↔2 and 1↔3 (period 2) — a different relational topology,
+  not a faster rotation
+- step 3 (= span−1) → the same 4-cycle running BACKWARDS
+Generally: steps coprime with the span traverse the whole block; steps sharing a factor
+split it into sub-cycles. That is a genuinely different musical object per step, which is
+exactly what deserves a control.
+
+Clamped to [1, span−1] via `clampStep`, so 0 and span (both no-ops) are unreachable — the
+knob cannot select "nothing". Same treatment for `blockOffset`'s k against the block count:
+with 4 blocks, k=1 is "follow the next", k=2 is "swap with your opposite", k=3 is "follow
+the previous".
+
+Applies to: rotateValues, rotateRows, blockOffset. NOT to Collapse (no ordering to step
+through), Scatter (the seed already varies it), Reflect (self-inverse, nothing to step) or
+Transpose (no parameters at all).
+
+**Panel consequence — this sharpens 12b rather than solving it.** Three verbs now want TWO
+stepped knobs (grain + step) while others want one or none. Dead knobs on the rows that do
+not use a parameter would be worse than no knobs. That argues against one-row-per-verb with
+a uniform control strip, and toward a smaller set of transform rows with a per-row config
+area (grain, step, VALUES/ROWS) whose fields grey out when a verb does not use them.
