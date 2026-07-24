@@ -1,5 +1,4 @@
 #pragma once
-// (MonsoonTemasekExpander.hpp included later to avoid circular deps -- forward decl used)
 // MonsoonChangeAlleyExpander — 16×16 pin-matrix expander
 // Rows = consuming voices (0=mono/V1, 1..15=poly V2..V16)
 // Columns = source voices (same indexing)
@@ -14,6 +13,7 @@
 #include <cmath>
 #include <cstdio>
 #include "Monsoon.hpp"
+#include "MonsoonTemasekExpander.hpp"   // full type: submatrix highlight reads pendingRows
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/StoreEditAction.hpp"   // pin edits: store-backed, undoable (DAW_PARAM_AUDIT 5b)
 
@@ -126,7 +126,6 @@ struct MonsoonChangeAlleyExpander : Module {
 };
 
 // ── Widget ───────────────────────────────────────────────────────────────────
-struct MonsoonTemasekExpander;   // forward decl for submatrix highlight
 struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
 
     // Matrix geometry in mm (must match gen_change_alley.py exactly — 29HP kit layout)
