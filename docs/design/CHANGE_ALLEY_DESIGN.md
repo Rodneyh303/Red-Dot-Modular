@@ -1196,3 +1196,43 @@ ordering. But ~53-70HP, unusable in a small rack, and too dense to label properl
 carry labels, and afford CV; complexity is progressively disclosed; matches the existing
 expander idiom and the claiming/ordering machinery already exists. Costs: another module to
 build and maintain, and transforms require the companion attached.
+
+## 15. Change Alley V2 — one module (branch: feat/change-alley-v2)
+
+Rodney: go back to a single module for comparison, keeping everything Temasek does better,
+with the original intra-left / inter-right split around the grid.
+
+**42HP, replacing Change Alley 29HP + Temasek 24HP = 53HP.** An 11HP saving and one module
+instead of two, with no loss of capability.
+
+```
+   INTRA controls    |    16x16 GRID    |    INTER controls
+   (within-block)         (centre)           (across-block)
+        57mm               99.5mm                57mm
+```
+
+Cell size 6.22mm against the old 6.34mm, so the grid stays as readable as it is today.
+Rows keep the 9.0 / 6.8 pitch, so the four verb groups align exactly as before.
+
+**The old 8-row control column is GONE.** Temasek's verbs strictly superset it: the old
+column had four transforms with a grain knob each, while V2 has the same four verbs with
+domain AND codomain variants, intra AND inter levels, leader/step parameters, and
+reversible scatter. Keeping both would have left one board with two transform systems of
+different capability and no way to tell which fired.
+
+Per row, OUTER -> INNER: domain jack, codomain jack, grain knob, then
+leader (Collapse) / step (Rotate) / domain-BACK jack (Scatter), then domain button,
+codomain button, pending light — plus a codomain-BACK jack on Scatter rows only.
+
+### Status
+- Panel generator written: `panel_src/gen_change_alley_v2.py`, both themes generated.
+- NOT yet built: the module + widget. The path is a merge rather than new work — take
+  MonsoonChangeAlleyExpander's grid/pins/overlay and MonsoonTemasekExpander's ids,
+  PendingAction, trigger detection and application, and drop Change Alley's ChangeAlleyIds
+  transform params entirely.
+- The expander manager's Temasek application loop moves to operate on this module directly,
+  and the TkHighlight POD indirection can go — with one module there is no cycle to avoid.
+
+### To compare
+`master_deparam` has the two-module version working. This branch has the single-module
+panel. Both are on disk; judge the 42HP single against the 29+24 pair in a rack.
