@@ -140,8 +140,6 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
                     dotModular::ca::apply(t, tbl, active, p.blk, p.scatterSeed);
                     p.armed = false;
                 }
-            }
-        }
                 // ── Temasek transforms ────────────────────────────────────────────
                 auto* tk = cachedTemasekExpander;
                 if (tk && ca) {
@@ -163,6 +161,8 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
                         tk->lights[TemasekIds::PENDING_LIGHT_START + row].setBrightness(0.f);
                     }
                 }
+            }
+        }
         // (pin push to pe moved to processDNA head — it must precede the pre-spread
         //  remapSlewedByPins. Restructure-transform application above stays here, at the
         //  phrase boundary; its result is picked up by processDNA's push next cycle.)
