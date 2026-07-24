@@ -110,18 +110,41 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
             if ((boundary && !engine.locked) || unlockEdge) {
                 const int active = engine.numPolyVoices + 1;      // mono + live poly
                 for (int row = 0; row < 8; ++row) {
-                    if (!ca->pendingRow[row]) continue;
-                    const int  t   = row / 2;                     // transform index
-                    const bool isR = (row % 2 == 0);
-                    const int  blk = MonsoonChangeAlleyExpander::blockFromKnob(
-                                         ca->params[ChangeAlleyIds::BLOCK_KNOB_START + row].getValue());
+                    auto& p = ca->pendingRow[row];
+                    if (!p.armed) continue;
+                    const int   t   = row / 2;
+                    const bool  isR = (row % 2 == 0);
+                    // §14a: grain was LATCHED AT TRIGGER TIME -- do not re-read the knob here.
+                    // Turning the knob between trigger and boundary no longer changes what fires.
                     uint8_t* tbl = isR ? ca->rhythmSrc : ca->melodySrc;
-                    if (t == ChangeAlleyIds::T_SCATTER) ca->scatterSeed = ca->scatterSeed * 1664525u + 1013904223u;
-                    dotModular::ca::apply(t, tbl, active, blk, ca->scatterSeed);
-                    ca->pendingRow[row] = false;
+                    if (t == ChangeAlleyIds::T_SCATTER)
+                        p.scatterSeed = p.scatterSeed * 1664525u + 1013904223u;
+                    dotModular::ca::apply(t, tbl, active, p.blk, p.scatterSeed);
+                    p.armed = false;
                 }
             }
         }
+                // ── Temasek transforms ────────────────────────────────────────────
+                auto* tk = cachedTemasekExpander;
+                if (tk && ca) {
+                    for (int row = 0; row < TemasekIds::N_ROWS; ++row) {
+                        auto& p = tk->pendingRows[row];
+                        if (!p.armed) continue;
+                        const int verb = row / 4;
+                        const int type = row % 2;
+                        uint8_t* tbl   = (type == 0) ? ca->rhythmSrc : ca->melodySrc;
+                        if (verb == TemasekIds::V_SCATTER) {
+                            tk->scatterCounter[((row%4)/2) * TemasekIds::TYPES + type] +=
+                                (uint64_t)(int64_t)p.scatterDelta;
+                        }
+                        dotModular::ca::applyTemasek(
+                            verb, p.isDomain, p.isInter,
+                            tbl, active, p.grain, p.leaderOrStep,
+                            tk->scatterCounter[((row%4)/2) * TemasekIds::TYPES + type]);
+                        p.armed = false;
+                        tk->lights[TemasekIds::PENDING_LIGHT_START + row].setBrightness(0.f);
+                    }
+                }
         // (pin push to pe moved to processDNA head — it must precede the pre-spread
         //  remapSlewedByPins. Restructure-transform application above stays here, at the
         //  phrase boundary; its result is picked up by processDNA's push next cycle.)

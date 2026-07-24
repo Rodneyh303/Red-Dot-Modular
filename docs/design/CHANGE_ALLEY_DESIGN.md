@@ -513,3 +513,686 @@ members and setters, VoiceResolver::spreadMode (dead), Monsoon::spreadInterpMono
 PatternEngine's mirror + setter, the context-menu toggle, the JSON field, and the
 spreadInterpMono parameter threaded through processDNA/sync. apply()/target() lost their
 mode and nPoly parameters. Pre-release, so no migration path was needed.
+## 12. Cross-block operations, and the domain/codomain axis
+
+Rodney asked whether scatter/rotate/reflect could act ACROSS 2×2, 4×4, 8×8 sub-matrices
+rather than only within blocks. Working it through surfaced something about the EXISTING
+transforms first.
+
+### The structural constraint
+One-pin-per-row means the board is not a free 16×16 binary matrix — it is a FUNCTION
+`f: row → col`. So "rotate this tile 90°" is generally ill-defined: rotating a tile's pins
+can put two pins in one row, or move a pin out of the tile into a row that already has one.
+Every operation must preserve function-ness, which rules most 2D tile ops out.
+
+But it rules them out informatively, because there are exactly TWO things one can permute:
+- the **codomain** — which SOURCE a voice points at (change the value), or
+- the **domain** — which VOICE holds a given sourcing role (permute the rows).
+
+### Finding: our four transforms already mix both, by accident
+- `rotate` shifts the VALUE — codomain: `src[v] = base + (cur - base + 1) % span`
+- `reflect` swaps ROWS — domain: `src[v] = tmp[mirror]`
+
+Nobody chose that; each was simply the natural way to write it. So the transform set is not
+organised along its own most important axis. Making the axis EXPLICIT doubles the space for
+free — *rotate-rows* (voices cycle their sourcing roles) and *reflect-values* (sources mirror
+within the block) are both meaningful and neither exists today.
+
+Open decision: does domain/codomain become a MODE on the existing four, or does it double
+them to eight? Mode is cheaper on panel space and keeps the four verbs; doubling is more
+discoverable.
+
+### Cross-block: the clean form is a SOURCE-BLOCK OFFSET
+Not a 2D tile operation — block *i* sources from block *i+k* instead of itself. Collapse@4
+with offset 1 makes voices 0-3 all follow voice 4: SECTION A FOLLOWS SECTION B rather than
+each section being internally homophonic. Musically strong (call-and-response between
+groups), trivially well-defined, preserves one-pin-per-row by construction, and composes
+with the existing grain knob as a second parameter.
+
+### The one genuine 2D operation that works: TRANSPOSE
+Reflect across the main diagonal = invert the relation: whoever I was copying now copies me.
+For a permutation that is exactly f⁻¹, and it is the only operation that acts on the
+relationship's DIRECTION rather than its content. Caveat: Collapse produces fan-in (many
+rows → one source), which has no inverse, so transpose needs a defined fallback for
+non-injective boards.
+
+### Ranking
+1. **Source-block offset** — easy, very musical, composes with the grain knob.
+2. **Domain/codomain as an explicit axis** — free doubling, and it fixes a real inconsistency.
+3. **Transpose** — elegant, needs a fan-in rule.
+Dropped: free tile rotation — ill-defined for the wrong reasons.
+
+### 12a. Naming and control shape (settled)
+
+**Renamed** so every verb carries its axis: `rotate` → `rotateValues` (codomain), `reflect`
+→ `reflectRows` (domain). With `rotateRows` and `reflectValues` added, each verb now has
+both twins and the axis is visible at every call site.
+
+**blockOffset IS its own transform, not a modifier.** It takes a trigger and a grain knob
+like the others:
+- grain knob = the BLOCK SIZE (which blocks are being re-pointed),
+- offset fixed at **+1 per trigger**, exactly as rotateValues fixes its step at +1 — a
+  larger jump is "trigger it twice", never a CV amount. Same rule, same reason: every pin
+  change stays a discrete atomic event.
+It is not *paired* with another transform. The composition that makes it musical
+(collapse@4, then offset → "section A follows section B") happens ACROSS PHRASE BOUNDARIES
+via the normal queue (§11), like any other pair of transforms. Standalone on an identity
+board it is simply a coarse rotate — meaningful, just less interesting than composed.
+
+**Transpose is its own transform too, and the only one with NO grain parameter.** It
+inverts the whole relation; there is no block size to choose (restricting inversion to a
+block is ill-defined once sources point outside it). Its row would leave the grain knob
+unused — an argument for giving Transpose a button+jack but no knob, rather than a dead
+control.
+
+### 12b. OPEN: the roster now exceeds the panel
+Verbs with the axis made explicit: Collapse, RotateValues, RotateRows, Scatter(Values),
+Scatter(Rows), ReflectValues, ReflectRows, BlockOffset, Transpose. At two pin types per
+verb that is far beyond the committed 8 rows (4 transforms × R/M) on the 29HP panel.
+
+Two ways out, to decide before building the panel:
+- **Mode toggle** — keep ~5 rows (Collapse, Rotate, Scatter, Reflect, Offset) and add a
+  per-row VALUES/ROWS switch; Transpose gets its own knob-less row. ~6 rows × 2 types = 12.
+  Cheaper on space, keeps the verb count low, but hides half the behaviour behind a toggle.
+- **Full rows** — one row per verb per type. Most discoverable, but roughly doubles panel
+  height or forces a second expander.
+Leaning mode toggle: the axis is a genuine *pair* relationship (each verb has exactly two
+twins), which is what a two-position switch expresses well.
+
+### 12c. STEP SIZE as a stepped knob (settled) — and a correction
+
+§10 said "step fixed at +1; variable stride = trigger N times, NOT a CV amount". That
+conflated two different things. The objection was to CV — continuous, modulated, breaking
+"every pin change is a discrete atomic event". **A stepped knob is not CV.** It is
+configuration: set-and-forget, latching under lock, and each trigger still applies exactly
+one discrete change. The objection does not apply, and the earlier blanket "fixed at +1" is
+withdrawn.
+
+**And step size is not a shortcut for repeated triggers — it changes the STRUCTURE.**
+In a block of 4:
+- step 1 → one 4-cycle (period 4)
+- step 2 → TWO DISJOINT 2-CYCLES, 0↔2 and 1↔3 (period 2) — a different relational topology,
+  not a faster rotation
+- step 3 (= span−1) → the same 4-cycle running BACKWARDS
+Generally: steps coprime with the span traverse the whole block; steps sharing a factor
+split it into sub-cycles. That is a genuinely different musical object per step, which is
+exactly what deserves a control.
+
+Clamped to [1, span−1] via `clampStep`, so 0 and span (both no-ops) are unreachable — the
+knob cannot select "nothing". Same treatment for `blockOffset`'s k against the block count:
+with 4 blocks, k=1 is "follow the next", k=2 is "swap with your opposite", k=3 is "follow
+the previous".
+
+Applies to: rotateValues, rotateRows, blockOffset. NOT to Collapse (no ordering to step
+through), Scatter (the seed already varies it), Reflect (self-inverse, nothing to step) or
+Transpose (no parameters at all).
+
+**Panel consequence — this sharpens 12b rather than solving it.** Three verbs now want TWO
+stepped knobs (grain + step) while others want one or none. Dead knobs on the rows that do
+not use a parameter would be worse than no knobs. That argues against one-row-per-verb with
+a uniform control strip, and toward a smaller set of transform rows with a per-row config
+area (grain, step, VALUES/ROWS) whose fields grey out when a verb does not use them.
+
+### 12d. Action / control requirement table
+
+Axis: **codomain** = changes WHICH SOURCE a voice points at · **domain** = changes WHICH
+VOICE holds a sourcing role · **direction** = inverts the relation itself.
+
+| # | Verb | Axis | Grain | Step | Seed | Self-inv | Notes |
+|---|------|------|:-----:|:----:|:----:|:--------:|-------|
+| 1 | **Collapse** | codomain | ● | – | – | no | `src[v]=blockLeader(v)`. Grain 1 = Identity (full independence); grain = pool = total unison. The width control. |
+| 2 | **RotateValues** | codomain | ● | ● | – | no | Source advances within block. Step changes topology: step 2 in a block of 4 = two 2-cycles, not a faster 4-cycle. |
+| 3 | **RotateRows** | domain | ● | ● | – | no | Voices cycle their sourcing ROLES; the set of sources is preserved. |
+| 4 | **Scatter** | codomain | – ● | – | ● | no | Seeded re-draw within block. Allows FAN-IN (two rows may land on one source). |
+| 5 | **ReflectValues** | codomain | ● | – | – | **yes** | Source mirrors within block; rows stay put. |
+| 6 | **ReflectRows** | domain | ● | – | – | **yes** | Rows reverse within block = retrograde of the correlation structure. |
+| 7 | **BlockOffset** | codomain | ● | ● (k) | – | no | Block *i* sources block *i+k*. k=1 follow-next, k=2 swap-with-opposite, k=3 follow-previous. |
+| 8 | **Transpose** | direction | – | – | – | ~ | Inverts the relation (f⁻¹ when injective). NO parameters. Self-inverse only for injective boards; fan-in loses information. |
+
+**Identity is not a verb** — it is Collapse at grain 1, so it needs no control of its own.
+
+**Gap: there is no `scatterRows`.** It would be meaningfully different, not a duplicate:
+`scatter` re-DRAWS sources and permits collisions (fan-in), whereas a row-shuffle would be a
+true PERMUTATION preserving the multiset of sources. Worth adding for symmetry if the
+VALUES/ROWS toggle is adopted, since otherwise Scatter is the one verb with a dead toggle
+position.
+
+### Control cost
+
+| Layout | Rows (×2 pin types) | Knobs | Triggers (btn+jack+light) | Toggles |
+|---|---|---|---|---|
+| **One row per verb** | 8 × 2 = 16 | (7 grain + 3 step) × 2 = **20** | 16 | 0 |
+| **VALUES/ROWS toggle** | 6 × 2 = 12 | (5 grain + 2 step) × 2 = **14** | 12 | 6 |
+
+Committed panel today: 8 rows, 8 knobs, 8 triggers at 29HP. **Either layout exceeds it** —
+the toggle version needs ~75% more knobs and 50% more rows; the full version more than
+doubles everything. This is the open decision in 12b, now costed.
+
+### 12e. Scatter should draw from PHILOX, not its own RNG (Rodney)
+
+**The inconsistency.** Scatter currently owns a private `scatterSeed` advanced by an LCG,
+feeding an xorshift32 inside `scatter()`. That makes it the ONLY irreversible verb — every
+other one can be undone by its own logic (Collapse idempotent; Rotate steppable backwards
+via step = span−1; both Reflects self-inverse; BlockOffset reversible via k → nBlocks−k;
+Transpose self-inverse when injective). Scatter's seed only moves forward.
+
+That contradicts the instrument's stated signature (LINEAGE): *two reversible axes, both
+reversible because the randomness is ADDRESSABLE*. Backwards-dice exists precisely because a
+previous draw state is addressable rather than consumed. Scatter consumes its state — a
+second, weaker RNG mechanism bolted beside the good one.
+
+**The fix: scatter draws from Philox at its own counter.** PhiloxRng already exposes exactly
+what is needed — `setCounter`/`getCounter`, and per its own header comment
+*"philox4x32(counter, key) is a pure function — the draw at index N doesn't depend on having
+drawn N−1."* So:
+- Scatter uses a Philox stream with its OWN KEY (a distinct stream) and its OWN COUNTER.
+- Trigger advances the counter; a backwards gesture decrements it. Reversibility comes free
+  from the same machinery dice already uses — no new mechanism, no variant table to store.
+- "Scatter variant N" becomes literally "counter = N", so it is addressable, reproducible
+  across patches, and cheap to persist (one integer, not a permutation).
+
+**Own counter, not the dice counter — orthogonality must survive.** §3/§10 establish that
+dice re-rolls MATERIAL and restructure re-rolls RELATIONSHIPS, and that neither disturbs the
+other. Sharing the dice counter would couple them (a re-dice would silently re-scatter).
+Share the MECHANISM (counter-addressable Philox), not the counter.
+
+**Why the phrase-boundary rule makes this fit (Rodney's point).** Transforms apply at phrase
+boundaries, and redraw happens at phrase boundaries too. Both axes therefore advance on the
+SAME clock event, so both counters step in lockstep with the musical form while remaining
+independently addressable. One timing model, two addressable axes — which is precisely the
+LINEAGE thesis restated at the level of relationships.
+
+**Consequence for the control table (12d):** Scatter's second control is no longer a hidden
+seed. It is a COUNTER, with the same forward/back gesture dice has — so Scatter's row wants
+a trigger plus a back-trigger, exactly like dice/backwards-dice, rather than a variant knob.
+
+### 12f. SIGNED step replaces forward/back trigger pairs (proposal, not yet built)
+
+Rodney asked whether scatter needs dice-style forward and back gates+buttons. There is a
+cheaper and more capable option that falls out of 12c: **make the step knob bipolar and let
+it be the SIGNED increment**. Then no verb needs a second trigger:
+
+- **RotateValues / RotateRows** — step is already directional (step = span−1 *is* backwards);
+  a signed knob makes that explicit instead of a trick.
+- **BlockOffset** — k → −k is "follow the PREVIOUS block".
+- **Scatter** — its step IS the Philox counter delta (12e): +1 next variant, −1 previous,
+  **+3 jumps three ahead**.
+
+One trigger plus a signed step covers forward AND back for all three, and adds JUMP
+DISTANCE, which a pair of buttons cannot express.
+
+**Why this does not apply to the rest:** Reflect (both twins) and Transpose need no back
+because RETRIGGERING IS THE INVERSE — asserted in the tests, not assumed. Collapse is
+idempotent. So only the three verbs that already want a step knob need direction at all.
+
+| Verb | Grain | Signed step | Triggers |
+|---|:---:|:---:|:---:|
+| Collapse | ● | – | 1 |
+| RotateValues / RotateRows | ● | ● | 1 |
+| Scatter | ● | ● (Philox counter Δ) | 1 |
+| ReflectValues / ReflectRows | ● | – *(self-inverse)* | 1 |
+| BlockOffset | ● | ● (k) | 1 |
+| Transpose | – | – | 1 |
+
+**Counter-argument, for the record:** dice has two buttons, so a fwd/back pair for Scatter
+would be more consistent with existing idiom. But dice's pair exists because a die roll has
+no natural DISTANCE — you can only step one draw at a time. Scatter's counter does have
+distance, so a signed knob is strictly more expressive, and setting −1 still reads as
+"scatter, backwards".
+
+**Implementation trap to get right (do not assume):** `clampStep` currently folds any value
+into [1, span−1], so a negative would silently become span−1. For rotate those happen to be
+equivalent; for a Philox counter delta they are NOT. Signed step needs its own clamping —
+symmetric around zero, excluding zero (a no-op) — rather than reusing `clampStep`.
+
+**Status: DESIGN ONLY.** Engine currently has unsigned `step` (12c) and scatter still uses
+its private LCG seed (12e not yet built). Build order when picked up:
+1. Scatter → Philox stream with own key + counter (12e).
+2. Signed step + symmetric clamp, replacing `clampStep` for the three directional verbs.
+3. Panel: revisit 12b/12d costs, which this reduces (no back-triggers, still 2 knobs on
+   three rows).
+
+### 12g. The operation GRID: axis × granularity (Rodney — block row/column swaps)
+
+Rodney's observation that block row swaps and column swaps preserve structure completes a
+grid we had been filling in piecemeal. There are two independent choices:
+
+- **AXIS** — domain (permute ROWS: which voice holds a sourcing role) vs codomain (permute
+  VALUES: which source a voice points at). §12.
+- **GRANULARITY** — within a block, or whole blocks at a time.
+
+|                | **Domain (rows)** | **Codomain (values)** |
+|----------------|-------------------|------------------------|
+| **Within block** | rotateRows · reflectRows · *(scatterRows — gap, 12d)* | rotateValues · reflectValues · collapse · scatter |
+| **Block level**  | **blockRowRotate — GAP** · **blockRowSwap — NEW** | blockOffset *(= block col rotate)* · **blockColSwap — NEW** |
+
+Two things fall out immediately:
+
+**1. `blockOffset` was never a special case — it is the block-level codomain ROTATE.** Naming
+it `blockOffset` obscured that. Under this grid it is one cell of four, and its domain twin
+(rotate whole blocks of ROWS) simply does not exist yet.
+
+**2. Swap is NOT a special case of rotate.** With 4 blocks, swapping 0↔2 is a transposition,
+not a cyclic shift; only at exactly 2 blocks do they coincide. So swap is a genuinely
+distinct operation on both axes — and, being an involution, it is SELF-INVERSE, which
+matters given 12f (self-inverse verbs need no back-gesture).
+
+**Why both swaps preserve structure (the property Rodney identified):**
+- **blockRowSwap** permutes the DOMAIN, so the multiset of sources is untouched — the
+  correlation pattern is transplanted wholesale onto different voices. Who plays a role
+  changes; what is sourced does not.
+- **blockColSwap** permutes the CODOMAIN uniformly, so the SHAPE of the relation is
+  untouched — a fan-in of four rows stays a fan-in of four rows, just aimed elsewhere.
+Neither can break one-pin-per-row: both are bijections applied to a function.
+
+**Parameterisation (the awkward part).** A general "swap block i with block j" needs TWO
+selectors, which the panel cannot afford (12d). The clean single-parameter form is
+**pairwise-adjacent swap**: with grain g giving nBlocks, pair block 2i with block 2i+1.
+No extra control beyond grain, self-inverse, and musically clear ("swap the halves of each
+pair of sections"). A stride parameter (pair i with i+k) generalises it but only produces
+disjoint pairs for particular k/nBlocks combinations, so it needs validation rather than
+free choice — probably not worth the control.
+
+**Status: DESIGN ONLY.** Neither swap is implemented, nor is blockRowRotate. If picked up,
+implement all three together — they complete the grid, and the grid is the argument for
+having them.
+
+## 12g. LEVEL is the third axis — and it COLLAPSES the roster
+
+Rodney: block row-swaps and column-swaps preserve structure too. They do — and working out
+what they *are* reorganises everything above.
+
+**Both are safe by construction.** A block ROW swap exchanges the source-assignments of two
+blocks of rows; a block COLUMN swap relabels every source in block A to block B and vice
+versa. In both cases each row still holds exactly one source, so one-pin-per-row survives.
+No fan-in is created that was not already there.
+
+**And they are not new verbs — they are the EXISTING verbs at a different LEVEL.**
+- block row swap = a DOMAIN operation applied to blocks instead of rows
+- block column swap = a CODOMAIN operation applied to blocks instead of sources
+
+**The proof that LEVEL is a real axis: `blockOffset` was never a separate verb.** It advances
+each source's BLOCK index by k while preserving position-within-block. That is exactly
+RotateValues performed one level up. It only looked distinct because we built it before
+noticing the axis.
+
+### The three-axis decomposition
+
+Every operation is (VERB × AXIS × LEVEL), with GRAIN and signed STEP as parameters:
+
+| | **WITHIN block** | **ACROSS blocks** |
+|---|---|---|
+| **Collapse** (codomain) | all rows in a block → its leader | all blocks → the first block |
+| **Collapse** (domain) | — *(row-collapse is not meaningful: rows cannot merge)* | — |
+| **Rotate** (codomain) | `rotateValues` | **= `blockOffset`** — blocks shift by k |
+| **Rotate** (domain) | `rotateRows` | blocks of rows cycle their roles |
+| **Scatter** (codomain) | seeded re-draw in block | seeded re-assignment of whole blocks |
+| **Scatter** (domain) | *(gap: true row permutation)* | blocks of rows shuffled |
+| **Reflect** (codomain) | `reflectValues` | block ORDER reversed — **this is the column swap** (2 blocks) |
+| **Reflect** (domain) | `reflectRows` | **this is the row swap** (2 blocks) |
+| **Transpose** | level-independent — inverts the relation | — |
+
+Rodney's swaps are the **Reflect-across** cases: with 2 blocks, reversing block order IS a
+swap; with 4 blocks it is swap(0,3)+swap(1,2). A general "swap block i with block j" would
+need two indices and is not worth a control — Reflect-across covers the musical cases.
+
+### Consequence: 5 verbs, not 8 — and the panel problem eases
+
+Roster becomes **Collapse, Rotate, Scatter, Reflect, Transpose**, with two toggles
+(VALUES/ROWS, WITHIN/ACROSS) and two knobs (grain, signed step). That is
+4 verbs × 2 axes × 2 levels = 16 behaviours, plus Transpose, from **5 buttons + 2 toggles +
+2 knobs** — against the 8-verb roster's 20 knobs and 16 triggers (12d).
+
+| | Rows (×2 pin types) | Knobs | Triggers | Toggles |
+|---|---|---|---|---|
+| 8-verb roster (12d) | 16 | 20 | 16 | 0 |
+| 3-axis model | **5 × 2 = 10** | (grain+step) × 2 = **4** | 10 | 4 |
+
+This is the first layout that plausibly fits a panel of the committed size, and it is
+*more* capable than the 8-verb list, not less.
+
+### Open / to verify
+- **`scatterRows` is still a genuine gap** (12d) — within-block row permutation. Under this
+  model it is simply Scatter × domain × within, so the model predicts it should exist.
+- Collapse × domain is meaningless (rows cannot merge) — the one empty cell. Whether the
+  toggle greys out there or Collapse is treated as codomain-only is a UI decision.
+- The current engine implements the WITHIN column plus `blockOffset`. The ACROSS column is
+  otherwise unbuilt; each cell is a small function of the same shape as its within-block twin.
+
+### 12h. Transpose is a PARTIAL operation (Rodney) — it needs a convention, not a rule
+
+Correct, and it is the one verb that is not structure-preserving by construction.
+
+**Why.** The board is a function `f: row → col`. `f⁻¹` is a function only when `f` is a
+bijection over the active pool. It fails two ways:
+- **non-injective (fan-in)** — Collapse sends many rows to one source, so `f⁻¹(source)` is a
+  SET, not a value;
+- **non-surjective** — if no row sources voice 7, `f⁻¹(7)` is undefined.
+
+Every other verb takes valid boards to valid boards by construction: permutations stay
+permutations, and Collapse's fan-in is deliberate. Transpose alone has an output that is not
+determined by its input, so outside the bijections ANY definition is a convention.
+
+**And the degenerate case is the COMMON one.** Collapse is the width control and will be used
+constantly; it produces maximal fan-in. Transpose would hit its fallback routinely, not
+rarely. A verb whose defined behaviour is the exception is a design smell.
+
+**Current convention (implemented):** row *t* sources the LOWEST row that sourced *t*; rows
+that nobody sourced keep their existing source. Stated positively: *transpose inverts the
+injective part of the relation and leaves everything else fixed.* Deterministic and
+explicable, but still a choice — and it is NOT self-inverse off the bijections (the tests
+assert self-inversion only for the involution case, deliberately).
+
+**Options, to decide:**
+1. **Keep the convention, document it on the panel/tooltip.** Cheapest. Risk: the common
+   case behaves in a way the name does not advertise.
+2. **Make transpose refuse non-bijections** — no-op, with the pending light flashing or the
+   trigger ignored. Honest about the operation's domain, but a control that silently does
+   nothing is poor UX.
+3. **Gate it on invertibility and SHOW it** — a lit/dimmed indicator meaning "this board is
+   invertible". Turns the constraint into information: it tells the player their board is a
+   clean permutation, which is musically meaningful in itself (every voice both copies and
+   is copied).
+4. **Drop transpose.** It is already the outlier on every axis of 12g — level-independent,
+   axis-independent, parameter-less — and now domain-restricted too. Four signals pointing
+   the same way.
+
+**Assessment.** Option 3 is the most interesting: it makes the precondition visible rather
+than hiding it, and "is my correlation structure a permutation?" is a genuine musical
+question about whether the ensemble is a closed loop of mutual influence or a hierarchy.
+Option 4 remains defensible on parsimony — transpose is the only verb that resisted every
+unification, and 12g showed how much clarity came from things that DID unify.
+
+### 12i. Gate-modulating the two toggles (Rodney) — 2 bits = 4 modes
+
+Requirement: with 4-5 verbs, still be able to reach all FOUR combinations of the two toggles
+(VALUES/ROWS × WITHIN/ACROSS) by gate, not just by hand.
+
+**Do NOT give each verb four triggers.** That is 4 verbs × 4 modes × 2 pin types = 32
+trigger jacks. The toggles are two independent binary choices, so two gates encode all four
+states directly:
+
+| axis gate | level gate | mode |
+|---|---|---|
+| low | low | VALUES × WITHIN |
+| high | low | ROWS × WITHIN |
+| low | high | VALUES × ACROSS |
+| high | high | ROWS × ACROSS |
+
+So per pin type: **4-5 verb triggers + 2 mode gates**, not 16-20 triggers.
+
+**LEVEL-sensitive, not edge-toggling.** The gate should SET the state while high, not flip it
+on an edge. Level-sensitive is idempotent and stateless — a sequencer lane holding "high"
+always means ROWS, and a missed or doubled edge cannot desynchronise the panel switch from
+the actual mode. Edge-toggling would make the mode depend on gate HISTORY, which is exactly
+the kind of hidden state this design has avoided everywhere else.
+
+Panel toggle = the value when no cable is patched; patched gate overrides (the standard Rack
+normalled-input idiom), so the switch keeps showing what will happen.
+
+**Latch the WHOLE action at trigger time.** This is the load-bearing implementation detail.
+When a verb is triggered, the pending entry must capture *(verb, axis, level, grain, step)*
+as it is AT THAT MOMENT — not read the toggles again at the phrase boundary. Otherwise a
+mode gate changing between trigger and boundary silently alters a queued action, and the
+pending light would be lying about what is about to happen. Dice already latches this way
+(§11: one pending per type, latest-overwrites); this extends the same rule to the action's
+parameters.
+
+Consequence: §11's "one pending per (transform × type)" becomes "one pending per type,
+carrying its full parameter set" — which is simpler, and means a sequencer can set mode,
+fire, change mode, fire again within a phrase, and get exactly the two actions it asked for
+(latest-overwrites still applies).
+
+**Revised control cost per pin type**
+
+| | Buttons | Trigger jacks | Mode gates | Toggles | Knobs |
+|---|---|---|---|---|---|
+| 4 verbs | 4 | 4 | 2 | 2 | 2 (grain, signed step) |
+| 5 verbs (+Transpose) | 5 | 5 | 2 | 2 | 2 |
+
+Doubling for R/M: **8-10 buttons, 8-10 trigger jacks, 4 mode gates, 4 toggles, 4 knobs.**
+Compare 12d's 8-verb roster: 20 knobs, 16 triggers. The three-axis model with gated modes is
+both smaller and strictly more expressive — every one of the 16 verb×axis×level behaviours is
+reachable under sequencer control.
+
+## 13. SETTLED LAYOUT — intra left, inter right (Rodney)
+
+Supersedes the toggle scheme in 12i.
+
+**Level is encoded by POSITION, axis by WHICH BUTTON.** Panel grows on the right of the grid:
+- **LEFT of the grid** — the four INTRA-submatrix verbs (within blocks)
+- **RIGHT of the grid** — their INTER-submatrix equivalents (across blocks)
+- Per verb, per side, per pin type: **2 buttons + 2 jacks** — one pair for DOMAIN, one for
+  CODOMAIN — plus stepped knob(s) and one light.
+
+**Why this beats 12i's toggles:** the gesture IS the full specification. There is no mode
+state to latch at trigger time, nothing that can drift between trigger and phrase boundary,
+and no pending light that can misrepresent what is queued. 12i's whole "latch the whole
+action" complication disappears because there is no separate mode to latch.
+
+**Queue unchanged (§11):** one pending action for rhythm, one for melody, applied at the
+phrase boundary, latest-overwrites.
+
+**Transpose: DROPPED.** Resolves 12h — no partial operation, no convention needed for
+non-bijections, no invertibility indicator. It was the outlier on every axis.
+
+**Knobs are NOT uniform.** Only Rotate and Scatter use a step; Collapse has no ordering to
+step through and Reflect is self-inverse. Dead knobs are worse than absent ones, so per side
+per pin type: 4 grain knobs + 2 step knobs = **6, not 8**.
+
+**Size estimate:** ~8 rows per side, each ~50mm wide (2 jacks, 2 buttons, 1-2 knobs, light),
+plus the 99mm grid ≈ **40HP**. Large, but in the register of big matrix modules, and it is
+the centrepiece. Mock before committing.
+
+### 13a. The Collapse question, spelled out
+
+There are two sensible meanings of "collapse", and they differ in ONE character of code.
+
+Say a Scatter has just run, and the board (block size 4) looks like this:
+
+```
+row:   0   1   2   3  |  4   5   6   7
+src:   9   2  14   5  | 11   3   7   0     <- each row sources some scattered voice
+```
+
+**Collapse ABSOLUTE** — `src[v] = leaderIndex(v)`. Everyone points AT the leader voice:
+```
+row:   0   1   2   3  |  4   5   6   7
+src:   0   0   0   0  |  4   4   4   4
+```
+Block 0 all follow voice 0; block 1 all follow voice 4. **The scatter is wiped** — the
+previous structure is gone, and each leader now sources itself (independent).
+
+**Collapse RELATIVE** — `src[v] = src[leaderIndex(v)]`. Everyone copies WHAT THE LEADER
+POINTS AT:
+```
+row:   0   1   2   3  |  4   5   6   7
+src:   9   9   9   9  | 11  11  11  11
+```
+Block 0 all follow voice 9; block 1 all follow voice 11. **The scatter is inherited** — you
+get four groups each locked onto a DIFFERENT randomly-chosen voice, internally unified.
+
+**Why this matters:** absolute throws away whatever came before, so `scatter → collapse`
+wastes the scatter. Relative composes — `scatter → collapse-relative` is exactly the
+theme-and-variations setup from §9: several groups, each following a different source.
+
+### 13b. …and this FILLS the empty cell in §12g
+
+12g listed Collapse × domain as meaningless ("rows cannot merge"). That was wrong. The two
+collapse variants ARE the axis:
+
+- **Collapse CODOMAIN (absolute)** — set the source VALUE to the leader's index.
+- **Collapse DOMAIN (relative)** — adopt the leader's ROW ASSIGNMENT.
+
+That is exactly the same distinction as the Rotate pair: `rotateValues` changes the value,
+`rotateRows` takes another row's value. Collapse-relative takes the LEADER's value; rotateRows
+takes the PREVIOUS row's value. Same axis, different target row.
+
+So Rodney's two-button-per-verb layout is not an approximation — every verb genuinely has
+both twins, and the grid has no empty cells:
+
+| | CODOMAIN (set the value) | DOMAIN (adopt another row's value) |
+|---|---|---|
+| **Collapse** | point at the leader (absolute) | copy the leader's source (relative) |
+| **Rotate** | `rotateValues` | `rotateRows` |
+| **Scatter** | seeded re-draw (allows fan-in) | seeded row permutation (bijective) |
+| **Reflect** | `reflectValues` | `reflectRows` |
+
+INTER versions are the same four, one level up: block-collapse (all blocks → first, or all
+adopt block 0's assignments), block-rotate (= the old `blockOffset`), block-scatter, and
+block-reflect (= Rodney's row/column block swaps).
+
+
+### 13c. CORRECTION to 13b — absolute is neither axis; the codomain twin is QUANTISE
+
+Rodney: "isn't absolute domain and relative codomain?" Half right, and the question exposed a
+missing operation. Using the formal test with `f: row -> col` (domain = `f o s`, row v takes
+row s(v)'s value; codomain = `t o f`, v's value is relabelled):
+
+| formula | classification |
+|---|---|
+| `src[v] = leader(v)` (absolute) | **NEITHER** — row-determined, discards f entirely |
+| `src[v] = src[leader(v)]` (relative) | **DOMAIN** — `f o leader` |
+| `src[v] = leader(src[v])` (**new**) | **CODOMAIN** — `leader o f` |
+
+So 13b mislabelled absolute as codomain. The real codomain twin is a THIRD operation we did
+not have: *quantise your source to its block's leader*. On the scattered board:
+```
+before:  9   2  14   5  | 11   3   7   0
+after:   8   0  12   4  |  8   0   4   0
+```
+Rows keep their individuality; what shrinks is the ALPHABET of sources (16 possible -> one
+per block). Musically distinct from domain-collapse, which unifies the voices themselves.
+
+**Reconciliation:** absolute is just DOMAIN collapse applied to an identity board — with
+f = id, `f(leader(v)) == leader(v)`. The original `collapse()` only ever looked absolute
+because it was only ever tested from identity. Asserted in the tests.
+
+**Only two buttons needed.** Absolute is reachable as Identity -> collapseDomain across two
+phrase boundaries, which is §11's compose-across-boundaries idiom; a gesture reachable by
+composing two existing ones does not earn a third button, and a third would make the panel
+asymmetric.
+
+### 13d. LEADER OFFSET — Collapse's second knob (Rodney)
+
+Collapse was listed in §13 as having no second parameter. Wrong: the leader itself is one.
+`leaderOffset` selects WHICH member of the block leads (0 = first), wrapping within the block
+so it stays valid at every grain and inside a short trailing block.
+
+| cell | what the knob selects |
+|---|---|
+| Collapse x domain x intra | which member's source the block adopts |
+| Collapse x codomain x intra | which member sources quantise TO |
+| Collapse x either x inter | which BLOCK everyone collapses to |
+
+So the knob layout is more uniform than 13 claimed: Collapse (grain + leader), Rotate
+(grain + step), Scatter (grain + counter delta) all take two; only Reflect takes one, being
+self-inverse with no pivot worth exposing (an off-centre reflection is just reflect-then-
+rotate, already reachable by composition).
+
+
+### 13e. SETTLED — Scatter navigates by FWD/BACK jacks, exactly like dice
+
+Supersedes the counter-knob idea in 12f/13d. Scatter gets **one grain knob** plus **two extra
+jacks: forward one step and back one step** — the same control shape as dice/backwards-dice.
+
+**Why this beats the signed step knob** (which I had argued was more expressive because it
+gives jump distance): dice already establishes fwd/back as THE idiom for navigating
+addressable randomness in this instrument. Scatter does the same job one level up, on
+relationships instead of material. Using the identical gesture makes the parallel legible on
+the panel — *this is dice, for structure* — which is the LINEAGE thesis stated in hardware.
+Coherence with an established gesture beats a nice-to-have.
+
+**Signed indices are free** (Rodney, from phase reversible mode). PhiloxRng holds a
+`uint64_t counter`, and `philox4x32(counter, key)` is a pure function of it, so:
+- back from 0 wraps to UINT64_MAX — still a valid, deterministic draw, not an error;
+- a signed offset cast to the counter lands there automatically via two's complement;
+- **`counter + 1 - 1 == counter` in modular arithmetic at every position**, so FWD and BACK
+  are exact inverses everywhere, including across the origin.
+This is the same property phase reversible mode relies on for scrubbing backwards, which is
+why it needed no special casing there either.
+
+**Revised knob/jack count per verb, per side, per pin type:**
+
+| Verb | Knobs | Buttons | Jacks |
+|---|---|---|---|
+| Collapse | 2 (grain, leader) | 2 (dom, codom) | 2 |
+| Rotate | 2 (grain, step) | 2 | 2 |
+| **Scatter** | **1 (grain)** | 2 | **4** (2 trigger + fwd + back) |
+| Reflect | 1 (grain) | 2 | 2 |
+
+Scatter trades a knob for two jacks — better, because the two jacks are sequencer-drivable
+where a knob position is not.
+
+## 14. Latch gap, CV, and the transforms expander
+
+### 14a. BUG: parameters are NOT latched at trigger time
+Rodney asked whether the latch rule already applies to manual buttons. It does not.
+`pendingRow[row]` is a bare `bool`, and `MonsoonExpanderManager` reads the grain knob AT THE
+PHRASE BOUNDARY:
+```cpp
+const int blk = blockFromKnob(ca->params[BLOCK_KNOB_START + row].getValue());
+```
+So turning grain between trigger and bar line changes what fires, and the pending light was
+advertising the earlier intent. Tolerable by hand; **wrong under CV or DAW automation**, which
+can move continuously in that window.
+
+**Fix:** `pendingRow` becomes a small struct latching the RESOLVED parameter set at trigger
+time — `{armed, verb, axis, level, grain, step/leader, scatterDelta}` — and the boundary
+applies only what was latched. Same discipline as lock (snapshot the resolved knob+CV value),
+and the same reason: a queued action must mean what it meant when you queued it.
+
+### 14b. CV on the transform knobs
+- Attenuverters are **NOT DAW-exposed** (Rodney), consistent with PARAM_CLASSIFICATION: an
+  attenuverter is CONFIG-ish, the CV jack is the real modulation path. Same call as Causeway.
+- Full CV per knob costs a jack + attenuverter each: 112 → 136 → **160 controls** (~70HP).
+  Not viable.
+- §10 also declined continuous per-pin CV on the grounds that it reclassifies structure into
+  a value surface. Transform PARAMETERS are the same category — configuration for a discrete
+  gesture, not something you ride.
+- **If any earns CV it is GRAIN**: "collapse at 2, then 4, then 8" is a real musical sequence,
+  and grain changes the SHAPE rather than the amount. One grain CV per verb, shared across the
+  domain/codomain pair = 16 jacks, not 48.
+- In a DAW the knobs are already host params and Rack CV can arrive through the VST's CV
+  inputs, so the modulation path exists there regardless. Standalone Rack is where the absence
+  would be felt.
+
+### 14c. Density forces a split
+| | Controls |
+|---|---|
+| Transforms on the Change Alley panel | 112 (56/side, ~10.5mm sq — below jack size) |
+| At a workable ~13mm pitch | **~53HP** |
+| With full CV | ~70HP |
+
+**Recommendation: a companion expander.** Change Alley stays ~29HP — grid, manual pins,
+crosshair, legend, connect marker — and remains fully usable alone: you patch pins by hand,
+which IS the EMS experience it descends from. The companion carries the transform controls
+with room for labels and grouping.
+
+This matches the plugin's own lineage (meloDICER alone or + MEX3; Monsoon alone or + chain),
+and §11's queue is unchanged: one pending per pin type, applied at the phrase boundary.
+
+**Name: ARCADE.** Change Alley Arcade is the real building at Change Alley — so it is the
+adjacent Singapore place, and "arcade" also reads as a row of machines/controls. Consistent
+with the Raffles/Junction/Causeway/Changi naming.
+
+### 14d. Poly jacks — real saving, awkward DAW story
+A poly cable carries 16 channels, so one poly jack could replace a bank of trigger jacks
+(channel = verb, or = axis/type), cutting 32 trigger jacks to ~4.
+
+- **In Rack:** excellent — a sequencer or logic module drives all transforms down one cable.
+- **From a DAW:** awkward. The VST's CV inputs are mono, so reaching channel N means patching
+  through a Merge inside Rack. It is possible but it is a two-step users must be told about,
+  and it makes channel assignment load-bearing documentation.
+- **Verdict:** offer poly IN ADDITION to mono jacks where space allows, or use poly for the
+  bulk (per-verb triggers) while keeping mono jacks for the few gestures likely to be
+  DAW-driven. Do not make poly the ONLY path.
+
+### 14e. Keep together vs split — honest ledger
+**Together**: one module, no attachment dependency, transforms always present, no expander
+ordering. But ~53-70HP, unusable in a small rack, and too dense to label properly.
+
+**Split (recommended)**: Change Alley stays small and usable standalone; Arcade can breathe,
+carry labels, and afford CV; complexity is progressively disclosed; matches the existing
+expander idiom and the claiming/ordering machinery already exists. Costs: another module to
+build and maintain, and transforms require the companion attached.
