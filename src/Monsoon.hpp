@@ -925,3 +925,47 @@ namespace ChangeAlleyIds {
     // Row index for (transform, isRhythm): t*2 + (isRhythm?0:1)
     inline int ctrlRow(int t, bool isRhythm) { return t * 2 + (isRhythm ? 0 : 1); }
 }
+
+// ── Temasek expander: transform controls for Change Alley (§13) ──────────────────────────
+// Intra (within-block) verbs LEFT, inter (across-block) RIGHT, mirrored with jacks outside.
+// Top-to-bottom: Collapse, Rotate, Reflect, Scatter. Per verb × side × pin type:
+//   domain button+jack, codomain button+jack; grain knob; leader (Collapse) or step (Rotate).
+// Scatter: fwd+back jacks instead of a step knob. Attenuverters for grain CV: not DAW-exposed.
+namespace TemasekIds {
+    static constexpr int N_VERBS = 4, SIDES = 2, TYPES = 2, N_ROWS = N_VERBS * SIDES * TYPES;
+    // row = verb*4 + side*2 + type  (side 0=intra/left, side 1=inter/right; type 0=R 1=M)
+    static constexpr int rowId(int verb, int side, int type) { return verb*4 + side*2 + type; }
+
+    enum Verb { V_COLLAPSE = 0, V_ROTATE = 1, V_REFLECT = 2, V_SCATTER = 3 };
+
+    // PARAMS (DAW-exposed GENERATION; latch under lock)
+    enum ParamIds {
+        GRAIN_START  = 0,                            // N_ROWS = 16 grain knobs
+        LEADER_START = GRAIN_START  + N_ROWS,        // N_ROWS/2 = 8 leader knobs (Collapse)
+        STEP_START   = LEADER_START + N_ROWS / 2,    // N_ROWS/2 = 8 step knobs   (Rotate)
+        NUM_PARAMS   = STEP_START   + N_ROWS / 2     // = 32
+    };
+
+    // INPUTS (jacks = DAW-reachable via VST CV ins; buttons are not params)
+    enum InputIds {
+        DOMAIN_TRIG_START    = 0,                             // 16 domain trigger jacks
+        CODOMAIN_TRIG_START  = DOMAIN_TRIG_START   + N_ROWS, // 16 codomain trigger jacks
+        GRAIN_CV_START       = CODOMAIN_TRIG_START + N_ROWS, // 8  grain CV (per verb per type)
+        GRAIN_ATTEN_START    = GRAIN_CV_START       + N_VERBS * TYPES, // 8 attenuverters (NOT DAW)
+        SCATTER_FWD_START    = GRAIN_ATTEN_START    + N_VERBS * TYPES, // 4 scatter fwd
+        SCATTER_BACK_START   = SCATTER_FWD_START    + SIDES * TYPES,   // 4 scatter back
+        NUM_INPUTS           = SCATTER_BACK_START   + SIDES * TYPES    // = 56
+    };
+
+    enum LightIds { PENDING_LIGHT_START = 0, NUM_LIGHTS = N_ROWS };   // 16
+
+    // Pending action: latched at trigger time (§14a discipline)
+    struct PendingAction {
+        bool  armed        = false;
+        int   grain        = 4;
+        int   leaderOrStep = 0;     // leader offset for Collapse, signed step for Rotate
+        int   scatterDelta = 1;     // +1 fwd, -1 back
+        bool  isDomain     = true;
+        bool  isInter      = false;
+    };
+}
