@@ -796,3 +796,65 @@ free choice — probably not worth the control.
 **Status: DESIGN ONLY.** Neither swap is implemented, nor is blockRowRotate. If picked up,
 implement all three together — they complete the grid, and the grid is the argument for
 having them.
+
+## 12g. LEVEL is the third axis — and it COLLAPSES the roster
+
+Rodney: block row-swaps and column-swaps preserve structure too. They do — and working out
+what they *are* reorganises everything above.
+
+**Both are safe by construction.** A block ROW swap exchanges the source-assignments of two
+blocks of rows; a block COLUMN swap relabels every source in block A to block B and vice
+versa. In both cases each row still holds exactly one source, so one-pin-per-row survives.
+No fan-in is created that was not already there.
+
+**And they are not new verbs — they are the EXISTING verbs at a different LEVEL.**
+- block row swap = a DOMAIN operation applied to blocks instead of rows
+- block column swap = a CODOMAIN operation applied to blocks instead of sources
+
+**The proof that LEVEL is a real axis: `blockOffset` was never a separate verb.** It advances
+each source's BLOCK index by k while preserving position-within-block. That is exactly
+RotateValues performed one level up. It only looked distinct because we built it before
+noticing the axis.
+
+### The three-axis decomposition
+
+Every operation is (VERB × AXIS × LEVEL), with GRAIN and signed STEP as parameters:
+
+| | **WITHIN block** | **ACROSS blocks** |
+|---|---|---|
+| **Collapse** (codomain) | all rows in a block → its leader | all blocks → the first block |
+| **Collapse** (domain) | — *(row-collapse is not meaningful: rows cannot merge)* | — |
+| **Rotate** (codomain) | `rotateValues` | **= `blockOffset`** — blocks shift by k |
+| **Rotate** (domain) | `rotateRows` | blocks of rows cycle their roles |
+| **Scatter** (codomain) | seeded re-draw in block | seeded re-assignment of whole blocks |
+| **Scatter** (domain) | *(gap: true row permutation)* | blocks of rows shuffled |
+| **Reflect** (codomain) | `reflectValues` | block ORDER reversed — **this is the column swap** (2 blocks) |
+| **Reflect** (domain) | `reflectRows` | **this is the row swap** (2 blocks) |
+| **Transpose** | level-independent — inverts the relation | — |
+
+Rodney's swaps are the **Reflect-across** cases: with 2 blocks, reversing block order IS a
+swap; with 4 blocks it is swap(0,3)+swap(1,2). A general "swap block i with block j" would
+need two indices and is not worth a control — Reflect-across covers the musical cases.
+
+### Consequence: 5 verbs, not 8 — and the panel problem eases
+
+Roster becomes **Collapse, Rotate, Scatter, Reflect, Transpose**, with two toggles
+(VALUES/ROWS, WITHIN/ACROSS) and two knobs (grain, signed step). That is
+4 verbs × 2 axes × 2 levels = 16 behaviours, plus Transpose, from **5 buttons + 2 toggles +
+2 knobs** — against the 8-verb roster's 20 knobs and 16 triggers (12d).
+
+| | Rows (×2 pin types) | Knobs | Triggers | Toggles |
+|---|---|---|---|---|
+| 8-verb roster (12d) | 16 | 20 | 16 | 0 |
+| 3-axis model | **5 × 2 = 10** | (grain+step) × 2 = **4** | 10 | 4 |
+
+This is the first layout that plausibly fits a panel of the committed size, and it is
+*more* capable than the 8-verb list, not less.
+
+### Open / to verify
+- **`scatterRows` is still a genuine gap** (12d) — within-block row permutation. Under this
+  model it is simply Scatter × domain × within, so the model predicts it should exist.
+- Collapse × domain is meaningless (rows cannot merge) — the one empty cell. Whether the
+  toggle greys out there or Collapse is treated as codomain-only is a UI decision.
+- The current engine implements the WITHIN column plus `blockOffset`. The ACROSS column is
+  otherwise unbuilt; each cell is a small function of the same shape as its within-block twin.
