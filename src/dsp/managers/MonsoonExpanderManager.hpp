@@ -27,6 +27,7 @@ extern rack::Model* modelMonsoonInterchangeExpander;
 extern rack::Model* modelMonsoonRafflesExpander;
 extern rack::Model* modelMonsoonJunctionExpander;
 extern rack::Model* modelMonsoonChangeAlleyExpander;
+extern rack::Model* modelMonsoonTemasekExpander;
 extern rack::Model* modelMonsoonSandsExpander;
 extern rack::Model* modelMonsoonSandsVisualExpander;
 extern rack::Model* modelMonsoonStraitsExpander;

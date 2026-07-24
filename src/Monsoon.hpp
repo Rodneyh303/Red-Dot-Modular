@@ -892,6 +892,7 @@ extern Model* modelMonsoonInterchangeExpander;
 extern Model* modelMonsoonRafflesExpander;
 extern Model* modelMonsoonJunctionExpander;
 extern Model* modelMonsoonChangeAlleyExpander;
+extern Model* modelMonsoonTemasekExpander;
 //extern Model* modelMonsoonSandsExpander;
 extern Model* modelMonsoonStraitsExpander; // base poly expander
 extern Model* modelMonsoonCausewayPolyExpander; // poly CV modulation expander
@@ -943,7 +944,12 @@ namespace TemasekIds {
         GRAIN_START  = 0,                            // N_ROWS = 16 grain knobs
         LEADER_START = GRAIN_START  + N_ROWS,        // N_ROWS/2 = 8 leader knobs (Collapse)
         STEP_START   = LEADER_START + N_ROWS / 2,    // N_ROWS/2 = 8 step knobs   (Rotate)
-        NUM_PARAMS   = STEP_START   + N_ROWS / 2     // = 32
+        NUM_PARAMS   = STEP_START   + N_ROWS / 2,    // = 32
+        // Momentary trigger buttons (NOT DAW-exposed per §14b -- manual only).
+        // Two per row: 0=domain, 1=codomain. Not in the DAW param list because they
+        // are gesture controls; the trigger jacks provide the CV/DAW path.
+        BTN_START    = NUM_PARAMS,                   // 32 buttons total (16 rows x 2)
+        NUM_PARAMS_TOTAL = BTN_START + N_ROWS * 2   // = 64
     };
 
     // INPUTS (jacks = DAW-reachable via VST CV ins; buttons are not params)

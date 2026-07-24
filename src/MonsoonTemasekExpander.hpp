@@ -37,12 +37,16 @@ struct MonsoonTemasekExpander : Module {
     dsp::SchmittTrigger codomainTrig[TK::N_ROWS];
     dsp::SchmittTrigger scatterFwd [TK::SIDES * TK::TYPES];
     dsp::SchmittTrigger scatterBack[TK::SIDES * TK::TYPES];
+    dsp::BooleanTrigger btnTrig[TK::N_ROWS * 2];
 
     // Scatter Philox counters (one per side per pin type — own key, not the dice counter)
     uint64_t scatterCounter[TK::SIDES * TK::TYPES] = {};
 
     MonsoonTemasekExpander() {
-        config(TK::NUM_PARAMS, TK::NUM_INPUTS, 0, TK::NUM_LIGHTS);
+        config(TK::NUM_PARAMS_TOTAL, TK::NUM_INPUTS, 0, TK::NUM_LIGHTS);
+        // Configure momentary button params (NOT DAW-exposed; manual triggers only)
+        for (int i = 0; i < TK::N_ROWS * 2; ++i)
+            configButton(TK::BTN_START + i, (i % 2 == 0) ? "Domain trigger" : "Codomain trigger");
 
         // Grain knobs — DAW-exposed GENERATION params, latch under lock.
         static const char* verbNames[TK::N_VERBS] = {"Collapse","Rotate","Reflect","Scatter"};
@@ -129,6 +133,11 @@ struct MonsoonTemasekExpander : Module {
                     if (codomainTrig[r].process(
                             inputs[TK::CODOMAIN_TRIG_START + r].getVoltage()))
                         latchRow(false);
+                    // Buttons (momentary params, manual only)
+                    if (btnTrig[r*2].process(params[TK::BTN_START + r*2].getValue()))
+                        latchRow(true);
+                    if (btnTrig[r*2+1].process(params[TK::BTN_START + r*2+1].getValue()))
+                        latchRow(false);
                 }
             }
         }
@@ -151,6 +160,135 @@ struct MonsoonTemasekExpander : Module {
                         p.scatterDelta = delta;
                         lights[TK::PENDING_LIGHT_START + r].setBrightness(1.f);
                     }
+                }
+            }
+        }
+    }
+};
+
+// ── Widget ────────────────────────────────────────────────────────────────────
+struct MonsoonTemasekExpanderWidget : ModuleWidget {
+
+    static constexpr float PW_MM = 40.f * 5.08f;
+    static constexpr float PH_MM = 128.5f;
+
+    // Mirror geometry -- must match gen_temasek.py exactly
+    static constexpr float MARGIN   =  5.0f;
+    static constexpr float CX       = PW_MM / 2.f;
+    static constexpr float N_ROWS_F = 8.f;
+    static constexpr float ROW_H    = (PH_MM - 16.f) / N_ROWS_F;
+    static constexpr float ROW_TOP  =  8.0f;
+    static constexpr float J_OUTER  = MARGIN;
+    static constexpr float BTN_D    = MARGIN +  8.5f;
+    static constexpr float KNOB1    = MARGIN + 17.5f;
+    static constexpr float KNOB2    = MARGIN + 27.0f;
+    static constexpr float BTN_C    = MARGIN + 36.0f;
+    static constexpr float J_INNER  = MARGIN + 44.5f;
+
+    static float rowY(int verb, int sub) {
+        return ROW_TOP + (verb * 2 + sub + 0.5f) * ROW_H;
+    }
+    static float lx(float x_mm, bool flip) {
+        return flip ? PW_MM - x_mm : x_mm;
+    }
+
+    std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
+    int lastThemeLight = -1;
+
+    MonsoonTemasekExpanderWidget(MonsoonTemasekExpander* module) {
+        setModule(module);
+        std::string dark  = asset::plugin(pluginInstance, "res/panels/Temasek_panel_dark.svg");
+        std::string light = asset::plugin(pluginInstance, "res/panels/Temasek_panel_light.svg");
+        panelSvgDark  = APP->window->loadSvg(dark);
+        panelSvgLight = APP->window->loadSvg(light);
+        setPanel(Svg::load(dark));
+        addChild(createWidget<ScrewSilver>(mm2px(Vec(1.5f,         1.5f))));
+        addChild(createWidget<ScrewSilver>(mm2px(Vec(PW_MM - 1.5f, 1.5f))));
+        addChild(createWidget<ScrewSilver>(mm2px(Vec(1.5f,         PH_MM - 1.5f))));
+        addChild(createWidget<ScrewSilver>(mm2px(Vec(PW_MM - 1.5f, PH_MM - 1.5f))));
+
+        static const char* verbLabel[TK::N_VERBS] = {"C","Ro","Rf","Sc"};
+        (void)verbLabel;
+
+        for (int verb = 0; verb < TK::N_VERBS; ++verb) {
+            for (int sub = 0; sub < 2; ++sub) {      // 0=R 1=M
+                const float ry = rowY(verb, sub);
+                for (int side = 0; side < 2; ++side) { // 0=intra 1=inter
+                    const bool flip = (side == 1);
+
+                    // Domain jack (outermost)
+                    addInput(createInputCentered<PJ301MPort>(
+                        mm2px(Vec(lx(J_OUTER, flip), ry)), module,
+                        TK::DOMAIN_TRIG_START + TK::rowId(verb, side, sub)));
+
+                    // Codomain jack
+                    addInput(createInputCentered<PJ301MPort>(
+                        mm2px(Vec(lx(J_INNER, flip), ry)), module,
+                        TK::CODOMAIN_TRIG_START + TK::rowId(verb, side, sub)));
+
+                    // Domain button (momentary -- NOT a param, sets the pending flag)
+                    // Using TL1105 mapped to a param slot so Rack handles the press event;
+                    // the param is never read for value, only for the trigger in process().
+                    // (A proper non-param button widget is a future refinement.)
+                    addParam(createParamCentered<TL1105>(
+                        mm2px(Vec(lx(BTN_D, flip), ry)), module,
+                        TK::BTN_START + TK::rowId(verb, side, sub) * 2));     // NOTE: overflow -- see below
+
+                    // Codomain button
+                    addParam(createParamCentered<TL1105>(
+                        mm2px(Vec(lx(BTN_C, flip), ry)), module,
+                        TK::BTN_START + TK::rowId(verb, side, sub) * 2 + 1));
+
+                    // Grain knob (DAW-exposed)
+                    addParam(createParamCentered<Trimpot>(
+                        mm2px(Vec(lx(KNOB1, flip), ry)), module,
+                        TK::GRAIN_START + TK::rowId(verb, side, sub)));
+
+                    // Leader (Collapse) or step (Rotate) knob
+                    if (verb == TK::V_COLLAPSE) {
+                        addParam(createParamCentered<Trimpot>(
+                            mm2px(Vec(lx(KNOB2, flip), ry)), module,
+                            TK::LEADER_START + side * TK::TYPES + sub));
+                    } else if (verb == TK::V_ROTATE) {
+                        addParam(createParamCentered<Trimpot>(
+                            mm2px(Vec(lx(KNOB2, flip), ry)), module,
+                            TK::STEP_START + side * TK::TYPES + sub));
+                    }
+
+                    // Pending light
+                    addChild(createLightCentered<SmallLight<RedLight>>(
+                        mm2px(Vec(lx(CX + (flip ? -3.0f : 3.0f), 0.f) /* beside centre */,
+                                  ry)), module,
+                        TK::PENDING_LIGHT_START + TK::rowId(verb, side, sub)));
+
+                    // Scatter fwd/back jacks
+                    if (verb == TK::V_SCATTER) {
+                        const int i = side * TK::TYPES + sub;
+                        const float fwd_y = ry - ROW_H * 0.22f;
+                        const float bk_y  = ry + ROW_H * 0.22f;
+                        addInput(createInputCentered<PJ301MPort>(
+                            mm2px(Vec(lx(J_OUTER, flip), fwd_y)), module,
+                            TK::SCATTER_FWD_START  + i));
+                        addInput(createInputCentered<PJ301MPort>(
+                            mm2px(Vec(lx(J_OUTER, flip), bk_y)),  module,
+                            TK::SCATTER_BACK_START + i));
+                    }
+                }
+            }
+        }
+    }
+
+    void step() override {
+        ModuleWidget::step();
+        if (!module) return;
+        Monsoon* m = redDot::findMonsoonEitherSide(module);
+        const int wantLight = (m && m->lightTheme) ? 1 : 0;
+        if (wantLight != lastThemeLight) {
+            lastThemeLight = wantLight;
+            for (Widget* child : children) {
+                if (auto* sp = dynamic_cast<app::SvgPanel*>(child)) {
+                    sp->setBackground(wantLight ? panelSvgLight : panelSvgDark);
+                    break;
                 }
             }
         }
