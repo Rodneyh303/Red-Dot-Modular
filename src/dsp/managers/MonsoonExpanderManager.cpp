@@ -124,6 +124,27 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
                 }
             }
         }
+                // ── Temasek transforms ────────────────────────────────────────────
+                auto* tk = cachedTemasekExpander;
+                if (tk && ca) {
+                    for (int row = 0; row < TemasekIds::N_ROWS; ++row) {
+                        auto& p = tk->pendingRows[row];
+                        if (!p.armed) continue;
+                        const int verb = row / 4;
+                        const int type = row % 2;
+                        uint8_t* tbl   = (type == 0) ? ca->rhythmSrc : ca->melodySrc;
+                        if (verb == TemasekIds::V_SCATTER) {
+                            tk->scatterCounter[((row%4)/2) * TemasekIds::TYPES + type] +=
+                                (uint64_t)(int64_t)p.scatterDelta;
+                        }
+                        dotModular::ca::applyTemasek(
+                            verb, p.isDomain, p.isInter,
+                            tbl, active, p.grain, p.leaderOrStep,
+                            tk->scatterCounter[((row%4)/2) * TemasekIds::TYPES + type]);
+                        p.armed = false;
+                        tk->lights[TemasekIds::PENDING_LIGHT_START + row].setBrightness(0.f);
+                    }
+                }
         // (pin push to pe moved to processDNA head — it must precede the pre-spread
         //  remapSlewedByPins. Restructure-transform application above stays here, at the
         //  phrase boundary; its result is picked up by processDNA's push next cycle.)

@@ -8,6 +8,7 @@ class SequencerEngine;
 // Forward declarations
 struct MonsoonInterchangeExpander;
 struct MonsoonChangeAlleyExpander;
+struct MonsoonTemasekExpander;
 struct MonsoonSandsExpander;
 struct MonsoonSandsVisualExpander;       // Mono visual DNA editor
 struct MonsoonStraitsExpander;
@@ -69,6 +70,7 @@ struct MonsoonExpanderManager {
     rack::Module*                cachedRafflesExpander           = nullptr;
     rack::Module*                cachedJunctionExpander          = nullptr;
     MonsoonChangeAlleyExpander*  cachedChangeAlleyExpander       = nullptr;
+    MonsoonTemasekExpander*      cachedTemasekExpander           = nullptr;
     int  caPrevStep_   = 0;      // phrase-boundary detect for restructure queue
     bool caPrevLocked_ = false;  // unlock-edge detect for restructure queue
     //MonsoonSandsExpander*        cachedDnaExpander                = nullptr;
@@ -99,6 +101,7 @@ struct MonsoonExpanderManager {
         cachedRafflesExpander           = nullptr;
         cachedJunctionExpander          = nullptr;
         cachedChangeAlleyExpander       = nullptr;
+        cachedTemasekExpander           = nullptr;
         //cachedDnaExpander                = nullptr;
         cachedSandsVisualExpander        = nullptr;
         cachedPolyVoiceExpander          = nullptr;

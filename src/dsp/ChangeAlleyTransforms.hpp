@@ -205,6 +205,151 @@ inline void transpose(uint8_t* src, int activeCount) {
     for (int v = 0; v < activeCount && v < 16; ++v) src[v] = inv[v];
 }
 
+// ── §13: INTER (across-block) variants ──────────────────────────────────────────────────
+// Each intra verb has an inter twin that operates on BLOCKS as units rather than voices.
+// The block grain at the inter level sets HOW MANY blocks form a super-block.
+
+// interCollapseD: every block adopts the leader-block's assignments (domain version).
+// leader = which block leads (offset within the super-block, wraps).
+inline void interCollapseDomain(uint8_t* src, int activeCount, int blockSize, int leader = 0) {
+    // Reuse collapseDomain with a super-block size = blockSize * blockSize (or activeCount).
+    // The leader parameter selects which block within the super-block leads.
+    const int b      = clampBlock(blockSize, activeCount);
+    const int nBlk   = (activeCount + b - 1) / b;
+    if (nBlk <= 1) { collapseDomain(src, activeCount, activeCount, 0); return; }
+    // Re-express as collapseDomain at the block level: treat block indices as voices.
+    uint8_t bsrc[16] = {};
+    for (int v = 0; v < activeCount && v < 16; ++v) bsrc[v] = src[v] / b;  // block src
+    const int leaderBlk = leader % nBlk;
+    const uint8_t leaderVal = bsrc[leaderBlk * b];   // which block the leader points at
+    for (int v = 0; v < activeCount && v < 16; ++v)
+        src[v] = (uint8_t)(leaderVal * b + (v % b));
+}
+
+// interCollapseC: every block's sources quantise to their super-block leader's block (codom).
+inline void interCollapseCodomain(uint8_t* src, int activeCount, int blockSize, int leader = 0) {
+    const int b    = clampBlock(blockSize, activeCount);
+    const int nBlk = (activeCount + b - 1) / b;
+    if (nBlk <= 1) return;
+    const int leaderBlk = leader % nBlk;
+    for (int v = 0; v < activeCount && v < 16; ++v) {
+        const int srcBlk = src[v] / b;
+        const int within = src[v] % b;
+        // quantise the block index to the leader block; preserve position within block
+        (void)srcBlk;   // the snap IS to the leader block by definition
+        src[v] = (uint8_t)(leaderBlk * b + within);
+    }
+}
+
+// interRotate: = blockOffset at this level. Block i's sources move to block i+step.
+inline void interRotate(uint8_t* src, int activeCount, int blockSize, int step = 1) {
+    blockOffset(src, activeCount, blockSize, step);
+}
+
+// interRotateRows: voices move to a different block, preserving within-block position.
+inline void interRotateRows(uint8_t* src, int activeCount, int blockSize, int step = 1) {
+    const int b    = clampBlock(blockSize, activeCount);
+    const int nBlk = (activeCount + b - 1) / b;
+    if (nBlk <= 1) return;
+    const int st   = clampStep(step, nBlk);
+    uint8_t tmp[16]; for (int v = 0; v < 16; ++v) tmp[v] = src[v];
+    for (int v = 0; v < activeCount && v < 16; ++v) {
+        const int blk    = v / b, within = v % b;
+        const int srcBlk = (blk - st + nBlk * 16) % nBlk;
+        src[v] = tmp[srcBlk * b + within];
+    }
+}
+
+// interReflect: block ORDER reversed (codomain -- sources point to mirrored block).
+inline void interReflectCodomain(uint8_t* src, int activeCount, int blockSize) {
+    const int b    = clampBlock(blockSize, activeCount);
+    const int nBlk = (activeCount + b - 1) / b;
+    if (nBlk <= 1) return;
+    for (int v = 0; v < activeCount && v < 16; ++v) {
+        const int srcBlk = src[v] / b, within = src[v] % b;
+        const int mirBlk = nBlk - 1 - srcBlk;
+        int cand = mirBlk * b + within;
+        if (cand >= activeCount) cand = mirBlk * b + (within % (activeCount - mirBlk * b));
+        src[v] = (uint8_t)cand;
+    }
+}
+
+// interReflectRows: block role assignment reversed (domain -- rows swap blocks).
+inline void interReflectRows(uint8_t* src, int activeCount, int blockSize) {
+    const int b    = clampBlock(blockSize, activeCount);
+    const int nBlk = (activeCount + b - 1) / b;
+    if (nBlk <= 1) return;
+    uint8_t tmp[16]; for (int v = 0; v < 16; ++v) tmp[v] = src[v];
+    for (int v = 0; v < activeCount && v < 16; ++v) {
+        const int blk    = v / b, within = v % b;
+        const int mirBlk = nBlk - 1 - blk;
+        const int from   = mirBlk * b + within;
+        if (from < activeCount && from < 16) src[v] = tmp[from];
+    }
+}
+
+// interScatter: seeded re-assignment of whole blocks (codomain -- new block sources).
+// Uses a Philox counter for reversibility (§12e / §13e).
+inline void interScatter(uint8_t* src, int activeCount, int blockSize, uint64_t counter,
+                         uint64_t key = 0xCA7E4A3EC0FFEE77ULL) {
+    const int b    = clampBlock(blockSize, activeCount);
+    const int nBlk = (activeCount + b - 1) / b;
+    if (nBlk <= 1) return;
+    // Inline Philox-style scramble (no Rack dependency -- this file is header-only/no-SDK).
+    // Each block draws a source block from a keyed mix of (counter, block index).
+    for (int blk = 0; blk < nBlk; ++blk) {
+        uint64_t h = counter ^ ((uint64_t)blk * 0x9E3779B97F4A7C15ULL) ^ key;
+        h ^= h >> 30; h *= 0xBF58476D1CE4E5B9ULL;
+        h ^= h >> 27; h *= 0x94D049BB133111EBULL;
+        h ^= h >> 31;
+        const int srcBlk = (int)(h % (uint64_t)nBlk);
+        for (int w = 0; w < b; ++w) {
+            const int v = blk * b + w;
+            if (v < activeCount && v < 16) {
+                int cand = srcBlk * b + w;
+                if (cand >= activeCount) cand = srcBlk * b + (w % (activeCount - srcBlk*b));
+                src[v] = (uint8_t)cand;
+            }
+        }
+    }
+}
+
+// Unified Temasek apply -- called by MonsoonExpanderManager at phrase boundary.
+// verb: V_COLLAPSE=0, V_ROTATE=1, V_REFLECT=2, V_SCATTER=3
+// isDomain: true=domain button, false=codomain button
+// isInter:  false=intra (left panel), true=inter (right panel)
+inline void applyTemasek(int verb, bool isDomain, bool isInter,
+                         uint8_t* src, int activeCount, int grain,
+                         int leaderOrStep, uint64_t scatterCounter) {
+    if (!isInter) {
+        // INTRA: use the existing within-block functions
+        switch (verb) {
+            case 0: isDomain ? collapseDomain  (src, activeCount, grain, leaderOrStep)
+                             : collapseCodomain(src, activeCount, grain, leaderOrStep); break;
+            case 1: isDomain ? rotateRows  (src, activeCount, grain, leaderOrStep)
+                             : rotateValues(src, activeCount, grain, leaderOrStep); break;
+            case 2: isDomain ? reflectRows  (src, activeCount, grain)
+                             : reflectValues(src, activeCount, grain); break;
+            case 3: {
+                // Scatter: Philox counter-based (§12e -- currently still LCG, TODO swap)
+                uint32_t seed = (uint32_t)(scatterCounter & 0xFFFFFFFF);
+                scatter(src, activeCount, grain, seed); break;
+            }
+        }
+    } else {
+        // INTER: across-block versions
+        switch (verb) {
+            case 0: isDomain ? interCollapseDomain  (src, activeCount, grain, leaderOrStep)
+                             : interCollapseCodomain(src, activeCount, grain, leaderOrStep); break;
+            case 1: isDomain ? interRotateRows(src, activeCount, grain, leaderOrStep)
+                             : interRotate    (src, activeCount, grain, leaderOrStep); break;
+            case 2: isDomain ? interReflectRows   (src, activeCount, grain)
+                             : interReflectCodomain(src, activeCount, grain); break;
+            case 3: interScatter(src, activeCount, grain, scatterCounter); break;
+        }
+    }
+}
+
 // Dispatch. transform: 0=Collapse 1=Rotate 2=Scatter 3=Reflect (ChangeAlleyIds order).
 inline void apply(int transform, uint8_t* src, int activeCount, int blockSize, uint32_t seed,
                   int step = 1) {
