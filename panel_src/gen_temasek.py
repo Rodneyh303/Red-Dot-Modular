@@ -42,6 +42,7 @@ KNOB1   = MARGIN + 15.5      # grain (every verb)
 KNOB2   = MARGIN + 23.0      # leader (Collapse) / step (Rotate) / SCATTER-BACK jack
 BTN_D   = MARGIN + 30.0
 BTN_C   = MARGIN + 35.5
+J_BACK2 = MARGIN + 42.0      # Scatter only: codomain-back gate (4 gates per scatter row)
 
 def rowY(verb, sub):
     # Same formula as MonsoonChangeAlleyExpanderWidget::ctrlRowY
@@ -71,8 +72,9 @@ def gen(dark):
                 E(trim(lx(KNOB1, flip), ry, t, t["gold"]))
                 if verb in (0, 1):                      # Collapse leader / Rotate step
                     E(trim(lx(KNOB2, flip), ry, t, t["gold"]))
-                elif verb == 3:                         # Scatter: BACK jack in the free slot
-                    E(jack(lx(KNOB2, flip), ry, t))
+                elif verb == 3:                         # Scatter: FOUR gates per row
+                    E(jack(lx(KNOB2,   flip), ry, t))   # domain BACK
+                    E(jack(lx(J_BACK2, flip), ry, t))   # codomain BACK
                 for bx in (BTN_D, BTN_C):
                     E(f'<circle cx="{px(lx(bx,flip)):.1f}" cy="{px(ry):.1f}" r="{px(2.6):.1f}"'
                       f' fill="{t["frame"]}" stroke="{t["dim"]}" stroke-width="{px(0.5):.2f}"/>')

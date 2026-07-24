@@ -50,7 +50,8 @@ struct MonsoonChangeAlleyExpander : Module {
     // Temasek expander. A PLAIN POD deliberately: Change Alley must not know Temasek's
     // type, or the two headers form an include cycle (Temasek would need Change Alley
     // for nothing, and Change Alley would need Temasek's complete type here).
-    struct TkHighlight { bool armed = false; int blk = 4; bool isInter = false; int type = 0; };
+    struct TkHighlight { bool armed = false; int blk = 4; bool isInter = false;
+                         bool isDomain = true; int type = 0; };
     static constexpr int TK_HL_ROWS = 16;
     TkHighlight tkHighlight[TK_HL_ROWS];
     rack::dsp::SchmittTrigger gateTrig[8];
@@ -379,24 +380,31 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
                     const float sw = mm2px(Vec(0.45f,0)).x;
                     const float hw = mm2px(Vec(CELL_W * 0.5f, 0)).x;
                     const float hh = mm2px(Vec(0, CELL_H * 0.5f)).y;
-                    if (h.isInter) {
-                        Vec tl = cellCentre(0, 0), br = cellCentre(active-1, active-1);
-                        nvgBeginPath(vg);
-                        nvgRect(vg, tl.x - hw - sw, tl.y - hh - sw,
-                                (br.x + hw + sw) - (tl.x - hw - sw),
-                                (br.y + hh + sw) - (tl.y - hh - sw));
-                        nvgStrokeColor(vg, hcol); nvgStrokeWidth(vg, sw*1.5f); nvgStroke(vg);
-                    } else {
-                        const int b = std::max(1, h.blk);
-                        for (int blk = 0; blk * b < active; ++blk) {
-                            const int b0 = blk * b;
-                            const int b1 = std::min(b0 + b, active) - 1;
-                            Vec tl = cellCentre(b0, b0), br = cellCentre(b1, b1);
-                            nvgBeginPath(vg);
-                            nvgRect(vg, tl.x - hw, tl.y - hh,
-                                    (br.x + hw) - (tl.x - hw), (br.y + hh) - (tl.y - hh));
-                            nvgStrokeColor(vg, hcol); nvgStrokeWidth(vg, sw); nvgStroke(vg);
+                    // What a transform actually touches:
+                    //   DOMAIN   ops partition the ROWS    -> horizontal bands
+                    //   CODOMAIN ops partition the SOURCES -> vertical bands
+                    // (An earlier version outlined diagonal squares, which is only correct
+                    //  near identity: rotateValues takes its block from src[v], the COLUMN,
+                    //  and collapseDomain hands row v the value tmp[leader], any column.)
+                    // INTRA bands are `grain` wide; INTER bands are the whole pool split
+                    // into blocks, drawn heavier because whole blocks move as units.
+                    const int b    = std::max(1, h.blk);
+                    const float lw = h.isInter ? sw * 1.6f : sw;
+                    for (int base = 0; base < active; base += b) {
+                        const int last = std::min(base + b, active) - 1;
+                        if (last < base) continue;
+                        Vec tl, br;
+                        if (h.isDomain) {                    // rows: full-width band
+                            tl = cellCentre(base, 0);
+                            br = cellCentre(last, active - 1);
+                        } else {                             // sources: full-height band
+                            tl = cellCentre(0, base);
+                            br = cellCentre(active - 1, last);
                         }
+                        nvgBeginPath(vg);
+                        nvgRect(vg, tl.x - hw, tl.y - hh,
+                                (br.x + hw) - (tl.x - hw), (br.y + hh) - (tl.y - hh));
+                        nvgStrokeColor(vg, hcol); nvgStrokeWidth(vg, lw); nvgStroke(vg);
                     }
                 }
             }

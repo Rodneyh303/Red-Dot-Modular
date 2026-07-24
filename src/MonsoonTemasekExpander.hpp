@@ -38,12 +38,15 @@ struct MonsoonTemasekExpander : Module {
     // Trigger detectors
     dsp::SchmittTrigger domainTrig [TK::N_ROWS];
     dsp::SchmittTrigger codomainTrig[TK::N_ROWS];
-    dsp::SchmittTrigger scatterFwd [TK::SIDES * TK::TYPES];
-    dsp::SchmittTrigger scatterBack[TK::SIDES * TK::TYPES];
+    dsp::SchmittTrigger scatterBackDom[TK::SIDES * TK::TYPES];
+    dsp::SchmittTrigger scatterBackCod[TK::SIDES * TK::TYPES];
     dsp::BooleanTrigger btnTrig[TK::N_ROWS * 2];
 
     // Scatter Philox counters (one per side per pin type — own key, not the dice counter)
-    uint64_t scatterCounter[TK::SIDES * TK::TYPES] = {};
+    // One counter per (side, type, AXIS): domain and codomain scatter are different
+    // operations, so they need independent positions or stepping one would desync the
+    // other's reversibility. Index: (side*TYPES + type)*2 + (isDomain ? 0 : 1)
+    uint64_t scatterCounter[TK::SIDES * TK::TYPES * 2] = {};
 
     MonsoonTemasekExpander() {
         config(TK::NUM_PARAMS_TOTAL, TK::NUM_INPUTS, 0, TK::NUM_LIGHTS);
@@ -87,19 +90,24 @@ struct MonsoonTemasekExpander : Module {
             configInput(TK::GRAIN_CV_START    + i, "Grain CV");
             configInput(TK::GRAIN_ATTEN_START + i, "Grain attenuverter");
         }
-        // Scatter BACK jacks. The normal trigger (button or jack) means FORWARD, so only
-        // "back" needs its own input -- and it fits the slot Scatter leaves empty by having
-        // no second dial. Halves the jack count, keeps forward as the default gesture.
-        for (int sd = 0; sd < TK::SIDES; ++sd) {
+        // Scatter: FOUR gates per row. The domain and codomain trigger jacks/buttons are
+        // the two FORWARD gates; these two are the matching BACK gates, one per axis, so
+        // either axis can be reversed independently (each has its own Philox counter).
+        for (int sd = 0; sd < TK::SIDES; ++sd)
             for (int ty = 0; ty < TK::TYPES; ++ty) {
                 const int i = sd * TK::TYPES + ty;
                 const int r = TK::rowId(TK::V_SCATTER, sd, ty);
-                if (scatterBack[i].process(inputs[TK::SCATTER_BACK_START + i].getVoltage())) {
-                    latchFromButton(r, true);
-                    pendingRows[r].scatterDelta = -1;     // override: step BACKWARD
+                if (scatterBackDom[i].process(
+                        inputs[TK::SCATTER_BACK_DOM_START + i].getVoltage())) {
+                    latchFromButton(r, true);                 // domain
+                    pendingRows[r].scatterDelta = -1;
+                }
+                if (scatterBackCod[i].process(
+                        inputs[TK::SCATTER_BACK_COD_START + i].getVoltage())) {
+                    latchFromButton(r, false);                // codomain
+                    pendingRows[r].scatterDelta = -1;
                 }
             }
-        }
     }
 
     // Latch a pending action from a manual button press (§14a: parameters captured NOW,
@@ -123,7 +131,7 @@ struct MonsoonTemasekExpander : Module {
                 params[TK::STEP_START + side * TK::TYPES + type].getValue());
         else
             p.leaderOrStep = 0;
-        if (verb == TK::V_SCATTER) p.scatterDelta = 1;   // normal trigger = FORWARD
+        if (verb == TK::V_SCATTER) p.scatterDelta = +1;   // trigger jacks/buttons = FORWARD
         lights[TK::PENDING_LIGHT_START + row].setBrightness(1.f);
     }
 
@@ -153,27 +161,6 @@ struct MonsoonTemasekExpander : Module {
             }
         }
 
-        // Scatter fwd/back — latch the scatter rows with appropriate delta
-        for (int s = 0; s < TK::SIDES; ++s) {
-            for (int t = 0; t < TK::TYPES; ++t) {
-                const int i = s * TK::TYPES + t;
-                const int r = TK::rowId(TK::V_SCATTER, s, t);
-                for (int delta : {1, -1}) {
-                    const int jIdx = (delta == 1 ? TK::SCATTER_FWD_START
-                                                 : TK::SCATTER_BACK_START) + i;
-                    auto& trig = (delta == 1 ? scatterFwd : scatterBack)[i];
-                    if (trig.process(inputs[jIdx].getVoltage())) {
-                        auto& p        = pendingRows[r];
-                        p.armed        = true;
-                        p.isInter      = (s == 1);
-                        p.grain        = 1 << (int)std::round(
-                            clamp(params[TK::GRAIN_START + r].getValue(), 0.f, 4.f));
-                        p.scatterDelta = delta;
-                        lights[TK::PENDING_LIGHT_START + r].setBrightness(1.f);
-                    }
-                }
-            }
-        }
     }
 };
 
@@ -197,6 +184,9 @@ struct MonsoonTemasekExpanderWidget : ModuleWidget {
     static constexpr float KNOB2     = MARGIN + 23.0f;   // leader/step, or Scatter BACK jack
     static constexpr float BTN_D     = MARGIN + 30.0f;
     static constexpr float BTN_C     = MARGIN + 35.5f;
+    // Scatter only: second back jack. Scatter has four gates and the row frees just one
+    // slot (no step knob), so the codomain-back gate gets its own column.
+    static constexpr float J_BACK2   = MARGIN + 42.0f;
 
     static float rowY(int verb, int sub) {
         return ROW_TOP + verb * (2.f * ROW_H + GROUP_GAP) + sub * ROW_H + ROW_H * 0.5f;
@@ -251,9 +241,13 @@ struct MonsoonTemasekExpanderWidget : ModuleWidget {
                             mm2px(Vec(lx(KNOB2, flip), ry)), module,
                             TK::STEP_START + side * TK::TYPES + sub));
                     } else if (verb == TK::V_SCATTER) {
-                        addInput(createInputCentered<PJ301MPort>(
+                        const int si = side * TK::TYPES + sub;
+                        addInput(createInputCentered<PJ301MPort>(   // domain BACK
                             mm2px(Vec(lx(KNOB2, flip), ry)), module,
-                            TK::SCATTER_BACK_START + side * TK::TYPES + sub));
+                            TK::SCATTER_BACK_DOM_START + si));
+                        addInput(createInputCentered<PJ301MPort>(   // codomain BACK
+                            mm2px(Vec(lx(J_BACK2, flip), ry)), module,
+                            TK::SCATTER_BACK_COD_START + si));
                     }
 
                     // Two buttons innermost
@@ -264,7 +258,7 @@ struct MonsoonTemasekExpanderWidget : ModuleWidget {
 
                     // Pending light just inside the buttons
                     addChild(createLightCentered<SmallLight<RedLight>>(
-                        mm2px(Vec(lx(BTN_C + 4.5f, flip), ry)), module,
+                        mm2px(Vec(lx(BTN_C + 3.5f, flip), ry)), module,
                         TK::PENDING_LIGHT_START + r));
                 }
             }

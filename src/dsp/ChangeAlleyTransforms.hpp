@@ -205,6 +205,32 @@ inline void transpose(uint8_t* src, int activeCount) {
     for (int v = 0; v < activeCount && v < 16; ++v) src[v] = inv[v];
 }
 
+// scatterRows: DOMAIN twin of scatter -- a true row PERMUTATION within each block.
+// scatter() re-DRAWS sources and permits fan-in (two rows may land on one source);
+// this shuffles WHICH ROW holds which source, so the multiset of sources is preserved
+// exactly. Different musical object: scatter changes what is referenced, scatterRows
+// changes who does the referencing. (§12d gap; §12g predicted it should exist.)
+inline void scatterRows(uint8_t* src, int activeCount, int blockSize, uint32_t seed) {
+    const int b = clampBlock(blockSize, activeCount);
+    uint32_t st = seed ? seed : 0x9E3779B9u;
+    auto nextU = [&st]() { st ^= st << 13; st ^= st >> 17; st ^= st << 5; return st; };
+    uint8_t tmp[16];
+    for (int v = 0; v < 16; ++v) tmp[v] = src[v];
+    for (int base = 0; base < activeCount && base < 16; base += b) {
+        int end = base + b; if (end > activeCount) end = activeCount;
+        const int span = end - base;
+        if (span <= 1) continue;
+        // Fisher-Yates over the row indices in this block, so it is a genuine permutation.
+        int idx[16];
+        for (int i = 0; i < span; ++i) idx[i] = base + i;
+        for (int i = span - 1; i > 0; --i) {
+            const int j = (int)(nextU() % (uint32_t)(i + 1));
+            const int t2 = idx[i]; idx[i] = idx[j]; idx[j] = t2;
+        }
+        for (int i = 0; i < span; ++i) src[base + i] = tmp[idx[i]];
+    }
+}
+
 // ── §13: INTER (across-block) variants ──────────────────────────────────────────────────
 // Each intra verb has an inter twin that operates on BLOCKS as units rather than voices.
 // The block grain at the inter level sets HOW MANY blocks form a super-block.
@@ -332,8 +358,10 @@ inline void applyTemasek(int verb, bool isDomain, bool isInter,
                              : reflectValues(src, activeCount, grain); break;
             case 3: {
                 // Scatter: Philox counter-based (§12e -- currently still LCG, TODO swap)
-                uint32_t seed = (uint32_t)(scatterCounter & 0xFFFFFFFF);
-                scatter(src, activeCount, grain, seed); break;
+                const uint32_t seed = (uint32_t)(scatterCounter & 0xFFFFFFFF);
+                isDomain ? scatterRows(src, activeCount, grain, seed)   // row permutation
+                         : scatter    (src, activeCount, grain, seed);  // re-draw, fan-in OK
+                break;
             }
         }
     } else {
