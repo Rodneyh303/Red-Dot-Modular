@@ -705,3 +705,49 @@ LINEAGE thesis restated at the level of relationships.
 **Consequence for the control table (12d):** Scatter's second control is no longer a hidden
 seed. It is a COUNTER, with the same forward/back gesture dice has — so Scatter's row wants
 a trigger plus a back-trigger, exactly like dice/backwards-dice, rather than a variant knob.
+
+### 12f. SIGNED step replaces forward/back trigger pairs (proposal, not yet built)
+
+Rodney asked whether scatter needs dice-style forward and back gates+buttons. There is a
+cheaper and more capable option that falls out of 12c: **make the step knob bipolar and let
+it be the SIGNED increment**. Then no verb needs a second trigger:
+
+- **RotateValues / RotateRows** — step is already directional (step = span−1 *is* backwards);
+  a signed knob makes that explicit instead of a trick.
+- **BlockOffset** — k → −k is "follow the PREVIOUS block".
+- **Scatter** — its step IS the Philox counter delta (12e): +1 next variant, −1 previous,
+  **+3 jumps three ahead**.
+
+One trigger plus a signed step covers forward AND back for all three, and adds JUMP
+DISTANCE, which a pair of buttons cannot express.
+
+**Why this does not apply to the rest:** Reflect (both twins) and Transpose need no back
+because RETRIGGERING IS THE INVERSE — asserted in the tests, not assumed. Collapse is
+idempotent. So only the three verbs that already want a step knob need direction at all.
+
+| Verb | Grain | Signed step | Triggers |
+|---|:---:|:---:|:---:|
+| Collapse | ● | – | 1 |
+| RotateValues / RotateRows | ● | ● | 1 |
+| Scatter | ● | ● (Philox counter Δ) | 1 |
+| ReflectValues / ReflectRows | ● | – *(self-inverse)* | 1 |
+| BlockOffset | ● | ● (k) | 1 |
+| Transpose | – | – | 1 |
+
+**Counter-argument, for the record:** dice has two buttons, so a fwd/back pair for Scatter
+would be more consistent with existing idiom. But dice's pair exists because a die roll has
+no natural DISTANCE — you can only step one draw at a time. Scatter's counter does have
+distance, so a signed knob is strictly more expressive, and setting −1 still reads as
+"scatter, backwards".
+
+**Implementation trap to get right (do not assume):** `clampStep` currently folds any value
+into [1, span−1], so a negative would silently become span−1. For rotate those happen to be
+equivalent; for a Philox counter delta they are NOT. Signed step needs its own clamping —
+symmetric around zero, excluding zero (a no-op) — rather than reusing `clampStep`.
+
+**Status: DESIGN ONLY.** Engine currently has unsigned `step` (12c) and scatter still uses
+its private LCG seed (12e not yet built). Build order when picked up:
+1. Scatter → Philox stream with own key + counter (12e).
+2. Signed step + symmetric clamp, replacing `clampStep` for the three directional verbs.
+3. Panel: revisit 12b/12d costs, which this reduces (no back-triggers, still 2 knobs on
+   three rows).
