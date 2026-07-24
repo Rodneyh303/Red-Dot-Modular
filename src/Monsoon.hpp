@@ -893,7 +893,6 @@ extern Model* modelMonsoonRafflesExpander;
 extern Model* modelMonsoonJunctionExpander;
 extern Model* modelMonsoonChangeAlleyExpander;
 extern Model* modelMonsoonTemasekExpander;
-extern Model* modelMonsoonTemasekExpander;
 //extern Model* modelMonsoonSandsExpander;
 extern Model* modelMonsoonStraitsExpander; // base poly expander
 extern Model* modelMonsoonCausewayPolyExpander; // poly CV modulation expander
