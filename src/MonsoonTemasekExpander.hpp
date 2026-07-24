@@ -167,26 +167,26 @@ struct MonsoonTemasekExpander : Module {
 // ── Widget ────────────────────────────────────────────────────────────────────
 struct MonsoonTemasekExpanderWidget : ModuleWidget {
 
-    static constexpr float PW_MM = 22.f * 5.08f;   // MUST MATCH gen_temasek.py HP
+    static constexpr float PW_MM = 24.f * 5.08f;   // MUST MATCH gen_temasek.py HP
     static constexpr float PH_MM = 128.5f;
 
     // Mirror geometry -- MUST MATCH gen_temasek.py exactly
     // MUST MATCH gen_temasek.py. Row pitch matches Change Alley's control column.
-    static constexpr float MARGIN    =  4.0f;
+    static constexpr float MARGIN    =  6.0f;   // jack radius 4.45mm -- 4.0 overhung the edge
     static constexpr float CX        = PW_MM / 2.f;
     static constexpr float ROW_H     =  9.0f;
     static constexpr float GROUP_GAP =  6.8f;
     static constexpr float ROW_TOP   = 21.0f;
     // OUTER -> INNER: jack, jack, dial, dial, button, button
     static constexpr float J_DOM     = MARGIN +  0.0f;
-    static constexpr float J_COD     = MARGIN +  7.5f;
-    static constexpr float KNOB1     = MARGIN + 15.5f;
-    static constexpr float KNOB2     = MARGIN + 23.0f;   // leader/step, or Scatter BACK jack
-    static constexpr float BTN_D     = MARGIN + 30.0f;
-    static constexpr float BTN_C     = MARGIN + 35.5f;
+    static constexpr float J_COD     = MARGIN +  9.5f;
+    static constexpr float KNOB1     = MARGIN + 18.0f;
+    static constexpr float KNOB2     = MARGIN + 26.0f;   // leader/step, or Scatter domain-BACK
+    static constexpr float BTN_D     = MARGIN + 33.5f;
+    static constexpr float BTN_C     = MARGIN + 40.0f;
     // Scatter only: second back jack. Scatter has four gates and the row frees just one
     // slot (no step knob), so the codomain-back gate gets its own column.
-    static constexpr float J_BACK2   = MARGIN + 42.0f;
+    static constexpr float J_BACK2   = MARGIN + 46.5f;
 
     static float rowY(int verb, int sub) {
         return ROW_TOP + verb * (2.f * ROW_H + GROUP_GAP) + sub * ROW_H + ROW_H * 0.5f;
@@ -258,7 +258,7 @@ struct MonsoonTemasekExpanderWidget : ModuleWidget {
 
                     // Pending light just inside the buttons
                     addChild(createLightCentered<SmallLight<RedLight>>(
-                        mm2px(Vec(lx(BTN_C + 3.5f, flip), ry)), module,
+                        mm2px(Vec(lx(J_BACK2 + 4.0f, flip), ry)), module,
                         TK::PENDING_LIGHT_START + r));
                 }
             }
