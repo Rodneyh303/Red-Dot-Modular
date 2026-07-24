@@ -148,6 +148,27 @@ int main() {
       bool live = true; for (int v = 0; v < 6; ++v) live &= (s2[v] < 6);
       CHK(live, "leaderOffset wraps inside a PARTIAL block, never sources a dead voice"); }
 
+    // ── scatterRows: a genuine PERMUTATION (multiset of sources preserved) ──
+    { uint8_t s2[16]; fillIdent(s2); scatterRows(s2, 16, 4, 12345u);
+      int count[16] = {};
+      for (int v = 0; v < 16; ++v) count[s2[v]]++;
+      bool perm = true; for (int v = 0; v < 16; ++v) perm &= (count[v] == 1);
+      CHK(perm, "scatterRows is a PERMUTATION -- every source used exactly once"); }
+    { uint8_t s2[16] = {5,5,5,5, 1,2,3,4, 8,8,8,8, 9,10,11,12};
+      uint8_t before[16]; std::memcpy(before, s2, 16);
+      scatterRows(s2, 16, 4, 999u);
+      int cb[17] = {}, ca2[17] = {};
+      for (int v = 0; v < 16; ++v) { cb[before[v]]++; ca2[s2[v]]++; }
+      bool same = true; for (int v = 0; v < 17; ++v) same &= (cb[v] == ca2[v]);
+      CHK(same, "scatterRows preserves the MULTISET even with fan-in present"); }
+    { uint8_t a1[16], b1[16]; fillIdent(a1); fillIdent(b1);
+      scatterRows(a1, 16, 4, 7u); scatterRows(b1, 16, 4, 7u);
+      CHK(std::memcmp(a1,b1,16)==0, "scatterRows is deterministic for a given seed"); }
+    { uint8_t s2[16]; fillIdent(s2); scatterRows(s2, 16, 4, 42u);
+      bool inBlock = true;
+      for (int v = 0; v < 16; ++v) inBlock &= ((s2[v] / 4) == (v / 4));
+      CHK(inBlock, "scatterRows never crosses a block boundary"); }
+
     std::printf(fail ? "\n%d passed, %d FAILED\n" : "\n%d passed, 0 failed\n", pass, fail);
     return fail ? 1 : 0;
 }

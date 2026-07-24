@@ -380,13 +380,27 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
                     const float hw = mm2px(Vec(CELL_W * 0.5f, 0)).x;
                     const float hh = mm2px(Vec(0, CELL_H * 0.5f)).y;
                     if (h.isInter) {
-                        Vec tl = cellCentre(0, 0), br = cellCentre(active-1, active-1);
-                        nvgBeginPath(vg);
-                        nvgRect(vg, tl.x - hw - sw, tl.y - hh - sw,
-                                (br.x + hw + sw) - (tl.x - hw - sw),
-                                (br.y + hh + sw) - (tl.y - hh - sw));
-                        nvgStrokeColor(vg, hcol); nvgStrokeWidth(vg, sw*1.5f); nvgStroke(vg);
+                        // INTER acts BETWEEN blocks, so outline the OFF-DIAGONAL super-cells
+                        // -- block-row i x block-col j for i != j. Those are the regions a
+                        // source can move into. (The diagonal is the intra case below.)
+                        const int b = std::max(1, h.blk);
+                        const int nBlk = (active + b - 1) / b;
+                        for (int bi = 0; bi < nBlk; ++bi) {
+                            for (int bj = 0; bj < nBlk; ++bj) {
+                                if (bi == bj) continue;              // diagonal = intra
+                                const int r0 = bi * b, r1 = std::min(r0 + b, active) - 1;
+                                const int c0 = bj * b, c1 = std::min(c0 + b, active) - 1;
+                                if (r1 < r0 || c1 < c0) continue;
+                                Vec tl = cellCentre(r0, c0), br = cellCentre(r1, c1);
+                                nvgBeginPath(vg);
+                                nvgRect(vg, tl.x - hw, tl.y - hh,
+                                        (br.x + hw) - (tl.x - hw), (br.y + hh) - (tl.y - hh));
+                                nvgStrokeColor(vg, hcol); nvgStrokeWidth(vg, sw); nvgStroke(vg);
+                            }
+                        }
                     } else {
+                        // INTRA acts WITHIN a block: only the LEADING DIAGONAL super-cells
+                        // (block-row i x block-col i) are in play.
                         const int b = std::max(1, h.blk);
                         for (int blk = 0; blk * b < active; ++blk) {
                             const int b0 = blk * b;
