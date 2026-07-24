@@ -91,6 +91,30 @@ struct MonsoonTemasekExpander : Module {
         }
     }
 
+    // Latch a pending action from a manual button press (§14a: parameters captured NOW,
+    // not re-read at the phrase boundary). Shared by the gate path in process().
+    void latchFromButton(int row, bool isDomain) {
+        if (row < 0 || row >= TK::N_ROWS) return;
+        const int verb = row / 4;
+        const int side = (row % 4) / 2;
+        const int type = row % 2;
+        auto& p    = pendingRows[row];
+        p.armed    = true;
+        p.isDomain = isDomain;
+        p.isInter  = (side == 1);
+        p.grain    = 1 << (int)std::round(
+                         clamp(params[TK::GRAIN_START + row].getValue(), 0.f, 4.f));
+        if (verb == TK::V_COLLAPSE)
+            p.leaderOrStep = (int)std::round(
+                params[TK::LEADER_START + side * TK::TYPES + type].getValue());
+        else if (verb == TK::V_ROTATE)
+            p.leaderOrStep = (int)std::round(
+                params[TK::STEP_START + side * TK::TYPES + type].getValue());
+        else
+            p.leaderOrStep = 0;
+        lights[TK::PENDING_LIGHT_START + row].setBrightness(1.f);
+    }
+
     void process(const ProcessArgs&) override {
         // Detect triggers and latch into pendingRows.
         // Application happens in MonsoonExpanderManager at phrase boundary, exactly as the
@@ -102,37 +126,12 @@ struct MonsoonTemasekExpander : Module {
                 for (int t = 0; t < TK::TYPES; ++t) {
                     const int r = TK::rowId(v, s, t);
 
-                    auto latchRow = [&](bool domain) {
-                        auto& p     = pendingRows[r];
-                        p.armed     = true;
-                        p.isDomain  = domain;
-                        p.isInter   = (s == 1);
-                        // grain from param (latched here, not re-read at boundary)
-                        const int gIdx = TK::GRAIN_START + r;
-                        p.grain = 1 << (int)std::round(
-                            clamp(params[gIdx].getValue(), 0.f, 4.f));
-                        // leader / step
-                        if (v == TK::V_COLLAPSE) {
-                            // leader offset: which Collapse row (0..N_ROWS/2-1)?
-                            // Collapse rows are verb=0, so leader row = s*2+t
-                            const int lIdx = TK::LEADER_START + s * TK::TYPES + t;
-                            p.leaderOrStep = (int)std::round(params[lIdx].getValue());
-                        } else if (v == TK::V_ROTATE) {
-                            const int sIdx = TK::STEP_START + s * TK::TYPES + t;
-                            p.leaderOrStep = (int)std::round(params[sIdx].getValue());
-                        } else {
-                            p.leaderOrStep = 0;
-                        }
-                        p.scatterDelta = 1;   // fwd/back handled separately
-                        lights[TK::PENDING_LIGHT_START + r].setBrightness(1.f);
-                    };
-
                     if (domainTrig[r].process(
                             inputs[TK::DOMAIN_TRIG_START + r].getVoltage()))
-                        latchRow(true);
+                        latchFromButton(r, true);
                     if (codomainTrig[r].process(
                             inputs[TK::CODOMAIN_TRIG_START + r].getVoltage()))
-                        latchRow(false);
+                        latchFromButton(r, false);
                     // Buttons (momentary params, manual only)
                     if (btnTrig[r*2].process(params[TK::BTN_START + r*2].getValue()))
                         latchRow(true);
@@ -291,6 +290,159 @@ struct MonsoonTemasekExpanderWidget : ModuleWidget {
                     break;
                 }
             }
+        }
+    }
+};
+
+// ── Momentary trigger button: NOT a param (§ buttons are manual-only) ───────
+// A trigger has no value, no persistence and no undo -- it just arms a pending action.
+// So none of StoreKnob's seven re-supplied services apply; this is a click handler with
+// two draw states.
+struct TemasekTrigButton : widget::Widget {
+    MonsoonTemasekExpander* mod = nullptr;
+    int  row      = 0;
+    bool isDomain = true;
+    bool pressed  = false;
+
+    TemasekTrigButton() { box.size = mm2px(Vec(5.6f, 5.6f)); }
+
+    void draw(const DrawArgs& args) override {
+        NVGcontext* vg = args.vg;
+        const float cx = box.size.x * 0.5f, cy = box.size.y * 0.5f;
+        const float r  = std::min(box.size.x, box.size.y) * 0.42f;
+        // body
+        nvgBeginPath(vg); nvgCircle(vg, cx, cy, r);
+        nvgFillColor(vg, pressed ? nvgRGB(0x50,0x50,0x58) : nvgRGB(0x2e,0x2e,0x33));
+        nvgFill(vg);
+        // ring: domain vs codomain distinguished by ring style
+        nvgBeginPath(vg); nvgCircle(vg, cx, cy, r);
+        nvgStrokeColor(vg, isDomain ? nvgRGB(0xc8,0x96,0x0c) : nvgRGB(0x88,0x8d,0x96));
+        nvgStrokeWidth(vg, isDomain ? 1.4f : 1.0f);
+        nvgStroke(vg);
+        Widget::draw(args);
+    }
+
+    void onButton(const event::Button& e) override {
+        if (e.button == GLFW_MOUSE_BUTTON_LEFT && e.action == GLFW_PRESS) {
+            pressed = true;
+            if (mod) mod->latchFromButton(row, isDomain);
+            e.consume(this);
+        }
+        if (e.action == GLFW_RELEASE) pressed = false;
+        Widget::onButton(e);
+    }
+    void onDragEnd(const event::DragEnd&) override { pressed = false; }
+};
+
+struct MonsoonTemasekExpanderWidget : ModuleWidget {
+    static constexpr float HP_W   = 40.f;
+    static constexpr float PW_MM  = HP_W * 5.08f;    // 203.2
+    static constexpr float PH_MM  = 128.5f;
+
+    // Geometry -- must match panel_src/gen_temasek.py
+    static constexpr float MARGIN  = 5.0f;
+    static constexpr float ROW_TOP = 8.0f;
+    static constexpr float ROW_H   = (PH_MM - 16.0f) / 8.f;
+    static constexpr float J_OUTER = MARGIN;
+    static constexpr float BTN_D   = MARGIN + 8.5f;
+    static constexpr float KNOB1   = MARGIN + 17.5f;
+    static constexpr float KNOB2   = MARGIN + 27.0f;
+    static constexpr float BTN_C   = MARGIN + 36.0f;
+    static constexpr float J_INNER = MARGIN + 44.5f;
+
+    static float rowY(int verb, int sub) {
+        return ROW_TOP + (verb * 2 + sub + 0.5f) * ROW_H;
+    }
+    static float lx(float x_mm, bool flip) { return flip ? (PW_MM - x_mm) : x_mm; }
+
+    std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
+    int lastThemeLight = -1;
+
+    MonsoonTemasekExpanderWidget(MonsoonTemasekExpander* module) {
+        setModule(module);
+        std::string dark  = asset::plugin(pluginInstance, "res/panels/Temasek_panel_dark.svg");
+        std::string light = asset::plugin(pluginInstance, "res/panels/Temasek_panel_light.svg");
+        panelSvgDark  = APP->window->loadSvg(dark);
+        panelSvgLight = APP->window->loadSvg(light);
+        setPanel(Svg::load(dark));
+        addChild(createWidget<ScrewSilver>(mm2px(Vec(1.5f, 1.5f))));
+        addChild(createWidget<ScrewSilver>(mm2px(Vec(PW_MM - 1.5f, 1.5f))));
+        addChild(createWidget<ScrewSilver>(mm2px(Vec(1.5f, PH_MM - 1.5f))));
+        addChild(createWidget<ScrewSilver>(mm2px(Vec(PW_MM - 1.5f, PH_MM - 1.5f))));
+
+        for (int verb = 0; verb < TK::N_VERBS; ++verb) {
+            for (int sub = 0; sub < TK::TYPES; ++sub) {
+                const float y = rowY(verb, sub);
+                for (int side = 0; side < TK::SIDES; ++side) {
+                    const bool flip = (side == 1);
+                    const int  r    = TK::rowId(verb, side, sub);
+
+                    // trigger jacks: domain outside, codomain inside
+                    addInput(createInputCentered<PJ301MPort>(
+                        mm2px(Vec(lx(J_OUTER, flip), y)), module, TK::DOMAIN_TRIG_START + r));
+                    addInput(createInputCentered<PJ301MPort>(
+                        mm2px(Vec(lx(J_INNER, flip), y)), module, TK::CODOMAIN_TRIG_START + r));
+
+                    // momentary buttons (NOT params)
+                    for (int d = 0; d < 2; ++d) {
+                        auto* b = new TemasekTrigButton();
+                        b->mod      = module;
+                        b->row      = r;
+                        b->isDomain = (d == 0);
+                        b->box.pos  = mm2px(Vec(lx(d == 0 ? BTN_D : BTN_C, flip), y))
+                                          .minus(b->box.size.div(2));
+                        addChild(b);
+                    }
+
+                    // grain knob (DAW-exposed param)
+                    auto* g = createParamCentered<Trimpot>(
+                        mm2px(Vec(lx(KNOB1, flip), y)), module, TK::GRAIN_START + r);
+                    if (g->getParamQuantity()) g->getParamQuantity()->snapEnabled = true;
+                    addParam(g);
+
+                    // second knob: leader (Collapse) or step (Rotate)
+                    if (verb == TK::V_COLLAPSE || verb == TK::V_ROTATE) {
+                        const int idx = (verb == TK::V_COLLAPSE)
+                                      ? TK::LEADER_START + side * TK::TYPES + sub
+                                      : TK::STEP_START   + side * TK::TYPES + sub;
+                        auto* k2 = createParamCentered<Trimpot>(
+                            mm2px(Vec(lx(KNOB2, flip), y)), module, idx);
+                        if (k2->getParamQuantity()) k2->getParamQuantity()->snapEnabled = true;
+                        addParam(k2);
+                    }
+
+                    // scatter fwd/back jacks
+                    if (verb == TK::V_SCATTER) {
+                        const int i = side * TK::TYPES + sub;
+                        addInput(createInputCentered<PJ301MPort>(
+                            mm2px(Vec(lx(J_OUTER, flip), y - ROW_H * 0.22f)),
+                            module, TK::SCATTER_FWD_START + i));
+                        addInput(createInputCentered<PJ301MPort>(
+                            mm2px(Vec(lx(J_OUTER, flip), y + ROW_H * 0.22f)),
+                            module, TK::SCATTER_BACK_START + i));
+                    }
+
+                    // pending light
+                    addChild(createLightCentered<SmallLight<RedLight>>(
+                        mm2px(Vec(lx(KNOB1, flip), y - ROW_H * 0.34f)), module,
+                        TK::PENDING_LIGHT_START + r));
+                }
+            }
+        }
+    }
+
+    void step() override {
+        ModuleWidget::step();
+        if (!module) return;
+        Monsoon* m = redDot::findMonsoonEitherSide(module);
+        const int wantLight = (m && m->lightTheme) ? 1 : 0;
+        if (wantLight != lastThemeLight) {
+            lastThemeLight = wantLight;
+            for (Widget* child : children)
+                if (auto* sp = dynamic_cast<app::SvgPanel*>(child)) {
+                    sp->setBackground(wantLight ? panelSvgLight : panelSvgDark);
+                    break;
+                }
         }
     }
 };

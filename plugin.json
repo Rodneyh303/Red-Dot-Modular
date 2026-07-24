@@ -141,6 +141,16 @@
         "Random",
         "Sequencer"
       ]
+    },
+    {
+      "slug": "Temasek",
+      "name": "Temasek",
+      "description": "Transform companion for Change Alley: Collapse, Rotate, Reflect and Scatter applied to the pin matrix at phrase boundaries. Intra (within-block) verbs left, inter (across-block) right; domain and codomain variants per verb.",
+      "tags": [
+        "Expander",
+        "Random",
+        "Sequencer"
+      ]
     }
   ]
 }
