@@ -858,3 +858,47 @@ This is the first layout that plausibly fits a panel of the committed size, and 
   toggle greys out there or Collapse is treated as codomain-only is a UI decision.
 - The current engine implements the WITHIN column plus `blockOffset`. The ACROSS column is
   otherwise unbuilt; each cell is a small function of the same shape as its within-block twin.
+
+### 12h. Transpose is a PARTIAL operation (Rodney) — it needs a convention, not a rule
+
+Correct, and it is the one verb that is not structure-preserving by construction.
+
+**Why.** The board is a function `f: row → col`. `f⁻¹` is a function only when `f` is a
+bijection over the active pool. It fails two ways:
+- **non-injective (fan-in)** — Collapse sends many rows to one source, so `f⁻¹(source)` is a
+  SET, not a value;
+- **non-surjective** — if no row sources voice 7, `f⁻¹(7)` is undefined.
+
+Every other verb takes valid boards to valid boards by construction: permutations stay
+permutations, and Collapse's fan-in is deliberate. Transpose alone has an output that is not
+determined by its input, so outside the bijections ANY definition is a convention.
+
+**And the degenerate case is the COMMON one.** Collapse is the width control and will be used
+constantly; it produces maximal fan-in. Transpose would hit its fallback routinely, not
+rarely. A verb whose defined behaviour is the exception is a design smell.
+
+**Current convention (implemented):** row *t* sources the LOWEST row that sourced *t*; rows
+that nobody sourced keep their existing source. Stated positively: *transpose inverts the
+injective part of the relation and leaves everything else fixed.* Deterministic and
+explicable, but still a choice — and it is NOT self-inverse off the bijections (the tests
+assert self-inversion only for the involution case, deliberately).
+
+**Options, to decide:**
+1. **Keep the convention, document it on the panel/tooltip.** Cheapest. Risk: the common
+   case behaves in a way the name does not advertise.
+2. **Make transpose refuse non-bijections** — no-op, with the pending light flashing or the
+   trigger ignored. Honest about the operation's domain, but a control that silently does
+   nothing is poor UX.
+3. **Gate it on invertibility and SHOW it** — a lit/dimmed indicator meaning "this board is
+   invertible". Turns the constraint into information: it tells the player their board is a
+   clean permutation, which is musically meaningful in itself (every voice both copies and
+   is copied).
+4. **Drop transpose.** It is already the outlier on every axis of 12g — level-independent,
+   axis-independent, parameter-less — and now domain-restricted too. Four signals pointing
+   the same way.
+
+**Assessment.** Option 3 is the most interesting: it makes the precondition visible rather
+than hiding it, and "is my correlation structure a permutation?" is a genuine musical
+question about whether the ensemble is a closed loop of mutual influence or a hierarchy.
+Option 4 remains defensible on parsimony — transpose is the only verb that resisted every
+unification, and 12g showed how much clarity came from things that DID unify.
