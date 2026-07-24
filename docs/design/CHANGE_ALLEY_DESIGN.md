@@ -667,3 +667,41 @@ position.
 Committed panel today: 8 rows, 8 knobs, 8 triggers at 29HP. **Either layout exceeds it** —
 the toggle version needs ~75% more knobs and 50% more rows; the full version more than
 doubles everything. This is the open decision in 12b, now costed.
+
+### 12e. Scatter should draw from PHILOX, not its own RNG (Rodney)
+
+**The inconsistency.** Scatter currently owns a private `scatterSeed` advanced by an LCG,
+feeding an xorshift32 inside `scatter()`. That makes it the ONLY irreversible verb — every
+other one can be undone by its own logic (Collapse idempotent; Rotate steppable backwards
+via step = span−1; both Reflects self-inverse; BlockOffset reversible via k → nBlocks−k;
+Transpose self-inverse when injective). Scatter's seed only moves forward.
+
+That contradicts the instrument's stated signature (LINEAGE): *two reversible axes, both
+reversible because the randomness is ADDRESSABLE*. Backwards-dice exists precisely because a
+previous draw state is addressable rather than consumed. Scatter consumes its state — a
+second, weaker RNG mechanism bolted beside the good one.
+
+**The fix: scatter draws from Philox at its own counter.** PhiloxRng already exposes exactly
+what is needed — `setCounter`/`getCounter`, and per its own header comment
+*"philox4x32(counter, key) is a pure function — the draw at index N doesn't depend on having
+drawn N−1."* So:
+- Scatter uses a Philox stream with its OWN KEY (a distinct stream) and its OWN COUNTER.
+- Trigger advances the counter; a backwards gesture decrements it. Reversibility comes free
+  from the same machinery dice already uses — no new mechanism, no variant table to store.
+- "Scatter variant N" becomes literally "counter = N", so it is addressable, reproducible
+  across patches, and cheap to persist (one integer, not a permutation).
+
+**Own counter, not the dice counter — orthogonality must survive.** §3/§10 establish that
+dice re-rolls MATERIAL and restructure re-rolls RELATIONSHIPS, and that neither disturbs the
+other. Sharing the dice counter would couple them (a re-dice would silently re-scatter).
+Share the MECHANISM (counter-addressable Philox), not the counter.
+
+**Why the phrase-boundary rule makes this fit (Rodney's point).** Transforms apply at phrase
+boundaries, and redraw happens at phrase boundaries too. Both axes therefore advance on the
+SAME clock event, so both counters step in lockstep with the musical form while remaining
+independently addressable. One timing model, two addressable axes — which is precisely the
+LINEAGE thesis restated at the level of relationships.
+
+**Consequence for the control table (12d):** Scatter's second control is no longer a hidden
+seed. It is a COUNTER, with the same forward/back gesture dice has — so Scatter's row wants
+a trigger plus a back-trigger, exactly like dice/backwards-dice, rather than a variant knob.
