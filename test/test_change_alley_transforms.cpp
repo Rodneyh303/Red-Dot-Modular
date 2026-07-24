@@ -63,6 +63,43 @@ int main() {
       bool ok = true; for (int v = 0; v < 16; ++v) ok &= (s[v] < 16);
       CHK(ok, "chained transforms keep sources in range"); }
 
+    // ── §12: source-block OFFSET (section A follows section B) ──
+    { uint8_t s2[16]; fillIdent(s2); collapse(s2, 16, 4);   // four quartets on their leaders
+      blockOffset(s2, 16, 4, 1);                            // each block follows the NEXT
+      CHK(s2[0] == 4 && s2[3] == 4, "offset: block 0 follows block 1");
+      CHK(s2[12] == 0, "offset wraps: last block follows the first"); }
+    { uint8_t s2[16]; fillIdent(s2); uint8_t before[16]; std::memcpy(before, s2, 16);
+      blockOffset(s2, 16, 4, 0);
+      CHK(std::memcmp(before, s2, 16) == 0, "offset 0 = no-op"); }
+    { uint8_t s2[16]; fillIdent(s2); blockOffset(s2, 6, 4, 1);
+      bool live = true; for (int v = 0; v < 6; ++v) live &= (s2[v] < 6);
+      CHK(live, "offset never sources a dead voice (partial trailing block)"); }
+
+    // ── §12: DOMAIN variants (permute ROWS, not values) ──
+    { uint8_t s2[16]; fillIdent(s2);          // identity: row v sources v
+      rotateRows(s2, 16, 4);                  // each row inherits the PREVIOUS row's source
+      CHK(s2[1] == 0 && s2[2] == 1 && s2[3] == 2, "rotateRows: rows inherit the previous row's source");
+      CHK(s2[0] == 3, "rotateRows wraps within the block (row 0 takes row 3's)");
+      CHK(s2[4] == 7, "rotateRows wraps per block, not across blocks"); }
+    { uint8_t s2[16]; fillIdent(s2); reflectValues(s2, 16, 4);
+      CHK(s2[0] == 3 && s2[3] == 0, "reflectValues mirrors the SOURCE");
+      reflectValues(s2, 16, 4);
+      bool id = true; for (int v = 0; v < 16; ++v) id &= (s2[v] == v);
+      CHK(id, "reflectValues is self-inverse"); }
+
+    // ── §12: TRANSPOSE (invert the relation) ──
+    { uint8_t s2[16]; fillIdent(s2); s2[0] = 5; s2[5] = 0;
+      transpose(s2, 16);
+      CHK(s2[5] == 0 && s2[0] == 5, "transpose of an involution is itself"); }
+    { uint8_t s2[16]; fillIdent(s2); s2[3] = 7;
+      transpose(s2, 16);
+      CHK(s2[7] == 3, "transpose inverts: 3->7 becomes 7->3"); }
+    { uint8_t s2[16]; fillIdent(s2); collapse(s2, 16, 4);   // FAN-IN: 0,1,2,3 all -> 0
+      transpose(s2, 16);
+      CHK(s2[0] == 0, "transpose fan-in: lowest pre-image wins, no crash");
+      bool inRange = true; for (int v = 0; v < 16; ++v) inRange &= (s2[v] < 16);
+      CHK(inRange, "transpose keeps every source in range under fan-in"); }
+
     std::printf(fail ? "\n%d passed, %d FAILED\n" : "\n%d passed, 0 failed\n", pass, fail);
     return fail ? 1 : 0;
 }

@@ -75,6 +75,78 @@ inline void reflect(uint8_t* src, int activeCount, int blockSize) {
     }
 }
 
+// ── §12: cross-block source offset ───────────────────────────────────────────
+// Block i sources from block i+k instead of itself: "section A follows section B".
+// Applied AFTER a transform, it re-points whole blocks without disturbing the
+// within-block structure the transform just created. Well-defined by construction
+// (one source per row in, one out), and wraps over the ACTIVE pool.
+inline void blockOffset(uint8_t* src, int activeCount, int blockSize, int k) {
+    const int b = clampBlock(blockSize, activeCount);
+    if (k == 0 || b <= 0) return;
+    const int nBlocks = (activeCount + b - 1) / b;          // includes a partial trailing block
+    if (nBlocks <= 1) return;
+    for (int v = 0; v < activeCount && v < 16; ++v) {
+        const int cur      = src[v];
+        const int curBlock = cur / b;
+        const int within   = cur - curBlock * b;
+        int tgtBlock = (curBlock + k) % nBlocks;
+        if (tgtBlock < 0) tgtBlock += nBlocks;
+        int cand = tgtBlock * b + within;
+        // The trailing block may be short; fold back into it rather than off the pool.
+        if (cand >= activeCount) cand = tgtBlock * b + (within % (activeCount - tgtBlock * b));
+        src[v] = (uint8_t)cand;
+    }
+}
+
+// ── §12: domain (row) variants ───────────────────────────────────────────────
+// rotate()/scatter() above act on the CODOMAIN (which source a voice points at).
+// These act on the DOMAIN (which VOICE holds a given sourcing role) — the axis our
+// original four mixed by accident (rotate was codomain, reflect was domain).
+// reflect() is already the domain-mirror, so its codomain twin is reflectValues().
+
+// Rotate ROWS within each block: voices cycle their sourcing roles.
+inline void rotateRows(uint8_t* src, int activeCount, int blockSize) {
+    const int b = clampBlock(blockSize, activeCount);
+    uint8_t tmp[16];
+    for (int v = 0; v < 16; ++v) tmp[v] = src[v];
+    for (int v = 0; v < activeCount && v < 16; ++v) {
+        const int base = (v / b) * b;
+        int end = base + b; if (end > activeCount) end = activeCount;
+        const int span = end - base; if (span <= 0) continue;
+        const int from = base + (((v - base) - 1 + span) % span);   // take the previous row's source
+        src[v] = tmp[from];
+    }
+}
+
+// Reflect VALUES within each block: sources mirror, rows stay put.
+inline void reflectValues(uint8_t* src, int activeCount, int blockSize) {
+    const int b = clampBlock(blockSize, activeCount);
+    for (int v = 0; v < activeCount && v < 16; ++v) {
+        const int cur  = src[v];
+        const int base = (cur / b) * b;
+        int end = base + b; if (end > activeCount) end = activeCount;
+        const int span = end - base; if (span <= 0) continue;
+        src[v] = (uint8_t)(base + (span - 1 - (cur - base)));
+    }
+}
+
+// ── §12: transpose — invert the relation ─────────────────────────────────────
+// "Whoever I was copying now copies me." For an injective board this is exactly f⁻¹.
+// Collapse produces FAN-IN (many rows -> one source), which has no inverse: rows with
+// no pre-image keep their current source, and where several rows share a source the
+// LOWEST wins (deterministic, and it preserves that source's own mapping).
+inline void transpose(uint8_t* src, int activeCount) {
+    uint8_t inv[16];
+    for (int v = 0; v < 16; ++v) inv[v] = src[v];          // default: unchanged
+    bool seen[16] = {};
+    for (int v = 0; v < activeCount && v < 16; ++v) {
+        const int t = src[v];
+        if (t < 0 || t >= activeCount || t >= 16) continue;
+        if (!seen[t]) { inv[t] = (uint8_t)v; seen[t] = true; }   // lowest pre-image wins
+    }
+    for (int v = 0; v < activeCount && v < 16; ++v) src[v] = inv[v];
+}
+
 // Dispatch. transform: 0=Collapse 1=Rotate 2=Scatter 3=Reflect (ChangeAlleyIds order).
 inline void apply(int transform, uint8_t* src, int activeCount, int blockSize, uint32_t seed) {
     switch (transform) {
