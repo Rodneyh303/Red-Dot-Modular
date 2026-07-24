@@ -513,3 +513,51 @@ members and setters, VoiceResolver::spreadMode (dead), Monsoon::spreadInterpMono
 PatternEngine's mirror + setter, the context-menu toggle, the JSON field, and the
 spreadInterpMono parameter threaded through processDNA/sync. apply()/target() lost their
 mode and nPoly parameters. Pre-release, so no migration path was needed.
+## 12. Cross-block operations, and the domain/codomain axis
+
+Rodney asked whether scatter/rotate/reflect could act ACROSS 2×2, 4×4, 8×8 sub-matrices
+rather than only within blocks. Working it through surfaced something about the EXISTING
+transforms first.
+
+### The structural constraint
+One-pin-per-row means the board is not a free 16×16 binary matrix — it is a FUNCTION
+`f: row → col`. So "rotate this tile 90°" is generally ill-defined: rotating a tile's pins
+can put two pins in one row, or move a pin out of the tile into a row that already has one.
+Every operation must preserve function-ness, which rules most 2D tile ops out.
+
+But it rules them out informatively, because there are exactly TWO things one can permute:
+- the **codomain** — which SOURCE a voice points at (change the value), or
+- the **domain** — which VOICE holds a given sourcing role (permute the rows).
+
+### Finding: our four transforms already mix both, by accident
+- `rotate` shifts the VALUE — codomain: `src[v] = base + (cur - base + 1) % span`
+- `reflect` swaps ROWS — domain: `src[v] = tmp[mirror]`
+
+Nobody chose that; each was simply the natural way to write it. So the transform set is not
+organised along its own most important axis. Making the axis EXPLICIT doubles the space for
+free — *rotate-rows* (voices cycle their sourcing roles) and *reflect-values* (sources mirror
+within the block) are both meaningful and neither exists today.
+
+Open decision: does domain/codomain become a MODE on the existing four, or does it double
+them to eight? Mode is cheaper on panel space and keeps the four verbs; doubling is more
+discoverable.
+
+### Cross-block: the clean form is a SOURCE-BLOCK OFFSET
+Not a 2D tile operation — block *i* sources from block *i+k* instead of itself. Collapse@4
+with offset 1 makes voices 0-3 all follow voice 4: SECTION A FOLLOWS SECTION B rather than
+each section being internally homophonic. Musically strong (call-and-response between
+groups), trivially well-defined, preserves one-pin-per-row by construction, and composes
+with the existing grain knob as a second parameter.
+
+### The one genuine 2D operation that works: TRANSPOSE
+Reflect across the main diagonal = invert the relation: whoever I was copying now copies me.
+For a permutation that is exactly f⁻¹, and it is the only operation that acts on the
+relationship's DIRECTION rather than its content. Caveat: Collapse produces fan-in (many
+rows → one source), which has no inverse, so transpose needs a defined fallback for
+non-injective boards.
+
+### Ranking
+1. **Source-block offset** — easy, very musical, composes with the grain knob.
+2. **Domain/codomain as an explicit axis** — free doubling, and it fixes a real inconsistency.
+3. **Transpose** — elegant, needs a fan-in rule.
+Dropped: free tile rotation — ill-defined for the wrong reasons.
