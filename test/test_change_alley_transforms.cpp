@@ -27,13 +27,13 @@ int main() {
       CHK(s[8]==8 && s[15]==15, "rows beyond active pool untouched"); }
 
     // Rotate
-    { uint8_t s[16]; fillIdent(s); rotate(s, 16, 16);
+    { uint8_t s[16]; fillIdent(s); rotateValues(s, 16, 16);
       CHK(s[0]==1 && s[15]==0, "rotate@16: +1 with wrap");
-      rotate(s, 16, 16);
+      rotateValues(s, 16, 16);
       CHK(s[0]==2, "rotate composes per trigger (march)"); }
-    { uint8_t s[16]; fillIdent(s); rotate(s, 16, 4);
+    { uint8_t s[16]; fillIdent(s); rotateValues(s, 16, 4);
       CHK(s[0]==1 && s[3]==0 && s[4]==5 && s[7]==4, "rotate@4 wraps within blocks"); }
-    { uint8_t s[16]; fillIdent(s); rotate(s, 6, 4);            // partial block {4,5}: span 2
+    { uint8_t s[16]; fillIdent(s); rotateValues(s, 6, 4);            // partial block {4,5}: span 2
       CHK(s[4]==5 && s[5]==4, "rotate partial block wraps within its live span"); }
 
     // Scatter
@@ -49,17 +49,17 @@ int main() {
       CHK(s[10]==10, "scatter leaves rows beyond active pool untouched"); }
 
     // Reflect
-    { uint8_t s[16]; fillIdent(s); reflect(s, 16, 4);
+    { uint8_t s[16]; fillIdent(s); reflectRows(s, 16, 4);
       CHK(s[0]==3 && s[3]==0 && s[4]==7 && s[7]==4, "reflect@4 = retrograde within blocks");
-      reflect(s, 16, 4);
+      reflectRows(s, 16, 4);
       bool id = true; for (int v = 0; v < 16; ++v) id &= (s[v] == v);
       CHK(id, "reflect is self-inverse (double trigger restores)"); }
-    { uint8_t s[16]; fillIdent(s); reflect(s, 5, 4);           // partial block {4}: centre self-maps
+    { uint8_t s[16]; fillIdent(s); reflectRows(s, 5, 4);           // partial block {4}: centre self-maps
       CHK(s[4]==4, "reflect odd/1-wide partial block centre self-maps"); }
 
     // One-pin-per-row is structural for all: each s[v] is a single value — assert range.
     { uint8_t s[16]; fillIdent(s);
-      collapse(s,16,8); rotate(s,16,8); scatter(s,16,8,9); reflect(s,16,8);
+      collapse(s,16,8); rotateValues(s,16,8); scatter(s,16,8,9); reflectRows(s,16,8);
       bool ok = true; for (int v = 0; v < 16; ++v) ok &= (s[v] < 16);
       CHK(ok, "chained transforms keep sources in range"); }
 

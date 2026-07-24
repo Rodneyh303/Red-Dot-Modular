@@ -561,3 +561,40 @@ non-injective boards.
 2. **Domain/codomain as an explicit axis** — free doubling, and it fixes a real inconsistency.
 3. **Transpose** — elegant, needs a fan-in rule.
 Dropped: free tile rotation — ill-defined for the wrong reasons.
+
+### 12a. Naming and control shape (settled)
+
+**Renamed** so every verb carries its axis: `rotate` → `rotateValues` (codomain), `reflect`
+→ `reflectRows` (domain). With `rotateRows` and `reflectValues` added, each verb now has
+both twins and the axis is visible at every call site.
+
+**blockOffset IS its own transform, not a modifier.** It takes a trigger and a grain knob
+like the others:
+- grain knob = the BLOCK SIZE (which blocks are being re-pointed),
+- offset fixed at **+1 per trigger**, exactly as rotateValues fixes its step at +1 — a
+  larger jump is "trigger it twice", never a CV amount. Same rule, same reason: every pin
+  change stays a discrete atomic event.
+It is not *paired* with another transform. The composition that makes it musical
+(collapse@4, then offset → "section A follows section B") happens ACROSS PHRASE BOUNDARIES
+via the normal queue (§11), like any other pair of transforms. Standalone on an identity
+board it is simply a coarse rotate — meaningful, just less interesting than composed.
+
+**Transpose is its own transform too, and the only one with NO grain parameter.** It
+inverts the whole relation; there is no block size to choose (restricting inversion to a
+block is ill-defined once sources point outside it). Its row would leave the grain knob
+unused — an argument for giving Transpose a button+jack but no knob, rather than a dead
+control.
+
+### 12b. OPEN: the roster now exceeds the panel
+Verbs with the axis made explicit: Collapse, RotateValues, RotateRows, Scatter(Values),
+Scatter(Rows), ReflectValues, ReflectRows, BlockOffset, Transpose. At two pin types per
+verb that is far beyond the committed 8 rows (4 transforms × R/M) on the 29HP panel.
+
+Two ways out, to decide before building the panel:
+- **Mode toggle** — keep ~5 rows (Collapse, Rotate, Scatter, Reflect, Offset) and add a
+  per-row VALUES/ROWS switch; Transpose gets its own knob-less row. ~6 rows × 2 types = 12.
+  Cheaper on space, keeps the verb count low, but hides half the behaviour behind a toggle.
+- **Full rows** — one row per verb per type. Most discoverable, but roughly doubles panel
+  height or forces a second expander.
+Leaning mode toggle: the axis is a genuine *pair* relationship (each verb has exactly two
+twins), which is what a two-position switch expresses well.

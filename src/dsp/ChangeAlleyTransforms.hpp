@@ -29,9 +29,9 @@ inline void collapse(uint8_t* src, int activeCount, int blockSize) {
     for (int v = 0; v < activeCount && v < 16; ++v) src[v] = (uint8_t)((v / b) * b);
 }
 
-// Rotate: src[v] advances +1 WITHIN its block (wraps at block edge). Applied to the
+// RotateValues: src[v] advances +1 WITHIN its block (CODOMAIN -- shifts the SOURCE) (wraps at block edge). Applied to the
 // CURRENT table (composes per trigger — that is the point: repeated triggers march).
-inline void rotate(uint8_t* src, int activeCount, int blockSize) {
+inline void rotateValues(uint8_t* src, int activeCount, int blockSize) {
     const int b = clampBlock(blockSize, activeCount);
     for (int v = 0; v < activeCount && v < 16; ++v) {
         const int cur   = src[v];
@@ -59,10 +59,10 @@ inline void scatter(uint8_t* src, int activeCount, int blockSize, uint32_t seed)
     }
 }
 
-// Reflect: src reversed WITHIN each block (retrograde at the block grain). Applied to
+// ReflectRows: rows reversed WITHIN each block (DOMAIN -- swaps which VOICE holds a role) (retrograde at the block grain). Applied to
 // the current table via position mirror: row v takes the source currently held by its
 // mirror row. Self-inverse per double trigger. Odd partial block centre self-maps.
-inline void reflect(uint8_t* src, int activeCount, int blockSize) {
+inline void reflectRows(uint8_t* src, int activeCount, int blockSize) {
     const int b = clampBlock(blockSize, activeCount);
     uint8_t tmp[16];
     for (int v = 0; v < 16; ++v) tmp[v] = src[v];
@@ -99,10 +99,10 @@ inline void blockOffset(uint8_t* src, int activeCount, int blockSize, int k) {
 }
 
 // ── §12: domain (row) variants ───────────────────────────────────────────────
-// rotate()/scatter() above act on the CODOMAIN (which source a voice points at).
+// rotateValues()/scatter() above act on the CODOMAIN (which source a voice points at).
 // These act on the DOMAIN (which VOICE holds a given sourcing role) — the axis our
 // original four mixed by accident (rotate was codomain, reflect was domain).
-// reflect() is already the domain-mirror, so its codomain twin is reflectValues().
+// reflectRows() is already the domain-mirror, so its codomain twin is reflectValues().
 
 // Rotate ROWS within each block: voices cycle their sourcing roles.
 inline void rotateRows(uint8_t* src, int activeCount, int blockSize) {
@@ -151,9 +151,9 @@ inline void transpose(uint8_t* src, int activeCount) {
 inline void apply(int transform, uint8_t* src, int activeCount, int blockSize, uint32_t seed) {
     switch (transform) {
         case 0: collapse(src, activeCount, blockSize); break;
-        case 1: rotate  (src, activeCount, blockSize); break;
+        case 1: rotateValues (src, activeCount, blockSize); break;
         case 2: scatter (src, activeCount, blockSize, seed); break;
-        case 3: reflect (src, activeCount, blockSize); break;
+        case 3: reflectRows  (src, activeCount, blockSize); break;
         default: break;
     }
 }
