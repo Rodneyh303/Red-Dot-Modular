@@ -27,21 +27,25 @@ MARGIN  = 4.0
 CX      = PW_MM / 2
 N_VERBS = 4
 N_ROWS  = N_VERBS * 2
-# Verb groups get a gap between them; rows within a group are tight.
-GROUP_GAP = 4.0
-ROW_H     = (PH_MM - 14.0 - GROUP_GAP * (N_VERBS - 1)) / N_ROWS
-ROW_TOP   = 7.0
 
-# Tight column pitch: jack 8mm, button 6mm, trim 7mm -- 7.5mm pitch is comfortable.
-J_OUTER = MARGIN + 0.0
-BTN_D   = MARGIN + 7.5
-KNOB1   = MARGIN + 15.0
-KNOB2   = MARGIN + 22.5
-BTN_C   = MARGIN + 30.0
-J_INNER = MARGIN + 37.5
+# Row pitch MATCHES Change Alley's control column exactly (CTRL_ROW_H / GROUP_GAP),
+# so the two modules read as one instrument side by side.
+ROW_H     = 9.0
+GROUP_GAP = 6.8
+ROW_TOP   = 21.0        # below the verb name label
+
+# Column order OUTER -> INNER: jack, jack, dial, dial, button, button.
+# Jacks live at the panel edge so cables never cross the knobs.
+J_DOM   = MARGIN + 0.0
+J_COD   = MARGIN + 7.5
+KNOB1   = MARGIN + 15.5      # grain (every verb)
+KNOB2   = MARGIN + 23.0      # leader (Collapse) / step (Rotate) / SCATTER-BACK jack
+BTN_D   = MARGIN + 30.0
+BTN_C   = MARGIN + 35.5
 
 def rowY(verb, sub):
-    return ROW_TOP + verb * GROUP_GAP + (verb * 2 + sub + 0.5) * ROW_H
+    # Same formula as MonsoonChangeAlleyExpanderWidget::ctrlRowY
+    return ROW_TOP + verb * (2.0 * ROW_H + GROUP_GAP) + sub * ROW_H + ROW_H * 0.5
 
 def lx(x_mm, flip):
     return (PW_MM - x_mm) if flip else x_mm
@@ -62,19 +66,16 @@ def gen(dark):
             ry = rowY(verb, sub)
             for side in range(2):
                 flip = (side == 1)
-                E(jack(lx(J_OUTER, flip), ry, t))
-                E(jack(lx(J_INNER, flip), ry, t))
-                for bx in [BTN_D, BTN_C]:
-                    E(f'<circle cx="{px(lx(bx,flip)):.1f}" cy="{px(ry):.1f}" r="{px(2.8):.1f}"')
-                    E(f'  fill="{t["frame"]}" stroke="{t["dim"]}" stroke-width="{px(0.5):.2f}"/>')
+                E(jack(lx(J_DOM, flip), ry, t))
+                E(jack(lx(J_COD, flip), ry, t))
                 E(trim(lx(KNOB1, flip), ry, t, t["gold"]))
-                if verb in (0, 1):
+                if verb in (0, 1):                      # Collapse leader / Rotate step
                     E(trim(lx(KNOB2, flip), ry, t, t["gold"]))
-                if verb == 3:
-                    fwd_y = ry - ROW_H * 0.22
-                    bk_y  = ry + ROW_H * 0.22
-                    E(jack(lx(J_OUTER - 0.0, flip), fwd_y, t))
-                    E(jack(lx(J_OUTER - 0.0, flip), bk_y,  t))
+                elif verb == 3:                         # Scatter: BACK jack in the free slot
+                    E(jack(lx(KNOB2, flip), ry, t))
+                for bx in (BTN_D, BTN_C):
+                    E(f'<circle cx="{px(lx(bx,flip)):.1f}" cy="{px(ry):.1f}" r="{px(2.6):.1f}"'
+                      f' fill="{t["frame"]}" stroke="{t["dim"]}" stroke-width="{px(0.5):.2f}"/>')
 
     E(logo_embed(dark, CX - 17.0, PH_MM - 11.0, 34.0))
 

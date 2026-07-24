@@ -87,10 +87,18 @@ struct MonsoonTemasekExpander : Module {
             configInput(TK::GRAIN_CV_START    + i, "Grain CV");
             configInput(TK::GRAIN_ATTEN_START + i, "Grain attenuverter");
         }
-        // Scatter fwd/back
-        for (int i = 0; i < TK::SIDES * TK::TYPES; ++i) {
-            configInput(TK::SCATTER_FWD_START  + i, "Scatter forward");
-            configInput(TK::SCATTER_BACK_START + i, "Scatter back");
+        // Scatter BACK jacks. The normal trigger (button or jack) means FORWARD, so only
+        // "back" needs its own input -- and it fits the slot Scatter leaves empty by having
+        // no second dial. Halves the jack count, keeps forward as the default gesture.
+        for (int sd = 0; sd < TK::SIDES; ++sd) {
+            for (int ty = 0; ty < TK::TYPES; ++ty) {
+                const int i = sd * TK::TYPES + ty;
+                const int r = TK::rowId(TK::V_SCATTER, sd, ty);
+                if (scatterBack[i].process(inputs[TK::SCATTER_BACK_START + i].getVoltage())) {
+                    latchFromButton(r, true);
+                    pendingRows[r].scatterDelta = -1;     // override: step BACKWARD
+                }
+            }
         }
     }
 
@@ -115,6 +123,7 @@ struct MonsoonTemasekExpander : Module {
                 params[TK::STEP_START + side * TK::TYPES + type].getValue());
         else
             p.leaderOrStep = 0;
+        if (verb == TK::V_SCATTER) p.scatterDelta = 1;   // normal trigger = FORWARD
         lights[TK::PENDING_LIGHT_START + row].setBrightness(1.f);
     }
 
@@ -175,21 +184,22 @@ struct MonsoonTemasekExpanderWidget : ModuleWidget {
     static constexpr float PH_MM = 128.5f;
 
     // Mirror geometry -- MUST MATCH gen_temasek.py exactly
+    // MUST MATCH gen_temasek.py. Row pitch matches Change Alley's control column.
     static constexpr float MARGIN    =  4.0f;
     static constexpr float CX        = PW_MM / 2.f;
-    static constexpr float N_ROWS_F  = 8.f;
-    static constexpr float GROUP_GAP =  4.0f;
-    static constexpr float ROW_H     = (PH_MM - 14.f - GROUP_GAP * 3.f) / N_ROWS_F;
-    static constexpr float ROW_TOP   =  7.0f;
-    static constexpr float J_OUTER   = MARGIN +  0.0f;
-    static constexpr float BTN_D     = MARGIN +  7.5f;
-    static constexpr float KNOB1     = MARGIN + 15.0f;
-    static constexpr float KNOB2     = MARGIN + 22.5f;
-    static constexpr float BTN_C     = MARGIN + 30.0f;
-    static constexpr float J_INNER   = MARGIN + 37.5f;
+    static constexpr float ROW_H     =  9.0f;
+    static constexpr float GROUP_GAP =  6.8f;
+    static constexpr float ROW_TOP   = 21.0f;
+    // OUTER -> INNER: jack, jack, dial, dial, button, button
+    static constexpr float J_DOM     = MARGIN +  0.0f;
+    static constexpr float J_COD     = MARGIN +  7.5f;
+    static constexpr float KNOB1     = MARGIN + 15.5f;
+    static constexpr float KNOB2     = MARGIN + 23.0f;   // leader/step, or Scatter BACK jack
+    static constexpr float BTN_D     = MARGIN + 30.0f;
+    static constexpr float BTN_C     = MARGIN + 35.5f;
 
     static float rowY(int verb, int sub) {
-        return ROW_TOP + verb * GROUP_GAP + (verb * 2 + sub + 0.5f) * ROW_H;
+        return ROW_TOP + verb * (2.f * ROW_H + GROUP_GAP) + sub * ROW_H + ROW_H * 0.5f;
     }
     static float lx(float x_mm, bool flip) {
         return flip ? PW_MM - x_mm : x_mm;
@@ -219,35 +229,19 @@ struct MonsoonTemasekExpanderWidget : ModuleWidget {
                 for (int side = 0; side < 2; ++side) { // 0=intra 1=inter
                     const bool flip = (side == 1);
 
-                    // Domain jack (outermost)
+                    const int r = TK::rowId(verb, side, sub);
+
+                    // Two jacks at the outer edge (cables never cross the knobs)
                     addInput(createInputCentered<PJ301MPort>(
-                        mm2px(Vec(lx(J_OUTER, flip), ry)), module,
-                        TK::DOMAIN_TRIG_START + TK::rowId(verb, side, sub)));
-
-                    // Codomain jack
+                        mm2px(Vec(lx(J_DOM, flip), ry)), module, TK::DOMAIN_TRIG_START + r));
                     addInput(createInputCentered<PJ301MPort>(
-                        mm2px(Vec(lx(J_INNER, flip), ry)), module,
-                        TK::CODOMAIN_TRIG_START + TK::rowId(verb, side, sub)));
+                        mm2px(Vec(lx(J_COD, flip), ry)), module, TK::CODOMAIN_TRIG_START + r));
 
-                    // Domain button (momentary -- NOT a param, sets the pending flag)
-                    // Using TL1105 mapped to a param slot so Rack handles the press event;
-                    // the param is never read for value, only for the trigger in process().
-                    // (A proper non-param button widget is a future refinement.)
-                    addParam(createParamCentered<TL1105>(
-                        mm2px(Vec(lx(BTN_D, flip), ry)), module,
-                        TK::BTN_START + TK::rowId(verb, side, sub) * 2));     // NOTE: overflow -- see below
-
-                    // Codomain button
-                    addParam(createParamCentered<TL1105>(
-                        mm2px(Vec(lx(BTN_C, flip), ry)), module,
-                        TK::BTN_START + TK::rowId(verb, side, sub) * 2 + 1));
-
-                    // Grain knob (DAW-exposed)
+                    // Grain knob (every verb)
                     addParam(createParamCentered<Trimpot>(
-                        mm2px(Vec(lx(KNOB1, flip), ry)), module,
-                        TK::GRAIN_START + TK::rowId(verb, side, sub)));
+                        mm2px(Vec(lx(KNOB1, flip), ry)), module, TK::GRAIN_START + r));
 
-                    // Leader (Collapse) or step (Rotate) knob
+                    // Second slot: leader (Collapse), step (Rotate), or Scatter BACK jack.
                     if (verb == TK::V_COLLAPSE) {
                         addParam(createParamCentered<Trimpot>(
                             mm2px(Vec(lx(KNOB2, flip), ry)), module,
@@ -256,25 +250,22 @@ struct MonsoonTemasekExpanderWidget : ModuleWidget {
                         addParam(createParamCentered<Trimpot>(
                             mm2px(Vec(lx(KNOB2, flip), ry)), module,
                             TK::STEP_START + side * TK::TYPES + sub));
+                    } else if (verb == TK::V_SCATTER) {
+                        addInput(createInputCentered<PJ301MPort>(
+                            mm2px(Vec(lx(KNOB2, flip), ry)), module,
+                            TK::SCATTER_BACK_START + side * TK::TYPES + sub));
                     }
 
-                    // Pending light
+                    // Two buttons innermost
+                    addParam(createParamCentered<TL1105>(
+                        mm2px(Vec(lx(BTN_D, flip), ry)), module, TK::BTN_START + r * 2));
+                    addParam(createParamCentered<TL1105>(
+                        mm2px(Vec(lx(BTN_C, flip), ry)), module, TK::BTN_START + r * 2 + 1));
+
+                    // Pending light just inside the buttons
                     addChild(createLightCentered<SmallLight<RedLight>>(
-                        mm2px(Vec(lx(CX - 3.0f, flip), ry)), module,
-                        TK::PENDING_LIGHT_START + TK::rowId(verb, side, sub)));
-
-                    // Scatter fwd/back jacks
-                    if (verb == TK::V_SCATTER) {
-                        const int i = side * TK::TYPES + sub;
-                        const float fwd_y = ry - ROW_H * 0.22f;
-                        const float bk_y  = ry + ROW_H * 0.22f;
-                        addInput(createInputCentered<PJ301MPort>(
-                            mm2px(Vec(lx(J_OUTER, flip), fwd_y)), module,
-                            TK::SCATTER_FWD_START  + i));
-                        addInput(createInputCentered<PJ301MPort>(
-                            mm2px(Vec(lx(J_OUTER, flip), bk_y)),  module,
-                            TK::SCATTER_BACK_START + i));
-                    }
+                        mm2px(Vec(lx(BTN_C + 4.5f, flip), ry)), module,
+                        TK::PENDING_LIGHT_START + r));
                 }
             }
         }
