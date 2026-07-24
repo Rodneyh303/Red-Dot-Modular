@@ -121,6 +121,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
                     dst.armed   = src.armed;
                     dst.blk     = src.grain;
                     dst.isInter = src.isInter;
+                    dst.isDomain= src.isDomain;
                     dst.type    = hr % 2;          // 0 = rhythm, 1 = melody
                 }
             }
@@ -149,14 +150,17 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
                         const int verb = row / 4;
                         const int type = row % 2;
                         uint8_t* tbl   = (type == 0) ? ca->rhythmSrc : ca->melodySrc;
-                        if (verb == TemasekIds::V_SCATTER) {
-                            tk->scatterCounter[((row%4)/2) * TemasekIds::TYPES + type] +=
-                                (uint64_t)(int64_t)p.scatterDelta;
-                        }
+                        // Counter index includes the AXIS: domain and codomain scatter are
+                        // different operations and must keep independent positions.
+                        const int side = (row % 4) / 2;
+                        const int ci   = (side * TemasekIds::TYPES + type) * 2
+                                       + (p.isDomain ? 0 : 1);
+                        if (verb == TemasekIds::V_SCATTER)
+                            tk->scatterCounter[ci] += (uint64_t)(int64_t)p.scatterDelta;
                         dotModular::ca::applyTemasek(
                             verb, p.isDomain, p.isInter,
                             tbl, active, p.grain, p.leaderOrStep,
-                            tk->scatterCounter[((row%4)/2) * TemasekIds::TYPES + type]);
+                            tk->scatterCounter[ci]);
                         p.armed = false;
                         tk->lights[TemasekIds::PENDING_LIGHT_START + row].setBrightness(0.f);
                     }

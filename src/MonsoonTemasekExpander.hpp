@@ -41,9 +41,13 @@ struct MonsoonTemasekExpander : Module {
     dsp::SchmittTrigger scatterFwd [TK::SIDES * TK::TYPES];
     dsp::SchmittTrigger scatterBack[TK::SIDES * TK::TYPES];
     dsp::BooleanTrigger btnTrig[TK::N_ROWS * 2];
+    bool scatterBackHeld[TK::SIDES * TK::TYPES] = {};
 
     // Scatter Philox counters (one per side per pin type — own key, not the dice counter)
-    uint64_t scatterCounter[TK::SIDES * TK::TYPES] = {};
+    // One counter per (side, type, AXIS): domain and codomain scatter are different
+    // operations, so they need independent positions or stepping one would desync the
+    // other's reversibility. Index: (side*TYPES + type)*2 + (isDomain ? 0 : 1)
+    uint64_t scatterCounter[TK::SIDES * TK::TYPES * 2] = {};
 
     MonsoonTemasekExpander() {
         config(TK::NUM_PARAMS_TOTAL, TK::NUM_INPUTS, 0, TK::NUM_LIGHTS);
@@ -87,19 +91,18 @@ struct MonsoonTemasekExpander : Module {
             configInput(TK::GRAIN_CV_START    + i, "Grain CV");
             configInput(TK::GRAIN_ATTEN_START + i, "Grain attenuverter");
         }
-        // Scatter BACK jacks. The normal trigger (button or jack) means FORWARD, so only
-        // "back" needs its own input -- and it fits the slot Scatter leaves empty by having
-        // no second dial. Halves the jack count, keeps forward as the default gesture.
-        for (int sd = 0; sd < TK::SIDES; ++sd) {
+        // Scatter direction. BACK is a LEVEL-SENSITIVE GATE, not a trigger: while it is
+        // high, the next scatter (domain OR codomain) steps BACKWARD. One jack therefore
+        // reverses both axes, which a per-axis back-trigger would have needed two jacks
+        // for -- and there is only one free slot on the row. Level-sensitive for the same
+        // reason as the §12i mode gates: a held lane always means the same thing, and a
+        // missed or doubled edge cannot leave the direction stuck.
+        for (int sd = 0; sd < TK::SIDES; ++sd)
             for (int ty = 0; ty < TK::TYPES; ++ty) {
                 const int i = sd * TK::TYPES + ty;
-                const int r = TK::rowId(TK::V_SCATTER, sd, ty);
-                if (scatterBack[i].process(inputs[TK::SCATTER_BACK_START + i].getVoltage())) {
-                    latchFromButton(r, true);
-                    pendingRows[r].scatterDelta = -1;     // override: step BACKWARD
-                }
+                scatterBackHeld[i] =
+                    inputs[TK::SCATTER_BACK_START + i].getVoltage() > 1.f;
             }
-        }
     }
 
     // Latch a pending action from a manual button press (§14a: parameters captured NOW,
@@ -123,7 +126,8 @@ struct MonsoonTemasekExpander : Module {
                 params[TK::STEP_START + side * TK::TYPES + type].getValue());
         else
             p.leaderOrStep = 0;
-        if (verb == TK::V_SCATTER) p.scatterDelta = 1;   // normal trigger = FORWARD
+        if (verb == TK::V_SCATTER)
+            p.scatterDelta = scatterBackHeld[side * TK::TYPES + type] ? -1 : +1;
         lights[TK::PENDING_LIGHT_START + row].setBrightness(1.f);
     }
 
