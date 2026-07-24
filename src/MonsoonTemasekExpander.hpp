@@ -167,7 +167,7 @@ struct MonsoonTemasekExpander : Module {
 // ── Widget ────────────────────────────────────────────────────────────────────
 struct MonsoonTemasekExpanderWidget : ModuleWidget {
 
-    static constexpr float PW_MM = 30.f * 5.08f;
+    static constexpr float PW_MM = 22.f * 5.08f;   // MUST MATCH gen_temasek.py HP
     static constexpr float PH_MM = 128.5f;
 
     // Mirror geometry -- MUST MATCH gen_temasek.py exactly

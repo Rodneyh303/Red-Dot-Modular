@@ -6,7 +6,9 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dotmod_design import px, svg_open, logo_embed, jack, trim
 
-HP     = 30          # tightened from 40 -- the 40HP version was mostly empty space
+HP     = 22          # 40 -> 30 -> 22: sized to what the controls actually need.
+                     # Per-side span is 50mm (MARGIN + J_BACK2 + jack radius), so two
+                     # sides = 100mm, leaving ~11.8mm centre for the divider + labels.
 PW_MM  = HP * 5.08
 PH_MM  = 128.5
 
