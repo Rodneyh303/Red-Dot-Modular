@@ -954,3 +954,90 @@ Doubling for R/M: **8-10 buttons, 8-10 trigger jacks, 4 mode gates, 4 toggles, 4
 Compare 12d's 8-verb roster: 20 knobs, 16 triggers. The three-axis model with gated modes is
 both smaller and strictly more expressive — every one of the 16 verb×axis×level behaviours is
 reachable under sequencer control.
+
+## 13. SETTLED LAYOUT — intra left, inter right (Rodney)
+
+Supersedes the toggle scheme in 12i.
+
+**Level is encoded by POSITION, axis by WHICH BUTTON.** Panel grows on the right of the grid:
+- **LEFT of the grid** — the four INTRA-submatrix verbs (within blocks)
+- **RIGHT of the grid** — their INTER-submatrix equivalents (across blocks)
+- Per verb, per side, per pin type: **2 buttons + 2 jacks** — one pair for DOMAIN, one for
+  CODOMAIN — plus stepped knob(s) and one light.
+
+**Why this beats 12i's toggles:** the gesture IS the full specification. There is no mode
+state to latch at trigger time, nothing that can drift between trigger and phrase boundary,
+and no pending light that can misrepresent what is queued. 12i's whole "latch the whole
+action" complication disappears because there is no separate mode to latch.
+
+**Queue unchanged (§11):** one pending action for rhythm, one for melody, applied at the
+phrase boundary, latest-overwrites.
+
+**Transpose: DROPPED.** Resolves 12h — no partial operation, no convention needed for
+non-bijections, no invertibility indicator. It was the outlier on every axis.
+
+**Knobs are NOT uniform.** Only Rotate and Scatter use a step; Collapse has no ordering to
+step through and Reflect is self-inverse. Dead knobs are worse than absent ones, so per side
+per pin type: 4 grain knobs + 2 step knobs = **6, not 8**.
+
+**Size estimate:** ~8 rows per side, each ~50mm wide (2 jacks, 2 buttons, 1-2 knobs, light),
+plus the 99mm grid ≈ **40HP**. Large, but in the register of big matrix modules, and it is
+the centrepiece. Mock before committing.
+
+### 13a. The Collapse question, spelled out
+
+There are two sensible meanings of "collapse", and they differ in ONE character of code.
+
+Say a Scatter has just run, and the board (block size 4) looks like this:
+
+```
+row:   0   1   2   3  |  4   5   6   7
+src:   9   2  14   5  | 11   3   7   0     <- each row sources some scattered voice
+```
+
+**Collapse ABSOLUTE** — `src[v] = leaderIndex(v)`. Everyone points AT the leader voice:
+```
+row:   0   1   2   3  |  4   5   6   7
+src:   0   0   0   0  |  4   4   4   4
+```
+Block 0 all follow voice 0; block 1 all follow voice 4. **The scatter is wiped** — the
+previous structure is gone, and each leader now sources itself (independent).
+
+**Collapse RELATIVE** — `src[v] = src[leaderIndex(v)]`. Everyone copies WHAT THE LEADER
+POINTS AT:
+```
+row:   0   1   2   3  |  4   5   6   7
+src:   9   9   9   9  | 11  11  11  11
+```
+Block 0 all follow voice 9; block 1 all follow voice 11. **The scatter is inherited** — you
+get four groups each locked onto a DIFFERENT randomly-chosen voice, internally unified.
+
+**Why this matters:** absolute throws away whatever came before, so `scatter → collapse`
+wastes the scatter. Relative composes — `scatter → collapse-relative` is exactly the
+theme-and-variations setup from §9: several groups, each following a different source.
+
+### 13b. …and this FILLS the empty cell in §12g
+
+12g listed Collapse × domain as meaningless ("rows cannot merge"). That was wrong. The two
+collapse variants ARE the axis:
+
+- **Collapse CODOMAIN (absolute)** — set the source VALUE to the leader's index.
+- **Collapse DOMAIN (relative)** — adopt the leader's ROW ASSIGNMENT.
+
+That is exactly the same distinction as the Rotate pair: `rotateValues` changes the value,
+`rotateRows` takes another row's value. Collapse-relative takes the LEADER's value; rotateRows
+takes the PREVIOUS row's value. Same axis, different target row.
+
+So Rodney's two-button-per-verb layout is not an approximation — every verb genuinely has
+both twins, and the grid has no empty cells:
+
+| | CODOMAIN (set the value) | DOMAIN (adopt another row's value) |
+|---|---|---|
+| **Collapse** | point at the leader (absolute) | copy the leader's source (relative) |
+| **Rotate** | `rotateValues` | `rotateRows` |
+| **Scatter** | seeded re-draw (allows fan-in) | seeded row permutation (bijective) |
+| **Reflect** | `reflectValues` | `reflectRows` |
+
+INTER versions are the same four, one level up: block-collapse (all blocks → first, or all
+adopt block 0's assignments), block-rotate (= the old `blockOffset`), block-scatter, and
+block-reflect (= Rodney's row/column block swaps).
