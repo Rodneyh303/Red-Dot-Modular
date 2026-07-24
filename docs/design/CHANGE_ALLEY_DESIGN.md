@@ -632,3 +632,38 @@ stepped knobs (grain + step) while others want one or none. Dead knobs on the ro
 not use a parameter would be worse than no knobs. That argues against one-row-per-verb with
 a uniform control strip, and toward a smaller set of transform rows with a per-row config
 area (grain, step, VALUES/ROWS) whose fields grey out when a verb does not use them.
+
+### 12d. Action / control requirement table
+
+Axis: **codomain** = changes WHICH SOURCE a voice points at · **domain** = changes WHICH
+VOICE holds a sourcing role · **direction** = inverts the relation itself.
+
+| # | Verb | Axis | Grain | Step | Seed | Self-inv | Notes |
+|---|------|------|:-----:|:----:|:----:|:--------:|-------|
+| 1 | **Collapse** | codomain | ● | – | – | no | `src[v]=blockLeader(v)`. Grain 1 = Identity (full independence); grain = pool = total unison. The width control. |
+| 2 | **RotateValues** | codomain | ● | ● | – | no | Source advances within block. Step changes topology: step 2 in a block of 4 = two 2-cycles, not a faster 4-cycle. |
+| 3 | **RotateRows** | domain | ● | ● | – | no | Voices cycle their sourcing ROLES; the set of sources is preserved. |
+| 4 | **Scatter** | codomain | – ● | – | ● | no | Seeded re-draw within block. Allows FAN-IN (two rows may land on one source). |
+| 5 | **ReflectValues** | codomain | ● | – | – | **yes** | Source mirrors within block; rows stay put. |
+| 6 | **ReflectRows** | domain | ● | – | – | **yes** | Rows reverse within block = retrograde of the correlation structure. |
+| 7 | **BlockOffset** | codomain | ● | ● (k) | – | no | Block *i* sources block *i+k*. k=1 follow-next, k=2 swap-with-opposite, k=3 follow-previous. |
+| 8 | **Transpose** | direction | – | – | – | ~ | Inverts the relation (f⁻¹ when injective). NO parameters. Self-inverse only for injective boards; fan-in loses information. |
+
+**Identity is not a verb** — it is Collapse at grain 1, so it needs no control of its own.
+
+**Gap: there is no `scatterRows`.** It would be meaningfully different, not a duplicate:
+`scatter` re-DRAWS sources and permits collisions (fan-in), whereas a row-shuffle would be a
+true PERMUTATION preserving the multiset of sources. Worth adding for symmetry if the
+VALUES/ROWS toggle is adopted, since otherwise Scatter is the one verb with a dead toggle
+position.
+
+### Control cost
+
+| Layout | Rows (×2 pin types) | Knobs | Triggers (btn+jack+light) | Toggles |
+|---|---|---|---|---|
+| **One row per verb** | 8 × 2 = 16 | (7 grain + 3 step) × 2 = **20** | 16 | 0 |
+| **VALUES/ROWS toggle** | 6 × 2 = 12 | (5 grain + 2 step) × 2 = **14** | 12 | 6 |
+
+Committed panel today: 8 rows, 8 knobs, 8 triggers at 29HP. **Either layout exceeds it** —
+the toggle version needs ~75% more knobs and 50% more rows; the full version more than
+doubles everything. This is the open decision in 12b, now costed.
