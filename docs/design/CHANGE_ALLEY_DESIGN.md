@@ -1123,3 +1123,76 @@ why it needed no special casing there either.
 
 Scatter trades a knob for two jacks — better, because the two jacks are sequencer-drivable
 where a knob position is not.
+
+## 14. Latch gap, CV, and the transforms expander
+
+### 14a. BUG: parameters are NOT latched at trigger time
+Rodney asked whether the latch rule already applies to manual buttons. It does not.
+`pendingRow[row]` is a bare `bool`, and `MonsoonExpanderManager` reads the grain knob AT THE
+PHRASE BOUNDARY:
+```cpp
+const int blk = blockFromKnob(ca->params[BLOCK_KNOB_START + row].getValue());
+```
+So turning grain between trigger and bar line changes what fires, and the pending light was
+advertising the earlier intent. Tolerable by hand; **wrong under CV or DAW automation**, which
+can move continuously in that window.
+
+**Fix:** `pendingRow` becomes a small struct latching the RESOLVED parameter set at trigger
+time — `{armed, verb, axis, level, grain, step/leader, scatterDelta}` — and the boundary
+applies only what was latched. Same discipline as lock (snapshot the resolved knob+CV value),
+and the same reason: a queued action must mean what it meant when you queued it.
+
+### 14b. CV on the transform knobs
+- Attenuverters are **NOT DAW-exposed** (Rodney), consistent with PARAM_CLASSIFICATION: an
+  attenuverter is CONFIG-ish, the CV jack is the real modulation path. Same call as Causeway.
+- Full CV per knob costs a jack + attenuverter each: 112 → 136 → **160 controls** (~70HP).
+  Not viable.
+- §10 also declined continuous per-pin CV on the grounds that it reclassifies structure into
+  a value surface. Transform PARAMETERS are the same category — configuration for a discrete
+  gesture, not something you ride.
+- **If any earns CV it is GRAIN**: "collapse at 2, then 4, then 8" is a real musical sequence,
+  and grain changes the SHAPE rather than the amount. One grain CV per verb, shared across the
+  domain/codomain pair = 16 jacks, not 48.
+- In a DAW the knobs are already host params and Rack CV can arrive through the VST's CV
+  inputs, so the modulation path exists there regardless. Standalone Rack is where the absence
+  would be felt.
+
+### 14c. Density forces a split
+| | Controls |
+|---|---|
+| Transforms on the Change Alley panel | 112 (56/side, ~10.5mm sq — below jack size) |
+| At a workable ~13mm pitch | **~53HP** |
+| With full CV | ~70HP |
+
+**Recommendation: a companion expander.** Change Alley stays ~29HP — grid, manual pins,
+crosshair, legend, connect marker — and remains fully usable alone: you patch pins by hand,
+which IS the EMS experience it descends from. The companion carries the transform controls
+with room for labels and grouping.
+
+This matches the plugin's own lineage (meloDICER alone or + MEX3; Monsoon alone or + chain),
+and §11's queue is unchanged: one pending per pin type, applied at the phrase boundary.
+
+**Name: ARCADE.** Change Alley Arcade is the real building at Change Alley — so it is the
+adjacent Singapore place, and "arcade" also reads as a row of machines/controls. Consistent
+with the Raffles/Junction/Causeway/Changi naming.
+
+### 14d. Poly jacks — real saving, awkward DAW story
+A poly cable carries 16 channels, so one poly jack could replace a bank of trigger jacks
+(channel = verb, or = axis/type), cutting 32 trigger jacks to ~4.
+
+- **In Rack:** excellent — a sequencer or logic module drives all transforms down one cable.
+- **From a DAW:** awkward. The VST's CV inputs are mono, so reaching channel N means patching
+  through a Merge inside Rack. It is possible but it is a two-step users must be told about,
+  and it makes channel assignment load-bearing documentation.
+- **Verdict:** offer poly IN ADDITION to mono jacks where space allows, or use poly for the
+  bulk (per-verb triggers) while keeping mono jacks for the few gestures likely to be
+  DAW-driven. Do not make poly the ONLY path.
+
+### 14e. Keep together vs split — honest ledger
+**Together**: one module, no attachment dependency, transforms always present, no expander
+ordering. But ~53-70HP, unusable in a small rack, and too dense to label properly.
+
+**Split (recommended)**: Change Alley stays small and usable standalone; Arcade can breathe,
+carry labels, and afford CV; complexity is progressively disclosed; matches the existing
+expander idiom and the claiming/ordering machinery already exists. Costs: another module to
+build and maintain, and transforms require the companion attached.
