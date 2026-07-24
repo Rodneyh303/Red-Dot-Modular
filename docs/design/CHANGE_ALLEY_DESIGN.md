@@ -751,3 +751,48 @@ its private LCG seed (12e not yet built). Build order when picked up:
 2. Signed step + symmetric clamp, replacing `clampStep` for the three directional verbs.
 3. Panel: revisit 12b/12d costs, which this reduces (no back-triggers, still 2 knobs on
    three rows).
+
+### 12g. The operation GRID: axis × granularity (Rodney — block row/column swaps)
+
+Rodney's observation that block row swaps and column swaps preserve structure completes a
+grid we had been filling in piecemeal. There are two independent choices:
+
+- **AXIS** — domain (permute ROWS: which voice holds a sourcing role) vs codomain (permute
+  VALUES: which source a voice points at). §12.
+- **GRANULARITY** — within a block, or whole blocks at a time.
+
+|                | **Domain (rows)** | **Codomain (values)** |
+|----------------|-------------------|------------------------|
+| **Within block** | rotateRows · reflectRows · *(scatterRows — gap, 12d)* | rotateValues · reflectValues · collapse · scatter |
+| **Block level**  | **blockRowRotate — GAP** · **blockRowSwap — NEW** | blockOffset *(= block col rotate)* · **blockColSwap — NEW** |
+
+Two things fall out immediately:
+
+**1. `blockOffset` was never a special case — it is the block-level codomain ROTATE.** Naming
+it `blockOffset` obscured that. Under this grid it is one cell of four, and its domain twin
+(rotate whole blocks of ROWS) simply does not exist yet.
+
+**2. Swap is NOT a special case of rotate.** With 4 blocks, swapping 0↔2 is a transposition,
+not a cyclic shift; only at exactly 2 blocks do they coincide. So swap is a genuinely
+distinct operation on both axes — and, being an involution, it is SELF-INVERSE, which
+matters given 12f (self-inverse verbs need no back-gesture).
+
+**Why both swaps preserve structure (the property Rodney identified):**
+- **blockRowSwap** permutes the DOMAIN, so the multiset of sources is untouched — the
+  correlation pattern is transplanted wholesale onto different voices. Who plays a role
+  changes; what is sourced does not.
+- **blockColSwap** permutes the CODOMAIN uniformly, so the SHAPE of the relation is
+  untouched — a fan-in of four rows stays a fan-in of four rows, just aimed elsewhere.
+Neither can break one-pin-per-row: both are bijections applied to a function.
+
+**Parameterisation (the awkward part).** A general "swap block i with block j" needs TWO
+selectors, which the panel cannot afford (12d). The clean single-parameter form is
+**pairwise-adjacent swap**: with grain g giving nBlocks, pair block 2i with block 2i+1.
+No extra control beyond grain, self-inverse, and musically clear ("swap the halves of each
+pair of sections"). A stride parameter (pair i with i+k) generalises it but only produces
+disjoint pairs for particular k/nBlocks combinations, so it needs validation rather than
+free choice — probably not worth the control.
+
+**Status: DESIGN ONLY.** Neither swap is implemented, nor is blockRowRotate. If picked up,
+implement all three together — they complete the grid, and the grid is the argument for
+having them.
