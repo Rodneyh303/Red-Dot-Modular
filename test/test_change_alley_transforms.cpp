@@ -124,6 +124,30 @@ int main() {
       CHK(s2[0] == 8, "offset k=2: block 0 follows block 2 (partners, not neighbours)");
       CHK(s2[8] == 0, "...and block 2 follows block 0 -- a swap"); }
 
+    // ── §13a: the two collapse variants on a SCATTERED board ──
+    { uint8_t s2[16] = {9,2,14,5, 11,3,7,0, 1,1,1,1, 2,2,2,2};
+      collapseDomain(s2, 16, 4);
+      CHK(s2[0]==9 && s2[1]==9 && s2[2]==9 && s2[3]==9, "collapseDomain: block adopts LEADER'S SOURCE (9)");
+      CHK(s2[4]==11 && s2[7]==11, "collapseDomain: second block inherits ITS leader's source (11)"); }
+    { uint8_t s2[16] = {9,2,14,5, 11,3,7,0, 1,1,1,1, 2,2,2,2};
+      collapseCodomain(s2, 16, 4);
+      CHK(s2[0]==8 && s2[1]==0 && s2[2]==12 && s2[3]==4, "collapseCodomain: each SOURCE quantises to its block leader");
+      CHK(s2[4]==8 && s2[5]==0, "collapseCodomain: rows keep individuality, alphabet shrinks"); }
+    { uint8_t s2[16]; fillIdent(s2); uint8_t a1[16], b1[16];
+      collapseDomain(s2, 16, 4); std::memcpy(a1, s2, 16);
+      fillIdent(s2); collapse(s2, 16, 4); std::memcpy(b1, s2, 16);
+      CHK(std::memcmp(a1,b1,16)==0, "from IDENTITY, collapseDomain == the original collapse"); }
+
+    // ── §13c: leader offset picks which block member leads ──
+    { uint8_t s2[16] = {9,2,14,5, 11,3,7,0, 1,1,1,1, 2,2,2,2};
+      collapseDomain(s2, 16, 4, 2);          // leader = 3rd member
+      CHK(s2[0]==14 && s2[3]==14, "leaderOffset 2: block adopts its THIRD member's source"); }
+    { uint8_t s2[16]; fillIdent(s2); collapseDomain(s2, 16, 4, 1);
+      CHK(s2[0]==1 && s2[4]==5, "leaderOffset 1 from identity: follow the block's 2nd voice"); }
+    { uint8_t s2[16]; fillIdent(s2); collapseDomain(s2, 6, 4, 3);   // partial block {4,5}: span 2
+      bool live = true; for (int v = 0; v < 6; ++v) live &= (s2[v] < 6);
+      CHK(live, "leaderOffset wraps inside a PARTIAL block, never sources a dead voice"); }
+
     std::printf(fail ? "\n%d passed, %d FAILED\n" : "\n%d passed, 0 failed\n", pass, fail);
     return fail ? 1 : 0;
 }

@@ -23,7 +23,48 @@ inline void identity(uint8_t* src, int activeCount) {
     for (int v = 0; v < activeCount && v < 16; ++v) src[v] = (uint8_t)v;
 }
 
-// Collapse: src[v] = blockLeader(v). Block 1 = Identity; block=active = total unison.
+// ── Collapse: three formulations, two of which we expose (§13a/13c) ──────────
+// Formally, with f: row -> col:
+//   absolute  src[v] = leader(v)          -- neither axis: row-determined, DISCARDS f
+//   domain    src[v] = src[leader(v)]     -- f o leader : adopt the leader's source
+//   codomain  src[v] = leader(src[v])     -- leader o f : quantise your source to a leader
+// absolute is just domain applied to an IDENTITY board (f=id => f(leader(v)) == leader(v)),
+// which is why the original collapse looked "absolute" -- it was only ever tested from
+// identity. It is reachable as Identity -> collapseDomain across two phrase boundaries, so
+// it gets no button of its own (§11: compose across boundaries).
+//
+// LEADER OFFSET picks WHICH member of the block is the leader (0 = first). Wraps within the
+// block, so it is meaningful at every grain and, at the inter level, selects which BLOCK.
+inline int blockLeader(int v, int b, int activeCount, int leaderOffset) {
+    const int base = (v / b) * b;
+    int end = base + b; if (end > activeCount) end = activeCount;
+    const int span = end - base; if (span <= 0) return base;
+    int off = leaderOffset % span; if (off < 0) off += span;
+    return base + off;
+}
+
+// DOMAIN collapse: every row adopts the leader's source. Composes -- a preceding scatter is
+// INHERITED (each block ends on a different source) rather than wiped.
+inline void collapseDomain(uint8_t* src, int activeCount, int blockSize, int leaderOffset = 0) {
+    const int b = clampBlock(blockSize, activeCount);
+    uint8_t tmp[16];
+    for (int v = 0; v < 16; ++v) tmp[v] = src[v];
+    for (int v = 0; v < activeCount && v < 16; ++v)
+        src[v] = tmp[blockLeader(v, b, activeCount, leaderOffset)];
+}
+
+// CODOMAIN collapse: quantise each row's SOURCE to its block's leader. Rows keep their
+// individuality; what shrinks is the ALPHABET of sources (16 possible -> nBlocks).
+inline void collapseCodomain(uint8_t* src, int activeCount, int blockSize, int leaderOffset = 0) {
+    const int b = clampBlock(blockSize, activeCount);
+    for (int v = 0; v < activeCount && v < 16; ++v) {
+        const int cur = src[v];
+        if (cur < 0 || cur >= activeCount || cur >= 16) continue;
+        src[v] = (uint8_t)blockLeader(cur, b, activeCount, leaderOffset);
+    }
+}
+
+// Legacy name: identical to collapseDomain from an identity board (see note above).
 inline void collapse(uint8_t* src, int activeCount, int blockSize) {
     const int b = clampBlock(blockSize, activeCount);
     for (int v = 0; v < activeCount && v < 16; ++v) src[v] = (uint8_t)((v / b) * b);

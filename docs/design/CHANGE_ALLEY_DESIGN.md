@@ -1041,3 +1041,51 @@ both twins, and the grid has no empty cells:
 INTER versions are the same four, one level up: block-collapse (all blocks → first, or all
 adopt block 0's assignments), block-rotate (= the old `blockOffset`), block-scatter, and
 block-reflect (= Rodney's row/column block swaps).
+
+
+### 13c. CORRECTION to 13b — absolute is neither axis; the codomain twin is QUANTISE
+
+Rodney: "isn't absolute domain and relative codomain?" Half right, and the question exposed a
+missing operation. Using the formal test with `f: row -> col` (domain = `f o s`, row v takes
+row s(v)'s value; codomain = `t o f`, v's value is relabelled):
+
+| formula | classification |
+|---|---|
+| `src[v] = leader(v)` (absolute) | **NEITHER** — row-determined, discards f entirely |
+| `src[v] = src[leader(v)]` (relative) | **DOMAIN** — `f o leader` |
+| `src[v] = leader(src[v])` (**new**) | **CODOMAIN** — `leader o f` |
+
+So 13b mislabelled absolute as codomain. The real codomain twin is a THIRD operation we did
+not have: *quantise your source to its block's leader*. On the scattered board:
+```
+before:  9   2  14   5  | 11   3   7   0
+after:   8   0  12   4  |  8   0   4   0
+```
+Rows keep their individuality; what shrinks is the ALPHABET of sources (16 possible -> one
+per block). Musically distinct from domain-collapse, which unifies the voices themselves.
+
+**Reconciliation:** absolute is just DOMAIN collapse applied to an identity board — with
+f = id, `f(leader(v)) == leader(v)`. The original `collapse()` only ever looked absolute
+because it was only ever tested from identity. Asserted in the tests.
+
+**Only two buttons needed.** Absolute is reachable as Identity -> collapseDomain across two
+phrase boundaries, which is §11's compose-across-boundaries idiom; a gesture reachable by
+composing two existing ones does not earn a third button, and a third would make the panel
+asymmetric.
+
+### 13d. LEADER OFFSET — Collapse's second knob (Rodney)
+
+Collapse was listed in §13 as having no second parameter. Wrong: the leader itself is one.
+`leaderOffset` selects WHICH member of the block leads (0 = first), wrapping within the block
+so it stays valid at every grain and inside a short trailing block.
+
+| cell | what the knob selects |
+|---|---|
+| Collapse x domain x intra | which member's source the block adopts |
+| Collapse x codomain x intra | which member sources quantise TO |
+| Collapse x either x inter | which BLOCK everyone collapses to |
+
+So the knob layout is more uniform than 13 claimed: Collapse (grain + leader), Rotate
+(grain + step), Scatter (grain + counter delta) all take two; only Reflect takes one, being
+self-inverse with no pivot worth exposing (an off-centre reflection is just reflect-then-
+rotate, already reachable by composition).
