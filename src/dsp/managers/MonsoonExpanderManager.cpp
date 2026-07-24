@@ -110,15 +110,17 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
             if ((boundary && !engine.locked) || unlockEdge) {
                 const int active = engine.numPolyVoices + 1;      // mono + live poly
                 for (int row = 0; row < 8; ++row) {
-                    if (!ca->pendingRow[row]) continue;
-                    const int  t   = row / 2;                     // transform index
-                    const bool isR = (row % 2 == 0);
-                    const int  blk = MonsoonChangeAlleyExpander::blockFromKnob(
-                                         ca->params[ChangeAlleyIds::BLOCK_KNOB_START + row].getValue());
+                    auto& p = ca->pendingRow[row];
+                    if (!p.armed) continue;
+                    const int   t   = row / 2;
+                    const bool  isR = (row % 2 == 0);
+                    // §14a: grain was LATCHED AT TRIGGER TIME -- do not re-read the knob here.
+                    // Turning the knob between trigger and boundary no longer changes what fires.
                     uint8_t* tbl = isR ? ca->rhythmSrc : ca->melodySrc;
-                    if (t == ChangeAlleyIds::T_SCATTER) ca->scatterSeed = ca->scatterSeed * 1664525u + 1013904223u;
-                    dotModular::ca::apply(t, tbl, active, blk, ca->scatterSeed);
-                    ca->pendingRow[row] = false;
+                    if (t == ChangeAlleyIds::T_SCATTER)
+                        p.scatterSeed = p.scatterSeed * 1664525u + 1013904223u;
+                    dotModular::ca::apply(t, tbl, active, p.blk, p.scatterSeed);
+                    p.armed = false;
                 }
             }
         }

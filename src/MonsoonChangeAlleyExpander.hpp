@@ -35,10 +35,19 @@ struct MonsoonChangeAlleyExpander : Module {
     // Set by button press or gate rising edge here (either thread-safe bool latch);
     // APPLIED by the expander manager at phrase boundary / unlock (audio side), which
     // writes the transform result into rhythmSrc/melodySrc and clears the flag.
-    bool pendingRow[8] = {};
+    // Restructure queue (§11 + §14a latch fix): parameters LATCHED AT TRIGGER TIME.
+    // A bare bool pendingRow caused the manager to re-read the grain knob at the phrase
+    // boundary -- turning the knob between trigger and bar line silently changed what fired.
+    // Now the struct captures {armed, blk, scatterSeed} at the moment of the trigger.
+    struct PendingAction {
+        bool     armed       = false;
+        int      blk         = 4;
+        uint32_t scatterSeed = 0;
+    };
+    PendingAction pendingRow[8];
     rack::dsp::SchmittTrigger gateTrig[8];
     rack::dsp::BooleanTrigger btnTrig[8];
-    uint32_t scatterSeed = 0x9E3779B9u;   // advanced per scatter application
+    // (scatterSeed is now per-row inside PendingAction)
 
     MonsoonChangeAlleyExpander() {
         config(CA::NUM_PARAMS, CA::NUM_INPUTS, CA::NUM_OUTPUTS, CA::NUM_LIGHTS);
@@ -67,10 +76,16 @@ struct MonsoonChangeAlleyExpander : Module {
         // the expander manager at phrase boundary / unlock (audio-side, same thread).
         for (int row = 0; row < 8; ++row) {
             if (gateTrig[row].process(inputs[CA::TRIG_IN_START + row].getVoltage(), 0.1f, 1.f))
-                pendingRow[row] = true;
+                pendingRow[row].armed = true;
+                pendingRow[row].blk   = MonsoonChangeAlleyExpander::blockFromKnob(
+                                            params[CA::BLOCK_KNOB_START + row].getValue());
+                pendingRow[row].scatterSeed = 0;  // will be drawn at apply time
             if (btnTrig[row].process(params[CA::TRIG_BTN_START + row].getValue() > 0.5f))
-                pendingRow[row] = true;
-            lights[CA::PENDING_LIGHT_START + row].setBrightness(pendingRow[row] ? 1.f : 0.f);
+                pendingRow[row].armed = true;
+                pendingRow[row].blk   = MonsoonChangeAlleyExpander::blockFromKnob(
+                                            params[CA::BLOCK_KNOB_START + row].getValue());
+                pendingRow[row].scatterSeed = 0;  // will be drawn at apply time
+            lights[CA::PENDING_LIGHT_START + row].setBrightness(pendingRow[row].armed ? 1.f : 0.f);
         }
     }
 
