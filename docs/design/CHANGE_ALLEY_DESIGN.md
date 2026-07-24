@@ -1236,3 +1236,39 @@ codomain button, pending light — plus a codomain-BACK jack on Scatter rows onl
 ### To compare
 `master_deparam` has the two-module version working. This branch has the single-module
 panel. Both are on disk; judge the 42HP single against the 29+24 pair in a rack.
+
+### 15a. Labelling (widget-drawn — nanosvg drops `<text>`)
+
+V1 carried a fair amount of labelling and V2 needs at least as much, with more to say
+because every row now has two axes and two levels. Panel grew 42 -> **44HP** to reserve a
+5mm GUTTER either side of the grid; cell size is unchanged at 6.23mm.
+
+**Grid**
+| Label | Position | Notes |
+|---|---|---|
+| `CHANGE ALLEY` | top centre, above the grid | as V1 |
+| Column numbers 1..16 | above the grid, one per cell | as V1 |
+| Row numbers 1..16 | LEFT GUTTER, one per row | V1 put these left of the grid; the gutter is what the 2HP bought |
+| Row numbers (mirror) | RIGHT GUTTER | optional; the inter side reads the same rows |
+| `rhythm` / `melody` legend | below the grid | as V1, with the pin swatches |
+| `right-click / ctrl-click` hint | below the grid | as V1 |
+| Hover tooltip `vN rhythm<-vX melody<-vY` | follows the crosshair | as V1 |
+
+**Control blocks** — the new labelling, and the part V1 had no equivalent for
+| Label | Position |
+|---|---|
+| `INTRA` / `INTER` | headers at the top of each control block |
+| `COLLAPSE` `ROTATE` `REFLECT` `SCATTER` | one per verb group, both sides |
+| `R` / `M` | per row, marking rhythm vs melody |
+| Column captions | above the first verb group, once per side: `DOM` `COD` `GRAIN` `LDR/STEP` `D` `C` |
+
+**Per-row second-slot caption varies by verb** — the one place a single caption cannot
+serve, since the column holds three different things:
+- Collapse -> `LDR` (leader offset)
+- Rotate -> `STEP` (signed step)
+- Scatter -> `BACK` (domain-back gate; the codomain-back jack sits one column further out)
+Draw it per group rather than once at the top.
+
+**Ink rule** (carried from V1): text on the BODY uses theme ink (dark on light panel);
+text inside the GRID stays light, because the grid is a dark instrument surface in both
+themes. This is what the V1 "only row 1 numbered" bug was — dark ink on the dark grid.

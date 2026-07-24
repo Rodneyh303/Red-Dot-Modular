@@ -23,8 +23,9 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dotmod_design import px, svg_open, logo_embed, jack, trim
 
-HP     = 42
-PW_MM  = HP * 5.08          # 213.36
+HP     = 44          # 42 + 2HP of gutters: row numbers need space between the
+                     # control block and the grid, on both sides for symmetry.
+PW_MM  = HP * 5.08
 PH_MM  = 128.5
 
 # ── control block (identical geometry both sides; right side mirrored) ────────
@@ -39,10 +40,13 @@ J_BACK2 = MARGIN + 46.5     # Scatter only: codomain-BACK
 CTRL_W  = J_BACK2 + 4.45    # 57.0mm per side
 
 # ── grid (centre) ────────────────────────────────────────────────────────────
-GRID_X  = CTRL_W
-GRID_W  = PW_MM - 2 * CTRL_W
+# GUTTER holds the widget-drawn row numbers (1..16) on the left and, mirrored, the
+# inter-side row numbers on the right. Column numbers sit above the grid in GRID_Y.
+GUTTER  = 5.0
+GRID_X  = CTRL_W + GUTTER
+GRID_W  = PW_MM - 2 * (CTRL_W + GUTTER)
 CELL    = GRID_W / 16.0
-GRID_Y  = 16.0
+GRID_Y  = 20.0       # room above for the title and column numbers
 GRID_H  = CELL * 16.0
 
 # ── rows: same pitch as the old Change Alley control column ──────────────────
