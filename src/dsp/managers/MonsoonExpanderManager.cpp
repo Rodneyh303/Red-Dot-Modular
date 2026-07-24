@@ -9,6 +9,7 @@
 #include "../../ui/VisualExpanderHelpers.hpp"   // redDot::findMonsoonEitherSide (LANE_DIR field reads)
 #include "../../StraitsSandsMacroVisual.hpp"
 #include "../../MonsoonSandsVisualExpander.hpp"   // SandsMonoVisualIds::dirDispId for mono direction push
+#include "../../MonsoonTemasekExpander.hpp"       // Temasek pendingRows (must precede CA)
 #include "../../MonsoonChangeAlleyExpander.hpp"   // pin-matrix src tables
 #include "../ChangeAlleyTransforms.hpp"           // restructure verbs (§10)
 
