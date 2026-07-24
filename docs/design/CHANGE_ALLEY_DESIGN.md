@@ -902,3 +902,55 @@ than hiding it, and "is my correlation structure a permutation?" is a genuine mu
 question about whether the ensemble is a closed loop of mutual influence or a hierarchy.
 Option 4 remains defensible on parsimony — transpose is the only verb that resisted every
 unification, and 12g showed how much clarity came from things that DID unify.
+
+### 12i. Gate-modulating the two toggles (Rodney) — 2 bits = 4 modes
+
+Requirement: with 4-5 verbs, still be able to reach all FOUR combinations of the two toggles
+(VALUES/ROWS × WITHIN/ACROSS) by gate, not just by hand.
+
+**Do NOT give each verb four triggers.** That is 4 verbs × 4 modes × 2 pin types = 32
+trigger jacks. The toggles are two independent binary choices, so two gates encode all four
+states directly:
+
+| axis gate | level gate | mode |
+|---|---|---|
+| low | low | VALUES × WITHIN |
+| high | low | ROWS × WITHIN |
+| low | high | VALUES × ACROSS |
+| high | high | ROWS × ACROSS |
+
+So per pin type: **4-5 verb triggers + 2 mode gates**, not 16-20 triggers.
+
+**LEVEL-sensitive, not edge-toggling.** The gate should SET the state while high, not flip it
+on an edge. Level-sensitive is idempotent and stateless — a sequencer lane holding "high"
+always means ROWS, and a missed or doubled edge cannot desynchronise the panel switch from
+the actual mode. Edge-toggling would make the mode depend on gate HISTORY, which is exactly
+the kind of hidden state this design has avoided everywhere else.
+
+Panel toggle = the value when no cable is patched; patched gate overrides (the standard Rack
+normalled-input idiom), so the switch keeps showing what will happen.
+
+**Latch the WHOLE action at trigger time.** This is the load-bearing implementation detail.
+When a verb is triggered, the pending entry must capture *(verb, axis, level, grain, step)*
+as it is AT THAT MOMENT — not read the toggles again at the phrase boundary. Otherwise a
+mode gate changing between trigger and boundary silently alters a queued action, and the
+pending light would be lying about what is about to happen. Dice already latches this way
+(§11: one pending per type, latest-overwrites); this extends the same rule to the action's
+parameters.
+
+Consequence: §11's "one pending per (transform × type)" becomes "one pending per type,
+carrying its full parameter set" — which is simpler, and means a sequencer can set mode,
+fire, change mode, fire again within a phrase, and get exactly the two actions it asked for
+(latest-overwrites still applies).
+
+**Revised control cost per pin type**
+
+| | Buttons | Trigger jacks | Mode gates | Toggles | Knobs |
+|---|---|---|---|---|---|
+| 4 verbs | 4 | 4 | 2 | 2 | 2 (grain, signed step) |
+| 5 verbs (+Transpose) | 5 | 5 | 2 | 2 | 2 |
+
+Doubling for R/M: **8-10 buttons, 8-10 trigger jacks, 4 mode gates, 4 toggles, 4 knobs.**
+Compare 12d's 8-verb roster: 20 knobs, 16 triggers. The three-axis model with gated modes is
+both smaller and strictly more expressive — every one of the 16 verb×axis×level behaviours is
+reachable under sequencer control.
