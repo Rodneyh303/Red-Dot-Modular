@@ -958,9 +958,12 @@ namespace TemasekIds {
         CODOMAIN_TRIG_START  = DOMAIN_TRIG_START   + N_ROWS, // 16 codomain trigger jacks
         GRAIN_CV_START       = CODOMAIN_TRIG_START + N_ROWS, // 8  grain CV (per verb per type)
         GRAIN_ATTEN_START    = GRAIN_CV_START       + N_VERBS * TYPES, // 8 attenuverters (NOT DAW)
-        SCATTER_FWD_START    = GRAIN_ATTEN_START    + N_VERBS * TYPES, // 4 scatter fwd
-        SCATTER_BACK_START   = SCATTER_FWD_START    + SIDES * TYPES,   // 4 scatter back
-        NUM_INPUTS           = SCATTER_BACK_START   + SIDES * TYPES    // = 56
+        // Scatter needs FOUR gates per row: fwd+back for BOTH axes. The domain and
+        // codomain TRIGGER jacks serve as the two 'forward' gates, so only the two
+        // 'back' gates need their own inputs.
+        SCATTER_BACK_DOM_START = GRAIN_ATTEN_START + N_VERBS * TYPES, // 4
+        SCATTER_BACK_COD_START = SCATTER_BACK_DOM_START + SIDES * TYPES, // 4
+        NUM_INPUTS             = SCATTER_BACK_COD_START + SIDES * TYPES  // = 56
     };
 
     enum LightIds { PENDING_LIGHT_START = 0, NUM_LIGHTS = N_ROWS };   // 16
