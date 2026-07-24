@@ -21,7 +21,10 @@
 // The chain: Monsoon ↔ Change Alley ↔ Temasek.
 
 #include "Monsoon.hpp"
-#include "MonsoonChangeAlleyExpander.hpp"
+// (deliberately does NOT include MonsoonChangeAlleyExpander.hpp -- Change Alley's
+//  header includes THIS one for the submatrix highlight, so including it back would
+//  be circular. Temasek references nothing from Change Alley; the manager does the
+//  cross-module work.)
 #include "ui/StoreBound.hpp"
 #include "ui/ConnectMark.hpp"
 
