@@ -108,6 +108,23 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
             const bool unlockEdge = (caPrevLocked_ && !engine.locked);
             caPrevStep_   = step;
             caPrevLocked_ = engine.locked;
+            // Mirror Temasek's pending state into Change Alley's highlight POD so the
+            // grid can outline affected submatrices. Done here (control rate) rather than
+            // in the widget, because only the manager sees both module types -- keeping
+            // the two headers acyclic.
+            if (ca) {
+                auto* tkh = cachedTemasekExpander;
+                for (int hr = 0; hr < MonsoonChangeAlleyExpander::TK_HL_ROWS; ++hr) {
+                    auto& dst = ca->tkHighlight[hr];
+                    if (!tkh || hr >= TemasekIds::N_ROWS) { dst.armed = false; continue; }
+                    const auto& src = tkh->pendingRows[hr];
+                    dst.armed   = src.armed;
+                    dst.blk     = src.grain;
+                    dst.isInter = src.isInter;
+                    dst.type    = hr % 2;          // 0 = rhythm, 1 = melody
+                }
+            }
+
             if ((boundary && !engine.locked) || unlockEdge) {
                 const int active = engine.numPolyVoices + 1;      // mono + live poly
                 for (int row = 0; row < 8; ++row) {

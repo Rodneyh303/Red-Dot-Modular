@@ -13,7 +13,6 @@
 #include <cmath>
 #include <cstdio>
 #include "Monsoon.hpp"
-#include "MonsoonTemasekExpander.hpp"   // full type: submatrix highlight reads pendingRows
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/StoreEditAction.hpp"   // pin edits: store-backed, undoable (DAW_PARAM_AUDIT 5b)
 
@@ -46,6 +45,14 @@ struct MonsoonChangeAlleyExpander : Module {
         uint32_t scatterSeed = 0;
     };
     PendingAction pendingRow[8];
+
+    // Submatrix highlight state, filled by MonsoonExpanderManager from the attached
+    // Temasek expander. A PLAIN POD deliberately: Change Alley must not know Temasek's
+    // type, or the two headers form an include cycle (Temasek would need Change Alley
+    // for nothing, and Change Alley would need Temasek's complete type here).
+    struct TkHighlight { bool armed = false; int blk = 4; bool isInter = false; int type = 0; };
+    static constexpr int TK_HL_ROWS = 16;
+    TkHighlight tkHighlight[TK_HL_ROWS];
     rack::dsp::SchmittTrigger gateTrig[8];
     rack::dsp::BooleanTrigger btnTrig[8];
     // (scatterSeed is now per-row inside PendingAction)
@@ -76,16 +83,17 @@ struct MonsoonChangeAlleyExpander : Module {
         // Latch pendings from gates + buttons; light = pending. Application happens in
         // the expander manager at phrase boundary / unlock (audio-side, same thread).
         for (int row = 0; row < 8; ++row) {
+            // BRACES ARE LOAD-BEARING: without them only `armed` is guarded and blk is
+            // re-read EVERY SAMPLE, which silently defeats the whole §14a latch.
+            auto latch = [&]() {
+                pendingRow[row].armed = true;
+                pendingRow[row].blk   = MonsoonChangeAlleyExpander::blockFromKnob(
+                                            params[CA::BLOCK_KNOB_START + row].getValue());
+            };
             if (gateTrig[row].process(inputs[CA::TRIG_IN_START + row].getVoltage(), 0.1f, 1.f))
-                pendingRow[row].armed = true;
-                pendingRow[row].blk   = MonsoonChangeAlleyExpander::blockFromKnob(
-                                            params[CA::BLOCK_KNOB_START + row].getValue());
-                pendingRow[row].scatterSeed = 0;  // will be drawn at apply time
+                latch();
             if (btnTrig[row].process(params[CA::TRIG_BTN_START + row].getValue() > 0.5f))
-                pendingRow[row].armed = true;
-                pendingRow[row].blk   = MonsoonChangeAlleyExpander::blockFromKnob(
-                                            params[CA::BLOCK_KNOB_START + row].getValue());
-                pendingRow[row].scatterSeed = 0;  // will be drawn at apply time
+                latch();
             lights[CA::PENDING_LIGHT_START + row].setBrightness(pendingRow[row].armed ? 1.f : 0.f);
         }
     }
@@ -358,58 +366,36 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
             // 0.7 alpha, inactive rows at 0.4). Single literals, easy to tune.
 
             // ── Temasek pending: highlight affected submatrices ──────────────────────
-            // When a Temasek transform is armed, outline the block(s) that will be
-            // restructured so the player can see what is about to fire at phrase boundary.
-            // Two kinds of highlight:
-            //   INTRA (within-block): one coloured outline per block, on both row and col.
-            //   INTER (across-block): the entire active area is outlined (all blocks move).
-            // Rhythm highlights in white, melody in red, both together when both are armed.
+            // Reads Change Alley's OWN tkHighlight POD, which the expander manager fills
+            // from the attached Temasek module. No Temasek type is referenced here, so the
+            // headers stay acyclic.
             if (module) {
-                // Walk the expander chain to find Temasek (right neighbour of this module)
-                MonsoonTemasekExpander* tk = nullptr;
-                if (module->rightExpander.module)
-                    tk = dynamic_cast<MonsoonTemasekExpander*>(module->rightExpander.module);
-                if (tk) {
-                    const int active = std::max(1, poly + 1);
-                    for (int row2 = 0; row2 < TemasekIds::N_ROWS; ++row2) {
-                        auto& p = tk->pendingRows[row2];
-                        if (!p.armed) continue;
-                        const int  verb = row2 / 4;
-                        const int  side = (row2 % 4) / 2;
-                        const int  type = row2 % 2;
-                        (void)verb;
-                        NVGcolor hcol  = (type == 0) ? nvgRGBAf(0.95f,0.95f,0.94f,0.55f)
-                                                     : nvgRGBAf(0.83f,0.f,0.10f,0.55f);
-                        float sw = mm2px(Vec(0.45f,0)).x;
-                        if (side == 1 || p.isInter) {
-                            // INTER: outline the full active area
-                            Vec tl = cellCentre(0, 0);
-                            Vec br = cellCentre(active-1, active-1);
-                            float hw = CELL_W * 0.5f * mm2px(Vec(1,0)).x;
-                            float hh = CELL_H * 0.5f * mm2px(Vec(0,1)).y;
+                const int active = std::max(1, poly + 1);
+                for (int hr = 0; hr < MonsoonChangeAlleyExpander::TK_HL_ROWS; ++hr) {
+                    const auto& h = module->tkHighlight[hr];
+                    if (!h.armed) continue;
+                    NVGcolor hcol = (h.type == 0) ? nvgRGBAf(0.95f,0.95f,0.94f,0.55f)
+                                                  : nvgRGBAf(0.83f,0.f,0.10f,0.55f);
+                    const float sw = mm2px(Vec(0.45f,0)).x;
+                    const float hw = mm2px(Vec(CELL_W * 0.5f, 0)).x;
+                    const float hh = mm2px(Vec(0, CELL_H * 0.5f)).y;
+                    if (h.isInter) {
+                        Vec tl = cellCentre(0, 0), br = cellCentre(active-1, active-1);
+                        nvgBeginPath(vg);
+                        nvgRect(vg, tl.x - hw - sw, tl.y - hh - sw,
+                                (br.x + hw + sw) - (tl.x - hw - sw),
+                                (br.y + hh + sw) - (tl.y - hh - sw));
+                        nvgStrokeColor(vg, hcol); nvgStrokeWidth(vg, sw*1.5f); nvgStroke(vg);
+                    } else {
+                        const int b = std::max(1, h.blk);
+                        for (int blk = 0; blk * b < active; ++blk) {
+                            const int b0 = blk * b;
+                            const int b1 = std::min(b0 + b, active) - 1;
+                            Vec tl = cellCentre(b0, b0), br = cellCentre(b1, b1);
                             nvgBeginPath(vg);
-                            nvgRect(vg, tl.x - hw - sw, tl.y - hh - sw,
-                                    (br.x + hw + sw) - (tl.x - hw - sw),
-                                    (br.y + hh + sw) - (tl.y - hh - sw));
-                            nvgStrokeColor(vg, hcol); nvgStrokeWidth(vg, sw*1.5f);
-                            nvgStroke(vg);
-                        } else {
-                            // INTRA: one outline per block
-                            const int b = std::max(1, p.blk);
-                            for (int blk = 0; blk * b < active; ++blk) {
-                                int b0 = blk * b;
-                                int b1 = std::min(b0 + b, active) - 1;
-                                Vec tl = cellCentre(b0, b0);
-                                Vec br = cellCentre(b1, b1);
-                                float hw = CELL_W * 0.5f * mm2px(Vec(1,0)).x;
-                                float hh = CELL_H * 0.5f * mm2px(Vec(0,1)).y;
-                                nvgBeginPath(vg);
-                                nvgRect(vg, tl.x - hw, tl.y - hh,
-                                        (br.x + hw) - (tl.x - hw),
-                                        (br.y + hh) - (tl.y - hh));
-                                nvgStrokeColor(vg, hcol); nvgStrokeWidth(vg, sw);
-                                nvgStroke(vg);
-                            }
+                            nvgRect(vg, tl.x - hw, tl.y - hh,
+                                    (br.x + hw) - (tl.x - hw), (br.y + hh) - (tl.y - hh));
+                            nvgStrokeColor(vg, hcol); nvgStrokeWidth(vg, sw); nvgStroke(vg);
                         }
                     }
                 }
