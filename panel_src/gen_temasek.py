@@ -80,7 +80,7 @@ def gen(dark):
     theme = "dark" if dark else "light"
     fname = os.path.join(out_dir, f"Temasek_panel_{theme}.svg")
     with open(fname, "w") as f2:
-        f2.write(svg_open(PW_MM, PH_MM) + "\n" + "\n".join(els) + "\n</svg>\n")
+        f2.write(svg_open(px(PW_MM), px(PH_MM)) + "\n" + "\n".join(els) + "\n</svg>\n")
     print(f"Temasek {theme}: {fname}")
 
 if __name__ == "__main__":

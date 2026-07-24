@@ -259,8 +259,7 @@ struct MonsoonTemasekExpanderWidget : ModuleWidget {
 
                     // Pending light
                     addChild(createLightCentered<SmallLight<RedLight>>(
-                        mm2px(Vec(lx(CX + (flip ? -3.0f : 3.0f), 0.f) /* beside centre */,
-                                  ry)), module,
+                        mm2px(Vec(lx(CX - 3.0f, flip), ry)), module,
                         TK::PENDING_LIGHT_START + TK::rowId(verb, side, sub)));
 
                     // Scatter fwd/back jacks
