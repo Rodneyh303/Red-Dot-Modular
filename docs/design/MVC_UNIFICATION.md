@@ -233,3 +233,11 @@ Steps:
    voice-correct.
 
 Then only SENDS (16) remains on Macro -- the per-voice one needing view-voice context.
+
+## Undo backlog — LOR + direction (revisit later)
+
+LOR and direction are store-backed with NO undo, matching East/Mono (whose still-param-backed
+cycling cells also have no meaningful undo). This is consistent, not a regression. TODO for a
+later, uniform pass: add undo across ALL the Sands cycling/grid cells at once (LOR grid,
+direction DirCells on Macro/East/Mono) rather than per-module, using StoreEditAction for the
+store-backed ones. Deferred by Rodney; not owed by the de-param work.
