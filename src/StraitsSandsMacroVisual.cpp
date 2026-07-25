@@ -50,7 +50,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     PolySandsParameterManager* paramMgr     = nullptr;
     TabButtonGroup*            tabGroup     = nullptr;
     int viewVoice = 0;   // which voice's resulting probabilities to DISPLAY (read-only)
-    int lastSendVoice = -1;  // detect view-voice change to sync the mix-in send proxies
+    // (lastSendVoice removed: the per-voice send sync dance is gone -- StoreKnobs read/write
+    //  the live view voice directly, so there is no proxy to re-sync on voice change.)
     bool                       initialized  = false;
     // Light/dark panel swap: kit's loadPanel() owns the live SvgPanel; we keep
     // both backgrounds and swap via the panel child (same pattern as East).
@@ -199,11 +200,27 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         }
 
         // Macro→voice MIX-IN send 2×2 grids — bound to param_send_{lane}_{item}
-        // markers (gen_macro_mono.py), wired to the sendDispId display proxies.
+        // Macro voice MIX-IN send 4x4 grid. STORE-BACKED (MVC step 1: sends de-param): each
+        // trimpot reads/writes editor.macroSend for the CURRENTLY VIEWED voice, resolved LIVE
+        // (viewVoice can change when the voice tab switches, and the same knob must then edit
+        // a different store slot). This replaces the old sendDispId display-proxy params and
+        // the per-voice load/store sync dance (with its clobber guard) entirely -- the knob
+        // is the store's editing surface directly. slot = voiceSlot(viewVoice+1), matching the
+        // engine's getMacroSend(slot,...) read and the persisted macroSend[256].
         for (int lane = 0; lane < 4; ++lane)
-            for (int item = 0; item < 4; ++item)
-                bindParam<Trimpot>("param_send_" + std::to_string(lane) + "_" + std::to_string(item),
-                                   sendDispId(lane, item));
+            for (int item = 0; item < 4; ++item) {
+                redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
+                    "param_send_" + std::to_string(lane) + "_" + std::to_string(item),
+                    storeResolver(), -1.f, 1.f, 0.f, "Macro send",
+                    [this, lane, item](Monsoon& m) {
+                        const int slot = dotModular::VoiceResolver::voiceSlot(viewVoice + 1);
+                        return m.getMacroSend(slot, lane, item);
+                    },
+                    [this, lane, item](Monsoon& m, float v) {
+                        const int slot = dotModular::VoiceResolver::voiceSlot(viewVoice + 1);
+                        m.setMacroSend(slot, lane, item, v);
+                    });
+            }
         // P9b: the two PRE/POST CV taps per lane (3rd row of each send group) —
         // param_taplor_{lane} → tapLorId, param_tapspr_{lane} → tapSprId.
         // STORE-BACKED (MVC step 1d). globalTap index: 0 = LOR tap, 1 = spread tap.
@@ -467,34 +484,9 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // (v1Editable removed — its only use, hiding Macro attens on V1, was dropped in P1.)
         const int  pv = dotModular::VoiceResolver::polyBankIndex(viewVoiceNum);  // -1 on mono
 
-        // Mix-in send display proxies ↔ per-voice store, N→N: tab v (0-based) edits voice
-        // slot v (slot 0 = voice 1 / mono, slot 1 = poly voice 2, …). This is uniform across
-        // ALL tabs including mono — the mono tab's sends fold onto voice 1 via Interp Y, which
-        // reads slot 0. (Previously this used pv=polyBankIndex, so the v2 tab wrote slot 0 and
-        // its CV leaked onto mono — the N→N off-by-one.)
-        {
-            const int slot = dotModular::VoiceResolver::voiceSlot(viewVoiceNum);  // V→16-wide slot (slot0=mono)
-            // Send store now lives on Monsoon::editor (was a local param). Guard the WHOLE
-            // load/store on a valid Monsoon: if the lookup is momentarily null (e.g. early
-            // frames of a patch load before the expander chain is wired), do NOTHING this
-            // frame and leave lastSendVoice untouched, so the load retries next frame. If we
-            // advanced the latch on a skipped load, the following same-voice frame would STORE
-            // the un-loaded display proxies over this voice's saved sends -- the per-voice
-            // clobber. (Pre-migration this couldn't happen: the store was an always-present
-            // local param.)
-            if (auto* mm = redDot::findMonsoonEitherSide(module)) {
-                if (viewVoice != lastSendVoice) {
-                    for (int lane=0; lane<4; ++lane)
-                        for (int item=0; item<4; ++item)
-                            module->params[sendDispId(lane,item)].setValue(mm->getMacroSend(slot,lane,item));
-                    lastSendVoice = viewVoice;
-                } else {
-                    for (int lane=0; lane<4; ++lane)
-                        for (int item=0; item<4; ++item)
-                            mm->setMacroSend(slot,lane,item, module->params[sendDispId(lane,item)].getValue());
-                }
-            }
-        }
+        // Mix-in sends: STORE-BACKED via the StoreKnobs above (they read/write
+        // getMacroSend/setMacroSend for the live view voice directly). The old per-voice
+        // load/store sync dance and its clobber guard are gone -- no display proxy to sync.
 
         saveLOR();
         if (!onMonoTab)
