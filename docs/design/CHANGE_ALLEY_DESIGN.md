@@ -1273,32 +1273,22 @@ Draw it per group rather than once at the top.
 text inside the GRID stays light, because the grid is a dark instrument surface in both
 themes. This is what the V1 "only row 1 numbered" bug was — dark ink on the dark grid.
 
-## 16. Variation/Legato do not follow the pin (poly source) — scope note
+## 16. Variation/Legato are excluded from Change Alley BY DESIGN (mono primacy)
 
-Symptom (Rodney): remapping mono's RHYTHM pin updates the Sands display for REST and ACCENT
-but NOT for VARIATION and LEGATO.
+Rodney first read this as a bug: remapping mono's RHYTHM pin updates REST and ACCENT in the
+Sands display but not VARIATION and LEGATO. On reflection it is not a bug -- it is the model
+being consistent with itself.
 
-Root cause: in remapSlewedByPins, pickMono() borrows the SOURCE ROW's slewed draw. REST
-(rhythm), ACCENT, MELODY and OCTAVE all have per-poly slewed buffers, so when the source is
-a poly row they get that row's real draw. VARIATION and LEGATO have NO per-poly buffer -- the
-poly voices were built with only 4 lanes (PL_REST/MEL/OCT/ACC) -- so pickMono falls back to
-mono's own mV[i]/mL[i], i.e. the UN-remapped value. The pin therefore silently no-ops for
-those two whenever its source is a poly voice.
+Change Alley reduces randomness by CORRELATING voices to each other (100% correlation = one
+voice reads another's draw). VARIATION and LEGATO are MONO-ONLY strands: mono primacy is
+built into the model, and there is deliberately no per-poly VAR/LEG draw (poly voices are
+4-lane: REST/MEL/OCT/ACC). With only one voice's worth of VAR/LEG in existence, there is
+nothing to correlate them TO -- the pin has no meaning for a mono-only strand.
 
-Desired (Rodney): they should follow the pin like rest/accent.
+So VAR/LEG are correctly EXCLUDED from the pin remap. The mechanism reflects this already:
+pickMono has no per-poly VAR/LEG buffer to borrow, so a poly source leaves them on mono's own
+draw -- which, given mono primacy, is the only VAR/LEG that exists. The display showing them
+unchanged under a rhythm remap is the CORRECT behaviour, not a missing feature.
 
-Cost: this requires per-poly VARIATION/LEGATO DRAWS, which do not exist anywhere today (not
-even un-slewed). Storage in random_[16][NUM_STRANDS=6][16] technically has the slots, but:
-- polyRandom(bank, engLane) hard-masks engLane & 3 -> only 4 lanes reachable.
-- there are no polyVariationLockedA/CandB, no slewedPolyVariation/Legato buffers.
-- the draw generation (redrawRhythm etc.) never produces poly VAR/LEG.
-- SequencerEngine::PolyLane is PL_LANES=4 throughout.
-
-So "follow the pin" for VAR/LEG is not a bug-fix; it is extending the poly voice model from
-4 lanes to 6. That is a deliberate architectural change with reach into draw generation,
-slew, spread, and the poly accessors. DEFERRED pending Rodney's decision on whether poly
-VAR/LEG is wanted generally (not just for the pin), since if poly voices never otherwise use
-VAR/LEG, the pin correlation is the only consumer and a lighter special-case may suffice.
-
-Interim behaviour is documented, not silently wrong: mono VAR/LEG follow the pin only when
-the source row is mono (row 0); a poly source leaves them on mono's own draw.
+No code change. This note exists to stop the "bug" being re-opened: extending the poly model
+to 6 lanes purely to make VAR/LEG follow a pin would contradict mono primacy, not serve it.
