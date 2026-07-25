@@ -1272,3 +1272,33 @@ Draw it per group rather than once at the top.
 **Ink rule** (carried from V1): text on the BODY uses theme ink (dark on light panel);
 text inside the GRID stays light, because the grid is a dark instrument surface in both
 themes. This is what the V1 "only row 1 numbered" bug was — dark ink on the dark grid.
+
+## 16. Variation/Legato do not follow the pin (poly source) — scope note
+
+Symptom (Rodney): remapping mono's RHYTHM pin updates the Sands display for REST and ACCENT
+but NOT for VARIATION and LEGATO.
+
+Root cause: in remapSlewedByPins, pickMono() borrows the SOURCE ROW's slewed draw. REST
+(rhythm), ACCENT, MELODY and OCTAVE all have per-poly slewed buffers, so when the source is
+a poly row they get that row's real draw. VARIATION and LEGATO have NO per-poly buffer -- the
+poly voices were built with only 4 lanes (PL_REST/MEL/OCT/ACC) -- so pickMono falls back to
+mono's own mV[i]/mL[i], i.e. the UN-remapped value. The pin therefore silently no-ops for
+those two whenever its source is a poly voice.
+
+Desired (Rodney): they should follow the pin like rest/accent.
+
+Cost: this requires per-poly VARIATION/LEGATO DRAWS, which do not exist anywhere today (not
+even un-slewed). Storage in random_[16][NUM_STRANDS=6][16] technically has the slots, but:
+- polyRandom(bank, engLane) hard-masks engLane & 3 -> only 4 lanes reachable.
+- there are no polyVariationLockedA/CandB, no slewedPolyVariation/Legato buffers.
+- the draw generation (redrawRhythm etc.) never produces poly VAR/LEG.
+- SequencerEngine::PolyLane is PL_LANES=4 throughout.
+
+So "follow the pin" for VAR/LEG is not a bug-fix; it is extending the poly voice model from
+4 lanes to 6. That is a deliberate architectural change with reach into draw generation,
+slew, spread, and the poly accessors. DEFERRED pending Rodney's decision on whether poly
+VAR/LEG is wanted generally (not just for the pin), since if poly voices never otherwise use
+VAR/LEG, the pin correlation is the only consumer and a lighter special-case may suffice.
+
+Interim behaviour is documented, not silently wrong: mono VAR/LEG follow the pin only when
+the source row is mono (row 0); a poly source leaves them on mono's own draw.
