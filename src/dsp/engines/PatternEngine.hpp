@@ -181,21 +181,24 @@ struct PatternEngine {
                 slewedPolyOctave[v][i] = pickMono(sO, dotModular::STRAND_OCTAVE, i);
             }
         }
-        // NON-SANDS path: recomputeEffective already promoted the (un-remapped) slewed into
-        // random_ before this runs. With no Sands there is no spread stage to re-read slewed,
-        // so re-promote the remapped slewed into random_ here. (When sandsActive, spread reads
-        // slewed and writes random_ itself, so this promote is skipped.)
-        if (!sandsActive) {
-            for (int i = 0; i < 16; ++i) {
-                rhythmRandom[i]=slewedRhythm[i]; accentRandom[i]=slewedAccent[i];
-                variationRandom[i]=slewedVariation[i]; legatoRandom[i]=slewedLegato[i];
-                melodyRandom[i]=slewedMelody[i]; octaveRandom[i]=slewedOctave[i];
-                for (int v=0;v<15;v++){
-                    polyRandom(v, PL_REST)[i]=slewedPolyRhythm[v][i];
-                    polyRandom(v, PL_ACCENT)[i]=slewedPolyAccent[v][i];
-                    polyRandom(v, PL_MELODY)[i]=slewedPolyMelody[v][i];
-                    polyRandom(v, PL_OCTAVE)[i]=slewedPolyOctave[v][i];
-                }
+        // Re-promote the remapped slewed into random_. This MUST run regardless of
+        // sandsActive: the old `if (!sandsActive)` guard assumed the spread stage would
+        // re-read slewed and re-promote when Sands is active -- but that only holds when a
+        // MONO VISUAL is present. With Macro attached (sandsActive=true) but no Mono visual,
+        // the spread stage's melody/octave write is skipped, so the remapped melody/octave
+        // never reached random_ while rhythm did -- the exact rest/accent-work,
+        // melody/octave-don't asymmetry. Re-promoting here is safe when spread runs later,
+        // because spread re-reads slewed (this runs BEFORE spread) and overwrites; when
+        // spread=0 or absent, this is the value the sequencer must see.
+        for (int i = 0; i < 16; ++i) {
+            rhythmRandom[i]=slewedRhythm[i]; accentRandom[i]=slewedAccent[i];
+            variationRandom[i]=slewedVariation[i]; legatoRandom[i]=slewedLegato[i];
+            melodyRandom[i]=slewedMelody[i]; octaveRandom[i]=slewedOctave[i];
+            for (int v=0;v<15;v++){
+                polyRandom(v, PL_REST)[i]=slewedPolyRhythm[v][i];
+                polyRandom(v, PL_ACCENT)[i]=slewedPolyAccent[v][i];
+                polyRandom(v, PL_MELODY)[i]=slewedPolyMelody[v][i];
+                polyRandom(v, PL_OCTAVE)[i]=slewedPolyOctave[v][i];
             }
         }
     }
