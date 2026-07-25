@@ -14,6 +14,7 @@
 #include <cstdio>
 #include "Monsoon.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
+#include "ui/ModArcOverlay.hpp"
 #include "ui/StoreEditAction.hpp"   // pin edits: store-backed, undoable (DAW_PARAM_AUDIT 5b)
 
 using namespace rack;
@@ -237,6 +238,26 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
         addChild(createWidget<ScrewSilver>(mm2px(Vec(7.5,          PH_MM - 5.0))));
         addChild(createWidget<ScrewSilver>(mm2px(Vec(PW_MM - 7.5,  PH_MM - 5.0))));
 
+        // Mod arc factory: overlay a red arc on a knob showing where poly CV pushes it.
+        // getSetNorm = knob's own value; getModNorm = resolved knob+CV; gated on the
+        // Monsoon menu flag modVizChangeAlley (matches every other surface).
+        auto addArc = [&](rack::app::Knob* knob, int paramId,
+                          std::function<float()> resolved) {
+            auto* arc = new ModArcOverlay;
+            arc->getSetNorm = [this, paramId]() -> float {
+                if (!module) return 0.f;
+                auto* pq = module->paramQuantities[paramId];
+                return pq ? pq->getScaledValue() : 0.f;
+            };
+            arc->getModNorm = resolved;
+            arc->isActive   = [this]() -> bool {
+                Monsoon* mm = module ? redDot::findMonsoonEitherSide(module) : nullptr;
+                return mm ? mm->modVizChangeAlley : false;
+            };
+            arc->attachOverKnob(knob, 1.5f);
+            addChild(arc);
+        };
+
         // Transform controls: intra (left) and inter (right), mirrored, jacks outside.
         for (int verb = 0; verb < CA::N_VERBS; ++verb)
           for (int sub = 0; sub < 2; ++sub) {
@@ -251,17 +272,33 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                 {   auto* k = createParamCentered<Trimpot>(
                         mm2px(Vec(lx(KNOB1, flip), y)), module, CA::GRAIN_START + r);
                     if (k->getParamQuantity()) k->getParamQuantity()->snapEnabled = true;
-                    addParam(k); }
+                    addParam(k);
+                    const int gr = r;
+                    addArc(k, CA::GRAIN_START + r, [this, gr]() -> float {
+                        if (!module) return 0.f;
+                        float v = module->params[CA::GRAIN_START + gr].getValue();
+                        if (module->inputs[CA::GRAIN_POLY_IN].isConnected())
+                            v += module->inputs[CA::GRAIN_POLY_IN].getVoltage(gr) * 0.4f;
+                        return rack::math::clamp(v / 4.f, 0.f, 1.f);   // 0..4 detents -> 0..1
+                    }); }
                 if (verb == CA::V_COLLAPSE) {
                     auto* k = createParamCentered<Trimpot>(mm2px(Vec(lx(KNOB2, flip), y)),
                         module, CA::LEADER_START + side*CA::TYPES + sub);
                     if (k->getParamQuantity()) k->getParamQuantity()->snapEnabled = true;
                     addParam(k);
                 } else if (verb == CA::V_ROTATE) {
+                    const int sIdx = side*CA::TYPES + sub;
                     auto* k = createParamCentered<Trimpot>(mm2px(Vec(lx(KNOB2, flip), y)),
-                        module, CA::STEP_START + side*CA::TYPES + sub);
+                        module, CA::STEP_START + sIdx);
                     if (k->getParamQuantity()) k->getParamQuantity()->snapEnabled = true;
                     addParam(k);
+                    addArc(k, CA::STEP_START + sIdx, [this, sIdx]() -> float {
+                        if (!module) return 0.f;
+                        float v = module->params[CA::STEP_START + sIdx].getValue();  // -7..7
+                        if (module->inputs[CA::STEP_POLY_IN].isConnected())
+                            v += module->inputs[CA::STEP_POLY_IN].getVoltage(sIdx);
+                        return rack::math::clamp((v + 7.f) / 14.f, 0.f, 1.f);
+                    });
                 } else if (verb == CA::V_SCATTER) {
                     const int si = side*CA::TYPES + sub;
                     addInput(createInputCentered<PJ301MPort>(mm2px(Vec(lx(KNOB2, flip), y)),

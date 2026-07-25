@@ -572,6 +572,7 @@ struct Monsoon : Module {
     bool modVizWest          = true;  // Straits West per-voice rest arcs
     bool modVizMacro         = true;  // Macro spread arcs
     bool modVizMono          = true;  // Mono Sands spread arcs
+    bool modVizChangeAlley   = true;  // Change Alley V2 grain/step poly arcs
     MonsoonExpanderManager expanderManager;
 
     // Modulation-visualisation snapshot. Published once per process() from the
