@@ -1005,7 +1005,11 @@ namespace ChangeAlleyV2Ids {
         CODOMAIN_TRIG_START    = DOMAIN_TRIG_START   + N_ROWS,  // 16
         SCATTER_BACK_DOM_START = CODOMAIN_TRIG_START + N_ROWS,  // 4
         SCATTER_BACK_COD_START = SCATTER_BACK_DOM_START + SIDES*TYPES, // 4
-        NUM_INPUTS             = SCATTER_BACK_COD_START + SIDES*TYPES  // = 40
+        // Poly modulation, no attenuverters (§: Rodney): GRAIN poly maps 16 channels to the
+        // 16 grain knobs; STEP poly maps 8 channels to the 8 step knobs.
+        GRAIN_POLY_IN          = SCATTER_BACK_COD_START + SIDES*TYPES, // 1 (16ch)
+        STEP_POLY_IN           = GRAIN_POLY_IN + 1,                    // 1 (8ch)
+        NUM_INPUTS             = STEP_POLY_IN + 1                      // = 42
     };
     enum LightIds { PENDING_LIGHT_START = 0, NUM_LIGHTS = N_ROWS };  // 16
 

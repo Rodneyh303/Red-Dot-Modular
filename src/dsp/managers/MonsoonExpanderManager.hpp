@@ -75,7 +75,9 @@ struct MonsoonExpanderManager {
     MonsoonChangeAlleyExpander*  cachedChangeAlleyExpander       = nullptr;
     MonsoonTemasekExpander*      cachedTemasekExpander           = nullptr;
     MonsoonChangeAlleyV2*        cachedChangeAlleyV2             = nullptr;
-    int  caPrevStep_   = 0;      // phrase-boundary detect for restructure queue
+    int  caPrevStep_   = 0;
+    int  caV2PrevStep_   = 0;
+    bool caV2PrevLocked_ = false;      // phrase-boundary detect for restructure queue
     bool caPrevLocked_ = false;  // unlock-edge detect for restructure queue
     //MonsoonSandsExpander*        cachedDnaExpander                = nullptr;
     MonsoonSandsVisualExpander*  cachedSandsVisualExpander        = nullptr;

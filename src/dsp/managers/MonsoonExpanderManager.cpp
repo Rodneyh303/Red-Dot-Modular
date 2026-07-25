@@ -142,28 +142,6 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
                     dotModular::ca::apply(t, tbl, active, p.blk, p.scatterSeed);
                     p.armed = false;
                 }
-                // ── Change Alley V2 (single-module transforms) ─────────────────────
-                if (cachedChangeAlleyV2) {
-                    auto* v2 = cachedChangeAlleyV2;
-                    const int vActive = std::max(1, (engine.numPolyVoices + 1));
-                    for (int row = 0; row < ChangeAlleyV2Ids::N_ROWS; ++row) {
-                        auto& p = v2->pendingRows[row];
-                        if (!p.armed) continue;
-                        const int verb = row / 4;
-                        const int side = (row % 4) / 2;
-                        const int type = row % 2;
-                        uint8_t* tbl   = (type == 0) ? v2->rhythmSrc : v2->melodySrc;
-                        const int ci   = (side * ChangeAlleyV2Ids::TYPES + type) * 2
-                                       + (p.isDomain ? 0 : 1);
-                        if (verb == ChangeAlleyV2Ids::V_SCATTER)
-                            v2->scatterCounter[ci] += (uint64_t)(int64_t)p.scatterDelta;
-                        dotModular::ca::applyTemasek(
-                            verb, p.isDomain, p.isInter,
-                            tbl, vActive, p.grain, p.leaderOrStep, v2->scatterCounter[ci]);
-                        p.armed = false;
-                        v2->lights[ChangeAlleyV2Ids::PENDING_LIGHT_START + row].setBrightness(0.f);
-                    }
-                }
                 // ── Temasek transforms ────────────────────────────────────────────
                 auto* tk = cachedTemasekExpander;
                 if (tk && ca) {
@@ -195,6 +173,40 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
         //  phrase boundary; its result is picked up by processDNA's push next cycle.)
     } else {
         // no-op: processDNA resets pe.ca*Src to identity when no Change Alley is present.
+    }
+
+    // Change Alley V2: single module, runs INDEPENDENTLY of the old Change Alley.
+    // (The V2 application was nested inside if(cachedChangeAlleyExpander) and never fired
+    //  when V2 was used alone -- gates queued but nothing applied.) The pin PUSH to the
+    // engine happens in MonsoonSandsManager::processDNA, same as Change Alley; here we only
+    // apply the queued transforms to v2->rhythmSrc/melodySrc.
+    if (cachedChangeAlleyV2) {
+        auto* v2 = cachedChangeAlleyV2;
+        const int  vStep      = engine.stepIndex;
+        const bool vBoundary  = (vStep < caV2PrevStep_);
+        const bool vUnlock    = (caV2PrevLocked_ && !engine.locked);
+        caV2PrevStep_   = vStep;
+        caV2PrevLocked_ = engine.locked;
+        if ((vBoundary && !engine.locked) || vUnlock) {
+            const int vActive = std::max(1, engine.numPolyVoices + 1);
+            for (int row = 0; row < ChangeAlleyV2Ids::N_ROWS; ++row) {
+                auto& p = v2->pendingRows[row];
+                if (!p.armed) continue;
+                const int verb = row / 4;
+                const int side = (row % 4) / 2;
+                const int type = row % 2;
+                uint8_t* tbl   = (type == 0) ? v2->rhythmSrc : v2->melodySrc;
+                const int ci   = (side * ChangeAlleyV2Ids::TYPES + type) * 2
+                               + (p.isDomain ? 0 : 1);
+                if (verb == ChangeAlleyV2Ids::V_SCATTER)
+                    v2->scatterCounter[ci] += (uint64_t)(int64_t)p.scatterDelta;
+                dotModular::ca::applyTemasek(
+                    verb, p.isDomain, p.isInter,
+                    tbl, vActive, p.grain, p.leaderOrStep, v2->scatterCounter[ci]);
+                p.armed = false;
+                v2->lights[ChangeAlleyV2Ids::PENDING_LIGHT_START + row].setBrightness(0.f);
+            }
+        }
     }
     // Step 3 (plans/lane_direction_homes.md): poly direction is reset-then-pushed exactly like
     // delegation above. The reset is the half that was missing while the engine was direction's

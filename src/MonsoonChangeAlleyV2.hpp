@@ -68,6 +68,8 @@ struct MonsoonChangeAlleyV2 : Module {
             configInput(CA::SCATTER_BACK_DOM_START + i, "Scatter domain back");
             configInput(CA::SCATTER_BACK_COD_START + i, "Scatter codomain back");
         }
+        configInput(CA::GRAIN_POLY_IN, "Grain poly CV (16ch -> 16 grain knobs)");
+        configInput(CA::STEP_POLY_IN,  "Step poly CV (8ch -> 8 step knobs)");
         resetToIdentity();
     }
 
@@ -82,11 +84,20 @@ struct MonsoonChangeAlleyV2 : Module {
         p.armed    = true;
         p.isDomain = domain;
         p.isInter  = (side == 1);
-        p.grain    = grainFromKnob(params[CA::GRAIN_START + r].getValue());
+        // Grain = knob + poly CV (channel = row). No attenuverter (§ Rodney): 16 channels
+        // map straight to the 16 grain knobs. CV is added in knob-detent units (0..4).
+        float gv = params[CA::GRAIN_START + r].getValue();
+        if (inputs[CA::GRAIN_POLY_IN].isConnected())
+            gv += inputs[CA::GRAIN_POLY_IN].getVoltage(r) * 0.4f;   // ~2V per detent
+        p.grain    = grainFromKnob(gv);
         if      (verb == CA::V_COLLAPSE)
             p.leaderOrStep = (int)std::lround(params[CA::LEADER_START + side*CA::TYPES + type].getValue());
         else if (verb == CA::V_ROTATE)
-            p.leaderOrStep = (int)std::lround(params[CA::STEP_START   + side*CA::TYPES + type].getValue());
+            {   float sv = params[CA::STEP_START + side*CA::TYPES + type].getValue();
+                const int sch = side*CA::TYPES + type;   // 0..7 -> STEP poly channels 1..8
+                if (inputs[CA::STEP_POLY_IN].isConnected())
+                    sv += inputs[CA::STEP_POLY_IN].getVoltage(sch);   // 1V per step
+                p.leaderOrStep = (int)std::lround(sv); }
         else
             p.leaderOrStep = 0;
         if (verb == CA::V_SCATTER) p.scatterDelta = 1;
@@ -159,7 +170,7 @@ struct MonsoonChangeAlleyV2 : Module {
 struct MonsoonChangeAlleyV2Widget : ModuleWidget {
 
     // Geometry -- MUST MATCH gen_change_alley_v2.py (44HP, grid centred, controls both sides)
-    static constexpr float PW_MM   = 44.f * 5.08f;
+    static constexpr float PW_MM   = 48.f * 5.08f;
     static constexpr float PH_MM   = 128.5f;
     static constexpr float MARGIN  = 6.0f;
     static constexpr float J_DOM   = MARGIN +  0.0f;
@@ -170,12 +181,13 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
     static constexpr float BTN_C   = MARGIN + 40.0f;
     static constexpr float J_BACK2 = MARGIN + 46.5f;
     static constexpr float CTRL_W  = J_BACK2 + 4.45f;
-    static constexpr float GUTTER  = 5.0f;
+    static constexpr float GUTTER  = 8.0f;
     static constexpr float MX_MM   = CTRL_W + GUTTER;
     static constexpr float MW_MM   = PW_MM - 2.f * (CTRL_W + GUTTER);
     static constexpr float CELL_W  = MW_MM / CA::N_VOICES;
     static constexpr float CELL_H  = CELL_W;
     static constexpr float MY_MM   = 20.0f;
+    static constexpr float J_BACK2_R = J_BACK2;  // alias for readability
     static constexpr float MH_MM   = CELL_H * CA::N_VOICES;
     static constexpr float CTRL_ROW_H = 9.0f;
     static constexpr float GROUP_GAP  = 6.8f;
@@ -216,10 +228,12 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
         panelSvgDark  = APP->window->loadSvg(dark);
         panelSvgLight = APP->window->loadSvg(light);
         setPanel(Svg::load(dark));
-        addChild(createWidget<ScrewSilver>(mm2px(Vec(1.5,    1.5))));
-        addChild(createWidget<ScrewSilver>(mm2px(Vec(PW_MM - 1.5, 1.5))));
-        addChild(createWidget<ScrewSilver>(mm2px(Vec(1.5,    PH_MM - 1.5))));
-        addChild(createWidget<ScrewSilver>(mm2px(Vec(PW_MM - 1.5, PH_MM - 1.5))));
+        // Screws inset to the rails: RACK_GRID_WIDTH is 5.08mm, and Rack's own convention
+        // is half a hole from the edges. 1.5mm put them partly off the panel edge.
+        addChild(createWidget<ScrewSilver>(mm2px(Vec(7.5,          2.5))));
+        addChild(createWidget<ScrewSilver>(mm2px(Vec(PW_MM - 7.5,  2.5))));
+        addChild(createWidget<ScrewSilver>(mm2px(Vec(7.5,          PH_MM - 2.5))));
+        addChild(createWidget<ScrewSilver>(mm2px(Vec(PW_MM - 7.5,  PH_MM - 2.5))));
 
         // Transform controls: intra (left) and inter (right), mirrored, jacks outside.
         for (int verb = 0; verb < CA::N_VERBS; ++verb)
@@ -261,6 +275,16 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                     mm2px(Vec(lx(BTN_C + 4.0f, flip), y)), module, CA::PENDING_LIGHT_START + r));
             }
           }
+
+        // Two poly modulation inputs, bottom-right under the last REFLECT row.
+        {
+            const float by = rowY(CA::N_VERBS - 1, 1) + CTRL_ROW_H * 0.5f + 8.0f;
+            const float rx = PW_MM - MARGIN;
+            addInput(createInputCentered<PJ301MPort>(mm2px(Vec(rx,        by + 2.0f)),
+                     module, CA::STEP_POLY_IN));
+            addInput(createInputCentered<PJ301MPort>(mm2px(Vec(rx - 9.5f, by + 2.0f)),
+                     module, CA::GRAIN_POLY_IN));
+        }
 
         auto* ov = new PinOverlay(module);
         ov->box.pos  = Vec(0, 0);
@@ -353,44 +377,47 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                         nvgFillColor(vg, row == 0 ? amber : ink);
                         nvgText(vg, leftX - mm2px(Vec(1.4f,0)).x, c.y, num, NULL);
                     }
-                    // Transform group labels in the gaps above each pair (room per Rodney)
-                    static constexpr const char* TN[4] = {"COLLAPSE","ROTATE","SCATTER","REFLECT"};
-                    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BASELINE);
+                    // Verb labels BOTH sides: "COLLAPSE INTRA" left, "COLLAPSE INTER" right.
+                    // Panel row order is Collapse, Rotate, Reflect, Scatter (matches V_*).
+                    static constexpr const char* TN[4] = {"COLLAPSE","ROTATE","REFLECT","SCATTER"};
                     nvgFontSize(vg, mm2px(Vec(2.7f,0)).x);
                     nvgFillColor(vg, inkdim);
                     for (int t2 = 0; t2 < 4; ++t2) {
                         float gy = mm2px(Vec(0, rowY(t2, 0) - CTRL_ROW_H*0.5f - 1.4f)).y;
-                        nvgText(vg, mm2px(Vec(MARGIN, 0)).x, gy, TN[t2], NULL);
+                        char lbl[24];
+                        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BASELINE);
+                        snprintf(lbl, sizeof(lbl), "%s INTRA", TN[t2]);
+                        nvgText(vg, mm2px(Vec(MARGIN, 0)).x, gy, lbl, NULL);
+                        nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BASELINE);
+                        snprintf(lbl, sizeof(lbl), "%s INTER", TN[t2]);
+                        nvgText(vg, mm2px(Vec(PW_MM - MARGIN, 0)).x, gy, lbl, NULL);
+                    }
+                    // Poly mod jack captions (bottom-right, beside the two jacks)
+                    {
+                        const float by = rowY(CA::N_VERBS - 1, 1) + CTRL_ROW_H*0.5f + 8.0f;
+                        nvgFontSize(vg, mm2px(Vec(2.2f,0)).x);
+                        nvgFillColor(vg, inkdim);
+                        nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BASELINE);
+                        float capY = mm2px(Vec(0, by - 3.0f)).y;
+                        nvgText(vg, mm2px(Vec(PW_MM - MARGIN + 2.0f, 0)).x, capY, "STEP", NULL);
+                        nvgText(vg, mm2px(Vec(PW_MM - MARGIN - 9.5f + 2.0f, 0)).x, capY, "GRAIN", NULL);
+                        // legend, to the LEFT of the poly jacks
+                        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BASELINE);
+                        float lgY = mm2px(Vec(0, by + 6.0f)).y;
+                        float lgX = mm2px(Vec(PW_MM - MARGIN - 30.0f, 0)).x;
+                        nvgFillColor(vg, nvgRGBf(0.95f,0.95f,0.94f));
+                        nvgBeginPath(vg); nvgCircle(vg, lgX, lgY - mm2px(Vec(0,0.8f)).y, mm2px(Vec(0.9f,0)).x); nvgFill(vg);
+                        nvgFillColor(vg, inkdim); nvgText(vg, lgX + mm2px(Vec(1.6f,0)).x, lgY, "rhythm", NULL);
+                        float mX = lgX + mm2px(Vec(11.0f,0)).x;
+                        nvgFillColor(vg, nvgRGBf(0.83f,0.f,0.10f));
+                        nvgBeginPath(vg); nvgCircle(vg, mX, lgY - mm2px(Vec(0,0.8f)).y, mm2px(Vec(0.9f,0)).x); nvgFill(vg);
+                        nvgFillColor(vg, inkdim); nvgText(vg, mX + mm2px(Vec(1.6f,0)).x, lgY, "melody", NULL);
                     }
                     // Title + legend
                     nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BASELINE);
                     nvgFontSize(vg, mm2px(Vec(3.6f,0)).x);
                     nvgFillColor(vg, ink);
                     nvgText(vg, box.size.x * 0.5f, mm2px(Vec(0,6.0f)).y, "CHANGE ALLEY", NULL);
-                    float legY = mm2px(Vec(0, MY_MM + MH_MM + 4.5f)).y;
-                    float legX = mm2px(Vec(MX_MM,0)).x;
-                    // Legend swatches sit on a small DARK CHIP in both themes: the white
-                    // rhythm pin would be invisible on the light body, and showing the pins
-                    // on grid-coloured ground is also semantically right (that is where
-                    // they live). Text stays on the body, so it uses theme ink.
-                    {
-                        float chipX = legX, chipY = legY - 5.f;
-                        float chipW = mm2px(Vec(24.5f,0)).x, chipH = 10.f;
-                        nvgBeginPath(vg); nvgRoundedRect(vg, chipX, chipY, chipW, chipH, 2.f);
-                        nvgFillColor(vg, nvgRGB(0x0b,0x0c,0x0d)); nvgFill(vg);
-                    }
-                    nvgBeginPath(vg); nvgCircle(vg, legX + 6.f, legY, 3.2f);
-                    nvgFillColor(vg, nvgRGB(0xf0,0xf0,0xee)); nvgFill(vg);
-                    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-                    nvgFontSize(vg, mm2px(Vec(2.2f,0)).x);
-                    nvgFillColor(vg, nvgRGBAf(0.94f,0.94f,0.93f,0.85f));   // on the chip
-                    nvgText(vg, legX + 12.f, legY, "rhythm", NULL);
-                    nvgBeginPath(vg); nvgCircle(vg, legX + mm2px(Vec(15.5f,0)).x, legY, 3.2f);
-                    nvgFillColor(vg, nvgRGB(0xd4,0x00,0x1a)); nvgFill(vg);
-                    nvgFillColor(vg, nvgRGBAf(0.94f,0.94f,0.93f,0.85f));   // on the chip
-                    nvgText(vg, legX + mm2px(Vec(15.5f,0)).x + 6.f, legY, "melody", NULL);
-                    nvgFillColor(vg, inkdim);                              // back on the body
-                    nvgText(vg, legX + mm2px(Vec(26.5f,0)).x, legY, "right-click / ctrl-click", NULL);
 
                     // ── Connect indicator: a small state dot to the RIGHT of the SVG
                     //    logo (which draws the wordmark itself). BRIGHT red w/ halo =
@@ -398,8 +425,10 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                     //    SVG embeds the real dot.modular logo. ──
                     {
                         bool connected = module && redDot::isConnectedAndClaimed(module);
-                        float mx = box.size.x * 0.5f + mm2px(Vec(18.f,0)).x;
-                        float myv = mm2px(Vec(0, PH_MM - 5.5f)).y;
+                        // Connect dot beside the LHS logo (generator places logo at MARGIN,
+                        // under the last REFLECT row).
+                        float mx = mm2px(Vec(MARGIN + 36.0f, 0)).x;
+                        float myv = mm2px(Vec(0, rowY(CA::N_VERBS-1,1) + CTRL_ROW_H*0.5f + 8.0f + 5.5f)).y;
                         if (connected) {
                             nvgBeginPath(vg); nvgCircle(vg, mx, myv, 3.6f);
                             nvgFillColor(vg, nvgRGBA(0xd4,0x00,0x1a,0x30)); nvgFill(vg);

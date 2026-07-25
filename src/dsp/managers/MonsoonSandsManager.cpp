@@ -8,6 +8,7 @@
 #include "../../StraitsSandsMacroVisual.hpp"
 #include "MonsoonExpanderManager.hpp"
 #include "../../MonsoonChangeAlleyExpander.hpp"   // full type: processDNA reads ca->rhythmSrc/melodySrc
+#include "../../MonsoonChangeAlleyV2.hpp"           // V2 shares the pin contract
 #include "../SandsTopology.hpp"   // step 3b: readStrand owner migration
 #include "../../MonsoonStraitsExpander.hpp"
 #include "../../StraitsEastSandsVisual.hpp"
@@ -40,8 +41,21 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             if (ca->rhythmSrc[v] != v || ca->melodySrc[v] != v) identity = false;
         }
         if (!identity) {
-            engine.pe.forceRecomputeSlewed();   // fresh slewed = bl(A,B), pristine
-            engine.pe.remapSlewedByPins();       // then remap the clean buffers
+            engine.pe.forceRecomputeSlewed();
+            engine.pe.remapSlewedByPins();
+        }
+    } else if (expanderManager.cachedChangeAlleyV2) {
+        // Change Alley V2 owns the same pin contract; push its board the same way.
+        auto* v2 = expanderManager.cachedChangeAlleyV2;
+        bool identity = true;
+        for (int v = 0; v < 16; ++v) {
+            engine.pe.caRhythmSrc[v] = v2->rhythmSrc[v];
+            engine.pe.caMelodySrc[v] = v2->melodySrc[v];
+            if (v2->rhythmSrc[v] != v || v2->melodySrc[v] != v) identity = false;
+        }
+        if (!identity) {
+            engine.pe.forceRecomputeSlewed();
+            engine.pe.remapSlewedByPins();
         }
     } else {
         for (int v = 0; v < 16; ++v) { engine.pe.caRhythmSrc[v] = (uint8_t)v; engine.pe.caMelodySrc[v] = (uint8_t)v; }
