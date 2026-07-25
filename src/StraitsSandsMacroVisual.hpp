@@ -217,12 +217,11 @@ struct StraitsSandsMacroVisual : Module {
         // Per-voice Macro→voice mix-in sends (relocated from East). 12 display proxies
         // (selected-voice view, bound on the panel) + 180 per-voice store. Default 0
         // = opt-in: Macro global CV reaches a voice only when dialed in for that voice.
-        for (int lane=0; lane<4; ++lane)
-            for (int item=0; item<4; ++item)
-                configParam(sendDispId(lane,item), -1.f,1.f,0.f,
-                            "L"+std::to_string(lane)+" mix-in "+std::to_string(item)+" (selected voice)");
-        // send store MIGRATED to Monsoon::editor.macroSend (getMacroSend/setMacroSend) --
-        // no per-voice configParam here; the visible send cells are sendDispId (configured above).
+        // sendDispId (16 send params) are STORE-BACKED (MVC step 1: sends de-param) -- no
+        // configParam, not host-exposed. Sends live per-voice in editor.macroSend[256]
+        // (getMacroSend/setMacroSend), engine-read and persisted; the send StoreKnobs read/
+        // write the live view voice's slot directly, so no display proxy and no sync dance.
+        // Ids kept declared so the enum does not renumber, matching LOR/direction/attenuverters.
         // Direction display proxies (4 poly lanes). DirCell writes 0..3 = Fwd/Rev/Pend/PingPong.
         static const char* dirNames[4] = {"MEL","OCT","REST","ACC"};
         for (int l = 0; l < 4; ++l) {
