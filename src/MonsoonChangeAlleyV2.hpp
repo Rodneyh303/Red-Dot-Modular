@@ -69,8 +69,8 @@ struct MonsoonChangeAlleyV2 : Module {
             configInput(CA::SCATTER_BACK_DOM_START + i, "Scatter domain back");
             configInput(CA::SCATTER_BACK_COD_START + i, "Scatter codomain back");
         }
-        configInput(CA::GRAIN_POLY_IN, "Grain poly CV (16ch -> 16 grain knobs)");
-        configInput(CA::STEP_POLY_IN,  "Step poly CV (8ch -> 8 step knobs)");
+        configInput(CA::GRAIN_POLY_IN, "Grain poly CV (16ch -> 16 grain knobs; mono=all)");
+        configInput(CA::STEP_POLY_IN,  "Step poly CV (ch 1-4 leader, 5-8 step; mono=all)");
         resetToIdentity();
     }
 
@@ -78,6 +78,13 @@ struct MonsoonChangeAlleyV2 : Module {
         static const int B[5] = {1,2,4,8,16};
         int i = (int)std::lround(v); if (i < 0) i = 0; if (i > 4) i = 4;
         return B[i];
+    }
+
+    // Poly CV read with MONO NORMALLING: a 1-channel cable drives ALL channels (the standard
+    // Rack idiom -- a mono LFO into a poly mod input modulates everything equally).
+    static float polyCV(rack::engine::Input& in, int channel) {
+        if (!in.isConnected()) return 0.f;
+        return (in.getChannels() <= 1) ? in.getVoltage(0) : in.getVoltage(channel);
     }
 
     void latchRow(int r, int verb, int side, int type, bool domain) {
@@ -88,16 +95,19 @@ struct MonsoonChangeAlleyV2 : Module {
         // Grain = knob + poly CV (channel = row). No attenuverter (§ Rodney): 16 channels
         // map straight to the 16 grain knobs. CV is added in knob-detent units (0..4).
         float gv = params[CA::GRAIN_START + r].getValue();
-        if (inputs[CA::GRAIN_POLY_IN].isConnected())
-            gv += inputs[CA::GRAIN_POLY_IN].getVoltage(r) * 0.4f;   // ~2V per detent
+        gv += polyCV(inputs[CA::GRAIN_POLY_IN], r) * 0.4f;   // ~2V per detent, mono-normalled
         p.grain    = grainFromKnob(gv);
-        if      (verb == CA::V_COLLAPSE)
-            p.leaderOrStep = (int)std::lround(params[CA::LEADER_START + side*CA::TYPES + type].getValue());
+        if      (verb == CA::V_COLLAPSE) {
+            const int li = side*CA::TYPES + type;           // 0..3 -> STEP poly ch 1..4
+            float lv = params[CA::LEADER_START + li].getValue();
+            lv += polyCV(inputs[CA::STEP_POLY_IN], li);      // 1V per leader step
+            p.leaderOrStep = (int)std::lround(lv);
+        }
         else if (verb == CA::V_ROTATE)
-            {   float sv = params[CA::STEP_START + side*CA::TYPES + type].getValue();
-                const int sch = side*CA::TYPES + type;   // 0..7 -> STEP poly channels 1..8
-                if (inputs[CA::STEP_POLY_IN].isConnected())
-                    sv += inputs[CA::STEP_POLY_IN].getVoltage(sch);   // 1V per step
+            {   const int si = side*CA::TYPES + type;
+                const int sch = 4 + si;                      // 4..7 -> STEP poly ch 5..8
+                float sv = params[CA::STEP_START + si].getValue();
+                sv += polyCV(inputs[CA::STEP_POLY_IN], sch); // 1V per step
                 p.leaderOrStep = (int)std::lround(sv); }
         else
             p.leaderOrStep = 0;
@@ -279,16 +289,22 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                     const int gr = r;
                     addArc(k, CA::GRAIN_START + r, [mod, gr]() -> float {
                         if (!mod) return 0.f;
-                        float v = mod->params[CA::GRAIN_START + gr].getValue();
-                        if (mod->inputs[CA::GRAIN_POLY_IN].isConnected())
-                            v += mod->inputs[CA::GRAIN_POLY_IN].getVoltage(gr) * 0.4f;
+                        float v = mod->params[CA::GRAIN_START + gr].getValue()
+                                + MonsoonChangeAlleyV2::polyCV(mod->inputs[CA::GRAIN_POLY_IN], gr) * 0.4f;
                         return rack::math::clamp(v / 4.f, 0.f, 1.f);   // 0..4 detents -> 0..1
                     }); }
                 if (verb == CA::V_COLLAPSE) {
+                    const int li = side*CA::TYPES + sub;      // STEP poly ch 1..4
                     auto* k = createParamCentered<Trimpot>(mm2px(Vec(lx(KNOB2, flip), y)),
-                        module, CA::LEADER_START + side*CA::TYPES + sub);
+                        module, CA::LEADER_START + li);
                     if (k->getParamQuantity()) k->getParamQuantity()->snapEnabled = true;
                     addParam(k);
+                    addArc(k, CA::LEADER_START + li, [mod, li]() -> float {
+                        if (!mod) return 0.f;
+                        float v = mod->params[CA::LEADER_START + li].getValue()
+                                + MonsoonChangeAlleyV2::polyCV(mod->inputs[CA::STEP_POLY_IN], li);
+                        return rack::math::clamp(v / 15.f, 0.f, 1.f);   // leader 0..15
+                    });
                 } else if (verb == CA::V_ROTATE) {
                     const int sIdx = side*CA::TYPES + sub;
                     auto* k = createParamCentered<Trimpot>(mm2px(Vec(lx(KNOB2, flip), y)),
@@ -297,9 +313,8 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                     addParam(k);
                     addArc(k, CA::STEP_START + sIdx, [mod, sIdx]() -> float {
                         if (!mod) return 0.f;
-                        float v = mod->params[CA::STEP_START + sIdx].getValue();  // -7..7
-                        if (mod->inputs[CA::STEP_POLY_IN].isConnected())
-                            v += mod->inputs[CA::STEP_POLY_IN].getVoltage(sIdx);
+                        float v = mod->params[CA::STEP_START + sIdx].getValue()   // -7..7
+                                + MonsoonChangeAlleyV2::polyCV(mod->inputs[CA::STEP_POLY_IN], 4 + sIdx);
                         return rack::math::clamp((v + 7.f) / 14.f, 0.f, 1.f);
                     });
                 } else if (verb == CA::V_SCATTER) {
