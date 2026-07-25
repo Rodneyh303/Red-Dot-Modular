@@ -6,9 +6,10 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dotmod_design import px, svg_open, logo_embed, jack, trim
 
-HP     = 22          # 40 -> 30 -> 22: sized to what the controls actually need.
-                     # Per-side span is 50mm (MARGIN + J_BACK2 + jack radius), so two
-                     # sides = 100mm, leaving ~11.8mm centre for the divider + labels.
+HP     = 24          # Sized from real control diameters, not guesses: PJ301M is ~8.9mm,
+                     # so jacks need >=9.5mm pitch and >=6mm from the panel edge (the
+                     # margin Change Alley already uses). Per-side span 57mm, both 114mm,
+                     # leaving ~8mm centre.
 PW_MM  = HP * 5.08
 PH_MM  = 128.5
 
@@ -25,26 +26,25 @@ def pal(dark):
                  edborder="#c0c4ca", tabband="#cdd4dc",
                  red="#d4001a", gold="#a07808")
 
-MARGIN  = 4.0
+MARGIN  = 6.0        # jack radius is 4.45mm; 4.0 put them off the panel edge
 CX      = PW_MM / 2
 N_VERBS = 4
 N_ROWS  = N_VERBS * 2
 
-# Row pitch MATCHES Change Alley's control column exactly (CTRL_ROW_H / GROUP_GAP),
-# so the two modules read as one instrument side by side.
+# Row pitch MATCHES Change Alley's control column exactly.
 ROW_H     = 9.0
 GROUP_GAP = 6.8
-ROW_TOP   = 21.0        # below the verb name label
+ROW_TOP   = 21.0
 
-# Column order OUTER -> INNER: jack, jack, dial, dial, button, button.
-# Jacks live at the panel edge so cables never cross the knobs.
-J_DOM   = MARGIN + 0.0
-J_COD   = MARGIN + 7.5
-KNOB1   = MARGIN + 15.5      # grain (every verb)
-KNOB2   = MARGIN + 23.0      # leader (Collapse) / step (Rotate) / SCATTER-BACK jack
-BTN_D   = MARGIN + 30.0
-BTN_C   = MARGIN + 35.5
-J_BACK2 = MARGIN + 42.0      # Scatter only: codomain-back gate (4 gates per scatter row)
+# Column pitch from real control sizes: jack-jack 9.5, jack-knob 8.5, knob-knob 8.0,
+# knob-button 7.5, button-button 6.5. Anything tighter overlaps.
+J_DOM   = MARGIN +  0.0
+J_COD   = MARGIN +  9.5
+KNOB1   = MARGIN + 18.0
+KNOB2   = MARGIN + 26.0
+BTN_D   = MARGIN + 33.5
+BTN_C   = MARGIN + 40.0
+J_BACK2 = MARGIN + 46.5      # Scatter only: codomain-back gate
 
 def rowY(verb, sub):
     # Same formula as MonsoonChangeAlleyExpanderWidget::ctrlRowY

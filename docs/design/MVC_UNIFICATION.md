@@ -171,3 +171,36 @@ double-click-to-default (Rack's DoubleClick does not reach a plain Widget).
 Rodney: the Grey control faces read better on the LIGHT panel — a metallic look against the
 light body. Faces are Tag types now, so changing family is a one-token edit per call site;
 revisit once more of the panel is converted.
+
+## LOR de-param — trace in progress (resume here)
+
+Goal: remove Macro's 12 LOR params (4 lanes x 3 items), mirroring East, which already uses
+the STORE not params.
+
+What's mapped:
+- Macro's LOR round-trips through params: saveLOR() writes params[lorId(l,c)],
+  loadLOR() reads them back (StraitsSandsMacroVisual.cpp ~304-320). lorId ->
+  StraitsMacroVisualIds::globalDnaId(lane,c) (StraitsSandsMacroVisual.hpp:132).
+- The editor holds LOR in visualEditor->currentState.lanes[ENGINE_LANE_TO_EDITOR[l]].{length,
+  offset,rotation}; the engine holds it in strandLen/Off/Rot (mono lane store, lorRef),
+  written via the clamping setter at SequencerEngine.hpp:386.
+- East is the reference: setLorBase(slot,bank,c,v) / getLorBase(slot,bank,c) into
+  editor.lorBase[288] (16 slots x 6 banks x 3), StraitsEastSandsVisual.cpp:488/503. Macro is
+  GLOBAL (not per-slot), so it needs a fixed global/mono slot+bank convention -- NOT yet
+  pinned. Guessing it is the exact "plausible wrong value" trap; must be verified against
+  the call site, not assumed.
+- syncPatternEngineToEditor (MonoSandsParameterManager.hpp:128) only syncs PROBABILITIES, not
+  LOR -- so params are currently LOR's only editor->engine path. Still need to find the
+  param->strandLen read site (the setter at SequencerEngine.hpp:386 is called from somewhere
+  that currently reads Macro's globalDnaId params) before redirecting.
+
+Requirements carried from DAW_PARAM_AUDIT.md 5b (per de-parammed group):
+- UNDO: wire StoreEditAction (helper landed, src/ui/StoreEditAction.hpp, 20/20). LOR is grid-
+  edited, so capture old on drag/commit, push one action -- but LOR grid may currently rely on
+  param undo; confirm and replace.
+- Persistence: store must serialise (lorBase already persists via the editor store JSON).
+- Tooltip/typed-entry: keep where it matters.
+- Host/MIDI map: intentionally forfeited.
+
+NEXT: pin the global slot/bank for Macro LOR in lorBase[], find the param->engine read site,
+then redirect saveLOR/loadLOR to setLorBase/getLorBase and delete the 12 param configs.
