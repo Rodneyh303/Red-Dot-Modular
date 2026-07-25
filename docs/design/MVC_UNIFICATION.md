@@ -204,3 +204,32 @@ Requirements carried from DAW_PARAM_AUDIT.md 5b (per de-parammed group):
 
 NEXT: pin the global slot/bank for Macro LOR in lorBase[], find the param->engine read site,
 then redirect saveLOR/loadLOR to setLorBase/getLorBase and delete the 12 param configs.
+
+## Direction de-param — plan pinned (resume here)
+
+Store target VERIFIED (the LOR lesson: find what the ENGINE reads, don't guess):
+- Macro's global direction: engine reads getGlobalDir(lane) at MonsoonExpanderManager.cpp:221
+  (the non-East-owned branch), clamped 0..3. globalDir[4] already persists
+  (PersistenceManager editorGlobalDir, 211/462). So globalDir is the target -- the dirDispId
+  params are the redundant mirror, exactly like LOR's globalDnaId.
+- East-owned mono lanes read getMonoLaneDir instead (line 206) -- NOT Macro's concern here.
+
+Why this is bigger than LOR (do it fresh, not at session tail):
+- DirCell is a rack::ParamWidget (src/ui/OwnerCell.hpp) -- it reads/writes getParamQuantity().
+  De-paramming needs a STORE-BACKED variant: read via a getFn() callback, write via
+  applyAndPushStoreEdit<Monsoon>(mon, "direction", setter, old, new). No existing store-backed
+  cell widget yet -- this is the first, and owners/sends will reuse it.
+- This IS the 5b undo case (unlike LOR): click-cell edit, discrete before/after, and the
+  current proxy undo is voice-INCORRECT. applyAndPushStoreEdit gives voice-correct undo.
+
+Steps:
+1. Add StoreDirCell to OwnerCell.hpp (or a new header): getFn()/lockWhen, cycle() calls
+   applyAndPushStoreEdit with setGlobalDir setter. Mirror DirCell's draw exactly.
+2. Macro: bind StoreDirCell instead of bindParam<DirCell>, wired to get/setGlobalDir(lane).
+3. Delete the dir mirror line (setGlobalDir(lane, pv(dirDispId))) at ~392 -- the last line of
+   the dual-write mirror block, so the whole block goes.
+4. Remove the 4 dirDispId configParams (keep ids declared, per attenuverter/LOR pattern).
+5. Verify: engine still gets direction via getGlobalDir; edits persist; undo works and is
+   voice-correct.
+
+Then only SENDS (16) remains on Macro -- the per-voice one needing view-voice context.
