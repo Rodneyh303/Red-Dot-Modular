@@ -892,6 +892,7 @@ extern Model* modelMonsoonInterchangeExpander;
 extern Model* modelMonsoonRafflesExpander;
 extern Model* modelMonsoonJunctionExpander;
 extern Model* modelMonsoonChangeAlleyExpander;
+extern Model* modelMonsoonChangeAlleyV2;
 extern Model* modelMonsoonTemasekExpander;
 //extern Model* modelMonsoonSandsExpander;
 extern Model* modelMonsoonStraitsExpander; // base poly expander
@@ -976,5 +977,40 @@ namespace TemasekIds {
         int   scatterDelta = 1;     // +1 fwd, -1 back
         bool  isDomain     = true;
         bool  isInter      = false;
+    };
+}
+
+// ── Change Alley V2: pin matrix + transforms in ONE module (§15) ─────────────────────────
+// Merges the grid essentials of ChangeAlleyIds with the full transform control set of
+// TemasekIds. The old 8-row transform column (BLOCK_KNOB/TRIG_BTN/TRIG_IN) is GONE --
+// Temasek's verbs strictly superset it. Row layout mirrors TemasekIds exactly so the
+// application code is shared.
+namespace ChangeAlleyV2Ids {
+    static constexpr int N_VOICES = 16, N_POOLS = 2;
+    static constexpr int N_VERBS = 4, SIDES = 2, TYPES = 2, N_ROWS = N_VERBS * SIDES * TYPES;
+    static constexpr int rowId(int verb, int side, int type) { return verb*4 + side*2 + type; }
+    enum Verb { V_COLLAPSE = 0, V_ROTATE = 1, V_REFLECT = 2, V_SCATTER = 3 };
+
+    // DAW-exposed GENERATION params (latch under lock), then non-exposed momentary buttons.
+    enum ParamIds {
+        GRAIN_START  = 0,                            // 16
+        LEADER_START = GRAIN_START  + N_ROWS,        // 8  (Collapse)
+        STEP_START   = LEADER_START + N_ROWS / 2,    // 8  (Rotate)
+        NUM_PARAMS   = STEP_START   + N_ROWS / 2,    // = 32  (DAW boundary)
+        BTN_START    = NUM_PARAMS,                   // 32 momentary buttons (16 rows x 2)
+        NUM_PARAMS_TOTAL = BTN_START + N_ROWS * 2    // = 64
+    };
+    enum InputIds {
+        DOMAIN_TRIG_START      = 0,                             // 16
+        CODOMAIN_TRIG_START    = DOMAIN_TRIG_START   + N_ROWS,  // 16
+        SCATTER_BACK_DOM_START = CODOMAIN_TRIG_START + N_ROWS,  // 4
+        SCATTER_BACK_COD_START = SCATTER_BACK_DOM_START + SIDES*TYPES, // 4
+        NUM_INPUTS             = SCATTER_BACK_COD_START + SIDES*TYPES  // = 40
+    };
+    enum LightIds { PENDING_LIGHT_START = 0, NUM_LIGHTS = N_ROWS };  // 16
+
+    struct PendingAction {
+        bool  armed = false; int grain = 4; int leaderOrStep = 0;
+        int   scatterDelta = 1; bool isDomain = true; bool isInter = false;
     };
 }

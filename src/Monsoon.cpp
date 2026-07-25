@@ -1037,6 +1037,7 @@ void init(rack::Plugin* p) {
 	p->addModel(modelMonsoonInterchangeExpander);
 	p->addModel(modelMonsoonRafflesExpander);
 	p->addModel(modelMonsoonChangeAlleyExpander);
+	p->addModel(modelMonsoonChangeAlleyV2);
 	p->addModel(modelMonsoonTemasekExpander);
 	p->addModel(modelMonsoonJunctionExpander);
 	//p->addModel(modelMonsoonSandsExpander);

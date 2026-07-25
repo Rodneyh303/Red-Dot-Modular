@@ -151,6 +151,16 @@
         "Random",
         "Sequencer"
       ]
+    },
+    {
+      "slug": "ChangeAlleyV2",
+      "name": "Change Alley V2",
+      "description": "Pin matrix with built-in transforms: Collapse/Rotate/Reflect/Scatter, domain and codomain, intra and inter block, applied at phrase boundaries. Single-module alternative to Change Alley + Temasek.",
+      "tags": [
+        "Expander",
+        "Random",
+        "Sequencer"
+      ]
     }
   ]
 }

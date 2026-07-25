@@ -9,6 +9,7 @@ class SequencerEngine;
 struct MonsoonInterchangeExpander;
 struct MonsoonChangeAlleyExpander;
 struct MonsoonTemasekExpander;
+struct MonsoonChangeAlleyV2;
 struct MonsoonSandsExpander;
 struct MonsoonSandsVisualExpander;       // Mono visual DNA editor
 struct MonsoonStraitsExpander;
@@ -28,6 +29,7 @@ extern rack::Model* modelMonsoonRafflesExpander;
 extern rack::Model* modelMonsoonJunctionExpander;
 extern rack::Model* modelMonsoonChangeAlleyExpander;
 extern rack::Model* modelMonsoonTemasekExpander;
+extern rack::Model* modelMonsoonChangeAlleyV2;
 extern rack::Model* modelMonsoonSandsExpander;
 extern rack::Model* modelMonsoonSandsVisualExpander;
 extern rack::Model* modelMonsoonStraitsExpander;
@@ -72,6 +74,7 @@ struct MonsoonExpanderManager {
     rack::Module*                cachedJunctionExpander          = nullptr;
     MonsoonChangeAlleyExpander*  cachedChangeAlleyExpander       = nullptr;
     MonsoonTemasekExpander*      cachedTemasekExpander           = nullptr;
+    MonsoonChangeAlleyV2*        cachedChangeAlleyV2             = nullptr;
     int  caPrevStep_   = 0;      // phrase-boundary detect for restructure queue
     bool caPrevLocked_ = false;  // unlock-edge detect for restructure queue
     //MonsoonSandsExpander*        cachedDnaExpander                = nullptr;
@@ -103,6 +106,7 @@ struct MonsoonExpanderManager {
         cachedJunctionExpander          = nullptr;
         cachedChangeAlleyExpander       = nullptr;
         cachedTemasekExpander           = nullptr;
+        cachedChangeAlleyV2             = nullptr;
         //cachedDnaExpander                = nullptr;
         cachedSandsVisualExpander        = nullptr;
         cachedPolyVoiceExpander          = nullptr;
@@ -149,10 +153,11 @@ struct MonsoonExpanderManager {
                     if (!cachedChangeAlleyExpander)
                         cachedChangeAlleyExpander = reinterpret_cast<MonsoonChangeAlleyExpander*>(curr);
                 } else if (curr->model == modelMonsoonTemasekExpander) {
-                    // Temasek: transform companion. Without this the pointer stayed null,
-                    // so pendings latched and lit but NOTHING ever applied.
                     if (!cachedTemasekExpander)
                         cachedTemasekExpander = reinterpret_cast<MonsoonTemasekExpander*>(curr);
+                } else if (curr->model == modelMonsoonChangeAlleyV2) {
+                    if (!cachedChangeAlleyV2)
+                        cachedChangeAlleyV2 = reinterpret_cast<MonsoonChangeAlleyV2*>(curr);
                 // } else if (curr->model == modelMonsoonSandsExpander) {
                 //     if (!cachedDnaExpander) cachedDnaExpander = reinterpret_cast<MonsoonSandsExpander*>(curr);
                 //     dnaExpanderCount++;

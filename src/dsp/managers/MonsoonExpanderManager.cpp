@@ -10,6 +10,7 @@
 #include "../../StraitsSandsMacroVisual.hpp"
 #include "../../MonsoonSandsVisualExpander.hpp"   // SandsMonoVisualIds::dirDispId for mono direction push
 #include "../../MonsoonTemasekExpander.hpp"       // Temasek pendingRows (must precede CA)
+#include "../../MonsoonChangeAlleyV2.hpp"           // single-module transforms
 #include "../../MonsoonChangeAlleyExpander.hpp"   // pin-matrix src tables
 #include "../ChangeAlleyTransforms.hpp"           // restructure verbs (§10)
 
@@ -140,6 +141,28 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
                         p.scatterSeed = p.scatterSeed * 1664525u + 1013904223u;
                     dotModular::ca::apply(t, tbl, active, p.blk, p.scatterSeed);
                     p.armed = false;
+                }
+                // ── Change Alley V2 (single-module transforms) ─────────────────────
+                if (cachedChangeAlleyV2) {
+                    auto* v2 = cachedChangeAlleyV2;
+                    const int vActive = std::max(1, (poly + 1));
+                    for (int row = 0; row < ChangeAlleyV2Ids::N_ROWS; ++row) {
+                        auto& p = v2->pendingRows[row];
+                        if (!p.armed) continue;
+                        const int verb = row / 4;
+                        const int side = (row % 4) / 2;
+                        const int type = row % 2;
+                        uint8_t* tbl   = (type == 0) ? v2->rhythmSrc : v2->melodySrc;
+                        const int ci   = (side * ChangeAlleyV2Ids::TYPES + type) * 2
+                                       + (p.isDomain ? 0 : 1);
+                        if (verb == ChangeAlleyV2Ids::V_SCATTER)
+                            v2->scatterCounter[ci] += (uint64_t)(int64_t)p.scatterDelta;
+                        dotModular::ca::applyTemasek(
+                            verb, p.isDomain, p.isInter,
+                            tbl, vActive, p.grain, p.leaderOrStep, v2->scatterCounter[ci]);
+                        p.armed = false;
+                        v2->lights[ChangeAlleyV2Ids::PENDING_LIGHT_START + row].setBrightness(0.f);
+                    }
                 }
                 // ── Temasek transforms ────────────────────────────────────────────
                 auto* tk = cachedTemasekExpander;
