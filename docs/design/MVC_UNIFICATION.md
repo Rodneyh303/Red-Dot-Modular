@@ -152,7 +152,7 @@ estimating the remaining modules: the widget is never the hard part; the free se
 | Attenuverters | 16 | **DONE** — StoreKnob, Grey_Trim_Bar |
 | Spread | 4 | **DONE** — mod-arcs needed no change once decoupled |
 | Taps | 8 | **DONE** — + on-panel LOR/SPR labels added |
-| LOR | 12 | TODO — **not knobs**: grid-edited via saveSlot/loadSlot, so redirect the editor's save/load to the store rather than swapping widgets |
+| LOR | 12 | **DONE** — saveLOR/loadLOR now read/write editor.globalLor via get/setGlobalLor (the array the engine already reads and persists); 12 globalDnaId configParams removed; dual-write LOR mirror deleted. Tested: edits + patch save/reload work. Undo: LOR was NEVER undoable (Macro/Mono/East all use the editor's own VoiceState history, not Rack's Ctrl+Z stack), so nothing was lost — not a regression. StoreEditAction is for the click-cell groups (sends/dir/owners) where proxy undo is subtly wrong. |
 | Sends | 16 | TODO — pure proxy (not engine-read); needs the view-voice context since macroSend is per-voice |
 | Direction | 4 | TODO — **DirCell, not a knob**: needs its own store-write path to setGlobalDir, mirroring East's DirCell -> setLaneDir |
 
