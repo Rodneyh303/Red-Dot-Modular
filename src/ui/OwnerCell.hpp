@@ -106,15 +106,23 @@ inline NVGcolor sandsLaneColorEditor(int editorLane) {
 struct DirCell : rack::ParamWidget {
     NVGcolor laneCol = nvgRGB(0x80, 0x80, 0x80);
     std::function<bool()> lockWhen;
+    // Store-backed mode (MVC de-param): when these are set, DirCell reads/writes the STORE
+    // via callbacks instead of a ParamQuantity. Left unset, it stays param-backed exactly as
+    // before, so East/Mono (still param-backed) are unaffected. No undo either way -- matches
+    // the current cross-module behaviour (cycling cells have never had param undo).
+    std::function<int()>    getStateFn;   // returns 0..3 from the store
+    std::function<void(int)> setStateFn;  // writes 0..3 to the store
     DirCell() { box.size = rack::math::Vec(18.f, 28.f); }
 
     bool locked() const { return lockWhen && lockWhen(); }
     int state() {   // 0..3
+        if (getStateFn) return getStateFn() & 3;
         return getParamQuantity() ? (int)std::round(getParamQuantity()->getValue()) : 0;
     }
     void cycle() {
-        if (!getParamQuantity()) return;
-        getParamQuantity()->setValue((state() + 1) % 4);
+        const int nxt = (state() + 1) % 4;
+        if (setStateFn) { setStateFn(nxt); return; }
+        if (getParamQuantity()) getParamQuantity()->setValue((float)nxt);
     }
     void onButton(const rack::event::Button& e) override {
         if (locked()) { if (e.action == GLFW_PRESS) e.consume(this); return; }

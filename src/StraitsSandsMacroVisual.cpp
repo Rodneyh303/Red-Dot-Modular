@@ -229,19 +229,27 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             nvgRGB(0x50,0x50,0x50), nvgRGB(0xff,0x95,0x00)   // REST grey, ACC orange
         };
         for (int lane = 0; lane < 4; ++lane) {
-            bindParam<DirCell>(
+            // STORE-BACKED (MVC step 1: direction de-param). The DirCell reads/writes
+            // editor.globalDir via get/setGlobalDir instead of the dirDispId param -- the same
+            // array the engine reads (MonsoonExpanderManager getGlobalDir) and persists
+            // (editorGlobalDir). `lane` is the ENGINE lane, matching getGlobalDir's indexing.
+            // No undo, matching East/Mono's still-param-backed DirCells (cycling cells have
+            // never had undo). bindWidget places a bare widget with no paramId.
+            bindWidget<DirCell>(
                 "param_dir_" + std::to_string(lane),
-                dirDispId(lane),
-                [this, lane](DirCell* w) {
+                std::function<void(DirCell*)>([this, lane](DirCell* w) {
                     w->laneCol = editorDirCol[lane];
-                    Vec ctr = w->box.pos.plus(w->box.size.div(2.f));
                     const float stepW = (ED_W - 2.f*6.f) / 16.f;
                     w->box.size = mm2px(Vec(stepW, ED_LANE_H * 0.9f));
-                    w->box.pos  = ctr.minus(w->box.size.div(2.f));
-                    w->lockWhen = [this]() {
-                        return !getMonsoon();
+                    w->getStateFn = [this, lane]() -> int {
+                        auto* mm = getMonsoon();
+                        return mm ? (int)std::lround(mm->getGlobalDir(lane)) & 3 : 0;
                     };
-                }
+                    w->setStateFn = [this, lane](int v) {
+                        if (auto* mm = getMonsoon()) mm->setGlobalDir(lane, (float)(v & 3));
+                    };
+                    w->lockWhen = [this]() { return !getMonsoon(); };
+                })
             );
         }
 
@@ -372,26 +380,10 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         Monsoon* monsoon = getMonsoon();
         if (!monsoon) { if (visualEditor) visualEditor->clearPlaySteps(); return; }
 
-        // ── MVC step 1b: DUAL-WRITE the GLOBAL slice (MVC_UNIFICATION.md) ──────────────
-        // Global scope had no home in the model, so these params WERE the model and the
-        // engine read them off this module. The store now owns them. This mirror is the
-        // bridge: params remain authoritative (knobs write them directly, so there is no
-        // code write-site to pair with), and every frame we copy them into the store.
-        //
-        // Purely ADDITIVE — nothing reads the global slice yet, so behaviour is unchanged.
-        // Next step flips the 11 engine reads to the store, which is then a NO-OP if this
-        // mirror is right; that makes it an A/B proof. Finally the params are deleted and
-        // the knobs become StoreBound, at which point this mirror goes away too.
-        {
-            namespace MId = StraitsMacroVisualIds;   // namespace alias (NOT `using X = Y`, which is a TYPE alias)
-            auto pv = [&](int id) { return module->params[id].getValue(); };
-            for (int lane = 0; lane < 4; ++lane) {
-                // LOR is now store-backed: saveLOR() writes editor->globalLor directly each
-                // cycle, so mirroring the (deleted) params here is gone. (attenuverters are
-                // StoreKnobs; direction still mirrors until it is de-parammed.)
-                monsoon->setGlobalDir(lane, pv(MId::dirDispId(lane)));
-            }
-        }
+        // MVC step 1: the dual-write GLOBAL mirror is fully RETIRED. Every global-slice
+        // group -- LOR, attenuverters, direction -- is store-backed now (editor.globalLor /
+        // globalAtten / globalDir), so the engine reads the store directly and there is no
+        // params->store mirror left to run here.
 
         int wantLight = monsoon->lightTheme ? 1 : 0;
         if (wantLight != lastThemeLight) {
@@ -433,9 +425,10 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
 
         if (!initialized) {
             loadLOR();
-            // Sync DirCell display proxy from the engine's current mono direction.
+            // Seed the store's global direction from the engine's current mono direction
+            // (store-backed DirCell now reads getGlobalDir directly).
             for (int l = 0; l < 4; ++l)
-                mod->params[dirDispId(l)].setValue(
+                monsoon->setGlobalDir(l,
                     (float)monsoon->engine.laneDirPending_[dotModular::MONO_LANE_TO_STRAND[l]]);
             initialized = true;
         }
@@ -687,8 +680,10 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
             if (!in.isConnected()) continue;
             bool high = in.getVoltage(0) > 1.f;
             if (high && !dirModPrev[lane]) {
-                int cur = (int)params[dirDispId(lane)].getValue();
-                params[dirDispId(lane)].setValue((float)((cur + 1) % 4));
+                if (auto* mm = redDot::findMonsoonEitherSide(this)) {
+                    int cur = (int)std::lround(mm->getGlobalDir(lane));
+                    mm->setGlobalDir(lane, (float)((cur + 1) % 4));
+                }
             }
             dirModPrev[lane] = high;
         }

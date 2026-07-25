@@ -154,7 +154,7 @@ estimating the remaining modules: the widget is never the hard part; the free se
 | Taps | 8 | **DONE** — + on-panel LOR/SPR labels added |
 | LOR | 12 | **DONE** — saveLOR/loadLOR now read/write editor.globalLor via get/setGlobalLor (the array the engine already reads and persists); 12 globalDnaId configParams removed; dual-write LOR mirror deleted. Tested: edits + patch save/reload work. Undo: LOR was NEVER undoable (Macro/Mono/East all use the editor's own VoiceState history, not Rack's Ctrl+Z stack), so nothing was lost — not a regression. StoreEditAction is for the click-cell groups (sends/dir/owners) where proxy undo is subtly wrong. |
 | Sends | 16 | TODO — pure proxy (not engine-read); needs the view-voice context since macroSend is per-voice |
-| Direction | 4 | TODO — **DirCell, not a knob**: needs its own store-write path to setGlobalDir, mirroring East's DirCell -> setLaneDir |
+| Direction | 4 | **DONE** — store-backed DirCell (getStateFn/setStateFn on get/setGlobalDir, the array the engine reads + persists); 4 dirDispId configParams removed; dual-write mirror fully retired; gate-mod cycle + init-seed redirected to the store. No undo, matching East/Mono (still param-backed, also no undo). DirCell gained optional store callbacks so both forms share one widget. |
 
 Then: `config()` to 0, delete the dual-write mirror (down to the LOR + direction lines),
 and Macro leaves the host param list entirely.

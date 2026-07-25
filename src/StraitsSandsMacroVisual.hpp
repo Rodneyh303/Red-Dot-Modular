@@ -226,8 +226,10 @@ struct StraitsSandsMacroVisual : Module {
         // Direction display proxies (4 poly lanes). DirCell writes 0..3 = Fwd/Rev/Pend/PingPong.
         static const char* dirNames[4] = {"MEL","OCT","REST","ACC"};
         for (int l = 0; l < 4; ++l) {
-            configParam(dirDispId(l), 0.f, 3.f, 0.f,
-                        std::string(dirNames[l]) + " direction");
+            // dirDispId is STORE-BACKED (MVC step 1: direction de-param) -- no configParam,
+            // not host-exposed. Direction lives in editor.globalDir[4] (engine-read,
+            // persisted); the store-backed DirCell is the reader/writer. Id kept declared so
+            // the enum does not renumber, matching the LOR/attenuverter de-param.
             configInput(dirModId(l), std::string(dirNames[l]) + " direction gate-mod");
         }
     }
