@@ -20,13 +20,13 @@ using namespace rack;
 // NOT 'using namespace ChangeAlleyIds' — Monsoon.hpp exposes MonsoonIds with the same
 // NUM_PARAMS/NUM_INPUTS/... names, so we qualify explicitly (same rule as the Sands
 // managers: 'NOT using namespace ... to avoid ambiguous calls — qualify below').
-namespace CA = ChangeAlleyIds;
+namespace CA1 = ChangeAlleyIds;
 
 struct MonsoonChangeAlleyExpander : Module {
-    uint8_t rhythmSrc[CA::N_VOICES];
-    uint8_t melodySrc[CA::N_VOICES];
+    uint8_t rhythmSrc[CA1::N_VOICES];
+    uint8_t melodySrc[CA1::N_VOICES];
 
-    static constexpr const char* CURRENCIES[CA::N_VOICES] = {
+    static constexpr const char* CURRENCIES[CA1::N_VOICES] = {
         "SGD","MYR","IDR","THB","PHP","VND","MMK","KHR",
         "HKD","CNY","TWD","KRW","JPY","AUD","INR","USD",
     };
@@ -59,17 +59,17 @@ struct MonsoonChangeAlleyExpander : Module {
     // (scatterSeed is now per-row inside PendingAction)
 
     MonsoonChangeAlleyExpander() {
-        config(CA::NUM_PARAMS, CA::NUM_INPUTS, CA::NUM_OUTPUTS, CA::NUM_LIGHTS);
+        config(CA1::NUM_PARAMS, CA1::NUM_INPUTS, CA1::NUM_OUTPUTS, CA1::NUM_LIGHTS);
         static constexpr const char* TN[4] = {"Collapse","Rotate","Scatter","Reflect"};
-        for (int t = 0; t < CA::N_TRANSFORMS; ++t)
+        for (int t = 0; t < CA1::N_TRANSFORMS; ++t)
             for (int r = 0; r < 2; ++r) {
-                const int row = CA::ctrlRow(t, r == 0);
+                const int row = CA1::ctrlRow(t, r == 0);
                 const std::string nm = std::string(TN[t]) + (r == 0 ? " rhythm" : " melody");
                 // Stepped block-size knob: detents 0..4 → block {1,2,4,8,16}
-                configSwitch(CA::BLOCK_KNOB_START + row, 0.f, 4.f, 2.f, nm + " block size",
+                configSwitch(CA1::BLOCK_KNOB_START + row, 0.f, 4.f, 2.f, nm + " block size",
                              {"1 (per voice)","2","4","8","16 (whole pool)"});
-                configButton(CA::TRIG_BTN_START + row, nm + " trigger");
-                configInput(CA::TRIG_IN_START + row, nm + " trigger gate");
+                configButton(CA1::TRIG_BTN_START + row, nm + " trigger");
+                configInput(CA1::TRIG_IN_START + row, nm + " trigger gate");
             }
         resetToIdentity();
     }
@@ -89,18 +89,18 @@ struct MonsoonChangeAlleyExpander : Module {
             auto latch = [&]() {
                 pendingRow[row].armed = true;
                 pendingRow[row].blk   = MonsoonChangeAlleyExpander::blockFromKnob(
-                                            params[CA::BLOCK_KNOB_START + row].getValue());
+                                            params[CA1::BLOCK_KNOB_START + row].getValue());
             };
-            if (gateTrig[row].process(inputs[CA::TRIG_IN_START + row].getVoltage(), 0.1f, 1.f))
+            if (gateTrig[row].process(inputs[CA1::TRIG_IN_START + row].getVoltage(), 0.1f, 1.f))
                 latch();
-            if (btnTrig[row].process(params[CA::TRIG_BTN_START + row].getValue() > 0.5f))
+            if (btnTrig[row].process(params[CA1::TRIG_BTN_START + row].getValue() > 0.5f))
                 latch();
-            lights[CA::PENDING_LIGHT_START + row].setBrightness(pendingRow[row].armed ? 1.f : 0.f);
+            lights[CA1::PENDING_LIGHT_START + row].setBrightness(pendingRow[row].armed ? 1.f : 0.f);
         }
     }
 
     void resetToIdentity() {
-        for (int v = 0; v < CA::N_VOICES; ++v) { rhythmSrc[v] = v; melodySrc[v] = v; }
+        for (int v = 0; v < CA1::N_VOICES; ++v) { rhythmSrc[v] = v; melodySrc[v] = v; }
     }
 
 
@@ -108,7 +108,7 @@ struct MonsoonChangeAlleyExpander : Module {
         json_t* root = json_object();
         auto save = [&](const char* k, const uint8_t* a) {
             json_t* arr = json_array();
-            for (int v = 0; v < CA::N_VOICES; ++v) json_array_append_new(arr, json_integer(a[v]));
+            for (int v = 0; v < CA1::N_VOICES; ++v) json_array_append_new(arr, json_integer(a[v]));
             json_object_set_new(root, k, arr);
         };
         save("rhythmSrc", rhythmSrc);
@@ -121,10 +121,10 @@ struct MonsoonChangeAlleyExpander : Module {
         auto load = [&](const char* k, uint8_t* a) {
             json_t* arr = json_object_get(root, k);
             if (!arr) return;
-            for (int v = 0; v < CA::N_VOICES && v < (int)json_array_size(arr); ++v) {
+            for (int v = 0; v < CA1::N_VOICES && v < (int)json_array_size(arr); ++v) {
                 json_t* val = json_array_get(arr, v);
                 if (json_is_integer(val))
-                    a[v] = (uint8_t)math::clamp((int)json_integer_value(val), 0, CA::N_VOICES-1);
+                    a[v] = (uint8_t)math::clamp((int)json_integer_value(val), 0, CA1::N_VOICES-1);
             }
         };
         load("rhythmSrc", rhythmSrc);
@@ -144,10 +144,10 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
     static constexpr float GUTTER_B =  8.0f;
     static constexpr float MY_MM    = GUTTER_T + 8.0f;
     static constexpr float AVAIL_H  = PH_MM - MY_MM - GUTTER_B - 2.0f;
-    static constexpr float CELL_H   = AVAIL_H / CA::N_VOICES;
+    static constexpr float CELL_H   = AVAIL_H / CA1::N_VOICES;
     static constexpr float CELL_W   = CELL_H;
-    static constexpr float MW_MM    = CELL_W * CA::N_VOICES;
-    static constexpr float MH_MM    = CELL_H * CA::N_VOICES;
+    static constexpr float MW_MM    = CELL_W * CA1::N_VOICES;
+    static constexpr float MH_MM    = CELL_H * CA1::N_VOICES;
     static constexpr float MX_MM    = PW_MM - 4.0f - MW_MM;                  // grid claims the RIGHT
     // Control column (generator CTRL_*)
     static constexpr float CTRL_X_JACK = 6.0f,  CTRL_X_KNOB = 15.5f,
@@ -199,15 +199,15 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
         if (true) for (int row = 0; row < 8; ++row) {
             const float y = ctrlRowY(row);
             auto* k = createParamCentered<Trimpot>(mm2px(Vec(CTRL_X_KNOB, y)), module,
-                                                   CA::BLOCK_KNOB_START + row);
+                                                   CA1::BLOCK_KNOB_START + row);
             k->getParamQuantity() ? (void)(k->getParamQuantity()->snapEnabled = true) : (void)0;
             addParam(k);
             addInput(createInputCentered<PJ301MPort>(mm2px(Vec(CTRL_X_JACK, y)), module,
-                                                     CA::TRIG_IN_START + row));
+                                                     CA1::TRIG_IN_START + row));
             addParam(createParamCentered<TL1105>(mm2px(Vec(CTRL_X_BTN, y)), module,
-                                                 CA::TRIG_BTN_START + row));
+                                                 CA1::TRIG_BTN_START + row));
             addChild(createLightCentered<SmallLight<RedLight>>(mm2px(Vec(CTRL_X_LED, y)), module,
-                                                               CA::PENDING_LIGHT_START + row));
+                                                               CA1::PENDING_LIGHT_START + row));
         }
 
         auto* ov = new PinOverlay(module);
@@ -283,7 +283,7 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
                     char num[4];
                     // Voice-number labels only (currency codes dropped — tiny + noisy in-rack).
                     // ShareTechMono, 3.2mm — readable at 100% zoom.
-                    for (int col = 0; col < CA::N_VOICES; ++col) {
+                    for (int col = 0; col < CA1::N_VOICES; ++col) {
                         Vec c = cellCentre(0, col);
                         float topY = mm2px(Vec(0, MY_MM)).y;
                         snprintf(num, sizeof(num), "%d", col + 1);
@@ -292,7 +292,7 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
                         nvgFillColor(vg, col == 0 ? amber : ink);
                         nvgText(vg, c.x, topY - mm2px(Vec(0,1.6f)).y, num, NULL);
                     }
-                    for (int row = 0; row < CA::N_VOICES; ++row) {
+                    for (int row = 0; row < CA1::N_VOICES; ++row) {
                         Vec c = cellCentre(row, 0);
                         float leftX = mm2px(Vec(MX_MM,0)).x;
                         snprintf(num, sizeof(num), "%d", row + 1);
@@ -409,13 +409,13 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
                 }
             }
 
-            for (int row = 0; row < CA::N_VOICES; ++row) {
+            for (int row = 0; row < CA1::N_VOICES; ++row) {
                 bool active = (row == 0) || (row <= poly);  // row 0=mono always active
                 float alpha = active ? 1.f : 0.4f;
                 uint8_t rSrc = module->rhythmSrc[row];
                 uint8_t mSrc = module->melodySrc[row];
 
-                for (int col = 0; col < CA::N_VOICES; ++col) {
+                for (int col = 0; col < CA1::N_VOICES; ++col) {
                     Vec c = cellCentre(row, col);
                     bool hasR = (rSrc == (uint8_t)col);
                     bool hasM = (mSrc == (uint8_t)col);
@@ -502,8 +502,8 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
         // Track hovered cell for the crosshair; keep events passing through.
         void onHover(const event::Hover& e) override {
             hoverRow = hoverCol = -1;
-            for (int row = 0; row < CA::N_VOICES && hoverRow < 0; ++row)
-                for (int col = 0; col < CA::N_VOICES; ++col)
+            for (int row = 0; row < CA1::N_VOICES && hoverRow < 0; ++row)
+                for (int col = 0; col < CA1::N_VOICES; ++col)
                     if (hitCell(e.pos, row, col)) { hoverRow = row; hoverCol = col; break; }
             TransparentWidget::onHover(e);
         }
@@ -518,8 +518,8 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
         void onButton(const event::Button& e) override {
             if (!module || e.action != GLFW_PRESS) { TransparentWidget::onButton(e); return; }
             bool setMelody = (e.button == GLFW_MOUSE_BUTTON_RIGHT) || (e.mods & RACK_MOD_CTRL);
-            for (int row = 0; row < CA::N_VOICES; ++row) {
-                for (int col = 0; col < CA::N_VOICES; ++col) {
+            for (int row = 0; row < CA1::N_VOICES; ++row) {
+                for (int col = 0; col < CA1::N_VOICES; ++col) {
                     if (!hitCell(e.pos, row, col)) continue;
                     // Store-backed + undoable: the pin tables are NOT params (zero DAW
                     // slots -- DAW_PARAM_AUDIT), so undo goes through StoreEditAction.
@@ -533,7 +533,7 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
                             module,
                             setMelody ? "move melody pin" : "move rhythm pin",
                             [row, setMelody](MonsoonChangeAlleyExpander& m, float v) {
-                                uint8_t c = (uint8_t)math::clamp((int)std::lround(v), 0, CA::N_VOICES - 1);
+                                uint8_t c = (uint8_t)math::clamp((int)std::lround(v), 0, CA1::N_VOICES - 1);
                                 (setMelody ? m.melodySrc : m.rhythmSrc)[row] = c;
                             },
                             oldV, (float)col);
@@ -552,17 +552,17 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
     // resolution discipline as StoreEditAction (survives deletion; no-ops while gone).
     struct ResetPinsAction : rack::history::Action {
         int64_t moduleId;
-        uint8_t oldR[CA::N_VOICES], oldM[CA::N_VOICES];
+        uint8_t oldR[CA1::N_VOICES], oldM[CA1::N_VOICES];
         ResetPinsAction(MonsoonChangeAlleyExpander* m) : moduleId(m->id) {
             name = "reset pins to identity";
-            for (int v = 0; v < CA::N_VOICES; ++v) { oldR[v] = m->rhythmSrc[v]; oldM[v] = m->melodySrc[v]; }
+            for (int v = 0; v < CA1::N_VOICES; ++v) { oldR[v] = m->rhythmSrc[v]; oldM[v] = m->melodySrc[v]; }
         }
         MonsoonChangeAlleyExpander* resolve() {
             return dynamic_cast<MonsoonChangeAlleyExpander*>(APP->engine->getModule(moduleId));
         }
         void undo() override {
             if (auto* m = resolve())
-                for (int v = 0; v < CA::N_VOICES; ++v) { m->rhythmSrc[v] = oldR[v]; m->melodySrc[v] = oldM[v]; }
+                for (int v = 0; v < CA1::N_VOICES; ++v) { m->rhythmSrc[v] = oldR[v]; m->melodySrc[v] = oldM[v]; }
         }
         void redo() override {
             if (auto* m = resolve()) m->resetToIdentity();
@@ -594,7 +594,7 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
             [module]() {
                 // Skip the no-op (already identity) so undo history stays clean.
                 bool isIdentity = true;
-                for (int v = 0; v < CA::N_VOICES; ++v)
+                for (int v = 0; v < CA1::N_VOICES; ++v)
                     if (module->rhythmSrc[v] != v || module->melodySrc[v] != v) { isIdentity = false; break; }
                 if (isIdentity) return;
                 auto* act = new ResetPinsAction(module);

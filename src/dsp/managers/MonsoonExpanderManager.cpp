@@ -145,7 +145,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
                 // ── Change Alley V2 (single-module transforms) ─────────────────────
                 if (cachedChangeAlleyV2) {
                     auto* v2 = cachedChangeAlleyV2;
-                    const int vActive = std::max(1, (poly + 1));
+                    const int vActive = std::max(1, (engine.numPolyVoices + 1));
                     for (int row = 0; row < ChangeAlleyV2Ids::N_ROWS; ++row) {
                         auto& p = v2->pendingRows[row];
                         if (!p.armed) continue;
