@@ -186,8 +186,8 @@ struct StraitsSandsMacroVisual : Module {
         // RIGHT-SIZED: local param count only, now that the 12 global LOR params were
         // re-homed out of the shared MonsoonIds pool (see GLOBAL_DNA_START).
         config(StraitsMacroVisualIds::NUM_SPREAD_PARAMS, StraitsMacroVisualIds::NUM_INPUTS,
-        monLookupDiv.setDivision(8);   // topology changes are control-rate
                StraitsMacroVisualIds::NUM_OUTPUTS, 0);
+        monLookupDiv.setDivision(8);   // topology changes are control-rate
         for (auto& a : probLastStep) for (auto& x : a) x = -1;
         { static const char* ln[4] = {"REST","MEL","OCT","ACC"};
           for (int l = 0; l < 4; ++l)
