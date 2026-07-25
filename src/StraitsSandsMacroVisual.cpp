@@ -232,7 +232,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             // STORE-BACKED (MVC step 1: direction de-param). The DirCell reads/writes
             // editor.globalDir via get/setGlobalDir instead of the dirDispId param -- the same
             // array the engine reads (MonsoonExpanderManager getGlobalDir) and persists
-            // (editorGlobalDir). `lane` is the ENGINE lane, matching getGlobalDir's indexing.
+            // (editorGlobalDir). `lane` is the EDITOR lane (row 0..3 = MEL/OCT/REST/ACC),
+            // matching both the kit marker order and the manager's getGlobalDir(el) read.
             // No undo, matching East/Mono's still-param-backed DirCells (cycling cells have
             // never had undo). bindWidget places a bare widget with no paramId.
             bindWidget<DirCell>(
@@ -425,11 +426,13 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
 
         if (!initialized) {
             loadLOR();
-            // Seed the store's global direction from the engine's current mono direction
-            // (store-backed DirCell now reads getGlobalDir directly).
-            for (int l = 0; l < 4; ++l)
-                monsoon->setGlobalDir(l,
-                    (float)monsoon->engine.laneDirPending_[dotModular::MONO_LANE_TO_STRAND[l]]);
+            // Direction is store-backed, authoritative, and PERSISTED (editorGlobalDir).
+            // It must NOT be seeded from the engine here: on patch load the store already
+            // holds the saved value, but engine.laneDirPending_ is still at its Forward
+            // default (the store drives the engine, not the reverse), so seeding would
+            // clobber the loaded direction with 0. (This is exactly the "widget must NOT
+            // overwrite FROM the engine" rule noted below -- the old seed was safe only
+            // because it wrote a re-derivable display proxy, not the authoritative store.)
             initialized = true;
         }
 
