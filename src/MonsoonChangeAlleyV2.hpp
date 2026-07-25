@@ -241,17 +241,20 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
         // Mod arc factory: overlay a red arc on a knob showing where poly CV pushes it.
         // getSetNorm = knob's own value; getModNorm = resolved knob+CV; gated on the
         // Monsoon menu flag modVizChangeAlley (matches every other surface).
-        auto addArc = [&](rack::app::Knob* knob, int paramId,
+        auto* mod = module;   // capture the ctor param explicitly (member `this->module`
+                              //   is set by setModule but the local shadows it here)
+        auto addArc = [&, mod](rack::app::Knob* knob, int paramId,
                           std::function<float()> resolved) {
-            auto* arc = new ModArcOverlay;
-            arc->getSetNorm = [this, paramId]() -> float {
-                if (!module) return 0.f;
-                auto* pq = module->paramQuantities[paramId];
-                return pq ? pq->getScaledValue() : 0.f;
+            auto* arc = new redDot::ModArcOverlay();
+            arc->radius = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
+            arc->getSetNorm = [mod, paramId]() -> float {
+                if (!mod) return 0.f;
+                auto* pq = mod->paramQuantities[paramId];
+                return pq ? (float)pq->getScaledValue() : 0.f;
             };
             arc->getModNorm = resolved;
-            arc->isActive   = [this]() -> bool {
-                Monsoon* mm = module ? redDot::findMonsoonEitherSide(module) : nullptr;
+            arc->isActive   = [mod]() -> bool {
+                Monsoon* mm = mod ? redDot::findMonsoonEitherSide(mod) : nullptr;
                 return mm ? mm->modVizChangeAlley : false;
             };
             arc->attachOverKnob(knob, 1.5f);
@@ -274,11 +277,11 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                     if (k->getParamQuantity()) k->getParamQuantity()->snapEnabled = true;
                     addParam(k);
                     const int gr = r;
-                    addArc(k, CA::GRAIN_START + r, [this, gr]() -> float {
-                        if (!module) return 0.f;
-                        float v = module->params[CA::GRAIN_START + gr].getValue();
-                        if (module->inputs[CA::GRAIN_POLY_IN].isConnected())
-                            v += module->inputs[CA::GRAIN_POLY_IN].getVoltage(gr) * 0.4f;
+                    addArc(k, CA::GRAIN_START + r, [mod, gr]() -> float {
+                        if (!mod) return 0.f;
+                        float v = mod->params[CA::GRAIN_START + gr].getValue();
+                        if (mod->inputs[CA::GRAIN_POLY_IN].isConnected())
+                            v += mod->inputs[CA::GRAIN_POLY_IN].getVoltage(gr) * 0.4f;
                         return rack::math::clamp(v / 4.f, 0.f, 1.f);   // 0..4 detents -> 0..1
                     }); }
                 if (verb == CA::V_COLLAPSE) {
@@ -292,11 +295,11 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                         module, CA::STEP_START + sIdx);
                     if (k->getParamQuantity()) k->getParamQuantity()->snapEnabled = true;
                     addParam(k);
-                    addArc(k, CA::STEP_START + sIdx, [this, sIdx]() -> float {
-                        if (!module) return 0.f;
-                        float v = module->params[CA::STEP_START + sIdx].getValue();  // -7..7
-                        if (module->inputs[CA::STEP_POLY_IN].isConnected())
-                            v += module->inputs[CA::STEP_POLY_IN].getVoltage(sIdx);
+                    addArc(k, CA::STEP_START + sIdx, [mod, sIdx]() -> float {
+                        if (!mod) return 0.f;
+                        float v = mod->params[CA::STEP_START + sIdx].getValue();  // -7..7
+                        if (mod->inputs[CA::STEP_POLY_IN].isConnected())
+                            v += mod->inputs[CA::STEP_POLY_IN].getVoltage(sIdx);
                         return rack::math::clamp((v + 7.f) / 14.f, 0.f, 1.f);
                     });
                 } else if (verb == CA::V_SCATTER) {
