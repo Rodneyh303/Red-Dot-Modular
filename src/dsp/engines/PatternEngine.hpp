@@ -181,15 +181,18 @@ struct PatternEngine {
                 slewedPolyOctave[v][i] = pickMono(sO, dotModular::STRAND_OCTAVE, i);
             }
         }
-        // Re-promote the remapped slewed into random_. This MUST run regardless of
-        // sandsActive: the old `if (!sandsActive)` guard assumed the spread stage would
-        // re-read slewed and re-promote when Sands is active -- but that only holds when a
-        // MONO VISUAL is present. With Macro attached (sandsActive=true) but no Mono visual,
-        // the spread stage's melody/octave write is skipped, so the remapped melody/octave
-        // never reached random_ while rhythm did -- the exact rest/accent-work,
-        // melody/octave-don't asymmetry. Re-promoting here is safe when spread runs later,
-        // because spread re-reads slewed (this runs BEFORE spread) and overwrites; when
-        // spread=0 or absent, this is the value the sequencer must see.
+        // INVARIANT: the pin remap is a property of CHANGE ALLEY ALONE. It must reach the
+        // output whether or not any Sands expander is attached -- Sands modules only DISPLAY
+        // and MODULATE these probabilities; they are never a precondition for the correlation
+        // itself. So the remap ALWAYS re-promotes every lane into random_ here, with no
+        // dependence on sandsActive / hasMonoVisual / anything downstream.
+        // (This runs BEFORE the spread stage, which re-reads `slewed`, so when spread is
+        //  present and non-zero it simply overwrites random_ with the spread result on top of
+        //  the already-correct remapped draw. When spread is absent or zero, this promote is
+        //  the value the sequencer reads.)
+        // The earlier `if (!sandsActive)` guard broke exactly this: with Macro attached but no
+        // Mono visual, sandsActive was true yet the mono spread block (inside if(hasMonoVisual))
+        // never ran, so remapped melody/octave never reached random_ while rhythm did.
         for (int i = 0; i < 16; ++i) {
             rhythmRandom[i]=slewedRhythm[i]; accentRandom[i]=slewedAccent[i];
             variationRandom[i]=slewedVariation[i]; legatoRandom[i]=slewedLegato[i];
