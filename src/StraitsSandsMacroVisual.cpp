@@ -301,22 +301,31 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         return dotModular::SandsTopology::build(in);
     }
 
+    // LOR is STORE-BACKED (MVC step 1: LOR de-param). Macro's GLOBAL LOR lives in the store's
+    // dedicated globalLor[12] array (lane*3 + c), NOT East's per-slot lorBase[288] -- Macro's
+    // LOR is global, not per-voice. globalLor is the array the ENGINE already reads
+    // (MonsoonSandsManager getGlobalLor) and that already persists (PersistenceManager
+    // editorGlobalLor). The 12 globalDnaId params were a redundant mirror of it; removing them
+    // leaves get/setGlobalLor as the single source. lane here is the ENGINE lane, matching
+    // getGlobalLor's indexing.
     void saveLOR() {
         if (!module || !visualEditor) return;
-        for (int l = 0; l < 4; ++l) {   // l = engine lane (lorId) → editor lane
+        auto* mm = getMonsoon(); if (!mm) return;
+        for (int l = 0; l < 4; ++l) {   // l = engine lane
             const auto& lane = visualEditor->currentState.lanes[dotModular::ENGINE_LANE_TO_EDITOR[l]];
-            module->params[lorId(l,0)].setValue((float)lane.length);
-            module->params[lorId(l,1)].setValue((float)lane.offset);
-            module->params[lorId(l,2)].setValue((float)lane.rotation);
+            mm->setGlobalLor(l, 0, (float)lane.length);
+            mm->setGlobalLor(l, 1, (float)lane.offset);
+            mm->setGlobalLor(l, 2, (float)lane.rotation);
         }
     }
     void loadLOR() {
         if (!module || !visualEditor) return;
-        for (int l = 0; l < 4; ++l) {   // l = engine lane (lorId) → editor lane
+        auto* mm = getMonsoon(); if (!mm) return;
+        for (int l = 0; l < 4; ++l) {   // l = engine lane
             auto& lane = visualEditor->currentState.lanes[dotModular::ENGINE_LANE_TO_EDITOR[l]];
-            lane.length   = std::max(1,(int)std::round(module->params[lorId(l,0)].getValue()));
-            lane.offset   = (int)std::round(module->params[lorId(l,1)].getValue());
-            lane.rotation = (int)std::round(module->params[lorId(l,2)].getValue());
+            lane.length   = std::max(1,(int)std::round(mm->getGlobalLor(l, 0)));
+            lane.offset   = (int)std::round(mm->getGlobalLor(l, 1));
+            lane.rotation = (int)std::round(mm->getGlobalLor(l, 2));
         }
     }
 
@@ -377,9 +386,9 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             namespace MId = StraitsMacroVisualIds;   // namespace alias (NOT `using X = Y`, which is a TYPE alias)
             auto pv = [&](int id) { return module->params[id].getValue(); };
             for (int lane = 0; lane < 4; ++lane) {
-                for (int c = 0; c < 3; ++c) monsoon->setGlobalLor(lane, c, pv(MId::lorId(lane, c)));
-                // (attenuverters are now StoreKnobs writing the store directly - no mirror)
-                // tapIdForItem: item 3 -> spread tap, otherwise the shared LOR tap.
+                // LOR is now store-backed: saveLOR() writes editor->globalLor directly each
+                // cycle, so mirroring the (deleted) params here is gone. (attenuverters are
+                // StoreKnobs; direction still mirrors until it is de-parammed.)
                 monsoon->setGlobalDir(lane, pv(MId::dirDispId(lane)));
             }
         }

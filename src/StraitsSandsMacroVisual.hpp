@@ -207,18 +207,12 @@ struct StraitsSandsMacroVisual : Module {
         }
 
         // Global L/O/R params
-        configParam(globalDnaId(0,0),   1.f,16.f,16.f,"Global REST Length");
-        configParam(globalDnaId(0,1),   0.f,15.f, 0.f,"Global REST Offset");
-        configParam(globalDnaId(0,2),   0.f,15.f, 0.f,"Global REST Rotation");
-        configParam(globalDnaId(1,0), 1.f,16.f,16.f,"Global MELODY Length");
-        configParam(globalDnaId(1,1), 0.f,15.f, 0.f,"Global MELODY Offset");
-        configParam(globalDnaId(1,2), 0.f,15.f, 0.f,"Global MELODY Rotation");
-        configParam(globalDnaId(2,0), 1.f,16.f,16.f,"Global OCTAVE Length");
-        configParam(globalDnaId(2,1), 0.f,15.f, 0.f,"Global OCTAVE Offset");
-        configParam(globalDnaId(2,2), 0.f,15.f, 0.f,"Global OCTAVE Rotation");
-        configParam(globalDnaId(3,0), 1.f,16.f,16.f,"Global ACCENT Length");
-        configParam(globalDnaId(3,1), 0.f,15.f, 0.f,"Global ACCENT Offset");
-        configParam(globalDnaId(3,2), 0.f,15.f, 0.f,"Global ACCENT Rotation");
+        // globalDnaId (12 LOR params) are STORE-BACKED (MVC step 1: LOR de-param) - no
+        // configParam, not host-exposed. Macro's global LOR lives in editor.globalLor[12],
+        // read by the engine (getGlobalLor) and persisted (editorGlobalLor); saveLOR/loadLOR
+        // are the single reader/writer. The 12 ID slots stay declared (renumbering the enum
+        // would shift every later id) until a later cleanup reclaims them, matching how the
+        // attenuverters were de-parammed.
 
         // Per-voice Macro→voice mix-in sends (relocated from East). 12 display proxies
         // (selected-voice view, bound on the panel) + 180 per-voice store. Default 0
