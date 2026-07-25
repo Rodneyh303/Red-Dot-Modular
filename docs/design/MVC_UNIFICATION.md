@@ -241,3 +241,58 @@ cycling cells also have no meaningful undo). This is consistent, not a regressio
 later, uniform pass: add undo across ALL the Sands cycling/grid cells at once (LOR grid,
 direction DirCells on Macro/East/Mono) rather than per-module, using StoreEditAction for the
 store-backed ones. Deferred by Rodney; not owed by the de-param work.
+
+## De-param playbook (distilled from Macro: LOR, direction, sends)
+
+A repeatable recipe for the remaining groups (Mono 54, East 38). Each group cost a distinct
+mistake the first time; this front-loads them.
+
+### The recipe
+1. **Find the store target by the ENGINE READ, never by name.** Multiple plausible store
+   arrays exist (e.g. LOR had both globalLor[12] AND East's per-slot lorBase[288]). The
+   RIGHT one is whatever the manager/engine already reads each cycle. Grep the manager for
+   get<Thing> and use THAT array. Guessing compiles clean and silently disconnects the
+   control -- the signature failure of this codebase.
+2. **Confirm it already persists.** The correct store array is almost always already in
+   PersistenceManager (editor<Thing>). If it isn't, add save/load FIRST -- a de-param without
+   persistence loses the value on reload.
+3. **Enumerate ALL param touch-points before editing.** A group is never just the widget bind.
+   Direction had FOUR: the bind, the dual-write mirror, the init engine->store seed, and the
+   gate-mod cycle. Missing one leaves the control half-working. Grep every read/write of the
+   param id (getValue/setValue AND the id accessor) and account for each.
+4. **Pick the widget path by what the control IS:**
+   - grid-edited (LOR): redirect the existing save/load helper to the store; no new widget.
+   - knob (attenuverters, sends): bindStoreKnob with get/set lambdas. For PER-VOICE controls
+     (sends), resolve the slot LIVE inside the lambda (slot = voiceSlot(viewVoice+1)) so a
+     view switch re-targets the same knob -- do NOT capture a fixed slot at bind time.
+   - cycling cell (direction): give the widget optional get/setStateFn callbacks and bind via
+     bindWidget (bare, no paramId, same pattern as the shipped StoreKnob). Leave the callbacks
+     unset elsewhere so still-param-backed siblings are untouched -- one widget, both modes.
+5. **Delete the sync machinery, don't preserve it.** The proxy pattern's load/store dance +
+   clobber guard + last<X>Voice latch exist ONLY to keep a display proxy in sync. Once the
+   widget edits the store directly there is no proxy, so delete the whole apparatus -- it's
+   removing a failure mode, not losing a feature.
+6. **Remove configParams, KEEP the ids declared.** Deleting enum entries renumbers every later
+   id. Drop the configParam calls, leave the id accessors, add a "STORE-BACKED, id kept" note.
+   config() uses a fixed NUM_ constant so the count is unchanged.
+7. **Match sibling undo behaviour, don't exceed it.** East/Mono cycling cells have no undo, so
+   Macro's don't either -- adding voice-correct undo to one module alone makes it inconsistent.
+   Uniform undo is a separate cross-module pass (see undo backlog).
+
+### Two traps that bit us (watch for both on Mono/East)
+- **Inverted-seed on load.** When a param that was a DISPLAY MIRROR of the engine becomes the
+  AUTHORITATIVE persisted store, any "seed store FROM engine on init" code inverts meaning: it
+  now CLOBBERS the loaded value with the engine's default (direction didn't survive save/load
+  until this seed was removed). Audit every engine->param init sync when de-paramming; if the
+  param is now the store, the seed must go.
+- **Comment lane-convention drift.** Editor lane vs engine lane (ENGINE_LANE_TO_EDITOR /
+  EDITOR_TO_ENGINE_LANE). The code was right but a comment I wrote claimed the wrong one --
+  a future-bug seed. State the lane basis explicitly and verify against the manager's read
+  index, not the loop variable name.
+
+### Assembly discipline (this whole session's recurring cost)
+Find the WORKING instance in the codebase and match its exact idiom rather than writing from
+memory: the ModArcOverlay namespace (redDot::), the shadowed-`module` ctor param (capture the
+local, not [this]), bindStoreKnob's Tag + resolver args. Every scripted edit needs a match-
+count assertion; walk braces programmatically (strip comments/strings first -- em-dashes and
+`{` in comments give false mismatches).
