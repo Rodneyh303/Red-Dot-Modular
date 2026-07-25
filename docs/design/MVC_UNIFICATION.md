@@ -152,9 +152,9 @@ estimating the remaining modules: the widget is never the hard part; the free se
 | Attenuverters | 16 | **DONE** — StoreKnob, Grey_Trim_Bar |
 | Spread | 4 | **DONE** — mod-arcs needed no change once decoupled |
 | Taps | 8 | **DONE** — + on-panel LOR/SPR labels added |
-| LOR | 12 | TODO — **not knobs**: grid-edited via saveSlot/loadSlot, so redirect the editor's save/load to the store rather than swapping widgets |
+| LOR | 12 | **DONE** — saveLOR/loadLOR now read/write editor.globalLor via get/setGlobalLor (the array the engine already reads and persists); 12 globalDnaId configParams removed; dual-write LOR mirror deleted. Tested: edits + patch save/reload work. Undo: LOR was NEVER undoable (Macro/Mono/East all use the editor's own VoiceState history, not Rack's Ctrl+Z stack), so nothing was lost — not a regression. StoreEditAction is for the click-cell groups (sends/dir/owners) where proxy undo is subtly wrong. |
 | Sends | 16 | TODO — pure proxy (not engine-read); needs the view-voice context since macroSend is per-voice |
-| Direction | 4 | TODO — **DirCell, not a knob**: needs its own store-write path to setGlobalDir, mirroring East's DirCell -> setLaneDir |
+| Direction | 4 | **DONE** — store-backed DirCell (getStateFn/setStateFn on get/setGlobalDir, the array the engine reads + persists); 4 dirDispId configParams removed; dual-write mirror fully retired; gate-mod cycle + init-seed redirected to the store. No undo, matching East/Mono (still param-backed, also no undo). DirCell gained optional store callbacks so both forms share one widget. |
 
 Then: `config()` to 0, delete the dual-write mirror (down to the LOR + direction lines),
 and Macro leaves the host param list entirely.
@@ -204,3 +204,32 @@ Requirements carried from DAW_PARAM_AUDIT.md 5b (per de-parammed group):
 
 NEXT: pin the global slot/bank for Macro LOR in lorBase[], find the param->engine read site,
 then redirect saveLOR/loadLOR to setLorBase/getLorBase and delete the 12 param configs.
+
+## Direction de-param — plan pinned (resume here)
+
+Store target VERIFIED (the LOR lesson: find what the ENGINE reads, don't guess):
+- Macro's global direction: engine reads getGlobalDir(lane) at MonsoonExpanderManager.cpp:221
+  (the non-East-owned branch), clamped 0..3. globalDir[4] already persists
+  (PersistenceManager editorGlobalDir, 211/462). So globalDir is the target -- the dirDispId
+  params are the redundant mirror, exactly like LOR's globalDnaId.
+- East-owned mono lanes read getMonoLaneDir instead (line 206) -- NOT Macro's concern here.
+
+Why this is bigger than LOR (do it fresh, not at session tail):
+- DirCell is a rack::ParamWidget (src/ui/OwnerCell.hpp) -- it reads/writes getParamQuantity().
+  De-paramming needs a STORE-BACKED variant: read via a getFn() callback, write via
+  applyAndPushStoreEdit<Monsoon>(mon, "direction", setter, old, new). No existing store-backed
+  cell widget yet -- this is the first, and owners/sends will reuse it.
+- This IS the 5b undo case (unlike LOR): click-cell edit, discrete before/after, and the
+  current proxy undo is voice-INCORRECT. applyAndPushStoreEdit gives voice-correct undo.
+
+Steps:
+1. Add StoreDirCell to OwnerCell.hpp (or a new header): getFn()/lockWhen, cycle() calls
+   applyAndPushStoreEdit with setGlobalDir setter. Mirror DirCell's draw exactly.
+2. Macro: bind StoreDirCell instead of bindParam<DirCell>, wired to get/setGlobalDir(lane).
+3. Delete the dir mirror line (setGlobalDir(lane, pv(dirDispId))) at ~392 -- the last line of
+   the dual-write mirror block, so the whole block goes.
+4. Remove the 4 dirDispId configParams (keep ids declared, per attenuverter/LOR pattern).
+5. Verify: engine still gets direction via getGlobalDir; edits persist; undo works and is
+   voice-correct.
+
+Then only SENDS (16) remains on Macro -- the per-voice one needing view-voice context.
