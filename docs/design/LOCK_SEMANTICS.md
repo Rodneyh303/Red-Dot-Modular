@@ -183,18 +183,32 @@ scope" could later let the user choose narrower latching, e.g.:
 This interacts with the per-lane-vs-global open question in LOCK_MODE_PLAN.md. Default to
 whole-module for the first build; scope menu is a later refinement, not v1.
 
+### The read-vs-map principle (emerged from resolving direction/owner/transpose)
+A clean test for the OPEN base rulings turned out to be: does the control shape or READ the
+probability arrays (LATCH), or MAP the finished output (LIVE)?
+- LOR = the window onto the arrays; DIRECTION = the traversal of them; OWNER = selects WHICH
+  LOR/mod is used. All three are "how we read the arrays" -> LATCH, same class as LOR.
+- TRANSPOSE = post-generation output mapping (shifts finished pitch, changes nothing generated)
+  -> LIVE, same side as the clock.
+- A/B MIX = blends two already-rolled draws (LockedA + mix*(CandB-A)) PRE-spread, PRE-pins
+  (PatternEngine.hpp:102,209). It is upstream generation, MORE fundamental than spread, so it
+  LATCHES with spread. The "feels like a live crossfade" instinct was checked against the
+  pipeline and did NOT hold -- A/B is not a downstream output blend. Latching it is what keeps
+  the DJ-cue promise whole: the review's point is you can move ANYTHING under lock and hear no
+  change; a live A/B would be the one control that breaks that.
+
 ### Still OPEN (decide before/at build)
-- TRANSPOSE live vs latch.
-- Lane DIRECTION live vs latch (leans latch).
-- Owner/topology flip under lock: apply live (structural) vs defer to unlock. Leans live, but
-  it's the subtle corner  ownership already drives the display layer (displayValueFn), so a
-  live flip mid-lock changes what a ceded lane displays. Needs a ruling with the topology model
-  in view.
+- NONE of the base rulings remain open. Transpose LIVE, direction LATCH, owner LATCH, A/B LATCH
+  all resolved (July 2026).
+- The one remaining PLAY-TEST question (not a structural open, a musical one): Change Alley pin
+  matrix + transform knobs -- latch is the structural default, but whether they should latch or
+  be a live performance surface is discovered in play (8). Tier-2 opt-in.
 
 RESOLVED (July 2026): Changi out of lock scope (pure output). Interchange = core CV (note/oct),
-latches with Big-5. Raffles: dice/queued gates QUEUE, A/B mix LIVE (performed crossfade), slew
-folds into QUEUE (sampled at phrase boundary). Change Alley: transform knobs + poly CV follow
-the pin ruling (latch default, play-test), trigger/scatter gates QUEUE.
+latches with Big-5. Raffles: dice/queued gates QUEUE, slew folds into QUEUE (sampled at phrase
+boundary), A/B mix LATCH (pre-spread generation blend -- corrected from an earlier LIVE call
+once the pipeline showed it is upstream of spread). Change Alley: transform knobs + poly CV
+latch (play-test), trigger/scatter gates QUEUE. Transpose LIVE, direction/owner LATCH.
 
 ## 8. Two tiers: Vermona-faithful core vs dot.modular extended surface (Rodney, July 2026)
 
@@ -263,24 +277,24 @@ when the queued redraw fires, so it needs no independent ruling.
 | Change Alley | pin matrix + transform knobs (grain/leader/step) | correlation shaping | X | LATCH default (play-test, 8) | LATCH (poly CV in, with base) |
 | Change Alley | trigger gates (domain/codomain, 4 scatter-back) | regeneration event | X | QUEUE (dice precedent, 3) |  |
 | Raffles | dice-roll / queued gates | regeneration event | X | QUEUE (dice precedent, 3) |  |
-| Raffles | A/B mix | performance crossfade | X | LIVE | LIVE |
 | Raffles | slew | sampled at phrase boundary | X | folds into QUEUE (read at the queued redraw, not an independent axis) |  |
 | Monsoon | PATTERN_LENGTH, OFFSET | first/last step | V | LATCH |  |
 | Monsoon | DNA LOR (len/off/rot, 18 + globals + interp) | generation structure | X | LATCH | LATCH |
 | Monsoon | SPREAD + spread attenuverters | generation setting | X | LATCH | LATCH |
+| Monsoon/Raffles | A/B MIX + its mod | generation blend (pre-spread) | X | LATCH | LATCH |
 | Monsoon | SEMI 011 scale toggles, OCT LO/HI range | scale/range | X | LATCH |  |
-| Monsoon | TRANSPOSE | pitch performance | X | OPEN (leans LIVE) | OPEN (with base) |
-| Monsoon | Lane DIRECTION | structure | X | OPEN (leans LATCH) | OPEN (with base) |
+| Monsoon | TRANSPOSE | output mapping (post-generation) | X | LIVE | LIVE |
+| Monsoon | Lane DIRECTION | array READ (how the probability arrays are read, like LOR) | X | LATCH | LATCH |
 | Monsoon | BPM/RUN/RESET/MODE/PHASE | clock/drive | (both) | LIVE | LIVE |
 | Monsoon | MUTE | performance | (both) | LIVE |  |
 | Monsoon | Dice (all modes) | regeneration | (both) | queues under lock | queues |
 | Monsoon | Themes, lantern, display toggles | display | (both) | LIVE |  |
 | Sands Macro | globalLor / globalSpread / globalAtten / globalTap | generation | X | LATCH | LATCH |
-| Sands Macro | globalDir | structure | X | OPEN (leans LATCH) | OPEN (with base) |
+| Sands Macro | globalDir | array READ (like LOR) | X | LATCH | LATCH |
 | Sands Macro | macroSend (per-voice mix-in) | generation routing | X | LATCH |  |
 | Sands Mono | lorBase[mono] / spread[mono] / monoAtten | generation | X | LATCH | LATCH |
-| Sands Mono | monoLaneDir | structure | X | OPEN (leans LATCH) | OPEN (with base) |
-| Sands Mono/Macro | owner (monoOwner / topology) | structural routing | X | OPEN (leans LIVE) |  |
+| Sands Mono | monoLaneDir | array READ (like LOR) | X | LATCH | LATCH |
+| Sands Mono/Macro | owner (monoOwner / topology) | selects WHICH LOR+mod (LOR-class) | X | LATCH | LATCH |
 | Sands East | LOR/spread/atten/dir (when de-parammed) | generation | X | LATCH (inherits) | LATCH |
 | Sands (all) | grid probability edits | probability | X | LATCH |  |
 | Causeway | poly rhythm CV | rhythm modulation | V | (is CV) | LATCH |
