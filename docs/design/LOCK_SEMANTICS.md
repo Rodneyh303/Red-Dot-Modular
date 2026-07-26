@@ -200,19 +200,29 @@ probability arrays (LATCH), or MAP the finished output (LIVE)?
 ### Still OPEN (decide before/at build)
 - NONE. All base rulings resolved (July 2026). No structural opens, no play-test flags remain.
 
-### The config/event split within Change Alley (why knobs and gates differ  and that's correct)
-Change Alley has BOTH a config surface and an event surface, and they land in different lock
-categories  which is right, not an inconsistency:
-- Pin matrix + transform knobs = correlation CONFIG (a standing value: which voice reads which,
-  how much grain/leader/step). It correlates the random draws POST A/B-mix, PRE-spread
-  (PatternEngine.hpp:102) -- upstream generation, array-shaping by the read-vs-map principle.
-  LATCH, same band as A/B and spread. NOT because the gates queue -- a config latches because
-  it holds a value the engine reads; that is independent of what the gates do.
-- Scatter/trigger gates = correlation EVENT (a one-shot permutation). An event can't hold a
-  value, so QUEUE (dice precedent). Same config-vs-event split as Big-5 (latch) sitting next to
-  dice (queue) in the core section. Retires the earlier "pins might be live/play-test" caveat:
-  the pins are pre-spread generation, so a live remap would be another audible-under-lock hole
-  breaking the DJ-cue promise, exactly like a live A/B would.
+### The config/event split within Change Alley (manual pin edit vs scatter gate)
+Change Alley's pin state has TWO input paths, and they land in different lock categories 
+which is correct, and they sequence themselves with no conflict:
+- **Manual pin edit** (drag a pin to a SPECIFIC correlation) = CONFIG. You set a deliberate
+  value. It correlates the draws POST A/B-mix, PRE-spread (PatternEngine.hpp:102) -- upstream
+  array-shaping. LATCH: held silently, commits at UNLOCK. A live manual drag would be audible
+  under lock (you'd hear the correlation move), breaking the DJ-cue promise -- same reason A/B
+  and spread latch.
+- **Scatter/trigger gate** (PERMUTES the pins, Fisher-Yates -- a reshuffle you did NOT specify)
+  = EVENT. Like dice: you can't hand-set the result, only arm it. QUEUE: fires at the next
+  phrase boundary.
+- **Both pending at unlock  NO conflict, natural time ordering.** Latch releases at unlock;
+  queue releases at the next phrase boundary; unlock always precedes that boundary. So the
+  manual edit commits FIRST (at unlock), then the queued scatter permutes THAT (at the
+  boundary). The ordering is not a rule we impose -- it falls out of the two release timings.
+  A timing difference, not a contest.
+
+Why the dice analogy has a limit (Rodney): dice has no manual equivalent -- you can't hand-set
+the draw dice will roll, so "event queues" is its only behaviour. Change Alley DOES let you
+manually set correlations, so it has BOTH a config path (latch) and an event path (queue). That
+is not an inconsistency: latch and queue are BOTH "silent under lock," differing only in when
+they release, and that difference gives free, musically-sensible sequencing (your deliberate
+correlation first, the reshuffle on top of it).
 
 RESOLVED (July 2026): Changi out of lock scope (pure output). Interchange = core CV (note/oct),
 latches with Big-5. Raffles: dice/queued gates QUEUE, slew folds into QUEUE (sampled at phrase
