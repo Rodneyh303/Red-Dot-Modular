@@ -191,3 +191,37 @@ whole-module for the first build; scope menu is a later refinement, not v1.
   live flip mid-lock changes what a ceded lane displays. Needs a ruling with the topology model
   in view.
 - Confirm Raffles/Interchange/Changi actual roles against this split.
+
+## 8. Two tiers: Vermona-faithful core vs dot.modular extended surface (Rodney, July 2026)
+
+meloDICER's lock scope = its whole generation surface (rhythm/melody + FIRST/LAST STEP +
+MEX3 CC). For meloDICER "lock the generation section" and "lock everything" coincide because
+that IS the whole module. dot.modular has surfaces meloDICER has no analogue for  the Sands
+expanders, Change Alley, Shophouse  so those two statements have COME APART. Including the
+extended surface in lock scope goes significantly beyond meloDICER: you could prepare a
+correlation remap + a scale change + a per-voice LOR shift silently and commit them together.
+That is a different instrument gesture, not just "Vermona plus extras."
+
+So the design is TWO TIERS, not one flat latch-list:
+
+**Tier 1  Vermona-faithful core (proven, ships first):**
+Big-5, PATTERN_LENGTH/OFFSET, DNA LOR, SPREAD (+attens), scale/range, their CV mod. This is
+what lock has always meant; it's the well-understood, must-work baseline. 6's core rows.
+
+**Tier 2  extended surface (dot.modular-only, OPT-IN per expander):**
+Sands editors, Change Alley pins, Shophouse scale mask, Causeway/Junction/etc. Structurally
+these shape generation, so latching is the DEFENSIBLE DEFAULT  but whether each SHOULD latch
+is a claim about how the instrument PLAYS, not just what it writes. A Change Alley pin remap
+might feel better LIVE (a punch-in performance gesture) than latched. That is a play-tested
+decision, discovered by using it, NOT settled from the code. (Same structural-correct vs
+musically-right distinction as the VAR/LEG exclusion  structural defensibility is the
+starting hypothesis, not the verdict.)
+
+**Consequence for build + UI:**
+- Ship Tier 1 as the core lock. Do NOT build Tier-2 latching speculatively.
+- Each extended surface opts into lock scope as it proves it WANTS to be lockable in play.
+- The context-menu "lock scope" (7) is the natural home for the extras: core always latches;
+  the extended surfaces are toggleable inclusions the user (and we, during design) can flip.
+- Let it evolve. The value of documenting the tier now is that there's a SLOT for each extended
+  surface to join lock scope when play justifies it, rather than a retrofit  not a commitment
+  to latch them all on day one.
