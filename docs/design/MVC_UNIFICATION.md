@@ -299,3 +299,46 @@ memory: the ModArcOverlay namespace (redDot::), the shadowed-`module` ctor param
 local, not [this]), bindStoreKnob's Tag + resolver args. Every scripted edit needs a match-
 count assertion; walk braces programmatically (strip comments/strings first -- em-dashes and
 `{` in comments give false mismatches).
+
+## Mono Sands de-param census (NUM_PARAMS = 54)
+
+| Group | n | Ids | Widget | Store target (engine read) | Persists? | Notes |
+|---|---|---|---|---|---|---|
+| LOR | 18 | lenId/offId/rotId (0..17) | grid-edited (saveSlot/loadSlot) | `getLorBase(kMonoSlot=0, engLane, c)` via mmV1 (MonsoonSandsManager:387) | lorBase[288] yes | Same target as East's poly slots but slot 0. Redirect saveSlot/loadSlot to setLorBase(0,...) exactly as East does for poly. NO inverted-seed risk (Mono LOR was never an engine mirror). |
+| Attens | 18 | attenId (22..39) | Trimpot | `params[attenId]` read DIRECTLY by manager (line 110) -- NO store yet | not yet | Attens read straight from params, not a store. Need a store API and manager redirect. `getMonoAtten` doesn't exist yet -- must be added to Monsoon.hpp. |
+| Spread | 4 | SPR_REST..SPR_ACCENT (18..21) | Trimpot | `params[sprId(l)]` read directly (line 271) -- NO store yet | not yet | Same situation as attens. `getMonoSpread` doesn't exist. |
+| Spread attens | 4 | SPR_ATTEN_START (40..43) | Trimpot | `params[sprAttenId(l)]` read directly (line 276) -- NO store yet | not yet | Same -- needs a store API. |
+| Owners | 4 | OWN_DISP_START (44..47) | OwnerCell (cycling cell) | `params[ownerDispId(l)]` read by manager (line 94) AND Macro cross-reads (line 279 of MonsoonSandsVisualExpander.cpp AND StraitsSandsMacroVisual.cpp) -- NO store yet | not yet | The cross-read by MACRO is the dependency Macro's buildV1Topo still has. De-paramming owners unblocks Macro's last remaining cross-read. OwnerCell gets the same getFn/setFn callback approach as DirCell. |
+| Direction | 6 | DIR_DISP_START (48..53) | DirCell | `params[dirDispId(l)]` read DIRECTLY by engine init-sync AND gate-mod (lines 318/439) -- NO store yet | not yet | 6 lanes (all STRAND indices 0..5, including VAR/LEG which ARE mono-owned). `getMonoLaneDir`/`setMonoLaneDir` ALREADY EXISTS in Monsoon.hpp (line 715). Same store-backed DirCell approach as Macro; init-seed inversion trap also exists here -- must NOT seed from engine on load. |
+
+### Key findings vs Macro
+
+1. **Attens, spread, spread-attens (26 params)**: the engine reads these DIRECTLY from params
+   with no store intermediary. Macro had a store (globalAtten, globalSpread) because those
+   were global; Mono's are per-module and no equivalent store API exists yet. Need to add
+   `getMonoAtten(lane,param)`, `setMonoAtten`, `getMonoSpread(lane)`, `setMonoSpread`,
+   `getMonoSprAtten(lane)`, `setMonoSprAtten` to Monsoon.hpp, backed by new arrays in
+   `EditorState`, and redirect the 3 manager reads (lines 110, 271, 276). These persist once
+   added to PersistenceManager.
+
+2. **Owners (4)**: cross-read by Macro (buildV1Topo) AND the manager. De-paramming owners
+   resolves Macro's last cross-module param dependency. OwnerCell already has the DirCell-
+   style callback hooks (getFn/setFn added to DirCell -- check if OwnerCell has them too, or
+   needs them added). Store: probably `monoOwner[4]` in EditorState.
+
+3. **LOR (18)** and **Direction (6)**: same pattern as Macro but:
+   - LOR target is `lorBase[kMonoSlot=0]` NOT `globalLor` -- Mono IS a voice-slot occupant.
+   - Direction: `getMonoLaneDir/setMonoLaneDir` already exists, uses `laneDir[15*6+lane]`.
+     Init-seed inversion trap present (line 318 seeds params from engine -- MUST become
+     seed-from-nothing once params are gone, or seed from store if store is pre-loaded).
+   - Direction has 6 lanes (not 4) -- VAR and LEG are mono-owned.
+
+### Suggested migration order (per playbook: store-target-first, then widget)
+1. Add store API for attens/spread/sprAttens + PersistenceManager entries (the missing piece).
+2. Redirect manager reads (lines 110, 271, 276) to the new store -- A/B proof.
+3. LOR: redirect saveSlot/loadSlot to setLorBase(kMonoSlot,...). Remove 18 configs.
+4. Attens (18): bindStoreKnob on getMonoAtten/setMonoAtten. Remove 18 configs.
+5. Spread (4) + spread attens (4): bindStoreKnob. Remove 8 configs.
+6. Owners (4): store-backed OwnerCell. Remove 4 configs. Unblocks Macro's cross-read.
+7. Direction (6): store-backed DirCell (already has callbacks). Remove 6 configs. Watch init-seed.
+8. config() -> 0. Verify Macro's cross-read now reads the store.
