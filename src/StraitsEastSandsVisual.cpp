@@ -851,12 +851,16 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     // because Macro owns exactly those).
                     auto auth = m->expanderManager.monoDirAuthority(strand);
                     if (!auth.valid()) continue;   // nobody owns this lane — nothing to cycle
-                    int cur = auth.isField()
-                        ? (int)std::lround(math::clamp(m->getMonoLaneDir(auth.eastMonoLane), 0.f, 3.f))
-                        : (int)std::lround(math::clamp(auth.mod->params[auth.paramId].getValue(), 0.f, 3.f));
+                    // MVC step 1d: all authorities are field-backed now. macroGlobal → Macro's
+                    // globalDir; else the mono-lane dir (Mono/East V1). Param-backed branch is dead.
+                    int cur;
+                    if (auth.macroGlobal)      cur = (int)std::lround(math::clamp(m->getGlobalDir(auth.eastMonoLane), 0.f, 3.f));
+                    else if (auth.isField())   cur = (int)std::lround(math::clamp(m->getMonoLaneDir(auth.eastMonoLane), 0.f, 3.f));
+                    else                       cur = (int)std::lround(math::clamp(auth.mod->params[auth.paramId].getValue(), 0.f, 3.f));
                     nxt = (cur + d) % 4;
-                    if (auth.isField()) m->setMonoLaneDir(auth.eastMonoLane, (float)nxt);
-                    else                auth.mod->params[auth.paramId].setValue((float)nxt);
+                    if (auth.macroGlobal)      m->setGlobalDir(auth.eastMonoLane, (float)nxt);
+                    else if (auth.isField())   m->setMonoLaneDir(auth.eastMonoLane, (float)nxt);
+                    else                       auth.mod->params[auth.paramId].setValue((float)nxt);
                 } else {
                     const int pv = ch - 1;
                     nxt = (((int)se->laneDirVPending_[pv][strand]) + d) % 4;
@@ -1167,13 +1171,15 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     if (auto* mm = getMonsoon()) mm->setVarlegAtten(dotModular::VoiceResolver::kMonoSlot, lane, c,
                         module->params[varlegAttDispId(lane,c)].getValue());
             // P8: East's owner cells on V1 are locked (East can't delegate V1) but should
-            // SHOW the real V1 ownership, which Mono decides. Mirror Mono's owner param
-            // into East's ownerDispId so the cell draws filled/outline correctly. East
-            // ownerDispId is engine-lane indexed; Mono's is editor-lane indexed.
-            for (int eng=0; eng<4; ++eng) {
-                int el = dotModular::ENGINE_LANE_TO_EDITOR[eng];
-                module->params[ownerDispId(eng)].setValue(
-                    monoVis->params[SandsMonoVisualIds::ownerDispId(el)].getValue());
+            // SHOW the real V1 ownership, which Mono decides. Mono's owner is STORE-BACKED
+            // (editor.monoOwner via getMonoOwner); mirror it into East's ownerDispId so the cell
+            // draws filled/outline correctly. East ownerDispId is engine-lane indexed; Mono's
+            // store is editor-lane indexed (el).
+            if (auto* m = getMonsoon()) {
+                for (int eng=0; eng<4; ++eng) {
+                    int el = dotModular::ENGINE_LANE_TO_EDITOR[eng];
+                    module->params[ownerDispId(eng)].setValue(m->getMonoOwner(el) ? 1.f : 0.f);
+                }
             }
             // Probabilities: show the SPREAD-APPLIED V1 values (what plays) for all 4
             // lanes, so Mono's spread/CV AND East's V1 spread CV (both folded into the

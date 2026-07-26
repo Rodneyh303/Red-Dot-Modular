@@ -54,12 +54,13 @@ struct MonsoonExpanderManager {
     // control rate, so V1 lanes 0..3 never moved). Encoding the precedence once is the point.
     struct MonoDirSrc {
         rack::Module* mod = nullptr;   // owning expander, or null if nothing owns the lane
-        int paramId = -1;              // its direction param for this lane (param-backed sources)
-        // East's V1 direction migrated from a param to Monsoon::editor.laneDir
-        // (NUM_PARAMS_MIGRATION.md). When the owner is East, the source is a FIELD, not a param:
-        // eastMonoLane >= 0 marks that, and the value is read/written via Monsoon's
-        // getMonoLaneDir/setMonoLaneDir(eastMonoLane) instead of params[paramId].
-        int eastMonoLane = -1;         // >=0 => field-backed (East V1); read via Monsoon accessor
+        int paramId = -1;              // param-backed source (legacy; no live callers after de-param)
+        // Field-backed sources (MVC de-param): direction lives in the Monsoon store, not a param.
+        // eastMonoLane >= 0 marks a field source; macroGlobal selects WHICH store region:
+        //   false → Monsoon::getMonoLaneDir(eastMonoLane)  (Mono V1 or East V1 — editor.laneDir[15*6+l])
+        //   true  → Monsoon::getGlobalDir(eastMonoLane)    (Macro global — editor.globalDir[l])
+        int eastMonoLane = -1;         // >=0 => field-backed; the lane index for the accessor
+        bool macroGlobal = false;      // true => Macro global field (getGlobalDir), else getMonoLaneDir
         bool valid() const { return mod && (paramId >= 0 || eastMonoLane >= 0); }
         bool isField() const { return eastMonoLane >= 0; }
     };

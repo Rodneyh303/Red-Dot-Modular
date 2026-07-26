@@ -25,14 +25,21 @@ struct OwnerCell : rack::ParamWidget {
     NVGcolor laneCol = nvgRGB(0x80, 0x80, 0x80);
     std::function<bool()> lockWhen;      // cell can't be toggled (inoperable) — shows a lock glyph
     std::function<bool()> hideWhen;      // (P1: unused now; kept for compatibility)
+    // Store-backed mode (MVC de-param): when set, read/write the STORE instead of a
+    // ParamQuantity. Left unset → param-backed exactly as before (East/Macro unaffected).
+    // Mirrors DirCell's getStateFn/setStateFn. No undo either way (cycling cells never had it).
+    std::function<bool()>      getOwnsFn;   // true → local owns (outline)
+    std::function<void(bool)>  setOwnsFn;
     OwnerCell() { box.size = rack::math::Vec(18.f, 28.f); }  // sane default; reset in config
 
     bool locked() const { return lockWhen && lockWhen(); }
     bool hidden() const { return hideWhen && hideWhen(); }
-    bool localOwns() {   // value > 0.5 → local (East/Mono) owns → outline (getParamQuantity is non-const)
+    bool localOwns() {   // value > 0.5 (or getOwnsFn) → local owns → outline
+        if (getOwnsFn) return getOwnsFn();
         return getParamQuantity() && getParamQuantity()->getValue() > 0.5f;
     }
     void toggle() {
+        if (setOwnsFn) { setOwnsFn(!localOwns()); return; }
         if (!getParamQuantity()) return;
         getParamQuantity()->setValue(localOwns() ? 0.f : 1.f);
     }

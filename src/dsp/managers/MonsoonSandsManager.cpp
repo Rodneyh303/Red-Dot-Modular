@@ -96,8 +96,9 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     dotModular::SandsTopology::Inputs topoIn;
     expanderManager.fillPresence(topoIn, engine.numPolyVoices);   // single presence authority
     if (monoVis) {
+        // MVC step 1d: owner is STORE-BACKED (editor.monoOwner via getMonoOwner). Was params[ownerDispId].
         for (int l = 0; l < 4; ++l)
-            topoIn.monoV1Owner[l] = monoVis->params[Mono::ownerDispId(l)].getValue() > 0.5f;
+            topoIn.monoV1Owner[l] = gMon ? gMon->getMonoOwner(l) : true;
     }
     const dotModular::SandsTopology topo = dotModular::SandsTopology::build(topoIn);
     const bool macroDrivesOutput = hasMacro && polyBaseActive;

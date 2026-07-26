@@ -3,6 +3,7 @@
 #include "ui/SandsGrid.hpp"
 #include "Monsoon.hpp"
 #include "dsp/LaneMapping.hpp"   // ENGINE_LANE_TO_EDITOR / MONO_PARAM_TO_EDITOR — single source of truth
+#include "ui/VisualExpanderHelpers.hpp"  // findMonsoonEitherSide (monoMacroOwnsEngineLane store read)
 
 using namespace rack;
 
@@ -86,7 +87,10 @@ namespace SandsMonoVisualIds {
     inline bool monoMacroOwnsEngineLane(rack::Module* mod, int engineLane) {
         if (!mod || engineLane < 0 || engineLane >= 4) return false;
         int editorLane = dotModular::ENGINE_LANE_TO_EDITOR[engineLane];
-        return !(mod->params[ownerDispId(editorLane)].getValue() > 0.5f);
+        // MVC step 1d: owner is STORE-BACKED (editor.monoOwner via getMonoOwner). Was params[ownerDispId].
+        // Returns true iff Macro owns (delegated); no Monsoon → treat as Mono-owned (not delegated).
+        Monsoon* m = redDot::findMonsoonEitherSide(mod);
+        return !(m ? m->getMonoOwner(editorLane) : true);
     }
 
     // ── Input IDs ─────────────────────────────────────────────────────────
@@ -140,8 +144,10 @@ struct MonsoonSandsVisualExpander : Module {
 
     MonsoonSandsVisualExpander() {
         using namespace SandsMonoVisualIds;
-        config(SandsMonoVisualIds::NUM_PARAMS, SandsMonoVisualIds::NUM_INPUTS,
-               SandsMonoVisualIds::NUM_OUTPUTS, 0);
+        // MVC step 1d DONE: all 54 Mono params are store-backed (spread/atten/LOR/dir/owner).
+        // config() reserves ZERO host param slots — Mono has left the host/DAW param list. The
+        // id enums (LEN_MELODY…NUM_PARAMS) stay declared (they name panel slots) but reserve none.
+        config(0, SandsMonoVisualIds::NUM_INPUTS, SandsMonoVisualIds::NUM_OUTPUTS, 0);
         monLookupDiv.setDivision(8);   // topology changes are control-rate
         for (int l = 0; l < 6; ++l)
             configOutput(PROB_OUT_START + l, std::string("Probability ") +
@@ -168,16 +174,13 @@ struct MonsoonSandsVisualExpander : Module {
             const char* nm = names[SPREAD_LANE_TO_EDITOR[l]];
             configInput(sprCvId(l), std::string(nm)+" Spread CV");
         }
-        // V1 ownership switches — poly lanes only (editor lanes 0..3 = MEL/OCT/REST/ACC).
-        // 0 = Macro owns V1's base for this lane; 1 = Mono owns (its own LOR edit).
-        for (int l = 0; l < 4; ++l)
-            configSwitch(ownerDispId(l), 0.f, 1.f, 1.f,
-                         std::string(names[l]) + " V1 owner",
-                         { "Macro (global)", "Mono" });
-        // Direction display proxies (6 lanes). DirCell writes 0..3 = Fwd/Rev/Pend/PingPong.
+        // V1 ownership (poly lanes 0..3): STORE-BACKED (MVC step 1d). ownerDispId ids KEPT
+        // (name panel slots) but reserve NO param slots — OwnerCell reads/writes editor.monoOwner
+        // via get/setMonoOwner (persisted as editorMonoOwner, default Mono owns).
+        // Direction (6 lanes): STORE-BACKED (MVC step 1d). dirDispId ids KEPT (name panel slots)
+        // but reserve NO param slots — DirCell reads/writes editor.laneDir[15*6+lane] via
+        // get/setMonoLaneDir (persisted as editorLaneDir). Only the gate-mod jack (input) is here.
         for (int l = 0; l < 6; ++l) {
-            configParam(dirDispId(l), 0.f, 3.f, 0.f,
-                        std::string(names[l]) + " direction");
             configInput(dirModId(l), std::string(names[l]) + " direction gate-mod");
         }
         const char* delegNm[4] = {"MEL","OCT","REST","ACC"};

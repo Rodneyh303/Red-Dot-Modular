@@ -326,10 +326,10 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         dotModular::SandsTopology::Inputs in;
         if (auto* mon = getMonsoon()) {
             mon->expanderManager.fillPresence(in, mon->engine.numPolyVoices);  // single authority
-            if (auto* mv = mon->expanderManager.cachedSandsVisualExpander) {
-                for (int l = 0; l < 4; ++l)
-                    in.monoV1Owner[l] = mv->params[SandsMonoVisualIds::ownerDispId(l)].getValue() > 0.5f;
-            }
+            // MVC step 1d: Mono's owner is STORE-BACKED (editor.monoOwner via getMonoOwner).
+            // mon IS the Monsoon store owner; was mv->params[ownerDispId(l)].
+            for (int l = 0; l < 4; ++l)
+                in.monoV1Owner[l] = mon->getMonoOwner(l);
         }
         return dotModular::SandsTopology::build(in);
     }

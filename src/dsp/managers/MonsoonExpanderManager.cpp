@@ -30,14 +30,17 @@ MonsoonExpanderManager::MonoDirSrc MonsoonExpanderManager::monoDirAuthority(int 
     const bool varleg = (lane >= 4);          // VARIATION / LEGATO: Macro has no such lane
 
     if (monoVis) {
-        // Mono always owns VAR/LEG; for 0..3 it owns only when its owner cell says so.
-        const bool monoOwns = varleg
-            || (monoVis->params[SandsMonoVisualIds::ownerDispId(lane)].getValue() > 0.5f);
-        if (monoOwns) { r.mod = monoVis; r.paramId = SandsMonoVisualIds::dirDispId(lane); return r; }
-        if (macroVis) { r.mod = macroVis; r.paramId = StraitsMacroVisualIds::dirDispId(lane); return r; }
+        // Mono always owns VAR/LEG; for 0..3 it owns only when its owner store says so.
+        // MVC step 1d: owner is STORE-BACKED (editor.monoOwner via getMonoOwner). Was params[ownerDispId].
+        Monsoon* mm = redDot::findMonsoonEitherSide(monoVis);
+        const bool monoOwns = varleg || (mm ? mm->getMonoOwner(lane) : true);
+        // MVC step 1d: direction is STORE-BACKED. Mono/Macro/East all return FIELD sources now
+        // (the dirDispId params are gone). Mono/East V1 → getMonoLaneDir; Macro → getGlobalDir.
+        if (monoOwns) { r.mod = monoVis; r.eastMonoLane = lane; return r; }                    // getMonoLaneDir
+        if (macroVis) { r.mod = macroVis; r.eastMonoLane = lane; r.macroGlobal = true; return r; } // getGlobalDir
         return r;                              // Mono present but doesn't own, no Macro -> nobody
     }
-    if (macroVis && !varleg) { r.mod = macroVis; r.paramId = StraitsMacroVisualIds::dirDispId(lane); return r; }
+    if (macroVis && !varleg) { r.mod = macroVis; r.eastMonoLane = lane; r.macroGlobal = true; return r; }
     // No Mono, and either no Macro or a VAR/LEG lane Macro cannot own -> East's V1 slot.
     // This is the arm that was missing: with Macro attached, V1's VAR/LEG had NO source, so
     // those lanes were pinned Forward and East's DirCell for them did nothing.
@@ -198,13 +201,17 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
             MonoDirSrc src = monoDirAuthority(l);
             if (!src.valid()) continue;   // nothing owns this lane -> leave Forward from reset
             if (src.isField()) {
-                // East V1 direction lives in Monsoon::editor.laneDir (NUM_PARAMS_MIGRATION.md).
-                // Reach it through the East expander's Monsoon pointer.
-                if (auto* ev = dynamic_cast<StraitsEastSandsVisual*>(src.mod))
-                    if (auto* mm = redDot::findMonsoonEitherSide(ev))
-                        engine.laneDirPending_[l] = (SequencerEngine::LaneDir)(int)std::lround(
-                            math::clamp(mm->getMonoLaneDir(src.eastMonoLane), 0.f, 3.f));
-            } else {
+                // Field-backed (MVC de-param): direction lives in the Monsoon store. Resolve the
+                // Monsoon from ANY owning expander (Mono/Macro/East all hang off it). macroGlobal
+                // picks Macro's globalDir vs the mono-lane dir (Mono/East V1).
+                if (auto* mm = redDot::findMonsoonEitherSide(src.mod)) {
+                    const float v = src.macroGlobal
+                        ? mm->getGlobalDir(src.eastMonoLane)
+                        : mm->getMonoLaneDir(src.eastMonoLane);
+                    engine.laneDirPending_[l] = (SequencerEngine::LaneDir)(int)std::lround(
+                        math::clamp(v, 0.f, 3.f));
+                }
+            } else if (src.paramId >= 0) {
                 engine.laneDirPending_[l] = (SequencerEngine::LaneDir)(int)std::lround(
                     math::clamp(src.mod->params[src.paramId].getValue(), 0.f, 3.f));
             }

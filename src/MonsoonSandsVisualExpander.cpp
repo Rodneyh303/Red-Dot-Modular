@@ -220,19 +220,23 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         // no Macro is attached (nothing to cede to). LEG/VAR (rows 4/5) are
         // mono-only → no owner cell.
         for (int l = 0; l < 4; ++l) {
-            auto* oc = createParamCentered<OwnerCell>(
-                mm2px(Vec(OWNER_X, rowY(l))), mod, ownerDispId(l));
+            // STORE-BACKED (MVC step 1d): OwnerCell reads/writes editor.monoOwner via
+            // get/setMonoOwner — the same store the manager reads (topoIn.monoV1Owner) and that
+            // persists (editorMonoOwner). Was the ownerDispId param (removed). Bare widget, no paramId.
+            auto* oc = new OwnerCell();
             oc->laneCol = sandsLaneColorEditor(l);
-            // Match the editor's lane-step cell: one step wide × ~90% lane tall.
             const float stepW   = (ED_W - 2.f*6.f) / 16.f;          // editor padding=6, 16 steps
             const float monoLaneH = (ROW_BOT - ROW_TOP) / N_LANES;  // 6 lanes
             oc->box.size = mm2px(Vec(stepW, monoLaneH * 0.9f));
             oc->box.pos  = mm2px(Vec(OWNER_X, rowY(l))).minus(oc->box.size.div(2.f));
+            const int ocLane = l;
+            oc->getOwnsFn = [this, ocLane]() { auto* m = getMonsoon(); return m ? m->getMonoOwner(ocLane) : true; };
+            oc->setOwnsFn = [this, ocLane](bool b) { if (auto* m = getMonsoon()) m->setMonoOwner(ocLane, b); };
             oc->lockWhen = [this]() {   // condition 2: no Macro → can't delegate
                 auto* mon = getMonsoon();
                 return !(mon && mon->expanderManager.cachedMacroSandsVisual != nullptr);
             };
-            addParam(oc);
+            addChild(oc);
         }
 
         // ── Direction cells (param_dir_<lane>) — per-lane direction toggle (Fwd/Rev/Pend/PingPong).
@@ -244,21 +248,30 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             nvgRGB(0xff,0x6b,0x6b), nvgRGB(0x26,0xa6,0x9a)   // VAR red, LEG teal
         };
         for (int lane = 0; lane < 6; ++lane) {
-            auto* dc = createParamCentered<DirCell>(
-                mm2px(Vec(DIR_X, rowY(lane))), mod, dirDispId(lane));
+            // STORE-BACKED (MVC step 1d): DirCell reads/writes editor.laneDir[15*6+lane] via
+            // get/setMonoLaneDir — the same store the manager reads (monoDirAuthority) and that
+            // persists (editorLaneDir). Was the dirDispId param (removed). Bare widget, no paramId.
+            auto* dc = new DirCell();
             dc->laneCol = dirCol[lane];
             const float stepW = (ED_W - 2.f*6.f) / 16.f;
             const float monoLaneH = (ROW_BOT - ROW_TOP) / N_LANES;
             dc->box.size = mm2px(Vec(stepW, monoLaneH * 0.9f));
             dc->box.pos  = mm2px(Vec(DIR_X, rowY(lane))).minus(dc->box.size.div(2.f));
+            const int dcLane = lane;
+            dc->getStateFn = [this, dcLane]() {
+                auto* m = getMonsoon(); return m ? (int)std::lround(m->getMonoLaneDir(dcLane)) : 0;
+            };
+            dc->setStateFn = [this, dcLane](int v) {
+                if (auto* m = getMonsoon()) m->setMonoLaneDir(dcLane, (float)v);
+            };
             // Lanes 0..3: locked when delegated to Macro (ownerDispId <= 0.5 = Macro owns).
             // Lanes 4..5 (VAR/LEG): always settable (Mono always owns them).
-            dc->lockWhen = [this, lane, mod]() {
+            dc->lockWhen = [this, lane]() {
                 if (!getMonsoon()) return true;
                 if (lane >= 4) return false;  // VAR/LEG always Mono-owned
-                return mod->params[ownerDispId(lane)].getValue() <= 0.5f;  // Macro owns
+                return !getMonsoon()->getMonoOwner(lane);  // Macro owns (delegated) → locked
             };
-            addParam(dc);
+            addChild(dc);
         }
 
         // Direction gate-mod jacks — mono, gate cycles Fwd→Rev→Pend→PingPong.
@@ -299,9 +312,9 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             // Presence from the single authority (expander-scan cache), not self-assertion.
             mon->expanderManager.fillPresence(in, mon->engine.numPolyVoices);
         }
-        if (module) {
-            for (int l = 0; l < 4; ++l)   // Mono ownerDispId is editor-ordered → no conversion
-                in.monoV1Owner[l] = module->params[SandsMonoVisualIds::ownerDispId(l)].getValue() > 0.5f;
+        if (auto* mon = getMonsoon()) {
+            for (int l = 0; l < 4; ++l)   // Mono owner is STORE-BACKED (editor.monoOwner), editor-ordered.
+                in.monoV1Owner[l] = mon->getMonoOwner(l);
         }
         return dotModular::SandsTopology::build(in);
     }
@@ -342,10 +355,9 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             // (engine.spread), written by the manager via SpreadResolver every frame, so a
             // one-time visual seed is neither needed nor correct. It also carried a spurious
             // SPREAD_LANE_TO_EDITOR permutation — gone with it.)
-            // Sync DirCell display proxy from the engine's current mono direction.
-            for (int l = 0; l < 6; ++l)
-                mod->params[dirDispId(l)].setValue(
-                    (float)monsoon->engine.laneDirPending_[dotModular::MONO_LANE_TO_STRAND[l]]);
+            // (Direction init-seed removed: DirCell reads the persisted store getMonoLaneDir
+            // directly; the manager pushes store → engine. Seeding the param from the engine was
+            // the inverted-seed trap — gone with the dirDispId param.)
             initialized = true;
         }
 
@@ -470,8 +482,11 @@ void MonsoonSandsVisualExpander::process(const ProcessArgs&) {
             if (!in.isConnected()) continue;
             bool high = in.getVoltage(0) > 1.f;
             if (high && !dirModPrev[lane]) {
-                int cur = (int)params[dirDispId(lane)].getValue();
-                params[dirDispId(lane)].setValue((float)((cur + 1) % 4));
+                // MVC step 1d: cycle the STORE (getMonoLaneDir), not the removed dirDispId param.
+                if (cachedMon_) {
+                    int cur = (int)std::lround(cachedMon_->getMonoLaneDir(lane));
+                    cachedMon_->setMonoLaneDir(lane, (float)((cur + 1) % 4));
+                }
             }
             dirModPrev[lane] = high;
         }
@@ -480,8 +495,8 @@ void MonsoonSandsVisualExpander::process(const ProcessArgs&) {
             if (!in.isConnected()) continue;
             bool high = in.getVoltage(0) > 1.f;
             if (high && !delegModPrev[lane]) {
-                float cur = params[ownerDispId(lane)].getValue();
-                params[ownerDispId(lane)].setValue(cur > 0.5f ? 0.f : 1.f);
+                // MVC step 1d: flip the STORE (getMonoOwner), not the removed ownerDispId param.
+                if (cachedMon_) cachedMon_->setMonoOwner(lane, !cachedMon_->getMonoOwner(lane));
             }
             delegModPrev[lane] = high;
         }
