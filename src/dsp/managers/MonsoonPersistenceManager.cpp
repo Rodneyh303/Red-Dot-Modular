@@ -209,6 +209,8 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     saveArr("editorGlobalAtten",  m->editor.globalAtten,  16);
     saveArr("editorGlobalTap",    m->editor.globalTap,     8);
     saveArr("editorGlobalDir",    m->editor.globalDir,     4);
+    saveArr("editorMonoAtten",    m->editor.monoAtten,    24);
+    saveArr("editorMonoOwner",    m->editor.monoOwner,     4);
 
     return root;
 }
@@ -460,4 +462,6 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     loadArrN("editorGlobalAtten",  m->editor.globalAtten,  16);
     loadArrN("editorGlobalTap",    m->editor.globalTap,     8);
     loadArrN("editorGlobalDir",    m->editor.globalDir,     4);
+    loadArrN("editorMonoAtten",    m->editor.monoAtten,    24);
+    loadArrN("editorMonoOwner",    m->editor.monoOwner,     4);
 }
