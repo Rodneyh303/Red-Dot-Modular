@@ -210,11 +210,26 @@ bool SequencerEngine::advancePlayhead(int dir) {
             else if (delta < 0) signOut = -1;
             // delta == 0 is the PingPong endpoint repeat: keep the previous sign.
         };
+        // Poly voices bounce at THEIR OWN per-voice LOR length, not mono's strandLen — the
+        // macroLOR_ fix generalised to laneTickV_. strand → this voice's LOR length:
+        auto polyStrandLen = [&](int v, int strand) -> int {
+            switch (strand) {
+                case dotModular::STRAND_RHYTHM:    return polyLenE(v, PL_REST);
+                case dotModular::STRAND_MELODY:    return polyLenE(v, PL_MELODY);
+                case dotModular::STRAND_OCTAVE:    return polyLenE(v, PL_OCTAVE);
+                case dotModular::STRAND_ACCENT:    return polyLenE(v, PL_ACCENT);
+                case dotModular::STRAND_VARIATION: return polyLOR(v, EDITOR_LANE_VARIATION, LOR_LEN);
+                case dotModular::STRAND_LEGATO:    return polyLOR(v, EDITOR_LANE_LEGATO, LOR_LEN);
+            }
+            return 16;
+        };
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
-            const int len = std::max(1, strandLen(l));
+            const int len = std::max(1, strandLen(l));   // mono strand length (mono tick)
             recomp(laneDir_[l], len, laneTick_[l], laneSign_[l]);
-            for (int v = 0; v < 15; ++v)
-                recomp(laneDirV_[v][l], len, laneTickV_[v][l], laneSignV_[v][l]);
+            for (int v = 0; v < 15; ++v) {
+                const int vlen = std::max(1, polyStrandLen(v, l));   // THIS voice's LOR length
+                recomp(laneDirV_[v][l], vlen, laneTickV_[v][l], laneSignV_[v][l]);
+            }
         }
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
             const int mlen = std::max(1, (l < 4) ? macroLOR_[l] : strandLen(l));

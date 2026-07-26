@@ -219,9 +219,11 @@ struct StraitsEastSandsVisual : Module {
         static const char* laneNames[4] = {"REST","MEL","OCT","ACC"};
         static const char* paramNames[4] = {"Len","Off","Rot","Spr"};
         for (int lane=0; lane<4; ++lane)
+            // CV-depth attens: STORE-BACKED (MVC step 1d). attenDispId ids KEPT (name panel slots)
+            // but reserve NO param slots — StoreKnob reads/writes editor.macroAtten[currentSlot()]
+            // live per tab. Only the CV jack (input) is configured here.
             for (int c=0; c<4; ++c) {
                 std::string nm = std::string(laneNames[lane])+" "+paramNames[c];
-                configParam(attenDispId(lane,c), -1.f,1.f,0.f, nm+" depth (selected voice)");
                 configInput(cvId(lane,c), nm+" CV (poly, per-voice depth)");
             }
 
@@ -292,9 +294,10 @@ struct StraitsEastSandsVisual : Module {
         // Delegation gate-mod inputs (poly: ch1=mono, ch2+=voices). Gate flips local/delegated.
         {
             const char* laneNm[6] = {"MEL","OCT","REST","ACC","VAR","LEG"};
+            // Direction (6 lanes): STORE-BACKED (MVC step 1d). dirDispId ids KEPT (name panel
+            // slots) but reserve NO param slots — DirCell reads/writes editor.laneDir via
+            // get/setLaneDir (poly) or get/setMonoLaneDir (V1), live per tab. Only the gate-mod jack here.
             for (int lane=0; lane<6; ++lane) {
-                configParam(dirDispId(lane), 0.f, 3.f, 0.f,
-                            std::string(laneNm[lane])+" direction (selected voice)");
                 configInput(dirModId(lane), std::string(laneNm[lane])+" direction gate-mod (poly)");
             }
             for (int lane=0; lane<6; ++lane)
