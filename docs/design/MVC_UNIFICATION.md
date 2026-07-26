@@ -156,8 +156,11 @@ estimating the remaining modules: the widget is never the hard part; the free se
 | Sends | 16 | **DONE** — 16 send trimpots now StoreKnobs reading/writing getMacroSend/setMacroSend for the LIVE view voice (slot = voiceSlot(viewVoice+1), resolved per-call so a tab switch re-targets the same knob). The whole per-voice load/store sync dance + clobber guard + lastSendVoice are deleted — no proxy to sync. 16 sendDispId configParams removed. macroSend[256] already engine-read + persisted; no engine-seed hazard (sends were never a display mirror). |
 | Direction | 4 | **DONE** — store-backed DirCell (getStateFn/setStateFn on get/setGlobalDir, the array the engine reads + persists); 4 dirDispId configParams removed; dual-write mirror fully retired; gate-mod cycle + init-seed redirected to the store. No undo, matching East/Mono (still param-backed, also no undo). DirCell gained optional store callbacks so both forms share one widget. |
 
-Then: `config()` to 0, delete the dual-write mirror (down to the LOR + direction lines),
-and Macro leaves the host param list entirely.
+**config() = 0: DONE.** All six groups store-backed; the dual-write mirror is gone;
+Macro now calls config(0, NUM_INPUTS, NUM_OUTPUTS, 0) and exposes NO host params. Id
+constants stay declared (they name SVG shapes + index the store) but reserve no param slots.
+Store binds use addChild not addParam, so config(0) is safe. Macro has fully left the host
+param list -- the goal of the de-param.
 
 ### Services a de-parammed control must re-supply (all now central in configureStoreKnob)
 Found one at a time, each only on a real build — the full list, so later modules inherit
