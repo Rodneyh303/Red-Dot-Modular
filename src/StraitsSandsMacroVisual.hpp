@@ -190,8 +190,8 @@ struct StraitsSandsMacroVisual : Module {
         // "param_SPREAD_REST" and index the store), but config() reserves no param slots.
         // Macro has left the host/DAW param list entirely -- the point of the de-param.
         config(0, StraitsMacroVisualIds::NUM_INPUTS,
-        monLookupDiv.setDivision(8);   // topology changes are control-rate
                StraitsMacroVisualIds::NUM_OUTPUTS, 0);
+        monLookupDiv.setDivision(8);   // topology changes are control-rate
         for (auto& a : probLastStep) for (auto& x : a) x = -1;
         { static const char* ln[4] = {"REST","MEL","OCT","ACC"};
           for (int l = 0; l < 4; ++l)
