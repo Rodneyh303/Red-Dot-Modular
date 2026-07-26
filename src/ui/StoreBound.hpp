@@ -50,6 +50,24 @@ struct StoreKnob : rack::widget::Widget {
     float minValue = 0.f, maxValue = 1.f, defaultValue = 0.f;
     bool  snap = false;
 
+    //  delegation support (parallels DimmableTrimpot) 
+    // lockWhen: when it returns true the knob is read-only (e.g. this lane is delegated to
+    //   another module's scope). displayValueFn: while locked, SHOW this value instead of the
+    //   stored one, WITHOUT writing the store -- so reclaiming the lane reverts to the stored
+    //   value. Return NaN to mean "no override, show the stored value". Both optional; unset
+    //   leaves StoreKnob a plain editable store knob (Macro's global knobs use neither).
+    std::function<bool()>  lockWhen;
+    std::function<float()> displayValueFn;
+    bool isLocked() const { return lockWhen && lockWhen(); }
+    // The value to DRAW: display override while locked (if it returns non-NaN), else stored.
+    float shownValue() const {
+        if (isLocked() && displayValueFn) {
+            float d = displayValueFn();
+            if (d == d) return d;   // non-NaN override
+        }
+        return getValue ? getValue() : defaultValue;
+    }
+
     // ── tooltip (de-paramming loses the ParamQuantity tooltip; switch-like knobs need it) ──
     std::vector<std::string>     valueLabels;
     std::function<std::string()> tooltipTextFn;
@@ -66,7 +84,7 @@ struct StoreKnob : rack::widget::Widget {
     }
 
     float norm() const {
-        float v = getValue ? getValue() : defaultValue;
+        float v = shownValue();   // display override while locked, else stored value
         float t = (maxValue > minValue) ? (v - minValue) / (maxValue - minValue) : 0.f;
         return rack::math::clamp(t, 0.f, 1.f);
     }
@@ -114,6 +132,7 @@ struct StoreKnob : rack::widget::Widget {
     // ── drag: write the store live, one undo per drag ──
     void onDragStart(const rack::event::DragStart& e) override {
         if (e.button != GLFW_MOUSE_BUTTON_LEFT) return;
+        if (isLocked()) { e.consume(this); return; }   // delegated lane: read-only
         dragValue = getValue ? getValue() : defaultValue;
         coalesce.begin(dragValue);
         APP->window->cursorLock();
@@ -121,6 +140,7 @@ struct StoreKnob : rack::widget::Widget {
     }
 
     void onDragMove(const rack::event::DragMove& e) override {
+        if (isLocked()) return;   // delegated lane: ignore drag
         const float range = maxValue - minValue;
         const int   mods  = APP->window->getMods();   // DragMoveEvent has no mods field
         const float speed = (mods & GLFW_MOD_SHIFT) ? 0.05f : 0.5f;
@@ -164,6 +184,7 @@ struct StoreKnob : rack::widget::Widget {
     }
 
     void resetToDefault() {
+        if (isLocked()) return;   // delegated lane: read-only
         auto* m = store();
         if (!m || !setter) return;
         const float oldV = getValue ? getValue() : defaultValue;

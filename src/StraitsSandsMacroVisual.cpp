@@ -175,9 +175,12 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             // Monsoon (which owns the store) is resolved lazily -- it may not be attached
             // when the widget is built, and can be attached/detached later.
             for (int c = 0; c < 4; ++c) {
+                static const char* LN[4] = {"REST","MEL","OCT","ACC"};
+                static const char* CN[4] = {"Length","Offset","Rotation","Spread"};
+                const std::string albl = std::string(LN[lane]) + " " + CN[c] + " CV depth";
                 auto* k = redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
                     "param_" + std::to_string(attenId(lane,c)), storeResolver(),
-                    -1.f, 1.f, 0.f, "Global atten",
+                    -1.f, 1.f, 0.f, albl,
                     [lane, c](Monsoon& m)          { return m.getGlobalAtten(lane, c); },
                     [lane, c](Monsoon& m, float v) { m.setGlobalAtten(lane, c, v); });
                 if (k) leftAttenuverters.push_back(k);
@@ -191,9 +194,10 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // pendingSpreadArcs takes a Widget* and the arc reads getGlobalSpread(lane).
         static const int spreadPid[4] = { SPREAD_REST, SPREAD_MELODY, SPREAD_OCTAVE, SPREAD_ACCENT };
         for (int lane = 0; lane < 4; ++lane) {
+            static const char* LN[4] = {"REST","MEL","OCT","ACC"};
             auto* sp = redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
                 "param_" + std::to_string(spreadPid[lane]), storeResolver(),
-                -1.f, 1.f, 0.f, "Global spread",
+                -1.f, 1.f, 0.f, std::string(LN[lane]) + " spread",
                 [lane](Monsoon& m)          { return m.getGlobalSpread(lane); },
                 [lane](Monsoon& m, float v) { m.setGlobalSpread(lane, v); });
             if (sp) pendingSpreadArcs.push_back({sp, lane});
@@ -211,7 +215,9 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             for (int item = 0; item < 4; ++item) {
                 redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
                     "param_send_" + std::to_string(lane) + "_" + std::to_string(item),
-                    storeResolver(), -1.f, 1.f, 0.f, "Macro send",
+                    storeResolver(), -1.f, 1.f, 0.f,
+                    "L" + std::to_string(lane) + " mix-in " + std::to_string(item)
+                        + " (viewed voice)",
                     [this, lane, item](Monsoon& m) {
                         const int slot = dotModular::VoiceResolver::voiceSlot(viewVoice + 1);
                         return m.getMacroSend(slot, lane, item);
@@ -225,14 +231,15 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // param_taplor_{lane} → tapLorId, param_tapspr_{lane} → tapSprId.
         // STORE-BACKED (MVC step 1d). globalTap index: 0 = LOR tap, 1 = spread tap.
         for (int lane = 0; lane < 4; ++lane) {
+            static const char* LN[4] = {"REST","MEL","OCT","ACC"};
             redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
                 "param_taplor_" + std::to_string(lane), storeResolver(),
-                0.f, 1.f, 1.f, "LOR send tap (PRE-POST)",
+                0.f, 1.f, 1.f, std::string(LN[lane]) + " LOR send tap (PRE-POST)",
                 [lane](Monsoon& m)          { return m.getGlobalTap(lane, 0); },
                 [lane](Monsoon& m, float v) { m.setGlobalTap(lane, 0, v); });
             redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
                 "param_tapspr_" + std::to_string(lane), storeResolver(),
-                0.f, 1.f, 1.f, "Spread send tap (PRE-POST)",
+                0.f, 1.f, 1.f, std::string(LN[lane]) + " spread send tap (PRE-POST)",
                 [lane](Monsoon& m)          { return m.getGlobalTap(lane, 1); },
                 [lane](Monsoon& m, float v) { m.setGlobalTap(lane, 1, v); });
         }
