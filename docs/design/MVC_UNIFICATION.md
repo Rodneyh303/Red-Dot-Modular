@@ -342,3 +342,27 @@ count assertion; walk braces programmatically (strip comments/strings first -- e
 6. Owners (4): store-backed OwnerCell. Remove 4 configs. Unblocks Macro's cross-read.
 7. Direction (6): store-backed DirCell (already has callbacks). Remove 6 configs. Watch init-seed.
 8. config() -> 0. Verify Macro's cross-read now reads the store.
+
+## Mono spread base: StoreKnob needs lock/display support (blocker found)
+
+Attempted the arc-decouple + spread-base StoreKnob swap. The arc decouple itself is trivial
+(Widget* + getSetNorm reads getSpread(kMonoSlot,l), mirroring Macro). But the spread BASE
+widget has behaviour StoreKnob does not support:
+- `lockWhen`  -- lock the knob while the lane is DELEGATED to Macro.
+- `displayValueFn` -- while delegated, SHOW Macro's spread value (base + send delta) without
+  touching the stored value, so reclaiming the lane reverts to Mono's own spread.
+
+Macro's spread StoreKnob has NEITHER, because Macro is the GLOBAL scope and never delegates.
+Mono delegates per-lane (the monoOwner mechanism), so lock/display is a real feature, not
+incidental. Same need will recur for Mono's LOR grid and East.
+
+DECISION NEEDED: extend the shared StoreKnob (ui/StoreBound.hpp) with optional lockWhen +
+displayValueFn callbacks (mirroring DimmableTrimpot's), so delegation-aware store widgets are
+first-class. This is the right general fix -- it unblocks Mono spread base, and LOR/East will
+want it too -- but it touches shared UI code, so it's its own deliberate step, not a rider on
+the arc decouple.
+
+Order revised:
+1. Extend StoreKnob with lockWhen + displayValueFn (shared widget change, tested).
+2. THEN arc-decouple + spread-base swap together (needs the store populated to be correct).
+3. Then the no-arc groups (attens, owners, direction) as plain swaps.
