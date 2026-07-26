@@ -557,26 +557,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         }
         // (spread store→proxy load DELETED — MVC step 1d: store-backed knob reads editor.spread directly.)
     }
-    // Owner display proxy ↔ per-voice MACRO_OWN; CV-depth attenuverters disp↔per-voice.
-    // (Macro mix-in send sync relocated to Macro under the control inversion.)
-    void saveVoiceMacro(int v) {   // v = 0-based poly bank (ownerId is poly-indexed)
-        if (!module) return;
-        // atten bank is 16-wide voice-slot indexed; derive via the resolver (poly bank v →
-        // voice v+2 → slot), anchored to the asserted slot/bank invariant.
-        const int slot = dotModular::VoiceResolver::voiceSlot(v + dotModular::VoiceResolver::kFirstPoly);
-        // (owner proxy→store flush DELETED — MVC step 1d: store-backed OwnerCell writes macroOwn directly.)
-        // VAR/LEG delegation: display proxy → this voice's per-voice store. lane 0=VAR, 1=LEG.
-        // (varlegDeleg proxy→store flush DELETED — MVC step 1d: store-backed OwnerCell writes it directly.)
-        // (atten + varleg atten proxy→store flush DELETED — MVC step 1d: store-backed knobs write the slots directly.)
-    }
-    void loadVoiceMacro(int v) {   // v = 0-based poly bank
-        if (!module) return;
-        const int slot = dotModular::VoiceResolver::voiceSlot(v + dotModular::VoiceResolver::kFirstPoly);
-        // (owner store→proxy load DELETED — MVC step 1d: store-backed OwnerCell reads macroOwn directly.)
-        // VAR/LEG delegation: this voice's per-voice store → display proxy. lane 0=VAR, 1=LEG.
-        // (varlegDeleg store→proxy load DELETED — MVC step 1d: store-backed OwnerCell reads it directly.)
-        // (atten + varleg atten store→proxy load DELETED — MVC step 1d: store-backed knobs read the slots directly.)
-    }
+    // (saveVoiceMacro/loadVoiceMacro DELETED — MVC step 1d: all four groups (owner, varlegDeleg,
+    //  atten, varlegAtten) are store-backed, so the per-voice proxy↔bank flush apparatus is dead.)
     // Iterate EDITOR lanes 0..5 directly — currentState.lanes[] is editor-indexed, and VAR(4)/LEG(5)
     // have no PolyLane id, so the old engine-lane loop could not reach them. lorIdEditor() maps.
     // On the V1/mono tab, editor lanes 4/5 DISPLAY mono's VARIATION/LEGATO (they are mono strands;
@@ -606,7 +588,6 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         if (selectedVoice >= 1) {
             paramMgr->syncEditorToPatternEngine(polyVoice(), visualEditor->currentState);
             saveSlot(currentSlot());       // LOR + spread (poly slot; V1 handled in step)
-            saveVoiceMacro(polyVoice());
         }
         // V1-editable: nothing to save here — East writes the engine MONO strands
         // directly each frame in step() (V1's true home), so there is no per-voice
@@ -623,7 +604,6 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             //  deleted the voice-indexed overload; its job is done by step()'s resolver fill on
             //  the next frame, which covers all four poly lanes. loadSlot carries LOR + spread.)
             loadSlot(currentSlot());       // LOR + spread (poly slot)
-            loadVoiceMacro(polyVoice());
             // (DirCell poly display-seed DELETED — MVC step 1d: the store-backed DirCell reads
             // getLaneDir(polyVoice()) live, so a tab switch updates the cell on the next draw.)
         }
@@ -771,9 +751,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             int lane, voice;
             bool setToEast;   // true = set East owns; false = set Macro owns
             void onAction(const event::Action& e) override {
+                // MVC step 1d: write the store directly (was proxy param + saveVoiceMacro flush,
+                // both deleted). voice = polyVoice() (0..14); lane = engine lane.
                 float val = setToEast ? 1.f : 0.f;
-                // (owner proxy write DELETED — MVC step 1d: setMacroOwn in the action below is the home.)
-                widget->saveVoiceMacro(voice);  // persist to per-voice bank
+                if (auto* m = widget->getMonsoon()) m->setMacroOwn(voice, lane, val);
             }
         };
 
@@ -972,7 +953,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // dim only when Macro owns the lane (they're East's own, live solo). No
         // per-frame visibility work needed here.
 
-        auto* mod = static_cast<StraitsEastSandsVisual*>(module);
+        // (mod unused after de-param — store-backed widgets read Monsoon directly via getMonsoon().)
 
         // INERT until the Straits East CV expander is attached: it defines the
         // poly voice count, so without it there are no poly lanes to show. Show
@@ -1019,7 +1000,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // take effect immediately. Poly tabs only — the mono tab (index 0) is display-only
         // (its base lives on Sands Mono); writing it back would corrupt poly slot 0.
         if (selectedVoice >= 1) {
-            saveVoiceMacro(polyVoice());
+            // (per-frame saveVoiceMacro DELETED — MVC step 1d: store-backed knobs/cells write directly.)
 
             // DISPLAY/STORE/ENGINE separation (see DISPLAY_STORE_ENGINE_SEPARATION.md):
             //  - STORE:   SPREAD_* param → *InterpId + smgr. Always East's real value now —
@@ -1197,7 +1178,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // the dedicated Monsoon stores on the first frame of each V1 entry (v1Loaded_
             // latched in onVoiceTabChanged / initial), then mirror live edits back each frame
             // so the stores — and thus save/load and the next round-trip — stay current.
-            if (auto* mmV1 = getMonsoon()) {
+            if (getMonsoon()) {
                 if (!v1Loaded_) {
                     // Seed editor/display from the unified store slot 0 — the SAME loadSlot()
                     // every poly voice uses, just slot 0. Safe even on a fresh patch: lorBase[0]

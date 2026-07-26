@@ -333,7 +333,7 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             if (visualEditor) visualEditor->setTheme(wantLight != 0);
         }
 
-        auto* mod = static_cast<MonsoonSandsVisualExpander*>(module);
+        // (mod unused after de-param — store-backed widgets read Monsoon via getMonsoon().)
 
         PatternEngine* pe = &monsoon->engine.pe;
         if (paramMgr->patternEngine != pe)

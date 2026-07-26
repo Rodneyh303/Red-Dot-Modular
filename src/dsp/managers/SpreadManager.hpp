@@ -279,7 +279,6 @@ struct SpreadManager {
     // sequencer exactly: same pre-spread slewed draws, same mono-draw target, same bipolar interpolate. (Previously this
     // averaged the post-spread *Random output and excluded mono — a different
     // computation from the sequencer.)
-    const int nPoly = std::min(getActiveVoiceCount(), numVoices);
     // The voice's own pre-spread draw. For a per-voice manager voiceIdx maps to
     // the poly strand; mono-draw mode uses the mono strand as original only when
     // this IS the mono context (numVoices==1). Match the sequencer: poly voices
