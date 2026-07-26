@@ -82,7 +82,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     // pre-existing display-trimpot bipolar (-1..1) vs interp (0..1) mismatch: set
     // = the viewed voice's interp param (pre-CV), effective = the published
     // polySpreadEffective[viewedVoice][lane] (post per-voice/lane CV + combineSpread).
-    std::vector<std::pair<rack::ParamWidget*, int>> pendingSpreadArcs;
+    std::vector<std::pair<rack::widget::Widget*, int>> pendingSpreadArcs;
     void flushSpreadArcs() {
         auto* mod = dynamic_cast<StraitsEastSandsVisual*>(module);
         for (auto& pr : pendingSpreadArcs) {
@@ -91,23 +91,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             auto* arc = new redDot::ModArcOverlay();
             arc->radius   = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
             arc->attachOverKnob(knob, mm2px(2.5f));
-            arc->getSetNorm = [mod, this, lane]() -> float {
-                if (!mod) return 0.5f;
-                if (polyVoice() < 0) {
-                    // V1 (combo 7): SET = East's spread knob, which now mirrors Mono's
-                    // spread. SPREAD_R/M/O/A = lane 0/1/2/3 (engine order).
-                    if (lane < 0 || lane >= 4) return 0.5f;
-                    int pid = (lane==0) ? (int)SPREAD_R : (lane==1) ? (int)SPREAD_M
-                            : (lane==2) ? (int)SPREAD_O : (int)SPREAD_A;
-                    auto* pq = mod->paramQuantities[pid];
-                    return pq ? (float)pq->getScaledValue() : 0.5f;
-                }
-                // Poly: SET = this voice's stored spread (unified store, bipolar -1..1 → 0..1).
-                Monsoon* mm = findMonsoonEitherSide(mod);
-                int v = polyVoice();
-                if (!mm || v < 0 || v >= 15 || lane < 0 || lane >= 4) return 0.5f;
-                int slot = dotModular::VoiceResolver::voiceSlot(v + dotModular::VoiceResolver::kFirstPoly);
-                return rack::math::clamp((mm->getSpread(slot, lane) + 1.f) * 0.5f, 0.f, 1.f);
+            arc->getSetNorm = [this, lane]() -> float {
+                // MVC step 1d: SET = the store-backed knob's value = editor.spread[currentSlot()].
+                // currentSlot() = 0 (V1) or polySlot, so one read covers both. (v+1)/2 normalise.
+                Monsoon* mm = getMonsoon(); if (!mm) return 0.5f;
+                float v = mm->getSpread(currentSlot(), lane);
+                return rack::math::clamp((v + 1.f) * 0.5f, 0.f, 1.f);
             };
             arc->getModNorm = [mod, this, lane]() -> float {
                 if (!mod) return 0.5f;
@@ -120,7 +109,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     if (lane < 0 || lane >= 4) return 0.5f;
                     Monsoon* mon = findMonsoonEitherSide(mod);
                     auto* macroVis = mon ? mon->expanderManager.cachedMacroSandsVisual : nullptr;
-                    bool delegated = macroVis && !(mod->params[ownerDispId(lane)].getValue() > 0.5f);
+                    bool delegated = macroVis && !eastOwnsLane(lane);   // MVC step 1d: store-backed
                     float sp;
                     if (delegated) {
                         sp = macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3];
@@ -158,10 +147,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     if (lane < 0 || lane >= 4) return false;
                     if (mod->inputs[cvId(lane,3)].isConnected()) return true;
                     auto* macroVis = mon->expanderManager.cachedMacroSandsVisual;
-                    // East's ownerDispId is engine-ordered → no conversion. delegated =
-                    // Macro owns this V1 lane. Helper covers delegated (CV live) + owned
-                    // (mono-slot send + CV live). sendSlot = kMonoSlot (V1).
-                    bool delegated = macroVis && !(mod->params[ownerDispId(lane)].getValue() > 0.5f);
+                    // MVC step 1d: delegated ⟺ !eastOwnsLane (store-backed). Helper covers
+                    // delegated (CV live) + owned (mono-slot send + CV live). sendSlot = kMonoSlot.
+                    bool delegated = macroVis && !eastOwnsLane(lane);
                     return StraitsMacroVisualIds::macroSpreadModulatesLane(
                         macroVis, lane, delegated, dotModular::VoiceResolver::kMonoSlot);
                 }
@@ -344,19 +332,39 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 for (int c = 0; c < 3; ++c)
                     bindInput<redDot::GoldPolyPort>("input_" + std::to_string(varlegCvId(lane,c)),
                         varlegCvId(lane,c), std::function<void(redDot::GoldPolyPort*)>(themeCfg));
+            // VAR/LEG CV-depth: STORE-BACKED (MVC step 1d). editor.varlegAtten[currentSlot(), lane, col]
+            // (V1 → slot 0; poly → polySlot). Live slot resolution per tab. Was varlegAttDispId param.
+            static const char* vlN[2] = {"VAR","LEG"};
+            static const char* vlC[3] = {"Len","Off","Rot"};
             for (int lane = 0; lane < 2; ++lane)
-                for (int c = 0; c < 3; ++c)
-                    bindParam<DimmableTrimpot>("param_" + std::to_string(varlegAttDispId(lane,c)),
-                        varlegAttDispId(lane,c));
+                for (int c = 0; c < 3; ++c) {
+                    const int vlLane = lane, vlCol = c;
+                    redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
+                        "param_" + std::to_string(varlegAttDispId(lane,c)),
+                        [this](){ return getMonsoon(); },
+                        -1.f, 1.f, 0.f, std::string(vlN[lane])+" "+vlC[c]+" depth",
+                        [this, vlLane, vlCol](Monsoon& m)          { return m.getVarlegAtten(currentSlot(), vlLane, vlCol); },
+                        [this, vlLane, vlCol](Monsoon& m, float v) { m.setVarlegAtten(currentSlot(), vlLane, vlCol, v); });
+                }
         }
-        bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_R), SPREAD_R,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [](){ return false; }; k->lockWhen = [this](){ return laneOwnedByMacroTopo(0) || tab1MonoMirror(); }; k->displayValueFn = [this](){ return spreadDisplayValue(0); }; pendingSpreadArcs.push_back({k, 0}); }));
-        bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_M), SPREAD_M,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [](){ return false; }; k->lockWhen = [this](){ return laneOwnedByMacroTopo(1) || tab1MonoMirror(); }; k->displayValueFn = [this](){ return spreadDisplayValue(1); }; pendingSpreadArcs.push_back({k, 1}); }));
-        bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_O), SPREAD_O,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [](){ return false; }; k->lockWhen = [this](){ return laneOwnedByMacroTopo(2) || tab1MonoMirror(); }; k->displayValueFn = [this](){ return spreadDisplayValue(2); }; pendingSpreadArcs.push_back({k, 2}); }));
-        bindParam<DimmableTrimpot>("param_" + std::to_string((int)SPREAD_A), SPREAD_A,
-            std::function<void(DimmableTrimpot*)>([this](DimmableTrimpot* k){ k->dimWhen = [](){ return false; }; k->lockWhen = [this](){ return laneOwnedByMacroTopo(3) || tab1MonoMirror(); }; k->displayValueFn = [this](){ return spreadDisplayValue(3); }; pendingSpreadArcs.push_back({k, 3}); }));
+        // Spread base: STORE-BACKED (MVC step 1d). editor.spread[currentSlot(), lane] (V1 → slot 0
+        // = Mono's spread, locked; poly → polySlot). The per-frame push syncs editor.spread →
+        // SpreadManager (the engine's poly spread source). lockWhen/displayValueFn carry over.
+        static const int sprPid[4] = { SPREAD_R, SPREAD_M, SPREAD_O, SPREAD_A };
+        static const char* sprN[4] = {"REST","MEL","OCT","ACC"};
+        for (int lane = 0; lane < 4; ++lane) {
+            auto* k = redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
+                "param_" + std::to_string(sprPid[lane]),
+                [this](){ return getMonsoon(); },
+                -1.f, 1.f, 0.f, std::string(sprN[lane]) + " spread",
+                [this, lane](Monsoon& m)          { return m.getSpread(currentSlot(), lane); },
+                [this, lane](Monsoon& m, float v) { m.setSpread(currentSlot(), lane, v); });
+            if (k) {
+                k->lockWhen = [this, lane]() { return laneOwnedByMacroTopo(lane) || tab1MonoMirror(); };
+                k->displayValueFn = [this, lane]() { return spreadDisplayValue(lane); };
+                pendingSpreadArcs.push_back({k, lane});
+            }
+        }
 
         // Macro/East blend controls (bound to the display proxies; copied to/from
         // the per-voice MACRO params on voice switch + each frame). Owner = a
@@ -374,28 +382,34 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             nvgRGB(0xb8,0x86,0x0b), nvgRGB(0xff,0x95,0x00)
         };
         for (int lane = 0; lane < 4; ++lane) {
-            bindParam<OwnerCell>(
+            // STORE-BACKED (MVC step 1d): OwnerCell reads/writes editor.macroOwn via
+            // get/setMacroOwn (poly) or get/setMonoMacroOwn (V1). V1+Mono (tab1MonoMirror) is
+            // locked and DISPLAYS Mono's owner (getMonoOwner, engine→editor lane conversion).
+            // Live slot resolution: onMonoTab()/polyVoice() per tab. Was ownerDispId param.
+            bindWidget<OwnerCell>(
                 "param_owner_" + std::to_string(lane),
-                ownerDispId(lane),
                 [this, lane](OwnerCell* w) {
                     w->laneCol = laneColEng[lane];
                     Vec ctr = w->box.pos.plus(w->box.size.div(2.f));
-                    // Match the editor's lane-step cell: one step wide × ~90% lane tall.
-                    const float stepW = (ED_W - 2.f*6.f) / 16.f;   // editor padding=6, 16 steps
+                    const float stepW = (ED_W - 2.f*6.f) / 16.f;
                     w->box.size = mm2px(Vec(stepW, ED_LANE_H * 0.9f));
                     w->box.pos  = ctr.minus(w->box.size.div(2.f));
-                    // Owner cell is locked (inoperable) when:
-                    //   • no Macro attached → nothing to delegate to (condition 2), OR
-                    //   • Mono is present AND this is the V1 tab → Mono owns V1, so East
-                    //     can't cede it (G4). Use tab1MonoMirror() (= V1 tab AND Mono
-                    //     attached), NOT onMonoTab() alone: with East+Macro and NO Mono,
-                    //     V1 IS delegatable to Macro like any other lane, so it must stay
-                    //     operable on the V1 tab. (Previously onMonoTab() locked V1 even
-                    //     without Mono, wrongly blocking East+Macro V1 delegation.)
+                    const int ocLane = lane;
+                    w->getOwnsFn = [this, ocLane]() {
+                        Monsoon* m = getMonsoon(); if (!m) return true;
+                        if (tab1MonoMirror()) return m->getMonoOwner(dotModular::ENGINE_LANE_TO_EDITOR[ocLane]);
+                        if (onMonoTab()) return m->getMonoMacroOwn(ocLane) > 0.5f;
+                        int pv = polyVoice();
+                        return (pv >= 0 && pv < 15) ? (m->getMacroOwn(pv, ocLane) > 0.5f) : true;
+                    };
+                    w->setOwnsFn = [this, ocLane](bool b) {
+                        Monsoon* m = getMonsoon(); if (!m) return;
+                        if (onMonoTab()) { m->setMonoMacroOwn(ocLane, b); return; }
+                        int pv = polyVoice();
+                        if (pv >= 0 && pv < 15) m->setMacroOwn(pv, ocLane, b ? 1.f : 0.f);
+                    };
+                    // Locked when no Macro (nothing to delegate to) OR V1+Mono (Mono owns V1).
                     w->lockWhen = [this](){ return !macroAttached() || tab1MonoMirror(); };
-                    // P1 (G1 no-hide): the owner cell is never hidden — not even on the
-                    // V1/mono tab. It stays visible and is *locked* where appropriate
-                    // (P2/P8). hideWhen is left unset → always shown.
                 }
             );
         }
@@ -411,17 +425,28 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             nvgRGB(0x26,0xa6,0x9a)    // LEGATO    (matches editor colors.legato)
         };
         for (int lane = 0; lane < 2; ++lane) {
-            bindParam<OwnerCell>(
+            // STORE-BACKED (MVC step 1d): OwnerCell reads/writes editor.varlegDeleg via
+            // get/setVarlegDeleg(polyVoice, lane) — POLY-ONLY (no mono slot; V1 follows mono,
+            // locked). Live slot resolution per tab. Was varlegDelegDispId param.
+            bindWidget<OwnerCell>(
                 "param_owner_" + std::to_string(4 + lane),
-                varlegDelegDispId(lane),
                 [this, lane](OwnerCell* w) {
                     w->laneCol = varlegCol[lane];
                     Vec ctr = w->box.pos.plus(w->box.size.div(2.f));
                     const float stepW = (ED_W - 2.f*6.f) / 16.f;
                     w->box.size = mm2px(Vec(stepW, ED_LANE_H * 0.9f));
                     w->box.pos  = ctr.minus(w->box.size.div(2.f));
-                    // V1 is mono → always follows; lock the cell on the mono tab. Off the V1
-                    // tab the cell is always operable (mono is always a valid delegation target).
+                    const int vlLane = lane;
+                    w->getOwnsFn = [this, vlLane]() {
+                        if (onMonoTab()) return false;   // V1 follows mono (no mono slot)
+                        Monsoon* m = getMonsoon(); int pv = polyVoice();
+                        return (m && pv >= 0 && pv < 15) ? (m->getVarlegDeleg(pv, vlLane) > 0.5f) : false;
+                    };
+                    w->setOwnsFn = [this, vlLane](bool b) {
+                        if (onMonoTab()) return;   // locked on V1
+                        Monsoon* m = getMonsoon(); int pv = polyVoice();
+                        if (m && pv >= 0 && pv < 15) m->setVarlegDeleg(pv, vlLane, b ? 1.f : 0.f);
+                    };
                     w->lockWhen = [this](){ return onMonoTab(); };
                 }
             );
@@ -479,7 +504,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                             if (tab1MonoMirror()) return true;
                             if (!onMonoTab() && selectedVoice >= 1) {
                                 int vl = lane - 4;   // 0=VAR, 1=LEG
-                                return module->params[varlegDelegDispId(vl)].getValue() < 0.5f;
+                                Monsoon* m = getMonsoon(); return m && (m->getVarlegDeleg(polyVoice(), vl) < 0.5f);
                             }
                             return false;
                         };
@@ -518,10 +543,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             mm->setLorBase(slot, bank, 1, (float)lane.offset);
             mm->setLorBase(slot, bank, 2, (float)lane.rotation);
         }
-        mm->setSpread(slot, 0, module->params[SPREAD_R].getValue());
-        mm->setSpread(slot, 1, module->params[SPREAD_M].getValue());
-        mm->setSpread(slot, 2, module->params[SPREAD_O].getValue());
-        mm->setSpread(slot, 3, module->params[SPREAD_A].getValue());
+        // (spread proxy→editor.spread flush DELETED — MVC step 1d: store-backed knob writes editor.spread directly.)
     }
     void loadSlot(int slot) {   // store -> editor
         if (!module || !visualEditor) return;
@@ -533,10 +555,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             lane.offset   = (int)std::round(mm->getLorBase(slot, bank, 1));
             lane.rotation = (int)std::round(mm->getLorBase(slot, bank, 2));
         }
-        module->params[SPREAD_R].setValue(mm->getSpread(slot, 0));
-        module->params[SPREAD_M].setValue(mm->getSpread(slot, 1));
-        module->params[SPREAD_O].setValue(mm->getSpread(slot, 2));
-        module->params[SPREAD_A].setValue(mm->getSpread(slot, 3));
+        // (spread store→proxy load DELETED — MVC step 1d: store-backed knob reads editor.spread directly.)
     }
     // Owner display proxy ↔ per-voice MACRO_OWN; CV-depth attenuverters disp↔per-voice.
     // (Macro mix-in send sync relocated to Macro under the control inversion.)
@@ -545,34 +564,18 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // atten bank is 16-wide voice-slot indexed; derive via the resolver (poly bank v →
         // voice v+2 → slot), anchored to the asserted slot/bank invariant.
         const int slot = dotModular::VoiceResolver::voiceSlot(v + dotModular::VoiceResolver::kFirstPoly);
-        for (int lane=0; lane<4; ++lane)
-            if (auto* mm = getMonsoon()) mm->setMacroOwn(v, lane, module->params[ownerDispId(lane)].getValue());
+        // (owner proxy→store flush DELETED — MVC step 1d: store-backed OwnerCell writes macroOwn directly.)
         // VAR/LEG delegation: display proxy → this voice's per-voice store. lane 0=VAR, 1=LEG.
-        for (int lane=0; lane<2; ++lane)
-            if (auto* mm = getMonsoon()) mm->setVarlegDeleg(v, lane, module->params[varlegDelegDispId(lane)].getValue());
-        // CV-depth attenuverters: display proxy → this voice's per-voice store.
-        for (int lane=0; lane<4; ++lane)
-            // (atten proxy→store flush DELETED — MVC step 1d: store-backed knob writes the slot directly.)
-        // VAR/LEG CV-depth: display proxy → this voice's per-voice store. lane 0=VAR,1=LEG; col 0..2.
-        for (int lane=0; lane<2; ++lane)
-            for (int c=0; c<3; ++c)
-                if (auto* mm = getMonsoon()) mm->setVarlegAtten(slot, lane, c, module->params[varlegAttDispId(lane,c)].getValue());
+        // (varlegDeleg proxy→store flush DELETED — MVC step 1d: store-backed OwnerCell writes it directly.)
+        // (atten + varleg atten proxy→store flush DELETED — MVC step 1d: store-backed knobs write the slots directly.)
     }
     void loadVoiceMacro(int v) {   // v = 0-based poly bank
         if (!module) return;
         const int slot = dotModular::VoiceResolver::voiceSlot(v + dotModular::VoiceResolver::kFirstPoly);
-        for (int lane=0; lane<4; ++lane)
-            if (auto* mm = getMonsoon()) module->params[ownerDispId(lane)].setValue(mm->getMacroOwn(v, lane));
+        // (owner store→proxy load DELETED — MVC step 1d: store-backed OwnerCell reads macroOwn directly.)
         // VAR/LEG delegation: this voice's per-voice store → display proxy. lane 0=VAR, 1=LEG.
-        for (int lane=0; lane<2; ++lane)
-            if (auto* mm = getMonsoon()) module->params[varlegDelegDispId(lane)].setValue(mm->getVarlegDeleg(v,lane));
-        // CV-depth attenuverters: this voice's per-voice store → display proxy.
-        for (int lane=0; lane<4; ++lane)
-            // (atten store→proxy load DELETED — MVC step 1d: store-backed knob reads the slot directly.)
-        // VAR/LEG CV-depth: this voice's per-voice store → display proxy. lane 0=VAR,1=LEG; col 0..2.
-        for (int lane=0; lane<2; ++lane)
-            for (int c=0; c<3; ++c)
-                if (auto* mm = getMonsoon()) module->params[varlegAttDispId(lane,c)].setValue(mm->getVarlegAtten(slot,lane,c));
+        // (varlegDeleg store→proxy load DELETED — MVC step 1d: store-backed OwnerCell reads it directly.)
+        // (atten + varleg atten store→proxy load DELETED — MVC step 1d: store-backed knobs read the slots directly.)
     }
     // Iterate EDITOR lanes 0..5 directly — currentState.lanes[] is editor-indexed, and VAR(4)/LEG(5)
     // have no PolyLane id, so the old engine-lane loop could not reach them. lorIdEditor() maps.
@@ -611,8 +614,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // BUT V1's per-lane OWNERSHIP does persist (monoOwnerId, the spare slot): push the
         // live owner-cell proxy into it when leaving the V1 tab.
         if (selectedVoice == 0) {
-            for (int lane = 0; lane < 4; ++lane)
-                if (auto* mm = getMonsoon()) mm->setMonoMacroOwn(lane, module->params[ownerDispId(lane)].getValue());
+            // (V1 owner proxy→setMonoMacroOwn flush DELETED — MVC step 1d: store-backed OwnerCell writes it directly.)
         }
         selectedVoice = nv;
         // Load the INCOMING voice.
@@ -636,11 +638,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // OUTGOING poly voice's LOR/spread, so we must restore V1's stores rather than mirror
             // that stale data into them.
             v1Loaded_ = false;
-            for (int lane = 0; lane < 4; ++lane)
-                if (auto* mm = getMonsoon()) module->params[ownerDispId(lane)].setValue(mm->getMonoMacroOwn(lane));
+            // (V1 owner setMonoMacroOwn→proxy load DELETED — MVC step 1d: store-backed OwnerCell reads it directly.)
             // V1 is mono → VAR/LEG always follow mono; show the cells filled (and they lock).
-            for (int lane = 0; lane < 2; ++lane)
-                module->params[varlegDelegDispId(lane)].setValue(0.f);
+            // (V1 varlegDeleg proxy mirror DELETED — MVC step 1d: store-backed OwnerCell shows follow-mono on V1.)
             // (V1 DirCell display-seed DELETED — MVC step 1d: the store-backed DirCell reads
             // getMonoLaneDir live on the V1 tab.)
         }
@@ -675,7 +675,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             const int cv = currentVoice() - 1;   // 0 = V1/mono
             for (int el = 0; el < 4; ++el) {
                 int eng = dotModular::EDITOR_TO_ENGINE_LANE[el];
-                bool live = module->params[StraitsEastVisualIds::ownerDispId(eng)].getValue() > 0.5f;
+                bool live = eastOwnsLane(eng);   // MVC step 1d: store-backed (was ownerDispId proxy)
                 if (cv == 0)                       in.eastV1Owner[el] = live;
                 else if (cv >= 1 && cv <= 15)      in.eastPolyOwner[cv - 1][el] = live;
             }
@@ -707,6 +707,17 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         if (!macroVis) return std::numeric_limits<float>::quiet_NaN();
         return macroVis->macroBase[engLane][3];
     }
+    // MVC step 1d: the current tab's East-owns status for an ENGINE lane (0..3), mirroring the
+    // store-backed OwnerCell's getOwnsFn. V1+Mono → Mono's owner (getMonoOwner, eng→editor);
+    // V1 (East) → getMonoMacroOwn; poly → getMacroOwn(polyVoice). Used by the spread-arc isActive,
+    // buildTopo's live-voice read, the lane-ownership menu, and the owner light.
+    bool eastOwnsLane(int engLane) const {
+        Monsoon* m = getMonsoon(); if (!m) return true;
+        if (tab1MonoMirror()) return m->getMonoOwner(dotModular::ENGINE_LANE_TO_EDITOR[engLane]);
+        if (onMonoTab()) return m->getMonoMacroOwn(engLane) > 0.5f;
+        int pv = polyVoice();
+        return (pv >= 0 && pv < 15) ? (m->getMacroOwn(pv, engLane) > 0.5f) : true;
+    }
     // The voice NUMBER (1..16) for the selected tab: tab 0 = V1 (mono), tab v = V(v+1).
     // All mono/poly identity + bank mapping flows through VoiceResolver so there's one
     // source of truth (the resolver), not hand-rolled selectedVoice arithmetic scattered
@@ -718,7 +729,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
 
     // Voice 1 / tab 1 with Sands Mono attached: the lane base belongs to Mono — East's
     // base controls lock + mirror mono (display-only). Independent of Macro.
-    bool tab1MonoMirror() {
+    bool tab1MonoMirror() const {
         Monsoon* m = getMonsoon();
         return onMonoTab() && m && m->expanderManager.cachedSandsVisualExpander != nullptr;
     }
@@ -745,7 +756,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     void openLaneOwnershipMenu(int lane, rack::math::Vec editorLocalPos) {
         if (!module) return;
         const int voice = polyVoice();   // current poly bank index (0-based)
-        const bool macroOwns = !( module->params[ownerDispId(lane)].getValue() > 0.5f );
+        const bool macroOwns = !eastOwnsLane(lane);   // MVC step 1d: store-backed
         static const char* laneNames[4] = { "MELODY", "OCTAVE", "REST", "ACCENT" };
         const char* ln = (lane >= 0 && lane < 4) ? laneNames[lane] : "?";
 
@@ -761,7 +772,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             bool setToEast;   // true = set East owns; false = set Macro owns
             void onAction(const event::Action& e) override {
                 float val = setToEast ? 1.f : 0.f;
-                widget->module->params[StraitsEastVisualIds::ownerDispId(lane)].setValue(val);
+                // (owner proxy write DELETED — MVC step 1d: setMacroOwn in the action below is the home.)
                 widget->saveVoiceMacro(voice);  // persist to per-voice bank
             }
         };
@@ -790,7 +801,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             void onAction(const event::Action& e) override {
                 float val = setToEast ? 1.f : 0.f;
                 // Set display proxy and persist to all 15 poly voice slots
-                widget->module->params[StraitsEastVisualIds::ownerDispId(lane)].setValue(val);
+                // (owner proxy write DELETED — MVC step 1d: setMacroOwn below is the home.)
                 if (auto* mmA = redDot::findMonsoonEitherSide(widget->module))
                     for (int v = 0; v < 15; ++v) mmA->setMacroOwn(v, lane, val);
             }
@@ -909,7 +920,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         const float cur = (ch == 0) ? mm->getMonoMacroOwn(eng) : mm->getMacroOwn(ch - 1, eng);
                         const float nv = (cur > 0.5f) ? 0.f : 1.f;
                         if (ch == 0) mm->setMonoMacroOwn(eng, nv); else mm->setMacroOwn(ch - 1, eng, nv);
-                        if (selectedVoice == ch) mod->params[ownerDispId(eng)].setValue(nv);
+                        // (owner proxy write DELETED — MVC step 1d: setMonoMacroOwn/setMacroOwn above is the home.)
                     }
                 } else {
                     // VAR/LEG delegation migrated to Monsoon::editor.varlegDeleg (fields)
@@ -917,7 +928,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         const int vlLane = lane - 4;
                         const float nv = (mm->getVarlegDeleg(ch - 1, vlLane) > 0.5f) ? 0.f : 1.f;
                         mm->setVarlegDeleg(ch - 1, vlLane, nv);
-                        if (selectedVoice == ch) mod->params[varlegDelegDispId(vlLane)].setValue(nv);
+                        // (varlegDeleg proxy write DELETED — MVC step 1d: setVarlegDeleg above is the home.)
                     }
                 }
             }
@@ -1018,11 +1029,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             //             East store), independent of this store. So writing East's value here
             //             for a ceded lane is harmless — the engine plays Macro regardless.
             //  - Result: cede shows/plays Macro, store keeps East → reclaim reverts. No guards.
+            // MVC step 1d: sync editor.spread[polySlot] → SpreadManager (the engine's poly spread
+            // source). Was params[SPREAD_*]; the store-backed knob writes editor.spread directly.
             auto& smgr = paramMgr->spreadMgr;
-            smgr.setSpread(polyVoice(), 0, mod->params[SPREAD_R].getValue());
-            smgr.setSpread(polyVoice(), 1, mod->params[SPREAD_M].getValue());
-            smgr.setSpread(polyVoice(), 2, mod->params[SPREAD_O].getValue());
-            smgr.setSpread(polyVoice(), 3, mod->params[SPREAD_A].getValue());
+            const int ps = currentSlot();
+            for (int lane = 0; lane < 4; ++lane)
+                smgr.setSpread(polyVoice(), lane, monsoon->getSpread(ps, lane));
         }
         // ── Direction sync: push the DirCell display proxy values into the engine's
         //    laneDirPending_ (mono tab) or laneDirVPending_ (poly tabs). The DirCell
@@ -1141,32 +1153,20 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // MVC step 1d) — was params[sprId(l)], now read the store. l is engine/spread
             // order (REST=0,MEL=1,OCT=2,ACC=3); East's SPREAD_R/M/O/A match, so copy directly.
             // This makes the knob track Mono and gives the V1 spread arc a real base to deflect from.
-            {
-                static const int eastSpr[4] = { SPREAD_R, SPREAD_M, SPREAD_O, SPREAD_A };
-                for (int l = 0; l < 4; ++l)
-                    module->params[eastSpr[l]].setValue(monsoon->getSpread(dotModular::VoiceResolver::kMonoSlot, l));
-            }
+            // (V1 SPREAD_*←getSpread mirror DELETED — MVC step 1d: store-backed knob reads editor.spread[0] directly.)
             // CV-DEPTH attenuators on V1: these are East's OWN modulation controls (the
             // user patches CV into East + sets depth to modulate V1). saveVoiceMacro only
             // ever writes POLY slots, so the mono slot (kMonoSlot=0) — which the V1 CV
             // mix-in in readStrand reads — stayed 0, making East V1 CV inaudible/invisible.
             // (V1 atten proxy→mono-slot mirror DELETED — MVC step 1d: store-backed knob writes macroAtten[0] directly.)
-            // VAR/LEG CV-depth: same mono-slot mirror so V1's ch1 mix-in has its depth.
-            for (int lane=0; lane<2; ++lane)
-                for (int c=0; c<3; ++c)
-                    if (auto* mm = getMonsoon()) mm->setVarlegAtten(dotModular::VoiceResolver::kMonoSlot, lane, c,
-                        module->params[varlegAttDispId(lane,c)].getValue());
+            // (V1 varleg atten proxy→mono-slot mirror DELETED — MVC step 1d: store-backed knob writes varlegAtten[0] directly.)
             // P8: East's owner cells on V1 are locked (East can't delegate V1) but should
             // SHOW the real V1 ownership, which Mono decides. Mono's owner is STORE-BACKED
             // (editor.monoOwner via getMonoOwner); mirror it into East's ownerDispId so the cell
             // draws filled/outline correctly. East ownerDispId is engine-lane indexed; Mono's
             // store is editor-lane indexed (el).
-            if (auto* m = getMonsoon()) {
-                for (int eng=0; eng<4; ++eng) {
-                    int el = dotModular::ENGINE_LANE_TO_EDITOR[eng];
-                    module->params[ownerDispId(eng)].setValue(m->getMonoOwner(el) ? 1.f : 0.f);
-                }
-            }
+            // (V1+Mono owner mirror DELETED — MVC step 1d: the store-backed OwnerCell's getOwnsFn
+            //  reads getMonoOwner directly for the V1+Mono case, so no proxy mirror is needed.)
             // Probabilities: show the SPREAD-APPLIED V1 values (what plays) for all 4
             // lanes, so Mono's spread/CV AND East's V1 spread CV (both folded into the
             // engine mono strand by the manager) are visible — matching Mono's display.
@@ -1206,11 +1206,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     // V1's atten displays are restored from the mono-slot store just below.)
                     loadSlot(dotModular::VoiceResolver::kMonoSlot);
                     // (V1 atten display-seed DELETED — MVC step 1d: store-backed knob reads macroAtten[0] directly.)
-                    // VAR/LEG CV-depth displays ← preserved mono-slot store (vl 0=VAR 1=LEG, col 0..2).
-                    for (int vl = 0; vl < 2; ++vl)
-                        for (int c = 0; c < 3; ++c)
-                            module->params[varlegAttDispId(vl, c)].setValue(
-                                mmV1->getVarlegAtten(dotModular::VoiceResolver::kMonoSlot, vl, c));
+                    // (V1 varleg atten display-seed DELETED — MVC step 1d: store-backed knob reads varlegAtten[0] directly.)
                     v1Loaded_ = true;
                 } else {
                     saveSlot(dotModular::VoiceResolver::kMonoSlot);   // mirror V1 edits → store slot 0
@@ -1229,11 +1225,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // stored spread when Macro's knob moved during a cede — removed.
 
             // (V1 atten proxy→mono-slot mirror DELETED — MVC step 1d: store-backed knob writes macroAtten[0] directly.)
-            // VAR/LEG CV-depth: same mono-slot mirror so V1's ch1 mix-in has its depth.
-            for (int lane=0; lane<2; ++lane)
-                for (int c=0; c<3; ++c)
-                    if (auto* mm = getMonsoon()) mm->setVarlegAtten(dotModular::VoiceResolver::kMonoSlot, lane, c,
-                        module->params[varlegAttDispId(lane,c)].getValue());
+            // (V1 varleg atten proxy→mono-slot mirror DELETED — MVC step 1d: store-backed knob writes varlegAtten[0] directly.)
             // V1 LOR is now derived in the MANAGER (MonsoonSandsManager hasEastV1 block),
             // reading the Model (lorBase[kMonoSlot]) — same as poly. The direct mono-strand
             // write that used to live here was moved there in Stage 3b. The atten/varleg-depth
@@ -1317,8 +1309,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
 void StraitsEastSandsVisual::process(const ProcessArgs&) {
     using namespace StraitsEastVisualIds;
     for (int lane = 0; lane < 4; ++lane)
-        lights[ownerLightId(lane)].setBrightness(
-            params[ownerDispId(lane)].getValue() > 0.5f ? 1.f : 0.f);
+        // MVC step 1d: module process has no tab context; light the V1 owner (the OwnerCell
+        // widget draws the live per-voice state via getOwnsFn). cachedMon_ is the store owner.
+        lights[ownerLightId(lane)].setBrightness((cachedMon_ && (cachedMon_->getMonoMacroOwn(lane) > 0.5f)) ? 1.f : 0.f);
 
     // PERF: findMonsoonEitherSide walks the expander chain. Topology only changes at
     // control rate, so refresh the cached pointer on the same /8 divider as the gate scan

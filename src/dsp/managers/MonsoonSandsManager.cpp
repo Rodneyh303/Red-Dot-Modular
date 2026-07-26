@@ -378,7 +378,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             Monsoon* mmV1 = redDot::findMonsoonEitherSide(eastV1);
             const bool macroHere = hasMacro && (macroVis != nullptr);
             auto monoOwnedByMacro = [&](int lane)->bool {
-                return macroHere && !(eastV1->params[East::ownerDispId(lane)].getValue() > 0.5f);
+                // MVC step 1d: owner is STORE-BACKED (editor.macroOwn via getMonoMacroOwn). Was params[ownerDispId].
+                return macroHere && !(mmV1 ? mmV1->getMonoMacroOwn(lane) : false);
             };
 
             // Stage 3b: V1 LOR derivation — moved here from the East widget's v1Editable
@@ -452,7 +453,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 if (monoOwnedByMacro(lane))
                     return rack::math::clamp(macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3], -1.f, 1.f);
                 float sp = mmV1 ? mmV1->getSpread(dotModular::VoiceResolver::kMonoSlot, lane)
-                                : eastV1->params[East::SPREAD_R + lane].getValue();   // R/M/O/A contiguous
+                                : 0.f;   // MVC step 1d: SPREAD_* param gone; no Monsoon → no spread
                 if (eastV1->inputs[East::cvId(lane,3)].isConnected()) {
                     float att = (mmV1 ? mmV1->getMacroAtten(dotModular::VoiceResolver::kMonoSlot, lane*4 + 3) : 0.f);
                     float cv  = eastV1->inputs[East::cvId(lane,3)].getPolyVoltage(0) / 10.f;  // ch0 = V1

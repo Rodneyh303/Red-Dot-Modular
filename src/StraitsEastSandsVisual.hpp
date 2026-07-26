@@ -193,7 +193,10 @@ struct StraitsEastSandsVisual : Module {
         // param ids resolve to StraitsEastVisualIds, none to the shared MonsoonIds pool,
         // and nothing reads this module's params[] by a MonsoonIds index. Claiming
         // MonsoonIds::NUM_PARAMS (152) was pure over-allocation.
-        config(StraitsEastVisualIds::NUM_SPREAD_PARAMS, StraitsEastVisualIds::NUM_INPUTS,
+        // MVC step 1d DONE: all 38 East params are store-backed (spread/atten/varlegAtten/dir/
+        // owner/varlegDeleg). config() reserves ZERO host param slots — East has left the host/DAW
+        // param list. The id enums (SPREAD_R…NUM_SPREAD_PARAMS) stay declared (name panel slots).
+        config(0, StraitsEastVisualIds::NUM_INPUTS,
                StraitsEastVisualIds::NUM_OUTPUTS, StraitsEastVisualIds::NUM_LIGHTS);
         for (auto& a : probLastStep) for (auto& x : a) x = -1;
         { static const char* ln[4] = {"REST","MEL","OCT","ACC"};
@@ -201,20 +204,19 @@ struct StraitsEastSandsVisual : Module {
             configOutput(StraitsEastVisualIds::PROB_OUT_REST + l,
                 std::string("Probability ") + ln[l] + " (poly: ch1 master, ch2+ voices)"); }
 
-        configParam(SPREAD_R, -1.f,1.f,0.f,"Spread REST");
-        configParam(SPREAD_M, -1.f,1.f,0.f,"Spread MELODY");
-        configParam(SPREAD_O, -1.f,1.f,0.f,"Spread OCTAVE");
-        configParam(SPREAD_A, -1.f,1.f,0.f,"Spread ACCENT");
+        // Spread base (4): STORE-BACKED (MVC step 1d). SPREAD_R/M/O/A ids KEPT (name panel slots)
+        // but reserve NO param slots — StoreKnob reads/writes editor.spread[currentSlot(), lane]
+        // (V1 → slot 0; poly → polySlot). The widget syncs editor.spread → SpreadManager per frame.
 
         // Display proxies for the selected-voice owner/send controls (copied
         // to/from the per-voice MACRO_OWN/SEND params on voice switch). Owner is
         // an on/off switch (off=Macro owns base, on=East owns). Sends -1..1
         // default unity (Macro CV reaches the voice; turn down to localise).
         const char* laneNm[4] = {"REST","MEL","OCT","ACC"};
-        for (int lane=0; lane<4; ++lane) {
-            configSwitch(ownerDispId(lane), 0.f,1.f,0.f,
-                         std::string(laneNm[lane])+" base: inherit Macro / local East", {"Inherit Macro","Local East"});
-        }
+        // V1 ownership (poly lanes 0..3): STORE-BACKED (MVC step 1d). ownerDispId ids KEPT (name
+        // panel slots) but reserve NO param slots — OwnerCell reads/writes editor.macroOwn via
+        // get/setMacroOwn (poly) / get/setMonoMacroOwn (V1) live per tab. No configSwitch.
+        (void)laneNm;
 
         static const char* laneNames[4] = {"REST","MEL","OCT","ACC"};
         static const char* paramNames[4] = {"Len","Off","Rot","Spr"};
@@ -233,11 +235,12 @@ struct StraitsEastSandsVisual : Module {
         {
             static const char* vlNames[2] = {"VARIATION","LEGATO"};
             static const char* vlItems[3] = {"Len","Off","Rot"};
+            // VAR/LEG CV-depth attens: STORE-BACKED (MVC step 1d). varlegAttDispId ids KEPT (name
+            // panel slots) but reserve NO param slots — StoreKnob reads/writes editor.varlegAtten
+            // [currentSlot(), lane, col] live per tab. Only the CV jack (input) is configured here.
             for (int lane=0; lane<2; ++lane)
                 for (int c=0; c<3; ++c) {
                     std::string nm = std::string(vlNames[lane])+" "+vlItems[c];
-                    configParam(varlegAttDispId(lane,c), -1.f,1.f,0.f,
-                                nm+" depth (selected voice)");
                     configInput(varlegCvId(lane,c),
                                 nm+" CV (poly: ch1=mono mix-in, ch2+ voices)");
                 }
@@ -271,12 +274,9 @@ struct StraitsEastSandsVisual : Module {
         // No configSwitch here anymore -- the direction state is plain fields on Monsoon,
         // reached via getLaneDir/setLaneDir. (Default Forward = 0 = field default.)
         // V1 owner base MIGRATED to Monsoon::editor.macroOwn (mono slot) -- no configSwitch.
-        // VAR/LEG delegation display proxies (selected-voice cells). lane 0=VAR, 1=LEG.
-        for (int lane=0; lane<2; ++lane) {
-            configSwitch(varlegDelegDispId(lane), 0.f,1.f,0.f,
-                         std::string(lane==0?"VAR":"LEG")+" delegate: follow mono / local East",
-                         {"Follow mono","Local East"});
-        }
+        // VAR/LEG delegation (2): STORE-BACKED (MVC step 1d). varlegDelegDispId ids KEPT (name
+        // panel slots) but reserve NO param slots — OwnerCell reads/writes editor.varlegDeleg via
+        // get/setVarlegDeleg(polyVoice, lane) (poly-only; V1 locked). No configSwitch.
         // Per-voice CV depth for each of the 12 jacks — its own bank is 16-wide now
         // (slot 0 = voice 1/mono, slot v = voice v+1), so the mono mix-in's depth no longer
         // aliases poly voice 2's. The panel's 12 attenuverters are display proxies copied to
