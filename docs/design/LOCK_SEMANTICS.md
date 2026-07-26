@@ -190,7 +190,11 @@ whole-module for the first build; scope menu is a later refinement, not v1.
   it's the subtle corner  ownership already drives the display layer (displayValueFn), so a
   live flip mid-lock changes what a ceded lane displays. Needs a ruling with the topology model
   in view.
-- Confirm Raffles/Interchange/Changi actual roles against this split.
+
+RESOLVED (July 2026): Changi out of lock scope (pure output). Interchange = core CV (note/oct),
+latches with Big-5. Raffles: dice/queued gates QUEUE, A/B mix LIVE (performed crossfade), slew
+folds into QUEUE (sampled at phrase boundary). Change Alley: transform knobs + poly CV follow
+the pin ruling (latch default, play-test), trigger/scatter gates QUEUE.
 
 ## 8. Two tiers: Vermona-faithful core vs dot.modular extended surface (Rodney, July 2026)
 
@@ -242,13 +246,25 @@ meloDICER has no analogue for: LOR, spread, scale, correlation, ownership).
 CV is its own column, not a "+CV" annotation: the CV path is a distinct control surface with
 its own lock cell, even though its lock behaviour is BOUND to its target (a control's CV latches
 iff the control latches; snapshot the resolved knob+CV at lock-on). "" in CV = control has no
-CV path. Lock cells: LATCH / LIVE / OPEN / .
+CV path. Lock cells: LATCH / LIVE / QUEUE / OPEN / .
+
+QUEUE is a THIRD lock category (not latch, not live): an event TRIGGER can't hold a value, so
+under lock it defers -- arms now, fires at the first unlocked phrase boundary. Established by
+dice (3); extends to Raffles queued gates and Alley scatter/trigger gates. A param that is only
+SAMPLED at that boundary (Raffles slew) folds into queue behaviour automatically -- it's read
+when the queued redraw fires, so it needs no independent ruling.
 
 | Module | Control | Type | Tier | Base lock | CV lock |
 |---|---|---|---|---|---|
 | Monsoon | Big-5 sliders (NOTE_VALUE/VAR/LEG/REST/ACCENT) | probability | V | LATCH | LATCH |
 | Monsoon | POLY_REST 115, POLY_ACCENT 115 | probability (poly) | V | LATCH | LATCH |
 | Straits | per-voice REST + ACCENT knobs (poly Big-5 analog) | probability (poly) | V | LATCH | LATCH (Causeway) |
+| Interchange | modulates NOTE_VALUE + octave sliders | core CV (note/oct) | V | (is CV) | LATCH (with Big-5) |
+| Change Alley | pin matrix + transform knobs (grain/leader/step) | correlation shaping | X | LATCH default (play-test, 8) | LATCH (poly CV in, with base) |
+| Change Alley | trigger gates (domain/codomain, 4 scatter-back) | regeneration event | X | QUEUE (dice precedent, 3) |  |
+| Raffles | dice-roll / queued gates | regeneration event | X | QUEUE (dice precedent, 3) |  |
+| Raffles | A/B mix | performance crossfade | X | LIVE | LIVE |
+| Raffles | slew | sampled at phrase boundary | X | folds into QUEUE (read at the queued redraw, not an independent axis) |  |
 | Monsoon | PATTERN_LENGTH, OFFSET | first/last step | V | LATCH |  |
 | Monsoon | DNA LOR (len/off/rot, 18 + globals + interp) | generation structure | X | LATCH | LATCH |
 | Monsoon | SPREAD + spread attenuverters | generation setting | X | LATCH | LATCH |
@@ -267,14 +283,11 @@ CV path. Lock cells: LATCH / LIVE / OPEN / .
 | Sands Mono/Macro | owner (monoOwner / topology) | structural routing | X | OPEN (leans LIVE) |  |
 | Sands East | LOR/spread/atten/dir (when de-parammed) | generation | X | LATCH (inherits) | LATCH |
 | Sands (all) | grid probability edits | probability | X | LATCH |  |
-| Change Alley | pin matrix + transforms | correlation shaping | X | LATCH default (play-test, 8) | LATCH (with base) |
 | Causeway | poly rhythm CV | rhythm modulation | V | (is CV) | LATCH |
 | Junction | CV routing into Big-5 | remote modulation | V | (is CV) | LATCH |
-| Raffles | (confirm: DNA/LOR-shaping vs routing) | ? | X | LATCH if shaping (confirm) | with base |
-| Interchange | (confirm role) | ? | X | LATCH if shaping (confirm) | with base |
 | Shophouse | scale mask VALUES | scale | X | LATCH (like SEMI) |  |
 | Shophouse | Conservation guide/enforce TOGGLE | orthogonal mode | X | separate (SHOPHOUSE_SPEC) |  |
-| Changi | (confirm: transport/vis) | ? | X | LIVE (confirm) | LIVE |
+| Changi | pure OUTPUT expander | output | n/a | out of lock scope (no shaping/regeneration control) |  |
 | Lantern | note-output visualiser | display | X | LIVE |  |
 | Temasek | deprecated (change-alley-v2) | n/a | n/a | n/a | n/a |
 
