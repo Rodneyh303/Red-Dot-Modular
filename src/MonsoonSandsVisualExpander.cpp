@@ -12,6 +12,9 @@
 #include "ui/DimmableTrimpot.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/ModArcOverlay.hpp"
+#include "ui/StoreBound.hpp"      // placeStoreKnob (spread de-param, MVC step 1d)
+#include "ui/Controls.hpp"        // Tag_Grey_Trim_Bar
+#include "dsp/VoiceResolver.hpp"  // kMonoSlot (the mono spread slice)
 #include "dsp/managers/MonoSandsParameterManager.hpp"
 #include "dsp/managers/SpreadManager.hpp"
 #include "dsp/SandsTopology.hpp"   // step 4: Mono lock/editable predicates via the resolver
@@ -35,13 +38,15 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
     redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;
 
-    // Spread mod-arcs (bipolar -1..1), same as Macro: set = SPR param,
-    // effective = mod->spreadEffective[spreadIdx] (CV-modulated). Normalised (v+1)/2.
+    // Spread mod-arcs (bipolar -1..1), same as Macro: set = store getSpread(kMonoSlot,l),
+    // effective = engine.spreadE (CV-modulated). Normalised (v+1)/2.
+    // Decoupled from paramId (MVC step 1d): the knob is now a StoreKnob (Widget*, not
+    // ParamWidget), so getSetNorm reads the store, not paramQuantities[pid].
     // NOTE: the stored int is the SPREAD index (engine order REST=0,MEL=1,OCT=2,ACC=3),
     // matching how spreadEffective[] is written and how sprCvId() is indexed — NOT the
     // editor lane. This is the fix for the spread-arc off-by-one (arc was reading the
     // engine-indexed array by editor lane).
-    std::vector<std::pair<rack::ParamWidget*, int>> pendingSpreadArcs;
+    std::vector<std::pair<rack::widget::Widget*, int>> pendingSpreadArcs;
     void flushSpreadArcs(MonsoonSandsVisualExpander* mod) {
         for (auto& pr : pendingSpreadArcs) {
             auto* knob = pr.first; int sprIdx = pr.second;
@@ -50,11 +55,14 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             arc->radius   = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
             arc->attachOverKnob(knob, mm2px(2.5f));
             MonsoonSandsVisualExpander* mm = mod;
-            int pid = knob->paramId;
-            arc->getSetNorm = [mm, pid]() -> float {
-                if (!mm) return 0.5f;
-                auto* pq = mm->paramQuantities[pid];
-                return pq ? (float)pq->getScaledValue() : 0.5f;
+            // set = the knob's stored spread base (StoreKnob writes editor.spread[kMonoSlot,l]).
+            // Reading the store (not paramQuantities[pid]) is the decouple that lets the knob be
+            // a param-less StoreKnob. Mirrors Macro's getGlobalSpread arc. (v+1)/2 normalise.
+            arc->getSetNorm = [mm, sprIdx]() -> float {
+                if (!mm || sprIdx < 0 || sprIdx >= 4) return 0.5f;
+                Monsoon* mon = redDot::findMonsoonEitherSide(mm);
+                if (!mon) return 0.5f;
+                return rack::math::clamp((mon->getSpread(dotModular::VoiceResolver::kMonoSlot, sprIdx) + 1.f) * 0.5f, 0.f, 1.f);
             };
             // spreadEffective[] is spread/engine-indexed (REST=0,MEL=1,OCT=2,ACC=3).
             // Spread is engine state now (engine.spread via spreadE, engine-order lane). The arc
@@ -129,13 +137,22 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         addChild(visualEditor);
 
         // ── LOR controls: 3 CV jacks + 3 attens per lane (all 6 lanes) ────
+        // CV-depth attens are STORE-BACKED StoreKnobs (de-parammed, MVC step 1d): editor.monoAtten
+        // is EDITOR-lane-indexed, col 0..2 = LEN/OFF/ROT. lane here is the editor lane (0..5).
+        // The CV jacks (inputs) stay; the LOR base (lenId/offId/rotId) is a separate group.
+        static const char* LN[6] = {"MEL","OCT","REST","ACC","VAR","LEG"};
+        static const char* PN[3] = {"Len","Off","Rot"};
         for (int lane = 0; lane < N_LANES; ++lane) {
             float y = rowY(lane);
             for (int p = 0; p < 3; ++p) {  // LEN/OFF/ROT
                 addInput(createInputCentered<PJ301MPort>(
                     mm2px(Vec(JACK_X[p],  y)), mod, cvId(lane, p)));
-                addParam(createParamCentered<Trimpot>(
-                    mm2px(Vec(ATTEN_X[p], y)), mod, attenId(lane, p)));
+                const int attLane = lane, attCol = p;
+                redDot::placeStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
+                    Vec(ATTEN_X[p], y), [this](){ return getMonsoon(); },
+                    -1.f, 1.f, 0.f, std::string(LN[lane])+" "+PN[p]+" depth",
+                    [attLane, attCol](Monsoon& m)          { return m.getMonoAtten(attLane, attCol); },
+                    [attLane, attCol](Monsoon& m, float v) { m.setMonoAtten(attLane, attCol, v); });
             }
         }
 
@@ -143,46 +160,54 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         // REST/MEL/OCT + ACCENT (the poly-derived lanes). Each spread control sits on its
         // editor-lane row (accent on row 4, skipping LEGATO at 3). LEG/VAR are mono-only.
         for (int l = 0; l < N_SPREAD_LANES; ++l) {
+            // l is the SPREAD/engine lane (REST=0,MEL=1,OCT=2,ACC=3); editorLane is its editor
+            // row (MEL=0,OCT=1,REST=2,ACC=3). spread BASE uses engine lane in editor.spread;
+            // spread ATTEN uses EDITOR lane in editor.monoAtten — do not mix (MVC lane trap).
             int editorLane = SPREAD_LANE_TO_EDITOR[l];
             float y = rowY(editorLane);
-            auto* sp = createParamCentered<DimmableTrimpot>(mm2px(Vec(SPR_BASE_X, y)), mod, sprId(l));
-            // Lock + display-mirror when Mono cedes this lane to Macro — parallel to how the LOR
-            // grid locks via laneLockedFn, and identical to East's spread behaviour. Locked so the
-            // knob can't be moved while delegated; displayValueFn SHOWS Macro's spread for the lane
-            // (base + tapped send delta, the same value the engine delegation writes to
-            // spreadEffective) WITHOUT touching the stored param — so reclaiming the lane reverts to
-            // Mono's own spread automatically. l is the spread/engine lane; lock predicate uses the
-            // single topology authority keyed on editor lane.
-            {
-                const int spLane = l;
-                const int edLane = editorLane;
-                sp->lockWhen = [this, edLane]() -> bool {
-                    if (!module) return false;
-                    return buildV1Topo().lockedOn(dotModular::SandsTopology::Role::MONO, 0, edLane);
-                };
-                sp->displayValueFn = [this, spLane, edLane]() -> float {
-                    if (!module) return std::numeric_limits<float>::quiet_NaN();
-                    auto* mon = getMonsoon();
-                    auto* macroVis = mon ? mon->expanderManager.cachedMacroSandsVisual : nullptr;
-                    // Delegated ⟺ topology says Macro owns this V1 lane — the SAME authority the
-                    // lock reads (lockedOn/owner), so lock and display can't disagree.
-                    const bool delegated =
-                        buildV1Topo().owner(0, edLane) == dotModular::SandsTopology::Role::MACRO;
-                    if (!macroVis || !delegated)
-                        return std::numeric_limits<float>::quiet_NaN();   // not delegated → show own value
-                    return rack::math::clamp(macroVis->macroBase[spLane][3]
-                                             + macroVis->macroSendDelta[spLane][3], -1.f, 1.f);
-                };
-            }
-            addParam(sp);
-            // Store the SPREAD index l (engine order REST/MEL/OCT/ACC), NOT the editor
-            // lane: spreadEffective[] and sprCvId() are both spread/engine-indexed, so
-            // the arc must look them up by l. (The knob sits on the editor row via y.)
+            const char* SN[4] = {"REST","MEL","OCT","ACC"};
+            const std::string nm = SN[l];
+            const int spLane = l;
+            const int edLane = editorLane;
+            // ── Spread BASE: StoreKnob (de-parammed, MVC step 1d). Store target is the
+            // engine-read editor.spread[kMonoSlot, l]. Carries the SAME lockWhen/displayValueFn the
+            // DimmableTrimpot had: lock + show Macro's spread (base + tapped send delta) while
+            // delegated, WITHOUT touching the stored value — so reclaiming the lane reverts to
+            // Mono's own spread. StoreKnob already supports lockWhen/displayValueFn (StoreBound.hpp).
+            auto* sp = redDot::placeStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
+                Vec(SPR_BASE_X, y), [this](){ return getMonsoon(); },
+                -1.f, 1.f, 0.f, nm + " spread",
+                [spLane](Monsoon& m)          { return m.getSpread(dotModular::VoiceResolver::kMonoSlot, spLane); },
+                [spLane](Monsoon& m, float v) { m.setSpread(dotModular::VoiceResolver::kMonoSlot, spLane, v); });
+            sp->lockWhen = [this, edLane]() -> bool {
+                if (!module) return false;
+                return buildV1Topo().lockedOn(dotModular::SandsTopology::Role::MONO, 0, edLane);
+            };
+            sp->displayValueFn = [this, spLane, edLane]() -> float {
+                if (!module) return std::numeric_limits<float>::quiet_NaN();
+                auto* mon = getMonsoon();
+                auto* macroVis = mon ? mon->expanderManager.cachedMacroSandsVisual : nullptr;
+                // Delegated ⟺ topology says Macro owns this V1 lane — the SAME authority the
+                // lock reads (lockedOn/owner), so lock and display can't disagree.
+                const bool delegated =
+                    buildV1Topo().owner(0, edLane) == dotModular::SandsTopology::Role::MACRO;
+                if (!macroVis || !delegated)
+                    return std::numeric_limits<float>::quiet_NaN();   // not delegated → show own value
+                return rack::math::clamp(macroVis->macroBase[spLane][3]
+                                         + macroVis->macroSendDelta[spLane][3], -1.f, 1.f);
+            };
+            // Store the SPREAD index l (engine order REST/MEL/OCT/ACC): the arc looks up
+            // getSpread(kMonoSlot, l) and sprCvId() by l. (The knob sits on the editor row via y.)
             pendingSpreadArcs.push_back({sp, l});
             addInput(createInputCentered<PJ301MPort>(
                 mm2px(Vec(SPR_CV_X, y)), mod, sprCvId(l)));
-            addParam(createParamCentered<Trimpot>(
-                mm2px(Vec(SPR_ATTEN_X, y)), mod, sprAttenId(l)));
+            // ── Spread ATTEN: StoreKnob (de-parammed, plain — no lock, matching the prior
+            // Trimpot). monoAtten is EDITOR-lane-indexed (col 3 = spread atten), so use edLane.
+            redDot::placeStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
+                Vec(SPR_ATTEN_X, y), [this](){ return getMonsoon(); },
+                -1.f, 1.f, 0.f, nm + " spread depth",
+                [edLane](Monsoon& m)          { return m.getMonoAtten(edLane, 3); },
+                [edLane](Monsoon& m, float v) { m.setMonoAtten(edLane, 3, v); });
         }
 
         paramMgr = new MonoSandsParameterManager();
@@ -304,10 +329,14 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         // ── One-time initialisation from saved params ─────────────────────
         if (!initialized) {
             for (int l = 0; l < 6; ++l) {
-                // l = editor lane; Mono LOR params are now editor-ordered → direct.
-                visualEditor->currentState.lanes[l].length   = (int)std::round(mod->params[lenId(l)].getValue());
-                visualEditor->currentState.lanes[l].offset   = (int)std::round(mod->params[offId(l)].getValue());
-                visualEditor->currentState.lanes[l].rotation = (int)std::round(mod->params[rotId(l)].getValue());
+                // MVC step 1d: LOR base is STORE-BACKED (editor.lorBase[kMonoSlot, bank, c]).
+                // bank = engine lane for poly (0..3), self for VAR/LEG (4,5) — same as East's
+                // lorBank. Was params[lenId/offId/rotId(l)] (now removed). One-time seed from the
+                // persisted store (lorBase loads in fromJson before step() runs).
+                const int b = (l <= 3) ? dotModular::EDITOR_TO_ENGINE_LANE[l] : l;
+                visualEditor->currentState.lanes[l].length   = (int)std::round(monsoon->getLorBase(dotModular::VoiceResolver::kMonoSlot, b, 0));
+                visualEditor->currentState.lanes[l].offset   = (int)std::round(monsoon->getLorBase(dotModular::VoiceResolver::kMonoSlot, b, 1));
+                visualEditor->currentState.lanes[l].rotation = (int)std::round(monsoon->getLorBase(dotModular::VoiceResolver::kMonoSlot, b, 2));
             }
             // (The old spreadEffective init-seed was removed: spread is now engine state
             // (engine.spread), written by the manager via SpreadResolver every frame, so a
@@ -340,11 +369,16 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             return !ownTopo.editableOn(dotModular::SandsTopology::Role::MONO, 0, el);
         };
         for (int l = 0; l < 6; ++l) {
-            if (laneDelegated(l)) continue;   // delegated → tracks Macro, don't write Mono param
+            if (laneDelegated(l)) continue;   // delegated → tracks Macro, don't write Mono's store
             const auto& lane = visualEditor->currentState.lanes[l];
-            mod->params[lenId(l)].setValue((float)lane.length);
-            mod->params[offId(l)].setValue((float)lane.offset);
-            mod->params[rotId(l)].setValue((float)lane.rotation);
+            // MVC step 1d: editor → STORE (editor.lorBase[kMonoSlot, bank, c]). Was params[lenId/
+            // offId/rotId(l)]. bank = engine lane for poly, self for VAR/LEG (East's lorBank).
+            if (monForOwn) {
+                const int b = (l <= 3) ? dotModular::EDITOR_TO_ENGINE_LANE[l] : l;
+                monForOwn->setLorBase(dotModular::VoiceResolver::kMonoSlot, b, 0, (float)lane.length);
+                monForOwn->setLorBase(dotModular::VoiceResolver::kMonoSlot, b, 1, (float)lane.offset);
+                monForOwn->setLorBase(dotModular::VoiceResolver::kMonoSlot, b, 2, (float)lane.rotation);
+            }
         }
         // Delegated lanes: show Macro's CV-APPLIED global value (base + macroCVDelta),
         // so Macro's modulation is reflected on Mono too (combo 6/G6) — not just the

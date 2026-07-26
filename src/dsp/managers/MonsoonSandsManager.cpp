@@ -65,7 +65,13 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     // MVC step 1c: Macro's GLOBAL scope now lives in the store, not in Macro's params.
     // Resolved once here; the lambdas below capture it by reference. (Macro's widget
     // step() dual-writes params -> store, so this reads the same values the params hold.)
-    Monsoon* gMon = macroVis ? redDot::findMonsoonEitherSide(macroVis) : nullptr;
+    // Resolve the Monsoon store owner from any attached Sands expander (Macro OR Mono) —
+    // they hang off the SAME Monsoon. Was macroVis-only, which left gMon null when Macro was
+    // absent and broke Mono store reads (attens). Macro-global reads below stay guarded by
+    // hasMacro/macroVis, so broadening is safe.
+    Monsoon* gMon = nullptr;
+    if (macroVis)      gMon = redDot::findMonsoonEitherSide(macroVis);
+    else if (monoVis)  gMon = redDot::findMonsoonEitherSide(monoVis);
 
     // Sands final-ownership lifecycle (Option W): default each cycle to whether
     // any Sands visual stage will own final (Mono, Macro, or East poly). When
@@ -107,7 +113,10 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     auto applyMonoCV = [&](float base, int lane, int param, float lo, float hi) -> float {
         if (!monoVis || !monoVis->inputs[Mono::cvId(lane, param)].isConnected()) return base;
         float cv  = monoVis->inputs[Mono::cvId(lane, param)].getVoltage() / 10.f;
-        float att = monoVis->params[Mono::attenId(lane, param)].getValue();
+        // MVC step 1d: atten is STORE-BACKED (editor.monoAtten[lane,param], lane=editor).
+        // Was params[attenId(lane,param)]; gMon now resolves via monoVis too, so CV depth works
+        // even without Macro attached.
+        float att = gMon ? gMon->getMonoAtten(lane, param) : 0.f;
         return clamp(base + cv * att * (hi - lo), lo, hi);
     };
 
@@ -145,12 +154,14 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         // base always comes from the visual params. cvRow == editor lane.)
         auto readStrand = [&](int l) {
             int strand = dotModular::MONO_LANE_TO_STRAND[l];
-            // l is the EDITOR lane. The Mono LOR params are now ALSO editor-ordered
-            // (LEN_MELODY=0, OCT, REST, ACC, VAR, LEG), so lenId(l) reads directly —
-            // no editor→param-bank remap any more.
-            float baseLen = monoVis->params[Mono::lenId(l)].getValue();
-            float baseOff = monoVis->params[Mono::offId(l)].getValue();
-            float baseRot = monoVis->params[Mono::rotId(l)].getValue();
+            // MVC step 1d: LOR base is STORE-BACKED (editor.lorBase[kMonoSlot, bank, c]). Was
+            // params[lenId/offId/rotId(l)] (removed). l is the EDITOR lane; bank = engine lane for
+            // poly (0..3), self for VAR/LEG (4,5) — East's lorBank. gMon resolves via monoVis so
+            // it's valid without Macro. Defaults (16/0/0) match the identity init if store is empty.
+            const int bLor = (l <= 3) ? dotModular::EDITOR_TO_ENGINE_LANE[l] : l;
+            float baseLen = gMon ? gMon->getLorBase(dotModular::VoiceResolver::kMonoSlot, bLor, 0) : 16.f;
+            float baseOff = gMon ? gMon->getLorBase(dotModular::VoiceResolver::kMonoSlot, bLor, 1) : 0.f;
+            float baseRot = gMon ? gMon->getLorBase(dotModular::VoiceResolver::kMonoSlot, bLor, 2) : 0.f;
 
             // V1 ownership (poly lanes only: editor 0..3 = MEL/OCT/REST/ACC). When
             // Mono CEDES a lane (ownerDispId == 0) and Macro is attached, V1's base
@@ -264,16 +275,23 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 // decides delegation (owner()==MACRO, via monoMacroOwnsEngineLane); the resolver only
                 // consumes that boolean. l is the SPREAD/engine lane (0=REST,1=MEL,2=OCT,3=ACC).
                 auto* eastVisS = expanderManager.cachedEastSandsVisual;
+                // MVC step 1d: spread base + atten are now STORE-BACKED (editor.spread /
+                // editor.monoAtten), not params. gMon is the store owner; was NOT in scope here.
+                Monsoon* gMon = redDot::findMonsoonEitherSide(monoVis);
                 redDot::SpreadResolver::Inputs sin;
                 sin.delegated    = hasMacro && macroVis &&
                                    SandsMonoVisualIds::monoMacroOwnsEngineLane(monoVis, l);
                 sin.macroPresent = (hasMacro && macroVis);
-                sin.base         = monoVis->params[Mono::sprId(l)].getValue();
+                // base: editor.spread[kMonoSlot, l] (l = engine/spread lane). Was params[sprId(l)].
+                sin.base         = gMon ? gMon->getSpread(dotModular::VoiceResolver::kMonoSlot, l) : 0.f;
                 // Own Mono spread CV (sprCvId jack + sprAttenId), unit-scaled /10.
                 if (monoVis->inputs[Mono::sprCvId(l)].isConnected()) {
                     sin.ownCv.connected   = true;
                     sin.ownCv.unitVoltage = monoVis->inputs[Mono::sprCvId(l)].getVoltage() / 10.f;
-                    sin.ownCv.atten       = monoVis->params[Mono::sprAttenId(l)].getValue();
+                    // atten: editor.monoAtten is EDITOR-lane-indexed (col 3 = spread atten), so
+                    // convert l (engine) via SPREAD_LANE_TO_EDITOR — the SAME index the widget's
+                    // StoreKnob writes. Was params[sprAttenId(l)].
+                    sin.ownCv.atten       = gMon ? gMon->getMonoAtten(SandsMonoVisualIds::SPREAD_LANE_TO_EDITOR[l], 3) : 0.f;
                 }
                 // East V1 spread CV add (cvId(engineLane,3) jack + attenId(mono slot,l,3)).
                 if (eastVisS && eastVisS->inputs[East::cvId(l,3)].isConnected()) {

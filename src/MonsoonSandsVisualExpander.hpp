@@ -150,23 +150,22 @@ struct MonsoonSandsVisualExpander : Module {
         static const char* names[6]  = {"MEL","OCT","REST","ACC","VAR","LEG"};
         static const char* lnames[3] = {"Len","Off","Rot"};
 
+        // LOR + atten group: ALL STORE-BACKED (MVC step 1d). lenId/offId/rotId/attenId ids are
+        // KEPT (they name panel slots) but reserve NO param slots — LOR base lives in
+        // editor.lorBase[kMonoSlot] (grid-edited via the visualEditor), attens in editor.monoAtten.
+        // Only the CV jacks (inputs, not host-exposed) are configured here.
         for (int l = 0; l < 6; ++l) {
-            configParam(lenId(l), 1.f, 16.f, 16.f, std::string(names[l])+" Length");
-            configParam(offId(l), 0.f, 15.f,  0.f, std::string(names[l])+" Offset");
-            configParam(rotId(l), 0.f, 15.f,  0.f, std::string(names[l])+" Rotation");
             for (int p = 0; p < 3; ++p) {  // LEN/OFF/ROT
-                configParam(attenId(l, p), -1.f, 1.f, 0.f,
-                            std::string(names[l])+" "+lnames[p]+" depth");
                 configInput(cvId(l, p),
                             std::string(names[l])+" "+lnames[p]+" CV");
             }
         }
-        // Spread group: poly lanes (REST/MEL/OCT/ACCENT engine order). sprId stays
-        // engine-ordered, so name via SPREAD_LANE_TO_EDITOR as before.
+        // Spread group: STORE-BACKED (MVC step 1d). sprId/sprAttenId ids are KEPT (they name
+        // the panel slots) but reserve NO param slots — the widgets are StoreKnobs bound to
+        // editor.spread[kMonoSlot,l] (base) and editor.monoAtten[editorLane,3] (atten). Only the
+        // CV jack (an input, not host-exposed) is configured here.
         for (int l = 0; l < N_SPREAD_LANES; ++l) {
             const char* nm = names[SPREAD_LANE_TO_EDITOR[l]];
-            configParam(sprId(l), -1.f, 1.f, 0.f, std::string(nm)+" Spread");
-            configParam(sprAttenId(l), -1.f, 1.f, 0.f, std::string(nm)+" Spread depth");
             configInput(sprCvId(l), std::string(nm)+" Spread CV");
         }
         // V1 ownership switches — poly lanes only (editor lanes 0..3 = MEL/OCT/REST/ACC).

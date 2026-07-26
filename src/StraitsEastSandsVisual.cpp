@@ -1142,13 +1142,15 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 visualEditor->setLanePlayStep(l, calcPlayhead(eng.laneTick_[strand_m], std::max(1,mLen), mOff, mRot));
             }
             // Spread (combo 7): East's V1 spread knobs FOLLOW Mono's spread (inoperable,
-            // locked). Mono's sprId is engine/spread order (REST=0,MEL=1,OCT=2); East's
-            // SPREAD_R/M/O are also engine order, so copy directly. This makes the knob
-            // track Mono and gives the V1 spread arc a real base to deflect from.
-            module->params[SPREAD_R].setValue(monoVis->params[SandsMonoVisualIds::sprId(0)].getValue());
-            module->params[SPREAD_M].setValue(monoVis->params[SandsMonoVisualIds::sprId(1)].getValue());
-            module->params[SPREAD_O].setValue(monoVis->params[SandsMonoVisualIds::sprId(2)].getValue());
-            module->params[SPREAD_A].setValue(monoVis->params[SandsMonoVisualIds::sprId(3)].getValue());  // accent (was missing)
+            // locked). Mono's spread base is now STORE-BACKED (editor.spread[kMonoSlot,l],
+            // MVC step 1d) — was params[sprId(l)], now read the store. l is engine/spread
+            // order (REST=0,MEL=1,OCT=2,ACC=3); East's SPREAD_R/M/O/A match, so copy directly.
+            // This makes the knob track Mono and gives the V1 spread arc a real base to deflect from.
+            {
+                static const int eastSpr[4] = { SPREAD_R, SPREAD_M, SPREAD_O, SPREAD_A };
+                for (int l = 0; l < 4; ++l)
+                    module->params[eastSpr[l]].setValue(monsoon->getSpread(dotModular::VoiceResolver::kMonoSlot, l));
+            }
             // CV-DEPTH attenuators on V1: these are East's OWN modulation controls (the
             // user patches CV into East + sets depth to modulate V1). saveVoiceMacro only
             // ever writes POLY slots, so the mono slot (kMonoSlot=0) — which the V1 CV
