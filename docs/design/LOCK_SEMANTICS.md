@@ -234,47 +234,59 @@ section controls (Big-5) + FIRST/LAST STEP. LOR, spread, and scale are dot.modul
 DNA/generative layer  meloDICER has no analogue  so they are EXTENDED surface, not core.
 
 Tier: **V** = Vermona-faithful core (the manual's actual scope). **X** = dot.modular extended
-(beyond meloDICER). Lock: LATCH / LIVE / OPEN. "with CV" = the control's CV modulation latches
-with it (snapshot resolved knob+CV).
+Tier: **V** = Vermona-faithful core, WHERE "core" is by FUNCTION not by whether meloDICER
+shipped it -- a poly rhythm/melody probability is the same KIND of control as the mono Big-5,
+so Straits poly REST/ACCENT knobs are core. **X** = dot.modular extended (a control TYPE
+meloDICER has no analogue for: LOR, spread, scale, correlation, ownership).
 
-| Module | Control | Type | Tier | Lock |
-|---|---|---|---|---|
-| Monsoon | Big-5 sliders (NOTE_VALUE/VAR/LEG/REST/ACCENT) | probability | V | LATCH + CV |
-| Monsoon | POLY_REST 115, POLY_ACCENT 115 | probability (poly) | X | LATCH + CV |
-| Monsoon | PATTERN_LENGTH, OFFSET | first/last step | V | LATCH |
-| Monsoon | DNA LOR (len/off/rot, 18 + globals + interp) | generation structure | X | LATCH + CV |
-| Monsoon | SPREAD + spread attenuverters | generation setting | X | LATCH + CV |
-| Monsoon | SEMI 011 scale toggles, OCT LO/HI range | scale/range | X | LATCH |
-| Monsoon | TRANSPOSE | pitch performance | X | OPEN (leans LIVE) |
-| Monsoon | Lane DIRECTION | structure | X | OPEN (leans LATCH) |
-| Monsoon | BPM/RUN/RESET/MODE/PHASE | clock/drive | (both) | LIVE |
-| Monsoon | MUTE | performance | (both) | LIVE |
-| Monsoon | Dice (all modes) | regeneration | (both) | queues under lock |
-| Monsoon | Themes, lantern, display toggles | display | (both) | LIVE |
-| Sands Macro | globalLor / globalSpread / globalAtten / globalTap | generation | X | LATCH + CV |
-| Sands Macro | globalDir | structure | X | OPEN (leans LATCH) |
-| Sands Macro | macroSend (per-voice mix-in) | generation routing | X | LATCH |
-| Sands Mono | lorBase[mono] / spread[mono] / monoAtten | generation | X | LATCH + CV |
-| Sands Mono | monoLaneDir | structure | X | OPEN (leans LATCH) |
-| Sands Mono/Macro | owner (monoOwner / topology) | structural routing | X | OPEN (leans LIVE) |
-| Sands East | LOR/spread/atten/dir (when de-parammed) | generation | X | LATCH (inherits) |
-| Sands (all) | grid probability edits | probability | X | LATCH |
-| Change Alley | pin matrix + transforms | correlation shaping | X | LATCH default (play-test, 8) |
-| Causeway | poly rhythm CV | rhythm modulation | X | LATCH + CV |
-| Junction | CV routing into Big-5 | remote modulation | X | LATCH + CV |
-| Raffles | (confirm: DNA/LOR-shaping vs routing) | ? | X | LATCH if shaping (confirm) |
-| Interchange | (confirm role) | ? | X | LATCH if shaping (confirm) |
-| Shophouse | scale mask VALUES | scale | X | LATCH (like SEMI) |
-| Shophouse | Conservation guide/enforce TOGGLE | orthogonal mode | X | separate (SHOPHOUSE_SPEC) |
-| Changi | (confirm: transport/vis) | ? | X | LIVE (confirm) |
-| Lantern | note-output visualiser | display | X | LIVE |
-| Temasek | deprecated (change-alley-v2) | n/a | n/a | n/a |
+CV is its own column, not a "+CV" annotation: the CV path is a distinct control surface with
+its own lock cell, even though its lock behaviour is BOUND to its target (a control's CV latches
+iff the control latches; snapshot the resolved knob+CV at lock-on). "" in CV = control has no
+CV path. Lock cells: LATCH / LIVE / OPEN / .
+
+| Module | Control | Type | Tier | Base lock | CV lock |
+|---|---|---|---|---|---|
+| Monsoon | Big-5 sliders (NOTE_VALUE/VAR/LEG/REST/ACCENT) | probability | V | LATCH | LATCH |
+| Monsoon | POLY_REST 115, POLY_ACCENT 115 | probability (poly) | V | LATCH | LATCH |
+| Straits | per-voice REST + ACCENT knobs (poly Big-5 analog) | probability (poly) | V | LATCH | LATCH (Causeway) |
+| Monsoon | PATTERN_LENGTH, OFFSET | first/last step | V | LATCH |  |
+| Monsoon | DNA LOR (len/off/rot, 18 + globals + interp) | generation structure | X | LATCH | LATCH |
+| Monsoon | SPREAD + spread attenuverters | generation setting | X | LATCH | LATCH |
+| Monsoon | SEMI 011 scale toggles, OCT LO/HI range | scale/range | X | LATCH |  |
+| Monsoon | TRANSPOSE | pitch performance | X | OPEN (leans LIVE) | OPEN (with base) |
+| Monsoon | Lane DIRECTION | structure | X | OPEN (leans LATCH) | OPEN (with base) |
+| Monsoon | BPM/RUN/RESET/MODE/PHASE | clock/drive | (both) | LIVE | LIVE |
+| Monsoon | MUTE | performance | (both) | LIVE |  |
+| Monsoon | Dice (all modes) | regeneration | (both) | queues under lock | queues |
+| Monsoon | Themes, lantern, display toggles | display | (both) | LIVE |  |
+| Sands Macro | globalLor / globalSpread / globalAtten / globalTap | generation | X | LATCH | LATCH |
+| Sands Macro | globalDir | structure | X | OPEN (leans LATCH) | OPEN (with base) |
+| Sands Macro | macroSend (per-voice mix-in) | generation routing | X | LATCH |  |
+| Sands Mono | lorBase[mono] / spread[mono] / monoAtten | generation | X | LATCH | LATCH |
+| Sands Mono | monoLaneDir | structure | X | OPEN (leans LATCH) | OPEN (with base) |
+| Sands Mono/Macro | owner (monoOwner / topology) | structural routing | X | OPEN (leans LIVE) |  |
+| Sands East | LOR/spread/atten/dir (when de-parammed) | generation | X | LATCH (inherits) | LATCH |
+| Sands (all) | grid probability edits | probability | X | LATCH |  |
+| Change Alley | pin matrix + transforms | correlation shaping | X | LATCH default (play-test, 8) | LATCH (with base) |
+| Causeway | poly rhythm CV | rhythm modulation | V | (is CV) | LATCH |
+| Junction | CV routing into Big-5 | remote modulation | V | (is CV) | LATCH |
+| Raffles | (confirm: DNA/LOR-shaping vs routing) | ? | X | LATCH if shaping (confirm) | with base |
+| Interchange | (confirm role) | ? | X | LATCH if shaping (confirm) | with base |
+| Shophouse | scale mask VALUES | scale | X | LATCH (like SEMI) |  |
+| Shophouse | Conservation guide/enforce TOGGLE | orthogonal mode | X | separate (SHOPHOUSE_SPEC) |  |
+| Changi | (confirm: transport/vis) | ? | X | LIVE (confirm) | LIVE |
+| Lantern | note-output visualiser | display | X | LIVE |  |
+| Temasek | deprecated (change-alley-v2) | n/a | n/a | n/a | n/a |
 
 Notes:
-- The V core is SMALL: Big-5 + length/offset. Everything that makes dot.modular more than
-  meloDICER  LOR, spread, scale, Sands, Alley, Shophouse  is X. This is why 8's two-tier
-  model matters: ship the V core as proven lock; the X surface opts in (context-menu scope, 7)
-  as play justifies, with latch-as-default-hypothesis not verdict.
-- "+ CV" columns are the modulation-latches-with-control rule (2, 6): snapshot resolved value.
+- The V core is defined by FUNCTION, not by meloDICER's parts list: mono Big-5 + poly Big-5
+  (Straits per-voice REST/ACCENT, Monsoon POLY_REST/ACCENT) + length/offset + their CV. A poly
+  rhythm probability is the same KIND of control as a mono one, so it's core even though
+  meloDICER had no poly. Causeway/Junction are core-tier because they ARE the CV of core
+  controls. Everything that is a NEW control TYPE (LOR, spread, scale, correlation, ownership)
+  is X.
+- CV is its own column: a control's CV latches IFF the control latches (snapshot resolved
+  knob+CV). "OPEN (with base)" means the CV inherits whatever the base ruling turns out to be.
+  "(is CV)" marks modules that ARE a CV surface (Causeway/Junction) rather than having one.
 - OPEN rows are the unresolved rulings (transpose, direction, owner) gathered in one place.
 - "confirm" rows (Raffles/Interchange/Changi) need their actual role checked against the split.
