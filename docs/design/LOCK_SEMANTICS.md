@@ -117,3 +117,77 @@ partial-state lock (e.g. new scale but old probabilities) which would be worse t
 either state alone. This also means a param change while locked updates the UI
 (knobs visually move) but the snapshot stays frozen — same as how the Sands visual
 shows pending state while locked in the Vermona model.
+
+## 6. Exhaustive lock-scope checklist  every module + expander (July 2026)
+
+Extends 2's settled scope to the full CURRENT registered set (LOCK_SEMANTICS.md predates
+Change Alley V2 and the full expander lineup). Governing rule, restated to correct an earlier
+draft: lock mode DISCONNECTS the generation-section shaping controls from the stochastic
+engine. Shaping controls normally react to probability LIVE (meloDICER "play the module"); LOCK
+inverts that  they LATCH (snapshot resolved knob+CV at lock-on; engine reads the snapshot;
+UI still moves; commit on unlock at the next phrase boundary). The reactive DISPLAY (bar graph,
+arcs, lantern, playhead) stays live throughout  you watch the frozen pattern play. Modulation
+latches WITH its control (snapshot resolved value), never independently.
+
+Legend: LATCH = obeys lock (frozen till unlock) - LIVE = never obeys - OPEN = judgment call.
+
+### Monsoon (core)
+- Big-5 sliders NOTE_VALUE/VARIATION/LEGATO/REST/ACCENT ......... LATCH
+- PATTERN_LENGTH (master length), OFFSET .......................... LATCH (Vermona FIRST/LAST STEP)
+- DNA LOR (18 + globals + interp) ................................. LATCH
+- SPREAD + spread attenuverters ................................... LATCH
+- SEMI 011 scale toggles, OCT LO/HI range ........................ LATCH
+- Big-5 CV mod (mono/poly/global mod attenuverters + incoming CV) . LATCH (with its control)
+- TRANSPOSE ....................................................... OPEN (leans LIVE  performance pitch)
+- Lane DIRECTION .................................................. OPEN (leans LATCH  structural like rotation)
+- BPM/RUN/RESET/MODE/PHASE (clock+drive) ......................... LIVE
+- MUTE ............................................................ LIVE
+- Themes/lantern/display controls ................................. LIVE
+- Dice (all modes) ................................................ queues under lock (3, unchanged)
+
+### Sands editors (all now store-backed  de-param complete for Macro+Mono)
+- Macro: globalLor, globalSpread, globalAtten, globalTap, globalDir, macroSend .... LATCH
+- Mono:  lorBase[mono], spread[mono], monoAtten, monoLaneDir ...................... LATCH
+- Mono/Macro owner (monoOwner / topology ownership) .............................. OPEN (leans LIVE  structural routing, not a pattern value; ownership flip during lock probably applies immediately, see 7)
+- Grid probability edits (SandsVisualEditorV4) .................................... LATCH
+- East (when de-parammed): LOR/spread/atten/dir equivalents ....................... LATCH (inherits)
+
+### Expanders  probability-SHAPING (LATCH)
+- Change Alley (V2) pin matrix + transforms ....... LATCH (reshapes correlation = generation setting; 2 "future Change Alley pins latch" now current)
+- Causeway (poly rhythm CV) ....................... LATCH (poly REST/ACCENT modulation = rhythm section)
+- Junction (CV routing into big-5) ................ LATCH (remote modulation path, like MEX3 MIDI CC precedent)
+- Raffles / Interchange (DNA/LOR-shaping) ......... LATCH (confirm each shapes generation; if pure routing, revisit)
+- Shophouse scale mask (Conservation) ............. LATCH the scale EDIT (preparing a scale change is half the point); the Conservation guide/enforce TOGGLE itself is orthogonal (SHOPHOUSE_SPEC) but the mask VALUES latch like SEMI toggles
+
+### Expanders  performance / transport / display (LIVE)
+- Changi (airport-themed  confirm role: if transport/vis, LIVE) . LIVE (confirm)
+- Temasek (deprecated on change-alley-v2 branch) .................. n/a
+- Lantern (note-output visualiser) ............................... LIVE (pure display)
+- Any MUTE/performance expander controls ......................... LIVE
+
+### Modulation (the disconnected-under-lock half, per Rodney)
+- ALL CV modulation of a latched control latches WITH it: snapshot resolved (knob+CV) at
+  lock-on. Applies to Causeway, Junction, East var/leg CV, global/mono/poly mod attenuverters,
+  and any incoming CV that writes a generation-section value. Latching the knob but passing CV
+  would defeat lock  established in 2, restated here as a category rule.
+- CV into a LIVE target (clock, transpose-if-live, mute) stays LIVE  it modulates a control
+  that itself doesn't latch.
+
+## 7. Lock SCOPE as a future context-menu choice (Rodney)
+
+The checklist above is the DEFAULT (whole generation section latches). A context-menu "lock
+scope" could later let the user choose narrower latching, e.g.:
+- Whole module (default  everything in the LATCH set).
+- Section only (e.g. latch melody prep but keep rhythm live, or vice versa).
+- Per-lane (latch selected lanes; matches per-lane owner/direction granularity).
+This interacts with the per-lane-vs-global open question in LOCK_MODE_PLAN.md. Default to
+whole-module for the first build; scope menu is a later refinement, not v1.
+
+### Still OPEN (decide before/at build)
+- TRANSPOSE live vs latch.
+- Lane DIRECTION live vs latch (leans latch).
+- Owner/topology flip under lock: apply live (structural) vs defer to unlock. Leans live, but
+  it's the subtle corner  ownership already drives the display layer (displayValueFn), so a
+  live flip mid-lock changes what a ceded lane displays. Needs a ruling with the topology model
+  in view.
+- Confirm Raffles/Interchange/Changi actual roles against this split.
