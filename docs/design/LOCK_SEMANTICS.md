@@ -198,11 +198,21 @@ probability arrays (LATCH), or MAP the finished output (LIVE)?
   change; a live A/B would be the one control that breaks that.
 
 ### Still OPEN (decide before/at build)
-- NONE of the base rulings remain open. Transpose LIVE, direction LATCH, owner LATCH, A/B LATCH
-  all resolved (July 2026).
-- The one remaining PLAY-TEST question (not a structural open, a musical one): Change Alley pin
-  matrix + transform knobs -- latch is the structural default, but whether they should latch or
-  be a live performance surface is discovered in play (8). Tier-2 opt-in.
+- NONE. All base rulings resolved (July 2026). No structural opens, no play-test flags remain.
+
+### The config/event split within Change Alley (why knobs and gates differ  and that's correct)
+Change Alley has BOTH a config surface and an event surface, and they land in different lock
+categories  which is right, not an inconsistency:
+- Pin matrix + transform knobs = correlation CONFIG (a standing value: which voice reads which,
+  how much grain/leader/step). It correlates the random draws POST A/B-mix, PRE-spread
+  (PatternEngine.hpp:102) -- upstream generation, array-shaping by the read-vs-map principle.
+  LATCH, same band as A/B and spread. NOT because the gates queue -- a config latches because
+  it holds a value the engine reads; that is independent of what the gates do.
+- Scatter/trigger gates = correlation EVENT (a one-shot permutation). An event can't hold a
+  value, so QUEUE (dice precedent). Same config-vs-event split as Big-5 (latch) sitting next to
+  dice (queue) in the core section. Retires the earlier "pins might be live/play-test" caveat:
+  the pins are pre-spread generation, so a live remap would be another audible-under-lock hole
+  breaking the DJ-cue promise, exactly like a live A/B would.
 
 RESOLVED (July 2026): Changi out of lock scope (pure output). Interchange = core CV (note/oct),
 latches with Big-5. Raffles: dice/queued gates QUEUE, slew folds into QUEUE (sampled at phrase
@@ -274,8 +284,8 @@ when the queued redraw fires, so it needs no independent ruling.
 | Monsoon | POLY_REST 115, POLY_ACCENT 115 | probability (poly) | V | LATCH | LATCH |
 | Straits | per-voice REST + ACCENT knobs (poly Big-5 analog) | probability (poly) | V | LATCH | LATCH (Causeway) |
 | Interchange | modulates NOTE_VALUE + octave sliders | core CV (note/oct) | V | (is CV) | LATCH (with Big-5) |
-| Change Alley | pin matrix + transform knobs (grain/leader/step) | correlation shaping | X | LATCH default (play-test, 8) | LATCH (poly CV in, with base) |
-| Change Alley | trigger gates (domain/codomain, 4 scatter-back) | regeneration event | X | QUEUE (dice precedent, 3) |  |
+| Change Alley | pin matrix + transform knobs (grain/leader/step) | correlation config (shapes draws PRE-spread) | X | LATCH | LATCH (poly CV in, with base) |
+| Change Alley | trigger gates (domain/codomain, 4 scatter-back) | correlation EVENT | X | QUEUE (dice precedent, 3) |  |
 | Raffles | dice-roll / queued gates | regeneration event | X | QUEUE (dice precedent, 3) |  |
 | Raffles | slew | sampled at phrase boundary | X | folds into QUEUE (read at the queued redraw, not an independent axis) |  |
 | Monsoon | PATTERN_LENGTH, OFFSET | first/last step | V | LATCH |  |
