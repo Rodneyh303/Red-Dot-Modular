@@ -577,7 +577,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             lane.setDisplayLOR(mLen, mOff, mRot);
             for (int st = 0; st < SandsVisualEditorV4::STEP_COUNT; ++st)
                 lane.probabilities[st] = m->engine.pe.finalRandomByStrand(strand, st);
-            visualEditor->setLanePlayStep(el, calcPlayhead(m->engine.laneTick_[strand], mLen, mOff, mRot));
+            int ph580 = (m->engine.stepIndex >= 0) ? m->engine.laneTick_[strand] : -1;
+            visualEditor->setLanePlayStep(el, calcPlayhead(ph580, mLen, mOff, mRot));
         }
     }
 
@@ -1127,7 +1128,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 int mRot = monsoon->engine.strandRot(strand);
                 visualEditor->currentState.lanes[l].setDisplayLOR(std::max(1,mLen), mOff, mRot);
                 int strand_m = dotModular::MONO_LANE_TO_STRAND[l];
-                visualEditor->setLanePlayStep(l, calcPlayhead(eng.laneTick_[strand_m], std::max(1,mLen), mOff, mRot));
+                int ph1130 = (eng.stepIndex >= 0) ? eng.laneTick_[strand_m] : -1;
+                visualEditor->setLanePlayStep(l, calcPlayhead(ph1130, std::max(1,mLen), mOff, mRot));
             }
             // Spread (combo 7): East's V1 spread knobs FOLLOW Mono's spread (inoperable,
             // locked). Mono's spread base is now STORE-BACKED (editor.spread[kMonoSlot,l],
@@ -1219,7 +1221,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 int cvOff = eng.strandOffRef(strand);
                 int cvRot = eng.strandRotRef(strand);
                 visualEditor->currentState.lanes[el].setDisplayLOR(cvLen, cvOff, cvRot);
-                visualEditor->setLanePlayStep(el, calcPlayhead(eng.laneTick_[dotModular::MONO_LANE_TO_STRAND[el]], cvLen, cvOff, cvRot));
+                int ph1222 = (eng.stepIndex >= 0) ? eng.laneTick_[dotModular::MONO_LANE_TO_STRAND[el]] : -1;
+                visualEditor->setLanePlayStep(el, calcPlayhead(ph1222, cvLen, cvOff, cvRot));
             }
             // Probabilities: V1 (mono) probabilities are display-only (drag edits the LOR
             // window only), so show the SPREAD-APPLIED values the sequencer plays. Read
@@ -1250,7 +1253,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 visualEditor->currentState.lanes[el].setDisplayLOR(cvLen, cvOff, cvRot);
                 // Use the PER-VOICE tick (laneTickV_), not mono's laneTick_ — otherwise
                 // the poly playhead always follows mono's direction, ignoring the DirCell.
-                visualEditor->setLanePlayStep(el, calcPlayhead(eng.laneTickV_[pv][dotModular::MONO_LANE_TO_STRAND[el]], cvLen, cvOff, cvRot));
+                int ph1253 = (eng.stepIndex >= 0) ? eng.laneTickV_[pv][dotModular::MONO_LANE_TO_STRAND[el]] : -1;
+                visualEditor->setLanePlayStep(el, calcPlayhead(ph1253, cvLen, cvOff, cvRot));
             }
             // VARIATION (4) / LEGATO (5): show the window the ENGINE actually reads for this voice
             // — mono's when the lane DELEGATES (default), the voice's own when Local East — plus the
@@ -1273,7 +1277,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 }
                 visualEditor->currentState.lanes[el].setDisplayLOR(cvLen, cvOff, cvRot);
                 int pvTick = eng.laneTickV_[pv][dotModular::MONO_LANE_TO_STRAND[el]];
-                visualEditor->setLanePlayStep(el, calcPlayhead(pvTick, cvLen, cvOff, cvRot));
+                int ph1276 = (eng.stepIndex >= 0) ? pvTick : -1;
+                visualEditor->setLanePlayStep(el, calcPlayhead(ph1276, cvLen, cvOff, cvRot));
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
                     visualEditor->currentState.lanes[el].probabilities[s] = eng.pe.finalRandomByStrand(el, s);
             }

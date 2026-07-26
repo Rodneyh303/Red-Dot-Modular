@@ -395,7 +395,21 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
                 // with laneDirSign(Pendulum)=+1 every pass and the lane would never turn around.
                 if (auto* mm = redDot::findMonsoonEitherSide(eastLOR)) {
                     for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
-                        int dv = (int)std::lround(math::clamp(mm->getLaneDir(v, l), 0.f, 3.f));
+                        // MVC: resolve through ownership — delegated to Macro → Macro's globalDir;
+                        // else the voice's own getLaneDir (cached for reclaim). Lanes 4/5 (VAR/LEG)
+                        // have no Macro ownership, so always use the voice's getLaneDir.
+                        // NOTE: getMacroOwn/getGlobalDir take ENGINE lane (REST=0,MEL=1,OCT=2,ACC=3),
+                        // but l is a STRAND (== editor lane: MEL=0,OCT=1,REST=2,ACC=3). Convert.
+                        float dirVal;
+                        if (l < 4) {
+                            int engLane = dotModular::EDITOR_TO_ENGINE_LANE[l];
+                            dirVal = (mm->getMacroOwn(v, engLane) > 0.5f)
+                                   ? mm->getLaneDir(v, l)       // East owns → voice's own (cached)
+                                   : mm->getGlobalDir(engLane);  // Macro owns → Macro's global
+                        } else {
+                            dirVal = mm->getLaneDir(v, l);      // VAR/LEG: always voice's own
+                        }
+                        int dv = (int)std::lround(math::clamp(dirVal, 0.f, 3.f));
                         engine.laneDirVPending_[v][l] = (SequencerEngine::LaneDir)dv;
                     }
                 }

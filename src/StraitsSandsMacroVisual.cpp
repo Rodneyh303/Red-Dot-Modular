@@ -588,7 +588,10 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                 // using Macro's direction (macroLaneDir_), with full bounce support for
                 // Pendulum/PingPong. Same pattern as East's laneTickV_.
                 int strand = dotModular::MONO_LANE_TO_STRAND[el];
-                visualEditor->setLanePlayStep(el, calcPlayhead(eng.macroLaneTick_[strand], ownLen, ownOff, ownRot));
+                // MVC: hide the playhead when stopped (match Mono's started ? tick : -1), so
+                // rotation CV only moves the chevron, not the playhead, when the seq is stopped.
+                int ph = (eng.stepIndex >= 0) ? eng.macroLaneTick_[strand] : -1;
+                visualEditor->setLanePlayStep(el, calcPlayhead(ph, ownLen, ownOff, ownRot));
             }
         }
     }
