@@ -183,11 +183,15 @@ struct StraitsSandsMacroVisual : Module {
 
     StraitsSandsMacroVisual() {
         using namespace StraitsMacroVisualIds;
-        // RIGHT-SIZED: local param count only, now that the 12 global LOR params were
-        // re-homed out of the shared MonsoonIds pool (see GLOBAL_DNA_START).
-        config(StraitsMacroVisualIds::NUM_SPREAD_PARAMS, StraitsMacroVisualIds::NUM_INPUTS,
-               StraitsMacroVisualIds::NUM_OUTPUTS, 0);
+        // config() PARAMS = 0 (MVC step 1: Macro fully de-parammed). Every group --
+        // attenuverters, spread, taps, LOR, direction, sends -- is store-backed now
+        // (StoreKnob/store-backed DirCell bound by SVG shape name, not paramId), so Macro
+        // exposes NO host params. The id constants stay declared (they name SVG shapes like
+        // "param_SPREAD_REST" and index the store), but config() reserves no param slots.
+        // Macro has left the host/DAW param list entirely -- the point of the de-param.
+        config(0, StraitsMacroVisualIds::NUM_INPUTS,
         monLookupDiv.setDivision(8);   // topology changes are control-rate
+               StraitsMacroVisualIds::NUM_OUTPUTS, 0);
         for (auto& a : probLastStep) for (auto& x : a) x = -1;
         { static const char* ln[4] = {"REST","MEL","OCT","ACC"};
           for (int l = 0; l < 4; ++l)

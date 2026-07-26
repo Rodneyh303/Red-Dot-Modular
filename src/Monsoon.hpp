@@ -669,6 +669,18 @@ struct Monsoon : Module {
         float globalAtten[16]  = {0};   // lane*4 + col (col 0..2 = LOR items, 3 = spread)
         float globalTap[8]     = {0};   // lane*2 + (0 = LOR tap, 1 = spread tap)
         float globalDir[4]     = {0};   // lane
+
+        //  MONO slice (MVC step 1: Mono Sands de-param) 
+        // Mono Sands' per-module CV attenuverters, in ONE array like Macro's globalAtten:
+        // 6 lanes x 4 cols where cols 0..2 are the LOR attens (len/off/rot) and col 3 is the
+        // spread atten (meaningful only on the 4 spread lanes REST/MEL/OCT/ACC; unused on
+        // VAR/LEG). Lane order is EDITOR (MEL/OCT/REST/ACC/VAR/LEG), matching attenId. Unlike
+        // LOR and spread (which reuse the unified lorBase[0]/spread[0] mono slot), the attens
+        // had NO store -- the engine read them straight from params. This is their home.
+        float monoAtten[24]    = {0};   // lane*4 + col (col 0..2 = LOR items, 3 = spread)
+        // Mono V1 ownership per poly lane (MEL/OCT/REST/ACC): 0 = Macro owns V1's base for
+        // this lane, 1 = Mono owns it. Was a param (ownerDispId), cross-read by Macro.
+        float monoOwner[4]     = {1,1,1,1};  // default: Mono owns (matches configSwitch default 1)
     } editor;
 
     // Unified LOR base accessors. slot = voiceSlot (0 = V1/mono), bank 0..5, c 0..2.
@@ -695,6 +707,19 @@ struct Monsoon : Module {
         if (gLaneOk(lane) && which >= 0 && which < 2) editor.globalTap[lane*2 + which] = x; }
     float getGlobalDir(int lane) const { return gLaneOk(lane) ? editor.globalDir[lane] : 0.f; }
     void  setGlobalDir(int lane, float x) { if (gLaneOk(lane)) editor.globalDir[lane] = x; }
+
+    //  MONO slice accessors (Mono Sands de-param) 
+    // monoAtten: lane 0..5 (editor order), col 0..3 (0..2 = LOR len/off/rot, 3 = spread).
+    // Mirrors Macro's getGlobalAtten(lane, col) exactly -- one array, col 3 is the spread
+    // atten. Spread atten is meaningful only on the 4 spread lanes; VAR/LEG col 3 is unused.
+    float getMonoAtten(int lane, int col) const {
+        return (lane >= 0 && lane < 6 && col >= 0 && col < 4) ? editor.monoAtten[lane*4 + col] : 0.f; }
+    void  setMonoAtten(int lane, int col, float x) {
+        if (lane >= 0 && lane < 6 && col >= 0 && col < 4) editor.monoAtten[lane*4 + col] = x; }
+    bool  getMonoOwner(int lane) const {
+        return (lane >= 0 && lane < 4) ? (editor.monoOwner[lane] > 0.5f) : true; }
+    void  setMonoOwner(int lane, bool mono) {
+        if (lane >= 0 && lane < 4) editor.monoOwner[lane] = mono ? 1.f : 0.f; }
 
     float getSpread(int slot, int lane) const { return editor.spread[slot*4 + lane]; }
     void  setSpread(int slot, int lane, float x) { editor.spread[slot*4 + lane] = x; }

@@ -156,8 +156,11 @@ estimating the remaining modules: the widget is never the hard part; the free se
 | Sends | 16 | **DONE** — 16 send trimpots now StoreKnobs reading/writing getMacroSend/setMacroSend for the LIVE view voice (slot = voiceSlot(viewVoice+1), resolved per-call so a tab switch re-targets the same knob). The whole per-voice load/store sync dance + clobber guard + lastSendVoice are deleted — no proxy to sync. 16 sendDispId configParams removed. macroSend[256] already engine-read + persisted; no engine-seed hazard (sends were never a display mirror). |
 | Direction | 4 | **DONE** — store-backed DirCell (getStateFn/setStateFn on get/setGlobalDir, the array the engine reads + persists); 4 dirDispId configParams removed; dual-write mirror fully retired; gate-mod cycle + init-seed redirected to the store. No undo, matching East/Mono (still param-backed, also no undo). DirCell gained optional store callbacks so both forms share one widget. |
 
-Then: `config()` to 0, delete the dual-write mirror (down to the LOR + direction lines),
-and Macro leaves the host param list entirely.
+**config() = 0: DONE.** All six groups store-backed; the dual-write mirror is gone;
+Macro now calls config(0, NUM_INPUTS, NUM_OUTPUTS, 0) and exposes NO host params. Id
+constants stay declared (they name SVG shapes + index the store) but reserve no param slots.
+Store binds use addChild not addParam, so config(0) is safe. Macro has fully left the host
+param list -- the goal of the de-param.
 
 ### Services a de-parammed control must re-supply (all now central in configureStoreKnob)
 Found one at a time, each only on a real build — the full list, so later modules inherit
@@ -241,3 +244,125 @@ cycling cells also have no meaningful undo). This is consistent, not a regressio
 later, uniform pass: add undo across ALL the Sands cycling/grid cells at once (LOR grid,
 direction DirCells on Macro/East/Mono) rather than per-module, using StoreEditAction for the
 store-backed ones. Deferred by Rodney; not owed by the de-param work.
+
+## De-param playbook (distilled from Macro: LOR, direction, sends)
+
+A repeatable recipe for the remaining groups (Mono 54, East 38). Each group cost a distinct
+mistake the first time; this front-loads them.
+
+### The recipe
+1. **Find the store target by the ENGINE READ, never by name.** Multiple plausible store
+   arrays exist (e.g. LOR had both globalLor[12] AND East's per-slot lorBase[288]). The
+   RIGHT one is whatever the manager/engine already reads each cycle. Grep the manager for
+   get<Thing> and use THAT array. Guessing compiles clean and silently disconnects the
+   control -- the signature failure of this codebase.
+2. **Confirm it already persists.** The correct store array is almost always already in
+   PersistenceManager (editor<Thing>). If it isn't, add save/load FIRST -- a de-param without
+   persistence loses the value on reload.
+3. **Enumerate ALL param touch-points before editing.** A group is never just the widget bind.
+   Direction had FOUR: the bind, the dual-write mirror, the init engine->store seed, and the
+   gate-mod cycle. Missing one leaves the control half-working. Grep every read/write of the
+   param id (getValue/setValue AND the id accessor) and account for each.
+4. **Pick the widget path by what the control IS:**
+   - grid-edited (LOR): redirect the existing save/load helper to the store; no new widget.
+   - knob (attenuverters, sends): bindStoreKnob with get/set lambdas. For PER-VOICE controls
+     (sends), resolve the slot LIVE inside the lambda (slot = voiceSlot(viewVoice+1)) so a
+     view switch re-targets the same knob -- do NOT capture a fixed slot at bind time.
+   - cycling cell (direction): give the widget optional get/setStateFn callbacks and bind via
+     bindWidget (bare, no paramId, same pattern as the shipped StoreKnob). Leave the callbacks
+     unset elsewhere so still-param-backed siblings are untouched -- one widget, both modes.
+5. **Delete the sync machinery, don't preserve it.** The proxy pattern's load/store dance +
+   clobber guard + last<X>Voice latch exist ONLY to keep a display proxy in sync. Once the
+   widget edits the store directly there is no proxy, so delete the whole apparatus -- it's
+   removing a failure mode, not losing a feature.
+6. **Remove configParams, KEEP the ids declared.** Deleting enum entries renumbers every later
+   id. Drop the configParam calls, leave the id accessors, add a "STORE-BACKED, id kept" note.
+   config() uses a fixed NUM_ constant so the count is unchanged.
+7. **Match sibling undo behaviour, don't exceed it.** East/Mono cycling cells have no undo, so
+   Macro's don't either -- adding voice-correct undo to one module alone makes it inconsistent.
+   Uniform undo is a separate cross-module pass (see undo backlog).
+
+### Two traps that bit us (watch for both on Mono/East)
+- **Inverted-seed on load.** When a param that was a DISPLAY MIRROR of the engine becomes the
+  AUTHORITATIVE persisted store, any "seed store FROM engine on init" code inverts meaning: it
+  now CLOBBERS the loaded value with the engine's default (direction didn't survive save/load
+  until this seed was removed). Audit every engine->param init sync when de-paramming; if the
+  param is now the store, the seed must go.
+- **Comment lane-convention drift.** Editor lane vs engine lane (ENGINE_LANE_TO_EDITOR /
+  EDITOR_TO_ENGINE_LANE). The code was right but a comment I wrote claimed the wrong one --
+  a future-bug seed. State the lane basis explicitly and verify against the manager's read
+  index, not the loop variable name.
+
+### Assembly discipline (this whole session's recurring cost)
+Find the WORKING instance in the codebase and match its exact idiom rather than writing from
+memory: the ModArcOverlay namespace (redDot::), the shadowed-`module` ctor param (capture the
+local, not [this]), bindStoreKnob's Tag + resolver args. Every scripted edit needs a match-
+count assertion; walk braces programmatically (strip comments/strings first -- em-dashes and
+`{` in comments give false mismatches).
+
+## Mono Sands de-param census (NUM_PARAMS = 54)
+
+| Group | n | Ids | Widget | Store target (engine read) | Persists? | Notes |
+|---|---|---|---|---|---|---|
+| LOR | 18 | lenId/offId/rotId (0..17) | grid-edited (saveSlot/loadSlot) | `getLorBase(kMonoSlot=0, engLane, c)` via mmV1 (MonsoonSandsManager:387) | lorBase[288] yes | Same target as East's poly slots but slot 0. Redirect saveSlot/loadSlot to setLorBase(0,...) exactly as East does for poly. NO inverted-seed risk (Mono LOR was never an engine mirror). |
+| Attens | 18 | attenId (22..39) | Trimpot | `params[attenId]` read DIRECTLY by manager (line 110) -- NO store yet | not yet | Attens read straight from params, not a store. Need a store API and manager redirect. `getMonoAtten` doesn't exist yet -- must be added to Monsoon.hpp. |
+| Spread | 4 | SPR_REST..SPR_ACCENT (18..21) | Trimpot | `params[sprId(l)]` read directly (line 271) -- NO store yet | not yet | Same situation as attens. `getMonoSpread` doesn't exist. |
+| Spread attens | 4 | SPR_ATTEN_START (40..43) | Trimpot | `params[sprAttenId(l)]` read directly (line 276) -- NO store yet | not yet | Same -- needs a store API. |
+| Owners | 4 | OWN_DISP_START (44..47) | OwnerCell (cycling cell) | `params[ownerDispId(l)]` read by manager (line 94) AND Macro cross-reads (line 279 of MonsoonSandsVisualExpander.cpp AND StraitsSandsMacroVisual.cpp) -- NO store yet | not yet | The cross-read by MACRO is the dependency Macro's buildV1Topo still has. De-paramming owners unblocks Macro's last remaining cross-read. OwnerCell gets the same getFn/setFn callback approach as DirCell. |
+| Direction | 6 | DIR_DISP_START (48..53) | DirCell | `params[dirDispId(l)]` read DIRECTLY by engine init-sync AND gate-mod (lines 318/439) -- NO store yet | not yet | 6 lanes (all STRAND indices 0..5, including VAR/LEG which ARE mono-owned). `getMonoLaneDir`/`setMonoLaneDir` ALREADY EXISTS in Monsoon.hpp (line 715). Same store-backed DirCell approach as Macro; init-seed inversion trap also exists here -- must NOT seed from engine on load. |
+
+### Key findings vs Macro
+
+1. **Attens, spread, spread-attens (26 params)**: the engine reads these DIRECTLY from params
+   with no store intermediary. Macro had a store (globalAtten, globalSpread) because those
+   were global; Mono's are per-module and no equivalent store API exists yet. Need to add
+   `getMonoAtten(lane,param)`, `setMonoAtten`, `getMonoSpread(lane)`, `setMonoSpread`,
+   `getMonoSprAtten(lane)`, `setMonoSprAtten` to Monsoon.hpp, backed by new arrays in
+   `EditorState`, and redirect the 3 manager reads (lines 110, 271, 276). These persist once
+   added to PersistenceManager.
+
+2. **Owners (4)**: cross-read by Macro (buildV1Topo) AND the manager. De-paramming owners
+   resolves Macro's last cross-module param dependency. OwnerCell already has the DirCell-
+   style callback hooks (getFn/setFn added to DirCell -- check if OwnerCell has them too, or
+   needs them added). Store: probably `monoOwner[4]` in EditorState.
+
+3. **LOR (18)** and **Direction (6)**: same pattern as Macro but:
+   - LOR target is `lorBase[kMonoSlot=0]` NOT `globalLor` -- Mono IS a voice-slot occupant.
+   - Direction: `getMonoLaneDir/setMonoLaneDir` already exists, uses `laneDir[15*6+lane]`.
+     Init-seed inversion trap present (line 318 seeds params from engine -- MUST become
+     seed-from-nothing once params are gone, or seed from store if store is pre-loaded).
+   - Direction has 6 lanes (not 4) -- VAR and LEG are mono-owned.
+
+### Suggested migration order (per playbook: store-target-first, then widget)
+1. Add store API for attens/spread/sprAttens + PersistenceManager entries (the missing piece).
+2. Redirect manager reads (lines 110, 271, 276) to the new store -- A/B proof.
+3. LOR: redirect saveSlot/loadSlot to setLorBase(kMonoSlot,...). Remove 18 configs.
+4. Attens (18): bindStoreKnob on getMonoAtten/setMonoAtten. Remove 18 configs.
+5. Spread (4) + spread attens (4): bindStoreKnob. Remove 8 configs.
+6. Owners (4): store-backed OwnerCell. Remove 4 configs. Unblocks Macro's cross-read.
+7. Direction (6): store-backed DirCell (already has callbacks). Remove 6 configs. Watch init-seed.
+8. config() -> 0. Verify Macro's cross-read now reads the store.
+
+## Mono spread base: StoreKnob needs lock/display support (blocker found)
+
+Attempted the arc-decouple + spread-base StoreKnob swap. The arc decouple itself is trivial
+(Widget* + getSetNorm reads getSpread(kMonoSlot,l), mirroring Macro). But the spread BASE
+widget has behaviour StoreKnob does not support:
+- `lockWhen`  -- lock the knob while the lane is DELEGATED to Macro.
+- `displayValueFn` -- while delegated, SHOW Macro's spread value (base + send delta) without
+  touching the stored value, so reclaiming the lane reverts to Mono's own spread.
+
+Macro's spread StoreKnob has NEITHER, because Macro is the GLOBAL scope and never delegates.
+Mono delegates per-lane (the monoOwner mechanism), so lock/display is a real feature, not
+incidental. Same need will recur for Mono's LOR grid and East.
+
+DECISION NEEDED: extend the shared StoreKnob (ui/StoreBound.hpp) with optional lockWhen +
+displayValueFn callbacks (mirroring DimmableTrimpot's), so delegation-aware store widgets are
+first-class. This is the right general fix -- it unblocks Mono spread base, and LOR/East will
+want it too -- but it touches shared UI code, so it's its own deliberate step, not a rider on
+the arc decouple.
+
+Order revised:
+1. Extend StoreKnob with lockWhen + displayValueFn (shared widget change, tested).
+2. THEN arc-decouple + spread-base swap together (needs the store populated to be correct).
+3. Then the no-arc groups (attens, owners, direction) as plain swaps.
