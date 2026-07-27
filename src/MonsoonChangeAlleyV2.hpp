@@ -1,5 +1,5 @@
 #pragma once
-// MonsoonChangeAlleyExpander — 16×16 pin-matrix expander
+// MonsoonChangeAlleyV2 — 16×16 pin-matrix expander
 // Rows = consuming voices (0=mono/V1, 1..15=poly V2..V16)
 // Columns = source voices (same indexing)
 // Two pin types per cell: white=rhythm, red=melody (concentric when both)
@@ -14,93 +14,136 @@
 #include <cstdio>
 #include "Monsoon.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
+#include "ui/ModArcOverlay.hpp"
 #include "ui/StoreEditAction.hpp"   // pin edits: store-backed, undoable (DAW_PARAM_AUDIT 5b)
 
 using namespace rack;
 // NOT 'using namespace ChangeAlleyIds' — Monsoon.hpp exposes MonsoonIds with the same
 // NUM_PARAMS/NUM_INPUTS/... names, so we qualify explicitly (same rule as the Sands
 // managers: 'NOT using namespace ... to avoid ambiguous calls — qualify below').
-namespace CA1 = ChangeAlleyIds;
+namespace CA = ChangeAlleyV2Ids;
 
-struct MonsoonChangeAlleyExpander : Module {
-    uint8_t rhythmSrc[CA1::N_VOICES];
-    uint8_t melodySrc[CA1::N_VOICES];
+struct MonsoonChangeAlleyV2 : Module {
+    uint8_t rhythmSrc[CA::N_VOICES];
+    uint8_t melodySrc[CA::N_VOICES];
 
-    static constexpr const char* CURRENCIES[CA1::N_VOICES] = {
+    static constexpr const char* CURRENCIES[CA::N_VOICES] = {
         "SGD","MYR","IDR","THB","PHP","VND","MMK","KHR",
         "HKD","CNY","TWD","KRW","JPY","AUD","INR","USD",
     };
 
-    // Restructure queue (§11): one pending per (transform × type) row, latest-overwrites.
-    // Set by button press or gate rising edge here (either thread-safe bool latch);
-    // APPLIED by the expander manager at phrase boundary / unlock (audio side), which
-    // writes the transform result into rhythmSrc/melodySrc and clears the flag.
-    // Restructure queue (§11 + §14a latch fix): parameters LATCHED AT TRIGGER TIME.
-    // A bare bool pendingRow caused the manager to re-read the grain knob at the phrase
-    // boundary -- turning the knob between trigger and bar line silently changed what fired.
-    // Now the struct captures {armed, blk, scatterSeed} at the moment of the trigger.
-    struct PendingAction {
-        bool     armed       = false;
-        int      blk         = 4;
-        uint32_t scatterSeed = 0;
-    };
-    PendingAction pendingRow[8];
+    // ── Transforms (§15): the full Temasek control set, in one module ──────────────────
+    CA::PendingAction pendingRows[CA::N_ROWS];
+    rack::dsp::SchmittTrigger domTrig  [CA::N_ROWS];
+    rack::dsp::SchmittTrigger codTrig  [CA::N_ROWS];
+    rack::dsp::BooleanTrigger btnTrig  [CA::N_ROWS * 2];
+    rack::dsp::SchmittTrigger sBackDom [CA::SIDES * CA::TYPES];
+    rack::dsp::SchmittTrigger sBackCod [CA::SIDES * CA::TYPES];
+    uint64_t scatterCounter[CA::SIDES * CA::TYPES * 2] = {};
 
-    // Submatrix highlight state, filled by MonsoonExpanderManager from the attached
-    // Temasek expander. A PLAIN POD deliberately: Change Alley must not know Temasek's
-    // type, or the two headers form an include cycle (Temasek would need Change Alley
-    // for nothing, and Change Alley would need Temasek's complete type here).
-    struct TkHighlight { bool armed = false; int blk = 4; bool isInter = false;
-                         bool isDomain = true; int type = 0; };
-    static constexpr int TK_HL_ROWS = 16;
-    TkHighlight tkHighlight[TK_HL_ROWS];
-    rack::dsp::SchmittTrigger gateTrig[8];
-    rack::dsp::BooleanTrigger btnTrig[8];
-    // (scatterSeed is now per-row inside PendingAction)
-
-    MonsoonChangeAlleyExpander() {
-        config(CA1::NUM_PARAMS, CA1::NUM_INPUTS, CA1::NUM_OUTPUTS, CA1::NUM_LIGHTS);
-        static constexpr const char* TN[4] = {"Collapse","Rotate","Scatter","Reflect"};
-        for (int t = 0; t < CA1::N_TRANSFORMS; ++t)
-            for (int r = 0; r < 2; ++r) {
-                const int row = CA1::ctrlRow(t, r == 0);
-                const std::string nm = std::string(TN[t]) + (r == 0 ? " rhythm" : " melody");
-                // Stepped block-size knob: detents 0..4 → block {1,2,4,8,16}
-                configSwitch(CA1::BLOCK_KNOB_START + row, 0.f, 4.f, 2.f, nm + " block size",
-                             {"1 (per voice)","2","4","8","16 (whole pool)"});
-                configButton(CA1::TRIG_BTN_START + row, nm + " trigger");
-                configInput(CA1::TRIG_IN_START + row, nm + " trigger gate");
+    MonsoonChangeAlleyV2() {
+        config(CA::NUM_PARAMS_TOTAL, CA::NUM_INPUTS, 0, CA::NUM_LIGHTS);
+        static const char* VN[CA::N_VERBS] = {"Collapse","Rotate","Reflect","Scatter"};
+        static const char* SN[CA::SIDES]   = {"Intra","Inter"};
+        static const char* PN[CA::TYPES]   = {"Rhythm","Melody"};
+        static const char* GL[] = {"1","2","4","8","16"};
+        for (int v = 0; v < CA::N_VERBS; ++v)
+          for (int sd = 0; sd < CA::SIDES; ++sd)
+            for (int ty = 0; ty < CA::TYPES; ++ty) {
+                const int r = CA::rowId(v, sd, ty);
+                const std::string nm = std::string(VN[v]) + " " + SN[sd] + " " + PN[ty];
+                configSwitch(CA::GRAIN_START + r, 0.f, 4.f, 2.f, nm + " grain",
+                             {GL[0],GL[1],GL[2],GL[3],GL[4]});
             }
+        for (int r = 0; r < CA::N_ROWS / 2; ++r) {
+            configParam(CA::LEADER_START + r, 0.f, 15.f, 0.f, "Leader offset")->snapEnabled = true;
+            configParam(CA::STEP_START   + r, -7.f, 7.f, 1.f, "Step")->snapEnabled = true;
+        }
+        for (int i = 0; i < CA::N_ROWS * 2; ++i)
+            configButton(CA::BTN_START + i, (i % 2 == 0) ? "Domain trigger" : "Codomain trigger");
+        for (int r = 0; r < CA::N_ROWS; ++r) {
+            configInput(CA::DOMAIN_TRIG_START   + r, "Domain trigger");
+            configInput(CA::CODOMAIN_TRIG_START + r, "Codomain trigger");
+        }
+        for (int i = 0; i < CA::SIDES * CA::TYPES; ++i) {
+            configInput(CA::SCATTER_BACK_DOM_START + i, "Scatter domain back");
+            configInput(CA::SCATTER_BACK_COD_START + i, "Scatter codomain back");
+        }
+        configInput(CA::GRAIN_POLY_IN, "Grain poly CV (16ch -> 16 grain knobs; mono=all)");
+        configInput(CA::STEP_POLY_IN,  "Step poly CV (ch 1-4 leader, 5-8 step; mono=all)");
         resetToIdentity();
     }
 
-    static int blockFromKnob(float v) {
+    static int grainFromKnob(float v) {
         static const int B[5] = {1,2,4,8,16};
         int i = (int)std::lround(v); if (i < 0) i = 0; if (i > 4) i = 4;
         return B[i];
     }
 
-    void process(const ProcessArgs&) override {
-        // Latch pendings from gates + buttons; light = pending. Application happens in
-        // the expander manager at phrase boundary / unlock (audio-side, same thread).
-        for (int row = 0; row < 8; ++row) {
-            // BRACES ARE LOAD-BEARING: without them only `armed` is guarded and blk is
-            // re-read EVERY SAMPLE, which silently defeats the whole §14a latch.
-            auto latch = [&]() {
-                pendingRow[row].armed = true;
-                pendingRow[row].blk   = MonsoonChangeAlleyExpander::blockFromKnob(
-                                            params[CA1::BLOCK_KNOB_START + row].getValue());
-            };
-            if (gateTrig[row].process(inputs[CA1::TRIG_IN_START + row].getVoltage(), 0.1f, 1.f))
-                latch();
-            if (btnTrig[row].process(params[CA1::TRIG_BTN_START + row].getValue() > 0.5f))
-                latch();
-            lights[CA1::PENDING_LIGHT_START + row].setBrightness(pendingRow[row].armed ? 1.f : 0.f);
+    // Poly CV read with MONO NORMALLING: a 1-channel cable drives ALL channels (the standard
+    // Rack idiom -- a mono LFO into a poly mod input modulates everything equally).
+    static float polyCV(rack::engine::Input& in, int channel) {
+        if (!in.isConnected()) return 0.f;
+        return (in.getChannels() <= 1) ? in.getVoltage(0) : in.getVoltage(channel);
+    }
+
+    void latchRow(int r, int verb, int side, int type, bool domain) {
+        auto& p    = pendingRows[r];
+        p.armed    = true;
+        p.isDomain = domain;
+        p.isInter  = (side == 1);
+        // Grain = knob + poly CV (channel = row). No attenuverter (§ Rodney): 16 channels
+        // map straight to the 16 grain knobs. CV is added in knob-detent units (0..4).
+        float gv = params[CA::GRAIN_START + r].getValue();
+        gv += polyCV(inputs[CA::GRAIN_POLY_IN], r) * 0.4f;   // ~2V per detent, mono-normalled
+        p.grain    = grainFromKnob(gv);
+        if      (verb == CA::V_COLLAPSE) {
+            const int li = side*CA::TYPES + type;           // 0..3 -> STEP poly ch 1..4
+            float lv = params[CA::LEADER_START + li].getValue();
+            lv += polyCV(inputs[CA::STEP_POLY_IN], li);      // 1V per leader step
+            p.leaderOrStep = (int)std::lround(lv);
         }
+        else if (verb == CA::V_ROTATE)
+            {   const int si = side*CA::TYPES + type;
+                const int sch = 4 + si;                      // 4..7 -> STEP poly ch 5..8
+                float sv = params[CA::STEP_START + si].getValue();
+                sv += polyCV(inputs[CA::STEP_POLY_IN], sch); // 1V per step
+                p.leaderOrStep = (int)std::lround(sv); }
+        else
+            p.leaderOrStep = 0;
+        if (verb == CA::V_SCATTER) p.scatterDelta = 1;
+        lights[CA::PENDING_LIGHT_START + r].setBrightness(1.f);
+    }
+
+    void process(const ProcessArgs&) override {
+        for (int v = 0; v < CA::N_VERBS; ++v)
+          for (int sd = 0; sd < CA::SIDES; ++sd)
+            for (int ty = 0; ty < CA::TYPES; ++ty) {
+                const int r = CA::rowId(v, sd, ty);
+                if (domTrig[r].process(inputs[CA::DOMAIN_TRIG_START + r].getVoltage(), 0.1f, 1.f))
+                    latchRow(r, v, sd, ty, true);
+                if (codTrig[r].process(inputs[CA::CODOMAIN_TRIG_START + r].getVoltage(), 0.1f, 1.f))
+                    latchRow(r, v, sd, ty, false);
+                if (btnTrig[r*2].process(params[CA::BTN_START + r*2].getValue() > 0.5f))
+                    latchRow(r, v, sd, ty, true);
+                if (btnTrig[r*2+1].process(params[CA::BTN_START + r*2+1].getValue() > 0.5f))
+                    latchRow(r, v, sd, ty, false);
+            }
+        for (int sd = 0; sd < CA::SIDES; ++sd)
+          for (int ty = 0; ty < CA::TYPES; ++ty) {
+            const int i = sd * CA::TYPES + ty;
+            const int r = CA::rowId(CA::V_SCATTER, sd, ty);
+            if (sBackDom[i].process(inputs[CA::SCATTER_BACK_DOM_START + i].getVoltage(), 0.1f, 1.f)) {
+                latchRow(r, CA::V_SCATTER, sd, ty, true);  pendingRows[r].scatterDelta = -1;
+            }
+            if (sBackCod[i].process(inputs[CA::SCATTER_BACK_COD_START + i].getVoltage(), 0.1f, 1.f)) {
+                latchRow(r, CA::V_SCATTER, sd, ty, false); pendingRows[r].scatterDelta = -1;
+            }
+          }
     }
 
     void resetToIdentity() {
-        for (int v = 0; v < CA1::N_VOICES; ++v) { rhythmSrc[v] = v; melodySrc[v] = v; }
+        for (int v = 0; v < CA::N_VOICES; ++v) { rhythmSrc[v] = v; melodySrc[v] = v; }
     }
 
 
@@ -108,7 +151,7 @@ struct MonsoonChangeAlleyExpander : Module {
         json_t* root = json_object();
         auto save = [&](const char* k, const uint8_t* a) {
             json_t* arr = json_array();
-            for (int v = 0; v < CA1::N_VOICES; ++v) json_array_append_new(arr, json_integer(a[v]));
+            for (int v = 0; v < CA::N_VOICES; ++v) json_array_append_new(arr, json_integer(a[v]));
             json_object_set_new(root, k, arr);
         };
         save("rhythmSrc", rhythmSrc);
@@ -121,10 +164,10 @@ struct MonsoonChangeAlleyExpander : Module {
         auto load = [&](const char* k, uint8_t* a) {
             json_t* arr = json_object_get(root, k);
             if (!arr) return;
-            for (int v = 0; v < CA1::N_VOICES && v < (int)json_array_size(arr); ++v) {
+            for (int v = 0; v < CA::N_VOICES && v < (int)json_array_size(arr); ++v) {
                 json_t* val = json_array_get(arr, v);
                 if (json_is_integer(val))
-                    a[v] = (uint8_t)math::clamp((int)json_integer_value(val), 0, CA1::N_VOICES-1);
+                    a[v] = (uint8_t)math::clamp((int)json_integer_value(val), 0, CA::N_VOICES-1);
             }
         };
         load("rhythmSrc", rhythmSrc);
@@ -135,35 +178,41 @@ struct MonsoonChangeAlleyExpander : Module {
 };
 
 // ── Widget ───────────────────────────────────────────────────────────────────
-struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
+struct MonsoonChangeAlleyV2Widget : ModuleWidget {
 
-    // Matrix geometry in mm (must match gen_change_alley.py exactly — 29HP kit layout)
-    static constexpr float PW_MM    = 29.f * 5.08f;
-    static constexpr float PH_MM    = 128.5f;
-    static constexpr float GUTTER_T =  9.0f;
-    static constexpr float GUTTER_B =  8.0f;
-    static constexpr float MY_MM    = GUTTER_T + 8.0f;
-    static constexpr float AVAIL_H  = PH_MM - MY_MM - GUTTER_B - 2.0f;
-    static constexpr float CELL_H   = AVAIL_H / CA1::N_VOICES;
-    static constexpr float CELL_W   = CELL_H;
-    static constexpr float MW_MM    = CELL_W * CA1::N_VOICES;
-    static constexpr float MH_MM    = CELL_H * CA1::N_VOICES;
-    static constexpr float MX_MM    = PW_MM - 4.0f - MW_MM;                  // grid claims the RIGHT
-    // Control column (generator CTRL_*)
-    static constexpr float CTRL_X_JACK = 6.0f,  CTRL_X_KNOB = 15.5f,
-                           CTRL_X_BTN  = 24.0f, CTRL_X_LED  = 29.5f;
-    static constexpr float CTRL_TOP    = MY_MM + 4.5f;
-    static constexpr float CTRL_ROW_H  = 9.0f;
-    static constexpr float GROUP_GAP   = 6.8f;
-    static float ctrlRowY(int row) {
-        return CTRL_TOP + (row/2)*(2.f*CTRL_ROW_H + GROUP_GAP) + (row%2)*CTRL_ROW_H + CTRL_ROW_H*0.5f;
+    // Geometry -- MUST MATCH gen_change_alley_v2.py (48HP: V1-size grid, generous controls)
+    static constexpr float PW_MM   = 48.f * 5.08f;
+    static constexpr float PH_MM   = 128.5f;
+    static constexpr float MARGIN  = 6.0f;
+    static constexpr float J_DOM   = MARGIN +  0.0f;
+    static constexpr float J_COD   = MARGIN +  9.5f;
+    static constexpr float KNOB1   = MARGIN + 18.5f;   // grain
+    static constexpr float KNOB2   = MARGIN + 27.0f;   // leader/step/scatter dom-back
+    static constexpr float J_BACK2 = MARGIN + 34.5f;   // scatter cod-back
+    static constexpr float BTN_D   = MARGIN + 42.5f;
+    static constexpr float BTN_C   = MARGIN + 48.5f;
+    static constexpr float LIGHT_X = MARGIN + 54.0f;
+    static constexpr float CTRL_W  = LIGHT_X + 2.5f;   // 62.5
+    static constexpr float GUTTER  = 9.6f;
+    static constexpr float MX_MM   = CTRL_W + GUTTER;
+    static constexpr float MW_MM   = PW_MM - 2.f * (CTRL_W + GUTTER);
+    static constexpr float CELL_W  = MW_MM / CA::N_VOICES;
+    static constexpr float CELL_H  = CELL_W;
+    static constexpr float MY_MM   = 20.0f;
+    static constexpr float MH_MM   = CELL_H * CA::N_VOICES;
+    static constexpr float CTRL_ROW_H = 9.0f;
+    static constexpr float GROUP_GAP  = 6.8f;
+    static constexpr float CTRL_TOP   = 21.0f;
+    static float rowY(int verb, int sub) {
+        return CTRL_TOP + verb*(2.f*CTRL_ROW_H + GROUP_GAP) + sub*CTRL_ROW_H + CTRL_ROW_H*0.5f;
     }
+    static float lx(float x_mm, bool flip) { return flip ? PW_MM - x_mm : x_mm; }
 
-    // Cell centre in px (rack mm2px)
     static Vec cellCentre(int row, int col) {
         return mm2px(Vec(MX_MM + col * CELL_W + CELL_W * 0.5f,
                          MY_MM + row * CELL_H + CELL_H * 0.5f));
     }
+
     static float cellRadius() {          // BOTH pin types draw at this size (same, bigger)
         return mm2px(Vec(std::min(CELL_W, CELL_H) * 0.32f, 0)).x;
     }
@@ -183,31 +232,116 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
     int lastThemeLight = -1;
 
-    MonsoonChangeAlleyExpanderWidget(MonsoonChangeAlleyExpander* module) {
+    MonsoonChangeAlleyV2Widget(MonsoonChangeAlleyV2* module) {
         setModule(module);
-        std::string dark  = asset::plugin(pluginInstance, "res/panels/ChangeAlley_panel_dark.svg");
-        std::string light = asset::plugin(pluginInstance, "res/panels/ChangeAlley_panel_light.svg");
+        std::string dark  = asset::plugin(pluginInstance, "res/panels/ChangeAlleyV2_panel_dark.svg");
+        std::string light = asset::plugin(pluginInstance, "res/panels/ChangeAlleyV2_panel_light.svg");
         panelSvgDark  = APP->window->loadSvg(dark);
         panelSvgLight = APP->window->loadSvg(light);
         setPanel(Svg::load(dark));
-        addChild(createWidget<ScrewSilver>(mm2px(Vec(1.5,    1.5))));
-        addChild(createWidget<ScrewSilver>(mm2px(Vec(PW_MM - 1.5, 1.5))));
-        addChild(createWidget<ScrewSilver>(mm2px(Vec(1.5,    PH_MM - 1.5))));
-        addChild(createWidget<ScrewSilver>(mm2px(Vec(PW_MM - 1.5, PH_MM - 1.5))));
+        // Screws inset to the rails: RACK_GRID_WIDTH is 5.08mm, and Rack's own convention
+        // is half a hole from the edges. 1.5mm put them partly off the panel edge.
+        // Screws on the rails. RACK_GRID_HEIGHT is 128.5mm; a screw is ~5.5mm across, so the
+        // bottom pair must sit ~5mm above the edge to stay on-panel (2.5mm clipped it).
+        addChild(createWidget<ScrewSilver>(mm2px(Vec(7.5,          5.0))));
+        addChild(createWidget<ScrewSilver>(mm2px(Vec(PW_MM - 7.5,  5.0))));
+        addChild(createWidget<ScrewSilver>(mm2px(Vec(7.5,          PH_MM - 5.0))));
+        addChild(createWidget<ScrewSilver>(mm2px(Vec(PW_MM - 7.5,  PH_MM - 5.0))));
 
-        // Restructure control column: 8 rows of [block knob | gate jack | button | light]
-        if (true) for (int row = 0; row < 8; ++row) {
-            const float y = ctrlRowY(row);
-            auto* k = createParamCentered<Trimpot>(mm2px(Vec(CTRL_X_KNOB, y)), module,
-                                                   CA1::BLOCK_KNOB_START + row);
-            k->getParamQuantity() ? (void)(k->getParamQuantity()->snapEnabled = true) : (void)0;
-            addParam(k);
-            addInput(createInputCentered<PJ301MPort>(mm2px(Vec(CTRL_X_JACK, y)), module,
-                                                     CA1::TRIG_IN_START + row));
-            addParam(createParamCentered<TL1105>(mm2px(Vec(CTRL_X_BTN, y)), module,
-                                                 CA1::TRIG_BTN_START + row));
-            addChild(createLightCentered<SmallLight<RedLight>>(mm2px(Vec(CTRL_X_LED, y)), module,
-                                                               CA1::PENDING_LIGHT_START + row));
+        // Mod arc factory: overlay a red arc on a knob showing where poly CV pushes it.
+        // getSetNorm = knob's own value; getModNorm = resolved knob+CV; gated on the
+        // Monsoon menu flag modVizChangeAlley (matches every other surface).
+        auto* mod = module;   // capture the ctor param explicitly (member `this->module`
+                              //   is set by setModule but the local shadows it here)
+        auto addArc = [&, mod](rack::app::Knob* knob, int paramId,
+                          std::function<float()> resolved) {
+            auto* arc = new redDot::ModArcOverlay();
+            arc->radius = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
+            arc->getSetNorm = [mod, paramId]() -> float {
+                if (!mod) return 0.f;
+                auto* pq = mod->paramQuantities[paramId];
+                return pq ? (float)pq->getScaledValue() : 0.f;
+            };
+            arc->getModNorm = resolved;
+            arc->isActive   = [mod]() -> bool {
+                Monsoon* mm = mod ? redDot::findMonsoonEitherSide(mod) : nullptr;
+                return mm ? mm->modVizChangeAlley : false;
+            };
+            arc->attachOverKnob(knob, 1.5f);
+            addChild(arc);
+        };
+
+        // Transform controls: intra (left) and inter (right), mirrored, jacks outside.
+        for (int verb = 0; verb < CA::N_VERBS; ++verb)
+          for (int sub = 0; sub < 2; ++sub) {
+            const float y = rowY(verb, sub);
+            for (int side = 0; side < 2; ++side) {
+                const bool flip = (side == 1);
+                const int r = CA::rowId(verb, side, sub);
+                addInput(createInputCentered<PJ301MPort>(
+                    mm2px(Vec(lx(J_DOM, flip), y)), module, CA::DOMAIN_TRIG_START + r));
+                addInput(createInputCentered<PJ301MPort>(
+                    mm2px(Vec(lx(J_COD, flip), y)), module, CA::CODOMAIN_TRIG_START + r));
+                {   auto* k = createParamCentered<Trimpot>(
+                        mm2px(Vec(lx(KNOB1, flip), y)), module, CA::GRAIN_START + r);
+                    if (k->getParamQuantity()) k->getParamQuantity()->snapEnabled = true;
+                    addParam(k);
+                    const int gr = r;
+                    addArc(k, CA::GRAIN_START + r, [mod, gr]() -> float {
+                        if (!mod) return 0.f;
+                        float v = mod->params[CA::GRAIN_START + gr].getValue()
+                                + MonsoonChangeAlleyV2::polyCV(mod->inputs[CA::GRAIN_POLY_IN], gr) * 0.4f;
+                        return rack::math::clamp(v / 4.f, 0.f, 1.f);   // 0..4 detents -> 0..1
+                    }); }
+                if (verb == CA::V_COLLAPSE) {
+                    const int li = side*CA::TYPES + sub;      // STEP poly ch 1..4
+                    auto* k = createParamCentered<Trimpot>(mm2px(Vec(lx(KNOB2, flip), y)),
+                        module, CA::LEADER_START + li);
+                    if (k->getParamQuantity()) k->getParamQuantity()->snapEnabled = true;
+                    addParam(k);
+                    addArc(k, CA::LEADER_START + li, [mod, li]() -> float {
+                        if (!mod) return 0.f;
+                        float v = mod->params[CA::LEADER_START + li].getValue()
+                                + MonsoonChangeAlleyV2::polyCV(mod->inputs[CA::STEP_POLY_IN], li);
+                        return rack::math::clamp(v / 15.f, 0.f, 1.f);   // leader 0..15
+                    });
+                } else if (verb == CA::V_ROTATE) {
+                    const int sIdx = side*CA::TYPES + sub;
+                    auto* k = createParamCentered<Trimpot>(mm2px(Vec(lx(KNOB2, flip), y)),
+                        module, CA::STEP_START + sIdx);
+                    if (k->getParamQuantity()) k->getParamQuantity()->snapEnabled = true;
+                    addParam(k);
+                    addArc(k, CA::STEP_START + sIdx, [mod, sIdx]() -> float {
+                        if (!mod) return 0.f;
+                        float v = mod->params[CA::STEP_START + sIdx].getValue()   // -7..7
+                                + MonsoonChangeAlleyV2::polyCV(mod->inputs[CA::STEP_POLY_IN], 4 + sIdx);
+                        return rack::math::clamp((v + 7.f) / 14.f, 0.f, 1.f);
+                    });
+                } else if (verb == CA::V_SCATTER) {
+                    const int si = side*CA::TYPES + sub;
+                    addInput(createInputCentered<PJ301MPort>(mm2px(Vec(lx(KNOB2, flip), y)),
+                        module, CA::SCATTER_BACK_DOM_START + si));
+                    addInput(createInputCentered<PJ301MPort>(mm2px(Vec(lx(J_BACK2, flip), y)),
+                        module, CA::SCATTER_BACK_COD_START + si));
+                }
+                addParam(createParamCentered<TL1105>(mm2px(Vec(lx(BTN_D, flip), y)),
+                    module, CA::BTN_START + r*2));
+                addParam(createParamCentered<TL1105>(mm2px(Vec(lx(BTN_C, flip), y)),
+                    module, CA::BTN_START + r*2 + 1));
+                addChild(createLightCentered<SmallLight<RedLight>>(
+                    mm2px(Vec(lx(LIGHT_X, flip), y)), module, CA::PENDING_LIGHT_START + r));
+            }
+          }
+
+        // Two poly modulation inputs, bottom-right under the last REFLECT row.
+        {
+            // MUST match gen_change_alley_v2.py: by = lastBottom()+9, rx = PW-MARGIN-4.45
+            const float by = rowY(CA::N_VERBS - 1, 1) + CTRL_ROW_H * 0.5f + 9.0f;
+            const float rx = PW_MM - MARGIN - 4.45f;
+            addInput(createInputCentered<PJ301MPort>(mm2px(Vec(rx,         by)),
+                     module, CA::STEP_POLY_IN));
+            addInput(createInputCentered<PJ301MPort>(mm2px(Vec(rx - 10.0f, by)),
+                     module, CA::GRAIN_POLY_IN));
         }
 
         auto* ov = new PinOverlay(module);
@@ -221,9 +355,9 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
     // context menu outside the grid). Transparent passes everything through; we consume
     // ONLY genuine cell hits in onButton.
     struct PinOverlay : widget::TransparentWidget {
-        MonsoonChangeAlleyExpander* module;
+        MonsoonChangeAlleyV2* module;
         int hoverRow = -1, hoverCol = -1;   // XILS crosshair target (-1 = none)
-        PinOverlay(MonsoonChangeAlleyExpander* m) : module(m) {}
+        PinOverlay(MonsoonChangeAlleyV2* m) : module(m) {}
 
         int getPolyCount() const {
             if (!module) return 0;
@@ -283,7 +417,7 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
                     char num[4];
                     // Voice-number labels only (currency codes dropped — tiny + noisy in-rack).
                     // ShareTechMono, 3.2mm — readable at 100% zoom.
-                    for (int col = 0; col < CA1::N_VOICES; ++col) {
+                    for (int col = 0; col < CA::N_VOICES; ++col) {
                         Vec c = cellCentre(0, col);
                         float topY = mm2px(Vec(0, MY_MM)).y;
                         snprintf(num, sizeof(num), "%d", col + 1);
@@ -292,7 +426,7 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
                         nvgFillColor(vg, col == 0 ? amber : ink);
                         nvgText(vg, c.x, topY - mm2px(Vec(0,1.6f)).y, num, NULL);
                     }
-                    for (int row = 0; row < CA1::N_VOICES; ++row) {
+                    for (int row = 0; row < CA::N_VOICES; ++row) {
                         Vec c = cellCentre(row, 0);
                         float leftX = mm2px(Vec(MX_MM,0)).x;
                         snprintf(num, sizeof(num), "%d", row + 1);
@@ -301,44 +435,53 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
                         nvgFillColor(vg, row == 0 ? amber : ink);
                         nvgText(vg, leftX - mm2px(Vec(1.4f,0)).x, c.y, num, NULL);
                     }
-                    // Transform group labels in the gaps above each pair (room per Rodney)
-                    static constexpr const char* TN[4] = {"COLLAPSE","ROTATE","SCATTER","REFLECT"};
-                    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BASELINE);
+                    // Verb labels BOTH sides: "COLLAPSE INTRA" left, "COLLAPSE INTER" right.
+                    // Panel row order is Collapse, Rotate, Reflect, Scatter (matches V_*).
+                    static constexpr const char* TN[4] = {"COLLAPSE","ROTATE","REFLECT","SCATTER"};
                     nvgFontSize(vg, mm2px(Vec(2.7f,0)).x);
                     nvgFillColor(vg, inkdim);
                     for (int t2 = 0; t2 < 4; ++t2) {
-                        float gy = mm2px(Vec(0, ctrlRowY(t2*2) - CTRL_ROW_H*0.5f - 1.4f)).y;
-                        nvgText(vg, mm2px(Vec(CTRL_X_JACK - 3.5f, 0)).x, gy, TN[t2], NULL);
+                        float gy = mm2px(Vec(0, rowY(t2, 0) - CTRL_ROW_H*0.5f - 1.4f)).y;
+                        char lbl[24];
+                        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BASELINE);
+                        snprintf(lbl, sizeof(lbl), "%s INTRA", TN[t2]);
+                        nvgText(vg, mm2px(Vec(MARGIN, 0)).x, gy, lbl, NULL);
+                        nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BASELINE);
+                        snprintf(lbl, sizeof(lbl), "%s INTER", TN[t2]);
+                        nvgText(vg, mm2px(Vec(PW_MM - MARGIN, 0)).x, gy, lbl, NULL);
+                    }
+                    // Bottom-right cluster: GRAIN/STEP jack captions + VERTICAL legend.
+                    {
+                        const float by = rowY(CA::N_VERBS - 1, 1) + CTRL_ROW_H*0.5f + 9.0f;
+                        const float rx = PW_MM - MARGIN - 4.45f;
+                        // captions ABOVE the jacks
+                        nvgFontSize(vg, mm2px(Vec(2.3f,0)).x);
+                        nvgFillColor(vg, inkdim);
+                        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BASELINE);
+                        float capY = mm2px(Vec(0, by - 4.5f)).y;
+                        nvgText(vg, mm2px(Vec(rx, 0)).x,          capY, "STEP",  NULL);
+                        nvgText(vg, mm2px(Vec(rx - 10.0f, 0)).x,  capY, "GRAIN", NULL);
+                        // VERTICAL legend, enlarged, to the LEFT of the jacks
+                        nvgFontSize(vg, mm2px(Vec(2.8f,0)).x);
+                        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+                        const float lgX = mm2px(Vec(rx - 10.0f - 22.0f, 0)).x;
+                        const float sw  = mm2px(Vec(1.3f,0)).x;
+                        float r1Y = mm2px(Vec(0, by - 2.2f)).y;
+                        float r2Y = mm2px(Vec(0, by + 2.2f)).y;
+                        nvgBeginPath(vg); nvgCircle(vg, lgX, r1Y, sw);
+                        nvgFillColor(vg, nvgRGBf(0.95f,0.95f,0.94f)); nvgFill(vg);
+                        nvgFillColor(vg, inkdim);
+                        nvgText(vg, lgX + mm2px(Vec(2.4f,0)).x, r1Y, "rhythm", NULL);
+                        nvgBeginPath(vg); nvgCircle(vg, lgX, r2Y, sw);
+                        nvgFillColor(vg, nvgRGBf(0.83f,0.f,0.10f)); nvgFill(vg);
+                        nvgFillColor(vg, inkdim);
+                        nvgText(vg, lgX + mm2px(Vec(2.4f,0)).x, r2Y, "melody", NULL);
                     }
                     // Title + legend
                     nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BASELINE);
                     nvgFontSize(vg, mm2px(Vec(3.6f,0)).x);
                     nvgFillColor(vg, ink);
                     nvgText(vg, box.size.x * 0.5f, mm2px(Vec(0,6.0f)).y, "CHANGE ALLEY", NULL);
-                    float legY = mm2px(Vec(0, MY_MM + MH_MM + 4.5f)).y;
-                    float legX = mm2px(Vec(MX_MM,0)).x;
-                    // Legend swatches sit on a small DARK CHIP in both themes: the white
-                    // rhythm pin would be invisible on the light body, and showing the pins
-                    // on grid-coloured ground is also semantically right (that is where
-                    // they live). Text stays on the body, so it uses theme ink.
-                    {
-                        float chipX = legX, chipY = legY - 5.f;
-                        float chipW = mm2px(Vec(24.5f,0)).x, chipH = 10.f;
-                        nvgBeginPath(vg); nvgRoundedRect(vg, chipX, chipY, chipW, chipH, 2.f);
-                        nvgFillColor(vg, nvgRGB(0x0b,0x0c,0x0d)); nvgFill(vg);
-                    }
-                    nvgBeginPath(vg); nvgCircle(vg, legX + 6.f, legY, 3.2f);
-                    nvgFillColor(vg, nvgRGB(0xf0,0xf0,0xee)); nvgFill(vg);
-                    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-                    nvgFontSize(vg, mm2px(Vec(2.2f,0)).x);
-                    nvgFillColor(vg, nvgRGBAf(0.94f,0.94f,0.93f,0.85f));   // on the chip
-                    nvgText(vg, legX + 12.f, legY, "rhythm", NULL);
-                    nvgBeginPath(vg); nvgCircle(vg, legX + mm2px(Vec(15.5f,0)).x, legY, 3.2f);
-                    nvgFillColor(vg, nvgRGB(0xd4,0x00,0x1a)); nvgFill(vg);
-                    nvgFillColor(vg, nvgRGBAf(0.94f,0.94f,0.93f,0.85f));   // on the chip
-                    nvgText(vg, legX + mm2px(Vec(15.5f,0)).x + 6.f, legY, "melody", NULL);
-                    nvgFillColor(vg, inkdim);                              // back on the body
-                    nvgText(vg, legX + mm2px(Vec(26.5f,0)).x, legY, "right-click / ctrl-click", NULL);
 
                     // ── Connect indicator: a small state dot to the RIGHT of the SVG
                     //    logo (which draws the wordmark itself). BRIGHT red w/ halo =
@@ -346,8 +489,10 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
                     //    SVG embeds the real dot.modular logo. ──
                     {
                         bool connected = module && redDot::isConnectedAndClaimed(module);
-                        float mx = box.size.x * 0.5f + mm2px(Vec(18.f,0)).x;
-                        float myv = mm2px(Vec(0, PH_MM - 5.5f)).y;
+                        // Connect dot beside the LHS logo (generator places logo at MARGIN,
+                        // under the last REFLECT row).
+                        float mx = mm2px(Vec(MARGIN + 36.0f, 0)).x;
+                        float myv = mm2px(Vec(0, rowY(CA::N_VERBS-1,1) + CTRL_ROW_H*0.5f + 8.0f + 5.5f)).y;
                         if (connected) {
                             nvgBeginPath(vg); nvgCircle(vg, mx, myv, 3.6f);
                             nvgFillColor(vg, nvgRGBA(0xd4,0x00,0x1a,0x30)); nvgFill(vg);
@@ -367,15 +512,16 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
             // 0.7 alpha, inactive rows at 0.4). Single literals, easy to tune.
 
             // ── Temasek pending: highlight affected submatrices ──────────────────────
-            // Reads Change Alley's OWN tkHighlight POD, which the expander manager fills
-            // from the attached Temasek module. No Temasek type is referenced here, so the
-            // headers stay acyclic.
+            // Transforms are LOCAL to this module now, so the highlight reads pendingRows
+            // directly -- no POD indirection, no header cycle to avoid (that machinery was
+            // only for the two-module split).
             if (module) {
                 const int active = std::max(1, poly + 1);
-                for (int hr = 0; hr < MonsoonChangeAlleyExpander::TK_HL_ROWS; ++hr) {
-                    const auto& h = module->tkHighlight[hr];
+                for (int hr = 0; hr < CA::N_ROWS; ++hr) {
+                    const auto& h = module->pendingRows[hr];
                     if (!h.armed) continue;
-                    NVGcolor hcol = (h.type == 0) ? nvgRGBAf(0.95f,0.95f,0.94f,0.55f)
+                    const int hType = hr % 2;
+                    NVGcolor hcol = (hType == 0) ? nvgRGBAf(0.95f,0.95f,0.94f,0.55f)
                                                   : nvgRGBAf(0.83f,0.f,0.10f,0.55f);
                     const float sw = mm2px(Vec(0.45f,0)).x;
                     const float hw = mm2px(Vec(CELL_W * 0.5f, 0)).x;
@@ -388,7 +534,7 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
                     //  and collapseDomain hands row v the value tmp[leader], any column.)
                     // INTRA bands are `grain` wide; INTER bands are the whole pool split
                     // into blocks, drawn heavier because whole blocks move as units.
-                    const int b    = std::max(1, h.blk);
+                    const int b    = std::max(1, h.grain);
                     const float lw = h.isInter ? sw * 1.6f : sw;
                     for (int base = 0; base < active; base += b) {
                         const int last = std::min(base + b, active) - 1;
@@ -409,13 +555,13 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
                 }
             }
 
-            for (int row = 0; row < CA1::N_VOICES; ++row) {
+            for (int row = 0; row < CA::N_VOICES; ++row) {
                 bool active = (row == 0) || (row <= poly);  // row 0=mono always active
                 float alpha = active ? 1.f : 0.4f;
                 uint8_t rSrc = module->rhythmSrc[row];
                 uint8_t mSrc = module->melodySrc[row];
 
-                for (int col = 0; col < CA1::N_VOICES; ++col) {
+                for (int col = 0; col < CA::N_VOICES; ++col) {
                     Vec c = cellCentre(row, col);
                     bool hasR = (rSrc == (uint8_t)col);
                     bool hasM = (mSrc == (uint8_t)col);
@@ -502,8 +648,8 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
         // Track hovered cell for the crosshair; keep events passing through.
         void onHover(const event::Hover& e) override {
             hoverRow = hoverCol = -1;
-            for (int row = 0; row < CA1::N_VOICES && hoverRow < 0; ++row)
-                for (int col = 0; col < CA1::N_VOICES; ++col)
+            for (int row = 0; row < CA::N_VOICES && hoverRow < 0; ++row)
+                for (int col = 0; col < CA::N_VOICES; ++col)
                     if (hitCell(e.pos, row, col)) { hoverRow = row; hoverCol = col; break; }
             TransparentWidget::onHover(e);
         }
@@ -518,8 +664,8 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
         void onButton(const event::Button& e) override {
             if (!module || e.action != GLFW_PRESS) { TransparentWidget::onButton(e); return; }
             bool setMelody = (e.button == GLFW_MOUSE_BUTTON_RIGHT) || (e.mods & RACK_MOD_CTRL);
-            for (int row = 0; row < CA1::N_VOICES; ++row) {
-                for (int col = 0; col < CA1::N_VOICES; ++col) {
+            for (int row = 0; row < CA::N_VOICES; ++row) {
+                for (int col = 0; col < CA::N_VOICES; ++col) {
                     if (!hitCell(e.pos, row, col)) continue;
                     // Store-backed + undoable: the pin tables are NOT params (zero DAW
                     // slots -- DAW_PARAM_AUDIT), so undo goes through StoreEditAction.
@@ -529,11 +675,11 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
                     {
                         float oldV = setMelody ? (float)module->melodySrc[row]
                                                : (float)module->rhythmSrc[row];
-                        redDot::applyAndPushStoreEdit<MonsoonChangeAlleyExpander>(
+                        redDot::applyAndPushStoreEdit<MonsoonChangeAlleyV2>(
                             module,
                             setMelody ? "move melody pin" : "move rhythm pin",
-                            [row, setMelody](MonsoonChangeAlleyExpander& m, float v) {
-                                uint8_t c = (uint8_t)math::clamp((int)std::lround(v), 0, CA1::N_VOICES - 1);
+                            [row, setMelody](MonsoonChangeAlleyV2& m, float v) {
+                                uint8_t c = (uint8_t)math::clamp((int)std::lround(v), 0, CA::N_VOICES - 1);
                                 (setMelody ? m.melodySrc : m.rhythmSrc)[row] = c;
                             },
                             oldV, (float)col);
@@ -552,17 +698,17 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
     // resolution discipline as StoreEditAction (survives deletion; no-ops while gone).
     struct ResetPinsAction : rack::history::Action {
         int64_t moduleId;
-        uint8_t oldR[CA1::N_VOICES], oldM[CA1::N_VOICES];
-        ResetPinsAction(MonsoonChangeAlleyExpander* m) : moduleId(m->id) {
+        uint8_t oldR[CA::N_VOICES], oldM[CA::N_VOICES];
+        ResetPinsAction(MonsoonChangeAlleyV2* m) : moduleId(m->id) {
             name = "reset pins to identity";
-            for (int v = 0; v < CA1::N_VOICES; ++v) { oldR[v] = m->rhythmSrc[v]; oldM[v] = m->melodySrc[v]; }
+            for (int v = 0; v < CA::N_VOICES; ++v) { oldR[v] = m->rhythmSrc[v]; oldM[v] = m->melodySrc[v]; }
         }
-        MonsoonChangeAlleyExpander* resolve() {
-            return dynamic_cast<MonsoonChangeAlleyExpander*>(APP->engine->getModule(moduleId));
+        MonsoonChangeAlleyV2* resolve() {
+            return dynamic_cast<MonsoonChangeAlleyV2*>(APP->engine->getModule(moduleId));
         }
         void undo() override {
             if (auto* m = resolve())
-                for (int v = 0; v < CA1::N_VOICES; ++v) { m->rhythmSrc[v] = oldR[v]; m->melodySrc[v] = oldM[v]; }
+                for (int v = 0; v < CA::N_VOICES; ++v) { m->rhythmSrc[v] = oldR[v]; m->melodySrc[v] = oldM[v]; }
         }
         void redo() override {
             if (auto* m = resolve()) m->resetToIdentity();
@@ -587,14 +733,14 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
 
     void appendContextMenu(Menu* menu) override {
         ModuleWidget::appendContextMenu(menu);
-        auto* module = dynamic_cast<MonsoonChangeAlleyExpander*>(this->module);
+        auto* module = dynamic_cast<MonsoonChangeAlleyV2*>(this->module);
         if (!module) return;
         menu->addChild(new MenuSeparator);
         menu->addChild(createMenuItem("Reset to identity diagonal", "",
             [module]() {
                 // Skip the no-op (already identity) so undo history stays clean.
                 bool isIdentity = true;
-                for (int v = 0; v < CA1::N_VOICES; ++v)
+                for (int v = 0; v < CA::N_VOICES; ++v)
                     if (module->rhythmSrc[v] != v || module->melodySrc[v] != v) { isIdentity = false; break; }
                 if (isIdentity) return;
                 auto* act = new ResetPinsAction(module);

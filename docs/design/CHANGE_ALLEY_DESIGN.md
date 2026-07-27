@@ -1196,3 +1196,99 @@ ordering. But ~53-70HP, unusable in a small rack, and too dense to label properl
 carry labels, and afford CV; complexity is progressively disclosed; matches the existing
 expander idiom and the claiming/ordering machinery already exists. Costs: another module to
 build and maintain, and transforms require the companion attached.
+
+## 15. Change Alley V2 — one module (branch: feat/change-alley-v2)
+
+Rodney: go back to a single module for comparison, keeping everything Temasek does better,
+with the original intra-left / inter-right split around the grid.
+
+**42HP, replacing Change Alley 29HP + Temasek 24HP = 53HP.** An 11HP saving and one module
+instead of two, with no loss of capability.
+
+```
+   INTRA controls    |    16x16 GRID    |    INTER controls
+   (within-block)         (centre)           (across-block)
+        57mm               99.5mm                57mm
+```
+
+Cell size 6.22mm against the old 6.34mm, so the grid stays as readable as it is today.
+Rows keep the 9.0 / 6.8 pitch, so the four verb groups align exactly as before.
+
+**The old 8-row control column is GONE.** Temasek's verbs strictly superset it: the old
+column had four transforms with a grain knob each, while V2 has the same four verbs with
+domain AND codomain variants, intra AND inter levels, leader/step parameters, and
+reversible scatter. Keeping both would have left one board with two transform systems of
+different capability and no way to tell which fired.
+
+Per row, OUTER -> INNER: domain jack, codomain jack, grain knob, then
+leader (Collapse) / step (Rotate) / domain-BACK jack (Scatter), then domain button,
+codomain button, pending light — plus a codomain-BACK jack on Scatter rows only.
+
+### Status
+- Panel generator written: `panel_src/gen_change_alley_v2.py`, both themes generated.
+- NOT yet built: the module + widget. The path is a merge rather than new work — take
+  MonsoonChangeAlleyExpander's grid/pins/overlay and MonsoonTemasekExpander's ids,
+  PendingAction, trigger detection and application, and drop Change Alley's ChangeAlleyIds
+  transform params entirely.
+- The expander manager's Temasek application loop moves to operate on this module directly,
+  and the TkHighlight POD indirection can go — with one module there is no cycle to avoid.
+
+### To compare
+`master_deparam` has the two-module version working. This branch has the single-module
+panel. Both are on disk; judge the 42HP single against the 29+24 pair in a rack.
+
+### 15a. Labelling (widget-drawn — nanosvg drops `<text>`)
+
+V1 carried a fair amount of labelling and V2 needs at least as much, with more to say
+because every row now has two axes and two levels. Panel grew 42 -> **44HP** to reserve a
+5mm GUTTER either side of the grid; cell size is unchanged at 6.23mm.
+
+**Grid**
+| Label | Position | Notes |
+|---|---|---|
+| `CHANGE ALLEY` | top centre, above the grid | as V1 |
+| Column numbers 1..16 | above the grid, one per cell | as V1 |
+| Row numbers 1..16 | LEFT GUTTER, one per row | V1 put these left of the grid; the gutter is what the 2HP bought |
+| Row numbers (mirror) | RIGHT GUTTER | optional; the inter side reads the same rows |
+| `rhythm` / `melody` legend | below the grid | as V1, with the pin swatches |
+| `right-click / ctrl-click` hint | below the grid | as V1 |
+| Hover tooltip `vN rhythm<-vX melody<-vY` | follows the crosshair | as V1 |
+
+**Control blocks** — the new labelling, and the part V1 had no equivalent for
+| Label | Position |
+|---|---|
+| `INTRA` / `INTER` | headers at the top of each control block |
+| `COLLAPSE` `ROTATE` `REFLECT` `SCATTER` | one per verb group, both sides |
+| `R` / `M` | per row, marking rhythm vs melody |
+| Column captions | above the first verb group, once per side: `DOM` `COD` `GRAIN` `LDR/STEP` `D` `C` |
+
+**Per-row second-slot caption varies by verb** — the one place a single caption cannot
+serve, since the column holds three different things:
+- Collapse -> `LDR` (leader offset)
+- Rotate -> `STEP` (signed step)
+- Scatter -> `BACK` (domain-back gate; the codomain-back jack sits one column further out)
+Draw it per group rather than once at the top.
+
+**Ink rule** (carried from V1): text on the BODY uses theme ink (dark on light panel);
+text inside the GRID stays light, because the grid is a dark instrument surface in both
+themes. This is what the V1 "only row 1 numbered" bug was — dark ink on the dark grid.
+
+## 16. Variation/Legato are excluded from Change Alley BY DESIGN (mono primacy)
+
+Rodney first read this as a bug: remapping mono's RHYTHM pin updates REST and ACCENT in the
+Sands display but not VARIATION and LEGATO. On reflection it is not a bug -- it is the model
+being consistent with itself.
+
+Change Alley reduces randomness by CORRELATING voices to each other (100% correlation = one
+voice reads another's draw). VARIATION and LEGATO are MONO-ONLY strands: mono primacy is
+built into the model, and there is deliberately no per-poly VAR/LEG draw (poly voices are
+4-lane: REST/MEL/OCT/ACC). With only one voice's worth of VAR/LEG in existence, there is
+nothing to correlate them TO -- the pin has no meaning for a mono-only strand.
+
+So VAR/LEG are correctly EXCLUDED from the pin remap. The mechanism reflects this already:
+pickMono has no per-poly VAR/LEG buffer to borrow, so a poly source leaves them on mono's own
+draw -- which, given mono primacy, is the only VAR/LEG that exists. The display showing them
+unchanged under a rhythm remap is the CORRECT behaviour, not a missing feature.
+
+No code change. This note exists to stop the "bug" being re-opened: extending the poly model
+to 6 lanes purely to make VAR/LEG follow a pin would contradict mono primacy, not serve it.

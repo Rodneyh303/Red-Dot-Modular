@@ -181,21 +181,27 @@ struct PatternEngine {
                 slewedPolyOctave[v][i] = pickMono(sO, dotModular::STRAND_OCTAVE, i);
             }
         }
-        // NON-SANDS path: recomputeEffective already promoted the (un-remapped) slewed into
-        // random_ before this runs. With no Sands there is no spread stage to re-read slewed,
-        // so re-promote the remapped slewed into random_ here. (When sandsActive, spread reads
-        // slewed and writes random_ itself, so this promote is skipped.)
-        if (!sandsActive) {
-            for (int i = 0; i < 16; ++i) {
-                rhythmRandom[i]=slewedRhythm[i]; accentRandom[i]=slewedAccent[i];
-                variationRandom[i]=slewedVariation[i]; legatoRandom[i]=slewedLegato[i];
-                melodyRandom[i]=slewedMelody[i]; octaveRandom[i]=slewedOctave[i];
-                for (int v=0;v<15;v++){
-                    polyRandom(v, PL_REST)[i]=slewedPolyRhythm[v][i];
-                    polyRandom(v, PL_ACCENT)[i]=slewedPolyAccent[v][i];
-                    polyRandom(v, PL_MELODY)[i]=slewedPolyMelody[v][i];
-                    polyRandom(v, PL_OCTAVE)[i]=slewedPolyOctave[v][i];
-                }
+        // INVARIANT: the pin remap is a property of CHANGE ALLEY ALONE. It must reach the
+        // output whether or not any Sands expander is attached -- Sands modules only DISPLAY
+        // and MODULATE these probabilities; they are never a precondition for the correlation
+        // itself. So the remap ALWAYS re-promotes every lane into random_ here, with no
+        // dependence on sandsActive / hasMonoVisual / anything downstream.
+        // (This runs BEFORE the spread stage, which re-reads `slewed`, so when spread is
+        //  present and non-zero it simply overwrites random_ with the spread result on top of
+        //  the already-correct remapped draw. When spread is absent or zero, this promote is
+        //  the value the sequencer reads.)
+        // The earlier `if (!sandsActive)` guard broke exactly this: with Macro attached but no
+        // Mono visual, sandsActive was true yet the mono spread block (inside if(hasMonoVisual))
+        // never ran, so remapped melody/octave never reached random_ while rhythm did.
+        for (int i = 0; i < 16; ++i) {
+            rhythmRandom[i]=slewedRhythm[i]; accentRandom[i]=slewedAccent[i];
+            variationRandom[i]=slewedVariation[i]; legatoRandom[i]=slewedLegato[i];
+            melodyRandom[i]=slewedMelody[i]; octaveRandom[i]=slewedOctave[i];
+            for (int v=0;v<15;v++){
+                polyRandom(v, PL_REST)[i]=slewedPolyRhythm[v][i];
+                polyRandom(v, PL_ACCENT)[i]=slewedPolyAccent[v][i];
+                polyRandom(v, PL_MELODY)[i]=slewedPolyMelody[v][i];
+                polyRandom(v, PL_OCTAVE)[i]=slewedPolyOctave[v][i];
             }
         }
     }

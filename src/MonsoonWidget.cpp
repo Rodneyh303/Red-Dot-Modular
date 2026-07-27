@@ -717,6 +717,7 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
             add("Straits West (per-voice)", &m->modVizWest);
             add("Sands Macro (spread)", &m->modVizMacro);
             add("Sands Mono (spread)", &m->modVizMono);
+            add("Change Alley (grain/step)", &m->modVizChangeAlley);
         }));
         // Rhythm behaviour: the two leading-edge policy toggles (RHYTHM_BEHAVIOUR_POLICIES.md).
         // Reuses ModVizFlagItem (a plain bool* toggle) pointed at the engine flags.
