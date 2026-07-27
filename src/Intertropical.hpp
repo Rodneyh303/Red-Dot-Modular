@@ -10,9 +10,11 @@
 //
 // This header defines the STORE SCHEMA + module skeleton. Routing/advance logic is stubbed.
 
-#include "plugin.hpp"
+#include <rack.hpp>
 #include "dsp/VoiceResolver.hpp"
+#include "ui/VisualExpanderHelpers.hpp"   // findMonsoonEitherSide
 
+using namespace rack;
 namespace redDot { struct Monsoon; }
 
 // ---- Id enum (declared for shape; config() reserves ZERO params  de-parammed) ----
