@@ -1054,4 +1054,5 @@ void init(rack::Plugin* p) {
 	p->addModel(modelStraitsEastSandsVisual);       // East visual DNA editor (tabbed)
 	// RETIRED: West visual editor merged into East (15-voice). Source kept, not registered.
 	p->addModel(modelStraitsSandsMacroVisual);      // Macro visual DNA editor
+	p->addModel(modelIntertropical);                // Intertropical scene sequencer
 }

@@ -151,6 +151,17 @@
         "Random",
         "Sequencer"
       ]
+    },
+    {
+      "slug": "Intertropical",
+      "name": "Intertropical",
+      "description": "Scene sequencer / voice arranger for Monsoon: 8 scenes of per-voice opt-in with per-scene repeats, routed to poly outputs. Advances on phrase-boundary crossings.",
+      "tags": [
+        "Sequencer",
+        "Polyphonic",
+        "Switch",
+        "Expander"
+      ]
     }
   ]
 }
