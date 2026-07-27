@@ -32,10 +32,17 @@ gates which of the 16 voices reach the poly outs.
   because phase drive can run the sequencer backward. Counting crossings is the phase-coherent
   definition — consistent with the stateless lane-position model (position = pure function of
   totalStepsElapsed).
-- **Scene membership is READ only at the phrase boundary.** This dissolves the mid-phrase
-  phase-wobble/jitter question entirely: membership is sampled once per boundary, acted on,
-  done. (Same move as slew being sampled at the boundary — resolved by WHEN it's read, not by a
-  category ruling.)
+- **ONE PHASE CYCLE = the 16 steps.** The scene boundary is at the CYCLE EDGE, not inside it.
+  So the main phase use case — moving around the 16 steps NONLINEARLY (jumping, non-monotonic
+  traversal) — happens ENTIRELY WITHIN one scene's phrase and crosses NO scene boundary. You
+  only cross a scene boundary by completing a whole cycle. This retires the "frequent boundary
+  crossings under phase wobble" concern: normal nonlinear phase play never touches the scene
+  boundary; you'd have to deliberately oscillate phase across the cycle ENDPOINT to rack up
+  crossings, which is a rare, intentional gesture, not an incidental one. The jitter case is
+  pathological, not the default.
+- **Scene membership is READ only at the phrase boundary.** Belt-and-braces with the above:
+  membership is sampled once per boundary, acted on, done. (Same move as slew / the effect-
+  timing hierarchy — resolved by WHEN it's read.)
 
 ## Lock-mode classification (settled by Rodney's four constraints)
 Intertropical is the OUTPUT/arrangement layer, downstream of all generation. By the
@@ -53,6 +60,23 @@ read-vs-map principle (LOCK_SEMANTICS.md 9): output-mapping stays LIVE.
 - Scene advance shares the SAME boundary clock as queued regeneration (dice/scatter release).
   They co-occur on the same crossings but are independent: a scene advance switches routing; a
   queued redraw changes material. No interaction to resolve — different layers.
+
+## Why this, not a plain sequential switch (the thesis)
+We earlier considered NOT doing a sequential switch — a plain "route N of M voices" utility is
+generic and doesn't earn a module. Intertropical is different because of WHAT it switches, not
+how. It is a sequential switch POINTED AT the axis the instrument is uniquely about:
+- Vertical axis = voices-as-DEPTH (16 voices, spread collapsing them toward mono). Already
+  well-served.
+- Horizontal axis = voices-as-MATERIAL-across-time. This is the axis Change Alley operates on
+  (correlating voices to each other) and where "high poly conservation" lives — but it had no
+  direct editing/viewing surface.
+Intertropical makes the HORIZONTAL axis directly editable and visible: which voices, when, for
+how long. It teaches the user to see the poly as a HORIZONTAL thing, not just vertical, and to
+leverage Alley's correlation effects by arranging the correlated voices into sections and
+watching them play out. So it is integrative, not utilitarian — it earns its place by exposing
+the instrument's core idea (horizontal poly conservation + correlation) rather than by adding a
+generic feature. Generic in MECHANISM, specific in WHAT it switches: the horizontally-conserved,
+Alley-correlated poly. Lantern (below) closes the loop by making the result legible.
 
 ## Visual feedback
 - Playing-scene indicator (which column is active).
