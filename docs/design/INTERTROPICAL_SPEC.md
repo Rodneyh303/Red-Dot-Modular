@@ -149,6 +149,59 @@ Rationale for mode-not-module:
 - Substrate: Intertropical is store-backed/output-only by design, so it WANTS the de-parammed,
   lock-aware substrate to exist first — build it once, correctly, on the finished foundation.
 
+## Panel plan / scaffold
+
+Panel language: dotmod_design.py tokens (native 75 DPI, nanosvg-safe: no masks/gradients/
+filters, every shape carries its own paint, no <text> for control labels). Generator
+panel_src/gen_intertropical.py -> res/panels/Intertropical_panel_{dark,light}.svg. HP: the
+8-col x 17-row grid + poly outputs wants width; target ~20-24HP (confirm against a grid cell
+big enough to click; Sands cell pitch is the reference).
+
+### Layout (top to bottom)
+1. Brand strip: dot.modular wordmark (logo_embed), module name "Intertropical".
+2. Repeat-select row (grid row 0, 8 cells).
+3. Scene progress indicator.
+4. Voice-membership grid (rows 1..16 x 8 scene columns).
+5. Poly outputs: 5 jacks -- GATE, CV, ACCENT, LEGATO, SLEG (poly, one jack each).
+6. Phase/clock: confirm whether Intertropical reads Monsoon's phase via the expander bus or
+   needs its own jack.
+
+### 1. Repeat selector (top area, "convenient + visual" ask)
+Per scene column, a 1..8 repeat count. PREFERRED: a small vertical 8-segment LED bar per column
+-- click segment N = N repeats, lit cells = the count. Direct, glanceable (you SEE 3 lit = 3
+repeats), no menu, one click. Matches the fun-loop guardrail. Doubles as its own always-on
+visual. (Alternatives: number/stepper -- needs text, less glanceable; mini-fader -- wants
+detents for 8 discrete values.)
+
+### 2. Scene progress indicator ("which scene playing + how far through repeats")
+Both signals live (Intertropical is LIVE under lock):
+- Playing-scene: the active scene COLUMN highlighted (bright border / underglow on that whole
+  17-cell column). Unmistakable which is sounding.
+- Repeat progress: in the active scene's repeat bar, lit segments = total count, a brighter/
+  distinct-fill cell marks the CURRENT repeat -- "3 of 5" reads as 5 lit, 3rd emphasised.
+  Advances each phrase-boundary crossing. Optional thin progress arc across the current repeat
+  toward the next boundary if steps-within-repeat is wanted.
+
+### 3. Voice-colour question -- RESOLVED
+The grid shows MEMBERSHIP (voice in/out), NOT pitch. So:
+- IN/OUT is the LOUD primary: filled = in, hollow = out, high contrast, reads instantly.
+- Voice IDENTITY secondary -- YES colour it, for identity not decoration, REUSING Lantern's
+  voiceColour(v) palette (Lantern.cpp:803, 8 hues, wraps mod-8). Then voice 3 is the SAME amber
+  on the Intertropical grid as on Lantern -- colour carries CROSS-MODULE identity, exactly what
+  Lantern's plain grid view lacks. Filled cell = voiceColour(row); hollow = faint voiceColour
+  outline. 16 rows wrap at 8 (rows 1&9 share a hue; fixed row position disambiguates).
+This is why per-channel colour earns its place: makes "which voices am I arranging" legible and
+consistent with the rest of the instrument -- answering the Lantern-grid gap directly.
+
+### Grid geometry + build note
+- Reuse SandsGrid.hpp row-grid discipline (uniform pitch, LANE_TOP/LANE_H) adapted to 8 columns.
+- Column = scene (repeat bar on top + 16 membership cells). Row = voice 1..16.
+- Store-backed, output-only, NO params (de-parammed from the start): grid cells + repeat bars
+  are store-backed toggle widgets (bindWidget, not addParam).
+- Panel art is STATIC (grid wells, brand, output labels); ALL live state (membership fill,
+  active scene, repeat progress, playhead) is WIDGET-DRAWN over it. Single-source-geometry:
+  panel is the source, widget reads cell positions from it (same as Sands).
+
 ## Open (decide at build)
 - Exact repeat-count semantics at the boundary: does a scene with N repeats advance ON the Nth
   crossing or AFTER it? (Off-by-one to pin against the playhead display.)
