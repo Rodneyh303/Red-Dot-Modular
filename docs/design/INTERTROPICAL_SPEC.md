@@ -115,14 +115,32 @@ Alley-correlated poly. Lantern (below) closes the loop by making the result legi
 - Direction indicator if phase drive is running backward (optional).
 
 ## Companion: Lantern shows Intertropical's output (PREFERRED over a second module)
-Lantern already has a viewMode enum (Notes/Velocity/Prob, persisted — Lantern.cpp:102) and both
-grid and piano-roll rendering (LANTERN_SPEC.md, LANTERNS_PIANO_ROLL_SPEC.md). So showing "what
-Intertropical is routing" is a NEW viewMode / source on the EXISTING Lantern, not a new module.
-- Rationale: one visualiser with a clean mode switch beats two overlapping visualisers. And a
-  Lantern mode that reads Intertropical's routed output keeps the display-source dependency
-  INSIDE one module that knows how to render several sources, rather than two modules agreeing
-  on a protocol. The preferred option is also the more maintainable one.
-- Second Lantern is the fallback only if mode-crowding on one Lantern becomes a real UI problem.
+Lantern ALREADY has a viewMode enum (Notes/Velocity/Prob, persisted -- Lantern.cpp:102) AND
+both grid and piano-roll rendering (LANTERN_SPEC.md, LANTERNS_PIANO_ROLL_SPEC.md). So the
+enhancement is NOT "add grid/piano modes" (they exist) -- it is "add Intertropical's routed
+output as a SOURCE the existing grid/piano rendering can point at." Smaller work than it first
+sounds: reuse the render, add a source.
+
+What the Lantern mode SHOWS (per Rodney's original framing -- "show what's being produced by
+Intertropical"):
+- The voices Intertropical is CURRENTLY routing (the active scene's members) as they play, in
+  grid and/or piano-roll form -- so you SEE the arrangement Intertropical is producing, not just
+  Monsoon's raw output. Closes the loop: Intertropical arranges the horizontal poly, Lantern
+  makes the arranged result legible.
+- Ideally distinguishes routed-IN voices from muted-OUT ones (colour/hollow, echoing the
+  Intertropical grid's own cell convention) so display and sequencer read consistently.
+- Follows the same step/phrase-boundary timing as Intertropical's routing (membership read at
+  the boundary), so the display switches WITH the audio, not ahead of it.
+
+Rationale for mode-not-module:
+- One visualiser with a clean mode switch beats two overlapping visualisers (no "which Lantern?"
+  confusion).
+- A Lantern mode reading Intertropical's routed output keeps the display-source dependency
+  INSIDE one module that knows how to render several sources, vs two modules agreeing on a
+  cross-module protocol. The preferred option is also the more maintainable one.
+- Reuses Lantern's existing grid + piano rendering and viewMode/persistence machinery rather
+  than duplicating it.
+- Second Lantern is the fallback ONLY if mode-crowding on one Lantern becomes a real UI problem.
 
 ## Why build AFTER the trilogy (not now)
 - Focus: lock + undo designs are freshly settled and want BUILDING now; forking into a large
