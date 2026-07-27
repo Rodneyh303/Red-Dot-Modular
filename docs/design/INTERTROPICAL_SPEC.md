@@ -166,12 +166,22 @@ big enough to click; Sands cell pitch is the reference).
 6. Phase/clock: confirm whether Intertropical reads Monsoon's phase via the expander bus or
    needs its own jack.
 
-### 1. Repeat selector (top area, "convenient + visual" ask)
-Per scene column, a 1..8 repeat count. PREFERRED: a small vertical 8-segment LED bar per column
--- click segment N = N repeats, lit cells = the count. Direct, glanceable (you SEE 3 lit = 3
-repeats), no menu, one click. Matches the fun-loop guardrail. Doubles as its own always-on
-visual. (Alternatives: number/stepper -- needs text, less glanceable; mini-fader -- wants
-detents for 8 discrete values.)
+### 1. Repeat selector (top area, "convenient + visual") -- SUBDIVIDED GRID CELL
+Better than a separate LED meter (Rodney): use the SAME grid idiom as the voice cells so the
+repeat row reads as part of the same continuous display, not a foreign control. The repeat row
+is one cell per scene, each subdivided HORIZONTALLY into 8 sub-segments. The widget uses
+colour-DEPTH to carry BOTH signals in one cell:
+- COUNT: N sub-segments lit = N repeats.
+- PROGRESS: the fill deepens/advances through them as the scene plays -- "repeat 3 of 5" reads
+  as 3 done (bright) + 2 pending (dim). No separate progress indicator needed; the same cell
+  shows count and how-far-through at once.
+Panel draws the static sub-gridlines (scene boundaries slightly stronger than the 8 sub-segment
+ticks, so it reads as "8 cells each split into 8", not "64 equal cells"); the widget draws the
+fill/progress.
+Input gesture (decide at build): (a) click at position N/8 to set N repeats -- compact but ~1.5mm
+targets at 22HP are tight; (b) click-DRAG across the cell like a mini horizontal fader, 8 detent
+stops -- more forgiving, natural "more/fewer", keeps the one-gesture fun loop. LEAN (b). Display
+is identical either way.
 
 ### 2. Scene progress indicator ("which scene playing + how far through repeats")
 Both signals live (Intertropical is LIVE under lock):
@@ -190,6 +200,9 @@ The grid shows MEMBERSHIP (voice in/out), NOT pitch. So:
   on the Intertropical grid as on Lantern -- colour carries CROSS-MODULE identity, exactly what
   Lantern's plain grid view lacks. Filled cell = voiceColour(row); hollow = faint voiceColour
   outline. 16 rows wrap at 8 (rows 1&9 share a hue; fixed row position disambiguates).
+- LEFT GUTTER: just VOICE NUMBERS 1..16 (widget-drawn text), NOT colour swatches. Identity-by-
+  colour lives in the CELLS (a filled cell is that voice's hue); a gutter swatch would be
+  redundant. A plain number is all the row label needs, and it frees the gutter. (Rodney.)
 This is why per-channel colour earns its place: makes "which voices am I arranging" legible and
 consistent with the rest of the instrument -- answering the Lantern-grid gap directly.
 
