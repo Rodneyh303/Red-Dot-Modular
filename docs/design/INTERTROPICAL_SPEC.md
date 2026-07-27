@@ -13,6 +13,37 @@ Name: the ITCZ (Intertropical Convergence Zone) drives the monsoon cycle, so Int
 driving scene changes off Monsoon's phrase/boundary crossings is the same causal shape, not a
 cosmetic label — scene advance IS a monsoon-cycle crossing.
 
+## Intertropical is the thesis-test (why it matters beyond being a module)
+The whole instrument bets on correlation-as-composition / horizontal poly conservation /
+voices-as-material-across-time. Sands, spread, and Alley PRODUCE that correlated poly; nothing
+until Intertropical lets you ARRANGE and HEAR it as sections over time. So Intertropical is the
+first place the thesis becomes audible as MUSIC WITH FORM rather than as texture. It's a genuine
+falsification condition: if arranging Alley-correlated voices into scenes sounds COMPOSED
+(coherent sections, relationships heard across the arrangement), the idea works; if it sounds
+like a fancy mute matrix over noise, the correlation was never doing the compositional work the
+thesis claimed. This proves the THESIS, not automatically the instrument's SUCCESS — those can
+come apart (the thesis could hold while the module is fiddly, or vice versa). Success also rides
+on the fun/usability axis below.
+
+## Design constraint: the Rhythm-Explorer fun loop (load-bearing, not a feature)
+Reference point: Venom Rhythm Explorer (VCV, Vermona Random Rhythm lineage) has a simple
+pattern-length + repeats control that is genuinely FUN in its much simpler context. Intertropical
+should be a MULTIPLE of that fun. Why that control is fun, named so it can be preserved:
+immediate, legible, low-commitment variation — one simple gesture, an audible understandable
+result RIGHT NOW, a tight loop between action and heard consequence that rewards fiddling.
+
+Intertropical has the ingredients but ALSO a risk the simple version doesn't: an 8x17 grid, 5
+output types, phase-aware advance. Complexity is the enemy of the tight fun loop. Therefore a
+GUARDRAIL, stated now while it's the explicit goal so it survives the build:
+
+  **The primary loop — click a cell / set repeats / hear it at the next boundary — must stay as
+  immediate and legible as Rhythm Explorer's length+repeats. No advanced capability (phase
+  nonlinearity, Lantern view, poly routing depth) may compromise that immediacy. Depth is
+  OPTIONAL and must never sit in the way of the basic fun.**
+
+This is easy to lose incrementally as the grid accretes features; it's a design test to apply to
+every addition, not a one-time note.
+
 ## Main display: 8 x 17 grid
 - **8 columns = 8 scenes.**
 - **Top row (row 0): repeat count 1..8** per scene — how many phrase-boundary CROSSINGS the
