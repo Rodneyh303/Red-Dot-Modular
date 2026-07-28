@@ -4,6 +4,7 @@
 
 #include "Intertropical.hpp"
 #include "Monsoon.hpp"
+#include "MonsoonStraitsExpander.hpp"   // complete type for cachedPolyVoiceExpander->outputs
 #include "ui/SvgPanelKit.hpp"
 
 using namespace rack;
@@ -32,15 +33,13 @@ void Intertropical::process(const ProcessArgs& args) {
     auto& eng = host->engine;
 
     // ---- boundary-crossing advance (phase-aware, direction-agnostic) ----
-    // Detect the phrase boundary by counting STEP CHANGES and comparing to the current pattern
-    // length. This handles modulated endStep/startStep: we count actual steps, not divide by a
-    // possibly-changing patternLen. Crossings count UP regardless of direction (spec).
+    // Use the engine's own phrase-boundary detection: lastStepResult.wrapped is true on the
+    // step where the pattern wraps (accounts for modulated start/endStep correctly).
+    // We track the stepIndex to detect when a new step result is available.
     const int si = eng.stepIndex;
     if (lastStepIndex >= 0 && si != lastStepIndex) {
-        stepCounter++;  // one step advanced (either direction)
-        const int patternLen = std::max(1, eng.endStep - eng.startStep + 1);
-        if (stepCounter >= patternLen) {
-            stepCounter = 0;
+        // A new step was processed. Check if the engine reported a phrase boundary wrap.
+        if (eng.lastStepResult.wrapped) {
             repeatPos++;
             if (repeatPos >= getRepeats(activeScene)) {
                 repeatPos = 0;
@@ -53,9 +52,13 @@ void Intertropical::process(const ProcessArgs& args) {
     lastStepIndex = si;
 
     // ---- route: hybrid auto-pack + override routing (<=8 output channels) ----
-    // Read the engine's GateState directly (same source as OutputGenerator, no process() call).
-    // computeRouting() maps each active voice to an output channel (0..7): forced overrides first,
-    // then auto-pack. Output channel count = number of routed voices (<=8).
+    // ---- route: read the Straits expander's 16-channel poly outputs (the poly output source) ----
+    // The Straits expander (cachedPolyVoiceExpander) has the 16-channel poly outputs computed by
+    // the OutputGenerator (gs.process — authoritative gate voltage). The host Monsoon's own outputs
+    // are mono-only (1 channel). Straits is required for poly mode.
+    // computeRouting() maps each active voice to an output channel (0..7): forced overrides
+    // first, then auto-pack. Output channel count = number of routed voices (<=8).
+    auto* straits = host->expanderManager.cachedPolyVoiceExpander;
     int8_t routing[Ids::N_VOICES];
     computeRouting(activeScene, routing);
     int nOut = 0;
@@ -65,27 +68,17 @@ void Intertropical::process(const ProcessArgs& args) {
     for (int o = 0; o < Ids::NUM_OUTPUTS; ++o)
         for (int ch = 0; ch < nOut; ++ch)
             outputs[o].setVoltage(0.f, ch);
+    if (!straits) return;  // no Straits = no poly outputs = silence
+    // Straits output IDs: POLY_GATE_OUT=0, POLY_STEP_GATE_OUT=1, POLY_STEP_LEGATO_GATE_OUTPUT=2,
+    // POLY_CV_OUT=3, POLY_ACCENT_OUT=4 (from StraitsIds::OutputIds).
     for (int v = 0; v < Ids::N_VOICES; ++v) {
         int ch = routing[v];
         if (ch < 0) continue;
-        bool gate, stepGate, slurMember, accented;
-        float pitch;
-        if (v == 0) {
-            gate = eng.gs.gateHeld;  pitch = eng.gs.currentPitchV;
-            accented = eng.lastStepResult.accented;
-            stepGate = eng.gsStep.gateHeld;  slurMember = eng.gs.slurMember;
-        } else {
-            int vi = v - 1;
-            if (vi >= eng.numPolyVoices) continue;
-            gate = eng.voices[vi].gs.gateHeld;  pitch = eng.voices[vi].gs.currentPitchV;
-            accented = eng.voices[vi].accented;
-            stepGate = eng.voices[vi].gsStep.gateHeld;  slurMember = eng.voices[vi].gs.slurMember;
-        }
-        outputs[Ids::GATE_OUT].setVoltage(gate ? 10.f : 0.f, ch);
-        outputs[Ids::CV_OUT].setVoltage(pitch, ch);
-        outputs[Ids::ACCENT_OUT].setVoltage((gate && accented) ? 10.f : 0.f, ch);
-        outputs[Ids::LEGATO_OUT].setVoltage(stepGate ? 10.f : 0.f, ch);
-        outputs[Ids::SLEG_OUT].setVoltage((stepGate && slurMember) ? 10.f : 0.f, ch);
+        outputs[Ids::GATE_OUT].setVoltage(straits->outputs[0].getVoltage(v), ch);
+        outputs[Ids::CV_OUT].setVoltage(straits->outputs[3].getVoltage(v), ch);
+        outputs[Ids::ACCENT_OUT].setVoltage(straits->outputs[4].getVoltage(v), ch);
+        outputs[Ids::LEGATO_OUT].setVoltage(straits->outputs[1].getVoltage(v), ch);
+        outputs[Ids::SLEG_OUT].setVoltage(straits->outputs[2].getVoltage(v), ch);
     }
 }
 
