@@ -1,4 +1,4 @@
-// Intertropical  scene sequencer implementation (SCAFFOLD).
+// Intertropical  scene sequencer implementation.
 // See INTERTROPICAL_SPEC.md. Process = boundary-crossing advance + route active scene to poly
 // outs. Widget = continuous-grid display, store-backed cells, widget-drawn live state.
 
@@ -10,67 +10,108 @@ using namespace rack;
 
 // ============================ MODULE ============================
 
+Intertropical::Intertropical() {
+    for (int s = 0; s < Ids::N_SCENES; ++s)
+        for (int v = 0; v < Ids::N_VOICES; ++v)
+            sceneOutput[s][v] = -1;  // all auto-pack by default
+    config(Ids::NUM_PARAMS, Ids::NUM_INPUTS, Ids::NUM_OUTPUTS, Ids::NUM_LIGHTS);
+    configInput(Ids::PHASE_IN, "Phase (optional; else reads host)");
+    configOutput(Ids::GATE_OUT,   "Gate (poly, active scene, <=8ch)");
+    configOutput(Ids::CV_OUT,     "CV (poly, active scene, <=8ch)");
+    configOutput(Ids::ACCENT_OUT, "Accent (poly, active scene, <=8ch)");
+    configOutput(Ids::LEGATO_OUT, "Legato (poly, active scene, <=8ch)");
+    configOutput(Ids::SLEG_OUT,   "SLEG (poly, active scene, <=8ch)");
+}
+
 void Intertropical::process(const ProcessArgs& args) {
     Monsoon* host = redDot::findMonsoonEitherSide(this);
     if (!host) {
-        // No host: nothing to route. Clear outputs.
         for (int o = 0; o < Ids::NUM_OUTPUTS; ++o) outputs[o].setChannels(0);
         return;
     }
     auto& eng = host->engine;
 
     // ---- boundary-crossing advance (phase-aware, direction-agnostic) ----
-    // One phase cycle = 16 steps. The phrase boundary is a cycle completion, so the cycle
-    // index is totalStepsElapsed / 16; a CHANGE in it (either direction) is a crossing.
-    const int cycle = eng.totalStepsElapsed / 16;
-    if (cycle != lastBoundary) {
-        if (lastBoundary >= 0) {
-            // A boundary was crossed. Advance the repeat, and the scene when repeats exhaust.
-            // TODO: honour play direction for backward crossings (spec open item).
+    // Detect the phrase boundary by counting STEP CHANGES and comparing to the current pattern
+    // length. This handles modulated endStep/startStep: we count actual steps, not divide by a
+    // possibly-changing patternLen. Crossings count UP regardless of direction (spec).
+    const int si = eng.stepIndex;
+    if (lastStepIndex >= 0 && si != lastStepIndex) {
+        stepCounter++;  // one step advanced (either direction)
+        const int patternLen = std::max(1, eng.endStep - eng.startStep + 1);
+        if (stepCounter >= patternLen) {
+            stepCounter = 0;
             repeatPos++;
             if (repeatPos >= getRepeats(activeScene)) {
                 repeatPos = 0;
-                activeScene = (activeScene + 1) % Ids::N_SCENES;
+                activeScene = (activeScene + 1) % getLoopLen();
             }
+            // Read-at-boundary rule: sample the active scene's membership NOW.
+            liveMask = sceneMask[activeScene];
         }
-        lastBoundary = cycle;
-        // Read-at-boundary rule: sample the active scene's membership NOW, act on it this cycle.
-        liveMask = sceneMask[activeScene];
     }
+    lastStepIndex = si;
 
-    // ---- route: only the active scene's voices reach the poly outs ----
-    // STUB: wire the host's per-voice gate/cv/accent/legato/sleg through liveMask.
-    // For each of the 16 voices, if (liveMask >> v) & 1, pass that voice's value; else 0.
-    const int nCh = Ids::N_VOICES;
-    for (int o = 0; o < Ids::NUM_OUTPUTS; ++o) outputs[o].setChannels(nCh);
-    for (int v = 0; v < nCh; ++v) {
-        const bool in = (liveMask >> v) & 1u;
-        // TODO: replace 0.f with the host engine's per-voice value for each output kind.
-        //   GATE_OUT   : voice gate (sounding) -> 10V/0V
-        //   CV_OUT     : voice pitch CV
-        //   ACCENT_OUT : voice accent -> 10V/0V
-        //   LEGATO_OUT : voice legato/tie state
-        //   SLEG_OUT   : voice slew-legato state
-        // Pulled from eng.voices[v-1] (V2..V16) / mono chain for V1, gated by `in`.
-        float gate = in ? 0.f : 0.f;   // placeholder
-        outputs[Ids::GATE_OUT].setVoltage(gate, v);
-        outputs[Ids::CV_OUT].setVoltage(0.f, v);
-        outputs[Ids::ACCENT_OUT].setVoltage(0.f, v);
-        outputs[Ids::LEGATO_OUT].setVoltage(0.f, v);
-        outputs[Ids::SLEG_OUT].setVoltage(0.f, v);
+    // ---- route: hybrid auto-pack + override routing (<=8 output channels) ----
+    // Read the engine's GateState directly (same source as OutputGenerator, no process() call).
+    // computeRouting() maps each active voice to an output channel (0..7): forced overrides first,
+    // then auto-pack. Output channel count = number of routed voices (<=8).
+    int8_t routing[Ids::N_VOICES];
+    computeRouting(activeScene, routing);
+    int nOut = 0;
+    for (int v = 0; v < Ids::N_VOICES; ++v)
+        if (routing[v] >= 0) nOut = std::max(nOut, routing[v] + 1);
+    for (int o = 0; o < Ids::NUM_OUTPUTS; ++o) outputs[o].setChannels(nOut);
+    for (int o = 0; o < Ids::NUM_OUTPUTS; ++o)
+        for (int ch = 0; ch < nOut; ++ch)
+            outputs[o].setVoltage(0.f, ch);
+    for (int v = 0; v < Ids::N_VOICES; ++v) {
+        int ch = routing[v];
+        if (ch < 0) continue;
+        bool gate, stepGate, slurMember, accented;
+        float pitch;
+        if (v == 0) {
+            gate = eng.gs.gateHeld;  pitch = eng.gs.currentPitchV;
+            accented = eng.lastStepResult.accented;
+            stepGate = eng.gsStep.gateHeld;  slurMember = eng.gs.slurMember;
+        } else {
+            int vi = v - 1;
+            if (vi >= eng.numPolyVoices) continue;
+            gate = eng.voices[vi].gs.gateHeld;  pitch = eng.voices[vi].gs.currentPitchV;
+            accented = eng.voices[vi].accented;
+            stepGate = eng.voices[vi].gsStep.gateHeld;  slurMember = eng.voices[vi].gs.slurMember;
+        }
+        outputs[Ids::GATE_OUT].setVoltage(gate ? 10.f : 0.f, ch);
+        outputs[Ids::CV_OUT].setVoltage(pitch, ch);
+        outputs[Ids::ACCENT_OUT].setVoltage((gate && accented) ? 10.f : 0.f, ch);
+        outputs[Ids::LEGATO_OUT].setVoltage(stepGate ? 10.f : 0.f, ch);
+        outputs[Ids::SLEG_OUT].setVoltage((stepGate && slurMember) ? 10.f : 0.f, ch);
     }
 }
 
 // ============================ WIDGET ============================
 
-// Continuous grid display: reads cell geometry from the panel (single-source-geometry) and
-// draws live state (membership fill via voiceColour, active-scene highlight, repeat count +
-// progress, voice numbers) over the static screen. Cells are store-backed toggles.
+// Panel geometry constants (mm). Panel is ~22HP (330px × 379.43px at 75 DPI = ~112mm × 128.5mm).
+// Derived from the panel SVG's rect/circle coordinates (converted px→mm at 75/25.4).
+// Repeat row rect: px(35.4, 47.2, 276.9, 26.6) → mm(12.0, 16.0, 93.7, 9.0)
+// Main grid rect:  px(35.4, 82.7, 276.9, 240.7) → mm(12.0, 28.0, 93.7, 81.5)
+// Jack wells (5):  px(63.1, 118.5, 173.9, 229.2, 284.6) × cy=346.9 → mm y=117.5
+static constexpr float IT_GRID_X   = 12.0f;  // grid left edge (matches panel rect)
+static constexpr float IT_GRID_Y   = 28.0f;  // grid top (matches panel rect y=82.7px)
+static constexpr float IT_GRID_W   = 93.7f;  // grid width (8 cols × ~11.7mm)
+static constexpr float IT_GRID_H   = 81.5f;  // grid height (16 rows × ~5.1mm)
+static constexpr float IT_REP_Y    = 16.0f;  // repeat row top (matches panel rect y=47.2px)
+static constexpr float IT_REP_H    = 9.0f;   // repeat row height (matches panel rect h=26.6px)
+static constexpr float IT_JACK_Y   = 117.5f; // output jack row (matches panel cy=346.9px)
+static constexpr float IT_JACK_X[5] = { 21.4f, 40.1f, 58.9f, 77.6f, 96.4f };  // 5 jacks from panel SVG
+
+// Continuous grid display: reads cell geometry from the panel constants and draws live state
+// (membership fill via voiceColour, active-scene highlight, repeat count + progress, voice
+// numbers) over the static screen. Cells are store-backed toggles.
 struct IntertropicalGrid : Widget {
     Intertropical* module = nullptr;
-    // Grid rect in px (set from panel marker geometry at construction  TODO wire to panel).
-    Rect gridBox;     // main 8x16 membership grid
-    Rect repBox;      // repeat row (8 scenes, each 8-subdivided)
+    Rect gridBox;     // main 8x16 membership grid (px)
+    Rect repBox;      // repeat row (px)
 
     // voiceColour: reuse Lantern's palette so voice identity is consistent across modules.
     static NVGcolor voiceColour(int v) {
@@ -83,10 +124,18 @@ struct IntertropicalGrid : Widget {
     }
 
     void onButton(const event::Button& e) override {
-        if (!module || e.action != GLFW_PRESS || e.button != GLFW_MOUSE_BUTTON_LEFT) {
-            Widget::onButton(e); return;
+        if (!module || e.action != GLFW_PRESS) { Widget::onButton(e); return; }
+        // Right-click on a filled cell: cycle output override (Auto -> 0 -> 1 -> ... -> 7 -> Auto).
+        if (e.button == GLFW_MOUSE_BUTTON_RIGHT && gridBox.contains(e.pos)) {
+            const float cw = gridBox.size.x / Intertropical::Ids::N_SCENES;
+            const float ch = gridBox.size.y / Intertropical::Ids::N_VOICES;
+            int scene = (int)((e.pos.x - gridBox.pos.x) / cw);
+            int voice = (int)((e.pos.y - gridBox.pos.y) / ch);
+            if (module->getCell(scene, voice)) module->cycleOutput(scene, voice);
+            e.consume(this); return;
         }
-        // Hit-test the main grid: toggle cell membership (store-backed).
+        if (e.button != GLFW_MOUSE_BUTTON_LEFT) { Widget::onButton(e); return; }
+        // Left-click: toggle cell membership (store-backed).
         if (gridBox.contains(e.pos)) {
             const float cw = gridBox.size.x / Intertropical::Ids::N_SCENES;
             const float ch = gridBox.size.y / Intertropical::Ids::N_VOICES;
@@ -96,11 +145,10 @@ struct IntertropicalGrid : Widget {
             e.consume(this); return;
         }
         // Hit-test the repeat row: set repeats N by horizontal position within the scene cell.
-        // TODO (spec lean): click-DRAG like a mini fader instead of pinpoint click.
         if (repBox.contains(e.pos)) {
             const float cw = repBox.size.x / Intertropical::Ids::N_SCENES;
             int scene = (int)((e.pos.x - repBox.pos.x) / cw);
-            float frac = ((e.pos.x - repBox.pos.x) - scene*cw) / cw;   // 0..1 across the cell
+            float frac = ((e.pos.x - repBox.pos.x) - scene*cw) / cw;
             int n = 1 + (int)(frac * Intertropical::Ids::MAX_REPEAT);
             module->setRepeats(scene, n);
             e.consume(this); return;
@@ -114,17 +162,56 @@ struct IntertropicalGrid : Widget {
         const int NS = Intertropical::Ids::N_SCENES;
         const int NV = Intertropical::Ids::N_VOICES;
 
-        // --- membership cells: filled = in (voiceColour), hollow = out ---
+        // --- grid lines (faint) ---
         const float cw = gridBox.size.x / NS;
         const float ch = gridBox.size.y / NV;
+        nvgStrokeColor(vg, nvgRGBA(0x40,0x40,0x40,0x60));
+        nvgStrokeWidth(vg, 0.5f);
+        for (int s = 0; s <= NS; ++s) {
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, gridBox.pos.x + s*cw, gridBox.pos.y);
+            nvgLineTo(vg, gridBox.pos.x + s*cw, gridBox.pos.y + gridBox.size.y);
+            nvgStroke(vg);
+        }
+        for (int v = 0; v <= NV; ++v) {
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, gridBox.pos.x, gridBox.pos.y + v*ch);
+            nvgLineTo(vg, gridBox.pos.x + gridBox.size.x, gridBox.pos.y + v*ch);
+            nvgStroke(vg);
+        }
+
+        // --- membership cells: filled = in (voiceColour), hollow = out ---
         for (int s = 0; s < NS; ++s) {
             for (int v = 0; v < NV; ++v) {
-                if (!module->getCell(s, v)) continue;
-                NVGcolor col = voiceColour(v);
-                nvgBeginPath(vg);
-                nvgRect(vg, gridBox.pos.x + s*cw + 1, gridBox.pos.y + v*ch + 1, cw-2, ch-2);
-                nvgFillColor(vg, col);
-                nvgFill(vg);
+                float cx = gridBox.pos.x + s*cw + 1;
+                float cy = gridBox.pos.y + v*ch + 1;
+                float cwid = cw - 2;
+                float cht = ch - 2;
+                if (module->getCell(s, v)) {
+                    NVGcolor col = voiceColour(v);
+                    nvgBeginPath(vg);
+                    nvgRect(vg, cx, cy, cwid, cht);
+                    nvgFillColor(vg, col);
+                    nvgFill(vg);
+                    // Output override: draw the output channel number (0-7) in the corner.
+                    int outCh = module->getOutput(s, v);
+                    if (outCh >= 0) {
+                        nvgFontSize(vg, 6.f);
+                        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_TOP);
+                        nvgFillColor(vg, nvgRGBA(0xff,0xff,0xff,0xe0));
+                        char buf[4]; snprintf(buf, sizeof(buf), "%d", outCh);
+                        nvgText(vg, cx + 1.f, cy + 0.5f, buf, nullptr);
+                    }
+                } else {
+                    // Hollow outline in faint voiceColour
+                    NVGcolor col = voiceColour(v);
+                    col.a = 0.25f;
+                    nvgBeginPath(vg);
+                    nvgRect(vg, cx, cy, cwid, cht);
+                    nvgStrokeColor(vg, col);
+                    nvgStrokeWidth(vg, 0.8f);
+                    nvgStroke(vg);
+                }
             }
         }
 
@@ -138,21 +225,119 @@ struct IntertropicalGrid : Widget {
             nvgStroke(vg);
         }
 
-        // --- repeat row: count-lit + current-repeat emphasis ---
-        // TODO: draw N lit sub-segments per scene (repeats[s]), brighter cell at repeatPos for
-        //       the active scene. Colour-depth = count + progress.
+        // --- repeat row: N lit sub-segments per scene + current-repeat emphasis ---
+        {
+            const float rcw = repBox.size.x / NS;
+            const float rsw = rcw / Intertropical::Ids::MAX_REPEAT;  // sub-segment width
+            for (int s = 0; s < NS; ++s) {
+                int rep = module->getRepeats(s);
+                bool isActive = (s == module->activeScene);
+                for (int r = 0; r < Intertropical::Ids::MAX_REPEAT; ++r) {
+                    float sx = repBox.pos.x + s*rcw + r*rsw + 0.5f;
+                    float sy = repBox.pos.y + 0.5f;
+                    float sw = rsw - 1.f;
+                    float sh = repBox.size.y - 1.f;
+                    if (r < rep) {
+                        // Lit segment
+                        NVGcolor col = voiceColour(s % 8);
+                        if (isActive && r == module->repeatPos) {
+                            // Current repeat in active scene: brighter
+                            col.a = 1.0f;
+                        } else if (isActive) {
+                            col.a = 0.7f;  // done repeats in active scene
+                        } else {
+                            col.a = 0.4f;  // non-active scene repeats
+                        }
+                        nvgBeginPath(vg);
+                        nvgRect(vg, sx, sy, sw, sh);
+                        nvgFillColor(vg, col);
+                        nvgFill(vg);
+                    } else {
+                        // Unlit segment
+                        nvgBeginPath(vg);
+                        nvgRect(vg, sx, sy, sw, sh);
+                        nvgFillColor(vg, nvgRGBA(0x30,0x30,0x30,0x50));
+                        nvgFill(vg);
+                    }
+                }
+                // Scene boundary line
+                nvgBeginPath(vg);
+                nvgMoveTo(vg, repBox.pos.x + (s+1)*rcw, repBox.pos.y);
+                nvgLineTo(vg, repBox.pos.x + (s+1)*rcw, repBox.pos.y + repBox.size.y);
+                nvgStrokeColor(vg, nvgRGBA(0x50,0x50,0x50,0x80));
+                nvgStrokeWidth(vg, 0.8f);
+                nvgStroke(vg);
+            }
+        }
 
-        // --- voice numbers 1..16 in the left gutter (widget-drawn text) ---
-        // TODO: nvgText row labels aligned to gridBox rows.
+        // --- voice numbers 1..16 in the left gutter ---
+        nvgFillColor(vg, nvgRGBA(0x80,0x80,0x80,0xff));
+        nvgFontSize(vg, 7.f);
+        nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+        nvgTextLetterSpacing(vg, 0.f);
+        for (int v = 0; v < NV; ++v) {
+            char buf[4];
+            snprintf(buf, sizeof(buf), "%d", v + 1);
+            nvgText(vg, gridBox.pos.x - 2.f, gridBox.pos.y + v*ch + ch/2, buf, nullptr);
+        }
     }
 };
 
 struct IntertropicalWidget : ModuleWidget {
     IntertropicalWidget(Intertropical* module) {
         setModule(module);
-        // TODO: setPanel with res/panels/Intertropical_panel_{dark,light}.svg via the theme kit.
-        // TODO: place IntertropicalGrid over the panel screen, poly output jacks from markers.
-        // Poly outs: GATE/CV/ACCENT/LEGATO/SLEG at the marker positions.
+        setPanel(createPanel(
+            asset::plugin(pluginInstance, "res/panels/Intertropical_panel_dark.svg"),
+            asset::plugin(pluginInstance, "res/panels/Intertropical_panel_light.svg")));
+
+        // Grid widget — covers the repeat row + main grid area
+        auto* grid = new IntertropicalGrid;
+        grid->module = module;
+        grid->gridBox = Rect(mm2px(Vec(IT_GRID_X, IT_GRID_Y)),
+                             mm2px(Vec(IT_GRID_W, IT_GRID_H)));
+        grid->repBox  = Rect(mm2px(Vec(IT_GRID_X, IT_REP_Y)),
+                             mm2px(Vec(IT_GRID_W, IT_REP_H)));
+        // The grid widget's own box covers both areas
+        grid->box = Rect(mm2px(Vec(IT_GRID_X - 6, IT_REP_Y - 2)),
+                         mm2px(Vec(IT_GRID_W + 8, IT_GRID_H + IT_REP_H + 6)));
+        addChild(grid);
+
+        // 5 poly output jacks
+        const char* jackLabels[5] = {"GATE", "CV", "ACC", "LEG", "SLEG"};
+        for (int o = 0; o < Intertropical::Ids::NUM_OUTPUTS; ++o) {
+            addOutput(createOutputCentered<PJ301MPort>(
+                mm2px(Vec(IT_JACK_X[o], IT_JACK_Y)), module, o));
+        }
+
+        // Screws
+        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
+        addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
+        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+        addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+    }
+
+    void appendContextMenu(Menu* menu) override {
+        auto* m = dynamic_cast<Intertropical*>(module);
+        if (!m) return;
+        menu->addChild(new MenuSeparator);
+        auto* label = new MenuLabel;
+        label->text = "Scenes (loop length)";
+        menu->addChild(label);
+        for (int n = 1; n <= Intertropical::Ids::N_SCENES; ++n) {
+            auto* item = new MenuItem;
+            item->text = std::to_string(n) + (n == 1 ? " scene" : " scenes");
+            item->rightText = (m->getLoopLen() == n) ? "\xe2\x9c\x93" : "";
+            struct SetLoop : MenuItem {
+                Intertropical* m; int n;
+                void onAction(const event::Action& e) override { m->setLoopLen(n); }
+            };
+            auto* sl = new SetLoop;
+            sl->text = item->text;
+            sl->rightText = item->rightText;
+            sl->m = m; sl->n = n;
+            menu->addChild(sl);
+            delete item;  // replaced by sl
+        }
     }
 };
 

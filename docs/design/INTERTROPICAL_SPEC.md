@@ -223,3 +223,20 @@ consistent with the rest of the instrument -- answering the Lantern-grid gap dir
   at-boundary makes either safe, but the playhead semantics differ.
 - Default scene when none are defined / all cells hollow (probably: pass nothing, or pass all —
   decide which is the sensible empty state).
+
+## Design note: C5 (alternative grid layout — deferred)
+Considered during the routing design discussion: **rethink the grid as 8 scenes x 8 outputs**
+instead of 8 scenes x 16 voices. Each cell = which voice (1-16) is routed to that output in
+that scene. This directly shows the routing (output to voice), naturally enforces the 8-voice
+limit (8 outputs, one voice each), has a smaller grid (8x8 vs 8x16), and matches the VCV
+Octal Router's model (each output gets one input, per scene).
+
+**Why deferred:** the 8x16 grid (voices as rows) lets you scan a voice's row horizontally to
+see which scenes it participates in — the "arrangement view" that is Intertropical's primary
+thesis. C5 loses that (voice numbers are scattered across output rows). The hybrid (auto-pack
++ right-click override on the current grid) was chosen instead, preserving the arrangement
+view while adding routing control.
+
+**When to revisit:** if the right-click override proves too fiddly for real use, or if users
+consistently want to see "what's on output 3 across all scenes" (a routing view), C5 could be
+added as an alternate display mode. The data model (sceneOutput[8][16]) already supports it.
