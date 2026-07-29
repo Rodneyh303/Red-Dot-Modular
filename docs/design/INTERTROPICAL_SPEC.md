@@ -240,3 +240,69 @@ view while adding routing control.
 **When to revisit:** if the right-click override proves too fiddly for real use, or if users
 consistently want to see "what's on output 3 across all scenes" (a routing view), C5 could be
 added as an alternate display mode. The data model (sceneOutput[8][16]) already supports it.
+
+## v2 direction (from first working build -- "Intertropical rocks", vibey 8-bar mono loop)
+
+The first playable build reframed the module: the original design was really a channel FILTER
+(route the active scene's voices, block the rest). That is NOT a sequential switch -- a switch
+ROUTES (decides what comes out WHERE). Adding channel COLLAPSE (map active voices down onto
+output channels) is what makes it the switch it is named for. This is the core v2 shift, already
+implemented as a hybrid auto-pack + override allocator.
+
+### Multiple Intertropicals -- phase-locked by construction (DECIDED)
+All Intertropicals sync off the MAIN Monsoon system drive (clock / gates / phase) -- they read
+the same totalStepsElapsed, so they advance and their scene-repeats WRAP at the SAME phrase
+boundary. This kills the drift-vs-polymeter ambiguity: multiple Intertropicals are phase-locked
+by construction, not by a setting. Polymetric arrangement still works WITHIN the shared clock (a
+2-repeat and a 3-repeat scene realign every 6 phrases), but every one of those boundaries is a
+shared Monsoon boundary -- there is always a common downbeat. "Band playing together" is the
+structural default, not an option to get wrong.
+Endgame this enables: N Intertropicals each collapse a DIFFERENT voice-subset to a DIFFERENT
+output, each its own arrangement -- bass (voices 1-4 -> mono, transposed down), riff (5-8), chords
+(9-16 kept poly). Monsoon generates one correlated poly field; the Intertropicals carve it into
+parts. The horizontal-conservation thesis as a multitrack arrangement.
+Requires: EMPTY SCENES must be allowed (a scene with no members = that part rests this phrase --
+essential for arrangement, e.g. bass drops out for a section).
+
+### Per-scene transpose (CLEAN next feature)
+Transpose is output-mapping (LIVE, post-generation -- LOCK_SEMANTICS 9), so a per-scene transpose
+is just "shift this scene's collapsed output by N semitones". Composes for free: same voice-set,
+different scenes at different transpositions = a chord progression / modulating riff from ONE
+pattern. Turns the arrangement layer into a HARMONIC layer. Stays fun: one number per scene
+column, like the repeat count. Highest-leverage addition; do this.
+
+### Collapse policy -- REVIEW of the implemented computeRouting()
+Current logic (Intertropical.hpp:85) is a clean two-pass allocator and is the right design:
+- Pass 1: honour forced OVERRIDES (sceneOutput[scene][v] >= 0), each claiming its channel.
+- Pass 2: auto-pack remaining active voices in VOICE ORDER into free channels 0..7.
+So: default = voice order, optional per-voice override. Members limited to 8 per scene
+(MAX_VOICES_PER_SCENE) = 8 output channels. This is correct and matches "default to voice order
+with optional override". Right-click cycles a cell's override (Auto -> 0..7 -> Auto).
+Points to firm up (the "still needs thought" part):
+- OVERRIDE COLLISION: if two voices are forced to the same channel, pass 1's `used[]` gives the
+  first-scanned voice the channel and the second falls through to auto-pack. That is defensible
+  but SILENT -- the user set an override that didn't take. Consider a visual "conflict" mark on
+  the losing cell so it is not a mystery.
+- >8 MEMBERS: the mask can hold up to 16 bits but only 8 can route. Enforce the 8-member limit at
+  SET time (setCell refuses a 9th) so the grid can't represent an unroutable scene -- cleaner
+  than silently dropping voices 9+ at route time. (Confirm current setCell behaviour.)
+- EMPTY SCENE: nOut must be allowed to be 0 (part rests). Confirm setChannels(0) path is clean.
+
+### UI ideas to improve the collapse (OPEN -- Rodney invited)
+- Show the OUTPUT CHANNEL each active cell maps to (already drawn as a corner number). Could also
+  tint the cell by output-channel rather than voice, toggeable, so you SEE the collapse.
+- A thin "output rail" (8 slots) beside the grid showing which output each channel currently
+  carries -- makes the collapse legible as a mapping, not just per-cell numbers.
+- Drag a cell onto an output slot to set its override (more direct than right-click cycling).
+- Mark override COLLISIONS and the >8 OVERFLOW visibly.
+(Decide in play; keep the fun-loop guardrail -- the basic click-to-add must stay immediate.)
+
+### Panel: align Intertropical lanes to Lantern grid lanes (WORK NEEDED)
+Lantern's grid-view lane height is H / N_VOICES (16 lanes fill the display height,
+Lantern.cpp:395). For Intertropical's 16 voice rows to ALIGN with Lantern's lanes when the two
+are viewed together (the produce/observe pair), Intertropical's main grid screen must use the
+SAME effective lane pitch -- its 16 rows dividing its screen height the same way Lantern's 16
+lanes divide theirs. The panel generator (gen_intertropical.py) needs adjusting so GRID row pitch
+matches Lantern's laneH convention (shared SandsGrid.hpp-style constants if possible), and the
+repeat band + gutter sized so the 16 voice rows land on the Lantern lane grid. This is real panel
+work, not just cosmetics -- lane alignment is what makes the two modules read as one system.
