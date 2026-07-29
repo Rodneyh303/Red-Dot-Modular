@@ -438,3 +438,46 @@ Migrate the per-scene single-output override into this two-layer form; drop the 
 Keep auto-pack as the v1 default so the simple path stays a one-grid click experience; the global
 8x8 slot grid and explicit seating are the opt-in power layers, deferred until the simple path has
 been played enough to know the matrix UI's exact feel.
+
+## Per-output transpose (SETTLED)
+
+Each of the 8 outputs has its own transpose knob: +/-24 semitones (2 octaves each way),
+per-semitone DETENTED (49 detents). Chosen over +/-36 for knob usability -- 2 octaves covers
+essentially all arrangement transposition, and 49 detents stay hittable vs 73.
+
+Transpose is OUTPUT-mapping (post-generation), so it is LIVE under lock (LOCK_SEMANTICS 9,
+same side as Monsoon's own transpose). It shifts the finished pitch on that output channel;
+it changes nothing generated.
+
+### Fan-out x per-output transpose = HARMONIZED doubling (upgrades the fan-out trade-off)
+Because transpose is PER-OUTPUT and a fanned-out slot feeds MULTIPLE outputs, one voice via a
+fan-out slot comes out at EACH output's own transpose simultaneously. So fan-out is lockstep in
+RHYTHM but can be HARMONIZED in PITCH: voice on slot X -> output 3 at +0 and output 6 at +7 = the
+same line doubled a fifth apart. This upgrades the earlier fan-out caveat ("same line in lockstep,
+sometimes muddy unison") into a genuine chord-voicing TOOL: fan-out + per-output transpose builds
+intervals/voicings from a single voice. Note it is still rhythmically locked (one line's timing),
+so it thickens/harmonizes a part rather than creating independent counterpoint -- which is exactly
+what you want for chord voicing.
+
+### Placement (panel)
+Transpose is per-output; the 8 outputs are the COLUMNS of the global slot->output grid. So the 8
+transpose knobs sit in a row aligned to those output columns (knob N under output column N),
+making the right-hand block a coherent "8 outputs + everything global about them" unit: the 8x8
+slot->output routing grid plus its row of 8 output-transpose knobs.
+
+## Panel layout (v3 -- align to Lantern, fit routing grid + transpose)
+
+Constraints resolved:
+- REPEAT strip stays ABOVE the scene grid (reads as belonging to the scene columns), reduced to
+  MAX 4 repeats (8 -> 4) so each control is bigger/clearer. ~10mm tall horizontal strip.
+- The repeat strip pushes the main grid top DOWN (below the brand + repeats). Alignment with
+  Lantern is achieved by shifting LANTERN's LCD DOWN to the SAME grid-top + keeping the 6.0mm
+  lane pitch -- NOT by forcing Intertropical's grid to 16mm. Both grids share top+pitch; Lantern
+  has the headroom to move (Rodney: room to move Lantern LCD + jacks down a bit).
+- Main MEMBERSHIP grid: 16 voices x 8 scenes, 6.0mm row pitch (= Lantern laneH = 96/16), 96mm
+  tall. Voice-number gutter on the left (widget-drawn numbers).
+- RIGHT of the membership grid: the global 8x8 slot->output routing grid + a row of 8 per-output
+  transpose knobs aligned to its columns.
+- JACKS at the bottom, below the 96mm grid; move down as needed within the 128.5mm budget.
+- Panel WIDER (~24-25HP) to fit membership grid + gutter + routing grid + transpose without
+  cramping. Grid cells must be comfortably clickable (not tiny).
