@@ -104,7 +104,7 @@ void Intertropical::process(const ProcessArgs& args) {
 // Jack wells (5):  px(63.1, 118.5, 173.9, 229.2, 284.6) × cy=346.9 → mm y=117.5
 static constexpr float IT_GRID_X   = 12.0f;  // membership grid left (panel v5 MEM_L)
 static constexpr float IT_GRID_Y   = 16.0f;  // grid top = 16mm (LANTERN-ALIGNED, panel v5)
-static constexpr float IT_GRID_W   = 70.0f;  // grid width (panel v5 MEM_W; 8 cols ~8.75mm)
+static constexpr float IT_GRID_W   = 92.0f;  // grid width (panel MEM_W=92; 8 cols 11.5mm)
 static constexpr float IT_GRID_H   = 96.0f;  // grid height 96mm (16 rows x 6.0mm = Lantern)
 static constexpr float IT_REP_Y    = 113.5f; // repeat row top: BELOW the grid now (panel v5)
 static constexpr float IT_REP_H    = 7.0f;   // repeat row height (panel v5)
@@ -304,9 +304,11 @@ struct IntertropicalWidget : ModuleWidget,
                              mm2px(Vec(IT_GRID_W, IT_GRID_H)));
         grid->repBox  = Rect(mm2px(Vec(IT_GRID_X, IT_REP_Y)),
                              mm2px(Vec(IT_GRID_W, IT_REP_H)));
-        // The grid widget's own box covers both areas
-        grid->box = Rect(mm2px(Vec(IT_GRID_X - 6, IT_GRID_Y - 2)),
-                         mm2px(Vec(IT_GRID_W + 8, (IT_REP_Y + IT_REP_H) - IT_GRID_Y + 4)));
+        // FULL-PANEL box (origin 0,0) so the absolute panel-mm coords in gridBox/repBox equal
+        // the widget's LOCAL draw coords. Bug fixed: box.pos was offset to (IT_GRID_X-6,
+        // IT_GRID_Y-2), so drawing at absolute gridBox.pos rendered offset by that origin -- the
+        // "second, shifted grid" over the panel's own static grid, and clipped the repeats.
+        grid->box = Rect(Vec(0, 0), box.size);
         addChild(grid);
 
         // 8 per-output TRANSPOSE knobs -- bound to panel markers param_0..7 (real params).

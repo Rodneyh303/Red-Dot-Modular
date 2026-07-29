@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import dotmod_design as D
 from dotmod_design import px, theme, svg_open, logo_embed, kit_shape
 
-HP=36; PW_MM=HP*5.08; PH_MM=128.5; MARGIN=6.0
+HP=42; PW_MM=HP*5.08; PH_MM=128.5; MARGIN=6.0
 N_SCENES=8; N_VOICES=16; N_OUTPUTS=8; N_SLOTS=8; MAX_REPEAT=4
 LANE_PITCH=6.0
 
@@ -35,7 +35,7 @@ REP_Y=GRID_BOT+1.5; REP_H=7.0                                          # repeats
 
 # horizontal
 GUTTER=6.0
-MEM_L=MARGIN+GUTTER; MEM_W=70.0; MEM_R=MEM_L+MEM_W                     # 12 -> 82
+MEM_L=MARGIN+GUTTER; MEM_W=92.0; MEM_R=MEM_L+MEM_W                     # 12 -> 82
 COL_W=MEM_W/N_SCENES
 GAPX=8.0
 RT_L=MEM_R+GAPX; RT_W=PW_MM-MARGIN-RT_L                                # 90 -> 177
