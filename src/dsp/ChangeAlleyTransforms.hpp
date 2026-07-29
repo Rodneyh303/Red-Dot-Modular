@@ -9,6 +9,11 @@
 // Rows >= activeCount are LEFT UNTOUCHED (manual pins persist beyond the live pool).
 // All transforms preserve one-pin-per-row (they assign, never duplicate rows).
 #include <cstdint>
+#include "PhiloxRng.hpp"   // the shared library RNG. Change Alley's scatter draws through
+                           // PhiloxRng::at(pos) -- counter-addressable + reversible -- instead
+                           // of the old inline xorshift/splitmix duplicates. PhiloxRng is
+                           // header-only (cstdint/cstring/array), no Rack SDK, so the "no
+                           // dependency" reason for the inline copies never held.
 
 namespace dotModular { namespace ca {
 
@@ -98,19 +103,38 @@ inline void rotateValues(uint8_t* src, int activeCount, int blockSize, int step 
     }
 }
 
+// ---- Change Alley's OWN correlation draw stream ----
+// Change Alley's scatter draws MUST be independent of the rhythm and melody draw streams
+// (PatternEngine rhythmPhilox / melodyPhilox, both seeded from the shared pattern seed). If
+// scatter drew from a shared counter/key it would perturb the note draws (and vice versa) and
+// entangle their reversibility. We domain-separate: the correlation key mixes the caller's seed
+// with a fixed CORRELATION nonce distinct from anything the pattern engine uses, so the
+// correlation stream is orthogonal -- scattering correlations never disturbs the notes, and each
+// stream rewinds independently.
+static constexpr uint64_t kCorrelationDomain = 0xCA11EA5CC0DE57EAULL;
+inline redDot::PhiloxRng correlationRng(uint64_t seed) {
+    redDot::PhiloxRng rng;
+    rng.seed(seed, kCorrelationDomain);   // key = f(seed, correlation-domain) -> disjoint stream
+    return rng;
+}
+
 // Scatter: seeded shuffle of sources WITHIN each block. Deterministic per seed
-// (reproducible/undoable). Each row gets a random source drawn from ITS OWN block
-// of the active pool (fan-in allowed — this is a re-source, not a permutation).
+// (reproducible/undoable). Each row draws a source from ITS OWN block of the active pool
+// (fan-in allowed -- a re-source, not a permutation). Draws through Change Alley's OWN
+// correlation stream (correlationRng), independent of rhythm/melody, and counter-addressable
+// (at(v)) so the same seed reproduces the scatter and reverse/scrub can re-derive it. NOTE:
+// fan-in means scatter has NO inverse TRANSFORM; undo is by restoring the pre-scatter pin state
+// (a store snapshot), not by re-applying a transform.
 inline void scatter(uint8_t* src, int activeCount, int blockSize, uint32_t seed) {
     const int b = clampBlock(blockSize, activeCount);
-    uint32_t s = seed ? seed : 0x9E3779B9u;
-    auto nextU = [&s]() { s ^= s << 13; s ^= s >> 17; s ^= s << 5; return s; };  // xorshift32
+    redDot::PhiloxRng rng = correlationRng(seed ? seed : 0x9E3779B9ull);
     for (int v = 0; v < activeCount && v < 16; ++v) {
         const int base = (v / b) * b;
         int blockEnd   = base + b;
         if (blockEnd > activeCount) blockEnd = activeCount;
         const int span = blockEnd - base;
-        src[v] = (uint8_t)(base + (int)(nextU() % (uint32_t)(span > 0 ? span : 1)));
+        const uint32_t draw = rng.at((uint64_t)v);   // addressable per row -> reversible
+        src[v] = (uint8_t)(base + (int)(draw % (uint32_t)(span > 0 ? span : 1)));
     }
 }
 
@@ -212,8 +236,12 @@ inline void transpose(uint8_t* src, int activeCount) {
 // changes who does the referencing. (§12d gap; §12g predicted it should exist.)
 inline void scatterRows(uint8_t* src, int activeCount, int blockSize, uint32_t seed) {
     const int b = clampBlock(blockSize, activeCount);
-    uint32_t st = seed ? seed : 0x9E3779B9u;
-    auto nextU = [&st]() { st ^= st << 13; st ^= st >> 17; st ^= st << 5; return st; };
+    // Own correlation stream (independent of rhythm/melody), addressable per draw. Unlike
+    // scatter(), scatterRows is a genuine Fisher-Yates PERMUTATION, so it IS invertible (undo
+    // by the inverse permutation, or by re-deriving from the same seed).
+    redDot::PhiloxRng rng = correlationRng(seed ? seed : 0x9E3779B9ull);
+    uint64_t drawPos = 0;
+    auto nextU = [&rng, &drawPos]() { return rng.at(drawPos++); };
     uint8_t tmp[16];
     for (int v = 0; v < 16; ++v) tmp[v] = src[v];
     for (int base = 0; base < activeCount && base < 16; base += b) {
@@ -321,14 +349,14 @@ inline void interScatter(uint8_t* src, int activeCount, int blockSize, uint64_t 
     const int b    = clampBlock(blockSize, activeCount);
     const int nBlk = (activeCount + b - 1) / b;
     if (nBlk <= 1) return;
-    // Inline Philox-style scramble (no Rack dependency -- this file is header-only/no-SDK).
-    // Each block draws a source block from a keyed mix of (counter, block index).
+    // Draw each block's source through Change Alley's OWN correlation stream (correlationRng),
+    // addressed by (counter-derived position + block index). Independent of the rhythm/melody
+    // streams and counter-reversible -- replaces the old inline splitmix hash. interScatter is a
+    // block re-source (fan-in allowed like scatter), so it has NO inverse transform; undo is by
+    // pin-state snapshot.
+    redDot::PhiloxRng rng = correlationRng(counter ^ key);
     for (int blk = 0; blk < nBlk; ++blk) {
-        uint64_t h = counter ^ ((uint64_t)blk * 0x9E3779B97F4A7C15ULL) ^ key;
-        h ^= h >> 30; h *= 0xBF58476D1CE4E5B9ULL;
-        h ^= h >> 27; h *= 0x94D049BB133111EBULL;
-        h ^= h >> 31;
-        const int srcBlk = (int)(h % (uint64_t)nBlk);
+        const int srcBlk = (int)(rng.at((uint64_t)blk) % (uint32_t)nBlk);
         for (int w = 0; w < b; ++w) {
             const int v = blk * b + w;
             if (v < activeCount && v < 16) {
