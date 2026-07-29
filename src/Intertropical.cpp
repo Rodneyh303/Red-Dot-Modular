@@ -8,6 +8,7 @@
 #include "ui/SvgPanelKit.hpp"
 #include "ui/GoldPolyPort.hpp"
 #include "ui/DimmableTrimpot.hpp"
+#include "ui/RedScrew.hpp"
 
 using namespace rack;
 
@@ -288,12 +289,12 @@ struct IntertropicalGrid : Widget {
     }
 };
 
-struct IntertropicalWidget : ModuleWidget, redDot::KitAccess<IntertropicalWidget> {
+struct IntertropicalWidget : ModuleWidget,
+    dotModular::Compose<IntertropicalWidget,
+                        dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
     IntertropicalWidget(Intertropical* module) {
         setModule(module);
-        setPanel(createPanel(
-            asset::plugin(pluginInstance, "res/panels/Intertropical_panel_dark.svg"),
-            asset::plugin(pluginInstance, "res/panels/Intertropical_panel_light.svg")));
+        loadPanel(asset::plugin(pluginInstance, "res/panels/Intertropical_panel_dark.svg"));
 
         // Grid widget — covers the repeat row + main grid area
         auto* grid = new IntertropicalGrid;
@@ -320,11 +321,8 @@ struct IntertropicalWidget : ModuleWidget, redDot::KitAccess<IntertropicalWidget
         if (auto* s = findNamed("light_connect"))
             addChild(redDot::makeConnectMark(module, centerOf(s), mm2px(8.f)));
 
-        // Screws
-        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
-        addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
-        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
-        addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+        // Branded dot.modular screws (matches the family).
+        redDot::addRedScrews(this);
     }
 
     void step() override { ModuleWidget::step(); kitStep(); }
