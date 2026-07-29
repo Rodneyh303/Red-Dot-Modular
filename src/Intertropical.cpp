@@ -6,6 +6,8 @@
 #include "Monsoon.hpp"
 #include "MonsoonStraitsExpander.hpp"   // complete type for cachedPolyVoiceExpander->outputs
 #include "ui/SvgPanelKit.hpp"
+#include "ui/GoldPolyPort.hpp"
+#include "ui/DimmableTrimpot.hpp"
 
 using namespace rack;
 
@@ -16,6 +18,12 @@ Intertropical::Intertropical() {
         for (int v = 0; v < Ids::N_VOICES; ++v)
             sceneOutput[s][v] = -1;  // all auto-pack by default
     config(Ids::NUM_PARAMS, Ids::NUM_INPUTS, Ids::NUM_OUTPUTS, Ids::NUM_LIGHTS);
+    // 8 per-output transpose knobs: -24..+24 semitones, integer-detented (snap), default 0.
+    for (int o = 0; o < 8; ++o) {
+        configParam(Ids::TRANSPOSE_FIRST + o, -24.f, 24.f, 0.f,
+                    rack::string::f("Output %d transpose", o + 1), " semitones");
+        paramQuantities[Ids::TRANSPOSE_FIRST + o]->snapEnabled = true;   // detented per semitone
+    }
     configInput(Ids::PHASE_IN, "Phase (optional; else reads host)");
     configOutput(Ids::GATE_OUT,   "Gate (poly, active scene, <=8ch)");
     configOutput(Ids::CV_OUT,     "CV (poly, active scene, <=8ch)");
@@ -75,7 +83,10 @@ void Intertropical::process(const ProcessArgs& args) {
         int ch = routing[v];
         if (ch < 0) continue;
         outputs[Ids::GATE_OUT].setVoltage(straits->outputs[0].getVoltage(v), ch);
-        outputs[Ids::CV_OUT].setVoltage(straits->outputs[3].getVoltage(v), ch);
+        // Per-output TRANSPOSE: shift this channel's pitch CV by its knob (semitones -> 1V/oct).
+        // ch is the OUTPUT channel, so params[TRANSPOSE_FIRST + ch] is that output's transpose.
+        float trSemi = (ch < 8) ? params[Ids::TRANSPOSE_FIRST + ch].getValue() : 0.f;
+        outputs[Ids::CV_OUT].setVoltage(straits->outputs[3].getVoltage(v) + trSemi / 12.f, ch);
         outputs[Ids::ACCENT_OUT].setVoltage(straits->outputs[4].getVoltage(v), ch);
         outputs[Ids::LEGATO_OUT].setVoltage(straits->outputs[1].getVoltage(v), ch);
         outputs[Ids::SLEG_OUT].setVoltage(straits->outputs[2].getVoltage(v), ch);
@@ -89,14 +100,15 @@ void Intertropical::process(const ProcessArgs& args) {
 // Repeat row rect: px(35.4, 47.2, 276.9, 26.6) → mm(12.0, 16.0, 93.7, 9.0)
 // Main grid rect:  px(35.4, 82.7, 276.9, 240.7) → mm(12.0, 28.0, 93.7, 81.5)
 // Jack wells (5):  px(63.1, 118.5, 173.9, 229.2, 284.6) × cy=346.9 → mm y=117.5
-static constexpr float IT_GRID_X   = 12.0f;  // grid left edge (matches panel rect)
-static constexpr float IT_GRID_Y   = 28.0f;  // grid top (matches panel rect y=82.7px)
-static constexpr float IT_GRID_W   = 93.7f;  // grid width (8 cols × ~11.7mm)
-static constexpr float IT_GRID_H   = 81.5f;  // grid height (16 rows × ~5.1mm)
-static constexpr float IT_REP_Y    = 16.0f;  // repeat row top (matches panel rect y=47.2px)
-static constexpr float IT_REP_H    = 9.0f;   // repeat row height (matches panel rect h=26.6px)
-static constexpr float IT_JACK_Y   = 117.5f; // output jack row (matches panel cy=346.9px)
-static constexpr float IT_JACK_X[5] = { 21.4f, 40.1f, 58.9f, 77.6f, 96.4f };  // 5 jacks from panel SVG
+static constexpr float IT_GRID_X   = 12.0f;  // membership grid left (panel v5 MEM_L)
+static constexpr float IT_GRID_Y   = 16.0f;  // grid top = 16mm (LANTERN-ALIGNED, panel v5)
+static constexpr float IT_GRID_W   = 70.0f;  // grid width (panel v5 MEM_W; 8 cols ~8.75mm)
+static constexpr float IT_GRID_H   = 96.0f;  // grid height 96mm (16 rows x 6.0mm = Lantern)
+static constexpr float IT_REP_Y    = 113.5f; // repeat row top: BELOW the grid now (panel v5)
+static constexpr float IT_REP_H    = 7.0f;   // repeat row height (panel v5)
+// Transpose knobs + jacks now bound via panel MARKERS (param_0..7, output_0..4), not hardcoded
+// coords -- see kit binding in the widget ctor. IT_JACK_Y kept only as a fallback reference.
+static constexpr float IT_JACK_Y   = 99.0f;  // (panel v5 jy; markers are the source of truth)
 
 // Continuous grid display: reads cell geometry from the panel constants and draws live state
 // (membership fill via voiceColour, active-scene highlight, repeat count + progress, voice
@@ -276,7 +288,7 @@ struct IntertropicalGrid : Widget {
     }
 };
 
-struct IntertropicalWidget : ModuleWidget {
+struct IntertropicalWidget : ModuleWidget, redDot::KitAccess<IntertropicalWidget> {
     IntertropicalWidget(Intertropical* module) {
         setModule(module);
         setPanel(createPanel(
@@ -291,16 +303,22 @@ struct IntertropicalWidget : ModuleWidget {
         grid->repBox  = Rect(mm2px(Vec(IT_GRID_X, IT_REP_Y)),
                              mm2px(Vec(IT_GRID_W, IT_REP_H)));
         // The grid widget's own box covers both areas
-        grid->box = Rect(mm2px(Vec(IT_GRID_X - 6, IT_REP_Y - 2)),
-                         mm2px(Vec(IT_GRID_W + 8, IT_GRID_H + IT_REP_H + 6)));
+        grid->box = Rect(mm2px(Vec(IT_GRID_X - 6, IT_GRID_Y - 2)),
+                         mm2px(Vec(IT_GRID_W + 8, (IT_REP_Y + IT_REP_H) - IT_GRID_Y + 4)));
         addChild(grid);
 
-        // 5 poly output jacks
-        const char* jackLabels[5] = {"GATE", "CV", "ACC", "LEG", "SLEG"};
-        for (int o = 0; o < Intertropical::Ids::NUM_OUTPUTS; ++o) {
-            addOutput(createOutputCentered<PJ301MPort>(
-                mm2px(Vec(IT_JACK_X[o], IT_JACK_Y)), module, o));
-        }
+        // 8 per-output TRANSPOSE knobs -- bound to panel markers param_0..7 (real params).
+        for (int o = 0; o < 8; ++o)
+            bindParam<redDot::DimmableTrimpot>(rack::string::f("param_%d", o),
+                                         Intertropical::Ids::TRANSPOSE_FIRST + o);
+
+        // 5 poly OUTPUT jacks -- bound to panel markers output_0..4.
+        for (int o = 0; o < Intertropical::Ids::NUM_OUTPUTS; ++o)
+            bindOutput<redDot::GoldPolyPort>(rack::string::f("output_%d", o), o);
+
+        // dot.modular connect mark (greyed when no Monsoon attached).
+        if (auto* s = findNamed("light_connect"))
+            addChild(redDot::makeConnectMark(module, centerOf(s), mm2px(8.f)));
 
         // Screws
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
@@ -308,6 +326,8 @@ struct IntertropicalWidget : ModuleWidget {
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
     }
+
+    void step() override { ModuleWidget::step(); kitStep(); }
 
     void appendContextMenu(Menu* menu) override {
         auto* m = dynamic_cast<Intertropical*>(module);

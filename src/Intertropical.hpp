@@ -19,7 +19,14 @@ namespace redDot { struct Monsoon; }
 
 // ---- Id enum (declared for shape; config() reserves ZERO params  de-parammed) ----
 struct IntertropicalIds {
-    enum ParamId  { NUM_PARAMS };                 // none: store-backed grid, no host params
+    enum ParamId  {
+        // 8 per-output TRANSPOSE knobs (+/-24 semis, detented). Real params: values the user
+        // sets, DAW-automatable/CV-able -- unlike the store-backed grid (display state, no param).
+        TRANSPOSE_0, TRANSPOSE_1, TRANSPOSE_2, TRANSPOSE_3,
+        TRANSPOSE_4, TRANSPOSE_5, TRANSPOSE_6, TRANSPOSE_7,
+        NUM_PARAMS
+    };
+    static constexpr int TRANSPOSE_FIRST = TRANSPOSE_0;   // TRANSPOSE_0..7 == output 0..7
     enum InputId  {
         PHASE_IN,                                 // optional external phase (else host bus)
         NUM_INPUTS
