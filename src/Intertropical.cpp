@@ -8,6 +8,7 @@
 #include "ui/SvgPanelKit.hpp"
 #include "ui/GoldPolyPort.hpp"
 #include "ui/DimmableTrimpot.hpp"
+#include "ui/ConnectMark.hpp"
 #include "ui/RedScrew.hpp"
 
 using namespace rack;
@@ -310,7 +311,7 @@ struct IntertropicalWidget : ModuleWidget,
 
         // 8 per-output TRANSPOSE knobs -- bound to panel markers param_0..7 (real params).
         for (int o = 0; o < 8; ++o)
-            bindParam<redDot::DimmableTrimpot>(rack::string::f("param_%d", o),
+            bindParam<DimmableTrimpot>(rack::string::f("param_%d", o),
                                          Intertropical::Ids::TRANSPOSE_FIRST + o);
 
         // 5 poly OUTPUT jacks -- bound to panel markers output_0..4.
