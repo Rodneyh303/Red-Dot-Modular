@@ -1,131 +1,136 @@
 #!/usr/bin/env python3
-"""Intertropical scene-sequencer panel generator (SCAFFOLD v3 -- unified grid idiom).
+"""Intertropical scene-sequencer panel generator (v3 -- routing grid + transpose, Lantern-aligned).
 
-Produces res/panels/Intertropical_panel_{dark,light}.svg.
+res/panels/Intertropical_panel_{dark,light}.svg
 
-Grid style: CONTINUOUS DISPLAY, matching Lantern / the Sands visual editor -- a single
-recessed DARK screen with a thin gridline lattice, NOT discrete wells. The SCREEN stays dark
-on both themes (voiceColour hues are tuned against dark; on light they'd fall below readable
-contrast and the display would lie about the data). Only the BEZEL follows the panel.
+Layout:
+  brand strip (top)
+  LEFT  block  = per-scene ARRANGEMENT:
+     repeat strip (8 scenes x 4 segments, ABOVE the grid)   <- max repeats 4 (was 8)
+     voice-number gutter + 16-voice x 8-scene MEMBERSHIP grid (6.0mm pitch = Lantern laneH)
+  RIGHT block  = global SETUP (8 outputs + everything global about them):
+     8x8 slot->output ROUTING grid (fan-out = >1 lit cell in a slot row)
+     row of 8 per-output TRANSPOSE knobs (+/-24 semis, detented), aligned to output columns
+  poly OUTPUT jacks (bottom)
 
-REPEATS use the SAME grid idiom as the voice cells (Rodney): the repeat row is one cell per
-scene, each subdivided HORIZONTALLY into 8 sub-segments. The widget uses colour-DEPTH to show
-both COUNT (N sub-segments lit = N repeats) and live PROGRESS (the fill deepens/advances
-through them as the scene plays -- 'repeat 3 of 5' reads as 3 done + 2 pending). One cell
-carries count + progress in the grid's own language -- no separate meter, no text.
+Continuous-display style (dark screen both themes, bezel themes). Panel art is STATIC geometry;
+all live state (membership fill via voiceColour, active scene, repeat count+progress, playhead,
+routing cell fills, voice numbers) is widget-drawn. Store-backed, no params.
 
-Left gutter: just VOICE NUMBERS 1..16 (widget-drawn text; the panel reserves the space, draws
-no swatch -- identity-by-colour lives in the CELLS, where a filled cell is that voice's hue).
-
-Layout: brand | repeat row (8 scenes, each 8-subdivided) | main grid (8 scenes x 16 voices) |
-poly outputs. Panel art is STATIC geometry; all live state (membership fill, active scene,
-repeat count+progress, playhead, voice numbers) is widget-drawn. Store-backed, no params.
+Alignment: the membership grid's 16 rows use 6.0mm pitch (= Lantern's laneH = 96/16). The repeat
+strip pushes the grid top DOWN; Lantern's LCD is shifted down to the same top so the two grids
+line up (Lantern has the headroom). GRID_TOP here is the shared top.
 """
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import dotmod_design as D
-from dotmod_design import px, theme, svg_open, logo_embed, jack
+from dotmod_design import px, theme, svg_open, logo_embed, jack, trim
 
-HP        = 22
-PW_MM     = HP * 5.08
+# ---- panel ----
+HP        = 25
+PW_MM     = HP * 5.08          # 127.0mm
 PH_MM     = 128.5
-MARGIN    = 6.0
+MARGIN    = 5.0
 
 N_SCENES  = 8
 N_VOICES  = 16
-N_SUBSEG  = 8            # horizontal subdivisions of each repeat cell (max repeats)
+N_OUTPUTS = 8
+N_SLOTS   = 8
+MAX_REPEAT= 4                  # was 8 -- reduced for bigger/clearer controls
 
-BRAND_Y   = 6.0
-REP_Y     = 16.0
-REP_H     = 9.0          # one grid-row tall-ish; the repeat "row"
-GAP       = 3.0
-GRID_Y    = REP_Y + REP_H + GAP
-OUT_Y     = PH_MM - 11.0
-GRID_BOT  = OUT_Y - 8.0
+LANE_PITCH = 6.0               # = Lantern laneH (96/16); grids align on this
 
-GUTTER    = 6.0          # left gutter for widget-drawn voice numbers 1..16
-SCR_L     = MARGIN + GUTTER
-SCR_R     = PW_MM - MARGIN
-SCR_W     = SCR_R - SCR_L
-COL_W     = SCR_W / N_SCENES
-GRID_H    = GRID_BOT - GRID_Y
-ROW_H     = GRID_H / N_VOICES
+# ---- vertical bands ----
+BRAND_Y   = 5.0
+REP_Y     = 15.5               # repeat strip top
+REP_H     = 9.0                # repeat strip height (4 segments per scene)
+GRID_TOP  = REP_Y + REP_H + 3.0    # ~27.5mm -- SHARED top; Lantern LCD shifts here too
+GRID_H    = N_VOICES * LANE_PITCH   # 96.0mm
+GRID_BOT  = GRID_TOP + GRID_H       # ~123.5mm
+OUT_Y     = PH_MM - 3.5             # jack row centre (bottom edge)
 
-SCR   = "#101216"        # display screen: dark on both themes
-GLINE = "#2a2f37"        # gridline
+# ---- horizontal split: left membership block | right global block ----
+GUTTER    = 5.5                     # voice-number gutter
+MEM_L     = MARGIN + GUTTER
+MEM_W     = 56.0                    # membership grid width (8 scenes)
+MEM_R     = MEM_L + MEM_W
+COL_W     = MEM_W / N_SCENES        # 7.0mm per scene -- clickable
 
+GAPX      = 5.0
+RT_L      = MEM_R + GAPX            # right block left edge
+RT_W      = PW_MM - MARGIN - RT_L   # remaining width for routing grid
+ROUT_CW   = RT_W / N_OUTPUTS        # routing cell width (output cols)
+ROUT_ROWH = min(6.0, ROUT_CW)       # routing cell height (slot rows), keep near-square
+ROUT_H    = N_SLOTS * ROUT_ROWH
+ROUT_TOP  = GRID_TOP                # align routing grid top with membership grid top
+
+SCR   = "#101216"
+GLINE = "#2a2f37"
 
 def screen(x, y, w, h, t):
     return (f'<rect x="{px(x):.1f}" y="{px(y):.1f}" width="{px(w):.1f}" height="{px(h):.1f}" '
             f'rx="{px(1.5):.1f}" fill="{SCR}" stroke="{t["edborder"]}" stroke-width="1"/>')
 
-
 def vlines(x, y, w, h, cols, sw=0.6, op=0.7):
-    out = []
+    out=[]
     for c in range(1, cols):
-        lx = x + c * (w / cols)
-        out.append(f'<line x1="{px(lx):.1f}" y1="{px(y+1):.1f}" x2="{px(lx):.1f}" '
-                   f'y2="{px(y+h-1):.1f}" stroke="{GLINE}" stroke-width="{sw}" stroke-opacity="{op}"/>')
+        lx=x+c*(w/cols)
+        out.append(f'<line x1="{px(lx):.1f}" y1="{px(y+1):.1f}" x2="{px(lx):.1f}" y2="{px(y+h-1):.1f}" stroke="{GLINE}" stroke-width="{sw}" stroke-opacity="{op}"/>')
     return "".join(out)
-
 
 def hlines(x, y, w, h, rows, sw=0.6, op=0.7):
-    out = []
+    out=[]
     for r in range(1, rows):
-        ly = y + r * (h / rows)
-        out.append(f'<line x1="{px(x+1):.1f}" y1="{px(ly):.1f}" x2="{px(x+w-1):.1f}" '
-                   f'y2="{px(ly):.1f}" stroke="{GLINE}" stroke-width="{sw}" stroke-opacity="{op}"/>')
+        ly=y+r*(h/rows)
+        out.append(f'<line x1="{px(x+1):.1f}" y1="{px(ly):.1f}" x2="{px(x+w-1):.1f}" y2="{px(ly):.1f}" stroke="{GLINE}" stroke-width="{sw}" stroke-opacity="{op}"/>')
     return "".join(out)
 
-
 def build(dark):
-    t = theme(dark)
-    PW, PH = px(PW_MM), px(PH_MM)
-    s = [svg_open(PW, PH)]
+    t=theme(dark); PW,PH=px(PW_MM),px(PH_MM)
+    s=[svg_open(PW,PH)]
     s.append(f'<rect x="0" y="0" width="{PW}" height="{PH}" fill="{t["bg"]}"/>')
+    s.append(logo_embed(dark, MARGIN, BRAND_Y, 32.0))
 
-    s.append(logo_embed(dark, MARGIN, BRAND_Y, 34.0))
+    # --- REPEAT strip: 8 scenes x 4 segments, above the grid ---
+    s.append(screen(MEM_L, REP_Y, MEM_W, REP_H, t))
+    s.append(vlines(MEM_L, REP_Y, MEM_W, REP_H, N_SCENES, sw=0.8, op=0.85))     # scene bounds
+    for c in range(N_SCENES):
+        s.append(hlines(MEM_L+c*COL_W, REP_Y, COL_W, REP_H, MAX_REPEAT, sw=0.4, op=0.45))
 
-    # REPEAT row: one screen, 8 scene columns; EACH column subdivided into 8 finer sub-segments.
-    # Scene boundaries drawn slightly stronger than the sub-segment ticks, so it reads as
-    # "8 cells, each split into 8" rather than "64 equal cells".
-    s.append(screen(SCR_L, REP_Y, SCR_W, REP_H, t))
-    s.append(vlines(SCR_L, REP_Y, SCR_W, REP_H, N_SCENES, sw=0.8, op=0.85))       # scene bounds
-    for c in range(N_SCENES):                                                     # sub-segments
-        s.append(vlines(SCR_L + c*COL_W, REP_Y, COL_W, REP_H, N_SUBSEG, sw=0.4, op=0.45))
+    # --- MEMBERSHIP grid: 16 voices x 8 scenes, 6.0mm pitch ---
+    s.append(screen(MEM_L, GRID_TOP, MEM_W, GRID_H, t))
+    s.append(vlines(MEM_L, GRID_TOP, MEM_W, GRID_H, N_SCENES))
+    s.append(hlines(MEM_L, GRID_TOP, MEM_W, GRID_H, N_VOICES))
+    # voice-number gutter recess (numbers widget-drawn)
+    s.append(f'<rect x="{px(MARGIN):.1f}" y="{px(GRID_TOP):.1f}" width="{px(GUTTER-1.0):.1f}" height="{px(GRID_H):.1f}" rx="{px(1.0):.1f}" fill="{t["group"]}" stroke="{t["groupline"]}" stroke-width="0.75"/>')
 
-    # MAIN grid: one screen, 8 scenes x 16 voices, continuous lattice.
-    s.append(screen(SCR_L, GRID_Y, SCR_W, GRID_H, t))
-    s.append(vlines(SCR_L, GRID_Y, SCR_W, GRID_H, N_SCENES))
-    s.append(hlines(SCR_L, GRID_Y, SCR_W, GRID_H, N_VOICES))
+    # --- RIGHT: global 8x8 slot->output routing grid ---
+    s.append(screen(RT_L, ROUT_TOP, RT_W, ROUT_H, t))
+    s.append(vlines(RT_L, ROUT_TOP, RT_W, ROUT_H, N_OUTPUTS))
+    s.append(hlines(RT_L, ROUT_TOP, RT_W, ROUT_H, N_SLOTS))
 
-    # Left gutter: NO swatches. Voice numbers 1..16 are widget-drawn text in this reserved band.
-    # (A faint recess strip hints the label lane without competing with the grid.)
-    s.append(f'<rect x="{px(MARGIN):.1f}" y="{px(GRID_Y):.1f}" width="{px(GUTTER-1.0):.1f}" '
-             f'height="{px(GRID_H):.1f}" rx="{px(1.0):.1f}" fill="{t["group"]}" '
-             f'stroke="{t["groupline"]}" stroke-width="0.75"/>')
+    # --- RIGHT: row of 8 per-output TRANSPOSE knobs, aligned to output columns ---
+    kn_y = ROUT_TOP + ROUT_H + 8.0
+    for o in range(N_OUTPUTS):
+        kx = RT_L + (o + 0.5) * ROUT_CW
+        s.append(trim(kx, kn_y, t, t["gold"]))
 
-    # poly outputs
-    names = ["gate", "cv", "accent", "legato", "sleg"]
-    n = len(names)
-    for i, nm in enumerate(names):
-        jx = SCR_L + (i + 0.5) * (SCR_W / n)
-        s.append(jack(jx, OUT_Y, t))
+    # --- poly OUTPUT jacks: bottom-RIGHT, under the routing/transpose block (near the outputs
+    #     they define). Frees the membership grid's full height. 5 jacks across the right block. ---
+    names=["gate","cv","accent","legato","sleg"]
+    jack_y = kn_y + 12.0
+    for i,nm in enumerate(names):
+        jx = RT_L + (i+0.5)*(RT_W/len(names))
+        s.append(jack(jx, jack_y, t))
 
     s.append('</svg>')
     return "".join(s)
 
-
 def main():
-    root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
-    outdir = os.path.join(root, "res", "panels")
-    os.makedirs(outdir, exist_ok=True)
-    for dark, suffix in [(True, "dark"), (False, "light")]:
-        svg = build(dark)
-        p = os.path.join(outdir, f"Intertropical_panel_{suffix}.svg")
-        open(p, "w").write(svg)
-        print(f"wrote {p}  ({len(svg)} bytes)")
+    root=os.path.join(os.path.dirname(os.path.abspath(__file__)),"..")
+    outdir=os.path.join(root,"res","panels"); os.makedirs(outdir,exist_ok=True)
+    for dark,suf in [(True,"dark"),(False,"light")]:
+        svg=build(dark); p=os.path.join(outdir,f"Intertropical_panel_{suf}.svg")
+        open(p,"w").write(svg); print(f"wrote {p} ({len(svg)} bytes)")
 
-
-if __name__ == "__main__":
-    main()
+if __name__=="__main__": main()
