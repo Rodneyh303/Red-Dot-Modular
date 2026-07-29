@@ -15,7 +15,9 @@
 #include "ui/VisualExpanderHelpers.hpp"   // findMonsoonEitherSide
 
 using namespace rack;
-namespace redDot { struct Monsoon; }
+// (no Monsoon forward-decl: the real Monsoon is a GLOBAL type from Monsoon.hpp,
+//  included by the .cpp before use. A "namespace redDot { struct Monsoon; }" here
+//  would declare a PHANTOM redDot::Monsoon that mismatches the global one.)
 
 // ---- Id enum (declared for shape; config() reserves ZERO params  de-parammed) ----
 struct IntertropicalIds {
