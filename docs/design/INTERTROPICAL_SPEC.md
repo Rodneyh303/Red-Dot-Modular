@@ -550,3 +550,44 @@ interface, and Intertropical must carry articulation (NoteType) through its rout
 voltages. That is real work on both sides. But it is the ONLY model that delivers the debug/
 understanding value -- the cable model is honest and useless; the expander model is coupled and
 valuable. Worth the coupling.
+
+## Lantern pairing -- pair numbers + post-transposition CV (DECIDED)
+
+### Post-transposition CV on Lantern's piano-roll view
+Lantern shows Intertropical's output. The piano roll must show WHAT PITCHES ARE ACTUALLY SOUNDING
+-- which means POST-TRANSPOSITION pitch: `voice CV + params[TRANSPOSE_FIRST + ch] / 12.0f`. Not
+the raw engine pitch (which ignores Intertropical's per-output transpose). Consistent with Lantern
+showing what the instrument produces, not a pre-output intermediate. This falls naturally out of
+the exposed-state model: Intertropical includes the transposed pitch as a field in the per-output
+state it exposes to the adjacent Lantern. No architectural complication -- the transpose is already
+in Intertropical's params.
+
+### Why the connect mark alone is not enough (Rodney)
+With multiple Intertropical+Lantern pairs in a patch, the connect mark tells each module "you are
+attached" but does NOT tell which Lantern goes with which Intertropical. The user cannot verify
+association at a glance. A PAIR NUMBER shown on both modules of a pair solves this: scan the rack,
+match the "2"s, know which Lantern is visualising which Intertropical.
+
+### Pair number: user-assigned on Intertropical, read by adjacent Lantern
+- ASSIGNMENT: USER-SET on the Intertropical (context-menu, 1..8 or similar). NOT auto-assigned
+  from chain position -- that would be fragile to module reordering and wouldn't survive patches
+  consistently. User sets "this is Intertropical pair 3" once.
+- PROPAGATION: the adjacent Lantern READS the pair number from its neighbour's exposed state.
+  No separate setting on the Lantern -- it inherits, so the pair is always in sync.
+- DISPLAY: a small coloured numeral near the connect mark on BOTH modules. Visible at normal
+  rack zoom, not competing with the content. The COLOUR encodes the pair identity using
+  dot.modular's own palette (pair 1=red d4001a, pair 2=gold c8960c, pair 3=teal 26a69a, etc.)
+  so you can match by colour AND number at a glance. When there's only one pair, the number
+  can be omitted and just the colour shown.
+- CONDITIONALITY: a Lantern in Monsoon-source mode (no adjacent Intertropical) shows NO pair
+  number -- the pair concept only exists when Lantern is in Intertropical-source mode. The
+  number display is conditional on source mode.
+
+### Connect-mark fix (reachability, not claim) -- applies to both
+Both Intertropical's mark AND a paired Lantern's mark should light on REACHABILITY: "can I find a
+Monsoon/Straits system upstream?" via findMonsoonEitherSide. NOT on isConnectedAndClaimed (which
+requires a claimed-expander slot that doesn't exist for these observer modules and can't scale to N
+pairs). The pair number WITH colour serves the secondary function isConnectedAndClaimed was
+providing (confirming which specific pair you're looking at); the mark itself just lights/greys on
+reachability. Fix: give Intertropical's makeConnectMark a custom `connected` lambda -- see impl
+notes below.
