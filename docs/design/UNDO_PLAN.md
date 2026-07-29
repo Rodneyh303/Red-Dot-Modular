@@ -70,3 +70,74 @@ cross-module pass the de-param work kept pointing at.
 - Automated/CV-driven edits (gate-mod direction cycle) never push history.
 - Match sibling behaviour: do all three modules in one pass so undo isn't inconsistent between
   them -- the whole reason this was deferred to a uniform pass.
+
+## Dice + Change Alley transform undo (Philox-grounded)
+
+Now that Change Alley draws through the shared PhiloxRng (counter-addressable) on its OWN
+correlation stream, undo of stochastic actions has a clean, principled answer that differs by
+whether the action is counter-addressed (rewindable) or fan-in (snapshot-only).
+
+### Dice undo -- counter-rewind, ONLY in reversible mode
+A dice roll is a POSITION in a counter-addressed stream, not a mutation. PhiloxRng::at(pos) is a
+pure function of (pos, key), so:
+- **Reversible mode:** undo of dice = DECREMENT the draw counter and re-derive. Near-free, no
+  snapshot. This is exactly what the library was built for ("replay draws backwards within one
+  key"). Redo = increment again.
+- **Non-reversible / free-run mode:** there is no stable counter to rewind TO (a fresh key / full
+  reseed each roll), so dice undo is UNDEFINED, not merely disabled. Do not offer it there.
+So: dice undo is a reversible-mode-only feature, and in that mode it is counter arithmetic, not
+history snapshots. (Rodney's instinct confirmed and sharpened: not "only in reversible mode" as a
+policy choice -- it is the ONLY mode where the operation is even defined.)
+
+### Dice MODES -- what each does under undo
+The four dice modes (live, trial, last-dice, last-trial) already QUEUE under lock (LOCK_SEMANTICS
+3): a press while locked arms a redraw that fires at the next unlocked phrase boundary. Undo
+interacts per mode:
+- **live / last-dice:** commit a new draw at a boundary. Counter-rewindable in reversible mode
+  (undo steps the counter back one roll).
+- **trial / last-trial:** preview draws that are NOT yet committed. Undo of a trial is discard
+  (drop the pending draw), not a counter step -- nothing was committed to rewind.
+Comment to carry in code near the dice trigger: "undo of a COMMITTED dice roll is a counter
+rewind (reversible mode only); undo of a TRIAL is a discard of the pending draw."
+
+### Change Alley transform undo -- two mechanisms by transform type
+The transforms split by INVERTIBILITY, which the code now documents at each function:
+- **Reflect (ReflectRows/Values):** SELF-INVERSE (apply twice = identity). Undo = re-apply.
+- **Rotate (rotateRows/Values, blockOffset):** a shift by +k. Undo = shift by -k.
+  -> Reflect + Rotate are INVERTIBLE BY TRANSFORM: undo needs no stored state, just the inverse.
+- **Collapse (collapse*/interCollapse*):** FAN-IN (many rows -> one source), NO inverse
+  (documented at the transpose section: "has no inverse").
+- **Scatter (scatter, interScatter):** re-source with FAN-IN allowed (NOT a permutation), so NO
+  inverse transform -- even though it is seeded/reproducible.
+- **ScatterRows:** the exception WITHIN scatter -- a genuine Fisher-Yates PERMUTATION, so it IS
+  invertible (inverse permutation, or re-derive from the same correlation-counter).
+  -> Collapse + Scatter (not ScatterRows) are FAN-IN: undo ONLY by restoring the pre-transform
+     pin state (a StoreEditAction snapshot of the 16-entry pin matrix).
+
+Comment to carry near applyTemasek: "Reflect/Rotate/ScatterRows are invertible (undo by inverse
+transform); Collapse/Scatter are fan-in (undo by pin-state snapshot). Scatter draws from the
+correlation stream, so a reversible-mode undo can also re-derive via counter -- but the SIMPLE,
+always-correct undo is the snapshot."
+
+### RECOMMENDATION for v1: uniform snapshot undo for all four transforms
+Snapshot works for ALL four (it is the general case), and the pin matrix is 16 bytes -- storing a
+before-image per transform is trivially cheap. The invertible-by-transform path (Reflect/Rotate/
+ScatterRows) is an OPTIMISATION that avoids storing 16 bytes; it is NOT worth a second code path
+in v1. So: one StoreEditAction snapshot of the pin matrix per transform apply, same mechanism as
+a manual pin edit (LOCK_SEMANTICS: manual pin edit = config, store-snapshot undo). This also
+composes with the manual-pin ruling -- a scatter-undo and a manual-pin-undo are the SAME kind of
+history entry, so the Edit menu reads uniformly.
+- Dice undo stays SEPARATE (counter-rewind, reversible-mode-only) because dice is a stream
+  position, not a pin-state edit -- do not fold it into the transform snapshot path.
+
+### Undo memory DEPTH
+- **Store-knob / pin / transform edits:** ride Rack's native history stack (APP->history). Rack
+  owns the depth (a bounded deque; the host trims oldest). We add nothing per-edit beyond the
+  16-byte before-image. So transform-undo depth = Rack's global undo depth, shared with every
+  other module -- no Change-Alley-private history to size.
+- **Dice counter-rewind (reversible mode):** depth is bounded by how far the counter can be
+  walked back within the current key, i.e. how many committed rolls have happened since the last
+  reseed/key-change. A key change (full reseed) is the floor -- you cannot rewind past it (a new
+  key = a new sequence). Practically: dice undo reaches back to the last reseed, not further.
+- Comment to carry: "transform undo depth = Rack's global history; dice undo depth = rolls since
+  the last key reseed (cannot cross a reseed -- new key, new sequence)."

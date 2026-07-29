@@ -385,7 +385,7 @@ inline void applyTemasek(int verb, bool isDomain, bool isInter,
             case 2: isDomain ? reflectRows  (src, activeCount, grain)
                              : reflectValues(src, activeCount, grain); break;
             case 3: {
-                // Scatter: Philox counter-based (§12e -- currently still LCG, TODO swap)
+                // Scatter: draws through the shared PhiloxRng correlation stream (own key)
                 const uint32_t seed = (uint32_t)(scatterCounter & 0xFFFFFFFF);
                 isDomain ? scatterRows(src, activeCount, grain, seed)   // row permutation
                          : scatter    (src, activeCount, grain, seed);  // re-draw, fan-in OK
