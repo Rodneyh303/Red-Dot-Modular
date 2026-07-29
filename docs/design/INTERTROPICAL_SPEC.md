@@ -481,3 +481,61 @@ Constraints resolved:
 - JACKS at the bottom, below the 96mm grid; move down as needed within the 128.5mm budget.
 - Panel WIDER (~24-25HP) to fit membership grid + gutter + routing grid + transpose without
   cramping. Grid cells must be comfortably clickable (not tiny).
+
+## Lantern visualises Intertropical output -- via ROUTED ARTICULATION STATE, not the jacks (DECIDED)
+
+Goal: a Lantern paired with an Intertropical shows, for Intertropical's output, the SAME
+tie/legato/accent/slew per-voice detail it shows for Monsoon/Straits -- the detail that has been
+invaluable for debug and understanding.
+
+### Why NOT read the jacks (rejects the cable model)
+The poly cables CANNOT carry the detail Lantern's value depends on. Lantern.cpp:23 states it
+outright: "poly exposes only gate+pitch+accent; there is no cable [for articulation]." Lantern's
+worth is showing Tie vs Legato vs a fresh retrigger as DISTINCT states -- but a gate output is
+just high/low; it cannot distinguish held-gate-same-pitch (Tie) from held-gate-new-pitch
+(Legato) from a retrigger. That lives in the engine's per-voice GateState::NoteType
+(gs.lastNoteType), NOT on the wire. A generic scope on Intertropical's jacks would show blocks
+on/off -- useful, but not the articulation richness that makes Lantern Lantern. So the cable
+model would be "honest" and useless.
+
+### The model: Lantern reads Intertropical's ROUTED articulation, by adjacency
+Lantern must read Intertropical's INTERNAL routed state, the same way it reads Monsoon's engine
+state -- by expander adjacency, not a cable. The whole point of Lantern being an EXPANDER rather
+than a scope is that it sees what the wire can't.
+- Intertropical already computes, per output channel, which source VOICE is routed there
+  (computeRouting: slot -> voice -> output). For Lantern it must ALSO expose, per output channel,
+  that voice's GateState::NoteType (+ accent, + pitch, + transpose applied) for the current step.
+- So Intertropical becomes a RE-ROUTER OF ARTICULATION STATE, not just of gate/CV voltages. It
+  carries the NoteType through the routing so an adjacent Lantern can render tie/legato/accent
+  per OUTPUT channel, exactly as it does per voice for Monsoon.
+- Interface (small, shared): "give me the NoteType/accent/pitch routed to output N this step."
+  Lantern gains a SOURCE mode (its existing viewMode enum): "Monsoon engine" (current) vs
+  "adjacent Intertropical routed output" (new).
+
+### Attachment = REACHABILITY, not claim (enables multiple pairs)
+The claim system (isClaimedExpander, VisualExpanderHelpers.hpp) is one-of-each-type: Monsoon
+caches THE Raffles, THE Junction, etc. -- a single cached pointer per type. Multiple
+Intertropicals (and multiple paired Lanterns) break that assumption outright; you cannot have a
+single cachedIntertropical slot for three of them. So the claim model is the WRONG tool here.
+- Intertropical and Lantern are OBSERVER/OUTPUT modules (Lantern is already a "PURE OBSERVER",
+  Lantern.cpp:61, NOT in the claimed list). They attach by being REACHABLE in the chain
+  (findMonsoonEitherSide / adjacency), which is count-agnostic -- any number of instances works.
+- CONNECT-MARK FIX falls out of this: Intertropical's connect mark never lights because
+  isConnectedAndclaimed requires isClaimedExpander, and Intertropical isn't (and shouldn't be) in
+  the claimed list. Its mark should light on REACHABILITY (a Monsoon/Straits system is findable
+  upstream), like the observer it is -- not on being claimed. (Fix: give Intertropical's mark a
+  reachability-based `connected` predicate rather than isConnectedAndClaimed.)
+
+### Pairing = ADJACENCY (decided)
+A Lantern reads the module immediately adjacent in the chain (the same mechanism it uses to reach
+Monsoon). Multiple Intertropical+Lantern PAIRS work by sitting each pair together; the Lantern
+shows the neighbour it's next to. No cable, no extra jack -- consistent with how Lantern already
+attaches. (Chosen over a cable/patch model because Lantern's detail comes from internal state, not
+the wire, so cabling would defeat the purpose anyway.)
+
+### Honest cost
+This is a TIGHTER coupling than a scope: Lantern must know Intertropical's exposed state
+interface, and Intertropical must carry articulation (NoteType) through its routing, not just
+voltages. That is real work on both sides. But it is the ONLY model that delivers the debug/
+understanding value -- the cable model is honest and useless; the expander model is coupled and
+valuable. Worth the coupling.
