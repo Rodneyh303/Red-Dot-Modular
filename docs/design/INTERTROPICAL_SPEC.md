@@ -364,3 +364,77 @@ of one cube. This is consistent with the whole multi-instance-as-parts design.
 - OPT-IN routing matrix (per-instance, fan-out capable) is the power path -- designed here,
   DEFERRED until the simple path has been played enough to know exactly what the matrix UI needs
   to feel like. Do not build speculatively.
+
+## Routing model + fan-out (SETTLED -- supersedes the earlier per-instance-square sketch)
+
+Converged over several design passes. Three spaces, two mappings; fan-out lives entirely in the
+global mapping so no per-scene routing / cube is needed.
+
+### Three spaces
+1. **Global voices (16)** -- Monsoon/Straits per-voice output. The vertical poly.
+2. **Scene slots (<=8)** -- per scene, a selection of 0..8 of the 16 global voices, seated in
+   slots. 8 is the HORIZONTAL budget: the poly-conservation law applied horizontally (16 vertical
+   voices conserved down to <=8 horizontal slots per scene). 8 is a deliberate compromise -- fits
+   most extended chords; if you truly want a 16-note chord, use Monsoon/Straits directly.
+3. **Outputs (8)** -- each a mono channel of Rack's 16-ch poly out.
+
+### Two mappings
+- **voice -> slot : PER-SCENE (membership).** Which global voices are seated, and in which slot,
+  this scene. This is the arrangement; it MUST be per-scene. Default: auto-pack members into slots
+  in voice order (the current computeRouting behaviour). Opt-in: explicit slot seating when you
+  need a specific voice in a specific slot.
+- **slot -> output : GLOBAL (routing setup).** Which output(s) each of the 8 slots drives. Set
+  once for the instance; defines the PARTS ("slot 3 = 3rd tone of chord A -> output 3"). This is
+  instrument setup, not an arrangement move.
+
+Because slot->output is global and voice->slot is a per-scene function, the whole cube is avoided:
+the only per-scene state is a function (each slot holds one voice), and the relation (fan-out)
+lives once in the global layer.
+
+### Fan-out -- what it is and where it lives
+Fan-out = one slot driving MORE THAN ONE output. Data: slotOutput[slot] becomes an 8-BIT OUTPUT
+MASK (not a single index). slot 3 with mask 0b00100100 -> outputs 3 and 6. So `slotOutput` is 8
+bytes, each a bitmask over the 8 outputs. Global, tiny, fully viewable.
+- Fan-out lives ENTIRELY in the global slot->output layer. The per-scene voice->slot stays a clean
+  function. So you get fan-out expressiveness with NO per-scene routing and NO cube: whatever voice
+  is seated in a fanned-out slot this scene feeds all that slot's outputs. Per-scene scoping of
+  fan-out is achieved by WHICH voice sits in the slot (membership), not by per-scene routing.
+- TRADE-OFF (know before reaching for it): fan-out means the SAME generated voice line hits all the
+  slot's outputs in lockstep. For chord tones that is often intended unison/octave doubling;
+  sometimes it is muddy (the outputs are not independent). Fan-out couples the parts; it is not
+  free richness.
+- v1 default: slot->output is a simple assignment (one output per slot, a permutation) since the
+  common chord-tone case is 1:1. Fan-out (multi-output mask) is the opt-in power path.
+
+### Worked example (the voice-16 case, resolved)
+"Outputs 1-3 = chord A, 4-6 = chord B; voice 16 feeds one tone of EACH chord, only in scenes 4 &
+6; other scenes that tone comes from other voices." Resolution: slot 3 -> output 3 (a tone of A),
+slot 6 -> output 6 (a tone of B), GLOBAL. Then per-scene membership seats VOICE 16 into slots 3
+and 6 in scenes 4 & 6; other scenes seat different voices there. Output 3/6 are always fed (stable
+chord tones); WHO feeds them changes per scene, purely by who's seated -- no per-scene routing, no
+fan-out even needed for this case (it's voice-substitution, handled by membership). Fan-out would
+only be needed if ONE voice had to feed BOTH tones simultaneously -- then slot X -> outputs {3,6}.
+
+### UI (replaces the scroll-a-number override -- SUPERSEDED)
+The current sceneOutput[scene][voice] scroll-through-a-small-number override is superseded: it
+hides the mapping, is slow, and cannot show fan-out (a single number can't say "3 and 6"). Replace
+with TWO COUPLED GRIDS matching the two mappings:
+- **Membership grid (per-scene):** 16 voices x 8 scenes (existing). Click seats a voice. Default
+  auto-packs to slots in voice order; explicit slot seating is the opt-in.
+- **Slot->output grid (GLOBAL): an 8x8, slots (rows) x outputs (cols).** A lit cell = that slot
+  drives that output. FAN-OUT is simply TWO lit cells in a slot's row -- visible at a glance, no
+  scrolling, no hidden state. Same idiom as Change Alley's pin matrix (a cell = a connection), so
+  it is consistent with the instrument. Global + small, so it's a set-and-forget setup grid, not
+  per-scene churn.
+- Interaction split mirrors the data model: LEFT = per-scene arrangement (membership), RIGHT =
+  global setup (slot->output routing). Seat voices per scene (fast); patch slots to outputs once.
+
+### Refactor from current code
+Current sceneOutput[scene][voice] flattens the two mappings into one (voice->output per scene,
+skipping the slot layer) -- which is exactly why fan-out and scoping got tangled. Split it:
+- sceneSlots[scene]  : per-scene voice->slot seating (membership WITH slot position).
+- slotOutput[8]      : global slot->output bitmask (fan-out capable).
+Migrate the per-scene single-output override into this two-layer form; drop the scroll-number UI.
+Keep auto-pack as the v1 default so the simple path stays a one-grid click experience; the global
+8x8 slot grid and explicit seating are the opt-in power layers, deferred until the simple path has
+been played enough to know the matrix UI's exact feel.
