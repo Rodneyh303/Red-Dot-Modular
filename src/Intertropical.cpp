@@ -321,8 +321,16 @@ struct IntertropicalWidget : ModuleWidget,
             bindOutput<redDot::GoldPolyPort>(rack::string::f("output_%d", o), o);
 
         // dot.modular connect mark (greyed when no Monsoon attached).
-        if (auto* s = findNamed("light_connect"))
-            addChild(redDot::makeConnectMark(module, centerOf(s), mm2px(8.f)));
+        if (auto* s = findNamed("light_connect")) {
+            auto* cm = redDot::makeConnectMark(module, centerOf(s), mm2px(8.f));
+            // Intertropical is an OBSERVER (not a claimed expander), so light on REACHABILITY
+            // (can we see a Monsoon/Straits system?) not isConnectedAndClaimed (which requires
+            // a claim slot that doesn't exist for observers and can't scale to N pairs).
+            cm->connected = [module]() {
+                return module && redDot::findMonsoonEitherSide(module) != nullptr;
+            };
+            addChild(cm);
+        }
 
         // Branded dot.modular screws (matches the family).
         redDot::addRedScrews(this);
