@@ -306,3 +306,61 @@ lanes divide theirs. The panel generator (gen_intertropical.py) needs adjusting 
 matches Lantern's laneH convention (shared SandsGrid.hpp-style constants if possible), and the
 repeat band + gutter sized so the 16 voice rows land on the Lantern lane grid. This is real panel
 work, not just cosmetics -- lane alignment is what makes the two modules read as one system.
+
+## Collapse routing model -- avoid the cube (DECIDED)
+
+The flexibility Rodney wants from 8 outputs (mono bass + mono melody + 2-voice riff + 4-note
+chord from ONE Intertropical) includes FAN-OUT: one voice contributing to more than one output in
+a scene (e.g. a voice thickening both melody and chord). That breaks the current model, and
+naming why fixes the design:
+
+- Current state is sceneOutput[scene][voice] = ONE output per voice (int8_t). That is a FUNCTION
+  voice->output. Fan-out (voice -> SET of outputs) is a RELATION, which a single int8_t can't hold.
+- Representing per-scene fan-out fully = a scene x voice x output BOOLEAN CUBE (8 x 8 x 8 = 512
+  cells of routing state, ON TOP of the membership grid). There is no honest 2D view of a cube;
+  you can only show one scene's slice and scrub the third axis. This is where the fun-loop
+  guardrail SNAPS -- it stops being "click cells, hear a loop" and becomes a modular routing
+  environment. The cube is the thing to AVOID.
+
+### The collapse of the cube: routing is PER-INSTANCE, not per-scene
+The scene axis of the cube exists ONLY because routing is allowed to change per scene. But
+routing DEFINES THE PARTS ("voices 1-2 = riff, voice 3 = melody, 4-7 = chord") -- that is an
+INSTRUMENT SETUP, not an arrangement move. What actually changes scene-to-scene is WHICH voices
+are active (membership) and their TRANSPOSE. So:
+- **Routing (voice -> outputs, INCLUDING fan-out) is PER-INSTANCE:** one 8-voice x 8-output
+  MATRIX, set once. A voice feeding both melody and chord = two lit cells in its row. This is a
+  SQUARE (fully visualisable, learn-once), not a cube. It keeps the FULL fan-out expressiveness
+  Rodney asked for.
+- **Membership + transpose stay PER-SCENE:** the existing grid, unchanged -- the fun loop.
+
+Making routing an instance-level PATCH removes the scene axis entirely: the cube collapses to a
+square. You keep "voice into melody-and-chord"; you just declare it ONCE rather than re-declaring
+every scene. Composes with multiple Intertropicals: each instance = "these voices, patched to
+these outputs this way, playing this arrangement of scenes at these transposes." The patch is the
+instance's identity; the scenes are its arrangement.
+
+### What this gives up, and the escape hatch
+Given up: a voice that feeds melody in scene 1 but chord in scene 3 (routing that REARRANGES
+between scenes). This is a much rarer want than fan-out-WITHIN-a-scene (which the per-instance
+matrix handles fully). If play specifically demands per-scene re-routing, the answer is NOT to
+add the scene axis back (the cube) -- it is to SPIN UP A SECOND INTERTROPICAL for the differently
+-routed part. Multiple instances is the escape hatch from the cube: two square matrices instead
+of one cube. This is consistent with the whole multi-instance-as-parts design.
+
+### Consistency + trade-off notes
+- The per-instance 8x8 voice x output matrix is the SAME idiom as Change Alley's pin matrix (a
+  cell = a connection). Intertropical's collapse becoming a patch matrix is consistent with the
+  instrument, not a new concept.
+- FAN-OUT COUPLES PARTS: a voice feeding both melody and chord means the SAME generated line
+  appears in both -- they move in lockstep. Sometimes wanted (unison doubling, anchoring a chord
+  to the melody), sometimes muddy (chord not independent). Fan-out is powerful but not free
+  richness; it couples the parts. Know this before reaching for it.
+
+### Tiering (keep the fun loop)
+- v1 DEFAULT stays simple: voice -> one output, auto-packed in voice order (current
+  computeRouting). The fast one-grid experience. NOTE: the current sceneOutput[scene][voice] is
+  per-SCENE single-output -- migrate it toward a per-INSTANCE mapping (drop the scene index) when
+  the routing matrix is built, so v1 doesn't bake in the very per-scene axis we're avoiding.
+- OPT-IN routing matrix (per-instance, fan-out capable) is the power path -- designed here,
+  DEFERRED until the simple path has been played enough to know exactly what the matrix UI needs
+  to feel like. Do not build speculatively.
