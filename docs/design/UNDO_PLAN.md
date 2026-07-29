@@ -135,9 +135,41 @@ history entry, so the Edit menu reads uniformly.
   owns the depth (a bounded deque; the host trims oldest). We add nothing per-edit beyond the
   16-byte before-image. So transform-undo depth = Rack's global undo depth, shared with every
   other module -- no Change-Alley-private history to size.
-- **Dice counter-rewind (reversible mode):** depth is bounded by how far the counter can be
-  walked back within the current key, i.e. how many committed rolls have happened since the last
-  reseed/key-change. A key change (full reseed) is the floor -- you cannot rewind past it (a new
-  key = a new sequence). Practically: dice undo reaches back to the last reseed, not further.
-- Comment to carry: "transform undo depth = Rack's global history; dice undo depth = rolls since
-  the last key reseed (cannot cross a reseed -- new key, new sequence)."
+- **Dice counter-rewind (reversible mode):** CONFIRMED against PatternEngine -- a MAIN dice roll
+  ADVANCES the draw counter (rhythmDrawCtr/melodyDrawCtr, signed int64, "can go negative on
+  reverse") WITHOUT reseeding (PatternEngine:310-311), distinct from a reseed-roll. In reversible
+  mode the counter IS "the current index" into Philox, a "keyed bijection with NO floor/ceiling"
+  (PatternEngine:391-400). So undo of a committed main dice roll = DECREMENT the draw counter and
+  re-derive via at(index); the counter is the undo state, no snapshot. Depth: because Philox is a
+  bijection with no floor, dice undo in reversible mode can walk back PAST intermediate points to
+  index 0 (or negative) within the CURRENT KEY -- it is only bounded by a KEY CHANGE (a reseed
+  installs a new key = a new sequence; you cannot rewind across that). So the floor is the last
+  RESEED, but within a key the rewind is unbounded, not roll-count-limited. (Better than an
+  earlier draft that said "rolls since last reseed" -- it is the whole index range of the key.)
+- Comment to carry: "transform undo depth = Rack's global history; dice undo (reversible mode) =
+  rewind the draw counter within the current key (bijection, no floor); a reseed/key-change is
+  the only floor -- cannot cross it."
+
+## Seed detail to CHECK (flagged, not fixed): do rhythm and melody share a key?
+
+PatternEngine's reproducible seed path derives the SAME 64-bit key for both streams:
+seedRhythmPhilox(seedFloat) and seedMelodyPhilox(seedFloat) compute sd identically from the same
+float (PatternEngine:432-441), so rhythmPhilox and melodyPhilox get the IDENTICAL key (both
+counters start at 0). The entropy path (seed*PhiloxFull) does NOT -- each takes a fresh
+rack::random::u64(), so it is independently keyed. Only the REPRODUCIBLE float-seed path collapses
+them to one key.
+
+Concern: same key = same bijection. Rhythm and melody then draw from the SAME underlying sequence
+(read differently), so their randomness is CORRELATED, not independent -- one seed value yields a
+rhythm stream and a melody stream that are deterministic transforms of the same numbers. This can
+surface as unintended rhythm/melody "rhyming". Two independent streams want two DIFFERENT keys.
+
+Probable fix (mirrors the Change Alley correlation-stream domain separation): on the reproducible
+path, derive rhythmKey = f(sd, RHYTHM_DOMAIN), melodyKey = f(sd, MELODY_DOMAIN) with distinct
+nonces, so one user-facing seed still gives reproducibility but the two streams are orthogonal.
+
+BUT do not "fix" blindly -- it may be INTENTIONAL: (1) the reproducible-seed feature may WANT one
+seed number to define the whole pattern (rhythm+melody) as a single reproducible object, in which
+case a shared key is the design; (2) the correlation may be inaudible because the draw patterns
+diverge immediately. So: CHECK with Rodney whether the shared key is deliberate before changing
+it. Unlike the Change Alley RNG duplication (a clear bug), this is a design question.
