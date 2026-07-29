@@ -488,15 +488,26 @@ Goal: a Lantern paired with an Intertropical shows, for Intertropical's output, 
 tie/legato/accent/slew per-voice detail it shows for Monsoon/Straits -- the detail that has been
 invaluable for debug and understanding.
 
-### Why NOT read the jacks (rejects the cable model)
-The poly cables CANNOT carry the detail Lantern's value depends on. Lantern.cpp:23 states it
-outright: "poly exposes only gate+pitch+accent; there is no cable [for articulation]." Lantern's
-worth is showing Tie vs Legato vs a fresh retrigger as DISTINCT states -- but a gate output is
-just high/low; it cannot distinguish held-gate-same-pitch (Tie) from held-gate-new-pitch
-(Legato) from a retrigger. That lives in the engine's per-voice GateState::NoteType
-(gs.lastNoteType), NOT on the wire. A generic scope on Intertropical's jacks would show blocks
-on/off -- useful, but not the articulation richness that makes Lantern Lantern. So the cable
-model would be "honest" and useless.
+### Why NOT read the jacks (rejects the cable model) -- corrected reasoning
+NOTE: Intertropical now HAS legato + sleg (step-legato) outputs in addition to gate/cv/accent, so
+more of the articulation IS on the wire than Lantern.cpp:23's old comment assumed ("poly exposes
+only gate+pitch+accent"). A scope reading all 5 could RECONSTRUCT much of the note type. So the
+argument is NOT "the wire can't carry it." It is two sharper points:
+1. GROUND TRUTH vs RECONSTRUCTION. The engine HAS the classification as a first-class value
+   (GateState::NoteType: Single/Tie/Legato). Reading it directly is ground truth. Reconstructing
+   it from jacks (gate + legato-flag + pitch-changed -> infer Tie/Legato) is a re-derivation that
+   can DISAGREE with the engine at edges -- and edges are exactly where Lantern earns its keep as
+   a DEBUG tool. A jack-reconstructing Lantern would show its OWN reconstruction, masking the very
+   note-type-assignment bug you're hunting. Internal-state Lantern shows what the engine THINKS,
+   which is what you need to debug the engine.
+2. PROVENANCE (decisive for a re-router). Intertropical COLLAPSES and RE-ROUTES voices
+   (slot->output, fan-out, per-output transpose). The jacks give the resulting voltages on output
+   N but have LOST the provenance: you can't tell from the wire that output 3 is voice 7's line
+   (not voice 12's), or that it's transposed +7. That routing detail exists ONLY internally,
+   post-collapse the outputs are anonymous. For a re-routing module, internal state is the only
+   place "which voice, which transpose, feeding which output" still exists.
+So: not "honest but impossible" -- rather, internal state is ground-truth (not a bug-masking
+reconstruction) AND carries the routing provenance the collapsed jacks have discarded.
 
 ### The model: Lantern reads Intertropical's ROUTED articulation, by adjacency
 Lantern must read Intertropical's INTERNAL routed state, the same way it reads Monsoon's engine
