@@ -1,5 +1,6 @@
 #include <rack.hpp>
 #include "ui/SandsGrid.hpp"
+#include "ui/StoreEditAction.hpp"
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
 #include "StraitsEastSandsVisual.hpp"
@@ -485,6 +486,20 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         if (onMonoTab()) { m->setMonoLaneDir(dcLane, (float)v); return; }
                         int pv = polyVoice();
                         if (pv >= 0 && pv < 15) m->setLaneDir(pv, dcLane, (float)v);
+                    };
+                    // Undo hook: route a direction cycle through Rack history (Ctrl+Z). Captures
+                    // the resolved store target at click time (mono vs poly, which voice/lane).
+                    w->pushUndoFn = [this, dcLane](int oldV, int newV) {
+                        Monsoon* m = getMonsoon(); if (!m) return;
+                        const bool mono = onMonoTab();
+                        const int  pv   = mono ? -1 : polyVoice();
+                        if (!mono && (pv < 0 || pv >= 15)) return;
+                        redDot::applyAndPushStoreEdit<Monsoon>(m, "direction",
+                            [dcLane, mono, pv](Monsoon& mm, float val) {
+                                if (mono) mm.setMonoLaneDir(dcLane, val);
+                                else      mm.setLaneDir(pv, dcLane, val);
+                            },
+                            (float)oldV, (float)newV);
                     };
                     // Lanes 0..3 (MEL/OCT/REST/ACC): locked when Macro owns the lane
                     // (delegated) OR on the V1/mono tab with Mono attached (tab1MonoMirror).

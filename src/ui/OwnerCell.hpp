@@ -119,6 +119,12 @@ struct DirCell : rack::ParamWidget {
     // the current cross-module behaviour (cycling cells have never had param undo).
     std::function<int()>    getStateFn;   // returns 0..3 from the store
     std::function<void(int)> setStateFn;  // writes 0..3 to the store
+    // Optional undo hook. If set, cycle() calls this with (oldState, newState) INSTEAD of
+    // setStateFn, so the host can route the change through Rack history (Ctrl+Z). The host
+    // builds the history action because it knows the module type + store field; DirCell stays
+    // decoupled from module types (shared across Macro/Mono/East). If null, cycle() falls back
+    // to the raw setStateFn (e.g. gate-mod CV cells, which are automated and never push history).
+    std::function<void(int,int)> pushUndoFn;   // (oldState, newState) -> apply + push history
     DirCell() { box.size = rack::math::Vec(18.f, 28.f); }
 
     bool locked() const { return lockWhen && lockWhen(); }
@@ -127,7 +133,11 @@ struct DirCell : rack::ParamWidget {
         return getParamQuantity() ? (int)std::round(getParamQuantity()->getValue()) : 0;
     }
     void cycle() {
-        const int nxt = (state() + 1) % 4;
+        const int cur = state();
+        const int nxt = (cur + 1) % 4;
+        // Prefer the undo hook (routes through Rack history for Ctrl+Z). Falls back to the raw
+        // store write when no hook is set (automated cells that must never push history).
+        if (pushUndoFn) { pushUndoFn(cur, nxt); return; }
         if (setStateFn) { setStateFn(nxt); return; }
         if (getParamQuantity()) getParamQuantity()->setValue((float)nxt);
     }
