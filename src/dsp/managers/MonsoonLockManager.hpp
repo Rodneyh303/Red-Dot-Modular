@@ -40,8 +40,9 @@ enum class Control : uint8_t {
     Lor,           // DNA length/offset/rotation (base + global + interp)
     ABMix,         // A/B mix blend (upstream generation, pre-spread pre-pins) -- ModeController
     Pins,          // Change Alley pin matrix (correlation shaping)
-    BigFive,       // NOTE_VALUE/VARIATION/LEGATO/REST/ACCENT sliders + their CV
-    ScaleMask,     // SEMI scale toggles, OCT LO/HI range, Shophouse mask values
+    BigFive,       // the 5 RHYTHM KNOBS: NOTE_VALUE / VARIATION / LEGATO / REST / ACCENT (+ CV)
+    NoteSliders,   // the 12 per-semitone note light-sliders (scale weights -> semiWeights)
+    OctaveRange,   // the 2 octave sliders: OCT LO / OCT HI range
     Reseed,        // reseed-on-restart / seed application (generation)
 
     // --- LIVE: transport + post-generation output mapping ---
@@ -71,7 +72,8 @@ public:
             case Control::ABMix:
             case Control::Pins:
             case Control::BigFive:
-            case Control::ScaleMask:
+            case Control::NoteSliders:
+            case Control::OctaveRange:
             case Control::Reseed:
                 return LockCategory::LATCH;
             // LIVE set
