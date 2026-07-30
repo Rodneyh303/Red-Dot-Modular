@@ -704,3 +704,33 @@ Realistic sizing 10k-100k entries = 0.28-2.8 MB. A million = 28 MB (over-provisi
 want marathon-session guarantee). Pin block is the cost driver even packed, so no further squeeze
 is worth it. Live module state stays UNPACKED (32B) -- packing is a reverse-buffer/persistence
 concern only.
+
+## Scatter counter width: uint64 -> uint32 (matches the 32-bit generator) [Rodney]
+
+The shared RNG is Philox4x32-10 (PhiloxRng.hpp:4,34) -- the 32-BIT variant, philox4x32(counter,
+key), key = array<uint32_t,2>. BOTH dice and CA draw through this same 32-bit generator; there is
+NO 64-bit Philox variant in play. The dice path already decided 32 bits is enough.
+
+BUT CA's live scatterCounter is uint64_t (MonsoonChangeAlleyV2.hpp:41), and correlationRng() takes
+a uint64_t seed -- feeding a 64-bit counter into a generator whose key lanes are 32-bit. The upper
+32 bits collapse (truncate/fold) into the 32-bit key, so the uint64 width provides NO real benefit:
+the generator cannot consume more than 32 bits of counter/key entropy per lane anyway.
+
+So uint64 scatterCounter is OVER-WIDE -- same class of unexamined carryover as the 8-way split:
+over-provisioned state that never got right-sized when library Philox4x32 landed (e32caa9). It
+should be uint32_t, matching (a) what the 32-bit generator can actually use, and (b) the "32 is
+enough" decision from the dice work.
+
+Consequences / bundling:
+- Live state: scatterCounter uint64_t -> uint32_t (bundle with the 8->2 collapse + scatter-RNG
+  rework; it's the same touch-the-scatter-RNG change, not a drive-by).
+- Reverse buffer: this CONFIRMS the uint32 counter choice already recorded -- not just "ample for
+  entry count" but the correct width to match the generator. Reverse entry stays 28 B (packed
+  pins 16 + 2x uint32 counters 8 + boundary 4).
+- Range sanity: uint32 = 4.29e9 scatters per stream before wrap. A scatter op firing once per
+  phrase boundary would need ~decades of continuous play to approach it. Ample.
+
+Note: dice DRAW counters are int64_t (PatternEngine) but for a DIFFERENT reason -- signed
+reversible position addressing (can go negative on reverse). That's the addressable-position use,
+not the key-width question here. CA's scatterCounter is a key/stream selector feeding a 32-bit
+generator, so 32-bit is right for it.
