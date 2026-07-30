@@ -1,5 +1,6 @@
 #include <rack.hpp>
 #include "ui/SandsGrid.hpp"
+#include "ui/StoreEditAction.hpp"
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
 #include "StraitsEastSandsVisual.hpp"
@@ -255,6 +256,33 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             openLaneOwnershipMenu(lane, pos);
             return true;
         };
+        // LOR drag undo: push a Rack history action against the store for a completed drag.
+        // slot = currentSlot() (V1 mono or poly voice), bank = lorBank(lane). Captures the
+        // resolved slot at commit time. Refreshes the editor's cached currentState too (the
+        // store->editor seed is event-driven, not per-frame). visualEditor capture is safe for
+        // a store-edit action (widget persists across it).
+        visualEditor->onLorCommit = [this](int lane, const int before[3], const int after[3]) {
+            auto* m = getMonsoon(); if (!m) return;
+            const int slot = currentSlot();
+            const int bank = lorBank(lane);
+            const int bef0=before[0],bef1=before[1],bef2=before[2];
+            const int aft0=after[0], aft1=after[1], aft2=after[2];
+            auto* ed = visualEditor;
+            redDot::applyAndPushStoreEdit<Monsoon>(m, "LOR edit",
+                [slot, bank, lane, bef0,bef1,bef2, aft0,aft1,aft2, ed](Monsoon& mm, float dir) {
+                    const bool redo = dir > 0.5f;
+                    const int L = redo?aft0:bef0, O = redo?aft1:bef1, R = redo?aft2:bef2;
+                    mm.setLorBase(slot, bank, 0, (float)L);
+                    mm.setLorBase(slot, bank, 1, (float)O);
+                    mm.setLorBase(slot, bank, 2, (float)R);
+                    if (ed && lane >= 0 && lane < 6) {
+                        ed->currentState.lanes[lane].length   = std::max(1, L);
+                        ed->currentState.lanes[lane].offset   = O;
+                        ed->currentState.lanes[lane].rotation = R;
+                    }
+                },
+                0.f, 1.f);
+        };
         addChild(visualEditor);
 
         // 4 poly probability CV outs — bound via SVG panel kit (output_prob_<lane>).
@@ -408,6 +436,18 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         int pv = polyVoice();
                         if (pv >= 0 && pv < 15) m->setMacroOwn(pv, ocLane, b ? 1.f : 0.f);
                     };
+                    w->pushUndoFn = [this, ocLane](bool oldB, bool newB) {
+                        Monsoon* m = getMonsoon(); if (!m) return;
+                        const bool mono = onMonoTab();
+                        const int  pv   = mono ? -1 : polyVoice();
+                        if (!mono && (pv < 0 || pv >= 15)) return;
+                        redDot::applyAndPushStoreEdit<Monsoon>(m, "lane owner",
+                            [ocLane, mono, pv](Monsoon& mm, float val) {
+                                if (mono) mm.setMonoMacroOwn(ocLane, val > 0.5f);
+                                else      mm.setMacroOwn(pv, ocLane, val);
+                            },
+                            oldB ? 1.f : 0.f, newB ? 1.f : 0.f);
+                    };
                     // Locked when no Macro (nothing to delegate to) OR V1+Mono (Mono owns V1).
                     w->lockWhen = [this](){ return !macroAttached() || tab1MonoMirror(); };
                 }
@@ -447,6 +487,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         Monsoon* m = getMonsoon(); int pv = polyVoice();
                         if (m && pv >= 0 && pv < 15) m->setVarlegDeleg(pv, vlLane, b ? 1.f : 0.f);
                     };
+                    w->pushUndoFn = [this, vlLane](bool oldB, bool newB) {
+                        if (onMonoTab()) return;   // locked on V1
+                        Monsoon* m = getMonsoon(); int pv = polyVoice();
+                        if (!m || pv < 0 || pv >= 15) return;
+                        redDot::applyAndPushStoreEdit<Monsoon>(m, "varleg deleg",
+                            [vlLane, pv](Monsoon& mm, float val) { mm.setVarlegDeleg(pv, vlLane, val); },
+                            oldB ? 1.f : 0.f, newB ? 1.f : 0.f);
+                    };
                     w->lockWhen = [this](){ return onMonoTab(); };
                 }
             );
@@ -485,6 +533,20 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         if (onMonoTab()) { m->setMonoLaneDir(dcLane, (float)v); return; }
                         int pv = polyVoice();
                         if (pv >= 0 && pv < 15) m->setLaneDir(pv, dcLane, (float)v);
+                    };
+                    // Undo hook: route a direction cycle through Rack history (Ctrl+Z). Captures
+                    // the resolved store target at click time (mono vs poly, which voice/lane).
+                    w->pushUndoFn = [this, dcLane](int oldV, int newV) {
+                        Monsoon* m = getMonsoon(); if (!m) return;
+                        const bool mono = onMonoTab();
+                        const int  pv   = mono ? -1 : polyVoice();
+                        if (!mono && (pv < 0 || pv >= 15)) return;
+                        redDot::applyAndPushStoreEdit<Monsoon>(m, "direction",
+                            [dcLane, mono, pv](Monsoon& mm, float val) {
+                                if (mono) mm.setMonoLaneDir(dcLane, val);
+                                else      mm.setLaneDir(pv, dcLane, val);
+                            },
+                            (float)oldV, (float)newV);
                     };
                     // Lanes 0..3 (MEL/OCT/REST/ACC): locked when Macro owns the lane
                     // (delegated) OR on the V1/mono tab with Mono attached (tab1MonoMirror).

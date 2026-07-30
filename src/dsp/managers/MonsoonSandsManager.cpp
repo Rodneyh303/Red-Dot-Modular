@@ -7,7 +7,6 @@
 //#include "../../MonsoonSandsExpander.hpp"
 #include "../../StraitsSandsMacroVisual.hpp"
 #include "MonsoonExpanderManager.hpp"
-#include "../../MonsoonChangeAlleyExpander.hpp"   // full type: processDNA reads ca->rhythmSrc/melodySrc
 #include "../../MonsoonChangeAlleyV2.hpp"           // V2 shares the pin contract
 #include "../SandsTopology.hpp"   // step 3b: readStrand owner migration
 #include "../../MonsoonStraitsExpander.hpp"
@@ -32,19 +31,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     // per-cycle), so remapping in place would compound. Regenerate slewed fresh from the
     // pristine A/B buffers FIRST (recompute is a cheap re-derivation, MixApplied-idempotent),
     // then remap the clean result. This makes the per-cycle remap correct and non-walking.
-    if (expanderManager.cachedChangeAlleyExpander) {
-        auto* ca = expanderManager.cachedChangeAlleyExpander;
-        bool identity = true;
-        for (int v = 0; v < 16; ++v) {
-            engine.pe.caRhythmSrc[v] = ca->rhythmSrc[v];
-            engine.pe.caMelodySrc[v] = ca->melodySrc[v];
-            if (ca->rhythmSrc[v] != v || ca->melodySrc[v] != v) identity = false;
-        }
-        if (!identity) {
-            engine.pe.forceRecomputeSlewed();
-            engine.pe.remapSlewedByPins();
-        }
-    } else if (expanderManager.cachedChangeAlleyV2) {
+    if (expanderManager.cachedChangeAlleyV2) {
         // Change Alley V2 owns the same pin contract; push its board the same way.
         auto* v2 = expanderManager.cachedChangeAlleyV2;
         bool identity = true;

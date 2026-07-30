@@ -2,6 +2,7 @@
 #include <limits>
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
+#include "ui/StoreEditAction.hpp"
 #include "ui/ConnectMark.hpp"
 //#include "MonsoonSandsExpander.hpp"
 #include "MonsoonSandsVisualExpander.hpp"
@@ -134,6 +135,35 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             // lock ⟺ Mono is not the owner of this V1 lane (Macro owns it).
             return buildV1Topo().lockedOn(dotModular::SandsTopology::Role::MONO, 0, editorLane);
         };
+        // LOR drag undo: push a Rack history action against the store for a completed drag.
+        // Mono is always the mono slot; bank = EDITOR_TO_ENGINE_LANE for lanes 0..3, self for
+        // VAR/LEG (4,5) -- the same mapping the load path uses.
+        visualEditor->onLorCommit = [this](int lane, const int before[3], const int after[3]) {
+            auto* m = getMonsoon(); if (!m) return;
+            const int slot = dotModular::VoiceResolver::kMonoSlot;
+            const int bank = (lane <= 3) ? dotModular::EDITOR_TO_ENGINE_LANE[lane] : lane;
+            const int bef0=before[0],bef1=before[1],bef2=before[2];
+            const int aft0=after[0], aft1=after[1], aft2=after[2];
+            // Capturing visualEditor is safe here: a store-edit history action does NOT destroy
+            // the widget (unlike module add/remove undo), so the pointer stays valid across
+            // undo/redo of this LOR edit. The action writes the STORE and refreshes the editor's
+            // cached currentState for the lane (the store->editor seed is otherwise one-time).
+            auto* ed = visualEditor;
+            redDot::applyAndPushStoreEdit<Monsoon>(m, "LOR edit",
+                [slot, bank, lane, bef0,bef1,bef2, aft0,aft1,aft2, ed](Monsoon& mm, float dir) {
+                    const bool redo = dir > 0.5f;
+                    const int L = redo?aft0:bef0, O = redo?aft1:bef1, R = redo?aft2:bef2;
+                    mm.setLorBase(slot, bank, 0, (float)L);
+                    mm.setLorBase(slot, bank, 1, (float)O);
+                    mm.setLorBase(slot, bank, 2, (float)R);
+                    if (ed && lane >= 0 && lane < 6) {
+                        ed->currentState.lanes[lane].length   = L;
+                        ed->currentState.lanes[lane].offset   = O;
+                        ed->currentState.lanes[lane].rotation = R;
+                    }
+                },
+                0.f, 1.f);
+        };
         addChild(visualEditor);
 
         // ── LOR controls: 3 CV jacks + 3 attens per lane (all 6 lanes) ────
@@ -232,6 +262,13 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             const int ocLane = l;
             oc->getOwnsFn = [this, ocLane]() { auto* m = getMonsoon(); return m ? m->getMonoOwner(ocLane) : true; };
             oc->setOwnsFn = [this, ocLane](bool b) { if (auto* m = getMonsoon()) m->setMonoOwner(ocLane, b); };
+            // Undo hook: route an ownership toggle through Rack history (Ctrl+Z).
+            oc->pushUndoFn = [this, ocLane](bool oldB, bool newB) {
+                auto* m = getMonsoon(); if (!m) return;
+                redDot::applyAndPushStoreEdit<Monsoon>(m, "lane owner",
+                    [ocLane](Monsoon& mm, float val) { mm.setMonoOwner(ocLane, val > 0.5f); },
+                    oldB ? 1.f : 0.f, newB ? 1.f : 0.f);
+            };
             oc->lockWhen = [this]() {   // condition 2: no Macro → can't delegate
                 auto* mon = getMonsoon();
                 return !(mon && mon->expanderManager.cachedMacroSandsVisual != nullptr);
@@ -263,6 +300,14 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             };
             dc->setStateFn = [this, dcLane](int v) {
                 if (auto* m = getMonsoon()) m->setMonoLaneDir(dcLane, (float)v);
+            };
+            // Undo hook: route a direction cycle through Rack history (Ctrl+Z). Mono is always
+            // the mono tab (no poly), so the store target is simply setMonoLaneDir(dcLane).
+            dc->pushUndoFn = [this, dcLane](int oldV, int newV) {
+                auto* m = getMonsoon(); if (!m) return;
+                redDot::applyAndPushStoreEdit<Monsoon>(m, "direction",
+                    [dcLane](Monsoon& mm, float val) { mm.setMonoLaneDir(dcLane, val); },
+                    (float)oldV, (float)newV);
             };
             // Lanes 0..3: locked when delegated to Macro (ownerDispId <= 0.5 = Macro owns).
             // Lanes 4..5 (VAR/LEG): always settable (Mono always owns them).

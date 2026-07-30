@@ -12,10 +12,12 @@
 #include <rack.hpp>
 #include <cmath>
 #include <cstdio>
+#include <atomic>
 #include "Monsoon.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/ModArcOverlay.hpp"
 #include "ui/StoreEditAction.hpp"   // pin edits: store-backed, undoable (DAW_PARAM_AUDIT 5b)
+#include "dsp/ChangeAlleyTransforms.hpp"   // ca::applyCorrelation (transform apply owned here)
 
 using namespace rack;
 // NOT 'using namespace ChangeAlleyIds' — Monsoon.hpp exposes MonsoonIds with the same
@@ -40,6 +42,25 @@ struct MonsoonChangeAlleyV2 : Module {
     rack::dsp::SchmittTrigger sBackDom [CA::SIDES * CA::TYPES];
     rack::dsp::SchmittTrigger sBackCod [CA::SIDES * CA::TYPES];
     uint64_t scatterCounter[CA::SIDES * CA::TYPES * 2] = {};
+
+    // --- Transform-undo groundwork (item 5) ---------------------------------------------------
+    // applyPendingTransforms() runs on the AUDIO thread (control-rate, Monsoon::process), where
+    // APP->history->push is ILLEGAL (UI-thread only). So we snapshot the pre-transform pin state
+    // into a small single-producer/single-consumer RING here, and the widget's step() (UI thread)
+    // drains it and pushes a Rack history action per committed transform. Transform commits are
+    // infrequent (phrase boundaries), so 16 slots is ample.
+    struct TransformUndoSnapshot {
+        uint8_t  beforeR[CA::N_VOICES];
+        uint8_t  beforeM[CA::N_VOICES];
+        uint8_t  afterR[CA::N_VOICES];
+        uint8_t  afterM[CA::N_VOICES];
+        uint64_t counterBefore[CA::SIDES * CA::TYPES * 2];
+        uint64_t counterAfter [CA::SIDES * CA::TYPES * 2];
+    };
+    static constexpr int UNDO_RING = 16;
+    TransformUndoSnapshot undoRing[UNDO_RING];
+    std::atomic<uint32_t> undoHead{0};   // producer (audio) writes, then advances
+    std::atomic<uint32_t> undoTail{0};   // consumer (UI) reads, then advances
 
     MonsoonChangeAlleyV2() {
         config(CA::NUM_PARAMS_TOTAL, CA::NUM_INPUTS, 0, CA::NUM_LIGHTS);
@@ -113,6 +134,51 @@ struct MonsoonChangeAlleyV2 : Module {
             p.leaderOrStep = 0;
         if (verb == CA::V_SCATTER) p.scatterDelta = 1;
         lights[CA::PENDING_LIGHT_START + r].setBrightness(1.f);
+    }
+
+    // Apply all ARMED pending transforms to this module's own pin matrix. Owns the state
+    // mutation (rhythmSrc/melodySrc + scatterCounter) -- the manager only decides WHEN to call
+    // this (phrase boundary / unlock). Moved out of MonsoonExpanderManager so the module that
+    // holds the state also owns its mutation (and, next, its undo snapshot). `active` is the
+    // active voice count (numPolyVoices+1, clamped >=1).
+    void applyPendingTransforms(int active) {
+        // Any armed row this call?  If none, nothing to snapshot or apply.
+        bool any = false;
+        for (int row = 0; row < CA::N_ROWS; ++row) if (pendingRows[row].armed) { any = true; break; }
+        if (!any) return;
+
+        // Snapshot BEFORE (whole pin matrix + scatter counters). One phrase-boundary commit = one
+        // undo step (mirrors ResetPinsAction: a multi-change gesture is a single snapshot).
+        TransformUndoSnapshot snap;
+        for (int v = 0; v < CA::N_VOICES; ++v) { snap.beforeR[v] = rhythmSrc[v]; snap.beforeM[v] = melodySrc[v]; }
+        for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i) snap.counterBefore[i] = scatterCounter[i];
+
+        for (int row = 0; row < CA::N_ROWS; ++row) {
+            auto& p = pendingRows[row];
+            if (!p.armed) continue;
+            const int verb = row / 4;
+            const int side = (row % 4) / 2;
+            const int type = row % 2;
+            uint8_t* tbl   = (type == 0) ? rhythmSrc : melodySrc;
+            const int ci   = (side * CA::TYPES + type) * 2 + (p.isDomain ? 0 : 1);
+            if (verb == CA::V_SCATTER)
+                scatterCounter[ci] += (uint64_t)(int64_t)p.scatterDelta;
+            dotModular::ca::applyCorrelation(
+                verb, p.isDomain, p.isInter,
+                tbl, active, p.grain, p.leaderOrStep, scatterCounter[ci]);
+            p.armed = false;
+            lights[CA::PENDING_LIGHT_START + row].setBrightness(0.f);
+        }
+
+        // Snapshot AFTER, and publish to the ring for the UI thread to turn into a history action.
+        for (int v = 0; v < CA::N_VOICES; ++v) { snap.afterR[v] = rhythmSrc[v]; snap.afterM[v] = melodySrc[v]; }
+        for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i) snap.counterAfter[i] = scatterCounter[i];
+        const uint32_t h = undoHead.load(std::memory_order_relaxed);
+        const uint32_t t = undoTail.load(std::memory_order_acquire);
+        if (h - t < (uint32_t)UNDO_RING) {           // drop if UI hasn't drained (never in practice)
+            undoRing[h % UNDO_RING] = snap;
+            undoHead.store(h + 1, std::memory_order_release);
+        }
     }
 
     void process(const ProcessArgs&) override {
@@ -715,9 +781,60 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
         }
     };
 
+    // One committed phrase-boundary transform batch = one undo step. Snapshots produced on the
+    // audio thread (module->applyPendingTransforms) are drained here (UI thread) into these
+    // actions. Same module-id resolution discipline as ResetPinsAction (survives deletion).
+    struct TransformUndoAction : rack::history::Action {
+        int64_t  moduleId;
+        uint8_t  beforeR[CA::N_VOICES], beforeM[CA::N_VOICES];
+        uint8_t  afterR[CA::N_VOICES],  afterM[CA::N_VOICES];
+        uint64_t counterBefore[CA::SIDES * CA::TYPES * 2];
+        uint64_t counterAfter [CA::SIDES * CA::TYPES * 2];
+        TransformUndoAction() { name = "Change Alley transform"; }
+        MonsoonChangeAlleyV2* resolve() {
+            return dynamic_cast<MonsoonChangeAlleyV2*>(APP->engine->getModule(moduleId));
+        }
+        void undo() override {
+            if (auto* m = resolve()) {
+                for (int v = 0; v < CA::N_VOICES; ++v) { m->rhythmSrc[v] = beforeR[v]; m->melodySrc[v] = beforeM[v]; }
+                for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i) m->scatterCounter[i] = counterBefore[i];
+            }
+        }
+        void redo() override {
+            if (auto* m = resolve()) {
+                for (int v = 0; v < CA::N_VOICES; ++v) { m->rhythmSrc[v] = afterR[v]; m->melodySrc[v] = afterM[v]; }
+                for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i) m->scatterCounter[i] = counterAfter[i];
+            }
+        }
+    };
+
     void step() override {
         ModuleWidget::step();
         if (!module) return;
+
+        // Drain the transform-undo ring produced on the audio thread. Each snapshot becomes one
+        // Rack history action (UI-thread push, which is required). SPSC: we are the sole consumer.
+        if (auto* ca = dynamic_cast<MonsoonChangeAlleyV2*>(module)) {
+            uint32_t t = ca->undoTail.load(std::memory_order_relaxed);
+            uint32_t h = ca->undoHead.load(std::memory_order_acquire);
+            while (t != h) {
+                const auto& snap = ca->undoRing[t % MonsoonChangeAlleyV2::UNDO_RING];
+                auto* act = new TransformUndoAction();
+                act->moduleId = ca->id;
+                for (int v = 0; v < CA::N_VOICES; ++v) {
+                    act->beforeR[v] = snap.beforeR[v]; act->beforeM[v] = snap.beforeM[v];
+                    act->afterR[v]  = snap.afterR[v];  act->afterM[v]  = snap.afterM[v];
+                }
+                for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i) {
+                    act->counterBefore[i] = snap.counterBefore[i];
+                    act->counterAfter[i]  = snap.counterAfter[i];
+                }
+                APP->history->push(act);
+                ++t;
+            }
+            ca->undoTail.store(t, std::memory_order_release);
+        }
+
         Monsoon* m = redDot::findMonsoonEitherSide(module);
         const int wantLight = (m && m->lightTheme) ? 1 : 0;
         if (wantLight != lastThemeLight) {

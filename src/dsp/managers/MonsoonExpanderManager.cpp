@@ -9,9 +9,7 @@
 #include "../../ui/VisualExpanderHelpers.hpp"   // redDot::findMonsoonEitherSide (LANE_DIR field reads)
 #include "../../StraitsSandsMacroVisual.hpp"
 #include "../../MonsoonSandsVisualExpander.hpp"   // SandsMonoVisualIds::dirDispId for mono direction push
-#include "../../MonsoonTemasekExpander.hpp"       // Temasek pendingRows (must precede CA)
 #include "../../MonsoonChangeAlleyV2.hpp"           // single-module transforms
-#include "../../MonsoonChangeAlleyExpander.hpp"   // pin-matrix src tables
 #include "../ChangeAlleyTransforms.hpp"           // restructure verbs (§10)
 
 using namespace rack;
@@ -96,88 +94,6 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
     // stale Local-East state). When East IS present, the block re-asserts Local East per param.
     for (int dv = 0; dv < 15; ++dv) { engine.setVarlegLocalEast(dv, 0, false); engine.setVarlegLocalEast(dv, 1, false); }
 
-    // Change Alley pin-matrix: push rhythmSrc[]/melodySrc[] to the engine.
-    // Unified 16-voice: index 0=mono, 1..15=poly voices. No offset needed —
-    // the bank arithmetic (src-1) handles it in polyRandomSrc/monoRandomSrc.
-    if (cachedChangeAlleyExpander) {
-        // ── Restructure queue application (§10/§11): pending transforms fire at the
-        //    PHRASE BOUNDARY (global step wrap) and on UNLOCK — audio-side, here,
-        //    BEFORE the pin push below so the result reaches pe the same cycle.
-        //    Row order: (Collapse,Rotate,Scatter,Reflect) × (R,M). Active pool =
-        //    mono + numPolyVoices; transforms tile it, rows beyond stay untouched.
-        {
-            auto* ca = cachedChangeAlleyExpander;
-            const int  step      = engine.stepIndex;
-            const bool boundary  = (step < caPrevStep_);          // wrapped → phrase start
-            const bool unlockEdge = (caPrevLocked_ && !engine.locked);
-            caPrevStep_   = step;
-            caPrevLocked_ = engine.locked;
-            // Mirror Temasek's pending state into Change Alley's highlight POD so the
-            // grid can outline affected submatrices. Done here (control rate) rather than
-            // in the widget, because only the manager sees both module types -- keeping
-            // the two headers acyclic.
-            if (ca) {
-                auto* tkh = cachedTemasekExpander;
-                for (int hr = 0; hr < MonsoonChangeAlleyExpander::TK_HL_ROWS; ++hr) {
-                    auto& dst = ca->tkHighlight[hr];
-                    if (!tkh || hr >= TemasekIds::N_ROWS) { dst.armed = false; continue; }
-                    const auto& src = tkh->pendingRows[hr];
-                    dst.armed   = src.armed;
-                    dst.blk     = src.grain;
-                    dst.isInter = src.isInter;
-                    dst.isDomain= src.isDomain;
-                    dst.type    = hr % 2;          // 0 = rhythm, 1 = melody
-                }
-            }
-
-            if ((boundary && !engine.locked) || unlockEdge) {
-                const int active = engine.numPolyVoices + 1;      // mono + live poly
-                for (int row = 0; row < 8; ++row) {
-                    auto& p = ca->pendingRow[row];
-                    if (!p.armed) continue;
-                    const int   t   = row / 2;
-                    const bool  isR = (row % 2 == 0);
-                    // §14a: grain was LATCHED AT TRIGGER TIME -- do not re-read the knob here.
-                    // Turning the knob between trigger and boundary no longer changes what fires.
-                    uint8_t* tbl = isR ? ca->rhythmSrc : ca->melodySrc;
-                    if (t == ChangeAlleyIds::T_SCATTER)
-                        p.scatterSeed = p.scatterSeed * 1664525u + 1013904223u;
-                    dotModular::ca::apply(t, tbl, active, p.blk, p.scatterSeed);
-                    p.armed = false;
-                }
-                // ── Temasek transforms ────────────────────────────────────────────
-                auto* tk = cachedTemasekExpander;
-                if (tk && ca) {
-                    for (int row = 0; row < TemasekIds::N_ROWS; ++row) {
-                        auto& p = tk->pendingRows[row];
-                        if (!p.armed) continue;
-                        const int verb = row / 4;
-                        const int type = row % 2;
-                        uint8_t* tbl   = (type == 0) ? ca->rhythmSrc : ca->melodySrc;
-                        // Counter index includes the AXIS: domain and codomain scatter are
-                        // different operations and must keep independent positions.
-                        const int side = (row % 4) / 2;
-                        const int ci   = (side * TemasekIds::TYPES + type) * 2
-                                       + (p.isDomain ? 0 : 1);
-                        if (verb == TemasekIds::V_SCATTER)
-                            tk->scatterCounter[ci] += (uint64_t)(int64_t)p.scatterDelta;
-                        dotModular::ca::applyTemasek(
-                            verb, p.isDomain, p.isInter,
-                            tbl, active, p.grain, p.leaderOrStep,
-                            tk->scatterCounter[ci]);
-                        p.armed = false;
-                        tk->lights[TemasekIds::PENDING_LIGHT_START + row].setBrightness(0.f);
-                    }
-                }
-            }
-        }
-        // (pin push to pe moved to processDNA head — it must precede the pre-spread
-        //  remapSlewedByPins. Restructure-transform application above stays here, at the
-        //  phrase boundary; its result is picked up by processDNA's push next cycle.)
-    } else {
-        // no-op: processDNA resets pe.ca*Src to identity when no Change Alley is present.
-    }
-
     // Change Alley V2: single module, runs INDEPENDENTLY of the old Change Alley.
     // (The V2 application was nested inside if(cachedChangeAlleyExpander) and never fired
     //  when V2 was used alone -- gates queued but nothing applied.) The pin PUSH to the
@@ -192,23 +108,10 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
         caV2PrevLocked_ = engine.locked;
         if ((vBoundary && !engine.locked) || vUnlock) {
             const int vActive = std::max(1, engine.numPolyVoices + 1);
-            for (int row = 0; row < ChangeAlleyV2Ids::N_ROWS; ++row) {
-                auto& p = v2->pendingRows[row];
-                if (!p.armed) continue;
-                const int verb = row / 4;
-                const int side = (row % 4) / 2;
-                const int type = row % 2;
-                uint8_t* tbl   = (type == 0) ? v2->rhythmSrc : v2->melodySrc;
-                const int ci   = (side * ChangeAlleyV2Ids::TYPES + type) * 2
-                               + (p.isDomain ? 0 : 1);
-                if (verb == ChangeAlleyV2Ids::V_SCATTER)
-                    v2->scatterCounter[ci] += (uint64_t)(int64_t)p.scatterDelta;
-                dotModular::ca::applyTemasek(
-                    verb, p.isDomain, p.isInter,
-                    tbl, vActive, p.grain, p.leaderOrStep, v2->scatterCounter[ci]);
-                p.armed = false;
-                v2->lights[ChangeAlleyV2Ids::PENDING_LIGHT_START + row].setBrightness(0.f);
-            }
+            // Apply is now OWNED by the CA module (applyPendingTransforms) -- the manager only
+            // decides WHEN (boundary/unlock). (Moving the WHEN to the engine boundary is a later
+            // cleanup, coordinated with lock semantics; see UNDO_IMPLEMENTATION_ROADMAP.md.)
+            v2->applyPendingTransforms(vActive);
         }
     }
     // Step 3 (plans/lane_direction_homes.md): poly direction is reset-then-pushed exactly like

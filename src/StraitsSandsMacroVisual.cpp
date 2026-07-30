@@ -1,6 +1,7 @@
 #include <rack.hpp>
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
+#include "ui/StoreEditAction.hpp"
 #include "ui/ConnectMark.hpp"
 #include "ui/GoldPolyPort.hpp"
 #include "ui/SvgPanelKit.hpp"
@@ -152,6 +153,31 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // editable (like its spread, like V2+); ownership governs what reaches the ENGINE, not what Macro
         // may edit on its own panel. Off the V1 tab this was already false.
         visualEditor->laneLockedFn = [](int /*editorLane*/) -> bool { return false; };
+        // LOR drag undo: Macro edits GLOBAL LOR (setGlobalLor, indexed by ENGINE lane). Only
+        // lanes 0..3 map to a global engine lane (VAR/LEG have no global LOR). Push a Rack
+        // history action; refresh the editor cache too (store->editor seed is event-driven).
+        visualEditor->onLorCommit = [this](int lane, const int before[3], const int after[3]) {
+            auto* m = getMonsoon(); if (!m) return;
+            if (lane < 0 || lane > 3) return;   // only MEL/OCT/REST/ACC have global LOR
+            const int engLane = dotModular::EDITOR_TO_ENGINE_LANE[lane];
+            const int bef0=before[0],bef1=before[1],bef2=before[2];
+            const int aft0=after[0], aft1=after[1], aft2=after[2];
+            auto* ed = visualEditor;
+            redDot::applyAndPushStoreEdit<Monsoon>(m, "LOR edit",
+                [engLane, lane, bef0,bef1,bef2, aft0,aft1,aft2, ed](Monsoon& mm, float dir) {
+                    const bool redo = dir > 0.5f;
+                    const int L = redo?aft0:bef0, O = redo?aft1:bef1, R = redo?aft2:bef2;
+                    mm.setGlobalLor(engLane, 0, (float)L);
+                    mm.setGlobalLor(engLane, 1, (float)O);
+                    mm.setGlobalLor(engLane, 2, (float)R);
+                    if (ed && lane >= 0 && lane < 6) {
+                        ed->currentState.lanes[lane].length   = std::max(1, L);
+                        ed->currentState.lanes[lane].offset   = O;
+                        ed->currentState.lanes[lane].rotation = R;
+                    }
+                },
+                0.f, 1.f);
+        };
 
         Module* mod_ = module;
         auto themeOut = [mod_](redDot::GoldPolyPort* p) {
@@ -272,6 +298,14 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                     };
                     w->setStateFn = [this, lane](int v) {
                         if (auto* mm = getMonsoon()) mm->setGlobalDir(lane, (float)(v & 3));
+                    };
+                    // Undo hook: route a direction cycle through Rack history (Ctrl+Z).
+                    // Macro's direction store target is the GLOBAL dir for the lane.
+                    w->pushUndoFn = [this, lane](int oldV, int newV) {
+                        auto* mm = getMonsoon(); if (!mm) return;
+                        redDot::applyAndPushStoreEdit<Monsoon>(mm, "direction",
+                            [lane](Monsoon& m, float val) { m.setGlobalDir(lane, val); },
+                            (float)(oldV & 3), (float)(newV & 3));
                     };
                     w->lockWhen = [this]() { return !getMonsoon(); };
                 })
