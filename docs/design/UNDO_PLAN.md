@@ -296,6 +296,49 @@ musically useful or muddy at the blend is something to discover in play; structu
 Changes Raffles control semantics and the PatternEngine A/B buffer model. Record now while
 reasoning is sharp; build when the dice/reversible work is scheduled.
 
+## Change Alley: TWO SEPARATE DATA STRUCTURES (undo vs reversible mode)
+
+Following from Option A (undo is user-time, independent of transport): the two mechanisms are
+independent and should each have their own data structure optimised for their access pattern.
+Sharing one buffer that both index differently would entangle them unnecessarily.
+
+### Structure 1: UNDO STACK (user-time, recency-ordered)
+- Purpose: Ctrl+Z -- "I didn't want that action."
+- Ordered by RECENCY, not transport position.
+- Entry: (pin_matrix[16], scatter_counter[8]) = 24 bytes. NO phrase-boundary tag -- undo does
+  not care about transport position (Option A).
+- Access: PUSH on user action, POP on Ctrl+Z. Standard stack.
+- Write triggers: per USER ACTION (scatter gate fired, transform applied, drag completed).
+- Granularity: every action, whenever it occurs.
+- For invertible transforms: op-code entry only (~2-5 bytes, no pin snapshot). See transform
+  optimisation section below.
+- For manual edits: ALSO written to Rack StoreEditAction (already wired) for Ctrl+Z via Rack's
+  native mechanism. The undo stack entry handles the CA-specific state (pin + counter).
+- Depth: generous (e.g. 256-1024 entries). Will never overflow in realistic use.
+
+### Structure 2: REVERSIBLE MODE BUFFER (transport-time, position-indexed)
+- Purpose: phase-coherent restoration -- "what was the CA state at transport position N?"
+- Ordered by TRANSPORT POSITION (phrase-boundary index), not recency.
+- Entry: (pin_matrix[16], scatter_counter[8], phrase_boundary[4]) = 28 bytes.
+- Access: SEEK to nearest boundary index on transport rewind. Random access, not stack.
+- Write triggers: at each PHRASE BOUNDARY CROSSING, snapshot the current CA state regardless
+  of what caused the current state (scatter, transform, manual drag all included).
+  Granularity: phrase-boundary, not per-action. One snapshot per boundary crossing --
+  finer than per-boundary is unnecessary since the transport's quantum is the phrase boundary.
+- Dual-write for manual edits: a manual drag also writes to this buffer (with current boundary
+  tag) in addition to the undo stack and Rack history. Enables manual edits to be phase-
+  coherent reversible (supersedes the earlier "manual edits non-reversible" provisional).
+- Depth: ~1000 entries = 28KB. Wrap policy: circular overwrite (see below).
+- This is the buffer the 28-byte entry spec, wrap policy, and session-depth analysis describe.
+
+### Write summary
+| Event          | Undo stack        | Reversible buffer      | Rack history       |
+|----------------|-------------------|------------------------|--------------------|
+| Scatter gate   | push (24 bytes)   | at next boundary       | --                 |
+| Transform      | push (op or snap) | at next boundary       | --                 |
+| Manual drag    | push (24 bytes)   | at next boundary       | StoreEditAction    |
+| Phrase boundary| --                | snapshot current state | --                 |
+
 ## Change Alley state tracking -- small enough for generous snapshot buffer + transform optimisation
 
 ### CA state is small enough to track generously -- session depth reality check (Rodney)
