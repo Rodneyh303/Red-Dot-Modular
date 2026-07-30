@@ -123,3 +123,61 @@ Deferred to next session -- wants careful capture-at-commit design, not a rushed
 wiring. Items 1 (direction+ownership) and 2 (LOR) DONE + verified in Rack (item 2: cross-tab
 undo confirmed correct, validating store-as-authority). Item 3 (knobs) done. Item 5 (Change
 Alley) after item 4.
+
+## Item 5 analysis (Change Alley undo) -- commit point mapped, thread-safety is the crux
+
+### What already has undo (verified)
+- MANUAL pin edits: store-backed via applyAndPushStoreEdit (MonsoonChangeAlleyV2.hpp:678).
+  Already Ctrl+Z-undoable.
+- RESET pins: whole-table ResetPinsAction snapshot (MonsoonChangeAlleyV2.hpp:699). Already
+  undoable.
+So item 5 is specifically TRANSFORM + SCATTER undo (reflect/rotate/scatter/collapse), which is
+what currently has NO undo.
+
+### Active module + state
+- ACTIVE: modelMonsoonChangeAlleyV2 (Monsoon.cpp:1041; V1 MonsoonChangeAlleyExpander commented
+  out at :1040). Work against V2.
+- Pin matrix state: ca->rhythmSrc[16], ca->melodySrc[16] (uint8_t, persisted in dataToJson).
+- Scatter counter: Temasek's tk->scatterCounter[] (advances on scatter, must be captured too).
+
+### The transform COMMIT POINT (where undo must attach)
+NOT in CA's process() -- that only LATCHES pending actions on trigger. The actual pin mutation
+happens in the MANAGER at the boundary:
+- src/dsp/managers/MonsoonExpanderManager.cpp:145
+    dotModular::ca::apply(t, tbl, active, p.blk, p.scatterSeed);   // tbl = rhythmSrc/melodySrc
+- Temasek transforms: :164, :206  dotModular::ca::applyTemasek(...), also advancing
+    tk->scatterCounter[ci] += p.scatterDelta  (:163).
+So a transform snapshot = capture tbl[16] (the affected rhythmSrc or melodySrc) + the relevant
+scatterCounter entry BEFORE ca::apply/applyTemasek, and after.
+
+### THE CRUX: thread safety
+This commit point is on the MANAGER thread (audio/process side), NOT a UI widget gesture. Rack's
+history (APP->history->push) must be called from the UI THREAD, not audio. So transform undo
+CANNOT push history directly at the commit point. Options:
+1. Queue the (before,after) snapshot on the commit thread into a lock-free ring; drain it on the
+   UI thread (widget step()) and push history there. Clean separation, standard pattern.
+2. Snapshot into the CA module's own undo STACK (the 24-byte design from UNDO_PLAN) on the commit
+   thread (just memory, no Rack history), and expose Ctrl+Z via a CA-level history action that
+   pops that stack. The module-owned stack is the two-structures design anyway -- this is also
+   the REVERSIBLE MODE groundwork (same snapshots).
+   -> RECOMMENDED: option 2 aligns with the two-structures design. The module-owned snapshot
+      stack (pin matrix + scatter counter per transform) serves BOTH undo (pop) and later
+      reversible mode (seek). Pushing to Rack history becomes a thin action that pops the stack.
+
+### Plan (next session)
+- Add the CA module-owned undo stack: entries {rhythmSrc/melodySrc snapshot (which side), scatter
+  counter value, transform id}. Push on the manager thread at the commit point (:145/:164/:206),
+  before ca::apply mutates tbl.
+- Invertible transforms (reflect/rotate/scatterRows): can store op-code only, but for v1 uniform
+  snapshot is simpler (16 bytes, cheap) -- matches UNDO_PLAN recommendation.
+- Bridge to Ctrl+Z: a rack::history::Action whose undo() pops the CA stack and restores tbl +
+  counter (module-id resolved, survives deletion like ResetPinsAction).
+- This stack IS the reversible-mode groundwork (two-structures design): undo pops, reverse will
+  seek the position-indexed variant later.
+
+### Status
+Items 1 (direction+ownership), 2 (LOR) DONE + verified. Item 3 (knobs) done. Item 4 (dice)
+DEFERRED -- will fall out of the scrub redesign trivially, not built on the throwaway current
+model (decided: do CA undo now, dice later via scrub). Item 5 commit point mapped; thread-safety
+(manager thread vs UI-thread history) is the design crux -- recommended module-owned snapshot
+stack (also reverse-mode groundwork). Ready to implement next session.
