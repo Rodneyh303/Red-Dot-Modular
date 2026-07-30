@@ -640,3 +640,27 @@ Colour encodes pair identity from dot.modular's palette (pair 1=red d4001a, pair
 pair 3=teal 26a69a...) so you can match by colour AND number at a glance. A Lantern in
 Monsoon-source mode (no paired Intertropical) shows no pair number. The display is conditional on
 Lantern being in Intertropical-source mode and having a confirmed reachable pair.
+
+## Per-scene voice->slot seating override (RETAINED)
+
+The auto-pack default (voices fill slots 1..N in voice-number order) covers most cases. But the
+override mechanism is RETAINED so the user can explicitly seat a specific voice in a specific slot
+for a given scene -- essential when the global slot->output routing assigns a particular role to a
+slot (e.g. slot 3 -> outputs 1+6, both chord tones) and you need to CONTROL which voice fills
+that role per scene, not leave it to auto-pack order.
+
+The earlier note that sceneOutput[scene][voice] was "superseded" by the new two-layer model was
+wrong: it survives, but its SEMANTICS change. It is no longer a direct voice->output override
+(which the new slot->output global grid covers); it is a per-scene voice->SLOT seating override.
+sceneOutput[scene][voice] = slot (0..7) meaning "seat voice V in slot S for this scene."
+-1 (default) = auto-pack in voice order.
+
+This is the mechanism that makes the slot->output routing grid precise: you set "slot 3 ->
+outputs 1 and 6" globally once, then per scene you control WHICH voice fills slot 3 (and
+therefore which voice feeds those outputs) via the seating override. Without it the global
+routing grid's slot assignments are approximate (you get whatever voice auto-pack puts there).
+
+UI: the existing right-click cycle mechanism on membership cells is the natural home for this --
+right-click a member cell to cycle its slot assignment (Auto -> slot 1..8 -> Auto). The current
+scroll-a-number override should be replaced with a more legible display (the voice->slot
+visualiser grid shows the result live, which helps).
