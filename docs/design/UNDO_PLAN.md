@@ -371,3 +371,26 @@ This is an ACCEPTABLE limitation for event-driven state: scatter is a deliberate
 when scatter fires; accepting that those events don't rewind with phase is reasonable. The
 alternative (making scatter phase-derivable) is architecturally impossible since the gate input
 is independent of phase.
+
+## Manual Change Alley pin edits -- reversibility TBD, likely accepted as non-reversible
+
+Manual pin drags are a different character from transform events:
+- They happen continuously during a drag gesture (many per second).
+- They're already handled by StoreEditAction snapshots via Rack's native Ctrl+Z undo.
+- Tracking them for phase-coherent reversal would require either buffering every drag frame
+  (expensive, noisy) or coarsening to gesture-level snapshots (complex boundary detection).
+- Complexity-to-benefit ratio is poor.
+
+The natural scope boundary for phase-coherent reversibility is ENGINE-DRIVEN state changes
+(what the engine does autonomously as the sequencer runs). Manual edits are USER-INITIATED;
+accepting them as committed state is both simpler and arguably CORRECT -- the user meant to
+change that pin.
+
+Two separate undo mechanisms serving different questions:
+- Ctrl+Z (StoreEditAction): "I changed my mind about that edit." Already works.
+- Phase-coherent reversal: "take me back to where the ENGINE was at position N." Applies to
+  scatter events and transform triggers, not manual gestures.
+
+TBD: confirm in play that not having manual edits phase-reversible doesn't cause real friction.
+Expectation: it won't, because manual editing and phase-scrubbing are different modes of use
+(you don't typically scrub phase while actively dragging pins). Likely ACCEPTED as non-reversible.
