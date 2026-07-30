@@ -92,3 +92,34 @@ Left the existing dead-end deque alone; only bridging saveToHistory() -> APP->hi
 Item 1 (direction + ownership) DONE and verified in Rack (interleaved undo works). Item 2
 analysed, store target identified, ready to implement. Items 3 (knobs) done. Items 4 (dice
 interim) + 5 (Change Alley snapshot stack) still to do per roadmap order.
+
+## Item 4 analysis (dice undo, interim) -- deferred/mode-gated, start here next
+
+More intricate than items 1-2 (immediate store writes). Dice rolls are DEFERRED and MODE-GATED:
+
+- User gesture sites (Monsoon.cpp): DA_* dice actions dispatch setPendingRhythmRoll(),
+  setPendingRhythmTrial(), setPendingRhythmLastRoll(), etc. (~lines 368-399, 831). These set a
+  PENDING flag -- the roll does not commit at button-press.
+- The counter (int64_t rhythmDrawCtr/melodyDrawCtr, PatternEngine:384, signed "can go negative
+  on reverse") advances via advanceRhythmDraw(dir)/advanceMelodyDraw(dir) (:426-7) when the
+  pending roll COMMITS at the next phrase boundary -- NOT at press.
+
+Implication for undo: the (before,after) counter delta must be captured at COMMIT time (phrase
+boundary), not press time. Wiring a StoreEditAction at the deferred commit point, not the gesture.
+
+Mode gating (must respect):
+- REVERSIBLE mode: counter is the state; undo = decrement (before,after) scalar. THIS is where
+  dice undo is defined. rhythmAuditionsAllowed() == !rhythmReversible (:406).
+- TRIAL/audition (A frozen): undo = discard the pending draw, not a counter step. Nothing
+  committed to rewind.
+- FREE-RUN / non-reversible: dice undo UNDEFINED (no stable counter). Do not offer.
+
+Design question to resolve at implementation: where exactly does the pending->committed
+transition happen (find the phrase-boundary commit that calls advanceRhythmDraw), and capture
+before/after there. StoreEditAction wraps the scalar; the setter writes the counter and
+re-derives the pattern (same Philox re-derivation the engine already does on reverse).
+
+Deferred to next session -- wants careful capture-at-commit design, not a rushed gesture-time
+wiring. Items 1 (direction+ownership) and 2 (LOR) DONE + verified in Rack (item 2: cross-tab
+undo confirmed correct, validating store-as-authority). Item 3 (knobs) done. Item 5 (Change
+Alley) after item 4.
