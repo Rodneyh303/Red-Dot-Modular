@@ -449,8 +449,26 @@ There is no "reverse roll" equivalent for CA because:
   rewind). CA has several sources, one of which (manual edits) is already accepted as
   non-reversible.
 
-Status: CA reversible mode is a genuinely open problem, not just unimplemented. The snapshot
-buffer spec above describes CA UNDO only. CA reversible mode is separately TBD.
+Status: CA reversible mode CAN work off the same snapshot buffer IF manual edits are also
+written to it (alongside the Rack history stack). The buffer then contains the COMPLETE history
+of CA pin state regardless of source (scatter gate, transform, manual drag). Transport rewind
+becomes: seek backward through the buffer to the snapshot nearest the target phrase-boundary
+index, restore it. Same data, same buffer, different access pattern from undo (seek vs pop).
+
+Requirement: manual drag gestures write to TWO targets on completion:
+  1. Rack history (StoreEditAction) -- for Ctrl+Z, as now.
+  2. Snapshot buffer entry with current phrase-boundary tag -- for phase-coherent restoration.
+At 28 bytes per entry this is not expensive. The provisional "manual edits non-reversible"
+decision is SUPERSEDED -- they become reversible via the buffer.
+
+Boundary tagging for manual edits: tag with the CURRENT phrase-boundary index at the time of
+the drag completion. On rewind, a manual edit made at phrase boundary 47 is restored when
+transport rewinds to boundary 47. Correct -- it reconstructs the correlation state the user
+had set up at that point in the session.
+
+CA reversible mode is therefore NOT an open problem if the buffer includes all sources. It
+becomes: seek the buffer by boundary index, restore (pin matrix + scatter counter). The phrase-
+boundary index already in the 28-byte entry spec is exactly what enables this.
 
 ## Manual Change Alley pin edits -- reversibility TBD, likely accepted as non-reversible
 
