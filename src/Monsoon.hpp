@@ -31,6 +31,7 @@
 #include "dsp/managers/MonsoonScaleManager.hpp"
 #include "dsp/managers/MonsoonExpanderManager.hpp"
 #include "dsp/managers/MonsoonModeController.hpp"
+#include "dsp/managers/MonsoonLockManager.hpp"
 #include "dsp/managers/MonsoonUIManager.hpp"
 #include "dsp/managers/MonsoonTimingController.hpp"
 #include "dsp/managers/MonsoonCVRouter.hpp"
@@ -774,6 +775,8 @@ struct Monsoon : Module {
     inline float unitRandomMelody() { return engine.pe.unitMelody(); }
 
     bool& locked = engine.locked;
+    // Lock category model (LOCK_SEMANTICS.md §9). Reads engine.locked; owns control->category.
+    dotModular::LockManager lockManager{engine.locked};
     bool& muted = engine.muted;
     bool& runGateActive = engine.runGateActive;
     bool& resetArmed = engine.resetArmed;
