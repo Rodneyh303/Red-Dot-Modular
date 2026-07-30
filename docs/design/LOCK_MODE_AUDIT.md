@@ -138,3 +138,42 @@ This is a LARGE surface -- every expander's controls, every Monsoon slider. The 
 right structure to absorb it, but comprehensiveness is incremental control-site work, not a
 one-shot. The enum is the small stable core; the long tail is threading + per-expander
 classification.
+
+## Expander lock classification (Rodney's functional mapping + §9 confirmation)
+
+Most expanders collapse to one or two categories by FUNCTION. Modulation inputs inherit the
+category of the control they modulate (§9 modulation rule: CV of a latched control latches WITH
+it). Classified:
+
+### Junction -> Control::BigFive (LATCH), single category
+All Junction modulation inputs feed the Big-5 rhythm knobs. CV of a LATCH target latches with it.
+One category for the whole expander. liveNow(Control::BigFive) at its write sites.
+
+### Interchange -> NoteSliders + OctaveRange (both LATCH)
+All Interchange modulation inputs feed the 12 note light-sliders and the 2 octave sliders. Spans
+TWO control groups, both LATCH. Functionally all-LATCH. If Interchange's inputs are distinguishable
+(some -> notes, some -> octaves), query the matching group; if blanket, either works (same
+category). CONFIRM: are the inputs separable note-vs-octave, or one blanket mod?
+
+### Raffles -> ABMix (LATCH) + dice-gates (QUEUE) + slew (folds into QUEUE)
+NOT uniformly one category -- but §9 already resolved it precisely (lines 228/288/300):
+- A/B MIX inputs (RAFFLES_MIX_R/M_ATT/CV) -> Control::ABMix (LATCH).
+- DICE / queued GATES -> QUEUE (arm-and-fire at boundary, like scatter). NOT LATCH.
+- SLEW (RAFFLES_SLEW_R/M) -> folds into QUEUE, NOT an independent axis: it is SAMPLED at the
+  phrase boundary (read at the queued redraw). So there is NO separate Control::Slew -- slew rides
+  the queued roll. (Corrected an earlier wrong instinct to give slew its own LATCH entry.)
+Raffles inputs ARE distinguishable (separate SLEW_R/M, MIX_R/M ids), so per-input-group queries
+work: MIX -> ABMix, gates -> QUEUE, slew -> no independent query (consumed at queued redraw).
+
+### Still to classify (unchanged from audit)
+- Causeway -> LATCH (poly REST/ACCENT rhythm mod). Likely one category (like Junction).
+- Changi -> LIVE if transport/vis (confirm role).
+- Shophouse -> mask VALUES LATCH; Conservation TOGGLE orthogonal.
+- Interchange note-vs-octave input separability (above).
+
+### Pattern
+Most expanders = ONE category (Junction=BigFive, Causeway=rhythm-LATCH). A few span two
+(Interchange=NoteSliders+OctaveRange). Raffles is the outlier with three category behaviours
+(ABMix LATCH / gates QUEUE / slew-into-QUEUE) because it touches mix + dice + slew. The category-
+keyed enum handles all of this -- expanders just call liveNow() with the category their inputs
+modulate; no per-expander enum entries needed except where a NEW category emerges (none did here).
