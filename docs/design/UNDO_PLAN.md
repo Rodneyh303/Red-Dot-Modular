@@ -298,6 +298,27 @@ reasoning is sharp; build when the dice/reversible work is scheduled.
 
 ## Change Alley state tracking -- small enough for generous snapshot buffer + transform optimisation
 
+### CA state is small enough to track generously -- session depth reality check (Rodney)
+1MB buffer, no optimisation:
+  - Pin matrix:       16 bytes (uint8_t src[16])
+  - scatterCounter:    8 bytes (uint64_t -- MUST be tracked alongside pin state; without it,
+                               restoring the pin matrix leaves the counter at its current value
+                               so the next scatter gate draws from the wrong counter position,
+                               producing a different permutation than expected)
+  - Phrase-boundary:   4 bytes (uint32_t index, for phase-coherent restoration)
+  - Per entry total:  28 bytes
+  - 1MB / 28 bytes = ~36,000 entries
+
+Session depth at realistic scatter trigger rates:
+  - Aggressive (1 scatter/beat at 120bpm): 36,000 beats / 120bpm = 300 minutes (5 hours)
+  - Typical live (1 scatter every 2-4 bars): many sessions worth
+  - Conclusion: "enough for all sessions" not just "most" -- 1MB with no optimisation is
+    genuinely sufficient without the transform optimisation. With it, even cheaper.
+
+With transform optimisation (invertible ops stored as op-codes ~2-5 bytes, not 28-byte entries)
+the effective depth for non-invertible events is even greater, since invertible transforms
+consume almost no buffer space.
+
 ### CA state is small enough to track generously (Rodney)
 The pin matrix is 16 bytes (uint8_t src[16]). A circular snapshot buffer of 32-64 entries =
 512B-1KB. Trivially small. This means:
