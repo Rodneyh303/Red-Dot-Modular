@@ -409,6 +409,18 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         int pv = polyVoice();
                         if (pv >= 0 && pv < 15) m->setMacroOwn(pv, ocLane, b ? 1.f : 0.f);
                     };
+                    w->pushUndoFn = [this, ocLane](bool oldB, bool newB) {
+                        Monsoon* m = getMonsoon(); if (!m) return;
+                        const bool mono = onMonoTab();
+                        const int  pv   = mono ? -1 : polyVoice();
+                        if (!mono && (pv < 0 || pv >= 15)) return;
+                        redDot::applyAndPushStoreEdit<Monsoon>(m, "lane owner",
+                            [ocLane, mono, pv](Monsoon& mm, float val) {
+                                if (mono) mm.setMonoMacroOwn(ocLane, val > 0.5f);
+                                else      mm.setMacroOwn(pv, ocLane, val);
+                            },
+                            oldB ? 1.f : 0.f, newB ? 1.f : 0.f);
+                    };
                     // Locked when no Macro (nothing to delegate to) OR V1+Mono (Mono owns V1).
                     w->lockWhen = [this](){ return !macroAttached() || tab1MonoMirror(); };
                 }
@@ -447,6 +459,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         if (onMonoTab()) return;   // locked on V1
                         Monsoon* m = getMonsoon(); int pv = polyVoice();
                         if (m && pv >= 0 && pv < 15) m->setVarlegDeleg(pv, vlLane, b ? 1.f : 0.f);
+                    };
+                    w->pushUndoFn = [this, vlLane](bool oldB, bool newB) {
+                        if (onMonoTab()) return;   // locked on V1
+                        Monsoon* m = getMonsoon(); int pv = polyVoice();
+                        if (!m || pv < 0 || pv >= 15) return;
+                        redDot::applyAndPushStoreEdit<Monsoon>(m, "varleg deleg",
+                            [vlLane, pv](Monsoon& mm, float val) { mm.setVarlegDeleg(pv, vlLane, val); },
+                            oldB ? 1.f : 0.f, newB ? 1.f : 0.f);
                     };
                     w->lockWhen = [this](){ return onMonoTab(); };
                 }

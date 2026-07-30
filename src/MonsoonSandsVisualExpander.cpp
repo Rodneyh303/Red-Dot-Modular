@@ -233,6 +233,13 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             const int ocLane = l;
             oc->getOwnsFn = [this, ocLane]() { auto* m = getMonsoon(); return m ? m->getMonoOwner(ocLane) : true; };
             oc->setOwnsFn = [this, ocLane](bool b) { if (auto* m = getMonsoon()) m->setMonoOwner(ocLane, b); };
+            // Undo hook: route an ownership toggle through Rack history (Ctrl+Z).
+            oc->pushUndoFn = [this, ocLane](bool oldB, bool newB) {
+                auto* m = getMonsoon(); if (!m) return;
+                redDot::applyAndPushStoreEdit<Monsoon>(m, "lane owner",
+                    [ocLane](Monsoon& mm, float val) { mm.setMonoOwner(ocLane, val > 0.5f); },
+                    oldB ? 1.f : 0.f, newB ? 1.f : 0.f);
+            };
             oc->lockWhen = [this]() {   // condition 2: no Macro → can't delegate
                 auto* mon = getMonsoon();
                 return !(mon && mon->expanderManager.cachedMacroSandsVisual != nullptr);
