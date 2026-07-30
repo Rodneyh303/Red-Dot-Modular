@@ -181,3 +181,52 @@ DEFERRED -- will fall out of the scrub redesign trivially, not built on the thro
 model (decided: do CA undo now, dice later via scrub). Item 5 commit point mapped; thread-safety
 (manager thread vs UI-thread history) is the design crux -- recommended module-owned snapshot
 stack (also reverse-mode groundwork). Ready to implement next session.
+
+## CA architectural cleanup (prerequisite for clean transform undo) -- Rodney flagged
+
+Adding transform undo onto the current structure would bake in misplaced logic. Three cleanups,
+ordered smallest-first, each independently verifiable:
+
+### (a) Rename applyTemasek -> applyCorrelation  [DONE]
+Temasek removed; the fn applies a Change Alley correlation transform. Cosmetic, committed.
+
+### (b) Boundary + unlock detection does NOT belong in MonsoonExpanderManager
+Currently the manager shadows engine.stepIndex to RE-DERIVE the boundary/unlock:
+  MonsoonExpanderManager.cpp:104-109
+    vStep = engine.stepIndex; vBoundary = (vStep < caV2PrevStep_); vUnlock = (prevLocked && !locked)
+    if ((vBoundary && !locked) || vUnlock) { ...apply CA transforms... }
+This duplicates transport logic the ENGINE already owns: PatternEngine::onPhraseBoundary (:617)
+already fires at the boundary. The manager keeping caV2PrevStep_/caV2PrevLocked_ shadow state is
+the leak.
+
+SUBTLETY (why this isn't a pure boundary move): the fire condition is
+  (boundary AND unlocked) OR (moment-of-unlock).
+The "fire on unlock" flushes QUEUED transforms when you unlock -- that's LOCK SEMANTICS (queued
+events commit at unlock). So this move interacts with the lock-mode work: CA transform commit is
+gated by (a) phrase boundary when unlocked, (b) the unlock edge. Both are engine/transport events,
+not topology.
+
+Proposed: the engine (or a transport hook) drives CA transform application at:
+  - onPhraseBoundary when unlocked, and
+  - on the unlock edge (flush queue).
+The manager stops shadowing stepIndex/locked. Expander manager returns to pure topology.
+
+### (c) Transform application should be a CA MODULE method, not inlined in the manager
+The apply loop (MonsoonExpanderManager.cpp:110-127) reaches into v2->pendingRows, v2->rhythmSrc/
+melodySrc, v2->scatterCounter and calls ca::applyCorrelation inline. This should be a method on
+the CA module (e.g. v2->applyPendingTransforms(active)) that OWNS its state mutation -- triggered
+by the boundary/unlock event from (b). Then transform UNDO lives with the module that owns the
+state: the module snapshots rhythmSrc/melodySrc + scatterCounter into its own undo stack (the
+two-structures design) right before applying. No manager involvement, no cross-thread history push
+from topology code.
+
+### Order + rationale
+(a) done. Then (c) move apply into a CA module method (contained, the module already holds the
+state). Then (b) route the trigger from the engine boundary/unlock instead of manager shadow state
+(touches lock semantics -- coordinate with lock-mode work). THEN transform undo becomes: the CA
+module snapshots its own state in applyPendingTransforms before mutating -- clean, single-threaded
+w.r.t. the module's own stack, doubles as reverse-mode groundwork.
+
+Note: (b) overlaps lock mode. May defer (b) to the lock-mode branch and do (c)+undo first, since
+(c)+undo don't require moving the trigger -- they just need the apply to be a module method that
+snapshots. The manager can still CALL v2->applyPendingTransforms() at the same point for now.
