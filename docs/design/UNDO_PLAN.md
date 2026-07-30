@@ -222,3 +222,54 @@ The overlap (all involve the A/B buffers and Philox) is implementation overlap, 
 overlap -- they feel different to the performer. The engine already enforces the audition/
 reversible mutual exclusion correctly (line 406); the three-way model just names what was
 already there.
+
+## Dice scrub model -- stateless counter-addressed blend (candidate direction)
+
+### The idea
+Extend reversible A/B mix to N positions (last 3-4 rolls): a SCRUB POSITION (float counter)
+addresses any point in the roll history. The integer part = which roll (counter position), the
+fractional part = blend toward the next. Same Philox A/B blend machinery, but the counter is
+now continuous rather than stepped. The blend between any two adjacent rolls = at(floor(scrub))
+blended with at(ceil(scrub)).
+
+"Last N rolls" requires no new storage -- Philox gives you at(counter-N..counter) for free via
+counter arithmetic. No float arrays needed. The scrub position IS the state.
+
+UI: the Raffles A/B knob becomes a SCRUB POSITION knob over the last N rolls rather than a
+fixed A-to-B crossfader. Park it at 2.5 = hear a blend of rolls 2 and 3 ago; advance it =
+move toward the next roll; rewind it = go back further. One control, all three gestures:
+- AUDITION: park the scrub, explore ahead (rolls in the +direction)
+- REVERSIBLE: rewind the scrub, return to a prior roll
+- A/B BLEND: fractional position between two adjacent rolls
+
+### Why phase drive makes this NECESSARY, not just nice (Rodney)
+The fundamental motivation is phase drive correctness. With phase drive the transport is a
+continuous external signal -- it can move forward, backward, stall, loop, do anything. Float
+buffer state (LockedA/CandB as stored arrays) is time-ordered: it represents "the last time we
+rolled" which assumes forward-only time. When phase scrubs backward, the buffers hold values
+that are temporally INCOHERENT with the current phase position. Same class of bug as the
+Change Alley write-side remap (73 write sites, state that didn't match position under thread
+interleaving).
+
+Philox + scrub removes this entirely: scrub position is just a number with no memory of how it
+got there. Phase drives it directly: phase value -> counter position -> at(floor) blended with
+at(ceil). Stall phase: scrub stalls, same blend. Reverse phase: scrub reverses, fully
+counter-derivable, no buffer coherence problem. THE FLOAT ARRAYS BECOME UNNECESSARY because
+any position's value is available on demand, stateless.
+
+### Connection to the stateless-position principle
+This is the same principle as the stateless lane-position model established earlier:
+  position = pure function of totalStepsElapsed (not accumulated state)
+Applied to dice: roll-blend = pure function of scrub counter (not stored LockedA/CandB).
+Both resolve the same root problem: if the transport can be nonlinear (phase drive), state
+that accumulates from forward-only history is architecturally incorrect. Position-derivable
+state is the only model that composes correctly with arbitrary phase.
+
+Motivation hierarchy (most to most fundamental):
+1. Audition convenience -- hear candidates. (Nice.)
+2. Reversibility -- undo rolls, navigate history. (Better.)
+3. Phase drive coherence -- stateless, works under arbitrary/backward/nonlinear phase. (NECESSARY.)
+
+### Status: CANDIDATE DIRECTION (not yet decided for build)
+Changes Raffles control semantics and the PatternEngine A/B buffer model. Record now while
+reasoning is sharp; build when the dice/reversible work is scheduled.
