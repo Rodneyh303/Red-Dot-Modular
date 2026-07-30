@@ -182,6 +182,13 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // Optional right-click callback: host registers this to open a context menu
   // when a lane row is right-clicked. Called with (lane, pos); return true to consume.
   std::function<bool(int lane, rack::math::Vec pos)> onLaneRightClick;
+
+  // Optional LOR-commit callback: fired on drag RELEASE with the affected editor lane and the
+  // length/offset/rotation triple BEFORE and AFTER the drag. The host pushes a Rack history
+  // action against the STORE (getLorBase/setLorBase) so the drag is Ctrl+Z-undoable. The
+  // editor stays decoupled from the module/store -- it only reports the change.
+  std::function<void(int lane, const int before[3], const int after[3])> onLorCommit;
+  int lorBeforeDrag[3] = {0,0,0};   // captured at drag press (len,off,rot of dragLane)
   
   VoiceState currentState;
   VoiceState clipboard;
@@ -923,6 +930,11 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
           // follows) rather than snapping its start to the pointer.
           dragState.grabStep   = getStepAtX(e.pos.x);
           dragState.grabOffset = currentState.lanes[lane].offset;
+          // Capture the LOR triple BEFORE the drag mutates it, so the release can report a
+          // before/after pair to the host for Rack-history undo.
+          lorBeforeDrag[0] = currentState.lanes[lane].length;
+          lorBeforeDrag[1] = currentState.lanes[lane].offset;
+          lorBeforeDrag[2] = currentState.lanes[lane].rotation;
           e.consume(this);
           return;
         }
@@ -943,7 +955,20 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
         }
       }
     } else if (e.action == GLFW_RELEASE) {
-      if (dragState.isDragging) saveToHistory();
+      if (dragState.isDragging) {
+        saveToHistory();
+        // Report the LOR change to the host for Rack-history undo (before vs after).
+        const int lane = dragState.dragLane;
+        if (onLorCommit && lane >= 0 && lane < laneCount) {
+          const int after[3] = { currentState.lanes[lane].length,
+                                 currentState.lanes[lane].offset,
+                                 currentState.lanes[lane].rotation };
+          if (after[0] != lorBeforeDrag[0] || after[1] != lorBeforeDrag[1]
+              || after[2] != lorBeforeDrag[2]) {
+            onLorCommit(lane, lorBeforeDrag, after);
+          }
+        }
+      }
       dragState.isDragging    = false;
       dragState.type          = DragState::NONE;
     }
