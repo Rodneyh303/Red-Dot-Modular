@@ -411,6 +411,47 @@ when scatter fires; accepting that those events don't rewind with phase is reaso
 alternative (making scatter phase-derivable) is architecturally impossible since the gate input
 is independent of phase.
 
+## Clarification: undo vs reversible mode for dice and Change Alley (IMPORTANT DISTINCTION)
+
+The snapshot buffer discussion above conflated TWO different mechanisms. They need the same
+raw data but serve different purposes with different access patterns:
+
+**UNDO (Rack Ctrl+Z, user-initiated)**
+- User says "I didn't want that event." Pop most recent snapshot, restore state. One step at
+  a time, backward only, user-triggered. Feeds the Rack history stack (StoreEditAction).
+
+**REVERSIBLE MODE (transport-driven, phase rewind)**
+- Transport scrubs backward; engine reconstructs what state WAS at that position automatically.
+  Seek to the nearest boundary-indexed snapshot, transport-driven, may jump many entries.
+
+Different data structures: stack for undo, indexed circular buffer for reversible. A single
+buffer could serve both but the access patterns differ and should be decided deliberately.
+
+### Dice: reversible mode is already coherent and implemented
+"Reverse roll" = decrement the Philox counter, re-derive the pattern. The counter IS the state;
+nothing else to restore. One operation, complete. Already implemented and correct.
+
+### Change Alley: undo is specced; reversible mode is an OPEN PROBLEM
+**CA undo** (Ctrl+Z): specced above. Snapshot-based (pin matrix + scatter counter per event).
+Straightforward. Invertible transforms store op-code only; fan-in transforms store 16-byte
+snapshot. This is the mechanism the snapshot buffer spec above describes.
+
+**CA reversible mode** (transport-driven): does NOT yet exist and is NOT straightforward.
+There is no "reverse roll" equivalent for CA because:
+- CA state isn't counter-addressed the way dice is. A scatter event permutes pins AND advances
+  the scatter counter; reversing it requires restoring BOTH -- a snapshot restore, not a counter
+  decrement.
+- Unlike dice where the counter uniquely re-derives the state, the current pin matrix depends on
+  the ENTIRE HISTORY of scatter events + manual edits + transform triggers since last reset. No
+  single counter value re-derives it.
+- CA state changes come from MULTIPLE SOURCES (scatter gates, manual drags, transform triggers)
+  with different reversal mechanisms. Dice has one source (roll) with one reverse (counter
+  rewind). CA has several sources, one of which (manual edits) is already accepted as
+  non-reversible.
+
+Status: CA reversible mode is a genuinely open problem, not just unimplemented. The snapshot
+buffer spec above describes CA UNDO only. CA reversible mode is separately TBD.
+
 ## Manual Change Alley pin edits -- reversibility TBD, likely accepted as non-reversible
 
 Manual pin drags are a different character from transform events:
