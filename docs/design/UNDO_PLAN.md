@@ -270,6 +270,28 @@ Motivation hierarchy (most to most fundamental):
 2. Reversibility -- undo rolls, navigate history. (Better.)
 3. Phase drive coherence -- stateless, works under arbitrary/backward/nonlinear phase. (NECESSARY.)
 
+### Phase gains native A/B blend (Rodney)
+Phase drive currently has no A/B mix -- it drives step position directly (phase -> step, one-
+to-one), so phrase boundary transitions are DISCRETE JUMPS even though phase itself is
+continuous. The scrub model gives phase A/B blend FOR FREE, as an inherent property:
+
+  phase value -> float scrub counter -> at(floor) blended with at(ceil)
+
+The fractional part of the scrub position IS the blend. As phase moves continuously through a
+phrase boundary (an integer counter position), instead of the pattern snapping to the new roll
+it CROSSFADES into it, the blend proportion determined by where the phase currently sits. No
+separate A/B mechanism needed -- the scrub makes phase natively a morph control over the roll
+sequence, not just a position control.
+
+This removes the last discontinuity in phase drive: currently smooth within a phrase but
+discrete at boundaries. With the scrub model, phase is smooth ALL THE WAY THROUGH including
+phrase transitions and roll changes. The blend at each point is determined by the fractional
+position, continuously.
+
+Implication for Change Alley: at a fractional scrub position between two rolls, the correlation
+blends between correlationAt(floor) and correlationAt(ceil) -- a morphed correlation. Whether
+musically useful or muddy at the blend is something to discover in play; structurally coherent.
+
 ### Status: CANDIDATE DIRECTION (not yet decided for build)
 Changes Raffles control semantics and the PatternEngine A/B buffer model. Record now while
 reasoning is sharp; build when the dice/reversible work is scheduled.
