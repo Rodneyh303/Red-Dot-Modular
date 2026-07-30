@@ -296,6 +296,44 @@ musically useful or muddy at the blend is something to discover in play; structu
 Changes Raffles control semantics and the PatternEngine A/B buffer model. Record now while
 reasoning is sharp; build when the dice/reversible work is scheduled.
 
+## Change Alley state tracking -- small enough for generous snapshot buffer + transform optimisation
+
+### CA state is small enough to track generously (Rodney)
+The pin matrix is 16 bytes (uint8_t src[16]). A circular snapshot buffer of 32-64 entries =
+512B-1KB. Trivially small. This means:
+- Scatter undo depth can be as generous as dice counter-rewind undo in practice, even though
+  the mechanism differs (snapshots vs counter arithmetic).
+- Phase coherence path: snapshots tagged with phrase-boundary index give the phase-driven
+  sequencer a way to restore the right correlation when phase scrubs backward past a boundary
+  ("at phrase boundary N, pin state was X"). Not as clean as pure counter-rewind, but
+  manageable given the state size.
+- Effective depth: 32-64 scatter events before the oldest snapshot is overwritten. More than
+  enough for any realistic performance session.
+
+### Transform storage optimisation: invertible vs fan-in (Rodney)
+Not all CA state changes need a 16-byte snapshot. Transforms split into two categories:
+
+**INVERTIBLE transforms -- store the OP, not the state (near-zero cost):**
+- Reflect: self-inverse. Undo = re-apply. Store: 1 byte (transform type).
+- Rotate +k: undo = Rotate -k. Store: transform type + k parameter (~2 bytes).
+- ScatterRows: genuine Fisher-Yates permutation. Undo = inverse permutation, or re-derive
+  from same seed. Store: transform type + seed (~5 bytes).
+No pin matrix snapshot needed for any of these. Cost is essentially free.
+
+**FAN-IN transforms -- must snapshot the pin state (16 bytes):**
+- Scatter: fan-in (many->one), no inverse transform. Undo requires pre-transform state.
+- interScatter: same.
+- Collapse: fan-in, "no inverse" (ChangeAlleyTransforms.hpp). Same.
+Cost: 16 bytes per event.
+
+**Tiered undo buffer:**
+The undo buffer only spends its 16 bytes on fan-in events. Invertible transforms are an
+op-code + parameter entry (a few bytes each). So effective undo depth is much greater than
+raw event count suggests -- a large fraction of transform events are cheap. The same tiering
+applies across the whole undo system: anything with a clean inverse (Reflect, Rotate, direction
+cycle, knob drag before/after) costs near-zero; only state-destroying operations (Scatter,
+Collapse, dice promotion in non-reversible mode) need the full snapshot.
+
 ## Change Alley scatter -- the remaining state dependency (and why it's categorically different)
 
 With phase gated to reversible mode, the dice buffer incoherence (LockedA/CandB vs nonlinear
