@@ -588,3 +588,27 @@ If the user undoes an entry and the transport then advances past the undone regi
 is gone from the buffer; the transport uses whatever state the buffer currently holds. This is
 correct -- the undo was intentional ("that didn't happen") and the transport advancing again
 simply uses the current state. No special handling needed.
+
+## Dice undo: simplified by the scrub model
+
+With the scrub model replacing audition mode (see scrub model section above), dice undo
+collapses to almost nothing:
+
+**Dice "state" = the float scrub counter position. Undo = restore the prior counter value.**
+
+Undo entry: (before_counter, after_counter) -- a single scalar pair, 8-16 bytes.
+No float arrays (LockedA/CandB), no pattern snapshots. The counter re-derives everything via
+Philox; there is nothing else to restore.
+
+Implementation: StoreEditAction wraps the scalar before/after directly -- no custom undo
+infrastructure needed. The coalescer already handles continuous scrub-knob drags (same as any
+knob, drag-start/end). Discrete roll events (button press, gate trigger) are a single
+before/after scalar entry.
+
+Compare to the current model: restoring pre-roll state requires snapshotting LockedA + CandB
+(two full float arrays of pattern data, potentially kilobytes). The scrub model reduces that
+to one number. This is another place where the scrub model earns its design cost: it unifies
+audition / reversible / phase-blend AND makes undo dramatically simpler as a consequence.
+
+Note: this applies when the scrub model is built. Until then, current dice undo (counter-rewind
+in reversible mode, not yet wired to Ctrl+Z) remains as designed above.
