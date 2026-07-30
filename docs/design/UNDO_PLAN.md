@@ -492,3 +492,56 @@ Two separate undo mechanisms serving different questions:
 TBD: confirm in play that not having manual edits phase-reversible doesn't cause real friction.
 Expectation: it won't, because manual editing and phase-scrubbing are different modes of use
 (you don't typically scrub phase while actively dragging pins). Likely ACCEPTED as non-reversible.
+
+## Undo / reversible mode interaction policy
+
+The two mechanisms index the same snapshot buffer from different directions with different
+semantics. UNDO is user-time (what did I do last); REVERSIBLE is transport-time (where is the
+transport now). Explicit policy needed because they can conflict.
+
+### The four cases
+
+**Case 1: Transport stopped, user undoes.** Clean. No conflict. Pop most recent buffer entry.
+
+**Case 2: Transport running forward, no undo.** Clean. Reversible mode advances with transport,
+buffer grows. No conflict.
+
+**Case 3: Transport reverses, no undo.** Clean. Reversible mode seeks backward in the buffer,
+restores state at each phrase boundary. Undo stack UNTOUCHED -- the rewind does not pop undo
+entries, it seeks the buffer. The undo stack still reflects what the user DID, not where the
+transport is.
+
+**Case 4: Transport reversed AND user hits Ctrl+Z simultaneously.** THE CONFLICT.
+Transport has seeked to position N; user undoes -- but undo of WHAT? The most recent user action
+(which may be ahead of the current transport position), or the state at the transport position?
+
+### Two principled options
+
+**Option A -- UNDO IS USER-TIME, INDEPENDENT OF TRANSPORT POSITION (RECOMMENDED)**
+Ctrl+Z always undoes the most recent user action regardless of where transport has seeked. If
+transport is at boundary 30 but user's last action was at boundary 45, Ctrl+Z removes boundary
+45's entry. Transport continues from boundary 30 unaffected.
+- Clean separation: undo = user-time, seek = transport-time, they don't interfere.
+- Simple implementation: undo pointer is purely recency-ordered, not position-sensitive.
+- Edge case: user can "undo a future action" (an action ahead of the current transport
+  position). This may feel slightly odd but is unambiguous and correct -- the user said "that
+  didn't happen," regardless of where the transport currently is.
+
+**Option B -- UNDO IS RELATIVE TO TRANSPORT POSITION**
+Ctrl+Z undoes the most recent user action AT OR BEFORE the current transport position. Entries
+after the transport's current position are treated as "in the future" and ignored by undo.
+- More musically coherent: you can't undo something that "hasn't happened yet" from the
+  transport's perspective.
+- More complex: undo pointer becomes a function of BOTH recency AND transport position.
+  Makes the undo stack position-sensitive, harder to implement and reason about.
+
+### Recommended policy: OPTION A
+Clean separation, simple implementation. Avoids making Ctrl+Z position-sensitive. The "undo a
+future action while transport is rewound" edge case is unambiguous even if slightly odd.
+Option B is a possible refinement if play reveals that the edge case causes real confusion.
+
+### Forward-advance after undo
+If the user undoes an entry and the transport then advances past the undone region: the entry
+is gone from the buffer; the transport uses whatever state the buffer currently holds. This is
+correct -- the undo was intentional ("that didn't happen") and the transport advancing again
+simply uses the current state. No special handling needed.
