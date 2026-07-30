@@ -273,3 +273,41 @@ Motivation hierarchy (most to most fundamental):
 ### Status: CANDIDATE DIRECTION (not yet decided for build)
 Changes Raffles control semantics and the PatternEngine A/B buffer model. Record now while
 reasoning is sharp; build when the dice/reversible work is scheduled.
+
+## Change Alley scatter -- the remaining state dependency (and why it's categorically different)
+
+With phase gated to reversible mode, the dice buffer incoherence (LockedA/CandB vs nonlinear
+transport) is contained -- non-reversible mode is forward-only so buffers are coherent there by
+construction. The scrub model is the right eventual fix if phase ever lifts its reversible
+restriction, but not urgent now.
+
+That leaves Change Alley scatter as the MAIN REMAINING state dependency.
+
+### What the state is
+scatterCounter[CA::SIDES * CA::TYPES * 2] (MonsoonChangeAlleyV2.hpp:42): an ACCUMULATED GATE
+EVENT COUNT. Each scatter trigger gate increments the counter; the counter seeds the Philox
+correlation draw for that scatter permutation. Output at any moment depends on HOW MANY SCATTER
+TRIGGERS HAVE FIRED SINCE RESET -- a time-ordered historical fact, not a phase position.
+
+### Why it's categorically different from dice buffers
+Dice buffer state COULD become phase-derivable (scrub model: phase -> counter position ->
+at(floor) blended at(ceil)). Scatter counter CANNOT -- even in principle -- because it counts
+EXTERNAL GATE EVENTS (CV input), not phase. You cannot look at the phase position and know how
+many scatter gates have fired; that depends on an external signal independent of phase. There is
+no "phase-derivable" version of scatter state. This is a permanent architectural reality for
+event-driven, externally-triggered state.
+
+### The correct resolution: pin-state snapshot undo (already specced)
+Scatter's undo is a PIN-STATE SNAPSHOT (UNDO_PLAN section above), not a counter rewind. The
+snapshot captures the pin matrix BEFORE the scatter fires; undo restores it. This is the right
+mechanism for event-driven permutation -- different from the Philox counter rewind for dice, but
+correct for what scatter IS. Already in the Change Alley design.
+
+### Phase coherence
+Under nonlinear phase (if the restriction were ever lifted), scatter would be out of sync with
+musical position -- the counter reflects "N gates fired" which backward phase cannot unwind.
+This is an ACCEPTABLE limitation for event-driven state: scatter is a deliberate human gesture
+(a gate input you patch and trigger), not a continuous generative parameter. The user controls
+when scatter fires; accepting that those events don't rewind with phase is reasonable. The
+alternative (making scatter phase-derivable) is architecturally impossible since the gate input
+is independent of phase.
