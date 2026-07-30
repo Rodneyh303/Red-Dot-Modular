@@ -173,3 +173,52 @@ seed number to define the whole pattern (rhythm+melody) as a single reproducible
 case a shared key is the design; (2) the correlation may be inaudible because the draw patterns
 diverge immediately. So: CHECK with Rodney whether the shared key is deliberate before changing
 it. Unlike the Change Alley RNG duplication (a clear bug), this is a design question.
+
+## Dice mode distinctions -- three genuinely different gestures (do not conflate)
+
+This came up when considering whether to ditch trial/audition mode in favour of reversible mode.
+The answer: they are DISTINCT gestures, none fully replaces the others. All three co-exist.
+
+### 1. Trial / audition mode
+- A stays FROZEN (the current committed pattern).
+- Dice rolls generate candidates forward (B advances) against the fixed A reference.
+- Mix knob morphs between frozen A and each candidate B, OR commit B to promote it.
+- Direction: FORWARD only (new candidates, never revisit old ones without storing them).
+- NOT reversible: once B is promoted to A, the old A cannot be reconstructed from the counter
+  alone without the stored float arrays (LockedA/CandB). The state is in the buffers, not the
+  counter.
+- Intention: "keep this pattern as the reference, explore what else is possible from here."
+- Already mutually exclusive with reversible mode in the engine: rhythmAuditionsAllowed() ==
+  !rhythmReversible (PatternEngine.hpp:406).
+
+### 2. Reversible mode
+- Counter moves in BOTH directions; A and B are re-derived from the counter at each position.
+- You can go backward to any previous roll -- the counter IS the history.
+- A moves WITH the counter (no frozen reference).
+- Undo of a dice roll = decrement the counter (PatternEngine draw counter, signed int64).
+- Intention: "navigate the full pattern history in both directions, return to any prior state."
+- Does NOT give you a frozen A to audition against -- A follows you.
+
+### 3. Reversible A/B mix (the synthesis)
+- In reversible mode: A = at(counter), B = at(counter+1), mix knob morphs between them.
+- Richer than audition's all-or-nothing commit: continuous blend + full bidirectional history.
+- "Advance three steps, listen at each, decide N-2 was best, rewind there" -- audition couldn't
+  do that (one-step lookahead, no history).
+- The one thing audition offers that this DOESN'T: A frozen while you roll candidates forward.
+  In reversible A/B, advancing the counter moves A; the frozen-reference comparison is not
+  available. A minor loss; the mix knob between adjacent positions partly compensates.
+- Intention: "perform a morph between adjacent rolls in a rewindable history."
+
+### Why audition is NOT replaced by reversible
+Rodney's clarification: audition mode still allows rolling dice FORWARDS (generating candidates)
+-- it just isn't reversible due to state (buffers not counter). The frozen-A-against-rolling-B
+gesture is genuinely different from counter navigation: it's "stay here, see what's possible
+ahead." Reversible mode doesn't offer a frozen reference; it navigates. Different musical
+intentions, different workflow. Dropping either has a real musical cost.
+
+### Decision: KEEP ALL THREE, understand them clearly
+The surface complexity of three modes is justified because each serves a distinct intention.
+The overlap (all involve the A/B buffers and Philox) is implementation overlap, not semantic
+overlap -- they feel different to the performer. The engine already enforces the audition/
+reversible mutual exclusion correctly (line 406); the three-way model just names what was
+already there.
