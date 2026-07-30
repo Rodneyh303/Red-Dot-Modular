@@ -734,3 +734,50 @@ Note: dice DRAW counters are int64_t (PatternEngine) but for a DIFFERENT reason 
 reversible position addressing (can go negative on reverse). That's the addressable-position use,
 not the key-width question here. CA's scatterCounter is a key/stream selector feeding a 32-bit
 generator, so 32-bit is right for it.
+
+## Unify CA scatter counter with dice: signed int + addressable position [Rodney -- MECHANISM change]
+
+Rodney: CA should use int64_t signed like the dice draw counters, since we already support reverse
+dice draw and intend CA reverse. Correct -- but realizing it means adopting dice's ADDRESSING
+MODEL, not just widening the type. This is the one decision in the scatter-RNG cleanup that is a
+genuine MECHANISM change, not a type/dimension right-sizing. Flag for scrutiny at build.
+
+### The distinction
+- DICE draw counter (int64_t, signed): an ADDRESSABLE POSITION into ONE stream. philox.at(counter)
+  = the draw at index counter. Reverse = decrement, at(counter-1) re-derives the previous draw from
+  the SAME stream. Signed: reverse-scrub can carry position below the start.
+- CA scatter counter (currently): feeds the SEED/KEY -- correlationRng(counter ^ key) SELECTS a
+  stream (increment = re-key a fresh permutation), not a position within one. Unsigned suffices for
+  a pure selector; but this does NOT match dice's reverse mechanism.
+
+### The unification (bundle with 8->2 collapse -- same forward-behaviour rework)
+Once collapsed to 2 streams (one rhythm, one melody), make each side ONE STABLE STREAM and the
+counter a signed POSITION into it, exactly like dice:
+- Forward scatter: perSideStream.at(counter), counter++ advances position (not re-keys).
+- Reverse: counter-- , perSideStream.at(counter-1) re-derives previous permutation from the same
+  stream. Signed int (int64_t or int32_t) so reverse can go negative like dice.
+- This UNIFIES the reverse mechanism across dice and CA: both are "signed counter + at(pos),
+  decrement to reverse." One mental model, one code pattern.
+
+### Type: int32_t vs int64_t
+Dice uses int64_t. For CA the generator is Philox4x32 (32-bit), and a scatter op won't fire
+anywhere near 2^31 times, so int32_t is technically ample AND matches the 32-bit generator width
+decided earlier. BUT for CONSISTENCY with dice's int64_t reverse-position counters, int64_t may be
+worth it despite being wider than the generator strictly needs -- the counter is a POSITION (its
+value indexes at(), it isn't the 32-bit key itself once we switch to the addressing model). DECIDE
+at build: int32_t (matches generator width, ample range) vs int64_t (matches dice exactly, one
+pattern). Leaning int64_t for uniformity since position addressing != key width -- the earlier
+"uint32 matches the generator" argument applied to the SELECTOR model; under the ADDRESSING model
+the counter is a position, so dice's int64_t precedent applies instead.
+
+### Consequence
+- Forward permutation sequence changes AGAIN (addressing model vs selector model). Already accepted
+  the 8->2 change alters forward behaviour; this is part of the same scatter-RNG rework, one pass.
+- Reverse-buffer entry: counter block 2x int64 = 16 B (vs 2x uint32 = 8 B). Entry: packed pins 16
+  + 16 + boundary 4 = 36 B (if int64) or 28 B (if int32). Pins still dominate. Pick int width with
+  the dice-consistency-vs-generator-width call above.
+
+### Status
+MECHANISM change (selector -> addressable position), bundled with the CA-reverse / scatter-RNG
+rework. Gets built-verified with the 8->2 collapse. The int32-vs-int64 width is the open sub-
+decision; leaning int64 for dice uniformity now that the counter is a position, not a key.
