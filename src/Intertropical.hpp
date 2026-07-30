@@ -42,7 +42,7 @@ struct IntertropicalIds {
     static constexpr int N_SCENES  = 8;
     static constexpr int N_VOICES  = 16;       // 16 voices to choose FROM
     static constexpr int MAX_VOICES_PER_SCENE = 8;  // max voices routed per scene (≤8 output channels)
-    static constexpr int MAX_REPEAT = 8;
+    static constexpr int MAX_REPEAT = 4;   // max repeats per scene (panel has 4 sub-segs)
 };
 
 struct Intertropical : Module {
@@ -51,7 +51,7 @@ struct Intertropical : Module {
     // ---- STORE (persisted; store-backed, no params) ----
     // sceneMask[scene] : bit v set => voice v (0..15) is IN this scene.
     uint16_t sceneMask[Ids::N_SCENES]   = {0};
-    // repeats[scene]   : 1..8 boundary crossings the scene holds before advancing.
+    // repeats[scene]   : 1..4 boundary crossings the scene holds before advancing.
     uint8_t  repeats[Ids::N_SCENES]     = {1,1,1,1,1,1,1,1};
     // loopLen: how many scenes to cycle through (1..8). Scene advance wraps at loopLen, not N_SCENES.
     uint8_t  loopLen                    = Ids::N_SCENES;   // default: all 8 scenes
