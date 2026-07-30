@@ -1,6 +1,7 @@
 #include <rack.hpp>
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
+#include "ui/StoreEditAction.hpp"
 #include "ui/ConnectMark.hpp"
 #include "ui/GoldPolyPort.hpp"
 #include "ui/SvgPanelKit.hpp"
@@ -272,6 +273,14 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                     };
                     w->setStateFn = [this, lane](int v) {
                         if (auto* mm = getMonsoon()) mm->setGlobalDir(lane, (float)(v & 3));
+                    };
+                    // Undo hook: route a direction cycle through Rack history (Ctrl+Z).
+                    // Macro's direction store target is the GLOBAL dir for the lane.
+                    w->pushUndoFn = [this, lane](int oldV, int newV) {
+                        auto* mm = getMonsoon(); if (!mm) return;
+                        redDot::applyAndPushStoreEdit<Monsoon>(mm, "direction",
+                            [lane](Monsoon& m, float val) { m.setGlobalDir(lane, val); },
+                            (float)(oldV & 3), (float)(newV & 3));
                     };
                     w->lockWhen = [this]() { return !getMonsoon(); };
                 })

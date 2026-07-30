@@ -2,6 +2,7 @@
 #include <limits>
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
+#include "ui/StoreEditAction.hpp"
 #include "ui/ConnectMark.hpp"
 //#include "MonsoonSandsExpander.hpp"
 #include "MonsoonSandsVisualExpander.hpp"
@@ -263,6 +264,14 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             };
             dc->setStateFn = [this, dcLane](int v) {
                 if (auto* m = getMonsoon()) m->setMonoLaneDir(dcLane, (float)v);
+            };
+            // Undo hook: route a direction cycle through Rack history (Ctrl+Z). Mono is always
+            // the mono tab (no poly), so the store target is simply setMonoLaneDir(dcLane).
+            dc->pushUndoFn = [this, dcLane](int oldV, int newV) {
+                auto* m = getMonsoon(); if (!m) return;
+                redDot::applyAndPushStoreEdit<Monsoon>(m, "direction",
+                    [dcLane](Monsoon& mm, float val) { mm.setMonoLaneDir(dcLane, val); },
+                    (float)oldV, (float)newV);
             };
             // Lanes 0..3: locked when delegated to Macro (ownerDispId <= 0.5 = Macro owns).
             // Lanes 4..5 (VAR/LEG): always settable (Mono always owns them).
