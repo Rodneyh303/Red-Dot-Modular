@@ -87,3 +87,54 @@ applies to the specific OPEN rulings (transpose -> LIVE, direction -> LATCH) and
 first-class. So lock mode splits cleanly into: (1) safe consolidation refactor of the correct
 LATCH set into the manager, then (2) the genuinely behaviour-changing rulings on the smaller
 OPEN/QUEUE set. Phase 1 is low-risk and delivers the manager; phase 2 is the careful part.
+
+## LockManager scaling plan -- category-keyed, not per-physical-control
+
+The phase-1 Control enum is a CATEGORY skeleton, not the full control inventory. Making lock
+comprehensive means routing every physical control (knobs, sliders, CV) through liveNow() -- but
+NOT giving every physical control its own enum entry.
+
+### Granularity decision: category-keyed enum
+Many physical controls share one category, so they share one Control value:
+- Every spread knob/attenuverter across every manager/expander -> Control::Spread.
+- Monsoon note-value + all light-sliders for notes -> Control::BigFive.
+- Octave LO/HI + scale toggles -> Control::ScaleMask.
+The enum stays SMALL (one entry per distinct category-behaviour); COVERAGE comes from threading
+liveNow() through every control SITE, not from enumerating every control in the enum. A per-
+physical-control enum (MonsoonNoteSlider_C, StraitsKnob_x, RafflesGate_3...) would explode to
+hundreds of entries mostly mapping to the same handful of categories -- rejected.
+
+The enum grows ONLY when a control needs a category that no existing entry expresses (e.g.
+Transpose = LIVE, deferred to phase 2; Direction = its own LATCH ruling; per-expander entries
+only where an expander's category differs from Spread/Lor/BigFive).
+
+### Coverage status (what still needs threading + classification)
+COVERED by existing enum entries (just need liveNow threaded through their sites):
+- Monsoon note/octave light-sliders -> BigFive (notes) / ScaleMask (oct range). Category exists.
+- Straits (East) LOR/spread -> Lor / Spread (§9: East inherits LATCH). Category exists.
+- Big-5 sliders + CV mod -> BigFive. Category exists.
+
+NEEDS its own enum entry (distinct category / OPEN ruling -- phase 2):
+- Transpose -> LIVE (OPEN-leaning-LIVE, behaviour-changing).
+- Lane Direction -> LATCH (OPEN-leaning-LATCH; read-vs-map = traversal = LATCH). Own entry.
+- Mono/Macro owner -> OPEN-leaning-LIVE (structural routing). Own entry.
+
+NEEDS per-expander CLASSIFICATION before an entry (audit §9 marked "confirm each"):
+- Raffles / Interchange -> provisionally LATCH "if pure routing, revisit". CONFIRM: does each
+  SHAPE generation (LATCH) or just ROUTE finished output (LIVE)?
+- Junction (CV routing into big-5) -> provisionally LATCH (remote modulation path). Confirm.
+- Causeway (poly rhythm CV) -> LATCH (poly REST/ACCENT mod = rhythm section). Likely fine.
+- Changi -> LIVE if transport/vis (confirm role).
+- Shophouse scale mask -> mask VALUES LATCH (like SEMI); the Conservation TOGGLE is orthogonal.
+
+### Migration order (unchanged discipline: one group, tests green, commit)
+Phase 1 (behaviour-preserving): thread liveNow(Control::Spread/Lor/BigFive/ScaleMask/ABMix)
+through the already-correct LATCH sites. The ~23 lock assertions stay green throughout.
+Phase 2 (behaviour-changing + inventory): Transpose/Direction/Owner rulings; per-expander
+classification for Raffles/Junction/Interchange/Changi/Shophouse; QUEUE (scatter) arm-and-fire.
+
+### Reality check (Rodney)
+This is a LARGE surface -- every expander's controls, every Monsoon slider. The manager is the
+right structure to absorb it, but comprehensiveness is incremental control-site work, not a
+one-shot. The enum is the small stable core; the long tail is threading + per-expander
+classification.
