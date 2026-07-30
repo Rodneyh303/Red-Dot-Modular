@@ -591,3 +591,52 @@ pairs). The pair number WITH colour serves the secondary function isConnectedAnd
 providing (confirming which specific pair you're looking at); the mark itself just lights/greys on
 reachability. Fix: give Intertropical's makeConnectMark a custom `connected` lambda -- see impl
 notes below.
+
+## Lantern pairing model -- automatic numbering, Intertropical picks (FINAL)
+
+### Lantern self-assigns its pair number
+- On FIRST PLACEMENT: Lantern scans reachable neighbours and picks the lowest number not already
+  taken by another Lantern in the chain. It STORES this number in its own dataToJson -- the
+  number is PERSISTED, not re-derived from chain position.
+- On LOAD: Lantern restores its stored number. Only re-picks if the stored number COLLIDES with
+  a neighbour (handles simultaneous placement edge case). Collision self-heals to the next free
+  number.
+- Result for the USER: "just place a Lantern, it gets a number" -- looks automatic. But the
+  number is stable across save/reload and across reordering (each Lantern holds its own number;
+  moving one doesn't renumber others unless there's a collision, which self-heals).
+
+### Intertropical chooses which Lantern to pair with
+- Intertropical's context menu shows "pair with Lantern N" for each Lantern it can find by
+  scanning the chain (search stops at foreign modules -- the universal rule). Stores the chosen
+  Lantern NUMBER (not a pointer or position) in its own state.
+- On load: finds whichever Lantern currently holds that number and is reachable. If no reachable
+  Lantern with that number, shows "unpaired" clearly on the mark.
+- SCAN RANGE: whole reachable chain (search stops at foreign modules). Rack patches aren't always
+  laid out linearly; the pair-number display on both modules is the visual confirmation of
+  association, so distance doesn't need to be constrained.
+
+### Coexistence -- the three attachment models don't interfere
+Three models operate simultaneously and independently:
+1. CLAIMED expanders (Raffles, Junction, Causeway, Sands, Change Alley, Changi, Shophouse):
+   registered in isClaimedExpander, one-of-each-type cached slot in expanderManager. Unchanged.
+2. PURE OBSERVER (Lantern in Monsoon-source mode): reads Monsoon engine by reachability, not
+   claimed. Unchanged. Connect mark lights on reachability.
+3. INTERTROPICAL + PAIRED LANTERN (observer/output pair): reachability-based, numbered pairing.
+   Connect mark lights on reachability (already fixed). Pair number on both modules confirms
+   which Intertropical a Lantern is paired with.
+The claimed-list check and the reachability check are INDEPENDENT queries. Foreign-module search
+termination is the GLOBAL rule applying to all three uniformly -- no special casing needed.
+
+### Width / rack layout note (Rodney)
+14+ modules at 20-42HP each is a wide rack. Accepted constraints:
+- Other brands ship wide modules; this is not unusual for feature-rich instruments.
+- VCV Rack v2 does not support expanders chaining across rack rows -- a PLATFORM LIMITATION the
+  whole community accepts, not something dot.modular can solve. The connect mark (lit/greyed) is
+  the patch-level signal that the chain is intact. Users lay out accordingly.
+
+### Pair display (both modules)
+A small coloured numeral near the connect mark on BOTH the Intertropical and its paired Lantern.
+Colour encodes pair identity from dot.modular's palette (pair 1=red d4001a, pair 2=gold c8960c,
+pair 3=teal 26a69a...) so you can match by colour AND number at a glance. A Lantern in
+Monsoon-source mode (no paired Intertropical) shows no pair number. The display is conditional on
+Lantern being in Intertropical-source mode and having a confirmed reachable pair.
