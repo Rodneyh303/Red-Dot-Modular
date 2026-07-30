@@ -60,3 +60,35 @@ items 4-5 are the dice + Change Alley work designed in the recent sessions (UNDO
 3. Item 4 (dice interim) -- scalar counter undo in reversible mode.
 4. Item 5 (Change Alley) -- snapshot stack + counter.
 (Item 3 done. Reverse mode + lock mode are separate later branches.)
+
+## Item 2 analysis (LOR grid) -- target identified, ready to implement next session
+
+Key finding: the editor's currentState is NOT the authority. It is a two-way CACHE of the module
+store:
+- Loaded FROM store: visualEditor->currentState.lanes[l].{length,offset,rotation} =
+  monsoon->getLorBase(slot, bank, c)  (MonsoonSandsVisualExpander.cpp:366-368; c: 0=len,1=off,
+  2=rot).
+- Written TO store/engine: syncEditorToPatternEngine / setLorBase.
+- Store authority: Monsoon::editor.lorBase[slot*18 + bank*3 + c] (Monsoon.hpp:688-689).
+
+Therefore approach A should snapshot/restore the STORE (getLorBase/setLorBase), NOT the editor's
+currentState -- the store survives widget destruction (no editor-pointer lifetime problem in the
+history action) and is the persistent authority.
+
+Implementation plan:
+- Capture the LOR triple (len,off,rot) for the affected (slot,bank) at DRAG START (onButton when
+  a handle is grabbed -- dragState already captures grabOffset etc at :917).
+- At DRAG RELEASE (onButton GLFW_RELEASE, where saveToHistory() already fires :946), push a Rack
+  history::Action restoring the store triple via setLorBase(slot,bank,c,val) for the before/after,
+  then re-sync the editor from the store on undo/redo.
+- The action holds (module, slot, bank, before[3], after[3]) -- all values, no widget pointer.
+- Editor lane -> (slot, bank) mapping: use the same mapping the load path uses (line 366-368
+  pattern; note editor lanes are editor-indexed, mono uses kMonoSlot).
+- The editor's own undoHistory/undo()/redo() deque stays dead (unused) -- do not wire it.
+
+Left the existing dead-end deque alone; only bridging saveToHistory() -> APP->history->push.
+
+## Status at end of session
+Item 1 (direction + ownership) DONE and verified in Rack (interleaved undo works). Item 2
+analysed, store target identified, ready to implement. Items 3 (knobs) done. Items 4 (dice
+interim) + 5 (Change Alley snapshot stack) still to do per roadmap order.
