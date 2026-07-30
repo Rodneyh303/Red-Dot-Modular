@@ -368,11 +368,12 @@ inline void interScatter(uint8_t* src, int activeCount, int blockSize, uint64_t 
     }
 }
 
-// Unified Temasek apply -- called by MonsoonExpanderManager at phrase boundary.
+// Unified Change Alley correlation-transform apply, fired at a phrase boundary.
+// (Formerly applyTemasek; Temasek is removed -- this is the Change Alley transform.)
 // verb: V_COLLAPSE=0, V_ROTATE=1, V_REFLECT=2, V_SCATTER=3
 // isDomain: true=domain button, false=codomain button
 // isInter:  false=intra (left panel), true=inter (right panel)
-inline void applyTemasek(int verb, bool isDomain, bool isInter,
+inline void applyCorrelation(int verb, bool isDomain, bool isInter,
                          uint8_t* src, int activeCount, int grain,
                          int leaderOrStep, uint64_t scatterCounter) {
     if (!isInter) {

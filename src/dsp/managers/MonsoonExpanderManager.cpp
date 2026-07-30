@@ -119,7 +119,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
                                + (p.isDomain ? 0 : 1);
                 if (verb == ChangeAlleyV2Ids::V_SCATTER)
                     v2->scatterCounter[ci] += (uint64_t)(int64_t)p.scatterDelta;
-                dotModular::ca::applyTemasek(
+                dotModular::ca::applyCorrelation(
                     verb, p.isDomain, p.isInter,
                     tbl, vActive, p.grain, p.leaderOrStep, v2->scatterCounter[ci]);
                 p.armed = false;
