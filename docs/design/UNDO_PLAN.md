@@ -612,3 +612,47 @@ audition / reversible / phase-blend AND makes undo dramatically simpler as a con
 
 Note: this applies when the scrub model is built. Until then, current dice undo (counter-rewind
 in reversible mode, not yet wired to Ctrl+Z) remains as designed above.
+
+## Scatter RNG streams: collapse 8 counters -> 2 (rhythm + melody) [DECIDED, Rodney]
+
+### Current: 8 counters
+scatterCounter[SIDES*TYPES*2] = 8 = intra/inter x rhythm/melody x domain/codomain. Each counter
+SELECTS A STREAM (not a within-stream position): the transform seeds correlationRng(counter ^ key),
+so incrementing the counter re-keys a fresh permutation. The domain constant keeps correlation
+streams disjoint from note-generation; the per-operation key + counter keep the 8 operations'
+successive scatters disjoint from each other.
+
+### Decision: 2 counters is enough (one rhythm, one melody)
+The 8-way split's ONLY benefit is reversing one scatter TYPE in isolation (out-of-order). Rodney's
+vision for reverse is step-by-step TIMELINE reversal, never out-of-order per-type. So:
+- rhythm/melody split IS necessary (two separate pin tables; scattering rhythm must not perturb
+  melody's stream -- the domain-separation the code rightly insists on). Keep >= 2.
+- intra/inter and domain/codomain split into 8 is OVER-PROVISIONED for timeline reversal. Those
+  four operations per side can SHARE one counter, because:
+  - Forward: a shared monotonic counter still gives each scatter a fresh deterministic permutation.
+  - Reverse: transport scrub traverses events in reverse chronological ORDER anyway, which is
+    exactly what a single shared counter timeline supports. Out-of-order per-type reversal (the
+    only thing 8 counters buy) is not wanted.
+  - Out-of-order undo is the PIN-SNAPSHOT's job (scatter is fan-in, undo = pin snapshot), not the
+    counter's. The counter is only for deterministic replay, which ordered scrub needs the
+    timeline of, not per-type independence.
+
+### Consequence to be explicit about
+Collapsing 8->2 CHANGES FORWARD BEHAVIOUR: each scatter would key off the shared rhythm/melody
+counter instead of its per-type counter, so the actual permutation SEQUENCES differ from today's
+8-counter behaviour. Not worse -- different. So this is a change to bundle WITH the CA-reverse
+build (where scatter RNG is being reworked anyway), NOT a drive-by edit to currently-working code.
+
+### Payoff
+Reverse-buffer counter block: 64 bytes (8x uint64) -> 16 bytes (2x uint64), or 8 (2x uint32),
+or 4 (2x uint16 -- ample; a scatter op won't fire 65k times/session). Combined with per-event
+DELTA storage (store only the counter that moved), the counter cost in a reverse entry becomes
+~3 bytes typical. Entry drops from ~100 bytes toward ~40.
+
+### To verify before collapsing (one open check)
+Confirm the 8-way split affects ONLY reversibility bookkeeping, not FORWARD permutation VARIETY in
+a way that's musically intended. If independent intra/inter counters were deliberately producing
+richer/more-varied permutations on forward play (independent of reverse), that'd be a forward-
+grounds reason to keep more than 2. Expected: it's pure reversibility bookkeeping (the per-op keys
+already differentiate the operations; the counter only sequences repeats), so 2 is safe -- but
+check at build time.
