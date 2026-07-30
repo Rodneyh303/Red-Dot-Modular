@@ -111,6 +111,12 @@ static constexpr float IT_REP_H    = 7.0f;   // repeat row height (panel v5)
 // Transpose knobs + jacks now bound via panel MARKERS (param_0..7, output_0..4), not hardcoded
 // coords -- see kit binding in the widget ctor. IT_JACK_Y kept only as a fallback reference.
 static constexpr float IT_JACK_Y   = 99.0f;  // (panel v5 jy; markers are the source of truth)
+static constexpr float IT_VS_TOP    = 20.0f;  // voice->slot grid top (panel VS_TOP)
+static constexpr float IT_VS_ROWH   = 3.5f;   // voice->slot row height (mm)
+static constexpr float IT_VS_H      = 8*IT_VS_ROWH; // 28mm total
+static constexpr float IT_ROUT_TOP  = 52.0f;  // slot->output grid top (panel ROUT_TOP)
+static constexpr float IT_ROUT_ROWH = 5.0f;   // slot->output row height (mm)
+static constexpr float IT_ROUT_H    = 8*IT_ROUT_ROWH; // 40mm total
 
 // Continuous grid display: reads cell geometry from the panel constants and draws live state
 // (membership fill via voiceColour, active-scene highlight, repeat count + progress, voice

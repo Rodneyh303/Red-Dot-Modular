@@ -38,11 +38,19 @@ GUTTER=6.0
 MEM_L=MARGIN+GUTTER; MEM_W=92.0; MEM_R=MEM_L+MEM_W                     # 12 -> 82
 COL_W=MEM_W/N_SCENES
 GAPX=8.0
-RT_L=MEM_R+GAPX; RT_W=PW_MM-MARGIN-RT_L                                # 90 -> 177
+RT_L=MEM_R+GAPX; RT_W=PW_MM-MARGIN-RT_L
+
+# VOICE->SLOT grid (top of right block) -- read-only visualiser, smaller pitch
+VS_TOP=GRID_TOP+4.0
+VS_ROWH=3.5                    # smaller -- visualiser only, no clicking
+VS_H=N_SLOTS*VS_ROWH           # 28mm
+
+# SLOT->OUTPUT grid (below voice->slot) -- reference grid
+VS_GAP=4.0
+ROUT_TOP=VS_TOP+VS_H+VS_GAP    # starts at 48.5mm
 ROUT_CW=RT_W/N_OUTPUTS
-ROUT_ROWH=6.0
-ROUT_TOP=GRID_TOP+5.0
-ROUT_H=N_SLOTS*ROUT_ROWH
+ROUT_ROWH=5.0                  # slightly larger than VS, still compact
+ROUT_H=N_SLOTS*ROUT_ROWH       # 40mm
 
 SCR="#101216"; GLINE="#2a2f37"
 
@@ -79,6 +87,15 @@ def build(dark):
     for c in range(N_SCENES):
         s.append(lab(MEM_L+(c+0.5)*COL_W,REP_Y+REP_H+2.8,str(c+1),t,2.4))
     s.append(lab(MEM_L+MEM_W*0.5,REP_Y+REP_H+5.2,"SCENE",t,2.3))
+
+    # RIGHT: VOICE->SLOT visualiser (top, smaller pitch -- read-only, widget draws live fills)
+    # For the active scene: which global voice (coloured+numbered) is in each slot row.
+    s.append(lab(RT_L+RT_W*0.5,VS_TOP-2.0,"VOICE \u2192 SLOT",t,2.8))
+    s.append(screen(RT_L,VS_TOP,RT_W,VS_H,t))
+    s.append(vlines(RT_L,VS_TOP,RT_W,VS_H,N_SLOTS))
+    s.append(hlines(RT_L,VS_TOP,RT_W,VS_H,N_SLOTS,sw=0.4,op=0.5))
+    for sl in range(N_SLOTS):
+        s.append(lab(RT_L-2.2,VS_TOP+(sl+0.5)*VS_ROWH+0.8,str(sl+1),t,2.2,"end"))
 
     # RIGHT: routing grid
     s.append(lab(RT_L+RT_W*0.5,ROUT_TOP-2.0,"SLOT  \u2192  OUTPUT",t,3.0))
