@@ -312,8 +312,26 @@ reasoning is sharp; build when the dice/reversible work is scheduled.
 Session depth at realistic scatter trigger rates:
   - Aggressive (1 scatter/beat at 120bpm): 36,000 beats / 120bpm = 300 minutes (5 hours)
   - Typical live (1 scatter every 2-4 bars): many sessions worth
+  - Realistic session depth: tens to low hundreds of scatter events, not thousands. 36,000
+    entries is orders of magnitude more than any user or listener would perceive as distinct
+    states in a session. Buffer sizing is essentially a non-issue in practice.
   - Conclusion: "enough for all sessions" not just "most" -- 1MB with no optimisation is
     genuinely sufficient without the transform optimisation. With it, even cheaper.
+
+### Wrap policy (must be explicit even if never triggered in practice)
+CIRCULAR OVERWRITE: when the buffer is full, the next write overwrites the oldest entry and
+the read pointer advances past it. Behaviour:
+- Undo history becomes shallower at the tail: you can undo the last N events where N = buffer
+  depth, but not further. Same behaviour as Rack's native undo stack hitting its depth limit.
+- No crash, no corruption, no special handling at the boundary. Silent drop of the oldest entry.
+- Edge case: if the write pointer laps the read pointer (new scatter events recorded while
+  simultaneously navigating undo history), the overwritten region is marked unavailable.
+  In practice this means "more scatter events than buffer depth while navigating history" --
+  essentially impossible in real use, but the policy handles it correctly rather than leaving
+  it undefined.
+- Implementation: standard circular buffer (head/tail indices into a fixed pre-allocated array).
+  Pre-allocate generously (e.g. 1,000 entries = 28KB) -- simple, no dynamic allocation, wrap
+  policy is correct by construction.
 
 With transform optimisation (invertible ops stored as op-codes ~2-5 bytes, not 28-byte entries)
 the effective depth for non-invertible events is even greater, since invertible transforms
