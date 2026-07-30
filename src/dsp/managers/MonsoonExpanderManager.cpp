@@ -108,23 +108,10 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
         caV2PrevLocked_ = engine.locked;
         if ((vBoundary && !engine.locked) || vUnlock) {
             const int vActive = std::max(1, engine.numPolyVoices + 1);
-            for (int row = 0; row < ChangeAlleyV2Ids::N_ROWS; ++row) {
-                auto& p = v2->pendingRows[row];
-                if (!p.armed) continue;
-                const int verb = row / 4;
-                const int side = (row % 4) / 2;
-                const int type = row % 2;
-                uint8_t* tbl   = (type == 0) ? v2->rhythmSrc : v2->melodySrc;
-                const int ci   = (side * ChangeAlleyV2Ids::TYPES + type) * 2
-                               + (p.isDomain ? 0 : 1);
-                if (verb == ChangeAlleyV2Ids::V_SCATTER)
-                    v2->scatterCounter[ci] += (uint64_t)(int64_t)p.scatterDelta;
-                dotModular::ca::applyCorrelation(
-                    verb, p.isDomain, p.isInter,
-                    tbl, vActive, p.grain, p.leaderOrStep, v2->scatterCounter[ci]);
-                p.armed = false;
-                v2->lights[ChangeAlleyV2Ids::PENDING_LIGHT_START + row].setBrightness(0.f);
-            }
+            // Apply is now OWNED by the CA module (applyPendingTransforms) -- the manager only
+            // decides WHEN (boundary/unlock). (Moving the WHEN to the engine boundary is a later
+            // cleanup, coordinated with lock semantics; see UNDO_IMPLEMENTATION_ROADMAP.md.)
+            v2->applyPendingTransforms(vActive);
         }
     }
     // Step 3 (plans/lane_direction_homes.md): poly direction is reset-then-pushed exactly like

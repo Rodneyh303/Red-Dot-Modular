@@ -16,6 +16,7 @@
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/ModArcOverlay.hpp"
 #include "ui/StoreEditAction.hpp"   // pin edits: store-backed, undoable (DAW_PARAM_AUDIT 5b)
+#include "dsp/ChangeAlleyTransforms.hpp"   // ca::applyCorrelation (transform apply owned here)
 
 using namespace rack;
 // NOT 'using namespace ChangeAlleyIds' — Monsoon.hpp exposes MonsoonIds with the same
@@ -113,6 +114,30 @@ struct MonsoonChangeAlleyV2 : Module {
             p.leaderOrStep = 0;
         if (verb == CA::V_SCATTER) p.scatterDelta = 1;
         lights[CA::PENDING_LIGHT_START + r].setBrightness(1.f);
+    }
+
+    // Apply all ARMED pending transforms to this module's own pin matrix. Owns the state
+    // mutation (rhythmSrc/melodySrc + scatterCounter) -- the manager only decides WHEN to call
+    // this (phrase boundary / unlock). Moved out of MonsoonExpanderManager so the module that
+    // holds the state also owns its mutation (and, next, its undo snapshot). `active` is the
+    // active voice count (numPolyVoices+1, clamped >=1).
+    void applyPendingTransforms(int active) {
+        for (int row = 0; row < CA::N_ROWS; ++row) {
+            auto& p = pendingRows[row];
+            if (!p.armed) continue;
+            const int verb = row / 4;
+            const int side = (row % 4) / 2;
+            const int type = row % 2;
+            uint8_t* tbl   = (type == 0) ? rhythmSrc : melodySrc;
+            const int ci   = (side * CA::TYPES + type) * 2 + (p.isDomain ? 0 : 1);
+            if (verb == CA::V_SCATTER)
+                scatterCounter[ci] += (uint64_t)(int64_t)p.scatterDelta;
+            dotModular::ca::applyCorrelation(
+                verb, p.isDomain, p.isInter,
+                tbl, active, p.grain, p.leaderOrStep, scatterCounter[ci]);
+            p.armed = false;
+            lights[CA::PENDING_LIGHT_START + row].setBrightness(0.f);
+        }
     }
 
     void process(const ProcessArgs&) override {
