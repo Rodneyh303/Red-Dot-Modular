@@ -656,3 +656,51 @@ richer/more-varied permutations on forward play (independent of reverse), that'd
 grounds reason to keep more than 2. Expected: it's pure reversibility bookkeeping (the per-op keys
 already differentiate the operations; the counter only sequences repeats), so 2 is safe -- but
 check at build time.
+
+## Pin block storage + reverse-entry size (full analysis)
+
+### How pins are stored (live module state)
+Two flat arrays: uint8_t rhythmSrc[16], uint8_t melodySrc[16] = 32 bytes. Each src[v] is a SOURCE
+VOICE INDEX (0..15): "output voice v takes its value from source voice src[v]." Identity = src[v]=v.
+Scatter/permutation repoints entries (rhythmSrc[5]=12 -> voice 5 takes voice 12's value). Loaded
+clamped to 0..N_VOICES-1 = 0..15 (dataFromJson). KEEP live state UNPACKED -- fast direct access,
+32 bytes of live state is nothing, and the snapshot struct mirroring live state makes save/restore
+trivially correct.
+
+### Reverse-entry size, corrected design (2 counters, uint32)
+Entry = pins + counter_block + boundary(4).
+- Counters: 8->2 collapse (rhythm+melody, decided), uint32 each = 8 B. (Pins dominate now, so
+  counter width barely matters; uint32 is ample -- no wrap risk -- and shrinking further saves ~4B.)
+- With per-event delta NOT needed (only 2 counters -> just store both absolute; delta bookkeeping
+  isn't worth it once there are only 2).
+
+### Pin PACKING: each value is 0..15 = 4 bits -> nibble-pack 2 voices/byte
+- Unpacked pins: 32 B  -> entry 44 B.
+- Packed pins:   16 B  -> entry 28 B.  (2 voices/byte x 2 tables)
+
+| entries   | unpacked (44B) | packed (28B) |
+|-----------|----------------|--------------|
+| 10,000    | 0.44 MB        | 0.28 MB      |
+| 100,000   | 4.40 MB        | 2.80 MB      |
+| 1,000,000 | 44.0 MB        | 28.0 MB      |
+
+(Note: 28 B matches the ORIGINAL design-doc figure -- but that got there wrongly, assuming a single
+16B pin table + undercounted counters. The correct path to 28 B is packed dual tables (16) + 2x
+uint32 (8) + boundary (4).)
+
+### Packing decision: DO IT (corrected -- Rodney)
+Earlier lean was AGAINST packing, to keep the audio-thread snapshot simple. That reasoning was
+WRONG: the snapshot fires only at PHRASE BOUNDARIES when a transform commits -- event-rate and
+SPARSE, not audio-rate. Nibble-packing 16 values is a trivial loop run a handful of times/second at
+most. So the "don't add complexity to the hot path" objection doesn't apply -- there is no hot path
+here. The packing cost is paid rarely; the RAM saving (2x on the dominant pin block) is permanent.
+The only real cost is one-time bug-risk of nibble-fiddling, which is testable in the standalone
+suite. So: PACK the pins in the reverse buffer (and in any JSON persistence of the buffer, where
+pack/unpack happens once at save/load).
+
+### Net
+Reverse entry = packed pins(16) + 2x uint32 counters(8) + boundary(4) = 28 bytes.
+Realistic sizing 10k-100k entries = 0.28-2.8 MB. A million = 28 MB (over-provisioned; only if you
+want marathon-session guarantee). Pin block is the cost driver even packed, so no further squeeze
+is worth it. Live module state stays UNPACKED (32B) -- packing is a reverse-buffer/persistence
+concern only.
