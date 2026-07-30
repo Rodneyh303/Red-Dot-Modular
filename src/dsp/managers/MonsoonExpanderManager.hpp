@@ -73,8 +73,6 @@ struct MonsoonExpanderManager {
     MonsoonInterchangeExpander*  cachedScaleExpander              = nullptr;
     rack::Module*                cachedRafflesExpander           = nullptr;
     rack::Module*                cachedJunctionExpander          = nullptr;
-    MonsoonChangeAlleyExpander*  cachedChangeAlleyExpander       = nullptr;
-    MonsoonTemasekExpander*      cachedTemasekExpander           = nullptr;
     MonsoonChangeAlleyV2*        cachedChangeAlleyV2             = nullptr;
     int  caPrevStep_   = 0;
     int  caV2PrevStep_   = 0;
@@ -107,8 +105,6 @@ struct MonsoonExpanderManager {
         cachedScaleExpander              = nullptr;
         cachedRafflesExpander           = nullptr;
         cachedJunctionExpander          = nullptr;
-        cachedChangeAlleyExpander       = nullptr;
-        cachedTemasekExpander           = nullptr;
         cachedChangeAlleyV2             = nullptr;
         //cachedDnaExpander                = nullptr;
         cachedSandsVisualExpander        = nullptr;
@@ -152,12 +148,6 @@ struct MonsoonExpanderManager {
                     if (!cachedRafflesExpander) cachedRafflesExpander = curr;
                 } else if (curr->model == modelMonsoonJunctionExpander) {
                     if (!cachedJunctionExpander) cachedJunctionExpander = curr;
-                } else if (curr->model == modelMonsoonChangeAlleyExpander) {
-                    if (!cachedChangeAlleyExpander)
-                        cachedChangeAlleyExpander = reinterpret_cast<MonsoonChangeAlleyExpander*>(curr);
-                } else if (curr->model == modelMonsoonTemasekExpander) {
-                    if (!cachedTemasekExpander)
-                        cachedTemasekExpander = reinterpret_cast<MonsoonTemasekExpander*>(curr);
                 } else if (curr->model == modelMonsoonChangeAlleyV2) {
                     if (!cachedChangeAlleyV2)
                         cachedChangeAlleyV2 = reinterpret_cast<MonsoonChangeAlleyV2*>(curr);
