@@ -148,3 +148,35 @@ NEXT: trace where topoIn is consumed (redraw vs live) to pick the approach.
 ### PUSH PENDING
 Container was reset; fresh clone has no git credentials. Direction commit is LOCAL only. Needs
 push access re-established to land on origin/feat/lock-mode.
+
+## Owner trace RESULT: owner rides the LOR path (live-under-lock) -- tension with LATCH ruling
+
+Traced owner -> topoIn -> SandsTopology::build -> topo.owner(0,l) -> selects baseLen/baseOff/baseRot
+(MonsoonSandsManager.cpp:177-196): owner decides WHICH LOR BASE a lane reads (Macro's delegated
+global base vs Mono's own LOR). Those bases push to the engine at ~:245-251, NOT lock-gated, and
+this is BEFORE the spread lock gate at :453.
+
+KEY TENSION: owner is "which LOR base does this lane read." LOR is intentionally LIVE-UNDER-LOCK
+(phase 1: LOR runs under lock, only SPREAD is gated -- LOR is seeded once/event-driven, not
+re-derived). So owner's effect rides a live path. Making owner LATCH is therefore INCOHERENT with
+LOR being live:
+- If user changes owner under lock, the lane's base switches live (because LOR is live).
+- Freezing ONLY the ownership selection while LOR stays live = half-frozen incoherent state (frozen
+  "who owns" but live "what the owned base is").
+- To make owner truly LATCH you'd have to ALSO freeze LOR under lock -- contradicting the LOR-live
+  ruling.
+
+So "owner twins direction" doesn't hold mechanically: direction is a genuinely staged pending value
+(gated cleanly); owner is a routing selector over the live LOR path. They are NOT the same kind of
+control w.r.t. lock.
+
+DECISION NEEDED (Rodney): 
+(a) Owner stays LIVE (accept it rides LOR which is live-under-lock -- coherent, no code change,
+    contradicts the "twins direction" ruling but matches the LOR-live architecture); OR
+(b) Owner LATCH + also freeze LOR under lock (makes owner+LOR both latch, coherent together, but
+    reverses the deliberate LOR-live decision -- bigger change); OR
+(c) Owner LATCH via freezing only the topo.owner READ (hold last-committed ownership while locked,
+    let the frozen owner still select a live LOR base) -- freezes the routing choice but not the
+    base value. Coherent-ish: "you can't re-delegate lanes under lock, but a delegated lane's base
+    still tracks live." Middle ground.
+Leaning (a) for coherence with LOR-live, OR (c) if you want owner changes specifically frozen.
