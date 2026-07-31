@@ -1084,7 +1084,11 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     }
     // Reflect the dragged edit values in the display immediately so the window
     // follows the hand; next process frame re-applies any CV on top.
-    if (dragState.isDragging && dragState.dragLane >= 0 && dragState.dragLane < laneCount)
+    // BUT under lock, do NOT sync: the display must stay frozen at the committed (pre-lock)
+    // position while the edit tracks the hand -- that divergence is what drives the ghost echo
+    // (live=solid, committed=ghost). Syncing here would collapse the divergence and hide the ghost.
+    if (dragState.isDragging && dragState.dragLane >= 0 && dragState.dragLane < laneCount
+        && !lockActive())
       currentState.lanes[dragState.dragLane].syncDisplayToEdit();
   }
   
