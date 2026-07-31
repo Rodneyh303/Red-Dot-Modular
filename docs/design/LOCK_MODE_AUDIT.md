@@ -177,3 +177,40 @@ Most expanders = ONE category (Junction=BigFive, Causeway=rhythm-LATCH). A few s
 (ABMix LATCH / gates QUEUE / slew-into-QUEUE) because it touches mix + dice + slew. The category-
 keyed enum handles all of this -- expanders just call liveNow() with the category their inputs
 modulate; no per-expander enum entries needed except where a NEW category emerges (none did here).
+
+## Phase 2 rulings resolved (Rodney, for 2.0)
+
+- Owner -> LATCH. Twin with direction (same per-lane structural control class). Resolves the
+  earlier "owner leans LIVE" -- it was wrong; owner and direction latch together.
+- Direction -> LATCH (already the OPEN ruling; confirmed alongside owner).
+- Changi -> LIVE. Just outputs (transport/vis), no generation shaping.
+- Causeway -> LATCH. Modulates Straits generation (like Junction).
+- Junction -> LATCH. Mod inputs feed big-5 generation.
+- Interchange -> LATCH. Note + octave mod inputs (NoteSliders/OctaveRange, both LATCH). The
+  earlier "separability" note was only about whether inputs split note-vs-octave; moot -- both
+  latch, so one query or two is equivalent. LATCH either way.
+- Shophouse -> LATCH (confirmed). Scale/mask shapes the generation space (read-vs-map = READ =
+  LATCH). Changes made under lock STAGE and take effect at unlock (Rodney's explicit choice: not
+  live-under-lock). Consistent with SEMI scale toggles.
+- Raffles -> NOT uniformly LATCH (unchanged from prior analysis; do not flatten to one category):
+  - A/B MIX inputs -> LATCH.
+  - dice-gates -> QUEUE (trigger rolls; events, not held values -- under lock they queue/freeze,
+    they do not "latch a value").
+  - slew -> folds into QUEUE (sampled at boundary, not an independent axis).
+
+### Net phase-2 category assignments
+LATCH: Owner, Direction, Spread, Lor, ABMix, Pins, BigFive, NoteSliders, OctaveRange, Reseed,
+       Causeway, Junction, Interchange, Shophouse (+ Raffles MIX inputs).
+LIVE:  Clock, Mute, Display, Changi, Transpose.
+QUEUE: Scatter, Raffles dice-gates (+ slew folds in).
+
+Only genuine behaviour INVERSION from current: Transpose -> LIVE (was effectively frozen/ignored).
+Direction + Owner -> LATCH is the OPEN ruling but matches current de-facto behaviour. QUEUE
+(scatter + raffles gates) becoming first-class is the other real change.
+
+### Enum entries to ADD in phase 2
+Control::Transpose (LIVE), Control::Direction (LATCH), Control::Owner (LATCH). Expanders
+(Causeway/Junction/Interchange/Shophouse/Changi) need NO new entries -- they map to existing
+categories via the control their inputs modulate (Causeway/Junction->BigFive-ish LATCH,
+Interchange->NoteSliders/OctaveRange, Shophouse->its own scale-mask LATCH which may reuse a
+ScaleMask entry, Changi->LIVE Display-ish).
