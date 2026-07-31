@@ -90,3 +90,33 @@ reads the same lock; it does not absorb the freeze. Correct per the architecture
 ### Phase 2 (next, behaviour-CHANGING) unchanged
 Boundary/unlock events + QUEUE first-class (CA scatter, ExpMgr :110 shadow-state removal); OPEN
 rulings (transpose->LIVE, direction->LATCH, owner); per-expander finish; lock-scope menu.
+
+## Phase 2 progress (this session) + next precise step
+
+### Done this session (phase 2)
+- KEYSTONE: boundary/unlock detection moved from ExpMgr shadow state (caV2PrevStep_/
+  caV2PrevLocked_, removed) into LockManager::tick()/queueFires(). Monsoon ticks it before
+  expander sync; sync() takes caQueueFires. Behaviour-equivalent. QUEUE now first-class.
+- Transpose -> LIVE: already correct in code (applied at genPitchLive output time,
+  PatternEngine.cpp:131, downstream of the redraw freeze -- changes transpose the frozen pattern
+  live under lock). No gate to invert; added Control::Transpose entry for model completeness.
+
+### NEXT precise step: Direction -> LATCH (GENUINE behaviour change, needs a gate)
+Traced the commit point. Direction uses a pending->committed mechanism:
+  SequencerEngine.cpp:170  laneDir_[l] = laneDirPending_[l];  (+ laneDirV_ per voice :171)
+gated by laneFlipQuant (StepEdge) -- commits at step edge, NOT gated by lock. So a direction change
+made UNDER LOCK currently still commits at the next step edge. That is NOT latch behaviour.
+To make direction LATCH: gate the pending->committed transition on !locked (don't promote pending
+direction while locked; it commits at unlock). This is the FIRST phase-2 item that is a real
+behaviour change with a code edit (transpose + note/octave sliders were already-correct no-ops).
+Care: interacts with laneFlipQuant timing (StepEdge/other quant modes) -- gate the promotion, not
+the quant logic. Owner (twin, LATCH) likely has an analogous pending/commit or direct-store path --
+check whether owner writes are already frozen (store-backed, may already latch via the freeze) or
+need the same gating.
+
+### Remaining phase 2 after direction/owner
+- Owner -> LATCH (check its commit path; twin with direction).
+- Expander threading: Causeway/Junction/Interchange/Shophouse -> their LATCH categories; Changi
+  LIVE. Most already flow through spread/big-5 paths already migrated or engine-freeze-enforced.
+- CA scatter ARM path explicit through QUEUE; Raffles dice-gates QUEUE.
+- Lock-scope menu (§7).
