@@ -49,7 +49,9 @@ enum class Control : uint8_t {
     Clock,         // BPM/RUN/RESET/MODE/PHASE
     Mute,          // mute
     Display,       // themes / lantern / display controls
-    // Transpose is OPEN-leaning-LIVE; deferred to phase 2 (behaviour change). Not listed yet.
+    Transpose,     // pitch transpose -- applied at OUTPUT time (genPitchLive), downstream of the
+                   // freeze, so already LIVE (changes audibly transpose the frozen pattern under
+                   // lock). Entry for model completeness; no call-site gate exists to migrate.
 
     // --- QUEUE: arm-and-fire at phrase boundary ---
     Scatter,       // Change Alley scatter gate (event, not a held value)
@@ -80,6 +82,7 @@ public:
             case Control::Clock:
             case Control::Mute:
             case Control::Display:
+            case Control::Transpose:
                 return LockCategory::LIVE;
             // QUEUE set
             case Control::Scatter:
