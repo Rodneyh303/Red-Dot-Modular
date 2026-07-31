@@ -1,4 +1,5 @@
 #include "MonsoonSandsManager.hpp"
+#include "dsp/managers/MonsoonLockManager.hpp"
 #include "../VoiceResolver.hpp"   // kMonoSlot — the mono mix-in slice
 #include "../SpreadInterp.hpp"
 #include "../SpreadResolver.hpp"   // step 3b: single authority for effective spread amount
@@ -322,7 +323,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // When LOCKED, leave the final arrays frozen (skip the rewrite) so
             // lock freezes the audible output — spread CV won't leak through.
             engine.pe.setSandsActive(true);
-            if (!engine.locked) {
+            if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked)) {
             // Spread target is the mono/voice-1 draw (the ensemble average was removed).
             // Ensemble poly count is bounded by the voice OUTPUT topology
             // (effPolyVoices): only voices with an actual output path (East ≤7,
@@ -449,7 +450,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             }
 
             // ── SPREAD: lock-gated (frozen pattern must not be re-spread). LOR above already ran.
-            if (!engine.locked) {
+            if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked)) {
             auto sprForLane = [&](int lane)->float {
                 if (monoOwnedByMacro(lane))
                     return rack::math::clamp(macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3], -1.f, 1.f);
@@ -544,7 +545,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         // Macro's base+delta into each voice via the owner/blend send. When NOT — standalone Macro
         // (no Straits) — apply Macro's GLOBAL spread to the drawn voices here so its bars aren't dead.
         if (!macroDrivesOutput) {
-        if (!engine.locked) {
+        if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked)) {
             const int nPoly = rack::math::clamp(engine.numPolyVoices, 0, 15);
             // Global spread level per lane (knob + CV), spread/engine-indexed 0..3.
             float spv[4];

@@ -316,7 +316,7 @@ float Monsoon::semitoneToVolts(int semitone) {
         engine.gs.reset();          // clears gate, hold, pitch, pulse, semiPlayRemain
         prevExtGate = false;
 
-        if (!locked) {
+        if (lockManager.liveNow(dotModular::Control::Reseed)) {
             if (reseedOnRestart) {
                 // Only use the SEED-CV (reproducible, A=B) path when the SEED
                 // input is actually present. Unpatched → internal entropy via the
