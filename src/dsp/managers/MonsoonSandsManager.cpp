@@ -247,10 +247,16 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 baseRot = math::clamp(baseRot + eastDelta(eng, 2, 0.f, 15.f) + macroDelta(eng, 2),  0.f, 15.f);
             }
 
-            engine.setStrand(StrandWriter::MONO, strand,
-                             (int)std::round(baseLen),
-                             (int)std::round(baseOff),
-                             (int)std::round(baseRot));
+            // LOR is LATCH (LOCK_SEMANTICS §9): under lock, do NOT re-push the strand window --
+            // the engine's LOR state persists, so skipping the write holds the pre-lock resolved
+            // value (base + latched CV). This also latches OWNER for free: owner selects which base
+            // feeds baseLen above, and freezing the apply freezes that selection's effect too.
+            if (dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked)) {
+                engine.setStrand(StrandWriter::MONO, strand,
+                                 (int)std::round(baseLen),
+                                 (int)std::round(baseOff),
+                                 (int)std::round(baseRot));
+            }
         };
 
         // Spread (REST/MEL/OCT only): base trimpot + per-lane spread CV.
@@ -398,6 +404,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                     const int engLane = dotModular::EDITOR_TO_ENGINE_LANE[el];
                     const int strand  = dotModular::MONO_LANE_TO_STRAND[el];
                     if (monoOwnedByMacro(engLane)) {
+                        if (dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked))   // LOR LATCH: skip re-push under lock
                         engine.setStrand(StrandWriter::EAST, strand,
                             (int)std::round(macroVis->macroBase[engLane][0] + macroVis->macroCVDelta[engLane][0]),
                             (int)std::round(macroVis->macroBase[engLane][1] + macroVis->macroCVDelta[engLane][1]),
@@ -423,6 +430,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                         }
                         return rack::math::clamp(base + sendBlend(item), lo, hi);
                     };
+                    if (dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked))   // LOR LATCH: skip re-push under lock
                     engine.setStrand(StrandWriter::EAST, strand,
                         (int)std::round(addCV(len, 0, 1.f, 16.f)),
                         (int)std::round(addCV(off, 1, 0.f, 15.f)),
@@ -442,6 +450,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                         }
                         return rack::math::clamp(base, lo, hi);
                     };
+                    if (dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked))   // LOR LATCH: skip re-push under lock
                     engine.setStrand(StrandWriter::EAST, el,
                         (int)std::round(addCV((float)std::max(1, b0), 0, 1.f, 16.f)),
                         (int)std::round(addCV((float)(((b1 % 16) + 16) % 16), 1, 0.f, 15.f)),

@@ -573,6 +573,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 static const int STRND[4] = { dotModular::STRAND_RHYTHM, dotModular::STRAND_MELODY,
                                               dotModular::STRAND_OCTAVE, dotModular::STRAND_ACCENT };
                 for (int lane = 0; lane < 4; ++lane) {
+                    if (dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked))   // LOR LATCH: skip re-push under lock
                     engine.setStrand(StrandWriter::MACRO, STRND[lane],
                                      (int)std::round(macroVis->macroBase[lane][0]),
                                      (int)std::round(macroVis->macroBase[lane][1]),
