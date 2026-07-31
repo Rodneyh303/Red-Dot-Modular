@@ -249,6 +249,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // Shared resolver-backed helper: owner(currentVoice, lane) == MACRO.
             return laneOwnedByMacroTopo(engLane);
         };
+        // Ghost echo needs TRUE lock-mode state (engine.locked), not the edit-permission above.
+        visualEditor->lockActiveFn = [this]() -> bool { auto* m = getMonsoon(); return m && m->engine.locked; };
         // Right-click on a lane row opens the ownership context menu.
         visualEditor->onLaneRightClick = [this](int lane, rack::math::Vec pos) -> bool {
             if (!macroAttached()) return false;  // no menu when Macro absent

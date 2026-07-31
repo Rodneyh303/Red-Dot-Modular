@@ -189,10 +189,16 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // and bar can't be edited, while other lanes stay editable. editorLane index.
   std::function<bool(int editorLane)> laneLockedFn;
   bool laneLocked(int editorLane) const { return laneLockedFn && laneLockedFn(editorLane); }
-  // Ghost echo active for this lane: locked AND the live edit window has diverged from the
-  // committed/display window. When true, drawStep renders the LIVE window solid and the COMMITTED
-  // window as a faint ghost (the echo of where the playhead still reads under lock).
-  bool lorGhost(int editorLane) const { return laneLocked(editorLane) && currentState.lanes[editorLane].lorDiverged(); }
+  // TRUE lock-mode state (engine.locked), distinct from laneLockedFn (which is edit-PERMISSION and
+  // is deliberately false on Macro). The ghost echo needs actual lock, not edit-permission, because
+  // the display window also diverges from edit under normal CV modulation when UNLOCKED -- so
+  // divergence alone can't distinguish "locked" from "CV modulating". Host wires to engine.locked.
+  std::function<bool()> lockActiveFn;
+  bool lockActive() const { return lockActiveFn && lockActiveFn(); }
+  // Ghost echo for this lane: lock-mode active AND the live edit window has diverged from the
+  // committed/display window. Under lock the display is frozen (LOR LATCH) while edit tracks the
+  // handle, so divergence here = a genuine moved-under-lock echo (not CV modulation).
+  bool lorGhost(int editorLane) const { return lockActive() && currentState.lanes[editorLane].lorDiverged(); }
   // Optional right-click callback: host registers this to open a context menu
   // when a lane row is right-clicked. Called with (lane, pos); return true to consume.
   std::function<bool(int lane, rack::math::Vec pos)> onLaneRightClick;

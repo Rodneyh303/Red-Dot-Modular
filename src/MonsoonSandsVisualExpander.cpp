@@ -135,6 +135,8 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             // lock ⟺ Mono is not the owner of this V1 lane (Macro owns it).
             return buildV1Topo().lockedOn(dotModular::SandsTopology::Role::MONO, 0, editorLane);
         };
+        // Ghost echo needs TRUE lock-mode state (engine.locked), not the edit-permission above.
+        visualEditor->lockActiveFn = [this]() -> bool { auto* m = getMonsoon(); return m && m->engine.locked; };
         // LOR drag undo: push a Rack history action against the store for a completed drag.
         // Mono is always the mono slot; bank = EDITOR_TO_ENGINE_LANE for lanes 0..3, self for
         // VAR/LEG (4,5) -- the same mapping the load path uses.

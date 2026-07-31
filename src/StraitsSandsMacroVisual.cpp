@@ -153,6 +153,9 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // editable (like its spread, like V2+); ownership governs what reaches the ENGINE, not what Macro
         // may edit on its own panel. Off the V1 tab this was already false.
         visualEditor->laneLockedFn = [](int /*editorLane*/) -> bool { return false; };
+        // Ghost echo needs TRUE lock-mode state -- independent of the edit-permission above (which is
+        // deliberately false on Macro). Macro edits under lock still show the ghost echo.
+        visualEditor->lockActiveFn = [this]() -> bool { auto* m = getMonsoon(); return m && m->engine.locked; };
         // LOR drag undo: Macro edits GLOBAL LOR (setGlobalLor, indexed by ENGINE lane). Only
         // lanes 0..3 map to a global engine lane (VAR/LEG have no global LOR). Push a Rack
         // history action; refresh the editor cache too (store->editor seed is event-driven).
