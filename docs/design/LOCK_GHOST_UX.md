@@ -37,6 +37,33 @@ no ghost. Unlocked, live == committed, no ghost. Ghost = the divergence indicato
 3. The playhead should keep travelling on the COMMITTED window (it reads engine position) -- verify
    the ghost aligns with where the playhead actually is, so the echo reads as "playback is here."
 
+## CORRECTION (Rodney): both images already exist -- no plumbing, just swap which is solid
+Over-scoped earlier. The editor ALREADY computes BOTH positions on each ProbabilityLane:
+- editStartBar()/editEndBar() -- raw offset/length = the LIVE edit (your handle movement).
+- startBar()/endBar() -- dispOffset/dispLength = the DISPLAY/committed window (engine, frozen under
+  lock; synced from edit via syncDisplayToEdit() when unlocked). = the OLD playing position.
+Under lock these DIVERGE (edit moves, display frozen) -- that divergence IS the real+ghost pair
+already on screen. No committedLorFn needed.
+
+What draws what NOW:
+- Probability bars brighten by barInWindow(step) which uses startBar() (DISPLAY/committed) -> the
+  bright "real" image currently follows the OLD position.
+- drawHandles ribbons use editStartBar() (LIVE) at alpha ~0.55 -> the user's movement is the faint
+  one.
+
+The SWAP (only under lock AND diverged, i.e. edit != display):
+- Make the LIVE (edit) window the SOLID/dominant one: handle ribbons full alpha; and the bar-window
+  brightening should follow editStartBar() so the cells the user is setting look active.
+- Make the COMMITTED (display) window the GHOST: draw the startBar() window as a low-alpha overlay
+  (the echo of where playback still is).
+- Playhead already travels on the committed/display position (engine) -> ghost aligns with it.
+When unlocked or not diverged: edit==display, unchanged single solid draw.
+
+Precise edit next session: in the bar-draw (~551 barInWindow) and drawHandles (~686), branch on
+laneLocked(lane) && (editStartBar!=startBar || editLen!=dispLength): swap which window gets solid
+vs ghost alpha. NOT a new feature -- a conditional alpha/target swap between two already-computed
+windows. Care: keep the normal CV-modulation display (unlocked) untouched.
+
 ## Status
 LATCH logic done + verified. This is a display refinement. Plan recorded; build next session on the
 render path (needs the committedLorFn plumbing + drawHandles swap). Not urgent -- logic is correct;
