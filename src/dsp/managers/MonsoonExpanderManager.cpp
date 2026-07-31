@@ -48,7 +48,7 @@ MonsoonExpanderManager::MonoDirSrc MonsoonExpanderManager::monoDirAuthority(int 
     return r;
 }
 
-void MonsoonExpanderManager::sync(SequencerEngine& engine) {
+void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
     // Poly-lane constants (engine order REST=0,MEL=1,OCT=2,ACC=3). Named here so
     // the renumber tracks automatically and the parallel index conventions below
     // (polyLen[v][lane] / combineLOR(lane,..) / combineSpread(lane,..) /
@@ -102,12 +102,9 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
     // apply the queued transforms to v2->rhythmSrc/melodySrc.
     if (cachedChangeAlleyV2) {
         auto* v2 = cachedChangeAlleyV2;
-        const int  vStep      = engine.stepIndex;
-        const bool vBoundary  = (vStep < caV2PrevStep_);
-        const bool vUnlock    = (caV2PrevLocked_ && !engine.locked);
-        caV2PrevStep_   = vStep;
-        caV2PrevLocked_ = engine.locked;
-        if ((vBoundary && !engine.locked) || vUnlock) {
+        // Boundary/unlock detection now lives in LockManager (ticked before sync); the QUEUE-fire
+        // decision is passed in as caQueueFires. (Was: local caV2PrevStep_/caV2PrevLocked_ shadow.)
+        if (caQueueFires) {
             const int vActive = std::max(1, engine.numPolyVoices + 1);
             // Apply is now OWNED by the CA module (applyPendingTransforms) -- the manager only
             // decides WHEN (boundary/unlock). (Moving the WHEN to the engine boundary is a later

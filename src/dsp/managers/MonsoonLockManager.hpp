@@ -106,6 +106,28 @@ public:
 
     bool isLocked() const { return locked_; }
 
+    // -------------------------------------------------------------------------------------------
+    // Boundary / unlock EVENTS (phase 2). Absorbs the caV2PrevStep_/caV2PrevLocked_ shadow state
+    // that MonsoonExpanderManager used to keep. Ticked once per control cycle with the current
+    // step index and lock state; computes the phrase-boundary edge (step wrapped) and the unlock
+    // edge (locked->unlocked this tick). QUEUE controls (Change Alley scatter, Raffles gates) fire
+    // when queueFires() is true: at a phrase boundary while unlocked, OR at the unlock edge (flush).
+    //
+    // This is lock/TRANSPORT logic, not expander topology -- it belongs here, driven off the
+    // engine's step index (the single transport authority), not re-derived in a topology manager.
+    void tick(int stepIndex) {
+        boundaryNow_ = (stepIndex < prevStep_);          // step wrapped => phrase boundary
+        unlockNow_   = (prevLocked_ && !locked_);         // locked -> unlocked this tick
+        prevStep_    = stepIndex;
+        prevLocked_  = locked_;
+    }
+    bool boundaryNow() const { return boundaryNow_; }
+    bool unlockNow()   const { return unlockNow_; }
+
+    // Should QUEUE-category pending events fire this tick?
+    //   (phrase boundary while unlocked) OR (unlock edge -- flush what was queued during lock).
+    bool queueFires() const { return (boundaryNow_ && !locked_) || unlockNow_; }
+
     // Static form: evaluate a control's live-now decision against an explicitly-provided lock
     // state. Lets call sites that hold their own lock bool (e.g. managers reading a specific
     // engine's `locked`) route through the SAME category model without needing a LockManager
@@ -121,6 +143,10 @@ public:
 
 private:
     const bool& locked_;   // reference to engine's lock state (not owned)
+    int  prevStep_    = 0;      // phrase-boundary edge detect (step-wrap)
+    bool prevLocked_  = false;  // unlock edge detect
+    bool boundaryNow_ = false;
+    bool unlockNow_   = false;
 };
 
 } // namespace dotModular

@@ -939,7 +939,11 @@ void Monsoon::process(const ProcessArgs& args) {
         dnaManager.processDNA(expanderManager);
 
         // ── Deep Straits Sands Expanders (Control Rate Orchestration) ──
-        expanderManager.sync(engine);
+        // Tick lock-manager boundary/unlock detection BEFORE expander sync so the CA QUEUE
+        // trigger inside sync() reads this cycle's edges. Uses engine.stepIndex (transport
+        // authority) -- replaces the old caV2PrevStep_/caV2PrevLocked_ shadow state.
+        lockManager.tick(engine.stepIndex);
+        expanderManager.sync(engine, lockManager.queueFires());
         
         // Refresh Audio-Rate Caches (Throttled)
         cachedBpmParam = params[BPM_PARAM].getValue();
