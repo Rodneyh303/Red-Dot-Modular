@@ -106,6 +106,19 @@ public:
 
     bool isLocked() const { return locked_; }
 
+    // Static form: evaluate a control's live-now decision against an explicitly-provided lock
+    // state. Lets call sites that hold their own lock bool (e.g. managers reading a specific
+    // engine's `locked`) route through the SAME category model without needing a LockManager
+    // instance or a Monsoon* -- and provably preserve which lock bool they read.
+    static bool liveNow(Control c, bool locked) {
+        switch (categoryOf(c)) {
+            case LockCategory::LIVE:  return true;
+            case LockCategory::LATCH: return !locked;
+            case LockCategory::QUEUE: return !locked;   // phase-1 placeholder; phase-2 = queue
+        }
+        return !locked;
+    }
+
 private:
     const bool& locked_;   // reference to engine's lock state (not owned)
 };

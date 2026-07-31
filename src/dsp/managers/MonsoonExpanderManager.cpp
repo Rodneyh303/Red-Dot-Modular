@@ -1,4 +1,5 @@
 #include "MonsoonExpanderManager.hpp"
+#include "dsp/managers/MonsoonLockManager.hpp"
 #include "../SpreadInterp.hpp"
 #include "../VoiceResolver.hpp"   // read-only shadow (step 1)
 #include "../SandsTopology.hpp"   // step 3: solo/none write-guard migration
@@ -382,7 +383,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
             //     engine.voices[v].restProb = deepEast->params[MonsoonIds::POLY_REST_PARAM_1 + v].getValue();
             // }
 
-            if (!engine.locked) {
+            if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked)) {
                 for (int j = 0; j < 16; j++) {
                     engine.pe.polyRandom(v, PL::PL_REST)[j] = redDot::SpreadInterp::apply(
                         engine.pe, PL::PL_REST, j, engine.pe.slewedPolyRhythm[v][j], restInterp);
@@ -403,7 +404,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
             melodyInterp = combineSpread(PL::PL_MELODY, melodyInterp);   // owner + Macro-CV blend (spread)
             if (eastVisual) eastVisual->polySpreadEffective[v][PL::PL_MELODY] = melodyInterp;
             
-            if (!engine.locked) {
+            if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked)) {
                 for (int j = 0; j < 16; j++) {
                     engine.pe.polyRandom(v, PL::PL_MELODY)[j] = redDot::SpreadInterp::apply(
                         engine.pe, PL::PL_MELODY, j, engine.pe.slewedPolyMelody[v][j], melodyInterp);
@@ -431,7 +432,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
             octaveInterp = combineSpread(PL::PL_OCTAVE, octaveInterp);   // owner + Macro-CV blend (spread)
             if (eastVisual) eastVisual->polySpreadEffective[v][PL::PL_OCTAVE] = octaveInterp;
             
-            if (!engine.locked) {
+            if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked)) {
                 for (int j = 0; j < 16; j++) {
                     engine.pe.polyRandom(v, PL::PL_OCTAVE)[j] = redDot::SpreadInterp::apply(
                         engine.pe, PL::PL_OCTAVE, j, engine.pe.slewedPolyOctave[v][j], octaveInterp);
@@ -460,7 +461,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
                 }
                 accentInterp = combineSpread(PL::PL_ACCENT, accentInterp);   // owner + Macro-CV blend (spread)
                 if (eastVisual) eastVisual->polySpreadEffective[v][PL::PL_ACCENT] = accentInterp;   // accent spread → editor display
-                if (!engine.locked) {
+                if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked)) {
                     for (int j = 0; j < 16; j++) {
                         engine.pe.polyRandom(v, PL::PL_ACCENT)[j] = redDot::SpreadInterp::apply(
                             engine.pe, PL::PL_ACCENT, j, engine.pe.slewedPolyAccent[v][j], accentInterp);
@@ -545,7 +546,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine) {
         // MonsoonSandsManager::processDNA (macroDrivesOutput is true here).
         using namespace StraitsMacroVisualIds;
         auto* macroVis = cachedMacroSandsVisual;
-        if (!engine.locked) {
+        if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked)) {
             // V1 (mono final arrays + mono strand LOR): Macro owns V1 too when it is the
             // sole visual. The hasMonoVisual block (which normally does this) is skipped
             // with no Mono editor, so apply Macro's global LOR/spread to the mono strand
