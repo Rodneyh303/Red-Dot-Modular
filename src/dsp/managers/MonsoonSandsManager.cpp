@@ -1,5 +1,5 @@
 #include "MonsoonSandsManager.hpp"
-#include "dsp/managers/MonsoonLockManager.hpp"
+#include "MonsoonLockManager.hpp"
 #include "../VoiceResolver.hpp"   // kMonoSlot — the mono mix-in slice
 #include "../SpreadInterp.hpp"
 #include "../SpreadResolver.hpp"   // step 3b: single authority for effective spread amount

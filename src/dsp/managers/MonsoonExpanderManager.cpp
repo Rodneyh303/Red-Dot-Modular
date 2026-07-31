@@ -1,5 +1,5 @@
 #include "MonsoonExpanderManager.hpp"
-#include "dsp/managers/MonsoonLockManager.hpp"
+#include "MonsoonLockManager.hpp"
 #include "../SpreadInterp.hpp"
 #include "../VoiceResolver.hpp"   // read-only shadow (step 1)
 #include "../SandsTopology.hpp"   // step 3: solo/none write-guard migration

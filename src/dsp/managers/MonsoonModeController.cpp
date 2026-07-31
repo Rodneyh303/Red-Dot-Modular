@@ -1,5 +1,5 @@
 #include "MonsoonModeController.hpp"
-#include "dsp/managers/MonsoonLockManager.hpp"
+#include "MonsoonLockManager.hpp"
 #include "../../Monsoon.hpp"
 #include "../../MonsoonCausewayPolyExpander.hpp"
 
