@@ -180,3 +180,32 @@ DECISION NEEDED (Rodney):
     base value. Coherent-ish: "you can't re-delegate lanes under lock, but a delegated lane's base
     still tracks live." Middle ground.
 Leaning (a) for coherence with LOR-live, OR (c) if you want owner changes specifically frozen.
+
+## CORRECTION: LOR is LATCH, not live. Owner trace tension was a MISREADING.
+
+Rodney correctly challenged my "LOR is live-under-lock" claim. Checked LOCK_SEMANTICS.md:
+- Line 137 (RESOLVED §9 ruling table): "DNA LOR (18 + globals + interp) ... LATCH". Line 150:
+  mono lorBase LATCH. LOR IS LATCH.
+- The lines I misquoted as "LOR live": line 21 describes the CURRENT (WRONG) behaviour ("Current
+  (wrong): ... params stay LIVE ... you can ride ... LOR" -- the BUG lock mode fixes). Line 50
+  argues LOR should NOT be live ("audibly live under lock BREAKS 'prepare silently'"). Both are the
+  case FOR latching LOR, not a ruling that it's live.
+
+So there is NO LOR-live ruling. My owner-trace "tension" was built entirely on misreading the
+description-of-the-bug as the intended design. DISSOLVED.
+
+### Consequence: owner = LATCH, cleanly (Rodney's original ruling holds)
+- LOR is LATCH (should freeze under lock; currently wrongly stays live = a bug lock mode fixes).
+- Owner rides the LOR path -> owner is LATCH too. "Owner twins direction" holds mechanically after
+  all. No fork, no half-frozen incoherence.
+- This is effectively option (b) but NOT "reversing a decision" -- it's implementing the ACTUAL
+  ruling. LOR was always meant to be LATCH.
+
+### Corrected target (supersedes the phase-1 "LOR runs under lock" note)
+The phase-1 note "LOR runs under lock, only spread gated" described the CURRENT BUGGY state, not the
+target. TARGET: LOR latches, spread latches, owner latches. Spread's gate is already implemented;
+LOR's and owner's are not yet. All three should be LATCH. So:
+- NEXT: gate LOR application under lock (LATCH) -- the missing piece; then owner latches for free by
+  riding the now-latched LOR path (or gate the owner read too for cleanliness).
+- Re-check: does gating LOR interact with the "LOR seeded once/event-driven" behaviour? Trace where
+  LOR is applied vs where it's a one-time seed before gating.
