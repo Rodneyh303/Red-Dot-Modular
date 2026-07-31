@@ -68,3 +68,19 @@ windows. Care: keep the normal CV-modulation display (unlocked) untouched.
 LATCH logic done + verified. This is a display refinement. Plan recorded; build next session on the
 render path (needs the committedLorFn plumbing + drawHandles swap). Not urgent -- logic is correct;
 this improves legibility of the prepare-silently state.
+
+## Status: shipped, "good enough for now" (may refine later)
+Ghost swap implemented + two wiring bugs fixed:
+1. Keyed on real lock (lockActiveFn -> engine.locked), NOT laneEditBlockedFn (edit-permission).
+2. Drag handler no longer calls syncDisplayToEdit() under lock (that collapsed lorDiverged -> ghost
+   never showed during a drag). Under lock display stays frozen; edit tracks hand; divergence drives
+   the ghost.
+Renamed laneLockedFn -> laneEditBlockedFn to prevent the concept collision recurring.
+
+Possible future refinements (not urgent):
+- Tune ghost alpha (currently: committed edge markers a=0.30, tint a=0.05; live handle a=0.95 /
+  body 0.20). Adjust once seen in motion if too faint/strong.
+- Confirm getMonsoon() resolves in all visual contexts (if null, lockActive() is false -> no ghost).
+- Consider whether ROTATION drags under lock should ghost too (currently divergence checks L/O only,
+  not rotation -- lorDiverged() = offset or length change; rotation-only moves won't trigger ghost).
+- Playhead/ghost alignment: verify the ghost edge sits exactly where the playhead reads.
