@@ -58,3 +58,35 @@ Then thread the note/octave slider + big-5 knob sites (find their engine-write s
   before touching either.
 - Lock mode touches the LIVE signal path (unlike undo = history only). Bigger risk. One group at
   a time, build-verify in Rack, same discipline as undo.
+
+## Phase 1 completion note
+
+Phase 1 (behaviour-preserving migration of scattered LATCH guards to LockManager::liveNow) is
+DONE. Migrated:
+- ExpMgr spread x5 (:386/407/435/464/549) -> liveNow(Control::Spread).
+- SandsMgr spread x3 (:325/452/547) -> liveNow(Control::Spread).
+- ModeController A/B mix (:63) -> liveNow(Control::ABMix).
+- Monsoon reseed (:319) -> liveNow(Control::Reseed).
+All static-form (pass the same engine.locked) except reseed (instance form in Monsoon). 30/30 green
+throughout -- behaviour identical (liveNow(LATCH)==!locked).
+
+### Big-5 / NoteSliders / OctaveRange: NOTHING TO MIGRATE (important finding)
+These controls are NOT gated by scattered if(!locked) checks. They flow to the engine
+UNCONDITIONALLY (e.g. Monsoon.cpp:933 engine.accentProb = ...; big-5/note/octave populate
+PatternInput every control tick). Lock is enforced DOWNSTREAM by the ENGINE FREEZE
+(PatternEngine::redrawRhythm/Melody/applyPendingSeeds: if(in.locked) return) -- the values keep
+being written but the engine ignores them when locked because it doesn't redraw. That IS correct
+LATCH behaviour, via engine-freeze, which we agreed STAYS in the engine (audio-thread, no manager
+round-trip).
+
+So their Control enum entries (BigFive/NoteSliders/OctaveRange) exist for MODEL COMPLETENESS and
+phase-2 use (if any becomes independently lockable), but there is no phase-1 call-site swap for
+them. Phase 1 is complete.
+
+### Engine freeze sites: intentionally NOT migrated
+PatternEngine.cpp :199/:328/:396 (if(in.locked) return) stay engine-side by design -- the manager
+reads the same lock; it does not absorb the freeze. Correct per the architecture.
+
+### Phase 2 (next, behaviour-CHANGING) unchanged
+Boundary/unlock events + QUEUE first-class (CA scatter, ExpMgr :110 shadow-state removal); OPEN
+rulings (transpose->LIVE, direction->LATCH, owner); per-expander finish; lock-scope menu.
