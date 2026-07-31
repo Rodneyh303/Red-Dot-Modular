@@ -120,3 +120,31 @@ need the same gating.
   LIVE. Most already flow through spread/big-5 paths already migrated or engine-freeze-enforced.
 - CA scatter ARM path explicit through QUEUE; Raffles dice-gates QUEUE.
 - Lock-scope menu (§7).
+
+## Direction DONE (this session) + Owner analysis (needs tracing)
+
+### Direction -> LATCH: DONE
+Both promotion paths gated on !locked: StepEdge (SequencerEngine.cpp ~173) and Phrase-quant
+(~278). Direction change under lock stays pending, commits at first unlocked step edge/phrase wrap.
+Committed locally (push pending -- see below). Clarified: engine.locked (SequencerEngine::locked,
+toggled via Monsoon::locked alias) IS the live lock; line-124 locked=false is reset() init only.
+
+### Owner -> LATCH: analysis, NOT yet done
+Owner is STORE-BACKED (editor.macroOwn[]/monoOwner[]/varlegDeleg[], Monsoon.hpp:723-747), written
+IMMEDIATELY by setters -- NO pending/commit staging like direction. So owner currently takes effect
+live = LIVE, not LATCH. To make it LATCH (twins with direction), owner under lock must freeze.
+
+Owner is READ into topoIn (topology input) in the managers (SandsMgr:103/384, ExpMgr:36/81/83/321/
+342) -- it shapes routing/ownership that feeds the spread/generation path. OPEN QUESTION: is topoIn
+consumed at REDRAW (which freezes under lock -> owner might ALREADY effectively latch) or applied
+LIVE? Must trace topoIn consumption before deciding:
+- If owner's effect flows only through already-lock-gated spread/topology paths (phase 1), it may
+  already latch -- no new gate needed (like transpose/note-sliders were already-correct no-ops).
+- If owner leaks through a live path, it needs gating -- but since it's a direct store with no
+  pending buffer, gating means either adding a pending/commit layer (like direction) OR gating the
+  READ (skip re-reading owner into topoIn while locked, hold the last-committed topology).
+NEXT: trace where topoIn is consumed (redraw vs live) to pick the approach.
+
+### PUSH PENDING
+Container was reset; fresh clone has no git credentials. Direction commit is LOCAL only. Needs
+push access re-established to land on origin/feat/lock-mode.
