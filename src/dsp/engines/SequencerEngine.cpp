@@ -165,7 +165,12 @@ bool SequencerEngine::advancePlayhead(int dir) {
     // (Phrase promotion still happens at the wrap, below). Everything else — the position of
     // every lane — is recomputed from totalStepsElapsed after it advances, so no lane carries
     // an accumulator that can drift away from the DNA clock. See laneTickFor().
-    if (laneFlipQuant == LaneFlipQuant::StepEdge) {
+    // Promote pending direction at the step edge -- BUT NOT while locked. Direction is LATCH
+    // (LOCK_SEMANTICS §9): a direction change made under lock must freeze and take effect at
+    // unlock, not commit at the next step edge. `locked` is this engine's live lock (aliased as
+    // Monsoon::locked, toggled by the user). Gating here staged-promotes: pending holds the new
+    // dir, and the first unlocked step edge commits it.
+    if (laneFlipQuant == LaneFlipQuant::StepEdge && !locked) {
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
             laneDir_[l] = laneDirPending_[l];
             for (int v = 0; v < 15; ++v) laneDirV_[v][l] = laneDirVPending_[v][l];
@@ -270,7 +275,9 @@ bool SequencerEngine::advancePlayhead(int dir) {
     // Phrase: defer the manual flip to the wrap, so the next phrase plays in the new direction.
     // Only the DIR is promoted now — laneSign_/laneSignV_ are derived from the position each
     // step (see the recompute above), so promoting a "pending sign" would be dead motion.
-    if (laneFlipQuant == LaneFlipQuant::Phrase && wrapped)
+    // Also gated on !locked (LATCH): a direction change under lock waits for unlock, same as
+    // the StepEdge path above -- else direction would still commit under lock via Phrase.
+    if (laneFlipQuant == LaneFlipQuant::Phrase && wrapped && !locked)
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
             laneDir_[l] = laneDirPending_[l];
             for (int v = 0; v < 15; ++v) laneDirV_[v][l] = laneDirVPending_[v][l];
