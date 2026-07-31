@@ -187,9 +187,12 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // Per-lane edit lock (P4 / G5): host returns true for a lane whose values are
   // owned elsewhere (e.g. delegated to Macro) — that lane is shown but its handles
   // and bar can't be edited, while other lanes stay editable. editorLane index.
-  std::function<bool(int editorLane)> laneLockedFn;
-  bool laneLocked(int editorLane) const { return laneLockedFn && laneLockedFn(editorLane); }
-  // TRUE lock-mode state (engine.locked), distinct from laneLockedFn (which is edit-PERMISSION and
+  // EDIT-PERMISSION: is editing this lane BLOCKED (delegated to Macro / owned elsewhere / read-only
+  // tab)? This is NOT lock-mode -- it gates drag/hover on inoperable lanes. For lock-mode use
+  // lockActiveFn below. (These were conflated once; keep them distinct.)
+  std::function<bool(int editorLane)> laneEditBlockedFn;
+  bool laneEditBlocked(int editorLane) const { return laneEditBlockedFn && laneEditBlockedFn(editorLane); }
+  // TRUE lock-mode state (engine.locked), distinct from laneEditBlockedFn (which is edit-PERMISSION and
   // is deliberately false on Macro). The ghost echo needs actual lock, not edit-permission, because
   // the display window also diverges from edit under normal CV modulation when UNLOCKED -- so
   // divergence alone can't distinguish "locked" from "CV modulating". Host wires to engine.locked.
@@ -943,7 +946,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     if (inert || readOnly) { hoverLane = -1; hoverZone = DragState::NONE; return; }
     syncLayout();
     int lane = getLaneAtY(e.pos.y);
-    if (lane >= 0 && laneLocked(lane)) { hoverLane = -1; hoverZone = DragState::NONE; return; }
+    if (lane >= 0 && laneEditBlocked(lane)) { hoverLane = -1; hoverZone = DragState::NONE; return; }
     DragState::Type z = (lane >= 0 && lane < laneCount)
                         ? hitTestHandle(lane, e.pos.x, e.pos.y) : DragState::NONE;
     hoverLane = (z == DragState::NONE) ? -1 : lane;
@@ -967,7 +970,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       //int step = getStepAtX(e.pos.x);
 
       if (lane >= 0 && lane < laneCount) {
-        if (laneLocked(lane)) { e.consume(this); return; }  // P4: delegated lane — inoperable
+        if (laneEditBlocked(lane)) { e.consume(this); return; }  // P4: delegated lane — inoperable
         // Hit-test handles first — they have priority over bar dragging
         DragState::Type handleHit = hitTestHandle(lane, e.pos.x, e.pos.y);
         if (handleHit != DragState::NONE) {
