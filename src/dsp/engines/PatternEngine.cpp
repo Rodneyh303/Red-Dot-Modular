@@ -4,7 +4,6 @@ void PatternEngine::reset() {
     rhythmSeedPending = melodySeedPending = false;
     rhythmRollPending = melodyRollPending = false;
     rhythmPendingLast = melodyPendingLast = false;
-    rhythmTrialPending = melodyTrialPending = false;
     rhythmReseedRollPending = melodyReseedRollPending = false;
     rhythmReseedRollFull = melodyReseedRollFull = false;
     rhythmABCached = melodyABCached = false;
@@ -195,14 +194,12 @@ int PatternEngine::varyNoteIndex(int baseIdx, const PatternInput& in, float r) {
 }
 
 // Regenerate rhythm pattern (16 steps of bool: true=active, false=rest)
-void PatternEngine::redrawRhythm(const PatternInput& in, bool promoteToA) {
+void PatternEngine::redrawRhythm(const PatternInput& in) {
     if (in.locked) return;
 
-    // Two dice modes (see header). MAIN (promoteToA=true): the current candidate
     // B is committed into A FIRST, then a fresh B is drawn, and slew blends A↔B
     // at the roll. A walks forward each roll → groove mutates; low slew = tight
     // variations near the evolving A, slew=1 = full replace (MeloDicer mode).
-    // TRIAL/AUDITION (promoteToA=false): A is left fixed; only a fresh B is drawn.
     // Slew still blends at the roll, so the user auditions candidates against the
     // same anchor A (raise slew to move toward B, lower to fall back to A).
     // First draw (or post-seed): A := B := draw, so effective == draw at any slew.
@@ -217,9 +214,8 @@ void PatternEngine::redrawRhythm(const PatternInput& in, bool promoteToA) {
     beginRhythmDraw();
 
     for (int i = 0; i < 16; ++i) {
-        // MAIN mode: promote current B -> A (commit the last candidate) before
-        // drawing the new one. TRIAL mode skips this so A stays anchored.
-        if (promoteToA) {
+        // Promote current B -> A (commit the last candidate) before drawing the new one.
+        {
             rhythmLockedA[i]    = rhythmCandB[i];
             variationLockedA[i] = variationCandB[i];
             legatoLockedA[i]    = legatoCandB[i];
@@ -324,7 +320,7 @@ void PatternEngine::recomputeEffectiveMelody() {
 }
 
 // Regenerate melody pattern (16 steps of semitone + pitch voltage)
-void PatternEngine::redrawMelody(const PatternInput& in, bool promoteToA) {
+void PatternEngine::redrawMelody(const PatternInput& in) {
     if (in.locked) return;
     const bool first = melodyFirstDraw;
     melodyFirstDraw = false;
@@ -335,7 +331,7 @@ void PatternEngine::redrawMelody(const PatternInput& in, bool promoteToA) {
 
     for (int i = 0; i < 16; ++i) {
         // MAIN: commit current B → A before drawing fresh B. TRIAL: A anchored.
-        if (promoteToA) {
+        {
             melodyLockedA[i] = melodyCandB[i];
             octaveLockedA[i] = octaveCandB[i];
             for (int v=0;v<15;v++){ polyMelodyLockedA[v][i]=polyMelodyCandB[v][i];
@@ -399,8 +395,8 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     // (advance RNG, no reseed), a TRIAL is pending (audition, A anchored, never
     // reseeds), a RESEED-ROLL is pending (main roll + fresh entropy, keeps A/B
     // morph), or Realtime mode.
-    bool shouldRedrawR = rhythmSeedPending || rhythmRollPending || rhythmTrialPending || rhythmReseedRollPending || (rhythmMode == 1);
-    bool shouldRedrawM = melodySeedPending || melodyRollPending || melodyTrialPending || melodyReseedRollPending || (melodyMode == 1);
+    bool shouldRedrawR = rhythmSeedPending || rhythmRollPending || rhythmReseedRollPending || (rhythmMode == 1);
+    bool shouldRedrawM = melodySeedPending || melodyRollPending || melodyReseedRollPending || (melodyMode == 1);
 
     if (rhythmSeedPending) {
         rhythmSeedFloat = rhythmSeedPendingFloat;
@@ -412,21 +408,16 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
         // draws fresh B from the reseeded stream, so A≠B and slew survives.
         if (rhythmReseedRollFull) { seedRhythmPhiloxFull(); }
         else { rhythmSeedFloat = rhythmReseedRollFloat; seedRhythmPhilox(rhythmSeedFloat); }
-    } else if (in.reseedOnRoll && rhythmMode == 1 && !in.rhythmLiveTrial) {
+    } else if (in.reseedOnRoll && rhythmMode == 1) {
         // Realtime MAIN + reseed-on-roll: reseed each redraw. (Live TRIAL never
         // reseeds — it auditions against a fixed A.) CV if present, else full
         // 64-bit internal entropy.
         if (in.seedConnected) { rhythmSeedFloat = in.seedSampleValue; seedRhythmPhilox(rhythmSeedFloat); }
         else                  { seedRhythmPhiloxFull(); }
     }
-    // Promote (main, A walks) unless this is a momentary TRIAL roll OR live mode
-    // is sourced from the TRIAL dice (anchored A → variations on a theme).
-    const bool rLiveTrial = (rhythmMode == 1 && in.rhythmLiveTrial);
-    const bool rPromote = !rhythmTrialPending && !rLiveTrial;
     rhythmRollPending = false;
-    rhythmTrialPending = false;
     rhythmReseedRollPending = false;
-    if (shouldRedrawR) redrawRhythm(in, rPromote);
+    if (shouldRedrawR) redrawRhythm(in);
     rhythmPendingLast = false;   // one-shot: consumed by this boundary's redraw
 
     if (melodySeedPending) {
@@ -437,17 +428,14 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     } else if (melodyReseedRollPending) {
         if (melodyReseedRollFull) { seedMelodyPhiloxFull(); }
         else { melodySeedFloat = melodyReseedRollFloat; seedMelodyPhilox(melodySeedFloat); }
-    } else if (in.reseedOnRoll && melodyMode == 1 && !in.melodyLiveTrial) {
+    } else if (in.reseedOnRoll && melodyMode == 1) {
         // Realtime MAIN + reseed-on-roll only (live TRIAL never reseeds).
         if (in.seedConnected) { melodySeedFloat = in.seedSampleValue; seedMelodyPhilox(melodySeedFloat); }
         else                  { seedMelodyPhiloxFull(); }
     }
-    const bool mLiveTrial = (melodyMode == 1 && in.melodyLiveTrial);
-    const bool mPromote = !melodyTrialPending && !mLiveTrial;
     melodyRollPending = false;
-    melodyTrialPending = false;
     melodyReseedRollPending = false;
-    if (shouldRedrawM) redrawMelody(in, mPromote);
+    if (shouldRedrawM) redrawMelody(in);
     melodyPendingLast = false;   // one-shot: consumed by this boundary's redraw
 
     // Always refresh the cache so the LEDs react to live knob changes in Dice mode

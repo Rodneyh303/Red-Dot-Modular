@@ -59,8 +59,6 @@ struct PatternInput {
     // false = MAIN (promote, A walks); true = TRIAL (anchored A, variations on a
     // theme; never reseeds). Resolves the "two live modes" conflict — live is one
     // switch, the source is a separate switch, so only one dice is ever live.
-    bool  rhythmLiveTrial  = false;
-    bool  melodyLiveTrial  = false;
     bool  seedConnected    = false;
     float seedSampleValue  = 0.f;   // current SEED CV (0..10) when seedConnected
 };
@@ -316,8 +314,6 @@ struct PatternEngine {
     bool  rhythmRollPending = false;
     bool  rhythmPendingLast = false, melodyPendingLast = false; // Last* = invert dice dir this boundary
     bool  melodyRollPending = false;
-    bool  rhythmTrialPending = false;
-    bool  melodyTrialPending = false;
     // Pending RESEED-ROLL — like a (main) roll but ALSO reseeds the RNG from a
     // fresh value, while keeping the A/B morph: promote B→A, reseed, draw fresh
     // B, no firstDraw. Used by the "Reseed on roll" option. Trial rolls never
@@ -467,10 +463,10 @@ struct PatternEngine {
     int varyNoteIndex(int baseIdx, const PatternInput& in, float r);
 
     // Regenerate rhythm pattern (16 steps of bool: true=active, false=rest)
-    void redrawRhythm(const PatternInput& in, bool promoteToA = true);
+    void redrawRhythm(const PatternInput& in);
 
     // Regenerate melody pattern (16 steps of semitone + pitch voltage)
-    void redrawMelody(const PatternInput& in, bool promoteToA = true);
+    void redrawMelody(const PatternInput& in);
 
     // Updates the rhythm/melody arrays used for UI and LEDs based on the 
     // current knob positions and the *existing* random buffers.
@@ -586,13 +582,9 @@ struct PatternEngine {
 
     /// Arm a rhythm TRIAL/audition roll — like a roll but A stays anchored
     /// (promoteToA=false): auditions a fresh candidate B against the fixed A.
-    void setPendingRhythmTrial() { rhythmTrialPending = true; rhythmPendingLast = false; }
     /// Arm a melody TRIAL/audition roll.
-    void setPendingMelodyTrial() { melodyTrialPending = true; melodyPendingLast = false; }
 
     // LAST-TRIAL: audition the PREVIOUS candidate B (index −1, A still anchored).
-    void setPendingRhythmLastTrial() { rhythmTrialPending = true; rhythmPendingLast = true; }
-    void setPendingMelodyLastTrial() { melodyTrialPending = true; melodyPendingLast = true; }
 
     /// Arm a rhythm RESEED-ROLL — reseed but keep the A/B morph (promote B→A, no
     /// firstDraw). full=true → full 64-bit internal entropy (float ignored);
@@ -602,10 +594,10 @@ struct PatternEngine {
     void setPendingMelodyReseedRoll(float seedValue, bool full) { melodyReseedRollFloat = seedValue; melodyReseedRollFull = full; melodyReseedRollPending = true; }
 
     /// Check if a rhythm dice action (seed OR roll OR trial OR reseed-roll) is pending.
-    bool isRhythmSeedPending() const { return rhythmSeedPending || rhythmRollPending || rhythmTrialPending || rhythmReseedRollPending; }
+    bool isRhythmSeedPending() const { return rhythmSeedPending || rhythmRollPending || rhythmReseedRollPending; }
 
     /// Check if a melody dice action (seed OR roll OR trial OR reseed-roll) is pending.
-    bool isMelodySeedPending() const { return melodySeedPending || melodyRollPending || melodyTrialPending || melodyReseedRollPending; }
+    bool isMelodySeedPending() const { return melodySeedPending || melodyRollPending || melodyReseedRollPending; }
     
     /// Handle phrase boundary: apply pending seeds and redraw patterns
     void onPhraseBoundary(const PatternInput& in) {
