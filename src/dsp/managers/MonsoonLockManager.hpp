@@ -61,6 +61,17 @@ enum class Control : uint8_t {
 
 class LockManager {
 public:
+    // Lock SCOPE (LOCK_SEMANTICS §7): how much of the LATCH set actually latches when lock is on.
+    // Whole-module is the v1 default; Section/PerLane are the future refinements the context menu
+    // exposes. The enum + storage + menu ship now; only WholeModule is functionally wired (Section/
+    // PerLane fall back to whole-module gating until their section/lane mapping is defined).
+    enum class LockScope : uint8_t {
+        WholeModule,   // default: the entire LATCH set latches
+        Section,       // latch one section (e.g. melody prep) but keep the other live -- future
+        PerLane,       // latch selected lanes only (matches per-lane owner/direction) -- future
+    };
+    LockScope scope = LockScope::WholeModule;
+
     // Bind to the engine's lock bool (single source of lock STATE). The manager does not own the
     // bool -- it reads it. Constructed with a reference so it always sees the current lock state.
     explicit LockManager(const bool& lockedRef) : locked_(lockedRef) {}
@@ -98,6 +109,10 @@ public:
     //   QUEUE -> not "live now" in the continuous sense; it arms and fires at a boundary. For the
     //            phase-1 continuous-write call sites this returns !locked (matching current
     //            behaviour); the true arm-and-fire semantics arrive with the phase-2 queue.
+    // SCOPE (§7): only WholeModule is functionally wired -- it latches the entire LATCH set (current
+    // behaviour). Section/PerLane would NARROW this (keep some latch-set controls live under lock)
+    // once their section/lane mapping exists; until then they behave as WholeModule. So scope does
+    // not yet alter liveNow -- the field is stored/persisted/menu-exposed, ready to branch here.
     bool liveNow(Control c) const {
         switch (categoryOf(c)) {
             case LockCategory::LIVE:  return true;

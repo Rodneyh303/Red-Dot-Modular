@@ -55,6 +55,7 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     }
 
     json_object_set_new(root, "locked", json_boolean(m->locked));
+    json_object_set_new(root, "lockScope", json_integer((int)m->lockManager.scope));
     json_object_set_new(root, "muted", json_boolean(m->muted));
 
     // ── Engine State ──
@@ -275,6 +276,7 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
         if (auto j = json_object_get(root, "lockScaleNotes")) m->scaleManager->lockScaleNotes = (bool)json_boolean_value(j);
     }
     if (auto j = json_object_get(root, "locked")) m->locked = (bool)json_boolean_value(j);
+    if (auto j = json_object_get(root, "lockScope")) m->lockManager.scope = (dotModular::LockManager::LockScope)json_integer_value(j);
     if (auto j = json_object_get(root, "muted")) m->muted = (bool)json_boolean_value(j);
 
     // ── Engine State ──

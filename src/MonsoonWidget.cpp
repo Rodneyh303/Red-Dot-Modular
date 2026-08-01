@@ -759,6 +759,26 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
                 addQ("Flip at step edge",       SequencerEngine::LaneFlipQuant::StepEdge);
             }));
         }
+        // Lock SCOPE (§7): what latches when LOCK is engaged. Whole-module is the default; Section
+        // and Per-lane are exposed but currently fall back to whole-module gating (future).
+        {
+            struct LockScopeItem : ui::MenuItem {
+                Monsoon* module; dotModular::LockManager::LockScope value;
+                void onAction(const event::Action&) override { if (module) module->lockManager.scope = value; }
+                void step() override {
+                    rightText = (module && module->lockManager.scope == value) ? "✔" : "";
+                    ui::MenuItem::step();
+                }
+            };
+            menu->addChild(createSubmenuItem("Lock scope", "", [=](ui::Menu* sm) {
+                auto addS = [&](const char* label, dotModular::LockManager::LockScope v) {
+                    auto* it = createMenuItem<LockScopeItem>(label); it->module = m; it->value = v; sm->addChild(it);
+                };
+                addS("Whole module",     dotModular::LockManager::LockScope::WholeModule);
+                addS("Section (future)", dotModular::LockManager::LockScope::Section);
+                addS("Per-lane (future)",dotModular::LockManager::LockScope::PerLane);
+            }));
+        }
         menu->addChild(new ui::MenuSeparator);
         struct IntItem : ui::MenuItem {
             Monsoon* module; int* target; int value;
