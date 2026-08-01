@@ -502,10 +502,6 @@ struct Monsoon : Module {
     redDot::PhaseEngine phase;   // Mode E: CV1 phase ramp → pulse grid (forward+reverse)
 
     int cv1Mode = 0;
-    int rhythmReversibleMode = 0;     // 0=Normal, 1=Reversible (per-stream, Mode E)
-    int melodyReversibleMode = 0;
-    int reseedOnModeChange = 1;       // global: reseed (+zero index) on entering reversible
-    int resetIndexOnModeChange = 1;   // global: zero index on entry when NOT reseeding (greyed if reseed on)
     // Global probability-CV-out config (read by the Sands visual expanders; they have
     // no menus of their own). Scale 0=0..1V,1=0..5V,2=0..10V; S&H vs continuous.
     int  probOutScale = 2;
@@ -897,8 +893,6 @@ struct Monsoon : Module {
     void diceRhythm();
     void diceMelody();
     void onPhraseBoundary_();
-    void applyReversibleModeChange_();
-    bool rhythmReversiblePrev_ = false, melodyReversiblePrev_ = false;
     // Shophouse scale modulation is boundary-quantised (like slew): a scale/root edit stages here
     // and commits to the mask on the next phrase boundary (wrapped), never mid-phrase.
     int  shopPendingScale_ = -1;

@@ -406,26 +406,6 @@ float Monsoon::semitoneToVolts(int semitone) {
 // ---------------- Helper: phrase boundary hook -------------------------------
 // Called at phrase boundary (stepIndex wraps from endStep back to startStep).
 // Seeds are applied FIRST so the subsequent redraw uses the new RNG state.
-void Monsoon::applyReversibleModeChange_() {
-    // Per-stream Normal/Reversible, with entry-transition handling. On ENTERING
-    // reversible for a stream: reseedOnModeChange → reseed that stream's Philox (also
-    // zeroes the index); else if resetIndexOnModeChange → just zero the index (keep
-    // key); else keep both (seamless "reversible from here", nonzero origin allowed).
-    bool rRev = (rhythmReversibleMode != 0);
-    bool mRev = (melodyReversibleMode != 0);
-    if (rRev && !rhythmReversiblePrev_) {
-        if (reseedOnModeChange)          engine.pe.seedRhythmPhilox(rhythmSeedFloat);
-        else if (resetIndexOnModeChange) engine.pe.zeroRhythmIndex();
-    }
-    if (mRev && !melodyReversiblePrev_) {
-        if (reseedOnModeChange)          engine.pe.seedMelodyPhilox(melodySeedFloat);
-        else if (resetIndexOnModeChange) engine.pe.zeroMelodyIndex();
-    }
-    rhythmReversiblePrev_ = rRev;
-    melodyReversiblePrev_ = mRev;
-    engine.pe.setRhythmReversible(rRev);
-    engine.pe.setMelodyReversible(mRev);
-}
 
 void Monsoon::onPhraseBoundary_() {
     // Per-stream behavior is handled inside the draw path via rhythmDrawDir()/
@@ -529,10 +509,8 @@ void Monsoon::process(const ProcessArgs& args) {
         if (phaseDriven) bpm = phase.bpm;   // tempo follows the ramp's velocity (knob or CV)
         modeController->setPhaseReverse(phase.reverse);
         engine.pe.setReverseActive(phase.reverse);
-        applyReversibleModeChange_();
     } else {
         engine.pe.setReverseActive(false);
-        applyReversibleModeChange_();
     }
 
     // ── Run/Reset Gate Processing ──

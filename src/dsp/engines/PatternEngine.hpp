@@ -396,15 +396,9 @@ struct PatternEngine {
     // pure stochastic dice — the draw index is a SIGNED counter, +1 on a forward armed
     // roll, -1 on a reverse armed roll, NO floor/ceiling (Philox is a keyed bijection
     // over the full signed counter space, so any index is a valid reproducible draw).
-    // Reversible blocks trial arming + trial-as-live-source + reseed-on-roll. The only
     // state is the current index (rhythmDrawCtr/melodyDrawCtr).
-    bool rhythmReversible = false, melodyReversible = false;
     bool reverseActive = false;                       // phase direction, set each block
     void setReverseActive(bool rev) { reverseActive = rev; }
-    void setRhythmReversible(bool r) { rhythmReversible = r; }
-    void setMelodyReversible(bool r) { melodyReversible = r; }
-    bool rhythmAuditionsAllowed() const { return !rhythmReversible; }
-    bool melodyAuditionsAllowed() const { return !melodyReversible; }
     inline void zeroRhythmIndex() { rhythmDrawCtr = 0; }
     inline void zeroMelodyIndex() { melodyDrawCtr = 0; }
     // Draw-step direction for a stream this redraw: reverse only when the stream is
@@ -415,11 +409,11 @@ struct PatternEngine {
     // Last = +1). So Last* is always "the opposite of dice in the current mode", not an
     // absolute reverse.
     inline int rhythmDrawDir() const {
-        int base = (reverseActive && rhythmReversible) ? -1 : +1;
+        int base = reverseActive ? -1 : +1;
         return rhythmPendingLast ? -base : base;
     }
     inline int melodyDrawDir() const {
-        int base = (reverseActive && melodyReversible) ? -1 : +1;
+        int base = reverseActive ? -1 : +1;
         return melodyPendingLast ? -base : base;
     }
 
@@ -586,19 +580,19 @@ struct PatternEngine {
     // reversible stream: there the index↔phase coupling IS the reproducibility contract,
     // and a manual index step (independent of phase) would silently void it. So Last* is
     // a Normal-mode navigation gesture only — same principle that blocks trial/reseed-on
-    // -roll in reversible mode. (rhythmAuditionsAllowed() == !rhythmReversible.)
-    void setPendingRhythmLastRoll()  { if (rhythmAuditionsAllowed()) { rhythmRollPending = true; rhythmPendingLast = true; } }
-    void setPendingMelodyLastRoll()  { if (melodyAuditionsAllowed()) { melodyRollPending = true; melodyPendingLast = true; } }
+    // -roll (audition/reversible-mode gating removed under the scrub model).
+    void setPendingRhythmLastRoll()  { rhythmRollPending = true; rhythmPendingLast = true; }
+    void setPendingMelodyLastRoll()  { melodyRollPending = true; melodyPendingLast = true; }
 
     /// Arm a rhythm TRIAL/audition roll — like a roll but A stays anchored
     /// (promoteToA=false): auditions a fresh candidate B against the fixed A.
-    void setPendingRhythmTrial() { if (rhythmAuditionsAllowed()) { rhythmTrialPending = true; rhythmPendingLast = false; } }
+    void setPendingRhythmTrial() { rhythmTrialPending = true; rhythmPendingLast = false; }
     /// Arm a melody TRIAL/audition roll.
-    void setPendingMelodyTrial() { if (melodyAuditionsAllowed()) { melodyTrialPending = true; melodyPendingLast = false; } }
+    void setPendingMelodyTrial() { melodyTrialPending = true; melodyPendingLast = false; }
 
     // LAST-TRIAL: audition the PREVIOUS candidate B (index −1, A still anchored).
-    void setPendingRhythmLastTrial() { if (rhythmAuditionsAllowed()) { rhythmTrialPending = true; rhythmPendingLast = true; } }
-    void setPendingMelodyLastTrial() { if (melodyAuditionsAllowed()) { melodyTrialPending = true; melodyPendingLast = true; } }
+    void setPendingRhythmLastTrial() { rhythmTrialPending = true; rhythmPendingLast = true; }
+    void setPendingMelodyLastTrial() { melodyTrialPending = true; melodyPendingLast = true; }
 
     /// Arm a rhythm RESEED-ROLL — reseed but keep the A/B morph (promote B→A, no
     /// firstDraw). full=true → full 64-bit internal entropy (float ignored);

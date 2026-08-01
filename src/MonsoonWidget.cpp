@@ -108,7 +108,7 @@ struct TrialButton : VCVButton {
     bool inert() const {
         auto* m = dynamic_cast<Monsoon*>(this->module);
         if (!m) return false;
-        return (isMelody ? m->melodyReversibleMode : m->rhythmReversibleMode) != 0;
+        return false;  // reversible mode removed (scrub model) -- no per-stream flag
     }
     void onDragStart(const event::DragStart& e) override {
         if (inert()) return;                 // swallow — no actuation, no value change
@@ -813,22 +813,6 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
               const char* n[] = {"A: Sequencer","B: Seq + Gate","C: Quantizer 1","D: Quantizer 2","E: Phase (CV1)"};
               for (int v=0;v<5;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->modeSelect;it->value=v;sub->addChild(it);} }
 
-            sub->addChild(new ui::MenuSeparator);
-            { auto* l = new ui::MenuLabel; l->text = "Reversible (Mode E phase)"; sub->addChild(l);
-              // Per-stream Normal/Reversible. Reversible = pure dice, signed index,
-              // forward/back; blocks trial + reseed-on-roll for that stream.
-              const char* rm[] = {"Normal","Reversible"};
-              { auto* ll = new ui::MenuLabel; ll->text = "  Rhythm"; sub->addChild(ll); }
-              for (int v=0;v<2;++v){auto* it=createMenuItem<IntItem>(rm[v]);it->module=m;it->target=&m->rhythmReversibleMode;it->value=v;sub->addChild(it);}
-              { auto* ll = new ui::MenuLabel; ll->text = "  Melody"; sub->addChild(ll); }
-              for (int v=0;v<2;++v){auto* it=createMenuItem<IntItem>(rm[v]);it->module=m;it->target=&m->melodyReversibleMode;it->value=v;sub->addChild(it);}
-              sub->addChild(new ui::MenuSeparator);
-              // Global on entering reversible: reseed (+zero index), or just zero index.
-              { auto* it=createMenuItem<BoolToggle>("Reseed on mode change");it->target=&m->reseedOnModeChange;sub->addChild(it); }
-              { auto* it=createMenuItem<BoolToggle>("Reset index on mode change");it->target=&m->resetIndexOnModeChange;
-                it->disabled = (m->reseedOnModeChange != 0);   // greyed when reseed handles it
-                sub->addChild(it); }
-            }
 
             sub->addChild(new ui::MenuSeparator);
 
@@ -863,7 +847,6 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
                 // Reseed-on-roll is inert when BOTH streams are reversible (reversible
                 // blocks it per stream); grey it then to signal that.
                 auto* ror = createBoolPtrMenuItem("Reseed on roll (main dice)", "", &m->reseedOnRoll);
-                ror->disabled = (m->rhythmReversibleMode != 0 && m->melodyReversibleMode != 0);
                 sub->addChild(ror);
                 sub->addChild(createBoolPtrMenuItem("Reseed on restart", "", &m->reseedOnRestart));
             }
@@ -874,10 +857,8 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
                 // Live "trial as source" is blocked on a reversible stream — grey the
                 // matching per-stream toggle.
                 auto* rt = createBoolPtrMenuItem("Rhythm: trial (else main)", "", &m->rhythmLiveTrial);
-                rt->disabled = (m->rhythmReversibleMode != 0);
                 sub->addChild(rt);
                 auto* mt = createBoolPtrMenuItem("Melody: trial (else main)", "", &m->melodyLiveTrial);
-                mt->disabled = (m->melodyReversibleMode != 0);
                 sub->addChild(mt);
             }
 

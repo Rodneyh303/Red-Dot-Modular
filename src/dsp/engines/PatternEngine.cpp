@@ -412,7 +412,7 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
         // draws fresh B from the reseeded stream, so A≠B and slew survives.
         if (rhythmReseedRollFull) { seedRhythmPhiloxFull(); }
         else { rhythmSeedFloat = rhythmReseedRollFloat; seedRhythmPhilox(rhythmSeedFloat); }
-    } else if (in.reseedOnRoll && rhythmMode == 1 && !in.rhythmLiveTrial && !rhythmReversible) {
+    } else if (in.reseedOnRoll && rhythmMode == 1 && !in.rhythmLiveTrial) {
         // Realtime MAIN + reseed-on-roll: reseed each redraw. (Live TRIAL never
         // reseeds — it auditions against a fixed A.) CV if present, else full
         // 64-bit internal entropy.
@@ -421,7 +421,7 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     }
     // Promote (main, A walks) unless this is a momentary TRIAL roll OR live mode
     // is sourced from the TRIAL dice (anchored A → variations on a theme).
-    const bool rLiveTrial = (rhythmMode == 1 && in.rhythmLiveTrial && !rhythmReversible);
+    const bool rLiveTrial = (rhythmMode == 1 && in.rhythmLiveTrial);
     const bool rPromote = !rhythmTrialPending && !rLiveTrial;
     rhythmRollPending = false;
     rhythmTrialPending = false;
@@ -437,12 +437,12 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     } else if (melodyReseedRollPending) {
         if (melodyReseedRollFull) { seedMelodyPhiloxFull(); }
         else { melodySeedFloat = melodyReseedRollFloat; seedMelodyPhilox(melodySeedFloat); }
-    } else if (in.reseedOnRoll && melodyMode == 1 && !in.melodyLiveTrial && !melodyReversible) {
+    } else if (in.reseedOnRoll && melodyMode == 1 && !in.melodyLiveTrial) {
         // Realtime MAIN + reseed-on-roll only (live TRIAL never reseeds).
         if (in.seedConnected) { melodySeedFloat = in.seedSampleValue; seedMelodyPhilox(melodySeedFloat); }
         else                  { seedMelodyPhiloxFull(); }
     }
-    const bool mLiveTrial = (melodyMode == 1 && in.melodyLiveTrial && !melodyReversible);
+    const bool mLiveTrial = (melodyMode == 1 && in.melodyLiveTrial);
     const bool mPromote = !melodyTrialPending && !mLiveTrial;
     melodyRollPending = false;
     melodyTrialPending = false;
