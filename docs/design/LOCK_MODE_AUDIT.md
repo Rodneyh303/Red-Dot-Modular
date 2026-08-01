@@ -214,3 +214,25 @@ Control::Transpose (LIVE), Control::Direction (LATCH), Control::Owner (LATCH). E
 categories via the control their inputs modulate (Causeway/Junction->BigFive-ish LATCH,
 Interchange->NoteSliders/OctaveRange, Shophouse->its own scale-mask LATCH which may reuse a
 ScaleMask entry, Changi->LIVE Display-ish).
+
+## Intertropical transpose: LATCH (Rodney) -- needs lock-on snapshot (no apply to gate)
+
+Ruling: Intertropical per-output transpose = LATCH (not LIVE like main transpose). Rationale: though
+mechanically a final per-output pitch offset (Intertropical.cpp:91, CV_OUT + trSemi/12, downstream
+of voice->slot->output routing), on a POLYPHONIC output it re-voices CHORDS -- shifting intervals
+between simultaneous outputs changes harmonic content. Rodney: structural enough to freeze under
+lock so chord voicings stay stable while locked.
+
+IMPLEMENTATION WRINKLE (differs from LOR/direction): transpose is a DIRECT LIVE READ at output time
+(params[TRANSPOSE_FIRST+ch].getValue() added to CV_OUT). There is NO store->engine apply to skip
+(LOR) and NO pending->commit to gate (direction). So LATCH here needs the explicit "snapshot
+resolved value at lock-on" mechanism (LOCK_SEMANTICS §9:108):
+- At the lock edge (unlocked->locked), snapshot the 8 transpose knob values into a parallel buffer.
+- While locked, CV_OUT uses the SNAPSHOT, not the live knob.
+- At unlock, resume reading live knobs (which commits any change made under lock).
+Needs: 8-float snapshot array + lock-edge detection in Intertropical (it can reach lock via
+straits->/Monsoon engine.locked, same path as its other reads). Main-module transpose stays LIVE
+(monophonic-ish output offset, already correct, no change).
+
+STATUS: design ruling recorded. Intertropical isn't built yet -- bake this LATCH-snapshot in when
+Intertropical is implemented. Not a change to current live code.
