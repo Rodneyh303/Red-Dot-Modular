@@ -589,11 +589,21 @@ void Monsoon::process(const ProcessArgs& args) {
         scaleManager->lockScaleNotes =
             shop->params[ShophouseIds::CONSERVATION_PARAM].getValue() > 0.5f;
         const auto& e = shop->list.activeEntry();
+        // Shophouse scale modulation is BOUNDARY-QUANTISED (like slew on Monsoon): a scale/root
+        // change is picked up here but only COMMITTED to the mask on the phrase boundary (wrapped),
+        // never mid-phrase -- so scale edits land on the loop edge exactly like the front switch.
+        // Stage the pending scale; commit at the boundary.
         if (scaleManager->lastSelectedScale != e.scaleIdx
             || scaleManager->scaleRoot != e.root) {
-            scaleManager->lastSelectedScale = e.scaleIdx;
-            scaleManager->scaleRoot         = e.root;
+            shopPendingScale_     = e.scaleIdx;
+            shopPendingRoot_      = e.root;
+            shopScaleChangePending_ = true;
+        }
+        if (shopScaleChangePending_ && engine.lastStepResult.wrapped) {
+            scaleManager->lastSelectedScale = shopPendingScale_;
+            scaleManager->scaleRoot         = shopPendingRoot_;
             scaleManager->updateScaleMask();
+            shopScaleChangePending_ = false;
         }
     }
 

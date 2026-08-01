@@ -899,6 +899,11 @@ struct Monsoon : Module {
     void onPhraseBoundary_();
     void applyReversibleModeChange_();
     bool rhythmReversiblePrev_ = false, melodyReversiblePrev_ = false;
+    // Shophouse scale modulation is boundary-quantised (like slew): a scale/root edit stages here
+    // and commits to the mask on the next phrase boundary (wrapped), never mid-phrase.
+    int  shopPendingScale_ = -1;
+    int  shopPendingRoot_  = -1;
+    bool shopScaleChangePending_ = false;
     void onReset() override;
     void onSampleRateChange(const SampleRateChangeEvent& e) override;
     int getNoteLenIdx_();
