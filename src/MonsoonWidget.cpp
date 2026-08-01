@@ -850,18 +850,6 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
                 sub->addChild(ror);
                 sub->addChild(createBoolPtrMenuItem("Reseed on restart", "", &m->reseedOnRestart));
             }
-
-            sub->addChild(new ui::MenuSeparator);
-            {
-                auto* l = new ui::MenuLabel; l->text = "Which dice live mode drives"; sub->addChild(l);
-                // Live "trial as source" is blocked on a reversible stream — grey the
-                // matching per-stream toggle.
-                auto* rt = createBoolPtrMenuItem("Rhythm: trial (else main)", "", &m->rhythmLiveTrial);
-                sub->addChild(rt);
-                auto* mt = createBoolPtrMenuItem("Melody: trial (else main)", "", &m->melodyLiveTrial);
-                sub->addChild(mt);
-            }
-
         }));
 
         // menu->addChild(createSubmenuItem("DNA Rotation", "", [=](ui::Menu* sub) {

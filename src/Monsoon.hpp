@@ -521,21 +521,16 @@ struct Monsoon : Module {
     dsp::SchmittTrigger rafflesGateTrig[14];  // Raffles's 14 die-action gates (incl Last*)
     // Which dice the LIVE mode drives, per lane: false=main (promote, A walks),
     // true=trial (anchored A, endless variations on a theme). Persisted.
-    bool rhythmLiveTrial = false;
-    bool melodyLiveTrial = false;
 
     // ── Shared die-action vocabulary ─────────────────────────────────────────
     // One definition of "what each die-action does", fired by G3 (menu-routed)
     // AND by Raffles's dedicated gates (and any future source). DRY: add an
     // action here and every gate source can use it.
     enum DieAction {
-        DA_TRIAL_R = 0, DA_TRIAL_M,
-        DA_REDICE_R, DA_REDICE_M,
-        DA_LIVESRC_R, DA_LIVESRC_M,          // toggle live source main<->trial
+        DA_REDICE_R = 0, DA_REDICE_M,
         DA_LIVESTATIC_R, DA_LIVESTATIC_M,    // toggle live<->static (rhythmMode)
         DA_RESEED_ROLL, DA_RESEED_RESTART,
         DA_LASTDICE_R, DA_LASTDICE_M,        // step index opposite to dice
-        DA_LASTTRIAL_R, DA_LASTTRIAL_M,      // audition previous candidate
         DA_NUM
     };
     void fireDieAction(int a);   // defined in Monsoon.cpp

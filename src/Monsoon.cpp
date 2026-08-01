@@ -384,20 +384,14 @@ float Monsoon::semitoneToVolts(int semitone) {
     // Raffles's dedicated gates (and any future source) — DRY.
     void Monsoon::fireDieAction(int a) {
         switch (a) {
-            case DA_TRIAL_R:       rhythmMode = 0; engine.pe.setPendingRhythmTrial(); break;
-            case DA_TRIAL_M:       melodyMode = 0; engine.pe.setPendingMelodyTrial(); break;
             case DA_REDICE_R:      diceRhythm(); break;
             case DA_REDICE_M:      diceMelody(); break;
-            case DA_LIVESRC_R:     rhythmLiveTrial = !rhythmLiveTrial; break;
-            case DA_LIVESRC_M:     melodyLiveTrial = !melodyLiveTrial; break;
             case DA_LIVESTATIC_R:  rhythmMode = 1 - rhythmMode; break;
             case DA_LIVESTATIC_M:  melodyMode = 1 - melodyMode; break;
             case DA_RESEED_ROLL:   reseedOnRoll    = !reseedOnRoll;    break;
             case DA_RESEED_RESTART:reseedOnRestart = !reseedOnRestart; break;
             case DA_LASTDICE_R:    rhythmMode = 0; engine.pe.setPendingRhythmLastRoll();  break;
             case DA_LASTDICE_M:    melodyMode = 0; engine.pe.setPendingMelodyLastRoll();  break;
-            case DA_LASTTRIAL_R:   rhythmMode = 0; engine.pe.setPendingRhythmLastTrial(); break;
-            case DA_LASTTRIAL_M:   melodyMode = 0; engine.pe.setPendingMelodyLastTrial(); break;
         }
     }
 
@@ -543,8 +537,8 @@ void Monsoon::process(const ProcessArgs& args) {
 
     // ── Gate 3 Assignment Handling (Audio Rate for Consistency) ──
     if (cachedGate3Connected && gate3Trig.process(input.gate3, 0.1f, 1.f)) {
-        static const int g3map[] = { DA_TRIAL_R, DA_TRIAL_M, DA_RESEED_ROLL,
-            DA_RESEED_RESTART, DA_LIVESRC_R, DA_LIVESRC_M };
+        static const int g3map[] = { DA_REDICE_R, DA_REDICE_M, DA_RESEED_ROLL,
+            DA_RESEED_RESTART, DA_LIVESTATIC_R, DA_LIVESTATIC_M };
         if (gate3Target >= 0 && gate3Target < (int)(sizeof(g3map)/sizeof(g3map[0]))) {
             fireDieAction(g3map[gate3Target]);
         }
@@ -809,17 +803,6 @@ void Monsoon::process(const ProcessArgs& args) {
                 if (rhythmTriggered) diceRhythm();
                 if (melodyTriggered) diceMelody();
             }
-
-            // Trial/audition dice: roll a fresh candidate B with A ANCHORED, so
-            // the user auditions against a fixed A (raise slew to move toward the
-            // trial, lower to fall back to A). Pressing the REGULAR dice then
-            // commits the current B→A (main mode) when ready to move on.
-            bool trialR, trialM;
-            if (uiManager->processTrialButtons(trialR, trialM)) {
-                if (trialR) { rhythmMode = 0; engine.pe.setPendingRhythmTrial(); }
-                if (trialM) { melodyMode = 0; engine.pe.setPendingMelodyTrial(); }
-            }
-
             // LastDice: roll stepping the index OPPOSITE to plain dice (previous draw).
             // Normal-mode only — the setters no-op on reversible streams.
             bool lastDiceR, lastDiceM;
@@ -827,13 +810,6 @@ void Monsoon::process(const ProcessArgs& args) {
                 if (lastDiceR) { rhythmMode = 0; engine.pe.setPendingRhythmLastRoll(); }
                 if (lastDiceM) { melodyMode = 0; engine.pe.setPendingMelodyLastRoll(); }
             }
-            // LastTrial: audition the previous candidate (index −1, A anchored).
-            bool lastTrialR, lastTrialM;
-            if (uiManager->processLastTrialButtons(lastTrialR, lastTrialM)) {
-                if (lastTrialR) { rhythmMode = 0; engine.pe.setPendingRhythmLastTrial(); }
-                if (lastTrialM) { melodyMode = 0; engine.pe.setPendingMelodyLastTrial(); }
-            }
-            
             if (uiManager->processLockButton()) {
                 locked = !locked;
             }
