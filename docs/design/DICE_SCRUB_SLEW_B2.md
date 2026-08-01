@@ -73,3 +73,35 @@ the intent at low slew. So the expectation is a slew setting, not a boundary cas
 
 Net: LESS code than the old model (no A=0/B=1 priming, no first-draw branch, no reverse clamp) --
 a sign the infinite-line choice is consistent with the model's core property.
+
+## CORRECTION: reversibility holds ONLY at constant slew (Rodney)
+
+The "pure function of position -> reversible" framing above is IMPRECISE. patternAt(M, slew) is a
+pure function of TWO args (M AND slew). The COUNTER is exactly reversible; the AUDIBLE PATTERN is
+reversible iff slew is held constant (or its value is captured with the counter).
+
+Why: if slew changes between two visits to position M, patternAt(M, slew_a) != patternAt(M, slew_b).
+Scrub back to M under a different slew gives a different pattern. So the counter alone does NOT
+reconstruct the pattern -- you need (counter, slew) together.
+
+Consequences (corrections to earlier claims):
+- UNDO is NOT purely the counter scalar. Dice undo state = (counter, slew) pair (still ~12 bytes,
+  still no array). Restoring only the counter under a changed slew won't reproduce the pre-roll
+  pattern. Capture slew alongside. (Amends UNDO_PLAN / DICE_SCRUB_MODEL "undo = counter scalar".)
+- The seed reproducibility guarantee is (seed, position, slew), NOT (seed, position). Seed X at
+  slew=0.2 and slew=0.8 give different position-0 patterns. Expected (slew is a live control), but
+  state the full tuple.
+- This is INHERENT and acceptable: slew is a live/CV-modulatable performance axis, and a live-
+  modulated control is by nature not part of the reproducible-from-counter state -- that IS the
+  tradeoff for playability. Still strictly better than the OLD model, where slew was consumed
+  DESTRUCTIVELY at roll time (not recoverable at all); here it is recoverable if its value is known.
+
+Precise statement: COUNTER exactly reversible; PATTERN reversible iff slew constant (or slew captured
+with the counter). Scrub with slew parked = fully reversible. Scrub while modulating slew = not
+bit-reversible, BY DESIGN (slew is a live axis).
+
+OPEN (lock interaction): should slew LATCH under lock? If slew is frozen under lock, locked playback
+is FULLY reversible (clean guarantee). If slew stays LIVE under lock, locked playback is not bit-
+reversible while slew moves. Given slew now shapes pattern STRUCTURE (via the FIR window), there is a
+real argument for LATCH under lock -- same reasoning as the Intertropical-transpose LATCH call.
+Decide when wiring lock + dice-scrub together.
