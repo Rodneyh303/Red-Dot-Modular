@@ -259,6 +259,10 @@ struct PatternEngine {
     // move to the A/B candidate buffers. See CHANGE_ALLEY_DESIGN.md §3.
     float rhythmMixLatched = 0.f, melodyMixLatched = 0.f;
     float rhythmMixApplied =-1.f, melodyMixApplied =-1.f;
+    // Scrub recompute guard: also track the counter and slew that the last recompute used, so the
+    // no-redraw refresh path recomputes ONLY when (mix, slew, counter) actually changed -- otherwise
+    // it re-derived the full K-window every ~90Hz refresh for no reason (idle cost scaling with K).
+    int64_t rhythmCtrApplied = INT64_MIN, melodyCtrApplied = INT64_MIN;
 
     // ── Slew output buffers (Option W) ────────────────────────────────────────
     // slew writes the A/B blend here (step-0 latched). The PUBLIC arrays above

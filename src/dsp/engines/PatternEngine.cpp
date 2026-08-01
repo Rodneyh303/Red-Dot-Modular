@@ -303,7 +303,7 @@ void PatternEngine::recomputeEffectiveRhythm() {
             for (int v=0;v<15;v++) polyRandom(v, PL_ACCENT)[i]=slewedPolyAccent[v][i];
         }
     }
-    rhythmMixApplied = s;
+    rhythmMixApplied = rhythmMixLatched; rhythmSlewApplied = slew; rhythmCtrApplied = N;
 }
 
 void PatternEngine::recomputeEffectiveMelody() {
@@ -332,7 +332,7 @@ void PatternEngine::recomputeEffectiveMelody() {
                                     polyRandom(v, PL_OCTAVE)[i]=slewedPolyOctave[v][i]; }
         }
     }
-    melodyMixApplied = s;
+    melodyMixApplied = melodyMixLatched; melodySlewApplied = slew; melodyCtrApplied = N;
 }
 
 // Regenerate melody pattern (16 steps of semitone + pitch voltage)
@@ -400,8 +400,16 @@ void PatternEngine::refreshVisualCache(const PatternInput& in) {
     // and the no-redraw pattern diverges from an equivalent redraw at the same counter. Recomputing
     // makes the two paths converge (a seeded engine that never rolled and one that rolled to the same
     // counter now read identically). Cheap: it's just the window blend.
-    recomputeEffectiveRhythm();
-    recomputeEffectiveMelody();
+    // Recompute ONLY when this stream's scrub inputs changed since the last recompute (mix, slew,
+    // or counter). Avoids re-deriving the full K-window every ~90Hz refresh when nothing moved.
+    {
+        const float rSlew = rack::math::clamp(rhythmSlewLatched, 0.f, 1.f);
+        if (rhythmMixLatched != rhythmMixApplied || rSlew != rhythmSlewApplied || rhythmDrawCtr != rhythmCtrApplied)
+            recomputeEffectiveRhythm();
+        const float mSlew = rack::math::clamp(melodySlewLatched, 0.f, 1.f);
+        if (melodyMixLatched != melodyMixApplied || mSlew != melodySlewApplied || melodyDrawCtr != melodyCtrApplied)
+            recomputeEffectiveMelody();
+    }
     for (int i = 0; i < 16; ++i) {
         rhythmPattern[i] = (rhythmRandom[i] >= in.restProb);
         int sem = 0;
