@@ -39,3 +39,37 @@ Under reverse, N decrements and the window M..M-K still reads the same addressab
 symmetric over signed counter). patternAt is direction-agnostic -- it's a function of absolute M. So
 reverse "just works": the effective pattern at counter M is identical whether reached forward or
 backward. This is the reversibility payoff.
+
+## Initial state & reverse: INFINITE LINE (no warmup, no origin floor) -- Rodney
+
+DECISION: the counter is an infinite bidirectional line. There is NO special-casing of the first
+few positions and NO clamp on reverse. Rationale (Rodney): the OLD model needed a warmup (initial
+A=0, B=1, or first-draw A:=B:=draw) because it carried accumulated A/B state that had to be primed.
+The scrub/B2 model has NO accumulated state, so there is nothing to prime -- it is "warm" at every
+position including N=0, because each position is a self-contained pure function of the counter.
+Adding an origin floor or first-draw branch would RE-ADD exactly the boundary state B2 was designed
+to remove.
+
+Consequences:
+- patternAt(0) is as well-formed as patternAt(1000). The FIR ALWAYS reads the full window
+  pos..pos-SCRUB_K, into NEGATIVE positions near the origin. Philox is a keyed bijection over the
+  whole signed counter space, so negative-index draws ("phantom" predecessors below the seed) are
+  valid and fully reproducible -- they are just more draws, not a warmup gap.
+- Truncating the FIR near the origin is FORBIDDEN: it would break the pure-function-of-position
+  property (patternAt(2) computed at seed-time would differ from patternAt(2) reached by reversing
+  from N=8), destroying reversibility symmetry. Always read full K.
+- REVERSE is UNBOUNDED. N may go negative; reverse past the seed origin is fine and reproducible.
+  No clamp on advanceDraw.
+
+Seed semantics (keep current behaviour): seedRhythm/MelodyPhilox re-keys AND zeros the counter
+(rhythmDrawCtr=0). So "seed X" reproducibly means "the window at position 0 under key X" -- the
+reproducible-seed mental model is preserved WITHOUT any first-draw special case. (If seeding left N
+where it was, "seed X" would give different patterns depending on N; zeroing N fixes that.)
+
+"Fresh seed should equal pure draw 0" expectation: satisfied via SLEW, not special-casing. At
+slew=1 the FIR collapses to raw(N), so a fresh seed at slew=1 gives exactly draw 0. At low slew the
+pattern is draw 0 blended with phantom predecessors -- which is precisely "variations on a theme,"
+the intent at low slew. So the expectation is a slew setting, not a boundary case.
+
+Net: LESS code than the old model (no A=0/B=1 priming, no first-draw branch, no reverse clamp) --
+a sign the infinite-line choice is consistent with the model's core property.
