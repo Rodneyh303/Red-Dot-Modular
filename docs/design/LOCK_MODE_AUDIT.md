@@ -236,3 +236,24 @@ straits->/Monsoon engine.locked, same path as its other reads). Main-module tran
 
 STATUS: design ruling recorded. Intertropical isn't built yet -- bake this LATCH-snapshot in when
 Intertropical is implemented. Not a change to current live code.
+
+## Expander threading: COMPLETE (mostly no-op; Shophouse was the real work)
+Verified each expander's lock handling:
+- Causeway (poly rhythm CV) -> modulates effective REST/ACCENT -> feeds the big-5/spread path. Big-5
+  are engine-freeze enforced under lock; spread is phase-1 gated. No direct un-gated engine write.
+  RIDES already-handled paths. No separate gate.
+- Junction (big-5 mod) -> same: feeds big-5, engine-freeze enforced. No gate.
+- Interchange (note/octave slider mod) -> feeds semiWeights/octave, engine-freeze enforced. No gate.
+- Changi -> LIVE (outputs). No gate.
+- Shophouse -> the ONE that needed work: scale modulation is now BOUNDARY-QUANTISED (like slew),
+  commits on phrase edge (b783ece), NOT a lock freeze. Its Conservation toggle is orthogonal.
+Confirmed via grep: no expander makes a direct un-gated engine write; all modulate controls whose
+lock behaviour is already enforced (engine freeze or phase-1 spread/LOR gates). The category-keyed
+design held -- expanders inherit their target's lock behaviour, no per-expander gates needed except
+Shophouse's boundary-quantisation (a musical-timing decision, not a lock gate).
+
+## Phase 2 status
+DONE: LATCH (direction/LOR/owner), LIVE (transpose main), QUEUE (CA scatter; Raffles dice deferred
+to post-scrub-rework), ghost UX, expander threading (above), Shophouse boundary-quantise.
+Intertropical transpose ruled LATCH (snapshot-at-lock-on, build when Intertropical is built).
+REMAINING: lock-scope menu (§7, whole-module default; section/per-lane later).
