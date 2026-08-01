@@ -74,7 +74,17 @@ per-drive mode branching. Verify each drive's roll trigger routes to the one adv
 7. Undo -> counter scalar.
 Each step keeps tests green; the big behaviour change is step 3 (verify in Rack).
 
-## OPEN for Rodney
-- reseed-on-roll under scrub (remove vs "reseed = new counter origin")?
-- detent feel: hard snap at integers or soft detent (magnetised but passable)?
-- does the scrub knob REPLACE the physical MIX knob, or is MIX repurposed in place?
+## RESOLVED (Rodney)
+- reseed-on-roll: DITCHED. Reseed moves to RESET instead (a clean "start fresh" boundary that
+  doesn't conflict with counter-reproducibility mid-scrub). Remove the reseed-on-roll paths;
+  wire reseed onto the reset action.
+- detents: SOFT/MAGNETISED, and DRAG-ONLY. The detent is a UI affordance on the knob WIDGET
+  (magnetise manual drag toward integer draws N..N-6, passable, not quantising). CV modulation and
+  the scrub MATH read the RAW CONTINUOUS position -- so A/B morph via CV stays smooth. Detent lives
+  in the widget, NOT the stored value. (Preserves "want to A/B modulate still.")
+- mix knob: REPURPOSE the existing physical MIX knob in place as the scrub position. No new control,
+  no panel change (for now).
+
+Implication for step 5: the scrub POSITION param is a plain continuous 0..6 value (MIX knob
+repurposed). The detent is added in the knob widget's drag handling only. recomputeEffective* and CV
+both read the raw param. No quantisation anywhere in the value path.
