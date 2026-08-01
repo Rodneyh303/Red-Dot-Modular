@@ -105,3 +105,26 @@ is FULLY reversible (clean guarantee). If slew stays LIVE under lock, locked pla
 reversible while slew moves. Given slew now shapes pattern STRUCTURE (via the FIR window), there is a
 real argument for LATCH under lock -- same reasoning as the Intertropical-transpose LATCH call.
 Decide when wiring lock + dice-scrub together.
+
+## Reversibility DEGRADES GRACEFULLY (Rodney) -- it's a gradient, not a cliff
+
+"Reversible iff constant slew" undersells it -- it sounds binary/fragile when it's actually a smooth
+gradient. patternAt(M, slew) is CONTINUOUS in slew, so approximate slew -> approximate reverse:
+
+  - slew EXACTLY constant      -> bit-exact reverse.
+  - slew APPROXIMATELY held     -> approximately-exact reverse; pattern error scales continuously
+                                   with slew drift (no cliff, no discontinuity).
+  - slew freely modulated       -> not reversible, by design (live axis).
+
+The middle tier is what matters in practice (slew is rarely held to the bit when playing) and it's
+what makes the feature feel trustworthy rather than brittle: nudge slew a hair while scrubbing back
+and you land NEAR where you were, not somewhere random.
+
+WHY the continuity holds (not automatic -- earned by the design):
+- geometric weights w_j=(1-slew)^j are a continuous function of slew;
+- the pattern is a LINEAR blend of FIXED raw draws (raw draws at each position don't move with slew;
+  only their weights shift). So slew -> pattern is smooth.
+Contrast the avoided failure modes: a discrete slew MODE switch, or the recursive/chained walk
+(naive B), would flip the pattern discontinuously on small slew changes -- "approximately held"
+would then give nothing like the original. The truncated-FIR's linearity is what buys graceful
+degradation. Another vindication of B2 over naive-B / mode-based slew.
