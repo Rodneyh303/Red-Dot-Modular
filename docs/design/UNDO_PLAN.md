@@ -612,3 +612,172 @@ audition / reversible / phase-blend AND makes undo dramatically simpler as a con
 
 Note: this applies when the scrub model is built. Until then, current dice undo (counter-rewind
 in reversible mode, not yet wired to Ctrl+Z) remains as designed above.
+
+## Scatter RNG streams: collapse 8 counters -> 2 (rhythm + melody) [DECIDED, Rodney]
+
+### Current: 8 counters
+scatterCounter[SIDES*TYPES*2] = 8 = intra/inter x rhythm/melody x domain/codomain. Each counter
+SELECTS A STREAM (not a within-stream position): the transform seeds correlationRng(counter ^ key),
+so incrementing the counter re-keys a fresh permutation. The domain constant keeps correlation
+streams disjoint from note-generation; the per-operation key + counter keep the 8 operations'
+successive scatters disjoint from each other.
+
+### Decision: 2 counters is enough (one rhythm, one melody)
+The 8-way split's ONLY benefit is reversing one scatter TYPE in isolation (out-of-order). Rodney's
+vision for reverse is step-by-step TIMELINE reversal, never out-of-order per-type. So:
+- rhythm/melody split IS necessary (two separate pin tables; scattering rhythm must not perturb
+  melody's stream -- the domain-separation the code rightly insists on). Keep >= 2.
+- intra/inter and domain/codomain split into 8 is OVER-PROVISIONED for timeline reversal. Those
+  four operations per side can SHARE one counter, because:
+  - Forward: a shared monotonic counter still gives each scatter a fresh deterministic permutation.
+  - Reverse: transport scrub traverses events in reverse chronological ORDER anyway, which is
+    exactly what a single shared counter timeline supports. Out-of-order per-type reversal (the
+    only thing 8 counters buy) is not wanted.
+  - Out-of-order undo is the PIN-SNAPSHOT's job (scatter is fan-in, undo = pin snapshot), not the
+    counter's. The counter is only for deterministic replay, which ordered scrub needs the
+    timeline of, not per-type independence.
+
+### Consequence to be explicit about
+Collapsing 8->2 CHANGES FORWARD BEHAVIOUR: each scatter would key off the shared rhythm/melody
+counter instead of its per-type counter, so the actual permutation SEQUENCES differ from today's
+8-counter behaviour. Not worse -- different. So this is a change to bundle WITH the CA-reverse
+build (where scatter RNG is being reworked anyway), NOT a drive-by edit to currently-working code.
+
+### Payoff
+Reverse-buffer counter block: 64 bytes (8x uint64) -> 16 bytes (2x uint64), or 8 (2x uint32),
+or 4 (2x uint16 -- ample; a scatter op won't fire 65k times/session). Combined with per-event
+DELTA storage (store only the counter that moved), the counter cost in a reverse entry becomes
+~3 bytes typical. Entry drops from ~100 bytes toward ~40.
+
+### To verify before collapsing (one open check)
+Confirm the 8-way split affects ONLY reversibility bookkeeping, not FORWARD permutation VARIETY in
+a way that's musically intended. If independent intra/inter counters were deliberately producing
+richer/more-varied permutations on forward play (independent of reverse), that'd be a forward-
+grounds reason to keep more than 2. Expected: it's pure reversibility bookkeeping (the per-op keys
+already differentiate the operations; the counter only sequences repeats), so 2 is safe -- but
+check at build time.
+
+## Pin block storage + reverse-entry size (full analysis)
+
+### How pins are stored (live module state)
+Two flat arrays: uint8_t rhythmSrc[16], uint8_t melodySrc[16] = 32 bytes. Each src[v] is a SOURCE
+VOICE INDEX (0..15): "output voice v takes its value from source voice src[v]." Identity = src[v]=v.
+Scatter/permutation repoints entries (rhythmSrc[5]=12 -> voice 5 takes voice 12's value). Loaded
+clamped to 0..N_VOICES-1 = 0..15 (dataFromJson). KEEP live state UNPACKED -- fast direct access,
+32 bytes of live state is nothing, and the snapshot struct mirroring live state makes save/restore
+trivially correct.
+
+### Reverse-entry size, corrected design (2 counters, uint32)
+Entry = pins + counter_block + boundary(4).
+- Counters: 8->2 collapse (rhythm+melody, decided), uint32 each = 8 B. (Pins dominate now, so
+  counter width barely matters; uint32 is ample -- no wrap risk -- and shrinking further saves ~4B.)
+- With per-event delta NOT needed (only 2 counters -> just store both absolute; delta bookkeeping
+  isn't worth it once there are only 2).
+
+### Pin PACKING: each value is 0..15 = 4 bits -> nibble-pack 2 voices/byte
+- Unpacked pins: 32 B  -> entry 44 B.
+- Packed pins:   16 B  -> entry 28 B.  (2 voices/byte x 2 tables)
+
+| entries   | unpacked (44B) | packed (28B) |
+|-----------|----------------|--------------|
+| 10,000    | 0.44 MB        | 0.28 MB      |
+| 100,000   | 4.40 MB        | 2.80 MB      |
+| 1,000,000 | 44.0 MB        | 28.0 MB      |
+
+(Note: 28 B matches the ORIGINAL design-doc figure -- but that got there wrongly, assuming a single
+16B pin table + undercounted counters. The correct path to 28 B is packed dual tables (16) + 2x
+uint32 (8) + boundary (4).)
+
+### Packing decision: DO IT (corrected -- Rodney)
+Earlier lean was AGAINST packing, to keep the audio-thread snapshot simple. That reasoning was
+WRONG: the snapshot fires only at PHRASE BOUNDARIES when a transform commits -- event-rate and
+SPARSE, not audio-rate. Nibble-packing 16 values is a trivial loop run a handful of times/second at
+most. So the "don't add complexity to the hot path" objection doesn't apply -- there is no hot path
+here. The packing cost is paid rarely; the RAM saving (2x on the dominant pin block) is permanent.
+The only real cost is one-time bug-risk of nibble-fiddling, which is testable in the standalone
+suite. So: PACK the pins in the reverse buffer (and in any JSON persistence of the buffer, where
+pack/unpack happens once at save/load).
+
+### Net
+Reverse entry = packed pins(16) + 2x uint32 counters(8) + boundary(4) = 28 bytes.
+Realistic sizing 10k-100k entries = 0.28-2.8 MB. A million = 28 MB (over-provisioned; only if you
+want marathon-session guarantee). Pin block is the cost driver even packed, so no further squeeze
+is worth it. Live module state stays UNPACKED (32B) -- packing is a reverse-buffer/persistence
+concern only.
+
+## Scatter counter width: uint64 -> uint32 (matches the 32-bit generator) [Rodney]
+
+The shared RNG is Philox4x32-10 (PhiloxRng.hpp:4,34) -- the 32-BIT variant, philox4x32(counter,
+key), key = array<uint32_t,2>. BOTH dice and CA draw through this same 32-bit generator; there is
+NO 64-bit Philox variant in play. The dice path already decided 32 bits is enough.
+
+BUT CA's live scatterCounter is uint64_t (MonsoonChangeAlleyV2.hpp:41), and correlationRng() takes
+a uint64_t seed -- feeding a 64-bit counter into a generator whose key lanes are 32-bit. The upper
+32 bits collapse (truncate/fold) into the 32-bit key, so the uint64 width provides NO real benefit:
+the generator cannot consume more than 32 bits of counter/key entropy per lane anyway.
+
+So uint64 scatterCounter is OVER-WIDE -- same class of unexamined carryover as the 8-way split:
+over-provisioned state that never got right-sized when library Philox4x32 landed (e32caa9). It
+should be uint32_t, matching (a) what the 32-bit generator can actually use, and (b) the "32 is
+enough" decision from the dice work.
+
+Consequences / bundling:
+- Live state: scatterCounter uint64_t -> uint32_t (bundle with the 8->2 collapse + scatter-RNG
+  rework; it's the same touch-the-scatter-RNG change, not a drive-by).
+- Reverse buffer: this CONFIRMS the uint32 counter choice already recorded -- not just "ample for
+  entry count" but the correct width to match the generator. Reverse entry stays 28 B (packed
+  pins 16 + 2x uint32 counters 8 + boundary 4).
+- Range sanity: uint32 = 4.29e9 scatters per stream before wrap. A scatter op firing once per
+  phrase boundary would need ~decades of continuous play to approach it. Ample.
+
+Note: dice DRAW counters are int64_t (PatternEngine) but for a DIFFERENT reason -- signed
+reversible position addressing (can go negative on reverse). That's the addressable-position use,
+not the key-width question here. CA's scatterCounter is a key/stream selector feeding a 32-bit
+generator, so 32-bit is right for it.
+
+## Unify CA scatter counter with dice: signed int + addressable position [Rodney -- MECHANISM change]
+
+Rodney: CA should use int64_t signed like the dice draw counters, since we already support reverse
+dice draw and intend CA reverse. Correct -- but realizing it means adopting dice's ADDRESSING
+MODEL, not just widening the type. This is the one decision in the scatter-RNG cleanup that is a
+genuine MECHANISM change, not a type/dimension right-sizing. Flag for scrutiny at build.
+
+### The distinction
+- DICE draw counter (int64_t, signed): an ADDRESSABLE POSITION into ONE stream. philox.at(counter)
+  = the draw at index counter. Reverse = decrement, at(counter-1) re-derives the previous draw from
+  the SAME stream. Signed: reverse-scrub can carry position below the start.
+- CA scatter counter (currently): feeds the SEED/KEY -- correlationRng(counter ^ key) SELECTS a
+  stream (increment = re-key a fresh permutation), not a position within one. Unsigned suffices for
+  a pure selector; but this does NOT match dice's reverse mechanism.
+
+### The unification (bundle with 8->2 collapse -- same forward-behaviour rework)
+Once collapsed to 2 streams (one rhythm, one melody), make each side ONE STABLE STREAM and the
+counter a signed POSITION into it, exactly like dice:
+- Forward scatter: perSideStream.at(counter), counter++ advances position (not re-keys).
+- Reverse: counter-- , perSideStream.at(counter-1) re-derives previous permutation from the same
+  stream. Signed int (int64_t or int32_t) so reverse can go negative like dice.
+- This UNIFIES the reverse mechanism across dice and CA: both are "signed counter + at(pos),
+  decrement to reverse." One mental model, one code pattern.
+
+### Type: int32_t vs int64_t
+Dice uses int64_t. For CA the generator is Philox4x32 (32-bit), and a scatter op won't fire
+anywhere near 2^31 times, so int32_t is technically ample AND matches the 32-bit generator width
+decided earlier. BUT for CONSISTENCY with dice's int64_t reverse-position counters, int64_t may be
+worth it despite being wider than the generator strictly needs -- the counter is a POSITION (its
+value indexes at(), it isn't the 32-bit key itself once we switch to the addressing model). DECIDE
+at build: int32_t (matches generator width, ample range) vs int64_t (matches dice exactly, one
+pattern). Leaning int64_t for uniformity since position addressing != key width -- the earlier
+"uint32 matches the generator" argument applied to the SELECTOR model; under the ADDRESSING model
+the counter is a position, so dice's int64_t precedent applies instead.
+
+### Consequence
+- Forward permutation sequence changes AGAIN (addressing model vs selector model). Already accepted
+  the 8->2 change alters forward behaviour; this is part of the same scatter-RNG rework, one pass.
+- Reverse-buffer entry: counter block 2x int64 = 16 B (vs 2x uint32 = 8 B). Entry: packed pins 16
+  + 16 + boundary 4 = 36 B (if int64) or 28 B (if int32). Pins still dominate. Pick int width with
+  the dice-consistency-vs-generator-width call above.
+
+### Status
+MECHANISM change (selector -> addressable position), bundled with the CA-reverse / scatter-RNG
+rework. Gets built-verified with the 8->2 collapse. The int32-vs-int64 width is the open sub-
+decision; leaning int64 for dice uniformity now that the counter is a position, not a key.

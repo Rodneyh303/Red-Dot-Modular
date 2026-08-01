@@ -87,3 +87,173 @@ applies to the specific OPEN rulings (transpose -> LIVE, direction -> LATCH) and
 first-class. So lock mode splits cleanly into: (1) safe consolidation refactor of the correct
 LATCH set into the manager, then (2) the genuinely behaviour-changing rulings on the smaller
 OPEN/QUEUE set. Phase 1 is low-risk and delivers the manager; phase 2 is the careful part.
+
+## LockManager scaling plan -- category-keyed, not per-physical-control
+
+The phase-1 Control enum is a CATEGORY skeleton, not the full control inventory. Making lock
+comprehensive means routing every physical control (knobs, sliders, CV) through liveNow() -- but
+NOT giving every physical control its own enum entry.
+
+### Granularity decision: category-keyed enum
+Many physical controls share one category, so they share one Control value:
+- Every spread knob/attenuverter across every manager/expander -> Control::Spread.
+- Monsoon note-value + all light-sliders for notes -> Control::BigFive.
+- Octave LO/HI + scale toggles -> Control::ScaleMask.
+The enum stays SMALL (one entry per distinct category-behaviour); COVERAGE comes from threading
+liveNow() through every control SITE, not from enumerating every control in the enum. A per-
+physical-control enum (MonsoonNoteSlider_C, StraitsKnob_x, RafflesGate_3...) would explode to
+hundreds of entries mostly mapping to the same handful of categories -- rejected.
+
+The enum grows ONLY when a control needs a category that no existing entry expresses (e.g.
+Transpose = LIVE, deferred to phase 2; Direction = its own LATCH ruling; per-expander entries
+only where an expander's category differs from Spread/Lor/BigFive).
+
+### Coverage status (what still needs threading + classification)
+COVERED by existing enum entries (just need liveNow threaded through their sites):
+- Monsoon note/octave light-sliders -> BigFive (notes) / ScaleMask (oct range). Category exists.
+- Straits (East) LOR/spread -> Lor / Spread (§9: East inherits LATCH). Category exists.
+- Big-5 sliders + CV mod -> BigFive. Category exists.
+
+NEEDS its own enum entry (distinct category / OPEN ruling -- phase 2):
+- Transpose -> LIVE (OPEN-leaning-LIVE, behaviour-changing).
+- Lane Direction -> LATCH (OPEN-leaning-LATCH; read-vs-map = traversal = LATCH). Own entry.
+- Mono/Macro owner -> OPEN-leaning-LIVE (structural routing). Own entry.
+
+NEEDS per-expander CLASSIFICATION before an entry (audit §9 marked "confirm each"):
+- Raffles / Interchange -> provisionally LATCH "if pure routing, revisit". CONFIRM: does each
+  SHAPE generation (LATCH) or just ROUTE finished output (LIVE)?
+- Junction (CV routing into big-5) -> provisionally LATCH (remote modulation path). Confirm.
+- Causeway (poly rhythm CV) -> LATCH (poly REST/ACCENT mod = rhythm section). Likely fine.
+- Changi -> LIVE if transport/vis (confirm role).
+- Shophouse scale mask -> mask VALUES LATCH (like SEMI); the Conservation TOGGLE is orthogonal.
+
+### Migration order (unchanged discipline: one group, tests green, commit)
+Phase 1 (behaviour-preserving): thread liveNow(Control::Spread/Lor/BigFive/ScaleMask/ABMix)
+through the already-correct LATCH sites. The ~23 lock assertions stay green throughout.
+Phase 2 (behaviour-changing + inventory): Transpose/Direction/Owner rulings; per-expander
+classification for Raffles/Junction/Interchange/Changi/Shophouse; QUEUE (scatter) arm-and-fire.
+
+### Reality check (Rodney)
+This is a LARGE surface -- every expander's controls, every Monsoon slider. The manager is the
+right structure to absorb it, but comprehensiveness is incremental control-site work, not a
+one-shot. The enum is the small stable core; the long tail is threading + per-expander
+classification.
+
+## Expander lock classification (Rodney's functional mapping + §9 confirmation)
+
+Most expanders collapse to one or two categories by FUNCTION. Modulation inputs inherit the
+category of the control they modulate (§9 modulation rule: CV of a latched control latches WITH
+it). Classified:
+
+### Junction -> Control::BigFive (LATCH), single category
+All Junction modulation inputs feed the Big-5 rhythm knobs. CV of a LATCH target latches with it.
+One category for the whole expander. liveNow(Control::BigFive) at its write sites.
+
+### Interchange -> NoteSliders + OctaveRange (both LATCH)
+All Interchange modulation inputs feed the 12 note light-sliders and the 2 octave sliders. Spans
+TWO control groups, both LATCH. Functionally all-LATCH. If Interchange's inputs are distinguishable
+(some -> notes, some -> octaves), query the matching group; if blanket, either works (same
+category). CONFIRM: are the inputs separable note-vs-octave, or one blanket mod?
+
+### Raffles -> ABMix (LATCH) + dice-gates (QUEUE) + slew (folds into QUEUE)
+NOT uniformly one category -- but §9 already resolved it precisely (lines 228/288/300):
+- A/B MIX inputs (RAFFLES_MIX_R/M_ATT/CV) -> Control::ABMix (LATCH).
+- DICE / queued GATES -> QUEUE (arm-and-fire at boundary, like scatter). NOT LATCH.
+- SLEW (RAFFLES_SLEW_R/M) -> folds into QUEUE, NOT an independent axis: it is SAMPLED at the
+  phrase boundary (read at the queued redraw). So there is NO separate Control::Slew -- slew rides
+  the queued roll. (Corrected an earlier wrong instinct to give slew its own LATCH entry.)
+Raffles inputs ARE distinguishable (separate SLEW_R/M, MIX_R/M ids), so per-input-group queries
+work: MIX -> ABMix, gates -> QUEUE, slew -> no independent query (consumed at queued redraw).
+
+### Still to classify (unchanged from audit)
+- Causeway -> LATCH (poly REST/ACCENT rhythm mod). Likely one category (like Junction).
+- Changi -> LIVE if transport/vis (confirm role).
+- Shophouse -> mask VALUES LATCH; Conservation TOGGLE orthogonal.
+- Interchange note-vs-octave input separability (above).
+
+### Pattern
+Most expanders = ONE category (Junction=BigFive, Causeway=rhythm-LATCH). A few span two
+(Interchange=NoteSliders+OctaveRange). Raffles is the outlier with three category behaviours
+(ABMix LATCH / gates QUEUE / slew-into-QUEUE) because it touches mix + dice + slew. The category-
+keyed enum handles all of this -- expanders just call liveNow() with the category their inputs
+modulate; no per-expander enum entries needed except where a NEW category emerges (none did here).
+
+## Phase 2 rulings resolved (Rodney, for 2.0)
+
+- Owner -> LATCH. Twin with direction (same per-lane structural control class). Resolves the
+  earlier "owner leans LIVE" -- it was wrong; owner and direction latch together.
+- Direction -> LATCH (already the OPEN ruling; confirmed alongside owner).
+- Changi -> LIVE. Just outputs (transport/vis), no generation shaping.
+- Causeway -> LATCH. Modulates Straits generation (like Junction).
+- Junction -> LATCH. Mod inputs feed big-5 generation.
+- Interchange -> LATCH. Note + octave mod inputs (NoteSliders/OctaveRange, both LATCH). The
+  earlier "separability" note was only about whether inputs split note-vs-octave; moot -- both
+  latch, so one query or two is equivalent. LATCH either way.
+- Shophouse -> LATCH (confirmed). Scale/mask shapes the generation space (read-vs-map = READ =
+  LATCH). Changes made under lock STAGE and take effect at unlock (Rodney's explicit choice: not
+  live-under-lock). Consistent with SEMI scale toggles.
+- Raffles -> NOT uniformly LATCH (unchanged from prior analysis; do not flatten to one category):
+  - A/B MIX inputs -> LATCH.
+  - dice-gates -> QUEUE (trigger rolls; events, not held values -- under lock they queue/freeze,
+    they do not "latch a value").
+  - slew -> folds into QUEUE (sampled at boundary, not an independent axis).
+
+### Net phase-2 category assignments
+LATCH: Owner, Direction, Spread, Lor, ABMix, Pins, BigFive, NoteSliders, OctaveRange, Reseed,
+       Causeway, Junction, Interchange, Shophouse (+ Raffles MIX inputs).
+LIVE:  Clock, Mute, Display, Changi, Transpose.
+QUEUE: Scatter, Raffles dice-gates (+ slew folds in).
+
+Only genuine behaviour INVERSION from current: Transpose -> LIVE (was effectively frozen/ignored).
+Direction + Owner -> LATCH is the OPEN ruling but matches current de-facto behaviour. QUEUE
+(scatter + raffles gates) becoming first-class is the other real change.
+
+### Enum entries to ADD in phase 2
+Control::Transpose (LIVE), Control::Direction (LATCH), Control::Owner (LATCH). Expanders
+(Causeway/Junction/Interchange/Shophouse/Changi) need NO new entries -- they map to existing
+categories via the control their inputs modulate (Causeway/Junction->BigFive-ish LATCH,
+Interchange->NoteSliders/OctaveRange, Shophouse->its own scale-mask LATCH which may reuse a
+ScaleMask entry, Changi->LIVE Display-ish).
+
+## Intertropical transpose: LATCH (Rodney) -- needs lock-on snapshot (no apply to gate)
+
+Ruling: Intertropical per-output transpose = LATCH (not LIVE like main transpose). Rationale: though
+mechanically a final per-output pitch offset (Intertropical.cpp:91, CV_OUT + trSemi/12, downstream
+of voice->slot->output routing), on a POLYPHONIC output it re-voices CHORDS -- shifting intervals
+between simultaneous outputs changes harmonic content. Rodney: structural enough to freeze under
+lock so chord voicings stay stable while locked.
+
+IMPLEMENTATION WRINKLE (differs from LOR/direction): transpose is a DIRECT LIVE READ at output time
+(params[TRANSPOSE_FIRST+ch].getValue() added to CV_OUT). There is NO store->engine apply to skip
+(LOR) and NO pending->commit to gate (direction). So LATCH here needs the explicit "snapshot
+resolved value at lock-on" mechanism (LOCK_SEMANTICS §9:108):
+- At the lock edge (unlocked->locked), snapshot the 8 transpose knob values into a parallel buffer.
+- While locked, CV_OUT uses the SNAPSHOT, not the live knob.
+- At unlock, resume reading live knobs (which commits any change made under lock).
+Needs: 8-float snapshot array + lock-edge detection in Intertropical (it can reach lock via
+straits->/Monsoon engine.locked, same path as its other reads). Main-module transpose stays LIVE
+(monophonic-ish output offset, already correct, no change).
+
+STATUS: design ruling recorded. Intertropical isn't built yet -- bake this LATCH-snapshot in when
+Intertropical is implemented. Not a change to current live code.
+
+## Expander threading: COMPLETE (mostly no-op; Shophouse was the real work)
+Verified each expander's lock handling:
+- Causeway (poly rhythm CV) -> modulates effective REST/ACCENT -> feeds the big-5/spread path. Big-5
+  are engine-freeze enforced under lock; spread is phase-1 gated. No direct un-gated engine write.
+  RIDES already-handled paths. No separate gate.
+- Junction (big-5 mod) -> same: feeds big-5, engine-freeze enforced. No gate.
+- Interchange (note/octave slider mod) -> feeds semiWeights/octave, engine-freeze enforced. No gate.
+- Changi -> LIVE (outputs). No gate.
+- Shophouse -> the ONE that needed work: scale modulation is now BOUNDARY-QUANTISED (like slew),
+  commits on phrase edge (b783ece), NOT a lock freeze. Its Conservation toggle is orthogonal.
+Confirmed via grep: no expander makes a direct un-gated engine write; all modulate controls whose
+lock behaviour is already enforced (engine freeze or phase-1 spread/LOR gates). The category-keyed
+design held -- expanders inherit their target's lock behaviour, no per-expander gates needed except
+Shophouse's boundary-quantisation (a musical-timing decision, not a lock gate).
+
+## Phase 2 status
+DONE: LATCH (direction/LOR/owner), LIVE (transpose main), QUEUE (CA scatter; Raffles dice deferred
+to post-scrub-rework), ghost UX, expander threading (above), Shophouse boundary-quantise.
+Intertropical transpose ruled LATCH (snapshot-at-lock-on, build when Intertropical is built).
+REMAINING: lock-scope menu (§7, whole-module default; section/per-lane later).

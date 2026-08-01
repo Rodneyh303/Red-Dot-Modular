@@ -31,6 +31,7 @@
 #include "dsp/managers/MonsoonScaleManager.hpp"
 #include "dsp/managers/MonsoonExpanderManager.hpp"
 #include "dsp/managers/MonsoonModeController.hpp"
+#include "dsp/managers/MonsoonLockManager.hpp"
 #include "dsp/managers/MonsoonUIManager.hpp"
 #include "dsp/managers/MonsoonTimingController.hpp"
 #include "dsp/managers/MonsoonCVRouter.hpp"
@@ -774,6 +775,8 @@ struct Monsoon : Module {
     inline float unitRandomMelody() { return engine.pe.unitMelody(); }
 
     bool& locked = engine.locked;
+    // Lock category model (LOCK_SEMANTICS.md §9). Reads engine.locked; owns control->category.
+    dotModular::LockManager lockManager{engine.locked};
     bool& muted = engine.muted;
     bool& runGateActive = engine.runGateActive;
     bool& resetArmed = engine.resetArmed;
@@ -896,6 +899,11 @@ struct Monsoon : Module {
     void onPhraseBoundary_();
     void applyReversibleModeChange_();
     bool rhythmReversiblePrev_ = false, melodyReversiblePrev_ = false;
+    // Shophouse scale modulation is boundary-quantised (like slew): a scale/root edit stages here
+    // and commits to the mask on the next phrase boundary (wrapped), never mid-phrase.
+    int  shopPendingScale_ = -1;
+    int  shopPendingRoot_  = -1;
+    bool shopScaleChangePending_ = false;
     void onReset() override;
     void onSampleRateChange(const SampleRateChangeEvent& e) override;
     int getNoteLenIdx_();

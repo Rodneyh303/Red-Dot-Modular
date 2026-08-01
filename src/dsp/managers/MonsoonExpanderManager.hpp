@@ -75,8 +75,6 @@ struct MonsoonExpanderManager {
     rack::Module*                cachedJunctionExpander          = nullptr;
     MonsoonChangeAlleyV2*        cachedChangeAlleyV2             = nullptr;
     int  caPrevStep_   = 0;
-    int  caV2PrevStep_   = 0;
-    bool caV2PrevLocked_ = false;      // phrase-boundary detect for restructure queue
     bool caPrevLocked_ = false;  // unlock-edge detect for restructure queue
     //MonsoonSandsExpander*        cachedDnaExpander                = nullptr;
     MonsoonSandsVisualExpander*  cachedSandsVisualExpander        = nullptr;
@@ -221,7 +219,7 @@ struct MonsoonExpanderManager {
     }
 
     /// Synchronizes data between the engine and specific expanders (Deep Straits, Visual Editors, etc.)
-    void sync(SequencerEngine& engine);
+    void sync(SequencerEngine& engine, bool caQueueFires);
 
     // ── Single presence authority for SandsTopology ─────────────────────────────
     // THE one place the topology's presence/base fields are populated. Every consumer

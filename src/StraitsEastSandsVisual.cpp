@@ -231,7 +231,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // P4 (G5): a lane is locked (inoperable, tracks Macro) when it's delegated to
         // Macro on a poly voice, OR when this is the V1 tab and Mono owns V1 (East
         // mirrors Mono, inoperable). editorLane → engine lane for the ownership check.
-        visualEditor->laneLockedFn = [this](int editorLane) -> bool {
+        visualEditor->laneEditBlockedFn = [this](int editorLane) -> bool {
             if (tab1MonoMirror()) return true;           // V1 owned by Mono → all lanes locked on East
             // VARIATION (4) / LEGATO (5): the usual V1 pattern. MONO owns these strands, so on the
             // V1 tab they are LOCKED and merely MIRROR mono's values — even when no Sands Mono is
@@ -249,6 +249,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // Shared resolver-backed helper: owner(currentVoice, lane) == MACRO.
             return laneOwnedByMacroTopo(engLane);
         };
+        // Ghost echo needs TRUE lock-mode state (engine.locked), not the edit-permission above.
+        visualEditor->lockActiveFn = [this]() -> bool { auto* m = getMonsoon(); return m && m->engine.locked; };
         // Right-click on a lane row opens the ownership context menu.
         visualEditor->onLaneRightClick = [this](int lane, rack::math::Vec pos) -> bool {
             if (!macroAttached()) return false;  // no menu when Macro absent
@@ -626,7 +628,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     // On the V1/mono tab, editor lanes 4/5 DISPLAY mono's VARIATION/LEGATO (they are mono strands;
     // East never owns them). The strands were renumbered so editor lane == strand index
     // (MEL 0, OCT 1, REST 2, ACC 3, VAR 4, LEG 5), hence lorStore_[0][el] is mono's own LOR column.
-    // Read-only: laneLockedFn() locks these lanes whenever onMonoTab().
+    // Read-only: laneEditBlockedFn() locks these lanes whenever onMonoTab().
     void mirrorMonoExtraLanes() {
         Monsoon* m = getMonsoon();
         if (!m || !visualEditor || !onMonoTab()) return;
@@ -732,7 +734,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     }
     // For East's OWN controls (base-spread, CV-depth): inert only when Macro is present
     // AND owns the lane (East base bypassed). Fully usable solo.
-    // Topology-backed lane ownership for the CURRENT tab, used by laneLockedFn and the
+    // Topology-backed lane ownership for the CURRENT tab, used by laneEditBlockedFn and the
     // spread-arc lockWhen lambdas so all East lock predicates read one authority.
     // engLane in; converts to editor lane for the resolver.
     bool laneOwnedByMacroTopo(int engLane) {
@@ -1176,7 +1178,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         if (tab1Mono) {
             // Show Mono's base LOR for all 4 poly lanes (Mono params are editor-ordered:
             // MEL=0 OCT=1 REST=2 ACC=3 → editor lane == param index). V1 base belongs to
-            // Mono and is inoperable on East (locked by laneLockedFn / readOnly). The mod
+            // Mono and is inoperable on East (locked by laneEditBlockedFn / readOnly). The mod
             // arriving at East is shown by the V1 mod arcs (P6), not folded into this base.
             // Show the V1 LOR for all 4 poly lanes. Read the engine MONO STRAND (which
             // the manager has already written with Mono's base + East's V1 CV + Macro CV)

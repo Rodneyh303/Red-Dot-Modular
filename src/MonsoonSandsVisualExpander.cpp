@@ -129,12 +129,14 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         // P4 (G5): a Mono lane delegated to Macro is inoperable and tracks Macro.
         // Mono owns V1; only the 4 poly lanes (editor 0..3 = MEL/OCT/REST/ACC) are
         // delegable. ownerDispId is editor-ordered (poly lane). Delegated = value 0.
-        visualEditor->laneLockedFn = [this](int editorLane) -> bool {
+        visualEditor->laneEditBlockedFn = [this](int editorLane) -> bool {
             if (editorLane < 0 || editorLane >= 4) return false;   // VAR/LEG mono-only
             if (!module) return false;
             // lock ⟺ Mono is not the owner of this V1 lane (Macro owns it).
             return buildV1Topo().lockedOn(dotModular::SandsTopology::Role::MONO, 0, editorLane);
         };
+        // Ghost echo needs TRUE lock-mode state (engine.locked), not the edit-permission above.
+        visualEditor->lockActiveFn = [this]() -> bool { auto* m = getMonsoon(); return m && m->engine.locked; };
         // LOR drag undo: push a Rack history action against the store for a completed drag.
         // Mono is always the mono slot; bank = EDITOR_TO_ENGINE_LANE for lanes 0..3, self for
         // VAR/LEG (4,5) -- the same mapping the load path uses.
@@ -348,7 +350,7 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
     }
 
     // STEP 4: single build of the ownership authority for THIS Mono widget's V1 view, so
-    // laneLockedFn and laneDelegated (which historically drifted apart — both hand-wrote
+    // laneEditBlockedFn and laneDelegated (which historically drifted apart — both hand-wrote
     // the same ownership test) now read one resolver and cannot disagree. Lightweight,
     // per-call (decision 2). This widget IS the Mono visual → monoPresent = true.
     dotModular::SandsTopology buildV1Topo() {
@@ -418,8 +420,8 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         Monsoon* monForOwn = getMonsoon();
         auto* macroForOwn = monForOwn ? monForOwn->expanderManager.cachedMacroSandsVisual : nullptr;
         // delegated ⟺ Mono is NOT the owner of this V1 lane. Reads the SAME resolver as
-        // laneLockedFn (via buildV1Topo), so the two cannot drift — the laneDelegated-vs-
-        // laneLockedFn desync class, closed.
+        // laneEditBlockedFn (via buildV1Topo), so the two cannot drift — the laneDelegated-vs-
+        // laneEditBlockedFn desync class, closed.
         const auto ownTopo = buildV1Topo();
         auto laneDelegated = [&](int el) -> bool {
             if (el < 0 || el >= 4) return false;

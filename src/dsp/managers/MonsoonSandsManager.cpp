@@ -1,4 +1,5 @@
 #include "MonsoonSandsManager.hpp"
+#include "MonsoonLockManager.hpp"
 #include "../VoiceResolver.hpp"   // kMonoSlot — the mono mix-in slice
 #include "../SpreadInterp.hpp"
 #include "../SpreadResolver.hpp"   // step 3b: single authority for effective spread amount
@@ -246,10 +247,16 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 baseRot = math::clamp(baseRot + eastDelta(eng, 2, 0.f, 15.f) + macroDelta(eng, 2),  0.f, 15.f);
             }
 
-            engine.setStrand(StrandWriter::MONO, strand,
-                             (int)std::round(baseLen),
-                             (int)std::round(baseOff),
-                             (int)std::round(baseRot));
+            // LOR is LATCH (LOCK_SEMANTICS §9): under lock, do NOT re-push the strand window --
+            // the engine's LOR state persists, so skipping the write holds the pre-lock resolved
+            // value (base + latched CV). This also latches OWNER for free: owner selects which base
+            // feeds baseLen above, and freezing the apply freezes that selection's effect too.
+            if (dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked)) {
+                engine.setStrand(StrandWriter::MONO, strand,
+                                 (int)std::round(baseLen),
+                                 (int)std::round(baseOff),
+                                 (int)std::round(baseRot));
+            }
         };
 
         // Spread (REST/MEL/OCT only): base trimpot + per-lane spread CV.
@@ -322,7 +329,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // When LOCKED, leave the final arrays frozen (skip the rewrite) so
             // lock freezes the audible output — spread CV won't leak through.
             engine.pe.setSandsActive(true);
-            if (!engine.locked) {
+            if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked)) {
             // Spread target is the mono/voice-1 draw (the ensemble average was removed).
             // Ensemble poly count is bounded by the voice OUTPUT topology
             // (effPolyVoices): only voices with an actual output path (East ≤7,
@@ -397,6 +404,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                     const int engLane = dotModular::EDITOR_TO_ENGINE_LANE[el];
                     const int strand  = dotModular::MONO_LANE_TO_STRAND[el];
                     if (monoOwnedByMacro(engLane)) {
+                        if (dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked))   // LOR LATCH: skip re-push under lock
                         engine.setStrand(StrandWriter::EAST, strand,
                             (int)std::round(macroVis->macroBase[engLane][0] + macroVis->macroCVDelta[engLane][0]),
                             (int)std::round(macroVis->macroBase[engLane][1] + macroVis->macroCVDelta[engLane][1]),
@@ -422,6 +430,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                         }
                         return rack::math::clamp(base + sendBlend(item), lo, hi);
                     };
+                    if (dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked))   // LOR LATCH: skip re-push under lock
                     engine.setStrand(StrandWriter::EAST, strand,
                         (int)std::round(addCV(len, 0, 1.f, 16.f)),
                         (int)std::round(addCV(off, 1, 0.f, 15.f)),
@@ -441,6 +450,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                         }
                         return rack::math::clamp(base, lo, hi);
                     };
+                    if (dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked))   // LOR LATCH: skip re-push under lock
                     engine.setStrand(StrandWriter::EAST, el,
                         (int)std::round(addCV((float)std::max(1, b0), 0, 1.f, 16.f)),
                         (int)std::round(addCV((float)(((b1 % 16) + 16) % 16), 1, 0.f, 15.f)),
@@ -449,7 +459,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             }
 
             // ── SPREAD: lock-gated (frozen pattern must not be re-spread). LOR above already ran.
-            if (!engine.locked) {
+            if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked)) {
             auto sprForLane = [&](int lane)->float {
                 if (monoOwnedByMacro(lane))
                     return rack::math::clamp(macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3], -1.f, 1.f);
@@ -544,7 +554,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         // Macro's base+delta into each voice via the owner/blend send. When NOT — standalone Macro
         // (no Straits) — apply Macro's GLOBAL spread to the drawn voices here so its bars aren't dead.
         if (!macroDrivesOutput) {
-        if (!engine.locked) {
+        if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked)) {
             const int nPoly = rack::math::clamp(engine.numPolyVoices, 0, 15);
             // Global spread level per lane (knob + CV), spread/engine-indexed 0..3.
             float spv[4];

@@ -316,7 +316,7 @@ float Monsoon::semitoneToVolts(int semitone) {
         engine.gs.reset();          // clears gate, hold, pitch, pulse, semiPlayRemain
         prevExtGate = false;
 
-        if (!locked) {
+        if (lockManager.liveNow(dotModular::Control::Reseed)) {
             if (reseedOnRestart) {
                 // Only use the SEED-CV (reproducible, A=B) path when the SEED
                 // input is actually present. Unpatched → internal entropy via the
@@ -589,11 +589,21 @@ void Monsoon::process(const ProcessArgs& args) {
         scaleManager->lockScaleNotes =
             shop->params[ShophouseIds::CONSERVATION_PARAM].getValue() > 0.5f;
         const auto& e = shop->list.activeEntry();
+        // Shophouse scale modulation is BOUNDARY-QUANTISED (like slew on Monsoon): a scale/root
+        // change is picked up here but only COMMITTED to the mask on the phrase boundary (wrapped),
+        // never mid-phrase -- so scale edits land on the loop edge exactly like the front switch.
+        // Stage the pending scale; commit at the boundary.
         if (scaleManager->lastSelectedScale != e.scaleIdx
             || scaleManager->scaleRoot != e.root) {
-            scaleManager->lastSelectedScale = e.scaleIdx;
-            scaleManager->scaleRoot         = e.root;
+            shopPendingScale_     = e.scaleIdx;
+            shopPendingRoot_      = e.root;
+            shopScaleChangePending_ = true;
+        }
+        if (shopScaleChangePending_ && engine.lastStepResult.wrapped) {
+            scaleManager->lastSelectedScale = shopPendingScale_;
+            scaleManager->scaleRoot         = shopPendingRoot_;
             scaleManager->updateScaleMask();
+            shopScaleChangePending_ = false;
         }
     }
 
@@ -939,7 +949,11 @@ void Monsoon::process(const ProcessArgs& args) {
         dnaManager.processDNA(expanderManager);
 
         // ── Deep Straits Sands Expanders (Control Rate Orchestration) ──
-        expanderManager.sync(engine);
+        // Tick lock-manager boundary/unlock detection BEFORE expander sync so the CA QUEUE
+        // trigger inside sync() reads this cycle's edges. Uses engine.stepIndex (transport
+        // authority) -- replaces the old caV2PrevStep_/caV2PrevLocked_ shadow state.
+        lockManager.tick(engine.stepIndex);
+        expanderManager.sync(engine, lockManager.queueFires());
         
         // Refresh Audio-Rate Caches (Throttled)
         cachedBpmParam = params[BPM_PARAM].getValue();

@@ -144,6 +144,16 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     // the user's actual (un-modulated) window, not the CV-display window.
     int editStartBar() const { return ((offset % STEP_COUNT) + STEP_COUNT) % STEP_COUNT; }
     int editEndBar()   const { return (editStartBar() + std::max(1, std::min(length, STEP_COUNT)) - 1) % STEP_COUNT; }
+    // Edit-window membership (mirrors barInWindow but on the EDIT L/O = the live handle position,
+    // not the CV/committed display). Used under lock to render the live window as the solid one.
+    bool editBarInWindow(int bar) const {
+      int s = editStartBar(), e = editEndBar();
+      bar = ((bar % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
+      return (e >= s) ? (bar >= s && bar <= e) : (bar >= s || bar <= e);
+    }
+    // True when the live edit window differs from the committed/display window -- i.e. the user has
+    // moved LOR (under lock, this is the divergence that triggers the ghost echo).
+    bool lorDiverged() const { return editStartBar() != startBar() || dispLength != std::max(1, std::min(length, STEP_COUNT)); }
   };
   
   struct VoiceState {
@@ -177,8 +187,21 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // Per-lane edit lock (P4 / G5): host returns true for a lane whose values are
   // owned elsewhere (e.g. delegated to Macro) — that lane is shown but its handles
   // and bar can't be edited, while other lanes stay editable. editorLane index.
-  std::function<bool(int editorLane)> laneLockedFn;
-  bool laneLocked(int editorLane) const { return laneLockedFn && laneLockedFn(editorLane); }
+  // EDIT-PERMISSION: is editing this lane BLOCKED (delegated to Macro / owned elsewhere / read-only
+  // tab)? This is NOT lock-mode -- it gates drag/hover on inoperable lanes. For lock-mode use
+  // lockActiveFn below. (These were conflated once; keep them distinct.)
+  std::function<bool(int editorLane)> laneEditBlockedFn;
+  bool laneEditBlocked(int editorLane) const { return laneEditBlockedFn && laneEditBlockedFn(editorLane); }
+  // TRUE lock-mode state (engine.locked), distinct from laneEditBlockedFn (which is edit-PERMISSION and
+  // is deliberately false on Macro). The ghost echo needs actual lock, not edit-permission, because
+  // the display window also diverges from edit under normal CV modulation when UNLOCKED -- so
+  // divergence alone can't distinguish "locked" from "CV modulating". Host wires to engine.locked.
+  std::function<bool()> lockActiveFn;
+  bool lockActive() const { return lockActiveFn && lockActiveFn(); }
+  // Ghost echo for this lane: lock-mode active AND the live edit window has diverged from the
+  // committed/display window. Under lock the display is frozen (LOR LATCH) while edit tracks the
+  // handle, so divergence here = a genuine moved-under-lock echo (not CV modulation).
+  bool lorGhost(int editorLane) const { return lockActive() && currentState.lanes[editorLane].lorDiverged(); }
   // Optional right-click callback: host registers this to open a context menu
   // when a lane row is right-clicked. Called with (lane, pos); return true to consume.
   std::function<bool(int lane, rack::math::Vec pos)> onLaneRightClick;
@@ -547,8 +570,11 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     rack::Rect rect  = layout.getStepRect(lane, step);
     float prob       = L.probabilities[step];
     float barHeight  = prob * rect.size.y;
-    // Offset-aware + wrap-correct (shared helper, matches the band & hit-test).
-    bool  isInWindow = L.barInWindow(step);
+    // Under lock with a moved LOR, the SOLID window follows the LIVE edit (the handle the user is
+    // moving); the committed/display window becomes a ghost echo (drawn below). Otherwise the solid
+    // window is the display window (so CV modulation shows normally when unlocked).
+    const bool ghost = lorGhost(lane);
+    bool  isInWindow = ghost ? L.editBarInWindow(step) : L.barInWindow(step);
     float dimAlpha   = isInWindow ? 1.f : 0.22f;
 
     // Background
@@ -588,17 +614,42 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     // the cells, so even a 1-wide window shows both edges on the same cell
     // unambiguously (the old brackets collided and got stuck in that case).
     NVGcolor edge = getLaneColor(lane); edge.a = 0.95f;
-    if (step == L.startBar()) {
+    const int solidStart = ghost ? L.editStartBar() : L.startBar();
+    const int solidEnd   = ghost ? L.editEndBar()   : L.endBar();
+    if (step == solidStart) {
       nvgBeginPath(vg);
       nvgRect(vg, rect.pos.x, rect.pos.y, 2.5f, rect.size.y);
       nvgFillColor(vg, edge);
       nvgFill(vg);
     }
-    if (step == L.endBar()) {
+    if (step == solidEnd) {
       nvgBeginPath(vg);
       nvgRect(vg, rect.pos.x + rect.size.x - 2.5f, rect.pos.y, 2.5f, rect.size.y);
       nvgFillColor(vg, edge);
       nvgFill(vg);
+    }
+
+    // Ghost echo: under lock with a moved LOR, mark the COMMITTED (still-playing) window as a faint
+    // trace so the user sees where the playhead is held while the live (solid) window shows where it
+    // will land at unlock. Committed window = barInWindow/startBar/endBar (display L/O, frozen).
+    if (ghost) {
+      if (L.barInWindow(step)) {
+        nvgBeginPath(vg);
+        nvgRect(vg, rect.pos.x, rect.pos.y, rect.size.x, rect.size.y);
+        nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.05f));
+        nvgFill(vg);
+      }
+      NVGcolor gedge = getLaneColor(lane); gedge.a = 0.30f;   // faint = echo
+      if (step == L.startBar()) {
+        nvgBeginPath(vg);
+        nvgRect(vg, rect.pos.x, rect.pos.y, 2.5f, rect.size.y);
+        nvgFillColor(vg, gedge); nvgFill(vg);
+      }
+      if (step == L.endBar()) {
+        nvgBeginPath(vg);
+        nvgRect(vg, rect.pos.x + rect.size.x - 2.5f, rect.pos.y, 2.5f, rect.size.y);
+        nvgFillColor(vg, gedge); nvgFill(vg);
+      }
     }
   }
   
@@ -684,7 +735,9 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
 
     // Window body fill across the EDIT range (matches inWindowX / the MOVE hit
     // zone). Iterate from editStartBar so the fill = the grabbable body.
-    NVGcolor body = nvgRGBAf(1.f, 1.f, 1.f, 0.10f);
+    // Under lock+diverged (ghost), the live edit window is the SOLID one -> stronger body/edge.
+    const bool ghostHandles = lorGhost(lane);
+    NVGcolor body = nvgRGBAf(1.f, 1.f, 1.f, ghostHandles ? 0.20f : 0.10f);
     for (int k = 0; k < lenC; ++k) {
       int bar = (L.editStartBar() + k) % STEP_COUNT;
       rack::Rect c = layout.getStepRect(lane, bar);
@@ -703,7 +756,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     rack::Rect cs = layout.getStepRect(lane, L.editStartBar());
     rack::Rect ce = layout.getStepRect(lane, L.editEndBar());
     bool oneWide = (L.editStartBar() == L.editEndBar());
-    NVGcolor edge = getLaneColor(lane); edge.a = 0.55f;
+    NVGcolor edge = getLaneColor(lane); edge.a = ghostHandles ? 0.95f : 0.55f;
 
     auto fillRect = [&](float x, float w, NVGcolor col) {
       nvgBeginPath(vg); nvgRect(vg, x, bandTop, w, bandH);
@@ -893,7 +946,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     if (inert || readOnly) { hoverLane = -1; hoverZone = DragState::NONE; return; }
     syncLayout();
     int lane = getLaneAtY(e.pos.y);
-    if (lane >= 0 && laneLocked(lane)) { hoverLane = -1; hoverZone = DragState::NONE; return; }
+    if (lane >= 0 && laneEditBlocked(lane)) { hoverLane = -1; hoverZone = DragState::NONE; return; }
     DragState::Type z = (lane >= 0 && lane < laneCount)
                         ? hitTestHandle(lane, e.pos.x, e.pos.y) : DragState::NONE;
     hoverLane = (z == DragState::NONE) ? -1 : lane;
@@ -917,7 +970,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       //int step = getStepAtX(e.pos.x);
 
       if (lane >= 0 && lane < laneCount) {
-        if (laneLocked(lane)) { e.consume(this); return; }  // P4: delegated lane — inoperable
+        if (laneEditBlocked(lane)) { e.consume(this); return; }  // P4: delegated lane — inoperable
         // Hit-test handles first — they have priority over bar dragging
         DragState::Type handleHit = hitTestHandle(lane, e.pos.x, e.pos.y);
         if (handleHit != DragState::NONE) {
@@ -1031,7 +1084,11 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     }
     // Reflect the dragged edit values in the display immediately so the window
     // follows the hand; next process frame re-applies any CV on top.
-    if (dragState.isDragging && dragState.dragLane >= 0 && dragState.dragLane < laneCount)
+    // BUT under lock, do NOT sync: the display must stay frozen at the committed (pre-lock)
+    // position while the edit tracks the hand -- that divergence is what drives the ghost echo
+    // (live=solid, committed=ghost). Syncing here would collapse the divergence and hide the ghost.
+    if (dragState.isDragging && dragState.dragLane >= 0 && dragState.dragLane < laneCount
+        && !lockActive())
       currentState.lanes[dragState.dragLane].syncDisplayToEdit();
   }
   

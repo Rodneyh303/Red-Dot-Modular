@@ -1,4 +1,5 @@
 #include "MonsoonModeController.hpp"
+#include "MonsoonLockManager.hpp"
 #include "../../Monsoon.hpp"
 #include "../../MonsoonCausewayPolyExpander.hpp"
 
@@ -60,7 +61,7 @@ void ModeController::updatePatternInput() {
     // spread — this is the continuous A<->B blend. recomputeEffective only does
     // work when MIX actually changes, so it is cheap. SLEW is NOT applied here;
     // it is consumed at roll time (shapes B). Lock freezes the morph.
-    if (!engine.locked) {
+    if (dotModular::LockManager::liveNow(dotModular::Control::ABMix, engine.locked)) {
         engine.pe.latchMix(currentPatternInput.rhythmMix,
                            currentPatternInput.melodyMix);
     }
