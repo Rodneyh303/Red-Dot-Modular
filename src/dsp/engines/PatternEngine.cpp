@@ -378,6 +378,14 @@ void PatternEngine::latchMix(float rhythmMix, float melodyMix) {
 // Updates the rhythm/melody arrays used for UI and LEDs based on the 
 // current knob positions and the *existing* random buffers.
 void PatternEngine::refreshVisualCache(const PatternInput& in) {
+    // No-redraw path (e.g. mix/scrub moved but no roll, or a stream that didn't redraw this cycle).
+    // Under the scrub model the effective pattern is a pure function of (counter, scrub position), so
+    // re-derive it here too -- otherwise rhythmRandom/melodyRandom keep whatever a PRIOR redraw left
+    // and the no-redraw pattern diverges from an equivalent redraw at the same counter. Recomputing
+    // makes the two paths converge (a seeded engine that never rolled and one that rolled to the same
+    // counter now read identically). Cheap: it's just the window blend.
+    recomputeEffectiveRhythm();
+    recomputeEffectiveMelody();
     for (int i = 0; i < 16; ++i) {
         rhythmPattern[i] = (rhythmRandom[i] >= in.restProb);
         int sem = 0;
