@@ -444,6 +444,64 @@ struct PatternEngine {
     inline float unitRhythm() { return philoxRhythm(); }
     inline float unitMelody() { return philoxMelody(); }
 
+    inline float philoxRhythmAt(int64_t pos, uint64_t cursor) const {
+        return rhythmPhilox.atUniform((uint64_t)pos * DRAW_CHUNK + cursor);
+    }
+    inline float philoxMelodyAt(int64_t pos, uint64_t cursor) const {
+        return melodyPhilox.atUniform((uint64_t)pos * DRAW_CHUNK + cursor);
+    }
+    struct RhythmDraw { float rhythm[16], variation[16], legato[16], accent[16];
+                        float polyRhythm[15][16], polyAccent[15][16]; };
+    struct MelodyDraw { float melody[16], octave[16];
+                        float polyMelody[15][16], polyOctave[15][16]; };
+    inline void rawDrawRhythmPatternAt(int64_t pos, RhythmDraw& d) const {
+        uint64_t c = 0;
+        for (int i = 0; i < 16; ++i) {
+            d.rhythm[i]=philoxRhythmAt(pos,c++); d.variation[i]=philoxRhythmAt(pos,c++);
+            d.legato[i]=philoxRhythmAt(pos,c++); d.accent[i]=philoxRhythmAt(pos,c++);
+            for (int v=0;v<15;++v) d.polyRhythm[v][i]=philoxRhythmAt(pos,c++);
+            for (int v=0;v<15;++v) d.polyAccent[v][i]=philoxRhythmAt(pos,c++);
+        }
+    }
+    inline void rawDrawMelodyPatternAt(int64_t pos, MelodyDraw& d) const {
+        uint64_t c = 0;
+        for (int i = 0; i < 16; ++i) {
+            d.melody[i]=philoxMelodyAt(pos,c++); d.octave[i]=philoxMelodyAt(pos,c++);
+            for (int v=0;v<15;++v) d.polyMelody[v][i]=philoxMelodyAt(pos,c++);
+            for (int v=0;v<15;++v) d.polyOctave[v][i]=philoxMelodyAt(pos,c++);
+        }
+    }
+    // B2 truncated-FIR slew smoothing (DICE_SCRUB_SLEW_B2.md): geometric moving average of raw
+    // draws pos..pos-SCRUB_K, weights (1-slew)^j normalized. Pure fn of pos -> reversible.
+    static constexpr int SCRUB_K = 6;
+    inline void patternRhythmAt(int64_t pos, float slew, RhythmDraw& out) const {
+        const float sl = slew<0.f?0.f:(slew>1.f?1.f:slew);
+        float w[SCRUB_K+1], wsum=0.f, g=1.f;
+        for (int j=0;j<=SCRUB_K;++j){ w[j]=g; wsum+=g; g*=(1.f-sl); }
+        const float inv=(wsum>0.f)?1.f/wsum:1.f;
+        for (int i=0;i<16;++i){ out.rhythm[i]=out.variation[i]=out.legato[i]=out.accent[i]=0.f;
+            for(int v=0;v<15;++v){out.polyRhythm[v][i]=0.f;out.polyAccent[v][i]=0.f;} }
+        RhythmDraw r;
+        for (int j=0;j<=SCRUB_K;++j){ rawDrawRhythmPatternAt(pos-j,r); const float wj=w[j]*inv;
+            for(int i=0;i<16;++i){ out.rhythm[i]+=wj*r.rhythm[i]; out.variation[i]+=wj*r.variation[i];
+                out.legato[i]+=wj*r.legato[i]; out.accent[i]+=wj*r.accent[i];
+                for(int v=0;v<15;++v){ out.polyRhythm[v][i]+=wj*r.polyRhythm[v][i];
+                    out.polyAccent[v][i]+=wj*r.polyAccent[v][i]; } } }
+    }
+    inline void patternMelodyAt(int64_t pos, float slew, MelodyDraw& out) const {
+        const float sl = slew<0.f?0.f:(slew>1.f?1.f:slew);
+        float w[SCRUB_K+1], wsum=0.f, g=1.f;
+        for (int j=0;j<=SCRUB_K;++j){ w[j]=g; wsum+=g; g*=(1.f-sl); }
+        const float inv=(wsum>0.f)?1.f/wsum:1.f;
+        for (int i=0;i<16;++i){ out.melody[i]=out.octave[i]=0.f;
+            for(int v=0;v<15;++v){out.polyMelody[v][i]=0.f;out.polyOctave[v][i]=0.f;} }
+        MelodyDraw r;
+        for (int j=0;j<=SCRUB_K;++j){ rawDrawMelodyPatternAt(pos-j,r); const float wj=w[j]*inv;
+            for(int i=0;i<16;++i){ out.melody[i]+=wj*r.melody[i]; out.octave[i]+=wj*r.octave[i];
+                for(int v=0;v<15;++v){ out.polyMelody[v][i]+=wj*r.polyMelody[v][i];
+                    out.polyOctave[v][i]+=wj*r.polyOctave[v][i]; } } }
+    }
+
     static constexpr uint64_t MAX_U64 = 0xFFFFFFFFFFFFFFFFULL;
 
     void reset();

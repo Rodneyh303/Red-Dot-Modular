@@ -266,19 +266,27 @@ void PatternEngine::redrawRhythm(const PatternInput& in) {
 // slew: slewedDraw[] = A + slew*(B-A). When no Sands owns the spread stage,
 // copy slewedDraw → final (the public arrays the sequencer reads).
 void PatternEngine::recomputeEffectiveRhythm() {
-    // Live A<->B morph: effective = A + mix*(B-A). MIX is the continuous, playable
-    // blend (like spread). SLEW is NOT used here — it was already consumed at roll
-    // time to shape B (see redrawRhythm). mix=0 -> committed A; mix=1 -> candidate B.
-    const float s = rack::math::clamp(rhythmMixLatched, 0.f, 1.f);
-    auto bl = [s](float a, float b){ return a + s*(b-a); };
+    // SCRUB + B2 slew. effective = blend of two B2-smoothed window patterns at the scrub position.
+    // s in [0..6] (MIX repurposed; 0..1 scaled to 0..6 until step 5). patternRhythmAt(M,slew) is a
+    // geometric MA of raw draws M..M-6 -> correlated walk, pure fn of M (reversible). slew =
+    // smoothing width. Detent is widget-only; math reads raw scrub so CV stays smooth.
+    const float s = rack::math::clamp(rhythmMixLatched, 0.f, 1.f) * 6.f;
+    const int   f    = (int)s;
+    const float frac = s - (float)f;
+    const int64_t N  = rhythmDrawCtr;
+    const float slew = rack::math::clamp(rhythmSlewLatched, 0.f, 1.f);
+    RhythmDraw d0, d1;
+    patternRhythmAt(N - f,     slew, d0);
+    patternRhythmAt(N - f - 1, slew, d1);
+    auto bl = [frac](float a, float b){ return a + frac*(b-a); };
     for (int i = 0; i < 16; ++i) {
-        slewedRhythm[i]    = bl(rhythmLockedA[i],    rhythmCandB[i]);
-        slewedVariation[i] = bl(variationLockedA[i], variationCandB[i]);
-        slewedLegato[i]    = bl(legatoLockedA[i],    legatoCandB[i]);
-        slewedAccent[i]    = bl(accentLockedA[i],    accentCandB[i]);
+        slewedRhythm[i]=bl(d0.rhythm[i],d1.rhythm[i]);
+        slewedVariation[i]=bl(d0.variation[i],d1.variation[i]);
+        slewedLegato[i]=bl(d0.legato[i],d1.legato[i]);
+        slewedAccent[i]=bl(d0.accent[i],d1.accent[i]);
         for (int v = 0; v < 15; v++) {
-            slewedPolyRhythm[v][i] = bl(polyRhythmLockedA[v][i], polyRhythmCandB[v][i]);
-            slewedPolyAccent[v][i] = bl(polyAccentLockedA[v][i], polyAccentCandB[v][i]);
+            slewedPolyRhythm[v][i]=bl(d0.polyRhythm[v][i],d1.polyRhythm[v][i]);
+            slewedPolyAccent[v][i]=bl(d0.polyAccent[v][i],d1.polyAccent[v][i]);
         }
     }
     if (!sandsActive) {
@@ -299,14 +307,22 @@ void PatternEngine::recomputeEffectiveRhythm() {
 }
 
 void PatternEngine::recomputeEffectiveMelody() {
-    const float s = rack::math::clamp(melodyMixLatched, 0.f, 1.f);
-    auto bl = [s](float a, float b){ return a + s*(b-a); };
+    // SCRUB + B2 slew -- mirror of recomputeEffectiveRhythm.
+    const float s = rack::math::clamp(melodyMixLatched, 0.f, 1.f) * 6.f;
+    const int   f    = (int)s;
+    const float frac = s - (float)f;
+    const int64_t N  = melodyDrawCtr;
+    const float slew = rack::math::clamp(melodySlewLatched, 0.f, 1.f);
+    MelodyDraw d0, d1;
+    patternMelodyAt(N - f,     slew, d0);
+    patternMelodyAt(N - f - 1, slew, d1);
+    auto bl = [frac](float a, float b){ return a + frac*(b-a); };
     for (int i = 0; i < 16; ++i) {
-        slewedMelody[i] = bl(melodyLockedA[i], melodyCandB[i]);
-        slewedOctave[i] = bl(octaveLockedA[i], octaveCandB[i]);
+        slewedMelody[i]=bl(d0.melody[i],d1.melody[i]);
+        slewedOctave[i]=bl(d0.octave[i],d1.octave[i]);
         for (int v = 0; v < 15; v++) {
-            slewedPolyMelody[v][i] = bl(polyMelodyLockedA[v][i], polyMelodyCandB[v][i]);
-            slewedPolyOctave[v][i] = bl(polyOctaveLockedA[v][i], polyOctaveCandB[v][i]);
+            slewedPolyMelody[v][i]=bl(d0.polyMelody[v][i],d1.polyMelody[v][i]);
+            slewedPolyOctave[v][i]=bl(d0.polyOctave[v][i],d1.polyOctave[v][i]);
         }
     }
     if (!sandsActive) {
