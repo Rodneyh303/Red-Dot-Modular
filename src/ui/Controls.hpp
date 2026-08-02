@@ -76,14 +76,19 @@ struct ScrubKnobT : rack::app::ParamWidget {
         int m = APP->window->getMods() & RACK_MOD_MASK;
         return (m & GLFW_MOD_CONTROL) || (m & GLFW_MOD_SUPER);
     }
-    // Warp toward the nearest detent: reshape the fractional coord in each cell with a smoothstep
-    // blend so motion slows at draws and quickens between. Continuous; covers the whole range.
+    // Warp toward the nearest detent. Uses smootherstep applied TWICE (a very flat slope at the cell
+    // ends), so within each cell the value nearly FREEZES in a wide zone around each draw and then
+    // races through the middle -- a real, feelable detent. MAGNET blends identity<->this curve; at
+    // 0.9 the detent is strong but the value stays continuous (covers the whole range, nothing
+    // quantised). MAGNET=1.0 = soft-snap (value fully stops in the stuck zone).
+    static float smootherstep(float f) { return f * f * f * (f * (f * 6.f - 15.f) + 10.f); }
     static float magnetize(float v, float lo, float hi) {
         const float range = hi - lo; if (range <= 0.f) return v;
         const float step = range / (float)SCRUB_STEPS;
         float x = (v - lo) / step, cell = std::floor(x), f = x - cell;
-        float sm = f * f * (3.f - 2.f * f);
-        float warped = f + MAGNET * (sm - f);
+        float s  = smootherstep(f);
+        float s2 = smootherstep(s);              // second pass -> flatter at detents, steeper mid
+        float warped = f + MAGNET * (s2 - f);
         return lo + (cell + warped) * step;
     }
 
