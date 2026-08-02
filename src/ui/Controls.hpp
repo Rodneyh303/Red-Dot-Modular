@@ -38,9 +38,12 @@ struct KnobT : rack::app::SvgKnob {
 // on Shift is a possible future addition (Rodney deferred -- overlaps the dice/last-dice gates).
 template <typename Tag>
 struct ScrubKnobT : rack::app::SvgKnob {
-    static constexpr int   SCRUB_STEPS   = 6;       // 7 positions: 0..6 draws over the 0..1 param
-    static constexpr float STEP_PIXELS   = 14.f;    // drag pixels per click (detent spacing feel)
-    float clickAccum_ = 0.f;
+    static constexpr int   SCRUB_STEPS = 6;        // 7 positions: 0..6 draws over the 0..1 param
+    static constexpr float STEP_PIXELS = 45.f;     // ACCUMULATED drag pixels per click (detent feel)
+    // Continuous accumulated drag position (0..1), decoupled from the stored value so we can require
+    // a FULL step-width of travel before committing the next draw (true click-through, not snap).
+    float dragPos_   = 0.f;
+    bool  dragInit_  = false;
 
     ScrubKnobT() {
         minAngle = -0.83f * (float)M_PI;
@@ -56,27 +59,28 @@ struct ScrubKnobT : rack::app::SvgKnob {
     }
 
     void onDragStart(const rack::event::DragStart& e) override {
-        clickAccum_ = 0.f;
+        dragInit_ = false;   // seed dragPos_ from the live value on the first move
         rack::app::SvgKnob::onDragStart(e);
     }
 
     void onDragMove(const rack::event::DragMove& e) override {
-        if (!clickThroughHeld()) { clickAccum_ = 0.f; rack::app::SvgKnob::onDragMove(e); return; }
+        if (!clickThroughHeld()) { dragInit_ = false; rack::app::SvgKnob::onDragMove(e); return; }
         rack::engine::ParamQuantity* pq = getParamQuantity();
         if (!pq) return;
-        // Click-through: accumulate vertical drag (up = increase), commit one draw per threshold.
-        clickAccum_ += -e.mouseDelta.y;   // screen y grows downward; up should increase
-        const float stepVal = 1.f / (float)SCRUB_STEPS;   // one draw in normalized 0..1
-        while (clickAccum_ >= STEP_PIXELS) {
-            clickAccum_ -= STEP_PIXELS;
-            float snapped = std::round(pq->getValue() * SCRUB_STEPS) / (float)SCRUB_STEPS;
-            pq->setValue(rack::math::clamp(snapped + stepVal, pq->getMinValue(), pq->getMaxValue()));
-        }
-        while (clickAccum_ <= -STEP_PIXELS) {
-            clickAccum_ += STEP_PIXELS;
-            float snapped = std::round(pq->getValue() * SCRUB_STEPS) / (float)SCRUB_STEPS;
-            pq->setValue(rack::math::clamp(snapped - stepVal, pq->getMinValue(), pq->getMaxValue()));
-        }
+        const float lo = pq->getMinValue(), hi = pq->getMaxValue(), range = hi - lo;
+        if (range <= 0.f) return;
+        // Seed the continuous drag position from the current value the first time we enter
+        // click-through this drag, so a click steps relative to WHERE WE ARE.
+        if (!dragInit_) { dragPos_ = pq->getValue(); dragInit_ = true; }
+        // Accumulate travel in value-units. STEP_PIXELS of drag == one draw (1/SCRUB_STEPS).
+        const float valuePerPixel = (1.f / (float)SCRUB_STEPS) / STEP_PIXELS * range;
+        dragPos_ = rack::math::clamp(dragPos_ + (-e.mouseDelta.y) * valuePerPixel, lo, hi);
+        // The committed (stepped) value = dragPos_ snapped to the nearest draw. Because dragPos_ is
+        // continuous, the snapped value only changes once dragPos_ crosses a half-step boundary ->
+        // you must drag ~STEP_PIXELS to advance one draw. That is the click-through feel.
+        const float stepUnit = range / (float)SCRUB_STEPS;
+        float stepped = lo + std::round((dragPos_ - lo) / stepUnit) * stepUnit;
+        if (stepped != pq->getValue()) pq->setValue(stepped);
         e.consume(this);
     }
 };
