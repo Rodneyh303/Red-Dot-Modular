@@ -43,8 +43,8 @@ template <typename Tag>
 struct ScrubKnobT : rack::app::SvgKnob {
     static constexpr int   SCRUB_STEPS   = 6;      // 7 positions (0..6 draws) over the 0..1 param
     static constexpr float STEP_PIXELS   = 120.f;  // click-through: accumulated px per discrete step
-    static constexpr float DRAG_PIXELS   = 400.f;  // magnetism: px for a full-range smooth drag
-    static constexpr float MAGNET        = 0.55f;  // detent strength 0 (none) .. 1 (strong pull)
+    static constexpr float DRAG_PIXELS   = 500.f;  // magnetism: px for a full-range smooth drag
+    static constexpr float MAGNET        = 0.92f;  // detent strength 0 (none) .. 1 (near-snap)
     float dragPos_  = 0.f;    // our continuous drag accumulator (value units), decoupled from store
     bool  dragInit_ = false;
 
