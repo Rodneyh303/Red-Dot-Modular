@@ -29,58 +29,74 @@ struct KnobT : rack::app::SvgKnob {
     }
 };
 
-// ScrubKnobT: the dice SCRUB knob. Smooth by default (honest -- the stored value is continuous, and
-// CV modulates it smoothly). Holding a modifier engages CLICK-THROUGH: drag accumulates and commits
-// one DRAW at a time (a detented-rotary feel), snapping the value onto the 7 integer draw positions
-// (0, 1/6, ... 6/6). The step lives ONLY in this drag handler -- the stored value stays continuous
-// (any non-detent value is reachable via smooth drag or CV), so the scrub math / CV morph are
-// unaffected. See DICE_SCRUB_MODEL / DICE_SCRUB_STEP5. Modifier: Ctrl/Cmd (click-through). Hard-snap
-// on Shift is a possible future addition (Rodney deferred -- overlaps the dice/last-dice gates).
+// ScrubKnobT: the dice SCRUB knob. The value is ALWAYS CONTINUOUS (CV morphs it smoothly, you can
+// park at any blend) -- these behaviours only bend the MANUAL DRAG feel, never quantise the stored
+// value. Two feels:
+//   DEFAULT (magnetism): smooth scrubbing with soft DETENTS -- the drag->value mapping compresses
+//     near the 7 draw positions so the knob "settles" onto draws and speeds through the gaps. You
+//     feel notches but can always drag straight through and stop anywhere (continuous).
+//   CTRL held (click-through): deliberate discrete stepping -- accumulate travel, commit one draw
+//     per STEP_PIXELS, landing exactly on a draw. For "step me to an exact draw N."
+// Both maintain our own continuous dragPos_; magnetism WARPS it toward detents, click-through SNAPS
+// the output. CV bypasses all of this (reads the raw stored value). See DICE_SCRUB_STEP5.
 template <typename Tag>
 struct ScrubKnobT : rack::app::SvgKnob {
-    static constexpr int   SCRUB_STEPS = 6;        // 7 positions: 0..6 draws over the 0..1 param
-    static constexpr float STEP_PIXELS = 120.f;    // ACCUMULATED drag pixels per click (deliberate)
-    // Continuous accumulated drag position (0..1), decoupled from the stored value so we can require
-    // a FULL step-width of travel before committing the next draw (true click-through, not snap).
-    float dragPos_   = 0.f;
-    bool  dragInit_  = false;
+    static constexpr int   SCRUB_STEPS   = 6;      // 7 positions (0..6 draws) over the 0..1 param
+    static constexpr float STEP_PIXELS   = 120.f;  // click-through: accumulated px per discrete step
+    static constexpr float DRAG_PIXELS   = 400.f;  // magnetism: px for a full-range smooth drag
+    static constexpr float MAGNET        = 0.55f;  // detent strength 0 (none) .. 1 (strong pull)
+    float dragPos_  = 0.f;    // our continuous drag accumulator (value units), decoupled from store
+    bool  dragInit_ = false;
 
     ScrubKnobT() {
         minAngle = -0.83f * (float)M_PI;
         maxAngle =  0.83f * (float)M_PI;
-        setSvg(APP->window->loadSvg(
-            rack::asset::plugin(pluginInstance, Tag::path())));
+        setSvg(APP->window->loadSvg(rack::asset::plugin(pluginInstance, Tag::path())));
         shadow->opacity = 0.f;
     }
-
     static bool clickThroughHeld() {
         int m = APP->window->getMods() & RACK_MOD_MASK;
         return (m & GLFW_MOD_CONTROL) || (m & GLFW_MOD_SUPER);   // Ctrl (or Cmd on mac)
     }
-
     void onDragStart(const rack::event::DragStart& e) override {
-        dragInit_ = false;   // seed dragPos_ from the live value on the first move
-        rack::app::SvgKnob::onDragStart(e);
+        dragInit_ = false;
+        rack::app::SvgKnob::onDragStart(e);   // keep base bookkeeping (cursor lock etc.)
     }
-
+    // Warp a continuous position toward the nearest detent: within each [detent, detent+step] cell,
+    // reshape the fractional coordinate with a smoothstep-blended curve so motion slows at the cell
+    // ends (the detents) and quickens mid-cell. MAGNET=0 -> identity (pure smooth); higher -> more
+    // pull. Output stays continuous and covers the whole range -- nothing is quantised.
+    static float magnetize(float v, float lo, float hi) {
+        const float range = hi - lo; if (range <= 0.f) return v;
+        const float step = range / (float)SCRUB_STEPS;
+        float x = (v - lo) / step;             // position in step units [0..SCRUB_STEPS]
+        float cell = std::floor(x);
+        float f = x - cell;                    // fractional within the cell [0..1)
+        float sm = f * f * (3.f - 2.f * f);    // smoothstep: flat slope at 0 and 1 (the detents)
+        float warped = f + MAGNET * (sm - f);  // blend identity<->smoothstep by strength
+        return lo + (cell + warped) * step;
+    }
     void onDragMove(const rack::event::DragMove& e) override {
-        if (!clickThroughHeld()) { dragInit_ = false; rack::app::SvgKnob::onDragMove(e); return; }
         rack::engine::ParamQuantity* pq = getParamQuantity();
         if (!pq) return;
         const float lo = pq->getMinValue(), hi = pq->getMaxValue(), range = hi - lo;
         if (range <= 0.f) return;
-        // Seed the continuous drag position from the current value the first time we enter
-        // click-through this drag, so a click steps relative to WHERE WE ARE.
         if (!dragInit_) { dragPos_ = pq->getValue(); dragInit_ = true; }
-        // Accumulate travel in value-units. STEP_PIXELS of drag == one draw (1/SCRUB_STEPS).
-        const float valuePerPixel = (1.f / (float)SCRUB_STEPS) / STEP_PIXELS * range;
-        dragPos_ = rack::math::clamp(dragPos_ + (-e.mouseDelta.y) * valuePerPixel, lo, hi);
-        // The committed (stepped) value = dragPos_ snapped to the nearest draw. Because dragPos_ is
-        // continuous, the snapped value only changes once dragPos_ crosses a half-step boundary ->
-        // you must drag ~STEP_PIXELS to advance one draw. That is the click-through feel.
-        const float stepUnit = range / (float)SCRUB_STEPS;
-        float stepped = lo + std::round((dragPos_ - lo) / stepUnit) * stepUnit;
-        if (stepped != pq->getValue()) pq->setValue(stepped);
+
+        if (clickThroughHeld()) {
+            // Click-through: continuous accumulator, output snapped to nearest draw; one draw per
+            // STEP_PIXELS of travel (crosses a half-step boundary).
+            const float vpp = (1.f / (float)SCRUB_STEPS) / STEP_PIXELS * range;
+            dragPos_ = rack::math::clamp(dragPos_ + (-e.mouseDelta.y) * vpp, lo, hi);
+            const float stepUnit = range / (float)SCRUB_STEPS;
+            float out = lo + std::round((dragPos_ - lo) / stepUnit) * stepUnit;
+            if (out != pq->getValue()) pq->setValue(out);
+        } else {
+            // Magnetism: smooth continuous drag, warped toward detents.
+            const float vpp = range / DRAG_PIXELS;
+            dragPos_ = rack::math::clamp(dragPos_ + (-e.mouseDelta.y) * vpp, lo, hi);
+            pq->setValue(magnetize(dragPos_, lo, hi));
+        }
         e.consume(this);
     }
 };
