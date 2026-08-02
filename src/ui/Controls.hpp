@@ -55,7 +55,7 @@ struct ScrubKnobT : rack::app::ParamWidget {
         if (svg && svg->handle) box.size = rack::math::Vec(svg->handle->width, svg->handle->height);
     }
 
-    float norm() const {
+    float norm() {
         auto* pq = getParamQuantity();
         if (!pq) return 0.f;
         float lo = pq->getMinValue(), hi = pq->getMaxValue();
