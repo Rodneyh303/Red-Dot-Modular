@@ -525,7 +525,7 @@ void Monsoon::process(const ProcessArgs& args) {
 
     // ── Gate 3 Assignment Handling (Audio Rate for Consistency) ──
     if (cachedGate3Connected && gate3Trig.process(input.gate3, 0.1f, 1.f)) {
-        static const int g3map[] = { DA_REDICE_R, DA_REDICE_M, DA_RESEED_ROLL,
+        static const int g3map[] = { DA_REDICE_R, DA_REDICE_M,
             DA_RESEED_RESTART, DA_LIVESTATIC_R, DA_LIVESTATIC_M };
         if (gate3Target >= 0 && gate3Target < (int)(sizeof(g3map)/sizeof(g3map[0]))) {
             fireDieAction(g3map[gate3Target]);
