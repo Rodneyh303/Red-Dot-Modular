@@ -138,3 +138,20 @@ degradation. Another vindication of B2 over naive-B / mode-based slew.
   reverse; the ring would add per-position storage + replay-vs-last-touch semantics + undo
   interaction to buy bit-exactness the live-control framing doesn't need. Keep the model clean.
   Reverse remains: exact at constant slew, approximate as slew drifts, by design.
+
+## RESOLVED: dice undo = COUNTER ONLY (Rodney) -- amends the (counter, slew) note above
+
+The "capture slew alongside" correction above was right about pattern-reproducibility AS A MATH FACT,
+but the UNDO ACTION should restore the COUNTER ONLY. Reason: slew is a LIVE knob -- latchMix re-reads
+it from the knob every frame, so restoring an old slew to the engine is futile (the knob overwrites
+it next frame) and would make undo the one place slew isn't live (inconsistent).
+
+Division of undo responsibility:
+- Dice roll undo (Ctrl+Z) restores the pre-roll COUNTER only. Pattern after undo =
+  patternAt(restored_counter, CURRENT slew): reproduces the pre-roll pattern EXACTLY if slew is
+  unchanged, degrades gracefully if slew moved -- identical behaviour to reverse. Clean + consistent.
+- The SLEW knob is a normal Rack param -> it has its OWN native param undo (Ctrl+Z on the knob).
+- The MIX/SCRUB knob does NOT support undo (custom ParamWidget owning its own drag, bypasses Rack's
+  param-drag history). Known consequence of the ScrubKnobT design; acceptable.
+
+So no state is double-owned: dice undo = counter; slew undo = the slew param; scrub = none.
