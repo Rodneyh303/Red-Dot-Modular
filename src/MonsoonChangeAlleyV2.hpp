@@ -299,6 +299,11 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
     static constexpr float J_BACK2 = MARGIN + 34.5f;   // scatter cod-back
     static constexpr float BTN_D   = MARGIN + 42.5f;
     static constexpr float BTN_C   = MARGIN + 48.5f;
+    // Scatter REVERSE buttons: a row ~6.9mm ABOVE the scatter-rhythm row (rhythm's dom+cod reverse)
+    // and a row ~6.1mm BELOW the scatter-melody row (melody's dom+cod reverse). Same BTN_D/BTN_C
+    // columns as the forward buttons, so each reverse button sits in its dom/cod column.
+    static constexpr float REV_DY_ABOVE = 6.9f;   // above scatter-rhythm row
+    static constexpr float REV_DY_BELOW = 6.1f;   // below scatter-melody row
     static constexpr float LIGHT_X = MARGIN + 54.0f;
     static constexpr float CTRL_W  = LIGHT_X + 2.5f;   // 62.5
     static constexpr float GUTTER  = 9.6f;
@@ -431,6 +436,14 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                         module, CA::SCATTER_BACK_DOM_START + si));
                     addInput(createInputCentered<PJ301MPort>(mm2px(Vec(lx(J_BACK2, flip), y)),
                         module, CA::SCATTER_BACK_COD_START + si));
+                    // Reverse BUTTONS in the dom/cod columns: rhythm (sub 0) sits ABOVE its row,
+                    // melody (sub 1) sits BELOW its row. si = side*TYPES+sub selects the pair;
+                    // domain = REV_BTN_START+si, codomain = REV_BTN_START+4+si (mirrors process()).
+                    const float ry = (sub == 0) ? (y - REV_DY_ABOVE) : (y + REV_DY_BELOW);
+                    addParam(createParamCentered<TL1105>(mm2px(Vec(lx(BTN_D, flip), ry)),
+                        module, CA::SCATTER_REV_BTN_START + si));
+                    addParam(createParamCentered<TL1105>(mm2px(Vec(lx(BTN_C, flip), ry)),
+                        module, CA::SCATTER_REV_BTN_START + 4 + si));
                 }
                 addParam(createParamCentered<TL1105>(mm2px(Vec(lx(BTN_D, flip), y)),
                     module, CA::BTN_START + r*2));
