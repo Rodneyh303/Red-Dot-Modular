@@ -204,13 +204,11 @@ struct PatternEngine {
         }
     }
 
-    // Force a fresh slewed = bl(LockedA, CandB) for BOTH rhythm and melody families,
     // regardless of mix-latch state — used before the Change Alley pin remap so the
     // remap always operates on pristine (un-remapped) slewed. Cheap; idempotent.
     // NAMING TRAP (do not be misled): the "slewed*" buffers are NOT slew output. Actual
     // SLEW is consumed at ROLL/phrase time inside redrawRhythm/Melody (blends A↔B at the
     // roll — phrase-bounded, per design). recomputeEffective* only computes the stateless
-    // MIX blend A + mix*(B-A) from the already-rolled LockedA/CandB, so calling it every
     // audio cycle re-derives the SAME values from unchanged inputs — no re-slew, safe.
     void forceRecomputeSlewed() {
         rhythmMixApplied = -999.f;   // invalidate so recompute* actually runs
@@ -234,17 +232,7 @@ struct PatternEngine {
     // morphs between the two committed grooves live. SequencerEngine reads the
     // public arrays unchanged.
     // Rhythm group: rhythm / variation / legato / accent (+ poly rhythm)
-    float rhythmLockedA[16]={},    rhythmCandB[16]={};
-    float variationLockedA[16]={}, variationCandB[16]={};
-    float legatoLockedA[16]={},    legatoCandB[16]={};
-    float accentLockedA[16]={},    accentCandB[16]={};
-    float polyRhythmLockedA[15][16]={}, polyRhythmCandB[15][16]={};
-    float polyAccentLockedA[15][16]={}, polyAccentCandB[15][16]={};
     // Melody group: melody / octave (+ poly melody / poly octave)
-    float melodyLockedA[16]={},    melodyCandB[16]={};
-    float octaveLockedA[16]={},    octaveCandB[16]={};
-    float polyMelodyLockedA[15][16]={}, polyMelodyCandB[15][16]={};
-    float polyOctaveLockedA[15][16]={}, polyOctaveCandB[15][16]={};
     // Latched slew (sampled at step 0), and the last value we recomputed at.
     float rhythmSlewLatched = 1.f, melodySlewLatched = 1.f;
     float rhythmSlewApplied =-1.f, melodySlewApplied =-1.f;  // force first recompute
@@ -546,53 +534,10 @@ struct PatternEngine {
     // (we reproduce the draw AT drawCtr, which already shaped the current B). A is
     // irreducible (carries the accumulated slew walk) so it is restored directly,
     // not regenerated. After this, recomputeEffective* yields the live pattern.
-    inline void regenerateRhythmB() {
-        if (rhythmFirstDraw) { recomputeEffectiveRhythm(); return; }  // never rolled: B==A path
-        beginRhythmDraw();                                            // cursor = 0
-        const float sl = rack::math::clamp(rhythmSlewLatched, 0.f, 1.f);
-        auto step = [&](float a){ return a + sl * (unitRhythm() - a); };
-        for (int i = 0; i < 16; ++i) {
-            rhythmCandB[i]    = step(rhythmLockedA[i]);
-            variationCandB[i] = step(variationLockedA[i]);
-            legatoCandB[i]    = step(legatoLockedA[i]);
-            accentCandB[i]    = step(accentLockedA[i]);
-            for (int v = 0; v < 15; ++v) polyRhythmCandB[v][i] = step(polyRhythmLockedA[v][i]);
-            for (int v = 0; v < 15; ++v) polyAccentCandB[v][i] = step(polyAccentLockedA[v][i]);
-        }
-        rhythmSlewApplied = -1.f;
-        recomputeEffectiveRhythm();
-        // Rebuild the cached SOURCE arrays (read for note output, not just preview) —
-        // mirrors redrawRhythm's tail so playback matches exactly post-reload.
-        for (int i = 0; i < 16; ++i) {
-            rhythmSource[i]=slewedRhythm[i]; variationSource[i]=slewedVariation[i];
-            legatoSource[i]=slewedLegato[i]; accentSource[i]=slewedAccent[i];
-            for (int v=0; v<15; ++v) polyRhythmSource[v][i]=slewedPolyRhythm[v][i];
-            for (int v=0; v<15; ++v) polyAccentSource[v][i]=slewedPolyAccent[v][i];
-        }
-    }
-    inline void regenerateMelodyB() {
-        if (melodyFirstDraw) { recomputeEffectiveMelody(); return; }
-        beginMelodyDraw();
-        const float sl = rack::math::clamp(melodySlewLatched, 0.f, 1.f);
-        auto step = [&](float a){ return a + sl * (unitMelody() - a); };
-        for (int i = 0; i < 16; ++i) {
-            melodyCandB[i] = step(melodyLockedA[i]);
-            octaveCandB[i] = step(octaveLockedA[i]);
-            for (int v = 0; v < 15; ++v) {
-                polyMelodyCandB[v][i] = step(polyMelodyLockedA[v][i]);
-                polyOctaveCandB[v][i] = step(polyOctaveLockedA[v][i]);
-            }
-        }
-        melodySlewApplied = -1.f;
-        recomputeEffectiveMelody();
-        for (int i = 0; i < 16; ++i) {
-            melodySource[i]=slewedMelody[i]; octaveSource[i]=slewedOctave[i];
-            for (int v=0; v<15; ++v) {
-                polyMelodySource[v][i]=slewedPolyMelody[v][i];
-                polyOctaveSource[v][i]=slewedPolyOctave[v][i];
-            }
-        }
-    }
+    // Scrub model: reload just recomputes the effective pattern from the restored counter+seed+
+    // slew+mix -- no B reconstruction, no A restore. (Step 4c gutted the old Option-3 replay.)
+    inline void regenerateRhythmB() { recomputeEffectiveRhythm(); }
+    inline void regenerateMelodyB() { recomputeEffectiveMelody(); }
 
     // ── Sands spread-stage contract (Option W) ─────────────────────────────────
     // A Sands visual expander owns the spread→final stage when present:

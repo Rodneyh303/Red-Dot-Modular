@@ -49,28 +49,7 @@ void PatternEngine::reset() {
         rhythmPattern[i] = true;
     }
 
-    // Playable slew: mirror defaults into A and B so the morph is a no-op until
-    // the first dice, and arm the first-draw guards.
-    for (int i = 0; i < 16; ++i) {
-        rhythmLockedA[i] = variationLockedA[i] = legatoLockedA[i] = 0.f;
-        accentLockedA[i] = melodyLockedA[i] = octaveLockedA[i] = 0.f;
-
-        rhythmCandB[i] = rhythmRandom[i];
-        variationCandB[i] = variationRandom[i];
-        legatoCandB[i] = legatoRandom[i];
-        accentCandB[i] = accentRandom[i];
-        melodyCandB[i] = melodyRandom[i];
-        octaveCandB[i] = octaveRandom[i];
-
-        for (int v=0;v<15;v++){
-            polyRhythmLockedA[v][i] = polyMelodyLockedA[v][i] = polyOctaveLockedA[v][i] = 0.f;
-            polyAccentLockedA[v][i] = 0.f;
-            polyRhythmCandB[v][i] = polyRandom(v, PL_REST)[i];
-            polyAccentCandB[v][i] = polyRandom(v, PL_ACCENT)[i];
-            polyMelodyCandB[v][i] = polyRandom(v, PL_MELODY)[i];
-            polyOctaveCandB[v][i] = polyRandom(v, PL_OCTAVE)[i];
-        }
-    }
+    // (Step 4c: removed A/B init -- no stored A/B arrays under the scrub model.)
 
     rhythmSlewLatched=melodySlewLatched=1.f;
     rhythmSlewApplied=melodySlewApplied=1.f;
