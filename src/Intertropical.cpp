@@ -137,6 +137,9 @@ static constexpr float IT_VS_H      = 8*IT_VS_ROWH; // 28mm total
 static constexpr float IT_ROUT_TOP  = 52.0f;  // slot->output grid top (panel ROUT_TOP)
 static constexpr float IT_ROUT_ROWH = 5.0f;   // slot->output row height (mm)
 static constexpr float IT_ROUT_H    = 8*IT_ROUT_ROWH; // 40mm total
+// Right block X/width (panel px 330.7 / 281.6 -> mm). Shared by both right-side grids.
+static constexpr float IT_RIGHT_X   = 112.0f; // right block left (both sub-grids)
+static constexpr float IT_RIGHT_W   = 95.37f; // right block width (8 cols = 11.92mm each)
 
 // Continuous grid display: reads cell geometry from the panel constants and draws live state
 // (membership fill via voiceColour, active-scene highlight, repeat count + progress, voice
@@ -145,6 +148,8 @@ struct IntertropicalGrid : Widget {
     Intertropical* module = nullptr;
     Rect gridBox;     // main 8x16 membership grid (px)
     Rect repBox;      // repeat row (px)
+    Rect vsBox;       // voice->slot display grid (top-right, read-only)
+    Rect routBox;     // slot->output routing grid (bottom-right, 8x8, interactive)
 
     // voiceColour: reuse Lantern's palette so voice identity is consistent across modules.
     static NVGcolor voiceColour(int v) {
@@ -184,6 +189,17 @@ struct IntertropicalGrid : Widget {
             float frac = ((e.pos.x - repBox.pos.x) - scene*cw) / cw;
             int n = 1 + (int)(frac * Intertropical::Ids::MAX_REPEAT);
             module->setRepeats(scene, n);
+            e.consume(this); return;
+        }
+        // Slot->output routing grid (8x8): left-click toggles whether slot (row) drives output (col).
+        // A slot with >1 lit cell is fanned out. Global setup (not per-scene).
+        if (routBox.contains(e.pos)) {
+            const int MV = Intertropical::Ids::MAX_VOICES_PER_SCENE;   // 8
+            const float cw = routBox.size.x / MV;
+            const float ch = routBox.size.y / MV;
+            int output = (int)((e.pos.x - routBox.pos.x) / cw);   // column = output
+            int slot   = (int)((e.pos.y - routBox.pos.y) / ch);   // row = slot
+            module->toggleSlotOutput(slot, output);
             e.consume(this); return;
         }
         Widget::onButton(e);
@@ -318,6 +334,87 @@ struct IntertropicalGrid : Widget {
             snprintf(buf, sizeof(buf), "%d", v + 1);
             nvgText(vg, gridBox.pos.x - 2.f, gridBox.pos.y + v*ch + ch/2, buf, nullptr);
         }
+
+        drawSlotOutputGrid(vg);
+        drawVoiceSlotDisplay(vg);
+    }
+
+    // --- Slot->output routing grid (bottom-right, 8x8, GLOBAL, interactive) ---
+    // Rows = slots (0..7), cols = outputs (0..7). Lit cell = that slot drives that output.
+    // FAN-OUT is simply TWO+ lit cells in a slot's row (spec "Routing model + fan-out"). The 8
+    // columns align under the 8 transpose knobs. Same idiom as Change Alley's pin matrix.
+    void drawSlotOutputGrid(NVGcontext* vg) {
+        const int MV = Intertropical::Ids::MAX_VOICES_PER_SCENE;   // 8
+        const float cw = routBox.size.x / MV;
+        const float chh = routBox.size.y / MV;
+        // faint grid lines
+        nvgStrokeColor(vg, nvgRGBA(0x50,0x50,0x50,0x80));
+        nvgStrokeWidth(vg, 0.5f);
+        for (int c = 0; c <= MV; ++c) {
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, routBox.pos.x + c*cw, routBox.pos.y);
+            nvgLineTo(vg, routBox.pos.x + c*cw, routBox.pos.y + routBox.size.y);
+            nvgStroke(vg);
+        }
+        for (int r = 0; r <= MV; ++r) {
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, routBox.pos.x, routBox.pos.y + r*chh);
+            nvgLineTo(vg, routBox.pos.x + routBox.size.x, routBox.pos.y + r*chh);
+            nvgStroke(vg);
+        }
+        // lit cells (slot=row drives output=col). Colour by SLOT so a fanned-out row reads as one slot.
+        for (int slot = 0; slot < MV; ++slot) {
+            const uint8_t mask = module->slotOutput[slot];
+            int litCount = 0; for (int o = 0; o < MV; ++o) if ((mask >> o) & 1u) litCount++;
+            for (int out = 0; out < MV; ++out) {
+                if (!((mask >> out) & 1u)) continue;
+                NVGcolor col = voiceColour(slot);          // slot's identity hue
+                if (litCount > 1) { col.r = std::min(1.f, col.r*1.15f); }  // fanned rows slightly hotter
+                const float x = routBox.pos.x + out*cw;
+                const float y = routBox.pos.y + slot*chh;
+                nvgBeginPath(vg);
+                nvgRoundedRect(vg, x + cw*0.16f, y + chh*0.16f, cw*0.68f, chh*0.68f, 1.2f);
+                nvgFillColor(vg, col);
+                nvgFill(vg);
+            }
+        }
+    }
+
+    // --- Voice->slot display (top-right, per-scene, READ-ONLY) ---
+    // Shows, for the ACTIVE scene, which global voice is seated in each of the 8 slots (rows).
+    // Read-only mirror of computeSlots(activeScene): a labelled chip per occupied slot.
+    void drawVoiceSlotDisplay(NVGcontext* vg) {
+        const int MV = Intertropical::Ids::MAX_VOICES_PER_SCENE;   // 8
+        const int scene = module->activeScene;
+        int8_t slotOf[Intertropical::Ids::N_VOICES];
+        module->computeSlots(scene, slotOf);
+        // invert: which voice sits in each slot
+        int voiceInSlot[8]; for (int s = 0; s < MV; ++s) voiceInSlot[s] = -1;
+        for (int v = 0; v < Intertropical::Ids::N_VOICES; ++v)
+            if (slotOf[v] >= 0 && slotOf[v] < MV) voiceInSlot[slotOf[v]] = v;
+        const float rowh = vsBox.size.y / MV;
+        nvgStrokeColor(vg, nvgRGBA(0x50,0x50,0x50,0x60));
+        nvgStrokeWidth(vg, 0.5f);
+        nvgFontSize(vg, 7.f);
+        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+        for (int s = 0; s < MV; ++s) {
+            const float y = vsBox.pos.y + s*rowh;
+            // slot label (left)
+            nvgFillColor(vg, nvgRGBA(0x80,0x80,0x80,0xff));
+            char sb[8]; snprintf(sb, sizeof(sb), "S%d", s + 1);
+            nvgText(vg, vsBox.pos.x + 1.f, y + rowh/2, sb, nullptr);
+            const int v = voiceInSlot[s];
+            if (v < 0) continue;   // empty slot this scene
+            // voice chip in the slot's colour
+            NVGcolor col = voiceColour(s);
+            nvgBeginPath(vg);
+            nvgRoundedRect(vg, vsBox.pos.x + mm2px(7.f), y + rowh*0.15f, mm2px(10.f), rowh*0.7f, 1.5f);
+            nvgFillColor(vg, col);
+            nvgFill(vg);
+            nvgFillColor(vg, nvgRGBA(0x0a,0x0a,0x0a,0xff));
+            char vb[8]; snprintf(vb, sizeof(vb), "v%d", v + 1);
+            nvgText(vg, vsBox.pos.x + mm2px(8.f), y + rowh/2, vb, nullptr);
+        }
     }
 };
 
@@ -335,6 +432,13 @@ struct IntertropicalWidget : ModuleWidget,
                              mm2px(Vec(IT_GRID_W, IT_GRID_H)));
         grid->repBox  = Rect(mm2px(Vec(IT_GRID_X, IT_REP_Y)),
                              mm2px(Vec(IT_GRID_W, IT_REP_H)));
+        // Right block: voice->slot DISPLAY (top) + slot->output ROUTING grid (bottom). X/W from the
+        // panel's two right-side boxes (px 330.7 / w 281.6 -> mm 112.0 / 95.37); the routing grid's
+        // 8 output columns line up under the 8 transpose knobs (param_0..7) by construction.
+        grid->vsBox   = Rect(mm2px(Vec(IT_RIGHT_X, IT_VS_TOP)),
+                             mm2px(Vec(IT_RIGHT_W, IT_VS_H)));
+        grid->routBox = Rect(mm2px(Vec(IT_RIGHT_X, IT_ROUT_TOP)),
+                             mm2px(Vec(IT_RIGHT_W, IT_ROUT_H)));
         // FULL-PANEL box (origin 0,0) so the absolute panel-mm coords in gridBox/repBox equal
         // the widget's LOCAL draw coords. Bug fixed: box.pos was offset to (IT_GRID_X-6,
         // IT_GRID_Y-2), so drawing at absolute gridBox.pos rendered offset by that origin -- the
