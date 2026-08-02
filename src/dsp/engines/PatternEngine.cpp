@@ -213,43 +213,11 @@ void PatternEngine::redrawRhythm(const PatternInput& in) {
     if (!first) advanceRhythmDraw(rhythmDrawDir());
     beginRhythmDraw();
 
-    for (int i = 0; i < 16; ++i) {
-        // Promote current B -> A (commit the last candidate) before drawing the new one.
-        {
-            rhythmLockedA[i]    = rhythmCandB[i];
-            variationLockedA[i] = variationCandB[i];
-            legatoLockedA[i]    = legatoCandB[i];
-            accentLockedA[i]    = accentCandB[i];
-            for (int v = 0; v < 15; v++) polyRhythmLockedA[v][i] = polyRhythmCandB[v][i];
-            for (int v = 0; v < 15; v++) polyAccentLockedA[v][i] = polyAccentCandB[v][i];
-        }
-
-        // fresh candidate B. MODEL 2: SLEW is consumed here — instead of storing
-        // a full independent draw, store B = A + slew*(T-A), so slew LIMITS how
-        // far this roll can move B from the current A (low slew = small step). On
-        // MAIN dice A was just promoted to the previous B, so repeated low-slew
-        // rolls give a bounded random walk. On TRIAL dice A is the fixed anchor,
-        // so slew controls audition boldness. The live A<->B morph is MIX, not
-        // slew (see recomputeEffectiveRhythm).
-        const float sl = rack::math::clamp(in.rhythmSlew, 0.f, 1.f);
-        auto step = [&](float a){ return a + sl * (unitRhythm() - a); };
-        if (first) {
-            // No prior A to step from: draw a full independent pattern.
-            rhythmCandB[i]    = unitRhythm();
-            variationCandB[i] = unitRhythm();
-            legatoCandB[i]    = unitRhythm();
-            accentCandB[i]    = unitRhythm();
-            for (int v = 0; v < 15; v++) polyRhythmCandB[v][i] = unitRhythm();
-            for (int v = 0; v < 15; v++) polyAccentCandB[v][i] = unitRhythm();
-        } else {
-            rhythmCandB[i]    = step(rhythmLockedA[i]);
-            variationCandB[i] = step(variationLockedA[i]);
-            legatoCandB[i]    = step(legatoLockedA[i]);
-            accentCandB[i]    = step(accentLockedA[i]);
-            for (int v = 0; v < 15; v++) polyRhythmCandB[v][i] = step(polyRhythmLockedA[v][i]);
-            for (int v = 0; v < 15; v++) polyAccentCandB[v][i] = step(polyAccentLockedA[v][i]);
-        }
-    }
+    // Dice roll = advance the counter (done above). The effective pattern is re-derived from the
+    // counter by recomputeEffectiveRhythm (scrub/B2 window) -- no stored A/B walk. (Step 4a removed
+    // the old promote-A<-B + step()=a+slew*(unit()-a) population; slew is now the FIR smoothing
+    // width in patternRhythmAt, not a roll-time B-shaping step.)
+    (void)first;   // first-draw no longer special-cased: infinite-line, patternAt(N) is self-contained
     rhythmSlewApplied = -1.f;       // force recompute of slewedDraw
     recomputeEffectiveRhythm();
     // Cache source from the SLEWED draw (canonical draw; final may be rewritten
@@ -345,30 +313,9 @@ void PatternEngine::redrawMelody(const PatternInput& in) {
     if (!first) advanceMelodyDraw(melodyDrawDir());
     beginMelodyDraw();
 
-    for (int i = 0; i < 16; ++i) {
-        // MAIN: commit current B → A before drawing fresh B. TRIAL: A anchored.
-        {
-            melodyLockedA[i] = melodyCandB[i];
-            octaveLockedA[i] = octaveCandB[i];
-            for (int v=0;v<15;v++){ polyMelodyLockedA[v][i]=polyMelodyCandB[v][i];
-                                    polyOctaveLockedA[v][i]=polyOctaveCandB[v][i]; }
-        }
-
-        // MODEL 2: SLEW consumed here — B = A + slew*(T-A). See redrawRhythm.
-        const float sl = rack::math::clamp(in.melodySlew, 0.f, 1.f);
-        auto step = [&](float a){ return a + sl * (unitMelody() - a); };
-        if (first) {
-            melodyCandB[i] = unitMelody();
-            octaveCandB[i] = unitMelody();
-            for (int v=0;v<15;v++){ polyMelodyCandB[v][i]=unitMelody();
-                                    polyOctaveCandB[v][i]=unitMelody(); }
-        } else {
-            melodyCandB[i] = step(melodyLockedA[i]);
-            octaveCandB[i] = step(octaveLockedA[i]);
-            for (int v=0;v<15;v++){ polyMelodyCandB[v][i]=step(polyMelodyLockedA[v][i]);
-                                    polyOctaveCandB[v][i]=step(polyOctaveLockedA[v][i]); }
-        }
-    }
+    // Dice roll = advance the counter (done above); effective pattern re-derived by
+    // recomputeEffectiveMelody (scrub/B2). No stored A/B walk. (Step 4a.)
+    (void)first;
     melodySlewApplied = -1.f;
     recomputeEffectiveMelody();
     for (int i = 0; i < 16; ++i) {
