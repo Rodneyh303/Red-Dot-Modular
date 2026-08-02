@@ -64,6 +64,13 @@ struct Intertropical : Module {
     // mappings and couldn't express fan-out). sceneSlots is the SAME array re-meaned: voice->SLOT.
     int8_t   sceneSlots[Ids::N_SCENES][Ids::N_VOICES];   // per-scene voice->slot (-1 auto, 0..7 seat)
     uint8_t  slotOutput[Ids::MAX_VOICES_PER_SCENE];      // global slot->output 8-bit mask (fan-out)
+    // Tie-latched per-output transpose (semitones). What actually reaches CV_OUT: held constant across
+    // a TRUE TIE (so a tied note's pitch can't slide when transpose is edited/modulated), re-captured
+    // from the live knob on any non-tie. Lantern reads this so its piano-roll shows the sounding pitch.
+    float    effectiveTranspose[Ids::MAX_VOICES_PER_SCENE];
+    float    transposeForOutput(int ch) const {
+        return (ch >= 0 && ch < Ids::MAX_VOICES_PER_SCENE) ? effectiveTranspose[ch] : 0.f;
+    }
     // Constructor: sceneSlots all -1 (auto-pack), slotOutput identity permutation (slot i -> out i).
     Intertropical();
 

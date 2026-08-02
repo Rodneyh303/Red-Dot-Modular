@@ -291,6 +291,12 @@ struct Lantern : Module {
                 const int g = it->voiceForOutput(scene, row);
                 if (g < 0) { cells[row][writeStep].type = lantern::NoteType::Inactive; continue; }
                 recordGlobalVoice(row, g);
+                // POST-TRANSPOSE pitch: the piano-roll must show what's actually sounding, which is the
+                // voice's pitch PLUS this output's effective (tie-latched) transpose. Grid view ignores
+                // pitch, so this only affects the roll. Intertropical already tie-latches the transpose
+                // (constant across a true tie, live on legato/single), so reading its effective value
+                // here makes Lantern agree with the audio automatically.
+                cells[row][writeStep].pitchV += it->transposeForOutput(row) / 12.f;
             }
             for (int row = Intertropical::Ids::MAX_VOICES_PER_SCENE; row < 16; ++row)
                 cells[row][writeStep].type = lantern::NoteType::Inactive;

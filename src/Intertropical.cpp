@@ -22,6 +22,8 @@ Intertropical::Intertropical() {
     // Global slot -> output: default identity permutation (slot i drives output i, single bit).
     for (int s = 0; s < Ids::MAX_VOICES_PER_SCENE; ++s)
         slotOutput[s] = (uint8_t)(1u << s);
+    for (int s = 0; s < Ids::MAX_VOICES_PER_SCENE; ++s)
+        effectiveTranspose[s] = 0.f;
     config(Ids::NUM_PARAMS, Ids::NUM_INPUTS, Ids::NUM_OUTPUTS, Ids::NUM_LIGHTS);
     // 8 per-output transpose knobs: -24..+24 semitones, integer-detented (snap), default 0.
     for (int o = 0; o < 8; ++o) {
@@ -102,10 +104,20 @@ void Intertropical::process(const ProcessArgs& args) {
         const float acc  = straits->outputs[4].getVoltage(v);
         const float leg  = straits->outputs[1].getVoltage(v);
         const float sleg = straits->outputs[2].getVoltage(v);
+        // Tie vs legato for the transpose rule. Read the SAME articulation Lantern reads: global
+        // voice v -> mono/V1 uses eng.gs, poly uses eng.voices[v-1].gs. lastNoteType is Single/Tie/
+        // Legato. TRUE TIE = one sustained note, pitch must NOT move, so hold transpose from the
+        // tie's onset. LEGATO = a connected note allowed to glide, so transpose reads LIVE (worst
+        // case a legato with unchanged transpose just looks like a tie -- a valid note). Single =
+        // fresh onset, live. Rule: hold while lastNoteType==Tie, else re-capture the live knob.
+        const GateState& vgs = (v == 0) ? eng.gs : eng.voices[v - 1].gs;
+        const bool tieHold = (vgs.lastNoteType == GateState::NoteType::Tie);
         for (int ch = 0; ch < Ids::MAX_VOICES_PER_SCENE; ++ch) {
             if (!((mask >> ch) & 1u)) continue;    // this slot doesn't drive output ch
-            // Per-output TRANSPOSE: ch is the OUTPUT channel, so params[TRANSPOSE_FIRST+ch] is its knob.
-            const float trSemi = params[Ids::TRANSPOSE_FIRST + ch].getValue();
+            // Per-output TRANSPOSE (ch = OUTPUT channel). effectiveTranspose[ch] is what actually
+            // reaches the CV jack; Lantern reads it so the piano-roll shows the sounding pitch.
+            if (!tieHold) effectiveTranspose[ch] = params[Ids::TRANSPOSE_FIRST + ch].getValue();
+            const float trSemi = effectiveTranspose[ch];
             outputs[Ids::GATE_OUT].setVoltage(gate, ch);
             outputs[Ids::CV_OUT].setVoltage(cv + trSemi / 12.f, ch);
             outputs[Ids::ACCENT_OUT].setVoltage(acc, ch);
