@@ -312,10 +312,10 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
             std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = false; }));
         bindParam<TrialButton>("param_LAST_TRIAL_M_PARAM",  MonsoonIds::LAST_TRIAL_M_PARAM,
             std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = true; }));
-         bindParam<redDot::Dark_Small_Cog>("param_RHYTHM_MIX_PARAM", MonsoonIds::RHYTHM_MIX_PARAM,
-            std::function<void(redDot::Dark_Small_Cog*)>([this, module](redDot::Dark_Small_Cog* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.rhythmMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[2];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
-        bindParam<redDot::Dark_Small_Cog>("param_MELODY_MIX_PARAM", MonsoonIds::MELODY_MIX_PARAM,
-            std::function<void(redDot::Dark_Small_Cog*)>([this, module](redDot::Dark_Small_Cog* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.melodyMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[3];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+         bindParam<redDot::Scrub_Small_Cog>("param_RHYTHM_MIX_PARAM", MonsoonIds::RHYTHM_MIX_PARAM,
+            std::function<void(redDot::Scrub_Small_Cog*)>([this, module](redDot::Scrub_Small_Cog* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.rhythmMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[2];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+        bindParam<redDot::Scrub_Small_Cog>("param_MELODY_MIX_PARAM", MonsoonIds::MELODY_MIX_PARAM,
+            std::function<void(redDot::Scrub_Small_Cog*)>([this, module](redDot::Scrub_Small_Cog* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.melodyMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[3];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
         bindParam<TL1105>("param_LOCK_PARAM",             MonsoonIds::LOCK_PARAM);
         bindParam<TL1105>("param_MUTE_PARAM",             MonsoonIds::MUTE_PARAM);
         bindParam<TL1105>("param_RESET_BUTTON_PARAM",     MonsoonIds::RESET_BUTTON_PARAM);

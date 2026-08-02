@@ -29,6 +29,58 @@ struct KnobT : rack::app::SvgKnob {
     }
 };
 
+// ScrubKnobT: the dice SCRUB knob. Smooth by default (honest -- the stored value is continuous, and
+// CV modulates it smoothly). Holding a modifier engages CLICK-THROUGH: drag accumulates and commits
+// one DRAW at a time (a detented-rotary feel), snapping the value onto the 7 integer draw positions
+// (0, 1/6, ... 6/6). The step lives ONLY in this drag handler -- the stored value stays continuous
+// (any non-detent value is reachable via smooth drag or CV), so the scrub math / CV morph are
+// unaffected. See DICE_SCRUB_MODEL / DICE_SCRUB_STEP5. Modifier: Ctrl/Cmd (click-through). Hard-snap
+// on Shift is a possible future addition (Rodney deferred -- overlaps the dice/last-dice gates).
+template <typename Tag>
+struct ScrubKnobT : rack::app::SvgKnob {
+    static constexpr int   SCRUB_STEPS   = 6;       // 7 positions: 0..6 draws over the 0..1 param
+    static constexpr float STEP_PIXELS   = 14.f;    // drag pixels per click (detent spacing feel)
+    float clickAccum_ = 0.f;
+
+    ScrubKnobT() {
+        minAngle = -0.83f * (float)M_PI;
+        maxAngle =  0.83f * (float)M_PI;
+        setSvg(APP->window->loadSvg(
+            rack::asset::plugin(pluginInstance, Tag::path())));
+        shadow->opacity = 0.f;
+    }
+
+    static bool clickThroughHeld() {
+        int m = APP->window->getMods() & RACK_MOD_MASK;
+        return (m & GLFW_MOD_CONTROL) || (m & GLFW_MOD_SUPER);   // Ctrl (or Cmd on mac)
+    }
+
+    void onDragStart(const rack::event::DragStart& e) override {
+        clickAccum_ = 0.f;
+        rack::app::SvgKnob::onDragStart(e);
+    }
+
+    void onDragMove(const rack::event::DragMove& e) override {
+        if (!clickThroughHeld()) { clickAccum_ = 0.f; rack::app::SvgKnob::onDragMove(e); return; }
+        rack::engine::ParamQuantity* pq = getParamQuantity();
+        if (!pq) return;
+        // Click-through: accumulate vertical drag (up = increase), commit one draw per threshold.
+        clickAccum_ += -e.mouseDelta.y;   // screen y grows downward; up should increase
+        const float stepVal = 1.f / (float)SCRUB_STEPS;   // one draw in normalized 0..1
+        while (clickAccum_ >= STEP_PIXELS) {
+            clickAccum_ -= STEP_PIXELS;
+            float snapped = std::round(pq->getValue() * SCRUB_STEPS) / (float)SCRUB_STEPS;
+            pq->setValue(rack::math::clamp(snapped + stepVal, pq->getMinValue(), pq->getMaxValue()));
+        }
+        while (clickAccum_ <= -STEP_PIXELS) {
+            clickAccum_ += STEP_PIXELS;
+            float snapped = std::round(pq->getValue() * SCRUB_STEPS) / (float)SCRUB_STEPS;
+            pq->setValue(rack::math::clamp(snapped - stepVal, pq->getMinValue(), pq->getMaxValue()));
+        }
+        e.consume(this);
+    }
+};
+
 // ── Behaviours, orthogonal to artwork ────────────────────────────────────────
 // Dimmable<Base>: DimmableTrimpot's behaviour lifted off its hard-wired Trimpot
 // base so it composes with ANY knob (ours or stock). Three lambda-driven hooks:
@@ -483,6 +535,7 @@ using Dark_Compact_Dot = KnobT<Tag_Dark_Compact_Dot>;
 using Dark_Compact_Dot_Dim = Dimmable<KnobT<Tag_Dark_Compact_Dot>>;
 struct Tag_Dark_Small_Cog { static const char* path() { return "res/controls/RDM_Dark_Small_Cog.svg"; } };
 using Dark_Small_Cog = KnobT<Tag_Dark_Small_Cog>;
+using Scrub_Small_Cog = ScrubKnobT<Tag_Dark_Small_Cog>;   // dice scrub knob (click-through detents)
 using Dark_Small_Cog_Dim = Dimmable<KnobT<Tag_Dark_Small_Cog>>;
 struct Tag_Dark_Small_Bar { static const char* path() { return "res/controls/RDM_Dark_Small_Bar.svg"; } };
 using Dark_Small_Bar = KnobT<Tag_Dark_Small_Bar>;
