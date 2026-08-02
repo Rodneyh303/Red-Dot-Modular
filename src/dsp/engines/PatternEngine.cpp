@@ -381,14 +381,18 @@ void PatternEngine::redrawMelody(const PatternInput& in) {
     }
 }
 
-void PatternEngine::latchMix(float rhythmMix, float melodyMix) {
-    // Sample the live MIX (called at control rate). Recompute the effective A<->B
-    // morph only when it actually changes. This is the playable, continuous blend
-    // (the role spread has); SLEW is separate and consumed at roll time.
+void PatternEngine::latchMix(float rhythmMix, float melodyMix, float rhythmSlew, float melodySlew) {
+    // Sample the live SCRUB inputs (control rate). Under the scrub model BOTH the scrub position
+    // (MIX repurposed) AND slew (FIR smoothing width) feed the effective pattern, so latch both and
+    // recompute a stream when EITHER changed. Recompute is cheap + change-guarded.
     rhythmMixLatched = rhythmMix;
     melodyMixLatched = melodyMix;
-    if (rhythmMixLatched != rhythmMixApplied) recomputeEffectiveRhythm();
-    if (melodyMixLatched != melodyMixApplied) recomputeEffectiveMelody();
+    rhythmSlewLatched = rhythmSlew;
+    melodySlewLatched = melodySlew;
+    if (rhythmMixLatched != rhythmMixApplied || rhythmSlewLatched != rhythmSlewApplied)
+        recomputeEffectiveRhythm();
+    if (melodyMixLatched != melodyMixApplied || melodySlewLatched != melodySlewApplied)
+        recomputeEffectiveMelody();
 }
 
 // Updates the rhythm/melody arrays used for UI and LEDs based on the 

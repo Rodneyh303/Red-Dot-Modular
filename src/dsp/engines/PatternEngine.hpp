@@ -541,7 +541,7 @@ struct PatternEngine {
     // ── Playable slew ──────────────────────────────────────────────────────────
     // Latch the live slew (call at step-0 wrap), then recompute effective arrays
     // if the latched value changed. Cheap; safe to call every step.
-    void latchMix(float rhythmMix, float melodyMix);
+    void latchMix(float rhythmMix, float melodyMix, float rhythmSlew, float melodySlew);
     void recomputeEffectiveRhythm();   // public[] = A + rhythmMixLatched*(B-A)
     void recomputeEffectiveMelody();   // public[] = A + melodyMixLatched*(B-A)
 

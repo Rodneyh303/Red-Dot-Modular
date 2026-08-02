@@ -63,7 +63,9 @@ void ModeController::updatePatternInput() {
     // it is consumed at roll time (shapes B). Lock freezes the morph.
     if (dotModular::LockManager::liveNow(dotModular::Control::ABMix, engine.locked)) {
         engine.pe.latchMix(currentPatternInput.rhythmMix,
-                           currentPatternInput.melodyMix);
+                           currentPatternInput.melodyMix,
+                           currentPatternInput.rhythmSlew,
+                           currentPatternInput.melodySlew);
     }
     if (mainModule) {
         currentPatternInput.reseedOnRoll    = mainModule->reseedOnRoll;
