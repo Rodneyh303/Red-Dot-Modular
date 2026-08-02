@@ -124,6 +124,13 @@ struct Lantern : Module {
     // Intertropical's inverse map (output -> slot -> voice, per active scene) so each output channel's
     // row shows the voice routed to it. Grid is transpose-agnostic; piano-roll adds post-transpose.
     int sourceMode = 0;
+    // DEBUG ONLY (not the product path): when set in IT-source mode, overwrite each cell's pitch/gate
+    // from Intertropical's ACTUAL output jack voltages (it->outputs[...].getVoltage(ch)) instead of the
+    // engine reconstruction. Lets you A/B the engine-reconstructed view against literal jack truth in
+    // Rack -- if they ever diverge, the divergence is visible by toggling this. The PRODUCT stays on
+    // the engine read (richer: real note-type, articulation, colour the jacks can't carry). Off by
+    // default; persisted so a debug session survives reload, but never the default experience.
+    bool debugRawJacks = false;
     int zoomMode   = 0;   // 0=x1 1=x2 2=x4
     int followMode = 1;   // 0=Off 1=On
     int rollView   = 0;   // 0=Grid (lane) view, 1=Piano roll
@@ -183,6 +190,7 @@ struct Lantern : Module {
         // View state (was params before de-paramming — configParam gave persistence free)
         json_object_set_new(root, "viewMode",   json_integer(viewMode));
         json_object_set_new(root, "sourceMode", json_integer(sourceMode));
+        json_object_set_new(root, "debugRawJacks", json_boolean(debugRawJacks));
         json_object_set_new(root, "zoomMode",   json_integer(zoomMode));
         json_object_set_new(root, "followMode", json_integer(followMode));
         json_object_set_new(root, "rollView",   json_integer(rollView));
@@ -198,6 +206,7 @@ struct Lantern : Module {
         };
         rdInt("viewMode", viewMode);     rdInt("zoomMode", zoomMode);
         rdInt("sourceMode", sourceMode);
+        if (json_t* j = json_object_get(root, "debugRawJacks")) debugRawJacks = json_boolean_value(j);
         rdInt("followMode", followMode); rdInt("rollView", rollView);
         rdInt("rollScroll", rollScroll); rdInt("rollColor", rollColor);
     }
@@ -297,6 +306,17 @@ struct Lantern : Module {
                 // (constant across a true tie, live on legato/single), so reading its effective value
                 // here makes Lantern agree with the audio automatically.
                 cells[row][writeStep].pitchV += it->transposeForOutput(row) / 12.f;
+                if (debugRawJacks) {
+                    // DEBUG: replace the VERIFIABLE values (pitch, sounding) with the literal jack
+                    // voltages Intertropical is actually outputting on this channel. Colour/note-type
+                    // stay engine-derived (jacks can't carry them). If this disagrees with the normal
+                    // (debug-off) view, the reconstruction has drifted from jack truth -- that's the
+                    // bug to chase. Product path never takes this branch.
+                    const float jackCV   = it->outputs[Intertropical::Ids::CV_OUT].getVoltage(row);
+                    const float jackGate = it->outputs[Intertropical::Ids::GATE_OUT].getVoltage(row);
+                    cells[row][writeStep].pitchV = jackCV;   // already post-transpose at the jack
+                    if (jackGate < 1.f) cells[row][writeStep].type = lantern::NoteType::Inactive;
+                }
             }
             for (int row = Intertropical::Ids::MAX_VOICES_PER_SCENE; row < 16; ++row)
                 cells[row][writeStep].type = lantern::NoteType::Inactive;
@@ -1208,6 +1228,11 @@ struct LanternWidget : ModuleWidget {
         menu->addChild(createCheckMenuItem("Intertropical (routed output)", "",
             [m]() { return m->sourceMode == 1; },
             [m]() { m->sourceMode = 1; }));
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuLabel("Debug"));
+        menu->addChild(createCheckMenuItem("Verify vs raw jacks (IT-source)", "",
+            [m]() { return m->debugRawJacks; },
+            [m]() { m->debugRawJacks = !m->debugRawJacks; }));
     }
 };
 
