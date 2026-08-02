@@ -41,13 +41,7 @@ struct MonsoonChangeAlleyV2 : Module {
     rack::dsp::BooleanTrigger btnTrig  [CA::N_ROWS * 2];
     rack::dsp::SchmittTrigger sBackDom [CA::SIDES * CA::TYPES];
     rack::dsp::SchmittTrigger sBackCod [CA::SIDES * CA::TYPES];
-    // Scatter draw counters: ONE per stream (rhythm=0, melody=1), NOT one per side/type/dc.
-    // Signed int64 addressable position, exactly like the dice draw counters (CA_REUSES_DICE_RNG.md):
-    // all scatter sides/types AND both domain/codomain transforms for a stream draw from that
-    // stream's single counter. counter++ forward, counter-- reverse (negative allowed -- Philox is a
-    // keyed bijection). Collapses the prior 8-counter (SIDES*TYPES*domain-codomain) design.
-    static constexpr int CA_STREAMS = 2;   // rhythm, melody
-    int64_t scatterCounter[CA_STREAMS] = {};
+    uint64_t scatterCounter[CA::SIDES * CA::TYPES * 2] = {};
 
     // --- Transform-undo groundwork (item 5) ---------------------------------------------------
     // applyPendingTransforms() runs on the AUDIO thread (control-rate, Monsoon::process), where
@@ -60,8 +54,8 @@ struct MonsoonChangeAlleyV2 : Module {
         uint8_t  beforeM[CA::N_VOICES];
         uint8_t  afterR[CA::N_VOICES];
         uint8_t  afterM[CA::N_VOICES];
-        int64_t counterBefore[CA_STREAMS];
-        int64_t counterAfter [CA_STREAMS];
+        uint64_t counterBefore[CA::SIDES * CA::TYPES * 2];
+        uint64_t counterAfter [CA::SIDES * CA::TYPES * 2];
     };
     static constexpr int UNDO_RING = 16;
     TransformUndoSnapshot undoRing[UNDO_RING];
@@ -157,17 +151,18 @@ struct MonsoonChangeAlleyV2 : Module {
         // undo step (mirrors ResetPinsAction: a multi-change gesture is a single snapshot).
         TransformUndoSnapshot snap;
         for (int v = 0; v < CA::N_VOICES; ++v) { snap.beforeR[v] = rhythmSrc[v]; snap.beforeM[v] = melodySrc[v]; }
-        for (int i = 0; i < CA_STREAMS; ++i) snap.counterBefore[i] = scatterCounter[i];
+        for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i) snap.counterBefore[i] = scatterCounter[i];
 
         for (int row = 0; row < CA::N_ROWS; ++row) {
             auto& p = pendingRows[row];
             if (!p.armed) continue;
             const int verb = row / 4;
+            const int side = (row % 4) / 2;
             const int type = row % 2;
             uint8_t* tbl   = (type == 0) ? rhythmSrc : melodySrc;
-            const int ci   = type;   // stream: 0=rhythm, 1=melody (one counter per stream)
+            const int ci   = (side * CA::TYPES + type) * 2 + (p.isDomain ? 0 : 1);
             if (verb == CA::V_SCATTER)
-                scatterCounter[ci] += (int64_t)p.scatterDelta;
+                scatterCounter[ci] += (uint64_t)(int64_t)p.scatterDelta;
             dotModular::ca::applyCorrelation(
                 verb, p.isDomain, p.isInter,
                 tbl, active, p.grain, p.leaderOrStep, scatterCounter[ci]);
@@ -177,7 +172,7 @@ struct MonsoonChangeAlleyV2 : Module {
 
         // Snapshot AFTER, and publish to the ring for the UI thread to turn into a history action.
         for (int v = 0; v < CA::N_VOICES; ++v) { snap.afterR[v] = rhythmSrc[v]; snap.afterM[v] = melodySrc[v]; }
-        for (int i = 0; i < CA_STREAMS; ++i) snap.counterAfter[i] = scatterCounter[i];
+        for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i) snap.counterAfter[i] = scatterCounter[i];
         const uint32_t h = undoHead.load(std::memory_order_relaxed);
         const uint32_t t = undoTail.load(std::memory_order_acquire);
         if (h - t < (uint32_t)UNDO_RING) {           // drop if UI hasn't drained (never in practice)
@@ -793,8 +788,8 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
         int64_t  moduleId;
         uint8_t  beforeR[CA::N_VOICES], beforeM[CA::N_VOICES];
         uint8_t  afterR[CA::N_VOICES],  afterM[CA::N_VOICES];
-        int64_t counterBefore[CA_STREAMS];
-        int64_t counterAfter [CA_STREAMS];
+        uint64_t counterBefore[CA::SIDES * CA::TYPES * 2];
+        uint64_t counterAfter [CA::SIDES * CA::TYPES * 2];
         TransformUndoAction() { name = "Change Alley transform"; }
         MonsoonChangeAlleyV2* resolve() {
             return dynamic_cast<MonsoonChangeAlleyV2*>(APP->engine->getModule(moduleId));
@@ -802,13 +797,13 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
         void undo() override {
             if (auto* m = resolve()) {
                 for (int v = 0; v < CA::N_VOICES; ++v) { m->rhythmSrc[v] = beforeR[v]; m->melodySrc[v] = beforeM[v]; }
-                for (int i = 0; i < CA_STREAMS; ++i) m->scatterCounter[i] = counterBefore[i];
+                for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i) m->scatterCounter[i] = counterBefore[i];
             }
         }
         void redo() override {
             if (auto* m = resolve()) {
                 for (int v = 0; v < CA::N_VOICES; ++v) { m->rhythmSrc[v] = afterR[v]; m->melodySrc[v] = afterM[v]; }
-                for (int i = 0; i < CA_STREAMS; ++i) m->scatterCounter[i] = counterAfter[i];
+                for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i) m->scatterCounter[i] = counterAfter[i];
             }
         }
     };
@@ -830,7 +825,7 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                     act->beforeR[v] = snap.beforeR[v]; act->beforeM[v] = snap.beforeM[v];
                     act->afterR[v]  = snap.afterR[v];  act->afterM[v]  = snap.afterM[v];
                 }
-                for (int i = 0; i < CA_STREAMS; ++i) {
+                for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i) {
                     act->counterBefore[i] = snap.counterBefore[i];
                     act->counterAfter[i]  = snap.counterAfter[i];
                 }

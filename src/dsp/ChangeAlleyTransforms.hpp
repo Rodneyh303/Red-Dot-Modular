@@ -375,7 +375,7 @@ inline void interScatter(uint8_t* src, int activeCount, int blockSize, uint64_t 
 // isInter:  false=intra (left panel), true=inter (right panel)
 inline void applyCorrelation(int verb, bool isDomain, bool isInter,
                          uint8_t* src, int activeCount, int grain,
-                         int leaderOrStep, int64_t scatterCounter) {
+                         int leaderOrStep, uint64_t scatterCounter) {
     if (!isInter) {
         // INTRA: use the existing within-block functions
         switch (verb) {
@@ -387,7 +387,7 @@ inline void applyCorrelation(int verb, bool isDomain, bool isInter,
                              : reflectValues(src, activeCount, grain); break;
             case 3: {
                 // Scatter: draws through the shared PhiloxRng correlation stream (own key)
-                const uint32_t seed = (uint32_t)((uint64_t)scatterCounter & 0xFFFFFFFF);
+                const uint32_t seed = (uint32_t)(scatterCounter & 0xFFFFFFFF);
                 isDomain ? scatterRows(src, activeCount, grain, seed)   // row permutation
                          : scatter    (src, activeCount, grain, seed);  // re-draw, fan-in OK
                 break;
