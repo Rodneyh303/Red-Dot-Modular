@@ -378,6 +378,20 @@ struct IntertropicalGrid : Widget {
                 nvgFill(vg);
             }
         }
+        // Axis labels: output columns (O1..O8) above the grid, slot rows (S1..S8) at the left edge.
+        // Columns line up with the transpose knobs below, so "O3" reads straight down to knob 3.
+        nvgFillColor(vg, nvgRGBA(0x88,0x88,0x88,0xff));
+        nvgFontSize(vg, 5.5f);
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM);
+        for (int o = 0; o < MV; ++o) {
+            char b[4]; snprintf(b, sizeof(b), "%d", o + 1);
+            nvgText(vg, routBox.pos.x + o*cw + cw*0.5f, routBox.pos.y - 1.f, b, nullptr);
+        }
+        nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+        for (int s = 0; s < MV; ++s) {
+            char b[6]; snprintf(b, sizeof(b), "S%d", s + 1);
+            nvgText(vg, routBox.pos.x - 1.5f, routBox.pos.y + s*chh + chh*0.5f, b, nullptr);
+        }
     }
 
     // --- Voice->slot display (top-right, per-scene, READ-ONLY) ---
