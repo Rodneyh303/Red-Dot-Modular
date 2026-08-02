@@ -182,6 +182,16 @@ int main() {
     { uint8_t a1[16], b1[16]; fillIdent(a1); fillIdent(b1);
       scatterRows(a1, 16, 4, (uint64_t)7, (int64_t)0); scatterRows(b1, 16, 4, (uint64_t)7, (int64_t)0);
       CHK(std::memcmp(a1,b1,16)==0, "scatterRows is deterministic for a given seed"); }
+    // Inverse round-trip (feat/domain-reverse-inverse): applying scatterRows forward at a position
+    // then INVERT at the same position restores the original board exactly (true undo). And
+    // fwd -> invert -> fwd reproduces the first fwd.
+    { uint8_t s2[16]; fillIdent(s2); uint8_t orig[16]; std::memcpy(orig, s2, 16);
+      scatterRows(s2, 16, 4, (uint64_t)55, (int64_t)3);            // forward at pos 3
+      uint8_t afterFwd[16]; std::memcpy(afterFwd, s2, 16);
+      scatterRows(s2, 16, 4, (uint64_t)55, (int64_t)3, /*invert=*/true);   // undo
+      CHK(std::memcmp(s2, orig, 16)==0, "scatterRows invert undoes forward exactly (board round-trip)");
+      scatterRows(s2, 16, 4, (uint64_t)55, (int64_t)3);            // forward again
+      CHK(std::memcmp(s2, afterFwd, 16)==0, "scatterRows fwd->invert->fwd reproduces first fwd"); }
     { uint8_t s2[16]; fillIdent(s2); scatterRows(s2, 16, 4, (uint64_t)42, (int64_t)0);
       bool inBlock = true;
       for (int v = 0; v < 16; ++v) inBlock &= ((s2[v] / 4) == (v / 4));

@@ -182,12 +182,29 @@ struct MonsoonChangeAlleyV2 : Module {
             const int type = row % 2;
             uint8_t* tbl   = (type == 0) ? rhythmSrc : melodySrc;
             const int ci   = (side * CA::TYPES + type) * 2 + (p.isDomain ? 0 : 1);
-            if (verb == CA::V_SCATTER)
-                scatterCounter[ci] += (int64_t)p.scatterDelta;   // +1 fwd jack, -1 back jack
+            // DOMAIN scatter reverse (feat/domain-reverse-inverse): scatterRows is a relative
+            // PERMUTATION, so stepping the counter back and drawing a FRESH permutation does NOT undo
+            // the board -- it composes another permutation. To make reverse a true board undo, apply
+            // the INVERSE of the permutation at the position we are LEAVING (the pre-decrement value),
+            // then land on the decremented counter. Codomain scatter() is absolute (position -> board)
+            // so it already round-trips by position; only domain needs the inverse.
+            const bool domScatterReverse =
+                (verb == CA::V_SCATTER) && p.isDomain && (p.scatterDelta < 0);
+            int64_t drawPos;
+            bool    invert = false;
+            if (domScatterReverse) {
+                drawPos = scatterCounter[ci];            // invert at the CURRENT (pre-step) position
+                invert  = true;
+                scatterCounter[ci] += (int64_t)p.scatterDelta;   // then land on the decremented pos
+            } else {
+                if (verb == CA::V_SCATTER)
+                    scatterCounter[ci] += (int64_t)p.scatterDelta;   // +1 fwd, -1 back (codomain/etc)
+                drawPos = scatterCounter[ci];
+            }
             dotModular::ca::applyCorrelation(
                 verb, p.isDomain, p.isInter,
                 tbl, active, p.grain, p.leaderOrStep,
-                corrKey[ci], scatterCounter[ci]);   // fixed stream key + addressable position
+                corrKey[ci], drawPos, invert);
             p.armed = false;
             lights[CA::PENDING_LIGHT_START + row].setBrightness(0.f);
         }

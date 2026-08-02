@@ -242,10 +242,13 @@ inline void transpose(uint8_t* src, int activeCount) {
 // exactly. Different musical object: scatter changes what is referenced, scatterRows
 // changes who does the referencing. (§12d gap; §12g predicted it should exist.)
 inline void scatterRows(uint8_t* src, int activeCount, int blockSize,
-                        uint64_t streamKey, int64_t position) {
+                        uint64_t streamKey, int64_t position, bool invert = false) {
     const int b = clampBlock(blockSize, activeCount);
-    // Fixed per-stream key; the COUNTER is the addressable position. Fisher-Yates permutation, so
-    // it IS invertible; drawing at(position*page + i) means position-- re-derives the prior page.
+    // Fixed per-stream key; the COUNTER is the addressable position. Fisher-Yates PERMUTATION, so it
+    // is a genuine bijection and thus invertible. Forward maps src[base+i] = tmp[idx[i]]; INVERT maps
+    // src[idx[i]] = tmp[base+i] -- sending each value back where it came from. Building idx from the
+    // SAME position gives the SAME permutation, so invert at a position exactly undoes the forward
+    // apply at that position (true board round-trip -- see feat/domain-reverse-inverse).
     redDot::PhiloxRng rng = correlationStream(streamKey);
     uint64_t drawPos = corrBase(position);
     auto nextU = [&rng, &drawPos]() { return rng.at(drawPos++); };
@@ -262,7 +265,8 @@ inline void scatterRows(uint8_t* src, int activeCount, int blockSize,
             const int j = (int)(nextU() % (uint32_t)(i + 1));
             const int t2 = idx[i]; idx[i] = idx[j]; idx[j] = t2;
         }
-        for (int i = 0; i < span; ++i) src[base + i] = tmp[idx[i]];
+        if (!invert) for (int i = 0; i < span; ++i) src[base + i] = tmp[idx[i]];
+        else         for (int i = 0; i < span; ++i) src[idx[i]] = tmp[base + i];
     }
 }
 
@@ -383,7 +387,8 @@ inline void interScatter(uint8_t* src, int activeCount, int blockSize,
 // isInter:  false=intra (left panel), true=inter (right panel)
 inline void applyCorrelation(int verb, bool isDomain, bool isInter,
                          uint8_t* src, int activeCount, int grain,
-                         int leaderOrStep, uint64_t streamKey, int64_t position) {
+                         int leaderOrStep, uint64_t streamKey, int64_t position,
+                         bool invert = false) {
     if (!isInter) {
         // INTRA: use the existing within-block functions
         switch (verb) {
@@ -396,8 +401,8 @@ inline void applyCorrelation(int verb, bool isDomain, bool isInter,
             case 3:
                 // Scatter: keyed by the fixed per-stream key; the COUNTER is the addressable
                 // position (at(position)), so back = position-- rewinds exactly (dice model).
-                isDomain ? scatterRows(src, activeCount, grain, streamKey, position)  // permutation
-                         : scatter    (src, activeCount, grain, streamKey, position); // re-draw
+                isDomain ? scatterRows(src, activeCount, grain, streamKey, position, invert) // permutation (invert on reverse)
+                         : scatter    (src, activeCount, grain, streamKey, position);         // re-draw (absolute; position round-trips)
                 break;
         }
     } else {
