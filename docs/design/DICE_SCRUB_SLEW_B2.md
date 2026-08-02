@@ -128,3 +128,13 @@ Contrast the avoided failure modes: a discrete slew MODE switch, or the recursiv
 (naive B), would flip the pattern discontinuously on small slew changes -- "approximately held"
 would then give nothing like the original. The truncated-FIR's linearity is what buys graceful
 degradation. Another vindication of B2 over naive-B / mode-based slew.
+
+## RESOLVED (Rodney, Rack-confirmed): K=6 final, slew stays LIVE (no history ring)
+- K=6 confirmed sufficient in Rack once slew was actually connected. No bump to 12. (If ever wanted,
+  the idle-recompute guard already makes the bump nearly free.)
+- Slew-history ring buffer (to make reverse bit-exact through slew changes): NOT worth the
+  complexity. Slew stays a pure LIVE control. Rationale: the graceful-degradation property
+  (approximately-held slew -> approximately-exact reverse, continuous) already covers practical
+  reverse; the ring would add per-position storage + replay-vs-last-touch semantics + undo
+  interaction to buy bit-exactness the live-control framing doesn't need. Keep the model clean.
+  Reverse remains: exact at constant slew, approximate as slew drifts, by design.
