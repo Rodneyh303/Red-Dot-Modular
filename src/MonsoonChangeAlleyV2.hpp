@@ -41,7 +41,23 @@ struct MonsoonChangeAlleyV2 : Module {
     rack::dsp::BooleanTrigger btnTrig  [CA::N_ROWS * 2];
     rack::dsp::SchmittTrigger sBackDom [CA::SIDES * CA::TYPES];
     rack::dsp::SchmittTrigger sBackCod [CA::SIDES * CA::TYPES];
-    uint64_t scatterCounter[CA::SIDES * CA::TYPES * 2] = {};
+    // Scatter draw counters: 8 = Intra/Inter x rhythm/melody x domain/codomain (the panel's separate
+    // scatter jacks). Each is a SIGNED int64 addressable POSITION in its own domain-separated Philox
+    // stream -- the SAME model as the main dice draw counters. Forward jack = counter++, back jack =
+    // counter-- (negative allowed; Philox is a keyed bijection). The transform draws rng.at(position)
+    // so at(N-1) returns the previous draw EXACTLY -- no reseeding. See CA_DICE_COUNTER_MODEL.md.
+    int64_t scatterCounter[CA::SIDES * CA::TYPES * 2] = {};
+
+    // One Philox KEY per scatter stream (8 = the counters' Intra/Inter x r/m x dom/cod), mirroring
+    // the 2 main-dice RNGs. INTERNAL seeding = 8 INDEPENDENT random keys (different per stream, like
+    // dice's seed*PhiloxFull). EXTERNAL-seed sharing is TBD (same open question as dice). The scatter
+    // draw builds a transient PhiloxRng from corrKey[ci] and reads at(scatterCounter[ci]) -- the
+    // counter is the addressable position, so counter-- rewinds exactly. Keys persist so saved
+    // patches reproduce future scatters. See CA_DICE_COUNTER_MODEL.md.
+    uint64_t corrKey[CA::SIDES * CA::TYPES * 2] = {};
+    void seedCorrKeysInternal() {
+        for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i) corrKey[i] = rack::random::u64();
+    }
 
     // --- Transform-undo groundwork (item 5) ---------------------------------------------------
     // applyPendingTransforms() runs on the AUDIO thread (control-rate, Monsoon::process), where
@@ -54,8 +70,8 @@ struct MonsoonChangeAlleyV2 : Module {
         uint8_t  beforeM[CA::N_VOICES];
         uint8_t  afterR[CA::N_VOICES];
         uint8_t  afterM[CA::N_VOICES];
-        uint64_t counterBefore[CA::SIDES * CA::TYPES * 2];
-        uint64_t counterAfter [CA::SIDES * CA::TYPES * 2];
+        int64_t counterBefore[CA::SIDES * CA::TYPES * 2];
+        int64_t counterAfter [CA::SIDES * CA::TYPES * 2];
     };
     static constexpr int UNDO_RING = 16;
     TransformUndoSnapshot undoRing[UNDO_RING];
@@ -162,10 +178,11 @@ struct MonsoonChangeAlleyV2 : Module {
             uint8_t* tbl   = (type == 0) ? rhythmSrc : melodySrc;
             const int ci   = (side * CA::TYPES + type) * 2 + (p.isDomain ? 0 : 1);
             if (verb == CA::V_SCATTER)
-                scatterCounter[ci] += (uint64_t)(int64_t)p.scatterDelta;
+                scatterCounter[ci] += (int64_t)p.scatterDelta;   // +1 fwd jack, -1 back jack
             dotModular::ca::applyCorrelation(
                 verb, p.isDomain, p.isInter,
-                tbl, active, p.grain, p.leaderOrStep, scatterCounter[ci]);
+                tbl, active, p.grain, p.leaderOrStep,
+                corrKey[ci], scatterCounter[ci]);   // fixed stream key + addressable position
             p.armed = false;
             lights[CA::PENDING_LIGHT_START + row].setBrightness(0.f);
         }
@@ -210,6 +227,8 @@ struct MonsoonChangeAlleyV2 : Module {
 
     void resetToIdentity() {
         for (int v = 0; v < CA::N_VOICES; ++v) { rhythmSrc[v] = v; melodySrc[v] = v; }
+        for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i) scatterCounter[i] = 0;
+        seedCorrKeysInternal();   // internal: 8 independent keys (external-seed sharing TBD)
     }
 
 
@@ -222,6 +241,11 @@ struct MonsoonChangeAlleyV2 : Module {
         };
         save("rhythmSrc", rhythmSrc);
         save("melodySrc", melodySrc);
+        {   json_t* ck = json_array();
+            for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i)
+                json_array_append_new(ck, json_integer((json_int_t)corrKey[i]));
+            json_object_set_new(root, "corrKey", ck);
+        }
         return root;
     }
 
@@ -238,6 +262,12 @@ struct MonsoonChangeAlleyV2 : Module {
         };
         load("rhythmSrc", rhythmSrc);
         load("melodySrc", melodySrc);
+        if (json_t* ck = json_object_get(root, "corrKey")) {
+            for (int i = 0; i < CA::SIDES * CA::TYPES * 2 && i < (int)json_array_size(ck); ++i) {
+                json_t* v = json_array_get(ck, i);
+                if (json_is_integer(v)) corrKey[i] = (uint64_t)json_integer_value(v);
+            }
+        }
     }
 
     void onReset(const ResetEvent& e) override { resetToIdentity(); Module::onReset(e); }
@@ -788,8 +818,8 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
         int64_t  moduleId;
         uint8_t  beforeR[CA::N_VOICES], beforeM[CA::N_VOICES];
         uint8_t  afterR[CA::N_VOICES],  afterM[CA::N_VOICES];
-        uint64_t counterBefore[CA::SIDES * CA::TYPES * 2];
-        uint64_t counterAfter [CA::SIDES * CA::TYPES * 2];
+        int64_t counterBefore[CA::SIDES * CA::TYPES * 2];
+        int64_t counterAfter [CA::SIDES * CA::TYPES * 2];
         TransformUndoAction() { name = "Change Alley transform"; }
         MonsoonChangeAlleyV2* resolve() {
             return dynamic_cast<MonsoonChangeAlleyV2*>(APP->engine->getModule(moduleId));

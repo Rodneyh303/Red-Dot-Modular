@@ -112,28 +112,35 @@ inline void rotateValues(uint8_t* src, int activeCount, int blockSize, int step 
 // correlation stream is orthogonal -- scattering correlations never disturbs the notes, and each
 // stream rewinds independently.
 static constexpr uint64_t kCorrelationDomain = 0xCA11EA5CC0DE57EAULL;
-inline redDot::PhiloxRng correlationRng(uint64_t seed) {
-    redDot::PhiloxRng rng;
-    rng.seed(seed, kCorrelationDomain);   // key = f(seed, correlation-domain) -> disjoint stream
-    return rng;
+// Each scatter counter POSITION owns a disjoint page of addressable draws in its stream, so
+// stepping the counter (fwd/back) moves to a fully independent page and back() rewinds exactly.
+static constexpr uint64_t kCorrPage = 16;
+// Build the transient RNG for a scatter STREAM keyed by its fixed key (NOT by the counter), and
+// return the base draw-address for a signed counter POSITION. Signed position maps in as
+// two's-complement; Philox is a bijection over the whole ring so negatives are fine.
+inline redDot::PhiloxRng correlationStream(uint64_t streamKey) {
+    redDot::PhiloxRng rng; rng.seed(streamKey, kCorrelationDomain); return rng;
 }
+inline uint64_t corrBase(int64_t position) { return (uint64_t)position * kCorrPage; }
 
 // Scatter: seeded shuffle of sources WITHIN each block. Deterministic per seed
 // (reproducible/undoable). Each row draws a source from ITS OWN block of the active pool
 // (fan-in allowed -- a re-source, not a permutation). Draws through Change Alley's OWN
-// correlation stream (correlationRng), independent of rhythm/melody, and counter-addressable
+// correlation stream (correlationStream), independent of rhythm/melody, and counter-addressable
 // (at(v)) so the same seed reproduces the scatter and reverse/scrub can re-derive it. NOTE:
 // fan-in means scatter has NO inverse TRANSFORM; undo is by restoring the pre-scatter pin state
 // (a store snapshot), not by re-applying a transform.
-inline void scatter(uint8_t* src, int activeCount, int blockSize, uint32_t seed) {
+inline void scatter(uint8_t* src, int activeCount, int blockSize,
+                    uint64_t streamKey, int64_t position) {
     const int b = clampBlock(blockSize, activeCount);
-    redDot::PhiloxRng rng = correlationRng(seed ? seed : 0x9E3779B9ull);
+    redDot::PhiloxRng rng = correlationStream(streamKey);   // keyed by STREAM, fixed
+    const uint64_t basePos = corrBase(position);            // COUNTER = addressable position page
     for (int v = 0; v < activeCount && v < 16; ++v) {
         const int base = (v / b) * b;
         int blockEnd   = base + b;
         if (blockEnd > activeCount) blockEnd = activeCount;
         const int span = blockEnd - base;
-        const uint32_t draw = rng.at((uint64_t)v);   // addressable per row -> reversible
+        const uint32_t draw = rng.at(basePos + (uint64_t)v);   // at(position*page + row): reversible
         src[v] = (uint8_t)(base + (int)(draw % (uint32_t)(span > 0 ? span : 1)));
     }
 }
@@ -234,13 +241,13 @@ inline void transpose(uint8_t* src, int activeCount) {
 // this shuffles WHICH ROW holds which source, so the multiset of sources is preserved
 // exactly. Different musical object: scatter changes what is referenced, scatterRows
 // changes who does the referencing. (§12d gap; §12g predicted it should exist.)
-inline void scatterRows(uint8_t* src, int activeCount, int blockSize, uint32_t seed) {
+inline void scatterRows(uint8_t* src, int activeCount, int blockSize,
+                        uint64_t streamKey, int64_t position) {
     const int b = clampBlock(blockSize, activeCount);
-    // Own correlation stream (independent of rhythm/melody), addressable per draw. Unlike
-    // scatter(), scatterRows is a genuine Fisher-Yates PERMUTATION, so it IS invertible (undo
-    // by the inverse permutation, or by re-deriving from the same seed).
-    redDot::PhiloxRng rng = correlationRng(seed ? seed : 0x9E3779B9ull);
-    uint64_t drawPos = 0;
+    // Fixed per-stream key; the COUNTER is the addressable position. Fisher-Yates permutation, so
+    // it IS invertible; drawing at(position*page + i) means position-- re-derives the prior page.
+    redDot::PhiloxRng rng = correlationStream(streamKey);
+    uint64_t drawPos = corrBase(position);
     auto nextU = [&rng, &drawPos]() { return rng.at(drawPos++); };
     uint8_t tmp[16];
     for (int v = 0; v < 16; ++v) tmp[v] = src[v];
@@ -344,19 +351,20 @@ inline void interReflectRows(uint8_t* src, int activeCount, int blockSize) {
 
 // interScatter: seeded re-assignment of whole blocks (codomain -- new block sources).
 // Uses a Philox counter for reversibility (§12e / §13e).
-inline void interScatter(uint8_t* src, int activeCount, int blockSize, uint64_t counter,
-                         uint64_t key = 0xCA7E4A3EC0FFEE77ULL) {
+inline void interScatter(uint8_t* src, int activeCount, int blockSize,
+                         uint64_t streamKey, int64_t position) {
     const int b    = clampBlock(blockSize, activeCount);
     const int nBlk = (activeCount + b - 1) / b;
     if (nBlk <= 1) return;
-    // Draw each block's source through Change Alley's OWN correlation stream (correlationRng),
+    // Draw each block's source through Change Alley's OWN correlation stream (correlationStream),
     // addressed by (counter-derived position + block index). Independent of the rhythm/melody
     // streams and counter-reversible -- replaces the old inline splitmix hash. interScatter is a
     // block re-source (fan-in allowed like scatter), so it has NO inverse transform; undo is by
     // pin-state snapshot.
-    redDot::PhiloxRng rng = correlationRng(counter ^ key);
+    redDot::PhiloxRng rng = correlationStream(streamKey);
+    const uint64_t basePos = corrBase(position);
     for (int blk = 0; blk < nBlk; ++blk) {
-        const int srcBlk = (int)(rng.at((uint64_t)blk) % (uint32_t)nBlk);
+        const int srcBlk = (int)(rng.at(basePos + (uint64_t)blk) % (uint32_t)nBlk);
         for (int w = 0; w < b; ++w) {
             const int v = blk * b + w;
             if (v < activeCount && v < 16) {
@@ -375,7 +383,7 @@ inline void interScatter(uint8_t* src, int activeCount, int blockSize, uint64_t 
 // isInter:  false=intra (left panel), true=inter (right panel)
 inline void applyCorrelation(int verb, bool isDomain, bool isInter,
                          uint8_t* src, int activeCount, int grain,
-                         int leaderOrStep, uint64_t scatterCounter) {
+                         int leaderOrStep, uint64_t streamKey, int64_t position) {
     if (!isInter) {
         // INTRA: use the existing within-block functions
         switch (verb) {
@@ -385,13 +393,12 @@ inline void applyCorrelation(int verb, bool isDomain, bool isInter,
                              : rotateValues(src, activeCount, grain, leaderOrStep); break;
             case 2: isDomain ? reflectRows  (src, activeCount, grain)
                              : reflectValues(src, activeCount, grain); break;
-            case 3: {
-                // Scatter: draws through the shared PhiloxRng correlation stream (own key)
-                const uint32_t seed = (uint32_t)(scatterCounter & 0xFFFFFFFF);
-                isDomain ? scatterRows(src, activeCount, grain, seed)   // row permutation
-                         : scatter    (src, activeCount, grain, seed);  // re-draw, fan-in OK
+            case 3:
+                // Scatter: keyed by the fixed per-stream key; the COUNTER is the addressable
+                // position (at(position)), so back = position-- rewinds exactly (dice model).
+                isDomain ? scatterRows(src, activeCount, grain, streamKey, position)  // permutation
+                         : scatter    (src, activeCount, grain, streamKey, position); // re-draw
                 break;
-            }
         }
     } else {
         // INTER: across-block versions
@@ -402,7 +409,7 @@ inline void applyCorrelation(int verb, bool isDomain, bool isInter,
                              : interRotate    (src, activeCount, grain, leaderOrStep); break;
             case 2: isDomain ? interReflectRows   (src, activeCount, grain)
                              : interReflectCodomain(src, activeCount, grain); break;
-            case 3: interScatter(src, activeCount, grain, scatterCounter); break;
+            case 3: interScatter(src, activeCount, grain, streamKey, position); break;
         }
     }
 }
@@ -413,7 +420,9 @@ inline void apply(int transform, uint8_t* src, int activeCount, int blockSize, u
     switch (transform) {
         case 0: collapse(src, activeCount, blockSize); break;
         case 1: rotateValues (src, activeCount, blockSize, step); break;
-        case 2: scatter (src, activeCount, blockSize, seed); break;
+        // scatter now takes (streamKey, position): reuse `seed` as the fixed stream key and `step`
+        // as the addressable position, so the counter-position model is exercised here too.
+        case 2: scatter (src, activeCount, blockSize, (uint64_t)seed, (int64_t)step); break;
         case 3: reflectRows  (src, activeCount, blockSize); break;
         default: break;
     }

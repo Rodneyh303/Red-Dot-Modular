@@ -38,12 +38,30 @@ int main() {
 
     // Scatter
     { uint8_t a[16], b2[16]; fillIdent(a); fillIdent(b2);
-      scatter(a, 16, 4, 1234); scatter(b2, 16, 4, 1234);
+      scatter(a, 16, 4, (uint64_t)1234, (int64_t)0); scatter(b2, 16, 4, (uint64_t)1234, (int64_t)0);
       CHK(std::memcmp(a, b2, 16) == 0, "scatter deterministic per seed");
       bool inBlock = true;
       for (int v = 0; v < 16; ++v) { int base = (v/4)*4; inBlock &= (a[v] >= base && a[v] < base+4); }
       CHK(inBlock, "scatter@4 sources stay within each block"); }
-    { uint8_t s[16]; fillIdent(s); scatter(s, 6, 16, 77);
+    // Addressable-position model (dice RNG): same key+position reproduces; position-- returns the
+    // prior page exactly; different positions differ. This is what makes fwd/back reversible.
+    { uint8_t p0a[16], p0b[16], p1[16];
+      fillIdent(p0a); fillIdent(p0b); fillIdent(p1);
+      scatter(p0a, 16, 4, (uint64_t)555, (int64_t)0);
+      scatter(p0b, 16, 4, (uint64_t)555, (int64_t)0);
+      CHK(std::memcmp(p0a,p0b,16)==0, "scatter reproducible at same (key,position)");
+      scatter(p1, 16, 4, (uint64_t)555, (int64_t)1);
+      CHK(std::memcmp(p0a,p1,16)!=0, "scatter differs across positions (counter actually moves)");
+      // position-- reversibility: re-drawing position 0 after having gone to 1 gives the SAME p0.
+      uint8_t back[16]; fillIdent(back);
+      scatter(back, 16, 4, (uint64_t)555, (int64_t)0);
+      CHK(std::memcmp(p0a,back,16)==0, "scatter position-- rewinds to the exact prior draw"); }
+    // Negative positions are valid (signed counter, Philox bijection over the ring).
+    { uint8_t neg[16], neg2[16]; fillIdent(neg); fillIdent(neg2);
+      scatter(neg,  16, 4, (uint64_t)321, (int64_t)-5);
+      scatter(neg2, 16, 4, (uint64_t)321, (int64_t)-5);
+      CHK(std::memcmp(neg,neg2,16)==0, "scatter reproducible at negative position (reverse-scrub)"); }
+    { uint8_t s[16]; fillIdent(s); scatter(s, 6, 16, (uint64_t)77, (int64_t)0);
       bool live = true; for (int v = 0; v < 6; ++v) live &= (s[v] < 6);
       CHK(live, "scatter never sources a dead voice (active-pool tiling)");
       CHK(s[10]==10, "scatter leaves rows beyond active pool untouched"); }
@@ -59,7 +77,7 @@ int main() {
 
     // One-pin-per-row is structural for all: each s[v] is a single value — assert range.
     { uint8_t s[16]; fillIdent(s);
-      collapse(s,16,8); rotateValues(s,16,8); scatter(s,16,8,9); reflectRows(s,16,8);
+      collapse(s,16,8); rotateValues(s,16,8); scatter(s, 16, 8, (uint64_t)9, (int64_t)0); reflectRows(s,16,8);
       bool ok = true; for (int v = 0; v < 16; ++v) ok &= (s[v] < 16);
       CHK(ok, "chained transforms keep sources in range"); }
 
@@ -149,22 +167,22 @@ int main() {
       CHK(live, "leaderOffset wraps inside a PARTIAL block, never sources a dead voice"); }
 
     // ── scatterRows: a genuine PERMUTATION (multiset of sources preserved) ──
-    { uint8_t s2[16]; fillIdent(s2); scatterRows(s2, 16, 4, 12345u);
+    { uint8_t s2[16]; fillIdent(s2); scatterRows(s2, 16, 4, (uint64_t)12345, (int64_t)0);
       int count[16] = {};
       for (int v = 0; v < 16; ++v) count[s2[v]]++;
       bool perm = true; for (int v = 0; v < 16; ++v) perm &= (count[v] == 1);
       CHK(perm, "scatterRows is a PERMUTATION -- every source used exactly once"); }
     { uint8_t s2[16] = {5,5,5,5, 1,2,3,4, 8,8,8,8, 9,10,11,12};
       uint8_t before[16]; std::memcpy(before, s2, 16);
-      scatterRows(s2, 16, 4, 999u);
+      scatterRows(s2, 16, 4, (uint64_t)999, (int64_t)0);
       int cb[17] = {}, ca2[17] = {};
       for (int v = 0; v < 16; ++v) { cb[before[v]]++; ca2[s2[v]]++; }
       bool same = true; for (int v = 0; v < 17; ++v) same &= (cb[v] == ca2[v]);
       CHK(same, "scatterRows preserves the MULTISET even with fan-in present"); }
     { uint8_t a1[16], b1[16]; fillIdent(a1); fillIdent(b1);
-      scatterRows(a1, 16, 4, 7u); scatterRows(b1, 16, 4, 7u);
+      scatterRows(a1, 16, 4, (uint64_t)7, (int64_t)0); scatterRows(b1, 16, 4, (uint64_t)7, (int64_t)0);
       CHK(std::memcmp(a1,b1,16)==0, "scatterRows is deterministic for a given seed"); }
-    { uint8_t s2[16]; fillIdent(s2); scatterRows(s2, 16, 4, 42u);
+    { uint8_t s2[16]; fillIdent(s2); scatterRows(s2, 16, 4, (uint64_t)42, (int64_t)0);
       bool inBlock = true;
       for (int v = 0; v < 16; ++v) inBlock &= ((s2[v] / 4) == (v / 4));
       CHK(inBlock, "scatterRows never crosses a block boundary"); }
