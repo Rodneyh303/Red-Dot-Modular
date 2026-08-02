@@ -49,6 +49,7 @@ struct ScrubKnobT : rack::app::ParamWidget {
     std::shared_ptr<rack::window::Svg> svg;
     float dragPos_  = 0.f;
     bool  dragInit_ = false;
+    float dragStartValue_ = 0.f;   // value at drag start, for one-action-per-drag undo
 
     ScrubKnobT() {
         svg = APP->window->loadSvg(rack::asset::plugin(pluginInstance, Tag::path()));
@@ -99,10 +100,25 @@ struct ScrubKnobT : rack::app::ParamWidget {
     void onDragStart(const rack::event::DragStart& e) override {
         if (e.button != GLFW_MOUSE_BUTTON_LEFT) return;
         dragInit_ = false;
+        // Snapshot the value for undo: ParamWidget's built-in ParamChange history is skipped because
+        // we fully own the drag, so we push our own ParamChange on drag end (UI thread -> safe).
+        auto* pq = getParamQuantity();
+        dragStartValue_ = pq ? pq->getValue() : 0.f;
         APP->window->cursorLock();
     }
     void onDragEnd(const rack::event::DragEnd& e) override {
         APP->window->cursorUnlock();
+        // One history action per drag gesture (matches Rack's native knob undo), UI-thread safe.
+        auto* pq = getParamQuantity();
+        if (pq && pq->getValue() != dragStartValue_) {
+            auto* h = new rack::history::ParamChange;
+            h->name       = "move scrub";
+            h->moduleId   = pq->module->id;
+            h->paramId    = pq->paramId;
+            h->oldValue   = dragStartValue_;
+            h->newValue   = pq->getValue();
+            APP->history->push(h);
+        }
     }
     void onDragMove(const rack::event::DragMove& e) override {
         auto* pq = getParamQuantity();
