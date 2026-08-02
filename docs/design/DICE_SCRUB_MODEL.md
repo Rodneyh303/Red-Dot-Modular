@@ -64,3 +64,24 @@ collapses them into ONE model. This is the decided direction for build (main dic
 Dice scrub = counter-derivable (pure Philox). CA scatter state = accumulated event history, NOT
 counter-derivable -> CA reverse uses the phrase-boundary-indexed snapshot buffer (28-byte entries),
 a DIFFERENT mechanism. Don't conflate. (DiscussionDiceAndCA.md covers CA in full.)
+
+## INVARIANT: (counter, scrub, slew) commutativity -- roll and slew are independent axes
+
+The effective pattern is a PURE FUNCTION of (counter, scrub, slew). Nothing is consumed, baked, or
+sampled-and-held at roll time. Consequence: roll and slew-change COMMUTE.
+
+  roll (at slew=lo) then raise slew  ==  raise slew then roll
+  Both land on the same (counter, scrub, slew) triple -> the SAME pattern. Verified by construction:
+  mix=max -> scrub s=6, effective = patternAt(N-6, slew); after a roll N->N+1 either order gives
+  patternAt(N-5, slew_hi).
+
+WHY it holds (and why the OLD model did NOT): the old model CONSUMED slew at roll time
+(B = A + slew*(draw-A)), baking the roll-instant slew into stored B -> roll-then-slew != slew-then-
+roll (order-dependent). The scrub/B2 model re-reads slew fresh every recompute and rebuilds the
+pattern from the current triple -> no path-dependence. Even under CV-modulated slew, a roll only
+advances the COUNTER; it never samples slew, so no roll-time capture exists.
+
+GUARD FOR FUTURE CHANGES: do NOT cache a slew-shaped draw at roll time or sample-and-hold slew on a
+roll -- that would re-introduce the old model's order-dependence and break this invariant. Slew must
+stay a live input read at recompute time. (This is also why slew stays a pure live control -- see
+DICE_SCRUB_SLEW_B2.md.)
