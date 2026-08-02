@@ -354,14 +354,6 @@ struct PatternEngine {
     // Full A/B buffer snapshot for a LOSSLESS realtime round-trip: entering
     // realtime caches A and B, returning restores them exactly (preserving the
     // slew morph position), rather than reseeding to an A=B approximation.
-    bool  rhythmABCached = false, melodyABCached = false;
-    float cRhythmA[16]={}, cRhythmB[16]={}, cVariationA[16]={}, cVariationB[16]={};
-    float cLegatoA[16]={}, cLegatoB[16]={}, cAccentA[16]={}, cAccentB[16]={};
-    float cPolyRhythmA[15][16]={}, cPolyRhythmB[15][16]={};
-    float cPolyAccentA[15][16]={}, cPolyAccentB[15][16]={};
-    float cMelodyA[16]={}, cMelodyB[16]={}, cOctaveA[16]={}, cOctaveB[16]={};
-    float cPolyMelodyA[15][16]={}, cPolyMelodyB[15][16]={};
-    float cPolyOctaveA[15][16]={}, cPolyOctaveB[15][16]={};
 
     // ── Seed management ───────────────────────────────────────────────────────
 

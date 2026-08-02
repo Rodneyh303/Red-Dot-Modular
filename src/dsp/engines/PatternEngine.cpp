@@ -6,7 +6,6 @@ void PatternEngine::reset() {
     rhythmPendingLast = melodyPendingLast = false;
     rhythmReseedRollPending = melodyReseedRollPending = false;
     rhythmReseedRollFull = melodyReseedRollFull = false;
-    rhythmABCached = melodyABCached = false;
     rhythmMode = melodyMode = 0;
     rhythmSeedCached = melodySeedCached = false;
 
@@ -439,40 +438,16 @@ void PatternEngine::switchMelodyMode(int& stepIndex, int& lastStepIndex) {
         for (int i = 0; i < 16; ++i) cachedMelodyPitchV[i] = melodyPitchV[i];
         cachedMelodyStepIndex     = stepIndex;
         cachedMelodyLastStepIndex = lastStepIndex;
-        // Lossless A/B snapshot (melody owns melody + octave, mono + poly).
-        for (int i = 0; i < 16; ++i) {
-            cMelodyA[i] = melodyLockedA[i]; cMelodyB[i] = melodyCandB[i];
-            cOctaveA[i] = octaveLockedA[i]; cOctaveB[i] = octaveCandB[i];
-            for (int v = 0; v < 15; ++v) {
-                cPolyMelodyA[v][i] = polyMelodyLockedA[v][i]; cPolyMelodyB[v][i] = polyMelodyCandB[v][i];
-                cPolyOctaveA[v][i] = polyOctaveLockedA[v][i]; cPolyOctaveB[v][i] = polyOctaveCandB[v][i];
-            }
-        }
-        melodyABCached = true;
+        // Scrub model: no A/B snapshot -- (counter, scrub, slew) is the morph position,
+        // unchanged by a mode switch; returning to dice recomputes from the counter. (Step 4b.)
     } else if (prev == 1 && next == 0 && melodySeedCached) {
         // Returning to dice: restore the exact A/B buffers (lossless — preserves
         // the slew morph position), NOT a reseed-to-A=B approximation.
         for (int i = 0; i < 16; ++i) melodyPitchV[i] = cachedMelodyPitchV[i];
         stepIndex     = cachedMelodyStepIndex;
         lastStepIndex = cachedMelodyLastStepIndex;
-        if (melodyABCached) {
-            for (int i = 0; i < 16; ++i) {
-                melodyLockedA[i] = cMelodyA[i]; melodyCandB[i] = cMelodyB[i];
-                octaveLockedA[i] = cOctaveA[i]; octaveCandB[i] = cOctaveB[i];
-                for (int v = 0; v < 15; ++v) {
-                    polyMelodyLockedA[v][i] = cPolyMelodyA[v][i]; polyMelodyCandB[v][i] = cPolyMelodyB[v][i];
-                    polyOctaveLockedA[v][i] = cPolyOctaveA[v][i]; polyOctaveCandB[v][i] = cPolyOctaveB[v][i];
-                }
-            }
-            // Recompute effective from the restored A/B at the current slew;
-            // do NOT set a pending seed (that would collapse to A=B).
-            recomputeEffectiveMelody();
-        } else {
-            // Fallback (no A/B snapshot): reseed to reproduce the pattern.
-            melodySeedFloat = cachedMelodySeedFloat;
-            melodySeedPendingFloat = cachedMelodySeedFloat;
-            melodySeedPending = true;
-        }
+        // Scrub model: recompute effective from the (unchanged) counter -- exact pre-switch pattern.
+        recomputeEffectiveMelody();
     }
     melodyMode = next;
 }
@@ -487,37 +462,14 @@ void PatternEngine::switchRhythmMode(int& stepIndex, int& lastStepIndex) {
         for (int i = 0; i < 16; ++i) cachedRhythmPattern[i] = rhythmPattern[i];
         cachedRhythmStepIndex     = stepIndex;
         cachedRhythmLastStepIndex = lastStepIndex;
-        // Lossless A/B snapshot (rhythm owns rhythm + variation + legato +
-        // accent, mono; plus poly rhythm).
-        for (int i = 0; i < 16; ++i) {
-            cRhythmA[i]    = rhythmLockedA[i];    cRhythmB[i]    = rhythmCandB[i];
-            cVariationA[i] = variationLockedA[i]; cVariationB[i] = variationCandB[i];
-            cLegatoA[i]    = legatoLockedA[i];    cLegatoB[i]    = legatoCandB[i];
-            cAccentA[i]    = accentLockedA[i];    cAccentB[i]    = accentCandB[i];
-            for (int v = 0; v < 15; ++v) { cPolyRhythmA[v][i] = polyRhythmLockedA[v][i]; cPolyRhythmB[v][i] = polyRhythmCandB[v][i]; }
-            for (int v = 0; v < 15; ++v) { cPolyAccentA[v][i] = polyAccentLockedA[v][i]; cPolyAccentB[v][i] = polyAccentCandB[v][i]; }
-        }
-        rhythmABCached = true;
+        // Scrub model: no A/B snapshot -- (counter, scrub, slew) is the morph position,
+        // unchanged by a mode switch; returning to dice recomputes from the counter. (Step 4b.)
     } else if (prev == 1 && next == 0 && rhythmSeedCached) {
         for (int i = 0; i < 16; ++i) rhythmPattern[i] = cachedRhythmPattern[i];
         stepIndex     = cachedRhythmStepIndex;
         lastStepIndex = cachedRhythmLastStepIndex;
-        if (rhythmABCached) {
-            // Lossless A/B restore — preserves the slew morph position.
-            for (int i = 0; i < 16; ++i) {
-                rhythmLockedA[i]    = cRhythmA[i];    rhythmCandB[i]    = cRhythmB[i];
-                variationLockedA[i] = cVariationA[i]; variationCandB[i] = cVariationB[i];
-                legatoLockedA[i]    = cLegatoA[i];    legatoCandB[i]    = cLegatoB[i];
-                accentLockedA[i]    = cAccentA[i];    accentCandB[i]    = cAccentB[i];
-                for (int v = 0; v < 15; ++v) { polyRhythmLockedA[v][i] = cPolyRhythmA[v][i]; polyRhythmCandB[v][i] = cPolyRhythmB[v][i]; }
-                for (int v = 0; v < 15; ++v) { polyAccentLockedA[v][i] = cPolyAccentA[v][i]; polyAccentCandB[v][i] = cPolyAccentB[v][i]; }
-            }
-            recomputeEffectiveRhythm();
-        } else {
-            rhythmSeedFloat = cachedRhythmSeedFloat;
-            rhythmSeedPendingFloat = cachedRhythmSeedFloat;
-            rhythmSeedPending = true;
-        }
+        // Scrub model: recompute effective from the (unchanged) counter -- exact pre-switch pattern.
+        recomputeEffectiveRhythm();
     }
     rhythmMode = next;
 }
