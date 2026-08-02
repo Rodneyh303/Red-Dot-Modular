@@ -664,3 +664,54 @@ UI: the existing right-click cycle mechanism on membership cells is the natural 
 right-click a member cell to cycle its slot assignment (Auto -> slot 1..8 -> Auto). The current
 scroll-a-number override should be replaced with a more legible display (the voice->slot
 visualiser grid shows the result live, which helps).
+
+---
+
+## LANTERN "Intertropical source" mode -- concrete build plan (reverse-engineered, ready)
+
+Confirmed with Rodney: once Lantern is connected (existing Lantern<->Monsoon/Intertropical discovery
+spec), in this mode Lantern reads from Intertropical's OUTPUT side -- the routed poly outputs WITH
+per-output transpose applied -- and renders it EXACTLY like it renders Monsoon (same cells[][] +
+recordCell + grid/piano views). "Reuse the render, add a source."
+
+### Data source (exact, from Intertropical.cpp process)
+Per scene, Intertropical routes voice v -> output channel ch = routing[v] (computeRouting(activeScene)).
+For each routed channel ch, the OUTPUT values (post-routing, post-transpose) are:
+- CV/pitch:  straits->outputs[3].getVoltage(v) + params[TRANSPOSE_FIRST+ch].getValue()/12   (1V/oct)
+- Gate:      straits->outputs[0].getVoltage(v)
+- Accent:    straits->outputs[4].getVoltage(v)
+- Legato:    straits->outputs[1].getVoltage(v)
+- SLEG:      straits->outputs[2].getVoltage(v)
+The per-output TRANSPOSE (TRANSPOSE_FIRST+ch, -24..+24 semis, snap) MUST be included in the pitch so
+the display matches what physically leaves the CV_OUT jack. Voice identity for display = the OUTPUT
+CHANNEL ch (not the source voice), so the picture is the arranged result, 8 channels.
+
+### Sink (reuse Lantern's pipeline)
+Lantern already maps engine state -> displayable cells via recordCell(voice, step, gs, dec, accented,
+lenSteps, slur..., playDir): pitchV -> row, gate -> sounding, lengthSteps -> bar width. The IT-source
+path fills cells[ch][step] from the routed output above instead of Monsoon's engine:
+- sounding = gate high (same rule as recordCell's gs.gateHeld).
+- pitch row from CV (incl. transpose) -- reuse the piano-roll's existing semi->row mapping.
+- accent/legato/SLEG map to the same articulation the role-colour path already draws.
+- length: derive from gate-high span like the Monsoon path (or the legato/SLEG gate), same as today.
+
+### Timing
+Read membership/routing AT THE PHRASE BOUNDARY, same as Intertropical's own routing (activeScene is
+updated at the boundary in process). The display must switch WITH the audio, not ahead -- so sample
+the routed output on the same boundary Intertropical uses, feeding recordCell at the step write like
+the Monsoon path. Distinguish routed-IN vs muted-OUT channels (hollow/dim) echoing the IT grid cell
+convention so display + sequencer read consistently.
+
+### Source selection
+A Lantern source toggle (store-backed, like viewMode/rollView): "Monsoon raw" vs "Intertropical
+routed". When IT-routed and an Intertropical is found (same discovery as Monsoon), Lantern's record
+path reads Intertropical's output; else falls back to Monsoon. Grid AND piano-roll both work off the
+populated cells[][] with zero render changes (that's the whole point -- add a source, not a view).
+
+### Scope / order (fresh session)
+1. Source toggle param + Intertropical discovery/accessor (mirror findMonsoonEitherSide).
+2. IT-source record path: sample routed+transposed output at boundary -> recordCell into cells[ch][].
+3. Routed-in vs muted-out visual distinction (hollow/dim).
+4. Verify BOTH grid and piano-roll render the arranged output correctly in Rack.
+A few hundred lines, mostly the record path; renders are reused. Build on the finished de-param/lock
+substrate (already in place).
