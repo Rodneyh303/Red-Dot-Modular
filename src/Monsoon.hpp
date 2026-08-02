@@ -1020,7 +1020,10 @@ namespace ChangeAlleyV2Ids {
         STEP_START   = LEADER_START + N_ROWS / 2,    // 8  (Rotate)
         NUM_PARAMS   = STEP_START   + N_ROWS / 2,    // = 32  (DAW boundary)
         BTN_START    = NUM_PARAMS,                   // 32 momentary buttons (16 rows x 2)
-        NUM_PARAMS_TOTAL = BTN_START + N_ROWS * 2    // = 64
+        // 8 scatter REVERSE buttons (button twins of the SCATTER_BACK_DOM/COD jacks):
+        // 4 domain + 4 codomain across Intra/Inter x rhythm/melody. Fire scatterDelta = -1.
+        SCATTER_REV_BTN_START = BTN_START + N_ROWS * 2,   // 8 (= SIDES*TYPES*2)
+        NUM_PARAMS_TOTAL = SCATTER_REV_BTN_START + SIDES*TYPES*2    // = 72
     };
     enum InputIds {
         DOMAIN_TRIG_START      = 0,                             // 16

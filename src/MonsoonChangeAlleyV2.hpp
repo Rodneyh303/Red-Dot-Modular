@@ -41,6 +41,9 @@ struct MonsoonChangeAlleyV2 : Module {
     rack::dsp::BooleanTrigger btnTrig  [CA::N_ROWS * 2];
     rack::dsp::SchmittTrigger sBackDom [CA::SIDES * CA::TYPES];
     rack::dsp::SchmittTrigger sBackCod [CA::SIDES * CA::TYPES];
+    // Button twins of the back-jacks: 4 domain + 4 codomain reverse buttons (scatterDelta = -1).
+    rack::dsp::BooleanTrigger sRevBtnDom [CA::SIDES * CA::TYPES];
+    rack::dsp::BooleanTrigger sRevBtnCod [CA::SIDES * CA::TYPES];
     // Scatter draw counters: 8 = Intra/Inter x rhythm/melody x domain/codomain (the panel's separate
     // scatter jacks). Each is a SIGNED int64 addressable POSITION in its own domain-separated Philox
     // stream -- the SAME model as the main dice draw counters. Forward jack = counter++, back jack =
@@ -105,6 +108,8 @@ struct MonsoonChangeAlleyV2 : Module {
         for (int i = 0; i < CA::SIDES * CA::TYPES; ++i) {
             configInput(CA::SCATTER_BACK_DOM_START + i, "Scatter domain back");
             configInput(CA::SCATTER_BACK_COD_START + i, "Scatter codomain back");
+            configButton(CA::SCATTER_REV_BTN_START + i,     "Scatter domain reverse");
+            configButton(CA::SCATTER_REV_BTN_START + 4 + i, "Scatter codomain reverse");
         }
         configInput(CA::GRAIN_POLY_IN, "Grain poly CV (16ch -> 16 grain knobs; mono=all)");
         configInput(CA::STEP_POLY_IN,  "Step poly CV (ch 1-4 leader, 5-8 step; mono=all)");
@@ -220,6 +225,13 @@ struct MonsoonChangeAlleyV2 : Module {
                 latchRow(r, CA::V_SCATTER, sd, ty, true);  pendingRows[r].scatterDelta = -1;
             }
             if (sBackCod[i].process(inputs[CA::SCATTER_BACK_COD_START + i].getVoltage(), 0.1f, 1.f)) {
+                latchRow(r, CA::V_SCATTER, sd, ty, false); pendingRows[r].scatterDelta = -1;
+            }
+            // Reverse BUTTONS: identical action to the back-jacks (scatterDelta = -1).
+            if (sRevBtnDom[i].process(params[CA::SCATTER_REV_BTN_START + i].getValue() > 0.5f)) {
+                latchRow(r, CA::V_SCATTER, sd, ty, true);  pendingRows[r].scatterDelta = -1;
+            }
+            if (sRevBtnCod[i].process(params[CA::SCATTER_REV_BTN_START + 4 + i].getValue() > 0.5f)) {
                 latchRow(r, CA::V_SCATTER, sd, ty, false); pendingRows[r].scatterDelta = -1;
             }
           }
