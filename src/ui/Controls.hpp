@@ -39,7 +39,7 @@ struct KnobT : rack::app::SvgKnob {
 template <typename Tag>
 struct ScrubKnobT : rack::app::SvgKnob {
     static constexpr int   SCRUB_STEPS = 6;        // 7 positions: 0..6 draws over the 0..1 param
-    static constexpr float STEP_PIXELS = 45.f;     // ACCUMULATED drag pixels per click (detent feel)
+    static constexpr float STEP_PIXELS = 120.f;    // ACCUMULATED drag pixels per click (deliberate)
     // Continuous accumulated drag position (0..1), decoupled from the stored value so we can require
     // a FULL step-width of travel before committing the next draw (true click-through, not snap).
     float dragPos_   = 0.f;
