@@ -18,7 +18,10 @@ using namespace rack;
 Intertropical::Intertropical() {
     for (int s = 0; s < Ids::N_SCENES; ++s)
         for (int v = 0; v < Ids::N_VOICES; ++v)
-            sceneOutput[s][v] = -1;  // all auto-pack by default
+            sceneSlots[s][v] = -1;   // all auto-pack by default (voice -> slot)
+    // Global slot -> output: default identity permutation (slot i drives output i, single bit).
+    for (int s = 0; s < Ids::MAX_VOICES_PER_SCENE; ++s)
+        slotOutput[s] = (uint8_t)(1u << s);
     config(Ids::NUM_PARAMS, Ids::NUM_INPUTS, Ids::NUM_OUTPUTS, Ids::NUM_LIGHTS);
     // 8 per-output transpose knobs: -24..+24 semitones, integer-detented (snap), default 0.
     for (int o = 0; o < 8; ++o) {
@@ -68,12 +71,20 @@ void Intertropical::process(const ProcessArgs& args) {
     // are mono-only (1 channel). Straits is required for poly mode.
     // computeRouting() maps each active voice to an output channel (0..7): forced overrides
     // first, then auto-pack. Output channel count = number of routed voices (<=8).
+    // Routing model (SETTLED): voice -> slot (per scene) -> output MASK (global, fan-out capable).
+    // A voice drives EVERY output bit set in its slot's slotOutput mask, each at that output's own
+    // transpose. Output channel = the OUTPUT index (0..7), fixed 8-wide; fan-out writes one voice to
+    // several channels. See INTERTROPICAL_SPEC "Routing model + fan-out".
     auto* straits = host->expanderManager.cachedPolyVoiceExpander;
-    int8_t routing[Ids::N_VOICES];
-    computeRouting(activeScene, routing);
+    int8_t slotOf[Ids::N_VOICES];
+    computeSlots(activeScene, slotOf);
+    // Highest output channel actually driven (so we size the poly cable to what's used).
     int nOut = 0;
-    for (int v = 0; v < Ids::N_VOICES; ++v)
-        if (routing[v] >= 0) nOut = std::max(nOut, routing[v] + 1);
+    for (int v = 0; v < Ids::N_VOICES; ++v) {
+        if (slotOf[v] < 0) continue;
+        const uint8_t m = slotOutput[slotOf[v]];
+        for (int o = 0; o < Ids::MAX_VOICES_PER_SCENE; ++o) if ((m >> o) & 1u) nOut = std::max(nOut, o + 1);
+    }
     for (int o = 0; o < Ids::NUM_OUTPUTS; ++o) outputs[o].setChannels(nOut);
     for (int o = 0; o < Ids::NUM_OUTPUTS; ++o)
         for (int ch = 0; ch < nOut; ++ch)
@@ -82,16 +93,25 @@ void Intertropical::process(const ProcessArgs& args) {
     // Straits output IDs: POLY_GATE_OUT=0, POLY_STEP_GATE_OUT=1, POLY_STEP_LEGATO_GATE_OUTPUT=2,
     // POLY_CV_OUT=3, POLY_ACCENT_OUT=4 (from StraitsIds::OutputIds).
     for (int v = 0; v < Ids::N_VOICES; ++v) {
-        int ch = routing[v];
-        if (ch < 0) continue;
-        outputs[Ids::GATE_OUT].setVoltage(straits->outputs[0].getVoltage(v), ch);
-        // Per-output TRANSPOSE: shift this channel's pitch CV by its knob (semitones -> 1V/oct).
-        // ch is the OUTPUT channel, so params[TRANSPOSE_FIRST + ch] is that output's transpose.
-        float trSemi = (ch < 8) ? params[Ids::TRANSPOSE_FIRST + ch].getValue() : 0.f;
-        outputs[Ids::CV_OUT].setVoltage(straits->outputs[3].getVoltage(v) + trSemi / 12.f, ch);
-        outputs[Ids::ACCENT_OUT].setVoltage(straits->outputs[4].getVoltage(v), ch);
-        outputs[Ids::LEGATO_OUT].setVoltage(straits->outputs[1].getVoltage(v), ch);
-        outputs[Ids::SLEG_OUT].setVoltage(straits->outputs[2].getVoltage(v), ch);
+        const int slot = slotOf[v];
+        if (slot < 0) continue;
+        const uint8_t mask = slotOutput[slot];
+        if (!mask) continue;
+        const float gate = straits->outputs[0].getVoltage(v);
+        const float cv   = straits->outputs[3].getVoltage(v);
+        const float acc  = straits->outputs[4].getVoltage(v);
+        const float leg  = straits->outputs[1].getVoltage(v);
+        const float sleg = straits->outputs[2].getVoltage(v);
+        for (int ch = 0; ch < Ids::MAX_VOICES_PER_SCENE; ++ch) {
+            if (!((mask >> ch) & 1u)) continue;    // this slot doesn't drive output ch
+            // Per-output TRANSPOSE: ch is the OUTPUT channel, so params[TRANSPOSE_FIRST+ch] is its knob.
+            const float trSemi = params[Ids::TRANSPOSE_FIRST + ch].getValue();
+            outputs[Ids::GATE_OUT].setVoltage(gate, ch);
+            outputs[Ids::CV_OUT].setVoltage(cv + trSemi / 12.f, ch);
+            outputs[Ids::ACCENT_OUT].setVoltage(acc, ch);
+            outputs[Ids::LEGATO_OUT].setVoltage(leg, ch);
+            outputs[Ids::SLEG_OUT].setVoltage(sleg, ch);
+        }
     }
 }
 
@@ -144,7 +164,7 @@ struct IntertropicalGrid : Widget {
             const float ch = gridBox.size.y / Intertropical::Ids::N_VOICES;
             int scene = (int)((e.pos.x - gridBox.pos.x) / cw);
             int voice = (int)((e.pos.y - gridBox.pos.y) / ch);
-            if (module->getCell(scene, voice)) module->cycleOutput(scene, voice);
+            if (module->getCell(scene, voice)) module->cycleSlot(scene, voice);
             e.consume(this); return;
         }
         if (e.button != GLFW_MOUSE_BUTTON_LEFT) { Widget::onButton(e); return; }
@@ -206,13 +226,18 @@ struct IntertropicalGrid : Widget {
                     nvgRect(vg, cx, cy, cwid, cht);
                     nvgFillColor(vg, col);
                     nvgFill(vg);
-                    // Output override: draw the output channel number (0-7) in the corner.
-                    int outCh = module->getOutput(s, v);
-                    if (outCh >= 0) {
+                    // Slot assignment: draw the SLOT number (1-8) this voice is seated in THIS scene.
+                    // computeSlots gives the effective slot (explicit seatings + auto-pack), so every
+                    // member shows where it actually sits. Explicit seat = bright; auto-pack = dim.
+                    int8_t slotOf[Intertropical::Ids::N_VOICES];
+                    module->computeSlots(s, slotOf);
+                    int slot = slotOf[v];
+                    if (slot >= 0) {
+                        const bool explicitSeat = (module->getSlot(s, v) >= 0);
                         nvgFontSize(vg, 6.f);
                         nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_TOP);
-                        nvgFillColor(vg, nvgRGBA(0xff,0xff,0xff,0xe0));
-                        char buf[4]; snprintf(buf, sizeof(buf), "%d", outCh);
+                        nvgFillColor(vg, nvgRGBA(0xff,0xff,0xff, explicitSeat ? 0xe0 : 0x70));
+                        char buf[4]; snprintf(buf, sizeof(buf), "%d", slot + 1);   // 1-based label
                         nvgText(vg, cx + 1.f, cy + 0.5f, buf, nullptr);
                     }
                 } else {

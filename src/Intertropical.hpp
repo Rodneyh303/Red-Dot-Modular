@@ -55,10 +55,16 @@ struct Intertropical : Module {
     uint8_t  repeats[Ids::N_SCENES]     = {1,1,1,1,1,1,1,1};
     // loopLen: how many scenes to cycle through (1..8). Scene advance wraps at loopLen, not N_SCENES.
     uint8_t  loopLen                    = Ids::N_SCENES;   // default: all 8 scenes
-    // sceneOutput[scene][voice]: optional per-voice output channel override.
-    // -1 = auto (auto-pack to next available ch0..7), 0..7 = forced to that output channel.
-    int8_t   sceneOutput[Ids::N_SCENES][Ids::N_VOICES];
-    // Constructor initialises sceneOutput to all -1 (auto-pack by default).
+    // --- Routing model (SETTLED, INTERTROPICAL_SPEC "Routing model + fan-out") ---
+    // Three spaces (voices 16 -> slots <=8 -> outputs 8), two mappings:
+    //  voice -> slot : PER-SCENE seating (this array). -1 = auto-pack, 0..7 = seated in that slot.
+    //  slot  -> output : GLOBAL bitmask (slotOutput). A slot drives every output whose bit is set;
+    //                    fan-out = >1 bit. Set once for the instance (the parts).
+    // This replaces the old flattened sceneOutput[scene][voice]=output (which tangled the two
+    // mappings and couldn't express fan-out). sceneSlots is the SAME array re-meaned: voice->SLOT.
+    int8_t   sceneSlots[Ids::N_SCENES][Ids::N_VOICES];   // per-scene voice->slot (-1 auto, 0..7 seat)
+    uint8_t  slotOutput[Ids::MAX_VOICES_PER_SCENE];      // global slot->output 8-bit mask (fan-out)
+    // Constructor: sceneSlots all -1 (auto-pack), slotOutput identity permutation (slot i -> out i).
     Intertropical();
 
     // ---- store accessors (the widget binds these; keeps widget off raw fields) ----
@@ -76,43 +82,74 @@ struct Intertropical : Module {
             sceneMask[scene] |=  (uint16_t)(1u << voice);
         } else {
             sceneMask[scene] &= (uint16_t)~(1u << voice);
-            sceneOutput[scene][voice] = -1;  // clear override when voice leaves
+            sceneSlots[scene][voice] = -1;  // clear slot seating when voice leaves
         }
     }
-    int getOutput(int scene, int voice) const {
+    // voice -> SLOT seating (per scene). -1 = auto-pack, 0..7 = explicitly seated in that slot.
+    int getSlot(int scene, int voice) const {
         if (scene < 0 || scene >= Ids::N_SCENES || voice < 0 || voice >= Ids::N_VOICES) return -1;
-        return sceneOutput[scene][voice];
+        return sceneSlots[scene][voice];
     }
-    void cycleOutput(int scene, int voice) {
+    void cycleSlot(int scene, int voice) {
         if (scene < 0 || scene >= Ids::N_SCENES || voice < 0 || voice >= Ids::N_VOICES) return;
         if (!getCell(scene, voice)) return;
-        int cur = sceneOutput[scene][voice];
-        cur = (cur + 1) % (Ids::MAX_VOICES_PER_SCENE + 1);
-        sceneOutput[scene][voice] = (cur == Ids::MAX_VOICES_PER_SCENE) ? -1 : (int8_t)cur;
+        int cur = sceneSlots[scene][voice];
+        cur = (cur + 1) % (Ids::MAX_VOICES_PER_SCENE + 1);   // 0..7 then wrap to -1 (auto)
+        sceneSlots[scene][voice] = (cur == Ids::MAX_VOICES_PER_SCENE) ? -1 : (int8_t)cur;
     }
-    // Compute voice→output mapping for a scene. out[voice] = output ch (0..7) or -1.
-    void computeRouting(int scene, int8_t out[Ids::N_VOICES]) const {
-        for (int v = 0; v < Ids::N_VOICES; ++v) out[v] = -1;
+    // slot -> output GLOBAL bitmask (fan-out capable). Toggle one output bit for a slot.
+    void toggleSlotOutput(int slot, int output) {
+        if (slot < 0 || slot >= Ids::MAX_VOICES_PER_SCENE || output < 0 || output >= Ids::MAX_VOICES_PER_SCENE) return;
+        slotOutput[slot] ^= (uint8_t)(1u << output);
+    }
+    bool getSlotOutput(int slot, int output) const {
+        if (slot < 0 || slot >= Ids::MAX_VOICES_PER_SCENE || output < 0 || output >= Ids::MAX_VOICES_PER_SCENE) return false;
+        return (slotOutput[slot] >> output) & 1u;
+    }
+    // Compute voice -> SLOT seating for a scene: slotOf[voice] = slot (0..7) or -1 (not seated).
+    // Explicit seatings first (honoured where free), then auto-pack the rest in voice order.
+    void computeSlots(int scene, int8_t slotOf[Ids::N_VOICES]) const {
+        for (int v = 0; v < Ids::N_VOICES; ++v) slotOf[v] = -1;
         if (scene < 0 || scene >= Ids::N_SCENES) return;
         bool used[Ids::MAX_VOICES_PER_SCENE] = {};
         for (int v = 0; v < Ids::N_VOICES; ++v) {
             if ((sceneMask[scene] >> v) & 1u) {
-                int8_t o = sceneOutput[scene][v];
-                if (o >= 0 && o < Ids::MAX_VOICES_PER_SCENE && !used[o]) {
-                    out[v] = o;  used[o] = true;
-                }
+                int8_t s = sceneSlots[scene][v];
+                if (s >= 0 && s < Ids::MAX_VOICES_PER_SCENE && !used[s]) { slotOf[v] = s; used[s] = true; }
             }
         }
-        int nextCh = 0;
+        int nextSlot = 0;
         for (int v = 0; v < Ids::N_VOICES; ++v) {
             if ((sceneMask[scene] >> v) & 1u) {
-                if (out[v] >= 0) continue;
-                while (nextCh < Ids::MAX_VOICES_PER_SCENE && used[nextCh]) nextCh++;
-                if (nextCh < Ids::MAX_VOICES_PER_SCENE) {
-                    out[v] = (int8_t)nextCh;  used[nextCh] = true;  nextCh++;
-                }
+                if (slotOf[v] >= 0) continue;
+                while (nextSlot < Ids::MAX_VOICES_PER_SCENE && used[nextSlot]) nextSlot++;
+                if (nextSlot < Ids::MAX_VOICES_PER_SCENE) { slotOf[v] = (int8_t)nextSlot; used[nextSlot] = true; nextSlot++; }
             }
         }
+    }
+    // Compute voice→output mapping for a scene. out[voice] = output ch (0..7) or -1.
+    // Voice -> primary output channel, for a scene (backward-compatible single-output view used by
+    // the process path's channel-count sizing and by simple 1:1 setups). Composes the two mappings:
+    // voice -> slot (computeSlots) then slot -> output (slotOutput mask, LOWEST set bit = primary).
+    // Fan-out (a slot driving >1 output) is expanded separately by routedOutputsForVoice().
+    void computeRouting(int scene, int8_t out[Ids::N_VOICES]) const {
+        int8_t slotOf[Ids::N_VOICES];
+        computeSlots(scene, slotOf);
+        for (int v = 0; v < Ids::N_VOICES; ++v) {
+            out[v] = -1;
+            const int s = slotOf[v];
+            if (s < 0) continue;
+            const uint8_t mask = slotOutput[s];
+            for (int o = 0; o < Ids::MAX_VOICES_PER_SCENE; ++o)
+                if ((mask >> o) & 1u) { out[v] = (int8_t)o; break; }   // lowest set bit = primary
+        }
+    }
+    // Full fan-out expansion: the output-channel bitmask a voice drives this scene (voice->slot->mask).
+    uint8_t routedOutputsForVoice(int scene, int voice) const {
+        int8_t slotOf[Ids::N_VOICES];
+        computeSlots(scene, slotOf);
+        const int s = (voice >= 0 && voice < Ids::N_VOICES) ? slotOf[voice] : -1;
+        return (s >= 0) ? slotOutput[s] : 0;
     }
     int  getRepeats(int scene) const {
         return (scene >= 0 && scene < Ids::N_SCENES) ? repeats[scene] : 1;
@@ -142,11 +179,15 @@ struct Intertropical : Module {
         for (int s = 0; s < Ids::N_SCENES; ++s) json_array_append_new(r, json_integer(repeats[s]));
         json_object_set_new(root, "repeats", r);
         json_object_set_new(root, "loopLen", json_integer(loopLen));
-        json_t* o = json_array();
+        json_t* ss = json_array();
         for (int s = 0; s < Ids::N_SCENES; ++s)
             for (int v = 0; v < Ids::N_VOICES; ++v)
-                json_array_append_new(o, json_integer(sceneOutput[s][v]));
-        json_object_set_new(root, "sceneOutput", o);
+                json_array_append_new(ss, json_integer(sceneSlots[s][v]));
+        json_object_set_new(root, "sceneSlots", ss);
+        json_t* so = json_array();
+        for (int s = 0; s < Ids::MAX_VOICES_PER_SCENE; ++s)
+            json_array_append_new(so, json_integer(slotOutput[s]));
+        json_object_set_new(root, "slotOutput", so);
         return root;
     }
     void dataFromJson(json_t* root) override {
@@ -157,12 +198,24 @@ struct Intertropical : Module {
             for (int s = 0; s < Ids::N_SCENES; ++s)
                 if (json_t* v = json_array_get(r, s)) repeats[s] = (uint8_t)json_integer_value(v);
         if (json_t* ll = json_object_get(root, "loopLen")) loopLen = (uint8_t)json_integer_value(ll);
-        if (json_t* o = json_object_get(root, "sceneOutput")) {
+        // New split model.
+        if (json_t* ss = json_object_get(root, "sceneSlots")) {
             int idx = 0;
             for (int s = 0; s < Ids::N_SCENES; ++s)
                 for (int v = 0; v < Ids::N_VOICES; ++v)
-                    if (json_t* jv = json_array_get(o, idx++)) sceneOutput[s][v] = (int8_t)json_integer_value(jv);
+                    if (json_t* jv = json_array_get(ss, idx++)) sceneSlots[s][v] = (int8_t)json_integer_value(jv);
+        } else if (json_t* o = json_object_get(root, "sceneOutput")) {
+            // MIGRATION: old flattened sceneOutput[scene][voice]=output. Its per-scene overrides map
+            // most closely to voice->SLOT seatings (the identity slotOutput default then sends slot i
+            // -> output i, preserving the old effective routing for the common 1:1 case).
+            int idx = 0;
+            for (int s = 0; s < Ids::N_SCENES; ++s)
+                for (int v = 0; v < Ids::N_VOICES; ++v)
+                    if (json_t* jv = json_array_get(o, idx++)) sceneSlots[s][v] = (int8_t)json_integer_value(jv);
         }
+        if (json_t* so = json_object_get(root, "slotOutput"))
+            for (int s = 0; s < Ids::MAX_VOICES_PER_SCENE; ++s)
+                if (json_t* v = json_array_get(so, s)) slotOutput[s] = (uint8_t)json_integer_value(v);
     }
 
     // ---- STUBBED: advance on boundary crossing, route active scene to poly outs ----
