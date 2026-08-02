@@ -88,7 +88,6 @@ void Monsoon::updateExpanderPointers() {
         gate2Assign = 1;
         invertMuteLogic = false;
         restartOnUnmute = false;
-        reseedOnRoll = false;
         reseedOnRestart = false;
         lastModeSelect = -1;
         
@@ -356,28 +355,18 @@ float Monsoon::semitoneToVolts(int semitone) {
     // "Reseed on roll" option — NOT by the SEED cable. The SEED cable only
     // determines the seed SOURCE when we do reseed (CV if patched, else full
     // 64-bit internal entropy). Neither source is privileged.
-    //   reseedOnRoll OFF → plain roll (advance stream, no reseed), cable or not.
-    //   reseedOnRoll ON  → reseed-roll (promote B→A, reseed, keep morph), source
-    //                      = CV if patched else internal.
     // Shared by the panel dice buttons and gate "Re-dice". TRIAL dice never come
     // here (setPending*Trial directly) and never reseed.
     void Monsoon::diceRhythm() {
+        // MAIN dice = plain roll: advance the draw stream, no reseed. Reseed is NOT a roll behavior
+        // under the scrub model (it injects fresh entropy -> breaks counter-reproducibility past the
+        // reseed point). Reseed lives on RESET instead (reseedOnRestart). (Step 6.)
         rhythmMode = 0;
-        if (reseedOnRoll) {
-            const bool sc = inputs[SEED_INPUT].isConnected();
-            engine.pe.setPendingRhythmReseedRoll(sc ? sampleSeedFromSource() : 0.f, /*full=*/!sc);
-        } else {
-            engine.pe.setPendingRhythmRoll();
-        }
+        engine.pe.setPendingRhythmRoll();
     }
     void Monsoon::diceMelody() {
         melodyMode = 0;
-        if (reseedOnRoll) {
-            const bool sc = inputs[SEED_INPUT].isConnected();
-            engine.pe.setPendingMelodyReseedRoll(sc ? sampleSeedFromSource() : 0.f, /*full=*/!sc);
-        } else {
-            engine.pe.setPendingMelodyRoll();
-        }
+        engine.pe.setPendingMelodyRoll();   // plain roll; reseed lives on RESET (Step 6)
     }
 
     // Single definition of every die-action. Fired by G3 (menu-routed) and by
@@ -388,7 +377,6 @@ float Monsoon::semitoneToVolts(int semitone) {
             case DA_REDICE_M:      diceMelody(); break;
             case DA_LIVESTATIC_R:  rhythmMode = 1 - rhythmMode; break;
             case DA_LIVESTATIC_M:  melodyMode = 1 - melodyMode; break;
-            case DA_RESEED_ROLL:   reseedOnRoll    = !reseedOnRoll;    break;
             case DA_RESEED_RESTART:reseedOnRestart = !reseedOnRestart; break;
             case DA_LASTDICE_R:    rhythmMode = 0; engine.pe.setPendingRhythmLastRoll();  break;
             case DA_LASTDICE_M:    melodyMode = 0; engine.pe.setPendingMelodyLastRoll();  break;

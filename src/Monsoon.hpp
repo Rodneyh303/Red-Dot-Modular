@@ -529,7 +529,7 @@ struct Monsoon : Module {
     enum DieAction {
         DA_REDICE_R = 0, DA_REDICE_M,
         DA_LIVESTATIC_R, DA_LIVESTATIC_M,    // toggle live<->static (rhythmMode)
-        DA_RESEED_ROLL, DA_RESEED_RESTART,
+        DA_RESEED_RESTART,
         DA_LASTDICE_R, DA_LASTDICE_M,        // step index opposite to dice
         DA_NUM
     };
@@ -539,11 +539,9 @@ struct Monsoon : Module {
     bool invertMuteLogic = false;
     bool restartOnUnmute = false;
     // Reseed policy (entropy housekeeping; context-menu, not panel — reseeding is
-    // not a performance gesture). reseedOnRoll: a MAIN dice roll also reseeds
     // (fresh entropy / SEED CV) while keeping the A/B morph. TRIAL rolls never
     // reseed (auditioning stays controlled). reseedOnRestart: a restart reseeds
     // for a fresh pattern instead of replaying the held one.
-    bool reseedOnRoll    = false;
     bool pendingRegenB   = false;   // set by load: regenerate candidate B post-seed (Option 3)
     bool reseedOnRestart = false;
 

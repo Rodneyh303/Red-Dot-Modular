@@ -68,7 +68,6 @@ void ModeController::updatePatternInput() {
                            currentPatternInput.melodySlew);
     }
     if (mainModule) {
-        currentPatternInput.reseedOnRoll    = mainModule->reseedOnRoll;
         const bool sc = mainModule->inputs[MonsoonIds::SEED_INPUT].isConnected();
         currentPatternInput.seedConnected   = sc;
         currentPatternInput.seedSampleValue = sc ? mainModule->sampleSeedFromSource() : 0.f;

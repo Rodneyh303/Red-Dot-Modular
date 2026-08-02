@@ -369,12 +369,6 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
         // draws fresh B from the reseeded stream, so A≠B and slew survives.
         if (rhythmReseedRollFull) { seedRhythmPhiloxFull(); }
         else { rhythmSeedFloat = rhythmReseedRollFloat; seedRhythmPhilox(rhythmSeedFloat); }
-    } else if (in.reseedOnRoll && rhythmMode == 1) {
-        // Realtime MAIN + reseed-on-roll: reseed each redraw. (Live TRIAL never
-        // reseeds — it auditions against a fixed A.) CV if present, else full
-        // 64-bit internal entropy.
-        if (in.seedConnected) { rhythmSeedFloat = in.seedSampleValue; seedRhythmPhilox(rhythmSeedFloat); }
-        else                  { seedRhythmPhiloxFull(); }
     }
     rhythmRollPending = false;
     rhythmReseedRollPending = false;
@@ -389,10 +383,6 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     } else if (melodyReseedRollPending) {
         if (melodyReseedRollFull) { seedMelodyPhiloxFull(); }
         else { melodySeedFloat = melodyReseedRollFloat; seedMelodyPhilox(melodySeedFloat); }
-    } else if (in.reseedOnRoll && melodyMode == 1) {
-        // Realtime MAIN + reseed-on-roll only (live TRIAL never reseeds).
-        if (in.seedConnected) { melodySeedFloat = in.seedSampleValue; seedMelodyPhilox(melodySeedFloat); }
-        else                  { seedMelodyPhiloxFull(); }
     }
     melodyRollPending = false;
     melodyReseedRollPending = false;

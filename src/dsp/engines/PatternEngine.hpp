@@ -54,7 +54,6 @@ struct PatternInput {
     // set, continuous Realtime-mode redraws also reseed each cycle from fresh
     // entropy (or the SEED CV if seedConnected), so realtime stays genuinely
     // random rather than walking one deterministic stream.
-    bool  reseedOnRoll     = false;
     // Which dice the LIVE mode (rhythmMode/melodyMode==1) drives:
     // false = MAIN (promote, A walks); true = TRIAL (anchored A, variations on a
     // theme; never reseeds). Resolves the "two live modes" conflict — live is one
