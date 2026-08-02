@@ -42,8 +42,18 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             if (v2->rhythmSrc[v] != v || v2->melodySrc[v] != v) identity = false;
         }
         if (!identity) {
-            engine.pe.forceRecomputeSlewed();
-            engine.pe.remapSlewedByPins();
+            // FLICKER FIX (SANDS_SCATTER_FLICKER_DIAGNOSIS): only re-derive+remap when the pins or
+            // the underlying slewed content actually changed. Running it every block rewrote the
+            // slewed buffers in place under the UI reader -> REST/ACCENT flicker. When unchanged,
+            // last cycle's remapped buffers are already correct, so skip the churn.
+            if (remapSigChanged_(v2->rhythmSrc, v2->melodySrc, /*identity=*/false)) {
+                engine.pe.forceRecomputeSlewed();
+                engine.pe.remapSlewedByPins();
+                captureRemapSig_(v2->rhythmSrc, v2->melodySrc, /*identity=*/false);
+            }
+        } else {
+            // Pins returned to identity: mark it so the next non-identity is treated as a change.
+            captureRemapSig_(v2->rhythmSrc, v2->melodySrc, /*identity=*/true);
         }
     } else {
         for (int v = 0; v < 16; ++v) { engine.pe.caRhythmSrc[v] = (uint8_t)v; engine.pe.caMelodySrc[v] = (uint8_t)v; }
@@ -604,3 +614,30 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
 // ──── Reset Operations ───────────────────────────────────────────────────
 
 // ──── Helper ─────────────────────────────────────────────────────────────
+
+// --- CA pin-remap change guard (flicker fix) ---------------------------------------------------
+// The remapped slewed buffers are a pure function of (pins, draw counters, mix, slew). Re-run the
+// forceRecomputeSlewed()+remapSlewedByPins() pair only when that signature changes; otherwise the
+// buffers from last cycle are already correct and re-running just churns them under the UI reader.
+bool MonsoonSandsManager::remapSigChanged_(const uint8_t* rSrc, const uint8_t* mSrc, bool identity) const {
+    auto& pe = engine.pe;
+    if (identity != lastRemap_.wasIdentity)               return true;
+    if (pe.rhythmDrawCtr != lastRemap_.rCtr)              return true;
+    if (pe.melodyDrawCtr != lastRemap_.mCtr)              return true;
+    if (pe.rhythmMixLatched  != lastRemap_.rMix)          return true;
+    if (pe.melodyMixLatched  != lastRemap_.mMix)          return true;
+    if (pe.rhythmSlewLatched != lastRemap_.rSlew)         return true;
+    if (pe.melodySlewLatched != lastRemap_.mSlew)         return true;
+    for (int v = 0; v < 16; ++v)
+        if (rSrc[v] != lastRemap_.rSrc[v] || mSrc[v] != lastRemap_.mSrc[v]) return true;
+    return false;
+}
+
+void MonsoonSandsManager::captureRemapSig_(const uint8_t* rSrc, const uint8_t* mSrc, bool identity) {
+    auto& pe = engine.pe;
+    for (int v = 0; v < 16; ++v) { lastRemap_.rSrc[v] = rSrc[v]; lastRemap_.mSrc[v] = mSrc[v]; }
+    lastRemap_.rCtr = pe.rhythmDrawCtr;  lastRemap_.mCtr = pe.melodyDrawCtr;
+    lastRemap_.rMix = pe.rhythmMixLatched;  lastRemap_.mMix = pe.melodyMixLatched;
+    lastRemap_.rSlew = pe.rhythmSlewLatched; lastRemap_.mSlew = pe.melodySlewLatched;
+    lastRemap_.wasIdentity = identity;
+}
