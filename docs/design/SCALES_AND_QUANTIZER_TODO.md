@@ -134,3 +134,34 @@ cents? degrees? ratio? Whatever it does, a transposed note may not sit on any DE
 awkwardly on view 2 but naturally on the CENTS RULER (view 1). Another vote for keeping the cents ruler
 as the truthful fallback even when degree-lanes is the daily view. (Transpose stays non-key-aware per
 the INTERTROPICAL DECIDED note; microtonal just changes its UNIT.)
+
+## Module triage for microtonal (Rodney's first-pass verdict -- audit properly when actioned)
+Preliminary per-module read (NOT a full code audit -- do that when microtonal is actioned; this is the
+map to start from). Confirms the 12-TET surface is SMALL: most modules are pitch-agnostic.
+
+NO CHANGE (pitch-agnostic -- operate on gates/probability/routing/voice-indices, never pitch values):
+- All SANDS (shape probability + articulation)
+- RAFFLES (fires gates)
+- JUNCTION (routing)
+- CAUSEWAY, STRAITS, CHANGI (voice/CV transport -- carry the CV as-is, don't interpret pitch)
+- CHANGE ALLEY (source indices + voice permutations, never pitch -- confirmed)
+
+SMALL / BOUNDED:
+- INTERCHANGE -- modulates the current note sliders; count follows the tuning. Bounded.
+- INTERTROPICAL -- restrict the per-output TRANSPOSE knobs to OCTAVE-only in microtonal. An octave is a
+  2:1 RATIO, valid/meaningful in ANY tuning -> sidesteps the "transpose lands between degrees" problem
+  entirely. Loses microtonal fan-out CHORD building (fifths/thirds), keeps octave-doubling. Clean
+  trade, "no big deal" (Rodney). (12-TET mode keeps full +/-24 semitone transpose.)
+
+REAL CHANGE:
+- SHOPHOUSE -- currently loads 12-TET scales; becomes the TUNING LOADER (12-TET scale set OR a .scl/
+  degree-table tuning). The natural home for tuning selection.
+- CORE -- GateState note representation, CV output arithmetic (/12), scale-mask width, the 12-fader
+  probability bank.
+- LANTERN -- pitch-axis RENDERER swap (keyboard -> cents-ruler / degree-lanes); draw-code only, pitchV
+  is already continuous.
+
+=> Microtonal = Shophouse (tuning loader) + core note-repr + Lantern renderer + Intertropical octave-
+restrict + Interchange follows. The rest of the 15-16 module collection is untouched. Smaller and more
+tractable than the feature "feels" -- the modular abstraction holds at the right level. Still
+POST-LIBRARY (core note-repr change = high regression risk), but the SCOPE is now mapped.
