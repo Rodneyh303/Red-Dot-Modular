@@ -25,6 +25,50 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import dotmod_design as D
 from dotmod_design import px, theme, svg_open, logo_embed, kit_shape
 
+# --- nanosvg-safe outlined text ----------------------------------------------------------------
+# nanosvg does NOT render <text> (no font engine), so any STATIC label baked into the panel must be
+# real path objects. We outline the few coordinate labels with fontTools (same technique as the
+# logo). Widget-drawn labels still use <text> (NanoVG has a font engine at runtime) -- only the
+# equatorial-band markers are outlined here because they're part of the static panel art.
+_FONT_CACHE = {}
+def _load_font(path):
+    if path not in _FONT_CACHE:
+        from fontTools.ttLib import TTFont
+        f = TTFont(path)
+        _FONT_CACHE[path] = (f, f.getGlyphSet(), f["cmap"].getBestCmap(),
+                             f["head"].unitsPerEm)
+    return _FONT_CACHE[path]
+
+def outline_text(s, x_px, y_px, size_px, fill, anchor="start", opacity=1.0,
+                 font="/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf", letter=0.0):
+    """Return SVG <path> objects tracing `s` at (x_px,y_px) baseline. size_px = cap size in px.
+    anchor: start|middle|end. letter = extra tracking in px. nanosvg-safe (solid paths only)."""
+    from fontTools.pens.svgPathPen import SVGPathPen
+    ttf, gs, cmap, upm = _load_font(font)
+    scale = size_px / upm
+    # measure advance
+    total = 0.0
+    for ch in s:
+        gname = cmap.get(ord(ch))
+        if gname is None: continue
+        total += gs[gname].width * scale + letter
+    if s: total -= letter
+    ox = x_px - (total if anchor == "end" else total/2 if anchor == "middle" else 0.0)
+    out, pen_x = [], ox
+    for ch in s:
+        gname = cmap.get(ord(ch))
+        if gname is None:
+            pen_x += size_px*0.5 + letter; continue
+        pen = SVGPathPen(gs)
+        gs[gname].draw(pen)
+        d = pen.getCommands()
+        if d:
+            # place glyph: translate to pen_x, flip Y (font y-up -> svg y-down) about baseline
+            out.append(f'<path transform="translate({pen_x:.2f},{y_px:.2f}) scale({scale:.5f},{-scale:.5f})" '
+                       f'd="{d}" fill="{fill}" fill-opacity="{opacity:.2f}"/>')
+        pen_x += gs[gname].width * scale + letter
+    return "".join(out)
+
 HP=42; PW_MM=HP*5.08; PH_MM=128.5; MARGIN=6.0
 N_SCENES=8; N_VOICES=16; N_OUTPUTS=8; N_SLOTS=8; MAX_REPEAT=4
 LANE_PITCH=6.0
@@ -124,8 +168,32 @@ def build(dark):
         comps.append(kit_shape("output",i,jx,jy))
 
     # brand bottom-left
-    s.append(logo_embed(dark,MARGIN,PH_MM-9.5,28.0))
-    # connect mark top-right
+    # --- Equatorial-band theme (INTERTROPICAL) ---------------------------------------------------
+    # The panel content lives in the intertropical band: a red 1degN line (with the brand red DOT,
+    # Singapore's latitude / the "red dot") across the TOP, and the gold 0deg EQUATOR line (with a
+    # marker dot) across the BOTTOM. Content sits between them = the zone. Labels are OUTLINED
+    # (fontTools) so nanosvg renders them; the degree ring "o" is drawn as a small circle object.
+    RED = "#d4001a"; GOLD = t["gold"]
+    LINE_L = px(MARGIN); LINE_R = px(PW_MM - MARGIN)
+    def deg_label(x_mm, y_base_mm, txt, fill, anchor="start"):
+        # Outline the WHOLE label (including the actual degree glyph) via fontTools -> real path
+        # objects nanosvg renders. No <text>, no hand-placed ring.
+        return outline_text(txt, px(x_mm), px(y_base_mm), px(2.6), fill,
+                            anchor=anchor, opacity=0.85, letter=px(0.12))
+    # TOP: red 1degN line + centre red dot (the brand "red dot" at Singapore's latitude)
+    y1 = px(13.0)
+    s.append(f'<line x1="{LINE_L:.1f}" y1="{y1:.1f}" x2="{LINE_R:.1f}" y2="{y1:.1f}" '
+             f'stroke="{RED}" stroke-width="1.1" stroke-opacity="0.9"/>')
+    s.append(f'<circle cx="{px(PW_MM/2):.1f}" cy="{y1:.1f}" r="{px(0.9):.1f}" fill="{RED}"/>')
+    s.append(deg_label(PW_MM/2 + 3.0, 13.0 + 0.9, "1\u00b0N", RED))
+    # BOTTOM: gold 0deg equator line + marker dot
+    y0 = px(115.0)
+    s.append(f'<line x1="{LINE_L:.1f}" y1="{y0:.1f}" x2="{LINE_R:.1f}" y2="{y0:.1f}" '
+             f'stroke="{GOLD}" stroke-width="0.9" stroke-opacity="0.8"/>')
+    s.append(f'<circle cx="{px(PW_MM/2):.1f}" cy="{y0:.1f}" r="{px(0.8):.1f}" fill="{GOLD}"/>')
+    s.append(deg_label(MARGIN + 1.0, 115.0 + 3.4, "0\u00b0", GOLD))
+
+    s.append(logo_embed(dark,MARGIN,PH_MM-9.5,28.0))    # connect mark top-right
     comps.append(kit_shape("light","connect",PW_MM-MARGIN-6.0,9.0))
 
     s.append('<g inkscape:label="components" inkscape:groupmode="layer">'); s.extend(comps); s.append('</g></svg>')
