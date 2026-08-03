@@ -271,6 +271,35 @@ different scenes at different transpositions = a chord progression / modulating 
 pattern. Turns the arrangement layer into a HARMONIC layer. Stays fun: one number per scene
 column, like the repeat count. Highest-leverage addition; do this.
 
+### Output-stage transpose semantics (DECIDED -- do NOT "fix" into key/conservation awareness)
+The per-output transpose is a deliberately DUMB, post-conservation output-stage offset: a raw semitone
+shift on the CV as it leaves the jack. Two rulings, chosen on purpose:
+
+1. FOLLOWS the main poly TIE/LEGATO logic. The effective transpose is TIE-LATCHED: held constant from
+   a true tie's onset to its end (a tied note's pitch must not slide when transpose is edited or
+   modulated), and read LIVE on legato and single notes (legato is allowed to glide; worst case a
+   legato with unchanged transpose just reads as a tie -- a valid note). This is the SAME tie/legato
+   discriminator the engine uses everywhere (gs.lastNoteType), applied at the output. The latch lives
+   in Intertropical's audio process() (it defines "the output"); Lantern reads the effective value so
+   its piano-roll agrees with the jack automatically. Fan-out chord example: fan one voice to two
+   outputs at +0 and +7, hold a TIE -> the chord's voicing is frozen for the tie (correct); to MORPH a
+   held chord's intervals, use LEGATO not tie.
+
+2. Does NOT follow Shophouse scale-conservation. Transpose is ALLOWED to move a note out of key and
+   past what conservation guaranteed. Conservation and key-conformance are ARRANGEMENT-LAYER invariants
+   (upstream); transpose is an intentional performer escape hatch BELOW them. This is what makes it
+   useful: octave-shifting a lead/bass (clean +/-12, no scale-quantise "help") and building house
+   chords / added tones via fan-out + interval transpose (deliberately synthesising harmony the
+   arrangement layer didn't contain). Making transpose key-aware would gut both. Leave it with the
+   user. Lantern must SHOW the out-of-key result faithfully (post-transpose pitch on the true semitone
+   row) -- as truth-mirror it reports what leaves the jack, including "wrong" notes; it must never
+   re-conform the display to key. (This is the same principle as the verify-vs-raw-jacks debug: emit/
+   show what is actually there, don't helpfully correct it.)
+
+Rationale for recording this: "why doesn't transpose respect conservation/key?" will resurface later
+and is exactly the kind of deliberate decision a well-meaning future edit would "fix" into key-aware
+quantisation, silently removing the octave-shift and chord-building use-cases. It is intentional.
+
 ### Collapse policy -- REVIEW of the implemented computeRouting()
 Current logic (Intertropical.hpp:85) is a clean two-pass allocator and is the right design:
 - Pass 1: honour forced OVERRIDES (sceneOutput[scene][v] >= 0), each claiming its channel.
