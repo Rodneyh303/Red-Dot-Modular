@@ -165,3 +165,38 @@ REAL CHANGE:
 restrict + Interchange follows. The rest of the 15-16 module collection is untouched. Smaller and more
 tractable than the feature "feels" -- the modular abstraction holds at the right level. Still
 POST-LIBRARY (core note-repr change = high regression risk), but the SCOPE is now mapped.
+
+## Monsoon Microtonal = SEPARATE MODULE (decided) + Scalar reference (validation)
+Clarified: the wider/microtonal Monsoon is ANOTHER module, "Monsoon Microtonal" -- NOT a mode of the
+standard Monsoon. WHY it must be separate (from the panel): the current 12 sliders are STATIC PANEL ART,
+labelled C/C#/D..., baked at fixed positions for exactly 12. Reflowing to 5 or 24 = a different panel by
+definition. So standard Monsoon ships now unchanged (12-TET, static, zero risk to 2026 library);
+Monsoon Microtonal is a later module with a WIDGET-DRAWN variable bank.
+
+### VCV Scalar (premium) is the reference + independent validation
+Compared Scalar (5-div Slendro and 24-div maqam) against current Monsoon. Scalar confirms our earlier
+decisions:
+- 24 is the REAL-WORLD CEILING. Scalar -- a serious commercial microtonal quantizer -- caps at 24
+  Scala divisions. Our "limit to 24" is industry-sensible, not a shortfall.
+- EVEN-SPACING, not proportional-to-cents. Scalar shows the tuning's notes as EVENLY-spaced cells (5
+  cells for Slendro, 24 for maqam) filling the same fixed box; it does NOT space cells by cents width.
+  This is EXACTLY the call we already made (don't horizontally space sliders by tuning width). A
+  premium module made the same choice -> solid ground.
+- Explicit readouts: NOTES: 5 / NOTES: 24, TUNING: Unequal, CENTS. Good model for Monsoon Microtonal's
+  own tuning readout.
+
+### Monsoon Microtonal UI (settled from the above)
+- WIDGET-DRAWN variable fader bank, 5..24 faders = the loaded tuning's NOTE COUNT, EVEN-SPACED across a
+  fixed-width region (Scalar-style), each labelled by cents/ratio/degree (NOT spaced by pitch width).
+- Panel sized for the 24 MAX; fewer notes = fewer faders even-spread (NOT 24-with-greying -- greying
+  phantom slots is wrong for irregular scales; greying stays ONLY for out-of-scale-WITHIN-a-tuning).
+- Two mechanisms kept distinct: REFLOW = how many pitches exist (follows tuning); GREY = which existing
+  pitches are out of the current scale (as today). Don't conflate.
+
+### Open: does Monsoon Microtonal OWN the tuning, or consume it?
+Scalar already parses Scala + quantizes. Monsoon Microtonal likely should NOT reinvent Scala parsing --
+option: expose N tuning-driven probability faders and let an UPSTREAM tuning source define what the N
+pitches ARE (Scalar via its quantize outs, or a Shophouse-microtonal tuning loader). Then Monsoon
+Microtonal stays focused on PROBABILISTIC GENERATION over N degrees; something else owns the tuning.
+More modular, more on-brand (composition of focused modules). DECIDE when actioned: self-contained
+Scala loader vs consume-upstream-tuning. Leaning consume-upstream.
