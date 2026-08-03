@@ -1,0 +1,41 @@
+
+=== SESSION (2026-08-03, compacted) ===
+Broad session. Committed to master unless noted.
+- Sands scatter FLICKER fix (option 2): gate CA pin-remap on change, not every block (RemapSig guard
+  in MonsoonSandsManager). Rodney confirmed resolved. commit 7b736d6.
+- CA scatter REVERSE BUTTONS: 8 button-twins of the back-jacks (stage1 wiring 662d948, stage2 panel
+  0a2387f). Rodney tested: buttons work.
+- CA DOMAIN-REVERSE semantics: master domain reverse = walk permutations (step4 != step2); codomain
+  reverse round-trips (absolute). Root cause traced (scatterRows relative permutation vs scatter
+  absolute redraw). COMPARE BRANCH feat/domain-reverse-inverse (domain reverse = INVERSE permutation
+  = true undo, step4==step2). [DECISION: keep branch, decide in play, NOT merged. Tempting to support
+  both, left for now.]
+- INTERTROPICAL: was incomplete (empty sub-grids, couldn't see outputs). Split routing model
+  sceneOutput -> sceneSlots[scene][voice] (voice->slot per scene) + slotOutput[8] (global slot->output
+  MASK, fan-out). computeSlots/computeRouting/voiceForOutput. Built the two right grids: slot->output
+  8x8 (interactive, fan-out=2+ lit in a row, single-slot-per-output enforced) + voice->slot display.
+  Main grid now shows slot number. Axis labels. commits 24eeba2, 0b62446, d375062.
+- LANTERN IT-SOURCE (branch feat/lantern-intertropical-source, NOT merged): sourceMode toggle;
+  findIntertropicalEitherSide; grid view = engine voice state re-indexed by output->slot->voice
+  inverse map; piano-roll = + TIE-LATCHED post-transpose. Tie-latch lives in Intertropical audio
+  (effectiveTranspose[8]), Lantern mirrors -> one source of truth. DEBUG "verify vs raw jacks" toggle
+  (product stays engine-close; debug reads it->outputs voltages to A/B). Transpose DECIDED note:
+  follows poly tie/legato but NOT Shophouse scale-conservation (performer escape hatch: octaves,
+  fan-out house chords). NEEDS RACK: verify single pair == jacks before merge; then pairing/numbering
+  system for multiple IT+Lantern pairs.
+- RAFFLES_TRIAL_CLEANUP.md: scope trial-dice + LIVE SRC removal (own session, master).
+- RATE_DISCIPLINE_UNIFICATION.md: reconcile EFFECT_TIMING (which rate to sample) + DATAFLOW (hand off
+  across rate boundaries) as two halves of one multi-rate discipline. WriteLedger first, then walk the
+  modulation table.
+- INTERTROPICAL PANEL THEME: equatorial band -- red 1degN line+dot (the "red dot"/Singapore lat) top,
+  gold 0deg equator+dot bottom, grid framed between. Labels OUTLINED via fontTools (nanosvg-safe).
+  added outline_text() to gen_intertropical.py. commit a41307d. NEEDS EYE: label crowding/size;
+  optional Barlow swap.
+- CHANGI_TERMINAL_SPLIT.md: Changi -> T1 (gate/CV/accent, FIX mono bug: configures 15 not 16) + new
+  T2 (step-gate/step-legato x16). Jewel theme parked (Rain Vortex not nanosvg-friendly).
+- LIBRARY GOAL: into VCV Library in 2026. Bar is mechanical (plugin.json manifest, SPDX license,
+  frozen slugs, clean SDK build, one issue-tracker thread w/ commit hash) NOT feature-complete. Clone
+  rule is panel/name only, not function (Venom-from-Vermona precedent) -- Monsoon clear (superset of
+  meloDICER: accent, upgraded prob, phase drive, poly, expanders). Singapore naming story to thread.
+  Rodney does docs (his strength) + patches when stable. Wants Omri Cohen / Peter Kirn coverage.
+  TODO: LIBRARY_SUBMISSION_CHECKLIST gap analysis (manifest? slugs stable? license? inventory).
