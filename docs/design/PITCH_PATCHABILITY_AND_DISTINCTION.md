@@ -91,6 +91,19 @@ tradition parked at (so they have no names). Not "imitates two traditions" -- re
 endpoints of one continuous space and lets you compose in between. (The East/West axis and the
 Singapore identity are the same coherence again: the region's music IS the middle of the dial.)
 
+CONCRETE BACKING -- the SCALE SET (openable in Rack, verifiable): 28 scales spanning Western
+common-practice (Major, the 3 minors, all church modes, Whole Tone, Diminished, Blues, pentatonics)
+AND the East/Southeast Asian traditions -- notably PELOG (the Indonesian GAMELAN scale, which pairs
+directly with the heterophony/gamelan point above), the Japanese set (Hirojoshi, In-Sen, Iwato,
+Kumoi), Bhairav (N. Indian raga), and the Eastern-European/Iberian seam (Hungarian Minor, Spanish).
+So the pitch COLLECTIONS themselves span the same East/West axis the correlation matrix does -- two
+independent expressions of one idea. For Singapore this reads as the city's musical demographics as a
+scale list. And the scale system is PROBABILISTIC, not a hard quantiser: per-semitone probability
+faders + a scale MASK that gates the READ (out-of-scale notes read zero prob when locked, faders keep
+the user's values and merely DIM) -- so you can weight scale degrees, CV-modulate the weights, and
+stay in-scale, which hard-quantiser scale systems can't do. HONEST NOTE: Pelog/Slendro etc. are 12-TET
+APPROXIMATIONS of non-12-TET tunings (standard for a semitone-mask system). Label accurately.
+
 ## 8. Reversibility: Philox counter + phase drive = a scrubbable generative system
 Two axes are independently reversible, and TOGETHER they make the generative output scrub like tape:
 - PHASE drive makes TIME reversible/addressable (playback position is a continuous driven quantity --
