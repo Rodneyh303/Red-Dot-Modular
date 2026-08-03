@@ -31,6 +31,14 @@ the Bitwig phase-in plugin). Plus polymetric via Sands and Intertropical. This t
 flexible than gate-clocking and speaks to the growing phase-sequencing niche. LEAD WITH THIS in a
 demo -- it's distinctive and looks compelling in motion.
 
+External CLOCK is table stakes. External GATE here is NOT: an incoming external gate still passes
+through the engine's REST / LEGATO / ACCENT (mode B) articulation -- so an arbitrary/irregular/random
+external gate stream (tested: Venom Rhythm Explorer) isn't just a metronome, it becomes raw rhythmic
+material that Monsoon's own generative articulation layer rest-filters, legato-shapes and accents.
+External structure and internal generation COMPOSE. [CODE-CHECK before publishing: confirm external-
+gate-driven steps route through the SAME rest/legato/accent-mode-B path as internal steps, not a
+reduced path.]
+
 ## 4. Self-feeding + ecosystem-citizen patching (PROVEN)
 Gates from one Monsoon can drive another's gate/phase drive input -> self-modulating generative loops
 (the emergent-evolving-patch pattern reviewers love). And it takes gates from ANY source: tested with
@@ -60,8 +68,54 @@ adds poly-budget scene ARRANGEMENT (voice->slot->output, fan-out chords, per-out
 that arranged output is itself a source (Lantern visualises it; Changi T3 jacks it out). Generate ->
 shape -> correlate -> arrange -> visualise -> break out. One coherent signal journey.
 
+## 7. The correlation matrix as a textural continuum -- the East/West axis
+The single most important control (the CA correlation matrix) is a CONTINUOUS dial between textures,
+not a set of modes:
+- Full column of pins on one source = HOMOPHONY (voices move together; + Intertropical fan-out chords
+  = melody-plus-accompaniment homophony).
+- Shared source, different variation/range/rest settings per voice = HETEROPHONY (one contour,
+  many simultaneous ornamentations).
+- Identity / decorrelated, scale-constrained by Shophouse = INDEPENDENT POLYPHONY / contrapuntal
+  TEXTURE (independent lines kept consonant by a shared scale -- modal-polyphonic, the way a lot of
+  Renaissance/folk polyphony actually works).
+HONEST BOUND: this produces the TEXTURE of counterpoint (independent, rhythmically distinct lines,
+scale-constrained to consonance) -- NOT species counterpoint with enforced voice-leading. Claim the
+texture continuum, not "it writes fugues"; a theory-literate reviewer will respect the precision.
+
+The strong framing (better than a feature checklist): homophony, heterophony and independent polyphony
+are ONE continuous control at different settings, traversable in REAL TIME. And the traditions sit at
+different points on that axis -- heterophony is the gamelan / Southeast-Asian ensemble base; homophony
+and independent polyphony lean Western common-practice. So the correlation dial SWEEPS BETWEEN AND
+BEYOND the textural foundations of Eastern and Western ensemble music, through hybrid points no single
+tradition parked at (so they have no names). Not "imitates two traditions" -- reveals they are
+endpoints of one continuous space and lets you compose in between. (The East/West axis and the
+Singapore identity are the same coherence again: the region's music IS the middle of the dial.)
+
+## 8. Reversibility: Philox counter + phase drive = a scrubbable generative system
+Two axes are independently reversible, and TOGETHER they make the generative output scrub like tape:
+- PHASE drive makes TIME reversible/addressable (playback position is a continuous driven quantity --
+  scrub it backward and forward).
+- The addressable PHILOX counter makes RANDOMNESS reversible/addressable (position -> byte-identical
+  draw, both directions).
+Why the complement matters: normally these FIGHT. You can rewind a clock, but an ordinary RNG is a
+one-way stream -- the random values are gone, so scrubbing backward yields DIFFERENT notes on the way
+back than you heard going in; the music doesn't survive a rewind. dot.modular is the rare case where
+BOTH are pinned to POSITION and phase IS position -- so rewinding phase and rewinding the counter stay
+in lockstep, and the exact same stochastic material plays in reverse, note-for-note. A generative
+sequence you can scrub, reverse, and replay deterministically. THIS is why "roam probability space
+back and forth" (point 1) and phase drive (point 3) are not two features but one system: reversible
+randomness + reversible time = a navigable generative timeline.
+HONEST BOUND: this holds for the SAMPLING (RNG draw at a position) and phase. STATEFUL board transforms
+(scatter's domain permutation) COMPOSE on the running board and are not automatically reversed by a
+counter rewind -- true board-undo needs the inverse permutation (see feat/domain-reverse-inverse /
+the CA reverse discussion). So: the sampling+time axes are fully reversible; the transform-composition
+layer reverses with inverse-operation care. Claim the former cleanly; don't claim "the entire system
+is perfectly reversible."
+
 ## The one-line version
-A polyphonic generative sequencing SYSTEM where you can navigate probability space in both directions,
-modulate the pattern-generation itself, drive it by phase, correlate poly voices into gamelan-like
-families, and route the result freely -- built as one host + expander ecosystem, with a Singapore
-identity woven through the naming.
+A polyphonic generative sequencing SYSTEM where you can scrub probability space in both directions
+(addressable Philox counter + phase drive = a reversible, replayable generative timeline), modulate
+the pattern-generation itself, sweep poly voices along one continuous dial from homophony through
+heterophony to independent polyphony (the textural axis of Eastern and Western ensemble music), and
+route the result freely -- built as one host + expander ecosystem, with a Singapore identity woven
+through the naming.
