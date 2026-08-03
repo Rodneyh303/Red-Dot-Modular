@@ -89,3 +89,48 @@ change from semitone-index (0..11) to a tuning-degree-index or a cents/pitch val
 follow. This is the diffuse, cross-cutting surface that makes it POST-LIBRARY and high-regression-risk.
 Do NOT attempt before the 2026 library submission; 12-TET approximations of Pelog/Slendro are fine to
 ship. Literal tunings = a 2.x update / its own news moment.
+
+## CORRECTIONS + Lantern pitch-axis + what's actually 12-bound
+Correcting the prior section's overstatements about the cross-cutting surface:
+
+- INTERCHANGE is SMALL, not load-bearing. MonsoonInterchangeExpander = CV mod of the 12 note sliders;
+  generalising it is bounded (its slider count follows the tuning), no more load-bearing than any
+  per-degree control. Prior "interchange is the load-bearing change" was WRONG.
+- CHANGE ALLEY has NOTHING 12-TET-specific. It operates on SOURCE INDICES and voice PERMUTATIONS, never
+  on pitch values -- it correlates which voice draws from which source, never inspects/transforms the
+  pitch. Nothing to change for microtonal. (Consequence of the abstraction level it works at.)
+- So the ACTUAL 12-bound surface is narrower than claimed: the CORE (GateState note representation,
+  the CV output arithmetic /12, the scale MASK width, the 12-fader bank) + the pitch-axis RENDERERS.
+  Not the interchange, not Change Alley.
+
+### Lantern pitch-axis replacement (piano-roll doesn't survive non-12)
+The piano-roll works because a piano keyboard IS 12-TET visualised (black/white keys, semitone rows,
+octave repeat). In a non-equal tuning that metaphor collapses -- no black/white, unequal rows, "which
+key" has no answer. Need a different pitch axis. Options (pitch-axis RENDERERS over the same data):
+1. CENTS RULER -- continuous vertical 0..1200c axis, ticks at the loaded tuning's ACTUAL pitches; a
+   note sits at true cents height. Tuning-agnostic (any .scl), TRUTHFUL (irregular spacing is VISIBLE),
+   degrades to 12-TET (ticks every 100c). The microtonal lingua franca. General fallback.
+2. DEGREE LANES -- one row per tuning DEGREE (Pelog 7, Slendro 5, 24-TET 24), labelled by
+   cents/ratio/traditional-name. MIRRORS THE FADER BANK (roll + faders share vertical vocabulary ->
+   elegant, readable). Tradeoff: hides real interval spacing (equal-height rows for unequal steps).
+   Best DAILY view.
+3. Both as a TOGGLE + keep KEYBOARD for 12-TET. Consistent with Lantern's existing view-mode toggles
+   (Notes/Vel/Prob, grid/roll). Keyboard for 12-TET, cents-ruler/degree-lanes when a tuning is loaded.
+
+KEY PAYOFF: Lantern already stores pitch as pitchV (a VOLTAGE), not a semitone index
+(c.pitchV = gs.currentPitchV; roll maps voltage->row). So Lantern is ALREADY pitch-continuous under
+the hood -- only the RENDERING (keyboard gutter, semitone row height) assumes 12-TET. => swapping to
+cents-ruler / degree-lanes is a DRAW-CODE change, not a rearchitecture. Payoff of the store/engine/
+display separation discipline.
+
+RECO: degree-lanes = primary microtonal view (readable, matches faders), cents-ruler = truthful/general
+option, keyboard = 12-TET. All three are pitch-axis renderers over pitchV, selected by loaded tuning +
+view toggle.
+
+### Transpose x pitch-axis interaction (flag)
+Change Alley is clear, but the OUTPUT-STAGE TRANSPOSE (Intertropical, the house-chord fan-out) has a
+microtonal design Q: "transpose +7 semitones" lands BETWEEN degrees in a non-12 tuning. Transpose by
+cents? degrees? ratio? Whatever it does, a transposed note may not sit on any DEGREE LANE -> renders
+awkwardly on view 2 but naturally on the CENTS RULER (view 1). Another vote for keeping the cents ruler
+as the truthful fallback even when degree-lanes is the daily view. (Transpose stays non-key-aware per
+the INTERTROPICAL DECIDED note; microtonal just changes its UNIT.)
