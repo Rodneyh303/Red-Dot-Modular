@@ -38,6 +38,35 @@ parent normally -- Changi must also expose it here).
   jack/apron idiom). ~32 jacks in 2 bands (STEP | STEP-LEG), 8 left / 8 right like T1's runway split.
 - Discovery: same host/expander chain as T1 (findMonsoon side); place anywhere in the chain.
 
+## CHANGI T3 -- routes INTERTROPICAL (not Monsoon/Straits raw) -- the Lantern parallel
+Insight (Rodney): T1/T2 break out the RAW 16-voice engine. But Intertropical produces an ARRANGED
+8-channel output, and (exactly like Lantern) there's as much or more motivation to jack THAT out. So:
+- T3 = 8 CHANNELS ONLY (Intertropical's slot budget <=8), each carrying ALL output types that T1+T2
+  split across 16 voices: GATE + CV + ACCENT + STEP-GATE + STEP-LEGATO = 8 x 5 = 40 jacks.
+- Organized BY CHANNEL (ch1's gate/CV/accent/step/step-leg adjacent), not by signal type -- because
+  when patching an arranged output you send one channel to one synth voice, so its signals want to be
+  together. This is why all 5 types fit one module here but needed 2 terminals for 16 raw voices.
+- CV is POST-TRANSPOSE, tie-latched: read Intertropical's effectiveTranspose[ch] (the SAME field
+  Lantern's piano-roll reads), so T3 jacks == Lantern display == what Intertropical actually outputs.
+  One source of truth (Intertropical audio owns the latch; T3 and Lantern both mirror it).
+- ASSOCIATED with a SPECIFIC Intertropical, like Lantern pairs with one. ALLOW MULTIPLE: one T3 per
+  Intertropical.
+
+### T3 shares Lantern's pairing problem -> shared solution
+"Which Intertropical am I bound to" is the SAME discovery/pairing challenge Lantern has (findIntertropical
+is fine for ONE pair, ambiguous with several). Both want the numbered PAIRING SYSTEM (Lantern
+self-assigns a number, Intertropical picks, pair colours on both). => Build the pairing system ONCE,
+generally, and have BOTH Lantern and Changi T3 consume it. Do NOT build a T3-specific binding.
+
+### The loop this closes
+Intertropical ARRANGES (voice->slot->output, transpose) -> Lantern VISUALISES the arrangement (eyes)
+-> Changi T3 JACKS OUT the arrangement (cables). One source, two consumers, one pairing mechanism.
+Data path for T3 = the same routed output T3 reads via voiceForOutput(scene,ch) + effectiveTranspose,
+OR directly off Intertropical's output jacks (outputs[GATE/CV/ACCENT...].getVoltage(ch)) -- decide
+engine-read vs jack-read like the Lantern product/debug split (T3 is a JACK breakout so reading
+Intertropical's actual output voltages is arguably the RIGHT call here, unlike Lantern which needs
+engine detail for colour/note-type).
+
 ## Method / gotchas
 - Enum growth shifts indices -> re-audit any positional bind loop and the message unpack.
 - gen_changi.py is source-of-truth for geometry; widget reads markers. Keep that for T2.
