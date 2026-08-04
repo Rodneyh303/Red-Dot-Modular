@@ -213,3 +213,54 @@ Known panel items:
   applying full generative articulation within its own time base. Phase inputs also work. Within one
   engine, the 1/16 grid is the current constraint -- the maybe-later triplet step model would add
   in-engine polyrhythm between lanes. Don't conflate the terms. See PITCH doc point 3.
+
+---
+
+## FUTURE: Shared CA + unified external seed across Monsoon instances
+
+### The use case
+Two Monsoons on different clocks (polyrhythm) sharing: (a) the same CA pin positions (correlation
+structure), and (b) the same external seed (same probability space) = CORRELATED POLYRHYTHM. Already
+partly achievable today (same external seed + simultaneous dice gate). CA sharing and a unified seed
+mechanism make it first-class and patchable without manual coordination.
+
+### Current CA architecture (facts from the code)
+- CA V2 found by ADJACENCY POINTER WALK (reinterpret_cast typed pointer, same pattern as IT finding
+  Monsoon). Not via expander messages.
+- Monsoon reads CA fields DIRECTLY: rhythmSrc[N_VOICES], melodySrc[N_VOICES] via processDNA(),
+  calls applyPendingTransforms() at the phrase boundary.
+- EXTERNAL SEED for CA already flagged as TBD in the code (MonsoonChangeAlleyV2.hpp:56-57):
+  "EXTERNAL-seed sharing is TBD (same open question as dice). The scatter draw builds a transient
+  PhiloxRng from corrKey[ci]..." -- anticipated by the author. corrKey[] is the seed surface.
+
+### Scope
+
+#### Option A -- shared CA pin positions (second Monsoon reads same CA instance)
+Changes: add "allow shared access" context-menu toggle on CA. Any Monsoon finding it can read
+rhythmSrc/melodySrc. Only the OWNER Monsoon (the adjacent one) calls applyPendingTransforms() --
+second Monsoon reads the already-applied state. Read-safety: rhythmSrc/melodySrc are written once
+(CA process()) and read-only from both Monsoons -- safe. One caller of applyPendingTransforms only.
+VERDICT: Small, bounded, well-understood. The shared-expander toggle is the main addition.
+
+#### Option B -- CA external seed jack
+Add SEED input jack to CA V2, feeding corrKey[]. Two CAs seeded identically start from the same
+correlation-space position. A mult of one seed signal to Monsoon rhythm seed, Monsoon melody seed,
+and CA seed = a unified seed for the whole correlated system (no new "seed splitter" module needed
+-- just patch convention). CA seed jack alone is the buildable unit.
+VERDICT: Small, self-contained. Pre-library candidate.
+
+### Patching ideas (available today with existing features)
+- Trigger DICE on both Monsoons simultaneously at polymetric RE-ALIGN (LCM point): a logic module
+  detects re-align, fires gate to both dice inputs. Keeps probability spaces in sync at the musical
+  downbeat of the polymetric cycle.
+- ALTERNATING DICE: one Monsoon on odd re-aligns, the other on even. Engines drift and converge in
+  probability space in alternation -- a meta-level polyrhythm of probability.
+- CA SCATTER at re-align: reshuffles correlation structure of both Monsoons simultaneously (if they
+  share a CA or both have scatter triggered). New correlation structure at every LCM point.
+These ideas are worth capturing as demo patch concepts. The re-align detection is the interesting
+patch problem (a counter/comparator watching both clock streams for their LCM point).
+
+### Priority / library fit
+- CA seed jack: PRE-LIBRARY candidate (small, completes the "unified seed" story, TBD already flagged).
+- Shared CA pointer (Option A): POST-LIBRARY or alongside Changi T2/T3 work.
+- Demo patch showing correlated polyrhythm: include in the demo batch when stable enough to play.
