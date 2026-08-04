@@ -8,8 +8,8 @@
 using namespace rack;
 using namespace ChangiIds;
 
-// Changi — per-voice output expander widget. 15 poly voices (2..16), each with
-// gate / CV / accent individual jacks.
+// Changi T1 — per-voice output expander widget. 16 voices (index 0 = mono/voice 1,
+// 1..15 = poly voices 2..16), each with gate / CV / accent individual jacks.
 struct MonsoonChangiExpanderWidget : ModuleWidget,
     dotModular::Compose<MonsoonChangiExpanderWidget,
                         dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
@@ -62,4 +62,4 @@ struct MonsoonChangiExpanderWidget : ModuleWidget,
 };
 
 Model* modelMonsoonChangiExpander =
-    createModel<MonsoonChangiExpander, MonsoonChangiExpanderWidget>("Changi");
+    createModel<MonsoonChangiExpander, MonsoonChangiExpanderWidget>("ChangiT1");

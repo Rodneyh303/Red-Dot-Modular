@@ -4,14 +4,15 @@
 
 using namespace rack;
 
-// ── Changi — per-voice output expander (transit family) ──────────────────────
-// "Departures" — the poly voices leave as individual mono jacks. Breaks the poly
+// ── Changi T1 — per-voice output expander (transit family) ───────────────────
+// "Departures" — every voice leaves as an individual mono jack. Breaks the poly
 // cable out into per-voice GATE / CV / ACCENT jacks, for patching each voice to a
 // separate destination (the counterpart to Straits' single poly cables).
 //
-// 15 poly voices (voices 2..16) × 3 signals. Voice 1 (mono) leaves on the parent
-// Monsoon's own outs, so it's not duplicated here. Written by the parent Monsoon
-// via the cached pointer (see MonsoonOutputGenerator), same as Straits.
+// 16 voices × 3 signals. Index 0 = MONO (voice 1); indices 1..15 = poly voices
+// 2..16. Mirrors Straits' poly-cable channel layout (ch0 = mono). Written by the
+// parent Monsoon via the cached pointer (see MonsoonOutputGenerator), same as
+// Straits.
 namespace ChangiIds {
     enum OutputIds {
         // 16 per group: index 0 = MONO (voice 1), 1..15 = poly voices 2..16.
@@ -25,10 +26,14 @@ namespace ChangiIds {
 struct MonsoonChangiExpander : Module {
     MonsoonChangiExpander() {
         config(0, 0, ChangiIds::NUM_OUTPUTS, 0);
-        for (int i = 0; i < 15; ++i) {
-            configOutput(ChangiIds::GATE_OUT_0   + i, "Voice " + std::to_string(i + 2) + " gate");
-            configOutput(ChangiIds::CV_OUT_0     + i, "Voice " + std::to_string(i + 2) + " CV / pitch");
-            configOutput(ChangiIds::ACCENT_OUT_0 + i, "Voice " + std::to_string(i + 2) + " accent gate");
+        // index 0 = MONO (voice 1); indices 1..15 = poly voices 2..16.
+        configOutput(ChangiIds::GATE_OUT_0,   "Mono (voice 1) gate");
+        configOutput(ChangiIds::CV_OUT_0,     "Mono (voice 1) CV / pitch");
+        configOutput(ChangiIds::ACCENT_OUT_0, "Mono (voice 1) accent gate");
+        for (int i = 1; i < 16; ++i) {
+            configOutput(ChangiIds::GATE_OUT_0   + i, "Voice " + std::to_string(i + 1) + " gate");
+            configOutput(ChangiIds::CV_OUT_0     + i, "Voice " + std::to_string(i + 1) + " CV / pitch");
+            configOutput(ChangiIds::ACCENT_OUT_0 + i, "Voice " + std::to_string(i + 1) + " accent gate");
         }
     }
 

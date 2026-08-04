@@ -67,9 +67,9 @@
       ]
     },
     {
-      "slug": "Changi",
-      "name": "Changi",
-      "description": "Per-voice output \u2014 poly voices 2..16 broken out to individual gate/CV/accent jacks",
+      "slug": "ChangiT1",
+      "name": "Changi T1",
+      "description": "Per-voice output \u2014 all 16 voices (mono/voice 1 + poly voices 2..16) broken out to individual gate/CV/accent jacks",
       "tags": [
         "Expander",
         "Sequencer",
