@@ -53,9 +53,11 @@ are clocked differently, not just differently-lengthed). This is distinct from p
   applies its full generative articulation (rest, legato, accent, LOR, Sands shaping) within its own
   metric grid. No special modules needed: any Rack clock with multiple subdivision outputs works.
   This is available TODAY, no new features required.
-- The Change Alley correlation then links the two Monsoons' voices ACROSS the polyrhythmic
-  relationship -- the textural continuum (homophony<->heterophony<->polyphony) operating at a 3:2
-  time-base. That's richer than most polyrhythm implementations, which just clock two simple patterns.
+- NOTE: Change Alley does NOT link two separate Monsoon instances -- its correlation matrix operates
+  on voices WITHIN one engine only. Each Monsoon has its own CA expander, no cross-instance
+  correlation. The polyrhythmic relationship between two Monsoons is timing-only; the musical
+  relationship between them comes from the patch (shared pitch material, Changi outputs feeding
+  the same destination, etc.), not from CA correlation.
 - Phase inputs also work (drive Monsoon A and B from phase signals at different speeds, e.g. via
   Hetrick's Phasor Div/Mult), which gives additional control over phase alignment and reset.
 - WITHIN ONE MONSOON: currently the 1/16 grid is the constraint -- everything snaps to 1/16, so true

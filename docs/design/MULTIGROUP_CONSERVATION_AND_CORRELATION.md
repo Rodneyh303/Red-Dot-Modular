@@ -45,6 +45,12 @@ It's the SAME engine, reaching the arrangement level through voice selection -- 
   So inter-group content correlation = the Change Alley correlation between the seated voices. One
   correlation engine, expressed at two scales -> the scale-invariance is LITERAL (same matrix), not
   analogy.
+  IMPORTANT SCOPE: this applies to multiple Intertropicals on the SAME Monsoon instance. Change Alley
+  operates on voices WITHIN one engine only. Two SEPARATE Monsoon instances do NOT share CA correlation
+  -- each has its own engine and its own CA expander. Cross-instance correlation (two Monsoons) is
+  timing-only (shared or related clocks); musical relationship between them comes from patch design,
+  not from CA. This distinction matters for the pitch doc -- don't claim CA correlates across Monsoon
+  instances.
 
 - TIMING correlation across groups = NOT Change Alley (honest bound). Change Alley correlates WHAT the
   voices play, not the SCENE TIMELINES of different Intertropicals. Whether Group 1's scenes advance in
