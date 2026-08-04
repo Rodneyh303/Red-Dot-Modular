@@ -68,10 +68,20 @@ void Intertropical::process(const ProcessArgs& args) {
     }
     auto& eng = host->engine;
 
-    // ---- boundary-crossing advance (phase-aware, direction-agnostic) ----
+    // ---- RESET: sync back to scene 1 repeat 1 when Monsoon resets ----
+    // Read the RESET_TRIGGER_OUTPUT pulse jack directly from the host. This fires only on a
+    // genuine reset (button or gate input), NOT on phrase wraps or DNA_LCM counter wraps.
+    // Check every process() call (not just on step edges) so a mid-step reset isn't missed.
+    if (host->outputs[Monsoon::OutputIds::RESET_TRIGGER_OUTPUT].getVoltage() >= 1.f) {
+        activeScene = 0;
+        repeatPos   = 0;
+        liveMask    = sceneMask[0];
+        lastStepIndex = -1;   // force re-sample on the next step
+    }
     // Use the engine's own phrase-boundary detection: lastStepResult.wrapped is true on the
     // step where the pattern wraps (accounts for modulated start/endStep correctly).
     // We track the stepIndex to detect when a new step result is available.
+    // ---- boundary-crossing advance (phrase-boundary, direction-agnostic) ----
     const int si = eng.stepIndex;
     if (lastStepIndex >= 0 && si != lastStepIndex) {
         // A new step was processed. Check if the engine reported a phrase boundary wrap.

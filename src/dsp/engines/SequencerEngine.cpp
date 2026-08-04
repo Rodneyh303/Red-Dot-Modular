@@ -38,12 +38,13 @@ static const int DNA_LCM = 1441440; // LCM(1..16)*2 — covers every lane period
 // The caller feeds the result to getStrandIdx, which applies rot/off — matching the old code,
 // where the bounce ran on the raw tick and rot was applied on read.
 //
-// KNOWN EDGE: totalStepsElapsed wraps at DNA_LCM. DNA_LCM % len == 0 for every len 1..16, and
-// % 2*(len-1) too, so Forward/Reverse/Pendulum are continuous across the wrap. PingPong's
-// period is 2*len, and 2*16 = 32 does NOT divide DNA_LCM (= 2^4·3^2·5·7·11·13), so a len-16
-// PingPong lane jumps phase once per DNA wrap — ~25 h of continuous play at 8 steps/s. Fix if
-// it ever matters: make the wrap LCM(1..16)*2 = 1441440, which is divisible by 32 and still by
-// every len (so DNA drift semantics are preserved).
+// KNOWN EDGE: totalStepsElapsed wraps at DNA_LCM. DNA_LCM % len == 0 for every len 1..16,
+// and % 2*(len-1) too, so Forward/Reverse/Pendulum are continuous across the wrap.
+// PingPong period is 2*len. DNA_LCM = 1441440 = 2^5 * 3^2 * 5 * 7 * 11 * 13, which IS
+// divisible by 32 (=2*16=2^5), so all PingPong periods divide DNA_LCM and all lanes are
+// continuous across the wrap. (An earlier value 720720 = LCM(1..16) = 2^4*3^2*5*7*11*13
+// was NOT divisible by 32, causing a len-16 PingPong phase flip once per wrap ~25h at
+// 120 BPM. The current value 1441440 = LCM(1..16)*2 fixes that -- fully continuous.)
 long SequencerEngine::laneTickFor(LaneDir d, long t, int len) {
     const int L = std::max(1, len);
     switch (d) {
