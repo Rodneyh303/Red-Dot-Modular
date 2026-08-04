@@ -31,7 +31,7 @@ LANE_PITCH=6.0
 
 # vertical  grid matches Lantern exactly
 GRID_TOP=16.0; GRID_H=N_VOICES*LANE_PITCH; GRID_BOT=GRID_TOP+GRID_H   # 16 -> 112
-REP_Y=GRID_BOT+1.5; REP_H=7.0                                          # repeats BELOW grid
+REP_H=6.0; REP_Y=GRID_TOP-REP_H-2.5                                    # repeats ABOVE grid
 
 # horizontal
 GUTTER=6.0
@@ -42,12 +42,12 @@ RT_L=MEM_R+GAPX; RT_W=PW_MM-MARGIN-RT_L
 
 # VOICE->SLOT grid (top of right block) -- read-only visualiser, smaller pitch
 VS_TOP=GRID_TOP+4.0
-VS_ROWH=3.5                    # smaller -- visualiser only, no clicking
-VS_H=N_SLOTS*VS_ROWH           # 28mm
+VS_ROWH=4.1                    # increased from 3.5 -- more readable row pitch
+VS_H=N_SLOTS*VS_ROWH           # 32.8mm
 
 # SLOT->OUTPUT grid (below voice->slot) -- reference grid
-VS_GAP=4.0
-ROUT_TOP=VS_TOP+VS_H+VS_GAP    # starts at 48.5mm
+VS_GAP=5.0                     # slightly larger gap above routing grid
+ROUT_TOP=VS_TOP+VS_H+VS_GAP    # pushed down to give VS more room
 ROUT_CW=RT_W/N_OUTPUTS
 ROUT_ROWH=5.0                  # slightly larger than VS, still compact
 ROUT_H=N_SLOTS*ROUT_ROWH       # 40mm
@@ -85,8 +85,8 @@ def build(dark):
         s.append(hlines(MEM_L+c*COL_W,REP_Y,COL_W,REP_H,MAX_REPEAT,sw=0.4,op=0.45))
     s.append(lab(MARGIN+GUTTER*0.4,REP_Y+REP_H*0.62,"REP",t,2.4,"middle"))
     for c in range(N_SCENES):
-        s.append(lab(MEM_L+(c+0.5)*COL_W,REP_Y+REP_H+2.8,str(c+1),t,2.4))
-    s.append(lab(MEM_L+MEM_W*0.5,REP_Y+REP_H+5.2,"SCENE",t,2.3))
+        s.append(lab(MEM_L+(c+0.5)*COL_W,REP_Y-2.2,str(c+1),t,2.4))
+    s.append(lab(MEM_L+MEM_W*0.5,REP_Y-4.8,"SCENE",t,2.3))
 
     # RIGHT: VOICE->SLOT visualiser (top, smaller pitch -- read-only, widget draws live fills)
     # For the active scene: which global voice (coloured+numbered) is in each slot row.
@@ -108,7 +108,7 @@ def build(dark):
         s.append(lab(RT_L-2.4,ROUT_TOP+(sl+0.5)*ROUT_ROWH+1.0,str(sl+1),t,2.6,"end"))
 
     # RIGHT: transpose knob wells (param_0..7)
-    kn_y=ROUT_TOP+ROUT_H+13.0
+    kn_y=ROUT_TOP+ROUT_H+8.0   # tightened from 13 (saved 5mm)
     s.append(lab(RT_L+RT_W*0.5,kn_y-6.5,"OUTPUT TRANSPOSE  (\u00b124)",t,3.0))
     for o in range(N_OUTPUTS):
         kx=RT_L+(o+0.5)*ROUT_CW
@@ -116,7 +116,7 @@ def build(dark):
 
     # RIGHT: poly out jacks (output_0..4)
     names=["GATE","CV","ACC","LEG","SLG"]
-    jy=kn_y+17.0
+    jy=kn_y+13.0               # tightened from 17 (saved 4mm)
     s.append(lab(RT_L+RT_W*0.5,jy-6.5,"POLY OUT",t,3.0))
     for i,nm in enumerate(names):
         jx=RT_L+(i+0.5)*(RT_W/len(names))
