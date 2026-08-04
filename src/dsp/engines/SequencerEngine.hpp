@@ -68,6 +68,50 @@ enum class StrandWriter : uint8_t {
     MACRO,     // MonsoonExpanderManager Macro-only sync (Macro is the sole Sands visual)
 };
 
+// --- WriteLedger: generalised single-writer detector (debug-only; behaviour-inert in release) ---
+// Generalises the StrandLedger idea (see setStrand) to arbitrary shared engine fields that have had
+// multi-writer "shape-A" drift bugs (restProb, accentProb, wrapped, lastSelectedScale, ...). Each
+// field records the ROLE that wrote it this block; a second differing role in the same block is a
+// conflict -> loud debug WARN at the moment of introduction, instead of a silent drift that ships.
+// ZERO release-path cost: every noteWrite() call and the ledger storage compile out under NDEBUG.
+// This is DATAFLOW step 1 -- the prerequisite that makes the rate-discipline pass verifiable
+// (re-timing a control can't silently reintroduce a two-writer drift; the ledger fires if it does).
+enum class WriteField : uint8_t {
+    RestProb = 0, AccentProb, Wrapped, LastSelectedScale, StepGate,
+    COUNT
+};
+enum class WriteRole : uint8_t {
+    NONE = 0, MONO, EAST, MACRO, POLY, ENGINE, EXPANDER, CVROUTER, SCALEMGR, PARAMMGR,
+};
+struct WriteLedger {
+#ifndef NDEBUG
+    WriteRole writer[(int)WriteField::COUNT] = { WriteRole::NONE };
+    void beginBlock() {
+        for (int i = 0; i < (int)WriteField::COUNT; ++i) writer[i] = WriteRole::NONE;
+    }
+    void noteWrite(WriteRole role, WriteField field) {
+        const int f = (int)field;
+        if (f < 0 || f >= (int)WriteField::COUNT) return;
+        WriteRole prev = writer[f];
+        if (prev != WriteRole::NONE && prev != role) {
+#ifdef WARN
+            WARN("[WriteLedger] CONFLICT field=%d written by %d then %d (two writers in one block)",
+                 f, (int)prev, (int)role);
+#else
+            std::fprintf(stderr,
+                 "[WriteLedger] CONFLICT field=%d written by %d then %d (two writers in one block)\n",
+                 f, (int)prev, (int)role);
+#endif
+        }
+        writer[f] = role;
+    }
+#else
+    // release: fully inert, no storage, calls compile to nothing
+    inline void beginBlock() {}
+    inline void noteWrite(WriteRole, WriteField) {}
+#endif
+};
+
 struct SequencerEngine {
     PatternEngine pe;
     GateState gs;
@@ -343,8 +387,13 @@ struct SequencerEngine {
     // Strand index domain is dotModular::STRAND_* (0..5). NONE means "not yet written".
     StrandWriter strandWriter[6] = { StrandWriter::NONE };
 
+    // Generalised single-writer detector for non-strand shared fields (debug-only). Reset with the
+    // strand ledger at the top of each process block.
+    WriteLedger writeLedger;
+
     void beginStrandWriteBlock() {
         for (int i = 0; i < 6; ++i) strandWriter[i] = StrandWriter::NONE;
+        writeLedger.beginBlock();
     }
 
     // The ONLY sanctioned way to write a mono strand's LOR. Records the writer role,
