@@ -66,11 +66,30 @@
 #include "ui/StoreBound.hpp"
 #include "ui/Controls.hpp"
 #include "Monsoon.hpp"
+#include "Intertropical.hpp"   // IT-source mode: read routed output via inverse map
 #include "ui/RedScrew.hpp"
 #include "ui/VisualExpanderHelpers.hpp"   // redDot::findMonsoonEitherSide
 #include <string>
 #include <algorithm>
 #include <cmath>
+
+// Find an Intertropical on either side (mirrors redDot::findMonsoonEitherSide). Walks right then
+// left, hopping intermediates, stopping at maxDepth. Used only in IT-source mode.
+static inline Intertropical* findIntertropicalEitherSide(rack::Module* self, int maxDepth = 12) {
+    using rack::Module;
+    if (!self) return nullptr;
+    Module* curr = self->rightExpander.module;
+    for (int d = 0; curr && d < maxDepth; ++d) {
+        if (auto* m = dynamic_cast<Intertropical*>(curr)) return m;
+        curr = curr->rightExpander.module;
+    }
+    curr = self->leftExpander.module;
+    for (int d = 0; curr && d < maxDepth; ++d) {
+        if (auto* m = dynamic_cast<Intertropical*>(curr)) return m;
+        curr = curr->leftExpander.module;
+    }
+    return nullptr;
+}
 
 using namespace rack;
 
@@ -100,6 +119,18 @@ struct Lantern : Module {
     enum ParamIds { NUM_PARAMS };
 
     int viewMode   = 0;   // 0=Notes 1=Velocity 2=Prob
+    // Source: 0 = Monsoon raw (default, pure observer), 1 = Intertropical routed output. In IT mode
+    // Lantern reads the SAME global voice state it reads from Monsoon, then re-indexes it by
+    // Intertropical's inverse map (output -> slot -> voice, per active scene) so each output channel's
+    // row shows the voice routed to it. Grid is transpose-agnostic; piano-roll adds post-transpose.
+    int sourceMode = 0;
+    // DEBUG ONLY (not the product path): when set in IT-source mode, overwrite each cell's pitch/gate
+    // from Intertropical's ACTUAL output jack voltages (it->outputs[...].getVoltage(ch)) instead of the
+    // engine reconstruction. Lets you A/B the engine-reconstructed view against literal jack truth in
+    // Rack -- if they ever diverge, the divergence is visible by toggling this. The PRODUCT stays on
+    // the engine read (richer: real note-type, articulation, colour the jacks can't carry). Off by
+    // default; persisted so a debug session survives reload, but never the default experience.
+    bool debugRawJacks = false;
     int zoomMode   = 0;   // 0=x1 1=x2 2=x4
     int followMode = 1;   // 0=Off 1=On
     int rollView   = 0;   // 0=Grid (lane) view, 1=Piano roll
@@ -158,6 +189,8 @@ struct Lantern : Module {
         json_object_set_new(root, "rollVoiceMask", json_integer(rollVoiceMask));
         // View state (was params before de-paramming — configParam gave persistence free)
         json_object_set_new(root, "viewMode",   json_integer(viewMode));
+        json_object_set_new(root, "sourceMode", json_integer(sourceMode));
+        json_object_set_new(root, "debugRawJacks", json_boolean(debugRawJacks));
         json_object_set_new(root, "zoomMode",   json_integer(zoomMode));
         json_object_set_new(root, "followMode", json_integer(followMode));
         json_object_set_new(root, "rollView",   json_integer(rollView));
@@ -172,6 +205,8 @@ struct Lantern : Module {
             if (json_t* j = json_object_get(root, k)) dst = (int)json_integer_value(j);
         };
         rdInt("viewMode", viewMode);     rdInt("zoomMode", zoomMode);
+        rdInt("sourceMode", sourceMode);
+        if (json_t* j = json_object_get(root, "debugRawJacks")) debugRawJacks = json_boolean_value(j);
         rdInt("followMode", followMode); rdInt("rollView", rollView);
         rdInt("rollScroll", rollScroll); rdInt("rollColor", rollColor);
     }
@@ -192,6 +227,13 @@ struct Lantern : Module {
         Monsoon* mon = redDot::findMonsoonEitherSide(this);
         if (!mon) return;
         SequencerEngine& eng = mon->engine;
+
+        // IT-SOURCE MODE: find an adjacent Intertropical and, for the active scene, build the inverse
+        // map row -> global voice (output channel r shows the voice routed to output r). Monsoon mode
+        // uses identity (row 0 = mono/V1, row v+1 = poly voice v). The rest of the record path is
+        // shared: we read the SAME engine voice state, only the row it lands in changes.
+        Intertropical* it = (sourceMode == 1) ? findIntertropicalEitherSide(this) : nullptr;
+        const int scene = it ? it->activeScene : 0;
 
         int step = eng.stepIndex;
         if (step == lastObservedStep) return;   // only sample on step edges
@@ -230,27 +272,62 @@ struct Lantern : Module {
                                 : (writeStep < lastWriteStepObs));
         lastWriteStepObs = writeStep;
 
-        // Row 0 = mono / V1.
-        recordCell(0, writeStep, eng.gs, dec, accentedMono, lenSteps, monoSlur, monoSlur, eng.lastPlayDir, lapArrival);
+        // Record a GLOBAL voice's state into a display ROW. Global voice 0 = mono/V1 (eng.gs),
+        // global voice g>=1 = poly voice g-1 (eng.voices[g-1]). Shared by both source modes; only the
+        // row<->voice pairing differs. Writes cells[row][writeStep].
+        auto recordGlobalVoice = [&](int row, int g) {
+            if (row < 0 || row >= 16) return;
+            if (g == 0) {
+                recordCell(row, writeStep, eng.gs, dec, accentedMono, lenSteps, monoSlur, monoSlur,
+                           eng.lastPlayDir, lapArrival);
+            } else {
+                const int pv_i = g - 1;
+                if (pv_i < 0 || pv_i >= eng.numPolyVoices || pv_i >= 15) {
+                    cells[row][writeStep].type = lantern::NoteType::Inactive; return;
+                }
+                const PolyVoice& pv = eng.voices[pv_i];
+                const bool voiceSlur = eng.perVoiceArticulation ? pv.gs.slurForward : monoSlur;
+                recordCell(row, writeStep, pv.gs, dec, pv.accented, lenSteps, voiceSlur, monoSlur,
+                           eng.lastPlayDir, lapArrival);
+            }
+        };
 
-        // Rows 1..numPolyVoices = poly voices 2.. . A poly voice follows mono's
-        // gate TYPE (retrigger/tie/legato) but can independently REST (then it's
-        // inactive this gate) and draws its OWN accent.
-        for (int v = 0; v < eng.numPolyVoices && v < 15; ++v) {
-            const PolyVoice& pv = eng.voices[v];
-            // With per-voice articulation the voice rolls its OWN forward-slur commitment
-            // (Rule 2), so use it; otherwise it follows mono's gate, so inherit monoSlur.
-            const bool voiceSlur = eng.perVoiceArticulation ? pv.gs.slurForward : monoSlur;
-            // The amber lead marker ties a poly voice's lead to MONO's chain: only show it when
-            // mono is also leading (monoSlur). A per-voice slurForward rolled at a mono Tie (where
-            // mono is just holding, monoSlur=0) would otherwise draw a lead outline floating outside
-            // mono's chain — the "legato lead note outside the mono envelope" symptom. The voice's
-            // commitment is unchanged; only the marker is gated.
-            recordCell(v + 1, writeStep, pv.gs, dec, pv.accented, lenSteps, voiceSlur, monoSlur, eng.lastPlayDir, lapArrival);
+        if (it) {
+            // IT-SOURCE: each output row shows the global voice routed to that output this scene.
+            // Unrouted outputs render inactive. Straits/global voice v maps 1:1 to Intertropical's
+            // own voice indexing (v=0 mono/V1, v>=1 poly v-1).
+            for (int row = 0; row < Intertropical::Ids::MAX_VOICES_PER_SCENE && row < 16; ++row) {
+                const int g = it->voiceForOutput(scene, row);
+                if (g < 0) { cells[row][writeStep].type = lantern::NoteType::Inactive; continue; }
+                recordGlobalVoice(row, g);
+                // POST-TRANSPOSE pitch: the piano-roll must show what's actually sounding, which is the
+                // voice's pitch PLUS this output's effective (tie-latched) transpose. Grid view ignores
+                // pitch, so this only affects the roll. Intertropical already tie-latches the transpose
+                // (constant across a true tie, live on legato/single), so reading its effective value
+                // here makes Lantern agree with the audio automatically.
+                cells[row][writeStep].pitchV += it->transposeForOutput(row) / 12.f;
+                if (debugRawJacks) {
+                    // DEBUG: replace the VERIFIABLE values (pitch, sounding) with the literal jack
+                    // voltages Intertropical is actually outputting on this channel. Colour/note-type
+                    // stay engine-derived (jacks can't carry them). If this disagrees with the normal
+                    // (debug-off) view, the reconstruction has drifted from jack truth -- that's the
+                    // bug to chase. Product path never takes this branch.
+                    const float jackCV   = it->outputs[Intertropical::Ids::CV_OUT].getVoltage(row);
+                    const float jackGate = it->outputs[Intertropical::Ids::GATE_OUT].getVoltage(row);
+                    cells[row][writeStep].pitchV = jackCV;   // already post-transpose at the jack
+                    if (jackGate < 1.f) cells[row][writeStep].type = lantern::NoteType::Inactive;
+                }
+            }
+            for (int row = Intertropical::Ids::MAX_VOICES_PER_SCENE; row < 16; ++row)
+                cells[row][writeStep].type = lantern::NoteType::Inactive;
+        } else {
+            // MONSOON-SOURCE (identity): row 0 = mono/V1, rows 1..numPolyVoices = poly voices.
+            recordGlobalVoice(0, 0);
+            for (int v = 0; v < eng.numPolyVoices && v < 15; ++v)
+                recordGlobalVoice(v + 1, v + 1);
+            for (int v = eng.numPolyVoices; v < 15; ++v)
+                cells[v + 1][writeStep].type = lantern::NoteType::Inactive;
         }
-        // Voices beyond numPolyVoices → mark inactive.
-        for (int v = eng.numPolyVoices; v < 15; ++v)
-            cells[v + 1][writeStep].type = lantern::NoteType::Inactive;
     }
 
     // Map an observed voice state at a step into a display Cell. NoteType priority:
@@ -1138,6 +1215,24 @@ struct LanternWidget : ModuleWidget {
             }
         }
         // NB no display retheme here, by design -- see the note at the top of this struct.
+    }
+
+    void appendContextMenu(Menu* menu) override {
+        auto* m = dynamic_cast<Lantern*>(module);
+        if (!m) return;
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuLabel("Source"));
+        menu->addChild(createCheckMenuItem("Monsoon (raw)", "",
+            [m]() { return m->sourceMode == 0; },
+            [m]() { m->sourceMode = 0; }));
+        menu->addChild(createCheckMenuItem("Intertropical (routed output)", "",
+            [m]() { return m->sourceMode == 1; },
+            [m]() { m->sourceMode = 1; }));
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuLabel("Debug"));
+        menu->addChild(createCheckMenuItem("Verify vs raw jacks (IT-source)", "",
+            [m]() { return m->debugRawJacks; },
+            [m]() { m->debugRawJacks = !m->debugRawJacks; }));
     }
 };
 

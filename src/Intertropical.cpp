@@ -22,6 +22,8 @@ Intertropical::Intertropical() {
     // Global slot -> output: default identity permutation (slot i drives output i, single bit).
     for (int s = 0; s < Ids::MAX_VOICES_PER_SCENE; ++s)
         slotOutput[s] = (uint8_t)(1u << s);
+    for (int s = 0; s < Ids::MAX_VOICES_PER_SCENE; ++s)
+        effectiveTranspose[s] = 0.f;
     config(Ids::NUM_PARAMS, Ids::NUM_INPUTS, Ids::NUM_OUTPUTS, Ids::NUM_LIGHTS);
     // 8 per-output transpose knobs: -24..+24 semitones, integer-detented (snap), default 0.
     for (int o = 0; o < 8; ++o) {
@@ -102,10 +104,20 @@ void Intertropical::process(const ProcessArgs& args) {
         const float acc  = straits->outputs[4].getVoltage(v);
         const float leg  = straits->outputs[1].getVoltage(v);
         const float sleg = straits->outputs[2].getVoltage(v);
+        // Tie vs legato for the transpose rule. Read the SAME articulation Lantern reads: global
+        // voice v -> mono/V1 uses eng.gs, poly uses eng.voices[v-1].gs. lastNoteType is Single/Tie/
+        // Legato. TRUE TIE = one sustained note, pitch must NOT move, so hold transpose from the
+        // tie's onset. LEGATO = a connected note allowed to glide, so transpose reads LIVE (worst
+        // case a legato with unchanged transpose just looks like a tie -- a valid note). Single =
+        // fresh onset, live. Rule: hold while lastNoteType==Tie, else re-capture the live knob.
+        const GateState& vgs = (v == 0) ? eng.gs : eng.voices[v - 1].gs;
+        const bool tieHold = (vgs.lastNoteType == GateState::NoteType::Tie);
         for (int ch = 0; ch < Ids::MAX_VOICES_PER_SCENE; ++ch) {
             if (!((mask >> ch) & 1u)) continue;    // this slot doesn't drive output ch
-            // Per-output TRANSPOSE: ch is the OUTPUT channel, so params[TRANSPOSE_FIRST+ch] is its knob.
-            const float trSemi = params[Ids::TRANSPOSE_FIRST + ch].getValue();
+            // Per-output TRANSPOSE (ch = OUTPUT channel). effectiveTranspose[ch] is what actually
+            // reaches the CV jack; Lantern reads it so the piano-roll shows the sounding pitch.
+            if (!tieHold) effectiveTranspose[ch] = params[Ids::TRANSPOSE_FIRST + ch].getValue();
+            const float trSemi = effectiveTranspose[ch];
             outputs[Ids::GATE_OUT].setVoltage(gate, ch);
             outputs[Ids::CV_OUT].setVoltage(cv + trSemi / 12.f, ch);
             outputs[Ids::ACCENT_OUT].setVoltage(acc, ch);
@@ -126,8 +138,8 @@ static constexpr float IT_GRID_X   = 12.0f;  // membership grid left (panel v5 M
 static constexpr float IT_GRID_Y   = 16.0f;  // grid top = 16mm (LANTERN-ALIGNED, panel v5)
 static constexpr float IT_GRID_W   = 92.0f;  // grid width (panel MEM_W=92; 8 cols 11.5mm)
 static constexpr float IT_GRID_H   = 96.0f;  // grid height 96mm (16 rows x 6.0mm = Lantern)
-static constexpr float IT_REP_Y    = 113.5f; // repeat row top: BELOW the grid now (panel v5)
-static constexpr float IT_REP_H    = 7.0f;   // repeat row height (panel v5)
+static constexpr float IT_REP_H    = 6.0f;   // repeat row height (panel v5 revised)
+static constexpr float IT_REP_Y    = 7.5f;   // repeat row top: ABOVE the grid (GRID_TOP-REP_H-2.5)
 // Transpose knobs + jacks now bound via panel MARKERS (param_0..7, output_0..4), not hardcoded
 // coords -- see kit binding in the widget ctor. IT_JACK_Y kept only as a fallback reference.
 static constexpr float IT_JACK_Y   = 99.0f;  // (panel v5 jy; markers are the source of truth)
@@ -398,36 +410,64 @@ struct IntertropicalGrid : Widget {
     // Shows, for the ACTIVE scene, which global voice is seated in each of the 8 slots (rows).
     // Read-only mirror of computeSlots(activeScene): a labelled chip per occupied slot.
     void drawVoiceSlotDisplay(NVGcontext* vg) {
-        const int MV = Intertropical::Ids::MAX_VOICES_PER_SCENE;   // 8
-        const int scene = module->activeScene;
-        int8_t slotOf[Intertropical::Ids::N_VOICES];
-        module->computeSlots(scene, slotOf);
-        // invert: which voice sits in each slot
-        int voiceInSlot[8]; for (int s = 0; s < MV; ++s) voiceInSlot[s] = -1;
-        for (int v = 0; v < Intertropical::Ids::N_VOICES; ++v)
-            if (slotOf[v] >= 0 && slotOf[v] < MV) voiceInSlot[slotOf[v]] = v;
+        // Grid is dimensioned SCENES (columns) x SLOTS (rows). Show the LIVE voice->slot seating for
+        // ALL scenes at once (each column = that scene's seating, from its global-to-scene selections),
+        // with a cursor traversing across the scene columns as playback advances -- matching the
+        // global-to-scene membership grid. (Earlier this only filled the active scene's single column.)
+        const int NSC = Intertropical::Ids::N_SCENES;              // 8 scene columns
+        const int MV  = Intertropical::Ids::MAX_VOICES_PER_SCENE;  // 8 slot rows
+        const int loopLen = module->getLoopLen();
+        const int active  = module->activeScene;
+        const float colw = vsBox.size.x / NSC;
         const float rowh = vsBox.size.y / MV;
-        nvgStrokeColor(vg, nvgRGBA(0x50,0x50,0x50,0x60));
-        nvgStrokeWidth(vg, 0.5f);
-        nvgFontSize(vg, 7.f);
-        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-        for (int s = 0; s < MV; ++s) {
-            const float y = vsBox.pos.y + s*rowh;
-            // slot label (left)
-            nvgFillColor(vg, nvgRGBA(0x80,0x80,0x80,0xff));
-            char sb[8]; snprintf(sb, sizeof(sb), "S%d", s + 1);
-            nvgText(vg, vsBox.pos.x + 1.f, y + rowh/2, sb, nullptr);
-            const int v = voiceInSlot[s];
-            if (v < 0) continue;   // empty slot this scene
-            // voice chip in the slot's colour
-            NVGcolor col = voiceColour(s);
+        nvgFontSize(vg, 6.f);
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+
+        // cursor: red stroke frame on the active scene's column -- matches the main membership grid's
+        // active-scene cursor style (Singapore red, nvgRGBA(0xd4,0x00,0x1a,0xd0), stroke 1.5f).
+        {
+            const float cx = vsBox.pos.x + active*colw;
             nvgBeginPath(vg);
-            nvgRoundedRect(vg, vsBox.pos.x + mm2px(7.f), y + rowh*0.15f, mm2px(10.f), rowh*0.7f, 1.5f);
-            nvgFillColor(vg, col);
-            nvgFill(vg);
-            nvgFillColor(vg, nvgRGBA(0x0a,0x0a,0x0a,0xff));
-            char vb[8]; snprintf(vb, sizeof(vb), "v%d", v + 1);
-            nvgText(vg, vsBox.pos.x + mm2px(8.f), y + rowh/2, vb, nullptr);
+            nvgRect(vg, cx, vsBox.pos.y, colw, vsBox.size.y);
+            nvgStrokeColor(vg, nvgRGBA(0xd4,0x00,0x1a,0xd0));   // Singapore red, matches main grid
+            nvgStrokeWidth(vg, 1.5f);
+            nvgStroke(vg);
+        }
+        // faint grid lines
+        nvgStrokeColor(vg, nvgRGBA(0x50,0x50,0x50,0x50));
+        nvgStrokeWidth(vg, 0.5f);
+        for (int c = 0; c <= NSC; ++c) {
+            const float x = vsBox.pos.x + c*colw;
+            nvgBeginPath(vg); nvgMoveTo(vg, x, vsBox.pos.y); nvgLineTo(vg, x, vsBox.pos.y + vsBox.size.y); nvgStroke(vg);
+        }
+        for (int r = 0; r <= MV; ++r) {
+            const float y = vsBox.pos.y + r*rowh;
+            nvgBeginPath(vg); nvgMoveTo(vg, vsBox.pos.x, y); nvgLineTo(vg, vsBox.pos.x + vsBox.size.x, y); nvgStroke(vg);
+        }
+
+        // each scene column: compute that scene's voice->slot seating and draw a chip per occupied slot
+        int8_t slotOf[Intertropical::Ids::N_VOICES];
+        for (int c = 0; c < NSC; ++c) {
+            const bool inLoop = (c < loopLen);
+            module->computeSlots(c, slotOf);
+            int voiceInSlot[8]; for (int s = 0; s < MV; ++s) voiceInSlot[s] = -1;
+            for (int v = 0; v < Intertropical::Ids::N_VOICES; ++v)
+                if (slotOf[v] >= 0 && slotOf[v] < MV) voiceInSlot[slotOf[v]] = v;
+            const float x = vsBox.pos.x + c*colw;
+            for (int s = 0; s < MV; ++s) {
+                const int v = voiceInSlot[s];
+                if (v < 0) continue;                 // empty slot in this scene
+                const float y = vsBox.pos.y + s*rowh;
+                NVGcolor col = voiceColour(s);
+                if (!inLoop) col.a *= 0.35f;         // scenes beyond the loop length: dimmed
+                nvgBeginPath(vg);
+                nvgRoundedRect(vg, x + colw*0.12f, y + rowh*0.15f, colw*0.76f, rowh*0.7f, 1.5f);
+                nvgFillColor(vg, col);
+                nvgFill(vg);
+                nvgFillColor(vg, nvgRGBA(0x0a,0x0a,0x0a,0xff));
+                char vb[8]; snprintf(vb, sizeof(vb), "%d", v + 1);
+                nvgText(vg, x + colw/2, y + rowh/2, vb, nullptr);
+            }
         }
     }
 };

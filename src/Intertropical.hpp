@@ -64,6 +64,13 @@ struct Intertropical : Module {
     // mappings and couldn't express fan-out). sceneSlots is the SAME array re-meaned: voice->SLOT.
     int8_t   sceneSlots[Ids::N_SCENES][Ids::N_VOICES];   // per-scene voice->slot (-1 auto, 0..7 seat)
     uint8_t  slotOutput[Ids::MAX_VOICES_PER_SCENE];      // global slot->output 8-bit mask (fan-out)
+    // Tie-latched per-output transpose (semitones). What actually reaches CV_OUT: held constant across
+    // a TRUE TIE (so a tied note's pitch can't slide when transpose is edited/modulated), re-captured
+    // from the live knob on any non-tie. Lantern reads this so its piano-roll shows the sounding pitch.
+    float    effectiveTranspose[Ids::MAX_VOICES_PER_SCENE];
+    float    transposeForOutput(int ch) const {
+        return (ch >= 0 && ch < Ids::MAX_VOICES_PER_SCENE) ? effectiveTranspose[ch] : 0.f;
+    }
     // Constructor: sceneSlots all -1 (auto-pack), slotOutput identity permutation (slot i -> out i).
     Intertropical();
 
@@ -100,7 +107,19 @@ struct Intertropical : Module {
     // slot -> output GLOBAL bitmask (fan-out capable). Toggle one output bit for a slot.
     void toggleSlotOutput(int slot, int output) {
         if (slot < 0 || slot >= Ids::MAX_VOICES_PER_SCENE || output < 0 || output >= Ids::MAX_VOICES_PER_SCENE) return;
-        slotOutput[slot] ^= (uint8_t)(1u << output);
+        const bool wasSet = (slotOutput[slot] >> output) & 1u;
+        if (wasSet) {
+            slotOutput[slot] &= (uint8_t)~(1u << output);   // simple clear
+        } else {
+            // SETTING: enforce single-slot-per-output (no fan-IN). Each output is driven by at most
+            // one slot, so the output->slot inverse map is a true function (Lantern traces it
+            // unambiguously). Fan-OUT is still allowed (a slot may light several outputs = several
+            // bits in ITS row); only the COLUMN is exclusive. Clear this output's bit from every
+            // other slot, then set it here.
+            for (int s = 0; s < Ids::MAX_VOICES_PER_SCENE; ++s)
+                slotOutput[s] &= (uint8_t)~(1u << output);
+            slotOutput[slot] |= (uint8_t)(1u << output);
+        }
     }
     bool getSlotOutput(int slot, int output) const {
         if (slot < 0 || slot >= Ids::MAX_VOICES_PER_SCENE || output < 0 || output >= Ids::MAX_VOICES_PER_SCENE) return false;
@@ -150,6 +169,20 @@ struct Intertropical : Module {
         computeSlots(scene, slotOf);
         const int s = (voice >= 0 && voice < Ids::N_VOICES) ? slotOf[voice] : -1;
         return (s >= 0) ? slotOutput[s] : 0;
+    }
+    // INVERSE map for Lantern (output -> slot -> global voice), per scene. Single-slot-per-output is
+    // enforced (toggleSlotOutput), so each output is driven by <=1 slot -> unambiguous. Returns the
+    // global voice index feeding this output channel, or -1 if the output is unrouted this scene.
+    int voiceForOutput(int scene, int output) const {
+        if (output < 0 || output >= Ids::MAX_VOICES_PER_SCENE) return -1;
+        int slot = -1;
+        for (int s = 0; s < Ids::MAX_VOICES_PER_SCENE; ++s)
+            if ((slotOutput[s] >> output) & 1u) { slot = s; break; }   // <=1 by enforcement
+        if (slot < 0) return -1;
+        int8_t slotOf[Ids::N_VOICES];
+        computeSlots(scene, slotOf);
+        for (int v = 0; v < Ids::N_VOICES; ++v) if (slotOf[v] == slot) return v;
+        return -1;   // slot empty this scene
     }
     int  getRepeats(int scene) const {
         return (scene >= 0 && scene < Ids::N_SCENES) ? repeats[scene] : 1;
