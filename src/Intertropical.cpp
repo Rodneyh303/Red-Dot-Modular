@@ -138,8 +138,8 @@ static constexpr float IT_GRID_X   = 12.0f;  // membership grid left (panel v5 M
 static constexpr float IT_GRID_Y   = 16.0f;  // grid top = 16mm (LANTERN-ALIGNED, panel v5)
 static constexpr float IT_GRID_W   = 92.0f;  // grid width (panel MEM_W=92; 8 cols 11.5mm)
 static constexpr float IT_GRID_H   = 96.0f;  // grid height 96mm (16 rows x 6.0mm = Lantern)
-static constexpr float IT_REP_Y    = 113.5f; // repeat row top: BELOW the grid now (panel v5)
-static constexpr float IT_REP_H    = 7.0f;   // repeat row height (panel v5)
+static constexpr float IT_REP_H    = 6.0f;   // repeat row height (panel v5 revised)
+static constexpr float IT_REP_Y    = 7.5f;   // repeat row top: ABOVE the grid (GRID_TOP-REP_H-2.5)
 // Transpose knobs + jacks now bound via panel MARKERS (param_0..7, output_0..4), not hardcoded
 // coords -- see kit binding in the widget ctor. IT_JACK_Y kept only as a fallback reference.
 static constexpr float IT_JACK_Y   = 99.0f;  // (panel v5 jy; markers are the source of truth)
@@ -423,13 +423,15 @@ struct IntertropicalGrid : Widget {
         nvgFontSize(vg, 6.f);
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
 
-        // cursor: highlight the active scene's whole column (traverses live as scenes advance)
+        // cursor: red stroke frame on the active scene's column -- matches the main membership grid's
+        // active-scene cursor style (Singapore red, nvgRGBA(0xd4,0x00,0x1a,0xd0), stroke 1.5f).
         {
             const float cx = vsBox.pos.x + active*colw;
             nvgBeginPath(vg);
             nvgRect(vg, cx, vsBox.pos.y, colw, vsBox.size.y);
-            nvgFillColor(vg, nvgRGBA(0xff,0xff,0xff,0x18));
-            nvgFill(vg);
+            nvgStrokeColor(vg, nvgRGBA(0xd4,0x00,0x1a,0xd0));   // Singapore red, matches main grid
+            nvgStrokeWidth(vg, 1.5f);
+            nvgStroke(vg);
         }
         // faint grid lines
         nvgStrokeColor(vg, nvgRGBA(0x50,0x50,0x50,0x50));
