@@ -47,24 +47,32 @@ generative rhythm, and most sequencers fake it; yours does it natively.
 ### Polyrhythm -- honest bound (cross-instance, available NOW)
 Definition: different TIME BASES (a 3:2 ratio, e.g. triplets against straight eighths -- the two parts
 are clocked differently, not just differently-lengthed). This is distinct from polymeter.
-- CROSS-INSTANCE, RIGHT NOW: two Monsoons fed different gate inputs (e.g. a standard 1/16 gate to
-  Monsoon A and a 1/16-triplet gate to Monsoon B from the same master clock) = genuine polyrhythm.
-  The two engines run in a 3:2 time-base relationship -- exactly Hetrick's definition -- and each
-  applies its full generative articulation (rest, legato, accent, LOR, Sands shaping) within its own
-  metric grid. No special modules needed: any Rack clock with multiple subdivision outputs works.
-  This is available TODAY, no new features required.
-- NOTE: Change Alley does NOT link two separate Monsoon instances -- its correlation matrix operates
-  on voices WITHIN one engine only. Each Monsoon has its own CA expander, no cross-instance
-  correlation. The polyrhythmic relationship between two Monsoons is timing-only; the musical
-  relationship between them comes from the patch (shared pitch material, Changi outputs feeding
-  the same destination, etc.), not from CA correlation.
-- Phase inputs also work (drive Monsoon A and B from phase signals at different speeds, e.g. via
-  Hetrick's Phasor Div/Mult), which gives additional control over phase alignment and reset.
-- WITHIN ONE MONSOON: currently the 1/16 grid is the constraint -- everything snaps to 1/16, so true
-  in-engine triplets-against-straight is not yet supported. The maybe-later triplet step model (per-lane
-  triplet subdivision flag) would bring native in-engine polyrhythm between lanes. Deferred.
-So: claim POLYMETER and POLYRHYTHM both -- polymeter within one Monsoon, polyrhythm across two with
-different gate/phase inputs. Don't conflate the terms, but both are real and available today.
+
+CROSS-INSTANCE, RIGHT NOW -- and richer than plain polyrhythm:
+Two Monsoons fed different gate/phase inputs (e.g. 1/16 straight + 1/16-triplet from the same master
+clock) = genuine polyrhythm. Each applies full generative articulation within its own metric grid.
+But the more interesting capability: CORRELATED polyrhythm, available today with no new features:
+- Give both Monsoons the SAME EXTERNAL SEED -- they start from the same position in the Philox
+  probability space.
+- Send a SIMULTANEOUS DICE GATE to both -- they roll forward together, staying locked in probability
+  space even as their metric grids diverge.
+- Drive them on DIFFERENT CLOCKS/GATES/PHASERS -- each steps at its own rate.
+Result: two Monsoons drawing CORRELATED stochastic decisions (same probability space, same position)
+but at different temporal positions. The same shared random voice expressed in two metric worlds
+simultaneously -- not two independent patterns that happen to coexist, but one generative idea in
+a 3:2 polyrhythmic relationship. This is the addressable Philox counter (point 1: navigable
+probability space) making cross-instance correlation possible -- the same feature at two scales.
+HONEST NOTE: Change Alley does NOT link separate Monsoon instances -- its correlation matrix operates
+within one engine only. The cross-instance correlation here is probability-space correlation (shared
+seed + simultaneous dice), not CA structural correlation.
+FUTURE: allow multiple Monsoons to share one Change Alley expander's pin positions, adding
+structural/timbral correlation on top of the probability correlation. Requires a change to the
+adjacency-based expander discovery model (currently one host per CA).
+
+WITHIN ONE MONSOON: currently the 1/16 grid is the constraint. The maybe-later triplet step model
+would bring native in-engine polyrhythm between lanes. Deferred; cross-instance covers the use case.
+
+Claim POLYMETER and POLYRHYTHM both. Don't conflate the terms; both are real and available today.
 
 ### External CLOCK vs external GATE
 External CLOCK is table stakes. External GATE here is NOT: an incoming external gate still passes
