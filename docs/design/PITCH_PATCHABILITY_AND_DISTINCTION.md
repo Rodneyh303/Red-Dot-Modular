@@ -68,6 +68,39 @@ adds poly-budget scene ARRANGEMENT (voice->slot->output, fan-out chords, per-out
 that arranged output is itself a source (Lantern visualises it; Changi T3 jacks it out). Generate ->
 shape -> correlate -> arrange -> visualise -> break out. One coherent signal journey.
 
+### Musical techniques the three-space mapping enables
+Intertropical is really three independent mappings -- PER-SCENE membership (which voice sits in which
+slot), GLOBAL slot->output (fixed structure), and per-output TRANSPOSE. That separation is what makes
+these classic arrangement techniques fall out (they're consequences of the model, not bolted-on
+features), all visible at a glance in the all-scenes voice->slot grid:
+
+- VOICE SUBSTITUTION (the headline case): an output is a STABLE part (slot->output is global, so the
+  output is always fed), but WHICH voice generates it changes per scene (membership reseats the slot).
+  The harmonic/timbral skeleton holds while the source rotates. Read across a slot's row in the grid
+  and you SEE the substitution. (Worked example: outputs 3 & 6 are fixed chord tones; voice 16 feeds
+  them only in scenes 4 & 6, other voices elsewhere -- pure membership, no re-routing.)
+- ORCHESTRATION / REGISTRATION CHANGE: because each output goes to its own synth voice, reseating a
+  different global voice into the same output across scenes = reassigning a PART TO A DIFFERENT TIMBRE
+  (flute -> oboe between sections; an organist changing stops). Arrangement as re-scoring.
+- HOCKET: seat a slot in ALTERNATING scenes (voice A odd scenes, voice B even) -> one output LINE is
+  passed back and forth between voices. The medieval/gamelan hocket technique, by scene pattern.
+- ANTIPHONY / CALL-AND-RESPONSE: seat voices into output-GROUP A's slots in some scenes and group B's
+  in others -> registral/spatial call-and-response between output banks (pairs with sending groups to
+  different synth chains / pan positions).
+- TEXTURE DYNAMICS (thin/build): a scene that seats FEWER voices leaves outputs unfed -> breakdowns,
+  builds, drop-outs as an arrangement dimension. Density becomes a per-scene compositional control.
+- FAN-OUT HARMONY: one voice -> multiple outputs (a slot's row lit at 2+), each with its own transpose
+  -> chord/octave/unison DOUBLING from a single generated line (+0 unison, +12 octave, +7/+3/+4 chord
+  tones). Turns the arranger into a harmoniser. (Trade-off: fan-out COUPLES the parts -- same line in
+  lockstep -- intended for doubling, muddy if independence was wanted.)
+- GENERATIVE vs COMPOSED arrangement: membership auto-packs voices to slots in order by default (let
+  it arrange itself) OR you seat explicitly (compose the arrangement). Same grid, both workflows.
+
+Together: Intertropical is a SCENE-BASED ARRANGER where the classic techniques of orchestration --
+substitution, hocket, antiphony, doubling, textural dynamics -- are expressible as seat/route/transpose
+choices over a polyphonic generative source. Few generative systems offer an arrangement layer at all;
+fewer make it this legible.
+
 ## 7. The correlation matrix as a textural continuum -- the East/West axis
 The single most important control (the CA correlation matrix) is a CONTINUOUS dial between textures,
 not a set of modes:
