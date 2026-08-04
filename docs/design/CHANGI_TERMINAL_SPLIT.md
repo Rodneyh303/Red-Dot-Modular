@@ -67,25 +67,44 @@ engine-read vs jack-read like the Lantern product/debug split (T3 is a JACK brea
 Intertropical's actual output voltages is arguably the RIGHT call here, unlike Lantern which needs
 engine detail for colour/note-type).
 
-### T3 DATA SOURCE -- SETTLED (host-pushed, mirroring how Changi actually works)
-Checked how Changi gets its data. ANSWER: Changi's own process() is EMPTY. The host Monsoon's
-MonsoonOutputGenerator reads the ENGINE directly (engine.gs, engine.voices[i].gs.currentPitchV,
-engine.lastStepResult.accented) and PUSHES into cachedChangiExpander->outputs[...].setVoltage(...) per
-sample. Changi is a passive jack-holder; the HOST writes into it.
+### WHERE INTERTROPICAL GETS ITS DATA (context for T3)
+Intertropical reads from TWO sources in its own process() -- a split worth knowing:
+- ENGINE DIRECT (host->engine): step/phrase TIMING state (eng.stepIndex, eng.lastStepResult.wrapped).
+  Structural/sequencing state that only lives in Monsoon's engine.
+- STRAITS OUTPUT JACKS (cachedPolyVoiceExpander->outputs[].getVoltage(v)): the per-voice SIGNAL values
+  (gate, CV, accent, legato, sleg) for each of the 16 voices. Straits already computed and published
+  these as poly-cable voltages; Intertropical READS them from Straits' jacks rather than re-deriving
+  from the engine. (See Intertropical.cpp:78-104: `straits->outputs[0].getVoltage(v)` etc.)
+This is the precedent that directly governs T3: data that's already published on jacks should be READ
+from those jacks, not re-derived. Intertropical reads Straits' jacks; T3 should read Intertropical's.
 
-So "T3 is to Intertropical as T1/T2 are to Monsoon/Straits" resolves the source question DEFINITIVELY,
-and OPPOSITE to the earlier tentative jack-read lean: T1/T2 do NOT read jacks -- the host writes into
-them from engine state. The faithful mirror:
-- INTERTROPICAL's process() writes into T3's output ports, exactly as Monsoon's OutputGenerator writes
-  into Changi's. T3 = passive jack-holder (empty process(), just bindOutput + a cachedT3 pointer).
-- Intertropical already computes the routed per-output state (voiceForOutput scene->slot->voice, the
-  gate/cv/accent/step/step-leg it reads from Straits, and effectiveTranspose[] tie-latched). It reaches
-  into cachedChangiT3->outputs[...] and fills them from that -- for its 8 arranged channels.
-- => T3 naturally carries POST-transpose, TIE-LATCHED values because Intertropical resolves them in its
-  process; T3 just receives what's already computed. No jack-reading, no provenance loss, architecturally
-  identical to T1/T2. (SUPERSEDES the "likely JACK-read" guess earlier in this doc.)
-- Mechanism: Intertropical caches an adjacent T3 (expander scan, like cachedChangiExpander) and writes
-  its 8ch x {gate,cv,accent,step-gate,step-leg} into T3's ports each block.
+### T3 DATA SOURCE -- REVISED: T3 READS INTERTROPICAL'S OUTPUT JACKS (self-binding, like Lantern)
+Initial read said "host-pushed like Changi" because Changi's process() is EMPTY and Monsoon's
+OutputGenerator pushes into it. But that reasoning was incomplete: Changi is host-PUSHED because its
+data ONLY lives in Monsoon's engine -- it's not published anywhere else. Intertropical's data IS already
+published on its own output jacks (GATE_OUT/CV_OUT/ACCENT_OUT/LEGATO_OUT/SLEG_OUT, computed per block
+in Intertropical's process() including the post-transpose + tie-latched effectiveTranspose). So the
+"mirror how Changi works" principle actually resolves the OPPOSITE way for T3: same principle (read from
+where the data already is), different conclusion because the data is in a different place.
+
+REVISED DECISION: T3 reads Intertropical's output jacks in ITS OWN process():
+- T3's process(): find bound Intertropical (pairing number), then for each output channel ch 0..7:
+    t3->outputs[GATE_OUT+ch] = it->outputs[Intertropical::Ids::GATE_OUT].getVoltage(ch)
+    t3->outputs[CV_OUT+ch]   = it->outputs[Intertropical::Ids::CV_OUT].getVoltage(ch)
+    ... (accent, legato, sleg similarly)
+  getVoltage->setVoltage, trivially cheap. One-sample expander-adjacency latency: inaudible + normal.
+- T3 is SELF-BINDING (finds its Intertropical via the pairing number, like Lantern does) -- NO
+  Intertropical changes needed. No cachedT3 pointer on Intertropical. No push code.
+- This UNIFIES THE PAIRING MODEL: Lantern and T3 are BOTH find-and-read consumers. No push-direction
+  asymmetry. The pairing abstraction is one clean pattern both consumers share.
+- Lantern and T3 STILL read at different levels (T3 = jacks for faithful breakout, exactly what a
+  breakout should do; Lantern = engine for note-type/colour/articulation the jacks can't carry) -- each
+  reads at the right level for its job, over the same binding mechanism.
+- The chain is: Monsoon engine -> Straits jacks -> Intertropical reads Straits + routes/transposes ->
+  Intertropical output jacks -> T3 reads IT jacks and mirrors to its breakout jacks. One level per
+  module; no module re-derives what a prior module already published. Consistent principle throughout.
+- T3 values are POST-transpose + TIE-LATCHED because Intertropical already resolved effectiveTranspose[]
+  before writing to its output jacks. T3 gets the correct answer for free.
 
 ### T1 SLUG (library-critical decision -- SETTLE before submission)
 Renaming Changi -> "Changi T1": the display NAME can change freely, but the SLUG cannot post-library
