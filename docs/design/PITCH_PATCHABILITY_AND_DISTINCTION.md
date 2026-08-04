@@ -27,10 +27,37 @@ how the pattern is CONSTRUCTED, not just what plays. Qualitatively deeper input 
 ## 3. Phase-drivable, polymetric timing with external sync
 Not just gate-clocked stepping: PHASE drive makes playback position a continuous, modulatable,
 externally-syncable quantity. Drivable by Rack phase modules, LFOs, and EXTERNAL phase sources (e.g.
-the Bitwig phase-in plugin). Plus polymetric via Sands and Intertropical. This timing model is more
-flexible than gate-clocking and speaks to the growing phase-sequencing niche. LEAD WITH THIS in a
-demo -- it's distinctive and looks compelling in motion.
+the Bitwig phase-in plugin). This timing model speaks to the growing phase-sequencing niche and is
+distinctive and compelling in motion -- LEAD WITH THIS in a demo.
 
+### Polymeter -- natively and deeply supported
+Definition (Hetrick): two sequences with DIFFERENT LENGTHS running at the SAME clock speed; they share
+a clock but diverge in effective length, realigning after LCM steps. This is a FIRST-CLASS feature:
+- WITHIN ONE MONSOON: Sands' per-lane LOR (length/offset/rotation) gives each lane its own effective
+  step-count. A 5-step melody lane against a 7-step rhythm lane against a 9-step accent lane -- all
+  driven by the same 1/16 clock, realigning at different rates. One host, true multi-voice polymeter
+  without patching multiple sequencers.
+- AT THE ARRANGEMENT LEVEL: Intertropical's per-scene membership + scene sequencing means different
+  scenes can represent different polymetric states -- the arrangement layer itself is polymetric.
+- ACROSS MULTIPLE MONSOONS: gate or phase output of one drives another -> polymetric interaction
+  between independent engines, with Change Alley correlation linking their content.
+Pitch this explicitly and confidently. "Polymetric" is often what people mean when they say complex
+generative rhythm, and most sequencers fake it; yours does it natively.
+
+### Polyrhythm -- honest bound (cross-instance yes; within-engine deferred)
+Definition: different TIME BASES (a 3:2 ratio, e.g. triplets against straight eighths -- the two parts
+are clocked differently, not just differently-lengthed). This is distinct from polymeter.
+- CROSS-INSTANCE: two Monsoons driven by phase signals at different speeds (or via a Phasor Div/Mult)
+  = genuine polyrhythm / polychronic rhythm (Hetrick's third category). The phase architecture makes
+  this natural -- it's the same relationship Hetrick describes, using Rack phase tools.
+- WITHIN ONE MONSOON: currently the 1/16 grid is the constraint -- everything snaps to 1/16, so true
+  in-engine triplets-against-straight is not yet supported. The maybe-later triplet step model (per-lane
+  triplet subdivision flag) would bring native in-engine polyrhythm between lanes. Deferred.
+So: claim POLYMETER cleanly; claim POLYRHYTHM only at the cross-instance level for now, or note it as
+a direction the phase architecture enables. Don't conflate the two terms -- reviewers who know the
+distinction (Hetrick's doc is a well-known reference) will notice.
+
+### External CLOCK vs external GATE
 External CLOCK is table stakes. External GATE here is NOT: an incoming external gate still passes
 through the engine's REST / LEGATO / ACCENT (mode B) articulation -- so an arbitrary/irregular/random
 external gate stream (tested: Venom Rhythm Explorer) isn't just a metronome, it becomes raw rhythmic
