@@ -67,6 +67,33 @@ engine-read vs jack-read like the Lantern product/debug split (T3 is a JACK brea
 Intertropical's actual output voltages is arguably the RIGHT call here, unlike Lantern which needs
 engine detail for colour/note-type).
 
+### T3 DATA SOURCE -- SETTLED (host-pushed, mirroring how Changi actually works)
+Checked how Changi gets its data. ANSWER: Changi's own process() is EMPTY. The host Monsoon's
+MonsoonOutputGenerator reads the ENGINE directly (engine.gs, engine.voices[i].gs.currentPitchV,
+engine.lastStepResult.accented) and PUSHES into cachedChangiExpander->outputs[...].setVoltage(...) per
+sample. Changi is a passive jack-holder; the HOST writes into it.
+
+So "T3 is to Intertropical as T1/T2 are to Monsoon/Straits" resolves the source question DEFINITIVELY,
+and OPPOSITE to the earlier tentative jack-read lean: T1/T2 do NOT read jacks -- the host writes into
+them from engine state. The faithful mirror:
+- INTERTROPICAL's process() writes into T3's output ports, exactly as Monsoon's OutputGenerator writes
+  into Changi's. T3 = passive jack-holder (empty process(), just bindOutput + a cachedT3 pointer).
+- Intertropical already computes the routed per-output state (voiceForOutput scene->slot->voice, the
+  gate/cv/accent/step/step-leg it reads from Straits, and effectiveTranspose[] tie-latched). It reaches
+  into cachedChangiT3->outputs[...] and fills them from that -- for its 8 arranged channels.
+- => T3 naturally carries POST-transpose, TIE-LATCHED values because Intertropical resolves them in its
+  process; T3 just receives what's already computed. No jack-reading, no provenance loss, architecturally
+  identical to T1/T2. (SUPERSEDES the "likely JACK-read" guess earlier in this doc.)
+- Mechanism: Intertropical caches an adjacent T3 (expander scan, like cachedChangiExpander) and writes
+  its 8ch x {gate,cv,accent,step-gate,step-leg} into T3's ports each block.
+
+### T1 SLUG (library-critical decision -- SETTLE before submission)
+Renaming Changi -> "Changi T1": the display NAME can change freely, but the SLUG cannot post-library
+(breaks patch compat). DECISION: keep the internal slug as-is (the current Changi slug), set only the
+display name to "Changi T1". New modules T2/T3 get fresh slugs. Existing patches keep working and the
+browser still shows the T1/T2/T3 family. If not yet published, the slug is free -- but decide NOW and
+freeze it.
+
 ## Method / gotchas
 - Enum growth shifts indices -> re-audit any positional bind loop and the message unpack.
 - gen_changi.py is source-of-truth for geometry; widget reads markers. Keep that for T2.
