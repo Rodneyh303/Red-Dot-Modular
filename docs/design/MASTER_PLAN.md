@@ -264,3 +264,24 @@ patch problem (a counter/comparator watching both clock streams for their LCM po
 - CA seed jack: PRE-LIBRARY candidate (small, completes the "unified seed" story, TBD already flagged).
 - Shared CA pointer (Option A): POST-LIBRARY or alongside Changi T2/T3 work.
 - Demo patch showing correlated polyrhythm: include in the demo batch when stable enough to play.
+
+### Seed derivation (DECIDED: fixed key offsets, principled not a hack)
+One external seed input derives THREE independent streams (rhythm, melody, CA) via fixed offsets on
+the Philox KEY:
+  rhythmKey = externalSeed
+  melodyKey = externalSeed + 1
+  caKey     = externalSeed + 2
+WHY this is correct (not a shortcut): Philox's design guarantee is that streams with DIFFERENT KEYS
+are statistically independent regardless of numerical proximity -- S+1 and S+2 are just as independent
+as S+1000000. The fixed offset IS the standard mechanism for deriving multiple independent streams
+from one seed, used in cryptographic and scientific RNG design. One seed -> three guaranteed-independent
+streams -> deterministically reproducible from one value.
+CRITICAL: offset must be on the KEY not the counter. Counter offsets produce correlated streams
+(same-key sequences shifted in time -- they'd eventually generate the same values). Key offsets
+produce genuinely independent streams. The seed feeds the KEY parameter.
+USER MODEL: seed=42 -> same rhythmically, melodically, and correlationally every time. seed=43 ->
+completely different but equally reproducible. Two instances with the same seed and simultaneous
+dice gates = locked probability spaces. Clean, simple, correct.
+ALTERNATIVE REJECTED: poly seed cable (3 channels = 3 independent values). Weaker -- requires
+reproducing 3 values to reconstruct a patch; the fixed-offset single-seed approach is strictly better
+(one value to reproduce everything, mathematical independence guaranteed).
