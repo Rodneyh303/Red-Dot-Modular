@@ -208,6 +208,8 @@ Known panel items:
 - Convention: 1/16 is baked in (meloDICER inspiration); 1/8-triplet and 1/32 snap to 16th grid.
 - Polymeter vs polyrhythm: POLYMETER (different lengths, same clock) is natively supported -- claim
   it confidently (Sands per-lane LOR, Intertropical per-scene, cross-Monsoon). POLYRHYTHM (different
-  time bases, e.g. triplets vs straight) is supported cross-instance via phase at different speeds,
-  but NOT within one Monsoon engine (1/16 grid constraint). Don't conflate. The maybe-later triplet
-  step model would enable in-engine polyrhythm between lanes. See PITCH doc point 3.
+  time bases) is also supported TODAY cross-instance: two Monsoons fed different gate inputs (e.g.
+  1/16 straight + 1/16-triplet from the same master clock) = genuine 3:2 polyrhythm, each engine
+  applying full generative articulation within its own time base. Phase inputs also work. Within one
+  engine, the 1/16 grid is the current constraint -- the maybe-later triplet step model would add
+  in-engine polyrhythm between lanes. Don't conflate the terms. See PITCH doc point 3.

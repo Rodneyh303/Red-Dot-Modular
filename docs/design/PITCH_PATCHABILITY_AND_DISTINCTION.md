@@ -44,18 +44,25 @@ a clock but diverge in effective length, realigning after LCM steps. This is a F
 Pitch this explicitly and confidently. "Polymetric" is often what people mean when they say complex
 generative rhythm, and most sequencers fake it; yours does it natively.
 
-### Polyrhythm -- honest bound (cross-instance yes; within-engine deferred)
+### Polyrhythm -- honest bound (cross-instance, available NOW)
 Definition: different TIME BASES (a 3:2 ratio, e.g. triplets against straight eighths -- the two parts
 are clocked differently, not just differently-lengthed). This is distinct from polymeter.
-- CROSS-INSTANCE: two Monsoons driven by phase signals at different speeds (or via a Phasor Div/Mult)
-  = genuine polyrhythm / polychronic rhythm (Hetrick's third category). The phase architecture makes
-  this natural -- it's the same relationship Hetrick describes, using Rack phase tools.
+- CROSS-INSTANCE, RIGHT NOW: two Monsoons fed different gate inputs (e.g. a standard 1/16 gate to
+  Monsoon A and a 1/16-triplet gate to Monsoon B from the same master clock) = genuine polyrhythm.
+  The two engines run in a 3:2 time-base relationship -- exactly Hetrick's definition -- and each
+  applies its full generative articulation (rest, legato, accent, LOR, Sands shaping) within its own
+  metric grid. No special modules needed: any Rack clock with multiple subdivision outputs works.
+  This is available TODAY, no new features required.
+- The Change Alley correlation then links the two Monsoons' voices ACROSS the polyrhythmic
+  relationship -- the textural continuum (homophony<->heterophony<->polyphony) operating at a 3:2
+  time-base. That's richer than most polyrhythm implementations, which just clock two simple patterns.
+- Phase inputs also work (drive Monsoon A and B from phase signals at different speeds, e.g. via
+  Hetrick's Phasor Div/Mult), which gives additional control over phase alignment and reset.
 - WITHIN ONE MONSOON: currently the 1/16 grid is the constraint -- everything snaps to 1/16, so true
   in-engine triplets-against-straight is not yet supported. The maybe-later triplet step model (per-lane
   triplet subdivision flag) would bring native in-engine polyrhythm between lanes. Deferred.
-So: claim POLYMETER cleanly; claim POLYRHYTHM only at the cross-instance level for now, or note it as
-a direction the phase architecture enables. Don't conflate the two terms -- reviewers who know the
-distinction (Hetrick's doc is a well-known reference) will notice.
+So: claim POLYMETER and POLYRHYTHM both -- polymeter within one Monsoon, polyrhythm across two with
+different gate/phase inputs. Don't conflate the terms, but both are real and available today.
 
 ### External CLOCK vs external GATE
 External CLOCK is table stakes. External GATE here is NOT: an incoming external gate still passes
