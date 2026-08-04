@@ -1,0 +1,208 @@
+# dot.modular -- master plan (pre-microtonal, pre-library)
+
+Last updated: 2026-08-04. Living doc -- update when items close.
+Goal: into VCV Library 2026. Microtonal (Monsoon Micro 12/24 slider variants) is POST-library.
+
+---
+
+## CURRENT STATE SNAPSHOT
+
+### plugin.json
+- EXISTS at repo root. Version: 2.0.1 (correct format). Brand: dot.modular.
+- LICENSE: currently "proprietary" -- MUST become a real SPDX identifier before submission.
+  VCV requires SPDX (e.g. GPL-3.0-or-later). This is the one confirmed library-gate item.
+- 14 modules registered, all matching source createModel() calls. Intertropical + Lantern IN.
+
+### Module inventory (14 current + 3 planned)
+Monsoon          -- ship-ready modulo rate/lock refinements
+MonsoonInterchangeExpander (Interchange) -- ship-ready
+Raffles          -- BUG: trial params/gates/LIVE SRC still present -- CLEANUP NEEDED
+Junction         -- ship-ready
+Straits          -- ship-ready
+Causeway         -- ship-ready modulo lock Phase 2
+Changi -> T1     -- BUG: mono jack unconfigured (i<15 not i<16) -- FIX BEFORE SHIP
+Shophouse        -- ship-ready
+MonsoonSandsVisualExpander -- ship-ready
+StraitsEastSandsVisual     -- ship-ready
+StraitsSandsMacroVisual    -- ship-ready
+Lantern          -- IT-source branch needs verify+merge; otherwise ship-ready
+ChangeAlleyV2    -- ship-ready modulo undo item 5
+Intertropical    -- panel theme + voice-slot grid fixed; ship-ready
+[NOT BUILT] ChangiT2 -- step-gate/step-legato x16
+[NOT BUILT] ChangiT3 -- IT-routed 8ch breakout (reads IT output jacks)
+[not a module]   -- Scale additions (Slendro etc.)
+
+### Open branches
+feat/lantern-intertropical-source  -- COMPLETE, needs Rack verify then merge
+feat/domain-reverse-inverse        -- COMPLETE, decide in play (test in Rack, merge or close)
+feat/dice-scrub                    -- STALE (0 commits ahead of master, already merged) -- DELETE
+
+---
+
+## CRITICAL PATH TO LIBRARY (ordered, numbered)
+
+### 1. LICENSE decision (BLOCKING -- choice, not a build)
+plugin.json says "proprietary" -- VCV requires a real SPDX identifier. GPL-3.0-or-later is the
+standard/simplest (most Rack plugins). DECIDE and update plugin.json + LICENSE.txt.
+
+### 2. LIBRARY_SUBMISSION_CHECKLIST (build in chat -- may surface surprises)
+Does not exist yet. Needs: license (item 1), plugin.json complete, slugs frozen (item 3),
+clean SDK build, one VCVRack/library GitHub issue thread (title=slug, post commit hash). VCV
+builds cross-platform; you only need a clean source build. Build this doc so submission is a
+checklist not a guess.
+
+### 3. Slug freeze (decision -- irreversible post-library)
+Slugs cannot change post-library without breaking patch compat. Names can change freely.
+- "Changi" stays (display name -> "Changi T1", slug stays "Changi") -- DECIDED.
+- "ChangeAlleyV2" -- stays V2 or clean to "ChangeAlley"? DECIDE before submission.
+- T2/T3 slugs: "ChangiT2" / "ChangiT3" -- add to plugin.json when built.
+- MonsoonSandsVisualExpander / StraitsEastSandsVisual / StraitsSandsMacroVisual -- are these
+  the permanent public-facing slugs? Decide. They're internal-sounding names.
+
+### 4. Delete feat/dice-scrub (housekeeping)
+0 commits ahead of master. Stale. Delete the remote branch.
+
+### 5. Changi T1 mono bug FIX (Claude Code -- ship-blocker)
+MonsoonChangiExpander.hpp: constructor loop `for (int i=0; i<15; ++i)` -> `i<16`.
+Label index 0 as "Mono (voice 1)", indices 1-15 as "Voice 2".."Voice 16".
+Rack verify: mono jack (index 0) outputs gate/CV/accent.
+
+### 6. feat/lantern-intertropical-source -- VERIFY + MERGE (Rack)
+Branch complete: grid + piano-roll + tie-latch + voice-slot all-scenes display + debug toggle.
+Rack checks:
+- Grid: all 8 scene columns populate from membership selections; cursor traverses with playback.
+- Piano-roll: routed voices at post-transpose pitch.
+- "Verify vs raw jacks" toggle: ON/OFF -> no movement = faithful reconstruction.
+- Modulate a transpose knob: single/legato notes move; tied note holds pitch for tie duration.
+If clean: merge to master. Any divergence: toggle identifies which read to fix.
+
+### 7. feat/domain-reverse-inverse -- DECIDE + MERGE OR CLOSE (Rack)
+CA domain-reverse = true inverse permutation (step4 == step2, true board undo). COMPARE BRANCH.
+Test in Rack: scatter, reverse, re-scatter -- does it undo faithfully? Does the gesture feel right?
+Note: merging also strengthens pitch doc point 8 (reversibility claim -- domain transforms become
+reversible too). Lean: MERGE, but the feel check is the gate.
+
+### 8. Raffles trial cleanup (Claude Code -- own session, see RAFFLES_TRIAL_CLEANUP.md)
+Remove: DICE_TRIAL_R/M params, RAFFLES_GATE_TRIAL/LASTTRIAL/LIVESRC inputs, G3_TRIAL/LIVESRC
+gate3 targets, trialMode[] field, trial panel art. DieAction vocab already cleaned.
+CAREFUL: enum shift breaks the positional rafflesGateTrig[] fire loop. Enumerate ALL value names
+before editing, grep across whole tree. Panel SVG reflow after gate removal.
+
+---
+
+## FEATURE COMPLETENESS (before panel iteration)
+
+### 9. Changi T2 (Claude Code)
+New module. 16 voices x (STEP_GATE + STEP_LEGATO) = 32 jacks. Host-pushed by Monsoon's
+OutputGenerator (same pattern as T1). Slug: "ChangiT2". Add to plugin.json.
+See CHANGI_TERMINAL_SPLIT.md.
+
+### 10. Changi T3 (Claude Code)
+New module. 8 arranged channels x {gate, CV, accent, step-gate, step-legato} = 40 jacks.
+Self-reading: T3's process() finds its bound Intertropical (pairing number) and reads
+it->outputs[CV_OUT/GATE_OUT/...].getVoltage(ch) directly. NOT host-pushed.
+Organised BY CHANNEL. Post-transpose + tie-latched (IT resolves effectiveTranspose[] first).
+Shares the subgroup pairing mechanism with Lantern (item 12 below).
+Slug: "ChangiT3". See CHANGI_TERMINAL_SPLIT.md.
+
+### 11. Undo items 4 + 5 (Claude Code, see UNDO_IMPLEMENTATION_ROADMAP.md)
+Items 1 (direction), 2 (LOR), 3 (knobs) DONE and Rack-verified.
+Item 4 (dice undo): reversible-mode counter undo -- (before,after) scalar on rhythmDrawCtr/
+melodyDrawCtr. REVERSIBLE mode only; free-run undefined.
+Item 5 (CA undo): snapshot stack + scatter counter. Commit point mapped; thread-safety is crux
+(applyTemasek in audio thread). invertible transforms: op-code entries. Manual pins: StoreEditAction.
+
+### 12. Subgroup pairing system (Claude Code + already designed)
+For multiple IT + Lantern + T3 groups. FULLY DESIGNED (see MULTIGROUP_CONSERVATION_AND_CORRELATION
++ CHANGI_TERMINAL_SPLIT). Key decisions:
+- Model B: numbered pairing, emergent (not first-class), source-binding only (clock orthogonal).
+- Auto-assigned lowest-free number at birth; immutable (never renumber; gaps fine).
+- Numbers persist in JSON; consumers store watched number; rebind on load.
+- Consumers pick from existing groups (dropdown of live Intertropicals, not free integer).
+- Disconnection: existing connect mark + hold-last-state (reuse existing pattern).
+- Many-to-one allowed (no enforcement), 1:1 expected. T3: single cachedT3 pointer, first-found-wins.
+- Lantern + T3 are BOTH find-and-read consumers; same pairing mechanism, build ONCE.
+Build AFTER T3 exists (T3 needs the pairing to find its Intertropical).
+
+### 13. Rate discipline (Claude Code, see RATE_TABLE.md + RATE_DISCIPLINE_UNIFICATION.md)
+WriteLedger infrastructure BUILT (SequencerEngine.hpp). Steps:
+a) Wire noteWrite() at multi-writer sites: accentProb (x2 writers), restProb, scale mask.
+b) Run debug build, watch conflicts fire, fix shape-A drifts.
+c) Audit RATE_TABLE.md "Correct?" column vs running build.
+d) Gate per-block reads behind sixteenthEdge where safe (NOT continuous ones: mix/spread/transpose).
+e) Cap PPQN at 24 (only gs.tick uses sub-16th; higher PPQN = wasted per-pulse tick cost).
+Lock mode Phase 2 (Causeway/Junction expander threading): AFTER this pass.
+
+### 14. Scale additions (Claude Code -- small, see SCALES_AND_QUANTIZER_TODO.md)
+Add to MonsoonScaleManager.cpp:
+- Slendro (PRIORITY -- completes gamelan pair with Pelog; 12-TET approx {0,2,5,7,9})
+- Chinese pentatonic (named/framing add for Singapore demographic completeness)
+- Carnatic raga (completes Indian representation)
+Label all honestly as 12-TET approximations. Rack listen to confirm they sound right.
+
+### 15. External gate articulation check (Rack verify)
+Confirm external-gate-driven steps route through the SAME rest/legato/accent-mode-B path as
+internal clock, AND that Sands mods + big-5 modulation apply under external gate.
+REQUIRED before publishing pitch doc point 3 claim. See EXTERNAL_GATE_ARTICULATION_CHECK.md.
+
+---
+
+## PANEL ITERATION (after items 5, 8, 9 complete -- module set must be stable first)
+
+T2/T3 must at least have final HP and jack counts before their panels are worth starting.
+Raffles cleanup must be done (affects panel: fewer jacks, reflow).
+Then: full panel pass across all 17 modules.
+
+Known panel items:
+- Intertropical: equatorial theme in. Needs eye on label crowding + font (DejaVu stand-in;
+  optional Barlow swap when TTF available).
+- Raffles: gates removed + panel reflow after trial cleanup.
+- Changi T1: panel already has 16 jack markers (widget binds i<16); code just needs to match.
+- T2: new panel (gen_changi_t2.py, reuse airport-terminal theme from T1).
+- T3: new panel (gen_changi_t3.py, organised by channel, ~20HP).
+- All modules: dark+light consistency, screws, brand lockup, label legibility.
+
+---
+
+## DEFERRED (post-library)
+
+- Microtonal: Monsoon Micro 12-slider + 24-slider variants. Two FIXED panels (static art like
+  current Monsoon, NOT widget-drawn reflow). ~10 classes in the 12-TET pipeline to generalise.
+  See TWELVE_TET_AUDIT.md + SCALES_AND_QUANTIZER_TODO.md.
+- Triplet step model: 1/16-triplet + 1/32 as real (non-snapped) subdivisions. Step-model feature;
+  24 PPQN already carries them. Open design Q: global vs per-lane vs per-step ratchet.
+- Quantizer modes: hard vs probabilistic-mask vs nudge (redistributeWeights).
+- Monsoon Microtonal tuning ownership: self-contained Scala loader vs consume-upstream-tuning.
+
+---
+
+## PITCH + DOCUMENTATION (parallel track, not blocking code)
+
+- PITCH_PATCHABILITY_AND_DISTINCTION.md: 8 legs complete. CODE-CHECK on point 3 (external gate
+  articulation) needed before publishing. Otherwise ready for manual front matter + reviewer pitch.
+- LIBRARY_SUBMISSION_CHECKLIST: item 2 above.
+- Manual: Rodney's strength, deferred until stable enough to demo. Lead with the conceptual model
+  (poly budget, three-space routing, lock mode musical meaning), Singapore naming thread, then the
+  control reference.
+- Demo patches: deferred until stable enough to play. Phase-drive + deep modulation is the headline
+  demo. Targets: Omri Cohen (musical result in a video), CDM Peter Kirn (design/concept piece).
+
+---
+
+## KEY DESIGN DECISIONS ON RECORD (do not re-derive)
+
+- Output-stage transpose: follows poly tie/legato (tie-latched, legato-live) but NOT Shophouse
+  conservation. Deliberate performer escape hatch. See INTERTROPICAL_SPEC.md DECIDED note.
+- CA domain-reverse: COMPARE BRANCH (decide in play -- item 7 above).
+- Changi T3 data source: self-reading IT output jacks, NOT host-pushed. See CHANGI doc.
+- PPQN cap at 24: musically correct (2^3 x 3, MIDI-standard). Not a compromise.
+- Subgroup pairing: auto-numbered, immutable, emergent, source-binding only, clock orthogonal.
+- Microtonal: POST-library, separate Monsoon Micro module(s).
+- Reversibility: sampling + phase axes fully reversible; stateful transform-composition needs
+  inverse-op care (the honest bound in pitch doc point 8).
+- East/West textural continuum: correlation matrix spans homophony<->heterophony<->polyphony.
+  Change Alley = content half; clocking = timing half. Scale-invariant principle (recurses from
+  note level to arrangement level). See MULTIGROUP_CONSERVATION_AND_CORRELATION.md.
+- Transpose in microtonal: restrict Intertropical transpose to OCTAVE-only (2:1, valid in any
+  tuning; sidesteps the between-degrees problem cleanly).
+- Convention: 1/16 is baked in (meloDICER inspiration); 1/8-triplet and 1/32 snap to 16th grid.
