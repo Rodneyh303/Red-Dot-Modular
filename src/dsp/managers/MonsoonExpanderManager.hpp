@@ -15,6 +15,7 @@ struct MonsoonSandsVisualExpander;       // Mono visual DNA editor
 struct MonsoonStraitsExpander;
 struct MonsoonCausewayPolyExpander;
 struct MonsoonChangiExpander;
+struct MonsoonChangiT2Expander;
 struct MonsoonShophouseExpander;
 struct MonsoonStraitsSands;
 struct MonsoonDeepStraitsSandsEast;
@@ -35,6 +36,7 @@ extern rack::Model* modelMonsoonSandsVisualExpander;
 extern rack::Model* modelMonsoonStraitsExpander;
 extern rack::Model* modelMonsoonCausewayPolyExpander;
 extern rack::Model* modelMonsoonChangiExpander;
+extern rack::Model* modelMonsoonChangiT2Expander;
 extern rack::Model* modelMonsoonShophouseExpander;
 extern rack::Model* modelMonsoonStraitsSands;
 extern rack::Model* modelMonsoonDeepStraitsSandsEast;
@@ -81,6 +83,7 @@ struct MonsoonExpanderManager {
     MonsoonStraitsExpander*      cachedPolyVoiceExpander          = nullptr;
     MonsoonCausewayPolyExpander* cachedCausewayPolyExpander       = nullptr;
     MonsoonChangiExpander*       cachedChangiExpander             = nullptr;
+    MonsoonChangiT2Expander*     cachedChangiT2Expander           = nullptr;
     MonsoonShophouseExpander*    cachedShophouseExpander          = nullptr;
     MonsoonStraitsSands*         cachedStraitsSandsExpander       = nullptr;
     //MonsoonDeepStraitsSandsEast* cachedDeepStraitsSandsEastExpander = nullptr;
@@ -109,6 +112,7 @@ struct MonsoonExpanderManager {
         cachedPolyVoiceExpander          = nullptr;
         cachedCausewayPolyExpander       = nullptr;
         cachedChangiExpander             = nullptr;
+        cachedChangiT2Expander           = nullptr;
         cachedShophouseExpander          = nullptr;
         cachedStraitsSandsExpander       = nullptr;
        // cachedDeepStraitsSandsEastExpander = nullptr;
@@ -162,6 +166,8 @@ struct MonsoonExpanderManager {
                     if (!cachedCausewayPolyExpander) cachedCausewayPolyExpander = reinterpret_cast<MonsoonCausewayPolyExpander*>(curr);
                 } else if (curr->model == modelMonsoonChangiExpander) {
                     if (!cachedChangiExpander) cachedChangiExpander = reinterpret_cast<MonsoonChangiExpander*>(curr);
+                } else if (curr->model == modelMonsoonChangiT2Expander) {
+                    if (!cachedChangiT2Expander) cachedChangiT2Expander = reinterpret_cast<MonsoonChangiT2Expander*>(curr);
                 } else if (curr->model == modelMonsoonShophouseExpander) {
                     if (!cachedShophouseExpander) cachedShophouseExpander = reinterpret_cast<MonsoonShophouseExpander*>(curr);
                 // } else if (curr->model == modelMonsoonStraitsSands) {
@@ -214,7 +220,8 @@ struct MonsoonExpanderManager {
     bool allTypesFound() const {
         return cachedScaleExpander && cachedRafflesExpander && cachedJunctionExpander
             && cachedSandsVisualExpander && cachedPolyVoiceExpander
-            && cachedCausewayPolyExpander && cachedChangiExpander && cachedShophouseExpander
+            && cachedCausewayPolyExpander && cachedChangiExpander && cachedChangiT2Expander
+            && cachedShophouseExpander
             && cachedEastSandsVisual && cachedMacroSandsVisual;
     }
 

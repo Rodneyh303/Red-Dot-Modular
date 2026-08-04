@@ -56,6 +56,7 @@ inline bool isClaimedExpander(rack::Module* self, Monsoon* mon) {
         || s == (const void*)em.cachedPolyVoiceExpander
         || s == (const void*)em.cachedCausewayPolyExpander
         || s == (const void*)em.cachedChangiExpander
+        || s == (const void*)em.cachedChangiT2Expander
         || s == (const void*)em.cachedShophouseExpander
         || s == (const void*)em.cachedEastSandsVisual
         || s == (const void*)em.cachedMacroSandsVisual

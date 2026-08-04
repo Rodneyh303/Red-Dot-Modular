@@ -77,6 +77,16 @@
       ]
     },
     {
+      "slug": "ChangiT2",
+      "name": "Changi T2",
+      "description": "Per-voice articulation output \u2014 all 16 voices (mono/voice 1 + poly voices 2..16) broken out to individual step-gate and step-legato jacks",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Random"
+      ]
+    },
+    {
       "slug": "Shophouse",
       "name": "Shophouse",
       "description": "Scale expander \u2014 4-front scale list, click-a-shutter root, boundary-quantised modulation, Conservation lock",

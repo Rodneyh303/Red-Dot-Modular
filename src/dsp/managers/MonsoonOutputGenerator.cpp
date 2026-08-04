@@ -4,6 +4,7 @@
 #include "MonsoonExpanderManager.hpp"
 #include "../../MonsoonStraitsExpander.hpp"
 #include "../../MonsoonChangiExpander.hpp"
+#include "../../MonsoonChangiT2Expander.hpp"
 
 using namespace rack;
 
@@ -34,11 +35,51 @@ void OutputGenerator::drive(SequencerEngine& engine,
     bool accentActive = engine.lastStepResult.accented && !effectiveMuted;
     (void)accentActive;
 
-    // 2. Straits base poly expander — three 16-channel poly cables (gate / CV / accent).
-    //    ch0 = MONO voice (voice 1) ALWAYS; ch1..15 = poly voices 2..16. Cables are always
-    //    16ch wide; voices beyond numPolyVoices output gate-low / 0V. Replaces the old
-    //    East(2-8)+West(9-16) 21-individual-jack split.
-    auto* straits = expanderManager.cachedPolyVoiceExpander;
+    // ── POLY VOICE PRECOMPUTE (ch1..15 = poly voices 2..16) ─────────────────────
+    // gs.process() / gsStep.process() advance a PulseGenerator (1ms retrigger) and are NOT
+    // idempotent within a sample: each call consumes sampleTime. Previously Straits AND Changi
+    // each called process() per voice, so the poly retrigger pulse advanced TWICE per sample when
+    // both were present (a latent bug; a naive Changi T2 would make it 3x). Compute each voice
+    // ONCE here — exactly as the mono path precomputes in generateOutputs() — and let every
+    // consumer (Straits / Changi T1 / T2) READ these cached voltages. This fixes the double-advance
+    // and keeps all breakout terminals in lockstep off one source of truth.
+    //
+    // Semantics preserved verbatim: muted / inactive voices (i >= numPolyVoices) DO NOT call
+    // process() (gate stays frozen, as before) and read out as 0V. The guard runs the precompute
+    // only when at least one poly consumer is attached, so the pulse isn't advanced when nothing
+    // reads it (matching the old behaviour where the blocks only ran under their own `if`).
+    auto* straits  = expanderManager.cachedPolyVoiceExpander;
+    auto* changi   = expanderManager.cachedChangiExpander;
+    auto* changiT2 = expanderManager.cachedChangiT2Expander;
+    const bool anyPolyConsumer = (straits != nullptr) || (changi != nullptr) || (changiT2 != nullptr);
+
+    float polyGateV[15]   = {};
+    float polyStepV[15]   = {};
+    float polyCV[15]      = {};
+    float polyAccentV[15] = {};
+    float polySlegV[15]   = {};
+    if (anyPolyConsumer) {
+        for (int i = 0; i < 15; ++i) {
+            if (effectiveMuted || i >= (int)engine.numPolyVoices) {
+                // Skipped voice: leave arrays at 0 and DON'T advance process() (frozen gate).
+                continue;
+            }
+            float vg     = engine.voices[i].gs.process(sampleTime);
+            float vgStep = engine.voices[i].gsStep.process(sampleTime);   // STEP mirror (per voice)
+            polyGateV[i]   = vg;
+            polyStepV[i]   = vgStep;
+            polyCV[i]      = engine.voices[i].gs.currentPitchV;
+            // Accent is a poly lane: each voice fires its OWN accent (drawn per-voice in
+            // executePolyVoice), gated by the voice actually sounding.
+            polyAccentV[i] = (engine.voices[i].accented && vg > 5.f) ? 10.f : 0.f;
+            polySlegV[i]   = engine.voices[i].gs.slurMember ? vgStep : 0.f;  // SLEG: slur-masked
+        }
+    }
+
+    // 2. Straits base poly expander — three 16-channel poly cables (gate / CV / accent), plus the
+    //    STEP and STEP-LEGATO cables. ch0 = MONO voice (voice 1) ALWAYS; ch1..15 = poly voices
+    //    2..16. Cables are always 16ch wide; voices beyond numPolyVoices output gate-low / 0V.
+    //    Replaces the old East(2-8)+West(9-16) 21-individual-jack split.
     if (straits) {
         using namespace StraitsIds;
         auto& gateOut   = straits->outputs[POLY_GATE_OUT];
@@ -59,32 +100,20 @@ void OutputGenerator::drive(SequencerEngine& engine,
         stepOut.setVoltage((stepGateV   > 5.f && !effectiveMuted) ? 10.f : 0.f, 0);
         slegOut.setVoltage((stepLegatoV > 5.f && !effectiveMuted) ? 10.f : 0.f, 0);
 
-        // ch1..15 = poly voices 2..16.
+        // ch1..15 = poly voices 2..16 (read from the precomputed arrays).
         for (int i = 0; i < 15; ++i) {
             const int ch = i + 1;
-            if (effectiveMuted || i >= (int)engine.numPolyVoices) {
-                gateOut.setVoltage(0.f, ch);
-                cvOut.setVoltage(0.f, ch);
-                accentOut.setVoltage(0.f, ch);
-                stepOut.setVoltage(0.f, ch);
-                slegOut.setVoltage(0.f, ch);
-                continue;
-            }
-            float vg     = engine.voices[i].gs.process(sampleTime);
-            float vgStep = engine.voices[i].gsStep.process(sampleTime);   // STEP mirror (per voice)
-            gateOut.setVoltage(vg, ch);
-            cvOut.setVoltage(engine.voices[i].gs.currentPitchV, ch);
-            // Accent is a poly lane: each voice fires its OWN accent (drawn per-voice in
-            // executePolyVoice), gated by the voice actually sounding.
-            accentOut.setVoltage((engine.voices[i].accented && vg > 5.f) ? 10.f : 0.f, ch);
-            stepOut.setVoltage(vgStep, ch);
-            slegOut.setVoltage(engine.voices[i].gs.slurMember ? vgStep : 0.f, ch);  // SLEG: slur-masked
+            gateOut.setVoltage(polyGateV[i], ch);
+            cvOut.setVoltage(polyCV[i], ch);
+            accentOut.setVoltage(polyAccentV[i], ch);
+            stepOut.setVoltage(polyStepV[i], ch);
+            slegOut.setVoltage(polySlegV[i], ch);
         }
     }
 
-    // 3. Changi — per-voice individual mono jacks (gate/CV/accent). Index 0 = MONO voice (voice 1,
-    //    from the parent mono path, matching Straits' poly-cable ch0); 1..15 = poly voices 2..16.
-    auto* changi = expanderManager.cachedChangiExpander;
+    // 3. Changi T1 — per-voice individual mono jacks (gate/CV/accent). Index 0 = MONO voice (voice
+    //    1, from the parent mono path, matching Straits' poly-cable ch0); 1..15 = poly voices 2..16
+    //    (read from the precomputed arrays — no process() calls here anymore).
     if (changi) {
         using namespace ChangiIds;
         // index 0 = mono voice
@@ -94,17 +123,26 @@ void OutputGenerator::drive(SequencerEngine& engine,
         // indices 1..15 = poly voices 2..16 (engine.voices[0..14])
         for (int i = 0; i < 15; ++i) {
             const int out = i + 1;
-            if (effectiveMuted || i >= (int)engine.numPolyVoices) {
-                changi->outputs[GATE_OUT_0   + out].setVoltage(0.f);
-                changi->outputs[CV_OUT_0     + out].setVoltage(0.f);
-                changi->outputs[ACCENT_OUT_0 + out].setVoltage(0.f);
-                continue;
-            }
-            float vg = engine.voices[i].gs.process(sampleTime);
-            engine.voices[i].gsStep.process(sampleTime);  // STEP: advance in lockstep with gs (Changi emits no STEP jack)
-            changi->outputs[GATE_OUT_0   + out].setVoltage(vg);
-            changi->outputs[CV_OUT_0     + out].setVoltage(engine.voices[i].gs.currentPitchV);
-            changi->outputs[ACCENT_OUT_0 + out].setVoltage((engine.voices[i].accented && vg > 5.f) ? 10.f : 0.f);
+            changi->outputs[GATE_OUT_0   + out].setVoltage(polyGateV[i]);
+            changi->outputs[CV_OUT_0     + out].setVoltage(polyCV[i]);
+            changi->outputs[ACCENT_OUT_0 + out].setVoltage(polyAccentV[i]);
+        }
+    }
+
+    // 4. Changi T2 — per-voice ARTICULATION jacks (step gate / step legato). Index 0 = MONO voice
+    //    (voice 1, from the parent mono path, matching Straits' poly-cable ch0 STEP/SLEG); 1..15 =
+    //    poly voices 2..16 (read from the precomputed arrays). Mirrors Straits' STEP/SLEG cables
+    //    split per-voice, exactly as T1 mirrors GATE/CV/ACCENT.
+    if (changiT2) {
+        using namespace ChangiT2Ids;
+        // index 0 = mono voice (same masking as Straits' ch0 STEP / SLEG).
+        changiT2->outputs[STEP_GATE_OUT_0   + 0].setVoltage((stepGateV   > 5.f && !effectiveMuted) ? 10.f : 0.f);
+        changiT2->outputs[STEP_LEGATO_OUT_0 + 0].setVoltage((stepLegatoV > 5.f && !effectiveMuted) ? 10.f : 0.f);
+        // indices 1..15 = poly voices 2..16 (engine.voices[0..14])
+        for (int i = 0; i < 15; ++i) {
+            const int out = i + 1;
+            changiT2->outputs[STEP_GATE_OUT_0   + out].setVoltage(polyStepV[i]);
+            changiT2->outputs[STEP_LEGATO_OUT_0 + out].setVoltage(polySlegV[i]);
         }
     }
 }
