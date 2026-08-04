@@ -410,36 +410,62 @@ struct IntertropicalGrid : Widget {
     // Shows, for the ACTIVE scene, which global voice is seated in each of the 8 slots (rows).
     // Read-only mirror of computeSlots(activeScene): a labelled chip per occupied slot.
     void drawVoiceSlotDisplay(NVGcontext* vg) {
-        const int MV = Intertropical::Ids::MAX_VOICES_PER_SCENE;   // 8
-        const int scene = module->activeScene;
-        int8_t slotOf[Intertropical::Ids::N_VOICES];
-        module->computeSlots(scene, slotOf);
-        // invert: which voice sits in each slot
-        int voiceInSlot[8]; for (int s = 0; s < MV; ++s) voiceInSlot[s] = -1;
-        for (int v = 0; v < Intertropical::Ids::N_VOICES; ++v)
-            if (slotOf[v] >= 0 && slotOf[v] < MV) voiceInSlot[slotOf[v]] = v;
+        // Grid is dimensioned SCENES (columns) x SLOTS (rows). Show the LIVE voice->slot seating for
+        // ALL scenes at once (each column = that scene's seating, from its global-to-scene selections),
+        // with a cursor traversing across the scene columns as playback advances -- matching the
+        // global-to-scene membership grid. (Earlier this only filled the active scene's single column.)
+        const int NSC = Intertropical::Ids::N_SCENES;              // 8 scene columns
+        const int MV  = Intertropical::Ids::MAX_VOICES_PER_SCENE;  // 8 slot rows
+        const int loopLen = module->getLoopLen();
+        const int active  = module->activeScene;
+        const float colw = vsBox.size.x / NSC;
         const float rowh = vsBox.size.y / MV;
-        nvgStrokeColor(vg, nvgRGBA(0x50,0x50,0x50,0x60));
-        nvgStrokeWidth(vg, 0.5f);
-        nvgFontSize(vg, 7.f);
-        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-        for (int s = 0; s < MV; ++s) {
-            const float y = vsBox.pos.y + s*rowh;
-            // slot label (left)
-            nvgFillColor(vg, nvgRGBA(0x80,0x80,0x80,0xff));
-            char sb[8]; snprintf(sb, sizeof(sb), "S%d", s + 1);
-            nvgText(vg, vsBox.pos.x + 1.f, y + rowh/2, sb, nullptr);
-            const int v = voiceInSlot[s];
-            if (v < 0) continue;   // empty slot this scene
-            // voice chip in the slot's colour
-            NVGcolor col = voiceColour(s);
+        nvgFontSize(vg, 6.f);
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+
+        // cursor: highlight the active scene's whole column (traverses live as scenes advance)
+        {
+            const float cx = vsBox.pos.x + active*colw;
             nvgBeginPath(vg);
-            nvgRoundedRect(vg, vsBox.pos.x + mm2px(7.f), y + rowh*0.15f, mm2px(10.f), rowh*0.7f, 1.5f);
-            nvgFillColor(vg, col);
+            nvgRect(vg, cx, vsBox.pos.y, colw, vsBox.size.y);
+            nvgFillColor(vg, nvgRGBA(0xff,0xff,0xff,0x18));
             nvgFill(vg);
-            nvgFillColor(vg, nvgRGBA(0x0a,0x0a,0x0a,0xff));
-            char vb[8]; snprintf(vb, sizeof(vb), "v%d", v + 1);
-            nvgText(vg, vsBox.pos.x + mm2px(8.f), y + rowh/2, vb, nullptr);
+        }
+        // faint grid lines
+        nvgStrokeColor(vg, nvgRGBA(0x50,0x50,0x50,0x50));
+        nvgStrokeWidth(vg, 0.5f);
+        for (int c = 0; c <= NSC; ++c) {
+            const float x = vsBox.pos.x + c*colw;
+            nvgBeginPath(vg); nvgMoveTo(vg, x, vsBox.pos.y); nvgLineTo(vg, x, vsBox.pos.y + vsBox.size.y); nvgStroke(vg);
+        }
+        for (int r = 0; r <= MV; ++r) {
+            const float y = vsBox.pos.y + r*rowh;
+            nvgBeginPath(vg); nvgMoveTo(vg, vsBox.pos.x, y); nvgLineTo(vg, vsBox.pos.x + vsBox.size.x, y); nvgStroke(vg);
+        }
+
+        // each scene column: compute that scene's voice->slot seating and draw a chip per occupied slot
+        int8_t slotOf[Intertropical::Ids::N_VOICES];
+        for (int c = 0; c < NSC; ++c) {
+            const bool inLoop = (c < loopLen);
+            module->computeSlots(c, slotOf);
+            int voiceInSlot[8]; for (int s = 0; s < MV; ++s) voiceInSlot[s] = -1;
+            for (int v = 0; v < Intertropical::Ids::N_VOICES; ++v)
+                if (slotOf[v] >= 0 && slotOf[v] < MV) voiceInSlot[slotOf[v]] = v;
+            const float x = vsBox.pos.x + c*colw;
+            for (int s = 0; s < MV; ++s) {
+                const int v = voiceInSlot[s];
+                if (v < 0) continue;                 // empty slot in this scene
+                const float y = vsBox.pos.y + s*rowh;
+                NVGcolor col = voiceColour(s);
+                if (!inLoop) col.a *= 0.35f;         // scenes beyond the loop length: dimmed
+                nvgBeginPath(vg);
+                nvgRoundedRect(vg, x + colw*0.12f, y + rowh*0.15f, colw*0.76f, rowh*0.7f, 1.5f);
+                nvgFillColor(vg, col);
+                nvgFill(vg);
+                nvgFillColor(vg, nvgRGBA(0x0a,0x0a,0x0a,0xff));
+                char vb[8]; snprintf(vb, sizeof(vb), "%d", v + 1);
+                nvgText(vg, x + colw/2, y + rowh/2, vb, nullptr);
+            }
         }
     }
 };
