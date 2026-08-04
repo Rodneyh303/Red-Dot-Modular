@@ -65,3 +65,19 @@ approx write sites | Correct? = does the current sampling match what it feeds (Y
 2. Audit each "Correct?" cell against the running build (esp. the ? and FIX rows).
 3. For confirmed-16th-only reads that show in the profiler, gate behind sixteenthEdge.
 4. Decide PPQN cap.
+
+## PPQN cap + triplet decision (Rodney, settled-for-now)
+- CURRENT design: note values down to 1/8 triplet and 1/32 straight are selectable, but they QUANTISE
+  to land on the 1/16 grid (the pattern advances on sixteenthEdge; sub-16th values snap to 16th
+  positions). 1/16 is deliberately BAKED IN -- it's core to the meloDICER inspiration. Keep as-is.
+- 24 PPQN is the CORRECT (not compromise) resolution: 24 = 2^3 x 3, the smallest PPQN dividing cleanly
+  into both binary (4/8/16) and ternary (3/6/12) -- the MIDI-standard reason. It already carries every
+  musical subdivision incl. 1/16-triplet (4 pulses) and even 1/32-triplet (2 pulses) exactly; first
+  thing it CAN'T represent is 1/64 (1.5 pulses), which is past useful. So: cap PPQN at 24 (higher only
+  buys gs.tick gate-DURATION precision nobody needs -> wasted per-pulse cost).
+- MAYBE-LATER: 1/16 triplets + 1/32 straight as REAL (non-16th-snapped) subdivisions. This is a
+  STEP-MODEL feature (pattern advances on a triplet/32nd edge), NOT a PPQN change -- the 24 grid already
+  has the pulses. Open design Q when actioned: how a triplet subdivision coexists with the 16-step-per-
+  bar model (global mode vs PER-LANE triplet flag [polyrhythmic, fits the polymetric story] vs per-step
+  ratchet). Changes step-count-per-bar -> ripples into pattern length + Lantern grid width + scene/repeat.
+  Deferred; 1/16-snapped is the design for now.
