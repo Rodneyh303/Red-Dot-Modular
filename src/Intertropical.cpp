@@ -5,6 +5,7 @@
 #include "Intertropical.hpp"
 #include "Monsoon.hpp"
 #include "MonsoonStraitsExpander.hpp"   // complete type for cachedPolyVoiceExpander->outputs
+#include "ui/IntertropicalPairing.hpp"  // assignPairId (shared pairing mechanism)
 #include "ui/SvgPanelKit.hpp"
 #include "ui/GoldPolyPort.hpp"
 #include "ui/DimmableTrimpot.hpp"
@@ -40,6 +41,26 @@ Intertropical::Intertropical() {
 }
 
 void Intertropical::process(const ProcessArgs& args) {
+    // ── One-shot pair-id resolution (runs here, NOT onAdd) ───────────────────────
+    // onAdd() executes while Rack holds the engine mutex during module insertion;
+    // getModuleIds() re-locks it => deadlock/hang. process() is the safe place: assign
+    // exactly once. Fresh/zero id => take the lowest unused. A pasted/duplicated module
+    // carries its origin's id via JSON; if that id now clashes with another present
+    // instance, re-assign so the copy gets its own number.
+    if (!pairChecked) {
+        pairChecked = true;
+        bool clash = false;
+        if (APP && APP->engine) {
+            for (int64_t id : APP->engine->getModuleIds()) {
+                rack::Module* m = APP->engine->getModule(id);
+                if (!m || m == this) continue;
+                if (auto* it = dynamic_cast<Intertropical*>(m))
+                    if (it->pairId == pairId) { clash = true; break; }
+            }
+        }
+        if (pairId <= 0 || clash) pairId = redDot::assignPairId(this);
+    }
+
     Monsoon* host = redDot::findMonsoonEitherSide(this);
     if (!host) {
         for (int o = 0; o < Ids::NUM_OUTPUTS; ++o) outputs[o].setChannels(0);
@@ -349,6 +370,25 @@ struct IntertropicalGrid : Widget {
 
         drawSlotOutputGrid(vg);
         drawVoiceSlotDisplay(vg);
+        drawPairBadge(vg);
+    }
+
+    // --- Pair identity badge (top-left): number + pair colour, so a consumer set to
+    // "Follow #N" can be matched to THIS instance by eye. See ui/IntertropicalPairing.hpp. ---
+    void drawPairBadge(NVGcontext* vg) {
+        const int id = module->pairId;
+        if (id <= 0) return;
+        const float bx = mm2px(3.0f), by = mm2px(3.0f), r = mm2px(3.0f);
+        NVGcolor col = redDot::pairColour(id);
+        nvgBeginPath(vg);
+        nvgCircle(vg, bx + r, by + r, r);
+        nvgFillColor(vg, col);
+        nvgFill(vg);
+        nvgFillColor(vg, nvgRGBA(0x0a,0x0a,0x0a,0xff));
+        nvgFontSize(vg, mm2px(3.2f));
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+        char b[8]; snprintf(b, sizeof(b), "%d", id);
+        nvgText(vg, bx + r, by + r + mm2px(0.2f), b, nullptr);
     }
 
     // --- Slot->output routing grid (bottom-right, 8x8, GLOBAL, interactive) ---

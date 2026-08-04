@@ -37,6 +37,7 @@ extern rack::Model* modelMonsoonStraitsExpander;
 extern rack::Model* modelMonsoonCausewayPolyExpander;
 extern rack::Model* modelMonsoonChangiExpander;
 extern rack::Model* modelMonsoonChangiT2Expander;
+extern rack::Model* modelMonsoonChangiT3Expander;
 extern rack::Model* modelMonsoonShophouseExpander;
 extern rack::Model* modelMonsoonStraitsSands;
 extern rack::Model* modelMonsoonDeepStraitsSandsEast;

@@ -87,6 +87,16 @@
       ]
     },
     {
+      "slug": "ChangiT3",
+      "name": "Changi T3",
+      "description": "Intertropical arranged-output breakout \u2014 8 channels \u00d7 gate/CV/accent/step/step-legato (40 jacks), organized by channel; CV post-transpose. Pairs with an Intertropical.",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Random"
+      ]
+    },
+    {
       "slug": "Shophouse",
       "name": "Shophouse",
       "description": "Scale expander \u2014 4-front scale list, click-a-shutter root, boundary-quantised modulation, Conservation lock",

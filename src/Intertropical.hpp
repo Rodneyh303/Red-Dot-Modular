@@ -194,6 +194,17 @@ struct Intertropical : Module {
     int  getLoopLen() const { return loopLen; }
     void setLoopLen(int n) { loopLen = (uint8_t)rack::math::clamp(n, 1, Ids::N_SCENES); }
 
+    // ---- pairing identity (persisted) ----
+    // Small pair number (1..N), self-assigned on add (lowest unused across all
+    // Intertropicals). Consumers (Lantern, Changi T3) can "follow #N" to bind to
+    // THIS instance regardless of rack position. 0 = unassigned (assigned lazily).
+    // See ui/IntertropicalPairing.hpp.
+    int   pairId        = 0;
+    // Runtime-only (NOT persisted): guards the one-shot pairId resolution done in process().
+    // Assignment can't happen in onAdd() — Rack holds the engine mutex during module insertion,
+    // and getModuleIds() re-locks it => deadlock. process() runs where getModuleIds is safe.
+    bool  pairChecked   = false;
+
     // ---- live playback state (NOT persisted  derived from host phase) ----
     int   activeScene   = 0;     // which scene is currently sounding
     int   repeatPos     = 0;     // 0..repeats[activeScene]-1  which repeat we're on
@@ -212,6 +223,7 @@ struct Intertropical : Module {
         for (int s = 0; s < Ids::N_SCENES; ++s) json_array_append_new(r, json_integer(repeats[s]));
         json_object_set_new(root, "repeats", r);
         json_object_set_new(root, "loopLen", json_integer(loopLen));
+        json_object_set_new(root, "pairId", json_integer(pairId));
         json_t* ss = json_array();
         for (int s = 0; s < Ids::N_SCENES; ++s)
             for (int v = 0; v < Ids::N_VOICES; ++v)
@@ -231,6 +243,7 @@ struct Intertropical : Module {
             for (int s = 0; s < Ids::N_SCENES; ++s)
                 if (json_t* v = json_array_get(r, s)) repeats[s] = (uint8_t)json_integer_value(v);
         if (json_t* ll = json_object_get(root, "loopLen")) loopLen = (uint8_t)json_integer_value(ll);
+        if (json_t* pid = json_object_get(root, "pairId")) pairId = (int)json_integer_value(pid);
         // New split model.
         if (json_t* ss = json_object_get(root, "sceneSlots")) {
             int idx = 0;

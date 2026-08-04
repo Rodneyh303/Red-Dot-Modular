@@ -69,27 +69,10 @@
 #include "Intertropical.hpp"   // IT-source mode: read routed output via inverse map
 #include "ui/RedScrew.hpp"
 #include "ui/VisualExpanderHelpers.hpp"   // redDot::findMonsoonEitherSide
+#include "ui/IntertropicalPairing.hpp"    // shared pairing: resolveFollowedIT, findIntertropicalEitherSide
 #include <string>
 #include <algorithm>
 #include <cmath>
-
-// Find an Intertropical on either side (mirrors redDot::findMonsoonEitherSide). Walks right then
-// left, hopping intermediates, stopping at maxDepth. Used only in IT-source mode.
-static inline Intertropical* findIntertropicalEitherSide(rack::Module* self, int maxDepth = 12) {
-    using rack::Module;
-    if (!self) return nullptr;
-    Module* curr = self->rightExpander.module;
-    for (int d = 0; curr && d < maxDepth; ++d) {
-        if (auto* m = dynamic_cast<Intertropical*>(curr)) return m;
-        curr = curr->rightExpander.module;
-    }
-    curr = self->leftExpander.module;
-    for (int d = 0; curr && d < maxDepth; ++d) {
-        if (auto* m = dynamic_cast<Intertropical*>(curr)) return m;
-        curr = curr->leftExpander.module;
-    }
-    return nullptr;
-}
 
 using namespace rack;
 
@@ -131,6 +114,10 @@ struct Lantern : Module {
     // the engine read (richer: real note-type, articulation, colour the jacks can't carry). Off by
     // default; persisted so a debug session survives reload, but never the default experience.
     bool debugRawJacks = false;
+    // Pairing: which Intertropical this Lantern follows. 0 = Auto (nearest either-side, the
+    // historical behaviour); >0 = the Intertropical whose pairId matches, anywhere in the rack.
+    // See ui/IntertropicalPairing.hpp. Persisted.
+    int followIT = 0;
     int zoomMode   = 0;   // 0=x1 1=x2 2=x4
     int followMode = 1;   // 0=Off 1=On
     int rollView   = 0;   // 0=Grid (lane) view, 1=Piano roll
@@ -196,6 +183,7 @@ struct Lantern : Module {
         json_object_set_new(root, "rollView",   json_integer(rollView));
         json_object_set_new(root, "rollScroll", json_integer(rollScroll));
         json_object_set_new(root, "rollColor",  json_integer(rollColor));
+        json_object_set_new(root, "followIT",   json_integer(followIT));
         return root;
     }
     void dataFromJson(json_t* root) override {
@@ -209,6 +197,7 @@ struct Lantern : Module {
         if (json_t* j = json_object_get(root, "debugRawJacks")) debugRawJacks = json_boolean_value(j);
         rdInt("followMode", followMode); rdInt("rollView", rollView);
         rdInt("rollScroll", rollScroll); rdInt("rollColor", rollColor);
+        rdInt("followIT", followIT);
     }
 
     Lantern() {
@@ -232,7 +221,7 @@ struct Lantern : Module {
         // map row -> global voice (output channel r shows the voice routed to output r). Monsoon mode
         // uses identity (row 0 = mono/V1, row v+1 = poly voice v). The rest of the record path is
         // shared: we read the SAME engine voice state, only the row it lands in changes.
-        Intertropical* it = (sourceMode == 1) ? findIntertropicalEitherSide(this) : nullptr;
+        Intertropical* it = (sourceMode == 1) ? redDot::resolveFollowedIT(this, followIT) : nullptr;
         const int scene = it ? it->activeScene : 0;
 
         int step = eng.stepIndex;
@@ -1228,6 +1217,23 @@ struct LanternWidget : ModuleWidget {
         menu->addChild(createCheckMenuItem("Intertropical (routed output)", "",
             [m]() { return m->sourceMode == 1; },
             [m]() { m->sourceMode = 1; }));
+        // Pairing: which Intertropical to follow. Auto = nearest either-side (legacy);
+        // else bind to a specific pair number anywhere in the rack.
+        {
+            std::vector<int> ids = redDot::presentPairIds();
+            menu->addChild(createSubmenuItem("Follow Intertropical",
+                (m->followIT == 0) ? "Auto" : rack::string::f("#%d", m->followIT),
+                [m, ids](Menu* sub) {
+                    sub->addChild(createCheckMenuItem("Auto (nearest)", "",
+                        [m]() { return m->followIT == 0; },
+                        [m]() { m->followIT = 0; }));
+                    for (int id : ids) {
+                        sub->addChild(createCheckMenuItem(rack::string::f("Intertropical #%d", id), "",
+                            [m, id]() { return m->followIT == id; },
+                            [m, id]() { m->followIT = id; }));
+                    }
+                }));
+        }
         menu->addChild(new MenuSeparator);
         menu->addChild(createMenuLabel("Debug"));
         menu->addChild(createCheckMenuItem("Verify vs raw jacks (IT-source)", "",

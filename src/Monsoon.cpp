@@ -24,6 +24,7 @@
 #include "MonsoonCausewayPolyExpander.hpp"
 #include "MonsoonChangiExpander.hpp"
 #include "MonsoonChangiT2Expander.hpp"
+#include "MonsoonChangiT3Expander.hpp"
 #include "MonsoonShophouseExpander.hpp"
 // West retired (Straits redesign): #include "MonsoonStraitWestExpander.hpp"
 //#include "MonsoonStraitsSands.hpp"            // NEW (Macro): global DNA controls
@@ -1004,6 +1005,7 @@ void init(rack::Plugin* p) {
 	p->addModel(modelMonsoonCausewayPolyExpander);
 	p->addModel(modelMonsoonChangiExpander);
 	p->addModel(modelMonsoonChangiT2Expander);
+	p->addModel(modelMonsoonChangiT3Expander);
 	p->addModel(modelMonsoonShophouseExpander);
 	p->addModel(modelLantern);                       // Lantern note-output visualiser
 	// West retired (Straits redesign): p->addModel(modelMonsoonStraitWestExpander);
