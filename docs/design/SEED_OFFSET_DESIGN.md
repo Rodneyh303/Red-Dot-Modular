@@ -110,3 +110,42 @@ don't sweep coarse tune to play vibrato.
 - UNIFIED across rhythm+melody (both streams, lockstep) as before.
 - Panel: BASE OFFSET knob + MOD OFFSET CV jack (near SEED). Optionally one shared knob that acts as base
   with the jack as mod -- but two clearly-labelled controls is cleaner for the canon workflow.
+
+## SIMPLIFICATION (decided): base offset at reset only -- NO CV mod of counter
+Rethink prompted by: "we already have gates to move the counter back/forth; does CV mod add anything?
+also the dice-scrub probability range depends on the counter." Conclusion: CV mod of the counter is
+NOT worth building. The feature collapses to a static base offset applied at reset.
+
+### Why NOT CV-mod the counter
+- REDUNDANT with existing gates: forward dice (+1), backward dice (-1, reversible), and dice-scrub
+  already give a complete, COHERENT vocabulary for MOVING the counter -- discrete, intentional,
+  musically-timed integer steps. CV mod is a second, fuzzier way to do the same thing.
+- ARBITRARY mapping: voltage->counter-position has no natural semantics (what position is 2.3V?), and
+  CV noise = position jumps. Gates have unambiguous +1/-1 semantics; CV position does not.
+- COLLIDES WITH SCRUB RANGE: the dice-scrub's probability range is defined RELATIVE to the current
+  counter position. If CV is ALSO moving the counter, the scrub range moves too, and the two interact
+  unpredictably -- two owners of the same coordinate with different semantics. This is complexity that
+  produces "can't predict what it does", not "navigation".
+=> Do NOT build CV mod of the counter. The gates already own the counter-MOVEMENT axis coherently; CV
+mod would be a colliding second owner.
+
+### What the feature actually IS: base offset at reset (static origin displacement)
+NOT counter movement -- a static displacement of the ORIGIN. "When everything resets to 0, this Monsoon
+resets to baseOffset instead." A one-time structural setting, latched at reset, establishing the canon
+interval. Does not move during play, no scrub-range interaction, no voltage mapping.
+- effectiveOrigin = baseOffset (applied when the reset zeros the counter: counter <- baseOffset, not 0).
+- Static knob, range +-32/+-64, reproducible, part of patch identity.
+- The crab workflow: reset (sync; each Monsoon's counter <- its baseOffset) -> both advance in lockstep
+  via the NORMAL clock, staying baseOffset apart -> perform the crossing with the EXISTING dice-scrub
+  crossfade. No new modulation surface.
+
+### Net design (much smaller than the earlier param+CV version)
+- BASE OFFSET knob, applied at reset (counter <- baseOffset instead of 0). Latched, reproducible. DONE
+  = the whole feature.
+- Counter MOVEMENT during play = existing gates (fwd/back dice, scrub). Already built.
+- NO mod-offset CV, NO counter CV input. Rejected above.
+- Still UNIFIED across rhythm+melody (both counters <- baseOffset at reset).
+- Selectable scrub distance (6/8/10/12) remains a separate, independently-useful companion (shapes the
+  scrub/crab period) -- that's about the SCRUB gesture, not counter CV, so it stands.
+Impl: on reset trigger, set rhythmDrawCtr = melodyDrawCtr = baseOffset (instead of 0). One param, one
+line in the reset path. That's it.
