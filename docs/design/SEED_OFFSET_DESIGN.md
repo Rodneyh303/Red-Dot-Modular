@@ -149,3 +149,62 @@ interval. Does not move during play, no scrub-range interaction, no voltage mapp
   scrub/crab period) -- that's about the SCRUB gesture, not counter CV, so it stands.
 Impl: on reset trigger, set rhythmDrawCtr = melodyDrawCtr = baseOffset (instead of 0). One param, one
 line in the reset path. That's it.
+
+## EXPANSION (open): three-stream offsets + where this lives
+Rodney: prefer SEPARATE offsets for rhythm and melody; Change Alley RNG will also use Philox and MAY
+want its own offset. So potentially THREE (or more) offsets: rhythm, melody, CA/correlation. Home
+undecided (Monsoon vs revamped Raffles vs CA) -- documented as a direction, not a settled decision.
+
+### Three-stream offsets (the principled design)
+The seed derivation already makes three INDEPENDENT keyed streams: rhythmKey=S, melodyKey=S+1,
+caKey=S+2. Independent streams => independent offsets is the CORRECT match (unified was just the simple
+choice). Same primitive (base offset at reset) applied per stream:
+- rhythmOffset : rhythm counter <- rhythmOffset at reset
+- melodyOffset : melody counter <- melodyOffset at reset
+- caOffset     : CA correlation counter <- caOffset at reset (OPTIONAL, default 0)
+Not 3x the complexity -- the same one-line-at-reset primitive on each of three streams that already
+exist independently.
+
+### What separate offsets unlock (musically real, not just tidy)
+- rhythmOffset != melodyOffset = a voice whose RHYTHM is drawn from one stream point and MELODY from
+  another. Natural rhythm/melody DECORRELATION -- crab-canon the rhythm while the melody stays aligned,
+  or vice versa. Independent contrapuntal treatment of the two dimensions.
+- caOffset = offset the CORRELATION structure independently of content. Hold content fixed, scrub the
+  correlation; or canon the correlation pattern itself. A genuinely new axis.
+- CA "may or may not want offset": for a crab you usually want correlation SHARED + aligned (caOffset=0
+  even when rhythm/melody are offset). But offsetting it is a valid texture. So caOffset EXISTS but
+  defaults 0 / optional -- least-used of the three but real. (Rodney's instinct to make it separately
+  controllable, not forced, is right.)
+
+### WHERE IT LIVES -- open question (three candidates)
+The offsets address Philox counters that live in DIFFERENT modules: rhythm/melody in PatternEngine
+(inside Monsoon); CA correlation in Change Alley. So no single owner is obvious.
+- MONSOON: natural for rhythm+melody (counters are here) but CA offset would have to reach into the CA
+  expander; Monsoon panel already dense. Fits 2 of 3.
+- CHANGE ALLEY: natural for caOffset (its counter) + thematically on-brand (CA is about correlation/
+  probability relationships) but rhythm/melody counters aren't here. Fits 1 of 3.
+- REVAMPED RAFFLES (strongest candidate to evaluate): Raffles is being cleaned up anyway (trial
+  removal). It could become the "probability-navigation / seed & offset" CONTROLLER -- owning seed +
+  the three offsets + selectable scrub distance, pushing to Monsoon (rhythm/melody) and CA
+  (correlation). Why compelling:
+    * THEMATIC FIT: Raffles = the raffle / the draw; seed+offset IS draw addressing. The name already
+      means this.
+    * Being revamped anyway -> room for a clear new PURPOSE instead of a diminished old one.
+    * CENTRALISES the offset system in one module instead of scattering knobs across Monsoon + CA.
+    * Gives the navigable-probability-space HEADLINE a physical home -- currently diffuse (a property
+      of the counter); a dedicated module makes it a thing you can see/touch. Better for pitch + user
+      understanding.
+  Caution: expands Raffles from "cleanup" to "redesign as probability-navigation controller" -- more
+  work, and needs seed+offset+scrub-distance concepts stable first.
+
+### OPEN QUESTIONS to resolve before committing a home
+1. Does Raffles' current Monsoon connection support pushing offset values to BOTH Monsoon AND Change
+   Alley? Or does it need the rack-wide pairing scan (PAIRING_CROSS_ROW_NOTE) to reach CA?
+2. Is turning Raffles into the probability-navigation module consistent with what Raffles should BE, or
+   does it have a different identity worth keeping?
+3. Does caOffset interact with the shared-CA (Option A) owner/reader model? If a CA is shared by two
+   Monsoons, whose caOffset wins? (Likely the owner's -- consistent with applyPendingTransforms owner
+   rule -- but confirm.)
+
+STATUS: direction documented, home OPEN. "Still open but we will find the right home." Decide when the
+seed/offset concepts are stable and Raffles' revamp scope is being set.
