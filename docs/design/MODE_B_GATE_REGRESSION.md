@@ -137,3 +137,36 @@ Restore Mode B gate-slaving so gate duration follows external Gate 1:
 REGRESSION CONFIRMED: this is why "Mode B worked before" -- the slaving block was live, then commented
 during a refactor (likely the g1Trig rename), removing gate-follows-external behaviour. Priority: this is
 a real ship-affecting regression for anyone driving Monsoon from external gates.
+
+## STILL 1/4 NOTES after CC's fix -- the override is at the WRONG LAYER
+CC's fix (87eaaac) overrides GATE_OUTPUT voltage to follow Gate 1. Well-reasoned, but STILL 1/4 notes
+because it patches the OUTPUT VOLTAGE, not the internal NOTE-LENGTH STATE. Two reasons it can't work alone:
+1. LANTERN READS gs.gateHeld / gs.holdRemain (the INTERNAL note-length state), NOT GATE_OUTPUT
+   (Lantern.cpp:42-56). So overriding the output voltage doesn't change what Lantern shows.
+2. The internal hold is still 1/4-note everywhere (STEP, poly, CV envelope all read gs, not GATE_OUTPUT).
+
+ROOT of the 1/4: the controller passes noteVal = 2.f (MonsoonModeController.cpp:182). NOTE_VALUES index
+2 = 1/4 note = 4 sixteenth-steps of hold (NoteValues.hpp:21). So gs.holdRemain = 4 steps -> every note
+spans ~4 external gates -> long notes, rest/legato swamped. The 1/4 is BAKED INTO gs at triggerNote(...,
+nvIdx), which Lantern + all outputs read.
+
+## THE ACTUAL FIX: shorten the internal note length in Mode B (state layer), THEN CC's output-follow works
+Change the controller's Mode B noteVal from 2.f (1/4 = 4 steps) to 6.f (1/16 = ONE step):
+- NoteValues.hpp index 6 = 1/16 = 0.0625 whole = 16*0.0625 = 1 sixteenth-step hold.
+- gs.holdRemain then expires within ONE step, before the next external gate -> each gate rise produces a
+  FRESH single-step note, no welding across gates. This is what "gate follows external Gate 1" needs at
+  the STATE level (not just the output voltage).
+- MonsoonModeController.cpp:182: change `2.f,` -> `6.f,` (and update the comment: not "1/4 neutral" but
+  "shortest single-step note so the internal hold never spans gates; the external gate is the duration").
+- KEEP CC's GATE_OUTPUT-follow block -- with a 1-step internal note it now behaves correctly (rest=low,
+  legato/tie=bridge high, single=follow Gate 1). The two fixes are complementary: short internal note
+  (so Lantern/STEP/poly/CV see gate-width notes) + output-follow (so the mono GATE jack tracks Gate 1).
+
+VERIFY (Rack): external gate into G1, Mode B. Lantern shows notes at GATE WIDTH (not 1/4). REST punches
+holes. LEGATO ties across gates. Note-length/variation knobs have NO effect. Fast gates -> fast short
+notes (not one long note).
+
+NOTE if 1/16 still too long for very fast gates: the truly correct version sets gs.holdRemain from the
+EXTERNAL GATE WIDTH (measure Gate 1 high-duration) rather than any fixed nvIdx -- but 1/16 single-step is
+the simple fix that matches "gate drives the step" (one gate = one step = one 1/16 note by definition of
+the step grid). Try 6.f first; only go to gate-width-measured hold if fast-gate tests need it.
