@@ -208,3 +208,41 @@ The offsets address Philox counters that live in DIFFERENT modules: rhythm/melod
 
 STATUS: direction documented, home OPEN. "Still open but we will find the right home." Decide when the
 seed/offset concepts are stable and Raffles' revamp scope is being set.
+
+## OWNERSHIP: shared CA creates a "which Raffles" conflict -> offset-lives-with-its-key
+Rodney: with a SHARED Change Alley, a CA offset on Raffles hits a "which Raffles?" problem -- two
+Monsoons => two Raffles, each wanting to set the ONE shared CA's offset. The shared CA can only be at
+one correlation-stream position, so two Raffles pushing different caOffsets is a genuine contradiction.
+
+### The offsets have DIFFERENT ownership topologies (the key realisation)
+- RHYTHM offset + MELODY offset = PER-MONSOON. Each Monsoon owns its rhythm/melody counters, so each
+  Monsoon's Raffles setting its own rhythm/melody offset is unambiguous. NO conflict -- and different
+  values are exactly what the crab WANTS (the canon interval).
+- CA offset = PER-CA, and the CA may be SHARED. Its offset is a property of the shared RESOURCE, not of
+  either Monsoon. A per-Monsoon Raffles owning it => the "which Raffles" conflict.
+
+### Resolution: CA offset lives on the CHANGE ALLEY, not on Raffles
+Put the CA offset on the CA itself (where its caKey counter lives). Then: one CA, one caOffset, no
+ambiguity. Two Monsoons sharing the CA both read the same correlation at the same offset -- which is
+what "shared" MEANS. Raffles isn't in the loop for the CA offset at all, so "which Raffles" dissolves.
+Consistent with the existing shared-CA rule (applyPendingTransforms owner-only; readers read): caOffset
+is the CA's own state, set on the CA, read by whoever's paired.
+
+### Governing principle: OFFSET-LIVES-WITH-ITS-KEY
+Seed derivation already puts the keys in different modules: rhythmKey/melodyKey are Monsoon's; caKey is
+the CA's. So the OFFSETS living in the same places is consistent -- offset lives with its key. Trying to
+put all three offsets on Raffles would separate the CA offset from the CA key, which is EXACTLY what
+creates "which Raffles". Keeping offset+key together makes the conflict evaporate.
+
+### Refined home (partially answers the earlier open question)
+- Raffles (or Monsoon) = the PER-MONSOON navigation controller: rhythm + melody offsets for ITS Monsoon.
+  No sharing conflict.
+- Change Alley = owns the CORRELATION offset (caOffset). One per CA; shared CAs inherit it.
+So Raffles is the per-VOICE navigator, the CA owns correlation addressing. Arguably MORE coherent than
+one module owning all three -- each offset sits where its state actually lives.
+
+### Remaining subtlety (note, don't solve now)
+Per-Monsoon offset ownership means YOU maintain any cross-Monsoon offset RELATIONSHIP by hand (set two
+Raffles to related values); the system doesn't enforce it. For the crab this is CORRECT (you want
+explicit control of the interval). Just be clear: per-Monsoon = manual cross-instance relationship,
+which is the same "patch the relationship you want" freedom as everywhere else.
