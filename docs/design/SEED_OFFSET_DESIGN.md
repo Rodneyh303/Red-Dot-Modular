@@ -246,3 +246,35 @@ Per-Monsoon offset ownership means YOU maintain any cross-Monsoon offset RELATIO
 Raffles to related values); the system doesn't enforce it. For the crab this is CORRECT (you want
 explicit control of the interval). Just be clear: per-Monsoon = manual cross-instance relationship,
 which is the same "patch the relationship you want" freedom as everywhere else.
+
+## RESET OWNERSHIP (shared CA) + BUILD ORDER
+
+### Reset ownership: shared CA applies caOffset on the OWNER Monsoon's reset only
+Problem (Rodney): if caOffset is applied AT RESET and the CA is shared, WHOSE reset does the CA take?
+Two Monsoons can reset at different times / from different sources -- the CA can't apply "at reset"
+without knowing which reset is authoritative.
+Resolution: the CA takes its reset (and applies caOffset) from the OWNER Monsoon ONLY -- the same
+Monsoon that calls applyPendingTransforms. Reader Monsoons' resets do NOT touch the shared CA's offset.
+This is NOT a new rule -- it extends the existing owner/reader rule to cover reset. The CA only ever
+listens to ONE Monsoon (its owner), so "which reset" has a single unambiguous answer; no arbitration
+needed. Reader Monsoons still reset their OWN rhythm/melody counters on their own resets; only the
+SHARED correlation resets with its owner. For a synced crab you fire the resets together anyway.
+Rule: shared CA reset/caOffset = OWNER Monsoon's reset; readers ignored by the CA. (Same owner as
+applyPendingTransforms.)
+
+### BUILD ORDER: offset feature BEFORE shared CA (dependency-correct)
+The per-Monsoon offset feature (rhythm/melody, base-at-reset) has NO dependency on shared CA:
+- works on a SINGLE Monsoon, needs no CA, delivers crab-canon-today via the existing dice-scrub.
+- self-contained, testable in isolation, immediately useful.
+Shared CA (Option A) is heavier: needs the rack-wide scan + owner/reader arbitration + the reset-
+ownership rule above, AND the caOffset it introduces depends on all that machinery.
+So build offset FIRST:
+1. per-Monsoon rhythm/melody offsets working + tested standalone -> crab-today path lights up with no
+   shared-CA complexity.
+2. shared CA later ADDS caOffset as one more instance of an ALREADY-PROVEN offset pattern (+ the
+   owner/reset arbitration) -- not inventing offset and sharing simultaneously.
+3. reset-ownership ambiguity exists ONLY for the shared CA, so it's naturally deferred to that build;
+   the per-Monsoon offset has no reset-ownership ambiguity (each Monsoon trivially owns its own reset).
+Dependency structure: offset (per-Monsoon) = zero deps = FIRST. Shared CA = depends on pairing scan +
+introduces caOffset/reset-ownership = SECOND, on top of the proven offset mechanism.
+(Supersedes any implication that shared-CA and offset are the same work item -- they're sequenced.)
