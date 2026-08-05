@@ -200,3 +200,65 @@ pitches ARE (Scalar via its quantize outs, or a Shophouse-microtonal tuning load
 Microtonal stays focused on PROBABILISTIC GENERATION over N degrees; something else owns the tuning.
 More modular, more on-brand (composition of focused modules). DECIDE when actioned: self-contained
 Scala loader vs consume-upstream-tuning. Leaning consume-upstream.
+
+## SCALES WITHIN TUNINGS (design clarification -- post-library, if a Scala-reading Shophouse is built)
+Hypothetical: a Shophouse that reads Scala (.scl) tunings. How do SCALES work WITHIN a TUNING? This is
+two levels of structure that 12-TET conflates (because in 12-TET the tuning is fixed + invisible).
+
+### The layering: scale subset-of tuning subset-of octave
+- TUNING = the set of available pitches/octave + their exact cents (the SUPERSET, everything you COULD
+  play). 12-TET tuning = the 12 chromatic semitones. A .scl = whatever it defines (Pelog ~7, a shruti
+  tuning ~22, an EDO = N equal steps).
+- SCALE = a SELECTED SUBSET of the tuning's pitches (the mode/raga/key actually in use). "C major" =
+  7 of the 12. A Pelog pathet = 5 of the 7 Pelog pitches.
+Current 12-TET system = tuning fixed (always 12) + scale selectable (the mask). A Scala Shophouse makes
+the TUNING itself selectable, and the scale is a subset WITHIN it.
+
+### Mechanism = the N-bit mask generalisation (same as the 12-TET audit, from the scales angle)
+Current scale system = a 12-BIT MASK (MonsoonScaleManager, bits 0-11). Generalise:
+- Tuning defines N degrees (N = the loaded .scl's pitch count, <=24).
+- Scale = an N-BIT MASK, one bit per tuning degree -- exactly parallel to today's 12-bit mask, N wide.
+- "Select/deselect keys" (VCV Scalar's model) = toggling bits in the N-bit mask.
+Conceptually NOTHING new: "mask selects scale degrees from the available pitches" already exists; the
+available pitches just go from a fixed 12 to a tuning-defined N. The scale-mask concept survives intact.
+
+### What are the "scales" when the tuning isn't 12-TET? (the harder question)
+Named 12-TET scales (Major/Dorian/...) DON'T transfer -- "Dorian" is a 12-TET concept, meaningless in
+7-pitch Pelog or 22-shruti. Three options:
+- A. PURE MANUAL selection (Scalar's model): no named scales for custom tunings; user enables/disables
+  degrees by hand. Simple, fully general, loses named convenience. (Scalar is a TUNING tool, not a
+  scale library.)
+- B. TUNING-SPECIFIC scale libraries: each tuning ships its OWN named scales (Pelog with its pathets,
+  a raga tuning with named ragas). Richer + culturally authentic, but requires per-tuning curation +
+  domain knowledge.
+- C. HYBRID (THE ANSWER): manual by default (A always works) + named-scale presets WHEN the tuning
+  provides them (B where curated). Mirrors what we already do: 12-TET = "the 12-TET tuning + a curated
+  named-scale library + manual toggle". Generalised = "any tuning + optional curated named scales for
+  it + always-available manual toggle". The 12-TET case is just the best-curated instance.
+
+### Shophouse fit (elegant -- ties to "Shophouse becomes the tuning loader")
+Shophouse currently has 12 shutters (root/scale selector). Generalised:
+- Shophouse loads a TUNING (.scl) -> N degrees.
+- Its shutters become N shutters (tuning-width) -- each toggling a degree in/out of the scale.
+- Named scales for that tuning (if curated) = presets that set the shutter pattern.
+So Shophouse IS the scale-within-tuning selector (Scalar's select/deselect housed in the shophouse
+metaphor) -- and the shutters opening/closing = degrees enabled/disabled is a lovely literalisation
+(a facade where each shutter is a pitch).
+
+### Two honest HARD PARTS
+1. ROOT / TRANSPOSITION in an UNEQUAL tuning: in 12-TET "C major" and "D major" are one mask ROTATED.
+   In an unequal tuning you CAN'T rotate the mask -- intervals differ per degree, so "same scale, new
+   root" is a different set of cents, not a rotation. Decide: is a scale a ROTATABLE PATTERN (equal
+   tunings only) or an ABSOLUTE degree selection (any tuning, but "transpose" means something else)?
+   For unequal tunings, ABSOLUTE selection is the honest model. (Scalar works in absolute pitches for
+   exactly this reason.)
+2. NAMED-SCALE CURATION is real ethnomusicological work: Pelog pathets done RIGHT needs Javanese modal
+   theory. Curate few tunings carefully OR ship manual-only (A) for un-curated tunings. Do NOT half-do
+   cultural scales -- a wrong pathet is worse than no pathet.
+
+### Summary
+Scales-within-tunings = the N-bit-mask generalisation of the existing 12-bit mask, with per-degree
+enable/disable (Scalar's model) as the always-available base + optional curated named-scale presets per
+tuning, housed in a Scala-reading Shophouse (shutters = tuning-width degree toggles). Concept is a clean
+generalisation; hard parts are root-in-unequal-tunings (absolute not rotatable) + curation care.
+POST-LIBRARY, with the rest of the microtonal arc.
