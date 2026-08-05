@@ -287,3 +287,40 @@ This is explicitly the method "if your synth supports .scl but not .kbm" -- exac
   stands: do it right or ship manual-only.
 So we consume .scl (tuning) and essentially NEVER need .kbm. Named modes are our curation, delivered as
 masks or as subsetted .scl presets.
+
+## REFINEMENT: .scl is role-agnostic + .kbm IS useful for Monsoon Micro's fixed faders
+
+### .scl is BOTH tuning and scale (role-agnostic)
+A .scl is just a LIST OF PITCHES in an octave. It doesn't know if it's a "tuning" or a "scale" -- those
+are ROLES you assign, not properties of the file. Same format holds 22 shrutis (a "tuning"), 5 Slendro
+pitches (a "scale"), or 7 Pelog (either). That's why `mode`-subsetting a .scl yields ANOTHER .scl: you
+take the 22-pitch superset .scl and produce a 5-pitch subset .scl -- both are .scl, only the
+superset/selection ROLE differs.
+Two valid architectures (can coexist):
+- A. MASK-based (best for us): load one .scl as tuning; Shophouse mask selects the scale subset live.
+- B. TWO-FILE: load a big .scl (tuning) + a small .scl (scale) whose pitches subset the tuning -- the
+  scale .scl IS the selection, no mask. Also = how to ship NAMED-SCALE PRESETS (pre-subsetted .scl).
+Use A for live selection (our paradigm), B for shipping curated named modes. Both are just .scl.
+
+### .kbm IS the right tool for Monsoon Micro (CORRECTION to "never need .kbm")
+Earlier: ".kbm irrelevant, we have no keyboard." TRUE for a pure CV quantizer (no fixed slots). But
+Monsoon Micro HAS fixed slots: the 12 or 24 FADERS. The fader bank IS a keyboard -- a fixed array of
+playable positions that a variable-pitch-count tuning must be mapped onto. That's EXACTLY the problem
+.kbm solves: "map a tuning's N degrees onto a fixed set of slots, skipping some, defining the octave
+repeat."
+Where .kbm (or an internal equivalent) earns its place on Micro:
+- Tuning has FEWER pitches than faders (5-pitch Slendro on Micro-12): WHICH 5 of 12 faders are active,
+  which are dead? .kbm = a map with skipped positions. Exactly this.
+- Tuning has an idiomatic keyboard layout (22-shruti conventionally mapped to 12): .kbm encodes the
+  conventional degree->slot layout so faders match how the tuning is MEANT to sit, not naive first-N.
+- Octave-repeat degree isn't the last pitch: .kbm specifies which degree is the formal octave -> how
+  the fader bank wraps.
+So for Micro: consume .scl (the tuning pitches) AND a .kbm-style mapping (degree -> which fader, with
+skips + octave point). Either read actual .kbm files, or implement the same concept internally (a
+degree->fader map). The fader bank being FIXED (12/24) is precisely why .kbm becomes relevant here and
+NOT in a slot-less CV quantizer.
+
+### Net
+- .scl -> pitch list (tuning or scale by role). Consume for both tuning and named-mode presets.
+- .kbm -> degree->slot map. SKIP for pure CV quantizing; USE for Monsoon Micro's fixed 12/24 faders
+  (the fader bank = the keyboard). This is the exception where .kbm is the correct tool.
