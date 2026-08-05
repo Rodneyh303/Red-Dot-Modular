@@ -81,3 +81,49 @@ three streams are statistically independent. One seed -> entire correlated syste
 5. Scatter from either Monsoon's CA controls: confirm the transform applies once (owner only),
    and BOTH Monsoons see the updated rhythmSrc/melodySrc.
 6. Feed a simultaneous dice gate to both: confirm probability spaces stay in sync.
+
+---
+
+## UPDATE: use the PAIRING rack-wide scan for shared CA (not adjacency)
+The IT+Lantern+T3 pairing v1 (already in master, see PAIRING_CROSS_ROW_NOTE.md) established the
+rack-wide discovery model: followIT==0 = adjacency default; followIT>0 = pairId match ANYWHERE in the
+rack via APP->engine->getModuleIds(). This is the SAME technique other Rack devs use for cross-rack
+connections, and it's already proven in this codebase.
+
+APPLY IT TO SHARED CA: instead of (or in addition to) the adjacency-based sharedAccess toggle, give
+Change Alley a pair number and let a second Monsoon bind to it by number via the rack-wide scan. Then
+two Monsoons on DIFFERENT ROWS can share one CA -- exactly the cross-row capability pairing already
+gives Lantern/T3.
+
+Mechanism (mirror pairing exactly):
+- CA V2: assign a caPairId (lowest free) in process() -- NOT constructor/audio-locked path
+  (getModuleIds re-lock deadlock, same gotcha as Intertropical pairId). Immutable, persisted, gaps ok.
+- Monsoon: a "shared CA follow" field -- 0 = Auto (adjacency, current behaviour); >0 = the CA whose
+  caPairId matches, anywhere in the rack.
+- Owner rule unchanged: only ONE Monsoon calls applyPendingTransforms per block
+  (transformsAppliedThisBlock flag, first-caller-wins). Second Monsoon reads rhythmSrc/melodySrc.
+- Reuse ui/IntertropicalPairing.hpp patterns; don't write new discovery code.
+
+This unifies ALL cross-module discovery in the plugin onto ONE mechanism (adjacency default + rack-wide
+pair override), used by Lantern, Changi T3, and shared Change Alley alike.
+
+## The capability this unlocks (correlated polymeter/polyrhythm across rows)
+With shared CA (correlation structure) + unified seed (S / S+1 / S+2 key offsets) + independent
+clocking, two (or more) Monsoons become ONE correlated generative system expressed across multiple
+metric worlds:
+- Same seed + shared CA => same probability space AND same correlation structure.
+- Different clocks/gates/phase => different time bases (polymeter / polyrhythm).
+- Result: correlated content, independent time -- the definition of heterophony / gamelan layering,
+  now at the multi-instance scale, across rows.
+
+Example patches (all become possible):
+- Two Monsoons, shared CA, same seed, one phase-driven FORWARD and one phase-driven BACKWARD ->
+  the same correlated material as a canon against its own retrograde. (A retrograde canon generated
+  live from one stochastic source.)
+- 3:2 polyrhythm (1/16 straight vs 1/16-triplet), shared CA, same seed -> the same generative voice
+  in two metric grids, correlated note-for-note.
+- Dice on both at the polymetric re-align (LCM) point -> the correlated system re-rolls together at
+  the musical downbeat of the combined cycle.
+This is the "polyphony of arrangements" (MULTIGROUP_CONSERVATION doc) extended to cross-instance
+correlated polymeter. Few if any generative systems can express retrograde/inversion canons from a
+single live stochastic source. Worth a headline pitch line + a demo patch.
