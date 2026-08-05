@@ -280,3 +280,40 @@ shared/locked seed it approaches deterministic; free-running it inverts the stat
 Together with points 8-9: phase gives RETROGRADE (time mirror), spread-sign gives INVERSION (profile
 mirror), clock-ratio gives AUGMENTATION. The three classical transformation families are each present,
 each in the domain natural to a live statistical instrument, each modulatable and correlatable.
+
+## 11. Composition of transformations: performable multi-layer canon
+Points 8-10 give three transformation axes that operate at DIFFERENT levels and compose ORTHOGONALLY
+(different structure, no interference), so they run simultaneously and MULTIPLY:
+- BETWEEN instances: phase forward vs backward + shared CA + shared seed = retrograde CANON (voice B
+  is voice A's retrograde, correlated by construction).
+- WITHIN each instance, independently: spread-sign modulation inverts the probability profiles
+  (rest=rhythmic, melody=melodic, octave=registral, accent=dynamic), each on its own LFO/CV.
+- ACROSS the metric axis: different clock ratios = augmentation.
+
+Stacked example: Monsoon A runs FORWARD with its rest-profile inverting under one LFO; Monsoon B runs
+BACKWARD (retrograde of A's shared material) with ITS accent-profile inverting under a different LFO.
+Result = a retrograde canon whose subject is itself a live-inverting distribution, each canonic voice
+inverting along its own probability dimensions on its own schedule. In classical terms: canon by
+retrograde STACKED with per-voice inversion -- the multi-transformation canonic device family (Art of
+Fugue: retrograde-and-inverted canons, "per augmentationem in contrario motu").
+
+WHAT'S CATEGORICALLY NEW (honest, not hype): Bach's multi-transformation canons are FIXED -- the
+relationship is locked once written. Here every transformation is a CONTINUOUS MODULATABLE AXIS:
+- degree of spread-inversion is a knob/CV (sweep profile -> neutral -> mirror DURING the canon)
+- the phase relationship (how far forward/backward diverge) is drivable
+- the shared seed is scrubbable (move the whole correlated system through probability space while the
+  canonic relationships hold)
+So it's not a fixed canon -- it's a canon whose TRANSFORMATION PARAMETERS ARE THEMSELVES PERFORMABLE.
+You don't play the notes; you play the TRANSFORMATIONS, and the canon structure (shared source +
+correlation) guarantees the voices stay lawfully related wherever you move the controls. A new
+instrument category: structural counterpoint, continuously performable along the classical axes.
+
+HONEST BOUNDS (inherit from 8-10):
+- "Inversion" stays the tendency/structural-analogy sense (profile mirror, not literal interval
+  inversion). The stacked claim inherits this.
+- LEGIBILITY caveat (musical, not architectural): stacking retrograde + per-lane inversion +
+  seed-scrub can get so dense it reads as TEXTURE, not audible counterpoint. The structure is real;
+  the LEGIBLE demo is usually a SUBSET (expose 1-2 layers clearly). Full stack = possible; compelling
+  demo = curated. An arrangement judgment for the ear, not an architecture limit.
+- Framing: the architecture makes these multi-transformation canonic structures EXPRESSIBLE and
+  PERFORMABLE on live generative material -- NOT "it reproduces Bach."
