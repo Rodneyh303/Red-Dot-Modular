@@ -202,7 +202,40 @@ the CA reverse discussion). So: the sampling+time axes are fully reversible; the
 layer reverses with inverse-operation care. Claim the former cleanly; don't claim "the entire system
 is perfectly reversible."
 
-## The one-line version
+## 9. Cross-instance canon: correlated voices in transformed time (the contrapuntal payoff)
+The primitives compose into something few generative systems can do: the classical CANONIC
+transformations (retrograde, mensuration/augmentation, and inversion-adjacent devices) expressed on
+LIVE generative material. Mechanism: multiple Monsoons sharing one Change Alley (correlation structure,
+via the rack-wide pairing scan) + a unified seed (S / S+1 / S+2 Philox key offsets = same probability
+space) + INDEPENDENT temporal transformation (forward/backward phase drive, different clock rates).
+- Same seed + shared CA => the voices are correlated BY CONSTRUCTION (same stochastic source, same
+  correlation topology) -- lawfully related, which is what makes it counterpoint and not two unrelated
+  lines.
+- Different time transformation => the derived voice is the original under retrograde (backward phase),
+  augmentation (slower clock), or a metric ratio (3:2 polyrhythm).
+- Result: a live, stochastic CANON -- strict in structure, improvised in content. The "theme" is a
+  navigable probability distribution; the canon is a live derivation from it.
+
+Worked examples:
+- Two Monsoons, shared CA, same seed, one phase-driven FORWARD and one BACKWARD = a retrograde (crab)
+  canon generated live from one stochastic source -- the Musical Offering device, generatively.
+- Different clock rates sharing seed+CA = a mensuration/prolation canon (one voice augmented against
+  another), each with full generative articulation.
+- Dice on both at the polymetric re-align (LCM) point = the correlated system re-rolls together at the
+  combined cycle's downbeat.
+
+WHY THIS MATTERS (and the honest framing): the claim is NOT "it composes like Bach" -- that would be
+hollow. The claim is that the ARCHITECTURE makes the canonic transformations EXPRESSIBLE on generative
+material, because "shared source + shared correlation + independent transformation" is exactly the
+structure a canon requires. Structurally grounded and checkable, not decorative.
+
+This also closes the East/West axis from the WESTERN side: the correlation continuum (point 7) has a
+gamelan/heterophony pole (Eastern) AND a canon/counterpoint pole (Western), and BOTH fall out of the
+same mechanism -- correlated voices in different temporal relationships. The instrument sits on the
+axis between Bach and gamelan because that axis is structurally real, not an applied theme. (Aptly,
+the conceptual lineage here is pure Godel-Escher-Bach: a self-referential formal system whose
+transformations generate the counterpoint -- the strange loop closing as the shared seed feeds
+correlated derivations of itself.)
 A polyphonic generative sequencing SYSTEM where you can scrub probability space in both directions
 (addressable Philox counter + phase drive = a reversible, replayable generative timeline), modulate
 the pattern-generation itself, sweep poly voices along one continuous dial from homophony through
