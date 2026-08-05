@@ -72,3 +72,27 @@ cycle ppqnSetting 1 -> 4 -> 24 and watch the Lantern.
 Bisect target if H3: git log the gs.tick / gate-duration path and computeNoteLengthIdx usage; find any
 change that made Mode B's gate duration depend on PPQN or made Mode B respect ppqnMask. Relates to the
 PPQN-cap-at-24 discussion (RATE_TABLE) -- confirm no cap/normalisation change broke low-PPQN gate drive.
+
+## H3 RESOLVED: the PPQN change was DELIBERATE, not the bug
+Rodney observed 24/48/96 have no effect + lower PPQN no longer selectable. Confirmed in code -- and it's
+BY DESIGN:
+- Menu hardcodes {24,48,96} (MonsoonWidget.cpp:976). The old low values (1,4) are intentionally gone.
+- SequencerEngine.cpp:317-322 comment states it explicitly: "PPQN is now always 24/48/96 -- all resolve
+  every note value to an integer pulse count (24 already covers 1/32 and all triplets). So every value
+  is legal; mask = the full-resolution bit (4). (The old 1/4 PPQN settings, which gated out sub-step
+  values, are gone.)" -> ppqnMask hardcoded to 4 (full resolution, everything legal).
+- This is the PPQN-floor-at-24 decision from RATE_TABLE, implemented. Musically correct (24 = 2^3*3
+  covers 1/32 + triplets). Note-length layer is now MORE permissive, not less.
+STALE-BUT-HARMLESS: the comments at Monsoon.cpp:427-428 and NoteValues.hpp:30 still DESCRIBE the old
+"1=PPQN1,2=PPQN4,4=PPQN24" bitmask. Update those comments to the 24/48/96 reality (cosmetic; the code
+uses mask=4 = full-resolution correctly).
+CONCLUSION: PPQN change is deliberate + correct, and the new note-length layer is permissive (everything
+legal). So PPQN is UNLIKELY to be what breaks Mode B gate events. Rodney's memory was accurate (low PPQN
+removed) but the removal is not the regression.
+
+## => PRIME SUSPECT is back to H1 (RUN-gating). DO THIS TEST:
+Mode B, external gate into G1, watch Lantern:
+  RUN OFF -> events? ... then press RUN -> events start?
+If events only flow with RUN active, the regression is the `if (runGateActive)` wrapper (Monsoon.cpp:573)
+gating Mode B. Fix: external-gate modes (B/D) should advance on the gate edge regardless of runGateActive
+(the external gate IS the transport). Also bisect when Mode B moved inside that guard.
