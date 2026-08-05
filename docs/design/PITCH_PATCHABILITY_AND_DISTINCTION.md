@@ -242,3 +242,41 @@ the pattern-generation itself, sweep poly voices along one continuous dial from 
 heterophony to independent polyphony (the textural axis of Eastern and Western ensemble music), and
 route the result freely -- built as one host + expander ecosystem, with a Singapore identity woven
 through the naming.
+
+## 10. Spread as the vertical mirror: inversion of the probability profile
+Spread is `interpolated = original + (target - original) * spread`, target = active-voice average or
+the mono draw. So spread is a CONVERGENCE/DIVERGENCE dial:
+- spread -> +1: voices collapse onto the target (unison / homophony -- the ensemble "agrees").
+- spread = 0: each voice keeps its own independent draw (maximum natural divergence).
+- spread < 0 (negative): ANTI-convergence -- each value reflects THROUGH the target, past its
+  original, in the opposite direction. A mirror around the centre (the average / mono value).
+
+Two claims fall out, one textural and one that upgrades it to a compositional device:
+
+TEXTURAL (poly): negative spread is a mirror around the ensemble CENTROID -- voices above the mean go
+below and vice versa. Structurally this is INVERSION in the vertical/textural domain, the counterpart
+to phase-reverse being RETROGRADE in the temporal domain. The instrument has BOTH classical mirror
+operations, each in its natural domain: time-mirror (phase) and register/centroid-mirror (spread sign).
+HONEST BOUND: this is inversion by structural analogy (mirror around a centre), NOT literal melodic
+inversion (mirror of intervals around a fixed pitch axis). Real and elegant, but state it as analogy.
+
+COMPOSITIONAL (even on a MONO line, via MODULATION -- the stronger claim): the spreadable lanes are
+REST, MELODY (pitch), OCTAVE and ACCENT. Modulating spread negative FLIPS THE PROBABILITY PROFILE of
+that lane around its centre:
+- REST lane: rests become likely where they were unlikely -- RHYTHMIC inversion of the rest pattern.
+- MELODY lane: high-probability notes become low-probability -- the melodic TENDENCY/contour inverts
+  (close to melodic inversion, as a distribution).
+- OCTAVE lane: register tendency flips.
+- ACCENT lane: where accents fall inverts -- DYNAMIC inversion.
+Each lane is an INDEPENDENT continuous axis, so "inversion" decomposes into its musical dimensions --
+rhythmic, melodic, registral, dynamic -- as FOUR separable modulatable controls, sweeping continuously
+from a profile (+) through neutral (0) to its mirror (-). No notated tradition treats these as
+separable continuous parameters, because they are statistical operations on DISTRIBUTIONS, not
+operations on notes. This is native to a statistical instrument and unavailable to a notated one.
+HONEST BOUND: it inverts the probability TENDENCY, not a deterministic note-for-note mirror. With a
+shared/locked seed it approaches deterministic; free-running it inverts the statistical CHARACTER
+(arguably more musical than rigid inversion -- it flips the tendency while keeping the line alive).
+
+Together with points 8-9: phase gives RETROGRADE (time mirror), spread-sign gives INVERSION (profile
+mirror), clock-ratio gives AUGMENTATION. The three classical transformation families are each present,
+each in the domain natural to a live statistical instrument, each modulatable and correlatable.
