@@ -39,16 +39,39 @@ HONEST BOUNDS:
   the reversible counter can scrub (see UNDO/reversible-mode bounds). Not unbounded.
 - Needs complementary drive (B = 1 - A) to cross at a stable, controllable point.
 
-## THE IDEAL (needs a new feature): counter-address primitive
+## THE IDEAL (needs a new feature -- NOW A MUST-HAVE): counter-address / seed-offset primitive
 What's missing is a way to JUMP a Monsoon to a specific counter position (or sync two counters at a
 known offset) without advancing there manually. This is the difference between "the counter IS
 addressable" (true internally) and "YOU can address the counter" (not exposed).
-PROPOSED PRIMITIVE: a counter-position / counter-offset CV input (a "SEED POSITION" jack) --
+
+STATUS: MUST-HAVE, not nice-to-have. Rationale: we ALREADY allow forward AND backward navigation
+(dice-scrub, reversible mode, phase reverse). Given bidirectional navigation is a first-class feature,
+NOT being able to set/offset the position is an obvious gap -- you can move but not GO TO. The seed
+offset is the natural completion of the navigation feature set.
+
+PROPOSED: a SEED OFFSET input on Monsoon --
+- A CV/param that offsets this Monsoon's Philox counter by a settable amount relative to its base.
 - Set both Monsoons' counter from one CV; offset one by a fixed amount => arbitrary canon alignment.
 - Makes the phase-mirror crab trivial: fwd Monsoon at phase phi -> counter t; back Monsoon at 1-phi
   -> counter N-t; both addressed from one ramp. Smooth, unbounded, exact midpoint crossing.
-- Generally unlocks navigable-probability-space as a USER capability, not just an internal property.
-This is a real future feature. Until then, dice-scrub crossfade is the working crab.
+- Generally unlocks navigable-probability-space as a USER capability, not just an internal property --
+  this is the control surface the headline "navigable probability space" claim has been missing.
+
+## Selectable SCRUB DISTANCE (make more of the scrub feature)
+Add a selectable scrub distance / span -- e.g. 6 / 8 / 10 / 12 draws -- so the dice-scrub crossfade
+(and the crab built from it) can target a chosen phrase length:
+- Sets how many counter positions a full 0->100% scrub traverses.
+- Lets the crab canon be built at a chosen length (6-step crab vs 12-step crab) without depending on
+  whatever the accumulated history happens to be.
+- Musically: the scrub distance = the crab's period, so it becomes a compositional choice (short tight
+  crossings vs long arcing ones).
+- Pairs naturally with the seed offset: offset sets WHERE, scrub distance sets HOW FAR.
+Values 6/8/10/12 are a sensible starting set (even lengths, musical phrase sizes). Could be a param or
+a context-menu selection.
+
+Together, seed-offset + selectable-scrub-distance turn the crab from "a lucky crossing wherever the
+history is" into a PRECISELY PLACEABLE, CHOSEN-LENGTH device -- and more broadly make the whole
+navigable-probability-space feature genuinely performable.
 
 ## The phase-mirror version (once counter-address exists)
 - Same key, same CA, same counter RANGE (both cover the phrase 0..N).

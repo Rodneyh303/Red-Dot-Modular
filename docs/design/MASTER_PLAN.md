@@ -147,6 +147,22 @@ REQUIRED before publishing pitch doc point 3 claim. See EXTERNAL_GATE_ARTICULATI
 
 ---
 
+
+### 16. Seed offset input + selectable scrub distance (Monsoon) -- MUST-HAVE
+Rationale: we already allow forward AND backward navigation (dice-scrub, reversible, phase reverse),
+so the inability to SET/OFFSET the counter position is an obvious gap -- you can move but not "go to".
+The seed offset completes the navigation feature set and is the control surface the headline
+"navigable probability space" claim has been missing. See CRAB_CANON_RECIPE.md.
+- SEED OFFSET input: CV/param offsetting this Monsoon's Philox counter by a settable amount. Enables
+  arbitrary canon alignment (offset one of two shared-seed Monsoons), the smooth phase-mirror crab
+  canon, and generally makes navigable-probability a USER capability not just an internal property.
+- SELECTABLE SCRUB DISTANCE (6/8/10/12 draws): sets how far a full dice-scrub traverses -> the crab
+  canon's PERIOD becomes a compositional choice, independent of accumulated history. Param or context
+  menu. Pairs with seed offset (offset = WHERE, scrub distance = HOW FAR).
+Scope: touches PatternEngine (counter addressing) + Monsoon params/panel + reversible-mode scrub. Not
+a library blocker, but high musical value and completes an already-shipped feature. Prioritise soon
+after library (arguably a fast-follow, given it finishes the navigation story).
+
 ## PANEL ITERATION (after items 5, 8, 9 complete -- module set must be stable first)
 
 T2/T3 must at least have final HP and jack counts before their panels are worth starting.
