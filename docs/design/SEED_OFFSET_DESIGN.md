@@ -278,3 +278,40 @@ So build offset FIRST:
 Dependency structure: offset (per-Monsoon) = zero deps = FIRST. Shared CA = depends on pairing scan +
 introduces caOffset/reset-ownership = SECOND, on top of the proven offset mechanism.
 (Supersedes any implication that shared-CA and offset are the same work item -- they're sequenced.)
+
+## OFFSET KNOB RANGE + RESOLUTION -- decided: fine knob (v1) + CV for reach (next)
+The tension: canon intervals need FINE resolution near zero (every integer 1..~32 -- 6 vs 7 phrases is a
+real difference); distant "jump to a far region" needs REACH (but 500 vs 501 is imperceptible). A single
+LINEAR knob can't do both (fine = no reach; wide = can't land on +6). Options considered:
+- Linear +-32/+-64: fine, every integer, no distant reach. Covers ~95% (canons live small). SIMPLE.
+- Discrete powers of two (+-16/32/64/.../1024): REACH + musical distances, but CAN'T set +6/+7 etc ->
+  FAILS the canon-interval need (the MAIN use). REJECTED.
+- Hybrid (fine ints near 0, powers of two far out): correct SHAPE, but as a single KNOB it's awkward --
+  non-linear angle->value, user can't predict where +40 is (doesn't exist), sensitivity changes at +-32.
+
+### Resolution: CV sidesteps the tension (don't compromise the knob)
+The tension only exists because a KNOB has fixed travel mapping the whole range. CV has no such limit:
+- KNOB = fine, near-zero, canon intervals, predictable by feel. The common case. Linear +-32.
+- CV = ARBITRARY reach + PRECISE addressing from external sources (a quantized sequencer / exact voltage
+  hits an exact offset; distant jumps are just higher voltages). Voltage isn't bounded by knob travel.
+This is cleaner than a coarse+fine two-knob scheme: fewer controls, and "reach" lives where it naturally
+belongs (CV goes anywhere). Consistent with the base+CV shape already specced.
+
+### CV scaling should be selectable (subsumes the coarse/fine question entirely)
+"What does 1V mean" decides whether CV is fine or coarse addressing. Context-menu scaling selector
+(1V = 1 phrase / 16 / 64 ...) makes the SAME CV input fine OR coarse:
+- scaling selector = the "coarse" control (which neighbourhood)
+- CV voltage = the "fine within coarse" (exact spot in that neighbourhood)
+- knob = the standalone simple case
+=> covers canon precision + distant reach + precise-distant addressing with TWO inputs and NO non-linear
+knob. This is the hybrid's power without the hybrid's awkwardness.
+
+### Build sequence (same discipline as rejecting counter CV-mod)
+- v1 = FINE +-32 LINEAR KNOB only. Delivers the crab + every audible canon. Ship this.
+- NEXT increment = offset CV input (with selectable scaling). Non-breaking (a jack + a sum, the base/mod
+  structure already specced). Subsumes all reach/resolution questions.
+- WHY defer: distant reach is UNPROVEN musically -- distant counter regions are UNCORRELATED, so "jump
+  to +512" may just sound like an unrelated random patch, not meaningful navigation. Confirm by ear
+  before building the reach. The knob covers the proven case (canon = small, fine).
+Net: +-32 fine knob now; CV-with-selectable-scaling as the reach answer, added once distant-region
+navigation proves musically worthwhile.
