@@ -213,15 +213,18 @@ struct Lantern : Module {
     // colour change AT the join is the truthful tie/legato signal. Trusts MonoDecision.
     // Reads engine state only; writes nothing back.
     void process(const ProcessArgs& args) override {
-        Monsoon* mon = redDot::findMonsoonEitherSide(this);
+        // IT-SOURCE MODE: resolve the followed Intertropical FIRST (rack-wide by pair number), then
+        // read the Monsoon engine THROUGH it (it->getHost()). The IT<->Monsoon link is local, so this
+        // one pair link gives BOTH the arrangement (IT) and the engine detail (Monsoon) across rows.
+        // Auto/standalone (or Monsoon-source) falls back to our own adjacency walk. See
+        // LANTERN_CROSS_ROW_FIX.md. Build the inverse map row -> global voice for the active scene
+        // (output channel r shows the voice routed to output r); Monsoon mode uses identity (row 0 =
+        // mono/V1, row v+1 = poly voice v). The rest of the record path is shared.
+        Intertropical* it = (sourceMode == 1) ? redDot::resolveFollowedIT(this, followIT) : nullptr;
+        Monsoon* mon = (it && it->getHost()) ? it->getHost() : redDot::findMonsoonEitherSide(this);
         if (!mon) return;
         SequencerEngine& eng = mon->engine;
 
-        // IT-SOURCE MODE: find an adjacent Intertropical and, for the active scene, build the inverse
-        // map row -> global voice (output channel r shows the voice routed to output r). Monsoon mode
-        // uses identity (row 0 = mono/V1, row v+1 = poly voice v). The rest of the record path is
-        // shared: we read the SAME engine voice state, only the row it lands in changes.
-        Intertropical* it = (sourceMode == 1) ? redDot::resolveFollowedIT(this, followIT) : nullptr;
         const int scene = it ? it->activeScene : 0;
 
         int step = eng.stepIndex;

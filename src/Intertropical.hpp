@@ -15,9 +15,11 @@
 #include "ui/VisualExpanderHelpers.hpp"   // findMonsoonEitherSide
 
 using namespace rack;
-// (no Monsoon forward-decl: the real Monsoon is a GLOBAL type from Monsoon.hpp,
-//  included by the .cpp before use. A "namespace redDot { struct Monsoon; }" here
-//  would declare a PHANTOM redDot::Monsoon that mismatches the global one.)
+// The real Monsoon is a GLOBAL type from Monsoon.hpp (included by the .cpp before use).
+// A GLOBAL forward-decl here is safe and matches it (unlike a namespaced one, which would
+// declare a phantom mismatching type). Needed so Intertropical can cache/expose its host
+// Monsoon pointer (getHost()) for transitive cross-row consumers (see LANTERN_CROSS_ROW_FIX).
+struct Monsoon;
 
 // ---- Id enum (declared for shape; config() reserves ZERO params  de-parammed) ----
 struct IntertropicalIds {
@@ -200,6 +202,11 @@ struct Intertropical : Module {
     // THIS instance regardless of rack position. 0 = unassigned (assigned lazily).
     // See ui/IntertropicalPairing.hpp.
     int   pairId        = 0;
+    // Host Monsoon, cached each process() (IT<->Monsoon adjacency is LOCAL). Exposed so a followed
+    // consumer (Lantern) reads the engine THROUGH the IT — one rack-wide pair link then yields BOTH
+    // the arrangement (IT) and the engine detail (Monsoon), across rows. See LANTERN_CROSS_ROW_FIX.
+    Monsoon* cachedHost = nullptr;
+    Monsoon* getHost() const { return cachedHost; }
     // Runtime-only (NOT persisted): guards the one-shot pairId resolution done in process().
     // Assignment can't happen in onAdd() — Rack holds the engine mutex during module insertion,
     // and getModuleIds() re-locks it => deadlock. process() runs where getModuleIds is safe.

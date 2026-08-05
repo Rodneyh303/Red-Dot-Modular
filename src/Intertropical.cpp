@@ -62,6 +62,7 @@ void Intertropical::process(const ProcessArgs& args) {
     }
 
     Monsoon* host = redDot::findMonsoonEitherSide(this);
+    cachedHost = host;   // expose to transitive consumers (Lantern reads engine via getHost())
     if (!host) {
         for (int o = 0; o < Ids::NUM_OUTPUTS; ++o) outputs[o].setChannels(0);
         return;
