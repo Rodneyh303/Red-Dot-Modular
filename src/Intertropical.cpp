@@ -78,6 +78,7 @@ void Intertropical::process(const ProcessArgs& args) {
         repeatPos   = 0;
         liveMask    = sceneMask[0];
         lastStepIndex = -1;   // force re-sample on the next step
+        justReset   = true;   // swallow the first post-reset wrap (reset makes engine report wrapped)
     }
     // Use the engine's own phrase-boundary detection: lastStepResult.wrapped is true on the
     // step where the pattern wraps (accounts for modulated start/endStep correctly).
@@ -87,13 +88,20 @@ void Intertropical::process(const ProcessArgs& args) {
     if (lastStepIndex >= 0 && si != lastStepIndex) {
         // A new step was processed. Check if the engine reported a phrase boundary wrap.
         if (eng.lastStepResult.wrapped) {
-            repeatPos++;
-            if (repeatPos >= getRepeats(activeScene)) {
-                repeatPos = 0;
-                activeScene = (activeScene + 1) % getLoopLen();
+            if (justReset) {
+                // The reset itself makes the engine report wrapped=true on the first step after
+                // reset. Swallow exactly this one wrap so the reset holds on scene 0 instead of
+                // advancing 0 -> 1 (the off-by-one). Subsequent wraps advance normally.
+                justReset = false;
+            } else {
+                repeatPos++;
+                if (repeatPos >= getRepeats(activeScene)) {
+                    repeatPos = 0;
+                    activeScene = (activeScene + 1) % getLoopLen();
+                }
+                // Read-at-boundary rule: sample the active scene's membership NOW.
+                liveMask = sceneMask[activeScene];
             }
-            // Read-at-boundary rule: sample the active scene's membership NOW.
-            liveMask = sceneMask[activeScene];
         }
     }
     lastStepIndex = si;
