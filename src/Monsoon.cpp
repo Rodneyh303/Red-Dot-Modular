@@ -565,6 +565,7 @@ void Monsoon::process(const ProcessArgs& args) {
             scaleManager->lastSelectedScale = shopPendingScale_;
             scaleManager->scaleRoot         = shopPendingRoot_;
             scaleManager->updateScaleMask();
+            engine.writeLedger.noteWrite(WriteRole::SCALEMGR, WriteField::LastSelectedScale); // STEP1 WriteLedger: in-block lastSelectedScale (L1). L2 (UI menu) + L3 (JSON load) are out-of-block — excluded (different rate domain).
             shopScaleChangePending_ = false;
         }
     }
@@ -885,6 +886,7 @@ void Monsoon::process(const ProcessArgs& args) {
         // Refresh Sequencer Parameters (Throttled sampling of all knobs/CV)
         modeController->updatePatternInput();
         engine.accentProb = getEffectiveMonoAccent(paramManager->getAccentUnclamped());
+        engine.writeLedger.noteWrite(WriteRole::MONO, WriteField::AccentProb); // STEP1 WriteLedger: mono engine.accentProb (A1)
 
         // Check for expander changes and update cached pointers
         // Mirror the global spread-target mode onto the engine so display SpreadManagers

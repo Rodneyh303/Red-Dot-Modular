@@ -118,6 +118,10 @@ struct Lantern : Module {
     // historical behaviour); >0 = the Intertropical whose pairId matches, anywhere in the rack.
     // See ui/IntertropicalPairing.hpp. Persisted.
     int followIT = 0;
+    // Rate discipline: resolveFollowedIT() rack-scans; topology is control-rate, so cache the
+    // resolved IT on a divider (the engine read via it->getHost() stays per-step). Runtime-only.
+    Intertropical* cachedIT_ = nullptr;
+    rack::dsp::ClockDivider itLookupDiv_;
     int zoomMode   = 0;   // 0=x1 1=x2 2=x4
     int followMode = 1;   // 0=Off 1=On
     int rollView   = 0;   // 0=Grid (lane) view, 1=Piano roll
@@ -203,6 +207,7 @@ struct Lantern : Module {
     Lantern() {
         // No params at all: Lantern is a display. Its view state lives in the fields above.
         config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
+        itLookupDiv_.setDivision(512);   // topology lookup at ~94 Hz @ 48k (control rate)
     }
 
     // Read-only sampler: records the observed per-step state into Lantern's own
@@ -220,7 +225,9 @@ struct Lantern : Module {
         // LANTERN_CROSS_ROW_FIX.md. Build the inverse map row -> global voice for the active scene
         // (output channel r shows the voice routed to output r); Monsoon mode uses identity (row 0 =
         // mono/V1, row v+1 = poly voice v). The rest of the record path is shared.
-        Intertropical* it = (sourceMode == 1) ? redDot::resolveFollowedIT(this, followIT) : nullptr;
+        if (itLookupDiv_.process())
+            cachedIT_ = (sourceMode == 1) ? redDot::resolveFollowedIT(this, followIT) : nullptr;
+        Intertropical* it = cachedIT_;
         Monsoon* mon = (it && it->getHost()) ? it->getHost() : redDot::findMonsoonEitherSide(this);
         if (!mon) return;
         SequencerEngine& eng = mon->engine;

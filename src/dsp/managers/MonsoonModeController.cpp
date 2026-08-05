@@ -36,6 +36,7 @@ void ModeController::updatePatternInput() {
     // raw param when there's no mainModule.
     currentPatternInput.restProb          = mainModule ? mainModule->getEffectiveMonoRest(paramManager.getRestUnclamped())
                                                       : paramManager.getRest();
+    engine.writeLedger.noteWrite(WriteRole::MONO, WriteField::RestProb); // STEP1 WriteLedger: mono currentPatternInput.restProb (R2)
     currentPatternInput.variationAmount   = paramManager.getVariation();
     currentPatternInput.octaveLo          = paramManager.getOctaveLo();
     currentPatternInput.octaveHi          = paramManager.getOctaveHi();
@@ -111,6 +112,7 @@ void ModeController::postExecute_(const StepResult& result) {
 bool ModeController::executeModeE() {
     engine.accentProb = mainModule ? mainModule->getEffectiveMonoAccent(paramManager.getAccentUnclamped())
                                   : paramManager.getAccent();   // MONO accent: Causeway-modulated
+    engine.writeLedger.noteWrite(WriteRole::MONO, WriteField::AccentProb); // STEP1 WriteLedger: mono engine.accentProb (A2)
     PatternInput in = assemblePatternInput_();
 
     ClockEngine phaseView;            // edge-only view; executeModeA reads sixteenthEdge
@@ -134,6 +136,7 @@ bool ModeController::executeModeA() {
         // Fetch current parameters
         engine.accentProb = mainModule ? mainModule->getEffectiveMonoAccent(paramManager.getAccentUnclamped())
                                   : paramManager.getAccent();   // MONO accent: Causeway-modulated
+        engine.writeLedger.noteWrite(WriteRole::MONO, WriteField::AccentProb); // STEP1 WriteLedger: mono engine.accentProb (A3)
         
         // Ensure pattern input is fresh
         PatternInput in = assemblePatternInput_();

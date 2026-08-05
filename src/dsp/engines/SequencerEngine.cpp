@@ -267,6 +267,8 @@ bool SequencerEngine::advancePlayhead(int dir) {
         wrapped = (prevStep != -1 && stepIndex == startStep);
     }
 
+    writeLedger.noteWrite(WriteRole::ENGINE, WriteField::Wrapped); // STEP1 WriteLedger: wrapped (W1/W2) — confirms single ENGINE writer
+
     // Pendulum/PingPong now bounce at the LOR window endpoint (handled above in the tick
     // advance loop), NOT at the phrase boundary. The old phrase-boundary auto-flip is removed
     // — it was the legacy lanePendulum_ mechanism, superseded by the per-lane endpoint check.

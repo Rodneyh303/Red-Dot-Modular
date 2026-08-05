@@ -207,6 +207,9 @@ struct Intertropical : Module {
     // the arrangement (IT) and the engine detail (Monsoon), across rows. See LANTERN_CROSS_ROW_FIX.
     Monsoon* cachedHost = nullptr;
     Monsoon* getHost() const { return cachedHost; }
+    // Host lookup (findMonsoonEitherSide) walks the chain; topology is control-rate, so refresh the
+    // cache on a divider — matches the sibling-expander idiom (PROCESS_RATE_AUDIT). Runtime-only.
+    rack::dsp::ClockDivider hostLookupDiv_;
     // Runtime-only (NOT persisted): guards the one-shot pairId resolution done in process().
     // Assignment can't happen in onAdd() — Rack holds the engine mutex during module insertion,
     // and getModuleIds() re-locks it => deadlock. process() runs where getModuleIds is safe.
