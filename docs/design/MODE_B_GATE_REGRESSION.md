@@ -45,3 +45,30 @@ the six-way: {Mode B, Mode D} x {RUN on, RUN off, external gate present} behaves
 ## Status
 Needs Rack (observe RUN on/off behaviour) + full-history bisect. Structurally the code is intact; the
 regression is most likely the RUN-gating semantics, not the Mode B logic itself.
+
+## H3 (Rodney's hypothesis): PPQN interaction (we allowed lower PPQN before)
+Checked in container:
+- executeModeB is a PURE GATE-EDGE path -- advances on gate1Rise, does NOT read clock.sixteenthEdge or
+  any PPQN-derived step edge (unlike Mode A/C/E which are clock/phase edge driven). And processGateEdges
+  (Monsoon.cpp:524) runs UNCONDITIONALLY, outside any PPQN/clock gate. So PPQN does NOT gate whether
+  Mode B STEPS. "Mode B doesn't step at all" is unlikely to be pure PPQN.
+- BUT PPQN plausibly affects the gate DURATION / rendering: the gate output duration is driven by the
+  gs.tick() pulse (RATE_TABLE: noteVal -> length + gs.tick pulse for duration). At low PPQN (1 or 4) the
+  pulse resolution for gate duration is coarse. If something in the duration/tick path changed, a low
+  PPQN could produce gates that used to render and now don't (too short / malformed) -> "no events shown
+  in Lantern" even though stepping occurs. Rodney's memory ("lower PPQN allowed before") is data.
+- Also: computeNoteLengthIdx(idx, ppqnMask) -- ppqnSetting is a bitmask (1=PPQN1,2=PPQN4,4=PPQN24) of
+  ALLOWED note values. Mode B neutralises note value (passes 2.f, noteVariationMask=0b111) so it should
+  be immune to note-length restriction -- CONFIRM this neutralisation still holds (if a regression made
+  Mode B respect ppqnMask, a low PPQN could zero its usable note lengths).
+
+TEST (do this FIRST -- Rodney's memory makes it high-value): with the external gate into G1, Mode B,
+cycle ppqnSetting 1 -> 4 -> 24 and watch the Lantern.
+- Higher PPQN (24) makes events appear, low PPQN doesn't -> PPQN IS involved (duration/tick resolution,
+  or a regression making Mode B respect ppqnMask). Real finding -- fix the gate-duration path for low
+  PPQN, or restore Mode B's PPQN-independence.
+- No difference across PPQN -> not PPQN; fall back to H1 (RUN-gating) / H2 (STEP source sparse).
+
+Bisect target if H3: git log the gs.tick / gate-duration path and computeNoteLengthIdx usage; find any
+change that made Mode B's gate duration depend on PPQN or made Mode B respect ppqnMask. Relates to the
+PPQN-cap-at-24 discussion (RATE_TABLE) -- confirm no cap/normalisation change broke low-PPQN gate drive.
