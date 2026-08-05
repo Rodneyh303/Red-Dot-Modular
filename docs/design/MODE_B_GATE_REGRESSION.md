@@ -170,3 +170,30 @@ NOTE if 1/16 still too long for very fast gates: the truly correct version sets 
 EXTERNAL GATE WIDTH (measure Gate 1 high-duration) rather than any fixed nvIdx -- but 1/16 single-step is
 the simple fix that matches "gate drives the step" (one gate = one step = one 1/16 note by definition of
 the step grid). Try 6.f first; only go to gate-width-measured hold if fast-gate tests need it.
+
+## CORRECTION (Rodney: scope shows a gate at GATE_OUTPUT) -- CC's fix DID work for the output
+Rodney patched a VCV scope on Monsoon GATE out and SEES a gate. So CC's GATE_OUTPUT override IS taking
+effect at the jack. My earlier "wrong layer / does nothing" was too strong -- correction:
+- GATE_OUTPUT (audio path) and the Lantern read DIFFERENT state. CC's fix made GATE_OUTPUT follow Gate 1
+  (scope confirms). The Lantern reads gs.holdRemain / gs.gateHeld (internal note-length state), which
+  CC's fix did NOT touch. So they legitimately DIVERGE now.
+- Therefore the remaining "1/4 notes" is (at least largely) a LANTERN DISPLAY mismatch: the audio gate is
+  correct, but the Lantern faithfully draws the un-shortened internal hold (holdRemain = 4 steps from
+  noteVal=2.f). The Lantern logic isn't wrong -- it's showing a state CC's fix bypassed for the output.
+
+### Which scope picture? (decides severity)
+- Scope = SHORT gate following Gate 1, rest makes gaps -> AUDIO IS CORRECT. Remaining issue is Lantern
+  (and STEP/poly/CV, which also read gs) showing 1/4. Display/secondary-path mismatch, NOT blocking play.
+- Scope = LONG 1/4-width gate not following Gate 1 -> CC's override isn't reaching the jack; real signal
+  bug (something re-drives GATE_OUTPUT downstream, or the override condition misses).
+
+### Right fix given the divergence: make internal state AGREE with the output (still noteVal 2.f -> 6.f)
+The scope test shows the real issue is TWO DIVERGENT REPRESENTATIONS (output follows Gate 1; internal
+hold still 4 steps). Best fix = ONE SOURCE OF TRUTH: shorten the internal note so holdRemain = 1 step
+(noteVal 2.f -> 6.f = 1/16, MonsoonModeController.cpp:182). Then GATE_OUTPUT, Lantern, STEP, poly, CV ALL
+agree -- gate-width single-step notes everywhere -- and note-length is genuinely nullified at the STATE
+level, not just masked at the output. KEEP CC's output-follow (it correctly handles rest=low / legato=tie
+/ single=follow at the jack; with a 1-step internal note the two are consistent).
+Corrected rationale: not "CC's fix does nothing" (scope proves it works at the jack) but "CC's fix fixes
+the OUTPUT while leaving the INTERNAL STATE at 1/4, and the Lantern honestly shows that internal state --
+so shorten the internal note to make output and state agree."
