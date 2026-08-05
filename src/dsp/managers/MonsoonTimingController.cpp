@@ -41,6 +41,10 @@ bool TimingController::processResetGate(float resetInputV, float resetButtonVal)
     
     if (resetTrigHigh || resetBtnHigh) {
         resetArmed = true;
+        // Fire the reset pulse on an ACTUAL reset so RESET_TRIGGER_OUTPUT signals reset
+        // (expanders like Intertropical read this to sync back to scene 1). Previously the
+        // pulse only fired on run-toggle, so RESET_TRIGGER_OUTPUT never pulsed on reset.
+        resetPulse.trigger(1e-3f);
         return true;
     }
     return false;
