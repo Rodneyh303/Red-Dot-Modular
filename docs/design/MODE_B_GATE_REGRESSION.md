@@ -96,3 +96,44 @@ Mode B, external gate into G1, watch Lantern:
 If events only flow with RUN active, the regression is the `if (runGateActive)` wrapper (Monsoon.cpp:573)
 gating Mode B. Fix: external-gate modes (B/D) should advance on the gate edge regardless of runGateActive
 (the external gate IS the transport). Also bisect when Mode B moved inside that guard.
+
+## ROOT CAUSE FOUND (H4, the real one): Mode B gate-slaving is COMMENTED OUT
+New symptom detail (Rodney): RUN on, sequencer runs + steps on the gate, but every note is a LONG HELD
+note -- REST=0 and LEGATO=0 have NO effect. So it's NOT "no events"; it's "note SHAPING broken in Mode B".
+
+THE BUG: the "Mode B Gate Slaving" block in Monsoon.cpp (~line 684-698) is ENTIRELY COMMENTED OUT. Its
+own comment states the intent: "In Mode B (Seq + Gate), the gate duration MUST follow the external Gate 1
+input. This nullifies the impact of internal Note Length/Variation parameters."
+With it disabled: Mode B's gate duration uses the INTERNAL note-length machinery instead. The controller
+passes a FIXED noteVal=2.f (1/4 note). If external gates arrive faster than a 1/4 note (e.g. every 1/16),
+each note's internal duration SPANS MULTIPLE gate intervals -> notes hold across steps -> continuous LONG
+NOTES. Rest/legato get swamped because the gate never drops long enough for them to matter. Exactly the
+symptom.
+
+WHY IT WAS COMMENTED (likely): the block references engine.g1Trig.isHigh(). That trigger object may have
+been renamed/moved in a refactor, so instead of updating the reference it was commented out -- silently
+removing Mode B's defining behaviour. (MonoDecision::Rest still exists: SequencerEngine.hpp:19,30. So the
+rest-check half is fine; the g1Trig reference is the suspect symbol.)
+
+## THE FIX (Claude Code, Rack)
+Restore Mode B gate-slaving so gate duration follows external Gate 1:
+1. Find what engine.g1Trig became. It's the smoothed/schmitt state of the Gate 1 INPUT. Candidates: the
+   tc gate-edge state, or input.gate1 >= 1.f (gate1High is already computed at Monsoon.cpp:588). The
+   commented code wanted "is Gate 1 currently high" (smoothed) -> gate OUT high; low -> gate out low.
+2. Re-implement the block (modeSelect == 1 only):
+   - If the step's decision is NOT Rest: GATE_OUTPUT follows Gate 1 high/low (the external gate's own
+     duration IS the note duration). Use the debounced gate1High (input.gate1 >= 1.f) or a smoothed
+     version to avoid clicks.
+   - If the step IS a Rest: GATE_OUTPUT = 0 regardless of Gate 1.
+   - LEGATO still applies: a legato step should tie across gates (suppress the gate-low between steps) --
+     confirm legato interaction with slaving (legato = hold through the gate gap; rest = force low).
+3. This must run AFTER the mode execution set lastStepResult.decision, and override the GATE_OUTPUT that
+   the internal note-length path wrote. Mirror how the commented code sat late in process().
+4. Verify in Rack: external gate into G1, Mode B -> note length follows gate width; REST punches holes;
+   LEGATO ties across gates; note length/variation knobs have NO effect (correctly nullified).
+5. Bisect: `git log -S "g1Trig" -- src/Monsoon.cpp` to see when the block was commented + what g1Trig was
+   renamed to -- that gives the exact replacement symbol.
+
+REGRESSION CONFIRMED: this is why "Mode B worked before" -- the slaving block was live, then commented
+during a refactor (likely the g1Trig rename), removing gate-follows-external behaviour. Priority: this is
+a real ship-affecting regression for anyone driving Monsoon from external gates.
