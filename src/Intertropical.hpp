@@ -209,6 +209,9 @@ struct Intertropical : Module {
     int   activeScene   = 0;     // which scene is currently sounding
     int   repeatPos     = 0;     // 0..repeats[activeScene]-1  which repeat we're on
     int   lastStepIndex = -1;    // last stepIndex seen (for step-change detection)
+    uint32_t lastRestartCounter = 0;  // last engine.restartCounter seen (reset-edge detection)
+    bool  restartSeen = false;   // false until we've sampled restartCounter once (avoids a spurious
+                                 // rewind on the very first process() when counters differ)
     int   stepCounter   = 0;     // steps counted toward the current pattern cycle
     uint16_t liveMask   = 0;     // membership sampled AT the boundary (read-at-boundary rule)
 

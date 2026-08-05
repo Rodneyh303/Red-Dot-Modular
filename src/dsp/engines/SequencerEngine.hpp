@@ -244,6 +244,11 @@ struct SequencerEngine {
     int cachedLength = 16;
     int cachedOffset = 0;
     int totalStepsElapsed = 0; // Running counter for drifting polymetric DNA alignment
+    // Monotonic hard-restart counter: bumped once per handleRestart() (manual RESET / restart-on-
+    // unmute / gate-assigned restart). Downstream arrangement observers (Intertropical) watch it for
+    // a change to rewind to the START of their whole sequence — unambiguous, unlike totalStepsElapsed
+    // which also DECREMENTS during reverse play. Not persisted (live transport state).
+    uint32_t restartCounter = 0;
 
     bool hadMonoTail = false;
     bool wasHeldMono = false; // Capture mono state before tick() for start-detection

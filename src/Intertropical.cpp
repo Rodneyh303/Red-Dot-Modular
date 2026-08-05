@@ -73,7 +73,24 @@ void Intertropical::process(const ProcessArgs& args) {
     // step where the pattern wraps (accounts for modulated start/endStep correctly).
     // We track the stepIndex to detect when a new step result is available.
     const int si = eng.stepIndex;
-    if (lastStepIndex >= 0 && si != lastStepIndex) {
+
+    // ── RESET: jump to the START of the whole scene sequence (scene 0, repeat 0). ──
+    // handleRestart() bumps engine.restartCounter once per hard restart (manual RESET, restart-on-
+    // unmute, gate-assigned restart). Watching that counter for a change is the UNAMBIGUOUS reset
+    // edge — unlike totalStepsElapsed, which also decreases every step during reverse (Mode E) play
+    // and would false-trigger. Rewinding the ENTIRE arrangement here (not just finishing the current
+    // scene/repeat) is what lets multiple Intertropicals sharing one reset restart at scene 0 together
+    // and stay phase-locked; without it each kept its own scene cursor and they'd drift apart.
+    const uint32_t rc = eng.restartCounter;
+    const bool resetEdge = restartSeen && (rc != lastRestartCounter);
+    lastRestartCounter = rc;
+    restartSeen = true;
+    if (resetEdge) {
+        activeScene = 0;
+        repeatPos   = 0;
+        liveMask    = sceneMask[0];
+        lastStepIndex = si;
+    } else if (lastStepIndex >= 0 && si != lastStepIndex) {
         // A new step was processed. Check if the engine reported a phrase boundary wrap.
         if (eng.lastStepResult.wrapped) {
             repeatPos++;

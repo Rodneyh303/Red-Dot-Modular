@@ -309,6 +309,7 @@ float Monsoon::semitoneToVolts(int semitone) {
     void Monsoon::handleRestart(bool manual, bool resetImmediate) {
         stepIndex = (startStep - 1 + 16) % 16;
         engine.totalStepsElapsed = 0; // Sync polymeters to "Beat 1" on hard reset
+        engine.restartCounter++;      // signal arrangement observers (Intertropical) to rewind to start
         // Under the stateless model the lanes follow this for free (each is a pure function
         // of totalStepsElapsed), so Beat 1 sync is automatic. resetLaneWalk() is belt-and-braces:
         // redundant now, but it was MISSING when lanes had their own accumulators — RESET zeroed
