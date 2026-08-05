@@ -72,7 +72,7 @@ void Intertropical::process(const ProcessArgs& args) {
     // Read the RESET_TRIGGER_OUTPUT pulse jack directly from the host. This fires only on a
     // genuine reset (button or gate input), NOT on phrase wraps or DNA_LCM counter wraps.
     // Check every process() call (not just on step edges) so a mid-step reset isn't missed.
-    if (host->outputs[Monsoon::OutputIds::RESET_TRIGGER_OUTPUT].getVoltage() >= 1.f) {
+    if (host->outputs[MonsoonIds::RESET_TRIGGER_OUTPUT].getVoltage() >= 1.f) {
         activeScene = 0;
         repeatPos   = 0;
         liveMask    = sceneMask[0];
