@@ -3,6 +3,9 @@
 
 using namespace rack;
 
+// Forward-decl: the module caches an Intertropical* (pointer only; full type in the .cpp).
+struct Intertropical;
+
 // ── Changi T3 — INTERTROPICAL arranged-output breakout (transit family) ──────
 // The third Changi terminal. T1/T2 break out Monsoon's RAW 16-voice engine. T3
 // breaks out Intertropical's ARRANGED 8-channel output — the Lantern parallel:
@@ -43,7 +46,15 @@ struct MonsoonChangiT3Expander : Module {
     // See ui/IntertropicalPairing.hpp.
     int followIT = 0;
 
+    // Rate discipline: resolveFollowedIT() does a rack-wide getModuleIds() scan — topology is
+    // control-rate, so cache the resolved pointer on a divider (mirrors the sibling-expander idiom
+    // in PROCESS_RATE_AUDIT). The 40-jack MIRROR still runs per-sample from the cache, so signal
+    // stays continuous; only the lookup is throttled. Runtime-only (not persisted).
+    Intertropical* cachedIT_ = nullptr;
+    rack::dsp::ClockDivider itLookupDiv_;
+
     MonsoonChangiT3Expander() {
+        itLookupDiv_.setDivision(512);   // ~94 Hz @ 48k — control rate for topology
         config(0, 0, ChangiT3Ids::NUM_OUTPUTS, 0);
         using namespace ChangiT3Ids;
         for (int ch = 0; ch < N_CH; ++ch) {

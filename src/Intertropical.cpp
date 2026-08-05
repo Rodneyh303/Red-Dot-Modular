@@ -26,6 +26,7 @@ Intertropical::Intertropical() {
     for (int s = 0; s < Ids::MAX_VOICES_PER_SCENE; ++s)
         effectiveTranspose[s] = 0.f;
     config(Ids::NUM_PARAMS, Ids::NUM_INPUTS, Ids::NUM_OUTPUTS, Ids::NUM_LIGHTS);
+    hostLookupDiv_.setDivision(512);   // host chain-walk at ~94 Hz @ 48k (control rate)
     // 8 per-output transpose knobs: -24..+24 semitones, integer-detented (snap), default 0.
     for (int o = 0; o < 8; ++o) {
         configParam(Ids::TRANSPOSE_FIRST + o, -24.f, 24.f, 0.f,
@@ -61,8 +62,12 @@ void Intertropical::process(const ProcessArgs& args) {
         if (pairId <= 0 || clash) pairId = redDot::assignPairId(this);
     }
 
-    Monsoon* host = redDot::findMonsoonEitherSide(this);
-    cachedHost = host;   // expose to transitive consumers (Lantern reads engine via getHost())
+    // Refresh the host pointer at control rate (chain walk; topology is not audio-rate). cachedHost
+    // is also read by transitive consumers (Lantern via getHost()). First divider tick fires after
+    // ~one division (~10 ms) — imperceptible on load.
+    if (hostLookupDiv_.process())
+        cachedHost = redDot::findMonsoonEitherSide(this);
+    Monsoon* host = cachedHost;
     if (!host) {
         for (int o = 0; o < Ids::NUM_OUTPUTS; ++o) outputs[o].setChannels(0);
         return;

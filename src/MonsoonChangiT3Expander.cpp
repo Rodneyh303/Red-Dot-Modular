@@ -15,7 +15,11 @@ using namespace ChangiT3Ids;
 //    STEP-LEGATO->SLEG_OUT (see Intertropical::process), so we read those two for STEP/SLEG.
 //    CV is already post-transpose + tie-latched inside Intertropical. ──
 void MonsoonChangiT3Expander::process(const ProcessArgs& args) {
-    Intertropical* it = redDot::resolveFollowedIT(this, followIT);
+    // Resolve the followed Intertropical at CONTROL rate (rack-wide scan); mirror its jacks every
+    // sample from the cached pointer so the 40 outputs stay continuous. See rate-discipline note.
+    if (itLookupDiv_.process())
+        cachedIT_ = redDot::resolveFollowedIT(this, followIT);
+    Intertropical* it = cachedIT_;
     if (!it) {
         for (int o = 0; o < ChangiT3Ids::NUM_OUTPUTS; ++o) outputs[o].setVoltage(0.f);
         return;
