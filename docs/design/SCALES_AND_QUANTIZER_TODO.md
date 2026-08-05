@@ -262,3 +262,28 @@ enable/disable (Scalar's model) as the always-available base + optional curated 
 tuning, housed in a Scala-reading Shophouse (shutters = tuning-width degree toggles). Concept is a clean
 generalisation; hard parts are root-in-unequal-tunings (absolute not rotatable) + curation care.
 POST-LIBRARY, with the rest of the microtonal arc.
+
+## CORRECTION re .kbm (keyboard mapping) -- NOT the scale-within-tuning source
+Earlier note suggested named-scales-per-tuning might come from a Scala ".kbm companion". That's WRONG.
+Clarified (Scala docs + Eurorack practice):
+- .kbm = KEYBOARD MAPPING (MIDI-note -> scale-degree: reference note/freq, which keys skipped, octave
+  repeat). It's about KEYBOARD PLAYABILITY, not about defining scales-within-tunings or named modes.
+- For a CV instrument (no MIDI keyboard in the path) .kbm is largely IRRELEVANT -- our Shophouse MASK
+  is the degree selector; we don't need .kbm to do that job. (Confirmed by Eurorack quantizer practice:
+  uTune etc. don't use .kbm; the user/module enters the degree mapping directly.)
+- .kbm files are also RARE + GENERIC (one linear .kbm serves many same-size .scl files), so they don't
+  pair 1:1 with scales anyway. Finding them = download the Scala archive (huygens-fokker.org/scala) and
+  `find . -name "*.kbm"` -- but you'll find few, and they're generic, not per-scale-named.
+
+### The RIGHT idiom for us (from Scala's own `mode` command)
+Scale-subsetting is idiomatically done WITHIN the .scl, not via .kbm: Scala's `mode` command picks a
+subset of degrees and deletes the rest, yielding a single subsetted .scl (instead of a .scl+.kbm pair).
+This is explicitly the method "if your synth supports .scl but not .kbm" -- exactly us. So:
+- .scl defines the TUNING (all available pitches).
+- Scale-subsetting = our MASK (Shophouse shutters) at runtime, OR pre-subsetted .scl files for named
+  modes (the `mode`-command approach) shipped as presets.
+- NAMED scales within a tuning (Pelog pathets etc.) = OUR OWN CURATION, not harvested from .kbm. Either
+  curated masks in-module, or curated pre-subsetted .scl presets. The ethnomusicological-care caveat
+  stands: do it right or ship manual-only.
+So we consume .scl (tuning) and essentially NEVER need .kbm. Named modes are our curation, delivered as
+masks or as subsetted .scl presets.
