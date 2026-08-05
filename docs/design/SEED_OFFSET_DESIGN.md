@@ -61,3 +61,52 @@ independent of accumulated history. offset = WHERE, scrub distance = HOW FAR. Pa
   N, confirm voice B = voice A shifted N draws (identical material, N-draw phase). Reversible mode still
   steps correctly with a non-zero offset.
 - MUST-HAVE / 1.0, fast-follow after library (MASTER_PLAN item 16).
+
+## TIMING + BASE/MOD LAYERING (refined)
+
+### Range: +-32 (or +-64 headroom) is enough
+Counter increments once per PHRASE (draw at phrase boundary). A crab offset = the phrase length of the
+canon subject (typ. 4/8/16 phrases). +-32 covers canons up to 32 phrases apart -- generous; beyond that
+the ear can't connect the voices AS a canon anyway. +-64 for headroom. Wider adds nothing usable; the
+CV input (unbounded) covers any exotic case.
+
+### Reset-to-sync is the KEYSTONE (defines the origin the offset is measured from)
+Before a crab piece: RESET everything (the IT/engine reset zeros counters, syncs all instances to a
+known origin -- both Monsoons at counter 0). THAT is the shared datum the offset is relative to. Without
+it, "offset by 6" is ambiguous (6 relative to what?). Workflow:
+  reset (all -> 0)  ->  base offset applied (B now effectively at 6)  ->  play (both advance lockstep,
+  staying 6 apart).
+The reset establishes the datum; the offset is measured from it. Reset is a PREREQUISITE for a coherent
+crab, not just nice-to-have.
+
+### BASE offset vs MOD offset -- two inputs, two policies (mirrors synth base-tune vs mod)
+effectiveCtr = drawCtr + baseOffset + modOffset
+- BASE OFFSET: a knob/setting = the STRUCTURAL canon interval ("B starts 6 phrases into the material").
+  Set once at setup. LATCHED AT RESET/RESEED (not sampled per phrase) -- you don't change the canon
+  interval mid-canon. Part of the patch's reproducible identity. Range +-32/+-64.
+  (This is where Rodney's "only allow new offset at reseed" instinct correctly applies -- to the BASE.)
+- MOD OFFSET: the CV input = the PERFORMANCE layer, added ON TOP. SAMPLED AT PHRASE BOUNDARY (Policy B,
+  the existing rate discipline applied to this input), applied to the UPCOMING draw (causal, no
+  retroactive mid-phrase recompute). Performable: sweep the crab crossing, scrub the timeline, add drift.
+  (This is where "sample offset mod at phrase boundary" correctly applies -- to the MOD.)
+
+This split IS the reconciliation of the earlier Policy-A-vs-B tension -- no mode toggle needed. Base =
+stable/reproducible (A-like); Mod = performable/boundary-sampled (B-like). Each input gets the policy
+that fits its role. It mirrors a synth's coarse-tune (structural, set once) vs mod-input (live) -- you
+don't sweep coarse tune to play vibrato.
+
+### Reproducibility
+- Static patch (base latched, no mod CV) = fully reproducible: same seed + same base offset + reset =
+  same output every time.
+- CV-driven mod = output depends on the mod source (LFO phase etc.) -- by the user's choice, exactly
+  like any CV modulation. Reproducible-when-static, performable-when-driven, from one design.
+
+### Implementation refinement (Claude Code)
+- Two contributions to the draw address: baseOffset (latched at reset/reseed) + modOffset (sampled at
+  phrase boundary from param+CV). effectiveCtr = drawCtr + baseOffset + modOffset applied at the
+  ADDRESS site (draw N -> draw N+base+mod), composing with reversible-mode +-1 stepping.
+- Base offset: latch on reset trigger + on reseed. Mod offset: sample at phrase-boundary (the draw
+  point), hold for the phrase, apply to the upcoming draw.
+- UNIFIED across rhythm+melody (both streams, lockstep) as before.
+- Panel: BASE OFFSET knob + MOD OFFSET CV jack (near SEED). Optionally one shared knob that acts as base
+  with the jack as mod -- but two clearly-labelled controls is cleaner for the canon workflow.
