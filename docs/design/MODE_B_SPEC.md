@@ -43,6 +43,23 @@ forward (gs.slurForward, the same leading-edge onset commitment as Mode A), DO N
 it HIGH across the gap until the next Gate 1 RISE. The next step then decides its own articulation. No
 advance length knowledge needed (this is why MODEL 1 works where Mode A's known-length model doesn't).
 
+HOW THE "CONTINUE THE SLUR?" DECISION IS MADE (Rodney's question -- answered by Mode A's existing
+leading-edge model, reused verbatim):
+The decision is NOT made at the gate gap. It is a LEADING-EDGE commitment made at each note's ONSET,
+exactly as Mode A does it (SequencerEngine.cpp:568-569, gs.slurForward = r_legato_tie < legatoProb):
+- When gate N RISES, note N rolls its OWN slurForward (a fresh r_legato_tie < legatoProb roll). This is
+  N's commitment: "I intend to hold my gate forward into the next note."
+- When gate N FALLS: if N's slurForward is set, DON'T drop the gate -- bridge high toward gate N+1.
+  If not set, drop the gate at N's fall (gap before N+1 = re-articulation).
+- When gate N+1 RISES, note N+1 does TWO things (both identical to Mode A):
+  (1) reads prevSlur = N's slurForward -> "am I a legato/tie DESTINATION connected back to N?" (the join
+      is confirmed here; if yes, no re-attack -- legato moves to a new pitch, tie holds same pitch);
+  (2) rolls its OWN slurForward -> "do I extend the chain forward to gate N+2?"
+So the chain continues note-by-note: each note at ITS onset decides whether IT reaches forward. The chain
+BREAKS at the first note whose slurForward roll fails (gate drops at that note's Gate 1 fall) or at a REST.
+This needs NO advance length knowledge and NO new logic -- it is Mode A's leading-edge slur cascade, with
+the ONLY change being that the held gate rides to the next GATE 1 RISE instead of to a known step edge.
+
 Resolved sub-questions:
 (a) MODEL 1 confirmed.
 (b) LEGATO vs REST: REST WINS. If the next step is a REST, a pending slur resolves to gate LOW at that
