@@ -21,67 +21,56 @@ Mode B calls the same executeStep(...) as Mode A. Keep these identical to Mode A
   DECISION of whether a note connects is the same. What differs is only the DURATION of the connection
   (section 4). DEFINITE that the connection DECISION transfers; the duration is the open question.
 
-## 3. Note LENGTH: nullify internal length, use the gate  [PARTIALLY DECISION NEEDED]
-The controller currently passes noteVal=2.f (1/4 = 4 steps) -> gs.holdRemain = 4 steps -> notes span
-multiple gates -> the "long notes" bug, AND the internal state (which the Lantern/STEP/poly/CV read)
-disagrees with the gate-following output.
-The internal note length must be NULLIFIED so every read-path shows gate-width notes.
-Option A (simple): controller passes noteVal = 6.f (1/16 = exactly ONE step). holdRemain expires within
-  one step, before the next gate. Each gate = one fresh single-step note. All read-paths agree.
-Option B (exact): set holdRemain from the MEASURED Gate 1 high-width (gate closes when Gate 1 goes low).
-  True "gate width IS note width", handles gates shorter/longer than one step.
-[DECISION NEEDED -- RODNEY]: A or B for NON-legato notes?
-  - A is trivial and matches "one gate = one 1/16 step" (the step grid definition). Recommended default.
-  - B matters only if you want the note to end when Gate 1 goes LOW (staccato short gates) rather than
-    lasting the whole step. Do you want gate-WIDTH (B) or gate-triggered-fixed-1-step (A)?
-  My read: A unless you specifically want staccato/varying gate widths to shorten notes. Your call.
+## 3. Note LENGTH -- RESOLVED (follows from MODEL 1)
+DECISION (Rodney): MODEL 1 legato is chosen (section 4), which resolves this: the gate FOLLOWS GATE 1's
+actual high/low width. A non-legato note's gate drops when Gate 1 drops, leaving a gap before the next
+rise = a clean re-articulation. This is Option B (gate-width), NOT Option A (fixed 1-step) -- because the
+GAP between gates is exactly what makes legato meaningful (legato = suppress the drop, bridge the gap).
+So there is NO separate internal note-length in Mode B: the note length IS Gate 1's width.
+- Internal Note Length / Variation params: fully NULLIFIED (no effect on gate/note duration).
+- gs.holdRemain must reflect "gate open while Gate 1 high" -- NOT a fixed nvIdx. Implementation: drive
+  the gate/hold state from Gate 1's level (high = gate open, low = gate closed) rather than from a
+  note-length countdown. The controller's noteVal is irrelevant to duration now (can stay any value; it
+  no longer feeds length). Confirm nvIdx isn't used for anything else in Mode B (pitch? no -- pitch is
+  genPitchLive; nvIdx is length only). If nvIdx is length-only, Mode B simply bypasses the length
+  countdown and ties the gate to Gate 1.
+- ALL read-paths (GATE_OUTPUT, STEP, poly, CV, Lantern) read this same gate-follows-Gate1 state -> they
+  agree by construction (fixes the shipped divergence).
 
-## 4. LEGATO / TIE in Mode B -- THE REAL DESIGN PROBLEM  [DECISION NEEDED -- RODNEY]
-THE CRUX (Rodney): In Mode A, when a note commits at its ONSET to start a legato/tie (gs.slurForward),
-the engine KNOWS the note's length -- it will end at a known step boundary (or fractional sub-step via
-gateSecRemain), so the gate can ride open to exactly there and the join to the next note is defined.
-In Mode B, when a gate rise starts a note we decide to make a legato/tie source, WE DO NOT KNOW ITS
-LENGTH -- the length is however long until the next external gate, which hasn't happened yet. So Mode A's
-"commit at onset to hold forward for the known length" does not directly map: there is no known length
-to hold for.
+## 4. LEGATO / TIE -- RESOLVED: MODEL 1 (bridge gate high to next gate rise)
+DECISION (Rodney): MODEL 1. Legato in Mode B means: at Gate 1 FALL, if this note committed to slur
+forward (gs.slurForward, the same leading-edge onset commitment as Mode A), DO NOT drop the gate -- hold
+it HIGH across the gap until the next Gate 1 RISE. The next step then decides its own articulation. No
+advance length knowledge needed (this is why MODEL 1 works where Mode A's known-length model doesn't).
 
-So the question is: what does a legato/tie MEAN when the note length is externally, unknowably timed?
-Candidate models (need Rodney's decision):
-  MODEL 1 -- "hold across the gap to the next gate": a legato note keeps its gate HIGH from its own
-    Gate 1 fall THROUGH to the next Gate 1 rise (bridging the gap between gates), so consecutive notes
-    connect with no gate drop. The tie length = until the next gate. Natural + simple; legato = "no
-    re-articulation between these steps". Works without knowing length in advance (you just don't drop
-    the gate at Gate 1 fall; you keep it up until the next rise). Likely the right model.
-  MODEL 2 -- "sustain until Gate 1 falls, gap otherwise": legato only matters if there IS a gap between
-    gates (gate width < step). If gates are contiguous (gate width = full step) there is no gap to
-    bridge and legato is a no-op. Ties Model 1 to Option B (section 3).
-  MODEL 3 -- "N-gate tie chains": a tie holds across a FIXED number of subsequent gates (like a tie
-    length), decided at onset. But we don't know gate timing, so "N gates" is the only length unit we
-    have. More complex; probably not wanted.
-[DECISION NEEDED -- RODNEY]:
-  (a) Which model? (My read: MODEL 1 -- legato = bridge the gate high from this note's end to the next
-      gate rise, so connected notes don't re-articulate. It needs no advance length knowledge: at Gate 1
-      FALL, if this note committed to slur forward, DON'T drop the gate -- hold high until the next
-      Gate 1 rise, then that next step decides its own articulation.)
-  (b) Does legato interact with REST? If the next step is a REST, a pending slur should resolve to gate
-      LOW at that step (rest wins). Confirm.
-  (c) 3-note tie chains: supported in Mode B or not? (Model 1 supports them naturally -- keep holding
-      high across multiple gaps as long as each note commits slurForward.)
-  (d) Interaction with Option A vs B in section 3: if A (fixed 1-step notes, gate always full step, no
-      gap), MODEL 1 legato = "don't drop between these steps" (bridge the inter-step edge). If B
-      (gate-width notes with gaps), legato bridges the actual gap. Decide sections 3 and 4 together.
+Resolved sub-questions:
+(a) MODEL 1 confirmed.
+(b) LEGATO vs REST: REST WINS. If the next step is a REST, a pending slur resolves to gate LOW at that
+    step (the bridge is cancelled -- rest punches its hole even if the previous note wanted to slur into
+    it). Same as Mode A: a rest is never connected into.
+(c) 3-NOTE TIE CHAINS: SUPPORTED naturally. Keep holding the gate high across MULTIPLE gaps as long as
+    each successive note also commits slurForward. The chain breaks at the first note that does NOT
+    commit slurForward (gate drops at its Gate 1 fall) or at a REST (gate low). No special-casing --
+    it falls out of "bridge each gap where slurForward is set".
+(d) COUPLING with section 3: resolved together. Gate follows Gate 1 width (section 3) => non-legato
+    notes leave a gap at Gate 1 fall (re-articulation); legato (MODEL 1) bridges that gap. Consistent.
 
-## 5. ALL READ-PATHS MUST AGREE (the bug that shipped)
-Whatever sections 3-4 decide, the STATE the Lantern reads (gs.gateHeld / gs.holdRemain / lastNoteType)
-MUST match the GATE_OUTPUT the audio path produces. The shipped bug: CC's fix made GATE_OUTPUT follow
-Gate 1 but left the internal hold at 1/4, so scope (correct) and Lantern (1/4) disagreed. The fix at
-section 3 (nullify internal length at the STATE level, not just the output) makes them agree. KEEP CC's
-GATE_OUTPUT-follow block only if it stays CONSISTENT with the internal state after section 3; if section
-3 makes the internal state correct, the separate output override may become redundant -- prefer ONE
-source of truth (the internal state) that all paths read, over a divergent output override.
-[DECISION NEEDED -- RODNEY / Claude Code in Rack]: after section 3's fix, is CC's output-override still
-needed, or does the corrected internal state drive GATE_OUTPUT correctly on its own? Prefer removing the
-override if the internal state alone is right.
+The connection DECISION (whether this note slurs forward) is UNCHANGED from Mode A: gs.slurForward is set
+at onset by the r_legato_tie roll + legatoProb, via the same leading-edge cascade. ONLY the DURATION
+model differs (bridge-to-next-gate instead of hold-for-known-length). So Mode B reuses Mode A's legato
+DECISION machinery verbatim; it changes only what happens to the GATE between the decision and the next
+step: Mode A rides the gate to a known boundary; Mode B rides it to the next Gate 1 rise.
+
+## 5. ALL READ-PATHS AGREE -- RESOLVED: one source of truth, drop the separate override
+DECISION: section 3 ties the gate state to Gate 1 at the STATE level (holdRemain/gateHeld follow Gate 1,
+legato bridges). Once the internal state is correct, every read-path (GATE_OUTPUT, STEP, poly, CV,
+Lantern) reads that ONE correct state. So CC's separate GATE_OUTPUT-override (87eaaac) should be REMOVED
+in favour of the corrected internal state -- one source of truth, no divergent override. (CC's override
+was the right stopgap to prove the output could follow Gate 1, but the proper fix is at the state layer,
+after which the override is redundant and risks re-introducing divergence.)
+[VERIFY in Rack -- Claude Code]: after wiring the internal gate state to Gate 1 + MODEL 1 legato, confirm
+GATE_OUTPUT still follows Gate 1 correctly WITHOUT the override. If some path still needs the output set
+explicitly, keep it but source it from the SAME state, never a separate computation.
 
 ## 6. THE TEST (definite -- write this regardless of the decisions above)
 Standalone engine-level test in test/ (container, no Rack). Once sections 3-4 are decided, encode them as
@@ -95,9 +84,13 @@ assertions. Structure:
 - CRITICAL: assert the Lantern-read state (gateHeld/holdRemain/lastNoteType) equals the output-path
   state -- they cannot diverge. This is the guardrail that catches the shipped bug class.
 
-## Summary of what needs Rodney's thought
-1. Section 3: note length model A (fixed 1-step) vs B (measured gate width) for non-legato notes.
-2. Section 4: legato/tie model (1/2/3) -- the real design question, since Mode B doesn't know note length
-   at onset. Recommended MODEL 1 (bridge gate high to next gate rise). Plus rest-interaction, tie-chains.
-3. Section 5: whether CC's output-override stays or the corrected internal state suffices.
-Sections 1, 2, 6 are definite and can proceed. 3-5 need your call first.
+## Summary -- ALL DECISIONS RESOLVED (Rodney chose MODEL 1)
+1. Section 3: gate FOLLOWS GATE 1 WIDTH (no internal note-length); the gap between gates = re-articulation.
+2. Section 4: MODEL 1 legato -- bridge gate high from Gate 1 fall to the next Gate 1 rise; rest wins;
+   3-note tie chains supported naturally; reuses Mode A's slurForward DECISION machinery, changes only the
+   duration model (bridge-to-next-gate, not hold-for-known-length).
+3. Section 5: drop CC's separate override; drive the gate state from Gate 1 at the STATE level so all
+   read-paths agree by construction (verify in Rack).
+The spec is now fully executable. Claude Code: implement sections 3-5, write the section-6 test encoding
+these rules. The whole thing rests on ONE idea -- in Mode B the gate follows Gate 1, and legato is the
+single modifier that bridges the gap to the next gate.
