@@ -44,29 +44,31 @@ geography rather than generic "microtonal" abstraction.
     3 years, hearing the Sultan Mosque call to prayer. Closer to lived experience than Precinct
     (encountered daily rather than only conceptually) but still "near" not "in". Aligns more literally
     with the East-West-meeting-point theme; suits Micro-24 (maqam-capable) specifically.
-  * 12 COLONNADES / 24 COLONNADES (Rodney's current working candidate). Number-first order chosen
-    deliberately -- makes the number carry MEANING (count of columns = count of degrees) rather than
-    being a variant marker like "Colonnades 12" would be. English naturally reads "quantity + type"
-    (twelve apostles, twenty-four elders); the number-first form scans cleanly and IS the specification.
-    Multi-layer fit:
-    (1) Concrete referent: Colonnades is Rodney's current residence on Grange Road. A colonnade is a
-        real architectural form -- a sequence of regular columns framing a passage.
-    (2) Functional: 12 columns / 12 tuning degrees; 24 columns / 24 degrees. The name literally
-        specifies what the module does at word-level, no explanation needed.
-    (3) Philosophy: colonnades bring ORDER TO SPACE THROUGH COUNTED REPETITION -- exactly how tunings
-        bring order to pitch-space. And the count IS the axis of difference (12 stately/classical/
-        familiar; 24 denser/more-elaborate/carries Ottoman-Mughal-Middle-Eastern resonance where fine
-        articulation was prized) -- which subtly connects to the East-West theme.
-    Clears Bastl-line honestly: Rodney comes home to Colonnades every night. Real ground, defensible
-    story. Fits collection's English-word-with-Singapore-meaning register. Fits sub-pattern of
-    numbered/enumerated modules (Change Alley V2, Changi T1/T2/T3). Slight tonal shift toward classical/
-    formal register vs Monsoon/Sands/Shophouse, which may be RIGHT for tuning modules (tuning theory
-    has classical/mathematical weight).
-    Practical: verify Library sort behaviour with number-prefixed names before commit; probably fine.
-  * PRECINCT + KAMPONG GLAM remain earlier candidates but are less directly grounded in Rodney's
-    lived experience than Colonnades. See earlier notes.
-  * EMERALD HILL / GRANGE also from Rodney's residences but less strong (Emerald Hill overlaps with
-    Peranakan/Shophouse territory; Grange as bare street name lacks the structural resonance).
+  * COLONNADES / DUO COLONNADES (Rodney's refined candidate; the 24-tone module is TWO twelves, so
+    the name reflects the actual doubling architecture -- not just a counted variant):
+    - COLONNADES (Phase 2, 12-tone) -- Rodney's current residence, Grange Road. One colonnade = 12
+      regular columns = 12 tuning degrees.
+    - DUO COLONNADES (Phase 3, 24-tone) -- two colonnades stacked = 24 degrees. "Duo" also references
+      Bugis Duo Residences, Rodney's former home near Kampong Glam. Both residences honored; the
+      doubling architecture is EXPLICIT at word-level.
+    (Alternative expression: "DUO 12" -- more mathematically spare, but "12 of what?" ambiguity;
+    "Duo Colonnades" avoids that by making the base module name explicit in the compound.)
+    Why this is a strong candidate:
+    (1) Concrete: two lived residences (current + former), both carrying real Singapore-life ground.
+    (2) Functional: name TEACHES the module's structure -- Duo Colonnades = two Colonnades = the
+        24-tone variant IS Micro-12 doubled. Matches the actual design (per MICRO_TUNING_INTEGRATION_PLAN,
+        the 24-tone microtonal work IS conceptually two 12-degree banks; two Interchanges modulate it
+        cooperatively, one per twelve -- so "Duo" fits that architecture precisely).
+    (3) Philosophy: colonnades bring order through counted repetition; Duo Colonnades does it
+        twice-over, which IS what non-12-TET microtonal music is (the 12 framework plus subdivision).
+        Personal layer: the 24-tone module carries BOTH residences (present + past), layered, which
+        matches a genuine biographical arc.
+    Clears Bastl-line: both names from actual lived experience (current home + former home).
+    Practical: "Duo Colonnades" as a two-word panel name -- flows as one phrase like "Change Alley",
+    so consistent with collection precedent for compound names. Verify Library availability at build.
+  * Earlier candidates (Precinct, Kampong Glam, 12/24 Colonnades) preserved above but Colonnades/Duo
+    Colonnades supersedes them as current working titles: stronger lived-experience ground (two
+    residences honoured), and the name TEACHES the doubling architecture.
   * Rodney's Bastl-line principle: names from lived experience beat names picked for cool factor. Both
     candidates satisfy this. Choose when closer to build.
 
