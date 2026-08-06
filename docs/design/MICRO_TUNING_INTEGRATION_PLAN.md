@@ -263,3 +263,49 @@ N argument. Still reject the 12x2-shade scheme (false 12+12 structure).
    high N_active.
 All post-library, all deferred. The insight (scales are subsets -> few active colours) is the load-bearing
 point; the exact model is a later call.
+
+## INTERCHANGE MODULATION of Micro faders (Rodney's insight -- reuse, not duplicate)
+Compositional principle applied again: Interchange already modulates Monsoon's 12 note faders. Extend by
+reuse:
+- Micro-12: SAME 12-fader shape as Monsoon's, just different owner. ONE Interchange can modulate Micro-12
+  with essentially no Interchange change -- same target shape, different module. Free extension.
+- Micro-24: 24 faders. Interchange knows 12. So PAIR TWO Interchanges -- one handling degrees 1-12, one
+  handling 13-24 -- to cooperatively cover 24. No "Interchange-24" module needed; composition instead
+  of duplication. Same "modes are entry points, behaviour is shared" principle: two Interchange entry
+  points to a 24-fader bank, each doing its familiar 12-fader job.
+
+### Fader labels for Micro-24: "C 1/13, C# 2/14, D 3/15..."
+Each fader shows both interpretations: the note name it WOULD BE in 12-TET (equal-division default -- the
+natural reference) + its degree number in the 24-tone system. Format "note-name degree-number/paired-
+degree-number" (e.g. "C 1/13" for the fader at C position, degree 1, paired with degree 13 an equal-
+tuning half-step higher). Users thinking in note names see them; users thinking in degrees see them;
+nobody has to pick, and the "1/13" format visually connects the two-Interchange halves. Note names are
+labels only -- meaningful for near-12-TET tunings, degrade to "just a reference" for arbitrary Scala
+(where a "C" fader may sound nothing like C). Ties to issue H (note names in non-12 tunings): labels can
+carry the 12-TET reference name PLUS the degree number, best of both.
+
+### How two Interchanges attach to one Micro-24 (design question)
+Each Interchange must know whether it's the 1-12 half or the 13-24 half. Options:
+- (A) Position-based: first Interchange found = 1-12, second = 13-24. Simple, no config, BUT reordering
+  the expander chain silently swaps which half each modulates. Confusing.
+- (B) [LEAN] Explicit RANGE setting per Interchange (context menu): "Modulate: Monsoon 1-12" / "Micro-24
+  degrees 1-12" / "Micro-24 degrees 13-24". User picks. Robust to reordering. Generalises the feature
+  cleanly: Interchange targets ANY 12-degree bank, of which Monsoon/Micro-12/Micro-24-first/Micro-24-
+  second are options.
+- (C) Auto-assign but persistent: first-to-attach owns 1-12, second gets 13-24, remembers across chain
+  moves. Clever but more state to track.
+Lean B (explicit target selection). Reframes the feature as "Interchange can target any 12-degree bank"
+rather than "Interchange knows about Micros specifically" -- cleaner architecture.
+[DECIDE LATER -- RODNEY]
+
+### One-Interchange-on-Micro-24 behaviour (graceful degradation)
+If only ONE Interchange is attached to a Micro-24, modulate its assigned half (1-12 OR 13-24), leave the
+other half unmodulated. Lets you incrementally add (attach one, hear it, decide if you want the second)
+and never leaves the feature refusing to do something useful. Clean over restrictive.
+[DECIDE LATER -- RODNEY, but lean graceful-degrade.]
+
+### Two-Interchanges-on-Micro-12? (define this too)
+Micro-12 has 12 faders. Attaching two Interchanges is redundant -- either they double-modulate the same
+faders (competing writes, ambiguous) or the second is inert. Simplest: only ONE Interchange effective per
+Micro-12; a second attached is inert (or refused). Ties to the single-writer discipline / WriteLedger.
+[DECIDE LATER -- RODNEY, likely just "one active per Micro-12, second inert".]
