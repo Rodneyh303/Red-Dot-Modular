@@ -112,3 +112,52 @@ show degree NUMBER (1..N) or cents, not note names, when a non-12-TET tuning is 
 - B: transpose = degree-shift or volts-shift in unequal tunings? (lean degree-shift)
 - D: 12-LED halo behaviour at N=24? (lean: display delegates to expander, halo blanks)
 - H: note-name display in custom tunings -> degree number / cents? (lean degree number)
+
+## LANTERN PIANO ROLL under a custom tuning (issue H, expanded)
+The piano roll's vertical axis is a LITERAL 12-tone keyboard: white backing + black keys at pitch
+classes {1,3,6,8,10} + white-key dividers at E|F, B|C (Lantern.cpp:495-530), one row per semitone. That
+black/white metaphor IS 12-TET and doesn't extend to other N.
+
+### 12-Micro: REUSE the current piano roll as-is
+A 12-tone Micro still has 12 degrees/octave -> the existing 12-row keyboard works. The kbm-style mapping
+says which of the 12 keyboard rows each degree occupies; detuned cents don't change the ROWS (only the
+exact pitch within, which the roll needn't show). So 12-Micro reuses everything. Clean.
+
+### N != 12 (24-Micro, or any Scala N): UNIFORM N-ROW GRID, degree numbers, NO keyboard graphic
+There is NO black/white keyboard for 24 (a piano is intrinsically 12). Options considered:
+- (1) CHOSEN: drop the keyboard graphic for N!=12; show N uniform rows/octave with DEGREE-NUMBER labels
+  (1..N) instead of note names. Honest for ANY tuning incl. arbitrary Scala. The piano becomes a plain grid.
+- (2) REJECTED: "12 primary + 12 quarter-tone" keyboard scaffold -- bakes in the 12+quarter-tone
+  interpretation, FALSE for true 24-EDO / arbitrary Scala. Same arbitrary-.scl reason we rejected the
+  primary/inflection split for the PANEL (one row of 24) and must reject here too. CONSISTENT: 24-tone is
+  "N arbitrary degrees", never "12 plus extras", from panel to roll to colour.
+- (3) DEFERRED (later view option): CENTS-PROPORTIONAL rows -- each degree at its true cents height, so
+  unequal tunings show real pitch distances (wide gaps / tight clusters = the tuning's actual shape). Most
+  honest, biggest rewrite (non-uniform rows), harder to read as a time-sequence grid. Add later as an
+  optional view once the uniform N-row grid works.
+
+### ROW HEIGHT: keep it fixed; accept fewer octaves in view + more scrolling (DECIDED)
+Do NOT shrink rows for 24 (thinner rows hurt note/content legibility). Keep the row-height constant; the
+viewport just shows FEWER octaves (~5 oct at 12 rows -> ~2.5 oct at 24 rows, same height) and the user
+scrolls more. Content legibility > viewport range. Only the octaves-in-view changes; the row-height
+constant stays.
+
+### COLOUR-BY-NOTE at N degrees: N-parameterised perceptual palette (not two hardcoded palettes)
+Current: ~12 colours (one per semitone). At 24 you need 24 distinguishable colours -- but 24 mutually
+distinct categorical colours is AT/PAST the human limit (people reliably distinguish ~8-12 categorical
+colours; small panel + varied monitors make it worse). Decisions:
+- The colour function must be N-PARAMETERISED: "give me N maximally-distinct colours", generated from N.
+  Handles 12, 24, AND in-between (5-tone Slendro = 5 easy colours; 7-tone Pelog = 7; 24 = best-effort).
+  One function, not a 12-palette + a 24-palette special-case.
+- Use PERCEPTUAL spacing (OKLCH / CIELAB), NOT even hue steps: vary lightness + chroma too, so 24 colours
+  are as distinguishable as possible. Even-hue 15-degree steps look alike between neighbours -> reject.
+- REJECT the "12 hues x 2 light/dark shades" scheme -- it implies 12+12 primary/inflection structure,
+  false for arbitrary Scala (same reason as everywhere). 
+- REALISTIC EXPECTATION: even perceptually-spaced, 24 categorical colours won't read as instantly as 12.
+  That's a perceptual ceiling, not a design failure. 
+- OPTIONAL fallback view: a pitch-HEIGHT GRADIENT (low->high = spectrum sweep) as an alternative to
+  categorical colour-by-note, for tunings where 24 categories confuse more than help. Offer both;
+  categorical default, gradient optional.
+
+### Note NAMES: degree numbers (1..N), not C/C#/... when N!=12 (issue H resolved)
+Note names are 12-TET-only. For N!=12 show degree NUMBER (or optionally cents). For N=12 keep note names.
