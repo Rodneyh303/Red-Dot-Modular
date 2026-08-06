@@ -51,12 +51,29 @@ melodySemitone, the Lantern colour-by-semitone). Widen all 12-sized note arrays 
 "% 12" and "* 12" and "[12]". This is the pervasive change -- like the PPQN 24/48/96 rework, a
 find-every-hardcode job. WriteLedger/tests should guard it.
 
-### B. Transpose in an UNEQUAL tuning is NOT sem+n (SCALES_AND_QUANTIZER already flagged this)
-OLD transpose adds n semitones (sem+transpose)/12 -- valid only in equal tuning. In an unequal tuning,
-"transpose by 1 degree" shifts by a DIFFERENT cents amount at each degree. DECISION NEEDED: is Monsoon's
-transpose (a) degree-shift (move n degrees along the table -- intervals vary, "modal" transpose) or (b)
-volts-shift (add a fixed voltage -- constant pitch shift, may leave the tuning)? Likely (a) degree-shift
-for musical coherence, but it changes what transpose "means". Flag for Rodney.
+### B. Transpose in an UNEQUAL tuning -- RESOLVED by switching to OCTAVES (Rodney)
+The problem: semitone-transpose adds (sem+transpose)/12 -- the /12 is 12-TET. In a custom tuning, shifting
+by "1 semitone" moves OFF the tuning's grid (a 12-TET semitone isn't a degree of the tuning). Degree-shift
+vs volts-shift was the open question.
+RESOLUTION (Rodney): sidestep it -- use OCTAVE transpose only. An octave is +1.0V in ANY tuning (the
+octave is always the octave; only its internal division varies). So octave-transpose is unambiguous and
+tuning-native everywhere -- issue B DISSOLVES (no degree-vs-volts decision).
+- INTERTROPICAL per-output transpose (the 8 knobs, currently -24..+24 SEMITONES, integer-detented,
+  Intertropical.cpp:32-34, applied as transposeForOutput/12 at the roll/output): in MICRO mode -> switch
+  to OCTAVES only (e.g. -3..+3 octaves, octave-detented, applied as whole volts). No /12, no off-tuning
+  shift. This is SEPARATE from Monsoon's global in.transpose -- it's Intertropical's own 8 knobs.
+- CENTS transpose: REJECTED (Rodney's doubt confirmed). A cents shift moves the sounding pitch BETWEEN
+  the tuning's degrees -- off the tuning -- which defeats tuning-native generation. Cents-shift is a
+  "global detune/calibration" concept, not "move the material". Skip it.
+- [DECIDE LATER -- RODNEY]: make Intertropical's 8 knobs octaves-only in 12-TET mode TOO (consistency +
+  issue B fully gone everywhere), OR keep semitones in 12-TET (preserves "harmonise output up a
+  third/fifth", at the cost of transpose resolution CHANGING when a Micro attaches). Lean: OCTAVES-ONLY
+  everywhere -- these knobs' job is ARRANGEMENT (spread 8 outputs across registers; octave-shift is the
+  primary move); semitone harmony intervals are a secondary use better served by real pitch CV / a harmony
+  tool than 8 detented knobs. Minor either way (Rodney: "its minor"). Decide when building Micro.
+- Monsoon's GLOBAL in.transpose (genPitchLive, separate from Intertropical): if kept, same logic --
+  octaves are safe in any tuning; a non-octave global transpose in a custom tuning needs the same
+  octaves-only treatment or a degree-shift decision. Defer with the above; likely octaves-only in Micro.
 
 ### C. Octave wrap when N != 12
 genPitchLive builds octaves by integer steps then adds sem/12. With N degrees, an "octave" is still 1V
@@ -109,7 +126,8 @@ show degree NUMBER (1..N) or cents, not note names, when a non-12-TET tuning is 
    degree), N=12 regression (identical to old 12-TET), N=24 new cases.
 
 ## Decisions needed from Rodney (flagged inline)
-- B: transpose = degree-shift or volts-shift in unequal tunings? (lean degree-shift)
+- B: RESOLVED -- OCTAVE transpose (dissolves the unequal-tuning problem); cents rejected. Open sub-point:
+  Intertropical 8 knobs octaves-only in 12-TET too (lean yes) or keep semitones in 12-TET? Minor, decide at build.
 - D: 12-LED halo behaviour at N=24? (lean: display delegates to expander, halo blanks)
 - H: note-name display in custom tunings -> degree number / cents? (lean degree number)
 
