@@ -18,9 +18,12 @@ named-scale presets per tuning are the convenience layer. 12-TET is just the bes
    mask; hybrid manual + curated named scales); .scl role-agnostic (tuning OR scale by use); .kbm =
    keyboard mapping, irrelevant for slot-less CV quantizing BUT the right tool for Monsoon Micro's fixed
    12/24 faders (fader bank = keyboard). Curation = real ethnomusicological work.
-3. SHOPHOUSE_SPEC.md -- Shophouse = the scale/tuning selector expander. In the generalised world it
+3. MONSOON_MICRO_SPEC.md -- the 12/24 fixed-fader TUNING/SCALE AUTHORING expanders (Scalar-modelled:
+   per-degree cents + enable/disable + .scl read/write; one cents dial + edit-mode selection; delegation
+   rule = one Micro attached -> Monsoon faders blank, authority delegates). AUTHORING home.
+4. SHOPHOUSE_SPEC.md -- Shophouse = the scale/tuning selector expander (CONSUMING: import/display/modulate). In the generalised world it
    loads a .scl (tuning) and its shutters become N tuning-width degree toggles (shutter = pitch).
-4. SHOPHOUSE_FACADE_NOTES.md -- Shophouse panel/facade (Peranakan). Functional layer DONE on hardware;
+5. SHOPHOUSE_FACADE_NOTES.md -- Shophouse panel/facade (Peranakan). Functional layer DONE on hardware;
    facade redesign decided-not-built.
 
 ## Key decisions already made (see the docs for detail)
