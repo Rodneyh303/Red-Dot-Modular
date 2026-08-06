@@ -28,19 +28,30 @@ geography rather than generic "microtonal" abstraction.
   vocabulary either).
 - MICRO-12 and MICRO-24 (Phases 2/3): working candidates emerging, none committed. Availability
   unchecked for all.
-  * PRECINCT 12 / PRECINCT 24 (Rodney's return-to-earlier suggestion, genuinely strong). Precinct is a
-    real Singapore urban-planning unit (HDB estates organised into precincts, every Singaporean knows
-    theirs); Rodney lived in Bugis for 3 years so has direct lived relationship. Multi-layer fit:
-    (1) concrete Singapore referent, (2) bounded designed space with N residents ~ bounded octave with
-    N degrees, (3) philosophy = Singapore's nudge-governance-through-designed-environment mirrors what
-    a tuning does (composed set nudges character without coercing). Fits the collection's ACTUAL
-    dominant naming register (English-word-with-Singapore-meaning, like Shophouse, Change Alley,
-    Junction, Causeway) better than Malay-borrowing candidates. Clean 12/24 pairing per Changi T1/T2/T3
-    pattern. Clears Rodney's Bastl-line: name from own lived experience, defensible from own story.
-  * Kampong Glam remains a candidate given Rodney's 3 years there (Sultan Mosque call to prayer); would
-    be more specifically Malay-Arab-crossover-flavoured than Precinct, aligns with the East-West
-    theme more literally. Might suit Micro-24 specifically (the maqam-capable one) if Precinct is used
-    for the simpler variant, or as an alternative to Precinct for both.
+  * PRECINCT 12 / PRECINCT 24 (Rodney's return-to-earlier suggestion). Precinct is a real Singapore
+    urban-planning unit (HDB estates organised into precincts). Multi-layer fit: (1) concrete Singapore
+    referent, (2) bounded designed space with N residents ~ bounded octave with N degrees, (3)
+    philosophy = Singapore's nudge-governance-through-designed-environment mirrors what a tuning does
+    (composed set nudges character without coercing). Fits the collection's dominant naming register
+    (English-word-with-Singapore-meaning). Clean 12/24 pairing per Changi T1/T2/T3.
+    HONEST CAVEAT: Rodney has NOT lived in an HDB precinct -- his Singapore residences are private in
+    central prime districts (Bugis Duo, Emerald Hill/Somerset, Yong An Park, Grange Road/Colonnades).
+    So Precinct is chosen for collection-register + functional-philosophical fit, NOT from personal
+    lived experience in an HDB precinct. Same category as Sikit (well-chosen borrowing for artistic
+    stance) rather than a lived-experience name. Legitimate as an artistic choice, but doesn't clear
+    the Bastl-line the way a lived-experience name would.
+  * Kampong Glam remains a candidate -- Rodney lived at Bugis Duo NEAR Kampong Glam (not in it) for
+    3 years, hearing the Sultan Mosque call to prayer. Closer to lived experience than Precinct
+    (encountered daily rather than only conceptually) but still "near" not "in". Aligns more literally
+    with the East-West-meeting-point theme; suits Micro-24 (maqam-capable) specifically.
+  * ADDITIONAL CANDIDATES worth considering, from Rodney's actual Singapore residences (surfaced when
+    the Precinct assumption was corrected):
+    - COLONNADES (his current residence, Grange Road). A colonnade is a SEQUENCE OF REGULAR COLUMNS --
+      structurally maps to a sequence of degrees in a tuning. From actual lived experience. Interesting.
+    - EMERALD HILL (a former residence, the Peranakan shophouse street). But Peranakan taken by
+      Interchange design; "Emerald" reads precious.
+    - GRANGE (current street). Short, uncommon.
+    None of these have been evaluated against the multi-layer bar yet.
   * Rodney's Bastl-line principle: names from lived experience beat names picked for cool factor. Both
     candidates satisfy this. Choose when closer to build.
 
