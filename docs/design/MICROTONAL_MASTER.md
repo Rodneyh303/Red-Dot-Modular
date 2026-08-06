@@ -36,6 +36,12 @@ named-scale presets per tuning are the convenience layer. 12-TET is just the bes
 - .kbm = degree->slot map. SKIP for CV quantizing; USE for Monsoon Micro's fixed 12/24 faders. [SCALES_AND_QUANTIZER]
 - Shophouse is the home: tuning loader + N-width degree toggles. [SHOPHOUSE_SPEC]
 
+## Cross-cutting: the tuning table is SHARED across ALL modes
+Monsoon Micro defines the tuning table for GENERATIVE output (modes A/B/E). But the QUANTIZER modes C & D
+(MODES_C_D_QUANTIZER_PRERELEASE.md) must quantize to the SAME table -- a Micro that retunes A/B/E but
+leaves C/D on 12-TET would be incoherent. Design the tuning table as one shared structure all modes read.
+(C/D also need a NEGLECT pass pre-release, independent of microtonal -- see that doc.)
+
 ## Open / needs work (all post-library)
 - Named-scale CURATION per tuning (the real ethnomusicological effort).
 - Absolute root/transpose handling for unequal tunings (engine change).

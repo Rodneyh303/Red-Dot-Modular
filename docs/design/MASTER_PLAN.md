@@ -141,6 +141,14 @@ Add to MonsoonScaleManager.cpp:
 Label all honestly as 12-TET approximations. Rack listen to confirm they sound right.
 
 ### 15. External gate articulation check (Rack verify)
+
+### 15b. Modes C & D (quantizer modes) pre-release pass -- NEGLECTED (see MODES_C_D_QUANTIZER_PRERELEASE.md)
+Mode C (clock quantizer) + Mode D (gate2 quantizer) are real but long-neglected -- not re-examined as
+engine/scale/PPQN/tuning changed around them (same risk as the Mode B regression). PRE-RELEASE, not
+post-library: existing functionality that could ship broken. Verify in Rack (quantize external CV2 to
+active scale, respect mask, live scale changes, PPQN-C interaction) + add standalone quantizer tests.
+Also: when Monsoon Micro defines the tuning table (for A/B/E output), C/D MUST quantize to the SAME table,
+not 12-TET -- design the tuning table as shared across ALL modes.
 Confirm external-gate-driven steps route through the SAME rest/legato/accent-mode-B path as
 internal clock, AND that Sands mods + big-5 modulation apply under external gate.
 REQUIRED before publishing pitch doc point 3 claim. See EXTERNAL_GATE_ARTICULATION_CHECK.md.
