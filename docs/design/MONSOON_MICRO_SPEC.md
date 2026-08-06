@@ -111,3 +111,68 @@ The pairing tech scales naturally; this rule just clarifies the Monsoon-side cou
   (different thing -- Scalar offset = pitch transpose). Probably skip humanization for v1.
 - Modulation on Shophouse-micro: what's modulatable (which degrees active? cents? -- ties to
   scales-within-tunings live modulation).
+
+## OPEN DESIGN QUESTION: separate tuning from scale-mask authoring? (Rodney's scenario)
+### The scenario
+User wants a slightly-retuned 12-TET (well-tempered, meantone, stretch, personal expressive detune) BUT
+still wants to load their usual 12-tone SCALE (major, minor, Dorian, harmonic minor, etc.) from their
+existing scale library. Common real-world microtonal use case -- most historical temperaments are
+"nearly 12-TET with adjusted cents, standard 12-tone modes on top". Users want the tuning flexibility
+WITHOUT re-authoring their scale library.
+
+### The design gap I glossed over
+Earlier drafts had Micro faders serving DUAL ROLE: cents (tuning) + weight (scale mask including
+disable-when-zero). This forces the user to re-author their scale on the Micro every time they use a
+custom tuning -- exactly the friction Rodney's scenario hits. Tuning and scale are conceptually
+ORTHOGONAL (SCALES_AND_QUANTIZER_TODO already noted this at the .scl level); the AUTHORING SURFACES
+should be too.
+
+### Candidate models
+- MODEL A (what we'd been assuming): Micro authors BOTH cents + weights on its faders. Delegation
+  blanks Monsoon's scale faders. Simple but forces scale re-authoring for every custom tuning.
+- MODEL B: Micro authors CENTS ONLY. Scale mask stays with wherever it lives (Monsoon's own scale
+  faders when no Shophouse; Shophouse when attached). Monsoon's faders DO NOT blank when a Micro-12
+  attaches -- they're doing a different job (scale) than the Micro is doing (tuning). Rodney's scenario
+  works: retune 12-TET on Micro-12, load your familiar major scale on Monsoon.
+- MODEL C: Micro has a mode toggle -- "tuning + scale" (Model A) or "tuning only" (Model B). Explicit.
+
+### The complication -- Micro-24 breaks the clean separation
+Model B assumes the scale machinery can handle the tuning's degree count. Monsoon's scale faders are 12,
+so:
+- Micro-12 under Model B: works cleanly (12 cents from Micro, 12-mask from Monsoon/Shophouse). Retune
+  12-TET, keep your scale library. ✓
+- Micro-24 under Model B: the scale is over 24 degrees, Monsoon's 12 faders can't represent it. So
+  Micro-24 either (a) authors both cents AND mask itself (falling back to Model A -- inevitable because
+  no 24-capable scale system exists yet), OR (b) requires Shophouse to be upgraded to N-degree masking,
+  which is a bigger scope change.
+
+### Likely resolution (needs Rodney's call)
+- MICRO-12: MODEL B (cents-only, scale stays with Monsoon/Shophouse). Solves Rodney's common-case
+  scenario. Monsoon's own scale faders DO NOT blank when Micro-12 attaches.
+- MICRO-24: MODEL A (dual role -- cents + mask), because 12-scale-machinery cannot represent 24 degrees.
+  Monsoon's scale faders BLANK (as originally planned), since the Micro is doing both jobs.
+
+This is different from what I'd been writing. The delegation rule needs refining: what blanks on Monsoon
+depends on WHICH JOBS the Micro is doing.
+
+### Sub-decisions if Model B for Micro-12
+- What ARE the Micro-12 faders then? Just cents knobs per degree, no faders? OR a fader that's a
+  DEGREE-GAIN modulator (subtly weights degrees within the active scale, without enable/disable)?
+  The latter gives users something to modulate (Interchange target) even in cents-only mode.
+- If Micro-12 has just cents knobs (no faders): panel much narrower + simpler; Interchange would
+  modulate the cents rather than a mask. Different feature entirely.
+- Recommend: Micro-12 keeps faders BUT they're "degree weight within the active scale" -- 0..1 gain, 0
+  = full skip (functional disable). Interchange modulates these weights. Scale enable/disable = Monsoon
+  faders. So two 12-fader banks in play: Monsoon = enable + coarse weight (part of scale), Micro-12 =
+  fine per-degree gain + cents (part of tuning + tone shaping). Overlaps somewhat with Monsoon's role
+  but is DIFFERENT (cents-carrying, tone-shaping). Or clean separation: Micro-12 is JUST cents knobs +
+  a shared "output enable" per degree that just gates.
+
+### To decide with Rodney
+- Model A vs B vs C for Micro-12 (lean B for the common-case win).
+- Micro-24 stays Model A (forced by 12-scale-machinery limit) -- confirm.
+- If Model B for Micro-12: what shape is the panel exactly? (Cents knobs only? Cents knobs + gain
+  faders? Cents knobs + enable toggles?)
+- Does Shophouse ever need to be N-capable? If yes, Micro-24 could also go Model B (Shophouse hosts the
+  24-mask, Micro hosts the 24 cents). Bigger scope but architecturally cleaner. Otherwise Micro-24 =
+  Model A stays.
