@@ -10,7 +10,32 @@ key). Mechanism: the current 12-bit scale mask generalises to an N-BIT MASK (N =
 count). Per-degree enable/disable (VCV Scalar's model) is the always-available base; optional curated
 named-scale presets per tuning are the convenience layer. 12-TET is just the best-curated instance.
 
-## Phased roadmap (Rodney's insight -- ship value incrementally)
+## Design theme: East-West and the places between (working brief)
+The microtonal work leans into the East-West-meeting-point narrative that Change Alley already anchors
+in the collection. Change Alley was historically where currencies, languages, and cultures met and got
+exchanged; the microtonal expanders extend that into the musical realm -- tuning systems from East and
+West meeting and being exchanged. Maqam support (the Arabic modal system, quarter-tone-capable) fits
+naturally under this framing rather than as an afterthought. Places-between includes literal cultural
+crossovers like Kampong Glam's Malay-Arab tradition, which anchors the design in specific Singapore
+geography rather than generic "microtonal" abstraction.
+
+## Naming state (working titles, all changeable before release)
+- SIKIT (Phase 1): working title. Malay for "a little". Semantically precise for cents-adjustment,
+  culturally coherent with the collection, and philosophically honest as a small-first-step invitation
+  into microtonal work. Availability checked clear at time of writing. Rodney's honest note: not from
+  his own daily vocabulary but chosen because it fits the collection's Singapore-referring poetic
+  register, which is a legitimate artistic stance for the whole collection (Monsoon isn't daily
+  vocabulary either).
+- MICRO-12 and MICRO-24 (Phases 2/3): PLACEHOLDER NAMES ONLY. Good names will emerge when the modules
+  are closer to real. Kampong Glam is a live candidate given Rodney lived there 3 years hearing the
+  Sultan Mosque call to prayer -- would be a name from actual lived experience, not borrowed cultural
+  vocabulary (Rodney's Bastl-line principle: names from lived experience beat names picked for cool
+  factor; if you can't defend the name with your own story, don't pick it). The Malay-Arab crossover of
+  Kampong Glam aligns cleanly with the East-West-meeting-point design theme and the maqam support the
+  Micros would offer.
+
+Rodney's discipline on this: sit with working titles rather than force premature commitment. Nothing is
+released, nothing is even remotely near release, so names can evolve as the design does. (Rodney's insight -- ship value incrementally)
 Refactored: the microtonal work splits cleanly into three phases at the module-boundary layer.
 - PHASE 1 -- SIKIT (TUNING_EXPANDER_SPEC.md): retune 12-TET with a 12-cents-knob expander;
   scale stays with Monsoon. Ships "retune keep-your-scale" alone, no engine widening. Small module.
