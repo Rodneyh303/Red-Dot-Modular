@@ -161,3 +161,40 @@ colours; small panel + varied monitors make it worse). Decisions:
 
 ### Note NAMES: degree numbers (1..N), not C/C#/... when N!=12 (issue H resolved)
 Note names are 12-TET-only. For N!=12 show degree NUMBER (or optionally cents). For N=12 keep note names.
+
+## COLOUR: only ENABLED degrees need colour (Rodney's insight -- dissolves the 24-colour ceiling)
+KEY REALISATION: the tuning may have 24 degrees, but the SCALE (enabled degrees) is usually a small
+subset -- a 5/7/9-note mode. Nobody enables all 24 and plays chromatically across a 24-tone tuning (not
+musical). So you never actually need 24 distinguishable colours; you need N_active colours, and N_active
+is typically ~5-9 = comfortably within the perceptual limit. Colour the SCALE, not the TUNING. The
+24-colour ceiling only bites if all 24 are enabled, which is the rare edge case, not the default.
+
+STATUS: decide-later. Options captured, no decision made yet.
+
+### Option i -- colour assigned OVER the enabled subset (N_active-sized palette)
+The N_active enabled degrees get colours 1..N_active from a palette sized to N_active. Always maximally
+distinct (few colours, far apart). DOWNSIDE: a degree's colour CHANGES when you enable/disable others
+(the subset re-colours) -- less stable while editing the scale.
+
+### Option ii -- colour FIXED to tuning-degree position (24-wide palette, but only few shown)
+Degree k always gets colour-k-of-N whether neighbours are enabled or not. STABLE (a note keeps its colour
+as you toggle others). The 24-wide palette is theoretically hard to distinguish IN FULL, but you only
+ever SHOW the enabled few at once -- and ~5-9 colours drawn from a 24-palette ARE legible even if the
+full 24 aren't. So the perceptual ceiling becomes THEORETICAL (never seen all at once). Gets stability
+AND practical legibility; ceiling dodged by scales-being-subsets.
+  -> Rodney's insight makes this MORE attractive than it first seemed: fixed colours + subset-only-shown
+     = stability + legibility, ceiling never actually bites.
+
+### Edge: many degrees enabled (dense subset / all 24)
+Rare. Either: palette does best-effort (less distinguishable, but rare so acceptable), OR auto-fallback to
+the pitch-HEIGHT GRADIENT view above a threshold (e.g. N_active > 12) since categorical colour has stopped
+being useful anyway. Decide-later.
+
+### DECIDE LATER (all)
+- (i) subset-assigned vs (ii) fixed-to-position. [lean (ii) given the insight: stability + only-few-shown]
+- N_active-parameterised perceptual palette function (OKLCH/CIELAB) either way -- shared mechanism.
+- Dense-subset fallback: best-effort vs auto-gradient-above-threshold.
+- Whether "colour by note" (categorical) and "colour by pitch height" (gradient) are both offered as
+  selectable views (earlier note) -- still open.
+All post-library; part of the microtonal arc. Nothing here blocks the tuning-table refactor (build-order
+step 1), which is colour-agnostic.
