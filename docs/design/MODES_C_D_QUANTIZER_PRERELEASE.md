@@ -53,12 +53,31 @@ Fits the crab-canon / external-phase-drive work: phase drives quantization the s
 generation, keeping the phase paradigm coherent across all modes. A single external phase source could
 drive BOTH a generative Monsoon (Mode E) and a quantizing Monsoon (Mode F) in lockstep.
 
-### Reading 2 alternative (flag for Rodney to disambiguate)
-If instead Rodney meant "phase MODULATES the quantization behaviour" (phase position within a cycle
-interpolates between scales, or shifts which degrees are active as phase advances) -- that's a different
-mode: phase as a modulator of quantization, not as its trigger. Structurally more novel but less
-symmetrical with the existing mode grid.
-=> Reading 1 lean (completes the symmetry, matches Mode E's role on the sequencer side).
+### Reading 1 CONFIRMED (Rodney)
+Mode F = phase-TRIGGERED quantizer (phase edges fire quantization). NOT phase-as-modulator.
+
+Rodney's reasoning for rejecting Reading 2 (phase modulating quantization behaviour):
+"There's enough going on with scale, LOR mod, Interchange mod, CA, etc. for dynamically changing
+quantiser." The module ALREADY has plenty of live dynamism acting on quantization -- scale mask changes,
+LOR modulation, Interchange modulation, Change Alley remaps. If you want quantization to be dynamic,
+those existing systems provide it -- they already change what quantization does moment-to-moment. Adding
+phase-as-a-modulator would be a redundant FIFTH way to modulate an already-modulated thing. Overkill,
+and the wrong kind of complexity (piling modulators rather than using the ones you have).
+
+Reading 1 is clean precisely because it doesn't touch quantization BEHAVIOUR at all -- it just adds a
+TIMING SOURCE (phase edges) for when quantization fires. The BEHAVIOUR of quantization stays governed by
+the existing dynamic systems (scale mask, LOR, Interchange, CA); Mode F just says "quantize now, driven
+by phase" and downstream is the same code that dynamically shapes the result. Mode F is a TRIGGER mode,
+not a modulation mode.
+
+This is the same design instinct that runs through the module's coherence:
+- Mode B legato = reuse Mode A's slurForward, don't invent new "unknown-length legato".
+- Shared CA offset = put on CA where its key lives, don't add a new arbitrator.
+- Micro tuning table = one shared structure all modes read, don't add per-mode tuning.
+- Mode F = use existing quantization behaviour, just add a phase trigger.
+Compositional principle: "the machinery already does the interesting thing -- the new mode just adds a
+new entry point to it." Modes are timing sources; behaviour lives in the shared systems the modes call.
+This is why the module keeps gaining capabilities without turning into a tangle of interacting features.
 
 ### Scope + timing
 - Not pre-release (unlike the C/D neglect pass). This is a NEW mode -- add after C/D are verified working,
