@@ -52,10 +52,14 @@ geography rather than generic "microtonal" abstraction.
       Bugis Duo Residences, Rodney's former home near Kampong Glam. Both residences honored; the
       doubling architecture is EXPLICIT at word-level.
     (Alternative expression: "DUO 12" -- more mathematically spare, but "12 of what?" ambiguity.
-    Ordering: "Colonnades Duo" not "Duo Colonnades" -- family-name-first matches the collection's
-    Change Alley V2 pattern (base name leads, variant marker trails); scans more naturally in English
-    (iPhone Pro, Model S, Cabernet Reserve -- qualifier trails); preserves Colonnades as the family
-    root for any future extensions.)
+    Ordering: "Colonnades Duo" not "Duo Colonnades" -- Rodney's ear test (Colonnades Duo sounds
+    better than Duo Colonnades) and natural English "main noun + qualifier" convention (iPhone Pro,
+    Model S, Cabernet Reserve). Note: Change Alley V2 and Visual Helper V4 in the current codebase
+    are ACCIDENTAL names (working context that stuck) and will be renamed to "Change Alley" and
+    "Visual Helper" before release -- they are NOT intentional naming precedent for anything. The
+    collection's actual pattern is single clean names per module, no version markers (Changi T1/T2/T3
+    is the only intentional numbered family, and only because real Changi terminals are numbered).
+    Colonnades / Colonnades Duo would be the collection's first intentional base+variant pair.)
     Why this is a strong candidate -- clears the multi-layer bar at FOUR layers, all Rodney's own ground:
     (1) Concrete: two lived residences (current + former), both real Singapore-life places.
     (2) Functional: name TEACHES the module's structure -- Colonnades Duo = two Colonnades = the
