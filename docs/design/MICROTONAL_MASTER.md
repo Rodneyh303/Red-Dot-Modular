@@ -26,13 +26,32 @@ geography rather than generic "microtonal" abstraction.
   his own daily vocabulary but chosen because it fits the collection's Singapore-referring poetic
   register, which is a legitimate artistic stance for the whole collection (Monsoon isn't daily
   vocabulary either).
-- MICRO-12 and MICRO-24 (Phases 2/3): PLACEHOLDER NAMES ONLY. Good names will emerge when the modules
-  are closer to real. Kampong Glam is a live candidate given Rodney lived there 3 years hearing the
-  Sultan Mosque call to prayer -- would be a name from actual lived experience, not borrowed cultural
-  vocabulary (Rodney's Bastl-line principle: names from lived experience beat names picked for cool
-  factor; if you can't defend the name with your own story, don't pick it). The Malay-Arab crossover of
-  Kampong Glam aligns cleanly with the East-West-meeting-point design theme and the maqam support the
-  Micros would offer.
+- MICRO-12 and MICRO-24 (Phases 2/3): working candidates emerging, none committed. Availability
+  unchecked for all.
+  * PRECINCT 12 / PRECINCT 24 (Rodney's return-to-earlier suggestion, genuinely strong). Precinct is a
+    real Singapore urban-planning unit (HDB estates organised into precincts, every Singaporean knows
+    theirs); Rodney lived in Bugis for 3 years so has direct lived relationship. Multi-layer fit:
+    (1) concrete Singapore referent, (2) bounded designed space with N residents ~ bounded octave with
+    N degrees, (3) philosophy = Singapore's nudge-governance-through-designed-environment mirrors what
+    a tuning does (composed set nudges character without coercing). Fits the collection's ACTUAL
+    dominant naming register (English-word-with-Singapore-meaning, like Shophouse, Change Alley,
+    Junction, Causeway) better than Malay-borrowing candidates. Clean 12/24 pairing per Changi T1/T2/T3
+    pattern. Clears Rodney's Bastl-line: name from own lived experience, defensible from own story.
+  * Kampong Glam remains a candidate given Rodney's 3 years there (Sultan Mosque call to prayer); would
+    be more specifically Malay-Arab-crossover-flavoured than Precinct, aligns with the East-West
+    theme more literally. Might suit Micro-24 specifically (the maqam-capable one) if Precinct is used
+    for the simpler variant, or as an alternative to Precinct for both.
+  * Rodney's Bastl-line principle: names from lived experience beat names picked for cool factor. Both
+    candidates satisfy this. Choose when closer to build.
+
+## Naming register observation (surfaced during the Precinct discussion)
+The collection's ACTUAL dominant naming pattern is English-words-with-Singapore-specific-meanings, NOT
+Malay-word-borrowings. Monsoon, Straits, Shophouse, Lantern, Intertropical, Sands, Change Alley,
+Junction, Causeway, Changi -- all English-language words whose meaning is Singapore-specific. Only
+Peranakan (Interchange design, per Rodney) and Kampong (via Kampong Glam) are Malay. That means Sikit
+would be the outlier in the actual pattern; Precinct sits comfortably in it. Not a reason to reject
+Sikit (its warmth may earn it its place as an outlier), but a useful observation about what the
+collection's naming register really is: English words used with Singapore's specific meanings.
 
 Rodney's discipline on this: sit with working titles rather than force premature commitment. Nothing is
 released, nothing is even remotely near release, so names can evolve as the design does. (Rodney's insight -- ship value incrementally)
