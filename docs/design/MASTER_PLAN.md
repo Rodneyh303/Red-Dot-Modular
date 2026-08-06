@@ -22,15 +22,20 @@ Straits          -- ship-ready
 Causeway         -- ship-ready modulo lock Phase 2
 Changi -> T1     -- BUG: mono jack unconfigured (i<15 not i<16) -- FIX BEFORE SHIP
 Shophouse        -- ship-ready
-MonsoonSandsVisualExpander -- ship-ready
-StraitsEastSandsVisual     -- ship-ready
-StraitsSandsMacroVisual    -- ship-ready
+MonsoonSandsVisualExpander    -> user-facing "Monsoon Sands"  -- ship-ready
+StraitsEastSandsVisual        -> user-facing "Straits Sands"  -- ship-ready
+StraitsSandsMacroVisual       -> user-facing "Sands Helix"    -- ship-ready
 Lantern          -- IT-source branch needs verify+merge; otherwise ship-ready
-ChangeAlleyV2    -- ship-ready modulo undo item 5
+ChangeAlleyV2    -> user-facing "Change Alley"                -- ship-ready modulo undo item 5, rename item 4b
 Intertropical    -- panel theme + voice-slot grid fixed; ship-ready
 [NOT BUILT] ChangiT2 -- step-gate/step-legato x16
 [NOT BUILT] ChangiT3 -- IT-routed 8ch breakout (reads IT output jacks)
 [not a module]   -- Scale additions (Slendro etc.)
+
+Sands family (Rodney's intended user-facing naming): Monsoon Sands (Monsoon-attached),
+Straits Sands (Straits-attached), Sands Helix (standalone/self-contained). Prefix names the host or
+"Helix" for the self-contained variant; the pattern is host-first when attached, family-name-alone
+when standalone. Same pattern would apply if future host-attached Sands variants appear.
 
 ### Open branches
 feat/lantern-intertropical-source  -- COMPLETE, needs Rack verify then merge
@@ -60,6 +65,31 @@ Slugs cannot change post-library without breaking patch compat. Names can change
   the permanent public-facing slugs? Decide. They're internal-sounding names.
 
 ### 4. Delete feat/dice-scrub (housekeeping)
+
+### 4b. Pre-release NAME cleanup (housekeeping -- Rodney flagged)
+Several current internal/panel names need to be updated to their intended user-facing names before
+release. The collection's intentional pattern is single clean names per module (no version markers);
+Changi T1/T2/T3 is the only intentional numbered family (real terminals are numbered so the metaphor
+requires it). Fix in one small pass:
+
+Accidental V2/V4 names (working context that stuck):
+- `MonsoonChangeAlleyV2` / "Change Alley V2" -> `MonsoonChangeAlley` / user-facing "Change Alley".
+- `SandsVisualEditorV4` (widget helper) + any "Visual Helper V4" references -> drop V4. Class rename
+  is internal; user-visible name is what matters most.
+
+Sands family user-facing names (Rodney's intended naming, panel wordmarks may not reflect yet):
+- `MonsoonSandsVisualExpander` -> user-facing "Monsoon Sands" (Monsoon-attached).
+- `StraitsEastSandsVisual`     -> user-facing "Straits Sands" (Straits-attached).
+- `StraitsSandsMacroVisual`    -> user-facing "Sands Helix"   (standalone / self-contained).
+Pattern: host-first when attached, family-name-alone when standalone.
+
+Includes: class rename (where doing internal cleanup), file rename, slug update in plugin.json,
+panel wordmark update, display-name references in design docs (leave CLASS-name references in
+historical docs that describe actual code state at time of writing -- they remain accurate history).
+
+Timing: do BEFORE item 3 (slug freeze), or accept the accidental slugs forever. Slug freeze is
+irreversible post-library, so a rename after that is impossible without a migration. Recommend early:
+small mechanical task, big clarity gain.
 0 commits ahead of master. Stale. Delete the remote branch.
 
 ### 5. Changi T1 mono bug FIX (Claude Code -- ship-blocker)
