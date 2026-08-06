@@ -44,18 +44,21 @@ geography rather than generic "microtonal" abstraction.
     3 years, hearing the Sultan Mosque call to prayer. Closer to lived experience than Precinct
     (encountered daily rather than only conceptually) but still "near" not "in". Aligns more literally
     with the East-West-meeting-point theme; suits Micro-24 (maqam-capable) specifically.
-  * COLONNADES / DUO COLONNADES (Rodney's refined candidate; the 24-tone module is TWO twelves, so
+  * COLONNADES / COLONNADES DUO (Rodney's refined candidate; the 24-tone module is TWO twelves, so
     the name reflects the actual doubling architecture -- not just a counted variant):
     - COLONNADES (Phase 2, 12-tone) -- Rodney's current residence, Grange Road. One colonnade = 12
       regular columns = 12 tuning degrees.
-    - DUO COLONNADES (Phase 3, 24-tone) -- two colonnades stacked = 24 degrees. "Duo" also references
+    - COLONNADES DUO (Phase 3, 24-tone) -- two colonnades stacked = 24 degrees. "Duo" also references
       Bugis Duo Residences, Rodney's former home near Kampong Glam. Both residences honored; the
       doubling architecture is EXPLICIT at word-level.
-    (Alternative expression: "DUO 12" -- more mathematically spare, but "12 of what?" ambiguity;
-    "Duo Colonnades" avoids that by making the base module name explicit in the compound.)
+    (Alternative expression: "DUO 12" -- more mathematically spare, but "12 of what?" ambiguity.
+    Ordering: "Colonnades Duo" not "Duo Colonnades" -- family-name-first matches the collection's
+    Change Alley V2 pattern (base name leads, variant marker trails); scans more naturally in English
+    (iPhone Pro, Model S, Cabernet Reserve -- qualifier trails); preserves Colonnades as the family
+    root for any future extensions.)
     Why this is a strong candidate:
     (1) Concrete: two lived residences (current + former), both carrying real Singapore-life ground.
-    (2) Functional: name TEACHES the module's structure -- Duo Colonnades = two Colonnades = the
+    (2) Functional: name TEACHES the module's structure -- Colonnades Duo = two Colonnades = the
         24-tone variant IS Micro-12 doubled. Matches the actual design (per MICRO_TUNING_INTEGRATION_PLAN,
         the 24-tone microtonal work IS conceptually two 12-degree banks; two Interchanges modulate it
         cooperatively, one per twelve -- so "Duo" fits that architecture precisely).
@@ -64,8 +67,8 @@ geography rather than generic "microtonal" abstraction.
         Personal layer: the 24-tone module carries BOTH residences (present + past), layered, which
         matches a genuine biographical arc.
     Clears Bastl-line: both names from actual lived experience (current home + former home).
-    Practical: "Duo Colonnades" as a two-word panel name -- flows as one phrase like "Change Alley",
-    so consistent with collection precedent for compound names. Verify Library availability at build.
+    Practical: "Colonnades Duo" as a two-word panel name -- follows the family-first pattern of Change
+    Alley V2; scans cleanly with natural English stress (main noun first, qualifier trails). Verify Library availability at build.
   * Earlier candidates (Precinct, Kampong Glam, 12/24 Colonnades) preserved above but Colonnades/Duo
     Colonnades supersedes them as current working titles: stronger lived-experience ground (two
     residences honoured), and the name TEACHES the doubling architecture.
