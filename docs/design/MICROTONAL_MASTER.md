@@ -56,22 +56,36 @@ geography rather than generic "microtonal" abstraction.
     Change Alley V2 pattern (base name leads, variant marker trails); scans more naturally in English
     (iPhone Pro, Model S, Cabernet Reserve -- qualifier trails); preserves Colonnades as the family
     root for any future extensions.)
-    Why this is a strong candidate:
-    (1) Concrete: two lived residences (current + former), both carrying real Singapore-life ground.
+    Why this is a strong candidate -- clears the multi-layer bar at FOUR layers, all Rodney's own ground:
+    (1) Concrete: two lived residences (current + former), both real Singapore-life places.
     (2) Functional: name TEACHES the module's structure -- Colonnades Duo = two Colonnades = the
         24-tone variant IS Micro-12 doubled. Matches the actual design (per MICRO_TUNING_INTEGRATION_PLAN,
         the 24-tone microtonal work IS conceptually two 12-degree banks; two Interchanges modulate it
         cooperatively, one per twelve -- so "Duo" fits that architecture precisely).
-    (3) Philosophy: colonnades bring order through counted repetition; Duo Colonnades does it
-        twice-over, which IS what non-12-TET microtonal music is (the 12 framework plus subdivision).
-        Personal layer: the 24-tone module carries BOTH residences (present + past), layered, which
-        matches a genuine biographical arc.
-    Clears Bastl-line: both names from actual lived experience (current home + former home).
+    (3) Architectural/philosophical: Colonnades on Grange Road is by PAUL RUDOLPH, the American
+        modernist architect whose whole practice was about how repeated structural elements organise
+        space and experience. That is EXACTLY what a tuning does with repeated pitch-degrees organising
+        the octave. The correspondence isn't a metaphor -- it's the same design instinct applied to
+        different media (space vs pitch). Naming a tuning module after a Rudolph building whose whole
+        point is "rhythmic organisational structure of repeated columns" is intellectually coherent.
+    (4) Biographical (the deepest layer, only Rodney could bring this): Duo was Rodney's FIRST
+        Singapore home; Colonnades is his current one and, rents permitting, the hoped-for LAST. So the
+        pair encodes the ARC of the Singapore chapter -- beginning (Duo) + hoped-for-completion
+        (Colonnades) -- and the 24-tone module named "Colonnades Duo" literally CARRIES BOTH ENDPOINTS
+        of that chapter, layered. Biography embedded in the module names as private ground the maker
+        can defend the naming from -- exactly what Rodney's Bastl-line requires.
+    Clears Bastl-line completely: defensible from real story (I named the microtonal modules after the
+    walls of my actual life in Singapore; the doubled name carries the whole chapter). Rudolph
+    connection makes the architectural-tuning parallel intellectually rigorous rather than metaphorical.
+    Note: public meaning of "Colonnades" reads as classical/architectural, NOT "Rodney's home" -- that's
+    fine, meaning accumulates through use (Fender didn't name Stratocaster from private reference
+    either). The private ground is what makes the naming honest, not what makes it legible.
     Practical: "Colonnades Duo" as a two-word panel name -- follows the family-first pattern of Change
     Alley V2; scans cleanly with natural English stress (main noun first, qualifier trails). Verify Library availability at build.
-  * Earlier candidates (Precinct, Kampong Glam, 12/24 Colonnades) preserved above but Colonnades/Duo
-    Colonnades supersedes them as current working titles: stronger lived-experience ground (two
-    residences honoured), and the name TEACHES the doubling architecture.
+  * Earlier candidates (Precinct, Kampong Glam, 12/24 Colonnades) preserved above but
+    Colonnades/Colonnades Duo supersedes them as current working titles: stronger lived-experience
+    ground (two residences honoured), name TEACHES the doubling architecture, Rudolph connection adds
+    architectural-philosophical rigour, biographical arc adds fourth layer only Rodney could bring.
   * Rodney's Bastl-line principle: names from lived experience beat names picked for cool factor. Both
     candidates satisfy this. Choose when closer to build.
 
