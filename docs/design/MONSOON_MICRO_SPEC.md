@@ -69,16 +69,26 @@ Clean separation: Micro writes tunings; Shophouse reads/modulates them.
   the expander. The blank-out is the visual signal that authority has moved. Same single-owner discipline
   as everywhere in the design (which-Raffles, shared-CA-writer, WriteLedger).
 
-### Enforcement: multiple Micros attempted
-If more than one Micro is attached in the expander chain: FIRST FOUND WINS + rest are VISIBLY INERT
-(blanked or with a "not active" indicator on their panel). Least destructive: user sees which is
-authoritative and can rearrange to fix it without losing state. Do NOT silently pick "one" and let the
-others look active but do nothing -- that's the goldfish-memory failure mode.
+### Enforcement: multiple Micros attempted -- use the existing ConnectMark (Rodney)
+If more than one Micro is attached in the expander chain: FIRST FOUND WINS + rest are VISIBLY not claimed
+by any Monsoon. Use the existing branded connection indicator, src/ui/ConnectMark.hpp -- the dot.modular
+mark that shows full-colour when connected/claimed, greyed/faded when not. Wire the Micro's mark to
+isConnectedAndClaimed(module): the authoritative Micro's mark is bright; the rejected Micro's mark greys
+out naturally. NO ad-hoc "inert indicator" needed -- reuse the branded expander connection semantics.
+- The authoritative Micro: mark = full colour ("claimed").
+- Any rejected/extra Micro: mark = greyed ("not claimed by any Monsoon"), which is the truth from that
+  Micro's perspective.
+Same compositional principle at the UI layer: don't invent a "Micro-specific not-authoritative" affordance
+when the existing branded connection indicator carries the right meaning. Users already read this mark
+across the module family; it says exactly what needs saying here.
+The rest of the rejected Micro's panel: faders/knobs visible (state preserved for future reactivation)
+but INERT because it isn't the tuning source. User sees the greyed mark, understands why, rearranges.
 
-### Micro without a Monsoon (standalone)
-A Micro with no paired Monsoon is INERT / blanked -- it's a tuning-DEFINITION expander with no purpose
-without a Monsoon to feed. Consistent with how expanders behave elsewhere in this codebase (no useful
-standalone mode).
+### Micro without a Monsoon (standalone) -- ConnectMark greys, panel inert
+A Micro with no paired Monsoon: ConnectMark greys (no Monsoon to claim it), panel inert. It's a tuning-
+DEFINITION expander with no purpose without a Monsoon to feed. Consistent with how the ConnectMark is
+already used elsewhere in the module family -- greyed mark = 'not connected to a host, not doing
+anything'. No standalone mode; the greyed mark tells the user why.
 
 ### Interaction with Interchange pairing (see MICRO_TUNING_INTEGRATION_PLAN)
 The one-Micro-per-Monsoon rule keeps the Interchange story clean: one Monsoon -> one Micro-24 -> two
