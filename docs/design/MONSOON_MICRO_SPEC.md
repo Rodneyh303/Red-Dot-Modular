@@ -60,11 +60,31 @@ Micro-12: one row of 12, comfortable, no question.
 Clean separation: Micro writes tunings; Shophouse reads/modulates them.
 
 ## DELEGATION RULE (the key architectural decision)
-- Only ONE Micro may be attached at a time.
-- When a Micro IS attached: Monsoon's own main faders BLANK OUT, and tone/tuning authority DELEGATES to
-  the expander. Exactly one owner of the tuning at any time -- Monsoon's 12 faders (no Micro) OR the
-  Micro (attached), never both. (Same single-owner discipline as the offset "which Raffles" resolution.)
-- The blank-out is the visual signal that authority has moved.
+- Each Monsoon accepts AT MOST ONE Micro -- either a Micro-12 OR a Micro-24, NEVER both, NEVER two of
+  the same kind. Three mutually exclusive tuning-source states per Monsoon:
+    (a) no Micro attached  -> Monsoon's own 12 faders (built-in 12-TET default)
+    (b) Micro-12 attached  -> Micro-12's 12 faders (custom 12-tone tuning)
+    (c) Micro-24 attached  -> Micro-24's 24 faders (24-tone tuning)
+- When ANY Micro IS attached: Monsoon's own main faders BLANK OUT + tone/tuning authority DELEGATES to
+  the expander. The blank-out is the visual signal that authority has moved. Same single-owner discipline
+  as everywhere in the design (which-Raffles, shared-CA-writer, WriteLedger).
+
+### Enforcement: multiple Micros attempted
+If more than one Micro is attached in the expander chain: FIRST FOUND WINS + rest are VISIBLY INERT
+(blanked or with a "not active" indicator on their panel). Least destructive: user sees which is
+authoritative and can rearrange to fix it without losing state. Do NOT silently pick "one" and let the
+others look active but do nothing -- that's the goldfish-memory failure mode.
+
+### Micro without a Monsoon (standalone)
+A Micro with no paired Monsoon is INERT / blanked -- it's a tuning-DEFINITION expander with no purpose
+without a Monsoon to feed. Consistent with how expanders behave elsewhere in this codebase (no useful
+standalone mode).
+
+### Interaction with Interchange pairing (see MICRO_TUNING_INTEGRATION_PLAN)
+The one-Micro-per-Monsoon rule keeps the Interchange story clean: one Monsoon -> one Micro-24 -> two
+Interchanges cooperatively modulate its 24 faders (pair number + half selector). If you have two Monsoons
+each with their own Micro-24, that's four Interchanges total, each pair-numbered to its target Micro.
+The pairing tech scales naturally; this rule just clarifies the Monsoon-side count (one Micro each).
 
 ### The 12 vs 24 blank-out asymmetry [note for implementation]
 - Micro-12: clean 1:1 -- Monsoon's 12 faders blank, the Micro's 12 faders take over (direct correspondence).
