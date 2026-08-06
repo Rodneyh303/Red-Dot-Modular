@@ -31,6 +31,27 @@ default, per-degree cents -- and dropped the single-dial constraint that was onl
 Per-degree strip = FADER (on/off + level) + CENTS knob + (enable toggle). 24 such strips = a big but fine
 expander panel (~30-36HP for the 24; the 12 is comfortable). Layout: vertical strips, note label per strip.
 
+## MICRO-24 LAYOUT: ONE ROW of 24 (DECIDED), not two rows of 12
+DECISION: one row of 24 faders/strips, accept the width. Reasons:
+- HONEST TO THE DATA: the 24 degrees are ONE linear ascending sequence (low->high within the octave). One
+  row = left-to-right is monotonic pitch order; any degree's position encodes its pitch height; the scale
+  SHAPE is legible at a glance (like a keyboard / spectrum). Two rows break monotonicity (degree 13 sits
+  spatially below/left of degree 1 but is higher in pitch).
+- DECIDING REASON -- arbitrary .scl support: because we import ARBITRARY 24-note Scala tunings, the 24
+  degrees may NOT decompose into any 12+12 structure (a true 24-EDO, or 24 unequal steps, has no
+  "primary vs quarter-tone" pairing). One row of 24 is the ONLY layout honest to ALL possible 24-tone
+  tunings. A "top=12 primary / bottom=12 quarter-tone" split would BAKE IN the 12+quarter-tone
+  interpretation and MISLEAD for any tuning that isn't that -- unacceptable given .scl import.
+- Matches Scalar's single-row model (users of this module class already know it).
+- Cost: wide (~30-36HP). It's a DEDICATED expander, so the width is acceptable; it buys a representation
+  correct for every tuning.
+
+FALLBACK (only if a target rack truly can't take the width): two rows as a PLAIN FOLD -- row1 = degrees
+1-12, row2 = degrees 13-24 (pitch order preserved within each row). NOT a primary/inflection split (that
+lies about non-quarter-tone tunings). One row is strongly preferred; the fold is a last resort.
+
+Micro-12: one row of 12, comfortable, no question.
+
 ## Authoring vs consuming split
 - MONSOON MICRO (this doc): AUTHORING. Dial cents, toggle degrees, SAVE to .scl from Monsoon. The
   tuning/scale editor.
