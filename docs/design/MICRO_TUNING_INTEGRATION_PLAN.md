@@ -284,19 +284,39 @@ labels only -- meaningful for near-12-TET tunings, degrade to "just a reference"
 (where a "C" fader may sound nothing like C). Ties to issue H (note names in non-12 tunings): labels can
 carry the 12-TET reference name PLUS the degree number, best of both.
 
-### How two Interchanges attach to one Micro-24 (design question)
-Each Interchange must know whether it's the 1-12 half or the 13-24 half. Options:
-- (A) Position-based: first Interchange found = 1-12, second = 13-24. Simple, no config, BUT reordering
-  the expander chain silently swaps which half each modulates. Confusing.
-- (B) [LEAN] Explicit RANGE setting per Interchange (context menu): "Modulate: Monsoon 1-12" / "Micro-24
-  degrees 1-12" / "Micro-24 degrees 13-24". User picks. Robust to reordering. Generalises the feature
-  cleanly: Interchange targets ANY 12-degree bank, of which Monsoon/Micro-12/Micro-24-first/Micro-24-
-  second are options.
-- (C) Auto-assign but persistent: first-to-attach owns 1-12, second gets 13-24, remembers across chain
-  moves. Clever but more state to track.
-Lean B (explicit target selection). Reframes the feature as "Interchange can target any 12-degree bank"
-rather than "Interchange knows about Micros specifically" -- cleaner architecture.
-[DECIDE LATER -- RODNEY]
+### How two Interchanges attach to one Micro-24 -- REUSE THE INTERTROPICAL PAIRING TECH (Rodney)
+Same compositional principle applied at the mechanism layer: don't invent a new "which half" scheme;
+REUSE the pairing system already built for Intertropical / Lantern / T3 cross-row binding.
+
+Model:
+- Interchange gains a follow-target field (mirror of Intertropical's followIT pattern):
+    followTarget == 0 -> ADJACENCY default (nearest fader-bank owner -- Monsoon, or Micro if closer).
+    followTarget  > 0 -> RACK-WIDE pair match (bind to whichever Monsoon/Micro is set to the same pairId).
+  Same getModuleIds() scan, same pairId assignment idiom (assign in process() to avoid re-lock deadlock).
+- Interchange gains a targetHalf selector for Micro-24 targets:
+    half 1 -> modulate degrees 1-12.
+    half 2 -> modulate degrees 13-24.
+  For 12-bank targets (Monsoon / Micro-12), half is fixed/ignored (the whole 12 IS "half 1").
+- Two Interchanges pointing at the SAME Micro-24 with DIFFERENT halves = cooperative 24-fader
+  modulation. Two Interchanges, same pairId, half=1 and half=2. Unambiguous, robust to expander-chain
+  reordering, works across rows (the killer feature -- see below).
+
+Why pairing wins over the earlier Option B (context-menu range):
+- Cross-row placement: an Interchange can live ANYWHERE (different row, other end of the rack) and still
+  bind to its Micro-24 by pair number. Same win as Lantern/T3 got from the pairing tech. Adjacency-only
+  binding would force Interchange next to its Micro, defeating the point.
+- Scales to multiple Micro-24s: pair 5 for one Micro-24, pair 7 for another; each gets its own two
+  Interchanges, no cross-talk. Position-based schemes can't do this.
+- Reuses proven code: getModuleIds() scan, pairId assignment, adjacency fallback -- all live. Not a new
+  system.
+- Cleanly factored: pairing resolves WHICH module; half-selector says WHICH BANK of that module. Two
+  small independent fields, not one entangled context menu.
+
+Transitive Monsoon read (if Interchange needs Monsoon engine state too):
+- Same lesson as the Lantern cross-row fix (LANTERN_CROSS_ROW_FIX.md): if Interchange needs BOTH the
+  Micro (target) AND Monsoon (engine state), read Monsoon THROUGH the Micro (Micro is adjacent to its
+  Monsoon; Micro exposes host via getHost()). One pairing to the Micro transitively gives both. Avoids
+  Interchange needing its own findMonsoonEitherSide (which would fail cross-row).
 
 ### One-Interchange-on-Micro-24 behaviour (graceful degradation)
 If only ONE Interchange is attached to a Micro-24, modulate its assigned half (1-12 OR 13-24), leave the
