@@ -12,7 +12,7 @@ named-scale presets per tuning are the convenience layer. 12-TET is just the bes
 
 ## Phased roadmap (Rodney's insight -- ship value incrementally)
 Refactored: the microtonal work splits cleanly into three phases at the module-boundary layer.
-- PHASE 1 -- TUNING EXPANDER (TUNING_EXPANDER_SPEC.md): retune 12-TET with a 12-cents-knob expander;
+- PHASE 1 -- SIKIT (TUNING_EXPANDER_SPEC.md): retune 12-TET with a 12-cents-knob expander;
   scale stays with Monsoon. Ships "retune keep-your-scale" alone, no engine widening. Small module.
 - PHASE 2 -- MICRO-12: full 12-tone microtonal (custom scale + tuning), same TuningTable, still N=12.
 - PHASE 3 -- MICRO-24 + engine widening: arbitrary Scala N=24, the pervasive %12/*12 audit.
@@ -27,8 +27,9 @@ scale-at-N-degrees = a different job (Phases 2-3). Different modules, different 
    mask; hybrid manual + curated named scales); .scl role-agnostic (tuning OR scale by use); .kbm =
    keyboard mapping, irrelevant for slot-less CV quantizing BUT the right tool for Monsoon Micro's fixed
    12/24 faders (fader bank = keyboard). Curation = real ethnomusicological work.
-3. TUNING_EXPANDER_SPEC.md -- PHASE 1 module: 12 cents knobs, retune 12-TET without touching the scale
+3. TUNING_EXPANDER_SPEC.md -- PHASE 1: SIKIT. 12 cents knobs, retune 12-TET without touching the scale
    mask. Small, ships first. Common real-world microtonal case (well-tempered, meantone, stretch, expressive).
+   Name Sikit = Malay 'a little', semantically precise for cents-adjustment.
 4. MONSOON_MICRO_SPEC.md -- PHASES 2 & 3 modules: the 12/24 fixed-fader TUNING/SCALE AUTHORING expanders (Scalar-modelled:
    per-degree cents + enable/disable + .scl read/write; one cents dial + edit-mode selection; delegation
    rule = one Micro attached -> Monsoon faders blank, authority delegates). AUTHORING home.

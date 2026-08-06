@@ -1,4 +1,9 @@
-# Tuning Expander (Monsoon "Retune") -- spec
+# Sikit -- the Tuning Expander (Phase 1)
+
+**Name: Sikit** (Malay, "a little" / "a small amount"). Semantically precise for a cents-adjustment
+module; culturally coherent with Shophouse/Change Alley/Peranakan (established Malay/Singaporean
+vocabulary); short single-word name matching the collection's panel rhythm; teaches the user immediately
+what kind of module it is. Availability confirmed clear in the VCV Library.
 
 A LIGHTWEIGHT tuning expander distinct from the Micro-12/24 microtonal work. Purpose: let the user
 retune Monsoon's existing 12-degree system (cents-per-degree) WITHOUT touching the scale mask.
@@ -20,7 +25,9 @@ a modifier on the existing system, not a replacement of it. Different job, diffe
 Compositional principle at the module-boundary layer: ONE JOB PER MODULE. Tuning is one job; microtonal
 tuning-AND-scale is a different job. Don't force both into one control surface.
 
-## Panel
+## Panel (Sikit)
+- Panel wordmark: "Sikit" in Barlow Black, dot.modular brand palette (Singapore red #d4001a for the
+  dot glyph, gold #c8960c for accent, dark #070707 background). Compact single-word lockup.
 - 12 CENTS knobs, one per degree (C, C#, D, ..., B). Equal-division default (0/100/200/.../1100 cents,
   = 12-TET), drag to detune. Same defaultCentsFor(i, 12) = i*100.
 - Root (C) locked at 0 cents (Scalar rule).
