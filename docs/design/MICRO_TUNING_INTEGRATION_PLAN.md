@@ -82,13 +82,18 @@ octave logic stays; only the within-octave fraction changes (cents/1200 instead 
 the octave range math (oL/oH from octaveLo/Hi) still works when degrees aren't equally spaced -- it should
 (octave is octave), but verify the highest degree + octave doesn't exceed the +-5V clamp differently.
 
-### D. The LED halo (12 physical positions) vs N=24
-The Monsoon panel's note halo has 12 LED positions (the 12 semitones). With a 24-tone tuning there are 24
-degrees but 12 LEDs. DECISION NEEDED: (a) halo shows only the 12 "primary" degrees (loses the quarter-tone
-degrees -- bad for pure 24-EDO), (b) halo repurposed / the Micro's own faders ARE the display (Monsoon
-halo blanks in 24 mode, like the faders blank), (c) halo shows nearest-12 approximation. Likely (b) --
-when a Micro is attached the DISPLAY delegates to the expander too (consistent with faders blanking).
-Flag for Rodney. (12-tone Micro: halo still works 1:1.)
+### D. NOTE-PLAYING DISPLAY at N=24 -- RESOLVED (no phantom "halo" -- it's the Lantern piano roll)
+Earlier draft mentioned "the 12-LED halo" as a Monsoon panel element for showing the currently-playing
+note. CORRECTION: Monsoon has no 12-LED note-pitch ring. What it HAS is a 16-LED STEP ring (STEP_LIGHTS
+in Monsoon.hpp:413-414) that shows PLAYHEAD POSITION across the 16 sequencer steps -- not pitch. The
+note-currently-playing indicator is the LANTERN piano roll, not a Monsoon halo. ("halo" in this codebase
+is just a glow rendering effect on lit LEDs -- MonsoonWidget.cpp:94 -- not a named UI element.)
+So the "12-LED halo vs N=24" question was a phantom. The real question -- how the note-playing display
+handles N!=12 -- is already answered by the Lantern piano roll decision:
+- 12-Micro: Lantern reuses the current 12-row keyboard piano roll (unchanged).
+- N!=12 (24-Micro or arbitrary Scala): uniform N-row grid with degree-number labels, no keyboard graphic
+  (see "LANTERN PIANO ROLL under a custom tuning" section above).
+No separate halo issue -- it collapses into the piano-roll decision already made.
 
 ### E. Poly path duplication
 genPitchLive is called mono (line 434) AND per-voice poly (758,881,911). All poly voices must read the
@@ -128,7 +133,8 @@ show degree NUMBER (1..N) or cents, not note names, when a non-12-TET tuning is 
 ## Decisions needed from Rodney (flagged inline)
 - B: RESOLVED -- OCTAVE transpose (dissolves the unequal-tuning problem); cents rejected. Open sub-point:
   Intertropical 8 knobs octaves-only in 12-TET too (lean yes) or keep semitones in 12-TET? Minor, decide at build.
-- D: 12-LED halo behaviour at N=24? (lean: display delegates to expander, halo blanks)
+- D: RESOLVED (phantom -- there is no 12-LED halo; the note-playing display is the Lantern piano roll,
+  already answered by the roll's 12-reuses / N!=12 uniform-grid decision).
 - H: note-name display in custom tunings -> degree number / cents? (lean degree number)
 
 ## LANTERN PIANO ROLL under a custom tuning (issue H, expanded)
