@@ -198,3 +198,44 @@ being useful anyway. Decide-later.
   selectable views (earlier note) -- still open.
 All post-library; part of the microtonal arc. Nothing here blocks the tuning-table refactor (build-order
 step 1), which is colour-agnostic.
+
+## COLOUR-BY-ACTIVE-DEGREE (Rodney's insight -- likely dissolves the 24-colour ceiling)
+KEY INSIGHT (Rodney): with a 24-tone TUNING loaded, only a FEW degrees are usually ENABLED (the scale is
+a subset -- a 5/7/9-note mode, rarely all 24). So you almost never need 24 distinguishable colours; you
+need N_active colours, and N_active is typically small (well within the perceptual limit). Colour by
+ACTIVE degree, palette sized to the enabled subset, not the whole tuning. The 24-colour ceiling only bites
+if you enable ~all 24 -- which is rare/unmusical. So the hard case basically doesn't occur.
+
+STATUS: DECIDE LATER. Options captured; not yet chosen.
+
+### The two assignment models (decide later)
+- FIXED-TO-TUNING-POSITION: degree i always gets colour i-of-N (stable -- a note keeps its colour as you
+  toggle others). Palette must be defined N-wide (24), BUT since only the few ENABLED degrees are ever
+  DISPLAYED, you never see all 24 at once -> the perceptual ceiling is only theoretical (showing 5 colours
+  drawn from a 24-palette is legible even if the full 24 aren't mutually distinct). Gives stability AND
+  legibility-in-practice; ceiling dodged by "scales are subsets".
+- ASSIGNED-OVER-ENABLED-SUBSET: the N_active enabled degrees get colours 1..N_active from a palette sized
+  to N_active (always maximally distinct, few + far apart). BUT a degree's colour CHANGES when you
+  enable/disable others (the subset re-colours) -- less stable while editing.
+Lean: FIXED-TO-POSITION now looks best (Rodney's insight makes the ceiling theoretical -- you only ever
+display the enabled few, so a 24-wide palette is fine in practice, and you keep colour stability). But
+DECIDE LATER.
+
+### Edge: many degrees enabled (rare)
+If someone enables a dense subset (>~12) categorical colour degrades. Graceful fallback (decide later):
+either let the perceptual palette do its best, OR auto-switch to the pitch-GRADIENT view above a threshold
+(N_active > ~12) since categorical colour has stopped helping anyway. The common case (few enabled) is
+always easy; the rare dense case degrades gracefully.
+
+### Mechanism (whichever model)
+Colour function stays N-parameterised + perceptual (OKLCH/CIELAB), from the earlier section. Fixed-to-
+position sizes it to N (tuning); assigned-over-subset sizes it to N_active (scale). Same function, different
+N argument. Still reject the 12x2-shade scheme (false 12+12 structure).
+
+### To decide later (summary)
+1. Fixed-to-tuning-position vs assigned-over-enabled-subset (lean fixed-to-position).
+2. Dense-subset fallback: best-effort palette vs auto-gradient above a threshold.
+3. Whether colour-by-note default stays categorical with gradient optional, or gradient becomes default at
+   high N_active.
+All post-library, all deferred. The insight (scales are subsets -> few active colours) is the load-bearing
+point; the exact model is a later call.
