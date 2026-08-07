@@ -406,3 +406,42 @@ the ear hears the relationship.
 - Both ITs partially full on some scenes -> overlap moments where the two tunings sound together,
   punctuating the alternation.
 - Sikit version (Phase 1): same patch, well-tempered vs 12-TET. Much subtler, still real.
+
+### 12b. Combined with HETEROPHONY: base riff in 12-TET, heterophonic variation as the maqam response
+[Rodney -- the combination that makes 12a musically right rather than merely clever.]
+
+**The insight:** partial Change Alley correlation ALREADY produces heterophony (point 7's East/West
+correlation continuum). So don't run the two Monsoons at 100% correlation -- run them PARTIAL. The
+response is then not a strict answer in another tuning but a HETEROPHONIC VARIATION of the same riff,
+rendered in the other tuning.
+
+**Why this is the right texture, not just a nice option:** heterophony -- the same melodic line
+simultaneously varied by different players -- is THE characteristic texture of maqam practice, and of
+gamelan, and of much of the music this tuning work is reaching toward. Western polyphony stacks
+DIFFERENT lines; these traditions vary ONE line. So a patch that answers a 12-TET riff with a
+heterophonic maqam variation isn't approximating the tradition from outside -- it is using the
+tradition's own mechanism. The correlation matrix turns out to be a heterophony engine.
+
+**The three dials compose orthogonally:**
+| Correlation | Result |
+|---|---|
+| 100% | Strict answer -- identical decisions, different tuning. Formal, canonic. |
+| ~60-85% | HETEROPHONIC answer -- recognisably the same riff, differently realised. The real thing. |
+| 0% | Unrelated material. No relationship audible. |
+Correlation % becomes a performable "how varied is the answer" axis; the tuning difference is
+orthogonal to it; the IT scene alternation (12a) separates them in time so both stay legible.
+
+**Direction is reversible and worth trying both ways:**
+- 12-TET call -> maqam heterophonic response (the "answered in another world" reading).
+- Maqam call -> 12-TET heterophonic response (the "translated back" reading -- arguably more striking,
+  since the ear anchors on the unfamiliar tuning first and hears 12-TET as the variation).
+Rodney: "or vice versa" -- both directions are musically live, and they FEEL different.
+
+**Still no new features.** Partial correlation is an existing CA control; the tunings are per-Monsoon;
+the alternation is IT scene config. Three existing systems composed. The only build dependency is the
+same as 12/12a: Micros (or Sikit for the subtle version) + shared CA across instances.
+
+**Demo-patch note:** this is probably the strongest single demo of the whole microtonal arc, because
+it demonstrates the tuning work, the correlation engine, the IT scene sequencing, AND lands as actual
+music rather than as a technical exhibit. Legibility holds because the alternation separates the
+voices in time (12a) and only ONE transformation axis (tuning) is stacked on the heterophony.
