@@ -145,6 +145,18 @@ Organised BY CHANNEL. Post-transpose + tie-latched (IT resolves effectiveTranspo
 Shares the subgroup pairing mechanism with Lantern (item 12 below).
 Slug: "ChangiT3". See CHANGI_TERMINAL_SPLIT.md.
 
+### 10b. BUG: shared Philox key across rhythm/melody on the external-seed path
+See SEED_STREAM_KEY_OFFSET_FIX.md. Monsoon.cpp:327-328 calls sampleSeedFromSource() twice; when
+SEED_INPUT is connected it is a sample-and-hold, so both calls return the SAME float, and
+seedRhythmPhilox/seedMelodyPhilox (PatternEngine.hpp:405-414) derive an IDENTICAL key from it.
+Rhythm and melody then share a Philox stream -- their draws correlate when they must be independent.
+Invisible when SEED_INPUT is unpatched (rack::random::uniform() differs per call), so it only bites
+on the external path. FIX: offset in the key derivation (not the call sites) so it holds for every
+seed path -- KEY_OFFSET_RHYTHM=0, KEY_OFFSET_MELODY=1, KEY_OFFSET_CA_BASE=2 reserved. CA is verified
+SAFE today (8 independent rack::random::u64 keys) but the in-code comment flags the same trap as open
+for a future CA external-seed path. Small fix, container-testable (assert the two streams DIFFER from
+one seed float). Note: changes what patterns a given seed produces -- fine pre-release.
+
 ### 11. Undo item 4 (Claude Code, see UNDO_IMPLEMENTATION_ROADMAP.md)
 Items 1 (direction), 2 (LOR), 3 (knobs), 5 (CA) DONE and Rack-verified, merged to master.
 VERIFIED IN CODE (Aug 2026): item 5 is implemented -- MonsoonChangeAlleyV2.hpp has scatterCounter[],
