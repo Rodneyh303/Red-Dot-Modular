@@ -50,6 +50,32 @@ path only works because the fallback RNG happens to be called twice and returns 
 
 This is not "a user might happen to set both seeds equal". **Using the SEED input at all triggers it.**
 
+### The SEED jack has TWO read paths -- both collapse the same way
+1. **Per-block** (ModeController.cpp:72-75): `seedSampleValue` is refreshed from the jack on EVERY
+   process call while connected. Feeds the realtime-mode continuous reseed path (PatternEngine.hpp:53-58)
+   -- a moving CV retunes the stream continuously there. Intentional.
+2. **Per-gesture** (Monsoon.cpp:325-327): sampled when reseed-on-restart fires. The reproducible
+   sample-and-hold path.
+
+Both are deliberate designs. But note what this means for the bug: in path 2 the two
+`sampleSeedFromSource()` calls are back-to-back in the SAME block reading the SAME jack, so they
+**cannot** return different values -- the identical-key collapse is guaranteed, not merely likely. In
+path 1, `seedSampleValue` is a single scalar shared by both streams, so the same collapse applies
+wherever it is consumed.
+
+### Implication for the fix: separate in the DERIVATION, not by re-reading
+Because one voltage legitimately feeds both streams, per-stream independence must come from the key
+derivation. The current double call to `sampleSeedFromSource()` is misleading -- it reads as though it
+draws two values when structurally it cannot. Collapse it to ONE read and pass the stream index:
+```cpp
+if (inputs[SEED_INPUT].isConnected()) {
+    const float s = sampleSeedFromSource();          // read ONCE
+    engine.pe.setPendingRhythmSeed(s);               // deriveKey(s, STREAM_RHYTHM) downstream
+    engine.pe.setPendingMelodySeed(s);               // deriveKey(s, STREAM_MELODY) downstream
+}
+```
+Same for the per-block path: one `seedSampleValue`, stream separation applied at `deriveKey`.
+
 Also note `seedRhythmPhiloxFull()` / `seedMelodyPhiloxFull()` (:415-416) each call
 `rack::random::u64()` independently, so the FULL-reseed path is fine. Only the seed-float path collides.
 
