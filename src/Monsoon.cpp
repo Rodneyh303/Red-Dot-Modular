@@ -709,9 +709,21 @@ void Monsoon::process(const ProcessArgs& args) {
         const bool gate1High = input.gate1 >= 1.0f;
         const bool isRest    = (engine.lastStepResult.decision == MonoDecision::Rest);
         // Fused gate (main GATE_OUTPUT + Lantern): bridges the gap when slurring.
-        engine.gs.gateHeld     = isRest ? false : (gate1High || engine.gs.slurForward);
+        const bool gateOpen  = !isRest && (gate1High || engine.gs.slurForward);
+        engine.gs.gateHeld     = gateOpen;
         // STEP mirror (un-fused): re-articulates every gate, so it NEVER bridges the gap.
-        engine.gsStep.gateHeld = isRest ? false : gate1High;
+        engine.gsStep.gateHeld = !isRest && gate1High;
+
+        // CRITICAL (MODE_B_SPEC.md "REMAINING BUG"): the Lantern's sounding test is
+        //   sounding = gs.gateHeld || gs.holdRemain > 0.0001f   (Lantern.cpp:347)
+        // executeStep's triggerNote re-arms holdRemain on each RISE, and executeModeB only runs
+        // on rises — so holdRemain lingers positive through the gap/rest and the Lantern would
+        // show the note still sounding even though gateHeld (and the output) are correctly low.
+        // Zero holdRemain when the gate is closed so the Lantern-read state matches the output.
+        if (!gateOpen) {
+            engine.gs.holdRemain     = 0.f;
+            engine.gsStep.holdRemain = 0.f;
+        }
     }
 
     // --- Output Generation (Delegated to OutputGenerator) ---
