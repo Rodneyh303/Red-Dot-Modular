@@ -241,12 +241,56 @@ because the same tuning can be played with different roots, mode rotations, or o
 3. Extend the `dotModular::ScalaFile` class family with a `KeyboardMapping` struct + parser, following
    the same pattern (parse-from-string + load-from-file + per-caller accept predicate).
 
-**Format reference** (verify against current Scala docs before implementing --
-https://www.huygens-fokker.org/scala/help.htm covers both formats):
-- `.kbm` is simpler than `.scl`: mostly integer mappings (size, first/last MIDI note, formal degree,
-  reference note, reference frequency, octave degree, keyboard-note-to-tuning-degree map).
-- Comments start with `!`, same convention as `.scl`.
-- Parser and load-UI mirror the `.scl` implementation; the shared-class philosophy extends naturally.
+**Format reference (now with real specifics):**
+`.kbm` fields, per libscala-file (github.com/MarkCWirt/libscala-file, MIT):
+```
+struct kbm {
+    int map_size;                // number of entries in the mapping vector
+    int first_note, last_note;   // MIDI note range the mapping applies to (0..127)
+    int middle_note;             // MIDI note corresponding to degree 0
+    int reference_note;          // MIDI note for absolute tuning reference
+    double reference_frequency;  // reference frequency in Hz (e.g. 440.0)
+    int octave_degree;           // scale degree used as an octave (12 for 12-TET, 24 for 24-tone)
+    std::vector<int> mapping;    // scale degrees for each entry; "x" -> -1 (or similar sentinel)
+};
+```
+Comments start with `!` (same as `.scl`). Full spec: https://www.huygens-fokker.org/scala/help.htm#mappings
+
+**HOW .kbm APPLIES TO OUR MICROS (the reframing):**
+`.kbm` is fundamentally a MIDI-facing spec -- it answers "given this MIDI note, what scale degree
+sounds?" The tune crate (docs.rs/tune) makes this explicit: every method takes a PianoKey/MIDI note.
+The formal-octave-degree field means "N MIDI keys span M scale degrees" (e.g. for a 24-tone tuning
+with standard mapping, formal_octave=24 and num_items=12 means 12 keyboard keys cover 24 tuning
+degrees = half a keyboard octave per tuning octave). That's the "two keyboard octaves for a 24-tone
+tuning" question Rodney raised.
+
+BUT our Micros are NOT MIDI-driven. They define the tuning that Monsoon uses to generate pitches
+INTERNALLY. There's no MIDI keyboard driving them. So the MIDI-facing fields (first_note, last_note,
+middle_note, reference_note, reference_frequency) don't apply -- they answer a question we aren't
+asking. The keyboard-spanning framing is right for MIDI playback but irrelevant here.
+
+Our question is different: "given N scale degrees loaded from an .scl, which of my 12 or 24 faders
+does each degree land on?" That's a WITHIN-ONE-OCTAVE slot-assignment question. Only ONE field of the
+.kbm answers it: the `mapping` vector. Interpret it as "fader-slot index -> degree number", ignore the
+MIDI fields entirely. Custom interpretation, but trivial -- just `mapping.at(faderSlot)`, no
+transformation.
+
+**PARSER SOURCING (recommendation, changed from earlier draft):**
+The earlier draft proposed writing our own .scl (and future .kbm) parser. Now that we've looked at
+what already exists, consider USING libscala-file (github.com/MarkCWirt/libscala-file, MIT-licensed,
+compatible with GPL plans, header-only-friendly, tested against real Scala files, handles both .scl
+and .kbm). Rationale:
+- Both formats have real edge cases (comments, whitespace, x/X for unmapped, ratio syntax, decimal
+  detection, trailing annotations, blank lines) that libscala-file already handles.
+- Small dependency, MIT-licensed. Removes maintenance burden.
+- One dependency covers both .scl (Phase 1+) and .kbm (Phase 2+).
+- We still wrap it in the dotModular::ScalaFile facade to provide per-caller accept predicates,
+  the "trivial custom interpretation" for using only the .kbm mapping vector, and Rack-friendly error
+  types.
+
+Alternative: write our own smaller parser that only handles what we need. Viable but duplicative. Lean
+towards the library dependency unless there's a specific reason to avoid it (build-system complexity,
+license concerns -- neither applies here).
 
 **Status:** TBD -- makes sense for Micros, low priority for Sikit, not part of Phase 1 (Sikit) build.
 Add when Micros land (Phase 2/3) or when a user actually needs it, whichever comes first. Documented
