@@ -217,6 +217,47 @@ void SikitWidget::openScalaFilePicker() {
 - **"Save as .scl..."** for writing the current tuning back out. Sikit v1 says NO (see spec); v2 could
   add. When it does, use the same `ScalaFile` class with a `writeToFile(path)` method.
 
+### .kbm keyboard-mapping support (TBD -- Rodney flagged as making sense for Micros)
+
+`.kbm` files complement `.scl` files: `.scl` defines the tuning (the available pitches); `.kbm` defines
+the KEYBOARD MAPPING (which pitch sounds at which slot position). In Scala's world these are separate
+because the same tuning can be played with different roots, mode rotations, or octave mappings.
+
+**Structural fit per module:**
+- Sikit (exactly 12): `.kbm` adds little -- only one natural mapping exists (each degree to its own
+  slot). Rotation-of-root is a niche workflow for a simple retune module. Probably skip.
+- Micro-12 (up to 12): `.kbm` is GENUINELY USEFUL -- resolves the up-to-N loading ambiguity (which we
+  documented as "first-N slots" for v1) by letting the user specify exact slot positioning. A 7-note
+  major scale positioned at slots 0/2/4/5/7/9/11 is the natural workflow.
+- Micro-24 (up to 24): even more useful. Large capacity + fewer-degree tunings makes explicit
+  positioning valuable (position a 12-note maqam within 24 slots, leaving interstitial quarter-tones
+  for other content).
+
+**Proposed workflow (v2, TBD):**
+1. Paired load -- user loads `.scl` first (as v1), then optionally `.kbm` for the same tuning via a
+   separate context-menu item. Two menu items, two file pickers. Matches Scala tool conventions.
+2. When no `.kbm` is provided, v1's first-N default fills in; when `.kbm` IS provided, it overrides
+   the default with explicit slot positioning.
+3. Extend the `dotModular::ScalaFile` class family with a `KeyboardMapping` struct + parser, following
+   the same pattern (parse-from-string + load-from-file + per-caller accept predicate).
+
+**Format reference** (verify against current Scala docs before implementing --
+https://www.huygens-fokker.org/scala/help.htm covers both formats):
+- `.kbm` is simpler than `.scl`: mostly integer mappings (size, first/last MIDI note, formal degree,
+  reference note, reference frequency, octave degree, keyboard-note-to-tuning-degree map).
+- Comments start with `!`, same convention as `.scl`.
+- Parser and load-UI mirror the `.scl` implementation; the shared-class philosophy extends naturally.
+
+**Status:** TBD -- makes sense for Micros, low priority for Sikit, not part of Phase 1 (Sikit) build.
+Add when Micros land (Phase 2/3) or when a user actually needs it, whichever comes first. Documented
+here so the shared-infrastructure design can accommodate it without refactoring.
+
+**What NOT to do now:** don't build `.kbm` support into Sikit's Phase 1 build just because it might be
+useful later. Sikit's exactly-12 constraint means `.kbm` adds no real value there; adding it would
+complicate Sikit's UI for a case that doesn't happen. Keep Sikit small. `.kbm` support arrives with
+the Micros or as a v2 feature on Sikit if demand exists.
+
+
 ## Build order (for this shared infrastructure)
 
 1. **ScalaFile struct + parseScala from string.** Test with hand-crafted string inputs covering:
