@@ -238,3 +238,61 @@ independently rests while mono plays -- correct: that voice should render Inacti
 dec != Rest). That comment does not contradict the spec's fix; it addresses the opposite case.
 
 PROCEED with the original one-line fix as specified.
+
+### REVISED ROOT CAUSE: processing-order race means recordCell is never called for rest steps
+
+The `dec == MonoDecision::Rest` fix in `recordCell` is correct but insufficient -- it is never
+reached for rest steps due to the timing of Lantern's sampling gate.
+
+Lantern::process() (line ~237): `if (step == lastObservedStep) return;`
+This early-return fires every block except the one where stepIndex changes. stepIndex changes
+inside executeModeB -> advancePlayhead(), which runs inside Monsoon::process().
+
+The race:
+- Block N: Lantern runs (before Monsoon in this block) -> sees stepIndex=old -> returns early.
+  Monsoon then runs -> advancePlayhead() sets stepIndex=N+1 -> executeStep -> lastStepResult=Rest.
+- Block N+1: another gate1Rise -> Monsoon runs -> stepIndex=N+2, lastStepResult=NewNote.
+  Lantern runs after Monsoon -> stepIndex changed -> samples -> dec=NewNote -> records note.
+  The rest at forStep=N+1 is NEVER recorded because:
+    - In block N, Lantern returned early before Monsoon set the Rest.
+    - In block N+1, lastStepResult=NewNote already (rest was overwritten by the next gate rise).
+
+The `dec == Rest` fix in recordCell is unreachable for this case because recordCell is never called.
+
+### ACTUAL FIX: one-block-delayed rest correction in Lantern::process()
+
+In `src/Lantern.cpp` in the `process()` function, BEFORE the early-return line, add a correction:
+
+```cpp
+// One-block-delayed rest correction: if Lantern ran before Monsoon in the previous block,
+// Monsoon may have set lastStepResult=Rest AFTER we already returned early. Check here
+// (every block, cheap) and retroactively mark the cell Inactive.
+// This fires the block AFTER Monsoon sets the Rest decision, before the next stepIndex change.
+if (eng.lastStepResult.decision == MonoDecision::Rest
+    && eng.lastStepResult.forStep >= 0
+    && eng.lastStepResult.forStep < 16) {
+    int restStep = eng.lastStepResult.forStep;
+    // Mark all rows at this step Inactive (mono + poly all rest when mono rests)
+    for (int row = 0; row < 16; ++row) {
+        if (cells[row][restStep].type != lantern::NoteType::Inactive) {
+            cells[row][restStep].type = lantern::NoteType::Inactive;
+        }
+    }
+}
+
+if (step == lastObservedStep) return;   // existing early-return
+```
+
+Why this works:
+- In block N (Lantern before Monsoon): Lantern returns early. Monsoon sets lastStepResult=Rest.
+- In block N+1 (next block): Lantern runs. BEFORE the early-return, it checks lastStepResult.
+  dec==Rest -> marks forStep cell Inactive. Then (if stepIndex changed from next gate rise)
+  continues to record the new step normally.
+- The correction fires one block late but before the next step is recorded -- invisible to user.
+- Safe to run every block: only modifies cells when dec==Rest, which is rare.
+- The `dec == MonoDecision::Rest` guard in recordCell can remain (defence in depth) but is no
+  longer the primary fix.
+
+Note: this correction loop uses `row < 16` to cover all rows. In practice the Lantern only
+displays the rows connected to Monsoon voices (mono + numPolyVoices), but marking unused rows
+Inactive is harmless.
