@@ -73,17 +73,22 @@ ScalaFile loadScala(
 
 ### Example callers
 ```cpp
-// Sikit: 12 only
+// Sikit: EXACTLY 12 (Rodney's refinement)
+// Sikit retunes Monsoon's fixed 12-degree system -- there is no natural mapping for a shorter file
+// (e.g. a 7-note pentatonic has no obvious place among 12 cents knobs), so all-or-nothing on 12.
 auto sf = dotModular::loadScala(path,
     [](int n){ return n == 12; },
-    "Sikit reads 12-note .scl files only. For non-12 tunings, use a Micro expander.");
+    "Sikit reads exactly 12-note .scl files (it retunes Monsoon's 12-degree system). "
+    "For scales with fewer or more degrees, use a Micro expander.");
 
-// Micro-12: 12 only (same predicate)
+// Micro-12: UP TO 12 (Rodney's refinement)
+// Micro-12 authors both tuning and scale, so a shorter .scl is meaningful (7-note Slendro,
+// 5-note pentatonic, etc.) -- populates the first N slots, disables the rest (weight=0).
 auto sf = dotModular::loadScala(path,
-    [](int n){ return n == 12; },
-    "Micro-12 requires a 12-note .scl file. For 24-note tunings, use Micro-24.");
+    [](int n){ return n >= 1 && n <= 12; },
+    "Micro-12 supports up to 12 tones per octave. For more, use Micro-24.");
 
-// Micro-24: 1..24
+// Micro-24: up to 24
 auto sf = dotModular::loadScala(path,
     [](int n){ return n >= 1 && n <= 24; },
     "Micro-24 supports up to 24 tones per octave. This file has more.");
