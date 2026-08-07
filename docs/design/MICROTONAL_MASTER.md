@@ -154,6 +154,11 @@ scale-at-N-degrees = a different job (Phases 2-3). Different modules, different 
    UI, consumed by Sikit + both Micros. One .scl parser (with per-caller accept predicate for degree
    count) rather than three duplicated implementations. Standard Scala format
    (https://www.huygens-fokker.org/scala/scl_format.html). Also referenced from the CC build guides.
+8. MICROS_ENGINE_CLAUDE_CODE_GUIDE.md -- Phase 2/3 engine build guide. Code-level how-to for widening
+   the pitch/scale pipeline from 12-only to N-aware (N up to MAXN=24). Concrete TuningTable API spec,
+   class-by-class widening list matching TWELVE_TET_AUDIT, 12-step build order with byte-identical
+   regression at 12-TET as the safety guarantee, and WriteLedger integration for single-writer
+   discipline on the shared table.
 
 ## Key decisions already made (see the docs for detail)
 - Scale = N-bit mask over the loaded tuning's degrees (generalises the 12-bit mask). [SCALES_AND_QUANTIZER]
