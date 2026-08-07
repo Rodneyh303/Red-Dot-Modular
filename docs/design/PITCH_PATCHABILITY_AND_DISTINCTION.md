@@ -317,3 +317,56 @@ HONEST BOUNDS (inherit from 8-10):
   demo = curated. An arrangement judgment for the ear, not an architecture limit.
 - Framing: the architecture makes these multi-transformation canonic structures EXPRESSIBLE and
   PERFORMABLE on live generative material -- NOT "it reproduces Bach."
+
+## 12. Cross-TUNING canon: shared Change Alley across differently-tuned Monsoons (post-microtonal)
+
+[PATCH NOTE -- Rodney, for when Micro + shared Change Alley both exist.]
+
+Once the microtonal expanders land AND Change Alley can be shared across instances, a new patch class
+opens: **two Monsoons in DIFFERENT TUNINGS, sharing one Change Alley.**
+
+### The patch
+- Monsoon A: no tuning expander (or Sikit at defaults) -> 12-TET.
+- Monsoon B: Micro-24 loaded with a maqam .scl -> quarter-tone Arabic modal tuning.
+- Both share a Change Alley (correlation) + unified seed.
+Result: the SAME generative decisions -- which degree, when, rest/accent/legato -- rendered through
+TWO DIFFERENT TUNING SYSTEMS simultaneously.
+
+### Why this works architecturally (and it's EMERGENT, not designed-in)
+The orthogonality falls out of where things live:
+- The TuningTable is PER-MONSOON (each has its own tuning source; see MICRO_TUNING_INTEGRATION_PLAN).
+- Change Alley correlation operates at the RANDOM-DRAW level, ACROSS instances -- it correlates the
+  *decisions* (which degree index gets picked, when a rest happens), not the *pitches*.
+So a correlated draw of "degree 7" is degree 7 IN EACH INSTANCE'S OWN TUNING -- a perfect fifth in
+12-TET, something else entirely in the maqam. Same structural decision, two tuning worlds. The
+architecture didn't set out to do this; it's what you get when correlation lives at the decision layer
+and tuning lives at the render layer.
+
+### Musical meaning: the East/West axis made literal
+Point 7 framed the correlation matrix as an East/West textural continuum; point 9 framed cross-instance
+canon in transformed time. This is the THIRD axis and arguably the most literal one: the same line, in
+two tuning traditions at once. Not "a Western line and an Eastern line played together" (which any two
+sequencers can do) but "ONE musical decision-stream, heard simultaneously in two intonational worlds."
+That's the East-West-and-places-between theme (which Change Alley already anchors historically) made
+audible as a patch rather than stated as a concept.
+
+### Works with SIKIT too -- less dramatic, still real
+Doesn't need the full Micros. With Sikit alone:
+- Monsoon A: Sikit at equal-division defaults (12-TET).
+- Monsoon B: Sikit loaded with well-tempered / meantone / a stretch tuning.
+- Shared Change Alley.
+Result: correlated material in subtly different intonation -- like two instruments tuned differently
+playing the same line. Historically that's exactly what an ensemble of period instruments sounds like.
+Much subtler than the maqam case, but musically real, and available a whole phase earlier (Sikit is
+Phase 1; Micros are Phase 2/3).
+
+### Demo-patch candidate
+Strong headline demo alongside the crab canon (MASTER_PLAN demo-patch item). Legibility caveat from
+point 11 applies: expose ONE transformation layer (the tuning difference) rather than stacking it with
+retrograde/mensuration/spread-inversion, or it reads as texture rather than as the point.
+
+### Dependencies (both needed for the full version)
+1. Micro-12/24 (Phase 2/3) for the dramatic version; Sikit (Phase 1) for the subtle version.
+2. SHARED Change Alley across instances -- currently CA operates within one engine; sharing across
+   separate Monsoons is the "shared CA" work (see SEED_OFFSET_DESIGN build order: offset first, shared
+   CA second). Until then the cross-instance correlation route is shared-seed + simultaneous-dice.
