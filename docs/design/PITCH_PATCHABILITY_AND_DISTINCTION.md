@@ -422,14 +422,26 @@ DIFFERENT lines; these traditions vary ONE line. So a patch that answers a 12-TE
 heterophonic maqam variation isn't approximating the tradition from outside -- it is using the
 tradition's own mechanism. The correlation matrix turns out to be a heterophony engine.
 
-**The three dials compose orthogonally:**
-| Correlation | Result |
-|---|---|
-| 100% | Strict answer -- identical decisions, different tuning. Formal, canonic. |
-| ~60-85% | HETEROPHONIC answer -- recognisably the same riff, differently realised. The real thing. |
-| 0% | Unrelated material. No relationship audible. |
-Correlation % becomes a performable "how varied is the answer" axis; the tuning difference is
-orthogonal to it; the IT scene alternation (12a) separates them in time so both stay legible.
+**CORRECTION (Rodney): correlation is BINARY (0 or 1), not a percentage -- but SEPARATE for rhythm
+and melody.** That's cleaner than a continuous dial, because the resulting textures are specific and
+nameable rather than vaguely "N% similar". The four states:
+
+| Rhythm corr. | Melody corr. | Texture |
+|---|---|---|
+| 1 | 1 | Strict unison -- same decisions, different tuning. Canonic. |
+| 1 | 0 | Same rhythm, different notes. Rhythmic unison, melodic divergence. |
+| 0 | 1 | **Same notes, different timing -- this is CLASSICAL HETEROPHONY.** |
+| 0 | 0 | Unrelated material. |
+
+The third row is the one for this patch. Melody-correlated + rhythm-independent is what heterophony
+actually IS in maqam and gamelan practice: the same melodic line, realised with different timing and
+ornamentation by each player. Not "somewhat similar" -- structurally the same melody, temporally
+varied. The architecture produces it exactly, from a binary switch, because rhythm and melody are
+separately-keyed Philox streams (rhythmKey=S, melodyKey=S+1) and correlation is applied per stream.
+
+Heterophony therefore comes from the DIMENSION SPLIT, not from a similarity percentage. The tuning
+difference remains orthogonal to both; the IT scene alternation (12a) separates them in time so all
+of it stays legible.
 
 **Direction is reversible and worth trying both ways:**
 - 12-TET call -> maqam heterophonic response (the "answered in another world" reading).
