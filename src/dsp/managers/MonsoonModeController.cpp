@@ -69,9 +69,10 @@ void ModeController::updatePatternInput() {
                            currentPatternInput.melodySlew);
     }
     if (mainModule) {
-        const bool sc = mainModule->inputs[MonsoonIds::SEED_INPUT].isConnected();
-        currentPatternInput.seedConnected   = sc;
-        currentPatternInput.seedSampleValue = sc ? mainModule->sampleSeedFromSource() : 0.f;
+        // seedConnected IS read elsewhere (realtime !seedConnected checks). The former
+        // per-block seedSampleValue sample was DEAD CODE (written here, never consumed) —
+        // the "continuous reseed" path it fed was never implemented. Removed; keep the bool.
+        currentPatternInput.seedConnected = mainModule->inputs[MonsoonIds::SEED_INPUT].isConnected();
     }
 }
 

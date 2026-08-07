@@ -59,7 +59,9 @@ struct PatternInput {
     // theme; never reseeds). Resolves the "two live modes" conflict — live is one
     // switch, the source is a separate switch, so only one dice is ever live.
     bool  seedConnected    = false;
-    float seedSampleValue  = 0.f;   // current SEED CV (0..10) when seedConnected
+    // (seedSampleValue removed: was a per-block SEED sample that no consumer ever read —
+    //  the continuous-reseed path it was meant to feed was never built. See
+    //  PHILOX_KEY_DERIVATION_AND_CA_SEED.md Finding 1.)
 };
 
 // ── PatternEngine ─────────────────────────────────────────────────────────────
@@ -402,15 +404,17 @@ struct PatternEngine {
     // Seed a stream's Philox from the same 0..10 float (reseed → new key, counter
     // reset to 0 = sequence restarts) or from full entropy.
     // seed sites so seed/reseed events affect both engines identically.
+    // Stream separation via redDot::seed::deriveKey (PHILOX_KEY_DERIVATION_AND_CA_SEED.md
+    // Finding 1 fix): the SAME seed float now yields INDEPENDENT rhythm and melody keys
+    // (STREAM_RHYTHM=+0, STREAM_MELODY=+1). Previously both used the identical derivation,
+    // so patching the single SEED input collapsed the two streams into one.
     inline void seedRhythmPhilox(float seedFloat) {
-        float s = pe_clamp(seedFloat, 0.f, 10.f);
-        uint64_t sd = (uint64_t)((double)s / 10.0 * (double)MAX_U64);
-        rhythmPhilox.seed64(sd); rhythmDrawCtr = 0;
+        rhythmPhilox.seed64(redDot::seed::deriveKey(seedFloat, redDot::seed::STREAM_RHYTHM));
+        rhythmDrawCtr = 0;
     }
     inline void seedMelodyPhilox(float seedFloat) {
-        float s = pe_clamp(seedFloat, 0.f, 10.f);
-        uint64_t sd = (uint64_t)((double)s / 10.0 * (double)MAX_U64);
-        melodyPhilox.seed64(sd); melodyDrawCtr = 0;
+        melodyPhilox.seed64(redDot::seed::deriveKey(seedFloat, redDot::seed::STREAM_MELODY));
+        melodyDrawCtr = 0;
     }
     inline void seedRhythmPhiloxFull() { rhythmPhilox.seed64(rack::random::u64()); rhythmDrawCtr = 0; }
     inline void seedMelodyPhiloxFull() { melodyPhilox.seed64(rack::random::u64()); melodyDrawCtr = 0; }

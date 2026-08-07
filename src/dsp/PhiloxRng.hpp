@@ -85,6 +85,25 @@ inline std::array<uint32_t,2> philoxMakeKey(uint64_t seed) {
     return { (uint32_t)(z & 0xFFFFFFFFu), (uint32_t)(z >> 32) };
 }
 
+// ── Seed-float → per-stream key derivation (shared by rhythm/melody/Change Alley) ──
+// One 0..10 seed value produces N independent stream keys via a per-stream offset.
+// This fixes the identical-derivation bug (PHILOX_KEY_DERIVATION_AND_CA_SEED.md
+// Finding 1): rhythm and melody previously derived the SAME key from the same float,
+// collapsing to one stream whenever the SEED input was used. Stream separation follows
+// the documented S, S+1, S+2 model (additive) — Philox decorrelates adjacent keys by
+// design (counter-based cipher), so the +stream offset yields independent sequences.
+namespace seed {
+    constexpr uint64_t STREAM_RHYTHM = 0, STREAM_MELODY = 1, STREAM_CA = 2;
+    // seedFloat 0..10 → 64-bit key for the given stream. Same float + different stream
+    // → different key. seed64() conditions the key again via philoxMakeKey, so a small
+    // additive offset still lands on a well-separated stream.
+    inline uint64_t deriveKey(float seedFloat, uint64_t stream) {
+        float s = seedFloat < 0.f ? 0.f : (seedFloat > 10.f ? 10.f : seedFloat);
+        uint64_t sd = (uint64_t)((double)s / 10.0 * (double)0xFFFFFFFFFFFFFFFFULL);
+        return sd + stream;   // documented S, S+1, S+2 model
+    }
+}
+
 // ── PhiloxRng ─────────────────────────────────────────────────────────────────
 // Stateful facade over the stateless core, same surface as SquaresRng. The 64-bit
 // stream position is packed into ctr[0..1]; ctr[2..3] carry a fixed nonce (0) so

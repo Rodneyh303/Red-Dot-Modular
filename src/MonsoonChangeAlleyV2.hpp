@@ -61,6 +61,16 @@ struct MonsoonChangeAlleyV2 : Module {
     void seedCorrKeysInternal() {
         for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i) corrKey[i] = rack::random::u64();
     }
+    // Derive all correlation keys from an external seed value (0..10) supplied by the
+    // adjacent (owner) Monsoon on its reset+reseed gesture. The SAME seed value that seeds
+    // rhythm + melody -> one source, three stream families (rhythm/melody/CA scatter). The
+    // per-index offset (STREAM_CA + i) keeps the 8 scatter streams independent. Two CAs fed
+    // the same seed derive identical corrKey[] -> identical scatter (cross-instance sharing).
+    // See PHILOX_KEY_DERIVATION_AND_CA_SEED.md Finding 2.
+    void reseedCorrKeys(float seedValue) {
+        for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i)
+            corrKey[i] = redDot::seed::deriveKey(seedValue, redDot::seed::STREAM_CA + (uint64_t)i);
+    }
 
     // --- Transform-undo groundwork (item 5) ---------------------------------------------------
     // applyPendingTransforms() runs on the AUDIO thread (control-rate, Monsoon::process), where
@@ -114,6 +124,7 @@ struct MonsoonChangeAlleyV2 : Module {
         configInput(CA::GRAIN_POLY_IN, "Grain poly CV (16ch -> 16 grain knobs; mono=all)");
         configInput(CA::STEP_POLY_IN,  "Step poly CV (ch 1-4 leader, 5-8 step; mono=all)");
         resetToIdentity();
+        seedCorrKeysInternal();   // fresh module: no seed known yet, entropy keys are correct
     }
 
     static int grainFromKnob(float v) {
@@ -237,10 +248,14 @@ struct MonsoonChangeAlleyV2 : Module {
           }
     }
 
+    // STRUCTURAL reset only: pin matrix -> identity, scatter counters -> 0. Does NOT re-key.
+    // Reseeding (changing which Philox stream you draw from) is a SEPARATE gesture, triggered
+    // by an explicit reset+reseed from Monsoon (reseedCorrKeys). Conflating them would silently
+    // change scatter streams on every matrix reset. See PHILOX_KEY_DERIVATION_AND_CA_SEED.md.
     void resetToIdentity() {
         for (int v = 0; v < CA::N_VOICES; ++v) { rhythmSrc[v] = v; melodySrc[v] = v; }
         for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i) scatterCounter[i] = 0;
-        seedCorrKeysInternal();   // internal: 8 independent keys (external-seed sharing TBD)
+        // NO key re-derivation here (moved out — see comment above).
     }
 
 
@@ -279,6 +294,10 @@ struct MonsoonChangeAlleyV2 : Module {
                 json_t* v = json_array_get(ck, i);
                 if (json_is_integer(v)) corrKey[i] = (uint64_t)json_integer_value(v);
             }
+        } else {
+            // Old patch saved before corrKey persistence (or before this fix): resetToIdentity()
+            // no longer seeds keys, so give this instance valid entropy keys rather than all-zero.
+            seedCorrKeysInternal();
         }
     }
 

@@ -26,6 +26,7 @@
 #include "MonsoonChangiT2Expander.hpp"
 #include "MonsoonChangiT3Expander.hpp"
 #include "MonsoonShophouseExpander.hpp"
+#include "MonsoonChangeAlleyV2.hpp"   // full type needed: reseedCorrKeys/seedCorrKeysInternal called in handleRestart
 // West retired (Straits redesign): #include "MonsoonStraitWestExpander.hpp"
 //#include "MonsoonStraitsSands.hpp"            // NEW (Macro): global DNA controls
 //#include "MonsoonDeepStraitsSands.hpp"        // NEW (Deep): per-voice DNA controls
@@ -323,11 +324,22 @@ float Monsoon::semitoneToVolts(int semitone) {
                 // input is actually present. Unpatched → internal entropy via the
                 // morph-preserving reseed-roll path (no A=B collapse).
                 if (inputs[SEED_INPUT].isConnected()) {
-                    engine.pe.setPendingRhythmSeed(sampleSeedFromSource());
-                    engine.pe.setPendingMelodySeed(sampleSeedFromSource());
+                    // ONE read of the single SEED jack (fixes the double-sample that made
+                    // rhythm and melody derive from the same value). Stream separation now
+                    // happens inside deriveKey (STREAM_RHYTHM/MELODY/CA). The SAME seed value
+                    // feeds all three stream families -> one source, reproducible.
+                    const float s = sampleSeedFromSource();
+                    engine.pe.setPendingRhythmSeed(s);
+                    engine.pe.setPendingMelodySeed(s);
+                    if (expanderManager.cachedChangeAlleyV2)
+                        expanderManager.cachedChangeAlleyV2->reseedCorrKeys(s);
                 } else {
                     engine.pe.setPendingRhythmReseedRoll(0.f, /*full=*/true);
                     engine.pe.setPendingMelodyReseedRoll(0.f, /*full=*/true);
+                    // CA mirrors rhythm/melody: unpatched -> full internal entropy (not the
+                    // lossy 0..10 float), keeping all three families consistent.
+                    if (expanderManager.cachedChangeAlleyV2)
+                        expanderManager.cachedChangeAlleyV2->seedCorrKeysInternal();
                 }
             }
             if (resetImmediate) {
