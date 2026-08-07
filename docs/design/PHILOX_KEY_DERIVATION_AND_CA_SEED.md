@@ -50,31 +50,42 @@ path only works because the fallback RNG happens to be called twice and returns 
 
 This is not "a user might happen to set both seeds equal". **Using the SEED input at all triggers it.**
 
-### The SEED jack has TWO read paths -- both collapse the same way
+### The SEED jack has TWO read paths -- one is a bug, one is dead code
 1. **Per-block** (ModeController.cpp:72-75): `seedSampleValue` is refreshed from the jack on EVERY
-   process call while connected. Feeds the realtime-mode continuous reseed path (PatternEngine.hpp:53-58)
-   -- a moving CV retunes the stream continuously there. Intentional.
+   process call while connected. The PatternEngine.hpp:53-58 comment describes this as feeding a
+   "realtime-mode continuous reseed" path. BUT: `seedSampleValue` is only ever WRITTEN here and is
+   NEVER CONSUMED downstream (verified: no other call site reads it in PatternEngine.cpp or
+   SequencerEngine.cpp). This per-block read is DEAD CODE -- the continuous reseed machinery was
+   either never built or got removed. The assignment is noise at best, misleading at worst.
+   Rodney: "realtime mode even in continuous reseed is meant to be phrase boundary only. We might
+   ditch continuous reseed." The dead-code finding supports this: there is no continuous reseed in
+   the engine to ditch. The comment describes an intent; the intent was not implemented.
+   ACTION: remove the `seedSampleValue` per-block sample. Keep the `seedConnected` bool (it IS read
+   elsewhere, for the !seedConnected realtime path checks). Simplify ModeController.cpp:73-75 to just
+   set `seedConnected`, drop the `sampleSeedFromSource()` call.
+
 2. **Per-gesture** (Monsoon.cpp:325-327): sampled when reseed-on-restart fires. The reproducible
-   sample-and-hold path.
+   sample-and-hold path. This is the one that matters and the one with the key-collapse bug.
 
-Both are deliberate designs. But note what this means for the bug: in path 2 the two
-`sampleSeedFromSource()` calls are back-to-back in the SAME block reading the SAME jack, so they
-**cannot** return different values -- the identical-key collapse is guaranteed, not merely likely. In
-path 1, `seedSampleValue` is a single scalar shared by both streams, so the same collapse applies
-wherever it is consumed.
+The per-block path being dead code CLARIFIES the fix: it is simpler than previously stated. One
+read path to fix (path 2), one dead assignment to remove (path 1), and the derivation fix covers all
+remaining cases.
 
-### Implication for the fix: separate in the DERIVATION, not by re-reading
-Because one voltage legitimately feeds both streams, per-stream independence must come from the key
-derivation. The current double call to `sampleSeedFromSource()` is misleading -- it reads as though it
-draws two values when structurally it cannot. Collapse it to ONE read and pass the stream index:
+### The fix: collapse to one read, stream index separates in deriveKey
 ```cpp
+// ModeController.cpp -- keep the bool, drop the dead per-block sample
+currentPatternInput.seedConnected = sc;
+// currentPatternInput.seedSampleValue = ...;  // REMOVE -- never consumed downstream
+
+// Monsoon.cpp:325-327 -- one read, stream separation in deriveKey
 if (inputs[SEED_INPUT].isConnected()) {
-    const float s = sampleSeedFromSource();          // read ONCE
-    engine.pe.setPendingRhythmSeed(s);               // deriveKey(s, STREAM_RHYTHM) downstream
-    engine.pe.setPendingMelodySeed(s);               // deriveKey(s, STREAM_MELODY) downstream
+    const float s = sampleSeedFromSource();   // read ONCE
+    engine.pe.setPendingRhythmSeed(s);        // deriveKey(s, STREAM_RHYTHM) inside
+    engine.pe.setPendingMelodySeed(s);        // deriveKey(s, STREAM_MELODY) inside
 }
 ```
-Same for the per-block path: one `seedSampleValue`, stream separation applied at `deriveKey`.
+One voltage, two derived-but-independent keys. The double call was misleading (reads as though drawing
+two independent values when structurally it cannot) -- the collapse makes the code honest.
 
 Also note `seedRhythmPhiloxFull()` / `seedMelodyPhiloxFull()` (:415-416) each call
 `rack::random::u64()` independently, so the FULL-reseed path is fine. Only the seed-float path collides.
