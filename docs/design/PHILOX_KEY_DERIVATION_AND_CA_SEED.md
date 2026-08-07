@@ -114,7 +114,7 @@ This changes the numbers produced by any given seed float. Existing saved patche
 after the fix. That is acceptable pre-release (nothing shipped) but should be done BEFORE any release,
 never after. Note it in the pre-release checklist.
 
-## Finding 2 (MISSING FEATURE): Change Alley has no seed at all
+## Finding 2 (MISSING FEATURE): Change Alley has no seed -- and needs NONE OF ITS OWN
 
 ### Current state
 `MonsoonChangeAlleyV2.hpp:60-62`:
@@ -123,71 +123,62 @@ uint64_t corrKey[CA::SIDES * CA::TYPES * 2] = {};
 ...
 for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i) corrKey[i] = rack::random::u64();
 ```
-Keys are drawn from raw entropy at construction and persisted to JSON (:258-259, :277-280), so a
-SAVED patch reproduces. But:
-- No derivation from any seed value.
-- **No SEED input jack.**
-- No way to set the keys deterministically, or to share them across two CA instances.
+Keys are drawn from raw entropy at construction, persisted to JSON. No derivation from any seed value.
+`resetToIdentity()` (verified in code, MonsoonChangeAlleyV2.hpp:246) re-keys internally -- the comment
+even says "external-seed sharing TBD", which is now decided here.
 
 ### Why this blocks planned work
 The cross-instance features depend on shared seeding:
 - Shared-CA correlation across separate Monsoons (SEED_OFFSET_DESIGN, build order item 2).
-- Cross-tuning canon / heterophony patches (PITCH_PATCHABILITY points 12, 12a, 12b) -- these need two
-  Monsoons whose CA scatter is correlated, which requires the same `corrKey[]` in both.
-- The documented `caKey = S + 2` model can't be implemented at all without a seed input.
+- Cross-tuning canon / heterophony patches (PITCH_PATCHABILITY 12/12a/12b).
+- The documented `caKey = S + 2` model can't be implemented without seed derivation.
 
-### Fix: add a SEED input to Change Alley -- concrete implementation
+### Architecture decision (Rodney): NO separate SEED input on CA
+CA should get its seed FROM MONSOON at the moment of reset+reseed. No new jack needed. Reasons:
+- Monsoon ALREADY owns the "when" of CA's state changes -- `MonsoonExpanderManager` calls
+  `ca->applyPendingTransforms()` at phrase boundaries, and `resetToIdentity()` is also called from
+  the Monsoon side. So Monsoon can trivially also pass the seed value when it triggers CA's reset.
+- One seed value (from Monsoon's sampleSeedFromSource()) already produces rhythm + melody keys.
+  Passing the SAME value to CA means ALL THREE stream families (rhythm, melody, CA scatter) derive
+  from ONE source. Clean. No extra jack, no user coordination.
+- Multi-instance ("master Monsoon"): CA is adjacent to ONE Monsoon in the expander chain.
+  `findMonsoonEitherSide` returns that adjacent Monsoon. The same Monsoon that calls
+  `applyPendingTransforms()` (the owner Monsoon, already established) is the seed authority.
+  When CA is shared across two Monsoons, only the adjacent owner calls the reseed -- same owner
+  model used everywhere. No extra configuration.
 
-**Enum change** (Monsoon.hpp:1030-1040, the CA::InputIds enum):
+### Fix: Monsoon passes seed value to CA on reset+reseed
+On Monsoon's reset+reseed gesture, `MonsoonExpanderManager` (or wherever `resetToIdentity()` is
+called) adds a `ca->reseedCorrKeys(seedValue)` call alongside the existing reset logic:
+
 ```cpp
-enum InputIds {
-    DOMAIN_TRIG_START      = 0,
-    CODOMAIN_TRIG_START    = DOMAIN_TRIG_START   + N_ROWS,
-    SCATTER_BACK_DOM_START = CODOMAIN_TRIG_START + N_ROWS,
-    SCATTER_BACK_COD_START = SCATTER_BACK_DOM_START + SIDES*TYPES,
-    GRAIN_POLY_IN          = SCATTER_BACK_COD_START + SIDES*TYPES,
-    STEP_POLY_IN           = GRAIN_POLY_IN + 1,
-    SEED_IN                = STEP_POLY_IN + 1,          // NEW -- (0..10V)
-    NUM_INPUTS             = SEED_IN + 1                // was STEP_POLY_IN + 1 = 42; now 43
-};
-```
-
-**configInput** (MonsoonChangeAlleyV2.hpp, alongside the other configInput calls ~l.114-115):
-```cpp
-configInput(CA::SEED_IN, "Seed CV (0..10V) -- when connected, reseed derives corrKey[] from this voltage");
-```
-
-**Triggering model (sample-and-hold, gesture-driven -- matches Monsoon's SEED idiom):**
-The SEED jack alone does NOT continuously re-key -- that would break ongoing scatter streams.
-Re-keying happens on an EXPLICIT RESEED GESTURE only:
-- Option A: a RESEED button/gate on CA (mirrors Monsoon's dice/reseed gate). When the jack is
-  connected, pressing RESEED re-derives all corrKey[] from the current SEED voltage via
-  `deriveKey(seedCV, STREAM_CA + i)`.
-- Option B: context-menu "Reseed from SEED CV" action only (no panel control).
-LEAN Option A -- a panel control is more patchable (gate it from a trigger, automate it). Rodney to
-confirm at build.
-
-**Key derivation when SEED connected:**
-```cpp
-void MonsoonChangeAlleyV2::reseedFromSeedInput() {
-    float v = inputs[CA::SEED_IN].isConnected()
-              ? clamp(inputs[CA::SEED_IN].getVoltage(), 0.f, 10.f)
-              : -1.f;   // -1 sentinel: no seed connected, use entropy
+// In MonsoonExpanderManager or equivalent reset path
+// (same place that calls ca->applyPendingTransforms() / resetToIdentity()):
+void onMonsoonReseedCA(MonsoonChangeAlleyV2* ca, float seedValue) {
     for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i) {
-        corrKey[i] = (v >= 0.f)
-            ? deriveKey(v, STREAM_CA + i)       // reproducible from SEED CV
-            : rack::random::u64();              // entropy fallback (existing behaviour)
+        ca->corrKey[i] = deriveKey(seedValue, STREAM_CA + i);
     }
 }
 ```
-This is the ONLY place corrKey[] is written -- replacing the current construction-time init. Called
-on: (a) construction (no seed connected yet -> entropy, same as today); (b) RESEED gesture.
 
-**Cross-instance sharing (the goal):**
-Two CAs fed the same SEED CV and given a RESEED gesture at the same moment derive the same corrKey[]
--- therefore the same scatter sequence -- without any message bus. The shared-seed model from
-SEED_OFFSET_DESIGN doesn't need a new protocol; just the same voltage on both jacks and a shared
-trigger. Verify at build: same CV, same trigger, assert corrKey[i] identical across both instances.
+The `seedValue` is the SAME `s` from `sampleSeedFromSource()` that seeds rhythm and melody --
+one read, three stream families:
+```cpp
+const float s = sampleSeedFromSource();   // ONE read
+engine.pe.setPendingRhythmSeed(s);        // deriveKey(s, STREAM_RHYTHM)
+engine.pe.setPendingMelodySeed(s);        // deriveKey(s, STREAM_MELODY)
+if (ca) onMonsoonReseedCA(ca, s);         // deriveKey(s, STREAM_CA + i)
+```
+
+Construction-time init stays as `rack::random::u64()` (no seed known yet; entropy is correct
+at construction). The seed derivation fires only on an explicit reset+reseed gesture, at which point
+the seed value IS known. Persisted corrKey[] already handles patch-save reproducibility.
+
+### Cross-instance (multi-Monsoon sharing one CA)
+The adjacent (owner) Monsoon provides the seed on its reset+reseed. The non-adjacent Monsoon
+doesn't call into CA (it's not adjacent). So if you want both Monsoons to share CA with the same
+scatter, give them the same SEED CV and reset them together. No new protocol; just the existing
+reset ownership model applied to seed derivation.
 
 ### Sharing across instances
 With a SEED input, two Change Alleys fed the same CV derive the same `corrKey[]` and therefore the same
