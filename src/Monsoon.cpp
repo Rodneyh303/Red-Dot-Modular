@@ -691,58 +691,35 @@ void Monsoon::process(const ProcessArgs& args) {
     }
     if (outputs[CV_OUTPUT].isConnected()) outputs[CV_OUTPUT].setVoltage(cvOutVoltage);
 
+    // ── Mode B: drive the gate STATE from Gate 1 (MODE_B_SPEC.md §3-§5) ───────────────────
+    // The note DURATION in Mode B is Gate 1's high width, not an internal note-length. Rather
+    // than override the OUTPUT (the old H4 stopgap, which left the Lantern reading stale internal
+    // state), we set the engine's gate STATE from Gate 1 every sample. Then EVERY read-path —
+    // GATE_OUTPUT (gs.process), STEP, CV, and the Lantern (which reads gs.gateHeld / holdRemain /
+    // lastNoteType) — agrees by construction. This is spec §5's single source of truth.
+    //   REST      -> gate LOW (rest punches its hole; §4b rest wins, even over a pending slur).
+    //   gate1High -> gate HIGH (the note sounds for exactly the external gate's width).
+    //   gap (low) -> HIGH iff this note committed to slur forward (gs.slurForward, the same
+    //                leading-edge MODEL 1 commitment as Mode A) -> bridge to the next rise;
+    //                else LOW = clean re-articulation gap. Level-based, so 3-note chains bridge
+    //                successive gaps naturally as long as each note re-commits slurForward.
+    // gs.slurForward persists from the note's onset (executeStep set it; the per-rise countdown
+    // clear in executeModeB does NOT touch it), so no edge latch / extra state is needed.
+    if (modeSelect == 1 && runGateActive) {
+        const bool gate1High = input.gate1 >= 1.0f;
+        const bool isRest    = (engine.lastStepResult.decision == MonoDecision::Rest);
+        // Fused gate (main GATE_OUTPUT + Lantern): bridges the gap when slurring.
+        engine.gs.gateHeld     = isRest ? false : (gate1High || engine.gs.slurForward);
+        // STEP mirror (un-fused): re-articulates every gate, so it NEVER bridges the gap.
+        engine.gsStep.gateHeld = isRest ? false : gate1High;
+    }
+
     // --- Output Generation (Delegated to OutputGenerator) ---
+    // Mode B gate state was set from Gate 1 just above; generateOutputs' gs.process()/gsStep.process()
+    // now emit the Gate-1-driven gate (the old post-drive GATE_OUTPUT override is removed — it could
+    // not fix the Lantern, which reads engine state, and risked output/state divergence).
     outputGenerator->drive(engine, outputs.data(), expanderManager, args.sampleTime);
 
-    // ── Mode B Gate Slaving (restored -- see MODE_B_GATE_REGRESSION.md H4 + THE FIX) ──
-    // In Mode B (Seq + Gate), the gate duration MUST follow the external Gate 1 input.
-    // This nullifies the impact of internal Note Length/Variation parameters: the external
-    // gate's own width IS the note duration. OutputGenerator::drive() above wrote GATE_OUTPUT
-    // from engine.gs (the internal note-length state machine), which in Mode B holds each note
-    // for the neutral 1/4-note default -> the "every note is a long held note, REST/LEGATO have
-    // no effect" regression. We override GATE_OUTPUT here so it follows Gate 1.
-    //
-    // The original block referenced engine.g1Trig.isHigh() (a smoothed Gate 1 trigger object)
-    // that was removed in a refactor; instead of updating the reference the block was commented
-    // out, silently removing Mode B's defining behaviour. The modern equivalent of "Gate 1
-    // currently high" is input.gate1 >= 1.0f -- the same debounced test used for Mode dispatch
-    // (gate1High, Monsoon.cpp:588).
-    //
-    // WHY the decision enum is NOT the right selector: with the controller's neutral noteVal=2.f
-    // (1/4 note), a note's internal hold (holdRemain) spans ~4 sixteenth steps. When external
-    // gates arrive faster than that, executeStep() returns MonoDecision::MidNote for the
-    // in-between gates (SequencerEngine.cpp:426, the "note still held" early-return) -- WITHOUT
-    // re-rolling rest/legato. Keying gate-HIGH on MidNote therefore welds the gate high across
-    // those gates -> the exact "long notes even with rest/legato = 0" symptom. The internal
-    // note-length hold is precisely what Mode B must NULLIFY, so a Single note's MidNote holds
-    // must FOLLOW Gate 1, not weld high.
-    //
-    // The correct selector is gs.lastNoteType (Single/Tie/Legato), which PERSISTS through the
-    // MidNote holds (GateState.hpp:76-82) and so distinguishes a genuine slur from a plain note
-    // that merely has note-length left:
-    //   Rest                    -> gate forced LOW (REST punches holes regardless of Gate 1).
-    //   lastNoteType Tie/Legato -> genuine slur: bridge the gate HIGH across the Gate 1 gap so
-    //                              the note ties forward instead of re-articulating (legato).
-    //   Single (incl. its       -> follow Gate 1 high/low: the external gate's own width IS the
-    //   MidNote holds)             note duration, and internal note length has NO effect. With
-    //                              legato = 0 every note is Single, so every gate follows Gate 1
-    //                              (no long notes).
-    if (modeSelect == 1) {
-        const bool gate1High = input.gate1 >= 1.0f;
-        const bool slurring  = (engine.gs.lastNoteType == GateState::NoteType::Legato)
-                            || (engine.gs.lastNoteType == GateState::NoteType::Tie);
-        if (engine.lastStepResult.decision == MonoDecision::Rest) {
-            // Rest: force the gate off regardless of Gate 1.
-            outputs[GATE_OUTPUT].setVoltage(0.f);
-        } else if (slurring) {
-            // Genuine legato/tie: bridge HIGH across the Gate 1 gap so the note connects.
-            outputs[GATE_OUTPUT].setVoltage(10.f);
-        } else {
-            // Single note (and its internal note-length holds): the external gate is the note.
-            outputs[GATE_OUTPUT].setVoltage(gate1High ? 10.f : 0.f);
-        }
-    }
-    
     // // Poly Sands editors (East visual, and the deprecated knob path) only do
     // // anything when the Straits BASE poly output expander is connected AND the
     // // user has requested at least one poly voice (numPolyVoices >= 1, i.e. more

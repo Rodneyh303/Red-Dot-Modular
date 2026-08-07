@@ -43,6 +43,7 @@ TESTS=(
   "test_lane_direction|"
   "test_legato_leading_edge|"
   "test_lock_behaviour|$PE"
+  "test_mode_b_gate|$SE $GS $PE"
   "test_modes_bcd|"
   "test_mono_dir_authority|"
   "test_multistep|"

@@ -693,7 +693,25 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
             voices[i].gsStep.tick();
             hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
         }
-        
+
+        // ── Mode B: nullify internal note-length (MODE_B_SPEC.md §3) ──────────────────────
+        // In Mode B the note DURATION is Gate 1's width, NOT an internal note-length countdown.
+        // The controller passes a neutral noteVal, so triggerNote (called by executeStep below)
+        // would arm a MULTI-STEP hold. That hold makes executeStep's MidNote early-return
+        // (holdRemain >= 1 || gatePulseRemain > 0, ~line 426) SWALLOW the next gate rise without
+        // re-rolling rest/legato -> "every note a long held note; rest/legato have no effect".
+        // gatePulseRemain only decays on the internal CLOCK pulse (tickPulse), which is async to
+        // the external gate rate, so it cannot be relied on to clear on its own. Explicitly clear
+        // the internal countdown HERE -- AFTER wasHeldMono/hadMonoTail were captured (so a genuine
+        // legato still sees the previous note as sounding: wasHeldMono stays true across gates,
+        // reducing legato to the leading-edge prevSlur MODEL 1; a REST leaves gateHeld=false so the
+        // next note reads wasHeldMono=false and cannot connect into the rest) and BEFORE executeStep
+        // (so the MidNote guard can't early-return). executeStep re-arms on its own articulation, so
+        // this only defeats the swallow; the actual gate width comes from Gate 1 (see generateOutputs).
+        // Confined to Mode B -- this is executeModeB; executeStep itself stays mode-agnostic.
+        gs.holdRemain = 0.f;     gs.gatePulseRemain = -1;
+        gsStep.holdRemain = 0.f; gsStep.gatePulseRemain = -1;
+
         result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent, accentProb, input, wasHeldMono, hadMonoTail);
         result.stepped = true;
         result.wrapped = wrapped;
