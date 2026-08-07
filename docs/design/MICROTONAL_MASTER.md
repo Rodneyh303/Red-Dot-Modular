@@ -150,6 +150,10 @@ scale-at-N-degrees = a different job (Phases 2-3). Different modules, different 
    loads a .scl (tuning) and its shutters become N tuning-width degree toggles (shutter = pitch).
 6. SHOPHOUSE_FACADE_NOTES.md -- Shophouse panel/facade (Peranakan). Functional layer DONE on hardware;
    facade redesign decided-not-built.
+7. SCALA_FILE_AND_LOAD_UI.md -- SHARED INFRASTRUCTURE. Reusable `redDot::ScalaFile` class + file-picker
+   UI, consumed by Sikit + both Micros. One .scl parser (with per-caller accept predicate for degree
+   count) rather than three duplicated implementations. Standard Scala format
+   (https://www.huygens-fokker.org/scala/scl_format.html). Also referenced from the CC build guides.
 
 ## Key decisions already made (see the docs for detail)
 - Scale = N-bit mask over the loaded tuning's degrees (generalises the 12-bit mask). [SCALES_AND_QUANTIZER]

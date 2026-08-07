@@ -326,6 +326,8 @@ Each step is INDEPENDENTLY testable. Don't move to the next until the previous i
 
 ## Cross-refs
 
+- SCALA_FILE_AND_LOAD_UI.md -- shared .scl parser + file-picker UI (Sikit, Micro-12, Micro-24 all use).
+  Sikit calls `redDot::loadScala(path, [](int n){ return n==12; }, "Sikit reads 12-note only...")`.
 - TUNING_EXPANDER_SPEC.md -- Sikit design spec (semantics, scenario, distinct-from-Micros).
 - MICRO_TUNING_INTEGRATION_PLAN.md -- engine-side TuningTable refactor + seams (step 1 of build order).
 - MONSOON_MICRO_SPEC.md -- Micro-12/24, Phase 2/3; delegation rule that Sikit's one-per-Monsoon rule
