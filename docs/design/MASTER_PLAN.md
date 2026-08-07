@@ -66,6 +66,21 @@ Slugs cannot change post-library without breaking patch compat. Names can change
 
 ### 4. Delete feat/dice-scrub (housekeeping)
 
+### 4c. Philox key derivation fix + CA external seed (PRE-RELEASE -- see PHILOX_KEY_DERIVATION_AND_CA_SEED.md)
+BUG (verified in code Aug 2026): seedRhythmPhilox and seedMelodyPhilox use the IDENTICAL float->key
+derivation (PatternEngine.hpp:405-414) with no stream offset. Identical seed floats therefore produce
+IDENTICAL Philox streams -- rhythm and melody decisions lock together. The documented rhythmKey=S,
+melodyKey=S+1, caKey=S+2 model is NOT what the code does. Fix: deriveKey(seedFloat, stream) helper with
+per-stream offset (lean: hash-mix rather than +1).
+
+MISSING: Change Alley has no seed input at all -- corrKey[] is rack::random::u64() at construction
+(MonsoonChangeAlleyV2.hpp:60-62), persisted but not derivable. Blocks shared-CA correlation across
+instances (SEED_OFFSET_DESIGN item 2) and the cross-tuning canon patches (PITCH_PATCHABILITY 12/12a/12b).
+Fix: add SEED input mirroring PatternEngine's seedConnected idiom; derive corrKey[] from it when
+connected, leave the disconnected default unchanged.
+
+TIMING: both fixes CHANGE what a given seed produces, so they must land PRE-RELEASE, never after.
+
 ### 4b. Pre-release NAME cleanup (housekeeping -- Rodney flagged)
 Several current internal/panel names need to be updated to their intended user-facing names before
 release. The collection's intentional pattern is single clean names per module (no version markers);
