@@ -26,7 +26,7 @@ MonsoonSandsVisualExpander    -> user-facing "Monsoon Sands"  -- ship-ready
 StraitsEastSandsVisual        -> user-facing "Straits Sands"  -- ship-ready
 StraitsSandsMacroVisual       -> user-facing "Sands Helix"    -- ship-ready
 Lantern          -- IT-source branch needs verify+merge; otherwise ship-ready
-ChangeAlleyV2    -> user-facing "Change Alley"                -- ship-ready modulo undo item 5, rename item 4b
+ChangeAlleyV2    -> user-facing "Change Alley"                -- ship-ready modulo rename item 4b (undo item 5 DONE, verified in code Aug 2026)
 Intertropical    -- panel theme + voice-slot grid fixed; ship-ready
 [NOT BUILT] ChangiT2 -- step-gate/step-legato x16
 [NOT BUILT] ChangiT3 -- IT-routed 8ch breakout (reads IT output jacks)
@@ -145,12 +145,18 @@ Organised BY CHANNEL. Post-transpose + tie-latched (IT resolves effectiveTranspo
 Shares the subgroup pairing mechanism with Lantern (item 12 below).
 Slug: "ChangiT3". See CHANGI_TERMINAL_SPLIT.md.
 
-### 11. Undo items 4 + 5 (Claude Code, see UNDO_IMPLEMENTATION_ROADMAP.md)
-Items 1 (direction), 2 (LOR), 3 (knobs) DONE and Rack-verified.
-Item 4 (dice undo): reversible-mode counter undo -- (before,after) scalar on rhythmDrawCtr/
-melodyDrawCtr. REVERSIBLE mode only; free-run undefined.
-Item 5 (CA undo): snapshot stack + scatter counter. Commit point mapped; thread-safety is crux
-(applyTemasek in audio thread). invertible transforms: op-code entries. Manual pins: StoreEditAction.
+### 11. Undo item 4 (Claude Code, see UNDO_IMPLEMENTATION_ROADMAP.md)
+Items 1 (direction), 2 (LOR), 3 (knobs), 5 (CA) DONE and Rack-verified, merged to master.
+VERIFIED IN CODE (Aug 2026): item 5 is implemented -- MonsoonChangeAlleyV2.hpp has scatterCounter[],
+snapshot counterBefore/counterAfter (l.175/197), TransformUndoAction with both undo+redo directions
+(l.842, 855, 861), ResetPinsAction (l.820), and StoreEditAction for pin edits. Nothing left on item 5.
+
+ITEM 4 (dice undo) IS THE ONLY ONE OUTSTANDING. Verified absent: no rhythmDrawCtr/melodyDrawCtr undo
+wiring, no dice action class anywhere in src/.
+Scope: reversible-mode counter undo -- (before,after) scalar on rhythmDrawCtr/melodyDrawCtr.
+REVERSIBLE mode only; free-run undefined. Small and self-contained -- follows the TransformUndoAction
+pattern already proven for CA (capture before, mutate, capture after, action restores either side).
+Previously deferred to the dice-scrub work; no longer blocked by it.
 
 ### 12. Subgroup pairing system (Claude Code + already designed)
 For multiple IT + Lantern + T3 groups. FULLY DESIGNED (see MULTIGROUP_CONSERVATION_AND_CORRELATION
