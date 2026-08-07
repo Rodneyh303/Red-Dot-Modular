@@ -60,7 +60,7 @@ geography rather than generic "microtonal" abstraction.
     collection's actual pattern is single clean names per module, no version markers (Changi T1/T2/T3
     is the only intentional numbered family, and only because real Changi terminals are numbered).
     Colonnades / Colonnades Duo would be the collection's first intentional base+variant pair.)
-    Why this is a strong candidate -- clears the multi-layer bar at FOUR layers, all Rodney's own ground:
+    Why this is a strong candidate -- clears the multi-layer bar at FIVE layers, all Rodney's own ground:
     (1) Concrete: two lived residences (current + former), both real Singapore-life places.
     (2) Functional: name TEACHES the module's structure -- Colonnades Duo = two Colonnades = the
         24-tone variant IS Micro-12 doubled. Matches the actual design (per MICRO_TUNING_INTEGRATION_PLAN,
@@ -72,15 +72,35 @@ geography rather than generic "microtonal" abstraction.
         the octave. The correspondence isn't a metaphor -- it's the same design instinct applied to
         different media (space vs pitch). Naming a tuning module after a Rudolph building whose whole
         point is "rhythmic organisational structure of repeated columns" is intellectually coherent.
-    (4) Biographical (the deepest layer, only Rodney could bring this): Duo was Rodney's FIRST
-        Singapore home; Colonnades is his current one and, rents permitting, the hoped-for LAST. So the
-        pair encodes the ARC of the Singapore chapter -- beginning (Duo) + hoped-for-completion
-        (Colonnades) -- and the 24-tone module named "Colonnades Duo" literally CARRIES BOTH ENDPOINTS
-        of that chapter, layered. Biography embedded in the module names as private ground the maker
-        can defend the naming from -- exactly what Rodney's Bastl-line requires.
+    (4) Biographical (only Rodney could bring this): Duo was Rodney's FIRST Singapore home; Colonnades
+        is his current one and, rents permitting, the hoped-for LAST. So the pair encodes the ARC of
+        the Singapore chapter -- beginning (Duo) + hoped-for-completion (Colonnades) -- and the
+        24-tone module named "Colonnades Duo" literally CARRIES BOTH ENDPOINTS of that chapter,
+        layered. Biography embedded in the module names.
+    (5) Design-function-to-geography (the deepest layer, connects the biographical to the module's
+        SPECIFIC purpose): Bugis Duo Residences sits right next to KAMPONG GLAM -- the Malay-Arab
+        quarter of Singapore, where the Sultan Mosque is, where Arab-trade heritage lives. Rodney
+        heard the Sultan Mosque CALL TO PRAYER daily for 3 years from that home. Colonnades Duo, the
+        24-tone module, is SPECIFICALLY DESIGNED to facilitate MAQAM -- the Arabic modal system with
+        its quarter-tone intervals. So "Duo" in the name is not just "former residence layered in";
+        it is specifically the residence that anchors the ARAB-MUSICAL-TRADITION SUPPORT in the
+        Micro-24's design, via the actual geography where Rodney encountered that culture daily. The
+        mapping: Colonnades (12-tone, no specific tradition anchoring) = Grange Road / Rudolph
+        modernism / neutral 12-tone base. Colonnades Duo (24-tone, adds maqam) = Grange Road PLUS
+        Bugis Duo (adjacent to Kampong Glam, where maqam lives in Singapore's cultural fabric). The
+        doubling in the name matches: doubled degrees + adding a specific cultural tradition, both
+        anchored in the specific home where that cultural tradition entered Rodney's daily life.
     Clears Bastl-line completely: defensible from real story (I named the microtonal modules after the
-    walls of my actual life in Singapore; the doubled name carries the whole chapter). Rudolph
-    connection makes the architectural-tuning parallel intellectually rigorous rather than metaphorical.
+    walls of my actual life in Singapore; the doubled name carries the whole chapter; the Duo half
+    specifically grounds the Arab-musical-tradition support in the geography where I heard that call
+    to prayer for three years). Rudolph connection makes the architectural-tuning parallel
+    intellectually rigorous. The Kampong-Glam-adjacent grounding gives the maqam-support design
+    decision a geographical anchor in Rodney's actual Singapore, not decorative appropriation.
+    This also extends the collection's East-West-and-places-between design theme (originally anchored
+    by Change Alley -- where East and West met historically for trade) with a place-based anchor for
+    the MUSICAL crossover: Change Alley the street + Bugis Duo the residence = two specific Singapore
+    places where East and West meet, one for correlation/exchange, one for microtonal-tuning-tradition.
+    Both grounded in Rodney's actual lived Singapore geography.
     Note: public meaning of "Colonnades" reads as classical/architectural, NOT "Rodney's home" -- that's
     fine, meaning accumulates through use (Fender didn't name Stratocaster from private reference
     either). The private ground is what makes the naming honest, not what makes it legible.
