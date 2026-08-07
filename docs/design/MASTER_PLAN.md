@@ -83,6 +83,16 @@ Sands family user-facing names (Rodney's intended naming, panel wordmarks may no
 - `StraitsSandsMacroVisual`    -> user-facing "Sands Helix"   (standalone / self-contained).
 Pattern: host-first when attached, family-name-alone when standalone.
 
+Namespace rename (pre-rebrand artefact -- Rodney flagged):
+- `namespace redDot` / `redDot::` -> `namespace dotModular` / `dotModular::`. Pre-rebrand namespace name
+  that stuck across the codebase; the collection now brands as dot.modular. Scope: 52 code files use
+  `redDot::` (grep to confirm current count), plus several older design docs. Pure mechanical rename
+  (sed -i 's/redDot::/dotModular::/g; s/namespace redDot/namespace dotModular/g'); no semantic change.
+  For OLDER design docs describing code state at time of writing, leave the redDot references as
+  accurate history OR update them along with the code -- either is fine, since the docs describe
+  what the code is called and the code is what's authoritative. New docs (SIKIT_CLAUDE_CODE_GUIDE,
+  SCALA_FILE_AND_LOAD_UI, MICROTONAL_MASTER) already use dotModular preemptively.
+
 Includes: class rename (where doing internal cleanup), file rename, slug update in plugin.json,
 panel wordmark update, display-name references in design docs (leave CLASS-name references in
 historical docs that describe actual code state at time of writing -- they remain accurate history).

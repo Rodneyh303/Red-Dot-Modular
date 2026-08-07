@@ -16,14 +16,14 @@ predicate for accept/reject. One class, three callers, zero duplication.
 
 - `src/tuning/ScalaFile.hpp` (single header; parser is small enough not to need a .cpp).
 - Header-only or a matching `.cpp` -- header-only is fine for a parser this size.
-- Namespace: `redDot` (matches the collection's shared-infrastructure namespace used by
-  `redDot::ConnectMark` and `redDot::findMonsoonEitherSide`).
+- Namespace: `dotModular` (matches the collection's shared-infrastructure namespace used by
+  `dotModular::ConnectMark` and `dotModular::findMonsoonEitherSide`).
 
 ## The class
 
 ### Data structure
 ```cpp
-namespace redDot {
+namespace dotModular {
 
 struct ScalaFile {
     // Parsed contents. All units are CENTS from root; root is implicit 0.
@@ -46,12 +46,12 @@ struct ScalaFile {
     int degreeCount() const { return (int)centsFromRoot.size(); }
 };
 
-} // namespace redDot
+} // namespace dotModular
 ```
 
 ### Parsing API
 ```cpp
-namespace redDot {
+namespace dotModular {
 
 // Parse from an already-loaded string (e.g. contents of a .scl file).
 // `acceptFn` is called with the parsed degree count BEFORE returning; if it returns false, the
@@ -68,23 +68,23 @@ ScalaFile loadScala(
     std::function<bool(int degreeCount)> acceptFn = nullptr,
     const std::string& rejectMessage = "This tuning file has an unsupported degree count.");
 
-} // namespace redDot
+} // namespace dotModular
 ```
 
 ### Example callers
 ```cpp
 // Sikit: 12 only
-auto sf = redDot::loadScala(path,
+auto sf = dotModular::loadScala(path,
     [](int n){ return n == 12; },
     "Sikit reads 12-note .scl files only. For non-12 tunings, use a Micro expander.");
 
 // Micro-12: 12 only (same predicate)
-auto sf = redDot::loadScala(path,
+auto sf = dotModular::loadScala(path,
     [](int n){ return n == 12; },
     "Micro-12 requires a 12-note .scl file. For 24-note tunings, use Micro-24.");
 
 // Micro-24: 1..24
-auto sf = redDot::loadScala(path,
+auto sf = dotModular::loadScala(path,
     [](int n){ return n >= 1 && n <= 24; },
     "Micro-24 supports up to 24 tones per octave. This file has more.");
 ```
@@ -163,7 +163,7 @@ void SikitWidget::openScalaFilePicker() {
     std::free(path);
 
     // Parse with Sikit's 12-only constraint
-    auto sf = redDot::loadScala(pathStr,
+    auto sf = dotModular::loadScala(pathStr,
         [](int n){ return n == 12; },
         "Sikit reads 12-note .scl files only. For non-12 tunings, use a Micro expander.");
 

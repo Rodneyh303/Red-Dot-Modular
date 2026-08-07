@@ -24,7 +24,7 @@ lift-and-shift here is the EXPANDER IDIOM, not the note-fader machinery.
 Read `src/MonsoonStraitsExpander.hpp` (top comment). The template pattern for a dot.modular expander:
 - Uses `namespace MonsoonIds` for any shared param/light IDs (reuses parent Monsoon's enums where
   meaningful; declares its own where the concept is expander-specific).
-- Finds its parent Monsoon via `redDot::findMonsoonEitherSide(module)` from
+- Finds its parent Monsoon via `dotModular::findMonsoonEitherSide(module)` from
   `src/ui/VisualExpanderHelpers.hpp`. This is the STANDARD walk pattern used by Intertropical, Sands,
   Change Alley, and every other host-attached expander in the collection. Do NOT invent a new lookup.
 - Places `light_connect` SVG marker for the ConnectMark widget (see below).
@@ -113,14 +113,14 @@ struct Sikit : rack::engine::Module {
 ```
 
 ### The ConnectMark widget wiring
-Sikit's panel widget adds a `redDot::ConnectMark` via the `light_connect` SVG marker. The mark's
+Sikit's panel widget adds a `dotModular::ConnectMark` via the `light_connect` SVG marker. The mark's
 `connected` callback returns TRUE iff this Sikit is CLAIMED by a parent Monsoon (i.e. is the
 authoritative tuning-authoring expander for that Monsoon). See `src/ui/ConnectMark.hpp` for the API:
 ```cpp
 ConnectMark* mark = /* placed at light_connect marker */;
 mark->connected = [this]() {
     // Return true iff this Sikit is the tuning source for its parent Monsoon.
-    Monsoon* mon = redDot::findMonsoonEitherSide(module);
+    Monsoon* mon = dotModular::findMonsoonEitherSide(module);
     if (!mon) return false;
     // Parent Monsoon exposes which expander is currently the tuning-source claimant.
     // (This method to be added on Monsoon as part of the delegation-rule wiring.)
@@ -167,7 +167,7 @@ void Sikit::process(const ProcessArgs& args) {
     // Enforce root=0 (belt-and-braces alongside UI-level lock)
     params[SikitIds::SIKIT_CENTS0_PARAM].setValue(0.f);
 
-    Monsoon* mon = redDot::findMonsoonEitherSide(this);
+    Monsoon* mon = dotModular::findMonsoonEitherSide(this);
     if (!mon) return;   // Standalone: nothing to do; ConnectMark greys via its callback.
 
     // Attempt to claim as tuning source. Monsoon's tuningSourceClaim() returns true iff we're
@@ -308,7 +308,7 @@ Each step is INDEPENDENTLY testable. Don't move to the next until the previous i
 - **Do NOT invent a new panel palette or brand mark.** Reuse the established dot.modular brand tokens
   (Barlow Black, red #d4001a, gold #c8960c, dark #070707) and the ConnectMark widget from
   `src/ui/ConnectMark.hpp`. Sikit must sit visually alongside Monsoon in the collection.
-- **Do NOT invent a new parent-Monsoon walk.** Use `redDot::findMonsoonEitherSide` from
+- **Do NOT invent a new parent-Monsoon walk.** Use `dotModular::findMonsoonEitherSide` from
   `src/ui/VisualExpanderHelpers.hpp`. Every other expander uses it; consistency matters.
 
 ## Guard rails
@@ -327,7 +327,7 @@ Each step is INDEPENDENTLY testable. Don't move to the next until the previous i
 ## Cross-refs
 
 - SCALA_FILE_AND_LOAD_UI.md -- shared .scl parser + file-picker UI (Sikit, Micro-12, Micro-24 all use).
-  Sikit calls `redDot::loadScala(path, [](int n){ return n==12; }, "Sikit reads 12-note only...")`.
+  Sikit calls `dotModular::loadScala(path, [](int n){ return n==12; }, "Sikit reads 12-note only...")`.
 - TUNING_EXPANDER_SPEC.md -- Sikit design spec (semantics, scenario, distinct-from-Micros).
 - MICRO_TUNING_INTEGRATION_PLAN.md -- engine-side TuningTable refactor + seams (step 1 of build order).
 - MONSOON_MICRO_SPEC.md -- Micro-12/24, Phase 2/3; delegation rule that Sikit's one-per-Monsoon rule
