@@ -86,12 +86,37 @@ For each, find every site that reads/writes the control's state during generatio
   Interchange maps here too.
 - **Pins** -- the Change Alley pin matrix. Note the manual-pin-edit path already goes through
   `StoreEditAction` for undo; the LOCK gate is separate from the undo path -- don't conflate them.
-- **Direction / Owner** (new) -- gate the `setLaneDir` / owner-write paths from the Sands editors.
-  Careful: the STORE is the source of truth and the editors are views. Gate the WRITE (editor
-  gesture -> store) or the READ (store -> generation)? Per the read-vs-map principle
-  (LOCK_SEMANTICS:186-189), direction is *how the arrays are read*, so gate the READ path -- the
-  user can still move the control under lock, it just doesn't take effect until unlock. Confirm this
-  matches the LATCH semantics used for Spread/Lor (they gate the same way).
+- **Direction / Owner** (new) -- MUST MATCH LOR'S PATTERN (Rodney's ruling). LOR's mechanism, verified
+  at SandsManager.cpp:260-268:
+  ```cpp
+  // 1. Compute the value freely -- NOT gated. base + CV + deltas all resolve normally.
+  baseLen = clamp(baseLen + eastDelta(...) + macroDelta(...), 1.f, 16.f);
+  // 2. Gate the PUSH into engine state.
+  if (LockManager::liveNow(Control::Lor, engine.locked)) {
+      engine.setStrand(StrandWriter::MONO, strand, baseLen, baseOff, baseRot);
+  }
+  ```
+  The in-code comment states the principle: *"under lock, do NOT re-push the strand window -- the
+  engine's LOR state persists, so skipping the write holds the pre-lock resolved value (base +
+  latched CV)."*
+
+  So the gate is on **the push to engine state** -- not the read, not the store write. It works
+  because engine state is PERSISTENT rather than recomputed per block: skipping the write leaves the
+  pre-lock value in place. This is also why the migration is a clean no-op (`liveNow(LATCH) ==
+  !locked`).
+
+  Apply the same shape to Direction: let the editor gesture write the store freely
+  (`setLaneDir` still works, the UI still moves), and gate the point where lane direction is PUSHED
+  INTO the engine's traversal state. Find that push site -- it is the analogue of `engine.setStrand`.
+  User-visible result matches LOR exactly: the control moves under lock, but the change doesn't take
+  effect until unlock.
+
+  **OWNER may already be latched for free.** The same comment continues: *"This also latches OWNER
+  for free: owner selects which base feeds baseLen above, and freezing the apply freezes that
+  selection's effect too."* So before adding an Owner gate, CHECK whether owner is already
+  effectively latched via the LOR push gate. If it is, the `Owner` enum entry may be
+  model-completeness only (like Transpose) with no call site -- which would shrink this step.
+  Verify before threading.
 
 ### 4. Verify the LIVE controls need no gate
 Clock, Mute, Display, Transpose are LIVE = "never obeys lock". If no gate exists, that IS correct
@@ -125,9 +150,12 @@ confirm it's covered by steps 3-4. If it needs its own entry, that's a 16th cont
    implements LATCH correctly" -- so migrating `if (!locked)` to `liveNow(LATCH)` is a no-op since
    `liveNow(LATCH) == !locked`). **Tests must stay green with no audible change.** If behaviour
    changes here, the audit missed a site -- investigate before proceeding.
-4. Thread Direction + Owner. **THIS IS A REAL BEHAVIOUR CHANGE** -- they don't latch today and will
-   after. Rack-verify: lock the module, change lane direction, confirm nothing happens until unlock;
-   unlock, confirm the change commits. Expect this to feel different.
+4. Thread Direction (+ Owner IF it isn't already latched for free via the LOR push gate -- check
+   first, see step 3). Follow LOR's shape exactly: compute freely, gate the PUSH into engine state.
+   **THIS IS A REAL BEHAVIOUR CHANGE** -- direction doesn't latch today and will after. Rack-verify:
+   lock the module, change lane direction, confirm the control MOVES but the traversal doesn't change;
+   unlock, confirm the change commits. Should feel identical to how LOR behaves under lock -- that's
+   the acceptance test.
 5. Verify LIVE controls have no gates (remove any found).
 6. Build QUEUE + thread Scatter. Rack-verify: arm scatter under lock, confirm it fires at the next
    phrase boundary, not immediately.
