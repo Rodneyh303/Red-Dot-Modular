@@ -98,16 +98,14 @@ namespace { constexpr uint64_t STREAM_RHYTHM = 0, STREAM_MELODY = 1, STREAM_CA =
 inline uint64_t deriveKey(float seedFloat, uint64_t stream) {
     float s = pe_clamp(seedFloat, 0.f, 10.f);
     uint64_t sd = (uint64_t)((double)s / 10.0 * (double)MAX_U64);
-    return sd + stream;          // matches the documented S, S+1, S+2 model
+    return sd + stream;          // S, S+1, S+2 -- correct as written
 }
 ```
-`+ stream` is the literal reading of the design note. **Consider instead mixing the stream index
-rather than adding it** -- adjacent keys in a weak PRNG can produce correlated streams. Philox is a
-counter-based cipher and is specifically designed so adjacent keys decorrelate, so `+stream` is
-defensible here; but a hash-mix (e.g. splitmix64 of `sd ^ (stream * GOLDEN)`) costs nothing and removes
-the question entirely. **Lean: mix, not add.** Flag for Rodney -- if the documented `S, S+1, S+2`
-model is meant literally for reproducibility across instances, keep `+`; if it's shorthand for
-"three derived streams", mix.
+Simple addition is correct. Philox is a COUNTER-BASED BLOCK CIPHER specifically designed so adjacent
+keys produce independent streams -- `seed64(S)` and `seed64(S+1)` are as independent as any two
+random keys. The concern about adjacent keys correlating applies to weak PRNGs (e.g. Mersenne
+Twister) but NOT to Philox. No hash-mixing needed; the earlier "lean: mix, not add" suggestion in
+this doc was overcautious reasoning borrowed from the wrong context and is withdrawn.
 
 ### Reproducibility consequence
 This changes the numbers produced by any given seed float. Existing saved patches will sound different
