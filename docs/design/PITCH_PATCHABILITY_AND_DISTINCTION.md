@@ -370,3 +370,39 @@ retrograde/mensuration/spread-inversion, or it reads as texture rather than as t
 2. SHARED Change Alley across instances -- currently CA operates within one engine; sharing across
    separate Monsoons is the "shared CA" work (see SEED_OFFSET_DESIGN build order: offset first, shared
    CA second). Until then the cross-instance correlation route is shared-seed + simultaneous-dice.
+
+### 12a. Concrete realisation: two Intertropicals, alternating correlated riffs, call-and-response
+[Rodney's patch sketch -- the specific form point 12 should take in a demo.]
+
+**Patch:**
+- Monsoon A (12-TET) -> Intertropical A. Monsoon B (maqam via Micro-24) -> Intertropical B.
+- Shared Change Alley + unified seed + shared clock/reset.
+- IT A: alternating scenes, odd = full voice->output routing, even = EMPTY (no routing = silence).
+- IT B: the inverse (odd empty, even full).
+Result: A speaks in 12-TET, B answers the correlated phrase in maqam, alternating automatically as the
+scenes advance. Call and response across two intonational worlds.
+
+**Why it needs NO new features:** an empty IT scene routes nothing, which IS silence. So alternation is
+just scene configuration -- no mute logic, no gating, no new module. The 8-scene sequencer already does
+it.
+
+**Why it stays locked:** both ITs reset to scene 1 / repeat 1 on Monsoon reset (the reset-sync fix,
+commits e0cbce0 / ffaa7a2 / 26f0850 -- resetPulse in processResetGate + the justReset flag swallowing
+the first post-reset wrap). Without that fix the two ITs would drift apart and the call-response would
+decay into overlap. Verified in clock mode; PENDING verify under phase drive (Mode E).
+
+**Why the FORM fits the material:** call-and-response is native to BOTH traditions being bridged --
+antiphony in Western practice, responsorial forms in Arabic music. The patch structure matches the
+content rather than imposing an arbitrary shape on it.
+
+**Legibility:** this is a GOOD demo precisely because it exposes ONE transformation (the tuning
+difference) and makes it maximally audible by ALTERNATING rather than overlaying. Point 11's warning
+(stacked transformations read as texture) is dodged: separation in time is what makes the tuning
+contrast legible. Overlay the same two tunings simultaneously and you get a blur; alternate them and
+the ear hears the relationship.
+
+**Variations worth trying:**
+- Asymmetric scene lengths (A gets 2 scenes, B gets 1) -> uneven call/response, more speech-like.
+- Both ITs partially full on some scenes -> overlap moments where the two tunings sound together,
+  punctuating the alternation.
+- Sikit version (Phase 1): same patch, well-tempered vs 12-TET. Much subtler, still real.
