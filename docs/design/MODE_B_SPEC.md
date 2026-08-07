@@ -214,3 +214,27 @@ Note: this fix is GENERAL (applies to all modes) and harmless outside Mode B -- 
 decision IS Rest iff the gate is truly down, so the early-return produces the same result as the
 sounding check would. In Mode B it is load-bearing because gateHeld may be momentarily wrong at
 sample time due to the processing-order race.
+
+### CC's poly concern -- REJECTED (model is the opposite of what CC stated)
+
+CC flagged that `if (dec == MonoDecision::Rest) return Inactive` would "blank a poly voice that's
+correctly sounding during a mono rest." This is wrong about the model.
+
+The actual poly rest rule (SequencerEngine.cpp:729 comment + :843-847 enforcement):
+- "Rest -- mono rested; poly CANNOT INITIATE A NEW NOTE this step."
+- On MonoDecision::Rest, the engine explicitly sets v.gs.gateHeld=false and v.participating=false
+  for every poly voice.
+
+The direction of the rule: poly CAN REST when mono plays (independent restProb). Poly CANNOT PLAY
+when mono rests. This is the opposite of CC's claim.
+
+Therefore when dec==MonoDecision::Rest, every voice -- mono and poly -- already has gateHeld=false
+enforced by the engine. The spec's one-line fix applied to all voices is CORRECT and SAFE. CC's
+proposed "safe refinement" to voice 0 only would be less correct -- if a poly voice had stale
+gateHeld=true from the processing-order race, the fix wouldn't cover it.
+
+The Lantern.cpp:341-346 comment CC cited warns about a different class of bug (poly voice that
+independently rests while mono plays -- correct: that voice should render Inactive even though
+dec != Rest). That comment does not contradict the spec's fix; it addresses the opposite case.
+
+PROCEED with the original one-line fix as specified.
