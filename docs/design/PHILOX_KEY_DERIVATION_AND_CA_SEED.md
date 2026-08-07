@@ -174,6 +174,38 @@ Construction-time init stays as `rack::random::u64()` (no seed known yet; entrop
 at construction). The seed derivation fires only on an explicit reset+reseed gesture, at which point
 the seed value IS known. Persisted corrKey[] already handles patch-save reproducibility.
 
+### CODE FIX NEEDED in resetToIdentity() (Rodney's ruling: reset != reseed)
+`resetToIdentity()` (MonsoonChangeAlleyV2.hpp:240-244) currently calls `seedCorrKeysInternal()`:
+```cpp
+void resetToIdentity() {
+    for (int v = 0; v < CA::N_VOICES; ++v) { rhythmSrc[v] = v; melodySrc[v] = v; }
+    for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i) scatterCounter[i] = 0;
+    seedCorrKeysInternal();   // <-- WRONG: should not be here
+}
+```
+**These are two distinct operations that must not be conflated:**
+- `resetToIdentity()` = structural reset. Returns the pin matrix to identity (each voice maps to
+  itself) and zeros the scatter counters (return to position 0 in the current stream). Does NOT
+  change which stream you're on. A user may want to reset the matrix without changing their scatter
+  keys.
+- Reseeding = changes the Philox keys (which stream you draw from). Separate decision, triggered
+  by an explicit seed gesture from Monsoon. If keys changed on every matrix reset, scatter streams
+  would silently change in unexpected places.
+
+**Fix:** remove `seedCorrKeysInternal()` from `resetToIdentity()`. The matrix reset and counter
+zero stay; the key derivation is removed. Key derivation is called ONLY from `onMonsoonReseedCA()`
+on explicit reset+reseed gesture (as specified above).
+```cpp
+void resetToIdentity() {
+    for (int v = 0; v < CA::N_VOICES; ++v) { rhythmSrc[v] = v; melodySrc[v] = v; }
+    for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i) scatterCounter[i] = 0;
+    // NO key re-derivation here. Keys change only on explicit reseed gesture.
+}
+```
+Construction-time key init (line 62: `corrKey[i] = rack::random::u64()`) stays -- that is correct
+(no seed known at construction, entropy is appropriate). Only the `resetToIdentity()` call to
+`seedCorrKeysInternal()` is removed.
+
 ### Cross-instance (multi-Monsoon sharing one CA)
 The adjacent (owner) Monsoon provides the seed on its reset+reseed. The non-adjacent Monsoon
 doesn't call into CA (it's not adjacent). So if you want both Monsoons to share CA with the same
