@@ -111,3 +111,64 @@ assertions. Structure:
 The spec is now fully executable. Claude Code: implement sections 3-5, write the section-6 test encoding
 these rules. The whole thing rests on ONE idea -- in Mode B the gate follows Gate 1, and legato is the
 single modifier that bridges the gap to the next gate.
+
+## IMPLEMENTATION DECISIONS (resolved, Aug 2026)
+
+### Decision 1: nullify note-length via nvIdx, NOT inside executeStep
+Rodney's ruling (lean A): Mode B simply doesn't arm a multi-step hold. `executeStep` stays
+mode-agnostic. Suppression happens upstream at the nvIdx selection in `executeModeB`.
+
+Code change in `executeModeB` (SequencerEngine.cpp:682):
+```cpp
+// OLD:
+int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
+// NEW (Mode B: note-length nullified; gate follows Gate 1, not holdRemain):
+int nvIdx = getNoteLenIdx(1.f, input, r_vary);
+```
+`executeStep` receives a 1-step nvIdx. `triggerNote` arms a 1-step `holdRemain`. The gate-close
+mechanism is then entirely driven by Gate 1's fall (Decision 2 below). One-line change, no new code
+path in `executeStep` or `triggerNote`.
+
+### Decision 2: per-sample gate driver lives in Monsoon::process
+Rodney's ruling (lean B): the gate output write that currently calls `gs.process(sampleTime)`
+is in the module layer where Gate 1 and modeSelect already live. Mode B adds a branch there:
+
+```cpp
+// Wherever outputs[GATE_OUTPUT].setVoltage(...) is written (Monsoon::process or
+// ModeController output stage):
+float gateV;
+if (isModeB && gs.gateHeld) {
+    // Mode B: gate width follows Gate 1, not holdRemain.
+    gateV = inputs[GATE1_INPUT].getVoltage() >= 1.f ? 10.f : 0.f;
+} else {
+    gateV = gs.process(sampleTime);   // Mode A/E/etc: normal hold-based gate
+}
+outputs[GATE_OUTPUT].setVoltage(gateV);
+```
+`isModeB` = `modeSelect == MODE_B` (already available). `gs.gateHeld` guards against spurious
+high when Gate 1 is high but no note is active (e.g. between phrase sections).
+
+### The 1ms retrigger dip still works correctly
+`triggerNote` fires `gatePulse.trigger(1e-3f)` on each gate1Rise. `gs.process()` handles the dip.
+The Mode B branch above only applies on sustain samples where `gs.gateHeld` is true and the
+gatePulse 1ms window has closed -- so the attack transient is unaffected.
+
+### Legato (slurForward) in Mode B -- MODEL 1
+Per the spec: at Gate 1 FALL, if `gs.slurForward` is true, bridge the gate HIGH until the next
+Gate 1 rise. This requires detecting Gate 1's FALL edge (prev high, now low) in `Monsoon::process`.
+On the fall:
+```cpp
+if (prevGate1High && !gate1High && gs.slurForward && gs.gateHeld) {
+    // Start bridging: hold gate HIGH until next Gate 1 rise.
+    modeBBridging = true;   // new flag on Monsoon (or ModeController)
+}
+if (gate1Rise) modeBBridging = false;   // next Gate 1 rise: bridge ends, new note will retrigger
+```
+The gate driver then becomes:
+```cpp
+if (isModeB && gs.gateHeld) {
+    gateV = (inputs[GATE1_INPUT].getVoltage() >= 1.f || modeBBridging) ? 10.f : 0.f;
+} else {
+    gateV = gs.process(sampleTime);
+}
+```
