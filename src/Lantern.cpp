@@ -338,6 +338,22 @@ struct Lantern : Module {
                     bool accented, float lenSteps, bool slurFwd, bool monoLeading, int playDir,
                     bool lapArrival = false) {
         Cell& c = cells[voice][step];
+        // REST is AUTHORITATIVE over the timing-sensitive gate read (MODE_B_SPEC.md
+        // "REMAINING ISSUE"). In Mode B the gate STATE (gs.gateHeld/holdRemain) is corrected by
+        // Monsoon's per-sample gate driver, but Rack's module processing order is not fixed: if
+        // Lantern runs BEFORE Monsoon in a block it samples the PRE-correction gate (still high
+        // from the note's triggerNote), and since stepIndex doesn't change again until the next
+        // rise, the corrected rest state is never observed -> rests vanish from the display while
+        // the scope shows them. eng.lastStepResult.decision is set ATOMICALLY inside executeStep
+        // and persists until the next step, so it is race-free — trust it over gateHeld/holdRemain.
+        //   Applies to ALL voices (mono + poly): on MonoDecision::Rest the engine forces
+        //   v.gs.gateHeld=false + v.participating=false for EVERY poly voice too (executePolyVoice
+        //   rest branch, ~:761-771) — poly CANNOT initiate a note when mono rests (it CAN rest
+        //   while mono plays, but that is dec!=Rest and correctly falls through to the gate test).
+        //   So the unguarded early-return is both correct and race-proof: it also catches a poly
+        //   voice left with a stale gateHeld=true by the same processing-order race.
+        // General + harmless outside Mode B: in Mode A/E dec==Rest iff the gate is truly down.
+        if (dec == MonoDecision::Rest) { c.type = lantern::NoteType::Inactive; return; }
         // A cell sounds if THIS voice's own gate is up. recordCell is called for mono AND each
         // poly voice with the SAME mono 'dec', so 'dec' must NOT drive sounding — a poly voice
         // that independently rested has its own gate down and must render blank even though mono
