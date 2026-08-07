@@ -275,22 +275,45 @@ does each degree land on?" That's a WITHIN-ONE-OCTAVE slot-assignment question. 
 MIDI fields entirely. Custom interpretation, but trivial -- just `mapping.at(faderSlot)`, no
 transformation.
 
-**PARSER SOURCING (recommendation, changed from earlier draft):**
-The earlier draft proposed writing our own .scl (and future .kbm) parser. Now that we've looked at
-what already exists, consider USING libscala-file (github.com/MarkCWirt/libscala-file, MIT-licensed,
-compatible with GPL plans, header-only-friendly, tested against real Scala files, handles both .scl
-and .kbm). Rationale:
-- Both formats have real edge cases (comments, whitespace, x/X for unmapped, ratio syntax, decimal
-  detection, trailing annotations, blank lines) that libscala-file already handles.
-- Small dependency, MIT-licensed. Removes maintenance burden.
-- One dependency covers both .scl (Phase 1+) and .kbm (Phase 2+).
-- We still wrap it in the dotModular::ScalaFile facade to provide per-caller accept predicates,
-  the "trivial custom interpretation" for using only the .kbm mapping vector, and Rack-friendly error
-  types.
+**PARSER SOURCING (decision, revised again after Rodney's push-back):**
+Write our own parser for both .scl and .kbm. NOT a dependency on libscala-file. Reasoning:
+- The classes are SMALL. libscala-file's `scale` is a thin wrapper around a degrees vector; its `kbm`
+  is 8 fields + a mapping vector. A focused implementation of just what we use is ~200-300 lines
+  total including robust error handling. Not enough code to justify a dependency.
+- We have our own scale manager, semitone conventions, TuningTable, and MonsoonIds enums. A
+  dependency returns its OWN types (scala::scale, scala::kbm) that would need to be ADAPTED to our
+  structures -- an extra translation layer between the library's model and ours. Writing our own
+  directly populates the structures we already have. No impedance mismatch, fewer moving parts.
+- We only use SOME .kbm notions. libscala-file parses the entire .kbm struct (MIDI ranges, reference
+  note + frequency, all 8 fields). We use ONE field -- the mapping vector. Linking against a full
+  parser to use ~12.5% of what it returns is inefficient in code-hygiene terms; a focused parser
+  expresses OUR subset cleanly rather than a superset with unused fields lying around.
+- The REAL VALUE of libscala-file is empirical knowledge of edge cases -- not the parser code (which
+  is small) but the fact that it's been tested against real Scala files and handles the corner cases
+  (blank lines, whitespace variations, inline comments, ratio-vs-cents disambiguation, x/X for
+  unmapped, trailing content on pitch lines, tab characters, etc.). And that empirical knowledge
+  TRANSFERS VIA TEST FILES, NOT VIA LINKING.
 
-Alternative: write our own smaller parser that only handles what we need. Viable but duplicative. Lean
-towards the library dependency unless there's a specific reason to avoid it (build-system complexity,
-license concerns -- neither applies here).
+**How to capture the real value without the dependency:**
+- Write our own dotModular::ScalaFile and (later) dotModular::KeyboardMapping parsers, minimal and
+  focused on what we use.
+- STEAL libscala-file's test corpus (their MIT license allows this) as our own test corpus. Run our
+  parsers against the SAME real files their tests use; assert the same outputs.
+- Also test against the Scala archive (https://www.huygens-fokker.org/docs/scales.zip -- thousands of
+  real .scl files). If our parser passes on a wide sample of that archive, we've validated against
+  more real-world files than a typical CI suite covers.
+- End result: same empirical robustness as depending on libscala-file, but with a focused parser that
+  directly populates our types.
+
+**Meta-lesson worth naming:** the earlier "just use the library" lean was reasoning-shape (existing
+mature code + license fit -> use it) that missed the real cost-benefit (small code + adapter layer +
+partial use + test corpus transferable independently). Rodney's push-back applied the actual accounting.
+Naming this so the next "should we depend on X?" decision starts with "how much of X do we actually use,
+what's the adapter cost, and can we transfer the empirical value without linking?" rather than defaulting
+to "libraries good."
+
+Alternative NOT chosen: depend on libscala-file. Preserved here in case circumstances change (e.g. .scl
+support expanded to features we don't parse today, or the test-file corpus proves inadequate).
 
 **Status:** TBD -- makes sense for Micros, low priority for Sikit, not part of Phase 1 (Sikit) build.
 Add when Micros land (Phase 2/3) or when a user actually needs it, whichever comes first. Documented
