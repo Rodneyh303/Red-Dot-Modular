@@ -130,45 +130,54 @@ mechanism is then entirely driven by Gate 1's fall (Decision 2 below). One-line 
 path in `executeStep` or `triggerNote`.
 
 ### Decision 2: per-sample gate driver lives in Monsoon::process
-Rodney's ruling (lean B): the gate output write that currently calls `gs.process(sampleTime)`
-is in the module layer where Gate 1 and modeSelect already live. Mode B adds a branch there:
+File: `src/Monsoon.cpp` -- the block CC added at ~line 708, just before
+`outputGenerator->drive(engine, outputs.data(), expanderManager, args.sampleTime)`.
+Gate 1 and modeSelect already live there; the driver sets engine.gs.gateHeld directly so every
+read-path (GATE_OUTPUT via gs.process(), STEP via gsStep, Lantern via gs.gateHeld/holdRemain)
+agrees by construction.
 
+CC's implementation:
 ```cpp
-// Wherever outputs[GATE_OUTPUT].setVoltage(...) is written (Monsoon::process or
-// ModeController output stage):
-float gateV;
-if (isModeB && gs.gateHeld) {
-    // Mode B: gate width follows Gate 1, not holdRemain.
-    gateV = inputs[GATE1_INPUT].getVoltage() >= 1.f ? 10.f : 0.f;
-} else {
-    gateV = gs.process(sampleTime);   // Mode A/E/etc: normal hold-based gate
-}
-outputs[GATE_OUTPUT].setVoltage(gateV);
-```
-`isModeB` = `modeSelect == MODE_B` (already available). `gs.gateHeld` guards against spurious
-high when Gate 1 is high but no note is active (e.g. between phrase sections).
-
-### The 1ms retrigger dip still works correctly
-`triggerNote` fires `gatePulse.trigger(1e-3f)` on each gate1Rise. `gs.process()` handles the dip.
-The Mode B branch above only applies on sustain samples where `gs.gateHeld` is true and the
-gatePulse 1ms window has closed -- so the attack transient is unaffected.
-
-### Legato (slurForward) in Mode B -- MODEL 1
-Per the spec: at Gate 1 FALL, if `gs.slurForward` is true, bridge the gate HIGH until the next
-Gate 1 rise. This requires detecting Gate 1's FALL edge (prev high, now low) in `Monsoon::process`.
-On the fall:
-```cpp
-if (prevGate1High && !gate1High && gs.slurForward && gs.gateHeld) {
-    // Start bridging: hold gate HIGH until next Gate 1 rise.
-    modeBBridging = true;   // new flag on Monsoon (or ModeController)
-}
-if (gate1Rise) modeBBridging = false;   // next Gate 1 rise: bridge ends, new note will retrigger
-```
-The gate driver then becomes:
-```cpp
-if (isModeB && gs.gateHeld) {
-    gateV = (inputs[GATE1_INPUT].getVoltage() >= 1.f || modeBBridging) ? 10.f : 0.f;
-} else {
-    gateV = gs.process(sampleTime);
+if (modeSelect == 1 && runGateActive) {
+    const bool gate1High = input.gate1 >= 1.0f;
+    const bool isRest    = (engine.lastStepResult.decision == MonoDecision::Rest);
+    engine.gs.gateHeld     = isRest ? false : (gate1High || engine.gs.slurForward);
+    engine.gsStep.gateHeld = isRest ? false : gate1High;
 }
 ```
+
+### REMAINING BUG: holdRemain not zeroed -- Lantern still shows note through rest
+Lantern.cpp:347:
+```cpp
+const bool sounding = gs.gateHeld || gs.holdRemain > 0.0001f;
+```
+The Lantern treats a note as sounding if EITHER gateHeld OR holdRemain > 0. CC's driver correctly
+sets gateHeld=false on rest, but executeStep re-arms holdRemain via triggerNote AFTER the clear-
+before-executeStep block. So holdRemain stays positive, sounding stays true, and Lantern shows the
+note playing through the rest even though the output gate is correctly low.
+
+Symptom in Rodney's screenshot: rest visible in scope (output correct) but "hardly in Lantern"
+(holdRemain keeping sounding=true through the rest).
+
+FIX -- extend the Mode B gate driver block in src/Monsoon.cpp:~708 to also zero holdRemain when
+the gate is closed:
+```cpp
+if (modeSelect == 1 && runGateActive) {
+    const bool gate1High = input.gate1 >= 1.0f;
+    const bool isRest    = (engine.lastStepResult.decision == MonoDecision::Rest);
+    const bool gateOpen  = !isRest && (gate1High || engine.gs.slurForward);
+
+    engine.gs.gateHeld     = gateOpen;
+    engine.gsStep.gateHeld = !isRest && gate1High;
+
+    // CRITICAL: zero holdRemain when gate is closed so Lantern's
+    // `sounding = gateHeld || holdRemain > 0.0001f` (Lantern.cpp:347) stays consistent.
+    // executeStep re-arms holdRemain via triggerNote; this overrides it.
+    if (!gateOpen) {
+        engine.gs.holdRemain     = 0.f;
+        engine.gsStep.holdRemain = 0.f;
+    }
+}
+```
+This is the minimum fix -- one additional condition, two zero-assignments added to the existing
+block. No other files need changing for this specific symptom.
