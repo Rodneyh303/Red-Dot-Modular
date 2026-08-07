@@ -234,19 +234,20 @@ struct Lantern : Module {
 
         const int scene = it ? it->activeScene : 0;
 
-        int step = eng.stepIndex;// One-block-delayed rest correction (MODE_B_SPEC.md)
+        int step = eng.stepIndex;
+
+        // One-block-delayed rest correction (MODE_B_SPEC.md processing-order race). This runs
+        // EVERY process() call, not only on step edges, so it catches a rest even when the
+        // step-edge sample below observed a stale gate (Lantern ran before Monsoon that block).
+        // When the finalised decision is Rest, retroactively blank that step's whole column
+        // (mono rest silences all poly too — verified model). forStep is the decision's own step.
         if (eng.lastStepResult.decision == MonoDecision::Rest
             && eng.lastStepResult.forStep >= 0
             && eng.lastStepResult.forStep < 16) {
-            int restStep = eng.lastStepResult.forStep;
-            for (int row = 0; row < 16; ++row) {
-                if (cells[row][restStep].type != lantern::NoteType::Inactive) {
-                    cells[row][restStep].type = lantern::NoteType::Inactive;
-                }
-            }
+            const int restStep = eng.lastStepResult.forStep;
+            for (int row = 0; row < 16; ++row)
+                cells[row][restStep].type = lantern::NoteType::Inactive;
         }
-
-        if (step == lastObservedStep) return;   // existing line
 
         if (step == lastObservedStep) return;   // only sample on step edges
         lastObservedStep = step;
@@ -816,10 +817,25 @@ struct LanternDisplay : widget::Widget {
                 if (c.accented) col = nvgLerpRGBA(col, nvgRGB(0xff, 0xff, 0xff), 0.28f);
                 else            col = nvgLerpRGBA(col, nvgRGB(0x00, 0x00, 0x00), 0.10f);
 
-                nvgBeginPath(vg);
-                nvgRoundedRect(vg, bx + 0.5f, yc - barH * 0.5f, std::max(1.5f, bw - 1.f), barH, 1.5f);
-                nvgFillColor(vg, col);
-                nvgFill(vg);
+                // Edge-aware fill so a CONNECTED run (legato/tie, and Mode B where every note is
+                // its own 1-cell bar) renders as ONE seamless bar instead of separate rounded
+                // blips. Each isolated edge keeps the 0.5px inset + 1.5px rounding; a connecting
+                // edge (heldIn on the arrival side, heldOut on the departure side) instead OVERLAPS
+                // the neighbour by 1px and squares that corner, closing the seam. Connection sides
+                // mirror by play direction (reverse travels right->left, so heldIn is on the right).
+                {
+                    const bool connL = (c.playDir < 0) ? c.heldOut : c.heldIn;
+                    const bool connR = (c.playDir < 0) ? c.heldIn  : c.heldOut;
+                    const float li  = connL ? -1.0f : 0.5f;   // negative = overlap into neighbour
+                    const float ri  = connR ? -1.0f : 0.5f;
+                    const float rx  = bx + li;
+                    const float rw  = std::max(1.5f, bw - li - ri);
+                    const float rad = (connL || connR) ? 0.f : 1.5f;  // square the joined corners
+                    nvgBeginPath(vg);
+                    nvgRoundedRect(vg, rx, yc - barH * 0.5f, rw, barH, rad);
+                    nvgFillColor(vg, col);
+                    nvgFill(vg);
+                }
 
                 // Legato-LEAD marker: a note that initiates a slur gets a distinct outline
                 // (amber -- the CONNECTION-family hue shared with the wraparound carets and

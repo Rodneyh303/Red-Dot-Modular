@@ -678,7 +678,16 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
         float r_legato = monoStrand(dotModular::STRAND_LEGATO)[getLegatoStep()];
         float r_accent = monoStrand(dotModular::STRAND_ACCENT)[getAccentStep()];  // New: accent strand
         
-        int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
+        // Mode B: the note DURATION is Gate 1's width, so the INTERNAL note length is nullified
+        // to a single 1/16 step (index 6 in NoteValues.hpp = 1.0 step). Using the controller's
+        // noteVal here armed a MULTI-step hold (holdRemain=16 for the 1/1 default), and the Lantern
+        // renders each note's bar at that length -- so a played note's 16-step bar painted OVER all
+        // the rest cells that followed it, hiding rests unless a long run of consecutive rests had
+        // no preceding note to cover them (the "only very high rest shows some rests" symptom,
+        // ground-truthed via the MODEB logs: dec/gateHeld were already correct, only the LENGTH was
+        // wrong). One step = the bar occupies only its own cell; the audible gate width still comes
+        // from Gate 1 (generateOutputs). Variation is intentionally bypassed in Mode B.
+        int nvIdx = (modeSelect == 1) ? 6 /*1/16 = 1 step*/ : getNoteLenIdx(noteVal, input, r_vary);
 
         float prevHold = gs.holdRemain;
         wasHeldMono = gs.gateHeld || (prevHold > 0.0001f);

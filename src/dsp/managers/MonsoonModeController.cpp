@@ -180,7 +180,7 @@ bool ModeController::executeModeB(bool gate1Rise,
             paramManager.getLegato(),
             // Note value (which influences note length) should have no impact.
             // Pass a neutral value (e.g., 2.f for 1/4 note, a common default).
-            2.f,
+            0.f,
             modeBPatternInput // Pass the modified PatternInput
         );
         
