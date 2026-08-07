@@ -721,8 +721,10 @@ void Monsoon::process(const ProcessArgs& args) {
         // show the note still sounding even though gateHeld (and the output) are correctly low.
         // Zero holdRemain when the gate is closed so the Lantern-read state matches the output.
         if (!gateOpen) {
-            engine.gs.holdRemain     = 0.f;
-            engine.gsStep.holdRemain = 0.f;
+            engine.gs.holdRemain          = 0.f;
+            engine.gs.gatePulseRemain     = -1;   // ADD: prevents MidNote guard on next rise
+            engine.gsStep.holdRemain      = 0.f;
+            engine.gsStep.gatePulseRemain = -1;   // ADD: STEP mirror
         }
     }
 
