@@ -153,10 +153,14 @@ snapshot counterBefore/counterAfter (l.175/197), TransformUndoAction with both u
 
 ITEM 4 (dice undo) IS THE ONLY ONE OUTSTANDING. Verified absent: no rhythmDrawCtr/melodyDrawCtr undo
 wiring, no dice action class anywhere in src/.
-Scope: reversible-mode counter undo -- (before,after) scalar on rhythmDrawCtr/melodyDrawCtr.
-REVERSIBLE mode only; free-run undefined. Small and self-contained -- follows the TransformUndoAction
-pattern already proven for CA (capture before, mutate, capture after, action restores either side).
-Previously deferred to the dice-scrub work; no longer blocked by it.
+Scope: (before,after) scalar undo on rhythmDrawCtr/melodyDrawCtr. Small and self-contained -- follows
+the TransformUndoAction pattern already proven for CA (capture before, mutate, capture after, action
+restores either side), minus the table snapshot (dice draw is entirely key+counter).
+SCOPE CORRECTION (verified in code Aug 2026): the roadmap's "REVERSIBLE mode only; free-run undefined"
+constraint is STALE -- reversible mode was removed when the scrub model landed (MonsoonWidget.cpp:111 is
+a dead stub: "reversible mode removed (scrub model) -- no per-stream flag"). Counters are signed and
+always addressable, so dice undo applies UNIVERSALLY. Simpler than originally scoped.
+Full build spec: UNDO_ITEM4_DICE_BUILD_SPEC.md.
 
 ### 12. Subgroup pairing system (Claude Code + already designed)
 For multiple IT + Lantern + T3 groups. FULLY DESIGNED (see MULTIGROUP_CONSERVATION_AND_CORRELATION
