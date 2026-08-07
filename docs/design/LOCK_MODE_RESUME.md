@@ -10,6 +10,11 @@ committed. This note is the "pick it up later" summary; detail lives in the refe
    every gated site already implements LATCH CORRECTLY. Lock manager is CONSOLIDATION of correct-
    but-scattered decisions, not a bug fix. "Inverts current behaviour" is narrow: only the OPEN
    rulings (transpose->LIVE, direction->LATCH) + making QUEUE first-class actually change behaviour.
+[STALE AS OF AUG 2026 -- see LOCK_PHASE2_BUILD_SPEC.md for verified current state. Item 3 below says
+the manager is INERT; it is NOT. liveNow() is threaded through 4 controls (Spread x9, Lor x6, Reseed x2,
+ABMix x2). 9 controls remain unthreaded, and Direction/Owner have no enum entry at all. The rest of this
+note remains accurate.]
+
 3. LockManager FOUNDATION built (src/dsp/managers/MonsoonLockManager.hpp), wired as
    Monsoon::lockManager{engine.locked}. INERT so far -- nothing calls liveNow() yet. 30/30 green.
    - LockCategory {LATCH, LIVE, QUEUE}; category-keyed Control enum (NOT per-physical-control).
