@@ -136,15 +136,58 @@ The cross-instance features depend on shared seeding:
   Monsoons whose CA scatter is correlated, which requires the same `corrKey[]` in both.
 - The documented `caKey = S + 2` model can't be implemented at all without a seed input.
 
-### Fix: add a SEED input to Change Alley
-Mirror Monsoon's existing seed handling so the idiom is consistent:
-- **SEED input jack** (0..10V), plus `seedConnected` detection. PatternEngine already has this exact
-  pattern (`seedConnected`, `seedSampleValue`, PatternEngine.hpp:61-62) -- copy it.
-- When connected: derive all `corrKey[i]` from the CV via `deriveKey(seedCV, STREAM_CA + i)` so each
-  of the 8 scatter streams still gets an independent key, but all are reproducible from one input.
-- When disconnected: keep current behaviour (random at construction, persisted). Do NOT change the
-  no-cable default -- patches that rely on it keep working.
-- Consider a context-menu "reseed" action for deterministic re-randomisation without a cable.
+### Fix: add a SEED input to Change Alley -- concrete implementation
+
+**Enum change** (Monsoon.hpp:1030-1040, the CA::InputIds enum):
+```cpp
+enum InputIds {
+    DOMAIN_TRIG_START      = 0,
+    CODOMAIN_TRIG_START    = DOMAIN_TRIG_START   + N_ROWS,
+    SCATTER_BACK_DOM_START = CODOMAIN_TRIG_START + N_ROWS,
+    SCATTER_BACK_COD_START = SCATTER_BACK_DOM_START + SIDES*TYPES,
+    GRAIN_POLY_IN          = SCATTER_BACK_COD_START + SIDES*TYPES,
+    STEP_POLY_IN           = GRAIN_POLY_IN + 1,
+    SEED_IN                = STEP_POLY_IN + 1,          // NEW -- (0..10V)
+    NUM_INPUTS             = SEED_IN + 1                // was STEP_POLY_IN + 1 = 42; now 43
+};
+```
+
+**configInput** (MonsoonChangeAlleyV2.hpp, alongside the other configInput calls ~l.114-115):
+```cpp
+configInput(CA::SEED_IN, "Seed CV (0..10V) -- when connected, reseed derives corrKey[] from this voltage");
+```
+
+**Triggering model (sample-and-hold, gesture-driven -- matches Monsoon's SEED idiom):**
+The SEED jack alone does NOT continuously re-key -- that would break ongoing scatter streams.
+Re-keying happens on an EXPLICIT RESEED GESTURE only:
+- Option A: a RESEED button/gate on CA (mirrors Monsoon's dice/reseed gate). When the jack is
+  connected, pressing RESEED re-derives all corrKey[] from the current SEED voltage via
+  `deriveKey(seedCV, STREAM_CA + i)`.
+- Option B: context-menu "Reseed from SEED CV" action only (no panel control).
+LEAN Option A -- a panel control is more patchable (gate it from a trigger, automate it). Rodney to
+confirm at build.
+
+**Key derivation when SEED connected:**
+```cpp
+void MonsoonChangeAlleyV2::reseedFromSeedInput() {
+    float v = inputs[CA::SEED_IN].isConnected()
+              ? clamp(inputs[CA::SEED_IN].getVoltage(), 0.f, 10.f)
+              : -1.f;   // -1 sentinel: no seed connected, use entropy
+    for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i) {
+        corrKey[i] = (v >= 0.f)
+            ? deriveKey(v, STREAM_CA + i)       // reproducible from SEED CV
+            : rack::random::u64();              // entropy fallback (existing behaviour)
+    }
+}
+```
+This is the ONLY place corrKey[] is written -- replacing the current construction-time init. Called
+on: (a) construction (no seed connected yet -> entropy, same as today); (b) RESEED gesture.
+
+**Cross-instance sharing (the goal):**
+Two CAs fed the same SEED CV and given a RESEED gesture at the same moment derive the same corrKey[]
+-- therefore the same scatter sequence -- without any message bus. The shared-seed model from
+SEED_OFFSET_DESIGN doesn't need a new protocol; just the same voltage on both jacks and a shared
+trigger. Verify at build: same CV, same trigger, assert corrKey[i] identical across both instances.
 
 ### Sharing across instances
 With a SEED input, two Change Alleys fed the same CV derive the same `corrKey[]` and therefore the same
