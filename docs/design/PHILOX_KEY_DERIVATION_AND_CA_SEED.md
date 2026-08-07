@@ -26,12 +26,29 @@ inline void seedMelodyPhilox(float seedFloat) {
 **Same derivation, no stream offset.** The two streams differ today only because `rhythmSeedFloat`
 and `melodySeedFloat` usually hold different values.
 
-### Why this is a real bug, not a cosmetic one
-Set both seed floats to the same value -- a natural thing to do when chasing reproducibility, or when
-patching one SEED CV source into both -- and **both Philox streams get the same key and emit the same
-sequence**. Rhythm and melody decisions become locked together: variation/legato/octave draws would
-track rest draws. The streams are supposed to be independent; identical keys make them a single stream
-read twice.
+### Why this is a real bug -- and it is the DEFAULT whenever the SEED input is used
+
+There is only ONE `SEED_INPUT` jack (Monsoon.hpp:224). It feeds both streams via two calls to the
+same sample-and-hold (Monsoon.cpp:325-327):
+```cpp
+if (inputs[SEED_INPUT].isConnected()) {
+    engine.pe.setPendingRhythmSeed(sampleSeedFromSource());
+    engine.pe.setPendingMelodySeed(sampleSeedFromSource());
+}
+```
+`sampleSeedFromSource()` (Monsoon.cpp:343-354) reads that one jack and returns the clamped voltage --
+the SAME value both times. So:
+
+| SEED input | Seed floats | Philox keys | Result |
+|---|---|---|---|
+| **Patched** | identical | **identical** | **rhythm and melody are the SAME STREAM** |
+| Unpatched | different (`rack::random::uniform()` drawn twice) | different | independent (works by accident) |
+
+So the external-seed feature -- whose entire purpose is reproducibility -- is exactly the case that
+collapses the two streams into one. Variation/legato/octave draws track rest draws. The unpatched
+path only works because the fallback RNG happens to be called twice and returns different numbers.
+
+This is not "a user might happen to set both seeds equal". **Using the SEED input at all triggers it.**
 
 Also note `seedRhythmPhiloxFull()` / `seedMelodyPhiloxFull()` (:415-416) each call
 `rack::random::u64()` independently, so the FULL-reseed path is fine. Only the seed-float path collides.
@@ -108,8 +125,14 @@ build: same CV -> same keys -> same scatter, verified with two CAs side by side.
    the same seed, confirm rhythm/melody/CA all reproduce.
 6. **Regression test**: same seed float on rhythm and melody must produce independent sequences (this
    is the specific bug from Finding 1 -- encode it so it can't regress).
+7. **Rack-verify the SEED-input case specifically**: patch a static CV into SEED, dice, and confirm
+   rhythm and melody patterns are DIFFERENT. This is the exact scenario that is broken today, so it is
+   the acceptance test for the fix. Then confirm the same CV value reproduces the same pair of patterns
+   across a patch reload (reproducibility must survive the fix).
 
 ## Guard rails
+- **Severity note**: this is not a latent edge case. Any patch using the SEED input today has rhythm
+  and melody locked to the same stream. Treat as a real bug, not a polish item.
 - The fix CHANGES what any given seed float produces. Pre-release only. Add to the pre-release
   checklist so it can't slip past a release.
 - Don't change the no-cable CA default (random-at-construction, persisted) -- only add the connected path.

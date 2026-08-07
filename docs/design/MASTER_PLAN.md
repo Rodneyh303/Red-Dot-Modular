@@ -68,10 +68,13 @@ Slugs cannot change post-library without breaking patch compat. Names can change
 
 ### 4c. Philox key derivation fix + CA external seed (PRE-RELEASE -- see PHILOX_KEY_DERIVATION_AND_CA_SEED.md)
 BUG (verified in code Aug 2026): seedRhythmPhilox and seedMelodyPhilox use the IDENTICAL float->key
-derivation (PatternEngine.hpp:405-414) with no stream offset. Identical seed floats therefore produce
-IDENTICAL Philox streams -- rhythm and melody decisions lock together. The documented rhythmKey=S,
-melodyKey=S+1, caKey=S+2 model is NOT what the code does. Fix: deriveKey(seedFloat, stream) helper with
-per-stream offset (lean: hash-mix rather than +1).
+derivation (PatternEngine.hpp:405-414) with no stream offset. AND there is only ONE SEED_INPUT jack,
+feeding both streams from the same sample-and-hold (Monsoon.cpp:325-327). So WHENEVER THE SEED INPUT IS
+PATCHED, rhythm and melody get identical keys and become the same stream -- variation/legato/octave draws
+track rest draws. The unpatched path works only by accident (fallback RNG called twice returns different
+numbers). This is the DEFAULT behaviour of the external-seed feature, not an edge case. The documented
+rhythmKey=S, melodyKey=S+1, caKey=S+2 model is NOT what the code does. Fix: deriveKey(seedFloat, stream)
+helper with per-stream offset (lean: hash-mix rather than +1).
 
 MISSING: Change Alley has no seed input at all -- corrKey[] is rack::random::u64() at construction
 (MonsoonChangeAlleyV2.hpp:60-62), persisted but not derivable. Blocks shared-CA correlation across
