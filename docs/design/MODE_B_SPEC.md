@@ -181,3 +181,36 @@ if (modeSelect == 1 && runGateActive) {
 ```
 This is the minimum fix -- one additional condition, two zero-assignments added to the existing
 block. No other files need changing for this specific symptom.
+
+### REMAINING ISSUE: Lantern misses most rests (processing-order timing bug)
+After the holdRemain fix, the scope is correct but Lantern still misses most rests.
+
+ROOT CAUSE: Rack processes modules sequentially. If Lantern runs BEFORE Monsoon in a given audio
+block, it sees the state from the PREVIOUS Monsoon block (where triggerNote ran and set gateHeld=true).
+By the time Monsoon runs and the gate driver sets gateHeld=false for the rest, Lantern has already
+sampled. Next block, stepIndex hasn't changed, so Lantern early-returns without sampling. The rest's
+corrected gateHeld=false state is NEVER OBSERVED by the Lantern.
+
+Lantern.cpp:237: `if (step == lastObservedStep) return;` -- samples only on stepIndex change.
+On the next gate rise, stepIndex changes again but a new note fires, so gateHeld is back to true.
+The rest window is invisible to the Lantern because of this processing-order race.
+
+FIX: in recordCell (Lantern.cpp:~347), trust `dec` (MonoDecision) BEFORE checking gateHeld/holdRemain.
+`dec = eng.lastStepResult.decision` is set atomically inside executeStep and persists until the next
+step -- so both Lantern and the gate driver see the same value regardless of processing order.
+
+ADD ONE LINE in `src/Lantern.cpp` at recordCell (~line 347), BEFORE the sounding check:
+```cpp
+// Trust the decision field over timing-sensitive gateHeld/holdRemain (processing-order race).
+if (dec == MonoDecision::Rest) { c.type = lantern::NoteType::Inactive; return; }
+const bool sounding = gs.gateHeld || gs.holdRemain > 0.0001f;   // existing line
+```
+
+This is the same principle as the core Mode B debugging lesson: when Lantern and scope disagree,
+the internal state has diverged from output. The decision field is the authoritative state; gateHeld
+and holdRemain are timing-sensitive consequences of it that the Lantern may miss.
+
+Note: this fix is GENERAL (applies to all modes) and harmless outside Mode B -- in Mode A/E the
+decision IS Rest iff the gate is truly down, so the early-return produces the same result as the
+sounding check would. In Mode B it is load-bearing because gateHeld may be momentarily wrong at
+sample time due to the processing-order race.
