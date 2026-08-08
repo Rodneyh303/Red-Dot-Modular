@@ -85,3 +85,29 @@ the 5 inactive degrees' tuning gone.)
 - COLONNADES_PANEL_LIFT_SPEC.md round-4 -- the .scl tuning/scale collapse (why .scl is lossy, why
   .dmtune exists to be lossless).
 - MonsoonMicro12.cpp -- the cents/weight params .dmtune reads and writes.
+
+## .dmtune SUPERSEDES the .kbm motivation (Rodney)
+
+Once .dmtune exists, most of the reason for .kbm evaporates. .kbm was wanted as the answer to the
+"up-to-N loading" placement question -- when a short .scl loads into a Micro, .kbm's mapping vector
+would say WHICH slot positions the degrees occupy (see SCALA_FILE_AND_LOAD_UI .kbm section). That is a
+placement problem that exists ONLY because .scl is lossy about slot assignment.
+
+.dmtune stores the full slot state directly -- every cents at every degree, every fader position. There
+is no placement ambiguity because nothing was lost; the mapping is just THERE, not reconstructed from a
+second file. So for the round-trip-into-a-Micro use case, .dmtune does not implement .kbm -- it makes
+.kbm UNNECESSARY.
+
+.kbm retains value ONLY for Scala-world interchange of MAPPINGS -- handing a scale+mapping to someone
+using actual Scala software or another .kbm-aware tool. That is real but narrow, carries MIDI-facing
+fields the Micros don't use, and needs the mapping-vector-onto-fader-slots reinterpretation worked out
+earlier. Given the stated non-goal of ethnomusicology interchange, it is probably not worth the parser
+complexity.
+
+RULING: .kbm is DEFERRED / probably DROPPED. .dmtune covers the round-trip use case .kbm was wanted
+for. Revisit .kbm only if pure Scala-mapping-interchange becomes a real, requested need.
+
+Resulting format scope (three -> two):
+- .scl    -- interchange of the scale/tuning (standard, portable, lossy by design).
+- .dmtune -- full-state personal library (native, lossless, one file).
+- .kbm    -- dropped unless Scala-mapping-interchange is specifically needed later.
