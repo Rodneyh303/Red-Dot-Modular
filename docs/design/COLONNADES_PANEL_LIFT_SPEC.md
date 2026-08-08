@@ -262,3 +262,49 @@ exactly what the file is. NOTES and the fader-mask agree by construction -- same
 
 Supersedes the Meaning-A/Meaning-B discussion above: there is no distinction to preserve. The active
 degrees (non-zero weight), their cents, in order = the file. Both directions.
+
+## ROUND 5: NOTES knob ruling (Rodney, answering CC's Ask-2)
+
+CC asked A/B/C for the NOTES knob. First, two things already settled that reframe the question:
+- CC's (i)-vs-(ii) check: it is (i) DEGREE COUNT, not multiple tunings per file. Rule out (ii) --
+  a multi-tuning container is a different, larger feature, not intended.
+- The round-4 correction ALREADY made the fader mask AUTHORITATIVE for export (WRITE = active degrees,
+  non-zero weight, cents ascending). So "export uses the mask not the knob" is already true regardless
+  of whether a knob exists. The knob is NOT choosing authority; the mask has it, settled.
+
+So the models collapse:
+- Model A (knob master, flattens sparse masks) -- REJECTED. Destroys the sparse-mask capability the
+  faders exist to provide (whole-tone etc. must stay expressible) and contradicts round-4.
+- Model C (no knob) -- viable and honest; active count already visible via faders + cents LED, export
+  already uses the enabled count.
+- Model B (knob = "set first N active" shortcut + live count readout, faders authoritative) -- viable,
+  the one-gesture "make this a 7-note scale" has real ergonomic value.
+
+RULING: Model B, with ONE critical constraint that removes CC's "knob disagrees with faders" tension:
+
+THE NOTES KNOB HOLDS NO INDEPENDENT STATE. It is a LIVE READOUT of the active-degree count (derived
+from the mask every frame), that is ALSO draggable as a bulk-set shortcut. It never stores an N that
+can contradict the mask.
+- Reading: NOTES always displays the current count of active (non-zero weight) degrees. Derived, not
+  stored.
+- Turning it to N: performs the enable-first-N action -- set degrees 1..N weight=1, N+1..12 weight=0.
+  A bulk gesture on the faders, not a stored value.
+- After a manual fader edit: the readout re-derives. Lift degree 9 while showing 7 -> it now reads 8
+  (the true count). There is no stale "7" to disagree with anything, because the knob IS the mask's
+  cardinality displayed.
+- On .scl READ: the mask is set to N-active (round-4), so the readout naturally shows N. "Set on read"
+  is satisfied by derivation, not by writing a separate knob param.
+- On export: uses the mask (round-4), which the readout reflects. "Exported too" is satisfied because
+  the count IS the mask's active count.
+
+This is model B done safely: a draggable readout of mask cardinality, not a parameter that can drift.
+It cannot disagree with the faders because it has no independent value to disagree with.
+
+Implementation note: because it holds no persistent independent state, it is NOT a stored param in the
+usual sense -- it's a custom widget that (a) reads the live active-count for display, (b) on drag,
+writes the first-N enable pattern into the weight params. If VCV param persistence is awkward for a
+derived control, it can be a non-param custom widget. CC's call on the widget mechanics; the SEMANTIC
+is: derived readout + bulk-set actuator, zero independent state.
+
+If CC prefers to ship C first (no knob) and add B later, that is acceptable -- B is an ergonomic
+addition, not a correctness requirement. But B-done-right is the target.
