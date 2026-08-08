@@ -114,18 +114,83 @@ The existing idiom at Monsoon.cpp:121-127 (save counter, seed, restore counter, 
    If the `*CtrApplied` cache check doesn't fire, wire an explicit regenerate.
 5. **Rack-verify the gesture feel**: dice, dice, dice, then ctrl-Z three times -- does it walk back
    through exactly the previous patterns? Redo forward -- same patterns again?
-6. **Edge cases to test**: undo across a reseed (counter zeroed by seeding -- does restore still make
-   sense, or should a reseed clear/barrier the dice history?); undo after module deletion + undo-of-
-   delete (module-id resolution); undo while running vs stopped.
+6. **Edge cases to test**: undo across a reseed (the seed-float snapshot per R1/R2 reconstructs the
+   exact key+position, so restore is correct even when a reseed occurred between dice and undo -- test
+   this specifically); undo after module deletion + undo-of-delete (module-id resolution); undo while
+   running vs stopped.
 
-## Open decisions (flag at build)
+## SCOPE RULING (Rodney, Aug 2026): dice/roll undo ONLY -- no undo of reset or reseed
 
-- **Reseed interaction.** Seeding re-keys Philox AND zeroes the counter (Monsoon.cpp:121 comment). So
-  a counter value from before a reseed points into a DIFFERENT stream -- restoring it would produce an
-  unrelated pattern, not the remembered one. Options: (a) push a barrier/clear on the dice undo history
-  at reseed, (b) record the key alongside the counter in the snapshot and restore both, (c) accept the
-  drift as undefined. **Lean (b)** -- record `(key, counter)` pairs; it's two more int64s and makes the
-  snapshot self-contained and correct across reseeds. Cheap insurance.
+Item 4 undoes the DICE/ROLL gesture (an edit), NOT reset and NOT reseed-on-reset (performative
+gestures). Precedent: VCV SEQ-2 does not support undo of reset either -- the sequencer convention is
+that reset is a timing action, not an editable state change.
+
+Verified in code (Monsoon.cpp handleRestart:310-345), reset does four distinct things:
+1. Playhead position (stepIndex, totalStepsElapsed=0, resetLaneWalk). Pure position state.
+2. Gate state (engine.gs.reset()). Transient audio-thread state; regenerates next step.
+3. Reseed IF reseedOnRestart -- re-keys Philox. Patched-SEED path is reproducible from the seed float;
+   UNPATCHED path uses rack::random::u64() full entropy, NOT reproducible from a seed float.
+4. CA re-key -- same as (3), one layer out.
+
+Why NOT undo reset/reseed:
+- Reset is performative, not an edit. By the time a user would hit undo, the clock has moved on;
+  restoring a stale playhead position mid-run is not a musically meaningful state. VCV SEQ-2 agrees.
+- Reseed is bundled WITH the reset gesture. Undoing reseed cleanly would force a decision about what
+  happens to the playhead reset it came with (restore both? just the keys? -- neither is obviously
+  right), which is a sign reseed-undo is not a natural unit the way dice-undo is.
+- The unpatched reseed path injects raw entropy (rack::random::u64()), which does not reduce to a
+  seed-float snapshot -- undoing it would need a 64-bit key getter on PhiloxRng that doesn't exist.
+  More primitive than dice undo warrants.
+
+CONSEQUENCE FOR THE RESEED HAZARD (simplifies R2 below): since reseed itself is never undone, the only
+remaining question is what happens if a reseed occurs BETWEEN a dice gesture and its undo. See R2.
+
+## R1 RESOLVED (Rodney): snapshot the SEED FLOAT + counter, not the derived key
+
+Dice/roll advances ONLY the counter -- it does NOT change the key (Monsoon.cpp:374-380: "MAIN dice =
+plain roll: advance the draw stream, no reseed"). So for the normal case the counter alone suffices.
+
+PhiloxRng stores its key internally (std::array<uint32_t,2> key via seed64) and exposes NO getter --
+the key cannot be read back. But the engine retains rhythmSeedFloat / melodySeedFloat
+(PatternEngine.hpp:295-296), the 0..10 value that deriveKey turns into the key. That float IS the
+stream identity: seedRhythmPhilox(seedFloat) re-derives the exact same key deterministically.
+
+Snapshot shape:
+```cpp
+struct DiceUndoSnapshot {
+    float   rhythmSeedBefore, melodySeedBefore;   // seed floats (stream identity)
+    int64_t rhythmCtrBefore,  melodyCtrBefore;    // counters (position in stream)
+    float   rhythmSeedAfter,  melodySeedAfter;
+    int64_t rhythmCtrAfter,   melodyCtrAfter;
+};
+```
+Restore (order matters -- seedRhythmPhilox zeros the counter as a side effect, so set counter AFTER):
+```cpp
+engine.pe.seedRhythmPhilox(snap.rhythmSeedBefore);  // re-derives key, zeros counter
+engine.pe.rhythmDrawCtr = snap.rhythmCtrBefore;     // then restore position
+// same for melody
+```
+This is the save/restore-counter idiom already at Monsoon.cpp:121-127. No PhiloxRng key getter needed;
+restore is built entirely on existing public engine calls (lowest-risk primitive).
+
+VERIFY AT BUILD: capture the APPLIED seed float (the one in effect at the applyPendingSeedsAndRedraw
+commit point), not a pending value -- mirror the applied-vs-pending discipline already used for counters.
+
+## R2 (reseed crossing the undo boundary) -- resolved by R1's seed-float snapshot
+
+Since dice never changes the key, the seed float is invariant across normal dice gestures -- it just
+rides along while the counter does the work. Its ONLY job is the edge case: if a reseed-on-reset occurs
+between a dice gesture and its undo, the key changed underneath the counter. Restoring the OLD seed
+float re-derives the OLD key, and restoring the old counter positions within it -- so undo is correct
+even across a reseed. This is the spec's earlier "Lean (b)" but for the narrower, now-precise reason:
+the seed float guards against a reseed CROSSING the undo boundary, it is not part of the dice mechanism.
+
+Note: because reseed itself is not undoable (scope ruling above), there is no ambiguity about undoing
+"into" a reseed -- the dice undo simply reconstructs the exact (key, position) it recorded, regardless
+of what reset/reseed did in between.
+
+## Remaining open decisions (flag at build)
+
 - **Granularity when both streams move.** One action covering both, or separate actions per stream?
   **Lean one action** -- a dice press is one user gesture, so one undo press should reverse it.
 - **Does dice-scrub push undo entries too?** Scrubbing moves the counter continuously; per-position
