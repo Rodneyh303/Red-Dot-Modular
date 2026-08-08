@@ -457,3 +457,67 @@ same as 12/12a: Micros (or Sikit for the subtle version) + shared CA across inst
 it demonstrates the tuning work, the correlation engine, the IT scene sequencing, AND lands as actual
 music rather than as a technical exhibit. Legibility holds because the alternation separates the
 voices in time (12a) and only ONE transformation axis (tuning) is stacked on the heterophony.
+
+## 13. The Gödel-Escher-Bach parallels -- what actually corresponds (and what doesn't)
+
+Point 9 gestures at GEB because the canon work touches Bach. But the deeper correspondence is not
+"it does counterpoint" -- it is that the SYSTEM has the structure of a formal system with an
+interpretation, which is GEB's actual subject. Worth stating precisely, because GEB analogies are
+where enthusiasm usually outruns rigor. Three real parallels, one tempting false one.
+
+### (a) The Philox stream IS a formal system with addressable, reachable, reversible theorems
+This is the tightest correspondence and it is not the Bach one. Hofstadter's formal-system core: a
+system is axioms + production rules, and its theorems are exactly the strings reachable by applying
+rules. The Philox stream is precisely that shape:
+- the KEY is the axiom (the starting point that determines everything derivable),
+- the COUNTER position is the derivation length (how many productions deep),
+- every pattern is a THEOREM at a reachable address,
+- scrubbing the counter is WALKING the theorem space,
+- the signed counter makes derivation BIDIRECTIONAL -- you can walk productions backward, which a
+  typical formal system cannot, and which is exactly what the reversible generative timeline (point 8)
+  is.
+So "scrub probability space in both directions" is, structurally, addressing a formal system's theorem
+space by derivation index. Not a metaphor -- the Philox counter model (CA_DICE_COUNTER_MODEL) is
+literally an addressable, reversible enumeration of derivable strings from an axiom-key.
+
+### (b) The tuning table is the INTERPRETATION -- degree indices are formal symbols
+GEB's MU-puzzle lesson: a formal string means nothing until you supply an interpretation that maps its
+symbols to something. In this system the degree indices are formal symbols with no intrinsic pitch;
+the TuningTable is the interpretation that maps index -> cents -> pitch. The generative engine
+manipulates SYMBOLS (which degree, when); the tuning is a separate interpretive layer. This is exactly
+the formal-system / interpretation split GEB builds on -- and it is why the tuning/scale separation
+(the microtonal work's foundation) is not just an implementation detail but the system HAVING an
+interpretation distinct from its formal manipulations.
+
+### (c) Cross-tuning canon IS isomorphism -- one derivation, two interpretations
+GEB's isomorphism argument: the same formal structure can carry meaning under different
+interpretations, and the "meaning" lives in the structure-preserving map, not the symbols. The
+cross-tuning canon (point 12) is this literally: ONE correlated derivation (the shared-seed draw)
+rendered under TWO interpretations (two TuningTables). Same theorem, two meanings -- 12-TET and maqam
+are two interpretations of one formal derivation, and the musical relationship the listener hears IS
+the isomorphism between them. The strange loop of point 9 (seed feeding correlated derivations of
+itself) closes here: the derivations are the same string, the tunings are the interpretations, and the
+canon is the audible isomorphism.
+
+### The false parallel to resist: this is NOT Gödelian incompleteness / not self-aware
+The honest boundary. Nothing here is Gödelian in the INCOMPLETENESS sense -- there is no
+self-referential statement, no undecidable proposition, no system proving things about its own
+provability, and emphatically no machine self-awareness. The "strange loop" is Hofstadter's
+TANGLED-HIERARCHY sense (a source transformed and fed back into correlation with itself), not the
+logical self-reference of Gödel's theorem. Conflating the two is the standard GEB-analogy overreach and
+it would cheapen the three real correspondences above. The precise claims are: formal system with
+addressable reversible theorem-space (a), formal-symbol/interpretation split (b), isomorphism across
+interpretations (c). The imprecise claim to avoid: "it's Gödelian / it's self-aware / it reasons about
+itself." It doesn't, and it doesn't need to -- the tangled hierarchy is real and interesting without
+the incompleteness dressing.
+
+### Why this belongs in the pitch (honest framing)
+Not as mystique -- as a statement that the architecture is principled. The tuning/scale split, the
+addressable-reversible Philox model, and the correlation-at-the-draw-layer design were each chosen for
+concrete reasons, and it is a genuine (not retrofitted) property that together they form a
+formal-system-with-interpretation whose isomorphisms are audible. That the lineage runs through GEB is
+apt given the Bach/canon pole of the East-West axis -- but the parallel earns its place by being
+structurally checkable, not by name-dropping. If challenged, each of (a)/(b)/(c) points at specific
+mechanisms in the code; (a) -> the Philox counter model, (b) -> the TuningTable/degree-index split,
+(c) -> the shared-seed cross-tuning render. That checkability is the whole point -- same standard as
+the rest of this doc: structurally grounded, not decorative.
