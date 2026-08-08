@@ -149,16 +149,26 @@ Update the DSEG ghost string from "888" to "888.88" so the off-segment backing s
 Note DSEG7ClassicMini renders '.' -- verify the decimal point glyph exists in that face; if not, the
 DejaVu-Bold fallback handles it, or use DSEG7ClassicMini (non-Mini) which includes the point.
 
-### 2. Gridded compartments like Scalar's display
-Currently the values float at their fader X with no structure. Add a grid, Scalar-style:
-- A horizontal divider between the two rows (even/upper, odd/lower).
-- Vertical dividers between columns (between each degree's cell).
-- Thin lines, dim (the theme's ring/ink at low alpha) so they read as compartments without competing
-  with the amber digits. Scalar uses subtle cell borders on its degree grid -- match that restraint.
-- Each cents value sits centred in its cell. With 12 degrees on two rows that's 6 cells per row
-  (even degrees 0,2,4,6,8,10 upper; odd 1,3,5,7,9,11 lower) OR 12 columns with the stagger -- decide
-  by which reads cleaner at the 2-decimal width. Given 2 decimals widen each value, a 6-per-row grid
-  (one row of evens, one of odds) likely reads better than 12 tight columns.
+### 2. STAGGERED gridded compartments -- rows offset by half a cell (Rodney, CORRECTED)
+IMPORTANT: the round-2 render used a STRAIGHT 6x2 grid (columns aligned top-to-bottom). Rodney
+prefers the STAGGERED layout: the lower row offset horizontally by HALF a cell pitch, so each cents
+value sits directly above ITS OWN knob -- paralleling the staggered knob zigzag below. The straight
+grid broke that parallelism (display columns no longer aligned with the staggered knobs).
+
+Correct layout:
+- Upper row = even degrees (0,2,4,6,8,10) at their knob X positions.
+- Lower row = odd degrees (1,3,5,7,9,11) offset by +HALF the column pitch, sitting directly above
+  their (staggered) knobs.
+- Each cents value is a label floating over the knob it controls -- the display MIRRORS the physical
+  knob stagger. This is the whole point: readout parallels knobs, cell-for-cell.
+- Grid cells/dividers follow the SAME stagger: the compartment borders zigzag with the values, not a
+  straight rectangular grid. A horizontal divider between the row BANDS is fine; the vertical
+  dividers step by the half-cell offset between upper and lower.
+- Thin, dim lines (theme ring/ink low alpha) -- Scalar's restraint, but staggered not rectangular.
+
+So: keep the compartment look (round 3 ask), but the compartments STAGGER to match the knobs, they
+do not form a straight grid. The parallelism between the cents readout and the knob row is the
+feature -- each number labels its knob.
 
 ### 3. Bigger font -- there's room
 Current nvgFontSize is 8.5f. The display band has vertical room; increase the font so the readout is
