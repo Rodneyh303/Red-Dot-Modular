@@ -177,3 +177,38 @@ Guard rails:
 - PatternEngine.cpp:176,286 -- the engine's own freeze checks (leave alone).
 - SequencerEngine.cpp:283 -- `wrapped && !locked`, the phrase-boundary signal QUEUE needs.
 - Monsoon.hpp:611-616,729-732 -- laneDir storage + accessors (Direction/Owner gate targets).
+
+## STEP 3 RULING (Rodney, Aug 2026): Big-5 + scale/range ARE behaviour-changing -- thread them, split the commits
+
+CC's Step 3 trace is CORRECT and the build spec's "neutral" label was WRONG. Verified in code:
+- The lock freeze (PatternEngine.cpp:286) latches only the DRAW ARRAYS
+  (melodyRandom/octaveRandom/rhythmRandom).
+- Playback recomputes pitch LIVE via genPitchLive (SequencerEngine.cpp:434), reading current
+  semiWeights/octaveLo/octaveHi. Frozen melodyPitchV[] is persistence/display only.
+- Big-5 (REST/LEGATO/ACCENT/NOTE_VALUE) enter executeStep as LIVE args; only r_rest is frozen, not
+  restProb.
+So moving Big-5 or scale/range under lock is AUDIBLE today. LOCK_SEMANTICS §9 rules these LATCH
+(Tier V Vermona baseline -- "move anything under lock, hear nothing until unlock"). The ruling was
+always clear; only the spec's neutrality assumption was wrong. These steps ARE behaviour-changing.
+
+Implementation (approved): gate the WRITES in ModeController::updatePatternInput() -- under lock, skip
+refreshing restProb / semiWeights[] / octaveLo / octaveHi / variationAmount (and skip the live
+accentProb / getLegato / getNoteValue refresh at the executeMode sites). Skipping the write holds the
+pre-lock resolved value == the lock-on knob+CV snapshot §9 asks for, same persistent-state mechanism as
+LOR. This is the LOR pattern applied to the Big-5/scale/range write site.
+
+CAVEAT -- DO NOT GATE TRANSPOSE: updatePatternInput also refreshes currentPatternInput.transpose
+(adjacent line). Transpose is ruled LIVE, not LATCH -- it must keep refreshing unconditionally under
+lock. The write-gate must skip restProb/semiWeights/octaveLo/octaveHi/variationAmount but LEAVE transpose
+refreshing. Easy to sweep in by accident since it's the neighbouring assignment.
+
+Landing strategy: SPLIT into two commits, each one audible axis, for independent Rack verification:
+- Commit A (pitch axis): semiWeights[], octaveLo, octaveHi. Verify: under lock, move scale faders +
+  octave range -> pitch content must not change until unlock.
+- Commit B (rhythm/articulation axis): restProb, variationAmount, + accentProb/getLegato/getNoteValue
+  at the executeMode sites. Verify: under lock, move REST/LEGATO/ACCENT/NOTE_VALUE -> articulation must
+  not change until unlock.
+Rationale for the pitch-vs-rhythm split (vs CC's Big-5/scale-range boundary): if a Rack pass surprises,
+"did pitch move or did timing move?" is the fastest diagnostic and maps cleanly onto which commit to
+inspect. CC's group-based split is also acceptable; either beats one commit. The rulings above (thread=yes,
+write-gate=yes, split=yes, transpose-stays-live) are the fixed points; the exact split boundary is CC's call.
