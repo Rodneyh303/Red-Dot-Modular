@@ -917,13 +917,20 @@ void Monsoon::process(const ProcessArgs& args) {
                 stepBrightness[i] = engine.getStepLightBrightness(i);
             }
             
-            // Get semitone flash brightness values
+            // Get semitone flash brightness values. When a Micro-12 owns the mask (Model A
+            // delegation), Monsoon's own note faders are greyed/inert and the MICRO's faders show the
+            // play flash instead — so suppress Monsoon's own flash here to avoid a flash on a delegated
+            // (greyed) fader. (Sikit/no-Micro: maskAuthored false → normal flash.)
+            const bool micro = engine.pe.tuning.maskAuthored;
             float semiLedBrightness[12];
             for (int i = 0; i < 12; ++i) {
-                float b = engine.gs.semiLedBrightness(i);
-                // Aggregate brightness from all active poly voices
-                for (int v = 0; v < engine.numPolyVoices; ++v) {
-                    b = std::max(b, engine.voices[v].gs.semiLedBrightness(i));
+                float b = 0.f;
+                if (!micro) {
+                    b = engine.gs.semiLedBrightness(i);
+                    // Aggregate brightness from all active poly voices
+                    for (int v = 0; v < engine.numPolyVoices; ++v) {
+                        b = std::max(b, engine.voices[v].gs.semiLedBrightness(i));
+                    }
                 }
                 semiLedBrightness[i] = b;
             }

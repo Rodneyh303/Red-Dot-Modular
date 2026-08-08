@@ -43,9 +43,37 @@ struct MonsoonLightSlider : VCVLightSlider<TLightBase> {
         return !(m->scaleManager->activeScaleMask & (1 << sem));
     }
 
+    // A mask-authoring Micro-12 has DELEGATED the scale mask (Model A): Monsoon's own SEMI faders no
+    // longer drive the scale, so they grey out + go inert (the reciprocal of the Micro's ConnectMark
+    // lighting). Only the 12 SEMI faders; octave-range sliders are unaffected (octave stays on Monsoon).
+    bool microAuthored(Monsoon* m) const {
+        if (!m) return false;
+        if (this->paramId < MonsoonIds::SEMI0_PARAM || this->paramId >= MonsoonIds::SEMI0_PARAM + 12)
+            return false;
+        return m->engine.pe.tuning.maskAuthored;
+    }
+
+    // Block interaction while a Micro owns the mask — dragging a delegated fader would do nothing
+    // (the engine reads the Micro's weight[]), so swallow the gesture to make the inert state honest.
+    void onButton(const event::Button& e) override {
+        if (microAuthored(dynamic_cast<Monsoon*>(this->module))) { e.consume(this); return; }
+        VCVLightSlider<TLightBase>::onButton(e);
+    }
+    void onDragStart(const event::DragStart& e) override {
+        if (microAuthored(dynamic_cast<Monsoon*>(this->module))) return;
+        VCVLightSlider<TLightBase>::onDragStart(e);
+    }
+    // Rack applies the value change in onDragMove (not onDragStart), so this is the override that
+    // actually makes the fader immovable while a Micro owns the mask.
+    void onDragMove(const event::DragMove& e) override {
+        if (microAuthored(dynamic_cast<Monsoon*>(this->module))) return;
+        VCVLightSlider<TLightBase>::onDragMove(e);
+    }
+
     void draw(const widget::Widget::DrawArgs& args) override {
         auto* m = dynamic_cast<Monsoon*>(this->module);
-        const bool dimmed = semiOutOfScale(m);
+        // Grey when out-of-scale OR when a Micro-12 has taken over the mask (delegated/inert).
+        const bool dimmed = semiOutOfScale(m) || microAuthored(m);
 
         // (Option, flexible) render at zero instead of dim-in-place. Display-only: we transiently
         // present 0 to the handle draw then restore, never writing the store — same present-then-
