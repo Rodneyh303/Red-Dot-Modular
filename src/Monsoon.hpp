@@ -552,6 +552,32 @@ struct Monsoon : Module {
     // The ExpanderManager applies this as a discovery override after the adjacency walk. Persisted.
     int followCA = 0;
 
+    // ── Tuning delegation (Sikit Phase 1, MICRO_TUNING_INTEGRATION_PLAN §F) ──────────────────────
+    // The shared TuningTable lives on the engine (engine.pe.tuning). A tuning-authoring expander
+    // (Sikit now; a Micro later) may CLAIM the role of tuning source and publish cents[] into it.
+    // One claimant per Monsoon (first found wins); losers grey their ConnectMark and don't write.
+    // Discovery lives in the control-rate expander scan (updateExpanderPointers); this pointer is the
+    // resolved claimant (nullptr = none, table holds the equal-division 12-TET default). Runtime only.
+    rack::Module* tuningSourceExpander_ = nullptr;
+
+    // The engine's shared tuning table — read by all pitch generation, written (cents only) by the
+    // claimed source. weight[] stays with Monsoon's scale system in Phase 1 (Sikit never writes it).
+    dotModular::TuningTable& getTuningTable() { return engine.pe.tuning; }
+
+    // Which expander is the current tuning source (for ConnectMark grey/bright + single-writer).
+    rack::Module* getTuningSourceExpander() const { return tuningSourceExpander_; }
+
+    // A source asks "am I the claimant?" — true iff it is THE resolved tuning source. The resolution
+    // (first-found) happens in updateExpanderPointers; this is a pure query, so it is process-order
+    // safe (no race on who calls first). Returns false when m is null or not the claimant.
+    bool claimAsTuningSource(const rack::Module* m) const {
+        return m && tuningSourceExpander_ == m;
+    }
+
+    // Revert the tuning table to the built-in equal-division 12-TET default (called when the source
+    // detaches / no claimant present). Restores the byte-identical fast path (isDefault12TET=true).
+    void revertTuningToDefault() { engine.pe.tuning.resetToEqual12TET(); }
+
     int lastModeSelect = -1;
     int lightTheme = 0; // 0 = Dark, 1 = Light. Using int to match PeranakanLatticePanel expectations.
     // Single source of truth for the spread interpolation target mode (context
@@ -969,6 +995,7 @@ extern Model* modelMonsoonStraitsExpander; // base poly expander
 extern Model* modelMonsoonCausewayPolyExpander; // poly CV modulation expander
 extern Model* modelMonsoonChangiExpander; // per-voice output expander
 extern Model* modelMonsoonShophouseExpander; // scale expander (12th module)
+extern Model* modelSikit;                      // tuning expander (cents-only, microtonal Phase 1)
 extern Model* modelLantern;                    // Lantern note-output visualiser
 // West retired (Straits redesign)
 //extern Model* modelMonsoonStraitsSands;        // NEW (Macro): global DNA controls (compact)

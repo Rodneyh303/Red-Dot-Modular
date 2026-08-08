@@ -107,6 +107,16 @@
       ]
     },
     {
+      "slug": "Sikit",
+      "name": "Sikit",
+      "description": "Tuning expander \u2014 12 per-degree cents knobs retune Monsoon's 12-TET; load 12-note Scala .scl; scale mask stays with Monsoon",
+      "tags": [
+        "Expander",
+        "Tuning",
+        "Quantizer"
+      ]
+    },
+    {
       "slug": "MonsoonSandsVisualExpander",
       "name": "Sands Visual",
       "description": "Monsoon Probability Visualisation, Manipulation, and Modulation Expander",

@@ -109,16 +109,6 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
 
     // ── Playable slew: locked (A) + candidate (B) endpoints + latched slew ──
     {
-        auto saveArr = [&](const char* key, const float* a){
-            json_t* j=json_array();
-            for (int i=0;i<16;i++) json_array_append_new(j, json_real(a[i]));
-            json_object_set_new(root, key, j);
-        };
-        auto savePoly = [&](const char* key, const float a[15][16]){
-            json_t* j=json_array();
-            for (int v=0;v<15;v++) for (int i=0;i<16;i++) json_array_append_new(j, json_real(a[v][i]));
-            json_object_set_new(root, key, j);
-        };
         json_object_set_new(root, "slLatchedR", json_real(m->engine.pe.rhythmSlewLatched));
         json_object_set_new(root, "slLatchedM", json_real(m->engine.pe.melodySlewLatched));
         json_object_set_new(root, "slFirstR", json_boolean(m->engine.pe.rhythmFirstDraw));

@@ -90,6 +90,19 @@ void Monsoon::updateExpanderPointers() {
         expanderManager.cachedChangeAlleyV2 =
             redDot::resolveFollowedT<MonsoonChangeAlleyV2>(this, followCA);  // nullptr if no match present
     }
+
+    // ── Tuning-source resolution (Sikit Phase 1) ────────────────────────────────────────────────
+    // The first Sikit in the chain (expanderManager caches it) becomes THIS Monsoon's tuning source.
+    // One claimant per Monsoon: any additional Sikits grey their ConnectMark and never write (they
+    // fail claimAsTuningSource). When the claimant detaches, revert the table to the 12-TET default
+    // so pitch generation returns to the byte-identical fast path. Control-rate (this runs from the
+    // controlDivider block), so the pointer swap lands at a block boundary — no mid-block glitch.
+    rack::Module* prevSource = tuningSourceExpander_;
+    tuningSourceExpander_ = expanderManager.cachedSikitExpander;   // nullptr if no Sikit present
+    if (!tuningSourceExpander_ && prevSource) {
+        // Source just detached: drop back to equal-division 12-TET (glitchless, next block).
+        revertTuningToDefault();
+    }
 }
 
   void Monsoon::initialize(){
@@ -1076,6 +1089,7 @@ void init(rack::Plugin* p) {
 	p->addModel(modelMonsoonChangiT2Expander);
 	p->addModel(modelMonsoonChangiT3Expander);
 	p->addModel(modelMonsoonShophouseExpander);
+	p->addModel(modelSikit);                         // tuning expander (microtonal Phase 1)
 	p->addModel(modelLantern);                       // Lantern note-output visualiser
 	// West retired (Straits redesign): p->addModel(modelMonsoonStraitWestExpander);
 	//p->addModel(modelMonsoonStraitsSands);          // Macro: global DNA

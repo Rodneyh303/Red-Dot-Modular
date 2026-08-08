@@ -25,6 +25,7 @@
 #include <algorithm>
 #include "../PhiloxRng.hpp"
 #include "../LaneMapping.hpp"   // dotModular::STRAND_* for finalRandomByStrand
+#include "../../tuning/TuningTable.hpp"   // dotModular::TuningTable — shared per-degree tuning (Sikit)
 
 template<typename T>
 static inline T pe_clamp(T v, T lo, T hi){ return v<lo?lo:(v>hi?hi:v); }
@@ -120,6 +121,13 @@ struct PatternEngine {
     // melody pin; RHYTHM/ACCENT/VARIATION/LEGATO = rhythm pin. Identity = no-op.
     uint8_t caRhythmSrc[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
     uint8_t caMelodySrc[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
+
+    // ── Shared tuning table (Sikit Phase 1) ─────────────────────────────────────────────────────
+    // The degree->voltage map read by genPitchLive (mono + all poly voices — single source of truth).
+    // Default is inert equal-division 12-TET; a claimed Sikit publishes cents[] into it (Step F).
+    // While isDefault12TET, genPitchLive takes the EXACT legacy expression (byte-identical). All poly
+    // paths read THIS table (no per-voice tuning). Populated by the module layer each block.
+    dotModular::TuningTable tuning;
 
     inline int caSrcRow(int row, int strand) const {
         const bool mel = (strand == dotModular::STRAND_MELODY || strand == dotModular::STRAND_OCTAVE);

@@ -105,7 +105,17 @@ float PatternEngine::genPitchLive(int& outSemitone, const PatternInput& in, floa
     float roll = pe_clamp(r_oct, 0.f, 0.9999f);
     int oct = oL + (int)std::floor(roll * float(oH - oL + 1));
 
-    float v = float(oct) - 4.f + (sem + in.transpose) / 12.f;
+    // Degree -> voltage via the shared TuningTable (Sikit Phase 1). The octave integer and the
+    // 12-TET transpose stay unchanged (Rodney's Phase-1 ruling: transpose remains 12-TET semitones);
+    // only the WITHIN-OCTAVE degree term is table-driven. While the table is the equal-division
+    // 12-TET default, take the EXACT legacy expression so this refactor is bit-identical; the cents
+    // path activates only when a Sikit publishes non-default cents.
+    float v;
+    if (tuning.isDefault12TET) {
+        v = float(oct) - 4.f + (sem + in.transpose) / 12.f;   // legacy path — byte-identical
+    } else {
+        v = float(oct) - 4.f + tuning.degreeVolts(sem) + in.transpose / 12.f;
+    }
     // Allow full bipolar range for 1V/oct standard; clamping to 0V clips octaves 0-3
     return pe_clamp(v, -5.f, 5.f);
 }
