@@ -81,3 +81,50 @@ rows, alternating, below the faders." So:
 - src/ui/SvgPanelKit.hpp:246 -- bindLightParamsContiguous idiom.
 - MONSOON_MICRO_SPEC.md -- Micro-12 semantics (weight[] ownership, Interchange modulation).
 - MONSOON_MICRO_CLAUDE_CODE_GUIDE.md -- the Micro build guide this panel serves.
+
+## ROUND 2 CORRECTIONS (Rodney, from first CC render) -- exact values
+
+The first render was a lookalike, not a true lift. Five specific gaps, each with the real number:
+
+### 1. Light colour: GreenRedLight, grey-when-off -- NOT yellow
+Monsoon binds `MonsoonLightSlider<GreenRedLight>` (MonsoonWidget.cpp:238). The fader body is GREY
+when off and lights (red/green via GreenRedLight) when the note plays. CC's render used a YELLOW
+fill -- wrong. Use the SAME light template:
+```cpp
+bindLightParam<ColonnadesLightSlider<GreenRedLight>>("param_weight_i", ...);
+```
+Grey base, GreenRedLight for on-state. Match Monsoon's exact fader body colour (the theme dict's
+fadertrack/faderhandle, not a new yellow).
+
+### 2. Level bars (tick columns) -- currently MISSING
+Monsoon faders have level-marker TICKS: `fader_level_markers.py` emits one tick column per fader,
+Befaco-Octaves style (long, solid, uniform weight, no major/minor). CC's render has bare tracks with
+no ticks. Lift `fader_level_markers.py`'s tick emission for the 12 Colonnades faders -- single-sourced
+from the fader position list so ticks can't drift from faders. This is the "level bars like Monsoon"
+Rodney asked for.
+
+### 3. Note numbers BELOW the sliders -- not above
+Monsoon's 1..12 step-number strip sits BELOW the faders. CC put the numbers above. Move them below,
+matching Monsoon's strip Y position and style.
+
+### 4. Fader height/travel MUST align with Monsoon top-and-bottom
+This is the key consistency fix. Monsoon fader travel (MonsoonWidget.hpp): SL_TOP = 45mm, travel
+height SLH so bottom = 74.5mm, centre line 59.75mm. When Colonnades is placed ABOVE or BELOW Monsoon
+in the rack, the faders should line up vertically. So Colonnades faders must use the SAME travel
+geometry: top at 45mm, bottom at 74.5mm, centre 59.75mm, 29.5mm travel. Do NOT use a different fader
+height -- match these exact values so the two panels' faders align when stacked.
+
+### 5. (still) 9.0mm horizontal pitch, numbered not noted -- from round 1, keep
+
+### Exact geometry summary (copy these)
+- Fader X: 7.5 + i*9.0 mm, i = 0..11 (same as Monsoon SEMI faders).
+- Fader travel Y: top 45mm, bottom 74.5mm, centre 59.75mm (SAME as Monsoon -- for stacking alignment).
+- Fader light: ColonnadesLightSlider<GreenRedLight>, grey body when off (theme fadertrack/faderhandle).
+- Level ticks: lift fader_level_markers.py per-fader tick column (Befaco-Octaves style).
+- Numbers 1..12: BELOW the faders (Monsoon step-strip Y + style).
+- Cents knobs: staggered two-row zigzag below the number strip (unchanged from round 1).
+
+### Cross-refs (round 2)
+- panel_src/fader_level_markers.py -- the level-tick emission to lift (with FADERS_MM/FADER_Y_MM).
+- src/MonsoonWidget.cpp:238 -- MonsoonLightSlider<GreenRedLight> binding (the light colour to match).
+- MonsoonWidget.hpp SL_TOP=45 / bottom 74.5 -- the travel geometry to match for stacking alignment.
