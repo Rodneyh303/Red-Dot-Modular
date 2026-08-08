@@ -145,6 +145,32 @@ Why NOT undo reset/reseed:
 CONSEQUENCE FOR THE RESEED HAZARD (simplifies R2 below): since reseed itself is never undone, the only
 remaining question is what happens if a reseed occurs BETWEEN a dice gesture and its undo. See R2.
 
+## LIVE-MODE RULING (Rodney, Aug 2026): no undo of the draw in live mode
+
+Item 4 undoes the draw ONLY in STATIC mode (rhythmMode/melodyMode == 0). LIVE mode
+(mode == 1) redraws the pattern EVERY CYCLE automatically (PatternEngine.cpp:359-360:
+`shouldRedrawR = ... || (rhythmMode == 1)`). Same principle as the reset ruling: undo covers
+discrete EDITS, not continuous PROCESSES.
+
+Why live-mode draw is not undoable:
+- In live mode the draw is a continuous process, not a user gesture -- the counter advances on
+  its own, driven by the mode, not a button press. There is no discrete "draw" event to undo,
+  the same way the playhead advancing is not an undoable event.
+- Snapshotting every cycle would flood the history stack with one entry per cycle, forever, that
+  the user never asked for -- the "one entry per pixel" anti-pattern, but unbounded.
+- Even if you undid to the previous cycle, live mode re-rolls on the next cycle and overwrites the
+  restore -- undo is self-defeating in a continuously-redrawing context.
+- The user's mental model in live mode is "it's generating"; they are not reasoning about a
+  reversible edit. The undo affordance would answer a question nobody is asking.
+
+Implementation consequence: ONLY arm the undo snapshot when mode == 0 (static). The continuous
+re-roll path (shouldRedraw via mode == 1) must NEVER publish an undo entry.
+
+Note this is naturally consistent with the existing controls: the dice buttons SET mode = 0 when
+pressed (Monsoon.cpp:378,382 -- diceRhythm/diceMelody set rhythmMode/melodyMode = 0), so a dice
+GESTURE always lands in static mode by the time it commits. The only path to guard is the
+continuous mode==1 re-roll, which must not arm the snapshot.
+
 ## R1 RESOLVED (Rodney): snapshot the SEED FLOAT + counter, not the derived key
 
 Dice/roll advances ONLY the counter -- it does NOT change the key (Monsoon.cpp:374-380: "MAIN dice =
