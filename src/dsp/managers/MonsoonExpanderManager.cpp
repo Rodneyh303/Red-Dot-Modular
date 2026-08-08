@@ -116,14 +116,20 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
         const bool caLiveR = engine.locked && (engine.scopeLiveMask & (1u << 4)) != 0;   // SB_CA_R
         const bool caLiveM = engine.locked && (engine.scopeLiveMask & (1u << 5)) != 0;   // SB_CA_M
         const bool fireNow = caQueueFires || caLiveR || caLiveM;
-        if (fireNow) {
-            const int vActive = std::max(1, engine.numPolyVoices + 1);
+        // OWNER GUARD (CA_SHARED_EXPANDER_BUILD §Step4): applyPendingTransforms MUTATES the CA's pins,
+        // so with a SHARED CA only ONE Monsoon may call it per block. The CA resets
+        // transformsAppliedThisBlock at the top of its process(); the FIRST sync() to apply sets it,
+        // so a second (reader) Monsoon skips the mutation and just READS rhythmSrc/melodySrc (staged in
+        // SandsManager::processDNA, unchanged). Single-CA patches: the sole owner sets it once — inert.
+        if (fireNow && !v2->transformsAppliedThisBlock) {
+            const int vActive = std::max(1, engine.numPolyVoices + 1);   // OWNER's voice count = CA operating count
             // Which axes commit this call: queue fire => both; else only the live-under-lock axes.
             const unsigned axisMask = caQueueFires ? 0b11u
                                     : ((caLiveR ? 0b01u : 0u) | (caLiveM ? 0b10u : 0u));
             // Apply is OWNED by the CA module (applyPendingTransforms); the manager decides WHEN and
             // (now) which AXES. rhythm rows (type==0) gated by bit0, melody rows (type==1) by bit1.
             v2->applyPendingTransforms(vActive, axisMask);
+            v2->transformsAppliedThisBlock = true;   // first caller this block = the owner
         }
     }
     // Step 3 (plans/lane_direction_homes.md): poly direction is reset-then-pushed exactly like

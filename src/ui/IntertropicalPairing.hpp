@@ -17,35 +17,40 @@
 
 namespace redDot {
 
-// Nearest Intertropical on either side (walk right then left, hop intermediates).
-// This is the AUTO behaviour and the historical Lantern binding.
-inline Intertropical* findIntertropicalEitherSide(rack::Module* self, int maxDepth = 12) {
+// ── GENERIC pairing helpers (template over any HUB type T that has a public `int pairId`) ──────
+// The pairing pattern (self-assigned lowest-free id + rack-wide follow-by-id, adjacency fallback) is
+// identical for every hub. These templates express it once; each hub instantiates on its own type.
+// Requirement on T: `int pairId` member. T must be COMPLETE at the instantiation site (the .cpp that
+// calls these). The header stays decoupled — it names no concrete hub except in the IT aliases below.
+
+// Nearest hub of type T on either side (walk right then left, hop intermediates). AUTO behaviour.
+template <class T>
+inline T* findPairHubEitherSide(rack::Module* self, int maxDepth = 12) {
     using rack::Module;
     if (!self) return nullptr;
     Module* curr = self->rightExpander.module;
     for (int d = 0; curr && d < maxDepth; ++d) {
-        if (auto* m = dynamic_cast<Intertropical*>(curr)) return m;
+        if (auto* m = dynamic_cast<T*>(curr)) return m;
         curr = curr->rightExpander.module;
     }
     curr = self->leftExpander.module;
     for (int d = 0; curr && d < maxDepth; ++d) {
-        if (auto* m = dynamic_cast<Intertropical*>(curr)) return m;
+        if (auto* m = dynamic_cast<T*>(curr)) return m;
         curr = curr->leftExpander.module;
     }
     return nullptr;
 }
 
-// Global lowest-unused pair id (1..N) across every Intertropical except `self`.
-// Called by Intertropical on add (and lazily if it still reads 0). Stable numbers
-// survive because each existing instance keeps its persisted id; a fresh module
-// takes the smallest gap.
-inline int assignPairId(rack::Module* self) {
+// Global lowest-unused pair id (1..N) across every T except `self`. Stable numbers survive because
+// each existing instance keeps its persisted id; a fresh module takes the smallest gap.
+template <class T>
+inline int assignPairIdT(rack::Module* self) {
     std::set<int> used;
     if (APP && APP->engine) {
         for (int64_t id : APP->engine->getModuleIds()) {
             rack::Module* m = APP->engine->getModule(id);
             if (!m || m == self) continue;
-            if (auto* it = dynamic_cast<Intertropical*>(m))
+            if (auto* it = dynamic_cast<T*>(m))
                 if (it->pairId > 0) used.insert(it->pairId);
         }
     }
@@ -54,33 +59,51 @@ inline int assignPairId(rack::Module* self) {
     return n;
 }
 
-// Resolve which Intertropical a consumer is bound to. followId 0 => nearest walk;
-// else the global instance with the matching pairId (or nullptr if none present).
-inline Intertropical* resolveFollowedIT(rack::Module* self, int followId) {
-    if (followId <= 0) return findIntertropicalEitherSide(self);
+// Resolve which T a consumer is bound to. followId 0 => nearest walk; else the global instance with
+// the matching pairId (or nullptr if none present).
+template <class T>
+inline T* resolveFollowedT(rack::Module* self, int followId) {
+    if (followId <= 0) return findPairHubEitherSide<T>(self);
     if (APP && APP->engine) {
         for (int64_t id : APP->engine->getModuleIds()) {
             rack::Module* m = APP->engine->getModule(id);
             if (!m) continue;
-            if (auto* it = dynamic_cast<Intertropical*>(m))
+            if (auto* it = dynamic_cast<T*>(m))
                 if (it->pairId == followId) return it;
         }
     }
     return nullptr;
 }
 
-// The set of pair ids currently present (for building "Follow" menus). Sorted.
-inline std::vector<int> presentPairIds() {
+// The set of T pair ids currently present (for building "Follow" menus). Sorted.
+template <class T>
+inline std::vector<int> presentPairIdsT() {
     std::set<int> ids;
     if (APP && APP->engine) {
         for (int64_t id : APP->engine->getModuleIds()) {
             rack::Module* m = APP->engine->getModule(id);
             if (!m) continue;
-            if (auto* it = dynamic_cast<Intertropical*>(m))
+            if (auto* it = dynamic_cast<T*>(m))
                 if (it->pairId > 0) ids.insert(it->pairId);
         }
     }
     return std::vector<int>(ids.begin(), ids.end());
+}
+
+// ── Intertropical aliases (unchanged names; forward to the templates) ──────────────────────────
+// Lantern / Changi T3 / Intertropical call THESE; they remain bit-identical (the templates
+// instantiate on Intertropical, which has `int pairId`). New hubs (shared CA) use the *T forms.
+inline Intertropical* findIntertropicalEitherSide(rack::Module* self, int maxDepth = 12) {
+    return findPairHubEitherSide<Intertropical>(self, maxDepth);
+}
+inline int assignPairId(rack::Module* self) {
+    return assignPairIdT<Intertropical>(self);
+}
+inline Intertropical* resolveFollowedIT(rack::Module* self, int followId) {
+    return resolveFollowedT<Intertropical>(self, followId);
+}
+inline std::vector<int> presentPairIds() {
+    return presentPairIdsT<Intertropical>();
 }
 
 // Shared 8-hue pairing palette (matches Lantern/Intertropical voiceColour so the

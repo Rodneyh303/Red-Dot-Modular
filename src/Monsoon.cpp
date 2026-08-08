@@ -82,6 +82,14 @@ Monsoon::Monsoon() {
 
 void Monsoon::updateExpanderPointers() {
     expanderManager.update(this);
+    // Shared Change Alley (CA_SHARED_EXPANDER_BUILD §Step4): followCA>0 OVERRIDES the adjacency-cached
+    // CA with the rack-wide pairId match, so a second (reader) Monsoon can bind a CA on another row.
+    // followCA==0 keeps the adjacency result (today's behaviour). Runs at control rate (this is called
+    // from the controlDivider block), so the rack-wide scan in resolveFollowedT is not per-sample.
+    if (followCA > 0) {
+        expanderManager.cachedChangeAlleyV2 =
+            redDot::resolveFollowedT<MonsoonChangeAlleyV2>(this, followCA);  // nullptr if no match present
+    }
 }
 
   void Monsoon::initialize(){

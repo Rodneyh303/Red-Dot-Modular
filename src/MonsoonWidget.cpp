@@ -2,6 +2,8 @@
 #include <algorithm>
 #include "MonsoonWidget.hpp"
 #include "Monsoon.hpp"
+#include "MonsoonChangeAlleyV2.hpp"        // shared-CA: presentPairIdsT<MonsoonChangeAlleyV2>
+#include "ui/IntertropicalPairing.hpp"     // shared-CA: presentPairIdsT template
 #include "ui/OutputAccent.hpp"
 #include "ui/ModArcOverlay.hpp"
 #include "dsp/managers/MonsoonScaleManager.hpp"
@@ -854,6 +856,24 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
                 { auto* it = createMenuItem<ScopePresetItem>("Whole module (freeze all)"); it->module = m; it->maskValue = 0u; sm->addChild(it); }
                 { auto* it = createMenuItem<ScopePresetItem>("Free all prep");             it->module = m; it->maskValue = ALL; sm->addChild(it); }
             }));
+        }
+        // Shared Change Alley (CA_SHARED_EXPANDER): which CA V2 this Monsoon binds to. 0 = Auto
+        // (nearest adjacent, today's behaviour); >0 = the CA whose pairId matches, anywhere in the
+        // rack (cross-row sharing). Mirrors Lantern/Changi T3's "Follow Intertropical" menu.
+        {
+            std::vector<int> caIds = redDot::presentPairIdsT<MonsoonChangeAlleyV2>();
+            menu->addChild(createSubmenuItem("Follow Change Alley",
+                (m->followCA == 0) ? "Auto" : rack::string::f("#%d", m->followCA),
+                [m, caIds](ui::Menu* sub) {
+                    sub->addChild(createCheckMenuItem("Auto (nearest)", "",
+                        [m]() { return m->followCA == 0; },
+                        [m]() { m->followCA = 0; }));
+                    for (int id : caIds) {
+                        sub->addChild(createCheckMenuItem(rack::string::f("Change Alley #%d", id), "",
+                            [m, id]() { return m->followCA == id; },
+                            [m, id]() { m->followCA = id; }));
+                    }
+                }));
         }
         menu->addChild(new ui::MenuSeparator);
         struct IntItem : ui::MenuItem {

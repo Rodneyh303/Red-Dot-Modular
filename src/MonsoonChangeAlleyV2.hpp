@@ -18,6 +18,7 @@
 #include "ui/ModArcOverlay.hpp"
 #include "ui/StoreEditAction.hpp"   // pin edits: store-backed, undoable (DAW_PARAM_AUDIT 5b)
 #include "dsp/ChangeAlleyTransforms.hpp"   // ca::applyCorrelation (transform apply owned here)
+#include "ui/IntertropicalPairing.hpp"     // shared pairing: assignPairIdT / resolveFollowedT<T>
 
 using namespace rack;
 // NOT 'using namespace ChangeAlleyIds' — Monsoon.hpp exposes MonsoonIds with the same
@@ -28,6 +29,20 @@ namespace CA = ChangeAlleyV2Ids;
 struct MonsoonChangeAlleyV2 : Module {
     uint8_t rhythmSrc[CA::N_VOICES];
     uint8_t melodySrc[CA::N_VOICES];
+
+    // ── Shared-CA pairing (CA_SHARED_EXPANDER_BUILD.md) ──────────────────────────────────────
+    // Self-assigned lowest-free number (1..N) so a second Monsoon can bind this CA by id, rack-wide
+    // (mirrors Intertropical::pairId). Assigned lazily in process() — NOT ctor (getModuleIds re-lock
+    // deadlock). Persisted; immutable once set; gaps ok. 0 = not yet assigned.
+    int pairId = 0;
+    // One-shot latch: the rack-wide getModuleIds() clash-scan below runs EXACTLY ONCE per module
+    // lifetime (mirrors Intertropical::pairChecked). Without this the scan ran every sample — an
+    // O(rack size) walk at 48 kHz — the CPU spike. Runtime only (not persisted).
+    bool pairChecked = false;
+    // Owner guard for the shared case: applyPendingTransforms MUTATES this CA's pins, so only ONE
+    // Monsoon may call it per block (the first sync() caller = the owner). Reset at the top of
+    // process() each block; the ExpanderManager sets it after applying. Runtime only (not persisted).
+    bool transformsAppliedThisBlock = false;
 
     static constexpr const char* CURRENCIES[CA::N_VOICES] = {
         "SGD","MYR","IDR","THB","PHP","VND","MMK","KHR",
@@ -227,6 +242,27 @@ struct MonsoonChangeAlleyV2 : Module {
     }
 
     void process(const ProcessArgs&) override {
+        // Shared-CA pairing: assign a stable pairId ONCE (0 = unassigned, or a clash from a
+        // duplicated/pasted module carrying its origin's id). Done here, not the ctor, to avoid the
+        // getModuleIds re-lock deadlock; guarded by pairChecked so the rack-wide scan runs exactly
+        // once per lifetime — NOT every sample. Mirrors Intertropical.cpp:51-63.
+        if (!pairChecked) {
+            pairChecked = true;
+            bool clash = false;
+            if (APP && APP->engine) {
+                for (int64_t id : APP->engine->getModuleIds()) {
+                    rack::Module* m = APP->engine->getModule(id);
+                    if (!m || m == this) continue;
+                    if (auto* ca = dynamic_cast<MonsoonChangeAlleyV2*>(m))
+                        if (ca->pairId == pairId) { clash = true; break; }
+                }
+            }
+            if (pairId <= 0 || clash) pairId = redDot::assignPairIdT<MonsoonChangeAlleyV2>(this);
+        }
+        // Owner guard: reset each block; the first ExpanderManager::sync() that applies transforms
+        // sets it, so a second (reader) Monsoon skips the mutation. See CA_SHARED_EXPANDER_BUILD §Step4.
+        transformsAppliedThisBlock = false;
+
         for (int v = 0; v < CA::N_VERBS; ++v)
           for (int sd = 0; sd < CA::SIDES; ++sd)
             for (int ty = 0; ty < CA::TYPES; ++ty) {
@@ -280,6 +316,7 @@ struct MonsoonChangeAlleyV2 : Module {
         };
         save("rhythmSrc", rhythmSrc);
         save("melodySrc", melodySrc);
+        json_object_set_new(root, "pairId", json_integer(pairId));   // shared-CA pairing (CA_SHARED_EXPANDER)
         {   json_t* ck = json_array();
             for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i)
                 json_array_append_new(ck, json_integer((json_int_t)corrKey[i]));
@@ -290,6 +327,7 @@ struct MonsoonChangeAlleyV2 : Module {
 
     void dataFromJson(json_t* root) override {
         resetToIdentity();
+        if (json_t* pj = json_object_get(root, "pairId")) pairId = (int)json_integer_value(pj);  // shared-CA (missing => 0 => reassigned in process())
         auto load = [&](const char* k, uint8_t* a) {
             json_t* arr = json_object_get(root, k);
             if (!arr) return;

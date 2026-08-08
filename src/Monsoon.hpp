@@ -546,6 +546,12 @@ struct Monsoon : Module {
     bool pendingRegenB   = false;   // set by load: regenerate candidate B post-seed (Option 3)
     bool reseedOnRestart = false;
 
+    // Shared Change Alley (CA_SHARED_EXPANDER_BUILD.md): which CA V2 this Monsoon binds to.
+    //   0 = Auto (nearest CA either-side, the historical adjacency behaviour);
+    //   >0 = the CA whose pairId matches, ANYWHERE in the rack (cross-row sharing).
+    // The ExpanderManager applies this as a discovery override after the adjacency walk. Persisted.
+    int followCA = 0;
+
     int lastModeSelect = -1;
     int lightTheme = 0; // 0 = Dark, 1 = Light. Using int to match PeranakanLatticePanel expectations.
     // Single source of truth for the spread interpolation target mode (context
