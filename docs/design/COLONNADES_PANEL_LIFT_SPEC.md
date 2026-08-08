@@ -308,3 +308,37 @@ is: derived readout + bulk-set actuator, zero independent state.
 
 If CC prefers to ship C first (no knob) and add B later, that is acceptable -- B is an ergonomic
 addition, not a correctness requirement. But B-done-right is the target.
+
+## ROUND 5b: NOTES knob + "set equal-tempered" = a tuning-CREATION workflow (Rodney)
+
+Beyond the scale-shortcut role, the NOTES knob has real value as the STARTING POINT for creating new
+tunings, combined with an equal-tempered reset. The workflow:
+
+1. Set NOTES = N (the bulk enable-first-N gesture: degrees 1..N active).
+2. "Set equal-tempered" -> divide the octave into N EQUAL steps: cents[i] = i * (1200.0 / N) for the
+   active degrees. This gives a clean N-EDO starting tuning.
+3. Detune individual degrees by hand (drag the cents knobs) to sculpt the tuning you actually want.
+
+So NOTES + equal-tempered is a "blank canvas at N divisions" button: pick how many notes, get them
+equally spaced, then shape them. This is how you bootstrap a fresh microtonal tuning rather than
+starting from 12-TET and editing.
+
+Note the existing action is FIXED at 12: MonsoonMicro12.cpp:276 "Reset to 12-TET (all degrees, equal
+division)" uses defaultCents(i) = i*100 (MonsoonMicro12.hpp:45). The new capability is N-AWARE equal
+temperament:
+- Existing: 12-TET reset (all 12 degrees, 100c steps). Keep it.
+- New: "Set equal-tempered (N divisions)" -> for the currently-active N degrees, cents[i] =
+  i * (1200.0 / N). N comes from the NOTES readout (= active count). So after NOTES=7, this gives
+  7-EDO (171.43c steps); after NOTES=5, 5-EDO (240c steps); etc.
+
+This makes the NOTES knob dual-purpose and gives it clear standalone value:
+- As a SCALE shortcut: "make this a 7-note scale" (enable first 7).
+- As a TUNING-CREATION seed: "start me a 7-note equal tuning I can then detune" (NOTES=7 + set
+  equal-tempered).
+
+Placement: "Set equal-tempered (N div)" as a context-menu action alongside the existing 12-TET reset,
+OR a small panel button near NOTES. Menu is lower-surface; a panel button makes the create-a-tuning
+workflow more discoverable. CC's call; the SEMANTIC is: equal-divide the octave across the current
+active-N degrees.
+
+Cross-ref: MonsoonMicro12.cpp:276 (existing fixed-12 reset), MonsoonMicro12.hpp:45 (defaultCents).
