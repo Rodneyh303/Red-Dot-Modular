@@ -234,3 +234,31 @@ Scalar groups NOTES with TUNING/OCTAVES/CENTS). Could sit in or beside the LED r
 - MonsoonMicro12.cpp:28 -- tt.N currently hardcoded to N_DEGREES; NOTES knob makes it variable.
 - SCALA_FILE_AND_LOAD_UI.md -- the .scl read/write degree-count that NOTES reflects/sets.
 - src/dsp/TuningTable.hpp -- tt.N, the field NOTES drives.
+
+## ROUND 4 CORRECTION: .scl collapses tuning and scale -- no distinction in the file (Rodney)
+
+My Meaning-A-vs-B framing was the wrong axis. It tried to preserve the engine's internal tuning/scale
+split (cents[] vs weight[]) THROUGH the .scl file. But Scala .scl has exactly ONE concept: an ordered
+list of pitches. There is no "which are active" layer -- the file IS the scale, expressed as its
+tuning. Scala has no other scale notion. So for the Micros, the .scl round-trip COLLAPSES tuning and
+scale by design, because the format cannot hold the distinction and we don't want it to.
+
+The rule for Micro-12/24 .scl:
+- The number of pitches in the file = the scale = the active degrees. One list, no separate mask.
+- **READ**: N pitches -> N active degrees (cents from file), remaining 12-N degrees not part of this
+  scale (weight 0). NOTES = N.
+- **WRITE**: collect the ACTIVE degrees (non-zero weight), export their cents in ASCENDING ORDER as an
+  N-pitch file. The active degrees ARE the scale ARE the file.
+
+Non-contiguous scales export correctly under this rule: whole-tone (degrees 1,3,5,7,9,11 active) writes
+a 6-PITCH file (those six cents, in order). Re-import gives a 6-note scale (new degree 1 = old degree
+1's cents, new degree 2 = old degree 3's cents, ...). The "gaps" do not survive because Scala has no
+gaps -- a whole-tone scale IS a six-note scale, not a twelve-note scale with holes. This is correct
+Scala behaviour.
+
+This SIMPLIFIES the NOTES knob: it is not a separate "export length" that could disagree with the
+faders. It is a readout/setter of "how many degrees are active," and active-degrees-with-their-cents is
+exactly what the file is. NOTES and the fader-mask agree by construction -- same thing, two views.
+
+Supersedes the Meaning-A/Meaning-B discussion above: there is no distinction to preserve. The active
+degrees (non-zero weight), their cents, in order = the file. Both directions.
