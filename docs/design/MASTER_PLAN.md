@@ -1,7 +1,10 @@
-# dot.modular -- master plan (pre-microtonal, pre-library)
+# dot.modular -- master plan (pre-library)
 
-Last updated: 2026-08-04. Living doc -- update when items close.
-Goal: into VCV Library 2026. Microtonal (Monsoon Micro 12/24 slider variants) is POST-library.
+Last updated: 2026-08-08. Living doc -- update when items close.
+Goal: into VCV Library 2026. SCOPE CHANGE (Rodney, Aug 2026): V1 INCLUDES EVERYTHING MICROTONAL --
+Sikit (done), Colonnades (Micro-12), AND Colonnades Duo (Micro-24). The microtonal work is NO LONGER
+post-library; it is IN V1. This makes the engine widening (MICROS_ENGINE_CLAUDE_CODE_GUIDE) and
+Colonnades Duo ship-blockers. See "MICROTONAL IS NOW V1" below.
 
 ---
 
@@ -43,6 +46,31 @@ feat/domain-reverse-inverse        -- COMPLETE, decide in play (test in Rack, me
 feat/dice-scrub                    -- STALE (0 commits ahead of master, already merged) -- DELETE
 
 ---
+
+## MICROTONAL IS NOW V1 (scope change, Rodney Aug 2026)
+
+Previously post-library; now IN V1. Everything microtonal ships in the first library release.
+This adds to the critical path (in dependency order):
+
+M1. **Engine widening** (MICROS_ENGINE_CLAUDE_CODE_GUIDE) -- the pervasive 12->MAXN=24 audit, the two
+    seams generalised (pickDegree, cents-voltage), C/D quantiser rework, WriteLedger for the tuning
+    table. THE FOUNDATION -- nothing microtonal ships without it. ~2-week job. Byte-identical-at-12-TET
+    regression is the safety anchor. This is the real gate; sequence it first.
+M2. **Sikit** (Phase 1) -- DONE, on master.
+M3. **Colonnades** (Micro-12, Phase 2) -- panel nearly done (COLONNADES_PANEL_LIFT_SPEC), needs the
+    engine widening (M1) under it + weight[] ownership/delegation/variable tt.N. Rename (COLONNADES_
+    RENAME_SPEC) pre-freeze.
+M4. **Colonnades Duo** (Micro-24, Phase 3) -- the full N=24 rework, arbitrary Scala, maqam support.
+    Biggest single piece, least started. NOW A SHIP-BLOCKER.
+M5. **Shared infrastructure** -- .scl parser (SCALA_FILE_AND_LOAD_UI), .dmtune format
+    (TUNING_PRESET_FORMAT), NOTES knob + equal-tempered create workflow, load/save UI.
+M6. **Downstream of variable tt.N** -- Lantern rendering at N!=12, colour model, C/D/F quantiser modes.
+
+Consequence: V1 is a LARGER and LATER release than the pre-change plan implied. Colonnades Duo (M4) +
+the engine widening (M1) are the long poles. The rest of the critical path (Changi bug, Raffles
+cleanup, slug freeze, lock/undo -- all done or small) is minor next to M1+M4. Re-sequence accordingly:
+M1 (engine widening) should start as soon as lock/undo/Mode-B settle, because everything else microtonal
+waits on it.
 
 ## CRITICAL PATH TO LIBRARY (ordered, numbered)
 
@@ -301,7 +329,7 @@ Known panel items:
 - Changi T3 data source: self-reading IT output jacks, NOT host-pushed. See CHANGI doc.
 - PPQN cap at 24: musically correct (2^3 x 3, MIDI-standard). Not a compromise.
 - Subgroup pairing: auto-numbered, immutable, emergent, source-binding only, clock orthogonal.
-- Microtonal: POST-library, separate Monsoon Micro module(s).
+- Microtonal: MOVED TO V1 (Rodney Aug 2026) -- see 'MICROTONAL IS NOW V1'. No longer deferred.
 - Reversibility: sampling + phase axes fully reversible; stateful transform-composition needs
   inverse-op care (the honest bound in pitch doc point 8).
 - East/West textural continuum: correlation matrix spans homophony<->heterophony<->polyphony.
