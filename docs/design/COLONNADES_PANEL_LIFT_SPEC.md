@@ -370,3 +370,32 @@ Concretely:
 If a single divider grid is simpler to reason about: it is a normal grid of boxes, but the two rows
 are vertically offset so the boxes interlock like offset brickwork rather than aligning into straight
 columns. Closed cells, staggered placement. That is the whole correction.
+
+## ROUND 7: it is SCALAR'S GRID, offset 50% horizontally between rows (Rodney -- definitive)
+
+Stop reinventing this. The intended grid is EXACTLY Scalar's two-row cell grid (its "1 2 3 4 5 6 7 8"
+boxes over the second row of boxes) -- a normal rectangular cell grid, two rows -- with ONE
+modification: the LOWER ROW is shifted 50% horizontally (half a cell) relative to the upper row, so
+each cell centres over its corresponding staggered knob below.
+
+Construction (this is all it is):
+- A normal rectangular grid: two rows of cells, thin dividers, like Scalar's degree grid.
+- VERTICAL dividers: one short vertical line between adjacent cells in each row (Scalar already does
+  this).
+- HORIZONTAL divider: a line between the upper row and the lower row (Scalar already does this too).
+- THE ONLY CHANGE from Scalar: the lower row is offset by HALF A CELL WIDTH horizontally, so the lower
+  cells sit between the upper cells (in X), each lower cell centred on its knob. Because the upper and
+  lower rows are offset by half a column, the horizontal divider between them appears to step (each
+  upper cell's bottom edge and each lower cell's top edge are half-column-shifted) -- THAT stepping is
+  what I mislabeled "zigzag." It is just two offset rows of a normal grid.
+
+So: build Scalar's grid. Offset the lower row 50% in X. Done. Do not draw a waveform, do not draw a
+connected path -- draw two rows of rectangular cells with the lower row half-a-cell shifted, exactly
+like Scalar's grid but staggered to match the half-offset knob rows.
+
+Each cell contains its degree's cents value. Upper row = even degrees over their knobs; lower row =
+odd degrees over their (half-offset) knobs. The grid mirrors the knob stagger because the cells are
+offset the same 50% the knobs are.
+
+This supersedes rounds 4 and 6's wording entirely. Reference: Scalar's top-two-rows grid; apply a
+50% horizontal offset to the lower row.
