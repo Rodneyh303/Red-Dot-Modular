@@ -128,3 +128,50 @@ height -- match these exact values so the two panels' faders align when stacked.
 - panel_src/fader_level_markers.py -- the level-tick emission to lift (with FADERS_MM/FADER_Y_MM).
 - src/MonsoonWidget.cpp:238 -- MonsoonLightSlider<GreenRedLight> binding (the light colour to match).
 - MonsoonWidget.hpp SL_TOP=45 / bottom 74.5 -- the travel geometry to match for stacking alignment.
+
+## ROUND 3: cents-display refinements (Rodney, from second render)
+
+The DSEG 7-segment amber cents readout (Micro12CentsDisplay, MonsoonMicro12.cpp:106-148) is good.
+Three refinements:
+
+### 1. Show 2 decimal places
+Currently `(int)std::lround(...)` -> integer cents. Cents params carry sub-cent precision (the .scl
+loader and equal-division defaults produce fractional cents, e.g. 111.73). Show two decimals:
+```cpp
+double cents = module
+    ? (double)module->params[Micro12Ids::CENTS_PARAM_0 + i].getValue()
+    : (double)MonsoonMicro12::defaultCents(i);
+char buf[12];
+std::snprintf(buf, sizeof(buf), "%.2f", cents);
+// Ghost backing must widen to match: "888.88" not "888"
+```
+Update the DSEG ghost string from "888" to "888.88" so the off-segment backing spans the wider value.
+Note DSEG7ClassicMini renders '.' -- verify the decimal point glyph exists in that face; if not, the
+DejaVu-Bold fallback handles it, or use DSEG7ClassicMini (non-Mini) which includes the point.
+
+### 2. Gridded compartments like Scalar's display
+Currently the values float at their fader X with no structure. Add a grid, Scalar-style:
+- A horizontal divider between the two rows (even/upper, odd/lower).
+- Vertical dividers between columns (between each degree's cell).
+- Thin lines, dim (the theme's ring/ink at low alpha) so they read as compartments without competing
+  with the amber digits. Scalar uses subtle cell borders on its degree grid -- match that restraint.
+- Each cents value sits centred in its cell. With 12 degrees on two rows that's 6 cells per row
+  (even degrees 0,2,4,6,8,10 upper; odd 1,3,5,7,9,11 lower) OR 12 columns with the stagger -- decide
+  by which reads cleaner at the 2-decimal width. Given 2 decimals widen each value, a 6-per-row grid
+  (one row of evens, one of odds) likely reads better than 12 tight columns.
+
+### 3. Bigger font -- there's room
+Current nvgFontSize is 8.5f. The display band has vertical room; increase the font so the readout is
+legible at a glance. Scale up (try ~11-12f) and re-fit the cell heights / ghost backing to match.
+The whole point of the LED readout is at-a-glance tuning state, so bias toward legible.
+
+### Layout note
+With a proper grid + 2 decimals + bigger font, the display becomes a real "tuning table readout"
+panel element, closer to Scalar's information density but in the dot.modular amber-LED idiom. This is
+a nice differentiator -- Monsoon doesn't have this; it's a Micro-specific affordance that shows the
+tuning the scale faders can't (cents aren't visible on a fader). Worth making it a signature element
+of the Micro panels.
+
+### Cross-refs (round 3)
+- src/MonsoonMicro12.cpp:106-148 -- Micro12CentsDisplay (the readout to refine).
+- res/fonts/DSEG7ClassicMini-Bold.ttf -- the LED face (verify decimal-point glyph, or use non-Mini).
