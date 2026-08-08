@@ -1,5 +1,5 @@
 #pragma once
-// ── Monsoon Micro-12 — tuning + scale AUTHORING expander (microtonal Phase 2, Model A) ──────────
+// ── Colonnades (Micro-12) — tuning + scale AUTHORING expander (microtonal Phase 2, Model A) ──────
 // The first AUTHORING tuning expander: 12 per-degree strips, each = a WEIGHT fader (the scale mask;
 // 0 = degree disabled) + a CENTS knob (the tuning; equal-division default, drag to detune). When
 // attached to Monsoon it CLAIMS the tuning source and publishes BOTH cents[] AND weight[] into the
@@ -10,12 +10,12 @@
 // fader is still live (the root is a normal scale degree you can enable/disable/weight).
 //
 // See MONSOON_MICRO_SPEC.md, MONSOON_MICRO_CLAUDE_CODE_GUIDE.md. Header stays free of Monsoon.hpp
-// (no include cycle); MonsoonMicro12.cpp pulls in Monsoon for the claim/publish + discovery wiring.
+// (no include cycle); Colonnades.cpp pulls in Monsoon for the claim/publish + discovery wiring.
 
 #include <rack.hpp>
 #include <string>
 
-namespace Micro12Ids {
+namespace ColonnadesIds {
     static constexpr int N_DEGREES = 12;
     enum ParamIds {
         WEIGHT_PARAM_0,                                    // degree 0..11 scale-weight faders (0=disabled)
@@ -40,27 +40,27 @@ namespace Micro12Ids {
     }
 }
 
-struct MonsoonMicro12 : rack::engine::Module {
+struct Colonnades : rack::engine::Module {
     // Equal-division default for degree i: i*100 cents (0,100,…,1100) — reproduces 12-TET exactly.
     static float defaultCents(int i) { return (float)i * 100.f; }
 
     // Display-only name of a loaded .scl (description or file stem). Persisted; drawn on menu.
     std::string loadedTuningName;
 
-    MonsoonMicro12() {
-        config(Micro12Ids::NUM_PARAMS, Micro12Ids::NUM_INPUTS, Micro12Ids::NUM_OUTPUTS, Micro12Ids::NUM_LIGHTS);
-        for (int i = 0; i < Micro12Ids::N_DEGREES; ++i) {
+    Colonnades() {
+        config(ColonnadesIds::NUM_PARAMS, ColonnadesIds::NUM_INPUTS, ColonnadesIds::NUM_OUTPUTS, ColonnadesIds::NUM_LIGHTS);
+        for (int i = 0; i < ColonnadesIds::N_DEGREES; ++i) {
             // WEIGHT fader: 0..1, default 1 (all degrees enabled at full weight = chromatic, which
             // reproduces Monsoon's default all-faders-up state → byte-identical at equal-division cents).
-            configParam(Micro12Ids::WEIGHT_PARAM_0 + i, 0.f, 1.f, 1.f,
-                        std::string("Weight (") + Micro12Ids::noteName(i) + ")");
+            configParam(ColonnadesIds::WEIGHT_PARAM_0 + i, 0.f, 1.f, 1.f,
+                        std::string("Weight (") + ColonnadesIds::noteName(i) + ")");
             // CENTS knob: 0..1200, equal-division default.
-            configParam(Micro12Ids::CENTS_PARAM_0 + i, 0.f, 1200.f, defaultCents(i),
-                        std::string("Cents (") + Micro12Ids::noteName(i) + ")", " cents");
+            configParam(ColonnadesIds::CENTS_PARAM_0 + i, 0.f, 1200.f, defaultCents(i),
+                        std::string("Cents (") + ColonnadesIds::noteName(i) + ")", " cents");
         }
     }
 
-    // Defined in MonsoonMicro12.cpp (needs Monsoon for claim + publish).
+    // Defined in Colonnades.cpp (needs Monsoon for claim + publish).
     void process(const ProcessArgs& args) override;
 
     json_t* dataToJson() override {

@@ -165,6 +165,9 @@
 <circle cx="314.47" cy="298.23" r="8.86" fill="#2a2e34" stroke="#5a616a" stroke-width="0.5"/>
 <line x1="314.47" y1="290.55" x2="314.47" y2="293.5" stroke="#c8960c" stroke-width="0.5"/>
 <circle id="param_cents_11" cx="314.47" cy="298.23" r="0.5" fill="none" stroke="none"/>
-<circle cx="168.31" cy="354.33" r="5.31" fill="#0f1114" stroke="#4a4a4a" stroke-width="0.3"/>
-<circle id="light_connect" cx="168.31" cy="354.33" r="0.5" fill="none" stroke="none"/>
+<rect x="80.91" y="342.96" width="44.88" height="22.74" rx="2.36" fill="#4a4a4a" opacity="0.5"/>
+<rect x="82.68" y="344.73" width="41.34" height="19.19" rx="1.77" fill="#0a0c0e" stroke="#4a4a4a" stroke-width="0.4"/>
+<rect id="notes_ctrl" x="82.68" y="344.73" width="41.34" height="19.19" fill="none" stroke="none"/>
+<circle cx="233.27" cy="354.33" r="5.31" fill="#0f1114" stroke="#4a4a4a" stroke-width="0.3"/>
+<circle id="light_connect" cx="233.27" cy="354.33" r="0.5" fill="none" stroke="none"/>
 </svg>

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Monsoon Micro 12 — tuning + scale AUTHORING expander panel.
+"""Colonnades (Micro-12) — tuning + scale AUTHORING expander panel.
 
 TRUE LIFT of Monsoon's note-fader block (COLONNADES_PANEL_LIFT_SPEC.md + ROUND 2). The faders reuse
 Monsoon's EXACT geometry so the two panels align pixel-for-pixel when stacked:
@@ -12,7 +12,7 @@ notes. Below the numbers the per-degree CENTS knobs are staggered on two rows (z
 no cents knob — locked plate. The fader is a ColonnadesLightSlider<GreenRedLight>: grey when off,
 red when the degree plays (light driven by the module from the host's semiLedBrightness).
 
-nanosvg-safe: solid fills/strokes only. TEXT (wordmark, 1..12) is widget-drawn (Micro12Labels).
+nanosvg-safe: solid fills/strokes only. TEXT (wordmark, 1..12) is widget-drawn (ColonnadesLabels).
 
 Kit markers: param_weight_<i> (fader, 0..11), param_cents_<i> (1..11), notelabel_<i> (below faders),
              wordmark, light_connect.
@@ -126,7 +126,19 @@ def gen(dark):
           f'stroke="{t["gold"]}" stroke-width="0.5"/>')
         A(f'<circle id="param_cents_{i}" cx="{px(cx)}" cy="{px(cy)}" r="0.5" fill="none" stroke="none"/>')
 
-    lcx, lcy = W/2, CONNECT_Y
+    # NOTES control — a small DSEG readout well (draggable to bulk-set the active-degree count). It
+    # holds no stored value; the widget derives + draws the live active count and, on drag, writes the
+    # first-N enable pattern into the weight faders. Sits at the base, left of the connect light.
+    nctl_x, nctl_y = W * 0.5 - 22.0, CONNECT_Y
+    nw, nh = 14.0, 6.5
+    A(f'<rect x="{px(nctl_x-nw/2-0.6)}" y="{px(nctl_y-nh/2-0.6)}" width="{px(nw+1.2)}" height="{px(nh+1.2)}" '
+      f'rx="{px(0.8)}" fill="{t["ring"]}" opacity="0.5"/>')
+    A(f'<rect x="{px(nctl_x-nw/2)}" y="{px(nctl_y-nh/2)}" width="{px(nw)}" height="{px(nh)}" '
+      f'rx="{px(0.6)}" fill="#0a0c0e" stroke="{t["ring"]}" stroke-width="0.4"/>')
+    A(f'<rect id="notes_ctrl" x="{px(nctl_x-nw/2)}" y="{px(nctl_y-nh/2)}" width="{px(nw)}" '
+      f'height="{px(nh)}" fill="none" stroke="none"/>')
+
+    lcx, lcy = W * 0.5 + 22.0, CONNECT_Y
     A(f'<circle cx="{px(lcx)}" cy="{px(lcy)}" r="{px(1.8)}" fill="{t["well"]}" '
       f'stroke="{t["ring"]}" stroke-width="0.3"/>')
     A(f'<circle id="light_connect" cx="{px(lcx)}" cy="{px(lcy)}" r="0.5" fill="none" stroke="none"/>')
@@ -137,10 +149,10 @@ def gen(dark):
 def main():
     import os
     out = os.path.join(os.path.dirname(__file__), "..", "res", "panels")
-    for dark, name in [(True, "MonsoonMicro12_panel_dark.svg"), (False, "MonsoonMicro12_panel_light.svg")]:
+    for dark, name in [(True, "Colonnades_panel_dark.svg"), (False, "Colonnades_panel_light.svg")]:
         with open(os.path.join(out, name), "w") as fh:
             fh.write(gen(dark))
-        print(f"Micro12 {'dark' if dark else 'light'}: res/panels/{name}  ({HP}HP, {PW}x{PH}px)")
+        print(f"Colonnades {'dark' if dark else 'light'}: res/panels/{name}  ({HP}HP, {PW}x{PH}px)")
 
 if __name__ == "__main__":
     main()
