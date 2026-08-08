@@ -1,56 +1,57 @@
 #!/usr/bin/env python3
-"""Monsoon Micro 12 — tuning + scale AUTHORING expander panel (14HP).
+"""Monsoon Micro 12 — tuning + scale AUTHORING expander panel.
 
-12 per-degree vertical strips, left→right = C..B (monotonic pitch order). Each strip:
-  - a WEIGHT fader (the scale mask; 0 at bottom = degree disabled),
-  - below it a CENTS knob (the tuning; equal-division default) — EXCEPT the root (C), whose cents is
-    locked at 0 (no knob; a small locked plate instead),
-  - a note-name label above (widget-drawn; nanosvg ignores <text>).
+LIFT-AND-SHIFT of Monsoon's note-fader block (COLONNADES_PANEL_LIFT_SPEC.md): the 12 weight faders
+use Monsoon's SAME 9.0mm horizontal pitch (embed_monsoon.py:6, SEMI{i} at 7.5+i*9.0) so the two
+panels visually rhyme. Faders are NUMBERED 1..12 (widget-drawn) — degrees, not note names, because an
+arbitrary tuning's degrees aren't notes. Below the faders the per-degree CENTS knobs are STAGGERED on
+two rows (even indices upper, odd lower — a zigzag) so each has horizontal room; each cents knob is
+X-aligned to its fader. Root (degree 0) has NO cents knob — locked at 0 — its slot is a locked plate.
 
-nanosvg-safe: solid fills + strokes only. Text is drawn by the widget (Micro12Labels); the panel
-emits geometry + markers only.
+Width is set by the fader math (12 * 9.0mm + margins), not a guessed HP.
+
+nanosvg-safe: solid fills/strokes only. All TEXT (wordmark, the 1..12 numbers) is widget-drawn
+(Micro12Labels); the panel emits geometry + markers only.
 
 Kit id markers:
-  param_weight_<i>   weight fader marker, i = 0..11 (all degrees)
-  param_cents_<i>    cents knob marker, i = 1..11 (root i=0 has NO cents knob)
-  notelabel_<i>      note-name anchor per strip (widget draws the name)
-  wordmark           wordmark anchor (widget draws "Micro 12")
+  param_weight_<i>   weight LIGHT-slider marker (fader centre), i = 0..11
+  param_cents_<i>    cents knob marker, i = 1..11 (root i=0 = locked plate, no marker)
+  notelabel_<i>      degree-number anchor per strip (widget draws "1".."12")
+  wordmark           wordmark anchor
   light_connect      ConnectMark position
 """
 
-HP = 14
-W  = HP * 5.08
-H  = 128.5
-S  = 75 / 25.4
+N = 12
+PITCH = 9.0                 # Monsoon's fader pitch — the consistency anchor
+FADER_CENTER_SPAN = (N - 1) * PITCH        # 99.0mm centre-to-centre
+SIDE_MARGIN = 6.5
+W = FADER_CENTER_SPAN + 2 * SIDE_MARGIN     # ~112mm
+H = 128.5
+S = 75 / 25.4
 PW, PH = round(W*S, 2), round(H*S, 2)
+HP = round(W / 5.08, 2)
 def px(v): return round(v*S, 2)
 
-NOTE = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"]
+FIRST_X = SIDE_MARGIN
+def fader_cx(i): return FIRST_X + i * PITCH
+
+# Vertical budget
+WORDMARK_Y = 11.5
+NUM_Y      = 22.0           # degree-number strip (above faders)
+FADER_CY   = 52.0           # fader centre (VCVLightSlider sizes itself; ~28mm tall → ~38..66)
+CENTS_ROW_A = 90.0          # even-index cents knobs
+CENTS_ROW_B = 99.5          # odd-index cents knobs (staggered lower)
+KNOB_R     = 3.0
+CONNECT_Y  = 120.0
 
 THEMES = {
     "dark":  dict(bg="#16181c", red="#d4001a", ink="#f0f0f0", gold="#c8960c",
                   well="#0f1114", ring="#4a4a4a", knob="#2a2e34", knobring="#5a616a",
-                  fadertrack="#20242a", faderfill="#26a69a", faderhandle="#c8cdd4",
-                  lockwell="#241f14", sub="#8a94a0"),
+                  fadertrack="#20242a", lockwell="#241f14", sub="#8a94a0"),
     "light": dict(bg="#dcdcdc", red="#d4001a", ink="#1a1a1a", gold="#b07d00",
                   well="#e2ddd2", ring="#b0a898", knob="#c8cdd4", knobring="#9aa2ac",
-                  fadertrack="#cdd2d8", faderfill="#1c7a70", faderhandle="#6a727c",
-                  lockwell="#e8e0cc", sub="#5a6470"),
+                  fadertrack="#cdd2d8", lockwell="#e8e0cc", sub="#5a6470"),
 }
-
-MARGIN_X = 5.0
-TOP      = 20.0          # below the wordmark
-BOT_PAD  = 14.0         # room for connect light
-N = 12
-STRIP_W  = (W - 2*MARGIN_X) / N
-
-LABEL_Y   = TOP + 2.0            # note name row
-FADER_TOP = TOP + 6.0
-FADER_H   = 62.0
-CENTS_Y   = FADER_TOP + FADER_H + 9.0   # cents knob row (below faders)
-KNOB_R    = 3.2
-
-def strip_cx(i): return MARGIN_X + STRIP_W*(i + 0.5)
 
 def gen(dark):
     t = THEMES["dark" if dark else "light"]
@@ -58,37 +59,41 @@ def gen(dark):
     A(f'<svg xmlns="http://www.w3.org/2000/svg" width="{PW}" height="{PH}" viewBox="0 0 {PW} {PH}">')
     A(f'<rect width="{PW}" height="{PH}" fill="{t["bg"]}"/>')
     A(f'<rect x="0" y="0" width="{PW}" height="{px(1.2)}" fill="{t["red"]}"/>')
-    A(f'<circle id="wordmark" cx="{px(W/2)}" cy="{px(11.5)}" r="0.5" fill="none" stroke="none"/>')
+    A(f'<circle id="wordmark" cx="{px(W/2)}" cy="{px(WORDMARK_Y)}" r="0.5" fill="none" stroke="none"/>')
 
-    fader_w = min(STRIP_W * 0.34, 3.2)
+    # Per-degree number anchors (widget draws 1..12). Placed at the fader X, above the fader.
     for i in range(N):
-        cx = strip_cx(i)
-        # note-name anchor (widget draws the name)
-        A(f'<circle id="notelabel_{i}" cx="{px(cx)}" cy="{px(LABEL_Y)}" r="0.5" fill="none" stroke="none"/>')
-        # fader track
-        A(f'<rect x="{px(cx - fader_w/2)}" y="{px(FADER_TOP)}" width="{px(fader_w)}" height="{px(FADER_H)}" '
-          f'rx="{px(fader_w*0.4)}" fill="{t["fadertrack"]}" stroke="{t["ring"]}" stroke-width="0.4"/>')
-        # a subtle centre guide line
-        A(f'<line x1="{px(cx)}" y1="{px(FADER_TOP+1)}" x2="{px(cx)}" y2="{px(FADER_TOP+FADER_H-1)}" '
-          f'stroke="{t["ring"]}" stroke-width="0.3"/>')
-        # fader marker (widget binds a VCVSlider here; it sizes to the track)
-        A(f'<circle id="param_weight_{i}" cx="{px(cx)}" cy="{px(FADER_TOP+FADER_H/2)}" r="0.5" fill="none" stroke="none"/>')
+        A(f'<circle id="notelabel_{i}" cx="{px(fader_cx(i))}" cy="{px(NUM_Y)}" r="0.5" fill="none" stroke="none"/>')
 
-        cy = CENTS_Y
+    # Faders: a subtle track behind each; the VCVLightSlider widget is centred on param_weight_<i>.
+    # Track height ≈ the slider travel (~28mm), purely decorative so the panel doesn't look empty
+    # behind the (SVG-sized) slider.
+    track_h = 30.0
+    track_w = 3.0
+    for i in range(N):
+        cx = fader_cx(i)
+        A(f'<rect x="{px(cx - track_w/2)}" y="{px(FADER_CY - track_h/2)}" width="{px(track_w)}" '
+          f'height="{px(track_h)}" rx="{px(track_w*0.4)}" fill="{t["fadertrack"]}" '
+          f'stroke="{t["ring"]}" stroke-width="0.4"/>')
+        A(f'<circle id="param_weight_{i}" cx="{px(cx)}" cy="{px(FADER_CY)}" r="0.5" fill="none" stroke="none"/>')
+
+    # Cents knobs, staggered zigzag. Root (0) = locked plate on row A; others alternate A/B by parity.
+    for i in range(N):
+        cx = fader_cx(i)
+        cy = CENTS_ROW_A if (i % 2 == 0) else CENTS_ROW_B
         if i == 0:
-            # root: locked cents plate, no knob
             A(f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(KNOB_R)}" fill="{t["lockwell"]}" '
               f'stroke="{t["ring"]}" stroke-width="0.5"/>')
-        else:
-            A(f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(KNOB_R+0.6)}" fill="{t["well"]}" '
-              f'stroke="{t["ring"]}" stroke-width="0.4"/>')
-            A(f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(KNOB_R)}" fill="{t["knob"]}" '
-              f'stroke="{t["knobring"]}" stroke-width="0.5"/>')
-            A(f'<line x1="{px(cx)}" y1="{px(cy-KNOB_R+0.4)}" x2="{px(cx)}" y2="{px(cy-KNOB_R+1.4)}" '
-              f'stroke="{t["gold"]}" stroke-width="0.5"/>')
-            A(f'<circle id="param_cents_{i}" cx="{px(cx)}" cy="{px(cy)}" r="0.5" fill="none" stroke="none"/>')
+            continue
+        A(f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(KNOB_R+0.6)}" fill="{t["well"]}" '
+          f'stroke="{t["ring"]}" stroke-width="0.4"/>')
+        A(f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(KNOB_R)}" fill="{t["knob"]}" '
+          f'stroke="{t["knobring"]}" stroke-width="0.5"/>')
+        A(f'<line x1="{px(cx)}" y1="{px(cy-KNOB_R+0.4)}" x2="{px(cx)}" y2="{px(cy-KNOB_R+1.4)}" '
+          f'stroke="{t["gold"]}" stroke-width="0.5"/>')
+        A(f'<circle id="param_cents_{i}" cx="{px(cx)}" cy="{px(cy)}" r="0.5" fill="none" stroke="none"/>')
 
-    lcx, lcy = W/2, H - BOT_PAD/2
+    lcx, lcy = W/2, CONNECT_Y
     A(f'<circle cx="{px(lcx)}" cy="{px(lcy)}" r="{px(1.8)}" fill="{t["well"]}" '
       f'stroke="{t["ring"]}" stroke-width="0.3"/>')
     A(f'<circle id="light_connect" cx="{px(lcx)}" cy="{px(lcy)}" r="0.5" fill="none" stroke="none"/>')
