@@ -185,3 +185,52 @@ of the Micro panels.
 ### Cross-refs (round 3)
 - src/MonsoonMicro12.cpp:106-148 -- Micro12CentsDisplay (the readout to refine).
 - res/fonts/DSEG7ClassicMini-Bold.ttf -- the LED face (verify decimal-point glyph, or use non-Mini).
+
+## ROUND 4: zigzag dividers + a NOTES knob (Rodney)
+
+### Zigzag dividers -- follow the value stagger, not a rectangular grid
+The round-3 render still drew straight vertical dividers. Rodney's overlay (sketch) shows the dividers
+should FOLLOW THE ZIGZAG: the compartment borders trace a connected path between the staggered values,
+stepping up and down with each value so the whole readout snakes across in parallel with the knob
+stagger below. NOT a rectangular grid -- a zigzag "ribbon" whose cells step between upper and lower.
+- Each value's cell border steps up/down to sit with the value it contains.
+- The dividing lines connect between adjacent cells like a path, tracing the up-down-up-down of the
+  stagger (the sketch shows this as a continuous zigzag line linking the cells).
+- Result: the compartments visually parallel the staggered knob row -- the readout is a ribbon that
+  mirrors the physical knob zigzag, not a grid sitting above it.
+- Keep it subtle (theme ring/ink low alpha) so the amber values lead.
+
+### NOTES knob (1..12) -- active-degree count, drives tt.N (Rodney)
+Add a knob (or stepped control) setting the number of active notes, 1..12. This is MORE than cosmetic:
+`tt.N` is currently HARDCODED to 12 (MonsoonMicro12.cpp:28: `tt.N = Micro12Ids::N_DEGREES`). A notes
+knob makes it VARIABLE, and the whole tuning system already keys off tt.N -- so this is exposing a
+frozen value, not new plumbing.
+
+Behaviour:
+- **On .scl READ**: set automatically from the file's degree count (a 7-note file sets NOTES=7). Just
+  reflects the loaded state.
+- **On .scl WRITE / manual**: defines how many degrees are active/exported. NOTES=7 -> degrees 8..12
+  disabled (weight=0), export the first 7 degrees' cents. A fast "this is a 7-note scale" control vs
+  dragging faders to zero.
+
+Model (recommend model 1 -- count only, Scalar-parity):
+- NOTES = N means degrees 1..N active, N+1..12 disabled. Contiguous from root.
+- Drives tt.N directly. The .scl writer exports tt.N degrees.
+- The weight faders still weight WITHIN the active N for the scale mask; the tuning EXPORT is the first
+  N cents values.
+- This matches Scalar's NOTES field exactly and keeps .scl export length trivially = tt.N.
+- Trade-off: can't express a non-contiguous subset (e.g. whole-tone 1,3,5,7,9,11) via the NOTES knob
+  alone -- but the weight faders CAN still disable individual degrees within N for the scale mask, so
+  the scale mask stays fully flexible; only the tuning-export length is the contiguous-first-N count.
+
+Interaction with the existing .scl accept-predicate work (SCALA_FILE_AND_LOAD_UI): the reader already
+validates degree count; NOTES is set FROM that count on read. On write, NOTES IS the count passed to
+the writer. So NOTES knob = the read/write degree-count made visible and user-settable.
+
+Panel placement: NOTES fits naturally near the display (it's a display-adjacent tuning parameter, like
+Scalar groups NOTES with TUNING/OCTAVES/CENTS). Could sit in or beside the LED readout band.
+
+### Cross-refs (round 4)
+- MonsoonMicro12.cpp:28 -- tt.N currently hardcoded to N_DEGREES; NOTES knob makes it variable.
+- SCALA_FILE_AND_LOAD_UI.md -- the .scl read/write degree-count that NOTES reflects/sets.
+- src/dsp/TuningTable.hpp -- tt.N, the field NOTES drives.
