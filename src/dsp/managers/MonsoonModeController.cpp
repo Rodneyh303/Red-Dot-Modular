@@ -59,14 +59,20 @@ void ModeController::updatePatternInput() {
     const bool rhythmLive = !patternInputPrimed_
                          || dotModular::LockManager::liveNow(dotModular::Control::BigFive, engine.locked, engine.scopeLiveMask);
     if (pitchLive) {
+        // MODEL A (Micro-12, microtonal Phase 2): when a mask-authoring tuning expander is claimed, the
+        // SCALE MASK comes from the shared TuningTable.weight[] (the Micro's 12 faders) INSTEAD of
+        // Monsoon's own ScaleManager-gated faders — this is the delegation that greys Monsoon's faders.
+        // When NOT authored (no Micro, or a Sikit which writes cents only), the mask stays with Monsoon
+        // exactly as before → byte-identical. The pitchLive latch (lock) is unchanged: we only swap the
+        // SOURCE of the per-degree weight, not when it's sampled.
+        const bool micro = engine.pe.tuning.maskAuthored;
         for (int i = 0; i < 12; ++i) {
-            // Use the SCALE-GATED weight (mainModule->getSemitoneParam → ScaleManager::getSemitoneWeight),
-            // not the raw fader value. When Conservation/lock is enforced, out-of-scale semitones read 0
-            // here, so the DICE/PATTERN engine (which picks from semiWeights) won't generate out-of-scale
-            // notes — matching the realtime path. (Previously this used paramManager.getSemitone(i), the
-            // raw value, so locked patterns still fired out-of-scale notes.)
-            currentPatternInput.semiWeights[i] =
-                mainModule ? mainModule->getSemitoneParam(i) : paramManager.getSemitone(i);
+            if (micro) {
+                currentPatternInput.semiWeights[i] = engine.pe.tuning.weight[i];
+            } else {
+                currentPatternInput.semiWeights[i] =
+                    mainModule ? mainModule->getSemitoneParam(i) : paramManager.getSemitone(i);
+            }
         }
     }
     if (rhythmLive) {   // BigFive LATCH — hold REST/VARIATION/LEGATO/NOTE_VALUE under lock

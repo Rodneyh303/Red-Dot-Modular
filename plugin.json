@@ -107,6 +107,16 @@
       ]
     },
     {
+      "slug": "MonsoonMicro12",
+      "name": "Micro 12",
+      "description": "Tuning + scale authoring expander \u2014 12 per-degree weight faders (scale mask) + cents knobs (tuning); load Scala .scl; Monsoon's note faders delegate",
+      "tags": [
+        "Expander",
+        "Tuning",
+        "Quantizer"
+      ]
+    },
+    {
       "slug": "Sikit",
       "name": "Sikit",
       "description": "Tuning expander \u2014 12 per-degree cents knobs retune Monsoon's 12-TET; load 12-note Scala .scl; scale mask stays with Monsoon",

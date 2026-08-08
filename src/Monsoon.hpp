@@ -996,6 +996,7 @@ extern Model* modelMonsoonCausewayPolyExpander; // poly CV modulation expander
 extern Model* modelMonsoonChangiExpander; // per-voice output expander
 extern Model* modelMonsoonShophouseExpander; // scale expander (12th module)
 extern Model* modelSikit;                      // tuning expander (cents-only, microtonal Phase 1)
+extern Model* modelMonsoonMicro12;             // tuning+scale authoring expander (microtonal Phase 2)
 extern Model* modelLantern;                    // Lantern note-output visualiser
 // West retired (Straits redesign)
 //extern Model* modelMonsoonStraitsSands;        // NEW (Macro): global DNA controls (compact)

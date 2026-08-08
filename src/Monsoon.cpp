@@ -91,18 +91,28 @@ void Monsoon::updateExpanderPointers() {
             redDot::resolveFollowedT<MonsoonChangeAlleyV2>(this, followCA);  // nullptr if no match present
     }
 
-    // ── Tuning-source resolution (Sikit Phase 1) ────────────────────────────────────────────────
-    // The first Sikit in the chain (expanderManager caches it) becomes THIS Monsoon's tuning source.
-    // One claimant per Monsoon: any additional Sikits grey their ConnectMark and never write (they
-    // fail claimAsTuningSource). When the claimant detaches, revert the table to the 12-TET default
-    // so pitch generation returns to the byte-identical fast path. Control-rate (this runs from the
-    // controlDivider block), so the pointer swap lands at a block boundary — no mid-block glitch.
+    // ── Tuning-source resolution (microtonal Phase 1 Sikit + Phase 2 Micro-12) ───────────────────
+    // ONE tuning-authoring expander per Monsoon. First-found across BOTH types wins; extras grey their
+    // ConnectMark + fail claimAsTuningSource. Preference is order-of-discovery: Sikit's cache slot is
+    // filled first in the scan, so if both are present we take whichever the scan cached — resolve by
+    // a single "first present" rule (Sikit slot, else Micro-12 slot). A Micro-12 that loses returns
+    // false from claim and stays inert. Control-rate (controlDivider block) => swaps at a block
+    // boundary, no mid-block glitch.
     rack::Module* prevSource = tuningSourceExpander_;
-    tuningSourceExpander_ = expanderManager.cachedSikitExpander;   // nullptr if no Sikit present
+    tuningSourceExpander_ = expanderManager.cachedSikitExpander
+                          ? expanderManager.cachedSikitExpander
+                          : expanderManager.cachedMicro12Expander;   // nullptr if neither present
     if (!tuningSourceExpander_ && prevSource) {
-        // Source just detached: drop back to equal-division 12-TET (glitchless, next block).
+        // Source just detached: drop back to equal-division 12-TET (glitchless, next block). This also
+        // clears maskAuthored, so Monsoon's own scale system re-owns the mask.
         revertTuningToDefault();
     }
+    // maskAuthored is set TRUE by a Micro-12 in its own process() (together with the weight[] write, so
+    // the mask and its flag are always consistent — avoids an empty-scale race). Here we only ensure it
+    // is CLEARED whenever the current claimant is NOT the mask-authoring Micro (a Sikit claimant, or a
+    // stale flag after switching Micro->Sikit), so Monsoon's own scale mask resumes authority.
+    if (tuningSourceExpander_ != expanderManager.cachedMicro12Expander)
+        engine.pe.tuning.maskAuthored = false;
 }
 
   void Monsoon::initialize(){
@@ -1090,6 +1100,7 @@ void init(rack::Plugin* p) {
 	p->addModel(modelMonsoonChangiT3Expander);
 	p->addModel(modelMonsoonShophouseExpander);
 	p->addModel(modelSikit);                         // tuning expander (microtonal Phase 1)
+	p->addModel(modelMonsoonMicro12);                // tuning+scale authoring (microtonal Phase 2)
 	p->addModel(modelLantern);                       // Lantern note-output visualiser
 	// West retired (Straits redesign): p->addModel(modelMonsoonStraitWestExpander);
 	//p->addModel(modelMonsoonStraitsSands);          // Macro: global DNA
