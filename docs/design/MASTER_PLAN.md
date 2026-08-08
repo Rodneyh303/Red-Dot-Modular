@@ -47,6 +47,14 @@ feat/dice-scrub                    -- STALE (0 commits ahead of master, already 
 
 ---
 
+## PROGRESS (a few days, Aug 2026)
+DONE and merged to master: Mode B fix (Lantern rest / nvIdx bar-width -- the multi-round debug),
+undo item 4 (dice undo, closing the undo suite), lock Phase 2 (Direction/Owner threaded, Big-5/
+scale/range write-gated, QUEUE), Sikit (Phase 1 tuning expander).
+BUILT on feat/microtonal, not yet merged: Colonnades (Micro-12) module + panel.
+So of the recent push: dice(ModeB)/undo/lock/Sikit are DONE; Colonnades is built and needs merge +
+rename to be done. Next long poles: engine widening (M1) + Colonnades Duo (M4).
+
 ## MICROTONAL IS NOW V1 (scope change, Rodney Aug 2026)
 
 Previously post-library; now IN V1. Everything microtonal ships in the first library release.
@@ -57,9 +65,11 @@ M1. **Engine widening** (MICROS_ENGINE_CLAUDE_CODE_GUIDE) -- the pervasive 12->M
     table. THE FOUNDATION -- nothing microtonal ships without it. ~2-week job. Byte-identical-at-12-TET
     regression is the safety anchor. This is the real gate; sequence it first.
 M2. **Sikit** (Phase 1) -- DONE, on master.
-M3. **Colonnades** (Micro-12, Phase 2) -- panel nearly done (COLONNADES_PANEL_LIFT_SPEC), needs the
-    engine widening (M1) under it + weight[] ownership/delegation/variable tt.N. Rename (COLONNADES_
-    RENAME_SPEC) pre-freeze.
+M3. **Colonnades** (Micro-12, Phase 2) -- BUILT on feat/microtonal (module + panel per
+    COLONNADES_PANEL_LIFT_SPEC, grid round-7 pending). REMAINING to call it done: (a) merge
+    feat/microtonal -> master, (b) run COLONNADES_RENAME_SPEC (Micro12 -> Colonnades, pre-freeze),
+    (c) still needs the engine widening (M1) under it for full N-awareness + weight[] ownership /
+    delegation / variable tt.N (currently tt.N hardcoded 12).
 M4. **Colonnades Duo** (Micro-24, Phase 3) -- the full N=24 rework, arbitrary Scala, maqam support.
     Biggest single piece, least started. NOW A SHIP-BLOCKER.
 M5. **Shared infrastructure** -- .scl parser (SCALA_FILE_AND_LOAD_UI), .dmtune format
