@@ -342,3 +342,31 @@ workflow more discoverable. CC's call; the SEMANTIC is: equal-divide the octave 
 active-N degrees.
 
 Cross-ref: MonsoonMicro12.cpp:276 (existing fixed-12 reset), MonsoonMicro12.hpp:45 (defaultCents).
+
+## ROUND 6: the grid is CLOSED STAGGERED CELLS, not a continuous zigzag line (Rodney)
+
+CORRECTION of my round-4 wording. I wrote "connected ribbon path", "snakes across", "continuous
+zigzag line linking the cells" -- that misled CC into drawing ONE continuous jagged waveform weaving
+between the numbers. It reads as signal, not structure. That is NOT the intent.
+
+Intended: each value sits in its OWN CLOSED COMPARTMENT (a rectangular cell with four walls). The
+CELLS are staggered vertically by row -- upper-row cells (even degrees) sit higher, lower-row cells
+(odd degrees) sit half a step lower -- so the arrangement of boxes zigzags, but each box is a complete
+closed frame around its number. Discrete compartments, offset by row. NOT a single weaving line.
+
+Think of it as two rows of boxes where the lower row is shifted DOWN (and by half a column in X, per
+the stagger) relative to the upper row -- like brickwork offset, each brick a closed cell. The
+"zigzag" is the PATTERN OF BOX POSITIONS, not a drawn zigzag line.
+
+Concretely:
+- Each degree's cents value = one closed rectangular cell (4 walls, subtle theme ring/ink lines).
+- Even degrees: cells on the upper row.
+- Odd degrees: cells on the lower row, offset down and +half-column in X.
+- Do NOT draw a continuous line connecting cells. Do NOT draw a waveform. Each cell is independently
+  framed; they just sit at staggered positions.
+- The visual should read as "boxes at two staggered heights," parallel to the staggered knobs below --
+  each box floating over its knob.
+
+If a single divider grid is simpler to reason about: it is a normal grid of boxes, but the two rows
+are vertically offset so the boxes interlock like offset brickwork rather than aligning into straight
+columns. Closed cells, staggered placement. That is the whole correction.
