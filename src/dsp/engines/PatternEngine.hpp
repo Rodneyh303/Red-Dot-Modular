@@ -324,6 +324,25 @@ struct PatternEngine {
     int   rhythmMode = 0;  // 0=dice, 1=realtime
     int   melodyMode = 0;
 
+    // ── Dice-undo capture (item 4) ─────────────────────────────────────────────
+    // A user ROLL (dice press) advances the draw counter at the phrase-boundary commit
+    // (applyPendingSeedsAndRedraw). To make that roll Ctrl+Z-undoable we capture the
+    // (seedFloat, counter) BEFORE/AFTER the redraw for whichever stream(s) the roll moved,
+    // into this plain POD. PatternEngine stays Rack-free: the OWNER module (Monsoon) reads
+    // diceUndoPending in onPhraseBoundary_ and publishes it to its lock-free audio→UI ring.
+    // Gated on the ROLL-pending flags only (NOT realtime-mode auto-redraw, NOT reset/reseed —
+    // see UNDO_ITEM4_DICE_BUILD_SPEC.md scope ruling). Seed float is the stream identity
+    // (Philox exposes no key getter); restoring it re-derives the exact key.
+    struct DiceUndoCapture {
+        bool    valid  = false;
+        bool    movedR = false, movedM = false;
+        float   rSeedBefore = 0.f, mSeedBefore = 0.f;
+        int64_t rCtrBefore  = 0,   mCtrBefore  = 0;
+        float   rSeedAfter  = 0.f, mSeedAfter  = 0.f;
+        int64_t rCtrAfter   = 0,   mCtrAfter   = 0;
+    };
+    DiceUndoCapture diceUndoPending;
+
     // First reroll after construction / new seed draws A=B (full strength,
     // preserves seed determinism); slew morph applies on subsequent rerolls.
     bool  rhythmFirstDraw = true;

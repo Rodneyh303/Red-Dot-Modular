@@ -491,9 +491,56 @@ void MonsoonWidget::applyTheme() {
         flushModArcs(this, m);
     }
 
+// ── Dice-undo (item 4) ──────────────────────────────────────────────────────────────────────
+// One committed dice ROLL = one undo step. The roll advances the draw counter on the audio thread
+// (PatternEngine::applyPendingSeedsAndRedraw); Monsoon::onPhraseBoundary_ publishes the before/after
+// (seedFloat, counter) to a lock-free ring, drained below on the UI thread into these actions.
+// Restore re-derives the exact Philox key from the recorded seed float then restores the counter
+// (Monsoon::restore*Dice); the next control-rate refresh regenerates the pattern. Module-id
+// resolution (not a raw pointer) so it survives module deletion / undo-of-delete, matching
+// StoreEditAction + CA's TransformUndoAction discipline.
+struct DiceUndoAction : rack::history::Action {
+    int64_t moduleId = -1;
+    Monsoon::DiceUndoSnapshot s{};
+    // Rack prepends "Undo "/"Redo " to name, so set the stream-specific remainder. A single dice
+    // press moves one stream; a combined gesture (if any) moves both.
+    void setName() {
+        name = s.movedR && s.movedM ? "Rhythm & Melody Dice Roll"
+             : s.movedM             ? "Melody Dice Roll"
+                                    : "Rhythm Dice Roll";
+    }
+    Monsoon* resolve() { return dynamic_cast<Monsoon*>(APP->engine->getModule(moduleId)); }
+    void apply(bool before) {
+        if (auto* m = resolve()) {
+            if (s.movedR) m->restoreRhythmDice(before ? s.rSeedBefore : s.rSeedAfter,
+                                               before ? s.rCtrBefore  : s.rCtrAfter);
+            if (s.movedM) m->restoreMelodyDice(before ? s.mSeedBefore : s.mSeedAfter,
+                                               before ? s.mCtrBefore  : s.mCtrAfter);
+        }
+    }
+    void undo() override { apply(/*before=*/true);  }
+    void redo() override { apply(/*before=*/false); }
+};
+
 void MonsoonWidget::step() {
     ModuleWidget::step();
     kitStep();  // variadic Compose: dev poll-reload
+
+    // Drain the dice-undo ring produced on the audio thread (SPSC: this widget is the sole
+    // consumer). Each committed roll becomes one Rack history action (UI-thread push, required).
+    if (auto* mon = dynamic_cast<Monsoon*>(module)) {
+        uint32_t t = mon->diceUndoTail.load(std::memory_order_relaxed);
+        uint32_t h = mon->diceUndoHead.load(std::memory_order_acquire);
+        while (t != h) {
+            auto* act = new DiceUndoAction();
+            act->moduleId = mon->id;
+            act->s = mon->diceUndoRing[t % Monsoon::DICE_UNDO_RING];
+            act->setName();
+            APP->history->push(act);
+            ++t;
+        }
+        mon->diceUndoTail.store(t, std::memory_order_release);
+    }
 }
 
 void MonsoonWidget::draw(const DrawArgs& args) {

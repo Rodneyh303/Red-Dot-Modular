@@ -235,20 +235,6 @@ struct Lantern : Module {
         const int scene = it ? it->activeScene : 0;
 
         int step = eng.stepIndex;
-
-        // One-block-delayed rest correction (MODE_B_SPEC.md processing-order race). This runs
-        // EVERY process() call, not only on step edges, so it catches a rest even when the
-        // step-edge sample below observed a stale gate (Lantern ran before Monsoon that block).
-        // When the finalised decision is Rest, retroactively blank that step's whole column
-        // (mono rest silences all poly too — verified model). forStep is the decision's own step.
-        if (eng.lastStepResult.decision == MonoDecision::Rest
-            && eng.lastStepResult.forStep >= 0
-            && eng.lastStepResult.forStep < 16) {
-            const int restStep = eng.lastStepResult.forStep;
-            for (int row = 0; row < 16; ++row)
-                cells[row][restStep].type = lantern::NoteType::Inactive;
-        }
-
         if (step == lastObservedStep) return;   // only sample on step edges
         lastObservedStep = step;
         if (step < 0 || step >= 16) return;

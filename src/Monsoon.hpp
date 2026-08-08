@@ -17,6 +17,7 @@
 #include <rack.hpp>
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cassert>
@@ -898,6 +899,48 @@ struct Monsoon : Module {
     int computeNoteLengthIdx(int requestedIdx, int ppqnMask);
     void updateStepLEDs_(float sampleTime);
     float quantizePitch(int semitoneIndex, int octaveOffset);
+
+    // ── Dice-undo ring (item 4) ────────────────────────────────────────────────
+    // A user ROLL advances the draw counter in PatternEngine::applyPendingSeedsAndRedraw
+    // (audio thread), which fills pe.diceUndoPending. onPhraseBoundary_ (audio thread) drains
+    // that into this single-producer/single-consumer ring; MonsoonWidget::step() (UI thread)
+    // drains the ring and pushes one Rack history action per roll. APP->history->push is
+    // UI-thread-only, hence the handoff -- identical pattern to Change Alley's TransformUndo ring.
+    struct DiceUndoSnapshot {
+        bool    movedR, movedM;
+        float   rSeedBefore, mSeedBefore, rSeedAfter, mSeedAfter;
+        int64_t rCtrBefore,  mCtrBefore,  rCtrAfter,  mCtrAfter;
+    };
+    static constexpr int DICE_UNDO_RING = 16;
+    DiceUndoSnapshot diceUndoRing[DICE_UNDO_RING];
+    std::atomic<uint32_t> diceUndoHead{0};   // producer (audio) writes then advances
+    std::atomic<uint32_t> diceUndoTail{0};   // consumer (UI) reads then advances
+
+    // Publish a completed roll snapshot to the ring (audio thread). Called from onPhraseBoundary_.
+    void publishDiceUndo(const DiceUndoSnapshot& s) {
+        const uint32_t h = diceUndoHead.load(std::memory_order_relaxed);
+        const uint32_t t = diceUndoTail.load(std::memory_order_acquire);
+        if (h - t < (uint32_t)DICE_UNDO_RING) {          // drop if UI hasn't drained (never in practice)
+            diceUndoRing[h % DICE_UNDO_RING] = s;
+            diceUndoHead.store(h + 1, std::memory_order_release);
+        }
+    }
+
+    // Restore a stream to a recorded (seedFloat, counter). Re-derives the exact Philox key from
+    // the seed float (Philox exposes no key getter) then restores the counter. ORDER MATTERS:
+    // seed*Philox zeros the counter as a side effect, so set the counter AFTER. The next control-
+    // rate refreshVisualCache regenerates the pattern via its ctr!=ctrApplied gate (no explicit
+    // regenerate call needed). Used by DiceUndoAction on the UI thread.
+    void restoreRhythmDice(float seedFloat, int64_t ctr) {
+        engine.pe.rhythmSeedFloat = seedFloat;
+        engine.pe.seedRhythmPhilox(seedFloat);   // re-derive key (zeros counter)
+        engine.pe.rhythmDrawCtr = ctr;           // then restore position
+    }
+    void restoreMelodyDice(float seedFloat, int64_t ctr) {
+        engine.pe.melodySeedFloat = seedFloat;
+        engine.pe.seedMelodyPhilox(seedFloat);
+        engine.pe.melodyDrawCtr = ctr;
+    }
 
     void process(const ProcessArgs& args) override;
 

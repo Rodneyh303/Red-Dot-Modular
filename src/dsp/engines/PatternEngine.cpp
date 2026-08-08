@@ -352,6 +352,21 @@ void PatternEngine::refreshVisualCache(const PatternInput& in) {
 void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     if (in.locked) return;  // freeze everything: seeds, RNG, patterns
 
+    // ── Dice-undo capture (item 4): a USER ROLL is exactly rhythmRollPending / melodyRollPending
+    // at THIS commit. Realtime-mode auto-redraw sets neither (it uses rhythmMode==1); reset/reseed
+    // use *SeedPending / *ReseedRollPending — all correctly EXCLUDED per the scope ruling. Capture
+    // the roll intent NOW, before the pending flags are cleared below, and record before/after
+    // (seedFloat, counter) around each moved stream's redraw. Published by Monsoon::onPhraseBoundary_.
+    const bool undoR = rhythmRollPending;
+    const bool undoM = melodyRollPending;
+    if (undoR || undoM) {
+        diceUndoPending.valid  = true;
+        diceUndoPending.movedR = undoR;
+        diceUndoPending.movedM = undoM;
+        diceUndoPending.rSeedBefore = rhythmSeedFloat; diceUndoPending.rCtrBefore = rhythmDrawCtr;
+        diceUndoPending.mSeedBefore = melodySeedFloat; diceUndoPending.mCtrBefore = melodyDrawCtr;
+    }
+
     // Redraw if: a seed is pending (reproducible reseed, A=B), a ROLL is pending
     // (advance RNG, no reseed), a TRIAL is pending (audition, A anchored, never
     // reseeds), a RESEED-ROLL is pending (main roll + fresh entropy, keeps A/B
@@ -388,6 +403,14 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     melodyReseedRollPending = false;
     if (shouldRedrawM) redrawMelody(in);
     melodyPendingLast = false;   // one-shot: consumed by this boundary's redraw
+
+    // ── Dice-undo capture (item 4): record the AFTER (seedFloat, counter) now that the roll's
+    // redraw has advanced the counter. Only the moved streams matter; the other's before==after.
+    if (diceUndoPending.valid) {
+        diceUndoPending.rSeedAfter = rhythmSeedFloat; diceUndoPending.rCtrAfter = rhythmDrawCtr;
+        diceUndoPending.mSeedAfter = melodySeedFloat; diceUndoPending.mCtrAfter = melodyDrawCtr;
+        // diceUndoPending stays valid=true until the owner (Monsoon::onPhraseBoundary_) drains it.
+    }
 
     // Always refresh the cache so the LEDs react to live knob changes in Dice mode
     if (!shouldRedrawR || !shouldRedrawM) refreshVisualCache(in);

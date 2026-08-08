@@ -318,7 +318,7 @@ float Monsoon::semitoneToVolts(int semitone) {
         engine.gs.reset();          // clears gate, hold, pitch, pulse, semiPlayRemain
         prevExtGate = false;
 
-        if (lockManager.liveNow(dotModular::Control::Reseed)) {
+        if (dotModular::LockManager::liveNow(dotModular::Control::Reseed, engine.locked)) {   // static form (normalised, LOCK_PHASE2 step 1)
             if (reseedOnRestart) {
                 // Only use the SEED-CV (reproducible, A=B) path when the SEED
                 // input is actually present. Unpatched → internal entropy via the
@@ -411,6 +411,21 @@ void Monsoon::onPhraseBoundary_() {
     // correct in both directions; we just drive it every boundary that has a pending
     // dice action, exactly as forward. Modes A-D always run forward.
     engine.pe.onPhraseBoundary(modeController->currentPatternInput);
+
+    // Dice-undo (item 4): if this boundary committed a USER ROLL, applyPendingSeedsAndRedraw
+    // filled pe.diceUndoPending with the before/after (seedFloat, counter). Publish it to the
+    // lock-free ring for MonsoonWidget::step() to turn into a Rack history action (UI thread).
+    if (engine.pe.diceUndoPending.valid) {
+        const auto& c = engine.pe.diceUndoPending;
+        DiceUndoSnapshot s;
+        s.movedR = c.movedR;         s.movedM = c.movedM;
+        s.rSeedBefore = c.rSeedBefore; s.mSeedBefore = c.mSeedBefore;
+        s.rSeedAfter  = c.rSeedAfter;  s.mSeedAfter  = c.mSeedAfter;
+        s.rCtrBefore  = c.rCtrBefore;  s.mCtrBefore  = c.mCtrBefore;
+        s.rCtrAfter   = c.rCtrAfter;   s.mCtrAfter   = c.mCtrAfter;
+        publishDiceUndo(s);
+        engine.pe.diceUndoPending.valid = false;   // consumed
+    }
 }
 
 // ---------------- Helper: expander change hook -------------------------------

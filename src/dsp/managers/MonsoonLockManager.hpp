@@ -44,6 +44,12 @@ enum class Control : uint8_t {
     NoteSliders,   // the 12 per-semitone note light-sliders (scale weights -> semiWeights)
     OctaveRange,   // the 2 octave sliders: OCT LO / OCT HI range
     Reseed,        // reseed-on-restart / seed application (generation)
+    Direction,     // per-lane traversal direction (editor.laneDir). Array READ, like LOR -> LATCH.
+                   // LOCK_MODE_AUDIT:185. Gate the PUSH into engine traversal (setStrand analogue).
+                   // BEHAVIOUR CHANGE (Phase 2): direction does not currently latch.
+    Owner,         // per-lane owner select. Twin with Direction (LOCK_MODE_AUDIT:183-184) -> LATCH.
+                   // May already latch "for free" via the LOR push gate (owner selects the base that
+                   // feeds baseLen) -- verify before adding a call site; entry may be model-only.
 
     // --- LIVE: transport + post-generation output mapping ---
     Clock,         // BPM/RUN/RESET/MODE/PHASE
@@ -88,6 +94,8 @@ public:
             case Control::NoteSliders:
             case Control::OctaveRange:
             case Control::Reseed:
+            case Control::Direction:
+            case Control::Owner:
                 return LockCategory::LATCH;
             // LIVE set
             case Control::Clock:
