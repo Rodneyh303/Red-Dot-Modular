@@ -1,5 +1,15 @@
 #include "MonsoonModeController.hpp"
 #include "MonsoonLockManager.hpp"
+
+// LOCK_SCOPE_MENU: SequencerEngine::dirLive_ hard-codes the Sands scope-bit values (to stay
+// include-free of this header). Pin them to the ScopeBit enum here, where BOTH are visible, so a
+// renumber of ScopeBit fails the build instead of silently desyncing the engine's direction gate.
+static_assert((uint32_t)dotModular::SB_SANDS_R == (1u << 2), "dirLive_ kSandsR out of sync with ScopeBit");
+static_assert((uint32_t)dotModular::SB_SANDS_M == (1u << 3), "dirLive_ kSandsM out of sync with ScopeBit");
+// Dice bits: updatePatternInput below hard-codes 1<<8 / 1<<9 for diceLiveR/M (PatternInput has no
+// LockManager include). Pin them here too.
+static_assert((uint32_t)dotModular::SB_DICE_R == (1u << 8), "diceLiveR bit out of sync with ScopeBit");
+static_assert((uint32_t)dotModular::SB_DICE_M == (1u << 9), "diceLiveM bit out of sync with ScopeBit");
 #include "../../Monsoon.hpp"
 #include "../../MonsoonCausewayPolyExpander.hpp"
 
@@ -15,34 +25,82 @@ void ModeController::updatePolyVoiceRest_() {
     // The Straits mod arcs pull from the same resolver directly (no cached-effective copies), so
     // there is nothing to drift or clobber.
     if (engine.numPolyVoices <= 0 || !mainModule) return;
+    // LOCK Phase 2 (§9): poly REST/ACCENT are Tier V LATCH, same class as mono Big-5. Being the SOLE
+    // writer, skipping this refresh under lock HOLDS the pre-lock per-voice values (identical to the
+    // mono write-gate). BigFive category covers poly Big-5 too. The prime forces a first populate even
+    // under lock (voices[] default to 0.0 and aren't persisted — a locked-load would otherwise rest all
+    // poly voices). Once primed, obey the lock.
+    if (polyVoiceCachePrimed_
+        && !dotModular::LockManager::liveNow(dotModular::Control::BigFive, engine.locked, engine.scopeLiveMask)) return;
     for (int i = 0; i < engine.numPolyVoices; ++i) {
         engine.voices[i].restProb   = mainModule->getEffectivePolyRest(i);
         engine.voices[i].accentProb = mainModule->getEffectivePolyAccent(i);
     }
+    polyVoiceCachePrimed_ = true;
 }
 
 void ModeController::updatePatternInput() {
-    for (int i = 0; i < 12; ++i) {
-        // Use the SCALE-GATED weight (mainModule->getSemitoneParam → ScaleManager::getSemitoneWeight),
-        // not the raw fader value. When Conservation/lock is enforced, out-of-scale semitones read 0
-        // here, so the DICE/PATTERN engine (which picks from semiWeights) won't generate out-of-scale
-        // notes — matching the realtime path. (Previously this used paramManager.getSemitone(i), the
-        // raw value, so locked patterns still fired out-of-scale notes.)
-        currentPatternInput.semiWeights[i] =
-            mainModule ? mainModule->getSemitoneParam(i) : paramManager.getSemitone(i);
+    // LOCK Phase 2 (LOCK_SEMANTICS §9): NoteSliders (semiWeights) + OctaveRange (octaveLo/Hi) LATCH.
+    // These fields feed genPitchLive at EXECUTION time (SequencerEngine.cpp:434), which re-maps the
+    // frozen draw arrays live — so unlike the redraw material they are NOT frozen by the engine's
+    // lock. Latching them = HOLD the pre-lock value by skipping this per-block refresh (the struct
+    // field persists across blocks, mirroring the LOR engine-state push-gate). liveNow(LATCH)==!locked.
+    //   pitchLive = update NoteSliders/OctaveRange this block?
+    //   The one-shot prime forces a populate on block 1 even under lock, because lock STATE is
+    //   persisted but these struct fields are not (a patch saved+loaded locked would otherwise blank
+    //   pitch — see patternInputPrimed_ in the header).
+    const bool pitchLive = !patternInputPrimed_
+                         || dotModular::LockManager::liveNow(dotModular::Control::NoteSliders, engine.locked, engine.scopeLiveMask);
+    const bool octLive   = !patternInputPrimed_
+                         || dotModular::LockManager::liveNow(dotModular::Control::OctaveRange, engine.locked, engine.scopeLiveMask);
+    // BigFive rhythm axis (REST / VARIATION / LEGATO / NOTE_VALUE / ACCENT) — LATCH together (§9).
+    // Same prime-aware hold as the pitch axis. ACCENT was normalised onto PatternInput in this same
+    // pass (was the scattered engine.accentProb), so all five Big-5 members now latch through one gate.
+    const bool rhythmLive = !patternInputPrimed_
+                         || dotModular::LockManager::liveNow(dotModular::Control::BigFive, engine.locked, engine.scopeLiveMask);
+    if (pitchLive) {
+        for (int i = 0; i < 12; ++i) {
+            // Use the SCALE-GATED weight (mainModule->getSemitoneParam → ScaleManager::getSemitoneWeight),
+            // not the raw fader value. When Conservation/lock is enforced, out-of-scale semitones read 0
+            // here, so the DICE/PATTERN engine (which picks from semiWeights) won't generate out-of-scale
+            // notes — matching the realtime path. (Previously this used paramManager.getSemitone(i), the
+            // raw value, so locked patterns still fired out-of-scale notes.)
+            currentPatternInput.semiWeights[i] =
+                mainModule ? mainModule->getSemitoneParam(i) : paramManager.getSemitone(i);
+        }
     }
-    // MONO rest: use the Causeway-modulated effective value (mirrors the poly idiom
-    // engine.voices[i].restProb = mainModule->getEffectivePolyRest(i) above). Falls back to the
-    // raw param when there's no mainModule.
-    currentPatternInput.restProb          = mainModule ? mainModule->getEffectiveMonoRest(paramManager.getRestUnclamped())
-                                                      : paramManager.getRest();
-    engine.writeLedger.noteWrite(WriteRole::MONO, WriteField::RestProb); // STEP1 WriteLedger: mono currentPatternInput.restProb (R2)
-    currentPatternInput.variationAmount   = paramManager.getVariation();
-    currentPatternInput.octaveLo          = paramManager.getOctaveLo();
-    currentPatternInput.octaveHi          = paramManager.getOctaveHi();
+    if (rhythmLive) {   // BigFive LATCH — hold REST/VARIATION/LEGATO/NOTE_VALUE under lock
+        // MONO rest: use the Causeway-modulated effective value (mirrors the poly idiom
+        // engine.voices[i].restProb = mainModule->getEffectivePolyRest(i) above). Falls back to the
+        // raw param when there's no mainModule.
+        currentPatternInput.restProb      = mainModule ? mainModule->getEffectiveMonoRest(paramManager.getRestUnclamped())
+                                                       : paramManager.getRest();
+        engine.writeLedger.noteWrite(WriteRole::MONO, WriteField::RestProb); // STEP1 WriteLedger: mono currentPatternInput.restProb (R2)
+        currentPatternInput.variationAmount = paramManager.getVariation();
+        // LEGATO + NOTE_VALUE now staged here (were passed live at the executeMode call sites); the
+        // call sites read in.legato / in.noteValue so the lock hold applies to them too.
+        currentPatternInput.legato        = paramManager.getLegato();
+        currentPatternInput.noteValue     = paramManager.getNoteValue();
+        // ACCENT: single writer now (was engine.accentProb written at 3 sites — control-rate plus a
+        // redundant re-fetch in executeModeE/A). Causeway-modulated effective value, mirroring rest.
+        currentPatternInput.accentProb    = mainModule ? mainModule->getEffectiveMonoAccent(paramManager.getAccentUnclamped())
+                                                       : paramManager.getAccent();
+    }
+    if (octLive) {   // OctaveRange LATCH — hold OCT LO/HI under lock (see pitch-axis note above)
+        currentPatternInput.octaveLo      = paramManager.getOctaveLo();
+        currentPatternInput.octaveHi      = paramManager.getOctaveHi();
+    }
+    // TRANSPOSE is LIVE (LOCK_SEMANTICS §9: post-generation output mapping) — it MUST keep refreshing
+    // under lock so the frozen pattern still transposes audibly. Do NOT move it inside a lock gate.
     currentPatternInput.transpose         = paramManager.getTranspose();
     currentPatternInput.noteVariationMask = engine.noteVariationMask;
     currentPatternInput.locked            = engine.locked;
+    // Dice-scope (LOCK_SCOPE_MENU §6): may each dice stream draw under lock? Uses the Dice_R/M bits.
+    // Under whole-module lock (mask 0) both are false => dice fully frozen, the pre-menu behaviour.
+    currentPatternInput.diceLiveR = engine.locked
+        && (engine.scopeLiveMask & (1u << 8)) != 0;   // == dotModular::SB_DICE_R
+    currentPatternInput.diceLiveM = engine.locked
+        && (engine.scopeLiveMask & (1u << 9)) != 0;   // == dotModular::SB_DICE_M
     currentPatternInput.rhythmSlew        = paramManager.getRhythmSlew();
     currentPatternInput.melodySlew        = paramManager.getMelodySlew();
     currentPatternInput.rhythmMix         = paramManager.getRhythmMix();
@@ -62,11 +120,17 @@ void ModeController::updatePatternInput() {
     // spread — this is the continuous A<->B blend. recomputeEffective only does
     // work when MIX actually changes, so it is cheap. SLEW is NOT applied here;
     // it is consumed at roll time (shapes B). Lock freezes the morph.
-    if (dotModular::LockManager::liveNow(dotModular::Control::ABMix, engine.locked)) {
-        engine.pe.latchMix(currentPatternInput.rhythmMix,
-                           currentPatternInput.melodyMix,
-                           currentPatternInput.rhythmSlew,
-                           currentPatternInput.melodySlew);
+    // A/B mix scope (LOCK_SCOPE_MENU): latchMix now gates each stream independently, so the freeze is
+    // EXACT per axis — rhythm A/B and melody A/B latch/free on their own bits (no combined coupling).
+    {
+        const bool abR = dotModular::LockManager::liveNow(dotModular::Control::ABMix, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false);
+        const bool abM = dotModular::LockManager::liveNow(dotModular::Control::ABMix, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true);
+        if (abR || abM)
+            engine.pe.latchMix(currentPatternInput.rhythmMix,
+                               currentPatternInput.melodyMix,
+                               currentPatternInput.rhythmSlew,
+                               currentPatternInput.melodySlew,
+                               /*applyRhythm=*/abR, /*applyMelody=*/abM);
     }
     if (mainModule) {
         // seedConnected IS read elsewhere (realtime !seedConnected checks). The former
@@ -74,6 +138,10 @@ void ModeController::updatePatternInput() {
         // the "continuous reseed" path it fed was never implemented. Removed; keep the bool.
         currentPatternInput.seedConnected = mainModule->inputs[MonsoonIds::SEED_INPUT].isConnected();
     }
+    // First populate done (unconditionally, even under lock). From here the LATCH gates above obey
+    // the lock. See patternInputPrimed_ in the header for why the prime is needed (persisted lock
+    // state vs non-persisted currentPatternInput fields).
+    patternInputPrimed_ = true;
 }
 
 PatternInput ModeController::assemblePatternInput_() {
@@ -111,9 +179,8 @@ void ModeController::postExecute_(const StepResult& result) {
 // into engine.executeModeA, which reads nothing else from the clock. (Forward only;
 // reverse traversal is the next branch.)
 bool ModeController::executeModeE() {
-    engine.accentProb = mainModule ? mainModule->getEffectiveMonoAccent(paramManager.getAccentUnclamped())
-                                  : paramManager.getAccent();   // MONO accent: Causeway-modulated
-    engine.writeLedger.noteWrite(WriteRole::MONO, WriteField::AccentProb); // STEP1 WriteLedger: mono engine.accentProb (A2)
+    // ACCENT is now assembled once in updatePatternInput() (in.accentProb) — the redundant re-fetch
+    // that used to live here is gone (single-writer; see PatternInput::accentProb note).
     PatternInput in = assemblePatternInput_();
 
     ClockEngine phaseView;            // edge-only view; executeModeA reads sixteenthEdge
@@ -122,8 +189,8 @@ bool ModeController::executeModeE() {
     StepResult result = engine.executeModeA(
         phaseView,
         in.restProb,
-        paramManager.getLegato(),
-        paramManager.getNoteValue(),
+        in.legato,          // BigFive LATCH: staged in updatePatternInput (was paramManager.getLegato())
+        in.noteValue,       // BigFive LATCH: staged in updatePatternInput (was paramManager.getNoteValue())
         in,
         phaseReverse ? -1 : +1        // within-draw reverse traversal
     );
@@ -134,11 +201,7 @@ bool ModeController::executeModeE() {
 
 bool ModeController::executeModeA() {
     if (clock.sixteenthEdge) {
-        // Fetch current parameters
-        engine.accentProb = mainModule ? mainModule->getEffectiveMonoAccent(paramManager.getAccentUnclamped())
-                                  : paramManager.getAccent();   // MONO accent: Causeway-modulated
-        engine.writeLedger.noteWrite(WriteRole::MONO, WriteField::AccentProb); // STEP1 WriteLedger: mono engine.accentProb (A3)
-        
+        // ACCENT assembled once in updatePatternInput() (in.accentProb) — redundant re-fetch removed.
         // Ensure pattern input is fresh
         PatternInput in = assemblePatternInput_();
 
@@ -146,8 +209,8 @@ bool ModeController::executeModeA() {
         StepResult result = engine.executeModeA(
             clock,
             in.restProb,
-            paramManager.getLegato(),
-            paramManager.getNoteValue(),
+            in.legato,          // BigFive LATCH: staged in updatePatternInput (was paramManager.getLegato())
+            in.noteValue,       // BigFive LATCH: staged in updatePatternInput (was paramManager.getNoteValue())
             in
         );
         
@@ -177,7 +240,7 @@ bool ModeController::executeModeB(bool gate1Rise,
             gate1Rise,
             gate1High,
             modeBPatternInput.restProb, // Rest still applies
-            paramManager.getLegato(),
+            modeBPatternInput.legato,   // BigFive LATCH: staged in updatePatternInput (was paramManager.getLegato())
             // Note value (which influences note length) should have no impact.
             // Pass a neutral value (e.g., 2.f for 1/4 note, a common default).
             0.f,

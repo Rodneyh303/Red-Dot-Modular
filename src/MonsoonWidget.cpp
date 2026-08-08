@@ -806,24 +806,53 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
                 addQ("Flip at step edge",       SequencerEngine::LaneFlipQuant::StepEdge);
             }));
         }
-        // Lock SCOPE (§7): what latches when LOCK is engaged. Whole-module is the default; Section
-        // and Per-lane are exposed but currently fall back to whole-module gating (future).
+        // Lock SCOPE (LOCK_SCOPE_MENU.md): a checklist of generative groups, split rhythm/melody, that
+        // the user opts OUT of the lock freeze ("keep live under lock"). Each item toggles one bit of
+        // engine.scopeLiveMask. Mask 0 = whole-module lock (everything freezes) = the default. CV rides
+        // its target's bit automatically (§1a) — no CV row. Dice R/M = fire live under lock (§6).
         {
-            struct LockScopeItem : ui::MenuItem {
-                Monsoon* module; dotModular::LockManager::LockScope value;
-                void onAction(const event::Action&) override { if (module) module->lockManager.scope = value; }
+            // One checkable item per scope bit. Checked = that group is LIVE under lock (bit set).
+            struct ScopeBitItem : ui::MenuItem {
+                Monsoon* module = nullptr; uint32_t bit = 0;
+                void onAction(const event::Action&) override { if (module) module->engine.scopeLiveMask ^= bit; }
                 void step() override {
-                    rightText = (module && module->lockManager.scope == value) ? "✔" : "";
+                    rightText = (module && (module->engine.scopeLiveMask & bit)) ? "✔" : "";
                     ui::MenuItem::step();
                 }
             };
-            menu->addChild(createSubmenuItem("Lock scope", "", [=](ui::Menu* sm) {
-                auto addS = [&](const char* label, dotModular::LockManager::LockScope v) {
-                    auto* it = createMenuItem<LockScopeItem>(label); it->module = m; it->value = v; sm->addChild(it);
+            // Preset setters: Whole-module lock (mask 0) and Free-all-prep (all bits set).
+            struct ScopePresetItem : ui::MenuItem {
+                Monsoon* module = nullptr; uint32_t maskValue = 0;
+                void onAction(const event::Action&) override { if (module) module->engine.scopeLiveMask = maskValue; }
+            };
+            const uint32_t ALL = dotModular::SB_BIG5_R | dotModular::SB_SCALE_M
+                               | dotModular::SB_SANDS_R | dotModular::SB_SANDS_M
+                               | dotModular::SB_CA_R | dotModular::SB_CA_M
+                               | dotModular::SB_ABRESEED_R | dotModular::SB_ABRESEED_M
+                               | dotModular::SB_DICE_R | dotModular::SB_DICE_M;
+            menu->addChild(createSubmenuItem("Lock scope — keep live under lock", "", [=](ui::Menu* sm) {
+                auto addBit = [&](const char* label, uint32_t b) {
+                    auto* it = createMenuItem<ScopeBitItem>(label); it->module = m; it->bit = b; sm->addChild(it);
                 };
-                addS("Whole module",     dotModular::LockManager::LockScope::WholeModule);
-                addS("Section (future)", dotModular::LockManager::LockScope::Section);
-                addS("Per-lane (future)",dotModular::LockManager::LockScope::PerLane);
+                auto* hdr = new ui::MenuLabel; hdr->text = "Checked = adjustable/fires under lock"; sm->addChild(hdr);
+                sm->addChild(new ui::MenuSeparator);
+                addBit("Big-5 / articulation (rhythm)", dotModular::SB_BIG5_R);
+                addBit("Scale & range (melody)",        dotModular::SB_SCALE_M);
+                sm->addChild(new ui::MenuSeparator);
+                addBit("Sands DNA — rhythm",  dotModular::SB_SANDS_R);
+                addBit("Sands DNA — melody",  dotModular::SB_SANDS_M);
+                sm->addChild(new ui::MenuSeparator);
+                addBit("Change Alley — rhythm", dotModular::SB_CA_R);
+                addBit("Change Alley — melody", dotModular::SB_CA_M);
+                sm->addChild(new ui::MenuSeparator);
+                addBit("A/B mix + Reseed — rhythm", dotModular::SB_ABRESEED_R);
+                addBit("A/B mix + Reseed — melody", dotModular::SB_ABRESEED_M);
+                sm->addChild(new ui::MenuSeparator);
+                addBit("Dice — rhythm (roll/live under lock)", dotModular::SB_DICE_R);
+                addBit("Dice — melody (roll/live under lock)", dotModular::SB_DICE_M);
+                sm->addChild(new ui::MenuSeparator);
+                { auto* it = createMenuItem<ScopePresetItem>("Whole module (freeze all)"); it->module = m; it->maskValue = 0u; sm->addChild(it); }
+                { auto* it = createMenuItem<ScopePresetItem>("Free all prep");             it->module = m; it->maskValue = ALL; sm->addChild(it); }
             }));
         }
         menu->addChild(new ui::MenuSeparator);

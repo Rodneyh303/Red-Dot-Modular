@@ -35,6 +35,15 @@ struct PatternInput {
     float semiWeights[12]  = {};  // semitone fader weights 0..1 (with CV applied)
     float restProb         = 0.1f;
     float variationAmount  = 0.5f;
+    // LOCK Phase 2 (LOCK_SEMANTICS §9): mono BigFive LEGATO + NOTE_VALUE + ACCENT staged on the
+    // snapshot so they LATCH like restProb/variationAmount. LEGATO/NOTE_VALUE were previously passed
+    // live at the executeMode call sites; ACCENT lived on engine.accentProb written at THREE sites
+    // (control-rate + a redundant re-fetch in executeModeE/A) — a code smell the STEP1 WriteLedger
+    // A1/A2/A3 notes existed to police. Collapsing accent to this SINGLE writer removes the drift
+    // hazard entirely (ledger tripwire retired) and latches it for free. Call sites read in.*.
+    float legato           = 0.f;   // mono legato/tie probability 0..1
+    float noteValue        = 2.f;   // mono note-value INDEX 0..7 (2 = 1/4 note)
+    float accentProb        = 0.25f; // mono accent probability 0..1 (was engine.accentProb; single-writer now)
     float octaveLo         = 2.f;
     float octaveHi         = 5.f;
     float transpose        = 0.f;
@@ -42,6 +51,12 @@ struct PatternInput {
     int   dnaLength        = 16;
     int   dnaOffset        = 0;
     bool  locked           = false;
+    // LOCK_SCOPE_MENU dice-scope: when locked, a stream whose dice bit is opted live may still redraw
+    // its ROLL / live-mode per-cycle reroll (see applyPendingSeedsAndRedraw). Seeds/reseed-rolls stay
+    // frozen even then (Reseed control, separately scoped) — the dice bit frees the DRAW only. Set from
+    // engine.scopeLiveMask in updatePatternInput. false when unlocked-irrelevant / whole-module lock.
+    bool  diceLiveR        = false;   // rhythm dice stream allowed to redraw under lock
+    bool  diceLiveM        = false;   // melody dice stream allowed to redraw under lock
     // Playable dice slew (0..1) per group. Latched at step 0; morphs the
     // effective pattern between the locked (A) and candidate (B) draws.
     float rhythmSlew       = 1.f;
@@ -116,11 +131,18 @@ struct PatternEngine {
     // MonsoonSandsManager::processDNA head). Snapshot then rewrite: row's strand takes its
     // pinned source row's slewed value. Mono buffers are row 0; poly buffers row v are
     // "expander row v+1". A source row of 0 = borrow mono's slewed; 1..15 = poly v-1.
-    void remapSlewedByPins() {
-        // Fast identity skip.
+    // doR/doM (LOCK_SCOPE_MENU): remap+promote only the requested strand FAMILIES. Rhythm family =
+    // RHYTHM/ACCENT/VARIATION/LEGATO (caRhythmSrc); melody family = MELODY/OCTAVE (caMelodySrc). A
+    // frozen axis (do* false) leaves its slewed + random_ arrays untouched, holding the pre-lock
+    // pinned values. Default true/true = remap both (unlocked). The families are fully independent
+    // (separate src arrays + separate buffers), so the per-axis freeze is exact.
+    void remapSlewedByPins(bool doR = true, bool doM = true) {
+        // Fast identity skip — only over the families we would actually remap.
         bool identity = true;
-        for (int v = 0; v < 16 && identity; ++v)
-            if (caRhythmSrc[v] != v || caMelodySrc[v] != v) identity = false;
+        for (int v = 0; v < 16 && identity; ++v) {
+            if (doR && caRhythmSrc[v] != v) identity = false;
+            if (doM && caMelodySrc[v] != v) identity = false;
+        }
         if (identity) return;
 
         // Snapshot mono[16] + poly[15][16] for the six strands.
@@ -157,14 +179,18 @@ struct PatternEngine {
                 default:                           return mL[i];
             }
         };
-        // Mono row 0.
+        // Mono row 0 — rhythm family (RHYTHM/ACCENT/VAR/LEG) gated by doR, melody family (MEL/OCT) by doM.
         for (int i = 0; i < 16; ++i) {
-            slewedRhythm[i]    = pickMono(caSrcRow(0, dotModular::STRAND_RHYTHM),    dotModular::STRAND_RHYTHM,    i);
-            slewedAccent[i]    = pickMono(caSrcRow(0, dotModular::STRAND_ACCENT),    dotModular::STRAND_ACCENT,    i);
-            slewedVariation[i] = pickMono(caSrcRow(0, dotModular::STRAND_VARIATION), dotModular::STRAND_VARIATION, i);
-            slewedLegato[i]    = pickMono(caSrcRow(0, dotModular::STRAND_LEGATO),    dotModular::STRAND_LEGATO,    i);
-            slewedMelody[i]    = pickMono(caSrcRow(0, dotModular::STRAND_MELODY),    dotModular::STRAND_MELODY,    i);
-            slewedOctave[i]    = pickMono(caSrcRow(0, dotModular::STRAND_OCTAVE),    dotModular::STRAND_OCTAVE,    i);
+            if (doR) {
+                slewedRhythm[i]    = pickMono(caSrcRow(0, dotModular::STRAND_RHYTHM),    dotModular::STRAND_RHYTHM,    i);
+                slewedAccent[i]    = pickMono(caSrcRow(0, dotModular::STRAND_ACCENT),    dotModular::STRAND_ACCENT,    i);
+                slewedVariation[i] = pickMono(caSrcRow(0, dotModular::STRAND_VARIATION), dotModular::STRAND_VARIATION, i);
+                slewedLegato[i]    = pickMono(caSrcRow(0, dotModular::STRAND_LEGATO),    dotModular::STRAND_LEGATO,    i);
+            }
+            if (doM) {
+                slewedMelody[i]    = pickMono(caSrcRow(0, dotModular::STRAND_MELODY),    dotModular::STRAND_MELODY,    i);
+                slewedOctave[i]    = pickMono(caSrcRow(0, dotModular::STRAND_OCTAVE),    dotModular::STRAND_OCTAVE,    i);
+            }
         }
         // Poly rows 1..15 → poly buffers 0..14.
         for (int v = 0; v < 15; ++v) {
@@ -174,10 +200,14 @@ struct PatternEngine {
             const int sM = caSrcRow(row, dotModular::STRAND_MELODY);
             const int sO = caSrcRow(row, dotModular::STRAND_OCTAVE);
             for (int i = 0; i < 16; ++i) {
-                slewedPolyRhythm[v][i] = pickMono(sR, dotModular::STRAND_RHYTHM, i);
-                slewedPolyAccent[v][i] = pickMono(sA, dotModular::STRAND_ACCENT, i);
-                slewedPolyMelody[v][i] = pickMono(sM, dotModular::STRAND_MELODY, i);
-                slewedPolyOctave[v][i] = pickMono(sO, dotModular::STRAND_OCTAVE, i);
+                if (doR) {
+                    slewedPolyRhythm[v][i] = pickMono(sR, dotModular::STRAND_RHYTHM, i);
+                    slewedPolyAccent[v][i] = pickMono(sA, dotModular::STRAND_ACCENT, i);
+                }
+                if (doM) {
+                    slewedPolyMelody[v][i] = pickMono(sM, dotModular::STRAND_MELODY, i);
+                    slewedPolyOctave[v][i] = pickMono(sO, dotModular::STRAND_OCTAVE, i);
+                }
             }
         }
         // INVARIANT: the pin remap is a property of CHANGE ALLEY ALONE. It must reach the
@@ -193,14 +223,22 @@ struct PatternEngine {
         // Mono visual, sandsActive was true yet the mono spread block (inside if(hasMonoVisual))
         // never ran, so remapped melody/octave never reached random_ while rhythm did.
         for (int i = 0; i < 16; ++i) {
-            rhythmRandom[i]=slewedRhythm[i]; accentRandom[i]=slewedAccent[i];
-            variationRandom[i]=slewedVariation[i]; legatoRandom[i]=slewedLegato[i];
-            melodyRandom[i]=slewedMelody[i]; octaveRandom[i]=slewedOctave[i];
+            if (doR) {
+                rhythmRandom[i]=slewedRhythm[i]; accentRandom[i]=slewedAccent[i];
+                variationRandom[i]=slewedVariation[i]; legatoRandom[i]=slewedLegato[i];
+            }
+            if (doM) {
+                melodyRandom[i]=slewedMelody[i]; octaveRandom[i]=slewedOctave[i];
+            }
             for (int v=0;v<15;v++){
-                polyRandom(v, PL_REST)[i]=slewedPolyRhythm[v][i];
-                polyRandom(v, PL_ACCENT)[i]=slewedPolyAccent[v][i];
-                polyRandom(v, PL_MELODY)[i]=slewedPolyMelody[v][i];
-                polyRandom(v, PL_OCTAVE)[i]=slewedPolyOctave[v][i];
+                if (doR) {
+                    polyRandom(v, PL_REST)[i]=slewedPolyRhythm[v][i];
+                    polyRandom(v, PL_ACCENT)[i]=slewedPolyAccent[v][i];
+                }
+                if (doM) {
+                    polyRandom(v, PL_MELODY)[i]=slewedPolyMelody[v][i];
+                    polyRandom(v, PL_OCTAVE)[i]=slewedPolyOctave[v][i];
+                }
             }
         }
     }
@@ -543,7 +581,10 @@ struct PatternEngine {
     // ── Playable slew ──────────────────────────────────────────────────────────
     // Latch the live slew (call at step-0 wrap), then recompute effective arrays
     // if the latched value changed. Cheap; safe to call every step.
-    void latchMix(float rhythmMix, float melodyMix, float rhythmSlew, float melodySlew);
+    // applyRhythm/applyMelody (LOCK_SCOPE_MENU): gate each stream's mix latch+recompute independently
+    // (a frozen A/B axis holds its latched value). Default both true = latch both (unlocked).
+    void latchMix(float rhythmMix, float melodyMix, float rhythmSlew, float melodySlew,
+                  bool applyRhythm = true, bool applyMelody = true);
     void recomputeEffectiveRhythm();   // public[] = A + rhythmMixLatched*(B-A)
     void recomputeEffectiveMelody();   // public[] = A + melodyMixLatched*(B-A)
 

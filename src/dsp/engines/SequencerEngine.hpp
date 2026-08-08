@@ -77,6 +77,9 @@ enum class StrandWriter : uint8_t {
 // This is DATAFLOW step 1 -- the prerequisite that makes the rate-discipline pass verifiable
 // (re-timing a control can't silently reintroduce a two-writer drift; the ledger fires if it does).
 enum class WriteField : uint8_t {
+    // AccentProb is RETIRED: mono accent was normalised to a single writer (PatternInput::accentProb),
+    // so its A1/A2/A3 noteWrite sites are gone. Kept as an enumerator (no index shift) but no longer
+    // written — the drift hazard it policed is now structurally impossible.
     RestProb = 0, AccentProb, Wrapped, LastSelectedScale, StepGate,
     COUNT
 };
@@ -190,6 +193,22 @@ struct SequencerEngine {
     // It is NOT redundant historically: with per-lane ACCUMULATORS, handleRestart() zeroed the
     // master clock but nothing cleared these, so RESET silently stopped syncing polymeters —
     // lanes had forked off the shared clock and the reset path was never updated to follow.
+    // Direction scope (LOCK_SCOPE_MENU): may this STRAND's pending direction promote right now?
+    // Unlocked => always. Locked => only if the strand's Sands scope bit is set in scopeLiveMask
+    // (direction opted out of the freeze for that axis). MELODY/OCTAVE strands are the melody axis,
+    // the rest (RHYTHM/VAR/LEG/ACCENT) the rhythm axis. Kept inline on the engine (NOT routed through
+    // LockManager) so the audio-thread promotion stays include/dependency-free. The bit VALUES MUST
+    // match dotModular::ScopeBit::SB_SANDS_R/M in MonsoonLockManager.hpp (single source of truth);
+    // duplicated here only to avoid pulling the manager header into the engine. If ScopeBit is
+    // renumbered, update these two lines (they are the only place the engine hard-codes the layout).
+    inline bool dirLive_(int strand) const {
+        if (!locked) return true;
+        constexpr uint32_t kSandsR = 1u << 2;   // == dotModular::SB_SANDS_R
+        constexpr uint32_t kSandsM = 1u << 3;   // == dotModular::SB_SANDS_M
+        const bool melodyAxis = (strand == dotModular::STRAND_MELODY || strand == dotModular::STRAND_OCTAVE);
+        return (scopeLiveMask & (melodyAxis ? kSandsM : kSandsR)) != 0;
+    }
+
     void resetLaneWalk() {
         for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
             laneTick_[s] = 0; laneSign_[s] = 1; lanePingPongHold_[s] = false;
@@ -444,6 +463,11 @@ struct SequencerEngine {
     uint16_t windowMask = 0xFFFF;
 
     bool locked = false;
+    // Lock SCOPE bitmask (LOCK_SCOPE_MENU.md). Set bit = that generative group is kept LIVE under
+    // lock (opted out of the freeze). 0 = whole-module lock (every LATCH frozen) = pre-menu default.
+    // Lives beside `locked` because the static LockManager::liveNow call sites already read
+    // engine.locked; they pass engine.scopeLiveMask alongside. Persisted by PersistenceManager.
+    uint32_t scopeLiveMask = 0;
 
     // ── Change Alley pin-matrix (CHANGE_ALLEY_DESIGN.md §3-REVISED) ──────────
     // The pin remap now lives UPSTREAM in the slewed buffers (pe.remapSlewedByPins,
@@ -471,7 +495,9 @@ struct SequencerEngine {
     int modeSelect = 0;
     int ppqnSetting = 24;  // master PPQN pulse grid (24/48/96)
     int noteVariationMask = 0b111;
-    float accentProb = 0.25f;  // Probability of accent on each note (0..1) (NEW)
+    // (mono accentProb removed — accent now lives on PatternInput::accentProb, a single writer
+    //  assembled in updatePatternInput and read at the mono executeStep sites. See the code-smell
+    //  fix note on PatternInput::accentProb. Poly voices keep their own PolyVoice::accentProb lane.)
 
     // Quantizer cache
     int activeSemiList[12] = {};

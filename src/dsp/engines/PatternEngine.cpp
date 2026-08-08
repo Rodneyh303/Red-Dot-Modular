@@ -173,7 +173,7 @@ int PatternEngine::varyNoteIndex(int baseIdx, const PatternInput& in, float r) {
 
 // Regenerate rhythm pattern (16 steps of bool: true=active, false=rest)
 void PatternEngine::redrawRhythm(const PatternInput& in) {
-    if (in.locked) return;
+    if (in.locked && !in.diceLiveR) return;   // LOCK_SCOPE_MENU: rhythm dice may draw under lock if opted live
 
     // B is committed into A FIRST, then a fresh B is drawn, and slew blends A↔B
     // at the roll. A walks forward each roll → groove mutates; low slew = tight
@@ -283,7 +283,7 @@ void PatternEngine::recomputeEffectiveMelody() {
 
 // Regenerate melody pattern (16 steps of semitone + pitch voltage)
 void PatternEngine::redrawMelody(const PatternInput& in) {
-    if (in.locked) return;
+    if (in.locked && !in.diceLiveM) return;   // LOCK_SCOPE_MENU: melody dice may draw under lock if opted live
     const bool first = melodyFirstDraw;
     melodyFirstDraw = false;
 
@@ -306,18 +306,27 @@ void PatternEngine::redrawMelody(const PatternInput& in) {
     }
 }
 
-void PatternEngine::latchMix(float rhythmMix, float melodyMix, float rhythmSlew, float melodySlew) {
+void PatternEngine::latchMix(float rhythmMix, float melodyMix, float rhythmSlew, float melodySlew,
+                             bool applyRhythm, bool applyMelody) {
     // Sample the live SCRUB inputs (control rate). Under the scrub model BOTH the scrub position
     // (MIX repurposed) AND slew (FIR smoothing width) feed the effective pattern, so latch both and
     // recompute a stream when EITHER changed. Recompute is cheap + change-guarded.
-    rhythmMixLatched = rhythmMix;
-    melodyMixLatched = melodyMix;
-    rhythmSlewLatched = rhythmSlew;
-    melodySlewLatched = melodySlew;
-    if (rhythmMixLatched != rhythmMixApplied || rhythmSlewLatched != rhythmSlewApplied)
-        recomputeEffectiveRhythm();
-    if (melodyMixLatched != melodyMixApplied || melodySlewLatched != melodySlewApplied)
-        recomputeEffectiveMelody();
+    // LOCK_SCOPE_MENU: applyRhythm/applyMelody gate EACH stream independently. A frozen stream (apply
+    // false) does NOT re-latch its mix/slew and does NOT recompute — its latched value + effective
+    // pattern hold from before the lock. The two streams are fully independent here, so a per-axis
+    // A/B scope freeze is exact (no combined coupling). Default true/true = latch both (unlocked).
+    if (applyRhythm) {
+        rhythmMixLatched  = rhythmMix;
+        rhythmSlewLatched = rhythmSlew;
+        if (rhythmMixLatched != rhythmMixApplied || rhythmSlewLatched != rhythmSlewApplied)
+            recomputeEffectiveRhythm();
+    }
+    if (applyMelody) {
+        melodyMixLatched  = melodyMix;
+        melodySlewLatched = melodySlew;
+        if (melodyMixLatched != melodyMixApplied || melodySlewLatched != melodySlewApplied)
+            recomputeEffectiveMelody();
+    }
 }
 
 // Updates the rhythm/melody arrays used for UI and LEDs based on the 
@@ -350,7 +359,14 @@ void PatternEngine::refreshVisualCache(const PatternInput& in) {
 // Apply any pending seeds, then redraw both patterns.
 // Called at phrase boundaries and on reset.
 void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
-    if (in.locked) return;  // freeze everything: seeds, RNG, patterns
+    // Whole-module lock freezes everything (seeds, RNG, patterns) — UNLESS a dice stream is opted
+    // live under lock (LOCK_SCOPE_MENU §6). Then that stream's ROLL / live-mode reroll may still draw,
+    // while seeds/reseed-rolls stay frozen (those are Reseed-scoped). If locked and NEITHER dice
+    // stream is live, nothing to do — early-out preserves the pre-menu behaviour exactly.
+    if (in.locked && !in.diceLiveR && !in.diceLiveM) return;
+    // Per-stream "may this stream draw now?": unlocked, OR this stream's dice bit is opted live.
+    const bool drawAllowedR = !in.locked || in.diceLiveR;
+    const bool drawAllowedM = !in.locked || in.diceLiveM;
 
     // ── Dice-undo capture (item 4): a USER ROLL is exactly rhythmRollPending / melodyRollPending
     // at THIS commit. Realtime-mode auto-redraw sets neither (it uses rhythmMode==1); reset/reseed
@@ -371,10 +387,16 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     // (advance RNG, no reseed), a TRIAL is pending (audition, A anchored, never
     // reseeds), a RESEED-ROLL is pending (main roll + fresh entropy, keeps A/B
     // morph), or Realtime mode.
-    bool shouldRedrawR = rhythmSeedPending || rhythmRollPending || rhythmReseedRollPending || (rhythmMode == 1);
-    bool shouldRedrawM = melodySeedPending || melodyRollPending || melodyReseedRollPending || (melodyMode == 1);
+    // Under lock (dice-live), only the ROLL and the live-mode per-cycle reroll may draw; seeds and
+    // reseed-rolls stay frozen (Reseed control, separately scoped — they won't even be armed under
+    // lock, but guard for safety). Unlocked, all terms apply as before. drawAllowedR/M gates the whole
+    // stream (false => this stream stays fully frozen, matching the old blanket early-return).
+    bool shouldRedrawR = drawAllowedR && (((!in.locked) && (rhythmSeedPending || rhythmReseedRollPending))
+                                          || rhythmRollPending || (rhythmMode == 1));
+    bool shouldRedrawM = drawAllowedM && (((!in.locked) && (melodySeedPending || melodyReseedRollPending))
+                                          || melodyRollPending || (melodyMode == 1));
 
-    if (rhythmSeedPending) {
+    if (!in.locked && rhythmSeedPending) {
         rhythmSeedFloat = rhythmSeedPendingFloat;
         seedRhythmPhilox(rhythmSeedFloat);     // mirror seed into Philox (counter→0)
         rhythmSeedPending = false;
@@ -385,24 +407,26 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
         if (rhythmReseedRollFull) { seedRhythmPhiloxFull(); }
         else { rhythmSeedFloat = rhythmReseedRollFloat; seedRhythmPhilox(rhythmSeedFloat); }
     }
-    rhythmRollPending = false;
-    rhythmReseedRollPending = false;
+    // Only CONSUME (clear) the roll flags if this stream was allowed to draw. A frozen stream under a
+    // mixed scope (e.g. rhythm live, melody frozen) must KEEP its pending flag so the queued roll fires
+    // at unlock — clearing it unconditionally would silently DROP the roll (and blank its dice light).
+    if (drawAllowedR) { rhythmRollPending = false; rhythmReseedRollPending = false; }
     if (shouldRedrawR) redrawRhythm(in);
-    rhythmPendingLast = false;   // one-shot: consumed by this boundary's redraw
+    if (drawAllowedR) rhythmPendingLast = false;   // one-shot: consumed only if this stream drew (held otherwise)
 
-    if (melodySeedPending) {
+    if (!in.locked && melodySeedPending) {   // seeds stay frozen under lock (Reseed-scoped)
         melodySeedFloat = melodySeedPendingFloat;
         seedMelodyPhilox(melodySeedFloat);     // mirror seed into Philox (counter→0)
         melodySeedPending = false;
         melodyFirstDraw = true;
-    } else if (melodyReseedRollPending) {
+    } else if (!in.locked && melodyReseedRollPending) {
         if (melodyReseedRollFull) { seedMelodyPhiloxFull(); }
         else { melodySeedFloat = melodyReseedRollFloat; seedMelodyPhilox(melodySeedFloat); }
     }
-    melodyRollPending = false;
-    melodyReseedRollPending = false;
+    // Only consume the melody roll flags if melody was allowed to draw (see rhythm note above).
+    if (drawAllowedM) { melodyRollPending = false; melodyReseedRollPending = false; }
     if (shouldRedrawM) redrawMelody(in);
-    melodyPendingLast = false;   // one-shot: consumed by this boundary's redraw
+    if (drawAllowedM) melodyPendingLast = false;   // one-shot: consumed only if this stream drew (held otherwise)
 
     // ── Dice-undo capture (item 4): record the AFTER (seedFloat, counter) now that the roll's
     // redraw has advanced the counter. Only the moved streams matter; the other's before==after.

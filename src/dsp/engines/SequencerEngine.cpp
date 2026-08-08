@@ -171,8 +171,11 @@ bool SequencerEngine::advancePlayhead(int dir) {
     // unlock, not commit at the next step edge. `locked` is this engine's live lock (aliased as
     // Monsoon::locked, toggled by the user). Gating here staged-promotes: pending holds the new
     // dir, and the first unlocked step edge commits it.
-    if (laneFlipQuant == LaneFlipQuant::StepEdge && !locked) {
+    // SCOPE (LOCK_SCOPE_MENU): a strand promotes under lock IF its Sands scope bit is set (direction
+    // opted out of the freeze for that axis). dirLive_(strand) = unlocked OR that strand's bit is live.
+    if (laneFlipQuant == LaneFlipQuant::StepEdge) {
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
+            if (!dirLive_(l)) continue;   // this strand's direction stays latched
             laneDir_[l] = laneDirPending_[l];
             for (int v = 0; v < 15; ++v) laneDirV_[v][l] = laneDirVPending_[v][l];
         }
@@ -280,8 +283,10 @@ bool SequencerEngine::advancePlayhead(int dir) {
     // step (see the recompute above), so promoting a "pending sign" would be dead motion.
     // Also gated on !locked (LATCH): a direction change under lock waits for unlock, same as
     // the StepEdge path above -- else direction would still commit under lock via Phrase.
-    if (laneFlipQuant == LaneFlipQuant::Phrase && wrapped && !locked)
+    // SCOPE per-strand (LOCK_SCOPE_MENU): promote under lock only for strands whose direction bit is live.
+    if (laneFlipQuant == LaneFlipQuant::Phrase && wrapped)
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
+            if (!dirLive_(l)) continue;
             laneDir_[l] = laneDirPending_[l];
             for (int v = 0; v < 15; ++v) laneDirV_[v][l] = laneDirVPending_[v][l];
         }
@@ -633,7 +638,7 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
         hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
     }
     
-    result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent, accentProb, input, wasHeldMono, hadMonoTail);
+    result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent, input.accentProb, input, wasHeldMono, hadMonoTail);
     result.stepped = true;
     result.wrapped = wrapped;
     // executeStep already assigned lastStepResult (BEFORE wrapped/stepped were set on the local
@@ -721,7 +726,7 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
         gs.holdRemain = 0.f;     gs.gatePulseRemain = -1;
         gsStep.holdRemain = 0.f; gsStep.gatePulseRemain = -1;
 
-        result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent, accentProb, input, wasHeldMono, hadMonoTail);
+        result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent, input.accentProb, input, wasHeldMono, hadMonoTail);
         result.stepped = true;
         result.wrapped = wrapped;
         lastStepResult = result;   // re-sync wrapped/stepped (executeStep set lastStepResult before they were known)

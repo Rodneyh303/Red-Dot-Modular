@@ -13,6 +13,11 @@
 #include "../../MonsoonChangeAlleyV2.hpp"           // single-module transforms
 #include "../ChangeAlleyTransforms.hpp"           // restructure verbs (§10)
 
+// LOCK_SCOPE_MENU: this file hard-codes SB_CA_R/M bit values (1<<4 / 1<<5) in the scatter-scope fire
+// decision. Pin them to the ScopeBit enum so a renumber fails the build.
+static_assert((uint32_t)dotModular::SB_CA_R == (1u << 4), "CA_R bit out of sync with ScopeBit");
+static_assert((uint32_t)dotModular::SB_CA_M == (1u << 5), "CA_M bit out of sync with ScopeBit");
+
 using namespace rack;
 
 // Who owns V1/mono direction on `lane`? The ONE place that decides — see the header.
@@ -104,12 +109,21 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
         auto* v2 = cachedChangeAlleyV2;
         // Boundary/unlock detection now lives in LockManager (ticked before sync); the QUEUE-fire
         // decision is passed in as caQueueFires. (Was: local caV2PrevStep_/caV2PrevLocked_ shadow.)
-        if (caQueueFires) {
+        // SCOPE (LOCK_SCOPE_MENU §6): a CA axis opted live under lock lets its transforms fire LIVE
+        // (not only at unlock). axisMask tells applyPendingTransforms WHICH axes may commit now:
+        //   normal queue fire (unlock/boundary) => BOTH axes (0b11);
+        //   live-under-lock => only the axes whose CA scope bit is set.
+        const bool caLiveR = engine.locked && (engine.scopeLiveMask & (1u << 4)) != 0;   // SB_CA_R
+        const bool caLiveM = engine.locked && (engine.scopeLiveMask & (1u << 5)) != 0;   // SB_CA_M
+        const bool fireNow = caQueueFires || caLiveR || caLiveM;
+        if (fireNow) {
             const int vActive = std::max(1, engine.numPolyVoices + 1);
-            // Apply is now OWNED by the CA module (applyPendingTransforms) -- the manager only
-            // decides WHEN (boundary/unlock). (Moving the WHEN to the engine boundary is a later
-            // cleanup, coordinated with lock semantics; see UNDO_IMPLEMENTATION_ROADMAP.md.)
-            v2->applyPendingTransforms(vActive);
+            // Which axes commit this call: queue fire => both; else only the live-under-lock axes.
+            const unsigned axisMask = caQueueFires ? 0b11u
+                                    : ((caLiveR ? 0b01u : 0u) | (caLiveM ? 0b10u : 0u));
+            // Apply is OWNED by the CA module (applyPendingTransforms); the manager decides WHEN and
+            // (now) which AXES. rhythm rows (type==0) gated by bit0, melody rows (type==1) by bit1.
+            v2->applyPendingTransforms(vActive, axisMask);
         }
     }
     // Step 3 (plans/lane_direction_homes.md): poly direction is reset-then-pushed exactly like
@@ -380,7 +394,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             //     engine.voices[v].restProb = deepEast->params[MonsoonIds::POLY_REST_PARAM_1 + v].getValue();
             // }
 
-            if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked)) {
+            if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false)) {   // REST = rhythm axis
                 for (int j = 0; j < 16; j++) {
                     engine.pe.polyRandom(v, PL::PL_REST)[j] = redDot::SpreadInterp::apply(
                         engine.pe, PL::PL_REST, j, engine.pe.slewedPolyRhythm[v][j], restInterp);
@@ -401,7 +415,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             melodyInterp = combineSpread(PL::PL_MELODY, melodyInterp);   // owner + Macro-CV blend (spread)
             if (eastVisual) eastVisual->polySpreadEffective[v][PL::PL_MELODY] = melodyInterp;
             
-            if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked)) {
+            if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true)) {   // MELODY = melody axis
                 for (int j = 0; j < 16; j++) {
                     engine.pe.polyRandom(v, PL::PL_MELODY)[j] = redDot::SpreadInterp::apply(
                         engine.pe, PL::PL_MELODY, j, engine.pe.slewedPolyMelody[v][j], melodyInterp);
@@ -429,7 +443,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             octaveInterp = combineSpread(PL::PL_OCTAVE, octaveInterp);   // owner + Macro-CV blend (spread)
             if (eastVisual) eastVisual->polySpreadEffective[v][PL::PL_OCTAVE] = octaveInterp;
             
-            if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked)) {
+            if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true)) {   // OCTAVE = melody axis
                 for (int j = 0; j < 16; j++) {
                     engine.pe.polyRandom(v, PL::PL_OCTAVE)[j] = redDot::SpreadInterp::apply(
                         engine.pe, PL::PL_OCTAVE, j, engine.pe.slewedPolyOctave[v][j], octaveInterp);
@@ -458,7 +472,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 }
                 accentInterp = combineSpread(PL::PL_ACCENT, accentInterp);   // owner + Macro-CV blend (spread)
                 if (eastVisual) eastVisual->polySpreadEffective[v][PL::PL_ACCENT] = accentInterp;   // accent spread → editor display
-                if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked)) {
+                if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false)) {   // ACCENT = rhythm axis
                     for (int j = 0; j < 16; j++) {
                         engine.pe.polyRandom(v, PL::PL_ACCENT)[j] = redDot::SpreadInterp::apply(
                             engine.pe, PL::PL_ACCENT, j, engine.pe.slewedPolyAccent[v][j], accentInterp);
@@ -543,7 +557,12 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
         // MonsoonSandsManager::processDNA (macroDrivesOutput is true here).
         using namespace StraitsMacroVisualIds;
         auto* macroVis = cachedMacroSandsVisual;
-        if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked)) {
+        // Spread scope (LOCK_SCOPE_MENU): PER-AXIS. msR gates rhythm arrays (rhythm/accent), msM the
+        // melody arrays (melody/octave), for both the V1 mono finals and the poly voices. The LOR
+        // sub-loop inside keeps its OWN per-strand Lor gate (LOR runs under lock; spread does not).
+        const bool msR = dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false);
+        const bool msM = dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true);
+        if (msR || msM) {
             // V1 (mono final arrays + mono strand LOR): Macro owns V1 too when it is the
             // sole visual. The hasMonoVisual block (which normally does this) is skipped
             // with no Mono editor, so apply Macro's global LOR/spread to the mono strand
@@ -564,16 +583,22 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 const float spO = math::clamp(macroVis->macroBase[PL::PL_OCTAVE][3] + macroVis->macroSendDelta[PL::PL_OCTAVE][3], -1.f, 1.f);
                 const float spA = math::clamp(macroVis->macroBase[PL::PL_ACCENT][3] + macroVis->macroSendDelta[PL::PL_ACCENT][3], -1.f, 1.f);
                 for (int j = 0; j < 16; ++j) {
-                    engine.pe.rhythmRandom[j] = redDot::SpreadInterp::apply(engine.pe, PL::PL_REST,   j, engine.pe.slewedRhythm[j], spR);
-                    engine.pe.melodyRandom[j] = redDot::SpreadInterp::apply(engine.pe, PL::PL_MELODY, j, engine.pe.slewedMelody[j], spM);
-                    engine.pe.octaveRandom[j] = redDot::SpreadInterp::apply(engine.pe, PL::PL_OCTAVE, j, engine.pe.slewedOctave[j], spO);
-                    engine.pe.accentRandom[j] = redDot::SpreadInterp::apply(engine.pe, PL::PL_ACCENT, j, engine.pe.slewedAccent[j], spA);
+                    if (msR) {
+                        engine.pe.rhythmRandom[j] = redDot::SpreadInterp::apply(engine.pe, PL::PL_REST,   j, engine.pe.slewedRhythm[j], spR);
+                        engine.pe.accentRandom[j] = redDot::SpreadInterp::apply(engine.pe, PL::PL_ACCENT, j, engine.pe.slewedAccent[j], spA);
+                    }
+                    if (msM) {
+                        engine.pe.melodyRandom[j] = redDot::SpreadInterp::apply(engine.pe, PL::PL_MELODY, j, engine.pe.slewedMelody[j], spM);
+                        engine.pe.octaveRandom[j] = redDot::SpreadInterp::apply(engine.pe, PL::PL_OCTAVE, j, engine.pe.slewedOctave[j], spO);
+                    }
                 }
                 // Mono strand LOR from Macro globals (REST/MEL/OCT/ACC strands).
                 static const int STRND[4] = { dotModular::STRAND_RHYTHM, dotModular::STRAND_MELODY,
                                               dotModular::STRAND_OCTAVE, dotModular::STRAND_ACCENT };
                 for (int lane = 0; lane < 4; ++lane) {
-                    if (dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked))   // LOR LATCH: skip re-push under lock
+                    // SCOPE (LOCK_SCOPE_MENU): per-strand R/M — MELODY/OCTAVE = melody axis.
+                    const bool lorMelAxis = (STRND[lane] == dotModular::STRAND_MELODY || STRND[lane] == dotModular::STRAND_OCTAVE);
+                    if (dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked, engine.scopeLiveMask, lorMelAxis))   // LOR LATCH: skip re-push under lock
                     engine.setStrand(StrandWriter::MACRO, STRND[lane],
                                      (int)std::round(macroVis->macroBase[lane][0]),
                                      (int)std::round(macroVis->macroBase[lane][1]),
@@ -594,10 +619,14 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 const float spO = math::clamp(macroVis->macroBase[PL::PL_OCTAVE][3] + macroVis->macroSendDelta[PL::PL_OCTAVE][3], -1.f, 1.f);
                 const float spA = math::clamp(macroVis->macroBase[PL::PL_ACCENT][3] + macroVis->macroSendDelta[PL::PL_ACCENT][3], -1.f, 1.f);
                 for (int j = 0; j < 16; ++j) {
-                    engine.pe.polyRandom(v, PL::PL_REST)[j] = redDot::SpreadInterp::apply(engine.pe, PL::PL_REST,   j, engine.pe.slewedPolyRhythm[v][j], spR);
-                    engine.pe.polyRandom(v, PL::PL_MELODY)[j] = redDot::SpreadInterp::apply(engine.pe, PL::PL_MELODY, j, engine.pe.slewedPolyMelody[v][j], spM);
-                    engine.pe.polyRandom(v, PL::PL_OCTAVE)[j] = redDot::SpreadInterp::apply(engine.pe, PL::PL_OCTAVE, j, engine.pe.slewedPolyOctave[v][j], spO);
-                    engine.pe.polyRandom(v, PL::PL_ACCENT)[j] = redDot::SpreadInterp::apply(engine.pe, PL::PL_ACCENT, j, engine.pe.slewedPolyAccent[v][j], spA);
+                    if (msR) {
+                        engine.pe.polyRandom(v, PL::PL_REST)[j] = redDot::SpreadInterp::apply(engine.pe, PL::PL_REST,   j, engine.pe.slewedPolyRhythm[v][j], spR);
+                        engine.pe.polyRandom(v, PL::PL_ACCENT)[j] = redDot::SpreadInterp::apply(engine.pe, PL::PL_ACCENT, j, engine.pe.slewedPolyAccent[v][j], spA);
+                    }
+                    if (msM) {
+                        engine.pe.polyRandom(v, PL::PL_MELODY)[j] = redDot::SpreadInterp::apply(engine.pe, PL::PL_MELODY, j, engine.pe.slewedPolyMelody[v][j], spM);
+                        engine.pe.polyRandom(v, PL::PL_OCTAVE)[j] = redDot::SpreadInterp::apply(engine.pe, PL::PL_OCTAVE, j, engine.pe.slewedPolyOctave[v][j], spO);
+                    }
                 }
             }
         }

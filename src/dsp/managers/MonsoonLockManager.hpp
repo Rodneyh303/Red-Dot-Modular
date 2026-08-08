@@ -32,6 +32,27 @@ enum class LockCategory : uint8_t {
     QUEUE,   // arm-and-fire at the next phrase boundary (events, e.g. Change Alley scatter)
 };
 
+// ── Lock SCOPE bitmask (LOCK_SCOPE_MENU.md) ─────────────────────────────────────────────────
+// The context-menu "Lock Scope" lets the user opt individual generative surfaces OUT of the lock
+// freeze, split by rhythm vs melody where the data allows. A SET bit means "keep this group LIVE
+// under lock" (exclude it from the freeze); mask 0 = whole-module lock (every group frozen) = the
+// pre-menu Phase-2 behaviour. Groups map to the §9 control classes; R/M are separate bits because
+// nearly every datum is already stored as separate rhythm/melody arrays. CV rides its target's bit
+// automatically (gates sit downstream of CV folding — LOCK_SCOPE_MENU §1a), so there is NO CV bit.
+enum ScopeBit : uint32_t {
+    SCOPE_NONE        = 0,
+    SB_BIG5_R         = 1u << 0,   // Big-5 / articulation (rhythm axis): REST/VAR/LEG/ACC/NOTE_VALUE + poly R/A
+    SB_SCALE_M        = 1u << 1,   // scale sliders + OCT LO/HI (melody axis)
+    SB_SANDS_R        = 1u << 2,   // Sands DNA rhythm: LOR + spread + direction/owner on rhythm strands
+    SB_SANDS_M        = 1u << 3,   // Sands DNA melody: LOR + spread + direction/owner on melody strands
+    SB_CA_R           = 1u << 4,   // Change Alley rhythm: pins + transforms + scatter (rhythmSrc / type==0 rows)
+    SB_CA_M           = 1u << 5,   // Change Alley melody: pins + transforms + scatter (melodySrc / type==1 rows)
+    SB_ABRESEED_R     = 1u << 6,   // A/B mix + reseed (rhythm stream)
+    SB_ABRESEED_M     = 1u << 7,   // A/B mix + reseed (melody stream)
+    SB_DICE_R         = 1u << 8,   // rhythm dice redraw (incl. live-mode per-cycle reroll) under lock
+    SB_DICE_M         = 1u << 9,   // melody dice redraw (incl. live-mode per-cycle reroll) under lock
+};
+
 // Controls that have a lock category. This enum is the vocabulary call sites use with liveNow().
 // Grouped by category per the audit; the category is assigned centrally in categoryOf() below.
 enum class Control : uint8_t {
@@ -154,17 +175,52 @@ public:
     //   (phrase boundary while unlocked) OR (unlock edge -- flush what was queued during lock).
     bool queueFires() const { return (boundaryNow_ && !locked_) || unlockNow_; }
 
+    // ── Lock SCOPE mapping (LOCK_SCOPE_MENU.md) ────────────────────────────────────────────
+    // Which scope bit governs a control, given the axis the CALL SITE is acting on. Single-axis
+    // controls ignore melodyAxis (Big-5 is always rhythm; scale/range always melody). Dual-axis
+    // controls (Sands LOR/Spread/Direction/Owner, Change Alley Pins/Scatter, A/B+Reseed, Dice)
+    // pick R or M. LIVE controls have no bit (never frozen) -> 0.
+    static constexpr uint32_t scopeBitFor(Control c, bool melodyAxis) {
+        switch (c) {
+            case Control::BigFive:     return SB_BIG5_R;                          // rhythm axis (+ poly R/A)
+            case Control::NoteSliders:                                            // scale sliders
+            case Control::OctaveRange: return SB_SCALE_M;                         // OCT LO/HI — melody axis
+            case Control::Lor:
+            case Control::Spread:
+            case Control::Direction:
+            case Control::Owner:       return melodyAxis ? SB_SANDS_M : SB_SANDS_R;
+            case Control::Pins:
+            case Control::Scatter:     return melodyAxis ? SB_CA_M    : SB_CA_R;
+            case Control::ABMix:
+            case Control::Reseed:      return melodyAxis ? SB_ABRESEED_M : SB_ABRESEED_R;
+            default:                   return SCOPE_NONE;                         // LIVE set: no scope bit
+        }
+    }
+
     // Static form: evaluate a control's live-now decision against an explicitly-provided lock
     // state. Lets call sites that hold their own lock bool (e.g. managers reading a specific
     // engine's `locked`) route through the SAME category model without needing a LockManager
     // instance or a Monsoon* -- and provably preserve which lock bool they read.
-    static bool liveNow(Control c, bool locked) {
+    //
+    // SCOPE-AWARE overload: a LATCH control is ALSO live when its scope bit is set in scopeLiveMask
+    // (the user opted its group out of the freeze -- LOCK_SCOPE_MENU.md). mask 0 = whole-module lock
+    // (every LATCH frozen) = the pre-menu behaviour, so the 2-arg form below delegates with mask 0
+    // and every existing call site is unchanged. melodyAxis selects the R/M bit for dual-axis controls.
+    static bool liveNow(Control c, bool locked, uint32_t scopeLiveMask, bool melodyAxis = false) {
         switch (categoryOf(c)) {
             case LockCategory::LIVE:  return true;
-            case LockCategory::LATCH: return !locked;
-            case LockCategory::QUEUE: return !locked;   // phase-1 placeholder; phase-2 = queue
+            case LockCategory::LATCH:
+            case LockCategory::QUEUE:                                             // phase-1 placeholder; phase-2 = queue
+                if (!locked) return true;
+                return (scopeLiveMask & scopeBitFor(c, melodyAxis)) != 0;         // opted out of freeze?
         }
         return !locked;
+    }
+
+    // Back-compat 2-arg form: whole-module lock (mask 0). Every LATCH freezes under lock, exactly as
+    // before the scope menu. Existing call sites keep compiling and behaving identically.
+    static bool liveNow(Control c, bool locked) {
+        return liveNow(c, locked, /*scopeLiveMask=*/0u, /*melodyAxis=*/false);
     }
 
 private:

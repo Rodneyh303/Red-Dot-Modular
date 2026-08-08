@@ -318,7 +318,13 @@ float Monsoon::semitoneToVolts(int semitone) {
         engine.gs.reset();          // clears gate, hold, pitch, pulse, semiPlayRemain
         prevExtGate = false;
 
-        if (dotModular::LockManager::liveNow(dotModular::Control::Reseed, engine.locked)) {   // static form (normalised, LOCK_PHASE2 step 1)
+        // Reseed scope (LOCK_SCOPE_MENU): rhythm and melody seed-arms are INDEPENDENT (setPendingRhythm*
+        // vs setPendingMelody*), so the per-axis freeze is exact — each stream reseeds only if its bit
+        // is live. CA corrKey reseed fires if EITHER axis reseeds (it re-keys the shared scatter streams,
+        // which have no independent rhythm/melody split at the key level).
+        const bool reseedR = dotModular::LockManager::liveNow(dotModular::Control::Reseed, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false);
+        const bool reseedM = dotModular::LockManager::liveNow(dotModular::Control::Reseed, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true);
+        if (reseedR || reseedM) {
             if (reseedOnRestart) {
                 // Only use the SEED-CV (reproducible, A=B) path when the SEED
                 // input is actually present. Unpatched → internal entropy via the
@@ -329,13 +335,13 @@ float Monsoon::semitoneToVolts(int semitone) {
                     // happens inside deriveKey (STREAM_RHYTHM/MELODY/CA). The SAME seed value
                     // feeds all three stream families -> one source, reproducible.
                     const float s = sampleSeedFromSource();
-                    engine.pe.setPendingRhythmSeed(s);
-                    engine.pe.setPendingMelodySeed(s);
+                    if (reseedR) engine.pe.setPendingRhythmSeed(s);
+                    if (reseedM) engine.pe.setPendingMelodySeed(s);
                     if (expanderManager.cachedChangeAlleyV2)
                         expanderManager.cachedChangeAlleyV2->reseedCorrKeys(s);
                 } else {
-                    engine.pe.setPendingRhythmReseedRoll(0.f, /*full=*/true);
-                    engine.pe.setPendingMelodyReseedRoll(0.f, /*full=*/true);
+                    if (reseedR) engine.pe.setPendingRhythmReseedRoll(0.f, /*full=*/true);
+                    if (reseedM) engine.pe.setPendingMelodyReseedRoll(0.f, /*full=*/true);
                     // CA mirrors rhythm/melody: unpatched -> full internal entropy (not the
                     // lossy 0..10 float), keeping all three families consistent.
                     if (expanderManager.cachedChangeAlleyV2)
@@ -937,8 +943,9 @@ void Monsoon::process(const ProcessArgs& args) {
 
         // Refresh Sequencer Parameters (Throttled sampling of all knobs/CV)
         modeController->updatePatternInput();
-        engine.accentProb = getEffectiveMonoAccent(paramManager->getAccentUnclamped());
-        engine.writeLedger.noteWrite(WriteRole::MONO, WriteField::AccentProb); // STEP1 WriteLedger: mono engine.accentProb (A1)
+        // ACCENT now assembled inside updatePatternInput() as currentPatternInput.accentProb (single
+        // writer, latches with the other Big-5). The control-rate engine.accentProb write + its
+        // WriteLedger A1 tripwire are gone — the multi-writer hazard they policed is designed out.
 
         // Check for expander changes and update cached pointers
         // Mirror the global spread-target mode onto the engine so display SpreadManagers

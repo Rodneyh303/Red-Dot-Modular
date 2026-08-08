@@ -173,10 +173,19 @@ struct MonsoonChangeAlleyV2 : Module {
     // this (phrase boundary / unlock). Moved out of MonsoonExpanderManager so the module that
     // holds the state also owns its mutation (and, next, its undo snapshot). `active` is the
     // active voice count (numPolyVoices+1, clamped >=1).
-    void applyPendingTransforms(int active) {
-        // Any armed row this call?  If none, nothing to snapshot or apply.
+    // axisMask (LOCK_SCOPE_MENU §6): which axes may commit THIS call. bit0 = rhythm rows (type==0),
+    // bit1 = melody rows (type==1). Default 0b11 = both (normal unlock/boundary fire). Under a live-
+    // under-lock scatter, the manager passes only the opted-live axis, so out-of-axis armed rows stay
+    // pending (they commit later at the real unlock/boundary). Preserves the "one commit = one undo"
+    // rule per fire: the snapshot brackets exactly the rows applied THIS call.
+    void applyPendingTransforms(int active, unsigned axisMask = 0b11u) {
+        // Any armed row this call whose AXIS is in the mask?  If none, nothing to snapshot or apply.
         bool any = false;
-        for (int row = 0; row < CA::N_ROWS; ++row) if (pendingRows[row].armed) { any = true; break; }
+        for (int row = 0; row < CA::N_ROWS; ++row) {
+            if (!pendingRows[row].armed) continue;
+            const unsigned axisBit = (row % 2 == 0) ? 0b01u : 0b10u;   // type = row % 2 (0=rhythm,1=melody)
+            if (axisMask & axisBit) { any = true; break; }
+        }
         if (!any) return;
 
         // Snapshot BEFORE (whole pin matrix + scatter counters). One phrase-boundary commit = one
@@ -191,6 +200,9 @@ struct MonsoonChangeAlleyV2 : Module {
             const int verb = row / 4;
             const int side = (row % 4) / 2;
             const int type = row % 2;
+            // SCOPE (LOCK_SCOPE_MENU §6): only commit rows whose axis is in axisMask. Out-of-axis rows
+            // stay armed (NOT applied, NOT cleared) so they fire at the next in-axis/unlock commit.
+            if (!(axisMask & ((type == 0) ? 0b01u : 0b10u))) continue;
             uint8_t* tbl   = (type == 0) ? rhythmSrc : melodySrc;
             const int ci   = (side * CA::TYPES + type) * 2 + (p.isDomain ? 0 : 1);
             if (verb == CA::V_SCATTER)

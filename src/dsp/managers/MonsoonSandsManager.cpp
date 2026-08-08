@@ -37,23 +37,41 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         auto* v2 = expanderManager.cachedChangeAlleyV2;
         bool identity = true;
         for (int v = 0; v < 16; ++v) {
-            engine.pe.caRhythmSrc[v] = v2->rhythmSrc[v];
+            engine.pe.caRhythmSrc[v] = v2->rhythmSrc[v];   // stage current pins (applied by remap below)
             engine.pe.caMelodySrc[v] = v2->melodySrc[v];
             if (v2->rhythmSrc[v] != v || v2->melodySrc[v] != v) identity = false;
         }
-        if (!identity) {
-            // FLICKER FIX (SANDS_SCATTER_FLICKER_DIAGNOSIS): only re-derive+remap when the pins or
-            // the underlying slewed content actually changed. Running it every block rewrote the
-            // slewed buffers in place under the UI reader -> REST/ACCENT flicker. When unchanged,
-            // last cycle's remapped buffers are already correct, so skip the churn.
-            if (remapSigChanged_(v2->rhythmSrc, v2->melodySrc, /*identity=*/false)) {
-                engine.pe.forceRecomputeSlewed();
-                engine.pe.remapSlewedByPins();
-                captureRemapSig_(v2->rhythmSrc, v2->melodySrc, /*identity=*/false);
+        // Pins LATCH (LOCK_SEMANTICS §9: correlation config, shapes draws PRE-spread). Under lock,
+        // HOLD the pre-lock remapped slewed buffers: skip the recompute+remap AND the sig capture, so
+        // a pin edit under lock is neither applied now NOR marked seen -> it's detected and committed
+        // at unlock (remapSigChanged_ fires then). This closes a real leak: when a CA is attached but
+        // NO Sands visual (sandsActive=false), PatternEngine copies slewed->random every sample
+        // UNGATED, so a pin move would otherwise reach output under lock. (When Sands IS present the
+        // spread step is already lock-gated, but this covers the no-Sands case too.) The staged
+        // caRhythmSrc/caMelodySrc above hold the current pins, so the unlock remap applies correctly.
+        // No prime needed: the played random[] arrays are persisted, so a locked-load is already right.
+        // Pins scope (LOCK_SCOPE_MENU): PER-AXIS. pinR remaps the rhythm-family buffers, pinM the
+        // melody-family buffers (remapSlewedByPins(doR,doM) — the families use separate src arrays +
+        // buffers, so the split is exact). A frozen axis is skipped, holding its pre-lock pinned values.
+        const bool pinR = dotModular::LockManager::liveNow(dotModular::Control::Pins, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false);
+        const bool pinM = dotModular::LockManager::liveNow(dotModular::Control::Pins, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true);
+        if (pinR || pinM) {
+            if (!identity) {
+                // FLICKER FIX (SANDS_SCATTER_FLICKER_DIAGNOSIS): only re-derive+remap when the pins or
+                // the underlying slewed content actually changed. Running it every block rewrote the
+                // slewed buffers in place under the UI reader -> REST/ACCENT flicker. When unchanged,
+                // last cycle's remapped buffers are already correct, so skip the churn. (The combined
+                // sig decides WHEN to recompute; pinR/pinM decide WHICH families — a frozen axis's src
+                // can't change under lock, so the combined sig firing on the live axis is harmless.)
+                if (remapSigChanged_(v2->rhythmSrc, v2->melodySrc, /*identity=*/false)) {
+                    engine.pe.forceRecomputeSlewed();
+                    engine.pe.remapSlewedByPins(pinR, pinM);
+                    captureRemapSig_(v2->rhythmSrc, v2->melodySrc, /*identity=*/false);
+                }
+            } else {
+                // Pins returned to identity: mark it so the next non-identity is treated as a change.
+                captureRemapSig_(v2->rhythmSrc, v2->melodySrc, /*identity=*/true);
             }
-        } else {
-            // Pins returned to identity: mark it so the next non-identity is treated as a change.
-            captureRemapSig_(v2->rhythmSrc, v2->melodySrc, /*identity=*/true);
         }
     } else {
         for (int v = 0; v < 16; ++v) { engine.pe.caRhythmSrc[v] = (uint8_t)v; engine.pe.caMelodySrc[v] = (uint8_t)v; }
@@ -261,7 +279,10 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // the engine's LOR state persists, so skipping the write holds the pre-lock resolved
             // value (base + latched CV). This also latches OWNER for free: owner selects which base
             // feeds baseLen above, and freezing the apply freezes that selection's effect too.
-            if (dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked)) {
+            // SCOPE (LOCK_SCOPE_MENU): per-strand R/M — MELODY/OCTAVE strands are the melody axis,
+            // the rest (RHYTHM/VAR/LEG/ACCENT) rhythm. `strand` is the engine strand for this lane.
+            const bool lorMelodyAxis = (strand == dotModular::STRAND_MELODY || strand == dotModular::STRAND_OCTAVE);
+            if (dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked, engine.scopeLiveMask, lorMelodyAxis)) {
                 engine.setStrand(StrandWriter::MONO, strand,
                                  (int)std::round(baseLen),
                                  (int)std::round(baseOff),
@@ -339,27 +360,30 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // When LOCKED, leave the final arrays frozen (skip the rewrite) so
             // lock freezes the audible output — spread CV won't leak through.
             engine.pe.setSandsActive(true);
-            if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked)) {
-            // Spread target is the mono/voice-1 draw (the ensemble average was removed).
-            // Ensemble poly count is bounded by the voice OUTPUT topology
-            // (effPolyVoices): only voices with an actual output path (East ≤7,
-            // +West for 8..15) are averaged. With no base expander it is 0, so
-            // Mono spread degenerates to a no-op (average == mono draw itself).
+            // Spread scope (LOCK_SCOPE_MENU): PER-AXIS. sprR gates the rhythm-axis arrays (rhythm,
+            // legato, accent, variation), sprM the melody-axis arrays (melody, octave). A frozen axis
+            // skips its writes so slew leaves the pre-lock spread-applied values in place (setSandsActive
+            // stays true, so the frozen arrays are NOT overwritten by the raw draw either).
+            const bool sprR = dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false);
+            const bool sprM = dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true);
+            if (sprR || sprM) {
             for (int i = 0; i < 16; ++i) {
-                // Single source of truth: target (mode-aware, mono-inclusive avg)
-                // + bipolar interpolate, over the pre-spread slewed draws.
-                engine.pe.rhythmRandom[i] = redDot::SpreadInterp::apply(
-                    engine.pe, 0, i, engine.pe.slewedRhythm[i], engine.spreadE(0, 0));
-                engine.pe.melodyRandom[i] = redDot::SpreadInterp::apply(
-                    engine.pe, 1, i, engine.pe.slewedMelody[i], engine.spreadE(0, 1));
-                engine.pe.octaveRandom[i] = redDot::SpreadInterp::apply(
-                    engine.pe, 2, i, engine.pe.slewedOctave[i], engine.spreadE(0, 2));
-                engine.pe.legatoRandom[i]    = engine.pe.slewedLegato[i];     // mono-only, raw
-                engine.pe.accentRandom[i] = redDot::SpreadInterp::apply(
-                    engine.pe, 3, i, engine.pe.slewedAccent[i], engine.spreadE(0, 3));
-                engine.pe.variationRandom[i] = engine.pe.slewedVariation[i];
+                if (sprR) {
+                    engine.pe.rhythmRandom[i] = redDot::SpreadInterp::apply(
+                        engine.pe, 0, i, engine.pe.slewedRhythm[i], engine.spreadE(0, 0));
+                    engine.pe.legatoRandom[i]    = engine.pe.slewedLegato[i];     // mono-only, raw
+                    engine.pe.accentRandom[i] = redDot::SpreadInterp::apply(
+                        engine.pe, 3, i, engine.pe.slewedAccent[i], engine.spreadE(0, 3));
+                    engine.pe.variationRandom[i] = engine.pe.slewedVariation[i];
+                }
+                if (sprM) {
+                    engine.pe.melodyRandom[i] = redDot::SpreadInterp::apply(
+                        engine.pe, 1, i, engine.pe.slewedMelody[i], engine.spreadE(0, 1));
+                    engine.pe.octaveRandom[i] = redDot::SpreadInterp::apply(
+                        engine.pe, 2, i, engine.pe.slewedOctave[i], engine.spreadE(0, 2));
+                }
             }
-            }  // end if(!engine.locked)
+            }  // end if(sprR || sprM)
         //}
         // Drive all 6 mono strands via the single-source-of-truth lane map.
         for (int l = 0; l < 6; ++l) readStrand(l);
@@ -413,8 +437,10 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
                     const int engLane = dotModular::EDITOR_TO_ENGINE_LANE[el];
                     const int strand  = dotModular::MONO_LANE_TO_STRAND[el];
+                    // SCOPE (LOCK_SCOPE_MENU): MELODY/OCTAVE strands = melody axis; else rhythm.
+                    const bool lorMelAxis = (strand == dotModular::STRAND_MELODY || strand == dotModular::STRAND_OCTAVE);
                     if (monoOwnedByMacro(engLane)) {
-                        if (dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked))   // LOR LATCH: skip re-push under lock
+                        if (dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked, engine.scopeLiveMask, lorMelAxis))   // LOR LATCH: skip re-push under lock
                         engine.setStrand(StrandWriter::EAST, strand,
                             (int)std::round(macroVis->macroBase[engLane][0] + macroVis->macroCVDelta[engLane][0]),
                             (int)std::round(macroVis->macroBase[engLane][1] + macroVis->macroCVDelta[engLane][1]),
@@ -440,7 +466,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                         }
                         return rack::math::clamp(base + sendBlend(item), lo, hi);
                     };
-                    if (dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked))   // LOR LATCH: skip re-push under lock
+                    if (dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked, engine.scopeLiveMask, lorMelAxis))   // LOR LATCH: skip re-push under lock
                     engine.setStrand(StrandWriter::EAST, strand,
                         (int)std::round(addCV(len, 0, 1.f, 16.f)),
                         (int)std::round(addCV(off, 1, 0.f, 15.f)),
@@ -460,7 +486,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                         }
                         return rack::math::clamp(base, lo, hi);
                     };
-                    if (dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked))   // LOR LATCH: skip re-push under lock
+                    // VAR/LEG are RHYTHM-axis strands -> melodyAxis=false (SB_SANDS_R).
+                    if (dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false))   // LOR LATCH: skip re-push under lock
                     engine.setStrand(StrandWriter::EAST, el,
                         (int)std::round(addCV((float)std::max(1, b0), 0, 1.f, 16.f)),
                         (int)std::round(addCV((float)(((b1 % 16) + 16) % 16), 1, 0.f, 15.f)),
@@ -469,7 +496,12 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             }
 
             // ── SPREAD: lock-gated (frozen pattern must not be re-spread). LOR above already ran.
-            if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked)) {
+            // Scope (LOCK_SCOPE_MENU): PER-AXIS. axR gates rhythm arrays (rhythm/accent/legato/var),
+            // axM the melody arrays (melody/octave). Note spR/spM/spO/spA below are spread VALUES per
+            // lane (not axis flags) — distinct from these axis bools.
+            const bool axR = dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false);
+            const bool axM = dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true);
+            if (axR || axM) {
             auto sprForLane = [&](int lane)->float {
                 if (monoOwnedByMacro(lane))
                     return rack::math::clamp(macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3], -1.f, 1.f);
@@ -494,14 +526,18 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             const float spA = sprForLane(3);
             engine.pe.setSandsActive(true);
             for (int i = 0; i < 16; ++i) {
-                engine.pe.rhythmRandom[i] = redDot::SpreadInterp::apply(engine.pe, 0, i, engine.pe.slewedRhythm[i], spR);
-                engine.pe.melodyRandom[i] = redDot::SpreadInterp::apply(engine.pe, 1, i, engine.pe.slewedMelody[i], spM);
-                engine.pe.octaveRandom[i] = redDot::SpreadInterp::apply(engine.pe, 2, i, engine.pe.slewedOctave[i], spO);
-                engine.pe.accentRandom[i] = redDot::SpreadInterp::apply(engine.pe, 3, i, engine.pe.slewedAccent[i], spA);
-                engine.pe.legatoRandom[i]    = engine.pe.slewedLegato[i];
-                engine.pe.variationRandom[i] = engine.pe.slewedVariation[i];
+                if (axR) {
+                    engine.pe.rhythmRandom[i] = redDot::SpreadInterp::apply(engine.pe, 0, i, engine.pe.slewedRhythm[i], spR);
+                    engine.pe.accentRandom[i] = redDot::SpreadInterp::apply(engine.pe, 3, i, engine.pe.slewedAccent[i], spA);
+                    engine.pe.legatoRandom[i]    = engine.pe.slewedLegato[i];
+                    engine.pe.variationRandom[i] = engine.pe.slewedVariation[i];
+                }
+                if (axM) {
+                    engine.pe.melodyRandom[i] = redDot::SpreadInterp::apply(engine.pe, 1, i, engine.pe.slewedMelody[i], spM);
+                    engine.pe.octaveRandom[i] = redDot::SpreadInterp::apply(engine.pe, 2, i, engine.pe.slewedOctave[i], spO);
+                }
             }
-            }   // end if (!engine.locked) — spread only; V1 LOR above runs under lock too
+            }   // end if (axR || axM) — spread only; V1 LOR above runs under lock too
         }
     }
 
@@ -564,7 +600,11 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         // Macro's base+delta into each voice via the owner/blend send. When NOT — standalone Macro
         // (no Straits) — apply Macro's GLOBAL spread to the drawn voices here so its bars aren't dead.
         if (!macroDrivesOutput) {
-        if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked)) {
+        // Spread scope (LOCK_SCOPE_MENU): PER-AXIS. mSpR gates rhythm arrays, mSpM the melody arrays,
+        // for BOTH the mono final arrays and the per-voice poly arrays below.
+        const bool mSpR = dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false);
+        const bool mSpM = dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true);
+        if (mSpR || mSpM) {
             const int nPoly = rack::math::clamp(engine.numPolyVoices, 0, 15);
             // Global spread level per lane (knob + CV), spread/engine-indexed 0..3.
             float spv[4];
@@ -584,25 +624,33 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             engine.pe.setSandsActive(true);
             // V1 (mono final arrays): converge the mono draw toward the ensemble.
             for (int i = 0; i < 16; ++i) {
-                engine.pe.rhythmRandom[i]    = redDot::SpreadInterp::apply(engine.pe, 0, i, engine.pe.slewedRhythm[i], spv[0]);
-                engine.pe.melodyRandom[i]    = redDot::SpreadInterp::apply(engine.pe, 1, i, engine.pe.slewedMelody[i], spv[1]);
-                engine.pe.octaveRandom[i]    = redDot::SpreadInterp::apply(engine.pe, 2, i, engine.pe.slewedOctave[i], spv[2]);
-                engine.pe.accentRandom[i]    = redDot::SpreadInterp::apply(engine.pe, 3, i, engine.pe.slewedAccent[i], spv[3]);
-                engine.pe.legatoRandom[i]    = engine.pe.slewedLegato[i];
-                engine.pe.variationRandom[i] = engine.pe.slewedVariation[i];
+                if (mSpR) {
+                    engine.pe.rhythmRandom[i]    = redDot::SpreadInterp::apply(engine.pe, 0, i, engine.pe.slewedRhythm[i], spv[0]);
+                    engine.pe.accentRandom[i]    = redDot::SpreadInterp::apply(engine.pe, 3, i, engine.pe.slewedAccent[i], spv[3]);
+                    engine.pe.legatoRandom[i]    = engine.pe.slewedLegato[i];
+                    engine.pe.variationRandom[i] = engine.pe.slewedVariation[i];
+                }
+                if (mSpM) {
+                    engine.pe.melodyRandom[i]    = redDot::SpreadInterp::apply(engine.pe, 1, i, engine.pe.slewedMelody[i], spv[1]);
+                    engine.pe.octaveRandom[i]    = redDot::SpreadInterp::apply(engine.pe, 2, i, engine.pe.slewedOctave[i], spv[2]);
+                }
             }
             // Each poly voice's final arrays: same global spread level applied per voice.
             // apply() computes the lane's ensemble target internally; pass each voice's
             // own slewed draw as the value to interpolate (same call shape as East's loop).
             for (int v = 0; v < nPoly; ++v) {
                 for (int i = 0; i < 16; ++i) {
-                    engine.pe.polyRandom(v, SequencerEngine::PL_REST)[i] = redDot::SpreadInterp::apply(engine.pe, 0, i, engine.pe.slewedPolyRhythm[v][i], spv[0]);
-                    engine.pe.polyRandom(v, SequencerEngine::PL_MELODY)[i] = redDot::SpreadInterp::apply(engine.pe, 1, i, engine.pe.slewedPolyMelody[v][i], spv[1]);
-                    engine.pe.polyRandom(v, SequencerEngine::PL_OCTAVE)[i] = redDot::SpreadInterp::apply(engine.pe, 2, i, engine.pe.slewedPolyOctave[v][i], spv[2]);
-                    engine.pe.polyRandom(v, SequencerEngine::PL_ACCENT)[i] = redDot::SpreadInterp::apply(engine.pe, 3, i, engine.pe.slewedPolyAccent[v][i], spv[3]);
+                    if (mSpR) {
+                        engine.pe.polyRandom(v, SequencerEngine::PL_REST)[i] = redDot::SpreadInterp::apply(engine.pe, 0, i, engine.pe.slewedPolyRhythm[v][i], spv[0]);
+                        engine.pe.polyRandom(v, SequencerEngine::PL_ACCENT)[i] = redDot::SpreadInterp::apply(engine.pe, 3, i, engine.pe.slewedPolyAccent[v][i], spv[3]);
+                    }
+                    if (mSpM) {
+                        engine.pe.polyRandom(v, SequencerEngine::PL_MELODY)[i] = redDot::SpreadInterp::apply(engine.pe, 1, i, engine.pe.slewedPolyMelody[v][i], spv[1]);
+                        engine.pe.polyRandom(v, SequencerEngine::PL_OCTAVE)[i] = redDot::SpreadInterp::apply(engine.pe, 2, i, engine.pe.slewedPolyOctave[v][i], spv[2]);
+                    }
                 }
             }
-        }   // if (!engine.locked)
+        }   // if (mSpR || mSpM)
         }   // if (!macroDrivesOutput)
     }       // if (hasMacro && macroVis)
 

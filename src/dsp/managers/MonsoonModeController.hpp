@@ -95,6 +95,22 @@ private:
     ParameterManager& paramManager;
     
     int lastStepIndex;
+
+    // LOCK Phase 2 one-shot prime (LOCK_SEMANTICS §9). The LATCH controls threaded in
+    // updatePatternInput() hold their pre-lock value under lock by SKIPPING the per-block refresh
+    // (the currentPatternInput field persists across blocks, like the LOR engine-state push-gate).
+    // But lock STATE is persisted (PersistenceManager) while these struct fields are NOT, so a patch
+    // SAVED+LOADED while locked would leave them at cold-start defaults (semiWeights all-0 -> blank
+    // pitch). This flag forces a full unconditional populate on the FIRST updatePatternInput() after
+    // construction/load, seeding from the restored knobs; every block after obeys the lock gate.
+    bool patternInputPrimed_ = false;
+
+    // Poly REST/ACCENT LATCH prime. voices[].restProb/accentProb are the poly Big-5 (§9 Tier V, LATCH
+    // like mono). updatePolyVoiceRest_ is their sole writer; skipping it under lock holds the pre-lock
+    // value (same mechanism as mono). Needs its OWN prime (not patternInputPrimed_) because it runs in
+    // postExecute_, AFTER updatePatternInput already set that flag — so it must track its own first-write.
+    // Covers the locked-load case (voices[] default to 0.0, not persisted → first write populates).
+    bool polyVoiceCachePrimed_ = false;
     
     // ──── Helper Methods ────────────────────────────────────────────────────
     
