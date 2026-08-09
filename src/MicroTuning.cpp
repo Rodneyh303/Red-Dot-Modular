@@ -6,6 +6,7 @@
 #include "MicroTuning.hpp"
 #include "Monsoon.hpp"
 #include "MonsoonInterchangeExpander.hpp"   // 3C-ii: read paired Interchange CV into weight[]
+#include "MonsoonShophouseMicro.hpp"        // Shophouse Micro (Model Q): scene-front FOLD into weight/cents
 #include "ui/IntertropicalPairing.hpp"      // redDot::assignPairIdT / findPairHubEitherSide (templates)
 #include "ui/VisualExpanderHelpers.hpp"   // redDot::findMonsoonEitherSide
 #include "ui/SvgPanelKit.hpp"
@@ -35,9 +36,33 @@ void MicroTuningModule::process(const ProcessArgs&) {
 
     dotModular::TuningTable& tt = mon->getTuningTable();
     tt.N = n;
-    for (int i = 0; i < n; ++i) {
-        tt.cents[i]  = params[centsParam(n, i)].getValue();
-        tt.weight[i] = params[weightParam(i)].getValue();
+    // BASE tuning source (Model Q, SHOPHOUSE_MICRO_SPEC §45-52): normally THIS Micro's faders author
+    // cents[]+weight[]. But if a Shophouse Micro is on this Monsoon with an ACTIVE loaded front of the
+    // matching degree count, ITS scene is the base instead — we (the single writer of the table) publish
+    // that front's cents/weight. This keeps ONE writer while letting the Shophouse Micro modulate the
+    // tuning+scale, boundary-quantised. Interchange CV then adds on top of whichever base (below).
+    // Discovery is control-rate (the ixScanDiv_ gate below rebuilds it — a per-sample getModuleIds()
+    // is the CA CPU pitfall); the divided block sets boundShophouseMicro_. Read live state each sample.
+    auto* scene = dynamic_cast<MonsoonShophouseMicro*>(boundShophouseMicro_);
+    const bool sceneActive = scene && scene->hasActiveFront() && scene->list.degrees() == n;
+    // CONSERVATION = ENFORCE (SHOPHOUSE_MICRO_SPEC §127): the active .dmtune front's ZERO-weight degrees
+    // are a HARD mask. We capture that mask now (before Interchange CV folds in) so Enforce can re-assert
+    // it AFTER modulation — mirroring Monsoon's locked-out-of-scale rule where an out-of-mask degree reads
+    // zero REGARDLESS of CV (modulation of a blocked note is ignored). GUIDE leaves modulation additive.
+    bool sceneBlocked[dotModular::TuningTable::MAXN] = {};
+    const bool sceneEnforce = sceneActive && scene->enforce();
+    if (sceneActive) {
+        const TuningSlot& f = scene->activeFront();
+        for (int i = 0; i < n; ++i) {
+            tt.cents[i]  = f.cents[i];
+            tt.weight[i] = f.weight[i];
+            sceneBlocked[i] = (f.weight[i] <= 0.f);   // the .dmtune's mask degrees (Enforce reference)
+        }
+    } else {
+        for (int i = 0; i < n; ++i) {
+            tt.cents[i]  = params[centsParam(n, i)].getValue();
+            tt.weight[i] = params[weightParam(i)].getValue();
+        }
     }
     // 3C-ii: fold in CV from any Interchange(s) bound to THIS Micro (single-writer: we own weight[], so
     // we add the mod into our published copy — the stored fader params are untouched). An Interchange's
@@ -47,13 +72,19 @@ void MicroTuningModule::process(const ProcessArgs&) {
     if (ixScanDiv_.getDivision() == 0) ixScanDiv_.setDivision(64);
     if (ixScanDiv_.process()) {
         boundInterchanges_.clear();
+        boundShophouseMicro_ = nullptr;      // also (re)discover the bound Shophouse Micro scene source
         if (APP && APP->engine) {
             for (int64_t id : APP->engine->getModuleIds()) {
-                auto* ix = dynamic_cast<MonsoonInterchangeExpander*>(APP->engine->getModule(id));
-                if (!ix) continue;
-                const bool bound = (ix->followTarget > 0) ? (ix->followTarget == pairId)
-                                 : (redDot::findPairHubEitherSide<MicroTuningModule>(ix) == this);
-                if (bound) boundInterchanges_.push_back(ix);
+                rack::Module* m = APP->engine->getModule(id);
+                if (auto* ix = dynamic_cast<MonsoonInterchangeExpander*>(m)) {
+                    const bool bound = (ix->followTarget > 0) ? (ix->followTarget == pairId)
+                                     : (redDot::findPairHubEitherSide<MicroTuningModule>(ix) == this);
+                    if (bound) boundInterchanges_.push_back(ix);
+                } else if (auto* sm = dynamic_cast<MonsoonShophouseMicro*>(m)) {
+                    // First Shophouse Micro whose nearest host is OUR Monsoon (adjacency binding).
+                    if (!boundShophouseMicro_ && redDot::findMonsoonEitherSide(sm) == mon)
+                        boundShophouseMicro_ = sm;
+                }
             }
         }
     }
@@ -72,11 +103,20 @@ void MicroTuningModule::process(const ProcessArgs&) {
             }
         }
     }
-    // Mod-viz snapshot for the fader arcs: the published (post-mod) weight, and whether it differs from
-    // the fader's set value. The Colonnades/Duo widget draws a blue arc marker from these.
+    // ENFORCE: re-assert the active front's hard mask AFTER Interchange CV. A degree the .dmtune masked
+    // (weight 0) stays silent no matter what an Interchange drove it to — modulation of a blocked note is
+    // IGNORED, exactly as Monsoon's lockScaleNotes zeroes an out-of-scale semitone regardless of its CV.
+    // Under GUIDE (sceneEnforce false) this is skipped, so modulation can lift a masked degree back in.
+    if (sceneEnforce)
+        for (int i = 0; i < n; ++i)
+            if (sceneBlocked[i]) tt.weight[i] = 0.f;
+    // Mod-viz snapshot for the fader arcs (Interchange CV deviation from the fader's set value). When a
+    // Shophouse Micro SCENE is active it replaces the whole mask wholesale (not a per-fader nudge) — the
+    // scene is shown on the Shophouse Micro panel, so suppress per-fader arcs to avoid every fader
+    // lighting an arc. Arcs remain the Interchange-CV indicator when no scene is active.
     for (int i = 0; i < n; ++i) {
         modWeight[i] = tt.weight[i];
-        modActive[i] = std::fabs(tt.weight[i] - params[weightParam(i)].getValue()) > 1e-4f;
+        modActive[i] = !sceneActive && std::fabs(tt.weight[i] - params[weightParam(i)].getValue()) > 1e-4f;
     }
     tt.maskAuthored = true;                    // Micro owns the scale mask this block (Model A)
     tt.recomputeDefaultFlag();                 // cents fast-path (weight doesn't affect the cents map)

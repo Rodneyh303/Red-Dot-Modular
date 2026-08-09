@@ -60,6 +60,9 @@ struct MicroTuningModule : rack::engine::Module {
     // read their live CV every sample. Runtime-only.
     std::vector<rack::Module*> boundInterchanges_;
     rack::dsp::ClockDivider    ixScanDiv_;
+    // Bound Shophouse Micro (Model Q scene source). Same divider-cached discovery — a per-sample
+    // getModuleIds() scan is the CA CPU pitfall. Runtime-only.
+    rack::Module*              boundShophouseMicro_ = nullptr;
     // Per-degree MODULATION VIZ (3C-ii): the published weight AFTER Interchange CV, + whether it
     // differs from the fader's set value. The fader widget draws a mod-arc marker from these (like
     // Monsoon's semitone arcs). Runtime-only; written each block in process().

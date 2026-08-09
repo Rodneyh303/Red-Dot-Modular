@@ -998,6 +998,7 @@ extern Model* modelMonsoonShophouseExpander; // scale expander (12th module)
 extern Model* modelSikit;                      // tuning expander (cents-only, microtonal Phase 1)
 extern Model* modelColonnades;                 // tuning+scale authoring expander (microtonal Phase 2)
 extern Model* modelColonnadesDuo;              // tuning+scale authoring expander, 24-tone (microtonal Phase 3)
+extern Model* modelMonsoonShophouseMicro;      // tuning+scale scene modulator for Colonnades/Duo (.dmtune fronts)
 extern Model* modelLantern;                    // Lantern note-output visualiser
 // West retired (Straits redesign)
 //extern Model* modelMonsoonStraitsSands;        // NEW (Macro): global DNA controls (compact)

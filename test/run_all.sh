@@ -36,6 +36,7 @@ TESTS=(
   "test_SquaresRng|"
   "test_ScalaFile|"
   "test_StepGate|$SE $GS $PE"
+  "test_TuningList|"
   "test_TuningRoundTrip|"
   "test_TuningTable|"
   "test_StoreEditAction|"

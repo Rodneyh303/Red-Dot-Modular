@@ -202,6 +202,16 @@
         "Switch",
         "Expander"
       ]
+    },
+    {
+      "slug": "MonsoonShophouseMicro",
+      "name": "Shophouse Micro",
+      "description": "Tuning+scale scene modulator for Colonnades / Colonnades Duo. Holds up to four .dmtune fronts (two in 24-tone mode); selects the active front from an index CV, committing at phrase boundaries. The active front overwrites the host's tuning+scale for that phrase.",
+      "tags": [
+        "Expander",
+        "Tuning",
+        "Quantizer"
+      ]
     }
   ]
 }

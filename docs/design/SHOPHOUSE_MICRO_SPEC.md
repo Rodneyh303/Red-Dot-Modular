@@ -125,6 +125,13 @@ also has musical sense: A/B maqam modulation, call-and-response between two 24-t
 - Boundary-quantised commit (ScaleList commitAtBoundary equivalent) -- tuning changes land on the loop
   edge, never mid-phrase. THIS IS THE KEY MUSICAL PROPERTY: tuning modulation quantised to phrase edges.
 - CONSERVATION toggle (guide vs enforce) -- still meaningful (the weight mask can guide or enforce).
+  RESOLVED SEMANTICS (Rodney): a front's ZERO-weight degrees are always silent in BOTH modes (the engine
+  never generates or snaps to a weight-0 degree). ENFORCE additionally makes that mask HARD against
+  MODULATION: Interchange CV driving a front-masked degree is IGNORED (re-zeroed after the CV fold),
+  mirroring Monsoon's lockScaleNotes where an out-of-scale note reads zero regardless of CV. Under GUIDE
+  the modulation stays additive, so an Interchange can lift a masked degree back in. Implemented in the
+  Colonnades/Duo Model-Q fold (MicroTuning.cpp) -- re-assert the front mask after the Interchange fold when
+  the bound Shophouse Micro's CONSERVATION = Enforce. No engine/TuningTable change (byte-identical at N=12).
 - Menu-free direct panel (the whole point of Shophouse -- faster than the menu dance).
 
 ## Open design decisions (leans, confirm at build)
