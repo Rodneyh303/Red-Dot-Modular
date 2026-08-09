@@ -101,7 +101,7 @@ void Monsoon::updateExpanderPointers() {
     rack::Module* prevSource = tuningSourceExpander_;
     tuningSourceExpander_ = expanderManager.cachedSikitExpander
                           ? expanderManager.cachedSikitExpander
-                          : expanderManager.cachedMicro12Expander;   // nullptr if neither present
+                          : expanderManager.cachedColonnadesExpander;   // nullptr if neither present
     if (!tuningSourceExpander_ && prevSource) {
         // Source just detached: drop back to equal-division 12-TET (glitchless, next block). This also
         // clears maskAuthored, so Monsoon's own scale system re-owns the mask.
@@ -111,7 +111,7 @@ void Monsoon::updateExpanderPointers() {
     // the mask and its flag are always consistent — avoids an empty-scale race). Here we only ensure it
     // is CLEARED whenever the current claimant is NOT the mask-authoring Micro (a Sikit claimant, or a
     // stale flag after switching Micro->Sikit), so Monsoon's own scale mask resumes authority.
-    if (tuningSourceExpander_ != expanderManager.cachedMicro12Expander)
+    if (tuningSourceExpander_ != expanderManager.cachedColonnadesExpander)
         engine.pe.tuning.maskAuthored = false;
 }
 
@@ -1107,7 +1107,7 @@ void init(rack::Plugin* p) {
 	p->addModel(modelMonsoonChangiT3Expander);
 	p->addModel(modelMonsoonShophouseExpander);
 	p->addModel(modelSikit);                         // tuning expander (microtonal Phase 1)
-	p->addModel(modelMonsoonMicro12);                // tuning+scale authoring (microtonal Phase 2)
+	p->addModel(modelColonnades);                    // tuning+scale authoring (microtonal Phase 2)
 	p->addModel(modelLantern);                       // Lantern note-output visualiser
 	// West retired (Straits redesign): p->addModel(modelMonsoonStraitWestExpander);
 	//p->addModel(modelMonsoonStraitsSands);          // Macro: global DNA
