@@ -330,10 +330,17 @@ float Monsoon::semitoneToVolts(int semitone) {
 
     void Monsoon::rebuildSemiCache_() {
         // Feeds the Mode C/D quantizer cache (activeSemiList). Source of the scale mask + degree count:
-        //   • Micro authoritative → the shared TuningTable's N weights (Colonnades 12 / Duo 24).
+        //   • Micro authoritative → the shared TuningTable's N weights, GATED by enabled[] (out-of-scale
+        //     degrees excluded regardless of their loudness — ENABLED_MASK_BUILD_BRIEF: weight is pure
+        //     loudness now, enabled is the mask). So the quantizer snaps only to in-scale degrees, and an
+        //     in-scale weight-0 degree stays a legitimate snap target.
         //   • otherwise → Monsoon's own 12 ScaleManager-gated faders (byte-identical to legacy).
         if (engine.pe.tuning.maskAuthored) {
-            engine.rebuildScaleCache(engine.pe.tuning.weight, engine.pe.tuning.N);
+            float masked[dotModular::TuningTable::MAXN];
+            const int nD = engine.pe.tuning.N;
+            for (int i = 0; i < nD; ++i)
+                masked[i] = engine.pe.tuning.enabled[i] ? engine.pe.tuning.weight[i] : 0.f;
+            engine.rebuildScaleCache(masked, nD);
         } else {
             float weights[12];
             for (int i = 0; i < 12; ++i) weights[i] = scaleManager->getSemitoneWeight(i, *paramManager);

@@ -65,7 +65,7 @@ JSON, not .scl-with-comment-stashed-weights. Reasons:
 ```json
 {
   "format": "dotmodular.tuning",
-  "version": 1,
+  "version": 2,
   "n": 12,
   "cents":  [0.0, 90.58, 200.0, ...],
   "enabled": [true, false, true, ...],

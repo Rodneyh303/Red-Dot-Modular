@@ -102,6 +102,18 @@ def gen(dark, N=12):
             A(f'  <line x1="{px(cx-half)}" y1="{px(y)}" x2="{px(cx+half)}" y2="{px(y)}"/>')
     A('</g>')
 
+    # ENABLE BAND (ENABLED_MASK_BUILD_BRIEF §5a): a low-contrast strip behind the number row — the
+    # click/swipe-paint gesture area for per-degree scale membership. N-parameterised so it reaches 24
+    # on the Duo. `enable_band` = the rect the widget hit-tests.
+    band_x0 = fader_cx(0) - PITCH * 0.5
+    band_x1 = fader_cx(N - 1) + PITCH * 0.5
+    band_y0 = NUM_Y - 4.0
+    band_h  = 8.0
+    A(f'<rect x="{px(band_x0)}" y="{px(band_y0)}" width="{px(band_x1-band_x0)}" height="{px(band_h)}" '
+      f'rx="{px(1.0)}" fill="{t["ring"]}" opacity="0.16"/>')
+    A(f'<rect id="enable_band" x="{px(band_x0)}" y="{px(band_y0)}" width="{px(band_x1-band_x0)}" '
+      f'height="{px(band_h)}" fill="none" stroke="none"/>')
+
     # Degree-number anchors (widget draws 1..N) BELOW the faders.
     for i in range(N):
         A(f'<circle id="notelabel_{i}" cx="{px(fader_cx(i))}" cy="{px(NUM_Y)}" r="0.5" fill="none" stroke="none"/>')

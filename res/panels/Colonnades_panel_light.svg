@@ -108,6 +108,8 @@
   <line x1="296.16" y1="198.2" x2="306.2" y2="198.2"/>
   <line x1="296.16" y1="209.09" x2="306.2" y2="209.09"/>
 </g>
+<rect x="8.86" y="224.41" width="318.9" height="23.62" rx="2.95" fill="#b0a898" opacity="0.16"/>
+<rect id="enable_band" x="8.86" y="224.41" width="318.9" height="23.62" fill="none" stroke="none"/>
 <circle id="notelabel_0" cx="22.15" cy="236.22" r="0.5" fill="none" stroke="none"/>
 <circle id="notelabel_1" cx="48.72" cy="236.22" r="0.5" fill="none" stroke="none"/>
 <circle id="notelabel_2" cx="75.3" cy="236.22" r="0.5" fill="none" stroke="none"/>
