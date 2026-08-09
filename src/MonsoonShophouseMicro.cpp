@@ -7,6 +7,7 @@
 #include "ui/VisualExpanderHelpers.hpp"   // redDot::findMonsoonEitherSide
 #include "ui/SvgPanelKit.hpp"
 #include "ui/ConnectMark.hpp"
+#include "ui/WrappingMenuLabel.hpp"       // full loaded-slot names in the context menu (spec §480)
 #include "tuning/TuningPreset.hpp"
 
 using namespace rack;
@@ -316,6 +317,25 @@ struct MonsoonShophouseMicroWidget : ModuleWidget,
             it->disabled = mod->list.anyLoaded() && mod->list.degrees() != nn;
             menu->addChild(it);
         }
+        // Full loaded-slot names (spec §480): the panel name band truncates to the narrow window; the
+        // menu has room for the FULL .dmtune name, word-wrapped via redDot::WrappingMenuLabel so a long
+        // name can't blow out the menu width. The ACTIVE front is marked with a leading "▶".
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuLabel("Fronts"));
+        for (int f = 0; f < mod->frontCount(); ++f) {
+            const TuningSlot& slot = mod->list.slot(f);
+            const bool active = (mod->list.active() == f);
+            std::string label = std::string(active ? "\u25B6 " : "   ")
+                              + "Front " + std::to_string(f + 1) + ": "
+                              + (slot.loaded ? (slot.name.empty() ? std::string("(tuning)") : slot.name)
+                                             : std::string("(empty)"));
+            auto* wl = new redDot::WrappingMenuLabel();
+            wl->text = label;
+            wl->maxWidth = 260.f;   // a little wider than the 220 default is fine in a menu
+            menu->addChild(wl);
+        }
+
+        menu->addChild(new MenuSeparator);
         menu->addChild(createMenuItem("Clear all slots", "", [mod]() { mod->list.clear(); }));
     }
 
