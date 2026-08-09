@@ -417,3 +417,53 @@ Corrected format roles:
 
 Cross-ref: supersedes ruling 6's .scl-export line above + COLONNADES_PANEL_LIFT round-4 write rule;
 NOTES knob = COLONNADES round-5.
+
+## CORRECTION: .dmtune does NOT carry weight -- only cents + enabled (Rodney, Shophouse analogy)
+
+By analogy with how Shophouse scales work: a Shophouse scale does NOT change the Monsoon's weight
+faders -- it MASKS (zeroes out-of-scale at read time) but leaves the user's fader values intact
+(non-destructive). The scale is a mask over the mix, not a replacement of the mix.
+
+So .dmtune should carry the TUNING (cents) and the SCALE (enabled mask) -- what notes at what pitches
+are in play -- but NOT weight, because weight is the user's LIVE MIX (the faders they perform with). A
+.dmtune loading its own weights would overwrite the mix, exactly what Shophouse deliberately does NOT
+do to Monsoon.
+
+Loading a .dmtune affects ENABLED + CENTS, NOT weights:
+- cents[]   -> sets the tuning (pitches).
+- enabled[] -> sets the scale mask (which degrees in/out).
+- weight[]  -> UNTOUCHED. The user's faders stay where they left them.
+
+So loading a .dmtune re-tunes and re-scales, but the performance MIX rides through unchanged -- the
+user keeps playing the same fader gestures over a new tuning/scale. Direct analog of Shophouse leaving
+Monsoon's faders alone.
+
+Composes with the three-state model (ruling 6), now with weight coming from the LIVE fader not the file:
+- enabled=false -> out of scale -> zeroed at read, regardless of the fader (mask wins, non-destructive).
+- enabled=true  -> in scale     -> the LIVE fader weight applies (mask lets the mix through).
+So enabled = the mask (from .dmtune), weight = live performance (from faders, NEVER in the file). The
+mask GATES the mix; it does not replace it.
+
+### .dmtune FORMAT v2 (revised -- drop weight)
+```json
+{ "format":"dotmodular.tuning", "version":2, "n":12,
+  "cents":[...], "enabled":[true,false,...], "name":"...", "notes":"..." }
+```
+- REMOVE weight[] from the schema. .dmtune = cents (tuning) + enabled (scale mask) only.
+- v1 (had weight, mask-via-weight==0) migrates: cents kept; enabled[i] = (v1 weight[i] > 0); v1 weight
+  discarded (weights were never meant to be portable).
+
+### Reframing what .dmtune IS (correction to TUNING_PRESET_FORMAT's "full state")
+.dmtune is NOT a full-module-state snapshot -- it deliberately OMITS weights. It is "portable
+tuning+scale, mix stays yours." You load someone's maqam-and-scale WITHOUT inheriting their fader mix.
+Weights remain a property of YOUR patch (saved in the VCV patch as always), not of the portable tuning
+file. The earlier "lossless full state" framing (TUNING_PRESET_FORMAT) was wrong; correct framing:
+portable tuning + scale mask, weights are live/local.
+
+### Shophouse Micro modulation, restated
+Switching .dmtune fronts changes TUNING + SCALE MASK; the Colonnades fader MIX rides through all scene
+changes untouched. You perform the mix while tuning/scale modulates underneath -- exactly analogous to
+the original Shophouse switching scales under the Monsoon faders.
+
+Cross-ref: supersedes the .dmtune weight[] in ruling 6 + TUNING_PRESET_FORMAT.md schema/"full state"
+framing; Shophouse non-destructive mask = SHOPHOUSE_SPEC.md / MonsoonScaleManager.cpp:40-57.
