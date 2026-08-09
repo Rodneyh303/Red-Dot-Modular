@@ -446,3 +446,50 @@ tuning; number-click masks within it. Distinct.
 
 Cross-ref: the number strip (numbered labels below faders, COLONNADES round-2), NOTES knob (round-5),
 enabled/weight split + .scl-by-NOTES (SHOPHOUSE_MICRO_SPEC).
+
+## ROUND 9: number strip = interactive enable band, swipe-paint for one-or-many (Rodney)
+
+Supersedes round-8's per-number-click. The number strip becomes an EXPLICIT INTERACTIVE BAND with a
+swipe-paint gesture for enabling/disabling one OR a range of degrees. Indicator = the faders dim
+(round-8 corrected: dimmed FADER shows disabled, consistent with out-of-scale everywhere).
+
+### The panel band (new element)
+Draw a BAND on the panel BEHIND the number strip (centred on NUM_Y=80.0, spanning the fader X range
+FIRST_X..FIRST_X+(N-1)*PITCH plus a small margin) to visually define it as an active gesture area.
+- A subtle filled/outlined strip (theme namewell/ink tone, low contrast) -- reads as "you can act
+  here" without competing with faders/knobs.
+- Full width of the fader bank so the whole 1..N row is one gesture zone.
+- N-parameterised (spans to 24 in the Duo automatically -- it's just FIRST_X..last fader X).
+- New kit marker: enable_band (the band rect the widget reads for hit-testing the swipe).
+
+### The swipe-paint gesture (one or many)
+On the band (the widget hit-tests within enable_band, maps X -> degree index via the fader pitch):
+- SINGLE CLICK on a degree's number -> toggle that one degree's enabled.
+- HORIZONTAL DRAG across the band -> PAINT a range. The paint STATE is set by the FIRST degree touched:
+  - start on an ENABLED degree -> the drag DISABLES every degree in the swept range.
+  - start on a DISABLED degree -> the drag ENABLES every degree in the swept range.
+  (Standard drag-select "paint" idiom -- first cell sets the paint value, the drag applies it. One
+  gesture both builds a scale (swipe from disabled) and clears one (swipe from enabled). Predictable on
+  mixed ranges because it SETS to one state, doesn't independently flip each.)
+- LIVE feedback: faders dim/undim across the range AS you paint -- the scale mask forms in real time on
+  the fader bank.
+
+### Why this (vs round-8 single-click only)
+24 faders make one-at-a-time toggling tedious, and scales are usually contiguous/patterned runs. Swipe-
+paint builds a 24-tone scale in a couple of swipes; works identically at 12. Composes with NOTES (bulk
+first-N) + swipe (the actual pattern) + single-click (touch-ups).
+
+### Geometry / implementation
+- Band behind the number row at NUM_Y; hit-test X -> degree via round((x - FIRST_X)/PITCH), clamp
+  0..N-1, ignore out-of-band Y.
+- Root (degree 0) stays always-enabled: the paint SKIPS degree 0 (or treats it as a no-op) -- can't
+  disable the tonic. A swipe over it just doesn't change it.
+- Indicator is the FADER dim (ColonnadesLightSlider already dims out-of-scale) -- enabled[] drives the
+  same dim path the scale mask uses. The number itself can also dim for extra clarity but the fader is
+  the primary indicator (consistency with Monsoon+Shophouse out-of-scale dimming).
+- enabled[] is the per-degree bool array (SHOPHOUSE_MICRO_SPEC v2 .dmtune) the swipe writes.
+
+Cross-ref: gen_colonnades.py NUM_Y=80 + notelabel_<i> anchors (round-2), the enabled/weight split +
+fader-dim indicator (SHOPHOUSE_MICRO_SPEC), NOTES bulk-enable (round-5). Supersedes round-8's
+number-click-with-number-dim (gesture kept as a click, but now part of the band's click+drag, and the
+indicator is the fader not the number).
