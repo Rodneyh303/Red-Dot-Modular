@@ -382,3 +382,38 @@ Supersedes the round-4 "active = non-zero weight" rule in COLONNADES_PANEL_LIFT_
 Cross-ref: MicroTuning.cpp:48-50/121 (weight==0-as-mask + maskAuthored bool -- the conflation),
 TUNING_PRESET_FORMAT.md (schema to bump to v2 with enabled[]), COLONNADES_PANEL_LIFT_SPEC round-4/5
 (the "active=non-zero weight" rule this supersedes + the NOTES knob that sets enabled).
+
+## CORRECTION: .scl export is NOTES-based (tuning), NOT enabled-based (mask) (Rodney)
+
+My ruling-6 text said ".scl export = the ENABLED degrees." WRONG -- that conflated two different
+concepts both loosely called "enabled." They are distinct:
+
+- **Degree count / NOTES** -- how many degrees the TUNING HAS (12, 24, or fewer). A degree either
+  EXISTS in the tuning or it doesn't. This is the NOTES knob.
+- **Scale mask / enabled[]** -- within those N existing degrees, which are IN THE CURRENT SCALE vs
+  zeroed out. This is the .dmtune mask layer.
+
+The two formats carry different things:
+- **.scl = the TUNING.** N tuned pitches. Its length = the degree count = the NOTES knob. .scl has NO
+  concept of an in-tuning-but-disabled pitch -- a .scl pitch simply EXISTS. So:
+  - .scl EXPORT = the NOTES-knob degrees' cents. ALL of them, tuning only, MASK IGNORED. A degree
+    that's masked out-of-scale in the current scale still EXISTS in the tuning, so it exports.
+  - .scl READ = sets NOTES + cents (N pitches -> NOTES=N). No mask carried (Scala has none).
+- **.dmtune = the TUNING + a SCALE MASK on top.** cents[] (tuning) + enabled[] (mask) + weight[]. The
+  mask layer is .dmtune-ONLY -- it's what makes .dmtune richer than .scl: a tuning WITH a scale carved
+  into it. This is what Shophouse Micro modulates.
+
+So .scl export is governed by NOTES (the tuning's size), .dmtune by NOTES + enabled[] + weight[].
+
+This SUPERSEDES ruling-6's ".scl export = enabled degrees" AND the round-4 correction's "WRITE =
+active degrees (non-zero weight)": .scl export is by NOTES/degree-count (the tuning), independent of
+both weight AND the enabled mask. The mask and weight are scale/mix concepts that .scl does not carry.
+
+Corrected format roles:
+- NOTES knob    -> tuning size -> .scl export length + the degree count.
+- enabled[]     -> scale mask within the tuning -> .dmtune only (out-of-scale = enabled false).
+- weight[]      -> probability within the scale -> .dmtune only.
+- cents[]       -> the tuning -> both .scl and .dmtune.
+
+Cross-ref: supersedes ruling 6's .scl-export line above + COLONNADES_PANEL_LIFT round-4 write rule;
+NOTES knob = COLONNADES round-5.
