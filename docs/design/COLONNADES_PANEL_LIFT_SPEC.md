@@ -399,3 +399,50 @@ offset the same 50% the knobs are.
 
 This supersedes rounds 4 and 6's wording entirely. Reference: Scalar's top-two-rows grid; apply a
 50% horizontal offset to the lower row.
+
+## ROUND 8: setting ENABLED per degree (the mask, distinct from weight) (Rodney)
+
+The enabled/weight split (SHOPHOUSE_MICRO_SPEC rulings) needs a per-degree ENABLED control distinct
+from the weight fader. Per degree we now have TWO facts: enabled (in/out of scale) and weight (loudness
+within scale). The fader is weight; enabled needs its own affordance.
+
+### DECISION: the NUMBER LABEL below each fader is a clickable enable toggle
+Each fader already has a numbered label (1..N) beneath it (the number strip). Make that number the
+enable toggle:
+- CLICK the number -> toggle that degree's enabled (in/out of scale).
+- Number APPEARANCE shows state: bright/normal = enabled (in scale); dimmed/greyed = disabled (out of
+  scale) -- matching the fader light's own dim-when-out-of-scale, so a disabled degree reads dimmed at
+  BOTH the fader and the number.
+- The fader stays PURELY weight. The number becomes the mask control. Clean separation, zero new panel
+  real estate.
+
+Why this over alternatives:
+- vs clicking the fader light: overloading drag-for-weight + click-for-enable on one widget is fiddly
+  (accidental toggles when grabbing to drag) and undiscoverable. Rejected.
+- vs a dedicated per-degree toggle button row: 12/24 new widgets eat vertical space wanted for faders
+  + cents knobs. Rejected.
+- vs fader-bottom = disabled: that's the CURRENT buggy conflation (weight==0 == out-of-scale) we're
+  explicitly removing. Rejected -- it's the whole reason enabled must be separate.
+
+### Relationship to the NOTES knob (the bulk vs per-degree pair)
+- NOTES knob = BULK enable: NOTES=N enables degrees 1..N, disables the rest (COLONNADES round-5).
+- Click-the-number = PER-DEGREE override on top of that bulk set.
+- Fader = weight within the enabled set.
+Three clean, non-overlapping controls: NOTES (bulk enable), number-click (per-degree enable), fader
+(weight). The number label does double duty -- degree IDENTITY and enable toggle -- without clutter.
+
+### Behaviour recap (with enabled now a first-class per-degree control)
+- enabled=false (dimmed number + dimmed fader): out of scale. Fader zeroed at read, movement no effect.
+- enabled=true, weight=0: in scale, silent. Fader can raise it.
+- enabled=true, weight>0: in scale, sounding.
+Root (degree 0) is always enabled (it's the tonic) -- its number is not a toggle (or is a no-op),
+consistent with root having no cents knob (locked).
+
+### .scl vs enabled reminder (don't reconflate)
+The number-click sets enabled (the SCALE MASK, .dmtune only). It does NOT change NOTES (the tuning
+size / .scl export length). Disabling degree 5 masks it out of the scale but it STILL EXISTS in the
+tuning and STILL exports to .scl (SHOPHOUSE_MICRO_SPEC ".scl export is NOTES-based"). NOTES shrinks the
+tuning; number-click masks within it. Distinct.
+
+Cross-ref: the number strip (numbered labels below faders, COLONNADES round-2), NOTES knob (round-5),
+enabled/weight split + .scl-by-NOTES (SHOPHOUSE_MICRO_SPEC).
