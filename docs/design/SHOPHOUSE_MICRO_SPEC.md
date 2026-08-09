@@ -51,15 +51,53 @@ the Colonnades/Duo faders write. So:
 - Both write the same shared TuningTable, boundary-quantised. The write-authority / WriteLedger work
   (MICROS_ENGINE_CLAUDE_CODE_GUIDE) already contemplates multiple writers; Shophouse Micro is one.
 
-## ONE module, 12-or-24 chosen by connection target (Rodney)
+## Scope constraints (Rodney) -- who Shophouse Micro is and isn't for
+
+- **Sikit uses the REGULAR Shophouse, NOT Shophouse Micro.** Sikit is the tuning-only Phase 1 expander
+  -- it has no weight-fader scale-mask apparatus, so the .dmtune-slot machinery is irrelevant to it.
+  Sikit pairs with the existing 12-TET Shophouse. Shophouse Micro is ONLY for Colonnades / Duo.
+- **Monsoon has EXACTLY ONE of Sikit / Colonnades / Colonnades Duo.** They are mutually exclusive
+  tuning providers, not stackable -- one tuning authority per Monsoon. (So a given Monsoon is either a
+  Sikit rig, a Colonnades rig, or a Duo rig -- never two microtonal authorities at once.)
+- **.dmtune N must match the Micro:** a 12-tone .dmtune works ONLY with Colonnades; a 24-tone .dmtune
+  works ONLY with Duo. Follows from the shared TuningTable's N -- a 12-degree table can't take a
+  24-degree tuning and vice versa.
+
+## 12/24 is an EXPLICIT MODULE MODE -- no mixed-N slot set (Rodney, supersedes connection-only)
+
+CRITICAL correction to "chosen by connection" below: a Shophouse Micro must NEVER hold a mix of 12-tone
+and 24-tone .dmtunes across its slots. All fronts must be the same N. So mode is an EXPLICIT MODULE
+PROPERTY (12 or 24), persisted in module state, and ALL slot loads validate against it -- you cannot
+load a 12 into slot 1 and a 24 into slot 2 even while unattached.
+
+- The module has a stored `mode` (12 or 24). It governs front count (4 at 12, 2 at 24), slot .dmtune
+  degree count, and what a slot load accepts.
+- A slot load of a .dmtune whose n != mode is REJECTED (brief notice). No exceptions -- this is what
+  prevents a mixed-N slot set.
+- Connection still MATTERS but does not silently override: attaching to a Colonnades (N=12) requires/
+  sets 12-mode; attaching to a Duo (N=24) requires/sets 24-mode. If the module already has slots loaded
+  in a mode that mismatches the newly-attached Micro, that's a conflict -> flag it (the module is in
+  24-mode with 24-tone slots but you attached a Colonnades) rather than silently wiping slots.
+- Setting/changing mode when slots are loaded: changing mode invalidates the loaded slots (they're the
+  wrong N) -> require explicit confirm / clear, don't silently discard. Mode is normally set once (by
+  first load or by the connected Micro) and left.
+- If UNATTACHED: mode can be set explicitly (a 12/24 toggle) OR by the first .dmtune loaded (its n sets
+  mode); subsequent loads must match. Either way the INVARIANT holds: one mode, all slots that N.
+
+This supersedes the "first load defines mode / resolve on attach" wording below to the extent they
+conflict -- the binding rule is: ONE explicit mode, ALL slots match it, mismatched loads rejected,
+mode changes with loaded slots require confirm.
+
+## ONE module, 12-or-24 (mode as above; connection informs it) (Rodney)
 Do NOT ship two modules. Shophouse Micro is ONE module that auto-configures its mode from what it
 feeds:
 - Attached to a Colonnades-backed TuningTable (N=12): fronts are 12-tone .dmtunes. FOUR fronts.
 - Attached to a Colonnades Duo-backed TuningTable (N=24): fronts are 24-tone .dmtunes. TWO fronts.
 - It reads the target's N (the TuningTable's tt.N, already the single source of degree count) and
   configures front count + .dmtune degree count accordingly. Same way the Micros already resolve N.
-- Mode is chosen by the CONNECTION, not a user toggle -- if it's feeding a 12-degree table it's in
-  12 mode, a 24-degree table -> 24 mode. If unattached, default/last mode; resolve on attach.
+- Mode is an EXPLICIT MODULE PROPERTY (see the "12/24 is an EXPLICIT MODULE MODE" section above) --
+  connection informs/requires it but does not silently override loaded slots. The invariant is: one
+  mode, all slots that N, mismatched loads rejected. Not purely connection-derived.
 
 Why 4x12 vs 2x24 (forced by the format, not arbitrary): a front's payload is N cents + N weights, so a
 24-degree front is twice the data of a 12-degree one. Four fronts of 24 is a lot of state + panel; two
