@@ -71,9 +71,13 @@ void ModeController::updatePatternInput() {
             // Duo). Copy all N weights; zero the tail so a shrink (e.g. Duo→12-Micro swap) can't leave
             // stale high-degree weights that pickSemitone (summed to tuning.N) would… it won't read the
             // tail, but keep semiWeights clean for the LED/quantizer consumers that scan MAXN.
+            // enabled[] is the MASK (ENABLED_MASK_BUILD_BRIEF): an out-of-scale degree reads 0 REGARDLESS
+            // of its stored weight (which is now pure loudness). In-scale degrees pass their weight, so a
+            // fader turned to 0 stays in-scale and raisable (the round-8/9 freeze bug is gone). Tail 0.
             const int nD = engine.pe.tuning.N;
             for (int i = 0; i < dotModular::TuningTable::MAXN; ++i)
-                currentPatternInput.semiWeights[i] = (i < nD) ? engine.pe.tuning.weight[i] : 0.f;
+                currentPatternInput.semiWeights[i] =
+                    (i < nD && engine.pe.tuning.enabled[i]) ? engine.pe.tuning.weight[i] : 0.f;
         } else {
             // Host path: Monsoon's own 12 faders (byte-identical to the legacy loop). Degrees 12..23
             // stay 0 (N=12), so pickSemitone/quantize behave exactly as before.

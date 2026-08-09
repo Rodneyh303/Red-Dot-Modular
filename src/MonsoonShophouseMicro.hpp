@@ -37,8 +37,14 @@ namespace ShophouseMicroIds {
 struct MonsoonShophouseMicro : Module {
     // The tuning-slot street. degrees() = 12/24 mode; front count = 4 at 12, 2 at 24.
     TuningList list{4, 12};
-    bool  modeConflict = false;    // host tt.N != loaded-slot N (flagged, never auto-wiped). Runtime-only.
+    bool  modeConflict = false;    // host N != loaded-slot N (flagged, never auto-wiped). Runtime-only.
     int   lastActive_  = 0;        // for the widget's active-front lantern
+    // Host resolution (spec §91-100): Shophouse Micro attaches to a Colonnades / Colonnades Duo
+    // (a MicroTuningModule), NOT to Monsoon directly — it reads THAT module's fixed degree count for
+    // its mode (deterministic; tt.N is 12 until the Micro claims). Cached each process() for the widget
+    // (ConnectMark + host-name readout). Runtime-only. `rack::Module*` to avoid a header cycle.
+    rack::Module* hostMicro_ = nullptr;
+    bool attachedToMicro() const { return hostMicro_ != nullptr; }
 
     MonsoonShophouseMicro() {
         using namespace ShophouseMicroIds;

@@ -36,34 +36,35 @@ void MicroTuningModule::process(const ProcessArgs&) {
 
     dotModular::TuningTable& tt = mon->getTuningTable();
     tt.N = n;
-    // BASE tuning source (Model Q, SHOPHOUSE_MICRO_SPEC §45-52): normally THIS Micro's faders author
-    // cents[]+weight[]. But if a Shophouse Micro is on this Monsoon with an ACTIVE loaded front of the
-    // matching degree count, ITS scene is the base instead — we (the single writer of the table) publish
-    // that front's cents/weight. This keeps ONE writer while letting the Shophouse Micro modulate the
-    // tuning+scale, boundary-quantised. Interchange CV then adds on top of whichever base (below).
-    // Discovery is control-rate (the ixScanDiv_ gate below rebuilds it — a per-sample getModuleIds()
-    // is the CA CPU pitfall); the divided block sets boundShophouseMicro_. Read live state each sample.
+    // PUBLISH order (ENABLED_MASK_BUILD_BRIEF §4b/§4d): the Colonnades/Duo ALWAYS writes its authored
+    // BASE — cents[] from the cents params, enabled[] from enabledState[], weight[] from the faders
+    // (pure loudness). weight and enabled are now INDEPENDENT: a fader at 0 stays in-scale (raisable);
+    // out-of-scale is enabled=false only. Because the base is published every block, a Shophouse Micro
+    // override is just a layer ON TOP — DETACH-RESTORE is automatic (remove the layer → base returns),
+    // no snapshot cache needed.
+    for (int i = 0; i < n; ++i) {
+        tt.cents[i]   = params[centsParam(n, i)].getValue();
+        tt.weight[i]  = params[weightParam(i)].getValue();
+        tt.enabled[i] = enabledState[i];
+    }
+    // OVERRIDE (Model Q, SHOPHOUSE_MICRO_SPEC §45-52 + brief §4b): if a Shophouse Micro on this Monsoon
+    // has an ACTIVE front of the matching N, its .dmtune OVERRIDES cents[]+enabled[] (the tuning + scale
+    // mask), boundary-quantised. WEIGHT is NOT overridden — the .dmtune carries no weight; the Colonnades
+    // faders (live mix) ride through unchanged. Discovery is control-rate (the ixScanDiv_ gate below
+    // rebuilds boundShophouseMicro_ — a per-sample getModuleIds() is the CA CPU pitfall).
     auto* scene = dynamic_cast<MonsoonShophouseMicro*>(boundShophouseMicro_);
     const bool sceneActive = scene && scene->hasActiveFront() && scene->list.degrees() == n;
-    // CONSERVATION = ENFORCE (SHOPHOUSE_MICRO_SPEC §127): the active .dmtune front's ZERO-weight degrees
-    // are a HARD mask. We capture that mask now (before Interchange CV folds in) so Enforce can re-assert
-    // it AFTER modulation — mirroring Monsoon's locked-out-of-scale rule where an out-of-mask degree reads
-    // zero REGARDLESS of CV (modulation of a blocked note is ignored). GUIDE leaves modulation additive.
-    bool sceneBlocked[dotModular::TuningTable::MAXN] = {};
-    const bool sceneEnforce = sceneActive && scene->enforce();
     if (sceneActive) {
         const TuningSlot& f = scene->activeFront();
         for (int i = 0; i < n; ++i) {
-            tt.cents[i]  = f.cents[i];
-            tt.weight[i] = f.weight[i];
-            sceneBlocked[i] = (f.weight[i] <= 0.f);   // the .dmtune's mask degrees (Enforce reference)
-        }
-    } else {
-        for (int i = 0; i < n; ++i) {
-            tt.cents[i]  = params[centsParam(n, i)].getValue();
-            tt.weight[i] = params[weightParam(i)].getValue();
+            tt.cents[i]   = f.cents[i];
+            tt.enabled[i] = f.enabled[i];   // the front's scale mask (weight faders untouched)
         }
     }
+    // CONSERVATION = ENFORCE (§127): out-of-scale (enabled=false) is a HARD mask against MODULATION —
+    // re-asserted AFTER the Interchange CV fold so an Interchange can't lift a masked degree. GUIDE
+    // (sceneEnforce false) leaves modulation additive. Only meaningful while a scene is active.
+    const bool sceneEnforce = sceneActive && scene->enforce();
     // 3C-ii: fold in CV from any Interchange(s) bound to THIS Micro (single-writer: we own weight[], so
     // we add the mod into our published copy — the stored fader params are untouched). An Interchange's
     // 12 SEMI_CV × attenuverter drive its targetHalf's 12 degrees; multiple on the same half SUM then
@@ -88,6 +89,7 @@ void MicroTuningModule::process(const ProcessArgs&) {
             }
         }
     }
+    bool ixDrove[dotModular::TuningTable::MAXN] = {};   // degrees an Interchange actually pushed weight>0 into
     for (rack::Module* m : boundInterchanges_) {
         auto* ix = dynamic_cast<MonsoonInterchangeExpander*>(m);
         if (!ix) continue;
@@ -100,16 +102,24 @@ void MicroTuningModule::process(const ProcessArgs&) {
             if (inId < (int)ix->inputs.size() && ix->inputs[inId].isConnected()) {
                 float att = (attId < (int)ix->params.size()) ? ix->params[attId].getValue() : 1.f;
                 tt.weight[deg] = clamp(tt.weight[deg] + (ix->inputs[inId].getVoltage() * att) / 10.f, 0.f, 1.f);
+                if (tt.weight[deg] > 0.f) ixDrove[deg] = true;
             }
         }
     }
-    // ENFORCE: re-assert the active front's hard mask AFTER Interchange CV. A degree the .dmtune masked
-    // (weight 0) stays silent no matter what an Interchange drove it to — modulation of a blocked note is
-    // IGNORED, exactly as Monsoon's lockScaleNotes zeroes an out-of-scale semitone regardless of its CV.
-    // Under GUIDE (sceneEnforce false) this is skipped, so modulation can lift a masked degree back in.
-    if (sceneEnforce)
-        for (int i = 0; i < n; ++i)
-            if (sceneBlocked[i]) tt.weight[i] = 0.f;
+    // CONSERVATION vs a scene's mask (§127, in the enabled[] model). enabled[]=false is the mask and is
+    // already read-gated (ModeController zeroes it). The Guide/Enforce toggle governs whether an
+    // Interchange may LIFT a scene-masked degree back into scale:
+    //   ENFORCE  → the mask is HARD: a masked degree stays out (weight forced 0, enabled stays false);
+    //              modulation of a blocked note is IGNORED (mirrors Monsoon's lockScaleNotes).
+    //   GUIDE    → a masked degree an Interchange actively drove is LIFTED into scale (enabled=true) so
+    //              the modulation can sound. Only meaningful while a scene is active.
+    if (sceneActive) {
+        for (int i = 0; i < n; ++i) {
+            if (tt.enabled[i]) continue;                 // in-scale already: nothing to enforce/lift
+            if (sceneEnforce)          tt.weight[i]  = 0.f;   // hard mask: ignore any modulation
+            else if (ixDrove[i])       tt.enabled[i] = true;  // guide: modulation lifts it into scale
+        }
+    }
     // Mod-viz snapshot for the fader arcs (Interchange CV deviation from the fader's set value). When a
     // Shophouse Micro SCENE is active it replaces the whole mask wholesale (not a per-fader nudge) — the
     // scene is shown on the Shophouse Micro panel, so suppress per-fader arcs to avoid every fader
@@ -140,8 +150,13 @@ void MicroTuningModule::process(const ProcessArgs&) {
 template <typename TLightBase = RedLight>
 struct MicroLightSlider : VCVLightSlider<TLightBase> {
     bool degreeDisabled() {
+        // DIM = OUT OF SCALE (enabled=false), NOT weight==0 (a fader at 0 is in-scale + raisable now).
         auto* pq = this->getParamQuantity();   // non-const (Rack API), so this method isn't const
-        return pq && pq->getValue() <= 1e-4f;   // weight 0 == disabled degree
+        auto* mod = pq ? dynamic_cast<MicroTuningModule*>(pq->module) : nullptr;
+        if (!mod) return false;
+        int deg = pq->paramId - microTuning::weightParam(0);
+        if (deg < 0 || deg >= mod->nDegrees) return false;
+        return !mod->enabledState[deg];
     }
     void draw(const widget::Widget::DrawArgs& args) override {
         const bool dimmed = degreeDisabled();
@@ -262,9 +277,10 @@ struct MicroCentsDisplay : Widget {
     }
 };
 
-// ── MicroNotesControl — zero-state active-degree count readout + drag bulk-set (Model B, ROUND 5).
-// Holds NO independent state: displays the live count of non-zero weights, and on vertical drag
-// bulk-sets the first-N enable pattern (degrees 1..N weight=1, rest 0). ─────────────────────────
+// ── MicroNotesControl — zero-state enabled-degree count readout + drag bulk-set (Model B, ROUND 5).
+// Holds NO independent state: displays the live count of ENABLED degrees (scale membership, NOT the
+// weight faders — enabled/weight are now split), and on vertical drag bulk-sets the first-N enable
+// pattern (degrees 0..N-1 enabled, rest disabled). Weight faders are left ALONE (pure loudness). ──
 struct MicroNotesControl : OpaqueWidget {
     MicroTuningModule* module = nullptr;
     float accum = 0.f;
@@ -273,14 +289,15 @@ struct MicroNotesControl : OpaqueWidget {
         if (!m) return 0;
         int c = 0;
         for (int i = 0; i < m->nDegrees; ++i)
-            if (m->params[weightParam(i)].getValue() > 1e-4f) ++c;
+            if (m->enabledState[i]) ++c;
         return c;
     }
     static void setActiveCount(MicroTuningModule* m, int N) {
         if (!m) return;
         N = clamp(N, 1, m->nDegrees);
         for (int i = 0; i < m->nDegrees; ++i)
-            m->params[weightParam(i)].setValue(i < N ? 1.f : 0.f);
+            m->enabledState[i] = (i < N);   // bulk enable 0..N-1; faders untouched
+        m->enabledState[0] = true;          // root always in-scale
     }
 
     std::shared_ptr<window::Font> ledFont() {
@@ -314,6 +331,58 @@ struct MicroNotesControl : OpaqueWidget {
             accum -= step * 10.f;
         }
     }
+};
+
+// ── MicroEnableBand — the enable/disable gesture strip behind the number row (ENABLED_MASK_BUILD_BRIEF
+// §5b). Single click toggles a degree's enabledState; horizontal drag PAINTS a range to ONE state set
+// by the first degree touched (start-on-enabled → disable swept, else enable). Root (0) is always
+// enabled: paint skips it, click on it is a no-op. Maps local X → degree via the fader-centre list. ─
+struct MicroEnableBand : OpaqueWidget {
+    MicroTuningModule* module = nullptr;
+    std::vector<float> faderX;    // fader centres, box-local px (index = degree)
+    int   paintState = -1;        // -1 none; 0 painting-disable; 1 painting-enable
+    int   lastDeg    = -1;
+    float dragX      = 0.f;       // box-local pointer X, seeded at press + accumulated by drag deltas
+
+    int degreeAt(float xLocal) const {
+        int best = -1; float bestD = 1e9f;
+        for (int i = 0; i < (int)faderX.size(); ++i) {
+            float d = std::fabs(xLocal - faderX[i]);
+            if (d < bestD) { bestD = d; best = i; }
+        }
+        return best;
+    }
+    void onButton(const event::Button& e) override {
+        if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT && module) {
+            dragX = e.pos.x;                          // seed for a possible drag-paint
+            int deg = degreeAt(e.pos.x);
+            if (deg > 0) module->enabledState[deg] = !module->enabledState[deg];   // single-click toggle
+            // (click on root = no-op). A drag that follows repaints via onDragMove.
+            e.consume(this);
+            return;
+        }
+        OpaqueWidget::onButton(e);
+    }
+    void onDragStart(const event::DragStart&) override { paintState = -1; lastDeg = -1; }
+    void onDragMove(const event::DragMove& e) override {
+        if (!module) return;
+        dragX += e.mouseDelta.x;                      // accumulate pointer X in box-local space
+        int deg = degreeAt(dragX);
+        if (deg < 0) return;
+        if (paintState < 0) {
+            if (deg == 0) return;                     // root can't seed a paint direction
+            // The click in onButton already flipped the seed degree; paint the REST of the range to
+            // THAT degree's (now-current) state, so one gesture builds or clears a contiguous scale.
+            paintState = module->enabledState[deg] ? 1 : 0;
+            lastDeg = deg;
+            return;
+        }
+        if (deg != lastDeg) {
+            if (deg > 0) module->enabledState[deg] = (paintState != 0);   // root always skipped
+            lastDeg = deg;
+        }
+    }
+    void onDragEnd(const event::DragEnd&) override { paintState = -1; lastDeg = -1; }
 };
 
 // ── Widget base: shared ctor body ───────────────────────────────────────────────────────────────
@@ -378,6 +447,21 @@ void MicroTuningWidget::build() {
         addChild(nc);
     }
 
+    // ENABLE BAND — click/swipe-paint per-degree scale membership (ENABLED_MASK_BUILD_BRIEF §5b).
+    // Local X → degree via the fader centres so hits line up with the number strip.
+    if (auto* bShape = findNamed("enable_band")) {
+        auto* eb = new MicroEnableBand();
+        eb->module = dynamic_cast<MicroTuningModule*>(module);
+        Rect bb = boundsOf(bShape);
+        eb->box.pos  = bb.pos;
+        eb->box.size = bb.size;
+        eb->faderX.assign(n, 0.f);
+        for (int i = 0; i < n; ++i)
+            if (auto* w = findNamed("param_weight_" + std::to_string(i)))
+                eb->faderX[i] = centerOf(w).x - bb.pos.x;   // band-local
+        addChild(eb);
+    }
+
     // Widget-drawn labels overlay.
     {
         auto* lab = new MicroLabels();
@@ -427,15 +511,18 @@ void MicroTuningWidget::openScalaFilePicker() {
     const int cnt = sf.degreeCount();
     // Scala convention: the LAST pitch is the PERIOD (octave) — dropped; within-octave non-root
     // degrees are the first (cnt-1) listed pitches. Root (degree 0) stays 0 cents, enabled.
+    // .scl sets TUNING (cents) + scale MEMBERSHIP (enabledState): the loaded degrees are in-scale,
+    // the tail (beyond a shorter .scl) is out-of-scale. WEIGHT faders are the user's loudness mix and
+    // are left ALONE (ENABLED_MASK_BUILD_BRIEF: a scale masks, it never moves your faders).
     mod->params[centsParam(n, 0)].setValue(0.f);
-    mod->params[weightParam(0)].setValue(1.f);
+    mod->enabledState[0] = true;
     const int nonRoot = (cnt > 0) ? (cnt - 1) : 0;
     for (int deg = 1; deg < n; ++deg) {
         if (deg <= nonRoot) {
             mod->params[centsParam(n, deg)].setValue(sf.centsFromRoot[deg - 1]);
-            mod->params[weightParam(deg)].setValue(1.f);
+            mod->enabledState[deg] = true;
         } else {
-            mod->params[weightParam(deg)].setValue(0.f);
+            mod->enabledState[deg] = false;
         }
     }
     std::string nm = sf.description;
@@ -461,10 +548,12 @@ void MicroTuningWidget::openScalaSavePicker() {
     if (pathStr.size() < 4 || pathStr.substr(pathStr.size() - 4) != ".scl")
         pathStr += ".scl";
 
+    // .scl = the TUNING. Export ALL non-root degrees' cents, MASK-INDEPENDENT (a masked-out degree
+    // still EXISTS in the tuning, so it exports — ENABLED_MASK_BUILD_BRIEF §53). Not gated on enabled
+    // or weight.
     std::vector<float> cents;
     for (int deg = 1; deg < n; ++deg)
-        if (mod->params[weightParam(deg)].getValue() > 1e-4f)
-            cents.push_back(mod->params[centsParam(n, deg)].getValue());
+        cents.push_back(mod->params[centsParam(n, deg)].getValue());
     cents.push_back(1200.f);   // period (octave)
 
     std::string desc = mod->loadedTuningName.empty() ? std::string(mtWordmark()) + " tuning"
@@ -490,9 +579,11 @@ void MicroTuningWidget::openDmtuneLoadPicker() {
         osdialog_message(OSDIALOG_WARNING, OSDIALOG_OK, p.errorMessage.c_str());
         return;
     }
+    // .dmtune v2 sets cents + scale MEMBERSHIP (enabledState); WEIGHT faders untouched (the preset has
+    // no weight — a scale masks, it never moves your faders). Root always enabled.
     for (int i = 0; i < n; ++i) {
         mod->params[centsParam(n, i)].setValue(i == 0 ? 0.f : p.cents[i]);
-        mod->params[weightParam(i)].setValue(p.weight[i]);
+        mod->enabledState[i] = (i == 0) ? true : p.enabled[i];
     }
     mod->loadedTuningName = !p.name.empty() ? p.name : std::string();
 }
@@ -512,8 +603,8 @@ void MicroTuningWidget::openDmtuneSavePicker() {
     dotModular::TuningPreset p;
     p.n = n;
     for (int i = 0; i < n; ++i) {
-        p.cents[i]  = mod->params[centsParam(n, i)].getValue();
-        p.weight[i] = mod->params[weightParam(i)].getValue();
+        p.cents[i]   = mod->params[centsParam(n, i)].getValue();
+        p.enabled[i] = mod->enabledState[i];   // v2: scale mask, not the loudness faders
     }
     p.name = mod->loadedTuningName;
     if (!dotModular::saveTuningPreset(pathStr, p))

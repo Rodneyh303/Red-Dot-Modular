@@ -3,6 +3,7 @@
 #include <osdialog.h>
 #include "MonsoonShophouseMicro.hpp"
 #include "Monsoon.hpp"
+#include "MicroTuning.hpp"                 // MicroTuningModule (Colonnades/Duo) — the host we attach to
 #include "ui/VisualExpanderHelpers.hpp"   // redDot::findMonsoonEitherSide
 #include "ui/SvgPanelKit.hpp"
 #include "ui/ConnectMark.hpp"
@@ -18,10 +19,18 @@ extern Model* modelMonsoonShophouseMicro;
 // only: resolve the host, reconcile 12/24 mode with the host tt.N (flag conflict, never wipe), and
 // sample INDEX_CV at the phrase boundary → pending → commit (boundary-quantised scene switch). ──────
 void MonsoonShophouseMicro::process(const ProcessArgs&) {
+    // ATTACH via Monsoon's OWN cache (ENABLED_MASK_BUILD_BRIEF §4a): resolve the tuning host the SAME
+    // way Monsoon does — mon->expanderManager.cachedColonnadesExpander (set for BOTH modelColonnades and
+    // modelColonnadesDuo). The cached module's MODEL gives the mode (Colonnades=12 / Duo=24)
+    // DETERMINISTICALLY — tuning.N is downstream (reads 12 until the Micro claims) so we don't infer
+    // from it. Find Monsoon on either side (the Colonnades sits between us and Monsoon; the chain-walk
+    // hops it) for the phrase-boundary edge.
     Monsoon* mon = redDot::findMonsoonEitherSide(this);
-    if (!mon) { modeConflict = false; return; }   // standalone: no host to modulate
+    rack::Module* host = mon ? mon->expanderManager.cachedColonnadesExpander : nullptr;
+    hostMicro_ = host;
+    if (!host || !mon) { modeConflict = false; return; }   // standalone / no complete rig: nothing to modulate
 
-    const int hostN = mon->engine.pe.tuning.N;
+    const int hostN = (host->model == modelColonnadesDuo) ? 24 : 12;   // model → mode (authoritative)
 
     // Mode reconciliation (spec §66/§91): connection INFORMS the mode but never silently wipes slots.
     if (!list.anyLoaded()) {
@@ -59,13 +68,13 @@ json_t* MonsoonShophouseMicro::dataToJson() {
         json_object_set_new(o, "loaded", json_boolean(sl.loaded));
         if (sl.loaded) {
             if (!sl.name.empty()) json_object_set_new(o, "name", json_string(sl.name.c_str()));
-            json_t* jc = json_array(); json_t* jw = json_array();
+            json_t* jc = json_array(); json_t* je = json_array();
             for (int i = 0; i < list.degrees(); ++i) {
                 json_array_append_new(jc, json_real((double)sl.cents[i]));
-                json_array_append_new(jw, json_real((double)sl.weight[i]));
+                json_array_append_new(je, json_boolean(sl.enabled[i]));   // v2: scale mask, not weight
             }
             json_object_set_new(o, "cents", jc);
-            json_object_set_new(o, "weight", jw);
+            json_object_set_new(o, "enabled", je);
         }
         json_array_append_new(slots, o);
     }
@@ -85,18 +94,22 @@ void MonsoonShophouseMicro::dataFromJson(json_t* root) {
             json_t* jl = json_object_get(o, "loaded");
             if (!jl || !json_boolean_value(jl)) continue;
             float cents[dotModular::TuningTable::MAXN] = {};
-            float weight[dotModular::TuningTable::MAXN] = {};
-            auto readArr = [&](const char* key, float* dst) {
-                json_t* a = json_object_get(o, key);
-                if (!json_is_array(a)) return;
+            bool  enabled[dotModular::TuningTable::MAXN] = {};
+            for (int i = 0; i < degrees; ++i) enabled[i] = true;   // default in-scale
+            if (json_t* a = json_object_get(o, "cents"); json_is_array(a))
                 for (int i = 0; i < degrees && i < (int)json_array_size(a); ++i)
-                    dst[i] = (float)json_number_value(json_array_get(a, i));
-            };
-            readArr("cents", cents);
-            readArr("weight", weight);
+                    cents[i] = (float)json_number_value(json_array_get(a, i));
+            // enabled (v2). Older patches persisted "weight" → migrate (enabled = weight>0).
+            if (json_t* a = json_object_get(o, "enabled"); json_is_array(a)) {
+                for (int i = 0; i < degrees && i < (int)json_array_size(a); ++i)
+                    enabled[i] = json_boolean_value(json_array_get(a, i));
+            } else if (json_t* w = json_object_get(o, "weight"); json_is_array(w)) {
+                for (int i = 0; i < degrees && i < (int)json_array_size(w); ++i)
+                    enabled[i] = json_number_value(json_array_get(w, i)) > 0.0;
+            }
             std::string name;
             if (json_t* jn = json_object_get(o, "name")) if (json_is_string(jn)) name = json_string_value(jn);
-            list.loadSlot(s, degrees, cents, weight, name, /*adoptModeIfEmpty=*/false);
+            list.loadSlot(s, degrees, cents, enabled, name, /*adoptModeIfEmpty=*/false);
         }
     }
     if (json_t* jp = json_object_get(root, "pending")) list.setPending((int)json_integer_value(jp));
@@ -128,7 +141,7 @@ static void loadDmtuneInto(MonsoonShophouseMicro* module, int front) {
         size_t dot = base.find_last_of('.');
         nm = (dot == std::string::npos) ? base : base.substr(0, dot);
     }
-    if (!module->list.loadSlot(front, p.n, p.cents, p.weight, nm))
+    if (!module->list.loadSlot(front, p.n, p.cents, p.enabled, nm))
         osdialog_message(OSDIALOG_WARNING, OSDIALOG_OK, "Could not load into this slot (mode mismatch).");
 }
 
@@ -152,8 +165,8 @@ static std::shared_ptr<window::Font> smFont() {
 }
 
 // ── The window fill: N=12 EQUAL alternating black/blue MASK CELLS over one panel window (never piano
-// keys). A cell lights when its degree's .dmtune weight > 0 (active), dims when masked (weight 0) — the
-// same active/masked semantic as the Colonnades faders. Click = load a .dmtune into this front. Also
+// keys). A cell lights when its degree is ENABLED (in scale) in the .dmtune, dims when masked (out of
+// scale) — the same active/masked semantic as the Colonnades faders. Click = load a .dmtune. Also
 // draws the active-front lantern at the window's top-left. ─────────────────────────────────────────
 struct MaskWindowWidget : OpaqueWidget {
     MonsoonShophouseMicro* module = nullptr;
@@ -170,7 +183,7 @@ struct MaskWindowWidget : OpaqueWidget {
         for (int i = 0; i < N; ++i) {
             const int deg = degOff + i;
             const bool even = (i % 2 == 0);                // ALTERNATING black/blue identity (not keys)
-            const bool lit  = slot.loaded && slot.weight[deg] > 0.f;   // active vs masked
+            const bool lit  = slot.loaded && slot.enabled[deg];        // in-scale vs masked
             NVGcolor c = even ? (lit ? nvgRGB(0x34,0x7e,0xe0) : nvgRGB(0x17,0x24,0x38))   // blue
                               : (lit ? nvgRGB(0x8c,0x94,0xa0) : nvgRGB(0x13,0x15,0x1b));  // black
             float x = i * (cw + gap);
@@ -264,6 +277,21 @@ struct MonsoonShophouseMicroWidget : ModuleWidget,
         bindParam<CKSS>("param_conservation", ShophouseMicroIds::CONSERVATION_PARAM);
         bindInput<PJ301MPort>("input_indexcv", ShophouseMicroIds::INDEX_CV_INPUT);
         bindParam<Trimpot>("param_indexcvatt", ShophouseMicroIds::INDEX_CV_ATT_PARAM);
+
+        // Connection mark — lit when attached to a Colonnades/Duo (spec §91-100). Shophouse Micro is NOT
+        // a Monsoon-claimed expander, so it wires to attachedToMicro() rather than isConnectedAndClaimed.
+        if (auto* s = findNamed("light_connect")) {
+            connectMark = new redDot::ConnectMark();
+            Rect b = boundsOf(s);
+            float sz = std::max(b.size.x, b.size.y) * 1.6f; if (sz < 12.f) sz = 12.f;
+            connectMark->box.size = Vec(sz, sz);
+            connectMark->box.pos  = centerOf(s).minus(connectMark->box.size.div(2));
+            connectMark->markPx   = sz * 0.85f;
+            MonsoonShophouseMicro* mm = mod;
+            connectMark->connected  = [mm]() { return mm && mm->attachedToMicro(); };
+            connectMark->lightTheme = [mm]() { Monsoon* h = mm ? redDot::findMonsoonEitherSide(mm) : nullptr; return h && h->lightTheme; };
+            addChild(connectMark);
+        }
 
         if (auto* s = findNamed("wordmark")) {
             // wordmark is widget-drawn in draw()

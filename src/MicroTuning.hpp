@@ -50,6 +50,11 @@ namespace microTuning {
 struct MicroTuningModule : rack::engine::Module {
     const int nDegrees;                    // 12 (Colonnades) or 24 (Colonnades Duo)
     std::string loadedTuningName;          // display-only name of a loaded .scl/.dmtune; persisted
+    // SCALE-MEMBERSHIP mask (ENABLED_MASK_BUILD_BRIEF): per-degree enabled, SEPARATE from the weight
+    // faders (which are pure loudness). enabledState[i]=false => degree out-of-scale (published to
+    // tt.enabled → zeroed at read, fader dimmed). This is authored by the NOTES knob + the panel enable
+    // band. Root (0) is ALWAYS enabled. Persisted. Default all-true for i<nDegrees.
+    bool enabledState[dotModular::TuningTable::MAXN];
     // Pairing HUB id (3C-ii): Interchange expanders bind to this Micro by pairId (reuses the shared
     // redDot::*T pairing — same as Intertropical/Lantern/CA). Self-assigned in process() behind
     // pairChecked; persisted. 0 until assigned. pairColour(pairId) tints the ConnectMark.
@@ -79,6 +84,8 @@ struct MicroTuningModule : rack::engine::Module {
             configParam(microTuning::centsParam(n, i), 0.f, 1200.f, microTuning::defaultCents(i, n),
                         std::string("Cents (") + microTuning::degreeLabel(i, n) + ")", " cents");
         }
+        for (int i = 0; i < dotModular::TuningTable::MAXN; ++i)
+            enabledState[i] = true;   // all degrees in-scale by default (chromatic); NOTES/band edit it
     }
 
     // Root cents-lock + (when claimed) publish cents[]+weight[]+maskAuthored into the shared
@@ -90,12 +97,19 @@ struct MicroTuningModule : rack::engine::Module {
         if (!loadedTuningName.empty())
             json_object_set_new(root, "loadedTuningName", json_string(loadedTuningName.c_str()));
         json_object_set_new(root, "pairId", json_integer(pairId));
+        json_t* je = json_array();          // scale-membership mask (enabled), separate from weight faders
+        for (int i = 0; i < nDegrees; ++i) json_array_append_new(je, json_boolean(enabledState[i]));
+        json_object_set_new(root, "enabled", je);
         return root;
     }
     void dataFromJson(json_t* root) override {
         if (json_t* j = json_object_get(root, "loadedTuningName"))
             loadedTuningName = json_string_value(j);
         if (json_t* p = json_object_get(root, "pairId")) { pairId = (int)json_integer_value(p); pairChecked = true; }
+        if (json_t* je = json_object_get(root, "enabled"); json_is_array(je))
+            for (int i = 0; i < nDegrees && i < (int)json_array_size(je); ++i)
+                enabledState[i] = json_boolean_value(json_array_get(je, i));
+        enabledState[0] = true;             // root always in-scale (invariant)
     }
 };
 
