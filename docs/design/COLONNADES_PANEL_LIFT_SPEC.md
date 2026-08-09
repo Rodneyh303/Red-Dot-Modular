@@ -493,3 +493,63 @@ Cross-ref: gen_colonnades.py NUM_Y=80 + notelabel_<i> anchors (round-2), the ena
 fader-dim indicator (SHOPHOUSE_MICRO_SPEC), NOTES bulk-enable (round-5). Supersedes round-8's
 number-click-with-number-dim (gesture kept as a click, but now part of the band's click+drag, and the
 indicator is the fader not the number).
+
+## ROUND 10: N = TUNING SIZE (greyed faders beyond N), distinct from the enabled mask (Rodney)
+
+Resolves the .dmtune save-n question and corrects the NOTES semantics. THREE per-degree states, THREE
+distinct quantities. The current code has only two (it conflates "beyond the tuning" with "disabled").
+
+### Three quantities
+- **capacity** = nDegrees = 12 (Colonnades) / 24 (Duo). Module-fixed, the array size.
+- **N (tuning size)** = the panel NUMBER control (was "NOTES"). 1..capacity. How many faders are LIVE
+  (non-greyed). This is the value that sizes the tuning. NEW as an explicit persisted value -- the
+  current code has no tuning-size concept (nDegrees is always capacity).
+- **enabled[0..N-1]** = the scale mask WITHIN the tuning, set by the enable band (round 9).
+
+### Three per-degree states (what the panel shows)
+1. **Beyond the tuning** (degree >= N): GREYED OUT fader, not part of the tuning. No cents, not saved,
+   masked in UI. On a Duo at N=17, faders 18..24 are here.
+2. **In tuning, out of scale** (degree < N, enabled=false): DIMMED fader (round 8/9), has cents,
+   zeroed at read, raisable-if-re-enabled. In the tuning, not in the current scale.
+3. **In tuning, in scale** (degree < N, enabled=true): LIT fader, sounding.
+
+So the panel now has THREE visual states: greyed (beyond N), dimmed (in-tuning out-of-scale), lit
+(in scale). Greyed != dimmed -- greyed is "not in the tuning", dimmed is "in the tuning, masked".
+
+### N and the enable band DECOUPLE (behaviour change)
+Currently NOTES = enabled count: setActiveCount does enabledState[i] = (i < N) -- NOTES dictates the
+mask. UNDER THIS MODEL they split:
+- The NUMBER control (N) sets the TUNING SIZE only: faders >= N grey out (leave the tuning); faders
+  < N become live. It does NOT set the enabled mask.
+- The ENABLE BAND (round 9) is the SOLE writer of enabled[] -- which of the live 0..N-1 faders are in
+  scale. Could be all N, could be a sparse subset.
+So N sizes, the band masks-within. N no longer forces "enable first N". (When N grows, the newly-live
+faders default enabled=true; when N shrinks, faders >= N leave the tuning -- their enabled state is
+irrelevant while greyed, preserved if N grows back is optional/nice-to-have.)
+
+### .dmtune SAVE/READ (resolves the n=24 bug)
+- SAVE: write `n = N` (the tuning size), N cents, N enabled flags. Degrees N..capacity-1 are NOT
+  written -- they're not in the tuning. (BUG being fixed: MicroTuning.cpp:597 uses
+  `const int n = mod->nDegrees` (capacity=24) -- change to N, the tuning size.)
+- READ: `n` from the file sets N (tuning size); load n cents + n enabled; faders n..capacity-1 grey out
+  (state 1). A 17-degree .dmtune in a Duo -> 17-note tuning, faders 18..24 greyed.
+- So "what cents beyond N?" DISSOLVES: nothing beyond N is in the file, because the file's n IS N.
+
+### .scl consistency (already correct under this)
+.scl export length = N (the tuning size) -- matches the "NOTES-based .scl" ruling (SHOPHOUSE_MICRO_SPEC).
+.scl carries the N-degree tuning; the enabled mask is .dmtune-only. All consistent now:
+N sizes both .scl and .dmtune; enabled[] is the .dmtune mask.
+
+### Implementation delta
+- Add a persisted tuning-size N (int, 1..capacity) to MicroTuningModule -- the NUMBER control writes it.
+- NUMBER control (MicroNotesControl): drag sets N (tuning size), NOT the enabled vector. Rename intent
+  from "active enabled count" to "tuning size / live fader count".
+- Faders >= N: greyed (new visual state, distinct from the dimmed out-of-scale state). Widget checks
+  deg >= mod->N -> greyed.
+- Enable band writes enabled[] within 0..N-1 only (can't enable a greyed/beyond-N degree).
+- .dmtune save: p.n = N (not nDegrees). .dmtune load: set N from file n.
+- tt publish / Monsoon read: the tuning the engine sees is the first N degrees (tuning.N = N, not
+  capacity). Confirm the engine's tuning.N tracks the tuning-size N, not the module capacity.
+
+Cross-ref: MicroTuning.cpp:284-305 (MicroNotesControl -- change enabled-count to tuning-size),
+:597/607 (save n -> N), round 9 (enable band writes enabled within N), SHOPHOUSE_MICRO_SPEC (.scl by N).
