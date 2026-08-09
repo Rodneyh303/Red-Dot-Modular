@@ -1,54 +1,45 @@
 #!/usr/bin/env python3
-"""Colonnades (Micro-12) — tuning + scale AUTHORING expander panel.
+"""Colonnades (Micro-12) — tuning + scale AUTHORING expander panel. N-PARAMETERISED (Option A).
 
-TRUE LIFT of Monsoon's note-fader block (COLONNADES_PANEL_LIFT_SPEC.md + ROUND 2). The faders reuse
+TRUE LIFT of Monsoon's note-fader block (COLONNADES_PANEL_LIFT_SPEC.md + ROUND 2/7). The faders reuse
 Monsoon's EXACT geometry so the two panels align pixel-for-pixel when stacked:
-  - X = 7.5 + i*9.0 mm  (Monsoon SEMI fader pitch, embed_monsoon.py:6)
+  - X = FIRST_X + i*PITCH mm  (Monsoon SEMI fader pitch 9.0, X0 7.5)
   - travel top 45mm → bottom 74.5mm, centre 59.75mm  (MonsoonWidget.hpp SL_TOP=45, SLH=29.5)
-  - level-marker TICKS lifted from fader_level_markers.py (Befaco-Octaves style: one column per gap,
-    long/solid/uniform, single-sourced from the fader X list so ticks can't drift)
-Faders are NUMBERED 1..12 (widget-drawn), BELOW the faders (Monsoon step-strip position). Degrees, not
-notes. Below the numbers the per-degree CENTS knobs are staggered on two rows (zigzag); root (0) has
-no cents knob — locked plate. The fader is a ColonnadesLightSlider<GreenRedLight>: grey when off,
-red when the degree plays (light driven by the module from the host's semiLedBrightness).
+  - level-marker TICKS (Befaco-Octaves style: one column per gap, single-sourced from the fader X list)
+Faders NUMBERED 1..N (widget-drawn), BELOW the faders. Below the numbers the per-degree CENTS knobs
+are staggered on two rows (zigzag); root (0) has no cents knob — locked plate. Fader is a
+MicroLightSlider<GreenRedLight>: grey when off, red when the degree plays.
 
-nanosvg-safe: solid fills/strokes only. TEXT (wordmark, 1..12) is widget-drawn (ColonnadesLabels).
+EVERY element is a function of N (COLONNADES_DUO_PANEL_SPEC.md): Colonnades = gen(N=12); Colonnades
+Duo = gen(N=24) — literally two Colonnades fader blocks end-to-end at the SAME 9.0mm pitch. Do NOT
+hardcode 12 / 114 / 11 anywhere — use N / W / (N-1). See gen_colonnades_duo.py (imports gen()).
 
-Kit markers: param_weight_<i> (fader, 0..11), param_cents_<i> (1..11), notelabel_<i> (below faders),
-             wordmark, light_connect.
+nanosvg-safe: solid fills/strokes only. TEXT (wordmark, 1..N) is widget-drawn (MicroLabels).
+
+Kit markers: param_weight_<i> (fader, 0..N-1), param_cents_<i> (1..N-1), notelabel_<i> (below faders),
+             cents_display, notes_ctrl, wordmark, light_connect.
 """
 
-N = 12
-PITCH = 9.0
-FIRST_X = 7.5                         # EXACT Monsoon SEMI X0 (7.5 + i*9.0) — for stacking alignment
-def fader_cx(i): return FIRST_X + i * PITCH
+# ── Geometry constants — IDENTICAL for Colonnades and Colonnades Duo (only N differs) ────────────
+PITCH   = 9.0                         # EXACT Monsoon SEMI pitch — faders tile at the same pitch
+FIRST_X = 7.5                         # EXACT Monsoon SEMI X0 (stacking + two-halves continuity)
+H       = 128.5
+S       = 75 / 25.4
 
-SIDE_MARGIN = 6.5
-W = (FIRST_X + (N - 1) * PITCH) + FIRST_X    # symmetric right margin == FIRST_X → 7.5+99+7.5 = 114mm
-H = 128.5
-S = 75 / 25.4
-PW, PH = round(W*S, 2), round(H*S, 2)
-HP = round(W / 5.08, 2)
-def px(v): return round(v*S, 2)
-
-# Fader travel (Monsoon SL_TOP=45, bottom=74.5, centre 59.75). The VCVLightSlider widget owns the
-# actual handle geometry via its anchor + SVG; these are for the TRACK + TICKS the panel draws.
 FADER_TOP = 45.0
 FADER_BOT = 74.5
 FADER_CY  = 59.75
-TRACK_HALF = 1.6                      # visible track half-width (matches fader_level_markers TRACK_HALF_MM)
 
-# Level ticks — lifted from fader_level_markers.py: 9 rows across the travel, outermost 2 dropped → 7.
-TICK_LEVELS = 9
+TICK_LEVELS    = 9
 TICK_DROP_ENDS = True
-TICK_MM = 3.4
+TICK_MM        = 3.4
 
-WORDMARK_Y = 11.5
-NUM_Y      = 80.0                     # degree-number strip BELOW the faders (bottom 74.5 + gap)
+WORDMARK_Y  = 11.5
+NUM_Y       = 80.0                    # degree-number strip BELOW the faders
 CENTS_ROW_A = 92.0                    # even-index cents knobs
 CENTS_ROW_B = 101.0                   # odd-index cents knobs (staggered lower)
-KNOB_R     = 3.0
-CONNECT_Y  = 120.0
+KNOB_R      = 3.0
+CONNECT_Y   = 120.0
 
 THEMES = {
     "dark":  dict(bg="#16181c", red="#d4001a", ink="#f0f0f0", gold="#c8960c",
@@ -59,7 +50,11 @@ THEMES = {
                   fadertrack="#cdd2d8", tick="#999999", lockwell="#e8e0cc", sub="#5a6470"),
 }
 
-def gap_centres_mm():
+def px(v): return round(v*S, 2)
+def fader_cx(i): return FIRST_X + i * PITCH
+def panel_w(N): return (FIRST_X + (N - 1) * PITCH) + FIRST_X   # symmetric margin == FIRST_X
+
+def gap_centres_mm(N):
     xs = [fader_cx(i) for i in range(N)]
     return [(xs[i] + xs[i+1]) / 2.0 for i in range(N - 1)]
 
@@ -67,17 +62,18 @@ def tick_ys_mm():
     ys = [FADER_TOP + (FADER_BOT - FADER_TOP) * k / (TICK_LEVELS - 1) for k in range(TICK_LEVELS)]
     return ys[1:-1] if TICK_DROP_ENDS else ys
 
-def gen(dark):
+def gen(dark, N=12):
     t = THEMES["dark" if dark else "light"]
+    W = panel_w(N)
+    PW, PH = round(W*S, 2), round(H*S, 2)
     o = []; A = o.append
     A(f'<svg xmlns="http://www.w3.org/2000/svg" width="{PW}" height="{PH}" viewBox="0 0 {PW} {PH}">')
     A(f'<rect width="{PW}" height="{PH}" fill="{t["bg"]}"/>')
     A(f'<rect x="0" y="0" width="{PW}" height="{px(1.2)}" fill="{t["red"]}"/>')
     A(f'<circle id="wordmark" cx="{px(W/2)}" cy="{px(WORDMARK_Y)}" r="0.5" fill="none" stroke="none"/>')
 
-    # Cents LED display well — a single recessed dark panel in the band above the faders, spanning the
-    # fader width. The widget draws all 12 cents values (DSEG 7-seg) inside, at each fader's X, on two
-    # staggered rows (paralleling the cents-knob stagger). Emits a `cents_display` bounds marker.
+    # Cents LED display well — a single recessed dark panel above the faders, spanning the fader width.
+    # The widget draws all N cents values (DSEG) inside on two staggered rows (ROUND 7). `cents_display`.
     disp_x0 = fader_cx(0) - PITCH * 0.5
     disp_x1 = fader_cx(N - 1) + PITCH * 0.5
     disp_y0, disp_y1 = 16.0, 42.5
@@ -98,15 +94,15 @@ def gen(dark):
           f'stroke="{t["ring"]}" stroke-width="0.4"/>')
         A(f'<circle id="param_weight_{i}" cx="{px(cx)}" cy="{px(FADER_CY)}" r="0.5" fill="none" stroke="none"/>')
 
-    # Level-marker ticks (lift): one column per GAP between faders, uniform, drawn past the tracks.
+    # Level-marker ticks: one column per GAP between faders, uniform.
     half = TICK_MM / 2.0
     A(f'<g stroke="{t["tick"]}" stroke-width="1.0" opacity="0.75" fill="none" stroke-linecap="round">')
-    for cx in gap_centres_mm():
+    for cx in gap_centres_mm(N):
         for y in tick_ys_mm():
             A(f'  <line x1="{px(cx-half)}" y1="{px(y)}" x2="{px(cx+half)}" y2="{px(y)}"/>')
     A('</g>')
 
-    # Degree-number anchors (widget draws 1..12) BELOW the faders.
+    # Degree-number anchors (widget draws 1..N) BELOW the faders.
     for i in range(N):
         A(f'<circle id="notelabel_{i}" cx="{px(fader_cx(i))}" cy="{px(NUM_Y)}" r="0.5" fill="none" stroke="none"/>')
 
@@ -126,9 +122,7 @@ def gen(dark):
           f'stroke="{t["gold"]}" stroke-width="0.5"/>')
         A(f'<circle id="param_cents_{i}" cx="{px(cx)}" cy="{px(cy)}" r="0.5" fill="none" stroke="none"/>')
 
-    # NOTES control — a small DSEG readout well (draggable to bulk-set the active-degree count). It
-    # holds no stored value; the widget derives + draws the live active count and, on drag, writes the
-    # first-N enable pattern into the weight faders. Sits at the base, left of the connect light.
+    # NOTES control — DSEG readout well (drag to bulk-set active-degree count, 1..N). Base, left of connect.
     nctl_x, nctl_y = W * 0.5 - 22.0, CONNECT_Y
     nw, nh = 14.0, 6.5
     A(f'<rect x="{px(nctl_x-nw/2-0.6)}" y="{px(nctl_y-nh/2-0.6)}" width="{px(nw+1.2)}" height="{px(nh+1.2)}" '
@@ -146,13 +140,19 @@ def gen(dark):
     A('</svg>')
     return "\n".join(o)
 
-def main():
+# Render a given N to res/panels/<prefix>_panel_{dark,light}.svg. Shared by both generators.
+def render(N, prefix):
     import os
     out = os.path.join(os.path.dirname(__file__), "..", "res", "panels")
-    for dark, name in [(True, "Colonnades_panel_dark.svg"), (False, "Colonnades_panel_light.svg")]:
+    W = panel_w(N)
+    HP = round(W / 5.08, 2)
+    for dark, name in [(True, f"{prefix}_panel_dark.svg"), (False, f"{prefix}_panel_light.svg")]:
         with open(os.path.join(out, name), "w") as fh:
-            fh.write(gen(dark))
-        print(f"Colonnades {'dark' if dark else 'light'}: res/panels/{name}  ({HP}HP, {PW}x{PH}px)")
+            fh.write(gen(dark, N))
+        print(f"{prefix} {'dark' if dark else 'light'}: res/panels/{name}  ({HP}HP, N={N})")
+
+def main():
+    render(12, "Colonnades")
 
 if __name__ == "__main__":
     main()

@@ -294,7 +294,7 @@ int Monsoon::pickSemitoneWeighted() {
     float w[12];
     for(int i=0; i<12; ++i) w[i] = getSemitoneParam(i);
     int idx = engine.getMelodyStep();
-    return engine.pe.pickSemitone(w, melodyRandom[idx]);
+    return engine.pe.pickSemitone(w, 12, melodyRandom[idx]);   // Monsoon's own 12 faders → n=12
 }
 
 // generate a pitch V in 1V/oct format, returnh semitone via out parameter
@@ -329,9 +329,16 @@ float Monsoon::semitoneToVolts(int semitone) {
     void  Monsoon::redrawMelodyPattern() { engine.pe.redrawMelody(modeController->currentPatternInput); }
 
     void Monsoon::rebuildSemiCache_() {
-        float weights[12];
-        for (int i = 0; i < 12; ++i) weights[i] = scaleManager->getSemitoneWeight(i, *paramManager);
-        engine.rebuildScaleCache(weights);
+        // Feeds the Mode C/D quantizer cache (activeSemiList). Source of the scale mask + degree count:
+        //   • Micro authoritative → the shared TuningTable's N weights (Colonnades 12 / Duo 24).
+        //   • otherwise → Monsoon's own 12 ScaleManager-gated faders (byte-identical to legacy).
+        if (engine.pe.tuning.maskAuthored) {
+            engine.rebuildScaleCache(engine.pe.tuning.weight, engine.pe.tuning.N);
+        } else {
+            float weights[12];
+            for (int i = 0; i < 12; ++i) weights[i] = scaleManager->getSemitoneWeight(i, *paramManager);
+            engine.rebuildScaleCache(weights, 12);
+        }
     }
 
     float Monsoon::quantizeToScale(float vIn) { return engine.quantize(vIn); }
@@ -1108,6 +1115,7 @@ void init(rack::Plugin* p) {
 	p->addModel(modelMonsoonShophouseExpander);
 	p->addModel(modelSikit);                         // tuning expander (microtonal Phase 1)
 	p->addModel(modelColonnades);                    // tuning+scale authoring (microtonal Phase 2)
+	p->addModel(modelColonnadesDuo);                 // tuning+scale authoring, 24-tone (microtonal Phase 3)
 	p->addModel(modelLantern);                       // Lantern note-output visualiser
 	// West retired (Straits redesign): p->addModel(modelMonsoonStraitWestExpander);
 	//p->addModel(modelMonsoonStraitsSands);          // Macro: global DNA

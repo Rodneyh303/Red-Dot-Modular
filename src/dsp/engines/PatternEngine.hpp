@@ -33,7 +33,10 @@ static inline T pe_clamp(T v, T lo, T hi){ return v<lo?lo:(v>hi?hi:v); }
 // ── Input snapshot — filled by MeloDicer::process() each block ────────────────
 // All knob/CV values are pre-read so PatternEngine is Rack-port-free.
 struct PatternInput {
-    float semiWeights[12]  = {};  // semitone fader weights 0..1 (with CV applied)
+    // Per-DEGREE weights 0..1 (with CV applied). Sized MAXN (24) for Micro-24 (Phase 3); only the
+    // first tuning.N entries are read (pickSemitone is N-bounded). At N=12 this is the legacy 12-fader
+    // mask, byte-identical (the tail 12..23 stays 0 and is never summed).
+    float semiWeights[dotModular::TuningTable::MAXN] = {};
     float restProb         = 0.1f;
     float variationAmount  = 0.5f;
     // LOCK Phase 2 (LOCK_SEMANTICS §9): mono BigFive LEGATO + NOTE_VALUE + ACCENT staged on the
@@ -560,8 +563,10 @@ struct PatternEngine {
 
     // ── Core generation ───────────────────────────────────────────────────────
 
-    // Pick a semitone (0..11) weighted by fader values using a provided random value.
-    int pickSemitone(const float weights[12], float r_val);
+    // Pick a DEGREE (0..n-1) weighted by fader values using a provided random value. `n` is the active
+    // degree count (tuning.N): 12 for the built-in/Sikit/Micro-12, up to 24 for Micro-24. At n=12 this
+    // is bit-identical to the legacy pickSemitone (same sum + walk + float-safety return).
+    int pickSemitone(const float weights[], int n, float r_val);
 
     // Generate a pitch voltage (1V/oct, 0..5V) and return the semitone.
     float genPitch(int& outSemitone, const PatternInput& in);

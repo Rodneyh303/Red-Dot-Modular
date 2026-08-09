@@ -122,7 +122,7 @@ int main(){
     TEST("All weights zero → returns -1", {
         auto pe=fresh();
         float w[12]={};
-        EXPECT_EQ(pe.pickSemitone(w, pe.unitMelody()), -1);
+        EXPECT_EQ(pe.pickSemitone(w, 12, pe.unitMelody()), -1);
     });
 
     TEST("Single weight → always picks that semitone", {
@@ -130,21 +130,21 @@ int main(){
         float w[12]={};
         for(int target=0;target<12;++target){
             std::fill(w,w+12,0.f); w[target]=1.f;
-            for(int t=0;t<20;++t) EXPECT_EQ(pe.pickSemitone(w, pe.unitMelody()), target);
+            for(int t=0;t<20;++t) EXPECT_EQ(pe.pickSemitone(w, 12, pe.unitMelody()), target);
         }
     });
 
     TEST("Result always in 0..11", {
         auto pe=fresh(0.5f);
         float w[12]; std::fill(w,w+12,1.f);
-        for(int t=0;t<100;++t){ int s=pe.pickSemitone(w, pe.unitMelody()); EXPECT(s>=0&&s<12); }
+        for(int t=0;t<100;++t){ int s=pe.pickSemitone(w, 12, pe.unitMelody()); EXPECT(s>=0&&s<12); }
     });
 
     TEST("Higher-weight semitone picked more often over many trials", {
         auto pe=fresh(7.f,3.f);
         float w[12]={}; w[0]=0.1f; w[7]=0.9f;
         int cnt[12]={};
-        for(int t=0;t<1000;++t) ++cnt[pe.pickSemitone(w, pe.unitMelody())];
+        for(int t=0;t<1000;++t) ++cnt[pe.pickSemitone(w, 12, pe.unitMelody())];
         EXPECT(cnt[7] > cnt[0]*3);
     });
 
@@ -153,7 +153,7 @@ int main(){
         auto pe=fresh();
         pe.seedMelodyPhilox(0.f);
         float w[12]={}; w[5]=1.f;
-        int s=pe.pickSemitone(w, pe.unitMelody());
+        int s=pe.pickSemitone(w, 12, pe.unitMelody());
         EXPECT_EQ(s,5);
     });
 

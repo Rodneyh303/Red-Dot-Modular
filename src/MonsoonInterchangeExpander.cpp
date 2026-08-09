@@ -4,6 +4,8 @@
 #include "ui/RedScrew.hpp"
 #include "ui/ConnectMark.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
+#include "MicroTuning.hpp"                // MicroTuningModule (pairing hub for the Follow menu)
+#include "ui/IntertropicalPairing.hpp"    // redDot::presentPairIdsT / pairColour
 
 using namespace rack;
 
@@ -118,6 +120,50 @@ addInput(createInputCentered<PJ301MPort>(Vec(222.0f, octY), module, MonsoonIds::
             // Octave row guides
             nvgText(args.vg, knobX - 9.0f, octY, "-", nullptr);
             nvgText(args.vg, knobX + 9.0f, octY, "+", nullptr);
+        }
+    }
+
+    // 3C-ii: Follow a Colonnades/Duo MICRO by pairId + choose which HALF (12 of 24) these CV inputs
+    // drive. Auto = the nearest Micro either side. Half is only meaningful for a 24-degree Micro.
+    void appendContextMenu(Menu* menu) override {
+        auto* mod = dynamic_cast<MonsoonInterchangeExpander*>(module);
+        if (!mod) return;
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuLabel("Modulate a Colonnades / Duo"));
+
+        struct FollowItem : MenuItem {
+            MonsoonInterchangeExpander* m; int target;
+            void onAction(const event::Action&) override { m->followTarget = target; }
+        };
+        auto* autoItem = new FollowItem();
+        autoItem->m = mod; autoItem->target = 0;
+        autoItem->text = "Follow: Auto (nearest)";
+        autoItem->rightText = CHECKMARK(mod->followTarget == 0);
+        menu->addChild(autoItem);
+        for (int pid : redDot::presentPairIdsT<MicroTuningModule>()) {
+            auto* it = new FollowItem();
+            it->m = mod; it->target = pid;
+            // Name each hub by its actual module (Colonnades / Colonnades Duo) + degree count.
+            auto* hub = redDot::resolveFollowedT<MicroTuningModule>(mod, pid);
+            std::string name = (hub && hub->model) ? hub->model->name
+                                                   : std::string("Colonnades");
+            it->text = "Follow: " + name + " #" + std::to_string(pid)
+                     + (hub ? " (" + std::to_string(hub->nDegrees) + " deg)" : "");
+            it->rightText = CHECKMARK(mod->followTarget == pid);
+            menu->addChild(it);
+        }
+
+        struct HalfItem : MenuItem {
+            MonsoonInterchangeExpander* m; int half;
+            void onAction(const event::Action&) override { m->targetHalf = half; }
+        };
+        menu->addChild(createMenuLabel("Target half (Colonnades Duo)"));
+        for (int h = 1; h <= 2; ++h) {
+            auto* it = new HalfItem();
+            it->m = mod; it->half = h;
+            it->text = (h == 1) ? "Half 1 — degrees 1–12" : "Half 2 — degrees 13–24";
+            it->rightText = CHECKMARK(mod->targetHalf == h);
+            menu->addChild(it);
         }
     }
 };

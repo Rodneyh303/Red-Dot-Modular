@@ -90,7 +90,10 @@ void GateState::tick(int p16) {
         holdRemain -= 1.f;
         if (holdRemain <= 0.f) holdRemain = 0.f;
     }
-    for (int i = 0; i < 12; ++i) {
+    // Fade ALL per-degree flash timers (MAXN, not 12) — else Micro-24 degrees 12..23 that play never
+    // decay and their faders stay lit red (the marks are set MAXN-wide in markSemi). At N=12 the tail
+    // is always 0, so this is behaviourally identical there.
+    for (int i = 0; i < dotModular::TuningTable::MAXN; ++i) {
         if (semiPlayRemain[i] > 0.f) {
             semiPlayRemain[i] -= 1.f;
             if (semiPlayRemain[i] < 0.f) semiPlayRemain[i] = 0.f;
@@ -130,16 +133,18 @@ void GateState::reset() {
     lastSemitone    = -1;
     slurForward     = false;
     gatePulse.reset();
-    for (int i = 0; i < 12; ++i) semiPlayRemain[i] = 0.f;
+    for (int i = 0; i < dotModular::TuningTable::MAXN; ++i) semiPlayRemain[i] = 0.f;
 }
 
 // ── LED helper ────────────────────────────────────────────────────────────────
+// Degree index bound is MAXN (24) now, not 12 — a Micro-24 degree 12..23 flashes its own fader. At
+// N=12 nothing ever marks a degree >= 12, so this is behaviourally identical there.
 float GateState::semiLedBrightness(int semitone) const {
-    if (semitone < 0 || semitone >= 12) return 0.f;
+    if (semitone < 0 || semitone >= dotModular::TuningTable::MAXN) return 0.f;
     return gs_clamp(semiPlayRemain[semitone] * 0.25f, 0.f, 1.f);
 }
 
 void GateState::markSemi(int semitone, float dur) {
-    if (semitone >= 0 && semitone < 12)
+    if (semitone >= 0 && semitone < dotModular::TuningTable::MAXN)
         semiPlayRemain[semitone] = std::max(semiPlayRemain[semitone], dur);
 }

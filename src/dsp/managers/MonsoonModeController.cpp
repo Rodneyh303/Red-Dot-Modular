@@ -66,13 +66,22 @@ void ModeController::updatePatternInput() {
         // exactly as before → byte-identical. The pitchLive latch (lock) is unchanged: we only swap the
         // SOURCE of the per-degree weight, not when it's sampled.
         const bool micro = engine.pe.tuning.maskAuthored;
-        for (int i = 0; i < 12; ++i) {
-            if (micro) {
-                currentPatternInput.semiWeights[i] = engine.pe.tuning.weight[i];
-            } else {
+        if (micro) {
+            // A mask-authoring Micro owns tuning.N degrees (12 for Colonnades, up to 24 for Colonnades
+            // Duo). Copy all N weights; zero the tail so a shrink (e.g. Duo→12-Micro swap) can't leave
+            // stale high-degree weights that pickSemitone (summed to tuning.N) would… it won't read the
+            // tail, but keep semiWeights clean for the LED/quantizer consumers that scan MAXN.
+            const int nD = engine.pe.tuning.N;
+            for (int i = 0; i < dotModular::TuningTable::MAXN; ++i)
+                currentPatternInput.semiWeights[i] = (i < nD) ? engine.pe.tuning.weight[i] : 0.f;
+        } else {
+            // Host path: Monsoon's own 12 faders (byte-identical to the legacy loop). Degrees 12..23
+            // stay 0 (N=12), so pickSemitone/quantize behave exactly as before.
+            for (int i = 0; i < 12; ++i)
                 currentPatternInput.semiWeights[i] =
                     mainModule ? mainModule->getSemitoneParam(i) : paramManager.getSemitone(i);
-            }
+            for (int i = 12; i < dotModular::TuningTable::MAXN; ++i)
+                currentPatternInput.semiWeights[i] = 0.f;
         }
     }
     if (rhythmLive) {   // BigFive LATCH — hold REST/VARIATION/LEGATO/NOTE_VALUE under lock

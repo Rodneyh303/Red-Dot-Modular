@@ -102,6 +102,11 @@ struct MonsoonLightSlider : VCVLightSlider<TLightBase> {
               this->paramId >= MonsoonIds::SEMI0_PARAM && this->paramId < MonsoonIds::SEMI0_PARAM + 12 &&
               m->modViz.pitchLane[this->paramId - MonsoonIds::SEMI0_PARAM]))
             return;
+        // A Micro (Colonnades/Duo) owns the scale mask this block → Monsoon's SEMI faders are delegated
+        // (greyed, not read for pitch). Any Interchange bound to that Micro modulates the MICRO's faders,
+        // not these — so do NOT draw a semitone mod-arc on Monsoon (it would wrongly appear here). Octave
+        // arcs use a separate path and stay (octave modulation is still tuning-native under a Micro).
+        if (m->engine.pe.tuning.maskAuthored) return;
         // Conservation-gated, fader-specific mod suppression (automatic — on top of the existing
         // global modVizMonsoonMelody context-menu choice). When Conservation is ON, an out-of-
         // scale note is silenced (read as 0), so showing its modulation is misleading (movement

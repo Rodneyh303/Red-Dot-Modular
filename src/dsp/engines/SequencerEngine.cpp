@@ -131,7 +131,7 @@ void SequencerEngine::reset() {
     ppqnSetting = 24;
     noteVariationMask = 0b111;
     activeSemiCount = 0;
-    for (int i = 0; i < 12; ++i) faderCache[i] = -1.f;
+    for (int i = 0; i < dotModular::TuningTable::MAXN; ++i) faderCache[i] = -1.f;
     lastQuantIn = -100.f;
     lastQuantOut = 0.f;
 }
@@ -328,9 +328,9 @@ int SequencerEngine::getNoteLenIdx(float baseNoteParam, const PatternInput& inpu
     return pe.varyNoteIndex(baseIdx, input, r);
 }
 
-void SequencerEngine::rebuildScaleCache(const float weights[12]) {
+void SequencerEngine::rebuildScaleCache(const float weights[], int n) {
     activeSemiCount = 0;
-    for (int s = 0; s < 12; ++s) {
+    for (int s = 0; s < n; ++s) {
         float w = pe_clamp<float>(weights[s], 0.f, 1.f);
         faderCache[s] = w;
         if (w > 0.f) {
@@ -979,6 +979,17 @@ void SequencerEngine::executePolyVoices(const PatternInput& input) {
     }
 }
 
+// Name the sounding DEGREE of a quantized pitch, for the flash LEDs / lastSemitone. At the 12-TET
+// default this is the EXACT legacy expression (round(frac*12)%12) → byte-identical for N=12 / Sikit-
+// at-default / standalone. Under a custom tuning (Micro publishing non-default cents, or a Micro-24)
+// it's the table's nearest degree so the RIGHT fader flashes (a 24-tone degree isn't a 12-TET slot).
+int SequencerEngine::degreeOf(float pitchV) const {
+    float frac = pitchV - std::floor(pitchV);
+    if (pe.tuning.isDefault12TET)
+        return int(std::round(frac * 12.f)) % 12;
+    return pe.tuning.nearestDegree(frac);
+}
+
 void SequencerEngine::executeModeC(const ClockEngine& clock, float inCV) {
     gs.gateHeld = false;
     if (clock.quarterEdge) {
@@ -986,7 +997,7 @@ void SequencerEngine::executeModeC(const ClockEngine& clock, float inCV) {
         gsStep.tick(ClockEngine::pulsesPer16th(ppqnSetting));
         advancePlayhead();
         gs.currentPitchV = quantize(inCV);
-        int sem = int(std::round((gs.currentPitchV - std::floor(gs.currentPitchV)) * 12.f)) % 12;
+        int sem = degreeOf(gs.currentPitchV);   // 12-TET default → legacy round(*12)%12; else table degree
         gs.lastSemitone = sem;
         gs.markSemi(sem, 4.0f);
         gs.gatePulse.trigger(1e-3f);
@@ -997,7 +1008,7 @@ void SequencerEngine::executeModeD(bool gateHigh, float inCV) {
     gs.gateHeld = gateHigh;
     if (gateHigh) {
         gs.currentPitchV = quantize(inCV);
-        int sem = int(std::round((gs.currentPitchV - std::floor(gs.currentPitchV)) * 12.f)) % 12;
+        int sem = degreeOf(gs.currentPitchV);   // 12-TET default → legacy round(*12)%12; else table degree
         gs.markSemi(sem, 1.0f);
     } else {
         gs.currentPitchV = 0.f;
@@ -1010,16 +1021,25 @@ float SequencerEngine::quantize(float vIn) {
     lastQuantIn = vIn;
 
     if (activeSemiCount == 0) return pe_clamp(vIn, 0.f, 5.f);
-    int octave = (int)vIn; 
+    int octave = (int)vIn;
     float bestScore = -1.f;
     float bestV = vIn;
+
+    // Within-octave voltage of a cached ACTIVE degree. At the 12-TET default (isDefault12TET) this is
+    // the EXACT legacy `s/12` (byte-identical — the whole Mode C/D quantizer is unchanged for N=12,
+    // any Sikit-at-default, and Monsoon standalone). Under a custom tuning (Micro publishing non-
+    // default cents, or a Micro-24) it becomes the table's degreeVolts(s) so quantize snaps to the
+    // ACTUAL tuning degrees, not 12-TET semitone slots.
+    auto degV = [&](int s) -> float {
+        return pe.tuning.isDefault12TET ? (s / 12.f) : pe.tuning.degreeVolts(s);
+    };
 
     for (int ai = 0; ai < activeSemiCount; ++ai) {
         int s = activeSemiList[ai];
         float w = activeSemiWeight[ai];
         float radius = w * (1.f / 12.f);
         for (int o = octave - 1; o <= octave + 1; ++o) {
-            float cand = o + s / 12.f;
+            float cand = o + degV(s);
             float dist = std::fabs(vIn - cand);
             if (dist <= radius + 1e-4f) {
                 float score = w / (dist + 1e-4f);
@@ -1032,7 +1052,7 @@ float SequencerEngine::quantize(float vIn) {
         for (int ai = 0; ai < activeSemiCount; ++ai) {
             int s = activeSemiList[ai];
             for (int o = octave - 1; o <= octave + 1; ++o) {
-                float cand = o + s / 12.f;
+                float cand = o + degV(s);
                 float dist = std::fabs(vIn - cand);
                 if (dist < minDist) { minDist = dist; bestV = cand; }
             }

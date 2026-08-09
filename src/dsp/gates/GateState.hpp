@@ -28,6 +28,7 @@
 #include <cmath>
 #include <algorithm>
 #include "../NoteValues.hpp"
+#include "../../tuning/TuningTable.hpp"   // dotModular::TuningTable::MAXN (per-degree flash-timer size)
 
 
 template<typename T>
@@ -54,7 +55,9 @@ struct GateState {
                                     // set by the engine each tick from the clock.
     float  currentPitchV   = 0.f;   // 1V/oct output
     int    lastSemitone    = -1;    // for tie detection
-    float  semiPlayRemain[12] = {}; // per-semitone flash timers (steps)
+    // Per-DEGREE flash timers (steps). Sized MAXN (24) for Micro-24; only the active degrees are ever
+    // marked. At N=12 only [0..11] are touched → byte-identical to the legacy semiPlayRemain[12].
+    float  semiPlayRemain[dotModular::TuningTable::MAXN] = {};
 
     // ── Leading-edge legato instrument (STEP 1: computed, UNUSED by gate logic) ──
     // In the leading-edge model a note commits AT ITS ONSET to hold its gate forward

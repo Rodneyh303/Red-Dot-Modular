@@ -499,11 +499,12 @@ struct SequencerEngine {
     //  assembled in updatePatternInput and read at the mono executeStep sites. See the code-smell
     //  fix note on PatternInput::accentProb. Poly voices keep their own PolyVoice::accentProb lane.)
 
-    // Quantizer cache
-    int activeSemiList[12] = {};
-    float activeSemiWeight[12] = {};
+    // Quantizer cache — sized MAXN (24) for Micro-24 (Phase 3). rebuildScaleCache fills the first N
+    // entries; at N=12 only [0..11] are used → byte-identical to the legacy 12-sized cache.
+    int activeSemiList[dotModular::TuningTable::MAXN] = {};
+    float activeSemiWeight[dotModular::TuningTable::MAXN] = {};
     int activeSemiCount = 0;
-    float faderCache[12] = {};
+    float faderCache[dotModular::TuningTable::MAXN] = {};
 
     // Quantizer memoization
     float lastQuantIn = -100.f;
@@ -516,7 +517,10 @@ struct SequencerEngine {
     void updateWindow(float lenParam, float lenCv, bool lenPatched, float offParam, float offCv, bool offPatched);
     int computeNoteLengthIdx(int requestedIdx, int ppqnMask) const;
     int getNoteLenIdx(float baseNoteParam, const PatternInput& input, float r);
-    void rebuildScaleCache(const float weights[12]);
+    void rebuildScaleCache(const float weights[], int n);
+    // Degree name of a quantized pitch (Mode C/D flash LEDs). 12-TET default → legacy round(*12)%12;
+    // custom tuning → nearest table degree. See the .cpp.
+    int degreeOf(float pitchV) const;
     float getStepLightBrightness(int lightIdx) const;
     int getOffsetStep() const;
     int getStrandIdx(int tickCount, int len, int off, int mutation) const;

@@ -784,7 +784,7 @@ struct Monsoon : Module {
     bool& gateHeld = engine.gs.gateHeld;
     float& currentPitchV = engine.gs.currentPitchV;
     int& lastSemitone = engine.gs.lastSemitone;
-    float (&semiPlayRemain)[12] = engine.gs.semiPlayRemain;
+    float (&semiPlayRemain)[dotModular::TuningTable::MAXN] = engine.gs.semiPlayRemain;
 
     float& rhythmSeedFloat = engine.pe.rhythmSeedFloat;
     float& melodySeedFloat = engine.pe.melodySeedFloat;
@@ -846,7 +846,7 @@ struct Monsoon : Module {
     bool (&cachedRhythmPattern)[16] = engine.pe.cachedRhythmPattern;
 
     int& activeSemiCount = engine.activeSemiCount;
-    float (&faderCache)[12] = engine.faderCache;
+    float (&faderCache)[dotModular::TuningTable::MAXN] = engine.faderCache;
 
     // --- Audio-rate parameter caches (updated in controlDivider) ---
     float cachedBpmParam = 120.f;
@@ -997,6 +997,7 @@ extern Model* modelMonsoonChangiExpander; // per-voice output expander
 extern Model* modelMonsoonShophouseExpander; // scale expander (12th module)
 extern Model* modelSikit;                      // tuning expander (cents-only, microtonal Phase 1)
 extern Model* modelColonnades;                 // tuning+scale authoring expander (microtonal Phase 2)
+extern Model* modelColonnadesDuo;              // tuning+scale authoring expander, 24-tone (microtonal Phase 3)
 extern Model* modelLantern;                    // Lantern note-output visualiser
 // West retired (Straits redesign)
 //extern Model* modelMonsoonStraitsSands;        // NEW (Macro): global DNA controls (compact)

@@ -128,6 +128,12 @@ struct Lantern : Module {
     int rollScroll = 2;   // bottom octave of the 5-octave viewport (0..4)
     int rollColor  = 0;   // 0=by role, 1=by voice, 2=by note
     static constexpr int ROLL_SCROLL_MIN = 0, ROLL_SCROLL_MAX = 4;
+    // Host tuning snapshot for the piano-roll (3C-i, Colonnades Duo / Micro-24). draw() has no engine
+    // access, so process() copies the host's degree count + cents here each block. When hostN_==12 the
+    // roll uses the 12-key keyboard EXACTLY as before (detune doesn't move keyboard rows); when
+    // hostN_!=12 it switches to a uniform N-row-per-octave degree grid (no keyboard). Runtime-only.
+    int   hostN_ = 12;
+    float hostCents_[dotModular::TuningTable::MAXN] = {};
     enum InputIds  { NUM_INPUTS };
     enum OutputIds { NUM_OUTPUTS };
     enum LightIds  { NUM_LIGHTS };
@@ -231,6 +237,15 @@ struct Lantern : Module {
         Monsoon* mon = (it && it->getHost()) ? it->getHost() : redDot::findMonsoonEitherSide(this);
         if (!mon) return;
         SequencerEngine& eng = mon->engine;
+
+        // 3C-i: snapshot the host tuning for the piano-roll's N-row grid (draw() has no engine access).
+        // isDefault12TET keeps the keyboard for a plain-12 or detuned-12 tuning (only N!=12 switches the
+        // roll to the degree grid). Cheap copy; the roll reads hostN_/hostCents_ under the cursor lock.
+        {
+            const dotModular::TuningTable& tt = eng.pe.tuning;
+            hostN_ = tt.isDefault12TET ? 12 : tt.N;
+            for (int i = 0; i < dotModular::TuningTable::MAXN; ++i) hostCents_[i] = tt.cents[i];
+        }
 
         const int scene = it ? it->activeScene : 0;
 
@@ -510,6 +525,57 @@ struct LanternDisplay : widget::Widget {
         // show faintly underneath), with the C-label rows at lower alpha so they read lighter.
         if (module->rollView != 0) {
             if (!font0) return;
+            // ── N-ROW DEGREE GUTTER (3C-i): non-12 tuning gets a uniform N-row grid + degree numbers,
+            //    NO keyboard graphic (MICRO_TUNING_INTEGRATION_PLAN §150). 12-TET falls through to the
+            //    keyboard below, byte-identical. ────────────────────────────────────────────────────
+            if (rollRowsPerOct() != 12) {
+                const int   N     = rollRowsPerOct();
+                const float rowH  = H / (float)ROLL_ROWS;
+                const float gutter = W * GUTTER_FRAC;
+                const int   botDeg = module->rollScroll * N;   // rollScroll counts octaves (× N rows)
+                // Flat dark gutter; a faint band per degree, the octave-0 (degree-0) row a touch brighter.
+                nvgBeginPath(vg); nvgRect(vg, 0.f, 0.f, gutter, H);
+                nvgFillColor(vg, nvgRGB(0x22, 0x25, 0x2a)); nvgFill(vg);
+                for (int r = 0; r < ROLL_ROWS; ++r) {
+                    int deg = ((botDeg + r) % N + N) % N;
+                    float y = H - (r + 1) * rowH;
+                    if (deg == 0) { nvgBeginPath(vg); nvgRect(vg, 0.f, y, gutter, rowH);
+                                    nvgFillColor(vg, nvgRGB(0x30, 0x3a, 0x46)); nvgFill(vg); }
+                }
+                // Sounding-degree highlight across the gutter.
+                {
+                    const int ph = module->lastObservedStep;
+                    if (ph >= 0 && ph < N_STEPS) {
+                        for (int v = 0; v < N_VOICES; ++v) {
+                            if (!module->voiceVisible(v)) continue;
+                            const auto& c = module->cells[v][ph];
+                            if (c.type == lantern::NoteType::Inactive) continue;
+                            int row = rollRowFromPitch(c.pitchV) - botDeg;
+                            if (row < 0 || row >= ROLL_ROWS) continue;
+                            float y = H - (row + 1) * rowH;
+                            int cm = module->rollColor;
+                            NVGcolor hi = (cm == 1) ? voiceColour(v)
+                                        : (cm == 2) ? degreeColour(rollRowFromPitch(c.pitchV) % N, N)
+                                                    : typeColour(c.type);
+                            nvgBeginPath(vg); nvgRect(vg, 0.f, y, gutter, rowH);
+                            nvgFillColor(vg, nvgTransRGBA(hi, 0xd0)); nvgFill(vg);
+                        }
+                    }
+                }
+                // Degree numbers 1..N (label EVERY row if they fit, else only degree 1 of each octave).
+                nvgFontFaceId(vg, font0->handle);
+                nvgFontSize(vg, std::min(10.f, rowH * 0.8f));
+                nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+                const bool everyRow = rowH >= 7.f;
+                for (int r = 0; r < ROLL_ROWS; ++r) {
+                    int deg = ((botDeg + r) % N + N) % N;
+                    if (!everyRow && deg != 0) continue;
+                    float y = H - (r + 0.5f) * rowH;
+                    nvgFillColor(vg, deg == 0 ? nvgRGB(0xec, 0xec, 0xf0) : nvgRGB(0x9a, 0xa2, 0xac));
+                    nvgText(vg, 2.f, y, std::to_string(deg + 1).c_str(), nullptr);
+                }
+                return;
+            }
             const float rowH   = H / (float)ROLL_ROWS;
             const float gutter = W * GUTTER_FRAC;
             const int   botOct = module->rollScroll;
@@ -904,7 +970,45 @@ struct LanternDisplay : widget::Widget {
     // of the window. Notes draw as horizontal bars at their pitch row, spanning lengthSteps.
     // Colour: by ROLE (note type) or by VOICE (per-voice hue). Lead outline kept on top.
     static constexpr int ROLL_OCTAVES = 4;                 // viewport height in octaves (taller rows)
-    static constexpr int ROLL_ROWS    = ROLL_OCTAVES * 12; // = 48 semitone rows
+    static constexpr int ROLL_ROWS    = ROLL_OCTAVES * 12; // = 48 rows (12-TET); N-row mode keeps this
+                                                           // fixed row COUNT so row HEIGHT is constant —
+                                                           // fewer octaves in view at N=24 (48/24 = 2).
+
+    // ── N-row (non-12 tuning) helpers (3C-i) ─────────────────────────────────────────────────────
+    // Under a Micro-24 / arbitrary-Scala tuning the roll is a UNIFORM N-row-per-octave DEGREE grid
+    // (MICRO_TUNING_INTEGRATION_PLAN §150): degree numbers, no keyboard. Row height stays H/ROLL_ROWS;
+    // rows-per-octave becomes N, so 48/N octaves fit. These read the module's host-tuning snapshot.
+    int rollRowsPerOct() const { return (module && module->hostN_ != 12) ? module->hostN_ : 12; }
+    // Nearest degree (0..N-1) of a within-octave fraction (0..1) against the host cents. 12-TET path
+    // is the legacy round(frac*12).
+    int rollDegreeOf(float frac) const {
+        const int N = rollRowsPerOct();
+        if (N == 12 || !module) return (((int)std::lround(frac * 12.f) % 12) + 12) % 12;
+        const float cents = frac * 1200.f;
+        int best = 0; float bd = 1e30f;
+        for (int i = 0; i < N; ++i) {
+            float d = std::fabs(cents - module->hostCents_[i]);
+            d = std::min(d, std::fabs(cents - (module->hostCents_[i] + 1200.f)));  // wrap
+            if (d < bd) { bd = d; best = i; }
+        }
+        return best;
+    }
+    // Absolute display row from C0 (row 0 = degree 0 of the lowest octave) for a pitch voltage.
+    int rollRowFromPitch(float pitchV) const {
+        const int N = rollRowsPerOct();
+        const int oct = (int)std::floor(pitchV);
+        const int octFromC0 = oct + 4;                     // 0V = C4 → 4 octaves above C0
+        return octFromC0 * N + rollDegreeOf(pitchV - (float)oct);
+    }
+    // Degree-position hue for by-note colour under N degrees (fixed to degree position, Rodney's
+    // chosen option): a full perceptual sweep across N so each degree has a stable, distinct colour.
+    static NVGcolor degreeColour(int deg, int N) {
+        if (N < 1) N = 1;
+        float h = (float)(((deg % N) + N) % N) / (float)N;   // 0..1 around the hue wheel
+        // Vary lightness slightly by parity so adjacent degrees stay distinguishable at large N.
+        float l = ((deg & 1) ? 0.62f : 0.52f);
+        return nvgHSL(h, 0.65f, l);
+    }
 
     // Distinct, legible-on-dark hue per voice (mono = v0). Kept modest saturation so overlaps read.
     static NVGcolor voiceColour(int v) {
@@ -968,24 +1072,29 @@ struct LanternDisplay : widget::Widget {
         const float stepW  = gridW / N_STEPS;
         const float rowH   = H / (float)ROLL_ROWS;
 
+        const int   rowsPerOct = rollRowsPerOct();   // 12 (keyboard) or N (degree grid)
         const int   botOct   = module->rollScroll;
-        const int   botSemi  = botOct * 12;          // semitone-from-C0 at the bottom row
+        const int   botSemi  = botOct * rowsPerOct;  // bottom row = degree/semi 0 of the bottom octave
         const int   colorMode = module->rollColor;
+        const bool  degreeGrid = (rowsPerOct != 12);
 
-        // ── Bitwig-style lane background: shade each semitone row by pitch class. ──
-        // Black-key rows (C#,D#,F#,G#,A#) get a darker slate; white-key rows a lighter blue-grey.
-        // This alternating banding is what makes the grid read as a piano roll at a glance.
+        // ── Lane background. 12-TET: Bitwig black/white-key banding by pitch class. N-row degree grid:
+        //    uniform bands, degree-0 row a touch brighter (octave anchor), no black/white metaphor. ──
         auto isBlackKey = [](int pc) {
             pc = ((pc % 12) + 12) % 12;
             return pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10;
         };
         for (int r = 0; r < ROLL_ROWS; ++r) {
-            int pc = ((botSemi + r) % 12 + 12) % 12;
+            int idx = ((botSemi + r) % rowsPerOct + rowsPerOct) % rowsPerOct;
             float y = H - (r + 1) * rowH;
-            // white-key lane = lighter blue-grey; black-key lane = darker slate.
-            NVGcolor lane = isBlackKey(pc) ? nvgRGB(0x20, 0x2a, 0x33) : nvgRGB(0x2b, 0x38, 0x44);
-            // Subtle octave emphasis: the C row (pitch class 0) a touch brighter so octaves anchor.
-            if (pc == 0) lane = nvgRGB(0x32, 0x40, 0x4d);
+            NVGcolor lane;
+            if (degreeGrid) {
+                lane = (idx & 1) ? nvgRGB(0x20, 0x2a, 0x33) : nvgRGB(0x2b, 0x38, 0x44);  // alt banding
+                if (idx == 0) lane = nvgRGB(0x32, 0x40, 0x4d);                            // degree-0 anchor
+            } else {
+                lane = isBlackKey(idx) ? nvgRGB(0x20, 0x2a, 0x33) : nvgRGB(0x2b, 0x38, 0x44);
+                if (idx == 0) lane = nvgRGB(0x32, 0x40, 0x4d);                            // C anchor
+            }
             nvgBeginPath(vg);
             nvgRect(vg, gridX, y, gridW, rowH);
             nvgFillColor(vg, lane);
@@ -1010,8 +1119,8 @@ struct LanternDisplay : widget::Widget {
         // Horizontal separators — very subtle now that the lane SHADING provides the banding.
         // Just a faint line at each C (octave) for reference; semitone lines dropped (the
         // per-row shading already gives pitch reference, and Bitwig keeps these minimal).
-        for (int o = 0; o <= ROLL_OCTAVES; ++o) {
-            float y = H - o * 12 * rowH;
+        for (int o = 0; o * rowsPerOct <= ROLL_ROWS; ++o) {
+            float y = H - o * rowsPerOct * rowH;         // octave line every rowsPerOct rows (12 or N)
             nvgBeginPath(vg);
             nvgStrokeColor(vg, nvgRGBA(0x50, 0x58, 0x64, 0x70));   // faint C line
             nvgStrokeWidth(vg, 0.75f);
@@ -1027,9 +1136,8 @@ struct LanternDisplay : widget::Widget {
                 if (c.type == lantern::NoteType::Inactive) continue;
                 if (c.isMidTail) continue;   // tail of a longer note; its onset cell draws the bar
 
-                // pitchV (0V=C4) → semitone-from-C0 = round(pitchV*12) + 48.
-                int semiC0 = (int)std::lround(c.pitchV * 12.f) + 48;
-                int row = semiC0 - botSemi;                 // 0 = bottom viewport row
+                // Row from pitch: 12-TET → semitone-from-C0; N-row → degree-from-C0 (rollRowFromPitch).
+                int row = rollRowFromPitch(c.pitchV) - botSemi;   // botSemi = botOct*rowsPerOct
                 if (row < 0 || row >= ROLL_ROWS) continue;  // outside the scrolled window
 
                 float y  = H - (row + 1) * rowH;            // row 0 at the bottom
@@ -1039,7 +1147,8 @@ struct LanternDisplay : widget::Widget {
 
                 NVGcolor col;
                 if (colorMode == 1)      col = voiceColour(v);
-                else if (colorMode == 2) col = noteColour(semiC0);
+                else if (colorMode == 2) col = degreeGrid ? degreeColour(rollRowFromPitch(c.pitchV) % rowsPerOct, rowsPerOct)
+                                                          : noteColour((int)std::lround(c.pitchV * 12.f) + 48);
                 else                     col = typeColour(c.type);
                 if (c.accented) col = nvgLerpRGBA(col, nvgRGB(0xff,0xff,0xff), 0.28f);
 

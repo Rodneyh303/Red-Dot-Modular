@@ -34,6 +34,7 @@ extern rack::Model* modelMonsoonChangeAlleyV2;
 extern rack::Model* modelMonsoonSandsExpander;
 extern rack::Model* modelSikit;            // tuning expander (microtonal Phase 1)
 extern rack::Model* modelColonnades;       // tuning+scale authoring expander (microtonal Phase 2)
+extern rack::Model* modelColonnadesDuo;    // tuning+scale authoring expander, 24-tone (microtonal Phase 3)
 extern rack::Model* modelMonsoonSandsVisualExpander;
 extern rack::Model* modelMonsoonStraitsExpander;
 extern rack::Model* modelMonsoonCausewayPolyExpander;
@@ -182,8 +183,10 @@ struct MonsoonExpanderManager {
                     // updateExpanderPointers). Cache the pointer AND hop through (do NOT break) so a
                     // Sikit placed between Monsoon and other expanders doesn't stop discovery.
                     if (!cachedSikitExpander) cachedSikitExpander = curr;
-                } else if (curr->model == modelColonnades) {
-                    // Colonnades (tuning + scale authoring). Same first-found + hop-through as Sikit; the
+                } else if (curr->model == modelColonnades || curr->model == modelColonnadesDuo) {
+                    // Colonnades / Colonnades Duo (tuning + scale authoring, 12 or 24 degrees). Both fill
+                    // the SAME single mask-authoring slot (one-Micro-per-Monsoon: a Colonnades OR a Duo,
+                    // never both — MONSOON_MICRO_SPEC §62). First-found + hop-through like Sikit; the
                     // single-claimant resolution across Sikit/Colonnades happens in updateExpanderPointers.
                     if (!cachedColonnadesExpander) cachedColonnadesExpander = curr;
                 // } else if (curr->model == modelMonsoonStraitsSands) {

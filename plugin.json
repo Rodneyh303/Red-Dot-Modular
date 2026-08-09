@@ -117,6 +117,16 @@
       ]
     },
     {
+      "slug": "ColonnadesDuo",
+      "name": "Colonnades Duo",
+      "description": "24-tone tuning + scale authoring expander \u2014 24 per-degree weight faders (scale mask) + cents knobs (tuning) in one row; load Scala .scl / .dmtune; Monsoon's note faders delegate",
+      "tags": [
+        "Expander",
+        "Tuning",
+        "Quantizer"
+      ]
+    },
+    {
       "slug": "Sikit",
       "name": "Sikit",
       "description": "Tuning expander \u2014 12 per-degree cents knobs retune Monsoon's 12-TET; load 12-note Scala .scl; scale mask stays with Monsoon",

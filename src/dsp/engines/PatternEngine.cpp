@@ -70,20 +70,22 @@ void PatternEngine::reset() {
 
 // ── Core generation ───────────────────────────────────────────────────────
 
-// Pick a semitone (0..11) weighted by fader values using a provided random value.
-int PatternEngine::pickSemitone(const float weights[12], float r_val) {
+// Pick a DEGREE (0..n-1) weighted by fader values using a provided random value. `n` = active degree
+// count (tuning.N): 12 for built-in/Sikit/Micro-12, up to 24 for Micro-24. At n=12 the loop bounds,
+// sum, walk, and float-safety return are all identical to the legacy pickSemitone → byte-identical.
+int PatternEngine::pickSemitone(const float weights[], int n, float r_val) {
     float sum = 0.f;
-    for (int i = 0; i < 12; ++i) sum += weights[i];
+    for (int i = 0; i < n; ++i) sum += weights[i];
     if (sum <= 0.0001f) return -1;
 
     float r = pe_clamp(r_val, 0.f, 1.f - 1e-7f) * sum;
     float acc = 0.f;
-    for (int i = 0; i < 12; ++i) {
+    for (int i = 0; i < n; ++i) {
         if (weights[i] <= 0.f) continue;
         acc += weights[i];
         if (r < acc) return i;
     }
-    return 11;  // float safety
+    return n - 1;  // float safety (was 11 at n=12)
 }
 
 // Generate a pitch voltage (1V/oct, 0..5V) and return the semitone.
@@ -93,7 +95,9 @@ float PatternEngine::genPitch(int& outSemitone, const PatternInput& in) {
 
 // Generate a pitch voltage using provided random floats for semitone and octave selection.
 float PatternEngine::genPitchLive(int& outSemitone, const PatternInput& in, float r_semi, float r_oct) {
-    int sem = pickSemitone(in.semiWeights, r_semi);
+    // Degree count from the shared tuning table (12 default; up to 24 for a Micro-24). pickSemitone is
+    // N-bounded so the weighted walk only considers active degrees.
+    int sem = pickSemitone(in.semiWeights, tuning.N, r_semi);
     outSemitone = (sem < 0) ? 0 : sem;
     if (sem < 0) return 0.f;
 
@@ -114,7 +118,12 @@ float PatternEngine::genPitchLive(int& outSemitone, const PatternInput& in, floa
     if (tuning.isDefault12TET) {
         v = float(oct) - 4.f + (sem + in.transpose) / 12.f;   // legacy path — byte-identical
     } else {
-        v = float(oct) - 4.f + tuning.degreeVolts(sem) + in.transpose / 12.f;
+        // Custom tuning (Micro): TRANSPOSE IS OCTAVES-ONLY (Rodney). A 12-TET semitone shift (/12)
+        // lands OFF the tuning grid; an octave is +1V in ANY tuning, so it's always tuning-native.
+        // Monsoon's transpose knob is ±12 semitones → snap to the nearest whole octave and apply as
+        // whole volts (±1 octave from this knob; Intertropical's own per-output knobs cover ±2).
+        const float octShift = std::round(in.transpose / 12.f);   // -1 / 0 / +1
+        v = float(oct) - 4.f + tuning.degreeVolts(sem) + octShift;
     }
     // Allow full bipolar range for 1V/oct standard; clamping to 0V clips octaves 0-3
     return pe_clamp(v, -5.f, 5.f);
