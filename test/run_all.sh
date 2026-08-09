@@ -20,7 +20,7 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$here/.." && pwd)"
 cd "$root"
 
-INCS="-Itest -Isrc -Isrc/dsp -Isrc/dsp/engines -Isrc/dsp/gates -Isrc/dsp/managers -Isrc/ui"
+INCS="-Itest -Isrc -Isrc/tuning -Isrc/dsp -Isrc/dsp/engines -Isrc/dsp/gates -Isrc/dsp/managers -Isrc/ui"
 STD="-std=c++17"
 GS="src/dsp/gates/GateState.cpp"
 PE="src/dsp/engines/PatternEngine.cpp"
@@ -28,6 +28,7 @@ SE="src/dsp/engines/SequencerEngine.cpp"
 
 # name|companion sources (empty = header-only). Keep alphabetical.
 TESTS=(
+  "test_12tet_identity|$SE $GS $PE"
   "test_GateState|$GS"
   "test_PatternEngine|$PE"
   "test_PhiloxRng|"
