@@ -467,3 +467,47 @@ the original Shophouse switching scales under the Monsoon faders.
 
 Cross-ref: supersedes the .dmtune weight[] in ruling 6 + TUNING_PRESET_FORMAT.md schema/"full state"
 framing; Shophouse non-destructive mask = SHOPHOUSE_SPEC.md / MonsoonScaleManager.cpp:40-57.
+
+## MENU: show FULL loaded slot names via WrappingMenuLabel + a 2nd missing header
+
+### URGENT (again): src/dsp/TuningList.hpp is NOT committed
+Same bug class as the TuningTable.hpp miss. MonsoonShophouseMicro.hpp:20 includes "dsp/TuningList.hpp",
+but `git cat-file -e HEAD:src/dsp/TuningList.hpp` -> MISSING. The earlier fix committed the src/tuning/
+headers but missed this one in src/dsp/. A clean clone STILL doesn't build. CC: `git add` and commit
+src/dsp/TuningList.hpp (and re-scan for any other untracked headers: `git ls-files --others
+--exclude-standard 'src/**/*.hpp'` on Rodney's tree). Confirm a fresh clone compiles.
+
+### The menu change (Rodney): full slot names, wrapped
+The name band truncates to "22 out of 41 ..." (narrow band). In the CONTEXT MENU there's room to show
+the FULL loaded .dmtune slot names -- reuse redDot::WrappingMenuLabel (src/ui/WrappingMenuLabel.hpp),
+the exact widget already used for the Colonnades/Duo long ".scl" / Interchange labels (word-wraps to a
+fixed maxWidth so a long name can't blow out the menu width).
+
+In MonsoonShophouseMicro appendContextMenu (MonsoonShophouseMicro.cpp:302), add a section listing each
+FRONT and its loaded .dmtune name, wrapped:
+```cpp
+#include "ui/WrappingMenuLabel.hpp"   // if not already included
+// ... in appendContextMenu, after the mode section:
+menu->addChild(new MenuSeparator);
+for (int f = 0; f < mod->frontCount(); ++f) {
+    // slot accessor: use the real TuningList API (confirm names once TuningList.hpp is committed --
+    // likely mod->list.slotAt(f) / mod->list.at(f) returning a TuningSlot with .loaded and .name).
+    const auto& slot = /* mod->list slot f */;
+    std::string label = "Front " + std::to_string(f+1) + ": "
+                      + (slot.loaded ? slot.name : std::string("(empty)"));
+    auto* wl = new redDot::WrappingMenuLabel();
+    wl->text = label;
+    wl->maxWidth = 260.f;   // wider than the default 220 is fine in a menu
+    menu->addChild(wl);
+}
+```
+- WrappingMenuLabel wraps the full name across lines; the menu width stays bounded by maxWidth.
+- Empty fronts show "(empty)".
+- The active front could be marked (e.g. a leading ">" or CHECKMARK on its label) so the menu shows
+  WHICH front is currently sounding -- optional but nice.
+
+CC: confirm the exact TuningList slot accessor + TuningSlot field names (slotAt/at, loaded, name) once
+TuningList.hpp is committed and readable; the block above assumes the natural names.
+
+Cross-ref: src/ui/WrappingMenuLabel.hpp (the widget), MonsoonShophouseMicro.cpp:302 (appendContextMenu),
+the name-band truncation (207), src/dsp/TuningList.hpp (MISSING -- commit it).
