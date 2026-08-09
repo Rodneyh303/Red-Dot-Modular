@@ -207,3 +207,59 @@ Shophouse Micro is in 12-mode or 24-mode by connection (target tt.N). A slot loa
 Cross-ref: MonsoonShophouseExpander.cpp:183-211 (NameBandWidget -- the readout to reuse),
 SCALA_FILE_AND_LOAD_UI.md (the truncation fix), TUNING_PRESET_FORMAT.md (the .dmtune name field +
 the loader to reuse).
+
+## PANEL SPEC (definitive -- stop the panel dance)
+
+CC's first attempt (gen_shophouse_micro.py, the plain grey 4-rectangle stack) OVER-CORRECTED: it threw
+away the entire shophouse building and made a generic slot strip. WRONG. Keep the shophouse. Change
+ONLY the window contents.
+
+### Keep from gen_shophouse.py (the whole aesthetic)
+- The TWO-HOUSE, TWO-STOREY building: hipped tiled roof, dormers, arched louvred windows, pilasters,
+  the Peranakan majolica tile panels flanking the windows, the arcade/five-foot-way at the base.
+- The name band per front, the per-front scale... no -- see changes.
+- The active-front lantern (lit indicator over the active window).
+- Start from gen_shophouse.py and MODIFY it; do NOT start from the blank micro attempt.
+
+### Change ONLY the window contents: piano keys -> uniform mask cells
+The original window is 12 shutters laid out as a PIANO KEYBOARD (BLACK={1,3,6,8,10}, WHITE_ORDER,
+BLACK_AFTER -- varying-width white/black keys). This is the 12-TET resemblance to kill. Replace with:
+- UNIFORM-WIDTH cells, all the SAME size (no wide/narrow, no white/black key widths).
+- ALTERNATING COLOUR black/blue (two colours, equal cells) -- so there is NO piano-key resemblance.
+- The cells INDICATE MASK STATE: masked (inactive, weight 0) vs unmasked (active) degrees. The widget
+  lights/dims each cell by the .dmtune's weight[] for that degree (active = lit, masked = dim), the
+  same active/masked semantic as the Colonnades faders -- not a keyboard.
+- Drop BLACK/WHITE_ORDER/BLACK_AFTER entirely; the cells are just N equal cells across the window.
+
+### Story/panel layout maps to MODE (Rodney)
+The building's stories/windows ARE the front layout, and how they subdivide depends on mode:
+- **12 mode = 4 fronts:** two windows per story (top-left, top-right, bottom-left, bottom-right) --
+  the existing 2x2 shophouse arrangement. Each window = 12 uniform mask cells.
+- **24 mode = 2 fronts:** ONE window per story spanning the full width -- top story = one 24-cell
+  window (one 24-note front), bottom story = one 24-cell window (one front). The two 12-windows in a
+  story MERGE into one continuous 24-cell strip.
+
+So the same building holds either four 12-cell windows (2x2) or two 24-cell windows (one wide per
+story). The story structure is constant; what changes is whether each story is split into two
+12-cell windows or is one 24-cell window. Cell count per window = N (12 or 24).
+
+Panel generator: parameterise gen_shophouse (micro variant) so mode drives it -- 12-mode draws the 2x2
+four-window layout, 24-mode draws the two-full-width-window layout, each window filled with N uniform
+alternating black/blue cells. If the panel needs to support both modes from one SVG, draw the 12-mode
+2x2 and let the widget MERGE each story's two windows into one 24-strip in 24-mode (or generate two
+SVGs, one per mode -- cleaner, since a Micro instance is one mode at a time).
+
+### Changes from Shophouse already ruled (carry into the panel)
+- NO root shutter / no scale knob per front (dropped -- a front is just "which .dmtune").
+- Name band shows the abbreviated .dmtune name (truncated), doubles as the load click target.
+- Tile panels, roof, arches, lantern: KEEP (the shophouse identity).
+
+### The one instruction
+Start from gen_shophouse.py. Keep the building. Replace the piano-keyboard window shutters with N
+equal-width alternating black/blue cells that show mask state. Lay out windows by mode (12 -> 2x2 four
+windows of 12; 24 -> two full-width windows of 24, one per story). Drop root + scale knob. That's it --
+do not redesign the module, do not start from a blank panel.
+
+Cross-ref: panel_src/gen_shophouse.py (the building to keep + the piano-key window to replace --
+BLACK/WHITE_ORDER/BLACK_AFTER at lines 39-41 are what to remove), gen_shophouse_micro.py (the
+over-corrected attempt to discard/redo from gen_shophouse).
