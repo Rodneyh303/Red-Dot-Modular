@@ -263,3 +263,44 @@ do not redesign the module, do not start from a blank panel.
 Cross-ref: panel_src/gen_shophouse.py (the building to keep + the piano-key window to replace --
 BLACK/WHITE_ORDER/BLACK_AFTER at lines 39-41 are what to remove), gen_shophouse_micro.py (the
 over-corrected attempt to discard/redo from gen_shophouse).
+
+## BUG: Shophouse Micro doesn't find Colonnades/Duo (host resolution)
+
+Symptom: Shophouse Micro doesn't detect the attached Colonnades or Duo; never enters the right mode.
+
+What the code does now (MonsoonShophouseMicro.cpp:21-23): finds the Monsoon via
+findMonsoonEitherSide(this), then reads `mon->engine.pe.tuning.N` as hostN. findMonsoonEitherSide
+DOES walk through intermediate expanders (VisualExpanderHelpers.hpp:26-39, loops rightExpander then
+leftExpander), so finding the Monsoon through an intervening Colonnades is not the problem.
+
+The likely real issue: `mon->engine.pe.tuning.N` is an INDIRECT proxy for "which Micro is attached."
+It only reads 24 when the Monsoon has actually resolved its Colonnades/Duo source AND published N into
+tuning.N. The Monsoon tracks its Micro directly as
+`mon->expanderManager.cachedColonnadesExpander` (MonsoonExpanderManager.hpp:93), cached for BOTH
+modelColonnades and modelColonnadesDuo (hpp:186-191). Reading tuning.N instead of that cache is fragile:
+- if the Monsoon hasn't resolved its tuning source on the same frame Shophouse Micro reads, N is stale
+  (default 12) -> Shophouse Micro thinks 12-mode or standalone;
+- if there's ANY path where tuning.N isn't updated to the Micro's N, the detection silently fails.
+
+Diagnosis for CC (verify in Rack, don't blind-fix):
+1. Check whether `mon->expanderManager.cachedColonnadesExpander` is non-null when a Colonnades/Duo is
+   attached AND a Shophouse Micro is also in the chain. If Shophouse Micro's presence disturbs the
+   expander walk (e.g. it sits between Monsoon and Colonnades, or the cache walk stops at it), the
+   Monsoon may not be caching the Micro at all -> tuning.N stays 12.
+2. Preferred fix direction: Shophouse Micro should resolve its target the SAME way the Monsoon does --
+   read `mon->expanderManager.cachedColonnadesExpander` to know (a) a Micro IS present and (b) which
+   model (Colonnades=12 vs ColonnadesDuo=24, via curr->model), rather than inferring from tuning.N.
+   That's the authoritative source; tuning.N is a downstream consequence.
+3. Confirm the model pointers Shophouse Micro would compare against (modelColonnades / modelColonnadesDuo)
+   are declared/visible to it (extern in MonsoonExpanderManager.hpp:36-37).
+4. Watch the ordering: if Shophouse Micro and the Micro are on the SAME side, ensure the expander cache
+   and Shophouse Micro's read happen in a consistent order across the frame (the Monsoon resolves its
+   expanders in its own process()).
+
+So: the fix is most likely to resolve the Micro via the Monsoon's cachedColonnadesExpander (which
+already distinguishes Colonnades from Duo) instead of via tuning.N. That gives both presence detection
+(finds it) and mode (12 vs 24 from the model), which is exactly what Shophouse Micro needs.
+
+Cross-ref: MonsoonShophouseMicro.cpp:21-23 (the tuning.N read to replace), MonsoonExpanderManager.hpp:
+93/186-191 (cachedColonnadesExpander, set for both Colonnades and Duo), VisualExpanderHelpers.hpp:26
+(findMonsoonEitherSide, confirmed to walk through intermediates).
