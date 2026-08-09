@@ -346,3 +346,36 @@ building begins, these will need answers:
 - src/dsp/engines/PatternEngine.cpp:117 -- THE voltage seam.
 - src/dsp/engines/SequencerEngine.cpp:957,968 -- THE C/D quantiser seams.
 - SequencerEngine.hpp:71+ -- WriteLedger single-writer detector.
+
+## COLONNADES DUO STATUS (Aug 2026): panel is N=24, MODULE is still N=12 -- M4 not done
+
+Observed bug: on the Colonnades Duo panel, faders 13-24 stay lit RED when moved to zero, while 1-12
+correctly go grey. Root cause is NOT a light bug per se -- it is that Colonnades Duo does not yet have
+its own N=24 module. Evidence:
+- Colonnades.hpp:19: `static constexpr int N_DEGREES = 12;` is the ONLY degree-count definition.
+- No ColonnadesDuo class / DuoIds exists.
+- Every per-degree loop is bounded by N_DEGREES=12: the light-update loop (Colonnades.cpp:42
+  `for i < N_DEGREES`), weight authoring (:30), cents map (:32), .dmtune n (:424 `p.n = N_DEGREES`).
+
+So the Duo is a 24-FADER PANEL on a 12-DEGREE MODULE. Faders 13-24 exist on the panel and move, but
+the light-update loop only refreshes brightness for degrees 0-11 -- faders 12-23 keep their
+construction-time LED state (red), never updated by the weight -> brightness loop. The red-at-zero is
+the VISIBLE symptom of a whole class of "second twelve doesn't work" that follows from N=12 under a
+24-fader panel (lights, weight authoring, cents, .scl/.dmtune degree count all stop at 12).
+
+THE FIX IS M4, NOT A LIGHT PATCH. Do not band-aid the light loop to 24 while the module is still 12 --
+that would light faders whose weight/cents/tuning aren't actually wired. Colonnades Duo needs to BE
+N=24:
+- Either a ColonnadesDuo class with N_DEGREES = 24, OR Colonnades parameterised on N (12 or 24 per
+  model), sharing the engine machinery. (Same decision flagged in COLONNADES_RENAME_SPEC: clean base +
+  degree-count constant. The Duo is that base at 24.)
+- This is exactly the M4 / engine-widening work: TuningTable already has MAXN=24; the module and its
+  per-degree loops must run to the model's real N, not a hardcoded 12.
+- Once N=24 is real, the light loop (already `for i < N_DEGREES`) fixes ITSELF -- it'll cover 24 and
+  faders 13-24 will dim on zero like 1-12, because the loop was always correct; N_DEGREES was wrong.
+
+So: the light bug is the tripwire that Colonnades Duo's N=24 module work (M4) is the outstanding piece.
+The panel is done (COLONNADES_DUO_PANEL_SPEC, N=24 generator); the MODULE is not. Track under M4.
+
+Cross-ref: Colonnades.hpp:19 (N_DEGREES=12), Colonnades.cpp:42 (the light loop that's correct but
+N-bounded), COLONNADES_DUO_PANEL_SPEC.md (panel done), the M4 item in MASTER_PLAN.
