@@ -105,84 +105,122 @@ void MonsoonShophouseMicro::dataFromJson(json_t* root) {
          i < list.size() && list.active() != want; ++i) { list.setPending(want); list.commitAtBoundary(); }
 }
 
-// ── Per-front cell: draws the loaded .dmtune name (truncated) + active lantern; click = load a .dmtune
-// into this slot (validated against the module's 12/24 mode). Neutral scene-slot, no piano keys. ────
-struct MicroFrontWidget : OpaqueWidget {
-    MonsoonShophouseMicro* module = nullptr;
-    int front = 0;
+// ── Load a .dmtune into a front, validated against the module's 12/24 mode (empty module adopts the
+// file's N as its mode). Shared by the mask-window + name-band click targets. ───────────────────────
+static void loadDmtuneInto(MonsoonShophouseMicro* module, int front) {
+    if (!module) return;
+    osdialog_filters* filters = osdialog_filters_parse("dot.modular Tuning:dmtune");
+    char* path = osdialog_file(OSDIALOG_OPEN, nullptr, nullptr, filters);
+    osdialog_filters_free(filters);
+    if (!path) return;
+    std::string pathStr(path); std::free(path);
+    const int wantN = module->list.anyLoaded() ? module->list.degrees() : 0;   // 0 = accept + adopt
+    auto p = dotModular::loadTuningPreset(pathStr,
+        [wantN](int nn){ return wantN == 0 || nn == wantN; },
+        "This .dmtune's degree count doesn't match this Shophouse Micro's mode "
+        "(all slots must be the same 12 or 24).");
+    if (!p.ok()) { osdialog_message(OSDIALOG_WARNING, OSDIALOG_OK, p.errorMessage.c_str()); return; }
+    if (!module->list.anyLoaded()) module->setMode(p.n);
+    std::string nm = p.name;
+    if (nm.empty()) {
+        size_t slash = pathStr.find_last_of("/\\");
+        std::string base = (slash == std::string::npos) ? pathStr : pathStr.substr(slash + 1);
+        size_t dot = base.find_last_of('.');
+        nm = (dot == std::string::npos) ? base : base.substr(0, dot);
+    }
+    if (!module->list.loadSlot(front, p.n, p.cents, p.weight, nm))
+        osdialog_message(OSDIALOG_WARNING, OSDIALOG_OK, "Could not load into this slot (mode mismatch).");
+}
 
-    std::shared_ptr<window::Font> font() {
-        auto f = APP->window->loadFont(rack::asset::system("res/fonts/DejaVuSans-Bold.ttf"));
-        if (!f) f = APP->window->uiFont;
-        return f;
-    }
-    // Truncate to fit the band (reuses the .scl width-fix idea: ellipsis when too long).
-    static std::string trunc(const std::string& s, size_t maxc) {
-        if (s.size() <= maxc) return s;
-        return s.substr(0, maxc > 1 ? maxc - 1 : 1) + "\u2026";
-    }
+// Map a PANEL WINDOW index (0..3, the fixed 2x2 SVG layout) to (front, degreeOffset) by mode
+// (SHOPHOUSE_MICRO_SPEC §234). 12-mode: window i == front i, showing degrees 0..11. 24-mode: a STORY's
+// two windows form one 24-strip — the two upper windows (panels 0,2) are front 0's low/high halves, the
+// two lower windows (panels 1,3) are front 1's. Each window always shows 12 cells (a half or a whole).
+static inline void windowToFront(int panelIdx, int degrees, int& front, int& degOff) {
+    if (degrees == 24) { front = panelIdx % 2; degOff = (panelIdx < 2) ? 0 : 12; }
+    else               { front = panelIdx;     degOff = 0; }
+}
+
+static std::string smTrunc(const std::string& s, size_t maxc) {
+    if (s.size() <= maxc) return s;
+    return s.substr(0, maxc > 1 ? maxc - 1 : 1) + "\u2026";
+}
+static std::shared_ptr<window::Font> smFont() {
+    auto f = APP->window->loadFont(rack::asset::system("res/fonts/DejaVuSans-Bold.ttf"));
+    if (!f) f = APP->window->uiFont;
+    return f;
+}
+
+// ── The window fill: N=12 EQUAL alternating black/blue MASK CELLS over one panel window (never piano
+// keys). A cell lights when its degree's .dmtune weight > 0 (active), dims when masked (weight 0) — the
+// same active/masked semantic as the Colonnades faders. Click = load a .dmtune into this front. Also
+// draws the active-front lantern at the window's top-left. ─────────────────────────────────────────
+struct MaskWindowWidget : OpaqueWidget {
+    MonsoonShophouseMicro* module = nullptr;
+    int panelIdx = 0;
     void draw(const DrawArgs& args) override {
         if (!module) return;
-        auto f = font(); if (!f) return;
         NVGcontext* vg = args.vg;
-        const bool visible = front < module->frontCount();
-        if (!visible) {   // 24-mode hides fronts 3-4: grey the cell
-            nvgBeginPath(vg); nvgRect(vg, 0, 0, box.size.x, box.size.y);
-            nvgFillColor(vg, nvgRGBA(0x10,0x12,0x15,0xc0)); nvgFill(vg);
-            return;
-        }
+        int front, degOff; windowToFront(panelIdx, module->list.degrees(), front, degOff);
         const TuningSlot& slot = module->list.slot(front);
-        // Active-front lantern (top-left).
-        const bool active = (module->list.active() == front);
-        nvgBeginPath(vg); nvgCircle(vg, mm2px(3.0f), mm2px(3.5f), mm2px(1.4f));
-        nvgFillColor(vg, active ? nvgRGB(0xd4,0x00,0x1a) : nvgRGBA(0x60,0x30,0x34,0xff)); nvgFill(vg);
-        // Name band text (bottom strip).
-        nvgFontFaceId(vg, f->handle);
-        nvgFontSize(vg, 8.f);
-        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-        std::string label = slot.loaded ? (slot.name.empty() ? "(tuning)" : trunc(slot.name, 12))
-                                        : "— empty —";
-        nvgFillColor(vg, slot.loaded ? nvgRGB(0xff,0x9a,0x2a) : nvgRGB(0x6a,0x72,0x7c));
-        nvgText(vg, box.size.x * 0.5f, box.size.y - mm2px(4.0f), label.c_str(), nullptr);
-        // Front number top-centre.
-        nvgFontSize(vg, 7.f);
-        nvgFillColor(vg, nvgRGB(0x9a,0xa2,0xac));
-        nvgText(vg, box.size.x * 0.5f, mm2px(3.5f), std::to_string(front + 1).c_str(), nullptr);
+        const float W = box.size.x, H = box.size.y;
+        const int N = 12;                                  // always a 12-cell half/whole strip
+        const float gap = 0.6f;
+        const float cw = (W - gap * (N - 1)) / (float)N;
+        for (int i = 0; i < N; ++i) {
+            const int deg = degOff + i;
+            const bool even = (i % 2 == 0);                // ALTERNATING black/blue identity (not keys)
+            const bool lit  = slot.loaded && slot.weight[deg] > 0.f;   // active vs masked
+            NVGcolor c = even ? (lit ? nvgRGB(0x34,0x7e,0xe0) : nvgRGB(0x17,0x24,0x38))   // blue
+                              : (lit ? nvgRGB(0x8c,0x94,0xa0) : nvgRGB(0x13,0x15,0x1b));  // black
+            float x = i * (cw + gap);
+            nvgBeginPath(vg); nvgRoundedRect(vg, x, 0, cw, H, 0.6f);
+            nvgFillColor(vg, c); nvgFill(vg);
+        }
+        // Active-front lantern (top-left of the window).
+        const bool active = slot.loaded && (module->list.active() == front);
+        nvgBeginPath(vg); nvgCircle(vg, mm2px(1.6f), mm2px(1.6f), mm2px(1.2f));
+        nvgFillColor(vg, active ? nvgRGB(0xd4,0x00,0x1a) : nvgRGBA(0x60,0x30,0x34,0xa0)); nvgFill(vg);
     }
     void onButton(const event::Button& e) override {
-        if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT
-            && module && front < module->frontCount()) {
-            e.consume(this);
-            loadDmtune();
-            return;
+        if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT && module) {
+            int front, degOff; windowToFront(panelIdx, module->list.degrees(), front, degOff);
+            e.consume(this); loadDmtuneInto(module, front); return;
         }
         OpaqueWidget::onButton(e);
     }
-    void loadDmtune() {
-        osdialog_filters* filters = osdialog_filters_parse("dot.modular Tuning:dmtune");
-        char* path = osdialog_file(OSDIALOG_OPEN, nullptr, nullptr, filters);
-        osdialog_filters_free(filters);
-        if (!path) return;
-        std::string pathStr(path); std::free(path);
-        // Validate n against the module mode (unless empty → first load adopts it, via loadSlot).
-        const int wantN = module->list.anyLoaded() ? module->list.degrees() : 0;   // 0 = accept, adopt
-        auto p = dotModular::loadTuningPreset(pathStr,
-            [wantN](int nn){ return wantN == 0 || nn == wantN; },
-            "This .dmtune's degree count doesn't match this Shophouse Micro's mode "
-            "(all slots must be the same 12 or 24).");
-        if (!p.ok()) { osdialog_message(OSDIALOG_WARNING, OSDIALOG_OK, p.errorMessage.c_str()); return; }
-        // If unattached/empty, set the front count for the adopted mode before loading.
-        if (!module->list.anyLoaded()) module->setMode(p.n);
-        std::string nm = p.name;
-        if (nm.empty()) {
-            size_t slash = pathStr.find_last_of("/\\");
-            std::string base = (slash == std::string::npos) ? pathStr : pathStr.substr(slash + 1);
-            size_t dot = base.find_last_of('.');
-            nm = (dot == std::string::npos) ? base : base.substr(0, dot);
+};
+
+// ── The name band: abbreviated .dmtune name (truncated + ellipsis), placeholder when empty; doubles as
+// a load click target. In 24-mode only the LEFT-house band of each story draws the name (the story's two
+// windows share one front) so the label isn't drawn twice. ─────────────────────────────────────────
+struct NameBandWidget : OpaqueWidget {
+    MonsoonShophouseMicro* module = nullptr;
+    int panelIdx = 0;
+    void draw(const DrawArgs& args) override {
+        if (!module) return;
+        auto f = smFont(); if (!f) return;
+        NVGcontext* vg = args.vg;
+        const int degrees = module->list.degrees();
+        int front, degOff; windowToFront(panelIdx, degrees, front, degOff);
+        // 24-mode: a front spans two windows; draw its name only on the left-house half (panels 0,1).
+        const bool primary = (degrees == 24) ? (panelIdx < 2) : true;
+        if (!primary) return;
+        const TuningSlot& slot = module->list.slot(front);
+        nvgFontFaceId(vg, f->handle);
+        nvgFontSize(vg, 8.f);
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+        std::string label = slot.loaded ? (slot.name.empty() ? "(tuning)" : smTrunc(slot.name, 14))
+                                        : "\u2014 empty \u2014";
+        nvgFillColor(vg, slot.loaded ? nvgRGB(0xff,0x9a,0x2a) : nvgRGB(0x6a,0x72,0x7c));
+        nvgText(vg, box.size.x * 0.5f, box.size.y * 0.5f, label.c_str(), nullptr);
+    }
+    void onButton(const event::Button& e) override {
+        if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT && module) {
+            int front, degOff; windowToFront(panelIdx, module->list.degrees(), front, degOff);
+            e.consume(this); loadDmtuneInto(module, front); return;
         }
-        if (!module->list.loadSlot(front, p.n, p.cents, p.weight, nm))
-            osdialog_message(OSDIALOG_WARNING, OSDIALOG_OK,
-                "Could not load into this slot (mode mismatch).");
+        OpaqueWidget::onButton(e);
     }
 };
 
@@ -203,14 +241,23 @@ struct MonsoonShophouseMicroWidget : ModuleWidget,
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
-        // Per-front cells (name band + lantern + click-to-load).
-        for (int f = 0; f < ShophouseMicroIds::MAX_FRONTS; ++f) {
-            if (auto* s = findNamed("cell_" + std::to_string(f))) {
-                auto* fw = new MicroFrontWidget();
-                fw->module = mod; fw->front = f;
+        // Per-window mask-cell strips + name bands (the 2x2 shophouse windows). Each panel window shows
+        // 12 alternating black/blue mask cells; the widget re-maps window→front by mode (12: 1:1;
+        // 24: a story's two windows are one front's two 12-halves). Both are click-to-load targets.
+        for (int p = 0; p < ShophouseMicroIds::MAX_FRONTS; ++p) {
+            if (auto* s = findNamed("window_" + std::to_string(p))) {
+                auto* mw = new MaskWindowWidget();
+                mw->module = mod; mw->panelIdx = p;
                 Rect b = boundsOf(s);
-                fw->box.pos = b.pos; fw->box.size = b.size;
-                addChild(fw);
+                mw->box.pos = b.pos; mw->box.size = b.size;
+                addChild(mw);
+            }
+            if (auto* s = findNamed("name_band_" + std::to_string(p))) {
+                auto* nb = new NameBandWidget();
+                nb->module = mod; nb->panelIdx = p;
+                Rect b = boundsOf(s);
+                nb->box.pos = b.pos; nb->box.size = b.size;
+                addChild(nb);
             }
         }
 
