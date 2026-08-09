@@ -15,6 +15,33 @@ A .dmtune IS a superset of a Shophouse front: today's front = "scale mask + impl
 a .dmtune front = "scale mask + explicit N-degree tuning". So this is a generalisation of Shophouse,
 not a new mechanism.
 
+## What you're modulating depends on slot CONTENT -- tuning, scale, or both (Rodney)
+
+A .dmtune carries BOTH cents[] and weight[]. So the SAME switch mechanism produces musically distinct
+behaviours depending on what actually differs between the active slots. This is a feature, not an edge
+case -- the musician chooses the axis by what they load.
+
+- **Same cents, different weights = SCALE modulation within a tuning.** All slots share one tuning
+  (identical cents); only the weight masks differ. Switching fronts changes WHICH DEGREES are active --
+  moving between scales/modes of one fixed tuning. The microtonal generalisation of what the original
+  Shophouse did (mode-switching), now in an arbitrary tuning. Pitch vocabulary stays; selection moves.
+- **Different cents = TUNING modulation proper.** The cents differ between slots -- gliding between
+  tuning SYSTEMS (12-TET -> maqam -> stretched). The novel capability; tuning as a modulation dimension.
+- **Both at once = tuning + scale together**, or hold one constant and vary the other. It's a CONTINUUM,
+  not two modes.
+
+The mechanism doesn't know or care which: it just writes the active slot's cents[] + weight[] to the
+table. The behaviour is EMERGENT from slot content. One mechanism; the musician decides whether they're
+modulating tuning, scale, or both, purely by what they load.
+
+Implication for switch-vs-morph (the deferred question): the two axes morph DIFFERENTLY.
+- Weight morphing (scale) is well-behaved -- crossfading two masks is musically sensible (degrees fade
+  in/out).
+- Cents morphing (tuning) is the gorgeous-but-hard one -- continuously gliding pitch.
+So if morph is ever built, a sensible split is: morph WEIGHTS (easy, safe), SWITCH cents at the boundary
+(avoids "what does a half-glided tuning sound like mid-phrase") -- or offer both. Later call; this
+cents-vs-weight distinction is the lens to make it through.
+
 ## Where it writes (the one architectural point)
 Today Shophouse writes (scale, root) into Monsoon's ScaleManager. Shophouse Micro writes the active
 front's full cents[] + weight[] into the SHARED TuningTable owned by Monsoon -- the SAME destination
