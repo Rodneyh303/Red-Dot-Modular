@@ -304,3 +304,81 @@ already distinguishes Colonnades from Duo) instead of via tuning.N. That gives b
 Cross-ref: MonsoonShophouseMicro.cpp:21-23 (the tuning.N read to replace), MonsoonExpanderManager.hpp:
 93/186-191 (cachedColonnadesExpander, set for both Colonnades and Duo), VisualExpanderHelpers.hpp:26
 (findMonsoonEitherSide, confirmed to walk through intermediates).
+
+## OVERRIDE + OUT-OF-SCALE SEMANTICS (Rodney, 6 rulings) -- includes a .dmtune FORMAT CHANGE
+
+### 1. Shophouse (regular) + Monsoon = SCALE override only, tuning irrelevant
+Even with Sikit attached (Sikit tunes, but the scale mask is still 12 fixed semitones). Out-of-scale
+faders DIM (guide) or ZERO (enforce). Faders move freely; out-of-scale ones are zeroed regardless of
+position. Moving an out-of-scale fader has no effect -- it's zeroed. (This is existing behaviour;
+out-of-scale is defined by the KNOWN scale of fixed semitones, never by fader position.)
+
+### 2. Shophouse Micro + Colonnades/Duo = TUNING override, RESET on detach (needs cache)
+The active front overrides the tuning (cents + mask). On DETACH, the tuning RESETS to Colonnades'
+pre-override authored state -> the Monsoon must CACHE Colonnades' authored cents+mask before the
+Shophouse Micro override, so it can restore on detach. (Base/override/revert: Colonnades authored =
+base; active front = override; detach or no-active-front = revert to cached base.)
+
+### 3. Out-of-scale faders on Colonnades DIM + ZERO under Shophouse Micro
+Same as Monsoon+Shophouse: out-of-scale degrees dim and are zeroed at READ time. Shophouse Micro does
+NOT move the Colonnades faders -- it masks them (read-time), leaving the user's fader values intact.
+
+### 4. "Out of scale" is determined by the saved .dmtune -- by the scale flag at save time
+A degree is out-of-scale per the .dmtune's saved SCALE state, NOT by live fader position.
+
+### 5. Moving an out-of-scale fader has no effect -- zeroed at read time
+Exactly like Monsoon+Shophouse. The user can move it; it reads zero.
+
+### 6. THE FIX (Rodney's key insight): weight==0 is AMBIGUOUS -- add an explicit per-degree scale flag
+PROBLEM: currently a degree's "in/out of scale" is derived from weight==0 (MicroTuning.cpp:48-50
+treats zero-weight as the hard mask; there is NO separate per-degree flag -- maskAuthored is just a
+bool "Micro owns the mask this block", MicroTuning.cpp:121). This OVERLOADS one value with two
+meanings:
+  - "this degree is OUT OF SCALE" (structural: not part of the scale), vs
+  - "this degree is IN SCALE but I turned its probability to zero" (a mix decision).
+A zero fader can't distinguish them. Consequence of the bug: a degree merely turned DOWN to zero gets
+frozen as out-of-scale and can never be raised back -- you lose "in-scale but momentarily silent."
+(Contrast Monsoon+Shophouse: fader position NEVER indicates out-of-scale, because the scale is known
+fixed semitones. The ambiguity is unique to the arbitrary-tuning Micro case -- exactly why Rodney
+flagged it.)
+
+FIX: add an explicit per-degree ENABLED flag (the scale membership), SEPARATE from weight (the mix),
+saved in the .dmtune. Three states:
+  - enabled=false            -> OUT OF SCALE -> dimmed, zeroed at read, fader movement no effect (3/5).
+  - enabled=true,  weight=0  -> IN SCALE but currently silent -> fader CAN bring it back.
+  - enabled=true,  weight>0  -> in scale, sounding.
+This is the scale MASK (enabled/disabled) vs the WEIGHT (probability within scale) -- two facts, two
+arrays. (Naming: "enabled" not "out of scale" per Rodney -- the flag is scale membership; "out of
+scale" is the enabled=false state.)
+
+### .dmtune FORMAT CHANGE (supersedes TUNING_PRESET_FORMAT weight-only mask)
+.dmtune must store BOTH arrays, not just weight:
+```json
+{ "format":"dotmodular.tuning", "version":2, "n":12,
+  "cents":[...], "enabled":[true,false,...], "weight":[...], "name":"...", "notes":"..." }
+```
+- `enabled[n]`: per-degree scale membership (the mask). This is what determines out-of-scale (ruling 4).
+- `weight[n]`: per-degree probability WITHIN the scale (independent of enabled).
+- version -> 2. A v1 .dmtune (weight only) migrates: enabled[i] = (weight[i] > 0) -- the old
+  conflated meaning, best-effort. New saves write explicit enabled[].
+
+### Consequence for .scl export (cleaner)
+.scl export = the ENABLED degrees (scale membership), NOT the non-zero-weight degrees. An
+enabled-but-weight-zero degree is still IN the scale -> it exports. This correctly separates "what's
+in the scale" (.scl) from "what's currently loud" (weight, a mix decision .scl shouldn't carry).
+Supersedes the round-4 "active = non-zero weight" rule in COLONNADES_PANEL_LIFT_SPEC: active/in-scale
+= enabled, not weight>0.
+
+### Implementation notes
+- Colonnades/Duo need a per-degree enabled state (a bool array / param per degree) distinct from the
+  weight fader. UI: how the user toggles enabled vs sets weight is a Colonnades panel question (a
+  small per-degree enable toggle, or the NOTES-knob "enable first N" already sets enabled for 1..N).
+  Actually the NOTES knob (COLONNADES round-5) ALREADY conceptually sets "how many enabled" -- wire
+  enabled[] to that: NOTES=N -> enabled[0..N-1]=true, rest false; per-degree override still possible.
+- tt needs enabled[] alongside weight[]; read-time masking keys off enabled (out-of-scale -> 0),
+  independent of weight.
+- Shophouse Micro fronts carry enabled[] + weight[] + cents[] (the full .dmtune v2).
+
+Cross-ref: MicroTuning.cpp:48-50/121 (weight==0-as-mask + maskAuthored bool -- the conflation),
+TUNING_PRESET_FORMAT.md (schema to bump to v2 with enabled[]), COLONNADES_PANEL_LIFT_SPEC round-4/5
+(the "active=non-zero weight" rule this supersedes + the NOTES knob that sets enabled).
