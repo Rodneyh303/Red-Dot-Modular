@@ -85,3 +85,53 @@ Most microtonal tools treat tuning as static setup; this makes it a modulation t
 - TUNING_PRESET_FORMAT.md -- the .dmtune a front holds.
 - MICROS_ENGINE_CLAUDE_CODE_GUIDE.md -- the shared TuningTable + write-authority this writes into.
 - PITCH_PATCHABILITY_AND_DISTINCTION.md 12/13 -- cross-tuning canon this composes with.
+
+## PER-SLOT: load a .dmtune + show its abbreviated name (Rodney)
+
+Each front needs (a) a way to LOAD a .dmtune into that slot, and (b) an abbreviated NAME readout where
+the original Shophouse shows the scale name. Both map onto existing Shophouse structure.
+
+### The name band already exists -- reuse it
+Shophouse draws a live name readout per front on a "name band" widget: findNamed("name_band_" + f),
+NameBandWidget (MonsoonShophouseExpander.cpp:183), currently drawing "<root> <scale name>"
+(nvgText at :205,211). Shophouse Micro reuses this band, but:
+- Draws the loaded .dmtune's NAME instead of "<root> <scale name>".
+- No root (root-note dropped) -- so the label is just the abbreviated tuning name, not "<root> <name>".
+- Empty slot -> a neutral placeholder ("--" or "empty"), not a scale.
+
+### Abbreviated name -- reuse the .scl menu-width fix
+The .dmtune "name" field (TUNING_PRESET_FORMAT schema) can be long, and the name band is narrow. Same
+problem, same fix as the .scl context-menu width bug (SCALA_FILE_AND_LOAD_UI): truncate to fit the
+band with an ellipsis. Truncate to the band width (~12-16 chars given four fronts across the panel);
+full name in a hover tooltip if the widget supports it. The name is a label, not a contract -- the
+tuning is loaded regardless of display.
+
+### Loading a .dmtune into a slot
+Per-front load affordance:
+- Lean: a small "load" target per front (a button, or a click on the name band itself) that opens the
+  osdialog .dmtune file picker (reuse the Colonnades/Duo load path -- dotModular::TuningPreset reader,
+  the SAME loader, so it validates n against the module's current mode: 12-mode slot rejects a 24-tone
+  .dmtune and vice versa, or auto-adapts -- see below).
+- On load: read the .dmtune's cents[] + weight[] into the slot's stored state (baked into module state,
+  travels with the patch). Store the .dmtune name for the band readout.
+- Context-menu "Load .dmtune into slot N..." is the low-surface fallback; a per-front click target is
+  more discoverable and matches Shophouse's menu-free ethos.
+
+### N-mismatch on load (design decision, confirm at build)
+Shophouse Micro is in 12-mode or 24-mode by connection (target tt.N). A slot load must handle a
+.dmtune whose n disagrees with the current mode:
+- Lean: REJECT with a brief notice ("24-tone tuning can't load into a 12-tone slot") -- the mode is set
+  by the connected Micro, and a front must match the table it writes. Clean, predictable.
+- Alternative (later): auto-truncate/pad, but that silently mangles the tuning -- reject is more honest.
+- If UNATTACHED (no mode resolved yet): accept the .dmtune and set mode from ITS n, then require
+  matching loads for the other slots. First load defines the mode until attached.
+
+### Summary of per-front UI
+- Name band: abbreviated .dmtune name (truncated + ellipsis), placeholder when empty. No root.
+- Load target: per-front click/button -> osdialog .dmtune picker -> bake cents[]+weight[]+name into slot.
+- The SCALE knob and ROOT shutter of the original Shophouse are GONE (no scale-stepping, no root) --
+  a front is just "which .dmtune", loaded per slot.
+
+Cross-ref: MonsoonShophouseExpander.cpp:183-211 (NameBandWidget -- the readout to reuse),
+SCALA_FILE_AND_LOAD_UI.md (the truncation fix), TUNING_PRESET_FORMAT.md (the .dmtune name field +
+the loader to reuse).
