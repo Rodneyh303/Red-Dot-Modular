@@ -127,6 +127,7 @@ void MicroTuningModule::process(const ProcessArgs&) {
     for (int i = 0; i < n; ++i) {
         modWeight[i] = tt.weight[i];
         modActive[i] = !sceneActive && std::fabs(tt.weight[i] - params[weightParam(i)].getValue()) > 1e-4f;
+        effectiveEnabled[i] = tt.enabled[i];   // post-override mask for the fader-dim widget
     }
     tt.maskAuthored = true;                    // Micro owns the scale mask this block (Model A)
     tt.recomputeDefaultFlag();                 // cents fast-path (weight doesn't affect the cents map)
@@ -156,7 +157,9 @@ struct MicroLightSlider : VCVLightSlider<TLightBase> {
         if (!mod) return false;
         int deg = pq->paramId - microTuning::weightParam(0);
         if (deg < 0 || deg >= mod->nDegrees) return false;
-        return !mod->enabledState[deg];
+        // Read the EFFECTIVE mask (post Shophouse Micro override), not the base enabledState[],
+        // so faders dim under an active scene override, not only under the Colonnades' own authoring.
+        return !mod->effectiveEnabled[deg];
     }
     void draw(const widget::Widget::DrawArgs& args) override {
         const bool dimmed = degreeDisabled();

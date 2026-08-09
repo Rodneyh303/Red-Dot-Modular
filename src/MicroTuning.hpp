@@ -73,6 +73,15 @@ struct MicroTuningModule : rack::engine::Module {
     // Monsoon's semitone arcs). Runtime-only; written each block in process().
     float modWeight[dotModular::TuningTable::MAXN] = {};
     bool  modActive[dotModular::TuningTable::MAXN] = {};
+    // Effective (post-override) enabled mask, mirrored from tt.enabled[] AFTER any Shophouse Micro
+    // override is applied, so the fader-dim widget reflects the ACTIVE scene's mask -- not just the
+    // Colonnades' own authored enabledState[]. (Bug: faders didn't dim under a Shophouse Micro override
+    // because the dim read enabledState[] (base) instead of the effective mask.)
+    // Defaults all-true (in-scale): before the first process() mirrors tt.enabled[], a draw must show
+    // faders IN-scale, not all-dimmed. Set true rather than the {}-zero (all-false = all-dimmed flash).
+    bool  effectiveEnabled[dotModular::TuningTable::MAXN] = {
+        true,true,true,true,true,true,true,true,true,true,true,true,
+        true,true,true,true,true,true,true,true,true,true,true,true};
 
     explicit MicroTuningModule(int n) : nDegrees(n) {
         config(microTuning::numParams(n), 0, 0, microTuning::numLights(n));
