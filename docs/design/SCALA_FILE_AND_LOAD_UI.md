@@ -379,3 +379,39 @@ the Micros or as a v2 feature on Sikit if demand exists.
 - https://www.huygens-fokker.org/scala/scl_format.html -- official Scala .scl format documentation.
 - https://www.huygens-fokker.org/docs/scales.zip -- Scala scale archive (thousands of real-world .scl
   files for testing).
+
+## BUG + FIX: long .scl description blows out the context menu width
+
+A .scl with a long description (e.g. "24-tone maqam music tuning with 12-tones tempered in the style of
+Rameau's modified meantone and 17 tones produced by cycle of super-pyth fifths") forces the whole
+context menu absurdly wide. Cause: Colonnades.cpp:438 does
+`createMenuLabel("Loaded: " + mod->loadedTuningName)` with the FULL untruncated string, and VCV sizes
+a menu to its widest label. Standard MenuLabel does not wrap.
+
+Three fixes, in effort order:
+
+1. **Truncate + tooltip (RECOMMENDED, ships now).** Cap the displayed label at ~40 chars with an
+   ellipsis; put the FULL description in the menu item's hover tooltip so nothing is lost:
+   ```cpp
+   std::string full = mod->loadedTuningName;
+   std::string shown = full.size() > 40 ? full.substr(0, 37) + "..." : full;
+   auto* lbl = createMenuLabel("Loaded: " + shown);
+   lbl->text = ... ; // if using a MenuItem variant that supports ->text tooltip; else a plain label
+   menu->addChild(lbl);
+   ```
+   (If MenuLabel doesn't carry a tooltip in this Rack version, the full text can also be shown via a
+   right-click/hover on a MenuItem, or simply dropped -- the description is cosmetic; the tuning is
+   already loaded and the cents are visible on the display.)
+
+2. **Manual word-wrap into multiple MenuLabels (medium).** Split the description at word boundaries
+   into ~40-char lines, add one createMenuLabel per line. Menu width bounded by the chunk width; full
+   description visible across several lines. A small wrap loop, no new widget.
+
+3. **Custom wrapping MenuLabel widget (most work).** A MenuLabel subclass that measures + wraps to a
+   fixed width in draw(). Cleanest but real widget code for marginal gain over (2).
+
+RECOMMENDATION: ship (1) truncate now (the description is cosmetic -- the tuning is loaded, cents are
+on the display), consider (2) later if the full description in-menu is wanted. Do NOT ship the current
+untruncated label -- it's a real usability bug (unbounded menu width from user file content).
+
+Cross-ref: Colonnades.cpp:438 (the createMenuLabel to fix); loadedTuningName set at Colonnades.cpp:352.
