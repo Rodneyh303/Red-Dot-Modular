@@ -1,8 +1,35 @@
-# dot.modular tuning preset format (.dmtune) -- portable tuning+scale library
+# dot.modular tuning preset format (.dmtune) -- portable tuning+scale
 
-A dot.modular-native JSON format that stores the FULL Micro state (all cents + all fader weights),
+A dot.modular-native JSON format that stores a portable TUNING + SCALE (cents + enabled mask),
 distinct from .scl. Purpose: a portable LIBRARY of tuning+scale setups the user builds themselves --
 NOT a shipped ethnomusicology corpus, NOT a replacement for patch-save.
+
+## WHAT .dmtune IS (final -- clarified by building Shophouse Micro)
+
+Building Shophouse Micro (the consumer of this format) clarified what .dmtune should be. It reshaped
+the format: earlier drafts called it "lossless full state" and stored weight[]. That was WRONG. The
+final definition:
+
+**.dmtune = a portable TUNING + SCALE. Two arrays: cents[] (the tuning -- where the N degrees sit) and
+enabled[] (the scale -- which degrees are in play). It does NOT store weight.**
+
+Why no weight: weight is the user's LIVE PERFORMANCE MIX (the faders). By the Shophouse analogy, a
+scale MASKS the mix, it never MOVES your faders (non-destructive). Loading a .dmtune sets cents +
+enabled and leaves the faders untouched -- so your performance mix rides THROUGH tuning/scale changes.
+This is exactly what makes Shophouse Micro musical: switch .dmtune scenes while your fader mix persists.
+If weight were in the file, loading a scene would overwrite your mix -- the thing Shophouse never does.
+
+The three-format hierarchy (each a superset of the last, each with a clear owner):
+- **.scl**  = tuning only (N cents).            Interchange standard. What you PLAY. Owner: Scala world.
+- **.dmtune** = tuning + scale (cents + enabled). dot.modular native. What you SET UP. Owner: dot.modular.
+- **VCV patch** = tuning + scale + mix + all.    Adds weight + everything. What you PERFORM. Owner: your patch.
+
+The mix lives ONLY in the patch. That is the key realisation Shophouse Micro forced: the module's whole
+point is that your mix rides through scene changes, which is only possible if the scenes carry no mix.
+
+Symmetry worth noting: the cents / enabled / weight split that defines the three formats IS the
+three-control split on the Colonnades panel -- cents knob, enable band, weight fader. Format layers and
+panel controls are the same three facts, which is a sign the decomposition is right.
 
 ## Why this exists (scope, Rodney)
 
@@ -41,7 +68,7 @@ JSON, not .scl-with-comment-stashed-weights. Reasons:
   "version": 1,
   "n": 12,
   "cents":  [0.0, 90.58, 200.0, ...],
-  "weight": [1.0, 0.0, 0.75, ...],
+  "enabled": [true, false, true, ...],
   "name": "optional user label",
   "notes": "optional free text"
 }
@@ -49,7 +76,8 @@ JSON, not .scl-with-comment-stashed-weights. Reasons:
 - `n`: 12 or 24 (Micro-12 vs Micro-24). Same format both; n distinguishes.
 - `cents[n]`: ALL degrees' cents including INACTIVE ones (this is the whole point -- .scl loses these).
   Root (index 0) always 0.
-- `weight[n]`: ALL fader positions (the scale mask). 0 = disabled degree.
+- `enabled[n]`: per-degree SCALE MEMBERSHIP (the mask). true = in scale, false = out of scale. This is
+  the scale carved into the tuning. (NO weight[] -- weight is the live fader mix, not stored here.)
 - `name` / `notes`: optional user metadata for the library.
 - `version`: for forward-compat.
 
@@ -65,8 +93,10 @@ the 5 inactive degrees' tuning gone.)
   the caller validates n == its N_DEGREES).
 - Load/save UI: context-menu "Load .dmtune..." / "Save .dmtune..." alongside the .scl load/save items
   (SCALA_FILE_AND_LOAD_UI's osdialog pattern; filter "dot.modular Tuning:dmtune").
-- On load: populate ALL cents params + ALL weight params from the file. On save: write ALL cents +
-  ALL weights (not just active -- lossless).
+- version is 2 (v1 stored weight[] and derived the mask from weight==0 -- superseded). v1 migrates on
+  load: cents kept, enabled[i] = (v1 weight[i] > 0), v1 weight discarded.
+- On LOAD: set cents params + enabled[]; DO NOT touch weight params (the faders stay as the user left
+  them). On SAVE: write cents[] + enabled[]; weight is NOT written (it's the live mix, patch-local).
 - Reuse rack's json_t (jansson) -- already used by dataToJson; no new dependency.
 
 ## The four file operations on a Micro (summary)
@@ -75,8 +105,8 @@ the 5 inactive degrees' tuning gone.)
 |---------|-----------------------------------|------------------------------------|
 | .scl    | N pitches -> N active degrees     | active degrees' cents, ascending   |
 |         | (weight 0 for rest), NOTES=N      | (lossy: tuning of inactive lost)   |
-| .dmtune | ALL cents + ALL weights restored  | ALL cents + ALL weights written    |
-|         | (lossless)                        | (lossless, dot.modular-only)       |
+| .dmtune | cents + enabled restored;         | cents + enabled written;           |
+|         | faders (weight) untouched         | weight NOT written (live mix)      |
 
 .scl for interchange (portable, standard, lossy). .dmtune for the personal library (lossless, native).
 
@@ -109,5 +139,5 @@ for. Revisit .kbm only if pure Scala-mapping-interchange becomes a real, request
 
 Resulting format scope (three -> two):
 - .scl    -- interchange of the scale/tuning (standard, portable, lossy by design).
-- .dmtune -- full-state personal library (native, lossless, one file).
+- .dmtune -- portable tuning + scale (cents + enabled), native, one file. NOT full state (no weight).
 - .kbm    -- dropped unless Scala-mapping-interchange is specifically needed later.
