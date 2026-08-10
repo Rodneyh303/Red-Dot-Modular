@@ -585,14 +585,22 @@ modifier-click on the number band.
   border ON TOP of the enabled/dimmed/greyed state. (Tonic is normally also enabled.)
 - Use the dot.modular red (#d4001a) for the tonic mark -- the tonic is the "root", the little red dot.
 
-### Reused across the family (same gesture everywhere)
+### Reused across the family (gesture is family-appropriate, NOT identical everywhere)
 - Colonnades / Duo authoring: right-click fader -> Set as tonic (for saving a transposable .dmtune).
-- Monsoon scale-authoring: same gesture on the Monsoon note faders (marks the tonic for the
+- Monsoon scale-authoring: same right-click gesture on the Monsoon note faders (marks the tonic for the
   root-relative save, MONSOON_SCALE_AUTHORING_DIRECTION).
-- Shophouse (loading a Monsoon scale-only .dmtune): right-click a degree cell -> Set as tonic, which
-  sets the FRONT'S existing root (option B: reuse the per-front root as the transposer). So Shophouse
-  can transpose a loaded user scale per front -- one user scale in four fronts at four roots = four-key
-  modulation of the user's own scale.
+- Shophouse (loading a Monsoon scale-only .dmtune): use the EXISTING Shophouse tonic gesture, NOT the
+  right-click (Rodney). Shophouse ALREADY sets tonic by CLICKING A SHUTTER -> sets that front's root
+  (MonsoonShophouseExpander.cpp:16,112-120), and already renders the root shutter in Singapore red
+  (:148, isRoot -> red "open" shutter). Factory scales use this; .dmtune scales use the SAME gesture --
+  click a cell/shutter sets the front's root (the transposer, option B). Do NOT add the Colonnades
+  right-click to Shophouse; consistency WITHIN Shophouse (shutter-click for factory AND user scales)
+  beats consistency with Colonnades. The red root indicator is already there -- reuse it for the
+  .dmtune tonic too.
+- So the tonic gesture is FAMILY-APPROPRIATE per module, not literally identical: Colonnades/Duo/Monsoon
+  authoring = right-click fader (no existing gesture to reuse there); Shophouse = its existing
+  shutter-click root (reuse). Same CONCEPT (set the tonic/root), each via the module's natural
+  affordance.
 
 ### Implementation note for CC
 On Colonnades/Duo the fader right-click menu is the PARAM (weight) context menu VCV auto-generates.
