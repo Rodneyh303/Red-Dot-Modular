@@ -114,13 +114,26 @@ void MicroTuningModule::process(const ProcessArgs&) {
             }
         }
     }
+    // EDGE RULING (Rodney): ONE active Interchange PER HALF, extras inert — NOT summed. Summing
+    // saturated unpredictably at 3+/half (each add clamps at 1) and depended on discovery order. The
+    // first-bound Interchange claims a half; later ones on that half are ignored. This gives, uniformly:
+    //   • Colonnades Duo (24 deg): at most TWO effective — one on half 1 (deg 0..11), one on half 2
+    //     (deg 12..23) = the intended cooperative pair.
+    //   • Colonnades (12 deg): at most ONE effective — only half 1 exists (half 2's degrees ≥12 don't),
+    //     so a 12-Micro is capped at a single Interchange however many are attached.
+    // boundInterchanges_ is built by the rack-wide scan above in getModuleIds() order → a stable winner.
+    bool halfClaimed[2] = { false, false };
     for (rack::Module* m : boundInterchanges_) {
         auto* ix = dynamic_cast<MonsoonInterchangeExpander*>(m);
         if (!ix) continue;
-        const int base = (ix->targetHalf == 2) ? 12 : 0;   // which 12 degrees this Interchange drives
+        const int halfIdx = (ix->targetHalf == 2) ? 1 : 0;
+        const int base    = halfIdx * 12;                   // which 12 degrees this Interchange drives
+        if (base >= n)        continue;                     // half 2 on a 12-Micro: no such degrees → inert
+        if (halfClaimed[halfIdx]) continue;                 // a second Interchange on this half → inert
+        halfClaimed[halfIdx] = true;                        // this one owns the half
         for (int k = 0; k < 12; ++k) {
             const int deg = base + k;
-            if (deg >= n) break;                            // half 2 on a 12-Micro: inert
+            if (deg >= n) break;
             int inId  = MonsoonIds::EXPANDER_SEMI_CV_INPUT_0 + k;
             int attId = MonsoonIds::EXPANDER_SEMI_ATTENUVERTER_0 + k;
             if (inId < (int)ix->inputs.size() && ix->inputs[inId].isConnected()) {

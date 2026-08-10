@@ -69,10 +69,20 @@ JSON, not .scl-with-comment-stashed-weights. Reasons:
   "n": 12,
   "cents":  [0.0, 90.58, 200.0, ...],
   "enabled": [true, false, true, ...],
+  "scaleOnly": true,
+  "transposable": true,
   "name": "optional user label",
   "notes": "optional free text"
 }
 ```
+- `scaleOnly` (optional, default false): a 12-TET SCALE authored on a Monsoon — `cents` are the implied
+  12-TET ladder and only `enabled` matters. Still a valid full preset (Colonnades can load it as a
+  12-TET tuning+mask). UI hint only. (MONSOON_SCALE_AUTHORING_DIRECTION.)
+- `transposable` (optional, default false): the `enabled` mask is ROOT-RELATIVE (tonic normalised to
+  degree 0) and is transposed by the LIVE root control (Monsoon scale-menu root / Shophouse front
+  root), exactly like a built-in scale — no absolute root stored. false = absolute mask. Microtonal
+  (cents-carrying) .dmtune from Colonnades/Duo NEVER sets this (arbitrary tunings don't scale-
+  transpose; Monsoon is 12-TET only). (TONIC_TRANSPOSE_BUILD_BRIEF.)
 - `n`: 12 or 24 (Micro-12 vs Micro-24). Same format both; n distinguishes.
 - `cents[n]`: ALL degrees' cents including INACTIVE ones (this is the whole point -- .scl loses these).
   Root (index 0) always 0.

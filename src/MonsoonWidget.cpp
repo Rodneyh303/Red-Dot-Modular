@@ -72,6 +72,31 @@ struct MonsoonLightSlider : VCVLightSlider<TLightBase> {
         VCVLightSlider<TLightBase>::onDragMove(e);
     }
 
+    // Pitch-class (0..11) this fader represents, or -1 if not a SEMI fader.
+    int semiPc() const {
+        if (this->paramId < MonsoonIds::SEMI0_PARAM || this->paramId >= MonsoonIds::SEMI0_PARAM + 12)
+            return -1;
+        return this->paramId - MonsoonIds::SEMI0_PARAM;
+    }
+    // TONIC_TRANSPOSE STEP 2: append "Set as tonic / Unset tonic" to the fader's PARAM context menu
+    // (do NOT replace the standard entries). Only an enabled (in-scale) degree can be a tonic.
+    void appendContextMenu(ui::Menu* menu) override {
+        auto* m = dynamic_cast<Monsoon*>(this->module);
+        int pc = semiPc();
+        if (!m || !m->scaleManager || pc < 0) return;
+        auto* sm = m->scaleManager.get();
+        menu->addChild(new ui::MenuSeparator);
+        const bool isTonic = (sm->tonicPitchClass() == pc);
+        if (isTonic) {
+            menu->addChild(createMenuItem("Unset tonic", "", [sm]() { sm->unsetTonic(); }));
+        } else {
+            const bool inScale = (sm->activeScaleMask & (1u << pc)) != 0;
+            auto* it = createMenuItem("Set as tonic", "", [sm, pc]() { sm->setTonicAbsolute(pc); });
+            it->disabled = !inScale;   // tonic must be an enabled degree
+            menu->addChild(it);
+        }
+    }
+
     void draw(const widget::Widget::DrawArgs& args) override {
         auto* m = dynamic_cast<Monsoon*>(this->module);
         // Grey when out-of-scale OR when a Micro-12 has taken over the mask (delegated/inert).
@@ -92,6 +117,16 @@ struct MonsoonLightSlider : VCVLightSlider<TLightBase> {
         if (didZero) { if (auto* pq = this->getParamQuantity()) pq->setValue(restore); }
 
         drawModMarker(args, m);
+
+        // TONIC_TRANSPOSE STEP 3: a small dot.modular-red cap on the tonic fader (orthogonal to the
+        // lit/dimmed/greyed states). The tonic's absolute pitch-class = scaleManager->tonicPitchClass().
+        if (m && m->scaleManager && m->scaleManager->tonicPitchClass() == semiPc()) {
+            float cx = this->box.size.x * 0.5f, w = this->box.size.x * 0.55f;
+            nvgBeginPath(args.vg);
+            nvgRoundedRect(args.vg, cx - w * 0.5f, 1.5f, w, 2.6f, 1.0f);
+            nvgFillColor(args.vg, nvgRGB(0xd4, 0x00, 0x1a));   // dot.modular red
+            nvgFill(args.vg);
+        }
     }
 
     // ── Modulation display (SWAPPABLE — final method TODO, see SHOPHOUSE_SPEC.md) ─────────
@@ -370,7 +405,9 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
                 eb->module = dynamic_cast<Monsoon*>(module);
                 float x0 = cx[0]  - mm2px(4.5f);
                 float x1 = cx[11] + mm2px(4.5f);
-                eb->box.pos  = Vec(x0, mm2px(78.0f));
+                eb->box.pos  = Vec(x0, mm2px(72.0f));   // just under the fader field (bottom ~76.75mm),
+                                                        // over the 1–12 number strip — clear of the knob
+                                                        // label rows below (slew R / slew M, ~82mm+).
                 eb->box.size = Vec(x1 - x0, mm2px(4.2f));
                 eb->faderX.assign(12, 0.f);
                 for (int i = 0; i < 12; ++i) eb->faderX[i] = cx[i] - x0;   // band-local
@@ -1185,7 +1222,9 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
                 uint16_t mask = 0;
                 for (int i = 0; i < 12; ++i) if (p.enabled[i]) mask |= (1u << i);
                 if (mask == 0) mask = 0x0001;               // never a silent scale
-                m->scaleManager->setAuthoredMask(mask);     // becomes the Monsoon's base scale
+                // TONIC_TRANSPOSE: a transposable file stores a ROOT-RELATIVE mask (tonic at bit 0) —
+                // load it relative so the live root transposes it. Non-transposable → absolute (WYSIWYG).
+                m->scaleManager->setAuthoredMask(mask, /*relative=*/p.transposable);
             }));
             // MONSOON_SCALE_AUTHORING Phase C: save the CURRENT scale mask as a scale-only .dmtune
             // (n=12, cents = implied 12-TET, enabled = the active mask). This is the file a regular
@@ -1203,7 +1242,17 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
                     pathStr += ".dmtune";
                 dotModular::TuningPreset p;
                 p.n = 12;
-                const uint16_t mask = m->scaleManager->activeScaleMask;
+                // TONIC_TRANSPOSE STEP 4: if a tonic is designated, save the mask ROOT-RELATIVE (tonic
+                // rotated to degree 0) + transposable flag, so it reloads as a transposable scale (no
+                // absolute root in the file). No tonic → save the sounding mask absolute (not flagged).
+                auto* sm = m->scaleManager.get();
+                uint16_t mask;
+                if (sm->hasTonic()) {
+                    mask = dotModular::normaliseToTonic(sm->activeScaleMask, sm->tonicPitchClass());
+                    p.transposable = true;
+                } else {
+                    mask = sm->activeScaleMask;
+                }
                 for (int i = 0; i < 12; ++i) {
                     p.cents[i]   = i * 100.f;          // implied 12-TET (scale-only subset, D3)
                     p.enabled[i] = (mask & (1u << i)) != 0;

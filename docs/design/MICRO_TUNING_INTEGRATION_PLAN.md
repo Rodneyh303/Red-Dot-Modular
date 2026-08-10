@@ -318,14 +318,18 @@ Transitive Monsoon read (if Interchange needs Monsoon engine state too):
   Monsoon; Micro exposes host via getHost()). One pairing to the Micro transitively gives both. Avoids
   Interchange needing its own findMonsoonEitherSide (which would fail cross-row).
 
-### One-Interchange-on-Micro-24 behaviour (graceful degradation)
+### One-Interchange-on-Micro-24 behaviour (graceful degradation) -- RESOLVED (BUILT)
 If only ONE Interchange is attached to a Micro-24, modulate its assigned half (1-12 OR 13-24), leave the
-other half unmodulated. Lets you incrementally add (attach one, hear it, decide if you want the second)
-and never leaves the feature refusing to do something useful. Clean over restrictive.
-[DECIDE LATER -- RODNEY, but lean graceful-degrade.]
+other half unmodulated. Falls out for free from the per-half fold (MicroTuning.cpp): the loop only
+touches the claimed half's degrees. Incremental-add works; never refuses to do something useful.
 
-### Two-Interchanges-on-Micro-12? (define this too)
-Micro-12 has 12 faders. Attaching two Interchanges is redundant -- either they double-modulate the same
-faders (competing writes, ambiguous) or the second is inert. Simplest: only ONE Interchange effective per
-Micro-12; a second attached is inert (or refused). Ties to the single-writer discipline / WriteLedger.
-[DECIDE LATER -- RODNEY, likely just "one active per Micro-12, second inert".]
+### Multiple Interchanges per half -- RESOLVED (Rodney): ONE ACTIVE PER HALF, extras inert (BUILT)
+Definitive rule, uniform across the family (MicroTuning.cpp fold, `halfClaimed[2]`):
+- The FIRST bound Interchange claims a half; later ones on the same half are INERT (not summed).
+- Colonnades Duo (24 deg): at most TWO effective -- one on half 1, one on half 2 = the intended pair.
+- Colonnades (12 deg): at most ONE effective -- only half 1 exists (half 2's degrees >=12 don't), so a
+  12-Micro is capped at a single Interchange no matter how many are attached.
+Why NOT sum: summing clamps at 1 per add, so 3/10 same-half Interchanges saturate unpredictably and the
+result depends on discovery order -- not musical. One-per-half is deterministic at any N and matches the
+single-writer discipline. Winner = first in getModuleIds() order (stable within a patch).
+(Supersedes the earlier "same-half SUM then clamp" note and the two DECIDE-LATER leans.)

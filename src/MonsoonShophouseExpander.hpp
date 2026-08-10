@@ -92,6 +92,8 @@ struct MonsoonShophouseExpander : Module {
             json_object_set_new(js, "custom", json_boolean(e.isCustom));
             if (e.isCustom) {
                 json_object_set_new(js, "mask", json_integer(e.customMask));
+                json_object_set_new(js, "transposable", json_boolean(e.customTransposable));
+                json_object_set_new(js, "root", json_integer(e.root));
                 if (!slotName[f].empty()) json_object_set_new(js, "name", json_string(slotName[f].c_str()));
             }
             json_array_append_new(slots, js);
@@ -109,7 +111,11 @@ struct MonsoonShophouseExpander : Module {
                 if (jc && json_boolean_value(jc)) {
                     uint16_t mask = 0x0FFF;
                     if (json_t* jm = json_object_get(js, "mask")) mask = (uint16_t)json_integer_value(jm);
-                    list.setEntryCustom(f, mask);
+                    bool tr = false;
+                    if (json_t* jt = json_object_get(js, "transposable")) tr = json_boolean_value(jt);
+                    list.setEntryCustom(f, mask, tr);
+                    if (json_t* jr = json_object_get(js, "root"))          // restore the transposed root
+                        params[ShophouseIds::ROOT_PARAM_0 + f].setValue((float)((json_integer_value(jr) % 12 + 12) % 12));
                     if (json_t* jn = json_object_get(js, "name"); json_is_string(jn)) slotName[f] = json_string_value(jn);
                 }
             }

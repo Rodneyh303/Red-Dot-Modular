@@ -635,9 +635,15 @@ void Monsoon::process(const ProcessArgs& args) {
         // once) but only COMMITTED via setOverrideMask on the phrase boundary (wrapped), never mid-
         // phrase. The arbiter (resolveScaleMask) is the revert cache: clearOverrideMask() on detach
         // (else-branch) falls through to authored→factory→all-12, so the Monsoon's own scale returns.
-        const uint16_t want = e.isCustom
-            ? e.customMask
-            : ScaleManager::calculateMask(e.root, e.scaleIdx);
+        // A transposable custom is stored root-relative → rotate by the front root, exactly like a
+        // factory scale. Non-transposable custom is absolute. Factory uses calculateMask(root,scale).
+        uint16_t want;
+        if (e.isCustom) {
+            want = e.customTransposable ? dotModular::rotateMask12(e.customMask, e.root)
+                                        : e.customMask;
+        } else {
+            want = ScaleManager::calculateMask(e.root, e.scaleIdx);
+        }
         if (!scaleManager->overrideValid || scaleManager->overrideMask != want) {
             shopPendingMask_ = want;
             shopScaleChangePending_ = true;

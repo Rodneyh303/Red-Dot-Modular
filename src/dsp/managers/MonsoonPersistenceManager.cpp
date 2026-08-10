@@ -50,6 +50,8 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
         // persisted (it's a live Shophouse push, re-derived each block from the active slot).
         if (m->scaleManager->authoredValid) {
             json_object_set_new(root, "authoredScaleMask", json_integer(m->scaleManager->authoredMask));
+            // TONIC_TRANSPOSE: whether that mask is tonic-relative (transposed by the live root).
+            json_object_set_new(root, "authoredRelative", json_boolean(m->scaleManager->authoredRelative));
         }
     }
 
@@ -252,6 +254,8 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
         if (auto j = json_object_get(root, "authoredScaleMask")) {
             m->scaleManager->authoredMask  = (uint16_t)(json_integer_value(j) & 0x0FFF);
             m->scaleManager->authoredValid = true;
+            if (auto jr = json_object_get(root, "authoredRelative"))
+                m->scaleManager->authoredRelative = json_boolean_value(jr);
         }
         m->scaleManager->updateScaleMask();
     }

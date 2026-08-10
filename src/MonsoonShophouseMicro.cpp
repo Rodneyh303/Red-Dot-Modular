@@ -114,8 +114,11 @@ void MonsoonShophouseMicro::dataFromJson(json_t* root) {
             // R10: the slot's own tuning size (1..capacity). Older patches without "n" fall back to the
             // full capacity (degrees) — matches their pre-R10 behaviour.
             int sn = degrees;
-            if (json_t* jn2 = json_object_get(o, "n")) { sn = (int)json_integer_value(jn2);
-                if (sn < 1) sn = 1; if (sn > degrees) sn = degrees; }
+            if (json_t* jn2 = json_object_get(o, "n")) {
+                sn = (int)json_integer_value(jn2);
+                if (sn < 1) sn = 1;
+                if (sn > degrees) sn = degrees;
+            }
             list.loadSlot(s, sn, cents, enabled, name, /*adoptModeIfEmpty=*/false);
         }
     }

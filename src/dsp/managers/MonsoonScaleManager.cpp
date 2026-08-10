@@ -43,8 +43,11 @@ void ScaleManager::updateScaleMask() {
     // old calculateMask() behaviour for an untouched Monsoon (both authored/override default invalid).
     const bool     factoryValid = (lastSelectedScale >= 0);
     const uint16_t factoryMask  = calculateMask(scaleRoot, lastSelectedScale);
+    // TONIC_TRANSPOSE: the authored authority is fed as-APPLIED — a tonic-relative authored scale is
+    // rotated up by the live scaleRoot here (effectiveAuthoredMask), so it transposes like a factory
+    // scale; an absolute authored scale passes through verbatim.
     activeScaleMask = dotModular::resolveScaleMask(overrideValid, overrideMask,
-                                                   authoredValid, authoredMask,
+                                                   authoredValid, effectiveAuthoredMask(),
                                                    factoryValid,  factoryMask);
 
     // NON-DESTRUCTIVE enforcement (see SHOPHOUSE_SPEC.md / DISPLAY_STORE_ENGINE_SEPARATION.md):

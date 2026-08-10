@@ -1,5 +1,13 @@
 # BUILD BRIEF: transposable scales -- tonic designation + root-relative .dmtune (for CC)
 
+> **STATUS: BUILT — Monsoon + Shophouse only** (Rodney's scope: Monsoon edits 12-TET exclusively;
+> the Colonnades/Duo references in this brief are an ERROR — microtonal .dmtune from Colonnades/Duo has
+> NO tonic and does not transpose). Shipped: rotateMask12/normaliseToTonic (ScaleMaskArbiter.hpp,
+> tested); TuningPreset `transposable` flag (save root-relative / load root-transpose); Monsoon tonic
+> via right-click "Set as tonic" on a SEMI fader + red cap + live-root transposition of authoredMask;
+> Shophouse transposable-custom slots transpose by the front root (shutter-click), red root shutter,
+> persisted. STEP 2's Colonnades right-click is N/A. Awaiting Rodney's Rack build + verify.
+
 Consolidated build brief. Pulls the tonic/transposition rulings from MONSOON_SCALE_AUTHORING_DIRECTION
 + COLONNADES_PANEL_LIFT rounds 10/11 into one build truth. Where those and this differ, THIS is truth.
 Post-V1 (part of the Monsoon-scale-authoring arc); self-contained relative to the engine.

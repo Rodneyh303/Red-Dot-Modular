@@ -33,6 +33,12 @@ struct TuningPreset {
     // 12-TET cents ladder so it's a valid full preset (Colonnades can load it as tuning+mask), plus this
     // UI hint so a loader can LABEL it as scale-only. Purely advisory — the file is fully valid either way.
     bool  scaleOnly = false;
+    // TONIC_TRANSPOSE_BUILD_BRIEF: a scale-only .dmtune whose enabled[] mask is ROOT-RELATIVE (tonic
+    // normalised to degree 0) and meant to be transposed by the LIVE root control (Monsoon scale-menu
+    // root / Shophouse front root), exactly like a built-in scale. When false, the mask is ABSOLUTE
+    // (no tonic designated). Microtonal .dmtune (cents-carrying) never sets this — arbitrary tunings
+    // don't scale-transpose. Monsoon is 12-TET only.
+    bool  transposable = false;
     std::string name;
     std::string notes;
 
@@ -58,6 +64,7 @@ inline bool saveTuningPreset(const std::string& filePath, const TuningPreset& p)
     json_object_set_new(root, "cents", jc);
     json_object_set_new(root, "enabled", je);
     if (p.scaleOnly)      json_object_set_new(root, "scaleOnly", json_boolean(true));
+    if (p.transposable)   json_object_set_new(root, "transposable", json_boolean(true));
     if (!p.name.empty())  json_object_set_new(root, "name",  json_string(p.name.c_str()));
     if (!p.notes.empty()) json_object_set_new(root, "notes", json_string(p.notes.c_str()));
 
@@ -130,6 +137,7 @@ inline TuningPreset loadTuningPreset(
             }
     }
     if (json_t* jso = json_object_get(root, "scaleOnly")) p.scaleOnly = json_boolean_value(jso);
+    if (json_t* jtr = json_object_get(root, "transposable")) p.transposable = json_boolean_value(jtr);
     if (json_t* jm = json_object_get(root, "name"))  if (json_is_string(jm)) p.name  = json_string_value(jm);
     if (json_t* jt = json_object_get(root, "notes")) if (json_is_string(jt)) p.notes = json_string_value(jt);
 

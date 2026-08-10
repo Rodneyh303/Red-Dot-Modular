@@ -112,9 +112,13 @@ struct ShutterBank : Widget {
         if (!module || e.action != GLFW_PRESS || e.button != GLFW_MOUSE_BUTTON_LEFT) {
             Widget::onButton(e); return;
         }
-        // A CUSTOM slot (loaded .dmtune) has no root/scale knobs — the mask is fixed by the file, so
-        // shutter clicks do nothing (edit the file, or Clear to factory). Swallow to keep it honest.
-        if (module->list.entry(front).isCustom) { e.consume(this); return; }
+        // A NON-transposable custom slot has an absolute mask fixed by the file — shutter clicks do
+        // nothing (edit the file, or Clear). A TRANSPOSABLE custom uses the SAME shutter-click as a
+        // factory scale to set the front root, transposing the pattern (TONIC_TRANSPOSE STEP 2).
+        {
+            const auto& en = module->list.entry(front);
+            if (en.isCustom && !en.customTransposable) { e.consume(this); return; }
+        }
         // Nearest shutter within radius → set root.
         int best = -1; float bestD = clickR * clickR;
         for (int s = 0; s < 12; ++s) {
@@ -134,12 +138,24 @@ struct ShutterBank : Widget {
         Widget::draw(args);
         if (!module) return;
         NVGcontext* vg = args.vg;
-        // CUSTOM slot: mask comes from the loaded .dmtune (no root highlight). Factory: from scale/root.
-        const bool custom = module->list.entry(front).isCustom;
-        int root = custom ? -1 : (int)std::round(module->params[ROOT_PARAM_0 + front].getValue());
-        uint16_t mask = custom
-            ? module->list.entry(front).customMask
-            : maskFor((int)std::round(module->params[SCALE_PARAM_0 + front].getValue()), root);
+        // CUSTOM: mask from the loaded .dmtune. Transposable custom rotates by the front root (and shows
+        // the root shutter red, like a factory scale); non-transposable custom is absolute (no root).
+        // FACTORY: from scale/root.
+        const auto& en = module->list.entry(front);
+        const int frontRoot = (int)std::round(module->params[ROOT_PARAM_0 + front].getValue());
+        int root; uint16_t mask;
+        if (en.isCustom) {
+            if (en.customTransposable) {
+                root = frontRoot;
+                mask = dotModular::rotateMask12(en.customMask, frontRoot);
+            } else {
+                root = -1;
+                mask = en.customMask;
+            }
+        } else {
+            root = frontRoot;
+            mask = maskFor((int)std::round(module->params[SCALE_PARAM_0 + front].getValue()), root);
+        }
         // Live indication: the committed-ACTIVE front (the scale currently playing) draws at full
         // brightness; the other (staged) fronts are dimmed, so the live scale reads vividly against
         // the ones queued for modulation. Pairs with the lantern (which marks WHICH front is active).
@@ -337,7 +353,9 @@ struct MonsoonShophouseExpanderWidget : ModuleWidget,
         if (!p.ok()) { osdialog_message(OSDIALOG_WARNING, OSDIALOG_OK, p.errorMessage.c_str()); return; }
         uint16_t mask = 0;
         for (int i = 0; i < 12; ++i) if (p.enabled[i]) mask |= (1u << i);
-        mod->list.setEntryCustom(front, mask);
+        // TONIC_TRANSPOSE: a transposable file stores the mask root-relative (tonic at bit 0) and is
+        // rotated by the front root (shutter-click). Non-transposable → absolute mask, root ignored.
+        mod->list.setEntryCustom(front, mask, /*transposable=*/p.transposable);
         // Prefer the file's embedded name; else the file stem.
         if (!p.name.empty()) mod->slotName[front] = p.name;
         else {
@@ -396,3 +414,4 @@ struct MonsoonShophouseExpanderWidget : ModuleWidget,
 
 Model* modelMonsoonShophouseExpander =
     createModel<MonsoonShophouseExpander, MonsoonShophouseExpanderWidget>("Shophouse");
+
