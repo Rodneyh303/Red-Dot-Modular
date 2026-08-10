@@ -88,3 +88,54 @@ direction; not a build spec.
 Cross-ref: COLONNADES_PANEL_LIFT_SPEC rounds 9 (enable band) + 10 (N), SHOPHOUSE_MICRO_SPEC (base/
 override arbitration, .dmtune slot loading, the format), TUNING_PRESET_FORMAT (.dmtune, scale-only =
 the no-cents subset), SHOPHOUSE conservation (guide/enforce).
+
+## Transposable Monsoon scales: option B (root-relative mask + existing root control), not stored root
+
+Built-in scales are transposable: a scale is an interval PATTERN, and the root-note control (already in
+the scale context menu) places it (C Major vs F Major = same pattern, transposed). A Monsoon-authored
+.dmtune scale should behave IDENTICALLY. Two ways to store this:
+
+- **A**: the .dmtune stores its own root; the file remembers "this was F Major".
+- **B**: the .dmtune stores a ROOT-RELATIVE mask (tonic at degree 0) + a transposable FLAG; the existing
+  live root control transposes it at load, exactly like a built-in.
+
+**DECISION: B.** Rodney's setup makes B fit: you already have a live root control (scale context menu)
+chosen at load time -- that IS the built-in transposition mechanism. Storing a root in the file (A)
+would DUPLICATE that control and create a two-roots conflict (which wins on load -- file or control?).
+B has ONE root, always the live control, for built-ins AND loaded user scales alike. No conflict, no
+duplication, consistent with built-ins.
+
+### At CREATE (author the scale on Monsoon)
+- Author the mask (enable-band).
+- DESIGNATE THE TONIC: a "mark as tonic" gesture on one enabled degree. This is the one new authoring
+  affordance. It does NOT bake in an absolute pitch -- it ORIENTS the pattern.
+- SAVE: normalise the mask to ROOT-RELATIVE (rotate so the marked tonic sits at degree 0), write
+  enabled[12] (root-relative) + flag "monsoon scale-only, transposable". NO absolute root stored.
+
+### At LOAD (into Monsoon, or a Shophouse slot)
+- The mask loads as a root-relative pattern.
+- The EXISTING scale-context-menu root control places/transposes it -- identical to how it transposes a
+  built-in. Choose F -> pattern transposes to F. No new control, no file-stored root, no conflict.
+
+### The flag (needed; the stored root is NOT)
+- FLAG: mark the .dmtune as "scale-only, root-relative, transposable" so the loader treats it like a
+  built-in (apply the live root control) rather than an absolute mask.
+- A microtonal .dmtune does NOT have this flag -- its cents are ABSOLUTE pitches, not a transposable
+  12-TET pattern (transposing an arbitrary tuning = re-tuning, not scale-transposition). So:
+  - microtonal .dmtune: absolute cents, no root, no transposable flag (root implicit = degree 0 @ 0c,
+    per the earlier Shophouse Micro / Colonnades ruling -- UNCHANGED).
+  - Monsoon scale-only .dmtune: root-relative mask, transposable flag, transposed by the live root
+    control (NEW, this section).
+  Same word "root" plays genuinely different jobs: microtonal = fixed pitch anchor (implicit);
+  Monsoon-scale = transposition reference (the live control). Not a contradiction -- 12-TET scales are
+  transposable in a way arbitrary tunings are not.
+
+### Summary
+- CREATE: author mask + mark tonic -> save root-relative mask + transposable flag.
+- LOAD: existing root control transposes, like a built-in.
+- File stores: enabled[12] (root-relative) + transposable flag. NOT a root value.
+- Reuses the existing root control; adds only a "mark tonic" authoring gesture. No two-roots conflict.
+
+Cross-ref: the scale context-menu root control (existing, the transposer), the enable-band authoring
+(Colonnades round 9 ported to Monsoon), the microtonal .dmtune no-root ruling (SHOPHOUSE_MICRO_SPEC --
+unchanged; this is the 12-TET-scale-only complement).

@@ -553,3 +553,61 @@ N sizes both .scl and .dmtune; enabled[] is the .dmtune mask.
 
 Cross-ref: MicroTuning.cpp:284-305 (MicroNotesControl -- change enabled-count to tuning-size),
 :597/607 (save n -> N), round 9 (enable band writes enabled within N), SHOPHOUSE_MICRO_SPEC (.scl by N).
+
+## ROUND 11: tonic via RIGHT-CLICK "Set as tonic" on the fader + border indicator (Rodney)
+
+The tonic (for transposable scales -- see MONSOON_SCALE_AUTHORING_DIRECTION option B) needs a set/unset
+gesture. Panel space is tight. DECISION (Rodney): right-click "Set as tonic" on an enabled fader, NOT a
+modifier-click on the number band.
+
+### Why right-click beats modifier-click on the number band
+- Discoverable: the menu item is self-documenting (right-click -> see "Set as tonic"); a Shift/Ctrl-click
+  on the number is invisible knowledge.
+- No collision: the number band is the enable-band swipe zone (round 9); a modifier-click there overloads
+  one target. Right-click on the FADER is a separate target, zero overlap.
+- Zero panel space: a context menu isn't drawn until invoked (the decisive point given tight space).
+- Exclusive-select fits a menu: tonic is single-select; "Set as tonic" = make THIS one the tonic (prev
+  clears), radio semantics.
+- VCV-native: right-clicking a param already opens its menu; adding an item is idiomatic.
+
+### The gesture
+- RIGHT-CLICK an enabled fader -> context menu item "Set as tonic".
+- On the CURRENT tonic fader, the item reads "Unset tonic" (or "Clear tonic") -> back to no-tonic /
+  degree-0 default.
+- EXCLUSIVE: setting a new tonic clears the previous (one tonic per scale).
+- Only meaningful on ENABLED, in-tuning degrees (a greyed/beyond-N or arguably a disabled degree
+  shouldn't be the tonic; lean: allow only on enabled degrees).
+
+### The indicator (needed regardless -- must be visible without opening the menu)
+- A small BORDER / CAP / coloured TICK on the tonic fader. Minimal space -- a mark on the EXISTING
+  fader, not a new strip/widget. The tonic reads at a glance.
+- Orthogonal to the other fader states: a fader can be lit (in scale) + tonic (border); tonic is a
+  border ON TOP of the enabled/dimmed/greyed state. (Tonic is normally also enabled.)
+- Use the dot.modular red (#d4001a) for the tonic mark -- the tonic is the "root", the little red dot.
+
+### Reused across the family (gesture is family-appropriate, NOT identical everywhere)
+- Colonnades / Duo authoring: right-click fader -> Set as tonic (for saving a transposable .dmtune).
+- Monsoon scale-authoring: same right-click gesture on the Monsoon note faders (marks the tonic for the
+  root-relative save, MONSOON_SCALE_AUTHORING_DIRECTION).
+- Shophouse (loading a Monsoon scale-only .dmtune): use the EXISTING Shophouse tonic gesture, NOT the
+  right-click (Rodney). Shophouse ALREADY sets tonic by CLICKING A SHUTTER -> sets that front's root
+  (MonsoonShophouseExpander.cpp:16,112-120), and already renders the root shutter in Singapore red
+  (:148, isRoot -> red "open" shutter). Factory scales use this; .dmtune scales use the SAME gesture --
+  click a cell/shutter sets the front's root (the transposer, option B). Do NOT add the Colonnades
+  right-click to Shophouse; consistency WITHIN Shophouse (shutter-click for factory AND user scales)
+  beats consistency with Colonnades. The red root indicator is already there -- reuse it for the
+  .dmtune tonic too.
+- So the tonic gesture is FAMILY-APPROPRIATE per module, not literally identical: Colonnades/Duo/Monsoon
+  authoring = right-click fader (no existing gesture to reuse there); Shophouse = its existing
+  shutter-click root (reuse). Same CONCEPT (set the tonic/root), each via the module's natural
+  affordance.
+
+### Implementation note for CC
+On Colonnades/Duo the fader right-click menu is the PARAM (weight) context menu VCV auto-generates.
+APPEND "Set as tonic" to that menu (via the fader widget's appendContextMenu / param menu override) --
+do NOT replace the standard param entries (initialize, unmap, etc.). Known VCV pattern; append, don't
+clobber. The tonic itself is a per-module value (which degree index is tonic, or -1 for none),
+persisted, and used to normalise the mask to root-relative on .dmtune save.
+
+Cross-ref: MONSOON_SCALE_AUTHORING_DIRECTION (option B, root-relative + transposable flag), the enable
+band (round 9), the Shophouse per-front root (existing), dot.modular red (#d4001a).
