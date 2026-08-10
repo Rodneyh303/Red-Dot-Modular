@@ -110,3 +110,38 @@ hand-write MIDI message bytes if the SDK provides a midi::Message helper; use th
 
 Cross-ref: MICROTONAL_MIDI_MPE_DIRECTION.md (rationale, resolution, complexity, expander-vs-utility),
 the dot.modular poly pitch+gate outputs (the two inputs), Core CV-MIDI + the GPL MPE modules (refs).
+
+## The 15-vs-16 boundary: why members cap at 15, and voice-16 handling
+
+The module ("Keppel") caps at 15 SIMULTANEOUS MPE voices. This is not arbitrary -- it falls out of the
+MIDI/MPE channel layout:
+- MIDI has 16 channels total.
+- An MPE zone needs ONE MASTER channel (zone-wide messages: the MPE config, common controllers) + the
+  rest as MEMBER channels (one per voice: that voice's note + pitch bend + pressure).
+- Lower Zone (default): master = ch 1, members = ch 2..16 = 15 members. (Upper Zone mirrors: master
+  ch 16, members 15..1.)
+- So member count = 16 - 1 master = 15.
+
+WHY one channel per voice: pitch bend is PER-CHANNEL in MIDI. Independent per-voice bend (which the
+microtonal cents offsets REQUIRE) means each voice needs its own channel. 15 members = 15 voices each
+independently bendable. Two voices on one channel would share a bend -- the exact problem MPE solves.
+
+### The off-by-one to handle deliberately: VCV poly = 16, MPE members = 15
+VCV poly cables carry up to 16 voices (PORT_MAX_CHANNELS); MPE carries only 15 independently-bent
+voices (one channel is the master). So a 16-voice patch has one more voice than the zone has members.
+CC must handle this ON PURPOSE, not discover it:
+- **Voice 16 policy** (pick one, document it):
+  (a) STEAL oldest -- a 16th voice reassigns the oldest member channel (MPE-friendly, usual choice), or
+  (b) DROP the 16th voice (simplest), or
+  (c) cap input handling at 15 and document "15-voice max".
+- **Must NOT** collide the 16th voice onto the master channel (ch 1) or wrap it onto a member already in
+  use -- that corrupts the master or double-books a channel. No crash, no misroute.
+- Lean: STEAL oldest (or cap at 15 with a clear note). 15-voice microtonal polyphony is already ample.
+
+### Optional: two-zone / configurable
+The MPE spec allows splitting the 16 channels into TWO zones (lower + upper), each with fewer members --
+that's for running two controllers/instruments at once, NOT relevant here. Keppel uses ONE zone (lower,
+15 members) by default. A configurable zone size is a later nicety, not v1.
+
+Cross-ref: the MPE channel-allocation section above (this makes the 15 cap + voice-16 policy explicit),
+MPE spec (zones, master/member channels).
