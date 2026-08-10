@@ -86,6 +86,14 @@ struct MonsoonLightSlider : VCVLightSlider<TLightBase> {
         if (!m || !m->scaleManager || pc < 0) return;
         auto* sm = m->scaleManager.get();
         menu->addChild(new ui::MenuSeparator);
+        // While a Shophouse OVERRIDES the scale, the tonic is driven by the front root — the user's own
+        // Set/Unset would be immediately overwritten, so show it inert with a hint.
+        if (sm->overrideValid) {
+            auto* it = createMenuItem("Set as tonic", "(driven by Shophouse)", []() {});
+            it->disabled = true;
+            menu->addChild(it);
+            return;
+        }
         const bool isTonic = (sm->tonicPitchClass() == pc);
         if (isTonic) {
             menu->addChild(createMenuItem("Unset tonic", "", [sm]() { sm->unsetTonic(); }));

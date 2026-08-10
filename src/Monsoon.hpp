@@ -928,6 +928,7 @@ struct Monsoon : Module {
     // boundary-quantised OVERRIDE mask (factory OR a loaded custom .dmtune). Staged here, committed to
     // ScaleManager::setOverrideMask on the phrase boundary. The arbiter is the revert cache.
     uint16_t shopPendingMask_ = 0x0FFF;
+    int      shopPendingTonic_ = -1;   // TONIC_TRANSPOSE: staged override tonic (front root), -1 = none
     void onReset() override;
     void onSampleRateChange(const SampleRateChangeEvent& e) override;
     int getNoteLenIdx_();

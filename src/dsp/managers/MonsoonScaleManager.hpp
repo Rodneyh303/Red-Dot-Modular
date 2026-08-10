@@ -46,6 +46,11 @@ public:
     // bakes back to absolute. Loading a transposable .dmtune sets relative; a non-transposable one stays
     // absolute. OVERRIDE (Shophouse) is always pushed pre-rotated (absolute) — not re-rotated here.
     bool     authoredRelative = false;
+    // TONIC_TRANSPOSE: the tonic pitch-class of an ACTIVE Shophouse override (front root for a factory
+    // scale or a transposable custom; -1 = none, e.g. a non-transposable custom). The red tonic cap
+    // reads the EFFECTIVE tonic (override tonic when overriding, else the authored tonic) so it stays in
+    // sync with whatever is actually driving the scale.
+    int      overrideTonic = -1;
     // TONIC_TRANSPOSE / naming: user label for the authored scale, written to a saved .dmtune's "name"
     // and set from a loaded file's name. Empty → Save falls back to a default label.
     std::string authoredName;
@@ -93,11 +98,18 @@ public:
         updateScaleMask();
     }
     bool hasTonic() const { return authoredValid && authoredRelative; }
-    // The tonic's ABSOLUTE pitch-class = the live root (relative masks pin the tonic to bit 0). -1 none.
-    int  tonicPitchClass() const { return hasTonic() ? ((scaleRoot % 12) + 12) % 12 : -1; }
+    // The AUTHORED tonic's absolute pitch-class (live root; relative masks pin the tonic to bit 0).
+    int  authoredTonicPitchClass() const { return hasTonic() ? ((scaleRoot % 12) + 12) % 12 : -1; }
+    // The EFFECTIVE tonic shown by the red cap: a Shophouse OVERRIDE wins (its front root), else the
+    // authored tonic. So the cap follows whatever actually drives the scale — factory or custom front,
+    // or the user's own designation — and clears when an override has no tonic (non-transposable custom).
+    int  tonicPitchClass() const { return overrideValid ? overrideTonic : authoredTonicPitchClass(); }
     /// Set/clear the Shophouse override mask (boundary-quantised push; cleared on detach/no-active).
-    void setOverrideMask(uint16_t mask) { overrideMask = mask & 0x0FFF; overrideValid = true;  updateScaleMask(); }
-    void clearOverrideMask()            { overrideValid = false;                               updateScaleMask(); }
+    /// `tonic` = the override's tonic pitch-class (front root), or -1 if it has none.
+    void setOverrideMask(uint16_t mask, int tonic = -1) {
+        overrideMask = mask & 0x0FFF; overrideValid = true; overrideTonic = tonic; updateScaleMask();
+    }
+    void clearOverrideMask()            { overrideValid = false; overrideTonic = -1;            updateScaleMask(); }
 
     // ── Per-degree band authoring (Monsoon enable band, MSA Phase B) ───────────────────────────────
     // D1: the first band edit SEEDS the authored mask from whatever is currently active (factory scale

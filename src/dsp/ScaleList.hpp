@@ -72,6 +72,13 @@ public:
         entries_[(size_t)slot].customMask = mask;
         entries_[(size_t)slot].customTransposable = transposable;
     }
+    // Update ONLY the root of a slot, WITHOUT clearing isCustom (setEntry would). Used to track a
+    // transposable custom slot's live root knob (TONIC_TRANSPOSE): the root transposes the stored
+    // root-relative mask, so it must follow the shutter-click even though the slot stays custom.
+    void setEntryRoot(int slot, int root) {
+        if (slot < 0 || slot >= size()) return;
+        entries_[(size_t)slot].root = ((root % 12) + 12) % 12;
+    }
     const ScaleListEntry& entry(int slot) const {
         static const ScaleListEntry kNone;
         if (slot < 0 || slot >= size()) return kNone;

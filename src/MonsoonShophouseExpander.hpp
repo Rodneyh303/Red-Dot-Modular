@@ -67,10 +67,15 @@ struct MonsoonShophouseExpander : Module {
     void syncEntriesFromParams() {
         using namespace ShophouseIds;
         for (int f = 0; f < NUM_FRONTS; ++f) {
-            // MONSOON_SCALE_AUTHORING: a slot loaded with a user .dmtune is CUSTOM — its scale/root
-            // knobs don't apply, so don't clobber it from params (setEntry would clear isCustom every
-            // frame). Only factory slots are param-driven. "Clear slot" reverts it to factory.
-            if (list.entry(f).isCustom) continue;
+            // MONSOON_SCALE_AUTHORING: a slot loaded with a user .dmtune is CUSTOM — its scale/mask
+            // don't come from params (setEntry would clear isCustom). BUT a TRANSPOSABLE custom still
+            // tracks its ROOT knob (shutter-click), which transposes the stored root-relative mask —
+            // so sync just the root (setEntryRoot keeps isCustom). Non-transposable custom: no root.
+            if (list.entry(f).isCustom) {
+                if (list.entry(f).customTransposable)
+                    list.setEntryRoot(f, (int)std::round(params[ROOT_PARAM_0 + f].getValue()));
+                continue;
+            }
             int sc = (int)std::round(params[SCALE_PARAM_0 + f].getValue());
             int rt = (int)std::round(params[ROOT_PARAM_0 + f].getValue());
             list.setEntry(f, sc, rt);

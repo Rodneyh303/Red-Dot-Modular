@@ -638,18 +638,23 @@ void Monsoon::process(const ProcessArgs& args) {
         // A transposable custom is stored root-relative → rotate by the front root, exactly like a
         // factory scale. Non-transposable custom is absolute. Factory uses calculateMask(root,scale).
         uint16_t want;
+        int      wantTonic;   // TONIC_TRANSPOSE: the override's tonic (front root), or -1 if none
         if (e.isCustom) {
-            want = e.customTransposable ? dotModular::rotateMask12(e.customMask, e.root)
-                                        : e.customMask;
+            want      = e.customTransposable ? dotModular::rotateMask12(e.customMask, e.root)
+                                             : e.customMask;
+            wantTonic = e.customTransposable ? (((e.root % 12) + 12) % 12) : -1;   // non-transposable: no tonic
         } else {
-            want = ScaleManager::calculateMask(e.root, e.scaleIdx);
+            want      = ScaleManager::calculateMask(e.root, e.scaleIdx);
+            wantTonic = ((e.root % 12) + 12) % 12;                                 // factory scale root = tonic
         }
-        if (!scaleManager->overrideValid || scaleManager->overrideMask != want) {
-            shopPendingMask_ = want;
+        if (!scaleManager->overrideValid || scaleManager->overrideMask != want
+            || scaleManager->overrideTonic != wantTonic) {
+            shopPendingMask_  = want;
+            shopPendingTonic_ = wantTonic;
             shopScaleChangePending_ = true;
         }
         if (shopScaleChangePending_ && engine.lastStepResult.wrapped) {
-            scaleManager->setOverrideMask(shopPendingMask_);
+            scaleManager->setOverrideMask(shopPendingMask_, shopPendingTonic_);
             engine.writeLedger.noteWrite(WriteRole::SCALEMGR, WriteField::LastSelectedScale); // STEP1 WriteLedger: in-block scale-mask override (L1). L2 (UI menu) + L3 (JSON load) are out-of-block.
             shopScaleChangePending_ = false;
         }
