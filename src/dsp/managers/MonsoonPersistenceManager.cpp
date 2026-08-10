@@ -52,6 +52,8 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
             json_object_set_new(root, "authoredScaleMask", json_integer(m->scaleManager->authoredMask));
             // TONIC_TRANSPOSE: whether that mask is tonic-relative (transposed by the live root).
             json_object_set_new(root, "authoredRelative", json_boolean(m->scaleManager->authoredRelative));
+            if (!m->scaleManager->authoredName.empty())
+                json_object_set_new(root, "authoredName", json_string(m->scaleManager->authoredName.c_str()));
         }
     }
 
@@ -256,6 +258,8 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
             m->scaleManager->authoredValid = true;
             if (auto jr = json_object_get(root, "authoredRelative"))
                 m->scaleManager->authoredRelative = json_boolean_value(jr);
+            if (auto jnm = json_object_get(root, "authoredName"); jnm && json_is_string(jnm))
+                m->scaleManager->authoredName = json_string_value(jnm);
         }
         m->scaleManager->updateScaleMask();
     }

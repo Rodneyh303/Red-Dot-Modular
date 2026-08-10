@@ -405,9 +405,8 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
                 eb->module = dynamic_cast<Monsoon*>(module);
                 float x0 = cx[0]  - mm2px(4.5f);
                 float x1 = cx[11] + mm2px(4.5f);
-                eb->box.pos  = Vec(x0, mm2px(72.0f));   // just under the fader field (bottom ~76.75mm),
-                                                        // over the 1–12 number strip — clear of the knob
-                                                        // label rows below (slew R / slew M, ~82mm+).
+                eb->box.pos  = Vec(x0, mm2px(75.0f));   // midway between the fader field and the knob-label
+                                                        // rows: below the 1–12 numbers, clear of slew R/M.
                 eb->box.size = Vec(x1 - x0, mm2px(4.2f));
                 eb->faderX.assign(12, 0.f);
                 for (int i = 0; i < 12; ++i) eb->faderX[i] = cx[i] - x0;   // band-local
@@ -1225,7 +1224,27 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
                 // TONIC_TRANSPOSE: a transposable file stores a ROOT-RELATIVE mask (tonic at bit 0) —
                 // load it relative so the live root transposes it. Non-transposable → absolute (WYSIWYG).
                 m->scaleManager->setAuthoredMask(mask, /*relative=*/p.transposable);
+                m->scaleManager->authoredName = p.name;   // carry the file's label into the module
             }));
+            // MONSOON_SCALE_AUTHORING: name the authored scale (written to a saved .dmtune's "name",
+            // and round-tripped on load). Minimal in-menu text field: it mirrors its text into
+            // authoredName every frame (base ui::TextField has no change callback in this SDK).
+            {
+                struct ScaleNameField : ui::TextField {
+                    ScaleManager* sm = nullptr;
+                    void step() override {
+                        ui::TextField::step();
+                        if (sm) sm->authoredName = text;
+                    }
+                };
+                sub->addChild(createMenuLabel("Scale name"));
+                auto* nameField = new ScaleNameField;
+                nameField->box.size = Vec(160.f, 24.f);
+                nameField->placeholder = "Scale name…";
+                nameField->sm = m->scaleManager.get();
+                nameField->text = m->scaleManager ? m->scaleManager->authoredName : "";
+                sub->addChild(nameField);
+            }
             // MONSOON_SCALE_AUTHORING Phase C: save the CURRENT scale mask as a scale-only .dmtune
             // (n=12, cents = implied 12-TET, enabled = the active mask). This is the file a regular
             // Shophouse can then load into a slot. Works whether the mask is hand-authored OR a factory
@@ -1258,7 +1277,7 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
                     p.enabled[i] = (mask & (1u << i)) != 0;
                 }
                 p.scaleOnly = true;                    // UI hint only; still a valid full .dmtune
-                p.name = "Monsoon scale";
+                p.name = sm->authoredName.empty() ? "Monsoon scale" : sm->authoredName;
                 if (!dotModular::saveTuningPreset(pathStr, p))
                     osdialog_message(OSDIALOG_WARNING, OSDIALOG_OK,
                                      ("Could not write file: " + pathStr).c_str());

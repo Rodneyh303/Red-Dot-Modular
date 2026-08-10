@@ -46,6 +46,9 @@ public:
     // bakes back to absolute. Loading a transposable .dmtune sets relative; a non-transposable one stays
     // absolute. OVERRIDE (Shophouse) is always pushed pre-rotated (absolute) — not re-rotated here.
     bool     authoredRelative = false;
+    // TONIC_TRANSPOSE / naming: user label for the authored scale, written to a saved .dmtune's "name"
+    // and set from a loaded file's name. Empty → Save falls back to a default label.
+    std::string authoredName;
 
     ScaleManager(Monsoon* module) : module(module) {}
 
