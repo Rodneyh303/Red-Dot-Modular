@@ -157,3 +157,61 @@ the protocol. Worth knowing, not worth engineering around.
 
 Resolution ladder: float CV (effectively infinite) -> MPE 14-bit bend (~0.01-0.6c by range) ->
 receiver's internal resolution (the only soft spot, per-synth). MPE is comfortably transparent.
+
+## The gap: existing MPE modules are MPE-IN, this is CV->MPE-OUT (verified)
+
+Checked the VCV ecosystem. Existing MPE tooling goes the OTHER direction:
+- moDllz MIDIpolyMPE: "Polyphonic MIDI to CV with MPE mode" -- MPE controller (Roli etc) INTO Rack as CV.
+- alexandreleroux/MPE: combines note + 14-bit pitchwheel into CV, adjustable bend range -- again IN.
+- Hardware precedent (Polyend Poly 2): converts MPE MIDI INTO CV pairs. MPE in.
+- Stock VCV MIDI-CV: its pitch-bend output is MONOPHONIC -- even the inbound module can't express
+  per-voice bend on the CV side (only voice 1 gets the wheel).
+
+Every existing module is MPE-controller -> Rack. NONE take poly microtonal CV and EMIT MPE outward to a
+DAW / VST / external MPE synth. That is THIS module's direction (CV -> MPE out) and it is an unfilled
+gap. The ecosystem is built for MPE-controllers-into-Rack, not Rack-microtonal-out-to-MPE-gear.
+
+Why that gap matters for dot.modular specifically: authoring a maqam on Colonnades Duo is undercut if
+you can't play it OUT to an MPE synth/DAW with the tuning intact. The .scl/.dmtune interchange lets
+tunings travel between FILES; this lets the PERFORMANCE travel to GEAR. It's the missing outbound half.
+
+De-risker: the MPE conventions (member channels, bend-range config, message ordering) don't have to be
+derived from scratch -- the INBOUND modules above (moDllz, alexandreleroux/MPE, both GPL) implement the
+same MPE spec in reverse, and can be read as reference for the channel/zone/bend-range handling. Match
+the reference rather than re-deriving.
+
+## Complexity estimate
+
+Easy ~70% (low complexity):
+- Pitch math: round(cv*12) for note, remainder->bend. Exact (see resolution section). A few lines.
+- Gate edge detect: rising->note-on, falling->note-off, per voice. Standard.
+- Poly CV read: VCV gives per-channel voices directly; iterate channels.
+- MIDI emit: VCV midi::Output helper; push note-on/off + bend.
+If MIDI were per-channel-simple this would be a weekend utility.
+
+Real ~30% (moderate correctness, all MPE-specific):
+- MPE channel allocation: map poly voices to member channels (2..16 lower-zone), handle voices >
+  channels, voice stealing/retrigger. Fiddly bookkeeping, subtle across receivers.
+- MPE config handshake: send the RPN/MPE Config setting zone + per-note bend range. The make-or-break
+  piece; exact bytes + timing finicky; difference between "works" and "every note off by a scale factor".
+- Message ordering: bend BEFORE note-on (note starts at pitch, not sliding in). Per-event sequencing.
+- Validation tail (the sleeper cost): MPE implementations vary across synths/DAWs; only testing against
+  several confirms it. Not coding time -- validation time. Where an easy-looking MPE module eats hours.
+
+Overall: LOW-to-MODERATE code (a few hundred lines, no engine coupling, no shared-state hazards -- the
+payoff of being a standalone utility), MODERATE correctness (concentrated entirely in MPE conventions,
+which are a PUBLISHED spec with GPL reference implementations to match), and a VALIDATION tail that's
+tedious not hard. Much simpler than any microtonal ENGINE work -- no tuning.N threading, no correlation
+architecture, no base/override, no 12-TET-identity risk; touches nothing in the engine so ZERO
+regression surface. The narrow-bend-range refinement (see resolution section) further reduces risk
+(small safe slice of bend range, not full +/-48). One of the EASIER remaining roadmap items to get
+working, with the caveat that "works in-container" and "works across real MPE synths" are separated by
+the validation tail.
+
+Build-first de-risker: read the GPL inbound MPE modules for the channel/zone/bend-range conventions
+BEFORE writing the outbound path -- collapses most of the "moderate correctness" risk into "match the
+reference."
+
+Cross-ref: moDllz MIDIpolyMPE + alexandreleroux/MPE (GPL, inbound MPE, reference for conventions),
+VCV MIDI-CV monophonic-bend limitation (the gap on the stock side), the resolution section (narrow
+bend range).
