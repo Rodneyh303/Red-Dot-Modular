@@ -16,9 +16,18 @@
 #include <algorithm>
 
 struct ScaleListEntry {
-    int scaleIdx = -1;   // index into MONSOON_SCALES (-1 = none/chromatic, matches ScaleManager)
-    int root     = 0;    // 0..11 semitone root
-    bool operator==(const ScaleListEntry& o) const { return scaleIdx == o.scaleIdx && root == o.root; }
+    // A slot holds EITHER a FACTORY scale (scaleIdx into MONSOON_SCALES + root) OR a user-authored
+    // CUSTOM mask loaded from a scale-only .dmtune (MONSOON_SCALE_AUTHORING D4). isCustom selects which.
+    // When custom, customMask is the 12-bit pitch-class mask and scaleIdx/root are ignored.
+    int      scaleIdx  = -1;      // index into MONSOON_SCALES (-1 = none/chromatic), FACTORY path
+    int      root      = 0;       // 0..11 semitone root, FACTORY path
+    bool     isCustom  = false;   // true → use customMask (a loaded .dmtune scale), ignore scaleIdx/root
+    uint16_t customMask = 0x0FFF; // 12-bit scale mask, CUSTOM path
+    bool operator==(const ScaleListEntry& o) const {
+        if (isCustom != o.isCustom) return false;
+        return isCustom ? (customMask == o.customMask)
+                        : (scaleIdx == o.scaleIdx && root == o.root);
+    }
 };
 
 // Boundary-quantised list of (scale, root) entries. "Decide freely, apply at boundary":
@@ -45,6 +54,16 @@ public:
         if (slot < 0 || slot >= size()) return;
         entries_[(size_t)slot].scaleIdx = scaleIdx;
         entries_[(size_t)slot].root     = ((root % 12) + 12) % 12;
+        entries_[(size_t)slot].isCustom = false;   // FACTORY: setting a factory scale clears custom
+    }
+    // Load a user .dmtune scale mask into a slot (MONSOON_SCALE_AUTHORING D4). 12-bit; forced non-zero
+    // (an all-off scale is silent) by keeping bit 0 if empty. Marks the slot custom.
+    void setEntryCustom(int slot, uint16_t mask) {
+        if (slot < 0 || slot >= size()) return;
+        mask &= 0x0FFF;
+        if (mask == 0) mask = 0x0001;   // never a silent scale
+        entries_[(size_t)slot].isCustom   = true;
+        entries_[(size_t)slot].customMask = mask;
     }
     const ScaleListEntry& entry(int slot) const {
         static const ScaleListEntry kNone;

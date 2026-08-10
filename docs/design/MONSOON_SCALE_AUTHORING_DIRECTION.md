@@ -1,5 +1,13 @@
 # Direction: Monsoon custom-scale authoring + user scales in Shophouse (post-V1)
 
+> **STATUS: BUILT** (see plans/monsoon_scale_authoring.md). Shipped: an explicit-mask arbiter
+> (override > authored > factory > all-12, src/dsp/ScaleMaskArbiter.hpp, tested); a Monsoon enable-band
+> that authors `authoredMask` (matches Colonnades — fader-dim = membership, no per-degree LED, inert
+> when the scale is owned elsewhere); Monsoon Save/Load scale `.dmtune` (round-trips its own files);
+> and the regular Shophouse loading a user `.dmtune` per front (variant ScaleListEntry, Option B: ALL
+> commits are non-destructive boundary-quantised overrides, the arbiter is the revert cache). Sikit
+> untouched. guide/enforce reuses the existing `lockScaleNotes`. Awaiting Rodney's Rack build + verify.
+
 Two ideas (Rodney) that converge into one clean unification: give a plain Monsoon (no Colonnades/Duo)
 the ability to AUTHOR custom scales, and let Shophouse load those user-authored scales into slots
 alongside its factory scales -- reusing the existing .dmtune + base/override architecture, with Sikit

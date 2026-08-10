@@ -338,6 +338,8 @@
 <circle id="param_oct_lo" cx="449.76" cy="225.82" r="0.5" fill="none" stroke="none"/>
 <rect x="477.73" y="161.57" width="12.09" height="128.5" rx="2.27" fill="#05070a" stroke="#8ba2b8" stroke-width="0.4"/>
 <circle id="param_oct_hi" cx="483.77" cy="225.82" r="0.5" fill="none" stroke="none"/>
+<rect x="11.34" y="301.41" width="408.18" height="15.87" rx="3.02" fill="#161f2e" stroke="#8ba2b8" stroke-width="0.4"/>
+<rect id="scale_band" x="11.34" y="301.41" width="408.18" height="15.87" fill="none" stroke="none"/>
 <circle cx="54.8" cy="334.48" r="12.09" fill="#05070a" stroke="#8ba2b8" stroke-width="0.55"/>
 <circle id="ctl_0" cx="54.8" cy="334.48" r="0.5" fill="none" stroke="none"/>
 <circle cx="103.94" cy="334.48" r="12.09" fill="#05070a" stroke="#8ba2b8" stroke-width="0.55"/>

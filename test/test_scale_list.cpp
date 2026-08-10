@@ -58,6 +58,33 @@ int main(){
     R.setEntry(0, 0, 14);   // 14 → 2
     chk(R.entry(0).root==2, "root normalised into 0..11");
 
-    printf(fails? "\n%d FAILED\n" : "\nALL PASS (ScaleList boundary-quantised model)\n", fails);
+    // 8. CUSTOM variant (MONSOON_SCALE_AUTHORING D4): a slot can hold a loaded .dmtune scale mask.
+    ScaleList C(4);
+    C.setEntry(0, 0, 0);            // factory
+    C.setEntryCustom(1, 0x0AB5);   // custom mask
+    chk(!C.entry(0).isCustom, "slot 0 factory (not custom)");
+    chk(C.entry(1).isCustom && C.entry(1).customMask==0x0AB5, "slot 1 custom mask stored");
+    // setEntry on a custom slot reverts it to factory.
+    C.setEntry(1, 2, 3);
+    chk(!C.entry(1).isCustom, "setEntry clears custom flag");
+    // all-off mask forced non-silent.
+    C.setEntryCustom(2, 0x0000);
+    chk(C.entry(2).isCustom && C.entry(2).customMask==0x0001, "all-off custom mask forced non-silent");
+    // boundary commit + equality across the variant: factory vs custom never compare equal.
+    ScaleList V(2);
+    V.setEntry(0, 0, 0);           // factory C major-ish
+    V.setEntryCustom(1, 0x0FFF);   // custom all-on
+    V.setPending(1);
+    chk(V.commitAtBoundary(), "commit factory→custom reports changed");
+    chk(V.activeEntry().isCustom && V.activeEntry().customMask==0x0FFF, "active is the custom entry");
+    // two custom slots with the SAME mask → value-unchanged on commit.
+    ScaleList D(2);
+    D.setEntryCustom(0, 0x0555);
+    D.setEntryCustom(1, 0x0555);
+    D.setPending(1);
+    chk(!D.commitAtBoundary(), "commit between identical custom masks → value-unchanged");
+    chk(D.active()==1, "  (index still advanced)");
+
+    printf(fails? "\n%d FAILED\n" : "\nALL PASS (ScaleList boundary-quantised model + custom variant)\n", fails);
     return fails?1:0;
 }

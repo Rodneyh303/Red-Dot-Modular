@@ -924,6 +924,10 @@ struct Monsoon : Module {
     int  shopPendingScale_ = -1;
     int  shopPendingRoot_  = -1;
     bool shopScaleChangePending_ = false;
+    // MONSOON_SCALE_AUTHORING (Option B): the Shophouse pushes the active entry as a non-destructive
+    // boundary-quantised OVERRIDE mask (factory OR a loaded custom .dmtune). Staged here, committed to
+    // ScaleManager::setOverrideMask on the phrase boundary. The arbiter is the revert cache.
+    uint16_t shopPendingMask_ = 0x0FFF;
     void onReset() override;
     void onSampleRateChange(const SampleRateChangeEvent& e) override;
     int getNoteLenIdx_();

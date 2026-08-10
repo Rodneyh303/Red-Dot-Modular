@@ -1,6 +1,7 @@
 #include "MonsoonScaleManager.hpp"
 #include "../../Monsoon.hpp"
 #include "MonsoonParameterManager.hpp"
+#include "../ScaleMaskArbiter.hpp"
 
 using namespace rack;
 
@@ -35,7 +36,16 @@ void ScaleManager::updateScaleMask() {
     if (!module) return;
     using namespace MonsoonIds;
 
-    activeScaleMask = calculateMask(scaleRoot, lastSelectedScale);
+    // MONSOON_SCALE_AUTHORING: arbitrate the four possible authorities in one place.
+    //   override (Shophouse) > authored (Monsoon band) > factory (scale,root) > all-12.
+    // The factory path is "valid" only when a scale is actually selected (lastSelectedScale >= 0);
+    // otherwise it contributes nothing and the arbiter falls through to all-12 — byte-identical to the
+    // old calculateMask() behaviour for an untouched Monsoon (both authored/override default invalid).
+    const bool     factoryValid = (lastSelectedScale >= 0);
+    const uint16_t factoryMask  = calculateMask(scaleRoot, lastSelectedScale);
+    activeScaleMask = dotModular::resolveScaleMask(overrideValid, overrideMask,
+                                                   authoredValid, authoredMask,
+                                                   factoryValid,  factoryMask);
 
     // NON-DESTRUCTIVE enforcement (see SHOPHOUSE_SPEC.md / DISPLAY_STORE_ENGINE_SEPARATION.md):
     // Scale enforcement is done ENTIRELY at READ time in getSemitoneWeight (out-of-scale

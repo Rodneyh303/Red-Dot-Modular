@@ -38,6 +38,9 @@ namespace ShophouseIds {
 
 struct MonsoonShophouseExpander : Module {
     ScaleList list{ShophouseIds::NUM_FRONTS};
+    // MONSOON_SCALE_AUTHORING: per-front display name for a slot loaded with a user .dmtune (empty =
+    // factory slot). The mask itself lives in list.entry(f).customMask; this is just the label.
+    std::string slotName[ShophouseIds::NUM_FRONTS];
 
     MonsoonShophouseExpander() {
         using namespace ShophouseIds;
@@ -64,6 +67,10 @@ struct MonsoonShophouseExpander : Module {
     void syncEntriesFromParams() {
         using namespace ShophouseIds;
         for (int f = 0; f < NUM_FRONTS; ++f) {
+            // MONSOON_SCALE_AUTHORING: a slot loaded with a user .dmtune is CUSTOM — its scale/root
+            // knobs don't apply, so don't clobber it from params (setEntry would clear isCustom every
+            // frame). Only factory slots are param-driven. "Clear slot" reverts it to factory.
+            if (list.entry(f).isCustom) continue;
             int sc = (int)std::round(params[SCALE_PARAM_0 + f].getValue());
             int rt = (int)std::round(params[ROOT_PARAM_0 + f].getValue());
             list.setEntry(f, sc, rt);
@@ -76,9 +83,36 @@ struct MonsoonShophouseExpander : Module {
         json_t* root = json_object();
         json_object_set_new(root, "pending", json_integer(list.pending()));
         json_object_set_new(root, "active",  json_integer(list.active()));
+        // MONSOON_SCALE_AUTHORING: persist per-front CUSTOM slots (loaded user .dmtune scale masks).
+        // Factory slots are re-derived from params, so only custom slots need saving.
+        json_t* slots = json_array();
+        for (int f = 0; f < ShophouseIds::NUM_FRONTS; ++f) {
+            json_t* js = json_object();
+            const auto& e = list.entry(f);
+            json_object_set_new(js, "custom", json_boolean(e.isCustom));
+            if (e.isCustom) {
+                json_object_set_new(js, "mask", json_integer(e.customMask));
+                if (!slotName[f].empty()) json_object_set_new(js, "name", json_string(slotName[f].c_str()));
+            }
+            json_array_append_new(slots, js);
+        }
+        json_object_set_new(root, "slots", slots);
         return root;
     }
     void dataFromJson(json_t* root) override {
         if (json_t* p = json_object_get(root, "pending")) list.setPending((int)json_integer_value(p));
+        if (json_t* slots = json_object_get(root, "slots"); json_is_array(slots)) {
+            for (int f = 0; f < ShophouseIds::NUM_FRONTS && f < (int)json_array_size(slots); ++f) {
+                json_t* js = json_array_get(slots, f);
+                if (!json_is_object(js)) continue;
+                json_t* jc = json_object_get(js, "custom");
+                if (jc && json_boolean_value(jc)) {
+                    uint16_t mask = 0x0FFF;
+                    if (json_t* jm = json_object_get(js, "mask")) mask = (uint16_t)json_integer_value(jm);
+                    list.setEntryCustom(f, mask);
+                    if (json_t* jn = json_object_get(js, "name"); json_is_string(jn)) slotName[f] = json_string_value(jn);
+                }
+            }
+        }
     }
 };

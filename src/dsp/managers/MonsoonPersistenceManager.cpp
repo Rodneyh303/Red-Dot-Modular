@@ -45,6 +45,12 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
         json_object_set_new(root, "scaleRoot", json_integer(m->scaleManager->scaleRoot));
         json_object_set_new(root, "lastSelectedScale", json_integer(m->scaleManager->lastSelectedScale));
         json_object_set_new(root, "lockScaleNotes", json_boolean(m->scaleManager->lockScaleNotes));
+        // MONSOON_SCALE_AUTHORING: persist the hand-authored scale mask ONLY when authored, so an
+        // untouched Monsoon writes nothing new → old patches load byte-identical. overrideMask is NOT
+        // persisted (it's a live Shophouse push, re-derived each block from the active slot).
+        if (m->scaleManager->authoredValid) {
+            json_object_set_new(root, "authoredScaleMask", json_integer(m->scaleManager->authoredMask));
+        }
     }
 
     json_object_set_new(root, "locked", json_boolean(m->locked));
@@ -242,6 +248,12 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
         if (auto j = json_object_get(root, "scaleRoot")) m->scaleManager->scaleRoot = (int)json_integer_value(j);
         if (auto j = json_object_get(root, "lastSelectedScale")) m->scaleManager->lastSelectedScale = (int)json_integer_value(j);
         if (auto j = json_object_get(root, "lockScaleNotes")) m->scaleManager->lockScaleNotes = (bool)json_boolean_value(j);
+        // MONSOON_SCALE_AUTHORING: absent key → authoredValid stays false (byte-identical old patch).
+        if (auto j = json_object_get(root, "authoredScaleMask")) {
+            m->scaleManager->authoredMask  = (uint16_t)(json_integer_value(j) & 0x0FFF);
+            m->scaleManager->authoredValid = true;
+        }
+        m->scaleManager->updateScaleMask();
     }
     if (auto j = json_object_get(root, "locked")) m->locked = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "lockScope")) m->lockManager.scope = (dotModular::LockManager::LockScope)json_integer_value(j);

@@ -1,7 +1,9 @@
 #include <rack.hpp>
 #include <algorithm>
+#include <osdialog.h>
 #include "MonsoonWidget.hpp"
 #include "Monsoon.hpp"
+#include "tuning/TuningPreset.hpp"        // MONSOON_SCALE_AUTHORING: save scale-only .dmtune
 #include "MonsoonChangeAlleyV2.hpp"        // shared-CA: presentPairIdsT<MonsoonChangeAlleyV2>
 #include "ui/IntertropicalPairing.hpp"     // shared-CA: presentPairIdsT template
 #include "ui/OutputAccent.hpp"
@@ -161,6 +163,85 @@ struct TrialButton : VCVButton {
     }
 };
 
+// ── Scale enable-band (MONSOON_SCALE_AUTHORING Phase B) ───────────────────────
+// A thin interactive strip under the 12 semitone faders: click / swipe-paint each pitch-class
+// on/off to hand-author the scale mask (drives ScaleManager::authoredMask via the arbiter). Ported
+// from Colonnades' MicroEnableBand (rounds 9/10), simplified — Monsoon is fixed 12-TET so there is
+// no N / greyed-beyond-N state, just the 12-degree enable mask. Absolute pitch-classes (D2). The
+// faders themselves already dim via activeScaleMask (semiOutOfScale), so this only edits the mask.
+struct MonsoonEnableBand : OpaqueWidget {
+    Monsoon* module = nullptr;
+    std::vector<float> faderX;    // fader centres, box-local px (index = pitch-class 0..11)
+    int   paintState = -1;        // -1 none; 0 painting-disable; 1 painting-enable
+    int   lastDeg    = -1;
+    float dragX      = 0.f;
+
+    int degreeAt(float xLocal) const {
+        int best = -1; float bestD = 1e9f;
+        for (int i = 0; i < (int)faderX.size(); ++i) {
+            float d = std::fabs(xLocal - faderX[i]);
+            if (d < bestD) { bestD = d; best = i; }
+        }
+        return best;
+    }
+    // Editing is disabled when the Monsoon's scale is OWNED elsewhere, matching how the SEMI faders go
+    // inert under a Micro (MonsoonLightSlider::microAuthored):
+    //   • a regular Shophouse is OVERRIDING the scale this phrase (scaleManager->overrideValid), OR
+    //   • a Colonnades/Duo owns the whole tuning+scale mask (engine.pe.tuning.maskAuthored).
+    // In both cases the band would edit a mask the engine isn't reading, so swallow the gesture.
+    bool inert() const {
+        if (!module) return true;
+        if (module->scaleManager && module->scaleManager->overrideValid) return true;
+        if (module->engine.pe.tuning.maskAuthored) return true;
+        return false;
+    }
+    void onButton(const event::Button& e) override {
+        if (inert()) { e.consume(this); return; }
+        if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT && module && module->scaleManager) {
+            dragX = e.pos.x;
+            int deg = degreeAt(e.pos.x);
+            if (deg >= 0) module->scaleManager->toggleAuthoredDegree(deg);   // single-click toggle
+            e.consume(this);
+            return;
+        }
+        OpaqueWidget::onButton(e);
+    }
+    void onDragStart(const event::DragStart&) override { paintState = -1; lastDeg = -1; }
+    void onDragMove(const event::DragMove& e) override {
+        if (inert() || !module || !module->scaleManager) return;
+        dragX += e.mouseDelta.x;
+        int deg = degreeAt(dragX);
+        if (deg < 0) return;
+        if (paintState < 0) {
+            // The onButton click already flipped the seed degree; paint the rest of the sweep to that
+            // degree's (now-current) state, so one gesture builds or clears a contiguous scale.
+            paintState = module->scaleManager->authoredDegreeOn(deg) ? 1 : 0;
+            lastDeg = deg;
+            return;
+        }
+        if (deg != lastDeg) {
+            module->scaleManager->setAuthoredDegree(deg, paintState != 0);
+            lastDeg = deg;
+        }
+    }
+    void onDragEnd(const event::DragEnd&) override { paintState = -1; lastDeg = -1; }
+
+    // No per-cell "LED" readout — scale in/out-of-scale is shown by the FADER DIM (semiOutOfScale →
+    // 0.4 alpha), exactly like Colonnades (whose MicroEnableBand draws nothing and relies on the same
+    // fader dim). We draw only a faint well so the strip is discoverable as interactive; Colonnades
+    // gets that anchor free from the number row it sits behind, Monsoon has nothing there.
+    void draw(const DrawArgs& args) override {
+        const float a = inert() ? 0.4f : 1.f;   // dim the well while the scale is owned elsewhere
+        nvgBeginPath(args.vg);
+        nvgRoundedRect(args.vg, 0, 0, box.size.x, box.size.y, 2.f);
+        nvgFillColor(args.vg, nvgRGBA(0x16, 0x1f, 0x2e, (int)(0x80 * a)));
+        nvgFill(args.vg);
+        nvgStrokeColor(args.vg, nvgRGBA(0x8b, 0xa2, 0xb8, (int)(0x50 * a)));
+        nvgStrokeWidth(args.vg, 0.4f);
+        nvgStroke(args.vg);
+    }
+};
+
 // ── Knobs ────────────────────────────────────────────────────────────────────
 // redDot::<Palette>_<Size>_<Style> from ui/Controls.hpp (generated). Angles and the
 // CircularShadow kill (hard-edged disc: blurRadius defaults to 0) live once in
@@ -270,6 +351,31 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         for (int i = 0; i < 12; ++i) {
             bindLightParam<MonsoonLightSlider<GreenRedLight>>(
                 "param_SEMI" + std::to_string(i) + "_PARAM", SEMI0_PARAM + i, SEMI_LED_START + 2*i);
+        }
+
+        // ── Scale enable-band (MONSOON_SCALE_AUTHORING Phase B) ─────────────────
+        // Positioned from the SEMI fader anchors (the active panel is hand-authored, so there is no
+        // panel marker to add): a thin strip just below the fader field, cells aligned to the columns.
+        // Only added when all 12 anchors resolve.
+        {
+            std::vector<float> cx(12, 0.f);
+            bool ok = true;
+            for (int i = 0; i < 12; ++i) {
+                if (NSVGshape* s = findNamed("param_SEMI" + std::to_string(i) + "_PARAM"))
+                    cx[i] = centerOf(s).x;
+                else ok = false;
+            }
+            if (ok) {
+                auto* eb = new MonsoonEnableBand();
+                eb->module = dynamic_cast<Monsoon*>(module);
+                float x0 = cx[0]  - mm2px(4.5f);
+                float x1 = cx[11] + mm2px(4.5f);
+                eb->box.pos  = Vec(x0, mm2px(78.0f));
+                eb->box.size = Vec(x1 - x0, mm2px(4.2f));
+                eb->faderX.assign(12, 0.f);
+                for (int i = 0; i < 12; ++i) eb->faderX[i] = cx[i] - x0;   // band-local
+                addChild(eb);
+            }
         }
 
         // ── OCT sliders ───────────────────────────────────────────────────────
@@ -1052,6 +1158,62 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
                 [=]() { return m->scaleManager ? m->scaleManager->lockScaleNotes : false; },
                 [=](bool v) { if (m->scaleManager) { m->scaleManager->lockScaleNotes = v; m->scaleManager->updateScaleMask(); } }
             ));
+            // MONSOON_SCALE_AUTHORING: clear the hand-authored band mask (the band's all-off guard means
+            // it can't be cleared by de-selecting every degree — this is the escape hatch back to the
+            // factory scale / all-12). Disabled/greyed when nothing is authored.
+            {
+                auto* clear = createMenuItem("Clear authored scale", "",
+                    [=]() { if (m->scaleManager) m->scaleManager->clearAuthoredMask(); });
+                clear->disabled = !(m->scaleManager && m->scaleManager->authoredValid);
+                sub->addChild(clear);
+            }
+            // MONSOON_SCALE_AUTHORING: LOAD a scale .dmtune → authoredMask (the read side of Save
+            // below; a Monsoon can round-trip the files it writes). Any .dmtune works — only enabled[]
+            // is used (cents ignored, Monsoon is 12-TET); n must be 12.
+            sub->addChild(createMenuItem("Load scale .dmtune…", "", [=]() {
+                if (!m->scaleManager) return;
+                osdialog_filters* filters = osdialog_filters_parse("dot.modular Tuning:dmtune");
+                char* path = osdialog_file(OSDIALOG_OPEN, nullptr, nullptr, filters);
+                osdialog_filters_free(filters);
+                if (!path) return;
+                std::string pathStr = path;
+                std::free(path);
+                auto p = dotModular::loadTuningPreset(pathStr,
+                    [](int n){ return n == 12; },
+                    "This .dmtune isn't a 12-note scale (Monsoon is 12-TET).");
+                if (!p.ok()) { osdialog_message(OSDIALOG_WARNING, OSDIALOG_OK, p.errorMessage.c_str()); return; }
+                uint16_t mask = 0;
+                for (int i = 0; i < 12; ++i) if (p.enabled[i]) mask |= (1u << i);
+                if (mask == 0) mask = 0x0001;               // never a silent scale
+                m->scaleManager->setAuthoredMask(mask);     // becomes the Monsoon's base scale
+            }));
+            // MONSOON_SCALE_AUTHORING Phase C: save the CURRENT scale mask as a scale-only .dmtune
+            // (n=12, cents = implied 12-TET, enabled = the active mask). This is the file a regular
+            // Shophouse can then load into a slot. Works whether the mask is hand-authored OR a factory
+            // scale (D3: a valid full 12-TET .dmtune Colonnades can also read, tagged scaleOnly).
+            sub->addChild(createMenuItem("Save scale as .dmtune…", "", [=]() {
+                if (!m->scaleManager) return;
+                osdialog_filters* filters = osdialog_filters_parse("dot.modular Tuning:dmtune");
+                char* path = osdialog_file(OSDIALOG_SAVE, nullptr, "scale.dmtune", filters);
+                osdialog_filters_free(filters);
+                if (!path) return;
+                std::string pathStr = path;
+                std::free(path);
+                if (pathStr.size() < 7 || pathStr.substr(pathStr.size() - 7) != ".dmtune")
+                    pathStr += ".dmtune";
+                dotModular::TuningPreset p;
+                p.n = 12;
+                const uint16_t mask = m->scaleManager->activeScaleMask;
+                for (int i = 0; i < 12; ++i) {
+                    p.cents[i]   = i * 100.f;          // implied 12-TET (scale-only subset, D3)
+                    p.enabled[i] = (mask & (1u << i)) != 0;
+                }
+                p.scaleOnly = true;                    // UI hint only; still a valid full .dmtune
+                p.name = "Monsoon scale";
+                if (!dotModular::saveTuningPreset(pathStr, p))
+                    osdialog_message(OSDIALOG_WARNING, OSDIALOG_OK,
+                                     ("Could not write file: " + pathStr).c_str());
+            }));
             sub->addChild(new ui::MenuSeparator);
 
             sub->addChild(createSubmenuItem("Root Note", "Set the scale root", [=](ui::Menu* rootMenu) {

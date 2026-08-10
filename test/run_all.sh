@@ -36,6 +36,7 @@ TESTS=(
   "test_SpreadInterp|"
   "test_SquaresRng|"
   "test_ScalaFile|"
+  "test_ScaleMaskArbiter|"
   "test_StepGate|$SE $GS $PE"
   "test_TuningList|"
   "test_TuningRoundTrip|"

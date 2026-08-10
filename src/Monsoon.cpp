@@ -629,23 +629,29 @@ void Monsoon::process(const ProcessArgs& args) {
         scaleManager->lockScaleNotes =
             shop->params[ShophouseIds::CONSERVATION_PARAM].getValue() > 0.5f;
         const auto& e = shop->list.activeEntry();
-        // Shophouse scale modulation is BOUNDARY-QUANTISED (like slew on Monsoon): a scale/root
-        // change is picked up here but only COMMITTED to the mask on the phrase boundary (wrapped),
-        // never mid-phrase -- so scale edits land on the loop edge exactly like the front switch.
-        // Stage the pending scale; commit at the boundary.
-        if (scaleManager->lastSelectedScale != e.scaleIdx
-            || scaleManager->scaleRoot != e.root) {
-            shopPendingScale_     = e.scaleIdx;
-            shopPendingRoot_      = e.root;
+        // MONSOON_SCALE_AUTHORING (Option B): the Shophouse pushes the active entry as a NON-DESTRUCTIVE
+        // override mask — factory (scale,root) OR a loaded custom .dmtune mask (e.isCustom). Boundary-
+        // quantised: the desired mask is computed every frame (so a knob/front edit dims the faders at
+        // once) but only COMMITTED via setOverrideMask on the phrase boundary (wrapped), never mid-
+        // phrase. The arbiter (resolveScaleMask) is the revert cache: clearOverrideMask() on detach
+        // (else-branch) falls through to authored→factory→all-12, so the Monsoon's own scale returns.
+        const uint16_t want = e.isCustom
+            ? e.customMask
+            : ScaleManager::calculateMask(e.root, e.scaleIdx);
+        if (!scaleManager->overrideValid || scaleManager->overrideMask != want) {
+            shopPendingMask_ = want;
             shopScaleChangePending_ = true;
         }
         if (shopScaleChangePending_ && engine.lastStepResult.wrapped) {
-            scaleManager->lastSelectedScale = shopPendingScale_;
-            scaleManager->scaleRoot         = shopPendingRoot_;
-            scaleManager->updateScaleMask();
-            engine.writeLedger.noteWrite(WriteRole::SCALEMGR, WriteField::LastSelectedScale); // STEP1 WriteLedger: in-block lastSelectedScale (L1). L2 (UI menu) + L3 (JSON load) are out-of-block — excluded (different rate domain).
+            scaleManager->setOverrideMask(shopPendingMask_);
+            engine.writeLedger.noteWrite(WriteRole::SCALEMGR, WriteField::LastSelectedScale); // STEP1 WriteLedger: in-block scale-mask override (L1). L2 (UI menu) + L3 (JSON load) are out-of-block.
             shopScaleChangePending_ = false;
         }
+    } else if (scaleManager->overrideValid) {
+        // Shophouse detached → drop the override; the Monsoon reverts to its own base scale
+        // (authored band mask, else factory scale, else all-12) via the arbiter.
+        scaleManager->clearOverrideMask();
+        shopScaleChangePending_ = false;
     }
 
     // --- Mode dispatch (only if running) ---

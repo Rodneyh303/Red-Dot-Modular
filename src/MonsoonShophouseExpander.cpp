@@ -1,12 +1,15 @@
 #include <rack.hpp>
 #include <algorithm>
 #include <cmath>
+#include <osdialog.h>
 #include "Monsoon.hpp"
 #include "MonsoonShophouseExpander.hpp"
 #include "dsp/managers/MonsoonScaleManager.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/SvgPanelKit.hpp"
 #include "ui/ConnectMark.hpp"
+#include "ui/WrappingMenuLabel.hpp"                 // MONSOON_SCALE_AUTHORING: wrapped slot name
+#include "tuning/TuningPreset.hpp"                  // load a user .dmtune scale into a slot
 
 using namespace rack;
 using namespace ShophouseIds;
@@ -109,6 +112,9 @@ struct ShutterBank : Widget {
         if (!module || e.action != GLFW_PRESS || e.button != GLFW_MOUSE_BUTTON_LEFT) {
             Widget::onButton(e); return;
         }
+        // A CUSTOM slot (loaded .dmtune) has no root/scale knobs — the mask is fixed by the file, so
+        // shutter clicks do nothing (edit the file, or Clear to factory). Swallow to keep it honest.
+        if (module->list.entry(front).isCustom) { e.consume(this); return; }
         // Nearest shutter within radius → set root.
         int best = -1; float bestD = clickR * clickR;
         for (int s = 0; s < 12; ++s) {
@@ -128,9 +134,12 @@ struct ShutterBank : Widget {
         Widget::draw(args);
         if (!module) return;
         NVGcontext* vg = args.vg;
-        int scaleIdx = (int)std::round(module->params[SCALE_PARAM_0 + front].getValue());
-        int root     = (int)std::round(module->params[ROOT_PARAM_0 + front].getValue());
-        uint16_t mask = maskFor(scaleIdx, root);
+        // CUSTOM slot: mask comes from the loaded .dmtune (no root highlight). Factory: from scale/root.
+        const bool custom = module->list.entry(front).isCustom;
+        int root = custom ? -1 : (int)std::round(module->params[ROOT_PARAM_0 + front].getValue());
+        uint16_t mask = custom
+            ? module->list.entry(front).customMask
+            : maskFor((int)std::round(module->params[SCALE_PARAM_0 + front].getValue()), root);
         // Live indication: the committed-ACTIVE front (the scale currently playing) draws at full
         // brightness; the other (staged) fronts are dimmed, so the live scale reads vividly against
         // the ones queued for modulation. Pairs with the lantern (which marks WHICH front is active).
@@ -199,10 +208,16 @@ struct ScaleNameLabel : Widget {
             APP->window->loadFont(rack::asset::system("res/fonts/DejaVuSans-Bold.ttf"));
         if (!f) f = APP->window->uiFont;
         if (!f) return;
-        int scaleIdx = (int)std::round(module->params[SCALE_PARAM_0 + front].getValue());
-        int root     = (int)std::round(module->params[ROOT_PARAM_0 + front].getValue());
-        if (scaleIdx < 0 || scaleIdx >= (int)MONSOON_SCALES.size()) return;
-        std::string label = std::string(rootName(root)) + "  " + MONSOON_SCALES[scaleIdx].name;
+        std::string label;
+        // MONSOON_SCALE_AUTHORING: a custom slot shows its loaded .dmtune name, not a scale+root.
+        if (module->list.entry(front).isCustom) {
+            label = module->slotName[front].empty() ? "Custom scale" : module->slotName[front];
+        } else {
+            int scaleIdx = (int)std::round(module->params[SCALE_PARAM_0 + front].getValue());
+            int root     = (int)std::round(module->params[ROOT_PARAM_0 + front].getValue());
+            if (scaleIdx < 0 || scaleIdx >= (int)MONSOON_SCALES.size()) return;
+            label = std::string(rootName(root)) + "  " + MONSOON_SCALES[scaleIdx].name;
+        }
         NVGcontext* vg = args.vg;
         nvgFontFaceId(vg, f->handle);
         nvgFontSize(vg, 10.f);
@@ -303,6 +318,61 @@ struct MonsoonShophouseExpanderWidget : ModuleWidget,
         if (auto* s = findNamed("light_connect")) {
             connectMark = redDot::makeConnectMark(module, centerOf(s), mm2px(8.f));
             addChild(connectMark);
+        }
+    }
+
+    // MONSOON_SCALE_AUTHORING: load a user scale-only .dmtune into a front's slot (its enabled[] mask
+    // becomes the slot's customMask; cents ignored — Shophouse is 12-TET). Reverts to factory via Clear.
+    void loadDmtuneIntoSlot(MonsoonShophouseExpander* mod, int front) {
+        osdialog_filters* filters = osdialog_filters_parse("dot.modular Tuning:dmtune");
+        char* path = osdialog_file(OSDIALOG_OPEN, nullptr, nullptr, filters);
+        osdialog_filters_free(filters);
+        if (!path) return;
+        std::string pathStr = path;
+        std::free(path);
+        // Shophouse is 12-TET → accept only n==12 files (cents are ignored, only the mask matters).
+        auto p = dotModular::loadTuningPreset(pathStr,
+            [](int n){ return n == 12; },
+            "This .dmtune isn't a 12-note scale (Shophouse scales are 12-TET).");
+        if (!p.ok()) { osdialog_message(OSDIALOG_WARNING, OSDIALOG_OK, p.errorMessage.c_str()); return; }
+        uint16_t mask = 0;
+        for (int i = 0; i < 12; ++i) if (p.enabled[i]) mask |= (1u << i);
+        mod->list.setEntryCustom(front, mask);
+        // Prefer the file's embedded name; else the file stem.
+        if (!p.name.empty()) mod->slotName[front] = p.name;
+        else {
+            size_t slash = pathStr.find_last_of("/\\");
+            std::string base = (slash == std::string::npos) ? pathStr : pathStr.substr(slash + 1);
+            if (base.size() > 7 && base.substr(base.size() - 7) == ".dmtune") base.resize(base.size() - 7);
+            mod->slotName[front] = base;
+        }
+    }
+
+    void appendContextMenu(Menu* menu) override {
+        auto* mod = dynamic_cast<MonsoonShophouseExpander*>(module);
+        if (!mod) return;
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuLabel("Front scales"));
+        for (int f = 0; f < NUM_FRONTS; ++f) {
+            const auto& e = mod->list.entry(f);
+            std::string state = e.isCustom
+                ? (mod->slotName[f].empty() ? "custom" : mod->slotName[f])
+                : "factory";
+            menu->addChild(createSubmenuItem("Front " + std::to_string(f + 1), state, [this, mod, f](Menu* sub) {
+                sub->addChild(createMenuItem("Load .dmtune… (scale)", "", [this, mod, f]() {
+                    loadDmtuneIntoSlot(mod, f);
+                }));
+                if (mod->list.entry(f).isCustom) {
+                    if (!mod->slotName[f].empty())
+                        sub->addChild(redDot::makeWrappingMenuLabel("Loaded: " + mod->slotName[f]));
+                    sub->addChild(createMenuItem("Clear (back to factory scale)", "", [mod, f]() {
+                        int sc = (int)std::round(mod->params[SCALE_PARAM_0 + f].getValue());
+                        int rt = (int)std::round(mod->params[ROOT_PARAM_0 + f].getValue());
+                        mod->list.setEntry(f, sc, rt);   // clears isCustom
+                        mod->slotName[f].clear();
+                    }));
+                }
+            }));
         }
     }
 
