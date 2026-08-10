@@ -76,3 +76,48 @@ land any time after V1 without regression risk to the core. Captured as directio
 Cross-ref: the engine's degreeOf/round(cv*12) 12-TET logic (SequencerEngine.cpp:986 -- same rounding
 idea, but this module works on absolute CV, tuning-agnostic); MPE spec (per-note bend, member channels,
 RPN 0 bend-range); the poly voice model (SequencerEngine poly voices as the CV source).
+
+## Considered expander, chose utility -- the tradeoff (Rodney asked "would it be easier as an expander")
+
+Weighed honestly, because it's cheap to decide now and annoying to reverse later.
+
+### Where an expander WOULD be easier (real advantages -- all convenience, not capability)
+An expander could read the engine's internal voice state DIRECTLY instead of reconstructing it from CV:
+- **Note-on/off timing** from the engine's actual gate decisions (clean events) vs edge-detecting a
+  continuous CV gate.
+- **Voice identity** -- the engine knows which voice is which; a utility treats each poly cable channel
+  as a voice.
+- **The note+cents split is ALREADY computed inside the engine** (it knows the microtonal pitch AND its
+  nearest degree via degreeOf). An expander reads the split directly instead of re-deriving it from the
+  summed CV voltage -- the strongest expander argument (get note+cents BEFORE they're flattened to CV).
+
+### Why utility still wins (the advantages are convenience; the reconstruction is EXACT)
+The key point: everything the expander reads directly, the utility reconstructs from CV WITHOUT loss.
+note = round(cv*12), cents = cv - nearest-semitone -- this is EXACT, not approximate (the voltage IS
+the pitch; the note+cents split is exactly recoverable). So the expander's main advantage buys
+convenience, not correctness. Against that, utility keeps three things the expander gives up:
+1. **Works on ANY source** -- Duo, Colonnades-fed Monsoon, third-party microtonal module, bare
+   quantizer, anything emitting poly 1V/oct. An expander only works docked to a dot.modular Monsoon.
+   Big reach difference for a MIDI bridge -- people point it at whatever they have.
+2. **No engine coupling = no regression risk** -- an expander reads engine internals, riding along with
+   engine changes (incl the M1 widening). The utility is downstream of everything, isolated.
+3. **Placement freedom** -- expanders must be physically adjacent; a utility sits anywhere and takes a
+   cable, which matters since a MIDI converter usually lives at the patch EDGE near the interface, not
+   next to the sequencer.
+
+### The middle path (if reconstruction gets painful)
+If voice-identity or note-on/off reconstruction turns out genuinely painful, that's the signal the CV
+interface isn't carrying enough -- fix that by improving what the Monsoon OUTPUTS (e.g. a clean
+per-voice gate, which the poly gate cable already provides), keeping the converter GENERIC, rather than
+reaching into internals via an expander.
+
+### The one scenario that would flip it to expander
+If glide-accurate MPE (continuously re-sent per-note bend that EXACTLY tracks the engine's microtonal
+glide) turns out to matter AND reconstructing it from CV is jittery, the expander's direct read of the
+engine's ongoing pitch could be cleaner. But that's a v2 optimisation, not a necessity -- v1 (latch at
+note-on, or re-send bend from CV) doesn't need it. Even then it's an optimisation, not a capability gap.
+
+### Decision
+UTILITY. The expander saves some reconstruction code but costs universality, isolation, and placement,
+and the reconstruction is EXACT -- so the trade is convenience for reach, and reach wins for a bridge
+whose whole value is connecting the microtonal world to external gear.
