@@ -212,6 +212,17 @@
         "Tuning",
         "Quantizer"
       ]
+    },
+    {
+      "slug": "Keppel",
+      "name": "Keppel",
+      "description": "Poly microtonal CV to MPE MIDI-out utility. Converts a polyphonic pitch+gate pair into MPE Lower-Zone output: each voice is assigned a member channel with per-voice pitch bend for exact microtonal reconstruction. Sends the MPE configuration handshake (MCM + pitch-bend sensitivity) and bend-before-note-on.",
+      "tags": [
+        "MIDI",
+        "Polyphonic",
+        "External",
+        "Utility"
+      ]
     }
   ]
 }

@@ -999,6 +999,7 @@ extern Model* modelSikit;                      // tuning expander (cents-only, m
 extern Model* modelColonnades;                 // tuning+scale authoring expander (microtonal Phase 2)
 extern Model* modelColonnadesDuo;              // tuning+scale authoring expander, 24-tone (microtonal Phase 3)
 extern Model* modelMonsoonShophouseMicro;      // tuning+scale scene modulator for Colonnades/Duo (.dmtune fronts)
+extern Model* modelKeppel;                     // poly microtonal CV → MPE MIDI out (standalone utility)
 extern Model* modelLantern;                    // Lantern note-output visualiser
 // West retired (Straits redesign)
 //extern Model* modelMonsoonStraitsSands;        // NEW (Macro): global DNA controls (compact)

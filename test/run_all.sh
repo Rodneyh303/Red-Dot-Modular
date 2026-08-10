@@ -51,6 +51,7 @@ TESTS=(
   "test_mode_b_gate|$SE $GS $PE"
   "test_modes_bcd|"
   "test_mono_dir_authority|"
+  "test_MpeMath|"
   "test_multistep|"
   "test_note_length|"
   "test_per_voice_articulation|$SE $GS $PE"

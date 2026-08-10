@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120.0" height="379.43" viewBox="0 0 120.0 379.43">
+<rect width="120.0" height="379.43" fill="#dcdcdc"/>
+<rect x="0" y="0" width="120.0" height="3.54" fill="#d4001a"/>
+<circle id="wordmark" cx="60.0" cy="35.43" r="0.5" fill="none" stroke="none"/>
+<circle cx="60.0" cy="88.58" r="15.35" fill="#e2ddd2" stroke="#b0a898" stroke-width="0.5"/>
+<circle cx="60.0" cy="88.58" r="12.99" fill="#c8cdd4" stroke="#9aa2ac" stroke-width="0.6"/>
+<line x1="60.0" y1="76.18" x2="60.0" y2="81.5" stroke="#1a1a1a" stroke-width="0.6"/>
+<circle id="param_bendrange" cx="60.0" cy="88.58" r="0.5" fill="none" stroke="none"/>
+<rect x="8.86" y="153.54" width="102.28" height="76.77" rx="2.95" fill="#e8e2d6" stroke="#b0a898" stroke-width="0.5"/>
+<rect id="midi_display" x="8.86" y="153.54" width="102.28" height="76.77" fill="none" stroke="none"/>
+<circle cx="60.0" cy="245.08" r="4.72" fill="#e2ddd2" stroke="#b0a898" stroke-width="0.3"/>
+<circle id="light_active" cx="60.0" cy="245.08" r="0.5" fill="none" stroke="none"/>
+<circle cx="34.9" cy="283.46" r="12.4" fill="#e2ddd2" stroke="#b0a898" stroke-width="0.5"/>
+<circle id="input_pitch" cx="34.9" cy="283.46" r="0.5" fill="none" stroke="none"/>
+<circle cx="85.1" cy="283.46" r="12.4" fill="#e2ddd2" stroke="#b0a898" stroke-width="0.5"/>
+<circle id="input_gate" cx="85.1" cy="283.46" r="0.5" fill="none" stroke="none"/>
+<circle cx="34.9" cy="342.52" r="12.4" fill="#e2ddd2" stroke="#b0a898" stroke-width="0.5"/>
+<circle id="input_accent" cx="34.9" cy="342.52" r="0.5" fill="none" stroke="none"/>
+<circle cx="85.1" cy="342.52" r="12.4" fill="#e2ddd2" stroke="#b0a898" stroke-width="0.5"/>
+<circle id="input_vel" cx="85.1" cy="342.52" r="0.5" fill="none" stroke="none"/>
+</svg>
