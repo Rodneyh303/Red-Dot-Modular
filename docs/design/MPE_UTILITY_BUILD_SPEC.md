@@ -16,13 +16,24 @@ patterns play out to a DAW / VST / external MPE synth with the tuning intact.
 - Channel count = pitch cable's getChannels(); voice i = pitch channel i + gate channel i.
 
 ## Output
-- MIDI via the VCV SDK's `midi::Output` class (public API, available to any plugin -- this is how ALL
-  MIDI-out modules send). Use it for device/driver selection, port UI, and the output context menu.
-- CORRECTION (Rodney): do NOT reference Core CV-MIDI as a code example. It is NOT MPE-capable (its
-  pitch-bend is monophonic -- confirmed earlier), so it's a poor MPE reference; and its
-  open-source/readable status is unclear (the VCV Library tags Core GPL-3.0 with a source link, but
-  Rodney states it's not open source -- UNRESOLVED, so don't rely on it either way). The `midi::Output`
-  *API* is public and fine to use; Core's *implementation* is not a reference to read.
+- MIDI via the VCV SDK's `midi::Output` class (public, how all MIDI-out modules send).
+- RESOLVED (Rodney found the source): Core CV_MIDI.cpp IS source-available in the GPL Rack repo
+  (github.com/VCVRack/Rack/blob/v2/src/core/CV_MIDI.cpp). The "free not open source" library tag refers
+  to the PANEL GRAPHICS (proprietary), not the module code. So CV_MIDI.cpp IS a readable reference --
+  and a strong one for everything EXCEPT MPE. Key things it confirms:
+  - `struct MidiOutput : dsp::MidiGenerator<PORT_MAX_CHANNELS>, midi::Output` -- the SDK provides
+    `dsp::MidiGenerator`, which does the CV->MIDI note/gate/velocity bookkeeping. Don't hand-roll it.
+  - Note math IDENTICAL to this spec: `note = round(pitchV*12 + 60)`, `gate = getPolyVoltage(c) >= 1.f`,
+    `setNoteGate(note, gate, c)` per channel. Poly loop: `setChannels(getChannels()); for c in channels`.
+  - **The monophonic-bend limitation is visible in the source**: `setPitchWheel(pw)` is called ONCE,
+    outside the per-channel loop, from `PW_INPUT.getVoltage()` (channel 0 only). THIS is exactly the gap
+    the MPE module fills -- global bend vs per-voice bend.
+- So CV_MIDI.cpp is the STRUCTURAL TEMPLATE for note/gate/velocity/poly plumbing (copy its shape). The
+  MPE delta: instead of one global setPitchWheel, put EACH VOICE ON ITS OWN MIDI CHANNEL with per-channel
+  bend, + the MPE config handshake. OPEN QUESTION for CC: does `dsp::MidiGenerator` support per-channel
+  output MIDI channels / an MPE zone, or does the MPE module need its own channel-routing layer on top
+  of `midi::Output` (likely the latter -- MidiGenerator looks single-zone)? Check the SDK's
+  dsp/midi.hpp / MidiGenerator before deciding whether to extend it or route channels manually.
 
 ## The conversion (per voice, per sample or per control-block)
 For each active voice i (0..channels-1):
@@ -79,16 +90,17 @@ For each active voice i (0..channels-1):
   tail; MPE implementations vary.
 
 ## References (read BEFORE writing -- collapses the MPE risk into "match the reference")
-GPL / readable references (NOT Core CV-MIDI -- see the Output correction):
-- **Kilpatrick-Toolbox (GPL-3.0)**: its MIDI CV module supports pitch bend in note modes with a
-  settable 1..12 semitone bend range -- a readable GPL example of pitch-bend-with-range + midi handling.
-- **moDllz MIDIpolyMPE (GPL)**: MPE zone / member-channel / bend-range handling (inbound -- mirror the
-  conventions in reverse for outbound).
-- **alexandreleroux/MPE (GPL)**: note + 14-bit pitchwheel + bend-range-in-semitones (inbound -- mirror).
-- **VCV SDK headers** (include/midi.hpp / dsp): the public midi::Output + midi::Message API -- the
-  authoritative source for the exact method signatures (see the API note below).
-- **MPE spec (MMA)**: member/master channels, RPN 0 (pitch-bend sensitivity), the MPE Configuration RPN.
-Do NOT use Core CV-MIDI as a code reference (not MPE-capable; open-source status unresolved).
+Readable references (read BEFORE writing):
+- **Core CV_MIDI.cpp** (github.com/VCVRack/Rack/blob/v2/src/core/CV_MIDI.cpp, GPL): the STRUCTURAL
+  TEMPLATE -- note/gate/velocity math, poly-channel loop, dsp::MidiGenerator + midi::Output usage,
+  dataToJson/fromJson, MidiDisplay, panic menu. Copy this shape; it shows the monophonic-bend gap to
+  fix (setPitchWheel outside the loop). ~200 lines, directly applicable.
+- **VCV SDK dsp/midi.hpp + midi.hpp**: dsp::MidiGenerator + midi::Output/midi::Message -- exact
+  signatures, and whether MidiGenerator can be extended for per-channel/MPE or needs a routing layer.
+- **moDllz MIDIpolyMPE (GPL)** + **alexandreleroux/MPE (GPL)**: MPE zone / member-channel / bend-range
+  RPN handling (inbound -- mirror the conventions in reverse for outbound).
+- **Kilpatrick-Toolbox (GPL-3.0)**: pitch-bend with settable 1..12 semitone range (readable example).
+- **MPE spec (MMA)**: member/master channels, RPN 0 (pitch-bend sensitivity), MPE Configuration RPN.
 
 ## Note to CC on API
 The exact midi::Output / midi::Message method names + signatures (setChannel, setNote, setValue,
