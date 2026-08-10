@@ -121,3 +121,39 @@ note-on, or re-send bend from CV) doesn't need it. Even then it's an optimisatio
 UTILITY. The expander saves some reconstruction code but costs universality, isolation, and placement,
 and the reconstruction is EXACT -- so the trade is convenience for reach, and reach wins for a bridge
 whose whole value is connecting the microtonal world to external gear.
+
+## Cents resolution -- yes, MPE has far finer than cents (Rodney asked)
+
+Pitch bend is 14-bit: 16384 steps (-8192..+8191), spread across the bend RANGE. Finest step:
+  step = (2 * range_semitones) / 16384 semitones.
+- **+/-2 semitones** (normal MIDI): 4/16384 = ~0.024 cents/step. Absurdly fine.
+- **+/-48 semitones** (MPE per-note default): 96/16384 = ~0.586 cents/step. Still sub-cent.
+
+So even at the WIDEST MPE range you get ~0.6 cents/step -- better than a cent. Context: pitch JND is
+~5-6 cents in musical context (~1-3 in ideal conditions); microtonal work cares to ~1 cent. Both ranges
+clear the bar. **Cents resolution is NOT a constraint.** MPE is not the weak link -- it's finer than
+cents at any sane range.
+
+### Refinement: use a NARROW bend range (offsets are only +/-50c)
+Resolution and range trade off. This module's offsets are ALWAYS +/-50 cents (nearest-note rounding),
+i.e. always within +/-1 semitone -- so it does NOT need the MPE +/-48 default (which exists for
+instruments wanting big expressive bends). A NARROW bend range matched to the working span gives far
+finer resolution:
+- +/-1 semitone range: 2/16384 = ~0.012 cents/step.
+- +/-2 semitone range: ~0.024 cents/step.
+So the design refinement: SET the bend range to the +/-50c working span (e.g. +/-1 or +/-2 semitones),
+not the MPE +/-48 default, for maximum cents precision -- AND send the matching MPE config so the
+receiver uses the same narrow range. (Still must agree the range with the receiver; the earlier
+bend-range warning stands -- a narrow range just improves resolution once agreed.)
+Caveat: if the module ever needs to emit bends beyond +/-1 semitone (it shouldn't, given nearest-note),
+a narrow range would clip -- nearest-note rounding guarantees +/-50c so +/-1 semitone is safe with
+headroom.
+
+### The one real ceiling (not MPE, not us): the receiver
+Some synths quantise incoming bend more coarsely than 14-bit internally, or interpolate. That's a
+per-instrument quirk, NOT an MPE limitation -- MPE transmits sub-cent precision faithfully; whether a
+given synth RENDERS it faithfully varies. Nothing the converter can fix; the ceiling is the synth, not
+the protocol. Worth knowing, not worth engineering around.
+
+Resolution ladder: float CV (effectively infinite) -> MPE 14-bit bend (~0.01-0.6c by range) ->
+receiver's internal resolution (the only soft spot, per-synth). MPE is comfortably transparent.
