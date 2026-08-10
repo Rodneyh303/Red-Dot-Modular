@@ -16,9 +16,13 @@ patterns play out to a DAW / VST / external MPE synth with the tuning intact.
 - Channel count = pitch cable's getChannels(); voice i = pitch channel i + gate channel i.
 
 ## Output
-- MIDI via VCV's midi::Output (the SAME mechanism Core CV-MIDI uses -- reference it for device/driver
-  selection, port UI, and the output context-menu). Do NOT reinvent MIDI device I/O; reuse the Core
-  CV-MIDI output pattern. The module adds the MPE LAYER on top of that plumbing.
+- MIDI via the VCV SDK's `midi::Output` class (public API, available to any plugin -- this is how ALL
+  MIDI-out modules send). Use it for device/driver selection, port UI, and the output context menu.
+- CORRECTION (Rodney): do NOT reference Core CV-MIDI as a code example. It is NOT MPE-capable (its
+  pitch-bend is monophonic -- confirmed earlier), so it's a poor MPE reference; and its
+  open-source/readable status is unclear (the VCV Library tags Core GPL-3.0 with a source link, but
+  Rodney states it's not open source -- UNRESOLVED, so don't rely on it either way). The `midi::Output`
+  *API* is public and fine to use; Core's *implementation* is not a reference to read.
 
 ## The conversion (per voice, per sample or per control-block)
 For each active voice i (0..channels-1):
@@ -75,10 +79,16 @@ For each active voice i (0..channels-1):
   tail; MPE implementations vary.
 
 ## References (read BEFORE writing -- collapses the MPE risk into "match the reference")
-- Core CV-MIDI (VCV): the midi::Output plumbing, device UI, context menu.
-- moDllz MIDIpolyMPE (GPL): MPE zone/channel/bend-range handling (inbound -- mirror it).
-- alexandreleroux/MPE (GPL): note + 14-bit bend + bend-range-in-semitones (inbound -- mirror it).
-- MPE spec (MMA): member/master channels, RPN 0 bend range, MPE Config RPN.
+GPL / readable references (NOT Core CV-MIDI -- see the Output correction):
+- **Kilpatrick-Toolbox (GPL-3.0)**: its MIDI CV module supports pitch bend in note modes with a
+  settable 1..12 semitone bend range -- a readable GPL example of pitch-bend-with-range + midi handling.
+- **moDllz MIDIpolyMPE (GPL)**: MPE zone / member-channel / bend-range handling (inbound -- mirror the
+  conventions in reverse for outbound).
+- **alexandreleroux/MPE (GPL)**: note + 14-bit pitchwheel + bend-range-in-semitones (inbound -- mirror).
+- **VCV SDK headers** (include/midi.hpp / dsp): the public midi::Output + midi::Message API -- the
+  authoritative source for the exact method signatures (see the API note below).
+- **MPE spec (MMA)**: member/master channels, RPN 0 (pitch-bend sensitivity), the MPE Configuration RPN.
+Do NOT use Core CV-MIDI as a code reference (not MPE-capable; open-source status unresolved).
 
 ## Note to CC on API
 The exact midi::Output / midi::Message method names + signatures (setChannel, setNote, setValue,
