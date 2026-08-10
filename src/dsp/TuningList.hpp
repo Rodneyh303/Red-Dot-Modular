@@ -22,6 +22,9 @@
 
 struct TuningSlot {
     bool  loaded = false;                         // false = empty front (placeholder name)
+    // TUNING SIZE of THIS front (ROUND 10 full model): a front is a .dmtune of ANY n in 1..capacity —
+    // slots may differ in n. Drives the host's tuningN when this front is active. 0 = empty.
+    int   n = 0;
     float cents  [dotModular::TuningTable::MAXN] = {};
     // SCALE-MEMBERSHIP mask (ENABLED_MASK_BUILD_BRIEF v2): a .dmtune front carries cents + enabled, NOT
     // weight (weight is the live fader mix, never in a preset). Overrides the host's cents+enabled.
@@ -35,7 +38,7 @@ public:
     explicit TuningList(int slots = 4, int n = 12) { n_ = clampN_(n); resize(slots); }
 
     int  size() const { return (int)slots_.size(); }
-    int  degrees() const { return n_; }
+    int  degrees() const { return n_; }           // the CAPACITY / mode (12 or 24), NOT a front's size
 
     void resize(int slots) {
         slots = slots < 1 ? 1 : slots;
@@ -58,21 +61,25 @@ public:
     }
 
     // ── Slot loading (by the module after decoding a .dmtune) ─────────────────────────────────────
-    // Rejects a payload whose degree count != the list mode (prevents a mixed-N slot set). If NO slot
-    // is loaded yet and adoptModeIfEmpty is true, adopts n as the mode (first-load-defines-mode).
+    // ROUND 10 full model: a front's degree count `n` may be ANY value in 1..capacity — slots may differ
+    // (the old all-fronts-same-n rejection is DROPPED). Only bound is the capacity (n_). If UNATTACHED
+    // and adoptModeIfEmpty, the first load can BUMP the capacity/mode up (e.g. a 24-degree file adopts
+    // 24-mode) — but never rejects an n <= capacity. Stores the front's own n for the scene-drive.
     bool loadSlot(int slot, int n, const float* cents, const bool* enabled,
                   const std::string& name, bool adoptModeIfEmpty = true) {
         if (slot < 0 || slot >= size()) return false;
-        if (n != n_) {
-            if (adoptModeIfEmpty && !anyLoaded()) { n_ = clampN_(n); }
-            else return false;                    // mismatch with an established mode → reject
+        if (n < 1) return false;
+        if (n > n_) {                              // file bigger than the current capacity/mode
+            if (adoptModeIfEmpty && !anyLoaded()) { n_ = clampN_(n); }  // empty → adopt a larger mode
+            if (n > n_) return false;              // still over capacity (e.g. 17 vs a fixed-12 host) → reject
         }
         TuningSlot& s = slots_[(size_t)slot];
         s.loaded = true;
+        s.n      = n;                              // THIS front's tuning size (1..capacity)
         s.name   = name;
         for (int i = 0; i < dotModular::TuningTable::MAXN; ++i) {
-            s.cents[i]   = (i < n_ && cents)   ? cents[i]   : 0.f;
-            s.enabled[i] = (i < n_ && enabled) ? enabled[i] : (i < n_);   // no mask → all in-scale
+            s.cents[i]   = (i < n && cents)   ? cents[i]   : 0.f;
+            s.enabled[i] = (i < n && enabled) ? enabled[i] : (i < n);   // no mask → all in-scale within n
         }
         return true;
     }
@@ -116,6 +123,7 @@ private:
 
     static bool sameContent_(const TuningSlot& a, const TuningSlot& b) {
         if (a.loaded != b.loaded) return false;
+        if (a.n != b.n) return false;                  // different tuning size → re-publish
         for (int i = 0; i < dotModular::TuningTable::MAXN; ++i) {
             if (a.cents[i]   != b.cents[i])   return false;
             if (a.enabled[i] != b.enabled[i]) return false;

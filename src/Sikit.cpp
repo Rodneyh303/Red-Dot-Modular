@@ -5,6 +5,7 @@
 #include "ui/VisualExpanderHelpers.hpp"   // redDot::findMonsoonEitherSide
 #include "ui/SvgPanelKit.hpp"
 #include "ui/ConnectMark.hpp"
+#include "ui/WrappingMenuLabel.hpp"   // wrap a long .scl description in the context menu
 #include "tuning/ScalaFile.hpp"
 #include <osdialog.h>
 
@@ -185,7 +186,9 @@ struct SikitWidget : ModuleWidget,
         ModuleWidget::appendContextMenu(menu);
         menu->addChild(new MenuSeparator);
         if (auto* mod = dynamic_cast<Sikit*>(module); mod && !mod->loadedTuningName.empty())
-            menu->addChild(createMenuLabel("Loaded: " + mod->loadedTuningName));
+            // A .scl description can be long; wrap it so it can't blow out the menu width
+            // (SCALA_FILE_AND_LOAD_UI width fix — same widget used by Colonnades/Duo/Shophouse Micro).
+            menu->addChild(redDot::makeWrappingMenuLabel("Loaded: " + mod->loadedTuningName));
         menu->addChild(createMenuItem("Load .scl...", "", [this]() { this->openScalaFilePicker(); }));
         menu->addChild(createMenuItem("Reset to 12-TET (equal division)", "", [this]() {
             if (auto* mod = dynamic_cast<Sikit*>(module)) {

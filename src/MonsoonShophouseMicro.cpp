@@ -68,6 +68,7 @@ json_t* MonsoonShophouseMicro::dataToJson() {
         json_t* o = json_object();
         json_object_set_new(o, "loaded", json_boolean(sl.loaded));
         if (sl.loaded) {
+            json_object_set_new(o, "n", json_integer(sl.n));   // R10: this front's tuning size (1..capacity)
             if (!sl.name.empty()) json_object_set_new(o, "name", json_string(sl.name.c_str()));
             json_t* jc = json_array(); json_t* je = json_array();
             for (int i = 0; i < list.degrees(); ++i) {
@@ -110,7 +111,12 @@ void MonsoonShophouseMicro::dataFromJson(json_t* root) {
             }
             std::string name;
             if (json_t* jn = json_object_get(o, "name")) if (json_is_string(jn)) name = json_string_value(jn);
-            list.loadSlot(s, degrees, cents, enabled, name, /*adoptModeIfEmpty=*/false);
+            // R10: the slot's own tuning size (1..capacity). Older patches without "n" fall back to the
+            // full capacity (degrees) — matches their pre-R10 behaviour.
+            int sn = degrees;
+            if (json_t* jn2 = json_object_get(o, "n")) { sn = (int)json_integer_value(jn2);
+                if (sn < 1) sn = 1; if (sn > degrees) sn = degrees; }
+            list.loadSlot(s, sn, cents, enabled, name, /*adoptModeIfEmpty=*/false);
         }
     }
     if (json_t* jp = json_object_get(root, "pending")) list.setPending((int)json_integer_value(jp));
@@ -128,13 +134,14 @@ static void loadDmtuneInto(MonsoonShophouseMicro* module, int front) {
     osdialog_filters_free(filters);
     if (!path) return;
     std::string pathStr(path); std::free(path);
-    const int wantN = module->list.anyLoaded() ? module->list.degrees() : 0;   // 0 = accept + adopt
+    // ROUND 10 full model: a front is a .dmtune of ANY n in 1..CAPACITY (the Shophouse Micro's mode /
+    // host capacity — 12 for a Colonnades rig, 24 for a Duo). Slots may differ in n. Accept 1..capacity;
+    // the front's own n sizes the tuning when it becomes active.
+    const int cap = module->list.degrees();
     auto p = dotModular::loadTuningPreset(pathStr,
-        [wantN](int nn){ return wantN == 0 || nn == wantN; },
-        "This .dmtune's degree count doesn't match this Shophouse Micro's mode "
-        "(all slots must be the same 12 or 24).");
+        [cap](int nn){ return nn >= 1 && nn <= cap; },
+        "This .dmtune has more degrees than this Shophouse Micro's capacity.");
     if (!p.ok()) { osdialog_message(OSDIALOG_WARNING, OSDIALOG_OK, p.errorMessage.c_str()); return; }
-    if (!module->list.anyLoaded()) module->setMode(p.n);
     std::string nm = p.name;
     if (nm.empty()) {
         size_t slash = pathStr.find_last_of("/\\");
@@ -183,10 +190,13 @@ struct MaskWindowWidget : OpaqueWidget {
         const float cw = (W - gap * (N - 1)) / (float)N;
         for (int i = 0; i < N; ++i) {
             const int deg = degOff + i;
-            const bool even = (i % 2 == 0);                // ALTERNATING black/blue identity (not keys)
-            const bool lit  = slot.loaded && slot.enabled[deg];        // in-scale vs masked
-            NVGcolor c = even ? (lit ? nvgRGB(0x34,0x7e,0xe0) : nvgRGB(0x17,0x24,0x38))   // blue
-                              : (lit ? nvgRGB(0x8c,0x94,0xa0) : nvgRGB(0x13,0x15,0x1b));  // black
+            const bool even    = (i % 2 == 0);             // ALTERNATING black/blue identity (not keys)
+            const bool beyond  = slot.loaded && deg >= slot.n;         // ROUND 10: past this front's tuning size
+            const bool lit     = slot.loaded && !beyond && slot.enabled[deg];   // in-scale vs masked
+            NVGcolor c;
+            if (beyond) c = nvgRGB(0x0c,0x0e,0x12);        // GREYED: not in the tuning (near-black)
+            else c = even ? (lit ? nvgRGB(0x34,0x7e,0xe0) : nvgRGB(0x17,0x24,0x38))   // blue
+                          : (lit ? nvgRGB(0x8c,0x94,0xa0) : nvgRGB(0x13,0x15,0x1b));  // black
             float x = i * (cw + gap);
             nvgBeginPath(vg); nvgRoundedRect(vg, x, 0, cw, H, 0.6f);
             nvgFillColor(vg, c); nvgFill(vg);

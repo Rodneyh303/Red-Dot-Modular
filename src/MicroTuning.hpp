@@ -48,13 +48,28 @@ namespace microTuning {
 
 // ── Module base ────────────────────────────────────────────────────────────────────────────────
 struct MicroTuningModule : rack::engine::Module {
-    const int nDegrees;                    // 12 (Colonnades) or 24 (Colonnades Duo)
+    const int nDegrees;                    // CAPACITY: 12 (Colonnades) / 24 (Duo). Fixed array size.
+    // TUNING SIZE (ROUND 10): how many degrees are LIVE (1..nDegrees). Degrees >= tuningN are GREYED —
+    // beyond the tuning: no cents, not saved, the engine never sees them (tt.N tracks THIS, not capacity).
+    // Distinct from enabledState[] (the scale mask WITHIN the tuning). Defaults to nDegrees (full
+    // capacity) so a fresh module / any pre-R10 patch is byte-identical. Persisted.
+    int tuningN;
+    int  liveN() const { return tuningN < 1 ? 1 : (tuningN > nDegrees ? nDegrees : tuningN); }
     std::string loadedTuningName;          // display-only name of a loaded .scl/.dmtune; persisted
     // SCALE-MEMBERSHIP mask (ENABLED_MASK_BUILD_BRIEF): per-degree enabled, SEPARATE from the weight
     // faders (which are pure loudness). enabledState[i]=false => degree out-of-scale (published to
     // tt.enabled → zeroed at read, fader dimmed). This is authored by the NOTES knob + the panel enable
     // band. Root (0) is ALWAYS enabled. Persisted. Default all-true for i<nDegrees.
     bool enabledState[dotModular::TuningTable::MAXN];
+    // Shophouse Micro scene drive (Rodney): an active front DRIVES the cents KNOBS + enabledState
+    // directly (so the LED + faders follow the modulation for free), and RESTORES the user's authored
+    // values on detach. baseCents_/baseEnabled_ cache the pre-scene authored state; sceneCacheValid_
+    // marks the cache live (captured on the scene's first active block, restored + cleared on detach).
+    // Runtime-only (the authored knobs/enabledState are what persist).
+    bool  sceneCacheValid_ = false;
+    float baseCents_[dotModular::TuningTable::MAXN]   = {};
+    bool  baseEnabled_[dotModular::TuningTable::MAXN] = {};
+    int   baseTuningN_ = 0;                 // authored tuning size cached under a scene (R10); restored on detach
     // Pairing HUB id (3C-ii): Interchange expanders bind to this Micro by pairId (reuses the shared
     // redDot::*T pairing — same as Intertropical/Lantern/CA). Self-assigned in process() behind
     // pairChecked; persisted. 0 until assigned. pairColour(pairId) tints the ConnectMark.
@@ -83,7 +98,7 @@ struct MicroTuningModule : rack::engine::Module {
         true,true,true,true,true,true,true,true,true,true,true,true,
         true,true,true,true,true,true,true,true,true,true,true,true};
 
-    explicit MicroTuningModule(int n) : nDegrees(n) {
+    explicit MicroTuningModule(int n) : nDegrees(n), tuningN(n) {   // full tuning by default (byte-identical)
         config(microTuning::numParams(n), 0, 0, microTuning::numLights(n));
         for (int i = 0; i < n; ++i) {
             // WEIGHT fader: 0..1, default 1 (all degrees enabled = chromatic; at equal-division cents
@@ -106,19 +121,52 @@ struct MicroTuningModule : rack::engine::Module {
         if (!loadedTuningName.empty())
             json_object_set_new(root, "loadedTuningName", json_string(loadedTuningName.c_str()));
         json_object_set_new(root, "pairId", json_integer(pairId));
+        json_object_set_new(root, "tuningN", json_integer(tuningN));   // ROUND 10 tuning size (1..capacity)
         json_t* je = json_array();          // scale-membership mask (enabled), separate from weight faders
         for (int i = 0; i < nDegrees; ++i) json_array_append_new(je, json_boolean(enabledState[i]));
         json_object_set_new(root, "enabled", je);
+        // If the patch is saved WHILE a Shophouse Micro scene is driving the knobs, persist the authored
+        // base cache so a later detach restores the user's tuning (not the frozen scene values).
+        if (sceneCacheValid_) {
+            json_object_set_new(root, "sceneCacheValid", json_boolean(true));
+            json_t* bc = json_array(); json_t* be = json_array();
+            for (int i = 0; i < nDegrees; ++i) {
+                json_array_append_new(bc, json_real((double)baseCents_[i]));
+                json_array_append_new(be, json_boolean(baseEnabled_[i]));
+            }
+            json_object_set_new(root, "baseCents", bc);
+            json_object_set_new(root, "baseEnabled", be);
+            json_object_set_new(root, "baseTuningN", json_integer(baseTuningN_));
+        }
         return root;
     }
     void dataFromJson(json_t* root) override {
         if (json_t* j = json_object_get(root, "loadedTuningName"))
             loadedTuningName = json_string_value(j);
         if (json_t* p = json_object_get(root, "pairId")) { pairId = (int)json_integer_value(p); pairChecked = true; }
+        // ROUND 10 tuning size. Absent (pre-R10 patch) → stays nDegrees (full capacity) → byte-identical.
+        if (json_t* tn = json_object_get(root, "tuningN")) {
+            int v = (int)json_integer_value(tn);
+            tuningN = v < 1 ? 1 : (v > nDegrees ? nDegrees : v);
+        }
         if (json_t* je = json_object_get(root, "enabled"); json_is_array(je))
             for (int i = 0; i < nDegrees && i < (int)json_array_size(je); ++i)
                 enabledState[i] = json_boolean_value(json_array_get(je, i));
         enabledState[0] = true;             // root always in-scale (invariant)
+        // Restore the authored base cache if the patch was saved mid-scene, so the next detach reverts
+        // to the user's tuning rather than the frozen scene values.
+        if (json_t* v = json_object_get(root, "sceneCacheValid"); v && json_boolean_value(v)) {
+            sceneCacheValid_ = true;
+            if (json_t* bc = json_object_get(root, "baseCents"); json_is_array(bc))
+                for (int i = 0; i < nDegrees && i < (int)json_array_size(bc); ++i)
+                    baseCents_[i] = (float)json_number_value(json_array_get(bc, i));
+            if (json_t* be = json_object_get(root, "baseEnabled"); json_is_array(be))
+                for (int i = 0; i < nDegrees && i < (int)json_array_size(be); ++i)
+                    baseEnabled_[i] = json_boolean_value(json_array_get(be, i));
+            baseEnabled_[0] = true;
+            if (json_t* bt = json_object_get(root, "baseTuningN"))
+                baseTuningN_ = (int)json_integer_value(bt);
+        }
     }
 };
 

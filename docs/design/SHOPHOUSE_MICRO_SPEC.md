@@ -125,13 +125,24 @@ also has musical sense: A/B maqam modulation, call-and-response between two 24-t
 - Boundary-quantised commit (ScaleList commitAtBoundary equivalent) -- tuning changes land on the loop
   edge, never mid-phrase. THIS IS THE KEY MUSICAL PROPERTY: tuning modulation quantised to phrase edges.
 - CONSERVATION toggle (guide vs enforce) -- still meaningful (the weight mask can guide or enforce).
-  RESOLVED SEMANTICS (Rodney): a front's ZERO-weight degrees are always silent in BOTH modes (the engine
-  never generates or snaps to a weight-0 degree). ENFORCE additionally makes that mask HARD against
-  MODULATION: Interchange CV driving a front-masked degree is IGNORED (re-zeroed after the CV fold),
-  mirroring Monsoon's lockScaleNotes where an out-of-scale note reads zero regardless of CV. Under GUIDE
-  the modulation stays additive, so an Interchange can lift a masked degree back in. Implemented in the
-  Colonnades/Duo Model-Q fold (MicroTuning.cpp) -- re-assert the front mask after the Interchange fold when
-  the bound Shophouse Micro's CONSERVATION = Enforce. No engine/TuningTable change (byte-identical at N=12).
+  RESOLVED SEMANTICS (Rodney, matches original Shophouse -- consistent): the CONSERVATION toggle governs
+  whether the scene's scale MASK (a front's enabled[]=false degrees, WITHIN the tuning) is a hard audible
+  gate or a purely-visual guide:
+   • GUIDE (enforce off): the mask is a SCALE GUIDE ONLY. Deactivated (out-of-scale) degrees within the
+     tuning STILL SOUND -- at their WEIGHT fader value (full) PLUS any Interchange modulation. The fader
+     still DIMS (the dimming is the visual scale guide, exactly like Monsoon+Shophouse where fader
+     position never means out-of-scale). Engine un-gated: tt.enabled forced all-true across live degrees.
+   • ENFORCE (conservation): the mask is HARD. Out-of-scale degrees are SILENT even with modulation
+     (tt.enabled carries the scene mask; ModeController + the quantizer zero a !enabled degree at read,
+     regardless of weight/mod -- mirrors Monsoon's lockScaleNotes).
+  This is distinct from the TUNING SIZE (greyed, deg >= N): a greyed degree is not in the tuning at all
+  and is silent in BOTH modes. Guide/Enforce only concerns DEACTIVATED-but-in-tuning degrees (deg < N,
+  enabled=false). Implemented in the Colonnades/Duo Model-Q fold (MicroTuning.cpp); fader dim reads the
+  scene mask (enabledState) so Guide's un-gate doesn't un-dim. Byte-identical with no scene attached.
+  SCOPE (Rodney fix): the toggle governs the effective mask WHENEVER a Shophouse Micro is BOUND — from an
+  active .dmtune front OR the Colonnades' OWN enable-band disables — not only when a front is active
+  (matches original Shophouse: conservation always governs the effective scale). With no Shophouse Micro
+  bound there is no conservation control, so the Colonnades' enable-band mask stays hard.
 - Menu-free direct panel (the whole point of Shophouse -- faster than the menu dance).
 
 ## Open design decisions (leans, confirm at build)

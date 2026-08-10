@@ -64,28 +64,39 @@ int main() {
         EXPECT_EQ(L.degrees(), 24);
     });
 
-    SUITE("slot load + no-mixed-N invariant (SHOPHOUSE_MICRO §66)");
-    TEST("first load into an empty list adopts the mode", {
+    SUITE("slot load — per-slot n, capacity-bounded (ROUND 10 full model)");
+    TEST("empty list adopts a LARGER mode from the first load (up to that n)", {
         TuningList L(4, 12);
         BoolMask m(24);
         EXPECT(L.loadSlot(0, 24, edoCents(24).data(), m.data(), "A"));
-        EXPECT_EQ(L.degrees(), 24);             // adopted from the first load
+        EXPECT_EQ(L.degrees(), 24);             // capacity bumped to fit the first (empty-adopt)
         EXPECT(L.slot(0).loaded);
+        EXPECT_EQ(L.slot(0).n, 24);             // slot carries its OWN size
     });
-    TEST("second load of a MISMATCHED n is rejected (no mixed set)", {
-        TuningList L(4, 12);
-        BoolMask m12(12), m24(24);
-        EXPECT(L.loadSlot(0, 12, edoCents(12).data(), m12.data(), "12tet"));
-        EXPECT(!L.loadSlot(1, 24, edoCents(24).data(), m24.data(), "maqam"));
-        EXPECT(!L.slot(1).loaded);              // rejected → still empty
+    TEST("slots may DIFFER in n within the capacity (no mixed-N rejection anymore)", {
+        TuningList L(2, 24);                    // 24-capacity (Duo-paired)
+        BoolMask m24(24), m12(12), m17(17);
+        EXPECT(L.loadSlot(0, 24, edoCents(24).data(), m24.data(), "maqam24"));
+        EXPECT(L.loadSlot(1, 12, edoCents(12).data(), m12.data(), "just12"));  // smaller n → allowed
+        EXPECT(L.slot(0).loaded); EXPECT(L.slot(1).loaded);
+        EXPECT_EQ(L.slot(0).n, 24);
+        EXPECT_EQ(L.slot(1).n, 12);             // per-slot sizes coexist
+    });
+    TEST("a load OVER capacity is rejected", {
+        TuningList L(4, 12);                    // 12-capacity (Colonnades-paired), a slot already loaded
+        BoolMask m12(12), m17(17);
+        EXPECT(L.loadSlot(0, 12, edoCents(12).data(), m12.data(), "x"));
+        EXPECT(!L.loadSlot(1, 17, edoCents(17).data(), m17.data(), "too-big"));  // 17 > cap 12 → reject
+        EXPECT(!L.slot(1).loaded);
         EXPECT_EQ(L.degrees(), 12);
     });
-    TEST("matching n loads succeed across slots", {
-        TuningList L(4, 12);
-        BoolMask m(12);
+    TEST("varied n loads succeed across slots", {
+        TuningList L(4, 24);
+        BoolMask m(24);
         for (int s = 0; s < 4; ++s)
-            EXPECT(L.loadSlot(s, 12, edoCents(12).data(), m.data(), "s" + std::to_string(s)));
+            EXPECT(L.loadSlot(s, 12 + s, edoCents(12 + s).data(), m.data(), "s" + std::to_string(s)));
         EXPECT(L.slot(3).loaded);
+        EXPECT_EQ(L.slot(3).n, 15);
     });
     TEST("clear() empties all + re-enables mode change", {
         TuningList L(4, 12);
