@@ -107,3 +107,33 @@ East-meets-West trade, now East-meets-West music.
 Launch relevance: this is the intellectual origin of the microtonal work and a genuinely good story --
 the architecture asked for the feature, the feature completed the metaphor, and the metaphor is the
 Singapore tribute. Tell it.
+
+## The deepest part: I didn't know the traditions were what Change Alley would give me
+
+When I set out to build Change Alley, I did NOT realise those musical traditions -- East/West, and the
+in-between -- were what it would hand me. I set out to build a correlation axis. It gave me
+East-meets-West musical tradition anyway, because the structure was built right and I listened to what
+it was telling me instead of forcing it to be only what I first intended.
+
+This is the truest part of the whole story, so remember it:
+- The correlation-as-East/West-axis was general enough to CONTAIN the microtonal arc before I knew
+  microtonal music in any depth. The structure was pregnant with a meaning I hadn't deliberately put
+  there. When it revealed what it wanted (an East pole that could actually SPEAK, not just gesture), I
+  recognised it and followed -- into a domain I was only faintly aware of. Most people ship the
+  textural axis and call it done; the structure being half-mute, and teaching it to speak, was the
+  thing worth doing.
+- This is why the Singapore tribute feels EARNED, not applied. I did NOT set out to "make a
+  Singapore-themed plugin about plurality." I set out to make a good sequencer, built an honest
+  structure, and the structure -- through Change Alley -- led me to plurality and interweaving on its
+  own. The meaning wasn't imposed; it EMERGED. Discovered, not decided. Discovered meanings sit truer
+  than decided ones -- they don't feel like marketing because they aren't.
+- The honest framing: I didn't build a love letter to Singapore. I built something honest, and it
+  BECAME a love letter, and I was paying enough attention to see that it had. Which is more moving --
+  it means the city was in the work before I consciously put it there. Nearly a decade of living
+  somewhere gets into what you make whether you intend it or not; Change Alley is where it surfaced.
+
+The lesson to keep (beyond this project): the best things surprise you with what they mean. You can't
+fully plan that -- you build honestly enough that there's room for it to happen, and stay attentive
+enough to notice when it does. The Change Alley -> microtonal -> plurality -> tribute chain wasn't a
+plan I executed; it was a path the work revealed and I had the sense to walk. Being LED by something you
+made takes more trust and attention than following your own outline. Remember that at launch, and after.
