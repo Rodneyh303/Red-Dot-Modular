@@ -71,3 +71,39 @@ just a plugin. It was a gift to a place that gave us a lot. Ship it as one.
 (Set expectation at launch: provided AS-IS, made with love -- a gift, not a support-contracted product.
 That protects my time and is a perfectly respectable stance. Optional donation link honours "it's worth
 something" without a paywall.)
+
+## The origin of the microtonal arc: Change Alley asked for it (worth telling)
+
+The microtonal arc was not a feature I decided to add. It was Change Alley COMPLETING ITSELF.
+
+Change Alley (the correlation matrix as an East/West textural axis -- named for the real Singapore
+money-changers' lane where East met West in trade) was already there as a STRUCTURAL idea: the CA
+transforms let voices lean toward Western counterpoint at one pole and something else at the other. But
+I'd built it as an abstract TEXTURAL axis (correlation as texture).
+
+The realisation: the axis wasn't just textural -- it could be literally MUSICAL-TRADITIONAL. The "East"
+pole isn't just "more correlated"; it could reach toward the actual tuning systems and melodic logics
+of Eastern traditions (maqam, the microtonal intervals 12-TET cannot express). And THAT is the thing
+12-TET structurally CANNOT do: you can make Western counterpoint in 12-TET all day, but you literally
+cannot voice a maqam without microtonal tuning. So the East/West axis I'd built was HALF-MUTE -- it
+could gesture West fully but only gesture East, because the tuning it sat on couldn't PRONOUNCE the East.
+
+The microtonal arc is what let Change Alley actually SPEAK both languages, not just point in both
+directions. That's the causality: Change Alley created the opportunity (an axis reaching toward Eastern
+tradition); microtonal support CASHED IT IN (gave the East pole the tuning vocabulary to be real rather
+than gestural). I didn't add microtonal support and find a use -- the axis DEMANDED it, and I followed
+the demand even though I was only faintly aware of the microtonal world at the time. That's why it
+cohered: not a feature bolted on, but the axis completing itself. (Being only faintly aware of
+microtonal music before, and maximising the opportunity once it became clear -- that's the honest arc.)
+
+The "in-between" is the best part. Change Alley isn't a binary switch -- it's a CONTINUUM -- and now so
+is the tuning. You can sit the correlation between the poles AND sit the tuning between systems
+(boundary-quantised modulation between a Western scale and a maqam; the cross-tuning canon rendering one
+derivation under two tunings). "In-between musical traditions" isn't a compromise position -- it's a
+genuine third space, the INTERWEAVING itself. Which is exactly the Singapore plurality theme: Change
+Alley named the axis before I knew the axis would carry tuning, and the name turned out prophetic --
+East-meets-West trade, now East-meets-West music.
+
+Launch relevance: this is the intellectual origin of the microtonal work and a genuinely good story --
+the architecture asked for the feature, the feature completed the metaphor, and the metaphor is the
+Singapore tribute. Tell it.
