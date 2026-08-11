@@ -312,3 +312,33 @@ shipping product. It CORROBORATES the Ahornberg findings and Rodney's Bitwig sus
 
 Cross-ref: the Ahornberg finding above (Bitwig/Live reduce, Cubase/Ardour preserve), the reverse-calc
 monitor (internal test), Fluid Chords 2 docs (the per-DAW MPE-out map).
+
+## RELEASE DELIVERABLE: per-DAW microtonal-recording guide + demo patches (Rodney)
+
+Ship with the release manual: a "how to record the microtonal (MPE) outs" section for the big 3 DAWs,
+plus demo PATCHES. Rationale: the DAW friction is real, DAW-specific, and NOT obvious (Rodney had the
+Cubase record setting right and pitches still didn't show; Bitwig was a knowledge gap not a guessable
+config). Documenting it means no one else rediscovers it. This is a DIFFERENTIATOR -- most microtonal
+tools don't reach outward at all, let alone ship a DAW-capture guide. It says "we know this is fiddly,
+we did the work."
+
+Raw material already in hand:
+- **Bitwig**: cracked (Rodney, this session) -- V6 expression overlay shows pitch as semitone-fraction
+  note offsets; the data's there, reconcilable to the Sikit Scala degrees. Rodney's first-hand notes =
+  the guide. (Note the V6 manual lag.)
+- **Ableton**: Fluid Chords' documented path -- VCV STANDALONE -> virtual MIDI port -> enable "Track &
+  MPE" on the port in Live's MIDI prefs -> a MIDI track's input set to it -> record -> view under the
+  clip's MPE tab. Adapt this recipe (Ableton does NOT do inter-track MPE routing from a plugin).
+- **Cubase**: still being cracked (Rodney) -- "record MIDI as note expression" is the capture setting,
+  but pitches showing depends on Cubase INTERPRETING the incoming per-note bend as VST Note Expression
+  tuning (instrument + routing in note-expression/MPE mode, not just the record toggle). Recipe TBD when
+  solved; likely a routing/interpretation config, not Keppel (bytes verified correct via Bitwig).
+
+Demo patches to bundle (patch + matching manual step = fastest install-to-"it works"):
+- One patch per DAW-recording scenario (load, follow steps, see microtonal MPE in the DAW).
+- Musical demo patches that SHOW THE INTENDED USE (what the manual can't): a Change Alley East/West
+  sweep, a maqam modulation via Shophouse Micro, a cross-tuning canon. Let people HEAR what it's for.
+
+Cross-ref: the DAW compatibility map above (Cubase/Ardour preserve, Ableton standalone-only, Bitwig
+reduces but viewable), LAUNCH_INTENT_AND_STORY (the release framing), the reverse-calc monitor (to
+confirm bytes independent of any DAW when cracking Cubase).
