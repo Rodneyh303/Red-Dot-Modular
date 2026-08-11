@@ -342,3 +342,40 @@ Demo patches to bundle (patch + matching manual step = fastest install-to-"it wo
 Cross-ref: the DAW compatibility map above (Cubase/Ardour preserve, Ableton standalone-only, Bitwig
 reduces but viewable), LAUNCH_INTENT_AND_STORY (the release framing), the reverse-calc monitor (to
 confirm bytes independent of any DAW when cracking Cubase).
+
+## Cubase 15 diagnosis: bend received (live -2 shows) but not converted to Note Expression (Rodney)
+
+Symptom (Rodney): Cubase 15 key editor showed a LIVE pitch bend figure (~-2) while Rack played, but
+would NOT show per-note amounts on the notes the way Bitwig does.
+
+Diagnosis -- this NARROWS it cleanly:
+- The live -2 means Cubase IS RECEIVING the pitch bend. The MIDI arrives, bend messages land, Cubase
+  displays the live value. So NOT a routing/send failure -- the pipe is open. (Keppel confirmed working
+  again.)
+- "Won't show amounts ON THE NOTES" means Cubase is treating the incoming bend as CHANNEL pitch bend,
+  NOT per-note VST Note Expression. Two different things in Cubase:
+  - Channel pitch bend: global bend on the channel, shown as a live value / controller lane, NOT
+    attached to notes (= the -2).
+  - VST Note Expression (VST-NE) tuning: per-note pitch, shown ON the notes (= what Bitwig showed).
+- So Cubase is interpreting the MPE as ordinary channel bend instead of CONVERTING per-channel bends
+  into per-note expression. The -2 is the current note's channel bend; it isn't attached to notes
+  because Cubase hasn't been told the input is MPE.
+
+The fix is a Cubase INTERPRETATION setting (Cubase-side, not Keppel). Leads to try when cracking it:
+1. Declare the MIDI INPUT as MPE / Note Expression source (Cubase 12+ has MPE support -- Studio Setup
+   MPE input, or the track's MIDI-input MPE toggle, version-dependent). Without it, channels 2..16 read
+   as separate channel bends, not MPE member channels feeding one note-expression stream.
+2. "Record MIDI as Note Expression" is the CAPTURE side; the INTERPRETATION (input flagged MPE) is
+   separate. Record-on but input-not-MPE = records channel bend, not note expression -- exactly the
+   symptom.
+3. Receiving instrument supporting VST-NE helps DISPLAY; the channel-bend->note-expression conversion
+   is the input-side thing.
+4. Bend-range agreement (the clean -2): once converting, confirm Cubase's per-note bend range matches
+   Keppel's, or amounts scale wrong. Secondary to getting conversion to happen at all.
+
+For the manual: INCLUDE this -2-shows-but-not-on-notes halfway state as a documented symptom -- it's
+the exact confusing state a Cubase user will hit, and "declare the input MPE" is the fix.
+
+Cross-ref: the per-DAW recording guide deliverable above, the DAW compatibility map (Cubase preserves
+data -- so once interpreted it should be clean), the reverse-calc monitor (confirm bytes independent of
+Cubase).
