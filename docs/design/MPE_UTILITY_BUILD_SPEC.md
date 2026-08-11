@@ -272,3 +272,43 @@ Implications for Rodney's "bend on only C":
 Cross-ref: src/Keppel.cpp (per-voice state to reconstruct from), src/dsp/MpeMath.hpp (the forward math
 to invert), the validation protocol above (loopback), Ahornberg MIDIPolyExpression (github, GPL ref +
 the DAW-preservation finding).
+
+## DAW MPE-out compatibility map (corroborated by Fluid Chords, a commercial MPE plugin)
+
+Fluid Chords 2 (Pitch Innovations) is one of the few commercial MPE-GENERATING plugins. Its per-DAW
+setup docs are effectively a compatibility map for MPE-out -- written by people who solved this for a
+shipping product. It CORROBORATES the Ahornberg findings and Rodney's Bitwig suspicion:
+
+- **Ableton Live**: does NOT support MPE MIDI routing BETWEEN TRACKS. Fluid Chords' only Ableton method
+  is the STANDALONE app + a virtual MIDI port (enable "Track & MPE" on the port, set a MIDI track's
+  input to it). Confirms Rodney's "Ableton has to record from standalone app." For Keppel-in-VCV this
+  means: VCV-as-plugin into an Ableton track likely won't carry MPE; VCV STANDALONE -> virtual MIDI port
+  -> Ableton (port MPE-enabled) is the path.
+- **Cubase (VST3)**: works with straightforward VST3 MIDI routing (plugin on one track -> instrument
+  track's MIDI input). No standalone, no special mode. Matches Ahornberg's "Cubase preserves all data."
+  -> Keppel-in-VCV-as-VST3 into Cubase should work via normal routing. CLEAN REFERENCE DAW.
+- **Bitwig**: NOT documented by Fluid Chords AT ALL (they cover Logic, Ableton, Cubase, Pro Tools,
+  Studio One, FL, Reaper -- 7 DAWs, but not Bitwig). A commercial MPE plugin omitting Bitwig, plus
+  Ahornberg's "Bitwig does data reduction," = TWO independent expert sources flagging Bitwig as the weak
+  link. Strongly corroborates that Rodney's "bend on only C" is a BITWIG problem, not Keppel.
+
+### Consolidated DAW compatibility (for the Keppel compatibility note / manual)
+| DAW      | MPE-out status                                    | Source(s)                         |
+|----------|---------------------------------------------------|-----------------------------------|
+| Cubase   | Works, normal VST3 MIDI routing                   | Fluid Chords; Ahornberg (preserves)|
+| Ardour   | Preserves all MIDI data                           | Ahornberg                         |
+| Ableton  | Only via STANDALONE app + virtual MIDI port (MPE) | Fluid Chords; Ahornberg (rearranges)|
+| Bitwig   | Undocumented; known data reduction                | Ahornberg; Fluid Chords omission  |
+
+### What this means for Keppel (turns debugging into documentation)
+1. Keppel is very likely CORRECT (code verified sound; two experts say Bitwig mangles MPE).
+2. The deliverable is a COMPATIBILITY NOTE, not a bug fix: "For MPE capture, use Cubase or Ardour
+   (preserve all data). Ableton requires VCV STANDALONE + a virtual MIDI port with Track & MPE enabled.
+   Bitwig applies data reduction and may not preserve per-note bend -- not recommended for MPE capture."
+3. Validation order: (a) the reverse-calc MONITOR output (internal ground truth); (b) VCV standalone +
+   loopback + moDllz MPE mode + MIDI monitor; (c) Cubase or Ardour as the clean external reference.
+   Only after those confirm Keppel should any Bitwig-specific behaviour be considered -- and even then
+   it's a known DAW limitation, not a Keppel bug.
+
+Cross-ref: the Ahornberg finding above (Bitwig/Live reduce, Cubase/Ardour preserve), the reverse-calc
+monitor (internal test), Fluid Chords 2 docs (the per-DAW MPE-out map).
