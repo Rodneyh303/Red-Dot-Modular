@@ -145,3 +145,170 @@ that's for running two controllers/instruments at once, NOT relevant here. Keppe
 
 Cross-ref: the MPE channel-allocation section above (this makes the 15 cap + voice-16 policy explicit),
 MPE spec (zones, master/member channels).
+
+## Validation + diagnosis (Rodney's Bitwig test: "bend on only C") -- code verified sound
+
+Rodney captured Keppel -> Bitwig (Monsoon+Sikit microtonal, all 12 semitones microtuned) and saw pitch
+bends on only ONE note (C). Investigated the code -- KEPPEL LOOKS CORRECT end to end:
+- Per-voice member-channel allocation (allocMember per voice, lower-zone members 2..16). NOT collapsed
+  to one channel.
+- Per-voice bend math (MpeMath.hpp: noteFor = round(pitchV*12)+60; centsOffsetSemis = the signed
+  within-semitone remainder; bend14 maps it around 8192). Different offset per voice -- correct.
+- Send order: bend BEFORE note-on, per voice on its own channel. Correct.
+- MPE config handshake (sendMpeConfig: RPN 6 member count on master + RPN 0 bend-range on master+members)
+  fires on init (needHandshake) and on bend-range change. Correct.
+- midiOut.channel = -1 re-asserted every block so the Port doesn't overwrite per-voice channels.
+So no Keppel bug found. "Bend on only C" is almost certainly RECEIVER-SIDE.
+
+### The scarcity insight (Rodney): few MPE-GENERATING plugins exist
+The ecosystem is receiver-side (MPE controllers -> software), not sender-side. Keppel is the rare
+outbound direction, so DAW MPE-INPUT handling is the immature, unpredictable part -- this is the
+validation tail the spec warned about, now real. Same behaviour across "all channels into same",
+"different track", "same track" (Rodney's CLAP attempts) points at collapse AT/BEFORE the DAW's MIDI
+interpretation, not track routing (routing differences would show DIFFERENT behaviour) -- i.e.
+receiver-side.
+
+### The three receiver-side suspects (in order)
+1. **DAW not in MPE mode** (most likely). Non-MPE collapses all member channels to one -> only one
+   note's bend survives = "only C bends". Keppel sends correct MPE; the DAW flattens it.
+2. **Bend-range mismatch.** Keppel defaults +/-2 semitones AND sends the RPN -- but if the DAW ignores
+   the RPN and uses its own default (often +/-48), bends are scaled ~24x too small -> nearly invisible.
+   Match the receiver's per-note bend range to 2 semitones.
+3. **Forced MIDI channel** on the VCV plugin output in the DAW. If set to a fixed channel (not "All"),
+   it overrides Keppel's per-voice channels and collapses them. Set the VCV-plugin MIDI out to All.
+
+### RECOMMENDED VALIDATION PROTOCOL (do this BEFORE fighting any DAW)
+Take the DAW out of the loop entirely -- test Keppel's OUTPUT BYTES directly:
+1. **VCV standalone + MIDI loopback**: Keppel -> a virtual/loopback MIDI port -> an MPE-to-CV module in
+   the SAME VCV instance -> scope the recovered CV. Loopback is transparent (passes bytes, no
+   reinterpretation), so this isolates Keppel's output from any DAW's interpretation.
+2. **Receiver = moDllz MIDIpolyMPE in MPE MODE** (explicit toggle; shows per-channel activity). Confirm
+   MPE mode ON first (off -> collapse even if Keppel is perfect).
+3. **Also watch a MIDI MONITOR on the loopback port** -- the ground truth. If the monitor shows notes on
+   channels 2,3,4... each with its own pitch bend, KEPPEL IS CORRECT and every DAW failure is a receiver
+   config issue. If it shows one channel, that contradicts the code review -- then it IS Keppel.
+Outcome: round-trip CV matches the original microtonal CV per-voice -> Keppel proven correct, move to
+DAW config. This is also a permanent REGRESSION test (self-contained in Rack, no external gear).
+
+### DAW notes
+- Bitwig: may need a "fake MPE hardware instrument" / MPE-enabled instrument track to make Bitwig treat
+  the input as MPE (Rodney's plan). The MPE-enable ritual differs per DAW.
+- Live (>=11) and Cubase (>=12) have MPE input but each has its own enable + default bend range -- expect
+  the same per-DAW fiddliness. Once loopback proves Keppel, DAW work = "find each DAW's MPE-enable +
+  bend-range", a COMPATIBILITY-NOTE deliverable, not a bug hunt.
+
+### Usability suggestion (not a bug): show bend range on the panel
+Bend-range agreement is make-or-break and invisible when wrong. Display the bend-range value on the
+Keppel panel (it's already a param) so the user can match it in the receiver without guessing. Cheap,
+removes the #2 suspect's guesswork.
+
+Cross-ref: src/Keppel.cpp (verified-sound allocation/handshake/send-order), src/dsp/MpeMath.hpp
+(verified-sound note/bend math), the gap analysis above (few MPE-generating plugins = receiver-side
+ecosystem = the validation tail).
+
+## Reverse-calculation MONITOR output (Rodney) -- internal ground truth for testing
+
+Add a diagnostic poly CV output that RECONSTRUCTS each voice's pitch from the (note, bend14) Keppel
+actually assigned -- so you can scope input-CV vs reconstructed-CV and prove Keppel's forward path
+correct WITHOUT trusting any external receiver. Especially valuable given DAWs mangle MPE (below).
+
+### Why (and why now more than ever)
+Rodney's "bend on only C" is almost certainly receiver-side, and there's now expert corroboration that
+DAWs mangle MPE (see the Ahornberg finding). So an EXTERNAL receiver can't be a trusted reference. An
+INTERNAL reconstruction makes Keppel self-verifying: input CV vs "what I'm actually sending, decoded
+back" CV. If they overlay, Keppel's forward path (note + cents + 14-bit quantise + bend range + channel
+assignment) is proven correct and any downstream failure is 100% transmission/DAW.
+
+### What to reconstruct (from the ASSIGNED 14-bit bend, not the float offset)
+For each active voice, from the values ACTUALLY sent:
+  pitch_recon = (note - 60) / 12  +  ((bend14 - 8192) / 8192) * (bendRangeSemis / 12)
+- Uses the quantised bend14 (post 14-bit rounding + clamp) and the actual note -- so it catches
+  quantisation/clamp/range errors, not just the float math. This is the most diagnostic form: it
+  verifies the ENTIRE forward path as a unit.
+- Output as a poly CV, one channel per active voice, matching the input voice layout.
+- It will match the input within the bend RESOLUTION (~0.02c at +/-2), NOT bit-identical -- the tiny
+  residual IS the 14-bit quantisation error, and seeing it be tiny confirms resolution is fine.
+
+### UI / behaviour
+- A dedicated MONITOR poly output (labelled diagnostic, e.g. "MON" / "pitch echo") -- NOT a musical
+  signal path. For scoping against the input.
+- Reconstructs from the per-voice state Keppel holds AFTER assignment (note, lastBend14, memberCh
+  active), so it reflects exactly what went to MIDI.
+- Optional: also a "max error" light/readout (max |input - recon| across voices) that lights if the
+  residual ever exceeds the expected quantisation bound -- a live self-check.
+
+### Doubles as a regression test
+The reconstruction should ALWAYS equal the input within the bend resolution. A standalone test
+(test_MpeMath / test_keppel_reverse) can assert: for a sweep of pitches, |pitchV - reconstruct(noteFor,
+bend14For)| <= (bendRange / 8192 / 12) + eps. Pure math, no MIDI, fits the test harness. Add to
+run_all.sh. This converts "the forward math is correct" into a checked fact (like test_12tet_identity
+did for tuning).
+
+### This does NOT make Keppel a receiver
+Reconstruct-from-own-state only (interpretation B). Do NOT add a MIDI INPUT / MPE decode to Keppel --
+that would duplicate moDllz/Ahornberg MPE-to-CV and bloat the utility. The monitor reconstructs from
+Keppel's OWN assigned values, not from received MIDI.
+
+## DAW MPE-preservation finding (Ahornberg, VCV forum) -- test in Cubase/Ardour not Bitwig
+
+Ahornberg (author of a serious LinnStrument MPE-to-CV module) reports, from direct experience:
+- **Bitwig Studio: does DATA REDUCTION** on MPE after recording to a MIDI clip.
+- **Ableton Live 11: sometimes REARRANGES MIDI CHANNELS + some data reduction** (less than Bitwig; v12
+  unknown).
+- **Cubase and Ardour: preserve ALL MIDI data** (do a good job).
+- He STAYS IN VCV STANDALONE to avoid DAW MPE mangling -- independent corroboration of the
+  loopback/standalone validation protocol above.
+
+Implications for Rodney's "bend on only C":
+- Bitwig data-reduction is a KNOWN behaviour, not a Keppel bug. "Bend on only C" is consistent with
+  Bitwig reducing/collapsing per-channel bend data.
+- ACTION: test Keppel in **Ardour (free, open-source) or Cubase** -- they preserve MPE. If Keppel works
+  there but not Bitwig, that's DEFINITIVE: Keppel correct, Bitwig mangles. Ships as a compatibility note
+  ("for MPE capture use Cubase/Ardour; Bitwig/Live reduce MPE data").
+- Ahornberg's MIDIPolyExpression.cpp is a THIRD GPL reference (inbound MPE-to-CV) for channel
+  conventions (setChannels per output, per-channel iteration, gate-edge note-on) -- alongside moDllz +
+  alexandreleroux.
+
+Cross-ref: src/Keppel.cpp (per-voice state to reconstruct from), src/dsp/MpeMath.hpp (the forward math
+to invert), the validation protocol above (loopback), Ahornberg MIDIPolyExpression (github, GPL ref +
+the DAW-preservation finding).
+
+## DAW MPE-out compatibility map (corroborated by Fluid Chords, a commercial MPE plugin)
+
+Fluid Chords 2 (Pitch Innovations) is one of the few commercial MPE-GENERATING plugins. Its per-DAW
+setup docs are effectively a compatibility map for MPE-out -- written by people who solved this for a
+shipping product. It CORROBORATES the Ahornberg findings and Rodney's Bitwig suspicion:
+
+- **Ableton Live**: does NOT support MPE MIDI routing BETWEEN TRACKS. Fluid Chords' only Ableton method
+  is the STANDALONE app + a virtual MIDI port (enable "Track & MPE" on the port, set a MIDI track's
+  input to it). Confirms Rodney's "Ableton has to record from standalone app." For Keppel-in-VCV this
+  means: VCV-as-plugin into an Ableton track likely won't carry MPE; VCV STANDALONE -> virtual MIDI port
+  -> Ableton (port MPE-enabled) is the path.
+- **Cubase (VST3)**: works with straightforward VST3 MIDI routing (plugin on one track -> instrument
+  track's MIDI input). No standalone, no special mode. Matches Ahornberg's "Cubase preserves all data."
+  -> Keppel-in-VCV-as-VST3 into Cubase should work via normal routing. CLEAN REFERENCE DAW.
+- **Bitwig**: NOT documented by Fluid Chords AT ALL (they cover Logic, Ableton, Cubase, Pro Tools,
+  Studio One, FL, Reaper -- 7 DAWs, but not Bitwig). A commercial MPE plugin omitting Bitwig, plus
+  Ahornberg's "Bitwig does data reduction," = TWO independent expert sources flagging Bitwig as the weak
+  link. Strongly corroborates that Rodney's "bend on only C" is a BITWIG problem, not Keppel.
+
+### Consolidated DAW compatibility (for the Keppel compatibility note / manual)
+| DAW      | MPE-out status                                    | Source(s)                         |
+|----------|---------------------------------------------------|-----------------------------------|
+| Cubase   | Works, normal VST3 MIDI routing                   | Fluid Chords; Ahornberg (preserves)|
+| Ardour   | Preserves all MIDI data                           | Ahornberg                         |
+| Ableton  | Only via STANDALONE app + virtual MIDI port (MPE) | Fluid Chords; Ahornberg (rearranges)|
+| Bitwig   | Undocumented; known data reduction                | Ahornberg; Fluid Chords omission  |
+
+### What this means for Keppel (turns debugging into documentation)
+1. Keppel is very likely CORRECT (code verified sound; two experts say Bitwig mangles MPE).
+2. The deliverable is a COMPATIBILITY NOTE, not a bug fix: "For MPE capture, use Cubase or Ardour
+   (preserve all data). Ableton requires VCV STANDALONE + a virtual MIDI port with Track & MPE enabled.
+   Bitwig applies data reduction and may not preserve per-note bend -- not recommended for MPE capture."
+3. Validation order: (a) the reverse-calc MONITOR output (internal ground truth); (b) VCV standalone +
+   loopback + moDllz MPE mode + MIDI monitor; (c) Cubase or Ardour as the clean external reference.
+   Only after those confirm Keppel should any Bitwig-specific behaviour be considered -- and even then
+   it's a known DAW limitation, not a Keppel bug.
+
+Cross-ref: the Ahornberg finding above (Bitwig/Live reduce, Cubase/Ardour preserve), the reverse-calc
+monitor (internal test), Fluid Chords 2 docs (the per-DAW MPE-out map).
