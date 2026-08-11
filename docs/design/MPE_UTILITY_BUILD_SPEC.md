@@ -145,3 +145,63 @@ that's for running two controllers/instruments at once, NOT relevant here. Keppe
 
 Cross-ref: the MPE channel-allocation section above (this makes the 15 cap + voice-16 policy explicit),
 MPE spec (zones, master/member channels).
+
+## Validation + diagnosis (Rodney's Bitwig test: "bend on only C") -- code verified sound
+
+Rodney captured Keppel -> Bitwig (Monsoon+Sikit microtonal, all 12 semitones microtuned) and saw pitch
+bends on only ONE note (C). Investigated the code -- KEPPEL LOOKS CORRECT end to end:
+- Per-voice member-channel allocation (allocMember per voice, lower-zone members 2..16). NOT collapsed
+  to one channel.
+- Per-voice bend math (MpeMath.hpp: noteFor = round(pitchV*12)+60; centsOffsetSemis = the signed
+  within-semitone remainder; bend14 maps it around 8192). Different offset per voice -- correct.
+- Send order: bend BEFORE note-on, per voice on its own channel. Correct.
+- MPE config handshake (sendMpeConfig: RPN 6 member count on master + RPN 0 bend-range on master+members)
+  fires on init (needHandshake) and on bend-range change. Correct.
+- midiOut.channel = -1 re-asserted every block so the Port doesn't overwrite per-voice channels.
+So no Keppel bug found. "Bend on only C" is almost certainly RECEIVER-SIDE.
+
+### The scarcity insight (Rodney): few MPE-GENERATING plugins exist
+The ecosystem is receiver-side (MPE controllers -> software), not sender-side. Keppel is the rare
+outbound direction, so DAW MPE-INPUT handling is the immature, unpredictable part -- this is the
+validation tail the spec warned about, now real. Same behaviour across "all channels into same",
+"different track", "same track" (Rodney's CLAP attempts) points at collapse AT/BEFORE the DAW's MIDI
+interpretation, not track routing (routing differences would show DIFFERENT behaviour) -- i.e.
+receiver-side.
+
+### The three receiver-side suspects (in order)
+1. **DAW not in MPE mode** (most likely). Non-MPE collapses all member channels to one -> only one
+   note's bend survives = "only C bends". Keppel sends correct MPE; the DAW flattens it.
+2. **Bend-range mismatch.** Keppel defaults +/-2 semitones AND sends the RPN -- but if the DAW ignores
+   the RPN and uses its own default (often +/-48), bends are scaled ~24x too small -> nearly invisible.
+   Match the receiver's per-note bend range to 2 semitones.
+3. **Forced MIDI channel** on the VCV plugin output in the DAW. If set to a fixed channel (not "All"),
+   it overrides Keppel's per-voice channels and collapses them. Set the VCV-plugin MIDI out to All.
+
+### RECOMMENDED VALIDATION PROTOCOL (do this BEFORE fighting any DAW)
+Take the DAW out of the loop entirely -- test Keppel's OUTPUT BYTES directly:
+1. **VCV standalone + MIDI loopback**: Keppel -> a virtual/loopback MIDI port -> an MPE-to-CV module in
+   the SAME VCV instance -> scope the recovered CV. Loopback is transparent (passes bytes, no
+   reinterpretation), so this isolates Keppel's output from any DAW's interpretation.
+2. **Receiver = moDllz MIDIpolyMPE in MPE MODE** (explicit toggle; shows per-channel activity). Confirm
+   MPE mode ON first (off -> collapse even if Keppel is perfect).
+3. **Also watch a MIDI MONITOR on the loopback port** -- the ground truth. If the monitor shows notes on
+   channels 2,3,4... each with its own pitch bend, KEPPEL IS CORRECT and every DAW failure is a receiver
+   config issue. If it shows one channel, that contradicts the code review -- then it IS Keppel.
+Outcome: round-trip CV matches the original microtonal CV per-voice -> Keppel proven correct, move to
+DAW config. This is also a permanent REGRESSION test (self-contained in Rack, no external gear).
+
+### DAW notes
+- Bitwig: may need a "fake MPE hardware instrument" / MPE-enabled instrument track to make Bitwig treat
+  the input as MPE (Rodney's plan). The MPE-enable ritual differs per DAW.
+- Live (>=11) and Cubase (>=12) have MPE input but each has its own enable + default bend range -- expect
+  the same per-DAW fiddliness. Once loopback proves Keppel, DAW work = "find each DAW's MPE-enable +
+  bend-range", a COMPATIBILITY-NOTE deliverable, not a bug hunt.
+
+### Usability suggestion (not a bug): show bend range on the panel
+Bend-range agreement is make-or-break and invisible when wrong. Display the bend-range value on the
+Keppel panel (it's already a param) so the user can match it in the receiver without guessing. Cheap,
+removes the #2 suspect's guesswork.
+
+Cross-ref: src/Keppel.cpp (verified-sound allocation/handshake/send-order), src/dsp/MpeMath.hpp
+(verified-sound note/bend math), the gap analysis above (few MPE-generating plugins = receiver-side
+ecosystem = the validation tail).
