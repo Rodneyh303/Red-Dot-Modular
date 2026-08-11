@@ -205,3 +205,70 @@ removes the #2 suspect's guesswork.
 Cross-ref: src/Keppel.cpp (verified-sound allocation/handshake/send-order), src/dsp/MpeMath.hpp
 (verified-sound note/bend math), the gap analysis above (few MPE-generating plugins = receiver-side
 ecosystem = the validation tail).
+
+## Reverse-calculation MONITOR output (Rodney) -- internal ground truth for testing
+
+Add a diagnostic poly CV output that RECONSTRUCTS each voice's pitch from the (note, bend14) Keppel
+actually assigned -- so you can scope input-CV vs reconstructed-CV and prove Keppel's forward path
+correct WITHOUT trusting any external receiver. Especially valuable given DAWs mangle MPE (below).
+
+### Why (and why now more than ever)
+Rodney's "bend on only C" is almost certainly receiver-side, and there's now expert corroboration that
+DAWs mangle MPE (see the Ahornberg finding). So an EXTERNAL receiver can't be a trusted reference. An
+INTERNAL reconstruction makes Keppel self-verifying: input CV vs "what I'm actually sending, decoded
+back" CV. If they overlay, Keppel's forward path (note + cents + 14-bit quantise + bend range + channel
+assignment) is proven correct and any downstream failure is 100% transmission/DAW.
+
+### What to reconstruct (from the ASSIGNED 14-bit bend, not the float offset)
+For each active voice, from the values ACTUALLY sent:
+  pitch_recon = (note - 60) / 12  +  ((bend14 - 8192) / 8192) * (bendRangeSemis / 12)
+- Uses the quantised bend14 (post 14-bit rounding + clamp) and the actual note -- so it catches
+  quantisation/clamp/range errors, not just the float math. This is the most diagnostic form: it
+  verifies the ENTIRE forward path as a unit.
+- Output as a poly CV, one channel per active voice, matching the input voice layout.
+- It will match the input within the bend RESOLUTION (~0.02c at +/-2), NOT bit-identical -- the tiny
+  residual IS the 14-bit quantisation error, and seeing it be tiny confirms resolution is fine.
+
+### UI / behaviour
+- A dedicated MONITOR poly output (labelled diagnostic, e.g. "MON" / "pitch echo") -- NOT a musical
+  signal path. For scoping against the input.
+- Reconstructs from the per-voice state Keppel holds AFTER assignment (note, lastBend14, memberCh
+  active), so it reflects exactly what went to MIDI.
+- Optional: also a "max error" light/readout (max |input - recon| across voices) that lights if the
+  residual ever exceeds the expected quantisation bound -- a live self-check.
+
+### Doubles as a regression test
+The reconstruction should ALWAYS equal the input within the bend resolution. A standalone test
+(test_MpeMath / test_keppel_reverse) can assert: for a sweep of pitches, |pitchV - reconstruct(noteFor,
+bend14For)| <= (bendRange / 8192 / 12) + eps. Pure math, no MIDI, fits the test harness. Add to
+run_all.sh. This converts "the forward math is correct" into a checked fact (like test_12tet_identity
+did for tuning).
+
+### This does NOT make Keppel a receiver
+Reconstruct-from-own-state only (interpretation B). Do NOT add a MIDI INPUT / MPE decode to Keppel --
+that would duplicate moDllz/Ahornberg MPE-to-CV and bloat the utility. The monitor reconstructs from
+Keppel's OWN assigned values, not from received MIDI.
+
+## DAW MPE-preservation finding (Ahornberg, VCV forum) -- test in Cubase/Ardour not Bitwig
+
+Ahornberg (author of a serious LinnStrument MPE-to-CV module) reports, from direct experience:
+- **Bitwig Studio: does DATA REDUCTION** on MPE after recording to a MIDI clip.
+- **Ableton Live 11: sometimes REARRANGES MIDI CHANNELS + some data reduction** (less than Bitwig; v12
+  unknown).
+- **Cubase and Ardour: preserve ALL MIDI data** (do a good job).
+- He STAYS IN VCV STANDALONE to avoid DAW MPE mangling -- independent corroboration of the
+  loopback/standalone validation protocol above.
+
+Implications for Rodney's "bend on only C":
+- Bitwig data-reduction is a KNOWN behaviour, not a Keppel bug. "Bend on only C" is consistent with
+  Bitwig reducing/collapsing per-channel bend data.
+- ACTION: test Keppel in **Ardour (free, open-source) or Cubase** -- they preserve MPE. If Keppel works
+  there but not Bitwig, that's DEFINITIVE: Keppel correct, Bitwig mangles. Ships as a compatibility note
+  ("for MPE capture use Cubase/Ardour; Bitwig/Live reduce MPE data").
+- Ahornberg's MIDIPolyExpression.cpp is a THIRD GPL reference (inbound MPE-to-CV) for channel
+  conventions (setChannels per output, per-channel iteration, gate-edge note-on) -- alongside moDllz +
+  alexandreleroux.
+
+Cross-ref: src/Keppel.cpp (per-voice state to reconstruct from), src/dsp/MpeMath.hpp (the forward math
+to invert), the validation protocol above (loopback), Ahornberg MIDIPolyExpression (github, GPL ref +
+the DAW-preservation finding).
