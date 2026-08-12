@@ -287,3 +287,44 @@ counterexample exists. Just don't claim first-ever; claim uncommon-integration.
 
 Cross-ref: the interoperability positioning above (the claim to calibrate), the two product shapes, the
 MPE-out chain (Keppel).
+
+## Foundation check before poly quantiser: are the GATES poly? (Rodney flagged) -- verify first
+
+Rodney flagged: quantiser mode D (external-gate) needs POLY GATES IN (one gate per incoming poly CV
+voice); and -- deeper -- is the internal Mode B gate sequencer even POLY, or mono? If Mode B generates
+MONO gates, the new-C (generated-gate-driven quantiser) can't drive poly voices independently (one gate
+for all voices breaks per-voice re-articulation + per-voice legato).
+
+### What the code shows (partial -- NOT conclusive on gates)
+- The engine HAS poly voices: voices[i] up to 15, per-voice strands (polyStrandLen), executePolyVoice,
+  per-voice LOR/legato. So the PITCH side is poly.
+- But I did NOT definitively locate a `GATE_OUTPUT.setChannels(N)` confirming PER-VOICE gate emission.
+  The main GATE_OUTPUT (gs.process, Monsoon.cpp:781/816) may be MONO (a single fused gate) even though
+  pitch is poly. UNRESOLVED in-container -- must be checked.
+
+### The check to do (post-holiday, before building poly quantiser)
+1. Does GATE_OUTPUT emit POLY (setChannels = voice count, a gate per voice) or MONO (one gate)?
+   Look at generateOutputs / where GATE_OUTPUT.setVoltage is called -- is it in a per-voice loop with
+   setChannels, or a single setVoltage?
+2. Same for the STEP / within-legato gates (the Keppel + quantiser re-articulation grid) -- poly?
+3. If gates are MONO: the poly quantiser (and poly Keppel legato re-articulation) need the GATE side
+   WIDENED to poly first -- a foundation task before the quantiser modes. This is the gate-side analog
+   of the M1 engine-widening that made pitch microtonal/poly.
+
+### Why it matters
+- Quantiser D: poly gate IN needed (Monsoon or Straits) -- to know per-voice when to sample/re-articulate
+  the incoming poly CV.
+- Quantiser new-C: needs the engine's GENERATED gates to be poly, or it can't gate poly voices
+  independently.
+- Keppel poly legato (the selective re-articulation): also needs per-voice gates. So this same gate-poly
+  question underpins BOTH the poly quantiser AND poly Keppel phrasing.
+So "are the gates poly?" is a shared foundation for the poly quantiser, poly Keppel, and the within-
+legato-gate work. Verify BEFORE building any of them; widen the gate side first if mono.
+
+CAUTION (codebase risk-shape): the pitch being poly might create a false assumption that gates are too.
+Don't assume -- CHECK. "Pitch poly, gate mono" is exactly the kind of asymmetry that compiles and half-
+works then breaks on the second voice.
+
+Cross-ref: SequencerEngine poly voices (voices[i], executePolyVoice -- pitch poly), Monsoon.cpp:781/816
+(GATE_OUTPUT / gs.process -- check poly-vs-mono), the quantiser modes (D poly-gate-in, C generated-poly-
+gate), Keppel poly legato re-articulation (needs per-voice gates), the within-legato gate.
