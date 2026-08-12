@@ -728,3 +728,49 @@ step-legato (=phrase) gates as the native pairing, and note third-party tie-capa
 
 Cross-ref: utility-not-expander decision (works on any poly source), the step-legato-gate-as-grid +
 selective-re-articulation sections, the one-bend mechanism.
+
+## CORRECTION / FINAL SHAPE (Rodney): Keppel gets main gate + within-legato gate; ADD the step gate, remove nothing
+
+Earlier sections over-complicated this ("generic phrase/note-grid, source-agnostic", "one gate your
+choice"). The correct, final shape:
+
+### Current Keppel inputs (verified in src/Keppel.cpp:24, configInput 66-69) -- KEEP ALL
+- PITCH_INPUT  "Poly pitch (1V/oct)"
+- GATE_INPUT   "Poly gate"   <- this is the MAIN gate
+- ACCENT_INPUT "Poly accent gate"
+- VEL_INPUT    "Poly velocity CV"
+None of these are removed or changed.
+
+### What to ADD: one new input -- the within-legato (step) gate
+- ADD a new input, e.g. STEP_GATE_INPUT / WITHIN_LEGATO_GATE_INPUT (a 5th input). Do NOT replace or
+  repurpose the existing GATE_INPUT -- the main gate stays as is; this is purely additive.
+- From the Monsoon system: patch the MAIN gate into GATE_INPUT (as now) and the WITHIN-LEGATO gate into
+  the new input.
+
+### What each gate does for Keppel
+- **Main gate (GATE_INPUT, existing)**: defines notes/phrases -- note-on/off, the legato envelope. As now.
+- **Within-legato gate (new input)**: the inner note divisions inside a legato span. Gives Keppel the
+  internal boundaries so a FORCED re-articulation (when a jump would exceed the bend range -- e.g. beyond
+  the set range up to 48) lands on a REAL inner note division, not an inferred pitch-threshold point.
+- Both step and step-legato from Monsoon have the SAME influence on the forced beyond-range
+  re-articulation; the within-legato gate just supplies the boundary grid for WHERE the forced
+  re-articulation lands within a held legato.
+
+### The within-legato gate ALSO has a general use OUTSIDE Keppel
+Independent of Keppel, the within-legato (step-legato) gate fires OTHER events within a legato span --
+envelopes, accents, triggers on the inner note divisions that the held main gate hides. It earns its
+place as a general Monsoon output on its own musical merits; Keppel is just ONE consumer of it. Both the
+step gate and the step-legato gate earn their place in the Monsoon system for general use.
+
+### Net
+- Keppel: KEEP pitch/gate/accent/vel; ADD one within-legato gate input. Main gate + within-legato gate.
+- Monsoon: step and step-legato gates both stay, both useful generally (step-legato notably for
+  within-legato event triggering, outside any Keppel context).
+- The forced beyond-range re-articulation behaves the same regardless; the within-legato gate places it
+  on real note divisions.
+
+Supersedes the earlier "generic two-gate interface" and "one gate your choice" framings above -- THIS is
+the shape.
+
+Cross-ref: src/Keppel.cpp:24 (InputIds -- add one), the legato landmine + selective re-articulation
+sections (the within-legato gate is the boundary grid), Monsoon step vs step-legato poly gates.
