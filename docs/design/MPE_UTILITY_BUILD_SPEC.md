@@ -423,3 +423,46 @@ Expression Data with MPE Input Devices (steinberg.help, cubase-pro/15.0). Verifi
 
 Cross-ref: the Cubase diagnosis above (channel-bend-vs-note-expression), the per-DAW recording guide
 deliverable, Keppel bend range (set Cubase's device pitch range to match).
+
+## Legato landmine: bend clamp plays a silently mis-tuned note (Rodney) -- post-V1 refinement
+
+### Two separate concerns that meet at the bend-range limit
+1. **Cents accuracy over octaves: NOT a problem (reassurance).** Bend is in SEMITONES of pitch, and
+   cents-per-semitone is constant at every octave (pitch is logarithmic; a cent = 1/100 semitone at C1
+   and C8 alike). 14-bit resolution spreads across the bend RANGE (semitones), not absolute frequency,
+   so ~0.024c/step at +/-2 holds EVERYWHERE. Octaves do NOT erode cents precision. That worry is
+   unfounded.
+2. **The real landmine: the RANGE CLAMP on legato.** Keppel bends RELATIVE to the note latched at
+   note-on. In legato (hold gate, new pitch) the note number stays and the BEND carries the whole pitch
+   change. If a legato jumps further than the bend range (e.g. an octave = 12 semis with range +/-2),
+   the bend CLAMPS at the range and the note plays grossly flat/sharp -- silently, no error, no warning.
+   "Ramp to 2 then stop" is this: the pitch wanted more than 2 semitones and the bend couldn't reach.
+   A legato interval > bend range = a silently, audibly MIS-TUNED note. The compiles-clean-wrong-value
+   failure, in musical form. Currently nothing stops a legato jumping octaves within/beyond the range.
+
+### The principle
+A legato must NEVER silently play a mis-tuned (clamped) note. Wrong pitch is worse than a re-attack.
+
+### The fix (lean: B default, A optional)
+- **B (default): auto re-articulate on range-exceed.** When a legato would exceed +/-(bend range),
+  send note-off/note-on to RE-LATCH the note number at the new pitch -> the bend resets near zero, back
+  in range, correct pitch. No new knob -- the threshold IS the bend range (or just inside it). Never
+  lets a bend exceed range; re-triggers instead of clamping. A big leap becomes a new note, which is
+  what it perceptually IS.
+  - Tradeoff to expose maybe: re-articulate = right-pitch but re-attacked (envelope retrigger on some
+    receivers); clamp = smooth but wrong-pitch. For microtonal CORRECTNESS, right-pitch wins. Optional
+    setting: "legato exceeding range -> re-articulate (correct) vs clamp (smooth but capped)."
+- **A (optional refinement): explicit interval/octave-jump limit.** A user cap on legato leap size,
+  beyond which force re-articulation. Useful for players who want to bound leaps deliberately, but NOT
+  required for correctness (B handles correctness automatically). Don't make the user responsible for
+  understanding the legato-vs-bend-range interaction -- that's the fiddly MPE knowledge we keep fighting;
+  make Keppel HANDLE it (B), expose the limit (A) only as a deliberate musical control.
+
+### Recommendation
+Default B (re-articulate on range-exceed, derived from bend range, no new param) so a clamped wrong
+pitch is impossible. Optionally expose the behaviour choice (re-articulate vs clamp) and/or an explicit
+interval limit. Post-V1 refinement; not a V1 blocker but a real correctness issue for legato microtonal
+lines.
+
+Cross-ref: Keppel bend range (1..12 semis), the held-note continuous-bend code (bend14FromNote clamps
+beyond range = where the landmine lives), the resolution section (cents/step by range -- octave-invariant).
