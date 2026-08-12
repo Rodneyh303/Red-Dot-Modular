@@ -980,3 +980,41 @@ earns its place. Capturing the CONCEPT now so it's not lost; the jack decision w
 
 Cross-ref: the accent-family (three flavours), the step-accent output (CONFIRMED feasible), the
 within-legato gate (the other AND operand), panel economy note.
+
+## CORRECTION: Cubase track channel must be "ANY", not a specific channel (Rodney's record failure)
+
+I earlier told Rodney the track input must "NOT be set to Any Input" -- that was WRONG for the MPE-input
+(controller) case. Steinberg docs say BOTH, depending on mode:
+- To control individual notes via MIDI CONTROLLERS (our case -- Keppel via loopback is a controller to
+  Cubase): set the track's Input Group and Channel to **ANY INPUT**.
+- To use VST NOTE EXPRESSIONS to control notes: set the track MIDI channel to 1-16.
+We are the FIRST case (feeding MPE IN from a controller-like source), so the track channel must be ANY.
+
+### Rodney's exact symptom + fix
+Symptom: Windows MIDI 2.0 loopback, Keppel(VCV plugin)->loopback A; Cubase Note Expression Input Device
+on loopback B shows live MIDI in (channel 2, MPE mode) -- but the record track set to "note expression
+input device, CHANNEL 2" records NOTHING.
+Fix: set the record track's Input Routing channel to **ANY**, not channel 2. A Steinberg forum user hit
+exactly this ("default the MIDI channel to Any when using the MPE Note Expression Input Device -- tripped
+me up"). Pinning the track to channel 2 makes Cubase filter to only ch2 and breaks the MPE per-note
+channel rotation (master ch1, members 2..16); ANY lets the device distribute notes across members into
+note expression. The live-monitor showing ch2 was correct incoming data; the record failed on the
+channel filter.
+
+### The corrected recipe
+1. Studio > Studio Setup > Add > Note Expression Input Device; MIDI Input = loopback B (the DAW-in side).
+2. MPE mode, base channel 1; Horizontal/X = Pitchbend + "Use for Tuning" + pitch range = Keppel's bend
+   range.
+3. Instrument/record track Input Routing: select the Note Expression Input Device, **Channel = ANY**
+   (NOT a specific channel). <-- the fix.
+4. Track record-ENABLED (armed, red) + monitor on. ("Sees live messages" can be monitor-through without
+   record-arm.)
+5. Record-as-Note-Expression on. If NOTES record but TUNING doesn't, the track's instrument must support
+   VST Note Expression / Tuning (HALion Sonic, Retrologue, Padshop). If NOTHING records, it's the
+   channel-ANY fix (3).
+
+For the manual: the "shows live MIDI but won't record" state = track channel pinned instead of ANY. The
+single most common Cubase MPE-record trap. Document ANY prominently.
+
+Cross-ref: the earlier Cubase recipe above (this CORRECTS the channel instruction), Keppel MPE lower-zone
+(master ch1 members 2..16 = why ANY is needed), Steinberg Note Expression Input Device docs (Cubase 15).
