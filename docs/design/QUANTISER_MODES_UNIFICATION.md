@@ -112,3 +112,62 @@ renumber without the migration.
 Cross-ref: the unification above, MODES_C_D_QUANTIZER_PRERELEASE.md, the microtonal tuning authorities
 (Sikit/Colonnades/Duo as the snap target), Straits/Intertropical as input-fronting expanders, the
 .dmtune v1->v2 migration (the pattern for the mode-renumber migration).
+
+## Positioning: the quantiser is an INTEROPERABILITY LAYER, not a "me too" quantiser (Rodney)
+
+Static gate quantise is a SUBSET of the offering. The real thing: quantiser mode takes CV from ANY
+other Rack CV sequencer and re-expresses it -- new rhythms, scales, tunings, arrangements, mono or poly.
+
+### Why this matters (the anti-"me too")
+VCV has thousands of modules; the long tail is derivative (another VCO/filter/basic quantiser). A static
+gate quantiser is the fiftieth-time thing. This is NOT that: it's a TRANSFORMATION STAGE you drop AFTER
+anything. Patch any sequencer's pitch CV (Marbles, Turing Machine, Bloom, anything) into quantiser mode
+-> it gets OUR rhythm engine, microtonal tunings, arrangement logic, poly handling grafted onto their
+existing pattern. You AUGMENT their sequencer, not replace it.
+- Most modules ask you to REPLACE something; this asks you to ADD to what you have -- easier adoption,
+  stronger interoperability story.
+- dot.modular becomes not just a self-contained ecosystem but a set of PROCESSING STAGES the whole Rack
+  world can route through. The correlation engine, microtonal tunings, phrasing, arrangement -- all
+  available to ANY CV source.
+- The microtonal angle makes it near-unique: arbitrary 12-TET CV in -> microtonal re-tuning + rhythm +
+  arrangement, poly -> MPE out. That specific chain barely exists. Not another quantiser in a crowded
+  field -- a microtonal-arranging-interoperability bridge in an almost empty one.
+
+### Launch relevance
+"Drop it after ANY Rack sequencer to re-rhythm, re-tune, re-arrange it" is a HEADLINE capability, not a
+footnote. Adds Rack interoperability big time. Frame it as such at launch.
+
+## Sample content: .dmtune JINS + 24-degree .scl MAQAMS (Rodney) -- demonstrates the format's whole point
+
+Plan: generate .dmtune jins to go with 24-degree .scl maqams, like Ableton's tuning website offers.
+
+### Why this is more than sample content -- it demonstrates the format hierarchy
+Maqam structure maps EXACTLY onto the format hierarchy:
+- 24-degree .scl = the full MAQAM tuning (the pitch set).
+- .dmtune JINS = a mask over that tuning selecting a jins (a subset of the maqam's degrees), AND
+  transposable via the tonic work (ajnas relocate).
+- Shophouse Micro modulating between jins-.dmtunes = MAQAM MODULATION (intiqal between ajnas) -- central
+  to how maqam music actually works.
+So shipping "24-degree .scl maqams + .dmtune jins within them" DEMONSTRATES the format's whole point:
+tuning = maqam, scale-masks = ajnas, modulation = the real performance dynamic. Makes the Change Alley
+origin ("microtonal let it pronounce a maqam") DEMONSTRABLE with real content.
+
+### Differentiate from Ableton's tuning library
+Ableton's collection is a static REFERENCE library (scales you load). This goes further: not just "here's
+maqam Rast" but "here's Rast, its ajnas as .dmtunes, and a patch that MODULATES between them." Ship the
+DYNAMICS of the system, not just its scales.
+
+### CAUTION -- accuracy (matters MORE in a cultural-tribute project)
+Maqam tunings are contested and regional: Arabic vs Turkish vs Persian systems DIFFER; the "quarter
+tone" is an approximation (real ajnas use specific non-equal intervals varying by region/performer);
+24-EDO is itself a simplification purists reject. When generating .scl/.dmtune content, either:
+(a) use WELL-SOURCED interval values and SAY which tradition/source ("after the Arabic maqam system,
+    tuning per [source]"), OR
+(b) be explicit these are 24-EDO APPROXIMATIONS for accessibility, not authoritative.
+Shipping naive-24-EDO "maqams" as authentic would UNDERCUT the respect the project is built on -- the
+Singapore-plurality/love-letter framing makes accuracy matter MORE, not less. Source the intervals
+properly or be honest about the approximation.
+
+Cross-ref: the .scl/.dmtune format hierarchy (TUNING_PRESET_FORMAT / SHOPHOUSE_MICRO_SPEC), the tonic-
+transpose work (ajnas relocate), Shophouse Micro (maqam modulation via jins slots), LAUNCH_INTENT_AND_
+STORY (the Change Alley "pronounce a maqam" origin -- now demonstrable), the two product shapes above.
