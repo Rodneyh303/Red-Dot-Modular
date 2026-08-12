@@ -466,3 +466,51 @@ lines.
 
 Cross-ref: Keppel bend range (1..12 semis), the held-note continuous-bend code (bend14FromNote clamps
 beyond range = where the landmine lives), the resolution section (cents/step by range -- octave-invariant).
+
+## MIDI 2.0: the eventual fix, but gated on VCV Rack -- so allow +/-48 + stay MPE for now (Rodney asked)
+
+Rodney asked if MIDI 2.0 fixes the resolution/range/legato-clamp problems. Answer: YES, largely -- but
+it's gated on VCV Rack's MIDI output, not Keppel, so it's not actionable yet.
+
+### What MIDI 2.0 fixes (the whole class of Keppel's pain)
+- **Resolution/range tradeoff dissolves**: MIDI 2.0 has 32-bit resolution + per-note control NATIVE
+  (vs MPE cramming pitch into MIDI-1.0's 14-bit-across-a-range). Per-note pitch bend at 32-bit = absurd
+  precision AND wide range at once -> the +/-2-vs-+/-48 dilemma mostly goes away, and the legato-clamp
+  landmine shrinks (huge usable range at full precision).
+- **Channel-allocation kludge disappears**: MPE's one-voice-per-channel / 15-member cap / master
+  channel / stealing is a MIDI-1.0 workaround. MIDI 2.0 has per-note pitch bend + pressure baked in
+  natively -- no channel-allocation workarounds. Keppel's member-channel logic becomes unnecessary in a
+  MIDI 2.0 path.
+- **Receiver-config friction improves**: Cubase 13+/Nuendo translate MIDI 2.0 CVM -> VST3 note
+  expression losslessly; Logic's Step Sequencer edits per-note pitch bend directly. The declare-input-
+  MPE / match-bend-range dance is partly a MIDI-1.0/MPE artifact.
+
+### Three caveats (why it's NOT the near-term answer for Keppel)
+1. **VCV RACK is the gating factor, not the DAWs.** Keppel emits via VCV midi::Output = MIDI 1.0. Until
+   the Rack SDK exposes MIDI 2.0 output (UMP, per-note controllers), Keppel CANNOT emit MIDI 2.0 no
+   matter what Cubase 15 can receive. *** CHECK the Rack SDK for MIDI 2.0 / UMP output support before
+   assuming a MIDI 2.0 Keppel is even possible -- likely not yet. *** This is the real blocker.
+2. **+/-48 is STILL the convention even in the MIDI-2.0 era.** Guides still say "match your pitch bend
+   range (usually 48 semitones on both hardware and software)". So for the MPE path Keppel is on now,
+   allowing +/-48 is the pragmatic interop choice -- it's the ecosystem default. MIDI 2.0 doesn't remove
+   +/-48's near-term relevance.
+3. **MPE isn't going away** -- it's the compatibility FLOOR. MPE (ratified 2018, universal) remains the
+   lingua franca; MIDI 2.0 devices fall back to MIDI 1.0 unless both ends handshake; there's even an MMA
+   MPE PROFILE inside MIDI 2.0. So MPE persists as a profile within MIDI 2.0. Keppel's MPE path stays
+   valid indefinitely.
+
+### Decision (confirms the earlier +/-48 discussion)
+- **Near term (V1): stay MPE, ALLOW up to +/-48** (default +/-2 for precision, allow 1..48 for receivers
+  that expect the +/-48 convention or want glide reach). MIDI 2.0 doesn't help yet (VCV = MIDI 1.0), and
+  +/-48 is the ecosystem default, so offering it is correct interop. The earlier conclusion stands:
+  allow 48, default narrow, PLUS re-articulation for the legato landmine (range-agnostic correctness).
+- **Longer term: MIDI 2.0 is the real fix, gated on VCV Rack.** If/when the Rack SDK exposes MIDI 2.0
+  output, a MIDI 2.0 Keppel path would largely dissolve the range/resolution/channel-allocation problems
+  (32-bit per-note pitch, no channel kludge, cleaner DAW reception). Genuine future direction; NOT
+  actionable until Rack supports it. Watch the Rack SDK changelog for MIDI 2.0 / UMP.
+
+Source: MIDI.org state-of-MIDI-2.0 (Feb 2026), imseankim MIDI 2.0 DAW support (Jan 2026 update),
+artistrack MIDI 2.0 guide (bend range still ~48). Verified current early 2026.
+
+Cross-ref: the +/-48 discussion + the legato landmine above (re-articulation is still needed at any
+range), Keppel bend range (1..12 now -> extend to 1..48), VCV midi::Output (the MIDI-1.0 gate).
