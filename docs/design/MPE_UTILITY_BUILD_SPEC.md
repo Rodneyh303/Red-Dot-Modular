@@ -619,3 +619,39 @@ those on legato gates, and document the step-gate option as the simple alternati
 
 Cross-ref: the legato landmine section, the reverse-calc monitor (to resolve the ramp puzzle), Monsoon's
 step vs step-legato poly gate outputs, bend14FromNote (current-vs-latched, the one-bend mechanism).
+
+## REFINEMENT (Rodney): step-legato gate = the re-articulation GRID (where to force the new note)
+
+Rodney's sharper point: the step-legato gate isn't just a "safe mode" alternative -- it's a structural
+INPUT to the re-articulation logic. It solves the "WHERE do I break a too-long slur" problem.
+
+The problem it solves: when Keppel must force a new note (legato jump exceeds bend range), it needs to
+know WHERE to place the re-articulation. Fed only the fully-held legato gate, Keppel sees no internal
+structure -> it has to INFER the re-trigger point from pitch-exceeds-range -> a heuristic that might
+re-trigger at an awkward sample (mid-phrase, wherever the pitch happened to cross the threshold).
+
+The fix: the step-legato gate output exposes the WITHIN-legato gates -- the individual step boundaries
+that were JOINED into the held legato. So Keppel can re-articulate ON THE ACTUAL STEP BOUNDARY, not at
+an arbitrary pitch-threshold-crossing sample. The re-trigger lands on a real note division, musically.
+
+Two gate signals, two jobs (use BOTH at once):
+- **Held legato gate** (high across the slur): "this is one phrase, bend through it" -- preserves legato.
+- **Step-legato gate** (internal step pulses within the phrase): "here are the note boundaries INSIDE
+  the phrase" -- the RE-ARTICULATION GRID.
+Keppel follows the held gate for legato (bend through small moves), but when a move would exceed range,
+SNAPS the forced re-articulation to the next step-legato boundary -> legato phrasing AND correct pitch
+AND musically-placed re-triggers.
+
+Even better -- PROACTIVE re-latch (not reactive clamp-avoidance): at each step-legato boundary, Keppel
+checks "is the pitch here now more than +/-(range) from where I latched?" -> if so, re-latch AT this
+clean boundary. This turns re-articulation from a panic-retrigger-at-the-ceiling into a SCHEDULED
+re-latch on note divisions -- exactly how a musician phrases it (slur what fits under the hand,
+re-articulate when the leap is too big). The step-legato gate provides the note divisions to decide on.
+
+So the step-legato gate upgrades the re-articulation fix from "guess where to break the slur" to "know
+the note boundaries and break there." Post-holiday: design re-articulation to CONSUME the step-legato
+gate as the boundary grid (when patched), falling back to threshold-inference only if it isn't. This is
+better than either pure gate-choice option alone.
+
+Cross-ref: the legato landmine + re-articulation section, Monsoon step vs step-legato poly gates, the
+one-bend mechanism (bend = current pitch - latched note; re-latch resets it to the microtonal offset).
