@@ -774,3 +774,44 @@ the shape.
 
 Cross-ref: src/Keppel.cpp:24 (InputIds -- add one), the legato landmine + selective re-articulation
 sections (the within-legato gate is the boundary grid), Monsoon step vs step-legato poly gates.
+
+## REMINDER + finding: accent within legato -- currently CONSTANT (sampled at note-on only)
+
+Rodney wanted to check whether accent is constant within a legato or per-step. VERIFIED in
+src/Keppel.cpp (rising-edge block ~189-211):
+
+### Current behaviour: accent is a note-on property, latched, CONSTANT within a legato
+- Velocity (from VEL CV or the ACCENT gate) is read ONLY inside `if (rising)` -- at note-on -- and set
+  once. The held branch updates ONLY the bend; velocity/accent is never re-read while held.
+- A held legato has ONE note-on (gate stays high, no new rising edge until it drops+re-rises), so the
+  accent captured at the START of the slur stays fixed for the whole slur.
+- Inner notes within the legato (hidden by the held gate) get NO accent of their own -- there's no
+  note-on to sample them at; MIDI-wise it's one held note bending.
+- Consistent with MIDI/MPE (velocity is a note-on property; can't re-articulate velocity on a held
+  note without a new note-on). But musically, accents usually ARE per-note even within a slur -> a gap.
+
+### The design question (decide, don't just leave it)
+Within a legato, an accented INNER note should be:
+- (a) CONSTANT [current] -- whole slur carries the first note's accent. Simplest; but can't accent an
+  inner note.
+- (b) FORCE a re-articulation on accented inner notes -- sends a new note-on so the accent lands as real
+  velocity, but BREAKS the slur at that note.
+- (c) Express inner-note accent as a CONTINUOUS MPE dimension (channel pressure / poly aftertouch) that
+  CAN change on a held note -> preserves the slur, accent as pressure not velocity. Most MPE-idiomatic
+  for expression-within-a-slur.
+
+### Ties to the within-legato gate
+The within-legato gate (the inner note divisions) is exactly what would drive per-inner-note accent:
+sample the accent at each within-legato boundary. But because MPE can't change velocity on a held note,
+per-inner-note accent needs either (b) re-articulate (accent as velocity, breaks slur) or (c) a
+pressure/aftertouch dimension (accent moves under the held note, slur preserved). So "accent legato"
+and "re-articulation" both consume the within-legato gate -- worth designing them together.
+
+Post-holiday: decide (a)/(b)/(c). Lean: keep (a) as default (simplest, current), consider (c) as the
+expressive option (pressure-based inner accent under a slur) since it's the only one preserving legato
+AND per-inner-note accent. (b) only if a hard velocity accent on an inner note is specifically wanted
+(accepting the slur break).
+
+Cross-ref: src/Keppel.cpp rising-edge velocity/accent (currently note-on only), the within-legato gate
+(the per-inner-note trigger grid), the one-bend/held-note mechanism (why velocity can't change on a held
+note).
