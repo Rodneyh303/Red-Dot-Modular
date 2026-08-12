@@ -62,3 +62,53 @@ ONE timing engine with two pitch sources (internal draw vs external CV).
 Cross-ref: MODES_C_D_QUANTIZER_PRERELEASE.md (the C=clock/D=gate starting point + the missing-phase-mode
 observation), SequencerEngine::quantize (the mono algorithm), the legato/tie model + Keppel step/step-
 legato gates (same phrasing structure), degreeOf (note-change detection).
+
+## Per-module behaviour, poly-CV-in placement, two product shapes, mode-lettering refactor (Rodney)
+
+### Per-module behaviour in quantiser mode
+- **Monsoon & Change Alley**: melody dice DISABLED/IGNORED; only RHYTHM dice shown in quantiser mode.
+  UI-level expression of "keep the timing engine, drop pitch generation" -- hide melody dice so the
+  panel reflects that pitch now comes from CV. Change Alley shows only rhythm dice (its correlation
+  transforms act as a rhythm/texture axis here, not pitch). Quantiser mode thus has a visibly simpler
+  face.
+- **Straits**: hosts the POLY CV IN (likely -- see placement below).
+- **Intertropical, Lantern, Sikit, Colonnades, Duo**: nothing to change. Lantern = display; the
+  microtonal trio (Sikit/Colonnades/Duo) are tuning authorities the quantiser READS (the target scale
+  to snap to) -- unchanged whether pitch is generated or quantised-from-CV.
+
+### Poly CV in -- placement (the one open interface decision)
+"Likely Straits." Real spec: POLY note CV in (up to 16ch), routed to the ENGINE's quantise stage
+(Monsoon core), physically on Straits (the input expander). Considerations:
+- The jack lives on Straits but routes into the SHARED engine -- confirm Straits has the expander
+  bandwidth to carry poly CV to the core.
+- Conceptually the CV-in belongs to the Monsoon quantiser MODE; Straits provides the physical jack.
+  Keep the routing clear (Monsoon-mode feature, Straits-exposed) so it isn't confused.
+
+### Two product shapes (two instruments, one engine, by which expander fronts the input)
+1. **Rhythmic poly quantiser (Straits-fronted)**: external poly CV -> quantise to scale (12-TET or
+   microtonal via Sikit/Colonnades/Duo) -> gated/phrased by the engine's GENERATED rhythm -> out. A
+   quantiser that also imposes generated rhythm + phrasing (most quantisers are static quantise-on-gate;
+   this one adds rhythm). "Optionally microtonal" comes free from the tuning authorities.
+2. **Arranging quantiser (Intertropical-fronted)**: external CV routed/sequenced through Intertropical's
+   ARRANGER / SEQUENTIAL SWITCH before/around quantising -> a quantiser that ARRANGES (sequences between
+   CV sources or reorders) as well as snaps. A different instrument again.
+Same engine yields both -- distinguished by which expander fronts the input. The ecosystem philosophy
+(one engine, many faces) applied to the quantiser side.
+
+### Mode-lettering refactor: A/B/C sequencer, D/E/F quantiser
+Eventually renumber so the lettering makes the unification visible:
+- **A, B, C = SEQUENCER** modes (internal pitch): clock / generated-gate / phase.
+- **D, E, F = QUANTISER** modes (external CV): clock-or-generated-gate / external-gate / phase.
+- The two triples MIRROR by timing source (A<->D, B<->E, C<->F). Clean: three seq + three quant, the
+  "quantiser = sequencer for external CV" unification visible in the letters.
+
+CAUTION (the migration): this RENUMBERS existing modes -> touches saved patches + DAW automation mapped
+to the mode param. A patch saved in today's "Mode C" (a quantiser clock mode) would break/silently
+change if C becomes a SEQUENCER mode. So the refactor MUST ship with a VERSION-BUMPED PATCH MIGRATION:
+old-mode-index -> new-mode-index remap on patch load, so existing patches map correctly. Same discipline
+as the .dmtune v1->v2 migration. "Compiles clean, plays wrong" in patch-compatibility form -- don't
+renumber without the migration.
+
+Cross-ref: the unification above, MODES_C_D_QUANTIZER_PRERELEASE.md, the microtonal tuning authorities
+(Sikit/Colonnades/Duo as the snap target), Straits/Intertropical as input-fronting expanders, the
+.dmtune v1->v2 migration (the pattern for the mode-renumber migration).
