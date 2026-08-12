@@ -328,3 +328,43 @@ works then breaks on the second voice.
 Cross-ref: SequencerEngine poly voices (voices[i], executePolyVoice -- pitch poly), Monsoon.cpp:781/816
 (GATE_OUTPUT / gs.process -- check poly-vs-mono), the quantiser modes (D poly-gate-in, C generated-poly-
 gate), Keppel poly legato re-articulation (needs per-voice gates), the within-legato gate.
+
+## CONFIRMED: Mode B gate INPUT is MONO -- poly gate IN was never tackled (Rodney was right)
+
+Rodney: "Check Mode B code, pretty sure we never tackled poly gate in." CONFIRMED from code.
+
+### The evidence (Monsoon.cpp:527-530)
+    input.gate1 = cachedGate1Connected ? inputs[GATE1_INPUT].getVoltage() : 0.f;
+    input.gate2 = ... inputs[GATE2_INPUT].getVoltage() ...
+    input.gate3 = ... inputs[GATE3_MOD_INPUT].getVoltage() ...
+    input.run   = ... inputs[RUN_GATE_INPUT].getVoltage() ...
+All gate inputs use getVoltage() -- the MONO read (channel 0 only). NOT getPolyVoltage(i), no
+getChannels(), no per-voice loop. input.gate1 is a single float. Mode B (modeSelect==1) drives the
+sequencer from this ONE mono gate (gate1High, gate1Rise are scalars, :683/:687/:792). So the poly gate
+IN was never built -- Mode B reads a single mono gate on Gate 1.
+
+### Consequence for the quantiser modes
+This is the INPUT-side gap (distinct from the output/generated-gate question flagged earlier):
+- **Quantiser Mode D (external-gate-driven)**: needs to sample EACH poly voice on ITS OWN incoming
+  gate. On the current MONO gate-in it can't -- it would sample all voices on one shared gate. So Mode D
+  REQUIRES a poly gate input first. NEVER TACKLED -- confirmed.
+- **Quantiser Mode C (generated-gate-driven)**: depends on whether the GENERATED (output) gates are
+  poly -- the separate, still-open output-side question.
+
+### So there are TWO poly-gate foundation gaps
+1. **Poly gate IN** (for Mode D): external gate input must become poly -- getPolyVoltage(i) per voice /
+   getChannels(), a gate per incoming CV voice. Currently MONO (getVoltage(), :527). CONFIRMED not done.
+2. **Poly gate OUT / generated** (for Mode C + Keppel poly legato): whether the engine's generated gates
+   are per-voice. STILL TO VERIFY (prior flag).
+
+### Build order implication
+Before the poly quantiser: (a) widen the gate INPUT to poly (Mode D dependency, confirmed needed),
+(b) verify/widen the generated gate OUTPUT to poly (Mode C + Keppel dependency). Both are gate-side
+foundation work -- the analog of the M1 pitch-widening, but for gates. The poly quantiser can't be built
+on mono gate I/O. Do the gate-poly foundation FIRST.
+Note: poly gate in belongs on Monsoon or Straits (Rodney) -- the CV-in host from the quantiser spec; the
+poly gate in likely pairs with the poly CV in on the same expander (Straits).
+
+Cross-ref: Monsoon.cpp:527-530 (mono getVoltage gate reads), the quantiser modes (D = external poly
+gate, C = generated poly gate), the prior poly-gates foundation flag (output side), Keppel poly legato
+(per-voice gates), poly CV in on Straits (pairs with poly gate in).
