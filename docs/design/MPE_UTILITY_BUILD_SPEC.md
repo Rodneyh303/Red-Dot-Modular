@@ -379,3 +379,47 @@ the exact confusing state a Cubase user will hit, and "declare the input MPE" is
 Cross-ref: the per-DAW recording guide deliverable above, the DAW compatibility map (Cubase preserves
 data -- so once interpreted it should be clean), the reverse-calc monitor (confirm bytes independent of
 Cubase).
+
+## Cubase 15 MPE recipe -- CONFIRMED from Steinberg docs (resolves "no MPE in Studio Setup")
+
+Why it was un-findable: Cubase does NOT call this "MPE" and it's NOT a checkbox -- it's a DEVICE you ADD,
+filed under "Note Expression", and the make-or-break step is on the TRACK not in Studio Setup. That's
+why "nothing about MPE in Studio Setup" and why ticking "record as note expression" alone did nothing.
+
+### The recipe (Cubase 15, from Steinberg's own documentation)
+1. **Studio > Studio Setup > Add ("+") > Note Expression Input Device.** (It won't pre-exist for a
+   generic virtual/loopback port -- you must add it. Auto-detection only covers some known controllers,
+   not a VCV/loopback port.)
+2. On that Note Expression Input Device: set **MIDI Input** = the port Keppel/VCV arrives on.
+3. In the device's **Horizontal/X** section, activate **"Use for Tuning"** -> this auto-sets the VST
+   Note Expression assignment to Tuning (maps incoming per-note pitch bend to note pitch = the thing
+   that was missing). This section ALSO has the **pitch range** field = the per-note bend range Rodney
+   was hunting for ("there has to be MPE info somewhere e.g. pitchbend range"). SET IT TO MATCH KEPPEL'S
+   bend range (e.g. 2 if Keppel is +/-2). Mismatch = amounts scaled wrong.
+4. Gliding toggle: "activate for fretless devices that glide seamlessly; deactivate for devices that
+   create a new note per key." Keppel creates a new note per gate, so likely OFF -- but Keppel's
+   continuous-bend feature blurs this; try both.
+5. **On the instrument track Inspector > Input Routing: select the Note Expression Input Device** (NOT
+   "All MIDI Inputs" / "Any Input"). *** This is the likely exact bug: *** with input on Any Input,
+   Cubase reads raw CHANNEL bends (the live -2) instead of routing through the note-expression device
+   that converts them to per-note Tuning. Docs are explicit: "Make sure the Input Group and Channel is
+   not set to Any Input."
+6. The already-ticked **"Record MIDI as Note Expression"** (Inspector > Note Expression) then captures
+   it on the notes.
+
+### Why Rodney's attempt showed -2 but nothing on notes
+Track input was (almost certainly) still on Any/All Input, so Cubase saw channel pitch bend (the -2),
+never routed it through a Note Expression Input Device (which didn't exist yet / wasn't selected), so
+nothing converted to per-note Tuning. Steps 1-2-5 are the fix; step 3 sets the range.
+
+### For the manual (Cubase section)
+Document the FULL sequence above, and CALL OUT the two non-obvious traps: (a) it's a "Note Expression
+Input Device" you ADD in Studio Setup, not an "MPE" checkbox; (b) the track Input Routing must point at
+that device, NOT "All/Any Inputs" -- this is the step that makes the -2-shows-but-not-on-notes symptom
+go away. Include the pitch-range = match-Keppel note.
+
+Source: Steinberg Cubase 15 docs -- Note Expression Input Device Page + Recording Notes and Note
+Expression Data with MPE Input Devices (steinberg.help, cubase-pro/15.0). Verified current for v15.
+
+Cross-ref: the Cubase diagnosis above (channel-bend-vs-note-expression), the per-DAW recording guide
+deliverable, Keppel bend range (set Cubase's device pitch range to match).
