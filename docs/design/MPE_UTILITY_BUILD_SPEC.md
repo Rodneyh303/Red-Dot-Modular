@@ -945,3 +945,38 @@ just reads the pre-override per-step draw.
 
 Cross-ref: SequencerEngine.cpp:433/548/623/684/915-921 (the carry-over + per-step draw), the
 accent-family note (three flavours), the within-legato gate (parallel inner-structure output).
+
+## TBD: inner-legato-only accent gates (accented AND inside-legato) -- dedicated output or derived recipe?
+
+Rodney floated a further output: accent gates for ONLY the accented steps INSIDE a legato span, NOT the
+ones outside. Marked to-be-determined.
+
+### Precise definition: an INTERSECTION
+Fires only when a step is BOTH: (accented) AND (inside a legato -- a tied/held inner step, not a
+standalone step). Distinct from the others:
+- Held accent = the slur's opening accent, held.
+- Step accent (all) = per-step accent at EVERY step, inside or outside legato.
+- THIS = accent gates ONLY for inner-legato steps -- the accents the held gate HIDES.
+
+### Its specific value: the "recovered hidden accents"
+The accents on inner-legato notes are exactly the ones that DISAPPEAR when the held legato gate welds
+notes together. Outside-legato accented steps already re-articulate (handled by normal step outputs).
+So this output isolates JUST the accents you'd otherwise LOSE -- to retrigger/express them WITHOUT also
+re-firing on the outside-legato steps you already handle. Additive-without-overlap.
+
+### Why TBD: dedicated jack vs derived recipe
+It's the most SPECIALISED accent output (a specific patching need, not a general one), and it's
+DERIVABLE by combination:
+  inner-legato accent gates = (step accent) AND (within-legato gate).
+A user with both the step-accent output and the within-legato gate can AND them (a logic module) to get
+this. So the real question: is the inner-legato-accent case common enough to deserve a dedicated output,
+or is it best documented as a "AND these two existing outputs" recipe? Given the accent family is
+already jack-heavy (3 flavours x 3 modules) and panel space is tight, the DERIVED recipe is the likely
+answer -- unless this case proves common enough to make first-class.
+
+DECISION DEFERRED (post-holiday / panel-refinement): dedicated STEP_LEGATO_ACCENT_GATE output, OR
+document as (step-accent AND within-legato-gate). Lean: derived recipe, promote to a jack only if it
+earns its place. Capturing the CONCEPT now so it's not lost; the jack decision waits.
+
+Cross-ref: the accent-family (three flavours), the step-accent output (CONFIRMED feasible), the
+within-legato gate (the other AND operand), panel economy note.
