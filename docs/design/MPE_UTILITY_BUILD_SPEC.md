@@ -815,3 +815,42 @@ AND per-inner-note accent. (b) only if a hard velocity accent on an inner note i
 Cross-ref: src/Keppel.cpp rising-edge velocity/accent (currently note-on only), the within-legato gate
 (the per-inner-note trigger grid), the one-bend/held-note mechanism (why velocity can't change on a held
 note).
+
+## BETTER SOLUTION (Rodney): Monsoon emits an accent-within-legato output; let the patch decide
+
+Instead of Keppel deciding how to express inner-note accent in MPE (the (a)/(b)/(c) fork), MONSOON emits
+an ACCENT-WITHIN-LEGATO output -- accent sampled PER INNER NOTE even inside a held legato. Parallel to
+the within-legato gate: step-legato exposes inner note BOUNDARIES; accent-step-legato exposes inner note
+ACCENTS. Available in the patch as a normal signal, route anywhere.
+
+### Why this is better than deciding inside Keppel
+- Moves the decision OUT of Keppel and INTO the patch. (a)/(b)/(c) each had a compromise (constant /
+  slur-break / pressure-not-velocity). Exposing the signal = "here's the inner accent; you decide."
+  More modular-idiomatic: expose the info, let the patch route it.
+- Makes accent SYMMETRIC with the gate. Two parallel within-legato outputs now fully describe a slur's
+  inner structure:
+  - within-legato GATE = inner note DIVISIONS (when inner notes start).
+  - within-legato ACCENT = inner note ACCENTS (how hard each inner note is).
+- Keppel stays SIMPLE (accent at note-on, as now); expressiveness comes from Monsoon exposing more of
+  the phrase's inner structure -- consistent with how it already exposes the within-legato gate.
+
+### The three options become PATCH configurations of one exposed signal
+- (a) constant: don't patch the within-legato accent -> current behaviour.
+- (b) velocity accent on inner notes: patch within-legato accent + within-legato gate -> Keppel
+  re-articulates on accented inner notes so the accent becomes a real note-on velocity. Opt-in via
+  PATCHING, not a Keppel mode.
+- (c) continuous pressure accent: route the within-legato accent to Keppel's continuous-expression path
+  (pressure/aftertouch) -> accent moves under the held note, slur preserved.
+So the (a)/(b)/(c) fork collapses: don't make Keppel choose -- expose the signal, the patch chooses.
+
+### Build note: gate vs CV
+Decide whether the accent-within-legato output is a GATE (accented/not, two-level, matches the current
+ACCENT gate -- simpler, consistent) or a CV (continuous accent amount -- more expressive, pairs with the
+(c) pressure route). Lean: mirror whatever the MAIN accent already is, for consistency; but CV opens the
+pressure route. Worth a moment since it sets what downstream can do.
+
+Post-holiday: add the accent-within-legato output to Monsoon (parallel to the within-legato gate); leave
+Keppel's note-on accent as is; document the (a)/(b)/(c) as patch recipes.
+
+Cross-ref: the accent-within-legato finding above (currently constant), the within-legato gate (the
+parallel inner-structure output), Keppel ACCENT_INPUT (note-on accent, unchanged).
