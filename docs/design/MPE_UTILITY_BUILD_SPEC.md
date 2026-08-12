@@ -552,3 +552,70 @@ so they stay in tune").
 
 Cross-ref: the resolution section (cents/step by range), the +/-48 decision, the legato landmine
 (re-articulation), the per-DAW recording guide.
+
+## Clarifying: ONE bend per voice does BOTH microtonal offset AND legato movement (Rodney)
+
+Confusion: "we match microtonal with nearest semitone + per-note bend, but then we ALSO have legato
+pitch bend." Resolution: these are NOT two competing bends. There is ONE bend per voice, and it always
+equals "current true pitch MINUS the note latched at note-on." That single value carries both:
+- **Microtonal offset (static part)**: at note-on the true pitch sits some cents from the nearest
+  semitone; that offset IS the initial bend. For a static microtonal note it's the ONLY thing in the
+  bend and stays constant.
+- **Legato movement (changing part)**: if the pitch CV moves while held (same gate, new pitch), the
+  note number is already fixed, so the movement must ALSO be expressed as bend -- added into the same
+  value.
+
+So bend(t) = current_pitch(t) - latched_note. Both microtonal and legato are just "distance from the
+latched note" -- the same subtraction. Example: note-on 30c above C -> latched note C, bend +30c. Glide
+to D+10c while held -> latched note still C, bend = +210c (= D+10c relative to C). The +210c contains
+BOTH the microtonal +10c-over-D AND the ~2-semitone legato move -- because both are just distance-from-C.
+The code confirms it: bend14FromNote(pitchV, vs.note) computes bend from CURRENT pitch vs LATCHED note --
+one function, both jobs, because they're the same subtraction. Static = called once at note-on; legato =
+called repeatedly as pitch moves.
+
+Why the landmine is a LEGATO problem specifically: a static microtonal note needs only +/-50c of bend
+(nearest-note rounding) -- always safe. A legato glide needs bend = the WHOLE interval moved; if that
+exceeds the range, it clamps. Re-articulation fixes it by re-latching the note (bend resets to just the
+microtonal offset).
+
+One-line framing (for the manual): Keppel expresses every voice as a fixed note plus a bend, and that
+bend is always "how far the current pitch is from that note" -- covering the microtonal offset when
+steady, and growing to cover the movement when it glides. One bend, both jobs. Drop "microtonal bend vs
+legato bend" as separate -- it's one bend meaning "distance from the latched note", and microtonal-vs-
+legato is just whether that distance is holding still or moving.
+
+## Open puzzle (post-holiday): why does Bitwig show a RAMP when our CV STEPS at the slur boundary?
+Rodney: Monsoon legato is "hold gate, new pitch" -- the CV STEP-changes at the slur boundary sample
+(no slew). So Keppel should send a STEP in bend, not a ramp. Yet Bitwig showed a RAMP. Unresolved.
+Leading hypotheses (to test post-holiday):
+1. **Bitwig interpolates/draws a large single bend jump as a ramp** in the MPE expression lane (display/
+   data-reduction resampling a step into interpolated points). Most likely -- Monsoon emits no slew,
+   Keppel adds none, so a visible ramp implies the RECEIVER drew it.
+2. **Note-length dependence** (Rodney's own hypothesis): if ramp slope varies with legato note length ->
+   a time-based cause (Bitwig interpolating over duration). If slope is length-INDEPENDENT -> fixed
+   per-transition. Clean discriminating test: vary legato note length, watch whether slope changes.
+3. Confirm with the reverse-calc MONITOR output (does KEPPEL's bend CV step or ramp?) or a MIDI byte
+   monitor (one bend message = Keppel stepped, many = Keppel ramped). This is the definitive test:
+   if Keppel's own output steps, the ramp is 100% Bitwig's drawing.
+Lean: Bitwig is drawing a step as a ramp; Keppel steps. The monitor/byte-monitor confirms in a minute.
+
+### Possibly-relevant Monsoon feature (Rodney): step vs step-legato poly gates
+Monsoon outputs two poly gate flavours: STEP gates (legato stripped out -- each step re-triggers) and
+STEP-LEGATO gates (gives the within-legato gates). Bearing on Keppel:
+- Feeding Keppel the STEP gates (legato stripped) would make every step a fresh note-on -> the note
+  re-latches every step -> bend only ever carries the +/-50c microtonal offset, NEVER the legato
+  interval -> the legato landmine CANNOT occur (no held-note interval to exceed the range). But you lose
+  legato phrasing in the MIDI (every note re-articulates).
+- Feeding Keppel the STEP-LEGATO gates preserves legato (held gate across the slur) -> the landmine can
+  occur -> needs the re-articulation fix.
+- So the two gate outputs are effectively a USER CHOICE between "everything re-articulates, always safe,
+  no legato in MIDI" (step gates) and "legato preserved, needs range/re-articulation handling"
+  (step-legato gates). Worth documenting as a Keppel usage note: if you don't want legato in the MIDI,
+  patch the STEP gates and the range/clamp question disappears. The re-articulation fix is for users who
+  WANT legato (step-legato gates) but still want big slurs to stay in tune.
+Post-holiday: decide whether Keppel's re-articulation should be automatic, or whether "patch the step
+gates instead" is the documented answer for the safe case (probably: offer both -- re-articulation for
+those on legato gates, and document the step-gate option as the simple alternative).
+
+Cross-ref: the legato landmine section, the reverse-calc monitor (to resolve the ramp puzzle), Monsoon's
+step vs step-legato poly gate outputs, bend14FromNote (current-vs-latched, the one-bend mechanism).
