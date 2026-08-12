@@ -248,3 +248,42 @@ it caps the structural jins-journey, not the expressive substance.
 
 Cross-ref: the 2-ajnas assessment above (this extends it), the per-degree controls (Colonnades/Duo
 faders/weights/cents, enable/weight), the .scl/.dmtune hierarchy (degree-level lives below the mask).
+
+## How unique is "apply own rhythm to external CV"? Honest calibration (Rodney asked) -- claim carefully
+
+Searched the VCV landscape. Differentiation is REAL but should be claimed CAREFULLY (not "nothing else
+does this").
+
+### What exists (so DON'T overclaim)
+- **Static quantisers, many**: snap CV to scale, some generate a gate WHEN THE NOTE CHANGES (VCV lib has
+  several: "quantizer that generates gates as notes change", S&H quantisers, poly-to-poly). These follow
+  the INPUT's timing -- they do NOT impose their own generated rhythm. Not what we do.
+- **Sequencers that CAPTURE/RECORD external CV then play it on their clock, several**: Impromptu
+  PhraseSeq (keyboard CV+gate -> Write inputs, autostep captures), Entrian (records CV, quantises at
+  set points). Closer -- but RECORD-then-play, not a LIVE pass-through transform, and none combine with
+  microtonal re-tune + arrangement + poly + MPE-out.
+
+### What did NOT surface (but absence in one search != proof of non-existence)
+A module taking LIVE external CV and, in real time, re-gating/re-rhythming it with its OWN generated
+(probabilistic, any-division) rhythm WHILE re-tuning microtonally AND arranging, poly. That specific
+LIVE-TRANSFORM chain didn't appear. But VCV has thousands of modules; one search isn't the whole
+library -- can't credibly claim uniqueness.
+
+### The defensible claim (use THIS at launch, not "nothing else does this")
+Individual pieces (quantise, re-gate-on-change, capture-and-replay) are each done by others. What's
+genuinely UNCOMMON is the COMBINATION as a LIVE pass-through transform:
+  "Few if any modules take live external CV and impose their own generated rhythm AND microtonal
+   re-tuning AND arrangement AND poly / MPE-out as a single real-time transform stage."
+The differentiation lives in the INTEGRATED CHAIN and the LIVE-TRANSFORM framing, NOT any single
+capability. AVOID a flat "nothing else does this" -- a knowledgeable forum reader could name a partial
+counterexample (a capture-replay sequencer, a re-gating quantiser) and undercut the claim. Lead with the
+integrated-chain-as-live-transform being uncommon: honest AND still strong.
+
+### Why still a strong position
+Even if pieces exist separately, dot.modular offering them as ONE coherent stage -- fed by the same
+correlation engine, with the microtonal tunings and MPE-out -- is a real, defensible differentiator, and
+the interoperability framing ("drop after any sequencer") holds regardless of whether a partial
+counterexample exists. Just don't claim first-ever; claim uncommon-integration.
+
+Cross-ref: the interoperability positioning above (the claim to calibrate), the two product shapes, the
+MPE-out chain (Keppel).
