@@ -514,3 +514,41 @@ artistrack MIDI 2.0 guide (bend range still ~48). Verified current early 2026.
 
 Cross-ref: the +/-48 discussion + the legato landmine above (re-articulation is still needed at any
 range), Keppel bend range (1..12 now -> extend to 1..48), VCV midi::Output (the MIDI-1.0 gate).
+
+## Human pitch perception + the user-facing manual explanation (Rodney)
+
+### Can humans perceive half a cent? No -- an order of magnitude below threshold.
+- Pitch JND (just-noticeable difference) in musical context: ~5-6 cents for most people; ~2-3 cents for
+  trained listeners in ideal sustained-comparison conditions.
+- Half a cent is ~10x below even a good listener's threshold -- inaudible in any practical setting.
+- Honest caveat: MELODIC JND (notes in sequence) is coarser (~5-10c+); the most sensitive channel is
+  BEATING of simultaneous sustained tones, where people detect mistuning down to ~1c via the beat RATE.
+  But even that bottoms out ~1c; half a cent's beat rate is too slow to register over a normal note.
+  So 0.5c is not perceptible in practice, even via beating.
+
+### What this means for the range margins (reassuring)
+- +/-2 semitones: ~0.024c/step = ~200x finer than the ~5c musical JND, ~40x finer than the ~1c
+  microtonal-demanding threshold.
+- +/-48 semitones: ~0.586c/step = still ~10x finer than musical JND, and BELOW the ~1c threshold.
+- So EVERY range +/-2..+/-48 resolves pitch BELOW human perception. The range choice is therefore NOT
+  an audible-quality tradeoff -- it's purely glide reach + receiver compatibility. Even the coarsest
+  (+/-48) is finer than anyone can hear.
+
+### Draft manual explanation (user-facing, no 14-bit math)
+> Bend range (advanced): Keppel sends each microtonal note as the nearest ordinary note plus a small
+> pitch bend. "Bend range" sets how far that bend can reach. A narrower range (+/-2) gives finer pitch
+> steps; a wider range (+/-48) reaches further for big glides and matches what most MPE synths expect by
+> default. Both are far finer than the ear can hear -- even the widest setting resolves pitch to under a
+> cent, and humans don't reliably perceive differences below about 5 cents. So set the range to match
+> your synth (often +/-48) or to cover your largest glide; you won't lose audible tuning accuracy either
+> way. The only real limit: a slide bigger than the range stops at the edge, so pick a range at least as
+> wide as your biggest glide.
+
+This gives the user: the MECHANISM (nearest note + bend), the TRADEOFF (range = reach + compatibility,
+NOT audible quality), and the one practical RULE (range >= biggest glide). Reassures that "resolution"
+is a non-issue perceptually. The manual should also cover the per-DAW recording recipes (Bitwig/Cubase/
+Ableton) and note the legato re-articulation behaviour in plain terms ("big slides re-trigger the note
+so they stay in tune").
+
+Cross-ref: the resolution section (cents/step by range), the +/-48 decision, the legato landmine
+(re-articulation), the per-DAW recording guide.
