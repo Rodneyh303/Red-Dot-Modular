@@ -862,9 +862,17 @@ Straits, Intertropical -- all get the same accent-output family. A user who lear
 the others. (Parallels the gate side's held-vs-within-legato distinction.)
 
 ### Three accent flavours (the conceptual set to lock; panel economy separate)
-1. **Held accent (across legato)**: accent sampled at the phrase START, held constant for the whole
-   slur. One value per phrase envelope. (= current Keppel note-on behaviour, exposed as an output.)
+1. **Held accent (across legato)**: accent held constant for the whole slur -- one value per phrase
+   envelope. CORRECTION (Rodney): this HOLDING is the SOURCE module's behaviour (Monsoon / Straits /
+   Intertropical drive the accent output), NOT Keppel's. Keppel is only a CONSUMER -- it samples
+   whatever accent voltage is present at note-on. So "held across legato" = how Monsoon drives its
+   accent output; Keppel merely reads it once per note-on. (Earlier text wrongly called this "Keppel
+   behaviour" -- Keppel samples at note-on, but the HOLD is decided upstream by the source module.)
    Use: things that stay constant through a slur.
+   NOTE: the exact way Monsoon currently drives accent across a legato was NOT pinned in-container
+   (accent output writing found at Intertropical.cpp:168, Monsoon ACCENT_OUTPUT bound in
+   MonsoonWidget.cpp:552, but the legato-hold logic not located) -- CHECK this post-holiday; it's the
+   crux of the accent-family question (what does the current output actually do across a slur?).
 2. **Inner accent LEVEL (sampled at inner steps)**: accent re-sampled per inner note within the legato,
    as a LEVEL/CV that updates at each inner boundary (no pulse -- a value that steps). Use: the accent
    AMOUNT per inner note -> Keppel option (c) pressure/aftertouch route (accent moves under the held
