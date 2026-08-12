@@ -900,3 +900,48 @@ module during the panel-refinement phase.
 Cross-ref: the accent-within-legato solution above (Monsoon exposes inner accent, patch decides), the
 within-legato gate (the gate-side parallel), Keppel options (b) velocity-via-reartic and (c) pressure
 (consumers of inner-gates and inner-level respectively).
+
+## CONFIRMED from code: Monsoon HOLDS accent across legato; the step-accent output is feasible
+
+Checked SequencerEngine.cpp. Rodney's assumption is CORRECT.
+
+### Current behaviour (verified)
+- SequencerEngine.cpp:433 + :548: `result.accented = lastStepResult.accented;` for a LEGATO/TIED
+  continuation step -> the accent is CARRIED OVER from the step the slur opened on. So within a legato,
+  accent is HELD (the tied step inherits the opening accent).
+- :915 comment: `slideNote(...) // connect (keep chain accent)` -- a slid (legato) note KEEPS the chain
+  accent. Explicit.
+- :917-921 contrast: a RE-ARTICULATED note draws its OWN fresh accent
+  (`polyRandomSrc(voiceIdx, PL_ACCENT)[accIdx] < v.accentProb`), "a re-struck note isn't stuck with the
+  accent the chain opened on."
+- So: legato step -> keeps the opening accent (held); re-articulated step -> fresh own accent. Monsoon
+  HOLDS accent across legato. Confirmed.
+
+### Why the step-accent output is FEASIBLE (exposing existing machinery, not new computation)
+The engine already COMPUTES a per-step accent draw at every step -- the accent strand indexed per step:
+:623/:684 `monoStrand(dotModular::STRAND_ACCENT)[getAccentStep()]`, and the poly per-voice draw
+`polyRandomSrc(voiceIdx, PL_ACCENT)[accIdx] < accentProb`. For LEGATO steps it just OVERRIDES that draw
+with the carried-over value (:433/:548). So the per-step accent value is DERIVABLE at every inner step;
+it's simply not USED for held steps.
+
+So the two outputs map cleanly onto existing state:
+- **HELD accent output (current ACCENT_OUTPUT)** = `result.accented` AFTER the carry-over = the slur's
+  opening accent, held across the legato.
+- **STEP accent output (NEW)** = the per-step accent DRAW (accent strand[step] < accentProb) evaluated
+  at each inner step REGARDLESS of legato -- i.e. what the accent WOULD be if each inner step were
+  re-articulated. Reads the accent strand per-step WITHOUT the legato carry-over override.
+
+The new output samples the accent strand at each inner step's accent index, skipping the
+`= lastStepResult.accented` override. The strand + per-step index already exist; the step-accent output
+just reads the pre-override per-step draw.
+
+### Build note (post-holiday)
+- Add a STEP_ACCENT_OUTPUT that emits the per-step accent draw at every step (inner steps included),
+  bypassing the legato carry-over. Keep the existing ACCENT_OUTPUT (held) unchanged.
+- This is the flavour-3 (inner accent gates) / flavour-2 (inner level) source -- gate vs level per the
+  earlier accent-family note; decide which, or both, during panel/refinement.
+- Do the same on Straits / Intertropical (the accent-output family) if they share the engine's
+  carry-over pattern -- CONFIRM each uses the same lastStepResult.accented carry-over before assuming.
+
+Cross-ref: SequencerEngine.cpp:433/548/623/684/915-921 (the carry-over + per-step draw), the
+accent-family note (three flavours), the within-legato gate (parallel inner-structure output).
