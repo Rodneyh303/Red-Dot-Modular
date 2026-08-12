@@ -171,3 +171,48 @@ properly or be honest about the approximation.
 Cross-ref: the .scl/.dmtune format hierarchy (TUNING_PRESET_FORMAT / SHOPHOUSE_MICRO_SPEC), the tonic-
 transpose work (ajnas relocate), Shophouse Micro (maqam modulation via jins slots), LAUNCH_INTENT_AND_
 STORY (the Change Alley "pronounce a maqam" origin -- now demonstrable), the two product shapes above.
+
+## Is 2-ajnas (Shophouse Micro at 24 degrees) a big limit for maqam? Honest assessment (Rodney asked)
+
+Shophouse Micro holds 4 fronts at 12 degrees but only 2 at 24 (slot budget halves). So a 24-degree
+maqam can switch between 2 ajnas. Is that a big limit?
+
+### Where 2 IS tight
+A full maqam performance (a developed taqsim) can traverse SEVERAL ajnas -- primary jins on the tonic,
+secondary on the dominant (4th/5th), plus borrowed ajnas from related maqamat: maybe 3-6 across a full
+development. To reproduce the FULL modulatory journey, 2 slots runs out partway.
+
+### Why 2 is LESS limiting than it first sounds (three reasons)
+1. **Most maqamat are fundamentally a TWO-JINS structure.** A maqam is defined by primary jins (tonic) +
+   secondary jins (dominant) -- that skeleton IS the maqam's identity (Rast = jins Rast on tonic + on
+   5th; Bayati = jins Bayati on tonic + Nahawand/Rast on 4th). 2 slots captures the ESSENTIAL identity;
+   further modulations are development, not core.
+2. **The 24-degree .scl already holds ALL the pitches.** The tuning is the full pitch set; the .dmtune
+   slots are just MASKS selecting subsets. With only 2 slots you still have every degree available in
+   the tuning -- limited only in how many PRE-SET masks you switch between at the boundary, not in
+   pitches. Notes outside the 2 masks still exist, just not in the current scale-mask.
+3. **2-slot switch is boundary-quantised modulation -- ONE type of maqam movement.** Maqam also
+   modulates MELODICALLY (moving through the pitch set without a hard scale change), which you do freely
+   within the 24-degree tuning regardless of slots (all pitches present). The 2-slot limit only bites on
+   pre-set MASKED modulation, not melodic movement.
+
+### Honest verdict
+- For a FULL traditional taqsim (4-6 ajnas): yes, 2 is limiting.
+- For a maqam's ESSENTIAL two-jins identity: no -- 2 is the canonical core.
+- For PITCHES available: no limit -- the full tuning has them all.
+- For SAMPLE CONTENT ("here's a maqam, its core ajnas, modulation between them"): 2 is SUFFICIENT -- the
+  tonic-jins <-> dominant-jins switch is the canonical, most-recognisable maqam gesture (the "hello
+  world" of maqam modulation), exactly what 2 slots does well.
+Don't oversell 2 slots as "full maqam performance"; DO present it as "the essential two-jins modulation",
+which is honest and still compelling.
+
+### If maqam work proves central (post-V1 fix)
+The fix is NOT more panel slots -- it's decoupling ajnas-count from panel-slot-count:
+- A **CV-INDEXED JINS BANK**: store >2 masks as a loadable LIST the CV indexes into, rather than 2
+  physical fronts. This lifts the limit without needing panel space. The real design option if maqam
+  becomes central.
+- Melodic modulation within the full tuning needs NO slot (shared pitches, melodic emphasis).
+
+Cross-ref: Shophouse Micro (4 fronts @12 / 2 @24), the .scl/.dmtune hierarchy (tuning=all pitches,
+.dmtune=mask subset), the maqam/jins sample content above, Monsoon scale-authoring (loadable user
+scales -- a step toward a jins bank).
