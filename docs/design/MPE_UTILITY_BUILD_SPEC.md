@@ -854,3 +854,41 @@ Keppel's note-on accent as is; document the (a)/(b)/(c) as patch recipes.
 
 Cross-ref: the accent-within-legato finding above (currently constant), the within-legato gate (the
 parallel inner-structure output), Keppel ACCENT_INPUT (note-on accent, unchanged).
+
+## Accent-output FAMILY across Monsoon / Straits / Intertropical (Rodney) -- three flavours
+
+This is a SYSTEM-WIDE output convention, not Monsoon-only: the accent-producing modules -- Monsoon,
+Straits, Intertropical -- all get the same accent-output family. A user who learns it on one finds it on
+the others. (Parallels the gate side's held-vs-within-legato distinction.)
+
+### Three accent flavours (the conceptual set to lock; panel economy separate)
+1. **Held accent (across legato)**: accent sampled at the phrase START, held constant for the whole
+   slur. One value per phrase envelope. (= current Keppel note-on behaviour, exposed as an output.)
+   Use: things that stay constant through a slur.
+2. **Inner accent LEVEL (sampled at inner steps)**: accent re-sampled per inner note within the legato,
+   as a LEVEL/CV that updates at each inner boundary (no pulse -- a value that steps). Use: the accent
+   AMOUNT per inner note -> Keppel option (c) pressure/aftertouch route (accent moves under the held
+   note).
+3. **Inner accent GATES (step-legato accent)**: the inner accents as individual GATE PULSES within the
+   legato envelope -- discrete accent triggers, a pulse per accented inner note. Use: RETRIGGER per
+   accented inner note (envelope re-fire; Keppel option (b) re-articulation trigger).
+
+Key distinction 2 vs 3: LEVEL vs TRIGGER. (2) = "what's the accent amount at each inner note" (a value
+that steps); (3) = "fire an accent gate on each accented inner note" (discrete pulses). Both per-inner-
+note; one a level, one a gate. (1) is the held/phrase version.
+
+Maps to three downstream uses: (1) held -> constant-through-slur; (2) inner level -> per-inner accent
+AMOUNT (pressure route); (3) inner gates -> per-inner RETRIGGER.
+
+### Panel economy (decide post-holiday, not now)
+3 flavours x 3 modules = many jacks. Options:
+- Expose the two most useful (likely HELD + INNER-GATES; inner-LEVEL/CV is the specialist pressure
+  route) and leave the third as a context-menu option / normalled variant.
+- Or ONE mode-switchable output (context menu picks held / inner-level / inner-gates for that jack).
+- Or full set on Monsoon (flagship), reduced on Straits/Intertropical.
+Lock the CONCEPTUAL set now (held / inner-level / inner-gates); resolve which get dedicated jacks per
+module during the panel-refinement phase.
+
+Cross-ref: the accent-within-legato solution above (Monsoon exposes inner accent, patch decides), the
+within-legato gate (the gate-side parallel), Keppel options (b) velocity-via-reartic and (c) pressure
+(consumers of inner-gates and inner-level respectively).
