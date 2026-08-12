@@ -687,3 +687,44 @@ too big). The step-legato gate is what lets Keppel be SELECTIVE.
 
 Cross-ref: the step-legato-gate-as-re-articulation-grid section, the legato landmine, the one-bend
 mechanism (re-latch resets bend to the microtonal offset, restoring full range).
+
+## GENERALISATION (Rodney): the two-gate interface is source-agnostic, not Monsoon-specific
+
+### Step gate vs step-legato gate agree EXCEPT within legato
+Outside a legato/tie, the two gate signals are IDENTICAL -- every step is its own note with its own
+gate, both signals fire per step. They DIVERGE only inside a legato span: the step gate keeps
+re-triggering (each underlying step re-gated); the step-legato gate holds high across the span (ties
+join them). So feeding Keppel either gives the same result EXCEPT within legato:
+- step gate -> every step re-articulates always (no MIDI legato, landmine impossible, no phrasing).
+- step-legato gate (held) -> legato preserved, needs range/re-articulation handling.
+- They agree everywhere except inside legato spans -- which is exactly where the selective behaviour
+  lives. Confirms the selective-re-articulation design is consistent: same skeleton, differing only in
+  whether tie-joints are welded (step) or hinged (step-legato).
+
+### The real insight: Keppel's re-articulation needs PHRASING INFO, not Monsoon
+Keppel's phrase-aware re-articulation depends on TWO pieces of phrasing information, NOT on Monsoon:
+1. PHRASE boundaries -- the held/tie envelope ("these notes are slurred together").
+2. NOTE-DIVISION grid -- the underlying step boundaries ("the individual notes inside the slur").
+ANY source that provides both can drive it. Rodney's example: a 16-step sequencer from ANOTHER BRAND
+with ties could feed Keppel BOTH the underlying sixteenth gates AND the tie-joined gates -- and Keppel
+does the same phrase-aware re-articulation, re-latching on the sixteenth boundaries only where a tied
+glide exceeds range. Keppel never needs to know the source is a Monsoon (or a 16-step, or anything).
+
+This is the UTILITY-NOT-EXPANDER decision cashing in. The whole point of utility was "works on any poly
+source, doesn't weld to Monsoon." The two-gate re-articulation is a GENERAL MPE-conversion capability
+any tie-capable sequencer can use -- not a Monsoon feature.
+
+### Interface (generic, source-agnostic)
+Keppel inputs:
+- Poly pitch CV.
+- PHRASE gate (held/tied envelope) -- required for legato.
+- NOTE-DIVISION gate (underlying steps) -- OPTIONAL; enables selective phrase-aware re-articulation.
+Behaviour:
+- Phrase gate only -> basic legato + range handling (re-articulate on threshold inference).
+- Both gates -> selective phrase-aware re-articulation (re-latch on real note divisions).
+Label the inputs GENERICALLY ("phrase gate" / "note-grid gate"), NOT "Monsoon step / step-legato" --
+Monsoon is ONE example source; the interface is generic. Document Monsoon's step (=note-grid) and
+step-legato (=phrase) gates as the native pairing, and note third-party tie-capable sequencers work too.
+
+Cross-ref: utility-not-expander decision (works on any poly source), the step-legato-gate-as-grid +
+selective-re-articulation sections, the one-bend mechanism.
