@@ -216,3 +216,35 @@ The fix is NOT more panel slots -- it's decoupling ajnas-count from panel-slot-c
 Cross-ref: Shophouse Micro (4 fronts @12 / 2 @24), the .scl/.dmtune hierarchy (tuning=all pitches,
 .dmtune=mask subset), the maqam/jins sample content above, Monsoon scale-authoring (loadable user
 scales -- a step toward a jins bank).
+
+## Third modulation layer: DEGREE modulation WITHIN a jins (Rodney) -- shrinks the 2-slot concern further
+
+Correcting/extending the 2-ajnas assessment: modulation happens at THREE levels, not one, and the
+2-slot limit only touches the COARSEST -- which is the least expressively-central.
+
+### Three modulation layers
+1. **Slot switch** (Shophouse Micro, 2 fronts @24): jump between whole AJNAS at a phrase boundary. The
+   coarse, structural modulation. THIS is what the 2-slot limit constrains.
+2. **Melodic movement** through the full 24-degree tuning: all pitches present, move freely (no slot).
+3. **DEGREE modulation WITHIN a jins**: the per-degree controls (Colonnades/Duo faders/weights/cents,
+   per-degree enable/weight) shift, weight, emphasise, inflect degrees INSIDE the active jins -- no slot
+   switch needed. The fine, expressive modulation.
+
+### Why layer 3 matters most (and is UNconstrained)
+Maqam expression lives substantially at the DEGREE level, not the jins level. The SAYR (a maqam's
+melodic path/behaviour) is about specific degrees emphasised, certain notes unstable and pulling to
+resolution, microtonal inflection of individual degrees varying by region/phrase. That's WITHIN-jins
+degree behaviour, not jins-switching. A maqam isn't just "which ajnas" -- it's HOW you treat the degrees
+inside them (which you lean on, bend, pass through). The degree-level controls express exactly that, and
+they're FULLY available regardless of slot count.
+
+### Revised verdict on the 2-slot limit
+The 2-slot limit constrains only layer 1 (jins-SWITCHING) -- the least expressively-central layer.
+Layers 2 (melodic freedom) and 3 (degree inflection = the expressive HEART of maqam) are unconstrained.
+A convincing maqam with deep degree inflection but 2 ajnas is far more authentic than a shallow one
+mechanically switching 6 ajnas. The degrees are where the soul is -- and that's exactly what dot.modular
+gives you in full. So the 2-slot limit is even less of a real constraint than the prior section said:
+it caps the structural jins-journey, not the expressive substance.
+
+Cross-ref: the 2-ajnas assessment above (this extends it), the per-degree controls (Colonnades/Duo
+faders/weights/cents, enable/weight), the .scl/.dmtune hierarchy (degree-level lives below the mask).
