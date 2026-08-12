@@ -1018,3 +1018,39 @@ single most common Cubase MPE-record trap. Document ANY prominently.
 
 Cross-ref: the earlier Cubase recipe above (this CORRECTS the channel instruction), Keppel MPE lower-zone
 (master ch1 members 2..16 = why ANY is needed), Steinberg Note Expression Input Device docs (Cubase 15).
+
+## RESOLVED: Cubase 15 WORKS (proven by source-tuning test); just doesn't visualise cents like Bitwig
+
+Rodney proved Cubase works end-to-end via a clever DISPLAY-INDEPENDENT test: he made the cents for
+D/F/G nearly identical on Sikit and watched the three-note pattern COLLAPSE TO TWO in Cubase. If Cubase
+were only getting plain 12-TET, changing Sikit's cents would do nothing; near-identical cents making
+distinct notes behave as the same pitch = the per-note tuning is arriving AND being applied. Cubase
+records and applies MPE tuning correctly. (Also: a Cubase RECORDING BUG earlier -- fixed by restart --
+had masked this; the channel-setting flailing was against a broken recorder, not a routing problem.)
+
+### The real Cubase-vs-Bitwig difference (for the manual)
+- **Bitwig**: records MPE tuning AND shows it clearly -- expression overlay = visible semitone-fraction
+  offsets right on the notes. Best for SEEING your microtonal deviations.
+- **Cubase**: records + applies MPE tuning correctly (PROVEN), but stores it as Note Expression Tuning
+  data that its Key Editor does NOT surface as legibly -- the cents offsets are hard to VISUALISE (buried
+  in per-note note-expression, not an at-a-glance readout like Bitwig). Data is there and audible; the
+  visualisation is the gap, not the function. Verify by ear or by source-tuning test, not by looking.
+- **Ableton**: standalone + virtual MIDI port route (Fluid Chords path).
+
+### The general verification method (Rodney's -- put in the manual)
+DISPLAY-INDEPENDENT proof that microtonal MPE is working in ANY DAW, regardless of whether it shows
+cents: CHANGE THE TUNING AT THE SOURCE AND CONFIRM THE OUTPUT CHANGES. E.g. collapse several degrees to
+near-identical cents on Sikit -> the pattern audibly/visibly collapses (distinct notes converge to the
+same pitch). Works everywhere, needs no DAW tuning-display. The "here's how to confirm it's working even
+if your DAW won't show you" tip -- exactly the kind that reads as written by someone who did it.
+
+### Net for the compatibility guide
+All three big DAWs now characterised: Bitwig (records + shows clearly), Cubase (records + applies, weak
+visualisation), Ableton (standalone+virtual-port). Keppel proven correct across the board; the
+differences are purely each DAW's MPE handling/display, not Keppel. Manual should set expectations:
+"to SEE offsets use Bitwig; Cubase applies them correctly but doesn't display them as clearly -- verify
+by ear or the source-tuning test."
+
+Cross-ref: the DAW compatibility map (Ahornberg/Fluid Chords), the Cubase recipe + the ANY-channel
+correction (all now moot -- it was a Cubase recording bug + display confusion, Keppel was always fine),
+the per-DAW recording guide deliverable.
