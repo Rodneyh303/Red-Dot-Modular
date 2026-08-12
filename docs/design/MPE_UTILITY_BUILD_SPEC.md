@@ -655,3 +655,35 @@ better than either pure gate-choice option alone.
 
 Cross-ref: the legato landmine + re-articulation section, Monsoon step vs step-legato poly gates, the
 one-bend mechanism (bend = current pitch - latched note; re-latch resets it to the microtonal offset).
+
+## Worked example: SELECTIVE re-articulation within one legato phrase (Rodney)
+
+The payoff of consuming the step-legato gate: re-articulation is SURGICAL -- it breaks the slur ONLY at
+the step that needs it, and legato continues on either side, all under ONE held legato-gate envelope.
+
+Scenario: a multi-step legato phrase (one held legato gate spanning several notes). Early in it, a big
+50-SEMITONE jump; after it, several small moves.
+- The 50-semitone jump exceeds the bend range -> Keppel RE-ARTICULATES at that step-legato boundary
+  (forces a new note, re-latches). It must -- no bend range reaches 50 semitones.
+- The small moves AFTER it are within range -> they CONTINUE AS LEGATO BEND, still under the same held
+  legato-gate envelope. They are NOT re-articulated just because an earlier step jumped.
+
+So within one held phrase you get a MIX: legato bend -> re-articulation at the big leap -> legato bend
+again. The re-latch resets the bend to just the microtonal offset (one-bend mechanism), so the small
+moves after the jump have the FULL range available again -- each re-articulation buys back the whole
+range for what follows.
+
+How the two gates make this work (a single gate couldn't):
+- HELD legato gate = the phrase envelope ("all of this is one legato gesture").
+- STEP-legato gate = every internal note boundary (the candidate re-articulation points).
+- Keppel walks the phrase: at each step-legato boundary, check "does continuing to bend from my latched
+  note stay within range?" YES -> keep bending (legato continues). NO (the 50-semi jump) -> re-latch
+  HERE, then resume bending from the new latched note for the subsequent small moves.
+
+Result: correct AND musical at once -- no note ever silently mis-tuned (big jumps re-articulate not
+clamp), no phrasing needlessly broken (small moves stay slurred). Slur everywhere it can, break only
+where it must -- exactly how a human plays it (slur what fits under the hand, re-attack across a leap
+too big). The step-legato gate is what lets Keppel be SELECTIVE.
+
+Cross-ref: the step-legato-gate-as-re-articulation-grid section, the legato landmine, the one-bend
+mechanism (re-latch resets bend to the microtonal offset, restoring full range).
