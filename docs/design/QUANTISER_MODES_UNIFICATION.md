@@ -368,3 +368,53 @@ poly gate in likely pairs with the poly CV in on the same expander (Straits).
 Cross-ref: Monsoon.cpp:527-530 (mono getVoltage gate reads), the quantiser modes (D = external poly
 gate, C = generated poly gate), the prior poly-gates foundation flag (output side), Keppel poly legato
 (per-voice gates), poly CV in on Straits (pairs with poly gate in).
+
+## "One clock, poly gates" -- separate the CLOCK from the SAMPLING (Rodney's question)
+
+Rodney: Mode B was fixed by realising each external gate = a 1/16 and the rising edge ADVANCES THE CLOCK
+(Mode A logic). How to poly that when there's only ONE clock?
+
+### The resolution: DON'T poly the clock -- split its two fused roles
+The Mode B fix FUSES two roles into one gate edge: (a) advance the clock/pattern position, AND (b)
+trigger a note. That fusion is fine mono but can't poly directly -- a SINGLE shared pattern position
+can't be coherently advanced by 16 independent rising edges (voice 3's gate advancing the position voice
+1 reads = chaos). So the mono model doesn't lift as-is. Split the roles:
+- **Clock / pattern-advance**: stays MONO, ONE source (internal clock, or one designated gate). One
+  sequence position, never 16 clocks.
+- **Sampling / quantise / per-voice gate**: goes POLY. When the shared clock says "now", sample ALL
+  poly CV voices together.
+"One clock, poly SAMPLING." The clock stays singular; poly lives in the sampling layer, not the clock
+layer. You keep one clock and poly the thing DOWNSTREAM of it.
+
+### Per-mode (only some modes even have a clock)
+- **Mode C (generated-gate)**: the engine's generated rhythm IS the clock -- and it's ONE rhythm. At
+  each generated gate, sample all poly CV voices. One clock, poly chord sampled per tick = "impose one
+  rhythm on an incoming poly chord" (the natural meaning of giving poly CV a new rhythm). NO poly-clock
+  needed. (Only per-voice GENERATED rhythms would need the generated gates themselves poly -- separate
+  question.)
+- **Mode D (external-gate)**: has NO internal clock at all (Vermona D just quantises while the gate is
+  high, doesn't advance a pattern). Poly-D = quantise each voice's CV on ITS OWN incoming gate -- pure
+  per-voice, driven entirely by external poly gates. No shared clock to conflict with -> the "one clock"
+  problem DOESN'T APPLY to D. Just a poly loop: getPolyVoltage(i) pitch + per-voice gate edge detection
+  on the poly gate in. (This is the poly-gate-in confirmed missing -- but it's per-voice EDGE DETECTION,
+  not 16 clocks.)
+- **Per-voice CLOCKS (16 independent sub-sequencers, each advancing its own position on its own gate)**:
+  the ONLY model that needs 16 clocks. Expensive, and probably NOT wanted for a quantiser. Explicitly
+  DECIDE you're not doing this -- it's the interpretation that makes the problem look impossible, and
+  it's the one to discard.
+
+### Net
+Clock stays mono. Separate "advance the pattern" (one source) from "sample the voices" (poly). Mode C =
+one generated clock + poly sampling; Mode D = no clock, pure per-voice quantise-on-external-poly-gate.
+Neither needs poly clocks. The poly-gate-in is per-voice EDGE DETECTION for D's sampling, a much smaller
+lift than "16 clocks" implies.
+
+### Verify in code before building
+Confirm whether the Mode B fix genuinely FUSED advance-and-trigger. If it did, the poly work is partly
+UN-FUSING them -- making "advance the shared position" and "emit a per-voice gate" separable so the
+latter goes poly while the former stays singular. If they're already separable, poly-sampling is a small
+change; if welded, un-fuse first. (Architectural reasoning here -- the current clock structure needs a
+code check to confirm the fusion.)
+
+Cross-ref: the Mode B fix (gate=1/16, rising edge advances clock, Mode A logic), the confirmed mono gate
+IN (Monsoon.cpp:527), the quantiser modes C/D, the poly-gate foundation flags (in + generated-out).
