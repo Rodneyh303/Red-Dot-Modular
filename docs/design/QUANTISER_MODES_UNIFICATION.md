@@ -552,3 +552,43 @@ a build. And Mode D = Mode B with the gate from an external source -> same story
 Cross-ref: SequencerEngine.cpp:362 (Mode B stepped), :651/:729 (executeModeB -> executeStep,
 mode-agnostic), :753/:971 (executePolyVoice/s -- the Sands poly machinery), :527 (mono gate in, correct
 as-is), the Sands-poly-per-step solution above, Mode A poly (the reference wiring).
+
+## Mode D stated minimally (Rodney): = Mode B + one poly CV in. Nothing else new.
+
+Mode D gets the SAME mono gate input as Mode B; it just needs ONE additional input: a poly CV in for the
+notes to quantise. That's the whole difference.
+
+### Mode D = Mode B + poly CV in
+- SAME mono gate in as Mode B -> the shared step boundary (the WHEN). No new gate infrastructure.
+- SAME Sands poly rules at each step -> per-voice rest/legato/accent (how each voice behaves).
+- THE ONE ADDITION: a poly CV in -> the external notes to quantise (the WHAT PITCH). The only new input
+  over Mode B.
+
+### The only difference B vs D is the PITCH SOURCE
+- Mode B: pitch from the engine's internal melody draw.
+- Mode D: pitch from the external poly CV, quantised to the scale.
+Everything else -- gate-driven shared step, Sands poly differentiation, output -- is IDENTICAL. Mode D is
+Mode B with the internal melody draw swapped for "quantise this poly CV." The concrete input-level form
+of the quantiser=sequencer unification: D is B's twin, sharing gate + poly machinery, differing only in
+one poly CV in replacing internal pitch generation. (Matches "Sands melody/octave ignored in quantiser
+modes" -- in D the melody draw is REPLACED by the poly CV quantise.)
+
+### Why it's cheap to build (almost all pieces exist)
+1. Gate handling: already there (Mode B mono gate -> shared step).
+2. Poly differentiation: already there (Sands poly rules; likely already wired in Mode B -- pending the
+   settling test).
+3. Quantise function: already there (SequencerEngine::quantize, weighted radius-gated snap).
+4. Genuinely new: ONE poly CV input jack + routing it into the quantise stage instead of the internal
+   melody draw.
+So Mode D = existing gate + existing Sands poly + existing quantiser + one new poly CV input, wired so
+that at each step (mono gate) each voice quantises ITS channel of the incoming poly CV to the scale,
+Sands rules deciding rest/legato/accent per voice.
+
+### Input placement (refined -- simpler than before)
+Poly CV in on Straits (or Monsoon), per the earlier placement. It's JUST the CV -- NOT a paired poly
+gate (the gate stays mono, shared with Mode B). So the Straits addition for Mode D is a SINGLE poly CV
+input, not a CV+gate pair. Simpler than the earlier "poly CV + poly gate" framing.
+
+Cross-ref: the mono-gate correction above (B and D both mono gate), the Sands-poly-per-step solution,
+SequencerEngine::quantize (existing quantiser), Straits poly CV in (single input, no paired gate), the
+quantiser=sequencer unification (D = B with external pitch source).
