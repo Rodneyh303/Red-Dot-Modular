@@ -592,3 +592,47 @@ input, not a CV+gate pair. Simpler than the earlier "poly CV + poly gate" framin
 Cross-ref: the mono-gate correction above (B and D both mono gate), the Sands-poly-per-step solution,
 SequencerEngine::quantize (existing quantiser), Straits poly CV in (single input, no paired gate), the
 quantiser=sequencer unification (D = B with external pitch source).
+
+## UI refinement stage: mode-relevant display dimming (Rodney) -- post-holiday, UI phase
+
+The panel should visually reflect which controls are LIVE in the current mode (greyed = "does nothing
+now, and here's why: the mode"). Same honesty as the greyed faders in the enabled/N work.
+- **Quantiser modes**: dim/disable Sands MELODY + OCTAVE displays (pitch comes from CV, those
+  pitch-generation controls are irrelevant -- already bypassed in logic; dimming makes the panel SAY so).
+- **Gate-driven modes**: dim Sands VARIATION, disable NOTE VARIATION + LENGTH MOD (note duration = the
+  gate's width, not an internal length -- Mode B code already nullifies internal note-length and bypasses
+  variation: ":686 note DURATION is Gate 1's width", ":694 Variation intentionally bypassed in Mode B").
+  So dimming REFLECTS a bypass that already exists -- the UI catching up to the logic.
+Principle: greyed = inactive-in-this-mode + why. Depends on mode behaviours being functionally settled
+first (dim the RIGHT things once final). UI-refinement-stage polish, which Rodney hopes is not far off
+after the holiday.
+
+## Behaviour gap: spread on ALL lanes for Sands-mono + Straits voice-1/mono (Rodney) -- verify path
+
+Rodney: Sands (mono) and Straits -- but NOT Helix -- should get spread applied on ALL lanes for
+voice-1/mono. Currently MISSING on the LEGATO and ACCENT lanes. Reason: the negative spread (1 - draw)
+should be available to ALL lanes -- spread/invert isn't just a rest-lane thing; legato and accent should
+have it too.
+
+### What I could verify (partial -- and only in the POLY/East path, NOT the mono path Rodney means)
+In the poly (East) path MonsoonExpanderManager.cpp: REST (:396-405), MELODY (:421-426), OCTAVE
+(:449-454), ACCENT (:468-484) all get combineSpread + SpreadInterp::apply (accent spread CV was
+previously missing, since fixed :469). **PL_LEGATO is ABSENT from this poly spread list** -- consistent
+with "legato missing spread". BUT this is the POLY/East path; Rodney's point is about voice-1/MONO on
+Sands-mono + Straits, a DIFFERENT code path I did NOT locate. So: legato-missing-from-poly-spread is
+confirmed here, but the MONO voice-1 legato+accent spread gap Rodney describes is NOT yet located in
+code. Don't conflate mono and poly paths (this codebase's off-by-one breeding ground).
+
+### The intent (design statement to implement, post-holiday)
+- Apply spread (incl. negative spread = 1 - draw, the invert) to ALL lanes -- REST, MELODY, OCTAVE,
+  LEGATO, ACCENT -- for voice-1/mono on Sands-mono and Straits.
+- NOT Helix (explicitly excluded).
+- Currently missing on LEGATO and ACCENT (per Rodney). Rationale: negative spread/invert should be
+  universally available per lane, not rest-only.
+- CC to: find the mono voice-1 spread application (distinct from the poly/East path above), confirm
+  legato + accent are missing there, add spread (with the 1-draw negative/invert) to those lanes for
+  Sands-mono + Straits, leave Helix untouched. Then verify with a spread sweep per lane.
+
+Cross-ref: SpreadInterp (src/dsp/SpreadInterp.hpp, single source of truth), MonsoonExpanderManager.cpp
+poly spread (:388-484, legato absent), the spread-sign / negative-spread-inverts note (:277), the
+probability-modifier unification (spread engine migration).
