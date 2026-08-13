@@ -513,3 +513,42 @@ The poly gate handling = the intersection of two existing systems, not new machi
 
 Cross-ref: Mode A poly Sands rules (rest/legato/accent -- the reused machinery), Mode B mono fix (gate
 edge = 1/16 step advance), the mono-gate-in finding (:527), the quantiser modes, the accent/legato work.
+
+## CORRECTION (Rodney): Mode B AND D need only MONO gate in -- and Mode B poly likely ALREADY works
+
+Correcting my drift: I'd been treating poly-gate-in as a foundation gap. Rodney: neither Mode B nor D
+needs poly gate IN -- MONO suffices for both. The gate's only job is the SHARED step boundary (the
+WHEN); one mono gate does that. The poly-ness comes AFTER, from Sands per-voice rules at each step:
+- Mono gate in -> shared step advance.
+- Sands poly rules -> per-voice rest/legato/accent at that step.
+- Poly CV out -> the differentiated voices.
+One mono gate drives everything; there is NO poly gate-in to build. My "poly gate-in foundation gap"
+was solving a problem that doesn't exist -- mono IS the design. (The earlier mono-gate-in finding at
+:527 is therefore CORRECT AS-IS, not a gap.)
+
+### Mode B poly likely ALREADY implemented (verify the wiring)
+Rodney: "surprised if we don't already have this in Mode B." Code strongly suggests he's right:
+- Mode B (modeSelect==1) is a STEPPED mode (SequencerEngine.cpp:362), same category as Mode A (0).
+- executeModeB (:651) calls executeStep (:729) -- the SAME step function Mode A uses (:641).
+- executeStep is explicitly "mode-agnostic" (:725) -- the step logic doesn't care which mode clocked it.
+- executePolyVoices / executePolyVoice (:971/:753) hold the Sands per-voice rest/legato/accent rules.
+So the architecture is SET UP for Mode B poly: mode-agnostic step + shared poly voices. Mode B poly
+probably already runs.
+
+### BUT -- could NOT confirm the wiring from the traced snippets (verify, don't assume)
+I did NOT confirm executePolyVoices is actually CALLED in Mode B's execution path (vs wired only for
+Mode A). The pieces exist and are architecturally compatible, but "pieces exist + compatible" != "wired
+and runs in Mode B" -- and this codebase's risk-shape is EXACTLY that gap (compiles, plausibly works,
+but a path isn't connected). So: probably already works, but TEST it.
+
+### The settling test (post-holiday, quick)
+Run Mode B with POLY output and watch the voices:
+- If they DIFFERENTIATE (per-voice rest / legato / accent) -> Mode B poly already works, nothing to do.
+- If all voices move in LOCKSTEP (no per-voice rest/legato) -> executePolyVoices isn't wired into Mode B;
+  add that one connection (route Mode B's step execution through executePolyVoices, as Mode A does).
+Either way it's small: the poly differentiation machinery exists; at most it's a wiring connection, not
+a build. And Mode D = Mode B with the gate from an external source -> same story, mono gate + Sands poly.
+
+Cross-ref: SequencerEngine.cpp:362 (Mode B stepped), :651/:729 (executeModeB -> executeStep,
+mode-agnostic), :753/:971 (executePolyVoice/s -- the Sands poly machinery), :527 (mono gate in, correct
+as-is), the Sands-poly-per-step solution above, Mode A poly (the reference wiring).
