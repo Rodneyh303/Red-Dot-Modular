@@ -418,3 +418,50 @@ code check to confirm the fusion.)
 
 Cross-ref: the Mode B fix (gate=1/16, rising edge advances clock, Mode A logic), the confirmed mono gate
 IN (Monsoon.cpp:527), the quantiser modes C/D, the poly-gate foundation flags (in + generated-out).
+
+## "One clock" vs poly gate in: resolved -- Mode D has N clocks (one per gate), Mode C shares one (Rodney)
+
+Rodney: Mode B mono was fixed by applying Mode A logic + realising each gate = 1/16 and the RISING EDGE
+advances the clock. Q: how to poly that when we only have ONE clock? Resolution: the "one clock"
+constraint only binds if you assume a SHARED step position. Poly gate-in dissolves it differently per
+mode.
+
+### Two meanings of "poly gate in" (they need different answers)
+1. **Shared clock, poly CV = a CHORD advanced together**: all voices advance on the SAME gate edge;
+   poly-ness is only in PITCH (quantise a chord moving in lockstep). Needs NO gate-input change -- one
+   mono gate advances, poly CV quantised per-voice. The simplest poly quantiser; may be all that's
+   needed for chordal use.
+2. **Per-voice independent gates = polyrhythmic independent lines**: each voice advances on ITS OWN gate
+   rising edge (voice 1 steps while voice 2 holds). THIS needs poly gate-in, and this is where "one
+   clock" feels binding.
+
+### Resolution per mode (neither needs "N impossible clocks")
+- **Mode D (external-gate quantiser)**: there is NO shared clock -- each EXTERNAL gate channel IS its own
+  clock. Poly gate-in = N external clocks, which is exactly what external per-voice gates ARE. Read
+  getPolyVoltage(i) per channel, detect rising edge per channel, advance/sample THAT voice on ITS edge.
+  Voices are independent because their GATES are independent. The tension dissolves: you never had one
+  clock in Mode D -- you have one per incoming gate channel.
+- **Mode C (internal generated gate)**: ONE shared clock advances the PATTERN POSITION, but per-voice
+  RHYTHM STRANDS decide whether THAT voice gates at each position. Poly gates OUT of one clock via the
+  per-voice strands that ALREADY exist for pitch. Clock shared; gating per-voice -- same mechanism the
+  poly PITCH already uses (one clock, per-voice strands).
+
+### The key subtlety in Mode D: PER-VOICE step position
+If each voice advances on its own gate, the "sequencer step" is no longer ONE number -- each voice has
+its OWN step position (voice 1 on step 5 while voice 2 on step 3, different gate-edge counts). Same idea
+as the lane-position model (position = function of steps-elapsed) but steps-elapsed is now PER VOICE,
+driven by that voice's gate-edge count. So Mode D poly = PER-VOICE STEP COUNTERS, each advanced by its
+own gate's rising edges. This is the real structural change (shared step index -> per-voice step index),
+and it's the thing to design for.
+
+### Honest answer to "how poly it with one clock"
+- Mode D: you DON'T have one clock -- each poly gate channel is its own clock advancing its own voice's
+  step counter (per-voice step position). Read poly gate, per-channel rising-edge -> advance that voice.
+- Mode C: keep one clock; per-voice rhythm strands gate each voice (poly gates from one clock, as pitch
+  already works).
+The "one clock" only blocks if you assume a shared step position. Mode D drops that assumption
+(per-voice steps); Mode C keeps one clock but gates per-voice via strands.
+
+Cross-ref: the Mode B mono fix (gate rising edge = 1/16 advance, Mode A logic), the mono-gate-in finding
+(Monsoon.cpp:527), the lane-position model (per-voice steps-elapsed), the poly pitch machinery (one
+clock + per-voice strands = the Mode C template), quantiser Modes C/D.
