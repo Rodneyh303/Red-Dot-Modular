@@ -465,3 +465,51 @@ The "one clock" only blocks if you assume a shared step position. Mode D drops t
 Cross-ref: the Mode B mono fix (gate rising edge = 1/16 advance, Mode A logic), the mono-gate-in finding
 (Monsoon.cpp:527), the lane-position model (per-voice steps-elapsed), the poly pitch machinery (one
 clock + per-voice strands = the Mode C template), quantiser Modes C/D.
+
+## SIMPLER SOLUTION (Rodney): poly Mode B/D = gate gives the step, Sands poly rules do the rest
+
+Supersedes the per-voice-step-counter framing above. The clean answer: DON'T invent per-voice clocks.
+At each step boundary, apply the SAME Sands per-voice legato/rest/accent rules that Mode A poly already
+uses. The gate provides the step boundary (the WHEN); Sands poly rules do the per-voice differentiation
+(the WHAT-each-voice-does).
+
+### The mechanism
+- **Gate rising edge = ONE shared step advance** (exactly as Mode B mono already does -- each gate =
+  1/16, rising edge advances). Mode B: mono gate. Mode D: external gate (poly or mono) provides the
+  step boundary.
+- **At each shared step, run Sands poly rules per voice** (exactly as Mode A poly already does):
+  - **Poly REST**: each voice opts IN or OUT of sounding at that step.
+  - **Poly LEGATO**: each voice independently ties across the boundary or re-articulates.
+  - **Poly ACCENT**: per-voice emphasis.
+- So voices share ONE step grid (from the gate) but are DIFFERENTIATED by per-voice rest/legato/accent.
+  Genuinely polyphonic (independent lines) WITHOUT independent clocks.
+
+### Why this beats the per-voice-step-counter idea
+1. REUSES Mode A poly wholesale -- the Sands legato/rest/accent poly rules are already written, tested,
+   working. Apply an existing proven system at a new CLOCK SOURCE (external gate vs internal clock).
+2. Sidesteps per-voice-step-position complexity entirely -- ONE shared step index, gate-advanced, no
+   divergent per-voice positions to track. (My earlier per-voice-step-counter framing was
+   overcomplicated -- you do NOT want independent step positions; you want one step grid + per-voice
+   behaviour at each step.)
+3. Consistent across the mode family: Mode A (internal clock) and Mode B/D (external gate) become the
+   SAME engine with different clock sources, all running identical per-voice Sands rules. Extends the
+   quantiser unification to the gate side.
+
+### Net
+Poly Mode B/D is not a NEW build -- it's a COMPOSITION of two working things:
+  Mode B gate-drives-clock (mono, done) + Mode A Sands-poly-per-step (poly, done).
+Gate says WHEN (shared step advance); Sands says WHAT each voice does (rest/legato/accent per voice).
+The poly gate handling = the intersection of two existing systems, not new machinery.
+
+### Build note
+- Mode B poly: mono gate advances the shared step; run Sands poly rest/legato/accent per voice at each
+  step (Mode A poly path, but clocked by the gate edge instead of the internal clock).
+- Mode D poly: same, but the step boundary comes from the external gate (which can be poly -- but even
+  then, treat each gate edge as a step advance and let Sands poly rules differentiate; OR use per-voice
+  gate edges if truly independent per-voice rhythm is wanted -- but the SHARED-step + Sands-poly path is
+  the simple default and likely sufficient).
+- This makes poly gate-in far less of a "foundation rebuild" than feared: the poly differentiation
+  already exists (Mode A Sands poly); only the clock SOURCE changes.
+
+Cross-ref: Mode A poly Sands rules (rest/legato/accent -- the reused machinery), Mode B mono fix (gate
+edge = 1/16 step advance), the mono-gate-in finding (:527), the quantiser modes, the accent/legato work.
