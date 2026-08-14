@@ -741,3 +741,57 @@ pool at the consumer). NOT "pin/fix the CV" (my wrong guess) -- it's source-rout
 Cross-ref: the shared-Change-Alley section (reroute = source-routing per-Monsoon), Change Alley
 correlation engine (pins build correlations at voice level), the quantiser unification (swapped source
 pool), the interoperability positioning (any Rack CV through the correlation engine via pins).
+
+## Design Q: allow Colonnades/Duo to attach to MULTIPLE Monsoons? (Rodney) -- lean yes-as-option, verify topology
+
+The dual of the shared-Change-Alley question, but the shared thing is a TUNING AUTHORITY (Colonnades/Duo
+define scale/tuning: per-degree cents/weights/enabled-mask/tonic) that a Monsoon quantises/generates
+against.
+
+### Case FOR multi-attach
+- Consistency: two Monsoons in the SAME tuning (an ensemble in one maqam) -> author ONCE, both follow.
+  Without sharing, author the same 24-degree tuning twice + keep manually in sync (tedious, error-prone).
+- Live tuning modulation affects ALL: modulate the shared Colonnades (bend a degree, shift tonic) ->
+  all attached Monsoons re-tune together (coordinated ensemble microtonal shift).
+- Matches the Change Alley precedent (one shared source, many consumers).
+
+### Case AGAINST / complications
+- Removes per-Monsoon tuning INDEPENDENCE: if shared, two Monsoons CAN'T be in different tunings -- but
+  that's a real wanted case (the CROSS-TUNING CANON, literally one of our demo-patch ideas). Mandatory
+  sharing would BREAK cross-tuning.
+- Base/override arbitration multiplied: Colonnades authors base, Shophouse Micro overrides. Multiple
+  Monsoons each with their own Shophouse Micro on one shared Colonnades = one base, N independent
+  overrides. Probably fine (base shared, override per-Monsoon) but be deliberate.
+- Shared tonic: all Monsoons share the tonic (usually wanted = same key, but removes independence).
+
+### Lean: allow it as an OPTION, don't mandate (same principle as shared Change Alley)
+- YES allow Colonnades/Duo to attach to multiple Monsoons -- for the coordinated-ensemble,
+  author-once, modulate-together case.
+- BUT keep per-Monsoon tuning possible -- a Monsoon can have its OWN Colonnades, or its own Shophouse
+  Micro override on a shared base. Sharing is OPT-IN, not the only topology (preserves cross-tuning).
+- Same shared-resource principle: Colonnades stays a mode-agnostic, READ-ONLY tuning SOURCE; each
+  Monsoon reads it and can layer its OWN Shophouse Micro override. Shared base + per-Monsoon override =
+  EXACTLY the base/override arbitration already built, base now shared across consumers. Multiple
+  Monsoons on one Colonnades = one shared base, N private overrides -- preserves independence (via each
+  override) while allowing sharing (the common base).
+
+### VERIFY FIRST (codebase risk-shape + VCV topology)
+Partial code read: Monsoon READS Colonnades as a "tuning source" (Monsoon.cpp:104
+cachedColonnadesExpander, :114 tuningSourceExpander_) -- conceptual direction is right (Monsoon reads,
+Colonnades is source). BUT unconfirmed:
+1. Does Colonnades hold a single-Monsoon BACK-REFERENCE / write back? If it writes back to one Monsoon,
+   multi-attach = N Monsoons fighting one write-back path. Clean design = Colonnades is a PURE read
+   source (never writes to a specific Monsoon). Verify.
+2. *** The TOPOLOGY question (the real blocker): *** VCV expanders are typically PHYSICALLY ADJACENT
+   (left/right neighbour). If Colonnades attaches by adjacency, it sits next to ONE Monsoon -- "attach to
+   multiple" isn't a permission question, it's a topology impossibility (an expander is next to one
+   module). Multi-attach would need a NON-adjacency reference model (a tuning-source that isn't the
+   physical neighbour) -- a bigger change. CONFIRM whether tuning-source is adjacency-bound or can be a
+   non-adjacent reference BEFORE deciding this is even feasible.
+So: lean yes-as-option IF the topology allows non-adjacent/shared tuning-source; if it's strictly
+physical-adjacency, multi-attach needs a reference-model change first. Verify the expander adjacency
+model post-holiday.
+
+Cross-ref: the shared-Change-Alley resolution (shared source + per-consumer override), Colonnades/
+Shophouse-Micro base/override arbitration (extends to shared base + N overrides), the cross-tuning canon
+demo (why NOT to mandate sharing), Monsoon.cpp:104/114 (tuning-source read path -- verify adjacency).
