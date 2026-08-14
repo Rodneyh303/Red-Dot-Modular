@@ -795,3 +795,41 @@ model post-holiday.
 Cross-ref: the shared-Change-Alley resolution (shared source + per-consumer override), Colonnades/
 Shophouse-Micro base/override arbitration (extends to shared base + N overrides), the cross-tuning canon
 demo (why NOT to mandate sharing), Monsoon.cpp:104/114 (tuning-source read path -- verify adjacency).
+
+## UPDATE (Rodney): shared-resource binding ALREADY EXISTS (CA, Intertropical, Lantern) -- topology caveat MOOT
+
+Rodney: "we already got a way of binding shared resources which we use for CA as well as Intertropical
+and Lantern." This RESOLVES the topology caveat above.
+
+### What this changes
+The potential blocker I flagged -- VCV expanders being physically-adjacency-only, needing a new
+non-adjacency reference model -- is MOOT. A general shared-resource binding mechanism ALREADY EXISTS and
+is in service for THREE resources: Change Alley (correlation), Intertropical (arrangement), Lantern
+(display). So Colonnades/Duo attaching to multiple Monsoons is NOT a new topology problem -- it's applying
+the EXISTING shared-binding mechanism to one more resource type (the tuning authority). Reusing proven
+infrastructure, not building new.
+
+### Recommendation firms up
+YES -- allow Colonnades/Duo to attach to multiple Monsoons, as an OPTION, via the existing shared-resource
+binding mechanism (the one CA/Intertropical/Lantern use). High confidence it's feasible: the mechanism
+exists and already serves three shared resources. Colonnades/Duo becomes a fourth bindable shared
+resource (the tuning authority), joining the same system.
+
+### Caveat downgraded
+From "verify the adjacency model / possibly needs a new reference model" DOWN TO: "confirm Colonnades/Duo
+can use the same shared-binding PATH the others already use" (a small integration, not a topology
+rebuild). Also still confirm Colonnades is a pure READ source (no single-Monsoon write-back) so N
+consumers don't contend -- but that's a minor check, not a blocker.
+
+### Architectural note (stronger than first appreciated)
+dot.modular has a GENERAL shared-resource binding system; CA (correlation), Intertropical (arrangement),
+Lantern (display) are consumers. Adding Colonnades/Duo (tuning) makes the tuning authority a first-class
+citizen of the SAME system. The shared-base + per-Monsoon-Shophouse-Micro-override model rides on top of
+proven binding. The "users learn the pattern once" consistency is not just conceptual -- it's a SINGLE
+implemented mechanism Colonnades would join. Four shared resources, one binding system, one mental model.
+
+Supersedes the topology-blocker caveat in the section above.
+
+Cross-ref: the shared-resource binding mechanism (CA / Intertropical / Lantern -- the existing path),
+the multi-attach design lean above (now firmed to yes-as-option), base/override arbitration (rides on the
+binding), the shared-Change-Alley resolution (same binding, same principle).
