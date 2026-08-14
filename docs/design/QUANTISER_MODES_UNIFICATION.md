@@ -985,3 +985,55 @@ Colonnades as a shared source -- it's a per-Monsoon surface.
 Cross-ref: the multi-attach-Colonnades sections above (SUPERSEDED -- Colonnades is 1-to-1), the display
 obstacle (DISSOLVED -- no sharing to contend), the polymetric maqam payoff (survives via shared file +
 shared CA), Change Alley (the genuinely shared source), .dmtune file (the shared-tuning mechanism).
+
+## RESOLUTION (Rodney): Colonnades/Duo are 1:1 with Monsoon (fader-substitute); coordinate via data + CA
+
+Rodney cut the knot: Colonnades/Duo should be 1:1 with their Monsoon -- they're really a SUBSTITUTE FOR
+THAT MONSOON'S FADERS (a richer alternative interface to THAT Monsoon's own tuning/scale), NOT a shared
+authority. But you can STILL have the same .dmtune file, the same modulation, and shared Change Alley.
+This supersedes the multi-attach idea AND its display-write-back obstacle.
+
+### Why 1:1 dissolves the display problem
+The obstacle was per-consumer state (jins) written to a SHARED Colonnades display by N Micros. If
+Colonnades is 1:1 -- this Monsoon's fader-substitute -- there's no sharing, no contention: Shophouse
+Micro writes the jins to THIS Colonnades display, which belongs to THIS Monsoon. One writer, one display.
+The write-back is FINE at 1:1 -- 1:1 is exactly the topology it was built for. Don't fix the write-back;
+accept the topology it assumed.
+
+### Coordination without sharing the object (keep everything that mattered)
+- **Same .dmtune file**: multiple Monsoons LOAD THE SAME tuning file -> same tuning WITHOUT sharing a
+  Colonnades. Each Monsoon has its own Colonnades showing its own copy. Coordination via shared DATA
+  (the file), not a shared object.
+- **Same modulation**: same modulation source drives each -> coordinated re-tuning via shared SIGNAL,
+  not a shared display-writing object.
+- **Fed by shared Change Alley**: correlation still from one shared CA -- because CA is a pure signal
+  SOURCE (emits, Monsoons read; no display write-back). The thing that CAN cleanly share (CA) shares;
+  the thing that CAN'T (Colonnades, due to display write-back) goes 1:1.
+
+### The architecture sorts by what each resource IS
+- Change Alley = shared signal source -> SHARED (read-only emission, clean).
+- Colonnades/Duo = a Monsoon's fader-substitute (own tuning surface + display write-back) -> 1:1 with
+  its Monsoon.
+- Multi-Monsoon coordination = shared DATA (same .dmtune) + shared MODULATION + shared CA, NOT a shared
+  tuning object.
+Better separation than forcing Colonnades to be shared: respects what Colonnades IS (an interface to one
+Monsoon's tuning) instead of straining it into a shared authority it was never built to be.
+
+### The polymetric-maqam payoff SURVIVES (the key check)
+Wanted: per-Monsoon jins on coordinated tuning for polymetric heterophonic maqam. With 1:1 Colonnades:
+each Monsoon has its own Colonnades loaded with the SAME base .dmtune (coordinated tuning ok), its own
+Shophouse Micro selecting ITS jins (per-Monsoon jins ok, written to ITS OWN display, no contention ok),
+its own meter (polymeter ok), all fed by shared CA (correlation ok). FULL polymetric-maqam capability
+with NO shared-Colonnades contention -- "same tuning" via same-FILE not shared-OBJECT, each Monsoon's
+jins on its own display. Payoff preserved, obstacle vanishes.
+
+### Meta
+The multi-attach idea solved the right GOAL (coordinated multi-Monsoon microtonal polyphony) with the
+wrong MECHANISM (shared Colonnades object). 1:1 + shared-data-and-CA hits the same goal without the
+write-back problem. Supersedes the multi-attach decision, the multi-attach payoff section's mechanism
+(the payoff itself stands, delivered differently), and the display-write-back obstacle (moot at 1:1).
+
+Cross-ref: the multi-attach sections above (SUPERSEDED as mechanism; goal + polymetric payoff preserved),
+the display-write-back obstacle (moot at 1:1), shared Change Alley (still shared -- pure signal source),
+.dmtune file (the coordination channel -- same file = same tuning), Colonnades-as-fader-substitute (its
+true nature).
