@@ -1037,3 +1037,55 @@ Cross-ref: the multi-attach sections above (SUPERSEDED as mechanism; goal + poly
 the display-write-back obstacle (moot at 1:1), shared Change Alley (still shared -- pure signal source),
 .dmtune file (the coordination channel -- same file = same tuning), Colonnades-as-fader-substitute (its
 true nature).
+
+## RESOLUTION (Rodney): Colonnades/Duo is 1:1 with Monsoon (a fader SUBSTITUTE); share the FILE, not the module
+
+Rodney reframed and dissolved the display obstacle: Colonnades/Duo is 1-to-1 with its Monsoon, because
+it's a SUBSTITUTE FOR THAT MONSOON'S FADERS -- a richer authoring surface for THAT Monsoon's tuning/scale.
+NOT a shared tuning authority many Monsoons subscribe to; it's this Monsoon's fader-panel externalised.
+Faders belong to their Monsoon -> Colonnades is 1:1 by nature.
+
+### This dissolves the display obstacle entirely
+No write-back contention because Colonnades isn't shared. Each Monsoon has its OWN Colonnades/Duo, its
+own Shophouse Micro writes to its OWN Colonnades display -- one Micro per Colonnades, no fight. Per-consumer
+state (jins) lives on a per-consumer surface (that Monsoon's own Colonnades). The shared-resource
+principle is satisfied by NOT sharing the thing that holds per-consumer state. The earlier
+display-obstacle options (1-4) are MOOT -- the problem doesn't arise.
+
+### The key distinction: share DATA, not authoring SURFACES
+The multi-attach mistake was treating Colonnades like Change Alley -- but they're different KINDS of thing:
+- **Change Alley = genuinely shared** (correlation is inherently RELATIONAL, between-voices; shared by
+  nature). Stays a real shared resource feeding all Monsoons. CA sharing was never the problem.
+- **Colonnades/Duo = genuinely per-Monsoon** (an authoring surface; faders belong to their Monsoon; owned
+  by nature). 1:1.
+Sharing the OWNED thing (Colonnades) created the display contention. Don't share it -- share the FILE it
+produces instead.
+
+### Multi-Monsoon capabilities PRESERVED (via data-sharing, not module-sharing)
+- Same tuning across Monsoons: load the same .dmtune into each Monsoon's OWN Colonnades (not bind one
+  Colonnades to many). "Ensemble in one tuning" WITHOUT the write-back problem.
+- Modulation: each Monsoon's own Colonnades/Micro modulates its own tuning (together or independently);
+  same-.dmtune-loaded Monsoons can still be modulated.
+- Change Alley: still genuinely shared (correlation, between voices) -- feeds all Monsoons.
+
+### Polymetric heterophonic maqam SURVIVES
+- Each Monsoon: own Colonnades, own Shophouse Micro, own jins, own meter.
+- Shared base tuning: same .dmtune loaded into each Monsoon's own Colonnades (data-share, not
+  module-share).
+- Shared correlation: Change Alley.
+So the payoff is intact -- because sharing the base was always about the tuning CONTENT (.dmtune), not
+about sharing the physical Colonnades. Everything multi-attach promised, WITHOUT the write-back obstacle,
+because the sharing is at the FILE/DATA level, not the module-binding level.
+
+### Principle
+SHARE DATA (the .dmtune, the CA correlation), DON'T SHARE AUTHORING SURFACES (Colonnades). The thing
+holding per-consumer display state stays per-consumer; genuinely-shared content (tuning data, correlation)
+is shared AS DATA. The clean version of what multi-attach was groping toward.
+
+Supersedes: the multi-attach-with-display-obstacle framing above (Colonnades multi-attach + its 4
+display-options are moot; Colonnades is 1:1, share the .dmtune instead). The Colonnades/Duo multi-attach
+question is CLOSED: 1:1, data-shared.
+
+Cross-ref: the display obstacle (dissolved -- don't share the surface), the polymetric maqam payoff
+(survives via .dmtune sharing), Change Alley (the genuinely-shared resource, unlike Colonnades), the
+shared-resource principle (share data not surfaces), Colonnades-as-fader-substitute (why 1:1).
