@@ -113,3 +113,35 @@ Sikit is the standout because its data ALREADY lands in shared state -- lowest-e
 Cross-ref: MonsoonExpanderManager.hpp (cachedSikitExpander, cachedJunctionExpander, cachedScaleExpander=
 Interchange, cachedRafflesExpander -- currently per-Monsoon caches), Sikit shared-TuningTable publish
 (the half-done sharing), CA (the N-to-M archetype), the mapping-vs-owned criterion above.
+
+## CORRECTION (Rodney): Junction + Raffles are MODULATORS (1:1), not mappings. Sikit is the answer.
+
+Rodney: "Junction and Raffles are specific modulators." I wrongly floated them as shareable candidates
+on the strength of their NAMES ("junction = routing") -- classifying by what a word evokes instead of
+what the module does. WRONG. They are specific MODULATORS -> per-Monsoon (a modulator drives THAT
+Monsoon's parameters = owned state, not an N-to-M mapping) -> 1:1, NOT shareable. Same category as
+Changi/Causeway.
+
+Lesson: classify by FUNCTION, not by the Singapore place-name. The "crossings = mappings" pattern was
+cute but not load-bearing -- the name isn't the function. (Don't let the naming seduce the architecture.)
+
+### Corrected final classification
+- **Shareable candidate -- ONE, the real one: SIKIT.** Tuning source already publishing to a shared
+  TuningTable; only question = multi-reader vs exclusive claim. Lowest-effort win. (Rodney agrees.)
+- **Already shared:** Change Alley (N-to-M correlation), Intertropical, Lantern. Interchange IF its
+  "pairing hub for the Follow menu" is genuinely relational (that was a real function comment, not a
+  name-guess -- but Rodney would know if pairing is shareable or per-Monsoon).
+- **1:1 / owned (NOT shareable):** Junction (modulator), Raffles (modulator), Changi (per-voice output),
+  Causeway (poly CV input mod), Colonnades/Duo (fader substitute), Shophouse Micro, Sands, the visual
+  DNA editors. All per-Monsoon state.
+
+### Net
+The only "not-shared-now-but-could-be" module is **Sikit** (shared tuning source). Everything else is
+either already shared (the genuine mappings: CA, Intertropical, Lantern) or genuinely per-Monsoon
+(modulators, I/O, authoring surfaces). Junction/Raffles being modulators confirms: the shareable set is
+small and specific, and the criterion is FUNCTION (mapping/source vs owned), never the name.
+
+Supersedes the Junction/Raffles "candidate/check" entries above.
+
+Cross-ref: Sikit shared-TuningTable publish (the one real candidate), CA (the N-to-M archetype),
+the mapping-vs-owned criterion (apply to FUNCTION not name).
