@@ -644,34 +644,34 @@ but MODE (sequencer vs quantiser) is PER-Monsoon. So Monsoon A can be in sequenc
 quantiser mode, both on the SAME shared Change Alley. How does the shared resource behave when consumers
 disagree about mode?
 
-### Problem 1: can't dim melody dice on a shared Change Alley
-Can't disable Change Alley's melody dice just because ONE Monsoon is in quantiser mode -- the OTHER
+### Problem 1: can't dim melody pins on a shared Change Alley
+Can't disable Change Alley's melody pins just because ONE Monsoon is in quantiser mode -- the OTHER
 (sequencer) still needs it. The dice are on the SHARED resource; relevance is the UNION of what all
-consumers need. So the "dim melody dice in quantiser mode" UI rule breaks on a shared Change Alley.
-Rule must be: never dim melody dice on a shared Change Alley (or only dim if ALL connected Monsoons are
+consumers need. So the "dim melody pins in quantiser mode" UI rule breaks on a shared Change Alley.
+Rule must be: never dim melody pins on a shared Change Alley (or only dim if ALL connected Monsoons are
 quantiser -- but "never dim a shared resource on one consumer's mode" is safest).
 
-### Problem 2: melody dice rerouted to the poly CV in (Rodney's elegant instinct)
-In quantiser mode the melody dice are irrelevant to PITCH GENERATION (pitch from CV). Instead of
-disabling them, REROUTE the melody dice to control/manipulate the poly CV in (dice-scrub-style
+### Problem 2: melody pins rerouted to the poly CV in (Rodney's elegant instinct)
+In quantiser mode the melody pins are irrelevant to PITCH GENERATION (pitch from CV). Instead of
+disabling them, REROUTE the melody pins to control/manipulate the poly CV in (pin-style
 manipulation of the incoming CV being quantised). Why it's more than "don't waste the control":
-- Melody dice are a PITCH-DOMAIN control (sequencer: perturb generated pitch). In quantiser mode the
-  pitch domain is the external CV. Rerouting melody dice -> poly CV manipulation is SEMANTICALLY
-  CONSISTENT: the dice always affect "the pitch material"; only the material's SOURCE changed
+- Melody pins are a PITCH-DOMAIN control (sequencer: perturb generated pitch). In quantiser mode the
+  pitch domain is the external CV. Rerouting melody pins -> poly CV manipulation is SEMANTICALLY
+  CONSISTENT: the pins always affect "the pitch material"; only the material's SOURCE changed
   (generated -> external CV). The control keeps its meaning, its target follows the mode's pitch source.
-  Exactly the quantiser unification ("same machinery, swapped pitch source") applied to the melody dice.
-- Turns dead panel space (disabled dice) into expression (CV scrub/reorder/perturb), free (dice mechanism
+  Exactly the quantiser unification ("same machinery, swapped pitch source") applied to the melody pins.
+- Turns dead panel space (disabled pins) into expression (CV scrub/reorder/perturb), free (pins mechanism
   exists).
 
 ### The collision + resolution: reroute at the MONSOON, not at Change Alley
-Collision: a SHARED melody dice can't simultaneously be "pitch generation for A (sequencer)" AND "CV
-routing for B (quantiser)" -- same physical dice, two jobs. Resolution (LEAN: Option B):
+Collision: a SHARED melody pins can't simultaneously be "pitch generation for A (sequencer)" AND "CV
+routing for B (quantiser)" -- same physical pins, two jobs. Resolution (LEAN: Option B):
 - **A shared resource stays MODE-AGNOSTIC; mode-dependent interpretation belongs at the CONSUMER.**
-- Change Alley always emits the melody-dice signal as-is (pitch-domain), knowing nothing about consumer
+- Change Alley always emits the melody-pins signal as-is (pitch-domain), knowing nothing about consumer
   modes. Each MONSOON, per ITS mode, routes that signal internally: sequencer-Monsoon -> pitch
   generation; quantiser-Monsoon -> its poly-CV-quantise/manipulation stage. Same shared signal,
   per-Monsoon routing. No conflict.
-- Solves Problem 1: melody dice NEVER dimmed on shared Change Alley (it's mode-agnostic, always shows).
+- Solves Problem 1: melody pins NEVER dimmed on shared Change Alley (it's mode-agnostic, always shows).
 - Solves Problem 2: the reroute is a per-Monsoon internal decision, so A and B can route the same shared
   dice differently without contradiction.
 Rejected (Option A -- reroute at Change Alley): would bake per-consumer-mode behaviour into a shared
@@ -680,9 +680,24 @@ resource = the contradiction. Keep Change Alley dumb + shared; make the Monsoons
 ### Principle (general, for the shared-resource topology)
 Shared resources (Change Alley) stay mode-agnostic and emit raw signals. Mode-dependent
 interpretation/routing lives at the per-consumer (Monsoon) that has the mode. This is the only topology
-that avoids "shared resource with conflicting per-consumer modes". Applies beyond melody dice to any
+that avoids "shared resource with conflicting per-consumer modes". Applies beyond melody pins to any
 shared-Change-Alley signal that a mode would want to reinterpret.
 
 Cross-ref: the quantiser unification (swapped pitch source), the UI mode-dimming note (this AMENDS it for
 shared Change Alley -- don't dim shared resources per one consumer's mode), Change Alley (shared
 correlation engine), the per-Monsoon mode.
+
+## Terminology correction (Rodney): it's melody PINS, not melody dice, in the shared-Change-Alley case
+The shared-Change-Alley mixed-mode discussion above concerns melody PINS, not melody dice (corrected).
+The control rerouted-to-poly-CV in quantiser mode, and the one that can't be dimmed on a shared Change
+Alley, is the melody PINS.
+NOTE (verify the pins mechanism before over-specifying the reroute): pins and dice are DIFFERENT
+controls. Likely distinction (CONFIRM with Rodney/code post-holiday): dice = the randomisation/re-roll
+(scrub/re-generate the stochastic draw); pins = per-step FIXING/locking of melody values (pinning a
+step's pitch so it doesn't re-roll). If so, the reroute is even more apt: pins FIX pitch material, so
+rerouting melody pins into the poly-CV domain = "pin/fix aspects of the incoming CV" rather than scrub
+it. But this rationale is UNCONFIRMED -- the term is corrected to pins; the exact pins-in-quantiser-mode
+behaviour should be pinned down (pun noted) when the pins mechanism is re-read. Don't encode the "pin the
+incoming CV" mechanism as settled until confirmed.
+Cross-ref: the shared-Change-Alley section above (now using melody pins), the melody-pins/dice
+distinction (verify).
