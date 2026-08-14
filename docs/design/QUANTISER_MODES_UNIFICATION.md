@@ -636,3 +636,53 @@ code. Don't conflate mono and poly paths (this codebase's off-by-one breeding gr
 Cross-ref: SpreadInterp (src/dsp/SpreadInterp.hpp, single source of truth), MonsoonExpanderManager.cpp
 poly spread (:388-484, legato absent), the spread-sign / negative-spread-inverts note (:277), the
 probability-modifier unification (spread engine migration).
+
+## Shared Change Alley + mixed modes: the reroute belongs at the Monsoon, not Change Alley (Rodney)
+
+Subtle topology problem: Change Alley (correlation engine / East-West axis) is SHARED across Monsoons,
+but MODE (sequencer vs quantiser) is PER-Monsoon. So Monsoon A can be in sequencer mode and Monsoon B in
+quantiser mode, both on the SAME shared Change Alley. How does the shared resource behave when consumers
+disagree about mode?
+
+### Problem 1: can't dim melody dice on a shared Change Alley
+Can't disable Change Alley's melody dice just because ONE Monsoon is in quantiser mode -- the OTHER
+(sequencer) still needs it. The dice are on the SHARED resource; relevance is the UNION of what all
+consumers need. So the "dim melody dice in quantiser mode" UI rule breaks on a shared Change Alley.
+Rule must be: never dim melody dice on a shared Change Alley (or only dim if ALL connected Monsoons are
+quantiser -- but "never dim a shared resource on one consumer's mode" is safest).
+
+### Problem 2: melody dice rerouted to the poly CV in (Rodney's elegant instinct)
+In quantiser mode the melody dice are irrelevant to PITCH GENERATION (pitch from CV). Instead of
+disabling them, REROUTE the melody dice to control/manipulate the poly CV in (dice-scrub-style
+manipulation of the incoming CV being quantised). Why it's more than "don't waste the control":
+- Melody dice are a PITCH-DOMAIN control (sequencer: perturb generated pitch). In quantiser mode the
+  pitch domain is the external CV. Rerouting melody dice -> poly CV manipulation is SEMANTICALLY
+  CONSISTENT: the dice always affect "the pitch material"; only the material's SOURCE changed
+  (generated -> external CV). The control keeps its meaning, its target follows the mode's pitch source.
+  Exactly the quantiser unification ("same machinery, swapped pitch source") applied to the melody dice.
+- Turns dead panel space (disabled dice) into expression (CV scrub/reorder/perturb), free (dice mechanism
+  exists).
+
+### The collision + resolution: reroute at the MONSOON, not at Change Alley
+Collision: a SHARED melody dice can't simultaneously be "pitch generation for A (sequencer)" AND "CV
+routing for B (quantiser)" -- same physical dice, two jobs. Resolution (LEAN: Option B):
+- **A shared resource stays MODE-AGNOSTIC; mode-dependent interpretation belongs at the CONSUMER.**
+- Change Alley always emits the melody-dice signal as-is (pitch-domain), knowing nothing about consumer
+  modes. Each MONSOON, per ITS mode, routes that signal internally: sequencer-Monsoon -> pitch
+  generation; quantiser-Monsoon -> its poly-CV-quantise/manipulation stage. Same shared signal,
+  per-Monsoon routing. No conflict.
+- Solves Problem 1: melody dice NEVER dimmed on shared Change Alley (it's mode-agnostic, always shows).
+- Solves Problem 2: the reroute is a per-Monsoon internal decision, so A and B can route the same shared
+  dice differently without contradiction.
+Rejected (Option A -- reroute at Change Alley): would bake per-consumer-mode behaviour into a shared
+resource = the contradiction. Keep Change Alley dumb + shared; make the Monsoons smart + per-mode.
+
+### Principle (general, for the shared-resource topology)
+Shared resources (Change Alley) stay mode-agnostic and emit raw signals. Mode-dependent
+interpretation/routing lives at the per-consumer (Monsoon) that has the mode. This is the only topology
+that avoids "shared resource with conflicting per-consumer modes". Applies beyond melody dice to any
+shared-Change-Alley signal that a mode would want to reinterpret.
+
+Cross-ref: the quantiser unification (swapped pitch source), the UI mode-dimming note (this AMENDS it for
+shared Change Alley -- don't dim shared resources per one consumer's mode), Change Alley (shared
+correlation engine), the per-Monsoon mode.
