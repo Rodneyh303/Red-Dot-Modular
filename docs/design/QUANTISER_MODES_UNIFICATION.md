@@ -833,3 +833,51 @@ Supersedes the topology-blocker caveat in the section above.
 Cross-ref: the shared-resource binding mechanism (CA / Intertropical / Lantern -- the existing path),
 the multi-attach design lean above (now firmed to yes-as-option), base/override arbitration (rides on the
 binding), the shared-Change-Alley resolution (same binding, same principle).
+
+## The payoff of multi-attach: POLYMETRIC (heterophonic) MAQAM (Rodney) -- emerges from composition
+
+The multi-attach option unlocks a real compositional capability: polymeter with each Monsoon having its
+own OR a shared tuning, and each having its own Shophouse Micro jins. This is the reason multi-attach is
+worth it.
+
+### The combinatorial space (two axes per Monsoon, plus meter)
+Each Monsoon independently chooses:
+1. TUNING: shared (all on one Colonnades/Duo, coordinated re-tuning) OR own (its own tuning authority).
+2. JINS: its own Shophouse Micro, so even Monsoons SHARING a base tuning can mask DIFFERENT jins of it.
+Plus POLYMETER: each Monsoon its own clock/length -> different cycle periods.
+Combinations:
+- Same tuning, same jins, diff meter -> canon/phase piece in one maqam (rhythmic drift, harmonic
+  agreement).
+- **Same tuning, DIFFERENT jins, diff meter** -> the interesting one: multiple voices in the SAME maqam
+  pitch-space, each emphasising a DIFFERENT jins, cycling at different periods. POLYPHONIC/HETEROPHONIC
+  MAQAM -- tonic-jins voice and dominant-jins voice sounding SIMULTANEOUSLY (not sequentially), drifting
+  in and out of phase. A texture real maqam ensembles create (heterophony, players emphasising different
+  ajnas/registers) -- generated structurally.
+- Different tuning, diff meter -> the cross-tuning canon, now polymetric (independent microtonal lines).
+
+### Why it's more than the sum of parts
+Shared BASE keeps voices harmonically COHERENT (same maqam tuning, no clash); per-Monsoon JINS + METER
+make them INDEPENDENT in emphasis + phase. That balance is what makes polyphony MUSICAL not chaotic --
+shared enough to cohere, independent enough to interest. Maps onto the tradition: an ensemble in ONE
+maqam (shared base) where voices inhabit different ajnas/phrases (per-Monsoon jins + meter). Not just
+melodic maqam support -- POLYPHONIC/HETEROPHONIC maqam, a sophisticated thing.
+
+### The architectural elegance (the recurring pattern, richest instance)
+NONE of this is a new feature -- it's the COMPOSITION of things already had/added: polymeter (per-Monsoon
+clock/length, inherent to independent Monsoons), shared-or-own tuning (the multi-attach binding, already
+exists for CA/Intertropical/Lantern), per-Monsoon jins (each Monsoon's own Shophouse Micro, already the
+model). The capability EMERGES from composing independent Monsoons + shared-base/per-override tuning +
+independent clocks. Nobody designed "polymetric polyphonic maqam" as a feature; it falls out because the
+pieces are general and composable. A musical capability that wasn't explicitly built, emerging because
+the underlying mechanisms were general -- the through-line, at its richest.
+
+### Uses
+- Strong argument FOR the multi-attach option (it's what multi-attach unlocks).
+- DEMO PATCH material: a polymetric heterophonic maqam (shared base, per-Monsoon jins, per-Monsoon
+  meter) -- shows the ecosystem doing something few if any tools do.
+- LAUNCH-STORY material: extends the Change Alley "pronounce a maqam" origin to "pronounce a maqam
+  POLYPHONICALLY" -- the plurality theme (many voices, one coherent space) made literal.
+
+Cross-ref: the multi-attach decision (yes-as-option, shared binding), base/override arbitration (shared
+base + per-Monsoon jins override), the maqam content + 3-modulation-layers (jins-level = per-Monsoon
+here), polymeter (independent Monsoon clocks), LAUNCH_INTENT_AND_STORY (plurality made literal).
