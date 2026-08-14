@@ -881,3 +881,61 @@ the underlying mechanisms were general -- the through-line, at its richest.
 Cross-ref: the multi-attach decision (yes-as-option, shared binding), base/override arbitration (shared
 base + per-Monsoon jins override), the maqam content + 3-modulation-layers (jins-level = per-Monsoon
 here), polymeter (independent Monsoon clocks), LAUNCH_INTENT_AND_STORY (plurality made literal).
+
+## OBSTACLE to multi-attach: Shophouse Micro writes the JINS to the Colonnades/Duo DISPLAY (Rodney)
+
+Rodney flagged a real problem with the multi-attach idea: Shophouse Micro doesn't just OVERRIDE the
+tuning a Monsoon reads -- it UPDATES THE VISUAL DISPLAY on Colonnades/Duo (writes the active jins/mask to
+the Colonnades/Duo panel). So Colonnades is NOT a pure read-only source -- it has a display state that
+Shophouse Micro writes to. This is the write-back coupling flagged earlier, now concrete.
+
+### Why it breaks multi-attach
+If one Colonnades is shared by N Monsoons, each with its own Shophouse Micro, all N would write their
+(different) jins to the SAME Colonnades display. Monsoon A's Micro: "show jins X"; B's: "show jins Y";
+one physical panel, N conflicting display writes. The display can show only ONE thing -> the voices
+fight over it. Note: it's NOT the TUNING that contends (each Monsoon reads the base + applies its own
+override internally) -- it's the DISPLAY (Colonnades' visualisation is a single shared surface Shophouse
+Micro drives; N Micros can't drive it to N states). Tuning data multi-attaches fine; the display doesn't.
+
+### The root: per-consumer state written to a shared resource
+The clean principle (from the shared-resource work): shared state shows on the shared resource;
+per-consumer state shows on the consumer. The current design VIOLATES it -- Shophouse Micro writes
+PER-CONSUMER state (the jins) to the SHARED resource (Colonnades' display). That coupling is what breaks
+multi-attach.
+
+### Options (a "which trade do you accept" decision)
+1. **Display shows the BASE, jins shown per-Monsoon.** Colonnades/Duo displays the shared base tuning
+   (singular); per-Monsoon jins overrides shown on each Monsoon / its Shophouse Micro, NOT written back
+   to Colonnades. Preserves multi-attach; lose "see active jins on Colonnades", gain per-Monsoon jins
+   viz locally. Clean: shared thing shows shared state, per-Monsoon thing shows per-Monsoon state.
+2. **Multi-attach suppresses the write-back.** When Colonnades is bound to >1 Monsoon, the
+   Shophouse-Micro -> Colonnades display update is suppressed (can't show N jins); shows base-only when
+   shared. Single-attach keeps the current "see your jins on Colonnades". Display-write becomes a
+   single-attach-only feature. Conditional on attach count.
+3. **Shared Colonnades = shared jins too** (one Micro drives it for all). Loses per-Monsoon jins in the
+   shared case -> KILLS the polymetric-heterophonic-maqam payoff (which needed per-Monsoon jins on a
+   shared base). Probably the WRONG trade.
+4. **Multi-state display** ("shared (N)" + base + an indicator that N Monsoons each have own jins,
+   without showing all N). Honest-about-sharing compromise.
+
+### Lean + honest caveat
+Lean Option 1 or 2 (close): keep only SHARED (base) state on Colonnades' display; relocate (1) or
+suppress-when-shared (2) the per-Monsoon jins display. Principle: Colonnades' display reflects only
+what's genuinely shared (base); per-Monsoon jins visualised where it lives.
+CAVEAT (verify -- determines if Option 1 is cheap or big): I don't know HOW COUPLED the Shophouse-Micro
+-> Colonnades display write currently is, or whether the jins viz can be relocated to the Monsoon/Micro
+cleanly (does the Monsoon/Micro have panel space + a display path?). Code-and-panel question, check
+post-holiday. If the jins viz can't move to the Monsoon easily, Option 2 (suppress when shared) is the
+cheaper fallback -- keeps single-attach behaviour, degrades gracefully to base-only when shared.
+
+### Net
+The display write-back is a GENUINE obstacle to multi-attach -- the per-consumer-state-on-shared-resource
+coupling. Multi-attach is still worth pursuing (the polymetric maqam payoff), but it REQUIRES resolving
+the display: base-only on Colonnades when shared, jins shown per-Monsoon (relocated or suppressed). Not a
+blocker to the IDEA, but a required piece of work the idea depends on. Decide 1 vs 2 after checking the
+display wiring.
+
+Cross-ref: the multi-attach decision + polymetric maqam payoff (what this obstacle gates), the
+shared-resource principle (shared state on shared resource -- the violated rule), the write-back caveat
+in the multi-attach section (this is that caveat, concrete), base/override arbitration (override is fine;
+the DISPLAY of the override is the problem).
