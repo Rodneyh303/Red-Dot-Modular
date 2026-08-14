@@ -65,3 +65,51 @@ don't share an owned-state module (would recreate the Colonnades display-content
 Cross-ref: the Colonnades 1:1 resolution (share data not surfaces), Change Alley (the many-to-many
 archetype), the shared-resource binding mechanism (CA/Intertropical/Lantern -- the path candidates would
 join), MonsoonExpanderManager.hpp (the cached*Expander roster).
+
+## DEFINITIVE pass (read the code): which not-shared modules COULD be shared
+
+Rodney sharpened: CA is an N-to-M MAPPING -> shareable because a mapping is owned by neither end. Read
+the modules' actual functions to give a real answer (not "check each"). Findings:
+
+### Confirmed 1:1 -- NOT shareable (they're one Monsoon's own I/O, no mapping)
+- **Changi (T1/T2/T3)**: "per-voice OUTPUT expander, 16 voices, gate/CV/accent jacks each" -- a 1-to-many
+  fan-out of ONE Monsoon's voices = that Monsoon's OUTPUT. Owned. 1:1. (My earlier "maybe routing" was
+  wrong -- it's output fan-out, not a mapping.)
+- **Causeway**: "poly CV MODULATION expander, two 16ch poly CV INPUT jacks (rest, accent)" = input
+  modulation to ONE Monsoon's voices. Owned. 1:1.
+So Changi and Causeway are OUT -- they're per-Monsoon I/O, not N-to-M mappings.
+
+### STRONG shareable candidates (confirmed relational/source shape)
+- **Sikit -- strongest, and already half-shared-shaped.** Code: Sikit "publishes cents[] into the SHARED
+  TuningTable when this Sikit is the claimed tuning source; the claim is resolved by
+  updateExpanderPointers." So Sikit is a TUNING SOURCE publishing to SHARED state already. The shareable
+  shape EXISTS -- the only question is whether MULTIPLE Monsoons can read that shared TuningTable (or
+  whether the "claim" is exclusive to one). ACTION: allow N Monsoons to read one Sikit's published
+  tuning = a shared tuning source, exactly analogous to CA as a shared correlation source. Likely a
+  small change since the data already lands in a shared TuningTable; the gate is the single-claim model.
+- **Interchange (InterchangeExpander)**: code shows it's a "pairing HUB for the Follow menu"
+  (MicroTuning pairing + IntertropicalPairing). PAIRING is inherently RELATIONAL (N-to-M: which follows
+  which). A pairing hub is a mapping by nature -> natural shared resource. ACTION: if Interchange maps
+  follow/pairing relationships, it should be shareable (many Monsoons' pairings through one hub) -- verify
+  it isn't already, then share via the binding mechanism.
+
+### Could not classify from code read (UI-only headers) -- the only genuine "check" left
+- **Raffles**: header is panel/layout only; function not revealed. CHECK its role (rl the raffles.json
+  layout / process()).
+- **Junction**: header panel-only; but the NAME (a junction = routing/merge) strongly implies relational.
+  CHECK process() -- if it routes/merges signals it's N-to-M -> shareable.
+(These two are the only real "verify function" items left; everything else is now classified.)
+
+### Definitive answer to "which not-shared could be"
+- **Sikit** (shared tuning source -- data already in a shared TuningTable, just needs multi-reader).
+- **Interchange** (pairing/follow hub -- relational by function).
+- **Junction** (likely, by name = routing/merge; confirm process()).
+- **Raffles** (unknown; confirm).
+- NOT Changi, NOT Causeway (per-Monsoon I/O, confirmed owned).
+The rule held: the RELATIONAL/MAPPING/SOURCE modules (Sikit source, Interchange pairing, Junction
+routing) are the shareable ones; the per-Monsoon I/O modules (Changi output, Causeway input) are not.
+Sikit is the standout because its data ALREADY lands in shared state -- lowest-effort win.
+
+Cross-ref: MonsoonExpanderManager.hpp (cachedSikitExpander, cachedJunctionExpander, cachedScaleExpander=
+Interchange, cachedRafflesExpander -- currently per-Monsoon caches), Sikit shared-TuningTable publish
+(the half-done sharing), CA (the N-to-M archetype), the mapping-vs-owned criterion above.
