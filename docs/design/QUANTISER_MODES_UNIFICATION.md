@@ -701,3 +701,43 @@ behaviour should be pinned down (pun noted) when the pins mechanism is re-read. 
 incoming CV" mechanism as settled until confirmed.
 Cross-ref: the shared-Change-Alley section above (now using melody pins), the melody-pins/dice
 distinction (verify).
+
+## CONFIRMED: melody pins = per-voice SOURCE-ROUTING; reroute the random draw (seq) or the poly CV (quant)
+
+Rodney clarified what melody pins actually do (my earlier "pin/fix the CV" guess was WRONG). Pins are a
+per-voice SOURCE-SELECTION / ROUTING matrix:
+- **Sequencer mode**: pins create CORRELATIONS by rerouting the RANDOM DRAW -- a pin says "this voice
+  takes its draw from THAT source instead of its own", so pinning voice 2 to voice 1's draw correlates
+  them (voice 2 follows voice 1's random pitch). Pins = how you build the East-West correlations at the
+  voice level (wire voices to share draws).
+- **Quantiser mode**: pins reroute the same way but on the POLY CV instead of the random draw. Example
+  (Rodney): CV channels 1-4 going through the system, a pin might route "CV 1 in" to multiple voices --
+  voices 2,3,4 all read CV channel 1 instead of their own. Pins do to the external poly CV exactly what
+  they do to the internal draw: reroute WHICH SOURCE each voice reads.
+
+### The unifying insight
+Pins are a per-voice SOURCE ROUTER; what they route AMONG is the pitch source -- internal draws
+(sequencer) or external CV channels (quantiser). The pin doesn't care if the source is a random draw or
+a CV channel; it just says "voice X reads source Y." So the reroute is clean: the pins ALREADY are a
+source-router; quantiser mode just changes the POOL of sources (draws -> CV channels). Same mechanism,
+swapped source pool -- the quantiser unification at the PIN level.
+
+### The musical payoff (why this is more than "don't waste the control")
+In quantiser mode, pins let you CORRELATE the external CV voices: feed 4 CV channels, pin voices 2-4 to
+CV 1 -> 4 voices all tracking CV 1's (quantised) pitch = a unison/correlated texture from one CV line.
+Or pin to different channels for independence, or mix. The SAME correlation-building expressiveness the
+pins give in sequencer mode, now on external CV. Change Alley's correlation apparatus (the East-West
+heart) works IDENTICALLY on external CV as on internal draws -- because the pins that build correlation
+are SOURCE-AGNOSTIC. This IS the interoperability story at its deepest: any Rack CV, run through Change
+Alley's full correlation engine via the pins.
+
+### Correction to the shared-Change-Alley section
+The reroute there is: pins route WHICH source each voice reads. Sequencer-Monsoon: pins route among
+internal draws. Quantiser-Monsoon: pins route among external CV channels. Same shared pins signal,
+per-Monsoon source pool -- reinforces the "reroute at the Monsoon, not Change Alley" resolution (each
+Monsoon supplies its own source pool per its mode; the shared pins matrix is interpreted against that
+pool at the consumer). NOT "pin/fix the CV" (my wrong guess) -- it's source-routing/correlation.
+
+Cross-ref: the shared-Change-Alley section (reroute = source-routing per-Monsoon), Change Alley
+correlation engine (pins build correlations at voice level), the quantiser unification (swapped source
+pool), the interoperability positioning (any Rack CV through the correlation engine via pins).
