@@ -1089,3 +1089,10 @@ question is CLOSED: 1:1, data-shared.
 Cross-ref: the display obstacle (dissolved -- don't share the surface), the polymetric maqam payoff
 (survives via .dmtune sharing), Change Alley (the genuinely-shared resource, unlike Colonnades), the
 shared-resource principle (share data not surfaces), Colonnades-as-fader-substitute (why 1:1).
+
+## PARKED (Rodney, from Munich -- not urgent): DAW gates to drive gate mode = dual of the phase knob
+Phase knob supports DAW phase modulation (drives position, Mode E/F). Gate equivalent: DAW gates drive
+Mode B -- and the mono gate INPUT already exists. The DAW reaches it via VCV Rack Pro's MIDI/CV bridge
+(DAW notes/automation -> gate at the input), not a new mechanism. Optional convenience: a dedicated gate
+input/param DAW automation maps to cleanly, mirroring the phase knob. NOT a lost inconsistency -- known
+shape, bounded, post-holiday. Logged so it can be let go.
