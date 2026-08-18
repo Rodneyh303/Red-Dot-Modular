@@ -1109,3 +1109,21 @@ matches the other module names). Emerald Hill = a famous Peranakan SHOPHOUSE str
 terrace houses, tiles, fretwork) -- keeps the shophouse/Peranakan DNA while shedding the "Micro"
 smallness = the grander frontage. Confirmed NOT already used elsewhere in the roster (Rodney). Supersedes
 the "rename TBD" in the parked note above.
+
+## Emerald Hill -- personal + panel notes (Rodney, holiday)
+- PERSONAL: Rodney LIVED on Emerald Hill Road -> the name marks home, not just a pretty street.
+  Autobiography in the work (like Change Alley naming the correlation axis) -- meaning is reason enough,
+  doesn't need a microtonal justification.
+- CONSERVATION AREA: Emerald Hill is a gazetted conservation area (preserved shophouse frontages, tiles,
+  fretwork). On-theme -- dot.modular is itself a kind of preservation (a coded portrait keeping
+  Singapore's fabric alive).
+- PANEL (for the design phase -- get "emerald" INTO the panel/shutters, make the name visible):
+  * Shutters as the emerald cue: Emerald Hill is the WIDER module (4 x 24-slot) -> render its 4 slots as
+    4 shuttered windows in EMERALD GREEN (literalises name + function + shophouse motif in one). Reuses
+    the existing Shophouse shutter gesture/indicator, emerald-toned.
+  * Emerald accent vs the brand red dot (#d4001a): red<->green are complementary, so a sparing emerald
+    accent on this one module's shutters/trim reads as "the emerald one" without breaking the family.
+  * Peranakan majolica tiles: Emerald Hill's real shophouses have green/teal majolica tiles -> an emerald
+    tile motif is both name-accurate AND Peranakan-authentic (echo existing tile work in the emerald
+    register).
+  Parked for the panel-refinement phase.
