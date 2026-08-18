@@ -1096,3 +1096,9 @@ Mode B -- and the mono gate INPUT already exists. The DAW reaches it via VCV Rac
 (DAW notes/automation -> gate at the input), not a new mechanism. Optional convenience: a dedicated gate
 input/param DAW automation maps to cleanly, mirroring the phase knob. NOT a lost inconsistency -- known
 shape, bounded, post-holiday. Logged so it can be let go.
+
+## PARKED (Rodney, holiday -- not urgent): double-width Shophouse Micro = 4 slots @ 24 degrees + rename
+Make Shophouse Micro double-width -> 4 x 24-note .dmtune slots (lifts the 2-ajnas @24 limit to 4 -- the
+fuller maqam journey without the CV-indexed-jins-bank rebuild). Simple, panel-honest, fits existing
+logic. RENAME: no longer "Micro" (it's the wider frontage now) -- pick a name still in the
+shophouse/Peranakan vein signalling MORE/fuller. Brainstorm names post-holiday. Parked.
