@@ -1102,3 +1102,10 @@ Make Shophouse Micro double-width -> 4 x 24-note .dmtune slots (lifts the 2-ajna
 fuller maqam journey without the CV-indexed-jins-bank rebuild). Simple, panel-honest, fits existing
 logic. RENAME: no longer "Micro" (it's the wider frontage now) -- pick a name still in the
 shophouse/Peranakan vein signalling MORE/fuller. Brainstorm names post-holiday. Parked.
+
+## Name chosen (Rodney, holiday): the double-width Shophouse Micro = "Emerald Hill"
+The wide 4x24-slot module (above) gets the name **Emerald Hill** (dropping "Road" -- cleaner, panel-fit,
+matches the other module names). Emerald Hill = a famous Peranakan SHOPHOUSE street off Orchard (ornate
+terrace houses, tiles, fretwork) -- keeps the shophouse/Peranakan DNA while shedding the "Micro"
+smallness = the grander frontage. Confirmed NOT already used elsewhere in the roster (Rodney). Supersedes
+the "rename TBD" in the parked note above.
