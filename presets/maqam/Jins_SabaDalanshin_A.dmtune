@@ -1,0 +1,41 @@
+{
+  "format": "dotmodular.tuning",
+  "version": 2,
+  "n": 15,
+  "cents": [
+    0.0,
+    128.0,
+    204.0,
+    291.0,
+    351.0,
+    382.0,
+    498.0,
+    590.0,
+    702.0,
+    825.0,
+    840.0,
+    911.0,
+    996.0,
+    1061.0,
+    1092.0
+  ],
+  "enabled": [
+    true,
+    true,
+    false,
+    false,
+    false,
+    true,
+    true,
+    false,
+    false,
+    false,
+    false,
+    true,
+    false,
+    true,
+    false
+  ],
+  "name": "Jins Saba Dalanshin on A: A B1/2b C Db E F",
+  "notes": "Jins Saba Dalanshin on A: A B1/2b C Db E F -- a jins mask over the Rast 15-pitch tuning. Transposable (root-relative). || Cent values after Sami Abu Shumays' maqam presets for Ableton Live 12 (tuning.ableton.com/arabic-maqam). Egypt/Greater Syria practice, one practitioner's deeply-informed version -- NOT a universal standard. Maqam identity is melodic, not just the scale."
+}
