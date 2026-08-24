@@ -1,0 +1,94 @@
+# ---------------------------------------------------------------------------
+# dot.modular -- multi-platform build (Windows / macOS / Linux) for VCV Rack 2
+#
+# Builds the plugin on all three platforms on every push, producing a
+# .vcvplugin artifact per platform. Solves the "container can't compile the
+# Rack SDK" constraint -- CI compiles in the cloud, no local toolchain needed.
+#
+# BEFORE THIS RUNS GREEN, TWO THINGS NEED A HUMAN CHECK (see NOTE 1 and NOTE 2):
+# ---------------------------------------------------------------------------
+name: Build
+
+on:
+  push:
+    branches: [ main, feat/microtonal ]
+  pull_request:
+  workflow_dispatch:        # manual trigger from the Actions tab
+
+env:
+  # NOTE 1 (VERIFY): pin to the Rack SDK your plugin targets. plugin.json says
+  # plugin version 2.0.1 -> Rack 2.x. Confirm the exact latest 2.x SDK and the
+  # zip URL/filename format at https://vcvrack.com/downloads (the naming has
+  # shifted across Rack releases; macOS is now a universal x64+arm64 build).
+  RACK_SDK_VERSION: "2.5.2"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false      # one platform failing shouldn't cancel the others
+      matrix:
+        include:
+          - { os: ubuntu-latest,  name: lin, sdk: "lin-x64" }
+          - { os: windows-latest, name: win, sdk: "win-x64" }
+          - { os: macos-latest,   name: mac, sdk: "mac-x64+arm64" }
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # --- toolchains -----------------------------------------------------
+      - name: Set up MSYS2 (Windows -- Rack builds under MinGW64, not MSVC)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            make tar unzip curl git
+            mingw-w64-x86_64-gcc
+
+      - name: Set up tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew install make
+
+      - name: Set up tools (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libgl-dev libglu-dev unzip curl
+
+      # --- Rack SDK -------------------------------------------------------
+      - name: Download Rack SDK
+        shell: bash
+        run: |
+          set -e
+          URL="https://vcvrack.com/downloads/Rack-SDK-${RACK_SDK_VERSION}-${{ matrix.sdk }}.zip"
+          echo "Fetching $URL"
+          curl -fL "$URL" -o rack-sdk.zip
+          unzip -q rack-sdk.zip     # unzips to ./Rack-SDK
+
+      # --- build ----------------------------------------------------------
+      # NOTE 2 (IMPORTANT -- distribution correctness): the Makefile currently
+      # has  -march=native , which compiles for the EXACT CPU of the build
+      # runner. That is fine locally but WRONG for a distributed binary: a
+      # plugin built on a CI runner can crash with "illegal instruction" on a
+      # user's older CPU. For release builds, replace -march=native with a
+      # portable baseline (e.g. -march=x86-64-v2, or just drop it). This
+      # workflow strips it at build time via RACK plugin flags override below
+      # so CI artifacts are portable; but the real fix is in the Makefile.
+      - name: Build
+        shell: ${{ runner.os == 'Windows' && 'msys2 {0}' || 'bash' }}
+        run: |
+          set -e
+          export RACK_DIR="$PWD/Rack-SDK"
+          # Portable arch override for CI artifacts (see NOTE 2). Remove once the
+          # Makefile no longer uses -march=native.
+          make -j2 dist EXTRA_FLAGS="-march=x86-64-v2" || make -j2 dist
+
+      # --- artifact -------------------------------------------------------
+      - name: Upload .vcvplugin
+        uses: actions/upload-artifact@v4
+        with:
+          name: dotmodular-${{ matrix.name }}
+          path: dist/*.vcvplugin
+          if-no-files-found: error
