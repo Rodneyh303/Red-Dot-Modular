@@ -71,3 +71,36 @@ Cross-ref: QUANTISER_MODES_UNIFICATION (swappable pitch source; the roll is one)
 (per-Monsoon source = 1:1, not shared like Lantern), the pins-as-source-router note, DICE_SCRUB_MODEL +
 PHASE_ENGINE_AUDIT (the counter-addressed navigation the roll would ride on), Sands panels (the per-voice
 focus-edit pattern), Lantern (visual language borrowed, role NOT shared).
+
+## NARROWED (Rodney): the roll is PITCH CV ONLY, and it's built AFTER the 3 quantiser modes are final
+
+Two corrections to the framing above:
+
+### 1. Pitch CV only -- not gate+CV
+The roll provides ONLY the PITCH CV for the 16 steps (the "what pitch" for each step position). Timing +
+gating still come from Monsoon's engine in whatever quantiser mode. So the roll is NOT a self-contained
+sequencer feeding what-AND-when -- it's JUST the pitch source; Monsoon supplies the "when". This fits the
+quantiser unification exactly: the roll is simply the SWAPPABLE PITCH SOURCE. Three pitch sources into
+one timing/gating/phrasing engine: external CV, internal draw, or (now) a drawn 16-step pitch pattern.
+The roll is a third pitch source, not a parallel sequencer.
+
+Consequence: "who clocks the roll" mostly DISSOLVES -- MONSOON clocks it. The roll isn't clocking
+anything; it supplies pitch for each of the 16 step positions and Monsoon's counter decides which step
+is read when. The roll is pitch DATA indexed by Monsoon's step position. (The nice dice-scrub/reverse/
+phase-navigates-the-drawn-pattern behaviour still follows automatically, precisely because Monsoon's
+counter does the indexing.)
+
+### 2. Build ONLY after all 3 quantiser modes are finalised
+The roll IS a quantiser-mode pitch source, so its behaviour is defined by how the quantiser modes consume
+pitch (poly CV routing, per-voice source handling, how pitch enters the quantise stage). Building the
+roll before the quantiser modes (C/D, and E/F as they land) are pinned = building a source for a socket
+whose shape isn't final. So the roll DEPENDS ON the quantiser modes being done; sequence it strictly
+after them. It plugs into the FINISHED quantiser pitch-input contract.
+
+### Net simplified concept
+A 16-step x 8-voice grid of PITCH values (scale degrees, 12-TET or microtonal) that presents to Monsoon's
+quantiser modes as poly pitch CV -- Monsoon does timing/gating/variation/correlation exactly as with any
+external CV. The roll is a pitch-pattern EDITOR whose output is CV, sitting in the same slot external CV
+sits in. Dependency-ordered AFTER quantiser-mode finalisation. Everything else in the concept above
+(microtonal rows = degrees, one-octave + octave strip, per-voice Sands-style focus edit, 1:1 per-Monsoon
+attach) stands.
