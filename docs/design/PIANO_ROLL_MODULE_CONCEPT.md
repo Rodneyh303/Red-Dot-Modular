@@ -139,3 +139,43 @@ modes generally. Sequence after Mode B/D are pinned.
 Cross-ref: the pitch-roll concept above (this is its gate twin), MODE_B_SPEC / MODES_C_D_QUANTIZER
 (the gate quantiser mode this feeds), SHAREABILITY_ANALYSIS (per-Monsoon 1:1 source), DICE_SCRUB_MODEL /
 PHASE_ENGINE_AUDIT (counter-addressed navigation of the drawn gate pattern).
+
+## CORRECTION + design points (Rodney): gate editor is MONO, clock/phase-linked, resolution matters
+
+### Gate editor is ONE channel, not 8 (corrects the "gate twin" symmetry)
+Gate/CV quantiser modes take a MONO gate in (confirmed earlier from code: Monsoon.cpp:527 getVoltage not
+getPolyVoltage; the gate is the SHARED step boundary, one gate for all voices, poly-ness comes from Sands
+per-voice rules at each step). So the gate sequencer feeding it is ONE channel = a single 16-step gate
+lane, NOT a 16x8 grid. The roll is per-voice (8 pitch lanes); the gate editor is one shared rhythm lane.
+They are NOT symmetric twins -- they match the actual input shapes: poly pitch CV (8 lanes) + mono gate
+(1 lane). The architecture sets the gate editor's dimensions.
+
+### Design point 1: link gate to clock or phase (not self-clocked)
+The 16-step gate lane needs a time-base; same question/answer as the pitch roll -- driven by MONSOON'S
+clock or phase, not its own. The lane is READ OUT by Monsoon's step counter (clock-driven) or by phase
+(phase-driven). Clock mode: step advances per tick. Phase mode: phase position selects the step.
+Consistent with the phase engine and with how the roll is counter-indexed. "Link gate to clock or phase"
+= the gate lane is addressed by the same timing source the mode uses.
+
+### Design point 2: resolution (the new consideration the gate lane raises)
+"16 steps" is meaningless without step-length. Decide:
+- Fixed division (each step = 1/16 -> 16 steps = one bar), OR settable step length (1/16, 1/8, triplet
+  ...) so the same 16 steps span different durations.
+- Gate WIDTH / per-step state: not just on/off. For the engine's legato/tie behaviour, a step likely
+  needs TRIGGER / TIE(hold/sustain) / REST -- because Monsoon's engine cares about legato (tied steps)
+  vs re-articulated steps. A pure on/off lane LOSES the tie information the whole legato/re-articulation
+  system (Keppel within-legato gate, Monsoon step-legato) depends on. So the per-step vocabulary should
+  probably be trigger / tie / rest (on / hold / off), not just on / off -- else it can't express the
+  phrasing the engine is built around.
+
+### Net (revised gate editor)
+A SINGLE 16-step gate lane, each step trigger / tie / rest (not merely on/off), read out by Monsoon's
+clock OR phase, with a settable step resolution. Mono (narrower than the roll) but with its own subtlety
+(resolution + tie-state) the roll lacks. Still per-Monsoon 1:1, still built after the gate quantiser mode
+(Mode D) is final. The "one module or two" fork above stands -- though the mono-gate vs poly-pitch shape
+difference is now an argument FOR two separate editors (different dimensions + different per-step
+vocabularies).
+
+Cross-ref: MODE_B_SPEC (mono gate input, Monsoon.cpp:527), the Keppel within-legato gate + Monsoon
+step-legato / re-articulation work (why tie-state matters), PHASE_ENGINE_AUDIT (clock vs phase readout),
+the pitch-roll concept (poly pitch, the shape contrast).
