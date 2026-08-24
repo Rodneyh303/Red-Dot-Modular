@@ -104,3 +104,38 @@ external CV. The roll is a pitch-pattern EDITOR whose output is CV, sitting in t
 sits in. Dependency-ordered AFTER quantiser-mode finalisation. Everything else in the concept above
 (microtonal rows = degrees, one-octave + octave strip, per-voice Sands-style focus edit, 1:1 per-Monsoon
 attach) stands.
+
+## Companion concept (Rodney): a separate GATE sequencer editor for gate quantiser mode
+
+Since the roll is PITCH-only, gate-driven quantiser mode (Mode D) needs its "when" from somewhere -> a
+SEPARATE gate sequencer editor. Clean what/when split (the two concerns a normal sequencer fuses, each
+given its own editor):
+- Piano roll editor -> PITCH CV (the "what"), into the quantise stage.
+- Gate sequencer editor -> GATE pattern (the "when"), into the gate input in gate quantiser mode (Mode D).
+
+Together they can drive a Monsoon in gate-quantiser mode entirely from hand-drawn patterns: gate editor
+says when, roll says what pitch, Monsoon's engine still does variation/correlation/transformation on top.
+Two independent deterministic seeds (rhythm + pitch), both varied by the same engine. Decoupling what from
+when yields all the combinations from two simple editors: fixed rhythm + generated pitch, fixed pitch +
+rhythm elsewhere, or draw both and let dice/scrub/spread vary the pair.
+
+### Same architectural class as the roll
+Per-Monsoon authoring surface (1:1, Sands-panel pattern); a deterministic source feeding an input the
+engine consumes; indexed by MONSOON'S counter so scrub/reverse/phase navigate the drawn GATE pattern too.
+The gate twin of the pitch roll -- inherits the roll's placement, 1:1 attach, and build-after-the-mode
+dependency.
+
+### The fork to decide later: one module or two?
+Gate grid and pitch grid are visually similar (16x8), tempting to FUSE into one "pattern editor" doing
+both. But that fusion is exactly what the pitch-only narrowing just DE-fused. LEAN: keep them separate
+(matches the committed what/when split) -- but it's a real design fork ("two narrow tools vs one combined
+roll"); the combined version has a seductive convenience that might justify the coupling. Conscious
+decision at build time, not now.
+
+### Dependency
+Gated on the GATE quantiser mode (Mode D) being finalised, same as the roll is gated on the quantiser
+modes generally. Sequence after Mode B/D are pinned.
+
+Cross-ref: the pitch-roll concept above (this is its gate twin), MODE_B_SPEC / MODES_C_D_QUANTIZER
+(the gate quantiser mode this feeds), SHAREABILITY_ANALYSIS (per-Monsoon 1:1 source), DICE_SCRUB_MODEL /
+PHASE_ENGINE_AUDIT (counter-addressed navigation of the drawn gate pattern).
