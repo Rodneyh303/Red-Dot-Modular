@@ -563,3 +563,41 @@ trivially clean (96/16=6, 192/16=12, 384/16=24). No new PPQN needed for the edit
 Cross-ref: NoteValues.hpp:24,30 (allowedPPQN 1/4/24), SequencerEngine.hpp:496 (ppqnSetting 24/48/96),
 MonsoonWidget.cpp:1341 (menu), the 64-steps thread (settled: use 48), the 16-lane constraint, the PPQN
 dial (this IS the dial: 24/48/96).
+
+## Step counts as SUBDIVISION-PER-GATE (Rodney's reframe): 16/24/32/48/64 core, 96 optional, drop 128
+
+Rodney's key reframe: 16 gates = a bar is the FLOOR (need >=16 steps). Counts above 16 aren't more gates
+-- they're finer PLACEMENT/LENGTH resolution for the SAME 16 gates. At 64 steps each of the 16 gates can
+be 1/2/3/4 steps long. Step-count-above-16 = a SUBDIVISION BUDGET PER GATE, not a gate-count increase.
+(This is Rodney's model, not Bitwig's.)
+
+### Subdivision each count gives PER GATE (steps / 16 gates)
+- 16 -> 1 per gate: on/off only (the floor)
+- 32 -> 2 per gate: 1/2 steps = HALF-gate (binary)
+- 48 -> 3 per gate: 1/2/3 = THIRD-gate (triplet feel within a gate)
+- 64 -> 4 per gate: 1/2/3/4 = QUARTER-gate (binary)
+- 96 -> 6 per gate: 1..6 = SIXTH-gate = BOTH halves/thirds (2,3) AND finer -> straight+triplet within a
+  gate
+- 128 -> 8 per gate: 1..8 = EIGHTH-gate, pure binary depth (8=2^3, NO triplet within-gate)
+
+### Answer: is 96 or 128 useful?
+- 16/24/32/48/64 = the core useful set. 16/32/64 = binary within-gate (halves/quarters); 24/48 = triplet
+  within-gate (thirds). Together = whole/half/third/quarter subdivision of a gate = the entire vocabulary
+  a person actually draws and hears.
+- 96 (sixth-gate) = the ONE higher tier worth CONSIDERING: 6=2x3 gives BOTH binary AND triplet
+  subdivision of a single gate -> lets a gate sit on a 16th-triplet position within the bar. Keep as an
+  optional "fine / triplet-placement" tier if triplet PLACEMENT (not just triplet gate-length) matters.
+- 128 (eighth-gate) = DROP for this editor: finer BINARY only, no new subdivision type (no triplets),
+  and 1/8-of-a-gate placement is below hand-draw/perception threshold for a gate sequencer = microtiming
+  not composition. (The PPQN grid underneath already gives sample-tight edges if ever needed.)
+
+### Steer
+Core set: 16 / 24 / 32 / 48 / 64. Optional fine tier: 96. Drop: 128.
+Story: "each gate subdivides into whole/half/third/quarter (16-64), optionally sixth (96) for fine
+triplet placement" -- maps perfectly onto the 16-gates-of-N-steps model. All are supported at the
+existing PPQNs (16/24/32/48/64 within PPQN 48's 192/bar; 96 needs PPQN 48 too since 192/96=2, or finer;
+128 would need PPQN 96's 384 -- another reason to drop it).
+
+Cross-ref: the 16-lane / 16-gates-a-bar constraint (the floor), the PPQN answer (24/48/96, all support
+these counts), the resolution/triplet note (24=triplet grid), the bar/trigger-tie-rest visual (gate
+length = N steps).
