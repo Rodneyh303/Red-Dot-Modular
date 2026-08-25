@@ -400,3 +400,39 @@ against the phase engine before choosing.
 Cross-ref: PHASE_ENGINE_AUDIT (how 24-PPQN maps to phase -- the bar-vs-phrase question), the resolution/
 triplet note (24 = the triplet divisor of 96), the 3x16-vs-2x24 options (both divisors of 96, why they
 work).
+
+## CORRECTION (Rodney + code): PPQN is a settable dial; "bar vs phrase" was a false question
+
+I overcomplicated this. Confirmed from code (SequencerEngine.cpp): ppqnSetting = 24 (:131); comment
+:322-324 "PPQN is now always 24/48/96, all of which resolve every note value to an integer pulse count
+(24 already covers 1/32 and all triplets). So every value is legal." Rodney: 24 PPQN -> 96 per bar was
+chosen precisely to handle ALL note lengths in clock mode, then phase mode is a convenient discretisation
+of that same grid.
+
+### Scratch the "bar vs phrase" question -- it doesn't map to anything real
+The engine has no bar-vs-phrase ambiguity; it has a PPQN that DISCRETISES PHASE. Phase is discretised to
+the PPQN grid (96/bar at 24 PPQN); note lengths + steps are integer pulse counts on it. There is no
+separate "is the cycle a bar or a phrase" axis -- that was invented. Remove it from consideration.
+
+### 64 steps: raise the PPQN (it's settable), don't fight a fixed 24
+PPQN is ALREADY settable ("always 24/48/96", extensible) -- it's a DIAL you set to make your desired step
+count land on integer pulses, not a fixed constraint. My "64 doesn't divide 96" had it backwards: for 64
+steps, pick a PPQN where 64 divides. Rodney: "64 PPQN would be divisible by 64" -- e.g. 48 PPQN -> 192/bar
+-> 192/64 = 3 ✓, or a higher PPQN as needed. The resolution isn't fought, it's chosen.
+
+### The real (simple) picture -- already in the architecture
+- PPQN is settable (24/48/96, extensible).
+- Chosen so every note length resolves to integer pulses (24 already covers 1/32 + triplets).
+- Step counts work when they divide the per-bar pulse total; since PPQN is SET, raise it to accommodate
+  the desired step resolution (64 -> a PPQN where 64 divides).
+- Phase mode = a convenient discretisation of that same pulse grid.
+So the gate editor's step-count support = "pick/allow the PPQN that makes the chosen step count land on
+integer pulses." Bitwig's 64/odd is reachable by choosing PPQN accordingly; the earlier 4-option fork +
+crux question is superseded by this.
+
+Supersedes the "THE constraint / bar-vs-phrase" section above (the divisor math there is still correct
+FOR A FIXED 24 PPQN, but PPQN is not fixed -- it's the dial).
+
+Cross-ref: SequencerEngine.cpp:131 (ppqnSetting=24) + :322-324 (always 24/48/96, every value integer),
+NoteValues.hpp (allowedPPQN, single source of truth), ClockEngine::pulsesPer16th, PHASE_ENGINE_AUDIT
+(phase discretised to the PPQN grid).
