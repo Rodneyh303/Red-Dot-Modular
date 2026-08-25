@@ -259,3 +259,42 @@ still per-Monsoon 1:1, still after quantiser-mode finalisation.
 
 Cross-ref: the gate-editor scoping (gate+phase modes), the trigger/tie/rest per-step vocabulary (join =
 tie across cells), PHASE_ENGINE_AUDIT (phase sweeps the grid), DICE_SCRUB_MODEL (counter-addressed).
+
+## Gate editor layout: STACKED ROWS (mono unlocks it) + edgeless expander overflow (Rodney)
+
+Two ideas for "more steps without resizing" (Rack modules are fixed-width; no drag-resize):
+
+### A. Edgeless expander in 16s
+Base holds 16 steps; an EDGELESS expander (seamless panel, no visible gap/edge with the host, so it
+reads as one continuous module) adds another 16, and another. Idiomatic Rack ("more room = attach") with
+the visual continuity of a resized module -- fakes Bitwig drag-resize via seamless expanders. On-brand
+(expander-land).
+
+### B. Stacked rows on one panel -- the MONO insight (stronger for the gate editor)
+The gate lane is MONO (one channel) -> a single 16-step lane uses one horizontal strip, leaving the
+panel's VERTICAL space free. So WRAP the pattern into rows: 3-4 rows x 16 = 48-64 steps stacked on ONE
+fixed panel, like text wrapping to the next line. A POLY editor couldn't do this (voices want the
+vertical axis); the mono gate editor CAN, precisely because it's mono. KEY INSIGHT: mono frees the
+vertical axis for step-wrapping.
+
+Advantages over the expander here:
+- No attach step, no width sprawl. 64 steps in a compact rectangle vs a very wide strip (a 64-step
+  horizontal line means constant sideways rack-scrolling; 4x16 stacked is glanceable).
+- The phrase reads as a BLOCK -- see the whole pattern at once, better for drawing/editing rhythm than a
+  long thin line.
+- Resolution/triplet friendly: maps onto the 48-per-bar grid (a row per beat/bar).
+
+### How they layer (not competing)
+Rows FIRST (free, compact, mono-enabled) for the common cases -- up to 4x16 = 64 steps in one module
+(64 gates is a lot of phrase). Edgeless expander as OVERFLOW if someone needs even more. Likely no
+expander needed for v1 if 4x16 covers realistic phrase lengths.
+
+### Open question (park): what do the rows MEAN?
+(a) Pure wrapping -- 64 steps in sequence, rows are visual line-breaks only (simpler, flexible), OR
+(b) Meaningful -- each row = a bar/beat, row boundary is rhythmic (readable, imposes structure).
+Lean (a) with optional bar-line markers. Interacts with resolution: row length = your resolution unit
+(e.g. row = one bar at 16th res -> 4 rows = 4 bars; triplets -> row length = the triplet resolution).
+
+Cross-ref: the resolution/triplet note (48-per-bar, row length), the gate-editor mono correction (why
+stacking works), the fixed-width Rack constraint (why not drag-resize), expander pattern (Changi/Causeway
+/etc -- the overflow idiom).
