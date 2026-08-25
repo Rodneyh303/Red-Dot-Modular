@@ -354,3 +354,49 @@ LEAN: 48 cells, switchable 3x16 (straight) <-> 2x24 (triplet) -- the truest real
 phase-cycle-over-16-or-24-grid idea. If no toggle, 2x24 as the single more-capable default.
 
 Supersedes the 26-based discussion above (26 was a typo).
+
+## THE constraint: step counts must fit the 24-PPQN phase mapping (Rodney) -- can't just copy Bitwig 64/odd
+
+Bitwig: up to 64 steps, arbitrary/odd counts -- because Bitwig's steps DEFINE the timing (each step
+triggers; step count sets the division freely). OURS is the opposite: steps must LAND ON the existing
+24-PPQN phase grid the phase engine reads. So not every step count is representable.
+
+### The divisor math (assuming 24 PPQN, 4/4 bar = 96 pulses)
+A step count N works cleanly iff the phrase's pulse total divides evenly by N (else steps fall BETWEEN
+phase-pulses -> unrepresentable or drift).
+- 16 steps -> 96/16 = 6 pulses/step ✓ (16th)
+- 24 steps -> 96/24 = 4 ✓ (16th-triplet -- THIS is why 24 works, it's the triplet grid at 24 PPQN)
+- 32 steps -> 96/32 = 3 ✓ (32nd)
+- 48 steps -> 96/48 = 2 ✓
+- 64 steps -> 96/64 = 1.5 ✗ DOES NOT DIVIDE (Bitwig's max doesn't fit our mapping!)
+- most odd counts (7,13,26): 96/N non-integer ✗
+Clean counts per 4/4 bar = divisors of 96: 1,2,3,4,6,8,12,16,24,32,48,96. (16 and 24 both present -> our
+two layout options work; 64 is NOT a divisor.)
+
+### FINDING: cannot copy Bitwig's "up to 64, any odd count" as-is
+The 24-PPQN phase mapping only represents step counts that divide the phrase's pulse total.
+
+### Resolution options (a real fork)
+1. Restrict step counts to DIVISORS of the phase resolution (...16,24,32,48...). Cleanest, most faithful
+   to the phase-driven arch; every step exactly on grid, no drift. Loses arbitrary odd counts.
+2. Raise the PPQN. 64/bar needs a resolution divisible by 64; 96 isn't, 192/bar (48 PPQN) -> 192/64=3 ✓.
+   Cost: finer phase counter, still won't cover EVERY odd count.
+3. Decouple step-count from grid: N steps map step k -> phase k/N (even division of the phrase), ROUND to
+   nearest 24-PPQN pulse at readout. Gets Bitwig's freedom at the cost of ROUNDING drift (odd/64-step
+   patterns snap to nearest pulse -- often fine for gates, a pulse or two jitter, but breaks
+   "exactly-on-grid").
+4. Per-PHRASE phase (not per-bar): if the PHRASE is one phase cycle, N steps just divide the phrase into
+   N -> 64/odd counts work, as long as phase is phrase-relative and not aligned to a bar's pulse grid.
+   The Bitwig model (phrase = the loop); sidesteps the divisor problem.
+
+### THE question to resolve (don't guess): is our phase cycle the BAR or the PHRASE?
+- Bar-locked (fixed 96 pulses @ 24 PPQN): step counts MUST divide 96 -> option 1 (restrict) or 2 (raise
+  PPQN). No free 64/odd.
+- Phrase-relative (phrase length flexes, is itself one phase cycle): arbitrary/odd counts work -> option
+  4, closest to Bitwig.
+This is the crux and depends on how the 24-PPQN->phase mapping is actually defined in the engine. Confirm
+against the phase engine before choosing.
+
+Cross-ref: PHASE_ENGINE_AUDIT (how 24-PPQN maps to phase -- the bar-vs-phrase question), the resolution/
+triplet note (24 = the triplet divisor of 96), the 3x16-vs-2x24 options (both divisors of 96, why they
+work).
