@@ -298,3 +298,33 @@ Lean (a) with optional bar-line markers. Interacts with resolution: row length =
 Cross-ref: the resolution/triplet note (48-per-bar, row length), the gate-editor mono correction (why
 stacking works), the fixed-width Rack constraint (why not drag-resize), expander pattern (Changi/Causeway
 /etc -- the overflow idiom).
+
+## Row-length options: prefer MUSICAL row lengths (24 not 26) -- ties to the triplet math (Rodney)
+
+Rodney floated: 3 rows x up to 26 (=78 steps) OR 2 rows x up to 24 (=48 steps). Evaluated against the
+resolution/triplet work:
+
+### 26 is a musically awkward row length
+26 = 2 x 13 (13 prime) -- doesn't divide into beats/subdivisions cleanly. If a row represents a musical
+span (bar / two bars), 26 maps onto no standard meter or subdivision. Fine only if 26 is "as many cells
+as fit the panel width" (headroom), not a musical length -- but then the pattern length users actually
+pick should still land on musical numbers (16, 24, 32...).
+
+### 24 is the strong number (triplet-friendly, from the resolution note)
+24/row = 6/beat in 4/4 -> 16th-triplets, 8th-triplets, 8ths, quarters. A 24-step row = one bar of
+triplet-grid. And 2 rows x 24 = 48 = the "magic" resolution: two bars of triplet-grid, OR the full mixed
+straight-16th + 16th-triplet resolution for one bar. Musically coherent where 26 isn't.
+
+### Steer
+- Row length should be MUSICAL: 24 (triplet-capable, also covers straight via the 48-mix) or 16
+  (straight-only). NOT 26.
+- Want the higher step count of the 3-row layout? Use 3 x 24 = 72 (three bars triplet-grid, more steps
+  than the 2-row option) or 3 x 16 = 48. Both musical.
+- Rows count (2 vs 3) = a panel-height + phrase-length question. Step WIDTH is the UI constraint: 24
+  cells across must stay a comfortable click target; if 24 is too narrow, drop to 16-wide rows.
+
+LEAN: 3 rows x 24 = 72 if panel height AND step-width allow (triplet-capable, generous); fall back to
+2 rows x 24 = 48 for a compacter module. Drop 26 -- it's the odd one out (literally, and non-musical).
+
+Cross-ref: the resolution/triplet note (24 = triplet grid, 48 = mixed magic), the stacked-rows layout
+(mono enables it), step click-target UI concern.
