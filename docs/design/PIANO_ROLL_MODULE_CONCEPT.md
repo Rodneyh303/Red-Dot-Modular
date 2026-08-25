@@ -299,7 +299,7 @@ Cross-ref: the resolution/triplet note (48-per-bar, row length), the gate-editor
 stacking works), the fixed-width Rack constraint (why not drag-resize), expander pattern (Changi/Causeway
 /etc -- the overflow idiom).
 
-## Row-length options: prefer MUSICAL row lengths (24 not 26) -- ties to the triplet math (Rodney)
+## Row-length options (CORRECTED: 26 was a typo -> 16) -- ties to the triplet math (Rodney)
 
 Rodney floated: 3 rows x up to 26 (=78 steps) OR 2 rows x up to 24 (=48 steps). Evaluated against the
 resolution/triplet work:
@@ -328,3 +328,29 @@ LEAN: 3 rows x 24 = 72 if panel height AND step-width allow (triplet-capable, ge
 
 Cross-ref: the resolution/triplet note (24 = triplet grid, 48 = mixed magic), the stacked-rows layout
 (mono enables it), step click-target UI concern.
+
+## CORRECTED options: 3x16 (straight) vs 2x24 (triplet) -- both = 48; maybe a TOGGLE (Rodney)
+(The earlier "26" was a typo for 16.) Real options: 3 rows x 16 OR 2 rows x 24 -- BOTH = 48 steps total.
+So it's not about step count (identical); it's about which MUSICAL GRID you offer:
+- 3 x 16 = 48: three rows of STRAIGHT/binary grid (16 = 2^4). Binary rhythms; can't do triplets.
+- 2 x 24 = 48: two rows of TRIPLET-capable grid (24 = 6/beat). Triplets + (via the 48-mix) straight too.
+Same 48 cells, DIFFERENT rhythmic vocabulary: 3x16 = clean binary sequencer; 2x24 = triplet/mixed.
+
+### The elegant move: make row-layout a TOGGLE (straight <-> triplet)
+Because both totals are 48, the same module can RE-FLOW 48 cells between 3x16 (straight) and 2x24
+(triplet) via a toggle. Cell count constant; only the grouping changes. Directly mirrors Rodney's "one
+phase cycle over a 16-res grid or a 24-res grid" -- the phase cycle divides into either arrangement, the
+toggle picks which. Most flexible answer, clean because the numbers cooperate (48 = 48).
+
+Tradeoff: a FIXED layout (pick one, ship it) is simpler to build + read; a mode-switch that reflows the
+grid is more code + a little "which mode am I in?" load.
+
+### Steer
+- Pick ONE, simplest, mostly straight time: 3 x 16.
+- Pick ONE, want triplets: 2 x 24 (more CAPABLE grid for the identical footprint -- reaches triplets that
+  3x16 can't, and 48 cells still express straight fine). The better single choice if choosing one.
+- Max flexibility: offer BOTH via a straight/triplet TOGGLE reflowing 48 cells between 3x16 and 2x24.
+LEAN: 48 cells, switchable 3x16 (straight) <-> 2x24 (triplet) -- the truest realization of the
+phase-cycle-over-16-or-24-grid idea. If no toggle, 2x24 as the single more-capable default.
+
+Supersedes the 26-based discussion above (26 was a typo).
