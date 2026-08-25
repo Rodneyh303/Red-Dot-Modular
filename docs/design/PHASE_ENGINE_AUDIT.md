@@ -371,3 +371,46 @@ regardless of pitch source.
 
 Cross-ref: PHASE_ENGINE_AUDIT "the one real design knot" (lines 65-115), GateState.cpp (countdown hold),
 PhaseEngine.hpp (Option A scaffolding), PIANO_ROLL_MODULE_CONCEPT (phase note-length reminder).
+
+## SUPERSEDED (Rodney was right; I misread) -- reverse IS done, via signed Philox, not a hold rework
+
+The Option A/B framing above is STALE. Rodney: "we already support forward/reverse phase, linked to
+forward/reverse Philox, and got rid of the non-reverse mode." Confirmed in code:
+- PhaseEngine.hpp ADDS a `reverse` flag; backward ramp -> edges fire in reverse -> sequencer steps
+  playhead backward. reverse = (step < 0), read from the SIGN of phase motion (:136,:149). No separate
+  forward-only mode gating it -- reverse is intrinsic to the signed system.
+- SequencerEngine.cpp:200: reverse strategy is "Philox, a pure function of a SIGNED index" -- going
+  backward RE-DERIVES the roll at the earlier signed index, NOT un-winding a countdown. This IS Rodney's
+  "reverse phase linked to reverse Philox."
+- Mature, DEBUGGED reverse support throughout: per-lane direction reversal (:768,:1080,:1091), named
+  reverse bug fixes ("reverse isolated-teal bug" :458, direction-independent trigger :804), UI direction
+  cues (lastPlayDir :161). Not scaffolding -- worked.
+
+### Why the old A/B framing was WRONG
+The audit assumed reverse REQUIRES reworking GateState into position-derived spans (Option B). It DOESN'T:
+reversibility lives in the signed Philox COUNTER (re-derive the roll at index N-1), so GateState stays
+COUNTDOWN-derived (holdRemain decrement) AND reverse works. The counter was made signed/reversible, which
+sidesteps the hold-model rework the audit feared. Cleaner than predicted. My previous "Option B not
+started / note-length = forward-only countdown" was WRONG -- based on this stale doc, not the code.
+
+### What's ACTUALLY still open (much smaller than "Option B")
+PhaseEngine STEP 1 scope = "forward + within-phrase reverse" (both DONE). The remaining boundary is the
+JUMP/SCRUB discontinuity (teleport): currently detected (`jumped`, `jumpSixteenths` declared) but it
+RESYNCS position WITHOUT replaying the crossed edges ("that's a later step", :16-18). So:
+- Continuous forward: DONE.
+- Continuous reverse: DONE (signed Philox).
+- Jump/scrub teleport (integrate across a discontinuity, replay crossed edges): NOT YET -- the real open
+  item, narrower than the old "Option B".
+
+### Corrected note-length answer for phase quantiser mode
+Phase drives note lengths, forward AND reverse, via the signed-Philox reversible engine -- same as phase
+sequencer mode, with pitch from the external source in quantiser mode (Rodney's framing, correct). No
+Option-A-only caveat: reverse is already supported. The only not-yet case is jump/scrub teleport edge
+replay.
+
+Supersedes the "one real design knot" Option A/B split above (reverse solved via signed counter, not a
+hold rework) and the "Option B: none" status note (reverse IS done; only jump/scrub replay remains).
+
+Cross-ref: SequencerEngine.cpp:200 (signed-index Philox = reverse), PhaseEngine.hpp:13-18 (reverse flag +
+jump/scrub deferred), GateState.cpp (still countdown, and that's FINE because the counter carries
+reversibility).
