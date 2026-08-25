@@ -475,3 +475,54 @@ can't without rebuilding the counter). 3x16 stacked rows is the engine-native an
 Cross-ref: SequencerEngine.cpp:30 (DNA_LCM=LCM(1..16)*2), :80/:84 (cachedLength=16, full-16 window),
 :20-26 (lane lengths 1..16, pingpong periods), the stacked-rows layout (now engine-justified, not just
 mono-justified), the PPQN dial (triplets via resolution not length).
+
+## THE hard part: gate mode is EVENT-driven, a grid editor is QUANTIZED -- how to reconcile (Rodney)
+
+Rodney: in gate mode we take a step when the external gate goes HIGH, hold it high for an ARBITRARY
+number of pulses until it goes low, then maybe REST an arbitrary number of pulses before the next high.
+"Not sure how to map that to a visual gate editor."
+
+### The mismatch (named precisely)
+Gate mode is EVENT-DRIVEN, not grid-driven: a step = gate goes high; hold duration + rest duration are
+arbitrary continuous pulse counts dictated by the INCOMING gate's rhythm. Gate mode has NO inherent grid.
+A visual gate editor IS a grid (discrete equal cells = a quantization). So you're trying to draw an
+unquantized, arbitrary-length signal on a quantized grid. The mismatch is fundamental -- not something
+missing.
+
+### The key insight: if you DRAW the gate, you BECOME the source -> you choose the quantization
+The editor doesn't represent an arbitrary EXTERNAL gate -- it PRODUCES a gate. A produced gate's
+vocabulary is whatever you decide. So the question isn't "visualize arbitrary gates" -- it's "what gate
+vocabulary do I let the user draw, at what grid resolution." Once you're the source, you CHOOSE the
+quantization (the PPQN dial) and the arbitrariness goes away: hold/rest durations become INTEGER numbers
+of grid cells, not arbitrary pulses. You lose "arbitrary 37 pulses" but gain "drawable" -- and lose almost
+nothing musically (nobody hand-draws 37-pulse gates; they draw quarter/rest/two-eighths).
+
+### Visual vocabularies (all solved UIs, borrowable)
+1. BAR model (best fit to Rodney's description): each gate is a horizontal BAR drawn across cells. Bar
+   LEFT EDGE = gate goes high; bar LENGTH = cells held high; GAP to next bar = rest. Maps the description
+   exactly (bar start = high, length = hold, gap = rest). How piano-rolls/Bitwig show note length. A gate
+   is not "step on/off" -- it's "a bar with a start and a length."
+2. TRIGGER/TIE/REST per cell (the step-sequencer idiom for the same thing): each cell = trigger (go high),
+   tie/hold (stay high, extend previous), or rest (low). "High for 3 cells then rest" = trigger,tie,tie,
+   rest. Grid-native; decomposes arbitrary hold into trigger + N holds. Feeds the engine's existing
+   legato/tie machinery.
+3. Gate-length-per-step: each step on/off + a length (covers X cells). More granular, more fiddly.
+(1) and (2) are the SAME THING at different granularities -- (1) draws the bar directly, (2) expresses it
+as trigger+ties. Both reconcile grid with gate mode: both produce "high for integer cells, rest for
+integer cells" = the arbitrary-pulse behaviour QUANTIZED to the chosen grid.
+
+### Steer
+Visual = BARS (matches "high, hold a duration, rest" directly); data model = TRIGGER/TIE/REST per cell
+(feeds the existing legato/tie machinery). Two views of one thing. Grid resolution = the PPQN dial.
+
+### Honest subtlety: the editor REPLACES the external gate, it doesn't visualize one
+In EXTERNAL gate mode the rhythm comes from outside. If the editor PRODUCES the gate, it's not "external
+gate mode" -- it's "editor-as-internal-gate-source." The gate analog of the piano roll being an internal
+PITCH source. Be clear: you can't visualize an arbitrary external gate on a grid; you AUTHOR a
+grid-quantized gate to use INSTEAD of one. May be a distinct sub-mode (internal gate gen switched in
+where the external gate would go).
+
+Cross-ref: the trigger/tie/rest per-step vocabulary (earlier note -- now the DATA MODEL under the bar
+view), the 16-lane constraint (bars live within a 16-cell lane), the PPQN dial (grid resolution),
+gate-editor scoping (this is the gate-mode authoring surface), the piano-roll internal-pitch-source
+parallel (this is its gate twin as an internal source).
