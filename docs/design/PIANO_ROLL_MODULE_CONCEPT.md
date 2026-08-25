@@ -601,3 +601,38 @@ existing PPQNs (16/24/32/48/64 within PPQN 48's 192/bar; 96 needs PPQN 48 too si
 Cross-ref: the 16-lane / 16-gates-a-bar constraint (the floor), the PPQN answer (24/48/96, all support
 these counts), the resolution/triplet note (24=triplet grid), the bar/trigger-tie-rest visual (gate
 length = N steps).
+
+## PPQN requirement for the gate-editor set: PPQN 48 (Rodney)
+
+Core set 16/24/32/48/64 + optional 96 -> all divide 192 (PPQN 48's per-bar pulses): 192/16=12, /24=8,
+/32=6, /48=4, /64=3, /96=2. So PPQN 48 covers the ENTIRE set incl the optional 96 tier. PPQN 24 (96/bar)
+is NOT enough -- 64 fails (96/64=1.5), 96 is only the trivial full-grid. PPQN 96 (384/bar) covers it too
+but only adds 128, which is dropped -> unnecessary headroom.
+
+DECISION (Rodney): require PPQN 48; RESTRICT the user if they select 24 PPQN (the set needs 192/bar; 24
+can't do 64). No need for PPQN 1, 4, or 96 for this editor -- 48 is exactly right. The musically-chosen
+set lands exactly on PPQN 48's support: no wasted resolution, nothing unreachable.
+
+Phase drive maps cleanly at 48 too (phase discretises to the same 192-pulse grid).
+
+Cross-ref: the step-count-as-subdivision-per-gate note (the set), the PPQN answer (24/48/96 supported),
+PHASE_ENGINE_AUDIT (phase note-length = clock-mode holdRemain unchanged in the forward-phase Option A --
+see below).
+
+## Reminder: phase-mode note lengths = clock-mode holdRemain UNCHANGED (Option A) -- per PHASE_ENGINE_AUDIT
+Rodney asked what was decided for note lengths in phase quantiser mode. Per PHASE_ENGINE_AUDIT ("the one
+real design knot"):
+- Note-hold (holdRemain, multi-step held notes) is currently COUNTDOWN-derived (decrement per edge),
+  coupled to forward motion.
+- DECISION: ship Option A = "phase as clock", phase moves FORWARD only; boundary crossings fire one edge
+  each; holdRemain works UNCHANGED -> note lengths behave EXACTLY as in clock mode. Gives tempo-ramp /
+  swing-via-phase-warp / sync-to-external-phase, but NOT reverse/scrub. Recommended + decided first cut.
+- Option B (phase addressable anywhere, reverse+scrub) = DEFERRED, separately scoped: would require
+  note-hold to become POSITION-derived (not countdown) + deterministic mid-held-note re-entry. "A proper
+  project", later.
+So: forward-phase Option A keeps the note-length model identical to clock mode -> everything decided for
+step counts / subdivisions / PPQN 48 applies UNCHANGED to phase mode. That's WHY "phase drive maps
+cleanly" -- Option A changes only the timing source, not the note-length model.
+
+Cross-ref: PHASE_ENGINE_AUDIT lines 65-115 (Option A/B, the phased plan), the gate-editor resolution
+notes (all apply to phase mode via Option A).
