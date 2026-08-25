@@ -526,3 +526,40 @@ Cross-ref: the trigger/tie/rest per-step vocabulary (earlier note -- now the DAT
 view), the 16-lane constraint (bars live within a 16-cell lane), the PPQN dial (grid resolution),
 gate-editor scoping (this is the gate-mode authoring surface), the piano-roll internal-pitch-source
 parallel (this is its gate twin as an internal source).
+
+## Which PPQN without major code change (Rodney) -- answer from code: 24 / 48 / 96
+
+Two different "PPQN" things in the code:
+- allowedPPQN bitmask (NoteValues.hpp:24,30): note-value legality is tracked at only THREE tiers --
+  bit1=PPQN 1, bit2=PPQN 4, bit4=PPQN 24. At PPQN 24 every note value (incl 1/32 + all triplets) resolves
+  to an integer. So the note-length legality system knows 1/4/24; 24 is what everything is designed +
+  tested around.
+- ppqnSetting (SequencerEngine.hpp:496 "master PPQN pulse grid (24/48/96)"): settable via right-click
+  menu (MonsoonWidget.cpp:1341), persists (MonsoonPersistenceManager.cpp:247). 24/48/96 are the intended
+  selectable set.
+
+### Answer: 24, 48, 96 are handled with NO major change
+They're the designed set -- ppqnSetting accepts them, menu offers them, they persist, and each is a clean
+multiple of 24, so every integer-pulse guarantee the note table gives at 24 still holds (48 = 24x2, 96 =
+24x4 are just finer). "Free" because multiples of 24.
+
+### This settles the 64-steps question: use PPQN 48, no new PPQN needed
+24/48/96 -> per-bar pulses 96/192/384. 64 divides: 96/64 ✗, 192/64 = 3 ✓, 384/64 = 6 ✓. So 64 steps/bar
+works at PPQN 48 (192/bar, 3 pulses/step) or 96 (384/bar) -- ALREADY supported, no code change. You don't
+ADD a PPQN for 64 steps; you use 48. (Rodney's "64 PPQN divisible by 64" pointed the right way, but 48 is
+already enough and already supported.)
+
+### What WOULD be a major change
+Any PPQN NOT a multiple of 24: the allowedPPQN bitmask only certifies note-value integer-resolution at
+1/4/24, so a PPQN introducing a factor the note table doesn't account for (e.g. 32, or a 64 base) means
+revisiting NoteValues.hpp legality masks + re-verifying every note value resolves. Stay in the 24-family
+(24/48/96) = tested ground.
+
+### For the gate editor
+Grid resolution = pick from 24/48/96 (all divisible by 3 -> triplets fine at any of them). Step counts
+that need finer than 96/bar -> go to 192 (PPQN 48) or 384 (PPQN 96). 16-step lanes at any of these are
+trivially clean (96/16=6, 192/16=12, 384/16=24). No new PPQN needed for the editor.
+
+Cross-ref: NoteValues.hpp:24,30 (allowedPPQN 1/4/24), SequencerEngine.hpp:496 (ppqnSetting 24/48/96),
+MonsoonWidget.cpp:1341 (menu), the 64-steps thread (settled: use 48), the 16-lane constraint, the PPQN
+dial (this IS the dial: 24/48/96).
