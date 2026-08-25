@@ -414,3 +414,36 @@ hold rework) and the "Option B: none" status note (reverse IS done; only jump/sc
 Cross-ref: SequencerEngine.cpp:200 (signed-index Philox = reverse), PhaseEngine.hpp:13-18 (reverse flag +
 jump/scrub deferred), GateState.cpp (still countdown, and that's FINE because the counter carries
 reversibility).
+
+## What the JUMP/SCRUB code ACTUALLY does now (read of PhaseEngine.hpp process(), corrects the above)
+
+The header's "STEP 1 = resync without replaying" comment is STALE vs the implemented process(). Actual
+behaviour:
+- Per sample: shortest-path phase delta d (wrap-aware: 0.98->0.02 = small forward, not a backward jump);
+  derive absolute targetPulse from continuous unwrapped phase; step = targetPulse - pulsePos, mag = |step|.
+- JUMP DETECT: JUMP_PULSES = p16 (one 1/16). If mag > one 1/16 in a single sample -> jump.
+- ON A JUMP (what it does NOW -- NOT discard): sets jumped=true, reverse=(step<0), and COMPUTES
+  jumpSixteenths = signed # of whole 1/16 steps spanned (rounded to nearest 1/16 to land on the grid),
+  updates pulsePos to target, returns. It does NOT emit the pulse burst itself; it REPORTS jumpSixteenths
+  and the dispatch runs the verified executeModeE path that many times = REPLAY of the crossed steps.
+  Modulation auto-frozen (whole replay in one process() call; re-sampled only next block).
+- CONTINUOUS (mag <= p16): one pulseEdge per crossed pulse; 1/16 + 1/4 edges from pulsePos % p16 parity
+  so they stay phase-aligned in EITHER direction. Forward + reverse both here.
+
+### Corrected status (supersedes my earlier "resync/discard" and "Option B not done")
+- Continuous forward: DONE.
+- Continuous reverse: DONE.
+- Jump/scrub REPLAY: IMPLEMENTED (within-phrase) -- PhaseEngine reports signed jumpSixteenths, dispatch
+  replays executeModeE per crossed 1/16. The replay-vs-skip question is ALREADY DECIDED IN CODE: it
+  REPLAYS (not silent skip).
+- REMAINING gap (narrow, code-flagged): "WITHIN-DRAW SCOPE: replay bounded to the current phrase; a jump
+  crossing the phrase boundary is CLAMPED to the boundary; cross-draw regeneration is a later
+  refinement." So within-phrase scrub replays correctly; CROSS-PHRASE-BOUNDARY jumps are clamped, not
+  regenerated. That is the actual open item -- much smaller than "teleport unhandled".
+
+Corrects two stale claims: (1) audit's "resync without edges" -- the code computes+replays jumpSixteenths;
+(2) my earlier statement that replay-vs-skip is an open design choice -- code already chose replay. The
+ONLY real remaining refinement is cross-phrase-boundary jump regeneration (currently clamped).
+
+Cross-ref: PhaseEngine.hpp process() (jump detect + jumpSixteenths replay, within-draw clamp),
+SequencerEngine executeModeE (the replayed path), the signed-Philox reverse note above.
