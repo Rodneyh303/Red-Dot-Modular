@@ -636,3 +636,34 @@ cleanly" -- Option A changes only the timing source, not the note-length model.
 
 Cross-ref: PHASE_ENGINE_AUDIT lines 65-115 (Option A/B, the phased plan), the gate-editor resolution
 notes (all apply to phase mode via Option A).
+
+## SIMPLIFICATION (Rodney): gate module is CLOCK-driven only, NOT phase -- phase mode self-generates
+
+Bottom line: phase quantiser mode ALREADY generates notes (drives note lengths fwd+reverse via the
+signed-Philox engine -- confirmed working). So phase mode is self-sufficient and does NOT need the gate
+module to supply anything. Therefore the gate module only needs to be driven by the CLOCK, not by phase.
+
+### What this REMOVES from the gate-editor spec (supersedes earlier phase-related requirements)
+- "Readout by phase-in (phase position selects the step)" -> GONE. No phase-driven readout mode.
+- "gate + phase modes only" scoping -> narrows to the GATE (clock-driven) mode only.
+- Gate lane walked by phase (scrub/reverse navigating the drawn gate pattern) -> NOT NEEDED; phase mode
+  doesn't use the gate editor at all.
+
+### Why clean
+Phase mode generates its own notes (pitch + timing + length) from the engine = a complete generator. The
+gate editor exists only to supply a DRAWN GATE where the engine isn't generating the gate itself = the
+GATE quantiser mode. So the gate editor belongs to ONE mode, time-based by the CLOCK (the clock is the
+pulse grid the drawn gates sit on / are walked through), and phase mode is simply out of scope.
+
+### Terminology pin (avoid re-muddling)
+Gate editor = the drawn-gate SOURCE for GATE quantiser mode, advanced/timed by the CLOCK (clock = the
+time-base walking through the drawn gate pattern). NOT phase-driven. (Earlier scoping said "gate+phase,
+not clock mode" meaning Monsoon self-generates gates in clock mode; the refinement now: the gate editor's
+drawn gates ARE the gate source, and the clock provides their pulse grid. Phase mode excluded because it
+self-generates notes entirely.)
+
+Supersedes: the "gate + phase modes only" readout scoping and the phase-driven gate-lane readout. Gate
+editor is clock-time-based, gate-mode only.
+
+Cross-ref: PHASE_ENGINE_AUDIT (phase mode generates notes fwd+reverse, self-sufficient), the gate-editor
+scoping note (now narrowed to clock-driven gate mode), the PPQN-48 note (clock pulse grid).
