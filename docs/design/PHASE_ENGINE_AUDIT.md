@@ -332,3 +332,42 @@ The knob path feeds phaseVolt/connected into `phase.process` identically to CV, 
 Confirm on a scope in Rack: automate PHASE_PARAM downward and verify the sequence runs
 backward (not just that it stops). Also confirm one Bitwig phase cycle == one Monsoon bar
 (phaseInMax scaling) so the mapping is 1:1; if the host ramps per-beat, add a multiplier.
+
+## Status + clarification (Rodney asked: progress on Option B? why the split?)
+
+### Option B progress: NONE (Option A scaffolding exists)
+Code check: src/dsp/engines/PhaseEngine.hpp EXISTS (Option A's forward-phase engine started). BUT
+GateState is still PURELY COUNTDOWN-derived (GateState.cpp: holdRemain = dur; holdRemain -= 1 per edge;
+armGate(holdRemain)). There is NO position-derived hold model -- that IS the defining feature of Option
+B, and it's absent. So: Option A infrastructure exists (PhaseEngine), Option B does NOT (hold model still
+forward-coupled countdown). No Option B progress. (Caveat: grep-level; whether PhaseEngine is fully wired
+is a closer read, but the HOLD MODEL -- what Option B needs -- is definitively still countdown.)
+
+### Why the split? It's about phase DIRECTION, not pitch source
+Rodney's framing: "in phase quantiser mode phase drives note lengths just like phase sequencer mode but
+takes pitch from an external source." TRUE -- but that's the quantiser-unification (swap pitch source),
+and it does NOT dissolve the A/B split, because the split has NOTHING to do with pitch source. The split
+is entirely about note-hold under NON-FORWARD phase:
+- Note length = a COUNTDOWN (3-step note: holdRemain=3, decrement each edge). Works ONLY if time moves
+  forward.
+- Option A = phase FORWARD only -> countdown works unchanged -> note lengths = clock mode. Tempo-warp/
+  swing/sync, but NOT reverse/scrub.
+- Option B = phase addressable ANYWHERE incl BACKWARD (reverse/scrub) -> a decrementing countdown is
+  meaningless scrubbing backward into a held note -> hold must become POSITION-derived ("is this position
+  within the span of a note that started N steps earlier"). That rework is the ENTIRE cost of B.
+
+So A vs B is ORTHOGONAL to sequencer-vs-quantiser -- a property of the phase engine's hold model, shared
+by both:
+- Phase SEQUENCER (internal pitch) + A = works, note-length clock-like. (scaffolded)
+- Phase QUANTISER (external pitch) + A = works identically, just swap pitch source. (Rodney's statement --
+  correct)
+- EITHER + B (reverse/scrub) = needs the position-derived hold rework. (not done, deferred)
+
+Phase-quantiser note-lengths DO come "for free" from phase-sequencer -- but only in Option A, BECAUSE A
+keeps the countdown model. The reason "why we split" was hard to recall: the split isn't a quantiser-mode
+decision at all -- it predates and is independent of it. It's purely forward-only (cheap, keeps countdown)
+vs any-direction (expensive, needs position-derived hold). Reverse/scrub is the ONLY thing that forces B,
+regardless of pitch source.
+
+Cross-ref: PHASE_ENGINE_AUDIT "the one real design knot" (lines 65-115), GateState.cpp (countdown hold),
+PhaseEngine.hpp (Option A scaffolding), PIANO_ROLL_MODULE_CONCEPT (phase note-length reminder).
