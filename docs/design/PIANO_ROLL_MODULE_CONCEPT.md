@@ -436,3 +436,42 @@ FOR A FIXED 24 PPQN, but PPQN is not fixed -- it's the dial).
 Cross-ref: SequencerEngine.cpp:131 (ppqnSetting=24) + :322-324 (always 24/48/96, every value integer),
 NoteValues.hpp (allowedPPQN, single source of truth), ClockEngine::pulsesPer16th, PHASE_ENGINE_AUDIT
 (phase discretised to the PPQN grid).
+
+## HARD CONSTRAINT (Rodney + code): lane length is 1..16, baked into the counter. 16 gates = a bar.
+
+Confirmed from SequencerEngine.cpp -- and it's load-bearing, not a UI choice:
+- cachedLength = 16 (:80); length defaults to the "full 16-step window" (:84); lane lengths run 1..16
+  (:20-21).
+- DNA_LCM = 1441440 = LCM(1..16) x 2 (:30) -- the engine precomputes the LCM of ALL lane lengths 1..16
+  (x2 for the 2*16 pingpong period) so every lane period divides the counter wrap and all lanes stay
+  continuous across it (:41-47, documented len-16-pingpong edge case needing the factor of 32).
+So 16 is baked into the counter arithmetic: the signed reversible counter, reproducible wrap, pingpong/
+pendulum periods, the whole navigable-randomness system, all assume lane length in 1..16.
+
+### Consequences for the gate editor (overrides some earlier notes)
+1. "Up to 64 steps" is NOT a pick-a-PPQN problem -- it's a "counter is built for 1..16" problem. A
+   64-length lane would need LCM(1..64)x2 (astronomically larger, blows up the counter range) or a
+   different long-pattern mechanism. So Bitwig's 64-length lane is against the engine's grain.
+2. This DECIDES the earlier 3x16-vs-2x24 question (which I'd left as taste): 3x16 = three 16-step LANES,
+   natively supported. 2x24 = 24-LENGTH lanes, which exceed the 1..16 max and fight the lane-length
+   machinery. So 3x16 is WITH the grain; 2x24 is AGAINST it. Flips my earlier "2x24 more capable" lean --
+   2x24 may be more capable musically but it fights the engine; 3x16 is native.
+3. Natural gate-editor shape = MULTIPLE 16-STEP LANES/ROWS, not longer lanes. Want a 48-step phrase? =
+   three 16-step lanes, each a row, each natively counter-supported. The stacked ROWS aren't just UI --
+   they're HOW you get length while respecting the 16-max: each row is its own 16-lane. Architecture and
+   UI agree.
+4. Triplets come from PPQN WITHIN a 16-lane, not from 24-length lanes. A 16-step lane at a triplet PPQN
+   gives triplet TIMING; no 24-length lane needed. LENGTH stays 16 (engine constraint); RESOLUTION is the
+   PPQN dial (settable). Orthogonal -- stop tangling them.
+
+### Revised gate-editor shape (respecting the 16-max)
+Rows = stacked 16-step lanes (e.g. 3 rows = 48 steps as 3x 16-lanes). Length per lane 1..16 (native).
+Triplet/subdivision via the PPQN dial, not via lane length. This resolves the layout AND the step-count
+question via the real constraint: you don't make lanes longer than 16 -- you add more 16-lanes (rows).
+
+Supersedes: the 2x24 option and the "up to 64 steps" framing (both assumed lanes could exceed 16; they
+can't without rebuilding the counter). 3x16 stacked rows is the engine-native answer.
+
+Cross-ref: SequencerEngine.cpp:30 (DNA_LCM=LCM(1..16)*2), :80/:84 (cachedLength=16, full-16 window),
+:20-26 (lane lengths 1..16, pingpong periods), the stacked-rows layout (now engine-justified, not just
+mono-justified), the PPQN dial (triplets via resolution not length).
