@@ -219,3 +219,43 @@ the mode's external timing.
 Cross-ref: QUANTISER_MODES_UNIFICATION (the A/B/E <-> C/D/F taxonomy; C generates, D/F take external),
 PHASE_ENGINE_AUDIT (phase readout), MODE_B_SPEC (external gate handling), the pitch-roll concept
 (counter-addressed sibling).
+
+## Gate editor: variable steps + RESOLUTION / triplets (Rodney, birthday, Berlin-bound)
+
+Inspiration: Bitwig gate sequencer -- variable steps you can JOIN to get different note lengths; one
+phase cycle mapped over a 16-res grid, 24-res grid, etc.
+
+### Reframe: decouple "number of gates" from "grid resolution"
+"16 gates of whatever length for one phrase" -> the 16 is the number of NOTE EVENTS, not grid cells. Up
+to 16 notes, placed on a finer underlying grid, each with a LENGTH (joining cells = a held note, the
+trigger/tie/rest state). Variable step count + "join for length" are the same idea: a note spans a
+variable number of grid cells. 16 = a note budget; the grid underneath is separate and finer.
+
+### Triplets = a divisibility question (the direct answer)
+A 16-cell grid is 2^4 = pure binary: halves/quarters/8ths/16ths yes, TRIPLETS NEVER (no factor of 3).
+- Triplets REQUIRE a resolution divisible by 3. Non-negotiable.
+- 24/bar (6/beat): 16th-triplets, 8th-triplets, 8ths, quarters -- but NOT clean straight 16ths (4/beat;
+  6/4 not integer).
+- 48/bar (12/beat): the magic number -- holds BOTH straight 16ths (every 3rd cell) AND 16th-triplets
+  (every 2nd cell) in the SAME grid. 12/beat = LCM(4,6).
+
+### The fork to decide
+- Selectable resolution per lane/phrase (16, 24, 48...): simpler, switch straight<->triplet, can't easily
+  MIX in one phrase. Matches Rodney's "phase cycle over 16 or 24 grid" (Bitwig picks the grid the phase
+  divides into).
+- One high resolution (48): place straight AND triplet notes freely in one phrase; denser grid to edit.
+
+### Readout mapping
+- Phase mode: phase 0->1 sweeps the R cells; note high while phase in [start, start+length). Variable
+  phrase length is free -- one phase cycle IS the phrase, whatever the cell count.
+- Gate mode: refines the "regular clock" caveat -- the incoming clock should run AT THE RESOLUTION RATE
+  (one pulse per cell), notes span multiple pulses. Triplets -> clock at 24 or 48 ppq-equivalent.
+
+### Net
+Variable-length notes (up to ~16) on a resolution grid; resolution must be divisible by 3 for triplets,
+48/bar to mix straight+triplet cleanly. Selectable-resolution vs single-high-res is the open fork.
+Phrase = one phase cycle (phase mode) or resolution-rate clock (gate mode). Still gate+phase modes only,
+still per-Monsoon 1:1, still after quantiser-mode finalisation.
+
+Cross-ref: the gate-editor scoping (gate+phase modes), the trigger/tie/rest per-step vocabulary (join =
+tie across cells), PHASE_ENGINE_AUDIT (phase sweeps the grid), DICE_SCRUB_MODEL (counter-addressed).
