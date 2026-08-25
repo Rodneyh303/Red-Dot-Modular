@@ -179,3 +179,43 @@ vocabularies).
 Cross-ref: MODE_B_SPEC (mono gate input, Monsoon.cpp:527), the Keppel within-legato gate + Monsoon
 step-legato / re-articulation work (why tie-state matters), PHASE_ENGINE_AUDIT (clock vs phase readout),
 the pitch-roll concept (poly pitch, the shape contrast).
+
+## SCOPING (Rodney): gate editor is for GATE + PHASE quantiser modes only, NOT clock mode
+
+Refinement: the gate editor is used ONLY in gate and phase quantiser modes -- NOT clock mode. In CLOCK
+quantiser mode Monsoon GENERATES the gates itself (clock drives internal gate generation), so there's
+nothing for a gate editor to supply -- it'd be redundant. The editor only applies where gate/timing comes
+from OUTSIDE the internal clock generation:
+- Gate quantiser mode (D): driven by an external gate; the editor supplies that gate pattern.
+- Phase quantiser mode (F): driven by phase-in; the editor's lane is read out by phase position.
+- Clock mode (C): Monsoon makes its own gates from the clock -> gate editor NOT used.
+
+Maps onto the mode taxonomy: seq A(clock)/B(gate)/E(phase) <-> quant C(clock)/D(gate)/F(phase). The gate
+editor belongs to the D + F side (external timing), never the C side (internally generated). The mode
+taxonomy defines where the editor applies: modes that TAKE external timing, not those that GENERATE it.
+
+### Readout per timing source (Rodney: "driven by gate and phase-in according to mode, assuming the gate
+### is a regular clock")
+The 16-step lane is READ OUT by the mode's timing input:
+- Gate mode: the incoming GATE advances the lane -- ASSUMING that gate is a regular clock (steady
+  pulses). Each pulse advances to the next step of the drawn lane; the external gate is the clock that
+  walks the playhead through the 16-step pattern.
+- Phase mode: phase-in selects the step (phase position -> step index).
+
+KEY caveat ("assuming the gate is a regular clock"): if the incoming gate is IRREGULAR (not steady --
+syncopated/arrhythmic), "advance one step per gate" RE-TIMES the drawn pattern rather than playing it at
+its drawn rhythm. That may be a feature (rhythmic re-interpretation) or a footgun (doesn't sound as
+drawn), by intent. So the editor is clean/predictable fed a regular clock-like gate, and becomes a
+re-timing transformation fed an irregular one. Be explicit in the manual: the lane advances PER GATE
+EVENT, not per unit time.
+
+### Conceptual clarity
+The gate editor is "a gate pattern that the external timing WALKS THROUGH." What "walking through" means
+depends on the mode's timing source: steady gate -> plays as drawn; irregular gate -> re-timed; phase ->
+scrubbed. Same lane, three readout behaviours, determined by the mode. Consistent with the roll
+(counter-indexed) and the phase engine -- the editor is another addressed pattern; the ADDRESS SOURCE is
+the mode's external timing.
+
+Cross-ref: QUANTISER_MODES_UNIFICATION (the A/B/E <-> C/D/F taxonomy; C generates, D/F take external),
+PHASE_ENGINE_AUDIT (phase readout), MODE_B_SPEC (external gate handling), the pitch-roll concept
+(counter-addressed sibling).
