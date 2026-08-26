@@ -667,3 +667,42 @@ editor is clock-time-based, gate-mode only.
 
 Cross-ref: PHASE_ENGINE_AUDIT (phase mode generates notes fwd+reverse, self-sufficient), the gate-editor
 scoping note (now narrowed to clock-driven gate mode), the PPQN-48 note (clock pulse grid).
+
+## CLEAN SCOPING (Rodney): both editors by "which modes take external input"
+
+Principle: which modes GENERATE vs TAKE EXTERNAL input.
+- Phase + clock modes (seq AND quantiser) GENERATE notes (own internal timing/gating). No external gate.
+- ONLY gate mode (seq AND quantiser) TAKES external gates -- that's what defines gate mode.
+
+### The two editors' scopes fall out
+- PITCH piano-roll editor -> ALL 3 QUANTISER MODES (clock, gate, phase quantiser). In every quantiser
+  mode pitch comes from an external source and the roll IS that source; pitch is needed regardless of how
+  timing works. Serves all three.
+- GATE editor -> GATE MODE ONLY, but BOTH flavours: gate SEQ and gate QUANTISER (gate-seq also takes an
+  external gate). Broader than "gate-quantiser only" -- it's both gate modes, and only those.
+
+Two editors, two crisp scopes, each set by ONE principle (external pitch needed = all 3 quant; external
+gate taken = both gate modes).
+
+### Gate editor: clock-driven, COULD have a phase-drive mode -- and it'd be SIMPLER than Monsoon's
+Default: clock-driven. Optional future add: a phase-drive mode. Rodney's insight -- it would be
+CONCEPTUALLY SIMPLER than Monsoon's phase engine. Why:
+- Monsoon's phase engine is complex because it drives a GENERATIVE system: signed-Philox counter,
+  reversible draws, note-hold spans, dice/scrub -- phase must navigate a generative SPACE (reverse
+  re-derives rolls, held notes need span logic). That's the whole Option A/B + jump/scrub-replay history.
+- The gate editor holds a FIXED, deterministic drawn pattern. No generation, no Philox, no draws to
+  re-derive. Phase-driving it = "phase position -> index into the drawn gate lane." Reverse = index
+  backward (pattern fixed, nothing to re-derive). Jump/scrub = land at target index, read the drawn value
+  (no edge-replay -- you're not generating anything you'd skip, just reading a stored position).
+- So ALL the hard parts of Monsoon's phase engine come from being GENERATIVE; the gate editor is FIXED,
+  so phase-driving it is nearly free. "Scrub a stored array by phase" vs Monsoon's "navigate a
+  reproducible generative space by phase" -- same gesture, far simpler.
+
+Honest: it's a COULD not a NEED. Clock-driven covers the job; phase-drive is a cheap optional performance
+extra (phase-scrub the drawn gate pattern), easy BECAUSE it's simple, not required for v1.
+
+Supersedes the earlier "gate editor gate-mode only, phase excluded" -- refined: gate editor serves BOTH
+gate modes (seq+quantiser), clock-driven, with an optional (and simple) phase-drive add.
+
+Cross-ref: PHASE_ENGINE_AUDIT (Monsoon's generative phase complexity -- what the gate editor AVOIDS),
+the pitch-roll scope (all 3 quantiser modes), the gate-editor spec (mono, 16-lane, PPQN 48).
