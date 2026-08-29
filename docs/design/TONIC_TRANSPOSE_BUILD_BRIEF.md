@@ -134,3 +134,40 @@ the N!=12 path before deciding disable-vs-generalise.
 Cross-ref: ScaleMaskArbiter.hpp (rotateMask12, 12-only), Monsoon.cpp:643 + MonsoonShophouseExpander.cpp:150
 (callers), SHAREABILITY_ANALYSIS/Sikit (tuning source, may be N!=12), DOC_PRIORITISATION (this makes
 TONIC_TRANSPOSE a genuine Tier-1 open item, not just "partial").
+
+## RESOLVED for Sikit (Rodney + code): Sikit is 12-ONLY, so no mismatch -- gap moves to the non-12 path
+
+Sikit only loads 12-note Scala files. Confirmed Sikit.cpp: tt.N = N_DEGREES = 12 (:29 "Phase 1"); :158
+"EXACTLY 12 degrees (retunes Monsoon's fixed 12-degree system)"; :161 loader validator
+`[](int n){ return n == 12; }` REJECTS non-12 .scl with ":162 'Sikit reads 12-note .scl files only. For
+non-12 tunings, use a Micro expander'"; :33 default = 12-TET exactly.
+
+### This collapses the three-way problem to two-way
+The N != 12 MISMATCH case CANNOT occur through Sikit -- rotateMask12 (12) and Sikit (always 12) always
+agree on N=12. So attaching Sikit, transpose ALWAYS applies correctly. Remaining nuance is only:
+- Sikit EQUAL (default 12-TET): transpose = genuine transposition. Correct word.
+- Sikit UNEQUAL (12-note non-equal .scl, 12 custom cents): transpose = MODAL ROTATION (rotating across
+  unequal cents changes intervals). Mechanically fine (still 12 slots); musically "mode" not "transpose".
+  Arguably relabel "root", but NO mechanism gap.
+
+### The N!=12 gap lives on the MICRO/non-12 path, NOT Sikit
+Non-12 microtonal tunings are routed by design to Shophouse Micro / Emerald Hill / Colonnades (Sikit's
+own error message says so). So the transpose<->tuning interaction splits by WHICH MODULE supplies tuning:
+- Via SIKIT -> always 12 -> rotateMask12 always aligns -> transpose works; only name/meaning shifts
+  (transposition on equal, mode on unequal). NO mechanism gap. RESOLVED.
+- Via MICRO / EMERALD HILL (non-12) -> THIS is where N!=12 lives, where transpose-generalisation
+  (rotateMaskN) or disabling matters. The open design question (options 1/2/3 above) applies HERE, not to
+  Sikit.
+
+### Net
+Rodney's original question ("attach Sikit, does transpose still make sense?") -> YES. Sikit being 12-only
+means transpose always applies; the only nuance is modal-vs-transposition wording on an unequal 12-note
+tuning. The scary structural mismatch was never reachable via Sikit. The rotateMaskN generalisation
+question is real but belongs to the non-12 Micro/Emerald-Hill path.
+
+Supersedes the "OPEN INTERACTION" section above FOR SIKIT (no gap there); that section's design question
+(disable vs generalise) is re-homed to the non-12 Micro path.
+
+Cross-ref: Sikit.cpp:29,158,161 (12-only), the OPEN INTERACTION section (now scoped to non-12 Micro/
+Emerald Hill), MONSOON_SCALE_AUTHORING_DIRECTION (Sikit tuning-only 12; Micro/Shophouse = non-12/custom),
+DOC_PRIORITISATION (TONIC_TRANSPOSE: Sikit path fine, non-12 path is the Tier-1 open bit).
