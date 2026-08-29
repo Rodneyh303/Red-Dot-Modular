@@ -5,6 +5,12 @@ doc's own status language (DONE/superseded/TODO/open). Confidence tagged. NOT a 
 a triage. Caveat: recent-code-churn signal was unavailable (shallow clone), so "still open" = inferred
 from doc-status + code-presence, not from watching live commits. Spot-check anything surprising.
 
+**IMPORTANT (learned immediately): Tier-1 'open' calls are inferred from each doc's own status language,
+which DRIFTS behind code. ENABLED_MASK_BUILD_BRIEF was listed open here but is actually DONE (Rodney
+caught it; code-verified). Before trusting ANY Tier-1 'open' verdict, do a 30-second code grep for the
+feature -- the doc describes the intended fix, the code may have since shipped it. Re-verify each Tier-1
+entry against code before starting it.**
+
 ## The shape of it
 Docs span late-Jun -> late-Aug 2026. Age predicts status strongly:
 - Late Aug (the live layer): the docs we've been working -- planning + current open threads.
@@ -20,9 +26,13 @@ Docs span late-Jun -> late-Aug 2026. Age predicts status strongly:
   phase-driven equivalent ("Add it -- completes the..."). REAL open work: the C/D/F quantiser modes.
 - **PHASE_ENGINE_AUDIT.md** [Aug25, HIGH conf] -- fwd+reverse DONE (signed Philox); OPEN = cross-phrase
   jump/scrub regeneration (within-phrase replay done, cross-draw clamped). Narrow but real.
-- **ENABLED_MASK_BUILD_BRIEF.md** [Aug09] -- self-flags a real BUG/conflation: mask currently keys off
-  weight<=0 (sceneBlocked), conflating "out of scale" with "silent"; tt has NO enabled[] array. Switch
-  mask source to enabled[], keep weight as loudness. CONCRETE build task, not done.
+- ~~ENABLED_MASK_BUILD_BRIEF.md~~ **-> DONE (Rodney corrected; code-verified).** Moved OUT of Tier 1.
+  The enabled[] array + the whole fix is implemented: TuningPreset.hpp has bool enabled[MAXN] (v2 scale
+  mask) with v1->v2 migration (enabled[i]=weight>0, weight discarded) + serialization; TuningTable.hpp
+  has the semantics (enabled=false => out-of-scale, zeroed at read regardless of weight, fader dimmed;
+  enabled=true => in-scale, weight=loudness); TuningList.hpp: .dmtune carries cents+enabled not weight.
+  The enabled-vs-weight conflation the brief flagged is FIXED. Verify the read path is wired end-to-end
+  in the engine, then archive the brief as DONE.
 - **TONIC_TRANSPOSE_BUILD_BRIEF.md** [Aug10] -- partially done (Shophouse root shutter exists); the
   .dmtune-scale tonic reuse + the open "Monsoon-only?" question remain. Partial.
 - **PROBABILITY_MODIFIER_MODEL.md** [Jul06] -- OLD date but self-says "Open question (revisit): per-term
