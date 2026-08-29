@@ -171,3 +171,37 @@ Supersedes the "OPEN INTERACTION" section above FOR SIKIT (no gap there); that s
 Cross-ref: Sikit.cpp:29,158,161 (12-only), the OPEN INTERACTION section (now scoped to non-12 Micro/
 Emerald Hill), MONSOON_SCALE_AUTHORING_DIRECTION (Sikit tuning-only 12; Micro/Shophouse = non-12/custom),
 DOC_PRIORITISATION (TONIC_TRANSPOSE: Sikit path fine, non-12 path is the Tier-1 open bit).
+
+## Rotate-Sikit option + Scala reference-pitch clarification (Rodney)
+
+### Scala files are relative to 1/1, NOT to C (correcting the common assumption)
+A .scl file lists INTERVALS relative to the 1/1 (unison) -- ratios/cents ending on the period (2/1). It
+defines the scale SHAPE (each degree's distance from the tonic), NOT absolute pitch. The C/absolute-pitch
+association lives in a SEPARATE .kbm (keyboard map) file, which pins a reference freq + which key = 1/1.
+So: .scl = intervals rel to 1/1 (pitch-neutral); .kbm = where 1/1 lands (ties to C/A/etc).
+In Sikit: loading a 12-note .scl = 12 intervals rel to 1/1, degree 0 (the 1/1, the locked root plate) =
+Monsoon's root. "C" is just the conventional NAME for the root slot -- a labelling choice, not dictated by
+the .scl. Precise: .scl is relative to 1/1 (degree 0), and Sikit maps degree 0 = root.
+
+### Rotate-Sikit option (Rodney's idea) -- musically = MODAL ROTATION of the tuning
+Sikit holds 12 cents, degree 0 = 1/1 = root. "Rotate Sikit" = cyclically shift which cents-offset sits on
+which degree, so a DIFFERENT degree becomes 1/1/root. Because Sikit is a TUNING (unequal cents), rotating
+it = MODAL ROTATION (which intervals fall where) -> a different MODE of the same tuning. Coherent and
+musically meaningful: the tuning-domain complement to mask rotation. "Same scale starting on a different
+degree" on an unequal tuning = a genuinely different interval sequence = a mode.
+
+### Interaction to design (park): rotate-Sikit vs mask-transpose -- link or independent?
+- Mask transpose (rotateMask12): rotates WHICH DEGREES are in the scale (membership).
+- Rotate Sikit: rotates WHICH CENTS sit on which degree (the tuning/pitch content).
+Different operations. If both exist they could align (rotate both = clean modal shift, mask follows
+tuning) or diverge (rotate one only = mask/tuning misaligned). LEAN: LINK them -- setting the tonic
+rotates BOTH mask and tuning together, so "set degree K as tonic" gives the mode starting there with
+membership + pitch both consistent.
+- Simpler framing to consider: is "rotate Sikit" just what SET TONIC should already do, in the tuning
+  domain? Setting a new tonic on an unequal tuning IS modal rotation. So rotate-Sikit may NOT be a new
+  control -- it may be the tonic control once generalised to rotate the tuning too (not only the mask).
+  DECIDE: two controls (mask-tonic + tuning-rotate) vs one unified "tonic = rotate everything to here".
+  Lean: one unified tonic that rotates mask + tuning together = simplest + most musical.
+
+Cross-ref: Sikit.cpp (12 cents, degree 0 = root plate), the transpose<->Sikit resolution above (12-only,
+modal-on-unequal), ScaleMaskArbiter rotateMask12 (the mask side), ScalaFile.hpp (.scl = intervals rel 1/1).
