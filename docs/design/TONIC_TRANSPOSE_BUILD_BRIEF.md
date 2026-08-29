@@ -242,3 +242,46 @@ unified tonic-rotates-tuning control (prev section), not touching openScalaFileP
 
 Cross-ref: Sikit.cpp:169-174 (load path, root stays 0, degrees 1..N above), the rotate-Sikit section
 above (the companion control), ScalaFile.hpp (.scl rel 1/1), SCALA_FILE_AND_LOAD_UI.md (load UX).
+
+## DECISION (Rodney): add a Sikit ROOT knob -- independent of Shophouse scale root
+
+Chose option 2. Add a dial/knob (fixed-position control) ON SIKIT to set the ROOT = which loaded degree
+sits at the root/1/1. A discrete rotary selector 0..11 that rotates the loaded tuning so the chosen degree
+becomes the root. The modal-rotation control, on Sikit, in the TUNING domain.
+
+### Sikit root is INDEPENDENT of Shophouse scale root (Rodney: "need not be same")
+Two different roots on two different things:
+- SIKIT root = which degree of the TUNING sits at 1/1 -> rotates the CENTS (pitch content). Property of
+  the tuning.
+- SHOPHOUSE scale root = which degree the MASK is rotated to -> rotates MEMBERSHIP (which degrees in
+  scale). Property of the scale.
+Decoupling them is a real musical freedom: tuning reference on one degree, scale tonic on another (e.g. a
+maqam tuning at its natural 1/1, scale tonic on a different degree of it). The tuning keeps its correct
+reference while the scale roams.
+
+### Honest note: this reverses the earlier "unify them" lean -- and that's fine, but adds a UX obligation
+Two sections up I leaned "one unified tonic rotates mask+tuning together" (can't desync). Rodney chose
+INDEPENDENT (more expressive). Tradeoff: they CAN now diverge, so they must be VISIBLY DISTINCT so nobody
+expects one to move the other. Label for what they are: Sikit = "tuning root" (rotates the tuning);
+Shophouse = "scale root" (rotates the mask). Independence is the feature; the only risk is they LOOK like
+they should be linked. Name them apart -> clean.
+
+### Design specifics
+- DISCRETE 0..11, snap to integer degrees -- a degree selector, not a continuous cents offset. 12-position
+  (stepped) rotary.
+- FIXED-POSITION control (holds its value, persists in patch), not momentary/gesture.
+- Make it a PARAM (automatable, saved) like the cents knobs -- it's a performable/automatable musical
+  choice, not just a menu item.
+- DEFAULT = 0 (file's own 1/1 on root = current correct load behaviour). Not touching it preserves
+  exactly today's semantics; the knob is purely ADDITIVE -> backward-compatible, non-surprising. Existing
+  patches + default load unchanged.
+
+### Mechanism
+On load, cents fill degrees 1..12 above root=0 (unchanged, Sikit.cpp:169-174). The root knob applies a
+degree rotation on top: rotate the 12 cents so the selected degree's cents becomes 0 (the new 1/1) and the
+rest follow cyclically. (This is rotateSikit in the tuning domain; the mask-side rotateMask12 is separate,
+driven by Shophouse's own scale root.)
+
+Cross-ref: Sikit.cpp:169-174 (load path, default root=0 preserved), the rotate-Sikit section (this IS
+that control), the Sikit-12-only resolution (12 degrees so 0..11 selector), ScaleMaskArbiter rotateMask12
+(the SEPARATE mask-side root on Shophouse), DOC_PRIORITISATION (TONIC_TRANSPOSE Tier-1 build item).
