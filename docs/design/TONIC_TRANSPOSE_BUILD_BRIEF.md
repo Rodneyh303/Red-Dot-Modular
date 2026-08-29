@@ -90,3 +90,47 @@ root). Achieve this WITHOUT storing an absolute root in the file (option B).
   + 11 (right-click tonic), MonsoonShophouseExpander.cpp:16/112-120/148 (existing shutter-click root +
   red indicator to reuse), TUNING_PRESET_FORMAT / SHOPHOUSE_MICRO_SPEC (scale-only .dmtune = enabled +
   flag, no cents/weight), dot.modular red #d4001a.
+
+## OPEN INTERACTION (Rodney): transpose vs an attached Sikit tuning -- transpose is 12-only
+
+Question: author a scale-only .dmtune, set tonic, enable transpose, AND attach Sikit (supplies tuning
+cents). Does transpose still make sense?
+
+### Code fact: transpose is a 12-SEMITONE mask rotation
+rotateMask12 (ScaleMaskArbiter.hpp:16,33-36) is hard-coded to 12: "12-bit, bits 0..11 = semitones C..B",
+(root+interval)%12, "semis taken mod 12". The transpose/tonic mechanism lives entirely in the 12-semitone
+mask domain -- it ASSUMES a 12-degree equal-step grid. Monsoon.cpp:643 + MonsoonShophouseExpander.cpp:150
+both call rotateMask12.
+
+### So the answer depends on what Sikit supplies
+- Sikit = 12-degree tuning, EQUAL (12-TET): rotate = genuine transposition. Makes sense as normal.
+- Sikit = 12-degree tuning, UNEQUAL (12 non-equal cents): rotateMask12 still works mechanically (12
+  slots), BUT rotating across unequal cents changes the INTERVALS -> it's MODAL ROTATION, not
+  transposition. Musically correct for maqam-like tunings, but "transpose" is the wrong word.
+- Sikit = N != 12 degrees (e.g. 24-degree maqam tuning): MISMATCH. rotateMask12 assumes 12, tuning has N.
+  The 12-bit mask and the N-degree tuning DON'T ALIGN -> transpose doesn't just change meaning, it may
+  not correctly apply at all. The real gap.
+
+### Honest verdict
+- TONIC (designate which degree is home): still meaningful on ANY N. Keep.
+- TRANSPOSE (rotate the pattern to a new root): built as 12-only. Composes with a 12-degree tuning (as
+  MODE if unequal); does NOT map to a non-12 Sikit tuning as built. So "does transpose make sense" ->
+  on 12-degree tunings yes (as mode when unequal); on non-12 tunings NOT as currently built.
+
+### Design question to resolve (park; brief was written 12-TET-framed, predates full Sikit picture)
+1. Disable/grey transpose when a non-12 tuning is attached (honest: it's a 12-TET op). Simplest.
+2. Generalise to degree-space: rotateMaskN (rotate the N-degree mask by degree, any N). Works on any
+   tuning -- but then it's ALWAYS modal rotation on unequal tunings; relabel "root/mode" not "transpose".
+3. Relabel the control "ROOT" (tuning-agnostic, always true: sets where degree-0 sits; means
+   transposition on equal tunings, modal rotation on unequal) -- the brief already built it as a "live
+   root control", so "root" is the honest name; "transpose" is the only thing that breaks.
+LEAN: (3) name it root + (2) generalise to N-degree rotation, so it's correct on any Sikit tuning and
+honestly named. At minimum (1): disable transpose on N!=12 until generalised.
+
+Caveat: I did not find the transpose<->Sikit read-path composition in MicroTuning.cpp (grep empty) --
+whether a non-12 Sikit tuning even reaches rotateMask12, or is blocked upstream, is UNVERIFIED. Confirm
+the N!=12 path before deciding disable-vs-generalise.
+
+Cross-ref: ScaleMaskArbiter.hpp (rotateMask12, 12-only), Monsoon.cpp:643 + MonsoonShophouseExpander.cpp:150
+(callers), SHAREABILITY_ANALYSIS/Sikit (tuning source, may be N!=12), DOC_PRIORITISATION (this makes
+TONIC_TRANSPOSE a genuine Tier-1 open item, not just "partial").
