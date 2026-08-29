@@ -95,3 +95,44 @@ this finding is specifically the 24-EDO maqam set: shared tuning, distinct masks
 
 Cross-ref: TONIC_TRANSPOSE_BUILD_BRIEF (presets = tuning+mask pairs, rotation = live transform; this
 confirms the 24-EDO set shares a tuning so rotation applies within it), the rotation-family sections.
+
+## Are rotations of the maqamat "modes"? Mechanically-ish, but NOT in maqam's own terms -- don't call them that
+
+Careful answer (Western "mode = rotation of a scale" MISLEADS here):
+- Western modes (Dorian etc.) literally ARE rotations of the major scale -> "rotation = mode" holds there.
+- Maqam does NOT work that way, for three reasons:
+  1. A maqam is a scale PLUS a melodic pathway (sayr): emphasised notes, typical direction, pauses,
+     modulation habits. A rotation gives a new PITCH-SET but not a new sayr -> not a "mode" in the full
+     maqam sense. Pitch-set is only part of the identity.
+  2. Maqamat are built from AJNAS (trichord/tetra/pentachord fragments stacked at a junction), not by
+     rotating a parent scale. The native relationships are ajnas-based (Rast & Bayati share a lower jins,
+     differ above), not rotational. Rotation cuts ACROSS that logic.
+  3. Rotating an unequal pitch-set changes the intervals from the new tonic -> a rotation may (a) hit a
+     recognised maqam, (b) hit a named mode in some traditions, or (c) be a valid-but-UNNAMED scale. Only
+     (a)/(b) are "a mode" in any named sense; (c) is just a rotated scale.
+
+### Honest verdict
+- Strict Western "mode=rotation" sense: mechanically yes, but that's not how maqam theory frames it.
+  Arabic theory organises maqamat by AJNAS, not as rotations/modes of each other. "Same pitch-set,
+  different tonic = a DIFFERENT maqam (or a modulation relationship)" is more accurate than "= a mode".
+- For the tool: rotating a maqam's mask produces a pitch-set that MAY OR MAY NOT be a named maqam. Many
+  rotations land on valid-but-unnamed scales.
+
+### UX decision: do NOT label the rotation control "mode"
+Calling rotations "modes" makes a musically dubious claim (that maqamat are rotational modes of each
+other -- they largely aren't) and quietly WESTERNISES maqam (flattening ajnas-logic into European modal
+logic). Label the control "rotate" or "root/tonic" -- neutral, accurate, asserts no false relationship.
+The rotation is a legitimate, useful operation (new pitch-sets, some recognisable); just don't frame it
+as mode-selection.
+
+### Fits the project ethos
+That "rotation = mode" does NOT cleanly hold for maqam is part of representing maqam FAITHFULLY. A tool
+that called rotations "modes" would Westernise the tradition. Asking rather than assuming is exactly the
+care the East/West thesis deserves.
+
+(Confidence: high on the Western contrast + the ajnas/sayr framing; medium on specific per-maqam naming
+of which rotations coincide with recognised maqamat -- that varies by tradition/source. Treat named-mode
+claims per-rotation as needing a maqam-theory source, not asserted by the tool.)
+
+Cross-ref: the mask-rotation feature (TONIC_TRANSPOSE_BUILD_BRIEF) -- label "rotate/root" not "mode";
+the "distinct masks not rotations" finding above (why maqamat are different shapes, ajnas-built).
