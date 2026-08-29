@@ -410,3 +410,47 @@ not rotation.
 Cross-ref: TuningList.hpp:28-31 (cents+enabled slot), presets/maqam/*.dmtune (tuning+mask pairs), the
 rotation sections above (rotation = live transform on the loaded pair), STEP 4 of this brief (root-relative
 mask save -- the one place normalisation-for-rotation touches the format).
+
+## THE framing (Rodney): rotation arises because .scl files have no fixed root or absolute cents
+
+The whole tuning-rotation question originates in a fact about the FORMAT: a .scl has NO fixed root note
+and NO fixed absolute cents -- it's intervals relative to 1/1, and the 1/1 is itself unanchored (no
+absolute pitch, no externally-designated tonic). So on load, SOMETHING must decide where 1/1 sits and
+which degree is home -- and because the file DOESN'T say, that decision is made by the loader/host, not
+the file. The rotation control just EXPOSES that unavoidable choice instead of hard-coding it.
+
+### Reframe: rotation is not a transform on a rooted thing -- it's CHOOSING the rooting of an un-rooted one
+- "Rotate a rooted scale" = move an existing home. (transform)
+- "Choose the rooting of an un-rooted interval-set" = decide the home in the first place. (assignment)
+It's the SECOND. The .scl arrives un-rooted; the loader must ASSIGN a home (which degree = 1/1 = root);
+"rotation" = letting the user pick that assignment instead of the loader silently defaulting it. Sikit's
+default (degree 0 = first reference at the root) is ONE arbitrary assignment among N; the control offers
+the others.
+
+### This resolves "does rotation make sense?" -- YES, always
+Rotation always makes sense for a .scl BECAUSE the .scl never claimed a root. You're not overriding a
+meaningful root the file specified -- it specified NONE, so any rooting is equally valid per the file, and
+the user is just completing information the format deliberately leaves open. Not a hack -- it honors what
+.scl actually is.
+
+### And it DERIVES the mask/root independence (not an imposed choice)
+The .scl gives ONLY intervals (tuning shape); it says nothing about which degrees are IN a scale
+(membership) OR which is tonic. So BOTH the mask AND the root are information the file doesn't carry --
+both assigned OUTSIDE the file, by two separate decisions. That's WHY they're independent: two separate
+pieces of "info the .scl doesn't provide". The independence falls OUT of the format under-specifying both
+dimensions -- there's no reason a file would couple two things it doesn't even mention.
+
+### One fact explains the whole cluster
+- Rotation always makes sense (un-rooted -> rooting is a free choice, not an override).
+- Mask and root are independent (file specifies neither -> both externally assigned -> no coupling).
+- The default rooting is arbitrary (degree-0-at-root is just one assignment) -> exposing the choice is
+  honest, not extra.
+All three derive from: .scl has no fixed root or absolute cents.
+
+Note: this is the .scl/Sikit-load case. AUTHORED tunings (Colonnades/Duo) are built by the user, who
+implicitly roots them as they author -- but the same freedom applies (the authored root is still a choice,
+just made during authoring), so the rotation control is equally coherent there.
+
+Cross-ref: the .scl-relative-to-1/1 clarification + the load-path-is-correct sections above (this is their
+underlying WHY), the independent-rotate resolution (now DERIVED from format under-specification, not just
+argued from use-cases), presets = tuning+mask pairs (the pair supplies BOTH the info .scl lacks).
