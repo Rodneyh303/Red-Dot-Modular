@@ -330,3 +330,48 @@ rotation waits on rotateMaskN -- bundle it with the non-12 transpose generalisat
 Cross-ref: Sikit.hpp:20-23 (cents-only params, root locked), Colonnades.hpp (cents+weight+mask authoring),
 COLONNADES_DUO_PANEL_SPEC (24 degrees), the transpose non-12 gap above (rotateMaskN, now clearly needed
 for Duo), the rotate-Sikit + unified-tonic sections (the concept this generalises)." 
+
+## Capacity correction + independent-rotate question (Rodney)
+
+### Colonnades up-to-12, Duo up-to-24 -> rotation is rotateMaskN over the LIVE N
+Correction: Colonnades holds UP TO 12, Duo UP TO 24 (variable-N, not fixed). So the rotation domain is
+the current authored degree count, not a constant. Rotation = rotateMaskN where N = live degree count.
+This UNIFIES the family: Sikit (fixed 12), Colonnades (<=12), Duo (<=24) are all "rotate over current N";
+rotateMask12 is just the special case N=12. So rotateMaskN is the GENERAL operation every tuning source
+wants -- not a Duo-specific need; 12 is where it reduces to the existing function.
+
+### Independent rotate-tuning vs rotate-mask -- DO they make sense separately?
+The two rotations are DIFFERENT musical operations:
+- Rotate MASK = shift which degrees are IN the scale (membership / "which notes").
+- Rotate TUNING = shift which cents sit on which degree (pitch content / "tuned how").
+
+Case for LINKED (one "tonic"): most "change the tonic" intent wants both to move together = a coherent
+mode at the new degree. Independent could confuse a naive user (mask moves, pitch doesn't). Simpler.
+
+Case for INDEPENDENT (two controls) -- stronger than it first looks:
+- Tuning fixed, MASK rotated = play different modes of a FIXED tuning without re-tuning. This is the
+  PRIMARY maqam/modal gesture (fixed-tuned instrument, select ajnas/modes by choosing degrees). Extremely
+  common and central. Forcing linked would DESTROY this workflow (every mode change would re-tune).
+- Mask fixed, TUNING rotated = same active degrees, re-intonated underneath (intonational recolouring of
+  a fixed pattern). Rarer, but a real microtonal gesture.
+
+### Resolution: INDEPENDENT, because they're ORTHOGONAL musical dimensions (flips the earlier "lean linked")
+Mask answers "which notes" (mode selection -- COMMON, should be easy + independent). Tuning answers
+"tuned how" (re-intonation -- RARE, deliberate, opt-in). They're independent BY NATURE because they live
+on different layers (mask on Monsoon/Shophouse/Colonnades-authored-mask; tuning-rotation on the tuning
+source). That's CORRECT, not a flaw. The only risk is a user not realising there are two -> solved by
+labelling + defaults, NOT by force-linking:
+- Tuning rotation DEFAULTS to 0 (unrotated). So unless deliberately touched, "rotate tonic" moves only
+  the mask = the expected common behaviour (mode selection over fixed tuning).
+- Tuning rotation is the opt-in "re-intonate" control, clearly labelled, shown when non-zero.
+
+Do NOT force-link them: linking breaks the primary modal workflow (mode over fixed tuning). Keep
+independent, default tuning-rotation off. Optionally offer a convenience "rotate both together" as a
+COMPOUND gesture for when the user does want a full modal shift -- but built ON TOP of the two independent
+controls, not instead of them.
+
+Supersedes the earlier "LEAN: link them / unified tonic rotates both" -- refined: independent by nature
+(orthogonal dimensions), tuning-rotation opt-in default-0, optional compound "rotate both" convenience.
+
+Cross-ref: rotate-Sikit + Colonnades/Duo sections above (the controls), rotateMaskN (now the general
+operation over live N), the maqam/modal use (why mask-over-fixed-tuning must stay independent).
