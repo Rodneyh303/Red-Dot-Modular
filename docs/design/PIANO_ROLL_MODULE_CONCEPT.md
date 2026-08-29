@@ -706,3 +706,40 @@ gate modes (seq+quantiser), clock-driven, with an optional (and simple) phase-dr
 
 Cross-ref: PHASE_ENGINE_AUDIT (Monsoon's generative phase complexity -- what the gate editor AVOIDS),
 the pitch-roll scope (all 3 quantiser modes), the gate-editor spec (mono, 16-lane, PPQN 48).
+
+## The editors are SHAREABLE sources -- perfect candidates to feed MULTIPLE Monsoons (Rodney)
+
+This is the INVERSE of the Colonnades case, and it's the GOOD (clean) side of the shareability criterion.
+- Colonnades = an authoring surface with per-consumer display write-back -> 1:1, multi-attach broke on
+  display contention.
+- The piano-roll + gate editors = pure read-only SOURCES (deterministic pattern data: pitch CV / gate
+  pattern). Reading is non-exclusive, and there's NO write-back (no per-consumer display state on the
+  editor). So N Monsoons reading one editor creates NO contention. By the shareability criterion
+  (SHAREABILITY_ANALYSIS.md: share DATA/mappings/sources, not authoring surfaces) the editors are in
+  Sikit's category = shareable. Multi-attach is the clean case here, not the problematic one.
+
+### What sharing them enables (powerful + on-brand)
+- ONE drawn PITCH pattern -> several Monsoons quantise it their OWN ways: different tunings, different
+  jins (own Shophouse/Emerald Hill), different meters (polymeter). A shared melodic skeleton, many
+  microtonal/rhythmic interpretations -- the polymetric-heterophonic-maqam idea, now from a HAND-DRAWN
+  seed instead of internal draws.
+- ONE drawn GATE pattern -> several Monsoons share the step boundary (the "when"), each applying its own
+  Sands per-voice rules. Shared rhythm, independent voicing.
+- Combine: shared pitch seed + shared gate + shared CA correlation, per-Monsoon tuning/jins/meter =
+  a drawn deterministic backbone that a whole ensemble interprets. The editors become ensemble sources.
+
+### Why it's clean (unlike Colonnades multi-attach)
+Editors are SOURCES that emit data; they hold no per-consumer state and never write back to a consumer.
+So they ride the existing shared-resource binding mechanism (the CA/Intertropical/Lantern path) with no
+display-contention problem. They're the deterministic-source analog of Change Alley (the generative-
+source shared resource): CA shares correlation, the editors share drawn pitch/gate.
+
+### Placement
+Add to SHAREABILITY_ANALYSIS as shareable sources (with Sikit). Multi-attach via the existing binding
+mechanism. Per-Monsoon interpretation (tuning/jins/meter/Sands rules) stays at each Monsoon -- shared
+source, per-consumer interpretation, exactly the established principle.
+
+Cross-ref: SHAREABILITY_ANALYSIS.md (share sources not surfaces; Sikit the other shareable source),
+QUANTISER_MODES_UNIFICATION.md (polymetric heterophonic maqam -- now drawable-seed-driven), the
+shared-CA resolution (shared source + per-Monsoon interpretation), ROAD_TO_RELEASE.md (editors parked
+post-quantiser-mode, this notes their shareability when built).
