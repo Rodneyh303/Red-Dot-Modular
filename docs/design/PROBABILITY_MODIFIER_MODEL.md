@@ -55,3 +55,51 @@ Cross-ref: TONIC_TRANSPOSE_BUILD_BRIEF (tuning rotation = rotateMaskN, degree-in
 framing), ScaleMaskArbiter rotateMask12 (the shared util candidate), SANDS_* docs (what probability is
 indexed over -- the deciding fact), COOL_POINTS_FEATURE_SPINE point 4 (probability counter-offset -- may
 relate to what 'rotation' means here).
+
+## RESOLVED (Rodney): three rotations = three LAYERS of one pitch pipeline (not a 2-way overlap)
+
+Rodney's decomposition:
+- PROBABILITY rotation: which DEGREE (within the mask) fires per sequence step.
+- MASK rotation: which PITCHES correspond to which degree.
+- TUNING rotation: the TUNING (cents) of the pitches.
+
+### These are three rotations at three CONSECUTIVE stages of pitch resolution
+Pipeline: step -> [PROBABILITY] -> degree -> [MASK] -> pitch-class -> [TUNING] -> cents/frequency.
+Each rotation acts at ONE stage:
+- Probability = step->degree layer (which active degree is selected per step; the selection pattern).
+- Mask = degree->pitch-class layer (membership/mapping of degrees onto positions; rotateMask12).
+- Tuning = pitch-class->cents layer (what frequency each position carries; .dmtune/Sikit rotation).
+Not the-same-operation-duplicated -- three rotations at three different layers. Siblings, not duplicates.
+
+### Resolves the "overlap" question: shared UTILITY, NOT shared control
+They share the ABSTRACT FORM (each is a cyclic rotation of an indexed array) -> share the rotate() util
+(generalise rotateMask12 -> rotateMaskN, all three use it). They do NOT share a CONTROL: each rotates a
+different axis (step-selection / degree-membership / pitch-tuning), different lengths, different pipeline
+stages. Rotating all three by the same K is NOT musically meaningful (different axes). So: factor the CODE,
+keep THREE INDEPENDENT controls. (Rodney's overlap instinct was right; the precise nature is "common
+operation, different layers".)
+
+### The exciting part: three ORTHOGONAL rotations that COMPOSE = a 3-D pitch rotation space
+Each axis is a musically DISTINCT gesture; independent, composable:
+- Probability alone: same pitches + tuning, different degree emphasised/likely per step -> shifts the
+  MELODIC EMPHASIS pattern. (Close to maqam SAYR -- which degrees get weight.)
+- Mask alone: which degrees are in-scale moves -> modal rotation of MEMBERSHIP.
+- Tuning alone: intonation shifts under fixed degrees/selection -> RE-TUNING.
+Rich FACTORED control space, not overlap-to-eliminate. All three being "rotations" makes it elegant +
+learnable: ONE concept (rotation) applied at three stack levels the user can reason about.
+
+### Maqam-faithfulness note
+Probability rotation is arguably the one that most directly models SAYR (melodic pathway/emphasis) --
+"which degree is likely to fire" IS emphasis, which distinguishes maqamat BEYOND their pitch-set. So think
+of it not just as "rotate a probability array" but "shift the emphasis contour" -- real maqam meaning. The
+three rotations map onto three musically real dimensions: EMPHASIS (probability), MEMBERSHIP (mask),
+INTONATION (tuning).
+
+Supersedes the "OPEN, needs one fact" section above: the fact is answered -- probability rotates over
+which-degree-fires-per-step (step-indexed selection over the mask's degrees), so it's a DIFFERENT LAYER
+from tuning (pitch-class-indexed). Deep in the sense of a coherent 3-layer family; NOT a merge-into-one-
+control. Shared util, three controls, orthogonal composition.
+
+Cross-ref: TONIC_TRANSPOSE_BUILD_BRIEF (mask + tuning rotations, rotateMaskN), the maqam sayr/emphasis
+discussion (presets/maqam/README -- probability rotation as sayr), ScaleMaskArbiter rotateMask12 (the
+shared util to generalise), COOL_POINTS_FEATURE_SPINE point 4 (probability counter-offset mechanism).
