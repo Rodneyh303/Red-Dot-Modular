@@ -56,3 +56,42 @@ The non-EDO **Bayati / Saba / Hijaz** cent tables live on their own preset pages
 embeds (not extractable without Live). When you have Live 12 open, transcribe their cents the same
 way and add `Bayati_full`, `Saba_full`, `Hijaz_full` + their jins masks here. Only Rast's full table
 was on the guide page.
+
+## Are the 24-EDO maqam presets mask rotations of each other? Shared tuning, DISTINCT masks (not rotations)
+
+Checked cents[] + enabled[] across the 24-EDO maqam presets (Rast/Bayati/Hijaz/Kurd/Nahawand/Ajam):
+- TUNING is SHARED: every one has identical cents[] = 0,50,100,...,1150 (all 24 equal quarter-tones of
+  24-EDO). So they ARE all masks over the SAME 24-EDO grid -> in principle rotation-relatable.
+- But the MASKS are NOT rotations of each other:
+    Rast     100010010010001000100100
+    Bayati   100010010010001000101000
+    Hijaz    100010100000101000101000
+    Kurd     100010100010001000101000
+    Nahawand 100010100010001010001000
+    Ajam     100010001010001000100010
+  A rotation preserves the bit-count AND the circular gap-pattern (just offset). These differ in
+  popcount and, more importantly, in the SEQUENCE OF GAPS (interval structure). All start at degree 0
+  (same tonic) -- not shifted to different roots. Rast's step pattern (quarter-tone gaps ~4,3,3,4,4,3,3,
+  half-flat thirds) is a DIFFERENT SHAPE from Hijaz's (augmented-2nd signature). You cannot rotate one
+  onto another.
+
+### So: shared tuning, distinct scale SHAPES -- and that's musically CORRECT
+Maqamat are genuinely different scales, not modes of one another (unlike Western church modes, which ARE
+rotations of the major scale). Arabic maqam theory builds them from different ajnas. So representing them
+as SEPARATE masks over a shared 24-EDO tuning correctly captures "different shapes", not "rotations of
+one shape". Siblings over a shared grid, not rotations of a parent.
+
+### But this IS why the rotation feature is complementary
+Because they share the 24-EDO tuning, the mask-ROTATION control lets a user take any one (e.g. Rast) and
+rotate its mask to play a MODE of it ("Rast from the 4th degree") that ISN'T a shipped preset. So: the
+presets = the named canonical maqamat (distinct shapes); rotation = the tool to explore modes of EACH.
+Complementary -- presets are shapes, rotation explores each shape's modes.
+
+### Caveat: the non-EDO jins presets may differ
+The root-suffixed jins presets (Jins_Rast_C, Jins_Bayati_G, ...) have ACTUAL microtonal cents (not equal
+24-EDO) and are named WITH roots -- some of THOSE may be genuine TRANSPOSITIONS (same jins shape+tuning,
+different root), which is a different relationship (transposition, not mask rotation). Not checked here;
+this finding is specifically the 24-EDO maqam set: shared tuning, distinct masks, not rotations.
+
+Cross-ref: TONIC_TRANSPOSE_BUILD_BRIEF (presets = tuning+mask pairs, rotation = live transform; this
+confirms the 24-EDO set shares a tuning so rotation applies within it), the rotation-family sections.
