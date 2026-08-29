@@ -205,3 +205,40 @@ membership + pitch both consistent.
 
 Cross-ref: Sikit.cpp (12 cents, degree 0 = root plate), the transpose<->Sikit resolution above (12-only,
 modal-on-unequal), ScaleMaskArbiter rotateMask12 (the mask side), ScalaFile.hpp (.scl = intervals rel 1/1).
+
+## Sikit "assumes first tuning is C" -- NOT a bug; it's the missing rotate control (Rodney + code)
+
+Rodney's worry: "Sikit is loading scala assuming first tuning is C, not sure what to do." Read the load
+path (Sikit.cpp:169-174):
+  // Scala lists degrees 1..N; centsFromRoot[i] is degree (i+1). Root (param 0) stays 0.
+  for i in 0..12: params[CENTS_PARAM_0 + (i+1)].setValue(sf.centsFromRoot[i]);
+So: Root (param 0) = 0 cents (the 1/1), and the .scl's listed intervals fill degrees 1..12 above it.
+
+### This is CORRECT, not a bug
+.scl files are relative to 1/1 (the implicit first degree; the file lists degrees 1..N above the unspoken
+1/1, the last = the period/octave). Sikit does the textbook-correct thing: 1/1 = root = param 0 = 0 cents
+(fixed), file's intervals become degrees 1..12. "Assumes C" is true only as LABELLING: the 1/1 is anchored
+at Monsoon's root slot, which is conventionally CALLED C. The .scl's 1/1 -> Sikit's root -> Monsoon's "C".
+Standard, expected. No bug. And Monsoon's root is itself movable, so it's not stuck on a literal C.
+
+### The LEGITIMATE gap (what the unease actually is)
+Not "assumes C" -- it's that the load path always puts the file's OWN 1/1 on the root. You can't say
+"start this tuning from its 3rd degree instead" = you can only load a tuning in its DEFAULT rotation.
+That's exactly the rotate-Sikit / modal-rotation capability from the previous section -- and it's an
+ENHANCEMENT, not a fix.
+
+### Options (don't panic-fix; it's correct)
+1. LEAVE IT -- correct behaviour. Document ".scl's 1/1 maps to the root (called C by convention); root is
+   movable." Lowest effort, not wrong.
+2. ADD THE ROTATE/TONIC CONTROL -- let the user pick which loaded degree sits on the root (modal rotation
+   of the tuning). The rotate-Sikit / unified-tonic idea. The REAL added capability; subsumes the "what if
+   I don't want 1/1 on C" concern by making the reference degree a choice. RECOMMENDED.
+3. FULL .kbm support -- read a keyboard-map for arbitrary reference placement. Correct+complete Scala
+   answer but heavy; overkill for a 12-slot retuner. Rotate (opt 2) covers the musically useful part.
+
+STEER: the load path is doing the right thing; it just needs a COMPANION rotate control (option 2), not a
+change to the load path. The "assuming C" feeling = "I can only load in default rotation"; the fix is the
+unified tonic-rotates-tuning control (prev section), not touching openScalaFilePicker().
+
+Cross-ref: Sikit.cpp:169-174 (load path, root stays 0, degrees 1..N above), the rotate-Sikit section
+above (the companion control), ScalaFile.hpp (.scl rel 1/1), SCALA_FILE_AND_LOAD_UI.md (load UX).
