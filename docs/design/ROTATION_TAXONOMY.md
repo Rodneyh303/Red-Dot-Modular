@@ -41,15 +41,21 @@ controls. One CONCEPT (rotation) at many layers = elegant + learnable (user reas
 rotations). Compose freely = a multi-dimensional rotation space (emphasis x membership x intonation x
 pitch-class x register x rhythm), each axis a musically distinct gesture.
 
-## OPEN placement question (Rodney to confirm)
-"NOTE rotation" vs "PROBABILITY rotation" vs "MASK rotation" all touch "which note comes out" -- confirm
-they're distinct:
-- MASK = which degrees are IN the scale (membership).
-- PROBABILITY = which in-mask degree is SELECTED per step (emphasis).
-- NOTE = rotate the SELECTED/played pitch-class within the octave (output transpose within octave)?
-If NOTE rotation is a transpose-the-output within the octave, it sits AFTER selection, near the pitch-class
-layer alongside octave rotation. If it's really the same as probability (which degree fires), it's not a
-separate axis. CONFIRM which, so the taxonomy doesn't double-count.
+## These are BUILT, gettable, modulatable, deparam'd (NOT open questions) -- correction
+CORRECTION (Rodney): probability, length, offset, and rotation are NOT open design questions. They are
+per-lane values that are already GETTABLE, MODULATABLE, and went through deep design + DEPARAM months ago.
+Confirmed SandsVisualEditorV4.hpp: length/offset/rotation are live EDIT values (:95-97); probability has an
+EFFECTIVE getter at the sequencer step (:114, resolves the modulated value); the full EDIT-vs-modulated-
+DISPLAY split is built -- window/markers track modulation, display diverges from edit under CV modulation
+when unlocked (:102,:147,:197), with edit-permission / lock / delegated-to-Macro / read-only handling
+(:190). This IS the deparam architecture (params -> modulatable values with separate edit-handles +
+modulated display + lock semantics).
+
+So the earlier "confirm note vs probability vs mask" framing was WRONG -- it re-opened settled, shipped,
+deeply-designed infrastructure. These four per-lane primitives (probability, length, offset, rotation) are
+DONE and modulatable; the pitch-side rotations (mask/tuning/note/octave) compose WITH them. This taxonomy
+DESCRIBES an existing built system, it does not propose or question it. Any distinctions (note vs octave
+etc.) are already resolved in the codebase + its deparam history -- read the code/history, don't re-derive.
 
 Cross-ref: PROBABILITY_MODIFIER_MODEL (the pitch pipeline: probability/mask/tuning layers), TONIC_
 TRANSPOSE_BUILD_BRIEF (mask + tuning rotation, rotateMaskN, un-rooted-.scl framing), SandsVisualEditorV4
