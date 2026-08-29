@@ -375,3 +375,38 @@ Supersedes the earlier "LEAN: link them / unified tonic rotates both" -- refined
 
 Cross-ref: rotate-Sikit + Colonnades/Duo sections above (the controls), rotateMaskN (now the general
 operation over live N), the maqam/modal use (why mask-over-fixed-tuning must stay independent).
+
+## Are preset .dmtune files mask rotations? NO -- they're tuning+mask PAIRS (the un-rotated reference)
+
+Checked the .dmtune format (TuningList.hpp + a shipped preset). A .dmtune contains:
+  { format:"dotmodular.tuning", version:2, n:15, cents:[...N...], enabled:[...N...] }
+= cents[] (the TUNING) AND enabled[] (the MASK), for N degrees. Header: "a .dmtune front carries cents +
+enabled, NOT weight". A tuning+mask PAIR, not a rotation.
+
+### So "are they mask rotations?" -- NO, two senses
+1. A .dmtune stores an ABSOLUTE (cents, enabled) pair, not a rotation OPERATION. Rotation is a live
+   transform applied at load/runtime (rotate mask or tuning by a root offset). The preset is the THING
+   transformed, not the transform. Preset = stored (cents, enabled); rotation = what the root/tonic
+   control DOES to it.
+2. Not even purely masks -- each carries its OWN tuning (cents), not just a membership pattern over a
+   shared tuning. The maqam presets are self-contained pitch-sets: e.g. Maqam_Rast_24EDO = Rast's cents +
+   Rast's mask. "Here is a complete tuning and which of its degrees form this jins/maqam."
+
+### What this means for the rotation design
+The presets are the FIXED REFERENCE (authored tuning+mask, at their authored rotation, degree 0 = authored
+tonic); the rotation controls (mask-root, tuning-root) are LIVE TRANSFORMS on top. Load Rast -> get Rast's
+cents+mask un-rotated; THEN rotation can shift it (mask-rotate = different mode of Rast's degrees;
+tuning-rotate = re-intonate). Preset defines the un-rotated HOME state; rotation is the DEPARTURE from it.
+Complementary, not the same. The preset isn't a rotation; it's what rotation acts UPON.
+
+### Subtlety (connects to root-relative storage)
+A scale-only/transposable .dmtune stores enabled[] ROOT-RELATIVE (tonic normalised to degree 0, per the
+tonic brief) so the live root control can rotate it into place. So rotation touches the preset FORMAT only
+in that the mask may be stored PRE-NORMALISED (degree-0 tonic) to allow clean rotation -- NOT that the
+preset IS a rotation. Note: root-suffixed jins presets (Jins_*_G, _C) look authored AT a specific root;
+24EDO maqam presets may be root-relative. Check per-preset if it matters; headline stands: preset = pair,
+not rotation.
+
+Cross-ref: TuningList.hpp:28-31 (cents+enabled slot), presets/maqam/*.dmtune (tuning+mask pairs), the
+rotation sections above (rotation = live transform on the loaded pair), STEP 4 of this brief (root-relative
+mask save -- the one place normalisation-for-rotation touches the format).
