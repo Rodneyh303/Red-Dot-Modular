@@ -285,3 +285,48 @@ driven by Shophouse's own scale root.)
 Cross-ref: Sikit.cpp:169-174 (load path, default root=0 preserved), the rotate-Sikit section (this IS
 that control), the Sikit-12-only resolution (12 degrees so 0..11 selector), ScaleMaskArbiter rotateMask12
 (the SEPARATE mask-side root on Shophouse), DOC_PRIORITISATION (TONIC_TRANSPOSE Tier-1 build item).
+
+## Does tuning-rotation apply to Colonnades / Duo? YES -- and Duo is the rotateMaskN case (Rodney)
+
+Sikit param check (Sikit.hpp:20-23): params are CENTS_PARAM_0..11 ONLY (12 cents); degree 0 root LOCKED
+at 0 cents, no interactive knob. So the proposed Sikit root DIAL is a NEW control (a rotation index
+0..11), not an existing param -- it rotates which loaded degree sits on the (locked-0) root. Default 0 =
+current behaviour (1/1 on root); opt-in rotation from there; show when non-zero so an offset is deliberate.
+
+### Colonnades / Duo DO carry tuning -> rotation applies (code)
+Colonnades.hpp: "tuning + scale AUTHORING expander... claim/publish cents[]+weight[]+maskAuthored". So
+Colonnades carries cents (tuning) + weight + an authored MASK -- a FULLER source than Sikit (Sikit = cents
+only; its mask lives on Monsoon/Shophouse). Colonnades = 12 degrees; Colonnades Duo = 24 degrees.
+
+Differences from Sikit that shape HOW rotation applies:
+1. Colonnades AUTHORS (build cents fader-by-fader) vs Sikit LOADS a .scl. So "rotate" on Colonnades
+   rotates the AUTHORED cents + mask together = the UNIFIED rotation (cents+mask) -- Colonnades is
+   actually the CLEANER home for the unified-tonic idea, because it owns BOTH layers in one place (Sikit
+   owns only cents).
+2. Colonnades Duo is 24-degree = the N != 12 case. This IS "the Micro/Emerald-Hill non-12 path" the
+   transpose gap was re-homed to. So rotation on Duo needs rotateMaskN (rotate over 24), NOT rotateMask12.
+   Sikit + Colonnades (12) can use the 12-domain rotation; Duo (24) forces the degree-space
+   generalisation = the open item from the transpose thread.
+
+### The family picture
+- Sikit (12, loads .scl): rotation applies, rotateMask12-compatible, rotates the loaded tuning.
+- Colonnades (12, authors cents+weight+mask): rotation applies, UNIFIED (cents+mask), 12 so rotateMask12
+  works.
+- Colonnades Duo (24, authors): rotation applies, needs rotateMaskN (N=24) -- the module that REQUIRES
+  the generalisation; others can ship 12-only first.
+
+### Consistency principle (Rodney's Colonnades question surfaces it)
+If all three tuning sources get a root/rotation control, keep it the SAME CONCEPT on each (same meaning:
+"which degree is the 1/1"), even if the GESTURE differs per module idiom (Sikit = a dial; Colonnades =
+maybe the existing root cents-lock extended, or a matching dial). Uniform concept -> users learn it once.
+And the "need not equal the Shophouse/Monsoon mask root" INDEPENDENCE applies to ALL of them: each tuning
+source says "my 1/1 sits here", the consuming Monsoon says "my scale is rooted here", the optional gap is
+expressive. Consistent across the family.
+
+### Build order implication
+Ship the 12-degree root rotation first (Sikit + Colonnades, rotateMask12-domain). Colonnades Duo's 24-deg
+rotation waits on rotateMaskN -- bundle it with the non-12 transpose generalisation (same work).
+
+Cross-ref: Sikit.hpp:20-23 (cents-only params, root locked), Colonnades.hpp (cents+weight+mask authoring),
+COLONNADES_DUO_PANEL_SPEC (24 degrees), the transpose non-12 gap above (rotateMaskN, now clearly needed
+for Duo), the rotate-Sikit + unified-tonic sections (the concept this generalises)." 
