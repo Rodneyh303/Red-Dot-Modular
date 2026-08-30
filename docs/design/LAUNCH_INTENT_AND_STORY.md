@@ -187,3 +187,63 @@ blandness. (Roadmap: raga looks the strongest next proof case.)
 Cross-ref: presets/maqam/README (the sayr proof case), PROBABILITY_MODIFIER_MODEL (the sayr-dimensioned
 space + wider scope), ROTATION_TAXONOMY (the general axes), SHAREABILITY_ANALYSIS (shared-source =
 gamelan interlocking territory).
+
+## FRAMING FIX (Rodney): it's a SINGAPORE love letter. Maqam is just an EXAMPLE.
+Correcting sloppy "maqam-and-Singapore love letter" phrasing throughout: dot.modular is a SINGAPORE love
+letter, full stop. Singapore -- the Little Red Dot, the port-city crossroads, Change Alley, the
+multicultural confluence -- is the SUBJECT. Maqam is ONE EXAMPLE of what the general engine can voice, a
+vivid proof of the "instrument as meeting-point of musical worlds" idea, sitting alongside the others
+(raga, gamelan, Chinese traditions, Western, rhythmic). The thesis: a Singaporean instrument, born of a
+place where traditions mix, can voice MANY musical worlds. Maqam demonstrates the capacity; it is not a
+co-headliner. Do not invert subject (Singapore) and example (maqam).
+
+## WHY region-ordering / pathway is the WEAK axis (Rodney asked -- expanded)
+Region-ordering = the ORDER a melody visits regions of the scale over time ("lower tetrachord -> ascend to
+establish the ghammaz -> touch the upper region -> return -> cadence on tonic"). The ROUTE through the
+scale = a sequence of where-you-are over time.
+
+### Why it's structurally different from every other axis
+All other axes are STATE -- a property AT A MOMENT (which degree emphasised, how long held, which
+direction, what's in the mask). State axes you SET and the engine APPLIES. Region-ordering is an ORDERED
+TRAJECTORY -- not a property at a moment but a specific sequence of positions over the whole phrase. A
+categorically different kind of thing.
+
+### Three precise reasons it's weak
+1. The engine is GENERATIVE/probabilistic, not a stored path. Sands/correlation GENERATES next-from-rules+
+   randomness+state -- great for STATE axes (set them, generate within). A specific ordered pathway is
+   nearly the OPPOSITE of generative -- a predetermined route. To follow "lower->ghammaz->upper->return"
+   you must MODULATE the state axes in a specific TIMED SEQUENCE (offset/rotate here, shift emphasis
+   there, at these phrase positions). So the pathway isn't a primitive -- it's a CHOREOGRAPHY of the other
+   primitives over time. That's why it's emergent: it exists only as coordinated modulation of the direct
+   axes.
+2. It needs GLOBAL memory of "where in the phrase am I". State axes are LOCAL (per-step). A pathway is
+   GLOBAL -- "we're in the development section, so visit the upper region". Expressing "at phrase-position
+   X be in region Y" requires authoring a trajectory AGAINST phrase-position = a modulation ENVELOPE /
+   drawn automation, not a per-step primitive. The engine supports it (modulate offset/rotation by an
+   envelope keyed to phrase position) but as AUTHORED EXTERNAL modulation, not an intrinsic control.
+3. It's where the MOST tradition-specific grammar lives, so weak here costs most. Region-ordering carries
+   aroha/avaroha (raga ascent/descent rules), maqam modulation pathways, the sayr proper (the "course" --
+   the word means the PATH). So the dimension the engine expresses LEAST directly carries a lot of what
+   makes each tradition distinctive. State axes give plausible behaviour; the pathway axis is what would
+   make it IDIOMATICALLY correct for a specific tradition. Weak there = "evocative but not idiomatically
+   precise".
+
+### So "weak" precisely means
+Region-ordering is expressible only as an AUTHORED, TIMED CHOREOGRAPHY of the other axes (modulation
+envelopes / drawn automation keyed to phrase position), NOT as a direct primitive -- because it's an
+ordered GLOBAL trajectory (categorically unlike the local/state direct axes) and it runs AGAINST the
+generative grain (a fixed route vs generated-within-rules).
+
+### What would STRENGTHEN it (the useful part)
+The thing that turns "modulate state axes in a timed sequence" into a DIRECT pathway control is a drawn
+pattern specifying position-over-phrase -- which is EXACTLY the pitch piano-roll editor (the parked
+module). A drawn pitch pattern IS an authored pathway ("these degrees, in this order, over the phrase").
+So the pitch-roll editor is, in a real sense, THE DIRECT CONTROL FOR THE REGION-ORDERING AXIS -- how you
+author a pathway explicitly instead of coaxing it from modulated state. The one weak axis has a known
+strengthener already in the design, parked. The editors aren't just convenience -- the pitch roll is the
+missing PATHWAY primitive.
+
+Cross-ref: PROBABILITY_MODIFIER_MODEL (state vs trajectory; the sayr-dimensioned space), presets/maqam/
+README (5-of-6 scorecard, region-ordering the emergent one), PIANO_ROLL_MODULE_CONCEPT (the pitch roll =
+the direct pathway control that strengthens this axis), the other-traditions section above (region-ordering
+is where aroha/avaroha etc. live -> the pitch roll helps every tradition's pathway grammar).
