@@ -136,3 +136,46 @@ claims per-rotation as needing a maqam-theory source, not asserted by the tool.)
 
 Cross-ref: the mask-rotation feature (TONIC_TRANSPOSE_BUILD_BRIEF) -- label "rotate/root" not "mode";
 the "distinct masks not rotations" finding above (why maqamat are different shapes, ajnas-built).
+
+## BIGGER POINT (Rodney): offsetting rhythm + note probability affects SAYR -- emphasis emerges from built primitives
+
+The claim: the already-built primitives (rhythm offset/rotation + note probability, all modulatable)
+TOGETHER affect SAYR -- the melodic pathway/behaviour central to maqam identity BEYOND the pitch-set.
+
+### What sayr is (so the claim stays honest)
+Sayr = the characteristic melodic BEHAVIOUR of a maqam: typical start note, direction of development,
+which degrees are emphasised/dwelt on, the ghammaz (dominant/pause degree), the order regions are visited,
+how/where it modulates. Crucially it's the part NOT captured by the scale alone -- two maqamat can share a
+scale and differ in sayr.
+
+### Which built primitives touch sayr, precisely
+- NOTE PROBABILITY (weighted which-degree-fires) -> maps DIRECTLY onto EMPHASIS, a core sayr component.
+  A probability distribution over degrees weighting the ghammaz + tonic heavily and passing tones lightly
+  IS an emphasis profile = a real slice of sayr. STRONG claim, correct.
+- RHYTHM OFFSET/ROTATION -> emphasis INDIRECTLY: where in the metric cycle a degree tends to land changes
+  its structural weight (a degree consistently on strong beats becomes ghammaz-like even at equal
+  probability). Genuine but SECOND-ORDER. Don't overclaim rhythm = sayr.
+- TOGETHER they shape which degrees feel structurally important AND when they arrive = a substantial
+  PORTION of sayr (the emphasis/hierarchy part) -- NOT all of it (melodic direction, ordered pathway,
+  modulation logic need sequence/contour, not just weight+timing).
+
+### Why this matters (the thesis vindicating itself from the mechanics up)
+The emphasis dimension of maqam is ALREADY expressible with machinery built for GENERAL sequencing reasons
+(modulatable probability/offset/rotation). Not a bespoke "sayr module" -- the general correlation/
+probability engine, pointed at maqam, produces sayr-like emphasis behaviour EMERGENTLY. The East pole
+isn't bolted on; it FALLS OUT of the general engine. More credible precisely because it claims only the
+quantifiable part (emphasis), not all of sayr.
+
+### Honest framing (keep it defensible; matches the "rotation isn't mode" care)
+"Affects sayr" NOT "implements sayr". Sayr is a learned, culturally-transmitted, partly-improvised
+practice (direction, ornament, modulation, the whole grammar). The machinery gives the EMPHASIS SUBSTRATE
+on which sayr-like behaviour sits, and lets a user SCULPT emphasis + metric placement in ways that evoke
+sayr -- without reducing sayr to them. Defensible claim: "these primitives shape emphasis and metric
+placement, core to how sayr is FELT". Overclaim to avoid: "we model sayr".
+
+This is thesis/launch material (a conceptual result about what the instrument does), not just a design
+note. See LAUNCH_INTENT_AND_STORY.
+
+Cross-ref: ROTATION_TAXONOMY (probability/offset/rotation = built modulatable primitives), PROBABILITY_
+MODIFIER_MODEL (probability rotation ~ emphasis), the rotation-vs-mode/sayr note above, LAUNCH_INTENT_AND
+_STORY (thesis: East pole emerges from the general engine).
