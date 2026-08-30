@@ -228,3 +228,42 @@ knowledge layer). Strong true claim: "the tools express every dimension sayr liv
 Cross-ref: the BIGGER POINT section above (emphasis emerges), ROTATION_TAXONOMY (the built modulatable
 primitives), LAUNCH_INTENT_AND_STORY (thesis material -- sayr dimensions expressible by the general engine),
 the deparam history (why length/offset/rotation/prob/legato/rest/accent are all modulatable).
+
+## Direction modes upgrade "direction of development" to TIGHT -- pendulum IS the maqam arch (Rodney)
+
+Built + code-verified (SequencerEngine.cpp:21-90): four per-lane direction modes, worked out with exact
+traversals and DNA_LCM continuity:
+- Forward / Reverse: straight either way.
+- Pendulum: triangle 0,1,2,3,2,1,0... bounce at endpoint, NO repeat. Period 2*(len-1).
+- PingPong: triangle+hold 0,1,2,3,3,2,1,0,0... endpoint REPEATS then bounces. Period 2*len.
+
+### This upgrades sayr "direction of development" from PARTIAL/EMERGENT to TIGHT
+Earlier mapping had "direction of development" as emergent (only via modulated offset/rotation). But
+direction is a FIRST-CLASS per-lane primitive:
+- Forward = ascending development; Reverse = descending.
+- PENDULUM = rise-and-fall ARCH -> this IS the archetypal maqam melodic contour: ascend through the jins
+  to the ghammaz, then descend back to the tonic. The pendulum triangle = the classic sayr arch.
+- PingPong = same arch but DWELLING on the turnarounds (endpoint repeats) -> emphasises the extremes
+  (tonic + peak/ghammaz held) = direction mode that ALSO does boundary emphasis.
+So one built direction mode (pendulum) directly encodes the archetypal sayr contour. Striking fit between
+a general-sequencing primitive and a deep tradition-specific feature.
+
+### Revised sayr scorecard: 5 of 6 TIGHT, 1 emergent
+| Sayr component            | Primitive                                    | Strength |
+| Starting note             | offset+rotation+octave                       | tight    |
+| Emphasised/dwelt-on       | probability + legato/length                  | tight    |
+| Pauses (ghammaz)          | rest+accent+length                           | tight    |
+| Modulates                 | modulation of mask/prob/rotation             | tight    |
+| Direction of development  | DIRECTION MODE (fwd/rev/pendulum/pingpong)   | TIGHT (up)|
+| Order regions visited     | modulated offset/rotation over phrase        | emergent |
+
+Only "order regions are visited" remains emergent (needs SEQUENCED region-visiting across a phrase --
+modulated offset/rotation over time, or a drawn pattern). Everything else maps to a direct built primitive.
+
+Strengthens the vindication: the state components AND now the direction/contour component map DIRECTLY;
+only pure trajectory-ordering is emergent. Pendulum=arch is a headline example of the general engine
+landing on maqam's own shapes without special-casing.
+
+Cross-ref: SequencerEngine.cpp:21-90 (direction modes + traversals + DNA_LCM), ROTATION_TAXONOMY (direction
+alongside the rotation family), the FULL sayr mapping above (this upgrades row 5), LANE_DIRECTION_REVERSE /
+REVERSIBLE_MODE_DECISIONS (the direction/reverse design history).
