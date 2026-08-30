@@ -247,3 +247,50 @@ Cross-ref: PROBABILITY_MODIFIER_MODEL (state vs trajectory; the sayr-dimensioned
 README (5-of-6 scorecard, region-ordering the emergent one), PIANO_ROLL_MODULE_CONCEPT (the pitch roll =
 the direct pathway control that strengthens this axis), the other-traditions section above (region-ordering
 is where aroha/avaroha etc. live -> the pitch roll helps every tradition's pathway grammar).
+
+## CORRECTION (Rodney): region-ordering is NOT weak -- it's DIRECT in quantiser mode (external note order)
+My "weak axis" analysis was under-scoped -- it only considered SEQUENCER modes. Correction:
+
+The "weak because the engine is generative, not a stored path" reasoning applies ONLY to sequencer modes
+(engine GENERATES the note order). In QUANTISER modes the note order comes from an EXTERNAL source -- the
+engine doesn't generate the pathway, it RECEIVES it and applies its transformations. So the pathway is not
+emergent-via-choreography; it's simply the INPUT. An external sequence IS the region-ordering, directly.
+
+### So region-ordering is already a DIRECT axis -- in quantiser mode
+- Feed an externally-sequenced note order (another sequencer, DAW, CV pattern, or the pitch-roll editor
+  when built) -> THAT is the pathway, specified directly.
+- The engine then applies everything else ON TOP: rhythmic variation (offset/rotation/direction/length/
+  legato), emphasis (probability), tuning, mask.
+= Rodney's point: "just applying rhythmic variation" to an externally-supplied note order. The pathway is
+a solved INPUT in quantiser mode; the engine's job is to VARY it, not generate it.
+
+### Revised scorecard: MODE-DEPENDENT, not a flat weakness
+- SEQUENCER modes: region-ordering emergent (engine generates order; pathway choreographed via modulated
+  state). My original analysis holds HERE only.
+- QUANTISER modes: region-ordering DIRECT (external note order = the pathway; engine applies rhythmic/
+  emphasis/tuning variation on top). "Weak" was WRONG for this half.
+So NOT "5 of 6 direct, 1 emergent" flatly -- in quantiser mode it's 6 of 6 DIRECT. The instrument already
+has a direct region-ordering control: quantiser mode fed an external sequence. I mistook a property of one
+mode for a property of the whole instrument.
+
+### Connections this sharpens
+1. The pitch-roll editor is the pathway primitive FOR QUANTISER MODE -- an INTERNAL external-sequence source
+   (a drawn note order the quantiser consumes). It doesn't add a new capability; it makes the already-
+   existing quantiser-mode pathway-input AUTHORABLE inside the ecosystem instead of needing an external
+   sequencer. The capability exists now (feed any external CV sequence); the editor makes it native.
+2. "Quantiser transforms an external melody" IS quantiser mode's whole purpose: take someone's note order
+   (their pathway) and reinterpret it through the maqam/microtonal/rhythmic engine. Region-ordering was
+   never weak in the mode DESIGNED to receive it -- receiving + transforming external pathways is exactly
+   what quantiser mode is for.
+
+### Net
+Region-ordering is DIRECT in quantiser mode (external note order = the pathway), emergent only in sequencer
+mode (generated order). The instrument as a whole expresses all six sayr dimensions directly -- the sixth
+via the mode built to take an external melody, applying rhythmic + emphasis variation to a given pathway
+rather than generating one. Supersedes the "region-ordering is the weak axis" framing (which is
+sequencer-only).
+
+Cross-ref: the "why region-ordering weak" section above (now scoped to SEQUENCER mode only), QUANTISER_
+MODES_UNIFICATION (quantiser takes external pitch/order), PIANO_ROLL_MODULE_CONCEPT (pitch roll = native
+authorable pathway source for quantiser mode), presets/maqam/README (scorecard now mode-dependent: 6/6 in
+quantiser).
