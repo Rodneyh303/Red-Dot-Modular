@@ -179,3 +179,52 @@ note. See LAUNCH_INTENT_AND_STORY.
 Cross-ref: ROTATION_TAXONOMY (probability/offset/rotation = built modulatable primitives), PROBABILITY_
 MODIFIER_MODEL (probability rotation ~ emphasis), the rotation-vs-mode/sayr note above, LAUNCH_INTENT_AND
 _STORY (thesis: East pole emerges from the general engine).
+
+## FULL sayr <-> primitive mapping (Rodney): each sayr component maps to a built modulatable primitive
+
+Completing the previous point: not just probability~emphasis, but each sayr component maps to built,
+modulatable machinery (length, offset, rotation, octave variation, legato, rest, accent -- all modulatable).
+
+| Sayr component                        | Built primitive(s)                          | Strength        |
+|---------------------------------------|---------------------------------------------|-----------------|
+| Typical starting note                 | offset + rotation (where begins) + octave   | TIGHT           |
+| Degrees emphasised / DWELT-ON         | probability (how OFTEN) + legato/length (how LONG) | TIGHT    |
+| Where it PAUSES (ghammaz/dominant)    | rest + accent (structural stress) + length  | TIGHT           |
+| How/where it MODULATES                | modulation of mask/prob/rotation mid-phrase | TIGHT           |
+| Direction of DEVELOPMENT              | modulated rotation/offset over the phrase   | PARTIAL/EMERGENT|
+| ORDER regions are visited             | modulated offset/rotation over the phrase   | PARTIAL/EMERGENT|
+
+### Why 4 tight + 2 emergent (the meaningful split)
+- The TIGHT four are STATE: where you are (starting note), what's emphasised (prob+legato), where you rest
+  (rest+accent+length), what's active (modulation targets). Primitives express state DIRECTLY.
+- The EMERGENT two are TRAJECTORY: how you move THROUGH the state over time (direction, order of regions).
+  They emerge when you MODULATE the state across the phrase.
+Right, because modulation IS how state becomes trajectory. The primitives give state; modulating them
+gives trajectory.
+
+Refinements this adds over the previous (emphasis-only) point:
+- DWELT-ON needs BOTH probability (how often) AND legato/length (how long) -- better than probability alone.
+- PAUSES/ghammaz needs REST + ACCENT + length -- rest and accent earn their place as the pause/stress
+  machinery (weren't in the earlier emphasis-only framing).
+- MODULATES maps onto the fact that all these params are MODULATABLE (by CV / the correlation engine) --
+  maqam modulation (jins/region change mid-phrase) = modulating mask/prob/rotation partway = exactly what
+  "modulatable" gives.
+
+### The architecture vindication (full strength)
+These were built as GENERAL modulatable sequencing primitives (length/offset/rotation/probability/legato/
+rest/accent). The STATE components of sayr map onto them directly; the TRAJECTORY components map onto
+MODULATING them over the phrase = the engine's CORE capability. So sayr isn't something to ADD -- it's what
+the modulation engine already does when its targets are these musical primitives. The correlation engine
+driving these params IS a sayr-generation substrate pointed at maqam. Change Alley thesis at full strength:
+the general mechanism (modulation of musical state) produces the culturally-specific behaviour (sayr)
+without special-casing.
+
+### Honesty (unchanged)
+This gives the SUBSTRATE + the sculptable dimensions of sayr: a skilled user can SHAPE sayr-like behaviour,
+the engine can GENERATE it. It does NOT KNOW the culturally-correct sayr of each maqam (human/preset
+knowledge layer). Strong true claim: "the tools express every dimension sayr lives in." Overclaim to avoid:
+"it plays correct sayr automatically."
+
+Cross-ref: the BIGGER POINT section above (emphasis emerges), ROTATION_TAXONOMY (the built modulatable
+primitives), LAUNCH_INTENT_AND_STORY (thesis material -- sayr dimensions expressible by the general engine),
+the deparam history (why length/offset/rotation/prob/legato/rest/accent are all modulatable).
