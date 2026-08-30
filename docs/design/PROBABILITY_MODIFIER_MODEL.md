@@ -130,3 +130,32 @@ dimensions).
 Cross-ref: TONIC_TRANSPOSE_BUILD_BRIEF (mask + tuning rotations, rotateMaskN), the maqam sayr/emphasis
 discussion (presets/maqam/README -- probability rotation as sayr), ScaleMaskArbiter rotateMask12 (the
 shared util to generalise), COOL_POINTS_FEATURE_SPINE point 4 (probability counter-offset mechanism).
+
+### COMPLETION of the wider scope (Rodney, Dubai lounge): the space is now 5-of-6 sayr dimensions DIRECT
+The wider-scope section above was written before two later results. Folding them in completes it:
+
+1. DIRECTION MODES make the CONTOUR axis a DIRECT (not emergent) dimension. Forward/Reverse/Pendulum/
+   PingPong (SequencerEngine.cpp:21-90) are first-class. So "direction of development" is a direct axis,
+   and PENDULUM = the archetypal maqam arch (ascend to ghammaz, descend to tonic). The higher-dimensional
+   object's contour face is a BUILT control, not something coaxed from modulated offset. Revised: 5 of 6
+   sayr dimensions map to DIRECT axes; only "order regions visited" stays emergent (trajectory-ordering).
+
+2. So the modulation space's axes now are:
+   - Pitch: probability (emphasis), mask (membership), tuning (intonation), octave (register).
+   - Contour/time: DIRECTION (fwd/rev/pendulum/pingpong = the arch) [now DIRECT], length+legato
+     (dwelling), rest+accent (pause/stress/ghammaz), offset+rotation (starting note; region-visiting is
+     the one emergent trajectory axis).
+
+Final reframe: the engine modulates MUSICAL BEHAVIOUR across (nearly) every dimension sayr lives in, with
+5/6 dimensions as direct built axes and the archetypal contour (pendulum arch) built in. "3-D pitch
+modulation" is the pitch projection; the full space is the sayr-behaviour space. This is launch/thesis
+material: the general modulation engine's dimensions ARE maqam's melodic-behaviour dimensions -- the East
+pole emerges from the general mechanics, demonstrated axis by axis, not special-cased.
+
+(Reached, fittingly, in a Dubai lounge -- physically inside the Middle Eastern musical world the East pole
+honours. Honesty holds: the tools express + sculpt every dimension sayr lives in; they don't KNOW each
+maqam's culturally-correct sayr -- that stays the human/preset layer.)
+
+Cross-ref: presets/maqam/README (FULL sayr mapping, direction/pendulum=arch, 5-of-6 scorecard), ROTATION_
+TAXONOMY (the axes as built modulatable primitives), LAUNCH_INTENT_AND_STORY (thesis: dimensions of the
+modulation space = dimensions of maqam behaviour).
