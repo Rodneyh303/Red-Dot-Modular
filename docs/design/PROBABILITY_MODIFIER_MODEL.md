@@ -100,6 +100,33 @@ which-degree-fires-per-step (step-indexed selection over the mask's degrees), so
 from tuning (pitch-class-indexed). Deep in the sense of a coherent 3-layer family; NOT a merge-into-one-
 control. Shared util, three controls, orthogonal composition.
 
+## WIDER SCOPE (Rodney): the 3-D pitch space generalises to the full SAYR-dimensioned modulation space
+The "3-D pitch rotation space" (emphasis x membership x intonation) was too narrow a frame. The sayr
+synthesis (presets/maqam/README) showed the primitives that carry sayr -- direction, length, offset,
+rotation, legato, rest, accent, octave -- belong in the SAME modulation space as the three pitch axes.
+So "3-D pitch modulation" grows into the FULL musical-behaviour modulation space.
+
+Axes of the wider space:
+- Pitch: probability (emphasis), mask (membership), tuning (intonation), octave (register).
+- Contour/time: direction (fwd/rev/pendulum/pingpong = the arch), length + legato (dwelling/duration),
+  rest + accent (pause + stress / ghammaz), offset + rotation (starting note, region visiting).
+
+Key point (why this is "adding scope", not just more knobs): these are the axes of ONE high-dimensional
+modulation space, and -- the sayr result -- the space's dimensions ARE the dimensions of maqam melodic
+behaviour. The 3-D pitch cube is one FACE of a higher-dimensional object; the sayr synthesis revealed the
+rest of the object. Modulating a trajectory THROUGH this fuller space IS generating sayr-like behaviour.
+The "3-D pitch modulation" is a PROJECTION of the real thing onto three pitch axes; the wider scope
+restores the missing dimensions.
+
+Reframes what the engine IS: not "modulates pitch in 3 ways" but "modulates MUSICAL BEHAVIOUR across every
+dimension sayr lives in". The modulation space is a musical-behaviour space whose axes are the sayr
+dimensions, of which pitch-resolution is three.
+
+Cross-ref: presets/maqam/README (the sayr<->primitive mapping + direction/pendulum = the added axes),
+ROTATION_TAXONOMY (all the modulatable primitives = the axes), the 3-D pitch space above (now one face of
+the wider space), LAUNCH_INTENT_AND_STORY (thesis: the engine modulates musical behaviour across sayr's
+dimensions).
+
 Cross-ref: TONIC_TRANSPOSE_BUILD_BRIEF (mask + tuning rotations, rotateMaskN), the maqam sayr/emphasis
 discussion (presets/maqam/README -- probability rotation as sayr), ScaleMaskArbiter rotateMask12 (the
 shared util to generalise), COOL_POINTS_FEATURE_SPINE point 4 (probability counter-offset mechanism).
