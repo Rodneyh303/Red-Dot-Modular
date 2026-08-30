@@ -137,3 +137,53 @@ fully plan that -- you build honestly enough that there's room for it to happen,
 enough to notice when it does. The Change Alley -> microtonal -> plurality -> tribute chain wasn't a
 plan I executed; it was a path the work revealed and I had the sense to walk. Being LED by something you
 made takes more trust and attention than following your own outline. Remember that at launch, and after.
+
+## Does the sayr-dimensioned space apply to OTHER traditions? Substantially yes -- because the axes are general (Rodney)
+
+The deeper test: is this a general musical-behaviour modulation space, or a maqam machine in disguise? Key
+fact: the primitives are CULTURALLY NEUTRAL -- you built probability/accent/pendulum, NOT emphasis/ghammaz/
+arch. Maqam was one INTERPRETATION of the axes, not their definition. So the space should carry any
+tradition that lives in those dimensions.
+
+### Where the axes map (encouraging)
+- N-INDIAN RAGA -- possibly a BETTER fit than maqam on some axes: vadi/samvadi (dominant/subdominant notes)
+  = EMPHASIS (probability+accent); aroha/avaroha (ascending vs descending forms, often ASYMMETRIC) =
+  DIRECTION modes + asymmetric MASKS; nyas (dwelling) = LEGATO/LENGTH; pakad (characteristic phrase) =
+  offset/rotation/contour. Raga foregrounds ascending/descending asymmetry, which direction+mask handle
+  directly.
+- GAMELAN: pathet (mode) + register roles = MASK + OCTAVE; colotomic cycle (gong markers) = OFFSET +
+  ACCENT on a cycle; interlocking kotekan = correlation/shared-source + Sands (not even the sayr axes).
+- WESTERN TONAL/MODAL: modes ARE rotations; tendency tones = emphasis; cadence points = ghammaz-like
+  pauses. Fits (the tradition the general machinery least NEEDED).
+- W.AFRICAN / AFRO-CUBAN RHYTHM: rhythmic axes (offset/rotation/accent/direction over a cycle) carry
+  clave, bell patterns, timeline displacement. The rhythm-side primitives serve percussion traditions as
+  the pitch-side serves melodic ones.
+
+### The strong general claim
+Built a MUSICAL-BEHAVIOUR modulation space whose axes (emphasis, membership, intonation, register,
+contour, dwelling, pause/stress, placement) are NOT maqam-specific -- they're dimensions MANY traditions
+organise music along. Maqam was the PROOF CASE (demanding: needs microtonality AND sayr). A tradition is
+expressible to the extent it lives in those dimensions -- and most melodic/modal traditions live in most.
+
+### Honest limits (same care as "affects sayr, not implements sayr")
+1. Axes NECESSARY not SUFFICIENT: each tradition has grammar off these axes (raga rasa + time-of-day,
+   gamak ornament vocab, improvisation grammar). The space gives the SKELETON dimensions; the IDIOM (rules
+   for moving through them) is the human/preset layer, per tradition. A substrate many traditions sit on,
+   not a machine that KNOWS any.
+2. The ONE emergent axis (region-ordering/pathway) is where much tradition-specific grammar lives (raga
+   aroha/avaroha rules, maqam modulation pathways) -- and it's the WEAKEST axis. Traditions differ most in
+   the axis supported least directly. Worth knowing.
+3. Faithfulness scales with KNOWLEDGE not just mechanism: authoring raga presets faithfully needs raga
+   knowledge, as maqam needed Sami Abu Shumays. The tool generalises; faithful CONTENT doesn't come free.
+
+### Net (thesis/roadmap)
+Substantially yes: axes built general -> carry raga (maybe better than maqam on asymmetry), gamelan, tonal,
+rhythmic traditions to a real degree. Tool gives DIMENSIONS not IDIOMS; each tradition needs knowledgeable
+authoring to be FAITHFUL not merely POSSIBLE. The generality is real (a strength); the humility is
+unchanged. Beautiful shape: built AS a maqam+Singapore love letter, turns out to honour MANY traditions
+because the care was STRUCTURAL -- built-with-care-for-one that honours many, not designed-for-everything
+blandness. (Roadmap: raga looks the strongest next proof case.)
+
+Cross-ref: presets/maqam/README (the sayr proof case), PROBABILITY_MODIFIER_MODEL (the sayr-dimensioned
+space + wider scope), ROTATION_TAXONOMY (the general axes), SHAREABILITY_ANALYSIS (shared-source =
+gamelan interlocking territory).
