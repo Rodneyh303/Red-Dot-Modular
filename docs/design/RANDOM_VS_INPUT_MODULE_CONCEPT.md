@@ -251,3 +251,57 @@ needed regardless (it's half the test rig too).
 
 Cross-ref: MPE_UTILITY_BUILD_SPEC (Keppel out = the test's OUT leg), CORRECTION 1 & 2 above (superseded:
 MPE-in is third-party, validated by round-trip not by inspection), ROAD_TO_RELEASE (move these to V1).
+
+## How to source the per-step per-voice input-vs-generated decision: a FOURTH PHILOX STREAM (Rodney)
+
+Question: per-channel probability of using the generated note in quantiser mode conceptually needs per-STEP
+per-VOICE random samples to decide input-CV vs generated. How to manage? Generate an extra 16-step draw
+per voice each melody-draw? And by keeping it out of Sands we treat it differently.
+
+### Answer: NOT a stored side-array, NOT in Sands -- a fourth addressable Philox STREAM
+The decision randomness MUST be reproducible/reversible like everything else -- Philox draws are a pure
+function of (counter, key) (PhiloxRng.hpp:10-13), so any draw at index N re-derives without generating
+0..N-1 = what makes reverse/scrub/dice work. If the input-vs-generated decision isn't equally addressable,
+scrubbing backward would decide differently and the melody wouldn't reproduce. So it must be an addressable
+Philox draw, not an ad-hoc RNG or a generated-and-stored array.
+
+The code already has the exact pattern: per-stream keys by additive offset (PhiloxRng.hpp:96)
+  STREAM_RHYTHM=0, STREAM_MELODY=1, STREAM_CA=2  (documented S, S+1, S+2 model; Philox decorrelates).
+-> ADD STREAM_SOURCE_SELECT = 3. The input-vs-generated decision at (voice v, counter n):
+  draw = philox.atUniform(key = deriveKey(seed, STREAM_SOURCE_SELECT), counter/nonce encoding (n, v));
+  useGenerated = (draw < knob[v]).
+
+### This answers all three sub-questions
+1. "Extra 16-step draw per voice each melody-draw?" -> NO storage, NOT tied to generate-time. Philox is
+   ADDRESSABLE: compute the decision on demand at (counter, key) whenever needed, for any counter position.
+   Forward/reverse/jump/scrub -> query the same (counter, key) -> same draw. Free to re-derive, zero
+   storage, automatically reversible. Not "an array generated per melody-draw" -- "a stream sampled at the
+   current counter", exactly like the melody stream.
+2. "How to manage?" -> Identically to the melody draw, on stream 3. Same counter, same key model, same
+   addressability. Source-select and melody draws are queried at the SAME counter but DIFFERENT streams ->
+   independent (Philox decorrelates) yet both reproducible. Scrub to N -> re-derive both the melody note
+   AND the source decision at N. No state.
+3. "Out of Sands = treated differently" -> Correct to keep it out (Sands = per-voice ROUTING/rules; this =
+   per-voice stochastic SOURCE-SELECTION, a different kind of thing). But the "different treatment" is a
+   first-class fourth Philox stream, NOT a special side-mechanism -> consistent with the rhythm/melody/CA
+   randomness architecture while functionally distinct from Sands. Distinct role, uniform mechanism.
+
+### Per-voice independence: use the reserved NONCE, not a stream offset
+Need per-voice independence (voice 1's dice != voice 2's). Two options:
+- Per-voice stream offset (STREAM_SOURCE_SELECT + v): risks colliding with other streams' key regions --
+  sloppy.
+- BETTER: fold voice into the NONCE. The counter is packed into ctr[0..1]; ctr[2..3] carry a fixed nonce
+  (0) with "the full 128-bit counter space available if ever needed" (PhiloxRng.hpp:109-110). Put VOICE in
+  the nonce (ctr[2]) and STEP/counter in ctr[0..1], on the single STREAM_SOURCE_SELECT=3 key. Per-voice AND
+  per-step addressable from one stream, no offset collision, using the space the architecture ALREADY
+  reserved for exactly this.
+
+### Precise recommendation
+STREAM_SOURCE_SELECT = 3; voice in nonce (ctr[2]); step in counter (ctr[0..1]); sample on demand at the
+current counter to decide input-vs-generated per voice per step. Addressable, reversible, zero-storage,
+per-voice independent, consistent with rhythm/melody/CA, correctly OUTSIDE Sands.
+
+Cross-ref: PhiloxRng.hpp:10-13 (addressable/reversible), :96-103 (per-stream additive key model -> add
+STREAM_SOURCE_SELECT=3), :109-110 (ctr[2..3] reserved nonce -> put voice here), PHILOX_KEY_DERIVATION_AND_
+CA_SEED.md (the identical-derivation bug this pattern already fixed -- follow it), the per-voice module
+concept above, PROBABILITY_MODIFIER_MODEL (fire-probability is a separate decision; this is source-select).
