@@ -63,9 +63,6 @@ Skim the phase you're in; open the linked docs for detail. Status tags: [DONE] [
   microtonal CV (inverse of Keppel's note+bend split). BUILD ONLY IF the round-trip test fails the cents
   tolerance (esp. an unconfigurable bend-range mismatch). Self-contained, zero engine coupling.
 - [PARKED] Emerald Hill (wide 4x24-slot Shophouse) -- QUANTISER_MODES_UNIFICATION.md (Emerald Hill notes)
-- [SUPERSEDED LINE BELOW -- kept for the doc link]
-- [see above] Pitch piano-roll + gate editor -- PIANO_ROLL_MODULE_CONCEPT.md (fully specced, build
-  after quantiser modes final)
 
 ---
 
