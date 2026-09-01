@@ -516,3 +516,39 @@ modifiers on external gates), the panel-placement section (q-mix on Sands Macro 
 symmetry, visually), MODE_B_SPEC (external gate handling = the rhythm-side counterpart), QUANTISER_MODES_
 UNIFICATION (external melody CV = q-mix's input), the idiom-refinement section (q-mix = Sands-item idiom =
 why it sits with the gate-side modifiers).
+
+## q-mix is ENOUGH (Rodney) + octave-quantise behaviour checked
+q-mix is enough as the pitch-side addition -- the pitch side ALREADY has its richness (scale + fader-
+control modulation + octave). q-mix just adds the source-blend on top; no fuller pitch-modifier suite
+needed. q-mix + existing scale/fader/octave modulation IS the pitch-side suite.
+
+### Octave-quantise behaviour (Rodney asked: fader octave-range vs nearest octave?) -- CODE CHECKED
+Answer: NEAREST active degree within the INPUT'S OCTAVE +-1 -- NOT a fader octave-range, NOT naive single-
+octave. SequencerEngine.cpp:1024-1054:
+- octave = (int)vIn  (start from the incoming CV's own octave).
+- For each active degree, search candidates in octave-1, octave, octave+1; pick the nearest, WEIGHTED by
+  fader weight (radius = w * 1/12, score = w/dist -> a heavier fader has a wider capture radius).
+- Fallback: globally nearest active degree across those 3 octaves if none within radius.
+- degV(s) = s/12 at 12-TET default (byte-identical legacy), else tuning.degreeVolts(s) (snaps to ACTUAL
+  tuning degrees under a custom/Micro-24 tuning).
+
+### Why this is the right behaviour (better than either option asked)
+- PRESERVES the input's register: centred on (int)vIn, only +-1 octave -> quantised output stays near
+  where the input was. An external melody keeps its contour/octave; quantise fixes the PITCH CLASS to the
+  scale without transposing the octave. Exactly right for feeding an external melody in.
+- +-1 octave window handles boundary cases (snap to a degree in the octave above/below if genuinely
+  nearest) -> no getting stuck snapping the wrong way.
+- Fader weight widens capture -> a prominent degree attracts nearby input pitches (emphasis affects
+  quantise capture, not just loudness). Nice.
+
+### Implication for q-mix (octave asymmetry, by design -- not a bug)
+The octave comes from (int)vIn = the INPUT's octave, NOT the octave lane. So when q-mix blends generated
+vs input: the GENERATED pitch uses the OCTAVE LANE (octave randomisation/control); the INPUT pitch keeps
+its OWN octave (input-driven). The two blended sources may sit in DIFFERENT octaves -- input = its own
+register, generated = octave-lane-driven. Probably desirable (input keeps contour, generated wanders per
+the octave lane), but worth knowing when tuning the blend: q-mix mixes two sources with different octave
+logic.
+
+Cross-ref: SequencerEngine.cpp:1024-1054 (the octave-search quantise), :990 nearestDegree, TuningTable
+degreeVolts (custom-tuning snap), the octave lane (drives generated pitch, not quantised input), the
+q-mix sections above (the blend inherits this octave asymmetry).
