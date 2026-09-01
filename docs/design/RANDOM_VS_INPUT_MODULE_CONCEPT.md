@@ -703,3 +703,36 @@ blocking; decides how complete the octave-alignment bonus is.)
 Cross-ref: the octave-range option section above (this pins its two open questions), the octave lane /
 Monsoon octave faders (min/max = the 2 faders; confirm they bound generated too), the q-mix octave
 asymmetry (fold-ON is the alignment switch).
+
+## UNIFIED octave window: same min/max faders for BOTH generation AND quantisation (Rodney)
+Confirmed: the same min/max octave faders govern BOTH generated notes AND folded quantised input. So the
+octave range is a SINGLE UNIFIED control over the whole pitch output -- generated notes are placed within
+[min,max], and (fold ON) input is folded into [min,max] too. One window, both sources -> octave behaviour
+COHERENT BY CONSTRUCTION (everything lives in [min,max], generated or quantised-input). This resolves the
+earlier "confirm whether generated respects the same faders" question: YES, same faders -> FULLY unified.
+
+### The octave-behaviour space (small controls, wide musical range)
+Three composing controls: min/max faders (the window), q-mix (how often generated vs input), fold on/off
+(is input confined to the window or keeps its own register).
+- Narrow LOW window + fold ON + low q-mix = tight BASSLINE with occasional generated bass variation.
+- Narrow low window, max nudged UP + moderate q-mix = BASSLINE WITH HIGHER-OCTAVE FLOURISHES (Rodney's
+  example): folded input stays anchored low (the bassline), generated blend reaches into the higher octave
+  the widened window allows (the occasional higher notes).
+- WIDE window + fold OFF + high q-mix = input keeps its register, generated roams widely = a melody with
+  free octave-leaping counter-voices.
+- Wide window + fold ON = everything (input + generated) spread across the full range = full-register
+  heterophony.
+Each is a distinct, musical behaviour from a couple of fader/knob settings. Few controls, wide range, every
+setting musically useful -- and coherent throughout because the SAME window bounds both sources (generated
+can't wander outside the set register).
+
+### "Same or different octave" is now a TUNABLE AXIS, not just an asymmetry
+The earlier q-mix "same or different octave" freedom is now precisely controllable: the min/max WINDOW WIDTH
++ fold toggle IS the dial for how much octave spread the blend has. Narrow window -> generated + input share
+the register (same-octave blend); wide window -> generated can leap octaves (different-octave blend). So the
+coolness (coherent-but-wide heterophony) is DIALABLE via the octave window width. Completes the "why it's
+cool" picture: safe-surprise heterophony with a continuous octave-spread control.
+
+Cross-ref: the octave-range-option PINNED section (min/max = 2 Monsoon faders, fold; now confirmed they
+bound generated too = fully unified), the why-cool section (same/different octave = now the window-width
+axis), the q-mix octave asymmetry (resolved: one window governs both, fold aligns, width sets spread).
