@@ -473,3 +473,46 @@ answers the only real open question (does it sing?) at minimal cost.
 
 Cross-ref: the fourth-Philox-stream section (the MVP mechanism), the panel-placement section (the THEN
 step -- row-3 Sands lane), ROAD_TO_RELEASE (function-first-then-panels, mirrored here).
+
+## FULL FEATURE SCOPE + the unifying symmetry (Rodney): q-mix completes the pitch side of external-input modification
+
+### Layout distribution (big surface, all well-trodden -- each piece lands on the module whose role fits)
+- Big 5 -> BIG 6 on Monsoon: q-mix (per-voice mix probability) becomes a headline modulation target,
+  joining probability et al. (anyBig5Modulated -> Big6). Consistent with the idiom: q-mix is a knob-vs-
+  per-step-probability like the other Big-5, so it belongs in that headline group.
+- Monsoon cramped -> use more HP (accept a wider Monsoon to house the 6th headline control).
+- Poly knobs -> expanded STRAITS (Straits is already the poly-voice expander -- the natural home for
+  anything per-voice-poly; the per-voice q-mix knobs live here).
+- Additional CV -> expanded CAUSEWAY (Causeway is the CV/mod path; q-mix mod CV inputs live here).
+- Mix-in tap knob group -> SANDS MACRO (the row-3 blend/tap lane refinement).
+"A lot of scope but all well-trodden": not inventing new homes -- extending established roles along their
+grain (headline mod->Monsoon, poly->Straits, CV->Causeway, per-voice shaping-adjacent->Sands). Big in
+surface, LOW in novelty-risk. The good kind of big feature.
+
+### THE unifying symmetry (the conceptual crown)
+Rhythm / legato / rest / accent can MODIFY EXTERNAL GATES.  Q-MIX can MODIFY EXTERNAL MELODY CV.
+| Input stream        | Modifier(s)                  | What it does                          |
+| External GATES      | rhythm, legato, rest, accent | modify / re-articulate incoming gates |
+| External MELODY CV  | Q-MIX                        | modify / blend incoming melody        |
+q-mix is to external melody CV what the articulation lanes are to external gates. SAME KIND of operation on
+the two different external input streams: rest/accent modify external RHYTHM; q-mix modifies external PITCH.
+
+### Why this reframes q-mix from a feature to a COMPLETION
+The gate/rhythm side ALREADY had its external-input modifiers (legato/rest/accent modifying external
+gates). The melody/pitch side was MISSING its equivalent. q-mix IS that missing equivalent. So the feature
+isn't "add a blend knob" -- it's "give external melody CV the SAME modification suite external gates
+already have." The instrument becomes SYMMETRIC in how it treats its two external input streams: both can
+be TRANSFORMED, not just consumed. q-mix completes the pitch side.
+
+### This justifies the whole distribution
+- q-mix as Big-6: it's a headline external-input modifier like the gate-side ones.
+- q-mix on Sands next to rest/accent: same-KIND operation, different STREAM (pitch vs rhythm).
+- q-mix modulatable via Causeway CV: like the other modifiers.
+The layout falls OUT of the symmetry -- q-mix goes everywhere its gate-side counterparts already are,
+because it IS the pitch-side counterpart.
+
+Cross-ref: EXTERNAL_GATE_ARTICULATION_CHECK (Big-5 headline mod targets incl probability; the gate-side
+modifiers on external gates), the panel-placement section (q-mix on Sands Macro next to rest/accent = the
+symmetry, visually), MODE_B_SPEC (external gate handling = the rhythm-side counterpart), QUANTISER_MODES_
+UNIFICATION (external melody CV = q-mix's input), the idiom-refinement section (q-mix = Sands-item idiom =
+why it sits with the gate-side modifiers).
