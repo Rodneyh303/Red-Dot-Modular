@@ -206,3 +206,48 @@ real build regardless (no stock microtonal-CV->MPE-out exists).
 
 Cross-ref: CORRECTION 1 above (superseded on the core-module point), MPE_UTILITY_BUILD_SPEC (Keppel out,
 still needed), QUANTISER_MODES_UNIFICATION (quantiser does microtonal interpretation of the incoming CV).
+
+## V1 + the ROUND-TRIP TEST as acceptance gate for MPE-in (Rodney)
+Two corrections to my filing:
+1. This is V1, NOT post-V1. The external-melody / MPE round-trip (melody router + MPE-in + Keppel) is in
+   scope for V1. Retag from post-V1.
+2. Verification method = a ROUND-TRIP TEST (empirical acceptance gate, not "does a module exist"):
+   Write a pattern OUT to the DAW via Keppel (CV -> MPE out), read it back IN (MPE -> CV via a third-party
+   module), and check the returned CV matches -- or is acceptably close to -- what went out.
+   - Round-trip preserves pitch within a small discretisation error -> third-party MPE-in is good enough,
+     NO reverse-Keppel.
+   - Error too big -> BUILD reverse-Keppel.
+   The round-trip IS the acceptance test; the decision rule is quantitative.
+
+### What "small discretisation error" should mean (threshold)
+Ear pitch-discrimination is ~5-6 cents melodically (tighter sustained/simultaneous). So the pass criterion:
+round-trip error WELL UNDER ~5 cents, ideally <1-2 cents across the tuning = musically transparent. Under
+that -> third-party path is transparent, reverse-Keppel unnecessary. Over (esp. systematic) -> build.
+
+### Where round-trip error comes from (what you're measuring)
+- MPE bend RESOLUTION: 14-bit bend over the range (~0.006 cents/step at +-48) = negligible; 7-bit or
+  coarser would grow it. Error ~ bend bit-depth x range per hop.
+- BEND-RANGE AGREEMENT (the real risk, not resolution): Keppel encodes microtonal offset as bend assuming
+  a specific range (e.g. +-48). If the third-party MPE-in assumes a DIFFERENT range, reconstructed pitch is
+  SCALED WRONG = systematic multiplier error, not small discretisation. The round-trip catches this LOUDLY
+  (wrong pitch, not slightly-off) -- a strength of the test.
+- Note+bend recombination: return module must sum correctly; round-trip catches if not.
+- The DAW in the middle may re-quantise/re-time -> test THROUGH the actual DAW, not just Rack->Rack (the
+  DAW is part of the real path).
+
+### Why the test is well-designed
+You don't audit whether the third-party module's internal format matches Keppel's -- you MEASURE the end-
+to-end result. Different internal representations are fine if the round-trip pitch matches within
+tolerance. Test the composition, don't audit the parts.
+
+### Reverse-Keppel = CONTINGENT V1 item
+Spec it, keep it ready, BUILD it iff the round-trip fails the cents tolerance (esp. an unconfigurable range
+mismatch). Not "build/don't" -- "build iff the measurement says the third-party path isn't transparent". If
+third-party round-trips clean -> save the build; if not -> you already know you need it and by how much.
+
+Supersedes the post-V1 tags + the "probably not needed / needs a module-exists check": it's V1, the gate is
+the round-trip test (<~5 cents, ideally <1-2), reverse-Keppel is contingent on failing it. Keppel-OUT
+needed regardless (it's half the test rig too).
+
+Cross-ref: MPE_UTILITY_BUILD_SPEC (Keppel out = the test's OUT leg), CORRECTION 1 & 2 above (superseded:
+MPE-in is third-party, validated by round-trip not by inspection), ROAD_TO_RELEASE (move these to V1).
