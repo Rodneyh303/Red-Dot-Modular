@@ -62,3 +62,46 @@ this blends against random), PROBABILITY_MODIFIER_MODEL (fire-probability, disti
 probability; the composed-vs-generated axis), PIANO_ROLL_MODULE_CONCEPT / Esplanade (a native input source
 to blend against random), LAUNCH_INTENT_AND_STORY (heterophony / the composed<->generated tension this
 makes per-voice), Sands (per-voice lane machinery this reuses).
+
+## Both sources go via CHANGE ALLEY -> the melody knobs are CA source-routing (Rodney)
+
+Key clarification: BOTH the random-engine melody AND the CV-input melody flow through Change Alley as
+melody sources. Confirmed CHANGE_ALLEY_DESIGN: CA operates on MELODY-stream draws (:18); defining decision
+is SOURCE-TABLE remap (:87-91); "same melody source + different variation/range = heterophony" (:42). So:
+- The input CV melody is NOT special-cased -- it's just another CA melody source, correlate/share/rotate/
+  remap-able like the random draws.
+- The per-voice random-vs-input knobs are PER-VOICE SOURCE-SELECTION WITHIN CA'S MELODY STREAM, not source-
+  vs-bypass. Both sources are CA-native.
+- Heterophony STRENGTHENS: voices diverging from the input don't leave the correlation structure -- they're
+  CORRELATED VARIATIONS OF THE INPUT within CA. Same machinery, freedom gradient INSIDE Change Alley.
+Module = a CA melody-source router (random <-> input, per voice), consistent with CA's shared-source +
+per-consumer-variation model. Cleaner than "engine vs external".
+
+## NEW MODULE NEED: reverse-Keppel -- external (MPE) MIDI IN -> microtonal CV (Rodney)
+To feed an external melody into quantiser mode and get variations quantised to the scale: MIDI IN ->
+microtonal CV. Plain MIDI note-in is 12-TET only; the MICROTONAL case needs the INVERSE of Keppel:
+- Keppel: poly microtonal pitch CV -> MPE MIDI OUT (split each voice into nearest-12-TET note + per-note
+  bend, one MPE member channel/voice).
+- REVERSE-KEPPEL: poly MPE MIDI IN -> poly microtonal pitch CV (+ gate). Reconstruct per-voice true pitch
+  from note + bend = Keppel's split run BACKWARD. (note,bend) -> (CV). Same math, opposite direction.
+Plain non-MPE MIDI in = simpler (note->CV, 12-TET); the microtonal VALUE is handling MPE-in so an
+expressive/microtonal controller's pitch survives into the engine.
+
+### Composes with everything (the full loop)
+MPE keyboard -> reverse-Keppel -> microtonal CV -> enters as a CHANGE ALLEY melody source -> per-voice
+melody knobs route it against the random engine -> correlated microtonal variations of the externally-
+played melody, quantised to the scale/maqam -> (optionally) Keppel back OUT to MPE. Reverse-Keppel + Keppel
+BOOKEND the microtonal MIDI I/O (in / out).
+
+### Naming (candidate)
+Keppel = sea-export container terminal (CV->MIDI OUT). Inbound counterpart = a Singapore entry gateway.
+WOODLANDS = the Causeway land-crossing INTO Singapore (external melody enters here). Keppel(sea/export) +
+Woodlands(land/import) = a clean port-vs-crossing pair. (Alt: Tuas, newest port.) Low priority.
+
+### Status
+Reverse-Keppel = self-contained utility, ZERO engine coupling (like Keppel), buildable independently any
+time; POST-V1. Enables external-melody-in for quantiser mode + completes the microtonal MIDI I/O pair.
+
+Cross-ref: MPE_UTILITY_BUILD_SPEC / MICROTONAL_MIDI_MPE_DIRECTION (Keppel = forward direction), CHANGE_
+ALLEY_DESIGN (input CV melody = a CA melody source), the per-voice module above, QUANTISER_MODES_
+UNIFICATION (quantiser takes the external melody this feeds).
