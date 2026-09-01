@@ -669,3 +669,37 @@ Context-menu toggle on the quantise octave behaviour. Default OFF (register-pres
 Cross-ref: the octave-quantise finding (the default behaviour + the q-mix asymmetry this option resolves),
 the octave lane (defines the range -- check its min-max vs enabled-set semantics), the why-cool section
 (same-or-different octave -- this option lets the user CHOOSE same).
+
+## Octave-range option PINNED (Rodney): min/max via 2 Monsoon faders, FOLD not clamp
+Two decisions resolving the open semantics above:
+1. RANGE = contiguous MIN/MAX window, set by 2 dedicated MONSOON faders (octave-min + octave-max). Not an
+   enabled-octave set -- a contiguous [min, max] window. First-class Monsoon controls (two faders on the
+   host).
+2. FOLD, not clamp: out-of-range input is octave-REDUCED (wrapped) into the [min, max] window, preserving
+   pitch class + the melody's interval structure (tune survives, octave-relocated). NOT pinned-to-boundary.
+
+### Fully-pinned behaviour
+"Fold to octave range" (context-menu option, DEFAULT OFF):
+- OFF (default): register-preserving (input keeps its own octave; nearest degree within input-octave +-1).
+- ON: input CV octave-folded into the [min-fader, max-fader] window -- wrap by octaves into the window
+  span until inside, preserving pitch class.
+
+### Implementation notes
+- Fold is a modulo over the WINDOW SPAN, not a fixed 1-octave mod. For window width W = (max - min + 1)
+  octaves: folded octave = min + ((octave - min) mod W), keeping the within-octave pitch class intact.
+- Edge case min == max (W = 1): everything folds to that single octave (the tightest "force everything
+  into octave K" setting -- valid). Confirm the fold math handles W=1 with no divide/off-by-one.
+
+### q-mix octave-alignment bonus -- one thing to confirm
+With fold ON, the INPUT folds into [min, max]. Whether this fully unifies q-mix octaves depends on whether
+the GENERATED notes' octaves ALSO respect these same min/max faders (vs a separate octave control):
+- Same min/max govern generated too -> fold-ON gives FULLY unified octave behaviour (input + generated
+  both in [min, max]). Cleanest.
+- Generated uses a different octave control -> fold-ON aligns the input to the window but generated may
+  still roam per its own control.
+CONFIRM: do the min/max octave faders bound the generated pitch too, or only the folded input? (Not
+blocking; decides how complete the octave-alignment bonus is.)
+
+Cross-ref: the octave-range option section above (this pins its two open questions), the octave lane /
+Monsoon octave faders (min/max = the 2 faders; confirm they bound generated too), the q-mix octave
+asymmetry (fold-ON is the alignment switch).
