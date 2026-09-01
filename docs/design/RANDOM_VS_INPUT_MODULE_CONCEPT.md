@@ -448,3 +448,28 @@ Phase-2 (panels) item -- reasoning captured now; pixel work waits for the panels
 Cross-ref: SANDS_PANEL_LAYOUT (where this lands), the idiom-refinement section above (Sands-item idiom +
 level marking), the fourth-Philox-stream section (the draw under the knob), QUANTISER_MODES_UNIFICATION
 (mode-dimming = q-mix dims in sequencer mode), ROAD_TO_RELEASE Phase 2 (panels).
+
+## BUILD ORDER (Rodney): MVP the probability+blend first, THEN add Sands refinements
+Staged plan (de-risking):
+1. FIRST -- generate the probability + experiment with blending. Fourth Philox stream (STREAM_SOURCE_
+   SELECT=3, voice in nonce) producing the per-voice source-select draw; basic per-voice mix knob; wire
+   the input-vs-generated blend; and LISTEN. Minimal viable form: stream + knob + blend, testable with
+   basic knobs, NO panel surgery.
+2. THEN -- add the Sands refinements: integrate as the row-3 Sands lane (per-voice ownership, Mono/Macro
+   editing, level-marking, the lane-height geometry).
+
+### Why this order (not just "simple bit first")
+The UNCERTAIN part is the MUSICAL question -- does per-voice input-vs-generated blending sound good? Does
+the heterophony gradient work? Is random-within-mask the right divergence? Does knob-modulation handle
+temporal shaping (vs flicker) as predicted? You can't answer these from a doc -- you have to HEAR it. The
+Sands integration is KNOWN machinery (fully specced above). So build the minimal mechanism first to
+VALIDATE THE MUSICAL PREMISE CHEAPLY, before committing panel real-estate / lane-shrink / level-marking. If
+the blend needs adjusting (different random source, per-voice behaviour, a run-length after all), you find
+out BEFORE building the polished lane. Prove the idea, then dress it.
+
+Mirrors the project's macro "function first, then panels" at the micro scale: blend mechanism = function;
+Sands lane = panel/refinement. The module's MVP (stream + knob + blend) is small, self-contained, and
+answers the only real open question (does it sing?) at minimal cost.
+
+Cross-ref: the fourth-Philox-stream section (the MVP mechanism), the panel-placement section (the THEN
+step -- row-3 Sands lane), ROAD_TO_RELEASE (function-first-then-panels, mirrored here).
