@@ -305,3 +305,48 @@ Cross-ref: PhiloxRng.hpp:10-13 (addressable/reversible), :96-103 (per-stream add
 STREAM_SOURCE_SELECT=3), :109-110 (ctr[2..3] reserved nonce -> put voice here), PHILOX_KEY_DERIVATION_AND_
 CA_SEED.md (the identical-derivation bug this pattern already fixed -- follow it), the per-voice module
 concept above, PROBABILITY_MODIFIER_MODEL (fire-probability is a separate decision; this is source-select).
+
+## NOT a shaping gap -- a LEVEL distinction (Rodney): Sands shapes; mix merely selects
+Clarification resolving the "CA/mix lack Sands treatment" worry: it's NOT a coverage gap to fill -- it's a
+principled difference in KIND.
+
+- SANDS items are FUNDAMENTAL: they directly SHAPE the melody and rhythm themselves (LOR, spread,
+  variation, legato determine WHAT the notes and rhythm ARE). Rich, per-voice, deserve the full machinery.
+- MIX PROBABILITY is NOT that: it's a SIMPLE BLEND between two ALREADY-FORMED sources (generated stream vs
+  external input). It doesn't shape a melody -- it CHOOSES between two finished melodies, per voice. A
+  per-voice Bernoulli selector.
+
+### The level distinction
+- Sands = the GENERATIVE/SHAPING level (constructs the melody/rhythm). Fundamental -> rich complexity.
+- Mix = the ROUTING/SELECTION level (chooses between constructed melodies). A blend -> simple by nature.
+Different levels, different appropriate complexity. The mix being SIMPLER isn't a missing feature -- it's
+CORRECT SCOPING for what a blend is. Giving it Sands-level LOR/spread would be over-engineering a selector
+into a shaper (a crossfader doesn't need its own EQ).
+
+### Validates the raw fourth-Philox-stream recommendation
+The mix-draw SHOULD be raw (no LOR/spread) precisely BECAUSE it's a simple selection, not fundamental
+shaping. The earlier "but main draws get Sands and this doesn't" worry applied shaping-level thinking to a
+selection-level op = a category error. Blends are simple by nature.
+
+### Temporal evolution comes from MODULATING the knob, not from Sands-ifying the draw
+If you want the blend to evolve (commit to generated for a phrase, drift back to input), you get that from
+MODULATING the mix knob (it's deparam/modulatable), NOT from baking run-length into the draw. Time-shaping
+of the blend = external modulation of the knob, same as any modulatable value. Keeps the level distinction
+clean: mix stays a simple per-step selector; any evolution is modulation on top. (This is the right fix for
+the earlier flicker concern -- automate the knob, don't promote the selector to a shaper.)
+
+### Change Alley
+CA is not an unshaped gap either: it has its OWN control surface (pinning + spread = correlation-structure
+across voices), orthogonal to Sands' value-shaping. CA correlates HOW VOICES RELATE; Sands shapes HOW EACH
+VOICE'S VALUES PERSIST/VARY. Different jobs, different (already-present) controls. So CA doesn't want Sands
+treatment either.
+
+### Principle (stated)
+Sands = fundamental melody/rhythm shaping (rich, per-voice). Mix probability = simple per-voice blend of
+two finished sources (raw selector, simple by design). CA = correlation-structure (its own pin/spread).
+Temporal evolution of the blend = modulate the knob, not Sands-ify the draw. NO gap -- a correct level
+distinction. Supersedes the "shaping-coverage gap / three options" framing from the prior turn.
+
+Cross-ref: SANDS_ARCHITECTURE_CONSOLIDATION (combineLOR/combineSpread = the fundamental shaping machinery),
+CHANGE_ALLEY_DESIGN (CA's own pin/spread), the fourth-Philox-stream section above (raw is correct for a
+selector), the per-voice module concept (the modulatable knob = where temporal evolution lives).
