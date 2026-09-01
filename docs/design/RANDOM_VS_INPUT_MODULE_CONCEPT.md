@@ -147,3 +147,33 @@ need survives the Rack test.
 Cross-ref: MPE_UTILITY_BUILD_SPEC (Keppel out -- still needed), the reverse-Keppel section above (now
 superseded -- MPE-in via stock VCV MIDI-CV), QUANTISER_MODES_UNIFICATION (quantiser does the microtonal
 interpretation of the incoming CV).
+
+## CORRECTION 2 (Rodney + web check): CORE does NOT do MPE-in cleanly; THIRD-PARTY modules do
+Earlier I wrongly said VCV CORE MIDI-CV sums note+bend into a clean microtonal pitch. WRONG. Core has an
+MPE polyphony mode but does NOT cleanly fold bend into pitch -- community reports you must manually SUM
+pitchwheel + note, landing on an awkward bend range (~60 semitones) to make it work; core V/OCT is just
+the note. So core is NOT the MPE-in solution.
+
+THIRD-PARTY modules DO it properly (a couple exist -- Rodney to pick/verify):
+- alexandreleroux/MPE: 1V/oct output = note combined with 14-bit pitchwheel, adjustable bend range in
+  semitones to match the controller (slides up to 96 semitones). This combined note+bend-as-one-CV IS the
+  microtonal pitch reconstruction = exactly the "reverse-Keppel" job, already built.
+- MIDIpolyMPE / MIDIPolyExpression: purpose-built MPE-in. (Caveat: a reported bug -- notes terminating
+  mid-bend slew the bend from an arbitrary value on next channel rotation; test note-release-mid-bend.)
+- Kilpatrick Toolbox MIDI-CV: poly mode + pitch bend in note modes, range 1-12 semitones settable.
+
+### Corrected conclusion: reverse-Keppel STILL unnecessary, better reason
+Not "core sums it" (wrong) but "a THIRD-PARTY module does the note+bend -> combined-microtonal-CV
+reconstruction, already". So: pick a third-party MPE-in module -> its combined-pitch CV -> quantiser mode.
+Don't build reverse-Keppel. Keppel-OUT still a real build (Rack has no microtonal-CV->MPE-out splitter).
+
+### What to verify when picking the third-party module
+1. Combined-pitch output preserves microtonal resolution (14-bit bend, bend range adjustable to match the
+   controller -- alexandreleroux/MPE explicitly does this).
+2. Note-release-mid-bend behaviour (the MIDIpolyMPE slew bug) -- pick one whose reconstruction is clean.
+
+Supersedes CORRECTION above where it credited CORE. Net unchanged (no reverse-Keppel build) but the reason
+is third-party-does-it, not core-does-it.
+
+Cross-ref: MPE_UTILITY_BUILD_SPEC (Keppel out, still needed), external module choices (alexandreleroux/MPE,
+MIDIpolyMPE, Kilpatrick), QUANTISER_MODES_UNIFICATION (quantiser consumes the combined-pitch CV).
