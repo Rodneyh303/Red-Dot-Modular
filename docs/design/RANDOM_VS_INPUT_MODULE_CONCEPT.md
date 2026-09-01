@@ -350,3 +350,45 @@ distinction. Supersedes the "shaping-coverage gap / three options" framing from 
 Cross-ref: SANDS_ARCHITECTURE_CONSOLIDATION (combineLOR/combineSpread = the fundamental shaping machinery),
 CHANGE_ALLEY_DESIGN (CA's own pin/spread), the fourth-Philox-stream section above (raw is correct for a
 selector), the per-voice module concept (the modulatable knob = where temporal evolution lives).
+
+## REFINEMENT (Rodney): mix shares the SANDS-ITEM IDIOM (knob vs per-step probability); CA's outcome shows on PINS
+Sharpening the prior "level distinction" -- I over-flattened the mix to "a dumb raw selector". Correction:
+
+### The mix is structurally a Sands-item idiom, not a special raw thing
+Sands note-probability = per-position weights/knobs compared against a per-step draw to decide an outcome
+(PROBABILITY_MODIFIER_MODEL:25 "per-position probabilities/weights governing which notes fire"). The
+quantiser mix is the SAME SHAPE: a modulatable per-voice KNOB compared against a per-step PROBABILITY draw
+to decide input-vs-generated. So the mix shares the SANDS-ITEM CONTROL IDIOM (knob vs per-step probability)
+-- it should be built/presented in that idiom, NOT as a categorically-simpler special case.
+
+### Reconciling with the prior "level distinction"
+Both hold, at different layers:
+- WHAT IT CONTROLS (semantic level) -- still distinct: Sands SHAPES the melody; the mix SELECTS between two
+  finished melodies. The level distinction stands.
+- MECHANISM / IDIOM -- SHARED: both are knob-vs-per-step-probability. My earlier mistake was letting the
+  level distinction imply an IMPLEMENTATION distinction ("keep it raw, un-Sands-like"). Wrong: same idiom,
+  different outcome.
+The raw fourth-Philox-stream still stands -- that's about WHERE THE RANDOMNESS COMES FROM (reproducible
+draw), NOT about how the control PRESENTS. The refinement is at the presentation/idiom layer: the mix is a
+knob-vs-per-step-probability control LIKE a Sands item.
+
+### Change Alley's idiom is different: outcome on the PINS
+CA draw is visualised in terms of its OUTCOME ON THE PINS -- the correlation-matrix pin state IS CA's
+outcome display. So CA's idiom is pin-outcome-visualisation, distinct from the knob-vs-probability idiom.
+
+### The three-way idiom map
+- SANDS items      -> knob vs per-step probability  -> SHAPING outcome.
+- QUANTISER MIX    -> knob vs per-step probability  -> SOURCE-SELECTION outcome. (SAME idiom as Sands items.)
+- CHANGE ALLEY     -> draw                           -> CORRELATION outcome, visualised ON THE PINS. (Own idiom.)
+So: mix aligns with the Sands-item probability-knob idiom; CA is the one with the distinct pin-outcome
+idiom. (Corrects the prior "mix is simple / CA has its own controls" -- more precisely: mix ~ Sands-item
+idiom, CA = pin-outcome idiom.)
+
+Supersedes the "mix is a dumb raw selector, deliberately un-Sands-like" implication of the prior section
+(the level distinction there is right about WHAT it controls; this fixes the IDIOM: mix presents like a
+Sands item).
+
+Cross-ref: PROBABILITY_MODIFIER_MODEL:25 (Sands note-probability = weight vs per-step draw = the shared
+idiom), SANDS_ARCHITECTURE_CONSOLIDATION (Sands-item controls), CHANGE_ALLEY_DESIGN (pins = CA outcome
+surface), the fourth-Philox-stream section (raw draw = the SOURCE of randomness, unchanged; idiom is a
+separate layer).
