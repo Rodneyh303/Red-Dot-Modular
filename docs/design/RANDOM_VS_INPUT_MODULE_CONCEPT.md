@@ -624,3 +624,48 @@ is that baseline plus the blend/poly/microtonal layers.
 Cross-ref: the octave-quantise finding above (input-octave +-1, fader-weighted -- now confirmed convergent
 with Melodicer on fader-width + 5V, and our independent choice on octave), MICROTONAL_MASTER (microtonal =
 beyond Melodicer), the why-cool section (the blend = beyond Melodicer).
+
+## Octave: keep default, OFFER a context-menu "clamp/fold to octave fader range" (Rodney)
+Default stays as-is: nearest active degree within input-octave +-1, register-preserving, fader-weighted
+(best-guess, benefits discussed -- preserves the input's contour). Add an OPTIONAL context-menu toggle.
+
+### The option: "clamp to octave fader range"
+Instead of preserving the input's own octave, fold/clamp the input into the octave range the octave
+lane/fader defines. Default: input at 4V stays near 4V (register preserved). Option ON: input at 4V is
+brought into the octave-control's range (register IMPOSED by the octave setting, not preserved).
+
+### Why it's a real option (two valid intents, hence a CHOICE not a baked default)
+- Register-as-INPUT (default): "play my melody, corrected to scale, WHERE I played it." Good when the
+  input's octave matters (bassline stays low, lead stays high).
+- Register-as-CONTROL (option): "take my melody's PITCH CLASSES, put them in THIS register." Good when the
+  input is a pitch-class source and the octave control places it (compress a wide input into a tight
+  octave, or relocate it). "I care about the notes, not where they were played."
+Both valid -> user choice. Default to register-preserving (safer/faithful-to-input); offer range-fold for
+the "fold to my octave range" intent.
+
+### Semantics to pin (make it a real spec)
+1. What defines the range? The octave lane/fader -- CHECK whether it's a contiguous min-max range or a SET
+   of enabled octaves (decides fold-into-window vs fold-into-enabled-octaves).
+2. FOLD vs CLAMP:
+   - Clamp: input above range -> pinned to top octave; below -> bottom. Flattens out-of-range notes to the
+     boundary.
+   - Fold (octave-reduce): octave-wrap the input INTO the range (mod), preserving pitch class + interval
+     structure, relocating octave. Keeps the tune, octave-wrapped.
+   Rodney's phrase says "clamp", but FOLD is usually the more musical choice (clamp flattens a melody that
+   exits the range into a monotone at the boundary; fold keeps the melodic shape). LEAN: fold (octave-
+   reduce). Could offer clamp as the literal option + note fold as the musical alternative.
+
+### Bonus: this option ALSO aligns q-mix octaves
+Recall the q-mix octave asymmetry (input keeps its octave; generated follows the octave lane -> can sit in
+different octaves). With "fold to octave range" ON, the INPUT is also brought into the octave-lane range ->
+input and generated share the same octave world. So the option DOUBLES as the fix for "I don't want input
+and generated in different octaves": turn it on and they align. It unifies the octave logic across both
+blend sources -- a nice bonus beyond the input-fold intent.
+
+### Status
+Context-menu toggle on the quantise octave behaviour. Default OFF (register-preserving). Pin fold-vs-clamp
++ the octave-range semantics before building. Small, self-contained UI option.
+
+Cross-ref: the octave-quantise finding (the default behaviour + the q-mix asymmetry this option resolves),
+the octave lane (defines the range -- check its min-max vs enabled-set semantics), the why-cool section
+(same-or-different octave -- this option lets the user CHOOSE same).
