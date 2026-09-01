@@ -105,3 +105,45 @@ time; POST-V1. Enables external-melody-in for quantiser mode + completes the mic
 Cross-ref: MPE_UTILITY_BUILD_SPEC / MICROTONAL_MIDI_MPE_DIRECTION (Keppel = forward direction), CHANGE_
 ALLEY_DESIGN (input CV melody = a CA melody source), the per-voice module above, QUANTISER_MODES_
 UNIFICATION (quantiser takes the external melody this feeds).
+
+## CORRECTION (Rodney): MPE-in is probably an EXISTING Rack module -- reverse-Keppel likely NOT needed
+Rodney: "might be able to use an existing rack module for mpe in." Correct -- and it likely obviates
+reverse-Keppel.
+
+VCV's core MIDI modules already do MPE. VCV MIDI-CV in MPE mode outputs per-voice pitch CV, gate, velocity,
+aftertouch, and the per-channel pitch BEND -- AND (standard MPE behaviour) it folds bend INTO the note,
+outputting combined note+bend as a SINGLE 1V/oct pitch CV per voice (the bend IS the pitch expression, so
+the module sums them). If so, that combined CV IS the microtonal pitch, straight into quantiser mode. No
+bend-reconstruction to build -- the stock module already does it.
+
+### So reverse-Keppel is probably UNNECESSARY
+The thing that made reverse-Keppel "not just plain MIDI-in" (reconstructing pitch from note+bend) is
+handled INSIDE VCV MIDI-CV's MPE mode. So the MPE-in path is likely just: MPE controller -> VCV MIDI-CV
+(MPE) -> poly pitch CV -> quantiser mode. No new module.
+
+### The real asymmetry (why OUT needs Keppel but IN doesn't)
+- OUT: Rack has NO microtonal-CV -> MPE-out that SPLITS per-voice bend for a DAW -> Keppel is a genuine
+  needed build (the split isn't stock).
+- IN: Rack DOES have MPE -> CV (VCV MIDI-CV sums note+bend) -> no build needed (the sum is stock).
+So "Keppel has an inverse, build the inverse" was over-symmetrising. The directions aren't symmetric in
+what Rack already provides.
+
+### Narrow cases that could still want something (probably not)
+1. If VCV MIDI-CV outputs note + bend SEPARATELY (not summed): a trivial note+bend adder -- but that's a
+   stock offset/mixer, not a module worth building/naming.
+2. Microtonal INPUT quantisation (interpret incoming pitch against the tuning on the way in): that's
+   arguably QUANTISER MODE'S job anyway -- feed the combined CV in, quantiser mode snaps it to the scale.
+   Collapses into "use stock MPE-in + let quantiser mode do the microtonal part".
+
+### TO VERIFY (quick Rack test, can't confirm from here)
+Does VCV MIDI-CV MPE mode output COMBINED note+bend pitch CV per voice? Almost certainly yes (standard MPE).
+If yes: external-microtonal-melody-in = stock VCV MIDI-CV -> quantiser mode, and reverse-Keppel/Woodlands
+is dropped. Keppel-OUT stays a real build.
+
+Supersedes the reverse-Keppel section above: MPE-in is (almost certainly) a stock-module job; keep Keppel
+(out) as the one microtonal-MIDI module that must be built. Woodlands naming parked unless a real in-module
+need survives the Rack test.
+
+Cross-ref: MPE_UTILITY_BUILD_SPEC (Keppel out -- still needed), the reverse-Keppel section above (now
+superseded -- MPE-in via stock VCV MIDI-CV), QUANTISER_MODES_UNIFICATION (quantiser does the microtonal
+interpretation of the incoming CV).
