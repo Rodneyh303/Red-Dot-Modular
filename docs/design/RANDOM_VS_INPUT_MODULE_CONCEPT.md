@@ -552,3 +552,39 @@ logic.
 Cross-ref: SequencerEngine.cpp:1024-1054 (the octave-search quantise), :990 nearestDegree, TuningTable
 degreeVolts (custom-tuning snap), the octave lane (drives generated pitch, not quantised input), the
 q-mix sections above (the blend inherits this octave asymmetry).
+
+## Why the blend is COOL (musical rationale) + Melodicer note (Rodney)
+Melodicer = VERMONA (hardware random melody generator), NOT Vult (who make DSP/Rack modules like the Freak
+filters). Its exact quantise internals weren't gleaned -- and needn't be: it's hardware (not open Rack code
+to read), and more importantly we're NOT matching it. What q-mix does is different in kind from a standalone
+random-melody box: PER-VOICE BLEND of an EXTERNAL INPUT melody with GENERATED notes, both in the same
+scale, same-or-different octave. The blend is the differentiator, not something to copy from a reference.
+
+### Why it's cool (the "why a user will love this" -- launch material)
+Mixing generated notes IN THE SAME SCALE, SAME OR DIFFERENT OCTAVE:
+1. SAME SCALE = coherent by construction. Both input and generated are quantised to the same active scale
+   (same MICROTONAL scale if a tuning source is attached). The blend NEVER clashes tonally -- generated
+   notes are from the same degree set as the input. Not "input + random pitches" but "input + generated
+   notes from the same scale". Coherence for free.
+2. SAME OR DIFFERENT OCTAVE = textural range. Input keeps its own register; generated follows the octave
+   lane -> a blended generated note can sit in the input's octave (close in-register variation, doubling-
+   ish) OR a different octave (octave-displaced answer, low drone, high ornament). One degree of freedom
+   spanning "subtle in-register variation" -> "octave-leaping counter-voice", all from the same scale, and
+   controllable via the octave lane.
+
+Together: coherent-by-construction (same scale, never clashes) + texturally wide (octave freedom) =
+SAFE SURPRISE. Variation that's always harmonically safe yet register-wide -- surprise without dissonance,
+register play without atonality. For the heterophonic elaboration the instrument targets (maqam/gamelan
+core-line-plus-elaboration), that's the sweet spot: voices elaborating WITHIN the mode (same scale) ACROSS
+registers (octave freedom), diverging from the input by controllable amounts (the q-mix probability).
+Three composing degrees of expressiveness: HOW MUCH generated (q-mix), WHICH scale (tuning), WHICH octave
+(octave lane) -> coherent-but-varied heterophony.
+
+The coolness is STRUCTURAL (coherent + wide-range by construction), and it's a thing a standalone random-
+melody generator doesn't do (no external-input blend, no microtonality, no per-voice octave logic). That's
+the differentiation.
+
+Cross-ref: the octave-quantise finding above (same-or-different octave = the input-octave vs octave-lane
+asymmetry), MICROTONAL_MASTER (same scale incl microtonal via attached tuning source), the heterophony
+sections (core-line + elaboration), LAUNCH_INTENT_AND_STORY (safe-surprise heterophony = a user-facing
+selling point).
