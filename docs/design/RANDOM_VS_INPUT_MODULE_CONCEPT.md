@@ -392,3 +392,59 @@ Cross-ref: PROBABILITY_MODIFIER_MODEL:25 (Sands note-probability = weight vs per
 idiom), SANDS_ARCHITECTURE_CONSOLIDATION (Sands-item controls), CHANGE_ALLEY_DESIGN (pins = CA outcome
 surface), the fourth-Philox-stream section (raw draw = the SOURCE of randomness, unchanged; idiom is a
 separate layer).
+
+## PANEL PLACEMENT (Rodney): q-mix as a SANDS LANE, position 3 (data-flow adjacency to rows 1-2)
+
+### Integrate on Sands, NOT a separate panel (decisive)
+A separate panel would NOT inherit Sands' features (per-voice ownership, Mono/Macro editing, send/blend,
+the LOR-style per-step editing surface). q-mix NEEDS those, so it must be a Sands LANE. This settles the
+integrate-vs-separate fork decisively toward integrate. (It also matches the idiom: q-mix is knob-vs-per-
+step-probability = a Sands-item idiom.)
+
+### Lane inventory (context)
+- Sands Macro: melody, octave (CV-related pitch, rows 1-2), rest, accent.
+- Sands Mono / East: those + extra mono rhythm lanes (the densest -- the geometry constraint).
+
+### Position = THIRD, primary reason = DATA-FLOW ADJACENCY
+q-mix in quantiser mode mixes the GENERATED MELODY CV -- which IS rows 1 and 2 (melody + octave together =
+the full generated pitch) -- against the CV INPUT, per voice. So q-mix's OPERANDS ARE ROWS 1-2. Put the
+control next to what it acts on -> q-mix belongs immediately AFTER rows 1-2 = position 3, directly beneath
+the two lanes it consumes; its output (chosen source) then feeds articulation (rest, accent) below.
+
+Corrects my earlier "first for signal-flow": q-mix is NOT upstream of melody generation -- it CONSUMES the
+generated melody (rows 1-2), so it's DOWNSTREAM of them and belongs AFTER, not before. Rows 1-2 must
+generate the melody CV first for q-mix to have something to blend. The true pipeline:
+  rows 1-2 (melody, octave) generate the melody CV
+  -> row 3 (q-mix) per voice blends that generated CV with external CV input = the effective pitch source
+  -> rows 4+ (rest, accent) articulate whatever pitch won.
+
+### Supporting reasons (align with third)
+- Mode-conditional tidiness: q-mix is quantiser-mode-only (dims in sequencer mode). At row 3, the always-
+  live melody/octave stay at the TOP in both modes; the conditional q-mix sits below them (not occupying
+  the prime top slot while dark half the time). First-position would put a dimmed row at the top in
+  sequencer mode.
+- Grouping: rows 1-3 = the PITCH-SOURCE block (generate -> blend); rows 4+ = the ARTICULATION block. q-mix
+  CLOSES the pitch-source block by resolving which source wins; articulation acts on the result. Layout
+  tells the story.
+
+### Implementer precision
+q-mix blends the COMBINED melody+octave CV (rows 1-2 together = the full generated pitch) vs input CV, per
+voice -- not melody alone. Sitting at row 3, directly under BOTH contributing lanes, makes it visually
+obvious it blends the pair above it.
+
+### Geometry
+Shrink lane heights a bit to fit the extra lane. GATE: the densest panel (Mono/East with the extra rhythm
+lanes) must stay usable across ALL lanes after the shrink -- check there first. If Mono/East is too tight,
+either accept a per-panel layout difference (its own cost) or find headroom elsewhere. One shrink working
+across all three panels is preferable.
+
+### Level marking (from the idiom refinement)
+q-mix shares the Sands-item IDIOM (knob vs per-step probability) but differs in LEVEL (it SELECTS a source;
+the shaping lanes SHAPE the melody). Mark it as distinct-in-kind (separator / accent / grouping gap at the
+pitch-source/articulation boundary) so it's not read as another shaping lane.
+
+Phase-2 (panels) item -- reasoning captured now; pixel work waits for the panels phase.
+
+Cross-ref: SANDS_PANEL_LAYOUT (where this lands), the idiom-refinement section above (Sands-item idiom +
+level marking), the fourth-Philox-stream section (the draw under the knob), QUANTISER_MODES_UNIFICATION
+(mode-dimming = q-mix dims in sequencer mode), ROAD_TO_RELEASE Phase 2 (panels).
