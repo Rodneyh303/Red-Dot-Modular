@@ -36,8 +36,9 @@ Skim the phase you're in; open the linked docs for detail. Status tags: [DONE] [
   MONSOON_SCALE_AUTHORING_DIRECTION.md
 
 ### MPE / output
-- [IN PROGRESS] Keppel CV->MPE: reverse-calc monitor, range 1->48, legato re-articulation, within-legato
-  gate input -- MPE_UTILITY_BUILD_SPEC.md, MICROTONAL_MIDI_MPE_DIRECTION.md
+- [IN PROGRESS][V1] Keppel CV->MPE: reverse-calc monitor, range 1->48, legato re-articulation, within-
+  legato gate input -- MPE_UTILITY_BUILD_SPEC.md, MICROTONAL_MIDI_MPE_DIRECTION.md. NOTE: also the OUT leg
+  of the MPE-in round-trip test (needed regardless -- no stock microtonal-CV->MPE-out exists).
 - [TODO] Accent-output family (step-accent output; confirm Straits/Intertropical carry-over) --
   ACCENT_POLY_LANE_PLAN.md
 
@@ -46,9 +47,24 @@ Skim the phase you're in; open the linked docs for detail. Status tags: [DONE] [
 - [TODO] Sikit multi-reader (the one shareable-not-yet source) -- SIKIT_CLAUDE_CODE_GUIDE.md
 - [DONE] Colonnades/Duo 1:1 resolution -- QUANTISER_MODES_UNIFICATION.md (shared-CA section)
 
-### New modules (post-quantiser-mode; NOT v1-critical)
+### New modules (V1 -- build after quantiser modes final; the note-input path depends on them)
+- [TODO][V1] Pitch piano-roll editor (**Esplanade** -- the arts centre / where melody is authored) + gate
+  editor (**Zouk** -- the club / the beat) -- PIANO_ROLL_MODULE_CONCEPT.md (fully specced). Esplanade is
+  also the DIRECT control for the region-ordering/pathway sayr axis.
+- [TODO][V1] Per-voice random-vs-input melody router (16 knobs, deparam, Straits-like) -- RANDOM_VS_INPUT_
+  MODULE_CONCEPT.md. Per-voice composed<->generated freedom gradient = controllable heterophony. Both
+  sources (random engine + CV input) route via Change Alley; the knobs are per-voice CA melody-source
+  selection.
+- [TODO][V1] External microtonal melody IN: MPE controller/DAW -> microtonal CV -> quantiser mode.
+  Likely a THIRD-PARTY MPE-in module (a couple exist -- Rodney to check; VCV CORE does NOT do it cleanly),
+  validated by the ROUND-TRIP TEST (write out via Keppel, read back, require round-trip error <~1-2 cents,
+  well under the ~5-cent ear threshold). -- RANDOM_VS_INPUT_MODULE_CONCEPT.md
+- [CONTINGENT][V1] reverse-Keppel (**Woodlands** -- the Causeway land-crossing IN) = MPE MIDI IN ->
+  microtonal CV (inverse of Keppel's note+bend split). BUILD ONLY IF the round-trip test fails the cents
+  tolerance (esp. an unconfigurable bend-range mismatch). Self-contained, zero engine coupling.
 - [PARKED] Emerald Hill (wide 4x24-slot Shophouse) -- QUANTISER_MODES_UNIFICATION.md (Emerald Hill notes)
-- [PARKED] Pitch piano-roll editor + gate editor -- PIANO_ROLL_MODULE_CONCEPT.md (fully specced, build
+- [SUPERSEDED LINE BELOW -- kept for the doc link]
+- [see above] Pitch piano-roll + gate editor -- PIANO_ROLL_MODULE_CONCEPT.md (fully specced, build
   after quantiser modes final)
 
 ---
@@ -79,7 +95,6 @@ Skim the phase you're in; open the linked docs for detail. Status tags: [DONE] [
 - MIDI 2.0 Keppel (gated on VCV SDK exposing MIDI 2.0/UMP)
 - CV-indexed jins bank (if maqam becomes central)
 - Phase Option B beyond within-phrase (cross-draw regeneration)
-- Piano-roll + gate editors (post-quantiser-mode)
 
 ## Backlog / idea docs
 LOR_BACKLOG.md, LOR_BACKLOG, IDEAS_PARKED.md, WORK_ROADMAP.md, MASTER_PLAN.md,
