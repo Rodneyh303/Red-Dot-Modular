@@ -588,3 +588,39 @@ Cross-ref: the octave-quantise finding above (same-or-different octave = the inp
 asymmetry), MICROTONAL_MASTER (same scale incl microtonal via attached tuning source), the heterophony
 sections (core-line + elaboration), LAUNCH_INTENT_AND_STORY (safe-surprise heterophony = a user-facing
 selling point).
+
+## Vermona Melodicer manual (C/D quantizer modes) -- convergences + octave unresolved (Rodney)
+From the Melodicer manual, modes C (Quantizer 1) and D (Quantizer 2):
+
+### What it establishes -- and how it compares to our engine
+1. FADER HEIGHT = QUANTIZATION RANGE/WIDTH ("the higher a fader is raised, the wider its quantization
+   range"). This is EXACTLY our fader-weight-widens-capture (SequencerEngine.cpp radius = w * 1/12, heavier
+   fader = wider capture). CONVERGENT (we couldn't read the hardware -> independently arrived at the same
+   idea): fader height controls BOTH membership AND capture width. Validates our weighted-capture quantise.
+2. 0-5V input range (CV IN 2). Matches our clamp (pe_clamp(vIn, 0, 5)). Both = a 5-octave window.
+3. Quarter-note quantise (Melodicer clocks on quarter notes) -- a Melodicer timing detail, not relevant to
+   our per-step engine.
+4. C vs D split by TRIGGER SOURCE: C = clock-driven, D = GATE-driven (gate at GATE IN 2 -> quantize CV IN
+   2). Striking parallel to OUR quantiser modes also splitting clock vs gate. Convergent (possibly why our
+   modes are C/D too, or coincidence -- either way aligned).
+
+### Octave: manual is NOT conclusive (Rodney)
+The manual only says 0-5V and refers to the melody faders -- it does NOT specify nearest-octave vs input-
+octave-preserving vs fader-range folding. Silent on octave. So there's NO reference behaviour to defer to,
+which is fine: our engine already has a well-defined, reasoned octave behaviour (nearest active degree
+within input-octave +-1, register-preserving -- code-verified above). We don't need Melodicer to decide it;
+ours is already good. The manual's silence suggests Melodicer may just do the simple within-0-5V thing with
+no special octave logic, whereas our input-octave+-1 search handles boundary cases gracefully -- plausibly
+MORE refined, not behind.
+
+### Overall
+Where Melodicer specifies, we ALIGN (fader-width, 5V range, clock-vs-gate split -- convergent with a
+respected reference). Where it's silent (octave), our reasoned behaviour stands unchallenged. And it
+clarifies the DIFFERENTIATION boundary: Melodicer = single-channel quantise (one CV in, faders = scale,
+quantize out) = roughly OUR QUANTISE CORE (which we match/exceed). q-mix + poly + microtonal + per-voice
+octave = everything BEYOND Melodicer = our contribution. Melodicer is the baseline quantiser; dot.modular
+is that baseline plus the blend/poly/microtonal layers.
+
+Cross-ref: the octave-quantise finding above (input-octave +-1, fader-weighted -- now confirmed convergent
+with Melodicer on fader-width + 5V, and our independent choice on octave), MICROTONAL_MASTER (microtonal =
+beyond Melodicer), the why-cool section (the blend = beyond Melodicer).
