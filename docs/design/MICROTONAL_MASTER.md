@@ -185,3 +185,44 @@ leaves C/D on 12-TET would be incoherent. Design the tuning table as one shared 
 ## Related but not core (incidental tuning mentions)
 PITCH_PATCHABILITY_AND_DISTINCTION.md (East/West axis, Pelog as a pole), SEED_OFFSET_DESIGN.md
 (unrelated, mentions in passing). Not part of the microtonal build.
+
+## SCOPING PRINCIPLE (Rodney): microtonality is opt-in via an attached tuning source; operations are tuning-agnostic
+
+Quantise / generate / blend produce POTENTIALLY MICROTONAL results ONLY IF a tuning source (Colonnades,
+Duo, or Sikit) is attached (and has claimed). Otherwise they resolve against default 12-TET.
+
+### Mechanism (code-verified)
+A tuning source PUBLISHES cents into the shared TuningTable when it is the claimed source
+(Sikit.cpp:15-17,25: claimAsTuningSource -> publish cents[]; loser greys; claim resolved by
+Monsoon::updateExpanderPointers). If nothing claims, the TuningTable holds its default = 12-TET (Sikit.cpp
+:33 "default Sikit reproduces 12-TET exactly"; TuningTable default is 12-TET). So:
+- Colonnades / Duo / Sikit attached + claiming -> TuningTable = their custom cents -> quantise/generate/
+  blend produce potentially MICROTONAL results in that scale.
+- None attached -> TuningTable = 12-TET -> same operations produce conventional 12-TET results.
+
+### The architectural property
+The core operations are TUNING-AGNOSTIC. They resolve against the shared TuningTable in DEGREE SPACE:
+- Quantise snaps to the TuningTable's degrees. Generate draws degrees. Blend selects between sources.
+- None contain tuning logic. Pure degree operations.
+The tuning is a SEPARATE, SWAPPABLE layer (the TuningTable, populated by whoever claims). Microtonality is
+INJECTED UNDERNEATH the operations, not built into them. So microtonality is OPT-IN and ORTHOGONAL: attach
+a tuning source and everything the engine already does becomes microtonal for FREE (no change to quantise/
+generate/blend); detach and everything reverts to 12-TET, still working.
+
+### Same theme as the sayr mapping, one layer down
+The operations are GENERAL (degree-space); the tuning SOURCE makes them microtonal -- exactly as the
+general modulation engine's TARGETS make it express sayr. Microtonality isn't special-cased into the
+sequencing; it's a SUBSTRATE the general operations resolve against. "General engine, specificity injected
+underneath" -- the recurring dot.modular architecture.
+
+### Practical consequence (on-ramp story)
+Develop / test / demo the whole engine in 12-TET (no tuning source needed); microtonality is a DROP-IN --
+attach Sikit/Colonnades/Duo and the same patch becomes microtonal. A user starts in familiar 12-TET;
+microtonality is one module-attach away, not an up-front commitment. The instrument meets you where you
+are and opens the door when you want it.
+
+Cross-ref: TuningTable.hpp (the shared table, 12-TET default), Sikit.cpp:25/33 (claim + publish; 12-TET
+default), Colonnades.hpp (authors cents+weight+mask, publishes when claimed), SHAREABILITY_ANALYSIS (one
+claimed source; the multi-reader question), LAUNCH_INTENT_AND_STORY (on-ramp: 12-TET default, microtonal
+drop-in), PROBABILITY_MODIFIER_MODEL (the sayr mapping = the same general-engine/injected-specificity
+theme).
