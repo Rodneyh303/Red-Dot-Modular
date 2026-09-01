@@ -177,3 +177,32 @@ is third-party-does-it, not core-does-it.
 
 Cross-ref: MPE_UTILITY_BUILD_SPEC (Keppel out, still needed), external module choices (alexandreleroux/MPE,
 MIDIpolyMPE, Kilpatrick), QUANTISER_MODES_UNIFICATION (quantiser consumes the combined-pitch CV).
+
+## CORRECTION 2 (Rodney): VCV CORE does NOT do MPE-in cleanly -- THIRD-PARTY modules do (a couple, TBC)
+Correcting my prior claim: I wrongly asserted VCV CORE MIDI-CV covers MPE-in. Per Rodney, core does not;
+there are a couple of THIRD-PARTY modules that can do MPE -- to be checked. My core-does-it claim was
+wrong; Rodney knows the Rack landscape.
+
+The conclusion is mostly unchanged and actually cleaner. Whether MPE-in comes from a third-party module or
+a build, the deciding questions are the same:
+1. Does the MPE-in module output COMBINED note+bend as one pitch CV per voice (-> straight into quantiser
+   mode, no reverse-Keppel), or note+bend SEPARATELY (-> a trivial adder needed)?
+2. Is a suitable third-party MPE-in module available (-> no dot.modular build) or does a gap remain (->
+   reverse-Keppel / Woodlands justified after all)?
+
+Core-vs-third-party does NOT by itself revive reverse-Keppel: a THIRD-PARTY module that does MPE-in still
+means "use the existing one, don't build". A build is justified ONLY if NONE of the third-party MPE modules
+give clean per-voice microtonal pitch CV in the form quantiser mode wants. Rodney's check settles it.
+
+### TO CHECK (Rodney, in Rack)
+- Which third-party modules do MPE-in (a couple exist).
+- Do they output combined note+bend per-voice pitch CV (the form quantiser mode wants)?
+- If yes -> external-microtonal-melody-in = that third-party module -> quantiser mode; reverse-Keppel/
+  Woodlands DROPPED. If no clean option -> reverse-Keppel/Woodlands becomes a real (post-V1) build.
+
+Supersedes CORRECTION 1's "VCV core MIDI-CV" specifics (core doesn't do it); keeps the shape (MPE-in is
+likely an existing THIRD-PARTY module, not a dot.modular build) pending Rodney's check. Keppel-OUT stays a
+real build regardless (no stock microtonal-CV->MPE-out exists).
+
+Cross-ref: CORRECTION 1 above (superseded on the core-module point), MPE_UTILITY_BUILD_SPEC (Keppel out,
+still needed), QUANTISER_MODES_UNIFICATION (quantiser does microtonal interpretation of the incoming CV).
