@@ -1064,3 +1064,41 @@ Cross-ref: MonsoonChangeAlleyV2.hpp:2-4 (16x16 voice matrix) + :62-67 (8-stream 
 draw = the dimension mismatch), the re-rating section above (its voice-matrix-pin assumption for CA self-
 scatter was dimensionally confused; the thematic point survives, the implementation doesn't), the source-
 select third-pin section (per-voice -> valid, unaffected)." 
+
+## CA scatter draw: 8 -> 12 dim with green q-mix pins; self-scatter = "Change Change Alley" (Rodney)
+
+### Dimension update: adding green q-mix pins takes the scatter draw 8 -> 12
+Current CA scatter draw = 8 = Intra/Inter x {rhythm, melody} x domain/codomain (2x2x2). Adding the GREEN
+q-mix pins makes q-mix a THIRD pin type -> Intra/Inter x {rhythm, melody, q-mix} x domain/codomain =
+2x3x2 = 12. So the scatter draw grows 8 -> 12 as a CONSEQUENCE of the source-select pin plane. Consistency
+check: the green pin isn't just a per-voice pin on the 16x16 voice matrix -- it ALSO adds a scatter-stream
+family (its own Intra/Inter x domain/codomain), taking CA's own-draw 8 -> 12. The two views (per-voice
+green pins on the voice matrix; +4 scatter streams for q-mix) are the SAME addition at two levels. Hangs
+together.
+
+### "Change Change Alley" -- self-scatter is a SEPARATE 12-D matrix / module, not a 4th pin on CA
+Correlating the 12-dim scatter draw = a different animal, requiring a SEPARATE 12-D matrix, NOT a fourth
+pin on the 16x16 voice matrix. Because:
+- The 16x16 voice matrix correlates VOICES (row v reads col src) = per-voice quantities.
+- The scatter draw is NOT per-voice; it's 12 (side/type/direction). Correlating THOSE with each other needs
+  a matrix whose rows/cols are the 12 SCATTER STREAMS -- a distinct 12x12 surface, a distinct module,
+  one meta-level up.
+Name: "CHANGE CHANGE ALLEY" (Rodney) -- Change Alley applied to Change Alley; recursion made literal, the
+self-patching spirit of modular taken to its logical (delightfully absurd) conclusion. It re-scatters CA's
+own scatter.
+
+### Status: mull / if-done-at-all -- but now dimensionally COHERENT, not confused
+- It's a whole separate module (12-D matrix) for a THIRD-ORDER effect (correlating the correlations-of-
+  correlations). Abstraction stacks fast: CA correlates voice draws; CCA correlates CA's SCATTER draws.
+  Two meta-levels from anything directly audible.
+- Payoff even MORE indirect than the (already second-order, already-deflated) CA-self-scatter idea.
+- BUT conceptually clean now it's correctly homed: separate module, separate matrix, right dimension (12,
+  not shoehorned onto the 16-voice grid). Not confused anymore -- just far out on the priority horizon.
+The self-referential idea isn't wrong (my dimension-confusion made it look wrong-ON-THE-MATRIX); it belongs
+in its OWN module with a 12-D matrix. That's the correct shape. Whether ever built = a far-future musical
+question; IF built, we now know exactly what it is: a meta-CA scattering CA's 12-dim scatter draw.
+
+Cross-ref: MonsoonChangeAlleyV2.hpp:62-67 (the 8-dim scatter draw, -> 12 with q-mix pins), the reality-check
+section above (why CA self-scatter is NOT a voice-matrix pin -- dimension mismatch; this gives it its
+correct home), the green source-select pin (the +q-mix type that takes 8->12), LAUNCH_INTENT_AND_STORY
+(order/chaos-on-itself -- CCA is the literal recursion, a far-future module)." 
