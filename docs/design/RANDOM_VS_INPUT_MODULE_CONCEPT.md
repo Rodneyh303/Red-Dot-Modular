@@ -814,3 +814,46 @@ MonsoonChangeAlleyV2.hpp:5,761-762 (authoritative colours + concentric cell), th
 (concentric-cell constraint -> option 2 default-follow-with-unlink), MODE_B_SPEC (external gate inputs =
 the rhythm-side jacks), the full-feature-scope section (Big-6/Straits/Causeway distribution -- now + gate
 input jacks).
+
+## DECISION: source-select gets a FULL third pin plane (green) -- EMS precedent dissolves the objection (Rodney)
+Rodney's lean: full-blown option 1 (a co-equal third pin plane), not option 2 (follow-melody-with-unlink).
+And the EMS point is the deciding factor.
+
+### The EMS precedent removes the palette/aesthetic objection
+Real EMS VCS3/Synthi matrices used MULTIPLE pin colours -- white and red (standard values), GREEN, and
+occasionally YELLOW (colour encoded the pin's resistance/attenuation). CA's lineage IS explicitly the EMS
+matrix (CHANGE_ALLEY_DESIGN cites VCS3/Synthi). So a THIRD pin colour is NOT a departure -- it's MORE
+faithful to the source. A red/white/GREEN matrix is more EMS than red/white. My earlier "third colour
+strains the palette / departs the aesthetic" caution was BACKWARDS: green is the historically-correct
+third pin, and it makes CA more authentic, not less. Two of my three objections fall:
+- "no third legible colour" -> GREEN (EMS-authentic, distinct from red+white).
+- "departs the aesthetic" -> MORE faithful to EMS, not less.
+
+### What remains is only cell rendering -- solvable, and also EMS-ish
+The cell currently renders two concentric layers (outer white peg + inner red dot). A third pin needs a
+slot. But EMS matrices were DENSE with multi-coloured pins -- three pins in/around a cell is very EMS.
+Rendering options: a third concentric ring (outer/mid/inner), or a third pin variant. Busy but not
+impossible; a solvable PANEL-PHASE rendering problem, not a blocker.
+
+### Why full-1 is right (objections thinned)
+1. CONSISTENCY: we separated the DICE (source-select = own stream) for orthogonality. A full third PIN
+   plane makes the correlation structure equally orthogonal -> blend cross-voice correlation as
+   independently controllable as its dice. Option 2 was a COMPROMISE forced by a UI constraint EMS-green
+   REMOVES. Constraint gone -> the principled choice (full orthogonality, matching the dice) wins.
+   Separate dice => separate pins.
+2. FULL TEXTURE SPACE: independent control of WHICH generated notes (melody pins), WHERE voices break to
+   generated (source-select pins), WHICH rhythm (rhythm pins) -- three separate correlation structures =
+   the complete heterophony control.
+3. MORE EMS: three pin colours strengthen the homage; the module's identity ("the EMS matrix reborn for
+   correlation") is better served by the historically-accurate palette.
+
+### Decision + the one open item
+DECISION: full-blown option 1 -- source-select = a third co-equal pin plane, GREEN (EMS white/red/green).
+Supersedes the prior option-2 lean (which rested on a palette/geometry constraint the EMS heritage
+dissolves). OPEN (panel phase): the three-pin CELL RENDERING (concentric tri-ring or a clean alternative)
+-- resolve at panel time; if three pins in a cell proves unparseable in practice, option 2 is the fallback,
+but design for full-1.
+
+Cross-ref: CHANGE_ALLEY_DESIGN (EMS VCS3/Synthi lineage -- now white/red/GREEN, more faithful),
+MonsoonChangeAlleyV2.hpp (two-concentric-layer cell -- extend to three), the separate-dice decision (full-1
+is the pin-plane consistent with it), the third-pin question above (resolved: full-1, EMS green)." 
