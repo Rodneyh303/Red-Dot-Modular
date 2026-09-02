@@ -156,3 +156,51 @@ Cross-ref: RANDOM_VS_INPUT_MODULE_CONCEPT (the quantiser-mode features = the pil
 QUANTISER_MODES_UNIFICATION (the pillar itself), LAUNCH_INTENT_AND_STORY (value prop: generative AND
 transformative -- the transformer half is the broadly-useful one), the New Modules V1 list above (stage
 within, don't trim)." 
+
+## Second de-risking: the growth rides HARD-WON PATTERNS (Rodney)
+Beyond being coherent (a quantiser-mode pillar, not creep), the growth is also TECHNICALLY DE-RISKED: it
+lands in areas already hard-won and thought-out (Sands, CA) and FOLLOWS existing hard-fought patterns
+rather than inventing machinery -- deparam, undo, lock mode, UI MVC.
+
+Two DIFFERENT safeties, both needed before accepting growth:
+- Coherence (prior note): it's the RIGHT stuff to build (a pillar).
+- Pattern-reuse (this note): it's CHEAP/SAFE to build (rides proven patterns).
+
+### Why pattern-reuse makes it low-risk
+The new features are new ARRANGEMENTS of existing engineering, not new engineering:
+- deparam: modulatable-value-with-edit-vs-modulated-display is built + battle-tested. q-mix knobs, octave
+  min/max faders, source-select = "just another deparam value". The hard part (modulatable/gettable/lock-
+  aware/clean edit-display split) is DONE; new controls inherit it.
+- undo: StoreEditAction + the CA ring-buffer groundwork exist. New pins/knobs/grids get undo for free by
+  following the established action pattern.
+- lock mode: Big5 lock scope is settled; new modulatables (q-mix as Big6) JOIN the existing scope, no
+  bespoke lock handling.
+- UI MVC: the model/view/controller separation (MVC_UNIFICATION history) is followed, not reinvented, for
+  new UI (pin planes, scatter grids, knobs).
+A new pin plane = "CA's pin idiom again". A new modulatable knob = "deparam again". The scatter grids =
+"CA's pin matrix again, smaller". Undo/lock/MVC = followed, not invented. So scope grows WITHOUT risk
+growing proportionally -- risk lives in NOVEL patterns, and there are almost none here.
+
+### Connects to the session's recurring discovery
+The code is further along than the docs and the patterns are already there (reverse-phase, jump/scrub
+replay, enabled mask, deparam, reversible signed counter, CA's own scatter streams -- all already done).
+The growth lands on a MATURE, PATTERNED codebase where "the new feature" is mostly "apply pattern X to
+case Y" = the safest ground for scope growth.
+
+### Implication: it RAISES the V1 ceiling
+If new features ride proven patterns, each costs LESS (no new infrastructure) -> MORE of the pillar can
+realistically ship in V1 than if each were novel. The staging question (q-mix core V1, CCA V1.1?) is
+SOFTENED because CCA is "CA's pin matrix, smaller" -- cheap, pattern's there. Pattern-reuse doesn't just
+de-risk; it raises how much of the pillar V1 can hold.
+
+### The one caution (keep honest)
+"Follow the pattern" is the right discipline but requires actually following it, not half-following +
+improvising under time pressure. The patterns are hard-won BECAUSE deviating caused pain before (MVC
+unification, deparam migration were corrections of earlier mess). The safety is real ONLY IF the patterns
+are followed FAITHFULLY: deparam every new value properly, wire undo through the established action,
+respect MVC, put new modulatables in lock scope. The risk isn't the patterns -- it's the temptation to
+shortcut them.
+
+Cross-ref: the scope-correction note above (coherence = the other safety), SANDS_ARCHITECTURE_CONSOLIDATION
++ MVC_UNIFICATION + deparam/undo/lock docs (the hard-won patterns to follow), RANDOM_VS_INPUT_MODULE_
+CONCEPT (the new features = arrangements of these patterns)." 
