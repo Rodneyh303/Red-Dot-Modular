@@ -119,3 +119,47 @@ Supersedes the "default CUT" steer above: status-quo-on-CA still doesn't survive
 Cross-ref: the poly-mod-inputs section above (the cut-vs-move options -- now deferred pending reorg), the
 shrink-first decision (same reorganize-render-look-then-decide empiricism), gen_change_alley_v2.py (the
 reorg happens here; the poly-mod fate resolves once the q-mix subpanels are placed)." 
+
+## PROPOSED REDESIGN (Rodney): lose L/R symmetry -> 6-column grid by component-type sections
+Abandon the L=Intra / R=Inter mirror. Organise by 6 COLUMNS = (rhythm, melody, q-mix) x (intra, inter) =
+3 streams x 2 sides. Stack in COMPONENT-TYPE sections down the panel:
+
+- JACKS section: 6 columns x 10 rows (r/m/q x intra/inter columns; 10 op-rows).
+- BUTTONS section: same 6 columns x 10 rows.
+- KNOBS section: 6 columns x 6 rows. Row breakdown CONFIRMED by verb structure: Collapse (2 knobs) +
+  Rotate (2) + Reflect (1) + Scatter (1) = 6 knob-rows x 6 columns = 36 knobs. Clean.
+- Then the PIN MATRIX (16x16), and to its RIGHT the 3 CCA submatrices (2x2, 2x2, 3x3 = the self-reference /
+  scatter-correlation grids). Then any MOD JACKS (the deferred poly-mod inputs).
+
+### Why sound
+- Folds Intra/Inter into COLUMNS (6 = 3x2) not PANEL HALVES -> reclaims the space the mirror wasted on a
+  2-state distinction; the fundamental move that lets 3 streams fit. (The concrete form of "demote the
+  mirror".)
+- Groups by COMPONENT TYPE (jacks/buttons/knobs blocks): uniform grids, easy to scan + GENERATE, at the
+  cost of per-operation locality (an op's jack/button/knob now in different sections). For a setup-then-
+  play module, section-wise is a reasonable trade.
+- Knob section (6x6) = the clean CONFIRMED anchor (Collapse2+Rotate2+Reflect1+Scatter1); build from it out.
+
+### Flags (honest)
+1. The "10" jack-rows / 10 button-rows needs its BREAKDOWN CONFIRMED. Code shows each verb has DOMAIN +
+   CODOMAIN sides (dom/cod triggers; "4 domain + 4 codomain reverse buttons") -> the 10 is dom/cod-driven,
+   but 4 verbs x dom/cod = 8, not 10 -> 2 more (forward/back on some verbs? an extra on collapse/rotate?).
+   Rodney to confirm the exact 10; not fabricated here. Once confirmed the arithmetic is nailed.
+2. ~60 jacks + ~60 buttons (6x10 each) = a LOT of components. Uniform grids make it TRACTABLE (no mirror
+   waste) but 120 jacks+buttons + 36 knobs + 16x16 matrix + submatrices = a BIG panel, likely much wider
+   than the current 48HP. Fine pre-release, but the redesign implies a substantially LARGER CA.
+3. GENERATOR-OWNED: goes in gen_change_alley_v2.py as three uniform grids (6x10, 6x10, 6x6) + matrix +
+   submatrices. Uniform grids are MUCH easier to generate than the old bespoke mirrored rows -> the reorg
+   is also a GENERATOR SIMPLIFICATION (a real plus).
+
+### Status
+The chosen direction for fitting 3 streams: reorganise the whole panel, lose symmetry, 6-column component-
+type sections. Supersedes "shrink-first / edgeless-expander / four-edges" as the primary plan (those were
+for keeping the old mirrored layout; this redesigns instead). Confirm the "10" breakdown, then it's a
+generator rewrite (three uniform grids + matrix + submatrices). Poly-mod inputs: still deferred -- see if
+the new layout has room (per the prior deferral).
+
+Cross-ref: MonsoonChangeAlleyV2.hpp:111 (VN = Collapse/Rotate/Reflect/Scatter, N_VERBS=4), :54-62 (dom/cod
+per verb; 4 domain + 4 codomain reverse buttons = the dom/cod doubling behind the 10), the knob 6x6
+arithmetic, the CCA submatrices section in RANDOM_VS_INPUT_MODULE_CONCEPT (2x2/2x2/3x3 to the matrix's
+right), gen_change_alley_v2.py (the rewrite target: three uniform grids)." 
