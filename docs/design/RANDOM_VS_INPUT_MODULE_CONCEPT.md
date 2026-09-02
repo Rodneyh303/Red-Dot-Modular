@@ -736,3 +736,48 @@ cool" picture: safe-surprise heterophony with a continuous octave-spread control
 Cross-ref: the octave-range-option PINNED section (min/max = 2 Monsoon faders, fold; now confirmed they
 bound generated too = fully unified), the why-cool section (same/different octave = now the window-width
 axis), the q-mix octave asymmetry (resolved: one window governs both, fold aligns, width sets spread).
+
+## Source-select dice: SEPARATE, not keyed off the melody dice (Rodney) -- and the 4th-stream spec already does this
+Decision: the source-select (input-vs-generated) uses its OWN dice, independent of the melody draw. NOT
+keyed off the melody dice.
+
+### Rodney's deciding argument (correct): two orthogonal creative gestures
+- Separate -> try DIFFERENT BLENDS of the SAME generated melody: hold melody dice fixed, roll ONLY the
+  blend dice -> same generated notes, different interleave pattern with the input. "I like these generated
+  notes -- now audition WHERE they weave in."
+- Separate -> SAME BLEND of DIFFERENT generated melodies: hold blend dice fixed, roll ONLY melody dice ->
+  same interleave pattern, different generated content in those slots. "I like this interleave rhythm --
+  now hear different generated notes in the same slots."
+Keying-off-melody DESTROYS both: it welds "which generated notes" and "where they interleave" into one
+dice -> can't hold one fixed and vary the other. Separate = two orthogonal axes (WHAT generated / WHERE
+used), each independently explorable = exactly the dice/scrub independent-exploration philosophy.
+
+### Why the counter-argument (keyed-off gives coupling for free) is weak
+- The coupling you'd actually want ("take generated more when it's interesting") is CONTENT-dependent, not
+  shared-seed. Shared-seed coupling is ARBITRARY (blend pattern happens to derive from the same numbers) =
+  meaningless correlation, a loss of independent control dressed as a feature.
+- Real correlation is PATCHABLE anyway (the mix knob is modulatable -> patch the blend to track something).
+  So separate loses nothing you actually want (real correlation via a cable) and gains both gestures.
+
+### The clean statement
+Melody dice and blend dice control ORTHOGONAL things -- WHAT the generated notes are vs WHERE they get
+used. Welding them removes control without adding musically-meaningful coupling. Separate keeps the axes
+independent = more expressive AND more conceptually honest (they ARE different decisions -> different dice).
+
+### It's what the 4th-Philox-stream spec ALREADY implements
+STREAM_SOURCE_SELECT = 3 is a SEPARATE stream from STREAM_MELODY = 1 (different keys -> decorrelated). So:
+- Roll melody dice (stream 1), hold source-select (stream 3) -> different generated notes, same interleave.
+- Roll source-select (stream 3), hold melody dice (stream 1) -> same generated notes, different interleave.
+The two independent streams DELIVER the two gestures directly. And it's CONSISTENT with the existing
+architecture: rhythm(0)/melody(1)/CA(2) are already separate streams so each independent decision varies
+independently; source-select(3) as a separate stream is the SAME principle. Keying-off would have been the
+INCONSISTENT choice.
+
+### Verdict
+SEPARATE dice, decisively: Rodney's two-gestures reason + shared-seed coupling is arbitrary (real
+correlation is patchable) + consistent with the per-decision-stream architecture + the 4th-stream spec
+already implements it. (Had it right in the question.)
+
+Cross-ref: the fourth-Philox-stream section above (STREAM_SOURCE_SELECT=3, separate from melody=1 -- this
+IS the separate dice), PhiloxRng per-stream keys (rhythm/melody/CA already separate = the same principle),
+DICE_SCRUB_MODEL (independent-exploration philosophy = why orthogonal dice matter).
