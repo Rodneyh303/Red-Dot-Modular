@@ -268,3 +268,45 @@ backwards). Correct: Plan A = current mirror + small jacks (preserve, try first)
 Cross-ref: MonsoonChangeAlleyV2.hpp:360-395 (current mirrored geometry = Plan A's layout to shrink),
 the 6-column redesign + '10'-confirmed sections above (= Plan B, the fallback), gen_change_alley_v2.py
 (Plan A: shrink components/pitch in place; Plan B: rewrite to 6-column sections)." 
+
+## CLAUDE CODE BRIEF: implement Plan A (smaller jacks in the current layout), render, see how it lands
+This is a build-render-eyeball-ITERATE task -> Claude Code (the web-chat container has no Rack SDK; it
+can't build or render, only reason). Design is done here; implementation + "see how it lands" is Claude
+Code's, in the live dev env.
+
+### Task
+On feat/microtonal, fit the q-mix THIRD stream into Change Alley's CURRENT mirrored layout (Plan A). The
+3rd stream adds per-stream rows going 2 (melody, rhythm) -> 3 (melody, rhythm, q-mix), i.e. 12-rows-per-
+side in the existing L(Intra)/R(Inter) geometry.
+
+### Ordered approach (cheapest first)
+1. FIRST: tighten ROW PITCH (CTRL_ROW_H in gen_change_alley_v2.py + matching .hpp constants) with STOCK
+   PJ301M jacks. PJ301M is ~8mm; if rows are pitched looser there's slack to close toward the jack
+   footprint. This may fit 12 rows with NO smaller jacks -- try it first, it's a one-constant change.
+2. IF 12 rows still won't fit: create a CUSTOM smaller-SVG port widget (subclass app::SvgPort, smaller
+   jack SVG art drawn to suit the smaller size + smaller box.size). This is the real way to get genuinely
+   smaller jacks that still LOOK right (don't just transform-scale PJ301M -- the fixed-size cable plug
+   makes a scaled stock jack look broken + shrinks the hit-target). Knobs can transform-scale (Trimpot);
+   jacks want custom art.
+3. Keep gen_change_alley_v2.py and the .hpp geometry constants IN SYNC (the "MUST MATCH" discipline).
+   Regenerate + build so Rodney can SEE it.
+
+### Failure signal -> Plan B
+If Plan A can't be made to fit AND look/work right (jacks are the binding element -- 12 rows of PJ301M-
+sized jacks per side in the mirror may simply not fit the 128.5mm height at usable size), STOP and report.
+That triggers PLAN B: the 6-column reorganisation (lose symmetry; jacks 6x10, buttons 6x10, knobs 6x6,
+matrix + 2x2/2x2/3x3 submatrices + mod jacks). See the redesign + '10'-confirmed sections above for Plan
+B's full spec + arithmetic.
+
+### Component counts (apply to both plans)
+Per (stream, side): Collapse 2 jacks, Rotate 2, Reflect 2, Scatter 4 (dom/cod all; scatter +fwd/rev) = 10
+jack-rows; buttons = twins = 10; knobs = Collapse 2, Rotate 2, Reflect 1, Scatter 1 = 6. Pre-release:
+breaking changes are FREE (param IDs, panel, format) -- no compat concern.
+
+### Reminder
+Follow the hard-won patterns (deparam/undo/lock/MVC). The panel is generator-owned; edit the generator,
+don't hand-place. Container can't build -> this is Claude Code's to build/render; report back what lands.
+
+Cross-ref: this doc's Plan A/B + '10'-confirmed + redesign sections (the full spec), MonsoonChangeAlleyV2
+.hpp:360-395 (current geometry to shrink), gen_change_alley_v2.py (the generator to edit), ROAD_TO_RELEASE
+(pre-release: breaking changes free)." 
