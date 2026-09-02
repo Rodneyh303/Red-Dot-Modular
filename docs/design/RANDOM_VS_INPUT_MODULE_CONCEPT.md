@@ -1022,3 +1022,45 @@ Cross-ref: the prior CA-own-draws sections (mechanism supports it; costs 1-3 wer
 -- and the self-referential one is partly a feature here), the third-pin section (green pin forces the
 selector that makes pin-4 cheap), LAUNCH_INTENT_AND_STORY (order/chaos thesis -- the self-reference
 embodies it).
+
+## REALITY CHECK (Rodney): the CA draw dimension is 8 (side/type/direction), NOT per-voice-16
+Before getting carried away with self-referential pinning: checked the CA scatter draw's actual dimension
+(MonsoonChangeAlleyV2.hpp:62-67). It is NOT per-voice-up-to-16. It is 8 STREAMS = Intra/Inter x rhythm/
+melody x domain/codomain (CA::SIDES * CA::TYPES * 2). Indexed by (side, type, direction), NOT by voice.
+Fixed at 8; does NOT scale with poly voice count.
+
+What the 8-stream draw PRODUCES is the 16x16 pin-matrix reallocation (rows 0-15 = consuming voices, cols
+0-15 = source voices), but the DRAW ITSELF is 8 streams generating that scatter -- not 16 per-voice draws.
+
+### This DEFLATES the "pin CA's own draws across voices" idea (I conflated dimensions)
+The "pin CA's scatter -> voices re-scatter as a bloc" framing assumed the CA draw was PER-VOICE (so voice
+2's scatter could correlate with voice 3's). It ISN'T -- it's 8 (side/type/direction). So "pin CA's own
+draws across voices" does NOT map onto the pin-matrix idiom: the matrix correlates VOICES (row v reads col
+src), but the scatter draw isn't a per-voice quantity -- there's nothing per-voice to pin to another voice.
+
+Correction -- two dimensionally DIFFERENT things I conflated:
+- SOURCE-SELECT: IS per-voice (each voice's input-vs-generated decision) -> CAN be a pin plane on the 16x16
+  voice matrix. Green pin: valid, per-voice, fits the idiom. STANDS.
+- CA's OWN SCATTER draws: 8 (side/type/direction), NOT per-voice -> CANNOT be "a pin plane on the voice
+  matrix" the same way. No per-voice scatter quantity to correlate voice-to-voice. The self-referential-
+  pinning-as-a-fourth-matrix-plane idea was DIMENSIONALLY CONFUSED.
+
+### What CA-self-scatter-correlation could mean (given the real 8-dim), if anything
+Correlating the 8 scatter streams WITH EACH OTHER (rhythm-domain like melody-domain; Intra tracking Inter)
+-- but that's NOT a voice-matrix pin, it's a different, much smaller (8-element) correlation with no natural
+home on the 16x16 grid. So "yellow fourth pin plane on the matrix = CA self-scatter" does not fit.
+
+### Verdict
+Answer to "still linked to poly up to 16?": NO -- the CA draw is 8 (side/type/direction), fixed, not poly-
+scaled. So the self-referential-pinning-as-a-fourth-matrix-plane idea we got enthusiastic about does NOT
+fit the mechanism (it assumed a per-voice CA draw that doesn't exist). The THEMATIC appeal (order/chaos
+reflexivity) is still conceptually nice, but the concrete "fourth pin plane on the voice matrix" is
+dimensionally wrong -- rethink or drop. Good instinct to check the mechanism before the concept ran off.
+
+Supersedes the re-rating's implicit assumption that CA-self-scatter could be a voice-matrix pin plane like
+green source-select. Green source-select (per-voice) stands; CA-self-scatter-as-matrix-pin does not.
+
+Cross-ref: MonsoonChangeAlleyV2.hpp:2-4 (16x16 voice matrix) + :62-67 (8-stream side/type/direction scatter
+draw = the dimension mismatch), the re-rating section above (its voice-matrix-pin assumption for CA self-
+scatter was dimensionally confused; the thematic point survives, the implementation doesn't), the source-
+select third-pin section (per-voice -> valid, unaffected)." 
