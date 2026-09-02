@@ -49,3 +49,38 @@ Cross-ref: MonsoonChangeAlleyV2.hpp:360-395 (geometry constants -- CTRL_ROW_H, j
 things to shrink), gen_change_alley_v2.py (the authoritative generator to edit + regenerate), the CCA
 scatter-grid sections in RANDOM_VS_INPUT_MODULE_CONCEPT (the 3rd stream = q-mix = the +rows), ROAD_TO_
 RELEASE (pre-release: panel changes are free).
+
+## The two CA poly mod inputs (GRAIN_POLY_IN, STEP_POLY_IN): don't scale to q-mix -> cut or move (Rodney)
+CA has two poly modulation inputs (bottom-right under the last reflect row): GRAIN_POLY_IN (16ch -> 16
+grain knobs, mono=all) + STEP_POLY_IN (same for step/leader). Per-voice CV mod of grain + step, mono-
+normalled (one LFO modulates all 16). Designed for the 2-stream world (melody, rhythm).
+
+### Key: they DON'T SCALE to the 3rd stream (q-mix)
+Keeping them is NOT "leave as-is" -- they'd need REORGANIZING to cover 3 streams (grain/step/q-mix poly
+mod), which means MORE inputs / a redesigned scheme = MORE panel pressure on the panel already being
+fought, PLUS the reorg work. So keeping-on-CA is negative on BOTH axes that matter now: adds panel
+pressure AND adds work -- it makes the EXACT problem being solved (fit the 3rd stream) WORSE.
+
+### So status-quo is NOT an option; the choice collapses to two
+- The poly mod inputs can't stay on CA regardless (don't scale, worsen the crunch).
+- CUT entirely: lose the (partial, mostly-mono-normalled) grain/step CV mod; reclaim 2 EDGE-JACKS (exactly
+  the edge real-estate the 3rd stream needs -- they sit bottom-right on the edge being freed); zero further
+  work.
+- MOVE + SCALE on CAUSEWAY: if per-voice grain/step(/q-mix) CV mod is worth keeping, it must move off CA
+  anyway to scale (the scaling problem IS a panel problem; Causeway is a different panel with room). Reorg-
+  to-3-streams and move-to-Causeway are the SAME motion: keep it -> it lives on the CV expander and scales
+  there, CA's edge freed. Idiomatic (mod CV on the CV expander).
+Keeping-on-CA is OFF THE TABLE (doesn't scale + worsens the panel problem).
+
+### Steer
+Default CUT (Rodney leaning that way; status-quo isn't available; panel pressure favours it; the lost
+capability is modest -- partial, mono-normalled grain/step CV mod). MOVE+SCALE to Causeway ONLY IF per-
+voice grain/step CV modulation is a gesture worth preserving. Either way the 2 edge-jacks are reclaimed ->
+directly eases the 12-row fit. This makes the decision EASIER: the status quo doesn't survive the 3rd
+stream, so it's a clean binary (cut vs relocate-and-scale), and the panel crunch points at cut unless the
+feature earns relocation.
+
+Cross-ref: MonsoonChangeAlleyV2.hpp:139/165/525-535 (GRAIN_POLY_IN/STEP_POLY_IN -- the inputs, their
+mono-normal mod, their bottom-right edge placement), the shrink-first decision above (cutting these 2
+jacks eases the 12-row fit directly), Causeway (the CV-expander home if kept+scaled), ROAD_TO_RELEASE
+(pre-release: cutting/moving inputs is free)." 
