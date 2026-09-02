@@ -205,3 +205,35 @@ Cross-ref: MonsoonChangeAlleyV2.hpp:59 ("4 domain + 4 codomain reverse buttons" 
 :64-67 (signed scatter counters, fwd=++/back=-- -> why scatter is the only 4), the redesign section above
 (the three blocks -- now with correct 10/10/6 row structures and independent layout), gen_change_alley_v2
 .py (lay the three blocks independently, column-aligned, not row-shared)." 
+
+## PLAN (Rodney): 6-column reorganised layout AS the structure + try smaller jacks first within it
+Combines the two threads (not a reversal): the 6-column reorganised layout (lose symmetry) is the
+STRUCTURE; smaller jacks/knobs is the density LEVER within it; plan B is the further fallback if that
+doesn't land.
+
+Ladder:
+1. PRIMARY STRUCTURE: 6-column reorganised layout (jacks 6x10, buttons 6x10, knobs 6x6, matrix + 2x2/2x2/
+   3x3 submatrices + mod jacks, column-aligned, sections laid out independently). The structural fix that
+   CAN fit 3 streams.
+2. FIRST LEVER within it: smaller jacks/knobs + tight row pitch (CTRL_ROW_H) to make the 6x10 jack/button
+   blocks fit. Render, eyeball, judge.
+3. PLAN B (fallback if smaller-jacks doesn't land): edgeless expander (its own edges) or four-edges -- the
+   "add panel area / more edges" options. [Confirm which Rodney means by 'plan B'; recorded as the
+   escalation from small-jacks-in-the-6-column-layout.]
+
+### Why more likely to succeed than small-jacks-on-the-old-mirror
+The reorg ALREADY removed the mirror's wasted doubling (Intra/Inter -> columns, not panel halves). So the
+small-jacks lever fits into an already spatially-efficient layout and only has to close a SMALLER remaining
+gap. The two moves compound: reorg reclaims the big space (kills the mirror), small-jacks closes the rest.
+
+### Honest note (jacks are the binding element)
+The 6x10 jack + 6x10 button blocks = 60 jacks + 60 buttons; jacks (PJ301M) are the least-shrinkable
+element (near their floor). So the small-jacks test STILL succeeds-or-fails on whether 10 rows of PJ301M
+fit the column height at tight pitch. If it fails, it fails ON THE JACKS -> plan B (expander/four-edges =
+MORE EDGES for jacks, not smaller jacks). "Try small jacks first" is right, with the clear-eyed
+expectation that jacks are binding and plan B is about jack REAL-ESTATE.
+
+Cross-ref: the redesign + '10'-confirmed sections above (the 6-column structure this fits jacks into), the
+shrink-first decision (same reorganize-render-look empiricism), gen_change_alley_v2.py (the rewrite:
+6-column sections, small components, tight pitch), the fallback ladder (four-edges / edgeless-expander =
+plan B)." 
