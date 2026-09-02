@@ -84,3 +84,38 @@ Cross-ref: MonsoonChangeAlleyV2.hpp:139/165/525-535 (GRAIN_POLY_IN/STEP_POLY_IN 
 mono-normal mod, their bottom-right edge placement), the shrink-first decision above (cutting these 2
 jacks eases the 12-row fit directly), Causeway (the CV-expander home if kept+scaled), ROAD_TO_RELEASE
 (pre-release: cutting/moving inputs is free)." 
+
+## UPDATE (Rodney): DON'T cut the poly mod inputs yet -- defer pending the panel reorg
+Correction to the cut-vs-move framing: don't cut yet. Growing the panel for the q-mix subpanels (which the
+3-stream problem forces anyway) CREATES room -- and in that larger, reorganized panel there might be space
+to KEEP + properly reorganize the poly mod inputs (scaled to 3 streams). So the cut decision is PREMATURE:
+it's downstream of a panel-growth-and-reorg not yet done.
+
+### Why deferring is right (don't decide against a constraint you're about to change)
+The prior cut-vs-move framing treated the panel as FIXED ("given no room, cut or relocate?"). But the
+panel ISN'T fixed -- you're already going to grow/reorganize it for q-mix, and that reorg is a NEW CONTEXT
+in which the poly-mod question should be re-asked. Cutting now, against the CURRENT cramped layout, throws
+away an option the REORGANIZED layout might restore for free. Don't spend the decision against a constraint
+about to change.
+
+### Dependency ordering
+1. FIRST: grow the panel + reorganize for the q-mix subpanels (needed regardless).
+2. THEN: in the new layout, SEE whether there's room to keep the poly mod inputs (reorganized to 3
+   streams).
+3. ONLY THEN: decide keep-reorganized / move-to-Causeway / cut -- with actual knowledge of the space, not
+   a guess against the old cramped panel.
+Same empiricism as the shrink-first decision: reorganize, render, LOOK, then decide -- don't decide against
+an imagined constraint.
+
+### Deferral WITH A TRIGGER (so it's not forgotten)
+This is a deferral, not an open-ended maybe. TRIGGER: once the panel is grown/reorganized for q-mix,
+REVISIT the poly-mod inputs. Recorded as a PENDING DECISION tied to the reorg -- must be resolved then, not
+dropped. The one bad outcome to avoid: the inputs lingering half-scaled (working for 2 streams, ignored
+for the 3rd). So: defer, but flag it as a decision the reorg MUST resolve.
+
+Supersedes the "default CUT" steer above: status-quo-on-CA still doesn't survive as-is, BUT the resolution
+(keep-reorganized / move / cut) is DEFERRED to after the panel reorg, not decided now. Not cut yet.
+
+Cross-ref: the poly-mod-inputs section above (the cut-vs-move options -- now deferred pending reorg), the
+shrink-first decision (same reorganize-render-look-then-decide empiricism), gen_change_alley_v2.py (the
+reorg happens here; the poly-mod fate resolves once the q-mix subpanels are placed)." 
