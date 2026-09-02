@@ -221,3 +221,32 @@ honoured). Until then: choose correctness over compatibility, always.
 Cross-ref: the pattern-reuse note above (follow patterns for QUALITY, not for compat -- these are different
 reasons; pre-release there's no compat reason at all), REVERSIBLE_MODE_DECISIONS / NUM_PARAMS_MIGRATION
 (past internal migrations were dev-time refactors, not user-patch migrations -- same freedom)." 
+
+## PRE-RELEASE: breaking changes are FREE -- "needs migration / don't break patches" cautions are VOID (Rodney)
+Nothing is released. There is NO installed user base, NO saved patches in the wild, NO migration burden. So
+backward compatibility / breaking existing patches is a NON-CONCERN. Do not raise it. You are free to
+change ANYTHING -- param IDs, mode letters, panel layout/HP, serialization, preset format -- without any
+thought for "existing users".
+
+### This is the WINDOW to do the breaking things (strategic)
+Pre-release is the ONE window where breaking changes cost NOTHING. Once released, the window closes. So
+this is the RIGHT TIME to make any structural change previously deferred OUT OF migration-caution. Get
+param IDs, mode letters, preset format, panel HP all RIGHT now, unconstrained.
+
+### Stale cautions to STRIP / treat as do-it-now
+- The quantiser A/B/C + D/E/F mode-letter refactor was "DEFERRED: needs patch migration". That reasoning
+  is VOID -- no patches to migrate. If wanted, DO IT NOW while free.
+- .dmtune / TuningPreset format: change it freely if a cleaner design wants it (the v1->v2 enabled[]
+  migration exists, but there are no user presets bound by it -- only the shipped ones you control).
+- Any "don't break saved patches" / "for backward compat" note anywhere: treat as NON-BINDING pre-release.
+- Param renumbering, NUM_PARAMS changes, panel-layout changes: free.
+
+### The only real constraints (NOT compat)
+Code correctness, the hard-won PATTERNS (deparam/undo/lock/MVC -- follow them, per the de-risking note),
+and shipping. Compatibility is NOT a constraint until release. When release approaches, LOCK the formats/
+param-IDs/mode-letters deliberately as a release step -- that's when compat starts to matter, and doing
+the breaking cleanups NOW is what makes that lock clean.
+
+Cross-ref: DOC_PRIORITISATION / DEFERRED sections (strip "needs migration" as a deferral reason), the
+pattern de-risking note (patterns ARE a constraint; compat is NOT, pre-release), TUNING_PRESET_FORMAT
+(free to change pre-release)." 
