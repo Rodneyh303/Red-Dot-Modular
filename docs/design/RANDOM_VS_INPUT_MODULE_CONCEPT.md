@@ -1144,3 +1144,49 @@ Cross-ref: the 8->12 dimension section above (the count; now understood as a 2x3
 AlleyV2.hpp:62-67 (the streams as product cells -- Intra/Inter x r/m[/q] x dom/cod), the separate-dice
 principle (orthogonal decisions -> separate streams = why the product is separate streams not one space),
 the CCA section (revised: per-axis small correlations, not a 12x12 matrix)." 
+
+## RESOLVED FORM (Rodney): CCA = 3 small per-axis grids on one side of CA, not a separate 12-D module
+Rather than a separate "Change Change Alley" module with a 12x12 matrix, put scatter-correlation as a SMALL
+ADDITION on ONE SIDE of the existing CA panel: three tiny grids matching the 2x3x2 product structure:
+- two small 2x2 grids (one for domain/codomain, one for Intra/Inter),
+- one small 3x3 grid (for rhythm/melody/q-mix stream-types),
+- NO OTHER CONTROLS -- purely the three per-axis correlation grids.
+
+### Why this is exactly right
+Direct physical expression of the 2x3x2-product insight: the meaningful correlations are PER-AXIS, so you
+need three little grids (one per axis), NOT a 12x12 (144-cell) monster. Sizes: 2x2=4, 2x2=4, 3x3=9 = 17
+structured cells total, vs 144 flat. So:
+- RESPECTS the product structure (one grid per orthogonal axis = the "correlate per-axis, don't flatten"
+  conclusion).
+- PHYSICALLY SMALL (17 cells across three mini-grids) -> a panel STRIP, not a module.
+- "No other controls" keeps it clean -- reads as "correlate the scatter along its three axes", nothing
+  else.
+
+### Fixes the last CCA objection
+The "separate module / third-order / too heavy" concern was really about the 12x12-matrix / separate-module
+framing. As three small per-axis grids on CA's own side panel: not a separate module (part of CA, no
+module-count cost); not a 12x12 (no meaningless-cross-term problem, each grid = one meaningful axis); small
+enough to be a strip (minor physical cost, and CA's panel is growing anyway). So CCA stops being a
+far-future absurd meta-module and becomes "a small three-grid scatter-correlation section on CA's panel" --
+much more buildable, much less speculative. The recursion (correlating CA's own scatter) is still what it
+does; the FORM is now proportionate to the modest per-axis reality.
+
+### How a cell correlates (reuses CA's pin idiom, one meta-level up)
+Each mini-grid correlates along its axis using CA's OWN pin idiom: e.g. in the 3x3 stream-type grid, a pin
+at (rhythm-row, melody-col) = "rhythm-scatter follows melody-scatter" (rhythm's reallocation correlates
+with melody's). Same pin-follows-source idiom as the main CA matrix, applied to SCATTER STREAMS instead of
+VOICES. Not a new interaction -- CA's pin idiom turned on CA's scatter. That IS "Change Change Alley" made
+concrete + small: the same pin-correlation gesture, turned on the scatterer.
+
+### Status
+MULL on the MUSICAL question (is correlating scatter worth it?), but the IMPLEMENTATION is now small +
+clean: three per-axis grids (2x2, 2x2, 3x3) on one side of CA, no other controls, reusing the pin idiom.
+Moves CCA from "far-future speculative meta-module" to "a modest optional panel section, if the scatter-
+correlation texture proves wanted."
+
+Supersedes the "separate 12-D matrix module" framing (heavier + implied a flat 12x12). Correct form = three
+small per-axis grids on CA.
+
+Cross-ref: the 2x3x2-product section above (per-axis correlation -> the three grids), MonsoonChangeAlleyV2
+(CA's pin idiom -- reused one meta-level up; the side-panel strip lives here), the CCA/self-reference
+sections (order/chaos-on-itself -- now a small buildable strip, not a meta-module)." 
