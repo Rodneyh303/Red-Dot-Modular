@@ -204,3 +204,20 @@ shortcut them.
 Cross-ref: the scope-correction note above (coherence = the other safety), SANDS_ARCHITECTURE_CONSOLIDATION
 + MVC_UNIFICATION + deparam/undo/lock docs (the hard-won patterns to follow), RANDOM_VS_INPUT_MODULE_
 CONCEPT (the new features = arrangements of these patterns)." 
+
+## STANDING PRINCIPLE: pre-release -- NO backward-compat / patch-breaking concern (Rodney)
+Nothing is released. There are NO existing patches in the wild. So backward-compatibility, patch-breaking,
+and save-format migration are NON-ISSUES until the first public release. Do NOT raise them.
+
+Implication (a real freedom of this stage): anything can change freely -- param IDs, serialization format,
+module layouts, the mode-letter scheme, deparam internals, panel HP, pin schemes -- with ZERO migration
+burden. Make the RIGHT structural choice now, not a compatible-but-compromised one. "Would this break
+existing patches?" is simply not a question yet. Refactor freely; rename what wants renaming; restructure
+formats cleanly.
+
+Migration / backward-compat discipline begins ONLY at the first public release (then saved patches must be
+honoured). Until then: choose correctness over compatibility, always.
+
+Cross-ref: the pattern-reuse note above (follow patterns for QUALITY, not for compat -- these are different
+reasons; pre-release there's no compat reason at all), REVERSIBLE_MODE_DECISIONS / NUM_PARAMS_MIGRATION
+(past internal migrations were dev-time refactors, not user-patch migrations -- same freedom)." 
