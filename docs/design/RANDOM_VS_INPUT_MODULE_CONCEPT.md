@@ -983,3 +983,42 @@ section (both were misreads of "no seed of its own").
 Cross-ref: MonsoonChangeAlleyV2.hpp:62-87 (8 signed addressable scatter streams, seeded from Monsoon =
 CA's own draw), PHILOX_KEY_DERIVATION_AND_CA_SEED ("no seed of its own" = no external JACK, seeds from
 Monsoon -- NOT no own draw), the prior CA-own-draws buys/costs (costs 1-3 stand, cost 4 withdrawn).
+
+## Re-rating CA-self-scatter-pinning (Rodney): thematic pull + pin-4 is cheap. Mull, not high priority.
+
+### The self-reference is ON-THESIS (reframes the "self-referential" cost as partly a feature)
+dot.modular is about MIXING ORDER AND CHAOS. CA pinning its own scatter is exactly that idea applied to
+ITSELF: imposing ORDER (correlation) on the mechanism that generates DISORDER (the scatter). The scatter
+IS the chaos (randomly reorganises the correlation topology); pinning it IS the order (makes that
+reorganisation cohere) -> controlled chaos of the chaos-controller = a second layer of the exact order/
+chaos dialectic the instrument explores. Modular AS A FORM has always had this reflexive streak (modulating
+a modulator, self-patching, LFO modulating its own rate; the EMS matrix invited self-patching), so it's
+IDIOMATIC to modular's spirit, not a novelty. And it's a discovery-pleasure ("I can pin the scatter's own
+reorganisation?") that makes an instrument feel deep. So the earlier "conceptual muddiness / self-
+referential" COST is, through the order/chaos lens, partly a FEATURE: it muddies the mental model (real UX
+cost) but CLARIFIES the artistic identity (order and chaos all the way down). Cognitive cost vs thematic
+payoff -- worth mulling.
+
+### Pin-4 marginal cost is SMALL (pin-3 already forces the mechanism)
+Even with THREE pins (white/red/green), left/right-click no longer addresses all types -> a third pin
+ALREADY forces a MODIFIER KEY or EDIT-MODE SELECTOR ("now placing green pins", or modifier+click). That's
+a FIXED cost paid at 2->3. Once that selection mechanism exists, 3->4 is nearly free (one more mode/colour
+on an existing selector). So:
+- 2->3: costs the whole selection mechanism (modifier/edit-mode). Significant, front-loaded.
+- 3->4: one more mode/colour on the existing selector. Small.
+-> the reserved YELLOW fourth pin is CHEAPER than it looked: pin-3 bought the infrastructure pin-4 rides
+on. CA-self-scatter becomes "we have the slot + mechanism; question is whether the MUSICAL payoff justifies
+wiring it" -- a much lower bar than "build a whole new interaction".
+
+### Combined re-rating
+The two points COMPOSE: self-reference has THEMATIC appeal (order/chaos reflexivity, idiomatic to modular)
+AND is CHEAP to add (rides pin-3's necessary selector). Together they shift CA-self-scatter-pinning from
+"weakest candidate, probably not worth it" to "quietly appealing, cheap to slot in, worth mulling". Not a
+must; a real re-rating. Status: MULL, NOT HIGH PRIORITY -- but do not dismiss on the stale "weakest
+candidate" verdict; the mechanism supports it (own draws, reversible), the cost is low (pin-3's selector),
+and the thematic fit is strong (order/chaos on itself).
+
+Cross-ref: the prior CA-own-draws sections (mechanism supports it; costs 1-3 were musical not architectural
+-- and the self-referential one is partly a feature here), the third-pin section (green pin forces the
+selector that makes pin-4 cheap), LAUNCH_INTENT_AND_STORY (order/chaos thesis -- the self-reference
+embodies it).
