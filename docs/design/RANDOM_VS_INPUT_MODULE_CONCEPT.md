@@ -1102,3 +1102,45 @@ Cross-ref: MonsoonChangeAlleyV2.hpp:62-67 (the 8-dim scatter draw, -> 12 with q-
 section above (why CA self-scatter is NOT a voice-matrix pin -- dimension mismatch; this gives it its
 correct home), the green source-select pin (the +q-mix type that takes 8->12), LAUNCH_INTENT_AND_STORY
 (order/chaos-on-itself -- CCA is the literal recursion, a far-future module)." 
+
+## Is the scatter draw really 12-D, or a 2x3x2 PRODUCT of orthogonal axes? (Rodney) -- the latter
+Rodney's instinct: "12-D or 3 separate 2d/3d/2d?" Answer: NOT a flat 12-D space -- a STRUCTURED PRODUCT of
+three ORTHOGONAL axes: Intra/Inter (2) x {rhythm, melody, q-mix} (3) x domain/codomain (2) = 12.
+
+### Why product, not flat 12-D
+The three factors are DIFFERENT QUESTIONS about a scatter, answered independently:
+- Intra/Inter = the SCOPE/kind of scatter.
+- rhythm/melody/q-mix = WHICH stream-type's topology is scattered.
+- domain/codomain = WHICH SIDE of the pin matrix (consuming vs source).
+A scatter is characterised by a value on EACH axis independently = the signature of a Cartesian PRODUCT
+(2x3x2), not 12 arbitrary dimensions. The "12" is a COUNT of the product, not a claim of one entangled
+space.
+
+### As a DRAW: already correct (separate addressable streams)
+The 12 are already implemented as SEPARATE addressable Philox streams (8 now, 12 with q-mix pins). That's
+right -- it's the same "separate streams for orthogonal decisions" principle as the dice. They're not one
+entangled 12-D thing; they're 12 independent streams = the product's cells. The "12-D" was just their
+NUMBER, not their entanglement.
+
+### As a CORRELATION target (Change Change Alley, IF ever): per-axis, NOT a flat 12x12
+A flat 12x12 correlation matrix would treat all 12 as peers and allow ARBITRARY cross-correlation -- but
+most cross-axis cells are MEANINGLESS ("rhythm-intra-domain correlates with q-mix-inter-codomain"?? no
+musical meaning). The meaningful correlations are STRUCTURED BY the axes:
+- correlate the 3 stream-types (a 3x3), and/or
+- correlate the 2 sides (a 2x2), and/or
+- correlate Intra/Inter (a 2x2),
+- possibly a few meaningful axis-PAIRINGS.
+So CCA, if it existed, is a SMALL SET OF PER-AXIS correlations (3x3, 2x2...), NOT a 12x12 meta-matrix. Much
+more modest AND more meaningful (each correlation along a semantically coherent axis). This makes CCA less
+absurd than "a 12x12 meta-matrix" sounded -- possibly just a couple of small per-axis toggles/matrices.
+
+### Net
+Not "12-D" as one space -- a 2x3x2 product of orthogonal axes, already correctly implemented as separate
+addressable streams. Preserve the product structure; don't collapse to a flat 12-D. Any correlation (CCA)
+is per-axis (small), not flat 12x12. Rodney's instinct to question the 12-D flattening was right: the
+structure IS the product.
+
+Cross-ref: the 8->12 dimension section above (the count; now understood as a 2x3x2 product), MonsoonChange
+AlleyV2.hpp:62-67 (the streams as product cells -- Intra/Inter x r/m[/q] x dom/cod), the separate-dice
+principle (orthogonal decisions -> separate streams = why the product is separate streams not one space),
+the CCA section (revised: per-axis small correlations, not a 12x12 matrix)." 
