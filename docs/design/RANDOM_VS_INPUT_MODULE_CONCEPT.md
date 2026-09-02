@@ -857,3 +857,44 @@ but design for full-1.
 Cross-ref: CHANGE_ALLEY_DESIGN (EMS VCS3/Synthi lineage -- now white/red/GREEN, more faithful),
 MonsoonChangeAlleyV2.hpp (two-concentric-layer cell -- extend to three), the separate-dice decision (full-1
 is the pin-plane consistent with it), the third-pin question above (resolved: full-1, EMS green)." 
+
+## CORRECTION -> FULL third pin plane (Rodney): EMS matrices had white/red/green (+ occasional yellow)
+My "concentric cell only holds two layers, so no third pin" caution was WRONG ON THE PREMISE. Real EMS
+matrices (VCS3/Synthi -- the lineage Change Alley explicitly cites) used WHITE, RED, GREEN pins, and
+OCCASIONALLY YELLOW (colour-coded by resistance/patch function). So a third pin type is not a violation of
+the idiom -- it RETURNS to the idiom's real richness. I mistook the CURRENT two-colour concentric
+implementation for a constraint; the SOURCE MATERIAL is 3-4 colours.
+
+### Decision: FULL third pin plane for source-select (Rodney's lean = option 1)
+Withdrawing the earlier option-2 (follow-melody-with-unlink) hedge. Full independent third pin plane is
+right:
+1. AUTHENTIC to the EMS matrix -- green/yellow have real precedent; a green source-select pin alongside
+   white-rhythm + red-melody is MORE faithful to the VCS3/Synthi heritage, not less. Concentric rendering
+   was an implementation choice, not a law.
+2. CONSISTENT with the separate dice -- source-select already has its own independent dice (separate
+   stream) because "what generated / where interleaved" are orthogonal; a full third pin plane makes the
+   CORRELATION STRUCTURE equally independent = the honest completion. Every independent decision gets BOTH
+   its own dice AND its own pin plane. Dice and pins match: rhythm, melody, source-select = three streams,
+   three pin planes.
+3. PANEL GROWING ANYWAY -- bigger panels already accepted (knobs + gate inputs), so "third pin adds UI
+   cost" loses force; a third plane on a larger CA matrix is affordable within the expansion.
+
+### Rendering (how, not whether)
+- COLOUR: white=rhythm, red=melody, GREEN=source-select (the natural third EMS colour). Yellow held in
+  reserve for a possible FOURTH pin plane later (CA's own / a future stream). Palette stays historically
+  grounded, not an arbitrary third hue.
+- LAYOUT: EMS boards placed pins POSITIONALLY in the cell field, not strictly concentric. Three pins per
+  cell scale better positionally (small offsets) than as three concentric layers (peg+dot+ring gets busy).
+  Lean: positional-in-cell, EMS-authentic, scales to 3-4 pins.
+
+### Meta
+The HISTORICAL SOURCE MATERIAL resolved a tension my implementation-bound reasoning got wrong. The module
+is a tribute (Singapore, and here the EMS matrix lineage); "what did the real thing do?" is a legitimate,
+clarifying design authority. Real EMS boards had green pins -> so can Change Alley.
+
+Supersedes the "option 2 / no full third plane / concentric-cell constraint" conclusion above (premise was
+wrong: EMS matrices held 3-4 pin colours).
+
+Cross-ref: CHANGE_ALLEY_DESIGN.md:24 (EMS VCS3/Synthi lineage cited), MonsoonChangeAlleyV2.hpp (current
+2-colour concentric -- to extend to a 3rd green positional pin), the separate-dice section (independent
+dice -> independent pin plane = consistency), the panel-growth section (bigger panels absorb the 3rd pin).
