@@ -237,3 +237,34 @@ Cross-ref: the redesign + '10'-confirmed sections above (the 6-column structure 
 shrink-first decision (same reorganize-render-look empiricism), gen_change_alley_v2.py (the rewrite:
 6-column sections, small components, tight pitch), the fallback ladder (four-edges / edgeless-expander =
 plan B)." 
+
+## CORRECTION (Rodney): Plan A = CURRENT panel + smaller jacks; Plan B = the 6-column reorg
+I had the plans backwards. Correct ordering (least-disruptive first):
+- PLAN A: the CURRENT panel (existing L/R Intra/Inter mirrored layout -- mirror, edge-jacks, per-stream
+  rows) with SMALLER JACKS/knobs. Keep the layout you have + like; just shrink to fit the 3rd stream
+  (q-mix) into the EXISTING structure. Minimal disruption; layout as-is, only smaller. TRY FIRST.
+- PLAN B: the 6-COLUMN reorganisation (lose symmetry; jacks 6x10, buttons 6x10, knobs 6x6, etc.). The
+  FALLBACK -- only if Plan A doesn't land. The bigger hammer: full restructure, lose the mirror, rewrite
+  the generator, bigger panel.
+
+### Why this ordering
+The current layout is hard-won + liked (edge-jacks, the mirror). Prefer to KEEP it and shrink than throw
+it away and restructure. Reorg is reached for ONLY IF shrinking the existing layout can't fit 12 rows.
+Least-disruptive-first: Plan A keeps everything (layout, ergonomics, generator largely as-is) and tests
+the cheap hypothesis "can smaller jacks fit the 3rd stream into the current structure?"; only if NO do you
+pay Plan B's cost.
+
+### What Plan A actually tests (the harder fit)
+Plan A fits the 3rd stream into the CURRENT MIRRORED layout: 3 streams x 4 ops down EACH side (Intra left,
+Inter right) = the 12-rows-per-side problem in the EXISTING geometry, just with smaller jacks. That's the
+HARDER fit (keeping the mirror's structure, only shrinking) -- which is WHY it might fail and WHY Plan B
+exists. Plan B abandons the mirror for the 6-column efficiency precisely when mirror + 12 rows + small
+jacks won't fit.
+
+Supersedes the prior "6-column reorg AS the structure + small jacks within it" framing (that had it
+backwards). Correct: Plan A = current mirror + small jacks (preserve, try first); Plan B = 6-column reorg
+(fallback, lose symmetry).
+
+Cross-ref: MonsoonChangeAlleyV2.hpp:360-395 (current mirrored geometry = Plan A's layout to shrink),
+the 6-column redesign + '10'-confirmed sections above (= Plan B, the fallback), gen_change_alley_v2.py
+(Plan A: shrink components/pitch in place; Plan B: rewrite to 6-column sections)." 
