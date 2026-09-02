@@ -55,6 +55,13 @@ Skim the phase you're in; open the linked docs for detail. Status tags: [DONE] [
   MODULE_CONCEPT.md. Per-voice composed<->generated freedom gradient = controllable heterophony. Both
   sources (random engine + CV input) route via Change Alley; the knobs are per-voice CA melody-source
   selection.
+- [TODO][V1] CA scatter-correlation grids ("Change Change Alley") -- a SMALL strip on one side of CA: three
+  per-axis grids (3x3 rhythm/melody/q-mix = 27; 2x2 domain/codomain = 4; 2x2 Intra/Inter = 4), one pin per
+  row (each scatter stream reads one source, diagonal = independent/default), reusing CA's pin idiom one
+  meta-level up. Correlates CA's OWN scatter draws. RANDOM_VS_INPUT_MODULE_CONCEPT.md. (Promoted to V1.)
+- [TODO][V1] Source-select GREEN pin plane on CA's 16x16 voice matrix (per-voice input-vs-generated
+  correlation) -- white=rhythm, red=melody, GREEN=source-select, positional-in-cell (EMS-authentic; yellow
+  reserved for a future per-voice stream). Takes CA's scatter draw 8 -> 12 (2x3x2).
 - [TODO][V1] External microtonal melody IN: MPE controller/DAW -> microtonal CV -> quantiser mode.
   Likely a THIRD-PARTY MPE-in module (a couple exist -- Rodney to check; VCV CORE does NOT do it cleanly),
   validated by the ROUND-TRIP TEST (write out via Keppel, read back, require round-trip error <~1-2 cents,
