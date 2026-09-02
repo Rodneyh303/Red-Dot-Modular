@@ -940,3 +940,46 @@ Cross-ref: PHILOX_KEY_DERIVATION_AND_CA_SEED (STREAM_CA=2 scatter; "no seed of i
 pushes against), the third-pin section (green source-select = first-order, justified; yellow reserved but
 NOT for CA-self-pinning on this analysis), CHANGE_ALLEY_DESIGN (pins already set topology directly = the
 redundancy point).
+
+## CORRECTION (Rodney): point 4 WRONG -- CA DOES have its own draw (I misread "no seed of its own")
+My cost-4 ("against the grain of 'CA needs no seed of its own'") was based on a MISREAD and is WITHDRAWN.
+CA absolutely has its own draw. Code (MonsoonChangeAlleyV2.hpp:62-87):
+- 8 SCATTER DRAW streams: Intra/Inter x rhythm/melody x domain/codomain. Each a SIGNED int64 addressable
+  POSITION in its own domain-separated Philox (scatterCounter[8]).
+- The scatter draw builds a transient PhiloxRng from corrKey[ci] and reads at(scatterCounter[ci]) -- CA
+  ACTIVELY draws from its own keyed streams to decide scatter.
+- SIGNED/addressable -> CA's own scatter is REVERSIBLE/reproducible like the other draws (survives dice/
+  scrub).
+- Keys derived from MONSOON's seed: corrKey[i] = deriveKey(seedValue, STREAM_CA + i).
+
+What "Change Alley has no seed and needs none of its own" ACTUALLY meant: CA needs no separate external
+seed JACK -- it derives its scatter keys FROM MONSOON. That is about WHERE THE SEED COMES FROM (Monsoon,
+not a dedicated input), NOT about whether CA has its own draw. I conflated "no separate seed input" with
+"no own draw". Entirely different. CA has a rich own-draw system (8 independent signed addressable
+reversible scatter streams), seeded from Monsoon.
+
+### Revised buys/costs
+- COST 4 (grain): VOID. CA's own draw IS the grain; pinning it isn't against anything.
+- The phantom "needs new reversible machinery" worry: ALSO VOID -- the scatter is already signed/
+  addressable/reversible, so pinning CA's own scatter inherits reversibility FOR FREE, like the other pins.
+- Already 8 structured streams (Intra/Inter x r/m x dom/cod) -> pinning across CA's scatter is far more
+  NATURAL than I implied; the streams exist, structured, addressable.
+- COSTS 1-3 STILL STAND as real (musical, not architectural): second-order/abstract (correlation of a
+  correlation-change), redundant-ish (rhythm/melody pins set topology directly), conceptually self-
+  referential.
+
+### Revised verdict
+The MECHANISM fully SUPPORTS pinning CA's own scatter -- own draws, reversible, structured, seeded from
+Monsoon. It does NOT fight the architecture (my earlier claim was a misread). The only remaining caution is
+MUSICAL: is correlated-restructuring (second-order) worth its abstractness vs directly pinning sources?
+That's a weaker, judgment-call objection -- not an architectural block. So pinning CA's own scatter is MORE
+VIABLE than my prior "weakest candidate / probably not the yellow" conclusion implied: mechanically clean,
+musically a question mark. Reserve yellow for it IF the second-order restructuring texture proves wanted;
+the architecture is ready either way.
+
+Supersedes point 4 and the "against the grain / needs new machinery" reasoning in the prior CA-own-draws
+section (both were misreads of "no seed of its own").
+
+Cross-ref: MonsoonChangeAlleyV2.hpp:62-87 (8 signed addressable scatter streams, seeded from Monsoon =
+CA's own draw), PHILOX_KEY_DERIVATION_AND_CA_SEED ("no seed of its own" = no external JACK, seeds from
+Monsoon -- NOT no own draw), the prior CA-own-draws buys/costs (costs 1-3 stand, cost 4 withdrawn).
