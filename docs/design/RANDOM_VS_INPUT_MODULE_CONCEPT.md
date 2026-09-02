@@ -1190,3 +1190,37 @@ small per-axis grids on CA.
 Cross-ref: the 2x3x2-product section above (per-axis correlation -> the three grids), MonsoonChangeAlleyV2
 (CA's pin idiom -- reused one meta-level up; the side-panel strip lives here), the CCA/self-reference
 sections (order/chaos-on-itself -- now a small buildable strip, not a meta-module)." 
+
+## Scatter-correlation grids: counts + semantics + NOW IN V1 (Rodney)
+Decision: the scatter-correlation grids (the "Change Change Alley" strip) are added to CA in V1 -- no
+longer a deferred mull. Promoted to V1 scope.
+
+### Counts (one-per-row = each consumer reads exactly one source, like CA's main matrix)
+- 3x3 stream-type grid (rhythm/melody/q-mix): each row picks ONE source -> 3^3 = 27 configurations.
+- 2x2 domain/codomain: each row picks one -> 2^2 = 4.
+- 2x2 Intra/Inter: 2^2 = 4.
+Rule: "each of melody/rhythm/q-mix needs ONE source only" (Rodney) = one pin per row, same "each consumer
+reads one source" idiom as CA's main voice matrix -> idiom-consistent, and keeps the space tidy (27, not
+the unconstrained 2^9 = 512 free-cell alternative).
+
+### Semantics: rows = consumers, cols = sources; DIAGONAL = independent/default
+- Rows = the scatter streams needing a source (rhythm/melody/q-mix scatter). Cols = streams that can be
+  the source. One pin per row.
+- DIAGONAL (rhythm->rhythm, melody->melody, q-mix->q-mix) = the IDENTITY / uncorrelated state: each stream
+  reads its own source, scatters independently = the neutral DEFAULT. Off-diagonal pins = cross-
+  correlation (rhythm-scatter follows melody-scatter, etc.). So each grid has a natural home state
+  (all-diagonal = no scatter-correlation) and a clear meaning for departures.
+
+### Total, but never thought of as one number
+27 x 4 x 4 = 432 total across the three axes -- but you NEVER think of it as 432; they're three INDEPENDENT
+per-axis choices, each small and legible (27, 4, 4), each with a diagonal default. That's the payoff of
+respecting the 2x3x2 product: three small comprehensible grids, not one 432-state (or 12x12) space.
+
+### Confirms buildable
+Small, tractable, idiom-consistent (one source per consumer, like main CA), each grid with an obvious
+neutral diagonal default. "Change Change Alley as three small grids on CA's side" is genuinely modest and
+buildable -- confirmed by the counts. IN V1.
+
+Cross-ref: the RESOLVED FORM section above (three per-axis grids on CA's side = where these counts live),
+the 2x3x2-product section (why per-axis grids not a flat matrix), MonsoonChangeAlleyV2 (main matrix's one-
+source-per-row idiom, reused here), ROAD_TO_RELEASE (now V1)." 
