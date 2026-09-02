@@ -163,3 +163,45 @@ Cross-ref: MonsoonChangeAlleyV2.hpp:111 (VN = Collapse/Rotate/Reflect/Scatter, N
 per verb; 4 domain + 4 codomain reverse buttons = the dom/cod doubling behind the 10), the knob 6x6
 arithmetic, the CCA submatrices section in RANDOM_VS_INPUT_MODULE_CONCEPT (2x2/2x2/3x3 to the matrix's
 right), gen_change_alley_v2.py (the rewrite target: three uniform grids)." 
+
+## The "10" CONFIRMED + knob mismatch corrected (Rodney)
+Jack/button 10 rows = Collapse 2 + Rotate 2 + Reflect 2 + Scatter 4:
+- The 2s = DOMAIN + CODOMAIN (every verb has a dom jack + a cod jack).
+- Scatter's 4 = domain + codomain, x FORWARD + REVERSE (scatter is the only verb with a reverse).
+2+2+2+4 = 10. Matches the code: "4 domain + 4 codomain REVERSE buttons"; signed scatter counters (fwd jack
+= counter++, back jack = counter--). So scatter being the ONLY reversible verb is WHY it's 4 while the
+others are 2 -- the reversibility (signed Philox) shows up PHYSICALLY as scatter's extra fwd/rev jacks.
+
+### Corrects the knob arithmetic: knobs are a DIFFERENT distribution from jacks
+Earlier "confirmed" knobs as Collapse2+Rotate2+Reflect1+Scatter1 = 6 -- but that's a DIFFERENT per-verb
+shape from the jacks. Reconcile:
+- Jacks/buttons: Collapse 2, Rotate 2, Reflect 2, Scatter 4 = 10 (dom/cod all; scatter +fwd/rev).
+- Knobs:         Collapse 2, Rotate 2, Reflect 1, Scatter 1 = 6.
+DIFFERENT distributions -- Reflect has 2 jacks but 1 knob; Scatter has 4 jacks but 1 knob. That's FINE
+(jacks and knobs needn't parallel -- a verb can have more trigger-jacks than value-knobs), but it means the
+jack section (6x10) and knob section (6x6) have GENUINELY DIFFERENT ROW STRUCTURES. The generator must lay
+each block out INDEPENDENTLY -- do NOT share a row template between the jack block and the knob block
+(assuming they align is the trap).
+
+### Fully-pinned sections (x 6 columns each = r/m/q x intra/inter)
+- JACKS: 10 rows (collapse2, rotate2, reflect2, scatter4) -> 60 jacks.
+- BUTTONS: 10 rows (button twins of the jacks) -> 60 buttons.
+- KNOBS: 6 rows (collapse2, rotate2, reflect1, scatter1) -> 36 knobs.
+- + 16x16 matrix + 2x2/2x2/3x3 submatrices + mod jacks.
+Sections have DIFFERENT vertical structures (10/10/6) -- laid out independently, aligned by COLUMN (the 6
+columns consistent across sections) but NOT by row.
+
+### Redeeming locality
+The 6 columns ARE consistent across all three sections (r/m/q x intra/inter in every block), so a jack, its
+button-twin, and its knob(s) for a given (stream, side) sit in the SAME COLUMN across sections -- different
+row-heights, same column. So the component-type sectioning loses per-OP row-locality but keeps per-(stream,
+side) COLUMN-locality. A redeeming feature of the section approach.
+
+Supersedes the earlier "knobs 6x6, arithmetic confirmed" as if it paralleled the jacks -- it does NOT
+parallel; jacks are 10 (collapse2/rotate2/reflect2/scatter4), knobs are 6 (collapse2/rotate2/reflect1/
+scatter1), different distributions, independent block layouts, column-aligned.
+
+Cross-ref: MonsoonChangeAlleyV2.hpp:59 ("4 domain + 4 codomain reverse buttons" = scatter's fwd/rev),
+:64-67 (signed scatter counters, fwd=++/back=-- -> why scatter is the only 4), the redesign section above
+(the three blocks -- now with correct 10/10/6 row structures and independent layout), gen_change_alley_v2
+.py (lay the three blocks independently, column-aligned, not row-shared)." 
