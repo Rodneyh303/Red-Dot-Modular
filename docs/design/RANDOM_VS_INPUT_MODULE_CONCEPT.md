@@ -898,3 +898,45 @@ wrong: EMS matrices held 3-4 pin colours).
 Cross-ref: CHANGE_ALLEY_DESIGN.md:24 (EMS VCS3/Synthi lineage cited), MonsoonChangeAlleyV2.hpp (current
 2-colour concentric -- to extend to a 3rd green positional pin), the separate-dice section (independent
 dice -> independent pin plane = consistency), the panel-growth section (bigger panels absorb the 3rd pin).
+
+## Pinning CA's OWN draws (the scatter) -- buys vs costs (Rodney): probably NOT worth the reserved yellow
+"CA's own draws" = the SCATTER (corrKey, STREAM_CA=2): the randomness that decides the pin REALLOCATION/
+scatter TOPOLOGY itself when CA re-scatters. So CA could pin three things: rhythm (rerouted), melody
+(rerouted), and its own SCATTER draw. Pinning the scatter = making the RESTRUCTURING correlate across
+voices (voices re-scatter TOGETHER) rather than each reallocating independently.
+
+### BUYS
+1. Correlated RESTRUCTURING, not just correlated values. Pinned-scatter voices move their source-
+   assignment in lockstep when CA restructures (phrase boundary) -> the ensemble REORGANISES as a bloc. A
+   second-order correlation: not "same notes" (that's rhythm/melody pins) but "change their relationships
+   together".
+2. Reproducible FAMILIES of restructuring -- a recognisable "way of reorganising" across a group vs pure
+   per-phrase chaos.
+
+### COSTS
+1. SECOND-ORDER, hard to hear/reason about. Pinning rhythm = immediately audible ("same rhythm"). Pinning
+   scatter = a correlation OF a correlation-change -- abstract, effect only indirect (via how value-
+   correlations shift) and only AT re-scatter moments. A knob whose effect is a derivative of a
+   derivative; users can't easily predict/perceive it.
+2. REDUNDANT-ish: the rhythm/melody pins ALREADY control correlation topology directly. Correlating HOW
+   the auto-scatter reassigns is a subtle refinement of a thing you can mostly set directly. Small
+   marginal gain over "just pin the sources you want".
+3. CONCEPTUAL MUDDINESS: CA exists to set correlation; pinning its own scatter = CA applying its mechanism
+   to ITSELF. Near-self-referential; risks confusing the mental model.
+4. AGAINST THE GRAIN of a settled decision: PHILOX_KEY_DERIVATION_AND_CA_SEED = "Change Alley has no seed
+   and needs NONE OF ITS OWN" (scatter seeds FROM Monsoon, same source as rhythm/melody, deliberately no
+   independent randomness identity). Pinning CA's own scatter pushes the opposite way (treating scatter as
+   a first-class independently-correlatable stream). Not fatal, but a tension.
+
+### Verdict
+WEAKEST of the pin candidates -- much weaker than source-select (first-order, directly audible: "these
+voices break to generated together"). Source-select as the GREEN third pin plane is justified (direct +
+musical). Pinning CA's own scatter is INDIRECT + abstract, with questionable marginal value over direct
+source-pinning, and half-contradicts "CA needs no seed of its own". So the RESERVED YELLOW fourth plane
+should probably NOT be CA's own scatter draws. If a fourth plane ever earns its place, more likely a fourth
+first-order MUSICAL decision stream (audible) than CA self-pinning.
+
+Cross-ref: PHILOX_KEY_DERIVATION_AND_CA_SEED (STREAM_CA=2 scatter; "no seed of its own" -- the grain this
+pushes against), the third-pin section (green source-select = first-order, justified; yellow reserved but
+NOT for CA-self-pinning on this analysis), CHANGE_ALLEY_DESIGN (pins already set topology directly = the
+redundancy point).
