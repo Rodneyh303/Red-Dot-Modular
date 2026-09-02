@@ -781,3 +781,36 @@ already implements it. (Had it right in the question.)
 Cross-ref: the fourth-Philox-stream section above (STREAM_SOURCE_SELECT=3, separate from melody=1 -- this
 IS the separate dice), PhiloxRng per-stream keys (rhythm/melody/CA already separate = the same principle),
 DICE_SCRUB_MODEL (independent-exploration philosophy = why orthogonal dice matter).
+
+## Panel growth + CA pin colours corrected + third-pin constraint (Rodney)
+
+### CA pin colours -- CODE is authoritative (CHANGE_ALLEY_DESIGN.md is STALE)
+Code (MonsoonChangeAlleyV2.hpp:5,761-762): WHITE = rhythm (nvgRGBf 0.95,0.95,0.94), RED = melody (nvgRGBf
+0.83,0,0.10), rendered CONCENTRIC when both (white peg + red inset dot in one cell). So: red + white
+(Rodney), with white=rhythm, red=melody. CHANGE_ALLEY_DESIGN.md:163 is wrong on BOTH ("rhythm red, melody
+teal") -- fix it: rhythm=WHITE, melody=RED, concentric. (Doc drifted from code.)
+
+### Reinforces: source-select should NOT be a full third pin plane
+The two pin types already use the cell's two natural concentric layers (outer white peg + inner red dot).
+A THIRD pin type has no clean concentric slot -- it'd need a third ring/position, cramping the cell
+rendering (beyond just needing a third colour legible against red+white). So the concentric-cell geometry,
+not only the palette, argues against a co-equal third pin plane. -> favour the earlier OPTION 2: source-
+select correlation FOLLOWS the melody pin by default, with an UNLINK toggle for independent blend-
+correlation when wanted. Gets the orthogonality capability (consistent with the separate dice) without
+straining the pin cell. (Full third plane only if blend-correlation proves central enough to redesign the
+cell.)
+
+### Panel growth (accepted) -- the external-input symmetry has a PHYSICAL cost
+The feature grows the panels: more KNOBS (q-mix per-voice knobs + the min/max octave faders) AND GATE
+INPUTS. The gate inputs = Mode B external-gate handling (MODE_B_SPEC: external gate as note-length source,
+bridge-to-next-gate, reusing rest/legato) = the RHYTHM side of the external-input symmetry. So the
+symmetry (external gates <- rhythm/legato/rest/accent; external melody CV <- q-mix) now has a physical
+consequence: BOTH external input streams need input JACKS -- external melody CV (pitch side, for q-mix) +
+external gates (rhythm side, Mode B). Panel budget must cover both, across Monsoon (more HP, Big-6) +
+Straits (poly knobs) + Causeway (CV). Accept bigger panels; all well-trodden.
+
+Cross-ref: CHANGE_ALLEY_DESIGN.md:163 (STALE colours -- correct to white=rhythm/red=melody/concentric),
+MonsoonChangeAlleyV2.hpp:5,761-762 (authoritative colours + concentric cell), the third-pin question above
+(concentric-cell constraint -> option 2 default-follow-with-unlink), MODE_B_SPEC (external gate inputs =
+the rhythm-side jacks), the full-feature-scope section (Big-6/Straits/Causeway distribution -- now + gate
+input jacks).
