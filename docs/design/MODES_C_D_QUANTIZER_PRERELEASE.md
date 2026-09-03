@@ -1,5 +1,37 @@
 # Modes C & D (quantizer modes) -- NEGLECTED, need a pre-release pass
 
+## CODE-VERIFIED STATUS (2026-09-03, from source on `master` -- read, not built)
+A code-truth pass against the source (per the "grep the code, not the docs" meta-principle). Verifies
+STRUCTURE/LOGIC only -- runtime behaviour in Rack is unverified (container can't build the SDK; that leg
+is a Claude Code job). The doc body below is the original brief, kept for the checklist + Mode-F design.
+
+- **C/D are REAL and current**, not stubs: `SequencerEngine::executeModeC` (clock / quarterEdge) and
+  `executeModeD` (gate2-high) at `src/dsp/engines/SequencerEngine.cpp:993-1017`, dispatched from
+  `MonsoonModeController`. NOTE: the body's cited line numbers (`MonsoonModeController.cpp:195-215` etc.)
+  have DRIFTED -- symbols correct, line numbers stale.
+- **Concern (2) -- microtonal tuning-table integration: DONE in code.** `quantize()` snaps via
+  `pe.tuning.isDefault12TET ? s/12 : pe.tuning.degreeVolts(s)`; `degreeOf()` mirrors with
+  `nearestDegree()`. => byte-identical to legacy at 12-TET; snaps to actual published degrees under a
+  Micro/Sikit custom tuning. The "incoherent Micro (A/B/E retuned, C/D still 12-TET)" risk is
+  structurally CLOSED. Quantiser cache pre-sized `MAXN=24` for Micro-24. Retire this concern to DONE.
+- **Concern (1) -- neglect regression: logic present & coherent, RUNTIME-UNVERIFIED.** `quantize()` is
+  mask-respecting (iterates `activeSemiList`/`activeSemiWeight`, skips disabled degrees), fader-weighted
+  capture radius (`w * 1/12`), octave +/-1 search with register preservation, nearest-active fallback --
+  matches the octave-quantise behaviour recorded as verified in CONTEXT_RECOVERY. Structurally sound;
+  still needs the doc's Rack checklist driven (CV in, Lantern/scope out, live scale change, PPQN edges).
+- **Regression test EXISTS but has a GAP.** `test/test_modes_bcd.cpp` (697 lines) covers C/D step/gate/
+  legato/rest semantics well -- BUT against a **12-TET mirror** (`quantizeToScale(vIn, weights[12])`,
+  "exact mirror of plugin implementation"), NOT the real `SequencerEngine::quantize`, and it never
+  exercises the non-default `degreeVolts` path. So: strong 12-TET coverage, ZERO microtonal-quantise
+  coverage, not linked to the actual function. Highest-value code-side follow-up = a test driving the
+  real tuning-table path (mask + nearest-enabled-degree under a non-12 tuning).
+- **Mode F (phase-driven quantizer): genuinely UNBUILT.** No `executeModeF`; UI mode enum is exactly 5
+  (`A: Sequencer ... E: Phase (CV1)`), no F slot. Future work, correctly gated behind C/D-verified +
+  microtonal (see FUTURE section below).
+
+Net: the C/D *pre-release* item is now a RUNTIME-VERIFY + TEST-GAP item, not a broken-semantics fix --
+the microtonal integration that looked like the big risk is already implemented.
+
 ## What they are
 - MODE C = Quantizer Mode 1: clock-driven. Quantizes an external CV (input.cv2) to the active scale on
   clock edges. (MonsoonModeController.cpp:195-215, SequencerEngine::executeModeC.)

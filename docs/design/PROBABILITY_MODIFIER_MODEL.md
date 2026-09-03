@@ -1,4 +1,17 @@
 
+## RESOLVED in code (verified 2026-09-03): end-clamp once -- was "per-term vs end clamping"
+
+The flip proposed below is ALREADY DONE. `SpreadResolver::effective()` (src/dsp/SpreadResolver.hpp) sums
+all contributions (base + ownCv + eastCv + macro send) and applies `clampSpread` ONCE at the return --
+no per-term clamping. `test/test_spread_resolver.cpp` asserts it ("Clamp ONCE at the end (not per-term)")
+and the file header documents the canonical end-clamp arithmetic. The ONLY residue is a STALE inline
+comment on effective() that still reads "Clamps STEP-WISE to match the manager code it replaces" -- that
+comment now describes behaviour the function no longer has; fix it to say end-clamp. No behaviour work
+left here. (Rodney's feature-spine point 4 -- exact probability counter-offset -- remains open below and
+is the live item in this doc.)
+
+The original open-question text is kept below for history.
+
 ## Open question (revisit): per-term vs end clamping of effective spread
 
 SpreadResolver::effective() currently clamps AFTER EACH additive term (own CV, East CV, Macro send),

@@ -33,11 +33,16 @@ Docs span late-Jun -> late-Aug 2026. Age predicts status strongly:
   enabled=true => in-scale, weight=loudness); TuningList.hpp: .dmtune carries cents+enabled not weight.
   The enabled-vs-weight conflation the brief flagged is FIXED. Verify the read path is wired end-to-end
   in the engine, then archive the brief as DONE.
-- **TONIC_TRANSPOSE_BUILD_BRIEF.md** [Aug10] -- partially done (Shophouse root shutter exists); the
-  .dmtune-scale tonic reuse + the open "Monsoon-only?" question remain. Partial.
-- **PROBABILITY_MODIFIER_MODEL.md** [Jul06] -- OLD date but self-says "Open question (revisit): per-term
-  vs end clamping of effective spread." Rodney's feature-spine point 4 (exact counter-offset) also lives
-  here. Still open despite age.
+- **TONIC_TRANSPOSE_BUILD_BRIEF.md** [Aug10] -- **BUILT (12-TET), code-verified 2026-09-03.** rotateMask12/
+  normaliseToTonic (ScaleMaskArbiter.hpp:36,44), transposable flag (save/load), Monsoon "Set as tonic"
+  menu (MonsoonWidget.cpp:81-102 + setTonicAbsolute/unsetTonic), red root shutter -- all present. Only
+  the non-12 generalisation (rotateMaskN, for Duo-24 / non-12 Micro) is deferred post-V1 (deliberate; not
+  reachable via the 12-only Sikit path). Residual = Rack runtime-verify. NOT "Partial".
+- **PROBABILITY_MODIFIER_MODEL.md** [Jul06] -- clamping open-question **RESOLVED in code (verified
+  2026-09-03)**: SpreadResolver::effective() already sums-then-clamps ONCE (end-clamp), the resolver test
+  asserts end-clamp, and the header documents it -- only a stale inline comment ("Clamps STEP-WISE") in
+  SpreadResolver.hpp remains to fix. STILL OPEN: Rodney's feature-spine point 4 (exact probability
+  counter-offset) -- awaits Rodney's mechanism spec, not code.
 - **MPE_UTILITY_BUILD_SPEC.md** [Aug12, HIGH conf] -- Keppel.cpp exists but the spec's items (range
   1->48, re-articulation, within-legato gate input, reverse-calc monitor) are the live Keppel build.
 - **PIANO_ROLL_MODULE_CONCEPT.md** [Aug29] -- fully specced, PARKED post-quantiser-mode. Not urgent but
@@ -76,10 +81,10 @@ PANEL_WIRING_FEEDBACK, SHOPHOUSE_FACADE_NOTES. All Phase-2; don't touch until Ph
 ## Suggested first-week order (from ROAD_TO_RELEASE Phase 1)
 1. MODES_C_D_QUANTIZER_PRERELEASE -- finish the quantiser modes (the spine; editors + much else wait on it).
 2. ENABLED_MASK_BUILD_BRIEF -- the enabled[]-vs-weight conflation bug (concrete, self-specified).
-3. TONIC_TRANSPOSE_BUILD_BRIEF -- resolve the Monsoon-only question + build.
+3. TONIC_TRANSPOSE_BUILD_BRIEF -- BUILT (12-TET); Rack runtime-verify only. Non-12 (rotateMaskN) post-V1.
 4. MPE_UTILITY_BUILD_SPEC -- Keppel range/re-articulation/gate-input.
 5. PHASE_ENGINE_AUDIT -- cross-phrase jump/scrub (only if you want scrub across phrases now; else defer).
-6. PROBABILITY_MODIFIER_MODEL -- fill point 4 + resolve the clamping open question.
+6. PROBABILITY_MODIFIER_MODEL -- fill point 4 (counter-offset mechanism). Clamping question already resolved in code (end-clamp shipped).
 Then VERIFY Tier 2 (lock/undo/dice-scrub/accent) to confirm what's actually done, archive the settled
 step-plan docs, and move to Phase 2 panels.
 
