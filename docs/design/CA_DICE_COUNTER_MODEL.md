@@ -222,3 +222,59 @@ Depth (32/64/128) = a taste choice (how far back to reverse), not a memory const
 Cross-ref: MonsoonChangeAlleyV2.hpp:158-184 (latchRow = arm pending), :188-206 (applyPendingTransforms =
 phrase-boundary commit, one commit = one undo), :96-107 (snapshot ring content = what the deeper reverse
 buffer reuses), the true-reverse proposal above (this sizes its buffer: phrase-granular, ~64 entries)." 
+
+## True-reverse x undo x lock: yes, IF built to two rules (Rodney)
+Three "backs" plus lock all touch the same pin state -- they must compose without corrupting each other.
+Mechanisms: lock gates COMMITS via axisMask (locked axes' rows stay ARMED/pending, commit at next in-axis/
+unlock, :191-220); undo = snapshot ring -> Rack history (edit history of commits); true-reverse = replay
+the recorded phrase-state trajectory backward.
+
+### Interaction 1: true-reverse x UNDO -> rule (a): true-reverse is PERFORMANCE, not an edit (no undo writes)
+If true-reverse pushed each reverse-step onto Rack undo history -> mess (reverse 8 phrases = 8 undo
+entries; undoing them reverses the reverse; circular). BAD. So true-reverse must NOT touch undo history --
+it changes the live pin state for PLAYBACK but records no edits. Then undo still refers to the EDIT history
+(pin edits + commits), independent of where true-reverse scrubbed. CLEAN -- and it's the SAME principle as
+dice-reverse (generative, not an edit, doesn't push undo). Treat true-reverse like a TRANSPORT DIRECTION,
+not an edit: undo-during-reverse undoes the last EDIT, not the reverse gesture (like "undo doesn't undo the
+playhead moving").
+
+### Interaction 2: true-reverse x LOCK -> rule (b): true-reverse RESPECTS the lock axisMask
+Lock keeps some axes' rows pending (deferred commits). The trajectory is of COMMITTED states, so locked
+(pending) changes aren't in it -- correct (locked things didn't happen, nothing to un-happen; they stay
+pending through a reverse, commit on unlock as normal). BUT: true-reverse changes the live pin state to a
+past state -- it must NOT overwrite a LOCKED axis. So true-reverse RESPECTS the lock axisMask: reverse only
+UNLOCKED axes' states, leave LOCKED axes frozen. Same gating as commits (:218-220). Keeps lock's meaning
+("this axis doesn't change") intact across the reverse gesture. Without this, true-reverse would VIOLATE
+lock (reversing a locked axis) = a real bug.
+
+### The two rules -> clean three-way + lock composition
+- (a) true-reverse = performance op, NO undo-history writes (like dice-reverse).
+- (b) true-reverse RESPECTS the lock axisMask -- reverses unlocked axes only, leaves locked frozen (like
+  commits).
+Then: UNDO = edit history (independent of playback); DICE-REVERSE = generative draw-scrub; TRUE-REVERSE =
+performance playback of committed UNLOCKED-axis trajectory (respects lock, no undo writes); LOCK = freezes
+an axis against ALL state change (commits AND true-reverse). Each has a clear domain; they compose.
+
+### Both rules REUSE existing patterns (pattern de-risking)
+(a) dice-reverse already doesn't write undo; (b) commits already respect axisMask. So true-reverse isn't
+NEW interaction logic -- it applies the engine's existing "performance ops don't edit" + "lock gates state
+change via axisMask" rules to the new gesture. Not-automatic-but-not-novel: a naive true-reverse that
+pushed undo or ignored lock WOULD break both; built to the two existing patterns, it composes.
+
+### Edge to VERIFY when building
+What does the trajectory buffer record UNDER LOCK? A phrase committing with some axes locked records a
+PARTIAL change (only unlocked axes changed). Reversing should be fine IF the buffer records POST-COMMIT
+states (reflecting whatever lock allowed), so reverse retraces ACTUAL history including the lock-gating
+that happened. The snapshot already captures post-commit before/after, so this should be inherent -- but
+VERIFY: the trajectory must record actual committed states (lock-gated as they were), so reverse retraces
+true history.
+
+### Answer
+YES, true-reverse works with undo and lock -- IF built to the two rules (performance-not-edit -> no undo
+writes; respect lock axisMask). Not automatic (naive versions break both), but not novel either (both
+rules are existing patterns). Verify the buffer records actual lock-gated committed states.
+
+Cross-ref: MonsoonChangeAlleyV2.hpp:191-220 (axisMask lock gating -- rule b reuses this), the undo-vs-
+reverse-dice section (dice-reverse doesn't write undo -- rule a reuses this), the true-reverse proposal +
+buffer-size sections above (this checks its interactions), ROAD_TO_RELEASE (pattern de-risking: reuse
+existing patterns)." 
