@@ -118,3 +118,63 @@ the module is for" fork; CA's purpose (author + perturb + compose) picks state-d
 Cross-ref: the undo-vs-reverse-dice section above (why the two mechanisms exist -- this explains the
 state-dependence BEHIND that), MonsoonChangeAlleyV2.hpp:92-106 (the snapshot ring = the cost of state-
 dependence), :182 (scatter as a transform verb that composes with collapse/rotate/reflect)." 
+
+## Snapshot ring: size + limits (Rodney)
+UNDO_RING = 16 (MonsoonChangeAlleyV2.hpp:104). 16-slot single-producer/single-consumer ring. Each slot
+(TransformUndoSnapshot, :96-103) holds: beforeR/M[N_VOICES] + afterR/M[N_VOICES] (uint8 pin sources
+before+after) + counterBefore/After[8] (int64 scatter counters before+after) = a full before/after bracket
+of one transform's effect on BOTH the pin matrix AND the 8 scatter counters. ~192 bytes/slot x16 ~= 3 KB.
+Trivial memory.
+
+### It is a THREAD HAND-OFF ring, NOT a deep undo history
+Transforms run on the AUDIO thread where APP->history->push is illegal (UI-thread only). So the audio
+thread SNAPSHOTS into this ring; the widget step() on the UI thread DRAINS it and turns each snapshot into
+a proper Rack history action (:939+). So the 16 slots buffer audio-produce -> UI-consume; they are NOT the
+undo depth. Real undo depth = Rack's own history stack (which these feed).
+- The "16" is a DRAIN-LATENCY cushion, not an undo cap: push only if h - t < 16 else DROP ("drop if UI
+  hasn't drained (never in practice)", :238). Overflow needs 16 transform-commits between two UI frames --
+  never happens (transforms commit at phrase boundaries, UI drains ~60Hz+). 16 = generous produce/consume
+  headroom.
+- Granularity: one commit = one snapshot = one undo step (:195,207 "a multi-change gesture is a single
+  snapshot"). A phrase-boundary commit applying several armed rows = ONE undo step (undo the gesture, not
+  each row).
+KEY: 16 is NOT your undo depth -- it's the thread-safety buffer size. Undo far more than 16 (Rack history);
+the ring just needs to be big enough the audio thread never outruns the UI drain.
+
+## PROPOSAL (Rodney): add a TRUE REVERSE on CA, alongside dice-reverse + undo
+Three distinct "backs", each for a different NEED -- true reverse fills a real gap:
+- UNDO = EDIT (restore a state, discrete, UI-thread, Rack history).
+- DICE REVERSE = generative DRAW-scrub (scatterCounter--, re-derive the draw, apply to CURRENT pins -> new
+  state; does NOT restore state).
+- TRUE REVERSE (proposed) = PERFORMANCE: replay the actual STATE TRAJECTORY backward, audio-rate, as a
+  played gesture. Neither of the others does this (dice = draws not states; undo = edits not performance).
+
+### It must be TRAJECTORY-REPLAY (well-defined), NOT transform-inversion (partial/redundant)
+- (1) Trajectory replay: walk the recorded STATE history backward, musically -- replay the actual states
+  passed through. ALWAYS well-defined (uses recorded states, not inverse math). ROBUST reading.
+- (2) Transform inversion: invert each verb. Rotate^-1/reflect^-1/scatter^-1 exist (permutations), but
+  COLLAPSE is likely LOSSY -> non-invertible. So (2) is only PARTIALLY defined (breaks on collapse) AND
+  redundant for the invertible verbs (rotate-back = rotate-other-way, already available). WEAKER.
+So build it as (1): musical replay of the recorded state trajectory backward.
+
+### It needs its OWN state-history buffer (new storage)
+The snapshot ring is a 16-slot thread HAND-OFF (not a deep trajectory); Rack history is EDIT-oriented
+(discrete, UI). Neither is an audio-rate-PERFORMABLE state trajectory. So true reverse needs a BOUNDED
+state-trajectory buffer -- a "reverse ring" of past pin-states playable backward at audio rate -- distinct
+from the SPSC hand-off ring and Rack history. Cost = that storage + a depth limit (how far back you can
+reverse = N states, like a delay line of states).
+
+### Why it composes cleanly (not redundant)
+Three backs, three intents: EDIT (undo) / GENERATE (dice reverse) / PERFORM (true reverse). Each does what
+the others can't. True reverse = the PERFORMANCE-domain back neither undo nor dice-reverse provides (play a
+scatter evolution forward, then reverse it LIVE -- a retrograde/palindrome of the correlation journey).
+
+### Design questions to pin
+- Buffer DEPTH (how many past states reversible through).
+- Momentary (hold to play backward, release to resume forward) vs toggle (flip to permanent retrograde).
+- Does it interact with dice-reverse (are they exclusive, or does true-reverse subsume the scrub)?
+
+Cross-ref: the state-dependent-vs-stateless section (path-dependence is WHY dice-reverse != state restore,
+hence the need for a recorded trajectory to true-reverse), the undo-vs-reverse-dice section (the two
+existing backs; true reverse is the third), MonsoonChangeAlleyV2.hpp:96-107 (snapshot ring -- the hand-off,
+NOT the trajectory buffer true-reverse needs)." 
