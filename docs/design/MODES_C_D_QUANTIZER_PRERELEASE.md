@@ -19,18 +19,20 @@ is a Claude Code job). The doc body below is the original brief, kept for the ch
   capture radius (`w * 1/12`), octave +/-1 search with register preservation, nearest-active fallback --
   matches the octave-quantise behaviour recorded as verified in CONTEXT_RECOVERY. Structurally sound;
   still needs the doc's Rack checklist driven (CV in, Lantern/scope out, live scale change, PPQN edges).
-- **Regression test EXISTS but has a GAP.** `test/test_modes_bcd.cpp` (697 lines) covers C/D step/gate/
-  legato/rest semantics well -- BUT against a **12-TET mirror** (`quantizeToScale(vIn, weights[12])`,
-  "exact mirror of plugin implementation"), NOT the real `SequencerEngine::quantize`, and it never
-  exercises the non-default `degreeVolts` path. So: strong 12-TET coverage, ZERO microtonal-quantise
-  coverage, not linked to the actual function. Highest-value code-side follow-up = a test driving the
-  real tuning-table path (mask + nearest-enabled-degree under a non-12 tuning).
+- **Regression test PARTIALLY closed (update 2026-09-03, commit d1b331c).** `test/test_modes_bcd.cpp`
+  (697 lines) covers C/D step/gate/legato/rest at 12-TET. `test/test_modes_cd_microtonal.cpp` (NEW, 117
+  lines) now adds **microtonal-INPUT** coverage -- off-grid CVs (1/6, 1/12, 1/24 semitone) landing on the
+  nearest degree within half a semitone. STILL OPEN, though: both tests use a **12-weight mirror**
+  (`quantizeToScale(vIn, weights[12])`), NOT the real `SequencerEngine::quantize`, and neither constructs
+  a non-12 `TuningTable` or drives the `degreeVolts` / `isDefault12TET` branch. So the remaining gap is
+  narrow + specific: a genuine non-12 tuning (e.g. 24-degree maqam) snapping via `degreeVolts`, through
+  the actual function. Covered now = off-grid input vs a 12-degree scale; uncovered = non-12 tuning-table.
 - **Mode F (phase-driven quantizer): genuinely UNBUILT.** No `executeModeF`; UI mode enum is exactly 5
   (`A: Sequencer ... E: Phase (CV1)`), no F slot. Future work, correctly gated behind C/D-verified +
   microtonal (see FUTURE section below).
 
-Net: the C/D *pre-release* item is now a RUNTIME-VERIFY + TEST-GAP item, not a broken-semantics fix --
-the microtonal integration that looked like the big risk is already implemented.
+Net: the C/D *pre-release* item is now a RUNTIME-VERIFY + (narrow) TEST-GAP item, not a broken-semantics
+fix -- the microtonal integration that looked like the big risk is already implemented.
 
 ## What they are
 - MODE C = Quantizer Mode 1: clock-driven. Quantizes an external CV (input.cv2) to the active scale on
