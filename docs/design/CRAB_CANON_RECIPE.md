@@ -204,3 +204,19 @@ address). No special-casing -- the general principles applied to a modulatable p
 Cross-ref: the offset-knob + offset-timing sections above (this picks live/modulatable + resolves when),
 UNDO_AND_REVERSIBLE_AUTOMATION_PRINCIPLE (P1 user-only-undo + P2 reversible-automation, both applied here),
 the reversible-automation class (the offset as a Philox address = reversible modulation)." 
+
+## CORRECTION (Rodney): I mis-read -- modulatable version is TBC, NOT resolved
+My previous "RESOLVED: offset is MODULATABLE (live)" OVER-READ it. Rodney: "if we do the modulatable
+version (TBC), only user tweaks undo." So:
+- Modulatable (live) vs offset-at-reseed: STILL TBC. NOT decided. The offset-timing fork above stays OPEN.
+- The ONLY thing settled is CONDITIONAL: IF the modulatable version is built, THEN only USER TWEAKS go to
+  undo (modulation of the offset does NOT) -- which is just Principle 1 applied, not a decision to build
+  the modulatable version.
+
+Supersedes the prior "RESOLVED -- offset is modulatable (live)" claim: that was premature. Correct state =
+timing fork OPEN (modulatable vs at-reseed, TBC); and the standing conditional: if modulatable, user tweaks
+undo / modulation doesn't (P1) / modulation still reversible-by-construction (P2, Philox address). No
+version chosen yet.
+
+Cross-ref: the offset-timing fork section (still open, TBC), UNDO_AND_REVERSIBLE_AUTOMATION_PRINCIPLE (the
+conditional undo behaviour if modulatable), the offset-knob section (the primitive, timing undecided)." 
