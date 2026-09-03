@@ -171,3 +171,36 @@ on cost. Live morphing matters -> need the continuous control. Best design consi
 Cross-ref: the key/seed-OFFSET knob section above (the primitive; this is WHEN it applies), Monsoon.cpp
 seed/reseed system (offset-at-reseed piggybacks on this existing path), the shareable-editors + reversible-
 automation notes (the canonic multi-Monsoon toolkit this serves)." 
+
+## RESOLVED (Rodney): offset is MODULATABLE (live), user tweaks undo, modulation doesn't
+"Modulatable one of course; modulations not undo, user tweaks undo." This resolves the timing fork AND
+applies both undo principles at once:
+
+### Picks the LIVE/continuous offset (option 1)
+Modulatable is the point -> the live knob/CV, giving time-varying canons (offset sweeping, live crossings)
+that reseed-time-only can't. The fork resolves toward the live control because it must be modulatable.
+(Offset-at-reseed remains a cheaper fallback if the live build is ever deferred, but the chosen design is
+the modulatable live offset.)
+
+### Applies the undo principles to the offset param (no new rules)
+The SAME knob carries both classes, sorted by WHAT MOVED IT:
+- USER tweaks the offset knob by hand -> user edit -> UNDOABLE (on the undo stack).
+- MODULATION (CV/automation) moves the offset -> NOT on the undo stack (Principle 1: modulation isn't
+  undoable; you undo YOUR knob-turn, not automation moving the knob).
+Standard plugin behaviour for a modulatable param: undo captures the user's changes, not the automation's.
+
+### Both principles apply, cleanly, no conflict
+- Principle 1 (user-only undo): modulated offset movement stays OUT of undo; user tweaks go IN.
+- Principle 2 (reversible automation): the offset IS an addressing of the Philox bijection, so even
+  MODULATED offset movement is reversible-by-construction (the position is never lost, always re-
+  derivable). So modulation of the offset is not-undoable (P1) BUT inherently reversible (P2) -- no
+  conflict: user tweaks undoable; modulation not-undoable-but-reversible.
+
+### Net
+Offset knob = MODULATABLE live/continuous (time-varying canons), following the house undo rules: user
+tweaks undoable, modulation not (P1), and modulation reversible-by-construction anyway (P2, it's a Philox
+address). No special-casing -- the general principles applied to a modulatable param.
+
+Cross-ref: the offset-knob + offset-timing sections above (this picks live/modulatable + resolves when),
+UNDO_AND_REVERSIBLE_AUTOMATION_PRINCIPLE (P1 user-only-undo + P2 reversible-automation, both applied here),
+the reversible-automation class (the offset as a Philox address = reversible modulation)." 
