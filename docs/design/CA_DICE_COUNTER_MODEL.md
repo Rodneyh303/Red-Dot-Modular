@@ -278,3 +278,50 @@ Cross-ref: MonsoonChangeAlleyV2.hpp:191-220 (axisMask lock gating -- rule b reus
 reverse-dice section (dice-reverse doesn't write undo -- rule a reuses this), the true-reverse proposal +
 buffer-size sections above (this checks its interactions), ROAD_TO_RELEASE (pattern de-risking: reuse
 existing patterns)." 
+
+## CORRECTION (Rodney): a state-reverse is JUST ANOTHER ACTION -- I overcomplicated it
+Rodney: "isn't a state reverse just like any other action for undo?" YES -- and my prior "two special
+rules" (keep true-reverse OUT of undo; separately make it respect lock) were OVERBUILT. Correcting:
+
+### The "circular undo" worry was MANUFACTURED
+I claimed pushing reverse-steps to undo history = circular ("reverse 8 = 8 entries, undoing reverses the
+reverse"). WRONG. A true-reverse CHANGES the pin state; every pin-state change already snapshots -> one
+undo action. So reverse 3 phrases = 3 state-jumps = 3 history entries; undo x3 steps FORWARD 3 = back to
+start. That's not a mess -- it's undo working NORMALLY. Not circular; correct.
+
+### A state-reverse IS a normal state-committing action
+It produces a new state, snapshots before/after like collapse/rotate/reflect/scatter, pushes ONE history
+action, and undo undoes it like any other. No "performance op that bypasses undo". I imported the DICE-
+reverse model (legitimately outside undo because... it also produces a state that snapshots, so even that
+was muddled) and wrongly special-cased true-reverse. The honest model: EVERY op that commits a pin-state
+change (all verbs, fwd or reverse, AND true-reverse) produces a state, snapshots, is ONE undoable action.
+Undo = step back through the committed-state history; everything that commits is IN that history.
+
+### What true-reverse IS, distinct from undo (simpler than I said)
+Both walk back through committed states. The distinction is the TRIGGER, not the mechanism:
+- UNDO = step back through committed-state history at EDIT/UI pace, as an editing action (redo-able).
+- TRUE-REVERSE = step back through the SAME committed states at MUSICAL/PHRASE pace as a PLAYED gesture.
+= "undo, but CLOCKED/performed" vs "undo, but clicked". Possibly the SAME mechanism (walk the state
+history backward), different trigger (phrase clock vs UI click). So true-reverse works with undo because
+it essentially IS undo, clocked.
+
+### Lock comes for FREE (also not a special rule)
+If true-reverse is a normal state-committing action, it goes through the SAME applyPendingTransforms /
+axisMask gating as everything else -> lock handling is automatic. Not a special "true-reverse respects
+axisMask" rule -- it's "true-reverse is an action, actions respect axisMask, done."
+
+### Corrected conclusion
+A state-reverse is just another action: snapshotted, undoable, lock-respecting FOR FREE via the existing
+commit machinery. Scrap the two special rules. The ONLY real design choice is cosmetic/UX: is true-reverse
+TRIGGERED by the clock (performance) or the user (edit)? -- but mechanically it's the same undoable, lock-
+respecting state action either way. Massively simpler + more robust than my "performance-op-bypasses-undo"
+framing.
+
+Supersedes the "true-reverse x undo x lock: two rules" section above (that overbuilt it; the circular-undo
+worry was manufactured; a state-reverse is a normal undoable, lock-respecting action -- undo + lock handle
+it for free because it uses the existing commit path).
+
+Cross-ref: MonsoonChangeAlleyV2.hpp:188-220 (applyPendingTransforms + axisMask -- the commit path true-
+reverse would use, giving undo+lock for free), :96-107 (snapshot ring -- a state-reverse snapshots like
+any commit), the true-reverse proposal + buffer sections (unchanged: still a phrase-granular state-history
+walk; just NOT special-cased for undo/lock)." 
