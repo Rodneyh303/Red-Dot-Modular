@@ -69,3 +69,52 @@ TRUE but does NOT mean "reverse-dice restores the pins" -- it doesn't; undo does
 Cross-ref: MonsoonChangeAlleyV2.hpp:62-67 (signed scatterCounter, at(N-1) rewinds the DRAW exactly),
 :92-106 (snapshot ring + Rack history = the STATE undo), the CA scatter-reversibility discussion (this
 resolves it: draw reversible, state restored by snapshot not by reverse-dice; scatter is path-dependent)." 
+
+## State-dependent scatter (current) vs a stateless/absolute alternative (Rodney) -- the design fork
+Two models:
+- STATE-DEPENDENT (current): scatter TRANSFORMS the current pin state -> new state. The draw = "how to
+  rearrange FROM HERE". Path-dependent.
+- STATELESS/ABSOLUTE (alternative): the draw specifies an ABSOLUTE pin config directly -> "the pins ARE
+  this", regardless of what they were. Each draw = a complete target state = f(counter, key). Path-
+  independent.
+
+### Comparison
+| Dimension                     | State-dependent (current)        | Stateless/absolute            |
+| Reverse-dice = undo?          | NO (needs the snapshot ring)     | YES (decrement restores)      |
+| Mechanisms                    | Two (signed counter + snapshot)  | One (counter alone)           |
+| Respects hand-placed pins?    | YES (perturbs them)              | NO (obliterates them)         |
+| Successive scatters           | EVOLVE (a trajectory)            | Independent teleports         |
+| Composes with rotate/reflect? | YES (all 4 verbs chain)          | NO (scatter = reset, odd one) |
+| Reproduce a state from        | initial + path                   | counter ALONE                 |
+
+### What each wins
+- STATELESS wins on SIMPLICITY: reverse-dice IS undo (at(N-1) reproduces the exact config -> snapshot ring
+  UNNECESSARY, one mechanism serves scrub + undo), and any state re-derivable from its counter alone (no
+  history). Cleaner.
+- STATE-DEPENDENT wins MUSICALLY: scatter BUILDS ON what you did -- hand-place pins, scatter PERTURBS from
+  there (your manual structure preserved-and-varied); successive scatters ACCUMULATE/EVOLVE (a trajectory
+  of related configs); and all four verbs COMPOSE as a transform pipeline on the evolving matrix. Stateless
+  OBLITERATES hand-placed pins on every scatter (absolute draw ignores your edits), makes successive
+  scatters INDEPENDENT jumps, and breaks verb composition (an absolute scatter is a RESET, not a transform
+  -- rotate-then-absolute-scatter loses the rotate).
+
+### Why STATE-DEPENDENT is right FOR CA specifically
+CA is a correlation AUTHORING + PERTURBATION instrument: you HAND-PIN correlations, then scatter/rotate/
+collapse to VARY them. That workflow REQUIRES state-dependence -- scatter must build on your pins (not wipe
+them), and the four verbs must COMPOSE as a pipeline. A stateless scatter would turn CA from "shape-and-
+perturb" into "hand-place OR randomize", losing the INTERPLAY between manual + generative that's the whole
+point. The snapshot-ring cost (and reverse-dice != undo) is the PRICE of that richness -- and worth paying
+FOR CA, because perturb-your-own-structure is central.
+
+Explains the snapshot ring: it exists as a DELIBERATE COST of state-dependence, not an accident. If CA were
+stateless, no snapshot needed (reverse = undo). The two-mechanism design is the chosen trade for musical
+perturb-and-compose.
+
+### When stateless would be right
+A DIFFERENT module -- one where scatter IS meant to be a teleport to fresh configs, and simplicity /
+reverse-as-undo / counter-alone reproducibility matter more than perturb-and-compose. Genuine "depends what
+the module is for" fork; CA's purpose (author + perturb + compose) picks state-dependent.
+
+Cross-ref: the undo-vs-reverse-dice section above (why the two mechanisms exist -- this explains the
+state-dependence BEHIND that), MonsoonChangeAlleyV2.hpp:92-106 (the snapshot ring = the cost of state-
+dependence), :182 (scatter as a transform verb that composes with collapse/rotate/reflect)." 
