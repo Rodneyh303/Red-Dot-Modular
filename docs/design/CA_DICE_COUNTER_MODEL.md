@@ -325,3 +325,56 @@ Cross-ref: MonsoonChangeAlleyV2.hpp:188-220 (applyPendingTransforms + axisMask -
 reverse would use, giving undo+lock for free), :96-107 (snapshot ring -- a state-reverse snapshots like
 any commit), the true-reverse proposal + buffer sections (unchanged: still a phrase-granular state-history
 walk; just NOT special-cased for undo/lock)." 
+
+## CORRECTION^2 (Rodney): undo is for USER actions only; modulation changes are NOT undoable
+Rodney: "undo is only for user actions right? changes via modulation are not part of undo?" YES -- and this
+corrects my previous "a state-reverse is just another undoable action" (which wrongly treated ALL state
+commits as uniformly undoable).
+
+### The principle (standard, and correct)
+Undo is for USER EDITS, not for MODULATION. If an LFO/envelope modulates the correlation every phrase and
+EACH modulated commit pushed an undo entry, the undo stack fills with automation churn you didn't do --
+hit undo and you undo the LFO's last move, not YOUR last edit. Useless. So: automation/modulation changes
+are NOT undoable events; only user edits are. (You don't undo a filter-cutoff LFO wobble.)
+
+### This corrects my "everything's undoable" oversimplification
+My last message treated all state commits as uniformly undoable. Wrong: modulation commits change state
+but must NOT be undoable, and they go through the SAME commit path (applyPendingTransforms) as user commits.
+So the real principle is finer: TWO CLASSES of state change --
+- USER-triggered commits: undoable (push a TransformUndoAction to Rack history).
+- MODULATION/CLOCK-triggered commits: change state but do NOT push undo history.
+The commit PATH is shared; the HISTORY-PUSH must be GATED on the class (what ARMED the row: user via
+latchRow-from-button/pin -> push; modulation -> don't).
+
+### Reshapes true-reverse (my ORIGINAL instinct was right, for the WRONG reason)
+True-reverse is CLOCKED (a performance gesture), NOT a user edit -> it's in the MODULATION/PERFORMANCE
+class -> it should NOT push undo history, for the SAME reason modulation doesn't. Not because true-reverse
+is "special" (my ad-hoc reason last time), but because it's MODULATION-CLASS, and that whole class is
+excluded from undo. So "keep true-reverse out of undo" is correct -- via the general class rule, not a
+special case.
+
+### Corrected coherent model
+- Two commit classes: USER-triggered (undoable, pushes history) + MODULATION/CLOCK-triggered (not undoable,
+  no push).
+- Shared commit PATH (applyPendingTransforms); history-push GATED on class (user vs modulation arming).
+- True-reverse = modulation-class (clocked) -> no undo history, like all modulation.
+- Lock gates both classes via axisMask (unchanged).
+
+### VERIFY (possible latent bug): does modulation currently pollute undo?
+Code (MonsoonChangeAlleyV2.hpp:94,956,989) pushes a TransformUndoAction "per committed transform" without
+an OBVIOUS user-vs-modulation distinction at the push point; rows are armed by user (latchRow from button/
+pin) OR by modulation, then applyPendingTransforms commits + pushes. So on the current code, MODULATION-
+driven commits may ALSO be pushing undo history = WRONG by this principle (modulation polluting undo).
+VERIFY: does applyPendingTransforms push TransformUndoAction for MODULATION-armed commits? If yes -> a
+latent bug: gate the history-push on user-vs-modulation arming (only user-armed commits push). May be a
+gating I can't see from greps; check in the code.
+
+Supersedes "a state-reverse is just another undoable action" (that missed the user-vs-modulation class
+split). Correct: undo is USER-only; modulation (and true-reverse, being clocked) changes state WITHOUT
+undo; the split is by what ARMED the commit, gated at the history-push.
+
+Cross-ref: MonsoonChangeAlleyV2.hpp:94/956/989 (TransformUndoAction push per commit -- VERIFY it's gated to
+user-armed only), :158-184 (latchRow -- armed by user button/pin OR by modulation; the class distinction
+lives at arming), :188-220 (applyPendingTransforms shared commit path), the prior two corrections (this is
+the finer-grained truth: not 'all undoable', not 'true-reverse specially excluded' -- but 'user-class
+undoable, modulation-class not, true-reverse is modulation-class')." 
