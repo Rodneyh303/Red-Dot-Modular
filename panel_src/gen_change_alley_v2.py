@@ -34,12 +34,18 @@ GRID_Y  = 20.0
 GRID_H  = CELL * 16.0
 
 N_VERBS   = 4
-ROW_H     = 9.0
-GROUP_GAP = 6.8
-ROW_TOP   = 21.0
+N_STREAMS = 3                      # Q5 q-mix: 3rd stream (melody, rhythm, q-mix) -> 12 rows/side
+# PLAN A (CA_PANEL_THREE_STREAM_LAYOUT): tighten row pitch to fit 12 rows in 128.5mm.
+# Jack well is r=3.9 (Ø7.8); ROW_H=8.0 is the jack-floor pitch (jacks touch at 0.2mm gap).
+# GROUP_GAP shrunk 6.8->1.5 (groups barely separate); ROW_TOP 21->14; bottom offset 9->6.
+# This is the "try tighter pitch first" attempt; if jacks read too cramped -> Plan B (smaller jack SVG).
+ROW_H     = 8.0
+GROUP_GAP = 1.5
+ROW_TOP   = 14.0
+BOTTOM_OFFSET = 6.0               # was 9.0 — gap from last row to the bottom poly-jack cluster
 
-def rowY(v, s): return ROW_TOP + v*(2.0*ROW_H+GROUP_GAP) + s*ROW_H + ROW_H*0.5
-def lastBottom(): return rowY(N_VERBS-1,1) + ROW_H*0.5
+def rowY(v, s): return ROW_TOP + v*(N_STREAMS*ROW_H+GROUP_GAP) + s*ROW_H + ROW_H*0.5
+def lastBottom(): return rowY(N_VERBS-1,N_STREAMS-1) + ROW_H*0.5
 def lx(x, flip): return (PW_MM - x) if flip else x
 
 def pal(dark):
@@ -64,7 +70,7 @@ def gen(dark):
         E(f'<line x1="{px(GRID_X):.1f}" y1="{px(gy):.1f}" x2="{px(GRID_X+GRID_W):.1f}" y2="{px(gy):.1f}" stroke="{t["gridln"]}" stroke-width="{px(0.2):.2f}"/>')
 
     for verb in range(N_VERBS):
-        for sub in range(2):
+        for sub in range(N_STREAMS):
             ry=rowY(verb,sub)
             for side in range(2):
                 flip=(side==1)
@@ -78,7 +84,7 @@ def gen(dark):
                 E(f'<circle cx="{px(lx(LIGHT,flip)):.1f}" cy="{px(ry):.1f}" r="{px(1.3):.1f}" fill="{t["well"]}" stroke="{t["dim"]}" stroke-width="{px(0.3):.2f}"/>')
 
     # bottom cluster: logo LEFT clear of jacks; poly jacks RIGHT; legend between
-    by = lastBottom() + 9.0
+    by = lastBottom() + BOTTOM_OFFSET
     E(logo_embed(dark, MARGIN, by, 30.0))
     rx = PW_MM - MARGIN - 4.45
     E(jack(rx,       by, t))        # STEP poly
