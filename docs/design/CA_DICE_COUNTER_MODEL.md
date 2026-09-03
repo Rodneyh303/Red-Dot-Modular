@@ -178,3 +178,47 @@ Cross-ref: the state-dependent-vs-stateless section (path-dependence is WHY dice
 hence the need for a recorded trajectory to true-reverse), the undo-vs-reverse-dice section (the two
 existing backs; true reverse is the third), MonsoonChangeAlleyV2.hpp:96-107 (snapshot ring -- the hand-off,
 NOT the trajectory buffer true-reverse needs)." 
+
+## True-reverse buffer size: tiny, because states change ONCE PER PHRASE (Rodney)
+Cadence check (MonsoonChangeAlleyV2.hpp): user actions (pin edits, verb triggers) latchRow -> set a row
+ARMED = pending (:158-184); pending transforms ALL commit at the PHRASE BOUNDARY (applyPendingTransforms,
+:188,206 "one phrase-boundary commit = one undo"). So it's NOT two cadences (UI-rate edits + phrase-rate
+mod) -- BOTH user edits AND modulation latch pending and commit TOGETHER at the phrase boundary. The UI-
+rate part is only the ARMING (click -> pending light); the actual STATE CHANGE is at the phrase boundary.
+So effectively ONE state-change cadence: the phrase boundary. (Rodney said "probably next step boundary" --
+code says PHRASE boundary for the commit; confirm the mental model, but it's boundary-gated either way, a
+musical boundary not continuous.)
+
+### So the buffer is TINY and very practical
+The state-trajectory buffer needs ONE ENTRY PER PHRASE BOUNDARY (the only time a new state exists). Depth =
+number of PHRASES to reverse through, not samples/steps:
+- A phrase is seconds (many steps). At ~2-8 s/phrase: 32 entries ~= 1-4 min of reversible history; 64
+  ~= 2-8 min; 128 ~= 5-15 min. A LOT of musical reverse-reach.
+- Memory/entry ~= a snapshot (~96-192 bytes: state pins + counters, or before/after). 64 entries ~= 6-12
+  KB. Trivial (cf. the existing snapshot ring ~3 KB). Even 128 (~24 KB) is trivial.
+So practical size = 32-64 phrase-states, ~6-12 KB. The phrase-boundary cadence is WHAT MAKES A LONG
+REVERSE-REACH CHEAP: per-sample states would need a huge buffer; once-per-phrase, a few dozen entries = 
+minutes of music.
+
+### True-reverse is PHRASE-GRANULAR, reusing snapshot data (corrects "audio-rate replay")
+It steps BACKWARD through the phrase-boundary states -- each reverse step jumps to the previous phrase's
+committed pin state. Phrase-granular (retrace the committed phrase-states in reverse), NOT a smooth audio-
+rate morph. Musically right: states are phrase-quantised forward, so reversing them is phrase-quantised
+too. ("Audio-rate replay" was the wrong framing -- it's PHRASE-rate replay, one state per phrase played
+backward, matching how they were laid down.)
+
+### Nice efficiency: reuse the snapshot data you ALREADY capture
+The phrase-boundary commits are ALREADY snapshotted (the 16-slot hand-off ring captures every commit's
+before/after pins + counters). So the true-reverse buffer = a DEEPER version of the SAME snapshot data --
+not new KINDS of data, just KEEPING MORE of it. Extend state-history depth from "16-slot thread hand-off"
+to "~64-slot reverse trajectory". The snapshot CONTENT is already exactly what true-reverse needs; just
+retain a deeper history for the performance-reverse.
+
+### Net
+Very practical: 32-64 phrase-states (~6-12 KB, 128 still trivial), phrase-granular, reusing the existing
+snapshot content at greater depth. The once-per-phrase cadence makes minutes of reverse-reach nearly free.
+Depth (32/64/128) = a taste choice (how far back to reverse), not a memory constraint.
+
+Cross-ref: MonsoonChangeAlleyV2.hpp:158-184 (latchRow = arm pending), :188-206 (applyPendingTransforms =
+phrase-boundary commit, one commit = one undo), :96-107 (snapshot ring content = what the deeper reverse
+buffer reuses), the true-reverse proposal above (this sizes its buffer: phrase-granular, ~64 entries)." 
