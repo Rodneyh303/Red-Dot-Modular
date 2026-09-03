@@ -55,5 +55,20 @@ inline int bend14FromNote(float pitchV, int note, float bendRangeSemis) {
     return bend14(offsetFromNoteSemis(pitchV, note), bendRangeSemis);
 }
 
+// Reconstruct the 1V/oct pitch an IDEAL MPE receiver reproduces from a latched note + 14-bit bend and
+// the receiver's bend range: the inverse of (noteFor + bend14…). Used by Keppel's reverse-calc MONITOR
+// output (internal ground truth for the round-trip test) and by test/test_MpeMath.cpp. Because bend14
+// is 14-bit, the round-trip error is bounded by half a bend step = bendRange/16384 semitone
+// ≈ bendRange·0.0061 cents (≈0.29 cents even at ±48), so a correct split reconstructs sub-cent at ANY
+// range in 1..48 — which is what makes widening the range safe. Note: if the ORIGINAL bend clamped
+// (|offset| > bendRange, the legato landmine), the reconstruction saturates at note ± bendRange and does
+// NOT match the input — that mismatch is exactly what the re-articulation fix removes.
+inline float reconstructVolts(int note, int bend14, float bendRangeSemis) {
+    if (bendRangeSemis < 1.f) bendRangeSemis = 1.f;
+    double offsetSemis = ((double)bend14 - 8192.0) * ((double)bendRangeSemis / 8192.0);
+    double semis = (double)(note - 60) + offsetSemis;
+    return (float)(semis / 12.0);
+}
+
 } // namespace mpe
 } // namespace dotModular
