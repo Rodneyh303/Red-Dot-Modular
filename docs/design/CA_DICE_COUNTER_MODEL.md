@@ -33,3 +33,39 @@ is a pre-scatter pin-state snapshot (store snapshot). The addressable-position c
 DRAW reversible, but the fan-in means re-deriving the board by stepping the counter back is not the
 same as restoring the pins. Reconcile "counter rewind" vs "pin snapshot" undo as its own step AFTER
 this counter-model change lands. Do not touch the pin-snapshot undo in this change.
+
+## Undo restores pin POSITION; reverse-dice does NOT (Rodney) -- draw-reversible != state-restorable
+Key distinction (corrects the muddle of calling scatter "reversible" as if that answered undo):
+
+- UNDO restores the pin matrix to its prior STATE (via the snapshot ring). Puts the pins back where they
+  were. A STATE restoration.
+- REVERSE DICE (scatterCounter--) re-derives the previous DRAW (Philox at(N-1), exact) -- but that's the
+  previous random VALUE, which drives a scatter TRANSFORM. It does NOT restore the previous pin position.
+
+### Why they differ: scatter is a STATE-DEPENDENT TRANSFORM, not a set-to-value
+Reverse-dice reverses the DRAW SEQUENCE; undo reverses the STATE. Not the same "back". Reverse-dice is NOT
+an undo: decrementing the counter and re-scattering does NOT return the matrix to its previous config,
+because scatter TRANSFORMS the current pins -- applying "the previous scatter draw" to the CURRENT (already-
+transformed) pins yields a NEW state, not the OLD one. Scatter is PATH-DEPENDENT (result depends on where
+the pins currently are), so re-running an earlier DRAW doesn't reproduce an earlier STATE. Only the
+snapshot (which recorded the actual state) can restore the state.
+
+### Why the code has BOTH mechanisms (not redundant)
+- Snapshot ring / Rack history exists PRECISELY because reverse-dice can't restore pin state. If reverse-
+  dice could undo, no snapshot would be needed -- just decrement. The snapshot provides the state-
+  restoration reverse-dice doesn't.
+- Reverse-dice is a MUSICAL/GENERATIVE gesture (scrub the scatter sequence backward -- hear earlier
+  scatters applied to current pins), NOT an edit-undo.
+
+### The clean statement
+- Want the previous pin POSITION back -> UNDO (snapshot restores state).
+- Want to hear/apply the previous scatter DRAW -> REVERSE DICE (re-derives the draw, transforms current
+  pins with it).
+Draw-reversibility (generative scrubbing, signed Philox counter) and state-undo (editing, snapshot ring)
+are DIFFERENT NEEDS served by DIFFERENT MECHANISMS. Conflating them is the error: draw-reversible !=
+state-restorable, because scatter is a state-dependent transform. So "the scatter draw is reversible" is
+TRUE but does NOT mean "reverse-dice restores the pins" -- it doesn't; undo does.
+
+Cross-ref: MonsoonChangeAlleyV2.hpp:62-67 (signed scatterCounter, at(N-1) rewinds the DRAW exactly),
+:92-106 (snapshot ring + Rack history = the STATE undo), the CA scatter-reversibility discussion (this
+resolves it: draw reversible, state restored by snapshot not by reverse-dice; scatter is path-dependent)." 
