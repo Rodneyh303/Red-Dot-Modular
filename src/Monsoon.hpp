@@ -427,6 +427,9 @@ namespace MonsoonIds {
         MODE_E_LIGHT,   // Mode E (phase-driven) was reachable but had no light: the cycle is
                         // (modeSelect+1)%5 and Monsoon.cpp handles modeSelect==4 throughout,
                         // so selecting it simply turned every mode light off.
+        MODE_F_LIGHT,   // Mode F (Q3b): phase-triggered QUANTISER. modeSelect==5; the cycle is now
+                        // (modeSelect+1)%6. Placed AFTER MODE_E_LIGHT (append-only) so no existing
+                        // light slot shifts — SEMI_LED_START and everything below simply advance by 1.
 
         SEMI_LED_START,
         SEMI_LED_END = SEMI_LED_START + 24,  // 2 channels × 12 semitones

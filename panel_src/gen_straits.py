@@ -173,6 +173,17 @@ def gen(dark):
     A(f'<text x="{px(vc_x)}" y="{px(vc_y+5.8)}" fill="{t["ink"]}" font-family="sans-serif" '
       f'font-size="{px(2.0)}" text-anchor="middle" opacity="0.75">VOICES</text>')
 
+    # ── quantiser CV IN jack (Q2). 16ch poly note-CV source for the quantiser modes (C/D):
+    #    ch1 = mono, ch2.. = poly. Sits between the voice-count knob and the output strip, on
+    #    the INPUT side (a blue-ringed well distinguishes it from the gold-ringed outputs). ──
+    q_x = MARGIN + 13.5
+    A(f'<circle cx="{px(q_x)}" cy="{px(JACK_Y)}" r="{px(3.6)}" fill="{t["jackwell"]}" '
+      f'stroke="{t["jackring"]}" stroke-width="0.6"/>')
+    A(f'<circle cx="{px(q_x)}" cy="{px(JACK_Y)}" r="{px(1.6)}" fill="none" stroke="{t["spinedot"]}" stroke-width="0.5"/>')
+    A(f'<circle id="input_quantcv" cx="{px(q_x)}" cy="{px(JACK_Y)}" r="0.5" fill="none" stroke="none"/>')
+    A(f'<text x="{px(q_x)}" y="{px(JACK_Y+5.8)}" fill="{t["ink"]}" font-family="sans-serif" '
+      f'font-size="{px(2.0)}" text-anchor="middle" opacity="0.75">Q-CV</text>')
+
     lcx = W - MARGIN - 3
     A(f'<circle cx="{px(lcx)}" cy="{px(JACK_Y)}" r="{px(1.6)}" fill="{t["jackwell"]}" stroke="{t["jackring"]}" stroke-width="0.3"/>')
     A(f'<circle id="light_connect" cx="{px(lcx)}" cy="{px(JACK_Y)}" r="0.5" fill="none" stroke="none"/>')

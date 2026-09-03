@@ -552,7 +552,7 @@ void Monsoon::process(const ProcessArgs& args) {
     // In Mode E, CV1 is EXCLUSIVELY the phase input (it takes over CV1's meaning,
     // mirroring how Mode B repurposes gate1). The PhaseEngine emits the same
     // pulseEdge/sixteenthEdge/quarterEdge contract as the clock, plus a reverse flag.
-    if (modeSelect == 4) {
+    if (modeSelect == 4 || modeSelect == 5) {   // Mode E (generate) OR Mode F (quantise) — both phase-driven
         // Phase source: CV1 when patched, else the manual PHASE_PARAM knob (0..1 of the
         // knob = 0..phaseInMax volts = one bar ramp). The knob path reports connected=true
         // to the PhaseEngine so it drives the grid identically -- this is what lets a DAW
@@ -669,7 +669,7 @@ void Monsoon::process(const ProcessArgs& args) {
     if (runGateActive) {
         // Gate-close on the PPQN grid pulse. In Mode E the pulse source is the phase
         // ramp; otherwise the internal/external clock.
-        bool gridPulse = (modeSelect == 4) ? phase.pulseEdge : clock.pulseEdge;
+        bool gridPulse = (modeSelect == 4 || modeSelect == 5) ? phase.pulseEdge : clock.pulseEdge;
         if (gridPulse) {
             engine.gs.tickPulse();
             engine.gsStep.tickPulse();
@@ -685,8 +685,8 @@ void Monsoon::process(const ProcessArgs& args) {
         if (!shouldExecute) {
             if (modeSelect == 0) shouldExecute = clock.sixteenthEdge;
             else if (modeSelect == 1) shouldExecute = input.gate1Rise || (gate1High && engine.stepIndex == -1);
-            else if (modeSelect == 2) shouldExecute = clock.quarterEdge;
-            else if (modeSelect == 4) shouldExecute = phase.sixteenthEdge; // Mode E: phase 1/16 grid
+            else if (modeSelect == 2) shouldExecute = clock.sixteenthEdge;   // Q3a: new-C = generated 1/16 rhythm (was quarterEdge)
+            else if (modeSelect == 4 || modeSelect == 5) shouldExecute = phase.sixteenthEdge; // Mode E (gen) / F (quant): phase 1/16 grid
         }
 
         if (shouldExecute) {
@@ -725,7 +725,7 @@ void Monsoon::process(const ProcessArgs& args) {
         // WITHIN-DRAW: bounded to the current phrase (cap at 16 steps); a jump that
         // would cross the phrase boundary is clamped — cross-draw regeneration is a
         // later refinement.
-        if (modeSelect == 4 && phase.jumped && phase.jumpSixteenths != 0) {
+        if ((modeSelect == 4 || modeSelect == 5) && phase.jumped && phase.jumpSixteenths != 0) {
             bool jumpReverse = (phase.jumpSixteenths < 0);
             mc.setPhaseReverse(jumpReverse);
             // Bridge the jump DIRECTION to the draw-index direction: a boundary crossed
@@ -740,7 +740,7 @@ void Monsoon::process(const ProcessArgs& args) {
             if (steps > 16) steps = 16;                 // within-draw cap (one phrase)
             int p16 = ClockEngine::pulsesPer16th(ppqnSetting);
             for (int s = 0; s < steps; ++s) {
-                mc.executeMode(4, input, tc.getGate2High());
+                mc.executeMode(modeSelect, input, tc.getGate2High());   // Mode E or F — replay this mode's phase step
                 // executeModeA advances holdRemain (step decisions) internally, but the
                 // gate-CLOSE counter (gatePulseRemain) is normally driven by the pulse
                 // burst we skip on a jump. Tick it p16 times per replayed 1/16 so a gate
@@ -764,7 +764,7 @@ void Monsoon::process(const ProcessArgs& args) {
     // In Mode E, CV1 is EXCLUSIVELY the phase input (handled above), so its normal
     // pitch/BPM routing is suppressed — mirrors Mode B fully repurposing gate1.
     float cvOutVoltage = currentPitchV;
-    bool cv1IsPhase = (modeSelect == 4);
+    bool cv1IsPhase = (modeSelect == 4 || modeSelect == 5);   // CV1 = phase ramp in Mode E and Mode F
     if (!cv1IsPhase && cachedCv1Connected && input.cv1 != 0.f && (cv1Mode == 0 || cv1Mode == 1)) {
         cvOutVoltage = cvr.processCV1Input(cv1Mode, input.cv1, *paramManager, currentPitchV, true);
     } else if (!cv1IsPhase && cachedCv1Connected && cv1Mode == 4) { // BPM Mod

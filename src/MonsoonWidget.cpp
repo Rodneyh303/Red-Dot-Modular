@@ -458,11 +458,11 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
 
         // ── Mode button + lights: right strip, bound by ANCHOR ────────────────
         // Anchors come from panel_src/mode_column.py, which also asserts each light row
-        // clears the step ring. FIVE lights: Mode E was always selectable (the cycle is
-        // (modeSelect+1)%5 and the engine handles modeSelect==4) but had no light, so
-        // choosing it turned them all off and looked broken.
+        // clears the step ring. SIX lights (A..F): Mode F (Q3b) = phase-triggered quantiser,
+        // modeSelect==5, the cycle is (modeSelect+1)%6. (Mode E precedent: a selectable mode
+        // with no light turns them all off and looks broken, so the light count tracks the modes.)
         bindParam<TL1105>("param_MODE_PARAM", MonsoonIds::MODE_PARAM);
-        for (int i = 0; i < 5; ++i)
+        for (int i = 0; i < 6; ++i)
             bindLight<MediumLight<YellowLight>>("light_MODE_" + std::string(1, char('A'+i)) + "_LIGHT",
                                                 MonsoonIds::MODE_A_LIGHT + i);
 
@@ -836,8 +836,8 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         // letter appeared to light up instead of the LED, and on the light theme a near-black
         // glyph on an unlit light's dark circle vanished completely.
         {
-            static const char* kModeDesc[5] = {
-                "sequencer", "seq + gate", "quantizer 1", "quantizer 2", "phase seq" };
+            static const char* kModeDesc[6] = {
+                "sequencer", "seq + gate", "quantizer", "quant gate", "phase seq", "phase quant" };
             const float BOX_DX = -7.0f;   // box centre, relative to the LED
             const float BOX_W  =  5.5f, BOX_H = 5.5f;
             const float TXT_DX = -3.5f, TXT_DY = 4.6f;   // description, relative to the LED
@@ -845,7 +845,7 @@ void MonsoonWidget::draw(const DrawArgs& args) {
             setNvgFontSize(3.2f); fillNvgColour(210,210,210);
             writeNvgText(193.f, 6.f, "MODE");
 
-            for (int i = 0; i < 5; ++i) {
+            for (int i = 0; i < 6; ++i) {
                 const std::string id = "light_MODE_" + std::string(1, char('A'+i)) + "_LIGHT";
                 NSVGshape* sh = findNamed(id.c_str());
                 if (!sh) continue;
@@ -1089,8 +1089,8 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
 
         menu->addChild(createSubmenuItem("Sequencer Modes", "", [=](ui::Menu* sub) {
             { auto* l = new ui::MenuLabel; l->text = "Operating Mode"; sub->addChild(l);
-              const char* n[] = {"A: Sequencer","B: Seq + Gate","C: Quantizer 1","D: Quantizer 2","E: Phase (CV1)"};
-              for (int v=0;v<5;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->modeSelect;it->value=v;sub->addChild(it);} }
+              const char* n[] = {"A: Sequencer","B: Seq + Gate","C: Quantizer (gen. rhythm)","D: Quantizer (Gate 2)","E: Phase (CV1)","F: Phase Quantizer (CV1)"};
+              for (int v=0;v<6;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->modeSelect;it->value=v;sub->addChild(it);} }
 
 
             sub->addChild(new ui::MenuSeparator);

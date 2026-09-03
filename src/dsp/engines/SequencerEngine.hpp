@@ -510,6 +510,32 @@ struct SequencerEngine {
     float lastQuantIn = -100.f;
     float lastQuantOut = 0.f;
 
+    // ── QUANTISER UNIFICATION (Q1): pitch-source seam ──────────────────────────────────────────────
+    // When quantiserPitchSource is TRUE, the step cascade (executeStep + executePolyVoice) takes each
+    // voice's pitch from the EXTERNAL CV (quantised to the active scale/tuning) INSTEAD of the internal
+    // melody+octave draw — realising "keep the timing engine, swap the pitch source." Rest/legato/accent
+    // and poly differentiation are unchanged (they run the same path). The melody/octave draw is
+    // BYPASSED (gated out), not computed-and-discarded, so no RNG/lane state is perturbed.
+    // FALSE (default) → the exact legacy internal-draw path (A/B/E byte-identical). Set per-block by the
+    // module layer from the mode. quantiserCV[v] = the incoming poly CV per voice (index 0 = mono/voice0).
+    bool  quantiserPitchSource = false;
+    float quantiserCV[16] = {};
+
+    // The sounding pitch for a voice at its onset: quantised external CV in quantiser mode, else the
+    // internal draw via genPitchLive. `voiceIdx` 0..15 (0 = mono/voice-0). outSem = the sounding degree
+    // (for flash LEDs). r_semi/r_oct = the voice's melody/octave draws (used only in the internal path).
+    float voicePitch(int voiceIdx, int& outSem, const PatternInput& input, float r_semi, float r_oct) {
+        if (quantiserPitchSource) {
+            const int vi = (voiceIdx < 0) ? 0 : (voiceIdx > 15 ? 15 : voiceIdx);
+            float v = quantize(quantiserCV[vi]);
+            float frac = v - std::floor(v);
+            outSem = pe.tuning.isDefault12TET ? (int(std::round(frac * 12.f)) % 12)
+                                              : pe.tuning.nearestDegree(frac);
+            return v;
+        }
+        return pe.genPitchLive(outSem, input, r_semi, r_oct);
+    }
+
     void reset();
     bool isStepInWindow(int idx) const;
     void setWindow(int length, int offset);

@@ -12,6 +12,8 @@ static_assert((uint32_t)dotModular::SB_DICE_R == (1u << 8), "diceLiveR bit out o
 static_assert((uint32_t)dotModular::SB_DICE_M == (1u << 9), "diceLiveM bit out of sync with ScopeBit");
 #include "../../Monsoon.hpp"
 #include "../../MonsoonCausewayPolyExpander.hpp"
+#include "../../MonsoonStraitsExpander.hpp"   // Q2: poly quantiser CV-in (StraitsIds::QUANT_CV_INPUT)
+#include "MonsoonExpanderManager.hpp"
 
 using namespace rack;
 
@@ -218,6 +220,35 @@ bool ModeController::executeModeE() {
     return result.stepped;
 }
 
+// ──── Mode F: phase-triggered QUANTISER (Q3b) ────────────────────────────────
+// Mode F is the quantiser's Mode E — the SAME phase-edge step cascade, with the internal melody draw
+// replaced by "quantise the external CV" (quantiserPitchSource). The dispatch (Monsoon.cpp) only calls
+// this when phase.sixteenthEdge fired (a 1/16 phase step is due), exactly as it gates Mode E. Phase
+// provides the WHEN (including reverse traversal via phaseReverse); the external CV provides the WHAT.
+// Completes the timing symmetry: A↔C(clock/gen), B↔D(gate), E↔F(phase). MODES_C_D_QUANTIZER_PRERELEASE
+// "Reading 1 CONFIRMED": Mode F is a TRIGGER mode, not a modulator — quantisation behaviour is unchanged,
+// only its firing source is the phase ramp.
+bool ModeController::executeModeF(float cv2Voltage) {
+    PatternInput in = assemblePatternInput_();
+    beginQuantiserSource_(cv2Voltage);
+
+    ClockEngine phaseView;            // edge-only view; executeModeA reads sixteenthEdge
+    phaseView.sixteenthEdge = true;
+
+    StepResult result = engine.executeModeA(
+        phaseView,
+        in.restProb,
+        in.legato,
+        in.noteValue,
+        in,
+        phaseReverse ? -1 : +1        // within-draw reverse traversal (same as Mode E)
+    );
+    postExecute_(result);             // executePolyVoices (poly pitch) while the flag is still on
+    engine.quantiserPitchSource = false;
+    updateLastStepIndex();
+    return result.stepped;
+}
+
 bool ModeController::executeModeA() {
     if (clock.sixteenthEdge) {
         // ACCENT assembled once in updatePatternInput() (in.accentProb) — redundant re-fetch removed.
@@ -275,51 +306,74 @@ bool ModeController::executeModeB(bool gate1Rise,
     return false;
 }
 
-// ──── Mode C: Quantizer Mode 1 ──────────────────────────────────────────────
+// ──── Quantiser source setup (Q1b + Q2) ─────────────────────────────────────
+// Load the engine's quantiser pitch-source for a step: turn ON quantiserPitchSource and fill the
+// per-voice CV (index 0 = mono/voice 1, 1..15 = poly voices 2..16 — the quantiserCV[] layout matches
+// Straits' poly-cable channel convention exactly).
+//
+// SOURCE PRECEDENCE (Q2 — poly CV in on Straits):
+//   1. If a Straits expander is attached AND its QUANT_CV_INPUT is patched → read it PER-CHANNEL
+//      (getPolyVoltage: a 1-channel cable normals to every voice, so a mono source still drives all
+//      voices in unison; a 16ch cable gives each voice its OWN pitch → true poly quantise).
+//   2. Otherwise → fall back to Monsoon's own mono CV2 jack (cv2Voltage), filled to all voices.
+// Either way the poly voices STILL differentiate their phrasing (rest/legato/accent) via the Sands
+// rules — Q2 additionally lets them differentiate their PITCH. The flag stays on across executeMode*
+// AND postExecute_ (poly voices draw pitch there), cleared by the caller after.
+void ModeController::beginQuantiserSource_(float cv2Voltage) {
+    engine.quantiserPitchSource = true;
 
+    MonsoonStraitsExpander* straits =
+        mainModule ? mainModule->expanderManager.cachedPolyVoiceExpander : nullptr;
+    if (straits && straits->inputs[StraitsIds::QUANT_CV_INPUT].isConnected()) {
+        // Per-voice: ch v feeds engine voice v (0 = mono). getPolyVoltage normals a mono cable to all.
+        rack::engine::Input& in = straits->inputs[StraitsIds::QUANT_CV_INPUT];
+        for (int v = 0; v < 16; ++v)
+            engine.quantiserCV[v] = clampv<float>(in.getPolyVoltage(v), 0.f, 5.f);
+        return;
+    }
+
+    // Fallback: Monsoon's own mono CV2 — unison across all voices (the Q1b behaviour).
+    const float inCV = clampv<float>(cv2Voltage, 0.f, 5.f);
+    for (int v = 0; v < 16; ++v) engine.quantiserCV[v] = inCV;
+}
+
+// ──── Mode C: Quantizer Mode 1 (NOW generated-rhythm-driven, with phrasing + poly) ─────
+// QUANTISER UNIFICATION Q3a ("new C"): C is now the QUANTISER'S Mode B — driven by the engine's OWN
+// generated rhythm (any division/probabilistic pattern), NOT Vermona's fixed quarter grid. It routes
+// through Mode A's full step cascade on every 1/16 clock edge, so the engine's rest strand decides
+// note-vs-rest at whatever rhythm it generates, while the pitch comes from the external CV
+// (quantiserPitchSource). Strictly more powerful than the old fixed-quarter C, costs nothing new (the
+// rhythm generation already exists). The dispatch (Monsoon.cpp) gates this on clock.sixteenthEdge; we
+// pass the live clock so quarterEdge/etc. remain available to the cascade.
+//   Q1b history: this used to fire on clock.quarterEdge with a synthesized step-view — that was the
+//   interim "phrasing on a quarter grid" step. Q3a widens the trigger to the generated 1/16 rhythm.
 bool ModeController::executeModeC(float cv2Voltage) {
-    if (clock.quarterEdge) {
-        // Clamp and validate CV2 input
-        float inCV = clampv<float>(cv2Voltage, 0.f, 5.f);
-        
-        // Execute the mode
-        engine.executeModeC(clock, inCV);
-        const StepResult& result = engine.lastStepResult;
-        
-        // Handle post-execution (usually minimal for quantizer modes)
-        if (result.wrapped && mainModule) {
-            mainModule->onPhraseBoundary_();
-        }
-        
+    if (clock.sixteenthEdge) {
+        PatternInput in = assemblePatternInput_();
+        beginQuantiserSource_(cv2Voltage);
+        StepResult result = engine.executeModeA(clock, in.restProb, in.legato, in.noteValue, in);
+        postExecute_(result);            // runs executePolyVoices (poly pitch drawn here — flag still on)
+        engine.quantiserPitchSource = false;
         updateLastStepIndex();
         return result.stepped;
     }
     return false;
 }
 
-// ──── Mode D: Quantizer Mode 2 ──────────────────────────────────────────────
-
-bool ModeController::executeModeD(bool gate2High,
+// ──── Mode D: Quantizer Mode 2 (external gate2, = Mode B + external pitch) ────
+// QUANTISER UNIFICATION Q1b: Mode D is Mode B's twin — the SAME gate-driven step cascade, with the
+// internal melody draw replaced by "quantise the external CV" (quantiserPitchSource). Gate2's rising
+// edge (or held-at-start) advances one step; Sands rest/legato/accent differentiate the voices. This
+// REPLACES the old "quantise every sample while gate high" (Vermona-D) with the stepped, phrased twin
+// of Mode B — the unification's intent (D = B + one poly CV in; poly CV lands in Q2).
+bool ModeController::executeModeD(bool gate2Rise, bool gate2High,
                                    float cv2Voltage) {
-    // Mode D executes continuously based on gate2 state and CV2 voltage
-    // (no edge detection needed)
-    
-    // Clamp and validate CV2 input
-    float inCV = clampv<float>(cv2Voltage, 0.f, 5.f);
-    
-    // Execute the mode
-    engine.executeModeD(gate2High, inCV);
-    const StepResult& result = engine.lastStepResult;
-    
-    // Handle post-execution
-    if (result.wrapped && mainModule) {
-        mainModule->onPhraseBoundary_();
-    }
-    
-    if (result.stepped) {
-        updateLastStepIndex();
-    }
-    
+    PatternInput in = assemblePatternInput_();
+    beginQuantiserSource_(cv2Voltage);
+    StepResult result = engine.executeModeB(gate2Rise, gate2High, in.restProb, in.legato, in.noteValue, in);
+    postExecute_(result);                // executePolyVoices (poly pitch) while the flag is still on
+    engine.quantiserPitchSource = false;
+    if (result.stepped) updateLastStepIndex();
     return result.stepped;
 }
 
@@ -333,8 +387,9 @@ bool ModeController::executeMode(int modeId,
         case 0: return executeModeA();
         case 1: return executeModeB(input.gate1Rise, gate1High);
         case 2: return executeModeC(input.cv2);
-        case 3: return executeModeD(gate2High, input.cv2);
+        case 3: return executeModeD(input.gate2Rise, gate2High, input.cv2);
         case 4: return executeModeE();
+        case 5: return executeModeF(input.cv2);   // Q3b: phase-triggered quantiser
         default: return false;
     }
 }

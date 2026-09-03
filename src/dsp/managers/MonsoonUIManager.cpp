@@ -81,7 +81,7 @@ void UIManager::updateModeLights(int currentMode, int& lastMode) {
     if (currentMode != lastMode) {
         // One light per mode. Loop rather than a line each, so adding a mode cannot leave a
         // light behind again -- which is exactly how Mode E ended up selectable but unlit.
-        for (int i = 0; i < 5; ++i)
+        for (int i = 0; i < 6; ++i)   // 6 modes now (A..F); Mode F = phase quantiser (Q3b)
             lights[MODE_A_LIGHT + i].setBrightness(currentMode == i ? 1.f : 0.f);
         lastMode = currentMode;
     }
@@ -160,7 +160,7 @@ bool UIManager::processModeButton(int& modeSelect) {
     using namespace MonsoonIds;
     
     if (modeTrigger.process(params[MODE_PARAM].getValue())) {
-        modeSelect = (modeSelect + 1) % 5;
+        modeSelect = (modeSelect + 1) % 6;   // A→B→C→D→E→F→A (Mode F = phase quantiser, Q3b)
         return true;
     }
     return false;

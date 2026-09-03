@@ -357,9 +357,11 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
     }
 
     // The moving playhead should always follow the global timeline index. Shown for
-    // stepped modes A/B/C (0/1/2) and the phase Mode E (4); Mode D (3) is continuous
-    // (no discrete playhead step).
-    bool steppedMode = (modeSelect == 0 || modeSelect == 1 || modeSelect == 2 || modeSelect == 4);
+    // stepped modes A/B/C (0/1/2), the phase modes E/F (4/5); Mode D (3) is continuous
+    // (no discrete playhead step). Mode F (5, Q3b) is a phase-1/16 stepped quantiser, so it
+    // has a discrete playhead exactly like Mode E.
+    bool steppedMode = (modeSelect == 0 || modeSelect == 1 || modeSelect == 2
+                        || modeSelect == 4 || modeSelect == 5);
     float current = (steppedMode && lightIdx == stepIndex) ? 1.0f : 0.0f;
 
     // Direction cue (Mode E especially): a one-LED comet trail BEHIND the playhead in
@@ -436,9 +438,12 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     }
 
     int   sem    = 0;
-    float pitchV = pe.genPitchLive(sem, input,
-                                    pe.melodyRandom[getMelodyStep()],
-                                    pe.octaveRandom[getOctaveStep()]);
+    // QUANTISER (Q1): mono/voice-0 pitch = quantised external CV when in a quantiser mode, else the
+    // internal melody+octave draw. voicePitch bypasses genPitchLive (no RNG/lane perturbation) when
+    // quantiserPitchSource is set; off = byte-identical legacy path.
+    float pitchV = voicePitch(0, sem, input,
+                              pe.melodyRandom[getMelodyStep()],
+                              pe.octaveRandom[getOctaveStep()]);
 
     // ── Leading-edge legato (STEP 2, the only legato model) ──
     // The PREVIOUS starting note recorded, at its own onset, whether it intends to hold
@@ -787,7 +792,12 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         
         // Decide to Play: Draw pitch and follow mono's triggering behavior.
         int sem = 0;
-        float pitchV = pe.genPitchLive(sem, input, polyRandomSrc(voiceIdx, PL_MELODY)[melIdx], polyRandomSrc(voiceIdx, PL_OCTAVE)[octIdx]);
+        // QUANTISER (Q1): this voice's pitch = quantised external CV (its own channel) in quantiser
+        // mode, else the internal melody+octave draw. voices[voiceIdx] is ENGINE voice voiceIdx+1
+        // (voice 0 is the mono/executeStep path), so read quantiserCV[voiceIdx+1].
+        float pitchV = voicePitch(voiceIdx + 1, sem, input,
+                                  polyRandomSrc(voiceIdx, PL_MELODY)[melIdx],
+                                  polyRandomSrc(voiceIdx, PL_OCTAVE)[octIdx]);
         // Accent as a poly lane (modelled after rest): this voice draws its OWN accent at
         // its own accent LOR and compares to its own accentProb — not shared from mono.
         int accIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_ACCENT), polyLenE(voiceIdx, PL_ACCENT), polyOffE(voiceIdx, PL_ACCENT), polyRotE(voiceIdx, PL_ACCENT));

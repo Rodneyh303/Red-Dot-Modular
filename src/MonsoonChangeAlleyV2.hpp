@@ -382,11 +382,16 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
     static constexpr float CELL_H  = CELL_W;
     static constexpr float MY_MM   = 20.0f;
     static constexpr float MH_MM   = CELL_H * CA::N_VOICES;
-    static constexpr float CTRL_ROW_H = 9.0f;
-    static constexpr float GROUP_GAP  = 6.8f;
-    static constexpr float CTRL_TOP   = 21.0f;
+    // Q5 q-mix: 3 streams (rhythm, melody, q-mix) -> 12 rows/side. PLAN A (CA_PANEL_THREE_STREAM_LAYOUT):
+    // tighten row pitch to fit 12 rows in 128.5mm with stock PJ301M jacks. MUST MATCH gen_change_alley_v2.py.
+    // Jack well is r=3.9 (Ø7.8); ROW_H=8.0 is the jack-floor pitch (jacks touch at 0.2mm gap).
+    static constexpr int   N_STREAMS    = 3;
+    static constexpr float CTRL_ROW_H   = 8.0f;
+    static constexpr float GROUP_GAP    = 1.5f;
+    static constexpr float CTRL_TOP     = 14.0f;
+    static constexpr float BOTTOM_OFFSET = 6.0f;   // gap from last row to the bottom poly-jack cluster
     static float rowY(int verb, int sub) {
-        return CTRL_TOP + verb*(2.f*CTRL_ROW_H + GROUP_GAP) + sub*CTRL_ROW_H + CTRL_ROW_H*0.5f;
+        return CTRL_TOP + verb*(N_STREAMS*CTRL_ROW_H + GROUP_GAP) + sub*CTRL_ROW_H + CTRL_ROW_H*0.5f;
     }
     static float lx(float x_mm, bool flip) { return flip ? PW_MM - x_mm : x_mm; }
 
@@ -525,8 +530,8 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
 
         // Two poly modulation inputs, bottom-right under the last REFLECT row.
         {
-            // MUST match gen_change_alley_v2.py: by = lastBottom()+9, rx = PW-MARGIN-4.45
-            const float by = rowY(CA::N_VERBS - 1, 1) + CTRL_ROW_H * 0.5f + 9.0f;
+            // MUST match gen_change_alley_v2.py: by = lastBottom()+BOTTOM_OFFSET, rx = PW-MARGIN-4.45
+            const float by = rowY(CA::N_VERBS - 1, N_STREAMS - 1) + CTRL_ROW_H * 0.5f + BOTTOM_OFFSET;
             const float rx = PW_MM - MARGIN - 4.45f;
             addInput(createInputCentered<PJ301MPort>(mm2px(Vec(rx,         by)),
                      module, CA::STEP_POLY_IN));
@@ -642,7 +647,7 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                     }
                     // Bottom-right cluster: GRAIN/STEP jack captions + VERTICAL legend.
                     {
-                        const float by = rowY(CA::N_VERBS - 1, 1) + CTRL_ROW_H*0.5f + 9.0f;
+                        const float by = rowY(CA::N_VERBS - 1, N_STREAMS - 1) + CTRL_ROW_H*0.5f + BOTTOM_OFFSET;
                         const float rx = PW_MM - MARGIN - 4.45f;
                         // captions ABOVE the jacks
                         nvgFontSize(vg, mm2px(Vec(2.3f,0)).x);
@@ -682,7 +687,7 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                         // Connect dot beside the LHS logo (generator places logo at MARGIN,
                         // under the last REFLECT row).
                         float mx = mm2px(Vec(MARGIN + 36.0f, 0)).x;
-                        float myv = mm2px(Vec(0, rowY(CA::N_VERBS-1,1) + CTRL_ROW_H*0.5f + 8.0f + 5.5f)).y;
+                        float myv = mm2px(Vec(0, rowY(CA::N_VERBS-1, N_STREAMS-1) + CTRL_ROW_H*0.5f + BOTTOM_OFFSET + 5.5f)).y;
                         if (connected) {
                             nvgBeginPath(vg); nvgCircle(vg, mx, myv, 3.6f);
                             nvgFillColor(vg, nvgRGBA(0xd4,0x00,0x1a,0x30)); nvgFill(vg);

@@ -173,6 +173,10 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
         bindOutput<PJ301MPort>("output_polycv",       POLY_CV_OUT);
         bindOutput<PJ301MPort>("output_polyaccent",   POLY_ACCENT_OUT);
 
+        // QUANTISER Q2: the poly note-CV IN for the quantiser modes. Monsoon reads it per-channel
+        // into engine.quantiserCV[v] each quantiser step (see ModeController::beginQuantiserSource_).
+        bindInput<PJ301MPort>("input_quantcv", StraitsIds::QUANT_CV_INPUT);
+
         // Poly voice-count knob: stepped 1..16, Slot style (set-and-forget). Themed so it
         // follows the panel like the cogs. This param is the SOURCE of truth for the poly
         // count -- the dimming reads it (below), and Monsoon reads it engine-side (pending).

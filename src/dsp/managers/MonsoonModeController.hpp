@@ -46,6 +46,10 @@ public:
     bool executeModeA();
     bool executeModeE();   // Mode E: phase-ramp driven (forward; reverse next branch)
 
+    /// Execute Mode F: phase-triggered QUANTISER (Q3b). Mirrors Mode E's phase cascade with the
+    /// internal melody draw replaced by quantise(external CV). Called when phase.sixteenthEdge fires.
+    bool executeModeF(float cv2Voltage);
+
     // Mode E playhead direction, set from the PhaseEngine each block before dispatch.
     bool phaseReverse = false;
     void setPhaseReverse(bool rev) { phaseReverse = rev; }
@@ -61,10 +65,10 @@ public:
     /// Returns true if a new step was taken
     bool executeModeC(float cv2Voltage);
     
-    /// Execute Mode D: Quantizer mode 2 (GATE2 driven)
-    /// Triggers based on GATE2 state and CV2 voltage
+    /// Execute Mode D: Quantizer mode 2 (GATE2-driven, = Mode B + external pitch source)
+    /// Triggers on GATE2 rising edge / held-at-start; quantises external CV to the scale.
     /// Returns true if a new step was taken
-    bool executeModeD(bool gate2High,
+    bool executeModeD(bool gate2Rise, bool gate2High,
                       float cv2Voltage);
     
     // ──── High-Level Dispatcher ──────────────────────────────────────────────
@@ -119,6 +123,10 @@ private:
 
     /// Common post-execution logic: handle phrase boundaries and poly voices
     void postExecute_(const StepResult& result);
+
+    /// Quantiser (Q1b): enable the engine's external-CV pitch source + load quantiserCV for this step.
+    /// Caller clears engine.quantiserPitchSource after postExecute_ (poly voices draw pitch there too).
+    void beginQuantiserSource_(float cv2Voltage);
     
     /// Set poly voice rest probabilities from parameter manager
     void updatePolyVoiceRest_();

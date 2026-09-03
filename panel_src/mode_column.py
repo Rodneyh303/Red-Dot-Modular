@@ -12,7 +12,8 @@ covered its own light (the letter appeared to light up; on the light theme a nea
 glyph on an unlit light's dark circle vanished entirely).
 
 Mode E is real: the engine has always handled modeSelect==4 and the cycle is
-(modeSelect+1)%5 -- it simply had no light, so choosing it turned them all off.
+(modeSelect+1)%6 -- it simply had no light, so choosing it turned them all off.
+Mode F (Q3b) is the phase-triggered QUANTISER (modeSelect==5): the sixth row/LED here.
 
 Clearances asserted below against the step ring (centre 162,30, outer TICK radius 23mm).
 """
@@ -24,8 +25,8 @@ BTN      = (194.0, 60.0)   # cycle button, on the BPM/LEN/OFFSET line
 LIGHT_X  = 197.5           # LED column
 BOX_CX   = 190.5           # boxed letter centre (widget draws it from the anchor)
 BOX_W    = 5.5
-ROW_Y    = [13.0, 22.0, 31.0, 40.0, 49.0]
-IDS      = ['MODE_A_LIGHT','MODE_B_LIGHT','MODE_C_LIGHT','MODE_D_LIGHT','MODE_E_LIGHT']
+ROW_Y    = [13.0, 22.0, 31.0, 40.0, 49.0, 58.0]
+IDS      = ['MODE_A_LIGHT','MODE_B_LIGHT','MODE_C_LIGHT','MODE_D_LIGHT','MODE_E_LIGHT','MODE_F_LIGHT']
 
 RING_C, RING_R = (162.0, 30.0), 23.0
 
