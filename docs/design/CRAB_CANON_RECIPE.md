@@ -133,3 +133,41 @@ Cross-ref: CRAB_CANON_RECIPE:42-48 (the counter-address/seed-offset ideal = this
 DERIVATION (the addressable bijection this exposes), UNDO_AND_REVERSIBLE_AUTOMATION_PRINCIPLE (offset =
 addressing the bijection = reversible-automation class), the shareable-editors sections (shared material +
 this = canonic multi-Monsoon toolkit), Monsoon.cpp seed/reseed system (has SEED, lacks OFFSET -- the gap)." 
+
+## Offset -- WHEN is it applied? Two options, best design considered LATER (Rodney)
+Parked design fork on the offset primitive: when does the offset take effect?
+
+1. LIVE / CONTINUOUS offset (knob/CV, always active): offset is a running control, settable/modulatable
+   ANY TIME -> relative position can shift DURING playback -> TIME-VARYING canons (offset moves, crossings
+   you slide/perform). More expressive; more to build (a live counter-address control always active).
+2. OFFSET-AT-RESEED (Rodney's alternative): the offset is set ONLY at reseed time -- reseed also specifies
+   the offset, baked in until the next reseed. Static between reseeds. SIMPLER -- piggybacks on the reseed
+   machinery that ALREADY exists (reseedCorrKeys, setPendingRhythmSeed, deferred phrase-boundary reseed),
+   just adding an offset parameter to that moment.
+
+### Why offset-at-reseed is attractive
+- REUSES existing machinery (reseed system already built: seed CV, deferred phrase-boundary reseed, per-
+  axis, lock-aware). Adding "...and apply this offset" is a small extension of a working path vs building a
+  whole live counter-address control. (Pattern-reuse de-risking.)
+- ENOUGH for the headline use case: a crab/fixed-offset canon doesn't need the offset to move mid-
+  performance -- set up (reseed both, one at offset N-p), let it run. Delivers the canon purpose with far
+  less build.
+- Fits the reseed MENTAL MODEL: reseed is already "reset generative state to a fresh/specified config";
+  "reseed to this seed AT this offset" is a natural extension, not a new concept.
+
+### The trade
+Offset-at-reseed gives up TIME-VARYING offset -- can't slide the canon relationship during playback (fixed
+between reseeds). Fine for a static canon; for a MORPHING canon (offset sweeping, live crossings) you want
+option 1. Usual static-but-simple (reseed-time) vs live-but-more-work (continuous knob/CV) fork.
+
+### Hybrid staging (for when this is picked up)
+Offset-at-reseed as the MVP (cheap, reuses machinery, covers static canons), live/continuous as a LATER
+enhancement IF time-varying canons prove wanted. Same MVP-then-enhance staging as q-mix.
+
+### Deciding question (LATER)
+"Do you want to PERFORM/MORPH the canon offset live, or just SET-AND-RUN?" Set-and-run -> reseed-time wins
+on cost. Live morphing matters -> need the continuous control. Best design considered later; parked.
+
+Cross-ref: the key/seed-OFFSET knob section above (the primitive; this is WHEN it applies), Monsoon.cpp
+seed/reseed system (offset-at-reseed piggybacks on this existing path), the shareable-editors + reversible-
+automation notes (the canonic multi-Monsoon toolkit this serves)." 
