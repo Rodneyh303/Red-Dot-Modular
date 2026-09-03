@@ -91,3 +91,45 @@ controllable feature: identical settings = clean unison; divergent = heterophoni
 6..12), sharing only the seam at 6. Two adjacent phrases hinged/reflected at a shared point -- a mirror
 at the boundary, more like a mirror-fugue subject/answer than a crab. Valid and worth having, but it is
 NOT the same-material crossing of a true crab. Keep the distinction clear in any demo/pitch.
+
+## The Monsoon key/seed-OFFSET knob (Rodney's reminder) -- = the counter-address primitive; MUST-HAVE, NOT built
+Rodney recalled "a knob on Monsoon for setting dice Philox key offsets". Confirmed: this IS the counter-
+address / seed-offset primitive flagged above (:42-48) as "NOW A MUST-HAVE". Status: DOCUMENTED, flagged
+must-have, NOT built. Today's code has the SEED/reseed system (share a seed -> identical draws) but NOT the
+OFFSET -- so today only the degenerate canon (two Monsoons in unison, offset 0) is possible; the buildable-
+today workaround is the dice-scrub crossfade (:24-27), and the offset primitive is the ideal/gap.
+
+### What it is + what it's for
+The addressability of Philox exposed as a CONTROL: a knob/CV that sets WHERE in the stream a Monsoon is
+(counter-address), or an OFFSET from another Monsoon's position. Purpose = MULTI-MONSOON CANONIC
+relationships: two Monsoons on the SAME seed but OFFSET positions -> canons, delays, crab/retrograde, for
+FREE (they read the same deterministic material at different offsets). The offset knob turns "same seed"
+from "identical output" into "CANONICALLY-RELATED output" (same material, shifted). The crab canon (:4-10)
+is the headline: one at p, one at N-p, shared seed => same draw => they meet at the midpoint.
+
+### Connects to everything
+- Addressability MADE A CONTROL: same signed-addressable Philox counter behind dice-reverse + true-reverse.
+  The offset knob = "set the counter-address directly" vs "step to it". Same bijection property, exposed as
+  a PLACEMENT control.
+- Multi-Monsoon complement to the shareable sources: shared DRAWN material (Esplanade/Zouk editors) +
+  shared SEED AT OFFSETS (this knob) = a canonic/heterophonic multi-Monsoon toolkit.
+- Reversible-automation class: offset is just another way to address the bijection -> inherits
+  reproducibility for free.
+
+### Design note: RELATIVE offset (CV-able), not just absolute position
+Is the knob ABSOLUTE (set position N directly) or RELATIVE (offset from a reference Monsoon's live
+position)? Canons want RELATIVE (B = A + offset, or B = N - A for crab; the crab needs B = 1 - A
+complementary drive, :24 -- that's relative). So lean RELATIVE offset from a shared/reference position,
+CV-able (so the offset itself can move = a time-varying canon). Absolute-position is a different, more
+static gesture. LEAN: relative + CV-able.
+
+### Status / next
+DOCUMENTED MUST-HAVE, unbuilt. The knob = expose Philox counter-addressing as a Monsoon control (relative
+offset from a shared position, CV-able). Enables canons/crab/retrograde across Monsoons sharing a seed.
+Pre-release: free to add the param. A V1-candidate given it's flagged must-have + it's the addressability
+already in the engine, just needing a control surface.
+
+Cross-ref: CRAB_CANON_RECIPE:42-48 (the counter-address/seed-offset ideal = this knob), PHILOX_KEY_
+DERIVATION (the addressable bijection this exposes), UNDO_AND_REVERSIBLE_AUTOMATION_PRINCIPLE (offset =
+addressing the bijection = reversible-automation class), the shareable-editors sections (shared material +
+this = canonic multi-Monsoon toolkit), Monsoon.cpp seed/reseed system (has SEED, lacks OFFSET -- the gap)." 
