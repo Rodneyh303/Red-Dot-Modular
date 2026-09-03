@@ -24,12 +24,18 @@ DIR_X = 212.0       # direction cell column (Fwd/Rev/Pend/PingPong), right of ow
 DELEG_MOD_X = 220.0 # delegation gate-mod jack column (gate flips local/delegated)
 DIR_MOD_X = 228.0   # direction gate-mod jack column (gate cycles Fwd→Rev→Pend→PingPong)
 PROB_OUT_X = 236.0  # right-strip jack column, pushed right by the mod jack columns (matches hpp)
-ED_H = 84.0   # 6 lanes x 14mm — East shows VARIATION/LEGATO (EAST_EXTRA_LANES.md stage 1)
-ED_LANES = 6  # editor lanes drawn; control rows stay N=4 (spread lanes only)
-ED_LANE_H = ED_H / ED_LANES
+# QMIX GEOMETRY (Option B): +1 editor lane (q-mix at slot 2, after MEL/OCT), LANE_H 14→13,
+# editor extends DOWN into the band above the MBS mark (ED_H 84→91 → bottom 14+91=105).
+# Mirrors src/ui/SandsGrid.hpp EAST_LANES 6→7, LANE_H 13. q-mix has no left controls yet — the
+# 6 existing lanes occupy editor slots ESLOT=[0,1,3,4,5,6]; slot 2 is the empty q-mix band.
+ED_H = 91.0   # 7 lanes x 13mm (was 6 x 14 = 84) — q-mix lane added at slot 2
+ED_LANES = 7  # editor lanes drawn; control rows stay N=4 (spread lanes only)
+ED_LANE_H = ED_H / ED_LANES   # 13
+ESLOT = [0, 1, 3, 4, 5, 6]    # existing lane k → editor slot (skip slot 2 = q-mix)
 # Left-control rows align with the EDITOR lane centres (must match the hpp's rowY):
 # each lane's CV jacks + attens sit beside the visual lane they modulate.
 def rowY(r): return ED_Y + (r+0.5)*ED_LANE_H
+def ctrlY(k): return rowY(ESLOT[k])   # control/marker row for existing lane k
 # 4 CV jacks + 4 attens + spread base — columns match SandsMonoVisual, ED_X=88
 JACK_X  = [6.0, 15.0, 24.0, 33.0]   # LEN/OFF/ROT/SPR-cv
 ATTEN_X = [43.0, 52.0, 61.0, 70.0]  # LEN/OFF/ROT/SPR depth
@@ -160,7 +166,7 @@ def gen(dark):
     #    OwnerCell widget draws each per-lane cell itself (filled = global/Macro,
     #    outline in lane colour = East/per-voice), so no static outline cells here.
     _ed_right = ED_X + ED_W
-    _lane_ys = [rowY(r) for r in range(N+2)]   # 4 spread lanes + VAR/LEG rows 4,5
+    _lane_ys = [ctrlY(r) for r in range(N+2)]   # 4 spread lanes + VAR/LEG rows 4,5
     _ch = ED_LANE_H * 0.9                  # match the live OwnerCell (≈ lane step cell)
     _cw = (ED_W - 2*6.0) / 16.0            # one editor step wide (padding=6, 16 steps)
     _pad = 1.6
@@ -178,9 +184,9 @@ def gen(dark):
 
     # ── control group recess (left) — wraps the editor-aligned rows ──
     # box left edge clears the leftmost jack (JACK_X[0]=6, r=3.9 → left extent 2.1mm)
-    gx,gy=1.5,rowY(0)-ED_LANE_H*0.5-3.0
+    gx,gy=1.5,ctrlY(0)-ED_LANE_H*0.5-3.0
     # recess spans all 6 control rows (4 spread lanes + VAR/LEG rows 4,5)
-    gw,gh=(SPREAD_X+6.0)-gx,(rowY(N+1)+ED_LANE_H*0.5+3.0)-gy
+    gw,gh=(SPREAD_X+6.0)-gx,(ctrlY(N+1)+ED_LANE_H*0.5+3.0)-gy
     A(f'<rect x="{px(gx):.1f}" y="{px(gy):.1f}" width="{px(gw):.1f}" height="{px(gh):.1f}" rx="{px(2):.1f}" fill="{t["group"]}" stroke="{t["groupline"]}" stroke-width="1"/>')
     sepx=0.5*(JACK_X[-1]+ATTEN_X[0])  # separator between jack cluster and atten cluster
     A(f'<line x1="{px(sepx):.1f}" y1="{px(gy+2):.1f}" x2="{px(sepx):.1f}" y2="{px(gy+gh-2):.1f}" stroke="{t["groupline"]}" stroke-width="0.75" opacity="0.6"/>')
@@ -196,14 +202,14 @@ def gen(dark):
         A(f'<circle cx="{px(x):.1f}" cy="{px(y):.1f}" r="{px(3.2):.1f}" fill="{t["well"]}" stroke="{col}" stroke-width="1.25"/>')
         A(f'<line x1="{px(x):.1f}" y1="{px(y):.1f}" x2="{px(x):.1f}" y2="{px(y-2.4):.1f}" stroke="{col}" stroke-width="1"/>')
     for row in range(4):
-        y=rowY(row)
+        y=ctrlY(row)
         for x in JACK_X:  jack(x,y)
         for x in ATTEN_X: trim(x,y,t["gold"])
         trim(SPREAD_X,y,t["teal"])
     # VARIATION (row 4) / LEGATO (row 5): LEN/OFF/ROT only — no SPR jack, no spread knob
     # (spread does not apply to these mono-strand lanes). Attens in gold like the others.
     for row in range(N, N+2):
-        y=rowY(row)
+        y=ctrlY(row)
         for x in JACK_X[:3]:  jack(x,y)
         for x in ATTEN_X[:3]: trim(x,y,t["gold"])
 
@@ -238,7 +244,7 @@ def gen(dark):
     # cvId/attenDispId/SPREAD use engine lane index; rowY uses display row.
     for row in range(4):
         lane = DISPLAY_ORDER[row]   # engine lane
-        y=rowY(row)
+        y=ctrlY(row)
         for p,x in enumerate(JACK_X):  kit_shape("input", 0+lane*4+p, x, y)
         for p,x in enumerate(ATTEN_X): kit_shape("param", 4+lane*4+p, x, y)
         kit_shape("param", lane, SPREAD_X, y)  # SPREAD_R/M/O/A engine lane index
@@ -246,7 +252,7 @@ def gen(dark):
     # input id = varlegCvId(lane,col)  = VARLEG_CV_START(16) + lane*3 + col
     # param id = varlegAttDispId(lane,col) = VARLEG_ATTEN_DISP_START(20) + lane*3 + col
     for lane in range(2):
-        y=rowY(N+lane)   # rows 4,5
+        y=ctrlY(N+lane)   # rows 4,5
         for c in range(3):
             kit_shape("input", 16 + lane*3 + c, JACK_X[c], y)
             kit_shape("param",  20 + lane*3 + c, ATTEN_X[c], y)
@@ -256,28 +262,28 @@ def gen(dark):
     # lane l, placed at the editor row that displays that lane (DISPLAY_ORDER).
     for row in range(4):
         l = DISPLAY_ORDER[row]
-        A(f'<circle id="param_owner_{l}" cx="{px(OWNER_X):.2f}" cy="{px(rowY(row)):.2f}" '
+        A(f'<circle id="param_owner_{l}" cx="{px(OWNER_X):.2f}" cy="{px(ctrlY(row)):.2f}" '
           f'r="0.5" fill="none" stroke="none"/>')
     # VAR/LEG delegation cells (editor lanes 4/5) — the widget binds param_owner_4/5.
     for lane in range(2):
-        A(f'<circle id="param_owner_{4+lane}" cx="{px(OWNER_X):.2f}" cy="{px(rowY(4+lane)):.2f}" '
+        A(f'<circle id="param_owner_{4+lane}" cx="{px(OWNER_X):.2f}" cy="{px(ctrlY(4+lane)):.2f}" '
           f'r="0.5" fill="none" stroke="none"/>')
     # Direction cells (param_dir_<lane>) — per-lane direction toggle (Fwd/Rev/Pend/PingPong),
     # placed at DIR_X, one per editor lane (0..5). The widget binds a DirCell to each.
     for lane in range(6):
-        A(f'<circle id="param_dir_{lane}" cx="{px(DIR_X):.2f}" cy="{px(rowY(lane)):.2f}" '
+        A(f'<circle id="param_dir_{lane}" cx="{px(DIR_X):.2f}" cy="{px(ctrlY(lane)):.2f}" '
           f'r="0.5" fill="none" stroke="none"/>')
     # Direction gate-mod jacks (input_dir_mod_<lane>) — poly, gate cycles direction. 6 lanes.
     for lane in range(6):
-        A(f'<circle id="input_dir_mod_{lane}" cx="{px(DIR_MOD_X):.2f}" cy="{px(rowY(lane)):.2f}" '
+        A(f'<circle id="input_dir_mod_{lane}" cx="{px(DIR_MOD_X):.2f}" cy="{px(ctrlY(lane)):.2f}" '
           f'r="0.5" fill="none" stroke="none"/>')
     # Delegation gate-mod jacks (input_deleg_mod_<lane>) — poly, gate flips delegation. All 6 lanes.
     for lane in range(6):
-        A(f'<circle id="input_deleg_mod_{lane}" cx="{px(DELEG_MOD_X):.2f}" cy="{px(rowY(lane)):.2f}" '
+        A(f'<circle id="input_deleg_mod_{lane}" cx="{px(DELEG_MOD_X):.2f}" cy="{px(ctrlY(lane)):.2f}" '
           f'r="0.5" fill="none" stroke="none"/>')
     # Probability-out jacks (output_prob_<lane>) — 4 poly prob CV outs.
     for lane in range(4):
-        A(f'<circle id="output_prob_{lane}" cx="{px(PROB_OUT_X):.2f}" cy="{px(rowY(lane)):.2f}" '
+        A(f'<circle id="output_prob_{lane}" cx="{px(PROB_OUT_X):.2f}" cy="{px(ctrlY(lane)):.2f}" '
           f'r="0.5" fill="none" stroke="none"/>')
     A(f'<circle id="light_connect" cx="{px(W_MM*0.5):.2f}" cy="{px(124.0):.2f}" r="0.5" fill="none" stroke="none"/>')
     A('</g>')
