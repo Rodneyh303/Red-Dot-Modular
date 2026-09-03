@@ -66,9 +66,10 @@ struct SpreadResolver {
     };
 
     // The single authority. Pure: same inputs → same output, no hidden state.
-    // Clamps STEP-WISE to match the manager code it replaces (see header note). A term that isn't
-    // present (unconnected CV / macro absent) is skipped entirely — including its clamp — exactly as
-    // the manager's `if (connected)` / `if (hasMacro)` guards do, so an absent term is a true no-op.
+    // Sums the present contributions and clamps ONCE at the end (end-clamp; see header note) — order-
+    // independent, so a large-then-opposite pair keeps its net (no intermediate pinning). A term that
+    // isn't present (unconnected CV / macro absent) is skipped entirely, so an absent term is a true
+    // no-op — exactly as the manager's `if (connected)` / `if (hasMacro)` guards intend.
     static float effective(const Inputs& in) {
         if (in.delegated) {
             // Ceded lane: mirror Macro entirely, ignore own base/CV.
