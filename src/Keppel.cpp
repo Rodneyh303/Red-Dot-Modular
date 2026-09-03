@@ -22,7 +22,7 @@ extern Model* modelKeppel;
 namespace KeppelIds {
     enum ParamIds { BEND_RANGE_PARAM, NUM_PARAMS };
     enum InputIds { PITCH_INPUT, GATE_INPUT, ACCENT_INPUT, VEL_INPUT, NUM_INPUTS };
-    enum OutputIds { NUM_OUTPUTS };
+    enum OutputIds { MONITOR_OUTPUT, NUM_OUTPUTS };
     enum LightIds  { ACTIVE_LIGHT, NUM_LIGHTS };
 }
 
@@ -40,11 +40,18 @@ struct Keppel : Module {
     int   velNormal = 80;
     int   velAccent = 127;
 
+    // Legato past ±bendRange: a single held note+bend can only CLAMP (wrong pitch) there. Default B
+    // (MPE_UTILITY_BUILD_SPEC): re-articulate — re-note on the same member channel so the pitch is
+    // always correct, at the cost of a retrigger. Menu-toggleable to the old CLAMP behaviour (smooth
+    // but capped) for players who patch the step gates and never exceed the range.
+    bool  reArticulateOnExceed = true;
+
     // Per-voice (poly channel) → member-channel assignment + last state, for edge detect + note-off.
     struct VoiceState {
         bool  active     = false; // gate currently high (a note is sounding)
         int   memberCh   = -1;    // MIDI channel index (1..memberCount) or -1
         int   note       = 60;    // latched MIDI note (fixed for the note's lifetime)
+        int   vel        = 80;    // latched note-on velocity (reused when re-articulating past ±range)
         int   lastBend14 = 8192;  // last bend value sent (dedupe held-voice re-sends)
         bool  gatePrev   = false; // previous-block gate for edge detection
     };
@@ -61,12 +68,13 @@ struct Keppel : Module {
     Keppel() {
         using namespace KeppelIds;
         config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
-        configParam(BEND_RANGE_PARAM, 1.f, 12.f, 2.f, "Pitch-bend range", " semitones");
+        configParam(BEND_RANGE_PARAM, 1.f, 48.f, 2.f, "Pitch-bend range", " semitones");
         paramQuantities[BEND_RANGE_PARAM]->snapEnabled = true;
         configInput(PITCH_INPUT,  "Poly pitch (1V/oct)");
         configInput(GATE_INPUT,   "Poly gate");
         configInput(ACCENT_INPUT, "Poly accent gate (→ note-on velocity; unpatched = normal)");
         configInput(VEL_INPUT,    "Poly velocity CV (0–10V → 1–127; overrides accent when patched)");
+        configOutput(MONITOR_OUTPUT, "Reverse-calc monitor: reconstructed pitch CV (scope vs PITCH in)");
         for (int i = 0; i < 16; ++i) memberOwner[i] = -1;
         midiOut.channel = -1;     // we set each message's channel ourselves (per-voice MPE)
     }
@@ -171,6 +179,7 @@ struct Keppel : Module {
         }
 
         const int channels = inputs[PITCH_INPUT].getChannels();
+        outputs[MONITOR_OUTPUT].setChannels(channels);
         bool anyActive = false;
 
         for (int v = 0; v < 16; ++v) {
@@ -207,7 +216,7 @@ struct Keppel : Module {
                     // BEND FIRST, THEN note-on (note starts at pitch, not sliding in).
                     sendBend((uint8_t)ch, pw14, args.frame);
                     sendNoteOn((uint8_t)ch, (uint8_t)note, (uint8_t)vel, args.frame);
-                    vs.active = true; vs.memberCh = ch; vs.note = note; vs.lastBend14 = pw14;
+                    vs.active = true; vs.memberCh = ch; vs.note = note; vs.vel = vel; vs.lastBend14 = pw14;
                 }
             } else if (falling) {
                 if (vs.memberCh >= 0) {
@@ -216,15 +225,42 @@ struct Keppel : Module {
                 }
                 vs.active = false; vs.memberCh = -1;
             } else if (gateHigh && vs.active && vs.memberCh >= 0) {
-                // Held: continuous bend tracking (option 1). The MIDI note stays latched (vs.note) and
-                // only the per-voice bend moves, so glides/vibrato within ±bendRange play smoothly with
-                // no re-articulation. Beyond the range, bend14 clamps at the extreme. Re-send only on a
-                // change (dedupe) to avoid flooding the MIDI stream at audio rate.
-                const int pw14 = dotModular::mpe::bend14FromNote(pitchV, vs.note, (float)bendRange);
-                if (pw14 != vs.lastBend14) {
-                    sendBend((uint8_t)vs.memberCh, pw14, args.frame);
-                    vs.lastBend14 = pw14;
+                const float offset = dotModular::mpe::offsetFromNoteSemis(pitchV, vs.note);
+                if (reArticulateOnExceed && std::fabs(offset) > (float)bendRange) {
+                    // Legato landmine: the live pitch has drifted past ±bendRange, where a single held
+                    // note+bend can only CLAMP (wrong pitch). Re-articulate on the SAME member channel:
+                    // note-off the old note, then note-on the new nearest note at a centred bend, reusing
+                    // the voice's latched velocity. Correct pitch at the cost of a retrigger
+                    // (MPE_UTILITY_BUILD_SPEC default B). Re-noting recentres the offset near 0, so this
+                    // does NOT oscillate at the boundary.
+                    const int newNote = dotModular::mpe::noteFor(pitchV);
+                    const int newBend = dotModular::mpe::bend14For(pitchV, (float)bendRange);
+                    sendNoteOff((uint8_t)vs.memberCh, (uint8_t)vs.note, args.frame);
+                    sendBend((uint8_t)vs.memberCh, newBend, args.frame);   // bend before note-on
+                    sendNoteOn((uint8_t)vs.memberCh, (uint8_t)newNote, (uint8_t)vs.vel, args.frame);
+                    vs.note = newNote; vs.lastBend14 = newBend;
+                } else {
+                    // Continuous bend tracking (option 1): the MIDI note stays latched (vs.note) and only
+                    // the per-voice bend moves, so glides/vibrato within ±bendRange play smoothly with no
+                    // re-articulation. Beyond the range (re-articulation OFF), bend14 clamps at the
+                    // extreme. Re-send only on a change (dedupe) to avoid flooding at audio rate.
+                    const int pw14 = dotModular::mpe::bend14FromNote(pitchV, vs.note, (float)bendRange);
+                    if (pw14 != vs.lastBend14) {
+                        sendBend((uint8_t)vs.memberCh, pw14, args.frame);
+                        vs.lastBend14 = pw14;
+                    }
                 }
+            }
+
+            // Reverse-calc MONITOR: the 1V/oct pitch an ideal MPE receiver reconstructs from what we
+            // actually emit (latched note + last bend, at the current range). Patch to a scope alongside
+            // PITCH in — they overlay to sub-cent when Keppel is correct; any gap (e.g. a clamped slide
+            // with re-articulation OFF) is visible. Internal ground truth for the round-trip test.
+            if (present) {
+                const float mv = (vs.active && vs.memberCh >= 0)
+                    ? dotModular::mpe::reconstructVolts(vs.note, vs.lastBend14, (float)bendRange)
+                    : 0.f;
+                outputs[MONITOR_OUTPUT].setVoltage(mv, v);
             }
 
             vs.gatePrev = gateHigh;
@@ -240,6 +276,7 @@ struct Keppel : Module {
         json_object_set_new(root, "memberCount", json_integer(memberCount));
         json_object_set_new(root, "velNormal", json_integer(velNormal));
         json_object_set_new(root, "velAccent", json_integer(velAccent));
+        json_object_set_new(root, "reArticulateOnExceed", json_boolean(reArticulateOnExceed));
         return root;
     }
     void dataFromJson(json_t* root) override {
@@ -256,6 +293,8 @@ struct Keppel : Module {
         };
         readVel("velNormal", velNormal);
         readVel("velAccent", velAccent);
+        if (json_t* j = json_object_get(root, "reArticulateOnExceed"))
+            reArticulateOnExceed = json_boolean_value(j);
         midiOut.channel = -1;
         needHandshake = true;   // re-handshake after a patch load
     }
@@ -283,6 +322,11 @@ struct KeppelWidget : ModuleWidget,
         bindInput<PJ301MPort>("input_accent", KeppelIds::ACCENT_INPUT);
         bindInput<PJ301MPort>("input_vel",    KeppelIds::VEL_INPUT);
         bindLight<SmallLight<GreenLight>>("light_active", KeppelIds::ACTIVE_LIGHT);
+        // Reverse-calc monitor jack. Needs an `output_monitor` marker in the Keppel panel SVGs to render
+        // (a small Phase-2 panel task); until it's added, the OUTPUT still exists and drives — it's just
+        // not shown on the panel. Guarded so the module compiles/loads either way.
+        if (findNamed("output_monitor"))
+            bindOutput<PJ301MPort>("output_monitor", KeppelIds::MONITOR_OUTPUT);
 
         // MIDI device panel on the midi_display marker.
         if (auto* s = findNamed("midi_display")) {
@@ -324,6 +368,8 @@ struct KeppelWidget : ModuleWidget,
                         [mod, n]() { mod->velAccent = n; }));
                 }
             }));
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createBoolPtrMenuItem("Re-articulate on big slides", "", &mod->reArticulateOnExceed));
         menu->addChild(createMenuItem("Panic (all notes off)", "", [mod]() { mod->allNotesOff(-1); }));
         menu->addChild(createMenuItem("Re-send MPE config", "", [mod]() { mod->needHandshake = true; }));
     }
