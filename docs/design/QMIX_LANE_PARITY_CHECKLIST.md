@@ -91,3 +91,30 @@ in code, so this is pattern-application, not new design:
 
 All of the above are covered by the count-constant + no-wedge + persistence rules above: add the ids as
 uniform per-lane blocks, update any hardcoded per-lane/per-voice bounds, and persist any new state.
+
+## The blend — the ONE genuinely new bit (a per-voice mux, downstream of CA)
+The only new logic is a per-voice SELECT between two values that already exist; it is NOT new signal
+generation. Critically, it sits AFTER Change Alley: **CA routes BOTH operands before the blend runs.**
+
+Signal flow (per voice v):
+1. **Generate** — rhythm/melody produce the generated pitch (unchanged).
+2. **CA routes the INPUT CV** — the external input CV rides CA's melody-source path; CA's per-voice
+   permutation (`melodySrc[v]`, scattered) decides which source each voice reads. (input CV = a CA
+   melody source — CONTEXT_RECOVERY.)
+3. **CA routes the Q-MIX PROBABILITY** — a NEW green source-select plane (`qmixSrc[v]`, row-radio like
+   white/red), scattered per voice. Follows CA's existing pin/scatter pattern: white=rhythm, red=melody
+   → +green=q-mix; the 8 scatter streams (Intra/Inter × r/m × dom/cod) become 12 (+ q-mix, the 2×3×2
+   product), each keyed `STREAM_CA + i`. So CA gets q-mix by PARITY too, not a special case.
+4. **Quantize** the CA-routed per-voice input CV (the real `SequencerEngine::quantize`, incl. non-12).
+5. **Blend (the new bit)** — per voice:
+   `pick = philoxSourceSelect(v) < qmixProb_CA(v) ? quantizedInputCV_CA(v) : generatedPitch(v);`
+   0% = pure generated, 100% = pure quantized-input (== Mode F), in-between = the heterophony blend.
+
+Both mux operands AND the threshold are CA outputs — "just choosing between values we already have,"
+positioned downstream of CA. It's the same substitution seam as Mode F's `quantiserPitchSource`, made
+probabilistic and per-voice.
+
+**The one correctness rule (not new code, a choice to get right):** whichever value the mux picks is the
+one that must flow into the correlation bookkeeping — `markSemi`/`lastSemitone` (read by CA + Lantern) —
+exactly as Mode C/D/F already mark the quantized value. Mark the CHOSEN value per voice so "what we
+picked" and "what CA/Lantern see" never drift.
