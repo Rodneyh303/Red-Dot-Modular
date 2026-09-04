@@ -20,19 +20,24 @@ stream ("N RNGs for the price of one instance"). Three orthogonal address knobs:
 
 So the reserved `ctr[2..3]` is a genuinely free fourth axis nobody has touched.
 
-## DECISION (2026-09-03)
-**q-mix per-voice uses cursor-packing NOW — consistent with rhythm/melody.** When the per-voice
+## DECISION (2026-09-03): cursor-packing — nonce SET ASIDE (not just deferred)
+**q-mix per-voice uses cursor-packing, consistent with rhythm/melody.** When the per-voice
 source-select *consumer* lands, its draw mirrors polyMelody (`philoxSourceSelectAt(pos, c++)` per
-voice), not the nonce. q-mix does **not** diverge to nonce addressing on its own.
+voice). This is the CORRECT architecture here, not a stopgap — see why the nonce isn't motivated.
 
-## Deferred: migrate ALL rng to nonce addressing together (if we do it at all)
-Nonce addressing (`ctr[2..3] = voice`) is the *cleaner* per-voice model: each voice becomes an
-independent 2-D address `(pos, voice)` off the same key — individually reversible in `pos`, and
-voice-count-agnostic (no cursor-layout shift when voice count changes). That's a nicer property
-for the reverse/scrub story.
+## Why the nonce is not motivated (corrected rationale)
+The nonce's only advantages over cursor-packing are per-voice-**independent reversibility** and a
+voice-count-agnostic layout. Both matter ONLY if voices are reversed / re-indexed independently.
+**They are not.** There is ONE dice, and it reverses/reseeds rhythm + melody + CA + q-mix TOGETHER
+— reversal is a single global action, never per-voice. (Per-voice reverse/scrub was never a design
+goal; an earlier draft of this note wrongly leaned on it.) Cursor-packing already gives decorrelated
+per-voice streams, which is all the design needs. Migrating a working, tested generation core to the
+nonce would buy an unused property at pure risk — so it's set aside, not scheduled.
 
-BUT if we adopt it, adopt it for **all** streams (rhythm, melody, CA, q-mix) in **one** pass — a
-mixed convention (q-mix on the nonce, the rest cursor-packed) would be worse than either uniform
-choice. What it needs: an `at(pos, nonce)` / `block(blockPos, nonce)` addressing variant, then
-route each stream's per-voice draw through it. Unit-test the same way: assert per-voice streams are
-mutually independent and each independently reversible.
+## The ONLY thing that would revive it
+A feature that reverses or re-indexes individual voices independently of the others (not on the
+roadmap, not envisaged). If that ever appears: adopt the nonce for **all** per-voice streams
+(rhythm/melody/q-mix) in **one** pass — a mixed convention would be worse than either uniform choice
+— via an `at(pos, nonce)` / `block(blockPos, nonce)` variant. (CA separates by *key*, a stream axis,
+so it is orthogonal to this and likely stays as-is even then.) Until such a feature exists, this
+stays theory.

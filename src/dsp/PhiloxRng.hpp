@@ -110,9 +110,9 @@ namespace seed {
 // ── PhiloxRng ─────────────────────────────────────────────────────────────────
 // Stateful facade over the stateless core, same surface as SquaresRng. The 64-bit
 // stream position is packed into ctr[0..1]; ctr[2..3] carry a fixed nonce (0) so
-// the full 128-bit counter space is available if ever needed. The nonce is UNUSED today
-// (rhythm/melody per-voice = cursor-packing; CA = per-index keys). Using it for a per-voice
-// dimension is a DEFERRED all-rng migration, not a per-stream change — see
+// the full 128-bit counter space is available if ever needed. The nonce is UNUSED and stays so:
+// per-voice is cursor-packed (rhythm/melody), CA separates by key, and reverse is a single global
+// dice — so per-voice nonce addressing buys nothing here. Set aside; see
 // docs/design/PHILOX_NONCE_ADDRESSING.md.
 struct PhiloxRng {
     // ── Standard C++ UniformRandomBitGenerator interface ───────────────────────
