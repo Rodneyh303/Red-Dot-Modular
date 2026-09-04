@@ -51,17 +51,19 @@ namespace SandsGrid {
     static constexpr float laneCentre(int lane) { return LANE_TOP + (lane + 0.5f) * LANE_H; }
 
     // ── q-mix visual lane (Option B geometry) — GEOMETRY ONLY ────────────────────
-    // This header owns lane GEOMETRY (tops, heights); lane ORDER + the q-mix slot index
-    // live in dsp/LaneMapping.hpp (the single source of truth for ordering). Do NOT bump
-    // the *_LANES DATA counts above for the visual slot — see LaneMapping for why.
+    // This header owns lane GEOMETRY (tops, heights); lane ORDER + the q-mix strand live in
+    // dsp/LaneMapping.hpp (single source of truth). q-mix is a FULL lane (its own strand +
+    // LOR + spread + prob-out), so when it lands the DATA counts genuinely grow: MONO/EAST
+    // 6→7, POLY 4→5 — atomically with the engine q-mix strand + its arrays (never bump the
+    // counts before the arrays exist). Option B also drops lane height 14→13.
     //
-    // Option B adds one editor SLOT (q-mix) and drops lane height 14→13. *_SLOTS = data
-    // lanes + 1; the panel RECESS height comes from mono/polyEditorHeight() so it matches
-    // the 7-band generators. slotCentre() takes an editor SLOT index (from LaneMapping's
-    // laneSlot()); it does not know which slot is q-mix — that's ordering, not geometry.
-    static constexpr int   MONO_SLOTS  = MONO_LANES + 1;  // 7 editor slots
+    // *_SLOTS below == the post-q-mix lane counts (data lanes + q-mix). The panel RECESS
+    // height comes from mono/polyEditorHeight() so it matches the 7-band generators. During
+    // the geometry PREVIEW (before the q-mix strand exists) the generators leave slot 2 empty
+    // via LaneMapping::laneSlot(); once the strand lands, slot 2 is just a full lane like the rest.
+    static constexpr int   MONO_SLOTS  = MONO_LANES + 1;  // 7  (== post-q-mix MONO_LANES)
     static constexpr int   EAST_SLOTS  = EAST_LANES + 1;  // 7
-    static constexpr int   POLY_SLOTS  = POLY_LANES + 1;  // 5
+    static constexpr int   POLY_SLOTS  = POLY_LANES + 1;  // 5  (q-mix is per-voice → a poly lane)
     static constexpr float QMIX_LANE_H = 13.f;            // Option B lane height (vs current 14)
     static constexpr float slotCentre(int slot)  { return LANE_TOP + (slot + 0.5f) * QMIX_LANE_H; }
     static constexpr float monoEditorHeight()    { return MONO_SLOTS * QMIX_LANE_H; }  // 91  (bottom 105)

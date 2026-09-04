@@ -90,53 +90,48 @@ constexpr const int* SPREAD_LANE_TO_EDITOR = ENGINE_LANE_TO_EDITOR;
 // ─────────────────────────────────────────────────────────────────────────────
 // q-mix lane (PLANNED — inert tables; the live tables above are unchanged) ─────
 //
-// q-mix inserts ONE editor lane at index 2 (after MEL/OCT):
-//     0 MEL  1 OCT  2 QMIX  3 REST  4 ACCENT  5 VARIATION  6 LEGATO   (7 editor lanes)
-// so every editor index at/after 2 shifts +1. q-mix is NOT an L/O/R strand — it is driven
-// by its OWN Philox stream (STREAM_SOURCE_SELECT = 3, see dsp/PhiloxRng.hpp), a per-voice
-// generated-vs-external source pick. So its editor lane maps to a STREAM, not a strand.
+// q-mix is a FULL Sands lane: same LEN/OFF/ROT + spread + per-step editing + CV/attens +
+// prob-out as MEL/OCT/REST/ACC. That parity is the ENTIRE POINT of adding it to the Sands
+// editors. The ONE thing special about it: its values are drawn from q-mix's OWN Philox
+// stream (STREAM_SOURCE_SELECT = 3, see dsp/PhiloxRng.hpp), not the shared rhythm/melody
+// streams — so "which notes" (q-mix) decorrelates from "where they interleave" (melody).
 //
-// These *_QMIX tables are the drop-in replacements for the live tables above; swap the
-// consumers over to them ATOMICALLY with the editor drawing 7 slots (SandsVisualEditorV4)
-// and the generators' order arrays. Until then they are inert (nothing references them),
-// so the current build is unaffected.
-constexpr int STRAND_NONE       = -1;   // sentinel: editor lane has no engine strand (q-mix)
-constexpr int QMIX_EDITOR_LANE  = 2;    // q-mix's editor lane index
-constexpr int NUM_EDITOR_LANES_QMIX = 7;
+// It inserts as editor lane 2 (after MEL/OCT), so every editor index at/after 2 shifts +1:
+//     0 MEL  1 OCT  2 QMIX  3 REST  4 ACCENT  5 VARIATION  6 LEGATO
+// q-mix is per-voice → it's a POLY lane too. Because it's a REAL lane with data, the DATA
+// counts DO grow (SandsGrid MONO/EAST 6→7, POLY 4→5) — but ONLY together with the engine
+// q-mix strand + its param/per-voice arrays. One atomic feature: strand + arrays + counts +
+// editor + these mappings. (Correction: an earlier note here modelled q-mix as a dataless
+// slot with STRAND_NONE — wrong. It has a full strand; the counts do go up.)
+//
+// Planned strand enum — QMIX inserted at 2, editor-aligned, so MONO_LANE_TO_STRAND stays the
+// IDENTITY (editor lane == strand index):
+//     STRAND_MELODY 0, OCTAVE 1, QMIX 2, RHYTHM 3, ACCENT 4, VARIATION 5, LEGATO 6; NUM 7
+// STRAND_QMIX generates off STREAM_SOURCE_SELECT; every other strand off rhythm/melody.
+constexpr int  QMIX_EDITOR_LANE = 2;    // q-mix's editor lane (and, editor-aligned, its strand)
+constexpr int  NUM_STRANDS_QMIX = 7;
+constexpr int  POLY_NONE        = -1;   // mono-only editor lane has no poly engine lane (VAR/LEG)
+constexpr uint64_t QMIX_STREAM_KEY = 3; // == redDot::seed::STREAM_SOURCE_SELECT
 
-// Existing editor lane (0..5, no q-mix) → new editor slot (skip slot 2). This is the
-// generators' ESLOT=[0,1,3,4,5,6] expressed as a function; the ONE place this shift lives.
+// Editor lane (7) → engine strand: IDENTITY under the editor-aligned enum above.
+constexpr int MONO_LANE_TO_STRAND_QMIX[7] = { 0, 1, 2, 3, 4, 5, 6 };
+
+// Poly engine lane → editor lane, WITH q-mix as a poly lane (appended at poly index 4, editor 2).
+//   REST→3  MEL→0  OCT→1  ACC→4  QMIX→2          (was {2,0,1,3})
+constexpr int ENGINE_LANE_TO_EDITOR_QMIX[5] = { 3, 0, 1, 4, 2 };
+// Inverse over 7 editor lanes; VAR/LEG are mono-only (POLY_NONE).
+constexpr int EDITOR_TO_ENGINE_LANE_QMIX[7] = { 1, 2, 4, 0, 3, POLY_NONE, POLY_NONE };
+
+// laneSlot() — the generators' ESLOT=[0,1,3,4,5,6] as a function. INTERIM ONLY: it exists so
+// the geometry-preview generators can leave editor slot 2 EMPTY until the q-mix strand lands.
+// In the finished feature q-mix is just lane 2 with full data — no gap, no laneSlot needed.
 constexpr int laneSlot(int editorLaneNoQmix) {
     return editorLaneNoQmix < QMIX_EDITOR_LANE ? editorLaneNoQmix : editorLaneNoQmix + 1;
 }
 
-// Editor lane (7, incl. QMIX) → engine strand. QMIX = STRAND_NONE (its data is the q-mix
-// stream, handled separately). Consumers that index MONO_LANE_TO_STRAND[l] must guard the
-// sentinel (skip strand data for the q-mix lane) — see the worklist in the branch notes.
-constexpr int MONO_LANE_TO_STRAND_QMIX[7] = {
-    STRAND_MELODY,   // 0 MEL
-    STRAND_OCTAVE,   // 1 OCT
-    STRAND_NONE,     // 2 QMIX  ← q-mix stream, not a strand
-    STRAND_RHYTHM,   // 3 REST
-    STRAND_ACCENT,   // 4 ACCENT
-    STRAND_VARIATION,// 5 VARIATION
-    STRAND_LEGATO,   // 6 LEGATO
-};
-
-// Poly engine lane (0 REST 1 MEL 2 OCT 3 ACC) → editor lane, WITH q-mix at 2 (all +1 past slot 2).
-//   REST→3  MEL→0  OCT→1  ACC→4        (was {2,0,1,3})
-constexpr int ENGINE_LANE_TO_EDITOR_QMIX[4] = { 3, 0, 1, 4 };
-// Inverse over 7 editor lanes; QMIX + VAR/LEG have no poly engine lane (STRAND_NONE).
-constexpr int EDITOR_TO_ENGINE_LANE_QMIX[7] = { 1, 2, STRAND_NONE, 0, 3, STRAND_NONE, STRAND_NONE };
-
-// q-mix's RNG stream key (== redDot::seed::STREAM_SOURCE_SELECT; kept as a literal here to
-// avoid pulling PhiloxRng.hpp into this ordering header).
-constexpr uint64_t QMIX_STREAM_KEY = 3;
-
-// internal consistency (compile-time): the shift + round-trips hold.
-static_assert(laneSlot(1) == 1 && laneSlot(2) == 3 && laneSlot(5) == 6, "qmix slot shift");
-static_assert(ENGINE_LANE_TO_EDITOR_QMIX[0] == 3 && EDITOR_TO_ENGINE_LANE_QMIX[3] == 0, "qmix REST round-trip");
-static_assert(MONO_LANE_TO_STRAND_QMIX[QMIX_EDITOR_LANE] == STRAND_NONE, "qmix lane has no strand");
+static_assert(MONO_LANE_TO_STRAND_QMIX[QMIX_EDITOR_LANE] == 2, "qmix is strand 2 (editor-aligned)");
+static_assert(ENGINE_LANE_TO_EDITOR_QMIX[4] == 2 && EDITOR_TO_ENGINE_LANE_QMIX[2] == 4, "qmix poly<->editor round-trip");
+static_assert(laneSlot(1) == 1 && laneSlot(2) == 3, "interim slot shift");
 
 // ─── NOTE: ALIGN THE ORDERS WHERE POSSIBLE ───────────────────────────────────
 // Of the orderings in the header block, three are already collapsed to identity (engine
@@ -152,5 +147,9 @@ static_assert(MONO_LANE_TO_STRAND_QMIX[QMIX_EDITOR_LANE] == STRAND_NONE, "qmix l
 // align with lane order. Recommendation: align the poly engine order in a dedicated pass;
 // until then keep the *_QMIX tables above as the single q-mix-aware source and mirror them
 // in the generators rather than hand-rolling a third copy.
+// Because q-mix is itself a NEW poly lane, landing it already touches the poly data model
+// (polyLen/macroBase/VoiceResolver/PROB_OUT) — so folding the poly-order alignment INTO the
+// q-mix pass (making all orderings identity with q-mix at index 2 everywhere) is worth weighing
+// against doing it separately; either way, do it deliberately, not by accident.
 
 } // namespace dotModular
