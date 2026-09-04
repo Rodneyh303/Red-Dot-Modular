@@ -74,6 +74,15 @@
 <circle cx="183.1" cy="214.1" r="9.4" fill="#0f1114" stroke="#3a4048" stroke-width="1.25"/><line x1="183.1" y1="214.1" x2="183.1" y2="207.0" stroke="#3a4048" stroke-width="1"/>
 <circle cx="209.7" cy="214.1" r="11.5" fill="#0b0d10" stroke="#4a5058" stroke-width="1"/><circle cx="209.7" cy="214.1" r="5.0" fill="#101216"/>
 <circle cx="236.2" cy="214.1" r="9.4" fill="#0f1114" stroke="#c8960c" stroke-width="1.25"/><line x1="236.2" y1="214.1" x2="236.2" y2="207.0" stroke="#c8960c" stroke-width="1"/>
+<circle cx="17.7" cy="137.3" r="11.5" fill="#0b0d10" stroke="#4a5058" stroke-width="1"/><circle cx="17.7" cy="137.3" r="5.0" fill="#101216"/>
+<circle cx="44.3" cy="137.3" r="11.5" fill="#0b0d10" stroke="#4a5058" stroke-width="1"/><circle cx="44.3" cy="137.3" r="5.0" fill="#101216"/>
+<circle cx="70.9" cy="137.3" r="11.5" fill="#0b0d10" stroke="#4a5058" stroke-width="1"/><circle cx="70.9" cy="137.3" r="5.0" fill="#101216"/>
+<circle cx="100.4" cy="137.3" r="9.4" fill="#0f1114" stroke="#c8960c" stroke-width="1.25"/><line x1="100.4" y1="137.3" x2="100.4" y2="130.2" stroke="#c8960c" stroke-width="1"/>
+<circle cx="127.0" cy="137.3" r="9.4" fill="#0f1114" stroke="#c8960c" stroke-width="1.25"/><line x1="127.0" y1="137.3" x2="127.0" y2="130.2" stroke="#c8960c" stroke-width="1"/>
+<circle cx="153.5" cy="137.3" r="9.4" fill="#0f1114" stroke="#c8960c" stroke-width="1.25"/><line x1="153.5" y1="137.3" x2="153.5" y2="130.2" stroke="#c8960c" stroke-width="1"/>
+<circle cx="183.1" cy="137.3" r="9.4" fill="#0f1114" stroke="#3a4048" stroke-width="1.25"/><line x1="183.1" y1="137.3" x2="183.1" y2="130.2" stroke="#3a4048" stroke-width="1"/>
+<circle cx="209.7" cy="137.3" r="11.5" fill="#0b0d10" stroke="#4a5058" stroke-width="1"/><circle cx="209.7" cy="137.3" r="5.0" fill="#101216"/>
+<circle cx="236.2" cy="137.3" r="9.4" fill="#0f1114" stroke="#c8960c" stroke-width="1.25"/><line x1="236.2" y1="137.3" x2="236.2" y2="130.2" stroke="#c8960c" stroke-width="1"/>
 </g>
 <g inkscape:label="components" inkscape:groupmode="layer">
 <circle id="input_0" cx="17.72" cy="60.53" r="0.5" fill="none" stroke="none"/>

@@ -190,6 +190,16 @@ def gen_mono(dark):
         A(D.trim(SPR_BASE_X,y,t,t["wellring"]))
         A(D.jack(SPR_CV_X,y,t))
         A(D.trim(SPR_ATTEN_X,y,t,t["gold"]))
+    # q-mix — a FULL lane (same complement as MEL/OCT): 3 CV jacks + 3 attens + spread, at
+    # editor slot 2. Component markers use NEW q-mix param/CV ids that land with the engine
+    # strand (LaneMapping.hpp) — visual controls drawn here so the geometry is provisioned for
+    # the real lane, not an empty gap.
+    yq=laneY(2)
+    for x in JACK_X:  A(D.jack(x,yq,t))
+    for x in ATTEN_X: A(D.trim(x,yq,t,t["gold"]))
+    A(D.trim(SPR_BASE_X,yq,t,t["wellring"]))
+    A(D.jack(SPR_CV_X,yq,t))
+    A(D.trim(SPR_ATTEN_X,yq,t,t["gold"]))
     A('</g>')
     # ── SvgPanelKit component layer. Indices mirror MonsoonSandsVisualExpander.hpp:
     #    CV jacks   cvId(lane,p)   = CV_START(0)  + lane*3 + p   inputs 0..17
