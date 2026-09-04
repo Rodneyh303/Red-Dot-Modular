@@ -13,6 +13,7 @@ void PatternEngine::reset() {
     // (default 0 → a fixed reproducible starting sequence, counter at 0).
     seedRhythmPhilox(rhythmSeedFloat);
     seedMelodyPhilox(melodySeedFloat);
+    seedSourceSelectPhilox(sourceSelectSeedFloat);
 
     // strands must not be all-zero or module is silent until dice/phrase
     for (int i = 0; i < 16; ++i) {
@@ -445,6 +446,15 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     // Only consume the melody roll flags if melody was allowed to draw (see rhythm note above).
     if (drawAllowedM) { melodyRollPending = false; melodyReseedRollPending = false; }
     if (shouldRedrawM) redrawMelody(in);
+
+    // q-mix (source-select): its OWN reseed action, independent of melody (separate dice for
+    // "which notes" vs "where they interleave"). Draws are addressable at consume time, so a
+    // reseed only re-keys the stream — no pre-draw buffer to redraw.
+    if (!in.locked && sourceSelectReseedRollPending) {
+        if (sourceSelectReseedRollFull) { seedSourceSelectPhiloxFull(); }
+        else { sourceSelectSeedFloat = sourceSelectReseedRollFloat; seedSourceSelectPhilox(sourceSelectSeedFloat); }
+        sourceSelectReseedRollPending = false;
+    }
     if (drawAllowedM) melodyPendingLast = false;   // one-shot: consumed only if this stream drew (held otherwise)
 
     // ── Dice-undo capture (item 4): record the AFTER (seedFloat, counter) now that the roll's

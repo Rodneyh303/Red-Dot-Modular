@@ -343,6 +343,7 @@ struct PatternEngine {
     // ── Seed management ───────────────────────────────────────────────────────
     float rhythmSeedFloat  = 0.f;
     float melodySeedFloat  = 0.f;
+    float sourceSelectSeedFloat = 0.f;   // q-mix's OWN seed — independent dice from melody
     bool  rhythmSeedPending = false;
     bool  melodySeedPending = false;
     float rhythmSeedPendingFloat = 0.f;
@@ -362,14 +363,17 @@ struct PatternEngine {
     // use this — auditioning stays in a controlled space (no entropy injection).
     bool  rhythmReseedRollPending = false;
     bool  melodyReseedRollPending = false;
+    bool  sourceSelectReseedRollPending = false;
     float rhythmReseedRollFloat = 0.f;
     float melodyReseedRollFloat = 0.f;
+    float sourceSelectReseedRollFloat = 0.f;
     // When true, the reseed-roll uses FULL 64-bit internal entropy (the float is
     // ignored). When false, it reseeds from the (lower-precision) CV-derived
     // float. CV seeds are intentionally low-precision (0..10V → seed); internal
     // reseeds get the full state space.
     bool  rhythmReseedRollFull = false;
     bool  melodyReseedRollFull = false;
+    bool  sourceSelectReseedRollFull = false;
     int   rhythmMode = 0;  // 0=dice, 1=realtime
     int   melodyMode = 0;
 
@@ -486,7 +490,6 @@ struct PatternEngine {
     inline void seedMelodyPhilox(float seedFloat) {
         melodyPhilox.seed64(redDot::seed::deriveKey(seedFloat, redDot::seed::STREAM_MELODY));
         melodyDrawCtr = 0;
-        seedSourceSelectPhilox(seedFloat);   // q-mix tracks the melody seed float (+3 stream = independent)
     }
     // q-mix source-select: reuses the melody seed float; the +STREAM_SOURCE_SELECT offset makes it
     // an INDEPENDENT stream (a dedicated q-mix seed can be added later for separate reseed control).
@@ -495,7 +498,7 @@ struct PatternEngine {
         sourceSelectDrawCtr = 0;
     }
     inline void seedRhythmPhiloxFull() { rhythmPhilox.seed64(rack::random::u64()); rhythmDrawCtr = 0; }
-    inline void seedMelodyPhiloxFull() { melodyPhilox.seed64(rack::random::u64()); melodyDrawCtr = 0; seedSourceSelectPhiloxFull(); }
+    inline void seedMelodyPhiloxFull() { melodyPhilox.seed64(rack::random::u64()); melodyDrawCtr = 0; }
     inline void seedSourceSelectPhiloxFull() { sourceSelectPhilox.seed64(rack::random::u64()); sourceSelectDrawCtr = 0; }
 
     inline float philoxRhythm() {
@@ -687,6 +690,7 @@ struct PatternEngine {
     void setPendingRhythmReseedRoll(float seedValue, bool full) { rhythmReseedRollFloat = seedValue; rhythmReseedRollFull = full; rhythmReseedRollPending = true; }
     /// Arm a melody RESEED-ROLL.
     void setPendingMelodyReseedRoll(float seedValue, bool full) { melodyReseedRollFloat = seedValue; melodyReseedRollFull = full; melodyReseedRollPending = true; }
+    void setPendingSourceSelectReseedRoll(float seedValue, bool full) { sourceSelectReseedRollFloat = seedValue; sourceSelectReseedRollFull = full; sourceSelectReseedRollPending = true; }
 
     /// Check if a rhythm dice action (seed OR roll OR trial OR reseed-roll) is pending.
     bool isRhythmSeedPending() const { return rhythmSeedPending || rhythmRollPending || rhythmReseedRollPending; }
