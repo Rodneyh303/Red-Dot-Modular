@@ -346,8 +346,10 @@ struct PatternEngine {
     float sourceSelectSeedFloat = 0.f;   // q-mix's OWN seed — independent dice from melody
     bool  rhythmSeedPending = false;
     bool  melodySeedPending = false;
+    bool  sourceSelectSeedPending = false;
     float rhythmSeedPendingFloat = 0.f;
     float melodySeedPendingFloat = 0.f;
+    float sourceSelectSeedPendingFloat = 0.f;
     // Pending ROLL (dice press) — advance the RNG and redraw WITHOUT reseeding.
     // Distinct from a seed-pending, which reseeds for reproducibility. A dice
     // press should walk the RNG forward (A/B morph), not reset to a fixed seed
@@ -661,6 +663,11 @@ struct PatternEngine {
     void setPendingMelodySeed(float seedValue) {
         melodySeedPendingFloat = seedValue;
         melodySeedPending = true;
+    }
+    // q-mix reproducible (A=B) external-seed path — the parallel to setPendingMelodySeed.
+    void setPendingSourceSelectSeed(float seedValue) {
+        sourceSelectSeedPendingFloat = seedValue;
+        sourceSelectSeedPending = true;
     }
 
     /// Arm a rhythm ROLL (dice press) — redraw from the advancing RNG at the next

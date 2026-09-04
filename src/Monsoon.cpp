@@ -382,6 +382,7 @@ float Monsoon::semitoneToVolts(int semitone) {
                     const float s = sampleSeedFromSource();
                     if (reseedR) engine.pe.setPendingRhythmSeed(s);
                     if (reseedM) engine.pe.setPendingMelodySeed(s);
+                    engine.pe.setPendingSourceSelectSeed(s);   // q-mix shares the single SEED jack, ungated — consistent with CA
                     if (expanderManager.cachedChangeAlleyV2)
                         expanderManager.cachedChangeAlleyV2->reseedCorrKeys(s);
                 } else {
@@ -389,6 +390,7 @@ float Monsoon::semitoneToVolts(int semitone) {
                     if (reseedM) engine.pe.setPendingMelodyReseedRoll(0.f, /*full=*/true);
                     // CA mirrors rhythm/melody: unpatched -> full internal entropy (not the
                     // lossy 0..10 float), keeping all three families consistent.
+                    engine.pe.setPendingSourceSelectReseedRoll(0.f, /*full=*/true);   // q-mix — consistent with CA
                     if (expanderManager.cachedChangeAlleyV2)
                         expanderManager.cachedChangeAlleyV2->seedCorrKeysInternal();
                 }

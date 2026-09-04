@@ -450,7 +450,11 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     // q-mix (source-select): its OWN reseed action, independent of melody (separate dice for
     // "which notes" vs "where they interleave"). Draws are addressable at consume time, so a
     // reseed only re-keys the stream — no pre-draw buffer to redraw.
-    if (!in.locked && sourceSelectReseedRollPending) {
+    if (!in.locked && sourceSelectSeedPending) {                 // reproducible (external SEED jack, shared value)
+        sourceSelectSeedFloat = sourceSelectSeedPendingFloat;
+        seedSourceSelectPhilox(sourceSelectSeedFloat);
+        sourceSelectSeedPending = false;
+    } else if (!in.locked && sourceSelectReseedRollPending) {    // morph (internal entropy)
         if (sourceSelectReseedRollFull) { seedSourceSelectPhiloxFull(); }
         else { sourceSelectSeedFloat = sourceSelectReseedRollFloat; seedSourceSelectPhilox(sourceSelectSeedFloat); }
         sourceSelectReseedRollPending = false;
