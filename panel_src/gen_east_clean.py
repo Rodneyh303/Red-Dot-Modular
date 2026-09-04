@@ -208,6 +208,11 @@ def gen(dark):
         trim(SPREAD_X,y,t["teal"])
     # VARIATION (row 4) / LEGATO (row 5): LEN/OFF/ROT only — no SPR jack, no spread knob
     # (spread does not apply to these mono-strand lanes). Attens in gold like the others.
+    # q-mix — a FULL spread lane (5th), same complement as MEL/OCT/REST/ACC, at editor slot 2.
+    yq=rowY(2)
+    for x in JACK_X:  jack(x,yq)
+    for x in ATTEN_X: trim(x,yq,t["gold"])
+    trim(SPREAD_X,yq,t["teal"])
     for row in range(N, N+2):
         y=ctrlY(row)
         for x in JACK_X[:3]:  jack(x,y)

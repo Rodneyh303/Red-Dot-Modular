@@ -59,21 +59,27 @@ def gen_macro(dark, W_MM=243.84):   # 48HP (44 + 4HP for dir_mod + prob_out jack
         for x in JACK_X:  A(D.jack(x,y,t))
         for x in ATTEN_X: A(D.trim(x,y,t,t["gold"]))
         A(D.trim(SPREAD_X,y,t,t["wellring"]))
+    # q-mix — a FULL lane (5th) at editor slot 2: 3 jacks + 3 attens + spread, like MEL/OCT.
+    yq=rowY(2)
+    for x in JACK_X:  A(D.jack(x,yq,t))
+    for x in ATTEN_X: A(D.trim(x,yq,t,t["gold"]))
+    A(D.trim(SPREAD_X,yq,t,t["wellring"]))
     # ── Macro→voice MIX-IN send groups (relocated from East under the control
     #    inversion). 3 demarked groups (REST/MEL/OCT) below the editor, each a 2×2
     #    Len/Off/Rot/Spr send grid. "per voice, how much of Macro's global CV reaches
     #    this voice." Geometry shared with the widget labels in
     #    StraitsSandsMacroVisual::draw — keep in lockstep:
     #      BLEND_TOP=72 BLEND_H=36 GAP=3.5 SEND_Y0=12 SEND_DY=11 SEND_DX=7
-    BLEND_TOP=82.0; BLEND_H=38.0; BGAP=2.5; GROUP_W=ED_W/4.0  # 4 groups; taller for the tap row 3
+    BLEND_TOP=82.0; BLEND_H=38.0; BGAP=2.5; GROUP_W=ED_W/5.0  # 5 groups (q-mix is a full lane); taller for the tap row 3
     SEND_Y0=10.0; SEND_DY=9.0; SEND_DX=6.0                   # DX 7→6 for narrower groups
     TAP_ROW_DY=9.0                                            # row 3 (taps) below the 2 send rows
     A(f'<line x1="{px(ED_X):.1f}" y1="{px(BLEND_TOP-3.0):.1f}" x2="{px(ED_X+ED_W):.1f}" y2="{px(BLEND_TOP-3.0):.1f}" stroke="{t["accent"]}" stroke-width="1.0" opacity="0.6"/>')
     # Blend groups drawn in display order (left-to-right: MEL/OCT/REST/ACC)
     MIX_XY=[None]*4   # indexed by engine lane
     TAP_XY=[None]*4   # P9b: [LOR tap, spread tap] per engine lane
-    for g in range(4):
-        l=DISPLAY_ORDER[g]   # engine lane
+    DISPLAY_ORDER_5=[1,2,-1,0,3]  # editor MEL/OCT/QMIX/REST/ACC -> engine lane (-1 = q-mix; markers TODO)
+    for g in range(5):
+        l=DISPLAY_ORDER_5[g]   # engine lane (-1 = q-mix)
         gx=ED_X+g*GROUP_W+BGAP*0.5; gw=GROUP_W-BGAP; gcx=gx+gw*0.5
         A(f'<rect x="{px(gx):.1f}" y="{px(BLEND_TOP):.1f}" width="{px(gw):.1f}" height="{px(BLEND_H):.1f}" rx="{px(1.4):.1f}" fill="{t["edrecess"]}" stroke="{t["edborder"]}" stroke-width="0.9" opacity="0.92"/>')
         A(f'<line x1="{px(gx+2):.1f}" y1="{px(BLEND_TOP+7.5):.1f}" x2="{px(gx+gw-2):.1f}" y2="{px(BLEND_TOP+7.5):.1f}" stroke="{t["edborder"]}" stroke-width="0.6" opacity="0.6"/>')
@@ -83,14 +89,14 @@ def gen_macro(dark, W_MM=243.84):   # 48HP (44 + 4HP for dir_mod + prob_out jack
             cys=BLEND_TOP+SEND_Y0+(item//2)*SEND_DY
             A(D.trim(cxs,cys,t,t["gold"]))
             lane_sends.append((cxs,cys))
-        MIX_XY[l]=lane_sends
+        if l>=0: MIX_XY[l]=lane_sends
         # P9b: row 3 = the two CV taps for this lane group — LOR (left) + SPREAD (right),
         # full-size trimpots. A faint divider separates them from the sends above.
         tap_y = BLEND_TOP+SEND_Y0+2*TAP_ROW_DY
         A(f'<line x1="{px(gx+2):.1f}" y1="{px(tap_y-5.5):.1f}" x2="{px(gx+gw-2):.1f}" y2="{px(tap_y-5.5):.1f}" stroke="{t["edborder"]}" stroke-width="0.6" opacity="0.6"/>')
         A(D.trim(gcx-SEND_DX, tap_y, t, t["wellring"]))   # LOR tap
         A(D.trim(gcx+SEND_DX, tap_y, t, t["wellring"]))   # spread tap
-        TAP_XY[l]=[(gcx-SEND_DX,tap_y),(gcx+SEND_DX,tap_y)]
+        if l>=0: TAP_XY[l]=[(gcx-SEND_DX,tap_y),(gcx+SEND_DX,tap_y)]
     A('</g>')
     # ── SvgPanelKit component layer: named markers at every control centre, so a
     #    widget can bind by id later. Indices mirror StraitsSandsMacroVisual.hpp:
