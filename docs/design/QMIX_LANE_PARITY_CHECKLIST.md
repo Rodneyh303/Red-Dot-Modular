@@ -65,3 +65,29 @@ Adding the q-mix strand/lane means updating each, IN LOCKSTEP:
 2. Then the ID block, persistence, generation consumer, UI, expanders — each mirroring melody/octave.
 3. Verify: every `accent`/`ACCENT` site has a q-mix sibling (unless genuinely rhythm-side-only), and the
    whole unit suite stays green (test/run_all.sh).
+
+## Added scope: per-voice knobs, dice controls, panels, modulators (all follow existing patterns)
+q-mix's controls, dice, panels and modulation routing mirror what rhythm/melody already have — verified
+in code, so this is pattern-application, not new design:
+
+- **Straits — per-voice q-mix knobs.** Pattern: `POLY_<LANE>_PARAM_1..15` in `Monsoon.hpp` bound by a loop
+  in `MonsoonStraitsExpander.hpp:87` (`configParam(POLY_REST_PARAM_1 + i, …)`). Add `POLY_QMIX_PARAM_1..15`
+  + the loop. NOTE: the existing pattern is **15** poly params (voice 0 is Monsoon's own knob), = 16 voices
+  with Monsoon's. "16 on Straits" would diverge — confirm 15 (pattern-consistent) vs a literal 16.
+- **Monsoon — 1 mono q-mix knob + the dice family.** The knob mirrors the mono lane knobs (e.g.
+  `ACCENT_KNOB`). The dice is NOT one button: rhythm/melody each have `DICE_{R,M}_PARAM`,
+  `DICE_SLEW_{R,M}_PARAM`, `DICE_TRIAL_{R,M}_PARAM`, `LAST_DICE_{R,M}_PARAM` (`Monsoon.hpp:98,177,190,195`).
+  q-mix needs the full parallel `*_Q` set (dice + trial/B→A + slew + last-dice), consistent with the
+  per-stream dice model (one dice each for rhythm/melody/CA/q-mix).
+- **Wider panels.** Both Monsoon and Straits panels grow to fit the new knob(s)/dice — same generator
+  geometry work as the Sands q-mix lane: `gen_straits.py` (HP 26 → wider), Monsoon via
+  `embed_monsoon.py`/`gen_controls.py`. Widen HP + relay out; keep the shared design tokens.
+- **Raffles — gate-trigger q-mix redice.** Pattern exists per stream: `RAFFLES_GATE_REDICE_{R,M}`,
+  `RAFFLES_GATE_LASTDICE_{R,M}` (`Monsoon.hpp:350,359`). Add `RAFFLES_GATE_REDICE_Q` /
+  `RAFFLES_GATE_LASTDICE_Q` so Raffles can fire q-mix dice like the others.
+- **Junction + Causeway — q-mix as a modulation TARGET.** These modulators route to Monsoon/Straits
+  params; add the q-mix knob + dice ids to their target lists/routing so they can modulate q-mix's
+  probability and re-dice it, exactly as they do for the other lanes.
+
+All of the above are covered by the count-constant + no-wedge + persistence rules above: add the ids as
+uniform per-lane blocks, update any hardcoded per-lane/per-voice bounds, and persist any new state.
