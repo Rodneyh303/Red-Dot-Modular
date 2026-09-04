@@ -94,6 +94,9 @@ inline std::array<uint32_t,2> philoxMakeKey(uint64_t seed) {
 // design (counter-based cipher), so the +stream offset yields independent sequences.
 namespace seed {
     constexpr uint64_t STREAM_RHYTHM = 0, STREAM_MELODY = 1, STREAM_CA = 2;
+    // q-mix / source-select: its OWN Philox stream (S+3), decorrelated from rhythm/melody/CA
+    // so "which notes" (q-mix) varies independently of "where they interleave" (melody).
+    constexpr uint64_t STREAM_SOURCE_SELECT = 3;
     // seedFloat 0..10 → 64-bit key for the given stream. Same float + different stream
     // → different key. seed64() conditions the key again via philoxMakeKey, so a small
     // additive offset still lands on a well-separated stream.

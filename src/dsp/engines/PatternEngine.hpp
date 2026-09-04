@@ -429,14 +429,15 @@ struct PatternEngine {
     // 1024 leaves generous headroom and is a clean power of two.
     static constexpr uint64_t DRAW_CHUNK = 1024;
     // Draws are always Philox (counter-based). The legacy Xoroshiro A/B path is gone.
-    redDot::PhiloxRng rhythmPhilox, melodyPhilox;
-    int64_t   rhythmDrawCtr = 0, melodyDrawCtr = 0;   // signed: can go negative on reverse
-    uint64_t  rhythmCursor  = 0, melodyCursor  = 0;   // intra-draw position, reset per redraw
+    redDot::PhiloxRng rhythmPhilox, melodyPhilox, sourceSelectPhilox;
+    int64_t   rhythmDrawCtr = 0, melodyDrawCtr = 0, sourceSelectDrawCtr = 0;   // signed: can go negative on reverse
+    uint64_t  rhythmCursor  = 0, melodyCursor  = 0, sourceSelectCursor = 0;   // intra-draw position, reset per redraw
 
     // Reset the intra-draw cursor at the start of a redraw (called by redrawRhythm/
     // redrawMelody before any unit() calls so the draw maps to its chunk base).
     inline void beginRhythmDraw() { rhythmCursor = 0; }
     inline void beginMelodyDraw() { melodyCursor = 0; }
+    inline void beginSourceSelectDraw() { sourceSelectCursor = 0; }
     // Step the draw-counter (dir>0 forward, dir<0 reverse). Forward-only for now;
     // the reverse/cross-boundary branch will drive dir<0.
     // ── Reversible mode (Mode E phase reverse), per stream ──
@@ -450,6 +451,7 @@ struct PatternEngine {
     void setReverseActive(bool rev) { reverseActive = rev; }
     inline void zeroRhythmIndex() { rhythmDrawCtr = 0; }
     inline void zeroMelodyIndex() { melodyDrawCtr = 0; }
+    inline void zeroSourceSelectIndex() { sourceSelectDrawCtr = 0; }
     // Draw-step direction for a stream this redraw: reverse only when the stream is
     // reversible AND the phase is moving backward; otherwise forward.
     // Draw-step direction this redraw. BASE = what a plain Dice does now: forward,
@@ -468,6 +470,7 @@ struct PatternEngine {
 
     inline void advanceRhythmDraw(int dir) { rhythmDrawCtr += (dir < 0 ? -1 : +1); }
     inline void advanceMelodyDraw(int dir) { melodyDrawCtr += (dir < 0 ? -1 : +1); }
+    inline void advanceSourceSelectDraw(int dir) { sourceSelectDrawCtr += (dir < 0 ? -1 : +1); }
 
     // Seed a stream's Philox from the same 0..10 float (reseed → new key, counter
     // reset to 0 = sequence restarts) or from full entropy.
@@ -483,9 +486,17 @@ struct PatternEngine {
     inline void seedMelodyPhilox(float seedFloat) {
         melodyPhilox.seed64(redDot::seed::deriveKey(seedFloat, redDot::seed::STREAM_MELODY));
         melodyDrawCtr = 0;
+        seedSourceSelectPhilox(seedFloat);   // q-mix tracks the melody seed float (+3 stream = independent)
+    }
+    // q-mix source-select: reuses the melody seed float; the +STREAM_SOURCE_SELECT offset makes it
+    // an INDEPENDENT stream (a dedicated q-mix seed can be added later for separate reseed control).
+    inline void seedSourceSelectPhilox(float seedFloat) {
+        sourceSelectPhilox.seed64(redDot::seed::deriveKey(seedFloat, redDot::seed::STREAM_SOURCE_SELECT));
+        sourceSelectDrawCtr = 0;
     }
     inline void seedRhythmPhiloxFull() { rhythmPhilox.seed64(rack::random::u64()); rhythmDrawCtr = 0; }
-    inline void seedMelodyPhiloxFull() { melodyPhilox.seed64(rack::random::u64()); melodyDrawCtr = 0; }
+    inline void seedMelodyPhiloxFull() { melodyPhilox.seed64(rack::random::u64()); melodyDrawCtr = 0; seedSourceSelectPhiloxFull(); }
+    inline void seedSourceSelectPhiloxFull() { sourceSelectPhilox.seed64(rack::random::u64()); sourceSelectDrawCtr = 0; }
 
     inline float philoxRhythm() {
         uint64_t base = (uint64_t)(rhythmDrawCtr) * DRAW_CHUNK + rhythmCursor++;
@@ -495,15 +506,24 @@ struct PatternEngine {
         uint64_t base = (uint64_t)(melodyDrawCtr) * DRAW_CHUNK + melodyCursor++;
         return melodyPhilox.atUniform(base);
     }
+    inline float philoxSourceSelect() {
+        uint64_t base = (uint64_t)(sourceSelectDrawCtr) * DRAW_CHUNK + sourceSelectCursor++;
+        return sourceSelectPhilox.atUniform(base);
+    }
 
     inline float unitRhythm() { return philoxRhythm(); }
     inline float unitMelody() { return philoxMelody(); }
+    inline float unitSourceSelect() { return philoxSourceSelect(); }
 
     inline float philoxRhythmAt(int64_t pos, uint64_t cursor) const {
         return rhythmPhilox.atUniform((uint64_t)pos * DRAW_CHUNK + cursor);
     }
     inline float philoxMelodyAt(int64_t pos, uint64_t cursor) const {
         return melodyPhilox.atUniform((uint64_t)pos * DRAW_CHUNK + cursor);
+    }
+    // Addressable/reversible q-mix draw (Mode E reverse/jump foundation, same as rhythm/melody).
+    inline float philoxSourceSelectAt(int64_t pos, uint64_t cursor) const {
+        return sourceSelectPhilox.atUniform((uint64_t)pos * DRAW_CHUNK + cursor);
     }
     struct RhythmDraw { float rhythm[16], variation[16], legato[16], accent[16];
                         float polyRhythm[15][16], polyAccent[15][16]; };
