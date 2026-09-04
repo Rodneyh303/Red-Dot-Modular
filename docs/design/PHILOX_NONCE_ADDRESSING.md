@@ -30,8 +30,11 @@ The nonce's only advantages over cursor-packing are per-voice-**independent reve
 voice-count-agnostic layout. Both matter ONLY if voices are reversed / re-indexed independently.
 **They are not.** There is one dice PER STREAM (rhythm, melody, CA, q-mix each) — but each dice
 reverses/reseeds a whole STREAM, never individual voices. So reverse/reseed granularity is
-PER-STREAM; the nonce's axis is PER-VOICE — a dimension nothing in the design ever addresses. (Per-voice reverse/scrub was never a design
-goal; an earlier draft of this note wrongly leaned on it.) Cursor-packing already gives decorrelated
+PER-STREAM; the nonce's axis is PER-VOICE — a dimension nothing in the design ever addresses. And it
+can't practically become one: per-voice dice would explode the control surface — one dice per voice =
+16 melody dice, and per-voice AND per-lane = 7 lanes × 16 voices ≈ 112 dice across melody/rhythm/q-mix.
+So dice stays at the stream/lane level by NECESSITY, not just by choice. (Per-voice reverse/scrub was
+never a design goal; an earlier draft of this note wrongly leaned on it.) Cursor-packing already gives decorrelated
 per-voice streams, which is all the design needs. Migrating a working, tested generation core to the
 nonce would buy an unused property at pure risk — so it's set aside, not scheduled.
 
