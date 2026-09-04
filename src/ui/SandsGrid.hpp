@@ -50,26 +50,19 @@ namespace SandsGrid {
     // Lane centre for either family — the single formula both used separately before.
     static constexpr float laneCentre(int lane) { return LANE_TOP + (lane + 0.5f) * LANE_H; }
 
-    // ── q-mix visual lane (Option B geometry) — SCAFFOLDING, not yet wired ────────
-    // IMPORTANT: the *_LANES counts above are DATA-lane counts, wired into the engine
-    // and the editor's per-lane loops (for el<EAST_LANES; el-POLY_LANES = VAR/LEG index;
-    // SandsVisualEditorV4 iterates `laneCount` data lanes). The q-mix lane is a VISUAL
-    // editor SLOT at index 2 (after MEL/OCT), NOT a data lane — so DO NOT bump the
-    // *_LANES counts to add it (that would iterate a non-existent 7th/5th data lane).
+    // ── q-mix visual lane (Option B geometry) — GEOMETRY ONLY ────────────────────
+    // This header owns lane GEOMETRY (tops, heights); lane ORDER + the q-mix slot index
+    // live in dsp/LaneMapping.hpp (the single source of truth for ordering). Do NOT bump
+    // the *_LANES DATA counts above for the visual slot — see LaneMapping for why.
     //
-    // Realizing Option B (matches panel_src generators on feat/sands-qmix-geometry) needs:
-    //   1. lane height 14→13 (QMIX_LANE_H), and the panel RECESS height driven by *_SLOTS
-    //      (monoEditorHeight/polyEditorHeight) so the recess matches the 7-band generator;
-    //   2. SandsVisualEditorV4 to draw *_SLOTS slots (not laneCount), rendering data lane k
-    //      at editor slot laneSlot(k) and leaving QMIX_SLOT an empty band (+ a "QMIX" label).
-    // Until step 2 lands, keep LANE_H/recess as-is so the live editor stays consistent.
-    static constexpr int   QMIX_SLOT   = 2;               // q-mix editor slot (no data yet)
+    // Option B adds one editor SLOT (q-mix) and drops lane height 14→13. *_SLOTS = data
+    // lanes + 1; the panel RECESS height comes from mono/polyEditorHeight() so it matches
+    // the 7-band generators. slotCentre() takes an editor SLOT index (from LaneMapping's
+    // laneSlot()); it does not know which slot is q-mix — that's ordering, not geometry.
     static constexpr int   MONO_SLOTS  = MONO_LANES + 1;  // 7 editor slots
     static constexpr int   EAST_SLOTS  = EAST_LANES + 1;  // 7
     static constexpr int   POLY_SLOTS  = POLY_LANES + 1;  // 5
     static constexpr float QMIX_LANE_H = 13.f;            // Option B lane height (vs current 14)
-    // data lane k → editor slot (skip QMIX_SLOT). Mirrors ESLOT=[0,1,3,4,5,6] in the generators.
-    static constexpr int   laneSlot(int dataLane) { return dataLane < QMIX_SLOT ? dataLane : dataLane + 1; }
     static constexpr float slotCentre(int slot)  { return LANE_TOP + (slot + 0.5f) * QMIX_LANE_H; }
     static constexpr float monoEditorHeight()    { return MONO_SLOTS * QMIX_LANE_H; }  // 91  (bottom 105)
     static constexpr float polyEditorHeight()    { return POLY_SLOTS * QMIX_LANE_H; }  // 65  (bottom 79)
