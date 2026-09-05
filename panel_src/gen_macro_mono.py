@@ -11,14 +11,14 @@ def gen_macro(dark, W_MM=243.84):   # 48HP (44 + 4HP for dir_mod + prob_out jack
     # the same spread job but GLOBAL (3 lanes) rather than per-lane. Must match
     # StraitsSandsMacroVisual.hpp: COL_J1=8 J2=18 A1=30 A2=39 SPREAD_X=49 ED_X=58.
     t=theme(dark); H_MM=128.5; PW,PH=px(W_MM),px(H_MM)
-    N=4   # 4 lanes, one row each
+    N=5   # OPT-A: 5 lanes (Q-MIX at index 2)
     # Extra top margin so the view-tab row isn't crammed against the panel top
     # edge. 0.5 cm = 5 mm. Mirror TAB_TOP_OFFSET_MM in StraitsSandsMacroVisualWidget.
         # Mirrors src/ui/SandsGrid.hpp — tabs sit ABOVE the grid (3..13mm), lane 0 starts at 14.
     TAB_TOP, TAB_ROW_H = 3.0, 5.0
     TAB_TOP_OFFSET_MM = 5.0
     # Mirrors src/ui/SandsGrid.hpp: lane 0 at 14mm, 4 lanes x 14mm = 56 (tabs live above, 3..13).
-    ED_X=88.; ED_W=111.; OWNER_X=205.; DIR_X=212.; DIR_MOD_X=220.; PROB_OUT_X=236.; ED_Y=14.; ED_H=56.
+    ED_X=88.; ED_W=111.; OWNER_X=205.; DIR_X=212.; DIR_MOD_X=220.; PROB_OUT_X=236.; ED_Y=14.; ED_H=60.   # OPT-A: 5 lanes x 12mm, editor 14->74
     ED_LANE_H=ED_H/N
     # Left-control rows align with the EDITOR lane centres (must match the hpp's rowY).
     def rowY(r): return ED_Y+(r+0.5)*ED_LANE_H
@@ -36,7 +36,7 @@ def gen_macro(dark, W_MM=243.84):   # 48HP (44 + 4HP for dir_mod + prob_out jack
     # Identity artwork in the BOTTOM-LEFT corner (vs East's lower-right) so the
     # two near-identical 42HP panels read apart at a glance. Bottom-left is free
     # on Macro (send grids live in the right section).
-    A(D.helix_sands(4.0, 76.0, 74.0, 35.0, t, op=0.95))   # Sands Helix hero mark, bottom-left pocket (moved down 6mm so its MBS motif reads lower; wordmark moved the same amount)
+    A(D.helix_sands(4.0, 78.0, 74.0, 34.0, t, op=0.95))   # Sands Helix hero mark, bottom-left pocket (moved down 6mm so its MBS motif reads lower; wordmark moved the same amount)
     # (MBS identity mark removed — the Helix already carries an MBS motif in its background,
     #  and it collided with the bottom-left wordmark. The Helix alone is the identity art here.)
     A(D.accent_rules(PW,t))
@@ -60,7 +60,7 @@ def gen_macro(dark, W_MM=243.84):   # 48HP (44 + 4HP for dir_mod + prob_out jack
     #    this voice." Geometry shared with the widget labels in
     #    StraitsSandsMacroVisual::draw — keep in lockstep:
     #      BLEND_TOP=72 BLEND_H=36 GAP=3.5 SEND_Y0=12 SEND_DY=11 SEND_DX=7
-    BLEND_TOP=72.0; BLEND_H=47.0; BGAP=2.5; GROUP_W=ED_W/4.0  # 4 groups; taller for the tap row 3
+    BLEND_TOP=76.0; BLEND_H=45.0; BGAP=2.5; GROUP_W=ED_W/4.0  # 4 groups; taller for the tap row 3
     SEND_Y0=12.0; SEND_DY=11.0; SEND_DX=6.0                   # DX 7→6 for narrower groups
     TAP_ROW_DY=11.0                                            # row 3 (taps) below the 2 send rows
     A(f'<line x1="{px(ED_X):.1f}" y1="{px(BLEND_TOP-3.0):.1f}" x2="{px(ED_X+ED_W):.1f}" y2="{px(BLEND_TOP-3.0):.1f}" stroke="{t["accent"]}" stroke-width="1.0" opacity="0.6"/>')
@@ -135,7 +135,7 @@ def gen_macro(dark, W_MM=243.84):   # 48HP (44 + 4HP for dir_mod + prob_out jack
 def gen_mono(dark):
     t=theme(dark); W_MM,H_MM=243.84,128.5; PW,PH=px(W_MM),px(H_MM)   # 48HP (44 + 4HP for mod + prob_out jacks)
     # Mirrors src/ui/SandsGrid.hpp: 6 lanes x 14mm from 14 → bottom 98 (was 108, laneH 15.667).
-    ROW_TOP,ROW_BOT,N=14.,98.,6
+    ROW_TOP,ROW_BOT,N=14.,98.,7   # OPT-A: 7 lanes x 12mm (Q-MIX idx 2); ROW_BOT 98 UNCHANGED (7*12=6*14), same box
     def laneY(l): return ROW_TOP+(l+0.5)*(ROW_BOT-ROW_TOP)/N
     # Geometry MUST match MonsoonSandsVisualExpander.hpp:
     #   JACK_X={6,15,24}  ATTEN_X={34,43,52}  (all 6 lanes)

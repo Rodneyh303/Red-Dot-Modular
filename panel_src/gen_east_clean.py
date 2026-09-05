@@ -25,7 +25,7 @@ DELEG_MOD_X = 220.0 # delegation gate-mod jack column (gate flips local/delegate
 DIR_MOD_X = 228.0   # direction gate-mod jack column (gate cycles Fwd→Rev→Pend→PingPong)
 PROB_OUT_X = 236.0  # right-strip jack column, pushed right by the mod jack columns (matches hpp)
 ED_H = 84.0   # 6 lanes x 14mm — East shows VARIATION/LEGATO (EAST_EXTRA_LANES.md stage 1)
-ED_LANES = 6  # editor lanes drawn; control rows stay N=4 (spread lanes only)
+ED_LANES = 7  # OPT-A: 7 lanes x 12mm (Q-MIX at index 2); ED_H 84 UNCHANGED (7*12=6*14), same editor box 14->98
 ED_LANE_H = ED_H / ED_LANES
 # Left-control rows align with the EDITOR lane centres (must match the hpp's rowY):
 # each lane's CV jacks + attens sit beside the visual lane they modulate.
