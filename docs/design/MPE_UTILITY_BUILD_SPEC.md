@@ -90,10 +90,39 @@ gate, not latched at note-on. The three do NOT all behave identically inside the
   pitch CV relative to the latched note (the note+bend split + re-articulation-on-range-exceed), not an
   independent patched-in envelope. Already handled in Keppel's pitch path. Note-bounded like the others.
 - **Velocity.** The ODD ONE OUT: a true ONE-SHOT at note-on (strike velocity), not continuous. (Release
-  velocity exists in MIDI but Rack doesn't really surface it -> note-on only is fine.) The existing
-  accent-gate -> 2-level velocity (poly TB-303 accent) is the default velocity SOURCE; continuous poly-CV
-  velocity is the alternative MPE-spirit source. Both share this one one-shot-at-note-on slot; accent can
-  scale/offset a continuous source (see velocity-source modes below).
+  velocity exists in MIDI but Rack doesn't really surface it -> note-on only is fine.) In the two-layer
+  structure below, velocity's accent layer (B) IS the poly TB-303 accent -- unaccented = A, accented =
+  A + accent-boost -- so 2-level accent stops being a special case and becomes the same pattern as
+  accent-Y and accent-Z.
+
+**Two-layer input structure: MAIN + ACCENT, summed (the clean generalization).** Each expression
+dimension (velocity, X, Y, Z) gets TWO gated CV input paths, summed per voice:
+- **Layer A -- main-gated:** base expression, alive the whole note (generated or patched envelope over
+  the note lifetime).
+- **Layer B -- accent-gated:** a second envelope active only during the ACCENT gate -- an ADDITIVE
+  contribution that appears on accented notes.
+- **OUT = A + B** per voice, summed around the dimension's REST point, clamped to range.
+
+So unaccented note = just A; accented note = A + B (a deeper swell / brighter timbre / extra pressure /
+velocity boost added ON TOP of the base, exactly during the accent). Summing is the right primitive: no
+mode switches, no scale-vs-gate distinction -- just add two gated signals. The ROUTING is the config
+(patch B into only Y for accent-timbre-only; patch all three for full accent expression) -- patchable,
+not menued, which kills the combinatorics. Same "general mechanism, specificity injected by patching"
+idiom as the rest of the system. Non-generated A or B = intentional player refinement layered over
+generation (the composed<->generated gradient, now on the expression axis).
+
+Build-decisions to pin (from the design conversation):
+- **Sum around the REST point, per dimension.** X sums as bipolar deviations around 0; Z sums as unipolar
+  from 0; **Y sums as bipolar deviations from CENTER** (~64) -- NOT raw values, or two neutral signals
+  would sum to double-neutral. This is the subtle one.
+- **Clamp at the rails, deliberately.** A + B can exceed range. Hard-clamp at the ceiling (simple). For
+  **X specifically**, a summed bend that blows past +/-range feeds the EXISTING re-articulation-on-exceed
+  logic -- coherent, not a special case: a big accent that pushes bend past the range just re-articulates.
+- **Accent NEVER bounds notes.** The MAIN gate is the sole note boundary. Layer B is windowed by the
+  accent gate INSIDE a live main-gate note; an accent gate firing outside a main note contributes nothing
+  (no note to express on). Accent windows/adds to expression; it never creates, extends, or ends a note.
+- **Opinionated defaults** so it's expressive out of the box without wiring a truth table (e.g. accent
+  adds to velocity + Y by default; full A/B matrix available but not required).
 
 **Practical transmit sequence:**
 - note-on: send note, then the INITIAL Y/Z values (Y from its neutral-referenced CV, Z from ~0).
@@ -121,12 +150,11 @@ per-voice envelope keyed off the gate (convenient but pulls engine-ish behavior 
 
 ## Params / UI (minimal)
 - Bend range (semitones): default 2, small range (1..12). Menu or knob.
-- Velocity source: fixed default (e.g. 100), OR an optional poly velocity CV input (v2).
-  - MODES (parked): **Accent (2-level)** = poly TB-303 accent, accent-gate driven, two USER-SET levels
-    (accent-off vel, accent-on vel = the 303 accent-depth knob); default. **Continuous** = velocity
-    tracks poly CV, full range. They STACK: accent scales/offsets the continuous source.
-- Y (CC74) / Z (pressure) poly-CV inputs: per-input range/offset/polarity (parked -- see expression
-  section above). Continuous within gate.
+- Velocity source: fixed default (e.g. 100), OR poly velocity CV. Two-layer (see expression section):
+  Layer A = base velocity (fixed / continuous CV); Layer B (accent-gated) = the accent boost, USER-SET
+  depth (the 303 accent-depth knob). OUT = A + B clamped. 2-level accent = the special case A + boost.
+- Y (CC74) / Z (pressure) poly-CV inputs: each also two-layer (main CV-A + accent-gated CV-B, summed).
+  Per-input range/offset/polarity (Z unipolar from 0; Y bipolar around center; sum around rest point).
 - MIDI device/port: the Core CV-MIDI output UI pattern.
 - (menu) Latch vs continuous bend (v1 latch).
 - (menu) MPE zone size if not fixed at 15 members.
