@@ -22,10 +22,18 @@ Surge XT is the reference receiver, for four reasons that stack:
 1. **Free + open-source** — anyone can replicate the exact patch; no DAW licensing.
 2. **MPE-complete** — honours per-note bend, CC74 (timbre), channel pressure properly.
 3. **Scala-aware** — loads .scl/.kbm tunings NATIVELY. This gives a killer cross-check (see below).
-4. **Has VCV Rack BREAKOUT modules — Surge is already known/installed in the VCV community.**
-   This is the decisive one: the whole demo can live INSIDE Rack (Keppel → Surge XT breakout synth),
-   no external host, no MIDI-loopback plumbing, no DAW. A single reproducible .vcv patch that any
-   Rack user can open and hear. Best possible Library demo artifact.
+4. **Familiarity** — the VCV community already knows Surge (it also ships a large module set for
+   Rack), so a Surge-based demo lands with people.
+
+**CORRECTION (verified 2026-09-xx): use Surge as a PLUGIN/STANDALONE, NOT its Rack modules, for MPE.**
+The Surge XT *VCV Rack* modules are ~36 CV/gate DSP building blocks (VCOs, filters, FX, LFO/EG) with a
+4-input CV mod matrix — they are NOT a MIDI/MPE receiver. Patching Keppel → Surge Rack VCOs would feed
+poly CV directly and NEVER exercise Keppel's MIDI/MPE output — it makes sound but validates NOTHING
+about MPE (a false positive). To test MPE you need a real MPE MIDI receiver: route MIDI OUT of Rack
+(loopMIDI / IAC / virtual port) into **Surge XT as a plugin or standalone**, which is fully MPE- and
+Scala-capable. So Tier 2 requires MIDI-out plumbing; it is NOT a single zero-plumbing .vcv file.
+(The Surge Rack modules remain a fine in-Rack SOUND source — just never mistake a poly-CV patch for
+MPE validation.)
 
 ### The microtonal cross-check (Surge's Scala support = unique validation)
 Keppel expresses arbitrary tunings into a 12-TET synth VIA per-note bend (note + member-channel bend
@@ -64,12 +72,14 @@ needs MIDI routing out of Rack. Use for the showcase video, not for the reproduc
   on) and that Y/Z carry across the retrigger WITHOUT discontinuity.
 
 ## Deliverables
-- **Reference demo .vcv patch:** Keppel → Surge XT breakout, fully in-Rack, reproducible — SHIP on the
-  Library page / README. Anyone can open and hear it.
+- **Reference demo:** Keppel → (MIDI out of Rack) → Surge XT plugin/standalone with a matching .scl —
+  the MPE + microtonal-cross-check demo. Needs a virtual MIDI port, so document the routing. NOT a
+  single self-contained .vcv (MPE must leave Rack). A Surge-Rack-modules patch can accompany it as an
+  in-Rack SOUND demo, clearly labelled "not an MPE test".
 - **Round-trip test (Tier 1):** the CI/correctness guarantee.
 - **Bitwig showcase:** the video, not the repro artifact.
 
 ## Build order (mirrors risk)
-Rack round-trip (deterministic) → Surge XT in-Rack (open, reproducible, microtonal cross-check) →
-Bitwig (real-world demo). Ship the Surge patch as the reference; keep round-trip as the guarantee;
-use Bitwig for the showcase.
+Rack round-trip (deterministic, in-Rack, the only true in-Rack MPE test) → Surge XT plugin/standalone
+via MIDI-out (open, MPE-complete, microtonal cross-check) → Bitwig (real-world showcase). Keep
+round-trip as the CI guarantee; use Surge for the reproducible microtonal validation; Bitwig for video.
