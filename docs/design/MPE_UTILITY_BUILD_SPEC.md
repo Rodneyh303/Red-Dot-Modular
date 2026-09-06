@@ -67,9 +67,66 @@ For each active voice i (0..channels-1):
   voices > available members (steal oldest) and re-trigger. Keep a voice->channel table.
 - **Message ordering**: bend before note-on (above). Note-off frees channel AFTER sending note-off.
 
+## Per-voice expression X / Y / Z (gate-bounded, but CONTINUOUS within) -- PARKED, after q-mix
+This is what turns Keppel from "generative notes + bend" into a full generative MPE EXPRESSION source.
+Adds two per-voice poly-CV inputs (Y=slide/timbre, Z=pressure) alongside the existing note+bend+velocity.
+Design conversation 2026-09-xx. Sequenced AFTER q-mix (feeds from the correlated poly-CV pairs in
+[[CA_EXPRESSION_CV_CORRELATION]]). Zero engine coupling -- Keppel just receives poly CV.
+
+**Gate model -- the key subtlety.** The in-gate = the note LIFETIME = the window in which ALL of X/Y/Z
+are transmitted for that voice. But the gate means "this voice's note is ALIVE, keep streaming its
+expression" -- NOT "sample X/Y/Z at the gate edge". So X/Y/Z are gate-BOUNDED but CONTINUOUS within the
+gate, not latched at note-on. The three do NOT all behave identically inside the window:
+
+- **Z (pressure -> channel pressure / aftertouch on the member channel).** The most continuous. Rests
+  near ZERO at note-on, evolves the WHOLE time the note is held, falls toward zero on release. Its whole
+  point is the contour DURING hold -- a Monsoon/Intertropical envelope keyed off the gate is exactly the
+  model. Do NOT sample-and-hold. Per-voice member channel already owned, so channel pressure IS per-note
+  pressure.
+- **Y (timbre / "slide" -> CC74 on the member channel).** Continuous during hold like Z, BUT conventional
+  rest value is NEUTRAL/CENTER (~64), not zero. Meaningful to set at note-on (initial timbre) then move
+  during the note. So: continuous like Z but neutral rest, not zero rest.
+- **X (pitch bend).** Continuous during hold too (the glide), but DIFFERENT IN KIND: it's DERIVED from the
+  pitch CV relative to the latched note (the note+bend split + re-articulation-on-range-exceed), not an
+  independent patched-in envelope. Already handled in Keppel's pitch path. Note-bounded like the others.
+- **Velocity.** The ODD ONE OUT: a true ONE-SHOT at note-on (strike velocity), not continuous. (Release
+  velocity exists in MIDI but Rack doesn't really surface it -> note-on only is fine.) The existing
+  accent-gate -> 2-level velocity (poly TB-303 accent) is the default velocity SOURCE; continuous poly-CV
+  velocity is the alternative MPE-spirit source. Both share this one one-shot-at-note-on slot; accent can
+  scale/offset a continuous source (see velocity-source modes below).
+
+**Practical transmit sequence:**
+- note-on: send note, then the INITIAL Y/Z values (Y from its neutral-referenced CV, Z from ~0).
+- during hold: STREAM Y/Z as they move -- control-rate, rate-limited + dedupe-on-change (same throttle
+  pattern as bend; CC74 + channel pressure are control-rate, sending every sample floods the stream).
+- note-off: send note-off; conventionally let Z fall / release.
+- **Rest values differ per input:** Z rests ~0 (no pressure), Y rests neutral/center. -> per-input
+  range/offset/polarity control (Z unipolar 0..+; Y bipolar around center). Maps ±5V or 0-10V sources.
+
+**Correctness -- carry expression across re-articulation / LRU realloc.** A gate window can SPAN a
+re-articulation (the range-exceed retrigger) or an LRU channel reassignment. On re-articulate/realloc, Y/Z
+must CONTINUE on the new channel WITHOUT discontinuity -- do NOT reset Y/Z to rest. Carry the current
+values onto the new note so a big pitch slide doesn't audibly drop pressure/timbre mid-gesture. (Same
+voice->channel map Keppel already tracks for bend -- one map, all of note/bend/Y/Z/vel follow it.)
+
+**Receiver-dependent, opt-in.** Only MPE-aware destinations respond to CC74 / poly pressure -> pure
+upside, never a regression. Extend the reverse-calc monitor to reconstruct Y/Z too, so the round-trip
+test covers full expression, not just bend.
+
+**Source (after q-mix):** Y/Z envelopes come from Monsoon/Intertropical poly gates, optionally routed
+through the CA correlated poly-CV pairs ([[CA_EXPRESSION_CV_CORRELATION]]) so expression correlates with
+the pitch material by the same order/chaos machinery. Open build decision: Y/Z as simple poly-CV
+PASS-THROUGHS (patch external envelopes in -- decoupled, spec-faithful, PREFERRED) vs a bundled minimal
+per-voice envelope keyed off the gate (convenient but pulls engine-ish behavior into the utility).
+
 ## Params / UI (minimal)
 - Bend range (semitones): default 2, small range (1..12). Menu or knob.
 - Velocity source: fixed default (e.g. 100), OR an optional poly velocity CV input (v2).
+  - MODES (parked): **Accent (2-level)** = poly TB-303 accent, accent-gate driven, two USER-SET levels
+    (accent-off vel, accent-on vel = the 303 accent-depth knob); default. **Continuous** = velocity
+    tracks poly CV, full range. They STACK: accent scales/offsets the continuous source.
+- Y (CC74) / Z (pressure) poly-CV inputs: per-input range/offset/polarity (parked -- see expression
+  section above). Continuous within gate.
 - MIDI device/port: the Core CV-MIDI output UI pattern.
 - (menu) Latch vs continuous bend (v1 latch).
 - (menu) MPE zone size if not fixed at 15 members.
