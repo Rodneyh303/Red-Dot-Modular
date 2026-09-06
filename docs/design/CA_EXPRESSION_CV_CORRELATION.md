@@ -67,6 +67,55 @@ Plan B's regularity makes this trivial to lay out; Plan A's mirrored layout does
   generalized into this expression-CV plumbing instead of adding all-new jacks — reuse over new HP,
   given CA's space crunch.
 
+## Routing through Intertropical — expression follows the note mapping, ONE mapping only (Rodney)
+Intertropical is an arranger: it remaps global voice v (0..15) → per-scene slot (≤8) → output (8),
+with fan-out and per-output transpose (verified src/Intertropical.cpp:142–172; the output channel is
+the OUTPUT index, NOT the global voice). So its output channel identity is PART identity ("3rd tone
+of chord A → output 3"), not voice identity — and it's per-scene and one-to-many. That is exactly the
+frame CA's correlation is NOT defined over: CA correlates in global-voice space. Route expression
+around the arranger while notes go through it and they land at Keppel in different frames — the
+expression scattered to track rhythm arrives on a voice Keppel thinks is melody.
+
+**Resolution: the expression traverses the SAME arranger, applied once, together with the notes.**
+Because the chain topology is fixed — one Straits expander and exactly one CA per Monsoon chain —
+Intertropical GRABS CA's correlated CV outs off the chain directly, via
+`host->expanderManager.cachedChangeAlleyV2`, the identical mechanism it already uses for
+`cachedPolyVoiceExpander` (the CA pointer is already cached there — MonsoonExpanderManager.hpp:82).
+No cable, no patched expression-IN jack. At the point Intertropical reads, BOTH sides are
+16-voice-indexed: CA's correlated CV for voice v pairs with the Straits note for voice v (same
+stream `src[]` applied to both). Intertropical then runs the expression CV through its existing
+`slotOf[v]` + `slotOutput` mask loop — the SAME transform as the notes. Part c at Keppel therefore
+carries a note and an expression that came from the same voice through the same mapping.
+
+**DECISION — one mapping, not two.** The CA expression CV follows Intertropical's voice→output
+mapping EXACTLY. The ability to map CA's output CV to Intertropical's outs DIFFERENTLY from the note
+mapping is deliberately NOT offered — it would add nothing musically (Rodney). All the output
+flexibility that matters is already inherited from the note mapping: per-scene membership, explicit
+slot seating, and fan-out. A second, independent expression-routing surface would be combinatorial
+cost for no musical gain, and would re-introduce a second voice frame — the exact thing this design
+exists to avoid. However the voices get seated and fanned to outputs, the corresponding voice's CA
+CV follows; that IS the flexibility.
+
+**What rides along for free (same mask, same boundary):**
+- **Fan-out** — a voice fanned to outputs 3 and 6 gets its expression written to channels 3 and 6 by
+  the same mask; the doubling's expression doubles with it.
+- **Scene advance** — Intertropical's scene boundary reassigns note AND expression parts on the same
+  edge, so a note and its expression never tear apart. (Scene advance is itself a channel-reassignment
+  event — a third one alongside CA's permute and Keppel's LRU — made correlation-safe by construction
+  here rather than by luck.)
+
+**Pin at build:** the expression outs skip the per-output PITCH transpose (src/Intertropical.cpp:167
+adds trSemi/12 to note CV) — a semitone offset is meaningless on Y/Z, and X-bend is relative to the
+already-transposed note, so no expression channel carries the note transpose. Size the correlated-
+expression outs to the same `nOut` as gate/cv/accent (≤8, the horizontal part budget). Only coherent
+once CA's output side exists (currently config(..., NUM_INPUTS, 0, ...) — zero outputs) and q-mix has
+landed (the QM src).
+
+This is the general law surfacing again: ONE authoritative voice frame; every hop that reassigns
+channels — CA permute, Intertropical arrange, Keppel LRU — is either shared or traversed identically
+by all correlated signals. No signal that must stay correlated may skip the arranger. See
+[[INTERTROPICAL_SPEC]] "Routing model + fan-out".
+
 ## Sequencing — AFTER q-mix
 Hard dependency: q-mix IS the third correlation stream. The fixed pairs follow rhythm/melody/**q-mix**,
 so the q-mix stream must exist and be settled first (its CA dimension expansion 8→12 = the 2×3×2
