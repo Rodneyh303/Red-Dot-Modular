@@ -148,6 +148,42 @@ the pitch material by the same order/chaos machinery. Open build decision: Y/Z a
 PASS-THROUGHS (patch external envelopes in -- decoupled, spec-faithful, PREFERRED) vs a bundled minimal
 per-voice envelope keyed off the gate (convenient but pulls engine-ish behavior into the utility).
 
+### X input (expressive bend): promote X from DERIVED-ONLY to DERIVED + patchable, summed (Rodney)
+The X bullet above treats bend as derived-only (tuning residual + legato from the pitch path). That
+leaves a gap for the CLEAREST target user: **someone with an MPE VST but no MPE hardware controller,
+playing in plain 12-TET.** Their tuning residual is ~0 (already on semitones), so a derived-only X gives
+them NO way to make the signature MPE gesture -- the per-note bend/vibrato. That gesture is the first
+thing that audience reaches for. So X gets a patchable per-voice poly-CV INPUT too, making it symmetric
+with Y and Z (all three: derived/rest baseline + patchable CV, summed).
+
+**Total bend per voice = tuning residual (derived from pitch path) + user X-CV + accent layer B,
+summed around 0, clamped to bend range; past-range feeds the EXISTING re-articulation logic.**
+No new mechanism -- this is the same two-layer summed structure already specced for Y/Z (and velocity),
+now applied to X. "Sum around rest, clamp at rails, overflow re-articulates" already exists.
+
+Three modes fall out of ONE design (no menu -- it's just what's patched):
+- **X-in UNPATCHED** -> pure tuning/legato bend. The microtonal case, unchanged from the bullet above.
+- **12-TET pitch + X-in PATCHED** -> expressive bends on a normal scale. THE case for the no-controller
+  user: patch an LFO for vibrato, an envelope for a scoop/fall, S&H for per-note micro-bends. This is the
+  gap-closer.
+- **Microtonal + X-in PATCHED** -> arbitrary tuning WITH vibrato/expression on top. Hard to get any other
+  way; falls out for free from the sum.
+
+Build-decisions to pin:
+- **User X-CV is added as a raw bend/semitone contribution AFTER the note+residual decomposition** -- it
+  is EXPRESSIVE pitch, not scale-degree pitch, so it must NOT pass through the tuning quantiser. Quantising
+  the vibrato would defeat the point.
+- **Shared headroom is real and honest, not a bug.** Residual and user X-CV spend the SAME finite bend
+  range. Wide microtonal deviation + wide expressive bend compete -> you hit the rail (and re-articulate)
+  sooner. That's the true physics of MPE bend. Consequence: the bend-range setting (the 2 vs +/-48
+  discussion) now governs BOTH uses, and Keppel + receiver must still agree on it (already flagged
+  elsewhere -- this just adds a second consumer of the same budget).
+- Rest point for X-CV = 0 (bipolar around no-bend), same as the derived residual -> they sum cleanly.
+- Accent layer B on X unchanged: a summed bend past +/-range re-articulates, as already specced.
+
+**Manual angle (worth a README line):** "Have an MPE synth but no MPE controller? Patch pitch expression
+into X and Keppel plays per-note bends your keyboard can't -- generative, and reproducible."
+
 ## Params / UI (minimal)
 - Bend range (semitones): default 2, small range (1..12). Menu or knob.
 - Velocity source: fixed default (e.g. 100), OR poly velocity CV. Two-layer (see expression section):
