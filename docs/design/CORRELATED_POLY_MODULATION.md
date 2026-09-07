@@ -6,10 +6,14 @@
 three together, recorded so it isn't lost. Related: [[MULTIGROUP_CONSERVATION_AND_CORRELATION]].
 
 ## The primitive
-The thing being built is **correlated poly modulation**: per-voice CV whose channels are permuted by
-the SAME order/chaos state (CA's scatter/collapse/rotate/reflect) that reorders the note material, so
-modulation tracks the notes through the verbs. **MPE is one CONSUMER of this primitive, not its
-definition.** The taps are plain poly-CV; nothing about them is MPE-specific until patched into Keppel.
+The thing being built is **correlated poly modulation**: the user patches their OWN per-voice modulation
+(envelopes, LFOs, any poly CV) into a poly IN, and it comes back on a poly OUT with its voice channels
+permuted by the SAME order/chaos state (CA's scatter/collapse/rotate/reflect) that reorders the note
+material — so the modulation tracks the notes through the verbs. Each access is therefore a **poly-CV
+in/out PAIR (16 channels in, 16 out) — a pass-through router, NOT an internally generated stream**
+([[CA_EXPRESSION_CV_CORRELATION]] is the implementation spec). **MPE is one CONSUMER of this primitive,
+not its definition.** The OUTPUTS are plain poly-CV; nothing about them is MPE-specific until patched into
+Keppel.
 
 ## Two taps, two axes (the symmetry)
 The instrument has TWO polyphony axes, and correlated modulation is available at BOTH — each tap at the
@@ -72,30 +76,35 @@ grow a modulation matrix. The taps remain exactly what they are: CA's 3R/3M/2QM 
 Intertropical's arranged mirror of them. Reach, not new machinery. If a change here starts adding routing
 surfaces or per-tap state, it has stopped being this idea.
 
-## Count is demand-uncertain under general modulation (Rodney) — sources vs signals
-The discipline above ("don't grow a matrix") governs correlation SOURCES. It does NOT cap the number of
-correlated SIGNALS a user can route, and once these CVs drive arbitrary Rack creations — any module, and
-in quantiser modes modifying arbitrary Rack sequencers — those are different quantities:
+## Count: distinct correlations vs parallel routing capacity (Rodney)
+CORRECTION to an earlier framing here. The 3R/3M/2QM are NOT 8 generated "sources," and NOT 8 scalar
+streams packed onto one poly cable. Per the primitive above and [[CA_EXPRESSION_CV_CORRELATION]], each is
+a **polyphonic in/out PAIR** (16ch in, 16ch out): the user patches their own modulation in, CA returns it
+with voice channels permuted by that stream's live correlation. Eight pairs = eight poly ins + eight poly
+outs; they do NOT collapse onto one cable. (So an earlier "8 fit on one poly jack, channel = pair" idea is
+wrong — that confuses the 16 VOICE channels inside one pair with the 8 pairs.)
 
-- **Sources** = CA's distinct correlations (currently 3R/3M/2QM). Governed by NAMEABLE aspects: a new
-  source must be a distinct musical thing you can name (a 4th rhythm aspect — density vs syncopation vs
-  accent vs …), NEVER a uniform doubling. A doubling is the tell of capacity-thinking, not aspect-thinking.
-- **Signals** = what actually reaches destinations. Already effectively unbounded from the fixed sources,
-  via three multipliers that need NO new sources: **fan-out** (one source → many destinations, free);
-  **verb-transformed taps** (one source → many RELATED signals; relationship stays legible because the
-  transform — reflect/rotate/scatter — is named, a design affordance of the same CA verb layer); and
-  **multiple Intertropicals** (one source set → many distinct ARRANGED views, each a real transform of the
-  eight, NOT a copy — [[INTERTROPICAL_SPEC]]).
+Two quantities, attached to different structures:
+- **Distinct correlations = 3, structural.** CA maintains one voice-permutation table per stream —
+  rhythm (`rhythmSrc[16]`), melody (`melodySrc[16]`), q-mix (not built yet; 2 of the 3 exist in code
+  today). The verbs mutate these tables. This count is small and set by how many order/chaos shuffles the
+  engine keeps; it does NOT grow because you want more jacks.
+- **Pairs per correlation = the 3/3/2 itself = parallel poly ROUTING CAPACITY.** The three rhythm pairs
+  all share the ONE rhythm permutation; they differ only in WHICH user signal rides it (filter env on one,
+  wavefolder on another, pan on a third). THIS is the demand-driven number, and it is what "3/3/2 might be
+  limiting" actually means: a user wanting to rhythm-correlate a 4th independent poly modulation has run
+  out of lanes. A 4th rhythm pair is NOT a new correlation or a "4th aspect of rhythm" — it is another
+  parallel carrier of the SAME rhythm shuffle.
 
-So the open-ended-destination worry is a demand for SIGNALS, which the multipliers already supply. It does
-not by itself force more sources.
+Fan-out vs a new pair (keeps capacity honest):
+- Same OUTPUT signal to many destinations → **fan-out**: split one output poly cable. Free, no new pair.
+- A DIFFERENT INPUT signal under the same correlation → **a new pair** (a new poly in/out lane). Not free
+  — panel + plumbing.
+Multiple Intertropicals give the analogous parallel capacity in PART space (each is its own poly router
+over the arranged frame — [[INTERTROPICAL_SPEC]]).
 
-**But** the "3 is the ceiling because you can't name a 4th aspect" argument was made against the fixed,
-small sink of MPE (~5 dims), where sinks provably exceeded sources. With arbitrary destinations the demand
-is genuinely UNSURVEYABLE — a user may discover they want a 4th distinct rhythm-correlated stream that is
-neither fan-out nor a verb-relative. So do NOT hardcode 3/3/2 as a permanent constant. **Parameterise the
-per-stream R/M/QM counts** so the architecture doesn't bake in today's number as a law. The GOVERNING RULE
-is unchanged — add a source only for a nameable distinct correlation, one at a time, never by doubling —
-but 3/3/2 is the current value, not the ceiling. Small and aspect-governed at any moment; not frozen.
-(Not urgent — noted so the ceiling assumption doesn't calcify in the build. Also revisit whether q-mix's 2
-deserves parity with R/M's 3 if it proves a full dimension.)
+Conclusion (the earlier one, now for the right reason): don't hardcode 3/3/2. The 3 distinct correlations
+are structural and stay put; **parameterise the pairs-per-stream counts** so capacity is a build constant
+that is trivial to rebalance — [[CA_EXPRESSION_CV_CORRELATION]] already frames it as "rebalancing is a
+constant, not a redesign." q-mix's 2-vs-3 parity is the same capacity lever. Not urgent — noted so the
+ceiling assumption doesn't calcify in the build.
