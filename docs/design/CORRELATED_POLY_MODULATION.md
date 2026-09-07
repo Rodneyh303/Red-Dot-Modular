@@ -71,3 +71,31 @@ into Keppel's private path. The earlier open question in [[MPE_UTILITY_BUILD_SPE
 grow a modulation matrix. The taps remain exactly what they are: CA's 3R/3M/2QM correlated pairs and
 Intertropical's arranged mirror of them. Reach, not new machinery. If a change here starts adding routing
 surfaces or per-tap state, it has stopped being this idea.
+
+## Count is demand-uncertain under general modulation (Rodney) — sources vs signals
+The discipline above ("don't grow a matrix") governs correlation SOURCES. It does NOT cap the number of
+correlated SIGNALS a user can route, and once these CVs drive arbitrary Rack creations — any module, and
+in quantiser modes modifying arbitrary Rack sequencers — those are different quantities:
+
+- **Sources** = CA's distinct correlations (currently 3R/3M/2QM). Governed by NAMEABLE aspects: a new
+  source must be a distinct musical thing you can name (a 4th rhythm aspect — density vs syncopation vs
+  accent vs …), NEVER a uniform doubling. A doubling is the tell of capacity-thinking, not aspect-thinking.
+- **Signals** = what actually reaches destinations. Already effectively unbounded from the fixed sources,
+  via three multipliers that need NO new sources: **fan-out** (one source → many destinations, free);
+  **verb-transformed taps** (one source → many RELATED signals; relationship stays legible because the
+  transform — reflect/rotate/scatter — is named, a design affordance of the same CA verb layer); and
+  **multiple Intertropicals** (one source set → many distinct ARRANGED views, each a real transform of the
+  eight, NOT a copy — [[INTERTROPICAL_SPEC]]).
+
+So the open-ended-destination worry is a demand for SIGNALS, which the multipliers already supply. It does
+not by itself force more sources.
+
+**But** the "3 is the ceiling because you can't name a 4th aspect" argument was made against the fixed,
+small sink of MPE (~5 dims), where sinks provably exceeded sources. With arbitrary destinations the demand
+is genuinely UNSURVEYABLE — a user may discover they want a 4th distinct rhythm-correlated stream that is
+neither fan-out nor a verb-relative. So do NOT hardcode 3/3/2 as a permanent constant. **Parameterise the
+per-stream R/M/QM counts** so the architecture doesn't bake in today's number as a law. The GOVERNING RULE
+is unchanged — add a source only for a nameable distinct correlation, one at a time, never by doubling —
+but 3/3/2 is the current value, not the ceiling. Small and aspect-governed at any moment; not frozen.
+(Not urgent — noted so the ceiling assumption doesn't calcify in the build. Also revisit whether q-mix's 2
+deserves parity with R/M's 3 if it proves a full dimension.)
