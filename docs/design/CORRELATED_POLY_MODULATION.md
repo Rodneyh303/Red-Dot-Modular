@@ -108,3 +108,47 @@ are structural and stay put; **parameterise the pairs-per-stream counts** so cap
 that is trivial to rebalance — [[CA_EXPRESSION_CV_CORRELATION]] already frames it as "rebalancing is a
 constant, not a redesign." q-mix's 2-vs-3 parity is the same capacity lever. Not urgent — noted so the
 ceiling assumption doesn't calcify in the build.
+
+## Boundary policy: unmapped outputs = 0V; the user owns the signal (Rodney)
+Build-time policy for the (unbuilt) output side, CA pairs and Intertropical alike. Small by design: no
+state, no parameter, no smoothing.
+
+**Scope split — what the module owns vs what the user owns.**
+- **Mapped output → reflect the input, exactly, including across boundaries.** Permute the channel
+  ADDRESS, never touch the VALUE. Zeroing or slewing a mapped output would stop this being a
+  pass-through router and start editing signals it doesn't own.
+- **Unmapped output (slot with no member in the current scene) → 0V.** This is the ONE value the module
+  is forced to invent — nothing was patched to produce it — so it cannot be delegated to the user.
+
+**Why 0V, not last-held.** Last-held is better for the COMMON case (LFO/envelope: freezes, tail decays
+naturally) but catastrophic for gates: a gate held high when its part leaves the scene NEVER releases —
+a hung voice with no path to resolution from inside the patch. No single value is right for all content,
+because the right answer depends on signal SEMANTICS and a poly router can't know them. So default to the
+recoverable failure:
+- Wrong on an LFO → a step. Audible, sometimes wanted, always fixable downstream (S&H or slew rebuilds
+  last-held using the user's own modules, with their own timing).
+- Wrong on a gate → a hang. Nothing downstream can clear it; there is no edge to trigger on.
+0V is also the honest statement of the situation ("nothing is mapped here") rather than the module
+asserting a value with no source behind it.
+- **Check at build:** match whatever Intertropical's existing GATE/CV outputs already do at scene
+  boundaries, so modulation and notes don't diverge into two conventions at the same instant.
+
+**Switching instant.** Modulation must switch on the SAME boundary instant as the note routing, not a
+block later — so a re-articulating voice's envelope masks the step (see below).
+
+**Advice (guidance, NOT behaviour): rest your signals at phrase boundaries.** Terminate gates and bring
+CV to/near zero at phrase boundaries and transitions are inherently clean, whatever the arranger does.
+Costs the module nothing and can't be got wrong. Applies symmetrically to SUBSTITUTION (a voice handover
+between scenes) as well as to leaving/arriving parts: both are smooth when outgoing and incoming signals
+are at rest. Frame as "how to get glitch-free results", NOT "the correct way to patch" — routing a
+free-running LFO through a scene switcher FOR the steps is using this correctly. Users may want glitches.
+
+**Beat-matched material rarely exercises any of this.** When a change lands on a note boundary the step is
+masked by the new note's envelope starting from zero — indistinguishable from the next note simply
+sounding different. The exposed case is a destination SUSTAINING across the boundary (held pad, long
+release tail, reverb send), where there is no envelope restart to hide behind.
+
+**Not a dot.modular quirk (Rodney).** This discontinuity is a property of SWITCHING SIGNALS, not of
+Intertropical: any Rack sequential switch, scene/preset changer, or router that reassigns CV or gate
+mid-flight has exactly the same issue, gate-hang included. Document it as general Rack patching practice
+that applies here, not as an apology for this module.
