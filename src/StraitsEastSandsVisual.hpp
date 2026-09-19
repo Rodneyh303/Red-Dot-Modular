@@ -64,8 +64,8 @@ namespace StraitsEastVisualIds {
 
     // ── Param IDs ─────────────────────────────────────────────────────────
     enum SpreadParamId {
-        // 4 spread display trimpots: REST/MEL/OCT/ACCENT (0-3)
-        SPREAD_R = 0, SPREAD_M, SPREAD_O, SPREAD_A,
+        // 5 spread display trimpots: REST/MEL/OCT/ACCENT/QMIX (0-4)
+        SPREAD_R = 0, SPREAD_M, SPREAD_O, SPREAD_A, SPREAD_Q,
         // 16 attenuverter DISPLAY proxies — lane l, col c → ATTEN_START + l*4 + c
         // (4-19). Selected-voice view; real depth in MonsoonIds::MACRO_ATTEN_START.
         ATTEN_START,
@@ -105,12 +105,12 @@ namespace StraitsEastVisualIds {
     // ── Input IDs ─────────────────────────────────────────────────────────
     enum InputId {
         CV_START = 0,
-        NUM_LANE_INPUTS = CV_START + 16,              // 4 lanes × 4 cols (LEN/OFF/ROT/SPR)
+        NUM_LANE_INPUTS = CV_START + 20,              // 5 poly lanes × 4 cols (LEN/OFF/ROT/SPR)
         // VAR/LEG poly CV inputs (LEN/OFF/ROT only — no SPR). lane 0=VAR, 1=LEG; col 0..2.
-        VARLEG_CV_START = NUM_LANE_INPUTS,            // = 16
-        DIR_MOD_START = VARLEG_CV_START + 6,          // = 22 — direction gate-mod (6 poly jacks)
-        DELEG_MOD_START = DIR_MOD_START + 6,          // = 28 — delegation gate-mod (6 poly jacks, all lanes)
-        NUM_INPUTS = DELEG_MOD_START + 6              // = 34
+        VARLEG_CV_START = NUM_LANE_INPUTS,            // = 20
+        DIR_MOD_START = VARLEG_CV_START + 6,          // = 26 — direction gate-mod (7 east lanes)
+        DELEG_MOD_START = DIR_MOD_START + 7,          // = 33 — delegation gate-mod (7 east lanes, all lanes)
+        NUM_INPUTS = DELEG_MOD_START + 7              // = 40
     };
     static inline int dirModId(int lane) { return DIR_MOD_START + lane; }
     static inline int delegModId(int lane) { return DELEG_MOD_START + lane; }
@@ -120,11 +120,13 @@ namespace StraitsEastVisualIds {
 
     // ── LOR bank helper ───────────────────────────────────────────────────
 
-    // Unified LOR bank for an EDITOR lane: engine lane for 0..3 (REST/MEL/OCT/ACC), self for
-    // VAR(4)/LEG(5). Mirrors lorIdEditor's mapping so Monsoon::getLorBase/setLorBase index the
-    // same per-voice slot the old POLY_*_VOICE_1_LEN params did.
+    // Unified LOR bank for an EDITOR lane: engine poly lane for the 5 poly lanes
+    // (MEL/OCT/QMIX/REST/ACC = editor 0..4), self for VAR(5)/LEG(6). Uses the QMIX-aware
+    // table so QMIX (editor 2 → engine 4) routes to its own bank, not REST's.
     static inline int lorBank(int editorLane) {
-        return (editorLane <= 3) ? dotModular::EDITOR_TO_ENGINE_LANE[editorLane] : editorLane;
+        return (editorLane < dotModular::SandsGrid::POLY_LANES)
+                   ? dotModular::EDITOR_TO_ENGINE_LANE_QMIX[editorLane]
+                   : editorLane;
     }
 
     // Macro/East base owner per (voice, lane): MonsoonIds::MACRO_OWN_START + v*4 + lane.
@@ -167,8 +169,9 @@ namespace StraitsEastVisualIds {
 
     // Per-lane POLY probability CV outs (REST/MEL/OCT). Each is a poly cable:
     // channel 1 = master value, channels 2..1+nVoices = the per-voice ensemble.
+    // Phase 2: Added PROB_OUT_QMIX (5 outputs total, was 4).
     enum OutputId {
-        PROB_OUT_REST = 0, PROB_OUT_MEL, PROB_OUT_OCT, PROB_OUT_ACCENT,
+        PROB_OUT_REST = 0, PROB_OUT_MEL, PROB_OUT_OCT, PROB_OUT_ACCENT, PROB_OUT_QMIX,
         NUM_OUTPUTS
     };
 }
@@ -178,14 +181,16 @@ struct StraitsEastSandsVisual : Module {
     // Per-voice, per-lane EFFECTIVE spread (interp param + per-voice/lane CV·att,
     // clamped, after combineSpread) — published by MonsoonExpanderManager each
     // sync so the East spread trimpot mod-arc can show the viewed voice's value.
-    // lane: 0=REST 1=MELODY 2=OCTAVE. Bipolar-ish 0..1 interp domain.
-    float polySpreadEffective[15][4] = {};   // 4 lanes (REST/MEL/OCT/ACCENT)
+    // lane: 0=REST 1=MELODY 2=OCTAVE 3=ACCENT 4=QMIX. Bipolar-ish 0..1 interp domain.
+    // 5 poly lanes (QMIX-widened; was [15][4]). The spread-arc getModNorm reads lane up to 4.
+    float polySpreadEffective[15][dotModular::SandsGrid::POLY_LANES] = {};   // 5 lanes (REST/MEL/OCT/ACC/QMIX)
 
     // Probability CV out config (persisted): scale 0=0..1V,1=0..5V,2=0..10V; S&H vs
     // continuous. probHeld/probLastStep per (lane, channel) for S&H (ch0=master, 1..15
-    // = voices → index [lane][0..15]).
-    float probHeld[4][16] = {};
-    int   probLastStep[4][16];
+    // = voices → index [lane][0..15]). 5 poly lanes (QMIX-widened; was [4][16] — the
+    // process() prob-out S&H loop writes lane up to POLY_LANES-1=4, so [4] overflowed).
+    float probHeld[dotModular::SandsGrid::POLY_LANES][16] = {};
+    int   probLastStep[dotModular::SandsGrid::POLY_LANES][16];
 
     StraitsEastSandsVisual() {
         using namespace StraitsEastVisualIds;
@@ -199,8 +204,9 @@ struct StraitsEastSandsVisual : Module {
         config(0, StraitsEastVisualIds::NUM_INPUTS,
                StraitsEastVisualIds::NUM_OUTPUTS, StraitsEastVisualIds::NUM_LIGHTS);
         for (auto& a : probLastStep) for (auto& x : a) x = -1;
-        { static const char* ln[4] = {"REST","MEL","OCT","ACC"};
-          for (int l = 0; l < 4; ++l)
+        // Phase 2: Now 5 poly outputs (added Q-MIX)
+        { static const char* ln[5] = {"REST","MEL","OCT","ACC","Q-MIX"};
+          for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
             configOutput(StraitsEastVisualIds::PROB_OUT_REST + l,
                 std::string("Probability ") + ln[l] + " (poly: ch1 master, ch2+ voices)"); }
 
@@ -308,8 +314,8 @@ struct StraitsEastSandsVisual : Module {
     void process(const ProcessArgs&) override;   // defined in .cpp (needs findMonsoonEitherSide)
 
     // Gate edge detection state for dir_mod and deleg_mod inputs.
-    // dirModPrev[lane][channel] — 6 lanes × 16 channels (ch0=mono, ch1..15=voices 2..16)
-    // delegModPrev[lane][channel] — 4 lanes × 16 channels
+    // dirModPrev[lane][channel] — 7 lanes × 16 channels (ch0=mono, ch1..15=voices 2..16)
+    // delegModPrev[lane][channel] — 7 lanes × 16 channels
     // ── Gate-mod inputs (dir_mod / deleg_mod) ───────────────────────────────────
     // Deliberately split across threads. The AUDIO thread does one job: spot rising edges
     // and bump a counter. The UI thread (widget step()) interprets them — it already owns
@@ -327,15 +333,15 @@ struct StraitsEastSandsVisual : Module {
     Monsoon* cachedMon_  = nullptr;   // refreshed on gateModDiv (topology is control-rate)
     bool     gateModScan_ = false;    // set when gateModDiv ticks; consumed by the gate scan
     rack::dsp::ClockDivider probOutDiv;   // prob CV outs: /32 = control rate
-    bool    dirModPrev[6][16]    = {};
-    bool    delegModPrev[6][16]  = {};
-    uint8_t dirModEdges[6][16]   = {};   // audio thread is the sole writer
-    uint8_t delegModEdges[6][16] = {};
+    bool    dirModPrev[dotModular::SandsGrid::EAST_LANES][16]    = {};
+    bool    delegModPrev[dotModular::SandsGrid::EAST_LANES][16]  = {};
+    uint8_t dirModEdges[dotModular::SandsGrid::EAST_LANES][16]   = {};   // audio thread is the sole writer
+    uint8_t delegModEdges[dotModular::SandsGrid::EAST_LANES][16] = {};
     // Channel count of each connected mod cable. A 1-channel cable into a poly input is
     // BROADCAST to every target (the VCV norm), rather than hitting only ch0 = V1 — a mono
     // gate means "apply this everywhere", not "apply it to voice 1".
-    uint8_t dirModChans[6]   = {};
-    uint8_t delegModChans[6] = {};
+    uint8_t dirModChans[dotModular::SandsGrid::EAST_LANES]   = {};
+    uint8_t delegModChans[dotModular::SandsGrid::EAST_LANES] = {};
 
     json_t* dataToJson() override {
         json_t* r = json_object();

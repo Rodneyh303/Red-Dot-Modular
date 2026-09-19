@@ -86,11 +86,11 @@ struct PatternInput {
 // ── PatternEngine ─────────────────────────────────────────────────────────────
 struct PatternEngine {
 
-    // ── Unified probability storage (item 4): ONE array for all 16 voices × 6 editor lanes × 16 steps,
+    // ── Unified probability storage (item 4): ONE array for all 16 voices × 7 editor lanes × 16 steps,
     // replacing the separate mono named arrays (rhythmRandom…octaveRandom) and poly polyXRandom[15][16].
     // Indexed [voiceSlot][editorLane][step] — the SAME convention as lorStore_/spread (slot 0 = V1/mono,
-    // slots 1..15 = V2..V16; editor lanes MEL=0,OCT=1,REST=2,ACC=3,VAR=4,LEG=5; VAR/LEG poly-unused).
-    // The 6 mono named arrays below are REFERENCE VIEWS onto random_[0][lane] so the ~160 existing
+    // slots 1..15 = V2..V16; editor lanes MEL=0,OCT=1,QMIX=2,REST=3,ACC=4,VAR=5,LEG=6; VAR/LEG poly-unused).
+    // The 7 mono named arrays below are REFERENCE VIEWS onto random_[0][lane] so the ~160 existing
     // rhythmRandom[step] / std::rotate / whole-array sites keep working unchanged; poly access goes via
     // polyRandom(voice,lane). (mono row lane == strand index: MONO_LANE_TO_STRAND is the identity.)
     float random_[16][dotModular::NUM_STRANDS][16] = {};
@@ -98,19 +98,27 @@ struct PatternEngine {
     // ── Mono output views (read by MeloDicer, never written externally) — bound to random_[0][lane].
     float (&melodyRandom)[16]    = random_[0][dotModular::STRAND_MELODY];
     float (&octaveRandom)[16]    = random_[0][dotModular::STRAND_OCTAVE];
+    float (&qmixRandom)[16]      = random_[0][dotModular::STRAND_QMIX];
     float (&rhythmRandom)[16]    = random_[0][dotModular::STRAND_RHYTHM];
     float (&accentRandom)[16]    = random_[0][dotModular::STRAND_ACCENT];  // accent strand probabilities
     float (&variationRandom)[16] = random_[0][dotModular::STRAND_VARIATION];
     float (&legatoRandom)[16]    = random_[0][dotModular::STRAND_LEGATO];
 
     // Poly engine lane constants (mirror SequencerEngine::PolyLane) for polyRandom callers in this
-    // layer. 0=REST,1=MEL,2=OCT,3=ACC — the engine PL_ order (converted to editor order inside).
-    enum PolyLane { PL_REST = 0, PL_MELODY = 1, PL_OCTAVE = 2, PL_ACCENT = 3, PL_LANES = 4 };
+    // layer. 0=REST,1=MEL,2=OCT,3=ACC,4=QMIX — the engine PL_ order (converted to editor order inside).
+    enum PolyLane { PL_REST = 0, PL_MELODY = 1, PL_OCTAVE = 2, PL_ACCENT = 3, PL_QMIX = 4, PL_LANES = 5 };
 
     // Poly probability view: voice bank b (0..14 = V2..V16) → slot b+1; lane is the engine PL_ lane,
     // converted to editor order. Returns the 16-step row (float(&)[16]) so callers index [step].
-    float (&polyRandom(int bank, int engLane))[16] { return random_[bank + 1][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]]; }
-    const float (&polyRandom(int bank, int engLane) const)[16] { return random_[bank + 1][dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]]; }
+    // Now handles 5 poly lanes (REST/MEL/OCT/ACC/QMIX) via ENGINE_LANE_TO_EDITOR_QMIX.
+    float (&polyRandom(int bank, int engLane))[16] {
+        int edLane = (engLane >= 0 && engLane < 5) ? dotModular::ENGINE_LANE_TO_EDITOR_QMIX[engLane] : 0;
+        return random_[bank + 1][edLane];
+    }
+    const float (&polyRandom(int bank, int engLane) const)[16] {
+        int edLane = (engLane >= 0 && engLane < 5) ? dotModular::ENGINE_LANE_TO_EDITOR_QMIX[engLane] : 0;
+        return random_[bank + 1][edLane];
+    }
 
     // Final post-everything (A/B-mix + spread + LOR feed in upstream) probability value for a given
     // ENGINE STRAND at a given step, 0..1. Now a direct index into random_[0] (mono row): strand index
@@ -171,23 +179,27 @@ struct PatternEngine {
         auto pickMono = [&](int srcRow, int strand, int i) -> float {
             if (srcRow == 0) {
                 switch (strand) {
-                    case dotModular::STRAND_RHYTHM:    return mR[i];
                     case dotModular::STRAND_MELODY:    return mM[i];
                     case dotModular::STRAND_OCTAVE:    return mO[i];
+                    case dotModular::STRAND_QMIX:      return 0.5f;  // Q-mix: default mid-value (TODO: implement)
+                    case dotModular::STRAND_RHYTHM:    return mR[i];
                     case dotModular::STRAND_ACCENT:    return mA[i];
                     case dotModular::STRAND_VARIATION: return mV[i];
-                    default:                           return mL[i];
+                    case dotModular::STRAND_LEGATO:    return mL[i];
+                    default:                           return 0.5f;  // fallback
                 }
             }
             const int v = srcRow - 1;
             switch (strand) {
-                case dotModular::STRAND_RHYTHM: return pR[v][i];
                 case dotModular::STRAND_MELODY: return pM[v][i];
                 case dotModular::STRAND_OCTAVE: return pO[v][i];
+                case dotModular::STRAND_QMIX:   return 0.5f;  // Q-mix: default mid-value (TODO: per-poly buffer)
+                case dotModular::STRAND_RHYTHM: return pR[v][i];
                 case dotModular::STRAND_ACCENT: return pA[v][i];
                 // VAR/LEG have no per-poly slewed buffer (shared mono §4d) — borrow mono.
                 case dotModular::STRAND_VARIATION: return mV[i];
-                default:                           return mL[i];
+                case dotModular::STRAND_LEGATO:    return mL[i];
+                default:                           return 0.5f;  // fallback
             }
         };
         // Mono row 0 — rhythm family (RHYTHM/ACCENT/VAR/LEG) gated by doR, melody family (MEL/OCT) by doM.
@@ -199,8 +211,9 @@ struct PatternEngine {
                 slewedLegato[i]    = pickMono(caSrcRow(0, dotModular::STRAND_LEGATO),    dotModular::STRAND_LEGATO,    i);
             }
             if (doM) {
-                slewedMelody[i]    = pickMono(caSrcRow(0, dotModular::STRAND_MELODY),    dotModular::STRAND_MELODY,    i);
-                slewedOctave[i]    = pickMono(caSrcRow(0, dotModular::STRAND_OCTAVE),    dotModular::STRAND_OCTAVE,    i);
+                slewedMelody[i] = pickMono(caSrcRow(0, dotModular::STRAND_MELODY), dotModular::STRAND_MELODY, i);
+                slewedOctave[i] = pickMono(caSrcRow(0, dotModular::STRAND_OCTAVE), dotModular::STRAND_OCTAVE, i);
+                // Q-mix: TODO - add slewed buffer when q-mix CA pins are implemented
             }
         }
         // Poly rows 1..15 → poly buffers 0..14.

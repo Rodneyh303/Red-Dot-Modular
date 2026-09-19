@@ -163,24 +163,25 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     for (int i = 0; i < 96; ++i) json_array_append_new(va, json_real(m->editor.varlegAtten[i]));
     json_object_set_new(root, "editorVarlegAtten", va);
 
-    // MACRO owner (64) + send (256) + atten (256), migrated out of params[]. Tap re-homed to
-    // an expander param, so it persists via the normal Rack param path -- not here.
+    // MACRO owner (80) + send (320) + atten (320), migrated out of params[]. QMIX-widened to
+    // 5 poly lanes (was 64/256/256 at 4 lanes). Tap re-homed to an expander param (Rack path).
     json_t* mo = json_array();
-    for (int i = 0; i < 64; ++i) json_array_append_new(mo, json_real(m->editor.macroOwn[i]));
+    for (int i = 0; i < 80; ++i) json_array_append_new(mo, json_real(m->editor.macroOwn[i]));
     json_object_set_new(root, "editorMacroOwn", mo);
     json_t* ms = json_array();
-    for (int i = 0; i < 256; ++i) json_array_append_new(ms, json_real(m->editor.macroSend[i]));
+    for (int i = 0; i < 320; ++i) json_array_append_new(ms, json_real(m->editor.macroSend[i]));
     json_object_set_new(root, "editorMacroSend", ms);
     json_t* ma = json_array();
-    for (int i = 0; i < 256; ++i) json_array_append_new(ma, json_real(m->editor.macroAtten[i]));
+    for (int i = 0; i < 320; ++i) json_array_append_new(ma, json_real(m->editor.macroAtten[i]));
     json_object_set_new(root, "editorMacroAtten", ma);
 
     // V1 (East-alone) LOR/spread backup + its written-once guard.
+    // 336 = 16 slots × 7 banks × 3 (MONO_LANES=7 incl QMIX/VAR/LEG); spread 80 = 16 × 5 poly lanes.
     json_t* lb = json_array();
-    for (int i = 0; i < 288; ++i) json_array_append_new(lb, json_real(m->editor.lorBase[i]));
+    for (int i = 0; i < 336; ++i) json_array_append_new(lb, json_real(m->editor.lorBase[i]));
     json_object_set_new(root, "editorLorBase", lb);
     json_t* sp = json_array();
-    for (int i = 0; i < 64; ++i) json_array_append_new(sp, json_real(m->editor.spread[i]));
+    for (int i = 0; i < 80; ++i) json_array_append_new(sp, json_real(m->editor.spread[i]));
     json_object_set_new(root, "editorSpread", sp);
 
     // GLOBAL slice (MVC step 1). Macro's globals used to be params, which gave save/restore
@@ -190,13 +191,14 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
         for (int i = 0; i < n; ++i) json_array_append_new(j, json_real(a[i]));
         json_object_set_new(root, key, j);
     };
-    saveArr("editorGlobalLor",    m->editor.globalLor,    12);
-    saveArr("editorGlobalSpread", m->editor.globalSpread,  4);
-    saveArr("editorGlobalAtten",  m->editor.globalAtten,  16);
-    saveArr("editorGlobalTap",    m->editor.globalTap,     8);
-    saveArr("editorGlobalDir",    m->editor.globalDir,     4);
-    saveArr("editorMonoAtten",    m->editor.monoAtten,    24);
-    saveArr("editorMonoOwner",    m->editor.monoOwner,     4);
+    // Sizes track the QMIX-widened EditorState arrays: 5 poly lanes, 7 mono lanes.
+    saveArr("editorGlobalLor",    m->editor.globalLor,    15);   // 5 poly lanes × 3
+    saveArr("editorGlobalSpread", m->editor.globalSpread,  5);   // 5 poly lanes
+    saveArr("editorGlobalAtten",  m->editor.globalAtten,  20);   // 5 poly lanes × 4 cols
+    saveArr("editorGlobalTap",    m->editor.globalTap,    10);   // 5 poly lanes × 2
+    saveArr("editorGlobalDir",    m->editor.globalDir,     5);   // 5 poly lanes
+    saveArr("editorMonoAtten",    m->editor.monoAtten,    28);   // 7 mono lanes × 4 cols
+    saveArr("editorMonoOwner",    m->editor.monoOwner,     5);   // 5 poly lanes
 
     return root;
 }
@@ -379,27 +381,27 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     }
     if (auto j = json_object_get(root, "editorMacroOwn")) {
         if (json_is_array(j))
-            for (size_t i = 0; i < 64 && i < json_array_size(j); ++i)
+            for (size_t i = 0; i < 80 && i < json_array_size(j); ++i)    // 16 × 5 poly lanes
                 m->editor.macroOwn[i] = (float)json_real_value(json_array_get(j, i));
     }
     if (auto j = json_object_get(root, "editorMacroSend")) {
         if (json_is_array(j))
-            for (size_t i = 0; i < 256 && i < json_array_size(j); ++i)
+            for (size_t i = 0; i < 320 && i < json_array_size(j); ++i)   // 16 × 5 × 4 items
                 m->editor.macroSend[i] = (float)json_real_value(json_array_get(j, i));
     }
     if (auto j = json_object_get(root, "editorMacroAtten")) {
         if (json_is_array(j))
-            for (size_t i = 0; i < 256 && i < json_array_size(j); ++i)
+            for (size_t i = 0; i < 320 && i < json_array_size(j); ++i)   // 16 × 5 × 4 cols
                 m->editor.macroAtten[i] = (float)json_real_value(json_array_get(j, i));
     }
     if (auto j = json_object_get(root, "editorLorBase")) {
         if (json_is_array(j))
-            for (size_t i = 0; i < 288 && i < json_array_size(j); ++i)
+            for (size_t i = 0; i < 336 && i < json_array_size(j); ++i)   // 16 × 7 banks × 3
                 m->editor.lorBase[i] = (float)json_real_value(json_array_get(j, i));
     }
     if (auto j = json_object_get(root, "editorSpread")) {
         if (json_is_array(j))
-            for (size_t i = 0; i < 64 && i < json_array_size(j); ++i)
+            for (size_t i = 0; i < 80 && i < json_array_size(j); ++i)    // 16 × 5 poly lanes
                 m->editor.spread[i] = (float)json_real_value(json_array_get(j, i));
     }
     auto loadArrN = [&](const char* key, float* a, int n) {
@@ -409,11 +411,12 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
                     a[i] = (float)json_real_value(json_array_get(j, i));
         }
     };
-    loadArrN("editorGlobalLor",    m->editor.globalLor,    12);
-    loadArrN("editorGlobalSpread", m->editor.globalSpread,  4);
-    loadArrN("editorGlobalAtten",  m->editor.globalAtten,  16);
-    loadArrN("editorGlobalTap",    m->editor.globalTap,     8);
-    loadArrN("editorGlobalDir",    m->editor.globalDir,     4);
-    loadArrN("editorMonoAtten",    m->editor.monoAtten,    24);
-    loadArrN("editorMonoOwner",    m->editor.monoOwner,     4);
+    // Sizes track the QMIX-widened EditorState arrays: 5 poly lanes, 7 mono lanes.
+    loadArrN("editorGlobalLor",    m->editor.globalLor,    15);   // 5 poly lanes × 3
+    loadArrN("editorGlobalSpread", m->editor.globalSpread,  5);   // 5 poly lanes
+    loadArrN("editorGlobalAtten",  m->editor.globalAtten,  20);   // 5 poly lanes × 4 cols
+    loadArrN("editorGlobalTap",    m->editor.globalTap,    10);   // 5 poly lanes × 2
+    loadArrN("editorGlobalDir",    m->editor.globalDir,     5);   // 5 poly lanes
+    loadArrN("editorMonoAtten",    m->editor.monoAtten,    28);   // 7 mono lanes × 4 cols
+    loadArrN("editorMonoOwner",    m->editor.monoOwner,     5);   // 5 poly lanes
 }

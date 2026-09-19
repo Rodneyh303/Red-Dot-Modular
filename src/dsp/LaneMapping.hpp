@@ -30,42 +30,44 @@ namespace dotModular {
 // Engine strand index (matches the readStrand() order in MonsoonSandsManager and
 // the slot each engine.<strand>Len/Off/Rot occupies).
 enum EngineStrand {
-    // Renumbered to EDITOR order (MEL/OCT/REST/ACC/VAR/LEG) as part of the
-    // lane-order collapse. The switch(strand) accessors are keyed by NAME, so
-    // their behaviour is unchanged by the renumber; this just makes
-    // MONO_LANE_TO_STRAND the identity (editor lane == strand index).
+    // Renumbered to EDITOR order (MEL/OCT/QMIX/REST/ACC/VAR/LEG) with q-mix at index 2.
+    // The switch(strand) accessors are keyed by NAME, so their behaviour is unchanged
+    // by the renumber; this just makes MONO_LANE_TO_STRAND the identity (editor lane == strand index).
     STRAND_MELODY    = 0,
     STRAND_OCTAVE    = 1,
-    STRAND_RHYTHM    = 2,   // REST
-    STRAND_ACCENT    = 3,
-    STRAND_VARIATION = 4,
-    STRAND_LEGATO    = 5,
-    NUM_STRANDS      = 6,
+    STRAND_QMIX      = 2,   // Q-mix (quantizer mode: blend generated vs input melody)
+    STRAND_RHYTHM    = 3,   // REST (was 2)
+    STRAND_ACCENT    = 4,   // (was 3)
+    STRAND_VARIATION = 5,   // (was 4)
+    STRAND_LEGATO    = 6,   // (was 5)
+    NUM_STRANDS      = 7,   // (was 6)
 };
 
 // Editor lane index → engine strand index.
 //   editor 0 MELODY    -> melody
 //   editor 1 OCTAVE    -> octave
-//   editor 2 REST      -> rhythm
-//   editor 3 ACCENT    -> accent
-//   editor 4 VARIATION -> variation
-//   editor 5 LEGATO    -> legato
-constexpr int MONO_LANE_TO_STRAND[6] = {
+//   editor 2 QMIX      -> qmix
+//   editor 3 REST      -> rhythm
+//   editor 4 ACCENT    -> accent
+//   editor 5 VARIATION -> variation
+//   editor 6 LEGATO    -> legato
+constexpr int MONO_LANE_TO_STRAND[7] = {
     STRAND_MELODY,      // 0 MELODY
     STRAND_OCTAVE,      // 1 OCTAVE
-    STRAND_RHYTHM,      // 2 REST
-    STRAND_ACCENT,      // 3 ACCENT
-    STRAND_VARIATION,   // 4 VARIATION
-    STRAND_LEGATO,      // 5 LEGATO
+    STRAND_QMIX,        // 2 QMIX
+    STRAND_RHYTHM,      // 3 REST
+    STRAND_ACCENT,      // 4 ACCENT
+    STRAND_VARIATION,   // 5 VARIATION
+    STRAND_LEGATO,      // 6 LEGATO
 };
 
 // Mono LOR param bank → editor lane.  COLLAPSED TO IDENTITY: the Mono ParamId
-// LOR bank (lenId/offId/rotId) was renumbered to EDITOR order (MEL,OCT,REST,ACC,
+// LOR bank (lenId/offId/rotId) was renumbered to EDITOR order (MEL,OCT,QMIX,REST,ACC,
 // VAR,LEG), so the param index now IS the editor lane. These tables have no live
 // callers any more; kept as identity (and documented) so any stragglers are safe.
 // Removable once confirmed nothing references them.
-constexpr int MONO_PARAM_TO_EDITOR[6] = { 0, 1, 2, 3, 4, 5 };
-constexpr int EDITOR_TO_MONO_PARAM[6] = { 0, 1, 2, 3, 4, 5 };
+constexpr int MONO_PARAM_TO_EDITOR[7] = { 0, 1, 2, 3, 4, 5, 6 };
+constexpr int EDITOR_TO_MONO_PARAM[7] = { 0, 1, 2, 3, 4, 5, 6 };
 
 // Poly engine lane index (0=REST 1=MELODY 2=OCTAVE 3=ACCENT — the order used
 // by East/Macro lorId, engine.polyLen[v][lane], macroBase[lane], and the
@@ -88,7 +90,7 @@ constexpr int EDITOR_TO_ENGINE_LANE[4] = { 1, 2, 0, 3 };
 constexpr const int* SPREAD_LANE_TO_EDITOR = ENGINE_LANE_TO_EDITOR;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// q-mix lane (PLANNED — inert tables; the live tables above are unchanged) ─────
+// q-mix lane (ACTIVE — q-mix strand is now live) ───────────────────────────────
 //
 // q-mix is a FULL Sands lane: same LEN/OFF/ROT + spread + per-step editing + CV/attens +
 // prob-out as MEL/OCT/REST/ACC. That parity is the ENTIRE POINT of adding it to the Sands
@@ -99,22 +101,16 @@ constexpr const int* SPREAD_LANE_TO_EDITOR = ENGINE_LANE_TO_EDITOR;
 // It inserts as editor lane 2 (after MEL/OCT), so every editor index at/after 2 shifts +1:
 //     0 MEL  1 OCT  2 QMIX  3 REST  4 ACCENT  5 VARIATION  6 LEGATO
 // q-mix is per-voice → it's a POLY lane too. Because it's a REAL lane with data, the DATA
-// counts DO grow (SandsGrid MONO/EAST 6→7, POLY 4→5) — but ONLY together with the engine
-// q-mix strand + its param/per-voice arrays. One atomic feature: strand + arrays + counts +
-// editor + these mappings. (Correction: an earlier note here modelled q-mix as a dataless
-// slot with STRAND_NONE — wrong. It has a full strand; the counts do go up.)
+// counts DO grow (SandsGrid MONO/EAST 6→7, POLY 4→5) — atomically with the engine
+// q-mix strand + its param/per-voice arrays.
 //
-// Planned strand enum — QMIX inserted at 2, editor-aligned, so MONO_LANE_TO_STRAND stays the
+// Strand enum — QMIX inserted at 2, editor-aligned, so MONO_LANE_TO_STRAND stays the
 // IDENTITY (editor lane == strand index):
 //     STRAND_MELODY 0, OCTAVE 1, QMIX 2, RHYTHM 3, ACCENT 4, VARIATION 5, LEGATO 6; NUM 7
 // STRAND_QMIX generates off STREAM_SOURCE_SELECT; every other strand off rhythm/melody.
 constexpr int  QMIX_EDITOR_LANE = 2;    // q-mix's editor lane (and, editor-aligned, its strand)
-constexpr int  NUM_STRANDS_QMIX = 7;
 constexpr int  POLY_NONE        = -1;   // mono-only editor lane has no poly engine lane (VAR/LEG)
 constexpr uint64_t QMIX_STREAM_KEY = 3; // == redDot::seed::STREAM_SOURCE_SELECT
-
-// Editor lane (7) → engine strand: IDENTITY under the editor-aligned enum above.
-constexpr int MONO_LANE_TO_STRAND_QMIX[7] = { 0, 1, 2, 3, 4, 5, 6 };
 
 // Poly engine lane → editor lane, WITH q-mix as a poly lane (appended at poly index 4, editor 2).
 //   REST→3  MEL→0  OCT→1  ACC→4  QMIX→2          (was {2,0,1,3})
@@ -122,16 +118,16 @@ constexpr int ENGINE_LANE_TO_EDITOR_QMIX[5] = { 3, 0, 1, 4, 2 };
 // Inverse over 7 editor lanes; VAR/LEG are mono-only (POLY_NONE).
 constexpr int EDITOR_TO_ENGINE_LANE_QMIX[7] = { 1, 2, 4, 0, 3, POLY_NONE, POLY_NONE };
 
-// laneSlot() — the generators' ESLOT=[0,1,3,4,5,6] as a function. INTERIM ONLY: it exists so
-// the geometry-preview generators can leave editor slot 2 EMPTY until the q-mix strand lands.
-// In the finished feature q-mix is just lane 2 with full data — no gap, no laneSlot needed.
+// laneSlot() — DEPRECATED: the generators' ESLOT=[0,1,3,4,5,6] function. This existed for
+// geometry preview to leave editor slot 2 EMPTY until the q-mix strand landed. Now that
+// q-mix is active, this function is OBSOLETE (q-mix is just lane 2 with full data — no gap).
+// Kept temporarily for any lingering callers; remove once confirmed nothing uses it.
 constexpr int laneSlot(int editorLaneNoQmix) {
     return editorLaneNoQmix < QMIX_EDITOR_LANE ? editorLaneNoQmix : editorLaneNoQmix + 1;
 }
 
-static_assert(MONO_LANE_TO_STRAND_QMIX[QMIX_EDITOR_LANE] == 2, "qmix is strand 2 (editor-aligned)");
+static_assert(MONO_LANE_TO_STRAND[QMIX_EDITOR_LANE] == STRAND_QMIX, "qmix is strand 2 (editor-aligned)");
 static_assert(ENGINE_LANE_TO_EDITOR_QMIX[4] == 2 && EDITOR_TO_ENGINE_LANE_QMIX[2] == 4, "qmix poly<->editor round-trip");
-static_assert(laneSlot(1) == 1 && laneSlot(2) == 3, "interim slot shift");
 
 // ─── NOTE: ALIGN THE ORDERS WHERE POSSIBLE ───────────────────────────────────
 // Of the orderings in the header block, three are already collapsed to identity (engine

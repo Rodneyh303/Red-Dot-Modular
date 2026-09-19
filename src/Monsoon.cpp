@@ -54,8 +54,8 @@ Monsoon::Monsoon() {
         // Unified LOR base store: identity default (len=16, off=0, rot=0) for every voice
         // slot and bank, matching the old per-voice configParam defaults.
         for (int slot = 0; slot < 16; ++slot)
-            for (int bank = 0; bank < 6; ++bank)
-                editor.lorBase[slot*18 + bank*3 + 0] = 16.f;
+            for (int bank = 0; bank < dotModular::SandsGrid::MONO_LANES; ++bank)
+                editor.lorBase[slot*21 + bank*3 + 0] = 16.f;  // stride 21 = 7 banks × 3
 
         // Seed RNGs with a random value — safe to call here (uses rack::random, not inputs[])
         rhythmSeedFloat = rack::random::uniform() * 10.f;
@@ -870,7 +870,7 @@ void Monsoon::process(const ProcessArgs& args) {
             modViz.rhythmMix  = paramManager->getRhythmMixNorm();
             modViz.melodyMix  = paramManager->getMelodyMixNorm();
             modViz.activeCv3  = paramManager->anyCv3Modulated();
-            for (int i = 0; i < 4; ++i) modViz.cv3Lane[i] = paramManager->cv3LaneModulated(i);
+            for (int i = 0; i < dotModular::SandsGrid::POLY_LANES; ++i) modViz.cv3Lane[i] = paramManager->cv3LaneModulated(i);
             for (int i = 0; i < 12; ++i) modViz.semitone[i] = paramManager->getSemitoneNorm(i);
             modViz.octaveLo   = paramManager->getOctaveLoNorm();
             modViz.octaveHi   = paramManager->getOctaveHiNorm();
@@ -1088,7 +1088,7 @@ void Monsoon::process(const ProcessArgs& args) {
         }
 
         // ── Assignable CV3 & Raffles Modulation (Throttled) ──
-        float cv3Mods[4] = {0.f, 0.f, 0.f, 0.f};
+        float cv3Mods[5] = {0.f, 0.f, 0.f, 0.f, 0.f};  // 5 poly lanes: REST/MEL/QMIX/OCT/ACC
         
         // 1. Main Panel CV3 (bipolar offset to selected target; was unipolar 0..5
         //    which rectified the negative half — an attenuverter implies bipolar).
@@ -1110,7 +1110,7 @@ void Monsoon::process(const ProcessArgs& args) {
         }
 
         // Apply final summed offsets to ParameterManager
-        for (int i = 0; i < 4; ++i) {
+        for (int i = 0; i < dotModular::SandsGrid::POLY_LANES; ++i) {
             paramManager->setCv3Offset(i, clampv<float>(cv3Mods[i], -1.f, 1.f));
         }
     }

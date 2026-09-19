@@ -627,7 +627,7 @@ struct Monsoon : Module {
         // a sibling lane is modulated. Kept at struct END to avoid shifting the
         // offsets of the fields above (ABI hygiene for incremental builds).
         bool  big5Lane[5] = {false,false,false,false,false};
-        bool  cv3Lane[4]  = {false,false,false,false};
+        bool  cv3Lane[5]  = {false,false,false,false,false};  // 5 poly lanes: REST/MEL/OCT/ACC/QMIX
         // Per-lane pitch flags: 0..11 = semitones, 12 = octaveLo, 13 = octaveHi.
         bool  pitchLane[14] = {false};
     } modViz;
@@ -659,65 +659,62 @@ struct Monsoon : Module {
         // CONVENTION: VoiceResolver::voiceSlot (mono = slot 0). Verified against call sites.
         // index = v*6 + lane*3 + col  (== old VARLEG_ATTEN_START + v*6 + lane*3 + col).
         float varlegAtten[96] = {0};
-        // macroOwn: owner per lane(0..3). INDEXING IS POLY-BANK, NOT voiceSlot:
+        // macroOwn: owner per poly lane(0..4, QMIX-widened). INDEXING IS POLY-BANK, NOT voiceSlot:
         //   v = 0..14  -> V2..V16 (poly bank index)
         //   v = 15     -> V1/mono   (see getMonoMacroOwn/setMonoMacroOwn)
-        // index = v*4 + lane. NOTE this differs from lorBase/spread/varlegAtten/macroSend/
-        // macroAtten, which all use VoiceResolver::voiceSlot (mono = slot 0). Scheduled for
-        // reconciliation — see docs/design/MVC_UNIFICATION.md step 1. (The previous comment
-        // claimed "v=0..15 voice-slot, 15=mono", which is self-contradictory: voiceSlot(V1)
-        // is 0, so this array is NOT on the voiceSlot convention.)
-        float macroOwn[64] = {0};
-        // macroSend: Macro-CV blend send per (v=0..15)×lane(0..3)×item(0..3). index=(v*4+lane)*4+item.
+        // index = v*5 + lane. NOTE this differs from lorBase/spread/varlegAtten/macroSend/
+        // macroAtten, which all use VoiceResolver::voiceSlot (mono = slot 0).
+        float macroOwn[80] = {0};    // 16 × 5 poly lanes (was 64 = 16 × 4, pre-QMIX)
+        // macroSend: Macro-CV blend send per (v=0..15)×lane(0..4)×item(0..3). index=(v*5+lane)*4+item.
         // CONVENTION: VoiceResolver::voiceSlot (mono = slot 0). Verified against call sites.
-        float macroSend[256] = {0};
-        // macroAtten: atten depth per (v=0..15)×(lane*4+col, 16 wide). index = v*16 + lane*4+col.
+        float macroSend[320] = {0};  // 16 × 5 lanes × 4 items (was 256 = 16 × 4 × 4)
+        // macroAtten: atten depth per (v=0..15)×(lane*4+col, 20 wide). index = v*20 + lane*4+col.
         // CONVENTION: VoiceResolver::voiceSlot (mono = slot 0). Verified against call sites.
-        float macroAtten[256] = {0};
+        float macroAtten[320] = {0}; // 16 × 5 lanes × 4 cols (was 256 = 16 × 4 × 4)
         // Unified per-voice LOR base store (Stage 1 of the MVC unification). Indexed by
         // voiceSlot (0 = V1/mono, 1..15 = V2..V16) × bank (0=REST/DNA 1=MEL 2=OCT 3=ACC
         // 4=VAR 5=LEG) × (0=len 1=off 2=rot). This is the SINGLE home for every voice's
         // editable LOR base, replacing the per-voice East params (POLY_*_VOICE_1_LEN) and the
         // old V1-only eastV1Lor. Identity-initialised (len=16) in the Monsoon constructor.
-        float lorBase[288] = {0};     // 16 slots × 6 banks × 3
+        float lorBase[336] = {0};     // 16 slots × 7 banks × 3 (MONO_LANES=7: MEL/OCT/REST/ACC/QMIX/VAR/LEG)
         // Unified per-voice SPREAD store (Stage 1b). Same slot convention as lorBase
-        // (0 = V1/mono, 1..15 = V2..V16) × lane 0..3 (REST/MEL/OCT/ACC — spread does not
+        // (0 = V1/mono, 1..15 = V2..V16) × lane 0..4 (REST/MEL/QMIX/OCT/ACC — spread does not
         // apply to VAR/LEG). Zero-init = no spread, matching the old configParam default.
         // Replaces the per-voice interp params AND the old V1-only eastV1Spread. V1 is slot 0.
-        float spread[64] = {0};       // 16 slots × 4 lanes
+        float spread[80] = {0};       // 16 slots × 5 poly lanes
 
         // ── GLOBAL slice (MVC_UNIFICATION step 1) ────────────────────────────────────
         // Macro's scope. Previously these lived in Macro's params[] and the engine read
         // them off the module directly — i.e. for global scope the VIEW was the MODEL,
         // the one real MVC break. They now live here, so Macro is a view like East/Mono.
         // Lane order 0..3 = REST, MELODY, OCTAVE, ACCENT (Macro has no VAR/LEG scope).
-        float globalLor[12]    = {0};   // lane*3 + c   (c: 0=len 1=off 2=rot)
-        float globalSpread[4]  = {0};   // lane
-        float globalAtten[16]  = {0};   // lane*4 + col (col 0..2 = LOR items, 3 = spread)
-        float globalTap[8]     = {0};   // lane*2 + (0 = LOR tap, 1 = spread tap)
-        float globalDir[4]     = {0};   // lane
+        float globalLor[15]    = {0};   // 5 poly lanes × 3 (lane*3 + c, c: 0=len 1=off 2=rot)
+        float globalSpread[5]  = {0};   // 5 poly lanes: REST/MEL/OCT/ACC/QMIX
+        float globalAtten[20]  = {0};   // 5 poly lanes × 4 cols (lane*4 + col, col 0..2 = LOR items, 3 = spread)
+        float globalTap[10]    = {0};   // 5 poly lanes × 2 (lane*2 + (0 = LOR tap, 1 = spread tap))
+        float globalDir[5]     = {0};   // 5 poly lanes: REST/MEL/OCT/ACC/QMIX
 
-        //  MONO slice (MVC step 1: Mono Sands de-param) 
+        //  MONO slice (MVC step 1: Mono Sands de-param)
         // Mono Sands' per-module CV attenuverters, in ONE array like Macro's globalAtten:
-        // 6 lanes x 4 cols where cols 0..2 are the LOR attens (len/off/rot) and col 3 is the
-        // spread atten (meaningful only on the 4 spread lanes REST/MEL/OCT/ACC; unused on
-        // VAR/LEG). Lane order is EDITOR (MEL/OCT/REST/ACC/VAR/LEG), matching attenId. Unlike
+        // 7 lanes x 4 cols where cols 0..2 are the LOR attens (len/off/rot) and col 3 is the
+        // spread atten (meaningful only on the 5 spread lanes REST/MEL/QMIX/OCT/ACC; unused on
+        // VAR/LEG). Lane order is EDITOR (MEL/OCT/REST/ACC/QMIX/VAR/LEG), matching attenId. Unlike
         // LOR and spread (which reuse the unified lorBase[0]/spread[0] mono slot), the attens
         // had NO store -- the engine read them straight from params. This is their home.
-        float monoAtten[24]    = {0};   // lane*4 + col (col 0..2 = LOR items, 3 = spread)
+        float monoAtten[28]    = {0};   // 7 mono lanes × 4 cols (lane*4 + col, col 0..2 = LOR items, 3 = spread)
         // Mono V1 ownership per poly lane (MEL/OCT/REST/ACC): 0 = Macro owns V1's base for
         // this lane, 1 = Mono owns it. Was a param (ownerDispId), cross-read by Macro.
-        float monoOwner[4]     = {1,1,1,1};  // default: Mono owns (matches configSwitch default 1)
+        float monoOwner[5]     = {1,1,1,1,1};  // 5 poly lanes: REST/MEL/OCT/ACC/QMIX (default: Mono owns)
     } editor;
 
-    // Unified LOR base accessors. slot = voiceSlot (0 = V1/mono), bank 0..5, c 0..2.
-    float getLorBase(int slot, int bank, int c) const { return editor.lorBase[slot*18 + bank*3 + c]; }
-    void  setLorBase(int slot, int bank, int c, float x) { editor.lorBase[slot*18 + bank*3 + c] = x; }
+    // Unified LOR base accessors. slot = voiceSlot (0 = V1/mono), bank 0..6, c 0..2.
+    float getLorBase(int slot, int bank, int c) const { return editor.lorBase[slot*21 + bank*3 + c]; }
+    void  setLorBase(int slot, int bank, int c, float x) { editor.lorBase[slot*21 + bank*3 + c] = x; }
     // Unified spread accessors. slot = voiceSlot (0 = V1/mono), lane 0..3.
     // ── GLOBAL slice accessors (Macro's scope) ──────────────────────────────────────
     // lane 0..3 = REST/MELODY/OCTAVE/ACCENT. Bounds-guarded: a bad lane returns 0 rather
     // than reading past the array (these are read on the audio thread every cycle).
-    static bool gLaneOk(int lane) { return lane >= 0 && lane < 4; }
+    static bool gLaneOk(int lane) { return lane >= 0 && lane < 5; }  // 5 poly lanes
     float getGlobalLor(int lane, int c) const {
         return (gLaneOk(lane) && c >= 0 && c < 3) ? editor.globalLor[lane*3 + c] : 0.f; }
     void  setGlobalLor(int lane, int c, float x) {
@@ -740,26 +737,27 @@ struct Monsoon : Module {
     // Mirrors Macro's getGlobalAtten(lane, col) exactly -- one array, col 3 is the spread
     // atten. Spread atten is meaningful only on the 4 spread lanes; VAR/LEG col 3 is unused.
     float getMonoAtten(int lane, int col) const {
-        return (lane >= 0 && lane < 6 && col >= 0 && col < 4) ? editor.monoAtten[lane*4 + col] : 0.f; }
+        return (lane >= 0 && lane < 7 && col >= 0 && col < 4) ? editor.monoAtten[lane*4 + col] : 0.f; }  // 7 mono lanes
     void  setMonoAtten(int lane, int col, float x) {
-        if (lane >= 0 && lane < 6 && col >= 0 && col < 4) editor.monoAtten[lane*4 + col] = x; }
+        if (lane >= 0 && lane < 7 && col >= 0 && col < 4) editor.monoAtten[lane*4 + col] = x; }  // 7 mono lanes
     bool  getMonoOwner(int lane) const {
-        return (lane >= 0 && lane < 4) ? (editor.monoOwner[lane] > 0.5f) : true; }
+        return (lane >= 0 && lane < 5) ? (editor.monoOwner[lane] > 0.5f) : true; }  // 5 poly lanes
     void  setMonoOwner(int lane, bool mono) {
-        if (lane >= 0 && lane < 4) editor.monoOwner[lane] = mono ? 1.f : 0.f; }
+        if (lane >= 0 && lane < 5) editor.monoOwner[lane] = mono ? 1.f : 0.f; }  // 5 poly lanes
 
-    float getSpread(int slot, int lane) const { return editor.spread[slot*4 + lane]; }
-    void  setSpread(int slot, int lane, float x) { editor.spread[slot*4 + lane] = x; }
+    float getSpread(int slot, int lane) const { return editor.spread[slot*5 + lane]; }  // 5 poly lanes
+    void  setSpread(int slot, int lane, float x) { editor.spread[slot*5 + lane] = x; }  // 5 poly lanes
 
-    // MACRO accessors (mirror old ownerId/sendId/attenId/tapId index math).
-    float getMacroOwn(int v, int lane) const { return editor.macroOwn[v*4 + lane]; }
-    void  setMacroOwn(int v, int lane, float x) { editor.macroOwn[v*4 + lane] = x; }
-    float getMonoMacroOwn(int lane) const { return editor.macroOwn[15*4 + lane]; }
-    void  setMonoMacroOwn(int lane, float x) { editor.macroOwn[15*4 + lane] = x; }
-    float getMacroSend(int v, int lane, int item) const { return editor.macroSend[(v*4 + lane)*4 + item]; }
-    void  setMacroSend(int v, int lane, int item, float x) { editor.macroSend[(v*4 + lane)*4 + item] = x; }
-    float getMacroAtten(int v, int laneCol) const { return editor.macroAtten[v*16 + laneCol]; }
-    void  setMacroAtten(int v, int laneCol, float x) { editor.macroAtten[v*16 + laneCol] = x; }
+    // MACRO accessors — stride 5 poly lanes (QMIX-widened; was 4). laneCol spans lane*4+col over
+    // 5 lanes → row stride 20 for macroAtten (was 16). lane 0..4, item/col 0..3, v 0..15.
+    float getMacroOwn(int v, int lane) const { return editor.macroOwn[v*5 + lane]; }
+    void  setMacroOwn(int v, int lane, float x) { editor.macroOwn[v*5 + lane] = x; }
+    float getMonoMacroOwn(int lane) const { return editor.macroOwn[15*5 + lane]; }
+    void  setMonoMacroOwn(int lane, float x) { editor.macroOwn[15*5 + lane] = x; }
+    float getMacroSend(int v, int lane, int item) const { return editor.macroSend[(v*5 + lane)*4 + item]; }
+    void  setMacroSend(int v, int lane, int item, float x) { editor.macroSend[(v*5 + lane)*4 + item] = x; }
+    float getMacroAtten(int v, int laneCol) const { return editor.macroAtten[v*20 + laneCol]; }
+    void  setMacroAtten(int v, int laneCol, float x) { editor.macroAtten[v*20 + laneCol] = x; }
 
     // LANE_DIR accessors — the ONE place the index math lives (mirrors old dirId/monoDirId).
     float getLaneDir(int v, int lane) const { return editor.laneDir[v*6 + lane]; }

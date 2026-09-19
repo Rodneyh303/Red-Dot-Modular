@@ -64,9 +64,10 @@ struct SandsTopology {
         //   monoV1Owner[l]      : Mono's   ownerDispId(l)  > 0.5  (true = Mono local-owns)
         //   eastV1Owner[l]      : East's   ownerDispId(l)  > 0.5  (true = East local-owns)
         //   eastPolyOwner[v][l] : East's   ownerId(v,l)    > 0.5  (true = East local-owns; v = poly index 0..14)
-        bool monoV1Owner[4]      = { true, true, true, true };
-        bool eastV1Owner[4]      = { true, true, true, true };
-        bool eastPolyOwner[15][4] = {};   // default false → Macro-owned until set; caller fills when East present
+        // Now 5 poly lanes: MEL/OCT/QMIX/REST/ACC (editor order).
+        bool monoV1Owner[5]      = { true, true, true, true, true };
+        bool eastV1Owner[5]      = { true, true, true, true, true };
+        bool eastPolyOwner[15][5] = {};   // default false → Macro-owned until set; caller fills when East present
     };
 
     Config config = Config::EMPTY;

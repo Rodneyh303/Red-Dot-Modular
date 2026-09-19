@@ -25,6 +25,10 @@ using namespace rack;  // widget::Widget::DrawArgs, event::*, math::*
 
 struct SandsVisualEditorV4 : rack::TransparentWidget {
  inline static constexpr int STEP_COUNT = 16;  // 16 probability values per lane
+ // Max editor lanes = EAST_LANES (MEL/OCT/QMIX/REST/ACC/VAR/LEG). Backing arrays are sized to
+ // this; MONO shows 7, POLY 5. Was 6 pre-QMIX — the East step() writing lane index 6 into a
+ // 6-element array was the QMIX add-crash (out-of-bounds write corrupting adjacent memory).
+ inline static constexpr int MAX_LANES = 7;
   
   enum Mode {
     MONO,
@@ -157,10 +161,10 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   };
   
   struct VoiceState {
-    std::array<ProbabilityLane, 6> lanes;
+    std::array<ProbabilityLane, MAX_LANES> lanes;   // 7 lanes (QMIX-widened; was 6)
     
     bool operator==(const VoiceState& other) const {
-      for (int l = 0; l < 6; ++l) {
+      for (int l = 0; l < MAX_LANES; ++l) {
         for (int s = 0; s < STEP_COUNT; ++s) {
           if (lanes[l].probabilities[s] != other.lanes[l].probabilities[s]) return false;
         }
@@ -277,21 +281,21 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // due to independent LENGTH / OFFSET / ROTATION per lane.
   // Set via setLanePlayStep(lane, step) from the widget each frame.
   // step = -1 means sequencer not running (no indicator drawn).
-  int lanePlayStep[6] = {-1,-1,-1,-1,-1,-1};
+  int lanePlayStep[MAX_LANES] = {-1,-1,-1,-1,-1,-1,-1};   // 7 lanes (QMIX-widened)
   float activeStepAlpha = 0.f;
-  int lanePlayDir[6] = {1,1,1,1,1,1};   // per-lane trail direction (+1 fwd / -1 rev); Mode E and per-lane
+  int lanePlayDir[MAX_LANES] = {1,1,1,1,1,1,1};   // per-lane trail direction (+1 fwd / -1 rev); Mode E and per-lane
   // Set all lanes at once (Mode E global cue). Per-lane callers use setLanePlayDir.
-  void setPlayDir(int d) { int s = (d < 0) ? -1 : +1; for (int l = 0; l < 6; ++l) lanePlayDir[l] = s; }
-  void setLanePlayDir(int lane, int d) { if (lane >= 0 && lane < 6) lanePlayDir[lane] = (d < 0) ? -1 : +1; }
+  void setPlayDir(int d) { int s = (d < 0) ? -1 : +1; for (int l = 0; l < MAX_LANES; ++l) lanePlayDir[l] = s; }
+  void setLanePlayDir(int lane, int d) { if (lane >= 0 && lane < MAX_LANES) lanePlayDir[lane] = (d < 0) ? -1 : +1; }
 
   // Convenience: set all active lanes to the same global step
   // (used when L/O/R is not yet available)
   void setGlobalPlayStep(int step) {
-    for (int l = 0; l < 6; ++l) lanePlayStep[l] = step;
+    for (int l = 0; l < MAX_LANES; ++l) lanePlayStep[l] = step;
   }
 
   void setLanePlayStep(int lane, int step) {
-    if (lane >= 0 && lane < 6) lanePlayStep[lane] = step;
+    if (lane >= 0 && lane < MAX_LANES) lanePlayStep[lane] = step;
   }
 
   // Reset all playhead positions. Call when the source (Monsoon) is disconnected
@@ -299,7 +303,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // skips lanes with step < 0, and step() drops activeStepAlpha to baseline once
   // no lane is active, so the editor reads as idle rather than stuck.
   void clearPlaySteps() {
-    for (int l = 0; l < 6; ++l) lanePlayStep[l] = -1;
+    for (int l = 0; l < MAX_LANES; ++l) lanePlayStep[l] = -1;
   }
   
   struct Layout {
@@ -363,7 +367,8 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
 
   void setMode(Mode m) {
     mode = m;
-    laneCount = laneCountOverride ? laneCountOverride : ((mode == MONO) ? 6 : 4);
+    // Phase 2: POLY mode now shows 5 lanes (added q-mix), MONO shows 7 (was 6).
+    laneCount = laneCountOverride ? laneCountOverride : ((mode == MONO) ? 7 : 5);
     // NOTE: box.size is owned by the module that creates this editor (it sets
     // box.size = mm2px(ED_W, ED_H)). The layout derives lane height from
     // box.size.y / laneCount, so we must NOT force a hardcoded height here —
@@ -372,7 +377,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   }
   
   void resetState() {
-    for (int l = 0; l < 6; ++l) {
+    for (int l = 0; l < MAX_LANES; ++l) {
       for (int s = 0; s < STEP_COUNT; ++s) {
         currentState.lanes[l].probabilities[s] = 0.5f;
       }
@@ -551,12 +556,12 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   }
   
   void drawLaneLabel(NVGcontext* vg, int lane) {
-    static const char* monoNames[] = {"MELODY", "OCTAVE", "REST", "ACCENT", "VARIATION", "LEGATO"};
-    // monoNames carries all six correct labels and its first four equal the poly labels, so it
-    // is safe for every lane. The East editor shows 6 lanes in a non-MONO mode, so the old
-    // `polyNames[lane]` (4 entries) read out of bounds for lanes 4/5 — the mislabelled
-    // MELODY/OCTAVE on VARIATION/LEGATO. Use monoNames for all lanes (lane < laneCount ≤ 6).
-    const char* name = (lane >= 0 && lane < 6) ? monoNames[lane] : "";
+    // EDITOR lane order incl QMIX at index 2 (MONO_LANE_TO_STRAND identity): MEL/OCT/QMIX/REST/
+    // ACCENT/VARIATION/LEGATO. 7 entries (MAX_LANES) so lane 6 (LEGATO) is in-bounds; the first
+    // FIVE equal the poly labels. Was 6 entries pre-QMIX (missing QMIX + LEG OOB read).
+    static const char* monoNames[MAX_LANES] =
+        {"MELODY", "OCTAVE", "QMIX", "REST", "ACCENT", "VARIATION", "LEGATO"};
+    const char* name = (lane >= 0 && lane < MAX_LANES) ? monoNames[lane] : "";
     float y = layout.getLaneCenterY(lane);
     
     nvgFontSize(vg, 10.f);

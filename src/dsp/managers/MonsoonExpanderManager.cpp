@@ -80,9 +80,10 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
     // STEP 5b: populate per-voice East ownership so the topology can drive the POLY write
     // guards (not just presence/V1). Source is East's persistent ownerId (engine-ordered)
     // and monoOwnerId; converted to editor lane so topo speaks editor lane (decision 1).
+    // Now 5 poly lanes: MEL/OCT/QMIX/REST/ACC (editor order).
     if (cachedEastSandsVisual) {
-        for (int el = 0; el < 4; ++el) {
-            const int eng = dotModular::EDITOR_TO_ENGINE_LANE[el];
+        for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
+            const int eng = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el];
             topoIn.eastV1Owner[el] = (redDot::findMonsoonEitherSide(cachedEastSandsVisual) ? redDot::findMonsoonEitherSide(cachedEastSandsVisual)->getMonoMacroOwn(eng) > 0.5f : false);
             for (int pv = 0; pv < 15; ++pv)
                 topoIn.eastPolyOwner[pv][el] = (redDot::findMonsoonEitherSide(cachedEastSandsVisual) ? redDot::findMonsoonEitherSide(cachedEastSandsVisual)->getMacroOwn(pv, eng) > 0.5f : false);
@@ -178,20 +179,21 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             auto* mmod = dynamic_cast<StraitsSandsMacroVisual*>(macroVis);
             // MVC step 1c: Macro's global direction now reads from the store, not its params.
             Monsoon* gMon = redDot::findMonsoonEitherSide(macroVis);
-            for (int el = 0; el < 4; ++el) {
-                // el = editor lane (MEL=0, OCT=1, REST=2, ACC=3) = strand index
+            // Now 5 poly lanes: MEL/OCT/QMIX/REST/ACC (editor order).
+            for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
+                // el = editor lane (MEL=0, OCT=1, QMIX=2, REST=3, ACC=4) = strand index
                 engine.macroLaneDir_[el] = (SequencerEngine::LaneDir)(int)std::lround(
                     math::clamp(gMon ? gMon->getGlobalDir(el) : 0.f, 0.f, 3.f));
                 // Push Macro's own LOR length for bounce detection.
-                // macroBase is indexed by ENGINE lane (REST=0, MEL=1, OCT=2, ACC=3);
-                // convert editor lane → engine lane via EDITOR_TO_ENGINE_LANE.
+                // macroBase is indexed by ENGINE lane (REST=0, MEL=1, OCT=2, ACC=3, QMIX=4);
+                // convert editor lane → engine lane via EDITOR_TO_ENGINE_LANE_QMIX.
                 if (mmod) {
-                    int engLane = dotModular::EDITOR_TO_ENGINE_LANE[el];
+                    int engLane = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el];
                     engine.macroLOR_[el] = std::max(1, (int)std::lround(mmod->macroBase[engLane][0] + mmod->macroCVDelta[engLane][0]));
                 }
             }
         } else {
-            for (int el = 0; el < 4; ++el) {
+            for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
                 engine.macroLaneDir_[el] = SequencerEngine::LaneDir::Forward;
                 engine.macroLOR_[el] = 16;
             }
@@ -246,7 +248,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 //   ownerEast = ownerId(v, lane) > 0.5f
                 // topo voice arg is 1-based for poly (0 = mono/V1); `lane` here is
                 // engine-ordered → convert to editor lane. Cross-check in debug.
-                const int elc = dotModular::ENGINE_LANE_TO_EDITOR[lane];
+                const int elc = dotModular::ENGINE_LANE_TO_EDITOR_QMIX[lane];
                 const bool ownerEast = (topo.owner(v + 1, elc) == dotModular::SandsTopology::Role::EAST);
                 // (step 5+6 cross-check assert removed — the resolver is now the single
                 // source of truth; the old ownerId-match check fired on load-time transients
@@ -282,7 +284,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             // [-1,1] so Macro ownership/blend can still reach negative spread.
             auto combineSpread = [&](int lane, float eastInterpVal)-> float {
                 // STEP 5b: same poly write ownership via the resolver (spread path).
-                const int els = dotModular::ENGINE_LANE_TO_EDITOR[lane];
+                const int els = dotModular::ENGINE_LANE_TO_EDITOR_QMIX[lane];
                 const bool ownerEast = (topo.owner(v + 1, els) == dotModular::SandsTopology::Role::EAST);
                 // (step 5+6 cross-check assert removed — see the poly-write path above.)
                 float base = ownerEast ? eastInterpVal
@@ -355,10 +357,10 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                         // else the voice's own getLaneDir (cached for reclaim). Lanes 4/5 (VAR/LEG)
                         // have no Macro ownership, so always use the voice's getLaneDir.
                         // NOTE: getMacroOwn/getGlobalDir take ENGINE lane (REST=0,MEL=1,OCT=2,ACC=3),
-                        // but l is a STRAND (== editor lane: MEL=0,OCT=1,REST=2,ACC=3). Convert.
+                        // but l is a STRAND (== editor lane: MEL=0,OCT=1,QMIX=2,REST=3,ACC=4). Convert.
                         float dirVal;
-                        if (l < 4) {
-                            int engLane = dotModular::EDITOR_TO_ENGINE_LANE[l];
+                        if (l < dotModular::SandsGrid::POLY_LANES) {
+                            int engLane = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[l];
                             dirVal = (mm->getMacroOwn(v, engLane) > 0.5f)
                                    ? mm->getLaneDir(v, l)       // East owns → voice's own (cached)
                                    : mm->getGlobalDir(engLane);  // Macro owns → Macro's global
@@ -599,9 +601,10 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                     }
                 }
                 // Mono strand LOR from Macro globals (REST/MEL/OCT/ACC strands).
+                // Note: These are in ENGINE lane order (REST=0, MEL=1, OCT=2, ACC=3), not editor order.
                 static const int STRND[4] = { dotModular::STRAND_RHYTHM, dotModular::STRAND_MELODY,
                                               dotModular::STRAND_OCTAVE, dotModular::STRAND_ACCENT };
-                for (int lane = 0; lane < 4; ++lane) {
+                for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
                     // SCOPE (LOCK_SCOPE_MENU): per-strand R/M — MELODY/OCTAVE = melody axis.
                     const bool lorMelAxis = (STRND[lane] == dotModular::STRAND_MELODY || STRND[lane] == dotModular::STRAND_OCTAVE);
                     if (dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked, engine.scopeLiveMask, lorMelAxis))   // LOR LATCH: skip re-push under lock

@@ -223,9 +223,10 @@ bool SequencerEngine::advancePlayhead(int dir) {
         // macroLOR_ fix generalised to laneTickV_. strand → this voice's LOR length:
         auto polyStrandLen = [&](int v, int strand) -> int {
             switch (strand) {
-                case dotModular::STRAND_RHYTHM:    return polyLenE(v, PL_REST);
                 case dotModular::STRAND_MELODY:    return polyLenE(v, PL_MELODY);
                 case dotModular::STRAND_OCTAVE:    return polyLenE(v, PL_OCTAVE);
+                case dotModular::STRAND_QMIX:      return polyLenE(v, PL_QMIX);
+                case dotModular::STRAND_RHYTHM:    return polyLenE(v, PL_REST);
                 case dotModular::STRAND_ACCENT:    return polyLenE(v, PL_ACCENT);
                 case dotModular::STRAND_VARIATION: return polyLOR(v, EDITOR_LANE_VARIATION, LOR_LEN);
                 case dotModular::STRAND_LEGATO:    return polyLOR(v, EDITOR_LANE_LEGATO, LOR_LEN);
