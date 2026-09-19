@@ -531,8 +531,18 @@ struct SequencerEngine {
     // The sounding pitch for a voice at its onset: quantised external CV in quantiser mode, else the
     // internal draw via genPitchLive. `voiceIdx` 0..15 (0 = mono/voice-0). outSem = the sounding degree
     // (for flash LEDs). r_semi/r_oct = the voice's melody/octave draws (used only in the internal path).
-    float voicePitch(int voiceIdx, int& outSem, const PatternInput& input, float r_semi, float r_oct) {
-        if (quantiserPitchSource) {
+    //
+    // QMIX per-step source-select (mono/voice-0 only): when quantiserPitchSource is set AND
+    // forceGenerated is true, this step takes the INTERNALLY GENERATED pitch (genPitchLive, the pitch
+    // mode A would produce) INSTEAD of the quantised external CV — the q-mix "use generated" branch.
+    // forceGenerated is the mono q-mix decision (r_qmix < qmixLevel); it is only ever true in
+    // quantiser modes (quantiserPitchSource gates it). When forceGenerated is false (the default,
+    // and always for poly voices) behaviour is byte-identical to the legacy path. The generated
+    // branch flows through genPitchLive, which writes outSem the same way mode A does, so
+    // lastSemitone/LED/degree naming stay correct for generated notes.
+    float voicePitch(int voiceIdx, int& outSem, const PatternInput& input, float r_semi, float r_oct,
+                     bool forceGenerated = false) {
+        if (quantiserPitchSource && !forceGenerated) {
             const int vi = (voiceIdx < 0) ? 0 : (voiceIdx > 15 ? 15 : voiceIdx);
             float v = quantize(quantiserCV[vi]);
             float frac = v - std::floor(v);

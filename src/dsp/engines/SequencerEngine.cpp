@@ -439,12 +439,27 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     }
 
     int   sem    = 0;
+    // ── QMIX per-step source-select (mono/voice-0) ──────────────────────────────────────────────
+    // In quantiser modes, q-mix decides PER STEP whether the CV-out pitch comes from the quantised
+    // external CV2 (default) or the internally generated melody. The decision is the same q-mix draw
+    // the engine thresholds for result.qmixHit below: qmixUseGenerated == (r_qmix < qmixLevel).
+    //   qmixLevel 0 → never generated → always quantised CV2 (legacy behaviour).
+    //   qmixLevel 1 → always generated → ignore CV2.
+    //   in between → per-step probabilistic blend (generated notes gradually replace quantised ones).
+    // Gated by quantiserPitchSource so it is inert outside quantiser modes (A/B byte-identical).
+    // Computed HERE (before voicePitch) so it can steer the pitch source; result.qmixHit at the
+    // bottom of this function is set from the SAME decision on starting steps, and held/tied steps
+    // reuse the prior note's pitch (no fresh voicePitch draw) so the source latches — matching how
+    // qmixHit already inherits on non-starting steps.
+    const bool qmixUseGenerated = quantiserPitchSource && (r_qmix < input.qmixLevel);
     // QUANTISER (Q1): mono/voice-0 pitch = quantised external CV when in a quantiser mode, else the
     // internal melody+octave draw. voicePitch bypasses genPitchLive (no RNG/lane perturbation) when
-    // quantiserPitchSource is set; off = byte-identical legacy path.
+    // quantiserPitchSource is set; off = byte-identical legacy path. qmixUseGenerated forces the
+    // generated branch on a q-mix "use generated" step.
     float pitchV = voicePitch(0, sem, input,
                               pe.melodyRandom[getMelodyStep()],
-                              pe.octaveRandom[getOctaveStep()]);
+                              pe.octaveRandom[getOctaveStep()],
+                              /*forceGenerated=*/qmixUseGenerated);
 
     // ── Leading-edge legato (STEP 2, the only legato model) ──
     // The PREVIOUS starting note recorded, at its own onset, whether it intends to hold
@@ -556,6 +571,11 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
 
     // Task 4 (QMIX): threshold the mono q-mix draw against QMIX_LEVEL, mirroring accent. A "hit"
     // fires when the draw crosses the level (draw < level); on sustains it inherits, on rests false.
+    // This is the SAME decision that steered the pitch source above (qmixUseGenerated): on a starting
+    // step qmixHit == "this note used the GENERATED pitch". A held/tied step reuses the prior note's
+    // pitch (no fresh voicePitch draw), so it inherits the prior qmixHit — the source latches with the
+    // note. Outside quantiser modes qmixUseGenerated is always false; qmixHit keeps its raw-draw
+    // semantics via the r_qmix<qmixLevel form (behaviour-inert there, matching prior code).
     if (monoStarting) {
         result.qmixHit = (r_qmix < input.qmixLevel);
     } else if (result.decision == MonoDecision::Rest) {
