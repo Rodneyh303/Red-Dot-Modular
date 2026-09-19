@@ -381,6 +381,11 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                         engine.pe, 1, i, engine.pe.slewedMelody[i], engine.spreadE(0, 1));
                     engine.pe.octaveRandom[i] = redDot::SpreadInterp::apply(
                         engine.pe, 2, i, engine.pe.slewedOctave[i], engine.spreadE(0, 2));
+                    // QMIX is a melody-family value lane (Task 4c): apply its own spread on the
+                    // melody axis. SpreadInterp lane 4 = QMIX (slewedQmix twin); engine spread
+                    // lane 4 = STRAND_QMIX (spreadE absorbs the engine→editor permutation).
+                    engine.pe.qmixRandom[i] = redDot::SpreadInterp::apply(
+                        engine.pe, 4, i, engine.pe.slewedQmix[i], engine.spreadE(0, 4));
                 }
             }
             }  // end if(sprR || sprM)
@@ -524,6 +529,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             const float spM = sprForLane(1);
             const float spO = sprForLane(2);
             const float spA = sprForLane(3);
+            const float spQ = sprForLane(4);   // QMIX (spread/engine lane 4)
             engine.pe.setSandsActive(true);
             for (int i = 0; i < 16; ++i) {
                 if (axR) {
@@ -535,6 +541,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 if (axM) {
                     engine.pe.melodyRandom[i] = redDot::SpreadInterp::apply(engine.pe, 1, i, engine.pe.slewedMelody[i], spM);
                     engine.pe.octaveRandom[i] = redDot::SpreadInterp::apply(engine.pe, 2, i, engine.pe.slewedOctave[i], spO);
+                    // QMIX is a melody-family value lane (Task 4c): apply on the melody axis.
+                    engine.pe.qmixRandom[i] = redDot::SpreadInterp::apply(engine.pe, 4, i, engine.pe.slewedQmix[i], spQ);
                 }
             }
             }   // end if (axR || axM) — spread only; V1 LOR above runs under lock too

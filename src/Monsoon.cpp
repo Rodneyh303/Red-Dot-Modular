@@ -887,7 +887,7 @@ void Monsoon::process(const ProcessArgs& args) {
 
         if (uiManager) {
             // Move these here from per-sample logic
-            uiManager->updateDiceLights(engine.pe.isRhythmSeedPending(), engine.pe.isMelodySeedPending());
+            uiManager->updateDiceLights(engine.pe.isRhythmSeedPending(), engine.pe.isMelodySeedPending(), engine.pe.isQmixSeedPending());
             uiManager->updateLockLight(locked);
             uiManager->updateMuteLight(muted);
             

@@ -459,15 +459,17 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         }
 
         // ── Per-lane base spread. spreadEffective[] is SPREAD/engine-indexed
-        // (0=REST,1=MEL,2=OCT,3=ACC). setLaneSpread expects the PatternEngine BUFFER
-        // lane order (REST=0,MEL=1,OCT=2,LEG=3,ACC=4,VAR=5). Map spread idx → buffer
+        // (0=REST,1=MEL,2=OCT,3=ACC,4=QMIX). setLaneSpread expects the PatternEngine BUFFER
+        // lane order (REST=0,MEL=1,OCT=2,LEG=3,ACC=4,VAR=5,QMIX=6). Map spread idx → buffer
         // lane explicitly so neither side is read with the wrong convention. (This was
         // the per-lane analogue of the spread-arc off-by-one.)
-        static const int SPREAD_TO_BUFFER[4] = { 0, 1, 2, 4 };  // REST,MEL,OCT,ACCENT
-        // NOTE: QMIX spread (spread idx 4) → engine buffer wiring lands in Task 4 (engine q-mix
-        // draw buffers + SpreadManager widen). Until then push only the 4 legacy spread lanes to
-        // avoid indexing SPREAD_TO_BUFFER out of bounds (its 5th entry doesn't exist yet).
-        for (int l = 0; l < 4; ++l) {
+        // Task 4c: QMIX (spread idx 4 → buffer lane 6) now wired — engine q-mix draw buffers
+        // (slewedQmix/slewedPolyQmix, Task 4b) and SpreadManager are QMIX-aware, so the 5th
+        // SPREAD_TO_BUFFER entry is live and the loop runs the full N_SPREAD_LANES.
+        static const int N_SPREAD_LANES = 5;
+        static const int SPREAD_TO_BUFFER[N_SPREAD_LANES] =
+            { 0, 1, 2, 4, MonoSandsParameterManager::QMIX_BUFFER_LANE };  // REST,MEL,OCT,ACCENT,QMIX
+        for (int l = 0; l < N_SPREAD_LANES; ++l) {
             paramMgr->setLaneSpread(SPREAD_TO_BUFFER[l], monsoon->engine.spreadE(0, l));  // engine state (slot 0)
         }
 

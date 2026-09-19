@@ -8,13 +8,14 @@ using namespace MonsoonIds;
 
 // ──── Status Light Updates ──────────────────────────────────────────────────
 
-void UIManager::updateDiceLights(bool rhythmSeedPending, bool melodySeedPending) {
+void UIManager::updateDiceLights(bool rhythmSeedPending, bool melodySeedPending, bool qmixSeedPending) {
     if (!mainModule) return;
     auto& lights = mainModule->lights;
     using namespace MonsoonIds;
     
     lights[RHYTHM_DICE_LIGHT].setBrightness(rhythmSeedPending ? 1.f : 0.1f);
     lights[MELODY_DICE_LIGHT].setBrightness(melodySeedPending ? 1.f : 0.1f);
+    lights[QMIX_DICE_LIGHT].setBrightness(qmixSeedPending ? 1.f : 0.1f);
 }
 
 void UIManager::updateLockLight(bool locked) {

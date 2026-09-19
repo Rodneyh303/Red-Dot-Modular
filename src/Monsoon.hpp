@@ -455,6 +455,11 @@ namespace MonsoonIds {
         RESET_LIGHT = POLY_EXPANDER_LIGHT + 2,
         RUN_GATE_LIGHT,
 
+        // QMIX dice pending light — twin of RHYTHM/MELODY_DICE_LIGHT. Appended at the END
+        // (stable ids) so no existing light slot shifts. Lit while a Dice Q seed is armed
+        // (between press and the phrase boundary), like R/M.
+        QMIX_DICE_LIGHT,
+
         NUM_LIGHTS
     };
 

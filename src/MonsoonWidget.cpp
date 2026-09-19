@@ -517,6 +517,16 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         // Control-row lights (computed formula row)
         addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(rx(2), ROWYL)), module, MonsoonIds::RHYTHM_DICE_LIGHT));
         addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(rx(3), ROWYL)), module, MonsoonIds::MELODY_DICE_LIGHT));
+        // Task 4c: Dice Q pending light — twin of R/M. R/M lights are placed POSITIONALLY here
+        // (not SVG-bound), so no panel <circle> is required. Dice Q sits at its own panel spot
+        // (param_DICE_Q_PARAM), which may not equal the formula-row column, so anchor the light to
+        // that named shape's centre (mirrors the mode-light / labelAt derive-from-SVG pattern),
+        // falling back to rx(4) on the formula row if the shape can't be resolved.
+        {
+            Vec qpos = mm2px(Vec(rx(4), ROWYL));
+            if (NSVGshape* s = findNamed("param_DICE_Q_PARAM")) qpos = centerOf(s);
+            addChild(createLightCentered<MediumLight<GreenLight>>(qpos, module, MonsoonIds::QMIX_DICE_LIGHT));
+        }
         addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec(rx(8),  ROWYL)), module, MonsoonIds::LOCK_LIGHT));
         addChild(createLightCentered<MediumLight<RedLight>>(  mm2px(Vec(rx(9),  ROWYL)), module, MonsoonIds::MUTE_LIGHT));
         addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec(rx(10), ROWYL)), module, MonsoonIds::RESET_LIGHT));

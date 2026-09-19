@@ -29,8 +29,10 @@ public:
     
     // ──── Status Light Updates ──────────────────────────────────────────────
     
-    /// Update dice lights (rhythm and melody)
-    void updateDiceLights(bool rhythmSeedPending, bool melodySeedPending);
+    /// Update dice lights (rhythm, melody and qmix). qmixSeedPending defaults to false so the
+    /// batch updateAllLights() (which has no qmix state) still compiles; the live per-block path
+    /// in Monsoon.cpp passes engine.pe.isQmixSeedPending() explicitly.
+    void updateDiceLights(bool rhythmSeedPending, bool melodySeedPending, bool qmixSeedPending = false);
     
     /// Update lock indicator light
     void updateLockLight(bool locked);
