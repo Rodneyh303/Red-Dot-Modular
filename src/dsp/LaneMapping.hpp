@@ -118,13 +118,9 @@ constexpr int ENGINE_LANE_TO_EDITOR_QMIX[5] = { 3, 0, 1, 4, 2 };
 // Inverse over 7 editor lanes; VAR/LEG are mono-only (POLY_NONE).
 constexpr int EDITOR_TO_ENGINE_LANE_QMIX[7] = { 1, 2, 4, 0, 3, POLY_NONE, POLY_NONE };
 
-// laneSlot() — DEPRECATED: the generators' ESLOT=[0,1,3,4,5,6] function. This existed for
-// geometry preview to leave editor slot 2 EMPTY until the q-mix strand landed. Now that
-// q-mix is active, this function is OBSOLETE (q-mix is just lane 2 with full data — no gap).
-// Kept temporarily for any lingering callers; remove once confirmed nothing uses it.
-constexpr int laneSlot(int editorLaneNoQmix) {
-    return editorLaneNoQmix < QMIX_EDITOR_LANE ? editorLaneNoQmix : editorLaneNoQmix + 1;
-}
+// (laneSlot() REMOVED — it was the generators' ESLOT=[0,1,3,4...] preview-gap helper. q-mix is now
+//  a plain lane at index 2 with full data + jacks, so there is no gap and no slot remap. Generators
+//  index editor lanes 0..N directly.)
 
 static_assert(MONO_LANE_TO_STRAND[QMIX_EDITOR_LANE] == STRAND_QMIX, "qmix is strand 2 (editor-aligned)");
 static_assert(ENGINE_LANE_TO_EDITOR_QMIX[4] == 2 && EDITOR_TO_ENGINE_LANE_QMIX[2] == 4, "qmix poly<->editor round-trip");

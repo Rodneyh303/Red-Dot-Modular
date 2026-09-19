@@ -19,11 +19,10 @@ namespace StraitsEastVisualIds {
     static constexpr float DELEG_MOD_X = 220.f;    // delegation gate-mod jack column
     static constexpr float DIR_MOD_X   = 228.f;    // direction gate-mod jack column
     static constexpr float PROB_OUT_X  = 236.f;    // prob-out jack column (shifted right)
-    static constexpr int   N_ROWS      = dotModular::SandsGrid::POLY_LANES;  // 4 — 1 row per lane
-    // ROW_TOP/ROW_BOT were DEAD here (nothing read them; rows come from ED_Y + ED_LANE_H) yet still
-    // said 14..108, which is what made this look aligned with Mono when it wasn't. Bound to the grid.
+    static constexpr int   N_ROWS      = dotModular::SandsGrid::POLY_LANES;  // 5 — 1 row per spread lane
+    // Bound to the grid so Mono/East/Macro cannot drift. Option B: LANE_H=13.
     static constexpr float ROW_TOP = dotModular::SandsGrid::LANE_TOP;      // 14
-    static constexpr float ROW_BOT = dotModular::SandsGrid::polyBottom();  // 70
+    static constexpr float ROW_BOT = dotModular::SandsGrid::polyBottom();  // 79 (5×13)
     // Mono-style: 4 CV jacks (LEN/OFF/ROT/SPR-cv) + 4 attens + 1 spread-base trimpot per lane.
     // Column layout and ED_X=88 match SandsMonoVisual exactly.
     static constexpr float COL_J1 = 6.f;    // LEN CV in
@@ -39,14 +38,13 @@ namespace StraitsEastVisualIds {
     // the tab row clears the panel top edge; 0.5cm = 5mm).
     static constexpr float TAB_TOP_OFFSET_MM = 5.f;   // (retained; tabs now sit ABOVE the grid)
     // Voice tabs moved into 3..13mm (above the grid) so lane 0 starts at LANE_TOP like Mono.
-    static constexpr float ED_Y   = dotModular::SandsGrid::LANE_TOP;   // 14 (was 23)
-    // Editor holds 4 poly lanes (MEL/OCT/REST/ACCENT); ~12mm each. ED_LANE_H
-    // drives prob-out vertical placement and must match the gen script's ED_H/4.
-    // Stage 1 of EAST_EXTRA_LANES.md: East shows 6 lanes (adds VARIATION/LEGATO), so its editor
-    // spans the SAME band as Mono (14..98). Lanes 4/5 are locked/display-only for now.
-    static constexpr float ED_H      = dotModular::SandsGrid::monoHeight();  // 84 (4-lane was 56)
-    static constexpr int   N_EDITOR_LANES = dotModular::SandsGrid::EAST_LANES;  // 6
-    static constexpr float ED_LANE_H = dotModular::SandsGrid::LANE_H;        // 14 (was 12)
+    static constexpr float ED_Y   = dotModular::SandsGrid::LANE_TOP;   // 14
+    // East shows 7 editor lanes (MEL/OCT/QMIX/REST/ACC + VAR/LEG), spanning the SAME band as Mono
+    // (14..105). ED_LANE_H (13mm) drives prob-out/control-row placement; matches the gen script.
+    // Lanes 5/6 (VAR/LEG) are locked/display-only for now.
+    static constexpr float ED_H      = dotModular::SandsGrid::monoHeight();  // 91 (7×13)
+    static constexpr int   N_EDITOR_LANES = dotModular::SandsGrid::EAST_LANES;  // 7
+    static constexpr float ED_LANE_H = dotModular::SandsGrid::LANE_H;        // 13
 
     // Left-control rows align with the EDITOR lane centres (not the full panel),
     // so each lane's CV jacks + attens sit beside the visual lane they modulate —

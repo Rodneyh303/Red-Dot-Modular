@@ -19,11 +19,11 @@ namespace SandsMonoVisualIds {
     static constexpr float DELEG_MOD_X = 228.f; // delegation gate-mod jack column
     static constexpr float PROB_OUT_X = 236.f;  // output jack column (pushed right by mod columns)
     // Grid now comes from ui/SandsGrid.hpp so Mono, East and Macro cannot drift apart.
-    // ROW_BOT 108 -> 98: lane height 15.667 -> 14, matching East/Macro's lanes exactly.
+    // Option B: LANE_H=13, 7 lanes (q-mix at slot 2) → ROW_BOT 105.
     static constexpr float ED_Y     = dotModular::SandsGrid::LANE_TOP;      // 14
     static constexpr float ROW_TOP  = dotModular::SandsGrid::LANE_TOP;      // 14
-    static constexpr float ROW_BOT  = dotModular::SandsGrid::monoBottom();  // 98 (was 108)
-    static constexpr int   N_LANES  = dotModular::SandsGrid::MONO_LANES;    // 6
+    static constexpr float ROW_BOT  = dotModular::SandsGrid::monoBottom();  // 105 (7×13)
+    static constexpr int   N_LANES  = dotModular::SandsGrid::MONO_LANES;    // 7
     static constexpr int   N_SPREAD_LANES = 4;  // REST, MELODY, OCTAVE, ACCENT
     // Spread control index (0..3 = REST/MEL/OCT/ACCENT) → editor lane.
     // Shares the poly engine→editor mapping (dsp/LaneMapping.hpp): REST=2, MEL=0,

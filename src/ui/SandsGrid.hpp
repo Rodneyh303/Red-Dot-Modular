@@ -9,11 +9,11 @@
 // East/Macro's 4 lanes are the SAME lanes as Mono's first 4 (MEL/OCT/REST/ACCENT), yet nothing
 // lined up when the modules sat side by side.
 //
-// A common LANE_H = 14 mm puts them on identical tops — Mono shrinks 15.667→14, East/Macro grow
-// 12→14, which is exactly the trade Rodney asked for:
-//     lane tops 0..3 = 14, 28, 42, 56   (both)
-//     Mono  lanes 0..5 → 14 … 98        (ROW_BOT 108 → 98)
-//     East/Macro 0..3 → 14 … 70         (ED_H 48 → 56)
+// A common LANE_H = 13 mm (Option B) puts them on identical tops and clears the Marina Bay Sands
+// art at the bottom. Q-mix is a PLAIN lane at index 2 — no special height, no gap:
+//     lane tops 0..4 = 14, 27, 40, 53, 66  (all three)
+//     Mono/East lanes 0..6 → 14 … 105       (7 × 13; ROW_BOT 105)
+//     Macro      lanes 0..4 → 14 … 79        (5 × 13; ED_H 65)
 //
 // East/Macro's voice tabs (V1..V16, two rows) move ABOVE the grid, into 3..13 mm, so lane 0
 // (MELODY) can start at 14 mm like Mono's. Their module logo therefore moves to the panel FOOTER.
@@ -24,11 +24,11 @@ namespace dotModular {
 namespace SandsGrid {
 
     static constexpr float LANE_TOP   = 14.f;   // top of lane 0 — identical on all three
-    static constexpr float LANE_H     = 14.f;   // one lane height everywhere (pre-q-mix)
-    // Phase 2: UI now shows q-mix lane. Engine already supports 7 strands (Phase 1 complete).
+    static constexpr float LANE_H     = 13.f;   // one lane height everywhere (Option B: 14→13)
+    // q-mix is a full lane at index 2. Engine supports 7 strands (Phase 1 complete).
     static constexpr int   MONO_LANES = 7;      // MEL, OCT, QMIX, REST, ACCENT, VARIATION, LEGATO
     static constexpr int   POLY_LANES = 5;      // MEL, OCT, QMIX, REST, ACCENT (Macro; East's spread rows)
-    // East displays all seven lanes (adds VARIATION, LEGATO) — its empty band was exactly 2 x LANE_H.
+    // East displays all seven lanes (adds VARIATION, LEGATO).
     // Lanes 5/6 (VAR/LEG) are display-only until the per-voice LOR feature lands (EAST_EXTRA_LANES.md).
     static constexpr int   EAST_LANES = 7;
 
@@ -43,26 +43,17 @@ namespace SandsGrid {
     static constexpr float ED_X = 88.f;
     static constexpr float ED_W = 111.f;
 
-    static constexpr float monoBottom() { return LANE_TOP + MONO_LANES * LANE_H; }  // 112 (was 98)
-    static constexpr float polyBottom() { return LANE_TOP + POLY_LANES * LANE_H; }  // 84 (was 70)
-    static constexpr float monoHeight() { return MONO_LANES * LANE_H; }             // 98 (was 84)
-    static constexpr float polyHeight() { return POLY_LANES * LANE_H; }             // 70 (was 56)
+    static constexpr float monoBottom() { return LANE_TOP + MONO_LANES * LANE_H; }  // 105 (7×13)
+    static constexpr float polyBottom() { return LANE_TOP + POLY_LANES * LANE_H; }  // 79  (5×13)
+    static constexpr float monoHeight() { return MONO_LANES * LANE_H; }             // 91  (7×13)
+    static constexpr float polyHeight() { return POLY_LANES * LANE_H; }             // 65  (5×13)
 
     // Lane centre for either family — the single formula both used separately before.
     static constexpr float laneCentre(int lane) { return LANE_TOP + (lane + 0.5f) * LANE_H; }
 
-    // ── q-mix visual lane (Option B geometry) — ACTIVE ────────────────────────────
-    // This header owns lane GEOMETRY (tops, heights); lane ORDER + the q-mix strand live in
-    // dsp/LaneMapping.hpp (single source of truth). q-mix is a FULL lane (its own strand +
-    // LOR + spread + prob-out). The DATA counts have grown: MONO/EAST 6→7, POLY 4→5,
-    // atomically with the engine q-mix strand + its arrays. Option B also drops lane height 14→13.
-    //
-    // The panel RECESS height comes from mono/polyEditorHeight() so it matches the 7-band generators.
-    // Q-mix is now lane 2 with full data — no longer a preview gap.
-    static constexpr float QMIX_LANE_H = 13.f;            // Option B lane height (vs pre-qmix 14)
-    static constexpr float slotCentre(int slot)  { return LANE_TOP + (slot + 0.5f) * QMIX_LANE_H; }
-    static constexpr float monoEditorHeight()    { return MONO_LANES * QMIX_LANE_H; }  // 91  (bottom 105)
-    static constexpr float polyEditorHeight()    { return POLY_LANES * QMIX_LANE_H; }  // 65  (bottom 79)
+    // NOTE: q-mix is a PLAIN lane at index 2 — it uses LANE_H like every other lane. There is
+    // deliberately NO q-mix-specific height/helpers. Lane ORDER + the q-mix strand live in
+    // dsp/LaneMapping.hpp (single source of truth); this header owns only GEOMETRY.
 
 } // namespace SandsGrid
 } // namespace dotModular
