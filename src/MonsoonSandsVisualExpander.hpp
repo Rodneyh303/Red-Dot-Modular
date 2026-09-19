@@ -24,11 +24,11 @@ namespace SandsMonoVisualIds {
     static constexpr float ROW_TOP  = dotModular::SandsGrid::LANE_TOP;      // 14
     static constexpr float ROW_BOT  = dotModular::SandsGrid::monoBottom();  // 105 (7×13)
     static constexpr int   N_LANES  = dotModular::SandsGrid::MONO_LANES;    // 7
-    static constexpr int   N_SPREAD_LANES = 4;  // REST, MELODY, OCTAVE, ACCENT
-    // Spread control index (0..3 = REST/MEL/OCT/ACCENT) → editor lane.
-    // Shares the poly engine→editor mapping (dsp/LaneMapping.hpp): REST=2, MEL=0,
-    // OCT=1, ACCENT=3. Single source of truth — do not redefine here.
-    static constexpr const int* SPREAD_LANE_TO_EDITOR = dotModular::ENGINE_LANE_TO_EDITOR;
+    static constexpr int   N_SPREAD_LANES = 5;  // REST, MELODY, OCTAVE, ACCENT, QMIX
+    // Spread control index (0..4 = poly engine lane REST/MEL/OCT/ACC/QMIX) → editor lane.
+    // Shares the QMIX poly engine→editor mapping (dsp/LaneMapping.hpp): REST=3, MEL=0,
+    // OCT=1, ACC=4, QMIX=2. Single source of truth — do not redefine here.
+    static constexpr const int* SPREAD_LANE_TO_EDITOR = dotModular::ENGINE_LANE_TO_EDITOR_QMIX;
 
     // Column X positions (mm)
     // LOR CV jacks (all 6 lanes): LEN/OFF/ROT
@@ -46,32 +46,28 @@ namespace SandsMonoVisualIds {
 
     // ── Param IDs ─────────────────────────────────────────────────────────
     enum ParamId {
-        // LOR handle params: 6 lanes × 3 (LEN/OFF/ROT) = 18 (0-17).
-        // EDITOR ORDER (MEL,OCT,REST,ACC,VAR,LEG) — same order the editor shows and
+        // LOR handle params: 7 editor lanes × 3 (LEN/OFF/ROT) = 21 (0-20). QMIX-widened.
+        // EDITOR ORDER (MEL,OCT,QMIX,REST,ACC,VAR,LEG) — same order the editor shows and
         // the engine strands use, so lenId(editorLane) reads directly with no remap.
         LEN_MELODY = 0, OFF_MELODY, ROT_MELODY,
         LEN_OCTAVE,     OFF_OCTAVE,     ROT_OCTAVE,
+        LEN_QMIX,       OFF_QMIX,       ROT_QMIX,
         LEN_REST,       OFF_REST,       ROT_REST,
         LEN_ACCENT,     OFF_ACCENT,     ROT_ACCENT,
         LEN_VARIATION,  OFF_VARIATION,  ROT_VARIATION,
         LEN_LEGATO,     OFF_LEGATO,     ROT_LEGATO,
-        // Spread base trimpots: poly lanes in ENGINE order REST/MEL/OCT/ACCENT — kept
-        // in engine order because the spread path shares SPREAD_LANE_TO_EDITOR with the
-        // poly engine (which is NOT being renumbered in this step). sprId(l) takes a
-        // spread index 0-3, mapped to editor via SPREAD_LANE_TO_EDITOR.
-        SPR_REST, SPR_MELODY, SPR_OCTAVE, SPR_ACCENT,
-        // Attenuverters: 18 LOR (6 lanes × 3) + 4 spread = 22
-        ATTEN_START,                       // 22 .. 39  (18 LOR attens)
-        SPR_ATTEN_START = ATTEN_START + 18, // 40 .. 43  (4 spread attens)
-        // V1 ownership: per poly lane (MEL/OCT/REST/ACC, EDITOR order), latch
-        // 0 = Macro owns V1's base for this lane (global base), 1 = Mono owns it
-        // (this expander's own LOR edit). LEG/VAR are mono-only → always Mono-owned,
-        // no owner param. Mono is single-voice (V1), so no per-voice bank needed.
-        OWN_DISP_START = SPR_ATTEN_START + 4,   // 44 .. 47
-        // Direction display proxy (mono direction, 6 lanes). DirCell writes here;
-        // widget step() syncs to engine.laneDirPending_.
-        DIR_DISP_START = OWN_DISP_START + 4,    // 48 .. 53
-        NUM_PARAMS = DIR_DISP_START + 6
+        // Spread base trimpots: 5 poly lanes (REST/MEL/OCT/ACC/QMIX). sprId(l) takes a
+        // spread index 0..4, mapped to editor via SPREAD_LANE_TO_EDITOR_QMIX.
+        SPR_REST, SPR_MELODY, SPR_OCTAVE, SPR_ACCENT, SPR_QMIX,
+        // Attenuverters: 21 LOR (7 lanes × 3) + 5 spread.
+        ATTEN_START,                        // 26 .. 46  (21 LOR attens: 7 lanes × 3)
+        SPR_ATTEN_START = ATTEN_START + 21, // 47 .. 51  (5 spread attens)
+        // V1 ownership: per poly lane (MEL/OCT/QMIX/REST/ACC, EDITOR order), latch
+        // 0 = Macro owns V1's base for this lane, 1 = Mono owns it. LEG/VAR mono-only.
+        OWN_DISP_START = SPR_ATTEN_START + 5,   // 52 .. 56  (5 poly lanes)
+        // Direction display proxy (mono direction, 7 lanes).
+        DIR_DISP_START = OWN_DISP_START + 5,    // 57 .. 63
+        NUM_PARAMS = DIR_DISP_START + 7
     };
     // V1 owner display proxy: poly lane (editor order 0=MEL 1=OCT 2=REST 3=ACC).
     inline int ownerDispId(int polyLaneEditor) { return OWN_DISP_START + polyLaneEditor; }
@@ -120,7 +116,7 @@ namespace SandsMonoVisualIds {
     inline int lenId(int l) { return LEN_MELODY + l * 3; }     // l = EDITOR lane now
     inline int offId(int l) { return LEN_MELODY + l * 3 + 1; }
     inline int rotId(int l) { return LEN_MELODY + l * 3 + 2; }
-    inline int sprId(int l) { return SPR_REST + l; }          // l: 0-3 spread index (engine order)
+    inline int sprId(int l) { return SPR_REST + l; }          // l: 0-4 spread index (poly engine order)
 
     // LOR atten/CV: lane 0-5, param 0=LEN,1=OFF,2=ROT
     inline int attenId(int lane, int param) { return ATTEN_START + lane*3 + param; }

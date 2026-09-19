@@ -197,7 +197,7 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             // spread ATTEN uses EDITOR lane in editor.monoAtten — do not mix (MVC lane trap).
             int editorLane = SPREAD_LANE_TO_EDITOR[l];
             float y = rowY(editorLane);
-            const char* SN[4] = {"REST","MEL","OCT","ACC"};
+            const char* SN[5] = {"REST","MEL","OCT","ACC","QMIX"};
             const std::string nm = SN[l];
             const int spLane = l;
             const int edLane = editorLane;
@@ -462,7 +462,10 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         // lane explicitly so neither side is read with the wrong convention. (This was
         // the per-lane analogue of the spread-arc off-by-one.)
         static const int SPREAD_TO_BUFFER[4] = { 0, 1, 2, 4 };  // REST,MEL,OCT,ACCENT
-        for (int l = 0; l < N_SPREAD_LANES; ++l) {
+        // NOTE: QMIX spread (spread idx 4) → engine buffer wiring lands in Task 4 (engine q-mix
+        // draw buffers + SpreadManager widen). Until then push only the 4 legacy spread lanes to
+        // avoid indexing SPREAD_TO_BUFFER out of bounds (its 5th entry doesn't exist yet).
+        for (int l = 0; l < 4; ++l) {
             paramMgr->setLaneSpread(SPREAD_TO_BUFFER[l], monsoon->engine.spreadE(0, l));  // engine state (slot 0)
         }
 
