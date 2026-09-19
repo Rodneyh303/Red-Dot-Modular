@@ -11,30 +11,20 @@ def gen_macro(dark, W_MM=243.84):   # 48HP (44 + 4HP for dir_mod + prob_out jack
     # the same spread job but GLOBAL (3 lanes) rather than per-lane. Must match
     # StraitsSandsMacroVisual.hpp: COL_J1=8 J2=18 A1=30 A2=39 SPREAD_X=49 ED_X=58.
     t=theme(dark); H_MM=128.5; PW,PH=px(W_MM),px(H_MM)
-    N=5   # 5 editor lanes (MEL/OCT/QMIX/REST/ACC), one row each
+    N=5   # OPT-B: 5 lanes (Q-MIX at index 2), one row each
     # Extra top margin so the view-tab row isn't crammed against the panel top
     # edge. 0.5 cm = 5 mm. Mirror TAB_TOP_OFFSET_MM in StraitsSandsMacroVisualWidget.
         # Mirrors src/ui/SandsGrid.hpp — tabs sit ABOVE the grid (3..13mm), lane 0 starts at 14.
     TAB_TOP, TAB_ROW_H = 3.0, 5.0
     TAB_TOP_OFFSET_MM = 5.0
-    # QMIX GEOMETRY (Option B): q-mix is a PLAIN lane at editor slot 2 (after MEL/OCT), LANE_H=13,
-    # POLY_LANES=5 → editor bottom 14+5*13=79. Mirrors src/ui/SandsGrid.hpp. NO gap: every editor
-    # row 0..4 (MEL/OCT/QMIX/REST/ACC) gets its full complement, indexed by EDITOR lane exactly as
-    # the C++ binds (cvId/attenId/SPREAD_REST..QMIX are editor-lane indexed).
-    ED_X=88.; ED_W=111.; OWNER_X=205.; DIR_X=212.; DIR_MOD_X=220.; PROB_OUT_X=236.; ED_Y=14.
-    LANE_H=13.; ED_LANES=5; ED_H=ED_LANES*LANE_H   # 65
-    ED_LANE_H=LANE_H
-    # Row == editor lane (no ESLOT/DISPLAY_ORDER remap — q-mix is a real lane, not a preview gap).
-    def rowY(r): return ED_Y+(r+0.5)*LANE_H
-    def ctrlY(k): return rowY(k)                    # control/marker row for editor lane k (identity)
-    LANE_NAMES_D=["MELODY","OCTAVE","QMIX","REST","ACCENT"]
-    # editor row -> ENGINE poly lane (REST0/MEL1/OCT2/ACC3/QMIX4). Mirrors
-    # dotModular::EDITOR_TO_ENGINE_LANE_QMIX (dsp/LaneMapping.hpp). The C++ binds cv/atten/
-    # spread/send/tap/prob-out by ENGINE-lane numeric id (getGlobalSpread/Atten, getMacroSend,
-    # getGlobalTap, PROB_OUT_REST+lane all index engine order), positioned at the editor ROW.
-    # dir/dir_mod are EDITOR-lane indexed (getGlobalDir). Emitting editor-index ids for the
-    # engine-indexed groups was the melody-row-shows-REST-spread / octave-row-shows-MEL bug.
-    EDITOR_TO_ENGINE=[1,2,4,0,3]   # MEL->1 OCT->2 QMIX->4 REST->0 ACC->3
+    # Mirrors src/ui/SandsGrid.hpp: lane 0 at 14mm, 4 lanes x 14mm = 56 (tabs live above, 3..13).
+    ED_X=88.; ED_W=111.; OWNER_X=205.; DIR_X=212.; DIR_MOD_X=220.; PROB_OUT_X=236.; ED_Y=14.; ED_H=65.   # OPT-B: 5 lanes x 13mm, editor 14->79
+    ED_LANE_H=ED_H/N
+    # Left-control rows align with the EDITOR lane centres (must match the hpp's rowY).
+    def rowY(r): return ED_Y+(r+0.5)*ED_LANE_H
+    # Display order: row i → engine lane (MEL/OCT/REST/ACC top-to-bottom)
+    DISPLAY_ORDER=[1,2,0,3]   # row0=MEL(eng1), row1=OCT(eng2), row2=REST(eng0), row3=ACC(eng3)
+    LANE_NAMES_D=["MELODY","OCTAVE","REST","ACCENT"]
     # 4 CV jacks + 4 attens + spread base — columns match SandsMonoVisual, ED_X=88
     JACK_X=[6.,15.,24.,33.]            # LEN/OFF/ROT/SPR-cv
     ATTEN_X=[43.,52.,61.,70.]          # LEN/OFF/ROT/SPR depth
@@ -46,7 +36,7 @@ def gen_macro(dark, W_MM=243.84):   # 48HP (44 + 4HP for dir_mod + prob_out jack
     # Identity artwork in the BOTTOM-LEFT corner (vs East's lower-right) so the
     # two near-identical 42HP panels read apart at a glance. Bottom-left is free
     # on Macro (send grids live in the right section).
-    A(D.helix_sands(4.0, 90.0, 74.0, 35.0, t, op=0.95))   # moved down below the 5-lane editor   # Sands Helix hero mark, bottom-left pocket (moved down 6mm so its MBS motif reads lower; wordmark moved the same amount)
+    A(D.helix_sands(4.0, 82.0, 74.0, 33.0, t, op=0.95))   # Sands Helix hero mark, bottom-left pocket (moved down 6mm so its MBS motif reads lower; wordmark moved the same amount)
     # (MBS identity mark removed — the Helix already carries an MBS motif in its background,
     #  and it collided with the bottom-left wordmark. The Helix alone is the identity art here.)
     A(D.accent_rules(PW,t))
@@ -71,10 +61,8 @@ def gen_macro(dark, W_MM=243.84):   # 48HP (44 + 4HP for dir_mod + prob_out jack
     #    Len/Off/Rot/Spr send grid. "per voice, how much of Macro's global CV reaches
     #    this voice." Geometry shared with the widget labels in
     #    StraitsSandsMacroVisual::draw — keep in lockstep:
-    #      BLEND_TOP=85 BLEND_H=35 SEND_Y0=10 SEND_DY=9 SEND_DX=6 GROUP_W=ED_W/5
-    # Box shrink (Option B follow-up): moved down (82→85) + shorter (38→35) into the space
-    # the shorter 13mm lanes reclaimed. 5 groups (q-mix is a full lane).
-    BLEND_TOP=85.0; BLEND_H=35.0; BGAP=2.5; GROUP_W=ED_W/5.0
+    #      BLEND_TOP=72 BLEND_H=36 GAP=3.5 SEND_Y0=12 SEND_DY=11 SEND_DX=7
+    BLEND_TOP=82.0; BLEND_H=37.0; BGAP=2.5; GROUP_W=ED_W/4.0  # 4 groups; taller for the tap row 3
     SEND_Y0=10.0; SEND_DY=9.0; SEND_DX=6.0                   # DX 7→6 for narrower groups
     TAP_ROW_DY=9.0                                            # row 3 (taps) below the 2 send rows
     A(f'<line x1="{px(ED_X):.1f}" y1="{px(BLEND_TOP-3.0):.1f}" x2="{px(ED_X+ED_W):.1f}" y2="{px(BLEND_TOP-3.0):.1f}" stroke="{t["accent"]}" stroke-width="1.0" opacity="0.6"/>')
@@ -142,14 +130,9 @@ def gen_macro(dark, W_MM=243.84):   # 48HP (44 + 4HP for dir_mod + prob_out jack
 
 def gen_mono(dark):
     t=theme(dark); W_MM,H_MM=243.84,128.5; PW,PH=px(W_MM),px(H_MM)   # 48HP (44 + 4HP for mod + prob_out jacks)
-    # QMIX GEOMETRY (Option B): +1 editor lane (q-mix at slot 2, after MEL/OCT), LANE_H 14→13,
-    # editor extends DOWN into the band above the MBS mark. Mirrors src/ui/SandsGrid.hpp
-    # (MONO_LANES=7, LANE_H=13 → monoBottom 105). q-mix is a PLAIN lane at editor slot 2 — every
-    # editor row 0..6 (MEL/OCT/QMIX/REST/ACC/VAR/LEG) gets its full complement (no ESLOT gap).
-    ROW_TOP,LANE_H,N=14.,13.,7
-    ROW_BOT=ROW_TOP+N*LANE_H                 # 105
-    def laneY(l): return ROW_TOP+(l+0.5)*LANE_H
-    def ctrlY(k): return laneY(k)             # control/marker row for editor lane k (identity)
+    # Mirrors src/ui/SandsGrid.hpp: 6 lanes x 14mm from 14 → bottom 98 (was 108, laneH 15.667).
+    ROW_TOP,ROW_BOT,N=14.,105.,7   # OPT-B: 7 lanes x 13mm (Q-MIX at index 2); editor 14->105, into the space above MBS
+    def laneY(l): return ROW_TOP+(l+0.5)*(ROW_BOT-ROW_TOP)/N
     # Geometry MUST match MonsoonSandsVisualExpander.hpp:
     #   JACK_X={6,15,24}  ATTEN_X={34,43,52}  (all 6 lanes)
     #   spread (lanes 0-2 REST/MEL/OCT): SPR_BASE_X=62, SPR_CV_X=71, SPR_ATTEN_X=80
