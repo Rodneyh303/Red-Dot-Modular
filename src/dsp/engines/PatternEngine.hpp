@@ -48,6 +48,7 @@ struct PatternInput {
     float legato           = 0.f;   // mono legato/tie probability 0..1
     float noteValue        = 2.f;   // mono note-value INDEX 0..7 (2 = 1/4 note)
     float accentProb        = 0.25f; // mono accent probability 0..1 (was engine.accentProb; single-writer now)
+    float qmixLevel         = 0.f;   // Task 4: mono q-mix threshold 0..1 (QMIX_LEVEL_PARAM). draw<level = hit.
     float octaveLo         = 2.f;
     float octaveHi         = 5.f;
     float transpose        = 0.f;
@@ -65,10 +66,12 @@ struct PatternInput {
     // effective pattern between the locked (A) and candidate (B) draws.
     float rhythmSlew       = 1.f;
     float melodySlew       = 1.f;
+    float qmixSlew         = 1.f;   // q-mix twin of melodySlew (Task 4)
     // Live A<->B blend (MIX). Separate from slew: slew is consumed at roll
     // (shapes B); mix is the live, continuous A<->B morph used for output.
     float rhythmMix        = 0.f;
     float melodyMix        = 0.f;
+    float qmixMix          = 0.f;   // q-mix twin of melodyMix (Task 4)
     // Reseed policy passed through from the module (context-menu option). When
     // set, continuous Realtime-mode redraws also reseed each cycle from fresh
     // entropy (or the SEED CV if seedConnected), so realtime stays genuinely
@@ -171,16 +174,18 @@ struct PatternEngine {
         }
         if (identity) return;
 
-        // Snapshot mono[16] + poly[15][16] for the six strands.
-        float mR[16], mM[16], mO[16], mA[16], mV[16], mL[16];
+        // Snapshot mono[16] + poly[15][16] for the seven strands (incl. q-mix, melody family).
+        float mR[16], mM[16], mO[16], mQ[16], mA[16], mV[16], mL[16];
         for (int i = 0; i < 16; ++i) {
             mR[i]=slewedRhythm[i]; mM[i]=slewedMelody[i]; mO[i]=slewedOctave[i];
+            mQ[i]=slewedQmix[i];
             mA[i]=slewedAccent[i]; mV[i]=slewedVariation[i]; mL[i]=slewedLegato[i];
         }
-        static thread_local float pR[15][16], pM[15][16], pO[15][16], pA[15][16];
+        static thread_local float pR[15][16], pM[15][16], pO[15][16], pQ[15][16], pA[15][16];
         for (int v = 0; v < 15; ++v) for (int i = 0; i < 16; ++i) {
             pR[v][i]=slewedPolyRhythm[v][i]; pM[v][i]=slewedPolyMelody[v][i];
-            pO[v][i]=slewedPolyOctave[v][i]; pA[v][i]=slewedPolyAccent[v][i];
+            pO[v][i]=slewedPolyOctave[v][i]; pQ[v][i]=slewedPolyQmix[v][i];
+            pA[v][i]=slewedPolyAccent[v][i];
         }
         // src row → (mono buffer if 0, else poly buffer src-1) for a given strand family.
         auto pickMono = [&](int srcRow, int strand, int i) -> float {
@@ -188,7 +193,7 @@ struct PatternEngine {
                 switch (strand) {
                     case dotModular::STRAND_MELODY:    return mM[i];
                     case dotModular::STRAND_OCTAVE:    return mO[i];
-                    case dotModular::STRAND_QMIX:      return 0.5f;  // Q-mix: default mid-value (TODO: implement)
+                    case dotModular::STRAND_QMIX:      return mQ[i];
                     case dotModular::STRAND_RHYTHM:    return mR[i];
                     case dotModular::STRAND_ACCENT:    return mA[i];
                     case dotModular::STRAND_VARIATION: return mV[i];
@@ -200,7 +205,7 @@ struct PatternEngine {
             switch (strand) {
                 case dotModular::STRAND_MELODY: return pM[v][i];
                 case dotModular::STRAND_OCTAVE: return pO[v][i];
-                case dotModular::STRAND_QMIX:   return 0.5f;  // Q-mix: default mid-value (TODO: per-poly buffer)
+                case dotModular::STRAND_QMIX:   return pQ[v][i];
                 case dotModular::STRAND_RHYTHM: return pR[v][i];
                 case dotModular::STRAND_ACCENT: return pA[v][i];
                 // VAR/LEG have no per-poly slewed buffer (shared mono §4d) — borrow mono.
@@ -220,7 +225,7 @@ struct PatternEngine {
             if (doM) {
                 slewedMelody[i] = pickMono(caSrcRow(0, dotModular::STRAND_MELODY), dotModular::STRAND_MELODY, i);
                 slewedOctave[i] = pickMono(caSrcRow(0, dotModular::STRAND_OCTAVE), dotModular::STRAND_OCTAVE, i);
-                // Q-mix: TODO - add slewed buffer when q-mix CA pins are implemented
+                slewedQmix[i]   = pickMono(caSrcRow(0, dotModular::STRAND_QMIX),   dotModular::STRAND_QMIX,   i);
             }
         }
         // Poly rows 1..15 → poly buffers 0..14.
@@ -230,6 +235,7 @@ struct PatternEngine {
             const int sA = caSrcRow(row, dotModular::STRAND_ACCENT);
             const int sM = caSrcRow(row, dotModular::STRAND_MELODY);
             const int sO = caSrcRow(row, dotModular::STRAND_OCTAVE);
+            const int sQ = caSrcRow(row, dotModular::STRAND_QMIX);
             for (int i = 0; i < 16; ++i) {
                 if (doR) {
                     slewedPolyRhythm[v][i] = pickMono(sR, dotModular::STRAND_RHYTHM, i);
@@ -238,6 +244,7 @@ struct PatternEngine {
                 if (doM) {
                     slewedPolyMelody[v][i] = pickMono(sM, dotModular::STRAND_MELODY, i);
                     slewedPolyOctave[v][i] = pickMono(sO, dotModular::STRAND_OCTAVE, i);
+                    slewedPolyQmix[v][i]   = pickMono(sQ, dotModular::STRAND_QMIX,   i);
                 }
             }
         }
@@ -260,6 +267,7 @@ struct PatternEngine {
             }
             if (doM) {
                 melodyRandom[i]=slewedMelody[i]; octaveRandom[i]=slewedOctave[i];
+                qmixRandom[i]=slewedQmix[i];
             }
             for (int v=0;v<15;v++){
                 if (doR) {
@@ -269,6 +277,7 @@ struct PatternEngine {
                 if (doM) {
                     polyRandom(v, PL_MELODY)[i]=slewedPolyMelody[v][i];
                     polyRandom(v, PL_OCTAVE)[i]=slewedPolyOctave[v][i];
+                    polyRandom(v, PL_QMIX)[i]=slewedPolyQmix[v][i];
                 }
             }
         }
@@ -283,8 +292,10 @@ struct PatternEngine {
     void forceRecomputeSlewed() {
         rhythmMixApplied = -999.f;   // invalidate so recompute* actually runs
         melodyMixApplied = -999.f;
+        qmixMixApplied   = -999.f;
         recomputeEffectiveRhythm();
         recomputeEffectiveMelody();
+        recomputeEffectiveQmix();
     }
 
     inline float finalRandomByStrand(int strand, int step) const {
@@ -330,8 +341,10 @@ struct PatternEngine {
     //               writes the result into the public/final arrays itself.
     float slewedRhythm[16]={}, slewedVariation[16]={}, slewedLegato[16]={}, slewedAccent[16]={};
     float slewedMelody[16]={}, slewedOctave[16]={};
+    float slewedQmix[16]={};   // q-mix twin of slewedMelody
     float slewedPolyRhythm[15][16]={}, slewedPolyMelody[15][16]={}, slewedPolyOctave[15][16]={};
     float slewedPolyAccent[15][16]={};
+    float slewedPolyQmix[15][16]={};   // q-mix twin of slewedPolyMelody
     // Set true when any Sands visual expander owns the spread→final stage this
     // cycle. When false, slew copies slewedDraw → final.
     bool  sandsActive = false;
@@ -346,10 +359,12 @@ struct PatternEngine {
     float accentSource[16]    = {};  // New: cache for accent before scramble
     float melodySource[16]    = {};
     float octaveSource[16]    = {};
+    float qmixSource[16]      = {};   // q-mix twin of melodySource
     float polyRhythmSource[15][16] = {};
     float polyAccentSource[15][16] = {};
     float polyMelodySource[15][16] = {};
     float polyOctaveSource[15][16] = {};
+    float polyQmixSource[15][16]   = {};   // q-mix twin of polyMelodySource
 
     // Caches for UI/Lights to reflect the current state
     bool  rhythmPattern[16]   = {};
@@ -568,6 +583,9 @@ struct PatternEngine {
                         float polyRhythm[15][16], polyAccent[15][16]; };
     struct MelodyDraw { float melody[16], octave[16];
                         float polyMelody[15][16], polyOctave[15][16]; };
+    // q-mix twin of MelodyDraw — one value per step (mono) + per poly voice.
+    struct QmixDraw   { float qmix[16];
+                        float polyQmix[15][16]; };
     inline void rawDrawRhythmPatternAt(int64_t pos, RhythmDraw& d) const {
         uint64_t c = 0;
         for (int i = 0; i < 16; ++i) {
@@ -583,6 +601,14 @@ struct PatternEngine {
             d.melody[i]=philoxMelodyAt(pos,c++); d.octave[i]=philoxMelodyAt(pos,c++);
             for (int v=0;v<15;++v) d.polyMelody[v][i]=philoxMelodyAt(pos,c++);
             for (int v=0;v<15;++v) d.polyOctave[v][i]=philoxMelodyAt(pos,c++);
+        }
+    }
+    // q-mix twin of rawDrawMelodyPatternAt — one mono value + 15 poly values per step.
+    inline void rawDrawQmixPatternAt(int64_t pos, QmixDraw& d) const {
+        uint64_t c = 0;
+        for (int i = 0; i < 16; ++i) {
+            d.qmix[i]=philoxQmixAt(pos,c++);
+            for (int v=0;v<15;++v) d.polyQmix[v][i]=philoxQmixAt(pos,c++);
         }
     }
     // B2 truncated-FIR slew smoothing (DICE_SCRUB_SLEW_B2.md): geometric moving average of raw
@@ -615,6 +641,19 @@ struct PatternEngine {
                 for(int v=0;v<15;++v){ out.polyMelody[v][i]+=wj*r.polyMelody[v][i];
                     out.polyOctave[v][i]+=wj*r.polyOctave[v][i]; } } }
     }
+    // q-mix twin of patternMelodyAt — B2 truncated-FIR window blend over pos..pos-SCRUB_K.
+    inline void patternQmixAt(int64_t pos, float slew, QmixDraw& out) const {
+        const float sl = slew<0.f?0.f:(slew>1.f?1.f:slew);
+        float w[SCRUB_K+1], wsum=0.f, g=1.f;
+        for (int j=0;j<=SCRUB_K;++j){ w[j]=g; wsum+=g; g*=(1.f-sl); }
+        const float inv=(wsum>0.f)?1.f/wsum:1.f;
+        for (int i=0;i<16;++i){ out.qmix[i]=0.f;
+            for(int v=0;v<15;++v){out.polyQmix[v][i]=0.f;} }
+        QmixDraw r;
+        for (int j=0;j<=SCRUB_K;++j){ rawDrawQmixPatternAt(pos-j,r); const float wj=w[j]*inv;
+            for(int i=0;i<16;++i){ out.qmix[i]+=wj*r.qmix[i];
+                for(int v=0;v<15;++v){ out.polyQmix[v][i]+=wj*r.polyQmix[v][i]; } } }
+    }
 
     static constexpr uint64_t MAX_U64 = 0xFFFFFFFFFFFFFFFFULL;
 
@@ -642,6 +681,9 @@ struct PatternEngine {
     // Regenerate melody pattern (16 steps of semitone + pitch voltage)
     void redrawMelody(const PatternInput& in);
 
+    // q-mix twin of redrawMelody — advance/begin the q-mix draw, recompute effective, cache source.
+    void redrawQmix(const PatternInput& in);
+
     // Updates the rhythm/melody arrays used for UI and LEDs based on the 
     // current knob positions and the *existing* random buffers.
     void refreshVisualCache(const PatternInput& in);
@@ -655,10 +697,14 @@ struct PatternEngine {
     // if the latched value changed. Cheap; safe to call every step.
     // applyRhythm/applyMelody (LOCK_SCOPE_MENU): gate each stream's mix latch+recompute independently
     // (a frozen A/B axis holds its latched value). Default both true = latch both (unlocked).
-    void latchMix(float rhythmMix, float melodyMix, float rhythmSlew, float melodySlew,
-                  bool applyRhythm = true, bool applyMelody = true);
+    // q-mix mix/slew latched alongside melody (melody family; own stream). applyQmix gates it
+    // independently, mirroring applyMelody. Callers that pre-date q-mix pass the melody defaults.
+    void latchMix(float rhythmMix, float melodyMix, float qmixMix,
+                  float rhythmSlew, float melodySlew, float qmixSlew,
+                  bool applyRhythm = true, bool applyMelody = true, bool applyQmix = true);
     void recomputeEffectiveRhythm();   // public[] = A + rhythmMixLatched*(B-A)
     void recomputeEffectiveMelody();   // public[] = A + melodyMixLatched*(B-A)
+    void recomputeEffectiveQmix();     // q-mix twin of recomputeEffectiveMelody
 
     // ── State regeneration (Option 3 reload) ──────────────────────────────────
     // Reconstruct candidate B from the restored generative state: key (seeded),
@@ -699,11 +745,19 @@ struct PatternEngine {
         melodySeedPending = true;
     }
 
+    /// q-mix twin of setPendingMelodySeed
+    void setPendingQmixSeed(float seedValue) {
+        qmixSeedPendingFloat = seedValue;
+        qmixSeedPending = true;
+    }
+
     /// Arm a rhythm ROLL (dice press) — redraw from the advancing RNG at the next
     /// phrase boundary WITHOUT reseeding. This is the normal dice action.
     void setPendingRhythmRoll() { rhythmRollPending = true; rhythmPendingLast = false; }
     /// Arm a melody ROLL (dice press) — redraw without reseeding.
     void setPendingMelodyRoll() { melodyRollPending = true; melodyPendingLast = false; }
+    /// q-mix twin of setPendingMelodyRoll.
+    void setPendingQmixRoll() { qmixRollPending = true; qmixPendingLast = false; }
 
     // LAST-DICE: a roll that steps the draw index the OTHER way at the next boundary —
     // "give me the previous draw." Enabled by Philox addressability. BLOCKED on a
@@ -713,6 +767,8 @@ struct PatternEngine {
     // -roll (audition/reversible-mode gating removed under the scrub model).
     void setPendingRhythmLastRoll()  { rhythmRollPending = true; rhythmPendingLast = true; }
     void setPendingMelodyLastRoll()  { melodyRollPending = true; melodyPendingLast = true; }
+    /// q-mix twin of setPendingMelodyLastRoll.
+    void setPendingQmixLastRoll()    { qmixRollPending = true; qmixPendingLast = true; }
 
     /// Arm a rhythm TRIAL/audition roll — like a roll but A stays anchored
     /// (promoteToA=false): auditions a fresh candidate B against the fixed A.
@@ -726,12 +782,17 @@ struct PatternEngine {
     void setPendingRhythmReseedRoll(float seedValue, bool full) { rhythmReseedRollFloat = seedValue; rhythmReseedRollFull = full; rhythmReseedRollPending = true; }
     /// Arm a melody RESEED-ROLL.
     void setPendingMelodyReseedRoll(float seedValue, bool full) { melodyReseedRollFloat = seedValue; melodyReseedRollFull = full; melodyReseedRollPending = true; }
+    /// q-mix twin of setPendingMelodyReseedRoll.
+    void setPendingQmixReseedRoll(float seedValue, bool full) { qmixReseedRollFloat = seedValue; qmixReseedRollFull = full; qmixReseedRollPending = true; }
 
     /// Check if a rhythm dice action (seed OR roll OR trial OR reseed-roll) is pending.
     bool isRhythmSeedPending() const { return rhythmSeedPending || rhythmRollPending || rhythmReseedRollPending; }
 
     /// Check if a melody dice action (seed OR roll OR trial OR reseed-roll) is pending.
     bool isMelodySeedPending() const { return melodySeedPending || melodyRollPending || melodyReseedRollPending; }
+
+    /// q-mix twin of isMelodySeedPending.
+    bool isQmixSeedPending() const { return qmixSeedPending || qmixRollPending || qmixReseedRollPending; }
     
     /// Handle phrase boundary: apply pending seeds and redraw patterns
     void onPhraseBoundary(const PatternInput& in) {

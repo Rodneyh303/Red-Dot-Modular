@@ -23,6 +23,7 @@ void PatternEngine::reset() {
         accentRandom[i] = 1.0f;     // No accents by default (roll < prob)
         melodyRandom[i] = 0.5f;     // Default to middle of weighted sum
         octaveRandom[i] = 0.5f;     // Default to middle of octave range
+        qmixRandom[i]   = 0.5f;     // q-mix twin — default to middle
         
         for (int v = 0; v < 15; v++) {
             polyRandom(v, PL_REST)[i] = 1.0f; // Poly voices trigger by default
@@ -33,11 +34,13 @@ void PatternEngine::reset() {
                                            // accent knob. Mirrors polyAccentSource=1.0 below.
             polyRandom(v, PL_MELODY)[i] = 0.5f;
             polyRandom(v, PL_OCTAVE)[i] = 0.5f;
+            polyRandom(v, PL_QMIX)[i]   = 0.5f;   // q-mix twin
             
             polyRhythmSource[v][i] = 1.0f;
             polyAccentSource[v][i] = 1.0f;
             polyMelodySource[v][i] = polyRandom(v, PL_MELODY)[i];
             polyOctaveSource[v][i] = polyRandom(v, PL_OCTAVE)[i];
+            polyQmixSource[v][i]   = polyRandom(v, PL_QMIX)[i];
         }
         
         rhythmSource[i] = rhythmRandom[i];
@@ -46,25 +49,28 @@ void PatternEngine::reset() {
         accentSource[i] = accentRandom[i];
         melodySource[i] = melodyRandom[i];
         octaveSource[i] = octaveRandom[i];
+        qmixSource[i]   = qmixRandom[i];
 
         rhythmPattern[i] = true;
     }
 
     // (Step 4c: removed A/B init -- no stored A/B arrays under the scrub model.)
 
-    rhythmSlewLatched=melodySlewLatched=1.f;
-    rhythmSlewApplied=melodySlewApplied=1.f;
-    rhythmFirstDraw=melodyFirstDraw=true;
+    rhythmSlewLatched=melodySlewLatched=qmixSlewLatched=1.f;
+    rhythmSlewApplied=melodySlewApplied=qmixSlewApplied=1.f;
+    rhythmFirstDraw=melodyFirstDraw=qmixFirstDraw=true;
     sandsActive=false;
     // Mirror defaults into slewedDraw too (final == slewed at reset)
     for (int i=0;i<16;i++){
         slewedRhythm[i]=rhythmRandom[i]; slewedVariation[i]=variationRandom[i];
         slewedLegato[i]=legatoRandom[i]; slewedAccent[i]=accentRandom[i];
         slewedMelody[i]=melodyRandom[i]; slewedOctave[i]=octaveRandom[i];
+        slewedQmix[i]=qmixRandom[i];
         for (int v=0;v<15;v++){
             slewedPolyRhythm[v][i]=polyRandom(v, PL_REST)[i];
             slewedPolyMelody[v][i]=polyRandom(v, PL_MELODY)[i];
             slewedPolyOctave[v][i]=polyRandom(v, PL_OCTAVE)[i];
+            slewedPolyQmix[v][i]=polyRandom(v, PL_QMIX)[i];
         }
     }
 }
@@ -301,6 +307,32 @@ void PatternEngine::recomputeEffectiveMelody() {
     melodyMixApplied = melodyMixLatched; melodySlewApplied = slew; melodyCtrApplied = N;
 }
 
+void PatternEngine::recomputeEffectiveQmix() {
+    // SCRUB + B2 slew -- mirror of recomputeEffectiveMelody, on the q-mix stream.
+    const float s = rack::math::clamp(qmixMixLatched, 0.f, 1.f) * 6.f;
+    const int   f    = (int)s;
+    const float frac = s - (float)f;
+    const int64_t N  = qmixDrawCtr;
+    const float slew = rack::math::clamp(qmixSlewLatched, 0.f, 1.f);
+    QmixDraw d0, d1;
+    patternQmixAt(N - f,     slew, d0);
+    patternQmixAt(N - f - 1, slew, d1);
+    auto bl = [frac](float a, float b){ return a + frac*(b-a); };
+    for (int i = 0; i < 16; ++i) {
+        slewedQmix[i]=bl(d0.qmix[i],d1.qmix[i]);
+        for (int v = 0; v < 15; v++) {
+            slewedPolyQmix[v][i]=bl(d0.polyQmix[v][i],d1.polyQmix[v][i]);
+        }
+    }
+    if (!sandsActive) {
+        for (int i = 0; i < 16; ++i) {
+            qmixRandom[i]=slewedQmix[i];
+            for (int v=0;v<15;v++) polyRandom(v, PL_QMIX)[i]=slewedPolyQmix[v][i];
+        }
+    }
+    qmixMixApplied = qmixMixLatched; qmixSlewApplied = slew; qmixCtrApplied = N;
+}
+
 // Regenerate melody pattern (16 steps of semitone + pitch voltage)
 void PatternEngine::redrawMelody(const PatternInput& in) {
     if (in.locked && !in.diceLiveM) return;   // LOCK_SCOPE_MENU: melody dice may draw under lock if opted live
@@ -326,8 +358,30 @@ void PatternEngine::redrawMelody(const PatternInput& in) {
     }
 }
 
-void PatternEngine::latchMix(float rhythmMix, float melodyMix, float rhythmSlew, float melodySlew,
-                             bool applyRhythm, bool applyMelody) {
+// q-mix twin of redrawMelody — advance the q-mix draw, recompute effective, cache source.
+void PatternEngine::redrawQmix(const PatternInput& in) {
+    // NOTE: q-mix draws under the MELODY dice-live gate (melody family). Mirrors redrawMelody's
+    // lock guard so a locked module with melody opted live also draws q-mix.
+    if (in.locked && !in.diceLiveM) return;
+    const bool first = qmixFirstDraw;
+    qmixFirstDraw = false;
+
+    // Philox addressable draw bookkeeping (mirror of redrawMelody).
+    if (!first) advanceQmixDraw(qmixDrawDir());
+    beginQmixDraw();
+
+    (void)first;
+    qmixSlewApplied = -1.f;
+    recomputeEffectiveQmix();
+    for (int i = 0; i < 16; ++i) {
+        qmixSource[i]=slewedQmix[i];
+        for (int v=0;v<15;v++){ polyQmixSource[v][i]=slewedPolyQmix[v][i]; }
+    }
+}
+
+void PatternEngine::latchMix(float rhythmMix, float melodyMix, float qmixMix,
+                             float rhythmSlew, float melodySlew, float qmixSlew,
+                             bool applyRhythm, bool applyMelody, bool applyQmix) {
     // Sample the live SCRUB inputs (control rate). Under the scrub model BOTH the scrub position
     // (MIX repurposed) AND slew (FIR smoothing width) feed the effective pattern, so latch both and
     // recompute a stream when EITHER changed. Recompute is cheap + change-guarded.
@@ -346,6 +400,12 @@ void PatternEngine::latchMix(float rhythmMix, float melodyMix, float rhythmSlew,
         melodySlewLatched = melodySlew;
         if (melodyMixLatched != melodyMixApplied || melodySlewLatched != melodySlewApplied)
             recomputeEffectiveMelody();
+    }
+    if (applyQmix) {
+        qmixMixLatched  = qmixMix;
+        qmixSlewLatched = qmixSlew;
+        if (qmixMixLatched != qmixMixApplied || qmixSlewLatched != qmixSlewApplied)
+            recomputeEffectiveQmix();
     }
 }
 
@@ -367,6 +427,9 @@ void PatternEngine::refreshVisualCache(const PatternInput& in) {
         const float mSlew = rack::math::clamp(melodySlewLatched, 0.f, 1.f);
         if (melodyMixLatched != melodyMixApplied || mSlew != melodySlewApplied || melodyDrawCtr != melodyCtrApplied)
             recomputeEffectiveMelody();
+        const float qSlew = rack::math::clamp(qmixSlewLatched, 0.f, 1.f);
+        if (qmixMixLatched != qmixMixApplied || qSlew != qmixSlewApplied || qmixDrawCtr != qmixCtrApplied)
+            recomputeEffectiveQmix();
     }
     for (int i = 0; i < 16; ++i) {
         rhythmPattern[i] = (rhythmRandom[i] >= in.restProb);
@@ -415,6 +478,9 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
                                           || rhythmRollPending || (rhythmMode == 1));
     bool shouldRedrawM = drawAllowedM && (((!in.locked) && (melodySeedPending || melodyReseedRollPending))
                                           || melodyRollPending || (melodyMode == 1));
+    // q-mix draws under the MELODY dice-live gate (melody family), mirroring shouldRedrawM.
+    bool shouldRedrawQ = drawAllowedM && (((!in.locked) && (qmixSeedPending || qmixReseedRollPending))
+                                          || qmixRollPending || (qmixMode == 1));
 
     if (!in.locked && rhythmSeedPending) {
         rhythmSeedFloat = rhythmSeedPendingFloat;
@@ -448,6 +514,20 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     if (shouldRedrawM) redrawMelody(in);
     if (drawAllowedM) melodyPendingLast = false;   // one-shot: consumed only if this stream drew (held otherwise)
 
+    // q-mix twin of the melody block — its OWN independent stream (STREAM_SOURCE_SELECT).
+    if (!in.locked && qmixSeedPending) {   // seeds stay frozen under lock (Reseed-scoped)
+        qmixSeedFloat = qmixSeedPendingFloat;
+        seedQmixPhilox(qmixSeedFloat);     // mirror seed into Philox (counter→0)
+        qmixSeedPending = false;
+        qmixFirstDraw = true;
+    } else if (!in.locked && qmixReseedRollPending) {
+        if (qmixReseedRollFull) { seedQmixPhiloxFull(); }
+        else { qmixSeedFloat = qmixReseedRollFloat; seedQmixPhilox(qmixSeedFloat); }
+    }
+    if (drawAllowedM) { qmixRollPending = false; qmixReseedRollPending = false; }
+    if (shouldRedrawQ) redrawQmix(in);
+    if (drawAllowedM) qmixPendingLast = false;   // one-shot: consumed only if this stream drew (held otherwise)
+
     // ── Dice-undo capture (item 4): record the AFTER (seedFloat, counter) now that the roll's
     // redraw has advanced the counter. Only the moved streams matter; the other's before==after.
     if (diceUndoPending.valid) {
@@ -457,7 +537,7 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     }
 
     // Always refresh the cache so the LEDs react to live knob changes in Dice mode
-    if (!shouldRedrawR || !shouldRedrawM) refreshVisualCache(in);
+    if (!shouldRedrawR || !shouldRedrawM || !shouldRedrawQ) refreshVisualCache(in);
 }
 
 // ── Mode switching (dice ↔ realtime) ──────────────────────────────────────

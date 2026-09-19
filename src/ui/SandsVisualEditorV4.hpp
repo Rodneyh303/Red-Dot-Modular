@@ -59,10 +59,13 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   static_assert(MELODY == 0 && OCTAVE == 1 && QMIX == 2 && REST == 3
                 && ACCENT == 4 && VARIATION == 5 && LEGATO == 6,
                 "SandsVisualEditorV4::Lane must equal the QMIX editor order (dsp/LaneMapping.hpp)");
-  static_assert(MELODY == dotModular::STRAND_MELODY && OCTAVE == dotModular::STRAND_OCTAVE
-                && QMIX == dotModular::STRAND_QMIX && REST == dotModular::STRAND_RHYTHM
-                && ACCENT == dotModular::STRAND_ACCENT && VARIATION == dotModular::STRAND_VARIATION
-                && LEGATO == dotModular::STRAND_LEGATO,
+  // (int) casts: Lane and dotModular::EngineStrand are distinct enums; comparing them directly
+  // trips -Wenum-compare. We deliberately assert their integer values coincide (editor lane ==
+  // strand, MONO_LANE_TO_STRAND identity), so compare as ints.
+  static_assert((int)MELODY == (int)dotModular::STRAND_MELODY && (int)OCTAVE == (int)dotModular::STRAND_OCTAVE
+                && (int)QMIX == (int)dotModular::STRAND_QMIX && (int)REST == (int)dotModular::STRAND_RHYTHM
+                && (int)ACCENT == (int)dotModular::STRAND_ACCENT && (int)VARIATION == (int)dotModular::STRAND_VARIATION
+                && (int)LEGATO == (int)dotModular::STRAND_LEGATO,
                 "editor lane == engine strand (MONO_LANE_TO_STRAND is identity); keep both in step");
   
   struct Colors {

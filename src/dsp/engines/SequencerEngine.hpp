@@ -32,6 +32,7 @@ struct StepResult {
     bool stepped = false;   // true if a step edge actually fired this sample
     bool wrapped = false;   // true if the phrase boundary wrapped
     bool accented = false;  // true if this step is accented (NEW)
+    bool qmixHit  = false;  // Task 4: true if the mono q-mix draw crossed QMIX_LEVEL this step
     int  forStep = -1;      // the stepIndex this result was computed for (Lantern pairs decision→column)
 };
 
@@ -640,9 +641,10 @@ struct SequencerEngine {
     int getAccentStep() const;  // NEW: accent strand DNA index
     int getMelodyStep() const;
     int getOctaveStep() const;
+    int getQmixStep() const;    // Task 4: q-mix strand DNA index (mono)
 
     bool shouldTriggerStep(int ppqn) const;
-    StepResult executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float accentProb, const PatternInput& input, bool wasHeld, bool hadTail);
+    StepResult executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float accentProb, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail);
     void handlePhraseBoundary(PatternInput input, bool isMelodyRealtime, bool isRhythmRealtime);
     StepResult executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input, int dir = +1);
     StepResult executeModeB(bool gate1Rise, bool gate1High, float restProb, float legatoProb, float noteVal, const PatternInput& input);

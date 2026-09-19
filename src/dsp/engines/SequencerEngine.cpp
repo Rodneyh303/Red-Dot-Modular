@@ -393,7 +393,7 @@ bool SequencerEngine::shouldTriggerStep(int ppqn) const {
     return true; 
 }
 
-StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float accentProb, const PatternInput& input, bool wasHeld, bool hadTail) {
+StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float accentProb, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail) {
     lastLegatoProb_ = legatoProb;   // for the Rule 2 per-voice slur roll (read in executePolyVoice)
     // ── Fractional notes (1/4T=2.667, 1/8T=1.333, 1/32=0.5 steps) & legato/tie ──
     // These notes end MID-STEP (closed by the gateSecRemain seconds-timer), not on
@@ -554,6 +554,16 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
         result.accented = lastStepResult.accented;
     }
 
+    // Task 4 (QMIX): threshold the mono q-mix draw against QMIX_LEVEL, mirroring accent. A "hit"
+    // fires when the draw crosses the level (draw < level); on sustains it inherits, on rests false.
+    if (monoStarting) {
+        result.qmixHit = (r_qmix < input.qmixLevel);
+    } else if (result.decision == MonoDecision::Rest) {
+        result.qmixHit = false;
+    } else {
+        result.qmixHit = lastStepResult.qmixHit;
+    }
+
     // ── LEAD COMMITMENT (leading-edge legato) — sets the next note's prevSlur ─────
     // A note that is STARTING commits here (at its own onset) to hold its gate forward into
     // the next note, iff BOTH: (a) its own legato draw fires (r_legato_tie < legatoProb, or
@@ -627,6 +637,7 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
     float r_rest   = monoStrand(dotModular::STRAND_RHYTHM)[getRhythmStep()];
     float r_legato = monoStrand(dotModular::STRAND_LEGATO)[getLegatoStep()];
     float r_accent = monoStrand(dotModular::STRAND_ACCENT)[getAccentStep()];  // New: accent strand
+    float r_qmix   = monoStrand(dotModular::STRAND_QMIX)[getQmixStep()];      // Task 4: q-mix strand
     
     int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
 
@@ -644,7 +655,7 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
         hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
     }
     
-    result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent, input.accentProb, input, wasHeldMono, hadMonoTail);
+    result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent, input.accentProb, r_qmix, input, wasHeldMono, hadMonoTail);
     result.stepped = true;
     result.wrapped = wrapped;
     // executeStep already assigned lastStepResult (BEFORE wrapped/stepped were set on the local
@@ -688,6 +699,7 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
         float r_rest   = monoStrand(dotModular::STRAND_RHYTHM)[getRhythmStep()];
         float r_legato = monoStrand(dotModular::STRAND_LEGATO)[getLegatoStep()];
         float r_accent = monoStrand(dotModular::STRAND_ACCENT)[getAccentStep()];  // New: accent strand
+        float r_qmix   = monoStrand(dotModular::STRAND_QMIX)[getQmixStep()];      // Task 4: q-mix strand
         
         // Mode B: the note DURATION is Gate 1's width, so the INTERNAL note length is nullified
         // to a single 1/16 step (index 6 in NoteValues.hpp = 1.0 step). Using the controller's
@@ -732,7 +744,7 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
         gs.holdRemain = 0.f;     gs.gatePulseRemain = -1;
         gsStep.holdRemain = 0.f; gsStep.gatePulseRemain = -1;
 
-        result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent, input.accentProb, input, wasHeldMono, hadMonoTail);
+        result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent, input.accentProb, r_qmix, input, wasHeldMono, hadMonoTail);
         result.stepped = true;
         result.wrapped = wrapped;
         lastStepResult = result;   // re-sync wrapped/stepped (executeStep set lastStepResult before they were known)
@@ -1123,6 +1135,7 @@ int SequencerEngine::getLegatoStep() const    { return getStrandIdx(laneTick_[do
 int SequencerEngine::getAccentStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_ACCENT],    lor(dotModular::STRAND_ACCENT,LOR_LEN), lor(dotModular::STRAND_ACCENT,LOR_OFF), lor(dotModular::STRAND_ACCENT,LOR_ROT)); }
 int SequencerEngine::getMelodyStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_MELODY],    lor(dotModular::STRAND_MELODY,LOR_LEN), lor(dotModular::STRAND_MELODY,LOR_OFF), lor(dotModular::STRAND_MELODY,LOR_ROT)); }
 int SequencerEngine::getOctaveStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_OCTAVE],    lor(dotModular::STRAND_OCTAVE,LOR_LEN), lor(dotModular::STRAND_OCTAVE,LOR_OFF), lor(dotModular::STRAND_OCTAVE,LOR_ROT)); }
+int SequencerEngine::getQmixStep() const      { return getStrandIdx(laneTick_[dotModular::STRAND_QMIX],      lor(dotModular::STRAND_QMIX,LOR_LEN),   lor(dotModular::STRAND_QMIX,LOR_OFF),   lor(dotModular::STRAND_QMIX,LOR_ROT)); }
 
 void SequencerEngine::syncVisuals(const PatternInput& in) {
     pe.refreshVisualCache(in);

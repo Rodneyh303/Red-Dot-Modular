@@ -47,6 +47,9 @@ public:
     float getAccentUnclamped() const; ///< knob + accent CV + Junction + CV2, NO clamp
     float getAccent() const;
 
+    /// Q-mix level (0–1) — threshold the mono voice's q-mix draw compares against (Task 4)
+    float getQmixLevel() const;
+
     /// Big-5 effective values NORMALISED to 0..1 (for modulation visualisation).
     /// These reuse the effective-value getters above; NOTE_VALUE is divided by 8
     /// so all five share a 0..1 range the widgets can compare to knob position.

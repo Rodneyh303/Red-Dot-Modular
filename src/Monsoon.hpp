@@ -818,6 +818,7 @@ struct Monsoon : Module {
 
     int& rhythmMode = engine.pe.rhythmMode;
     int& melodyMode = engine.pe.melodyMode;
+    int& qmixMode   = engine.pe.qmixMode;   // Task 4 (QMIX)
     int& startStep = engine.startStep;
     int& endStep = engine.endStep;
     int& stepIndex = engine.stepIndex;

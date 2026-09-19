@@ -78,6 +78,12 @@ float ParameterManager::getAccent() const {
     return clampv(getAccentUnclamped(), 0.f, 1.f);
 }
 
+// Task 4 (QMIX): the level the mono voice's q-mix draw is thresholded against, mirroring
+// getRest()/getAccent() (0..1 probability domain). Rack param auto-serialized; no CV yet.
+float ParameterManager::getQmixLevel() const {
+    return clampv(readParam_(QMIX_LEVEL_PARAM, 0.f, 1.f), 0.f, 1.f);
+}
+
 bool ParameterManager::anyPitchModulated() const {
     for (int i = 0; i < 12; ++i)
         if (std::fabs(getSemitone(i) - readParam_(SEMI0_PARAM + i, 0.f, 1.f)) > 1e-4f) return true;

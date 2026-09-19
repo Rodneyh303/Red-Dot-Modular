@@ -106,6 +106,8 @@ void ModeController::updatePatternInput() {
         // redundant re-fetch in executeModeE/A). Causeway-modulated effective value, mirroring rest.
         currentPatternInput.accentProb    = mainModule ? mainModule->getEffectiveMonoAccent(paramManager.getAccentUnclamped())
                                                        : paramManager.getAccent();
+        // Task 4 (QMIX): mono q-mix threshold level (Rack param; no CV/Causeway path yet).
+        currentPatternInput.qmixLevel     = paramManager.getQmixLevel();
     }
     if (octLive) {   // OctaveRange LATCH — hold OCT LO/HI under lock (see pitch-axis note above)
         currentPatternInput.octaveLo      = paramManager.getOctaveLo();
@@ -124,8 +126,10 @@ void ModeController::updatePatternInput() {
         && (engine.scopeLiveMask & (1u << 9)) != 0;   // == dotModular::SB_DICE_M
     currentPatternInput.rhythmSlew        = paramManager.getRhythmSlew();
     currentPatternInput.melodySlew        = paramManager.getMelodySlew();
+    currentPatternInput.qmixSlew          = paramManager.getQmixSlew();   // Task 4 (QMIX)
     currentPatternInput.rhythmMix         = paramManager.getRhythmMix();
     currentPatternInput.melodyMix         = paramManager.getMelodyMix();
+    currentPatternInput.qmixMix           = paramManager.getQmixMix();    // Task 4 (QMIX)
     // Junction expander: 5 big-5 CV (x attenuverter) -> offsets the param getters add.
     // CV normalised 0..10V -> 0..1, scaled bipolar by the attenuverter.
     paramManager.clearJunctionOffsets();
@@ -147,11 +151,15 @@ void ModeController::updatePatternInput() {
         const bool abR = dotModular::LockManager::liveNow(dotModular::Control::ABMix, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false);
         const bool abM = dotModular::LockManager::liveNow(dotModular::Control::ABMix, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true);
         if (abR || abM)
+            // q-mix latches under the melody (abM) gate — it's melody family. Passes qmix mix/slew
+            // and applyQmix=abM so the q-mix A/B blend freezes/frees with melody's scope bit.
             engine.pe.latchMix(currentPatternInput.rhythmMix,
                                currentPatternInput.melodyMix,
+                               currentPatternInput.qmixMix,
                                currentPatternInput.rhythmSlew,
                                currentPatternInput.melodySlew,
-                               /*applyRhythm=*/abR, /*applyMelody=*/abM);
+                               currentPatternInput.qmixSlew,
+                               /*applyRhythm=*/abR, /*applyMelody=*/abM, /*applyQmix=*/abM);
     }
     if (mainModule) {
         // seedConnected IS read elsewhere (realtime !seedConnected checks). The former

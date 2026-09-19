@@ -434,10 +434,9 @@ float Monsoon::semitoneToVolts(int semitone) {
         engine.pe.setPendingMelodyRoll();   // plain roll; reseed lives on RESET (Step 6)
     }
     void Monsoon::diceQmix() {
-        // Task 4 (QMIX): mirror diceMelody — plain roll on the q-mix stream.
-        // The engine q-mix stream (qmixMode / setPendingQmixRoll) lands in Task 4a/4b;
-        // until then this is a no-op so the panel button exists and builds cleanly.
-        // TODO(Task 4a): qmixMode = 0; engine.pe.setPendingQmixRoll();
+        // Task 4 (QMIX): mirror diceMelody — plain roll on the q-mix stream (own Philox stream).
+        qmixMode = 0;
+        engine.pe.setPendingQmixRoll();
     }
 
     // Single definition of every die-action. Fired by G3 (menu-routed) and by
@@ -929,8 +928,7 @@ void Monsoon::process(const ProcessArgs& args) {
             if (uiManager->processLastDiceButtons(lastDiceR, lastDiceM, lastDiceQ)) {
                 if (lastDiceR) { rhythmMode = 0; engine.pe.setPendingRhythmLastRoll(); }
                 if (lastDiceM) { melodyMode = 0; engine.pe.setPendingMelodyLastRoll(); }
-                // TODO(Task 4a): if (lastDiceQ) { qmixMode = 0; engine.pe.setPendingQmixLastRoll(); }
-                (void)lastDiceQ;   // Task 4 (QMIX) — engine dispatch wired in Task 4a/4b
+                if (lastDiceQ) { qmixMode = 0; engine.pe.setPendingQmixLastRoll(); }   // Task 4 (QMIX)
             }
             if (uiManager->processLockButton()) {
                 locked = !locked;
