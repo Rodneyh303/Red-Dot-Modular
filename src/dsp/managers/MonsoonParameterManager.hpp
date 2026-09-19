@@ -75,18 +75,21 @@ public:
     /// Slew/mix effective values (all native 0..1). True if any CV3 offset active.
     float getRhythmSlewNorm() const { return getRhythmSlew(); }
     float getMelodySlewNorm() const { return getMelodySlew(); }
+    float getQmixSlewNorm()   const { return getQmixSlew(); }
     float getRhythmMixNorm()  const { return getRhythmMix(); }
     float getMelodyMixNorm()  const { return getMelodyMix(); }
+    float getQmixMixNorm()    const { return getQmixMix(); }
     bool  anyCv3Modulated() const {
-        for (int i = 0; i < 4; ++i) if (cv3Offsets[i] != 0.f) return true;
+        for (int i = 0; i < 6; ++i) if (cv3Offsets[i] != 0.f) return true;
         return false;
     }
-    // Per-LANE CV3 test (0=rhythmSlew,1=melodySlew,2=rhythmMix,3=melodyMix). Same
-    // fix as big5LaneModulated: the slew/mix arcs must gate on THEIR OWN lane, else
-    // modulating one (e.g. rhythm slew) marks all four active and they trail when
-    // turned.
+    // Per-LANE CV3 test (0=rhythmSlew,1=melodySlew,2=rhythmMix,3=melodyMix,
+    // 4=qmixSlew,5=qmixMix — Task 4 appended QMIX at the end so R/M lane indices
+    // stay stable). Same fix as big5LaneModulated: the slew/mix arcs must gate on
+    // THEIR OWN lane, else modulating one (e.g. rhythm slew) marks all active and
+    // they trail when turned.
     bool  cv3LaneModulated(int lane) const {
-        if (lane < 0 || lane > 3) return false;
+        if (lane < 0 || lane > 5) return false;
         return cv3Offsets[lane] != 0.f;
     }
     /// Pitch sliders, normalised 0..1 (semitones native 0..1; octaves /8).
@@ -108,8 +111,10 @@ public:
     /// Playable dice slew amounts (0–1)
     float getRhythmSlew() const;
     float getMelodySlew() const;
+    float getQmixSlew() const;
     float getRhythmMix() const;
     float getMelodyMix() const;
+    float getQmixMix() const;
     
     // ──── Octave Range Getters ──────────────────────────────────────────────
     
@@ -160,16 +165,16 @@ public:
 
     // ──── CV3 Offset Management ──────────────────────────────────────────────
 
-    /// Set CV3 offset (0=R Slew, 1=M Slew, 2=R Mix, 3=M Mix)
+    /// Set CV3 offset (0=R Slew, 1=M Slew, 2=R Mix, 3=M Mix, 4=Q Slew, 5=Q Mix)
     void setCv3Offset(int paramIdx, float offset) {
-        if (paramIdx >= 0 && paramIdx < 4) {
+        if (paramIdx >= 0 && paramIdx < 6) {
             cv3Offsets[paramIdx] = offset;
         }
     }
 
     /// Clear all CV3 offsets
     void clearCv3Offsets() {
-        for (int i = 0; i < 4; ++i) cv3Offsets[i] = 0.f;
+        for (int i = 0; i < 6; ++i) cv3Offsets[i] = 0.f;
     }
 
     // ──── Junction Expander Offset Management ───────────────────────────────────
@@ -193,8 +198,9 @@ private:
     
     // CV2-aware offsets for note value, variation, legato, rest, accent
     float cv2Offsets[5] = {0.f, 0.f, 0.f, 0.f, 0.f}; // Increased size for Accent
-    // CV3 offsets for rhythm slew, melody slew, rhythm mix, melody mix
-    float cv3Offsets[4] = {0.f, 0.f, 0.f, 0.f};
+    // CV3 offsets for rhythm slew, melody slew, rhythm mix, melody mix,
+    // qmix slew, qmix mix (Task 4 appended QMIX at 4,5 — R/M indices unchanged)
+    float cv3Offsets[6] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
     // Junction expander offsets: note value, variation, legato, rest, accent
     float junctionOffsets[5] = {0.f, 0.f, 0.f, 0.f, 0.f};
     

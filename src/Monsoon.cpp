@@ -433,6 +433,12 @@ float Monsoon::semitoneToVolts(int semitone) {
         melodyMode = 0;
         engine.pe.setPendingMelodyRoll();   // plain roll; reseed lives on RESET (Step 6)
     }
+    void Monsoon::diceQmix() {
+        // Task 4 (QMIX): mirror diceMelody — plain roll on the q-mix stream.
+        // The engine q-mix stream (qmixMode / setPendingQmixRoll) lands in Task 4a/4b;
+        // until then this is a no-op so the panel button exists and builds cleanly.
+        // TODO(Task 4a): qmixMode = 0; engine.pe.setPendingQmixRoll();
+    }
 
     // Single definition of every die-action. Fired by G3 (menu-routed) and by
     // Raffles's dedicated gates (and any future source) — DRY.
@@ -867,8 +873,10 @@ void Monsoon::process(const ProcessArgs& args) {
             modViz.big5Lane[4] = modViz.big5Lane[4] || causewayAccentMod;  // lane 4 = accent
             modViz.rhythmSlew = paramManager->getRhythmSlewNorm();
             modViz.melodySlew = paramManager->getMelodySlewNorm();
+            modViz.qmixSlew   = paramManager->getQmixSlewNorm();   // Task 4 (QMIX)
             modViz.rhythmMix  = paramManager->getRhythmMixNorm();
             modViz.melodyMix  = paramManager->getMelodyMixNorm();
+            modViz.qmixMix    = paramManager->getQmixMixNorm();    // Task 4 (QMIX)
             modViz.activeCv3  = paramManager->anyCv3Modulated();
             for (int i = 0; i < dotModular::SandsGrid::POLY_LANES; ++i) modViz.cv3Lane[i] = paramManager->cv3LaneModulated(i);
             for (int i = 0; i < 12; ++i) modViz.semitone[i] = paramManager->getSemitoneNorm(i);
@@ -906,20 +914,23 @@ void Monsoon::process(const ProcessArgs& args) {
 
         // ── Button Processing (via UIManager) ──
         if (uiManager) {
-            bool rhythmTriggered, melodyTriggered;
-            if (uiManager->processDiceButtons(rhythmTriggered, melodyTriggered)) {
+            bool rhythmTriggered, melodyTriggered, qmixTriggered;
+            if (uiManager->processDiceButtons(rhythmTriggered, melodyTriggered, qmixTriggered)) {
                 // A dice press ROLLS (advance RNG, A/B morph) unless SEED is
                 // patched (then reproducible reseed). Shared with gate re-dice
-                // via diceRhythm()/diceMelody().
+                // via diceRhythm()/diceMelody()/diceQmix().
                 if (rhythmTriggered) diceRhythm();
                 if (melodyTriggered) diceMelody();
+                if (qmixTriggered)   diceQmix();   // Task 4 (QMIX)
             }
             // LastDice: roll stepping the index OPPOSITE to plain dice (previous draw).
             // Normal-mode only — the setters no-op on reversible streams.
-            bool lastDiceR, lastDiceM;
-            if (uiManager->processLastDiceButtons(lastDiceR, lastDiceM)) {
+            bool lastDiceR, lastDiceM, lastDiceQ;
+            if (uiManager->processLastDiceButtons(lastDiceR, lastDiceM, lastDiceQ)) {
                 if (lastDiceR) { rhythmMode = 0; engine.pe.setPendingRhythmLastRoll(); }
                 if (lastDiceM) { melodyMode = 0; engine.pe.setPendingMelodyLastRoll(); }
+                // TODO(Task 4a): if (lastDiceQ) { qmixMode = 0; engine.pe.setPendingQmixLastRoll(); }
+                (void)lastDiceQ;   // Task 4 (QMIX) — engine dispatch wired in Task 4a/4b
             }
             if (uiManager->processLockButton()) {
                 locked = !locked;

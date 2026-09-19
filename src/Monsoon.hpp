@@ -184,18 +184,29 @@ namespace MonsoonIds {
         RHYTHM_MIX_PARAM,
         MELODY_MIX_PARAM,
 
-        // Trial/audition dice (rhythm, melody): roll a fresh candidate B with A
-        // ANCHORED (no promote), so the user auditions candidates against a fixed
-        // A. The regular dice (DICE_R/M_PARAM) commits B→A (main mode).
-        DICE_TRIAL_R_PARAM,
-        DICE_TRIAL_M_PARAM,
-        // LastDice / LastTrial: step the draw index opposite to dice/trial (Philox
-        // addressability). Normal-mode only — blocked on reversible streams. Grouped
-        // with their dice/trial siblings.
+        // ── Task 4 repurpose (Trial → QMIX) ──────────────────────────────────
+        // The former Trial params (DICE_TRIAL_R/M_PARAM, LAST_TRIAL_R/M_PARAM)
+        // are no longer used. Their 4 enum slots are repurposed IN PLACE (enum
+        // positions/order unchanged so no later param IDs shift) to give the
+        // QMIX stream its own playable dice/mix/slew, mirroring the R/M pattern
+        // (DICE_R/M_PARAM, LAST_DICE_R/M_PARAM, RHYTHM/MELODY_MIX_PARAM,
+        // DICE_SLEW_R/M_PARAM). QMIX draws from its OWN Philox stream.
+        DICE_Q_PARAM,        // was DICE_TRIAL_R_PARAM
+        LAST_DICE_Q_PARAM,   // was DICE_TRIAL_M_PARAM
+        // QMIX A<->B blend (mirror RHYTHM_MIX_PARAM/MELODY_MIX_PARAM).
+        QMIX_MIX_PARAM,      // was LAST_TRIAL_R_PARAM
+        // QMIX dice slew (mirror DICE_SLEW_R/M_PARAM).
+        DICE_SLEW_Q_PARAM,   // was LAST_TRIAL_M_PARAM
+        // LastDice: step the draw index opposite to dice (Philox addressability).
+        // Normal-mode only — blocked on reversible streams. Grouped with dice.
         LAST_DICE_R_PARAM,
         LAST_DICE_M_PARAM,
-        LAST_TRIAL_R_PARAM,
-        LAST_TRIAL_M_PARAM,
+
+        // Q-mix LEVEL (the "6th big knob"): the level the q-mix probability compares
+        // against on the mono voice. Appended (stable id). No room in the top big-5 row
+        // yet — panel places it bottom-right (under ACCENT out, on the RESET jack row) as
+        // a small Straits-style knob; proper placement comes with the wider Monsoon redo.
+        QMIX_LEVEL_PARAM,
 
         // ── MACRO ranges (OWN 64, SEND 256, ATTEN 256, TAP 8 = 584) MIGRATED OUT of params[]
         //    to Monsoon::editor.macroOwn/macroSend/macroAtten (accessors getMacroOwn/…); tap re-homed to a Macro param;
@@ -615,6 +626,7 @@ struct Monsoon : Module {
         // Slew + mix effective values, normalised 0..1 (all native 0..1).
         // Modulated via CV3 (cv3Offsets). activeCv3 gates their arcs.
         float rhythmSlew = 0.f, melodySlew = 0.f, rhythmMix = 0.f, melodyMix = 0.f;
+        float qmixSlew = 0.f, qmixMix = 0.f;   // Task 4 (QMIX slew/mix)
         bool  activeCv3 = false;
         // Pitch sliders: 12 semitone (0..1) + octave lo/hi (normalised /8).
         // Modulated via the Interchange expander CV (+ CV1 for octaves).
@@ -919,6 +931,7 @@ struct Monsoon : Module {
     // sample-and-hold a reproducible seed. Keeps all dice triggers consistent.
     void diceRhythm();
     void diceMelody();
+    void diceQmix();   // Task 4 (QMIX dice)
     void onPhraseBoundary_();
     // Shophouse scale modulation is boundary-quantised (like slew): a scale/root edit stages here
     // and commits to the mask on the next phrase boundary (wrapped), never mid-phrase.

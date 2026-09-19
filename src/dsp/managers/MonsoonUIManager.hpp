@@ -67,8 +67,8 @@ public:
     // ──── Button Trigger Processing ─────────────────────────────────────────
     
     /// Process dice button triggers and return if any triggered
-    bool processDiceButtons(bool& rhythmTriggered, bool& melodyTriggered);
-    bool processLastDiceButtons(bool& rhythmTriggered, bool& melodyTriggered);
+    bool processDiceButtons(bool& rhythmTriggered, bool& melodyTriggered, bool& qmixTriggered);
+    bool processLastDiceButtons(bool& rhythmTriggered, bool& melodyTriggered, bool& qmixTriggered);
     
     /// Process lock button trigger
     bool processLockButton();
@@ -104,8 +104,10 @@ private:
     // Button trigger state
     rack::dsp::SchmittTrigger diceRTrigger;
     rack::dsp::SchmittTrigger diceMTrigger;
+    rack::dsp::SchmittTrigger diceQTrigger;      // Task 4 (QMIX dice)
     rack::dsp::SchmittTrigger lastDiceRTrigger;
     rack::dsp::SchmittTrigger lastDiceMTrigger;
+    rack::dsp::SchmittTrigger lastDiceQTrigger;  // Task 4 (QMIX last-dice)
     rack::dsp::SchmittTrigger lockTrigger;
     rack::dsp::SchmittTrigger muteTrigger;
     rack::dsp::SchmittTrigger modeTrigger;

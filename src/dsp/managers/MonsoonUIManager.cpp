@@ -116,26 +116,28 @@ void UIManager::updateSemitoneFlashLights(const float* semiLedBrightness, int co
 
 // ──── Button Trigger Processing ─────────────────────────────────────────────
 
-bool UIManager::processDiceButtons(bool& rhythmTriggered, bool& melodyTriggered) {
+bool UIManager::processDiceButtons(bool& rhythmTriggered, bool& melodyTriggered, bool& qmixTriggered) {
     if (!mainModule) return false;
     auto& params = mainModule->params;
     using namespace MonsoonIds;
     
     rhythmTriggered = diceRTrigger.process(params[DICE_R_PARAM].getValue());
     melodyTriggered = diceMTrigger.process(params[DICE_M_PARAM].getValue());
+    qmixTriggered   = diceQTrigger.process(params[DICE_Q_PARAM].getValue());  // Task 4 (QMIX)
     
-    return rhythmTriggered || melodyTriggered;
+    return rhythmTriggered || melodyTriggered || qmixTriggered;
 }
 
-bool UIManager::processLastDiceButtons(bool& rhythmTriggered, bool& melodyTriggered) {
+bool UIManager::processLastDiceButtons(bool& rhythmTriggered, bool& melodyTriggered, bool& qmixTriggered) {
     if (!mainModule) return false;
     auto& params = mainModule->params;
     using namespace MonsoonIds;
 
     rhythmTriggered = lastDiceRTrigger.process(params[LAST_DICE_R_PARAM].getValue());
     melodyTriggered = lastDiceMTrigger.process(params[LAST_DICE_M_PARAM].getValue());
+    qmixTriggered   = lastDiceQTrigger.process(params[LAST_DICE_Q_PARAM].getValue());  // Task 4 (QMIX)
 
-    return rhythmTriggered || melodyTriggered;
+    return rhythmTriggered || melodyTriggered || qmixTriggered;
 }
 
 bool UIManager::processLockButton() {
