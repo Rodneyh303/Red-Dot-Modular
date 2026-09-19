@@ -635,8 +635,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     }
 
     // Mix-in send group labels (NanoVG; panel carries no baked text). Geometry MUST
-    // match the send grids in gen_macro_mono.py and the widget knob placement above:
-    // BLEND_TOP=72 SEND_Y0=12 SEND_DY=11 SEND_DX=7, groups at ED_X + lane*ED_W/3.
+    // match the send grids in gen_macro_mono.py (gen_macro) EXACTLY — keep in lockstep:
+    //   BLEND_TOP=85 BLEND_H=35 SEND_Y0=10 SEND_DY=9 SEND_DX=6 GROUP_W=ED_W/5 (5 lanes incl QMIX).
     void draw(const DrawArgs& args) override {
         ModuleWidget::draw(args);
         NVGcontext* vg = args.vg;
@@ -646,10 +646,11 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // being painted over with the panel background here, which is why the V1
         // trimpots "disappeared" even though the widgets were visible.)
 
-        // Lanes now end at SandsGrid::polyBottom() = 70. Send group shrunk (DY 11->9.5) and moved
-        // down (BLEND_TOP 72->76) into the unused space below the tap knobs, per Rodney.
-        const float BLEND_TOP=76.f, SEND_Y0=10.f, SEND_DY=9.5f, SEND_DX=6.f, BGAP=2.5f;
-        const float GROUP_W = ED_W/4.f;
+        // Macro box shrink (Option B follow-up): BLEND_TOP 82→85, BLEND_H 38→35, moved down into
+        // the space reclaimed by the shorter 13mm lanes. GROUP_W=ED_W/5 (q-mix is a full 5th lane —
+        // was ED_W/4, a 4-lane leftover that mis-placed every label). Mirrors gen_macro_mono.py.
+        const float BLEND_TOP=85.f, SEND_Y0=10.f, SEND_DY=9.f, SEND_DX=6.f, BGAP=2.5f;
+        const float GROUP_W = ED_W/5.f;
         // Labels in DISPLAY order (matching gen_macro_mono.py DISPLAY_ORDER = editor
         // order MEL/OCT/REST/ACC). The SVG already places the send groups left-to-right
         // in this order; the labels must match. (Previously laneName was indexed by
@@ -672,7 +673,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         nvgFontSize(vg, 8.0f);
         nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM);
         nvgFillColor(vg, head);
-        nvgText(vg, mm2px(ED_X), mm2px(BLEND_TOP - 3.5f), "MIX IN", nullptr);
+        // "MIX IN" label baseline at ~83.5mm (moved down ~3mm with the box).
+        nvgText(vg, mm2px(ED_X), mm2px(BLEND_TOP - 1.5f), "MIX IN", nullptr);
 
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
             float gx = ED_X + l*GROUP_W + BGAP*0.5f;

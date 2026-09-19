@@ -69,8 +69,10 @@ def gen_macro(dark, W_MM=243.84):   # 48HP (44 + 4HP for dir_mod + prob_out jack
     #    Len/Off/Rot/Spr send grid. "per voice, how much of Macro's global CV reaches
     #    this voice." Geometry shared with the widget labels in
     #    StraitsSandsMacroVisual::draw — keep in lockstep:
-    #      BLEND_TOP=72 BLEND_H=36 GAP=3.5 SEND_Y0=12 SEND_DY=11 SEND_DX=7
-    BLEND_TOP=82.0; BLEND_H=38.0; BGAP=2.5; GROUP_W=ED_W/5.0  # 5 groups (q-mix is a full lane); taller for the tap row 3
+    #      BLEND_TOP=85 BLEND_H=35 SEND_Y0=10 SEND_DY=9 SEND_DX=6 GROUP_W=ED_W/5
+    # Box shrink (Option B follow-up): moved down (82→85) + shorter (38→35) into the space
+    # the shorter 13mm lanes reclaimed. 5 groups (q-mix is a full lane).
+    BLEND_TOP=85.0; BLEND_H=35.0; BGAP=2.5; GROUP_W=ED_W/5.0
     SEND_Y0=10.0; SEND_DY=9.0; SEND_DX=6.0                   # DX 7→6 for narrower groups
     TAP_ROW_DY=9.0                                            # row 3 (taps) below the 2 send rows
     A(f'<line x1="{px(ED_X):.1f}" y1="{px(BLEND_TOP-3.0):.1f}" x2="{px(ED_X+ED_W):.1f}" y2="{px(BLEND_TOP-3.0):.1f}" stroke="{t["accent"]}" stroke-width="1.0" opacity="0.6"/>')
