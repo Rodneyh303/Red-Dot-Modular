@@ -4,6 +4,7 @@
 #include <array>
 #include <deque>
 #include <cstring>
+#include "../dsp/LaneMapping.hpp"   // canonical editor lane order — the Lane enum below is guarded against it
 
 namespace redDot {
 
@@ -35,14 +36,34 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     POLY
   };
   
+  // QMIX-widened EDITOR lane order (== dotModular::MONO_LANE_TO_STRAND identity, drawLaneLabel,
+  // and every other Sands site). QMIX inserted at index 2, shifting REST→3, ACCENT→4, VAR→5,
+  // LEG→6. WAS the pre-QMIX 6-lane order (MEL0 OCT1 REST2 ACC3 VAR4 LEG5) — that stale enum made
+  // syncPatternEngineToEditor write each lane's probabilities to the wrong row (REST spread showed
+  // on the QMIX row, ACCENT on the REST row). These symbolic names index VoiceState::lanes[] rows.
   enum Lane {
     MELODY = 0,
     OCTAVE = 1,
-    REST = 2,
-    ACCENT = 3,
-    VARIATION = 4,
-    LEGATO = 5
+    QMIX = 2,
+    REST = 3,
+    ACCENT = 4,
+    VARIATION = 5,
+    LEGATO = 6
   };
+  // GUARD: this editor-lane enum is a SECOND source of truth for the editor lane order — that's
+  // why dsp/LaneMapping.hpp couldn't catch the stale pre-QMIX values that misrouted spread display
+  // (REST bars on the QMIX row). Tie it to the canonical LaneMapping order so any future drift on
+  // EITHER side trips at compile time. MONO_LANE_TO_STRAND is editor-aligned (identity), so the
+  // strand index for each editor lane equals that lane's editor index.
+  static_assert(QMIX == dotModular::QMIX_EDITOR_LANE, "editor QMIX lane must be dotModular::QMIX_EDITOR_LANE (2)");
+  static_assert(MELODY == 0 && OCTAVE == 1 && QMIX == 2 && REST == 3
+                && ACCENT == 4 && VARIATION == 5 && LEGATO == 6,
+                "SandsVisualEditorV4::Lane must equal the QMIX editor order (dsp/LaneMapping.hpp)");
+  static_assert(MELODY == dotModular::STRAND_MELODY && OCTAVE == dotModular::STRAND_OCTAVE
+                && QMIX == dotModular::STRAND_QMIX && REST == dotModular::STRAND_RHYTHM
+                && ACCENT == dotModular::STRAND_ACCENT && VARIATION == dotModular::STRAND_VARIATION
+                && LEGATO == dotModular::STRAND_LEGATO,
+                "editor lane == engine strand (MONO_LANE_TO_STRAND is identity); keep both in step");
   
   struct Colors {
     NVGcolor rest       = nvgRGB(0x50, 0x50, 0x50);
@@ -1103,6 +1124,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       case REST: return colors.rest;
       case MELODY: return colors.melody;
       case OCTAVE: return colors.octave;
+      case QMIX: return colors.octave;   // QMIX shares the octave-family hue for now (own colour TBD)
       case LEGATO: return colors.legato;
       case ACCENT: return colors.accent;
       case VARIATION: return colors.variation;
