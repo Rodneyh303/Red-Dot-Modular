@@ -213,6 +213,27 @@ float ParameterManager::getPolyAccent(int voiceIdx) const {
     return clampv(v, 0.f, 1.f);
 }
 
+// Per-voice q-mix LEVEL (Task 4 poly), mirroring getPolyRest EXACTLY. Reads the Straits
+// expander's POLY_QMIX_PARAM_* knobs (per-voice). Unlike rest/accent there is NO shared q-mix
+// CV input yet, so no CV add — just the knob (matching the mono q-mix path, which is also
+// Rack-param only, no CV). Voice-1/mono q-mix level is Monsoon's own QMIX_LEVEL_PARAM.
+float ParameterManager::getPolyQmixLevel(int voiceIdx) const {
+    if (voiceIdx < 0 || voiceIdx > 14) return 0.f;
+
+    float v = 0.f;  // default: never generated → always quantised (legacy behaviour)
+
+    if (cachedPolyVoiceExpander && *cachedPolyVoiceExpander) {
+        auto& params = (*cachedPolyVoiceExpander)->params;
+
+        int paramId = POLY_QMIX_PARAM_1 + voiceIdx;
+        if (paramId < (int)params.size()) {
+            v = params[paramId].getValue();
+        }
+    }
+
+    return clampv(v, 0.f, 1.f);
+}
+
 float ParameterManager::getPolyRest(int voiceIdx) const {
     if (voiceIdx < 0 || voiceIdx > 14) return 0.1f;
     

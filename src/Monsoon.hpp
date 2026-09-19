@@ -138,7 +138,28 @@ namespace MonsoonIds {
         POLY_ACCENT_PARAM_13,
         POLY_ACCENT_PARAM_14,
         POLY_ACCENT_PARAM_15,
-        
+
+        // Poly Q-mix LEVEL (15 voices) — q-mix as a per-voice lane, parallel to rest/accent.
+        // Voices 2..16 = 15 knobs; voice 1 (mono) q-mix level lives on Monsoon's QMIX_LEVEL_PARAM
+        // (no new voice-1 param, mirroring how REST_PARAM/ACCENT_KNOB serve voice 1 for rest/accent).
+        // Appended after ACCENT (stable ids — never renumber). Straits owns these knobs (see
+        // MonsoonStraitsExpander); the engine reads them per voice via getQmixLevelForVoice.
+        POLY_QMIX_PARAM_1,
+        POLY_QMIX_PARAM_2,
+        POLY_QMIX_PARAM_3,
+        POLY_QMIX_PARAM_4,
+        POLY_QMIX_PARAM_5,
+        POLY_QMIX_PARAM_6,
+        POLY_QMIX_PARAM_7,
+        POLY_QMIX_PARAM_8,
+        POLY_QMIX_PARAM_9,
+        POLY_QMIX_PARAM_10,
+        POLY_QMIX_PARAM_11,
+        POLY_QMIX_PARAM_12,
+        POLY_QMIX_PARAM_13,
+        POLY_QMIX_PARAM_14,
+        POLY_QMIX_PARAM_15,
+
         // Rest Probability Modulation Attenuverters (15 voices) - NEW
 
         // Accent Probability Modulation Attenuverters (15 voices) - NEW
@@ -910,6 +931,10 @@ struct Monsoon : Module {
     float getBasePolyAccent(int voiceIdx);
     float getEffectivePolyRest(int voiceIdx);
     float getEffectivePolyAccent(int voiceIdx);
+    // Per-voice q-mix LEVEL (Task 4 poly), mirroring rest/accent. No Causeway q-mix CV yet, so
+    // effective == base (the Straits knob). Voice-1/mono q-mix level is QMIX_LEVEL_PARAM.
+    float getBasePolyQmix(int voiceIdx);
+    float getEffectivePolyQmix(int voiceIdx);
     float getEffectiveMonoRest(float base);
     float getEffectiveMonoAccent(float base);
 

@@ -43,6 +43,10 @@ struct PolyVoice {
     GateState gsStep;   // STEP mirror: same calls as gs but continuations re-struck (no fusion)
     float restProb = 0.0f;
     float accentProb = 0.0f;   // per-voice accent probability (accent as a poly lane)
+    float qmixLevel = 0.0f;    // per-voice q-mix LEVEL (Task 4 poly): the level this voice's q-mix
+                               // draw is thresholded against. 0 = always quantised (legacy), 1 =
+                               // always generated. Mirrors restProb/accentProb (per-voice decision
+                               // cache written by ModeController from getEffectivePolyQmix).
     bool  accented = false;    // result of this voice's own accent draw this step
     // Rule 2 (EAST_EXTRA_LANES §4d): latched at the mono chain onset — true if this voice
     // PLAYED (vs rested) when mono started the gate, and held for the chain's life. It, not

@@ -825,12 +825,25 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         
         // Decide to Play: Draw pitch and follow mono's triggering behavior.
         int sem = 0;
+        // QMIX per-voice source-select (mirrors the mono path at executeStep): in a quantiser mode,
+        // this voice's q-mix draw decides quantised-external-CV vs internally-generated melody+octave.
+        //   r_qmix_voice < voice's qmixLevel → use GENERATED (mode-A pitch for this voice).
+        //   otherwise                        → use quantised external CV (its own channel).
+        // Draw at this voice's OWN q-mix LOR step (polyLaneTick + LEN/OFF/ROT), exactly like the
+        // rest/accent per-voice draws above use their strand. qmixUseGenerated is only ever true in
+        // quantiser modes (voicePitch gates forceGenerated on quantiserPitchSource); outside them
+        // it's inert and behaviour is byte-identical to the legacy poly path.
+        int qmixIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_QMIX), polyLenE(voiceIdx, PL_QMIX), polyOffE(voiceIdx, PL_QMIX), polyRotE(voiceIdx, PL_QMIX));
+        float r_qmix_voice = polyRandomSrc(voiceIdx, PL_QMIX)[qmixIdx];
+        bool qmixUseGenerated = quantiserPitchSource && (r_qmix_voice < v.qmixLevel);
         // QUANTISER (Q1): this voice's pitch = quantised external CV (its own channel) in quantiser
         // mode, else the internal melody+octave draw. voices[voiceIdx] is ENGINE voice voiceIdx+1
-        // (voice 0 is the mono/executeStep path), so read quantiserCV[voiceIdx+1].
+        // (voice 0 is the mono/executeStep path), so read quantiserCV[voiceIdx+1]. When
+        // qmixUseGenerated, forceGenerated pushes voicePitch through genPitchLive (mode-A pitch).
         float pitchV = voicePitch(voiceIdx + 1, sem, input,
                                   polyRandomSrc(voiceIdx, PL_MELODY)[melIdx],
-                                  polyRandomSrc(voiceIdx, PL_OCTAVE)[octIdx]);
+                                  polyRandomSrc(voiceIdx, PL_OCTAVE)[octIdx],
+                                  qmixUseGenerated);
         // Accent as a poly lane (modelled after rest): this voice draws its OWN accent at
         // its own accent LOR and compares to its own accentProb — not shared from mono.
         int accIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_ACCENT), polyLenE(voiceIdx, PL_ACCENT), polyOffE(voiceIdx, PL_ACCENT), polyRotE(voiceIdx, PL_ACCENT));

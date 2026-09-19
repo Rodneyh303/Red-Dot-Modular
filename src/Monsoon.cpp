@@ -250,6 +250,15 @@ float Monsoon::getEffectivePolyAccent(int voiceIdx) {
     }
     return math::clamp(base, 0.f, 1.f);
 }
+// Per-voice q-mix LEVEL — mirrors rest/accent. There is NO Causeway q-mix CV path yet (mono q-mix
+// is also Rack-param only), so effective == base (the Straits knob). Kept as an effective/base pair
+// for symmetry and so a future Causeway q-mix CV can drop in exactly like rest/accent.
+float Monsoon::getBasePolyQmix(int voiceIdx) {
+    return paramManager ? paramManager->getPolyQmixLevel(voiceIdx) : 0.f;
+}
+float Monsoon::getEffectivePolyQmix(int voiceIdx) {
+    return math::clamp(getBasePolyQmix(voiceIdx), 0.f, 1.f);
+}
 
 // Voice-1 / MONO counterparts: apply the Causeway MONO attenuator to CV channel 0 (the mono
 // channel) of the Causeway CV inputs, added onto the mono base rest/accent. Mirrors the poly

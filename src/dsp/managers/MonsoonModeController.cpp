@@ -37,6 +37,10 @@ void ModeController::updatePolyVoiceRest_() {
     for (int i = 0; i < engine.numPolyVoices; ++i) {
         engine.voices[i].restProb   = mainModule->getEffectivePolyRest(i);
         engine.voices[i].accentProb = mainModule->getEffectivePolyAccent(i);
+        // Task 4 (poly QMIX): per-voice q-mix LEVEL, mirroring rest/accent. The engine reads
+        // voices[i].qmixLevel per-step in executePolyVoice's source-select. getEffectivePolyQmix
+        // is the single resolver (Straits knob; no Causeway q-mix CV yet).
+        engine.voices[i].qmixLevel  = mainModule->getEffectivePolyQmix(i);
     }
     polyVoiceCachePrimed_ = true;
 }

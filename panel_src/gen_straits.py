@@ -1,23 +1,28 @@
 #!/usr/bin/env python3
-"""Straits — poly expander panel (22HP), styled as the flowing straits between two shores.
+"""Straits — poly expander panel (34HP), styled as the flowing straits between shores.
 
-The refactored single Straits carries 16 REST + 16 ACCENT probability knobs (voice 1 = mono/ch0,
-voices 2..16 = poly) plus three 16ch poly-cable outs (gate/CV/accent). The old East/West split is
-gone — instead the two knob banks are REST (left, muted) and ACCENT (right, vibrant), the vibrancy
-itself the literal rest-vs-accent distinction. A field of flowing contour "wave" lines runs behind
-each bank (the straits' water), tinted to each side. A central voice spine (1..16) organises rows;
-voice 1 (mono) is marked distinctly.
+The refactored single Straits carries 16 REST + 16 ACCENT + 16 Q-MIX per-voice knobs (voice 1 =
+mono/ch0, voices 2..16 = poly) plus five 16ch poly-cable outs (gate/step/sleg/CV/accent). The old
+East/West split is gone — instead THREE knob banks sit side by side: REST (muted cool), ACCENT
+(vibrant warm) and Q-MIX (purple), the tint itself the literal lane distinction. A field of flowing
+contour "wave" lines runs behind each bank (the straits' water), tinted to each side. A voice spine
+(1..16) on the far left organises rows; voice 1 (mono) is marked distinctly.
+
+Q-MIX (Task 4 poly): per-voice level blending that voice's CV out between quantised input (0) and
+internally-generated notes (1) — the poly twin of the mono Q-mix Level. "Goes where rest and accent
+already are": a third bank exactly parallel to rest/accent.
 
 nanosvg-safe (solid fills/strokes, no gradient/mask/text/url).
 
 Kit id markers (widget binds; voice v 0..15, v0 = mono/voice 1):
-  param_rest_<0..15>     REST probability knob   (v0 → mono REST_PARAM, v1..15 → POLY_REST_PARAM_*)
-  param_accent_<0..15>   ACCENT probability knob (v0 → mono ACCENT_PARAM, v1..15 → POLY_ACCENT_PARAM_*)
-  output_polygate / output_polycv / output_polyaccent   16ch cable outs
-  light_connect
+  param_rest_<0..15>     REST probability knob   (v0 → mono REST_PARAM,   v1..15 → POLY_REST_PARAM_*)
+  param_accent_<0..15>   ACCENT probability knob (v0 → mono ACCENT_KNOB,  v1..15 → POLY_ACCENT_PARAM_*)
+  param_qmix_<0..15>     Q-MIX level knob        (v0 → mono QMIX_LEVEL_PARAM, v1..15 → POLY_QMIX_PARAM_*)
+  output_polygate / output_polystepgate / output_polyslegato / output_polycv / output_polyaccent
+  input_quantcv / param_voicecount / light_connect
 """
 import math, os, re
-HP = 26
+HP = 34
 W  = HP * 5.08
 H  = 128.5
 S  = 75 / 25.4
@@ -26,9 +31,10 @@ def px(v): return round(v*S, 2)
 
 THEMES = {
     "dark":  dict(bg="#14171b", red="#d4001a", ink="#f0f0f0",
-                  # REST = muted, cool; ACCENT = vibrant, warm
+                  # REST = muted cool; ACCENT = vibrant warm; QMIX = purple
                   rest="#3f7d78", restwave="#2a5a56", restknob="#1a2e2c",
                   acc="#e08a1a", accwave="#8a5410", accknob="#3a2a10",
+                  qmix="#8060c0", qmixwave="#4e3a78", qmixknob="#241a3a",
                   spine="#5a6470", spinehi="#8a94a0", spinedot="#4c7ac0",
                   knobface="#2a2e33", knobring="#4a5058", knobtick="#c0c8d0",
                   jackwell="#0c0e11", jackring="#4a4a4a", gold="#c8960c",
@@ -36,6 +42,7 @@ THEMES = {
     "light": dict(bg="#dcdcdc", red="#d4001a", ink="#1a1a1a",
                   rest="#5a9a94", restwave="#6fa8a2", restknob="#c8ddd9",
                   acc="#c88018", accwave="#d09a48", accknob="#e4d4b8",
+                  qmix="#8a6ac8", qmixwave="#a087d0", qmixknob="#d8cceb",
                   spine="#b0b8c0", spinehi="#8a94a0", spinedot="#4c6ab0",
                   knobface="#e8e2d6", knobring="#b0a898", knobtick="#5a5040",
                   jackwell="#e2ddd2", jackring="#b0a898", gold="#b07d00",
@@ -43,9 +50,12 @@ THEMES = {
 }
 
 MARGIN   = 5.0
-SPINE_W  = 10.0
-SPINE_CX = W/2
-SIDE_W   = (W - 2*MARGIN - SPINE_W) / 2
+SPINE_W  = 6.0                  # voice spine on the far left
+SPINE_CX = MARGIN + SPINE_W/2
+GAP      = 3.0                  # gap between the three banks
+# Three equal banks fill the remaining width right of the spine.
+BANKS_X0 = MARGIN + SPINE_W + 2.0
+BANK_W   = (W - BANKS_X0 - MARGIN - 2*GAP) / 3.0
 TOP      = 16.0
 N_ROWS   = 6                    # 3 cols x 6/6/4 (col-major: voices 1-6, 7-12, 13-16)
 COLS     = [6, 6, 4]
@@ -53,6 +63,9 @@ ROW_H    = 14.77                # 43.6px -- Compact(tight) arc dia 43.4px kisses
 KNOB_R   = 4.5                  # painted preview under the Compact body (5.0mm)
 GRID_TOP = TOP + 2.0
 JACK_Y   = TOP + N_ROWS*ROW_H + 6.5   # 111.1mm; logo band below
+
+def bank_x0(idx):  # left edge of bank idx (0=rest,1=accent,2=qmix)
+    return BANKS_X0 + idx*(BANK_W + GAP)
 
 def wave_field(A, t, x0, y0, w, h, colour, n=22):
     """Flowing contour lines (the straits' water) across (x0,y0,w,h). Dense field — many
@@ -102,32 +115,30 @@ def gen(dark):
     A(f'<rect width="{PW}" height="{PH}" fill="{t["bg"]}"/>')
     A(f'<rect x="0" y="0" width="{PW}" height="{px(1.2)}" fill="{t["red"]}"/>')
 
-    # ── wave fields behind each bank ──
-    wave_field(A, t, MARGIN, TOP, SIDE_W, N_ROWS*ROW_H, t["restwave"])
-    wave_field(A, t, SPINE_CX+SPINE_W/2, TOP, SIDE_W, N_ROWS*ROW_H, t["accwave"])
+    bands = [("rest",   t["rest"], t["restwave"], t["restknob"]),
+             ("accent", t["acc"],  t["accwave"],  t["accknob"]),
+             ("qmix",   t["qmix"], t["qmixwave"], t["qmixknob"])]
 
-    # ── side tint bands (subtle) ──
-    A(f'<rect x="{px(MARGIN-1)}" y="{px(TOP-4)}" width="{px(SIDE_W+2)}" height="{px(N_ROWS*ROW_H+6)}" '
-      f'rx="{px(1.5)}" fill="{t["rest"]}" fill-opacity="0.06" stroke="{t["rest"]}" stroke-width="0.3" stroke-opacity="0.4"/>')
-    A(f'<rect x="{px(SPINE_CX+SPINE_W/2-1)}" y="{px(TOP-4)}" width="{px(SIDE_W+2)}" height="{px(N_ROWS*ROW_H+6)}" '
-      f'rx="{px(1.5)}" fill="{t["acc"]}" fill-opacity="0.08" stroke="{t["acc"]}" stroke-width="0.3" stroke-opacity="0.5"/>')
+    # ── wave fields + tint bands behind each of the three banks ──
+    for idx, (kind, tint, wave, _knob) in enumerate(bands):
+        x0 = bank_x0(idx)
+        wave_field(A, t, x0, TOP, BANK_W, N_ROWS*ROW_H, wave)
+        op_fill = 0.06 if kind == "rest" else 0.08
+        A(f'<rect x="{px(x0-1)}" y="{px(TOP-4)}" width="{px(BANK_W+2)}" height="{px(N_ROWS*ROW_H+6)}" '
+          f'rx="{px(1.5)}" fill="{tint}" fill-opacity="{op_fill}" stroke="{tint}" '
+          f'stroke-width="0.3" stroke-opacity="0.45"/>')
+        # bank colour marker (label text left implicit / drawn at runtime)
+        A(f'<circle cx="{px(x0+BANK_W*0.5)}" cy="{px(TOP-6)}" r="{px(1.4)}" fill="{tint}"/>')
 
-    # ── bank labels ──
-    def lbl_dot(cx, cy, col):  # small colour marker (label text drawn at runtime / left implicit)
-        A(f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(1.4)}" fill="{col}"/>')
-    lbl_dot(MARGIN+SIDE_W*0.5, TOP-6, t["rest"])
-    lbl_dot(SPINE_CX+SPINE_W/2+SIDE_W*0.5, TOP-6, t["acc"])
-
-    # ── central voice spine 1..16 ──
+    # ── voice spine 1..16 (far left) ──
     A(f'<line x1="{px(SPINE_CX)}" y1="{px(TOP)}" x2="{px(SPINE_CX)}" y2="{px(TOP+N_ROWS*ROW_H)}" '
       f'stroke="{t["spine"]}" stroke-width="{px(0.6)}"/>')
 
-    # ── knob grid: 3 columns per side, 6/6/4 = 16 per bank, COLUMN-major ──
+    # ── knob grid: per bank, 3 columns 6/6/4 = 16, COLUMN-major ──
     # col 0 = voices 1-6 (v0..5, v0 = mono at top-left), col 1 = 7-12, col 2 = 13-16
-    # (4-knob col vertically centred: offset one row). Column position = voice range,
-    # which is what the 2x8 row-major grid could never say.
-    def bank(kind, x_base, col_face, col_ring):
-        cw = SIDE_W/3
+    # (4-knob col vertically centred: offset one row).
+    def bank(kind, x_base, col_face, col_ring, spine_col=False):
+        cw = BANK_W/3
         v = 0
         for c, nrows in enumerate(COLS):
             roff = (N_ROWS - nrows) / 2.0
@@ -137,24 +148,24 @@ def gen(dark):
                 mono = (v == 0)
                 knob(A, t, cx, cy, KNOB_R, col_face, col_ring, mono)
                 A(f'<circle id="param_{kind}_{v}" cx="{px(cx)}" cy="{px(cy)}" r="0.5" fill="none" stroke="none"/>')
-                # voice number dot on the spine side -- first column only (the spine
-                # indexes voices 1-6; cols 2-3 are read from the column header position)
-                if c == 0:
-                    sx = SPINE_CX + (-1 if kind=="rest" else 1)*(SPINE_W/2 - 1.2)
-                    A(f'<circle cx="{px(sx)}" cy="{px(cy)}" r="{px(0.7)}" '
+                # voice-number dots on the spine — drawn once (from the REST bank's first column,
+                # which aligns row-for-row with all three banks). Marks voices 1..6; mono distinct.
+                if spine_col and c == 0:
+                    A(f'<circle cx="{px(SPINE_CX)}" cy="{px(cy)}" r="{px(0.7)}" '
                       f'fill="{t["spinedot"] if mono else t["spinehi"]}" fill-opacity="{1.0 if mono else 0.5}"/>')
                 v += 1
-    bank("rest",   MARGIN,                t["restknob"], t["rest"])
-    bank("accent", SPINE_CX+SPINE_W/2,    t["accknob"],  t["acc"])
+    bank("rest",   bank_x0(0), t["restknob"], t["rest"], spine_col=True)
+    bank("accent", bank_x0(1), t["accknob"],  t["acc"])
+    bank("qmix",   bank_x0(2), t["qmixknob"], t["qmix"])
 
     # ── five poly-cable output jacks along the bottom ──
     # GATE (fused), STEP (un-fused), SLEG (step-legato: articulations inside slurs only),
     # CV, ACCENT. See LEGATO_TIE_MODEL_NOTE.md + STEP_GATE_IMPLEMENTATION.md.
-    labels = [("output_polygate",      W*0.36, "GATE"),
-              ("output_polystepgate",  W*0.49, "STEP"),
-              ("output_polyslegato",   W*0.62, "SLEG"),
+    labels = [("output_polygate",      W*0.42, "GATE"),
+              ("output_polystepgate",  W*0.53, "STEP"),
+              ("output_polyslegato",   W*0.64, "SLEG"),
               ("output_polycv",        W*0.75, "CV"),
-              ("output_polyaccent",    W*0.88, "ACC")]
+              ("output_polyaccent",    W*0.86, "ACC")]
     for jid, jx, _lab in labels:
         A(f'<circle cx="{px(jx)}" cy="{px(JACK_Y)}" r="{px(3.6)}" fill="{t["jackwell"]}" '
           f'stroke="{t["jackring"]}" stroke-width="0.6"/>')

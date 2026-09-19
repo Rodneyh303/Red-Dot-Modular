@@ -145,6 +145,12 @@ public:
     /// Falls back to 0.1 if no poly voice expander
     float getPolyRest(int voiceIdx) const;
     float getPolyAccent(int voiceIdx) const;
+    /// Per-voice q-mix LEVEL (Task 4 poly): the level this voice's q-mix draw is thresholded
+    /// against, mirroring getPolyRest/getPolyAccent EXACTLY. Reads the Straits expander's
+    /// POLY_QMIX_PARAM_* knobs (voices 2..16). Voice-1/mono q-mix level is Monsoon's own
+    /// QMIX_LEVEL_PARAM (getQmixLevel) — not part of this per-voice poly accessor.
+    /// Falls back to 0 (never generated → always quantised, legacy behaviour) if no expander.
+    float getPolyQmixLevel(int voiceIdx) const;
     
     // ──── CV2 Offset Management ──────────────────────────────────────────────
     
