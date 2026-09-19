@@ -321,7 +321,14 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 // Poly cable ch(v) → poly voice v (V(v+2)); the mono/V1 ch0 mix-in is applied in
                 // the East widget's v1Editable strand write, not here.
                 auto varlegLorVal = [&](int vl, int c, float lo, float hi)->int {
-                    float base = mmE ? mmE->getLorBase(slot, vl + 4, c) : 0.f;  // bank 4=VAR 5=LEG
+                    // Store-bank order (Monsoon.hpp lorBase): MEL0 OCT1 REST2 ACC3 QMIX4 VAR5 LEG6.
+                    // VAR/LEG banks come from the SINGLE canonical helper (dsp/LaneMapping.hpp
+                    // varlegStoreBank): VAR→5, LEG→6, derived from POLY_LANE_COUNT + guarded by
+                    // static_assert. This is the fix for the old `vl + 4` drift (QMIX's bank
+                    // insertion silently made VAR read QMIX / LEG read VAR — QMIX drag bled into
+                    // VAR/LEG and poly VAR/LEG edits never took). One source now for every site.
+                    const int bank = dotModular::varlegStoreBank(vl);   // VAR→5, LEG→6
+                    float base = mmE ? mmE->getLorBase(slot, bank, c) : 0.f;
                     if (eastVisual->inputs[StraitsEastVisualIds::varlegCvId(vl,c)].isConnected()) {
                         float att = mmE ? mmE->getVarlegAtten(slot, vl, c) : 0.f;
                         float cv  = eastVisual->inputs[StraitsEastVisualIds::varlegCvId(vl,c)]
@@ -375,14 +382,16 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 {
                     // Throttled: ~15-line burst (covers all voices once) every ~131k iters.
                     static unsigned long r2c = 0;
+                    // LEG store bank = POLY_LANES(5) + 1 = 6 (was the stale pre-QMIX bank 5).
+                    const int legBank = dotModular::SandsGrid::POLY_LANES + 1;   // = 6
                     if ((r2c++ & 0x1FFFF) < 15)
                         INFO("[R2 push ] v=%2d VARp=%.2f LEGp=%.2f legLOR=(%d,%d,%d)",
                             v,
                             (mmE ? mmE->getVarlegDeleg(v, 0) : 0.f),
                             (mmE ? mmE->getVarlegDeleg(v, 1) : 0.f),
-                            (int)std::lround(math::clamp(mmE ? mmE->getLorBase(slot, 5, 0) : 16.f, 1.f, 16.f)),
-                            (int)std::lround(math::clamp(mmE ? mmE->getLorBase(slot, 5, 1) : 0.f, 0.f, 15.f)),
-                            (int)std::lround(math::clamp(mmE ? mmE->getLorBase(slot, 5, 2) : 0.f, 0.f, 15.f)));
+                            (int)std::lround(math::clamp(mmE ? mmE->getLorBase(slot, legBank, 0) : 16.f, 1.f, 16.f)),
+                            (int)std::lround(math::clamp(mmE ? mmE->getLorBase(slot, legBank, 1) : 0.f, 0.f, 15.f)),
+                            (int)std::lround(math::clamp(mmE ? mmE->getLorBase(slot, legBank, 2) : 0.f, 0.f, 15.f)));
                 }
 #endif
             }

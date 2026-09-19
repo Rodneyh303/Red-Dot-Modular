@@ -312,11 +312,13 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
                     [dcLane](Monsoon& mm, float val) { mm.setMonoLaneDir(dcLane, val); },
                     (float)oldV, (float)newV);
             };
-            // Lanes 0..3: locked when delegated to Macro (ownerDispId <= 0.5 = Macro owns).
-            // Lanes 4..5 (VAR/LEG): always settable (Mono always owns them).
+            // Lanes 0..4 (MEL/OCT/QMIX/REST/ACC): locked when delegated to Macro (getMonoOwner
+            // <= 0.5 = Macro owns). Lanes 5..6 (VAR/LEG): always settable (Mono always owns them).
+            // NOTE: after the QMIX widening ACC is editor lane 4 (a delegable poly lane) and
+            // VAR/LEG are 5/6, so the cutoff is POLY_LANES (5), not the old hardcoded 4.
             dc->lockWhen = [this, lane]() {
                 if (!getMonsoon()) return true;
-                if (lane >= 4) return false;  // VAR/LEG always Mono-owned
+                if (lane >= dotModular::SandsGrid::POLY_LANES) return false;  // VAR/LEG always Mono-owned
                 return !getMonsoon()->getMonoOwner(lane);  // Macro owns (delegated) → locked
             };
             addChild(dc);

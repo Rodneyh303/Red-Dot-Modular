@@ -1,4 +1,5 @@
 #pragma once
+#include "../dsp/LaneMapping.hpp"   // POLY_LANE_COUNT / EDITOR_LANE_COUNT for the cross-header guard below
 // ─────────────────────────────────────────────────────────────────────────────
 // SandsGrid — the ONE lane grid shared by all three Sands visual expanders.
 //
@@ -56,4 +57,17 @@ namespace SandsGrid {
     // dsp/LaneMapping.hpp (single source of truth); this header owns only GEOMETRY.
 
 } // namespace SandsGrid
+
+// Cross-header guard: dsp/LaneMapping.hpp keeps its own POLY_LANE_COUNT/EDITOR_LANE_COUNT
+// (so it stays include-light and can host lorStoreBank/varlegStoreBank). They MUST equal the
+// SandsGrid geometry counts, or the LOR-bank helpers would silently mis-map VAR/LEG again.
+// Assert equality here (this header pulls in both) so a future lane-count change to one side
+// that forgets the other trips at compile time.
+static_assert(SandsGrid::POLY_LANES == POLY_LANE_COUNT,
+              "SandsGrid::POLY_LANES must match dsp/LaneMapping.hpp POLY_LANE_COUNT (lorStoreBank)");
+static_assert(SandsGrid::MONO_LANES == EDITOR_LANE_COUNT,
+              "SandsGrid::MONO_LANES must match dsp/LaneMapping.hpp EDITOR_LANE_COUNT");
+static_assert(SandsGrid::EAST_LANES == EDITOR_LANE_COUNT,
+              "SandsGrid::EAST_LANES must match dsp/LaneMapping.hpp EDITOR_LANE_COUNT");
+
 } // namespace dotModular

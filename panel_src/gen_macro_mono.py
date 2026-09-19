@@ -28,6 +28,13 @@ def gen_macro(dark, W_MM=243.84):   # 48HP (44 + 4HP for dir_mod + prob_out jack
     def rowY(r): return ED_Y+(r+0.5)*LANE_H
     def ctrlY(k): return rowY(k)                    # control/marker row for editor lane k (identity)
     LANE_NAMES_D=["MELODY","OCTAVE","QMIX","REST","ACCENT"]
+    # editor row -> ENGINE poly lane (REST0/MEL1/OCT2/ACC3/QMIX4). Mirrors
+    # dotModular::EDITOR_TO_ENGINE_LANE_QMIX (dsp/LaneMapping.hpp). The C++ binds cv/atten/
+    # spread/send/tap/prob-out by ENGINE-lane numeric id (getGlobalSpread/Atten, getMacroSend,
+    # getGlobalTap, PROB_OUT_REST+lane all index engine order), positioned at the editor ROW.
+    # dir/dir_mod are EDITOR-lane indexed (getGlobalDir). Emitting editor-index ids for the
+    # engine-indexed groups was the melody-row-shows-REST-spread / octave-row-shows-MEL bug.
+    EDITOR_TO_ENGINE=[1,2,4,0,3]   # MEL->1 OCT->2 QMIX->4 REST->0 ACC->3
     # 4 CV jacks + 4 attens + spread base — columns match SandsMonoVisual, ED_X=88
     JACK_X=[6.,15.,24.,33.]            # LEN/OFF/ROT/SPR-cv
     ATTEN_X=[43.,52.,61.,70.]          # LEN/OFF/ROT/SPR depth
@@ -102,21 +109,28 @@ def gen_macro(dark, W_MM=243.84):   # 48HP (44 + 4HP for dir_mod + prob_out jack
     #      prob out     = output_{el}   (C++ binds "output_"+std::to_string(PROB_OUT_REST+el))
     #      param_send_<el>_<item>, param_taplor_/tapspr_<el>, param_dir_<el>, input_dir_mod_<el>. ──
     A('<g inkscape:label="components" inkscape:groupmode="layer">')
+    # ENGINE-lane-indexed groups (cv/atten/spread/prob) sit at the EDITOR row `el` but carry the
+    # id for engine lane `eng` = EDITOR_TO_ENGINE[el] — because the C++ store accessors
+    # (getGlobalAtten/Spread, PROB_OUT_REST+lane) are engine-indexed. Using `el` here put REST's
+    # spread on the melody row etc. (the reported bug).
     for el in range(ED_LANES):
-        y=rowY(el)
-        for p,x in enumerate(JACK_X):  A(D.kit_shape("input", 0 + el*4 + p, x, y))   # cvId(el,c)
-        for p,x in enumerate(ATTEN_X): A(D.kit_shape("param", 5 + el*4 + p, x, y))   # attenId(el,c)=ATTEN_START(5)+..
-        A(D.kit_shape("param", el, SPREAD_X, y))   # SPREAD_REST..QMIX = param el
-        A(D.kit_shape("output", el, PROB_OUT_X, y))  # output_{el} (PROB_OUT_REST+el)
-    # Macro→voice mix-in send markers (param_send_<editorLane>_<item>) + PRE/POST taps.
+        y=rowY(el); eng=EDITOR_TO_ENGINE[el]
+        for p,x in enumerate(JACK_X):  A(D.kit_shape("input", 0 + eng*4 + p, x, y))   # cvId(eng,c)
+        for p,x in enumerate(ATTEN_X): A(D.kit_shape("param", 5 + eng*4 + p, x, y))   # attenId(eng,c)=ATTEN_START(5)+..
+        A(D.kit_shape("param", eng, SPREAD_X, y))    # SPREAD_REST..QMIX = param eng (engine lane)
+        A(D.kit_shape("output", eng, PROB_OUT_X, y)) # output_{eng} (PROB_OUT_REST+eng, engine lane)
+    # Macro→voice mix-in send markers + PRE/POST taps — also ENGINE-lane indexed
+    # (getMacroSend(slot, lane, item) / getGlobalTap(lane,..) are engine order), at editor row.
     for el in range(ED_LANES):
+        eng=EDITOR_TO_ENGINE[el]
         for item in range(4):
             cxs,cys = MIX_XY[el][item]
-            A(f'<circle id="param_send_{el}_{item}" cx="{px(cxs):.2f}" cy="{px(cys):.2f}" r="0.5" fill="none" stroke="none"/>')
+            A(f'<circle id="param_send_{eng}_{item}" cx="{px(cxs):.2f}" cy="{px(cys):.2f}" r="0.5" fill="none" stroke="none"/>')
         (lx,ly),(sx,sy) = TAP_XY[el]
-        A(f'<circle id="param_taplor_{el}" cx="{px(lx):.2f}" cy="{px(ly):.2f}" r="0.5" fill="none" stroke="none"/>')
-        A(f'<circle id="param_tapspr_{el}" cx="{px(sx):.2f}" cy="{px(sy):.2f}" r="0.5" fill="none" stroke="none"/>')
-    # Direction cells (param_dir_<editorLane>) + direction gate-mod jacks (input_dir_mod_<editorLane>).
+        A(f'<circle id="param_taplor_{eng}" cx="{px(lx):.2f}" cy="{px(ly):.2f}" r="0.5" fill="none" stroke="none"/>')
+        A(f'<circle id="param_tapspr_{eng}" cx="{px(sx):.2f}" cy="{px(sy):.2f}" r="0.5" fill="none" stroke="none"/>')
+    # Direction cells (param_dir_<editorLane>) + gate-mod jacks (input_dir_mod_<editorLane>) —
+    # these ARE editor-lane indexed in the C++ (getGlobalDir(editorLane)), so keep `el`.
     for el in range(ED_LANES):
         A(f'<circle id="param_dir_{el}" cx="{px(DIR_X):.2f}" cy="{px(rowY(el)):.2f}" '
           f'r="0.5" fill="none" stroke="none"/>')

@@ -118,6 +118,40 @@ constexpr int ENGINE_LANE_TO_EDITOR_QMIX[5] = { 3, 0, 1, 4, 2 };
 // Inverse over 7 editor lanes; VAR/LEG are mono-only (POLY_NONE).
 constexpr int EDITOR_TO_ENGINE_LANE_QMIX[7] = { 1, 2, 4, 0, 3, POLY_NONE, POLY_NONE };
 
+// ─── LOR store-bank: the ONE canonical editor-lane → lorBase[] bank mapping ───
+// The lorBase store (Monsoon.hpp editor.lorBase) is banked in the order
+//   MEL0 OCT1 REST2 ACC3 QMIX4 VAR5 LEG6   (== editor order; strand-aligned).
+// Poly lanes (editor 0..4) reach it via EDITOR_TO_ENGINE_LANE_QMIX; VAR/LEG (editor
+// 5/6) are POLY_NONE — they have NO poly engine lane, so callers historically hand-
+// rolled `vl + <literal>`, INVISIBLE to this header. When QMIX shifted the bank layout
+// those literals silently drifted (VAR read QMIX's bank, LEG read VAR's) → the
+// "editing QMIX also edits LEGATO / VAR-LEG edits don't take" bug class.
+//
+// ALL LOR-bank call sites (East lorBank(), Mono readStrand bLor, MonsoonExpanderManager
+// poly VAR/LEG, save/load) MUST route through lorStoreBank() so a future lane-count
+// change updates exactly one place and VAR/LEG can never drift again.
+constexpr int POLY_LANE_COUNT = 5;   // MEL/OCT/QMIX/REST/ACC (== SandsGrid::POLY_LANES; kept
+                                     // here so this header stays self-contained / include-light)
+constexpr int EDITOR_LANE_COUNT = 7; // + VAR/LEG (== SandsGrid::MONO_LANES / EAST_LANES)
+
+// editorLane (0..6) → lorBase[] bank. Poly lanes map through the QMIX table; VAR/LEG map
+// to themselves (banks 5/6), derived from POLY_LANE_COUNT so they track the poly count.
+constexpr int lorStoreBank(int editorLane) {
+    return (editorLane >= 0 && editorLane < POLY_LANE_COUNT)
+               ? EDITOR_TO_ENGINE_LANE_QMIX[editorLane]           // MEL0 OCT1 QMIX4 REST0? -> table
+               : editorLane;                                      // VAR(5)/LEG(6): self
+}
+// varleg index (0=VAR,1=LEG) → lorBase[] bank. The safe replacement for the old `vl + 4`
+// literal: VAR→5, LEG→6, derived from POLY_LANE_COUNT.
+constexpr int varlegStoreBank(int vl) { return POLY_LANE_COUNT + vl; }
+
+// Compile-time guards nailing the exact banks so any future renumber that forgets a call
+// site trips here instead of in the field (the VAR/LEG banks that silently drifted for QMIX).
+static_assert(lorStoreBank(0) == 1 && lorStoreBank(2) == 4 && lorStoreBank(3) == 0,
+              "lorStoreBank poly lanes route through EDITOR_TO_ENGINE_LANE_QMIX");
+static_assert(lorStoreBank(5) == 5 && lorStoreBank(6) == 6, "VAR/LEG lorBase banks are 5/6");
+static_assert(varlegStoreBank(0) == 5 && varlegStoreBank(1) == 6, "varleg banks: VAR5 LEG6");
+
 // (laneSlot() REMOVED — it was the generators' ESLOT=[0,1,3,4...] preview-gap helper. q-mix is now
 //  a plain lane at index 2 with full data + jacks, so there is no gap and no slot remap. Generators
 //  index editor lanes 0..N directly.)

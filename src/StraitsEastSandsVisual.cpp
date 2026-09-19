@@ -406,48 +406,47 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // Per-lane ownership cell (Option C, treatment A): a lane-step block right
         // of the editor — FILLED = global/Macro owns, OUTLINE = East/per-voice owns.
         // Click toggles. Inert+dimmed with no Macro; hidden on the V1 mono tab.
-        // laneColEng indexed by ENGINE lane: 0 REST,1 MEL,2 OCT,3 ACC.
-        static const NVGcolor laneColEng[dotModular::SandsGrid::POLY_LANES] = {
-            nvgRGB(0x50,0x50,0x50), nvgRGB(0xd4,0xaf,0x37),
-            nvgRGB(0xb8,0x86,0x0b), nvgRGB(0xff,0x95,0x00),
-            nvgRGB(0x80,0x60,0xc0)  // Q-MIX purple
-        };
+        // `lane` here is the EDITOR lane (0 MEL,1 OCT,2 QMIX,3 REST,4 ACC): the panel places
+        // param_owner_<el> at editor row el (gen_east_clean.py), exactly like param_dir_<el>.
+        // The macroOwn STORE is ENGINE-indexed, so convert editor→engine (EDITOR_TO_ENGINE_LANE_QMIX)
+        // inside every get/setMacroOwn / get/setMonoMacroOwn call. Colours are editor-ordered.
         for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
             // STORE-BACKED (MVC step 1d): OwnerCell reads/writes editor.macroOwn via
             // get/setMacroOwn (poly) or get/setMonoMacroOwn (V1). V1+Mono (tab1MonoMirror) is
-            // locked and DISPLAYS Mono's owner (getMonoOwner, engine→editor lane conversion).
-            // Live slot resolution: onMonoTab()/polyVoice() per tab. Was ownerDispId param.
+            // locked and DISPLAYS Mono's owner (getMonoOwner, editor-indexed). Live slot
+            // resolution: onMonoTab()/polyVoice() per tab. Was ownerDispId param.
             bindWidget<OwnerCell>(
                 "param_owner_" + std::to_string(lane),
                 [this, lane](OwnerCell* w) {
-                    w->laneCol = laneColEng[lane];
+                    w->laneCol = sandsLaneColorEditor(lane);
                     Vec ctr = w->box.pos.plus(w->box.size.div(2.f));
                     const float stepW = (ED_W - 2.f*6.f) / 16.f;
                     w->box.size = mm2px(Vec(stepW, ED_LANE_H * 0.9f));
                     w->box.pos  = ctr.minus(w->box.size.div(2.f));
-                    const int ocLane = lane;
-                    w->getOwnsFn = [this, ocLane]() {
+                    const int ocLane = lane;                                  // EDITOR lane
+                    const int ocEng  = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[lane];  // ENGINE lane for the store
+                    w->getOwnsFn = [this, ocLane, ocEng]() {
                         Monsoon* m = getMonsoon(); if (!m) return true;
-                        if (tab1MonoMirror()) return m->getMonoOwner(dotModular::ENGINE_LANE_TO_EDITOR_QMIX[ocLane]);
-                        if (onMonoTab()) return m->getMonoMacroOwn(ocLane) > 0.5f;
+                        if (tab1MonoMirror()) return m->getMonoOwner(ocLane);   // monoOwner is editor-indexed
+                        if (onMonoTab()) return m->getMonoMacroOwn(ocEng) > 0.5f;
                         int pv = polyVoice();
-                        return (pv >= 0 && pv < 15) ? (m->getMacroOwn(pv, ocLane) > 0.5f) : true;
+                        return (pv >= 0 && pv < 15) ? (m->getMacroOwn(pv, ocEng) > 0.5f) : true;
                     };
-                    w->setOwnsFn = [this, ocLane](bool b) {
+                    w->setOwnsFn = [this, ocEng](bool b) {
                         Monsoon* m = getMonsoon(); if (!m) return;
-                        if (onMonoTab()) { m->setMonoMacroOwn(ocLane, b); return; }
+                        if (onMonoTab()) { m->setMonoMacroOwn(ocEng, b); return; }
                         int pv = polyVoice();
-                        if (pv >= 0 && pv < 15) m->setMacroOwn(pv, ocLane, b ? 1.f : 0.f);
+                        if (pv >= 0 && pv < 15) m->setMacroOwn(pv, ocEng, b ? 1.f : 0.f);
                     };
-                    w->pushUndoFn = [this, ocLane](bool oldB, bool newB) {
+                    w->pushUndoFn = [this, ocEng](bool oldB, bool newB) {
                         Monsoon* m = getMonsoon(); if (!m) return;
                         const bool mono = onMonoTab();
                         const int  pv   = mono ? -1 : polyVoice();
                         if (!mono && (pv < 0 || pv >= 15)) return;
                         redDot::applyAndPushStoreEdit<Monsoon>(m, "lane owner",
-                            [ocLane, mono, pv](Monsoon& mm, float val) {
-                                if (mono) mm.setMonoMacroOwn(ocLane, val > 0.5f);
-                                else      mm.setMacroOwn(pv, ocLane, val);
+                            [ocEng, mono, pv](Monsoon& mm, float val) {
+                                if (mono) mm.setMonoMacroOwn(ocEng, val > 0.5f);
+                                else      mm.setMacroOwn(pv, ocEng, val);
                             },
                             oldB ? 1.f : 0.f, newB ? 1.f : 0.f);
                     };
@@ -459,10 +458,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
 
         paramMgr = new PolyVoiceSandsParameterManager(nullptr, nullptr, 15, 0);
 
-        // VAR/LEG delegation cells (editor lanes 4/5): same lane-end OwnerCell, but the
-        // delegation target is MONO (always present), so FILLED = follow mono, OUTLINE =
-        // Local East. Locked on the V1/mono tab (V1 is mono — nothing to delegate). Anchored
-        // to param_owner_4/5 in the SRC column, one LANE_H below the poly lanes.
+        // VAR/LEG delegation cells: QMIX-widened editor lanes are 5 (VAR) / 6 (LEG) — the poly
+        // owner cells above now occupy param_owner_0..4 (5 poly lanes incl QMIX+ACC), so VAR/LEG
+        // MUST bind param_owner_5/6. (Was 4/5 pre-QMIX when poly was only 0..3 — that now COLLIDES
+        // with ACCENT's param_owner_4, which is why ACC delegation broke and the LEGATO row showed
+        // a stray/duplicate cell.) Delegation target is MONO (follow mono); locked on V1/mono tab.
         static const NVGcolor varlegCol[2] = {
             nvgRGB(0xff,0x6b,0x6b),   // VARIATION (matches editor colors.variation)
             nvgRGB(0x26,0xa6,0x9a)    // LEGATO    (matches editor colors.legato)
@@ -472,7 +472,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // get/setVarlegDeleg(polyVoice, lane) — POLY-ONLY (no mono slot; V1 follows mono,
             // locked). Live slot resolution per tab. Was varlegDelegDispId param.
             bindWidget<OwnerCell>(
-                "param_owner_" + std::to_string(4 + lane),
+                "param_owner_" + std::to_string(dotModular::SandsGrid::POLY_LANES + lane),
                 [this, lane](OwnerCell* w) {
                     w->laneCol = varlegCol[lane];
                     Vec ctr = w->box.pos.plus(w->box.size.div(2.f));
@@ -569,7 +569,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         w->lockWhen = [this, lane]() {
                             if (tab1MonoMirror()) return true;
                             if (!onMonoTab() && selectedVoice >= 1) {
-                                int vl = lane - 4;   // 0=VAR, 1=LEG
+                                int vl = lane - dotModular::SandsGrid::POLY_LANES;   // QMIX-widened: editor 5=VAR→0, 6=LEG→1 (was lane-4, now ACC=4 is a poly lane)
                                 Monsoon* m = getMonsoon(); return m && (m->getVarlegDeleg(polyVoice(), vl) < 0.5f);
                             }
                             return false;
@@ -800,10 +800,15 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     // == the old selectedVoice-1). Use only when !onMonoTab().
     int  polyVoice() const { return dotModular::VoiceResolver::polyBankIndex(currentVoice()); }
 
+    // `lane` is the EDITOR lane (onLaneRightClick passes the editor row: 0 MEL,1 OCT,2 QMIX,
+    // 3 REST,4 ACC). laneNames[] is editor-ordered; the macroOwn store is engine-indexed, so
+    // convert editor→engine (EDITOR_TO_ENGINE_LANE_QMIX) before any get/setMacroOwn / eastOwnsLane.
     void openLaneOwnershipMenu(int lane, rack::math::Vec editorLocalPos) {
         if (!module) return;
         const int voice = polyVoice();   // current poly bank index (0-based)
-        const bool macroOwns = !eastOwnsLane(lane);   // MVC step 1d: store-backed
+        const int engLane = (lane >= 0 && lane < dotModular::SandsGrid::POLY_LANES)
+                          ? dotModular::EDITOR_TO_ENGINE_LANE_QMIX[lane] : lane;
+        const bool macroOwns = !eastOwnsLane(engLane);   // MVC step 1d: store-backed (engine lane)
         static const char* laneNames[5] = { "MELODY", "OCTAVE", "Q-MIX", "REST", "ACCENT" };
         const char* ln = (lane >= 0 && lane < dotModular::SandsGrid::POLY_LANES) ? laneNames[lane] : "?";
 
@@ -828,14 +833,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         auto* eastItem = new OwnerItem;
         eastItem->text = "East owns this lane";
         eastItem->rightText = (!macroOwns) ? "✓" : "";
-        eastItem->widget = this; eastItem->lane = lane; eastItem->voice = voice;
+        eastItem->widget = this; eastItem->lane = engLane; eastItem->voice = voice;
         eastItem->setToEast = true;
         menu->addChild(eastItem);
 
         auto* macroItem = new OwnerItem;
         macroItem->text = "Macro owns this lane";
         macroItem->rightText = macroOwns ? "✓" : "";
-        macroItem->widget = this; macroItem->lane = lane; macroItem->voice = voice;
+        macroItem->widget = this; macroItem->lane = engLane; macroItem->voice = voice;
         macroItem->setToEast = false;
         menu->addChild(macroItem);
 
@@ -857,12 +862,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
 
         auto* allEast = new AllVoicesItem;
         allEast->text = "East owns — all voices";
-        allEast->widget = this; allEast->lane = lane; allEast->setToEast = true;
+        allEast->widget = this; allEast->lane = engLane; allEast->setToEast = true;
         menu->addChild(allEast);
 
         auto* allMacro = new AllVoicesItem;
         allMacro->text = "Macro owns — all voices";
-        allMacro->widget = this; allMacro->lane = lane; allMacro->setToEast = false;
+        allMacro->widget = this; allMacro->lane = engLane; allMacro->setToEast = false;
         menu->addChild(allMacro);
     }
 
@@ -1361,7 +1366,10 @@ void StraitsEastSandsVisual::process(const ProcessArgs&) {
     for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane)
         // MVC step 1d: module process has no tab context; light the V1 owner (the OwnerCell
         // widget draws the live per-voice state via getOwnsFn). cachedMon_ is the store owner.
-        lights[ownerLightId(lane)].setBrightness((cachedMon_ && (cachedMon_->getMonoMacroOwn(lane) > 0.5f)) ? 1.f : 0.f);
+        // `lane` is the EDITOR lane (ownerLightId is an editor-row light); the macroOwn store
+        // is ENGINE-indexed, so convert editor→engine before getMonoMacroOwn.
+        lights[ownerLightId(lane)].setBrightness(
+            (cachedMon_ && (cachedMon_->getMonoMacroOwn(dotModular::EDITOR_TO_ENGINE_LANE_QMIX[lane]) > 0.5f)) ? 1.f : 0.f);
 
     // PERF: findMonsoonEitherSide walks the expander chain. Topology only changes at
     // control rate, so refresh the cached pointer on the same /8 divider as the gate scan

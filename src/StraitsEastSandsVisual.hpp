@@ -118,13 +118,12 @@ namespace StraitsEastVisualIds {
 
     // ── LOR bank helper ───────────────────────────────────────────────────
 
-    // Unified LOR bank for an EDITOR lane: engine poly lane for the 5 poly lanes
-    // (MEL/OCT/QMIX/REST/ACC = editor 0..4), self for VAR(5)/LEG(6). Uses the QMIX-aware
-    // table so QMIX (editor 2 → engine 4) routes to its own bank, not REST's.
+    // Unified LOR bank for an EDITOR lane — the SINGLE canonical mapping now lives in
+    // dsp/LaneMapping.hpp (dotModular::lorStoreBank), which also covers VAR/LEG (editor
+    // 5/6) so the old hand-rolled `vl + <literal>` bank drift (QMIX→LEGATO coupling) can't
+    // recur. Thin forwarder kept for call-site readability.
     static inline int lorBank(int editorLane) {
-        return (editorLane < dotModular::SandsGrid::POLY_LANES)
-                   ? dotModular::EDITOR_TO_ENGINE_LANE_QMIX[editorLane]
-                   : editorLane;
+        return dotModular::lorStoreBank(editorLane);
     }
 
     // Macro/East base owner per (voice, lane): MonsoonIds::MACRO_OWN_START + v*4 + lane.

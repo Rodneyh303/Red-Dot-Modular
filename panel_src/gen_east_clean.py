@@ -38,6 +38,13 @@ ED_LANE_H = ED_H / ED_LANES   # 13
 # (no ESLOT remap — q-mix is a real lane, not a preview gap).
 def rowY(r): return ED_Y + (r+0.5)*ED_LANE_H
 def ctrlY(k): return rowY(k)   # control/marker row for editor lane k (identity)
+# editor row -> ENGINE/spread poly lane (REST0/MEL1/OCT2/ACC3/QMIX4). Mirrors
+# dotModular::EDITOR_TO_ENGINE_LANE_QMIX (dsp/LaneMapping.hpp). East's SPREAD knobs bind by
+# SPREAD/engine-lane id (sprPid[] + getSpread(slot, spreadLane), REST=0) while cv/atten bind by
+# EDITOR lane (cvId/attenDispId + getMacroAtten by editor lane). So spread markers carry the
+# ENGINE id at the editor row; cv/atten stay editor-indexed. Emitting editor ids for spread put
+# REST's spread on the MEL row (the reported East mixup).
+EDITOR_TO_ENGINE=[1,2,4,0,3]   # MEL->1 OCT->2 QMIX->4 REST->0 ACC->3
 # 4 CV jacks + 4 attens + spread base — columns match SandsMonoVisual, ED_X=88
 JACK_X  = [6.0, 15.0, 24.0, 33.0]   # LEN/OFF/ROT/SPR-cv
 ATTEN_X = [43.0, 52.0, 61.0, 70.0]  # LEN/OFF/ROT/SPR depth
@@ -249,11 +256,14 @@ def gen(dark):
         A(f'<circle id="{kind}_{idx}" cx="{px(x):.2f}" cy="{px(y):.2f}" r="0.5" fill="none" stroke="none"/>')
     A('<g inkscape:label="components" inkscape:groupmode="layer">')
     # 5 spread lanes (editor 0..4 incl QMIX at 2): CV jacks + attens + spread base.
+    # cv/atten are EDITOR-lane indexed (cvId(el,c)/attenDispId(el,c) + getMacroAtten by editor
+    # lane) — keep el. SPREAD is ENGINE/spread-lane indexed (sprPid[]/getSpread(slot,spreadLane),
+    # REST=0) — emit param_<eng> at the editor row so the REST-spread knob lands on the REST row.
     for el in range(POLY_LANES):
-        y=rowY(el)
-        for p,x in enumerate(JACK_X):  kit_shape("input", 0 + el*4 + p, x, y)   # cvId(el,c)
-        for p,x in enumerate(ATTEN_X): kit_shape("param", 4 + el*4 + p, x, y)   # attenDispId(el,c)
-        kit_shape("param", el, SPREAD_X, y)   # SPREAD_R..Q = param el (positional by editor lane)
+        y=rowY(el); eng=EDITOR_TO_ENGINE[el]
+        for p,x in enumerate(JACK_X):  kit_shape("input", 0 + el*4 + p, x, y)   # cvId(el,c) — editor lane
+        for p,x in enumerate(ATTEN_X): kit_shape("param", 4 + el*4 + p, x, y)   # attenDispId(el,c) — editor lane
+        kit_shape("param", eng, SPREAD_X, y)   # SPREAD_R..Q = param <engine lane> (positional at editor row)
     # VARIATION (editor 5) / LEGATO (editor 6): VAR/LEG CV jacks + depth attens (LEN/OFF/ROT).
     for vl in range(2):
         y=rowY(POLY_LANES+vl)   # editor rows 5,6

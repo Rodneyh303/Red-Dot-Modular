@@ -189,7 +189,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // params[lenId/offId/rotId(l)] (removed). l is the EDITOR lane; bank = engine lane for
             // poly (0..4), self for VAR/LEG (5,6) — East's lorBank. gMon resolves via monoVis so
             // it's valid without Macro. Defaults (16/0/0) match the identity init if store is empty.
-            const int bLor = (l < dotModular::SandsGrid::POLY_LANES) ? dotModular::EDITOR_TO_ENGINE_LANE_QMIX[l] : l;
+            const int bLor = dotModular::lorStoreBank(l);   // single canonical editor→lorBase bank (covers VAR/LEG)
             float baseLen = gMon ? gMon->getLorBase(dotModular::VoiceResolver::kMonoSlot, bLor, 0) : 16.f;
             float baseOff = gMon ? gMon->getLorBase(dotModular::VoiceResolver::kMonoSlot, bLor, 1) : 0.f;
             float baseRot = gMon ? gMon->getLorBase(dotModular::VoiceResolver::kMonoSlot, bLor, 2) : 0.f;
